@@ -1,7 +1,7 @@
 use db::WorkspaceDataBase;
 
 use crate::{
-    CallSite,
+    CallSite, HirNodeInfo,
     check::errors::{ToIdeDiagnostic, e10_control_flow::ControlFlowError, e3_type::TypeError},
     hir_def::{
         expressions::{
@@ -11,7 +11,7 @@ use crate::{
         scope::ScopeId,
     },
     hir_ty::{
-        body::BodyInferenceResult,
+        body::{Adjust, BodyInferenceResult, NullState},
         infer::expr::InferExprCtx,
         resolver::{Resolver, func_call::resolve_func_call},
         ty::Type,
@@ -123,6 +123,33 @@ impl<'db> StmtsResolverCtx<'db> {
                             base_typ,
                             CallSite::from_scoped(db, target),
                         ));
+                    }
+
+                    // Update null state for REF_TO variables
+                    if let Type::Variable((var_decl, _)) = base_typ {
+                        if ctx.ref_null_state.contains_key(&var_decl) {
+                            // Only update if this is a direct assignment (no deref on the LHS)
+                            let has_deref = ctx
+                                .adjustments_of_var_access(db, *var)
+                                .is_some_and(|adjs| {
+                                    adjs.iter().any(|a| matches!(a.kind, Adjust::Deref))
+                                });
+                            if !has_deref {
+                                let rhs_type = ctx.get_type_of_expr(*target);
+                                let new_state = if matches!(rhs_type, Type::Null) {
+                                    NullState::Null(stmt.as_call_site(db))
+                                } else if let Type::Variable((rhs_var, _)) = rhs_type {
+                                    // Propagate null state from RHS variable
+                                    ctx.ref_null_state
+                                        .get(&rhs_var)
+                                        .copied()
+                                        .unwrap_or(NullState::NonNull)
+                                } else {
+                                    NullState::NonNull
+                                };
+                                ctx.ref_null_state.insert(var_decl, new_state);
+                            }
+                        }
                     }
                 }
 

@@ -28,6 +28,7 @@ pub mod references;
 pub mod scopes;
 pub mod subrange;
 pub mod syntax;
+pub mod nullability;
 pub mod var_decls;
 pub mod variadics;
 pub mod visibility;

@@ -3,11 +3,12 @@ use ide_diagnostic::IdeDiagnostic;
 use rustc_hash::{FxHashMap, FxHashSet};
 
 use crate::{
+    CallSite, HirNodeInfo,
     hir_def::{
         expressions::{
             expression::{
-                BeginPathExpr, Expr, ExprKind, ParamAssign, PathExpr, PrimaryExpr, RefValue,
-                VariableAccess, VariableAccessKind,
+                BeginPathExpr, Expr, ExprKind, InitExprKind, ParamAssign, PathExpr, PrimaryExpr,
+                RefValue, VariableAccess, VariableAccessKind,
             },
             invocation::Invocation,
             statement::Stmt,
@@ -15,13 +16,14 @@ use crate::{
         interned::identifier::Ident,
         pous::{
             pou::Pou,
-            variable::{DirectVariable, VariableDecl},
+            variable::{DirectVariable, VariableDecl, VariableKind},
         },
         scope::{ScopeId, ScopeKind},
         semantic_index::get_scope,
     },
     hir_ty::{
         body::statements::{NestedScope, StmtsResolverCtx},
+        infer::Infer,
         resolver::Resolver,
         ty::Type,
     },
@@ -50,11 +52,82 @@ pub fn infer_body<'db>(
         _ => return result,
     };
 
+    // Initialize null state tracking for REF_TO local variables
+    init_ref_null_states(db, scope, &mut result);
+
     let resolver = Resolver::for_scope(db, scope);
 
     ctx.check_statements(db, resolver, statements, NestedScope::None, &mut result);
 
     result
+}
+
+/// Scan all variables in the scope and initialize null state tracking
+/// for REF_TO variables (excluding VAR_INPUT and VAR_IN_OUT which are caller's responsibility).
+fn init_ref_null_states<'db>(
+    db: &'db dyn WorkspaceDataBase,
+    scope: ScopeId<'db>,
+    result: &mut BodyInferenceResult<'db>,
+) {
+    let variables = match get_scope(db, scope).kind {
+        ScopeKind::Pou(pou) => match pou {
+            Pou::Function(f) => f.variables(db),
+            Pou::FunctionBlock(fb) => fb.variables(db),
+            _ => return,
+        },
+        ScopeKind::MethodDecl(m) => m.variables(db),
+        ScopeKind::Program(p) => p.variables(db),
+        _ => return,
+    };
+
+    for var in variables {
+        // Skip input/in_out — caller's responsibility
+        if matches!(var.kind(db), VariableKind::Input | VariableKind::InOut) {
+            continue;
+        }
+
+        // Check if this variable is REF_TO
+        if matches!(var.spec(db).infer(db), Type::RefTo(_)) {
+            let var_site = var.as_call_site(db);
+            let state = match var.init(db) {
+                Some(init) => {
+                    if is_null_init(db, &init.kind(db)) {
+                        NullState::Null(init.as_call_site(db))
+                    } else {
+                        NullState::NonNull
+                    }
+                }
+                None => NullState::Uninitialized(var_site),
+            };
+            result.ref_null_state.insert(*var, state);
+        }
+    }
+}
+
+/// Check if an initializer expression is NULL.
+fn is_null_init<'db>(db: &'db dyn WorkspaceDataBase, init: &InitExprKind<'db>) -> bool {
+    match init {
+        InitExprKind::ConstantExpr(expr) => {
+            matches!(expr.expr(db), ExprKind::PrimaryExpr(PrimaryExpr::RefValue { value: RefValue::Null }))
+        }
+        _ => false,
+    }
+}
+
+/// Nullability state for REF_TO variables, tracked during linear statement flow.
+///
+/// The [`CallSite`] carried by `Uninitialized` and `Null` points to
+/// the source location that caused the state (declaration site or NULL assignment).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, salsa::Update)]
+pub enum NullState<'db> {
+    /// Variable was never assigned (default for REF_TO without initializer).
+    /// CallSite points to the variable declaration.
+    Uninitialized(CallSite<'db>),
+    /// Variable was explicitly assigned NULL.
+    /// CallSite points to the NULL assignment or NULL initializer.
+    Null(CallSite<'db>),
+    /// Variable was assigned a non-null value.
+    NonNull,
 }
 
 /// Result of body inference
@@ -123,6 +196,11 @@ pub struct BodyInferenceResult<'db> {
     // FOR loops where step sign mismatches bounds direction.
     // Populated during statement resolution for use by the linter.
     pub mismatched_for_step: Vec<Stmt<'db>>,
+
+    // Null state tracking for REF_TO variables.
+    // Tracks whether a reference variable is initialized / null / non-null
+    // through linear statement flow.
+    pub ref_null_state: FxHashMap<VariableDecl<'db>, NullState<'db>>,
 }
 
 impl<'db> BodyInferenceResult<'db> {
@@ -144,6 +222,7 @@ impl<'db> BodyInferenceResult<'db> {
             case_without_else: Vec::new(),
             dead_code_statements: Vec::new(),
             mismatched_for_step: Vec::new(),
+            ref_null_state: FxHashMap::default(),
         }
     }
 

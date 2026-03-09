@@ -108,7 +108,6 @@ impl<'db> ScopeId<'db> {
         db: &'db dyn WorkspaceDataBase,
     ) -> FxHashMap<Ident, VariableDecl<'db>> {
         match get_scope(db, *self).kind {
-            ScopeKind::Global | ScopeKind::Namespace(_) => FxHashMap::default(),
             ScopeKind::Pou(pou) => match pou {
                 Pou::Function(f) => global_variables(db, f.variables(db)),
                 Pou::FunctionBlock(fb) => global_variables(db, fb.variables(db)),

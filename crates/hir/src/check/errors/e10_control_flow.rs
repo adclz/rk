@@ -1,15 +1,15 @@
 use auto_lsp::lsp_types::DiagnosticSeverity;
 use db::WorkspaceDataBase;
-use ide_diagnostic::{ErrorCode, IdeDiagnostic, diag};
+use ide_diagnostic::{ErrorCode, IdeDiagnostic, Related, diag};
 
 use crate::{
     CallSite, HasName, HirNodeInfo,
     check::errors::ToIdeDiagnostic,
     hir_def::{
-        expressions::{expression::FuncCall, statement::Stmt},
+        expressions::{expression::{FuncCall, PathExpr}, statement::Stmt},
         pous::variable::VariableDecl,
     },
-    hir_ty::ty::{CallableType, Type},
+    hir_ty::{body::NullState, ty::{CallableType, Type}},
 };
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, salsa::Update)]
@@ -36,6 +36,11 @@ pub enum ControlFlowError<'db> {
     ExitOutsideLoop {
         stmt: Stmt<'db>,
     },
+    DerefPossiblyNull {
+        var: VariableDecl<'db>,
+        expr: PathExpr<'db>,
+        state: NullState<'db>,
+    },
 }
 
 impl<'db> ErrorCode for ControlFlowError<'db> {
@@ -47,6 +52,7 @@ impl<'db> ErrorCode for ControlFlowError<'db> {
             Self::CallNonCallableType { .. } => "E1004",
             Self::ContinueOutsideLoop { .. } => "E1005",
             Self::ExitOutsideLoop { .. } => "E1006",
+            Self::DerefPossiblyNull { .. } => "E1007",
         }
     }
 
@@ -55,6 +61,7 @@ impl<'db> ErrorCode for ControlFlowError<'db> {
             Self::AssignCallableType { .. } | Self::IsVarInput { .. } | Self::DirectType { .. } => {
                 "assignment violation"
             }
+            Self::DerefPossiblyNull { .. } => "possibly null dereference",
             _ => "control flow violation",
         }
     }
@@ -118,6 +125,34 @@ impl<'db> ToIdeDiagnostic<'db> for ControlFlowError<'db> {
                 .severity(DiagnosticSeverity::ERROR)
                 .desc(self)
                 .call(),
+            Self::DerefPossiblyNull { var, expr, state } => {
+                let name = var.get_name_ident(db).text(db);
+                let (message, related_msg, site) = match state {
+                    NullState::Uninitialized(site) => (
+                        format!("dereference of reference '{name}' which is never initialized"),
+                        format!("'{name}' declared without initializer here"),
+                        site,
+                    ),
+                    NullState::Null(site) => (
+                        format!("dereference of reference '{name}' which is null"),
+                        format!("'{name}' set to NULL here"),
+                        site,
+                    ),
+                    _ => unreachable!(),
+                };
+                let mut diag = diag()
+                    .message(message)
+                    .severity(DiagnosticSeverity::WARNING)
+                    .desc(self)
+                    .range(expr.get_span(db))
+                    .call();
+                diag.with_related(Related::new(
+                    related_msg,
+                    site.scope.file(db),
+                    site.get_span(db),
+                ));
+                diag
+            }
         }
     }
 }

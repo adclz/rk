@@ -4,7 +4,7 @@ use db::WorkspaceDataBase;
 
 use crate::{
     HirNodeInfo,
-    check::errors::{ToIdeDiagnostic, e2_resolve::ResolveError},
+    check::errors::{ToIdeDiagnostic, e2_resolve::ResolveError, e10_control_flow::ControlFlowError},
     hir_def::{
         expressions::{
             expression::{BeginPathExpr, InitExpr, MultibitsPart, PathExpr},
@@ -16,7 +16,7 @@ use crate::{
         scope::ScopeId,
     },
     hir_ty::{
-        body::{Adjustment, AdjustmentInfo, BodyInferenceResult},
+        body::{Adjustment, AdjustmentInfo, BodyInferenceResult, NullState},
         expr_store::{InitExprWalkStep, PathExprWalkStep},
         head::{
             inheritance::{MethodRef, inherited_methods},
@@ -346,6 +346,27 @@ impl<'db> Type<'db> {
         place: &mut PathPlaceBuilder<'db>,
         ctx: &mut BodyInferenceResult<'db>,
     ) {
+        // Check nullability: extract the variable from the previous path step
+        if report_errors {
+            let maybe_var = ctx
+                .type_of_path_expr
+                .get(&place.current_path)
+                .and_then(|t| if let Type::Variable((var, _)) = t { Some(*var) } else { None });
+            if let Some(var) = maybe_var {
+                let state = ctx.ref_null_state.get(&var).copied();
+                if let Some(state @ (NullState::Null(_) | NullState::Uninitialized(_))) = state {
+                    ctx.errors.push(
+                        ControlFlowError::DerefPossiblyNull {
+                            var,
+                            expr,
+                            state,
+                        }
+                        .to_diagnostic(db),
+                    );
+                }
+            }
+        }
+
         for result in iter_deref_types(db, *self).take(count as usize) {
             match result {
                 Ok(ty) => {

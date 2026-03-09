@@ -55,7 +55,19 @@ END_FUNCTION_BLOCK
 
         "#;
 
-    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"");
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
+    [E1007] Warning: possibly null dereference
+       ,-[ file:///test0.st:7:2 ]
+       |
+     4 |        test: REF_TO INT;
+       |        ^^^^^^^^|^^^^^^^
+       |                `--------- 'test' declared without initializer here
+       |
+     7 |     test^ := 0;
+       |     ^^|^
+       |       `--- dereference of reference 'test' which is never initialized
+    ---'
+    ");
 }
 
 #[rstest]
@@ -187,7 +199,19 @@ fn valid_assign_value_to_deref_type(mut with_db: RootDatabase) {
     END_FUNCTION_BLOCK
         "#;
 
-    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @"");
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
+    [E1007] Warning: possibly null dereference
+       ,-[ file:///test0.st:7:9 ]
+       |
+     4 |             test: REF_TO INT;
+       |             ^^^^^^^^|^^^^^^^
+       |                     `--------- 'test' declared without initializer here
+       |
+     7 |         test^ := 0;
+       |         ^^|^
+       |           `--- dereference of reference 'test' which is never initialized
+    ---'
+    ");
 }
 
 #[rstest]
