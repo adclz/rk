@@ -408,4 +408,27 @@ impl<'db> Type<'db> {
     pub fn is_array(&self) -> bool {
         matches!(self, Type::Array(_))
     }
+
+    /// A direct type is a POU or config declaration that cannot be used
+    /// as a value in body expressions. Unlike elementary types (which
+    /// can appear as typed literals like `INT#5`), POUs are declarations
+    /// and have no runtime value.
+    ///
+    /// Exceptions: Function and MethodDecl can appear in self-assignment
+    /// (assigning to own return value) — handled by `check_not_direct_type`.
+    pub fn is_direct_type(&self) -> bool {
+        matches!(
+            self,
+            Type::FunctionBlock(_)
+                | Type::Class(_)
+                | Type::Interface(_)
+                | Type::DataType(_)
+                | Type::Function(_)
+                | Type::MethodDecl(_)
+                | Type::Program(_)
+                | Type::Config(_)
+                | Type::Resource(_)
+                | Type::Task(_)
+        )
+    }
 }

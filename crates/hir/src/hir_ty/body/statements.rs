@@ -75,7 +75,10 @@ impl<'db> StmtsResolverCtx<'db> {
 
                 StmtKind::AssignmentAttempt { var, target } => {
                     resolver.resolve_variable_access(db, *var, ctx);
-                    let lhs_typ = ctx.get_type_of_variable_access(db, *var).normalize(db);
+                    let base_typ = ctx.get_type_of_variable_access(db, *var);
+                    let lhs_typ = base_typ.normalize(db);
+
+                    base_typ.check_assignable(db, CallSite::from_scoped(db, var), ctx);
 
                     // LHS must be REF_TO
                     if !matches!(lhs_typ, Type::RefTo(_) | Type::Never) {

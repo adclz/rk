@@ -196,7 +196,9 @@ impl<'db> InferExprCtx<'db> {
                 self.resolver
                     .resolve_variable_access(db, *v, inference_result);
 
-                inference_result.get_type_of_variable_access(db, *v)
+                let ty = inference_result.get_type_of_variable_access(db, *v);
+                ty.check_not_direct_type(db, CallSite::from_scoped(db, v), inference_result);
+                ty
             }
             PrimaryExpr::FuncCall(call) => {
                 resolve_func_call(db, self.resolver, *call, inference_result);

@@ -289,6 +289,43 @@ impl<'db> Type<'db> {
         }
     }
 
+    /// Check if a type is a direct type that cannot be used as a value
+    /// in the body. Returns true if the type is valid (not a direct type),
+    /// false and emits an error if it is.
+    pub fn check_not_direct_type(
+        &self,
+        db: &'db dyn WorkspaceDataBase,
+        call_site: CallSite<'db>,
+        ctx: &mut BodyInferenceResult<'db>,
+    ) -> bool {
+        if self.is_never() {
+            return true;
+        }
+
+        if !self.is_direct_type() {
+            return true;
+        }
+
+        // function and methods can be used IF they are in the same scope (self-assignment)
+        let self_assign = match self {
+            Type::Function(f) => f.get_scope_id(db) == call_site.get_scope_id(db),
+            Type::MethodDecl(m) => m.get_scope_id(db) == call_site.get_scope_id(db),
+            _ => false,
+        };
+        if self_assign {
+            return true;
+        }
+
+        ctx.errors.push(
+            ControlFlowError::DirectType {
+                expr: call_site,
+                typ: *self,
+            }
+            .to_diagnostic(db),
+        );
+        false
+    }
+
     pub fn check_assignable(
         &self,
         db: &'db dyn WorkspaceDataBase,
@@ -299,7 +336,6 @@ impl<'db> Type<'db> {
             return;
         }
 
-        // Additional checks for variable assignments
         match self {
             Type::Variable((variable, multibits)) => {
                 // a variable of kind INPUT cannot be assigned to
@@ -326,21 +362,7 @@ impl<'db> Type<'db> {
             }
             Type::StructElement(element) => (),
             _ => {
-                // function and methods can be assigned IF they are in the same scope (self-assignment)
-                let self_assign = match self {
-                    Type::Function(f) => f.get_scope_id(db) == call_site.get_scope_id(db),
-                    Type::MethodDecl(m) => m.get_scope_id(db) == call_site.get_scope_id(db),
-                    _ => false,
-                };
-                if !self_assign {
-                    ctx.errors.push(
-                        ControlFlowError::DirectType {
-                            expr: call_site,
-                            typ: *self,
-                        }
-                        .to_diagnostic(db),
-                    );
-                }
+                self.check_not_direct_type(db, call_site, ctx);
             }
         }
     }

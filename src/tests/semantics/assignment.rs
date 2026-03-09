@@ -391,3 +391,178 @@ END_FUNCTION_BLOCK"#;
     ----'
     ");
 }
+
+#[rstest]
+fn direct_type_on_rhs_function_block(mut with_db: RootDatabase) {
+    let source = r#"
+FUNCTION_BLOCK Motor
+END_FUNCTION_BLOCK
+
+PROGRAM A
+    VAR
+        x: INT;
+    END_VAR
+
+    x := Motor;
+END_PROGRAM"#;
+
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
+    [E1003] Error: assignment violation
+        ,-[ file:///test0.st:10:10 ]
+        |
+     10 |     x := Motor;
+        |          ^^|^^
+        |            `---- cannot use direct type 'Motor' here
+    ----'
+    [E0301] Error: type mismatch
+        ,-[ file:///test0.st:10:10 ]
+        |
+      7 |         x: INT;
+        |         |
+        |         `-- type is declared by variable 'x' here
+        |
+     10 |     x := Motor;
+        |          ^^|^^
+        |            `---- expected 'INT', got 'Motor'
+    ----'
+    ");
+}
+
+#[rstest]
+fn direct_type_on_rhs_class(mut with_db: RootDatabase) {
+    let source = r#"
+CLASS ClBase
+END_CLASS
+
+PROGRAM A
+    VAR
+        x: INT;
+    END_VAR
+
+    x := ClBase;
+END_PROGRAM"#;
+
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
+    [E1003] Error: assignment violation
+        ,-[ file:///test0.st:10:10 ]
+        |
+     10 |     x := ClBase;
+        |          ^^^|^^
+        |             `---- cannot use direct type 'ClBase' here
+    ----'
+    [E0301] Error: type mismatch
+        ,-[ file:///test0.st:10:10 ]
+        |
+      7 |         x: INT;
+        |         |
+        |         `-- type is declared by variable 'x' here
+        |
+     10 |     x := ClBase;
+        |          ^^^|^^
+        |             `---- expected 'INT', got 'ClBase'
+    ----'
+    ");
+}
+
+#[rstest]
+fn direct_type_in_condition(mut with_db: RootDatabase) {
+    let source = r#"
+FUNCTION_BLOCK Motor
+END_FUNCTION_BLOCK
+
+PROGRAM A
+    IF Motor THEN
+    END_IF;
+END_PROGRAM"#;
+
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
+    [E1003] Error: assignment violation
+       ,-[ file:///test0.st:6:8 ]
+       |
+     6 |     IF Motor THEN
+       |        ^^|^^
+       |          `---- cannot use direct type 'Motor' here
+    ---'
+    [E0301] Error: type mismatch
+       ,-[ file:///test0.st:6:8 ]
+       |
+     6 |     IF Motor THEN
+       |        ^^|^^
+       |          `---- expected 'BOOL', got 'Motor'
+    ---'
+    ");
+}
+
+#[rstest]
+fn direct_type_in_arithmetic(mut with_db: RootDatabase) {
+    let source = r#"
+FUNCTION_BLOCK Motor
+END_FUNCTION_BLOCK
+
+PROGRAM A
+    VAR
+        x: INT;
+    END_VAR
+
+    x := 5 + Motor;
+END_PROGRAM"#;
+
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
+    [E1003] Error: assignment violation
+        ,-[ file:///test0.st:10:14 ]
+        |
+     10 |     x := 5 + Motor;
+        |              ^^|^^
+        |                `---- cannot use direct type 'Motor' here
+    ----'
+    [E0318] Error: type mismatch
+        ,-[ file:///test0.st:10:10 ]
+        |
+      2 | FUNCTION_BLOCK Motor
+        |                ^^|^^
+        |                  `---- FUNCTION_BLOCK 'Motor' is defined here
+        |
+     10 |     x := 5 + Motor;
+        |          ^^^^|^^^^
+        |              `------ operator '+' cannot be applied to type 'Motor'
+    ----'
+    [E0303] Error: type mismatch
+        ,-[ file:///test0.st:10:14 ]
+        |
+     10 |     x := 5 + Motor;
+        |              ^^|^^
+        |                `---- can not add 'INT' with 'Motor'
+    ----'
+    ");
+}
+
+#[rstest]
+fn direct_type_field_access_valid(mut with_db: RootDatabase) {
+    let source = r#"
+FUNCTION_BLOCK Motor
+    VAR
+        speed: INT;
+    END_VAR
+END_FUNCTION_BLOCK
+
+PROGRAM A
+    VAR
+        m: Motor;
+        x: INT;
+    END_VAR
+
+    x := m.speed;
+END_PROGRAM"#;
+
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"");
+}
+
+#[rstest]
+fn direct_type_self_assignment_valid(mut with_db: RootDatabase) {
+    let source = r#"
+FUNCTION fn1 : INT
+    fn1 := 5;
+END_FUNCTION"#;
+
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"");
+}
