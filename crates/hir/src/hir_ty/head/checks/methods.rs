@@ -70,8 +70,15 @@ impl<'db> InitInference<'db> {
                             .to_diagnostic(db),
                         );
                     }
-                    // Override of method without override
-                    (_, Modifier::EMPTY) => {
+                    // Override of a concrete method without OVERRIDE keyword.
+                    // OVERRIDE is only required when the base method is a concrete
+                    // (non-abstract) declared method. For interface prototypes and
+                    // abstract methods, OVERRIDE is optional - the implementer
+                    // must provide a body regardless.
+                    (_, Modifier::EMPTY)
+                        if !inherited_method.is_prototype()
+                            && inherited_method.modifier(db) != Modifier::ABSTRACT =>
+                    {
                         self.errors.push(
                             InheritanceError::MissingOverride {
                                 base_method: inherited_method,

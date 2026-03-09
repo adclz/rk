@@ -158,7 +158,7 @@ impl<'db> ToIdeDiagnostic<'db> for InheritanceError<'db> {
                     base_method.get_scope_id(db).file(db),
                     base_method.get_name_span(db),
                 ));
-                diag.with_note("OVERRIDE keyword must be used even if the base method is not marked as ABSTRACT".into());
+                diag.with_note("OVERRIDE is required when redefining a method with the same signature from a base class or function block".into());
                 diag
             }
             Self::OverrideFinalMethod {

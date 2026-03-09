@@ -29,7 +29,7 @@ fn missing_override(mut with_db: RootDatabase) {
        |                    ^^|^
        |                      `--- missing OVERRIDE keyword for method 'Tick'
        |
-       | Note: OVERRIDE keyword must be used even if the base method is not marked as ABSTRACT
+       | Note: OVERRIDE is required when redefining a method with the same signature from a base class or function block
     ---'
     ");
 }
@@ -292,6 +292,95 @@ fn super_without_extends_clause_on_class(mut with_db: RootDatabase) {
      4 |                 SUPER.something
        |                 ^^|^^
        |                   `---- 'SUPER' used but no EXTENDS clause found on 'class'
+    ---'
+    ");
+}
+
+#[rstest]
+fn interface_method_without_override_is_valid(mut with_db: RootDatabase) {
+    let source = r#"
+        INTERFACE IWorker
+            METHOD DoWork : INT END_METHOD
+        END_INTERFACE
+
+        CLASS Worker IMPLEMENTS IWorker
+            METHOD DoWork : INT END_METHOD
+        END_CLASS"#;
+
+    // Implementing an interface method does NOT require OVERRIDE
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"");
+}
+
+#[rstest]
+fn interface_method_with_override_is_also_valid(mut with_db: RootDatabase) {
+    let source = r#"
+        INTERFACE IWorker
+            METHOD DoWork : INT END_METHOD
+        END_INTERFACE
+
+        CLASS Worker IMPLEMENTS IWorker
+            METHOD OVERRIDE DoWork : INT END_METHOD
+        END_CLASS"#;
+
+    // Using OVERRIDE for an interface method is allowed but not required
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"");
+}
+
+#[rstest]
+fn abstract_method_without_override_is_valid(mut with_db: RootDatabase) {
+    let source = r#"
+        CLASS ABSTRACT Base
+            METHOD ABSTRACT Tick : INT END_METHOD
+        END_CLASS
+
+        CLASS Derived EXTENDS Base
+            METHOD Tick : INT END_METHOD
+        END_CLASS"#;
+
+    // Implementing an abstract method does NOT require OVERRIDE
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"");
+}
+
+#[rstest]
+fn abstract_method_with_override_is_also_valid(mut with_db: RootDatabase) {
+    let source = r#"
+        CLASS ABSTRACT Base
+            METHOD ABSTRACT Tick : INT END_METHOD
+        END_CLASS
+
+        CLASS Derived EXTENDS Base
+            METHOD OVERRIDE Tick : INT END_METHOD
+        END_CLASS"#;
+
+    // Using OVERRIDE for an abstract method is allowed but not required
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"");
+}
+
+#[rstest]
+fn concrete_method_still_requires_override(mut with_db: RootDatabase) {
+    let source = r#"
+        CLASS Base
+            METHOD Tick : INT END_METHOD
+        END_CLASS
+
+        CLASS Derived EXTENDS Base
+            METHOD Tick : INT END_METHOD
+        END_CLASS"#;
+
+    // Overriding a concrete method STILL requires OVERRIDE
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
+    [E0503] Error: override violation
+       ,-[ file:///test0.st:7:20 ]
+       |
+     3 |             METHOD Tick : INT END_METHOD
+       |                    ^^|^
+       |                      `--- base method 'Tick' is declared here
+       |
+     7 |             METHOD Tick : INT END_METHOD
+       |                    ^^|^
+       |                      `--- missing OVERRIDE keyword for method 'Tick'
+       |
+       | Note: OVERRIDE is required when redefining a method with the same signature from a base class or function block
     ---'
     ");
 }
