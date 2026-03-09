@@ -8916,8 +8916,16 @@
                   "type": "FIELD",
                   "name": "else_body",
                   "content": {
-                    "type": "SYMBOL",
-                    "name": "stmt_list"
+                    "type": "CHOICE",
+                    "members": [
+                      {
+                        "type": "SYMBOL",
+                        "name": "stmt_list"
+                      },
+                      {
+                        "type": "BLANK"
+                      }
+                    ]
                   }
                 }
               ]
@@ -8956,8 +8964,16 @@
           "type": "FIELD",
           "name": "else_if_body",
           "content": {
-            "type": "SYMBOL",
-            "name": "stmt_list"
+            "type": "CHOICE",
+            "members": [
+              {
+                "type": "SYMBOL",
+                "name": "stmt_list"
+              },
+              {
+                "type": "BLANK"
+              }
+            ]
           }
         }
       ]
@@ -9006,8 +9022,16 @@
                   "type": "FIELD",
                   "name": "default",
                   "content": {
-                    "type": "SYMBOL",
-                    "name": "stmt_list"
+                    "type": "CHOICE",
+                    "members": [
+                      {
+                        "type": "SYMBOL",
+                        "name": "stmt_list"
+                      },
+                      {
+                        "type": "BLANK"
+                      }
+                    ]
                   }
                 }
               ]

@@ -2503,7 +2503,7 @@
     "fields": {
       "else_if_body": {
         "multiple": false,
-        "required": true,
+        "required": false,
         "types": [
           {
             "type": "stmt_list",

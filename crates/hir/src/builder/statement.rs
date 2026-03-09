@@ -90,19 +90,23 @@ impl<'db> Parse<'db> for ast::generated::Stmt {
                     .else_if
                     .iter()
                     .map(|else_if_stmt| {
-                        let condition = else_if_stmt
-                            .cast(sema.ast)
+                        let else_if_node = else_if_stmt.cast(sema.ast);
+                        let condition = else_if_node
                             .else_if_cond
                             .cast(sema.ast)
                             .parse(sema)?;
-                        let then = else_if_stmt
-                            .cast(sema.ast)
+                        let then = else_if_node
                             .else_if_body
-                            .cast(sema.ast)
-                            .children
-                            .iter()
-                            .map(|stmt| stmt.cast(sema.ast).parse(sema))
-                            .collect::<Result<Vec<_>, IdeDiagnostic>>()?;
+                            .as_ref()
+                            .map(|b| {
+                                b.cast(sema.ast)
+                                    .children
+                                    .iter()
+                                    .map(|stmt| stmt.cast(sema.ast).parse(sema))
+                                    .collect::<Result<Vec<_>, IdeDiagnostic>>()
+                            })
+                            .transpose()?
+                            .unwrap_or_default();
                         Ok((condition, then))
                     })
                     .collect::<Result<Vec<_>, IdeDiagnostic>>()?;

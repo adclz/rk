@@ -1841,7 +1841,7 @@ module.exports = grammar({
         "THEN",
         field("if_body", optional($.stmt_list)),
         field("else_if", repeat($.else_if_stmt)),
-        optional(seq("ELSE", field("else_body", $.stmt_list))),
+        optional(seq("ELSE", field("else_body", optional($.stmt_list)))),
         "END_IF",
       ),
 
@@ -1850,7 +1850,7 @@ module.exports = grammar({
         "ELSIF",
         field("else_if_cond", $._expression),
         "THEN",
-        field("else_if_body", $.stmt_list),
+        field("else_if_body", optional($.stmt_list)),
       ),
 
     case_stmt: ($) =>
@@ -1859,7 +1859,7 @@ module.exports = grammar({
         field("case_cond", $._expression),
         "OF",
         field("case_selection", repeat($.case_selection)),
-        optional(seq("ELSE", field("default", $.stmt_list))),
+        optional(seq("ELSE", field("default", optional($.stmt_list)))),
         "END_CASE",
       ),
 
