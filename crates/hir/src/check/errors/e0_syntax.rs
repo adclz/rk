@@ -75,6 +75,7 @@ pub enum SyntaxError {
     IntervalAfterPriority(Span),
     SingleAfterPriority(Span),
     MissingPriority(Span),
+    ArrayConformandNotSupported(Span),
     // todo: use custom lexer to handle syntax errors unhandled by tree-sitter
     SyntaxError {
         span: Span,
@@ -120,6 +121,7 @@ impl ErrorCode for SyntaxError {
             SyntaxError::IntervalAfterPriority(_) => "E0033",
             SyntaxError::SingleAfterPriority(_) => "E0034",
             SyntaxError::MissingPriority(_) => "E0035",
+            SyntaxError::ArrayConformandNotSupported(_) => "E0036",
             SyntaxError::SyntaxError { .. } => "E0050",
         }
     }
@@ -615,6 +617,12 @@ impl<'db> ToIdeDiagnostic<'db> for SyntaxError {
                 .call(),
             Self::MissingPriority(span) => diag()
                 .message("PRIORITY is required in TASK configuration".into())
+                .severity(DiagnosticSeverity::ERROR)
+                .desc(self)
+                .range(*span)
+                .call(),
+            Self::ArrayConformandNotSupported(span) => diag()
+                .message("array conformands (ARRAY[*]) are not supported".into())
                 .severity(DiagnosticSeverity::ERROR)
                 .desc(self)
                 .range(*span)

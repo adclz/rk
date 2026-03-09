@@ -567,12 +567,7 @@ impl<'db> ParseSpec<'db> for ast::generated::ArrayConformand {
         &self,
         sema: &mut SemanticIndexBuilder<'db>,
     ) -> anyhow::Result<Spec<'db>, IdeDiagnostic> {
-        let inner = self.children.cast(sema.ast).to_spec(sema)?;
-        Ok(sema.new_spec(
-            SpecKind::ArrayConformand(inner),
-            self.into(),
-            sema.current_scope,
-        ))
+        Err(SyntaxError::ArrayConformandNotSupported(self.get_span()).to_diagnostic(sema.db))
     }
 }
 

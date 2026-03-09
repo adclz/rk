@@ -102,3 +102,25 @@ fn nested_array_invalid_bound(mut with_db: RootDatabase) {
     ---'
     ");
 }
+
+#[rstest]
+fn array_conformand_not_supported(mut with_db: RootDatabase) {
+    let source = r#"
+        FUNCTION fn1
+        VAR_INPUT
+            A: ARRAY [*] OF INT;
+        END_VAR
+
+        END_FUNCTION
+        "#;
+
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
+    [E0036] Error: syntax
+       ,-[ file:///test0.st:4:14 ]
+       |
+     4 |             A: ARRAY [*] OF INT;
+       |              ^^^^^^^^^|^^^^^^^^
+       |                       `---------- array conformands (ARRAY[*]) are not supported
+    ---'
+    ");
+}
