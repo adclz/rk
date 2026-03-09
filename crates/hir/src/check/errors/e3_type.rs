@@ -120,6 +120,15 @@ pub enum TypeError<'db> {
         operator: &'static str,
         call_site: CallSite<'db>,
     },
+    AssignAttemptRequiresRef {
+        typ: Type<'db>,
+        call_site: CallSite<'db>,
+    },
+    AssignAttemptInvalidRhs {
+        lhs: Type<'db>,
+        rhs: Type<'db>,
+        call_site: CallSite<'db>,
+    },
 }
 
 impl<'db> ErrorCode for TypeError<'db> {
@@ -141,6 +150,8 @@ impl<'db> ErrorCode for TypeError<'db> {
             Self::TypeArgumentIntoConstraintMismatch { .. } => "E0316",
             Self::NonVariadicFoldParameter { .. } => "E0317",
             Self::UnsupportedOperator { .. } => "E0318",
+            Self::AssignAttemptRequiresRef { .. } => "E0319",
+            Self::AssignAttemptInvalidRhs { .. } => "E0320",
             Self::Other { .. } => "E0350",
         }
     }
@@ -154,6 +165,8 @@ impl<'db> ErrorCode for TypeError<'db> {
             Self::TypeArgumentIntoConstraintMismatch { .. } => {
                 "type argument INTO constraint mismatch"
             }
+            Self::AssignAttemptRequiresRef { .. }
+            | Self::AssignAttemptInvalidRhs { .. } => "invalid assignment attempt",
             _ => "type mismatch",
         }
     }
@@ -454,6 +467,38 @@ impl<'db> ToIdeDiagnostic<'db> for TypeError<'db> {
 
                 target.with_location(db, &mut diag);
 
+                diag
+            }
+            Self::AssignAttemptRequiresRef { typ, call_site } => {
+                let mut diag = diag()
+                    .message(format!(
+                        "assignment attempt '?=' requires a REF_TO variable, got '{}'",
+                        typ.type_name(db),
+                    ))
+                    .severity(DiagnosticSeverity::ERROR)
+                    .desc(self)
+                    .range(call_site.get_span(db))
+                    .call();
+
+                typ.with_location(db, &mut diag);
+                diag
+            }
+            Self::AssignAttemptInvalidRhs {
+                lhs,
+                rhs,
+                call_site,
+            } => {
+                let mut diag = diag()
+                    .message(format!(
+                        "assignment attempt '?=' requires a REF_TO or interface on the right-hand side, got '{}'",
+                        rhs.type_name(db),
+                    ))
+                    .severity(DiagnosticSeverity::ERROR)
+                    .desc(self)
+                    .range(call_site.get_span(db))
+                    .call();
+
+                rhs.with_location(db, &mut diag);
                 diag
             }
         }

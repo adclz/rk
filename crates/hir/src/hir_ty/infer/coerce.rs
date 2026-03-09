@@ -262,6 +262,33 @@ impl<'db> Type<'db> {
         }
     }
 
+    /// Check that an assignment attempt (?=) is valid.
+    /// LHS must be REF_TO, RHS must be REF_TO or Interface.
+    pub fn coerce_assign_attempt(
+        &self,
+        db: &'db dyn WorkspaceDataBase,
+        rhs: Type<'db>,
+    ) -> CoerceResult<'db> {
+        if self.is_never() || rhs.is_never() {
+            return Ok(());
+        }
+
+        let lhs = self.normalize(db);
+        let rhs = rhs.normalize(db);
+
+        // LHS must be REF_TO (already checked at the call site with a dedicated error)
+        // RHS must be REF_TO or Interface
+        match (&lhs, &rhs) {
+            (Type::RefTo(_), Type::RefTo(_)) => Ok(()),
+            (Type::RefTo(_), Type::Interface(_)) => Ok(()),
+            _ => Err(CoerceError {
+                expected: *self,
+                actual: rhs,
+                adjustment: None,
+            }),
+        }
+    }
+
     pub fn check_assignable(
         &self,
         db: &'db dyn WorkspaceDataBase,

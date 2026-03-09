@@ -2,7 +2,7 @@ use db::WorkspaceDataBase;
 
 use crate::{
     CallSite,
-    check::errors::{ToIdeDiagnostic, e10_control_flow::ControlFlowError},
+    check::errors::{ToIdeDiagnostic, e10_control_flow::ControlFlowError, e3_type::TypeError},
     hir_def::{
         expressions::{
             expression::{Elementary, Expr, ExprKind, PrimaryExpr, UnaryOperatorKind},
@@ -73,7 +73,38 @@ impl<'db> StmtsResolverCtx<'db> {
                     ctx.effectless_statements.push(*stmt);
                 }
 
-                StmtKind::AssignmentAttempt { var, target } => { /* todo */ }
+                StmtKind::AssignmentAttempt { var, target } => {
+                    resolver.resolve_variable_access(db, *var, ctx);
+                    let lhs_typ = ctx.get_type_of_variable_access(db, *var).normalize(db);
+
+                    // LHS must be REF_TO
+                    if !matches!(lhs_typ, Type::RefTo(_) | Type::Never) {
+                        ctx.errors.push(
+                            TypeError::AssignAttemptRequiresRef {
+                                typ: lhs_typ,
+                                call_site: CallSite::from_scoped(db, var),
+                            }
+                            .to_diagnostic(db),
+                        );
+                    }
+
+                    self.infer_and_check_expr(db, &mut infer, *target, ctx);
+
+                    // Check RHS is REF_TO or Interface
+                    if matches!(lhs_typ, Type::RefTo(_)) {
+                        let rhs_typ = ctx.get_type_of_expr(*target).normalize(db);
+                        if let Err(_) = lhs_typ.coerce_assign_attempt(db, rhs_typ) {
+                            ctx.errors.push(
+                                TypeError::AssignAttemptInvalidRhs {
+                                    lhs: lhs_typ,
+                                    rhs: rhs_typ,
+                                    call_site: CallSite::from_scoped(db, target),
+                                }
+                                .to_diagnostic(db),
+                            );
+                        }
+                    }
+                }
 
                 StmtKind::Assignment { var, target } => {
                     resolver.resolve_variable_access(db, *var, ctx);

@@ -2,6 +2,7 @@ pub mod ambiguous_scopes;
 pub mod array;
 pub mod array_init_multi_dim;
 pub mod assignment;
+pub mod assignment_attempt;
 pub mod config;
 pub mod direct_variables;
 pub mod duplicates;
