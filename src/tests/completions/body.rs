@@ -2,6 +2,7 @@ use auto_lsp::default::db::BaseDatabase;
 use db::RootDatabase;
 use hir::HirNodeInfo;
 use ide_proto::handlers::completions_utils::{CompletionCtx, QueryMode};
+use ide_proto::walk::completion_descendant_at;
 use rstest::rstest;
 
 use crate::tests::utils::{add_sources, find_pou_with_name, with_db};
@@ -217,4 +218,32 @@ END_FUNCTION
     assert!(format!("{completions:?}").contains("input_x"));
     assert!(format!("{completions:?}").contains("output_y"));
     assert!(format!("{completions:?}").contains("temp"));
+}
+
+/// Cursor after END_FUNCTION should NOT resolve to a node inside the function.
+/// It should return None so the server shows top-level (POU) snippets.
+#[rstest]
+pub fn completion_after_end_function_returns_none(mut with_db: RootDatabase) {
+    let sources: &[&str] = &[r#"
+FUNCTION fn2
+
+    test_fn();
+
+END_FUNCTION
+
+
+"#];
+
+    add_sources(&mut with_db, sources);
+    let file = *with_db.get_files().iter().last().unwrap();
+
+    // Cursor 2 lines after END_FUNCTION — the last HIR node in fn2 is
+    // the PathExpr for `test_fn`, which must NOT be returned here.
+    let offset = sources[0].find("END_FUNCTION").unwrap() + "END_FUNCTION".len() + 2;
+
+    let result = completion_descendant_at(&with_db, file, offset);
+    assert!(
+        result.is_none(),
+        "cursor after END_FUNCTION should not resolve to any node"
+    );
 }

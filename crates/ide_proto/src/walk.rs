@@ -88,6 +88,8 @@ pub fn completion_descendant_at<'db>(
     // meaning it's more specific than the containing node (e.g. a Pou).
     // Only use last_before for PathExpr nodes — other node types (Using, Namespace, etc.)
     // should not trigger completions when the cursor is past them.
+    // When best_match is None, the cursor is outside all nodes (e.g. after END_FUNCTION),
+    // so we must NOT fall back to last_before — top-level completions should be shown.
     match (&best_match, &last_before) {
         (Some((_, best_idx, _)), Some((HirNode::PathExpr(_), last_idx, _)))
             if last_idx > best_idx =>
@@ -95,7 +97,6 @@ pub fn completion_descendant_at<'db>(
             last_before
         }
         (Some(_), _) => best_match,
-        (None, Some((HirNode::PathExpr(_), _, _))) => last_before,
         (None, _) => None,
     }
 }
