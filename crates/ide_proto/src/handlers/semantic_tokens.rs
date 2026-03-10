@@ -9,7 +9,7 @@ use hir::{
         },
         hir_node::HirNode,
         interned::namespace::NamespaceAccess,
-        pous::pou::Pou,
+        pous::{pou::Pou, variable::VariableDecl},
         using::Using,
     },
     hir_ty::{head::inheritance::MethodRef, infer::Infer, ty::Type},
@@ -17,7 +17,11 @@ use hir::{
 
 use crate::{
     CLASS, ENUM, ENUM_MEMBER, FUNCTION, INTERFACE, METHOD, NAMESPACE, STRUCT, SUPPORTED_TYPES,
+    comment_index::comment_index,
     handlers::SemanticTokensHandler,
+    handlers::document_links::{
+        byte_range_to_ts_range, find_bracket_refs, resolve_bracket_ref_to_pou,
+    },
 };
 
 impl<'db> SemanticTokensHandler<'db> for HirNode<'db> {
@@ -29,11 +33,58 @@ impl<'db> SemanticTokensHandler<'db> for HirNode<'db> {
         match self {
             HirNode::PouDecl(p) => p.semantic_tokens(db, builder),
             HirNode::MethodRef(m) => m.semantic_tokens(db, builder),
+            HirNode::VariableDecl(v) => v.semantic_tokens(db, builder),
             HirNode::Spec(v) => v.semantic_tokens(db, builder),
             HirNode::PathExpr(p) => p.semantic_tokens(db, builder),
             HirNode::VariableAccess(v) => v.semantic_tokens(db, builder),
             HirNode::Expr(e) => e.semantic_tokens(db, builder),
             _ => {}
+        }
+    }
+}
+
+/// Emit semantic tokens for resolved `[TypeName]` bracket references in a node's associated comment.
+///
+/// Only processes comments that appear above the node (not same-line) to maintain
+/// document ordering required by `SemanticTokensBuilder`.
+fn comment_bracket_ref_tokens<'db>(
+    node: &'db dyn HirNodeInfo<'db>,
+    db: &'db dyn WorkspaceDataBase,
+    builder: &mut SemanticTokensBuilder,
+) {
+    let file = node.get_scope_id(db).file(db);
+    let document = file.document(db);
+    let source = document.as_str();
+    let node_span = node.get_span(db);
+
+    let comment = match comment_index(db, file).find_nearby_comment(document, &node_span) {
+        Some(c) => c,
+        None => return,
+    };
+
+    // Only process comments above the node for correct token ordering
+    if comment.range.end_point.row >= node_span.start_point.row {
+        return;
+    }
+
+    let text = match source.get(comment.range.start_byte..comment.range.end_byte) {
+        Some(t) => t,
+        None => return,
+    };
+
+    if !text.contains('[') {
+        return;
+    }
+
+    for bref in &find_bracket_refs(text, comment.range.start_byte) {
+        if let Some(pou) = resolve_bracket_ref_to_pou(db, &bref.content) {
+            let content_start = bref.open_byte + 1;
+            let content_end = bref.close_byte - 1;
+            let ts_range = byte_range_to_ts_range(source, content_start, content_end);
+            if let Some(enc_range) = document.ts_range_to_enc_range(&ts_range) {
+                let span: Span = enc_range.into();
+                semantic_tokens_for_type(db, Type::new_pou(db, pou), builder, span);
+            }
         }
     }
 }
@@ -44,6 +95,7 @@ impl<'db> SemanticTokensHandler<'db> for Pou<'db> {
         db: &'db dyn WorkspaceDataBase,
         builder: &mut SemanticTokensBuilder,
     ) {
+        comment_bracket_ref_tokens(self, db, builder);
         semantic_tokens_for_type(
             db,
             Type::new_pou(db, *self),
@@ -59,6 +111,7 @@ impl<'db> SemanticTokensHandler<'db> for MethodRef<'db> {
         db: &'db dyn WorkspaceDataBase,
         builder: &mut SemanticTokensBuilder,
     ) {
+        comment_bracket_ref_tokens(self, db, builder);
         builder.push(
             self.get_name_span(db).lsp(),
             SUPPORTED_TYPES.iter().position(|x| *x == METHOD).unwrap() as u32,
@@ -67,6 +120,16 @@ impl<'db> SemanticTokensHandler<'db> for MethodRef<'db> {
         if let Some(ret) = self.return_type(db) {
             semantic_tokens_for_type(db, ret.infer(db), builder, ret.get_span(db));
         }
+    }
+}
+
+impl<'db> SemanticTokensHandler<'db> for VariableDecl<'db> {
+    fn semantic_tokens(
+        &'db self,
+        db: &'db dyn WorkspaceDataBase,
+        builder: &mut SemanticTokensBuilder,
+    ) {
+        comment_bracket_ref_tokens(self, db, builder);
     }
 }
 
@@ -179,7 +242,7 @@ pub fn push_fragments(
     }
 }
 
-fn semantic_tokens_for_type<'db>(
+pub(crate) fn semantic_tokens_for_type<'db>(
     db: &'db dyn WorkspaceDataBase,
     typ: Type<'db>,
     builder: &mut SemanticTokensBuilder,

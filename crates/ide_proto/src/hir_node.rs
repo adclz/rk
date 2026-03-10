@@ -8,6 +8,7 @@ use hir::{
 };
 
 use crate::comment_index::comment_index;
+use crate::handlers::document_links::replace_bracket_refs_with_links;
 
 pub trait MaybeHirNode<'db> {
     fn as_hir_node(&'db self, db: &'db dyn WorkspaceDataBase) -> Option<&'db dyn HirNodeInfo<'db>>;
@@ -40,7 +41,7 @@ pub trait HasComment<'db>: HirNodeInfo<'db> {
             Some(c) => c.to_string(self.get_scope_id(db).file(db).document(db)),
             None => "".to_string(),
         };
-        Some(comment)
+        Some(replace_bracket_refs_with_links(db, &comment))
     }
 }
 

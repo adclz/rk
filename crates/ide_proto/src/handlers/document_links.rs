@@ -5,24 +5,27 @@ use auto_lsp::tree_sitter;
 use db::WorkspaceDataBase;
 use hir::{
     HasName, HirNodeInfo,
-    hir_def::interned::{identifier::Ident, namespace::NamespacePath},
+    hir_def::{
+        interned::{identifier::Ident, namespace::NamespacePath},
+        pous::pou::Pou,
+    },
     hir_ty::index_graphs::{namespace_pou_index, pou_index},
 };
 
 use crate::comment_index::comment_index;
 
 /// A bracket reference found inside a comment, e.g. `[MyFB]` or `[NS.MyType]`.
-struct BracketRef {
+pub(crate) struct BracketRef {
     /// The text inside the brackets.
-    content: String,
+    pub(crate) content: String,
     /// Absolute byte offset of the opening bracket `[` in the source.
-    open_byte: usize,
+    pub(crate) open_byte: usize,
     /// Absolute byte offset of the closing bracket `]` in the source (exclusive).
-    close_byte: usize,
+    pub(crate) close_byte: usize,
 }
 
 /// Scan a comment's text for `[...]` patterns.
-fn find_bracket_refs(text: &str, base_byte: usize) -> Vec<BracketRef> {
+pub(crate) fn find_bracket_refs(text: &str, base_byte: usize) -> Vec<BracketRef> {
     let mut refs = Vec::new();
     let bytes = text.as_bytes();
     let mut i = 0;
@@ -61,21 +64,19 @@ fn find_bracket_refs(text: &str, base_byte: usize) -> Vec<BracketRef> {
     refs
 }
 
-/// Resolve a bracket reference name to a target location (file URI + range).
-fn resolve_bracket_ref(db: &dyn WorkspaceDataBase, content: &str) -> Option<Location> {
+/// Resolve a bracket reference name to a POU.
+pub(crate) fn resolve_bracket_ref_to_pou<'db>(
+    db: &'db dyn WorkspaceDataBase,
+    content: &str,
+) -> Option<Pou<'db>> {
     let parts: Vec<&str> = content.split('.').collect();
 
     match parts.len() {
         1 => {
-            // Simple name: global POU lookup
             let ident = Ident::from_slice(db, content);
-            let pou = pou_index(db, ident)?;
-            let file = pou.get_scope_id(db).file(db);
-            let range: auto_lsp::lsp_types::Range = pou.get_name_span(db).into();
-            Some(Location::new(file.url(db).clone(), range))
+            pou_index(db, ident)
         }
         _ => {
-            // Namespace-qualified: last part is the target, rest is namespace path
             let ns_parts = &parts[..parts.len() - 1];
             let target_name = parts[parts.len() - 1];
 
@@ -86,12 +87,17 @@ fn resolve_bracket_ref(db: &dyn WorkspaceDataBase, content: &str) -> Option<Loca
             let ns_path = NamespacePath::new(db, ns_idents);
 
             let target_ident = Ident::from_slice(db, target_name);
-            let pou = namespace_pou_index(db, ns_path, target_ident)?;
-            let file = pou.get_scope_id(db).file(db);
-            let range: auto_lsp::lsp_types::Range = pou.get_name_span(db).into();
-            Some(Location::new(file.url(db).clone(), range))
+            namespace_pou_index(db, ns_path, target_ident)
         }
     }
+}
+
+/// Resolve a bracket reference name to a target location (file URI + range).
+pub(crate) fn resolve_bracket_ref(db: &dyn WorkspaceDataBase, content: &str) -> Option<Location> {
+    let pou = resolve_bracket_ref_to_pou(db, content)?;
+    let file = pou.get_scope_id(db).file(db);
+    let range: auto_lsp::lsp_types::Range = pou.get_name_span(db).into();
+    Some(Location::new(file.url(db).clone(), range))
 }
 
 /// Compute document links for all `[TypeName]` references in comments.
@@ -140,7 +146,7 @@ pub fn document_links(db: &dyn WorkspaceDataBase, file: File) -> Vec<DocumentLin
 }
 
 /// Convert a byte range in source text to a `tree_sitter::Range`.
-fn byte_range_to_ts_range(
+pub(crate) fn byte_range_to_ts_range(
     source: &str,
     start_byte: usize,
     end_byte: usize,
@@ -178,4 +184,53 @@ fn byte_offset_to_point(source: &str, offset: usize) -> (usize, usize) {
     }
 
     (row, offset - last_newline)
+}
+
+
+/// Replace `[TypeName]` bracket references in comment text with markdown links.
+///
+/// Unresolved references are left as-is (with brackets).
+pub(crate) fn replace_bracket_refs_with_links(db: &dyn WorkspaceDataBase, text: &str) -> String {
+    if !text.contains('[') {
+        return text.to_string();
+    }
+
+    let mut result = String::with_capacity(text.len());
+    let bytes = text.as_bytes();
+    let mut i = 0;
+    let mut last_end = 0;
+
+    while i < bytes.len() {
+        if bytes[i] == b'[' {
+            let start = i;
+            i += 1;
+            while i < bytes.len() && bytes[i] != b']' && bytes[i] != b'\n' {
+                i += 1;
+            }
+            if i < bytes.len() && bytes[i] == b']' {
+                let content = &text[start + 1..i];
+                if !content.is_empty()
+                    && content
+                        .chars()
+                        .all(|c| c.is_alphanumeric() || c == '_' || c == '.')
+                    && !content.starts_with('.')
+                    && !content.ends_with('.')
+                {
+                    if let Some(location) = resolve_bracket_ref(db, content) {
+                        result.push_str(&text[last_end..start]);
+                        result.push_str(&format!("[{}]({})", content, location.uri));
+                        i += 1;
+                        last_end = i;
+                        continue;
+                    }
+                }
+                i += 1;
+            }
+        } else {
+            i += 1;
+        }
+    }
+
+    result.push_str(&text[last_end..]);
+    result
 }
