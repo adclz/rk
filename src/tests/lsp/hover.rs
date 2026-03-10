@@ -667,3 +667,90 @@ END_CONFIGURATION
 
     ");
 }
+
+#[rstest]
+pub fn hover_comment_bracket_ref_link(mut with_db: RootDatabase) {
+    let source = r#"
+FUNCTION_BLOCK MyFB
+END_FUNCTION_BLOCK
+
+// Uses [MyFB] internally
+FUNCTION fn1
+END_FUNCTION
+"#;
+
+    add_sources(&mut with_db, &[source]);
+    let sema = semantic_index(&with_db, *with_db.get_files().iter().last().unwrap());
+
+    let mut pous = vec![];
+    let _ = sema.walk_hir(&with_db, &mut |node| {
+        if let HirNode::PouDecl(p) = node {
+            pous.push(p);
+        }
+        ControlFlow::Continue(())
+    });
+
+    // fn1 has a comment with [MyFB] → should become a markdown link
+    let fn1 = pous.iter().find(|p| p.get_name_ident(&with_db).text(&with_db) == "fn1").unwrap();
+    let hover = fn1.hover(&with_db, fn1.get_name_span(&with_db).start_byte).unwrap();
+    assert_snapshot!(hover_markup(hover.contents).unwrap(), @r###"
+    Uses [MyFB](file:///test0.st) internally
+    ```iecst
+    FUNCTION fn1
+    ```
+    "###);
+}
+
+#[rstest]
+pub fn hover_comment_bracket_ref_unresolved(mut with_db: RootDatabase) {
+    let source = r#"
+// References [NonExistent] type
+FUNCTION fn1
+END_FUNCTION
+"#;
+
+    assert_snapshot!(collect_hovers(&mut with_db, source, |db, node| {
+        let HirNode::PouDecl(ty) = node else { return None };
+        hover_markup(ty.hover(db, ty.get_name_span(db).start_byte)?.contents)
+    }), @r"
+    References [NonExistent] type
+    ```iecst
+    FUNCTION fn1
+    ```
+    ");
+}
+
+#[rstest]
+pub fn hover_comment_bracket_ref_variable(mut with_db: RootDatabase) {
+    let source = r#"
+CLASS Sensor
+END_CLASS
+
+FUNCTION fn1
+VAR
+    // Controls a [Sensor]
+    x : INT;
+END_VAR
+END_FUNCTION
+"#;
+
+    add_sources(&mut with_db, &[source]);
+    let sema = semantic_index(&with_db, *with_db.get_files().iter().last().unwrap());
+
+    let mut vars = vec![];
+    let _ = sema.walk_hir(&with_db, &mut |node| {
+        if let HirNode::VariableDecl(v) = node {
+            vars.push(v);
+        }
+        ControlFlow::Continue(())
+    });
+
+    let x_var = vars.iter().find(|v| v.name(&with_db).text(&with_db) == "x").unwrap();
+    let hover = x_var.hover(&with_db, 0).unwrap();
+    assert_snapshot!(hover_markup(hover.contents).unwrap(), @r###"
+    Controls a [Sensor](file:///test0.st)
+    ```iecst
+    (VAR) x: INT
+    ```
+    "###);
+}
