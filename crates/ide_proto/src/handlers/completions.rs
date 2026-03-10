@@ -178,6 +178,11 @@ impl<'db> CompletionHandler<'db> for Pou<'db> {
             return Some(vec![]);
         }
 
+        // TYPE declarations have no body - completions are handled by their Spec children
+        if matches!(self, Pou::DataType(_)) {
+            return None;
+        }
+
         let mut ctx = CompletionCtx::new(req.offset, QueryMode::Body);
         let head_result = ctx.located_pou_completion(*self, db);
 

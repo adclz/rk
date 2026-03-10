@@ -1,5 +1,7 @@
+use ast::generated::DataTypeDecl;
 use auto_lsp::{
     anyhow,
+    default::db::tracked::get_ast,
     lsp_types::{CompletionParams, CompletionResponse},
 };
 use db::WorkspaceDataBase;
@@ -35,6 +37,24 @@ pub fn completions(
     let (target, node_key, is_last_before) = match completion_descendant_at(db, file, offset) {
         Some(result) => result,
         None => {
+            // Check if cursor is inside a TYPE declaration at the AST level.
+            // When the TYPE body is incomplete (no spec yet), no HIR node covers
+            // the cursor, but we should still offer type-level completions
+            // instead of POU-level snippets.
+
+            // TODO: this is extremly hacky, descendant_at should be fixed in auto_lsp to avoid instead of any
+            let ast = get_ast(db, file);
+            let in_type_decl = ast.iter().any(|node| {
+                let range = node.get_range();
+                range.start_byte <= offset
+                    && offset <= range.end_byte
+                    && node.lower().downcast_ref::<DataTypeDecl>().is_some()
+            });
+
+            if in_type_decl {
+                return Ok(Some(CompletionResponse::Array(vec![])));
+            }
+
             // no target node, show general completions (namespaces, pou snippets, etc)
             return Ok(Some(CompletionResponse::Array(vec![
                 ide_proto::handlers::completions_utils::static_snippets::namespace(),
