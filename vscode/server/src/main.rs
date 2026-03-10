@@ -22,9 +22,6 @@ use tracing_subscriber::{fmt, prelude::*, EnvFilter};
 
 fn main() -> Result<(), Box<dyn Error + Sync + Send>> {
     // Initialize tracing based on build type and environment
-    #[cfg(debug_assertions)]
-    let default_log_level = "debug";
-    #[cfg(not(debug_assertions))]
     let default_log_level = "info";
 
     let env_filter =
