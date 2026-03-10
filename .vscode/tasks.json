@@ -10,8 +10,7 @@
 		{
 			"type": "shell",
 			"label": "Build LSP Server (Debug)",
-			"command": "cargo",
-			"args": ["build", "--bin", "vscode-lsp-server"],
+			"command": "cargo build --bin vscode-lsp-server && rm -f ${workspaceFolder}/vscode/server/bin/vscode-lsp-server && cp ${workspaceFolder}/target/debug/vscode-lsp-server ${workspaceFolder}/vscode/server/bin/vscode-lsp-server",
 			"group": "build",
 			"options": {
 				"cwd": "${workspaceFolder}/vscode/server"
@@ -25,6 +24,12 @@
 				"clear": false
 			},
 			"problemMatcher": ["$rustc"]
+		},
+		{
+			"label": "Build All",
+			"dependsOn": ["npm: build native", "Build LSP Server (Debug)"],
+			"dependsOrder": "parallel",
+			"problemMatcher": []
 		}
 	]
 }

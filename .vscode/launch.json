@@ -13,7 +13,7 @@
 			"outFiles": [
 				"${workspaceFolder}/vscode/client/out/**/*.js"
 			],
-			"preLaunchTask": "npm: build native"
+			"preLaunchTask": "Build All"
 		},
 		{
 			"type": "extensionHost",
@@ -27,34 +27,11 @@
 			"outFiles": [
 				"${workspaceFolder}/vscode/client/out/**/*.js"
 			],
-			"preLaunchTask": "Build LSP Server (Debug)",
+			"preLaunchTask": "Build All",
 			"env": {
-				"RUST_LOG": "debug",
+				"RUST_LOG": "info",
 				"RUST_BACKTRACE": "1"
-			},
-			"presentation": {
-				"hidden": true
 			}
-		},
-		{
-			"type": "lldb",
-			"request": "attach",
-			"name": "Attach to LSP",
-			"program": "${workspaceFolder}/target/debug/vscode-lsp-server",
-			"waitFor": true,
-			"presentation": {
-				"hidden": true
-			}
-		}
-	],
-	"compounds": [
-		{
-			"name": "Debug + Tracing",
-			"configurations": [
-				"Debug Extension",
-				"Attach to LSP"
-			],
-			"stopAll": true
 		}
 	]
 }
