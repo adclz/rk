@@ -20,6 +20,7 @@ members = [
     "crates/cli",
     "crates/benchmark",
     "crates/linter",
+    "crates/doc",
     "crates/index",
     "crates/macros",
     "vscode/server",

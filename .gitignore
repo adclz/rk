@@ -1,6 +1,9 @@
 Cargo.lock
 /target
 
+# Generated documentation
+crates/doc/out/
+
 # Fuzzing
 crates/fuzz/corpus/
 crates/fuzz/artifacts/
