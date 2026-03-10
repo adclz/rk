@@ -38,7 +38,7 @@ pub fn lint_file(
 
     lint_scope(db, config, sema.scope, diagnostics);
 
-    for pou in &sema.global_pous {
+    for pou in sema.global_pous.iter() {
         let scope = pou.get_scope_id(db);
         lint_scope(db, config, scope, diagnostics);
 
@@ -49,7 +49,7 @@ pub fn lint_file(
         }
     }
 
-    for program in &sema.programs {
+    for program in sema.programs.iter() {
         lint_scope(db, config, program.get_scope_id(db), diagnostics);
     }
 }

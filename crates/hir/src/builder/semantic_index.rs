@@ -371,11 +371,11 @@ impl<'db> SemanticIndexBuilder<'db> {
             ast: Arc::clone(&self.ast.nodes),
             scopes: self.scope_keys,
             node_index: self.node_index,
-            programs: self.programs,
-            configs: self.configs,
-            global_namespaces: self.global_namespaces,
-            namespaces: self.namespaces,
-            global_pous: self.global_pous,
+            programs: Arc::new(self.programs),
+            configs: Arc::new(self.configs),
+            global_namespaces: Arc::new(self.global_namespaces),
+            namespaces: Arc::new(self.namespaces),
+            global_pous: Arc::new(self.global_pous),
             errors: self.errors,
         }
     }

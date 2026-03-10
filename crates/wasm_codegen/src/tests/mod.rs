@@ -77,7 +77,7 @@ pub fn compile_to_wasm_with_config(
     let mut codegen = crate::ModuleCodeGen::new_with_config(db, config);
 
     // Generate code for all POUs in the source
-    for pou in &sem_idx.global_pous {
+    for pou in sem_idx.global_pous.iter() {
         match pou {
             hir::hir_def::pous::pou::Pou::Function(func) => {
                 codegen.generate_function(*func);
@@ -93,7 +93,7 @@ pub fn compile_to_wasm_with_config(
     }
 
     // Generate code for all PROGRAMs
-    for program in &sem_idx.programs {
+    for program in sem_idx.programs.iter() {
         codegen.generate_program(*program);
     }
 
@@ -173,7 +173,7 @@ fn compile_to_wasm_impl(db: &mut RootDatabase, source: &str, check_diagnostics: 
     let mut codegen = crate::ModuleCodeGen::new(db);
 
     // Generate code for all POUs in the source
-    for pou in &sem_idx.global_pous {
+    for pou in sem_idx.global_pous.iter() {
         match pou {
             hir::hir_def::pous::pou::Pou::Function(func) => {
                 codegen.generate_function(*func);
@@ -189,7 +189,7 @@ fn compile_to_wasm_impl(db: &mut RootDatabase, source: &str, check_diagnostics: 
     }
 
     // Generate code for all PROGRAMs
-    for program in &sem_idx.programs {
+    for program in sem_idx.programs.iter() {
         codegen.generate_program(*program);
     }
 

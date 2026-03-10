@@ -284,11 +284,11 @@ pub fn all_pou_scopes<'db>(db: &'db dyn db::WorkspaceDataBase, file: File) -> Ve
     let sema = semantic_index(db, file);
     let mut scopes = Vec::new();
 
-    for pou in &sema.global_pous {
+    for pou in sema.global_pous.iter() {
         scopes.push(pou.get_scope_id(db));
     }
 
-    for program in &sema.programs {
+    for program in sema.programs.iter() {
         scopes.push(program.get_scope_id(db));
     }
 

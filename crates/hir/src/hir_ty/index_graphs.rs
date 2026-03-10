@@ -62,6 +62,8 @@
 //
 // Confirmed by the incremental test suite (`src/tests/incremental.rs`).
 
+use std::sync::Arc;
+
 use auto_lsp::default::db::file::File;
 use db::WorkspaceDataBase;
 
@@ -87,8 +89,11 @@ use crate::{
 /// so body-only edits that produce the same POUs will backdate and
 /// not invalidate downstream lookups.
 #[salsa::tracked(returns(ref))]
-pub fn file_global_pous<'db>(db: &'db dyn WorkspaceDataBase, file: File) -> Vec<Pou<'db>> {
-    semantic_index(db, file).global_pous.clone()
+pub fn file_global_pous<'db>(
+    db: &'db dyn WorkspaceDataBase,
+    file: File,
+) -> Arc<Vec<Pou<'db>>> {
+    Arc::clone(&semantic_index(db, file).global_pous)
 }
 
 /// Extracts global namespace declarations from a file's semantic index.
@@ -96,20 +101,26 @@ pub fn file_global_pous<'db>(db: &'db dyn WorkspaceDataBase, file: File) -> Vec<
 pub fn file_global_namespaces<'db>(
     db: &'db dyn WorkspaceDataBase,
     file: File,
-) -> Vec<NamespaceDecl<'db>> {
-    semantic_index(db, file).global_namespaces.clone()
+) -> Arc<Vec<NamespaceDecl<'db>>> {
+    Arc::clone(&semantic_index(db, file).global_namespaces)
 }
 
 /// Extracts program declarations from a file's semantic index.
 #[salsa::tracked(returns(ref))]
-pub fn file_programs<'db>(db: &'db dyn WorkspaceDataBase, file: File) -> Vec<ProgramDecl<'db>> {
-    semantic_index(db, file).programs.clone()
+pub fn file_programs<'db>(
+    db: &'db dyn WorkspaceDataBase,
+    file: File,
+) -> Arc<Vec<ProgramDecl<'db>>> {
+    Arc::clone(&semantic_index(db, file).programs)
 }
 
 /// Extracts configuration declarations from a file's semantic index.
 #[salsa::tracked(returns(ref))]
-pub fn file_configs<'db>(db: &'db dyn WorkspaceDataBase, file: File) -> Vec<ConfigDecl<'db>> {
-    semantic_index(db, file).configs.clone()
+pub fn file_configs<'db>(
+    db: &'db dyn WorkspaceDataBase,
+    file: File,
+) -> Arc<Vec<ConfigDecl<'db>>> {
+    Arc::clone(&semantic_index(db, file).configs)
 }
 
 // ---------------------------------------------------------------------------

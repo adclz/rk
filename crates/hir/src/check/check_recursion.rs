@@ -29,7 +29,7 @@ impl<'db> TypeDependencyGraph<'db> {
         let callsites = FxHashMap::default();
 
         // Seed graph with file-local POUs only
-        for &pou in &semantic_index.global_pous {
+        for &pou in semantic_index.global_pous.iter() {
             edges.entry(pou).or_insert_with(FxHashSet::default);
         }
 
@@ -174,7 +174,7 @@ impl<'db> TypeDependencyGraph<'db> {
         let mut stack = Vec::new();
         let mut stack_set = FxHashSet::default();
 
-        for &root in &semantic_index.global_pous {
+        for &root in semantic_index.global_pous.iter() {
             if !visited.contains(&root) {
                 self.dfs(root, root, &mut visited, &mut stack, &mut stack_set, errors);
             }

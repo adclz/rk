@@ -56,19 +56,19 @@ pub struct SemanticIndex<'db> {
     pub node_index: IndexVec<NodeKey, HirNode<'db>>,
 
     /// Program declarations in the file
-    pub programs: Vec<ProgramDecl<'db>>,
+    pub programs: Arc<Vec<ProgramDecl<'db>>>,
 
     /// Configuration declarations in the file
-    pub configs: Vec<ConfigDecl<'db>>,
+    pub configs: Arc<Vec<ConfigDecl<'db>>>,
 
     /// All *global* namespaces in the file
-    pub global_namespaces: Vec<NamespaceDecl<'db>>,
+    pub global_namespaces: Arc<Vec<NamespaceDecl<'db>>>,
 
     /// All *global* POU declarations in the file
-    pub global_pous: Vec<Pou<'db>>,
+    pub global_pous: Arc<Vec<Pou<'db>>>,
 
     /// All  namespaces in the file
-    pub namespaces: Vec<NamespaceDecl<'db>>,
+    pub namespaces: Arc<Vec<NamespaceDecl<'db>>>,
 
     /// A list of errors encountered during semantic analysis
     pub(crate) errors: Vec<IdeDiagnostic>,
@@ -101,11 +101,11 @@ impl<'db> SemanticIndex<'db> {
             ast,
             scopes,
             node_index,
-            programs: vec![],
-            configs: vec![],
-            global_namespaces: vec![],
-            global_pous: vec![],
-            namespaces: vec![],
+            programs: Arc::new(vec![]),
+            configs: Arc::new(vec![]),
+            global_namespaces: Arc::new(vec![]),
+            global_pous: Arc::new(vec![]),
+            namespaces: Arc::new(vec![]),
             errors: vec![],
         }
     }

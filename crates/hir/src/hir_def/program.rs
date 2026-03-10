@@ -19,7 +19,7 @@ pub static MAIN_FILE_URL: LazyLock<Arc<Url>> =
     LazyLock::new(|| Arc::new(Url::parse("file:///main.st").unwrap()));
 
 #[salsa::tracked(returns(as_ref))]
-pub fn get_programs<'db>(db: &'db dyn WorkspaceDataBase) -> Option<Vec<ProgramDecl<'db>>> {
+pub fn get_programs<'db>(db: &'db dyn WorkspaceDataBase) -> Option<Arc<Vec<ProgramDecl<'db>>>> {
     db.get_file(&MAIN_FILE_URL)
         .map(|file| {
             let semantic_index = semantic_index(db, file);
