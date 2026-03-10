@@ -340,13 +340,13 @@ fn duplicate_init_expr(mut with_db: RootDatabase) {
 
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
     [E0110] Error: duplicate definitions
-        ,-[ file:///test0.st:11:35 ]
+        ,-[ file:///test0.st:11:49 ]
         |
      11 |                 Base : Engine := (power := 100, power := 100);
         |                                   ^^^^^^|^^^^^  ^^^^^^|^^^^^
-        |                                         `--------------------- duplicate field 'power' in initializer expression
+        |                                         `--------------------- field 'power' is already initialized here
         |                                                       |
-        |                                                       `------- field 'power' is already initialized here
+        |                                                       `------- duplicate field 'power' in initializer expression
     ----'
     ");
 }

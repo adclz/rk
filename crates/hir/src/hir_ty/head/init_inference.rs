@@ -258,8 +258,8 @@ impl<'db> InitExprInferenceResult<'db> {
                     self.errors.push(
                         DuplicateError::InitExprField {
                             name: name.ident,
-                            field1: prev,
-                            field2: *expr,
+                            field1: *expr,
+                            field2: prev,
                         }
                         .to_diagnostic(db),
                     );
