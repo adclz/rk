@@ -691,8 +691,13 @@ END_FUNCTION
     });
 
     // fn1 has a comment with [MyFB] → should become a markdown link
-    let fn1 = pous.iter().find(|p| p.get_name_ident(&with_db).text(&with_db) == "fn1").unwrap();
-    let hover = fn1.hover(&with_db, fn1.get_name_span(&with_db).start_byte).unwrap();
+    let fn1 = pous
+        .iter()
+        .find(|p| p.get_name_ident(&with_db).text(&with_db) == "fn1")
+        .unwrap();
+    let hover = fn1
+        .hover(&with_db, fn1.get_name_span(&with_db).start_byte)
+        .unwrap();
     assert_snapshot!(hover_markup(hover.contents).unwrap(), @r###"
     Uses [MyFB](file:///test0.st) internally
     ```iecst
@@ -745,7 +750,10 @@ END_FUNCTION
         ControlFlow::Continue(())
     });
 
-    let x_var = vars.iter().find(|v| v.name(&with_db).text(&with_db) == "x").unwrap();
+    let x_var = vars
+        .iter()
+        .find(|v| v.name(&with_db).text(&with_db) == "x")
+        .unwrap();
     let hover = x_var.hover(&with_db, 0).unwrap();
     assert_snapshot!(hover_markup(hover.contents).unwrap(), @r###"
     Controls a [Sensor](file:///test0.st)

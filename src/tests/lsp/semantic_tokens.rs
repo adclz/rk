@@ -483,7 +483,10 @@ END_FUNCTION_BLOCK"#;
     assert_eq!(result.data[2].length, "Sensor".len() as u32);
     assert_eq!(
         result.data[3].token_type,
-        SUPPORTED_TYPES.iter().position(|x| *x == INTERFACE).unwrap() as u32,
+        SUPPORTED_TYPES
+            .iter()
+            .position(|x| *x == INTERFACE)
+            .unwrap() as u32,
     );
     assert_eq!(result.data[3].length, "IController".len() as u32);
 }

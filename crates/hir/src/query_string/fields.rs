@@ -5,7 +5,10 @@ use crate::{
     HasName,
     hir_def::expressions::spec::Struct,
     hir_ty::ty::{CallableType, Type},
-    query_string::{method::method_symbol_index, query::{NamedSymbol, Query, SymbolIndex, SymbolKind}},
+    query_string::{
+        method::method_symbol_index,
+        query::{NamedSymbol, Query, SymbolIndex, SymbolKind},
+    },
 };
 
 fn struct_symbol_index<'db>(
@@ -45,11 +48,15 @@ pub fn fuzzy_type_fields<'db>(
             );
         }
         Type::FunctionBlock(fb) => {
-            let index = method_symbol_index(
+            let index = method_symbol_index(db, CallableType::FunctionBlock(fb));
+            fuzzy_suggest_from_index(
                 db,
-                CallableType::FunctionBlock(fb),
+                fb.get_name_ident(db).text(db).as_str(),
+                "field",
+                index,
+                diag,
+                query,
             );
-            fuzzy_suggest_from_index(db, fb.get_name_ident(db).text(db).as_str(), "field", index, diag, query);
         }
         Type::Class(c) => {
             let scope = c.scope_id(db);
@@ -63,7 +70,14 @@ pub fn fuzzy_type_fields<'db>(
                 });
             }
             let index = vec![SymbolIndex::create(db, symbols.into_boxed_slice())];
-            fuzzy_suggest_from_index(db, c.get_name_ident(db).text(db).as_str(), "field", &index, diag, query);
+            fuzzy_suggest_from_index(
+                db,
+                c.get_name_ident(db).text(db).as_str(),
+                "field",
+                &index,
+                diag,
+                query,
+            );
         }
         _ => {}
     }
@@ -87,7 +101,12 @@ pub fn fuzzy_suggest_from_index<'db>(
     });
 
     if !candidates.is_empty() {
-        suggest_similar_note(type_name, noun, diag, candidates.iter().map(|c| c.name.as_str()));
+        suggest_similar_note(
+            type_name,
+            noun,
+            diag,
+            candidates.iter().map(|c| c.name.as_str()),
+        );
     }
 }
 

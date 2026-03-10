@@ -284,15 +284,16 @@ impl<'db> HoverHandler<'db> for PathExpr<'db> {
         if ty.is_never() {
             // Check if this PathExpr is part of a namespace path (e.g. "System" in System.Math.Sin)
             if let Some(ns_path) = try_build_namespace_path(db, self)
-                && is_namespace_prefix(db, ns_path) {
-                    return Some(Hover {
-                        contents: HoverContents::Scalar(MarkedString::from_markdown(format!(
-                            "\n```iecst\nNAMESPACE {}\n```\n",
-                            ns_path.to_string(db)
-                        ))),
-                        range: None,
-                    });
-                }
+                && is_namespace_prefix(db, ns_path)
+            {
+                return Some(Hover {
+                    contents: HoverContents::Scalar(MarkedString::from_markdown(format!(
+                        "\n```iecst\nNAMESPACE {}\n```\n",
+                        ns_path.to_string(db)
+                    ))),
+                    range: None,
+                });
+            }
         }
         ty.hover(db, offset)
     }
@@ -483,9 +484,10 @@ impl<'db> HoverHandler<'db> for ProgConfig<'db> {
             let span = task_ref.get_span(db);
             if offset >= span.start_byte && offset < span.end_byte {
                 if let ScopeKind::Config(config) = get_scope(db, self.scope_id(db)).kind
-                    && let Some(task) = infer_config_result(db, config).task_of_prog.get(self) {
-                        return task.hover(db, task.name(db).get_span(db).start_byte);
-                    }
+                    && let Some(task) = infer_config_result(db, config).task_of_prog.get(self)
+                {
+                    return task.hover(db, task.name(db).get_span(db).start_byte);
+                }
                 return None;
             }
         }

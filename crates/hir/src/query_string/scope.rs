@@ -247,9 +247,10 @@ fn search_file_indexes<'db>(
             SymbolKind::Pou(pou) if include_pous => {
                 // Skip if already defined locally in this scope
                 if let Some(local) = local
-                    && local.pous.contains_key(&pou.get_name_ident(db)) {
-                        return ControlFlow::Continue::<()>(());
-                    }
+                    && local.pous.contains_key(&pou.get_name_ident(db))
+                {
+                    return ControlFlow::Continue::<()>(());
+                }
 
                 // Skip if a variable with the same name exists (variables take priority)
                 if scope_variables.contains(&symbol.name) {

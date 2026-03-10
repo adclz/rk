@@ -94,9 +94,7 @@ impl<'db> InitInference<'db> {
 
                 // method is from an interface — only require implementation
                 // for concrete POUs (classes, function blocks), not interfaces
-                if inherited_method.is_prototype()
-                    && !matches!(implementer, Pou::Interface(_))
-                {
+                if inherited_method.is_prototype() && !matches!(implementer, Pou::Interface(_)) {
                     self.errors.push(
                         InheritanceError::UnimplementedInterfaceMethod {
                             implementer,

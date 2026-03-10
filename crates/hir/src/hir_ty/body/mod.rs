@@ -108,7 +108,12 @@ fn init_ref_null_states<'db>(
 fn is_null_init<'db>(db: &'db dyn WorkspaceDataBase, init: &InitExprKind<'db>) -> bool {
     match init {
         InitExprKind::ConstantExpr(expr) => {
-            matches!(expr.expr(db), ExprKind::PrimaryExpr(PrimaryExpr::RefValue { value: RefValue::Null }))
+            matches!(
+                expr.expr(db),
+                ExprKind::PrimaryExpr(PrimaryExpr::RefValue {
+                    value: RefValue::Null
+                })
+            )
         }
         _ => false,
     }

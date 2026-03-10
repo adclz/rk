@@ -2,7 +2,7 @@ use db::WorkspaceDataBase;
 
 use crate::{
     CallSite, HirNodeInfo,
-    check::errors::{ToIdeDiagnostic, e10_control_flow::ControlFlowError, e3_type::TypeError},
+    check::errors::{ToIdeDiagnostic, e3_type::TypeError, e10_control_flow::ControlFlowError},
     hir_def::{
         expressions::{
             expression::{Elementary, Expr, ExprKind, PrimaryExpr, UnaryOperatorKind},
@@ -96,7 +96,7 @@ impl<'db> StmtsResolverCtx<'db> {
                     // Check RHS is REF_TO or Interface
                     if matches!(lhs_typ, Type::RefTo(_)) {
                         let rhs_typ = ctx.get_type_of_expr(*target).normalize(db);
-                        if let Err(_) = lhs_typ.coerce_assign_attempt(db, rhs_typ) {
+                        if lhs_typ.coerce_assign_attempt(db, rhs_typ).is_err() {
                             ctx.errors.push(
                                 TypeError::AssignAttemptInvalidRhs {
                                     lhs: lhs_typ,
@@ -126,12 +126,11 @@ impl<'db> StmtsResolverCtx<'db> {
                     }
 
                     // Update null state for REF_TO variables
-                    if let Type::Variable((var_decl, _)) = base_typ {
-                        if ctx.ref_null_state.contains_key(&var_decl) {
+                    if let Type::Variable((var_decl, _)) = base_typ
+                        && ctx.ref_null_state.contains_key(&var_decl) {
                             // Only update if this is a direct assignment (no deref on the LHS)
-                            let has_deref = ctx
-                                .adjustments_of_var_access(db, *var)
-                                .is_some_and(|adjs| {
+                            let has_deref =
+                                ctx.adjustments_of_var_access(db, *var).is_some_and(|adjs| {
                                     adjs.iter().any(|a| matches!(a.kind, Adjust::Deref))
                                 });
                             if !has_deref {
@@ -150,7 +149,6 @@ impl<'db> StmtsResolverCtx<'db> {
                                 ctx.ref_null_state.insert(var_decl, new_state);
                             }
                         }
-                    }
                 }
 
                 StmtKind::If {

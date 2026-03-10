@@ -4,7 +4,10 @@ use ide_diagnostic::IdeDiagnostic;
 use crate::{
     CallSite, HirNodeInfo,
     check::errors::{ToIdeDiagnostic, e3_type::TypeError, e10_control_flow::ControlFlowError},
-    hir_def::{expressions::expression::{AddOperatorKind, MultOperatorKind}, pous::pou::Pou},
+    hir_def::{
+        expressions::expression::{AddOperatorKind, MultOperatorKind},
+        pous::pou::Pou,
+    },
     hir_ty::{
         body::{Adjustment, AdjustmentInfo, BodyInferenceResult},
         infer::Infer,

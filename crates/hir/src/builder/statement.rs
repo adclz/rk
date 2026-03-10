@@ -91,10 +91,7 @@ impl<'db> Parse<'db> for ast::generated::Stmt {
                     .iter()
                     .map(|else_if_stmt| {
                         let else_if_node = else_if_stmt.cast(sema.ast);
-                        let condition = else_if_node
-                            .else_if_cond
-                            .cast(sema.ast)
-                            .parse(sema)?;
+                        let condition = else_if_node.else_if_cond.cast(sema.ast).parse(sema)?;
                         let then = else_if_node
                             .else_if_body
                             .as_ref()

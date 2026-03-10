@@ -56,10 +56,7 @@ fn render_document_links(db: &RootDatabase, source_texts: &[&str], file_idx: usi
                 "document link: [{}]",
                 link.tooltip.as_deref().unwrap_or("")
             ))
-            .with_label(
-                Label::new((source_url, start_byte..end_byte))
-                    .with_message(msg),
-            )
+            .with_label(Label::new((source_url, start_byte..end_byte)).with_message(msg))
             .finish()
             .write(sources(file_sources.clone()), &mut cache)
             .unwrap();

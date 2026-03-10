@@ -202,18 +202,20 @@ fn find_references_in_file<'db>(
 
     let _ = sema.walk_hir(db, &mut |node: HirNode<'db>| {
         if let Some(resolved) = resolve_walk_target(db, &node)
-            && resolved == *target {
-                // Verify the node's ident matches the target name to avoid
-                // false positives from path fragments that resolve to the
-                // same type through adjustments (deref, field chains, etc.)
-                if let Some(ident) = node_reference_ident(db, &node)
-                    && !ident.eq_ignore_ascii_case(target_name) {
-                        return ControlFlow::Continue(());
-                    }
-                let span = reference_span(db, &node);
-                let file = node.get_scope_id(db).file(db);
-                locations.push(ReferenceLocation { file, span });
+            && resolved == *target
+        {
+            // Verify the node's ident matches the target name to avoid
+            // false positives from path fragments that resolve to the
+            // same type through adjustments (deref, field chains, etc.)
+            if let Some(ident) = node_reference_ident(db, &node)
+                && !ident.eq_ignore_ascii_case(target_name)
+            {
+                return ControlFlow::Continue(());
             }
+            let span = reference_span(db, &node);
+            let file = node.get_scope_id(db).file(db);
+            locations.push(ReferenceLocation { file, span });
+        }
 
         ControlFlow::Continue(())
     });
@@ -238,12 +240,13 @@ fn find_namespace_references<'db>(
         let sema = semantic_index(db, *file);
         let _ = sema.walk_hir(db, &mut |node: HirNode<'db>| {
             if let HirNode::Using(u) = &node
-                && u.path(db).path == path {
-                    locations.push(ReferenceLocation {
-                        file: u.scope_id(db).file(db),
-                        span: u.get_span(db),
-                    });
-                }
+                && u.path(db).path == path
+            {
+                locations.push(ReferenceLocation {
+                    file: u.scope_id(db).file(db),
+                    span: u.get_span(db),
+                });
+            }
             ControlFlow::Continue(())
         });
     }

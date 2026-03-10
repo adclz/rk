@@ -165,8 +165,9 @@ impl<'db> ErrorCode for TypeError<'db> {
             Self::TypeArgumentIntoConstraintMismatch { .. } => {
                 "type argument INTO constraint mismatch"
             }
-            Self::AssignAttemptRequiresRef { .. }
-            | Self::AssignAttemptInvalidRhs { .. } => "invalid assignment attempt",
+            Self::AssignAttemptRequiresRef { .. } | Self::AssignAttemptInvalidRhs { .. } => {
+                "invalid assignment attempt"
+            }
             _ => "type mismatch",
         }
     }
@@ -677,28 +678,29 @@ fn explicit_cast_suggestion(
 ) {
     if let (Type::Elementary(lhs), Type::Elementary(rhs)) =
         (expected.normalize(db), actual.normalize(db))
-        && lhs.explicit_cast(rhs) {
-            diag.with_related(Related::new(
-                format!(
-                    "consider explicitly casting with '{}_TO_{}({})'",
-                    rhs.type_name(),
-                    lhs.type_name(),
-                    actual_site.to_string(db)
-                ),
-                actual_site.get_scope_id(db).file(db),
-                actual_site.get_span(db),
-            ));
+        && lhs.explicit_cast(rhs)
+    {
+        diag.with_related(Related::new(
+            format!(
+                "consider explicitly casting with '{}_TO_{}({})'",
+                rhs.type_name(),
+                lhs.type_name(),
+                actual_site.to_string(db)
+            ),
+            actual_site.get_scope_id(db).file(db),
+            actual_site.get_span(db),
+        ));
 
-            diag.with_fix(CodeAction {
-                title: format!(
-                    "insert explicit cast '{}_TO_{}({})'",
-                    lhs.type_name(),
-                    rhs.type_name(),
-                    actual_site.to_string(db)
-                ),
-                edit: Some(WorkspaceEdit::new(HashMap::new())),
-                is_preferred: Some(true),
-                ..Default::default()
-            });
-        }
+        diag.with_fix(CodeAction {
+            title: format!(
+                "insert explicit cast '{}_TO_{}({})'",
+                lhs.type_name(),
+                rhs.type_name(),
+                actual_site.to_string(db)
+            ),
+            edit: Some(WorkspaceEdit::new(HashMap::new())),
+            is_preferred: Some(true),
+            ..Default::default()
+        });
+    }
 }

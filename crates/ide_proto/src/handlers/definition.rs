@@ -164,9 +164,10 @@ impl<'db> DefinitionHandler<'db> for PathExpr<'db> {
         let ty = self.infer(db);
         if ty.is_never()
             && let Some(ns_path) = try_build_namespace_path(db, self)
-                && is_namespace_prefix(db, ns_path) {
-                    return namespace_definitions(db, ns_path);
-                }
+            && is_namespace_prefix(db, ns_path)
+        {
+            return namespace_definitions(db, ns_path);
+        }
         ty.definition(db, offset)
     }
 }
@@ -288,9 +289,10 @@ impl<'db> DefinitionHandler<'db> for ProgConfig<'db> {
             let span = task_ref.get_span(db);
             if offset >= span.start_byte && offset <= span.end_byte {
                 if let ScopeKind::Config(config) = get_scope(db, self.scope_id(db)).kind
-                    && let Some(task) = infer_config_result(db, config).task_of_prog.get(self) {
-                        return task.definition(db, task.name(db).get_span(db).start_byte);
-                    }
+                    && let Some(task) = infer_config_result(db, config).task_of_prog.get(self)
+                {
+                    return task.definition(db, task.name(db).get_span(db).start_byte);
+                }
                 return None;
             }
         }

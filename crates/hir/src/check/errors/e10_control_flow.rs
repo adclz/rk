@@ -6,10 +6,16 @@ use crate::{
     CallSite, HasName, HirNodeInfo,
     check::errors::ToIdeDiagnostic,
     hir_def::{
-        expressions::{expression::{FuncCall, PathExpr}, statement::Stmt},
+        expressions::{
+            expression::{FuncCall, PathExpr},
+            statement::Stmt,
+        },
         pous::variable::VariableDecl,
     },
-    hir_ty::{body::NullState, ty::{CallableType, Type}},
+    hir_ty::{
+        body::NullState,
+        ty::{CallableType, Type},
+    },
 };
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, salsa::Update)]

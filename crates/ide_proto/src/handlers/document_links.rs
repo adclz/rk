@@ -80,10 +80,7 @@ pub(crate) fn resolve_bracket_ref_to_pou<'db>(
             let ns_parts = &parts[..parts.len() - 1];
             let target_name = parts[parts.len() - 1];
 
-            let ns_idents: Vec<Ident> = ns_parts
-                .iter()
-                .map(|p| Ident::from_slice(db, p))
-                .collect();
+            let ns_idents: Vec<Ident> = ns_parts.iter().map(|p| Ident::from_slice(db, p)).collect();
             let ns_path = NamespacePath::new(db, ns_idents);
 
             let target_ident = Ident::from_slice(db, target_name);
@@ -186,7 +183,6 @@ fn byte_offset_to_point(source: &str, offset: usize) -> (usize, usize) {
     (row, offset - last_newline)
 }
 
-
 /// Replace `[TypeName]` bracket references in comment text with markdown links.
 ///
 /// Unresolved references are left as-is (with brackets).
@@ -215,15 +211,13 @@ pub(crate) fn replace_bracket_refs_with_links(db: &dyn WorkspaceDataBase, text: 
                         .all(|c| c.is_alphanumeric() || c == '_' || c == '.')
                     && !content.starts_with('.')
                     && !content.ends_with('.')
-                {
-                    if let Some(location) = resolve_bracket_ref(db, content) {
+                    && let Some(location) = resolve_bracket_ref(db, content) {
                         result.push_str(&text[last_end..start]);
                         result.push_str(&format!("[{}]({})", content, location.uri));
                         i += 1;
                         last_end = i;
                         continue;
                     }
-                }
                 i += 1;
             }
         } else {

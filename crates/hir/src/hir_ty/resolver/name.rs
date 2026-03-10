@@ -111,9 +111,10 @@ pub fn resolve_name<'db>(
         PouResolution::NotFound => {
             // 4. Program resolution (config scopes only — programs are not visible to other POUs)
             if is_config_scope(db, scope)
-                && let Some(prog) = program_index(db, name) {
-                    return NameResolution::Program(prog);
-                }
+                && let Some(prog) = program_index(db, name)
+            {
+                return NameResolution::Program(prog);
+            }
             NameResolution::NotFound
         }
     }

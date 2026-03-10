@@ -30,8 +30,10 @@ use crate::{
         ty::{CallableType, Type},
     },
     query_string::{
-        method::fuzzy_callable_type_parameters, query::Query, scope::SymbolSearch,
         fields::{fuzzy_type_fields, suggest_similar_note},
+        method::fuzzy_callable_type_parameters,
+        query::Query,
+        scope::SymbolSearch,
     },
 };
 
@@ -669,7 +671,9 @@ fn list_variable_candidates<'db, I>(
 ) where
     I: Iterator<Item = &'db VariableDecl<'db>>,
 {
-    let names: Vec<_> = candidates.map(|c| c.name(db).text(db).to_string()).collect();
+    let names: Vec<_> = candidates
+        .map(|c| c.name(db).text(db).to_string())
+        .collect();
     suggest_similar_note(scope_name, "item", diag, names.iter().map(|n| n.as_str()));
 }
 

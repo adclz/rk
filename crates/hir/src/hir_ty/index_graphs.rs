@@ -89,10 +89,7 @@ use crate::{
 /// so body-only edits that produce the same POUs will backdate and
 /// not invalidate downstream lookups.
 #[salsa::tracked(returns(ref))]
-pub fn file_global_pous<'db>(
-    db: &'db dyn WorkspaceDataBase,
-    file: File,
-) -> Arc<Vec<Pou<'db>>> {
+pub fn file_global_pous<'db>(db: &'db dyn WorkspaceDataBase, file: File) -> Arc<Vec<Pou<'db>>> {
     Arc::clone(&semantic_index(db, file).global_pous)
 }
 
@@ -116,10 +113,7 @@ pub fn file_programs<'db>(
 
 /// Extracts configuration declarations from a file's semantic index.
 #[salsa::tracked(returns(ref))]
-pub fn file_configs<'db>(
-    db: &'db dyn WorkspaceDataBase,
-    file: File,
-) -> Arc<Vec<ConfigDecl<'db>>> {
+pub fn file_configs<'db>(db: &'db dyn WorkspaceDataBase, file: File) -> Arc<Vec<ConfigDecl<'db>>> {
     Arc::clone(&semantic_index(db, file).configs)
 }
 
@@ -128,9 +122,7 @@ pub fn file_configs<'db>(
 // ---------------------------------------------------------------------------
 
 /// Helper to iterate over all workspace + stdlib files.
-fn all_files<'db>(
-    db: &'db dyn WorkspaceDataBase,
-) -> impl Iterator<Item = File> + 'db {
+fn all_files<'db>(db: &'db dyn WorkspaceDataBase) -> impl Iterator<Item = File> + 'db {
     db.get_files()
         .iter()
         .map(|e| *e)
@@ -188,10 +180,7 @@ pub fn pou_index<'db>(db: &'db dyn WorkspaceDataBase, name: Ident) -> Option<Pou
 
 /// Finds a globally declared program by name across all files.
 #[tracing::instrument(skip(db))]
-pub fn program_index<'db>(
-    db: &'db dyn WorkspaceDataBase,
-    name: Ident,
-) -> Option<ProgramDecl<'db>> {
+pub fn program_index<'db>(db: &'db dyn WorkspaceDataBase, name: Ident) -> Option<ProgramDecl<'db>> {
     for file in all_files(db) {
         for p in file_programs(db, file).iter() {
             if p.get_name_ident(db) == name {
@@ -204,10 +193,7 @@ pub fn program_index<'db>(
 
 /// Finds a globally declared configuration by name across all files.
 #[tracing::instrument(skip(db))]
-pub fn config_index<'db>(
-    db: &'db dyn WorkspaceDataBase,
-    name: Ident,
-) -> Option<ConfigDecl<'db>> {
+pub fn config_index<'db>(db: &'db dyn WorkspaceDataBase, name: Ident) -> Option<ConfigDecl<'db>> {
     for file in all_files(db) {
         for c in file_configs(db, file).iter() {
             if c.get_name_ident(db) == name {
