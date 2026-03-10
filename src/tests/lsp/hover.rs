@@ -762,3 +762,64 @@ END_FUNCTION
     ```
     "###);
 }
+
+/// Array bound expressions should show inferred type on hover (not {unknown})
+#[rstest]
+fn array_bound_expr_hover(mut with_db: RootDatabase) {
+    let source = "TYPE MyArr : ARRAY[0..10] OF INT; END_TYPE\n";
+
+    assert_snapshot!(collect_hovers(&mut with_db, source, |db, node| {
+        let HirNode::Expr(e) = node else { return None };
+        hover_markup(e.hover(db, e.get_span(db).start_byte)?.contents)
+    }), @r"
+    ```iecst
+    {integer} 0
+    ```
+
+    ```iecst
+    {integer} 10
+    ```
+    ");
+}
+
+/// Array bound expressions in multiline TYPE block should show inferred type on hover
+#[rstest]
+fn array_bound_expr_hover_type_block(mut with_db: RootDatabase) {
+    let source = r#"
+TYPE
+    test0: ARRAY[0..10] OF INT;
+END_TYPE
+"#;
+
+    assert_snapshot!(collect_hovers(&mut with_db, source, |db, node| {
+        let HirNode::Expr(e) = node else { return None };
+        hover_markup(e.hover(db, e.get_span(db).start_byte)?.contents)
+    }), @r"
+    ```iecst
+    {integer} 0
+    ```
+
+    ```iecst
+    {integer} 10
+    ```
+    ");
+}
+
+/// Array bound expressions in variable declarations should show inferred type on hover
+#[rstest]
+fn array_bound_expr_hover_variable(mut with_db: RootDatabase) {
+    let source = "FUNCTION test\n    VAR\n        x : ARRAY[0..10] OF INT;\n    END_VAR\nEND_FUNCTION\n";
+
+    assert_snapshot!(collect_hovers(&mut with_db, source, |db, node| {
+        let HirNode::Expr(e) = node else { return None };
+        hover_markup(e.hover(db, e.get_span(db).start_byte)?.contents)
+    }), @r"
+    ```iecst
+    {integer} 0
+    ```
+
+    ```iecst
+    {integer} 10
+    ```
+    ");
+}

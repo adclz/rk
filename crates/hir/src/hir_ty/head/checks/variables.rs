@@ -41,6 +41,8 @@ impl<'db> InitInference<'db> {
                 }
             }
 
+            self.check_spec(db, var.spec(db));
+
             let var_type = var.spec(db).infer(db);
 
             if var.variadic(db) && !var_type.normalize(db).can_be_variadic(db) {

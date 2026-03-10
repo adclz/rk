@@ -3,7 +3,7 @@ use db::WorkspaceDataBase;
 use crate::{
     check::errors::{ToIdeDiagnostic, e6_array::ArrayError},
     hir_def::expressions::spec::Array,
-    hir_ty::head::init_inference::InitInference,
+    hir_ty::{head::init_inference::InitInference, infer::expr::InferExprCtx, resolver::Resolver},
 };
 
 impl<'db> InitInference<'db> {
@@ -11,6 +11,15 @@ impl<'db> InitInference<'db> {
         for range in array.subranges(db) {
             let lower = range.0;
             let upper = range.1;
+
+            let resolver = Resolver::for_scope(db, lower.scope_id(db));
+            let mut infer = InferExprCtx::new(resolver);
+
+            infer.resolve_expr(db, lower, &mut self.body_infer_result);
+            infer.check_expr(db, lower, &mut self.body_infer_result);
+
+            infer.resolve_expr(db, upper, &mut self.body_infer_result);
+            infer.check_expr(db, upper, &mut self.body_infer_result);
 
             match (lower.as_range(db), upper.as_range(db)) {
                 (Some(lower_range), Some(upper_range)) => {
