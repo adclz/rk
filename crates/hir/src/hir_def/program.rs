@@ -36,12 +36,15 @@ pub struct ProgramDecl<'db> {
     #[no_eq]
     pub name_id: AstId,
 
+    #[tracked]
     #[returns(ref)]
     pub prog_access_decls: Vec<ProgAccessDecl<'db>>,
 
+    #[tracked]
     #[returns(ref)]
     pub variables: Vec<VariableDecl<'db>>,
 
+    #[tracked]
     #[returns(ref)]
     pub located_variables: Vec<LocatedVariable<'db>>,
 
@@ -54,6 +57,7 @@ pub struct ProgramDecl<'db> {
     #[no_eq]
     pub id: AstId,
 
+    #[tracked]
     pub scope_id: ScopeId<'db>,
 }
 

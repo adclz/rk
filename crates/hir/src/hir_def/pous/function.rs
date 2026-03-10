@@ -18,15 +18,20 @@ pub struct Function<'db> {
     #[no_eq]
     pub name_id: AstId,
 
+    #[tracked]
     #[returns(ref)]
     pub generics: Vec<GenericParam<'db>>,
 
+    #[tracked]
     #[returns(ref)]
     pub variables: Vec<VariableDecl<'db>>,
 
+    #[tracked]
+    #[no_eq]
     #[returns(ref)]
     pub statements: Vec<Stmt<'db>>,
 
+    #[tracked]
     #[returns(as_ref)]
     pub return_type: Option<Spec<'db>>,
 
@@ -34,6 +39,7 @@ pub struct Function<'db> {
     #[no_eq]
     pub id: AstId,
 
+    #[tracked]
     pub scope_id: ScopeId<'db>,
 }
 

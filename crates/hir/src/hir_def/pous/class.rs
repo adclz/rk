@@ -18,24 +18,30 @@ pub struct Class<'db> {
     #[no_eq]
     pub name_id: AstId,
 
+    #[tracked]
     #[returns(as_ref)]
     pub extends: Option<Spec<'db>>,
 
+    #[tracked]
     #[returns(ref)]
     pub implements: Vec<Spec<'db>>,
 
+    #[tracked]
     #[returns(ref)]
     pub variables: Vec<VariableDecl<'db>>,
 
+    #[tracked]
     #[returns(ref)]
     pub methods: Vec<MethodDecl<'db>>,
 
+    #[tracked]
     pub modifier: Modifier,
 
     #[tracked]
     #[no_eq]
     pub id: AstId,
 
+    #[tracked]
     pub scope_id: ScopeId<'db>,
 }
 
@@ -73,16 +79,21 @@ pub struct MethodDecl<'db> {
     #[no_eq]
     pub name_id: AstId,
 
+    #[tracked]
     #[returns(ref)]
     pub variables: Vec<VariableDecl<'db>>,
 
+    #[tracked]
     #[returns(as_ref)]
     pub return_type: Option<Spec<'db>>,
 
+    #[tracked]
     pub modifier: Modifier,
 
+    #[tracked]
     pub visibility: Visibility,
 
+    #[tracked]
     pub _override: bool,
 
     #[tracked]
@@ -94,6 +105,7 @@ pub struct MethodDecl<'db> {
     #[no_eq]
     pub id: AstId,
 
+    #[tracked]
     pub scope_id: ScopeId<'db>,
 }
 

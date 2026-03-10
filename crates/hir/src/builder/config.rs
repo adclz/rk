@@ -287,8 +287,8 @@ impl<'db> SemanticIndexBuilder<'db> {
 
         let prog = ProgConfig::new(
             self.db,
-            retain,
             name,
+            retain,
             task,
             prog_type,
             conf_elements,

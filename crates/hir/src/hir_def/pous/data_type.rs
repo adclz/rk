@@ -17,14 +17,17 @@ pub struct DataType<'db> {
     #[no_eq]
     pub name_id: AstId,
 
+    #[tracked]
     pub spec: Spec<'db>,
 
+    #[tracked]
     pub init: Option<InitExpr<'db>>,
 
     #[tracked]
     #[no_eq]
     pub id: AstId,
 
+    #[tracked]
     pub scope_id: ScopeId<'db>,
 }
 

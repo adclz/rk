@@ -16,9 +16,11 @@ pub struct Interface<'db> {
     #[no_eq]
     pub name_id: AstId,
 
+    #[tracked]
     #[returns(as_ref)]
     pub extends: Option<Vec<Spec<'db>>>,
 
+    #[tracked]
     #[returns(ref)]
     pub methods: Vec<MethodPrototype<'db>>,
 
@@ -26,6 +28,7 @@ pub struct Interface<'db> {
     #[no_eq]
     pub id: AstId,
 
+    #[tracked]
     pub scope_id: ScopeId<'db>,
 }
 
@@ -57,9 +60,11 @@ pub struct MethodPrototype<'db> {
     #[no_eq]
     pub name_id: AstId,
 
+    #[tracked]
     #[returns(as_ref)]
     pub return_type: Option<Spec<'db>>,
 
+    #[tracked]
     #[returns(ref)]
     pub variables: Vec<VariableDecl<'db>>,
 
@@ -67,6 +72,7 @@ pub struct MethodPrototype<'db> {
     #[no_eq]
     pub id: AstId,
 
+    #[tracked]
     pub scope_id: ScopeId<'db>,
 }
 

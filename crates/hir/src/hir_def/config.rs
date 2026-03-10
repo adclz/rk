@@ -15,22 +15,31 @@ use crate::{AstId, HasName, HirNodeInfo};
 pub struct ConfigDecl<'db> {
     pub name: Ident,
 
+    #[tracked]
+    #[no_eq]
     pub name_span: AstId,
 
+    #[tracked]
+    #[no_eq]
     pub span: AstId,
 
+    #[tracked]
     #[returns(ref)]
     pub variables: Vec<VariableDecl<'db>>,
 
+    #[tracked]
     #[returns(ref)]
     pub resources: Vec<ConfigResource<'db>>,
 
+    #[tracked]
     #[returns(ref)]
     pub access_decls: Vec<AccessDecl<'db>>,
 
+    #[tracked]
     #[returns(ref)]
     pub config_init: Vec<ConfigInstInit<'db>>,
 
+    #[tracked]
     pub scope_id: ScopeId<'db>,
 }
 
@@ -52,20 +61,27 @@ pub enum ConfigResource<'db> {
 pub struct ResourceDecl<'db> {
     pub name: SpanIdent<'db>,
 
+    #[tracked]
     pub resource_type_name: Ident,
 
     /// VAR_GLOBAL variables declared inside this resource block.
+    #[tracked]
     #[returns(ref)]
     pub variables: Vec<VariableDecl<'db>>,
 
+    #[tracked]
     #[returns(ref)]
     pub tasks: Vec<TaskConfig<'db>>,
 
+    #[tracked]
     #[returns(ref)]
     pub programs: Vec<ProgConfig<'db>>,
 
+    #[tracked]
+    #[no_eq]
     pub span: AstId,
 
+    #[tracked]
     pub scope_id: ScopeId<'db>,
 }
 
@@ -84,16 +100,22 @@ impl<'db> HirNodeInfo<'db> for ResourceDecl<'db> {
 pub struct TaskConfig<'db> {
     pub name: SpanIdent<'db>,
 
+    #[tracked]
     pub single: Option<DataSource<'db>>,
 
+    #[tracked]
     pub interval: Option<DataSource<'db>>,
 
     /// Priority value — stored as an `Ident` holding the integer text (e.g. `"5"`).
     /// `None` when PRIORITY is missing from the TASK init (E0035 is emitted).
+    #[tracked]
     pub priority: Option<Ident>,
 
+    #[tracked]
+    #[no_eq]
     pub span: AstId,
 
+    #[tracked]
     pub scope_id: ScopeId<'db>,
 }
 
@@ -109,21 +131,28 @@ impl<'db> HirNodeInfo<'db> for TaskConfig<'db> {
 
 #[salsa::tracked(debug)]
 pub struct ProgConfig<'db> {
-    pub retain: bool,
-
     pub name: SpanIdent<'db>,
 
+    #[tracked]
+    pub retain: bool,
+
     /// Optional task name from `WITH <task>`, with span for diagnostics.
+    #[tracked]
     pub task: Option<SpanIdent<'db>>,
 
     /// Reference to the program type (e.g. `MyProgram` or `NS::MyProgram`).
+    #[tracked]
     pub prog_type: Spec<'db>,
 
+    #[tracked]
     #[returns(ref)]
     pub conf_elements: Vec<ProgConfElement<'db>>,
 
+    #[tracked]
+    #[no_eq]
     pub span: AstId,
 
+    #[tracked]
     pub scope_id: ScopeId<'db>,
 }
 

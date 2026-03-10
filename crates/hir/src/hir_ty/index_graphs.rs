@@ -1,3 +1,68 @@
+// # Index Graphs — Cross-File Name Resolution
+//
+// ## Original problem (pre-2026-03-09)
+//
+// This module was originally implemented using workspace-wide salsa queries
+// (`workspace_pou_index`, `workspace_namespace_index`, etc.) that aggregated
+// all files into HashMaps. The problem was:
+//
+// Adrien Clauzel:
+// > Ideally, we do not need indexes, we should instead use the semantic index
+// > directly to resolve names. Therefore it is necessary to add namespaces to
+// > ScopeDefMap and iterate over them when resolving names. Such operation
+// > would be O(N) where N is, at worst, the number of files (we use the def
+// > maps to check if a pou/namespace is declared inside a scope, which is
+// > O(1) by simply looking at an interned identifier key).
+// >
+// > That means the invalidation of a cross-file dependency is dependent on
+// > the found item itself, but with indexes they have to be invalidated
+// > whenever a file is changed, which is not ideal.
+// >
+// > This is very similar to how rust-analyzer implements the all_crates()
+// > query. But in the case of RA, this query is a salsa::input and the
+// > comment above it states that it should not be used by HIR crates because
+// > it is always invalidated.
+// >
+// > Creating nested queries (those exposed publicly in this module) so the
+// > invalidation stops propagating when a pou has not changed creates
+// > non-deterministic behavior and thus leaks salsa structs.
+//
+// ## 2026-03-09 — Per-file extraction queries (Adrien + Claude)
+//
+// The workspace-wide `#[salsa::tracked]` queries were removed and replaced
+// with simple iteration over `semantic_index(db, file)` for each file,
+// as the original comment above suggested.
+//
+// Claude proposed adding intermediate per-file extraction queries
+// (`file_global_pous`, `file_global_namespaces`, etc.) as an "Eq firewall"
+// between `semantic_index` (which is `no_eq`) and downstream consumers —
+// similar to how ruff/ty uses `place_table(scope)` and `use_def_map(scope)`.
+//
+// Adrien pointed out that salsa's "twist" (backdating) should handle this
+// at the tracked struct level without the extra layer: even though
+// `semantic_index` is `no_eq`, the tracked structs it produces have stable
+// identity, so downstream queries like `infer_signature(pou)` shouldn't
+// need to re-execute.
+//
+// This turned out to be partially correct: backdating at the tracked struct
+// level works for *field-level* dependencies (e.g. reading `pou.name(db)`).
+// However, the lookup functions in this module (`pou_index`, etc.) are
+// regular functions — not salsa queries — so when `infer_signature(main)`
+// calls `pou_index()` which reads `semantic_index(file0)`, salsa records a
+// direct dependency from `infer_signature(main)` to `semantic_index(file0)`.
+// Since `semantic_index` is `no_eq`, this always marks the downstream query
+// as dirty, bypassing the tracked struct backdating entirely.
+//
+// The extraction queries solve this by interposing a salsa query with Eq
+// between `semantic_index` and the lookup functions. When file0's body
+// changes, `file_global_pous(file0)` re-executes but returns the same
+// `Vec<Pou>`, salsa backdates it, and `infer_signature(main)` (which now
+// depends on `file_global_pous(file0)` instead of `semantic_index(file0)`)
+// is NOT re-executed.
+//
+// Confirmed by the incremental test suite (`src/tests/incremental.rs`).
+
+use auto_lsp::default::db::file::File;
 use db::WorkspaceDataBase;
 
 use crate::{
@@ -12,15 +77,58 @@ use crate::{
     },
 };
 
+// ---------------------------------------------------------------------------
+// Per-file extraction queries (Eq firewall)
+// ---------------------------------------------------------------------------
+
+/// Extracts global POUs from a file's semantic index.
+///
+/// This query supports Eq (unlike `semantic_index` which is `no_eq`),
+/// so body-only edits that produce the same POUs will backdate and
+/// not invalidate downstream lookups.
+#[salsa::tracked(returns(ref))]
+pub fn file_global_pous<'db>(db: &'db dyn WorkspaceDataBase, file: File) -> Vec<Pou<'db>> {
+    semantic_index(db, file).global_pous.clone()
+}
+
+/// Extracts global namespace declarations from a file's semantic index.
+#[salsa::tracked(returns(ref))]
+pub fn file_global_namespaces<'db>(
+    db: &'db dyn WorkspaceDataBase,
+    file: File,
+) -> Vec<NamespaceDecl<'db>> {
+    semantic_index(db, file).global_namespaces.clone()
+}
+
+/// Extracts program declarations from a file's semantic index.
+#[salsa::tracked(returns(ref))]
+pub fn file_programs<'db>(db: &'db dyn WorkspaceDataBase, file: File) -> Vec<ProgramDecl<'db>> {
+    semantic_index(db, file).programs.clone()
+}
+
+/// Extracts configuration declarations from a file's semantic index.
+#[salsa::tracked(returns(ref))]
+pub fn file_configs<'db>(db: &'db dyn WorkspaceDataBase, file: File) -> Vec<ConfigDecl<'db>> {
+    semantic_index(db, file).configs.clone()
+}
+
+// ---------------------------------------------------------------------------
+// Helpers
+// ---------------------------------------------------------------------------
+
 /// Helper to iterate over all workspace + stdlib files.
 fn all_files<'db>(
     db: &'db dyn WorkspaceDataBase,
-) -> impl Iterator<Item = auto_lsp::default::db::file::File> + 'db {
+) -> impl Iterator<Item = File> + 'db {
     db.get_files()
         .iter()
         .map(|e| *e)
         .chain(db.get_std_lib_files().iter().map(|e| *e))
 }
+
+// ---------------------------------------------------------------------------
+// Public lookup functions
+// ---------------------------------------------------------------------------
 
 /// Returns all namespace declarations matching a given path across all files.
 #[tracing::instrument(skip(db))]
@@ -30,7 +138,7 @@ pub fn namespace_index<'db>(
 ) -> Vec<NamespaceDecl<'db>> {
     let mut result = vec![];
     for file in all_files(db) {
-        for ns in semantic_index(db, file).global_namespaces.iter() {
+        for ns in file_global_namespaces(db, file).iter() {
             if *ns.path(db) == path {
                 result.push(*ns);
             }
@@ -58,7 +166,7 @@ pub fn namespace_pou_index<'db>(
 #[tracing::instrument(skip(db))]
 pub fn pou_index<'db>(db: &'db dyn WorkspaceDataBase, name: Ident) -> Option<Pou<'db>> {
     for file in all_files(db) {
-        for p in semantic_index(db, file).global_pous.iter() {
+        for p in file_global_pous(db, file).iter() {
             if p.get_name_ident(db) == name {
                 return Some(*p);
             }
@@ -69,9 +177,12 @@ pub fn pou_index<'db>(db: &'db dyn WorkspaceDataBase, name: Ident) -> Option<Pou
 
 /// Finds a globally declared program by name across all files.
 #[tracing::instrument(skip(db))]
-pub fn program_index<'db>(db: &'db dyn WorkspaceDataBase, name: Ident) -> Option<ProgramDecl<'db>> {
+pub fn program_index<'db>(
+    db: &'db dyn WorkspaceDataBase,
+    name: Ident,
+) -> Option<ProgramDecl<'db>> {
     for file in all_files(db) {
-        for p in semantic_index(db, file).programs.iter() {
+        for p in file_programs(db, file).iter() {
             if p.get_name_ident(db) == name {
                 return Some(*p);
             }
@@ -82,9 +193,12 @@ pub fn program_index<'db>(db: &'db dyn WorkspaceDataBase, name: Ident) -> Option
 
 /// Finds a globally declared configuration by name across all files.
 #[tracing::instrument(skip(db))]
-pub fn config_index<'db>(db: &'db dyn WorkspaceDataBase, name: Ident) -> Option<ConfigDecl<'db>> {
+pub fn config_index<'db>(
+    db: &'db dyn WorkspaceDataBase,
+    name: Ident,
+) -> Option<ConfigDecl<'db>> {
     for file in all_files(db) {
-        for c in semantic_index(db, file).configs.iter() {
+        for c in file_configs(db, file).iter() {
             if c.get_name_ident(db) == name {
                 return Some(*c);
             }
@@ -102,7 +216,7 @@ pub fn external_var_lookup<'db>(
     var_name: Ident,
 ) -> Option<VariableDecl<'db>> {
     for file in all_files(db) {
-        for config in semantic_index(db, file).configs.iter() {
+        for config in file_configs(db, file).iter() {
             for v in config.variables(db).iter() {
                 if v.get_name_ident(db) == var_name {
                     return Some(*v);
