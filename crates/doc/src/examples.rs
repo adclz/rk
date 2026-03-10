@@ -237,8 +237,8 @@ END_FUNCTION_BLOCK
             title: "Missing node (syntax error)",
             description: "The parser encountered a syntax error — a required element is missing.",
             sources: &[r#"
-FUNCTION_BLOCK
-END_FUNCTION_BLOCK
+NAMESPACE
+END_NAMESPACE
 "#],
         },
         ErrorExample {
@@ -302,7 +302,7 @@ END_NAMESPACE
             sources: &[r#"
 CLASS c1
     VAR_IN_OUT
-        x: INT;
+
     END_VAR
 END_CLASS
 "#],
@@ -315,7 +315,7 @@ END_CLASS
             sources: &[r#"
 CLASS c1
     VAR_TEMP
-        x: INT;
+
     END_VAR
 END_CLASS
 "#],
@@ -328,7 +328,7 @@ END_CLASS
             sources: &[r#"
 FUNCTION_BLOCK fb1
     VAR_ACCESS
-        x: INT;
+
     END_VAR
 END_FUNCTION_BLOCK
 "#],
@@ -341,7 +341,7 @@ END_FUNCTION_BLOCK
             sources: &[r#"
 FUNCTION_BLOCK fb1
     VAR_CONFIG
-        x: INT;
+
     END_VAR
 END_FUNCTION_BLOCK
 "#],
@@ -365,11 +365,11 @@ END_FUNCTION_BLOCK
             title: "VAR_EXTERNAL not allowed in this context",
             description: "`VAR_EXTERNAL` can only be used inside PROGRAM, FUNCTION_BLOCK, or FUNCTION.",
             sources: &[r#"
-CLASS c1
+INTERFACE i1
     VAR_EXTERNAL
-        x: INT;
+
     END_VAR
-END_CLASS
+END_INTERFACE
 "#],
         },
         ErrorExample {
@@ -380,7 +380,7 @@ END_CLASS
             sources: &[r#"
 FUNCTION_BLOCK fb1
     VAR_GLOBAL
-        x: INT;
+
     END_VAR
 END_FUNCTION_BLOCK
 "#],
@@ -393,7 +393,7 @@ END_FUNCTION_BLOCK
             sources: &[r#"
 INTERFACE i1
     VAR
-        x: INT;
+
     END_VAR
 END_INTERFACE
 "#],
