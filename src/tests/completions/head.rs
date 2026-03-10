@@ -1,7 +1,7 @@
 use auto_lsp::default::db::BaseDatabase;
 use db::RootDatabase;
 use hir::HirNodeInfo;
-use ide_proto::handlers::completions_utils::{CompletionCtx, QueryMode};
+use ide_proto::handlers::completions_utils::{CompletionCtx, QueryMode, static_snippets};
 use rstest::rstest;
 
 use crate::tests::utils::{add_sources, find_pou_with_name, with_db};
@@ -38,4 +38,15 @@ END_FUNCTION
     // only Test should be suggested
     assert_eq!(completions.len(), 1);
     assert!(format!("{completions:?}").contains("Test"));
+}
+
+#[test]
+fn struct_and_array_snippets_exist() {
+    let struct_item = static_snippets::struct_();
+    assert_eq!(struct_item.label, "STRUCT");
+    assert!(struct_item.insert_text.unwrap().contains("END_STRUCT"));
+
+    let array_item = static_snippets::array();
+    assert_eq!(array_item.label, "ARRAY");
+    assert!(array_item.insert_text.unwrap().contains("OF"));
 }

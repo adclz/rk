@@ -277,6 +277,28 @@ pub fn var_access() -> CompletionItem {
 }
 
 #[inline]
+pub fn struct_() -> CompletionItem {
+    CompletionItem {
+        label: "STRUCT".into(),
+        kind: Some(lsp_types::CompletionItemKind::STRUCT),
+        insert_text_format: Some(lsp_types::InsertTextFormat::SNIPPET),
+        insert_text: Some("STRUCT\n\t${1:field}: ${2:INT};\nEND_STRUCT".into()),
+        ..Default::default()
+    }
+}
+
+#[inline]
+pub fn array() -> CompletionItem {
+    CompletionItem {
+        label: "ARRAY".into(),
+        kind: Some(lsp_types::CompletionItemKind::TYPE_PARAMETER),
+        insert_text_format: Some(lsp_types::InsertTextFormat::SNIPPET),
+        insert_text: Some("ARRAY[${1:0}..${2:10}] OF ${3:INT}".into()),
+        ..Default::default()
+    }
+}
+
+#[inline]
 pub fn all_stmts() -> Vec<CompletionItem> {
     vec![if_(), for_(), while_(), repeat()]
 }

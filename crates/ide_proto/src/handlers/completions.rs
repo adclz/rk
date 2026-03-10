@@ -267,10 +267,12 @@ impl<'db> CompletionHandler<'db> for Spec<'db> {
             }
         }
 
-        // Default: scope completion + elementary types
+        // Default: scope completion + elementary types + compound type snippets
         let mut ctx = CompletionCtx::new(req.offset, QueryMode::Head);
         ctx.scope_completion(self.get_scope_id(db), &req.query, db);
         ctx.items.extend(static_snippets::elem_type_names());
+        ctx.items.push(static_snippets::struct_());
+        ctx.items.push(static_snippets::array());
         Some(ctx.take_items())
     }
 }
