@@ -1,8 +1,9 @@
 *
 */**
 
+!README.md
 !package.json
+!language-configuration.json
+!syntaxes/**
 !client/dist/**
-!client/out/**
-
-!server/target/wasm32-wasip1-threads/release/server.wasm
+!server/bin/**
