@@ -18,7 +18,7 @@ FUNCTION_BLOCK fb1
 END_FUNCTION_BLOCK"#;
 
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E1004] Error: control flow violation
+    [E0229] Error: semantic violation
        ,-[ file:///test0.st:7:5 ]
        |
      7 |     test();
@@ -40,7 +40,7 @@ END_FUNCTION_BLOCK
 "#;
 
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E1004] Error: control flow violation
+    [E0229] Error: semantic violation
        ,-[ file:///test0.st:3:5 ]
        |
      3 |     fb2();
@@ -380,7 +380,7 @@ FUNCTION_BLOCK fb1
 END_FUNCTION_BLOCK"#;
 
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E1003] Error: assignment violation
+    [E0228] Error: semantic violation
         ,-[ file:///test0.st:13:18 ]
         |
      13 |     fn(param1 => b1);
@@ -409,7 +409,7 @@ FUNCTION_BLOCK fb1
 END_FUNCTION_BLOCK"#;
 
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E1002] Error: assignment violation
+    [E0227] Error: semantic violation
         ,-[ file:///test0.st:13:18 ]
         |
      13 |     fn(param1 => b1);

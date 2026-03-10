@@ -20,7 +20,7 @@ pub trait ToIdeDiagnostic<'db> {
 /*
 E00xx = Syntax errors
 E01xx = Duplicate definitions
-E02xx = Scope/resolution
+E02xx = Scope/resolution/semantic (includes assignment & call violations)
 E03xx = Type system
 E04xx = Visibility/access
 E05xx = Inheritance/methods (oop)
@@ -28,6 +28,6 @@ E06xx = Arrays
 E07xx = Enums
 E08xx = Subranges
 E09xx = Recursion
-E10xx = Control flow
+E10xx = Control flow (loop control, null safety)
 E11xx = Hardware errors (direct variables, IO issues)
 */

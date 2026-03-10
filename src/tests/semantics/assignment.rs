@@ -50,7 +50,7 @@ FUNCTION_BLOCK fb1
 END_FUNCTION_BLOCK"#;
 
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E1003] Error: assignment violation
+    [E0228] Error: semantic violation
        ,-[ file:///test0.st:8:5 ]
        |
      8 |     fb2 := ULINT#5;
@@ -137,7 +137,7 @@ FUNCTION_BLOCK fb1
 END_FUNCTION_BLOCK"#;
 
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E1003] Error: assignment violation
+    [E0228] Error: semantic violation
        ,-[ file:///test0.st:8:5 ]
        |
      8 |     T1 := ULINT#5;
@@ -179,7 +179,7 @@ FUNCTION_BLOCK fb1
 END_FUNCTION_BLOCK"#;
 
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E1001] Error: assignment violation
+    [E0226] Error: semantic violation
         ,-[ file:///test0.st:11:5 ]
         |
      11 |     d_fb2 := ULINT#5;
@@ -213,7 +213,7 @@ FUNCTION_BLOCK fb1
 END_FUNCTION_BLOCK"#;
 
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E1002] Error: assignment violation
+    [E0227] Error: semantic violation
        ,-[ file:///test0.st:7:5 ]
        |
      7 |     test := 5;
@@ -407,7 +407,7 @@ PROGRAM A
 END_PROGRAM"#;
 
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E1003] Error: assignment violation
+    [E0228] Error: semantic violation
         ,-[ file:///test0.st:10:10 ]
         |
      10 |     x := Motor;
@@ -443,7 +443,7 @@ PROGRAM A
 END_PROGRAM"#;
 
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E1003] Error: assignment violation
+    [E0228] Error: semantic violation
         ,-[ file:///test0.st:10:10 ]
         |
      10 |     x := ClBase;
@@ -476,7 +476,7 @@ PROGRAM A
 END_PROGRAM"#;
 
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E1003] Error: assignment violation
+    [E0228] Error: semantic violation
        ,-[ file:///test0.st:6:8 ]
        |
      6 |     IF Motor THEN
@@ -508,7 +508,7 @@ PROGRAM A
 END_PROGRAM"#;
 
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E1003] Error: assignment violation
+    [E0228] Error: semantic violation
         ,-[ file:///test0.st:10:14 ]
         |
      10 |     x := 5 + Motor;

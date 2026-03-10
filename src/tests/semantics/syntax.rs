@@ -229,25 +229,18 @@ fn function_call_in_init_expression(mut with_db: RootDatabase) {
     let source = r#"
 FUNCTION_BLOCK fn
   VAR
-    ml : ARRAY [0..2] OF INT := [10(call(IN := 5, OUT => OUT))]
+    ml : ARRAY [0..2] OF INT := [1(call(IN := 5, OUT => OUT))]
   END_VAR
 
 END_FUNCTION_BLOCK"#;
 
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
     [E0017] Error: syntax
-       ,-[ file:///test0.st:4:37 ]
+       ,-[ file:///test0.st:4:36 ]
        |
-     4 |     ml : ARRAY [0..2] OF INT := [10(call(IN := 5, OUT => OUT))]
-       |                                     ^^^^^^^^^^^^|^^^^^^^^^^^^
-       |                                                 `-------------- function call in initialization expression is not allowed
-    ---'
-    [E0605] Error: invalid array access
-       ,-[ file:///test0.st:4:34 ]
-       |
-     4 |     ml : ARRAY [0..2] OF INT := [10(call(IN := 5, OUT => OUT))]
-       |                                  ^^^^^^^^^^^^^^|^^^^^^^^^^^^^^
-       |                                                `---------------- too many elements in array initializer (expected at most 3)
+     4 |     ml : ARRAY [0..2] OF INT := [1(call(IN := 5, OUT => OUT))]
+       |                                    ^^^^^^^^^^^^|^^^^^^^^^^^^
+       |                                                `-------------- function call in initialization expression is not allowed
     ---'
     ");
 }

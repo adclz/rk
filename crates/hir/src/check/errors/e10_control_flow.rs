@@ -52,21 +52,22 @@ pub enum ControlFlowError<'db> {
 impl<'db> ErrorCode for ControlFlowError<'db> {
     fn code(&self) -> &'static str {
         match self {
-            Self::AssignCallableType { .. } => "E1001",
-            Self::IsVarInput { .. } => "E1002",
-            Self::DirectType { .. } => "E1003",
-            Self::CallNonCallableType { .. } => "E1004",
-            Self::ContinueOutsideLoop { .. } => "E1005",
-            Self::ExitOutsideLoop { .. } => "E1006",
-            Self::DerefPossiblyNull { .. } => "E1007",
+            Self::AssignCallableType { .. } => "E0226",
+            Self::IsVarInput { .. } => "E0227",
+            Self::DirectType { .. } => "E0228",
+            Self::CallNonCallableType { .. } => "E0229",
+            Self::ContinueOutsideLoop { .. } => "E1001",
+            Self::ExitOutsideLoop { .. } => "E1002",
+            Self::DerefPossiblyNull { .. } => "E1003",
         }
     }
 
     fn description(&self) -> &'static str {
         match self {
-            Self::AssignCallableType { .. } | Self::IsVarInput { .. } | Self::DirectType { .. } => {
-                "assignment violation"
-            }
+            Self::AssignCallableType { .. }
+            | Self::IsVarInput { .. }
+            | Self::DirectType { .. }
+            | Self::CallNonCallableType { .. } => "semantic violation",
             Self::DerefPossiblyNull { .. } => "possibly null dereference",
             _ => "control flow violation",
         }

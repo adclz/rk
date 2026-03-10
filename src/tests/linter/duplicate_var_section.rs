@@ -102,7 +102,7 @@ fn duplicate_var_input_in_function_block(mut with_db: RootDatabase) {
         END_FUNCTION_BLOCK
     "#;
     assert_snapshot!(test_lint_diagnostics(&mut with_db, &[source]), @r"
-    [E1002] Error: assignment violation
+    [E0227] Error: semantic violation
        ,-[ file:///test0.st:9:13 ]
        |
      9 |             x := y;

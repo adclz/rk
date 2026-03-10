@@ -174,7 +174,7 @@ END_PROGRAM
     "#;
 
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E1003] Error: assignment violation
+    [E0228] Error: semantic violation
         ,-[ file:///test0.st:11:10 ]
         |
      11 |     x := ITF1;

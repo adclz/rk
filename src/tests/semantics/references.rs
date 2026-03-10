@@ -56,7 +56,7 @@ END_FUNCTION_BLOCK
         "#;
 
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E1007] Warning: possibly null dereference
+    [E1003] Warning: possibly null dereference
        ,-[ file:///test0.st:7:2 ]
        |
      4 |        test: REF_TO INT;
@@ -200,7 +200,7 @@ fn valid_assign_value_to_deref_type(mut with_db: RootDatabase) {
         "#;
 
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E1007] Warning: possibly null dereference
+    [E1003] Warning: possibly null dereference
        ,-[ file:///test0.st:7:9 ]
        |
      4 |             test: REF_TO INT;
