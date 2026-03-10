@@ -58,9 +58,9 @@ fn recursive_function_blocks(mut with_db: RootDatabase) {
         |
      11 |                   invalid : fb1;
         |                             ^|^
-        |                              `--- recurse at this location
+        |                              `--- recurses at this location
         |
-        | Note: cycles goes
+        | Note: cycle goes
         |       -> fb1
         |       -> fb2
         |       ... and back to fb1
@@ -109,9 +109,9 @@ fn mutually_referential_types(mut with_db: RootDatabase) {
        |             `-- type 'A' is recursive
      4 |             B: A;
        |                |
-       |                `-- recurse at this location
+       |                `-- recurses at this location
        |
-       | Note: cycles goes
+       | Note: cycle goes
        |       -> A
        |       -> B
        |       ... and back to A
@@ -137,9 +137,9 @@ fn mutually_referential_type_and_array(mut with_db: RootDatabase) {
        |             `-- type 'A' is recursive
      4 |             B: ARRAY[1..2] OF A;
        |                               |
-       |                               `-- recurse at this location
+       |                               `-- recurses at this location
        |
-       | Note: cycles goes
+       | Note: cycle goes
        |       -> A
        |       -> B
        |       ... and back to A
@@ -235,13 +235,13 @@ fn recursion_in_namespace(mut with_db: RootDatabase) {
         |
       5 |                   invalid : ns.ns2.fb2;
         |                             ^^^^^|^^^^
-        |                                  `------ recurse at this location
+        |                                  `------ recurses at this location
         |
      11 |             FUNCTION_BLOCK fb2
         |                            ^|^
         |                             `--- type 'fb2' is recursive
         |
-        | Note: cycles goes
+        | Note: cycle goes
         |       -> fb2
         |       -> fb1
         |       ... and back to fb2

@@ -76,7 +76,7 @@ impl<'db> ToIdeDiagnostic<'db> for RecursionError<'db> {
 
                 for cs in callsite {
                     diag.with_related(Related::new(
-                        "recurse at this location".to_string(),
+                        "recurses at this location".to_string(),
                         cs.get_scope_id(db).file(db),
                         cs.get_span(db),
                     ));
@@ -90,7 +90,7 @@ impl<'db> ToIdeDiagnostic<'db> for RecursionError<'db> {
                         .join("");
 
                     diag.with_note(format!(
-                        "cycles goes\n{stack}... and back to {}",
+                        "cycle goes\n{stack}... and back to {}",
                         pou.get_name_ident(db).text(db)
                     ));
                 }
