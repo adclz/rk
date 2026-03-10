@@ -1,5 +1,6 @@
 pub mod comment_index;
 pub mod definition;
+pub mod document_links;
 pub mod document_symbols;
 pub mod formatter;
 pub mod formatter_stdlib;

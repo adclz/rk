@@ -18,6 +18,7 @@ use auto_lsp::lsp_types::CodeLensOptions;
 use auto_lsp::lsp_types::CompletionOptions;
 use auto_lsp::lsp_types::DeclarationCapability;
 use auto_lsp::lsp_types::DiagnosticOptions;
+use auto_lsp::lsp_types::DocumentLinkOptions;
 use auto_lsp::lsp_types::DiagnosticServerCapabilities;
 use auto_lsp::lsp_types::DidChangeWatchedFilesClientCapabilities;
 use auto_lsp::lsp_types::DidChangeWatchedFilesRegistrationOptions;
@@ -63,6 +64,7 @@ use auto_lsp::lsp_types::request::RegisterCapability;
 use auto_lsp::lsp_types::request::Rename;
 use auto_lsp::lsp_types::request::SemanticTokensFullRequest;
 use auto_lsp::lsp_types::request::SemanticTokensRangeRequest;
+use auto_lsp::lsp_types::request::DocumentLinkRequest;
 use auto_lsp::lsp_types::request::SignatureHelpRequest;
 use auto_lsp::lsp_types::request::WorkspaceDiagnosticRequest;
 use auto_lsp::lsp_types::{
@@ -89,6 +91,7 @@ use crate::capabilties::completions::completions;
 use crate::capabilties::declaration::go_to_declaration;
 use crate::capabilties::definition::go_to_definition;
 use crate::capabilties::diagnostics::diagnostics;
+use crate::capabilties::document_links::document_links;
 use crate::capabilties::diagnostics::workspace_diagnostics;
 use crate::capabilties::document_symbols::document_symbols;
 use crate::capabilties::folding_ranges::folding_ranges;
@@ -155,6 +158,10 @@ pub fn boot() -> Result<(), Box<dyn Error + Send + Sync>> {
                 declaration_provider: Some(DeclarationCapability::Simple(true)),
                 definition_provider: Some(OneOf::Left(true)),
                 document_formatting_provider: Some(OneOf::Left(true)),
+                document_link_provider: Some(DocumentLinkOptions {
+                    resolve_provider: Some(false),
+                    work_done_progress_options: Default::default(),
+                }),
                 implementation_provider: Some(ImplementationProviderCapability::Simple(true)),
                 references_provider: Some(OneOf::Left(true)),
                 rename_provider: Some(OneOf::Left(true)),
@@ -226,6 +233,7 @@ fn on_requests<Db: WorkspaceDataBase + Clone + RefUnwindSafe>(
         .on::<References, _>(ThreadIntent::Worker, references)
         .on::<Rename, _>(ThreadIntent::Worker, rename)
         .on::<SignatureHelpRequest, _>(ThreadIntent::LatencySensitive, signature_help)
+        .on::<DocumentLinkRequest, _>(ThreadIntent::Worker, document_links)
 }
 
 fn on_notifications(

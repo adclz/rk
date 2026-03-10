@@ -16,6 +16,7 @@ use crate::handlers::references::ReferenceLocation;
 
 pub mod code_lens;
 pub mod completions;
+pub mod document_links;
 pub mod completions_utils;
 pub mod declaration;
 pub mod definition;
