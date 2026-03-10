@@ -19,7 +19,7 @@ fn invalid_enum_type(mut with_db: RootDatabase) {
        |
      3 |             List: BOOL (A, B, C);
        |                   ^^|^
-       |                     `--- I=invalid enum type 'BOOL'
+       |                     `--- invalid enum type 'BOOL'
        |
        | Note: only numeric integer types are allowed for ENUM
     ---'

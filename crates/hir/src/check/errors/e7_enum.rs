@@ -54,7 +54,7 @@ impl<'db> ToIdeDiagnostic<'db> for EnumError<'db> {
         match self {
             EnumError::InvalidEnumType { value, typ } => {
                 let mut diag = diag()
-                    .message(format!("I=invalid enum type '{}'", typ.type_name(db)))
+                    .message(format!("invalid enum type '{}'", typ.type_name(db)))
                     .severity(DiagnosticSeverity::ERROR)
                     .desc(self)
                     .range(value.get_span(db))
