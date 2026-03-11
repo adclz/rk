@@ -2,6 +2,7 @@ use auto_lsp::default::db::BaseDatabase;
 use db::RootDatabase;
 use hir::HirNodeInfo;
 use ide_proto::handlers::completions_utils::{CompletionCtx, QueryMode};
+use ide_proto::handlers::{CompletionHandler, CompletionRequest};
 use ide_proto::walk::completion_descendant_at;
 use rstest::rstest;
 
@@ -218,6 +219,209 @@ END_FUNCTION
     assert!(format!("{completions:?}").contains("input_x"));
     assert!(format!("{completions:?}").contains("output_y"));
     assert!(format!("{completions:?}").contains("temp"));
+}
+
+/// Function with a return type should suggest its own name for return value assignment.
+#[rstest]
+pub fn function_self_return_completion(mut with_db: RootDatabase) {
+    let source = r#"
+FUNCTION my_func : INT
+VAR
+    x : INT;
+END_VAR
+
+END_FUNCTION
+"#;
+
+    add_sources(&mut with_db, &[source]);
+    let file = *with_db.get_files().iter().last().unwrap();
+
+    // Cursor inside the function body (blank line before END_FUNCTION)
+    let offset = source.find("END_FUNCTION").unwrap() - 1;
+
+    let (node, idx, is_last_before) = completion_descendant_at(&with_db, file, offset).unwrap();
+    let req = CompletionRequest {
+        offset,
+        trigger_character: None,
+        query: String::new(),
+        node_index_pos: Some(idx),
+        is_last_before,
+    };
+    let completions = node.completion(&with_db, &req).unwrap();
+    let debug = format!("{completions:?}");
+
+    // Should contain the function name with (Self) description
+    assert!(debug.contains("my_func"), "should suggest function name for return value");
+    assert!(debug.contains("Self"), "should mark as Self");
+}
+
+/// Function WITHOUT a return type should NOT suggest its own name.
+#[rstest]
+pub fn function_no_return_type_no_self_completion(mut with_db: RootDatabase) {
+    let source = r#"
+FUNCTION my_void_func
+VAR
+    x : INT;
+END_VAR
+
+END_FUNCTION
+"#;
+
+    add_sources(&mut with_db, &[source]);
+    let file = *with_db.get_files().iter().last().unwrap();
+
+    let offset = source.find("END_FUNCTION").unwrap() - 1;
+
+    let (node, idx, is_last_before) = completion_descendant_at(&with_db, file, offset).unwrap();
+    let req = CompletionRequest {
+        offset,
+        trigger_character: None,
+        query: String::new(),
+        node_index_pos: Some(idx),
+        is_last_before,
+    };
+    let completions = node.completion(&with_db, &req).unwrap();
+    let debug = format!("{completions:?}");
+
+    // Should NOT suggest the function name as Self
+    assert!(!debug.contains("(Self)"), "should not suggest Self for void function");
+}
+
+/// Method with a return type should suggest its own name for return value assignment.
+#[rstest]
+pub fn method_self_return_completion(mut with_db: RootDatabase) {
+    let source = r#"
+FUNCTION_BLOCK my_fb
+METHOD my_method : INT
+VAR
+    x : INT;
+END_VAR
+
+END_METHOD
+END_FUNCTION_BLOCK
+"#;
+
+    add_sources(&mut with_db, &[source]);
+    let file = *with_db.get_files().iter().last().unwrap();
+
+    // Cursor inside the method body
+    let offset = source.find("END_METHOD").unwrap() - 1;
+
+    let (node, idx, is_last_before) = completion_descendant_at(&with_db, file, offset).unwrap();
+    let req = CompletionRequest {
+        offset,
+        trigger_character: None,
+        query: String::new(),
+        node_index_pos: Some(idx),
+        is_last_before,
+    };
+    let completions = node.completion(&with_db, &req).unwrap();
+    let debug = format!("{completions:?}");
+
+    assert!(debug.contains("my_method"), "should suggest method name for return value");
+    assert!(debug.contains("Self"), "should mark as Self");
+}
+
+/// Method WITHOUT a return type should NOT suggest its own name.
+#[rstest]
+pub fn method_no_return_type_no_self_completion(mut with_db: RootDatabase) {
+    let source = r#"
+FUNCTION_BLOCK my_fb
+METHOD my_void_method
+VAR
+    x : INT;
+END_VAR
+
+END_METHOD
+END_FUNCTION_BLOCK
+"#;
+
+    add_sources(&mut with_db, &[source]);
+    let file = *with_db.get_files().iter().last().unwrap();
+
+    let offset = source.find("END_METHOD").unwrap() - 1;
+
+    let (node, idx, is_last_before) = completion_descendant_at(&with_db, file, offset).unwrap();
+    let req = CompletionRequest {
+        offset,
+        trigger_character: None,
+        query: String::new(),
+        node_index_pos: Some(idx),
+        is_last_before,
+    };
+    let completions = node.completion(&with_db, &req).unwrap();
+    let debug = format!("{completions:?}");
+
+    // Should NOT suggest the method name as Self
+    assert!(!debug.contains("(Self)"), "should not suggest Self for void method");
+}
+
+/// When the cursor is on an unresolved identifier (PathExpr with Type::Never), the self-return item should still appear.
+#[rstest]
+pub fn function_self_return_on_unresolved_path(mut with_db: RootDatabase) {
+    let source = r#"
+FUNCTION my_func : INT
+VAR
+    x : INT;
+END_VAR
+    my;
+END_FUNCTION
+"#;
+
+    add_sources(&mut with_db, &[source]);
+    let file = *with_db.get_files().iter().last().unwrap();
+
+    // Cursor on "my" — an unresolved identifier that hits the PathExpr fallback path
+    let offset = source.find("my;").unwrap();
+
+    let (node, idx, is_last_before) = completion_descendant_at(&with_db, file, offset).unwrap();
+    let req = CompletionRequest {
+        offset,
+        trigger_character: None,
+        query: String::new(),
+        node_index_pos: Some(idx),
+        is_last_before,
+    };
+    let completions = node.completion(&with_db, &req).unwrap();
+    let debug = format!("{completions:?}");
+
+    assert!(debug.contains("my_func"), "should suggest function name even on PathExpr");
+    assert!(debug.contains("Self"), "should mark as Self");
+}
+
+/// When the cursor is on an unresolved identifier inside a method, the self-return item should appear.
+#[rstest]
+pub fn method_self_return_on_unresolved_path(mut with_db: RootDatabase) {
+    let source = r#"
+FUNCTION_BLOCK my_fb
+METHOD my_method : INT
+VAR
+    x : INT;
+END_VAR
+    my;
+END_METHOD
+END_FUNCTION_BLOCK
+"#;
+
+    add_sources(&mut with_db, &[source]);
+    let file = *with_db.get_files().iter().last().unwrap();
+
+    // Cursor on "my" — unresolved identifier in method body
+    let offset = source.find("my;").unwrap();
+
+    let (node, idx, is_last_before) = completion_descendant_at(&with_db, file, offset).unwrap();
+    let req = CompletionRequest {
+        offset,
+        trigger_character: None,
+        query: String::new(),
+        node_index_pos: Some(idx),
+        is_last_before,
+    };
+    let completions = node.completion(&with_db, &req).unwrap();
+    let debug = format!("{completions:?}");
+
+    assert!(debug.contains("my_method"), "should suggest method name even on PathExpr");
+    assert!(debug.contains("Self"), "should mark as Self");
 }
 
 /// Cursor after END_FUNCTION should NOT resolve to a node inside the function.

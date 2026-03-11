@@ -14,11 +14,11 @@ use hir::{
         namespace::NamespaceDecl,
         pous::pou::Pou,
         program::ProgramDecl,
-        scope::ScopeKind,
+        scope::{Scope, ScopeKind},
         semantic_index::{NodeKey, get_scope, semantic_index},
         using::Using,
     },
-    hir_ty::{index_graphs::namespace_index, infer::Infer},
+    hir_ty::{head::inheritance::MethodRef, index_graphs::namespace_index, infer::Infer},
     query_string::{query::Query, scope::SymbolSearch},
 };
 use rustc_hash::FxHashSet;
@@ -27,46 +27,6 @@ use crate::handlers::{
     CompletionHandler, CompletionRequest,
     completions_utils::{CompletionCtx, QueryMode, pou_context::HeadLocation, static_snippets},
 };
-
-/// Walk up a PathExpr's field chain to collect the full ident path.
-/// For `System.Math.Sin`, this returns `["System", "Math", "Sin"]` as a NamespacePath.
-/// Returns None if the chain contains Index or Deref (can't be namespace paths).
-pub(crate) fn try_build_namespace_path<'db>(
-    db: &'db dyn WorkspaceDataBase,
-    path: &PathExpr<'db>,
-) -> Option<NamespacePath> {
-    let mut fragments = vec![path.ident(db).ident];
-    let mut current = path.expr(db);
-    loop {
-        match current {
-            PathExprKind::Field(f) => {
-                fragments.push(f.path.ident(db).ident);
-                current = f.path.expr(db);
-            }
-            PathExprKind::VarAccess(_) => break,
-            _ => return None,
-        }
-    }
-    fragments.reverse();
-    Some(NamespacePath::new(db, fragments))
-}
-
-/// Check if a path matches any namespace (exact) or is a prefix of any namespace.
-/// E.g. "System" matches even if only "System.Math" exists.
-pub(crate) fn is_namespace_prefix(db: &dyn WorkspaceDataBase, path: NamespacePath) -> bool {
-    // Exact match
-    if !namespace_index(db, path).is_empty() {
-        return true;
-    }
-    // Prefix match: check if any namespace starts with this path
-    let mut query = Query::new(path.to_string(db));
-    query.prefix();
-    let results = SymbolSearch::new(|_, _| true)
-        .with_query(query)
-        .only_namespaces()
-        .search(db);
-    results.namespaces().next().is_some()
-}
 
 impl<'db> CompletionHandler<'db> for HirNode<'db> {
     fn completion(
@@ -130,6 +90,7 @@ impl<'db> CompletionHandler<'db> for HirNode<'db> {
             HirNode::Resource(r) => r.completion(db, req),
             HirNode::Task(t) => t.completion(db, req),
             HirNode::Invocation(i) => i.completion(db, req),
+            HirNode::MethodRef(m) => m.completion(db, req),
             HirNode::VariableAccess(v) => v.completion(
                 db,
                 &req.with_query(CallSite::from_scoped(db, v).to_string(db).to_string()),
@@ -189,6 +150,34 @@ impl<'db> CompletionHandler<'db> for Pou<'db> {
         if head_result.head_location == HeadLocation::InBody {
             ctx.scope_completion(self.get_scope_id(db), &req.query, db);
             ctx.items.extend(static_snippets::all_stmts());
+
+            let scope = get_scope(db, self.get_scope_id(db));
+            maybe_add_self_return(db, &scope, &mut ctx.items);
+        }
+
+        Some(ctx.take_items())
+    }
+}
+
+impl<'db> CompletionHandler<'db> for MethodRef<'db> {
+    fn completion(
+        &'db self,
+        db: &'db dyn WorkspaceDataBase,
+        req: &CompletionRequest,
+    ) -> Option<Vec<CompletionItem>> {
+        if req.trigger_character.as_deref() == Some(".") {
+            return Some(vec![]);
+        }
+
+        let mut ctx = CompletionCtx::new(req.offset, QueryMode::Body);
+        let head_result = ctx.located_method_completion(*self, db);
+
+        if head_result.head_location == HeadLocation::InBody {
+            ctx.scope_completion(self.get_scope_id(db), &req.query, db);
+            ctx.items.extend(static_snippets::all_stmts());
+
+            let scope = get_scope(db, self.get_scope_id(db));
+            maybe_add_self_return(db, &scope, &mut ctx.items);
         }
 
         Some(ctx.take_items())
@@ -339,23 +328,14 @@ impl<'db> CompletionHandler<'db> for PathExpr<'db> {
             return Some(ctx.take_items());
         }
 
-        // check if we're in a pou/program body, if so add all statements as completion items
+        // check if we're in a pou/program/method body, if so add all statements as completion items
         let scope = get_scope(db, self.get_scope_id(db));
-        let in_body = match scope.kind {
-            ScopeKind::Pou(pou) => ctx
-                .located_pou_completion(pou, db)
-                .head_location
-                .is_in_body(),
-            ScopeKind::Program(prog) => ctx
-                .located_program_completion(prog, db)
-                .head_location
-                .is_in_body(),
-            _ => false,
-        };
+        let in_body = is_in_body(&scope, &mut ctx, db);
         if in_body {
             ctx.scope_completion(self.get_scope_id(db), &req.query, db);
             ctx.items.extend(static_snippets::all_stmts());
             ctx.items.extend(static_snippets::elem_type_names_init());
+            maybe_add_self_return(db, &scope, &mut ctx.items);
         }
 
         Some(ctx.take_items())
@@ -377,23 +357,14 @@ impl<'db> CompletionHandler<'db> for VariableAccess<'db> {
             return Some(ctx.take_items());
         }
 
-        // check if we're in a pou/program body, if so add all statements as completion items
+        // check if we're in a pou/program/method body, if so add all statements as completion items
         let scope = get_scope(db, self.get_scope_id(db));
-        let in_body = match scope.kind {
-            ScopeKind::Pou(pou) => ctx
-                .located_pou_completion(pou, db)
-                .head_location
-                .is_in_body(),
-            ScopeKind::Program(prog) => ctx
-                .located_program_completion(prog, db)
-                .head_location
-                .is_in_body(),
-            _ => false,
-        };
+        let in_body = is_in_body(&scope, &mut ctx, db);
         if in_body {
             ctx.scope_completion(self.get_scope_id(db), &req.query, db);
             ctx.items.extend(static_snippets::all_stmts());
             ctx.items.extend(static_snippets::elem_type_names_init());
+            maybe_add_self_return(db, &scope, &mut ctx.items);
         }
 
         Some(ctx.take_items())
@@ -414,23 +385,14 @@ impl<'db> CompletionHandler<'db> for Expr<'db> {
             return Some(ctx.take_items());
         }
 
-        // check if we're in a pou/program body, if so add all statements as completion items
+        // check if we're in a pou/program/method body, if so add all statements as completion items
         let scope = get_scope(db, self.get_scope_id(db));
-        let in_body = match scope.kind {
-            ScopeKind::Pou(pou) => ctx
-                .located_pou_completion(pou, db)
-                .head_location
-                .is_in_body(),
-            ScopeKind::Program(prog) => ctx
-                .located_program_completion(prog, db)
-                .head_location
-                .is_in_body(),
-            _ => false,
-        };
+        let in_body = is_in_body(&scope, &mut ctx, db);
         if in_body {
             ctx.scope_completion(self.get_scope_id(db), &req.query, db);
             ctx.items.extend(static_snippets::all_stmts());
             ctx.items.extend(static_snippets::elem_type_names_init());
+            maybe_add_self_return(db, &scope, &mut ctx.items);
         }
 
         Some(ctx.take_items())
@@ -577,4 +539,90 @@ impl<'db> CompletionHandler<'db> for Using<'db> {
         }
         Some(results)
     }
+}
+
+
+
+/// Check if the cursor is in the body of a POU, program, or method.
+fn is_in_body<'db>(scope: &Scope<'db>, ctx: &mut CompletionCtx, db: &'db dyn WorkspaceDataBase) -> bool {
+    match scope.kind {
+        ScopeKind::Pou(pou) => ctx.located_pou_completion(pou, db).head_location.is_in_body(),
+        ScopeKind::Program(prog) => ctx.located_program_completion(prog, db).head_location.is_in_body(),
+        ScopeKind::MethodDecl(m) => ctx.located_method_completion(MethodRef::Declared(m), db).head_location.is_in_body(),
+        _ => false,
+    }
+}
+
+/// If the scope is a function or method with a return type, push a self-return completion item.
+fn maybe_add_self_return(db: &dyn WorkspaceDataBase, scope: &hir::hir_def::scope::Scope<'_>, items: &mut Vec<CompletionItem>) {
+    match scope.kind {
+        ScopeKind::Pou(Pou::Function(f)) => {
+            if let Some(ret_spec) = f.return_type(db) {
+                let ret_type = ret_spec.infer(db).type_name(db);
+                items.push(self_return_completion(f.name(db).text(db), &ret_type));
+            }
+        }
+        ScopeKind::MethodDecl(m) => {
+            if let Some(ret_spec) = m.return_type(db) {
+                let ret_type = ret_spec.infer(db).type_name(db);
+                items.push(self_return_completion(m.name(db).text(db), &ret_type));
+            }
+        }
+        _ => {}
+    }
+}
+
+/// Build a completion item for the function/method's own name (used for return value assignment).
+/// e.g. inside `FUNCTION foo : INT`, typing `fo` should suggest `foo` as an assignment target.
+fn self_return_completion(name: &str, return_type: &str) -> CompletionItem {
+    CompletionItem {
+        label: name.to_string(),
+        label_details: Some(auto_lsp::lsp_types::CompletionItemLabelDetails {
+            detail: Some(format!(": {return_type}")),
+            description: Some("(Self)".into()),
+        }),
+        kind: Some(auto_lsp::lsp_types::CompletionItemKind::VARIABLE),
+        sort_text: Some(format!("0{name}")),
+        ..Default::default()
+    }
+}
+
+/// Walk up a PathExpr's field chain to collect the full ident path.
+/// For `System.Math.Sin`, this returns `["System", "Math", "Sin"]` as a NamespacePath.
+/// Returns None if the chain contains Index or Deref (can't be namespace paths).
+pub(crate) fn try_build_namespace_path<'db>(
+    db: &'db dyn WorkspaceDataBase,
+    path: &PathExpr<'db>,
+) -> Option<NamespacePath> {
+    let mut fragments = vec![path.ident(db).ident];
+    let mut current = path.expr(db);
+    loop {
+        match current {
+            PathExprKind::Field(f) => {
+                fragments.push(f.path.ident(db).ident);
+                current = f.path.expr(db);
+            }
+            PathExprKind::VarAccess(_) => break,
+            _ => return None,
+        }
+    }
+    fragments.reverse();
+    Some(NamespacePath::new(db, fragments))
+}
+
+/// Check if a path matches any namespace (exact) or is a prefix of any namespace.
+/// E.g. "System" matches even if only "System.Math" exists.
+pub(crate) fn is_namespace_prefix(db: &dyn WorkspaceDataBase, path: NamespacePath) -> bool {
+    // Exact match
+    if !namespace_index(db, path).is_empty() {
+        return true;
+    }
+    // Prefix match: check if any namespace starts with this path
+    let mut query = Query::new(path.to_string(db));
+    query.prefix();
+    let results = SymbolSearch::new(|_, _| true)
+        .with_query(query)
+        .only_namespaces()
+        .search(db);
+    results.namespaces().next().is_some()
 }

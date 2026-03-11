@@ -6,6 +6,7 @@ use hir::{
         pous::{class::Class, function::Function, function_block::FunctionBlock, pou::Pou},
         program::ProgramDecl,
     },
+    hir_ty::head::inheritance::MethodRef,
 };
 
 use crate::handlers::completions_utils::{
@@ -84,6 +85,45 @@ impl<'db> CompletionCtx {
             Pou::Interface(_) => {} // todo: add *magic* method completions?
             Pou::DataType(_) => {}  // will be handled by Spec
         }
+        ctx
+    }
+
+    pub fn located_method_completion(
+        &mut self,
+        method: MethodRef<'db>,
+        db: &'db dyn WorkspaceDataBase,
+    ) -> HeadResult {
+        let doc = method.get_scope_id(db).file(db).document(db);
+        let root_node = doc.tree.root_node();
+        let source = &doc.texter.text;
+        let range = *method.get_span(db).ts();
+
+        let mut ctx = HeadResult::query_var_decls(root_node, source, range, self.offset);
+
+        // The method_decl node captures itself as @method, which makes
+        // query_var_decls think we're "InMethods". Since we know we're
+        // inside this specific method, treat InMethods as InBody.
+        if ctx.head_location == HeadLocation::InMethods {
+            ctx.head_location = HeadLocation::InBody;
+        }
+
+        if ctx.is_inside_var_section() {
+            return ctx;
+        }
+
+        // Methods have the same var section structure as functions
+        match ctx.head_location {
+            HeadLocation::BeforeVars
+            | HeadLocation::InVars
+            | HeadLocation::InBodyAfterVars => {
+                add_var_snippets(
+                    Function::allowed().difference(ctx.active_variable_sections()),
+                    &mut self.items,
+                );
+            }
+            _ => {}
+        }
+
         ctx
     }
 
