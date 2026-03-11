@@ -115,20 +115,19 @@ impl<'db> Type<'db> {
         adjustments: Option<&[Adjustment<'db>]>,
         resolver: Resolver<'db>,
     ) -> CoerceResult<'db> {
-        // We return true if the lhs or rhs is of type never.
-        // that's because Never variants are already reported by the resolver and we don't want to propagate too many errors
+        // normalizing first to peel Variable/DataType/StructElement wrappers
+        let lhs = self.normalize(db);
+        let to = to.normalize(db);
 
-        if self.is_never() || to.is_never() {
+        // We return Ok if the lhs or rhs is of type Never.
+        // Never variants are already reported by the resolver and we don't want to propagate cascading errors.
+        if lhs.is_never() || to.is_never() {
             return Ok(());
         }
 
         // types *must* not be infer variants during coercion
-        debug_assert!(!self.has_infer());
+        debug_assert!(!lhs.has_infer());
         debug_assert!(!to.has_infer());
-
-        // normalizing here is necessary here to avoid matching on wrapped types
-        let lhs = self.normalize(db);
-        let to = to.normalize(db);
 
         // use the adjustments to allow coercions for references,
         // but only if the reference can be dereferenced to the expected type
