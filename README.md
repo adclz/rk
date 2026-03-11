@@ -36,10 +36,9 @@ cargo build --release --package vscode-lsp-server
 cp target/release/vscode-lsp-server vscode/server/bin/
 strip vscode/server/bin/vscode-lsp-server
 
-# 2. Install JS dependencies and build the extension client
-cd vscode && npm install && npm run build
-
-# 3. Package as .vsix
+# 2. Install JS dependencies, build the extension client, and package as .vsix
+cd vscode
+npm install && npm run build
 npx @vscode/vsce package --target linux-x64
 ```
 
