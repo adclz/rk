@@ -345,6 +345,168 @@ END_FUNCTION"#;
     ");
 }
 
+// INTO constraint - narrowing is not allowed (LINT -> SINT)
+#[rstest]
+fn invalid_into_narrowing_lint_to_sint(mut with_db: RootDatabase) {
+    let source = r#"
+FUNCTION narrow<A: ANY_SIGNED, B: ANY_SIGNED + INTO<A>> : A
+    VAR_INPUT x: B; END_VAR
+    narrow := x;
+END_FUNCTION
+
+FUNCTION test : SINT
+    test := narrow<SINT, LINT>(LINT#5);
+END_FUNCTION"#;
+
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
+    [E0316] Error: type argument INTO constraint mismatch
+       ,-[ file:///test0.st:8:13 ]
+       |
+     8 |     test := narrow<SINT, LINT>(LINT#5);
+       |             ^^^|^^
+       |                `---- 'LINT' cannot be implicitly cast into 'SINT' (INTO constraint on 'B')
+    ---'
+    ");
+}
+
+// INTO constraint - unsigned into signed is not implicit
+#[rstest]
+fn invalid_into_uint_to_sint(mut with_db: RootDatabase) {
+    let source = r#"
+FUNCTION convert<A: ANY_INT, B: ANY_INT + INTO<A>> : A
+    VAR_INPUT x: B; END_VAR
+    convert := x;
+END_FUNCTION
+
+FUNCTION test : SINT
+    test := convert<SINT, UINT>(UINT#5);
+END_FUNCTION"#;
+
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
+    [E0316] Error: type argument INTO constraint mismatch
+       ,-[ file:///test0.st:8:13 ]
+       |
+     8 |     test := convert<SINT, UINT>(UINT#5);
+       |             ^^^|^^^
+       |                `----- 'UINT' cannot be implicitly cast into 'SINT' (INTO constraint on 'B')
+    ---'
+    ");
+}
+
+// INTO constraint - REAL cannot be implicitly cast to INT
+#[rstest]
+fn invalid_into_real_to_int(mut with_db: RootDatabase) {
+    let source = r#"
+FUNCTION convert<A: ANY_NUM, B: ANY_NUM + INTO<A>> : A
+    VAR_INPUT x: B; END_VAR
+    convert := x;
+END_FUNCTION
+
+FUNCTION test : INT
+    test := convert<INT, REAL>(1.5);
+END_FUNCTION"#;
+
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
+    [E0316] Error: type argument INTO constraint mismatch
+       ,-[ file:///test0.st:8:13 ]
+       |
+     8 |     test := convert<INT, REAL>(1.5);
+       |             ^^^|^^^
+       |                `----- 'REAL' cannot be implicitly cast into 'INT' (INTO constraint on 'B')
+    ---'
+    ");
+}
+
+// INTO constraint - chained: A <- B <- C, C cannot cast into A
+#[rstest]
+fn invalid_into_chained_constraints(mut with_db: RootDatabase) {
+    let source = r#"
+FUNCTION chain<A: ANY_SIGNED, B: ANY_SIGNED + INTO<A>, C: ANY_SIGNED + INTO<B>> : A
+    VAR_INPUT
+        x: B;
+        y: C;
+    END_VAR
+    chain := x;
+END_FUNCTION
+
+FUNCTION test : SINT
+    test := chain<SINT, INT, LINT>(INT#1, LINT#2);
+END_FUNCTION"#;
+
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
+    [E0316] Error: type argument INTO constraint mismatch
+        ,-[ file:///test0.st:11:13 ]
+        |
+     11 |     test := chain<SINT, INT, LINT>(INT#1, LINT#2);
+        |             ^^|^^
+        |               `---- 'INT' cannot be implicitly cast into 'SINT' (INTO constraint on 'B')
+    ----'
+    [E0316] Error: type argument INTO constraint mismatch
+        ,-[ file:///test0.st:11:13 ]
+        |
+     11 |     test := chain<SINT, INT, LINT>(INT#1, LINT#2);
+        |             ^^|^^
+        |               `---- 'LINT' cannot be implicitly cast into 'INT' (INTO constraint on 'C')
+    ----'
+    ");
+}
+
+// INTO constraint - valid widening across bit types
+#[rstest]
+fn valid_into_byte_to_word(mut with_db: RootDatabase) {
+    let source = r#"
+FUNCTION widen<A: ANY_BIT, B: ANY_BIT + INTO<A>> : A
+    VAR_INPUT x: B; END_VAR
+    widen := x;
+END_FUNCTION
+
+FUNCTION test : WORD
+    test := widen<WORD, BYTE>(BYTE#16#FF);
+END_FUNCTION"#;
+
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @"");
+}
+
+// INTO constraint - DWORD cannot narrow into BYTE
+#[rstest]
+fn invalid_into_dword_to_byte(mut with_db: RootDatabase) {
+    let source = r#"
+FUNCTION narrow<A: ANY_BIT, B: ANY_BIT + INTO<A>> : A
+    VAR_INPUT x: B; END_VAR
+    narrow := x;
+END_FUNCTION
+
+FUNCTION test : BYTE
+    test := narrow<BYTE, DWORD>(DWORD#16#FF);
+END_FUNCTION"#;
+
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
+    [E0316] Error: type argument INTO constraint mismatch
+       ,-[ file:///test0.st:8:13 ]
+       |
+     8 |     test := narrow<BYTE, DWORD>(DWORD#16#FF);
+       |             ^^^|^^
+       |                `---- 'DWORD' cannot be implicitly cast into 'BYTE' (INTO constraint on 'B')
+    ---'
+    ");
+}
+
+// INTO constraint - valid: SINT widens into LREAL via implicit cast chain
+#[rstest]
+fn valid_into_sint_to_lreal(mut with_db: RootDatabase) {
+    let source = r#"
+FUNCTION widen<A: ANY_NUM, B: ANY_NUM + INTO<A>> : A
+    VAR_INPUT x: B; END_VAR
+    widen := x;
+END_FUNCTION
+
+FUNCTION test : LREAL
+    test := widen<LREAL, SINT>(SINT#5);
+END_FUNCTION"#;
+
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @"");
+}
+
 // FUNCTION_BLOCK generic tests
 
 #[rstest]

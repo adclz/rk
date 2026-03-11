@@ -30,7 +30,10 @@ impl<'db> Type<'db> {
         self.is_numeric()
             || self.is_time()
             || match self {
-                Type::Generic(generic) => generic.is_numeric(db) || generic.is_time(db),
+                Type::Generic(generic) => generic
+                    .as_builtin_generic(db)
+                    .map(|g| g.supports_add())
+                    .unwrap_or(false),
                 _ => false,
             }
     }
@@ -38,7 +41,10 @@ impl<'db> Type<'db> {
     pub fn supports_mul(&self, db: &'db dyn WorkspaceDataBase) -> bool {
         self.is_numeric()
             || match self {
-                Type::Generic(generic) => generic.is_numeric(db),
+                Type::Generic(generic) => generic
+                    .as_builtin_generic(db)
+                    .map(|g| g.supports_mul())
+                    .unwrap_or(false),
                 _ => false,
             }
     }
@@ -46,7 +52,10 @@ impl<'db> Type<'db> {
     pub fn supports_div(&self, db: &'db dyn WorkspaceDataBase) -> bool {
         self.is_numeric()
             || match self {
-                Type::Generic(generic) => generic.is_numeric(db),
+                Type::Generic(generic) => generic
+                    .as_builtin_generic(db)
+                    .map(|g| g.supports_mul())
+                    .unwrap_or(false),
                 _ => false,
             }
     }
@@ -55,9 +64,10 @@ impl<'db> Type<'db> {
         self.is_signed_integer()
             || self.is_unsigned_integer()
             || match self {
-                Type::Generic(generic) => {
-                    generic.is_signed_integer(db) || generic.is_unsigned_integer(db)
-                }
+                Type::Generic(generic) => generic
+                    .as_builtin_generic(db)
+                    .map(|g| g.supports_mod())
+                    .unwrap_or(false),
                 _ => false,
             }
     }
@@ -65,7 +75,10 @@ impl<'db> Type<'db> {
     pub fn supports_power(&self, db: &'db dyn WorkspaceDataBase) -> bool {
         self.is_float()
             || match self {
-                Type::Generic(generic) => generic.is_float(db),
+                Type::Generic(generic) => generic
+                    .as_builtin_generic(db)
+                    .map(|g| g.supports_power())
+                    .unwrap_or(false),
                 _ => false,
             }
     }
@@ -74,7 +87,10 @@ impl<'db> Type<'db> {
         self.is_boolean()
             || self.is_numeric()
             || match self {
-                Type::Generic(generic) => generic.is_numeric(db),
+                Type::Generic(generic) => generic
+                    .as_builtin_generic(db)
+                    .map(|g| g.supports_bool_op() || g.is_numeric())
+                    .unwrap_or(false),
                 _ => false,
             }
     }
@@ -86,7 +102,7 @@ impl<'db> Type<'db> {
     pub fn can_be_variadic(&self, db: &'db dyn WorkspaceDataBase) -> bool {
         matches!(self, Type::Elementary(_))
             || match self {
-                Type::Generic(generic) => generic.is_numeric(db) || generic.is_time(db),
+                Type::Generic(generic) => generic.as_builtin_generic(db).is_some(),
                 _ => false,
             }
     }

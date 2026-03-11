@@ -1,4 +1,3 @@
-use compact_str::CompactString;
 use db::WorkspaceDataBase;
 
 use crate::{
@@ -185,6 +184,50 @@ impl AnyGeneric {
 
     pub fn is_time(&self) -> bool {
         matches!(self, Self::ANY_DATE | Self::ANY_DURATION)
+    }
+
+    /// All types in this group support addition/subtraction (IEC 61131-3: ANY_MAGNITUDE)
+    pub fn supports_add(&self) -> bool {
+        matches!(
+            self,
+            Self::ANY_MAGNITUDE
+                | Self::ANY_NUM
+                | Self::ANY_INT
+                | Self::ANY_UNSIGNED
+                | Self::ANY_SIGNED
+                | Self::ANY_REAL
+                | Self::ANY_DURATION
+        )
+    }
+
+    /// All types in this group support multiplication/division (IEC 61131-3: ANY_NUM)
+    pub fn supports_mul(&self) -> bool {
+        matches!(
+            self,
+            Self::ANY_NUM
+                | Self::ANY_INT
+                | Self::ANY_UNSIGNED
+                | Self::ANY_SIGNED
+                | Self::ANY_REAL
+        )
+    }
+
+    /// All types in this group support modulo (IEC 61131-3: ANY_INT)
+    pub fn supports_mod(&self) -> bool {
+        matches!(
+            self,
+            Self::ANY_INT | Self::ANY_UNSIGNED | Self::ANY_SIGNED
+        )
+    }
+
+    /// All types in this group support exponentiation (IEC 61131-3: ANY_REAL)
+    pub fn supports_power(&self) -> bool {
+        matches!(self, Self::ANY_REAL)
+    }
+
+    /// All types in this group support boolean operations (ANY_BIT)
+    pub fn supports_bool_op(&self) -> bool {
+        matches!(self, Self::ANY_BIT)
     }
 
     /// Check if an elementary type is a member of this ANY_* type group.
