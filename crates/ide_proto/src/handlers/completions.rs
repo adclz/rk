@@ -213,6 +213,11 @@ impl<'db> CompletionHandler<'db> for Pou<'db> {
             return None;
         }
 
+        // Don't trigger completions while typing the POU name
+        if self.get_name_span(db).end_byte >= req.offset {
+            return None;
+        }
+
         let mut ctx = CompletionCtx::new(req.offset, QueryMode::Body);
         let head_result = ctx.located_pou_completion(*self, db);
 
@@ -236,6 +241,11 @@ impl<'db> CompletionHandler<'db> for MethodRef<'db> {
     ) -> Option<Vec<CompletionItem>> {
         if req.trigger_character.as_deref() == Some(".") {
             return Some(vec![]);
+        }
+
+        // Don't trigger completions while typing the method name
+        if self.get_name_span(db).end_byte >= req.offset {
+            return None;
         }
 
         let mut ctx = CompletionCtx::new(req.offset, QueryMode::Body);
@@ -263,6 +273,11 @@ impl<'db> CompletionHandler<'db> for ProgramDecl<'db> {
         // means the dot is not after a valid field-access target (e.g. `0.`).
         if req.trigger_character.as_deref() == Some(".") {
             return Some(vec![]);
+        }
+
+        // Don't trigger completions while typing the program name
+        if self.get_name_span(db).end_byte >= req.offset {
+            return None;
         }
 
         let mut ctx = CompletionCtx::new(req.offset, QueryMode::Body);
