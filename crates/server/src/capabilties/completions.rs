@@ -6,6 +6,7 @@ use auto_lsp::{
 };
 use db::WorkspaceDataBase;
 use ide_proto::{
+    comment_index::comment_index,
     handlers::{CompletionHandler, CompletionRequest},
     walk::completion_descendant_at,
 };
@@ -33,6 +34,17 @@ pub fn completions(
         Some(offset) => offset,
         None => return Ok(None),
     };
+
+    // Suppress completions inside comments
+    // todo: can binary_search be used here instead of iterating over all comments?
+    let in_comment = comment_index(db, file)
+        .map
+        .values()
+        .any(|comment| comment.range.start_byte <= offset && offset <= comment.range.end_byte);
+
+    if in_comment {
+        return Ok(Some(CompletionResponse::Array(vec![])));
+    }
 
     let (target, node_key, is_last_before) = match completion_descendant_at(db, file, offset) {
         Some(result) => result,
