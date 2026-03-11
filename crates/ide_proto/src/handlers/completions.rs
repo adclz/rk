@@ -147,7 +147,7 @@ impl<'db> CompletionHandler<'db> for Pou<'db> {
         let mut ctx = CompletionCtx::new(req.offset, QueryMode::Body);
         let head_result = ctx.located_pou_completion(*self, db);
 
-        if head_result.head_location == HeadLocation::InBody {
+        if head_result.head_location.is_in_body() || head_result.head_location.may_be_body() {
             ctx.scope_completion(self.get_scope_id(db), &req.query, db);
             ctx.items.extend(static_snippets::all_stmts());
 
@@ -172,7 +172,7 @@ impl<'db> CompletionHandler<'db> for MethodRef<'db> {
         let mut ctx = CompletionCtx::new(req.offset, QueryMode::Body);
         let head_result = ctx.located_method_completion(*self, db);
 
-        if head_result.head_location == HeadLocation::InBody {
+        if head_result.head_location.is_in_body() || head_result.head_location.may_be_body() {
             ctx.scope_completion(self.get_scope_id(db), &req.query, db);
             ctx.items.extend(static_snippets::all_stmts());
 
@@ -199,7 +199,7 @@ impl<'db> CompletionHandler<'db> for ProgramDecl<'db> {
         let mut ctx = CompletionCtx::new(req.offset, QueryMode::Body);
         let head_result = ctx.located_program_completion(*self, db);
 
-        if head_result.head_location == HeadLocation::InBody {
+        if head_result.head_location.is_in_body() || head_result.head_location.may_be_body() {
             ctx.scope_completion(self.scope_id(db), &req.query, db);
             ctx.items.extend(static_snippets::all_stmts());
         }
@@ -545,12 +545,13 @@ impl<'db> CompletionHandler<'db> for Using<'db> {
 
 /// Check if the cursor is in the body of a POU, program, or method.
 fn is_in_body<'db>(scope: &Scope<'db>, ctx: &mut CompletionCtx, db: &'db dyn WorkspaceDataBase) -> bool {
-    match scope.kind {
-        ScopeKind::Pou(pou) => ctx.located_pou_completion(pou, db).head_location.is_in_body(),
-        ScopeKind::Program(prog) => ctx.located_program_completion(prog, db).head_location.is_in_body(),
-        ScopeKind::MethodDecl(m) => ctx.located_method_completion(MethodRef::Declared(m), db).head_location.is_in_body(),
-        _ => false,
-    }
+    let loc = match scope.kind {
+        ScopeKind::Pou(pou) => ctx.located_pou_completion(pou, db).head_location,
+        ScopeKind::Program(prog) => ctx.located_program_completion(prog, db).head_location,
+        ScopeKind::MethodDecl(m) => ctx.located_method_completion(MethodRef::Declared(m), db).head_location,
+        _ => return false,
+    };
+    loc.is_in_body() || loc.may_be_body()
 }
 
 /// If the scope is a function or method with a return type, push a self-return completion item.

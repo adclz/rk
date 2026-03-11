@@ -74,6 +74,13 @@ impl HeadLocation {
             HeadLocation::InBody | HeadLocation::InBodyAfterMethods | HeadLocation::InBodyAfterVars
         )
     }
+
+    /// Returns true if the location is ambiguous and could also be a body position.
+    /// This is the case for `BeforeVars` in an empty POU (no vars, no methods),
+    /// where both VAR snippets and body completions are valid.
+    pub fn may_be_body(&self) -> bool {
+        matches!(self, HeadLocation::BeforeVars)
+    }
 }
 
 #[derive(Debug)]
@@ -234,8 +241,21 @@ impl HeadResult {
             first_method_start,
             last_method_end,
         ) {
-            // No vars and no methods - before vars
-            (None, None, None, None) => HeadLocation::BeforeVars,
+            // No vars and no methods
+            (None, None, None, None) => {
+                // If a body exists and the cursor is inside it, we're in the body
+                if let Some(body_node) = body {
+                    if offset >= body_node.start_byte() && offset <= body_node.end_byte() {
+                        let body_text = &source[body_node.start_byte()..body_node.end_byte()];
+                        let first_char = body_text.trim_start().chars().next();
+                        if matches!(first_char, Some('V') | Some('E') | Some('M')) {
+                            return HeadLocation::InBodyAfterVars;
+                        }
+                        return HeadLocation::InBody;
+                    }
+                }
+                HeadLocation::BeforeVars
+            }
 
             // No vars but methods exist
             (None, None, Some(method_start), Some(method_end)) => {

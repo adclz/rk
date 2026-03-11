@@ -356,6 +356,37 @@ END_FUNCTION_BLOCK
     assert!(!debug.contains("(Self)"), "should not suggest Self for void method");
 }
 
+/// Function with no VAR sections should still provide body completions (scope items, statements).
+#[rstest]
+pub fn function_no_vars_body_completion(mut with_db: RootDatabase) {
+    let source = r#"
+FUNCTION my_func : INT
+    my;
+END_FUNCTION
+"#;
+
+    add_sources(&mut with_db, &[source]);
+    let file = *with_db.get_files().iter().last().unwrap();
+
+    let offset = source.find("my;").unwrap();
+
+    let (node, idx, is_last_before) = completion_descendant_at(&with_db, file, offset).unwrap();
+    let req = CompletionRequest {
+        offset,
+        trigger_character: None,
+        query: String::new(),
+        node_index_pos: Some(idx),
+        is_last_before,
+    };
+    let completions = node.completion(&with_db, &req).unwrap();
+    let debug = format!("{completions:?}");
+
+    // Should have body completions (statements, self-return) not just VAR snippets
+    assert!(debug.contains("my_func"), "should suggest function name for return value");
+    assert!(debug.contains("Self"), "should mark as Self");
+    assert!(debug.contains("IF"), "should suggest statements like IF");
+}
+
 /// When the cursor is on an unresolved identifier (PathExpr with Type::Never), the self-return item should still appear.
 #[rstest]
 pub fn function_self_return_on_unresolved_path(mut with_db: RootDatabase) {
