@@ -1,5 +1,3 @@
-use std::fmt::Display;
-
 use auto_lsp::{
     core::span::Span,
     default::db::file::File,
@@ -20,7 +18,6 @@ use crate::{
             identifier::{Ident, SpanIdent},
             namespace::{NamespacePath, SpanNamespaceAccess},
         },
-        namespace::NamespaceDecl,
         pous::{pou::Pou, variable::VariableDecl},
         scope::{ScopeId, ScopeKind},
         semantic_index::get_scope,
@@ -33,7 +30,7 @@ use crate::{
         fields::{fuzzy_type_fields, suggest_similar_note},
         method::fuzzy_callable_type_parameters,
         query::Query,
-        scope::SymbolSearch,
+        scope::{SearchResult, SymbolSearch},
     },
 };
 
@@ -143,7 +140,8 @@ pub enum ResolveError<'db> {
     },
     /// Two or more items with the same name are available in scope.
     MultipleItemsInScope {
-        expr: PathExpr<'db>,
+        name: Ident,
+        span: Span,
         candidates: Vec<(Pou<'db>, NamespacePath)>,
     },
 }
@@ -293,23 +291,6 @@ impl<'db> ToIdeDiagnostic<'db> for ResolveError<'db> {
 
                 let mut query = Query::new(expr.ident(db).text(db).to_string());
                 query.fuzzy();
-                let items = SymbolSearch::new(|_, _| true)
-                    .with_scope(*scope)
-                    .with_query(query)
-                    .only_variables()
-                    .search(db);
-
-                if let ScopeKind::Pou(pou) = get_scope(db, *scope).kind {
-                    list_variable_candidates(
-                        db,
-                        pou.get_name_ident(db).text(db).as_str(),
-                        &mut diag,
-                        items.variables(),
-                    )
-                }
-
-                let mut query = Query::new(expr.ident(db).text(db).to_string());
-                query.exact();
                 let items = SymbolSearch::new(|pou, db| {
                     match pou {
                         Pou::Function(_) => true,
@@ -322,15 +303,9 @@ impl<'db> ToIdeDiagnostic<'db> for ResolveError<'db> {
                 })
                 .with_scope(*scope)
                 .with_query(query)
-                .only_pous()
                 .search(db);
 
-                list_pou_candidates(
-                    db,
-                    expr.ident(db).text(db).as_str(),
-                    &mut diag,
-                    items.imported_pous(),
-                );
+                list_candidates(db, expr.ident(db).text(db).as_str(), &mut diag, &items, Some(*scope));
                 diag
             }
             Self::NoNamespaceItemFound { path } => {
@@ -358,11 +333,12 @@ impl<'db> ToIdeDiagnostic<'db> for ResolveError<'db> {
                         .only_pous()
                         .search(db);
 
-                        list_pou_candidates(
+                        list_candidates(
                             db,
                             path.path.target.ident.text(db).as_str(),
                             &mut diag,
-                            items.imported_pous(),
+                            &items,
+                            Some(path.scope_id),
                         );
 
                         let ns_kw = NamespacePath::from((db, &path.path.target.ident));
@@ -401,15 +377,14 @@ impl<'db> ToIdeDiagnostic<'db> for ResolveError<'db> {
                                 .with_query(ns_query)
                                 .only_namespaces()
                                 .search(db);
-                            let items: Vec<_> = results.namespaces().copied().collect();
 
-                            list_namespace_candidates(db, path.to_string(db), &mut diag, &items);
+                            list_candidates(db, &path.to_string(db), &mut diag, &results, None);
                         }
                     }
                 }
 
                 diag
-            } // todo: add recovery just as above
+            }
             Self::UsingNamespaceNotFound { call_site, path } => {
                 let mut diag = diag()
                     .message(format!("namespace '{}' not found", path.to_string(db)))
@@ -424,9 +399,8 @@ impl<'db> ToIdeDiagnostic<'db> for ResolveError<'db> {
                     .with_query(ns_query)
                     .only_namespaces()
                     .search(db);
-                let items: Vec<_> = results.namespaces().copied().collect();
 
-                list_namespace_candidates(db, path.to_string(db).as_str(), &mut diag, &items);
+                list_candidates(db, path.to_string(db).as_str(), &mut diag, &results, None);
                 diag
             }
             Self::NoSuchFieldPathExpr { expr, ident, ty } => {
@@ -611,8 +585,8 @@ impl<'db> ToIdeDiagnostic<'db> for ResolveError<'db> {
                 diag.with_note("only elementary types can be variadic".into());
                 diag
             }
-            Self::MultipleItemsInScope { expr, candidates } => {
-                let name = expr.ident(db).text(db);
+            Self::MultipleItemsInScope { name, span, candidates } => {
+                let name = name.text(db);
 
                 // Count how many times each namespace appears
                 let mut counts = rustc_hash::FxHashMap::default();
@@ -636,7 +610,7 @@ impl<'db> ToIdeDiagnostic<'db> for ResolveError<'db> {
                     .message(message)
                     .severity(DiagnosticSeverity::ERROR)
                     .desc(self)
-                    .range(expr.get_span(db))
+                    .range(*span)
                     .call();
 
                 for ns in &duplicated {
@@ -663,50 +637,75 @@ impl<'db> ToIdeDiagnostic<'db> for ResolveError<'db> {
     }
 }
 
-fn list_variable_candidates<'db, I>(
+fn list_candidates<'db>(
     db: &'db dyn WorkspaceDataBase,
-    scope_name: &str,
+    name: &str,
     diag: &mut IdeDiagnostic,
-    candidates: I,
-) where
-    I: Iterator<Item = &'db VariableDecl<'db>>,
-{
-    let names: Vec<_> = candidates
-        .map(|c| c.name(db).text(db).to_string())
+    results: &SearchResult<'db>,
+    scope: Option<ScopeId<'db>>,
+) {
+    // Suggest variables with similar names (scoped to their POU)
+    let var_names: Vec<_> = results
+        .variables()
+        .map(|v| v.name(db).text(db).to_string())
         .collect();
-    suggest_similar_note(scope_name, "item", diag, names.iter().map(|n| n.as_str()));
-}
-
-fn list_pou_candidates<'db, I>(
-    db: &'db dyn WorkspaceDataBase,
-    scope_name: &str,
-    diag: &mut IdeDiagnostic,
-    mut candidates: I,
-) where
-    I: Iterator<Item = (NamespacePath, Pou<'db>)>,
-{
-    // Collect up to 6 candidates to check if there are more than 5
-    let mut collected = Vec::with_capacity(6);
-    for candidate in candidates.by_ref().take(6) {
-        collected.push(candidate);
+    if !var_names.is_empty() {
+        let owner = scope
+            .map(|s| get_scope(db, s).kind)
+            .and_then(|k| match k {
+                ScopeKind::Pou(pou) => Some(pou.get_name_ident(db).text(db).to_string()),
+                _ => None,
+            })
+            .unwrap_or_else(|| name.to_string());
+        suggest_similar_note(
+            &owner,
+            "item",
+            diag,
+            var_names.iter().map(|n| n.as_str()),
+        );
     }
 
-    if !collected.is_empty() {
-        let count = collected.len();
+    // Suggest local POUs with similar names
+    let local_names: Vec<_> = results
+        .local_pous()
+        .map(|p| p.get_name_ident(db).text(db).to_string())
+        .collect();
+    if !local_names.is_empty() {
+        let count = local_names.len().min(5);
+        let mut note = format!(
+            "{} with similar name available in scope:\n",
+            if count > 1 { "items" } else { "an item" }
+        );
+        for (i, name) in local_names.iter().take(count).enumerate() {
+            if i > 0 {
+                note.push('\n');
+            }
+            note.push_str(&format!("- {}", name));
+        }
+        if local_names.len() > 5 {
+            note.push_str("\n  ...");
+        }
+        diag.with_note(note);
+    }
+
+    // Suggest imported POUs that need a USING directive
+    let imported: Vec<_> = results.imported_pous().take(6).collect();
+    if !imported.is_empty() {
+        let count = imported.len();
         let display_count = count.min(5);
 
-        let mut note = match collected.len() {
+        let mut note = match count {
             1 => format!(
                 "an item named '{}' is available, but needs to be imported:\n",
-                scope_name
+                name
             ),
             _ => format!(
                 "items named '{}' are available, but need to be imported:\n",
-                scope_name
+                name
             ),
         };
 
-        for (i, (namespace, candidate)) in collected.iter().take(display_count).enumerate() {
+        for (i, (namespace, _)) in imported.iter().take(display_count).enumerate() {
             if i > 0 {
                 note.push('\n');
             }
@@ -719,36 +718,27 @@ fn list_pou_candidates<'db, I>(
 
         diag.with_note(note);
     }
-}
 
-fn list_namespace_candidates(
-    db: &dyn WorkspaceDataBase,
-    ns: impl Display,
-    diag: &mut IdeDiagnostic,
-    candidates: &Vec<NamespaceDecl>,
-) {
-    if !candidates.is_empty() {
+    // Suggest namespaces with similar paths
+    let ns_candidates: Vec<_> = results.namespaces().take(6).collect();
+    if !ns_candidates.is_empty() {
+        let count = ns_candidates.len();
+        let display_count = count.min(5);
         let mut note = format!(
             "no namespace named '{}' found, but the following namespace{} {} similar path:\n",
-            ns,
-            match candidates.len() {
-                1 => "",
-                _ => "s",
-            },
-            match candidates.len() {
-                1 => "has",
-                _ => "have",
-            },
+            name,
+            if count > 1 { "s" } else { "" },
+            if count > 1 { "have" } else { "has" },
         );
 
-        for (i, candidate) in candidates.iter().take(5).enumerate() {
+        for (i, candidate) in ns_candidates.iter().take(display_count).enumerate() {
             if i > 0 {
                 note.push('\n');
             }
             note.push_str(&format!("- {}", candidate.path(db).to_string(db)));
         }
 
-        if candidates.len() > 5 {
+        if count > 5 {
             note.push_str("\n  ...");
         }
 

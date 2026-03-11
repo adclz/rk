@@ -3,7 +3,7 @@ use ide_diagnostic::IdeDiagnostic;
 use rustc_hash::FxHashMap;
 
 use crate::{
-    HasName,
+    HasName, HirNodeInfo,
     check::errors::{ToIdeDiagnostic, e2_resolve::ResolveError, e3_type::TypeError},
     hir_def::{
         config::ConfigResource,
@@ -13,7 +13,11 @@ use crate::{
         scope::{ScopeId, ScopeKind},
         semantic_index::get_scope,
     },
-    hir_ty::{index_graphs::external_var_lookup, ty::Type},
+    hir_ty::{
+        index_graphs::external_var_lookup,
+        resolver::name::{NameResolution, resolve_name},
+        ty::Type,
+    },
 };
 
 #[tracing::instrument(skip(db))]
@@ -318,12 +322,27 @@ impl<'db> Signature<'db> {
         match typ {
             Type::Never => {
                 if let SpecKind::Target(target) = spec.kind(db) {
-                    self.errors.push(
-                        ResolveError::NoNamespaceItemFound {
-                            path: target.clone(),
+                    // Re-resolve to distinguish ambiguous from not-found
+                    match resolve_name(db, &target.path, spec.scope_id(db)) {
+                        NameResolution::Ambiguous(candidates) => {
+                            self.errors.push(
+                                ResolveError::MultipleItemsInScope {
+                                    name: target.path.target.ident,
+                                    span: spec.get_span(db),
+                                    candidates,
+                                }
+                                .to_diagnostic(db),
+                            );
                         }
-                        .to_diagnostic(db),
-                    );
+                        _ => {
+                            self.errors.push(
+                                ResolveError::NoNamespaceItemFound {
+                                    path: target.clone(),
+                                }
+                                .to_diagnostic(db),
+                            );
+                        }
+                    }
                 }
             }
             Type::Function(_) => {

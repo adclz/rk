@@ -98,7 +98,8 @@ impl<'db> Resolver<'db> {
             name::NameResolution::Ambiguous(candidates) => {
                 ctx.errors.push(
                     ResolveError::MultipleItemsInScope {
-                        expr: path_expr,
+                        name: path_expr.ident(db).ident,
+                        span: path_expr.get_span(db),
                         candidates,
                     }
                     .to_diagnostic(db),

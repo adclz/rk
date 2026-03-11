@@ -169,3 +169,38 @@ fn local_pou_wins_over_using(mut with_db: RootDatabase) {
     "#;
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @"");
 }
+
+#[rstest]
+fn ambiguous_using_same_name_in_spec(mut with_db: RootDatabase) {
+    let source = r#"
+        NAMESPACE ns1
+            FUNCTION_BLOCK SharedFB
+            END_FUNCTION_BLOCK
+        END_NAMESPACE
+
+        NAMESPACE ns2
+            FUNCTION_BLOCK SharedFB
+            END_FUNCTION_BLOCK
+        END_NAMESPACE
+
+        FUNCTION test : INT
+            USING ns1;
+            USING ns2;
+        VAR
+            fb : SharedFB;
+        END_VAR
+            test := 0;
+        END_FUNCTION
+    "#;
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r#"
+    [E0225] Error: multiple items in scope
+        ,-[ file:///test0.st:16:18 ]
+        |
+     16 |             fb : SharedFB;
+        |                  ^^^^|^^^
+        |                      `----- multiple items named 'SharedFB' available in scope:
+        |
+        | Note: qualify the name to resolve the ambiguity: ns1.SharedFB or ns2.SharedFB
+    ----'
+    "#);
+}

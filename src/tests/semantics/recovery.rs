@@ -103,7 +103,8 @@ END_FUNCTION_BLOCK
         |     ^|
         |      `-- no item "fn" found in scope
         |
-        | Note: an item named 'fn' is available, but needs to be imported:
+        | Note: items named 'fn' are available, but need to be imported:
+        |       - USING System
         |       - USING System
     ----'
     "#);
@@ -153,6 +154,35 @@ END_FUNCTION_BLOCK
         | Note: an item named 'fn' is available, but needs to be imported:
         |       - USING System
     ----'
+    "#);
+}
+
+#[rstest]
+fn fuzzy_pou_local_functions(mut with_db: RootDatabase) {
+    let source = r#"
+FUNCTION fn
+
+END_FUNCTION
+
+FUNCTION fn2
+
+    f();
+
+END_FUNCTION
+    "#;
+
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r#"
+    [E0204] Error: no item found in scope
+       ,-[ file:///test0.st:8:5 ]
+       |
+     8 |     f();
+       |     |
+       |     `-- no item "f" found in scope
+       |
+       | Note: items with similar name available in scope:
+       |       - fn
+       |       - fn2
+    ---'
     "#);
 }
 
