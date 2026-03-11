@@ -325,7 +325,7 @@ impl<'db> Type<'db> {
                 check_visibility(db, &ident.as_call_site(db), m, &mut ctx.errors);
             }
             FieldLookup::NotFound => {
-                if report_errors {
+                if report_errors && !self.is_never() {
                     ctx.errors.push(
                         ResolveError::NoSuchFieldPathExpr {
                             expr,

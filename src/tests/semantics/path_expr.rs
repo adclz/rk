@@ -423,3 +423,26 @@ END_FUNCTION
     ---'
     ");
 }
+
+/// When a variable's type is unresolved (Never), field access on it
+/// should NOT produce a cascading "has no field" error.
+#[rstest]
+fn no_cascading_error_on_never_type(mut with_db: RootDatabase) {
+    let source = r#"
+FUNCTION fn0
+    VAR
+        test: unknown;
+    END_VAR
+        test.wrong := 123;
+END_FUNCTION
+"#;
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
+    [E0210] Error: no namespace item found
+       ,-[ file:///test0.st:4:15 ]
+       |
+     4 |         test: unknown;
+       |               ^^^|^^^
+       |                  `----- no item found for path 'unknown'
+    ---'
+    ");
+}
