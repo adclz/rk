@@ -4,8 +4,31 @@ use crate::{
 };
 
 impl<'db> AnyGeneric {
+    /// Check if an elementary type can be used where a generic of this ANY_* group is expected.
+    /// Returns the spec unchanged if valid, None if not.
     pub fn implicit_cast_with_spec(&self, spec: ElementarySpec) -> Option<ElementarySpec> {
         use AnyGeneric::*;
+
+        // Parent groups delegate to their children
+        match self {
+            ANY => return Some(spec),
+            ANY_MAGNITUDE => {
+                return ANY_NUM
+                    .implicit_cast_with_spec(spec)
+                    .or_else(|| ANY_DURATION.implicit_cast_with_spec(spec));
+            }
+            ANY_NUM => {
+                return ANY_REAL
+                    .implicit_cast_with_spec(spec)
+                    .or_else(|| ANY_INT.implicit_cast_with_spec(spec));
+            }
+            ANY_CHARS => {
+                return ANY_STRING
+                    .implicit_cast_with_spec(spec)
+                    .or_else(|| ANY_CHAR.implicit_cast_with_spec(spec));
+            }
+            _ => {}
+        }
 
         Some(match spec {
             ElementarySpec::SInt => match self {
@@ -48,7 +71,60 @@ impl<'db> AnyGeneric {
                 ANY_REAL => ElementarySpec::LReal,
                 _ => None?,
             },
-            _ => None?,
+            ElementarySpec::Bool | ElementarySpec::REDGEBool | ElementarySpec::FEDGEBool => {
+                match self {
+                    ANY_BIT => spec,
+                    _ => None?,
+                }
+            }
+            ElementarySpec::Byte => match self {
+                ANY_BIT => ElementarySpec::Byte,
+                _ => None?,
+            },
+            ElementarySpec::Word => match self {
+                ANY_BIT => ElementarySpec::Word,
+                _ => None?,
+            },
+            ElementarySpec::DWord => match self {
+                ANY_BIT => ElementarySpec::DWord,
+                _ => None?,
+            },
+            ElementarySpec::LWord => match self {
+                ANY_BIT => ElementarySpec::LWord,
+                _ => None?,
+            },
+            ElementarySpec::String => match self {
+                ANY_STRING => ElementarySpec::String,
+                _ => None?,
+            },
+            ElementarySpec::WString => match self {
+                ANY_STRING => ElementarySpec::WString,
+                _ => None?,
+            },
+            ElementarySpec::Char => match self {
+                ANY_CHAR => ElementarySpec::Char,
+                _ => None?,
+            },
+            ElementarySpec::WChar => match self {
+                ANY_CHAR => ElementarySpec::WChar,
+                _ => None?,
+            },
+            ElementarySpec::Date | ElementarySpec::LDate => match self {
+                ANY_DATE => spec,
+                _ => None?,
+            },
+            ElementarySpec::DateAndTime | ElementarySpec::LDateTime => match self {
+                ANY_DATE => spec,
+                _ => None?,
+            },
+            ElementarySpec::Tod | ElementarySpec::LTod => match self {
+                ANY_DATE => spec,
+                _ => None?,
+            },
+            ElementarySpec::Time | ElementarySpec::LTime => match self {
+                ANY_DURATION => spec,
+                _ => None?,
+            },
         })
     }
 }

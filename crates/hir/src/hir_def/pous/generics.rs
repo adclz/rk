@@ -97,16 +97,40 @@ impl<'db> GenericParam<'db> {
     }
 }
 
+/// IEC 61131-3 generic data type hierarchy (Table 11)
+///
+/// ```text
+/// ANY
+/// ├── ANY_MAGNITUDE
+/// │   ├── ANY_NUM
+/// │   │   ├── ANY_REAL (REAL, LREAL)
+/// │   │   └── ANY_INT
+/// │   │       ├── ANY_UNSIGNED (USINT, UINT, UDINT, ULINT)
+/// │   │       └── ANY_SIGNED (SINT, INT, DINT, LINT)
+/// │   └── ANY_DURATION (TIME, LTIME)
+/// ├── ANY_BIT (BOOL, BYTE, WORD, DWORD, LWORD)
+/// ├── ANY_CHARS
+/// │   ├── ANY_STRING (STRING, WSTRING)
+/// │   └── ANY_CHAR (CHAR, WCHAR)
+/// └── ANY_DATE (DATE, LDATE, DT, LDT, TOD, LTOD)
+/// ```
+///
+/// Note: ANY_DERIVED and ANY_ELEMENTARY are omitted - per the standard,
+/// generic types are for stdlib specification and these two add no practical constraint value.
 #[allow(non_camel_case_types)]
 #[derive(Debug, Copy, Clone, PartialEq, Eq, Hash, salsa::Update)]
 pub enum AnyGeneric {
     ANY,
+    ANY_MAGNITUDE,
+    ANY_NUM,
     ANY_INT,
     ANY_UNSIGNED,
     ANY_SIGNED,
     ANY_REAL,
     ANY_BIT,
+    ANY_CHARS,
     ANY_STRING,
+    ANY_CHAR,
     ANY_DATE,
     ANY_DURATION,
 }
@@ -115,12 +139,16 @@ impl std::fmt::Display for AnyGeneric {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             Self::ANY => write!(f, "ANY"),
+            Self::ANY_MAGNITUDE => write!(f, "ANY_MAGNITUDE"),
+            Self::ANY_NUM => write!(f, "ANY_NUM"),
             Self::ANY_INT => write!(f, "ANY_INT"),
             Self::ANY_UNSIGNED => write!(f, "ANY_UNSIGNED"),
             Self::ANY_SIGNED => write!(f, "ANY_SIGNED"),
             Self::ANY_REAL => write!(f, "ANY_REAL"),
             Self::ANY_BIT => write!(f, "ANY_BIT"),
+            Self::ANY_CHARS => write!(f, "ANY_CHARS"),
             Self::ANY_STRING => write!(f, "ANY_STRING"),
+            Self::ANY_CHAR => write!(f, "ANY_CHAR"),
             Self::ANY_DATE => write!(f, "ANY_DATE"),
             Self::ANY_DURATION => write!(f, "ANY_DURATION"),
         }
@@ -131,7 +159,11 @@ impl AnyGeneric {
     pub fn is_numeric(&self) -> bool {
         matches!(
             self,
-            Self::ANY_INT | Self::ANY_UNSIGNED | Self::ANY_SIGNED | Self::ANY_REAL
+            Self::ANY_NUM
+                | Self::ANY_INT
+                | Self::ANY_UNSIGNED
+                | Self::ANY_SIGNED
+                | Self::ANY_REAL
         )
     }
 
@@ -161,6 +193,10 @@ impl AnyGeneric {
         use crate::hir_def::expressions::spec::ElementarySpec;
         match self {
             Self::ANY => true,
+            Self::ANY_MAGNITUDE => {
+                Self::ANY_NUM.contains(spec) || Self::ANY_DURATION.contains(spec)
+            }
+            Self::ANY_NUM => Self::ANY_REAL.contains(spec) || Self::ANY_INT.contains(spec),
             Self::ANY_INT => matches!(
                 spec,
                 ElementarySpec::SInt
@@ -195,75 +231,42 @@ impl AnyGeneric {
                     | ElementarySpec::DWord
                     | ElementarySpec::LWord
             ),
-            Self::ANY_STRING => matches!(
+            Self::ANY_CHARS => Self::ANY_STRING.contains(spec) || Self::ANY_CHAR.contains(spec),
+            Self::ANY_STRING => matches!(spec, ElementarySpec::String | ElementarySpec::WString),
+            Self::ANY_CHAR => matches!(spec, ElementarySpec::Char | ElementarySpec::WChar),
+            Self::ANY_DATE => matches!(
                 spec,
-                ElementarySpec::String
-                    | ElementarySpec::WString
-                    | ElementarySpec::Char
-                    | ElementarySpec::WChar
+                ElementarySpec::Date
+                    | ElementarySpec::LDate
+                    | ElementarySpec::DateAndTime
+                    | ElementarySpec::LDateTime
+                    | ElementarySpec::Tod
+                    | ElementarySpec::LTod
             ),
-            Self::ANY_DATE => matches!(spec, ElementarySpec::Date | ElementarySpec::LDate),
             Self::ANY_DURATION => matches!(spec, ElementarySpec::Time | ElementarySpec::LTime),
         }
     }
-
-    fn any(db: &dyn WorkspaceDataBase) -> Ident {
-        Ident::new(db, CompactString::new("ANY"))
-    }
-
-    fn any_int(db: &dyn WorkspaceDataBase) -> Ident {
-        Ident::new(db, CompactString::new("ANY_INT"))
-    }
-
-    fn any_unsigned(db: &dyn WorkspaceDataBase) -> Ident {
-        Ident::new(db, CompactString::new("ANY_UNSIGNED"))
-    }
-
-    fn any_signed(db: &dyn WorkspaceDataBase) -> Ident {
-        Ident::new(db, CompactString::new("ANY_SIGNED"))
-    }
-
-    fn any_real(db: &dyn WorkspaceDataBase) -> Ident {
-        Ident::new(db, CompactString::new("ANY_REAL"))
-    }
-
-    fn any_bit(db: &dyn WorkspaceDataBase) -> Ident {
-        Ident::new(db, CompactString::new("ANY_BIT"))
-    }
-
-    fn any_string(db: &dyn WorkspaceDataBase) -> Ident {
-        Ident::new(db, CompactString::new("ANY_STRING"))
-    }
-
-    fn any_date(db: &dyn WorkspaceDataBase) -> Ident {
-        Ident::new(db, CompactString::new("ANY_DATE"))
-    }
-
-    fn any_duration(db: &dyn WorkspaceDataBase) -> Ident {
-        Ident::new(db, CompactString::new("ANY_DURATION"))
-    }
-
+    
+    // todo: we could benefit from string interning insteaad of doing string comparisons for builtin generic recognition
+    // this implies interning the generic constraint identifiers at the parser level and storing interned ids in the GenericContraint struct, 
+    // then matching on those interned ids here instead of doing string lookups.
     pub fn is_builtin_any(db: &dyn WorkspaceDataBase, ident: &Ident) -> Option<Self> {
-        if *ident == Self::any(db) {
-            Some(Self::ANY)
-        } else if *ident == Self::any_int(db) {
-            Some(Self::ANY_INT)
-        } else if *ident == Self::any_unsigned(db) {
-            Some(Self::ANY_UNSIGNED)
-        } else if *ident == Self::any_signed(db) {
-            Some(Self::ANY_SIGNED)
-        } else if *ident == Self::any_real(db) {
-            Some(Self::ANY_REAL)
-        } else if *ident == Self::any_bit(db) {
-            Some(Self::ANY_BIT)
-        } else if *ident == Self::any_string(db) {
-            Some(Self::ANY_STRING)
-        } else if *ident == Self::any_date(db) {
-            Some(Self::ANY_DATE)
-        } else if *ident == Self::any_duration(db) {
-            Some(Self::ANY_DURATION)
-        } else {
-            None
+        let text = ident.text(db);
+        match text.as_str() {
+            "ANY" => Some(Self::ANY),
+            "ANY_MAGNITUDE" => Some(Self::ANY_MAGNITUDE),
+            "ANY_NUM" => Some(Self::ANY_NUM),
+            "ANY_INT" => Some(Self::ANY_INT),
+            "ANY_UNSIGNED" => Some(Self::ANY_UNSIGNED),
+            "ANY_SIGNED" => Some(Self::ANY_SIGNED),
+            "ANY_REAL" => Some(Self::ANY_REAL),
+            "ANY_BIT" => Some(Self::ANY_BIT),
+            "ANY_CHARS" => Some(Self::ANY_CHARS),
+            "ANY_STRING" => Some(Self::ANY_STRING),
+            "ANY_CHAR" => Some(Self::ANY_CHAR),
+            "ANY_DATE" => Some(Self::ANY_DATE),
+            "ANY_DURATION" => Some(Self::ANY_DURATION),
+            _ => None,
         }
     }
 }

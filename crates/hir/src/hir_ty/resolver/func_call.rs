@@ -593,8 +593,11 @@ fn type_satisfies_any_constraint(
     typ: &Type,
     constraint: crate::hir_def::pous::generics::AnyGeneric,
 ) -> bool {
+    use crate::hir_def::pous::generics::AnyGeneric;
     match typ {
         Type::Elementary(elem) => constraint.contains(*elem),
+        // ANY matches all types (elementary + derived)
+        _ if matches!(constraint, AnyGeneric::ANY) => true,
         _ => false,
     }
 }

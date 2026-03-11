@@ -431,3 +431,126 @@ END_FUNCTION"#;
     ---'
     ");
 }
+
+// New generic group tests
+
+#[rstest]
+fn valid_any_num_with_int(mut with_db: RootDatabase) {
+    let source = r#"
+FUNCTION fn1<T: ANY_NUM> : T
+    VAR_INPUT x: T; END_VAR
+    fn1 := x;
+END_FUNCTION
+
+FUNCTION test : INT
+    test := fn1<INT>(42);
+END_FUNCTION"#;
+
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @"");
+}
+
+#[rstest]
+fn valid_any_num_with_real(mut with_db: RootDatabase) {
+    let source = r#"
+FUNCTION fn1<T: ANY_NUM> : T
+    VAR_INPUT x: T; END_VAR
+    fn1 := x;
+END_FUNCTION
+
+FUNCTION test : REAL
+    test := fn1<REAL>(1.5);
+END_FUNCTION"#;
+
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @"");
+}
+
+#[rstest]
+fn invalid_any_num_with_bool(mut with_db: RootDatabase) {
+    let source = r#"
+FUNCTION fn1<T: ANY_NUM> : T
+    VAR_INPUT x: T; END_VAR
+    fn1 := x;
+END_FUNCTION
+
+FUNCTION test : INT
+    test := fn1<BOOL>(TRUE);
+END_FUNCTION"#;
+
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
+    [E0315] Error: type argument constraint mismatch
+       ,-[ file:///test0.st:8:13 ]
+       |
+     8 |     test := fn1<BOOL>(TRUE);
+       |             ^|^
+       |              `--- type 'BOOL' does not satisfy constraint 'ANY_NUM' (on generic parameter 'T')
+    ---'
+    ");
+}
+
+#[rstest]
+fn valid_any_magnitude_with_time(mut with_db: RootDatabase) {
+    let source = r#"
+FUNCTION fn1<T: ANY_MAGNITUDE> : T
+    VAR_INPUT x: T; END_VAR
+    fn1 := x;
+END_FUNCTION
+
+FUNCTION test : TIME
+    test := fn1<TIME>(T#5s);
+END_FUNCTION"#;
+
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @"");
+}
+
+#[rstest]
+fn valid_any_chars_with_string(mut with_db: RootDatabase) {
+    let source = r#"
+FUNCTION fn1<T: ANY_CHARS> : T
+    VAR_INPUT x: T; END_VAR
+    fn1 := x;
+END_FUNCTION
+
+FUNCTION test : STRING
+    test := fn1<STRING>('hello');
+END_FUNCTION"#;
+
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @"");
+}
+
+#[rstest]
+fn valid_any_char_with_char(mut with_db: RootDatabase) {
+    let source = r#"
+FUNCTION fn1<T: ANY_CHAR> : T
+    VAR_INPUT x: T; END_VAR
+    fn1 := x;
+END_FUNCTION
+
+FUNCTION test : CHAR
+    test := fn1<CHAR>(CHAR#'a');
+END_FUNCTION"#;
+
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @"");
+}
+
+#[rstest]
+fn invalid_any_char_with_string(mut with_db: RootDatabase) {
+    let source = r#"
+FUNCTION fn1<T: ANY_CHAR> : T
+    VAR_INPUT x: T; END_VAR
+    fn1 := x;
+END_FUNCTION
+
+FUNCTION test : STRING
+    test := fn1<STRING>('hello');
+END_FUNCTION"#;
+
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
+    [E0315] Error: type argument constraint mismatch
+       ,-[ file:///test0.st:8:13 ]
+       |
+     8 |     test := fn1<STRING>('hello');
+       |             ^|^
+       |              `--- type 'STRING' does not satisfy constraint 'ANY_CHAR' (on generic parameter 'T')
+    ---'
+    ");
+}

@@ -7,12 +7,16 @@ use crate::tests::utils::with_db;
 
 #[rstest]
 #[case("ANY")]
+#[case("ANY_MAGNITUDE")]
+#[case("ANY_NUM")]
 #[case("ANY_INT")]
 #[case("ANY_UNSIGNED")]
 #[case("ANY_SIGNED")]
 #[case("ANY_REAL")]
 #[case("ANY_BIT")]
+#[case("ANY_CHARS")]
 #[case("ANY_STRING")]
+#[case("ANY_CHAR")]
 #[case("ANY_DATE")]
 #[case("ANY_DURATION")]
 fn valid_generic_type_cases(mut with_db: RootDatabase, #[case] value: &str) {
