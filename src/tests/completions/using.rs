@@ -1,6 +1,7 @@
 use auto_lsp::default::db::BaseDatabase;
 use db::RootDatabase;
 use hir::hir_def::semantic_index::semantic_index;
+use ide_proto::handlers::completions::complete;
 use ide_proto::handlers::{CompletionHandler, CompletionRequest};
 use ide_proto::walk::completion_descendant_at;
 use rstest::rstest;
@@ -151,8 +152,62 @@ END_NAMESPACE
     assert!(format!("{completions:?}").contains("subsystem2"));
 }
 
+/// Dot completion on `USING ns.` at top level should show namespace fragments,
+/// not top-level POU snippets.
+#[rstest]
+pub fn using_dot_completion_top_level(mut with_db: RootDatabase) {
+    let source = r#"
+USING ns.
+
+NAMESPACE ns.sub1
+END_NAMESPACE
+
+NAMESPACE ns.sub2
+END_NAMESPACE
+"#;
+
+    add_sources(&mut with_db, &[source]);
+    let file = *with_db.get_files().iter().last().unwrap();
+
+    // Cursor right after the dot in "USING ns."
+    let offset = source.find("USING ns.").unwrap() + "USING ns.".len();
+    let completions = complete(&with_db, file, offset, Some(".".into()));
+
+    assert!(!completions.is_empty(), "should have completions");
+    assert!(format!("{completions:?}").contains("sub1"), "should suggest sub1");
+    assert!(format!("{completions:?}").contains("sub2"), "should suggest sub2");
+}
+
+/// Dot completion on `USING ns.` inside a function should show namespace fragments.
+#[rstest]
+pub fn using_dot_completion_inside_function(mut with_db: RootDatabase) {
+    let source = r#"
+NAMESPACE ns.sub1
+END_NAMESPACE
+
+NAMESPACE ns.sub2
+END_NAMESPACE
+
+FUNCTION test
+USING ns.
+END_FUNCTION
+"#;
+
+    add_sources(&mut with_db, &[source]);
+    let file = *with_db.get_files().iter().last().unwrap();
+
+    let offset = source.find("USING ns.").unwrap() + "USING ns.".len();
+    let completions = complete(&with_db, file, offset, Some(".".into()));
+
+    assert!(!completions.is_empty(), "should have completions");
+    assert!(format!("{completions:?}").contains("sub1"), "should suggest sub1");
+    assert!(format!("{completions:?}").contains("sub2"), "should suggest sub2");
+    // Should NOT contain body completions like IF
+    assert!(!format!("{completions:?}").contains("\"IF\""), "should not show body statements");
+}
+
 /// After a top-level USING directive (with nothing else in the file),
-/// completions should still fire — not return Using namespace fragments.
+/// completions should still fire - not return Using namespace fragments.
 #[rstest]
 pub fn completion_after_top_level_using(mut with_db: RootDatabase) {
     let ns_source = r#"
@@ -172,7 +227,7 @@ USING ns;
     let file = files[1]; // second file
     let result = completion_descendant_at(&with_db, file, offset);
 
-    // Should NOT return the Using node as last_before — Using nodes
+    // Should NOT return the Using node as last_before - Using nodes
     // are not valid targets for general completions.
     if let Some((node, node_key, is_last_before)) = &result {
         let req = CompletionRequest {

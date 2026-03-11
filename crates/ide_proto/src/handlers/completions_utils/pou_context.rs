@@ -74,13 +74,6 @@ impl HeadLocation {
             HeadLocation::InBody | HeadLocation::InBodyAfterMethods | HeadLocation::InBodyAfterVars
         )
     }
-
-    /// Returns true if the location is ambiguous and could also be a body position.
-    /// This is the case for `BeforeVars` in an empty POU (no vars, no methods),
-    /// where both VAR snippets and body completions are valid.
-    pub fn may_be_body(&self) -> bool {
-        matches!(self, HeadLocation::BeforeVars)
-    }
 }
 
 #[derive(Debug)]
@@ -241,9 +234,8 @@ impl HeadResult {
             first_method_start,
             last_method_end,
         ) {
-            // No vars and no methods
+            // No vars and no methods — POU is empty or has only body statements.
             (None, None, None, None) => {
-                // If a body exists and the cursor is inside it, we're in the body
                 if let Some(body_node) = body {
                     if offset >= body_node.start_byte() && offset <= body_node.end_byte() {
                         let body_text = &source[body_node.start_byte()..body_node.end_byte()];
@@ -254,7 +246,9 @@ impl HeadResult {
                         return HeadLocation::InBody;
                     }
                 }
-                HeadLocation::BeforeVars
+                // No vars, no methods, no body (or cursor outside body) — the POU
+                // is effectively empty.  Offer both VAR snippets and body completions.
+                HeadLocation::InBodyAfterVars
             }
 
             // No vars but methods exist
@@ -570,7 +564,7 @@ END_FUNCTION_BLOCK
     }
 
     #[test]
-    fn test_head_location_before_vars_no_vars() {
+    fn test_head_location_empty_pou_is_in_body() {
         let source = r#"
 FUNCTION_BLOCK FB1
 END_FUNCTION_BLOCK
@@ -582,11 +576,12 @@ END_FUNCTION_BLOCK
         let tree = parser.parse(source, None).unwrap();
         let root_node = tree.root_node();
 
-        // Cursor in empty function block
+        // Cursor in empty function block — no vars, no methods, no body.
+        // Should be InBodyAfterVars so both VAR snippets and body completions are offered.
         let offset = source.find("FUNCTION_BLOCK FB1").unwrap() + "FUNCTION_BLOCK FB1".len();
         let results = HeadResult::query_var_decls(root_node, source, root_node.range(), offset);
 
-        assert_eq!(results.head_location, HeadLocation::BeforeVars);
+        assert_eq!(results.head_location, HeadLocation::InBodyAfterVars);
     }
 
     #[test]

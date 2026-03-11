@@ -1,4 +1,5 @@
-use auto_lsp::lsp_types::CompletionItem;
+use ast::generated::DataTypeDecl;
+use auto_lsp::{default::db::{file::File, tracked::get_ast}, lsp_types::CompletionItem};
 use db::WorkspaceDataBase;
 use hir::{
     CallSite, HasName, HirNodeInfo,
@@ -23,10 +24,78 @@ use hir::{
 };
 use rustc_hash::FxHashSet;
 
-use crate::handlers::{
-    CompletionHandler, CompletionRequest,
-    completions_utils::{CompletionCtx, QueryMode, pou_context::HeadLocation, static_snippets},
+use crate::{
+    comment_index::comment_index,
+    handlers::{
+        CompletionHandler, CompletionRequest,
+        completions_utils::{CompletionCtx, QueryMode, pou_context::HeadLocation, static_snippets},
+    },
+    walk::completion_descendant_at,
 };
+
+/// Main entry point for completions. Resolves the node at the given offset
+/// and dispatches to the appropriate handler.
+pub fn complete(
+    db: &dyn WorkspaceDataBase,
+    file: File,
+    offset: usize,
+    trigger_character: Option<String>,
+) -> Vec<CompletionItem> {
+    // Suppress completions inside comments
+    let in_comment = comment_index(db, file)
+        .map
+        .values()
+        .any(|comment| comment.range.start_byte <= offset && offset <= comment.range.end_byte);
+
+    if in_comment {
+        return vec![];
+    }
+
+    let (target, node_key, is_last_before) = match completion_descendant_at(db, file, offset) {
+        Some(result) => result,
+        None => {
+            // Check if cursor is inside a TYPE declaration at the AST level.
+            // When the TYPE body is incomplete (no spec yet), no HIR node covers
+            // the cursor, but we should still offer type-level completions
+            // instead of POU-level snippets.
+            let ast = get_ast(db, file);
+            let in_type_decl = ast.iter().any(|node| {
+                let range = node.get_range();
+                range.start_byte <= offset
+                    && offset <= range.end_byte
+                    && node.lower().downcast_ref::<DataTypeDecl>().is_some()
+            });
+
+            if in_type_decl {
+                return vec![];
+            }
+
+            // No target node — show general completions (namespaces, POU snippets, etc.)
+            return vec![
+                static_snippets::namespace(),
+                static_snippets::using(),
+                static_snippets::function(),
+                static_snippets::function_block(),
+                static_snippets::program(),
+                static_snippets::class(),
+                static_snippets::interface(),
+                static_snippets::type_(),
+                static_snippets::configuration(),
+            ];
+        }
+    };
+
+    let req = CompletionRequest {
+        offset,
+        trigger_character,
+        query: "".into(),
+        node_index_pos: Some(node_key),
+        is_last_before,
+    };
+
+    target.completion(db, &req).unwrap_or_default()
+}
+
 
 impl<'db> CompletionHandler<'db> for HirNode<'db> {
     fn completion(
@@ -147,7 +216,7 @@ impl<'db> CompletionHandler<'db> for Pou<'db> {
         let mut ctx = CompletionCtx::new(req.offset, QueryMode::Body);
         let head_result = ctx.located_pou_completion(*self, db);
 
-        if head_result.head_location.is_in_body() || head_result.head_location.may_be_body() {
+        if head_result.head_location.is_in_body() {
             ctx.scope_completion(self.get_scope_id(db), &req.query, db);
             ctx.items.extend(static_snippets::all_stmts());
 
@@ -172,7 +241,7 @@ impl<'db> CompletionHandler<'db> for MethodRef<'db> {
         let mut ctx = CompletionCtx::new(req.offset, QueryMode::Body);
         let head_result = ctx.located_method_completion(*self, db);
 
-        if head_result.head_location.is_in_body() || head_result.head_location.may_be_body() {
+        if head_result.head_location.is_in_body() {
             ctx.scope_completion(self.get_scope_id(db), &req.query, db);
             ctx.items.extend(static_snippets::all_stmts());
 
@@ -199,7 +268,7 @@ impl<'db> CompletionHandler<'db> for ProgramDecl<'db> {
         let mut ctx = CompletionCtx::new(req.offset, QueryMode::Body);
         let head_result = ctx.located_program_completion(*self, db);
 
-        if head_result.head_location.is_in_body() || head_result.head_location.may_be_body() {
+        if head_result.head_location.is_in_body() {
             ctx.scope_completion(self.scope_id(db), &req.query, db);
             ctx.items.extend(static_snippets::all_stmts());
         }
@@ -551,7 +620,7 @@ fn is_in_body<'db>(scope: &Scope<'db>, ctx: &mut CompletionCtx, db: &'db dyn Wor
         ScopeKind::MethodDecl(m) => ctx.located_method_completion(MethodRef::Declared(m), db).head_location,
         _ => return false,
     };
-    loc.is_in_body() || loc.may_be_body()
+    loc.is_in_body()
 }
 
 /// If the scope is a function or method with a return type, push a self-return completion item.
