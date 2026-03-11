@@ -377,6 +377,25 @@ fn refresh_configuration(
             .sender
             .send(Message::Notification(notification))?;
     }
+
+    // Send server status notification for status bar
+    let (status, message) = if !file_errors.is_empty() {
+        ("error", format!("config.toml: {}", file_errors.iter().map(|e| e.diagnostic.message.clone()).collect::<Vec<_>>().join("; ")))
+    } else if !notices.is_empty() {
+        ("warning", notices.iter().map(|n| n.to_string()).collect::<Vec<_>>().join("; "))
+    } else {
+        ("ok", String::new())
+    };
+
+    let status_notification = lsp_server::Notification::new(
+        "rk/serverStatus".to_string(),
+        serde_json::json!({ "status": status, "message": message }),
+    );
+    session
+        .connection
+        .sender
+        .send(Message::Notification(status_notification))?;
+
     Ok(())
 }
 
