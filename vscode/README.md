@@ -41,6 +41,7 @@ duplicate-var-section = true
 - **Find References** - find all usages of a symbol across the workspace
 - **Go to Implementation** - navigate to implementations of classes and interfaces
 - **Document Symbols** - outline view of all POUs, namespaces, programs, and variables
+- **Workspace Symbols** - search for symbols across the entire workspace
 - **Document Links** - bracket references in comments (e.g. `[MyFB]`, `[NS.MyType]`) become clickable links
 
 ### Editing
