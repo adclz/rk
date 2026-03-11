@@ -221,6 +221,13 @@ impl<'db> CompletionHandler<'db> for Pou<'db> {
         let mut ctx = CompletionCtx::new(req.offset, QueryMode::Body);
         let head_result = ctx.located_pou_completion(*self, db);
 
+        if matches!(
+            head_result.head_location,
+            HeadLocation::BeforeVars | HeadLocation::InBodyAfterVars
+        ) {
+            ctx.items.push(static_snippets::using());
+        }
+
         if head_result.head_location.is_in_body() {
             ctx.scope_completion(self.get_scope_id(db), &req.query, db);
             ctx.items.extend(static_snippets::all_stmts());
@@ -250,6 +257,13 @@ impl<'db> CompletionHandler<'db> for MethodRef<'db> {
 
         let mut ctx = CompletionCtx::new(req.offset, QueryMode::Body);
         let head_result = ctx.located_method_completion(*self, db);
+
+        if matches!(
+            head_result.head_location,
+            HeadLocation::BeforeVars | HeadLocation::InBodyAfterVars
+        ) {
+            ctx.items.push(static_snippets::using());
+        }
 
         if head_result.head_location.is_in_body() {
             ctx.scope_completion(self.get_scope_id(db), &req.query, db);
@@ -282,6 +296,13 @@ impl<'db> CompletionHandler<'db> for ProgramDecl<'db> {
 
         let mut ctx = CompletionCtx::new(req.offset, QueryMode::Body);
         let head_result = ctx.located_program_completion(*self, db);
+
+        if matches!(
+            head_result.head_location,
+            HeadLocation::BeforeVars | HeadLocation::InBodyAfterVars
+        ) {
+            ctx.items.push(static_snippets::using());
+        }
 
         if head_result.head_location.is_in_body() {
             ctx.scope_completion(self.scope_id(db), &req.query, db);
