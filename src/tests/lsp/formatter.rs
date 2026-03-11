@@ -893,6 +893,116 @@ END_PROGRAM
 }
 
 #[rstest]
+pub fn blank_line_between_declarations_in_namespace(mut with_db: RootDatabase) {
+    // Blank line between NAMESPACE header and FUNCTION should be preserved
+    let source = r#"
+NAMESPACE ns
+
+FUNCTION fn1 : INT
+END_FUNCTION
+
+FUNCTION fn2 : INT
+END_FUNCTION
+END_NAMESPACE
+"#;
+
+    add_sources(&mut with_db, &[source]);
+    let document = with_db
+        .get_files()
+        .iter()
+        .last()
+        .unwrap()
+        .document(&with_db);
+
+    assert_snapshot!(fmt(document), @r"
+    NAMESPACE ns
+
+    	FUNCTION fn1: INT
+    	END_FUNCTION
+
+    	FUNCTION fn2: INT
+    	END_FUNCTION
+    END_NAMESPACE
+    ");
+}
+
+#[rstest]
+pub fn blank_line_between_top_level_declarations(mut with_db: RootDatabase) {
+    let source = r#"
+FUNCTION fn1 : INT
+END_FUNCTION
+
+FUNCTION fn2 : INT
+END_FUNCTION
+"#;
+
+    add_sources(&mut with_db, &[source]);
+    let document = with_db
+        .get_files()
+        .iter()
+        .last()
+        .unwrap()
+        .document(&with_db);
+
+    assert_snapshot!(fmt(document), @r"
+    FUNCTION fn1: INT
+    END_FUNCTION
+
+    FUNCTION fn2: INT
+    END_FUNCTION
+    ");
+}
+
+#[rstest]
+pub fn generics(mut with_db: RootDatabase) {
+    let source = r#"
+FUNCTION fn2 < T : ANY > : INT
+END_FUNCTION
+
+FUNCTION fn1
+    fn2  <  INT  > ( x := 1 )
+END_FUNCTION
+"#;
+
+    add_sources(&mut with_db, &[source]);
+    let document = with_db
+        .get_files()
+        .iter()
+        .last()
+        .unwrap()
+        .document(&with_db);
+
+    assert_snapshot!(fmt(document), @r"
+    FUNCTION fn2<T: ANY>: INT
+    END_FUNCTION
+
+    FUNCTION fn1 fn2<INT>(x := 1)
+    END_FUNCTION
+    ");
+}
+
+#[rstest]
+pub fn generics_multiline(mut with_db: RootDatabase) {
+    let source = r#"
+FUNCTION_BLOCK fb1 < T : ANY , U : ANY_INT >
+END_FUNCTION_BLOCK
+"#;
+
+    add_sources(&mut with_db, &[source]);
+    let document = with_db
+        .get_files()
+        .iter()
+        .last()
+        .unwrap()
+        .document(&with_db);
+
+    assert_snapshot!(fmt(document), @r"
+    FUNCTION_BLOCK fb1<T: ANY, U: ANY_INT>
+    END_FUNCTION_BLOCK
+    ");
+}
+
+#[rstest]
 pub fn configuration_and_resource(mut with_db: RootDatabase) {
     let source = r#"
 CONFIGURATION MyCfg

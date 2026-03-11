@@ -55,6 +55,12 @@ static SURROUND_SPACES: &str = r#"
 ["(" "[" "." "END_CASE"] @append_antispace
 [")" "]" ":" ";" "," "." (deref_sign)] @prepend_antispace
 ["NOT" ":"] @append_space
+
+; Generics: no spaces around < and > in generic contexts
+(generic_type_args "<" @prepend_antispace @append_antispace)
+(generic_type_args ">" @prepend_antispace @append_antispace)
+(generic_spec "<" @prepend_antispace @append_antispace)
+(generic_spec ">" @prepend_antispace @append_antispace)
 "#;
 
 static NEW_LINES: &str = r#"
@@ -313,6 +319,7 @@ static ALLOW_BLANK_LINE: &str = r#"
     "VAR" "END_VAR"
     "STRUCT" "END_STRUCT"
     (line_comment) (c_style_comment) (pascal_style_comment)
+    (namespace_elements)
 ] @allow_blank_line_before
 
 (stmt_list . (_) @allow_blank_line_before)
