@@ -106,7 +106,7 @@ impl<'db> SemanticIndexBuilder<'db> {
         );
 
         // Then insert it into the map with its ID
-        self.global_namespaces.push(result);
+        self.namespaces.push(result);
 
         Ok(result)
     }

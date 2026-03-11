@@ -4,7 +4,8 @@ use auto_lsp::{
     lsp_types::{DocumentSymbolParams, DocumentSymbolResponse},
 };
 use db::WorkspaceDataBase;
-use hir::hir_def::semantic_index::semantic_index;
+use hir::hir_def::scope::ScopeKind;
+use hir::hir_def::semantic_index::{get_scope, semantic_index};
 use ide_proto::handlers::DocumentSymbolsHandler;
 
 pub fn document_symbols(
@@ -30,6 +31,10 @@ pub fn document_symbols(
         .for_each(|program| program.document_symbols(db, &mut builder));
     sema.namespaces
         .iter()
+        .filter(|ns| {
+            let scope = get_scope(db, ns.scope_id(db));
+            matches!(scope.parent.map(|p| get_scope(db, p).kind), Some(ScopeKind::Global) | None)
+        })
         .for_each(|ns| ns.document_symbols(db, &mut builder));
     sema.configs
         .iter()

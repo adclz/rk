@@ -34,7 +34,7 @@
 // as the original comment above suggested.
 //
 // Claude proposed adding intermediate per-file extraction queries
-// (`file_global_pous`, `file_global_namespaces`, etc.) as an "Eq firewall"
+// (`file_global_pous`, `file_namespaces`, etc.) as an "Eq firewall"
 // between `semantic_index` (which is `no_eq`) and downstream consumers —
 // similar to how ruff/ty uses `place_table(scope)` and `use_def_map(scope)`.
 //
@@ -93,13 +93,13 @@ pub fn file_global_pous<'db>(db: &'db dyn WorkspaceDataBase, file: File) -> Arc<
     Arc::clone(&semantic_index(db, file).global_pous)
 }
 
-/// Extracts global namespace declarations from a file's semantic index.
+/// Extracts namespace declarations from a file's semantic index.
 #[salsa::tracked(returns(ref))]
-pub fn file_global_namespaces<'db>(
+pub fn file_namespaces<'db>(
     db: &'db dyn WorkspaceDataBase,
     file: File,
 ) -> Arc<Vec<NamespaceDecl<'db>>> {
-    Arc::clone(&semantic_index(db, file).global_namespaces)
+    Arc::clone(&semantic_index(db, file).namespaces)
 }
 
 /// Extracts program declarations from a file's semantic index.
@@ -141,7 +141,7 @@ pub fn namespace_index<'db>(
 ) -> Vec<NamespaceDecl<'db>> {
     let mut result = vec![];
     for file in all_files(db) {
-        for ns in file_global_namespaces(db, file).iter() {
+        for ns in file_namespaces(db, file).iter() {
             if *ns.path(db) == path {
                 result.push(*ns);
             }

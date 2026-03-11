@@ -38,7 +38,7 @@ impl<'db> ScopeId<'db> {
     pub fn namespaces(&self, db: &'db dyn WorkspaceDataBase) -> Option<&Vec<NamespaceDecl<'db>>> {
         Some(match get_scope(db, *self).kind {
             ScopeKind::Namespace(ns) => ns.namespaces(db),
-            ScopeKind::Global => &semantic_index(db, self.file(db)).global_namespaces,
+            ScopeKind::Global => &semantic_index(db, self.file(db)).namespaces,
             _ => None?,
         })
     }

@@ -33,7 +33,7 @@ impl<'db> TypeDependencyGraph<'db> {
             edges.entry(pou).or_insert_with(FxHashSet::default);
         }
 
-        Self::namespace_edges(db, &mut edges, &semantic_index.global_namespaces);
+        Self::namespace_edges(db, &mut edges, &semantic_index.namespaces);
 
         Self {
             db,
@@ -181,7 +181,7 @@ impl<'db> TypeDependencyGraph<'db> {
         }
 
         self.namespace_recursion(
-            &semantic_index.global_namespaces,
+            &semantic_index.namespaces,
             &mut visited,
             &mut stack,
             &mut stack_set,

@@ -40,11 +40,8 @@ pub struct SemanticIndexBuilder<'db> {
 
     pub(crate) programs: Vec<ProgramDecl<'db>>,
     pub(crate) configs: Vec<ConfigDecl<'db>>,
-    pub(crate) global_namespaces: Vec<NamespaceDecl<'db>>,
-    pub(crate) global_pous: Vec<Pou<'db>>,
-
-    /// Maps scope IDs to their corresponding namespaces.
     pub(crate) namespaces: Vec<NamespaceDecl<'db>>,
+    pub(crate) global_pous: Vec<Pou<'db>>,
 
     /// Counter for generating stable scope IDs.
     ///
@@ -74,9 +71,8 @@ impl<'db> SemanticIndexBuilder<'db> {
             node_index: IndexVec::new(),
             programs: vec![],
             configs: vec![],
-            global_namespaces: vec![],
-            global_pous: vec![],
             namespaces: vec![],
+            global_pous: vec![],
             scope_ctr: 0,
             current_scope: ScopeId::global(db, file),
             errors: vec![],
@@ -298,9 +294,7 @@ impl<'db> SemanticIndexBuilder<'db> {
                     };
 
                     match self.parse_namespace(&path, namespace) {
-                        Ok(ns) => {
-                            self.namespaces.push(ns);
-                        }
+                        Ok(_) => {}
                         Err(err) => {
                             self.errors.push(err);
                             continue;
@@ -373,7 +367,6 @@ impl<'db> SemanticIndexBuilder<'db> {
             node_index: self.node_index,
             programs: Arc::new(self.programs),
             configs: Arc::new(self.configs),
-            global_namespaces: Arc::new(self.global_namespaces),
             namespaces: Arc::new(self.namespaces),
             global_pous: Arc::new(self.global_pous),
             errors: self.errors,

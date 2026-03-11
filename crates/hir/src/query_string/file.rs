@@ -26,7 +26,7 @@ pub fn std_lib_symbol_index<'db>(db: &'db dyn WorkspaceDataBase) -> SymbolIndex<
             });
         }
 
-        // Namespaces POUs
+        // Namespaces and their POUs
         for ns in sema.namespaces.iter() {
             items.push(NamedSymbol {
                 name: ns.path(db).to_string(db),
@@ -63,7 +63,7 @@ pub fn file_symbol_index<'db>(db: &'db dyn WorkspaceDataBase, file: File) -> Sym
         });
     }
 
-    // Namespaces POUs
+    // Namespaces and their POUs
     for ns in sema.namespaces.iter() {
         items.push(NamedSymbol {
             name: ns.path(db).to_string(db),

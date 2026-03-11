@@ -237,7 +237,7 @@ pub fn find_pou_with_name<'db>(
         }
     }
 
-    for ns in sema.global_namespaces.iter() {
+    for ns in sema.namespaces.iter() {
         for pou in ns.pous(db) {
             if pou.get_name_ident(db).text(db).as_str() == name {
                 return Some(*pou);
@@ -255,7 +255,7 @@ pub fn find_namespace_with_name<'db>(
 ) -> Option<NamespaceDecl<'db>> {
     let sema = semantic_index(db, file);
 
-    for ns in sema.global_namespaces.iter() {
+    for ns in sema.namespaces.iter() {
         if ns.path(db).to_string(db) == name {
             return Some(*ns);
         }
