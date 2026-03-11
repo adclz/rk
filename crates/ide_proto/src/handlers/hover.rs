@@ -108,12 +108,7 @@ impl<'db> HoverHandler<'db> for ProgramDecl<'db> {
             contents: HoverContents::Markup(MarkupContent {
                 kind: MarkupKind::Markdown,
                 value: format!(
-                    r#"
-{comment}
-```iecst
-{path}PROGRAM {name}
-```
-                "#
+                    "```iecst\n{path}PROGRAM {name}\n```\n{comment}"
                 ),
             }),
             range: Some(self.get_name_span(db).into()),
@@ -155,12 +150,7 @@ impl<'db> HoverHandler<'db> for Pou<'db> {
             contents: HoverContents::Markup(MarkupContent {
                 kind: MarkupKind::Markdown,
                 value: format!(
-                    r#"
-{comment}
-```iecst
-{path}{kind} {name}{return_type}
-```
-                "#
+                    "```iecst\n{path}{kind} {name}{return_type}\n```\n{comment}"
                 ),
             }),
             range: Some(self.get_name_span(db).into()),
@@ -191,12 +181,7 @@ impl<'db> HoverHandler<'db> for VariableDecl<'db> {
             contents: HoverContents::Markup(MarkupContent {
                 kind: MarkupKind::Markdown,
                 value: format!(
-                    r#"
-{comment}
-```iecst
-({kind}) {name}: {type_name}
-```
-                "#
+                    "```iecst\n({kind}) {name}: {type_name}\n```\n{comment}"
                 ),
             }),
             range: Some(self.get_name_span(db).into()),
@@ -229,12 +214,7 @@ impl<'db> HoverHandler<'db> for MethodRef<'db> {
             contents: HoverContents::Markup(MarkupContent {
                 kind: MarkupKind::Markdown,
                 value: format!(
-                    r#"
-{comment}
-```iecst
-{path}{kind} {name}{return_type}
-```
-                "#
+                    "```iecst\n{path}{kind} {name}{return_type}\n```\n{comment}"
                 ),
             }),
             range: Some(self.get_name_span(db).into()),
@@ -253,12 +233,7 @@ impl<'db> HoverHandler<'db> for StructElement<'db> {
             contents: HoverContents::Markup(MarkupContent {
                 kind: MarkupKind::Markdown,
                 value: format!(
-                    r#"
-{comment}
-```iecst
-{path}{name}: {type_name}
-```
-                "#
+                    "```iecst\n{path}{name}: {type_name}\n```\n{comment}"
                 ),
             }),
             range: Some(self.get_name_span(db).into()),

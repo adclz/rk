@@ -39,9 +39,14 @@ pub trait HasComment<'db>: HirNodeInfo<'db> {
             &self.get_span(db),
         ) {
             Some(c) => c.to_string(self.get_scope_id(db).file(db).document(db)),
-            None => "".to_string(),
+            None => return Some(String::new()),
         };
-        Some(replace_bracket_refs_with_links(db, &comment))
+        let comment = replace_bracket_refs_with_links(db, &comment);
+        if comment.is_empty() {
+            Some(String::new())
+        } else {
+            Some(format!("\n---\n{comment}"))
+        }
     }
 }
 

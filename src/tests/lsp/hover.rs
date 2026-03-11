@@ -81,22 +81,24 @@ END_CLASS
         let HirNode::PouDecl(ty) = node else { return None };
         hover_markup(ty.hover(db, ty.get_name_span(db).start_byte)?.contents)
     }), @r"
-    # fn1 comment
     ```iecst
     FUNCTION fn1
     ```
-                    
 
-    # fb1 comment
+    ---
+    # fn1 comment
     ```iecst
     FUNCTION_BLOCK fb1
     ```
-                    
 
-    # class1 comment
+    ---
+    # fb1 comment
     ```iecst
     CLASS class1
     ```
+
+    ---
+    # class1 comment
     ");
 }
 
@@ -122,15 +124,17 @@ END_NAMESPACE
         let HirNode::PouDecl(ty) = node else { return None };
         hover_markup(ty.hover(db, ty.get_name_span(db).start_byte)?.contents)
     }), @r"
+    ```iecst
+    System
+    FUNCTION_BLOCK SR
+    ```
+
+    ---
     ## SR - Set-Dominant Bistable
 
     - `S1` = **TRUE** sets output `Q1` to TRUE
     - `R` = **TRUE** resets output `Q1` to FALSE
     - If both are TRUE, **set wins**
-    ```iecst
-    System
-    FUNCTION_BLOCK SR
-    ```
     ");
 }
 
@@ -181,22 +185,24 @@ END_FUNCTION_BLOCK
         let HirNode::VariableDecl(var) = node else { return None };
         hover_markup(var.hover(db, 0)?.contents)
     }), @r"
-    # var1 comment
     ```iecst
     (VAR) var1: INT
     ```
-                    
 
-    # var2 comment
+    ---
+    # var1 comment
     ```iecst
     (VAR) var2: INT
     ```
-                    
 
-    # var3 comment
+    ---
+    # var2 comment
     ```iecst
     (VAR) var3: INT
     ```
+
+    ---
+    # var3 comment
     ");
 }
 
@@ -228,8 +234,6 @@ END_NAMESPACE
     System.Subsystem1
     FUNCTION_BLOCK fb1
     ```
-                    
-
 
     ```iecst
     System.Subsystem1.Subsystem1
@@ -298,8 +302,6 @@ END_TYPE
     ```iecst
     TYPE AnEnum: ENUM { A, B, C, D }
     ```
-                    
-
 
     ```iecst
     TYPE ABiggerEnum: ENUM { A, B, C, D, E, F, G, H, I, J, ... (2 more) }
@@ -336,8 +338,6 @@ END_TYPE
     ```iecst
     INT
     ```
-
-
     ```iecst
     TYPE Array: ARRAY [1..10] OF INT
     ```
@@ -380,8 +380,6 @@ END_TYPE
         fuel: BOOL
     }
     ```
-                    
-
 
     ```iecst
     TYPE Engine: STRUCT {
@@ -419,8 +417,6 @@ END_TYPE
     ```iecst
     oil: INT
     ```
-                    
-
 
     ```iecst
     fuel: BOOL
@@ -455,20 +451,14 @@ END_FUNCTION_BLOCK
     ```iecst
     (VAR) my_var: Engine
     ```
-                    
-
 
     ```iecst
     oil: INT
     ```
-                    
-
 
     ```iecst
     (VAR) my_var: Engine
     ```
-                    
-
 
     ```iecst
     fuel: BOOL
@@ -732,12 +722,14 @@ END_FUNCTION
     let hover = fn1
         .hover(&with_db, fn1.get_name_span(&with_db).start_byte)
         .unwrap();
-    assert_snapshot!(hover_markup(hover.contents).unwrap(), @r###"
-    Uses [MyFB](file:///test0.st) internally
+    assert_snapshot!(hover_markup(hover.contents).unwrap(), @r"
     ```iecst
     FUNCTION fn1
     ```
-    "###);
+
+    ---
+    Uses [MyFB](file:///test0.st) internally
+    ");
 }
 
 #[rstest]
@@ -752,10 +744,12 @@ END_FUNCTION
         let HirNode::PouDecl(ty) = node else { return None };
         hover_markup(ty.hover(db, ty.get_name_span(db).start_byte)?.contents)
     }), @r"
-    References [NonExistent] type
     ```iecst
     FUNCTION fn1
     ```
+
+    ---
+    References [NonExistent] type
     ");
 }
 
@@ -789,12 +783,14 @@ END_FUNCTION
         .find(|v| v.name(&with_db).text(&with_db) == "x")
         .unwrap();
     let hover = x_var.hover(&with_db, 0).unwrap();
-    assert_snapshot!(hover_markup(hover.contents).unwrap(), @r###"
-    Controls a [Sensor](file:///test0.st)
+    assert_snapshot!(hover_markup(hover.contents).unwrap(), @r"
     ```iecst
     (VAR) x: INT
     ```
-    "###);
+
+    ---
+    Controls a [Sensor](file:///test0.st)
+    ");
 }
 
 /// Array bound expressions should show inferred type on hover (not {unknown})
