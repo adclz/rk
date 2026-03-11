@@ -1596,11 +1596,9 @@ END_FUNCTION
             code: "E0312",
             category: "Type System",
             title: "Invalid generic constraint",
-            description: "The generic parameter has an invalid constraint.",
+            description: "INTO constraints must target a sibling generic parameter. Concrete types, type groups, and self-references are not allowed.",
             sources: &[r#"
-TYPE arr1 : ARRAY[0..1] OF INT END_TYPE
-
-FUNCTION fn1<GT : ANY_INT + INTO<arr1>>
+FUNCTION fn1<GT: ANY_INT + INTO<INT>>
 END_FUNCTION
 "#],
         },
@@ -1642,20 +1640,17 @@ END_FUNCTION_BLOCK
             code: "E0316",
             category: "Type System",
             title: "Type argument INTO constraint mismatch",
-            description: "A type argument cannot be implicitly cast into the INTO constraint target.",
+            description: "A type argument cannot be implicitly cast into the type of the referenced generic parameter.",
             sources: &[r#"
-FUNCTION widen<T: ANY_INT + INTO<INT>> : INT
+FUNCTION widen<A: ANY_INT, B: ANY_INT + INTO<A>> : A
     VAR_INPUT
-        a: T;
+        x: B;
     END_VAR
-    widen := a;
+    widen := x;
 END_FUNCTION
 
 FUNCTION test : INT
-    VAR
-        x : DINT := 5;
-    END_VAR
-    test := widen<DINT>(x);
+    test := widen<INT, DINT>(5);
 END_FUNCTION
 "#],
         },

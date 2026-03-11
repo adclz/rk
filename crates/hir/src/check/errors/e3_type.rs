@@ -89,6 +89,10 @@ pub enum TypeError<'db> {
         param: GenericParam<'db>,
         constraint: Spec<'db>,
     },
+    SelfReferentialIntoConstraint {
+        param: GenericParam<'db>,
+        constraint: Spec<'db>,
+    },
     MissingTypeArguments {
         func_name: Ident,
         call_site: CallSite<'db>,
@@ -144,6 +148,7 @@ impl<'db> ErrorCode for TypeError<'db> {
             Self::InvalidGenericType { .. } => "E0310",
             Self::UnknownGenericConstraint { .. } => "E0311",
             Self::InvalidGenericConstraint { .. } => "E0312",
+            Self::SelfReferentialIntoConstraint { .. } => "E0312",
             Self::MissingTypeArguments { .. } => "E0313",
             Self::WrongTypeArgumentArity { .. } => "E0314",
             Self::TypeArgumentConstraintMismatch { .. } => "E0315",
@@ -332,9 +337,18 @@ impl<'db> ToIdeDiagnostic<'db> for TypeError<'db> {
                 .call(),
             Self::InvalidGenericConstraint { param, constraint } => diag()
                 .message(format!(
-                    "generic '{}' has invalid constraint '{}'",
+                    "INTO constraint on '{}' must target a sibling generic parameter, got '{}'",
                     param.name(db).text(db),
                     constraint.as_call_site(db).to_string(db)
+                ))
+                .severity(DiagnosticSeverity::ERROR)
+                .desc(self)
+                .range(constraint.as_call_site(db).get_span(db))
+                .call(),
+            Self::SelfReferentialIntoConstraint { param, constraint } => diag()
+                .message(format!(
+                    "INTO constraint on '{}' cannot reference itself",
+                    param.name(db).text(db),
                 ))
                 .severity(DiagnosticSeverity::ERROR)
                 .desc(self)

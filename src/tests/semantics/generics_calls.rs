@@ -67,17 +67,17 @@ END_FUNCTION"#;
 }
 
 #[rstest]
-fn valid_generic_with_constraint(mut with_db: RootDatabase) {
+fn valid_generic_with_into_constraint(mut with_db: RootDatabase) {
     let source = r#"
-FUNCTION fn<A: ANY_INT + INTO<INT>, B: ANY_INT> : B
+FUNCTION widen<A: ANY_SIGNED, B: ANY_SIGNED + INTO<A>> : A
     VAR_INPUT
-        x: A;
+        x: B;
     END_VAR
-    fn := x;
+    widen := x;
 END_FUNCTION
 
 FUNCTION test : INT
-    test := fn<INT, INT>(42);
+    test := widen<INT, SINT>(SINT#5);
 END_FUNCTION"#;
 
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @"");
@@ -254,23 +254,20 @@ END_FUNCTION"#;
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @"");
 }
 
-// INTO constraint tests
+// INTO constraint tests (cross-parameter)
 
 #[rstest]
-fn valid_into_constraint_sint_into_int(mut with_db: RootDatabase) {
+fn valid_into_constraint_cross_param(mut with_db: RootDatabase) {
     let source = r#"
-FUNCTION widen<T: ANY_SIGNED + INTO<INT>> : INT
+FUNCTION widen<A: ANY_SIGNED, B: ANY_SIGNED + INTO<A>> : A
     VAR_INPUT
-        a: T;
+        x: B;
     END_VAR
-    widen := a;
+    widen := x;
 END_FUNCTION
 
 FUNCTION test : INT
-    VAR
-        x : SINT := 5;
-    END_VAR
-    test := widen<SINT>(x);
+    test := widen<INT, SINT>(SINT#5);
 END_FUNCTION"#;
 
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @"");
@@ -279,44 +276,41 @@ END_FUNCTION"#;
 #[rstest]
 fn valid_into_constraint_same_type(mut with_db: RootDatabase) {
     let source = r#"
-FUNCTION identity<T: ANY_INT + INTO<INT>> : INT
+FUNCTION identity<A: ANY_INT, B: ANY_INT + INTO<A>> : A
     VAR_INPUT
-        a: T;
+        x: B;
     END_VAR
-    identity := a;
+    identity := x;
 END_FUNCTION
 
 FUNCTION test : INT
-    test := identity<INT>(42);
+    test := identity<INT, INT>(42);
 END_FUNCTION"#;
 
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @"");
 }
 
 #[rstest]
-fn invalid_into_constraint_dint_into_int(mut with_db: RootDatabase) {
+fn invalid_into_constraint_cross_param(mut with_db: RootDatabase) {
     let source = r#"
-FUNCTION widen<T: ANY_INT + INTO<INT>> : INT
+FUNCTION widen<A: ANY_INT, B: ANY_INT + INTO<A>> : A
     VAR_INPUT
-        a: T;
+        x: B;
     END_VAR
-    widen := a;
+    widen := x;
 END_FUNCTION
 
 FUNCTION test : INT
-    VAR
-        x : DINT := 5;
-    END_VAR
-    test := widen<DINT>(x);
+    test := widen<INT, DINT>(5);
 END_FUNCTION"#;
 
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
     [E0316] Error: type argument INTO constraint mismatch
-        ,-[ file:///test0.st:13:13 ]
+        ,-[ file:///test0.st:10:13 ]
         |
-     13 |     test := widen<DINT>(x);
+     10 |     test := widen<INT, DINT>(5);
         |             ^^|^^
-        |               `---- 'DINT' cannot be implicitly cast into 'INT' (INTO constraint on 'T')
+        |               `---- 'DINT' cannot be implicitly cast into 'INT' (INTO constraint on 'B')
     ----'
     ");
 }
@@ -324,69 +318,29 @@ END_FUNCTION"#;
 #[rstest]
 fn invalid_into_constraint_inferred(mut with_db: RootDatabase) {
     let source = r#"
-FUNCTION widen<T: ANY_INT + INTO<INT>> : INT
+FUNCTION widen<A: ANY_INT, B: ANY_INT + INTO<A>> : A
     VAR_INPUT
-        a: T;
+        x: A;
+        y: B;
     END_VAR
-    widen := a;
+    widen := x;
 END_FUNCTION
 
 FUNCTION test : INT
     VAR
-        x : DINT := 5;
+        x : INT := 5;
+        y : DINT := 10;
     END_VAR
-    test := widen(x);
+    test := widen(x, y);
 END_FUNCTION"#;
 
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
     [E0316] Error: type argument INTO constraint mismatch
-        ,-[ file:///test0.st:13:13 ]
+        ,-[ file:///test0.st:15:13 ]
         |
-     13 |     test := widen(x);
+     15 |     test := widen(x, y);
         |             ^^|^^
-        |               `---- 'DINT' cannot be implicitly cast into 'INT' (INTO constraint on 'T')
-    ----'
-    ");
-}
-
-#[rstest]
-fn valid_into_constraint_with_any_generic(mut with_db: RootDatabase) {
-    let source = r#"
-FUNCTION fn<T: ANY + INTO<ANY_INT>> : INT
-    VAR_INPUT
-        a: T;
-    END_VAR
-    fn := a;
-END_FUNCTION
-
-FUNCTION test : INT
-    test := fn<INT>(42);
-END_FUNCTION"#;
-
-    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @"");
-}
-
-#[rstest]
-fn invalid_into_constraint_real_into_any_int(mut with_db: RootDatabase) {
-    let source = r#"
-FUNCTION fn<T: ANY + INTO<ANY_INT>> : INT
-    VAR_INPUT
-        a: T;
-    END_VAR
-    fn := a;
-END_FUNCTION
-
-FUNCTION test : INT
-    test := fn<REAL>(42);
-END_FUNCTION"#;
-
-    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E0315] Error: type argument constraint mismatch
-        ,-[ file:///test0.st:10:13 ]
-        |
-     10 |     test := fn<REAL>(42);
-        |             ^|
-        |              `-- type 'REAL' does not satisfy constraint 'ANY_INT' (on generic parameter 'T')
+        |               `---- 'DINT' cannot be implicitly cast into 'INT' (INTO constraint on 'B')
     ----'
     ");
 }

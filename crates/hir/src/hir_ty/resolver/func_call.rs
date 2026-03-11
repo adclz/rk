@@ -410,37 +410,6 @@ fn validate_and_store_generic_substitutions<'db>(
                         ok = false;
                     }
                 }
-                Constraint::AnyGeneric(any) => {
-                    // INTO<ANY_*> constraint — E0315
-                    if !type_satisfies_any_constraint(concrete_type, *any) {
-                        ctx.errors.push(
-                            TypeError::TypeArgumentConstraintMismatch {
-                                concrete_type: *concrete_type,
-                                param_name,
-                                constraint: *any,
-                                call_site,
-                            }
-                            .to_diagnostic(db),
-                        );
-                        ok = false;
-                    }
-                }
-                Constraint::Spec(spec) => {
-                    // INTO<ConcreteType> (e.g., INTO<INT>) — E0316
-                    let target_type = Type::resolve_spec(db, *spec);
-                    if !type_satisfies_into_constraint(db, concrete_type, &target_type) {
-                        ctx.errors.push(
-                            TypeError::TypeArgumentIntoConstraintMismatch {
-                                type_arg: *concrete_type,
-                                into_target: target_type,
-                                param_name,
-                                call_site,
-                            }
-                            .to_diagnostic(db),
-                        );
-                        ok = false;
-                    }
-                }
                 Constraint::GenericParameter(other_param_name) => {
                     // INTO<U> — cross-parameter constraint — E0316
                     if let Some(&other_concrete) = ctx.generic_substitutions.get(other_param_name)

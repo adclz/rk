@@ -32,15 +32,11 @@ pub struct ArrayElementPosition {
 }
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq, Hash, salsa::Update)]
-pub enum Constraint<'db> {
+pub enum Constraint {
     /// Main type bound (e.g., `T: ANY_INT`)
     TypeBound(AnyGeneric),
-    /// INTO<OtherGenericParam> constraint
+    /// INTO<OtherGenericParam> constraint (e.g., `INTO<U>` where U is a sibling generic)
     GenericParameter(Ident),
-    /// INTO<ANY_*> constraint (e.g., INTO<ANY_INT>)
-    AnyGeneric(AnyGeneric),
-    /// INTO<ConcreteType> constraint (e.g., INTO<INT>)
-    Spec(Spec<'db>),
 }
 
 #[derive(Debug, PartialEq, Eq, salsa::Update)]
@@ -52,7 +48,7 @@ pub struct Signature<'db> {
     pub type_of_specs: FxHashMap<Spec<'db>, Type<'db>>,
 
     //// Mapping of generic parameters to their spec constraints (for generics declared on this POU)
-    pub constraint_of_generic: FxHashMap<Ident, Vec<Constraint<'db>>>,
+    pub constraint_of_generic: FxHashMap<Ident, Vec<Constraint>>,
 
     /// Errors encountered during inference
     pub errors: Vec<IdeDiagnostic>,
@@ -108,61 +104,44 @@ impl<'db> Signature<'db> {
                     .push(Constraint::TypeBound(any));
             }
 
+            let param_name = generic.name(db);
+
             for constraint in generic.spec_constraints(db) {
                 match constraint.spec.kind(db) {
-                    SpecKind::Simple(elementary) => {
-                        if elementary.is_simple() {
-                            self.constraint_of_generic
-                                .entry(generic.name(db))
-                                .or_default()
-                                .push(Constraint::Spec(constraint.spec));
-                        } else {
-                            self.errors.push(
-                                TypeError::InvalidGenericConstraint {
-                                    param: *generic,
-                                    constraint: constraint.spec,
-                                }
-                                .to_diagnostic(db),
-                            );
-                        }
-                    }
-                    SpecKind::Target(target) => {
-                        // can not create a generic constraint to a namespace item.
-                        // todo: allowing this means we should add support for subtyping
-                        if target.path.namespace.is_some() {
-                            self.errors.push(
-                                TypeError::InvalidGenericConstraint {
-                                    param: *generic,
-                                    constraint: constraint.spec,
-                                }
-                                .to_diagnostic(db),
-                            );
-                        } else {
-                            let target = target.path.target;
-                            if let Some(generic) = generics_hashmap.get(&target) {
-                                // refer to a locally declared generic parameter
-                                self.constraint_of_generic
-                                    .entry(generic.name(db))
-                                    .or_default()
-                                    .push(Constraint::GenericParameter(generic.name(db)));
-                            } else if let Some(any) = AnyGeneric::is_builtin_any(db, &target) {
-                                // refer to a builtin generic parameter
-                                self.constraint_of_generic
-                                    .entry(generic.name(db))
-                                    .or_default()
-                                    .push(Constraint::AnyGeneric(any));
-                            } else {
+                    SpecKind::Target(target) if target.path.namespace.is_none() => {
+                        let target_ident = target.path.target;
+                        if let Some(target_generic) = generics_hashmap.get(&target_ident) {
+                            // INTO<T> where T is the same parameter is self-referential
+                            if target_generic.name(db) == param_name {
                                 self.errors.push(
-                                    TypeError::InvalidGenericConstraint {
+                                    TypeError::SelfReferentialIntoConstraint {
                                         param: *generic,
                                         constraint: constraint.spec,
                                     }
                                     .to_diagnostic(db),
                                 );
+                            } else {
+                                // INTO<U> where U is a sibling generic parameter — valid
+                                self.constraint_of_generic
+                                    .entry(param_name)
+                                    .or_default()
+                                    .push(Constraint::GenericParameter(
+                                        target_generic.name(db),
+                                    ));
                             }
+                        } else {
+                            // Not a sibling generic parameter — invalid
+                            self.errors.push(
+                                TypeError::InvalidGenericConstraint {
+                                    param: *generic,
+                                    constraint: constraint.spec,
+                                }
+                                .to_diagnostic(db),
+                            );
                         }
                     }
                     _ => {
+                        // INTO target must be a generic parameter, nothing else
                         self.errors.push(
                             TypeError::InvalidGenericConstraint {
                                 param: *generic,
