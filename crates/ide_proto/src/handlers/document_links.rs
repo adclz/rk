@@ -211,13 +211,14 @@ pub(crate) fn replace_bracket_refs_with_links(db: &dyn WorkspaceDataBase, text: 
                         .all(|c| c.is_alphanumeric() || c == '_' || c == '.')
                     && !content.starts_with('.')
                     && !content.ends_with('.')
-                    && let Some(location) = resolve_bracket_ref(db, content) {
-                        result.push_str(&text[last_end..start]);
-                        result.push_str(&format!("[{}]({})", content, location.uri));
-                        i += 1;
-                        last_end = i;
-                        continue;
-                    }
+                    && let Some(location) = resolve_bracket_ref(db, content)
+                {
+                    result.push_str(&text[last_end..start]);
+                    result.push_str(&format!("[{}]({})", content, location.uri));
+                    i += 1;
+                    last_end = i;
+                    continue;
+                }
                 i += 1;
             }
         } else {

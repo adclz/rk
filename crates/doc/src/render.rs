@@ -23,11 +23,7 @@ pub fn compile_and_render(db: &mut RootDatabase, sources_str: &[&str], run_linte
 
     let mut output = Vec::new();
 
-    let mut files: Vec<File> = db
-        .get_files()
-        .iter()
-        .map(|entry| *entry.value())
-        .collect();
+    let mut files: Vec<File> = db.get_files().iter().map(|entry| *entry.value()).collect();
     files.sort_by_key(|file: &File| {
         let url_str = file.url(db).as_str().to_owned();
         url_str
@@ -58,7 +54,7 @@ pub fn compile_and_render(db: &mut RootDatabase, sources_str: &[&str], run_linte
                 db,
                 file.url(db),
                 file.document(db).as_str(),
-                Some(config.clone()),
+                Some(config),
                 true,
             )
             .write(
@@ -137,13 +133,9 @@ pub fn render_sidebar_html(categories: &[(&str, Vec<(&str, &str)>)]) -> String {
 
     for (category, entries) in categories {
         let slug = category.to_lowercase().replace(' ', "-");
-        html.push_str(&format!(
-            "<h3><a href=\"#cat-{slug}\">{category}</a></h3>"
-        ));
+        html.push_str(&format!("<h3><a href=\"#cat-{slug}\">{category}</a></h3>"));
         for (code, title) in entries {
-            html.push_str(&format!(
-                "<a href=\"#{code}\" title=\"{title}\">{code}</a>"
-            ));
+            html.push_str(&format!("<a href=\"#{code}\" title=\"{title}\">{code}</a>"));
         }
     }
 
@@ -152,7 +144,13 @@ pub fn render_sidebar_html(categories: &[(&str, Vec<(&str, &str)>)]) -> String {
 }
 
 /// Assemble the full single-page HTML document.
-pub fn render_page(sidebar: &str, body: &str, tm_grammar_json: &str, success: usize, fail: usize) -> String {
+pub fn render_page(
+    sidebar: &str,
+    body: &str,
+    tm_grammar_json: &str,
+    success: usize,
+    fail: usize,
+) -> String {
     format!(
         r##"<!DOCTYPE html>
 <html lang="en">

@@ -2132,10 +2132,12 @@ END_FUNCTION
             category: "Linter Warnings",
             title: "Variable shadows POU",
             description: "A variable name shadows a POU (function, function block, class, etc.) available in scope.",
-            sources: &[r#"
+            sources: &[
+                r#"
 FUNCTION_BLOCK PrintLog
 END_FUNCTION_BLOCK
-"#, r#"
+"#,
+                r#"
 FUNCTION test : INT
 VAR
     PrintLog : BOOL;
@@ -2143,7 +2145,8 @@ END_VAR
     PrintLog := TRUE;
     test := 0;
 END_FUNCTION
-"#],
+"#,
+            ],
         },
         ErrorExample {
             code: "W0103",

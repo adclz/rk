@@ -1,7 +1,7 @@
 use ast::generated::DataTypeDecl;
 use auto_lsp::core::ast::AstNode;
-use auto_lsp::default::db::tracked::get_ast;
 use auto_lsp::default::db::BaseDatabase;
+use auto_lsp::default::db::tracked::get_ast;
 use db::RootDatabase;
 use hir::HirNodeInfo;
 use ide_proto::handlers::completions_utils::{CompletionCtx, QueryMode, static_snippets};
@@ -166,9 +166,9 @@ pub fn type_decl_completion_descendant_not_none(mut with_db: RootDatabase) {
 
     // Check various positions inside the TYPE body
     let positions = [
-        source.find("STRUCT").unwrap(),     // on STRUCT keyword
-        source.find("x : INT").unwrap(),    // on field name
-        source.find("INT;").unwrap(),       // on INT type
+        source.find("STRUCT").unwrap(),  // on STRUCT keyword
+        source.find("x : INT").unwrap(), // on field name
+        source.find("INT;").unwrap(),    // on INT type
     ];
 
     for offset in positions {
@@ -213,18 +213,12 @@ pub fn type_decl_bare_shows_no_pou_snippets(mut with_db: RootDatabase) {
     let labels: Vec<&str> = completions.iter().map(|c| c.label.as_str()).collect();
 
     // Should offer type completions (elementary types, STRUCT, ARRAY)
-    assert!(
-        labels.contains(&"INT"),
-        "should offer INT: {labels:?}"
-    );
+    assert!(labels.contains(&"INT"), "should offer INT: {labels:?}");
     assert!(
         labels.contains(&"STRUCT"),
         "should offer STRUCT: {labels:?}"
     );
-    assert!(
-        labels.contains(&"ARRAY"),
-        "should offer ARRAY: {labels:?}"
-    );
+    assert!(labels.contains(&"ARRAY"), "should offer ARRAY: {labels:?}");
 
     // Should NOT offer POU/body completions
     assert!(

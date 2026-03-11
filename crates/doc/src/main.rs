@@ -97,8 +97,6 @@ fn main() {
     let output_file = out_dir.join("index.html");
     fs::write(&output_file, &page).expect("failed to write index.html");
 
-    eprintln!(
-        "\nDone! {success_count} diagnostics documented, {fail_count} warnings."
-    );
+    eprintln!("\nDone! {success_count} diagnostics documented, {fail_count} warnings.");
     eprintln!("Output: {}", output_file.display());
 }

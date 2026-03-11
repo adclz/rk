@@ -107,9 +107,7 @@ impl<'db> HoverHandler<'db> for ProgramDecl<'db> {
         Some(Hover {
             contents: HoverContents::Markup(MarkupContent {
                 kind: MarkupKind::Markdown,
-                value: format!(
-                    "```iecst\n{path}PROGRAM {name}\n```\n{comment}"
-                ),
+                value: format!("```iecst\n{path}PROGRAM {name}\n```\n{comment}"),
             }),
             range: Some(self.get_name_span(db).into()),
         })
@@ -149,9 +147,7 @@ impl<'db> HoverHandler<'db> for Pou<'db> {
         Some(Hover {
             contents: HoverContents::Markup(MarkupContent {
                 kind: MarkupKind::Markdown,
-                value: format!(
-                    "```iecst\n{path}{kind} {name}{return_type}\n```\n{comment}"
-                ),
+                value: format!("```iecst\n{path}{kind} {name}{return_type}\n```\n{comment}"),
             }),
             range: Some(self.get_name_span(db).into()),
         })
@@ -180,9 +176,7 @@ impl<'db> HoverHandler<'db> for VariableDecl<'db> {
         Some(Hover {
             contents: HoverContents::Markup(MarkupContent {
                 kind: MarkupKind::Markdown,
-                value: format!(
-                    "```iecst\n({kind}) {name}: {type_name}\n```\n{comment}"
-                ),
+                value: format!("```iecst\n({kind}) {name}: {type_name}\n```\n{comment}"),
             }),
             range: Some(self.get_name_span(db).into()),
         })
@@ -213,9 +207,7 @@ impl<'db> HoverHandler<'db> for MethodRef<'db> {
         Some(Hover {
             contents: HoverContents::Markup(MarkupContent {
                 kind: MarkupKind::Markdown,
-                value: format!(
-                    "```iecst\n{path}{kind} {name}{return_type}\n```\n{comment}"
-                ),
+                value: format!("```iecst\n{path}{kind} {name}{return_type}\n```\n{comment}"),
             }),
             range: Some(self.get_name_span(db).into()),
         })
@@ -232,9 +224,7 @@ impl<'db> HoverHandler<'db> for StructElement<'db> {
         Some(Hover {
             contents: HoverContents::Markup(MarkupContent {
                 kind: MarkupKind::Markdown,
-                value: format!(
-                    "```iecst\n{path}{name}: {type_name}\n```\n{comment}"
-                ),
+                value: format!("```iecst\n{path}{name}: {type_name}\n```\n{comment}"),
             }),
             range: Some(self.get_name_span(db).into()),
         })

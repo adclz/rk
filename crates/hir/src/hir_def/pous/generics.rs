@@ -158,11 +158,7 @@ impl AnyGeneric {
     pub fn is_numeric(&self) -> bool {
         matches!(
             self,
-            Self::ANY_NUM
-                | Self::ANY_INT
-                | Self::ANY_UNSIGNED
-                | Self::ANY_SIGNED
-                | Self::ANY_REAL
+            Self::ANY_NUM | Self::ANY_INT | Self::ANY_UNSIGNED | Self::ANY_SIGNED | Self::ANY_REAL
         )
     }
 
@@ -204,20 +200,13 @@ impl AnyGeneric {
     pub fn supports_mul(&self) -> bool {
         matches!(
             self,
-            Self::ANY_NUM
-                | Self::ANY_INT
-                | Self::ANY_UNSIGNED
-                | Self::ANY_SIGNED
-                | Self::ANY_REAL
+            Self::ANY_NUM | Self::ANY_INT | Self::ANY_UNSIGNED | Self::ANY_SIGNED | Self::ANY_REAL
         )
     }
 
     /// All types in this group support modulo (IEC 61131-3: ANY_INT)
     pub fn supports_mod(&self) -> bool {
-        matches!(
-            self,
-            Self::ANY_INT | Self::ANY_UNSIGNED | Self::ANY_SIGNED
-        )
+        matches!(self, Self::ANY_INT | Self::ANY_UNSIGNED | Self::ANY_SIGNED)
     }
 
     /// All types in this group support exponentiation (IEC 61131-3: ANY_REAL)
@@ -289,9 +278,9 @@ impl AnyGeneric {
             Self::ANY_DURATION => matches!(spec, ElementarySpec::Time | ElementarySpec::LTime),
         }
     }
-    
+
     // todo: we could benefit from string interning insteaad of doing string comparisons for builtin generic recognition
-    // this implies interning the generic constraint identifiers at the parser level and storing interned ids in the GenericContraint struct, 
+    // this implies interning the generic constraint identifiers at the parser level and storing interned ids in the GenericContraint struct,
     // then matching on those interned ids here instead of doing string lookups.
     pub fn is_builtin_any(db: &dyn WorkspaceDataBase, ident: &Ident) -> Option<Self> {
         let text = ident.text(db);

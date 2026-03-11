@@ -380,9 +380,26 @@ fn refresh_configuration(
 
     // Send server status notification for status bar
     let (status, message) = if !file_errors.is_empty() {
-        ("error", format!("config.toml: {}", file_errors.iter().map(|e| e.diagnostic.message.clone()).collect::<Vec<_>>().join("; ")))
+        (
+            "error",
+            format!(
+                "config.toml: {}",
+                file_errors
+                    .iter()
+                    .map(|e| e.diagnostic.message.clone())
+                    .collect::<Vec<_>>()
+                    .join("; ")
+            ),
+        )
     } else if !notices.is_empty() {
-        ("warning", notices.iter().map(|n| n.to_string()).collect::<Vec<_>>().join("; "))
+        (
+            "warning",
+            notices
+                .iter()
+                .map(|n| n.to_string())
+                .collect::<Vec<_>>()
+                .join("; "),
+        )
     } else {
         ("ok", String::new())
     };

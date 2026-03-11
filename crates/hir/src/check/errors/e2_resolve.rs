@@ -305,7 +305,13 @@ impl<'db> ToIdeDiagnostic<'db> for ResolveError<'db> {
                 .with_query(query)
                 .search(db);
 
-                list_candidates(db, expr.ident(db).text(db).as_str(), &mut diag, &items, Some(*scope));
+                list_candidates(
+                    db,
+                    expr.ident(db).text(db).as_str(),
+                    &mut diag,
+                    &items,
+                    Some(*scope),
+                );
                 diag
             }
             Self::NoNamespaceItemFound { path } => {
@@ -585,7 +591,11 @@ impl<'db> ToIdeDiagnostic<'db> for ResolveError<'db> {
                 diag.with_note("only elementary types can be variadic".into());
                 diag
             }
-            Self::MultipleItemsInScope { name, span, candidates } => {
+            Self::MultipleItemsInScope {
+                name,
+                span,
+                candidates,
+            } => {
                 let name = name.text(db);
 
                 // Count how many times each namespace appears
@@ -657,12 +667,7 @@ fn list_candidates<'db>(
                 _ => None,
             })
             .unwrap_or_else(|| name.to_string());
-        suggest_similar_note(
-            &owner,
-            "item",
-            diag,
-            var_names.iter().map(|n| n.as_str()),
-        );
+        suggest_similar_note(&owner, "item", diag, var_names.iter().map(|n| n.as_str()));
     }
 
     // Suggest local POUs with similar names

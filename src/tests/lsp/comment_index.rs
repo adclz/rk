@@ -188,7 +188,6 @@ END_FUNCTION
         comment.to_string(document),
         "This is a\n   multiline\n   Pascal-style comment"
     );
-
 }
 
 #[test]

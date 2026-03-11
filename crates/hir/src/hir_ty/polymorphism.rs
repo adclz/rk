@@ -46,9 +46,10 @@ pub fn interface_extends<'db>(
     if let Some(extends) = child.extends(db) {
         for spec in extends {
             if let Some(parent) = resolve_spec_to_interface(db, spec)
-                && interface_extends(db, parent, target) {
-                    return true;
-                }
+                && interface_extends(db, parent, target)
+            {
+                return true;
+            }
         }
     }
     false
@@ -93,9 +94,10 @@ pub fn is_subclass_of<'db>(
         return true;
     }
     if let Some(extends_spec) = derived.extends(db)
-        && let Some(parent) = resolve_spec_to_class(db, extends_spec) {
-            return is_subclass_of(db, parent, base);
-        }
+        && let Some(parent) = resolve_spec_to_class(db, extends_spec)
+    {
+        return is_subclass_of(db, parent, base);
+    }
     false
 }
 
@@ -109,9 +111,10 @@ pub fn is_sub_fb_of<'db>(
         return true;
     }
     if let Some(extends_spec) = derived.extends(db)
-        && let Some(parent) = resolve_spec_to_fb(db, extends_spec) {
-            return is_sub_fb_of(db, parent, base);
-        }
+        && let Some(parent) = resolve_spec_to_fb(db, extends_spec)
+    {
+        return is_sub_fb_of(db, parent, base);
+    }
     false
 }
 
@@ -120,9 +123,10 @@ fn resolve_spec_to_interface<'db>(
     spec: &crate::hir_def::expressions::spec::Spec<'db>,
 ) -> Option<Interface<'db>> {
     if let SpecKind::Target(target) = spec.kind(db)
-        && let Some(Pou::Interface(iface)) = resolve_namespace_access(db, &target.path).found() {
-            return Some(iface);
-        }
+        && let Some(Pou::Interface(iface)) = resolve_namespace_access(db, &target.path).found()
+    {
+        return Some(iface);
+    }
     None
 }
 
@@ -131,9 +135,10 @@ fn resolve_spec_to_class<'db>(
     spec: &crate::hir_def::expressions::spec::Spec<'db>,
 ) -> Option<Class<'db>> {
     if let SpecKind::Target(target) = spec.kind(db)
-        && let Some(Pou::Class(class)) = resolve_namespace_access(db, &target.path).found() {
-            return Some(class);
-        }
+        && let Some(Pou::Class(class)) = resolve_namespace_access(db, &target.path).found()
+    {
+        return Some(class);
+    }
     None
 }
 
@@ -142,8 +147,9 @@ fn resolve_spec_to_fb<'db>(
     spec: &crate::hir_def::expressions::spec::Spec<'db>,
 ) -> Option<FunctionBlock<'db>> {
     if let SpecKind::Target(target) = spec.kind(db)
-        && let Some(Pou::FunctionBlock(fb)) = resolve_namespace_access(db, &target.path).found() {
-            return Some(fb);
-        }
+        && let Some(Pou::FunctionBlock(fb)) = resolve_namespace_access(db, &target.path).found()
+    {
+        return Some(fb);
+    }
     None
 }

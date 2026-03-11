@@ -129,9 +129,7 @@ impl<'db> Signature<'db> {
                                 self.constraint_of_generic
                                     .entry(param_name)
                                     .or_default()
-                                    .push(Constraint::GenericParameter(
-                                        target_generic.name(db),
-                                    ));
+                                    .push(Constraint::GenericParameter(target_generic.name(db)));
                             }
                         } else {
                             // Not a sibling generic parameter — invalid
