@@ -67,6 +67,7 @@ use auto_lsp::lsp_types::request::SemanticTokensFullRequest;
 use auto_lsp::lsp_types::request::SemanticTokensRangeRequest;
 use auto_lsp::lsp_types::request::SignatureHelpRequest;
 use auto_lsp::lsp_types::request::WorkspaceDiagnosticRequest;
+use auto_lsp::lsp_types::request::WorkspaceSymbolRequest;
 use auto_lsp::lsp_types::{
     OneOf, SemanticTokensFullOptions, SemanticTokensLegend, SemanticTokensOptions,
     SemanticTokensServerCapabilities,
@@ -103,6 +104,7 @@ use crate::capabilties::references::references;
 use crate::capabilties::rename::rename;
 use crate::capabilties::semantic_tokens;
 use crate::capabilties::signature_help::signature_help;
+use crate::capabilties::workspace_symbols::workspace_symbols;
 
 pub fn boot() -> Result<(), Box<dyn Error + Send + Sync>> {
     log::info!("Starting IEC LSP");
@@ -170,6 +172,7 @@ pub fn boot() -> Result<(), Box<dyn Error + Send + Sync>> {
                     retrigger_characters: None,
                     work_done_progress_options: Default::default(),
                 }),
+                workspace_symbol_provider: Some(OneOf::Left(true)),
 
                 ..Default::default()
             },
@@ -234,6 +237,7 @@ fn on_requests<Db: WorkspaceDataBase + Clone + RefUnwindSafe>(
         .on::<Rename, _>(ThreadIntent::Worker, rename)
         .on::<SignatureHelpRequest, _>(ThreadIntent::LatencySensitive, signature_help)
         .on::<DocumentLinkRequest, _>(ThreadIntent::Worker, document_links)
+        .on::<WorkspaceSymbolRequest, _>(ThreadIntent::Worker, workspace_symbols)
 }
 
 fn on_notifications(
