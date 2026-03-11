@@ -186,8 +186,9 @@ END_FUNCTION
     let comment = index.find_nearby_comment(document, &range).unwrap();
     assert_eq!(
         comment.to_string(document),
-        "This is a \n    multiline \n    Pascal-style comment"
+        "This is a\n   multiline\n   Pascal-style comment"
     );
+
 }
 
 #[test]
@@ -227,7 +228,7 @@ END_FUNCTION
         end_point: tree_sitter::Point { row: 5, column: 0 },
     };
     let comment = index.find_nearby_comment(document, &range).unwrap();
-    assert_eq!(comment.to_string(document), "NOT NESTED\n  (* NESTED *)");
+    assert_eq!(comment.to_string(document), "NOT NESTED\n(* NESTED *)");
 }
 
 #[test]

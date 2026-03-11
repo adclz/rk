@@ -101,6 +101,40 @@ END_CLASS
 }
 
 #[rstest]
+pub fn multiline_block_comment_hover(mut with_db: RootDatabase) {
+    let source = r#"
+NAMESPACE System
+
+    /*
+    ## SR - Set-Dominant Bistable
+
+    - `S1` = **TRUE** sets output `Q1` to TRUE
+    - `R` = **TRUE** resets output `Q1` to FALSE
+    - If both are TRUE, **set wins**
+    */
+    FUNCTION_BLOCK SR
+    END_FUNCTION_BLOCK
+
+END_NAMESPACE
+"#;
+
+    assert_snapshot!(collect_hovers(&mut with_db, source, |db, node| {
+        let HirNode::PouDecl(ty) = node else { return None };
+        hover_markup(ty.hover(db, ty.get_name_span(db).start_byte)?.contents)
+    }), @r"
+    ## SR - Set-Dominant Bistable
+
+    - `S1` = **TRUE** sets output `Q1` to TRUE
+    - `R` = **TRUE** resets output `Q1` to FALSE
+    - If both are TRUE, **set wins**
+    ```iecst
+    System
+    FUNCTION_BLOCK SR
+    ```
+    ");
+}
+
+#[rstest]
 pub fn namespace_hover(mut with_db: RootDatabase) {
     let source = r#"
 NAMESPACE System

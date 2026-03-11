@@ -156,21 +156,53 @@ impl Comment {
         match self.kind {
             CommentKind::Line => text.replace("//", "").trim_start().to_string(),
             CommentKind::C => {
-                let content = text.strip_prefix("/*").unwrap_or(text).trim_start();
-                content
-                    .strip_suffix("*/")
-                    .unwrap_or(content)
-                    .trim_end()
-                    .to_string()
+                let content = text.strip_prefix("/*").unwrap_or(text);
+                let content = content.strip_suffix("*/").unwrap_or(content);
+                Self::dedent_block(content)
             }
             CommentKind::Pascal => {
-                let content = text.strip_prefix("(*").unwrap_or(text).trim_start();
-                content
-                    .strip_suffix("*)")
-                    .unwrap_or(content)
-                    .trim_end()
-                    .to_string()
+                let content = text.strip_prefix("(*").unwrap_or(text);
+                let content = content.strip_suffix("*)").unwrap_or(content);
+                Self::dedent_block(content)
             }
         }
+    }
+
+    /// Dedent a multiline block comment by stripping the common leading whitespace
+    /// from all non-empty lines, then trimming leading/trailing blank lines.
+    fn dedent_block(content: &str) -> String {
+        let lines: Vec<&str> = content.lines().collect();
+
+        // Find minimum indentation across non-empty lines
+        let min_indent = lines
+            .iter()
+            .filter(|line| !line.trim().is_empty())
+            .map(|line| line.len() - line.trim_start().len())
+            .min()
+            .unwrap_or(0);
+
+        // Strip common indentation and trailing whitespace from each line
+        let result: Vec<&str> = lines
+            .iter()
+            .map(|line| {
+                if line.trim().is_empty() {
+                    ""
+                } else if line.len() >= min_indent {
+                    line[min_indent..].trim_end()
+                } else {
+                    line.trim()
+                }
+            })
+            .collect();
+
+        // Trim leading and trailing blank lines
+        let start = result.iter().position(|l| !l.is_empty()).unwrap_or(0);
+        let end = result
+            .iter()
+            .rposition(|l| !l.is_empty())
+            .map(|i| i + 1)
+            .unwrap_or(0);
+
+        result[start..end].join("\n")
     }
 }
