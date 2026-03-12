@@ -24,6 +24,7 @@ NAMESPACE Std.Timers
     VAR
         pulse: TP;
     END_VAR
+    
     pulse(IN := trigger, PT := T#5s);
     IF pulse.Q THEN
         // pulse is active
@@ -81,6 +82,7 @@ NAMESPACE Std.Timers
     VAR
         delay: TON;
     END_VAR
+    
     delay(IN := start_signal, PT := T#3s);
     IF delay.Q THEN
         // 3 seconds have passed since start_signal went TRUE
@@ -139,6 +141,7 @@ NAMESPACE Std.Timers
     VAR
         off_delay: TOF;
     END_VAR
+    
     off_delay(IN := motor_running, PT := T#10s);
     cooling_fan := off_delay.Q; // fan runs 10s after motor stops
     ```

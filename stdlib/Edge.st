@@ -16,6 +16,7 @@ NAMESPACE Std.Edge
     VAR
         trigger: R_TRIG;
     END_VAR
+    
     trigger(CLK := my_input);
     IF trigger.Q THEN
         // rising edge detected
@@ -45,6 +46,7 @@ NAMESPACE Std.Edge
     VAR
         trigger: F_TRIG;
     END_VAR
+    
     trigger(CLK := my_input);
     IF trigger.Q THEN
         // falling edge detected

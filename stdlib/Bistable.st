@@ -19,6 +19,7 @@ NAMESPACE Std.Bistable
     VAR
         latch: SR;
     END_VAR
+    
     latch(S1 := start_btn, R := stop_btn);
     motor := latch.Q1;
     ```
@@ -44,6 +45,7 @@ NAMESPACE Std.Bistable
     VAR
         latch: RS;
     END_VAR
+    
     latch(S := start_btn, R1 := emergency_stop);
     motor := latch.Q1;
     ```

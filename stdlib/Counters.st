@@ -23,6 +23,7 @@ NAMESPACE Std.Counters
     VAR
         counter: CTU;
     END_VAR
+    
     counter(CU := sensor, R := reset_btn, PV := 100);
     IF counter.Q THEN
         // target count reached
@@ -66,6 +67,7 @@ NAMESPACE Std.Counters
     VAR
         counter: CTD;
     END_VAR
+    
     counter(CD := sensor, LD := load_btn, PV := 50);
     IF counter.Q THEN
         // countdown complete
@@ -112,6 +114,7 @@ NAMESPACE Std.Counters
     VAR
         counter: CTUD;
     END_VAR
+    
     counter(CU := up_btn, CD := down_btn, R := FALSE, LD := FALSE, PV := 100);
     ```
     */
