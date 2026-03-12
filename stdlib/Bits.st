@@ -6,7 +6,7 @@ IEC 61131-3 **Table 30** - Bit shift and rotate operations.
 Each function takes a bit-type input `IN` and an integer shift count `N`.
 The result type matches the input type.
 */
-NAMESPACE Std
+NAMESPACE Std.Bits
 
     /*
     ## SHL - Shift Left
