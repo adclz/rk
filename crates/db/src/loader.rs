@@ -19,7 +19,7 @@ type ParseResult = Result<(Url, Arc<Document>), Box<dyn std::error::Error + Send
 /// Resolves the stdlib path.
 ///
 /// In debug builds, looks for `stdlib/` relative to CWD (assumes repo root).
-/// In release builds, looks for `$HOME/st_std_lib/`.
+/// In release builds, extracts embedded stdlib to `$HOME/.rk_std/` and returns that path.
 pub fn resolve_stdlib_path() -> Option<PathBuf> {
     if cfg!(debug_assertions) {
         let path = PathBuf::from("stdlib");
@@ -28,10 +28,7 @@ pub fn resolve_stdlib_path() -> Option<PathBuf> {
         }
     }
 
-    dirs::home_dir()
-        .map(|home| home.join("st_std_lib"))
-        .filter(|path| path.exists())
-        .and_then(|path| std::fs::canonicalize(path).ok())
+    crate::embedded_stdlib::ensure_stdlib_extracted()
 }
 
 /// Resolves the workspace config file (`config.toml` at the workspace root).
