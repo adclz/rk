@@ -136,10 +136,13 @@ static NEW_LINES: &str = r#"
     "END_FUNCTION_BLOCK"
     "END_TYPE"
     "END_INTERFACE"
-    "END_VAR"
     "END_METHOD"
 ] @append_hardline
 ("USING" (_) ";"? @append_hardline)
+
+(func_decl variables: (_) . body: (func_body) @prepend_hardline)
+(fb_decl variables: (_) . body: (fb_body) @prepend_hardline)
+(method_decl variables: (_) . body: (func_body) @prepend_hardline)
 
 [
     "TASK"
@@ -316,13 +319,16 @@ static ALLOW_BLANK_LINE: &str = r#"
     "TYPE" "END_TYPE"
     "INTERFACE" "END_INTERFACE"
     "METHOD" "END_METHOD"
-    "VAR" "END_VAR"
+    "VAR"
     "STRUCT" "END_STRUCT"
     (line_comment) (c_style_comment) (pascal_style_comment)
     (namespace_elements)
 ] @allow_blank_line_before
 
 (stmt_list . (_) @allow_blank_line_before)
+
+; Allow blank lines before END_VAR only when preceded by a declaration
+(_ (_) . "END_VAR" @allow_blank_line_before)
 "#;
 
 static LEAF: &str = r#"

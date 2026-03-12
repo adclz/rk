@@ -1057,3 +1057,31 @@ END_CONFIGURATION
     END_CONFIGURATION
     ");
 }
+
+#[rstest]
+pub fn empty_pou_no_double_blank_line(mut with_db: RootDatabase) {
+    let source = r#"
+FUNCTION_BLOCK fn1
+	VAR
+	
+	END_VAR
+
+END_FUNCTION_BLOCK
+"#;
+
+    add_sources(&mut with_db, &[source]);
+    let document = with_db
+        .get_files()
+        .iter()
+        .last()
+        .unwrap()
+        .document(&with_db);
+
+    assert_snapshot!(fmt(document), @r"
+    FUNCTION_BLOCK fn1
+    	VAR
+    	END_VAR
+
+    END_FUNCTION_BLOCK
+    ");
+}
