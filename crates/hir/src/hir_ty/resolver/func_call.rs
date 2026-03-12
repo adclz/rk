@@ -83,7 +83,14 @@ pub fn resolve_func_call<'db>(
     let mut formal_idx = 0;
     let len = func_call.params(db).len();
 
-    if len > callable.var_len_params(db) {
+    // Check if the callable has a variadic parameter
+    let has_variadic = callable
+        .def_map(db)
+        .local_variables
+        .values()
+        .any(|v| v.variadic(db));
+
+    if !has_variadic && len > callable.var_len_params(db) {
         ctx.errors.push(
             ResolveError::IncorrectNumberOfParameters {
                 expected: callable.var_len_params(db),
@@ -98,12 +105,27 @@ pub fn resolve_func_call<'db>(
     for parameter in func_call.params(db) {
         match parameter.kind(db) {
             ParamAssignKind::NonFormal { value } => {
-                // Try to get the param by index
+                // Try to get the param by index; if the current param is variadic,
+                // stay on it for all remaining arguments
                 let var = callable
                     .def_map(db)
                     .local_variables
                     .values()
                     .nth(formal_idx);
+
+                // If we've gone past the last param, check if the last one is variadic
+                let var = var.or_else(|| {
+                    if has_variadic {
+                        callable
+                            .def_map(db)
+                            .local_variables
+                            .values()
+                            .rev()
+                            .find(|v| v.variadic(db))
+                    } else {
+                        None
+                    }
+                });
 
                 if let Some(var) = var {
                     coerce_with_var_target(db, resolver, value, *var, ctx);
@@ -120,6 +142,11 @@ pub fn resolve_func_call<'db>(
                         );
                     }
                     ctx.variable_of_param.insert(*parameter, *var);
+
+                    // Don't advance past a variadic parameter
+                    if !var.variadic(db) {
+                        formal_idx += 1;
+                    }
                 } else {
                     ctx.errors.push(
                         ResolveError::UnknownNonFormalParameter {
@@ -129,8 +156,8 @@ pub fn resolve_func_call<'db>(
                         }
                         .to_diagnostic(db),
                     );
+                    formal_idx += 1;
                 }
-                formal_idx += 1;
             }
             ParamAssignKind::FormalInput { param, value } => {
                 if let Some(seen) = seen.insert(param.ident, parameter) {

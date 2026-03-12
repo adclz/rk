@@ -9,9 +9,12 @@ use crate::{
         e2_resolve::ResolveError,
         e3_type::{InferLiteralError, TypeError},
     },
-    hir_def::expressions::{
-        expression::{Elementary, ExprKind, InitExpr, InitExprKind, PrimaryExpr},
-        spec::SpecKind,
+    hir_def::{
+        expressions::{
+            expression::{Elementary, ExprKind, InitExpr, InitExprKind, PrimaryExpr},
+            spec::SpecKind,
+        },
+        pous::variable::VariableDecl,
     },
     hir_ty::{head::init_inference::InitInference, infer::Infer, ty::Type},
 };
@@ -24,6 +27,7 @@ impl<'db> InitInference<'db> {
         };
 
         let mut seen = FxHashMap::default();
+        let mut first_variadic: Option<VariableDecl<'db>> = None;
 
         for var in variables {
             match seen.get(&var.get_name_ident(db)) {
@@ -45,14 +49,34 @@ impl<'db> InitInference<'db> {
 
             let var_type = var.spec(db).infer(db);
 
-            if var.variadic(db) && !var_type.normalize(db).can_be_variadic(db) {
-                self.errors.push(
-                    ResolveError::NonVariadicTypeForVariable {
-                        var: *var,
-                        typ: var_type,
-                    }
-                    .to_diagnostic(db),
-                );
+            if var.variadic(db) {
+                if !var_type.normalize(db).can_be_variadic(db) {
+                    self.errors.push(
+                        ResolveError::NonVariadicTypeForVariable {
+                            var: *var,
+                            typ: var_type,
+                        }
+                        .to_diagnostic(db),
+                    );
+                }
+
+                if !var.is_input(db) {
+                    self.errors.push(
+                        ResolveError::VariadicNotInInput { var: *var }.to_diagnostic(db),
+                    );
+                }
+
+                if let Some(first) = first_variadic {
+                    self.errors.push(
+                        ResolveError::MultipleVariadicVariables {
+                            first,
+                            second: *var,
+                        }
+                        .to_diagnostic(db),
+                    );
+                } else {
+                    first_variadic = Some(*var);
+                }
             }
 
             if let Some(init_expr) = var.init(db) {
@@ -65,6 +89,21 @@ impl<'db> InitInference<'db> {
 
                 // Check string literal length for sized string specs
                 self.check_sized_string_init(db, var.spec(db).kind(db), init_expr);
+            }
+        }
+
+        // If there's a variadic parameter, it must be the only VAR_INPUT parameter
+        if let Some(variadic_var) = first_variadic {
+            for var in variables {
+                if var.is_input(db) && !var.variadic(db) {
+                    self.errors.push(
+                        ResolveError::VariadicMixedWithOtherInputs {
+                            variadic_var,
+                            other_var: *var,
+                        }
+                        .to_diagnostic(db),
+                    );
+                }
             }
         }
     }

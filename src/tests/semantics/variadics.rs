@@ -150,3 +150,213 @@ END_FUNCTION
 "#;
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"");
 }
+
+#[rstest]
+fn multiple_variadic_variables(mut with_db: RootDatabase) {
+    let source = r#"
+FUNCTION fn1 : INT
+    VAR_INPUT
+        a: INT...
+        b: INT...
+    END_VAR
+END_FUNCTION
+"#;
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
+    [E0227] Error: invalid variadic declaration
+       ,-[ file:///test0.st:5:9 ]
+       |
+     4 |         a: INT...
+       |         ^^^^|^^^^
+       |             `------ first variadic variable 'a' declared here
+     5 |         b: INT...
+       |         ^^^^|^^^^
+       |             `------ only one variadic variable is allowed per POU
+    ---'
+    ");
+}
+
+#[rstest]
+fn valid_variadic_fn_call(mut with_db: RootDatabase) {
+    let source = r#"
+FUNCTION all_equal : BOOL
+    VAR_INPUT
+        args: INT...
+    END_VAR
+    all_equal := ...args=
+END_FUNCTION
+
+FUNCTION fn 
+    all_equal(1, 2, 3);
+END_FUNCTION
+"#;
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"");
+}
+
+#[rstest]
+fn valid_variadic_fn_call_with_output(mut with_db: RootDatabase) {
+    let source = r#"
+FUNCTION all_equal : BOOL
+    VAR_INPUT
+        args: INT...
+    END_VAR
+
+    VAR_OUTPUT
+        result: BOOL;
+    END_VAR
+    all_equal := ...args=
+END_FUNCTION
+
+FUNCTION fn 
+    VAR_OUTPUT
+        result: BOOL;
+    END_VAR
+    
+    all_equal(1, 2, 3, result => result);
+END_FUNCTION
+"#;
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"");
+}
+
+#[rstest]
+fn valid_variadic_fn_call_with_in_out(mut with_db: RootDatabase) {
+    let source = r#"
+FUNCTION sum_all : INT
+    VAR_INPUT
+        args: INT...
+    END_VAR
+
+    VAR_IN_OUT
+        accumulator: INT;
+    END_VAR
+    sum_all := ...args+
+END_FUNCTION
+
+FUNCTION fn
+    VAR
+        acc: INT := 0;
+    END_VAR
+
+    sum_all(1, 2, 3, accumulator := acc);
+END_FUNCTION
+"#;
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"");
+}
+
+#[rstest]
+fn valid_variadic_fn_call_with_output_and_in_out(mut with_db: RootDatabase) {
+    let source = r#"
+FUNCTION sum_all : INT
+    VAR_INPUT
+        args: INT...
+    END_VAR
+
+    VAR_OUTPUT
+        count: INT;
+    END_VAR
+
+    VAR_IN_OUT
+        accumulator: INT;
+    END_VAR
+    sum_all := ...args+
+END_FUNCTION
+
+FUNCTION fn
+    VAR
+        acc: INT := 0;
+        cnt: INT;
+    END_VAR
+
+    sum_all(1, 2, 3, count => cnt, accumulator := acc);
+END_FUNCTION
+"#;
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"");
+}
+
+#[rstest]
+fn invalid_variadic_fn_call_type_mismatch(mut with_db: RootDatabase) {
+    let source = r#"
+FUNCTION sum_all : INT
+    VAR_INPUT
+        args: INT...
+    END_VAR
+    sum_all := ...args+
+END_FUNCTION
+
+FUNCTION fn
+    sum_all(1, 2, 'hello');
+END_FUNCTION
+"#;
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
+    [E0301] Error: type mismatch
+        ,-[ file:///test0.st:10:19 ]
+        |
+      4 |         args: INT...
+        |         ^^|^
+        |           `--- type is declared by variable 'args' here
+        |
+     10 |     sum_all(1, 2, 'hello');
+        |                   ^^^|^^^
+        |                      `----- expected 'INT', got 'STRING'
+    ----'
+    ");
+}
+
+#[rstest]
+fn valid_variadic_fn_call_single_arg(mut with_db: RootDatabase) {
+    let source = r#"
+FUNCTION sum_all : INT
+    VAR_INPUT
+        args: INT...
+    END_VAR
+    sum_all := ...args+
+END_FUNCTION
+
+FUNCTION fn
+    sum_all(42);
+END_FUNCTION
+"#;
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"");
+}
+
+#[rstest]
+fn valid_variadic_fn_call_many_args(mut with_db: RootDatabase) {
+    let source = r#"
+FUNCTION sum_all : INT
+    VAR_INPUT
+        args: INT...
+    END_VAR
+    sum_all := ...args+
+END_FUNCTION
+
+FUNCTION fn
+    sum_all(1, 2, 3, 4, 5, 6, 7, 8, 9, 10);
+END_FUNCTION
+"#;
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"");
+}
+
+#[rstest]
+fn variadic_mixed_with_other_inputs(mut with_db: RootDatabase) {
+    let source = r#"
+FUNCTION fn1 : INT
+    VAR_INPUT
+        x: INT;
+        args: INT...
+    END_VAR
+END_FUNCTION
+"#;
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
+    [E0228] Error: invalid variadic declaration
+       ,-[ file:///test0.st:4:9 ]
+       |
+     4 |         x: INT;
+       |         ^^^|^^
+       |            `---- variadic parameter 'args' must be the only VAR_INPUT parameter
+     5 |         args: INT...
+       |         ^^^^^^|^^^^^
+       |               `------- variadic parameter 'args' declared here
+       |
+       | Note: a variadic parameter must be the only parameter in VAR_INPUT
+    ---'
+    ");
+}
