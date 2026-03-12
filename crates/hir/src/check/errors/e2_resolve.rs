@@ -762,27 +762,34 @@ fn list_candidates<'db>(
     }
 
     // Suggest imported POUs that need a USING directive
-    let imported: Vec<_> = results.imported_pous().take(6).collect();
+    // Deduplicate by (namespace, pou name) to avoid repeating the same suggestion
+    let mut seen = rustc_hash::FxHashSet::default();
+    let imported: Vec<_> = results
+        .imported_pous()
+        .filter(|(ns, pou)| {
+            seen.insert((ns.to_string(db), pou.get_name_ident(db).text(db).to_string()))
+        })
+        .take(6)
+        .collect();
     if !imported.is_empty() {
         let count = imported.len();
         let display_count = count.min(5);
 
         let mut note = match count {
-            1 => format!(
-                "an item named '{}' is available, but needs to be imported:\n",
-                name
-            ),
-            _ => format!(
-                "items named '{}' are available, but need to be imported:\n",
-                name
-            ),
+            1 => "an item with a similar name is available, but needs to be imported:\n"
+                .to_string(),
+            _ => "items with similar names are available, but need to be imported:\n".to_string(),
         };
 
-        for (i, (namespace, _)) in imported.iter().take(display_count).enumerate() {
+        for (i, (namespace, pou)) in imported.iter().take(display_count).enumerate() {
             if i > 0 {
                 note.push('\n');
             }
-            note.push_str(&format!("- USING {}", namespace.to_string(db)));
+            note.push_str(&format!(
+                "- '{}' via USING {}",
+                pou.get_name_ident(db).text(db),
+                namespace.to_string(db)
+            ));
         }
 
         if count > 5 {

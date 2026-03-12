@@ -103,9 +103,9 @@ END_FUNCTION_BLOCK
         |     ^|
         |      `-- no item "fn" found in scope
         |
-        | Note: items named 'fn' are available, but need to be imported:
-        |       - USING System
-        |       - USING System
+        | Note: items with similar names are available, but need to be imported:
+        |       - 'fn' via USING System
+        |       - 'fn2' via USING System
     ----'
     "#);
 }
@@ -151,8 +151,8 @@ END_FUNCTION_BLOCK
         |     ^|
         |      `-- no item "fn" found in scope
         |
-        | Note: an item named 'fn' is available, but needs to be imported:
-        |       - USING System
+        | Note: an item with a similar name is available, but needs to be imported:
+        |       - 'fn' via USING System
     ----'
     "#);
 }
@@ -209,8 +209,8 @@ END_FUNCTION_BLOCK
        |                 ^^^|^^
        |                    `---- no item found for path 'Engine'
        |
-       | Note: an item named 'Engine' is available, but needs to be imported:
-       |       - USING System
+       | Note: an item with a similar name is available, but needs to be imported:
+       |       - 'Engine' via USING System
     ---'
     ");
 }
