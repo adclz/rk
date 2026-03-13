@@ -160,25 +160,55 @@ impl<'db> InitExprInferenceResult<'db> {
             InitExprWalkStep::ArrayInit { expr, values } => {
                 expected.walk_init_expr(db, step, place, self);
 
-                let expected = self
+                let resolved = self
                     .type_of_init_expr
                     .get(expr)
                     .copied()
                     .unwrap_or_default()
                     .normalize(db);
 
-                let expected = match expected {
+                match resolved {
                     Type::Array(array) => {
                         // Set array root if not already set
                         if ctx.array_root.is_none() {
-                            ctx.array_root = Some(expected);
+                            ctx.array_root = Some(resolved);
                         };
-                        array.of_type(db).infer(db)
-                    }
-                    _ => expected,
-                };
 
-                self.resolve_steps(db, expected, place, body_ctx, ctx, values);
+                        let num_dims = array.subranges(db).len();
+                        // Multi-dimensional bracket init: inner brackets group the next dimension.
+                        // Only applies when children are ArrayInit (not SizedIndex which handles
+                        // its own dimension tracking).
+                        let has_inner_brackets = values
+                            .iter()
+                            .any(|v| matches!(v, InitExprWalkStep::ArrayInit { .. }));
+
+                        if has_inner_brackets
+                            && num_dims > 1
+                            && ctx.current_dim() < num_dims - 1
+                        {
+                            // Multi-dimensional bracket init: each inner bracket is one
+                            // slot in the current dimension and opens the next dimension.
+                            // Push/pop per child so each starts with a fresh position.
+                            for child in values.iter() {
+                                let mut child_place = *place;
+                                ctx.push_dimension();
+                                self.resolve_step(
+                                    db, expected, &mut child_place, body_ctx, ctx, child,
+                                );
+                                ctx.pop_dimension();
+                                ctx.advance(1);
+                                self.check_bounds(db, *expr, ctx, ctx.current_pos());
+                            }
+                        } else {
+                            // Single-dimensional, innermost dimension, or SizedIndex children.
+                            let inner = array.of_type(db).infer(db);
+                            self.resolve_steps(db, inner, place, body_ctx, ctx, values);
+                        }
+                    }
+                    _ => {
+                        self.resolve_steps(db, resolved, place, body_ctx, ctx, values);
+                    }
+                }
             }
             InitExprWalkStep::SizedIndex { expr, size, values } => {
                 let repeat_count = size.as_u64(db).unwrap_or_else(|err| {

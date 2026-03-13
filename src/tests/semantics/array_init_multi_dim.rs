@@ -400,6 +400,89 @@ fn single_element_array_overflow(mut with_db: RootDatabase) {
 }
 
 #[rstest]
+fn multi_dim_bracket_init_valid(mut with_db: RootDatabase) {
+    let source = r#"
+        TYPE
+            Matrix: ARRAY[1..2, 1..3] OF INT;
+        END_TYPE
+
+        FUNCTION Test
+            VAR
+                Data : Matrix := [[1, 2, 3], [4, 5, 6]];
+            END_VAR
+        END_FUNCTION
+        "#;
+
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @"");
+}
+
+#[rstest]
+fn multi_dim_bracket_init_string(mut with_db: RootDatabase) {
+    let source = r#"
+        TYPE
+            CONSTANTS_LANGUAGE: STRUCT
+                WEEKDAYS: ARRAY[1..2, 1..3] OF STRING;
+            END_STRUCT
+        END_TYPE
+
+        FUNCTION Test
+            VAR
+                Data : CONSTANTS_LANGUAGE := (
+                    WEEKDAYS := [
+                        ['Monday', 'Tuesday', 'Wednesday'],
+                        ['Montag', 'Dienstag', 'Mittwoch']
+                    ]
+                );
+            END_VAR
+        END_FUNCTION
+        "#;
+
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @"");
+}
+
+#[rstest]
+fn multi_dim_bracket_init_overflow(mut with_db: RootDatabase) {
+    let source = r#"
+        TYPE
+            Matrix: ARRAY[1..2, 1..3] OF INT;
+        END_TYPE
+
+        FUNCTION Test
+            VAR
+                Data : Matrix := [[1, 2, 3], [4, 5, 6], [7, 8, 9]];
+            END_VAR
+        END_FUNCTION
+        "#;
+
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
+    [E0605] Error: invalid array access
+       ,-[ file:///test0.st:8:31 ]
+       |
+     8 |                 Data : Matrix := [[1, 2, 3], [4, 5, 6], [7, 8, 9]];
+       |                               ^^^^^^^^^^^^^^^^^^|^^^^^^^^^^^^^^^^^
+       |                                                 `------------------- too many elements in array initializer (expected at most 2)
+    ---'
+    ");
+}
+
+#[rstest]
+fn three_dim_bracket_init(mut with_db: RootDatabase) {
+    let source = r#"
+        TYPE
+            Cube: ARRAY[1..2, 1..2, 1..2] OF INT;
+        END_TYPE
+
+        FUNCTION Test
+            VAR
+                Data : Cube := [[[1, 2], [3, 4]], [[5, 6], [7, 8]]];
+            END_VAR
+        END_FUNCTION
+        "#;
+
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @"");
+}
+
+#[rstest]
 fn non_zero_based_array_overflow(mut with_db: RootDatabase) {
     // Array starting at 1, not 0
     let source = r#"
