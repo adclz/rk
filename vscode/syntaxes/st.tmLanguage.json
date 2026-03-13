@@ -175,7 +175,7 @@
       "patterns": [
         {
           "name": "keyword.control.conditional.st",
-          "match": "\\b(?:END_)?(?:IF|CASE|OF|ELSE|ELSIF|THEN|__TRY|__CATCH|__FINALLY|__ENDTRY)\\b"
+          "match": "\\b(?:END_)?(?:IF|CASE|OF|ELSE|ELSIF|THEN|OR(_ELSE)?|AND(_THEN)?|NOT|XOR|NOR|__TRY|__CATCH|__FINALLY|__ENDTRY)\\b"
         },
         {
           "name": "keyword.control.loop.st",
@@ -206,10 +206,6 @@
           "match": "\\^|MOVE"
         },
         {
-          "name": "keyword.operator.logical.st",
-          "match": "\\b(OR(_ELSE)?|AND(_THEN)?|NOT|XOR|NOR)\\b|&"
-        },
-        {
           "name": "keyword.operator.comparison.st",
           "match": "(?:<>|<|=|>|<=|>=)"
         },
@@ -220,28 +216,6 @@
         {
           "name": "keyword.operator.arithmetic.st",
           "match": "(?:\\+|\\-|\\/|\\*|MOD)"
-        },
-        {
-          "name": "keyword.operator.arithmetic.st",
-          "match": "\\b(?:ABS|SIN|ABS|ACOS|ASIN|ATAN|COS|EXP|EXPT|LN|LOG|SIN|SQRT|TAN|SEL|MUX|SHL|SHR|ROL|ROR|ADD|DIV|MUL|SUB|MAX|MIN|ADR(INST)?|SIZE(OF)?|BIT_?ADR|TRUNC(_INT)?)(?=\\()"
-        },
-        {
-          "name": "keyword.operator.arithmetic.st",
-          "comment": "GXW2 operators",
-          "match": "\\b(?:ADDP|DADD|DADDP|SUBP|DSUB|DSUBP|MULP|DMUL|DMULP|DIVP|DDIV|DDIVP|INC|INCP|DINC|DINCP|DEC|DECP|DDEC|DDECP|WAND|WANDP|DAND|DANDP|WOR|WORP|DOR|DORP|WXOR|WXORP|DXOR|DXORP|NEG|NEGP|DNEG|DNEGP|DECMP|DECMPP|DEZCP|DEZCPP|DEMOV|DEMOVP|DESTR|DESTRP|DEVAL|DEVALP|DEBCD|DEBCDP|DEBIN|DEBINP|DEADD|DEADDP|DESUB|DESUBP|DEMUL|DEMULP|DEDIV|DEDIVP|DEXP|DEXPP|DLOGE|DLOGEP|DLOG10|DLOG10P|DESQR|DESQRP|DENEG|DENEGP|INT|INTP|DINT|DINTP|DSIN|DSINP|DCOS|DCOSP|DTAN|DTANP|DASIN|DASINP|DACOS|DACOSP|DATAN|DATANP|DRAD|DRADP|DDEG|DDEGP)(?=\\()"
-        },
-        {
-          "name": "keyword.operator.arithmetic.st",
-          "comment": "GXW2 functions",
-          "match": "\\b(?:LIMITATION|LIMIT|LIMITP|DLIMIT|DLIMITP|BAND|BANDP|DBAND|DBANDP|ZONE|ZONEP|DZONE|DZONEP|SCL|SCLP|DSCL|DSCLP|DABIN|DABINP|DDABIN|DDABINP|BINDA|BIN|BINDAP|DBINDA|DBINDAP|SCL2|SCL2P|DSCL2|DSCL2P|DSZR|DVIT|DDVIT|DTBL|DABS|ZRN|DZRN|PLSV|DPLSV|DRVI|DDRVI|DRVA|DDRVA|WSUM|WSUMP|DWSUM|DWSUMP|WTOB|WTOBP|BTOW|BTOWP|UNI|UNIP|DIS|DISP|SWAP|SWAPP|DSWAP|DSWAPP|SORT2|DSORT2|ROR|RORP|DROR|DRORP|ROL|ROLP|DROL|DROLP|RCR|RCRP|DRCR|DRCRP|RCL|RCLP|DRCL|DRCLP|SFTR|SFTRP|SFTL|SFTLP|WSFR|WSFRP|WSFL|WSFLP|SFWR|SFWRP|SFRD|SFRDP|REFP|REFF|REFFP|MTR|DHSCS|DHSCS_I|DHSCR|DHSZ|SPD|DSPD|PLSY|DPLSY|PWM|PLSR|DPLSR|IST|SER|SERP|DSER|DSERP|ABSD|DABSD|INCD|TTMR|STMR|ALT|ALTP|RAMP|ROTC|SORT|CMP|CMPP|DCMP|DCMPP|ZCP|ZCPP|DZCP|DZCPP|MOV|MOVP|DMOV|DMOVP|SMOV|SMOVP|CML|CMLP|DCML|DCMLP|BMOV|BMOVP|FMOV|FMOVP|DFMOV|DFMOVP|XCH|XCHP|DXCH|DXCHP|BCD|BCDP|DBCD|DBCDP|BIN|BINP|DBIN|DBINP)(?=\\()"
-        },
-        {
-          "name": "keyword.operator.arithmetic.st",
-          "match": "\\b(SEL_|MUX_)[A-Za-z]*\\b"
-        },
-        {
-          "name": "keyword.operator.new.st",
-          "match": "\\b__(NEW|DELETE)(?=\\()\\b"
         }
       ]
     },
@@ -250,10 +224,6 @@
         {
           "name": "support.function.st",
           "match": "\\b[A-Za-z_]*(_TO_|TO_|FROM_|TRUNC_)[A-Za-z_]+(?=\\()"
-        },
-        {
-          "name": "support.function.st",
-          "match": "\\b(?:TRUNC|MOVE|CONCAT|LIMIT|DELETE|FIND|INSERT|LEFT|LEN|REPLACE|RIGHT|RTC|MID|SEMA|ROUND|FLOOR|CEIL|UNPACK|REF)(?=\\()"
         },
         {
           "begin": "([a-zA-Z_0-9]+)(\\()",
