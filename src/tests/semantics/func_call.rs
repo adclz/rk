@@ -391,6 +391,39 @@ END_FUNCTION_BLOCK"#;
 }
 
 #[rstest]
+fn mixed_named_and_positional_params_with_conversion(mut with_db: RootDatabase) {
+    let source = r#"
+FUNCTION BYTE_TO_INT : INT
+    VAR_INPUT
+        value : BYTE;
+    END_VAR
+END_FUNCTION
+
+FUNCTION LIMIT<T: ANY_NUM> : T
+    VAR_INPUT
+        MN : T;
+        IN : T;
+        MX : T;
+    END_VAR
+
+    IF IN < MN THEN
+        LIMIT := MN;
+    ELSIF IN > MX THEN
+        LIMIT := MX;
+    ELSE
+        LIMIT := IN;
+    END_IF;
+END_FUNCTION
+
+FUNCTION fn1 : INT
+    fn1 := LIMIT(MN := 0, BYTE_TO_INT(BYTE#0), BYTE_TO_INT(BYTE#0));
+END_FUNCTION
+"#;
+
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @"");
+}
+
+#[rstest]
 fn output_assignment_is_an_input_var(mut with_db: RootDatabase) {
     let source = r#"
 FUNCTION fn

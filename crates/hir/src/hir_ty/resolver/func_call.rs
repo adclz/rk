@@ -1,5 +1,5 @@
 use db::WorkspaceDataBase;
-use rustc_hash::FxHashMap;
+use rustc_hash::{FxHashMap, FxHashSet};
 
 use crate::check::errors::e1_duplicates::DuplicateError;
 use crate::check::errors::e3_type::TypeError;
@@ -14,7 +14,7 @@ use crate::{
         body::BodyInferenceResult,
         infer::{Infer, expr::InferExprCtx},
         resolver::Resolver,
-        ty::Type,
+        ty::{CallableType, Type},
     },
 };
 
@@ -25,6 +25,21 @@ pub fn resolve_func_call<'db>(
     ctx: &mut BodyInferenceResult<'db>,
 ) {
     resolver.resolve_begin_path_expr(db, func_call.path(db), None, ctx);
+
+    // If a prior resolution (e.g. during generic inference) already marked this path
+    // as CallableType, unwrap it back to the original function/fb/method type.
+    // CallableType.normalize() returns the *return type*, which would cause
+    // as_callable() to fail on re-entry.
+    if let Some(path_expr) = func_call.path(db).expr(db) {
+        if let Some(Type::CallableType(c)) = ctx.type_of_path_expr.get(&path_expr).copied() {
+            let original = match c {
+                CallableType::Function(f) => Type::Function(f),
+                CallableType::FunctionBlock(fb) => Type::FunctionBlock(fb),
+                CallableType::MethodDecl(m) => Type::MethodDecl(m),
+            };
+            ctx.type_of_path_expr.insert(path_expr, original);
+        }
+    }
 
     let access_typ = ctx.get_type_of_begin_path_expr(db, func_call.path(db));
 
@@ -102,9 +117,32 @@ pub fn resolve_func_call<'db>(
         );
     }
 
+    // Pre-collect named parameter idents so positional args skip them
+    let named_params: FxHashSet<_> = func_call
+        .params(db)
+        .iter()
+        .filter_map(|p| match p.kind(db) {
+            ParamAssignKind::FormalInput { param, .. } => Some(param.ident),
+            ParamAssignKind::FormalOutput { param, .. } => Some(param.ident),
+            _ => None,
+        })
+        .collect();
+
     for parameter in func_call.params(db) {
         match parameter.kind(db) {
             ParamAssignKind::NonFormal { value } => {
+                // Skip parameters already filled by named arguments
+                let def_map = callable.def_map(db);
+                while formal_idx < def_map.local_variables.len() {
+                    if let Some((name, _)) = def_map.local_variables.get_index(formal_idx) {
+                        if named_params.contains(name) {
+                            formal_idx += 1;
+                            continue;
+                        }
+                    }
+                    break;
+                }
+
                 // Try to get the param by index; if the current param is variadic,
                 // stay on it for all remaining arguments
                 let var = callable
@@ -211,6 +249,16 @@ pub fn resolve_func_call<'db>(
                     let call_site = CallSite::from_scoped(db, &variable);
 
                     let rhs_typ = ctx.type_of_variable_access_with_adjustments(db, variable);
+
+                    // constant types cannot be passed to output parameters
+                    if ctx.is_constant_access(db, variable) {
+                        ctx.errors.push(
+                            crate::check::errors::e10_control_flow::ControlFlowError::AssignToConstant {
+                                access: call_site,
+                            }
+                            .to_diagnostic(db),
+                        );
+                    }
 
                     // is the variable assignable?
                     rhs_typ.check_assignable(db, call_site, ctx);
@@ -482,9 +530,29 @@ fn infer_generic_types_from_args<'db>(
     let def_map = callable.def_map(db);
     let mut formal_idx = 0;
 
+    // Pre-collect named parameter idents so positional args skip them
+    let named_params: FxHashSet<_> = params
+        .iter()
+        .filter_map(|p| match p.kind(db) {
+            ParamAssignKind::FormalInput { param, .. } => Some(param.ident),
+            _ => None,
+        })
+        .collect();
+
     for parameter in params {
         match parameter.kind(db) {
             ParamAssignKind::NonFormal { value } => {
+                // Skip parameters already filled by named arguments
+                while formal_idx < def_map.local_variables.len() {
+                    if let Some((name, _)) = def_map.local_variables.get_index(formal_idx) {
+                        if named_params.contains(name) {
+                            formal_idx += 1;
+                            continue;
+                        }
+                    }
+                    break;
+                }
+
                 let var = def_map.local_variables.values().nth(formal_idx);
                 if let Some(var) = var {
                     let expected_type = var.spec(db).infer(db);
