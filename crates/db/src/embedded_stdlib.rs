@@ -17,6 +17,7 @@ const EMBEDDED_FILES: &[(&str, &str)] = &[
     ("Math.st", include_str!("../../../stdlib/Math.st")),
     ("Memory.st", include_str!("../../../stdlib/Memory.st")),
     ("Timers.st", include_str!("../../../stdlib/Timers.st")),
+    ("Selection.st", include_str!("../../../stdlib/Selection.st")),
     ("Unit.st", include_str!("../../../stdlib/Unit.st")),
 ];
 
