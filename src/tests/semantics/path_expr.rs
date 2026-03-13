@@ -446,3 +446,32 @@ END_FUNCTION
     ---'
     ");
 }
+
+/// When accessing a field on a type name (not a variable), the error should
+/// only report the unresolved first segment - no cascading error about the field.
+#[rstest]
+fn no_cascading_error_on_type_field_access(mut with_db: RootDatabase) {
+    let source = r#"
+TYPE
+    MY_STRUCT : STRUCT
+        field1 : INT;
+    END_STRUCT
+END_TYPE
+
+FUNCTION fn0 : INT
+VAR
+    x : INT;
+END_VAR
+    x := MY_STRUCT.field1;
+END_FUNCTION
+"#;
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r#"
+    [E0204] Error: no item found in scope
+        ,-[ file:///test0.st:12:10 ]
+        |
+     12 |     x := MY_STRUCT.field1;
+        |          ^^^^|^^^^
+        |              `------ no item "MY_STRUCT" found in scope
+    ----'
+    "#);
+}

@@ -17,7 +17,12 @@ use crate::{
         scope::{ScopeId, ScopeKind},
         semantic_index::get_scope,
     },
-    hir_ty::{body::BodyInferenceResult, resolver::walk::PathPlaceBuilder, ty::Type},
+    hir_ty::{
+        body::BodyInferenceResult,
+        index_graphs::namespace_index,
+        resolver::walk::PathPlaceBuilder,
+        ty::Type,
+    },
 };
 
 #[derive(Debug, Copy, Clone)]
@@ -107,9 +112,25 @@ impl<'db> Resolver<'db> {
                 false
             }
             name::NameResolution::NotFound => {
+                // When a namespaced path like `MY_TYPE.field` fails FQ resolution,
+                // check whether the namespace prefix itself is invalid. If the prefix
+                // is not a real namespace (e.g. it's a TYPE name), point the error at
+                // the first step rather than the last — the root cause is the prefix.
+                let error_expr =
+                    if let Some(ns_path) = &access.namespace
+                        && namespace_index(db, **ns_path).is_empty()
+                    {
+                        path_expr
+                            .flatten(db)
+                            .first()
+                            .map(|step| step.get_expr(db))
+                            .unwrap_or(path_expr)
+                    } else {
+                        path_expr
+                    };
                 ctx.errors.push(
                     ResolveError::NoItemInScope {
-                        expr: path_expr,
+                        expr: error_expr,
                         scope: path_expr.scope_id(db),
                     }
                     .to_diagnostic(db),
