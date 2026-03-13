@@ -336,6 +336,8 @@ static LEAF: &str = r#"
     (line_comment)
     (c_style_comment)
     (pascal_style_comment)
+    (s_byte_char_str)
+    (d_byte_char_str)
 ] @leaf
 "#;
 

@@ -332,7 +332,7 @@ END_FUNCTION
     FUNCTION fn
     	J := 101;
     	FOR I := 1 TO 100 BY 2 DO
-    		IF WORDS[I] = '' THEN
+    		IF WORDS[I] = 'KEY' THEN
     			J := I;
     			EXIT;
     		END_IF;
@@ -365,7 +365,7 @@ END_FUNCTION
     FUNCTION fn
     	J := - 1;
     	REPEAT J := J + 2;
-    		UNTIL J = 101 OR WORDS[J] = ''
+    		UNTIL J = 101 OR WORDS[J] = 'KEY'
     	END_REPEAT;
     END_FUNCTION
     ");
@@ -1083,5 +1083,96 @@ END_FUNCTION_BLOCK
     	END_VAR
 
     END_FUNCTION_BLOCK
+    ");
+}
+
+#[rstest]
+pub fn string_literal_single_quote_preserved(mut with_db: RootDatabase) {
+    let source = r#"
+FUNCTION fn1
+    x := 'Hello World';
+END_FUNCTION
+"#;
+
+    add_sources(&mut with_db, &[source]);
+    let document = with_db
+        .get_files()
+        .iter()
+        .last()
+        .unwrap()
+        .document(&with_db);
+
+    assert_snapshot!(fmt(document), @r"
+    FUNCTION fn1 x := 'Hello World';
+    END_FUNCTION
+    ");
+}
+
+#[rstest]
+pub fn string_literal_double_quote_preserved(mut with_db: RootDatabase) {
+    let source = r#"
+FUNCTION fn1
+    x := "Hello World";
+END_FUNCTION
+"#;
+
+    add_sources(&mut with_db, &[source]);
+    let document = with_db
+        .get_files()
+        .iter()
+        .last()
+        .unwrap()
+        .document(&with_db);
+
+    assert_snapshot!(fmt(document), @r#"
+    FUNCTION fn1 x := "Hello World";
+    END_FUNCTION
+    "#);
+}
+
+#[rstest]
+pub fn string_literal_with_special_chars(mut with_db: RootDatabase) {
+    let source = r#"
+FUNCTION fn1
+    x := 'It$'s a test $0A';
+    y := "double$"quote";
+END_FUNCTION
+"#;
+
+    add_sources(&mut with_db, &[source]);
+    let document = with_db
+        .get_files()
+        .iter()
+        .last()
+        .unwrap()
+        .document(&with_db);
+
+    assert_snapshot!(fmt(document), @r#"
+    FUNCTION fn1
+    	x := 'It$'s a test $0A';
+    	y := "double$"quote";
+    END_FUNCTION
+    "#);
+}
+
+#[rstest]
+pub fn empty_string_preserved(mut with_db: RootDatabase) {
+    let source = r#"
+FUNCTION fn1
+    x := '';
+END_FUNCTION
+"#;
+
+    add_sources(&mut with_db, &[source]);
+    let document = with_db
+        .get_files()
+        .iter()
+        .last()
+        .unwrap()
+        .document(&with_db);
+
+    assert_snapshot!(fmt(document), @r"
+    FUNCTION fn1 x := '';
+    END_FUNCTION
     ");
 }
