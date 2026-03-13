@@ -447,10 +447,10 @@ END_FUNCTION
     ");
 }
 
-/// When accessing a field on a type name (not a variable), the error should
-/// only report the unresolved first segment - no cascading error about the field.
+/// DataType names can be used as constants in function bodies.
+/// Accessing a struct field on a type name should resolve correctly.
 #[rstest]
-fn no_cascading_error_on_type_field_access(mut with_db: RootDatabase) {
+fn data_type_used_as_constant(mut with_db: RootDatabase) {
     let source = r#"
 TYPE
     MY_STRUCT : STRUCT
@@ -465,13 +465,28 @@ END_VAR
     x := MY_STRUCT.field1;
 END_FUNCTION
 "#;
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @"");
+}
+
+/// When accessing a field on an unknown name, the error should only report the
+/// unresolved first segment — no cascading error about the field.
+#[rstest]
+fn no_cascading_error_on_unknown_type_field_access(mut with_db: RootDatabase) {
+    let source = r#"
+FUNCTION fn0 : INT
+VAR
+    x : INT;
+END_VAR
+    x := UNKNOWN_TYPE.field1;
+END_FUNCTION
+"#;
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r#"
     [E0204] Error: no item found in scope
-        ,-[ file:///test0.st:12:10 ]
-        |
-     12 |     x := MY_STRUCT.field1;
-        |          ^^^^|^^^^
-        |              `------ no item "MY_STRUCT" found in scope
-    ----'
+       ,-[ file:///test0.st:6:10 ]
+       |
+     6 |     x := UNKNOWN_TYPE.field1;
+       |          ^^^^^^|^^^^^
+       |                `------- no item "UNKNOWN_TYPE" found in scope
+    ---'
     "#);
 }

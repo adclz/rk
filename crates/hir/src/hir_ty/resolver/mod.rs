@@ -13,12 +13,14 @@ use crate::{
         expressions::expression::{
             BeginPathExpr, MultibitsPart, PathExpr, VariableAccess, VariableAccessKind,
         },
+        interned::namespace::NamespaceAccess,
         pous::pou::Pou,
         scope::{ScopeId, ScopeKind},
         semantic_index::get_scope,
     },
     hir_ty::{
         body::BodyInferenceResult,
+        expr_store::PathExprWalkStep,
         index_graphs::namespace_index,
         resolver::walk::PathPlaceBuilder,
         ty::Type,
@@ -225,7 +227,33 @@ impl<'db> Resolver<'db> {
 
             if !resolved {
                 if is_first_step && matches!(self.root, PathResolutionRoot::Value { .. }) {
-                    self.try_resolve_as_fq(db, path_expr, ctx);
+                    // Try full FQ resolution first (for namespace-qualified paths).
+                    if self.try_resolve_as_fq(db, path_expr, ctx) {
+                        return;
+                    }
+
+                    // FQ failed. For multi-step paths like TYPE_NAME.field, the first
+                    // step may be a DataType used as a constant. Try resolving just the
+                    // first step as a POU name and continue walking the remaining steps.
+                    // Only DataTypes are allowed here — Functions/FBs are not valid
+                    // constant-access targets.
+                    if steps.len() > 1 {
+                        if let PathExprWalkStep::Field { ident, .. } = step {
+                            let access = NamespaceAccess::new(db, None, *ident);
+                            if let name::NameResolution::Pou(pou @ Pou::DataType(_)) =
+                                name::resolve_name(db, &access, path_expr.get_scope_id(db))
+                            {
+                                // Remove the FQ error — this path is valid so far.
+                                ctx.errors.pop();
+                                let ty = Type::new_pou(db, pou);
+                                ctx.type_of_path_expr.insert(step.get_expr(db), ty);
+                                current = ty;
+                                place.current_typ = ty;
+                                place.current_path = step.get_expr(db);
+                                continue;
+                            }
+                        }
+                    }
                 }
                 return;
             }
