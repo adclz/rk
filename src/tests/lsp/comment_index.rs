@@ -36,7 +36,7 @@ END_FUNCTION
         start_point: tree_sitter::Point { row: 2, column: 0 },
         end_point: tree_sitter::Point { row: 2, column: 0 },
     };
-    let comment = index.find_nearby_comment(document, &range).unwrap();
+    let comment = index.find_nearby_comment(document, &range.into()).unwrap();
 
     assert_eq!(comment.to_string(document), "This is a single line comment");
 }
@@ -72,7 +72,7 @@ END_FUNCTION
         end_point: tree_sitter::Point { row: 1, column: 9 },
     };
 
-    let comment = index.find_nearby_comment(document, &range).unwrap();
+    let comment = index.find_nearby_comment(document, &range.into()).unwrap();
     assert_eq!(comment.to_string(document), "right side comment");
 }
 
@@ -110,7 +110,7 @@ END_FUNCTION
         start_point: tree_sitter::Point { row: 5, column: 0 },
         end_point: tree_sitter::Point { row: 5, column: 0 },
     };
-    let comment = index.find_nearby_comment(document, &range).unwrap();
+    let comment = index.find_nearby_comment(document, &range.into()).unwrap();
     assert_eq!(comment.to_string(document), "Separated by blank lines");
 }
 
@@ -145,7 +145,7 @@ END_FUNCTION
         start_point: tree_sitter::Point { row: 2, column: 0 },
         end_point: tree_sitter::Point { row: 2, column: 0 },
     };
-    let comment = index.find_nearby_comment(document, &range).unwrap();
+    let comment = index.find_nearby_comment(document, &range.into()).unwrap();
 
     assert_eq!(comment.to_string(document), "This is a C-style comment");
 }
@@ -183,7 +183,7 @@ END_FUNCTION
         start_point: tree_sitter::Point { row: 5, column: 0 },
         end_point: tree_sitter::Point { row: 5, column: 0 },
     };
-    let comment = index.find_nearby_comment(document, &range).unwrap();
+    let comment = index.find_nearby_comment(document, &range.into()).unwrap();
     assert_eq!(
         comment.to_string(document),
         "This is a\n   multiline\n   Pascal-style comment"
@@ -226,7 +226,7 @@ END_FUNCTION
         start_point: tree_sitter::Point { row: 5, column: 0 },
         end_point: tree_sitter::Point { row: 5, column: 0 },
     };
-    let comment = index.find_nearby_comment(document, &range).unwrap();
+    let comment = index.find_nearby_comment(document, &range.into()).unwrap();
     assert_eq!(comment.to_string(document), "NOT NESTED\n(* NESTED *)");
 }
 

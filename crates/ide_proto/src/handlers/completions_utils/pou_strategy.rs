@@ -68,7 +68,7 @@ impl<'db> CompletionCtx {
         let doc = pou.get_scope_id(db).file(db).document(db);
         let root_node = doc.tree.root_node();
         let source = &doc.texter.text;
-        let range = *pou.get_span(db).ts();
+        let range = pou.get_span(db);
 
         let ctx = HeadResult::query_var_decls(root_node, source, range, self.offset);
 
@@ -96,7 +96,7 @@ impl<'db> CompletionCtx {
         let doc = method.get_scope_id(db).file(db).document(db);
         let root_node = doc.tree.root_node();
         let source = &doc.texter.text;
-        let range = *method.get_span(db).ts();
+        let range = method.get_span(db);
 
         let mut ctx = HeadResult::query_var_decls(root_node, source, range, self.offset);
 
@@ -135,7 +135,7 @@ impl<'db> CompletionCtx {
         let doc = program.scope_id(db).file(db).document(db);
         let root_node = doc.tree.root_node();
         let source = &doc.texter.text;
-        let range = *program.get_span(db).ts();
+        let range = program.get_span(db);
 
         let ctx = HeadResult::query_var_decls(root_node, source, range, self.offset);
 

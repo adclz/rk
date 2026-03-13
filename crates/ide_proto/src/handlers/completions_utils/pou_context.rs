@@ -1,5 +1,6 @@
 use std::sync::LazyLock;
 
+use auto_lsp::core::span::Span;
 use auto_lsp::tree_sitter::{self, StreamingIterator};
 
 static VAR_DECLS: &str = r#"
@@ -80,11 +81,11 @@ impl HeadLocation {
 pub struct HeadResult {
     pub head_location: HeadLocation,
     pub inside_var_section: VarSection,
-    pub inputs: Option<tree_sitter::Range>,
-    pub outputs: Option<tree_sitter::Range>,
-    pub in_outs: Option<tree_sitter::Range>,
-    pub temps: Option<tree_sitter::Range>,
-    pub vars: Option<tree_sitter::Range>,
+    pub inputs: Option<Span>,
+    pub outputs: Option<Span>,
+    pub in_outs: Option<Span>,
+    pub temps: Option<Span>,
+    pub vars: Option<Span>,
 }
 
 impl HeadResult {
@@ -122,7 +123,7 @@ impl HeadResult {
     pub fn query_var_decls(
         root_node: tree_sitter::Node,
         source: &str,
-        range: tree_sitter::Range,
+        range: Span,
         offset: usize,
     ) -> Self {
         let mut query_cursor = tree_sitter::QueryCursor::new();
@@ -135,7 +136,7 @@ impl HeadResult {
         let mut temps = None;
         let mut vars = None;
         let mut inside_var_section = VarSection::empty();
-        let mut method_ranges: Vec<tree_sitter::Range> = Vec::new();
+        let mut method_ranges: Vec<Span> = Vec::new();
         let mut body = None;
 
         while let Some((m, capture_index)) = captures.next() {
@@ -148,34 +149,34 @@ impl HeadResult {
                     if is_inside {
                         inside_var_section |= VarSection::INPUTS;
                     }
-                    inputs = Some(capture.node.range());
+                    inputs = Some(capture.node.range().into());
                 }
                 "output_decls" => {
                     if is_inside {
                         inside_var_section |= VarSection::OUTPUTS;
                     }
-                    outputs = Some(capture.node.range());
+                    outputs = Some(capture.node.range().into());
                 }
                 "in_out_decls" => {
                     if is_inside {
                         inside_var_section |= VarSection::IN_OUTS;
                     }
-                    in_outs = Some(capture.node.range());
+                    in_outs = Some(capture.node.range().into());
                 }
                 "temp_var_decls" => {
                     if is_inside {
                         inside_var_section |= VarSection::TEMPS;
                     }
-                    temps = Some(capture.node.range());
+                    temps = Some(capture.node.range().into());
                 }
                 "var_decls" => {
                     if is_inside {
                         inside_var_section |= VarSection::VARS;
                     }
-                    vars = Some(capture.node.range());
+                    vars = Some(capture.node.range().into());
                 }
                 "method" => {
-                    method_ranges.push(capture.node.range());
+                    method_ranges.push(capture.node.range().into());
                 }
                 "body" => {
                     body = Some(capture.node);
@@ -207,8 +208,8 @@ impl HeadResult {
     fn determine_head_location(
         offset: usize,
         inside_var_section: &VarSection,
-        var_ranges: &[Option<tree_sitter::Range>],
-        method_ranges: &[tree_sitter::Range],
+        var_ranges: &[Option<Span>],
+        method_ranges: &[Span],
         body: Option<tree_sitter::Node>,
         source: &str,
     ) -> HeadLocation {
@@ -359,7 +360,7 @@ END_FUNCTION_BLOCK
 
         // Test offset inside VAR_INPUT
         let offset = source.find("in1").unwrap();
-        let results = HeadResult::query_var_decls(root_node, source, root_node.range(), offset);
+        let results = HeadResult::query_var_decls(root_node, source, root_node.range().into(), offset);
         assert_eq!(results.inputs.is_some(), true);
         assert_eq!(results.outputs.is_some(), true);
         assert_eq!(results.in_outs.is_some(), true);
@@ -408,12 +409,12 @@ END_FUNCTION_BLOCK
         let results = HeadResult::query_var_decls(
             root_node,
             source,
-            tree_sitter::Range {
+            Span::from(tree_sitter::Range {
                 start_byte: source.find("FUNCTION_BLOCK FB2").unwrap(),
                 end_byte: source.len(),
                 start_point: tree_sitter::Point { row: 13, column: 0 },
                 end_point: tree_sitter::Point { row: 20, column: 0 },
-            },
+            }),
             offset,
         );
         assert_eq!(results.inputs.is_none(), true);
@@ -446,7 +447,7 @@ END_FUNCTION_BLOCK
 
         // Cursor right after FUNCTION_BLOCK declaration
         let offset = source.find("FUNCTION_BLOCK FB1").unwrap() + "FUNCTION_BLOCK FB1".len();
-        let results = HeadResult::query_var_decls(root_node, source, root_node.range(), offset);
+        let results = HeadResult::query_var_decls(root_node, source, root_node.range().into(), offset);
 
         assert_eq!(results.head_location, HeadLocation::BeforeVars);
     }
@@ -474,7 +475,7 @@ END_FUNCTION_BLOCK
         // Cursor between VAR_INPUT and VAR_OUTPUT (after first END_VAR)
         let first_end_var = source.find("END_VAR").unwrap() + "END_VAR".len();
         let offset = first_end_var + 1;
-        let results = HeadResult::query_var_decls(root_node, source, root_node.range(), offset);
+        let results = HeadResult::query_var_decls(root_node, source, root_node.range().into(), offset);
 
         assert_eq!(results.head_location, HeadLocation::InVars);
         assert_eq!(results.inside_var_section, VarSection::empty());
@@ -503,7 +504,7 @@ END_FUNCTION_BLOCK
         let end_var_pos = source.find("END_VAR").unwrap() + "END_VAR".len();
         let offset = end_var_pos + 1; // Position at the first newline after END_VAR
 
-        let results = HeadResult::query_var_decls(root_node, source, root_node.range(), offset);
+        let results = HeadResult::query_var_decls(root_node, source, root_node.range().into(), offset);
 
         assert_eq!(results.head_location, HeadLocation::BeforeMethods);
     }
@@ -530,7 +531,7 @@ END_FUNCTION_BLOCK
 
         // Cursor inside method body
         let offset = source.find("// method body").unwrap();
-        let results = HeadResult::query_var_decls(root_node, source, root_node.range(), offset);
+        let results = HeadResult::query_var_decls(root_node, source, root_node.range().into(), offset);
 
         assert_eq!(results.head_location, HeadLocation::InMethods);
     }
@@ -558,7 +559,7 @@ END_FUNCTION_BLOCK
 
         // Cursor after methods
         let offset = source.find("// statement area").unwrap();
-        let results = HeadResult::query_var_decls(root_node, source, root_node.range(), offset);
+        let results = HeadResult::query_var_decls(root_node, source, root_node.range().into(), offset);
 
         assert_eq!(results.head_location, HeadLocation::InBody);
     }
@@ -579,7 +580,7 @@ END_FUNCTION_BLOCK
         // Cursor in empty function block — no vars, no methods, no body.
         // Should be InBodyAfterVars so both VAR snippets and body completions are offered.
         let offset = source.find("FUNCTION_BLOCK FB1").unwrap() + "FUNCTION_BLOCK FB1".len();
-        let results = HeadResult::query_var_decls(root_node, source, root_node.range(), offset);
+        let results = HeadResult::query_var_decls(root_node, source, root_node.range().into(), offset);
 
         assert_eq!(results.head_location, HeadLocation::InBodyAfterVars);
     }
@@ -612,7 +613,7 @@ END_FUNCTION_BLOCK
         let first_end = source.find("END_METHOD").unwrap() + "END_METHOD".len();
         let offset = first_end + 2; // Position between the two methods
 
-        let results = HeadResult::query_var_decls(root_node, source, root_node.range(), offset);
+        let results = HeadResult::query_var_decls(root_node, source, root_node.range().into(), offset);
 
         // Between methods should be InMethods (to allow adding more methods)
         assert_eq!(results.head_location, HeadLocation::InMethods);
@@ -637,7 +638,7 @@ END_FUNCTION_BLOCK
 
         // Cursor inside the body which starts with 'V'
         let offset = source.find("V\n").unwrap();
-        let results = HeadResult::query_var_decls(root_node, source, root_node.range(), offset);
+        let results = HeadResult::query_var_decls(root_node, source, root_node.range().into(), offset);
 
         // Body starts with 'V', so it should be InBodyAfterVars
         assert_eq!(results.head_location, HeadLocation::InBodyAfterVars);
@@ -662,7 +663,7 @@ END_FUNCTION_BLOCK
 
         // Cursor at the start, body begins with 'M'
         let offset = source.find("M\n").unwrap();
-        let results = HeadResult::query_var_decls(root_node, source, root_node.range(), offset);
+        let results = HeadResult::query_var_decls(root_node, source, root_node.range().into(), offset);
 
         // Body starts with 'M', so it should be InBodyAfterVars
         assert_eq!(results.head_location, HeadLocation::InBodyAfterVars);
@@ -686,7 +687,7 @@ END_FUNCTION_BLOCK
 
         // Cursor at body which starts with 'V' after method
         let offset = source.find("V\n").unwrap();
-        let results = HeadResult::query_var_decls(root_node, source, root_node.range(), offset);
+        let results = HeadResult::query_var_decls(root_node, source, root_node.range().into(), offset);
 
         // Body starts with 'V' after methods, so it should be InBodyAfterMethods
         assert_eq!(results.head_location, HeadLocation::InBodyAfterMethods);
@@ -710,7 +711,7 @@ END_FUNCTION_BLOCK
 
         // Cursor at regular statement after method
         let offset = source.find("x := 5").unwrap();
-        let results = HeadResult::query_var_decls(root_node, source, root_node.range(), offset);
+        let results = HeadResult::query_var_decls(root_node, source, root_node.range().into(), offset);
 
         // Body does NOT start with V/E/M, so it should be regular InBody
         assert_eq!(results.head_location, HeadLocation::InBody);

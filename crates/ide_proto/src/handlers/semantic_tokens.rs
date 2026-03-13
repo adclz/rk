@@ -20,7 +20,7 @@ use crate::{
     comment_index::comment_index,
     handlers::SemanticTokensHandler,
     handlers::document_links::{
-        byte_range_to_ts_range, find_bracket_refs, resolve_bracket_ref_to_pou,
+        byte_range_to_span, find_bracket_refs, resolve_bracket_ref_to_pou,
     },
 };
 
@@ -80,8 +80,8 @@ fn comment_bracket_ref_tokens<'db>(
         if let Some(pou) = resolve_bracket_ref_to_pou(db, &bref.content) {
             let content_start = bref.open_byte + 1;
             let content_end = bref.close_byte - 1;
-            let ts_range = byte_range_to_ts_range(source, content_start, content_end);
-            if let Some(enc_range) = document.ts_range_to_enc_range(&ts_range) {
+            let span = byte_range_to_span(source, content_start, content_end);
+            if let Some(enc_range) = document.ts_range_to_enc_range(&span) {
                 let span: Span = enc_range.into();
                 semantic_tokens_for_type(db, Type::new_pou(db, pou), builder, span);
             }

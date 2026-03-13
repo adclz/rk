@@ -124,9 +124,9 @@ pub fn document_links(db: &dyn WorkspaceDataBase, file: File) -> Vec<DocumentLin
                 let content_start = bref.open_byte + 1;
                 let content_end = bref.close_byte - 1;
 
-                let ts_range = byte_range_to_ts_range(source, content_start, content_end);
+                let span = byte_range_to_span(source, content_start, content_end);
 
-                if let Some(enc_range) = document.ts_range_to_enc_range(&ts_range) {
+                if let Some(enc_range) = document.ts_range_to_enc_range(&span) {
                     let span: Span = enc_range.into();
                     links.push(DocumentLink {
                         range: span.into(),
@@ -142,16 +142,16 @@ pub fn document_links(db: &dyn WorkspaceDataBase, file: File) -> Vec<DocumentLin
     links
 }
 
-/// Convert a byte range in source text to a `tree_sitter::Range`.
-pub(crate) fn byte_range_to_ts_range(
+/// Convert a byte range in source text to a [`Span`].
+pub(crate) fn byte_range_to_span(
     source: &str,
     start_byte: usize,
     end_byte: usize,
-) -> tree_sitter::Range {
+) -> Span {
     let (start_row, start_col) = byte_offset_to_point(source, start_byte);
     let (end_row, end_col) = byte_offset_to_point(source, end_byte);
 
-    tree_sitter::Range {
+    Span::from(tree_sitter::Range {
         start_byte,
         end_byte,
         start_point: tree_sitter::Point {
@@ -162,7 +162,7 @@ pub(crate) fn byte_range_to_ts_range(
             row: end_row,
             column: end_col,
         },
-    }
+    })
 }
 
 /// Compute (row, column) from a byte offset in source text.
