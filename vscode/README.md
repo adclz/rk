@@ -19,9 +19,6 @@ version = "0.1"
 name = "my_project"
 version = "0.1"
 
-# Path to the IEC standard library
-stdlib_path = "/path/to/stdlib"
-
 # Output directory for generated files
 [output]
 directory = "build"
