@@ -8,7 +8,8 @@ use hir::{
         config::{ConfigDecl, ProgConfig, ResourceDecl, TaskConfig},
         expressions::{
             expression::{
-                BeginPathExpr, Expr, InitExpr, InitExprKind, ParamAssign, PathExpr, VariableAccess,
+                BeginPathExpr, Elementary, Expr, ExprKind, InitExpr, InitExprKind, ParamAssign,
+                PathExpr, PrimaryExpr, VariableAccess,
             },
             spec::{Spec, SpecKind, StructElement},
         },
@@ -233,6 +234,17 @@ impl<'db> HoverHandler<'db> for StructElement<'db> {
 
 impl<'db> HoverHandler<'db> for InitExpr<'db> {
     fn hover(&'db self, db: &'db dyn WorkspaceDataBase, offset: usize) -> Option<Hover> {
+        if let InitExprKind::ConstantExpr(expr) = self.kind(db)
+            && let ExprKind::PrimaryExpr(prim) = expr.expr(db)
+        {
+            return Some(Hover {
+                contents: HoverContents::Scalar(MarkedString::from_markdown(format!(
+                    "```iecst\n{}\n```",
+                    prim.to_string(db)
+                ))),
+                range: None,
+            });
+        }
         self.infer(db).hover(db, offset)
     }
 }
