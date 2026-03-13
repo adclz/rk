@@ -1,0 +1,104 @@
+/*
+# Standard Selection Functions
+
+IEC 61131-3 **Table 28** - Selection and comparison operations.
+
+Binary selection (`SEL`), extremum (`MAX`, `MIN`), and bounding (`LIMIT`).
+*/
+NAMESPACE Std.Selection
+
+    /*
+    ## SEL - Binary Selection
+
+    Selects one of two inputs based on a boolean selector.
+
+    - `G` = **FALSE** returns `IN0`
+    - `G` = **TRUE** returns `IN1`
+
+    ```iecst
+    result := SEL(G := TRUE, IN0 := 0, IN1 := 42); // 42
+    result := SEL(G := FALSE, IN0 := 0, IN1 := 42); // 0
+    ```
+    */
+    FUNCTION SEL<T: ANY> : T
+        VAR_INPUT
+            G: BOOL;
+            IN0: T;
+            IN1: T;
+        END_VAR
+
+        IF G THEN
+            SEL := IN1;
+        ELSE
+            SEL := IN0;
+        END_IF;
+    END_FUNCTION
+
+    /*
+    ## MAX - Maximum
+
+    Returns the largest of all input arguments.
+
+    - **Constraint**: `ANY_ELEMENTARY`
+
+    ```iecst
+    result := MAX(1, 5, 3);        // 5
+    result := MAX(1.0, 2.5, 0.5);  // 2.5
+    ```
+    */
+    FUNCTION MAX<T: ANY_ELEMENTARY> : T
+        VAR_INPUT
+            args: T...
+        END_VAR
+    END_FUNCTION
+
+    /*
+    ## MIN - Minimum
+
+    Returns the smallest of all input arguments.
+
+    - **Constraint**: `ANY_ELEMENTARY`
+
+    ```iecst
+    result := MIN(1, 5, 3);        // 1
+    result := MIN(1.0, 2.5, 0.5);  // 0.5
+    ```
+    */
+    FUNCTION MIN<T: ANY_ELEMENTARY> : T
+        VAR_INPUT
+            args: T...
+        END_VAR
+    END_FUNCTION
+
+    /*
+    ## LIMIT - Bounding
+
+    Clamps `IN` to the range [`MN`, `MX`].
+
+    - Returns `MN` if `IN < MN`
+    - Returns `MX` if `IN > MX`
+    - Returns `IN` otherwise
+
+    ```iecst
+    result := LIMIT(MN := 0, IN := 15, MX := 10);  // 10
+    result := LIMIT(MN := 0, IN := -5, MX := 10);   // 0
+    result := LIMIT(MN := 0, IN := 5, MX := 10);    // 5
+    ```
+    */
+    FUNCTION LIMIT<T: ANY_ELEMENTARY> : T
+        VAR_INPUT
+            MN: T;
+            IN: T;
+            MX: T;
+        END_VAR
+
+        IF IN < MN THEN
+            LIMIT := MN;
+        ELSIF IN > MX THEN
+            LIMIT := MX;
+        ELSE
+            LIMIT := IN;
+        END_IF;
+    END_FUNCTION
+
+END_NAMESPACE

@@ -107,6 +107,236 @@ NAMESPACE Std.Math
     END_FUNCTION
 
     /*
+    ## ABS - Absolute Value
+
+    Returns the absolute value of the input.
+
+    - **Constraint**: `ANY_NUM` (integers and reals)
+
+    ```iecst
+    result := ABS(-5);    // 5
+    result := ABS(3.14);  // 3.14
+    ```
+    */
+    FUNCTION ABS<T: ANY_NUM> : T
+        VAR_INPUT
+            IN: T
+        END_VAR
+
+    END_FUNCTION
+
+    /*
+    ## SQRT - Square Root
+
+    Returns the square root of the input.
+
+    - **Constraint**: `ANY_REAL` (REAL, LREAL)
+
+    ```iecst
+    result := SQRT(9.0);   // 3.0
+    result := SQRT(2.0);   // 1.414...
+    ```
+    */
+    FUNCTION SQRT<T: ANY_REAL> : T
+        VAR_INPUT
+            IN: T
+        END_VAR
+
+    END_FUNCTION
+
+    /*
+    ## LN - Natural Logarithm
+
+    Returns the natural logarithm (base e) of the input.
+
+    - **Constraint**: `ANY_REAL` (REAL, LREAL)
+
+    ```iecst
+    result := LN(2.718);  // ~1.0
+    result := LN(1.0);    // 0.0
+    ```
+    */
+    FUNCTION LN<T: ANY_REAL>: T
+        VAR_INPUT
+            IN: T
+        END_VAR
+
+    END_FUNCTION
+
+    /*
+    ## LOG - Common Logarithm
+
+    Returns the common logarithm (base 10) of the input.
+
+    - **Constraint**: `ANY_REAL` (REAL, LREAL)
+
+    ```iecst
+    result := LOG(100.0);  // 2.0
+    result := LOG(1000.0); // 3.0
+    ```
+    */
+    FUNCTION LOG<T: ANY_REAL>: T
+        VAR_INPUT
+            IN: T
+        END_VAR
+
+    END_FUNCTION
+
+    /*
+    ## EXP - Natural Exponential
+
+    Returns e raised to the power of the input.
+
+    - **Constraint**: `ANY_REAL` (REAL, LREAL)
+
+    ```iecst
+    result := EXP(1.0);  // 2.718...
+    result := EXP(0.0);  // 1.0
+    ```
+    */
+    FUNCTION EXP<T: ANY_REAL> : T
+        VAR_INPUT
+            IN: T
+        END_VAR
+
+    END_FUNCTION
+
+    /*
+    ## SIN - Sine
+
+    Returns the sine of the input (in radians).
+
+    - **Constraint**: `ANY_REAL` (REAL, LREAL)
+
+    ```iecst
+    result := SIN(0.0);       // 0.0
+    result := SIN(1.5708);    // ~1.0
+    ```
+    */
+    FUNCTION SIN<T: ANY_REAL> : T
+        VAR_INPUT
+            IN: T
+        END_VAR
+
+    END_FUNCTION
+
+    /*
+    ## COS - Cosine
+
+    Returns the cosine of the input (in radians).
+
+    - **Constraint**: `ANY_REAL` (REAL, LREAL)
+
+    ```iecst
+    result := COS(0.0);       // 1.0
+    result := COS(3.1416);    // ~-1.0
+    ```
+    */
+    FUNCTION COS<T: ANY_REAL> : T
+        VAR_INPUT
+            IN: T
+        END_VAR
+
+    END_FUNCTION
+
+    /*
+    ## TAN - Tangent
+
+    Returns the tangent of the input (in radians).
+
+    - **Constraint**: `ANY_REAL` (REAL, LREAL)
+
+    ```iecst
+    result := TAN(0.0);       // 0.0
+    result := TAN(0.7854);    // ~1.0
+    ```
+    */
+    FUNCTION TAN<T: ANY_REAL> : T
+        VAR_INPUT
+            IN: T
+        END_VAR
+
+    END_FUNCTION
+
+    /*
+    ## ASIN - Arc Sine
+
+    Returns the arc sine of the input (result in radians).
+
+    - **Constraint**: `ANY_REAL` (REAL, LREAL)
+
+    ```iecst
+    result := ASIN(0.0);   // 0.0
+    result := ASIN(1.0);   // 1.5708 (~pi/2)
+    ```
+    */
+    FUNCTION ASIN<T: ANY_REAL> : T
+        VAR_INPUT
+            IN: T
+        END_VAR
+
+    END_FUNCTION
+
+    /*
+    ## ACOS - Arc Cosine
+
+    Returns the arc cosine of the input (result in radians).
+
+    - **Constraint**: `ANY_REAL` (REAL, LREAL)
+
+    ```iecst
+    result := ACOS(1.0);   // 0.0
+    result := ACOS(0.0);   // 1.5708 (~pi/2)
+    ```
+    */
+    FUNCTION ACOS<T: ANY_REAL> : T
+        VAR_INPUT
+            IN: T
+        END_VAR
+
+    END_FUNCTION
+
+    /*
+    ## ATAN - Arc Tangent
+
+    Returns the arc tangent of the input (result in radians).
+
+    - **Constraint**: `ANY_REAL` (REAL, LREAL)
+
+    ```iecst
+    result := ATAN(0.0);   // 0.0
+    result := ATAN(1.0);   // 0.7854 (~pi/4)
+    ```
+    */
+    FUNCTION ATAN<T: ANY_REAL> : T
+        VAR_INPUT
+            IN: T
+        END_VAR
+
+    END_FUNCTION
+
+    /*
+    ## ATAN2 - Two-Argument Arc Tangent
+
+    Returns the arc tangent of `IN / IN2`, using the signs of both
+    arguments to determine the quadrant of the result (in radians).
+
+    - **Constraint**: `ANY_REAL` (REAL, LREAL)
+
+    ```iecst
+    result := ATAN2(IN := 1.0, IN2 := 1.0);   // 0.7854 (~pi/4)
+    result := ATAN2(IN := -1.0, IN2 := -1.0);  // -2.356 (~-3pi/4)
+    ```
+    */
+    FUNCTION ATAN2<T: ANY_REAL> : T
+        VAR_INPUT
+            IN: T
+            IN2: T
+        END_VAR
+
+    END_FUNCTION
+
+    /*
     ## EXPT - Exponentiation
 
     Raises the base to successive powers.
