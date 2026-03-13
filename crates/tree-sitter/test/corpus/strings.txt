@@ -1,0 +1,59 @@
+================================================================================
+Double-quoted string with special chars
+================================================================================
+
+FUNCTION fn
+    VAR
+        test: STRING := "à&@";
+    END_VAR
+END_FUNCTION
+
+--------------------------------------------------------------------------------
+
+(source_file
+  (func_decl
+    name: (identifier)
+    variables: (var_decls
+      (var_decl_init_list
+        variables: (variable_list
+          (identifier))
+        type: (var_decl_init
+          spec: (simple_type_spec
+            (string_type_name
+              (string_name)))
+          init: (simple_type_init
+            (constant_expr
+              (constant
+                (char_literal
+                  value: (char_str
+                    (d_byte_char_str)))))))))))
+
+================================================================================
+Single-quoted string with special chars
+================================================================================
+
+FUNCTION fn
+    VAR
+        test: STRING := 'café résumé';
+    END_VAR
+END_FUNCTION
+
+--------------------------------------------------------------------------------
+
+(source_file
+  (func_decl
+    name: (identifier)
+    variables: (var_decls
+      (var_decl_init_list
+        variables: (variable_list
+          (identifier))
+        type: (var_decl_init
+          spec: (simple_type_spec
+            (string_type_name
+              (string_name)))
+          init: (simple_type_init
+            (constant_expr
+              (constant
+                (char_literal
+                  value: (char_str
+                    (s_byte_char_str)))))))))))

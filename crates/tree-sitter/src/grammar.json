@@ -982,8 +982,8 @@
       "type": "CHOICE",
       "members": [
         {
-          "type": "SYMBOL",
-          "name": "_common_char_value"
+          "type": "PATTERN",
+          "value": "[^'\\n\\r$]"
         },
         {
           "type": "TOKEN",
@@ -998,99 +998,6 @@
             "type": "STRING",
             "value": "\""
           }
-        },
-        {
-          "type": "SEQ",
-          "members": [
-            {
-              "type": "STRING",
-              "value": "$"
-            },
-            {
-              "type": "SYMBOL",
-              "name": "_hex_digit"
-            },
-            {
-              "type": "SYMBOL",
-              "name": "_hex_digit"
-            }
-          ]
-        }
-      ]
-    },
-    "_d_byte_char_value": {
-      "type": "CHOICE",
-      "members": [
-        {
-          "type": "SYMBOL",
-          "name": "_common_char_value"
-        },
-        {
-          "type": "TOKEN",
-          "content": {
-            "type": "STRING",
-            "value": "'"
-          }
-        },
-        {
-          "type": "TOKEN",
-          "content": {
-            "type": "STRING",
-            "value": "$\""
-          }
-        },
-        {
-          "type": "SEQ",
-          "members": [
-            {
-              "type": "STRING",
-              "value": "$"
-            },
-            {
-              "type": "REPEAT1",
-              "content": {
-                "type": "SYMBOL",
-                "name": "_hex_digit"
-              }
-            }
-          ]
-        }
-      ]
-    },
-    "_common_char_value": {
-      "type": "CHOICE",
-      "members": [
-        {
-          "type": "PATTERN",
-          "value": "[ !#%&]"
-        },
-        {
-          "type": "PATTERN",
-          "value": "[\\(\\)\\*\\+,\\-\\.\\/]"
-        },
-        {
-          "type": "PATTERN",
-          "value": "[0-9]"
-        },
-        {
-          "type": "PATTERN",
-          "value": "[:;<=>?@]"
-        },
-        {
-          "type": "PATTERN",
-          "value": "[A-Z]"
-        },
-        {
-          "type": "PATTERN",
-          "value": "[\\[\\]\\\\\\^_`]"
-        },
-        {
-          "type": "PATTERN",
-          "value": "[a-z]"
-        },
-        {
-          "type": "PATTERN",
-          "value": "[{\\|}~]"
         },
         {
           "type": "STRING",
@@ -1115,6 +1022,86 @@
         {
           "type": "STRING",
           "value": "$T"
+        },
+        {
+          "type": "SEQ",
+          "members": [
+            {
+              "type": "STRING",
+              "value": "$"
+            },
+            {
+              "type": "SYMBOL",
+              "name": "_hex_digit"
+            },
+            {
+              "type": "SYMBOL",
+              "name": "_hex_digit"
+            }
+          ]
+        }
+      ]
+    },
+    "_d_byte_char_value": {
+      "type": "CHOICE",
+      "members": [
+        {
+          "type": "PATTERN",
+          "value": "[^\"\\n\\r$]"
+        },
+        {
+          "type": "TOKEN",
+          "content": {
+            "type": "STRING",
+            "value": "'"
+          }
+        },
+        {
+          "type": "TOKEN",
+          "content": {
+            "type": "STRING",
+            "value": "$\""
+          }
+        },
+        {
+          "type": "STRING",
+          "value": "$$"
+        },
+        {
+          "type": "STRING",
+          "value": "$L"
+        },
+        {
+          "type": "STRING",
+          "value": "$N"
+        },
+        {
+          "type": "STRING",
+          "value": "$P"
+        },
+        {
+          "type": "STRING",
+          "value": "$R"
+        },
+        {
+          "type": "STRING",
+          "value": "$T"
+        },
+        {
+          "type": "SEQ",
+          "members": [
+            {
+              "type": "STRING",
+              "value": "$"
+            },
+            {
+              "type": "REPEAT1",
+              "content": {
+                "type": "SYMBOL",
+                "name": "_hex_digit"
+              }
+            }
+          ]
         }
       ]
     },

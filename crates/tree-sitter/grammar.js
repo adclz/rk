@@ -406,36 +406,30 @@ module.exports = grammar({
 
     _s_byte_char_value: ($) =>
       choice(
-        $._common_char_value,
+        /[^'\n\r$]/,
         token("$'"),
         token('"'),
-        seq("$", $._hex_digit, $._hex_digit),
-      ),
-
-    _d_byte_char_value: ($) =>
-      choice(
-        $._common_char_value,
-        token("'"),
-        token('$"'),
-        seq("$", repeat1($._hex_digit)),
-      ),
-
-    _common_char_value: ($) =>
-      choice(
-        /[ !#%&]/,
-        /[\(\)\*\+,\-\.\/]/,
-        /[0-9]/,
-        /[:;<=>?@]/,
-        /[A-Z]/,
-        /[\[\]\\\^_`]/,
-        /[a-z]/,
-        /[{\|}~]/,
         "$$",
         "$L",
         "$N",
         "$P",
         "$R",
         "$T",
+        seq("$", $._hex_digit, $._hex_digit),
+      ),
+
+    _d_byte_char_value: ($) =>
+      choice(
+        /[^"\n\r$]/,
+        token("'"),
+        token('$"'),
+        "$$",
+        "$L",
+        "$N",
+        "$P",
+        "$R",
+        "$T",
+        seq("$", repeat1($._hex_digit)),
       ),
 
     // Table 8 - Duration literals
