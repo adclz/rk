@@ -113,6 +113,15 @@ impl<'db> StmtsResolverCtx<'db> {
                     resolver.resolve_variable_access(db, *var, ctx);
                     let base_typ = ctx.get_type_of_variable_access(db, *var);
 
+                    if ctx.is_constant_access(db, *var) {
+                        ctx.errors.push(
+                            ControlFlowError::AssignToConstant {
+                                access: CallSite::from_scoped(db, var),
+                            }
+                            .to_diagnostic(db),
+                        );
+                    }
+
                     base_typ.check_assignable(db, CallSite::from_scoped(db, var), ctx);
 
                     self.infer_and_check_expr(db, &mut infer, *target, ctx);

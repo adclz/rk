@@ -468,6 +468,31 @@ END_FUNCTION
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @"");
 }
 
+/// DataType fields are constant — assigning to them is an error.
+#[rstest]
+fn cannot_assign_to_data_type_constant(mut with_db: RootDatabase) {
+    let source = r#"
+TYPE
+    MY_STRUCT : STRUCT
+        field1 : INT;
+    END_STRUCT
+END_TYPE
+
+FUNCTION fn0
+    MY_STRUCT.field1 := 42;
+END_FUNCTION
+"#;
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
+    [E1004] Error: semantic violation
+       ,-[ file:///test0.st:9:5 ]
+       |
+     9 |     MY_STRUCT.field1 := 42;
+       |     ^^^^^^^^|^^^^^^^
+       |             `--------- cannot assign to constant type
+    ---'
+    ");
+}
+
 /// When accessing a field on an unknown name, the error should only report the
 /// unresolved first segment — no cascading error about the field.
 #[rstest]

@@ -47,6 +47,9 @@ pub enum ControlFlowError<'db> {
         expr: PathExpr<'db>,
         state: NullState<'db>,
     },
+    AssignToConstant {
+        access: CallSite<'db>,
+    },
 }
 
 impl<'db> ErrorCode for ControlFlowError<'db> {
@@ -59,6 +62,7 @@ impl<'db> ErrorCode for ControlFlowError<'db> {
             Self::ContinueOutsideLoop { .. } => "E1001",
             Self::ExitOutsideLoop { .. } => "E1002",
             Self::DerefPossiblyNull { .. } => "E1003",
+            Self::AssignToConstant { .. } => "E1004",
         }
     }
 
@@ -67,7 +71,8 @@ impl<'db> ErrorCode for ControlFlowError<'db> {
             Self::AssignCallableType { .. }
             | Self::IsVarInput { .. }
             | Self::DirectType { .. }
-            | Self::CallNonCallableType { .. } => "semantic violation",
+            | Self::CallNonCallableType { .. }
+            | Self::AssignToConstant { .. } => "semantic violation",
             Self::DerefPossiblyNull { .. } => "possibly null dereference",
             _ => "control flow violation",
         }
@@ -131,6 +136,12 @@ impl<'db> ToIdeDiagnostic<'db> for ControlFlowError<'db> {
                 .range(stmt.get_span(db))
                 .severity(DiagnosticSeverity::ERROR)
                 .desc(self)
+                .call(),
+            Self::AssignToConstant { access } => diag()
+                .message("cannot assign to constant type".to_string())
+                .severity(DiagnosticSeverity::ERROR)
+                .desc(self)
+                .range(access.get_span(db))
                 .call(),
             Self::DerefPossiblyNull { var, expr, state } => {
                 let name = var.get_name_ident(db).text(db);

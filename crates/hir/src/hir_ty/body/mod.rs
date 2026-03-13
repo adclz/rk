@@ -350,6 +350,31 @@ impl<'db> BodyInferenceResult<'db> {
         }
     }
 
+    /// Check whether a variable access is rooted in a DataType (constant).
+    /// The first resolved step in the path determines constness.
+    /// Only applies to multi-step paths (e.g., TYPE_NAME.field) — bare type
+    /// names are handled by check_not_direct_type.
+    pub fn is_constant_access(
+        &self,
+        db: &'db dyn WorkspaceDataBase,
+        var_access: VariableAccess<'db>,
+    ) -> bool {
+        let VariableAccessKind::Symbolic(sym) = var_access.kind(db) else {
+            return false;
+        };
+        let Some(path) = sym.expr(db) else {
+            return false;
+        };
+        let steps = path.flatten(db);
+        if steps.len() < 2 {
+            return false;
+        }
+        matches!(
+            self.type_of_path_expr.get(&steps[0].get_expr(db)),
+            Some(Type::DataType(_))
+        )
+    }
+
     pub(super) fn get_type_of_path_expr(
         &self,
         db: &'db dyn WorkspaceDataBase,
