@@ -716,3 +716,30 @@ END_FUNCTION"#;
     ---'
     ");
 }
+
+#[rstest]
+fn valid_generic_return_type_inferred_in_assignment(mut with_db: RootDatabase) {
+    // generic function return type must resolve to the
+    // concrete type inferred from arguments, not remain as the constraint.
+    // e.g. LIMIT<T: ANY_NUM>(REAL, REAL, REAL) should return REAL.
+    let source = r#"
+FUNCTION LIMIT<T: ANY_NUM> : T
+    VAR_INPUT
+        MN: T;
+        IN: T;
+        MX: T;
+    END_VAR
+    LIMIT := IN;
+END_FUNCTION
+
+FUNCTION SCALE : REAL
+    VAR_INPUT
+        X : REAL;
+        MN : REAL;
+        MX : REAL;
+    END_VAR
+    SCALE := LIMIT(MN, X, MX);
+END_FUNCTION"#;
+
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @"");
+}

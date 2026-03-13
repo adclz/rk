@@ -202,7 +202,12 @@ impl<'db> InferExprCtx<'db> {
             }
             PrimaryExpr::FuncCall(call) => {
                 resolve_func_call(db, self.resolver, *call, inference_result);
-                inference_result.get_type_of_begin_path_expr(db, call.path(db))
+                let ty = inference_result.get_type_of_begin_path_expr(db, call.path(db));
+                // For generic functions, the CallableType normalizes to
+                // Type::Generic(T). Apply the substitutions inferred during
+                // the call to resolve T → the concrete type (e.g. REAL).
+                ty.normalize(db)
+                    .apply_generic_substitution(db, &inference_result.generic_substitutions)
             }
             PrimaryExpr::EnumValue { name, variant } => {
                 self.resolver
