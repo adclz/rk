@@ -311,7 +311,8 @@ impl Ident {
 
     #[salsa::tracked]
     pub fn as_tod(self, db: &dyn WorkspaceDataBase) -> Result<Time, time::error::Parse> {
-        let fmt = format_description!("[hour]:[minute]:[second].[subsecond]");
+        let fmt =
+            format_description!("[hour]:[minute]:[second][optional [.[subsecond]]]");
         Time::parse(
             &self
                 .text(db)
@@ -325,7 +326,8 @@ impl Ident {
 
     #[salsa::tracked]
     pub fn as_long_tod(self, db: &dyn WorkspaceDataBase) -> Result<Time, time::error::Parse> {
-        let fmt = format_description!("[hour]:[minute]:[second].[subsecond]");
+        let fmt =
+            format_description!("[hour]:[minute]:[second][optional [.[subsecond]]]");
         Time::parse(
             &self
                 .text(db)
@@ -342,7 +344,9 @@ impl Ident {
         self,
         db: &dyn WorkspaceDataBase,
     ) -> Result<PrimitiveDateTime, time::error::Parse> {
-        let fmt = format_description!("[year]-[month]-[day]-[hour]:[minute]:[second].[subsecond]");
+        let fmt = format_description!(
+            "[year]-[month]-[day]-[hour]:[minute]:[second][optional [.[subsecond]]]"
+        );
         PrimitiveDateTime::parse(
             &self
                 .text(db)
@@ -359,7 +363,9 @@ impl Ident {
         self,
         db: &dyn WorkspaceDataBase,
     ) -> Result<PrimitiveDateTime, time::error::Parse> {
-        let fmt = format_description!("[year]-[month]-[day]-[hour]:[minute]:[second].[subsecond]");
+        let fmt = format_description!(
+            "[year]-[month]-[day]-[hour]:[minute]:[second][optional [.[subsecond]]]"
+        );
         PrimitiveDateTime::parse(
             &self
                 .text(db)

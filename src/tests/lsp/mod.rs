@@ -1,4 +1,5 @@
 pub mod comment_index;
+pub mod completion_snippets;
 pub mod definition;
 pub mod document_links;
 pub mod document_symbols;

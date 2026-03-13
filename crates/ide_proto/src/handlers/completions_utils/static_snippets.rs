@@ -431,7 +431,7 @@ macro_rules! gen_elem_data_types_snippets {
                     label: stringify!($label).into(),
                     kind: Some(lsp_types::CompletionItemKind::VALUE),
                     insert_text_format: Some(lsp_types::InsertTextFormat::SNIPPET),
-                    insert_text: Some(format!("{}#{}", stringify!($label), stringify!($dv)).replace("\"", "").into()),
+                    insert_text: Some(format!("{}#{}", stringify!($label), $dv).into()),
                     ..Default::default()
                 }
             }}
@@ -452,17 +452,17 @@ gen_elem_data_types_snippets! {
     word => WORD  = "0",
     dword => DWORD  = "0",
     lword => LWORD  = "0",
-    date => DATE  = "0",
-    ldate => LDATE  = "0",
-    dt => DATE_AND_TIME  = "",
-    ldt => LDATE_AND_TIME = "LDT#0",
-    tod => TIME_OF_DAY  = "TOD#0",
-    ltod => LTIME_OF_DAY = "LTOD#0",
-    time => TIME = "T#0",
-    ltime => LTIME  = "LT#0",
+    date => DATE  = "2024-01-01",
+    ldate => LDATE  = "2024-01-01",
+    dt => DATE_AND_TIME  = "2024-01-01-00:00:00",
+    ldt => LDATE_AND_TIME = "2024-01-01-00:00:00",
+    tod => TIME_OF_DAY  = "00:00:00",
+    ltod => LTIME_OF_DAY = "00:00:00",
+    time => TIME = "0s",
+    ltime => LTIME  = "0s",
     bool => BOOL = "FALSE",
-    string => STRING = "\"\"",
-    wstring => WSTRING = "\"\"",
+    string => STRING = "''",
+    wstring => WSTRING = "''",
     char => CHAR = "''",
     wchar => WCHAR = "''"
 }
