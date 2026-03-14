@@ -168,6 +168,18 @@ pub fn resolve_func_call<'db>(
                 if let Some(var) = var {
                     coerce_with_var_target(db, resolver, value, *var, ctx);
 
+                    // constant types cannot be passed to VAR_IN_OUT / VAR_OUTPUT
+                    if (var.is_in_out(db) || var.is_output(db))
+                        && ctx.is_constant_expr(db, value)
+                    {
+                        ctx.errors.push(
+                            ControlFlowError::AssignToConstant {
+                                access: CallSite::from_scoped(db, &value),
+                            }
+                            .to_diagnostic(db),
+                        );
+                    }
+
                     if var.is_output(db) {
                         ctx.errors.push(
                             ResolveError::OutputParameterUsedAsInput {
@@ -213,6 +225,20 @@ pub fn resolve_func_call<'db>(
 
                 if let Some(var) = var {
                     coerce_with_var_target(db, resolver, value, *var, ctx);
+
+                    // constant types cannot be passed to VAR_IN_OUT / VAR_OUTPUT
+                    // parameters (which are mutable references)
+                    if (var.is_in_out(db) || var.is_output(db))
+                        && ctx.is_constant_expr(db, value)
+                    {
+                        ctx.errors.push(
+                            crate::check::errors::e10_control_flow::ControlFlowError::AssignToConstant {
+                                access: CallSite::from_scoped(db, &value),
+                            }
+                            .to_diagnostic(db),
+                        );
+                    }
+
                     ctx.variable_of_param.insert(*parameter, *var);
                 } else {
                     ctx.errors.push(
@@ -250,8 +276,11 @@ pub fn resolve_func_call<'db>(
 
                     let rhs_typ = ctx.type_of_variable_access_with_adjustments(db, variable);
 
-                    // constant types cannot be passed to output parameters
-                    if ctx.is_constant_access(db, variable) {
+                    // constant types cannot be passed to VAR_IN_OUT / VAR_OUTPUT
+                    // parameters (which are mutable references)
+                    if (lhs_var.is_in_out(db) || lhs_var.is_output(db))
+                        && ctx.is_constant_access(db, variable)
+                    {
                         ctx.errors.push(
                             crate::check::errors::e10_control_flow::ControlFlowError::AssignToConstant {
                                 access: call_site,

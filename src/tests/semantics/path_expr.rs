@@ -493,6 +493,100 @@ END_FUNCTION
     ");
 }
 
+/// DataType constants can be passed to VAR_INPUT parameters (read-only copy).
+#[rstest]
+fn data_type_constant_allowed_as_var_input(mut with_db: RootDatabase) {
+    let source = r#"
+TYPE
+    MY_CONSTANTS : STRUCT
+        MAX_VAL : INT := 100;
+    END_STRUCT
+END_TYPE
+
+FUNCTION consumer : INT
+VAR_INPUT
+    val : INT;
+END_VAR
+    consumer := val;
+END_FUNCTION
+
+FUNCTION fn0 : INT
+    fn0 := consumer(MY_CONSTANTS.MAX_VAL);
+END_FUNCTION
+"#;
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @"");
+}
+
+/// DataType constants cannot be passed to VAR_IN_OUT parameters (mutable reference).
+#[rstest]
+fn data_type_constant_forbidden_as_var_in_out(mut with_db: RootDatabase) {
+    let source = r#"
+TYPE
+    MY_CONSTANTS : STRUCT
+        MAX_VAL : INT := 100;
+    END_STRUCT
+END_TYPE
+
+FUNCTION consumer
+VAR_IN_OUT
+    val : INT;
+END_VAR
+    val := val + 1;
+END_FUNCTION
+
+FUNCTION fn0
+VAR
+    x : INT;
+END_VAR
+    consumer(val := MY_CONSTANTS.MAX_VAL);
+END_FUNCTION
+"#;
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
+    [E1004] Error: semantic violation
+        ,-[ file:///test0.st:19:21 ]
+        |
+     19 |     consumer(val := MY_CONSTANTS.MAX_VAL);
+        |                     ^^^^^^^^^^|^^^^^^^^^
+        |                               `----------- cannot assign to constant type
+    ----'
+    ");
+}
+
+/// DataType constants cannot be passed to VAR_IN_OUT via positional (non-formal) parameters.
+#[rstest]
+fn data_type_constant_forbidden_as_var_in_out_non_formal(mut with_db: RootDatabase) {
+    let source = r#"
+TYPE
+    MY_CONSTANTS : STRUCT
+        MAX_VAL : INT := 100;
+    END_STRUCT
+END_TYPE
+
+FUNCTION consumer
+VAR_IN_OUT
+    val : INT;
+END_VAR
+    val := val + 1;
+END_FUNCTION
+
+FUNCTION fn0
+VAR
+    x : INT;
+END_VAR
+    consumer(MY_CONSTANTS.MAX_VAL);
+END_FUNCTION
+"#;
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
+    [E1004] Error: semantic violation
+        ,-[ file:///test0.st:19:14 ]
+        |
+     19 |     consumer(MY_CONSTANTS.MAX_VAL);
+        |              ^^^^^^^^^^|^^^^^^^^^
+        |                        `----------- cannot assign to constant type
+    ----'
+    ");
+}
+
 /// When accessing a field on an unknown name, the error should only report the
 /// unresolved first segment — no cascading error about the field.
 #[rstest]
