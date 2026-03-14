@@ -233,7 +233,7 @@ impl<'db> Type<'db> {
                 } else {
                     String::new()
                 };
-                format!("STRUCT {{\n{}{suffix}\n}}", fields.join(",\n"))
+                format!("STRUCT \n{}{suffix}\n", fields.join(",\n"))
             }
             Self::Enum(enum_) => {
                 let all_variants = enum_.variants(db);
@@ -254,7 +254,7 @@ impl<'db> Type<'db> {
                 } else {
                     String::new()
                 };
-                format!("ENUM{base} {{ {}{suffix} }}", names.join(", "))
+                format!("ENUM{base} {}{suffix} ", names.join(", "))
             }
             Self::DataType(typ) => {
                 let name = typ.get_name_ident(db).text(db);
