@@ -300,11 +300,11 @@ END_TYPE
         hover_markup(ty.hover(db, ty.get_name_span(db).start_byte)?.contents)
     }), @r"
     ```iecst
-    TYPE AnEnum: ENUM { A, B, C, D }
+    TYPE AnEnum: ENUM A, B, C, D 
     ```
 
     ```iecst
-    TYPE ABiggerEnum: ENUM { A, B, C, D, E, F, G, H, I, J, ... (2 more) }
+    TYPE ABiggerEnum: ENUM A, B, C, D, E, F, G, H, I, J, ... (2 more) 
     ```
     ");
 }
@@ -375,14 +375,14 @@ END_TYPE
         hover_markup(ty.hover(db, ty.get_name_span(db).start_byte)?.contents)
     }), @r"
     ```iecst
-    TYPE Engine: STRUCT {
+    TYPE Engine: STRUCT 
         oil: INT,
         fuel: BOOL
-    }
+
     ```
 
     ```iecst
-    TYPE Engine: STRUCT {
+    TYPE Engine: STRUCT 
         oil1: INT,
         oil2: BOOL,
         oil3: INT,
@@ -394,7 +394,7 @@ END_TYPE
         oil9: INT,
         oil10: BOOL
         ... (2 more fields)
-    }
+
     ```
     ");
 }
