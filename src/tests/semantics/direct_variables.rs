@@ -416,3 +416,20 @@ END_FUNCTION_BLOCK"#;
     ---'
     ");
 }
+
+#[rstest]
+fn valid_multibits_on_indexed_array(mut with_db: RootDatabase) {
+    let source = r#"
+FUNCTION_BLOCK fb1
+    VAR
+        SX: ARRAY[1..7] OF BYTE;
+        SN: INT;
+        Q0: BOOL;
+    END_VAR
+
+    Q0 := SX[SN].0;
+
+END_FUNCTION_BLOCK"#;
+
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @"");
+}

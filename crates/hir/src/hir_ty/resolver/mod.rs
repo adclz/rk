@@ -216,11 +216,19 @@ impl<'db> Resolver<'db> {
             current_path: first_step.get_expr(db),
         };
 
+        // For single-step paths (e.g. By.7), pass multibit directly so it's
+        // applied to the variable. For multi-step paths (e.g. SX[SN].0), defer
+        // multibit to after the walk — otherwise it applies to the array variable
+        // before indexing, changing its type prematurely.
+        let single_step = steps.len() == 1;
+
         for (index, step) in steps.iter().enumerate() {
             let is_first_step = index == 0;
 
+            let step_multibits = if single_step { multibits } else { None };
+
             // Suppress errors on the first step: if it fails we may fall back to FQ resolution.
-            current.walk_path_expr(db, !is_first_step, step, multibits, &mut place, ctx);
+            current.walk_path_expr(db, !is_first_step, step, step_multibits, &mut place, ctx);
 
             // Check whether walk_path_expr actually resolved this step.
             let resolved = ctx.type_of_path_expr.contains_key(&step.get_expr(db));
@@ -273,6 +281,26 @@ impl<'db> Resolver<'db> {
             }
 
             current = ctx.type_of_path_expr_with_adjustments(step.get_expr(db));
+        }
+
+        // For multi-step paths with multibit access (e.g. SX[SN].0), apply
+        // multibit to the final resolved type now that indexing/deref is done.
+        if !single_step {
+            if let Some(mb) = multibits {
+                if let Some(last_step) = steps.last() {
+                    let last_expr = last_step.get_expr(db);
+                    let mb_type =
+                        crate::hir_ty::infer::normalize::multibits_to_type(db, mb);
+                    // Update type_of_path_expr and also replace the last adjustment
+                    // target (e.g. array index target) with the multibit type.
+                    ctx.type_of_path_expr.insert(last_expr, mb_type);
+                    if let Some(adjustments) = ctx.path_expr_adjustments.get_mut(&last_expr) {
+                        if let Some(last_adj) = adjustments.last_mut() {
+                            last_adj.target = mb_type;
+                        }
+                    }
+                }
+            }
         }
     }
 }
