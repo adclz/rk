@@ -1,5 +1,5 @@
 ================================================================================
-Date literal (long prefix) 
+Date literal (long prefix)
 ================================================================================
 
 FUNCTION fn
@@ -11,40 +11,42 @@ END_FUNCTION
 
 --------------------------------------------------------------------------------
 
-    (source_file
-      (func_decl
-        (identifier)
-        (func_body
-          (stmt_list
-            (assign
-              (variable
-                (begin_path_expression
-                  (path_expression
-                    (var_access
-                      (field)))))
-              (assignment
-                (constant
-                  (time_literal
-                    (date
-                      (short_date
-                        (date_type_name)
-                        (date_literal)))))))
-            (assign
-              (variable
-                (begin_path_expression
-                  (path_expression
-                    (var_access
-                      (field)))))
-              (assignment
-                (constant
-                  (time_literal
-                    (date
-                      (short_date
-                        (date_type_name)
-                        (date_literal)))))))))))
+(source_file
+  (func_decl
+    (identifier)
+    (func_body
+      (stmt_list
+        (assign
+          (variable_access
+            (variable
+              (begin_path_expression
+                (path_expression
+                  (var_access
+                    (field))))))
+          (assignment
+            (constant
+              (time_literal
+                (date
+                  (short_date
+                    (date_type_name)
+                    (date_literal)))))))
+        (assign
+          (variable_access
+            (variable
+              (begin_path_expression
+                (path_expression
+                  (var_access
+                    (field))))))
+          (assignment
+            (constant
+              (time_literal
+                (date
+                  (short_date
+                    (date_type_name)
+                    (date_literal)))))))))))
 
 ================================================================================
-Date literal (short prefix) 
+Date literal (short prefix)
 ================================================================================
 
 FUNCTION fn
@@ -55,24 +57,25 @@ END_FUNCTION
 
 --------------------------------------------------------------------------------
 
-   (source_file
-      (func_decl
-        (identifier)
-        (func_body
-          (stmt_list
-            (assign
-              (variable
-                (begin_path_expression
-                  (path_expression
-                    (var_access
-                      (field)))))
-              (assignment
-                (constant
-                  (time_literal
-                    (date
-                      (short_date
-                        (date_type_name)
-                        (date_literal)))))))))))
+(source_file
+  (func_decl
+    (identifier)
+    (func_body
+      (stmt_list
+        (assign
+          (variable_access
+            (variable
+              (begin_path_expression
+                (path_expression
+                  (var_access
+                    (field))))))
+          (assignment
+            (constant
+              (time_literal
+                (date
+                  (short_date
+                    (date_type_name)
+                    (date_literal)))))))))))
 
 ================================================================================
 Long date literal (long prefix)
@@ -86,24 +89,25 @@ END_FUNCTION
 
 --------------------------------------------------------------------------------
 
-    (source_file
-      (func_decl
-        (identifier)
-        (func_body
-          (stmt_list
-            (assign
-              (variable
-                (begin_path_expression
-                  (path_expression
-                    (var_access
-                      (field)))))
-              (assignment
-                (constant
-                  (time_literal
-                    (date
-                      (long_date
-                        (date_type_name)
-                        (date_literal)))))))))))
+(source_file
+  (func_decl
+    (identifier)
+    (func_body
+      (stmt_list
+        (assign
+          (variable_access
+            (variable
+              (begin_path_expression
+                (path_expression
+                  (var_access
+                    (field))))))
+          (assignment
+            (constant
+              (time_literal
+                (date
+                  (long_date
+                    (date_type_name)
+                    (date_literal)))))))))))
 
 ================================================================================
 Long date literal (short prefix)
@@ -117,24 +121,25 @@ END_FUNCTION
 
 --------------------------------------------------------------------------------
 
-    (source_file
-      (func_decl
-        (identifier)
-        (func_body
-          (stmt_list
-            (assign
-              (variable
-                (begin_path_expression
-                  (path_expression
-                    (var_access
-                      (field)))))
-              (assignment
-                (constant
-                  (time_literal
-                    (date
-                      (long_date
-                        (date_type_name)
-                        (date_literal)))))))))))              
+(source_file
+  (func_decl
+    (identifier)
+    (func_body
+      (stmt_list
+        (assign
+          (variable_access
+            (variable
+              (begin_path_expression
+                (path_expression
+                  (var_access
+                    (field))))))
+          (assignment
+            (constant
+              (time_literal
+                (date
+                  (long_date
+                    (date_type_name)
+                    (date_literal)))))))))))
 
 ================================================================================
 Time of day literal (long prefix)
@@ -148,24 +153,25 @@ END_FUNCTION
 
 --------------------------------------------------------------------------------
 
-    (source_file
-      (func_decl
-        (identifier)
-        (func_body
-          (stmt_list
-            (assign
-              (variable
-                (begin_path_expression
-                  (path_expression
-                    (var_access
-                      (field)))))
-              (assignment
-                (constant
-                  (time_literal
-                    (time_of_day
-                      (tod
-                        (tod_type_name)
-                        (daytime)))))))))))
+(source_file
+  (func_decl
+    (identifier)
+    (func_body
+      (stmt_list
+        (assign
+          (variable_access
+            (variable
+              (begin_path_expression
+                (path_expression
+                  (var_access
+                    (field))))))
+          (assignment
+            (constant
+              (time_literal
+                (time_of_day
+                  (tod
+                    (tod_type_name)
+                    (daytime)))))))))))
 
 ================================================================================
 Time of day literal (short prefix)
@@ -179,24 +185,25 @@ END_FUNCTION
 
 --------------------------------------------------------------------------------
 
-    (source_file
-      (func_decl
-        (identifier)
-        (func_body
-          (stmt_list
-            (assign
-              (variable
-                (begin_path_expression
-                  (path_expression
-                    (var_access
-                      (field)))))
-              (assignment
-                (constant
-                  (time_literal
-                    (time_of_day
-                      (tod
-                        (tod_type_name)
-                        (daytime)))))))))))   
+(source_file
+  (func_decl
+    (identifier)
+    (func_body
+      (stmt_list
+        (assign
+          (variable_access
+            (variable
+              (begin_path_expression
+                (path_expression
+                  (var_access
+                    (field))))))
+          (assignment
+            (constant
+              (time_literal
+                (time_of_day
+                  (tod
+                    (tod_type_name)
+                    (daytime)))))))))))
 
 ================================================================================
 Long time of day literal (short prefix)
@@ -210,24 +217,25 @@ END_FUNCTION
 
 --------------------------------------------------------------------------------
 
-    (source_file
-      (func_decl
-        (identifier)
-        (func_body
-          (stmt_list
-            (assign
-              (variable
-                (begin_path_expression
-                  (path_expression
-                    (var_access
-                      (field)))))
-              (assignment
-                (constant
-                  (time_literal
-                    (time_of_day
-                      (ltod
-                        (ltod_type_name)
-                        (daytime))))))))))) 
+(source_file
+  (func_decl
+    (identifier)
+    (func_body
+      (stmt_list
+        (assign
+          (variable_access
+            (variable
+              (begin_path_expression
+                (path_expression
+                  (var_access
+                    (field))))))
+          (assignment
+            (constant
+              (time_literal
+                (time_of_day
+                  (ltod
+                    (ltod_type_name)
+                    (daytime)))))))))))
 
 ================================================================================
 Long time of day literal (long prefix)
@@ -241,24 +249,25 @@ END_FUNCTION
 
 --------------------------------------------------------------------------------
 
-    (source_file
-      (func_decl
-        (identifier)
-        (func_body
-          (stmt_list
-            (assign
-              (variable
-                (begin_path_expression
-                  (path_expression
-                    (var_access
-                      (field)))))
-              (assignment
-                (constant
-                  (time_literal
-                    (time_of_day
-                      (ltod
-                        (ltod_type_name)
-                        (daytime)))))))))))                         
+(source_file
+  (func_decl
+    (identifier)
+    (func_body
+      (stmt_list
+        (assign
+          (variable_access
+            (variable
+              (begin_path_expression
+                (path_expression
+                  (var_access
+                    (field))))))
+          (assignment
+            (constant
+              (time_literal
+                (time_of_day
+                  (ltod
+                    (ltod_type_name)
+                    (daytime)))))))))))
 
 ================================================================================
 Date and time literal (long prefix)
@@ -272,24 +281,25 @@ END_FUNCTION
 
 --------------------------------------------------------------------------------
 
-    (source_file
-      (func_decl
-        (identifier)
-        (func_body
-          (stmt_list
-            (assign
-              (variable
-                (begin_path_expression
-                  (path_expression
-                    (var_access
-                      (field)))))
-              (assignment
-                (constant
-                  (time_literal
-                    (date_and_time
-                      (short_date_and_time
-                        (date_and_time_type_name)
-                        (date_and_daytime)))))))))))
+(source_file
+  (func_decl
+    (identifier)
+    (func_body
+      (stmt_list
+        (assign
+          (variable_access
+            (variable
+              (begin_path_expression
+                (path_expression
+                  (var_access
+                    (field))))))
+          (assignment
+            (constant
+              (time_literal
+                (date_and_time
+                  (short_date_and_time
+                    (date_and_time_type_name)
+                    (date_and_daytime)))))))))))
 
 ================================================================================
 Date and time literal (short prefix)
@@ -303,24 +313,25 @@ END_FUNCTION
 
 --------------------------------------------------------------------------------
 
-    (source_file
-      (func_decl
-        (identifier)
-        (func_body
-          (stmt_list
-            (assign
-              (variable
-                (begin_path_expression
-                  (path_expression
-                    (var_access
-                      (field)))))
-              (assignment
-                (constant
-                  (time_literal
-                    (date_and_time
-                      (short_date_and_time
-                        (date_and_time_type_name)
-                        (date_and_daytime))))))))))) 
+(source_file
+  (func_decl
+    (identifier)
+    (func_body
+      (stmt_list
+        (assign
+          (variable_access
+            (variable
+              (begin_path_expression
+                (path_expression
+                  (var_access
+                    (field))))))
+          (assignment
+            (constant
+              (time_literal
+                (date_and_time
+                  (short_date_and_time
+                    (date_and_time_type_name)
+                    (date_and_daytime)))))))))))
 
 ================================================================================
 Long date and time literal (long prefix)
@@ -334,24 +345,25 @@ END_FUNCTION
 
 --------------------------------------------------------------------------------
 
-    (source_file
-      (func_decl
-        (identifier)
-        (func_body
-          (stmt_list
-            (assign
-              (variable
-                (begin_path_expression
-                  (path_expression
-                    (var_access
-                      (field)))))
-              (assignment
-                (constant
-                  (time_literal
-                    (date_and_time
-                      (long_date_and_time
-                        (l_date_and_time_type_name)
-                        (date_and_daytime)))))))))))   
+(source_file
+  (func_decl
+    (identifier)
+    (func_body
+      (stmt_list
+        (assign
+          (variable_access
+            (variable
+              (begin_path_expression
+                (path_expression
+                  (var_access
+                    (field))))))
+          (assignment
+            (constant
+              (time_literal
+                (date_and_time
+                  (long_date_and_time
+                    (l_date_and_time_type_name)
+                    (date_and_daytime)))))))))))
 
 ================================================================================
 Long date and time literal (short prefix)
@@ -365,21 +377,22 @@ END_FUNCTION
 
 --------------------------------------------------------------------------------
 
-    (source_file
-      (func_decl
-        (identifier)
-        (func_body
-          (stmt_list
-            (assign
-              (variable
-                (begin_path_expression
-                  (path_expression
-                    (var_access
-                      (field)))))
-              (assignment
-                (constant
-                  (time_literal
-                    (date_and_time
-                      (long_date_and_time
-                        (l_date_and_time_type_name)
-                        (date_and_daytime)))))))))))                                                                                                                                                                   
+(source_file
+  (func_decl
+    (identifier)
+    (func_body
+      (stmt_list
+        (assign
+          (variable_access
+            (variable
+              (begin_path_expression
+                (path_expression
+                  (var_access
+                    (field))))))
+          (assignment
+            (constant
+              (time_literal
+                (date_and_time
+                  (long_date_and_time
+                    (l_date_and_time_type_name)
+                    (date_and_daytime)))))))))))

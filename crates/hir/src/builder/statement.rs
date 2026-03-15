@@ -343,10 +343,12 @@ impl<'db> Parse<'db> for ast::generated::Assign {
         sema: &mut SemanticIndexBuilder<'db>,
     ) -> anyhow::Result<Stmt<'db>, IdeDiagnostic> {
         let var = match self.variable.cast(sema.ast) {
-            ast::generated::ERRAssignFuncCall_Variable::ERRAssignFuncCall(err) => {
+            ast::generated::ERRAssignFuncCall_VariableAccess::ERRAssignFuncCall(err) => {
                 Err(SyntaxError::AssignToFunctionCall(err.get_span()).to_diagnostic(sema.db))
             }
-            ast::generated::ERRAssignFuncCall_Variable::Variable(var) => var.to_access(sema),
+            ast::generated::ERRAssignFuncCall_VariableAccess::VariableAccess(var) => {
+                var.to_access(sema)
+            }
         }?;
 
         type TargetType = ast::generated::ERREmptyRightHandAssignment_ERRMissingDotInAssignment_ERRMissingEqualInAssignment_ERROutputAssignInAssignment_Assignment_AssignmentAttempt;

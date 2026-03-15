@@ -1,5 +1,5 @@
 ================================================================================
-Complete formal call (textual only) 
+Complete formal call (textual only)
 ================================================================================
 
 FUNCTION fn
@@ -15,66 +15,67 @@ END_FUNCTION
 
 --------------------------------------------------------------------------------
 
-    (source_file
-      (func_decl
-        (identifier)
-        (func_body
-          (stmt_list
-            (assign
-              (variable
-                (begin_path_expression
-                  (path_expression
+(source_file
+  (func_decl
+    (identifier)
+    (func_body
+      (stmt_list
+        (assign
+          (variable_access
+            (variable
+              (begin_path_expression
+                (path_expression
+                  (var_access
+                    (field))))))
+          (assignment
+            (func_call
+              (begin_path_expression
+                (path_expression
+                  (field_expression
+                    (path_expression
+                      (var_access
+                        (field)))
                     (var_access
                       (field)))))
-              (assignment
-                (func_call
-                  (begin_path_expression
-                    (path_expression
-                      (field_expression
+              (param_assign
+                (param_assign_input
+                  (identifier)
+                  (constant
+                    (bool_literal
+                      (bool_literal_with_string)))))
+              (param_assign
+                (param_assign_input
+                  (identifier)
+                  (variable_access
+                    (variable
+                      (begin_path_expression
                         (path_expression
                           (var_access
-                            (field)))
+                            (field))))))))
+              (param_assign
+                (param_assign_input
+                  (identifier)
+                  (constant
+                    (numeric_literal
+                      (int_literal
+                        (signed_int
+                          (unsigned_int)))))))
+              (param_assign
+                (param_assign_output
+                  (identifier)
+                  (variable
+                    (direct_variable
+                      (adress_identifier)
+                      (offset
+                        (unsigned_int))))))
+              (param_assign
+                (param_assign_output
+                  (identifier)
+                  (variable
+                    (begin_path_expression
+                      (path_expression
                         (var_access
-                          (field)))))
-                  (param_assign
-                    (param_assign_input
-                      (identifier)
-                      (constant
-                        (bool_literal
-                          (bool_literal_with_string)))))
-                  (param_assign
-                    (param_assign_input
-                      (identifier)
-                      (variable_access
-                        (variable
-                          (begin_path_expression
-                            (path_expression
-                              (var_access
-                                (field))))))))
-                  (param_assign
-                    (param_assign_input
-                      (identifier)
-                      (constant
-                        (numeric_literal
-                          (int_literal
-                            (signed_int
-                              (unsigned_int)))))))
-                  (param_assign
-                    (param_assign_output
-                      (identifier)
-                      (variable
-                        (direct_variable
-                          (adress_identifier)
-                          (offset
-                            (unsigned_int))))))
-                  (param_assign
-                    (param_assign_output
-                      (identifier)
-                      (variable
-                        (begin_path_expression
-                          (path_expression
-                            (var_access
-                              (field))))))))))))))
+                          (field))))))))))))))
 
 ================================================================================
 Non-formal call (textual only)
@@ -88,47 +89,48 @@ END_FUNCTION
 
 --------------------------------------------------------------------------------
 
-    (source_file
-      (func_decl
-        (identifier)
-        (func_body
-          (stmt_list
-            (assign
-              (variable
-                (begin_path_expression
-                  (path_expression
+(source_file
+  (func_decl
+    (identifier)
+    (func_body
+      (stmt_list
+        (assign
+          (variable_access
+            (variable
+              (begin_path_expression
+                (path_expression
+                  (var_access
+                    (field))))))
+          (assignment
+            (func_call
+              (begin_path_expression
+                (path_expression
+                  (field_expression
+                    (path_expression
+                      (var_access
+                        (field)))
                     (var_access
                       (field)))))
-              (assignment
-                (func_call
-                  (begin_path_expression
-                    (path_expression
-                      (field_expression
+              (param_assign
+                (param_assign_input
+                  (variable_access
+                    (variable
+                      (begin_path_expression
                         (path_expression
                           (var_access
-                            (field)))
-                        (var_access
-                          (field)))))
-                  (param_assign
-                    (param_assign_input
-                      (variable_access
-                        (variable
-                          (begin_path_expression
-                            (path_expression
-                              (var_access
-                                (field))))))))
-                  (param_assign
-                    (param_assign_input
-                      (constant
-                        (numeric_literal
-                          (int_literal
-                            (signed_int
-                              (unsigned_int)))))))
-                  (param_assign
-                    (param_assign_input
-                      (variable_access
-                        (variable
-                          (begin_path_expression
-                            (path_expression
-                              (var_access
-                                (field)))))))))))))))
+                            (field))))))))
+              (param_assign
+                (param_assign_input
+                  (constant
+                    (numeric_literal
+                      (int_literal
+                        (signed_int
+                          (unsigned_int)))))))
+              (param_assign
+                (param_assign_input
+                  (variable_access
+                    (variable
+                      (begin_path_expression
+                        (path_expression
+                          (var_access
+                            (field)))))))))))))))

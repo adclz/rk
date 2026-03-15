@@ -224,19 +224,20 @@ END_FUNCTION_BLOCK
     (fb_body
       (stmt_list
         (assign
-          (variable
-            (begin_path_expression
-              (path_expression
-                (field_expression
-                  (path_expression
-                    (field_expression
-                      (path_expression
+          (variable_access
+            (variable
+              (begin_path_expression
+                (path_expression
+                  (field_expression
+                    (path_expression
+                      (field_expression
+                        (path_expression
+                          (var_access
+                            (field)))
                         (var_access
-                          (field)))
-                      (var_access
-                        (ERR_unexpected_this_in_path))))
-                  (var_access
-                    (field))))))
+                          (ERR_unexpected_this_in_path))))
+                    (var_access
+                      (field)))))))
           (assignment
             (constant
               (numeric_literal
@@ -260,19 +261,20 @@ END_FUNCTION_BLOCK
     (fb_body
       (stmt_list
         (assign
-          (variable
-            (begin_path_expression
-              (path_expression
-                (field_expression
-                  (path_expression
-                    (field_expression
-                      (path_expression
+          (variable_access
+            (variable
+              (begin_path_expression
+                (path_expression
+                  (field_expression
+                    (path_expression
+                      (field_expression
+                        (path_expression
+                          (var_access
+                            (field)))
                         (var_access
-                          (field)))
-                      (var_access
-                        (ERR_unexpected_super_in_path))))
-                  (var_access
-                    (field))))))
+                          (ERR_unexpected_super_in_path))))
+                    (var_access
+                      (field)))))))
           (assignment
             (constant
               (numeric_literal
@@ -296,11 +298,12 @@ END_FUNCTION_BLOCK
     (fb_body
       (stmt_list
         (assign
-          (variable
-            (begin_path_expression
-              (path_expression
-                (var_access
-                  (field)))))
+          (variable_access
+            (variable
+              (begin_path_expression
+                (path_expression
+                  (var_access
+                    (field))))))
           (ERR_empty_right_hand_assignment))))))
 
 ================================================================================
@@ -387,11 +390,12 @@ END_FUNCTION_BLOCK
     (fb_body
       (stmt_list
         (assign
-          (variable
-            (begin_path_expression
-              (path_expression
-                (var_access
-                  (field)))))
+          (variable_access
+            (variable
+              (begin_path_expression
+                (path_expression
+                  (var_access
+                    (field))))))
           (ERR_missing_dot_in_assignment
             (constant
               (numeric_literal
@@ -415,11 +419,12 @@ END_FUNCTION_BLOCK
     (fb_body
       (stmt_list
         (assign
-          (variable
-            (begin_path_expression
-              (path_expression
-                (var_access
-                  (field)))))
+          (variable_access
+            (variable
+              (begin_path_expression
+                (path_expression
+                  (var_access
+                    (field))))))
           (ERR_missing_equal_in_assignment
             (constant
               (numeric_literal
@@ -560,11 +565,12 @@ END_FUNCTION_BLOCK
     (fb_body
       (stmt_list
         (assign
-          (variable
-            (begin_path_expression
-              (path_expression
-                (var_access
-                  (field)))))
+          (variable_access
+            (variable
+              (begin_path_expression
+                (path_expression
+                  (var_access
+                    (field))))))
           (ERR_output_assign_in_assignment
             (constant
               (numeric_literal
@@ -627,14 +633,14 @@ END_NAMESPACE
 
 --------------------------------------------------------------------------------
 
-    (source_file
-      (namespace_decl
-        (namespace_h_name
-          (identifier))
-        (namespace_elements
-          (ERR_program_not_allowed_in_namespace
-            (prog_decl
-              (identifier))))))
+(source_file
+  (namespace_decl
+    (namespace_h_name
+      (identifier))
+    (namespace_elements
+      (ERR_program_not_allowed_in_namespace
+        (prog_decl
+          (identifier))))))
 
 ================================================================================
 config decl in namespace
@@ -646,14 +652,14 @@ END_NAMESPACE
 
 --------------------------------------------------------------------------------
 
-    (source_file
-      (namespace_decl
-        (namespace_h_name
-          (identifier))
-        (namespace_elements
-          (ERR_config_not_allowed_in_namespace
-            (config_decl
-              (identifier))))))
+(source_file
+  (namespace_decl
+    (namespace_h_name
+      (identifier))
+    (namespace_elements
+      (ERR_config_not_allowed_in_namespace
+        (config_decl
+          (identifier))))))
 
 ================================================================================
 invalid var sections in class
@@ -690,23 +696,23 @@ CLASS cl
 END_CLASS
 
 --------------------------------------------------------------------------------
-    
-    (source_file
-      (class_decl
-        (identifier)
-        (ERR_var_in_out_not_allowed
-          (in_out_decls))
-        (ERR_var_temp_not_allowed
-          (temp_var_decls))
-        (ERR_var_access_not_allowed
-          (prog_access_decls))
-        (ERR_var_config_not_allowed
-          (config_init))
-        (ERR_var_located_not_allowed
-          (loc_var_decls))
-        (external_var_decls)
-        (ERR_var_global_not_allowed
-          (global_var_decls))))
+
+(source_file
+  (class_decl
+    (identifier)
+    (ERR_var_in_out_not_allowed
+      (in_out_decls))
+    (ERR_var_temp_not_allowed
+      (temp_var_decls))
+    (ERR_var_access_not_allowed
+      (prog_access_decls))
+    (ERR_var_config_not_allowed
+      (config_init))
+    (ERR_var_located_not_allowed
+      (loc_var_decls))
+    (external_var_decls)
+    (ERR_var_global_not_allowed
+      (global_var_decls))))
 
 ================================================================================
 invalid var sections in fbs
@@ -732,17 +738,17 @@ END_FUNCTION_BLOCK
 
 --------------------------------------------------------------------------------
 
-    (source_file
-      (fb_decl
-        (identifier)
-        (ERR_var_access_not_allowed
-          (prog_access_decls))
-        (ERR_var_config_not_allowed
-          (config_init))
-        (ERR_var_located_not_allowed
-          (loc_var_decls))
-        (ERR_var_global_not_allowed
-          (global_var_decls))))
+(source_file
+  (fb_decl
+    (identifier)
+    (ERR_var_access_not_allowed
+      (prog_access_decls))
+    (ERR_var_config_not_allowed
+      (config_init))
+    (ERR_var_located_not_allowed
+      (loc_var_decls))
+    (ERR_var_global_not_allowed
+      (global_var_decls))))
 
 ================================================================================
 invalid var sections in fns
@@ -768,18 +774,17 @@ END_FUNCTION
 
 --------------------------------------------------------------------------------
 
-    (source_file
-      (func_decl
-        (identifier)
-        (ERR_var_access_not_allowed
-          (prog_access_decls))
-        (ERR_var_config_not_allowed
-          (config_init))
-        (ERR_var_located_not_allowed
-          (loc_var_decls))
-        (ERR_var_global_not_allowed
-          (global_var_decls))))
-
+(source_file
+  (func_decl
+    (identifier)
+    (ERR_var_access_not_allowed
+      (prog_access_decls))
+    (ERR_var_config_not_allowed
+      (config_init))
+    (ERR_var_located_not_allowed
+      (loc_var_decls))
+    (ERR_var_global_not_allowed
+      (global_var_decls))))
 
 ================================================================================
 invalid var sections in method prototypes
@@ -819,24 +824,24 @@ END_INTERFACE
 
 --------------------------------------------------------------------------------
 
-    (source_file
-      (interface_decl
-        (identifier)
-        (method_prototype
-          (identifier)
-          (ERR_var_access_not_allowed
-            (prog_access_decls))
-          (ERR_var_config_not_allowed
-            (config_init))
-          (ERR_var_located_not_allowed
-            (loc_var_decls))
-          (ERR_var_external_not_allowed
-            (external_var_decls))
-          (ERR_var_global_not_allowed
-            (global_var_decls))
-          (ERR_var_temp_not_allowed
-            (temp_var_decls))
-          (in_out_decls))))
+(source_file
+  (interface_decl
+    (identifier)
+    (method_prototype
+      (identifier)
+      (ERR_var_access_not_allowed
+        (prog_access_decls))
+      (ERR_var_config_not_allowed
+        (config_init))
+      (ERR_var_located_not_allowed
+        (loc_var_decls))
+      (ERR_var_external_not_allowed
+        (external_var_decls))
+      (ERR_var_global_not_allowed
+        (global_var_decls))
+      (ERR_var_temp_not_allowed
+        (temp_var_decls))
+      (in_out_decls))))
 
 ================================================================================
 invalid var sections in method declarations
@@ -877,22 +882,22 @@ END_CLASS
 
 --------------------------------------------------------------------------------
 
-    (source_file
-      (class_decl
-        (identifier)
-        (method_decl
-          (identifier)
-          (ERR_var_access_not_allowed
-            (prog_access_decls))
-          (ERR_var_config_not_allowed
-            (config_init))
-          (ERR_var_located_not_allowed
-            (loc_var_decls))
-          (external_var_decls)
-          (ERR_var_global_not_allowed
-            (global_var_decls))
-          (temp_var_decls)
-          (in_out_decls))))
+(source_file
+  (class_decl
+    (identifier)
+    (method_decl
+      (identifier)
+      (ERR_var_access_not_allowed
+        (prog_access_decls))
+      (ERR_var_config_not_allowed
+        (config_init))
+      (ERR_var_located_not_allowed
+        (loc_var_decls))
+      (external_var_decls)
+      (ERR_var_global_not_allowed
+        (global_var_decls))
+      (temp_var_decls)
+      (in_out_decls))))
 
 ================================================================================
 invalid var sections in configuration declaration
@@ -926,21 +931,21 @@ END_CONFIGURATION
 
 --------------------------------------------------------------------------------
 
-    (source_file
-      (config_decl
-        (identifier)
-        (ERR_var_not_allowed
-          (var_decls))
-        (ERR_var_in_out_not_allowed
-          (in_out_decls))
-        (ERR_var_temp_not_allowed
-          (temp_var_decls))
-        (ERR_var_config_not_allowed
-          (config_init))
-        (ERR_var_located_not_allowed
-          (loc_var_decls))
-        (ERR_var_external_not_allowed
-          (external_var_decls))))
+(source_file
+  (config_decl
+    (identifier)
+    (ERR_var_not_allowed
+      (var_decls))
+    (ERR_var_in_out_not_allowed
+      (in_out_decls))
+    (ERR_var_temp_not_allowed
+      (temp_var_decls))
+    (ERR_var_config_not_allowed
+      (config_init))
+    (ERR_var_located_not_allowed
+      (loc_var_decls))
+    (ERR_var_external_not_allowed
+      (external_var_decls))))
 
 ================================================================================
 single after interval
@@ -952,27 +957,27 @@ END_CONFIGURATION
 
 --------------------------------------------------------------------------------
 
-    (source_file
-      (config_decl
+(source_file
+  (config_decl
+    (identifier)
+    (single_resource_decl
+      (task_config
         (identifier)
-        (single_resource_decl
-          (task_config
-            (identifier)
-            (task_init
-              (data_source
-                (constant
-                  (numeric_literal
-                    (int_literal
-                      (signed_int
-                        (unsigned_int))))))
-              (ERR_single_after_interval
-                (data_source
-                  (constant
-                    (numeric_literal
-                      (int_literal
-                        (signed_int
-                          (unsigned_int)))))))
-              (unsigned_int))))))
+        (task_init
+          (data_source
+            (constant
+              (numeric_literal
+                (int_literal
+                  (signed_int
+                    (unsigned_int))))))
+          (ERR_single_after_interval
+            (data_source
+              (constant
+                (numeric_literal
+                  (int_literal
+                    (signed_int
+                      (unsigned_int)))))))
+          (unsigned_int))))))
 
 ================================================================================
 interval after priority
@@ -984,21 +989,21 @@ END_CONFIGURATION
 
 --------------------------------------------------------------------------------
 
-    (source_file
-      (config_decl
+(source_file
+  (config_decl
+    (identifier)
+    (single_resource_decl
+      (task_config
         (identifier)
-        (single_resource_decl
-          (task_config
-            (identifier)
-            (task_init
-              (unsigned_int)
-              (ERR_interval_after_priority
-                (data_source
-                  (constant
-                    (numeric_literal
-                      (int_literal
-                        (signed_int
-                          (unsigned_int))))))))))))
+        (task_init
+          (unsigned_int)
+          (ERR_interval_after_priority
+            (data_source
+              (constant
+                (numeric_literal
+                  (int_literal
+                    (signed_int
+                      (unsigned_int))))))))))))
 
 ================================================================================
 single after priority
@@ -1010,18 +1015,18 @@ END_CONFIGURATION
 
 --------------------------------------------------------------------------------
 
-   (source_file
-      (config_decl
+(source_file
+  (config_decl
+    (identifier)
+    (single_resource_decl
+      (task_config
         (identifier)
-        (single_resource_decl
-          (task_config
-            (identifier)
-            (task_init
-              (unsigned_int)
-              (ERR_single_after_priorty
-                (data_source
-                  (constant
-                    (numeric_literal
-                      (int_literal
-                        (signed_int
-                          (unsigned_int))))))))))))
+        (task_init
+          (unsigned_int)
+          (ERR_single_after_priorty
+            (data_source
+              (constant
+                (numeric_literal
+                  (int_literal
+                    (signed_int
+                      (unsigned_int))))))))))))

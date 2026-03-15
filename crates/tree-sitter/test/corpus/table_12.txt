@@ -64,11 +64,12 @@ END_FUNCTION
     (func_body
       (stmt_list
         (assign
-          (variable
-            (begin_path_expression
-              (path_expression
-                (var_access
-                  (field)))))
+          (variable_access
+            (variable
+              (begin_path_expression
+                (path_expression
+                  (var_access
+                    (field))))))
           (assignment
             (ref_value
               (ref_addr
@@ -93,11 +94,12 @@ END_FUNCTION
     (func_body
       (stmt_list
         (assign
-          (variable
-            (begin_path_expression
-              (path_expression
-                (var_access
-                  (field)))))
+          (variable_access
+            (variable
+              (begin_path_expression
+                (path_expression
+                  (var_access
+                    (field))))))
           (assignment
             (variable_access
               (variable
@@ -134,11 +136,12 @@ END_FUNCTION
     (func_body
       (stmt_list
         (assign
-          (variable
-            (begin_path_expression
-              (path_expression
-                (var_access
-                  (field)))))
+          (variable_access
+            (variable
+              (begin_path_expression
+                (path_expression
+                  (var_access
+                    (field))))))
           (assignment
             (variable_access
               (variable

@@ -8687,7 +8687,7 @@
             "members": [
               {
                 "type": "SYMBOL",
-                "name": "variable"
+                "name": "variable_access"
               },
               {
                 "type": "SYMBOL",

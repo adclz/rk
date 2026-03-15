@@ -1799,7 +1799,7 @@ module.exports = grammar({
     //),
     assign: ($) =>
       seq(
-        field("variable", choice($.variable, $.ERR_assign_func_call)),
+        field("variable", choice($.variable_access, $.ERR_assign_func_call)),
         field(
           "target",
           choice(

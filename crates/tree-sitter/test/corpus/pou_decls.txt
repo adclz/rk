@@ -20,24 +20,24 @@ END_NAMESPACE
 
 --------------------------------------------------------------------------------
 
-    (source_file
+(source_file
+  (namespace_decl
+    (namespace_h_name
+      (identifier))
+    (namespace_elements
+      (namespace_decl
+        (namespace_h_name
+          (identifier)))
+      (namespace_decl
+        (namespace_h_name
+          (identifier)))
       (namespace_decl
         (namespace_h_name
           (identifier))
         (namespace_elements
           (namespace_decl
             (namespace_h_name
-              (identifier)))
-          (namespace_decl
-            (namespace_h_name
-              (identifier)))
-          (namespace_decl
-            (namespace_h_name
-              (identifier))
-            (namespace_elements
-              (namespace_decl
-                (namespace_h_name
-                  (identifier))))))))
+              (identifier))))))))
 
 ================================================================================
 Function blocks with extends
@@ -49,15 +49,15 @@ END_FUNCTION_BLOCK
 
 --------------------------------------------------------------------------------
 
-    (source_file
-      (fb_decl
-        (identifier)
-        (namespace_access
-          (scoped_identifier
-            (scoped_identifier
-              (identifier)
-              (target))
-            (target)))))
+(source_file
+  (fb_decl
+    (identifier)
+    (namespace_access
+      (scoped_identifier
+        (scoped_identifier
+          (identifier)
+          (target))
+        (target)))))
 
 ================================================================================
 Function blocks with multiple implements
@@ -69,24 +69,24 @@ END_FUNCTION_BLOCK
 
 --------------------------------------------------------------------------------
 
-   (source_file
-      (fb_decl
-        (identifier)
-        (interface_name_list
-          (namespace_access
-            (scoped_identifier
-              (scoped_identifier
-                (identifier)
-                (target))
-              (target)))
-          (namespace_access
-            (identifier))
-          (namespace_access
-            (scoped_identifier
-              (scoped_identifier
-                (identifier)
-                (target))
-              (target))))))
+(source_file
+  (fb_decl
+    (identifier)
+    (interface_name_list
+      (namespace_access
+        (scoped_identifier
+          (scoped_identifier
+            (identifier)
+            (target))
+          (target)))
+      (namespace_access
+        (identifier))
+      (namespace_access
+        (scoped_identifier
+          (scoped_identifier
+            (identifier)
+            (target))
+          (target))))))
 
 ================================================================================
 Interface with methods
@@ -99,16 +99,15 @@ END_INTERFACE
 
 --------------------------------------------------------------------------------
 
-    (source_file
-      (interface_decl
-        (identifier)
-        (method_prototype
-          (identifier))
-        (line_comment)
-        (method_prototype
-          (identifier))
-        (line_comment)))
-
+(source_file
+  (interface_decl
+    (identifier)
+    (method_prototype
+      (identifier))
+    (line_comment)
+    (method_prototype
+      (identifier))
+    (line_comment)))
 
 ================================================================================
 Class with methods
@@ -126,41 +125,43 @@ END_CLASS
 
 --------------------------------------------------------------------------------
 
-    (source_file
-      (class_decl
-        (identifier)
-        (interface_name_list
-          (namespace_access
-            (identifier)))
-        (method_decl
-          (access_spec
-            (public))
-          (identifier)
-          (func_body
-            (stmt_list
-              (assign
-                (variable
-                  (begin_path_expression
-                    (path_expression
-                      (var_access
-                        (field)))))
-                (assignment
-                  (constant
-                    (bool_literal
-                      (bool_literal_with_string))))))))
-        (method_decl
-          (access_spec
-            (public))
-          (identifier)
-          (func_body
-            (stmt_list
-              (assign
-                (variable
-                  (begin_path_expression
-                    (path_expression
-                      (var_access
-                        (field)))))
-                (assignment
-                  (constant
-                    (bool_literal
-                      (bool_literal_with_string))))))))))
+(source_file
+  (class_decl
+    (identifier)
+    (interface_name_list
+      (namespace_access
+        (identifier)))
+    (method_decl
+      (access_spec
+        (public))
+      (identifier)
+      (func_body
+        (stmt_list
+          (assign
+            (variable_access
+              (variable
+                (begin_path_expression
+                  (path_expression
+                    (var_access
+                      (field))))))
+            (assignment
+              (constant
+                (bool_literal
+                  (bool_literal_with_string))))))))
+    (method_decl
+      (access_spec
+        (public))
+      (identifier)
+      (func_body
+        (stmt_list
+          (assign
+            (variable_access
+              (variable
+                (begin_path_expression
+                  (path_expression
+                    (var_access
+                      (field))))))
+            (assignment
+              (constant
+                (bool_literal
+                  (bool_literal_with_string))))))))))

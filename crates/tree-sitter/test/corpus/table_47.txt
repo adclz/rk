@@ -463,11 +463,12 @@ END_PROGRAM
     (fb_body
       (stmt_list
         (assign
-          (variable
-            (begin_path_expression
-              (path_expression
-                (var_access
-                  (field)))))
+          (variable_access
+            (variable
+              (begin_path_expression
+                (path_expression
+                  (var_access
+                    (field))))))
           (assignment
             (boolean_operator
               (and_operator

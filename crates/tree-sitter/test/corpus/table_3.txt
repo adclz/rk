@@ -10,26 +10,27 @@ END_FUNCTION
 
 --------------------------------------------------------------------------------
 
-    (source_file
-      (func_decl
-        (identifier)
-        (func_body
-          (stmt_list
-            (assign
-              (variable
-                (begin_path_expression
-                  (path_expression
-                    (var_access
-                      (field)))))
-              (assignment
-                (constant
-                  (numeric_literal
-                    (int_literal
-                      (signed_int
-                        (unsigned_int)))))))))
-        (line_comment)
-        (line_comment)
-        (line_comment)))
+(source_file
+  (func_decl
+    (identifier)
+    (func_body
+      (stmt_list
+        (assign
+          (variable_access
+            (variable
+              (begin_path_expression
+                (path_expression
+                  (var_access
+                    (field))))))
+          (assignment
+            (constant
+              (numeric_literal
+                (int_literal
+                  (signed_int
+                    (unsigned_int)))))))))
+    (line_comment)
+    (line_comment)
+    (line_comment)))
 
 ================================================================================
 Multi-line comment with (* … *)
@@ -42,11 +43,11 @@ A framed comment on three line
 
 --------------------------------------------------------------------------------
 
- (source_file
-      (pascal_style_comment
-        (comment_text))
-      (pascal_style_comment
-        (comment_text)))
+(source_file
+  (pascal_style_comment
+    (comment_text))
+  (pascal_style_comment
+    (comment_text)))
 
 ================================================================================
 Multi-line comment with /* … */
@@ -57,9 +58,9 @@ or more lines */
 
 --------------------------------------------------------------------------------
 
-    (source_file
-      (c_style_comment
-        (comment_text)))
+(source_file
+  (c_style_comment
+    (comment_text)))
 
 ================================================================================
 Nested comment with (* .. (* .. *) ..*)
@@ -69,20 +70,20 @@ Nested comment with (* .. (* .. *) ..*)
 
 --------------------------------------------------------------------------------
 
-    (source_file
-      (pascal_style_comment
-        (pascal_style_comment
-          (comment_text))))        
+(source_file
+  (pascal_style_comment
+    (pascal_style_comment
+      (comment_text))))
 
 ================================================================================
-Nested comment with /* .. /* .. */ .. */ 
+Nested comment with /* .. /* .. */ .. */
 ================================================================================
 
 /* /* NESTED */ */
 
 --------------------------------------------------------------------------------
 
-    (source_file
-      (c_style_comment
-        (c_style_comment
-          (comment_text))))      
+(source_file
+  (c_style_comment
+    (c_style_comment
+      (comment_text))))
