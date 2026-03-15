@@ -324,7 +324,11 @@ fn coerce_with_var_target<'db>(
     ctx: &mut BodyInferenceResult<'db>,
 ) {
     let mut caller_infer_ctx = InferExprCtx::new(resolver);
-    caller_infer_ctx.resolve_expr(db, expr, ctx);
+    // Only resolve if not already resolved (e.g. by infer_generic_types_from_args).
+    // Re-resolving causes stale adjustments to corrupt the walk.
+    if !ctx.type_of_expr.contains_key(&expr) {
+        caller_infer_ctx.resolve_expr(db, expr, ctx);
+    }
     caller_infer_ctx.check_expr(db, expr, ctx);
 
     // Check if this variable's type involves generic substitutions
@@ -621,18 +625,16 @@ fn infer_expr_type_for_inference<'db>(
     expr: Expr<'db>,
     ctx: &mut BodyInferenceResult<'db>,
 ) -> Type<'db> {
-    // Check if we already resolved this expression
-    if let Some(&typ) = ctx.type_of_expr.get(&expr) {
-        // Normalize Infer types to concrete types
-        return normalize_for_inference(db, typ);
+    // Resolve the expression if not already done
+    if !ctx.type_of_expr.contains_key(&expr) {
+        let mut infer_ctx = InferExprCtx::new(resolver);
+        infer_ctx.resolve_expr(db, expr, ctx);
     }
 
-    // Resolve the expression to infer its type
-    let mut infer_ctx = InferExprCtx::new(resolver);
-    infer_ctx.resolve_expr(db, expr, ctx);
-
-    // Get the inferred type and normalize it
-    let typ = ctx.type_of_expr.get(&expr).copied().unwrap_or(Type::Never);
+    // Use type_of_expr_with_adjustments to account for array indexing,
+    // deref, etc. — e.g. CONSTANTS_SETUP.DECADES[0] should yield REAL,
+    // not ARRAY OF REAL.
+    let typ = ctx.type_of_expr_with_adjustments(db, expr);
     normalize_for_inference(db, typ)
 }
 

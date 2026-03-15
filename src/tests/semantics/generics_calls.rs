@@ -743,3 +743,50 @@ END_FUNCTION"#;
 
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @"");
 }
+
+#[rstest]
+fn valid_generic_inferred_from_array_index(mut with_db: RootDatabase) {
+    // Generic type inference must use the adjusted type (array element)
+    // not the raw array type. COS(IN := DECADES[0]) should infer T = REAL.
+    let source = r#"
+TYPE
+    CONSTANTS_SETUP : STRUCT
+        DECADES : ARRAY[0..8] OF REAL := [1.0, 10.0, 100.0];
+    END_STRUCT
+END_TYPE
+
+FUNCTION COS<T: ANY_REAL> : T
+    VAR_INPUT
+        IN: T;
+    END_VAR
+END_FUNCTION
+
+FUNCTION fn0 : REAL
+    fn0 := COS(CONSTANTS_SETUP.DECADES[0]);
+END_FUNCTION
+"#;
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @"");
+}
+
+#[rstest]
+fn valid_generic_inferred_from_array_index_formal(mut with_db: RootDatabase) {
+    // Same as above but with formal parameter syntax (IN := ...).
+    let source = r#"
+TYPE
+    CONSTANTS_SETUP : STRUCT
+        DECADES : ARRAY[0..8] OF REAL := [1.0, 10.0, 100.0];
+    END_STRUCT
+END_TYPE
+
+FUNCTION COS<T: ANY_REAL> : T
+    VAR_INPUT
+        IN: T;
+    END_VAR
+END_FUNCTION
+
+FUNCTION fn0 : REAL
+    fn0 := COS(IN := CONSTANTS_SETUP.DECADES[0]);
+END_FUNCTION
+"#;
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @"");
+}

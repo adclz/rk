@@ -468,6 +468,23 @@ END_FUNCTION
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @"");
 }
 
+/// DataType array fields can be indexed.
+#[rstest]
+fn data_type_array_field_index(mut with_db: RootDatabase) {
+    let source = r#"
+TYPE
+    MY_CONSTANTS : STRUCT
+        DECADES : ARRAY[0..8] OF REAL := [1.0, 10.0, 100.0];
+    END_STRUCT
+END_TYPE
+
+FUNCTION fn0 : REAL
+    fn0 := MY_CONSTANTS.DECADES[0];
+END_FUNCTION
+"#;
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @"");
+}
+
 /// DataType fields are constant — assigning to them is an error.
 #[rstest]
 fn cannot_assign_to_data_type_constant(mut with_db: RootDatabase) {
