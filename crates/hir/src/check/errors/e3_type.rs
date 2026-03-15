@@ -275,7 +275,7 @@ impl<'db> ToIdeDiagnostic<'db> for TypeError<'db> {
                             MultOperatorKind::Div => "divide",
                             MultOperatorKind::Mod => "modulus",
                         },
-                        rhs.type_name(db),
+                        lhs.type_name(db),
                         adjustment_to_string(db, *rhs, adjustment)
                     ))
                     .severity(DiagnosticSeverity::ERROR)
