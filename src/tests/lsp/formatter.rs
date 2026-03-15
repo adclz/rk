@@ -140,8 +140,8 @@ pub fn class_definition(mut with_db: RootDatabase) {
 
     	VAR
     		PUBLIC
-    		m_iUpperLimit: INT := + 10000
-    		m_iLowerLimit: INT := - 10000
+    		m_iUpperLimit: INT := +10000
+    		m_iLowerLimit: INT := -10000
     	END_VAR
 
     	METHOD Count (* Only body *)
@@ -363,7 +363,7 @@ END_FUNCTION
 
     assert_snapshot!(fmt(document), @r"
     FUNCTION fn
-    	J := - 1;
+    	J := -1;
     	REPEAT J := J + 2;
     		UNTIL J = 101 OR WORDS[J] = 'KEY'
     	END_REPEAT;
@@ -1221,6 +1221,45 @@ END_FUNCTION
     	c := 2#1010_0101;
     	d := 8#777;
     	e := 2E-3;
+
+    END_FUNCTION
+    ");
+}
+
+#[rstest]
+pub fn negative_integers_preserved(mut with_db: RootDatabase) {
+    let source = r#"
+FUNCTION fn1
+    VAR
+        a: INT;
+        b: REAL;
+    END_VAR
+
+    a := -1;
+    b := -3.14;
+    a := 10 + -2;
+
+END_FUNCTION
+"#;
+
+    add_sources(&mut with_db, &[source]);
+    let document = with_db
+        .get_files()
+        .iter()
+        .last()
+        .unwrap()
+        .document(&with_db);
+
+    assert_snapshot!(fmt(document), @r"
+    FUNCTION fn1
+    	VAR
+    		a: INT;
+    		b: REAL;
+    	END_VAR
+
+    	a := -1;
+    	b := -3.14;
+    	a := 10 + -2;
 
     END_FUNCTION
     ");

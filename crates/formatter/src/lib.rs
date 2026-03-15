@@ -56,6 +56,12 @@ static SURROUND_SPACES: &str = r#"
 [")" "]" ":" ";" "," "." (deref_sign)] @prepend_antispace
 ["NOT" ":"] @append_space
 
+; Remove space between sign and value in signed literals
+(signed_int "-" @append_antispace)
+(signed_int "+" @append_antispace)
+(real_literal "-" @append_antispace)
+(real_literal "+" @append_antispace)
+
 ; Generics: no spaces around < and > in generic contexts
 (generic_type_args "<" @prepend_antispace @append_antispace)
 (generic_type_args ">" @prepend_antispace @append_antispace)
