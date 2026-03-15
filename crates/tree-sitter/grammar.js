@@ -874,7 +874,7 @@ module.exports = grammar({
     output_decls: ($) =>
       seq(
         "VAR_OUTPUT",
-        optional(choice("RETAIN", "NON_RETAIN")),
+        field("retain", optional(choice("RETAIN", "NON_RETAIN"))),
         repeat(
           seq(choice($.output_var, $.ERR_variable_with_no_spec), optional(";")),
         ),
@@ -1122,7 +1122,7 @@ module.exports = grammar({
     fb_input_decls: ($) =>
       seq(
         "VAR_INPUT",
-        optional(choice("RETAIN", "NON_RETAIN")),
+        field("retain", optional(choice("RETAIN", "NON_RETAIN"))),
         repeat(
           seq(
             choice($.fb_input_var, $.ERR_variable_with_no_spec),
@@ -1145,7 +1145,7 @@ module.exports = grammar({
     fb_output_decls: ($) =>
       seq(
         "VAR_OUTPUT",
-        optional(choice("RETAIN", "NON_RETAIN")),
+        field("retain", optional(choice("RETAIN", "NON_RETAIN"))),
         repeat(
           seq(
             choice($.fb_output_var, $.ERR_variable_with_no_spec),

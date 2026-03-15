@@ -1,7 +1,7 @@
 use db::WorkspaceDataBase;
 
 use crate::{
-    AstId, HasName, HirNodeInfo,
+    AstId, HasName, HasQualifiers, HirNodeInfo, Qualifier,
     hir_def::{
         expressions::{
             expression::{InitExpr, Integer},
@@ -22,6 +22,9 @@ pub struct VariableDecl<'db> {
 
     #[tracked]
     pub kind: VariableKind,
+
+    #[tracked]
+    pub qualifier: Qualifier,
 
     #[tracked]
     pub variadic: bool,
@@ -57,6 +60,12 @@ impl<'db> HasName<'db> for VariableDecl<'db> {
 
     fn get_name_id(&self, db: &'db dyn WorkspaceDataBase) -> AstId {
         self.name_id(db)
+    }
+}
+
+impl<'db> HasQualifiers<'db> for VariableDecl<'db> {
+    fn get_qualifiers(&self, db: &'db dyn WorkspaceDataBase) -> Qualifier {
+        self.qualifier(db)
     }
 }
 

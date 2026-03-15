@@ -21,11 +21,24 @@ use crate::hir_def::expressions::spec::{ElementarySpec, Spec, SpecKind};
 use crate::hir_def::interned::identifier::Ident;
 use crate::hir_def::pous::variable::{DirectVariable, LocatedVariable, VariableDecl, VariableKind};
 use crate::hir_def::program::ProgAccessDecl;
-use crate::{AstId, HirNodeInfo};
+use crate::{AstId, HirNodeInfo, Qualifier};
 use ide_diagnostic::IdeDiagnostic;
+
+/// Convert a RETAIN/NON_RETAIN AST token to a `Qualifier`.
+fn retain_qualifier(
+    retain: &Option<auto_lsp::core::ast::AstNodeId<ast::generated::Operators_3>>,
+    ast: &auto_lsp::default::db::tracked::ParsedAst,
+) -> Qualifier {
+    match retain.as_ref().map(|r| r.cast(ast)) {
+        Some(ast::generated::Operators_3::Token_RETAIN(_)) => Qualifier::RETAIN,
+        Some(ast::generated::Operators_3::Token_NON_RETAIN(_)) => Qualifier::NON_RETAIN,
+        None => Qualifier::empty(),
+    }
+}
 
 impl<'db> ParseVarSection<'db> for ast::generated::InputDecls {
     fn parse(&self, sema: &mut SemanticIndexBuilder<'db>, section: &mut Vec<VariableDecl<'db>>) {
+        let qualifier = retain_qualifier(&self.retain, sema.ast);
         for child in self.children.iter() {
             match child.cast(sema.ast) {
                 ast::generated::ERRVariableWithNoSpec_InputVar::ERRVariableWithNoSpec(child) => {
@@ -50,6 +63,7 @@ impl<'db> ParseVarSection<'db> for ast::generated::InputDecls {
                                     var_name,
                                     variable.cast(sema.ast).into(),
                                     VariableKind::Input,
+                                    qualifier,
                                     false,
                                     result.spec,
                                     result.init,
@@ -73,6 +87,7 @@ impl<'db> ParseVarSection<'db> for ast::generated::InputDecls {
                                     var_name,
                                     variable.cast(sema.ast).into(),
                                     VariableKind::Input,
+                                    qualifier,
                                     false,
                                     spec,
                                     None,
@@ -96,6 +111,7 @@ impl<'db> ParseVarSection<'db> for ast::generated::InputDecls {
                                     var_name,
                                     variable.cast(sema.ast).into(),
                                     VariableKind::Input,
+                                    qualifier,
                                     false,
                                     result.spec,
                                     result.init,
@@ -119,6 +135,7 @@ impl<'db> ParseVarSection<'db> for ast::generated::InputDecls {
                                     var_name,
                                     variable.cast(sema.ast).into(),
                                     VariableKind::Input,
+                                    qualifier,
                                     true,
                                     spec,
                                     None,
@@ -136,6 +153,7 @@ impl<'db> ParseVarSection<'db> for ast::generated::InputDecls {
 
 impl<'db> ParseVarSection<'db> for ast::generated::FbInputDecls {
     fn parse(&self, sema: &mut SemanticIndexBuilder<'db>, section: &mut Vec<VariableDecl<'db>>) {
+        let qualifier = retain_qualifier(&self.retain, sema.ast);
         for child in self.children.iter() {
             match child.cast(sema.ast) {
                 ast::generated::ERRVariableWithNoSpec_FbInputVar::ERRVariableWithNoSpec(child) => {
@@ -160,6 +178,7 @@ impl<'db> ParseVarSection<'db> for ast::generated::FbInputDecls {
                                     var_name,
                                     variable.cast(sema.ast).into(),
                                     VariableKind::Input,
+                                    qualifier,
                                     false,
                                     result.spec,
                                     result.init,
@@ -183,6 +202,7 @@ impl<'db> ParseVarSection<'db> for ast::generated::FbInputDecls {
                                     var_name,
                                     variable.cast(sema.ast).into(),
                                     VariableKind::Input,
+                                    qualifier,
                                     false,
                                     spec,
                                     None,
@@ -206,6 +226,7 @@ impl<'db> ParseVarSection<'db> for ast::generated::FbInputDecls {
                                     var_name,
                                     variable.cast(sema.ast).into(),
                                     VariableKind::Input,
+                                    qualifier,
                                     false,
                                     result.spec,
                                     result.init,
@@ -223,6 +244,7 @@ impl<'db> ParseVarSection<'db> for ast::generated::FbInputDecls {
 
 impl<'db> ParseVarSection<'db> for ast::generated::OutputDecls {
     fn parse(&self, sema: &mut SemanticIndexBuilder<'db>, section: &mut Vec<VariableDecl<'db>>) {
+        let qualifier = retain_qualifier(&self.retain, sema.ast);
         for child in self.children.iter() {
             match child.cast(sema.ast) {
                 ast::generated::ERRVariableWithNoSpec_OutputVar::ERRVariableWithNoSpec(child) => {
@@ -247,6 +269,7 @@ impl<'db> ParseVarSection<'db> for ast::generated::OutputDecls {
                                     var_name,
                                     variable.cast(sema.ast).into(),
                                     VariableKind::Output,
+                                    qualifier,
                                     false,
                                     result.spec,
                                     result.init,
@@ -270,6 +293,7 @@ impl<'db> ParseVarSection<'db> for ast::generated::OutputDecls {
                                     var_name,
                                     variable.cast(sema.ast).into(),
                                     VariableKind::Output,
+                                    qualifier,
                                     false,
                                     spec,
                                     None,
@@ -287,6 +311,7 @@ impl<'db> ParseVarSection<'db> for ast::generated::OutputDecls {
 
 impl<'db> ParseVarSection<'db> for ast::generated::FbOutputDecls {
     fn parse(&self, sema: &mut SemanticIndexBuilder<'db>, section: &mut Vec<VariableDecl<'db>>) {
+        let qualifier = retain_qualifier(&self.retain, sema.ast);
         for child in self.children.iter() {
             match child.cast(sema.ast) {
                 ast::generated::ERRVariableWithNoSpec_FbOutputVar::ERRVariableWithNoSpec(child) => {
@@ -311,6 +336,7 @@ impl<'db> ParseVarSection<'db> for ast::generated::FbOutputDecls {
                                     var_name,
                                     variable.cast(sema.ast).into(),
                                     VariableKind::Output,
+                                    qualifier,
                                     false,
                                     result.spec,
                                     result.init,
@@ -334,6 +360,7 @@ impl<'db> ParseVarSection<'db> for ast::generated::FbOutputDecls {
                                     var_name,
                                     variable.cast(sema.ast).into(),
                                     VariableKind::Output,
+                                    qualifier,
                                     false,
                                     spec,
                                     None,
@@ -375,6 +402,7 @@ impl<'db> ParseVarSection<'db> for ast::generated::TempVarDecls {
                                     var_name,
                                     variable.cast(sema.ast).into(),
                                     VariableKind::Temp,
+                                    Qualifier::empty(),
                                     false,
                                     result.spec,
                                     result.init,
@@ -398,6 +426,7 @@ impl<'db> ParseVarSection<'db> for ast::generated::TempVarDecls {
                                     var_name,
                                     variable.cast(sema.ast).into(),
                                     VariableKind::Temp,
+                                    Qualifier::empty(),
                                     false,
                                     result.spec,
                                     result.init,
@@ -439,6 +468,7 @@ impl<'db> ParseVarSection<'db> for ast::generated::InOutDecls {
                                     var_name,
                                     variable.cast(sema.ast).into(),
                                     VariableKind::InOut,
+                                    Qualifier::empty(),
                                     false,
                                     spec,
                                     None,
@@ -462,6 +492,7 @@ impl<'db> ParseVarSection<'db> for ast::generated::InOutDecls {
                                     var_name,
                                     variable.cast(sema.ast).into(),
                                     VariableKind::InOut,
+                                    Qualifier::empty(),
                                     false,
                                     result.spec,
                                     result.init,
@@ -496,6 +527,11 @@ impl<'db> ParseVarSection<'db> for ast::generated::ExternalVarDecls {
                                 var_name,
                                 child.name.cast(sema.ast).into(),
                                 VariableKind::External,
+                                if self.constant.is_some() {
+                                    Qualifier::CONSTANT
+                                } else {
+                                    Qualifier::empty()
+                                },
                                 false,
                                 result.spec,
                                 result.init,
@@ -516,6 +552,11 @@ impl<'db> ParseVarSection<'db> for ast::generated::ExternalVarDecls {
                                 var_name,
                                 child.name.cast(sema.ast).into(),
                                 VariableKind::External,
+                                if self.constant.is_some() {
+                                    Qualifier::CONSTANT
+                                } else {
+                                    Qualifier::empty()
+                                },
                                 false,
                                 spec,
                                 None,
@@ -583,6 +624,11 @@ impl<'db> ParseLocatedVar<'db> for ast::generated::LocVarDecls {
 
 impl<'db> ParseVarSection<'db> for ast::generated::VarDecls {
     fn parse(&self, sema: &mut SemanticIndexBuilder<'db>, section: &mut Vec<VariableDecl<'db>>) {
+        let qualifier = if self.constant.is_some() {
+            Qualifier::CONSTANT
+        } else {
+            Qualifier::empty()
+        };
         for child in self.children.iter() {
             match child.cast(sema.ast) {
                 ast::generated::ERRVariableWithNoSpec_VarDeclInitList::ERRVariableWithNoSpec(
@@ -608,6 +654,7 @@ impl<'db> ParseVarSection<'db> for ast::generated::VarDecls {
                             var_name,
                             variable.cast(sema.ast).into(),
                             VariableKind::Var,
+                            qualifier,
                             false,
                             result.spec,
                             result.init,
@@ -648,6 +695,7 @@ impl<'db> ParseVarSection<'db> for ast::generated::RetainVarDecls {
                             var_name,
                             variable.cast(sema.ast).into(),
                             VariableKind::Var,
+                            Qualifier::RETAIN,
                             false,
                             result.spec,
                             result.init,
@@ -688,6 +736,7 @@ impl<'db> ParseVarSection<'db> for ast::generated::NoRetainVarDecls {
                             var_name,
                             variable.cast(sema.ast).into(),
                             VariableKind::Var,
+                            Qualifier::NON_RETAIN,
                             false,
                             result.spec,
                             result.init,
@@ -703,6 +752,7 @@ impl<'db> ParseVarSection<'db> for ast::generated::NoRetainVarDecls {
 
 impl<'db> ParseVarSection<'db> for ast::generated::LocPartlyVarDecl {
     fn parse(&self, sema: &mut SemanticIndexBuilder<'db>, section: &mut Vec<VariableDecl<'db>>) {
+        let qualifier = retain_qualifier(&self.retain, sema.ast);
         for child in self.children.iter() {
             let r = Ident::from_node(
                 sema.db,
@@ -720,6 +770,7 @@ impl<'db> ParseVarSection<'db> for ast::generated::LocPartlyVarDecl {
                 var_name,
                 child.cast(sema.ast).variable_name.cast(sema.ast).into(),
                 VariableKind::Var,
+                qualifier,
                 false,
                 result.spec,
                 result.init,
@@ -789,6 +840,11 @@ impl<'db> ParseProgDecl<'db> for ast::generated::ProgAccessDecls {
 
 impl<'db> ParseVarSection<'db> for ast::generated::GlobalVarDecls {
     fn parse(&self, sema: &mut SemanticIndexBuilder<'db>, section: &mut Vec<VariableDecl<'db>>) {
+        let qualifier = match self.constant_or_retain.as_ref().map(|c| c.cast(sema.ast)) {
+            Some(ast::generated::Operators_4::Token_CONSTANT(_)) => Qualifier::CONSTANT,
+            Some(ast::generated::Operators_4::Token_RETAIN(_)) => Qualifier::RETAIN,
+            None => Qualifier::empty(),
+        };
         for child in self.children.iter() {
             match child.cast(sema.ast).Type.cast(sema.ast) {
                 GlobalVarKind::NamespaceAccess(var_decl) => {
@@ -808,6 +864,7 @@ impl<'db> ParseVarSection<'db> for ast::generated::GlobalVarDecls {
                         name,
                         child.cast(sema.ast).spec.cast(sema.ast).into(),
                         VariableKind::Global,
+                        qualifier,
                         false,
                         result.spec,
                         result.init,
@@ -832,6 +889,7 @@ impl<'db> ParseVarSection<'db> for ast::generated::GlobalVarDecls {
                         name,
                         child.cast(sema.ast).spec.cast(sema.ast).into(),
                         VariableKind::Global,
+                        qualifier,
                         false,
                         result.spec,
                         result.init,

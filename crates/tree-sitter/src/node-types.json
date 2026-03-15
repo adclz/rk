@@ -2870,7 +2870,22 @@
   {
     "type": "fb_input_decls",
     "named": true,
-    "fields": {},
+    "fields": {
+      "retain": {
+        "multiple": false,
+        "required": false,
+        "types": [
+          {
+            "type": "NON_RETAIN",
+            "named": false
+          },
+          {
+            "type": "RETAIN",
+            "named": false
+          }
+        ]
+      }
+    },
     "children": {
       "multiple": true,
       "required": false,
@@ -2915,7 +2930,22 @@
   {
     "type": "fb_output_decls",
     "named": true,
-    "fields": {},
+    "fields": {
+      "retain": {
+        "multiple": false,
+        "required": false,
+        "types": [
+          {
+            "type": "NON_RETAIN",
+            "named": false
+          },
+          {
+            "type": "RETAIN",
+            "named": false
+          }
+        ]
+      }
+    },
     "children": {
       "multiple": true,
       "required": false,
@@ -4733,7 +4763,22 @@
   {
     "type": "output_decls",
     "named": true,
-    "fields": {},
+    "fields": {
+      "retain": {
+        "multiple": false,
+        "required": false,
+        "types": [
+          {
+            "type": "NON_RETAIN",
+            "named": false
+          },
+          {
+            "type": "RETAIN",
+            "named": false
+          }
+        ]
+      }
+    },
     "children": {
       "multiple": true,
       "required": false,

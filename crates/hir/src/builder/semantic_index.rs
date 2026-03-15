@@ -118,6 +118,7 @@ impl<'db> SemanticIndexBuilder<'db> {
         name: crate::hir_def::interned::identifier::Ident,
         name_id: crate::AstId,
         kind: crate::hir_def::pous::variable::VariableKind,
+        qualifier: crate::Qualifier,
         variadic: bool,
         spec: crate::hir_def::expressions::spec::Spec<'db>,
         init: Option<crate::hir_def::expressions::expression::InitExpr<'db>>,
@@ -125,7 +126,7 @@ impl<'db> SemanticIndexBuilder<'db> {
         scope_id: crate::hir_def::scope::ScopeId<'db>,
     ) -> crate::hir_def::pous::variable::VariableDecl<'db> {
         let var = crate::hir_def::pous::variable::VariableDecl::new(
-            self.db, name, name_id, kind, variadic, spec, init, id, scope_id,
+            self.db, name, name_id, kind, qualifier, variadic, spec, init, id, scope_id,
         );
         self.register_node(id, HirNode::VariableDecl(var));
         var

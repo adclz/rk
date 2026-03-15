@@ -179,3 +179,17 @@ impl Visibility {
 pub trait HasVisibility<'db>: HirNodeInfo<'db> {
     fn get_visibility(&self, db: &'db dyn WorkspaceDataBase) -> Visibility;
 }
+
+bitflags! {
+    #[repr(transparent)]
+    #[derive(Default, Debug, Clone, Copy, PartialEq, Eq, Hash)]
+    pub struct Qualifier: u16 {
+        const CONSTANT = 1 << 0;
+        const RETAIN = 1 << 1;
+        const NON_RETAIN = 1 << 2;
+    }
+}
+
+pub trait HasQualifiers<'db>: HirNodeInfo<'db> {
+    fn get_qualifiers(&self, db: &'db dyn WorkspaceDataBase) -> Qualifier;
+}
