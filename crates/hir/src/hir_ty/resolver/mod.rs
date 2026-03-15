@@ -251,12 +251,32 @@ impl<'db> Resolver<'db> {
                             if let name::NameResolution::Pou(pou @ Pou::DataType(_)) =
                                 name::resolve_name(db, &access, path_expr.get_scope_id(db))
                             {
-                                // Remove the FQ error — this path is valid so far.
+                                // Remove the FQ error - this path is valid so far.
                                 ctx.errors.pop();
                                 let ty = Type::new_pou(db, pou);
                                 ctx.type_of_path_expr.insert(step.get_expr(db), ty);
                                 current = ty;
                                 place.current_typ = ty;
+                                place.current_path = step.get_expr(db);
+                                continue;
+                            }
+
+                            // Inside a Function/Method, the POU name used as the
+                            // first step of a multi-step path refers to the return
+                            // value (e.g. `CEXP.re` accesses field `re` of the
+                            // return struct). Resolve the first step to the return
+                            // type so subsequent steps can walk its fields.
+                            if let PathResolutionRoot::Value { base } = self.root
+                                && let Some(ret_ty) = base.with_return_type(db)
+                                && let Some(pou) = base.as_pou(db)
+                                && pou.get_name_ident(db) == ident.ident
+                            {
+                                ctx.errors.pop();
+                                let normalized = ret_ty.normalize(db);
+                                ctx.type_of_path_expr
+                                    .insert(step.get_expr(db), base);
+                                current = normalized;
+                                place.current_typ = normalized;
                                 place.current_path = step.get_expr(db);
                                 continue;
                             }

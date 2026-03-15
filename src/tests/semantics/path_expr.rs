@@ -677,3 +677,25 @@ END_FUNCTION
 "#;
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @"");
 }
+
+#[rstest]
+fn function_return_struct_field_access(mut with_db: RootDatabase) {
+    let source = r#"
+TYPE
+    COMPLEX: STRUCT
+        re: REAL;
+        im: REAL;
+    END_STRUCT
+END_TYPE
+
+FUNCTION CEXP : COMPLEX
+    VAR_INPUT
+        X: COMPLEX;
+    END_VAR
+
+    CEXP.re := X.re;
+    CEXP.im := X.im;
+END_FUNCTION
+"#;
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @"");
+}
