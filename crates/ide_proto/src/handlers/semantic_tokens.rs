@@ -35,7 +35,8 @@ impl<'db> SemanticTokensHandler<'db> for HirNode<'db> {
             HirNode::MethodRef(m) => m.semantic_tokens(db, builder),
             HirNode::VariableDecl(v) => v.semantic_tokens(db, builder),
             HirNode::Spec(v) => v.semantic_tokens(db, builder),
-            HirNode::PathExpr(p) => p.semantic_tokens(db, builder),
+            // todo: The first path expr will highlight the whole path 
+            //HirNode::PathExpr(p) => p.semantic_tokens(db, builder),
             HirNode::VariableAccess(v) => v.semantic_tokens(db, builder),
             HirNode::Expr(e) => e.semantic_tokens(db, builder),
             _ => {}
@@ -189,15 +190,16 @@ impl<'db> SemanticTokensHandler<'db> for Expr<'db> {
     ) {
         let typ = self.infer(db);
 
-        if let ExprKind::PrimaryExpr(PrimaryExpr::EnumValue { name, variant }) = self.expr(db) {
-            builder.push(
-                name.get_span(db).lsp(),
-                SUPPORTED_TYPES.iter().position(|x| *x == ENUM).unwrap() as u32,
-                0,
-            );
-            semantic_tokens_for_type(db, typ, builder, variant.get_span(db));
-        } else {
-            semantic_tokens_for_type(db, typ, builder, self.get_span(db));
+        match self.expr(db) {
+            ExprKind::PrimaryExpr(PrimaryExpr::EnumValue { name, variant }) => {
+                builder.push(
+                    name.get_span(db).lsp(),
+                    SUPPORTED_TYPES.iter().position(|x| *x == ENUM).unwrap() as u32,
+                    0,
+                );
+                semantic_tokens_for_type(db, typ, builder, variant.get_span(db));
+            }
+            _ => (),
         }
     }
 }

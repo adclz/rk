@@ -113,14 +113,6 @@ END_FUNCTION_BLOCK"#;
         result.data[4].token_type,
         SUPPORTED_TYPES.iter().position(|x| *x == CLASS).unwrap() as u32
     );
-    assert_eq!(
-        result.data[5].token_type,
-        SUPPORTED_TYPES.iter().position(|x| *x == FUNCTION).unwrap() as u32
-    );
-    assert_eq!(
-        result.data[6].token_type,
-        SUPPORTED_TYPES.iter().position(|x| *x == CLASS).unwrap() as u32
-    );
 }
 
 #[rstest]
