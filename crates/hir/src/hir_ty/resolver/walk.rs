@@ -9,7 +9,7 @@ use crate::{
     },
     hir_def::{
         expressions::{
-            expression::{BeginPathExpr, InitExpr, Integer, MultibitsPart, PathExpr},
+            expression::{BeginPathExpr, InitExpr, Integer, MultibitsPart, PathExpr, PathExprKind},
             invocation::{Invocation, InvocationKind},
             spec::StructElement,
         },
@@ -492,39 +492,54 @@ impl<'db> Type<'db> {
             return;
         };
 
-        let curr_dimension = ctx
-            .adjustments_of_path_expr(place.current_path)
-            .map(|adjs| adjs.array_dimensions(self))
-            .unwrap_or(0);
-
-        let dimensions = arr.subranges(db).len() - 1;
-        let array_type = match curr_dimension.cmp(&dimensions) {
-            Ordering::Less if arr.subranges(db).len() > 1 => *self,
-            Ordering::Less | Ordering::Equal => arr.of_type(db).infer(db),
-            Ordering::Greater => {
-                if report_errors {
-                    ctx.errors.push(
-                        ResolveError::IndexNonArrayTypePathExpr {
-                            expr,
-                            ty: place.current_typ,
-                        }
-                        .to_diagnostic(db),
-                    );
-                }
-                return;
-            }
+        // Multi-dimensional arrays use comma-separated indices (e.g., arr[i, j]).
+        // Each index corresponds to one dimension of the array.
+        let index_count = match expr.expr(db) {
+            PathExprKind::Index(index_expr) => index_expr.index.len(),
+            _ => 1,
         };
 
-        ctx.path_expr_adjustments
-            .entry(place.current_path)
-            .or_default()
-            .push(Adjustment::new_index(db, array_type));
+        for _ in 0..index_count {
+            let curr_dimension = ctx
+                .adjustments_of_path_expr(place.current_path)
+                .map(|adjs| adjs.array_dimensions(self))
+                .unwrap_or(0);
+
+            let dimensions = arr.subranges(db).len() - 1;
+            let array_type = match curr_dimension.cmp(&dimensions) {
+                Ordering::Less if arr.subranges(db).len() > 1 => *self,
+                Ordering::Less | Ordering::Equal => arr.of_type(db).infer(db),
+                Ordering::Greater => {
+                    if report_errors {
+                        ctx.errors.push(
+                            ResolveError::IndexNonArrayTypePathExpr {
+                                expr,
+                                ty: place.current_typ,
+                            }
+                            .to_diagnostic(db),
+                        );
+                    }
+                    return;
+                }
+            };
+
+            ctx.path_expr_adjustments
+                .entry(place.current_path)
+                .or_default()
+                .push(Adjustment::new_index(db, array_type));
+        }
+
+        // Use the final adjustment target for the index expression.
+        let final_type = ctx
+            .adjustments_of_path_expr(place.current_path)
+            .and_then(|adjs| adjs.last().map(|a| a.target))
+            .unwrap_or(*self);
 
         ctx.type_of_path_expr.insert(expr, place.current_typ);
         ctx.path_expr_adjustments
             .entry(expr)
             .or_default()
-            .push(Adjustment::new_index(db, array_type));
+            .push(Adjustment::new_index(db, final_type));
     }
 }
 

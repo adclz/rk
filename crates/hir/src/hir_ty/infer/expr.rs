@@ -38,8 +38,12 @@ impl<'db> InferExprCtx<'db> {
             | ExprKind::MultOperator { left, right, .. }
             | ExprKind::PowerOperator { left, right }
             | ExprKind::BooleanOperator { left, right, .. } => {
-                let lhs = self.resolve_expr(db, *left, inference_results);
-                let rhs = self.resolve_expr(db, *right, inference_results);
+                self.resolve_expr(db, *left, inference_results);
+                self.resolve_expr(db, *right, inference_results);
+
+                // Use adjusted types to account for array indexing, deref, etc.
+                let lhs = inference_results.type_of_expr_with_adjustments(db, *left);
+                let rhs = inference_results.type_of_expr_with_adjustments(db, *right);
 
                 let mut ty = match (lhs.has_infer(), rhs.has_infer()) {
                     (true, false) => rhs,

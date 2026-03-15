@@ -726,3 +726,27 @@ END_FUNCTION
 "#;
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @"");
 }
+
+/// Multi-dimensional array indexing with comma syntax should resolve to element type.
+#[rstest]
+fn multi_dimensional_array_comma_index(mut with_db: RootDatabase) {
+    let source = r#"
+FUNCTION POLYNOM_INT : REAL
+VAR_INPUT
+    X : REAL;
+END_VAR
+VAR
+    i : INT;
+    j : INT;
+    xy : ARRAY[1..5, 0..1] OF REAL;
+    x : REAL;
+END_VAR
+    x := xy[1, 0];
+    x := xy[j, 1];
+    x := xy[j, 1] - xy[j - 1, 1];
+    x := x - xy[1, 0];
+    POLYNOM_INT := X - xy[i, 0];
+END_FUNCTION
+"#;
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @"");
+}
