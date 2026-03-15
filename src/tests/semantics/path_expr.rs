@@ -699,3 +699,30 @@ END_FUNCTION
 "#;
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @"");
 }
+
+#[rstest]
+fn function_self_name_as_return_value_in_call(mut with_db: RootDatabase) {
+    let source = r#"
+FUNCTION ABS<T: ANY_NUM> : T
+    VAR_INPUT
+        IN: T;
+    END_VAR
+END_FUNCTION
+
+FUNCTION OVERRIDE : REAL
+    VAR_INPUT
+        X1, X2: REAL;
+        E1: BOOL;
+        E2: BOOL;
+    END_VAR
+
+    IF E1 THEN
+        OVERRIDE := X1;
+    END_IF;
+    IF E2 AND ABS(X2) > ABS(OVERRIDE) THEN
+        OVERRIDE := X2;
+    END_IF;
+END_FUNCTION
+"#;
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @"");
+}

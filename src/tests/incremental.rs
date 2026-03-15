@@ -119,7 +119,7 @@ fn body_edit_only_reruns_semantic_index_for_changed_file(
 
     salsa::attach(&db, || {
         let events = log.read().unwrap();
-        assert_snapshot!(snapshot_log(&events), @r#"
+        assert_snapshot!(snapshot_log(&events), @r"
         DidDiscard { key: Expr(Id(2003)) }
         DidDiscard { key: Stmt(Id(2802)) }
         DidInternValue { key: Ident(Id(806)), revision: R2 }
@@ -135,7 +135,6 @@ fn body_edit_only_reruns_semantic_index_for_changed_file(
         DidValidateMemoizedValue { database_key: PathExpr < 'db >::flatten_(Id(1401)) }
         DidValidateMemoizedValue { database_key: PathExpr < 'db >::flatten_(Id(1402)) }
         DidValidateMemoizedValue { database_key: PathExpr < 'db >::flatten_(Id(1403)) }
-        DidValidateMemoizedValue { database_key: PathExpr < 'db >::to_namespace_access_(Id(1403)) }
         DidValidateMemoizedValue { database_key: ScopeId < 'db >::def_map_(Id(402)) }
         DidValidateMemoizedValue { database_key: ScopeId < 'db >::def_map_(Id(405)) }
         DidValidateMemoizedValue { database_key: ScopeId < 'db >::inheritors_(Id(402)) }
@@ -167,7 +166,7 @@ fn body_edit_only_reruns_semantic_index_for_changed_file(
         WillExecute { database_key: infer_body(Id(405)) }
         WillExecute { database_key: infer_signature(Id(405)) }
         WillExecute { database_key: semantic_index(Id(1)) }
-        "#);
+        ");
     });
 }
 
@@ -227,7 +226,7 @@ fn body_edit_does_not_reinfer_signature_of_other_file(
 
     salsa::attach(&db, || {
         let events = log.read().unwrap();
-        assert_snapshot!(snapshot_log(&events), @r#"
+        assert_snapshot!(snapshot_log(&events), @r"
         DidDiscard { key: Expr(Id(2003)) }
         DidDiscard { key: Stmt(Id(2802)) }
         DidInternValue { key: Ident(Id(806)), revision: R2 }
@@ -243,7 +242,6 @@ fn body_edit_does_not_reinfer_signature_of_other_file(
         DidValidateMemoizedValue { database_key: PathExpr < 'db >::flatten_(Id(1401)) }
         DidValidateMemoizedValue { database_key: PathExpr < 'db >::flatten_(Id(1402)) }
         DidValidateMemoizedValue { database_key: PathExpr < 'db >::flatten_(Id(1403)) }
-        DidValidateMemoizedValue { database_key: PathExpr < 'db >::to_namespace_access_(Id(1403)) }
         DidValidateMemoizedValue { database_key: ScopeId < 'db >::def_map_(Id(402)) }
         DidValidateMemoizedValue { database_key: ScopeId < 'db >::def_map_(Id(405)) }
         DidValidateMemoizedValue { database_key: ScopeId < 'db >::inheritors_(Id(402)) }
@@ -275,7 +273,7 @@ fn body_edit_does_not_reinfer_signature_of_other_file(
         WillExecute { database_key: infer_body(Id(405)) }
         WillExecute { database_key: infer_signature(Id(405)) }
         WillExecute { database_key: semantic_index(Id(1)) }
-        "#);
+        ");
     });
 }
 
@@ -355,7 +353,7 @@ fn editing_unrelated_pou_does_not_invalidate_cross_file_dependent(
 
     salsa::attach(&db, || {
         let events = log.read().unwrap();
-        assert_snapshot!(snapshot_log(&events), @r#"
+        assert_snapshot!(snapshot_log(&events), @r"
         DidDiscard { key: Expr(Id(2004)) }
         DidDiscard { key: Expr(Id(2005)) }
         DidDiscard { key: Stmt(Id(2801)) }
@@ -379,8 +377,6 @@ fn editing_unrelated_pou_does_not_invalidate_cross_file_dependent(
         DidValidateMemoizedValue { database_key: PathExpr < 'db >::flatten_(Id(1404)) }
         DidValidateMemoizedValue { database_key: PathExpr < 'db >::flatten_(Id(1405)) }
         DidValidateMemoizedValue { database_key: PathExpr < 'db >::flatten_(Id(1407)) }
-        DidValidateMemoizedValue { database_key: PathExpr < 'db >::to_namespace_access_(Id(1402)) }
-        DidValidateMemoizedValue { database_key: PathExpr < 'db >::to_namespace_access_(Id(1405)) }
         DidValidateMemoizedValue { database_key: ScopeId < 'db >::def_map_(Id(402)) }
         DidValidateMemoizedValue { database_key: ScopeId < 'db >::def_map_(Id(403)) }
         DidValidateMemoizedValue { database_key: ScopeId < 'db >::def_map_(Id(406)) }
@@ -420,7 +416,7 @@ fn editing_unrelated_pou_does_not_invalidate_cross_file_dependent(
         WillExecute { database_key: infer_body(Id(402)) }
         WillExecute { database_key: infer_body(Id(403)) }
         WillExecute { database_key: semantic_index(Id(0)) }
-        "#);
+        ");
     });
 }
 
@@ -486,7 +482,7 @@ fn dependency_body_edit_does_not_reinfer_dependent(
 
     salsa::attach(&db, || {
         let events = log.read().unwrap();
-        assert_snapshot!(snapshot_log(&events), @r#"
+        assert_snapshot!(snapshot_log(&events), @r"
         DidDiscard { key: Expr(Id(2001)) }
         DidDiscard { key: Expr(Id(2002)) }
         DidDiscard { key: Stmt(Id(2800)) }
@@ -503,7 +499,6 @@ fn dependency_body_edit_does_not_reinfer_dependent(
         DidValidateMemoizedValue { database_key: PathExpr < 'db >::flatten_(Id(1402)) }
         DidValidateMemoizedValue { database_key: PathExpr < 'db >::flatten_(Id(1403)) }
         DidValidateMemoizedValue { database_key: PathExpr < 'db >::flatten_(Id(1405)) }
-        DidValidateMemoizedValue { database_key: PathExpr < 'db >::to_namespace_access_(Id(1403)) }
         DidValidateMemoizedValue { database_key: ScopeId < 'db >::def_map_(Id(402)) }
         DidValidateMemoizedValue { database_key: ScopeId < 'db >::def_map_(Id(405)) }
         DidValidateMemoizedValue { database_key: ScopeId < 'db >::inheritors_(Id(402)) }
@@ -536,7 +531,7 @@ fn dependency_body_edit_does_not_reinfer_dependent(
         WillExecute { database_key: get_scope(Id(402)) }
         WillExecute { database_key: infer_body(Id(402)) }
         WillExecute { database_key: semantic_index(Id(0)) }
-        "#);
+        ");
     });
 }
 
@@ -607,7 +602,7 @@ fn signature_change_does_reinfer_dependent_body(
 
     salsa::attach(&db, || {
         let events = log.read().unwrap();
-        assert_snapshot!(snapshot_log(&events), @r#"
+        assert_snapshot!(snapshot_log(&events), @r"
         DidDiscard { key: BeginPathExpr(Id(1800)) }
         DidDiscard { key: BeginPathExpr(Id(1801)) }
         DidDiscard { key: Expr(Id(2000)) }
@@ -629,7 +624,6 @@ fn signature_change_does_reinfer_dependent_body(
         DidValidateMemoizedValue { database_key: PathExpr < 'db >::flatten_(Id(1402)) }
         DidValidateMemoizedValue { database_key: PathExpr < 'db >::flatten_(Id(1403)) }
         DidValidateMemoizedValue { database_key: PathExpr < 'db >::flatten_(Id(1405)) }
-        DidValidateMemoizedValue { database_key: PathExpr < 'db >::to_namespace_access_(Id(1403)) }
         DidValidateMemoizedValue { database_key: ScopeId < 'db >::def_map_(Id(402)) }
         DidValidateMemoizedValue { database_key: ScopeId < 'db >::def_map_(Id(405)) }
         DidValidateMemoizedValue { database_key: ScopeId < 'db >::inheritors_(Id(402)) }
@@ -670,6 +664,6 @@ fn signature_change_does_reinfer_dependent_body(
         WillExecute { database_key: infer_initialization(Id(402)) }
         WillExecute { database_key: infer_signature(Id(402)) }
         WillExecute { database_key: semantic_index(Id(0)) }
-        "#);
+        ");
     });
 }

@@ -670,6 +670,11 @@ fn normalize_for_inference<'db>(db: &'db dyn WorkspaceDataBase, typ: Type<'db>) 
     match typ {
         Type::Infer(infer) => infer.to_ty(db),
         Type::Variable((var, _)) => var.spec(db).infer(db).normalize(db),
+        // Function/Method names used as values represent the return value.
+        Type::Function(_) | Type::MethodDecl(_) => match typ.with_return_type(db) {
+            Some(ret) => ret.normalize(db),
+            None => Type::Void,
+        },
         _ => typ.normalize(db),
     }
 }
