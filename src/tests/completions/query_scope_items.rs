@@ -91,6 +91,44 @@ pub fn body_query_pous_in_scope(mut with_db: RootDatabase) {
     assert!(format!("{completions:?}").contains("fn2()"));
 }
 
+/// DataType completions in body mode should not include parentheses.
+/// They are used as constants (TYPE_NAME.field), not called.
+#[rstest]
+pub fn data_type_completion_no_parentheses(mut with_db: RootDatabase) {
+    let source = r#"
+    TYPE
+        MY_CONSTANTS : STRUCT
+            MAX_VAL : INT := 100;
+        END_STRUCT
+    END_TYPE
+
+    FUNCTION fn1
+    END_FUNCTION
+"#;
+
+    add_sources(&mut with_db, &[source]);
+    let pou =
+        find_pou_with_name(&with_db, *with_db.get_files().iter().last().unwrap(), "fn1").unwrap();
+
+    let mut ctx = CompletionCtx::new(120, QueryMode::Body);
+    ctx.scope_completion(pou.get_scope_id(&with_db), "", &with_db);
+    let completions = ctx.take_items();
+
+    let debug = format!("{completions:?}");
+
+    // DataType should be in completions
+    assert!(debug.contains("MY_CONSTANTS"), "MY_CONSTANTS should appear in completions");
+
+    // DataType should NOT have parentheses in insert_text
+    assert!(
+        !debug.contains("MY_CONSTANTS("),
+        "DataType completion should not include parentheses"
+    );
+
+    // Function should still have parentheses
+    assert!(debug.contains("fn1()"), "Function completion should include parentheses");
+}
+
 #[rstest]
 pub fn deduplicate_scope_and_local_vars(mut with_db: RootDatabase) {
     let source = r#"  

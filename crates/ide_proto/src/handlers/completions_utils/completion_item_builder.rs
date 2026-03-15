@@ -141,10 +141,13 @@ impl<'db> CompletionBuilder {
             kind: Some(kind),
             insert_text: match self.mode {
                 QueryMode::Head => None,
+                // DataTypes are used as constants (TYPE_NAME.field), not called
+                QueryMode::Body if matches!(pou, Pou::DataType(_)) => None,
                 QueryMode::Body => Some(build_call_signature(db, &name, pou.get_scope_id(db))),
             },
             insert_text_mode: match self.mode {
                 QueryMode::Head => None,
+                QueryMode::Body if matches!(pou, Pou::DataType(_)) => None,
                 QueryMode::Body => Some(InsertTextMode::ADJUST_INDENTATION),
             },
             insert_text_format: Some(InsertTextFormat::SNIPPET),

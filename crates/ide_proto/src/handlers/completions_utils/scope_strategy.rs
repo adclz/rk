@@ -12,7 +12,6 @@ use db::WorkspaceDataBase;
 use hir::{
     HasName, HirNodeInfo,
     hir_def::{
-        expressions::spec::SpecKind,
         interned::namespace::NamespacePath,
         pous::{
             pou::Pou,
@@ -128,8 +127,9 @@ impl<'db> ScopeCompletionCtx<'db> {
         // If Head, we assume it's a datatype or variable declaration
         // everything but functions should be suggested
 
-        // If Body, Functions are allowed but not other POUs
-        // that's because they have to be declared in var sections
+        // If Body, Functions and DataTypes are allowed
+        // DataTypes can be used as constants (TYPE_NAME.field)
+        // Other POUs (FBs, Classes) must be declared in var sections
         let filter = match self.mode {
             QueryMode::Head => {
                 |pou: &Pou<'db>, db: &'db dyn WorkspaceDataBase| !matches!(pou, Pou::Function(_))
@@ -137,8 +137,9 @@ impl<'db> ScopeCompletionCtx<'db> {
             QueryMode::Body => |pou: &Pou<'db>, db: &'db dyn WorkspaceDataBase| {
                 match pou {
                     Pou::Function(_) => true,
-                    // enum types are allowed and all variants should be suggested
-                    Pou::DataType(typ) => matches!(typ.spec(db).kind(db), SpecKind::Enum(_)),
+                    // DataTypes can be used as constants (TYPE_NAME.field)
+                    // and enum variants should be suggested
+                    Pou::DataType(_) => true,
                     _ => false,
                 }
             },
