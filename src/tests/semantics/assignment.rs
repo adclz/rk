@@ -558,3 +558,49 @@ END_FUNCTION"#;
 
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"");
 }
+
+#[rstest]
+fn assign_to_var_constant(mut with_db: RootDatabase) {
+    let source = r#"
+FUNCTION fn1 : REAL
+    VAR CONSTANT
+        A: REAL := 3.90802E-3;
+        B: REAL := -5.802E-7;
+    END_VAR
+    VAR
+        x: REAL;
+    END_VAR
+
+    A := 1.0;
+    x := A + B;
+END_FUNCTION
+"#;
+
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
+    [E1004] Error: semantic violation
+        ,-[ file:///test0.st:11:5 ]
+        |
+     11 |     A := 1.0;
+        |     |
+        |     `-- cannot assign to constant type
+    ----'
+    ");
+}
+
+#[rstest]
+fn assign_to_var_constant_valid_read(mut with_db: RootDatabase) {
+    let source = r#"
+FUNCTION fn1 : REAL
+    VAR CONSTANT
+        A: REAL := 3.90802E-3;
+    END_VAR
+    VAR
+        x: REAL;
+    END_VAR
+
+    x := A;
+END_FUNCTION
+"#;
+
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @"");
+}

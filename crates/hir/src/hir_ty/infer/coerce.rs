@@ -419,6 +419,15 @@ impl<'db> Type<'db> {
                         .to_diagnostic(db),
                     );
                 }
+                // a CONSTANT variable cannot be assigned to
+                if variable.qualifier(db).contains(crate::Qualifier::CONSTANT) {
+                    ctx.errors.push(
+                        ControlFlowError::AssignToConstant {
+                            access: call_site,
+                        }
+                        .to_diagnostic(db),
+                    );
+                }
             }
             Type::StructElement(element) => (),
             _ => {
