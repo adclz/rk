@@ -83,6 +83,16 @@ impl<'db> InferenceTable<'db> {
     ) {
         // only elementary types can be used to resolve the inference
         // the inference table will only attempt to resolve infer variants, it does not check coercion
+        //
+        // Function/Method names used as return values (e.g. CHK_REAL := 16#00)
+        // need to resolve through the return type.
+        let ty = match ty {
+            Type::Function(_) | Type::MethodDecl(_) => match ty.with_return_type(db) {
+                Some(ret) => ret.normalize(db),
+                None => return,
+            },
+            _ => ty,
+        };
         let normalized = ty.normalize(db);
         let ty = match normalized {
             Type::SubRange(sub) => sub._type(db).infer(db),

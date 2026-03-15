@@ -750,3 +750,19 @@ END_FUNCTION
 "#;
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @"");
 }
+
+/// Hex literals assigned to a function return value should infer to the return type.
+#[rstest]
+fn function_return_hex_literal_inference(mut with_db: RootDatabase) {
+    let source = r#"
+FUNCTION CHK_REAL : BYTE
+VAR_INPUT
+    X : REAL;
+END_VAR
+    CHK_REAL := 16#00;
+    CHK_REAL := 16#20;
+    CHK_REAL := 16#FF;
+END_FUNCTION
+"#;
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @"");
+}
