@@ -80,18 +80,48 @@ pub fn check(
     }
 }
 
+/// Returns a dedup key that distinguishes sections with different qualifiers
+/// (e.g. `VAR` vs `VAR CONSTANT`).
+fn section_key(child: &tree_sitter::Node) -> String {
+    let kind = child.kind();
+    // Check for CONSTANT qualifier in var_decls, external_var_decls, etc.
+    let has_constant = child
+        .child_by_field_name("constant")
+        .or_else(|| child.child_by_field_name("constant_or_retain"))
+        .is_some_and(|n| n.kind() == "CONSTANT");
+    if has_constant {
+        format!("{kind}__CONSTANT")
+    } else {
+        kind.to_string()
+    }
+}
+
+/// Returns the display name for a variable section, including CONSTANT if present.
+fn section_display_name(child: &tree_sitter::Node) -> Option<String> {
+    let base = section_name(child.kind())?;
+    let has_constant = child
+        .child_by_field_name("constant")
+        .or_else(|| child.child_by_field_name("constant_or_retain"))
+        .is_some_and(|n| n.kind() == "CONSTANT");
+    if has_constant {
+        Some(format!("{base} CONSTANT"))
+    } else {
+        Some(base.to_string())
+    }
+}
+
 fn check_pou_node(pou_node: tree_sitter::Node, diagnostics: &mut Vec<IdeDiagnostic>) {
-    // Track: node kind → range of the first occurrence
-    let mut seen: FxHashMap<&str, tree_sitter::Range> = FxHashMap::default();
+    // Track: section key → range of the first occurrence
+    let mut seen: FxHashMap<String, tree_sitter::Range> = FxHashMap::default();
 
     let mut cursor = pou_node.walk();
     for child in pou_node.named_children(&mut cursor) {
-        let kind = child.kind();
-        let Some(name) = section_name(kind) else {
+        let Some(name) = section_display_name(&child) else {
             continue;
         };
+        let key = section_key(&child);
 
-        if seen.contains_key(kind) {
+        if seen.contains_key(&key) {
             let range = child.range();
             let mut d = diag()
                 .message(format!("duplicate {name} section"))
@@ -104,7 +134,7 @@ fn check_pou_node(pou_node: tree_sitter::Node, diagnostics: &mut Vec<IdeDiagnost
 
             diagnostics.push(d);
         } else {
-            seen.insert(kind, child.range());
+            seen.insert(key, child.range());
         }
     }
 }
