@@ -252,7 +252,8 @@ impl<'db> Type<'db> {
                 lhs.infer(db)
                     .coerce_with_type(db, rhs.infer(db), None, resolver)
             }
-            // self-assignments
+            // Function/Method used as a value — coerce through the return type.
+            // LHS (target is the function return variable)
             (Type::Function(f), rhs) => match f.return_type(db) {
                 Some(ret) => ret
                     .infer(db)
@@ -270,6 +271,23 @@ impl<'db> Type<'db> {
                 None => Err(CoerceError {
                     expected: Type::Void,
                     actual: to,
+                    adjustment: None,
+                }),
+            },
+            // RHS (function/method name read as a value)
+            (lhs, Type::Function(f)) => match f.return_type(db) {
+                Some(ret) => self.coerce_with_type(db, ret.infer(db), adjustments, resolver),
+                None => Err(CoerceError {
+                    expected: *self,
+                    actual: Type::Void,
+                    adjustment: None,
+                }),
+            },
+            (lhs, Type::MethodDecl(f)) => match f.return_type(db) {
+                Some(ret) => self.coerce_with_type(db, ret.infer(db), adjustments, resolver),
+                None => Err(CoerceError {
+                    expected: *self,
+                    actual: Type::Void,
                     adjustment: None,
                 }),
             },

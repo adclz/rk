@@ -55,7 +55,12 @@ impl<'db> InferExprCtx<'db> {
                     _ => lhs,
                 };
 
-                let normalized_ty = ty.normalize(db);
+                // When a function/method name is used in an operator expression,
+                // resolve to its return type for operator support checks.
+                let normalized_ty = match ty.with_return_type(db) {
+                    Some(ret) => ret.normalize(db),
+                    None => ty.normalize(db),
+                };
                 let (supported, operator) = match curr_expr.expr(db) {
                     ExprKind::AddOperator { operator, .. } => {
                         (normalized_ty.supports_add(db), operator.as_str())

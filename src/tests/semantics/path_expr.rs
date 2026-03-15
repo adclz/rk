@@ -626,3 +626,54 @@ END_FUNCTION
     ---'
     "#);
 }
+
+#[rstest]
+fn fn_return_value_used_in_expression(mut with_db: RootDatabase) {
+    let source = r#"
+FUNCTION fn0 : INT
+VAR
+    test: INT;
+END_VAR
+    test := fn0 + 0;
+END_FUNCTION
+"#;
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @"");
+}
+
+#[rstest]
+fn fn_return_value_assigned(mut with_db: RootDatabase) {
+    let source = r#"
+FUNCTION fn0 : INT
+    fn0 := 5;
+END_FUNCTION
+"#;
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @"");
+}
+
+#[rstest]
+fn fn_return_value_read(mut with_db: RootDatabase) {
+    let source = r#"
+FUNCTION fn0 : INT
+VAR
+    test: INT;
+END_VAR
+    fn0 := 5;
+    test := fn0;
+END_FUNCTION
+"#;
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @"");
+}
+
+#[rstest]
+fn fn_return_value_in_complex_expression(mut with_db: RootDatabase) {
+    let source = r#"
+FUNCTION fn0 : INT
+VAR
+    test: INT;
+END_VAR
+    fn0 := 5;
+    test := fn0 * 2 + fn0;
+END_FUNCTION
+"#;
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @"");
+}
