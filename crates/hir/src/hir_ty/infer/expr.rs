@@ -211,8 +211,17 @@ impl<'db> InferExprCtx<'db> {
                 // For generic functions, the CallableType normalizes to
                 // Type::Generic(T). Apply the substitutions inferred during
                 // the call to resolve T → the concrete type (e.g. REAL).
-                ty.normalize(db)
-                    .apply_generic_substitution(db, &inference_result.generic_substitutions)
+                let resolved = ty
+                    .normalize(db)
+                    .apply_generic_substitution(db, &inference_result.generic_substitutions);
+                // If the type is still generic (e.g. substitutions could not be
+                // computed because an argument was unresolved), fall back to Never
+                // to prevent cascading errors from unresolved generic types.
+                if matches!(resolved, Type::Generic(_)) {
+                    Type::Never
+                } else {
+                    resolved
+                }
             }
             PrimaryExpr::EnumValue { name, variant } => {
                 self.resolver

@@ -825,3 +825,47 @@ END_FUNCTION
 ----'
 "#);
 }
+
+#[rstest]
+fn generic_with_unresolved_arg_in_binary_expr(mut with_db: RootDatabase) {
+    let source = r#"
+FUNCTION ROR<T: ANY_BIT, Y: ANY_INT> : T
+    VAR_INPUT
+        IN: T;
+        N: Y;
+    END_VAR
+END_FUNCTION
+
+FUNCTION SWAP_BYTE2: DWORD
+    VAR_INPUT
+        IN: DWORD;
+    END_VAR
+
+    SWAP_BYTE2 := (ROR(in ,8) AND 16#FF00FF00);
+
+END_FUNCTION
+"#;
+    // lowercase 'in' is unresolved — should only report "no item found",
+    // not panic from unresolved generic type in binary expression coercion.
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r#"
+    [E0204] Error: no item found in scope
+        ,-[ file:///test0.st:14:24 ]
+        |
+     14 |     SWAP_BYTE2 := (ROR(in ,8) AND 16#FF00FF00);
+        |                        ^|
+        |                         `-- no item "in" found in scope
+        |
+        | Note: 'SWAP_BYTE2' has item with similar name:
+        |       - IN
+    ----'
+    [E0309] Error: invalid literal
+        ,-[ file:///test0.st:14:35 ]
+        |
+     14 |     SWAP_BYTE2 := (ROR(in ,8) AND 16#FF00FF00);
+        |                                   ^^^^^|^^^^^
+        |                                        `------- cannot infer '<integer>' to 'INT': number too large to fit in target type
+        |                                        |
+        |                                        `------- 'INT' is expected due to this
+    ----'
+    "#);
+}
