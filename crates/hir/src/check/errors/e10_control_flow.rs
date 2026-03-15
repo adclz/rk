@@ -20,10 +20,6 @@ use crate::{
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, salsa::Update)]
 pub enum ControlFlowError<'db> {
-    IsVarInput {
-        var: VariableDecl<'db>,
-        access: CallSite<'db>,
-    },
     AssignCallableType {
         typ: CallableType<'db>,
         access: CallSite<'db>,
@@ -56,7 +52,6 @@ impl<'db> ErrorCode for ControlFlowError<'db> {
     fn code(&self) -> &'static str {
         match self {
             Self::AssignCallableType { .. } => "E0226",
-            Self::IsVarInput { .. } => "E0227",
             Self::DirectType { .. } => "E0228",
             Self::CallNonCallableType { .. } => "E0229",
             Self::ContinueOutsideLoop { .. } => "E1001",
@@ -69,7 +64,6 @@ impl<'db> ErrorCode for ControlFlowError<'db> {
     fn description(&self) -> &'static str {
         match self {
             Self::AssignCallableType { .. }
-            | Self::IsVarInput { .. }
             | Self::DirectType { .. }
             | Self::CallNonCallableType { .. }
             | Self::AssignToConstant { .. } => "semantic violation",
@@ -82,15 +76,6 @@ impl<'db> ErrorCode for ControlFlowError<'db> {
 impl<'db> ToIdeDiagnostic<'db> for ControlFlowError<'db> {
     fn to_diagnostic(&self, db: &'db dyn WorkspaceDataBase) -> IdeDiagnostic {
         match self {
-            Self::IsVarInput { var, access } => diag()
-                .message(format!(
-                    "{} is an input variable and can not be assigned",
-                    var.get_name_ident(db).text(db)
-                ))
-                .severity(DiagnosticSeverity::ERROR)
-                .desc(self)
-                .range(access.get_span(db))
-                .call(),
             Self::AssignCallableType { typ, access } => diag()
                 .message(format!(
                     "'{}' is a callable type and can not be assigned",

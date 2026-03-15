@@ -409,17 +409,6 @@ impl<'db> Type<'db> {
 
         match self {
             Type::Variable((variable, multibits)) => {
-                // a variable of kind INPUT cannot be assigned to
-                if variable.is_input(db) {
-                    ctx.errors.push(
-                        ControlFlowError::IsVarInput {
-                            var: *variable,
-                            access: call_site,
-                        }
-                        .to_diagnostic(db),
-                    );
-                }
-
                 // a variable of callable type cannot be assigned to
                 if let Some(callable_typ) = variable.spec(db).infer(db).as_callable(db) {
                     ctx.errors.push(
@@ -524,3 +513,4 @@ impl<'db> CoerceError<'db> {
         .to_diagnostic(db)
     }
 }
+

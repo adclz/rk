@@ -102,13 +102,6 @@ fn duplicate_var_input_in_function_block(mut with_db: RootDatabase) {
         END_FUNCTION_BLOCK
     "#;
     assert_snapshot!(test_lint_diagnostics(&mut with_db, &[source]), @r"
-    [E0227] Error: semantic violation
-       ,-[ file:///test0.st:9:13 ]
-       |
-     9 |             x := y;
-       |             |
-       |             `-- x is an input variable and can not be assigned
-    ---'
     [W0103] Warning: duplicate variable section
        ,-[ file:///test0.st:6:9 ]
        |

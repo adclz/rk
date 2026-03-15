@@ -212,15 +212,7 @@ FUNCTION_BLOCK fb1
 
 END_FUNCTION_BLOCK"#;
 
-    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E0227] Error: semantic violation
-       ,-[ file:///test0.st:7:5 ]
-       |
-     7 |     test := 5;
-       |     ^^|^
-       |       `--- test is an input variable and can not be assigned
-    ---'
-    ");
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @"");
 }
 
 #[rstest]
