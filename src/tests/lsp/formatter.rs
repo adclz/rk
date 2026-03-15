@@ -81,8 +81,7 @@ END_FUNCTION_BLOCK
     		B: REAL;
     	END_VAR
 
-    	VAR_EXTERNAL
-    		CONSTANT
+    	VAR_EXTERNAL CONSTANT
     		B: REAL;
     	END_VAR
     END_FUNCTION_BLOCK
@@ -138,8 +137,7 @@ pub fn class_definition(mut with_db: RootDatabase) {
     		m_bCountUp: BOOL := TRUE
     	END_VAR
 
-    	VAR
-    		PUBLIC
+    	VAR PUBLIC
     		m_iUpperLimit: INT := +10000
     		m_iLowerLimit: INT := -10000
     	END_VAR
@@ -1305,5 +1303,131 @@ END_FUNCTION
     	c := c * 2 MOD 5;
 
     END_FUNCTION
+    ");
+}
+
+#[rstest]
+pub fn var_qualifier_on_same_line(mut with_db: RootDatabase) {
+    let source = r#"
+FUNCTION fn1 : REAL
+    VAR CONSTANT
+        A: REAL := 3.14;
+        B: REAL := 2.71;
+    END_VAR
+    VAR
+        x: REAL;
+    END_VAR
+
+    x := A + B;
+END_FUNCTION
+"#;
+
+    add_sources(&mut with_db, &[source]);
+    let document = with_db
+        .get_files()
+        .iter()
+        .last()
+        .unwrap()
+        .document(&with_db);
+
+    assert_snapshot!(fmt(document), @r"
+    FUNCTION fn1: REAL
+    	VAR CONSTANT
+    		A: REAL := 3.14;
+    		B: REAL := 2.71;
+    	END_VAR
+    	VAR
+    		x: REAL;
+    	END_VAR
+
+    	x := A + B;
+    END_FUNCTION
+    ");
+}
+
+#[rstest]
+pub fn var_retain_and_non_retain_qualifiers(mut with_db: RootDatabase) {
+    let source = r#"
+FUNCTION_BLOCK fb1
+    VAR_INPUT RETAIN
+        a: INT;
+    END_VAR
+
+    VAR_INPUT NON_RETAIN
+        b: INT;
+    END_VAR
+
+    VAR_OUTPUT RETAIN
+        c: INT;
+    END_VAR
+
+    VAR_OUTPUT NON_RETAIN
+        d: INT;
+    END_VAR
+
+    VAR RETAIN
+        e: INT;
+    END_VAR
+
+    VAR NON_RETAIN
+        f: INT;
+    END_VAR
+
+    VAR_GLOBAL CONSTANT
+        g: INT;
+    END_VAR
+
+    VAR_GLOBAL RETAIN
+        h: INT;
+    END_VAR
+
+    VAR_EXTERNAL CONSTANT
+        i: INT;
+    END_VAR
+END_FUNCTION_BLOCK
+"#;
+
+    add_sources(&mut with_db, &[source]);
+    let document = with_db
+        .get_files()
+        .iter()
+        .last()
+        .unwrap()
+        .document(&with_db);
+
+    assert_snapshot!(fmt(document), @r"
+    FUNCTION_BLOCK fb1
+    	VAR_INPUT RETAIN
+    		a: INT;
+    	END_VAR
+
+    	VAR_INPUT NON_RETAIN
+    		b: INT;
+    	END_VAR
+
+    	VAR_OUTPUT RETAIN
+    		c: INT;
+    	END_VAR
+
+    	VAR_OUTPUT NON_RETAIN
+    		d: INT;
+    	END_VAR
+    	VAR RETAIN
+    		e: INT;
+    	END_VAR
+    	VAR NON_RETAIN
+    		f: INT;
+    	END_VAR
+    	VAR_GLOBAL CONSTANT
+    		g: INT;
+    	END_VAR
+    	VAR_GLOBAL RETAIN
+    		h: INT;
+    	END_VAR
+
+    	VAR_EXTERNAL CONSTANT
+    		i: INT;
+    	END_VAR
+    END_FUNCTION_BLOCK
     ");
 }

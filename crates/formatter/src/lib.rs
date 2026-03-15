@@ -42,7 +42,7 @@ static SURROUND_SPACES: &str = r#"
     "RETURN"
     "EXIT"
     "CONTINUE"
-    "TASK" "RETAIN" "WITH" "ON"
+    "TASK" "CONSTANT" "RETAIN" "NON_RETAIN" "WITH" "ON"
    
     ":=" "=" "=>" "<=" "<" ">=" ">" "<>" "+" "-" "*" "/" 
     "&" "AND" "OR" "XOR" "MOD" "NOT"
@@ -70,17 +70,23 @@ static SURROUND_SPACES: &str = r#"
 "#;
 
 static NEW_LINES: &str = r#"
+; VAR sections that never have qualifiers
+[
+    "VAR_IN_OUT"
+    "VAR_TEMP"
+    "VAR_ACCESS"
+] @prepend_hardline @append_hardline
+
+; VAR sections that can have CONSTANT/RETAIN/NON_RETAIN qualifiers
+; (no @append_hardline — declarations already have @prepend_hardline)
 [
     "VAR"
     "VAR_INPUT"
     "VAR_OUTPUT"
-    "VAR_IN_OUT"
-    "VAR_TEMP"
     "VAR_EXTERNAL"
     "VAR_GLOBAL"
-    "VAR_ACCESS"
     "VAR_LOCATED"
-] @prepend_hardline @append_hardline
+] @prepend_hardline
 
 [
     "USING" 
