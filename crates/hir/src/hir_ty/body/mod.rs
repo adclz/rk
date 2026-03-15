@@ -166,6 +166,9 @@ pub struct BodyInferenceResult<'db> {
     // Mapping from parameter assignments to variables
     pub variable_of_param: FxHashMap<ParamAssign<'db>, VariableDecl<'db>>,
 
+    // For variadic parameters, stores the 1-based position index
+    pub variadic_position: FxHashMap<ParamAssign<'db>, usize>,
+
     // Mapping of direct variables to their types
     pub type_of_direct_variable: FxHashMap<DirectVariable<'db>, Type<'db>>,
 
@@ -227,6 +230,7 @@ impl<'db> BodyInferenceResult<'db> {
         Self {
             scope,
             variable_of_param: FxHashMap::default(),
+            variadic_position: FxHashMap::default(),
             type_of_direct_variable: FxHashMap::default(),
             type_of_invocation: FxHashMap::default(),
             type_of_expr: FxHashMap::default(),

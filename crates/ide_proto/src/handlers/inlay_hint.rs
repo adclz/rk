@@ -4,7 +4,9 @@ use hir::{
     HasName, HirNodeInfo,
     hir_def::{
         config::ConfigDecl,
-        expressions::expression::{InitExpr, InitExprKind, ParamAssign},
+        expressions::expression::{
+            InitExpr, InitExprKind, ParamAssign, ParamAssignKind,
+        },
         hir_node::HirNode,
         namespace::NamespaceDecl,
         pous::pou::Pou,
@@ -69,12 +71,30 @@ impl<'db> InlayHintHandler<'db> for Pou<'db> {
 
 impl<'db> InlayHintHandler<'db> for ParamAssign<'db> {
     fn inlay_hint(&'db self, db: &'db dyn WorkspaceDataBase) -> Option<InlayHint> {
+        // Formal parameters already show the name in code — no hint needed.
+        match self.kind(db) {
+            ParamAssignKind::FormalInput { .. } | ParamAssignKind::FormalOutput { .. } => {
+                return None;
+            }
+            ParamAssignKind::NonFormal { .. } => {}
+        }
+
         let infer = infer_body(db, self.scope_id(db));
         infer.variable_of_param.get(self).map(|var| {
-            let name = var.name(db).text(db);
+            let label = if var.variadic(db) {
+                let pos = infer
+                    .variadic_position
+                    .get(self)
+                    .copied()
+                    .unwrap_or(0);
+                format!("({pos}):")
+            } else {
+                let name = var.name(db).text(db);
+                format!("{name}:")
+            };
             InlayHint {
                 position: get_param_start_pos(db, self).get_span(db).lsp().start,
-                label: InlayHintLabel::String(format!("{name}:")),
+                label: InlayHintLabel::String(label),
                 kind: Some(InlayHintKind::PARAMETER),
                 padding_left: Some(false),
                 padding_right: Some(true),

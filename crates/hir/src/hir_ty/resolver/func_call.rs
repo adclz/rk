@@ -100,6 +100,7 @@ pub fn resolve_func_call<'db>(
 
     let mut seen = FxHashMap::default();
     let mut formal_idx = 0;
+    let mut variadic_count = 0;
     let len = func_call.params(db).len();
 
     // Check if the callable has a variadic parameter
@@ -198,7 +199,10 @@ pub fn resolve_func_call<'db>(
                     ctx.variable_of_param.insert(*parameter, *var);
 
                     // Don't advance past a variadic parameter
-                    if !var.variadic(db) {
+                    if var.variadic(db) {
+                        variadic_count += 1;
+                        ctx.variadic_position.insert(*parameter, variadic_count);
+                    } else {
                         formal_idx += 1;
                     }
                 } else {

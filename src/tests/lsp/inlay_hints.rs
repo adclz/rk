@@ -235,12 +235,43 @@ END_FUNCTION_BLOCK"#;
         ControlFlow::Continue(())
     });
 
+    // Formal parameters should not generate inlay hints
+    assert_debug_snapshot!(&result, @"[]");
+}
+
+#[rstest]
+pub fn non_formal_params_inlay_hints(mut with_db: RootDatabase) {
+    let source = r#"
+FUNCTION fn
+    VAR_INPUT
+        param1 : BYTE;
+        param2 : INT;
+    END_VAR
+END_FUNCTION
+
+FUNCTION_BLOCK fb1
+    fn(0, 0);
+END_FUNCTION_BLOCK"#;
+
+    add_sources(&mut with_db, &[source]);
+    let sema = semantic_index(&with_db, *with_db.get_files().iter().last().unwrap());
+    let mut result = vec![];
+    let _ = sema.walk_hir(&with_db, &mut |n| {
+        if let HirNode::Param(stmt) = n {
+            if let Some(inlay_hint) = stmt.inlay_hint(&with_db) {
+                result.push(inlay_hint);
+            }
+        }
+        ControlFlow::Continue(())
+    });
+
+    // Non-formal parameters should show their formal name
     assert_debug_snapshot!(&result, @r#"
     [
         InlayHint {
             position: Position {
-                line: 11,
-                character: 8,
+                line: 9,
+                character: 7,
             },
             label: String(
                 "param1:",
@@ -260,8 +291,8 @@ END_FUNCTION_BLOCK"#;
         },
         InlayHint {
             position: Position {
-                line: 12,
-                character: 8,
+                line: 9,
+                character: 10,
             },
             label: String(
                 "param2:",
@@ -279,13 +310,109 @@ END_FUNCTION_BLOCK"#;
             ),
             data: None,
         },
+    ]
+    "#);
+}
+
+#[rstest]
+pub fn variadic_params_inlay_hints(mut with_db: RootDatabase) {
+    let source = r#"
+FUNCTION fn
+    VAR_INPUT
+        param1 : INT;
+        args : INT...;
+    END_VAR
+END_FUNCTION
+
+FUNCTION_BLOCK fb1
+    fn(1, 2, 3, 4);
+END_FUNCTION_BLOCK"#;
+
+    add_sources(&mut with_db, &[source]);
+    let sema = semantic_index(&with_db, *with_db.get_files().iter().last().unwrap());
+    let mut result = vec![];
+    let _ = sema.walk_hir(&with_db, &mut |n| {
+        if let HirNode::Param(stmt) = n {
+            if let Some(inlay_hint) = stmt.inlay_hint(&with_db) {
+                result.push(inlay_hint);
+            }
+        }
+        ControlFlow::Continue(())
+    });
+
+    // Non-variadic shows name, variadic shows position
+    assert_debug_snapshot!(&result, @r#"
+    [
         InlayHint {
             position: Position {
-                line: 13,
-                character: 8,
+                line: 9,
+                character: 7,
             },
             label: String(
-                "param3:",
+                "param1:",
+            ),
+            kind: Some(
+                Parameter,
+            ),
+            text_edits: None,
+            tooltip: None,
+            padding_left: Some(
+                false,
+            ),
+            padding_right: Some(
+                true,
+            ),
+            data: None,
+        },
+        InlayHint {
+            position: Position {
+                line: 9,
+                character: 10,
+            },
+            label: String(
+                "(1):",
+            ),
+            kind: Some(
+                Parameter,
+            ),
+            text_edits: None,
+            tooltip: None,
+            padding_left: Some(
+                false,
+            ),
+            padding_right: Some(
+                true,
+            ),
+            data: None,
+        },
+        InlayHint {
+            position: Position {
+                line: 9,
+                character: 13,
+            },
+            label: String(
+                "(2):",
+            ),
+            kind: Some(
+                Parameter,
+            ),
+            text_edits: None,
+            tooltip: None,
+            padding_left: Some(
+                false,
+            ),
+            padding_right: Some(
+                true,
+            ),
+            data: None,
+        },
+        InlayHint {
+            position: Position {
+                line: 9,
+                character: 16,
+            },
+            label: String(
+                "(3):",
             ),
             kind: Some(
                 Parameter,
