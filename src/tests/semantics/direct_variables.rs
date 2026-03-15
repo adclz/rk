@@ -326,3 +326,93 @@ END_FUNCTION_BLOCK"#;
     ---'
     ");
 }
+
+#[rstest]
+fn multibits_offset_out_of_range_byte(mut with_db: RootDatabase) {
+    let source = r#"
+FUNCTION_BLOCK fb1
+    VAR
+        cnt: BYTE;
+        Q0: BOOL;
+        Q7: BOOL;
+        Q8: BOOL;
+    END_VAR
+
+    Q0 := cnt.0;  // valid: bit 0 of BYTE
+    Q7 := cnt.7;  // valid: bit 7 of BYTE
+    Q8 := cnt.8;  // invalid: bit 8 exceeds BYTE (0..7)
+
+END_FUNCTION_BLOCK"#;
+
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
+    [E0229] Error: multibit access out of range
+        ,-[ file:///test0.st:12:11 ]
+        |
+      4 |         cnt: BYTE;
+        |         ^^^^|^^^^
+        |             `------ 'cnt' is declared here
+        |
+     12 |     Q8 := cnt.8;  // invalid: bit 8 exceeds BYTE (0..7)
+        |           ^|^
+        |            `--- offset 8 is out of range for type 'BYTE' (valid range: 0..7)
+    ----'
+    ");
+}
+
+#[rstest]
+fn multibits_offset_out_of_range_word(mut with_db: RootDatabase) {
+    let source = r#"
+FUNCTION_BLOCK fb1
+    VAR
+        w: WORD;
+        Q: BOOL;
+    END_VAR
+
+    Q := w.15;  // valid: bit 15 of WORD
+    Q := w.16;  // invalid: bit 16 exceeds WORD (0..15)
+
+END_FUNCTION_BLOCK"#;
+
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
+    [E0229] Error: multibit access out of range
+       ,-[ file:///test0.st:9:10 ]
+       |
+     4 |         w: WORD;
+       |         ^^^|^^^
+       |            `----- 'w' is declared here
+       |
+     9 |     Q := w.16;  // invalid: bit 16 exceeds WORD (0..15)
+       |          |
+       |          `-- offset 16 is out of range for type 'WORD' (valid range: 0..15)
+    ---'
+    ");
+}
+
+#[rstest]
+fn multibits_access_offset_out_of_range(mut with_db: RootDatabase) {
+    let source = r#"
+FUNCTION_BLOCK fb1
+    VAR
+        w: WORD;
+        b: BYTE;
+    END_VAR
+
+    b := w.%B1;  // valid: byte 1 of WORD (bytes 0-1)
+    b := w.%B2;  // invalid: byte 2 exceeds WORD (0..1)
+
+END_FUNCTION_BLOCK"#;
+
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
+    [E0229] Error: multibit access out of range
+       ,-[ file:///test0.st:9:10 ]
+       |
+     4 |         w: WORD;
+       |         ^^^|^^^
+       |            `----- 'w' is declared here
+       |
+     9 |     b := w.%B2;  // invalid: byte 2 exceeds WORD (0..1)
+       |          |
+       |          `-- offset 2 is out of range for type 'WORD' (valid range: 0..1)
+    ---'
+    ");
+}

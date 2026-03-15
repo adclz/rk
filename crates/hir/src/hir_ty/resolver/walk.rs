@@ -9,7 +9,7 @@ use crate::{
     },
     hir_def::{
         expressions::{
-            expression::{BeginPathExpr, InitExpr, MultibitsPart, PathExpr},
+            expression::{BeginPathExpr, InitExpr, Integer, MultibitsPart, PathExpr},
             invocation::{Invocation, InvocationKind},
             spec::StructElement,
         },
@@ -26,7 +26,7 @@ use crate::{
         },
         infer::Infer,
         resolver::{Resolver, invocation::resolve_invocation, visibility::check_visibility},
-        ty::Type,
+        ty::{Size, Type},
     },
 };
 
@@ -55,6 +55,78 @@ enum FieldLookup<'db> {
     Variable(VariableDecl<'db>),
     Method(MethodRef<'db>),
     NotFound,
+}
+
+/// Parse an `Integer` offset to a `usize`, returning `None` if parsing fails.
+fn parse_offset(db: &dyn WorkspaceDataBase, offset: Integer) -> Option<usize> {
+    offset.ident(db).text(db).parse::<usize>().ok()
+}
+
+/// Size in bits for a multibit access prefix character (X, B, W, D, L).
+fn access_char_bits(ch: char) -> Option<usize> {
+    match ch {
+        'X' => Some(1),
+        'B' => Some(8),
+        'W' => Some(16),
+        'D' => Some(32),
+        'L' => Some(64),
+        _ => None,
+    }
+}
+
+/// Check that a multibit access offset is within the bounds of the variable's base type.
+fn check_multibits_bounds<'db>(
+    db: &'db dyn WorkspaceDataBase,
+    expr: PathExpr<'db>,
+    var: VariableDecl<'db>,
+    multibits: MultibitsPart,
+    ctx: &mut BodyInferenceResult<'db>,
+) {
+    let base_type = var.spec(db).infer(db).normalize(db);
+    let Size::Size(base_bits) = base_type.get_size() else {
+        return;
+    };
+
+    let (access_bits, offset_val) = match multibits {
+        MultibitsPart::Offset(offset) => {
+            let Some(n) = parse_offset(db, offset) else {
+                return;
+            };
+            (1, n)
+        }
+        MultibitsPart::AccessOffset { access, offset } => {
+            let Some(n) = parse_offset(db, offset) else {
+                return;
+            };
+            let Some(ch) = access.text(db).chars().next() else {
+                return;
+            };
+            let Some(bits) = access_char_bits(ch) else {
+                return;
+            };
+            (bits, n)
+        }
+    };
+
+    // The access occupies `access_bits` starting at position `offset_val * access_bits`.
+    // Valid when: (offset_val + 1) * access_bits <= base_bits
+    if (offset_val + 1) * access_bits > base_bits {
+        let max_offset = if access_bits <= base_bits {
+            base_bits / access_bits - 1
+        } else {
+            0
+        };
+        ctx.errors.push(
+            ResolveError::MultibitsOutOfRange {
+                expr,
+                var,
+                offset: offset_val,
+                max_offset,
+                base_type,
+            }
+            .to_diagnostic(db),
+        );
+    }
 }
 
 impl<'db> Type<'db> {
@@ -312,6 +384,9 @@ impl<'db> Type<'db> {
                 place.current_path = expr;
             }
             FieldLookup::Variable(var) => {
+                if let Some(mb) = multibits {
+                    check_multibits_bounds(db, expr, var, mb, ctx);
+                }
                 let ty = Type::new_var_with_multibits(db, var, multibits);
                 ctx.type_of_path_expr.insert(expr, ty);
                 ctx.variables_used.insert(var);

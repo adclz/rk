@@ -158,6 +158,14 @@ pub enum ResolveError<'db> {
         span: Span,
         candidates: Vec<(Pou<'db>, NamespacePath)>,
     },
+    /// Multibit access offset exceeds the size of the base type.
+    MultibitsOutOfRange {
+        expr: PathExpr<'db>,
+        var: VariableDecl<'db>,
+        offset: usize,
+        max_offset: usize,
+        base_type: Type<'db>,
+    },
 }
 
 impl<'db> ErrorCode for ResolveError<'db> {
@@ -190,6 +198,7 @@ impl<'db> ErrorCode for ResolveError<'db> {
             Self::VariadicNotInInput { .. } => "E0226",
             Self::MultipleVariadicVariables { .. } => "E0227",
             Self::VariadicMixedWithOtherInputs { .. } => "E0228",
+            Self::MultibitsOutOfRange { .. } => "E0229",
         }
     }
 
@@ -219,6 +228,7 @@ impl<'db> ErrorCode for ResolveError<'db> {
             Self::ConfigInstInitUnknownInstance { .. }
             | Self::ConfigInstInitFieldNotFound { .. } => "configuration error",
             Self::MultipleItemsInScope { .. } => "multiple items in scope",
+            Self::MultibitsOutOfRange { .. } => "multibit access out of range",
         }
     }
 }
@@ -657,6 +667,33 @@ impl<'db> ToIdeDiagnostic<'db> for ResolveError<'db> {
                     variadic_var.get_span(db),
                 ));
                 diag.with_note("a variadic parameter must be the only parameter in VAR_INPUT".into());
+                diag
+            }
+            Self::MultibitsOutOfRange {
+                expr,
+                var,
+                offset,
+                max_offset,
+                base_type,
+            } => {
+                let mut diag = diag()
+                    .message(format!(
+                        "offset {} is out of range for type '{}' (valid range: 0..{})",
+                        offset,
+                        base_type.type_name(db),
+                        max_offset,
+                    ))
+                    .severity(DiagnosticSeverity::ERROR)
+                    .desc(self)
+                    .range(expr.get_span(db))
+                    .call();
+
+                diag.with_related(Related::new(
+                    format!("'{}' is declared here", var.name(db).text(db)),
+                    var.scope_id(db).file(db),
+                    var.get_span(db),
+                ));
+
                 diag
             }
             Self::MultipleItemsInScope {
