@@ -378,7 +378,12 @@ module.exports = grammar({
       ),
 
     real_value: ($) =>
-      token(/[0-9][0-9_]*\.[0-9][0-9_]*([eE][-+]?[0-9][0-9_]*)?/),
+      token(
+        choice(
+          /[0-9][0-9_]*\.[0-9][0-9_]*([eE][-+]?[0-9][0-9_]*)?/,
+          /[0-9][0-9_]*[eE][-+]?[0-9][0-9_]*/,
+        ),
+      ),
 
     bool_literal: ($) =>
       choice($.bool_literal_with_string, $.bool_literal_with_numeric),
