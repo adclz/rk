@@ -45,7 +45,7 @@ static SURROUND_SPACES: &str = r#"
     "TASK" "RETAIN" "WITH" "ON"
    
     ":=" "=" "=>" "<=" "<" ">=" ">" "<>" "+" "-" "*" "/" 
-    "&" "AND" "OR" "NOT"
+    "&" "AND" "OR" "XOR" "MOD" "NOT"
     (line_comment)
     (c_style_comment)
     (pascal_style_comment)

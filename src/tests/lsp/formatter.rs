@@ -1264,3 +1264,46 @@ END_FUNCTION
     END_FUNCTION
     ");
 }
+
+#[rstest]
+pub fn keyword_operators_spacing(mut with_db: RootDatabase) {
+    let source = r#"
+FUNCTION fn1
+    VAR
+        a: BOOL;
+        b: DWORD;
+        c: INT;
+    END_VAR
+
+    a := a XOR TRUE;
+    b := b AND b OR b XOR b;
+    c := c MOD 3;
+    c := c * 2 MOD 5;
+
+END_FUNCTION
+"#;
+
+    add_sources(&mut with_db, &[source]);
+    let document = with_db
+        .get_files()
+        .iter()
+        .last()
+        .unwrap()
+        .document(&with_db);
+
+    assert_snapshot!(fmt(document), @r"
+    FUNCTION fn1
+    	VAR
+    		a: BOOL;
+    		b: DWORD;
+    		c: INT;
+    	END_VAR
+
+    	a := a XOR TRUE;
+    	b := b AND b OR b XOR b;
+    	c := c MOD 3;
+    	c := c * 2 MOD 5;
+
+    END_FUNCTION
+    ");
+}
