@@ -493,8 +493,8 @@ impl<'db> InferExprCtx<'db> {
         right: Expr<'db>,
         inference_results: &mut BodyInferenceResult<'db>,
     ) -> CoerceResult<'db> {
-        let lhs_ty = inference_results.type_of_expr[&left];
-        let rhs_ty = inference_results.type_of_expr[&right];
+        let lhs_ty = inference_results.type_of_expr_with_adjustments(db, left);
+        let rhs_ty = inference_results.type_of_expr_with_adjustments(db, right);
 
         let mut table = InferenceTable::new();
         table.add_type(db, left, lhs_ty, self.resolver);

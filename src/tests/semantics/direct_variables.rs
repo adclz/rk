@@ -433,3 +433,20 @@ END_FUNCTION_BLOCK"#;
 
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @"");
 }
+
+#[rstest]
+fn valid_comparison_byte_with_integer_literal(mut with_db: RootDatabase) {
+    let source = r#"
+FUNCTION_BLOCK fb1
+    VAR
+        SX: ARRAY[1..7] OF BYTE;
+        SN: INT;
+    END_VAR
+
+    IF SX[SN] = 0 THEN
+    END_IF;
+
+END_FUNCTION_BLOCK"#;
+
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @"");
+}
