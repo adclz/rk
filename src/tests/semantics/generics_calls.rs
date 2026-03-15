@@ -790,3 +790,38 @@ END_FUNCTION
 "#;
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @"");
 }
+
+#[rstest]
+fn generic_does_not_cascade_on_never_arg(mut with_db: RootDatabase) {
+    let source = r#"
+FUNCTION EXP<T: ANY_REAL> : T
+    VAR_INPUT
+        IN: T;
+    END_VAR
+END_FUNCTION
+
+FUNCTION TANH : REAL
+    VAR_INPUT
+        X: REAL;
+    END_VAR
+    // lowercase 'x' is unresolved — should only report "no item found",
+    // not cascade into "does not satisfy constraint" on EXP's generic.
+    TANH := 1.0 - 2.0 / (EXP(2.0 * x) + 1.0);
+END_FUNCTION
+"#;
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r#"
+[E0204] Error: no item found in scope
+    ,-[ file:///test0.st:14:36 ]
+    |
+ 14 |     TANH := 1.0 - 2.0 / (EXP(2.0 * x) + 1.0);
+    |                                    |
+    |                                    `-- no item "x" found in scope
+    |
+    | Note 1: 'TANH' has item with similar name:
+    |         - X
+    |
+    | Note 2: an item with similar name available in scope:
+    |         - EXP
+----'
+"#);
+}

@@ -84,13 +84,17 @@ pub fn resolve_func_call<'db>(
             .insert(expr, Type::CallableType(callable));
     }
 
-    // Validate generic type arguments (returns false if validation failed)
-    if !validate_generic_type_args(db, &callable, func_call, ctx, resolver) {
-        // Set path expr type to Never to prevent cascading errors
-        // (the caller reads this to determine the func call's return type)
-        if let Some(expr) = func_call.path(db).expr(db) {
-            ctx.type_of_path_expr.insert(expr, Type::Never);
+    // Validate generic type arguments
+    // Returns: None = success, Some(true) = failed due to Never args, Some(false) = real failure
+    let generic_result = validate_generic_type_args(db, &callable, func_call, ctx, resolver);
+    if let Some(caused_by_never) = generic_result {
+        if !caused_by_never {
+            // Real constraint/arity failure — set Never to suppress cascading errors
+            if let Some(expr) = func_call.path(db).expr(db) {
+                ctx.type_of_path_expr.insert(expr, Type::Never);
+            }
         }
+        // Either way, skip parameter coercion
         return;
     }
 
@@ -388,17 +392,19 @@ fn coerce_with_var_target<'db>(
     }
 }
 
-/// Returns true if validation succeeded, false if it failed (and errors were emitted)
+/// Returns `None` if validation succeeded.
+/// Returns `Some(true)` if it failed due to Never-typed arguments (already-reported errors).
+/// Returns `Some(false)` if it failed for a real reason (constraint mismatch, etc.).
 fn validate_generic_type_args<'db>(
     db: &'db dyn WorkspaceDataBase,
     callable: &crate::hir_ty::ty::CallableType<'db>,
     func_call: FuncCall<'db>,
     ctx: &mut BodyInferenceResult<'db>,
     resolver: Resolver<'db>,
-) -> bool {
+) -> Option<bool> {
     let generics = callable.generics(db);
     if generics.is_empty() {
-        return true;
+        return None;
     }
 
     let type_args = func_call.type_args(db);
@@ -408,7 +414,8 @@ fn validate_generic_type_args<'db>(
 
     // Try to infer generic types from arguments if not explicitly provided
     if type_args.is_empty() {
-        let inferred_types = infer_generic_types_from_args(db, callable, func_call, ctx, resolver);
+        let (inferred_types, has_never_args) =
+            infer_generic_types_from_args(db, callable, func_call, ctx, resolver);
 
         if inferred_types.len() == generics.len() {
             // Successfully inferred all generic types — validate and store
@@ -420,9 +427,15 @@ fn validate_generic_type_args<'db>(
                 call_site,
                 ctx,
             ) {
-                return false;
+                return Some(false);
             }
-            return true;
+            return None;
+        }
+
+        // If inference failed because arguments were Never (already-reported errors),
+        // don't emit an additional "missing type arguments" diagnostic.
+        if has_never_args {
+            return Some(true);
         }
 
         // E0313: Could not infer types - require explicit type arguments
@@ -433,7 +446,7 @@ fn validate_generic_type_args<'db>(
             }
             .to_diagnostic(db),
         );
-        return false;
+        return Some(false);
     }
 
     // E0314: Wrong number of type arguments
@@ -447,7 +460,7 @@ fn validate_generic_type_args<'db>(
             }
             .to_diagnostic(db),
         );
-        return false;
+        return Some(false);
     }
 
     // Resolve concrete types from type argument specs
@@ -460,14 +473,17 @@ fn validate_generic_type_args<'db>(
         .collect();
 
     // Validate and store
-    validate_and_store_generic_substitutions(
+    match validate_and_store_generic_substitutions(
         db,
         generics,
         &concrete_types,
         callable_scope,
         call_site,
         ctx,
-    )
+    ) {
+        true => None,
+        false => Some(false),
+    }
 }
 
 /// Validate all constraints (type bounds + INTO), then store the substitution map.
@@ -544,20 +560,25 @@ fn validate_and_store_generic_substitutions<'db>(
 
 /// Infer generic type arguments from function call arguments.
 /// Returns a vector of inferred types, one for each generic parameter.
+/// Returns `(inferred_types, has_never_args)`.
+/// `has_never_args` is true when at least one argument resolved to `Never`,
+/// meaning inference gaps are caused by already-reported errors and should
+/// not emit additional "missing type arguments" diagnostics.
 fn infer_generic_types_from_args<'db>(
     db: &'db dyn WorkspaceDataBase,
     callable: &crate::hir_ty::ty::CallableType<'db>,
     func_call: FuncCall<'db>,
     ctx: &mut BodyInferenceResult<'db>,
     resolver: Resolver<'db>,
-) -> Vec<Type<'db>> {
+) -> (Vec<Type<'db>>, bool) {
     let generics = callable.generics(db);
     if generics.is_empty() {
-        return vec![];
+        return (vec![], false);
     }
 
     // Map from generic parameter index to inferred type
     let mut inferred: FxHashMap<usize, Type<'db>> = FxHashMap::default();
+    let mut has_never_args = false;
 
     let params = func_call.params(db);
     let def_map = callable.def_map(db);
@@ -590,6 +611,9 @@ fn infer_generic_types_from_args<'db>(
                 if let Some(var) = var {
                     let expected_type = var.spec(db).infer(db);
                     let actual_type = infer_expr_type_for_inference(db, resolver, value, ctx);
+                    if actual_type.is_never() {
+                        has_never_args = true;
+                    }
                     unify_types(db, expected_type, actual_type, generics, &mut inferred);
                 }
                 formal_idx += 1;
@@ -599,6 +623,9 @@ fn infer_generic_types_from_args<'db>(
                 if let Some(var) = var {
                     let expected_type = var.spec(db).infer(db);
                     let actual_type = infer_expr_type_for_inference(db, resolver, value, ctx);
+                    if actual_type.is_never() {
+                        has_never_args = true;
+                    }
                     unify_types(db, expected_type, actual_type, generics, &mut inferred);
                 }
             }
@@ -611,10 +638,10 @@ fn infer_generic_types_from_args<'db>(
     for (idx, _) in generics.iter().enumerate() {
         match inferred.get(&idx) {
             Some(&typ) => result.push(typ),
-            None => return vec![], // Could not infer this parameter
+            None => return (vec![], has_never_args), // Could not infer this parameter
         }
     }
-    result
+    (result, has_never_args)
 }
 
 /// Helper function to infer the type of an expression for type inference
@@ -655,6 +682,12 @@ fn unify_types<'db>(
     generics: &[crate::hir_def::pous::generics::GenericParam<'db>],
     inferred: &mut FxHashMap<usize, Type<'db>>,
 ) {
+    // Never types already have their own diagnostic — skip them to avoid
+    // cascading "does not satisfy constraint" errors.
+    if actual.is_never() {
+        return;
+    }
+
     match expected {
         Type::Generic(param) => {
             // Find the index of this generic parameter
