@@ -1176,3 +1176,52 @@ END_FUNCTION
     END_FUNCTION
     ");
 }
+
+#[rstest]
+pub fn numeric_literals_preserved(mut with_db: RootDatabase) {
+    let source = r#"
+FUNCTION fn1
+    VAR
+        a: DWORD;
+        b: DWORD;
+        c: INT;
+        d: INT;
+        e: REAL;
+    END_VAR
+
+    a := 16#FF00FF00;
+    b := 16#DEADBEEF;
+    c := 2#1010_0101;
+    d := 8#777;
+    e := 2E-3;
+
+END_FUNCTION
+"#;
+
+    add_sources(&mut with_db, &[source]);
+    let document = with_db
+        .get_files()
+        .iter()
+        .last()
+        .unwrap()
+        .document(&with_db);
+
+    assert_snapshot!(fmt(document), @r"
+    FUNCTION fn1
+    	VAR
+    		a: DWORD;
+    		b: DWORD;
+    		c: INT;
+    		d: INT;
+    		e: REAL;
+    	END_VAR
+
+    	a := 16#FF00FF00;
+    	b := 16#DEADBEEF;
+    	c := 2#1010_0101;
+    	d := 8#777;
+    	e := 2E-3;
+
+    END_FUNCTION
+    ");
+}

@@ -361,11 +361,11 @@ module.exports = grammar({
     signed_int: ($) =>
       prec(RK_PREC.unary + 1, seq(optional(choice("+", "-")), $.unsigned_int)),
 
-    binary_int: ($) => seq("2#", field("value", $._bit_value)),
+    binary_int: (_) => token(seq("2#", /[?:_01]*/)),
 
-    octal_int: ($) => seq("8#", field("value", $._octal_value)),
+    octal_int: (_) => token(seq("8#", /[?:_0-7]*/)),
 
-    hex_int: ($) => seq("16#", field("value", $._hex_value)),
+    hex_int: (_) => token(seq("16#", /[?:_0-9a-fA-F]*/)),
 
     real_literal: ($) =>
       seq(
@@ -2014,10 +2014,7 @@ module.exports = grammar({
     // Table 1 - Character sets
     // Table 2 - Identifiers
 
-    _bit_value: ($) => /[?:_01]*/,
-    _octal_value: ($) => /[?:_0-7]*/,
     _hex_digit: ($) => /[?:_0-9a-fA-F]/,
-    _hex_value: ($) => /[?:_0-9a-fA-F]*/,
     identifier: (_) => /[_\p{XID_Start}][_\p{XID_Continue}]*/,
     adress_identifier: (_) => /[A-Za-z]*/,
   },

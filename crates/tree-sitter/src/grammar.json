@@ -681,55 +681,52 @@
       }
     },
     "binary_int": {
-      "type": "SEQ",
-      "members": [
-        {
-          "type": "STRING",
-          "value": "2#"
-        },
-        {
-          "type": "FIELD",
-          "name": "value",
-          "content": {
-            "type": "SYMBOL",
-            "name": "_bit_value"
+      "type": "TOKEN",
+      "content": {
+        "type": "SEQ",
+        "members": [
+          {
+            "type": "STRING",
+            "value": "2#"
+          },
+          {
+            "type": "PATTERN",
+            "value": "[?:_01]*"
           }
-        }
-      ]
+        ]
+      }
     },
     "octal_int": {
-      "type": "SEQ",
-      "members": [
-        {
-          "type": "STRING",
-          "value": "8#"
-        },
-        {
-          "type": "FIELD",
-          "name": "value",
-          "content": {
-            "type": "SYMBOL",
-            "name": "_octal_value"
+      "type": "TOKEN",
+      "content": {
+        "type": "SEQ",
+        "members": [
+          {
+            "type": "STRING",
+            "value": "8#"
+          },
+          {
+            "type": "PATTERN",
+            "value": "[?:_0-7]*"
           }
-        }
-      ]
+        ]
+      }
     },
     "hex_int": {
-      "type": "SEQ",
-      "members": [
-        {
-          "type": "STRING",
-          "value": "16#"
-        },
-        {
-          "type": "FIELD",
-          "name": "value",
-          "content": {
-            "type": "SYMBOL",
-            "name": "_hex_value"
+      "type": "TOKEN",
+      "content": {
+        "type": "SEQ",
+        "members": [
+          {
+            "type": "STRING",
+            "value": "16#"
+          },
+          {
+            "type": "PATTERN",
+            "value": "[?:_0-9a-fA-F]*"
           }
-        }
-      ]
+        ]
+      }
     },
     "real_literal": {
       "type": "SEQ",
@@ -9798,21 +9795,9 @@
       "type": "STRING",
       "value": "todo_fbd"
     },
-    "_bit_value": {
-      "type": "PATTERN",
-      "value": "[?:_01]*"
-    },
-    "_octal_value": {
-      "type": "PATTERN",
-      "value": "[?:_0-7]*"
-    },
     "_hex_digit": {
       "type": "PATTERN",
       "value": "[?:_0-9a-fA-F]"
-    },
-    "_hex_value": {
-      "type": "PATTERN",
-      "value": "[?:_0-9a-fA-F]*"
     },
     "identifier": {
       "type": "PATTERN",
