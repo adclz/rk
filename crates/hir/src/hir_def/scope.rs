@@ -180,6 +180,17 @@ impl<'db> Scope<'db> {
     pub fn is_method_prot(&self) -> bool {
         matches!(self.kind, ScopeKind::MethodProt(_))
     }
+
+    pub fn is_test(&self, db: &'db dyn WorkspaceDataBase) -> bool {
+        match self.kind {
+            ScopeKind::Program(p) => p.is_test(db),
+            ScopeKind::Pou(pou) => match pou {
+                Pou::Function(f) => f.is_test(db),
+                _ => false,
+            },
+            _ => false,
+        }
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, salsa::Update)]

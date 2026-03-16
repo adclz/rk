@@ -57,6 +57,7 @@ impl<'db> SemanticIndexBuilder<'db> {
         let result = Pou::Function(Function::new(
             self.db,
             name,
+            func.test.is_some(),
             func.name.cast(self.ast).into(),
             generics,
             variables,

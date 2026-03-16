@@ -15,6 +15,9 @@ pub struct Function<'db> {
     pub name: Ident,
 
     #[tracked]
+    pub is_test: bool,
+
+    #[tracked]
     #[no_eq]
     pub name_id: AstId,
 
