@@ -67,6 +67,25 @@ static SURROUND_SPACES: &str = r#"
 (generic_type_args ">" @prepend_antispace @append_antispace)
 (generic_spec "<" @prepend_antispace @append_antispace)
 (generic_spec ">" @prepend_antispace @append_antispace)
+
+; Extern pragma: normalize spacing between children
+(extern_pragma "{" @append_antispace)
+(extern_pragma "extern" @append_space)
+(extern_pragma module: (pragma_string) @append_space)
+(extern_pragma name: (pragma_string) @append_space)
+(extern_pragma params: (extern_param_list) @prepend_space)
+(extern_pragma result: (extern_result) @prepend_space)
+(extern_pragma "}" @prepend_antispace)
+(extern_param_list "(" @append_antispace)
+(extern_param_list "param" @append_space)
+(extern_param_list ")" @prepend_antispace)
+(extern_result "(" @append_antispace)
+(extern_result "result" @append_space)
+(extern_result ")" @prepend_antispace)
+(pragma_string) @leaf
+
+; Test pragma: on its own line before the POU keyword
+(test_pragma) @leaf @append_hardline
 "#;
 
 static NEW_LINES: &str = r#"
@@ -164,6 +183,7 @@ static NEW_LINES: &str = r#"
     (func_call)
     (invocation)
     (super_body_invocation)
+    (extern_pragma)
     "RETURN"
     (if_stmt)
     (case_stmt)
@@ -335,6 +355,7 @@ static ALLOW_BLANK_LINE: &str = r#"
     "STRUCT" "END_STRUCT"
     (line_comment) (c_style_comment) (pascal_style_comment)
     (namespace_elements)
+    (test_pragma)
 ] @allow_blank_line_before
 
 (stmt_list . (_) @allow_blank_line_before)
