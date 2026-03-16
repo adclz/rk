@@ -663,6 +663,30 @@
       "type": "PATTERN",
       "value": "\\'[^\\']*\\'"
     },
+    "test_pragma": {
+      "type": "PREC",
+      "value": 1,
+      "content": {
+        "type": "TOKEN",
+        "content": {
+          "type": "SEQ",
+          "members": [
+            {
+              "type": "STRING",
+              "value": "{"
+            },
+            {
+              "type": "STRING",
+              "value": "test"
+            },
+            {
+              "type": "STRING",
+              "value": "}"
+            }
+          ]
+        }
+      }
+    },
     "constant": {
       "type": "CHOICE",
       "members": [
@@ -4633,6 +4657,22 @@
       "type": "SEQ",
       "members": [
         {
+          "type": "FIELD",
+          "name": "test",
+          "content": {
+            "type": "CHOICE",
+            "members": [
+              {
+                "type": "SYMBOL",
+                "name": "test_pragma"
+              },
+              {
+                "type": "BLANK"
+              }
+            ]
+          }
+        },
+        {
           "type": "STRING",
           "value": "FUNCTION"
         },
@@ -6135,6 +6175,22 @@
     "prog_decl": {
       "type": "SEQ",
       "members": [
+        {
+          "type": "FIELD",
+          "name": "test",
+          "content": {
+            "type": "CHOICE",
+            "members": [
+              {
+                "type": "SYMBOL",
+                "name": "test_pragma"
+              },
+              {
+                "type": "BLANK"
+              }
+            ]
+          }
+        },
         {
           "type": "STRING",
           "value": "PROGRAM"

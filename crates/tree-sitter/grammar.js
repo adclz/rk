@@ -358,6 +358,10 @@ module.exports = grammar({
 
     pragma_string: (_) => /\'[^\']*\'/,
 
+    // Test pragma - marks a POU as a test entry point
+    // {test}
+    test_pragma: (_) => prec(1, token(seq("{", "test", "}"))),
+
     // Table 5 - Numeric literal
 
     constant: ($) =>
@@ -1081,6 +1085,7 @@ module.exports = grammar({
 
     func_decl: ($) =>
       seq(
+        field("test", optional($.test_pragma)),
         "FUNCTION",
         field("spec", optional($.access_spec)),
         field("name", $.identifier),
@@ -1316,6 +1321,7 @@ module.exports = grammar({
 
     prog_decl: ($) =>
       seq(
+        field("test", optional($.test_pragma)),
         "PROGRAM",
         field("name", $.identifier),
         field(

@@ -3435,6 +3435,16 @@
           }
         ]
       },
+      "test": {
+        "multiple": false,
+        "required": false,
+        "types": [
+          {
+            "type": "test_pragma",
+            "named": true
+          }
+        ]
+      },
       "variables": {
         "multiple": true,
         "required": false,
@@ -5365,6 +5375,16 @@
             "named": true
           }
         ]
+      },
+      "test": {
+        "multiple": false,
+        "required": false,
+        "types": [
+          {
+            "type": "test_pragma",
+            "named": true
+          }
+        ]
       }
     }
   },
@@ -6349,6 +6369,11 @@
         }
       ]
     }
+  },
+  {
+    "type": "test_pragma",
+    "named": true,
+    "fields": {}
   },
   {
     "type": "this_invocation",

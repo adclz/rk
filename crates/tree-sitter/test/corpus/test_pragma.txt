@@ -1,0 +1,50 @@
+================================================================================
+Test pragma on function
+================================================================================
+
+{test}
+FUNCTION my_test : INT
+END_FUNCTION
+
+--------------------------------------------------------------------------------
+
+   (source_file
+      (func_decl
+         test: (test_pragma)
+         name: (identifier)
+         return_type: (numeric_type_name
+            (int_type_name
+               (sign_int_type_name
+                  (int_name))))))
+
+================================================================================
+Test pragma on program
+================================================================================
+
+{test}
+PROGRAM my_test
+END_PROGRAM
+
+--------------------------------------------------------------------------------
+
+   (source_file
+      (prog_decl
+         test: (test_pragma)
+         name: (identifier)))
+
+================================================================================
+Function without test pragma
+================================================================================
+
+FUNCTION normal_func : INT
+END_FUNCTION
+
+--------------------------------------------------------------------------------
+
+   (source_file
+      (func_decl
+         name: (identifier)
+         return_type: (numeric_type_name
+            (int_type_name
+               (sign_int_type_name
+                  (int_name))))))
