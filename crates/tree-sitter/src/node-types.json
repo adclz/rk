@@ -532,6 +532,10 @@
         "named": true
       },
       {
+        "type": "extern_pragma",
+        "named": true
+      },
+      {
         "type": "for_stmt",
         "named": true
       },
@@ -2641,6 +2645,98 @@
         "types": [
           {
             "type": "_expression",
+            "named": true
+          }
+        ]
+      }
+    }
+  },
+  {
+    "type": "extern_param_list",
+    "named": true,
+    "fields": {
+      "var": {
+        "multiple": true,
+        "required": true,
+        "types": [
+          {
+            "type": "identifier",
+            "named": true
+          }
+        ]
+      }
+    }
+  },
+  {
+    "type": "extern_pragma",
+    "named": true,
+    "fields": {
+      "module": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "pragma_string",
+            "named": true
+          }
+        ]
+      },
+      "name": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "pragma_string",
+            "named": true
+          }
+        ]
+      },
+      "params": {
+        "multiple": false,
+        "required": false,
+        "types": [
+          {
+            "type": "extern_param_list",
+            "named": true
+          }
+        ]
+      },
+      "result": {
+        "multiple": false,
+        "required": false,
+        "types": [
+          {
+            "type": "extern_result",
+            "named": true
+          }
+        ]
+      },
+      "type_spec": {
+        "multiple": true,
+        "required": false,
+        "types": [
+          {
+            "type": ":",
+            "named": false
+          },
+          {
+            "type": "_elem_type_name",
+            "named": true
+          }
+        ]
+      }
+    }
+  },
+  {
+    "type": "extern_result",
+    "named": true,
+    "fields": {
+      "var": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "identifier",
             "named": true
           }
         ]
@@ -7613,6 +7709,10 @@
     "named": true
   },
   {
+    "type": "extern",
+    "named": false
+  },
+  {
     "type": "fbd_network",
     "named": true
   },
@@ -7746,7 +7846,15 @@
     "named": true
   },
   {
+    "type": "param",
+    "named": false
+  },
+  {
     "type": "partly",
+    "named": true
+  },
+  {
+    "type": "pragma_string",
     "named": true
   },
   {
@@ -7780,6 +7888,10 @@
   {
     "type": "ref_to",
     "named": true
+  },
+  {
+    "type": "result",
+    "named": false
   },
   {
     "type": "sint_name",

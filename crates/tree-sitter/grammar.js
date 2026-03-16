@@ -337,6 +337,28 @@ module.exports = grammar({
 
     pragma: ($) => seq("{", repeat(choice(/[^*]/, /\*[^)]/)), "}"),
 
+    // Extern pragma - declares a WASM import binding
+    // {extern 'module' 'name'}                                    — non-generic
+    extern_pragma: ($) =>
+      prec(1, seq(
+        "{",
+        "extern",
+        field("module", $.pragma_string),
+        field("name", $.pragma_string),
+        field("type_spec", optional(seq(":", $._elem_type_name))),
+        field("params", optional($.extern_param_list)),
+        field("result", optional($.extern_result)),
+        "}",
+      )),
+
+    extern_param_list: ($) =>
+      seq("(", "param", repeat1(field("var", $.identifier)), ")"),
+
+    extern_result: ($) =>
+      seq("(", "result", field("var", $.identifier), ")"),
+
+    pragma_string: (_) => /\'[^\']*\'/,
+
     // Table 5 - Numeric literal
 
     constant: ($) =>
@@ -1781,6 +1803,7 @@ module.exports = grammar({
         $.repeat_stmt,
         "EXIT",
         "CONTINUE",
+        $.extern_pragma,
       ),
 
     // assignment: $ => seq(
