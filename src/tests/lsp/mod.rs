@@ -1,3 +1,4 @@
+pub mod code_lens;
 pub mod comment_index;
 pub mod completion_snippets;
 pub mod definition;
