@@ -33,83 +33,6 @@ END_FUNCTION
           name: (pragma_string))))))
 
 ================================================================================
-Extern pragma with IEC type spec
-================================================================================
-
-FUNCTION SQRT : REAL
-VAR_INPUT IN : REAL; END_VAR
-    {extern 'math' 'sqrtf' : REAL}
-END_FUNCTION
-
---------------------------------------------------------------------------------
-
-(source_file
-  (func_decl
-    name: (identifier)
-    return_type: (numeric_type_name
-      (real_type_name
-        (real_name)))
-    variables: (input_decls
-      (input_var
-        variables: (variable_list
-          (identifier))
-        type: (var_decl_init
-          spec: (simple_type_spec
-            (numeric_type_name
-              (real_type_name
-                (real_name)))))))
-    body: (func_body
-      (stmt_list
-        (extern_pragma
-          module: (pragma_string)
-          name: (pragma_string)
-          type_spec: (numeric_type_name
-            (real_type_name
-              (real_name))))))))
-
-================================================================================
-Multiple extern pragmas for generic function
-================================================================================
-
-FUNCTION SQRT : REAL
-VAR_INPUT IN : REAL; END_VAR
-    {extern 'math' 'sqrtf' : REAL}
-    {extern 'math' 'sqrt' : LREAL}
-END_FUNCTION
-
---------------------------------------------------------------------------------
-
-(source_file
-  (func_decl
-    name: (identifier)
-    return_type: (numeric_type_name
-      (real_type_name
-        (real_name)))
-    variables: (input_decls
-      (input_var
-        variables: (variable_list
-          (identifier))
-        type: (var_decl_init
-          spec: (simple_type_spec
-            (numeric_type_name
-              (real_type_name
-                (real_name)))))))
-    body: (func_body
-      (stmt_list
-        (extern_pragma
-          module: (pragma_string)
-          name: (pragma_string)
-          type_spec: (numeric_type_name
-            (real_type_name
-              (real_name))))
-        (extern_pragma
-          module: (pragma_string)
-          name: (pragma_string)
-          type_spec: (numeric_type_name
-            (real_type_name
-              (lreal_name))))))))
-
-================================================================================
 Extern pragma with param and result variables
 ================================================================================
 
@@ -194,3 +117,35 @@ END_FUNCTION
             var: (identifier))
           result: (extern_result
             var: (identifier)))))))
+
+================================================================================
+Extern pragma minimal (no params, no result)
+================================================================================
+
+FUNCTION SQRT : REAL
+VAR_INPUT IN : REAL; END_VAR
+    {extern 'math' 'sqrt'}
+END_FUNCTION
+
+--------------------------------------------------------------------------------
+
+(source_file
+  (func_decl
+    name: (identifier)
+    return_type: (numeric_type_name
+      (real_type_name
+        (real_name)))
+    variables: (input_decls
+      (input_var
+        variables: (variable_list
+          (identifier))
+        type: (var_decl_init
+          spec: (simple_type_spec
+            (numeric_type_name
+              (real_type_name
+                (real_name)))))))
+    body: (func_body
+      (stmt_list
+        (extern_pragma
+          module: (pragma_string)
+          name: (pragma_string))))))

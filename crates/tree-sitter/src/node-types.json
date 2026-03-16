@@ -2710,20 +2710,6 @@
             "named": true
           }
         ]
-      },
-      "type_spec": {
-        "multiple": true,
-        "required": false,
-        "types": [
-          {
-            "type": ":",
-            "named": false
-          },
-          {
-            "type": "_elem_type_name",
-            "named": true
-          }
-        ]
       }
     }
   },

@@ -1,3 +1,5 @@
+use compact_str::CompactString;
+
 use crate::builder::Parse;
 use crate::builder::ParseSpec;
 use crate::builder::expression::ParseVariableAccess;
@@ -6,6 +8,7 @@ use crate::check::errors::ToIdeDiagnostic;
 use crate::check::errors::e0_syntax::SyntaxError;
 use crate::hir_def::expressions::expression::{FuncCall, ParamAssignKind};
 use crate::hir_def::expressions::statement::{CaseKind, Stmt, StmtKind};
+use crate::hir_def::extern_decl::ExternDecl;
 use crate::hir_def::interned::identifier::SpanIdent;
 use auto_lsp::anyhow::{self};
 use auto_lsp::core::ast::AstNode;
@@ -331,6 +334,42 @@ impl<'db> Parse<'db> for ast::generated::Stmt {
                 stmt.into(),
                 sema.current_scope,
             )),
+            StmtType::ExternPragma(pragma) => {
+                let doc = sema.file.document(sema.db).as_bytes();
+
+                let module_text = pragma.module.cast(sema.ast).get_text(doc)
+                    .map_err(|e| SyntaxError::SyntaxError { span: pragma.module.cast(sema.ast).get_span(), err: e.to_string() }.to_diagnostic(sema.db))?;
+                // Strip surrounding single quotes
+                let module = CompactString::from(&module_text[1..module_text.len() - 1]);
+
+                let name_text = pragma.name.cast(sema.ast).get_text(doc)
+                    .map_err(|e| SyntaxError::SyntaxError { span: pragma.name.cast(sema.ast).get_span(), err: e.to_string() }.to_diagnostic(sema.db))?;
+                let name = CompactString::from(&name_text[1..name_text.len() - 1]);
+
+                // Parse optional param variable references
+                let params = pragma.params.as_ref().map_or(Ok(vec![]), |p| {
+                    p.cast(sema.ast).var.iter()
+                        .map(|id| SpanIdent::from_node(sema.db, sema, id.cast(sema.ast)))
+                        .collect::<Result<Vec<_>, _>>()
+                })?;
+
+                // Parse optional result variable reference
+                let result = pragma.result.as_ref()
+                    .map(|r| SpanIdent::from_node(sema.db, sema, r.cast(sema.ast).var.cast(sema.ast)))
+                    .transpose()?;
+
+                Ok(Stmt::new(
+                    sema.db,
+                    StmtKind::ExternPragma(ExternDecl {
+                        module,
+                        name,
+                        params,
+                        result,
+                    }),
+                    pragma.into(),
+                    sema.current_scope,
+                ))
+            }
         }
     }
 }

@@ -345,7 +345,6 @@ module.exports = grammar({
         "extern",
         field("module", $.pragma_string),
         field("name", $.pragma_string),
-        field("type_spec", optional(seq(":", $._elem_type_name))),
         field("params", optional($.extern_param_list)),
         field("result", optional($.extern_result)),
         "}",
