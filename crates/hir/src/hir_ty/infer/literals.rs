@@ -268,17 +268,17 @@ impl Ident {
 
     #[salsa::tracked]
     pub fn as_u64(self, db: &dyn WorkspaceDataBase) -> Result<u64, std::num::ParseIntError> {
-        self.text(db).parse()
+        strip_underscores(self.text(db)).parse()
     }
 
     #[salsa::tracked]
     pub fn as_f32(self, db: &dyn WorkspaceDataBase) -> Result<f32, std::num::ParseFloatError> {
-        self.text(db).parse()
+        strip_underscores(self.text(db)).parse()
     }
 
     #[salsa::tracked]
     pub fn as_f64(self, db: &dyn WorkspaceDataBase) -> Result<f64, std::num::ParseFloatError> {
-        self.text(db).parse()
+        strip_underscores(self.text(db)).parse()
     }
 
     #[salsa::tracked]
@@ -439,6 +439,11 @@ fn check_sign(s: &str) -> Result<&str, UnsignedIntError> {
     }
 }
 
+/// Strip underscores from a numeric literal string (IEC 61131-3 allows underscores as digit separators).
+fn strip_underscores(s: &str) -> String {
+    s.replace('_', "")
+}
+
 #[salsa::tracked]
 impl Integer {
     #[salsa::tracked]
@@ -452,145 +457,117 @@ impl Integer {
 
     #[salsa::tracked]
     pub fn as_u8(self, db: &dyn WorkspaceDataBase) -> Result<u8, UnsignedIntError> {
+        let text = strip_underscores(self.ident(db).text(db));
         match self.kind(db) {
-            IntegerKind::Binary => u8::from_str_radix(
-                check_sign(self.ident(db).text(db).trim_start_matches("2#"))?,
-                2,
-            ),
-            IntegerKind::Octal => u8::from_str_radix(
-                check_sign(self.ident(db).text(db).trim_start_matches("8#"))?,
-                8,
-            ),
-            IntegerKind::Hex => u8::from_str_radix(
-                check_sign(self.ident(db).text(db).trim_start_matches("16#"))?,
-                16,
-            ),
-            IntegerKind::Signed => check_sign(self.ident(db).text(db))?.parse(),
+            IntegerKind::Binary => {
+                u8::from_str_radix(check_sign(text.trim_start_matches("2#"))?, 2)
+            }
+            IntegerKind::Octal => {
+                u8::from_str_radix(check_sign(text.trim_start_matches("8#"))?, 8)
+            }
+            IntegerKind::Hex => {
+                u8::from_str_radix(check_sign(text.trim_start_matches("16#"))?, 16)
+            }
+            IntegerKind::Signed => check_sign(&text)?.parse(),
         }
         .map_err(|err| err.into())
     }
 
     #[salsa::tracked]
     pub fn as_u16(self, db: &dyn WorkspaceDataBase) -> Result<u16, UnsignedIntError> {
+        let text = strip_underscores(self.ident(db).text(db));
         match self.kind(db) {
-            IntegerKind::Binary => u16::from_str_radix(
-                check_sign(self.ident(db).text(db).trim_start_matches("2#"))?,
-                2,
-            ),
-            IntegerKind::Octal => u16::from_str_radix(
-                check_sign(self.ident(db).text(db).trim_start_matches("8#"))?,
-                8,
-            ),
-            IntegerKind::Hex => u16::from_str_radix(
-                check_sign(self.ident(db).text(db).trim_start_matches("16#"))?,
-                16,
-            ),
-            IntegerKind::Signed => check_sign(self.ident(db).text(db))?.parse(),
+            IntegerKind::Binary => {
+                u16::from_str_radix(check_sign(text.trim_start_matches("2#"))?, 2)
+            }
+            IntegerKind::Octal => {
+                u16::from_str_radix(check_sign(text.trim_start_matches("8#"))?, 8)
+            }
+            IntegerKind::Hex => {
+                u16::from_str_radix(check_sign(text.trim_start_matches("16#"))?, 16)
+            }
+            IntegerKind::Signed => check_sign(&text)?.parse(),
         }
         .map_err(|err| err.into())
     }
 
     #[salsa::tracked]
     pub fn as_u32(self, db: &dyn WorkspaceDataBase) -> Result<u32, UnsignedIntError> {
+        let text = strip_underscores(self.ident(db).text(db));
         match self.kind(db) {
-            IntegerKind::Binary => u32::from_str_radix(
-                check_sign(self.ident(db).text(db).trim_start_matches("2#"))?,
-                2,
-            ),
-            IntegerKind::Octal => u32::from_str_radix(
-                check_sign(self.ident(db).text(db).trim_start_matches("8#"))?,
-                8,
-            ),
-            IntegerKind::Hex => u32::from_str_radix(
-                check_sign(self.ident(db).text(db).trim_start_matches("16#"))?,
-                16,
-            ),
-            IntegerKind::Signed => check_sign(self.ident(db).text(db))?.parse(),
+            IntegerKind::Binary => {
+                u32::from_str_radix(check_sign(text.trim_start_matches("2#"))?, 2)
+            }
+            IntegerKind::Octal => {
+                u32::from_str_radix(check_sign(text.trim_start_matches("8#"))?, 8)
+            }
+            IntegerKind::Hex => {
+                u32::from_str_radix(check_sign(text.trim_start_matches("16#"))?, 16)
+            }
+            IntegerKind::Signed => check_sign(&text)?.parse(),
         }
         .map_err(|err| err.into())
     }
 
     #[salsa::tracked]
     pub fn as_u64(self, db: &dyn WorkspaceDataBase) -> Result<u64, UnsignedIntError> {
+        let text = strip_underscores(self.ident(db).text(db));
         match self.kind(db) {
-            IntegerKind::Binary => u64::from_str_radix(
-                check_sign(self.ident(db).text(db).trim_start_matches("2#"))?,
-                2,
-            ),
-            IntegerKind::Octal => u64::from_str_radix(
-                check_sign(self.ident(db).text(db).trim_start_matches("8#"))?,
-                8,
-            ),
-            IntegerKind::Hex => u64::from_str_radix(
-                check_sign(self.ident(db).text(db).trim_start_matches("16#"))?,
-                16,
-            ),
-            IntegerKind::Signed => check_sign(self.ident(db).text(db))?.parse(),
+            IntegerKind::Binary => {
+                u64::from_str_radix(check_sign(text.trim_start_matches("2#"))?, 2)
+            }
+            IntegerKind::Octal => {
+                u64::from_str_radix(check_sign(text.trim_start_matches("8#"))?, 8)
+            }
+            IntegerKind::Hex => {
+                u64::from_str_radix(check_sign(text.trim_start_matches("16#"))?, 16)
+            }
+            IntegerKind::Signed => check_sign(&text)?.parse(),
         }
         .map_err(|err| err.into())
     }
 
     #[salsa::tracked]
     pub fn as_i8(self, db: &dyn WorkspaceDataBase) -> Result<i8, std::num::ParseIntError> {
+        let text = strip_underscores(self.ident(db).text(db));
         match self.kind(db) {
-            IntegerKind::Binary => {
-                i8::from_str_radix(self.ident(db).text(db).trim_start_matches("2#"), 2)
-            }
-            IntegerKind::Octal => {
-                i8::from_str_radix(self.ident(db).text(db).trim_start_matches("8#"), 8)
-            }
-            IntegerKind::Hex => {
-                i8::from_str_radix(self.ident(db).text(db).trim_start_matches("16#"), 16)
-            }
-            IntegerKind::Signed => self.ident(db).text(db).parse(),
+            IntegerKind::Binary => i8::from_str_radix(text.trim_start_matches("2#"), 2),
+            IntegerKind::Octal => i8::from_str_radix(text.trim_start_matches("8#"), 8),
+            IntegerKind::Hex => i8::from_str_radix(text.trim_start_matches("16#"), 16),
+            IntegerKind::Signed => text.parse(),
         }
     }
 
     #[salsa::tracked]
     pub fn as_i16(self, db: &dyn WorkspaceDataBase) -> Result<i16, std::num::ParseIntError> {
+        let text = strip_underscores(self.ident(db).text(db));
         match self.kind(db) {
-            IntegerKind::Binary => {
-                i16::from_str_radix(self.ident(db).text(db).trim_start_matches("2#"), 2)
-            }
-            IntegerKind::Octal => {
-                i16::from_str_radix(self.ident(db).text(db).trim_start_matches("8#"), 8)
-            }
-            IntegerKind::Hex => {
-                i16::from_str_radix(self.ident(db).text(db).trim_start_matches("16#"), 16)
-            }
-            IntegerKind::Signed => self.ident(db).text(db).parse(),
+            IntegerKind::Binary => i16::from_str_radix(text.trim_start_matches("2#"), 2),
+            IntegerKind::Octal => i16::from_str_radix(text.trim_start_matches("8#"), 8),
+            IntegerKind::Hex => i16::from_str_radix(text.trim_start_matches("16#"), 16),
+            IntegerKind::Signed => text.parse(),
         }
     }
 
     #[salsa::tracked]
     pub fn as_i32(self, db: &dyn WorkspaceDataBase) -> Result<i32, std::num::ParseIntError> {
+        let text = strip_underscores(self.ident(db).text(db));
         match self.kind(db) {
-            IntegerKind::Binary => {
-                i32::from_str_radix(self.ident(db).text(db).trim_start_matches("2#"), 2)
-            }
-            IntegerKind::Octal => {
-                i32::from_str_radix(self.ident(db).text(db).trim_start_matches("8#"), 8)
-            }
-            IntegerKind::Hex => {
-                i32::from_str_radix(self.ident(db).text(db).trim_start_matches("16#"), 16)
-            }
-            IntegerKind::Signed => self.ident(db).text(db).parse(),
+            IntegerKind::Binary => i32::from_str_radix(text.trim_start_matches("2#"), 2),
+            IntegerKind::Octal => i32::from_str_radix(text.trim_start_matches("8#"), 8),
+            IntegerKind::Hex => i32::from_str_radix(text.trim_start_matches("16#"), 16),
+            IntegerKind::Signed => text.parse(),
         }
     }
 
     #[salsa::tracked]
     pub fn as_i64(self, db: &dyn WorkspaceDataBase) -> Result<i64, std::num::ParseIntError> {
+        let text = strip_underscores(self.ident(db).text(db));
         match self.kind(db) {
-            IntegerKind::Binary => {
-                i64::from_str_radix(self.ident(db).text(db).trim_start_matches("2#"), 2)
-            }
-            IntegerKind::Octal => {
-                i64::from_str_radix(self.ident(db).text(db).trim_start_matches("8#"), 8)
-            }
-            IntegerKind::Hex => {
-                i64::from_str_radix(self.ident(db).text(db).trim_start_matches("16#"), 16)
-            }
-            IntegerKind::Signed => self.ident(db).text(db).parse(),
+            IntegerKind::Binary => i64::from_str_radix(text.trim_start_matches("2#"), 2),
+            IntegerKind::Octal => i64::from_str_radix(text.trim_start_matches("8#"), 8),
+            IntegerKind::Hex => i64::from_str_radix(text.trim_start_matches("16#"), 16),
+            IntegerKind::Signed => text.parse(),
         }
     }
 }
