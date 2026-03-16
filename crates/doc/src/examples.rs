@@ -2328,6 +2328,20 @@ END_FUNCTION
 "#],
         },
         ErrorExample {
+            code: "W0110",
+            category: "Linter Warnings",
+            title: "Assignment to input variable",
+            description: "A `VAR_INPUT` variable is being assigned inside the POU body. Inputs are meant to be set by callers.",
+            sources: &[r#"
+FUNCTION_BLOCK fb1
+VAR_INPUT
+    x : INT;
+END_VAR
+    x := 42;
+END_FUNCTION_BLOCK
+"#],
+        },
+        ErrorExample {
             code: "W0109",
             category: "Linter Warnings",
             title: "Unused import",

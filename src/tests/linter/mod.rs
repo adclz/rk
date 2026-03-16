@@ -3,6 +3,7 @@ mod dead_code;
 mod duplicate_var_section;
 mod effectless_statement;
 mod for_loop_step_sign;
+mod input_assignment;
 mod shadowing_variable;
 mod unused_import;
 mod unused_return_type;

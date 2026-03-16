@@ -113,6 +113,17 @@ fn duplicate_var_input_in_function_block(mut with_db: RootDatabase) {
        |
        |     Note: merge this section with the existing one above
     ---'
+    [W0110] Warning: assignment to input variable
+       ,-[ file:///test0.st:9:13 ]
+       |
+     4 |             x : INT;
+       |             |
+       |             `-- 'x' is declared here
+       |
+     9 |             x := y;
+       |             |
+       |             `-- assignment to VAR_INPUT 'x'
+    ---'
     ");
 }
 

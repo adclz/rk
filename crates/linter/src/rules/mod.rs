@@ -18,6 +18,7 @@ pub mod dead_code;
 pub mod duplicate_var_section;
 pub mod effectless_statement;
 pub mod for_loop_step_sign;
+pub mod input_assignment;
 pub mod shadowing_variable;
 pub mod unused_import;
 pub mod unused_return_type;
@@ -113,24 +114,6 @@ fn collect_namespace_scopes<'db>(
     }
 }
 
-/// Collect all scopes in the file that have bodies (for file-level cross-scope analysis).
-pub(crate) fn collect_body_scopes<'db>(
-    db: &'db dyn WorkspaceDataBase,
-    scope: ScopeId<'db>,
-    out: &mut Vec<ScopeId<'db>>,
-) {
-    let has_body = matches!(
-        get_scope(db, scope).kind,
-        ScopeKind::Pou(Pou::Function(_))
-            | ScopeKind::Pou(Pou::FunctionBlock(_))
-            | ScopeKind::MethodDecl(_)
-            | ScopeKind::Program(_)
-    );
-    if has_body {
-        out.push(scope);
-    }
-}
-
 /// Run all scope-level lint rules against a single scope.
 fn lint_scope<'db>(
     db: &'db dyn WorkspaceDataBase,
@@ -174,5 +157,8 @@ fn lint_scope<'db>(
     }
     if config.is_enabled(for_loop_step_sign::NAME) {
         for_loop_step_sign::check(db, body, diagnostics);
+    }
+    if config.is_enabled(input_assignment::NAME) {
+        input_assignment::check(db, scope, body, diagnostics);
     }
 }
