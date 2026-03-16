@@ -166,6 +166,11 @@ pub enum ResolveError<'db> {
         max_offset: usize,
         base_type: Type<'db>,
     },
+    /// An extern pragma references a variable that does not exist in scope.
+    ExternVariableNotFound {
+        ident: SpanIdent<'db>,
+        scope: ScopeId<'db>,
+    },
 }
 
 impl<'db> ErrorCode for ResolveError<'db> {
@@ -199,6 +204,7 @@ impl<'db> ErrorCode for ResolveError<'db> {
             Self::MultipleVariadicVariables { .. } => "E0227",
             Self::VariadicMixedWithOtherInputs { .. } => "E0228",
             Self::MultibitsOutOfRange { .. } => "E0229",
+            Self::ExternVariableNotFound { .. } => "E0230",
         }
     }
 
@@ -229,6 +235,7 @@ impl<'db> ErrorCode for ResolveError<'db> {
             | Self::ConfigInstInitFieldNotFound { .. } => "configuration error",
             Self::MultipleItemsInScope { .. } => "multiple items in scope",
             Self::MultibitsOutOfRange { .. } => "multibit access out of range",
+            Self::ExternVariableNotFound { .. } => "extern variable not found",
         }
     }
 }
@@ -693,6 +700,30 @@ impl<'db> ToIdeDiagnostic<'db> for ResolveError<'db> {
                     var.scope_id(db).file(db),
                     var.get_span(db),
                 ));
+
+                diag
+            }
+            Self::ExternVariableNotFound { ident, scope } => {
+                let name = ident.text(db);
+
+                let mut diag = diag()
+                    .message(format!(
+                        "no variable '{}' found in scope for extern pragma",
+                        name,
+                    ))
+                    .severity(DiagnosticSeverity::ERROR)
+                    .desc(self)
+                    .range(ident.get_span(db))
+                    .call();
+
+                // Search for similar names to suggest
+                let mut query = Query::new(name.to_string());
+                query.fuzzy();
+                let results = SymbolSearch::new(|_, _| true)
+                    .with_scope(*scope)
+                    .with_query(query)
+                    .search(db);
+                list_candidates(db, name, &mut diag, &results, Some(*scope));
 
                 diag
             }

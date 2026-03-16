@@ -1,8 +1,11 @@
 use db::WorkspaceDataBase;
 
 use crate::{
-    CallSite, HirNodeInfo,
-    check::errors::{ToIdeDiagnostic, e3_type::TypeError, e10_control_flow::ControlFlowError},
+    CallSite, HasName, HirNodeInfo,
+    check::errors::{
+        ToIdeDiagnostic, e2_resolve::ResolveError, e3_type::TypeError,
+        e10_control_flow::ControlFlowError,
+    },
     hir_def::{
         expressions::{
             expression::{Elementary, Expr, ExprKind, PrimaryExpr, UnaryOperatorKind},
@@ -421,6 +424,56 @@ impl<'db> StmtsResolverCtx<'db> {
                         ctx.dead_code_statements.push(*dead);
                     }
                     break;
+                }
+
+                StmtKind::ExternPragma(extern_decl) => {
+                    let def_map = self.scope.def_map(db);
+                    let scope_kind = crate::hir_def::semantic_index::get_scope(db, self.scope).kind;
+
+                    let is_known_var = |ident: &crate::hir_def::interned::identifier::Ident| {
+                        def_map.local_variables.contains_key(ident)
+                            || def_map.global_variables.contains_key(ident)
+                    };
+
+                    // Check if the name is the enclosing POU's own name (return variable)
+                    let is_pou_name = |ident: &crate::hir_def::interned::identifier::Ident| {
+                        match scope_kind {
+                            crate::hir_def::scope::ScopeKind::Pou(pou) => {
+                                pou.get_name_ident(db) == *ident
+                            }
+                            crate::hir_def::scope::ScopeKind::MethodDecl(m) => {
+                                m.name(db) == *ident
+                            }
+                            _ => false,
+                        }
+                    };
+
+                    // Check that each param variable exists in scope
+                    for param in &extern_decl.params {
+                        if !is_known_var(&param.ident) && !is_pou_name(&param.ident) {
+                            ctx.errors.push(
+                                ResolveError::ExternVariableNotFound {
+                                    ident: param.clone(),
+                                    scope: self.scope,
+                                }
+                                .to_diagnostic(db),
+                            );
+                        }
+                    }
+
+                    // Check that result variable exists in scope
+                    // (can be a local variable or the POU name for return value)
+                    if let Some(result) = &extern_decl.result {
+                        if !is_known_var(&result.ident) && !is_pou_name(&result.ident) {
+                            ctx.errors.push(
+                                ResolveError::ExternVariableNotFound {
+                                    ident: result.clone(),
+                                    scope: self.scope,
+                                }
+                                .to_diagnostic(db),
+                            );
+                        }
+                    }
                 }
             }
         }
