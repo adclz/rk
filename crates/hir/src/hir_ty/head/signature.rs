@@ -1,6 +1,6 @@
 use db::WorkspaceDataBase;
 use ide_diagnostic::IdeDiagnostic;
-use rustc_hash::FxHashMap;
+use rustc_hash::{FxHashMap, FxHashSet};
 
 use crate::{
     HasName, HirNodeInfo,
@@ -12,6 +12,7 @@ use crate::{
         pous::{generics::AnyGeneric, pou::Pou, variable::VariableKind},
         scope::{ScopeId, ScopeKind},
         semantic_index::get_scope,
+        using::Using,
     },
     hir_ty::{
         index_graphs::external_var_lookup,
@@ -54,6 +55,9 @@ pub struct Signature<'db> {
     //// Mapping of generic parameters to their spec constraints (for generics declared on this POU)
     pub constraint_of_generic: FxHashMap<Ident, Vec<Constraint>>,
 
+    /// USING directives that were used during signature inference (for unused-import linter)
+    pub usings_used: FxHashSet<Using<'db>>,
+
     /// Errors encountered during inference
     pub errors: Vec<IdeDiagnostic>,
 }
@@ -64,6 +68,7 @@ impl<'db> Signature<'db> {
             scope,
             type_of_specs: FxHashMap::default(),
             constraint_of_generic: FxHashMap::default(),
+            usings_used: FxHashSet::default(),
             errors: Vec::new(),
         }
     }
@@ -293,6 +298,15 @@ impl<'db> Signature<'db> {
 
     fn infer_spec(&mut self, db: &'db dyn WorkspaceDataBase, spec: Spec<'db>) -> Type<'db> {
         let typ = Type::resolve_spec(db, spec);
+
+        // Track USING directives used by Target specs (for unused-import linter)
+        if let SpecKind::Target(target) = spec.kind(db) {
+            if let NameResolution::Pou(_, Some(using)) =
+                resolve_name(db, &target.path, spec.scope_id(db))
+            {
+                self.usings_used.insert(using);
+            }
+        }
 
         match spec.kind(db) {
             SpecKind::Array(arr) => {

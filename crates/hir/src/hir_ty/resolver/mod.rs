@@ -93,7 +93,10 @@ impl<'db> Resolver<'db> {
                 ctx.type_of_path_expr.insert(path_expr, Type::Generic(g));
                 true
             }
-            name::NameResolution::Pou(pou) => {
+            name::NameResolution::Pou(pou, using) => {
+                if let Some(using) = using {
+                    ctx.usings_used.insert(using);
+                }
                 ctx.type_of_path_expr
                     .insert(path_expr, Type::new_pou(db, pou));
                 true
@@ -275,9 +278,12 @@ impl<'db> Resolver<'db> {
                     if steps.len() > 1 {
                         if let PathExprWalkStep::Field { ident, .. } = step {
                             let access = NamespaceAccess::new(db, None, *ident);
-                            if let name::NameResolution::Pou(pou @ Pou::DataType(_)) =
+                            if let name::NameResolution::Pou(pou @ Pou::DataType(_), using) =
                                 name::resolve_name(db, &access, path_expr.get_scope_id(db))
                             {
+                                if let Some(using) = using {
+                                    ctx.usings_used.insert(using);
+                                }
                                 // Remove the FQ error — this path is valid so far.
                                 ctx.errors.pop();
                                 let ty = Type::new_pou(db, pou);
@@ -300,7 +306,7 @@ impl<'db> Resolver<'db> {
                     ctx.type_of_path_expr.get(&step.get_expr(db))
             {
                 let var_name = var.get_name_ident(db);
-                if let name::PouResolution::Found(pou) =
+                if let name::PouResolution::Found(pou, _) =
                     name::pou_names_res(db, var_name, path_expr.scope_id(db))
                 {
                     ctx.variables_shadowing.insert(*var, pou);

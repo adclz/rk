@@ -12,6 +12,7 @@ use crate::{
         program::ProgramDecl,
         scope::{ScopeId, ScopeKind},
         semantic_index::{get_scope, semantic_index},
+        using::Using,
     },
     hir_ty::{
         index_graphs::{namespace_index, pou_index, program_index},
@@ -22,7 +23,8 @@ use crate::{
 /// Result of POU name resolution, distinguishing unique matches from ambiguities.
 #[derive(Debug, Clone)]
 pub enum PouResolution<'db> {
-    Found(Pou<'db>),
+    /// `Option<Using>` is `Some` when the POU was found via a USING directive.
+    Found(Pou<'db>, Option<Using<'db>>),
     /// Two or more USING directives at the same scope level import different POUs
     /// with this name.
     Ambiguous(Vec<(Pou<'db>, NamespacePath)>),
@@ -33,7 +35,7 @@ impl<'db> PouResolution<'db> {
     /// Extract the POU if uniquely resolved, discarding ambiguities.
     pub fn found(self) -> Option<Pou<'db>> {
         match self {
-            Self::Found(pou) => Some(pou),
+            Self::Found(pou, _) => Some(pou),
             _ => None,
         }
     }
@@ -45,7 +47,8 @@ pub enum NameResolution<'db> {
     /// Resolved to a generic type parameter
     Generic(GenericParam<'db>),
     /// Resolved to a POU (function, function block, class, etc.)
-    Pou(Pou<'db>),
+    /// `Option<Using>` is `Some` when the POU was found via a USING directive.
+    Pou(Pou<'db>, Option<Using<'db>>),
     /// Resolved to a PROGRAM declaration (only visible from config scopes)
     Program(ProgramDecl<'db>),
     /// Resolved to the method's own name (self-reference)
@@ -72,7 +75,7 @@ pub fn resolve_name<'db>(
     // Namespace-qualified names skip directly to namespace lookup (no ambiguity possible)
     if access.namespace.is_some() {
         return match resolve_namespace_access(db, access) {
-            PouResolution::Found(pou) => NameResolution::Pou(pou),
+            PouResolution::Found(pou, using) => NameResolution::Pou(pou, using),
             // Qualified names can't be ambiguous — the user chose the namespace
             PouResolution::Ambiguous(_) => unreachable!(),
             PouResolution::NotFound => NameResolution::NotFound,
@@ -89,7 +92,7 @@ pub fn resolve_name<'db>(
         }
         ScopeKind::Pou(pou) if name == pou.get_name_ident(db) => {
             if let Pou::Function(f) = pou {
-                return NameResolution::Pou(pou);
+                return NameResolution::Pou(pou, None);
             }
         }
         _ => {}
@@ -106,7 +109,7 @@ pub fn resolve_name<'db>(
 
     // 3. POU resolution (local → parent/USING → global)
     match resolve_namespace_access(db, access) {
-        PouResolution::Found(pou) => NameResolution::Pou(pou),
+        PouResolution::Found(pou, using) => NameResolution::Pou(pou, using),
         PouResolution::Ambiguous(candidates) => NameResolution::Ambiguous(candidates),
         PouResolution::NotFound => {
             // 4. Program resolution (config scopes only — programs are not visible to other POUs)
@@ -133,9 +136,10 @@ pub(crate) fn resolve_namespace_access<'db>(
         // No ambiguity is possible here — the user specified which namespace.
         Some(path) => {
             for ns in namespace_index(db, **path).iter() {
-                if let PouResolution::Found(pou) = pou_names_res(db, target.ident, ns.scope_id(db))
+                if let PouResolution::Found(pou, using) =
+                    pou_names_res(db, target.ident, ns.scope_id(db))
                 {
-                    return PouResolution::Found(pou);
+                    return PouResolution::Found(pou, using);
                 }
             }
             PouResolution::NotFound
@@ -152,13 +156,13 @@ pub fn pou_names_res<'db>(
 ) -> PouResolution<'db> {
     // Checks for POUs declared in the current scope
     if let Some(pou) = scope.def_map(db).local_pous.get(&name) {
-        return PouResolution::Found(*pou);
+        return PouResolution::Found(*pou, None);
     }
 
     // Checks for parent POUs and those imported via USING directives
     match find_in_parent_pous(db, name, scope) {
         PouResolution::NotFound => match pou_index(db, name) {
-            Some(pou) => PouResolution::Found(pou),
+            Some(pou) => PouResolution::Found(pou, None),
             None => PouResolution::NotFound,
         },
         result => result,
@@ -177,20 +181,20 @@ pub fn find_in_parent_pous<'db>(
         if let ScopeKind::Namespace(ns) = scope.kind {
             for ns in namespace_index(db, *ns.path(db)).iter() {
                 if let Some(p) = ns.scope_id(db).def_map(db).local_pous.get(&name) {
-                    return PouResolution::Found(*p);
+                    return PouResolution::Found(*p, None);
                 }
             }
         }
 
         // Collect ALL USING matches at this scope level
-        let mut matches: Vec<(Pou<'db>, NamespacePath)> = vec![];
+        let mut matches: Vec<(Pou<'db>, NamespacePath, Using<'db>)> = vec![];
         for using in &scope.usings {
             let ns_path: NamespacePath = *using.path(db);
             for ns in namespace_index(db, ns_path).iter() {
                 if let Some(pou) = ns.scope_id(db).def_map(db).local_pous.get(&name) {
                     // Deduplicate by POU identity (shared namespaces across files)
-                    if !matches.iter().any(|(p, _)| p == pou) {
-                        matches.push((*pou, ns_path));
+                    if !matches.iter().any(|(p, _, _)| p == pou) {
+                        matches.push((*pou, ns_path, *using));
                     }
                 }
             }
@@ -198,8 +202,12 @@ pub fn find_in_parent_pous<'db>(
 
         match matches.len() {
             0 => continue,
-            1 => return PouResolution::Found(matches[0].0),
-            _ => return PouResolution::Ambiguous(matches),
+            1 => return PouResolution::Found(matches[0].0, Some(matches[0].2)),
+            _ => {
+                return PouResolution::Ambiguous(
+                    matches.into_iter().map(|(p, ns, _)| (p, ns)).collect(),
+                )
+            }
         }
     }
 
@@ -238,7 +246,7 @@ impl<'db> Type<'db> {
             SpecKind::Subrange(sub) => Type::SubRange(*sub),
             SpecKind::Target(t) => match resolve_name(db, &t.path, spec.scope_id(db)) {
                 NameResolution::Generic(g) => Type::Generic(g),
-                NameResolution::Pou(pou) => Type::new_pou(db, pou),
+                NameResolution::Pou(pou, _) => Type::new_pou(db, pou),
                 NameResolution::Program(p) => Type::Program(p),
                 NameResolution::MethodSelf(m) => Type::MethodDecl(m.into()),
                 NameResolution::Ambiguous(_) | NameResolution::NotFound => Type::Never,

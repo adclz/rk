@@ -2327,5 +2327,21 @@ END_VAR
 END_FUNCTION
 "#],
         },
+        ErrorExample {
+            code: "W0109",
+            category: "Linter Warnings",
+            title: "Unused import",
+            description: "A `USING` directive imports a namespace that is never referenced.",
+            sources: &[r#"
+NAMESPACE Tools
+    FUNCTION_BLOCK Logger
+    END_FUNCTION_BLOCK
+END_NAMESPACE
+"#, r#"
+FUNCTION_BLOCK fb1
+    USING Tools;
+END_FUNCTION_BLOCK
+"#],
+        },
     ]
 }

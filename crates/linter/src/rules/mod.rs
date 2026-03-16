@@ -3,9 +3,11 @@ use db::{WorkspaceDataBase, config_file::LinterConfig};
 use hir::{
     HirNodeInfo,
     hir_def::{
+        namespace::NamespaceDecl,
         pous::pou::Pou,
         scope::{ScopeId, ScopeKind},
         semantic_index::{get_scope, semantic_index},
+        using::Using,
     },
     hir_ty::body::infer_body,
 };
@@ -17,6 +19,7 @@ pub mod duplicate_var_section;
 pub mod effectless_statement;
 pub mod for_loop_step_sign;
 pub mod shadowing_variable;
+pub mod unused_import;
 pub mod unused_return_type;
 pub mod unused_variable;
 
@@ -36,21 +39,95 @@ pub fn lint_file(
     // Scope-level lints (HIR based)
     let sema = semantic_index(db, file);
 
-    lint_scope(db, config, sema.scope, diagnostics);
+    // Collect all body scopes, all signature scopes, and usings for file-level lints
+    let mut body_scopes = vec![];
+    let mut all_scopes: Vec<ScopeId> = vec![];
+    let mut all_usings: Vec<Using> = vec![];
+
+    // Global usings
+    all_usings.extend_from_slice(sema.scope.usings(db));
+
+    lint_scope(db, config, sema.scope, &mut body_scopes, diagnostics);
 
     for pou in sema.global_pous.iter() {
         let scope = pou.get_scope_id(db);
-        lint_scope(db, config, scope, diagnostics);
+        all_usings.extend_from_slice(scope.usings(db));
+        all_scopes.push(scope);
+        lint_scope(db, config, scope, &mut body_scopes, diagnostics);
 
         if let Some(methods) = scope.method_declarations(db) {
             for method in methods {
-                lint_scope(db, config, method.get_scope_id(db), diagnostics);
+                let method_scope = method.get_scope_id(db);
+                all_usings.extend_from_slice(method_scope.usings(db));
+                all_scopes.push(method_scope);
+                lint_scope(db, config, method_scope, &mut body_scopes, diagnostics);
             }
         }
     }
 
+    for ns in sema.namespaces.iter() {
+        collect_namespace_scopes(db, config, *ns, &mut all_scopes, &mut body_scopes, &mut all_usings, diagnostics);
+    }
+
     for program in sema.programs.iter() {
-        lint_scope(db, config, program.get_scope_id(db), diagnostics);
+        let scope = program.get_scope_id(db);
+        all_usings.extend_from_slice(scope.usings(db));
+        all_scopes.push(scope);
+        lint_scope(db, config, scope, &mut body_scopes, diagnostics);
+    }
+
+    // File-level lint: unused imports (needs all scopes collected)
+    if config.is_enabled(unused_import::NAME) {
+        unused_import::check(db, &all_scopes, &body_scopes, &all_usings, diagnostics);
+    }
+}
+
+/// Recursively collect scopes and usings from namespace declarations and their POUs.
+fn collect_namespace_scopes<'db>(
+    db: &'db dyn WorkspaceDataBase,
+    config: &LinterConfig,
+    ns: NamespaceDecl<'db>,
+    all_scopes: &mut Vec<ScopeId<'db>>,
+    body_scopes: &mut Vec<ScopeId<'db>>,
+    all_usings: &mut Vec<Using<'db>>,
+    diagnostics: &mut Vec<IdeDiagnostic>,
+) {
+    for pou in ns.pous(db) {
+        let scope = pou.get_scope_id(db);
+        all_usings.extend_from_slice(scope.usings(db));
+        all_scopes.push(scope);
+        lint_scope(db, config, scope, body_scopes, diagnostics);
+
+        if let Some(methods) = scope.method_declarations(db) {
+            for method in methods {
+                let method_scope = method.get_scope_id(db);
+                all_usings.extend_from_slice(method_scope.usings(db));
+                all_scopes.push(method_scope);
+                lint_scope(db, config, method_scope, body_scopes, diagnostics);
+            }
+        }
+    }
+
+    for nested in ns.namespaces(db) {
+        collect_namespace_scopes(db, config, *nested, all_scopes, body_scopes, all_usings, diagnostics);
+    }
+}
+
+/// Collect all scopes in the file that have bodies (for file-level cross-scope analysis).
+pub(crate) fn collect_body_scopes<'db>(
+    db: &'db dyn WorkspaceDataBase,
+    scope: ScopeId<'db>,
+    out: &mut Vec<ScopeId<'db>>,
+) {
+    let has_body = matches!(
+        get_scope(db, scope).kind,
+        ScopeKind::Pou(Pou::Function(_))
+            | ScopeKind::Pou(Pou::FunctionBlock(_))
+            | ScopeKind::MethodDecl(_)
+            | ScopeKind::Program(_)
+    );
+    if has_body {
+        out.push(scope);
     }
 }
 
@@ -59,6 +136,7 @@ fn lint_scope<'db>(
     db: &'db dyn WorkspaceDataBase,
     config: &LinterConfig,
     scope: ScopeId<'db>,
+    body_scopes: &mut Vec<ScopeId<'db>>,
     diagnostics: &mut Vec<IdeDiagnostic>,
 ) {
     let has_body = matches!(
@@ -71,6 +149,8 @@ fn lint_scope<'db>(
     if !has_body {
         return;
     }
+
+    body_scopes.push(scope);
 
     let body = infer_body(db, scope);
 

@@ -20,6 +20,7 @@ use crate::{
         },
         scope::{ScopeId, ScopeKind},
         semantic_index::get_scope,
+        using::Using,
     },
     hir_ty::{
         body::statements::{NestedScope, StmtsResolverCtx},
@@ -195,6 +196,10 @@ pub struct BodyInferenceResult<'db> {
     // Populated during statement resolution for use by the linter.
     pub variables_used: FxHashSet<VariableDecl<'db>>,
 
+    // Set of USING directives that were actually used to resolve a name.
+    // Populated during name resolution for use by the linter.
+    pub usings_used: FxHashSet<Using<'db>>,
+
     // Variables that shadow a POU with the same name.
     // Populated during statement resolution for use by the linter.
     pub variables_shadowing: FxHashMap<VariableDecl<'db>, Pou<'db>>,
@@ -239,6 +244,7 @@ impl<'db> BodyInferenceResult<'db> {
             generic_substitutions: FxHashMap::default(),
             errors: Vec::new(),
             variables_used: FxHashSet::default(),
+            usings_used: FxHashSet::default(),
             variables_shadowing: FxHashMap::default(),
             unused_return_types: Vec::new(),
             effectless_statements: Vec::new(),
