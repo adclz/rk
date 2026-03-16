@@ -7,7 +7,7 @@ pub mod visibility;
 pub mod walk;
 
 use crate::{
-    HasName, HirNodeInfo,
+    CallSite, HasName, HirNodeInfo,
     check::errors::{ToIdeDiagnostic, e2_resolve::ResolveError},
     hir_def::{
         expressions::expression::{
@@ -22,7 +22,10 @@ use crate::{
         body::BodyInferenceResult,
         expr_store::PathExprWalkStep,
         index_graphs::namespace_index,
-        resolver::walk::PathPlaceBuilder,
+        resolver::{
+            visibility::check_test_visibility,
+            walk::PathPlaceBuilder,
+        },
         ty::Type,
     },
 };
@@ -97,11 +100,15 @@ impl<'db> Resolver<'db> {
                 if let Some(using) = using {
                     ctx.usings_used.insert(using);
                 }
+                let call_site = CallSite::new(path_expr.scope_id(db), path_expr.get_id(db));
+                check_test_visibility(db, &call_site, pou.get_scope_id(db), &mut ctx.errors);
                 ctx.type_of_path_expr
                     .insert(path_expr, Type::new_pou(db, pou));
                 true
             }
             name::NameResolution::Program(prog) => {
+                let call_site = CallSite::new(path_expr.scope_id(db), path_expr.get_id(db));
+                check_test_visibility(db, &call_site, prog.scope_id(db), &mut ctx.errors);
                 ctx.type_of_path_expr.insert(path_expr, Type::Program(prog));
                 true
             }

@@ -3,7 +3,7 @@ use ide_diagnostic::IdeDiagnostic;
 use rustc_hash::{FxHashMap, FxHashSet};
 
 use crate::{
-    HasName, HirNodeInfo,
+    CallSite, HasName, HirNodeInfo,
     check::errors::{ToIdeDiagnostic, e2_resolve::ResolveError, e3_type::TypeError},
     hir_def::{
         config::ConfigResource,
@@ -16,7 +16,10 @@ use crate::{
     },
     hir_ty::{
         index_graphs::external_var_lookup,
-        resolver::name::{NameResolution, resolve_name},
+        resolver::{
+            name::{NameResolution, resolve_name},
+            visibility::check_test_visibility,
+        },
         ty::Type,
     },
 };
@@ -299,12 +302,20 @@ impl<'db> Signature<'db> {
     fn infer_spec(&mut self, db: &'db dyn WorkspaceDataBase, spec: Spec<'db>) -> Type<'db> {
         let typ = Type::resolve_spec(db, spec);
 
-        // Track USING directives used by Target specs (for unused-import linter)
+        // Track USING directives and check test visibility for Target specs
         if let SpecKind::Target(target) = spec.kind(db) {
-            if let NameResolution::Pou(_, Some(using)) =
-                resolve_name(db, &target.path, spec.scope_id(db))
-            {
-                self.usings_used.insert(using);
+            let call_site = CallSite::new(spec.scope_id(db), spec.id(db));
+            match resolve_name(db, &target.path, spec.scope_id(db)) {
+                NameResolution::Pou(pou, using) => {
+                    if let Some(using) = using {
+                        self.usings_used.insert(using);
+                    }
+                    check_test_visibility(db, &call_site, pou.get_scope_id(db), &mut self.errors);
+                }
+                NameResolution::Program(prog) => {
+                    check_test_visibility(db, &call_site, prog.scope_id(db), &mut self.errors);
+                }
+                _ => {}
             }
         }
 

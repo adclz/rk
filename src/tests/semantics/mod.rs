@@ -8,7 +8,7 @@ pub mod config;
 pub mod direct_variables;
 pub mod duplicates;
 pub mod enums;
-pub mod extern_pragma;
+pub mod pragmas;
 pub mod func_call;
 pub mod generics;
 pub mod generics_calls;

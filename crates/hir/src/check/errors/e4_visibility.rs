@@ -22,6 +22,10 @@ pub enum VisibilityError<'db> {
         call_site: CallSite<'db>,
         target: CallSite<'db>,
     },
+    /// Attempting to reference a {test}-annotated POU from non-test code.
+    TestOnly {
+        call_site: CallSite<'db>,
+    },
 }
 
 impl ErrorCode for VisibilityError<'_> {
@@ -30,6 +34,7 @@ impl ErrorCode for VisibilityError<'_> {
             Self::Private { .. } => "E0401",
             Self::Internal { .. } => "E0402",
             Self::Protected { .. } => "E0403",
+            Self::TestOnly { .. } => "E0404",
         }
     }
 
@@ -109,6 +114,24 @@ impl<'db> ToIdeDiagnostic<'db> for VisibilityError<'db> {
                     .call();
 
                 diag.with_note("Variables and methods marked PROTECTED are only available within the same POU or derived POUs".into());
+
+                diag
+            }
+            VisibilityError::TestOnly { call_site } => {
+                let mut diag = diag()
+                    .message(format!(
+                        "can not access test item '{}'",
+                        call_site.to_string(db)
+                    ))
+                    .severity(DiagnosticSeverity::ERROR)
+                    .desc(self)
+                    .range(call_site.get_span(db))
+                    .call();
+
+                diag.with_note(
+                    "items marked with {test} can only be referenced from other {test} items"
+                        .into(),
+                );
 
                 diag
             }
