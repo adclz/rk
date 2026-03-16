@@ -479,7 +479,7 @@
         },
         {
           "name": "comment.block.st",
-          "begin": "\\{(?!extern)",
+          "begin": "\\{(?!extern|test)",
           "beginCaptures": {
             "0": {
               "name": "punctuation.brace.begin.st"
