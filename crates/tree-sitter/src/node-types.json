@@ -5370,6 +5370,10 @@
       "required": true,
       "types": [
         {
+          "type": "array_type_spec",
+          "named": true
+        },
+        {
           "type": "data_type_access",
           "named": true
         }
@@ -5395,6 +5399,10 @@
       "multiple": false,
       "required": true,
       "types": [
+        {
+          "type": "array_type_spec",
+          "named": true
+        },
         {
           "type": "data_type_access",
           "named": true

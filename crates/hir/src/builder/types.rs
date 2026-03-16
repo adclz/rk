@@ -693,6 +693,18 @@ impl<'db> ParseSpecInit<'db> for ast::generated::RefSpec {
     }
 }
 
+impl<'db> ParseSpec<'db> for ast::generated::ArrayTypeSpec_DataTypeAccess {
+    fn to_spec(
+        &self,
+        sema: &mut SemanticIndexBuilder<'db>,
+    ) -> anyhow::Result<Spec<'db>, IdeDiagnostic> {
+        match self {
+            ast::generated::ArrayTypeSpec_DataTypeAccess::DataTypeAccess(dt) => dt.to_spec(sema),
+            ast::generated::ArrayTypeSpec_DataTypeAccess::ArrayTypeSpec(arr) => arr.to_spec(sema),
+        }
+    }
+}
+
 impl<'db> ParseSpec<'db> for ast::generated::RefTypeSpec {
     fn to_spec(
         &self,

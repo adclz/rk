@@ -185,14 +185,36 @@ impl<'db> Type<'db> {
                     .coerce_with_type(db, *rhs, adjustments, resolver)
             }
             // same types are assignable
-            (Type::Array(a1), Type::Array(a2)) => match a1.eq(a2) {
-                true => Ok(()),
-                false => Err(CoerceError {
-                    expected: *self,
-                    actual: to,
-                    adjustment: None,
-                }),
-            },
+            (Type::Array(a1), Type::Array(a2)) => {
+                if a1.eq(a2) {
+                    return Ok(());
+                }
+                // Structural comparison: same dimensions, same bounds, coercible element type
+                let s1 = a1.subranges(db);
+                let s2 = a2.subranges(db);
+                if s1.len() != s2.len() {
+                    return Err(CoerceError {
+                        expected: *self,
+                        actual: to,
+                        adjustment: None,
+                    });
+                }
+                for (r1, r2) in s1.iter().zip(s2.iter()) {
+                    let bounds_match = r1.0.as_range(db) == r2.0.as_range(db)
+                        && r1.1.as_range(db) == r2.1.as_range(db)
+                        && r1.0.as_range(db).is_some();
+                    if !bounds_match {
+                        return Err(CoerceError {
+                            expected: *self,
+                            actual: to,
+                            adjustment: None,
+                        });
+                    }
+                }
+                a1.of_type(db)
+                    .infer(db)
+                    .coerce_with_type(db, a2.of_type(db).infer(db), None, resolver)
+            }
             // check array spec equality
             (Type::Array(a1), rhs) => {
                 a1.of_type(db)

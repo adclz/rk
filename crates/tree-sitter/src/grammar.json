@@ -2839,8 +2839,17 @@
           }
         },
         {
-          "type": "SYMBOL",
-          "name": "data_type_access"
+          "type": "CHOICE",
+          "members": [
+            {
+              "type": "SYMBOL",
+              "name": "data_type_access"
+            },
+            {
+              "type": "SYMBOL",
+              "name": "array_type_spec"
+            }
+          ]
         }
       ]
     },
@@ -2920,8 +2929,17 @@
           "value": "REF_TO"
         },
         {
-          "type": "SYMBOL",
-          "name": "data_type_access"
+          "type": "CHOICE",
+          "members": [
+            {
+              "type": "SYMBOL",
+              "name": "data_type_access"
+            },
+            {
+              "type": "SYMBOL",
+              "name": "array_type_spec"
+            }
+          ]
         }
       ]
     },

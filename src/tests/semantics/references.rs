@@ -488,3 +488,42 @@ END_FUNCTION_BLOCK
 
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"");
 }
+
+#[rstest]
+fn valid_ref_to_array(mut with_db: RootDatabase) {
+    let source = r#"
+FUNCTION_BLOCK fb1
+    VAR
+        arr: ARRAY[0..10] OF INT;
+        ptr: REF_TO ARRAY[0..10] OF INT;
+    END_VAR
+
+    ptr := REF(arr);
+    ptr^[0] := 42;
+
+END_FUNCTION_BLOCK
+    "#;
+
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @"");
+}
+
+#[rstest]
+fn valid_ref_to_array_in_type_decl(mut with_db: RootDatabase) {
+    let source = r#"
+TYPE
+    ArrRef: REF_TO ARRAY[0..10] OF INT;
+END_TYPE
+
+FUNCTION_BLOCK fb1
+    VAR
+        arr: ARRAY[0..10] OF INT;
+        ptr: ArrRef;
+    END_VAR
+
+    ptr := REF(arr);
+
+END_FUNCTION_BLOCK
+    "#;
+
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @"");
+}

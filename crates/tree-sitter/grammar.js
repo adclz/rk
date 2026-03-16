@@ -771,7 +771,7 @@ module.exports = grammar({
 
     ...createSpecInit(
       "ref",
-      ($) => seq(field("ref_count", repeat1(alias("REF_TO", $.ref_to))), $.data_type_access),
+      ($) => seq(field("ref_count", repeat1(alias("REF_TO", $.ref_to))), choice($.data_type_access, $.array_type_spec)),
       ($) => seq(":=", $.ref_value),
     ),
 
@@ -781,7 +781,7 @@ module.exports = grammar({
     ref_spec_init: ($) =>
       prec.left(seq($.ref_spec, optional(seq(":=", $.ref_value)))),
 
-    ref_spec: ($) => seq("REF_TO", $.data_type_access),
+    ref_spec: ($) => seq("REF_TO", choice($.data_type_access, $.array_type_spec)),
 
     ref_value: ($) => choice($.ref_addr, alias("NULL", $.null)),
 
