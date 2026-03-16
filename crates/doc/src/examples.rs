@@ -112,6 +112,19 @@ END_FUNCTION_BLOCK
 "#],
         },
         ErrorExample {
+            code: "E0008",
+            category: "Syntax",
+            title: "Incomplete edge qualifier",
+            description: "An edge qualifier like `R_` or `F_ED` was started but not completed. Use `R_EDGE` or `F_EDGE`.",
+            sources: &[r#"
+FUNCTION_BLOCK fb1
+VAR_INPUT
+    x : BOOL R_ED;
+END_VAR
+END_FUNCTION_BLOCK
+"#],
+        },
+        ErrorExample {
             code: "E0009",
             category: "Syntax",
             title: "THIS not valid in this context",
@@ -229,6 +242,16 @@ VAR
     ml : ARRAY [0..2] OF INT := [1(call(IN := 5, OUT => OUT))];
 END_VAR
 END_FUNCTION_BLOCK
+"#],
+        },
+        ErrorExample {
+            code: "E0018",
+            category: "Syntax",
+            title: "Invalid POU keyword",
+            description: "An invalid keyword was used where a POU declaration (FUNCTION, FUNCTION_BLOCK, CLASS, etc.) was expected.",
+            sources: &[r#"
+HELLO world
+END_FUNCTION
 "#],
         },
         ErrorExample {
@@ -864,6 +887,19 @@ VAR
     x : INT;
 END_VAR
     x[0] := 5;
+END_FUNCTION_BLOCK
+"#],
+        },
+        ErrorExample {
+            code: "E0214",
+            category: "Resolution",
+            title: "Elementary type initialized with parentheses",
+            description: "Elementary types like INT, BOOL, REAL cannot be initialized with `()` syntax. Use `:=` instead.",
+            sources: &[r#"
+FUNCTION_BLOCK fb1
+VAR
+    x : INT(5);
+END_VAR
 END_FUNCTION_BLOCK
 "#],
         },
@@ -1593,6 +1629,16 @@ END_FUNCTION
 "#],
         },
         ErrorExample {
+            code: "E0311",
+            category: "Type System",
+            title: "Unknown generic constraint",
+            description: "A generic parameter uses an unknown constraint. Only type groups like ANY, ANY_INT, ANY_REAL, etc. are valid.",
+            sources: &[r#"
+FUNCTION fn1<GT: UNKNOWN_TYPE>
+END_FUNCTION
+"#],
+        },
+        ErrorExample {
             code: "E0312",
             category: "Type System",
             title: "Invalid generic constraint",
@@ -1600,6 +1646,20 @@ END_FUNCTION
             sources: &[r#"
 FUNCTION fn1<GT: ANY_INT + INTO<INT>>
 END_FUNCTION
+"#],
+        },
+        ErrorExample {
+            code: "E0313",
+            category: "Type System",
+            title: "Missing type arguments",
+            description: "A generic function requires explicit type arguments but the compiler cannot infer them from the call arguments.",
+            sources: &[r#"
+FUNCTION fn1<T: ANY> : T
+END_FUNCTION
+
+FUNCTION_BLOCK fb1
+    fn1();
+END_FUNCTION_BLOCK
 "#],
         },
         ErrorExample {
@@ -2005,6 +2065,19 @@ END_VAR
 END_FUNCTION_BLOCK
 "#],
         },
+        ErrorExample {
+            code: "E0607",
+            category: "Arrays",
+            title: "Invalid array index value",
+            description: "An array initializer repeat count is not a valid integer value (e.g., overflow).",
+            sources: &[r#"
+FUNCTION_BLOCK fb1
+VAR
+    x : ARRAY[0..2] OF INT := [99999999999999999999(0)];
+END_VAR
+END_FUNCTION_BLOCK
+"#],
+        },
         // ── E07xx: Enums ─────────────────────────────────────────────────
         ErrorExample {
             code: "E0701",
@@ -2014,6 +2087,20 @@ END_FUNCTION_BLOCK
             sources: &[r#"
 TYPE e1 : REAL (Red, Green, Blue)
 END_TYPE
+"#],
+        },
+        ErrorExample {
+            code: "E0702",
+            category: "Enums",
+            title: "Not an ENUM type",
+            description: "The `#` enum access syntax was used on a type that is not an ENUM.",
+            sources: &[r#"
+FUNCTION_BLOCK fb1
+VAR
+    x : INT;
+END_VAR
+    x := INT#Red;
+END_FUNCTION_BLOCK
 "#],
         },
         ErrorExample {
@@ -2108,6 +2195,20 @@ VAR
     x: INT;
 END_VAR
     x := ptr^;
+END_FUNCTION_BLOCK
+"#],
+        },
+        ErrorExample {
+            code: "E1004",
+            category: "Control Flow",
+            title: "Assignment to constant",
+            description: "Cannot assign to a variable declared as CONSTANT.",
+            sources: &[r#"
+FUNCTION_BLOCK fb1
+VAR CONSTANT
+    x : INT := 10;
+END_VAR
+    x := 20;
 END_FUNCTION_BLOCK
 "#],
         },
