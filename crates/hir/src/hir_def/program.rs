@@ -7,7 +7,7 @@ use crate::{
     AstId, HasName, HirNodeInfo,
     hir_def::{
         config::AccessDirection,
-        expressions::{expression::PathExpr, spec::Spec, statement::Stmt},
+        expressions::{expression::{ParamAssign, PathExpr}, spec::Spec, statement::Stmt},
         interned::identifier::Ident,
         pous::variable::{DirectVariable, LocatedVariable, VariableDecl},
         scope::ScopeId,
@@ -34,6 +34,10 @@ pub struct ProgramDecl<'db> {
 
     #[tracked]
     pub is_test: bool,
+
+    #[tracked]
+    #[returns(ref)]
+    pub cases: Vec<Vec<ParamAssign<'db>>>,
 
     #[tracked]
     #[no_eq]

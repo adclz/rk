@@ -380,7 +380,7 @@ impl<'db> BodyInferenceResult<'db> {
 
     /// Check whether an expression is a DataType constant access.
     /// Returns true if the expr is a variable access rooted in a DataType.
-    pub fn is_constant_expr(
+    pub fn is_constant_type(
         &self,
         db: &'db dyn WorkspaceDataBase,
         expr: Expr<'db>,

@@ -3,7 +3,7 @@ use db::WorkspaceDataBase;
 use crate::{
     AstId, HasName, HirNodeInfo,
     hir_def::{
-        expressions::{spec::Spec, statement::Stmt},
+        expressions::{expression::ParamAssign, spec::Spec, statement::Stmt},
         interned::identifier::Ident,
         pous::{generics::GenericParam, variable::VariableDecl},
         scope::ScopeId,
@@ -16,6 +16,10 @@ pub struct Function<'db> {
 
     #[tracked]
     pub is_test: bool,
+
+    #[tracked]
+    #[returns(ref)]
+    pub cases: Vec<Vec<ParamAssign<'db>>>,
 
     #[tracked]
     #[no_eq]

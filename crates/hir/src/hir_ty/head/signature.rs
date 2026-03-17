@@ -17,10 +17,11 @@ use crate::{
     hir_ty::{
         index_graphs::external_var_lookup,
         resolver::{
+            func_call::resolve_params,
             name::{NameResolution, resolve_name},
             visibility::check_test_visibility,
         },
-        ty::Type,
+        ty::{CallableType, Type},
     },
 };
 
@@ -89,6 +90,7 @@ impl<'db> Signature<'db> {
         self.infer_return_type(db);
         self.infer_access_decls(db);
         self.infer_config_resources(db);
+        self.infer_test_cases(db);
 
         self
     }
@@ -381,5 +383,18 @@ impl<'db> Signature<'db> {
         };
         self.type_of_specs.insert(spec, typ);
         typ
+    }
+
+    fn infer_test_cases(&mut self, db: &'db dyn WorkspaceDataBase) {
+        let scope = get_scope(db, self.scope);
+
+        let (cases, callable) = match scope.kind {
+            ScopeKind::Pou(Pou::Function(f)) => (f.cases(db), CallableType::Function(f)),
+            _ => return,
+        };
+
+        for case in cases {
+            resolve_params(db, case, callable, &mut self.errors);
+        }
     }
 }

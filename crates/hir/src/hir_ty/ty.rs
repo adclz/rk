@@ -155,6 +155,14 @@ impl<'db> CallableType<'db> {
             CallableType::MethodDecl(_) => &[],
         }
     }
+
+    pub fn inner_callable(&self) -> Type<'db> {
+        match self {
+            CallableType::Function(f) => Type::Function(*f),
+            CallableType::FunctionBlock(fb) => Type::FunctionBlock(*fb),
+            CallableType::MethodDecl(m) => Type::MethodDecl(*m),
+        }
+    }
 }
 
 impl<'db> HirNodeInfo<'db> for CallableType<'db> {

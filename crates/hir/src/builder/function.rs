@@ -3,12 +3,14 @@ use crate::builder::semantic_index::SemanticIndexBuilder;
 use crate::builder::{Parse, ParseSpec, ParseVarSection};
 use crate::check::errors::ToIdeDiagnostic;
 use crate::check::errors::e0_syntax::SyntaxError;
+use crate::hir_def::expressions::expression::ParamAssignKind;
 use crate::hir_def::hir_node::HirNode;
-use crate::hir_def::interned::identifier::Ident;
+use crate::hir_def::interned::identifier::{Ident, SpanIdent};
 use crate::hir_def::pous::function::Function;
 use crate::hir_def::pous::pou::Pou;
 use crate::hir_def::pous::variable::VariableDecl;
 use crate::hir_def::scope::ScopeKind;
+use crate::hir_def::expressions::expression::ParamAssign;
 use ast::generated::FuncVariables;
 use auto_lsp::anyhow;
 use auto_lsp::core::ast::AstNode;
@@ -54,10 +56,13 @@ impl<'db> SemanticIndexBuilder<'db> {
             vec![]
         };
 
+        let cases = self.parse_cases(&func.cases);
+
         let result = Pou::Function(Function::new(
             self.db,
             name,
             func.test.is_some(),
+            cases,
             func.name.cast(self.ast).into(),
             generics,
             variables,
@@ -121,5 +126,44 @@ impl<'db> SemanticIndexBuilder<'db> {
         }
 
         variables
+    }
+
+    pub(crate) fn parse_cases(
+        &mut self,
+        cases: &[auto_lsp::core::ast::AstNodeId<ast::generated::CasePragma>],
+    ) -> Vec<Vec<ParamAssign<'db>>> {
+        cases
+            .iter()
+            .map(|case_id| {
+                let case = case_id.cast(self.ast);
+                let mut args = vec![];
+                for arg_id in case.args.iter() {
+                    match arg_id.cast(self.ast) {
+                        ast::generated::Comma_ParamAssignInput::ParamAssignInput(p) => {
+                            let kind = match p.param.as_ref() {
+                                Some(param) => {
+                                    let param =
+                                        SpanIdent::from_node(self.db, self, param.cast(self.ast));
+                                    let value = p.value.cast(self.ast).parse(self);
+                                    match (param, value) {
+                                        (Ok(param), Ok(value)) => {
+                                            ParamAssignKind::FormalInput { param, value }
+                                        }
+                                        _ => continue,
+                                    }
+                                }
+                                None => match p.value.cast(self.ast).parse(self) {
+                                    Ok(value) => ParamAssignKind::NonFormal { value },
+                                    _ => continue,
+                                },
+                            };
+                            args.push(self.new_param(p.into(), self.current_scope, kind));
+                        }
+                        _ => {} // skip commas
+                    }
+                }
+                args
+            })
+            .collect()
     }
 }
