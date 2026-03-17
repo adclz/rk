@@ -30,6 +30,7 @@ pub mod references;
 pub mod scopes;
 pub mod subrange;
 pub mod syntax;
+pub mod unit_tests;
 pub mod var_decls;
 pub mod variadics;
 pub mod visibility;

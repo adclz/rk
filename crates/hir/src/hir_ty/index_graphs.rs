@@ -73,9 +73,10 @@ use crate::{
         config::{ConfigDecl, ConfigResource},
         interned::{identifier::Ident, namespace::NamespacePath},
         namespace::NamespaceDecl,
-        pous::{pou::Pou, variable::VariableDecl},
+        pous::{function::Function, pou::Pou, variable::VariableDecl},
         program::ProgramDecl,
-        semantic_index::semantic_index,
+        scope::ScopeKind,
+        semantic_index::{get_scope, semantic_index},
     },
 };
 
@@ -231,4 +232,121 @@ pub fn external_var_lookup<'db>(
         }
     }
     None
+}
+
+// ---------------------------------------------------------------------------
+// Test discovery
+// ---------------------------------------------------------------------------
+
+/// A discovered test item with its qualified name.
+#[derive(Debug, Clone)]
+pub enum TestItem<'db> {
+    Function(Function<'db>, String),
+    Program(ProgramDecl<'db>, String),
+}
+
+impl<'db> TestItem<'db> {
+    pub fn qualified_name(&self) -> &str {
+        match self {
+            TestItem::Function(_, name) => name,
+            TestItem::Program(_, name) => name,
+        }
+    }
+}
+
+/// Discover all {test}-annotated POUs and programs across the workspace.
+///
+/// Returns a list of test items with their fully-qualified names
+/// (e.g. `"test_abs"` for global, `"Std.Math.test_sqrt"` for namespaced).
+pub fn discover_all_tests<'db>(db: &'db dyn WorkspaceDataBase) -> Vec<TestItem<'db>> {
+    let mut tests = vec![];
+
+    for file in all_files(db) {
+        // Global test functions
+        for pou in file_global_pous(db, file).iter() {
+            if let Pou::Function(f) = pou {
+                if f.is_test(db) {
+                    tests.push(TestItem::Function(*f, f.name(db).text(db).to_string()));
+                }
+            }
+        }
+
+        // Global test programs
+        for prog in file_programs(db, file).iter() {
+            if prog.is_test(db) {
+                tests.push(TestItem::Program(*prog, prog.name(db).text(db).to_string()));
+            }
+        }
+
+        // Namespaced test functions
+        for ns in file_namespaces(db, file).iter() {
+            discover_tests_in_namespace(db, *ns, &mut tests);
+        }
+    }
+
+    tests
+}
+
+fn discover_tests_in_namespace<'db>(
+    db: &'db dyn WorkspaceDataBase,
+    ns: NamespaceDecl<'db>,
+    tests: &mut Vec<TestItem<'db>>,
+) {
+    let ns_prefix = ns.path(db).to_string(db);
+
+    for pou in ns.pous(db).iter() {
+        if let Pou::Function(f) = pou {
+            if f.is_test(db) {
+                tests.push(TestItem::Function(
+                    *f,
+                    format!("{}.{}", ns_prefix, f.name(db).text(db)),
+                ));
+            }
+        }
+    }
+
+    for child_ns in ns.namespaces(db).iter() {
+        discover_tests_in_namespace(db, *child_ns, tests);
+    }
+}
+
+/// Find a specific test by its qualified name (e.g. `"Std.Math.test_sqrt"` or `"test_abs"`).
+///
+/// Returns `Some` if the name resolves to a {test}-annotated POU or program, `None` otherwise.
+pub fn find_test<'db>(
+    db: &'db dyn WorkspaceDataBase,
+    qualified_name: &str,
+) -> Option<TestItem<'db>> {
+    let parts: Vec<&str> = qualified_name.split('.').collect();
+
+    if parts.len() == 1 {
+        // Global scope: check functions then programs
+        let name = Ident::from_slice(db, parts[0]);
+        if let Some(Pou::Function(f)) = pou_index(db, name) {
+            if f.is_test(db) {
+                return Some(TestItem::Function(f, qualified_name.to_string()));
+            }
+        }
+        if let Some(prog) = program_index(db, name) {
+            if prog.is_test(db) {
+                return Some(TestItem::Program(prog, qualified_name.to_string()));
+            }
+        }
+        None
+    } else {
+        // Namespaced: split into namespace path + item name
+        let ns_parts = &parts[..parts.len() - 1];
+        let item_name = parts[parts.len() - 1];
+
+        let ns_idents: Vec<Ident> = ns_parts.iter().map(|s| Ident::from_slice(db, s)).collect();
+        let ns_path = NamespacePath::new(db, ns_idents);
+        let name = Ident::from_slice(db, item_name);
+
+        if let Some(Pou::Function(f)) = namespace_pou_index(db, ns_path, name) {
+            if f.is_test(db) {
+                return Some(TestItem::Function(f, qualified_name.to_string()));
+            }
+        }
+        None
+    }
 }
