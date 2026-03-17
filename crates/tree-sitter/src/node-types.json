@@ -1911,6 +1911,26 @@
     }
   },
   {
+    "type": "case_pragma",
+    "named": true,
+    "fields": {
+      "args": {
+        "multiple": true,
+        "required": false,
+        "types": [
+          {
+            "type": ",",
+            "named": false
+          },
+          {
+            "type": "param_assign_input",
+            "named": true
+          }
+        ]
+      }
+    }
+  },
+  {
     "type": "case_selection",
     "named": true,
     "fields": {
@@ -3381,6 +3401,16 @@
         "types": [
           {
             "type": "func_body",
+            "named": true
+          }
+        ]
+      },
+      "cases": {
+        "multiple": true,
+        "required": false,
+        "types": [
+          {
+            "type": "case_pragma",
             "named": true
           }
         ]
@@ -5308,6 +5338,16 @@
         "types": [
           {
             "type": "fb_body",
+            "named": true
+          }
+        ]
+      },
+      "cases": {
+        "multiple": true,
+        "required": false,
+        "types": [
+          {
+            "type": "case_pragma",
             "named": true
           }
         ]

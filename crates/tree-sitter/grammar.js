@@ -362,6 +362,17 @@ module.exports = grammar({
     // {test}
     test_pragma: (_) => prec(1, token(seq("{", "test", "}"))),
 
+    // Case pragma - parameterized test case values
+    // {case(5, 10)}                  - positional
+    // {case(x := 5, y := 10)}       - named
+    // {case(5, y := 10)}            - mixed
+    case_pragma: ($) =>
+      prec(1, seq(
+        token(prec(1, seq("{", "case", "("))),
+          field("args", commaSep($.param_assign_input)),
+        ")", "}",
+      )),
+
     // Table 5 - Numeric literal
 
     constant: ($) =>
@@ -1086,6 +1097,7 @@ module.exports = grammar({
     func_decl: ($) =>
       seq(
         field("test", optional($.test_pragma)),
+        field("cases", repeat($.case_pragma)),
         "FUNCTION",
         field("spec", optional($.access_spec)),
         field("name", $.identifier),
@@ -1322,6 +1334,7 @@ module.exports = grammar({
     prog_decl: ($) =>
       seq(
         field("test", optional($.test_pragma)),
+        field("cases", repeat($.case_pragma)),
         "PROGRAM",
         field("name", $.identifier),
         field(
