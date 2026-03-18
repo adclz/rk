@@ -92,10 +92,6 @@ impl<'db> Resolver<'db> {
                     .insert(path_expr, Type::MethodDecl(method.into()));
                 true
             }
-            name::NameResolution::Generic(g) => {
-                ctx.type_of_path_expr.insert(path_expr, Type::Generic(g));
-                true
-            }
             name::NameResolution::Pou(pou, using) => {
                 if let Some(using) = using {
                     ctx.usings_used.insert(using);

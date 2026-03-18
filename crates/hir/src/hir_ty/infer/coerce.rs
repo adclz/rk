@@ -5,7 +5,7 @@ use crate::{
     CallSite, HirNodeInfo,
     check::errors::{ToIdeDiagnostic, e3_type::TypeError, e10_control_flow::ControlFlowError},
     hir_def::{
-        expressions::expression::{AddOperatorKind, MultOperatorKind},
+        expressions::{expression::{AddOperatorKind, MultOperatorKind}, spec::ElementarySpec},
         pous::pou::Pou,
     },
     hir_ty::{
@@ -26,73 +26,78 @@ pub struct CoerceError<'db> {
 pub type CoerceResult<'db> = Result<(), CoerceError<'db>>;
 
 impl<'db> Type<'db> {
-    pub fn supports_add(&self, db: &'db dyn WorkspaceDataBase) -> bool {
+    pub fn supports_add(&self, _db: &'db dyn WorkspaceDataBase) -> bool {
         self.is_numeric()
             || self.is_time()
-            || match self {
-                Type::Generic(generic) => generic
-                    .as_builtin_generic(db)
-                    .map(|g| g.supports_add())
-                    .unwrap_or(false),
-                _ => false,
-            }
+            || matches!(
+                self,
+                Type::Elementary(
+                    ElementarySpec::Any
+                        | ElementarySpec::AnyMagnitude
+                        | ElementarySpec::AnyNum
+                        | ElementarySpec::AnyInt
+                        | ElementarySpec::AnySigned
+                        | ElementarySpec::AnyUnsigned
+                        | ElementarySpec::AnyReal
+                        | ElementarySpec::AnyElementary
+                        | ElementarySpec::AnyDuration
+                )
+            )
     }
 
-    pub fn supports_mul(&self, db: &'db dyn WorkspaceDataBase) -> bool {
+    pub fn supports_mul(&self, _db: &'db dyn WorkspaceDataBase) -> bool {
         self.is_numeric()
-            || match self {
-                Type::Generic(generic) => generic
-                    .as_builtin_generic(db)
-                    .map(|g| g.supports_mul())
-                    .unwrap_or(false),
-                _ => false,
-            }
+            || matches!(
+                self,
+                Type::Elementary(
+                    ElementarySpec::AnyNum
+                        | ElementarySpec::AnyInt
+                        | ElementarySpec::AnySigned
+                        | ElementarySpec::AnyUnsigned
+                        | ElementarySpec::AnyReal
+                )
+            )
     }
 
     pub fn supports_div(&self, db: &'db dyn WorkspaceDataBase) -> bool {
-        self.is_numeric()
-            || match self {
-                Type::Generic(generic) => generic
-                    .as_builtin_generic(db)
-                    .map(|g| g.supports_mul())
-                    .unwrap_or(false),
-                _ => false,
-            }
+        self.supports_mul(db)
     }
 
-    pub fn supports_mod(&self, db: &'db dyn WorkspaceDataBase) -> bool {
+    pub fn supports_mod(&self, _db: &'db dyn WorkspaceDataBase) -> bool {
         self.is_signed_integer()
             || self.is_unsigned_integer()
-            || match self {
-                Type::Generic(generic) => generic
-                    .as_builtin_generic(db)
-                    .map(|g| g.supports_mod())
-                    .unwrap_or(false),
-                _ => false,
-            }
+            || matches!(
+                self,
+                Type::Elementary(
+                    ElementarySpec::AnyInt
+                        | ElementarySpec::AnySigned
+                        | ElementarySpec::AnyUnsigned
+                )
+            )
     }
 
-    pub fn supports_power(&self, db: &'db dyn WorkspaceDataBase) -> bool {
+    pub fn supports_power(&self, _db: &'db dyn WorkspaceDataBase) -> bool {
         self.is_float()
-            || match self {
-                Type::Generic(generic) => generic
-                    .as_builtin_generic(db)
-                    .map(|g| g.supports_power())
-                    .unwrap_or(false),
-                _ => false,
-            }
+            || matches!(
+                self,
+                Type::Elementary(ElementarySpec::AnyReal)
+            )
     }
 
-    pub fn supports_bool_op(&self, db: &'db dyn WorkspaceDataBase) -> bool {
+    pub fn supports_bool_op(&self, _db: &'db dyn WorkspaceDataBase) -> bool {
         self.is_boolean()
             || self.is_numeric()
-            || match self {
-                Type::Generic(generic) => generic
-                    .as_builtin_generic(db)
-                    .map(|g| g.supports_bool_op() || g.is_numeric())
-                    .unwrap_or(false),
-                _ => false,
-            }
+            || matches!(
+                self,
+                Type::Elementary(
+                    ElementarySpec::AnyBit
+                        | ElementarySpec::AnyNum
+                        | ElementarySpec::AnyInt
+                        | ElementarySpec::AnySigned
+                        | ElementarySpec::AnyUnsigned
+                        | ElementarySpec::AnyReal
+                )
+            )
     }
 
     pub fn supports_comparison(&self, db: &'db dyn WorkspaceDataBase) -> bool {
@@ -228,7 +233,23 @@ impl<'db> Type<'db> {
                     .coerce_with_type(db, *rhs, adjustments, resolver)
             }
             (Type::Elementary(lhs), Type::Elementary(rhs)) => {
+                // Two ANY_* specs of *different* kinds are never assignable.
+                // Same ANY_* kind is allowed (e.g. two INTO(fn) params sharing the same anchor).
+                if lhs.is_any() && rhs.is_any() && lhs != *rhs {
+                    return Err(CoerceError {
+                        expected: *self,
+                        actual: to,
+                        adjustment: None,
+                    });
+                }
                 if lhs == *rhs {
+                    return Ok(());
+                }
+                // ANY_* specs accept any concrete type in their group
+                if lhs.is_any() && lhs.accepts(*rhs) {
+                    return Ok(());
+                }
+                if rhs.is_any() && rhs.accepts(lhs) {
                     return Ok(());
                 }
                 // try implicit conversions in both directions

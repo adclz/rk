@@ -31,13 +31,6 @@ impl<'db> Pou<'db> {
         }
     }
 
-    pub fn is_generic(&self, db: &'db dyn WorkspaceDataBase) -> bool {
-        match self {
-            Pou::Function(f) => !f.generics(db).is_empty(),
-            // Other POUs don't support generics yet
-            _ => false,
-        }
-    }
 }
 
 impl<'db> HirNodeInfo<'db> for Pou<'db> {

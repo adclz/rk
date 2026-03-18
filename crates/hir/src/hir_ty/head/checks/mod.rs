@@ -7,7 +7,6 @@ use crate::{
 
 pub mod array;
 pub mod enum_;
-pub mod generics;
 pub mod methods;
 pub mod strukt;
 pub mod subrange;

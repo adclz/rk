@@ -50,12 +50,6 @@ impl<'db> SemanticIndexBuilder<'db> {
         let name = Ident::from_node(self.db, self.file, func.name.cast(self.ast))?;
         let usings = self.parse_usings(&func.directives)?;
 
-        let generics = if let Some(generics) = &func.generic_spec {
-            self.parse_generic_params(generics.cast(self.ast))?
-        } else {
-            vec![]
-        };
-
         let cases = self.parse_cases(&func.cases);
 
         let result = Pou::Function(Function::new(
@@ -64,7 +58,6 @@ impl<'db> SemanticIndexBuilder<'db> {
             func.test.is_some(),
             cases,
             func.name.cast(self.ast).into(),
-            generics,
             variables,
             statements,
             return_type,

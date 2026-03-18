@@ -4,7 +4,7 @@ use rustc_hash::{FxHashMap, FxHashSet};
 
 use crate::{
     CallSite, HasName, HirNodeInfo,
-    check::errors::{ToIdeDiagnostic, e2_resolve::ResolveError, e3_type::TypeError},
+    check::errors::{ToIdeDiagnostic, e2_resolve::ResolveError},
     hir_def::{
         config::ConfigResource,
         expressions::spec::{Spec, SpecKind},
@@ -85,7 +85,6 @@ impl<'db> Signature<'db> {
         }
 
         self.infer_extends_implements(db);
-        self.infer_generics(db);
         self.infer_variables(db);
         self.infer_return_type(db);
         self.infer_access_decls(db);
@@ -93,78 +92,6 @@ impl<'db> Signature<'db> {
         self.infer_test_cases(db);
 
         self
-    }
-
-    fn infer_generics(&mut self, db: &'db dyn WorkspaceDataBase) {
-        let generics = match self.scope.generics(db) {
-            Some(generics) => generics,
-            None => return,
-        };
-
-        let generics_hashmap = &self.scope.def_map(db).generics;
-
-        for generic in generics {
-            let builtin = generic.as_builtin_generic(db);
-            if builtin.is_none() {
-                self.errors
-                    .push(TypeError::InvalidGenericType { param: *generic }.to_diagnostic(db));
-            }
-
-            // Store the main type bound (e.g., ANY_INT from `T: ANY_INT`)
-            if let Some(any) = builtin {
-                self.constraint_of_generic
-                    .entry(generic.name(db))
-                    .or_default()
-                    .push(Constraint::TypeBound(any));
-            }
-
-            let param_name = generic.name(db);
-
-            for constraint in generic.spec_constraints(db) {
-                match constraint.spec.kind(db) {
-                    SpecKind::Target(target) if target.path.namespace.is_none() => {
-                        let target_ident = target.path.target;
-                        if let Some(target_generic) = generics_hashmap.get(&target_ident) {
-                            // INTO<T> where T is the same parameter is self-referential
-                            if target_generic.name(db) == param_name {
-                                self.errors.push(
-                                    TypeError::SelfReferentialIntoConstraint {
-                                        param: *generic,
-                                        constraint: constraint.spec,
-                                    }
-                                    .to_diagnostic(db),
-                                );
-                            } else {
-                                // INTO<U> where U is a sibling generic parameter — valid
-                                self.constraint_of_generic
-                                    .entry(param_name)
-                                    .or_default()
-                                    .push(Constraint::GenericParameter(target_generic.name(db)));
-                            }
-                        } else {
-                            // Not a sibling generic parameter — invalid
-                            self.errors.push(
-                                TypeError::InvalidGenericConstraint {
-                                    param: *generic,
-                                    constraint: constraint.spec,
-                                }
-                                .to_diagnostic(db),
-                            );
-                        }
-                    }
-                    _ => {
-                        // INTO target must be a generic parameter, nothing else
-                        self.errors.push(
-                            TypeError::InvalidGenericConstraint {
-                                param: *generic,
-                                constraint: constraint.spec,
-                            }
-                            .to_diagnostic(db),
-                        );
-                    }
-                }
-            }
-        }
     }
 
     fn infer_return_type(&mut self, db: &'db dyn WorkspaceDataBase) {

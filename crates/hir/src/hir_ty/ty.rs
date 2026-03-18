@@ -147,15 +147,6 @@ impl<'db> CallableType<'db> {
         self.def_map(db).local_variables.len()
     }
 
-    pub fn generics(&self, db: &'db dyn WorkspaceDataBase) -> &'db [GenericParam<'db>] {
-        match self {
-            CallableType::Function(f) => f.generics(db),
-            CallableType::FunctionBlock(fb) => fb.generics(db),
-            // TODO: add generics support for Method
-            CallableType::MethodDecl(_) => &[],
-        }
-    }
-
     pub fn inner_callable(&self) -> Type<'db> {
         match self {
             CallableType::Function(f) => Type::Function(*f),

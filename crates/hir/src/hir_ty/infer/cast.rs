@@ -125,6 +125,21 @@ impl<'db> AnyGeneric {
                 ANY_DURATION => spec,
                 _ => None?,
             },
+            // ANY type specs accept any value — no casting needed
+            ElementarySpec::Any
+            | ElementarySpec::AnyNum
+            | ElementarySpec::AnyInt
+            | ElementarySpec::AnyReal
+            | ElementarySpec::AnyBit
+            | ElementarySpec::AnyElementary
+            | ElementarySpec::AnyMagnitude
+            | ElementarySpec::AnyChars
+            | ElementarySpec::AnyChar
+            | ElementarySpec::AnyString
+            | ElementarySpec::AnyDate
+            | ElementarySpec::AnyDuration
+            | ElementarySpec::AnySigned
+            | ElementarySpec::AnyUnsigned => spec,
         })
     }
 }

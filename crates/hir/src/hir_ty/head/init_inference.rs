@@ -68,7 +68,6 @@ impl<'db> InitInference<'db> {
             };
         }
 
-        self.check_generics(db);
         self.check_variables(db);
         self.check_usings(db);
         self.check_methods(db);

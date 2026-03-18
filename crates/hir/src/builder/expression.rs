@@ -2,7 +2,6 @@ use auto_lsp::anyhow;
 use auto_lsp::core::ast::AstNode;
 
 use crate::builder::Parse;
-use crate::builder::ParseSpec;
 use crate::builder::semantic_index::SemanticIndexBuilder;
 use crate::check::errors::ToIdeDiagnostic;
 use crate::check::errors::e0_syntax::SyntaxError;
@@ -253,15 +252,6 @@ impl<'db> Parse<'db> for ast::generated::PrimaryExpression {
             ast::generated::PrimaryExpression::FuncCall(func) => {
                 let target = func.function.cast(sema.ast).parse(sema)?;
 
-                // Parse type arguments if present
-                let mut type_args = vec![];
-                if let Some(generic_args) = &func.type_args {
-                    let generic_args_node = generic_args.cast(sema.ast);
-                    for type_arg_id in &generic_args_node.type_arg {
-                        type_args.push(type_arg_id.cast(sema.ast).to_spec(sema)?);
-                    }
-                }
-
                 let mut parameters = vec![];
                 for params in func.params.iter() {
                     match params.cast(sema.ast) {
@@ -290,7 +280,7 @@ impl<'db> Parse<'db> for ast::generated::PrimaryExpression {
                 }
                 Ok(sema.new_expr(
                     ExprKind::PrimaryExpr(PrimaryExpr::FuncCall(FuncCall::new(
-                        sema.db, target, type_args, parameters,
+                        sema.db, target, parameters,
                     ))),
                     func.into(),
                     sema.current_scope,

@@ -5,7 +5,7 @@ use crate::{
     hir_def::{
         expressions::{spec::Spec, statement::Stmt},
         interned::identifier::Ident,
-        pous::{class::MethodDecl, generics::GenericParam, variable::VariableDecl},
+        pous::{class::MethodDecl, variable::VariableDecl},
         scope::ScopeId,
     },
 };
@@ -17,10 +17,6 @@ pub struct FunctionBlock<'db> {
     #[tracked]
     #[no_eq]
     pub name_id: AstId,
-
-    #[tracked]
-    #[returns(ref)]
-    pub generics: Vec<GenericParam<'db>>,
 
     #[tracked]
     #[returns(as_ref)]

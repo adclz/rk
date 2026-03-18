@@ -75,8 +75,7 @@ use crate::{
         namespace::NamespaceDecl,
         pous::{function::Function, pou::Pou, variable::VariableDecl},
         program::ProgramDecl,
-        scope::ScopeKind,
-        semantic_index::{get_scope, semantic_index},
+        semantic_index::semantic_index,
     },
 };
 

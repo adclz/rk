@@ -1,7 +1,6 @@
 use compact_str::CompactString;
 
 use crate::builder::Parse;
-use crate::builder::ParseSpec;
 use crate::builder::expression::ParseVariableAccess;
 use crate::builder::semantic_index::SemanticIndexBuilder;
 use crate::check::errors::ToIdeDiagnostic;
@@ -33,15 +32,6 @@ impl<'db> Parse<'db> for ast::generated::Stmt {
             StmtType::FuncCall(call) => {
                 let target = call.function.cast(sema.ast).parse(sema)?;
 
-                // Parse type arguments if present
-                let mut type_args = vec![];
-                if let Some(generic_args) = &call.type_args {
-                    let generic_args_node = generic_args.cast(sema.ast);
-                    for type_arg_id in &generic_args_node.type_arg {
-                        type_args.push(type_arg_id.cast(sema.ast).to_spec(sema)?);
-                    }
-                }
-
                 let mut parameters = vec![];
                 for params in call.params.iter() {
                     match params.cast(sema.ast) {
@@ -70,7 +60,7 @@ impl<'db> Parse<'db> for ast::generated::Stmt {
                 }
                 Ok(Stmt::new(
                     sema.db,
-                    StmtKind::FuncCall(FuncCall::new(sema.db, target, type_args, parameters)),
+                    StmtKind::FuncCall(FuncCall::new(sema.db, target, parameters)),
                     call.into(),
                     sema.current_scope,
                 ))

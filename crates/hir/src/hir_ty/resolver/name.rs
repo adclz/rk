@@ -8,7 +8,7 @@ use crate::{
             identifier::Ident,
             namespace::{NamespaceAccess, NamespacePath},
         },
-        pous::{class::MethodDecl, generics::GenericParam, pou::Pou},
+        pous::{class::MethodDecl, pou::Pou},
         program::ProgramDecl,
         scope::{ScopeId, ScopeKind},
         semantic_index::{get_scope, semantic_index},
@@ -44,8 +44,6 @@ impl<'db> PouResolution<'db> {
 /// Result of resolving a name in a scope.
 #[derive(Debug, Clone)]
 pub enum NameResolution<'db> {
-    /// Resolved to a generic type parameter
-    Generic(GenericParam<'db>),
     /// Resolved to a POU (function, function block, class, etc.)
     /// `Option<Using>` is `Some` when the POU was found via a USING directive.
     Pou(Pou<'db>, Option<Using<'db>>),
@@ -98,16 +96,7 @@ pub fn resolve_name<'db>(
         _ => {}
     }
 
-    // 2. Generic parameters (works at both head and body level)
-    if let Some(generics) = scope.generics(db) {
-        for generic in generics {
-            if generic.name(db) == name {
-                return NameResolution::Generic(*generic);
-            }
-        }
-    }
-
-    // 3. POU resolution (local → parent/USING → global)
+    // 2. POU resolution (local → parent/USING → global)
     match resolve_namespace_access(db, access) {
         PouResolution::Found(pou, using) => NameResolution::Pou(pou, using),
         PouResolution::Ambiguous(candidates) => NameResolution::Ambiguous(candidates),
@@ -245,12 +234,33 @@ impl<'db> Type<'db> {
             SpecKind::Enum(enm) => Type::Enum(*enm),
             SpecKind::Subrange(sub) => Type::SubRange(*sub),
             SpecKind::Target(t) => match resolve_name(db, &t.path, spec.scope_id(db)) {
-                NameResolution::Generic(g) => Type::Generic(g),
                 NameResolution::Pou(pou, _) => Type::new_pou(db, pou),
                 NameResolution::Program(p) => Type::Program(p),
                 NameResolution::MethodSelf(m) => Type::MethodDecl(m.into()),
                 NameResolution::Ambiguous(_) | NameResolution::NotFound => Type::Never,
             },
+            // INTO(ref) — resolves to the referenced variable's type
+            SpecKind::Into(span_ident) => {
+                let scope = spec.scope_id(db);
+                let ident = span_ident.ident;
+
+                // Check if the identifier matches a local variable
+                let def_map = scope.def_map(db);
+                if let Some(var) = def_map.local_variables.get(&ident) {
+                    return Type::new_var(db, *var);
+                }
+
+                // Check if the identifier matches the POU name (function return type)
+                if let ScopeKind::Pou(pou) = get_scope(db, scope).kind {
+                    if pou.get_name_ident(db) == ident {
+                        if let Some(ret_spec) = scope.return_type(db) {
+                            return Self::resolve_spec(db, *ret_spec);
+                        }
+                    }
+                }
+
+                Type::Never
+            }
         }
     }
 }
