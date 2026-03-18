@@ -571,7 +571,27 @@ module.exports = grammar({
         $.any_time_type_name,
         $.any_tod_type_name,
         $.any_dt_type_name,
-        $.string_type_name
+        $.string_type_name,
+        $.any_type_name,
+      ),
+
+    // IEC 61131-3 ANY type hierarchy - used as type specs for polymorphic parameters
+    any_type_name: ($) =>
+      choice(
+        alias("ANY", $.any_name),
+        alias("ANY_NUM", $.any_num_name),
+        alias("ANY_INT", $.any_int_name),
+        alias("ANY_SIGNED", $.any_signed_name),
+        alias("ANY_UNSIGNED", $.any_unsigned_name),
+        alias("ANY_REAL", $.any_real_name),
+        alias("ANY_BIT", $.any_bit_name),
+        alias("ANY_ELEMENTARY", $.any_elementary_name),
+        alias("ANY_MAGNITUDE", $.any_magnitude_name),
+        alias("ANY_CHARS", $.any_chars_name),
+        alias("ANY_CHAR", $.any_char_name),
+        alias("ANY_STRING", $.any_string_name),
+        alias("ANY_DATE", $.any_date_name),
+        alias("ANY_DURATION", $.any_duration_name),
       ),
 
     numeric_type_name: ($) => choice($.int_type_name, $.real_type_name),

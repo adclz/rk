@@ -1772,6 +1772,141 @@
         {
           "type": "SYMBOL",
           "name": "string_type_name"
+        },
+        {
+          "type": "SYMBOL",
+          "name": "any_type_name"
+        }
+      ]
+    },
+    "any_type_name": {
+      "type": "CHOICE",
+      "members": [
+        {
+          "type": "ALIAS",
+          "content": {
+            "type": "STRING",
+            "value": "ANY"
+          },
+          "named": true,
+          "value": "any_name"
+        },
+        {
+          "type": "ALIAS",
+          "content": {
+            "type": "STRING",
+            "value": "ANY_NUM"
+          },
+          "named": true,
+          "value": "any_num_name"
+        },
+        {
+          "type": "ALIAS",
+          "content": {
+            "type": "STRING",
+            "value": "ANY_INT"
+          },
+          "named": true,
+          "value": "any_int_name"
+        },
+        {
+          "type": "ALIAS",
+          "content": {
+            "type": "STRING",
+            "value": "ANY_SIGNED"
+          },
+          "named": true,
+          "value": "any_signed_name"
+        },
+        {
+          "type": "ALIAS",
+          "content": {
+            "type": "STRING",
+            "value": "ANY_UNSIGNED"
+          },
+          "named": true,
+          "value": "any_unsigned_name"
+        },
+        {
+          "type": "ALIAS",
+          "content": {
+            "type": "STRING",
+            "value": "ANY_REAL"
+          },
+          "named": true,
+          "value": "any_real_name"
+        },
+        {
+          "type": "ALIAS",
+          "content": {
+            "type": "STRING",
+            "value": "ANY_BIT"
+          },
+          "named": true,
+          "value": "any_bit_name"
+        },
+        {
+          "type": "ALIAS",
+          "content": {
+            "type": "STRING",
+            "value": "ANY_ELEMENTARY"
+          },
+          "named": true,
+          "value": "any_elementary_name"
+        },
+        {
+          "type": "ALIAS",
+          "content": {
+            "type": "STRING",
+            "value": "ANY_MAGNITUDE"
+          },
+          "named": true,
+          "value": "any_magnitude_name"
+        },
+        {
+          "type": "ALIAS",
+          "content": {
+            "type": "STRING",
+            "value": "ANY_CHARS"
+          },
+          "named": true,
+          "value": "any_chars_name"
+        },
+        {
+          "type": "ALIAS",
+          "content": {
+            "type": "STRING",
+            "value": "ANY_CHAR"
+          },
+          "named": true,
+          "value": "any_char_name"
+        },
+        {
+          "type": "ALIAS",
+          "content": {
+            "type": "STRING",
+            "value": "ANY_STRING"
+          },
+          "named": true,
+          "value": "any_string_name"
+        },
+        {
+          "type": "ALIAS",
+          "content": {
+            "type": "STRING",
+            "value": "ANY_DATE"
+          },
+          "named": true,
+          "value": "any_date_name"
+        },
+        {
+          "type": "ALIAS",
+          "content": {
+            "type": "STRING",
+            "value": "ANY_DURATION"
+          },
+          "named": true,
+          "value": "any_duration_name"
         }
       ]
     },
