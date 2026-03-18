@@ -48,7 +48,7 @@ pub enum SpecKind<'db> {
     Target(SpanNamespaceAccess<'db>),
 
     // INTO(ref) — type must be implicitly convertible to the referenced variable's type
-    Into(crate::hir_def::interned::identifier::SpanIdent<'db>),
+    Into(SpanIdent<'db>),
 }
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq, Hash, salsa::Update)]
