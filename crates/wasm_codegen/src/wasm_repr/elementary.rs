@@ -45,14 +45,20 @@ pub fn elementary_to_val_type(spec: ElementarySpec) -> Result<ValType, WasmReprE
         | ElementarySpec::DateAndTime
         | ElementarySpec::LDateTime => ValType::I64,
 
-        // String and char types are not supported as direct values
-        // They must be stored in memory
+        // String and char types are not supported as direct values yet
         ElementarySpec::String
         | ElementarySpec::WString
         | ElementarySpec::Char
         | ElementarySpec::WChar => {
             return Err(WasmReprError::UnsupportedType(
                 format!("String types must be stored in memory: {:?}", spec)
+            ));
+        }
+
+        // ANY types cannot be lowered to a concrete WASM type
+        _ => {
+            return Err(WasmReprError::UnsupportedType(
+                format!("ANY type specs cannot be lowered to WASM: {:?}", spec)
             ));
         }
     })

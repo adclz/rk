@@ -44,6 +44,11 @@ pub struct BodyCodegen<'db, 'a> {
     return_local: Option<u32>,
     function_indices: &'a FxHashMap<Ident, u32>,
 
+    /// Monomorphized ANY_* extern function indices (e.g. "ABS.INT" → fn_idx)
+    monomorphized_indices: &'a FxHashMap<String, u32>,
+    /// ANY_* extern function info for resolving call-site types
+    any_extern_functions: &'a FxHashMap<Ident, crate::AnyExternInfo<'db>>,
+
     /// For methods: the 'this' pointer local index.
     this_local: Option<u32>,
 
@@ -67,6 +72,8 @@ impl<'db, 'a> BodyCodegen<'db, 'a> {
         local_map: &'a FxHashMap<Ident, LocalInfo>,
         return_local: Option<u32>,
         function_indices: &'a FxHashMap<Ident, u32>,
+        monomorphized_indices: &'a FxHashMap<String, u32>,
+        any_extern_functions: &'a FxHashMap<Ident, crate::AnyExternInfo<'db>>,
         config: &'a crate::debug::CodeGenConfig,
         debug_info: &'a mut crate::debug::DebugInfo,
         debug_enabled_global: Option<u32>,
@@ -77,6 +84,8 @@ impl<'db, 'a> BodyCodegen<'db, 'a> {
             local_map,
             return_local,
             function_indices,
+            monomorphized_indices,
+            any_extern_functions,
             this_local: None,
             instance: None,
             config,
@@ -91,6 +100,8 @@ impl<'db, 'a> BodyCodegen<'db, 'a> {
         local_map: &'a FxHashMap<Ident, LocalInfo>,
         return_local: Option<u32>,
         function_indices: &'a FxHashMap<Ident, u32>,
+        monomorphized_indices: &'a FxHashMap<String, u32>,
+        any_extern_functions: &'a FxHashMap<Ident, crate::AnyExternInfo<'db>>,
         this_local: u32,
         instance: crate::func_codegen::InstanceType<'db>,
         config: &'a crate::debug::CodeGenConfig,
@@ -103,6 +114,8 @@ impl<'db, 'a> BodyCodegen<'db, 'a> {
             local_map,
             return_local,
             function_indices,
+            monomorphized_indices,
+            any_extern_functions,
             this_local: Some(this_local),
             instance: Some(instance),
             config,
@@ -400,6 +413,35 @@ impl<'db, 'a> BodyCodegen<'db, 'a> {
             StmtKind::Continue => {
                 // CONTINUE jumps back to loop start (br 0 - continues the loop)
                 func.instruction(&Instruction::Br(0));
+                Ok(())
+            }
+
+            StmtKind::FuncCall(call) => {
+                // Standalone function call (result discarded).
+                // Emit it as a primary expression, then drop any return value.
+                use hir::hir_def::expressions::expression::PrimaryExpr;
+                use hir::hir_ty::ty::{CallableType, Type};
+                self.emit_primary_expr(func, &PrimaryExpr::FuncCall(call.clone()))?;
+
+                // If the function has a return type, drop it from the stack
+                let call_type = call.path(self.db).infer(self.db).normalize(self.db);
+                let has_return = match call_type {
+                    Type::CallableType(CallableType::Function(f)) => {
+                        f.return_type(self.db).is_some()
+                    }
+                    Type::CallableType(CallableType::MethodDecl(m)) => {
+                        m.return_type(self.db).is_some()
+                    }
+                    _ => false,
+                };
+                if has_return {
+                    func.instruction(&Instruction::Drop);
+                }
+                Ok(())
+            }
+
+            StmtKind::ExternPragma(_) => {
+                // Extern pragmas are declarations, not executable code — skip
                 Ok(())
             }
 
@@ -958,11 +1000,23 @@ impl<'db, 'a> BodyCodegen<'db, 'a> {
                 // Regular function call (not a method)
                 let func_name = self.resolve_function_name(*call)?;
 
-                // Look up function index
-                let func_idx = self
-                    .function_indices
-                    .get(&func_name)
-                    .ok_or_else(|| format!("Undefined function: {:?}", func_name))?;
+                // Look up function index — check monomorphized ANY_* functions first
+                let func_idx = if let Some(&idx) = self.function_indices.get(&func_name) {
+                    idx
+                } else if self.any_extern_functions.contains_key(&func_name) {
+                    // ANY_* extern function — determine concrete type from first argument
+                    let concrete_type = self.resolve_call_concrete_type(*call)?;
+                    let func_name_str = func_name.text(self.db);
+                    let type_suffix = concrete_type.type_name();
+                    let mono_key = format!("{}.{}", func_name_str, type_suffix);
+                    *self.monomorphized_indices.get(&mono_key).ok_or_else(|| {
+                        format!(
+                            "No monomorphized import for {}.{}", func_name_str, type_suffix
+                        )
+                    })?
+                } else {
+                    return Err(format!("Undefined function: {}", func_name.text(self.db)));
+                };
 
                 // Emit parameters
                 for param in call.params(self.db) {
@@ -970,7 +1024,7 @@ impl<'db, 'a> BodyCodegen<'db, 'a> {
                 }
 
                 // Emit call instruction
-                func.instruction(&Instruction::Call(*func_idx));
+                func.instruction(&Instruction::Call(func_idx));
 
                 Ok(())
             }
@@ -1205,6 +1259,36 @@ impl<'db, 'a> BodyCodegen<'db, 'a> {
             VariableAccessKind::Direct(_) => {
                 Err("Direct variable access not yet supported".to_string())
             }
+        }
+    }
+
+    /// Determine the concrete elementary type for a call to an ANY_* function.
+    ///
+    /// Inspects the first argument's type to determine the specialization.
+    fn resolve_call_concrete_type(
+        &self,
+        call: hir::hir_def::expressions::expression::FuncCall<'db>,
+    ) -> Result<hir::hir_def::expressions::spec::ElementarySpec, String> {
+        use hir::hir_def::expressions::expression::ParamAssignKind;
+        use hir::hir_ty::ty::Type;
+        use hir::hir_ty::infer::Infer;
+
+        let params = call.params(self.db);
+        let first_param = params.first().ok_or("ANY_* function call has no arguments")?;
+
+        let expr = match first_param.kind(self.db) {
+            ParamAssignKind::FormalInput { value, .. } => value,
+            ParamAssignKind::NonFormal { value } => value,
+            _ => return Err("Cannot determine concrete type from output parameter".to_string()),
+        };
+
+        let ty = expr.infer(self.db).normalize(self.db);
+        match ty {
+            Type::Elementary(e) if !e.is_any() => Ok(e),
+            _ => Err(format!(
+                "Cannot monomorphize: first argument has non-concrete type '{}'",
+                ty.type_name(self.db)
+            )),
         }
     }
 

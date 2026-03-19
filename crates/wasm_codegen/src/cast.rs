@@ -32,6 +32,11 @@ pub fn emit_cast(from_spec: ElementarySpec, to_spec: ElementarySpec) -> Vec<Inst
         return vec![];
     }
 
+    // ANY_* types: no cast needed (monomorphized calls handle concrete types)
+    if from_spec.is_any() || to_spec.is_any() {
+        return vec![];
+    }
+
     let from_val_type = elementary_to_val_type(from_spec).expect("Should be valid elementary type");
     let to_val_type = elementary_to_val_type(to_spec).expect("Should be valid elementary type");
 

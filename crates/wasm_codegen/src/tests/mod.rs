@@ -14,8 +14,11 @@ use crate::debug::CodeGenConfig;
 mod arrays;
 mod control_flow;
 mod debug;
+mod e2e;
+mod exceptions_spike;
 mod execution;
 mod function_blocks;
+mod imports;
 mod ref_to;
 mod references;
 mod structs;
@@ -76,30 +79,15 @@ pub fn compile_to_wasm_with_config(
 
     let mut codegen = crate::ModuleCodeGen::new_with_config(db, config);
 
-    // Generate code for all POUs in the source
-    for pou in sem_idx.global_pous.iter() {
-        match pou {
-            hir::hir_def::pous::pou::Pou::Function(func) => {
-                codegen.generate_function(*func);
-            }
-            hir::hir_def::pous::pou::Pou::FunctionBlock(fb) => {
-                codegen.generate_function_block(*fb);
-            }
-            hir::hir_def::pous::pou::Pou::Class(class) => {
-                codegen.generate_class(*class);
-            }
-            _ => {}
-        }
-    }
-
-    // Generate code for all PROGRAMs
-    for program in sem_idx.programs.iter() {
-        codegen.generate_program(*program);
-    }
+    // Generate all POUs with correct import ordering
+    codegen.generate_all(&sem_idx);
 
     // Build the module with all sections
     let mut module = wasm_encoder::Module::new();
     module.section(&codegen.type_section);
+    if codegen.num_imports > 0 {
+        module.section(&codegen.import_section);
+    }
     module.section(&codegen.fn_section);
 
     // Add memory section
@@ -172,30 +160,15 @@ fn compile_to_wasm_impl(db: &mut RootDatabase, source: &str, check_diagnostics: 
 
     let mut codegen = crate::ModuleCodeGen::new(db);
 
-    // Generate code for all POUs in the source
-    for pou in sem_idx.global_pous.iter() {
-        match pou {
-            hir::hir_def::pous::pou::Pou::Function(func) => {
-                codegen.generate_function(*func);
-            }
-            hir::hir_def::pous::pou::Pou::FunctionBlock(fb) => {
-                codegen.generate_function_block(*fb);
-            }
-            hir::hir_def::pous::pou::Pou::Class(class) => {
-                codegen.generate_class(*class);
-            }
-            _ => {}
-        }
-    }
-
-    // Generate code for all PROGRAMs
-    for program in sem_idx.programs.iter() {
-        codegen.generate_program(*program);
-    }
+    // Generate all POUs with correct import ordering
+    codegen.generate_all(&sem_idx);
 
     // Build and return the module with all sections
     let mut module = wasm_encoder::Module::new();
     module.section(&codegen.type_section);
+    if codegen.num_imports > 0 {
+        module.section(&codegen.import_section);
+    }
     module.section(&codegen.fn_section);
 
     // Add memory section if we allocated any memory, or just add a minimal one
@@ -264,6 +237,40 @@ where
     let mut store = wasmtime::Store::new(&engine, ());
     let instance =
         wasmtime::Instance::new(&mut store, &module, &[]).expect("Failed to instantiate");
+
+    let func = instance
+        .get_typed_func::<P, R>(&mut store, func_name)
+        .unwrap_or_else(|_| panic!("Failed to get function '{}'", func_name));
+
+    func.call(&mut store, params)
+        .unwrap_or_else(|e| panic!("Failed to call function '{}': {}", func_name, e))
+}
+
+/// Helper to execute a WASM function that requires imports (extern pragmas).
+///
+/// Uses a wasmtime Linker to provide the import functions before instantiation.
+/// The `define_imports` closure receives a `&mut Linker<()>` to register host functions.
+pub fn execute_wasm_with_imports<P, R, F>(
+    wasm_bytes: &[u8],
+    func_name: &str,
+    params: P,
+    define_imports: F,
+) -> R
+where
+    P: wasmtime::WasmParams,
+    R: wasmtime::WasmResults,
+    F: FnOnce(&mut wasmtime::Linker<()>),
+{
+    let engine = wasmtime::Engine::default();
+    let module = wasmtime::Module::new(&engine, wasm_bytes).expect("Failed to create module");
+    let mut store = wasmtime::Store::new(&engine, ());
+    let mut linker = wasmtime::Linker::new(&engine);
+
+    define_imports(&mut linker);
+
+    let instance = linker
+        .instantiate(&mut store, &module)
+        .expect("Failed to instantiate with imports");
 
     let func = instance
         .get_typed_func::<P, R>(&mut store, func_name)
