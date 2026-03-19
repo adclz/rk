@@ -3,7 +3,7 @@
 
 IEC 61131-3 **Table 29** - Arithmetic operations on numeric and magnitude types.
 
-All functions are variadic and accept a generic type parameter
+All functions are variadic and accept a type specification
 constrained to the appropriate `ANY_*` group.
 */
 NAMESPACE Std.Math
@@ -21,9 +21,9 @@ NAMESPACE Std.Math
     elapsed := ADD(T#1s, T#2s);   // T#3s
     ```
     */
-    FUNCTION ADD<T: ANY_MAGNITUDE> : T
+    FUNCTION ADD : ANY_MAGNITUDE
         VAR_INPUT
-            args: T...
+            args: INTO(ADD)...
         END_VAR
         ADD := ...args+
     END_FUNCTION
@@ -40,9 +40,9 @@ NAMESPACE Std.Math
     result := MUL(1.5, 2.0, 3.0); // 9.0
     ```
     */
-    FUNCTION MUL<T: ANY_NUM> : T
+    FUNCTION MUL : ANY_NUM
         VAR_INPUT
-            args: T...
+            args: INTO(MUL)...
         END_VAR
         MUL := ...args*
     END_FUNCTION
@@ -59,9 +59,9 @@ NAMESPACE Std.Math
     elapsed := SUB(T#10s, T#3s); // T#7s
     ```
     */
-    FUNCTION SUB<T: ANY_MAGNITUDE> : T
+    FUNCTION SUB : ANY_MAGNITUDE
         VAR_INPUT
-            args: T...
+            args: INTO(SUB)...
         END_VAR
         SUB := ...args-
     END_FUNCTION
@@ -80,9 +80,9 @@ NAMESPACE Std.Math
     result := DIV(7.0, 2.0);  // 3.5
     ```
     */
-    FUNCTION DIV<T: ANY_NUM> : T
+    FUNCTION DIV : ANY_NUM
         VAR_INPUT
-            args: T...
+            args: INTO(DIV)...
         END_VAR
         DIV := ...args/
     END_FUNCTION
@@ -99,11 +99,11 @@ NAMESPACE Std.Math
     result := MOD(100, 7); // 2
     ```
     */
-    FUNCTION MOD<T: ANY_INT> : T
+    FUNCTION MOD : ANY_INT
         VAR_INPUT
-            args: T...
+            args: INTO(MOD)...
         END_VAR
-        MOD := ...argsMOD
+        MOD := ...args%
     END_FUNCTION
 
     /*
@@ -118,11 +118,11 @@ NAMESPACE Std.Math
     result := ABS(3.14);  // 3.14
     ```
     */
-    FUNCTION ABS<T: ANY_NUM> : T
+    FUNCTION ABS : ANY_NUM
         VAR_INPUT
-            IN: T
+            IN: INTO(ABS)
         END_VAR
-
+        {extern 'math' 'abs' (param IN) (result ABS)}
     END_FUNCTION
 
     /*
@@ -137,11 +137,11 @@ NAMESPACE Std.Math
     result := SQRT(2.0);   // 1.414...
     ```
     */
-    FUNCTION SQRT<T: ANY_REAL> : T
+    FUNCTION SQRT : ANY_REAL
         VAR_INPUT
-            IN: T
+            IN: INTO(SQRT)
         END_VAR
-
+        {extern 'math' 'sqrt' (param IN) (result SQRT)}
     END_FUNCTION
 
     /*
@@ -156,11 +156,11 @@ NAMESPACE Std.Math
     result := LN(1.0);    // 0.0
     ```
     */
-    FUNCTION LN<T: ANY_REAL>: T
+    FUNCTION LN : ANY_REAL
         VAR_INPUT
-            IN: T
+            IN: INTO(LN)
         END_VAR
-
+        {extern 'math' 'ln' (param IN) (result LN)}
     END_FUNCTION
 
     /*
@@ -175,11 +175,11 @@ NAMESPACE Std.Math
     result := LOG(1000.0); // 3.0
     ```
     */
-    FUNCTION LOG<T: ANY_REAL>: T
+    FUNCTION LOG : ANY_REAL
         VAR_INPUT
-            IN: T
+            IN: INTO(LOG)
         END_VAR
-
+        {extern 'math' 'log' (param IN) (result LOG)}
     END_FUNCTION
 
     /*
@@ -194,11 +194,11 @@ NAMESPACE Std.Math
     result := EXP(0.0);  // 1.0
     ```
     */
-    FUNCTION EXP<T: ANY_REAL> : T
+    FUNCTION EXP : ANY_REAL
         VAR_INPUT
-            IN: T
+            IN: INTO(EXP)
         END_VAR
-
+        {extern 'math' 'exp' (param IN) (result EXP)}
     END_FUNCTION
 
     /*
@@ -213,11 +213,11 @@ NAMESPACE Std.Math
     result := SIN(1.5708);    // ~1.0
     ```
     */
-    FUNCTION SIN<T: ANY_REAL> : T
+    FUNCTION SIN : ANY_REAL
         VAR_INPUT
-            IN: T
+            IN: INTO(SIN)
         END_VAR
-
+        {extern 'math' 'sin' (param IN) (result SIN)}
     END_FUNCTION
 
     /*
@@ -232,11 +232,11 @@ NAMESPACE Std.Math
     result := COS(3.1416);    // ~-1.0
     ```
     */
-    FUNCTION COS<T: ANY_REAL> : T
+    FUNCTION COS : ANY_REAL
         VAR_INPUT
-            IN: T
+            IN: INTO(COS)
         END_VAR
-
+        {extern 'math' 'cos' (param IN) (result COS)}
     END_FUNCTION
 
     /*
@@ -251,11 +251,11 @@ NAMESPACE Std.Math
     result := TAN(0.7854);    // ~1.0
     ```
     */
-    FUNCTION TAN<T: ANY_REAL> : T
+    FUNCTION TAN : ANY_REAL
         VAR_INPUT
-            IN: T
+            IN: INTO(TAN)
         END_VAR
-
+        {extern 'math' 'tan' (param IN) (result TAN)}
     END_FUNCTION
 
     /*
@@ -270,11 +270,11 @@ NAMESPACE Std.Math
     result := ASIN(1.0);   // 1.5708 (~pi/2)
     ```
     */
-    FUNCTION ASIN<T: ANY_REAL> : T
+    FUNCTION ASIN : ANY_REAL
         VAR_INPUT
-            IN: T
+            IN: INTO(ASIN)
         END_VAR
-
+        {extern 'math' 'asin' (param IN) (result ASIN)}
     END_FUNCTION
 
     /*
@@ -289,11 +289,11 @@ NAMESPACE Std.Math
     result := ACOS(0.0);   // 1.5708 (~pi/2)
     ```
     */
-    FUNCTION ACOS<T: ANY_REAL> : T
+    FUNCTION ACOS : ANY_REAL
         VAR_INPUT
-            IN: T
+            IN: INTO(ACOS)
         END_VAR
-
+        {extern 'math' 'acos' (param IN) (result ACOS)}
     END_FUNCTION
 
     /*
@@ -308,11 +308,11 @@ NAMESPACE Std.Math
     result := ATAN(1.0);   // 0.7854 (~pi/4)
     ```
     */
-    FUNCTION ATAN<T: ANY_REAL> : T
+    FUNCTION ATAN : ANY_REAL
         VAR_INPUT
-            IN: T
+            IN: INTO(ATAN)
         END_VAR
-
+        {extern 'math' 'atan' (param IN) (result ATAN)}
     END_FUNCTION
 
     /*
@@ -328,12 +328,12 @@ NAMESPACE Std.Math
     result := ATAN2(IN := -1.0, IN2 := -1.0);  // -2.356 (~-3pi/4)
     ```
     */
-    FUNCTION ATAN2<T: ANY_REAL> : T
+    FUNCTION ATAN2 : ANY_REAL
         VAR_INPUT
-            IN: T
-            IN2: T
+            IN: INTO(ATAN2)
+            IN2: INTO(ATAN2)
         END_VAR
-
+        {extern 'math' 'atan2' (param IN IN2) (result ATAN2)}
     END_FUNCTION
 
     /*
@@ -348,11 +348,211 @@ NAMESPACE Std.Math
     result := EXPT(9.0, 0.5);  // 3.0 (square root)
     ```
     */
-    FUNCTION EXPT<T: ANY_REAL> : T
+    FUNCTION EXPT : ANY_REAL
         VAR_INPUT
-            args: T...
+            args: INTO(EXPT)...
         END_VAR
         EXPT := ...args**
     END_FUNCTION
+
+    NAMESPACE Test
+        USING Std.Unit
+
+        {test}
+        FUNCTION test_abs_positive
+        VAR x : INT := 5; y : INT := 5; END_VAR
+            ASSERT_EQ(value := x, target := y);
+        END_FUNCTION
+
+        {test}
+        FUNCTION test_abs_negative
+            ASSERT(ABS(IN := -42) = 42);
+        END_FUNCTION
+
+        {test}
+        FUNCTION test_abs_real
+            ASSERT(ABS(IN := -2.5) = 2.5);
+        END_FUNCTION
+
+        {test}
+        FUNCTION test_sqrt_9
+            ASSERT(SQRT(IN := 9.0) = 3.0);
+        END_FUNCTION
+
+        {test}
+        FUNCTION test_sqrt_4
+            ASSERT(SQRT(IN := 4.0) = 2.0);
+        END_FUNCTION
+
+        {test}
+        FUNCTION test_sin_zero
+            ASSERT(SIN(IN := 0.0) = 0.0);
+        END_FUNCTION
+
+        {test}
+        FUNCTION test_cos_zero
+            ASSERT(COS(IN := 0.0) = 1.0);
+        END_FUNCTION
+
+        {test}
+        FUNCTION test_ln_1
+            ASSERT(LN(IN := 1.0) = 0.0);
+        END_FUNCTION
+
+        {test}
+        FUNCTION test_exp_0
+            ASSERT(EXP(IN := 0.0) = 1.0);
+        END_FUNCTION
+
+        // Arithmetic variadic functions
+        {test}
+        FUNCTION test_add_int
+            ASSERT(ADD(1, 2, 3) = 6);
+        END_FUNCTION
+
+        {test}
+        FUNCTION test_add_real
+            ASSERT(ADD(1.0, 2.5, 3.5) = 7.0);
+        END_FUNCTION
+
+        {test}
+        FUNCTION test_sub_int
+            ASSERT(SUB(10, 3, 2) = 5);
+        END_FUNCTION
+
+        {test}
+        FUNCTION test_mul_int
+            ASSERT(MUL(2, 3, 4) = 24);
+        END_FUNCTION
+
+        {test}
+        FUNCTION test_div_int
+            ASSERT(DIV(100, 2, 5) = 10);
+        END_FUNCTION
+
+        {test}
+        FUNCTION test_div_real
+            ASSERT(DIV(7.0, 2.0) = 3.5);
+        END_FUNCTION
+
+        {test}
+        FUNCTION test_mod_int
+            ASSERT(MOD(10, 3) = 1);
+        END_FUNCTION
+
+        {test}
+        FUNCTION test_add_many
+            ASSERT(ADD(1, 2, 3, 4, 5) = 15);
+        END_FUNCTION
+
+        {test}
+        FUNCTION test_mul_real
+            ASSERT(MUL(2.0, 3.0, 4.0) = 24.0);
+        END_FUNCTION
+
+        // Test that ASSERT_NEQ passes when values differ
+        {test}
+        FUNCTION test_assert_neq
+        VAR a : INT := 1; b : INT := 2; END_VAR
+            // Direct comparison to verify the issue
+            ASSERT(a <> b);
+            // Now test ASSERT_NEQ
+            ASSERT_NEQ(value := a, target := b);
+        END_FUNCTION
+
+        {test}
+        FUNCTION test_sub_real
+            ASSERT(SUB(10.0, 5.0) = 5.0);
+        END_FUNCTION
+
+        // Variable assignment and comparison
+        {test}
+        FUNCTION test_var_assignment
+        VAR x : INT := 10; y : INT; END_VAR
+            y := x;
+            ASSERT_EQ(value := x, target := y);
+        END_FUNCTION
+
+        // Nested arithmetic via variables
+        {test}
+        FUNCTION test_nested_arithmetic
+        VAR a : INT; b : INT; c : INT; END_VAR
+            a := MUL(2, 3);
+            b := MUL(4, 5);
+            c := ADD(a, b);
+            ASSERT_EQ(value := c, target := 26);
+        END_FUNCTION
+
+        // Boolean logic
+        {test}
+        FUNCTION test_bool_and
+        VAR a : BOOL := TRUE; b : BOOL := TRUE; END_VAR
+            ASSERT(a AND b);
+        END_FUNCTION
+
+        {test}
+        FUNCTION test_bool_or
+        VAR a : BOOL := FALSE; b : BOOL := TRUE; END_VAR
+            ASSERT(a OR b);
+        END_FUNCTION
+
+        {test}
+        FUNCTION test_bool_not
+        VAR a : BOOL := FALSE; END_VAR
+            ASSERT(NOT a);
+        END_FUNCTION
+
+        // Control flow
+        {test}
+        FUNCTION test_if_else
+        VAR result : INT := 0; END_VAR
+            IF TRUE THEN
+                result := 42;
+            ELSE
+                result := 0;
+            END_IF;
+            ASSERT_EQ(value := result, target := 42);
+        END_FUNCTION
+
+        // FOR loop
+        {test}
+        FUNCTION test_for_loop
+        VAR sum : INT := 0; i : INT; END_VAR
+            FOR i := 1 TO 5 DO
+                sum := sum + i;
+            END_FOR;
+            ASSERT_EQ(value := sum, target := 15);
+        END_FUNCTION
+
+        // WHILE loop
+        {test}
+        FUNCTION test_while_loop
+        VAR count : INT := 0; END_VAR
+            WHILE count < 10 DO
+                count := count + 1;
+            END_WHILE;
+            ASSERT_EQ(value := count, target := 10);
+        END_FUNCTION
+
+        // Comparison operators
+        {test}
+        FUNCTION test_comparison_lt
+        VAR a : INT := 3; b : INT := 5; END_VAR
+            ASSERT(a < b);
+        END_FUNCTION
+
+        {test}
+        FUNCTION test_comparison_ge
+        VAR a : INT := 5; b : INT := 5; END_VAR
+            ASSERT(a >= b);
+        END_FUNCTION
+
+        // Arithmetic with negative results
+        {test}
+        FUNCTION test_sub_negative
+            ASSERT(SUB(3, 10) = -7);
+        END_FUNCTION
+
+    END_NAMESPACE
 
 END_NAMESPACE

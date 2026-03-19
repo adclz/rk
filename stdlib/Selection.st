@@ -20,11 +20,11 @@ NAMESPACE Std.Selection
     result := SEL(G := FALSE, IN0 := 0, IN1 := 42); // 0
     ```
     */
-    FUNCTION SEL<T: ANY> : T
+    FUNCTION SEL : ANY
         VAR_INPUT
             G: BOOL;
-            IN0: T;
-            IN1: T;
+            IN0: INTO(SEL);
+            IN1: INTO(SEL);
         END_VAR
 
         IF G THEN
@@ -46,9 +46,9 @@ NAMESPACE Std.Selection
     result := MAX(1.0, 2.5, 0.5);  // 2.5
     ```
     */
-    FUNCTION MAX<T: ANY_ELEMENTARY> : T
+    FUNCTION MAX : ANY_ELEMENTARY
         VAR_INPUT
-            args: T...
+            args: INTO(MAX)...
         END_VAR
     END_FUNCTION
 
@@ -64,9 +64,9 @@ NAMESPACE Std.Selection
     result := MIN(1.0, 2.5, 0.5);  // 0.5
     ```
     */
-    FUNCTION MIN<T: ANY_ELEMENTARY> : T
+    FUNCTION MIN : ANY_ELEMENTARY
         VAR_INPUT
-            args: T...
+            args: INTO(MIN)...
         END_VAR
     END_FUNCTION
 
@@ -85,11 +85,11 @@ NAMESPACE Std.Selection
     result := LIMIT(MN := 0, IN := 5, MX := 10);    // 5
     ```
     */
-    FUNCTION LIMIT<T: ANY_ELEMENTARY> : T
+    FUNCTION LIMIT : ANY_ELEMENTARY
         VAR_INPUT
-            MN: T;
-            IN: T;
-            MX: T;
+            MN: INTO(LIMIT);
+            IN: INTO(LIMIT);
+            MX: INTO(LIMIT);
         END_VAR
 
         IF IN < MN THEN
@@ -100,5 +100,34 @@ NAMESPACE Std.Selection
             LIMIT := IN;
         END_IF;
     END_FUNCTION
+
+    NAMESPACE Test
+        USING Std.Unit
+
+        {test}
+        FUNCTION test_sel_true
+            ASSERT(SEL(G := TRUE, IN0 := 0, IN1 := 42) = 42);
+        END_FUNCTION
+
+        {test}
+        FUNCTION test_sel_false
+            ASSERT(SEL(G := FALSE, IN0 := 10, IN1 := 42) = 10);
+        END_FUNCTION
+
+        {test}
+        FUNCTION test_limit_in_range
+            ASSERT(LIMIT(MN := 0, IN := 5, MX := 10) = 5);
+        END_FUNCTION
+
+        {test}
+        FUNCTION test_limit_below
+            ASSERT(LIMIT(MN := 0, IN := -5, MX := 10) = 0);
+        END_FUNCTION
+
+        {test}
+        FUNCTION test_limit_above
+            ASSERT(LIMIT(MN := 0, IN := 15, MX := 10) = 10);
+        END_FUNCTION
+    END_NAMESPACE
 
 END_NAMESPACE

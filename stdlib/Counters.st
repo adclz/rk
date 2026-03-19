@@ -3,7 +3,7 @@
 
 IEC 61131-3 **Table 36** - Up, down, and up/down counters.
 
-All counters use a generic `ANY_INT` type for the count value `CV`
+All counters use `ANY_INT` type for the count value `CV`
 and preset value `PV`. Edge detection is performed internally using `R_TRIG`.
 */
 NAMESPACE Std.Counters
@@ -23,22 +23,22 @@ NAMESPACE Std.Counters
     VAR
         counter: CTU;
     END_VAR
-    
+
     counter(CU := sensor, R := reset_btn, PV := 100);
     IF counter.Q THEN
         // target count reached
     END_IF;
     ```
     */
-    FUNCTION_BLOCK CTU<T: ANY_INT>
+    FUNCTION_BLOCK CTU
         VAR_INPUT
             CU: BOOL;
             R: BOOL;
-            PV: T;
+            PV: ANY_INT;
         END_VAR
         VAR_OUTPUT
             Q: BOOL;
-            CV: T;
+            CV: INTO(PV);
         END_VAR
         VAR
             CU_T: R_TRIG;
@@ -67,22 +67,22 @@ NAMESPACE Std.Counters
     VAR
         counter: CTD;
     END_VAR
-    
+
     counter(CD := sensor, LD := load_btn, PV := 50);
     IF counter.Q THEN
         // countdown complete
     END_IF;
     ```
     */
-    FUNCTION_BLOCK CTD<T: ANY_INT>
+    FUNCTION_BLOCK CTD
         VAR_INPUT
             CD: BOOL;
             LD: BOOL;
-            PV: T;
+            PV: ANY_INT;
         END_VAR
         VAR_OUTPUT
             Q: BOOL;
-            CV: T;
+            CV: INTO(PV);
         END_VAR
         VAR
             CD_T: R_TRIG;
@@ -114,22 +114,22 @@ NAMESPACE Std.Counters
     VAR
         counter: CTUD;
     END_VAR
-    
+
     counter(CU := up_btn, CD := down_btn, R := FALSE, LD := FALSE, PV := 100);
     ```
     */
-    FUNCTION_BLOCK CTUD<T: ANY_INT>
+    FUNCTION_BLOCK CTUD
         VAR_INPUT
             CU: BOOL;
             CD: BOOL;
             R: BOOL;
             LD: BOOL;
-            PV: T;
+            PV: ANY_INT;
         END_VAR
         VAR_OUTPUT
             QU: BOOL;
             QD: BOOL;
-            CV: T;
+            CV: INTO(PV);
         END_VAR
         VAR
             CD_T: R_TRIG;

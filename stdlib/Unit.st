@@ -5,28 +5,41 @@ Helper functions for writing test assertions in Structured Text.
 */
 NAMESPACE Std.Unit
 
-    /*
-    ## ASSERT - Value Equality Assertion
+    FUNCTION __ASSERT_FAIL
+        {extern 'assert' 'fail'}
+    END_FUNCTION
 
-    Compares `value` against `target` and raises an error with `message` if they differ.
-
-    - **T**: `ANY` - the expected type
-    - **Y**: `ANY + INTO<T>` - the actual type, must be implicitly convertible to T
-
-    ```iecst
-    ASSERT(value := x, target := 42, message := 'x should be 42');
-    ASSERT(value := 3.14, target := PI, message := 'PI mismatch');
-    ```
-    */
-    FUNCTION ASSERT<T: ANY, Y: ANY + INTO<T>>
+    FUNCTION ASSERT
         VAR_INPUT
-            value: T;
-            target: Y;
-            message: STRING;
+            value: BOOL;
+        END_VAR
+
+        IF NOT value THEN
+            __ASSERT_FAIL();
+        END_IF;
+
+    END_FUNCTION
+
+    FUNCTION ASSERT_EQ
+        VAR_INPUT
+            value: ANY;
+            target: INTO(value);
         END_VAR
 
         IF value <> target THEN
-            /* throw error */
+            __ASSERT_FAIL();
+        END_IF;
+
+    END_FUNCTION
+
+    FUNCTION ASSERT_NEQ
+        VAR_INPUT
+            value: ANY;
+            target: INTO(value);
+        END_VAR
+
+        IF value = target THEN
+            __ASSERT_FAIL();
         END_IF;
 
     END_FUNCTION

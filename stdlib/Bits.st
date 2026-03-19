@@ -21,10 +21,10 @@ NAMESPACE Std.Bits
     result := SHL(IN := 16#01, N := 8); // 16#0100
     ```
     */
-    FUNCTION SHL<T: ANY_BIT, Y: ANY_INT> : T
+    FUNCTION SHL : ANY_BIT
         VAR_INPUT
-            IN: T;
-            N: Y;
+            IN: INTO(SHL);
+            N: ANY_INT;
         END_VAR
     END_FUNCTION
 
@@ -40,10 +40,10 @@ NAMESPACE Std.Bits
     result := SHR(IN := 16#F0, N := 4); // 16#0F
     ```
     */
-    FUNCTION SHR<T: ANY_BIT, Y: ANY_INT> : T
+    FUNCTION SHR : ANY_BIT
         VAR_INPUT
-            IN: T;
-            N: Y;
+            IN: INTO(SHR);
+            N: ANY_INT;
         END_VAR
     END_FUNCTION
 
@@ -60,10 +60,10 @@ NAMESPACE Std.Bits
     result := ROL(IN := 16#81, N := 1); // 16#03 (BYTE)
     ```
     */
-    FUNCTION ROL<T: ANY_BIT, Y: ANY_INT> : T
+    FUNCTION ROL : ANY_BIT
         VAR_INPUT
-            IN: T;
-            N: Y;
+            IN: INTO(ROL);
+            N: ANY_INT;
         END_VAR
     END_FUNCTION
 
@@ -80,10 +80,10 @@ NAMESPACE Std.Bits
     result := ROR(IN := 16#81, N := 1); // 16#C0 (BYTE)
     ```
     */
-    FUNCTION ROR<T: ANY_BIT, Y: ANY_INT> : T
+    FUNCTION ROR : ANY_BIT
         VAR_INPUT
-            IN: T;
-            N: Y;
+            IN: INTO(ROR);
+            N: ANY_INT;
         END_VAR
     END_FUNCTION
 

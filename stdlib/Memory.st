@@ -10,15 +10,14 @@ NAMESPACE Std.Memory
     Copies the input value to the output, unchanged.
 
     - **Constraint**: `ANY` (all types)
-
-    ```iecst
-    result := MOVE(42);         // 42
-    result := MOVE(IN := 3.14); // 3.14
-    ```
     */
-    FUNCTION MOVE<T: ANY> : T
+    FUNCTION MOVE
         VAR_INPUT
-            args: T
+            IN: ANY
+            OUT: INTO(IN)
         END_VAR
+
+        IN := OUT;
+
     END_FUNCTION
 END_NAMESPACE
