@@ -952,13 +952,12 @@ END_FUNCTION
 }
 
 #[rstest]
-pub fn generics(mut with_db: RootDatabase) {
+pub fn any_type_spec_formatting(mut with_db: RootDatabase) {
     let source = r#"
-FUNCTION fn2 < T : ANY > : INT
-END_FUNCTION
-
-FUNCTION fn1
-    fn2  <  INT  > ( x := 1 )
+FUNCTION fn2 : ANY_NUM
+    VAR_INPUT
+        x :  ANY_NUM ;
+    END_VAR
 END_FUNCTION
 "#;
 
@@ -971,19 +970,23 @@ END_FUNCTION
         .document(&with_db);
 
     assert_snapshot!(fmt(document), @r"
-    FUNCTION fn2<T: ANY>: INT
-    END_FUNCTION
-
-    FUNCTION fn1 fn2<INT>(x := 1)
+    FUNCTION fn2: ANY_NUM
+    	VAR_INPUT
+    		x: ANY_NUM;
+    	END_VAR
     END_FUNCTION
     ");
 }
 
 #[rstest]
-pub fn generics_multiline(mut with_db: RootDatabase) {
+pub fn into_spec_formatting(mut with_db: RootDatabase) {
     let source = r#"
-FUNCTION_BLOCK fb1 < T : ANY , U : ANY_INT >
-END_FUNCTION_BLOCK
+FUNCTION fn1
+    VAR_INPUT
+        value :  ANY ;
+        target :  INTO( value ) ;
+    END_VAR
+END_FUNCTION
 "#;
 
     add_sources(&mut with_db, &[source]);
@@ -995,8 +998,12 @@ END_FUNCTION_BLOCK
         .document(&with_db);
 
     assert_snapshot!(fmt(document), @r"
-    FUNCTION_BLOCK fb1<T: ANY, U: ANY_INT>
-    END_FUNCTION_BLOCK
+    FUNCTION fn1
+    	VAR_INPUT
+    		value: ANY;
+    		target: INTO(value);
+    	END_VAR
+    END_FUNCTION
     ");
 }
 

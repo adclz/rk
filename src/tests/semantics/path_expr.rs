@@ -703,9 +703,9 @@ END_FUNCTION
 #[rstest]
 fn function_self_name_as_return_value_in_call(mut with_db: RootDatabase) {
     let source = r#"
-FUNCTION ABS<T: ANY_NUM> : T
+FUNCTION ABS : ANY_NUM
     VAR_INPUT
-        IN: T;
+        IN: INTO(ABS);
     END_VAR
 END_FUNCTION
 

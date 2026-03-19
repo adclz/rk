@@ -1,9 +1,10 @@
 use auto_lsp::default::db::BaseDatabase;
 use db::RootDatabase;
 use hir::hir_ty::index_graphs::{discover_all_tests, find_test};
+use insta::assert_snapshot;
 use rstest::rstest;
 
-use crate::tests::utils::{add_sources, with_db};
+use crate::tests::utils::{add_sources, test_diagnostics, with_db};
 
 #[rstest]
 fn discover_global_tests(mut with_db: RootDatabase) {
@@ -98,4 +99,71 @@ END_FUNCTION
 
     // Non-test namespaced function
     assert!(find_test(&with_db, "Std.Math.SQRT").is_none());
+}
+
+// --- {case} pragma validation ---
+
+#[rstest]
+fn valid_case_positional(mut with_db: RootDatabase) {
+    let source = r#"
+{test}
+{case(5, 10)}
+{case(-1, 1)}
+FUNCTION test_fn : INT
+VAR_INPUT x : INT; y : INT; END_VAR
+END_FUNCTION
+"#;
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"");
+}
+
+#[rstest]
+fn valid_case_named(mut with_db: RootDatabase) {
+    let source = r#"
+{test}
+{case(x := 5, y := 10)}
+FUNCTION test_fn : INT
+VAR_INPUT x : INT; y : INT; END_VAR
+END_FUNCTION
+"#;
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"");
+}
+
+#[rstest]
+fn invalid_case_too_many_args(mut with_db: RootDatabase) {
+    let source = r#"
+{test}
+{case(5, 10, 99)}
+FUNCTION test_fn : INT
+VAR_INPUT x : INT; y : INT; END_VAR
+END_FUNCTION
+"#;
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
+    [E0206] Error: function call parameter mismatch
+       ,-[ file:///test0.st:3:14 ]
+       |
+     3 | {case(5, 10, 99)}
+       |              ^|
+       |               `-- no parameter at index '2'
+    ---'
+    ");
+}
+
+#[rstest]
+fn invalid_case_unknown_named_param(mut with_db: RootDatabase) {
+    let source = r#"
+{test}
+{case(z := 5, y := 10)}
+FUNCTION test_fn : INT
+VAR_INPUT x : INT; y : INT; END_VAR
+END_FUNCTION
+"#;
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
+    [E0208] Error: function call parameter mismatch
+       ,-[ file:///test0.st:3:7 ]
+       |
+     3 | {case(z := 5, y := 10)}
+       |       |
+       |       `-- unknown input parameter 'z'
+    ---'
+    ");
 }
