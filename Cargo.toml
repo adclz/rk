@@ -82,7 +82,7 @@ notify = "8.1.0"
 # benchmarks
 divan = "0.1"
 # backends
-wasm-encoder = "0.244.0"
+wasm-encoder = { version = "0.244.0", features = ["component-model"] }
 wasmparser = "0.244.0"
 
 [package]

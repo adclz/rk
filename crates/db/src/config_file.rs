@@ -10,9 +10,33 @@ use crate::{WorkspaceDataBase, workspace::Workspace};
 #[serde(deny_unknown_fields)]
 pub struct Config {
     pub project: ProjectInfo,
-    pub stdlib_path: Option<String>,
-    pub output: Option<OutputConfig>,
+    pub settings: Option<SettingsConfig>,
     pub linter: Option<LinterConfig>,
+}
+
+impl Config {
+    /// Convenience: get stdlib_path from settings.
+    pub fn stdlib_path(&self) -> Option<&str> {
+        self.settings.as_ref()?.stdlib_path.as_deref()
+    }
+
+    /// Convenience: check if stdlib is disabled.
+    pub fn disable_stdlib(&self) -> bool {
+        self.settings.as_ref().is_some_and(|s| s.disable_stdlib.unwrap_or(false))
+    }
+
+    /// Convenience: get output config from settings.
+    pub fn output(&self) -> Option<&OutputConfig> {
+        self.settings.as_ref()?.output.as_ref()
+    }
+}
+
+#[derive(Default, Clone, Debug, PartialEq, Eq, Hash, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct SettingsConfig {
+    pub stdlib_path: Option<String>,
+    pub disable_stdlib: Option<bool>,
+    pub output: Option<OutputConfig>,
 }
 
 #[derive(Default, Clone, Debug, PartialEq, Eq, Hash, Deserialize)]
@@ -98,13 +122,15 @@ mod tests {
 
     fn full_config() -> &'static str {
         r#"
-stdlib_path = "/custom/stdlib"
-
 [project]
 name = "Lisa"
 version = "1"
 
-[output]
+[settings]
+stdlib_path = "/custom/stdlib"
+disable_stdlib = false
+
+[settings.output]
 directory = "build"
 "#
     }
@@ -114,8 +140,9 @@ directory = "build"
         let config: Config = parse_config(full_config()).unwrap();
         assert_eq!(config.project.name, "Lisa");
         assert_eq!(config.project.version, "1");
-        assert_eq!(config.stdlib_path.as_deref(), Some("/custom/stdlib"));
-        assert_eq!(config.output.unwrap().directory, "build");
+        assert_eq!(config.stdlib_path(), Some("/custom/stdlib"));
+        assert!(!config.disable_stdlib());
+        assert_eq!(config.output().unwrap().directory, "build");
     }
 
     #[test]
@@ -126,20 +153,19 @@ directory = "build"
 name = "Test"
 version = "2"
 
-[output]
+[settings.output]
 directory = "out"
 "#,
         )
         .unwrap();
         assert_eq!(config.project.name, "Test");
         assert_eq!(config.project.version, "2");
-        assert_eq!(config.stdlib_path, None);
-        assert_eq!(config.output.unwrap().directory, "out");
+        assert_eq!(config.stdlib_path(), None);
+        assert_eq!(config.output().unwrap().directory, "out");
     }
 
     #[test]
-    fn valid_without_output_section() {
-        // output is optional
+    fn valid_without_settings_section() {
         let config: Config = parse_config(
             r#"
 [project]
@@ -149,15 +175,32 @@ version = "1"
         )
         .unwrap();
         assert_eq!(config.project.name, "Test");
-        assert!(config.output.is_none());
+        assert!(config.output().is_none());
+        assert!(!config.disable_stdlib());
+    }
+
+    #[test]
+    fn disable_stdlib_enabled() {
+        let config: Config = parse_config(
+            r#"
+[project]
+name = "Test"
+version = "1"
+
+[settings]
+disable_stdlib = true
+"#,
+        )
+        .unwrap();
+        assert!(config.disable_stdlib());
     }
 
     #[test]
     fn missing_project_section() {
         let err = parse_config(
             r#"
-[output]
-directory = "build"
+[settings]
+disable_stdlib = true
 "#,
         )
         .unwrap_err();
@@ -170,9 +213,6 @@ directory = "build"
             r#"
 [project]
 version = "1"
-
-[output]
-directory = "build"
 "#,
         )
         .unwrap_err();
@@ -185,9 +225,6 @@ directory = "build"
             r#"
 [project]
 name = "Test"
-
-[output]
-directory = "build"
 "#,
         )
         .unwrap_err();
@@ -201,9 +238,6 @@ directory = "build"
 [project]
 name = 123
 version = "1"
-
-[output]
-directory = "build"
 "#,
         )
         .unwrap_err();
@@ -218,9 +252,6 @@ directory = "build"
 name = "Test"
 version = "1"
 unknown_key = true
-
-[output]
-directory = "build"
 "#,
         )
         .unwrap_err();
@@ -234,10 +265,8 @@ directory = "build"
 [project]
 name = "Test"
 version = "1"
-extra = "nope"
 
-[output]
-directory = "build"
+output = "nope"
 "#,
         )
         .unwrap_err();

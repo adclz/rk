@@ -102,11 +102,14 @@ fn resolve_all(
         None => None,
     };
 
-    // 3. Parse config file — extract user stdlib_path, report parse errors
-    let user_stdlib_path = match &config_file {
+    // 3. Parse config file — extract user stdlib_path and disable_stdlib, report parse errors
+    let (user_stdlib_path, disable_stdlib) = match &config_file {
         Some(path) => match std::fs::read_to_string(path) {
             Ok(source) => match crate::config_file::parse_config(&source) {
-                Ok(config) => config.stdlib_path.map(PathBuf::from).filter(|p| p.exists()),
+                Ok(config) => (
+                    config.stdlib_path().map(PathBuf::from).filter(|p| p.exists()),
+                    config.disable_stdlib(),
+                ),
                 Err(e) => {
                     if let Ok(_uri) = Url::from_file_path(path) {
                         // Reuse the already-read `source` for offset→line/col conversion.
@@ -131,19 +134,24 @@ fn resolve_all(
                             ..Default::default()
                         }));
                     }
-                    None
+                    (None, false)
                 }
             },
-            Err(_) => None,
+            Err(_) => (None, false),
         },
-        None => None,
+        None => (None, false),
     };
 
-    // 4. Resolve stdlib: user override from config.toml > default
-    let stdlib_path = user_stdlib_path.or_else(crate::loader::resolve_stdlib_path);
-    if stdlib_path.is_none() {
-        notices.push(ConfigurationNotice::StdlibNotFound);
-    }
+    // 4. Resolve stdlib: skip if disable_stdlib is set, otherwise user override > default
+    let stdlib_path = if disable_stdlib {
+        None
+    } else {
+        let path = user_stdlib_path.or_else(crate::loader::resolve_stdlib_path);
+        if path.is_none() {
+            notices.push(ConfigurationNotice::StdlibNotFound);
+        }
+        path
+    };
 
     (workspace_folder, stdlib_path, config_file)
 }
