@@ -10,6 +10,8 @@ use hir::hir_def::{
 };
 use hir::hir_ty::{infer::Infer, ty::Type};
 use rustc_hash::FxHashMap;
+use std::cell::{Cell, RefCell};
+use std::rc::Rc;
 use wasm_encoder::{Instruction, ValType};
 
 use crate::wasm_repr::{
@@ -48,6 +50,8 @@ pub struct BodyCodegen<'db, 'a> {
     monomorphized_indices: &'a FxHashMap<String, u32>,
     /// ANY_* extern function info for resolving call-site types
     any_extern_functions: &'a FxHashMap<Ident, crate::AnyExternInfo<'db>>,
+    /// ANY_* non-extern function info for resolving call-site types
+    any_local_functions: &'a FxHashMap<Ident, hir::hir_def::pous::function::Function<'db>>,
 
     /// For methods: the 'this' pointer local index.
     this_local: Option<u32>,
@@ -64,6 +68,13 @@ pub struct BodyCodegen<'db, 'a> {
     /// Debug global indices
     debug_enabled_global: Option<u32>,
     debug_trap_id_global: Option<u32>,
+
+    /// String literal data (shared with ModuleCodeGen)
+    string_data: Rc<RefCell<Vec<(u32, Vec<u8>)>>>,
+    string_data_offset: Rc<Cell<u32>>,
+
+    /// When set, replaces ANY types with this concrete type (for monomorphized functions).
+    pub any_type_override: Option<ElementarySpec>,
 }
 
 impl<'db, 'a> BodyCodegen<'db, 'a> {
@@ -74,10 +85,13 @@ impl<'db, 'a> BodyCodegen<'db, 'a> {
         function_indices: &'a FxHashMap<Ident, u32>,
         monomorphized_indices: &'a FxHashMap<String, u32>,
         any_extern_functions: &'a FxHashMap<Ident, crate::AnyExternInfo<'db>>,
+        any_local_functions: &'a FxHashMap<Ident, hir::hir_def::pous::function::Function<'db>>,
         config: &'a crate::debug::CodeGenConfig,
         debug_info: &'a mut crate::debug::DebugInfo,
         debug_enabled_global: Option<u32>,
         debug_trap_id_global: Option<u32>,
+        string_data: Rc<RefCell<Vec<(u32, Vec<u8>)>>>,
+        string_data_offset: Rc<Cell<u32>>,
     ) -> Self {
         Self {
             db,
@@ -86,12 +100,16 @@ impl<'db, 'a> BodyCodegen<'db, 'a> {
             function_indices,
             monomorphized_indices,
             any_extern_functions,
+            any_local_functions,
             this_local: None,
             instance: None,
             config,
             debug_info,
             debug_enabled_global,
             debug_trap_id_global,
+            string_data,
+            string_data_offset,
+            any_type_override: None,
         }
     }
 
@@ -102,12 +120,15 @@ impl<'db, 'a> BodyCodegen<'db, 'a> {
         function_indices: &'a FxHashMap<Ident, u32>,
         monomorphized_indices: &'a FxHashMap<String, u32>,
         any_extern_functions: &'a FxHashMap<Ident, crate::AnyExternInfo<'db>>,
+        any_local_functions: &'a FxHashMap<Ident, hir::hir_def::pous::function::Function<'db>>,
         this_local: u32,
         instance: crate::func_codegen::InstanceType<'db>,
         config: &'a crate::debug::CodeGenConfig,
         debug_info: &'a mut crate::debug::DebugInfo,
         debug_enabled_global: Option<u32>,
         debug_trap_id_global: Option<u32>,
+        string_data: Rc<RefCell<Vec<(u32, Vec<u8>)>>>,
+        string_data_offset: Rc<Cell<u32>>,
     ) -> Self {
         Self {
             db,
@@ -116,13 +137,49 @@ impl<'db, 'a> BodyCodegen<'db, 'a> {
             function_indices,
             monomorphized_indices,
             any_extern_functions,
+            any_local_functions,
             this_local: Some(this_local),
             instance: Some(instance),
             config,
             debug_info,
             debug_enabled_global,
             debug_trap_id_global,
+            string_data,
+            string_data_offset,
+            any_type_override: None,
         }
+    }
+
+    /// Resolve a type, replacing ANY types with the concrete override if set.
+    fn resolve_type(&self, ty: hir::hir_ty::ty::Type<'db>) -> hir::hir_ty::ty::Type<'db> {
+        if let Some(concrete) = self.any_type_override {
+            let normalized = ty.normalize(self.db);
+            match normalized {
+                hir::hir_ty::ty::Type::Elementary(e) if e.is_any() => {
+                    hir::hir_ty::ty::Type::Elementary(concrete)
+                }
+                _ => normalized,
+            }
+        } else {
+            ty
+        }
+    }
+
+    /// Intern a string literal in the shared data section. Returns (absolute_ptr, length).
+    fn intern_string(&self, bytes: &[u8]) -> (u32, u32) {
+        let base = crate::ModuleCodeGen::STRING_DATA_BASE;
+        let mut data = self.string_data.borrow_mut();
+        // Check if already interned
+        for (offset, existing) in data.iter() {
+            if existing == bytes {
+                return (base + *offset, bytes.len() as u32);
+            }
+        }
+        let offset = self.string_data_offset.get();
+        let len = bytes.len() as u32;
+        data.push((offset, bytes.to_vec()));
+        self.string_data_offset.set(offset + len);
+        (base + offset, len)
     }
 
     /// Emit all statements in the function body.
@@ -531,12 +588,12 @@ impl<'db, 'a> BodyCodegen<'db, 'a> {
                 right,
             } => {
                 // Get the result type (the target type for the operation)
-                let result_type = expr.infer(self.db).normalize(self.db);
+                let result_type = self.resolve_type(expr.infer(self.db)).normalize(self.db);
                 let result_spec = self.extract_elementary_spec(result_type)?;
 
                 // Emit left operand and cast if needed
                 self.emit_expr(func, *left)?;
-                let left_type = left.infer(self.db).normalize(self.db);
+                let left_type = self.resolve_type(left.infer(self.db)).normalize(self.db);
                 if let Type::Elementary(left_spec) = left_type {
                     let cast_instructions = crate::cast::emit_cast(left_spec, result_spec);
                     for instr in cast_instructions {
@@ -546,7 +603,7 @@ impl<'db, 'a> BodyCodegen<'db, 'a> {
 
                 // Emit right operand and cast if needed
                 self.emit_expr(func, *right)?;
-                let right_type = right.infer(self.db).normalize(self.db);
+                let right_type = self.resolve_type(right.infer(self.db)).normalize(self.db);
                 if let Type::Elementary(right_spec) = right_type {
                     let cast_instructions = crate::cast::emit_cast(right_spec, result_spec);
                     for instr in cast_instructions {
@@ -566,12 +623,12 @@ impl<'db, 'a> BodyCodegen<'db, 'a> {
                 right,
             } => {
                 // Get the result type (the target type for the operation)
-                let result_type = expr.infer(self.db).normalize(self.db);
+                let result_type = self.resolve_type(expr.infer(self.db)).normalize(self.db);
                 let result_spec = self.extract_elementary_spec(result_type)?;
 
                 // Emit left operand and cast if needed
                 self.emit_expr(func, *left)?;
-                let left_type = left.infer(self.db).normalize(self.db);
+                let left_type = self.resolve_type(left.infer(self.db)).normalize(self.db);
                 if let Type::Elementary(left_spec) = left_type {
                     let cast_instructions = crate::cast::emit_cast(left_spec, result_spec);
                     for instr in cast_instructions {
@@ -581,7 +638,7 @@ impl<'db, 'a> BodyCodegen<'db, 'a> {
 
                 // Emit right operand and cast if needed
                 self.emit_expr(func, *right)?;
-                let right_type = right.infer(self.db).normalize(self.db);
+                let right_type = self.resolve_type(right.infer(self.db)).normalize(self.db);
                 if let Type::Elementary(right_spec) = right_type {
                     let cast_instructions = crate::cast::emit_cast(right_spec, result_spec);
                     for instr in cast_instructions {
@@ -603,8 +660,8 @@ impl<'db, 'a> BodyCodegen<'db, 'a> {
             } => {
                 // For comparison, we need to cast both operands to a common type
                 // Get both operand types
-                let left_type = left.infer(self.db).normalize(self.db);
-                let right_type = right.infer(self.db).normalize(self.db);
+                let left_type = self.resolve_type(left.infer(self.db)).normalize(self.db);
+                let right_type = self.resolve_type(right.infer(self.db)).normalize(self.db);
 
                 // Determine the common type (wider type for comparison)
                 // Use the left type as base, but if right is wider, use that
@@ -664,7 +721,7 @@ impl<'db, 'a> BodyCodegen<'db, 'a> {
                 self.emit_expr(func, *right)?;
 
                 // Determine operand type (i32 or i64)
-                let left_type = left.infer(self.db).normalize(self.db);
+                let left_type = self.resolve_type(left.infer(self.db)).normalize(self.db);
                 let spec = self.extract_elementary_spec(left_type)?;
                 let val_type = elementary_to_val_type(spec).map_err(|e| e.to_string())?;
 
@@ -708,7 +765,7 @@ impl<'db, 'a> BodyCodegen<'db, 'a> {
                     }
                     UnaryOperatorKind::Minus => {
                         // Negate: push 0, push value, subtract
-                        let expr_type = expr.infer(self.db).normalize(self.db);
+                        let expr_type = self.resolve_type(expr.infer(self.db)).normalize(self.db);
                         let spec = self.extract_elementary_spec(expr_type)?;
 
                         if is_float(spec) {
@@ -736,7 +793,7 @@ impl<'db, 'a> BodyCodegen<'db, 'a> {
                         }
                     }
                     UnaryOperatorKind::Not => {
-                        let expr_type = expr.infer(self.db).normalize(self.db);
+                        let expr_type = self.resolve_type(expr.infer(self.db)).normalize(self.db);
                         let spec = self.extract_elementary_spec(expr_type)?;
 
                         self.emit_expr(func, *expr)?;
@@ -808,39 +865,41 @@ impl<'db, 'a> BodyCodegen<'db, 'a> {
                                     LocalInfo::Scalar { index, .. } => {
                                         func.instruction(&Instruction::LocalGet(*index));
                                     }
-                                    LocalInfo::Memory { address, size, .. } => {
-                                        // Load from memory location
-                                        func.instruction(&Instruction::I32Const(*address as i32));
-
-                                        // Determine load instruction based on size
-                                        // Memory variables are scalars that were allocated due to address-taken
-                                        match size {
-                                            4 => {
-                                                // Could be i32 or f32, assume i32 for now
-                                                // TODO: Get actual type to distinguish i32/f32
-                                                func.instruction(&Instruction::I32Load(
-                                                    wasm_encoder::MemArg {
-                                                        offset: 0,
-                                                        align: 2, // 4-byte alignment
-                                                        memory_index: 0,
-                                                    },
-                                                ));
-                                            }
-                                            8 => {
-                                                // Could be i64 or f64, assume i64 for now
-                                                func.instruction(&Instruction::I64Load(
-                                                    wasm_encoder::MemArg {
-                                                        offset: 0,
-                                                        align: 3, // 8-byte alignment
-                                                        memory_index: 0,
-                                                    },
-                                                ));
-                                            }
-                                            _ => {
-                                                return Err(format!(
-                                                    "Unsupported memory variable size: {}",
-                                                    size
-                                                ));
+                                    LocalInfo::Memory { address, size, align } => {
+                                        if *size == 8 && *align == 4 {
+                                            // String variable: load (ptr, len) as two i32 values
+                                            func.instruction(&Instruction::I32Const(*address as i32));
+                                            func.instruction(&Instruction::I32Load(wasm_encoder::MemArg {
+                                                offset: 0, align: 2, memory_index: 0,
+                                            }));
+                                            func.instruction(&Instruction::I32Const((*address + 4) as i32));
+                                            func.instruction(&Instruction::I32Load(wasm_encoder::MemArg {
+                                                offset: 0, align: 2, memory_index: 0,
+                                            }));
+                                        } else {
+                                            // Scalar in memory (address-taken)
+                                            func.instruction(&Instruction::I32Const(*address as i32));
+                                            match size {
+                                                4 => {
+                                                    func.instruction(&Instruction::I32Load(
+                                                        wasm_encoder::MemArg {
+                                                            offset: 0, align: 2, memory_index: 0,
+                                                        },
+                                                    ));
+                                                }
+                                                8 => {
+                                                    func.instruction(&Instruction::I64Load(
+                                                        wasm_encoder::MemArg {
+                                                            offset: 0, align: 3, memory_index: 0,
+                                                        },
+                                                    ));
+                                                }
+                                                _ => {
+                                                    return Err(format!(
+                                                        "Unsupported memory variable size: {}",
+                                                        size
+                                                    ));
+                                                }
                                             }
                                         }
                                     }
@@ -871,37 +930,41 @@ impl<'db, 'a> BodyCodegen<'db, 'a> {
                             LocalInfo::Scalar { index, .. } => {
                                 func.instruction(&Instruction::LocalGet(*index));
                             }
-                            LocalInfo::Memory { address, size, .. } => {
-                                // Load from memory location
-                                func.instruction(&Instruction::I32Const(*address as i32));
-
-                                // Determine load instruction based on size
-                                match size {
-                                    4 => {
-                                        // 4-byte value (i32 or f32)
-                                        func.instruction(&Instruction::I32Load(
-                                            wasm_encoder::MemArg {
-                                                offset: 0,
-                                                align: 2, // 4-byte alignment
-                                                memory_index: 0,
-                                            },
-                                        ));
-                                    }
-                                    8 => {
-                                        // 8-byte value (i64 or f64)
-                                        func.instruction(&Instruction::I64Load(
-                                            wasm_encoder::MemArg {
-                                                offset: 0,
-                                                align: 3, // 8-byte alignment
-                                                memory_index: 0,
-                                            },
-                                        ));
-                                    }
-                                    _ => {
-                                        return Err(format!(
-                                            "Unsupported memory variable size: {}",
-                                            size
-                                        ));
+                            LocalInfo::Memory { address, size, align } => {
+                                if *size == 8 && *align == 4 {
+                                    // String variable: load (ptr, len) as two i32 values
+                                    func.instruction(&Instruction::I32Const(*address as i32));
+                                    func.instruction(&Instruction::I32Load(wasm_encoder::MemArg {
+                                        offset: 0, align: 2, memory_index: 0,
+                                    }));
+                                    func.instruction(&Instruction::I32Const((*address + 4) as i32));
+                                    func.instruction(&Instruction::I32Load(wasm_encoder::MemArg {
+                                        offset: 0, align: 2, memory_index: 0,
+                                    }));
+                                } else {
+                                    // Scalar in memory
+                                    func.instruction(&Instruction::I32Const(*address as i32));
+                                    match size {
+                                        4 => {
+                                            func.instruction(&Instruction::I32Load(
+                                                wasm_encoder::MemArg {
+                                                    offset: 0, align: 2, memory_index: 0,
+                                                },
+                                            ));
+                                        }
+                                        8 => {
+                                            func.instruction(&Instruction::I64Load(
+                                                wasm_encoder::MemArg {
+                                                    offset: 0, align: 3, memory_index: 0,
+                                                },
+                                            ));
+                                        }
+                                        _ => {
+                                            return Err(format!(
+                                                "Unsupported memory variable size: {}",
+                                                size
+                                            ));
+                                        }
                                     }
                                 }
                             }
@@ -1000,18 +1063,46 @@ impl<'db, 'a> BodyCodegen<'db, 'a> {
                 // Regular function call (not a method)
                 let func_name = self.resolve_function_name(*call)?;
 
+                // Check if this is a variadic function — inline the fold
+                if let Some(called_func) = self.any_local_functions.get(&func_name) {
+                    let called_scope = called_func.scope_id(self.db);
+                    let called_def_map = called_scope.def_map(self.db);
+                    let has_variadic = called_def_map.local_variables.values()
+                        .any(|v| v.variadic(self.db));
+
+                    if has_variadic {
+                        // Inline the variadic fold: emit all args, fold with operator
+                        // Find the fold operator from the function body
+                        let scope_data = hir::hir_def::semantic_index::get_scope(self.db, called_scope);
+                        if let hir::hir_def::scope::ScopeKind::Pou(hir::hir_def::pous::pou::Pou::Function(f)) = scope_data.kind {
+                            for s in f.statements(self.db).iter() {
+                                use hir::hir_def::expressions::statement::StmtKind;
+                                use hir::hir_def::expressions::expression::ExprKind;
+                                if let StmtKind::Assignment { target, .. } = s.stmt(self.db) {
+                                    if let ExprKind::FoldExpr { operator, .. } = target.expr(self.db) {
+                                        return self.emit_inline_fold(func, call, operator);
+                                    }
+                                }
+                            }
+                        }
+                        return Err(format!("Variadic function '{}' has no fold expression in body", func_name.text(self.db)));
+                    }
+                }
+
                 // Look up function index — check monomorphized ANY_* functions first
                 let func_idx = if let Some(&idx) = self.function_indices.get(&func_name) {
                     idx
-                } else if self.any_extern_functions.contains_key(&func_name) {
-                    // ANY_* extern function — determine concrete type from first argument
+                } else if self.any_extern_functions.contains_key(&func_name)
+                    || self.any_local_functions.contains_key(&func_name)
+                {
+                    // ANY_* function (extern or local) — determine concrete type from first argument
                     let concrete_type = self.resolve_call_concrete_type(*call)?;
                     let func_name_str = func_name.text(self.db);
                     let type_suffix = concrete_type.type_name();
                     let mono_key = format!("{}.{}", func_name_str, type_suffix);
                     *self.monomorphized_indices.get(&mono_key).ok_or_else(|| {
                         format!(
-                            "No monomorphized import for {}.{}", func_name_str, type_suffix
+                            "No monomorphized function for {}.{}", func_name_str, type_suffix
                         )
                     })?
                 } else {
@@ -1236,6 +1327,29 @@ impl<'db, 'a> BodyCodegen<'db, 'a> {
                 Ok(())
             }
 
+            // String and char literals → (ptr, len) pair on stack
+            Elementary::String(ident) | Elementary::Char(ident) => {
+                let bytes = ident
+                    .as_single_string(self.db)
+                    .map_err(|e| format!("Invalid string literal: {:?}", e))?;
+                let (ptr, len) = self.intern_string(&bytes);
+                func.instruction(&Instruction::I32Const(ptr as i32));
+                func.instruction(&Instruction::I32Const(len as i32));
+                Ok(())
+            }
+            Elementary::WString(ident) | Elementary::WChar(ident) => {
+                let chars = ident
+                    .as_double_string(self.db)
+                    .map_err(|e| format!("Invalid wstring literal: {:?}", e))?;
+                // Encode as UTF-8
+                let utf8: String = chars.into_iter().collect();
+                let bytes = utf8.as_bytes();
+                let (ptr, len) = self.intern_string(bytes);
+                func.instruction(&Instruction::I32Const(ptr as i32));
+                func.instruction(&Instruction::I32Const(len as i32));
+                Ok(())
+            }
+
             _ => Err(format!("Unsupported literal type: {:?}", elem)),
         }
     }
@@ -1363,6 +1477,68 @@ impl<'db, 'a> BodyCodegen<'db, 'a> {
                 Err("Output parameters not yet supported".to_string())
             }
         }
+    }
+
+    /// Emit an inline fold for a variadic function call.
+    /// Emits all arguments, then folds them with the operator.
+    fn emit_inline_fold(
+        &self,
+        func: &mut wasm_encoder::Function,
+        call: &hir::hir_def::expressions::expression::FuncCall<'db>,
+        operator: &hir::hir_def::expressions::expression::FoldOperatorKind,
+    ) -> Result<(), String> {
+        use hir::hir_def::expressions::expression::FoldOperatorKind;
+
+        let params = call.params(self.db);
+        if params.is_empty() {
+            return Err("Variadic function called with no arguments".to_string());
+        }
+
+        // Determine the concrete type from the first argument
+        let concrete_type = self.resolve_call_concrete_type(*call)?;
+        let spec = concrete_type;
+
+        // Emit first argument
+        self.emit_param(func, *params.first().unwrap())?;
+
+        // For each subsequent argument, emit it and apply the fold operator
+        for param in params.iter().skip(1) {
+            self.emit_param(func, *param)?;
+
+            match *operator {
+                FoldOperatorKind::Plus => self.emit_add_instruction(func, spec)?,
+                FoldOperatorKind::Minus => self.emit_sub_instruction(func, spec)?,
+                FoldOperatorKind::Mul => self.emit_mul_instruction(func, spec)?,
+                FoldOperatorKind::Div => self.emit_div_instruction(func, spec)?,
+                FoldOperatorKind::Mod => self.emit_mod_instruction(func, spec)?,
+                FoldOperatorKind::And => {
+                    if crate::wasm_repr::elementary::is_64bit(spec) {
+                        func.instruction(&Instruction::I64And);
+                    } else {
+                        func.instruction(&Instruction::I32And);
+                    }
+                }
+                FoldOperatorKind::Or => {
+                    if crate::wasm_repr::elementary::is_64bit(spec) {
+                        func.instruction(&Instruction::I64Or);
+                    } else {
+                        func.instruction(&Instruction::I32Or);
+                    }
+                }
+                FoldOperatorKind::Xor => {
+                    if crate::wasm_repr::elementary::is_64bit(spec) {
+                        func.instruction(&Instruction::I64Xor);
+                    } else {
+                        func.instruction(&Instruction::I32Xor);
+                    }
+                }
+                _ => {
+                    return Err(format!("Unsupported fold operator: {:?}", operator));
+                }
+            }
+        }
+
+        Ok(())
     }
 
     /// Extract elementary spec from a type (unwrap Type::Elementary).
@@ -1522,7 +1698,7 @@ impl<'db, 'a> BodyCodegen<'db, 'a> {
                 self.emit_expr(func, *expr)?;
 
                 // Get type for comparison instruction
-                let expr_type = condition.infer(self.db).normalize(self.db);
+                let expr_type = self.resolve_type(condition.infer(self.db)).normalize(self.db);
                 let spec = self.extract_elementary_spec(expr_type)?;
                 self.emit_eq_instruction(func, spec)?;
 
@@ -1534,7 +1710,7 @@ impl<'db, 'a> BodyCodegen<'db, 'a> {
                 self.emit_expr(func, condition)?;
                 self.emit_expr(func, *lower)?;
 
-                let expr_type = condition.infer(self.db).normalize(self.db);
+                let expr_type = self.resolve_type(condition.infer(self.db)).normalize(self.db);
                 let spec = self.extract_elementary_spec(expr_type)?;
                 self.emit_ge_instruction(func, spec)?;
 
@@ -2507,8 +2683,8 @@ impl<'db, 'a> BodyCodegen<'db, 'a> {
                 }
                 Ok(())
             }
-            WasmRepr::Memory { .. } => {
-                // For memory types (structs), the address itself is the value
+            WasmRepr::Memory { .. } | WasmRepr::StringPtr => {
+                // For memory types (structs, strings), the address itself is the value
                 // Don't load, just leave the address on the stack
                 Ok(())
             }
@@ -2553,8 +2729,8 @@ impl<'db, 'a> BodyCodegen<'db, 'a> {
                 }
                 Ok(())
             }
-            WasmRepr::Memory { .. } => {
-                // For memory types (structs), can't store entire struct at once
+            WasmRepr::Memory { .. } | WasmRepr::StringPtr => {
+                // For memory types (structs, strings), can't store entire value at once
                 Err("Direct store of memory-resident types not supported".to_string())
             }
         }

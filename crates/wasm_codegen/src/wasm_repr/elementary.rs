@@ -64,6 +64,14 @@ pub fn elementary_to_val_type(spec: ElementarySpec) -> Result<ValType, WasmReprE
     })
 }
 
+/// Check if an elementary type is a string or character type.
+pub fn is_string_type(spec: ElementarySpec) -> bool {
+    matches!(
+        spec,
+        ElementarySpec::String | ElementarySpec::WString | ElementarySpec::Char | ElementarySpec::WChar
+    )
+}
+
 /// Check if an elementary type is signed (affects instruction selection).
 pub fn is_signed(spec: ElementarySpec) -> bool {
     matches!(

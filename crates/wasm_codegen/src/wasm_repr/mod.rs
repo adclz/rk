@@ -32,6 +32,10 @@ pub enum WasmRepr {
     /// Memory-resident value (arrays, structs, large types).
     /// Stores the size in bytes and alignment requirement.
     Memory { size: u32, align: u32 },
+
+    /// String value: (ptr: i32, len: i32) pair in linear memory.
+    /// In the component model, this maps to the native `string` type.
+    StringPtr,
 }
 
 impl WasmRepr {
@@ -44,6 +48,8 @@ impl WasmRepr {
         let ty = ty.normalize(db);
 
         match ty {
+            Type::Elementary(spec) if elementary::is_string_type(spec) => Ok(WasmRepr::StringPtr),
+
             Type::Elementary(spec) => Ok(WasmRepr::Scalar(elementary_to_val_type(spec)?)),
 
             Type::RefTo(_spec) => {
@@ -94,10 +100,12 @@ impl WasmRepr {
     /// Used for function signatures (params and results).
     /// - Scalar(vt) → [vt]
     /// - Memory{..} → [i32] (pointer to memory)
+    /// - StringPtr → [i32, i32] (pointer, length)
     pub fn flatten(self) -> Vec<ValType> {
         match self {
             WasmRepr::Scalar(vt) => vec![vt],
             WasmRepr::Memory { .. } => vec![ValType::I32], // Pointer
+            WasmRepr::StringPtr => vec![ValType::I32, ValType::I32], // (ptr, len)
         }
     }
 
@@ -110,6 +118,7 @@ impl WasmRepr {
                 _ => 0,
             },
             WasmRepr::Memory { size, .. } => size,
+            WasmRepr::StringPtr => 8, // ptr(4) + len(4)
         }
     }
 
@@ -122,6 +131,7 @@ impl WasmRepr {
                 _ => 1,
             },
             WasmRepr::Memory { align, .. } => align,
+            WasmRepr::StringPtr => 4,
         }
     }
 
@@ -141,6 +151,11 @@ impl WasmRepr {
     /// Check if this is memory-resident.
     pub fn is_memory(&self) -> bool {
         matches!(self, WasmRepr::Memory { .. })
+    }
+
+    /// Check if this is a string type.
+    pub fn is_string(&self) -> bool {
+        matches!(self, WasmRepr::StringPtr)
     }
 }
 

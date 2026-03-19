@@ -12,6 +12,8 @@ use hir::{
     hir_ty::{body::infer_body, head::signature::infer_signature, infer::Infer},
 };
 use rustc_hash::FxHashMap;
+use std::cell::{Cell, RefCell};
+use std::rc::Rc;
 use wasm_encoder::{Instruction, ValType};
 
 use crate::{
@@ -57,6 +59,8 @@ pub struct FunctionCodegen<'db, 'a> {
     monomorphized_indices: &'a FxHashMap<String, u32>,
     /// ANY_* extern function info
     any_extern_functions: &'a FxHashMap<Ident, crate::AnyExternInfo<'db>>,
+    /// ANY_* non-extern function info
+    any_local_functions: &'a FxHashMap<Ident, hir::hir_def::pous::function::Function<'db>>,
 
     /// For methods: the 'this' pointer local index (always 0 for methods).
     this_local: Option<u32>,
@@ -73,6 +77,17 @@ pub struct FunctionCodegen<'db, 'a> {
     /// Debug global indices
     debug_enabled_global: Option<u32>,
     debug_trap_id_global: Option<u32>,
+
+    /// String input parameters: (name, first_local_idx, memory_address)
+    /// These need a prologue to store the incoming (ptr, len) params into memory.
+    string_input_params: Vec<(Ident, u32, u32)>,
+
+    /// When set, replaces ANY-typed variables with this concrete type during codegen.
+    any_type_override: Option<hir::hir_def::expressions::spec::ElementarySpec>,
+
+    /// String literal data (shared with ModuleCodeGen)
+    string_data: Rc<RefCell<Vec<(u32, Vec<u8>)>>>,
+    string_data_offset: Rc<Cell<u32>>,
 }
 
 impl<'db, 'a> FunctionCodegen<'db, 'a> {
@@ -82,10 +97,13 @@ impl<'db, 'a> FunctionCodegen<'db, 'a> {
         function_indices: &'a FxHashMap<Ident, u32>,
         monomorphized_indices: &'a FxHashMap<String, u32>,
         any_extern_functions: &'a FxHashMap<Ident, crate::AnyExternInfo<'db>>,
+        any_local_functions: &'a FxHashMap<Ident, hir::hir_def::pous::function::Function<'db>>,
         config: &'a crate::debug::CodeGenConfig,
         debug_info: &'a mut crate::debug::DebugInfo,
         debug_enabled_global: Option<u32>,
         debug_trap_id_global: Option<u32>,
+        string_data: Rc<RefCell<Vec<(u32, Vec<u8>)>>>,
+        string_data_offset: Rc<Cell<u32>>,
     ) -> Self {
         Self {
             db,
@@ -95,12 +113,17 @@ impl<'db, 'a> FunctionCodegen<'db, 'a> {
             function_indices,
             monomorphized_indices,
             any_extern_functions,
+            any_local_functions,
             this_local: None,
             instance: None,
             config,
             debug_info,
             debug_enabled_global,
             debug_trap_id_global,
+            string_input_params: Vec::new(),
+            any_type_override: None,
+            string_data: string_data.clone(),
+            string_data_offset: string_data_offset.clone(),
         }
     }
 
@@ -110,11 +133,14 @@ impl<'db, 'a> FunctionCodegen<'db, 'a> {
         function_indices: &'a FxHashMap<Ident, u32>,
         monomorphized_indices: &'a FxHashMap<String, u32>,
         any_extern_functions: &'a FxHashMap<Ident, crate::AnyExternInfo<'db>>,
+        any_local_functions: &'a FxHashMap<Ident, hir::hir_def::pous::function::Function<'db>>,
         fb: FunctionBlock<'db>,
         config: &'a crate::debug::CodeGenConfig,
         debug_info: &'a mut crate::debug::DebugInfo,
         debug_enabled_global: Option<u32>,
         debug_trap_id_global: Option<u32>,
+        string_data: Rc<RefCell<Vec<(u32, Vec<u8>)>>>,
+        string_data_offset: Rc<Cell<u32>>,
     ) -> Self {
         Self {
             db,
@@ -124,12 +150,17 @@ impl<'db, 'a> FunctionCodegen<'db, 'a> {
             function_indices,
             monomorphized_indices,
             any_extern_functions,
+            any_local_functions,
             this_local: Some(0),
             instance: Some(InstanceType::FunctionBlock(fb)),
             config,
             debug_info,
             debug_enabled_global,
             debug_trap_id_global,
+            string_input_params: Vec::new(),
+            any_type_override: None,
+            string_data: string_data.clone(),
+            string_data_offset: string_data_offset.clone(),
         }
     }
 
@@ -139,11 +170,14 @@ impl<'db, 'a> FunctionCodegen<'db, 'a> {
         function_indices: &'a FxHashMap<Ident, u32>,
         monomorphized_indices: &'a FxHashMap<String, u32>,
         any_extern_functions: &'a FxHashMap<Ident, crate::AnyExternInfo<'db>>,
+        any_local_functions: &'a FxHashMap<Ident, hir::hir_def::pous::function::Function<'db>>,
         class: Class<'db>,
         config: &'a crate::debug::CodeGenConfig,
         debug_info: &'a mut crate::debug::DebugInfo,
         debug_enabled_global: Option<u32>,
         debug_trap_id_global: Option<u32>,
+        string_data: Rc<RefCell<Vec<(u32, Vec<u8>)>>>,
+        string_data_offset: Rc<Cell<u32>>,
     ) -> Self {
         Self {
             db,
@@ -153,18 +187,41 @@ impl<'db, 'a> FunctionCodegen<'db, 'a> {
             function_indices,
             monomorphized_indices,
             any_extern_functions,
+            any_local_functions,
             this_local: Some(0),
             instance: Some(InstanceType::Class(class)),
             config,
             debug_info,
             debug_enabled_global,
             debug_trap_id_global,
+            string_input_params: Vec::new(),
+            any_type_override: None,
+            string_data: string_data.clone(),
+            string_data_offset: string_data_offset.clone(),
         }
+    }
+
+    /// Generate the WASM function body with an ANY type override.
+    /// Replaces all ANY-typed variables with the given concrete type.
+    pub fn generate_with_type_override(
+        mut self,
+        memory_layout: &mut crate::memory::MemoryLayout,
+        concrete_type: hir::hir_def::expressions::spec::ElementarySpec,
+    ) -> Result<wasm_encoder::Function, String> {
+        self.any_type_override = Some(concrete_type);
+        self.generate_inner(memory_layout)
     }
 
     /// Generate the WASM function body.
     pub fn generate(
         mut self,
+        memory_layout: &mut crate::memory::MemoryLayout,
+    ) -> Result<wasm_encoder::Function, String> {
+        self.generate_inner(memory_layout)
+    }
+
+    fn generate_inner(
+        &mut self,
         memory_layout: &mut crate::memory::MemoryLayout,
     ) -> Result<wasm_encoder::Function, String> {
         // Detect which variables have their address taken (REF operator)
@@ -178,6 +235,29 @@ impl<'db, 'a> FunctionCodegen<'db, 'a> {
 
         // Initialize memory-allocated variables at function start
         self.initialize_memory_variables(&mut func)?;
+
+        // Initialize scalar variables with constant initial values
+        self.initialize_scalar_variables(&mut func)?;
+
+        // Store string input parameters (ptr, len) into their memory slots
+        for &(_name, local_idx, address) in &self.string_input_params {
+            // Store ptr at address
+            func.instruction(&Instruction::I32Const(address as i32));
+            func.instruction(&Instruction::LocalGet(local_idx)); // ptr param
+            func.instruction(&Instruction::I32Store(wasm_encoder::MemArg {
+                offset: 0,
+                align: 2,
+                memory_index: 0,
+            }));
+            // Store len at address + 4
+            func.instruction(&Instruction::I32Const((address + 4) as i32));
+            func.instruction(&Instruction::LocalGet(local_idx + 1)); // len param
+            func.instruction(&Instruction::I32Store(wasm_encoder::MemArg {
+                offset: 0,
+                align: 2,
+                memory_index: 0,
+            }));
+        }
 
         // Generate function body instructions
         self.generate_body(&mut func)?;
@@ -344,6 +424,21 @@ impl<'db, 'a> FunctionCodegen<'db, 'a> {
         Ok(address_taken)
     }
 
+    /// Resolve a type, replacing ANY types with the concrete override if set.
+    fn resolve_type(&self, ty: hir::hir_ty::ty::Type<'db>) -> hir::hir_ty::ty::Type<'db> {
+        if let Some(concrete) = self.any_type_override {
+            let normalized = ty.normalize(self.db);
+            match normalized {
+                hir::hir_ty::ty::Type::Elementary(e) if e.is_any() => {
+                    hir::hir_ty::ty::Type::Elementary(concrete)
+                }
+                _ => normalized,
+            }
+        } else {
+            ty
+        }
+    }
+
     /// Build the local variable map and return extra locals (non-parameters).
     fn build_local_map(
         &mut self,
@@ -361,24 +456,49 @@ impl<'db, 'a> FunctionCodegen<'db, 'a> {
         for (name, var) in &def_map.local_variables {
             match var.kind(self.db) {
                 VariableKind::Input => {
-                    // VAR_INPUT parameters are passed by value
-                    let spec = self.extract_elementary_spec(var.spec(self.db).infer(self.db))?;
-                    let val_type = elementary_to_val_type(spec)
+                    let var_type = self.resolve_type(var.spec(self.db).infer(self.db));
+                    let repr = crate::wasm_repr::WasmRepr::from_type(self.db, var_type)
                         .map_err(|e| format!("Failed to convert parameter type: {}", e))?;
 
-                    self.local_map.insert(
-                        *name,
-                        LocalInfo::Scalar {
-                            index: next_local_idx,
-                            val_type,
-                            spec,
-                        },
-                    );
-                    next_local_idx += 1;
+                    match repr {
+                        crate::wasm_repr::WasmRepr::StringPtr => {
+                            // String input: two WASM params (ptr: i32, len: i32)
+                            // Store as memory-resident at a fixed address
+                            let address = memory_layout.allocate(*name, 8, 4);
+                            self.local_map.insert(
+                                *name,
+                                LocalInfo::Memory {
+                                    address,
+                                    size: 8,
+                                    align: 4,
+                                },
+                            );
+                            // The two incoming params (ptr, len) need to be stored
+                            // into the memory slot during function prologue
+                            self.string_input_params.push((*name, next_local_idx, address));
+                            next_local_idx += 2; // ptr + len
+                        }
+                        _ => {
+                            // VAR_INPUT parameters are passed by value
+                            let spec = self.extract_elementary_spec(var_type)?;
+                            let val_type = elementary_to_val_type(spec)
+                                .map_err(|e| format!("Failed to convert parameter type: {}", e))?;
+
+                            self.local_map.insert(
+                                *name,
+                                LocalInfo::Scalar {
+                                    index: next_local_idx,
+                                    val_type,
+                                    spec,
+                                },
+                            );
+                            next_local_idx += 1;
+                        }
+                    }
                 }
                 VariableKind::InOut => {
                     // VAR_IN_OUT parameters are passed as i32 pointers
-                    let var_type = var.spec(self.db).infer(self.db);
+                    let var_type = self.resolve_type(var.spec(self.db).infer(self.db));
                     let pointee_repr = crate::wasm_repr::WasmRepr::from_type(self.db, var_type)
                         .map_err(|e| {
                             format!(
@@ -416,7 +536,7 @@ impl<'db, 'a> FunctionCodegen<'db, 'a> {
         };
 
         if let (Some(return_spec), Some(scope_name)) = (return_spec_opt, scope_name_opt) {
-            let return_type = return_spec.infer(self.db);
+            let return_type = self.resolve_type(return_spec.infer(self.db));
             let spec = self.extract_elementary_spec(return_type)?;
             let val_type = elementary_to_val_type(spec)
                 .map_err(|e| format!("Failed to convert return type: {}", e))?;
@@ -447,7 +567,7 @@ impl<'db, 'a> FunctionCodegen<'db, 'a> {
 
             match var.kind(self.db) {
                 VariableKind::Var | VariableKind::Temp | VariableKind::Output => {
-                    let var_type = var.spec(self.db).infer(self.db);
+                    let var_type = self.resolve_type(var.spec(self.db).infer(self.db));
                     let repr = crate::wasm_repr::WasmRepr::from_type(self.db, var_type)
                         .map_err(|e| format!("Failed to get type representation: {}", e))?;
 
@@ -518,6 +638,19 @@ impl<'db, 'a> FunctionCodegen<'db, 'a> {
                                 },
                             );
                         }
+                        crate::wasm_repr::WasmRepr::StringPtr => {
+                            // String variable: 8 bytes in linear memory (ptr: i32 + len: i32)
+                            let address = memory_layout.allocate(*name, 8, 4);
+
+                            self.local_map.insert(
+                                *name,
+                                LocalInfo::Memory {
+                                    address,
+                                    size: 8,
+                                    align: 4,
+                                },
+                            );
+                        }
                     }
                 }
                 _ => {}
@@ -533,7 +666,7 @@ impl<'db, 'a> FunctionCodegen<'db, 'a> {
 
             match var.kind(self.db) {
                 VariableKind::Var | VariableKind::Temp | VariableKind::Output => {
-                    let var_type = var.spec(self.db).infer(self.db);
+                    let var_type = self.resolve_type(var.spec(self.db).infer(self.db));
                     let repr = crate::wasm_repr::WasmRepr::from_type(self.db, var_type)
                         .map_err(|e| format!("Failed to get type representation: {}", e))?;
 
@@ -601,6 +734,19 @@ impl<'db, 'a> FunctionCodegen<'db, 'a> {
                                     address,
                                     size,
                                     align,
+                                },
+                            );
+                        }
+                        crate::wasm_repr::WasmRepr::StringPtr => {
+                            // String variable: 8 bytes in linear memory (ptr: i32 + len: i32)
+                            let address = memory_layout.allocate(*name, 8, 4);
+
+                            self.local_map.insert(
+                                *name,
+                                LocalInfo::Memory {
+                                    address,
+                                    size: 8,
+                                    align: 4,
                                 },
                             );
                         }
@@ -651,12 +797,15 @@ impl<'db, 'a> FunctionCodegen<'db, 'a> {
                                         self.function_indices,
                                         self.monomorphized_indices,
                                         self.any_extern_functions,
+                                        self.any_local_functions,
                                         this_local,
                                         instance,
                                         self.config,
                                         self.debug_info,
                                         self.debug_enabled_global,
                                         self.debug_trap_id_global,
+                                        self.string_data.clone(),
+                                        self.string_data_offset.clone(),
                                     )
                                 } else {
                                     BodyCodegen::new(
@@ -666,10 +815,13 @@ impl<'db, 'a> FunctionCodegen<'db, 'a> {
                                         self.function_indices,
                                         self.monomorphized_indices,
                                         self.any_extern_functions,
+                                        self.any_local_functions,
                                         self.config,
                                         self.debug_info,
                                         self.debug_enabled_global,
                                         self.debug_trap_id_global,
+                                        self.string_data.clone(),
+                                        self.string_data_offset.clone(),
                                     )
                                 };
 
@@ -747,6 +899,54 @@ impl<'db, 'a> FunctionCodegen<'db, 'a> {
         Ok(())
     }
 
+    /// Initialize scalar variables with their constant initial values.
+    fn initialize_scalar_variables(
+        &mut self,
+        func: &mut wasm_encoder::Function,
+    ) -> Result<(), String> {
+        use hir::hir_def::expressions::expression::InitExprKind;
+
+        let def_map = self.scope.def_map(self.db);
+        let local_map_snapshot = self.local_map.clone();
+
+        for (var_name, local_info) in &local_map_snapshot {
+            if let LocalInfo::Scalar { index, .. } = local_info {
+                let var_decl = def_map
+                    .local_variables
+                    .get(var_name)
+                    .or_else(|| def_map.global_variables.get(var_name));
+
+                if let Some(var_decl) = var_decl {
+                    if let Some(init_expr) = var_decl.init(self.db) {
+                        if let InitExprKind::ConstantExpr(expr) = init_expr.kind(self.db) {
+                            let mut body_codegen = crate::body::BodyCodegen::new(
+                                self.db,
+                                &self.local_map,
+                                self.return_local,
+                                self.function_indices,
+                                self.monomorphized_indices,
+                                self.any_extern_functions,
+                                self.any_local_functions,
+                                self.config,
+                                self.debug_info,
+                                self.debug_enabled_global,
+                                self.debug_trap_id_global,
+                                self.string_data.clone(),
+                                self.string_data_offset.clone(),
+                            );
+                            body_codegen.any_type_override = self.any_type_override;
+
+                            body_codegen.emit_expr(func, expr)?;
+                            func.instruction(&Instruction::LocalSet(*index));
+                        }
+                    }
+                }
+            }
+        }
+
+        Ok(())
+    }
+
     /// Generate the function body statements.
     fn generate_body(&mut self, func: &mut wasm_encoder::Function) -> Result<(), String> {
         let _body_result = infer_body(self.db, self.scope);
@@ -774,12 +974,15 @@ impl<'db, 'a> FunctionCodegen<'db, 'a> {
                     self.function_indices,
                     self.monomorphized_indices,
                     self.any_extern_functions,
+                    self.any_local_functions,
                     this_local,
                     instance,
                     self.config,
                     self.debug_info,
                     self.debug_enabled_global,
                     self.debug_trap_id_global,
+                    self.string_data.clone(),
+                    self.string_data_offset.clone(),
                 )
             } else {
                 // Regular function
@@ -790,12 +993,19 @@ impl<'db, 'a> FunctionCodegen<'db, 'a> {
                     self.function_indices,
                     self.monomorphized_indices,
                     self.any_extern_functions,
+                        self.any_local_functions,
                     self.config,
                     self.debug_info,
                     self.debug_enabled_global,
                     self.debug_trap_id_global,
+                    self.string_data.clone(),
+                    self.string_data_offset.clone(),
                 )
             };
+
+        // Propagate type override for monomorphized functions
+        body_codegen.any_type_override = self.any_type_override;
+
         body_codegen.emit_statements(func, statements)?;
 
         Ok(())
