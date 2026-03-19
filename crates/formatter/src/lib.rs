@@ -62,11 +62,8 @@ static SURROUND_SPACES: &str = r#"
 (real_literal "-" @append_antispace)
 (real_literal "+" @append_antispace)
 
-; Generics: no spaces around < and > in generic contexts
-(generic_type_args "<" @prepend_antispace @append_antispace)
-(generic_type_args ">" @prepend_antispace @append_antispace)
-(generic_spec "<" @prepend_antispace @append_antispace)
-(generic_spec ">" @prepend_antispace @append_antispace)
+; INTO spec: no space between INTO and (
+(into_spec "INTO" @append_antispace)
 
 ; Extern pragma: normalize spacing between children
 (extern_pragma "{" @append_antispace)
