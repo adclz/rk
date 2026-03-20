@@ -167,7 +167,8 @@ pub fn monomorphize<'db>(
     }
 
     // Phase 2: Generate monomorphized copies
-    let mut mono_indices: FxHashMap<(Ident, MirElementary), u32> = FxHashMap::default();
+    // Maps (original_name, concrete_type) → (monomorphized_name, fn_index)
+    let mut mono_indices: FxHashMap<(Ident, MirElementary), (Ident, u32)> = FxHashMap::default();
     let mut next_fn_idx = module.functions.len() as u32 + module.extern_functions.len() as u32;
 
     for info in any_functions {
@@ -241,20 +242,22 @@ pub fn monomorphize<'db>(
                     monomorphized_from: Some(func_name),
                 });
             } else {
-                // Local ANY_* function → lower with type override
-                let mir_func = lower_monomorphized_local(
-                    db,
-                    info.func,
-                    mono_name,
-                    *concrete_spec,
-                    next_fn_idx,
-                    memory_layout,
-                )?;
-                module.functions.push(mir_func);
+                // Skip variadic functions (they're inlined at call sites)
+                let scope_id = info.func.scope_id(db);
+                let def_map = scope_id.def_map(db);
+                let has_variadic = def_map.local_variables.values()
+                    .any(|v| v.variadic(db));
+                if has_variadic {
+                    continue;
+                }
+
+                // Local ANY_* function → skip for now (needs MIR-level type override)
+                // TODO: implement body monomorphization in MIR
+                continue;
             }
 
             module.function_indices.insert(mono_name, next_fn_idx);
-            mono_indices.insert((func_name, mir_elem), next_fn_idx);
+            mono_indices.insert((func_name, mir_elem), (mono_name, next_fn_idx));
             next_fn_idx += 1;
         }
     }
@@ -505,7 +508,10 @@ fn infer_concrete_type_from_expr(expr: &MirExpr) -> Option<MirElementary> {
             MirType::Elementary(e) => Some(*e),
             _ => None,
         },
-        MirExpr::Load(_) => None, // Would need local type map — handled at call resolution
+        MirExpr::Load(_, ty) => match ty {
+            MirType::Elementary(e) => Some(*e),
+            _ => None,
+        },
         _ => None,
     }
 }
@@ -548,7 +554,7 @@ fn mir_elementary_to_spec(elem: MirElementary) -> Option<ElementarySpec> {
 fn rewrite_calls_in_stmts(
     stmts: &mut [MirStmt],
     any_names: &FxHashSet<Ident>,
-    mono_indices: &FxHashMap<(Ident, MirElementary), u32>,
+    mono_indices: &FxHashMap<(Ident, MirElementary), (Ident, u32)>,
 ) {
     for stmt in stmts.iter_mut() {
         rewrite_calls_in_stmt(stmt, any_names, mono_indices);
@@ -558,7 +564,7 @@ fn rewrite_calls_in_stmts(
 fn rewrite_calls_in_stmt(
     stmt: &mut MirStmt,
     any_names: &FxHashSet<Ident>,
-    mono_indices: &FxHashMap<(Ident, MirElementary), u32>,
+    mono_indices: &FxHashMap<(Ident, MirElementary), (Ident, u32)>,
 ) {
     match stmt {
         MirStmt::Assign { value, .. } => rewrite_calls_in_expr(value, any_names, mono_indices),
@@ -615,7 +621,7 @@ fn rewrite_calls_in_stmt(
 fn rewrite_calls_in_expr(
     expr: &mut MirExpr,
     any_names: &FxHashSet<Ident>,
-    mono_indices: &FxHashMap<(Ident, MirElementary), u32>,
+    mono_indices: &FxHashMap<(Ident, MirElementary), (Ident, u32)>,
 ) {
     match expr {
         MirExpr::Call(call) => rewrite_call(call, any_names, mono_indices),
@@ -632,7 +638,7 @@ fn rewrite_calls_in_expr(
 fn rewrite_call(
     call: &mut MirCall,
     any_names: &FxHashSet<Ident>,
-    mono_indices: &FxHashMap<(Ident, MirElementary), u32>,
+    mono_indices: &FxHashMap<(Ident, MirElementary), (Ident, u32)>,
 ) {
     // Recurse into arguments first
     for arg in &mut call.args {
@@ -651,9 +657,9 @@ fn rewrite_call(
         .and_then(|arg| infer_concrete_type_from_expr(&arg.value));
 
     if let Some(concrete_elem) = concrete {
-        if let Some(&new_idx) = mono_indices.get(&(call.callee, concrete_elem)) {
+        if let Some(&(mono_name, new_idx)) = mono_indices.get(&(call.callee, concrete_elem)) {
+            call.callee = mono_name;
             call.callee_index = new_idx;
-            // Note: callee name stays as original — codegen uses callee_index
         }
     }
 }

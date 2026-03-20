@@ -9,7 +9,7 @@ pub enum MirExpr {
     Constant(MirConstant),
 
     /// Read from a place (variable, field, array element, deref).
-    Load(MirPlace),
+    Load(MirPlace, MirType),
 
     /// Binary operation. Both operands and the result have the same type
     /// (casts are inserted explicitly during lowering).

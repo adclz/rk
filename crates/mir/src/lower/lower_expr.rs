@@ -125,8 +125,7 @@ impl<'db> ExprLowerCtx<'db> {
         right: Expr<'db>,
         result_expr: Expr<'db>,
     ) -> Result<MirExpr, LowerTypeError> {
-        let result_type = result_expr.infer(self.db);
-        let result_elem = self.type_to_mir_elementary(result_type)?;
+        let result_elem = self.expr_to_mir_elementary(result_expr)?;
 
         let left_mir = self.lower_expr_with_cast(left, result_elem)?;
         let right_mir = self.lower_expr_with_cast(right, result_elem)?;
@@ -146,12 +145,9 @@ impl<'db> ExprLowerCtx<'db> {
         left: Expr<'db>,
         right: Expr<'db>,
     ) -> Result<MirExpr, LowerTypeError> {
-        let left_type = left.infer(self.db);
-        let right_type = right.infer(self.db);
-
         // Determine common comparison type (widest of the two)
-        let left_elem = self.type_to_mir_elementary(left_type)?;
-        let right_elem = self.type_to_mir_elementary(right_type)?;
+        let left_elem = self.expr_to_mir_elementary(left)?;
+        let right_elem = self.expr_to_mir_elementary(right)?;
         let common = wider_type(left_elem, right_elem);
 
         let left_mir = self.lower_expr_with_cast(left, common)?;
@@ -173,8 +169,7 @@ impl<'db> ExprLowerCtx<'db> {
         target: MirElementary,
     ) -> Result<MirExpr, LowerTypeError> {
         let mir_expr = self.lower_expr(expr)?;
-        let expr_type = expr.infer(self.db);
-        let expr_elem = self.type_to_mir_elementary(expr_type)?;
+        let expr_elem = self.expr_to_mir_elementary(expr)?;
 
         if expr_elem == target {
             Ok(mir_expr)
@@ -197,7 +192,8 @@ impl<'db> ExprLowerCtx<'db> {
 
             PrimaryExpr::VariableAccess(var_access) => {
                 let place = self.lower_variable_access(*var_access)?;
-                Ok(MirExpr::Load(place))
+                let ty = lower_type(self.db, parent_expr.infer(self.db)).unwrap_or(MirType::Void);
+                Ok(MirExpr::Load(place, ty))
             }
 
             PrimaryExpr::FuncCall(func_call) => self.lower_func_call(*func_call),

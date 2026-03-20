@@ -21,7 +21,7 @@ pub(crate) fn emit_expr(
     match expr {
         MirExpr::Constant(c) => emit_constant(func, c),
 
-        MirExpr::Load(place) => emit_load(func, place, locals),
+        MirExpr::Load(place, _ty) => emit_load(func, place, locals),
 
         MirExpr::BinOp { op, lhs, rhs, ty } => {
             emit_expr(func, lhs, locals, fn_indices);
@@ -242,51 +242,6 @@ pub(crate) fn emit_addr_of(
     }
 }
 
-/// Emit a store to a place.
-pub(crate) fn emit_store(
-    func: &mut wasm_encoder::Function,
-    place: &MirPlace,
-    locals: &FxHashMap<Ident, LocalInfo>,
-) {
-    match place {
-        MirPlace::Local(ident) => {
-            if let Some(info) = locals.get(ident) {
-                match info {
-                    LocalInfo::Scalar { index, .. } => {
-                        func.instruction(&Instruction::LocalSet(*index));
-                    }
-                    LocalInfo::Memory {
-                        address: _,
-                        size,
-                        align,
-                    } => {
-                        // Value is on stack; store to memory
-                        // But we need address first. Use a local trick:
-                        // Actually the value is on top of stack. We need:
-                        // [address] [value] store
-                        // So we emit address before the value in the caller.
-                        // For now, this handles the simple case where address is pushed first.
-                        emit_mem_store_at(func, *size, *align);
-                    }
-                    LocalInfo::Pointer {
-                        index: _,
-                        pointee_elem: _,
-                    } => {
-                        // Store through pointer
-                        // [pointer] [value] store
-                        emit_mem_store_at(func, 4, 4);
-                    }
-                }
-            }
-        }
-        _ => {
-            // For field/index/deref/thisfield, the address should already be on stack
-            // before the value. We just emit the store.
-            // The actual size depends on the place type — handled by the caller.
-        }
-    }
-}
-
 fn emit_call(
     func: &mut wasm_encoder::Function,
     call: &MirCall,
@@ -307,12 +262,8 @@ fn emit_call(
         }
     }
 
-    // Use pre-resolved index, fall back to lookup
-    let idx = if call.callee_index != 0 {
-        call.callee_index
-    } else {
-        fn_indices.get(&call.callee).copied().unwrap_or(0)
-    };
+    // Resolve function index. fn_indices maps name → WASM index.
+    let idx = fn_indices.get(&call.callee).copied().unwrap_or(0);
 
     func.instruction(&Instruction::Call(idx));
 }
@@ -607,22 +558,6 @@ fn emit_mem_load(func: &mut wasm_encoder::Function, size: u32, align: u32) {
         }
         _ => {
             func.instruction(&Instruction::I32Load(mem_arg(0, 2)));
-        }
-    }
-}
-
-/// Emit a memory store instruction. Assumes [address, value] are on stack.
-fn emit_mem_store_at(func: &mut wasm_encoder::Function, size: u32, align: u32) {
-    let align_log2 = align.trailing_zeros();
-    match size {
-        4 => {
-            func.instruction(&Instruction::I32Store(mem_arg(0, align_log2)));
-        }
-        8 => {
-            func.instruction(&Instruction::I64Store(mem_arg(0, align_log2)));
-        }
-        _ => {
-            func.instruction(&Instruction::I32Store(mem_arg(0, 2)));
         }
     }
 }

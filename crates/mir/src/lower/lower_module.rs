@@ -25,12 +25,15 @@ pub fn lower_modules<'db>(
     db: &'db dyn WorkspaceDataBase,
     indices: &[&SemanticIndex<'db>],
 ) -> Result<MirModule, LowerTypeError> {
-    // Collect all POUs and programs from all files
+    // Collect all POUs and programs from all files (including namespaces)
     let mut all_pous = Vec::new();
     let mut all_programs = Vec::new();
     for index in indices {
         all_pous.extend(index.global_pous.iter());
         all_programs.extend(index.programs.iter());
+        for ns in index.namespaces.iter() {
+            collect_namespace_pous(db, ns, &mut all_pous);
+        }
     }
     lower_module_from_pous(db, &all_pous, &all_programs)
 }
@@ -112,6 +115,20 @@ fn lower_module_from_pous<'db>(
                     continue;
                 }
 
+                // Skip functions with ANY-typed variables that weren't caught above
+                let has_any_var = func.variables(db).iter().any(|v| {
+                    let ty = v.spec(db).infer(db).normalize(db);
+                    matches!(ty, hir::hir_ty::ty::Type::Elementary(e) if e.is_any())
+                });
+                if has_any_var {
+                    continue;
+                }
+
+                // Skip stub functions (no body, no extern pragma)
+                if func.statements(db).is_empty() {
+                    continue;
+                }
+
                 let mir_func = lower_function(db, *func, next_fn_idx, &mut memory_layout)?;
                 function_indices.insert(func.name(db), next_fn_idx);
                 next_fn_idx += 1;
@@ -119,6 +136,15 @@ fn lower_module_from_pous<'db>(
             }
 
             Pou::FunctionBlock(fb) => {
+                // Skip FBs with ANY_* typed variables (need monomorphization, not yet supported for FBs)
+                let has_any = fb.variables(db).iter().any(|v| {
+                    let ty = v.spec(db).infer(db).normalize(db);
+                    matches!(ty, hir::hir_ty::ty::Type::Elementary(e) if e.is_any())
+                });
+                if has_any {
+                    continue;
+                }
+
                 // Build instance type
                 let fb_mir_type = lower_fb_type(db, *fb)?;
                 if let MirType::Struct(ref struct_type) = fb_mir_type {
@@ -227,6 +253,20 @@ fn lower_module_from_pous<'db>(
     }
 
     Ok(module)
+}
+
+/// Recursively collect all POUs from a namespace and its children.
+fn collect_namespace_pous<'db>(
+    db: &'db dyn WorkspaceDataBase,
+    ns: &hir::hir_def::namespace::NamespaceDecl<'db>,
+    pous: &mut Vec<&'db Pou<'db>>,
+) {
+    for pou in ns.pous(db).iter() {
+        pous.push(pou);
+    }
+    for child_ns in ns.namespaces(db).iter() {
+        collect_namespace_pous(db, child_ns, pous);
+    }
 }
 
 /// Lower a non-ANY extern function to MirExternFunction.

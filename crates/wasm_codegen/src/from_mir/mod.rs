@@ -51,6 +51,9 @@ struct WasmGen<'a> {
     export_section: wasm_encoder::ExportSection,
     code_section: wasm_encoder::CodeSection,
     next_type_idx: u32,
+    /// MIR function index → wasm index: wasm requires all imports first, MIR
+    /// may interleave them.
+    index_remap: FxHashMap<u32, u32>,
 }
 
 impl<'a> WasmGen<'a> {
@@ -64,16 +67,38 @@ impl<'a> WasmGen<'a> {
             export_section: Default::default(),
             code_section: Default::default(),
             next_type_idx: 0,
+            index_remap: FxHashMap::default(),
         }
     }
 
     fn emit_all(&mut self) {
-        // 1. Emit imports (extern functions)
+        // Build a corrected index map: all imports first, then locals.
+        // MIR may have assigned indices in a different order (e.g., monomorphized
+        // externs appended after locals), but WASM requires imports before locals.
+        let mut index_remap: FxHashMap<u32, u32> = FxHashMap::default();
+        let mut wasm_idx: u32 = 0;
+
+        // 1. Assign WASM indices for all imports
+        for ext_fn in &self.module.extern_functions {
+            index_remap.insert(ext_fn.index, wasm_idx);
+            wasm_idx += 1;
+        }
+
+        // 2. Assign WASM indices for all local functions
+        for func in &self.module.functions {
+            index_remap.insert(func.index, wasm_idx);
+            wasm_idx += 1;
+        }
+
+        // Store the remap for use during code emission
+        self.index_remap = index_remap;
+
+        // 3. Emit imports
         for ext_fn in &self.module.extern_functions {
             self.emit_import(ext_fn);
         }
 
-        // 2. Emit local functions
+        // 4. Emit local functions
         for func in &self.module.functions {
             self.emit_function(func);
         }
@@ -96,10 +121,11 @@ impl<'a> WasmGen<'a> {
 
         // Re-export the import with the IEC function name
         let export_name = ext_fn.name.text(self.db).to_string();
+        let wasm_idx = self.index_remap.get(&ext_fn.index).copied().unwrap_or(ext_fn.index);
         self.export_section.export(
             &export_name,
             wasm_encoder::ExportKind::Func,
-            ext_fn.index,
+            wasm_idx,
         );
     }
 
@@ -119,10 +145,11 @@ impl<'a> WasmGen<'a> {
         // Export if needed
         if func.linkage == MirLinkage::Export {
             let export_name = func.name.text(self.db).to_string();
+            let wasm_idx = self.index_remap.get(&func.index).copied().unwrap_or(func.index);
             self.export_section.export(
                 &export_name,
                 wasm_encoder::ExportKind::Func,
-                func.index,
+                wasm_idx,
             );
         }
 
@@ -161,12 +188,21 @@ impl<'a> WasmGen<'a> {
             None
         };
 
+        // Build remapped function indices for call instructions
+        let remapped_fn_indices: FxHashMap<_, _> = self.module.function_indices
+            .iter()
+            .map(|(name, &mir_idx)| {
+                let wasm_idx = self.index_remap.get(&mir_idx).copied().unwrap_or(mir_idx);
+                (*name, wasm_idx)
+            })
+            .collect();
+
         // Emit statements
         emit_stmts_with_return(
             &mut wasm_func,
             &func.body,
             &local_map,
-            &self.module.function_indices,
+            &remapped_fn_indices,
             return_local,
         );
 
