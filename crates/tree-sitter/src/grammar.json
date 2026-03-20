@@ -615,7 +615,7 @@
         },
         {
           "type": "STRING",
-          "value": "param"
+          "value": "params"
         },
         {
           "type": "REPEAT1",
@@ -672,6 +672,22 @@
           {
             "type": "STRING",
             "value": "wasm"
+          },
+          {
+            "type": "FIELD",
+            "name": "type_ref",
+            "content": {
+              "type": "CHOICE",
+              "members": [
+                {
+                  "type": "SYMBOL",
+                  "name": "identifier"
+                },
+                {
+                  "type": "BLANK"
+                }
+              ]
+            }
           },
           {
             "type": "FIELD",

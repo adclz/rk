@@ -7029,6 +7029,16 @@
             "named": true
           }
         ]
+      },
+      "type_ref": {
+        "multiple": false,
+        "required": false,
+        "types": [
+          {
+            "type": "identifier",
+            "named": true
+          }
+        ]
       }
     }
   },
@@ -7977,7 +7987,7 @@
     "named": true
   },
   {
-    "type": "param",
+    "type": "params",
     "named": false
   },
   {

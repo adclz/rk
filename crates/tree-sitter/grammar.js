@@ -351,17 +351,18 @@ module.exports = grammar({
       )),
 
     extern_param_list: ($) =>
-      seq("(", "param", repeat1(field("var", $.identifier)), ")"),
+      seq("(", "params", repeat1(field("var", $.identifier)), ")"),
 
     extern_result: ($) =>
       seq("(", "result", field("var", $.identifier), ")"),
 
     // Wasm intrinsic pragma - emits a WASM instruction directly
-    // {wasm 'instruction' (param ...) (result ...)}
+    // {wasm [type_ref] 'instruction' (params ...) (result ...)}
     wasm_pragma: ($) =>
       prec(1, seq(
         "{",
         "wasm",
+        field("type_ref", optional($.identifier)),
         field("instruction", $.pragma_string),
         field("params", optional($.extern_param_list)),
         field("result", optional($.extern_result)),

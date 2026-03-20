@@ -38,7 +38,7 @@ Extern pragma with param and result variables
 
 FUNCTION delay : INT
 VAR_INPUT ms : INT; END_VAR
-    {extern 'rt' 'delay' (param ms) (result delay)}
+    {extern 'rt' 'delay' (params ms) (result delay)}
 END_FUNCTION
 
 --------------------------------------------------------------------------------
@@ -76,7 +76,7 @@ Extern pragma with multiple params
 
 FUNCTION add : INT
 VAR_INPUT a : INT; b : INT; END_VAR
-    {extern 'math' 'add' (param a b) (result add)}
+    {extern 'math' 'add' (params a b) (result add)}
 END_FUNCTION
 
 --------------------------------------------------------------------------------
