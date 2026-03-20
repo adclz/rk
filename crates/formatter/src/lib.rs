@@ -59,8 +59,8 @@ static SURROUND_SPACES: &str = r#"
 ; Remove space between sign and value in signed literals
 (signed_int "-" @append_antispace)
 (signed_int "+" @append_antispace)
-(real_literal "-" @append_antispace)
-(real_literal "+" @append_antispace)
+(signed_real_value "-" @append_antispace)
+(signed_real_value "+" @append_antispace)
 
 ; INTO spec: no space between INTO and (
 (into_spec "INTO" @append_antispace)
@@ -73,8 +73,19 @@ static SURROUND_SPACES: &str = r#"
 (extern_pragma params: (extern_param_list) @prepend_space)
 (extern_pragma result: (extern_result) @prepend_space)
 (extern_pragma "}" @prepend_antispace)
+
+; Wasm pragma: normalize spacing between children
+(wasm_pragma "{" @append_antispace)
+(wasm_pragma "wasm" @append_space)
+(wasm_pragma type_ref: (identifier) @append_space)
+(wasm_pragma instruction: (pragma_string) @append_space)
+(wasm_pragma params: (extern_param_list) @prepend_space)
+(wasm_pragma result: (extern_result) @prepend_space)
+(wasm_pragma "}" @prepend_antispace)
+
+; Shared pragma helpers
 (extern_param_list "(" @append_antispace)
-(extern_param_list "param" @append_space)
+(extern_param_list "params" @append_space)
 (extern_param_list ")" @prepend_antispace)
 (extern_result "(" @append_antispace)
 (extern_result "result" @append_space)
@@ -181,6 +192,7 @@ static NEW_LINES: &str = r#"
     (invocation)
     (super_body_invocation)
     (extern_pragma)
+    (wasm_pragma)
     "RETURN"
     (if_stmt)
     (case_stmt)

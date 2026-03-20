@@ -1445,7 +1445,7 @@ pub fn extern_pragma_formatting(mut with_db: RootDatabase) {
     let source = r#"
 FUNCTION test : INT
 VAR_INPUT IN : INT; END_VAR
-    {extern'math''abs'(param IN)(result test)}
+    {extern'math''abs'(params IN)(result test)}
 END_FUNCTION
 "#;
 
@@ -1462,7 +1462,7 @@ END_FUNCTION
     	VAR_INPUT
     		IN: INT;
     	END_VAR
-    	{extern 'math' 'abs' (param IN) (result test)}
+    	{extern 'math' 'abs' (params IN) (result test)}
     END_FUNCTION
     ");
 }
