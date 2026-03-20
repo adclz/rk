@@ -1,5 +1,6 @@
 use db::WorkspaceDataBase;
 
+use crate::hir_def::expressions::expression::ParamAssignKind;
 use crate::{
     CallSite, HirNodeInfo,
     check::errors::{ToIdeDiagnostic, e3_type::TypeError, e7_enum::EnumError},
@@ -223,6 +224,34 @@ impl<'db> InferExprCtx<'db> {
                 // to prevent cascading errors from unresolved generic types.
                 if matches!(resolved, Type::Generic(_)) {
                     Type::Never
+                } else if let Type::Elementary(e) = resolved {
+                    if e.is_any() {
+                        // ANY_* return type: resolve from the first argument's concrete type.
+                        // E.g. ABS(IN := -2.5) → ABS returns ANY_NUM → resolve to REAL.
+                        // Infer the first argument's type from its expression form
+                        // (literal type or variable spec) to get a concrete type.
+                        call.params(db)
+                            .first()
+                            .and_then(|p| match p.kind(db) {
+                                ParamAssignKind::FormalInput { value, .. }
+                                | ParamAssignKind::NonFormal { value } => {
+                                    // Use the already-inferred type from inference_result
+                                    // (set during argument type checking in resolve_func_call)
+                                    let arg_ty = inference_result.get_type_of_expr(value);
+                                    let arg_normalized = arg_ty.normalize(db);
+                                    match arg_normalized {
+                                        Type::Elementary(arg_e) if !arg_e.is_any() => {
+                                            Some(arg_normalized)
+                                        }
+                                        _ => None,
+                                    }
+                                }
+                                _ => None,
+                            })
+                            .unwrap_or(resolved)
+                    } else {
+                        resolved
+                    }
                 } else {
                     resolved
                 }
