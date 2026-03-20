@@ -665,7 +665,8 @@ END_TYPE
               (constant
                 (numeric_literal
                   (real_literal
-                    (real_value)))))))
+                    (signed_real_value
+                      (real_value))))))))
         (line_comment)))))
 
 ================================================================================
@@ -701,7 +702,8 @@ END_TYPE
           (constant
             (numeric_literal
               (real_literal
-                (real_value)))))))
+                (signed_real_value
+                  (real_value))))))))
     (type_decl
       (identifier)
       (simple_type_spec
@@ -758,4 +760,5 @@ END_TYPE
             (constant
               (numeric_literal
                 (real_literal
-                  (real_value))))))))))
+                  (signed_real_value
+                    (real_value)))))))))))

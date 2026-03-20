@@ -163,29 +163,29 @@ END_CLASS
                             (unsigned_int))))))))))
           (if_stmt
             (parenthesized_expression
-              (unary_operator
-                (boolean_operator
-                  (and_operator
+              (boolean_operator
+                (and_operator
+                  (unary_operator
                     (variable_access
                       (variable
                         (begin_path_expression
                           (path_expression
                             (var_access
-                              (field))))))
-                    (comparison_operator
-                      (ord_operator
-                        (variable_access
-                          (variable
-                            (begin_path_expression
-                              (path_expression
-                                (var_access
-                                  (field))))))
-                        (variable_access
-                          (variable
-                            (begin_path_expression
-                              (path_expression
-                                (var_access
-                                  (field))))))))))))
+                              (field)))))))
+                  (comparison_operator
+                    (ord_operator
+                      (variable_access
+                        (variable
+                          (begin_path_expression
+                            (path_expression
+                              (var_access
+                                (field))))))
+                      (variable_access
+                        (variable
+                          (begin_path_expression
+                            (path_expression
+                              (var_access
+                                (field)))))))))))
             (stmt_list
               (assign
                 (variable_access

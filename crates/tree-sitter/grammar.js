@@ -1793,7 +1793,7 @@ module.exports = grammar({
       ),
 
     unary_operator: ($) =>
-      seq(field("operator", $.unary), field("expr", $._expression)),
+      prec.left(RK_PREC.unary, seq(field("operator", $.unary), field("expr", $._expression))),
 
     unary: ($) => prec(RK_PREC.unary, choice("-", "+", "NOT")),
 

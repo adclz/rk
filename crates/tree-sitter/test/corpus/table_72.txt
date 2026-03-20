@@ -213,7 +213,8 @@ END_FUNCTION
                   (constant
                     (numeric_literal
                       (real_literal
-                        (real_value))))
+                        (signed_real_value
+                          (real_value)))))
                   (variable_access
                     (variable
                       (begin_path_expression
@@ -238,7 +239,8 @@ END_FUNCTION
               (constant
                 (numeric_literal
                   (real_literal
-                    (real_value))))))
+                    (signed_real_value
+                      (real_value)))))))
           (stmt_list
             (assign
               (variable_access
@@ -265,7 +267,8 @@ END_FUNCTION
                 (constant
                   (numeric_literal
                     (real_literal
-                      (real_value))))))
+                      (signed_real_value
+                        (real_value)))))))
             (stmt_list
               (assign
                 (variable_access
@@ -288,26 +291,27 @@ END_FUNCTION
                         (var_access
                           (field))))))
                 (assignment
-                  (unary_operator
-                    (mult_operator
+                  (mult_operator
+                    (unary_operator
                       (variable_access
                         (variable
                           (begin_path_expression
                             (path_expression
                               (var_access
-                                (field))))))
-                      (parenthesized_expression
-                        (mult_operator
-                          (constant
-                            (numeric_literal
-                              (real_literal
-                                (real_value))))
-                          (variable_access
-                            (variable
-                              (begin_path_expression
-                                (path_expression
-                                  (var_access
-                                    (field))))))))))))))
+                                (field)))))))
+                    (parenthesized_expression
+                      (mult_operator
+                        (constant
+                          (numeric_literal
+                            (real_literal
+                              (signed_real_value
+                                (real_value)))))
+                        (variable_access
+                          (variable
+                            (begin_path_expression
+                              (path_expression
+                                (var_access
+                                  (field)))))))))))))
           (stmt_list
             (assign
               (variable_access
@@ -332,33 +336,34 @@ END_FUNCTION
               (assignment
                 (mult_operator
                   (parenthesized_expression
-                    (unary_operator
-                      (add_operator
+                    (add_operator
+                      (unary_operator
                         (variable_access
                           (variable
                             (begin_path_expression
                               (path_expression
                                 (var_access
-                                  (field))))))
-                        (func_call
-                          (begin_path_expression
-                            (path_expression
-                              (var_access
-                                (field))))
-                          (param_assign
-                            (param_assign_input
-                              (variable_access
-                                (variable
-                                  (begin_path_expression
-                                    (path_expression
-                                      (var_access
-                                        (field))))))))))))
+                                  (field)))))))
+                      (func_call
+                        (begin_path_expression
+                          (path_expression
+                            (var_access
+                              (field))))
+                        (param_assign
+                          (param_assign_input
+                            (variable_access
+                              (variable
+                                (begin_path_expression
+                                  (path_expression
+                                    (var_access
+                                      (field)))))))))))
                   (parenthesized_expression
                     (mult_operator
                       (constant
                         (numeric_literal
                           (real_literal
-                            (real_value))))
+                            (signed_real_value
+                              (real_value)))))
                       (variable_access
                         (variable
                           (begin_path_expression
@@ -375,33 +380,34 @@ END_FUNCTION
               (assignment
                 (mult_operator
                   (parenthesized_expression
-                    (unary_operator
-                      (add_operator
+                    (add_operator
+                      (unary_operator
                         (variable_access
                           (variable
                             (begin_path_expression
                               (path_expression
                                 (var_access
-                                  (field))))))
-                        (func_call
-                          (begin_path_expression
-                            (path_expression
-                              (var_access
-                                (field))))
-                          (param_assign
-                            (param_assign_input
-                              (variable_access
-                                (variable
-                                  (begin_path_expression
-                                    (path_expression
-                                      (var_access
-                                        (field))))))))))))
+                                  (field)))))))
+                      (func_call
+                        (begin_path_expression
+                          (path_expression
+                            (var_access
+                              (field))))
+                        (param_assign
+                          (param_assign_input
+                            (variable_access
+                              (variable
+                                (begin_path_expression
+                                  (path_expression
+                                    (var_access
+                                      (field)))))))))))
                   (parenthesized_expression
                     (mult_operator
                       (constant
                         (numeric_literal
                           (real_literal
-                            (real_value))))
+                            (signed_real_value
+                              (real_value)))))
                       (variable_access
                         (variable
                           (begin_path_expression
