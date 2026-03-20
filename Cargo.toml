@@ -17,6 +17,7 @@ members = [
     "crates/formatter",
     "crates/fuzz",
     "crates/wasm_codegen",
+    "crates/mir",
     "crates/cli",
     "crates/benchmark",
     "crates/linter",
@@ -42,6 +43,7 @@ ide_diagnostic = { path = "crates/ide_diagnostic" }
 ide_proto = { path = "crates/ide_proto" }
 hir = { path = "crates/hir" }
 wasm_codegen = { path = "crates/wasm_codegen" }
+mir = { path = "crates/mir" }
 formatter = { path = "crates/formatter" }
 linter = { path = "crates/linter" }
 index = { path = "crates/index" }
