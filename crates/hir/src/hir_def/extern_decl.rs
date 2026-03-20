@@ -19,3 +19,18 @@ pub struct ExternDecl<'db> {
     /// Result variable reference (e.g., the function name for return value assignment)
     pub result: Option<SpanIdent<'db>>,
 }
+
+/// A wasm intrinsic pragma, emitting a WASM instruction directly.
+///
+/// Example: `{wasm 'f32.convert_i32_s' (param IN) (result INT_TO_REAL)}`
+///
+/// Only a limited set of cast/conversion instructions are allowed.
+#[derive(Debug, Clone, PartialEq, Eq, Hash, salsa::Update)]
+pub struct WasmDecl<'db> {
+    /// The WASM instruction name (e.g., "f32.convert_i32_s")
+    pub instruction: CompactString,
+    /// Parameter variable references
+    pub params: Vec<SpanIdent<'db>>,
+    /// Result variable reference
+    pub result: Option<SpanIdent<'db>>,
+}

@@ -193,6 +193,20 @@ END_FUNCTION"#;
        |                 ^^|^
        |                   `--- expected 'ANY_NUM', got 'BOOL'
     ---'
+    [E0301] Error: type mismatch
+       ,-[ file:///test0.st:8:13 ]
+       |
+     7 | FUNCTION test : INT
+       |          ^^|^
+       |            `--- FUNCTION 'test' is defined here, with return type 'INT'
+     8 |     test := fn1(TRUE);
+       |             ^^^^|^^^^
+       |                 `------ expected 'INT', got 'BOOL'
+       |                 |
+       |                 `------ consider explicitly casting with 'BOOL_TO_INT(fn1(TRUE))'
+       |
+       | Help: insert explicit cast 'INT_TO_BOOL(fn1(TRUE))'
+    ---'
     ");
 }
 
@@ -219,16 +233,6 @@ END_FUNCTION"#;
      8 |     test := fn1('hello');
        |                 ^^^|^^^
        |                    `----- expected 'ANY_CHAR', got 'STRING'
-    ---'
-    [E0301] Error: type mismatch
-       ,-[ file:///test0.st:8:13 ]
-       |
-     7 | FUNCTION test : STRING
-       |          ^^|^
-       |            `--- FUNCTION 'test' is defined here, with return type 'STRING'
-     8 |     test := fn1('hello');
-       |             ^^^^^^|^^^^^
-       |                   `------- expected 'STRING', got 'ANY_CHAR'
     ---'
     ");
 }
@@ -467,10 +471,25 @@ END_FUNCTION
         ,-[ file:///test0.st:14:35 ]
         |
      14 |     SWAP_BYTE2 := (ROR(in ,8) AND 16#FF00FF00);
-        |                                   ^^^^^|^^^^^
-        |                                        `------- cannot infer '<integer>' to 'INT': number too large to fit in target type
+        |                    ^^^^^|^^^^     ^^^^^|^^^^^
+        |                         `---------------------- 'INT' is expected due to this
         |                                        |
-        |                                        `------- 'INT' is expected due to this
+        |                                        `------- cannot infer '<integer>' to 'INT': number too large to fit in target type
+    ----'
+    [E0301] Error: type mismatch
+        ,-[ file:///test0.st:14:19 ]
+        |
+      9 | FUNCTION SWAP_BYTE2: DWORD
+        |          ^^^^^|^^^^
+        |               `------ FUNCTION 'SWAP_BYTE2' is defined here, with return type 'DWORD'
+        |
+     14 |     SWAP_BYTE2 := (ROR(in ,8) AND 16#FF00FF00);
+        |                   ^^^^^^^^^^^^^^|^^^^^^^^^^^^^
+        |                                 `--------------- expected 'DWORD', got 'INT'
+        |                                 |
+        |                                 `--------------- consider explicitly casting with 'INT_TO_DWORD((ROR(in ,8) AND 16#FF00FF00))'
+        |
+        | Help: insert explicit cast 'DWORD_TO_INT((ROR(in ,8) AND 16#FF00FF00))'
     ----'
     "#);
 }

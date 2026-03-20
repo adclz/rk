@@ -109,6 +109,26 @@ fn lower_module_from_pous<'db>(
                     continue;
                 }
 
+                // Check if wasm intrinsic — lower as inline cast function
+                let wasm_decl = func.statements(db).iter().find_map(|s| {
+                    if let StmtKind::WasmPragma(decl) = s.stmt(db) {
+                        Some(decl.clone())
+                    } else {
+                        None
+                    }
+                });
+                if let Some(wasm_decl) = wasm_decl {
+                    match lower_wasm_intrinsic(db, *func, &wasm_decl, next_fn_idx) {
+                        Ok(mir_func) => {
+                            function_indices.insert(func.name(db), next_fn_idx);
+                            next_fn_idx += 1;
+                            functions.push(mir_func);
+                        }
+                        Err(_) => {} // Skip unsupported intrinsics
+                    }
+                    continue;
+                }
+
                 // Check if non-extern ANY_* (deferred)
                 if let Some(any_info) = detect_any_function(db, *func) {
                     any_functions.push(any_info);
@@ -312,6 +332,95 @@ fn lower_extern_function<'db>(
         params,
         return_type,
         monomorphized_from: None,
+    })
+}
+
+/// Lower a {wasm} intrinsic function to a MirFunction.
+/// The body is a single assignment: result := cast(param).
+fn lower_wasm_intrinsic<'db>(
+    db: &'db dyn WorkspaceDataBase,
+    func: Function<'db>,
+    wasm_decl: &hir::hir_def::extern_decl::WasmDecl<'db>,
+    index: u32,
+) -> Result<crate::function::MirFunction, LowerTypeError> {
+    use crate::function::*;
+    use crate::expr::*;
+    use crate::stmt::*;
+    use hir::hir_def::pous::variable::VariableKind;
+
+    // Parse the instruction to determine from/to types
+    let instruction = wasm_decl.instruction.as_str();
+
+    // Build params
+    let mut params = Vec::new();
+    let mut param_name = None;
+    let mut param_elem = None;
+    for var in func.variables(db) {
+        if matches!(var.kind(db), VariableKind::Input) {
+            let ty = lower_type(db, var.spec(db).infer(db))?;
+            if let MirType::Elementary(e) = &ty {
+                param_elem = Some(*e);
+            }
+            param_name = Some(var.name(db));
+            params.push(MirParam {
+                name: var.name(db),
+                ty,
+                kind: MirParamKind::Input,
+            });
+        }
+    }
+
+    let return_type = func
+        .return_type(db)
+        .map(|spec| lower_type(db, spec.infer(db)))
+        .transpose()?;
+
+    let mut return_elem = None;
+    if let Some(MirType::Elementary(e)) = &return_type {
+        return_elem = Some(*e);
+    }
+
+    // Return local — needed so the local map has an entry for the return variable
+    let mut locals = Vec::new();
+    let return_local_idx = params.len() as u32; // after all params
+    if let Some(ref ret_ty) = return_type {
+        locals.push(crate::function::MirLocal {
+            name: func.name(db),
+            ty: ret_ty.clone(),
+            init: None,
+            kind: crate::function::MirLocalKind::Var,
+            storage: MirStorage::Scalar { local_index: return_local_idx },
+        });
+    }
+
+    // Build body: result := cast(param)
+    let mut body = Vec::new();
+    if let (Some(p_name), Some(from), Some(to)) = (param_name, param_elem, return_elem) {
+        let load = MirExpr::Load(MirPlace::Local(p_name), MirType::Elementary(from));
+        let cast_expr = if from == to {
+            load
+        } else {
+            MirExpr::Cast {
+                expr: Box::new(load),
+                from,
+                to,
+            }
+        };
+        body.push(MirStmt::Assign {
+            target: MirPlace::Local(func.name(db)),
+            value: cast_expr,
+        });
+    }
+
+    Ok(MirFunction {
+        name: func.name(db),
+        origin_name: func.name(db),
+        index,
+        params,
+        return_type,
+        locals,
+        body,
+        linkage: MirLinkage::Export,
     })
 }
 

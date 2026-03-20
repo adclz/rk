@@ -475,6 +475,9 @@ impl<'db> StmtsResolverCtx<'db> {
                         }
                     }
                 }
+                StmtKind::WasmPragma(_) => {
+                    // Wasm intrinsic — no type inference needed
+                }
             }
         }
     }

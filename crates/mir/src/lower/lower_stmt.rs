@@ -29,7 +29,19 @@ pub fn lower_stmts<'db>(
     db: &'db dyn WorkspaceDataBase,
     stmts: &[Stmt<'db>],
 ) -> Result<Vec<MirStmt>, LowerTypeError> {
-    let ctx = ExprLowerCtx::new(db);
+    lower_stmts_with_ctx(db, stmts, None)
+}
+
+/// Lower a slice of HIR statements with an optional ANY type override for monomorphization.
+pub fn lower_stmts_with_ctx<'db>(
+    db: &'db dyn WorkspaceDataBase,
+    stmts: &[Stmt<'db>],
+    any_override: Option<hir::hir_def::expressions::spec::ElementarySpec>,
+) -> Result<Vec<MirStmt>, LowerTypeError> {
+    let ctx = match any_override {
+        Some(concrete) => ExprLowerCtx::with_any_override(db, concrete),
+        None => ExprLowerCtx::new(db),
+    };
     let mut result = Vec::new();
     for stmt in stmts {
         if let Some(mir_stmt) = lower_stmt(&ctx, *stmt)? {
@@ -73,7 +85,7 @@ fn lower_stmt<'db>(
         StmtKind::FuncCall(func_call) => {
             // Lower the FuncCall directly without creating a new Expr (which would
             // create a Salsa tracked struct outside a tracked function).
-            let call_expr = ctx.lower_func_call(*func_call)?;
+            let call_expr = ctx.lower_func_call(*func_call, None)?;
             match call_expr {
                 crate::expr::MirExpr::Call(call) => Ok(Some(MirStmt::Call(call))),
                 _ => Ok(None),
@@ -216,6 +228,7 @@ fn lower_stmt<'db>(
         StmtKind::Continue => Ok(Some(MirStmt::Continue)),
 
         StmtKind::ExternPragma(_) => Ok(None), // No MIR equivalent
+        StmtKind::WasmPragma(_) => Ok(None),   // Handled at function level, not statement level
 
         StmtKind::AssignmentAttempt { .. } => Err(LowerTypeError::UnsupportedType(
             "AssignmentAttempt not yet supported".to_string(),

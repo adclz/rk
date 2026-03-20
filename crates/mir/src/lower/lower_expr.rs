@@ -23,11 +23,30 @@ use crate::{
 /// Context for expression lowering, carrying shared state.
 pub struct ExprLowerCtx<'db> {
     pub db: &'db dyn WorkspaceDataBase,
+    /// When monomorphizing an ANY_* function, this holds the concrete
+    /// ElementarySpec to substitute for ANY types.
+    pub any_override: Option<ElementarySpec>,
 }
 
 impl<'db> ExprLowerCtx<'db> {
     pub fn new(db: &'db dyn WorkspaceDataBase) -> Self {
-        Self { db }
+        Self { db, any_override: None }
+    }
+
+    pub fn with_any_override(db: &'db dyn WorkspaceDataBase, concrete: ElementarySpec) -> Self {
+        Self { db, any_override: Some(concrete) }
+    }
+
+    /// Lower a HIR type, substituting ANY types if we're in a monomorphization context.
+    pub fn lower_type_resolved(&self, ty: Type<'db>) -> Result<MirType, LowerTypeError> {
+        let normalized = ty.normalize(self.db);
+        match (&normalized, self.any_override) {
+            (Type::Elementary(e), Some(concrete)) if e.is_any() => {
+                let mir = elementary_spec_to_mir(concrete)?;
+                Ok(MirType::Elementary(mir))
+            }
+            _ => lower_type(self.db, normalized),
+        }
     }
 
     /// Lower a HIR expression to a MIR expression.
@@ -192,11 +211,11 @@ impl<'db> ExprLowerCtx<'db> {
 
             PrimaryExpr::VariableAccess(var_access) => {
                 let place = self.lower_variable_access(*var_access)?;
-                let ty = lower_type(self.db, parent_expr.infer(self.db)).unwrap_or(MirType::Void);
+                let ty = self.lower_type_resolved( parent_expr.infer(self.db)).unwrap_or(MirType::Void);
                 Ok(MirExpr::Load(place, ty))
             }
 
-            PrimaryExpr::FuncCall(func_call) => self.lower_func_call(*func_call),
+            PrimaryExpr::FuncCall(func_call) => self.lower_func_call(*func_call, Some(parent_expr)),
 
             PrimaryExpr::EnumValue { name: _, variant: _ } => {
                 // Enum values are integer constants — resolve via type inference
@@ -411,7 +430,7 @@ impl<'db> ExprLowerCtx<'db> {
                 let field_name = match &var {
                     VarAccess::Simple(span_ident) => span_ident.ident,
                 };
-                let field_type = lower_type(self.db, path_expr.infer(self.db))
+                let field_type = self.lower_type_resolved( path_expr.infer(self.db))
                     .unwrap_or(MirType::Elementary(MirElementary::Int));
 
                 // Resolve field offset from the this pointer's type
@@ -432,7 +451,7 @@ impl<'db> ExprLowerCtx<'db> {
                 let field_name = match &field_expr.var {
                     VarAccess::Simple(span_ident) => span_ident.ident,
                 };
-                let field_type = lower_type(self.db, path_expr.infer(self.db))
+                let field_type = self.lower_type_resolved( path_expr.infer(self.db))
                     .unwrap_or(MirType::Void);
                 let base_type = field_expr.path.infer(self.db);
                 let field_offset = self.resolve_field_offset(base_type, field_name);
@@ -466,7 +485,7 @@ impl<'db> ExprLowerCtx<'db> {
             }
             PathExprKind::Deref(deref_expr) => {
                 let inner = self.lower_this_path(deref_expr.path)?;
-                let pointee_type = lower_type(self.db, path_expr.infer(self.db))
+                let pointee_type = self.lower_type_resolved( path_expr.infer(self.db))
                     .unwrap_or(MirType::Void);
                 Ok(MirPlace::Deref {
                     base: Box::new(inner),
@@ -492,10 +511,10 @@ impl<'db> ExprLowerCtx<'db> {
             let scope = get_scope(self.db, sid);
             match scope.kind {
                 ScopeKind::Pou(hir::hir_def::pous::pou::Pou::FunctionBlock(fb)) => {
-                    return lower_type(self.db, Type::FunctionBlock(fb)).ok();
+                    return self.lower_type_resolved( Type::FunctionBlock(fb)).ok();
                 }
                 ScopeKind::Pou(hir::hir_def::pous::pou::Pou::Class(class)) => {
-                    return lower_type(self.db, Type::Class(class)).ok();
+                    return self.lower_type_resolved( Type::Class(class)).ok();
                 }
                 _ => {
                     current = scope.parent;
@@ -536,7 +555,7 @@ impl<'db> ExprLowerCtx<'db> {
                 // Resolve field type and offset from the base type
                 // The PathExpr for the field resolves to the field's type
                 let field_hir_type = path_expr.infer(self.db);
-                let field_type = lower_type(self.db, field_hir_type)
+                let field_type = self.lower_type_resolved( field_hir_type)
                     .unwrap_or(MirType::Void);
 
                 // Resolve field offset from the base (struct/FB) type
@@ -578,7 +597,7 @@ impl<'db> ExprLowerCtx<'db> {
             PathExprKind::Deref(deref_expr) => {
                 let inner = self.lower_path_expr_chain(base, deref_expr.path)?;
                 let pointee_hir_type = path_expr.infer(self.db);
-                let pointee_type = lower_type(self.db, pointee_hir_type)
+                let pointee_type = self.lower_type_resolved( pointee_hir_type)
                     .unwrap_or(MirType::Void);
                 Ok(MirPlace::Deref {
                     base: Box::new(inner),
@@ -598,7 +617,7 @@ impl<'db> ExprLowerCtx<'db> {
         base_type: Type<'db>,
         field_name: hir::hir_def::interned::identifier::Ident,
     ) -> u32 {
-        let base_mir = lower_type(self.db, base_type).ok();
+        let base_mir = self.lower_type_resolved( base_type).ok();
         if let Some(MirType::Struct(ref s)) = base_mir {
             for field in &s.fields {
                 if field.name == field_name {
@@ -614,7 +633,7 @@ impl<'db> ExprLowerCtx<'db> {
         &self,
         array_type: Type<'db>,
     ) -> (MirType, u32, i64) {
-        let mir = lower_type(self.db, array_type).ok();
+        let mir = self.lower_type_resolved( array_type).ok();
         if let Some(MirType::Array(ref a)) = mir {
             let lower_bound = a.dimensions.first().map(|(l, _)| *l).unwrap_or(0);
             return (*a.element_type.clone(), a.element_size, lower_bound);
@@ -626,6 +645,7 @@ impl<'db> ExprLowerCtx<'db> {
     pub fn lower_func_call(
         &self,
         func_call: hir::hir_def::expressions::expression::FuncCall<'db>,
+        call_expr: Option<Expr<'db>>,
     ) -> Result<MirExpr, LowerTypeError> {
         let path = func_call.path(self.db);
         let callee_name = path
@@ -660,11 +680,14 @@ impl<'db> ExprLowerCtx<'db> {
             }
         }
 
-        // Return type from type inference
-        let return_type = path.infer(self.db);
+        // Return type: use call-site inference (resolves ANY → concrete) when available,
+        // fallback to path inference for statement-level calls (void return).
+        let return_type = call_expr
+            .map(|e| e.infer(self.db))
+            .unwrap_or_else(|| path.infer(self.db));
         let mir_return_type = match return_type.normalize(self.db) {
             Type::Void | Type::Never => MirType::Void,
-            ty => lower_type(self.db, ty).unwrap_or(MirType::Void),
+            ty => self.lower_type_resolved(ty).unwrap_or(MirType::Void),
         };
 
         Ok(MirExpr::Call(MirCall {
@@ -708,6 +731,13 @@ impl<'db> ExprLowerCtx<'db> {
     fn type_to_mir_elementary(&self, ty: Type<'db>) -> Result<MirElementary, LowerTypeError> {
         let normalized = ty.normalize(self.db);
         match normalized {
+            Type::Elementary(spec) if spec.is_any() => {
+                if let Some(concrete) = self.any_override {
+                    elementary_spec_to_mir(concrete)
+                } else {
+                    elementary_spec_to_mir(spec)
+                }
+            }
             Type::Elementary(spec) => elementary_spec_to_mir(spec),
             Type::Enum(_) => {
                 // Enums compare as their storage type

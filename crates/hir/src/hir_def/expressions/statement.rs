@@ -8,6 +8,7 @@ use crate::{
         scope::ScopeId,
     },
 };
+use crate::hir_def::extern_decl::WasmDecl;
 
 #[salsa::tracked(debug)]
 pub struct Stmt<'db> {
@@ -73,6 +74,7 @@ pub enum StmtKind<'db> {
     Exit,
     Continue,
     ExternPragma(ExternDecl<'db>),
+    WasmPragma(WasmDecl<'db>),
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, salsa::Update)]

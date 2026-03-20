@@ -251,9 +251,16 @@ pub fn monomorphize<'db>(
                     continue;
                 }
 
-                // Local ANY_* function → skip for now (needs MIR-level type override)
-                // TODO: implement body monomorphization in MIR
-                continue;
+                // Local ANY_* function → clone body with concrete types
+                let mono_func = lower_monomorphized_local(
+                    db,
+                    info.func,
+                    mono_name,
+                    *concrete_spec,
+                    next_fn_idx,
+                    &mut module.memory_layout,
+                )?;
+                module.functions.push(mono_func);
             }
 
             module.function_indices.insert(mono_name, next_fn_idx);
@@ -339,12 +346,19 @@ fn lower_monomorphized_local<'db>(
         .map(|spec| resolve_any_type(db, spec.infer(db), concrete_spec))
         .transpose()?;
 
-    if return_type.is_some() {
+    if let Some(ref ret_ty) = return_type {
+        locals.push(MirLocal {
+            name: func.name(db),
+            ty: ret_ty.clone(),
+            init: None,
+            kind: MirLocalKind::Var,
+            storage: MirStorage::Scalar { local_index: next_local_idx },
+        });
         next_local_idx += 1;
     }
 
-    // Lower body statements
-    let body = crate::lower::lower_stmt::lower_stmts(db, func.statements(db))?;
+    // Lower body statements with ANY type override
+    let body = crate::lower::lower_stmt::lower_stmts_with_ctx(db, func.statements(db), Some(concrete_spec))?;
 
     Ok(MirFunction {
         name: mono_name,
@@ -477,13 +491,18 @@ fn discover_calls_in_call(
         return;
     }
 
-    // Determine concrete type from first argument
-    if let Some(first_arg) = call.args.first() {
-        if let Some(concrete) = infer_concrete_type_from_expr(&first_arg.value) {
-            // Map MirElementary back to ElementarySpec for the instantiation set
-            if let Some(spec) = mir_elementary_to_spec(concrete) {
-                out.entry(call.callee).or_default().insert(spec);
-            }
+    // Determine concrete type from the call's return type (resolved by HIR at call site)
+    // or fall back to first non-BOOL argument
+    let concrete = match &call.return_type {
+        MirType::Elementary(e) => Some(*e),
+        _ => call.args.iter()
+            .find_map(|a| infer_concrete_type_from_expr(&a.value))
+            .filter(|e| !matches!(e, MirElementary::Bool)), // skip BOOL args (e.g. SEL's G param)
+    };
+
+    if let Some(concrete) = concrete {
+        if let Some(spec) = mir_elementary_to_spec(concrete) {
+            out.entry(call.callee).or_default().insert(spec);
         }
     }
 }
@@ -650,11 +669,13 @@ fn rewrite_call(
         return;
     }
 
-    // Determine concrete type from first argument
-    let concrete = call
-        .args
-        .first()
-        .and_then(|arg| infer_concrete_type_from_expr(&arg.value));
+    // Determine concrete type from return type or first non-BOOL argument
+    let concrete = match &call.return_type {
+        MirType::Elementary(e) => Some(*e),
+        _ => call.args.iter()
+            .find_map(|a| infer_concrete_type_from_expr(&a.value))
+            .filter(|e| !matches!(e, MirElementary::Bool)),
+    };
 
     if let Some(concrete_elem) = concrete {
         if let Some(&(mono_name, new_idx)) = mono_indices.get(&(call.callee, concrete_elem)) {

@@ -324,6 +324,34 @@ impl<'db> Parse<'db> for ast::generated::Stmt {
                 stmt.into(),
                 sema.current_scope,
             )),
+            StmtType::WasmPragma(pragma) => {
+                let doc = sema.file.document(sema.db).as_bytes();
+
+                let instr_text = pragma.instruction.cast(sema.ast).get_text(doc)
+                    .map_err(|e| SyntaxError::SyntaxError { span: pragma.instruction.cast(sema.ast).get_span(), err: e.to_string() }.to_diagnostic(sema.db))?;
+                let instruction = CompactString::from(&instr_text[1..instr_text.len() - 1]);
+
+                let params = pragma.params.as_ref().map_or(Ok(vec![]), |p| {
+                    p.cast(sema.ast).var.iter()
+                        .map(|id| SpanIdent::from_node(sema.db, sema, id.cast(sema.ast)))
+                        .collect::<Result<Vec<_>, _>>()
+                })?;
+
+                let result = pragma.result.as_ref()
+                    .map(|r| SpanIdent::from_node(sema.db, sema, r.cast(sema.ast).var.cast(sema.ast)))
+                    .transpose()?;
+
+                Ok(Stmt::new(
+                    sema.db,
+                    StmtKind::WasmPragma(crate::hir_def::extern_decl::WasmDecl {
+                        instruction,
+                        params,
+                        result,
+                    }),
+                    pragma.into(),
+                    sema.current_scope,
+                ))
+            }
             StmtType::ExternPragma(pragma) => {
                 let doc = sema.file.document(sema.db).as_bytes();
 

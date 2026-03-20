@@ -226,17 +226,24 @@ impl<'db> InferExprCtx<'db> {
                     Type::Never
                 } else if let Type::Elementary(e) = resolved {
                     if e.is_any() {
-                        // ANY_* return type: resolve from the first argument's concrete type.
-                        // E.g. ABS(IN := -2.5) → ABS returns ANY_NUM → resolve to REAL.
-                        // Infer the first argument's type from its expression form
-                        // (literal type or variable spec) to get a concrete type.
+                        // ANY_* return type: resolve from the first argument whose
+                        // DECLARED parameter type is ANY_* or INTO(...).
+                        // Skip args with concrete declared types (e.g. SEL's G: BOOL).
                         call.params(db)
-                            .first()
-                            .and_then(|p| match p.kind(db) {
+                            .iter()
+                            .find_map(|p| match p.kind(db) {
                                 ParamAssignKind::FormalInput { value, .. }
                                 | ParamAssignKind::NonFormal { value } => {
-                                    // Use the already-inferred type from inference_result
-                                    // (set during argument type checking in resolve_func_call)
+                                    // Check if the declared var type is ANY/INTO —
+                                    // skip args with concrete declared types (e.g. SEL's G: BOOL)
+                                    if let Some(var_decl) = inference_result.variable_for_param(*p) {
+                                        let var_ty: Type<'db> = var_decl.spec(db).infer(db).normalize(db);
+                                        if let Type::Elementary(var_e) = var_ty {
+                                            if !var_e.is_any() {
+                                                return None;
+                                            }
+                                        }
+                                    }
                                     let arg_ty = inference_result.get_type_of_expr(value);
                                     let arg_normalized = arg_ty.normalize(db);
                                     match arg_normalized {
