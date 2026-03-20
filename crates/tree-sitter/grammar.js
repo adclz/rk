@@ -356,6 +356,18 @@ module.exports = grammar({
     extern_result: ($) =>
       seq("(", "result", field("var", $.identifier), ")"),
 
+    // Wasm intrinsic pragma - emits a WASM instruction directly
+    // {wasm 'instruction' (param ...) (result ...)}
+    wasm_pragma: ($) =>
+      prec(1, seq(
+        "{",
+        "wasm",
+        field("instruction", $.pragma_string),
+        field("params", optional($.extern_param_list)),
+        field("result", optional($.extern_result)),
+        "}",
+      )),
+
     pragma_string: (_) => /\'[^\']*\'/,
 
     // Test pragma - marks a POU as a test entry point
@@ -406,12 +418,13 @@ module.exports = grammar({
     real_literal: ($) =>
       seq(
         optional(seq(field("type", $.real_type_name), "#")),
-        // Same as Unsigned int, but with a dot and optional exponent
-        prec(
-          RK_PREC.unary + 1,
-          seq(optional(choice("+", "-")), field("value", $.real_value)),
-        ),
+        field("value", $.signed_real_value),
       ),
+
+    // Signed real value: optional sign + real digits. The sign is part of the value
+    // so that negative literals like -3.7 are preserved in the AST text.
+    signed_real_value: ($) =>
+      prec(RK_PREC.unary + 1, seq(optional(choice("+", "-")), $.real_value)),
 
     real_value: ($) =>
       token(
@@ -1835,6 +1848,7 @@ module.exports = grammar({
         "EXIT",
         "CONTINUE",
         $.extern_pragma,
+        $.wasm_pragma,
       ),
 
     // assignment: $ => seq(

@@ -556,6 +556,10 @@
         "named": true
       },
       {
+        "type": "wasm_pragma",
+        "named": true
+      },
+      {
         "type": "while_stmt",
         "named": true
       }
@@ -5431,7 +5435,7 @@
         "required": true,
         "types": [
           {
-            "type": "real_value",
+            "type": "signed_real_value",
             "named": true
           }
         ]
@@ -5776,6 +5780,21 @@
       "types": [
         {
           "type": "unsigned_int",
+          "named": true
+        }
+      ]
+    }
+  },
+  {
+    "type": "signed_real_value",
+    "named": true,
+    "fields": {},
+    "children": {
+      "multiple": false,
+      "required": true,
+      "types": [
+        {
+          "type": "real_value",
           "named": true
         }
       ]
@@ -6978,6 +6997,42 @@
     }
   },
   {
+    "type": "wasm_pragma",
+    "named": true,
+    "fields": {
+      "instruction": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "pragma_string",
+            "named": true
+          }
+        ]
+      },
+      "params": {
+        "multiple": false,
+        "required": false,
+        "types": [
+          {
+            "type": "extern_param_list",
+            "named": true
+          }
+        ]
+      },
+      "result": {
+        "multiple": false,
+        "required": false,
+        "types": [
+          {
+            "type": "extern_result",
+            "named": true
+          }
+        ]
+      }
+    }
+  },
+  {
     "type": "while_stmt",
     "named": true,
     "fields": {
@@ -8008,6 +8063,10 @@
   {
     "type": "usint_name",
     "named": true
+  },
+  {
+    "type": "wasm",
+    "named": false
   },
   {
     "type": "wchar_name",

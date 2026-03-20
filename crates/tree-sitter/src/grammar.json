@@ -659,6 +659,67 @@
         }
       ]
     },
+    "wasm_pragma": {
+      "type": "PREC",
+      "value": 1,
+      "content": {
+        "type": "SEQ",
+        "members": [
+          {
+            "type": "STRING",
+            "value": "{"
+          },
+          {
+            "type": "STRING",
+            "value": "wasm"
+          },
+          {
+            "type": "FIELD",
+            "name": "instruction",
+            "content": {
+              "type": "SYMBOL",
+              "name": "pragma_string"
+            }
+          },
+          {
+            "type": "FIELD",
+            "name": "params",
+            "content": {
+              "type": "CHOICE",
+              "members": [
+                {
+                  "type": "SYMBOL",
+                  "name": "extern_param_list"
+                },
+                {
+                  "type": "BLANK"
+                }
+              ]
+            }
+          },
+          {
+            "type": "FIELD",
+            "name": "result",
+            "content": {
+              "type": "CHOICE",
+              "members": [
+                {
+                  "type": "SYMBOL",
+                  "name": "extern_result"
+                },
+                {
+                  "type": "BLANK"
+                }
+              ]
+            }
+          },
+          {
+            "type": "STRING",
+            "value": "}"
+          }
+        ]
+      }
+    },
     "pragma_string": {
       "type": "PATTERN",
       "value": "\\'[^\\']*\\'"
@@ -985,44 +1046,48 @@
           ]
         },
         {
-          "type": "PREC",
-          "value": 9,
+          "type": "FIELD",
+          "name": "value",
           "content": {
-            "type": "SEQ",
+            "type": "SYMBOL",
+            "name": "signed_real_value"
+          }
+        }
+      ]
+    },
+    "signed_real_value": {
+      "type": "PREC",
+      "value": 9,
+      "content": {
+        "type": "SEQ",
+        "members": [
+          {
+            "type": "CHOICE",
             "members": [
               {
                 "type": "CHOICE",
                 "members": [
                   {
-                    "type": "CHOICE",
-                    "members": [
-                      {
-                        "type": "STRING",
-                        "value": "+"
-                      },
-                      {
-                        "type": "STRING",
-                        "value": "-"
-                      }
-                    ]
+                    "type": "STRING",
+                    "value": "+"
                   },
                   {
-                    "type": "BLANK"
+                    "type": "STRING",
+                    "value": "-"
                   }
                 ]
               },
               {
-                "type": "FIELD",
-                "name": "value",
-                "content": {
-                  "type": "SYMBOL",
-                  "name": "real_value"
-                }
+                "type": "BLANK"
               }
             ]
+          },
+          {
+            "type": "SYMBOL",
+            "name": "real_value"
           }
-        }
-      ]
+        ]
+      }
     },
     "real_value": {
       "type": "TOKEN",
@@ -9043,6 +9108,10 @@
         {
           "type": "SYMBOL",
           "name": "extern_pragma"
+        },
+        {
+          "type": "SYMBOL",
+          "name": "wasm_pragma"
         }
       ]
     },
