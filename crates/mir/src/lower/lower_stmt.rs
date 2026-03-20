@@ -51,6 +51,22 @@ pub fn lower_stmts_with_ctx<'db>(
     Ok(result)
 }
 
+/// Lower a slice of HIR statements in a FB body context where variables are struct fields.
+pub fn lower_stmts_fb_body<'db>(
+    db: &'db dyn WorkspaceDataBase,
+    stmts: &[Stmt<'db>],
+    this_struct: crate::types::MirStructType,
+) -> Result<Vec<MirStmt>, LowerTypeError> {
+    let ctx = ExprLowerCtx::with_this_struct(db, this_struct);
+    let mut result = Vec::new();
+    for stmt in stmts {
+        if let Some(mir_stmt) = lower_stmt(&ctx, *stmt)? {
+            result.push(mir_stmt);
+        }
+    }
+    Ok(result)
+}
+
 /// Lower a single HIR statement to a MIR statement.
 /// Returns None for statements that have no MIR equivalent (e.g., ExternPragma).
 fn lower_stmt<'db>(
@@ -83,12 +99,26 @@ fn lower_stmt<'db>(
         }
 
         StmtKind::FuncCall(func_call) => {
-            // Lower the FuncCall directly without creating a new Expr (which would
-            // create a Salsa tracked struct outside a tracked function).
-            let call_expr = ctx.lower_func_call(*func_call, None)?;
-            match call_expr {
-                crate::expr::MirExpr::Call(call) => Ok(Some(MirStmt::Call(call))),
-                _ => Ok(None),
+            // Check if this is a FB invocation (callee is a variable of FB type)
+            let path = func_call.path(ctx.db);
+            let callee_type = path.infer(ctx.db).normalize(ctx.db);
+
+            let fb = match callee_type {
+                hir::hir_ty::ty::Type::FunctionBlock(fb) => Some(fb),
+                hir::hir_ty::ty::Type::CallableType(ct) => match ct {
+                    hir::hir_ty::ty::CallableType::FunctionBlock(fb) => Some(fb),
+                    _ => None,
+                },
+                _ => None,
+            };
+            if let Some(fb) = fb {
+                ctx.lower_fb_invocation(*func_call, fb)
+            } else {
+                let call_expr = ctx.lower_func_call(*func_call, None)?;
+                match call_expr {
+                    crate::expr::MirExpr::Call(call) => Ok(Some(MirStmt::Call(call))),
+                    _ => Ok(None),
+                }
             }
         }
 

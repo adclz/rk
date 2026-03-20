@@ -27,7 +27,11 @@ pub struct ExternDecl<'db> {
 /// Only a limited set of cast/conversion instructions are allowed.
 #[derive(Debug, Clone, PartialEq, Eq, Hash, salsa::Update)]
 pub struct WasmDecl<'db> {
-    /// The WASM instruction name (e.g., "f32.convert_i32_s")
+    /// Optional type reference variable — when present, the MIR resolves
+    /// the variable's type to determine the WASM instruction prefix
+    /// (e.g., `IN` → `i32` → instruction becomes `i32.shl`).
+    pub type_ref: Option<SpanIdent<'db>>,
+    /// The WASM instruction name (e.g., "shl" or "f32.convert_i32_s")
     pub instruction: CompactString,
     /// Parameter variable references
     pub params: Vec<SpanIdent<'db>>,

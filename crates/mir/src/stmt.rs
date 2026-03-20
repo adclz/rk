@@ -14,6 +14,21 @@ pub enum MirStmt {
     /// Function/method call as statement (result discarded if any).
     Call(MirCall),
 
+    /// Function block invocation as statement.
+    /// Writes input args to the FB instance's fields, calls __body__(&instance).
+    FbCall {
+        /// Address of the FB instance in linear memory.
+        instance: MirPlace,
+        /// The body function name: "FBName$__body__"
+        body_func: Ident,
+        /// Function index (resolved during module lowering).
+        body_func_index: u32,
+        /// Input field writes: (field_offset, value, field_type).
+        input_writes: Vec<(u32, MirExpr, MirElementary)>,
+        /// Output reads: (field_offset, target_place, field_type).
+        output_reads: Vec<(u32, MirPlace, MirElementary)>,
+    },
+
     /// Return from function.
     Return,
 
@@ -66,6 +81,17 @@ pub enum MirStmt {
     MemStore {
         offset: u32,
         value: MirConstant,
+    },
+
+    /// Direct WASM instruction from a `{wasm}` pragma: params pushed in
+    /// order, the result popped and stored.
+    WasmIntrinsic {
+        /// Full WASM instruction (e.g., "i32.shl", "f32.convert_i32_s")
+        instruction: compact_str::CompactString,
+        /// Variables to push on the stack before the instruction
+        params: Vec<Ident>,
+        /// Variable to store the result
+        result: Option<Ident>,
     },
 
     /// Debug trap point (optional, only when debug mode enabled).

@@ -26,15 +26,22 @@ pub struct ExprLowerCtx<'db> {
     /// When monomorphizing an ANY_* function, this holds the concrete
     /// ElementarySpec to substitute for ANY types.
     pub any_override: Option<ElementarySpec>,
+    /// The `this` struct when lowering an FB body: member accesses become
+    /// `ThisField`.
+    pub this_struct: Option<crate::types::MirStructType>,
 }
 
 impl<'db> ExprLowerCtx<'db> {
     pub fn new(db: &'db dyn WorkspaceDataBase) -> Self {
-        Self { db, any_override: None }
+        Self { db, any_override: None, this_struct: None }
     }
 
     pub fn with_any_override(db: &'db dyn WorkspaceDataBase, concrete: ElementarySpec) -> Self {
-        Self { db, any_override: Some(concrete) }
+        Self { db, any_override: Some(concrete), this_struct: None }
+    }
+
+    pub fn with_this_struct(db: &'db dyn WorkspaceDataBase, struct_type: crate::types::MirStructType) -> Self {
+        Self { db, any_override: None, this_struct: Some(struct_type) }
     }
 
     /// Lower a HIR type, substituting ANY types if we're in a monomorphization context.
@@ -367,16 +374,22 @@ impl<'db> ExprLowerCtx<'db> {
                 len: 0,
             }),
 
-            // Time/Date types — not yet supported
-            Elementary::Time(_)
-            | Elementary::LTime(_)
-            | Elementary::Date(_)
+            // Time literals — stored as nanoseconds (i64)
+            Elementary::Time(ident) | Elementary::LTime(ident) => {
+                let duration = ident.as_time(self.db)
+                    .map_err(|e| LowerTypeError::UnsupportedType(format!("Invalid time literal: {:?}", e)))?;
+                let nanos = duration.whole_nanoseconds() as i64;
+                Ok(MirExpr::Constant(MirConstant::I64(nanos)))
+            }
+
+            // Date/DateTime/TimeOfDay — not yet supported
+            Elementary::Date(_)
             | Elementary::LDate(_)
             | Elementary::DateAndTime(_)
             | Elementary::LDateTime(_)
             | Elementary::TimeOfDay(_)
             | Elementary::LTod(_) => Err(LowerTypeError::UnsupportedType(
-                "Time/Date literals not yet supported".to_string(),
+                "Date/DateTime literals not yet supported".to_string(),
             )),
         }
     }
@@ -412,8 +425,20 @@ impl<'db> ExprLowerCtx<'db> {
             }
         }
 
-        // Resolve the base variable name from the deepest VarAccess in the chain
-        let base_ident = path_expr.ident(self.db).ident;
+        // Resolve the base variable name from the root VarAccess in the chain
+        let base_ident = self.find_root_var_ident(path_expr);
+
+        // In FB body context, check if this variable is a field of the 'this' struct
+        if let Some(ref this_struct) = self.this_struct {
+            if let Some(field) = this_struct.fields.iter().find(|f| f.name == base_ident) {
+                let base = MirPlace::ThisField {
+                    field_name: base_ident,
+                    field_offset: field.offset,
+                    field_type: field.ty.clone(),
+                };
+                return self.lower_path_expr_chain(base, path_expr);
+            }
+        }
         let base = MirPlace::Local(base_ident);
 
         // Walk the path expression chain for field/index/deref
@@ -696,6 +721,118 @@ impl<'db> ExprLowerCtx<'db> {
             args,
             return_type: mir_return_type,
         }))
+    }
+
+    /// Lower an FB invocation statement: write the inputs into the instance,
+    /// call `__body__(&instance)`, read the outputs.
+    pub fn lower_fb_invocation(
+        &self,
+        func_call: hir::hir_def::expressions::expression::FuncCall<'db>,
+        fb: hir::hir_def::pous::function_block::FunctionBlock<'db>,
+    ) -> Result<Option<crate::stmt::MirStmt>, LowerTypeError> {
+        use hir::hir_def::pous::variable::VariableKind;
+
+        let path = func_call.path(self.db);
+
+        // Get the instance variable name (the callee is a variable, not a type)
+        let instance_ident = path
+            .expr(self.db)
+            .map(|pe| pe.ident(self.db).ident)
+            .ok_or_else(|| LowerTypeError::UnsupportedType("FB call without name".to_string()))?;
+
+        let instance = MirPlace::Local(instance_ident);
+
+        // Get the FB struct type for field offsets
+        let fb_mir_type = lower_type(self.db, hir::hir_ty::ty::Type::FunctionBlock(fb))?;
+        let struct_type = match &fb_mir_type {
+            MirType::Struct(s) => s,
+            _ => return Err(LowerTypeError::UnsupportedType("FB type is not a struct".to_string())),
+        };
+
+        // Build input writes from the call arguments
+        let mut input_writes = Vec::new();
+        let mut output_reads = Vec::new();
+
+        // Map FB input variable names to field offsets
+        let fb_vars: Vec<_> = fb.variables(self.db).to_vec();
+
+        for param in func_call.params(self.db) {
+            match param.kind(self.db) {
+                ParamAssignKind::FormalInput { param: param_ident, value } => {
+                    let param_name = param_ident.ident;
+                    // Find the field in the struct
+                    if let Some(field) = struct_type.fields.iter().find(|f| f.name == param_name) {
+                        let mir_elem = match &field.ty {
+                            MirType::Elementary(e) => *e,
+                            _ => continue, // skip non-elementary fields for now
+                        };
+                        let expr = self.lower_expr(value)?;
+                        input_writes.push((field.offset, expr, mir_elem));
+                    }
+                }
+                ParamAssignKind::NonFormal { value } => {
+                    // Positional: match to next input variable
+                    // Find the i-th input variable
+                    let input_vars: Vec<_> = fb_vars.iter()
+                        .filter(|v| v.kind(self.db) == VariableKind::Input)
+                        .collect();
+                    let idx = input_writes.len();
+                    if idx < input_vars.len() {
+                        let var_name = input_vars[idx].name(self.db);
+                        if let Some(field) = struct_type.fields.iter().find(|f| f.name == var_name) {
+                            let mir_elem = match &field.ty {
+                                MirType::Elementary(e) => *e,
+                                _ => continue,
+                            };
+                            let expr = self.lower_expr(value)?;
+                            input_writes.push((field.offset, expr, mir_elem));
+                        }
+                    }
+                }
+                ParamAssignKind::FormalOutput { param: param_ident, variable, .. } => {
+                    let param_name = param_ident.ident;
+                    if let Some(field) = struct_type.fields.iter().find(|f| f.name == param_name) {
+                        let mir_elem = match &field.ty {
+                            MirType::Elementary(e) => *e,
+                            _ => continue,
+                        };
+                        let place = self.lower_variable_access(variable)?;
+                        output_reads.push((field.offset, place, mir_elem));
+                    }
+                }
+            }
+        }
+
+        // Body function name: "FBName$__body__"
+        let body_func = hir::hir_def::interned::identifier::Ident::new(
+            self.db,
+            compact_str::CompactString::from(format!(
+                "{}$__body__",
+                fb.name(self.db).text(self.db)
+            )),
+        );
+
+        Ok(Some(crate::stmt::MirStmt::FbCall {
+            instance,
+            body_func,
+            body_func_index: 0, // resolved during module lowering
+            input_writes,
+            output_reads,
+        }))
+    }
+
+    fn find_root_var_ident(
+        &self,
+        path_expr: hir::hir_def::expressions::expression::PathExpr<'db>,
+    ) -> hir::hir_def::interned::identifier::Ident {
+        match path_expr.expr(self.db) {
+            PathExprKind::VarAccess(var) => match var {
+                VarAccess::Simple(span_ident) => span_ident.ident,
+            },
+            PathExprKind::Field(field_expr) => self.find_root_var_ident(field_expr.path),
+            PathExprKind::Index(index_expr) => self.find_root_var_ident(index_expr.path),
+            PathExprKind::Deref(deref_expr) => self.find_root_var_ident(deref_expr.path),
+        }
     }
 
     /// Lower a CaseKind to a MirCasePattern.

@@ -45,6 +45,8 @@ pub struct AnyFunctionInfo<'db> {
     pub any_spec: ElementarySpec,
     /// If extern, the extern declaration.
     pub extern_decl: Option<ExternDecl<'db>>,
+    /// If wasm intrinsic, the wasm declaration.
+    pub wasm_decl: Option<hir::hir_def::extern_decl::WasmDecl<'db>>,
 }
 
 /// Detect whether a function has ANY_* typed parameters or return type.
@@ -52,16 +54,17 @@ pub fn detect_any_function<'db>(
     db: &'db dyn WorkspaceDataBase,
     func: Function<'db>,
 ) -> Option<AnyFunctionInfo<'db>> {
+    let make_info = |e: ElementarySpec| {
+        let extern_decl = find_extern_decl(db, func);
+        let wasm_decl = find_wasm_decl(db, func);
+        AnyFunctionInfo { func, any_spec: e, extern_decl, wasm_decl }
+    };
+
     // Check return type first
     if let Some(ret) = func.return_type(db) {
         if let Type::Elementary(e) = ret.infer(db) {
             if e.is_any() {
-                let extern_decl = find_extern_decl(db, func);
-                return Some(AnyFunctionInfo {
-                    func,
-                    any_spec: e,
-                    extern_decl,
-                });
+                return Some(make_info(e));
             }
         }
     }
@@ -72,12 +75,7 @@ pub fn detect_any_function<'db>(
     for (_name, var) in &def_map.local_variables {
         if let Type::Elementary(e) = var.spec(db).infer(db) {
             if e.is_any() {
-                let extern_decl = find_extern_decl(db, func);
-                return Some(AnyFunctionInfo {
-                    func,
-                    any_spec: e,
-                    extern_decl,
-                });
+                return Some(make_info(e));
             }
         }
     }
@@ -93,6 +91,21 @@ fn find_extern_decl<'db>(
     use hir::hir_def::expressions::statement::StmtKind;
     func.statements(db).iter().find_map(|stmt| {
         if let StmtKind::ExternPragma(decl) = stmt.stmt(db) {
+            Some(decl.clone())
+        } else {
+            None
+        }
+    })
+}
+
+/// Find wasm pragma in a function's statements.
+fn find_wasm_decl<'db>(
+    db: &'db dyn WorkspaceDataBase,
+    func: Function<'db>,
+) -> Option<hir::hir_def::extern_decl::WasmDecl<'db>> {
+    use hir::hir_def::expressions::statement::StmtKind;
+    func.statements(db).iter().find_map(|stmt| {
+        if let StmtKind::WasmPragma(decl) = stmt.stmt(db) {
             Some(decl.clone())
         } else {
             None
@@ -194,7 +207,75 @@ pub fn monomorphize<'db>(
                 CompactString::from(format!("{}.{}", func_name.text(db), type_suffix)),
             );
 
-            if let Some(extern_decl) = &info.extern_decl {
+            if let Some(wasm_decl) = &info.wasm_decl {
+                // Wasm intrinsic ANY_* function → build monomorphized function with concrete types
+                use crate::function::*;
+                use crate::expr::*;
+                use crate::stmt::*;
+                use hir::hir_def::pous::variable::VariableKind;
+
+                let concrete_mir = MirType::Elementary(mir_elem);
+
+                let mut params = Vec::new();
+                for var in info.func.variables(db) {
+                    if matches!(var.kind(db), VariableKind::Input) {
+                        let ty = resolve_any_type(db, var.spec(db).infer(db), *concrete_spec)?;
+                        params.push(MirParam {
+                            name: var.name(db),
+                            ty,
+                            kind: MirParamKind::Input,
+                        });
+                    }
+                }
+
+                let return_type = info.func
+                    .return_type(db)
+                    .map(|spec| resolve_any_type(db, spec.infer(db), *concrete_spec))
+                    .transpose()?;
+
+                // Resolve the instruction name: if type_ref is set, prefix with the WASM type
+                let full_instruction = if wasm_decl.type_ref.is_some() {
+                    // Determine WASM type prefix from the concrete monomorphized type
+                    let prefix = if mir_elem.is_float() {
+                        if mir_elem.is_64bit() { "f64" } else { "f32" }
+                    } else if mir_elem.is_64bit() {
+                        "i64"
+                    } else {
+                        "i32"
+                    };
+                    CompactString::from(format!("{}.{}", prefix, wasm_decl.instruction))
+                } else {
+                    wasm_decl.instruction.clone()
+                };
+
+                let result_name = info.func.name(db);
+                let param_names: Vec<_> = params.iter().map(|p| p.name).collect();
+
+                let body = vec![MirStmt::WasmIntrinsic {
+                    instruction: full_instruction,
+                    params: param_names,
+                    result: Some(result_name),
+                }];
+
+                let locals = vec![MirLocal {
+                    name: result_name,
+                    ty: concrete_mir.clone(),
+                    init: None,
+                    kind: MirLocalKind::Var,
+                    storage: MirStorage::Scalar { local_index: params.len() as u32 },
+                }];
+
+                module.functions.push(MirFunction {
+                    name: mono_name,
+                    origin_name: info.func.name(db),
+                    index: next_fn_idx,
+                    params,
+                    return_type,
+                    locals,
+                    body,
+                    linkage: MirLinkage::Export,
+                });
+            } else if let Some(extern_decl) = &info.extern_decl {
                 // Extern ANY_* function → generate MirExternFunction with suffixed name
                 let mut params = Vec::new();
                 for var in info.func.variables(db) {
@@ -372,6 +453,15 @@ fn lower_monomorphized_local<'db>(
     })
 }
 
+/// Resolve an already-lowered MIR type, substituting ANY-like elementary types.
+fn resolve_any_mir_type(ty: &MirType, concrete: MirElementary) -> MirType {
+    match ty {
+        // If the type couldn't be lowered (was ANY), use the concrete type
+        MirType::Void => MirType::Elementary(concrete),
+        _ => ty.clone(),
+    }
+}
+
 /// Resolve a type, substituting ANY_* with the concrete type.
 fn resolve_any_type<'db>(
     db: &'db dyn WorkspaceDataBase,
@@ -455,6 +545,12 @@ fn discover_calls_in_stmt(
             discover_calls_in_expr(condition, any_names, out);
             discover_calls_in_stmts(body, any_names, out);
         }
+        MirStmt::FbCall { input_writes, .. } => {
+            for (_, value, _) in input_writes {
+                discover_calls_in_expr(value, any_names, out);
+            }
+        }
+        MirStmt::WasmIntrinsic { .. } => {}
         _ => {}
     }
 }
@@ -633,6 +729,12 @@ fn rewrite_calls_in_stmt(
             rewrite_calls_in_expr(condition, any_names, mono_indices);
             rewrite_calls_in_stmts(body, any_names, mono_indices);
         }
+        MirStmt::FbCall { input_writes, .. } => {
+            for (_, value, _) in input_writes.iter_mut() {
+                rewrite_calls_in_expr(value, any_names, mono_indices);
+            }
+        }
+        MirStmt::WasmIntrinsic { .. } => {} // no nested calls
         _ => {}
     }
 }

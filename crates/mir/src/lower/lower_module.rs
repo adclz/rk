@@ -109,7 +109,23 @@ fn lower_module_from_pous<'db>(
                     continue;
                 }
 
-                // Check if wasm intrinsic — lower as inline cast function
+                // Check if non-extern ANY_* (deferred) — must check before wasm intrinsic
+                // so that ANY_* wasm functions go through monomorphization
+                if let Some(any_info) = detect_any_function(db, *func) {
+                    any_functions.push(any_info);
+                    continue;
+                }
+
+                // Skip functions with ANY-typed variables that weren't caught above
+                let has_any_var = func.variables(db).iter().any(|v| {
+                    let ty = v.spec(db).infer(db).normalize(db);
+                    matches!(ty, hir::hir_ty::ty::Type::Elementary(e) if e.is_any())
+                });
+                if has_any_var {
+                    continue;
+                }
+
+                // Check if wasm intrinsic (non-ANY) — lower as inline function
                 let wasm_decl = func.statements(db).iter().find_map(|s| {
                     if let StmtKind::WasmPragma(decl) = s.stmt(db) {
                         Some(decl.clone())
@@ -124,23 +140,8 @@ fn lower_module_from_pous<'db>(
                             next_fn_idx += 1;
                             functions.push(mir_func);
                         }
-                        Err(_) => {} // Skip unsupported intrinsics
+                        Err(_) => {}
                     }
-                    continue;
-                }
-
-                // Check if non-extern ANY_* (deferred)
-                if let Some(any_info) = detect_any_function(db, *func) {
-                    any_functions.push(any_info);
-                    continue;
-                }
-
-                // Skip functions with ANY-typed variables that weren't caught above
-                let has_any_var = func.variables(db).iter().any(|v| {
-                    let ty = v.spec(db).infer(db).normalize(db);
-                    matches!(ty, hir::hir_ty::ty::Type::Elementary(e) if e.is_any())
-                });
-                if has_any_var {
                     continue;
                 }
 
@@ -337,7 +338,7 @@ fn lower_extern_function<'db>(
 
 /// Lower a {wasm} intrinsic function to a MirFunction.
 /// The body is a single assignment: result := cast(param).
-fn lower_wasm_intrinsic<'db>(
+pub fn lower_wasm_intrinsic<'db>(
     db: &'db dyn WorkspaceDataBase,
     func: Function<'db>,
     wasm_decl: &hir::hir_def::extern_decl::WasmDecl<'db>,

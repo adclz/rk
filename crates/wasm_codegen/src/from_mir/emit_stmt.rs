@@ -10,7 +10,7 @@ use mir::{
 use rustc_hash::FxHashMap;
 use wasm_encoder::{BlockType, Instruction, MemArg};
 
-use super::{LocalInfo, emit_expr::{emit_addr_of, emit_expr}};
+use super::{LocalInfo, emit_expr::{emit_addr_of, emit_expr, emit_typed_mem_load}};
 
 /// Context for statement emission.
 struct Ctx<'a> {
@@ -193,7 +193,126 @@ fn emit_stmt(func: &mut wasm_encoder::Function, stmt: &MirStmt, ctx: &Ctx) {
             emit_constant_store(func, value);
         }
 
+        MirStmt::FbCall {
+            instance,
+            body_func,
+            body_func_index: _,
+            input_writes,
+            output_reads,
+        } => {
+            // Get the instance's memory address
+            let instance_addr = match instance {
+                mir::expr::MirPlace::Local(ident) => {
+                    match ctx.locals.get(ident) {
+                        Some(LocalInfo::Memory { address, .. }) => *address,
+                        _ => return, // can't resolve
+                    }
+                }
+                _ => return,
+            };
+
+            // 1. Write input values to the FB instance's fields in memory
+            for (field_offset, value, elem) in input_writes {
+                // Push address (instance base + field offset)
+                func.instruction(&Instruction::I32Const((instance_addr + field_offset) as i32));
+                // Emit value
+                emit_expr(func, value, ctx.locals, ctx.fn_indices);
+                // Store typed
+                let elem_ty = mir::types::MirType::Elementary(*elem);
+                emit_typed_mem_store(func, &elem_ty);
+            }
+
+            // 2. Call __body__(&instance)
+            let body_idx = ctx.fn_indices.get(body_func).copied().unwrap_or(0);
+            func.instruction(&Instruction::I32Const(instance_addr as i32));
+            func.instruction(&Instruction::Call(body_idx));
+
+            // 3. Read output values from the FB instance's fields
+            for (field_offset, target, elem) in output_reads {
+                // First: emit target address
+                emit_addr_of(func, target, ctx.locals);
+                // Then: load from instance field
+                func.instruction(&Instruction::I32Const((instance_addr + field_offset) as i32));
+                let elem_ty = mir::types::MirType::Elementary(*elem);
+                emit_typed_mem_load(func, &elem_ty);
+                // Store to target
+                emit_typed_mem_store(func, &elem_ty);
+            }
+        }
+
+        MirStmt::WasmIntrinsic { instruction, params, result } => {
+            // Push params on stack
+            for param_name in params {
+                if let Some(info) = ctx.locals.get(param_name) {
+                    match info {
+                        LocalInfo::Scalar { index, .. } => {
+                            func.instruction(&Instruction::LocalGet(*index));
+                        }
+                        _ => {}
+                    }
+                }
+            }
+
+            // Emit the WASM instruction
+            emit_wasm_instruction(func, instruction);
+
+            // Store result
+            if let Some(result_name) = result {
+                if let Some(info) = ctx.locals.get(result_name) {
+                    match info {
+                        LocalInfo::Scalar { index, .. } => {
+                            func.instruction(&Instruction::LocalSet(*index));
+                        }
+                        _ => {}
+                    }
+                }
+            }
+        }
+
         MirStmt::DebugTrap { .. } => {}
+    }
+}
+
+/// Map a WASM instruction name string to the corresponding wasm_encoder instruction.
+fn emit_wasm_instruction(func: &mut wasm_encoder::Function, name: &str) {
+    match name {
+        // Integer arithmetic/bitwise (32-bit)
+        "i32.shl" => { func.instruction(&Instruction::I32Shl); }
+        "i32.shr_u" => { func.instruction(&Instruction::I32ShrU); }
+        "i32.shr_s" => { func.instruction(&Instruction::I32ShrS); }
+        "i32.rotl" => { func.instruction(&Instruction::I32Rotl); }
+        "i32.rotr" => { func.instruction(&Instruction::I32Rotr); }
+        "i32.and" => { func.instruction(&Instruction::I32And); }
+        "i32.or" => { func.instruction(&Instruction::I32Or); }
+        "i32.xor" => { func.instruction(&Instruction::I32Xor); }
+        // Integer arithmetic/bitwise (64-bit)
+        "i64.shl" => { func.instruction(&Instruction::I64Shl); }
+        "i64.shr_u" => { func.instruction(&Instruction::I64ShrU); }
+        "i64.shr_s" => { func.instruction(&Instruction::I64ShrS); }
+        "i64.rotl" => { func.instruction(&Instruction::I64Rotl); }
+        "i64.rotr" => { func.instruction(&Instruction::I64Rotr); }
+        // Float conversions
+        "f32.convert_i32_s" => { func.instruction(&Instruction::F32ConvertI32S); }
+        "f32.convert_i32_u" => { func.instruction(&Instruction::F32ConvertI32U); }
+        "f32.convert_i64_s" => { func.instruction(&Instruction::F32ConvertI64S); }
+        "f64.convert_i32_s" => { func.instruction(&Instruction::F64ConvertI32S); }
+        "f64.convert_i64_s" => { func.instruction(&Instruction::F64ConvertI64S); }
+        // Int truncations from float
+        "i32.trunc_f32_s" => { func.instruction(&Instruction::I32TruncF32S); }
+        "i32.trunc_f64_s" => { func.instruction(&Instruction::I32TruncF64S); }
+        "i64.trunc_f32_s" => { func.instruction(&Instruction::I64TruncF32S); }
+        "i64.trunc_f64_s" => { func.instruction(&Instruction::I64TruncF64S); }
+        // Float promotions/demotions
+        "f32.demote_f64" => { func.instruction(&Instruction::F32DemoteF64); }
+        "f64.promote_f32" => { func.instruction(&Instruction::F64PromoteF32); }
+        // Integer wrapping/extending
+        "i32.wrap_i64" => { func.instruction(&Instruction::I32WrapI64); }
+        "i64.extend_i32_s" => { func.instruction(&Instruction::I64ExtendI32S); }
+        "i64.extend_i32_u" => { func.instruction(&Instruction::I64ExtendI32U); }
+        _ => {
+            // Unknown instruction — emit unreachable as a trap
+            func.instruction(&Instruction::Unreachable);
+        }
     }
 }
 

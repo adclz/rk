@@ -198,7 +198,6 @@ pub(crate) fn emit_addr_of(
                 }
             } else {
                 // Variable not in local map — emit 0 as fallback address
-                // This indicates a bug in local map construction
                 func.instruction(&Instruction::I32Const(0));
             }
         }
@@ -528,7 +527,7 @@ fn emit_unaryop(func: &mut wasm_encoder::Function, op: MirUnaryOp, ty: MirElemen
 }
 
 /// Emit a memory load instruction based on type.
-fn emit_typed_mem_load(func: &mut wasm_encoder::Function, ty: &MirType) {
+pub(crate) fn emit_typed_mem_load(func: &mut wasm_encoder::Function, ty: &MirType) {
     let align_log2 = ty.alignment().trailing_zeros();
     match ty {
         MirType::Elementary(e) if e.is_float() && e.is_64bit() => {

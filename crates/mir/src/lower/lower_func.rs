@@ -281,6 +281,68 @@ pub fn lower_function_block<'db>(
         idx += 1;
     }
 
+    // Lower FB body as __body__ function
+    // All variables (input, output, var) are accessed through the 'this' pointer.
+    if !fb.statements(db).is_empty() {
+        let fb_type = lower_type(db, Type::FunctionBlock(fb))?;
+        let body_params = vec![MirParam {
+            name: Ident::new(db, compact_str::CompactString::from("this")),
+            ty: MirType::Pointer(Box::new(fb_type.clone())),
+            kind: MirParamKind::This,
+        }];
+
+        let mut body_locals = Vec::new();
+        let mut next_local_idx: u32 = 1; // 0 is 'this'
+
+        let address_taken = collect_address_taken_vars(db, fb.statements(db));
+
+        for var in fb.variables(db) {
+            if var.kind(db) == VariableKind::Temp {
+                let ty = lower_var_type(db, *var)?;
+                let storage = compute_storage(
+                    var.name(db),
+                    &ty,
+                    address_taken.contains(&var.name(db)),
+                    &mut next_local_idx,
+                    memory_layout,
+                );
+                body_locals.push(MirLocal {
+                    name: var.name(db),
+                    ty,
+                    init: None,
+                    kind: MirLocalKind::Var,
+                    storage,
+                });
+            }
+        }
+
+        // Body lowering with the `this` struct context.
+        let this_struct = match &fb_type {
+            MirType::Struct(s) => s.clone(),
+            _ => return Err(LowerTypeError::UnsupportedType("FB type is not a struct".into())),
+        };
+        let body_stmts = crate::lower::lower_stmt::lower_stmts_fb_body(db, fb.statements(db), this_struct)?;
+
+        let body_name = Ident::new(
+            db,
+            compact_str::CompactString::from(format!(
+                "{}$__body__",
+                fb.name(db).text(db)
+            )),
+        );
+
+        functions.push(MirFunction {
+            name: body_name,
+            origin_name: fb.name(db),
+            index: idx,
+            params: body_params,
+            return_type: None,
+            locals: body_locals,
+            body: body_stmts,
+            linkage: MirLinkage::Export,
+        });
+    }
+
     Ok(functions)
 }
 
