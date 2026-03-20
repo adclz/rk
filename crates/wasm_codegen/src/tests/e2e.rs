@@ -10,7 +10,7 @@ fn test_e2e_python_runtime(mut with_db: db::RootDatabase) {
     let source = r#"
 FUNCTION my_abs : INT
 VAR_INPUT x : INT; END_VAR
-    {extern 'math' 'abs.INT' (param x) (result my_abs)}
+    {extern 'math' 'abs.INT' (params x) (result my_abs)}
 END_FUNCTION
 
 FUNCTION double : INT

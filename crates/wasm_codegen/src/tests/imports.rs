@@ -9,7 +9,7 @@ fn test_extern_generates_valid_wasm(mut with_db: db::RootDatabase) {
     let source = r#"
 FUNCTION my_abs : INT
 VAR_INPUT x : INT; END_VAR
-    {extern 'math' 'abs' (param x) (result my_abs)}
+    {extern 'math' 'abs' (params x) (result my_abs)}
 END_FUNCTION
     "#;
 
@@ -24,7 +24,7 @@ fn test_extern_import_executes(mut with_db: db::RootDatabase) {
     let source = r#"
 FUNCTION my_abs : INT
 VAR_INPUT x : INT; END_VAR
-    {extern 'math' 'abs' (param x) (result my_abs)}
+    {extern 'math' 'abs' (params x) (result my_abs)}
 END_FUNCTION
     "#;
 
@@ -44,7 +44,7 @@ fn test_extern_with_real_type(mut with_db: db::RootDatabase) {
     let source = r#"
 FUNCTION my_sqrt : REAL
 VAR_INPUT x : REAL; END_VAR
-    {extern 'math' 'sqrt' (param x) (result my_sqrt)}
+    {extern 'math' 'sqrt' (params x) (result my_sqrt)}
 END_FUNCTION
     "#;
 
@@ -64,7 +64,7 @@ fn test_extern_and_local_functions_coexist(mut with_db: db::RootDatabase) {
     let source = r#"
 FUNCTION ext_add : INT
 VAR_INPUT a : INT; b : INT; END_VAR
-    {extern 'math' 'add' (param a b) (result ext_add)}
+    {extern 'math' 'add' (params a b) (result ext_add)}
 END_FUNCTION
 
 FUNCTION double : INT
@@ -100,7 +100,7 @@ fn test_local_function_calls_after_extern(mut with_db: db::RootDatabase) {
     let source = r#"
 FUNCTION ext_negate : INT
 VAR_INPUT x : INT; END_VAR
-    {extern 'math' 'negate' (param x) (result ext_negate)}
+    {extern 'math' 'negate' (params x) (result ext_negate)}
 END_FUNCTION
 
 FUNCTION add_one : INT
