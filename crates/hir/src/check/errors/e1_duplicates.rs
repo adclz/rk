@@ -13,7 +13,7 @@ use crate::{
         },
         interned::identifier::{Ident, SpanIdent},
         pous::{
-            class::MethodDecl, generics::GenericParam, interface::MethodPrototype, pou::Pou,
+            class::MethodDecl, interface::MethodPrototype, pou::Pou,
             variable::VariableDecl,
         },
         program::ProgramDecl,
@@ -74,10 +74,6 @@ pub enum DuplicateError<'db> {
         config1: ConfigDecl<'db>,
         config2: ConfigDecl<'db>,
     },
-    Generic {
-        param1: GenericParam<'db>,
-        param2: GenericParam<'db>,
-    },
     /// Duplicate TASK name within the same configuration or resource scope.
     Task {
         task1: SpanIdent<'db>,
@@ -109,7 +105,6 @@ impl ErrorCode for DuplicateError<'_> {
             Self::Using { .. } => "E0109",
             Self::InitExprField { .. } => "E0110",
             Self::Program { .. } => "E0111",
-            Self::Generic { .. } => "E0112",
             Self::Config { .. } => "E0113",
             Self::Task { .. } => "E0114",
             Self::ProgInstance { .. } => "E0115",
@@ -391,28 +386,6 @@ impl<'db> ToIdeDiagnostic<'db> for DuplicateError<'db> {
                     ),
                     config2.get_scope_id(db).file(db),
                     config2.get_name_span(db),
-                ));
-
-                diag
-            }
-            Self::Generic { param1, param2 } => {
-                let mut diag = diag()
-                    .message(format!(
-                        "duplicate generic parameter '{}'",
-                        param1.name(db).text(db)
-                    ))
-                    .severity(DiagnosticSeverity::ERROR)
-                    .desc(self)
-                    .range(param1.get_name_span(db))
-                    .call();
-
-                diag.with_related(Related::new(
-                    format!(
-                        "generic parameter '{}' is already defined here",
-                        param2.name(db).text(db)
-                    ),
-                    param2.get_scope_id(db).file(db),
-                    param2.get_name_span(db),
                 ));
 
                 diag

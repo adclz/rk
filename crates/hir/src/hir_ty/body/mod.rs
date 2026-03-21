@@ -13,7 +13,6 @@ use crate::{
             invocation::Invocation,
             statement::Stmt,
         },
-        interned::identifier::Ident,
         pous::{
             pou::Pou,
             variable::{DirectVariable, VariableDecl, VariableKind},
@@ -185,10 +184,6 @@ pub struct BodyInferenceResult<'db> {
     // Mapping from path expressions to their adjustment sequences.
     pub path_expr_adjustments: FxHashMap<PathExpr<'db>, Vec<Adjustment<'db>>>,
 
-    // Generic type substitutions for this scope
-    // Maps generic parameter names to their concrete types (e.g., T -> INT)
-    pub generic_substitutions: FxHashMap<Ident, Type<'db>>,
-
     // Errors encountered during inference
     pub errors: Vec<IdeDiagnostic>,
 
@@ -241,7 +236,6 @@ impl<'db> BodyInferenceResult<'db> {
             type_of_expr: FxHashMap::default(),
             type_of_path_expr: FxHashMap::default(),
             path_expr_adjustments: FxHashMap::default(),
-            generic_substitutions: FxHashMap::default(),
             errors: Vec::new(),
             variables_used: FxHashSet::default(),
             usings_used: FxHashSet::default(),

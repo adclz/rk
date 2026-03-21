@@ -8,8 +8,7 @@ use crate::{
     hir_def::{
         config::ConfigResource,
         expressions::spec::{Spec, SpecKind},
-        interned::identifier::Ident,
-        pous::{generics::AnyGeneric, pou::Pou, variable::VariableKind},
+        pous::{pou::Pou, variable::VariableKind},
         scope::{ScopeId, ScopeKind},
         semantic_index::get_scope,
         using::Using,
@@ -40,14 +39,6 @@ pub struct ArrayElementPosition {
     pub count: usize,
 }
 
-#[derive(Debug, Copy, Clone, PartialEq, Eq, Hash, salsa::Update)]
-pub enum Constraint {
-    /// Main type bound (e.g., `T: ANY_INT`)
-    TypeBound(AnyGeneric),
-    /// INTO<OtherGenericParam> constraint (e.g., `INTO<U>` where U is a sibling generic)
-    GenericParameter(Ident),
-}
-
 #[derive(Debug, PartialEq, Eq, salsa::Update)]
 pub struct Signature<'db> {
     // Scope where this InferenceResult was emitted
@@ -55,9 +46,6 @@ pub struct Signature<'db> {
 
     /// Mapping of specs to their inferred types
     pub type_of_specs: FxHashMap<Spec<'db>, Type<'db>>,
-
-    //// Mapping of generic parameters to their spec constraints (for generics declared on this POU)
-    pub constraint_of_generic: FxHashMap<Ident, Vec<Constraint>>,
 
     /// USING directives that were used during signature inference (for unused-import linter)
     pub usings_used: FxHashSet<Using<'db>>,
@@ -71,7 +59,6 @@ impl<'db> Signature<'db> {
         Self {
             scope,
             type_of_specs: FxHashMap::default(),
-            constraint_of_generic: FxHashMap::default(),
             usings_used: FxHashSet::default(),
             errors: Vec::new(),
         }

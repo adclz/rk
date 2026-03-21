@@ -14,7 +14,7 @@ use crate::{
     hir_def::expressions::expression::{FuncCall, ParamAssignKind},
     hir_ty::{
         body::BodyInferenceResult,
-        infer::{Infer, expr::InferExprCtx},
+        infer::expr::InferExprCtx,
         resolver::Resolver,
         ty::{CallableType, Type},
     },
@@ -212,60 +212,18 @@ fn coerce_with_var_target<'db>(
     }
     caller_infer_ctx.check_expr(db, expr, ctx);
 
-    // Check if this variable's type involves generic substitutions
-    let var_type = var.spec(db).infer(db);
-    let has_generic_subst =
-        matches!(var_type, Type::Generic(_)) && !ctx.generic_substitutions.is_empty();
-
-    if has_generic_subst {
-        use crate::hir_ty::infer::table::InferenceTable;
-
-        // Apply generic substitutions to get the concrete expected type
-        let expected_type = var_type.apply_generic_substitution(db, &ctx.generic_substitutions);
-
-        // Use InferenceTable to resolve Type::Infer variants
-        let rhs_type = ctx.type_of_expr[&expr];
-        let mut table = InferenceTable::new();
-        table.set_target_type(db, Some(expected_type.into()), expected_type);
-        table.add_type(db, expr, rhs_type, resolver);
-        table.resolve_completly(db, resolver, ctx);
-
-        // Perform coercion: expected (variable type) coerces TO actual (expression type)
-        let actual_type = ctx.type_of_expr_with_adjustments(db, expr);
-        let call_site = CallSite::from_scoped(db, &expr);
-
-        if let Err(e) = expected_type.coerce_with_type(
-            db,
-            actual_type,
-            ctx.adjustments_of_expr(db, expr),
-            resolver,
-        ) {
-            ctx.errors.push(
-                TypeError::NotAssignable {
-                    base_target: expected_type,
-                    lhs: e.expected,
-                    rhs: e.actual,
-                    adjustment: e.adjustment,
-                    expr: call_site,
-                }
-                .to_diagnostic(db),
-            );
-        }
-    } else {
-        // Non-generic path: use the original coercion logic
-        if let Err(e) = caller_infer_ctx.coerce_var_decl_with_expr(db, var, expr, ctx) {
-            let base_target = Type::new_var(db, var);
-            ctx.errors.push(
-                TypeError::NotAssignable {
-                    base_target,
-                    lhs: e.expected,
-                    rhs: e.actual,
-                    adjustment: e.adjustment,
-                    expr: CallSite::from_scoped(db, &expr),
-                }
-                .to_diagnostic(db),
-            );
-        }
+    if let Err(e) = caller_infer_ctx.coerce_var_decl_with_expr(db, var, expr, ctx) {
+        let base_target = Type::new_var(db, var);
+        ctx.errors.push(
+            TypeError::NotAssignable {
+                base_target,
+                lhs: e.expected,
+                rhs: e.actual,
+                adjustment: e.adjustment,
+                expr: CallSite::from_scoped(db, &expr),
+            }
+            .to_diagnostic(db),
+        );
     }
 }
 

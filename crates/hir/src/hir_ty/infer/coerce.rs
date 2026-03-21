@@ -101,15 +101,11 @@ impl<'db> Type<'db> {
     }
 
     pub fn supports_comparison(&self, db: &'db dyn WorkspaceDataBase) -> bool {
-        matches!(self, Type::Elementary(_)) || matches!(self, Type::Generic(_))
+        matches!(self, Type::Elementary(_))
     }
 
     pub fn can_be_variadic(&self, db: &'db dyn WorkspaceDataBase) -> bool {
         matches!(self, Type::Elementary(_))
-            || match self {
-                Type::Generic(generic) => generic.as_builtin_generic(db).is_some(),
-                _ => false,
-            }
     }
 
     // Type coercion check
@@ -262,34 +258,6 @@ impl<'db> Type<'db> {
                     }),
                 }
             }
-            // Generic types: check constraint compatibility with concrete types
-            (Type::Elementary(elem), Type::Generic(generic)) => {
-                if let Some(any) = generic.as_builtin_generic(db)
-                    && any.contains(elem)
-                {
-                    return Ok(());
-                }
-                Err(CoerceError {
-                    expected: *self,
-                    actual: to,
-                    adjustment: None,
-                })
-            }
-            (Type::Generic(generic), Type::Elementary(elem)) => {
-                if let Some(any) = generic.as_builtin_generic(db)
-                    && any.contains(*elem)
-                {
-                    return Ok(());
-                }
-                Err(CoerceError {
-                    expected: *self,
-                    actual: to,
-                    adjustment: None,
-                })
-            }
-            // Generic ↔ Generic: always allow within bodies
-            // (actual compatibility checked at instantiation/call site)
-            (Type::Generic(_), Type::Generic(_)) => Ok(()),
             (Type::RefTo(_), Type::Null) => Ok(()),
             (Type::RefTo(lhs), Type::RefTo(rhs)) => {
                 lhs.infer(db)

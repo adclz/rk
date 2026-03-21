@@ -213,18 +213,8 @@ impl<'db> InferExprCtx<'db> {
             PrimaryExpr::FuncCall(call) => {
                 resolve_func_call(db, self.resolver, *call, inference_result);
                 let ty = inference_result.get_type_of_begin_path_expr(db, call.path(db));
-                // For generic functions, the CallableType normalizes to
-                // Type::Generic(T). Apply the substitutions inferred during
-                // the call to resolve T → the concrete type (e.g. REAL).
-                let resolved = ty
-                    .normalize(db)
-                    .apply_generic_substitution(db, &inference_result.generic_substitutions);
-                // If the type is still generic (e.g. substitutions could not be
-                // computed because an argument was unresolved), fall back to Never
-                // to prevent cascading errors from unresolved generic types.
-                if matches!(resolved, Type::Generic(_)) {
-                    Type::Never
-                } else if let Type::Elementary(e) = resolved {
+                let resolved = ty.normalize(db);
+                if let Type::Elementary(e) = resolved {
                     if e.is_any() {
                         // ANY_* return type: resolve from the first argument whose
                         // DECLARED parameter type is ANY_* or INTO(...).

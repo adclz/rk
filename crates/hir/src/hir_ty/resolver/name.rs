@@ -61,8 +61,7 @@ pub enum NameResolution<'db> {
 ///
 /// Resolution order (first match wins):
 /// 1. Self-reference (method or POU referencing its own name)
-/// 2. Generic type parameters (from [`ScopeId::generics`])
-/// 3. POU via namespace access (local scope → parent/USING → global)
+/// 2. POU via namespace access (local scope → parent/USING → global)
 ///
 /// This function is used by both head-level (spec) and body-level (path expr) resolution.
 pub fn resolve_name<'db>(
