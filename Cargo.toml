@@ -105,7 +105,9 @@ db = { workspace = true }
 hir = { workspace = true }
 linter = { workspace = true }
 ide_proto = { workspace = true }
+mir = { workspace = true }
 wasm_codegen = { workspace = true }
+compact_str = { workspace = true }
 
 [dev-dependencies]
 rstest = { workspace = true }

@@ -32,6 +32,10 @@ pub struct MirFunction {
 
     /// How this function should appear externally.
     pub linkage: MirLinkage,
+
+    /// Optional qualified export name (e.g. "Std.Bits.Test.test_shl_byte").
+    /// When set, WASM codegen uses this instead of `name` for the export.
+    pub export_name: Option<CompactString>,
 }
 
 /// An imported (extern) function declaration.

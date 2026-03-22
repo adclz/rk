@@ -144,7 +144,9 @@ impl<'a> WasmGen<'a> {
 
         // Export if needed
         if func.linkage == MirLinkage::Export {
-            let export_name = func.name.text(self.db).to_string();
+            let export_name = func.export_name.as_ref()
+                .map(|s| s.to_string())
+                .unwrap_or_else(|| func.name.text(self.db).to_string());
             let wasm_idx = self.index_remap.get(&func.index).copied().unwrap_or(func.index);
             self.export_section.export(
                 &export_name,

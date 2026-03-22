@@ -274,6 +274,7 @@ pub fn monomorphize<'db>(
                     locals,
                     body,
                     linkage: MirLinkage::Export,
+                    export_name: None,
                 });
             } else if let Some(extern_decl) = &info.extern_decl {
                 // Extern ANY_* function → generate MirExternFunction with suffixed name
@@ -450,6 +451,7 @@ fn lower_monomorphized_local<'db>(
         locals,
         body,
         linkage: MirLinkage::Export,
+        export_name: None,
     })
 }
 

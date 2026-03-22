@@ -23,14 +23,14 @@ use crate::{
 /// Lower multiple HIR semantic indices (from multiple files) into a single MirModule.
 pub fn lower_modules<'db>(
     db: &'db dyn WorkspaceDataBase,
-    indices: &[&SemanticIndex<'db>],
+    indices: &[&'db SemanticIndex<'db>],
 ) -> Result<MirModule, LowerTypeError> {
-    // Collect all POUs and programs from all files (including namespaces)
-    let mut all_pous = Vec::new();
-    let mut all_programs = Vec::new();
+    // Every POU and program, each with its optional namespace prefix.
+    let mut all_pous: Vec<(&Pou<'db>, Option<String>)> = Vec::new();
+    let mut all_programs: Vec<(&hir::hir_def::program::ProgramDecl<'db>, Option<String>)> = Vec::new();
     for index in indices {
-        all_pous.extend(index.global_pous.iter());
-        all_programs.extend(index.programs.iter());
+        all_pous.extend(index.global_pous.iter().map(|p| (p, None)));
+        all_programs.extend(index.programs.iter().map(|p| (p, None)));
         for ns in index.namespaces.iter() {
             collect_namespace_pous(db, ns, &mut all_pous);
         }
@@ -45,15 +45,15 @@ pub fn lower_module<'db>(
 ) -> Result<MirModule, LowerTypeError> {
     lower_module_from_pous(
         db,
-        &index.global_pous.iter().collect::<Vec<_>>(),
-        &index.programs.iter().collect::<Vec<_>>(),
+        &index.global_pous.iter().map(|p| (p, None)).collect::<Vec<_>>(),
+        &index.programs.iter().map(|p| (p, None)).collect::<Vec<_>>(),
     )
 }
 
 fn lower_module_from_pous<'db>(
     db: &'db dyn WorkspaceDataBase,
-    all_pous: &[&Pou<'db>],
-    all_programs: &[&hir::hir_def::program::ProgramDecl<'db>],
+    all_pous: &[(&Pou<'db>, Option<String>)],
+    all_programs: &[(&hir::hir_def::program::ProgramDecl<'db>, Option<String>)],
 ) -> Result<MirModule, LowerTypeError> {
     let mut functions = Vec::new();
     let mut extern_functions = Vec::new();
@@ -66,8 +66,13 @@ fn lower_module_from_pous<'db>(
     // Collect ANY_* functions for deferred monomorphization
     let mut any_functions: Vec<AnyFunctionInfo<'db>> = Vec::new();
 
+    // Helper: build a qualified export name from a namespace prefix and bare name.
+    let make_export_name = |ns_prefix: &Option<String>, bare_name: &str| -> Option<CompactString> {
+        ns_prefix.as_ref().map(|prefix| CompactString::from(format!("{}.{}", prefix, bare_name)))
+    };
+
     // Phase 1: Process imports first (extern functions get lower indices)
-    for pou in all_pous.iter() {
+    for (pou, _ns_prefix) in all_pous.iter() {
         if let Pou::Function(func) = pou {
             let extern_decl = find_extern_decl(db, *func);
             if extern_decl.is_none() {
@@ -90,7 +95,7 @@ fn lower_module_from_pous<'db>(
     }
 
     // Phase 2: Process local functions
-    for pou in all_pous.iter() {
+    for (pou, ns_prefix) in all_pous.iter() {
         match pou {
             Pou::Function(func) => {
                 // Skip already-processed externs and ANY_* functions
@@ -135,7 +140,8 @@ fn lower_module_from_pous<'db>(
                 });
                 if let Some(wasm_decl) = wasm_decl {
                     match lower_wasm_intrinsic(db, *func, &wasm_decl, next_fn_idx) {
-                        Ok(mir_func) => {
+                        Ok(mut mir_func) => {
+                            mir_func.export_name = make_export_name(ns_prefix, func.name(db).text(db));
                             function_indices.insert(func.name(db), next_fn_idx);
                             next_fn_idx += 1;
                             functions.push(mir_func);
@@ -150,7 +156,8 @@ fn lower_module_from_pous<'db>(
                     continue;
                 }
 
-                let mir_func = lower_function(db, *func, next_fn_idx, &mut memory_layout)?;
+                let mut mir_func = lower_function(db, *func, next_fn_idx, &mut memory_layout)?;
+                mir_func.export_name = make_export_name(ns_prefix, func.name(db).text(db));
                 function_indices.insert(func.name(db), next_fn_idx);
                 next_fn_idx += 1;
                 functions.push(mir_func);
@@ -250,8 +257,9 @@ fn lower_module_from_pous<'db>(
     }
 
     // Phase 3: Process programs
-    for program in all_programs.iter() {
-        let mir_func = lower_program(db, **program, next_fn_idx, &mut memory_layout)?;
+    for (program, ns_prefix) in all_programs.iter() {
+        let mut mir_func = lower_program(db, **program, next_fn_idx, &mut memory_layout)?;
+        mir_func.export_name = make_export_name(ns_prefix, program.name(db).text(db));
         function_indices.insert(program.name(db), next_fn_idx);
         next_fn_idx += 1;
         functions.push(mir_func);
@@ -277,13 +285,15 @@ fn lower_module_from_pous<'db>(
 }
 
 /// Recursively collect all POUs from a namespace and its children.
+/// Each item is paired with its dot-separated namespace path prefix.
 fn collect_namespace_pous<'db>(
     db: &'db dyn WorkspaceDataBase,
     ns: &hir::hir_def::namespace::NamespaceDecl<'db>,
-    pous: &mut Vec<&'db Pou<'db>>,
+    pous: &mut Vec<(&'db Pou<'db>, Option<String>)>,
 ) {
+    let ns_prefix = ns.path(db).to_string(db);
     for pou in ns.pous(db).iter() {
-        pous.push(pou);
+        pous.push((pou, Some(ns_prefix.clone())));
     }
     for child_ns in ns.namespaces(db).iter() {
         collect_namespace_pous(db, child_ns, pous);
@@ -422,6 +432,7 @@ pub fn lower_wasm_intrinsic<'db>(
         locals,
         body,
         linkage: MirLinkage::Export,
+        export_name: None,
     })
 }
 

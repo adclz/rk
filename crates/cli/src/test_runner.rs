@@ -25,165 +25,131 @@ enum TestOutcome {
 /// Host functions provided to the WASM module.
 struct HostState;
 
-/// Discover all test exports (functions starting with "test_") from a WASM module.
+/// Discover all test exports (functions containing "test_") from a WASM module.
+/// Test names may be qualified (e.g. "Std.Bits.Test.test_shl_byte") or bare ("test_foo").
 fn discover_tests(module: &Module) -> Vec<String> {
     module
         .exports()
-        .filter(|e| e.name().starts_with("test_") && e.ty().func().is_some())
+        .filter(|e| e.name().contains("test_") && e.ty().func().is_some())
         .map(|e| e.name().to_string())
         .collect()
 }
 
-/// Build a linker with all host imports (math, assert, clocks).
-fn build_linker(engine: &Engine, module: &Module) -> WasmResult<Linker<HostState>> {
+/// Build a linker with all host imports pre-registered.
+/// Every function is a direct `func_wrap` with concrete types — zero runtime dispatch.
+fn build_linker(engine: &Engine, _module: &Module) -> WasmResult<Linker<HostState>> {
     let mut linker = Linker::new(engine);
+    linker.allow_shadowing(true);
 
-    // Scan module imports and register each one
-    for import in module.imports() {
-        let module_name = import.module();
-        let field_name = import.name();
+    // Assert
+    linker.func_wrap("assert", "fail", || -> WasmResult<()> {
+        Err(wasmtime::Error::msg("assertion failed"))
+    })?;
 
-        match (module_name, field_name) {
-            ("assert", "fail") => {
-                linker.func_wrap("assert", "fail", || -> WasmResult<()> {
-                    Err(wasmtime::Error::msg("assertion failed"))
-                })?;
-            }
-            ("wasi:clocks/monotonic-clock", "now") => {
-                // Monotonic clock returning nanoseconds as i64
-                let epoch = Instant::now();
-                linker.func_wrap("wasi:clocks/monotonic-clock", "now", move || -> i64 {
-                    epoch.elapsed().as_nanos() as i64
-                })?;
-            }
-            ("math", name) => {
-                register_math_func(&mut linker, name, &import)?;
-            }
-            _ => {
-                // Unknown import — skip (will fail at instantiation if actually called)
-            }
-        }
-    }
+    // WASI clocks
+    let epoch = Instant::now();
+    linker.func_wrap("wasi:clocks/monotonic-clock", "now", move || -> i64 {
+        epoch.elapsed().as_nanos() as i64
+    })?;
+
+    // Math — all monomorphized variants, O(1) direct calls
+    register_all_math(&mut linker)?;
 
     Ok(linker)
 }
 
-/// Register a math host function based on the import's type signature.
-fn register_math_func(
-    linker: &mut Linker<HostState>,
-    name: &str,
-    import: &ImportType,
-) -> WasmResult<()> {
-    let import_ty = import.ty();
-    let func_ty = import_ty.func().unwrap();
-    let params: Vec<_> = func_ty.params().collect();
-    let results: Vec<_> = func_ty.results().collect();
-
-    let is_two_param = params.len() == 2;
-    let is_i32 = params.first().map_or(false, |p| p.matches(&ValType::I32));
-    let is_i64 = params.first().map_or(false, |p| p.matches(&ValType::I64));
-    let is_f32 = params.first().map_or(false, |p| p.matches(&ValType::F32));
-    let is_f64 = params.first().map_or(false, |p| p.matches(&ValType::F64));
-
-    let op = name.split('.').next().unwrap_or(name);
-
-    // Integer abs
-    if op == "abs" && is_i32 {
-        linker.func_wrap("math", name, |v: i32| -> i32 { v.abs() })?;
-        return Ok(());
+/// Register a math host function dynamically based on the import's type signature.
+///
+/// Extracts the operation name (e.g. "abs" from "abs.INT") and uses the WASM
+/// function type to determine parameter types. All math operations dispatch to
+/// Rust's built-in methods on f32/f64/i32/i64.
+/// Register ALL math host functions upfront with concrete typed `func_wrap`.
+/// Each variant is a direct function pointer — zero runtime dispatch overhead.
+fn register_all_math(linker: &mut Linker<HostState>) -> WasmResult<()> {
+    macro_rules! math1_i32 {
+        ($name:literal, $op:expr) => {
+            linker.func_wrap("math", $name, |v: i32| -> i32 { $op(v) })?;
+        };
     }
-    if op == "abs" && is_i64 {
-        linker.func_wrap("math", name, |v: i64| -> i64 { v.abs() })?;
-        return Ok(());
+    macro_rules! math1_i64 {
+        ($name:literal, $op:expr) => {
+            linker.func_wrap("math", $name, |v: i64| -> i64 { $op(v) })?;
+        };
+    }
+    macro_rules! math1_f32 {
+        ($name:literal, $method:ident) => {
+            linker.func_wrap("math", $name, |v: f32| -> f32 { v.$method() })?;
+        };
+    }
+    macro_rules! math1_f64 {
+        ($name:literal, $method:ident) => {
+            linker.func_wrap("math", $name, |v: f64| -> f64 { v.$method() })?;
+        };
+    }
+    macro_rules! math2_f32 {
+        ($name:literal, $method:ident) => {
+            linker.func_wrap("math", $name, |a: f32, b: f32| -> f32 { a.$method(b) })?;
+        };
+    }
+    macro_rules! math2_f64 {
+        ($name:literal, $method:ident) => {
+            linker.func_wrap("math", $name, |a: f64, b: f64| -> f64 { a.$method(b) })?;
+        };
     }
 
-    match (op, is_f64, is_two_param) {
-        // Single-param f32 operations
-        ("abs", false, false) if is_f32 => {
-            linker.func_wrap("math", name, |v: f32| -> f32 { v.abs() })?;
-        }
-        ("sqrt", false, false) => {
-            linker.func_wrap("math", name, |v: f32| -> f32 { v.sqrt() })?;
-        }
-        ("ln", false, false) => {
-            linker.func_wrap("math", name, |v: f32| -> f32 { v.ln() })?;
-        }
-        ("log", false, false) => {
-            linker.func_wrap("math", name, |v: f32| -> f32 { v.log10() })?;
-        }
-        ("exp", false, false) => {
-            linker.func_wrap("math", name, |v: f32| -> f32 { v.exp() })?;
-        }
-        ("sin", false, false) => {
-            linker.func_wrap("math", name, |v: f32| -> f32 { v.sin() })?;
-        }
-        ("cos", false, false) => {
-            linker.func_wrap("math", name, |v: f32| -> f32 { v.cos() })?;
-        }
-        ("tan", false, false) => {
-            linker.func_wrap("math", name, |v: f32| -> f32 { v.tan() })?;
-        }
-        ("asin", false, false) => {
-            linker.func_wrap("math", name, |v: f32| -> f32 { v.asin() })?;
-        }
-        ("acos", false, false) => {
-            linker.func_wrap("math", name, |v: f32| -> f32 { v.acos() })?;
-        }
-        ("atan", false, false) => {
-            linker.func_wrap("math", name, |v: f32| -> f32 { v.atan() })?;
-        }
-        // Single-param f64 operations
-        ("abs", true, false) => {
-            linker.func_wrap("math", name, |v: f64| -> f64 { v.abs() })?;
-        }
-        ("sqrt", true, false) => {
-            linker.func_wrap("math", name, |v: f64| -> f64 { v.sqrt() })?;
-        }
-        ("ln", true, false) => {
-            linker.func_wrap("math", name, |v: f64| -> f64 { v.ln() })?;
-        }
-        ("log", true, false) => {
-            linker.func_wrap("math", name, |v: f64| -> f64 { v.log10() })?;
-        }
-        ("exp", true, false) => {
-            linker.func_wrap("math", name, |v: f64| -> f64 { v.exp() })?;
-        }
-        ("sin", true, false) => {
-            linker.func_wrap("math", name, |v: f64| -> f64 { v.sin() })?;
-        }
-        ("cos", true, false) => {
-            linker.func_wrap("math", name, |v: f64| -> f64 { v.cos() })?;
-        }
-        ("tan", true, false) => {
-            linker.func_wrap("math", name, |v: f64| -> f64 { v.tan() })?;
-        }
-        ("asin", true, false) => {
-            linker.func_wrap("math", name, |v: f64| -> f64 { v.asin() })?;
-        }
-        ("acos", true, false) => {
-            linker.func_wrap("math", name, |v: f64| -> f64 { v.acos() })?;
-        }
-        ("atan", true, false) => {
-            linker.func_wrap("math", name, |v: f64| -> f64 { v.atan() })?;
-        }
-        // Two-param operations
-        ("atan2", false, true) => {
-            linker.func_wrap("math", name, |y: f32, x: f32| -> f32 { y.atan2(x) })?;
-        }
-        ("atan2", true, true) => {
-            linker.func_wrap("math", name, |y: f64, x: f64| -> f64 { y.atan2(x) })?;
-        }
-        ("expt", false, true) => {
-            linker.func_wrap("math", name, |b: f32, e: f32| -> f32 { b.powf(e) })?;
-        }
-        ("expt", true, true) => {
-            linker.func_wrap("math", name, |b: f64, e: f64| -> f64 { b.powf(e) })?;
-        }
-        _ => {}
-    }
+    // ABS — signed integers
+    math1_i32!("abs.SINT", i32::abs);
+    math1_i32!("abs.INT", i32::abs);
+    math1_i32!("abs.DINT", i32::abs);
+    math1_i64!("abs.LINT", i64::abs);
+    // ABS — unsigned (identity)
+    linker.func_wrap("math", "abs.USINT", |v: i32| -> i32 { v })?;
+    linker.func_wrap("math", "abs.UINT", |v: i32| -> i32 { v })?;
+    linker.func_wrap("math", "abs.UDINT", |v: i32| -> i32 { v })?;
+    linker.func_wrap("math", "abs.ULINT", |v: i64| -> i64 { v })?;
+    // ABS — float
+    math1_f32!("abs.REAL", abs);
+    math1_f64!("abs.LREAL", abs);
+
+    // SQRT
+    math1_f32!("sqrt.REAL", sqrt);
+    math1_f64!("sqrt.LREAL", sqrt);
+
+    // LN
+    math1_f32!("ln.REAL", ln);
+    math1_f64!("ln.LREAL", ln);
+
+    // LOG
+    math1_f32!("log.REAL", log10);
+    math1_f64!("log.LREAL", log10);
+
+    // EXP
+    math1_f32!("exp.REAL", exp);
+    math1_f64!("exp.LREAL", exp);
+
+    // Trigonometry
+    math1_f32!("sin.REAL", sin);
+    math1_f64!("sin.LREAL", sin);
+    math1_f32!("cos.REAL", cos);
+    math1_f64!("cos.LREAL", cos);
+    math1_f32!("tan.REAL", tan);
+    math1_f64!("tan.LREAL", tan);
+    math1_f32!("asin.REAL", asin);
+    math1_f64!("asin.LREAL", asin);
+    math1_f32!("acos.REAL", acos);
+    math1_f64!("acos.LREAL", acos);
+    math1_f32!("atan.REAL", atan);
+    math1_f64!("atan.LREAL", atan);
+
+    // Two-param
+    math2_f32!("atan2.REAL", atan2);
+    math2_f64!("atan2.LREAL", atan2);
+    math2_f32!("expt.REAL", powf);
+    math2_f64!("expt.LREAL", powf);
 
     Ok(())
 }
+
 
 fn fmt_duration(d: std::time::Duration) -> String {
     let us = d.as_micros();

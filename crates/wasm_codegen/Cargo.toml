@@ -17,5 +17,6 @@ mir = { workspace = true }
 auto-lsp = { workspace = true, features = ["lsp_server"] }
 ast = { workspace = true }
 rstest = { workspace = true }
-wasmtime = "41.0.3"
+wasmtime = "43.0.0"
+rk = { path = "../cli" }
 rand = "0.8"
