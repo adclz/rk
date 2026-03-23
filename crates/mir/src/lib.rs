@@ -2,6 +2,7 @@ pub mod expr;
 pub mod function;
 pub mod memory;
 pub mod stmt;
+pub mod test_manifest;
 pub mod types;
 
 pub mod lower;
@@ -11,6 +12,7 @@ use rustc_hash::FxHashMap;
 
 use crate::function::{MirExternFunction, MirFunction};
 use crate::memory::MirMemoryLayout;
+use crate::test_manifest::TestManifest;
 use crate::types::MirType;
 
 /// A fully lowered MIR module, ready for backend consumption.
@@ -39,6 +41,9 @@ pub struct MirModule {
 
     /// String data section entries: (offset, bytes).
     pub string_data: Vec<(u32, Vec<u8>)>,
+
+    /// Test manifest: metadata about test functions and their cases.
+    pub test_manifest: TestManifest,
 }
 
 /// An interned string literal.

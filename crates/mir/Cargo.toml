@@ -14,3 +14,5 @@ salsa = { workspace = true }
 rustc-hash = { workspace = true }
 compact_str = { workspace = true }
 thiserror = "2.0"
+serde = { version = "1", features = ["derive"] }
+rmp-serde = "1.3"

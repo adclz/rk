@@ -66,6 +66,9 @@ fn lower_module_from_pous<'db>(
     // Collect ANY_* functions for deferred monomorphization
     let mut any_functions: Vec<AnyFunctionInfo<'db>> = Vec::new();
 
+    // Collect test entries for the manifest
+    let mut test_entries: Vec<crate::test_manifest::TestEntry> = Vec::new();
+
     // Helper: build a qualified export name from a namespace prefix and bare name.
     let make_export_name = |ns_prefix: &Option<String>, bare_name: &str| -> Option<CompactString> {
         ns_prefix.as_ref().map(|prefix| CompactString::from(format!("{}.{}", prefix, bare_name)))
@@ -80,7 +83,7 @@ fn lower_module_from_pous<'db>(
             }
             let extern_decl = extern_decl.unwrap();
 
-            // Check if ANY_* — defer to monomorphization
+            // Check if ANY_* - defer to monomorphization
             if let Some(any_info) = detect_any_function(db, *func) {
                 any_functions.push(any_info);
                 continue;
@@ -114,7 +117,7 @@ fn lower_module_from_pous<'db>(
                     continue;
                 }
 
-                // Check if non-extern ANY_* (deferred) — must check before wasm intrinsic
+                // Check if non-extern ANY_* (deferred) - must check before wasm intrinsic
                 // so that ANY_* wasm functions go through monomorphization
                 if let Some(any_info) = detect_any_function(db, *func) {
                     any_functions.push(any_info);
@@ -130,7 +133,7 @@ fn lower_module_from_pous<'db>(
                     continue;
                 }
 
-                // Check if wasm intrinsic (non-ANY) — lower as inline function
+                // Check if wasm intrinsic (non-ANY) - lower as inline function
                 let wasm_decl = func.statements(db).iter().find_map(|s| {
                     if let StmtKind::WasmPragma(decl) = s.stmt(db) {
                         Some(decl.clone())
@@ -142,6 +145,19 @@ fn lower_module_from_pous<'db>(
                     match lower_wasm_intrinsic(db, *func, &wasm_decl, next_fn_idx) {
                         Ok(mut mir_func) => {
                             mir_func.export_name = make_export_name(ns_prefix, func.name(db).text(db));
+
+                            if func.is_test(db) {
+                                let export_name = mir_func.export_name.as_ref()
+                                    .map(|s| s.to_string())
+                                    .unwrap_or_else(|| func.name(db).text(db).to_string());
+                                let cases = build_test_cases(db, *func, &export_name);
+                                test_entries.push(crate::test_manifest::TestEntry {
+                                    path: export_name.clone(),
+                                    export: export_name,
+                                    cases,
+                                });
+                            }
+
                             function_indices.insert(func.name(db), next_fn_idx);
                             next_fn_idx += 1;
                             functions.push(mir_func);
@@ -160,6 +176,20 @@ fn lower_module_from_pous<'db>(
                 mir_func.export_name = make_export_name(ns_prefix, func.name(db).text(db));
                 function_indices.insert(func.name(db), next_fn_idx);
                 next_fn_idx += 1;
+
+                // Collect test entry if marked with {test}
+                if func.is_test(db) {
+                    let export_name = mir_func.export_name.as_ref()
+                        .map(|s| s.to_string())
+                        .unwrap_or_else(|| func.name(db).text(db).to_string());
+                    let cases = build_test_cases(db, *func, &export_name);
+                    test_entries.push(crate::test_manifest::TestEntry {
+                        path: export_name.clone(),
+                        export: export_name,
+                        cases,
+                    });
+                }
+
                 functions.push(mir_func);
             }
 
@@ -260,10 +290,25 @@ fn lower_module_from_pous<'db>(
     for (program, ns_prefix) in all_programs.iter() {
         let mut mir_func = lower_program(db, **program, next_fn_idx, &mut memory_layout)?;
         mir_func.export_name = make_export_name(ns_prefix, program.name(db).text(db));
+
+        if program.is_test(db) {
+            let export_name = mir_func.export_name.as_ref()
+                .map(|s| s.to_string())
+                .unwrap_or_else(|| program.name(db).text(db).to_string());
+            test_entries.push(crate::test_manifest::TestEntry {
+                path: export_name.clone(),
+                export: export_name,
+                cases: vec![],
+            });
+        }
+
         function_indices.insert(program.name(db), next_fn_idx);
         next_fn_idx += 1;
         functions.push(mir_func);
     }
+
+    // Sort test entries by path for deterministic output
+    test_entries.sort_by(|a, b| a.path.cmp(&b.path));
 
     let mut module = MirModule {
         functions,
@@ -274,14 +319,87 @@ fn lower_module_from_pous<'db>(
         type_indices,
         memory_layout,
         string_data: Vec::new(),
+        test_manifest: crate::test_manifest::TestManifest { tests: test_entries },
     };
 
-    // Phase 4: Monomorphization — discovers call sites, generates concrete copies
+    // Phase 4: Monomorphization - discovers call sites, generates concrete copies
     if !any_functions.is_empty() {
         monomorphize(db, &mut module, &any_functions, &mut MirMemoryLayout::new())?;
     }
 
     Ok(module)
+}
+
+/// Build test cases from a function's `{case(...)}` pragmas.
+fn build_test_cases<'db>(
+    db: &'db dyn WorkspaceDataBase,
+    func: Function<'db>,
+    base_export: &str,
+) -> Vec<crate::test_manifest::TestCase> {
+    use crate::test_manifest::{TestCase, TestValue};
+    use hir::hir_def::expressions::expression::{ExprKind, PrimaryExpr, Elementary, ParamAssignKind};
+
+    func.cases(db)
+        .iter()
+        .enumerate()
+        .map(|(i, case_params)| {
+            let args: Vec<TestValue> = case_params
+                .iter()
+                .filter_map(|param| {
+                    let value_expr = match param.kind(db) {
+                        ParamAssignKind::NonFormal { value } => value,
+                        ParamAssignKind::FormalInput { value, .. } => value,
+                        _ => return None,
+                    };
+                    match value_expr.expr(db) {
+                        ExprKind::PrimaryExpr(PrimaryExpr::Literal(elem)) => Some(elementary_to_test_value(db, &elem)),
+                        _ => None,
+                    }
+                })
+                .collect();
+
+            TestCase {
+                export: format!("{}$case_{}", base_export, i),
+                args,
+            }
+        })
+        .collect()
+}
+
+/// Convert an HIR Elementary literal to a TestValue.
+fn elementary_to_test_value(
+    db: &dyn WorkspaceDataBase,
+    elem: &hir::hir_def::expressions::expression::Elementary,
+) -> crate::test_manifest::TestValue {
+    use crate::test_manifest::TestValue;
+    use hir::hir_def::expressions::expression::Elementary;
+
+    match elem {
+        Elementary::Bool(ident) => {
+            let text = ident.text(db);
+            TestValue::Bool(text.eq_ignore_ascii_case("TRUE") || text == "1")
+        }
+        Elementary::SInt(int) | Elementary::Int(int) | Elementary::DInt(int)
+        | Elementary::USInt(int) | Elementary::UInt(int) | Elementary::UDInt(int)
+        | Elementary::Byte(int) | Elementary::Word(int) | Elementary::DWord(int) => {
+            TestValue::I32(int.as_i32(db).unwrap_or(0))
+        }
+        Elementary::LInt(int) | Elementary::ULInt(int) | Elementary::LWord(int) => {
+            TestValue::I64(int.as_i64(db).unwrap_or(0))
+        }
+        Elementary::Real(ident) | Elementary::InferFloat(ident) => {
+            let text = ident.text(db);
+            TestValue::F32(text.parse().unwrap_or(0.0))
+        }
+        Elementary::LReal(ident) => {
+            let text = ident.text(db);
+            TestValue::F64(text.parse().unwrap_or(0.0))
+        }
+        Elementary::InferInteger(int) => {
+            TestValue::I32(int.as_i32(db).unwrap_or(0))
+        }
+        _ => TestValue::I32(0), // fallback for time/date/string
+    }
 }
 
 /// Recursively collect all POUs from a namespace and its children.
@@ -391,7 +509,7 @@ pub fn lower_wasm_intrinsic<'db>(
         return_elem = Some(*e);
     }
 
-    // Return local — needed so the local map has an entry for the return variable
+    // Return local - needed so the local map has an entry for the return variable
     let mut locals = Vec::new();
     let return_local_idx = params.len() as u32; // after all params
     if let Some(ref ret_ty) = return_type {

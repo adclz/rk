@@ -61,3 +61,20 @@ pub fn mir_exports(db: &mut RootDatabase, sources: &[&str]) -> String {
     lines.sort();
     lines.join("\n")
 }
+
+/// Lower IEC source to MIR and format the test manifest as a string.
+pub fn mir_test_manifest(db: &mut RootDatabase, sources: &[&str]) -> String {
+    use auto_lsp::default::db::BaseDatabase;
+    add_sources(db, sources);
+
+    let files: Vec<_> = db.get_files().iter().map(|e| *e.value()).collect();
+    let sem_indices: Vec<_> = files
+        .iter()
+        .map(|file| semantic_index(db, *file))
+        .collect();
+
+    let module = mir::lower::lower_module::lower_modules(db, &sem_indices)
+        .unwrap_or_else(|e| panic!("MIR lowering failed: {}", e));
+
+    format!("{}", module.test_manifest)
+}
