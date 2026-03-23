@@ -37,7 +37,7 @@ pub(crate) enum LocalInfo {
         elem: MirElementary,
     },
     /// Memory-resident variable at a fixed address.
-    Memory { address: u32, size: u32, align: u32 },
+    Memory { address: u32, size: u32, align: u32, elem: Option<MirElementary> },
     /// Pointer (VAR_IN_OUT) — i32 local holding an address.
     Pointer { index: u32, pointee_elem: Option<MirElementary> },
 }
@@ -277,10 +277,10 @@ fn build_signature(params: &[MirParam], return_type: &Option<MirType>) -> (Vec<V
     let mut wasm_params = Vec::new();
     for param in params {
         match param.kind {
-            MirParamKind::This | MirParamKind::InOut => {
+            MirParamKind::This | MirParamKind::InOut | MirParamKind::Output => {
                 wasm_params.push(ValType::I32); // pointer
             }
-            MirParamKind::Input | MirParamKind::Output => {
+            MirParamKind::Input => {
                 match &param.ty {
                     MirType::String(_) => {
                         wasm_params.push(ValType::I32); // ptr
@@ -318,8 +318,8 @@ pub(crate) fn build_local_map(func: &MirFunction) -> FxHashMap<hir::hir_def::int
                 map.insert(param.name, LocalInfo::Pointer { index: param_idx, pointee_elem: None });
                 param_idx += 1;
             }
-            MirParamKind::InOut => {
-                // For InOut, the pointee is the actual type (unwrap Pointer wrapper)
+            MirParamKind::InOut | MirParamKind::Output => {
+                // For InOut/Output, the pointee is the actual type (unwrap Pointer wrapper)
                 let pointee_elem = match &param.ty {
                     MirType::Pointer(inner) => match inner.as_ref() {
                         MirType::Elementary(e) => Some(*e),
@@ -331,7 +331,7 @@ pub(crate) fn build_local_map(func: &MirFunction) -> FxHashMap<hir::hir_def::int
                 map.insert(param.name, LocalInfo::Pointer { index: param_idx, pointee_elem });
                 param_idx += 1;
             }
-            MirParamKind::Input | MirParamKind::Output => {
+            MirParamKind::Input => {
                 match &param.ty {
                     MirType::String(_) => {
                         // String params take 2 WASM params (ptr, len) — store as memory
@@ -373,7 +373,11 @@ pub(crate) fn build_local_map(func: &MirFunction) -> FxHashMap<hir::hir_def::int
                 });
             }
             MirStorage::Memory { address, size, align } => {
-                map.insert(local.name, LocalInfo::Memory { address, size, align });
+                let elem = match &local.ty {
+                    MirType::Elementary(e) => Some(*e),
+                    _ => None,
+                };
+                map.insert(local.name, LocalInfo::Memory { address, size, align, elem });
             }
         }
     }

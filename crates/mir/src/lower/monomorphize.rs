@@ -26,7 +26,7 @@ use rustc_hash::{FxHashMap, FxHashSet};
 
 use crate::{
     MirModule,
-    expr::{MirCall, MirConstant, MirExpr},
+    expr::{MirArgKind, MirCall, MirConstant, MirExpr},
     function::{
         MirExternFunction, MirFunction, MirLinkage, MirLocal, MirLocalKind, MirParam,
         MirParamKind, MirStorage,
@@ -218,13 +218,24 @@ pub fn monomorphize<'db>(
 
                 let mut params = Vec::new();
                 for var in info.func.variables(db) {
-                    if matches!(var.kind(db), VariableKind::Input) {
-                        let ty = resolve_any_type(db, var.spec(db).infer(db), *concrete_spec)?;
-                        params.push(MirParam {
-                            name: var.name(db),
-                            ty,
-                            kind: MirParamKind::Input,
-                        });
+                    match var.kind(db) {
+                        VariableKind::Input => {
+                            let ty = resolve_any_type(db, var.spec(db).infer(db), *concrete_spec)?;
+                            params.push(MirParam {
+                                name: var.name(db),
+                                ty,
+                                kind: MirParamKind::Input,
+                            });
+                        }
+                        VariableKind::Output => {
+                            let ty = resolve_any_type(db, var.spec(db).infer(db), *concrete_spec)?;
+                            params.push(MirParam {
+                                name: var.name(db),
+                                ty: MirType::Pointer(Box::new(ty)),
+                                kind: MirParamKind::Output,
+                            });
+                        }
+                        _ => {}
                     }
                 }
 
@@ -290,12 +301,17 @@ pub fn monomorphize<'db>(
                                 kind: MirParamKind::Input,
                             });
                         }
-                        VariableKind::InOut => {
+                        VariableKind::InOut | VariableKind::Output => {
                             let ty = resolve_any_type(db, var.spec(db).infer(db), *concrete_spec)?;
+                            let kind = if var.kind(db) == VariableKind::InOut {
+                                MirParamKind::InOut
+                            } else {
+                                MirParamKind::Output
+                            };
                             params.push(MirParam {
                                 name: var.name(db),
                                 ty: MirType::Pointer(Box::new(ty)),
-                                kind: MirParamKind::InOut,
+                                kind,
                             });
                         }
                         _ => {}
@@ -387,15 +403,20 @@ fn lower_monomorphized_local<'db>(
                 });
                 next_local_idx += 1;
             }
-            VariableKind::InOut => {
+            VariableKind::InOut | VariableKind::Output => {
+                let kind = if var.kind(db) == VariableKind::InOut {
+                    MirParamKind::InOut
+                } else {
+                    MirParamKind::Output
+                };
                 params.push(MirParam {
                     name: var.name(db),
                     ty: MirType::Pointer(Box::new(ty)),
-                    kind: MirParamKind::InOut,
+                    kind,
                 });
                 next_local_idx += 1;
             }
-            _ => {
+            VariableKind::Var | VariableKind::Temp => {
                 let storage = if ty.is_scalar() {
                     let idx = next_local_idx;
                     next_local_idx += 1;
@@ -420,6 +441,7 @@ fn lower_monomorphized_local<'db>(
                     storage,
                 });
             }
+            other => unreachable!("unexpected variable kind {:?} in monomorphized function", other),
         }
     }
 
@@ -590,12 +612,21 @@ fn discover_calls_in_call(
     }
 
     // Determine concrete type from the call's return type (resolved by HIR at call site)
-    // or fall back to first non-BOOL argument
+    // or fall back to first argument. Prefer non-BOOL (for SEL's G param), but
+    // fall back to BOOL if all by-value args are BOOL.
     let concrete = match &call.return_type {
         MirType::Elementary(e) => Some(*e),
-        _ => call.args.iter()
-            .find_map(|a| infer_concrete_type_from_expr(&a.value))
-            .filter(|e| !matches!(e, MirElementary::Bool)), // skip BOOL args (e.g. SEL's G param)
+        _ => {
+            let non_bool = call.args.iter()
+                .filter(|a| a.kind == MirArgKind::ByValue)
+                .find_map(|a| infer_concrete_type_from_expr(&a.value))
+                .filter(|e| !matches!(e, MirElementary::Bool));
+            non_bool.or_else(|| {
+                call.args.iter()
+                    .filter(|a| a.kind == MirArgKind::ByValue)
+                    .find_map(|a| infer_concrete_type_from_expr(&a.value))
+            })
+        }
     };
 
     if let Some(concrete) = concrete {
@@ -773,12 +804,22 @@ fn rewrite_call(
         return;
     }
 
-    // Determine concrete type from return type or first non-BOOL argument
+    // Determine concrete type from return type or first argument.
+    // Prefer non-BOOL args (for functions like SEL where G:BOOL is not the generic type),
+    // but fall back to BOOL if all args are BOOL.
     let concrete = match &call.return_type {
         MirType::Elementary(e) => Some(*e),
-        _ => call.args.iter()
-            .find_map(|a| infer_concrete_type_from_expr(&a.value))
-            .filter(|e| !matches!(e, MirElementary::Bool)),
+        _ => {
+            let non_bool = call.args.iter()
+                .filter(|a| a.kind == MirArgKind::ByValue)
+                .find_map(|a| infer_concrete_type_from_expr(&a.value))
+                .filter(|e| !matches!(e, MirElementary::Bool));
+            non_bool.or_else(|| {
+                call.args.iter()
+                    .filter(|a| a.kind == MirArgKind::ByValue)
+                    .find_map(|a| infer_concrete_type_from_expr(&a.value))
+            })
+        }
     };
 
     if let Some(concrete_elem) = concrete {

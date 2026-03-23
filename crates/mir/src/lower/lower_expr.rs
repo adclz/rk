@@ -14,7 +14,7 @@ use hir::{
 };
 
 use crate::{
-    expr::{MirArgKind, MirBinOp, MirCall, MirCallArg, MirConstant, MirExpr, MirPlace, MirUnaryOp},
+    expr::{MirArgKind, MirBinOp, MirCall, MirCallArg, MirConstant, MirExpr, MirOutputBinding, MirPlace, MirUnaryOp},
     lower::lower_type::{LowerTypeError, elementary_spec_to_mir, lower_type},
     stmt::MirCasePattern,
     types::{MirElementary, MirType},
@@ -681,6 +681,7 @@ impl<'db> ExprLowerCtx<'db> {
             })?;
 
         let mut args = Vec::new();
+        let mut output_bindings = Vec::new();
         for param in func_call.params(self.db) {
             match param.kind(self.db) {
                 ParamAssignKind::NonFormal { value } => {
@@ -720,6 +721,7 @@ impl<'db> ExprLowerCtx<'db> {
             callee_index: 0, // resolved during module lowering
             args,
             return_type: mir_return_type,
+            output_bindings,
         }))
     }
 

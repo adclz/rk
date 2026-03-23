@@ -97,11 +97,15 @@ fn emit_load(
                     }
                     LocalInfo::Memory {
                         address,
-                        size,
-                        align,
+                        elem,
+                        ..
                     } => {
                         func.instruction(&Instruction::I32Const(*address as i32));
-                        emit_mem_load(func, *size, *align);
+                        if let Some(e) = elem {
+                            emit_typed_mem_load(func, &MirType::Elementary(*e));
+                        } else {
+                            func.instruction(&Instruction::I32Load(mem_arg(0, 2)));
+                        }
                     }
                     LocalInfo::Pointer {
                         index,

@@ -48,7 +48,8 @@ pub fn lower_function<'db>(
     // Collect address-taken variables for storage decisions
     let address_taken = collect_address_taken_vars(db, func.statements(db));
 
-    // 1. Build parameters (Input, InOut)
+    // 1. Build parameters (Input, InOut, Output)
+    // VAR_OUTPUT is passed as a pointer at the WASM level — the function writes through it.
     for var in func.variables(db) {
         match var.kind(db) {
             VariableKind::Input => {
@@ -60,12 +61,17 @@ pub fn lower_function<'db>(
                 });
                 next_local_idx += 1;
             }
-            VariableKind::InOut => {
+            VariableKind::InOut | VariableKind::Output => {
                 let ty = lower_var_type(db, *var)?;
+                let kind = if var.kind(db) == VariableKind::InOut {
+                    MirParamKind::InOut
+                } else {
+                    MirParamKind::Output
+                };
                 params.push(MirParam {
                     name: var.name(db),
                     ty: MirType::Pointer(Box::new(ty)),
-                    kind: MirParamKind::InOut,
+                    kind,
                 });
                 next_local_idx += 1;
             }
@@ -94,10 +100,10 @@ pub fn lower_function<'db>(
         next_local_idx += 1;
     }
 
-    // 3. Local variables (Var, Temp, Output)
+    // 3. Local variables (Var, Temp — Output is a parameter now)
     for var in func.variables(db) {
         match var.kind(db) {
-            VariableKind::Input | VariableKind::InOut => continue,
+            VariableKind::Input | VariableKind::InOut | VariableKind::Output => continue,
             _ => {}
         }
 
@@ -129,7 +135,7 @@ pub fn lower_function<'db>(
     let mut init_stmts = Vec::new();
     for var in func.variables(db) {
         match var.kind(db) {
-            VariableKind::Input | VariableKind::InOut => continue,
+            VariableKind::Input | VariableKind::InOut | VariableKind::Output => continue,
             _ => {}
         }
         if let Some(init_expr) = var.init(db) {
@@ -573,7 +579,14 @@ fn collect_address_taken_vars<'db>(
                         | hir::hir_def::expressions::expression::ParamAssignKind::FormalInput { value, .. } => {
                             walk_expr(db, value, result);
                         }
-                        _ => {}
+                        hir::hir_def::expressions::expression::ParamAssignKind::FormalOutput { variable, .. } => {
+                            // OUT => x takes the address of x
+                            if let hir::hir_def::expressions::expression::VariableAccessKind::Symbolic(begin_path) = &variable.kind(db) {
+                                if let Some(path_expr) = begin_path.expr(db) {
+                                    result.insert(path_expr.ident(db).ident);
+                                }
+                            }
+                        }
                     }
                 }
             }
@@ -669,7 +682,13 @@ fn collect_address_taken_vars<'db>(
                         | hir::hir_def::expressions::expression::ParamAssignKind::FormalInput { value, .. } => {
                             walk_expr(db, value, result);
                         }
-                        _ => {}
+                        hir::hir_def::expressions::expression::ParamAssignKind::FormalOutput { variable, .. } => {
+                            if let hir::hir_def::expressions::expression::VariableAccessKind::Symbolic(begin_path) = &variable.kind(db) {
+                                if let Some(path_expr) = begin_path.expr(db) {
+                                    result.insert(path_expr.ident(db).ident);
+                                }
+                            }
+                        }
                     }
                 }
             }

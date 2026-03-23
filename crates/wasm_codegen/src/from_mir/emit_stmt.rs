@@ -330,10 +330,14 @@ fn emit_assignment(
                         emit_expr(func, value, ctx.locals, ctx.fn_indices);
                         func.instruction(&Instruction::LocalSet(*index));
                     }
-                    LocalInfo::Memory { address, size, align } => {
+                    LocalInfo::Memory { address, elem, .. } => {
                         func.instruction(&Instruction::I32Const(*address as i32));
                         emit_expr(func, value, ctx.locals, ctx.fn_indices);
-                        emit_mem_store(func, *size, *align);
+                        if let Some(e) = elem {
+                            emit_typed_mem_store(func, &mir::types::MirType::Elementary(*e));
+                        } else {
+                            emit_mem_store(func, 4, 4);
+                        }
                     }
                     LocalInfo::Pointer { index, pointee_elem } => {
                         func.instruction(&Instruction::LocalGet(*index));

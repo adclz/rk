@@ -63,6 +63,19 @@ pub struct MirCall {
     pub args: Vec<MirCallArg>,
     /// Return type.
     pub return_type: MirType,
+    /// After the call, copy each callee `VAR_OUTPUT` to the caller's place.
+    pub output_bindings: Vec<MirOutputBinding>,
+}
+
+/// A post-call copy from a callee's VAR_OUTPUT memory slot to a caller's variable.
+#[derive(Debug, Clone)]
+pub struct MirOutputBinding {
+    /// Name of the output variable in the callee (for debug/lookup).
+    pub output_name: Ident,
+    /// The caller's target place to write to.
+    pub target: MirPlace,
+    /// Type of the output value.
+    pub ty: MirType,
 }
 
 #[derive(Debug, Clone)]
