@@ -224,6 +224,30 @@ impl<'db> Type<'db> {
         result
     }
 
+    /// Returns the fully qualified dotted path for this type (e.g., `Std.Math.Test.test_abs`).
+    /// Includes the enclosing namespace path and the type's own name.
+    pub fn qualified_path(&self, db: &'db dyn WorkspaceDataBase) -> String {
+        let (scope_id, name) = match self {
+            Self::Program(p) => (p.get_scope_id(db), p.get_name_ident(db).text(db).to_string()),
+            Self::Function(f) => (f.get_scope_id(db), f.get_name_ident(db).text(db).to_string()),
+            Self::FunctionBlock(fb) => (fb.get_scope_id(db), fb.get_name_ident(db).text(db).to_string()),
+            Self::MethodDecl(m) => (m.get_scope_id(db), m.get_name_ident(db).text(db).to_string()),
+            Self::Class(c) => (c.get_scope_id(db), c.get_name_ident(db).text(db).to_string()),
+            Self::Interface(i) => (i.get_scope_id(db), i.get_name_ident(db).text(db).to_string()),
+            Self::DataType(dt) => (dt.get_scope_id(db), dt.get_name_ident(db).text(db).to_string()),
+            _ => return Default::default(),
+        };
+
+        let sema = semantic_index(db, scope_id.file(db));
+        for scope in sema.scope_iterator(db, scope_id) {
+            if let ScopeKind::Namespace(ns) = scope.kind {
+                return format!("{}.{}", ns.path(db).to_string_dotted(db), name);
+            }
+        }
+
+        name
+    }
+
     pub fn full_type_name(&self, db: &'db dyn WorkspaceDataBase) -> String {
         match self {
             Self::Struct(ztruct) => {
