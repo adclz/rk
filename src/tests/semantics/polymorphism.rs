@@ -126,7 +126,7 @@ END_PROGRAM
         |                       |
         |                       `--- consider explicitly casting with 'BOOL_TO_INT(TRUE)'
         |
-        | Help: insert explicit cast 'INT_TO_BOOL(TRUE)'
+        | Help: insert explicit cast 'BOOL_TO_INT(TRUE)'
     ----'
     ");
 }

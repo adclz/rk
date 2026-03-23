@@ -553,8 +553,8 @@ fn explicit_cast_suggestion(
         diag.with_fix(CodeAction {
             title: format!(
                 "insert explicit cast '{}_TO_{}({})'",
-                lhs.type_name(),
                 rhs.type_name(),
+                lhs.type_name(),
                 actual_site.to_string(db)
             ),
             edit: Some(WorkspaceEdit::new(HashMap::new())),

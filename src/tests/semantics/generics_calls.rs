@@ -205,7 +205,7 @@ END_FUNCTION"#;
        |                 |
        |                 `------ consider explicitly casting with 'BOOL_TO_INT(fn1(TRUE))'
        |
-       | Help: insert explicit cast 'INT_TO_BOOL(fn1(TRUE))'
+       | Help: insert explicit cast 'BOOL_TO_INT(fn1(TRUE))'
     ---'
     ");
 }
@@ -489,7 +489,7 @@ END_FUNCTION
         |                                 |
         |                                 `--------------- consider explicitly casting with 'INT_TO_DWORD((ROR(in ,8) AND 16#FF00FF00))'
         |
-        | Help: insert explicit cast 'DWORD_TO_INT((ROR(in ,8) AND 16#FF00FF00))'
+        | Help: insert explicit cast 'INT_TO_DWORD((ROR(in ,8) AND 16#FF00FF00))'
     ----'
     "#);
 }
