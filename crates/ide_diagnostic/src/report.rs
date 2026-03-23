@@ -28,8 +28,12 @@ impl IdeDiagnostic {
 
         let source = Source::from(content);
         let range = self.diagnostic.range;
-        let start_line = source.line(range.start.line as usize).unwrap().offset();
-        let end_line = source.line(range.end.line as usize).unwrap().offset();
+        let start_line = source.line(range.start.line as usize)
+            .map(|l| l.offset())
+            .unwrap_or(0);
+        let end_line = source.line(range.end.line as usize)
+            .map(|l| l.offset())
+            .unwrap_or(content.len().saturating_sub(1));
         let start = start_line + range.start.character as usize;
         let end = end_line + range.end.character as usize;
 
