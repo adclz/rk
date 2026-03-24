@@ -40,6 +40,10 @@ pub(crate) enum LocalInfo {
     Memory { address: u32, size: u32, align: u32, elem: Option<MirElementary> },
     /// Pointer (VAR_IN_OUT) — i32 local holding an address.
     Pointer { index: u32, pointee_elem: Option<MirElementary> },
+    /// String parameter — two consecutive i32 locals (ptr, len).
+    StringParam { ptr_index: u32, len_index: u32 },
+    /// String in memory — two i32s at address (ptr at addr, len at addr+4).
+    StringMemory { address: u32 },
 }
 
 struct WasmGen<'a> {
@@ -334,8 +338,11 @@ pub(crate) fn build_local_map(func: &MirFunction) -> FxHashMap<hir::hir_def::int
             MirParamKind::Input => {
                 match &param.ty {
                     MirType::String(_) => {
-                        // String params take 2 WASM params (ptr, len) — store as memory
-                        // TODO: handle string param storage
+                        // String params take 2 WASM params (ptr, len)
+                        map.insert(param.name, LocalInfo::StringParam {
+                            ptr_index: param_idx,
+                            len_index: param_idx + 1,
+                        });
                         param_idx += 2;
                     }
                     ty => {
@@ -373,11 +380,18 @@ pub(crate) fn build_local_map(func: &MirFunction) -> FxHashMap<hir::hir_def::int
                 });
             }
             MirStorage::Memory { address, size, align } => {
-                let elem = match &local.ty {
-                    MirType::Elementary(e) => Some(*e),
-                    _ => None,
-                };
-                map.insert(local.name, LocalInfo::Memory { address, size, align, elem });
+                match &local.ty {
+                    MirType::String(_) => {
+                        map.insert(local.name, LocalInfo::StringMemory { address });
+                    }
+                    ty => {
+                        let elem = match ty {
+                            MirType::Elementary(e) => Some(*e),
+                            _ => None,
+                        };
+                        map.insert(local.name, LocalInfo::Memory { address, size, align, elem });
+                    }
+                }
             }
         }
     }

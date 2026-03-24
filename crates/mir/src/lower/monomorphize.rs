@@ -164,6 +164,7 @@ pub fn monomorphize<'db>(
     module: &mut MirModule,
     any_functions: &[AnyFunctionInfo<'db>],
     memory_layout: &mut MirMemoryLayout,
+    string_pool: std::rc::Rc<std::cell::RefCell<super::lower_expr::StringPool>>,
 ) -> Result<(), LowerTypeError> {
     // Collect which ANY_* functions exist by name
     let any_func_names: FxHashSet<Ident> = any_functions
@@ -357,6 +358,7 @@ pub fn monomorphize<'db>(
                     *concrete_spec,
                     next_fn_idx,
                     &mut module.memory_layout,
+                    string_pool.clone(),
                 )?;
                 module.functions.push(mono_func);
             }
@@ -383,6 +385,7 @@ fn lower_monomorphized_local<'db>(
     concrete_spec: ElementarySpec,
     index: u32,
     memory_layout: &mut MirMemoryLayout,
+    string_pool: std::rc::Rc<std::cell::RefCell<super::lower_expr::StringPool>>,
 ) -> Result<MirFunction, LowerTypeError> {
     use hir::hir_def::pous::variable::VariableKind;
 
@@ -462,7 +465,7 @@ fn lower_monomorphized_local<'db>(
     }
 
     // Lower body statements with ANY type override
-    let body = crate::lower::lower_stmt::lower_stmts_with_ctx(db, func.statements(db), Some(concrete_spec))?;
+    let body = crate::lower::lower_stmt::lower_stmts_with_ctx(db, func.statements(db), Some(concrete_spec), string_pool)?;
 
     Ok(MirFunction {
         name: mono_name,

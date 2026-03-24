@@ -36,15 +36,37 @@ fn discover_tests(module: &Module) -> Vec<String> {
 }
 
 /// Build a linker with all host imports pre-registered.
-/// Every function is a direct `func_wrap` with concrete types — zero runtime dispatch.
+/// Every function is a direct `func_wrap` with concrete types - zero runtime dispatch.
 fn build_linker(engine: &Engine, _module: &Module) -> WasmResult<Linker<HostState>> {
     let mut linker = Linker::new(engine);
     linker.allow_shadowing(true);
 
-    // Assert
-    linker.func_wrap("assert", "fail", || -> WasmResult<()> {
-        Err(wasmtime::Error::msg("assertion failed"))
-    })?;
+    // Assert - takes (ptr: i32, len: i32) for the message string
+    linker.func_wrap(
+        "assert",
+        "fail",
+        |mut caller: Caller<'_, HostState>, ptr: i32, len: i32| -> WasmResult<()> {
+            let msg = if len > 0 {
+                caller
+                    .get_export("memory")
+                    .and_then(|e| e.into_memory())
+                    .map(|mem| {
+                        let data = mem.data(&caller);
+                        let start = ptr as usize;
+                        let end = (start + len as usize).min(data.len());
+                        String::from_utf8_lossy(&data[start..end]).to_string()
+                    })
+                    .unwrap_or_default()
+            } else {
+                String::new()
+            };
+            if msg.is_empty() {
+                Err(wasmtime::Error::msg("assertion failed"))
+            } else {
+                Err(wasmtime::Error::msg(format!("assertion failed: {}", msg)))
+            }
+        },
+    )?;
 
     // WASI clocks
     let epoch = Instant::now();
@@ -52,7 +74,7 @@ fn build_linker(engine: &Engine, _module: &Module) -> WasmResult<Linker<HostStat
         epoch.elapsed().as_nanos() as i64
     })?;
 
-    // Math — all monomorphized variants, O(1) direct calls
+    // Math - all monomorphized variants, O(1) direct calls
     register_all_math(&mut linker)?;
 
     Ok(linker)
@@ -64,7 +86,7 @@ fn build_linker(engine: &Engine, _module: &Module) -> WasmResult<Linker<HostStat
 /// function type to determine parameter types. All math operations dispatch to
 /// Rust's built-in methods on f32/f64/i32/i64.
 /// Register ALL math host functions upfront with concrete typed `func_wrap`.
-/// Each variant is a direct function pointer — zero runtime dispatch overhead.
+/// Each variant is a direct function pointer - zero runtime dispatch overhead.
 fn register_all_math(linker: &mut Linker<HostState>) -> WasmResult<()> {
     macro_rules! math1_i32 {
         ($name:literal, $op:expr) => {
@@ -97,17 +119,17 @@ fn register_all_math(linker: &mut Linker<HostState>) -> WasmResult<()> {
         };
     }
 
-    // ABS — signed integers
+    // ABS - signed integers
     math1_i32!("abs.SINT", i32::abs);
     math1_i32!("abs.INT", i32::abs);
     math1_i32!("abs.DINT", i32::abs);
     math1_i64!("abs.LINT", i64::abs);
-    // ABS — unsigned (identity)
+    // ABS - unsigned (identity)
     linker.func_wrap("math", "abs.USINT", |v: i32| -> i32 { v })?;
     linker.func_wrap("math", "abs.UINT", |v: i32| -> i32 { v })?;
     linker.func_wrap("math", "abs.UDINT", |v: i32| -> i32 { v })?;
     linker.func_wrap("math", "abs.ULINT", |v: i64| -> i64 { v })?;
-    // ABS — float
+    // ABS - float
     math1_f32!("abs.REAL", abs);
     math1_f64!("abs.LREAL", abs);
 
@@ -200,7 +222,7 @@ pub fn run_tests(wasm_bytes: &[u8], filter: Option<&str>) -> usize {
     println!("{}  {} test(s)", "    Running".dim(), total);
 
     for name in &test_names {
-        // Fresh store per test — full memory isolation
+        // Fresh store per test - full memory isolation
         let mut store = Store::new(&engine, HostState);
         let start = Instant::now();
 
@@ -211,13 +233,20 @@ pub fn run_tests(wasm_bytes: &[u8], filter: Option<&str>) -> usize {
                 Ok(func) => match func.call(&mut store, ()) {
                     Ok(()) => TestOutcome::Pass,
                     Err(e) => {
-                        let msg = e.to_string();
-                        if msg.contains("assertion") {
-                            TestOutcome::Fail("assertion failed".into())
-                        } else {
-                            let first_line = msg.lines().next().unwrap_or(&msg);
-                            TestOutcome::Fail(first_line.to_string())
+                        // Walk the error chain to find our assertion message
+                        let mut reason = None;
+                        let mut source: Option<&dyn std::error::Error> = Some(&*e);
+                        while let Some(err) = source {
+                            let msg = err.to_string();
+                            if msg.starts_with("assertion failed") {
+                                reason = Some(msg);
+                                break;
+                            }
+                            source = err.source();
                         }
+                        TestOutcome::Fail(reason.unwrap_or_else(|| {
+                            e.to_string().lines().next().unwrap_or("unknown error").to_string()
+                        }))
                     }
                 },
             },
@@ -276,7 +305,13 @@ pub fn run_tests(wasm_bytes: &[u8], filter: Option<&str>) -> usize {
         println!("     {}:", "Failures".bold().red());
         for f in &failures {
             if let TestOutcome::Fail(reason) = &f.outcome {
-                println!("        {} {} — {}", "FAIL".red(), f.name, reason);
+                // Bold the assertion message part
+                let display = if let Some(msg) = reason.strip_prefix("assertion failed: ") {
+                    format!("assertion failed: {}", msg.bold())
+                } else {
+                    reason.to_string()
+                };
+                println!("        {} {} - {}", "FAIL".red(), f.name, display);
             }
         }
         println!(

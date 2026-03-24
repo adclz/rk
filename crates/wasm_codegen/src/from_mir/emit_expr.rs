@@ -119,6 +119,18 @@ fn emit_load(
                             func.instruction(&Instruction::I32Load(mem_arg(0, 2)));
                         }
                     }
+                    LocalInfo::StringParam { ptr_index, len_index } => {
+                        // Push (ptr, len) pair on the stack
+                        func.instruction(&Instruction::LocalGet(*ptr_index));
+                        func.instruction(&Instruction::LocalGet(*len_index));
+                    }
+                    LocalInfo::StringMemory { address } => {
+                        // Load ptr from addr, len from addr+4
+                        func.instruction(&Instruction::I32Const(*address as i32));
+                        func.instruction(&Instruction::I32Load(mem_arg(0, 2)));
+                        func.instruction(&Instruction::I32Const(*address as i32 + 4));
+                        func.instruction(&Instruction::I32Load(mem_arg(0, 2)));
+                    }
                 }
             } else {
                 // Variable not in local map — push 0 as fallback
@@ -198,6 +210,12 @@ pub(crate) fn emit_addr_of(
                     LocalInfo::Scalar { .. } => {
                         // Address of a scalar — shouldn't happen if MIR is correct
                         // (address-taken scalars are in memory)
+                    }
+                    LocalInfo::StringParam { .. } => {
+                        // String params are on the stack, not addressable
+                    }
+                    LocalInfo::StringMemory { address } => {
+                        func.instruction(&Instruction::I32Const(*address as i32));
                     }
                 }
             } else {
@@ -565,7 +583,7 @@ fn emit_mem_load(func: &mut wasm_encoder::Function, size: u32, align: u32) {
     }
 }
 
-fn mem_arg(offset: u64, align: u32) -> MemArg {
+pub(crate) fn mem_arg(offset: u64, align: u32) -> MemArg {
     MemArg {
         offset,
         align,

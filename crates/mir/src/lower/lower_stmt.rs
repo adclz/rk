@@ -28,8 +28,9 @@ fn needs_cast<'db>(
 pub fn lower_stmts<'db>(
     db: &'db dyn WorkspaceDataBase,
     stmts: &[Stmt<'db>],
+    string_pool: std::rc::Rc<std::cell::RefCell<super::lower_expr::StringPool>>,
 ) -> Result<Vec<MirStmt>, LowerTypeError> {
-    lower_stmts_with_ctx(db, stmts, None)
+    lower_stmts_with_ctx(db, stmts, None, string_pool)
 }
 
 /// Lower a slice of HIR statements with an optional ANY type override for monomorphization.
@@ -37,10 +38,11 @@ pub fn lower_stmts_with_ctx<'db>(
     db: &'db dyn WorkspaceDataBase,
     stmts: &[Stmt<'db>],
     any_override: Option<hir::hir_def::expressions::spec::ElementarySpec>,
+    string_pool: std::rc::Rc<std::cell::RefCell<super::lower_expr::StringPool>>,
 ) -> Result<Vec<MirStmt>, LowerTypeError> {
     let ctx = match any_override {
-        Some(concrete) => ExprLowerCtx::with_any_override(db, concrete),
-        None => ExprLowerCtx::new(db),
+        Some(concrete) => ExprLowerCtx::with_any_override(db, concrete, string_pool),
+        None => ExprLowerCtx::new(db, string_pool),
     };
     let mut result = Vec::new();
     for stmt in stmts {
@@ -56,8 +58,9 @@ pub fn lower_stmts_fb_body<'db>(
     db: &'db dyn WorkspaceDataBase,
     stmts: &[Stmt<'db>],
     this_struct: crate::types::MirStructType,
+    string_pool: std::rc::Rc<std::cell::RefCell<super::lower_expr::StringPool>>,
 ) -> Result<Vec<MirStmt>, LowerTypeError> {
-    let ctx = ExprLowerCtx::with_this_struct(db, this_struct);
+    let ctx = ExprLowerCtx::with_this_struct(db, this_struct, string_pool);
     let mut result = Vec::new();
     for stmt in stmts {
         if let Some(mir_stmt) = lower_stmt(&ctx, *stmt)? {

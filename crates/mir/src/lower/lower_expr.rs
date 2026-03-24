@@ -13,6 +13,9 @@ use hir::{
     hir_ty::{infer::Infer, ty::Type},
 };
 
+use std::rc::Rc;
+use std::cell::RefCell;
+
 use crate::{
     expr::{MirArgKind, MirBinOp, MirCall, MirCallArg, MirConstant, MirExpr, MirOutputBinding, MirPlace, MirUnaryOp},
     lower::lower_type::{LowerTypeError, elementary_spec_to_mir, lower_type},
@@ -29,19 +32,63 @@ pub struct ExprLowerCtx<'db> {
     /// The `this` struct when lowering an FB body: member accesses become
     /// `ThisField`.
     pub this_struct: Option<crate::types::MirStructType>,
+    /// String literal pool — shared across all functions in the module.
+    pub string_pool: std::rc::Rc<std::cell::RefCell<StringPool>>,
+}
+
+/// String literal pool: unique strings and their offsets in the data section.
+#[derive(Debug, Default)]
+pub struct StringPool {
+    /// Deduplicated string entries: (offset_in_data_section, bytes).
+    pub entries: Vec<(u32, Vec<u8>)>,
+    /// Current offset in the data section (grows as strings are added).
+    next_offset: u32,
+    /// Base offset — string data starts AFTER all static memory (globals, FB instances).
+    pub base_offset: u32,
+}
+
+impl StringPool {
+    pub fn new(base_offset: u32) -> Self {
+        Self { entries: Vec::new(), next_offset: base_offset, base_offset }
+    }
+
+    /// Intern a string literal. Returns (id, offset, len).
+    /// Deduplicates identical strings.
+    pub fn intern(&mut self, text: &str) -> (u32, u32, u32) {
+        let bytes = text.as_bytes();
+        // Check for existing identical string
+        for (i, (offset, existing)) in self.entries.iter().enumerate() {
+            if existing == bytes {
+                return (i as u32, *offset, bytes.len() as u32);
+            }
+        }
+        let id = self.entries.len() as u32;
+        let offset = self.next_offset;
+        let len = bytes.len() as u32;
+        self.entries.push((offset, bytes.to_vec()));
+        self.next_offset += len;
+        // Align to 4 bytes
+        self.next_offset = (self.next_offset + 3) & !3;
+        (id, offset, len)
+    }
+
+    /// Consume the pool and return the data entries for the WASM data section.
+    pub fn into_data(self) -> Vec<(u32, Vec<u8>)> {
+        self.entries
+    }
 }
 
 impl<'db> ExprLowerCtx<'db> {
-    pub fn new(db: &'db dyn WorkspaceDataBase) -> Self {
-        Self { db, any_override: None, this_struct: None }
+    pub fn new(db: &'db dyn WorkspaceDataBase, string_pool: Rc<RefCell<StringPool>>) -> Self {
+        Self { db, any_override: None, this_struct: None, string_pool }
     }
 
-    pub fn with_any_override(db: &'db dyn WorkspaceDataBase, concrete: ElementarySpec) -> Self {
-        Self { db, any_override: Some(concrete), this_struct: None }
+    pub fn with_any_override(db: &'db dyn WorkspaceDataBase, concrete: ElementarySpec, string_pool: Rc<RefCell<StringPool>>) -> Self {
+        Self { db, any_override: Some(concrete), this_struct: None, string_pool }
     }
 
-    pub fn with_this_struct(db: &'db dyn WorkspaceDataBase, struct_type: crate::types::MirStructType) -> Self {
-        Self { db, any_override: None, this_struct: Some(struct_type) }
+    pub fn with_this_struct(db: &'db dyn WorkspaceDataBase, struct_type: crate::types::MirStructType, string_pool: Rc<RefCell<StringPool>>) -> Self {
+        Self { db, any_override: None, this_struct: Some(struct_type), string_pool }
     }
 
     /// Lower a HIR type, substituting ANY types if we're in a monomorphization context.
@@ -363,16 +410,17 @@ impl<'db> ExprLowerCtx<'db> {
                 }
             }
 
-            // String/Char literals — emit as string literal reference
-            // TODO: Proper string literal interning (needs MirModule context)
-            Elementary::String(_)
-            | Elementary::WString(_)
-            | Elementary::Char(_)
-            | Elementary::WChar(_) => Ok(MirExpr::StringLiteral {
-                id: 0,
-                offset: 0,
-                len: 0,
-            }),
+            // String/Char literals — intern in the string pool
+            Elementary::String(ident)
+            | Elementary::WString(ident)
+            | Elementary::Char(ident)
+            | Elementary::WChar(ident) => {
+                let raw = ident.text(self.db).to_string();
+                // Strip surrounding quotes (' or ")
+                let text = raw.trim_matches('\'').trim_matches('"');
+                let (id, offset, len) = self.string_pool.borrow_mut().intern(text);
+                Ok(MirExpr::StringLiteral { id, offset, len })
+            },
 
             // Time literals — stored as nanoseconds (i64)
             Elementary::Time(ident) | Elementary::LTime(ident) => {

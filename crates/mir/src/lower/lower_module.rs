@@ -61,6 +61,9 @@ fn lower_module_from_pous<'db>(
     let type_indices = FxHashMap::default();
     let mut instance_types = Vec::new();
     let mut memory_layout = MirMemoryLayout::new();
+    let string_pool = std::rc::Rc::new(std::cell::RefCell::new(
+        super::lower_expr::StringPool::new(0), // base offset set later after memory layout is finalized
+    ));
     let mut next_fn_idx: u32 = 0;
 
     // Collect ANY_* functions for deferred monomorphization
@@ -172,7 +175,7 @@ fn lower_module_from_pous<'db>(
                     continue;
                 }
 
-                let mut mir_func = lower_function(db, *func, next_fn_idx, &mut memory_layout)?;
+                let mut mir_func = lower_function(db, *func, next_fn_idx, &mut memory_layout, string_pool.clone())?;
                 mir_func.export_name = make_export_name(ns_prefix, func.name(db).text(db));
                 function_indices.insert(func.name(db), next_fn_idx);
                 next_fn_idx += 1;
@@ -234,7 +237,7 @@ fn lower_module_from_pous<'db>(
 
                 // Lower methods
                 let method_funcs =
-                    lower_function_block(db, *fb, next_fn_idx, &mut memory_layout)?;
+                    lower_function_block(db, *fb, next_fn_idx, &mut memory_layout, string_pool.clone())?;
                 for mf in method_funcs {
                     function_indices.insert(mf.name, mf.index);
                     next_fn_idx += 1;
@@ -274,7 +277,7 @@ fn lower_module_from_pous<'db>(
 
                 // Lower methods
                 let method_funcs =
-                    lower_class(db, *class, next_fn_idx, &mut memory_layout)?;
+                    lower_class(db, *class, next_fn_idx, &mut memory_layout, string_pool.clone())?;
                 for mf in method_funcs {
                     function_indices.insert(mf.name, mf.index);
                     next_fn_idx += 1;
@@ -288,7 +291,7 @@ fn lower_module_from_pous<'db>(
 
     // Phase 3: Process programs
     for (program, ns_prefix) in all_programs.iter() {
-        let mut mir_func = lower_program(db, **program, next_fn_idx, &mut memory_layout)?;
+        let mut mir_func = lower_program(db, **program, next_fn_idx, &mut memory_layout, string_pool.clone())?;
         mir_func.export_name = make_export_name(ns_prefix, program.name(db).text(db));
 
         if program.is_test(db) {
@@ -324,8 +327,13 @@ fn lower_module_from_pous<'db>(
 
     // Phase 4: Monomorphization - discovers call sites, generates concrete copies
     if !any_functions.is_empty() {
-        monomorphize(db, &mut module, &any_functions, &mut MirMemoryLayout::new())?;
+        monomorphize(db, &mut module, &any_functions, &mut MirMemoryLayout::new(), string_pool.clone())?;
     }
+
+    // Phase 5: Extract interned string data into the module
+    module.string_data = std::mem::take(&mut string_pool.borrow_mut().entries)
+        .into_iter()
+        .collect();
 
     Ok(module)
 }

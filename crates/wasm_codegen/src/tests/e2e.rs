@@ -23,13 +23,14 @@ VAR_INPUT a : INT; b : INT; END_VAR
 END_FUNCTION
 
 FUNCTION __ASSERT_FAIL
-    {extern 'assert' 'fail'}
+VAR_INPUT message : STRING; END_VAR
+    {extern 'assert' 'fail' (params message)}
 END_FUNCTION
 
 FUNCTION assert_eq_int
 VAR_INPUT value : INT; target : INT; END_VAR
     IF value <> target THEN
-        __ASSERT_FAIL();
+        __ASSERT_FAIL(message := '');
     END_IF;
 END_FUNCTION
 

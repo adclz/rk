@@ -18,6 +18,9 @@ use hir::{
 };
 use rustc_hash::FxHashSet;
 
+use std::rc::Rc;
+use std::cell::RefCell;
+
 use crate::{
     expr::{MirExpr, MirPlace},
     function::{
@@ -40,6 +43,7 @@ pub fn lower_function<'db>(
     func: Function<'db>,
     index: u32,
     memory_layout: &mut MirMemoryLayout,
+    string_pool: Rc<RefCell<super::lower_expr::StringPool>>,
 ) -> Result<MirFunction, LowerTypeError> {
     let mut params = Vec::new();
     let mut locals = Vec::new();
@@ -146,7 +150,7 @@ pub fn lower_function<'db>(
     }
 
     // 5. Lower body statements
-    let mut body = lower_stmts(db, func.statements(db))?;
+    let mut body = lower_stmts(db, func.statements(db), string_pool.clone())?;
     // Prepend initializers
     if !init_stmts.is_empty() {
         init_stmts.append(&mut body);
@@ -184,6 +188,7 @@ pub fn lower_function_block<'db>(
     fb: FunctionBlock<'db>,
     start_index: u32,
     memory_layout: &mut MirMemoryLayout,
+    string_pool: Rc<RefCell<super::lower_expr::StringPool>>,
 ) -> Result<Vec<MirFunction>, LowerTypeError> {
     let mut functions = Vec::new();
     let mut idx = start_index;
@@ -263,7 +268,7 @@ pub fn lower_function_block<'db>(
             next_local_idx += 1;
         }
 
-        let body = lower_stmts(db, method.stmts(db))?;
+        let body = lower_stmts(db, method.stmts(db), string_pool.clone())?;
 
         // Qualified name: "FBName$MethodName"
         let qualified_name = Ident::new(
@@ -329,7 +334,7 @@ pub fn lower_function_block<'db>(
             MirType::Struct(s) => s.clone(),
             _ => return Err(LowerTypeError::UnsupportedType("FB type is not a struct".into())),
         };
-        let body_stmts = crate::lower::lower_stmt::lower_stmts_fb_body(db, fb.statements(db), this_struct)?;
+        let body_stmts = crate::lower::lower_stmt::lower_stmts_fb_body(db, fb.statements(db), this_struct, string_pool.clone())?;
 
         let body_name = Ident::new(
             db,
@@ -361,6 +366,7 @@ pub fn lower_class<'db>(
     class: Class<'db>,
     start_index: u32,
     memory_layout: &mut MirMemoryLayout,
+    string_pool: Rc<RefCell<super::lower_expr::StringPool>>,
 ) -> Result<Vec<MirFunction>, LowerTypeError> {
     let mut functions = Vec::new();
     let mut idx = start_index;
@@ -439,7 +445,7 @@ pub fn lower_class<'db>(
             next_local_idx += 1;
         }
 
-        let body = lower_stmts(db, method.stmts(db))?;
+        let body = lower_stmts(db, method.stmts(db), string_pool.clone())?;
 
         // Qualified name: "ClassName$MethodName"
         let qualified_name = Ident::new(
@@ -474,6 +480,7 @@ pub fn lower_program<'db>(
     program: ProgramDecl<'db>,
     index: u32,
     memory_layout: &mut MirMemoryLayout,
+    string_pool: Rc<RefCell<super::lower_expr::StringPool>>,
 ) -> Result<MirFunction, LowerTypeError> {
     let mut locals = Vec::new();
     let mut next_local_idx: u32 = 0;
@@ -496,7 +503,7 @@ pub fn lower_program<'db>(
         });
     }
 
-    let body = lower_stmts(db, program.statements(db))?;
+    let body = lower_stmts(db, program.statements(db), string_pool.clone())?;
 
     Ok(MirFunction {
         name: program.name(db),
@@ -709,7 +716,7 @@ fn lower_var_init<'db>(
 ) -> Result<Option<MirStmt>, LowerTypeError> {
     match init_expr.kind(db) {
         InitExprKind::ConstantExpr(expr) => {
-            let ctx = ExprLowerCtx::new(db);
+            let ctx = ExprLowerCtx::new(db, Rc::new(RefCell::new(super::lower_expr::StringPool::default())));
             let value = ctx.lower_expr(expr)?;
             Ok(Some(MirStmt::Assign {
                 target: MirPlace::Local(var_name),

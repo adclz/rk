@@ -3,14 +3,14 @@
 
 use hir::hir_def::interned::identifier::Ident;
 use mir::{
-    expr::{MirConstant, MirExpr},
+    expr::{MirConstant, MirExpr, MirPlace},
     stmt::{MirCasePattern, MirStmt},
     types::MirElementary,
 };
 use rustc_hash::FxHashMap;
 use wasm_encoder::{BlockType, Instruction, MemArg};
 
-use super::{LocalInfo, emit_expr::{emit_addr_of, emit_expr, emit_typed_mem_load}};
+use super::{LocalInfo, emit_expr::{emit_addr_of, emit_expr, emit_typed_mem_load, mem_arg}};
 
 /// Context for statement emission.
 struct Ctx<'a> {
@@ -346,6 +346,77 @@ fn emit_assignment(
                             emit_typed_mem_store(func, &mir::types::MirType::Elementary(*elem));
                         } else {
                             emit_mem_store(func, 4, 4);
+                        }
+                    }
+                    LocalInfo::StringParam { ptr_index, len_index } => {
+                        // Value pushes (ptr, len) pair on stack
+                        emit_expr(func, value, ctx.locals, ctx.fn_indices);
+                        func.instruction(&Instruction::LocalSet(*len_index));
+                        func.instruction(&Instruction::LocalSet(*ptr_index));
+                    }
+                    LocalInfo::StringMemory { address } => {
+                        // For string literals: we know it pushes (ptr, len)
+                        // For string params/locals: also (ptr, len)
+                        // Store ptr at addr, len at addr+4 as two separate stores
+                        match value {
+                            MirExpr::StringLiteral { offset, len, .. } => {
+                                // Store ptr
+                                func.instruction(&Instruction::I32Const(*address as i32));
+                                func.instruction(&Instruction::I32Const(*offset as i32));
+                                func.instruction(&Instruction::I32Store(mem_arg(0, 2)));
+                                // Store len
+                                func.instruction(&Instruction::I32Const(*address as i32 + 4));
+                                func.instruction(&Instruction::I32Const(*len as i32));
+                                func.instruction(&Instruction::I32Store(mem_arg(0, 2)));
+                            }
+                            MirExpr::Load(place, _) => {
+                                // Load the source string (ptr, len) and store to target
+                                if let Some(src_info) = match place {
+                                    MirPlace::Local(id) => ctx.locals.get(id),
+                                    _ => None,
+                                } {
+                                    match src_info {
+                                        LocalInfo::StringParam { ptr_index, len_index } => {
+                                            func.instruction(&Instruction::I32Const(*address as i32));
+                                            func.instruction(&Instruction::LocalGet(*ptr_index));
+                                            func.instruction(&Instruction::I32Store(mem_arg(0, 2)));
+                                            func.instruction(&Instruction::I32Const(*address as i32 + 4));
+                                            func.instruction(&Instruction::LocalGet(*len_index));
+                                            func.instruction(&Instruction::I32Store(mem_arg(0, 2)));
+                                        }
+                                        LocalInfo::StringMemory { address: src_addr } => {
+                                            // Copy ptr
+                                            func.instruction(&Instruction::I32Const(*address as i32));
+                                            func.instruction(&Instruction::I32Const(*src_addr as i32));
+                                            func.instruction(&Instruction::I32Load(mem_arg(0, 2)));
+                                            func.instruction(&Instruction::I32Store(mem_arg(0, 2)));
+                                            // Copy len
+                                            func.instruction(&Instruction::I32Const(*address as i32 + 4));
+                                            func.instruction(&Instruction::I32Const(*src_addr as i32 + 4));
+                                            func.instruction(&Instruction::I32Load(mem_arg(0, 2)));
+                                            func.instruction(&Instruction::I32Store(mem_arg(0, 2)));
+                                        }
+                                        _ => {
+                                            // Fallback: zero out
+                                            func.instruction(&Instruction::I32Const(*address as i32));
+                                            func.instruction(&Instruction::I32Const(0));
+                                            func.instruction(&Instruction::I32Store(mem_arg(0, 2)));
+                                            func.instruction(&Instruction::I32Const(*address as i32 + 4));
+                                            func.instruction(&Instruction::I32Const(0));
+                                            func.instruction(&Instruction::I32Store(mem_arg(0, 2)));
+                                        }
+                                    }
+                                }
+                            }
+                            _ => {
+                                // Default: zero-initialize (empty string)
+                                func.instruction(&Instruction::I32Const(*address as i32));
+                                func.instruction(&Instruction::I32Const(0));
+                                func.instruction(&Instruction::I32Store(mem_arg(0, 2)));
+                                func.instruction(&Instruction::I32Const(*address as i32 + 4));
+                                func.instruction(&Instruction::I32Const(0));
+                                func.instruction(&Instruction::I32Store(mem_arg(0, 2)));
+                            }
                         }
                     }
                 }
