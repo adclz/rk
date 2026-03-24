@@ -132,7 +132,7 @@ impl ErrorCode for SyntaxError {
 }
 
 impl SyntaxError {
-    pub fn from_parse_error(file: File, err: &ParseErrorAccumulator) -> Self {
+    pub fn from_parse_error(db: &dyn WorkspaceDataBase, file: File, err: &ParseErrorAccumulator) -> Self {
         match &err.0 {
             ParseError::LexerError { span, error } => match error {
                 LexerError::Missing {
@@ -149,9 +149,27 @@ impl SyntaxError {
                     range,
                     error,
                     affected,
-                } => SyntaxError::SyntaxError {
-                    span: range.into(),
-                    err: error.to_owned(),
+                } => {
+                    // When auto-lsp can't extract named children from an ERROR node
+                    // (e.g. token-level nodes like unsigned_int), the error text is empty.
+                    // Fall back to reading the source text at the error range.
+                    let err = if affected.is_empty() {
+                        let doc = file.document(db).as_bytes();
+                        let start = range.start_byte;
+                        let end = range.end_byte;
+                        if end <= doc.len() {
+                            let text = String::from_utf8_lossy(&doc[start..end]);
+                            format!("Unexpected token(s): '{}'", text.trim())
+                        } else {
+                            error.to_owned()
+                        }
+                    } else {
+                        error.to_owned()
+                    };
+                    SyntaxError::SyntaxError {
+                        span: range.into(),
+                        err,
+                    }
                 },
             },
             _ => unreachable!("Only lexer errors should be present here"),
