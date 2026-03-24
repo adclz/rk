@@ -690,8 +690,13 @@ impl<'db> ExprLowerCtx<'db> {
         base_type: Type<'db>,
         field_name: hir::hir_def::interned::identifier::Ident,
     ) -> u32 {
-        let base_mir = self.lower_type_resolved( base_type).ok();
-        if let Some(MirType::Struct(ref s)) = base_mir {
+        let base_mir = self.lower_type_resolved(base_type).ok();
+        // If the resolved type is an array, the field access is on the element type
+        let effective_mir = match base_mir {
+            Some(MirType::Array(a)) => Some(*a.element_type),
+            other => other,
+        };
+        if let Some(MirType::Struct(s)) = &effective_mir {
             for field in &s.fields {
                 if field.name == field_name {
                     return field.offset;
@@ -936,9 +941,13 @@ impl<'db> ExprLowerCtx<'db> {
             }
             Type::RefTo(_) | Type::Null => Ok(MirElementary::Int), // pointers are i32
             Type::Void => Ok(MirElementary::Int),
-            // Array/Struct variables used in expression context — shouldn't need elementary type
-            // but FOR loops over arrays might trigger this via the control variable type
-            Type::Array(_) | Type::Struct(_) | Type::StructElement(_) => {
+            // Array indexing: the HIR stores the array type in type_of_path_expr,
+            // but the actual expression type after indexing is the element type.
+            Type::Array(arr) => {
+                let elem_type = arr.of_type(self.db).infer(self.db);
+                self.type_to_mir_elementary(elem_type)
+            }
+            Type::Struct(_) | Type::StructElement(_) => {
                 Ok(MirElementary::Int) // fallback
             }
             // Function/FunctionBlock used as return value — resolve via return type
