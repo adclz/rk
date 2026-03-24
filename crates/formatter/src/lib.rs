@@ -56,11 +56,7 @@ static SURROUND_SPACES: &str = r#"
 [")" "]" ":" ";" "," "." (deref_sign)] @prepend_antispace
 ["NOT" ":"] @append_space
 
-; Remove space between sign and value in signed literals
-(signed_int "-" @append_antispace)
-(signed_int "+" @append_antispace)
-(signed_real_value "-" @append_antispace)
-(signed_real_value "+" @append_antispace)
+; signed_int and signed_real_value: sign is part of the token, no formatting needed
 
 ; INTO spec: no space between INTO and (
 (into_spec "INTO" @append_antispace)

@@ -406,9 +406,17 @@ module.exports = grammar({
 
     unsigned_int: ($) => token(/[0-9][0-9_]*/),
 
-    // The precedence here is necessary to avoid conflicts with the unary minus operator
+    // token() prevents whitespace between sign and digits:
+    // -42 is a signed literal, - 42 is unary minus on 42.
+    // No precedence needed — token boundary disambiguates.
     signed_int: ($) =>
-      prec(RK_PREC.unary + 1, seq(optional(choice("+", "-")), $.unsigned_int)),
+      choice(
+        $._explicit_signed_int,
+        $.unsigned_int,
+      ),
+
+    _explicit_signed_int: (_) =>
+      token(seq(choice("+", "-"), /[0-9][0-9_]*/)),
 
     binary_int: (_) => token(seq("2#", /[?:_01]*/)),
 
@@ -422,10 +430,23 @@ module.exports = grammar({
         field("value", $.signed_real_value),
       ),
 
-    // Signed real value: optional sign + real digits. The sign is part of the value
-    // so that negative literals like -3.7 are preserved in the AST text.
+    // Signed real value: sign + real digits with no whitespace allowed.
+    // -3.7 is a signed literal, - 3.7 is unary minus on 3.7.
+    // No precedence needed — token boundary disambiguates.
     signed_real_value: ($) =>
-      prec(RK_PREC.unary + 1, seq(optional(choice("+", "-")), $.real_value)),
+      choice(
+        $._explicit_signed_real,
+        $.real_value,
+      ),
+
+    _explicit_signed_real: (_) =>
+      token(seq(
+        choice("+", "-"),
+        choice(
+          /[0-9][0-9_]*\.[0-9][0-9_]*([eE][-+]?[0-9][0-9_]*)?/,
+          /[0-9][0-9_]*[eE][-+]?[0-9][0-9_]*/,
+        ),
+      )),
 
     real_value: ($) =>
       token(

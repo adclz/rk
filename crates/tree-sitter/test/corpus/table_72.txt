@@ -863,8 +863,7 @@ END_FUNCTION
             (constant
               (numeric_literal
                 (int_literal
-                  (signed_int
-                    (unsigned_int)))))))
+                  (signed_int))))))
         (repeat_stmt
           (stmt_list
             (assign

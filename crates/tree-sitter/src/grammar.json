@@ -952,8 +952,20 @@
       }
     },
     "signed_int": {
-      "type": "PREC",
-      "value": 9,
+      "type": "CHOICE",
+      "members": [
+        {
+          "type": "SYMBOL",
+          "name": "_explicit_signed_int"
+        },
+        {
+          "type": "SYMBOL",
+          "name": "unsigned_int"
+        }
+      ]
+    },
+    "_explicit_signed_int": {
+      "type": "TOKEN",
       "content": {
         "type": "SEQ",
         "members": [
@@ -961,26 +973,18 @@
             "type": "CHOICE",
             "members": [
               {
-                "type": "CHOICE",
-                "members": [
-                  {
-                    "type": "STRING",
-                    "value": "+"
-                  },
-                  {
-                    "type": "STRING",
-                    "value": "-"
-                  }
-                ]
+                "type": "STRING",
+                "value": "+"
               },
               {
-                "type": "BLANK"
+                "type": "STRING",
+                "value": "-"
               }
             ]
           },
           {
-            "type": "SYMBOL",
-            "name": "unsigned_int"
+            "type": "PATTERN",
+            "value": "[0-9][0-9_]*"
           }
         ]
       }
@@ -1072,8 +1076,20 @@
       ]
     },
     "signed_real_value": {
-      "type": "PREC",
-      "value": 9,
+      "type": "CHOICE",
+      "members": [
+        {
+          "type": "SYMBOL",
+          "name": "_explicit_signed_real"
+        },
+        {
+          "type": "SYMBOL",
+          "name": "real_value"
+        }
+      ]
+    },
+    "_explicit_signed_real": {
+      "type": "TOKEN",
       "content": {
         "type": "SEQ",
         "members": [
@@ -1081,26 +1097,27 @@
             "type": "CHOICE",
             "members": [
               {
-                "type": "CHOICE",
-                "members": [
-                  {
-                    "type": "STRING",
-                    "value": "+"
-                  },
-                  {
-                    "type": "STRING",
-                    "value": "-"
-                  }
-                ]
+                "type": "STRING",
+                "value": "+"
               },
               {
-                "type": "BLANK"
+                "type": "STRING",
+                "value": "-"
               }
             ]
           },
           {
-            "type": "SYMBOL",
-            "name": "real_value"
+            "type": "CHOICE",
+            "members": [
+              {
+                "type": "PATTERN",
+                "value": "[0-9][0-9_]*\\.[0-9][0-9_]*([eE][-+]?[0-9][0-9_]*)?"
+              },
+              {
+                "type": "PATTERN",
+                "value": "[0-9][0-9_]*[eE][-+]?[0-9][0-9_]*"
+              }
+            ]
           }
         ]
       }

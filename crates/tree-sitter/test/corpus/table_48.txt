@@ -92,8 +92,7 @@ END_CLASS
               (constant
                 (numeric_literal
                   (int_literal
-                    (signed_int
-                      (unsigned_int)))))))))
+                    (signed_int))))))))
       (var_decl_init_list
         (variable_list
           (identifier))
@@ -108,8 +107,7 @@ END_CLASS
               (constant
                 (numeric_literal
                   (int_literal
-                    (signed_int
-                      (unsigned_int))))))))))
+                    (signed_int)))))))))
     (method_decl
       (identifier)
       (pascal_style_comment
