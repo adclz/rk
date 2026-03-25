@@ -2,6 +2,7 @@
 //!
 //! Uses the MIR pipeline: HIR → MIR → WASM (via `from_mir`).
 
+pub mod component;
 pub mod debug;
 pub mod from_mir;
 
