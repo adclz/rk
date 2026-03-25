@@ -37,6 +37,9 @@ pub struct SettingsConfig {
     pub stdlib_path: Option<String>,
     pub disable_stdlib: Option<bool>,
     pub output: Option<OutputConfig>,
+    /// WASM optimization level: 0-4, "s" (size), "z" (aggressive size).
+    /// Requires wasm-opt. Default: no optimization.
+    pub opt_level: Option<String>,
 }
 
 #[derive(Default, Clone, Debug, PartialEq, Eq, Hash, Deserialize)]
