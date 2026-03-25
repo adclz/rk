@@ -168,3 +168,55 @@ fn test_execute_implicit_cast_in_arithmetic(mut with_db: db::RootDatabase) {
     let result = func.call(&mut store, 4).expect("Failed to call function");
     assert_eq!(result, 10.0, "2.5 * 4 should equal 10.0");
 }
+
+#[rstest]
+fn test_default_int_param(mut with_db: db::RootDatabase) {
+    let source = r#"
+        FUNCTION add_default : INT
+        VAR_INPUT
+            a: INT;
+            b: INT := 10;
+        END_VAR
+            add_default := a + b;
+        END_FUNCTION
+
+        FUNCTION test_default : INT
+            test_default := add_default(a := 5);
+        END_FUNCTION
+    "#;
+
+    let wasm_bytes = compile_to_wasm(&mut with_db, source);
+    let engine = wasmtime::Engine::default();
+    let module = wasmtime::Module::new(&engine, &wasm_bytes).unwrap();
+    let mut store = wasmtime::Store::new(&engine, ());
+    let instance = wasmtime::Instance::new(&mut store, &module, &[]).unwrap();
+    let func = instance.get_typed_func::<(), i32>(&mut store, "test_default").unwrap();
+    let result = func.call(&mut store, ()).unwrap();
+    assert_eq!(result, 15, "5 + default(10) = 15");
+}
+
+#[rstest]
+fn test_default_param_override(mut with_db: db::RootDatabase) {
+    let source = r#"
+        FUNCTION add_default : INT
+        VAR_INPUT
+            a: INT;
+            b: INT := 10;
+        END_VAR
+            add_default := a + b;
+        END_FUNCTION
+
+        FUNCTION test_override : INT
+            test_override := add_default(a := 5, b := 20);
+        END_FUNCTION
+    "#;
+
+    let wasm_bytes = compile_to_wasm(&mut with_db, source);
+    let engine = wasmtime::Engine::default();
+    let module = wasmtime::Module::new(&engine, &wasm_bytes).unwrap();
+    let mut store = wasmtime::Store::new(&engine, ());
+    let instance = wasmtime::Instance::new(&mut store, &module, &[]).unwrap();
+    let func = instance.get_typed_func::<(), i32>(&mut store, "test_override").unwrap();
+    let result = func.call(&mut store, ()).unwrap();
+    assert_eq!(result, 25, "5 + 20 = 25");
+}

@@ -4,8 +4,8 @@ use hir::{
         spec::ElementarySpec,
         expression::{
             AddOperatorKind, BooleanOperatorKind, ComparisonOperatorKind, Elementary, Expr,
-            ExprKind, MultOperatorKind, ParamAssignKind, PathExprKind, PrimaryExpr, RefValue,
-            UnaryOperatorKind, VarAccess, VariableAccess, VariableAccessKind,
+            ExprKind, InitExprKind, MultOperatorKind, ParamAssignKind, PathExprKind, PrimaryExpr,
+            RefValue, UnaryOperatorKind, VarAccess, VariableAccess, VariableAccessKind,
         },
         invocation::InvocationKind,
         statement::CaseKind,
@@ -735,7 +735,13 @@ impl<'db> ExprLowerCtx<'db> {
 
         let mut args = Vec::new();
         let mut output_bindings = Vec::new();
-        for param in func_call.params(self.db) {
+
+        // Track which params were explicitly provided (by position for non-formal, by name for formal)
+        let call_params = func_call.params(self.db);
+        let mut provided_names: rustc_hash::FxHashSet<hir::hir_def::interned::identifier::Ident> =
+            rustc_hash::FxHashSet::default();
+
+        for (i, param) in call_params.iter().enumerate() {
             match param.kind(self.db) {
                 ParamAssignKind::NonFormal { value } => {
                     args.push(MirCallArg {
@@ -743,18 +749,72 @@ impl<'db> ExprLowerCtx<'db> {
                         kind: MirArgKind::ByValue,
                     });
                 }
-                ParamAssignKind::FormalInput { value, .. } => {
+                ParamAssignKind::FormalInput { value, param: param_ident } => {
+                    provided_names.insert(param_ident.ident);
                     args.push(MirCallArg {
                         value: self.lower_expr(value)?,
                         kind: MirArgKind::ByValue,
                     });
                 }
-                ParamAssignKind::FormalOutput { variable, .. } => {
+                ParamAssignKind::FormalOutput { variable, param: param_ident, .. } => {
+                    provided_names.insert(param_ident.ident);
                     let place = self.lower_variable_access(variable)?;
                     args.push(MirCallArg {
                         value: MirExpr::AddrOf(place),
                         kind: MirArgKind::ByRef,
                     });
+                }
+            }
+        }
+
+        // Fill in default values for omitted parameters.
+        // Resolve the callee's variable declarations to find params with defaults.
+        // Use the raw inferred type (before normalization) to get the CallableType.
+        let callee_type_raw = path.infer(self.db);
+        let callable = match callee_type_raw {
+            Type::CallableType(ct) => Some(ct),
+            Type::Function(f) => Some(hir::hir_ty::ty::CallableType::Function(f)),
+            Type::FunctionBlock(fb) => Some(hir::hir_ty::ty::CallableType::FunctionBlock(fb)),
+            _ => None,
+        };
+        if let Some(callable) = callable {
+            let def_map = callable.def_map(self.db);
+            let provided_count = call_params.len();
+
+            for (i, (var_name, var_decl)) in def_map.local_variables.iter().enumerate() {
+                // Skip params that were explicitly provided
+                if i < provided_count && provided_names.is_empty() {
+                    // Non-formal call: first N params are positional
+                    continue;
+                }
+                if provided_names.contains(var_name) {
+                    continue;
+                }
+                // Only fill defaults for params beyond what was provided positionally
+                if i < provided_count {
+                    continue;
+                }
+
+                // Check if this variable has a default value
+                if let Some(init) = &var_decl.init(self.db) {
+                    match init.kind(self.db) {
+                        InitExprKind::ConstantExpr(expr) => {
+                            match self.lower_expr(expr) {
+                                Ok(mir_expr) => {
+                                    args.push(MirCallArg {
+                                        value: mir_expr,
+                                        kind: MirArgKind::ByValue,
+                                    });
+                                }
+                                Err(_) => {
+                                    // Failed to lower default — skip
+                                }
+                            }
+                        }
+                        _ => {
+                            // Complex init (struct/array) — not yet supported as default
+                        }
+                    }
                 }
             }
         }
