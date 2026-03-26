@@ -1,16 +1,18 @@
-//! WASM test runner using wasmtime.
+//! WASM Component test runner using wasmtime.
 //!
-//! Runs each test in an isolated WASM instance for clean memory state.
-//! Provides nextest-style output with per-test timing.
+//! Loads a WASM component, discovers tests from the manifest,
+//! and runs each test in an isolated instance.
+//! Uses WASI p2 for clocks and provides IEC-specific imports (math, assert).
 
 use std::time::Instant;
 
-use wasmtime::*;
+use wasmtime::component::{Component, Linker, Val};
+use wasmtime::{Config, Engine, Store};
+use wasmtime_wasi::{WasiCtx, WasiCtxBuilder, WasiView};
 use yansi::Paint;
 
 type WasmResult<T> = wasmtime::Result<T>;
 
-/// Result of running a single test.
 struct TestResult {
     name: String,
     outcome: TestOutcome,
@@ -22,156 +24,160 @@ enum TestOutcome {
     Fail(String),
 }
 
-/// Host functions provided to the WASM module.
-struct HostState;
-
-/// Discover tests from the MIR test manifest.
-/// Returns (display_path, wasm_export_name) pairs.
-fn discover_tests(manifest: &mir::test_manifest::TestManifest) -> Vec<(String, String)> {
-    manifest
-        .tests
-        .iter()
-        .map(|t| (t.path.clone(), t.export.clone()))
-        .collect()
+/// Host state with WASI context.
+struct HostState {
+    wasi: WasiCtx,
+    table: wasmtime::component::ResourceTable,
 }
 
-/// Build a linker with all host imports pre-registered.
-/// Every function is a direct `func_wrap` with concrete types - zero runtime dispatch.
-fn build_linker(engine: &Engine, _module: &Module) -> WasmResult<Linker<HostState>> {
-    let mut linker = Linker::new(engine);
-    linker.allow_shadowing(true);
+impl WasiView for HostState {
+    fn ctx(&mut self) -> wasmtime_wasi::WasiCtxView<'_> {
+        wasmtime_wasi::WasiCtxView {
+            ctx: &mut self.wasi,
+            table: &mut self.table,
+        }
+    }
+}
 
-    // Assert - takes (ptr: i32, len: i32) for the message string
-    linker.func_wrap(
-        "assert",
-        "fail",
-        |mut caller: Caller<'_, HostState>, ptr: i32, len: i32| -> WasmResult<()> {
-            let msg = if len > 0 {
-                caller
-                    .get_export("memory")
-                    .and_then(|e| e.into_memory())
-                    .map(|mem| {
-                        let data = mem.data(&caller);
-                        let start = ptr as usize;
-                        let end = (start + len as usize).min(data.len());
-                        String::from_utf8_lossy(&data[start..end]).to_string()
-                    })
-                    .unwrap_or_default()
+/// Discover tests from the manifest file.
+fn discover_tests(
+    workspace: &std::path::Path,
+) -> Vec<(String, String)> {
+    let manifest_path = workspace.join("rk_build").join("test").join("manifest");
+    let bytes = match std::fs::read(&manifest_path) {
+        Ok(b) => b,
+        Err(e) => {
+            eprintln!(
+                "{}failed to read manifest: {}",
+                "error: ".bold().red(),
+                e
+            );
+            return vec![];
+        }
+    };
+    match mir::test_manifest::TestManifest::from_msgpack(&bytes) {
+        Ok(manifest) => manifest
+            .tests
+            .iter()
+            .map(|t| (t.path.clone(), t.export.clone()))
+            .collect(),
+        Err(e) => {
+            eprintln!(
+                "{}failed to parse manifest: {}",
+                "error: ".bold().red(),
+                e
+            );
+            vec![]
+        }
+    }
+}
+
+/// Build a component linker with WASI + IEC host imports.
+fn build_linker(engine: &Engine) -> WasmResult<Linker<HostState>> {
+    let mut linker = Linker::new(engine);
+
+    // WASI p2 — provides clocks, filesystem, etc.
+    wasmtime_wasi::p2::add_to_linker_sync(&mut linker)?;
+
+    // Assert — takes (ptr, len) as u32 pairs (strings are flattened)
+    linker.root().func_wrap(
+        "assert-fail",
+        |_store: wasmtime::StoreContextMut<'_, HostState>, (ptr, len): (u32, u32)| -> WasmResult<()> {
+            if len > 0 {
+                Err(wasmtime::Error::msg(format!(
+                    "assertion failed: (ptr={}, len={})",
+                    ptr, len
+                )))
             } else {
-                String::new()
-            };
-            if msg.is_empty() {
                 Err(wasmtime::Error::msg("assertion failed"))
-            } else {
-                Err(wasmtime::Error::msg(format!("assertion failed: {}", msg)))
             }
         },
     )?;
 
-    // WASI clocks
-    let epoch = Instant::now();
-    linker.func_wrap("wasi:clocks/monotonic-clock", "now", move || -> i64 {
-        epoch.elapsed().as_nanos() as i64
-    })?;
-
-    // Math - all monomorphized variants, O(1) direct calls
+    // Math host functions
     register_all_math(&mut linker)?;
 
     Ok(linker)
 }
 
-/// Register a math host function dynamically based on the import's type signature.
-///
-/// Extracts the operation name (e.g. "abs" from "abs.INT") and uses the WASM
-/// function type to determine parameter types. All math operations dispatch to
-/// Rust's built-in methods on f32/f64/i32/i64.
-/// Register ALL math host functions upfront with concrete typed `func_wrap`.
-/// Each variant is a direct function pointer - zero runtime dispatch overhead.
 fn register_all_math(linker: &mut Linker<HostState>) -> WasmResult<()> {
     macro_rules! math1_i32 {
         ($name:literal, $op:expr) => {
-            linker.func_wrap("math", $name, |v: i32| -> i32 { $op(v) })?;
+            linker.root().func_wrap($name, |_: wasmtime::StoreContextMut<'_, HostState>, (v,): (i32,)| -> WasmResult<(i32,)> { Ok(($op(v),)) })?;
         };
     }
     macro_rules! math1_i64 {
         ($name:literal, $op:expr) => {
-            linker.func_wrap("math", $name, |v: i64| -> i64 { $op(v) })?;
+            linker.root().func_wrap($name, |_: wasmtime::StoreContextMut<'_, HostState>, (v,): (i64,)| -> WasmResult<(i64,)> { Ok(($op(v),)) })?;
         };
     }
     macro_rules! math1_f32 {
         ($name:literal, $method:ident) => {
-            linker.func_wrap("math", $name, |v: f32| -> f32 { v.$method() })?;
+            linker.root().func_wrap($name, |_: wasmtime::StoreContextMut<'_, HostState>, (v,): (f32,)| -> WasmResult<(f32,)> { Ok((v.$method(),)) })?;
         };
     }
     macro_rules! math1_f64 {
         ($name:literal, $method:ident) => {
-            linker.func_wrap("math", $name, |v: f64| -> f64 { v.$method() })?;
+            linker.root().func_wrap($name, |_: wasmtime::StoreContextMut<'_, HostState>, (v,): (f64,)| -> WasmResult<(f64,)> { Ok((v.$method(),)) })?;
         };
     }
     macro_rules! math2_f32 {
         ($name:literal, $method:ident) => {
-            linker.func_wrap("math", $name, |a: f32, b: f32| -> f32 { a.$method(b) })?;
+            linker.root().func_wrap($name, |_: wasmtime::StoreContextMut<'_, HostState>, (a, b): (f32, f32)| -> WasmResult<(f32,)> { Ok((a.$method(b),)) })?;
         };
     }
     macro_rules! math2_f64 {
         ($name:literal, $method:ident) => {
-            linker.func_wrap("math", $name, |a: f64, b: f64| -> f64 { a.$method(b) })?;
+            linker.root().func_wrap($name, |_: wasmtime::StoreContextMut<'_, HostState>, (a, b): (f64, f64)| -> WasmResult<(f64,)> { Ok((a.$method(b),)) })?;
         };
     }
 
-    // ABS - signed integers
-    math1_i32!("abs.SINT", i32::abs);
-    math1_i32!("abs.INT", i32::abs);
-    math1_i32!("abs.DINT", i32::abs);
-    math1_i64!("abs.LINT", i64::abs);
-    // ABS - unsigned (identity)
-    linker.func_wrap("math", "abs.USINT", |v: i32| -> i32 { v })?;
-    linker.func_wrap("math", "abs.UINT", |v: i32| -> i32 { v })?;
-    linker.func_wrap("math", "abs.UDINT", |v: i32| -> i32 { v })?;
-    linker.func_wrap("math", "abs.ULINT", |v: i64| -> i64 { v })?;
-    // ABS - float
-    math1_f32!("abs.REAL", abs);
-    math1_f64!("abs.LREAL", abs);
+    // ABS
+    math1_i32!("math-abs-sint", i32::abs);
+    math1_i32!("math-abs-int", i32::abs);
+    math1_i32!("math-abs-dint", i32::abs);
+    math1_i64!("math-abs-lint", i64::abs);
+    linker.root().func_wrap("math-abs-usint", |_: wasmtime::StoreContextMut<'_, HostState>, (v,): (u32,)| -> WasmResult<(u32,)> { Ok((v,)) })?;
+    linker.root().func_wrap("math-abs-uint", |_: wasmtime::StoreContextMut<'_, HostState>, (v,): (u32,)| -> WasmResult<(u32,)> { Ok((v,)) })?;
+    linker.root().func_wrap("math-abs-udint", |_: wasmtime::StoreContextMut<'_, HostState>, (v,): (u32,)| -> WasmResult<(u32,)> { Ok((v,)) })?;
+    linker.root().func_wrap("math-abs-ulint", |_: wasmtime::StoreContextMut<'_, HostState>, (v,): (u64,)| -> WasmResult<(u64,)> { Ok((v,)) })?;
+    math1_f32!("math-abs-real", abs);
+    math1_f64!("math-abs-lreal", abs);
 
     // SQRT
-    math1_f32!("sqrt.REAL", sqrt);
-    math1_f64!("sqrt.LREAL", sqrt);
+    math1_f32!("math-sqrt-real", sqrt);
+    math1_f64!("math-sqrt-lreal", sqrt);
 
-    // LN
-    math1_f32!("ln.REAL", ln);
-    math1_f64!("ln.LREAL", ln);
+    // LN / LOG / EXP
+    math1_f32!("math-ln-real", ln);
+    math1_f64!("math-ln-lreal", ln);
+    math1_f32!("math-log-real", log10);
+    math1_f64!("math-log-lreal", log10);
+    math1_f32!("math-exp-real", exp);
+    math1_f64!("math-exp-lreal", exp);
 
-    // LOG
-    math1_f32!("log.REAL", log10);
-    math1_f64!("log.LREAL", log10);
-
-    // EXP
-    math1_f32!("exp.REAL", exp);
-    math1_f64!("exp.LREAL", exp);
-
-    // Trigonometry
-    math1_f32!("sin.REAL", sin);
-    math1_f64!("sin.LREAL", sin);
-    math1_f32!("cos.REAL", cos);
-    math1_f64!("cos.LREAL", cos);
-    math1_f32!("tan.REAL", tan);
-    math1_f64!("tan.LREAL", tan);
-    math1_f32!("asin.REAL", asin);
-    math1_f64!("asin.LREAL", asin);
-    math1_f32!("acos.REAL", acos);
-    math1_f64!("acos.LREAL", acos);
-    math1_f32!("atan.REAL", atan);
-    math1_f64!("atan.LREAL", atan);
+    // Trig
+    math1_f32!("math-sin-real", sin);
+    math1_f64!("math-sin-lreal", sin);
+    math1_f32!("math-cos-real", cos);
+    math1_f64!("math-cos-lreal", cos);
+    math1_f32!("math-tan-real", tan);
+    math1_f64!("math-tan-lreal", tan);
+    math1_f32!("math-asin-real", asin);
+    math1_f64!("math-asin-lreal", asin);
+    math1_f32!("math-acos-real", acos);
+    math1_f64!("math-acos-lreal", acos);
+    math1_f32!("math-atan-real", atan);
+    math1_f64!("math-atan-lreal", atan);
 
     // Two-param
-    math2_f32!("atan2.REAL", atan2);
-    math2_f64!("atan2.LREAL", atan2);
-    math2_f32!("expt.REAL", powf);
-    math2_f64!("expt.LREAL", powf);
+    math2_f32!("math-atan2-real", atan2);
+    math2_f64!("math-atan2-lreal", atan2);
+    math2_f32!("math-expt-real", powf);
+    math2_f64!("math-expt-lreal", powf);
 
     Ok(())
 }
-
 
 fn fmt_duration(d: std::time::Duration) -> String {
     let us = d.as_micros();
@@ -184,38 +190,26 @@ fn fmt_duration(d: std::time::Duration) -> String {
     }
 }
 
-/// Run tests from a compiled WASM module.
-/// Reads the test manifest from `<workspace>/rk_build/manifest`.
-/// Returns the number of failures.
+/// Run tests from a compiled WASM component.
+/// Reads the test manifest from `<workspace>/rk_build/test/manifest`.
 pub fn run_tests(
     wasm_path: &std::path::Path,
     workspace: &std::path::Path,
     filter: Option<&str>,
 ) -> usize {
-    let manifest_path = workspace.join("rk_build").join("test").join("manifest");
-    let manifest = match std::fs::read(&manifest_path) {
-        Ok(bytes) => match mir::test_manifest::TestManifest::from_msgpack(&bytes) {
-            Ok(m) => m,
-            Err(e) => {
-                eprintln!("{}failed to parse manifest: {}", "error: ".bold().red(), e);
-                return 1;
-            }
-        },
-        Err(e) => {
-            eprintln!("{}failed to read manifest at {}: {}", "error: ".bold().red(), manifest_path.display(), e);
-            return 1;
-        }
-    };
-    let engine = Engine::default();
-    let module = match Module::from_file(&engine, wasm_path) {
-        Ok(m) => m,
+    let mut config = Config::new();
+    config.wasm_component_model(true);
+    let engine = Engine::new(&config).expect("Failed to create engine");
+
+    let component = match Component::from_file(&engine, wasm_path) {
+        Ok(c) => c,
         Err(e) => {
             eprintln!("{}{}", "wasm error: ".bold().red(), e);
             return 1;
         }
     };
 
-    let mut tests = discover_tests(&manifest);
+    let mut tests = discover_tests(workspace);
 
     if let Some(f) = filter {
         let f_lower = f.to_lowercase();
@@ -227,7 +221,7 @@ pub fn run_tests(
         return 1;
     }
 
-    let linker = match build_linker(&engine, &module) {
+    let linker = match build_linker(&engine) {
         Ok(l) => l,
         Err(e) => {
             eprintln!("{}{}", "linker error: ".bold().red(), e);
@@ -242,34 +236,52 @@ pub fn run_tests(
     println!("{}  {} test(s)", "    Running".dim(), total);
 
     for (display_name, export_name) in &tests {
-        // Fresh store per test - full memory isolation
-        let mut store = Store::new(&engine, HostState);
+        let mut store = Store::new(&engine, HostState {
+            wasi: WasiCtxBuilder::new().build(),
+            table: wasmtime::component::ResourceTable::new(),
+        });
         let start = Instant::now();
 
-        let outcome = match linker.instantiate(&mut store, &module) {
+        // Convert export name to kebab-case (component uses kebab names)
+        let kebab_name = wasm_codegen::component::to_kebab_case(export_name);
+
+        let outcome = match linker.instantiate(&mut store, &component) {
             Err(e) => TestOutcome::Fail(format!("instantiation failed: {}", e)),
-            Ok(instance) => match instance.get_typed_func::<(), ()>(&mut store, export_name) {
-                Err(e) => TestOutcome::Fail(format!("export error: {}", e)),
-                Ok(func) => match func.call(&mut store, ()) {
-                    Ok(()) => TestOutcome::Pass,
-                    Err(e) => {
-                        // Walk the error chain to find our assertion message
-                        let mut reason = None;
-                        let mut source: Option<&dyn std::error::Error> = Some(&*e);
-                        while let Some(err) = source {
-                            let msg = err.to_string();
-                            if msg.starts_with("assertion failed") {
-                                reason = Some(msg);
-                                break;
+            Ok(instance) => {
+                match instance.get_func(&mut store, &kebab_name) {
+                    None => TestOutcome::Fail(format!("export '{}' not found", kebab_name)),
+                    Some(func) => {
+                        match func.call(&mut store, &[], &mut []) {
+                            Ok(()) => {
+                                if let Err(e) = func.post_return(&mut store) {
+                                    TestOutcome::Fail(format!("post_return: {}", e))
+                                } else {
+                                    TestOutcome::Pass
+                                }
                             }
-                            source = err.source();
+                            Err(e) => {
+                                let mut reason = None;
+                                let mut source: Option<&dyn std::error::Error> = Some(&*e);
+                                while let Some(err) = source {
+                                    let msg = err.to_string();
+                                    if msg.starts_with("assertion failed") {
+                                        reason = Some(msg);
+                                        break;
+                                    }
+                                    source = err.source();
+                                }
+                                TestOutcome::Fail(reason.unwrap_or_else(|| {
+                                    e.to_string()
+                                        .lines()
+                                        .next()
+                                        .unwrap_or("unknown error")
+                                        .to_string()
+                                }))
+                            }
                         }
-                        TestOutcome::Fail(reason.unwrap_or_else(|| {
-                            e.to_string().lines().next().unwrap_or("unknown error").to_string()
-                        }))
                     }
-                },
-            },
+                }
+            }
         };
 
         let duration = start.elapsed();
@@ -314,24 +326,21 @@ pub fn run_tests(
         .filter(|r| matches!(r.outcome, TestOutcome::Fail(_)))
         .collect();
 
-    // Separator
     println!(
         "{}",
         "────────────────────────────────────────────────────────────".dim()
     );
 
-    // List failures
     if !failures.is_empty() {
         println!("     {}:", "Failures".bold().red());
         for f in &failures {
             if let TestOutcome::Fail(reason) = &f.outcome {
-                // Bold the assertion message part
                 let display = if let Some(msg) = reason.strip_prefix("assertion failed: ") {
                     format!("assertion failed: {}", msg.bold())
                 } else {
                     reason.to_string()
                 };
-                println!("        {} {} - {}", "FAIL".red(), f.name, display);
+                println!("        {} {} — {}", "FAIL".red(), f.name, display);
             }
         }
         println!(
@@ -340,7 +349,6 @@ pub fn run_tests(
         );
     }
 
-    // Summary
     let status = if failed == 0 {
         format!("{} passed", passed).green().to_string()
     } else {

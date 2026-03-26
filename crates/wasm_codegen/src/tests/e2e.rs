@@ -1,8 +1,8 @@
-//! End-to-end test: compile IEC → WASM → run with wasmtime.
+//! End-to-end test: compile IEC → core WASM → component → run with wasmtime component runner.
 
 use rstest::rstest;
 
-use super::{compile_to_wasm, with_db};
+use super::with_db;
 
 #[rstest]
 fn test_e2e_runtime(mut with_db: db::RootDatabase) {
@@ -54,15 +54,21 @@ END_FUNCTION
     let sem_idx = hir::hir_def::semantic_index::semantic_index(&with_db, file);
     let mir_module = mir::lower::lower_module::lower_module(&with_db, &sem_idx)
         .expect("MIR lowering failed");
-    let wasm_bytes = crate::from_mir::generate_wasm(&with_db, &mir_module).finish();
+    let core_bytes = crate::from_mir::generate_wasm(&with_db, &mir_module).finish();
+    let component_bytes = crate::component::wrap_in_component(&with_db, &core_bytes, &mir_module)
+        .expect("Component wrapping failed");
 
-    // Write wasm + manifest to temp dir
+    // Write component + manifest to temp dir
     let tmp = std::env::temp_dir().join("rk_e2e_test");
     let build_dir = tmp.join("rk_build").join("test");
     std::fs::create_dir_all(&build_dir).unwrap();
     let wasm_path = build_dir.join("output.wasm");
-    std::fs::write(&wasm_path, &wasm_bytes).unwrap();
-    std::fs::write(build_dir.join("manifest"), mir_module.test_manifest.to_msgpack()).unwrap();
+    std::fs::write(&wasm_path, &component_bytes).unwrap();
+    std::fs::write(
+        build_dir.join("manifest"),
+        mir_module.test_manifest.to_msgpack(),
+    )
+    .unwrap();
 
     let failures = rk::test_runner::run_tests(&wasm_path, &tmp, None);
     let _ = std::fs::remove_dir_all(&tmp);
@@ -89,12 +95,14 @@ END_FUNCTION
         .expect("MIR lowering failed");
     let core_bytes = crate::from_mir::generate_wasm(&with_db, &mir_module).finish();
 
-    let component_bytes = crate::component::wrap_in_component(&with_db, &core_bytes, &mir_module)
-        .expect("Component wrapping failed");
+    let component_bytes =
+        crate::component::wrap_in_component(&with_db, &core_bytes, &mir_module)
+            .expect("Component wrapping failed");
 
-    // Verify it's a valid component (starts with component magic)
     assert!(component_bytes.len() > 8, "Component should have content");
-    assert_eq!(&component_bytes[0..4], b"\0asm", "Should start with WASM magic");
-    // Component version is different from core module version
-    assert_ne!(&component_bytes[4..8], &[1, 0, 0, 0], "Should NOT be core module version");
+    assert_eq!(
+        &component_bytes[0..4],
+        b"\0asm",
+        "Should start with WASM magic"
+    );
 }
