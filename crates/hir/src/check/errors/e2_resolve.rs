@@ -666,13 +666,19 @@ impl<'db> ToIdeDiagnostic<'db> for ResolveError<'db> {
                     .call();
 
                 diag.with_related(Related::new(
-                    format!("first variadic variable '{}' declared here", first.name(db).text(db)),
+                    format!(
+                        "first variadic variable '{}' declared here",
+                        first.name(db).text(db)
+                    ),
                     first.scope_id(db).file(db),
                     first.get_span(db),
                 ));
                 diag
             }
-            Self::VariadicMixedWithOtherInputs { variadic_var, other_var } => {
+            Self::VariadicMixedWithOtherInputs {
+                variadic_var,
+                other_var,
+            } => {
                 let mut diag = diag()
                     .message(format!(
                         "variadic parameter '{}' must be the only VAR_INPUT parameter",
@@ -684,11 +690,16 @@ impl<'db> ToIdeDiagnostic<'db> for ResolveError<'db> {
                     .call();
 
                 diag.with_related(Related::new(
-                    format!("variadic parameter '{}' declared here", variadic_var.name(db).text(db)),
+                    format!(
+                        "variadic parameter '{}' declared here",
+                        variadic_var.name(db).text(db)
+                    ),
                     variadic_var.scope_id(db).file(db),
                     variadic_var.get_span(db),
                 ));
-                diag.with_note("a variadic parameter must be the only parameter in VAR_INPUT".into());
+                diag.with_note(
+                    "a variadic parameter must be the only parameter in VAR_INPUT".into(),
+                );
                 diag
             }
             Self::MultibitsOutOfRange {
@@ -899,7 +910,10 @@ fn list_candidates<'db>(
     let imported: Vec<_> = results
         .imported_pous()
         .filter(|(ns, pou)| {
-            seen.insert((ns.to_string(db), pou.get_name_ident(db).text(db).to_string()))
+            seen.insert((
+                ns.to_string(db),
+                pou.get_name_ident(db).text(db).to_string(),
+            ))
         })
         .take(6)
         .collect();
@@ -908,8 +922,9 @@ fn list_candidates<'db>(
         let display_count = count.min(5);
 
         let mut note = match count {
-            1 => "an item with a similar name is available, but needs to be imported:\n"
-                .to_string(),
+            1 => {
+                "an item with a similar name is available, but needs to be imported:\n".to_string()
+            }
             _ => "items with similar names are available, but need to be imported:\n".to_string(),
         };
 

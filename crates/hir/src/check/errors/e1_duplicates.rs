@@ -12,10 +12,7 @@ use crate::{
             spec::StructElement,
         },
         interned::identifier::{Ident, SpanIdent},
-        pous::{
-            class::MethodDecl, interface::MethodPrototype, pou::Pou,
-            variable::VariableDecl,
-        },
+        pous::{class::MethodDecl, interface::MethodPrototype, pou::Pou, variable::VariableDecl},
         program::ProgramDecl,
         using::Using,
     },

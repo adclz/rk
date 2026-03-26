@@ -37,9 +37,17 @@ pub(crate) enum LocalInfo {
         elem: MirElementary,
     },
     /// Memory-resident variable at a fixed address.
-    Memory { address: u32, size: u32, align: u32, elem: Option<MirElementary> },
+    Memory {
+        address: u32,
+        size: u32,
+        align: u32,
+        elem: Option<MirElementary>,
+    },
     /// Pointer (VAR_IN_OUT) — i32 local holding an address.
-    Pointer { index: u32, pointee_elem: Option<MirElementary> },
+    Pointer {
+        index: u32,
+        pointee_elem: Option<MirElementary>,
+    },
     /// String parameter — two consecutive i32 locals (ptr, len).
     StringParam { ptr_index: u32, len_index: u32 },
     /// String in memory — two i32s at address (ptr at addr, len at addr+4).
@@ -125,12 +133,13 @@ impl<'a> WasmGen<'a> {
 
         // Re-export the import so it can be called by name from tests
         let export_name = ext_fn.name.text(self.db).to_string();
-        let wasm_idx = self.index_remap.get(&ext_fn.index).copied().unwrap_or(ext_fn.index);
-        self.export_section.export(
-            &export_name,
-            wasm_encoder::ExportKind::Func,
-            wasm_idx,
-        );
+        let wasm_idx = self
+            .index_remap
+            .get(&ext_fn.index)
+            .copied()
+            .unwrap_or(ext_fn.index);
+        self.export_section
+            .export(&export_name, wasm_encoder::ExportKind::Func, wasm_idx);
     }
 
     fn emit_function(&mut self, func: &MirFunction) {
@@ -148,15 +157,18 @@ impl<'a> WasmGen<'a> {
 
         // Export every public function.
         if func.linkage == MirLinkage::Export {
-            let export_name = func.export_name.as_ref()
+            let export_name = func
+                .export_name
+                .as_ref()
                 .map(|s| s.to_string())
                 .unwrap_or_else(|| func.name.text(self.db).to_string());
-            let wasm_idx = self.index_remap.get(&func.index).copied().unwrap_or(func.index);
-            self.export_section.export(
-                &export_name,
-                wasm_encoder::ExportKind::Func,
-                wasm_idx,
-            );
+            let wasm_idx = self
+                .index_remap
+                .get(&func.index)
+                .copied()
+                .unwrap_or(func.index);
+            self.export_section
+                .export(&export_name, wasm_encoder::ExportKind::Func, wasm_idx);
         }
 
         // Build local map from params + locals
@@ -165,18 +177,16 @@ impl<'a> WasmGen<'a> {
         // Build extra locals (non-parameter WASM locals)
         let mut extra_locals: Vec<(u32, ValType)> = Vec::new();
         // Return value local
-        if let Some(ref ret_ty) = func.return_type {
-            if let Some(vt) = mir_type_to_val_type(ret_ty) {
+        if let Some(ref ret_ty) = func.return_type
+            && let Some(vt) = mir_type_to_val_type(ret_ty) {
                 extra_locals.push((1, vt));
             }
-        }
         // Local variables that are scalars
         for local in &func.locals {
-            if let MirStorage::Scalar { .. } = local.storage {
-                if let Some(vt) = mir_type_to_val_type(&local.ty) {
+            if let MirStorage::Scalar { .. } = local.storage
+                && let Some(vt) = mir_type_to_val_type(&local.ty) {
                     extra_locals.push((1, vt));
                 }
-            }
         }
 
         // Emit function body
@@ -186,16 +196,20 @@ impl<'a> WasmGen<'a> {
         // Use origin_name because methods store return locals under the bare method name,
         // while func.name is the qualified "FB$Method" name.
         let return_local = if func.return_type.is_some() {
-            local_map.get(&func.origin_name).and_then(|info| match info {
-                LocalInfo::Scalar { index, .. } => Some(*index),
-                _ => None,
-            })
+            local_map
+                .get(&func.origin_name)
+                .and_then(|info| match info {
+                    LocalInfo::Scalar { index, .. } => Some(*index),
+                    _ => None,
+                })
         } else {
             None
         };
 
         // Build remapped function indices for call instructions
-        let remapped_fn_indices: FxHashMap<_, _> = self.module.function_indices
+        let remapped_fn_indices: FxHashMap<_, _> = self
+            .module
+            .function_indices
             .iter()
             .map(|(name, &mir_idx)| {
                 let wasm_idx = self.index_remap.get(&mir_idx).copied().unwrap_or(mir_idx);
@@ -250,7 +264,8 @@ impl<'a> WasmGen<'a> {
         module.section(&mem_section);
 
         // Export memory
-        self.export_section.export("memory", wasm_encoder::ExportKind::Memory, 0);
+        self.export_section
+            .export("memory", wasm_encoder::ExportKind::Memory, 0);
 
         module.section(&self.export_section);
         module.section(&self.code_section);
@@ -277,7 +292,10 @@ impl<'a> WasmGen<'a> {
 // =============================================================================
 
 /// Build WASM function signature from MIR params and return type.
-fn build_signature(params: &[MirParam], return_type: &Option<MirType>) -> (Vec<ValType>, Vec<ValType>) {
+fn build_signature(
+    params: &[MirParam],
+    return_type: &Option<MirType>,
+) -> (Vec<ValType>, Vec<ValType>) {
     let mut wasm_params = Vec::new();
     for param in params {
         match param.kind {
@@ -303,7 +321,9 @@ fn build_signature(params: &[MirParam], return_type: &Option<MirType>) -> (Vec<V
     }
 
     let results = match return_type {
-        Some(ty) => mir_type_to_val_type(ty).map(|vt| vec![vt]).unwrap_or_default(),
+        Some(ty) => mir_type_to_val_type(ty)
+            .map(|vt| vec![vt])
+            .unwrap_or_default(),
         None => Vec::new(),
     };
 
@@ -311,7 +331,9 @@ fn build_signature(params: &[MirParam], return_type: &Option<MirType>) -> (Vec<V
 }
 
 /// Build LocalInfo map from a MirFunction's params and locals.
-pub(crate) fn build_local_map(func: &MirFunction) -> FxHashMap<hir::hir_def::interned::identifier::Ident, LocalInfo> {
+pub(crate) fn build_local_map(
+    func: &MirFunction,
+) -> FxHashMap<hir::hir_def::interned::identifier::Ident, LocalInfo> {
     let mut map = FxHashMap::default();
     let mut param_idx: u32 = 0;
 
@@ -319,7 +341,13 @@ pub(crate) fn build_local_map(func: &MirFunction) -> FxHashMap<hir::hir_def::int
     for param in &func.params {
         match param.kind {
             MirParamKind::This => {
-                map.insert(param.name, LocalInfo::Pointer { index: param_idx, pointee_elem: None });
+                map.insert(
+                    param.name,
+                    LocalInfo::Pointer {
+                        index: param_idx,
+                        pointee_elem: None,
+                    },
+                );
                 param_idx += 1;
             }
             MirParamKind::InOut | MirParamKind::Output => {
@@ -332,17 +360,26 @@ pub(crate) fn build_local_map(func: &MirFunction) -> FxHashMap<hir::hir_def::int
                     MirType::Elementary(e) => Some(*e),
                     _ => None,
                 };
-                map.insert(param.name, LocalInfo::Pointer { index: param_idx, pointee_elem });
+                map.insert(
+                    param.name,
+                    LocalInfo::Pointer {
+                        index: param_idx,
+                        pointee_elem,
+                    },
+                );
                 param_idx += 1;
             }
             MirParamKind::Input => {
                 match &param.ty {
                     MirType::String(_) => {
                         // String params take 2 WASM params (ptr, len)
-                        map.insert(param.name, LocalInfo::StringParam {
-                            ptr_index: param_idx,
-                            len_index: param_idx + 1,
-                        });
+                        map.insert(
+                            param.name,
+                            LocalInfo::StringParam {
+                                ptr_index: param_idx,
+                                len_index: param_idx + 1,
+                            },
+                        );
                         param_idx += 2;
                     }
                     ty => {
@@ -352,11 +389,14 @@ pub(crate) fn build_local_map(func: &MirFunction) -> FxHashMap<hir::hir_def::int
                             _ => MirElementary::Int,
                         };
                         let val_type = mir_elementary_to_val_type(elem);
-                        map.insert(param.name, LocalInfo::Scalar {
-                            index: param_idx,
-                            val_type,
-                            elem,
-                        });
+                        map.insert(
+                            param.name,
+                            LocalInfo::Scalar {
+                                index: param_idx,
+                                val_type,
+                                elem,
+                            },
+                        );
                         param_idx += 1;
                     }
                 }
@@ -373,26 +413,39 @@ pub(crate) fn build_local_map(func: &MirFunction) -> FxHashMap<hir::hir_def::int
                     _ => MirElementary::Int,
                 };
                 let val_type = mir_elementary_to_val_type(elem);
-                map.insert(local.name, LocalInfo::Scalar {
-                    index: local_index,
-                    val_type,
-                    elem,
-                });
+                map.insert(
+                    local.name,
+                    LocalInfo::Scalar {
+                        index: local_index,
+                        val_type,
+                        elem,
+                    },
+                );
             }
-            MirStorage::Memory { address, size, align } => {
-                match &local.ty {
-                    MirType::String(_) => {
-                        map.insert(local.name, LocalInfo::StringMemory { address });
-                    }
-                    ty => {
-                        let elem = match ty {
-                            MirType::Elementary(e) => Some(*e),
-                            _ => None,
-                        };
-                        map.insert(local.name, LocalInfo::Memory { address, size, align, elem });
-                    }
+            MirStorage::Memory {
+                address,
+                size,
+                align,
+            } => match &local.ty {
+                MirType::String(_) => {
+                    map.insert(local.name, LocalInfo::StringMemory { address });
                 }
-            }
+                ty => {
+                    let elem = match ty {
+                        MirType::Elementary(e) => Some(*e),
+                        _ => None,
+                    };
+                    map.insert(
+                        local.name,
+                        LocalInfo::Memory {
+                            address,
+                            size,
+                            align,
+                            elem,
+                        },
+                    );
+                }
+            },
         }
     }
 
@@ -412,7 +465,11 @@ pub(crate) fn mir_type_to_val_type(ty: &MirType) -> Option<ValType> {
 /// Map MirElementary to WASM ValType.
 pub(crate) fn mir_elementary_to_val_type(elem: MirElementary) -> ValType {
     if elem.is_float() {
-        if elem.is_64bit() { ValType::F64 } else { ValType::F32 }
+        if elem.is_64bit() {
+            ValType::F64
+        } else {
+            ValType::F32
+        }
     } else if elem.is_64bit() {
         ValType::I64
     } else {

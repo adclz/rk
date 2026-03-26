@@ -190,7 +190,9 @@ fn test_default_int_param(mut with_db: db::RootDatabase) {
     let module = wasmtime::Module::new(&engine, &wasm_bytes).unwrap();
     let mut store = wasmtime::Store::new(&engine, ());
     let instance = wasmtime::Instance::new(&mut store, &module, &[]).unwrap();
-    let func = instance.get_typed_func::<(), i32>(&mut store, "test_default").unwrap();
+    let func = instance
+        .get_typed_func::<(), i32>(&mut store, "test_default")
+        .unwrap();
     let result = func.call(&mut store, ()).unwrap();
     assert_eq!(result, 15, "5 + default(10) = 15");
 }
@@ -216,7 +218,9 @@ fn test_default_param_override(mut with_db: db::RootDatabase) {
     let module = wasmtime::Module::new(&engine, &wasm_bytes).unwrap();
     let mut store = wasmtime::Store::new(&engine, ());
     let instance = wasmtime::Instance::new(&mut store, &module, &[]).unwrap();
-    let func = instance.get_typed_func::<(), i32>(&mut store, "test_override").unwrap();
+    let func = instance
+        .get_typed_func::<(), i32>(&mut store, "test_override")
+        .unwrap();
     let result = func.call(&mut store, ()).unwrap();
     assert_eq!(result, 25, "5 + 20 = 25");
 }

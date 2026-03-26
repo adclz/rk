@@ -22,7 +22,9 @@ impl Config {
 
     /// Convenience: check if stdlib is disabled.
     pub fn disable_stdlib(&self) -> bool {
-        self.settings.as_ref().is_some_and(|s| s.disable_stdlib.unwrap_or(false))
+        self.settings
+            .as_ref()
+            .is_some_and(|s| s.disable_stdlib.unwrap_or(false))
     }
 
     /// Convenience: get output config from settings.

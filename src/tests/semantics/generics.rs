@@ -99,7 +99,6 @@ END_FUNCTION"#;
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @"");
 }
 
-
 #[rstest]
 fn invalid_into_spec_multiple_params(mut with_db: RootDatabase) {
     let source = r#"

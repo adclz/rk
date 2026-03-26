@@ -7,7 +7,6 @@ use crate::{
     lower::lower_expr::ExprLowerCtx,
     lower::lower_type::{LowerTypeError, elementary_spec_to_mir},
     stmt::MirStmt,
-    types::MirElementary,
 };
 
 /// Check if we need an implicit cast between two HIR types.

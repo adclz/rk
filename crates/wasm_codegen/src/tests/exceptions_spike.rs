@@ -12,8 +12,8 @@ fn test_wasm_exceptions_throw_and_catch() {
     // Type 0: (i32) -> () — tag signature (assert payload)
     // Type 1: (i32) -> () — assert_true function signature
     let mut types = TypeSection::new();
-    types.ty().function(vec![ValType::I32], vec![]);   // type 0: tag sig
-    types.ty().function(vec![ValType::I32], vec![]);   // type 1: assert_true
+    types.ty().function(vec![ValType::I32], vec![]); // type 0: tag sig
+    types.ty().function(vec![ValType::I32], vec![]); // type 1: assert_true
     module.section(&types);
 
     // Function section: function 0 uses type 1

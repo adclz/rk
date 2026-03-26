@@ -181,10 +181,7 @@ impl<'db> InitExprInferenceResult<'db> {
                             .iter()
                             .any(|v| matches!(v, InitExprWalkStep::ArrayInit { .. }));
 
-                        if has_inner_brackets
-                            && num_dims > 1
-                            && ctx.current_dim() < num_dims - 1
-                        {
+                        if has_inner_brackets && num_dims > 1 && ctx.current_dim() < num_dims - 1 {
                             // Multi-dimensional bracket init: each inner bracket is one
                             // slot in the current dimension and opens the next dimension.
                             // Push/pop per child so each starts with a fresh position.
@@ -192,7 +189,12 @@ impl<'db> InitExprInferenceResult<'db> {
                                 let mut child_place = *place;
                                 ctx.push_dimension();
                                 self.resolve_step(
-                                    db, expected, &mut child_place, body_ctx, ctx, child,
+                                    db,
+                                    expected,
+                                    &mut child_place,
+                                    body_ctx,
+                                    ctx,
+                                    child,
                                 );
                                 ctx.pop_dimension();
                                 ctx.advance(1);

@@ -27,7 +27,8 @@ pub fn lower_modules<'db>(
 ) -> Result<MirModule, LowerTypeError> {
     // Every POU and program, each with its optional namespace prefix.
     let mut all_pous: Vec<(&Pou<'db>, Option<String>)> = Vec::new();
-    let mut all_programs: Vec<(&hir::hir_def::program::ProgramDecl<'db>, Option<String>)> = Vec::new();
+    let mut all_programs: Vec<(&hir::hir_def::program::ProgramDecl<'db>, Option<String>)> =
+        Vec::new();
     for index in indices {
         all_pous.extend(index.global_pous.iter().map(|p| (p, None)));
         all_programs.extend(index.programs.iter().map(|p| (p, None)));
@@ -45,7 +46,11 @@ pub fn lower_module<'db>(
 ) -> Result<MirModule, LowerTypeError> {
     lower_module_from_pous(
         db,
-        &index.global_pous.iter().map(|p| (p, None)).collect::<Vec<_>>(),
+        &index
+            .global_pous
+            .iter()
+            .map(|p| (p, None))
+            .collect::<Vec<_>>(),
         &index.programs.iter().map(|p| (p, None)).collect::<Vec<_>>(),
     )
 }
@@ -74,7 +79,9 @@ fn lower_module_from_pous<'db>(
 
     // Helper: build a qualified export name from a namespace prefix and bare name.
     let make_export_name = |ns_prefix: &Option<String>, bare_name: &str| -> Option<CompactString> {
-        ns_prefix.as_ref().map(|prefix| CompactString::from(format!("{}.{}", prefix, bare_name)))
+        ns_prefix
+            .as_ref()
+            .map(|prefix| CompactString::from(format!("{}.{}", prefix, bare_name)))
     };
 
     // Phase 1: Process imports first (extern functions get lower indices)
@@ -108,14 +115,18 @@ fn lower_module_from_pous<'db>(
                 if function_indices.contains_key(&func.name(db)) {
                     continue;
                 }
-                if any_functions.iter().any(|a| a.func.name(db) == func.name(db)) {
+                if any_functions
+                    .iter()
+                    .any(|a| a.func.name(db) == func.name(db))
+                {
                     continue;
                 }
 
                 // Check if extern (already handled in phase 1)
-                let is_extern = func.statements(db).iter().any(|s| {
-                    matches!(s.stmt(db), StmtKind::ExternPragma(_))
-                });
+                let is_extern = func
+                    .statements(db)
+                    .iter()
+                    .any(|s| matches!(s.stmt(db), StmtKind::ExternPragma(_)));
                 if is_extern {
                     continue;
                 }
@@ -145,27 +156,27 @@ fn lower_module_from_pous<'db>(
                     }
                 });
                 if let Some(wasm_decl) = wasm_decl {
-                    match lower_wasm_intrinsic(db, *func, &wasm_decl, next_fn_idx) {
-                        Ok(mut mir_func) => {
-                            mir_func.export_name = make_export_name(ns_prefix, func.name(db).text(db));
+                    if let Ok(mut mir_func) = lower_wasm_intrinsic(db, *func, &wasm_decl, next_fn_idx) {
+                        mir_func.export_name =
+                            make_export_name(ns_prefix, func.name(db).text(db));
 
-                            if func.is_test(db) {
-                                let export_name = mir_func.export_name.as_ref()
-                                    .map(|s| s.to_string())
-                                    .unwrap_or_else(|| func.name(db).text(db).to_string());
-                                let cases = build_test_cases(db, *func, &export_name);
-                                test_entries.push(crate::test_manifest::TestEntry {
-                                    path: export_name.clone(),
-                                    export: export_name,
-                                    cases,
-                                });
-                            }
-
-                            function_indices.insert(func.name(db), next_fn_idx);
-                            next_fn_idx += 1;
-                            functions.push(mir_func);
+                        if func.is_test(db) {
+                            let export_name = mir_func
+                                .export_name
+                                .as_ref()
+                                .map(|s| s.to_string())
+                                .unwrap_or_else(|| func.name(db).text(db).to_string());
+                            let cases = build_test_cases(db, *func, &export_name);
+                            test_entries.push(crate::test_manifest::TestEntry {
+                                path: export_name.clone(),
+                                export: export_name,
+                                cases,
+                            });
                         }
-                        Err(_) => {}
+
+                        function_indices.insert(func.name(db), next_fn_idx);
+                        next_fn_idx += 1;
+                        functions.push(mir_func);
                     }
                     continue;
                 }
@@ -175,14 +186,22 @@ fn lower_module_from_pous<'db>(
                     continue;
                 }
 
-                let mut mir_func = lower_function(db, *func, next_fn_idx, &mut memory_layout, string_pool.clone())?;
+                let mut mir_func = lower_function(
+                    db,
+                    *func,
+                    next_fn_idx,
+                    &mut memory_layout,
+                    string_pool.clone(),
+                )?;
                 mir_func.export_name = make_export_name(ns_prefix, func.name(db).text(db));
                 function_indices.insert(func.name(db), next_fn_idx);
                 next_fn_idx += 1;
 
                 // Collect test entry if marked with {test}
                 if func.is_test(db) {
-                    let export_name = mir_func.export_name.as_ref()
+                    let export_name = mir_func
+                        .export_name
+                        .as_ref()
                         .map(|s| s.to_string())
                         .unwrap_or_else(|| func.name(db).text(db).to_string());
                     let cases = build_test_cases(db, *func, &export_name);
@@ -236,8 +255,13 @@ fn lower_module_from_pous<'db>(
                 }
 
                 // Lower methods
-                let method_funcs =
-                    lower_function_block(db, *fb, next_fn_idx, &mut memory_layout, string_pool.clone())?;
+                let method_funcs = lower_function_block(
+                    db,
+                    *fb,
+                    next_fn_idx,
+                    &mut memory_layout,
+                    string_pool.clone(),
+                )?;
                 for mf in method_funcs {
                     function_indices.insert(mf.name, mf.index);
                     next_fn_idx += 1;
@@ -276,8 +300,13 @@ fn lower_module_from_pous<'db>(
                 }
 
                 // Lower methods
-                let method_funcs =
-                    lower_class(db, *class, next_fn_idx, &mut memory_layout, string_pool.clone())?;
+                let method_funcs = lower_class(
+                    db,
+                    *class,
+                    next_fn_idx,
+                    &mut memory_layout,
+                    string_pool.clone(),
+                )?;
                 for mf in method_funcs {
                     function_indices.insert(mf.name, mf.index);
                     next_fn_idx += 1;
@@ -291,11 +320,19 @@ fn lower_module_from_pous<'db>(
 
     // Phase 3: Process programs
     for (program, ns_prefix) in all_programs.iter() {
-        let mut mir_func = lower_program(db, **program, next_fn_idx, &mut memory_layout, string_pool.clone())?;
+        let mut mir_func = lower_program(
+            db,
+            **program,
+            next_fn_idx,
+            &mut memory_layout,
+            string_pool.clone(),
+        )?;
         mir_func.export_name = make_export_name(ns_prefix, program.name(db).text(db));
 
         if program.is_test(db) {
-            let export_name = mir_func.export_name.as_ref()
+            let export_name = mir_func
+                .export_name
+                .as_ref()
                 .map(|s| s.to_string())
                 .unwrap_or_else(|| program.name(db).text(db).to_string());
             test_entries.push(crate::test_manifest::TestEntry {
@@ -322,12 +359,20 @@ fn lower_module_from_pous<'db>(
         type_indices,
         memory_layout,
         string_data: Vec::new(),
-        test_manifest: crate::test_manifest::TestManifest { tests: test_entries },
+        test_manifest: crate::test_manifest::TestManifest {
+            tests: test_entries,
+        },
     };
 
     // Phase 4: Monomorphization - discovers call sites, generates concrete copies
     if !any_functions.is_empty() {
-        monomorphize(db, &mut module, &any_functions, &mut MirMemoryLayout::new(), string_pool.clone())?;
+        monomorphize(
+            db,
+            &mut module,
+            &any_functions,
+            &mut MirMemoryLayout::new(),
+            string_pool.clone(),
+        )?;
     }
 
     // Phase 5: Extract interned string data into the module
@@ -345,7 +390,9 @@ fn build_test_cases<'db>(
     base_export: &str,
 ) -> Vec<crate::test_manifest::TestCase> {
     use crate::test_manifest::{TestCase, TestValue};
-    use hir::hir_def::expressions::expression::{ExprKind, PrimaryExpr, Elementary, ParamAssignKind};
+    use hir::hir_def::expressions::expression::{
+        ExprKind, ParamAssignKind, PrimaryExpr,
+    };
 
     func.cases(db)
         .iter()
@@ -360,7 +407,9 @@ fn build_test_cases<'db>(
                         _ => return None,
                     };
                     match value_expr.expr(db) {
-                        ExprKind::PrimaryExpr(PrimaryExpr::Literal(elem)) => Some(elementary_to_test_value(db, &elem)),
+                        ExprKind::PrimaryExpr(PrimaryExpr::Literal(elem)) => {
+                            Some(elementary_to_test_value(db, elem))
+                        }
                         _ => None,
                     }
                 })
@@ -387,11 +436,15 @@ fn elementary_to_test_value(
             let text = ident.text(db);
             TestValue::Bool(text.eq_ignore_ascii_case("TRUE") || text == "1")
         }
-        Elementary::SInt(int) | Elementary::Int(int) | Elementary::DInt(int)
-        | Elementary::USInt(int) | Elementary::UInt(int) | Elementary::UDInt(int)
-        | Elementary::Byte(int) | Elementary::Word(int) | Elementary::DWord(int) => {
-            TestValue::I32(int.as_i32(db).unwrap_or(0))
-        }
+        Elementary::SInt(int)
+        | Elementary::Int(int)
+        | Elementary::DInt(int)
+        | Elementary::USInt(int)
+        | Elementary::UInt(int)
+        | Elementary::UDInt(int)
+        | Elementary::Byte(int)
+        | Elementary::Word(int)
+        | Elementary::DWord(int) => TestValue::I32(int.as_i32(db).unwrap_or(0)),
         Elementary::LInt(int) | Elementary::ULInt(int) | Elementary::LWord(int) => {
             TestValue::I64(int.as_i64(db).unwrap_or(0))
         }
@@ -403,9 +456,7 @@ fn elementary_to_test_value(
             let text = ident.text(db);
             TestValue::F64(text.parse().unwrap_or(0.0))
         }
-        Elementary::InferInteger(int) => {
-            TestValue::I32(int.as_i32(db).unwrap_or(0))
-        }
+        Elementary::InferInteger(int) => TestValue::I32(int.as_i32(db).unwrap_or(0)),
         _ => TestValue::I32(0), // fallback for time/date/string
     }
 }
@@ -480,13 +531,13 @@ pub fn lower_wasm_intrinsic<'db>(
     wasm_decl: &hir::hir_def::extern_decl::WasmDecl<'db>,
     index: u32,
 ) -> Result<crate::function::MirFunction, LowerTypeError> {
-    use crate::function::*;
     use crate::expr::*;
+    use crate::function::*;
     use crate::stmt::*;
     use hir::hir_def::pous::variable::VariableKind;
 
     // Parse the instruction to determine from/to types
-    let instruction = wasm_decl.instruction.as_str();
+    let _instruction = wasm_decl.instruction.as_str();
 
     // Build params
     let mut params = Vec::new();
@@ -526,7 +577,9 @@ pub fn lower_wasm_intrinsic<'db>(
             ty: ret_ty.clone(),
             init: None,
             kind: crate::function::MirLocalKind::Var,
-            storage: MirStorage::Scalar { local_index: return_local_idx },
+            storage: MirStorage::Scalar {
+                local_index: return_local_idx,
+            },
         });
     }
 

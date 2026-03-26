@@ -174,8 +174,14 @@ END_NAMESPACE
     let completions = complete(&with_db, file, offset, Some(".".into()));
 
     assert!(!completions.is_empty(), "should have completions");
-    assert!(format!("{completions:?}").contains("sub1"), "should suggest sub1");
-    assert!(format!("{completions:?}").contains("sub2"), "should suggest sub2");
+    assert!(
+        format!("{completions:?}").contains("sub1"),
+        "should suggest sub1"
+    );
+    assert!(
+        format!("{completions:?}").contains("sub2"),
+        "should suggest sub2"
+    );
 }
 
 /// Dot completion on `USING ns.` inside a function should show namespace fragments.
@@ -200,10 +206,19 @@ END_FUNCTION
     let completions = complete(&with_db, file, offset, Some(".".into()));
 
     assert!(!completions.is_empty(), "should have completions");
-    assert!(format!("{completions:?}").contains("sub1"), "should suggest sub1");
-    assert!(format!("{completions:?}").contains("sub2"), "should suggest sub2");
+    assert!(
+        format!("{completions:?}").contains("sub1"),
+        "should suggest sub1"
+    );
+    assert!(
+        format!("{completions:?}").contains("sub2"),
+        "should suggest sub2"
+    );
     // Should NOT contain body completions like IF
-    assert!(!format!("{completions:?}").contains("\"IF\""), "should not show body statements");
+    assert!(
+        !format!("{completions:?}").contains("\"IF\""),
+        "should not show body statements"
+    );
 }
 
 /// After a top-level USING directive (with nothing else in the file),

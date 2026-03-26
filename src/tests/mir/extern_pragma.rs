@@ -2,8 +2,8 @@ use db::RootDatabase;
 use insta::assert_snapshot;
 use rstest::rstest;
 
-use crate::tests::utils::with_db;
 use super::utils::mir_exports;
+use crate::tests::utils::with_db;
 
 #[rstest]
 fn extern_pragma_generates_import(mut with_db: RootDatabase) {

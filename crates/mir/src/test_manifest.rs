@@ -44,6 +44,12 @@ pub enum TestValue {
     Bool(bool),
 }
 
+impl Default for TestManifest {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl TestManifest {
     pub fn new() -> Self {
         TestManifest { tests: Vec::new() }

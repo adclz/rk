@@ -1,5 +1,6 @@
 use db::WorkspaceDataBase;
 
+use crate::hir_def::extern_decl::WasmDecl;
 use crate::{
     AstId, HirNodeInfo,
     hir_def::{
@@ -8,7 +9,6 @@ use crate::{
         scope::ScopeId,
     },
 };
-use crate::hir_def::extern_decl::WasmDecl;
 
 #[salsa::tracked(debug)]
 pub struct Stmt<'db> {

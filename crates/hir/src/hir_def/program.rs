@@ -7,7 +7,11 @@ use crate::{
     AstId, HasName, HirNodeInfo,
     hir_def::{
         config::AccessDirection,
-        expressions::{expression::{ParamAssign, PathExpr}, spec::Spec, statement::Stmt},
+        expressions::{
+            expression::{ParamAssign, PathExpr},
+            spec::Spec,
+            statement::Stmt,
+        },
         interned::identifier::Ident,
         pous::variable::{DirectVariable, LocatedVariable, VariableDecl},
         scope::ScopeId,

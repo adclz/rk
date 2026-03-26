@@ -36,11 +36,11 @@ fn elem_type_init_snippets_are_valid_syntax(mut with_db: RootDatabase) {
     add_sources(&mut with_db, &source_refs);
 
     let mut failures = Vec::new();
-    for (file, item) in with_db.get_files().iter().zip(
-        items
-            .iter()
-            .filter(|item| item.insert_text.is_some()),
-    ) {
+    for (file, item) in with_db
+        .get_files()
+        .iter()
+        .zip(items.iter().filter(|item| item.insert_text.is_some()))
+    {
         let diagnostics = diagnostics_for_file(&with_db, *file);
         let parse_errors: Vec<_> = diagnostics
             .iter()
@@ -89,11 +89,11 @@ fn elem_type_init_snippets_valid_in_var_decl(mut with_db: RootDatabase) {
     add_sources(&mut with_db, &source_refs);
 
     let mut failures = Vec::new();
-    for (file, item) in with_db.get_files().iter().zip(
-        items
-            .iter()
-            .filter(|item| item.insert_text.is_some()),
-    ) {
+    for (file, item) in with_db
+        .get_files()
+        .iter()
+        .zip(items.iter().filter(|item| item.insert_text.is_some()))
+    {
         let diagnostics = diagnostics_for_file(&with_db, *file);
         let parse_errors: Vec<_> = diagnostics
             .iter()

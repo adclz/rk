@@ -2,8 +2,8 @@ use db::RootDatabase;
 use insta::assert_snapshot;
 use rstest::rstest;
 
-use crate::tests::utils::with_db;
 use super::utils::{mir_exports, mir_test_manifest};
+use crate::tests::utils::with_db;
 
 #[rstest]
 fn namespace_qualified_export_names(mut with_db: RootDatabase) {
@@ -219,9 +219,9 @@ END_PROGRAM
 #[rstest]
 fn manifest_roundtrip_msgpack(mut with_db: RootDatabase) {
     // Verify the manifest can be serialized and deserialized via MessagePack
+    use crate::tests::utils::add_sources;
     use auto_lsp::default::db::BaseDatabase;
     use hir::hir_def::semantic_index::semantic_index;
-    use crate::tests::utils::add_sources;
 
     let source = r#"
 {test}

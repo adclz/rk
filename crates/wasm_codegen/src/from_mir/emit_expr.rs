@@ -95,11 +95,7 @@ fn emit_load(
                     LocalInfo::Scalar { index, .. } => {
                         func.instruction(&Instruction::LocalGet(*index));
                     }
-                    LocalInfo::Memory {
-                        address,
-                        elem,
-                        ..
-                    } => {
+                    LocalInfo::Memory { address, elem, .. } => {
                         func.instruction(&Instruction::I32Const(*address as i32));
                         if let Some(e) = elem {
                             emit_typed_mem_load(func, &MirType::Elementary(*e));
@@ -119,7 +115,10 @@ fn emit_load(
                             func.instruction(&Instruction::I32Load(mem_arg(0, 2)));
                         }
                     }
-                    LocalInfo::StringParam { ptr_index, len_index } => {
+                    LocalInfo::StringParam {
+                        ptr_index,
+                        len_index,
+                    } => {
                         // Push (ptr, len) pair on the stack
                         func.instruction(&Instruction::LocalGet(*ptr_index));
                         func.instruction(&Instruction::LocalGet(*len_index));

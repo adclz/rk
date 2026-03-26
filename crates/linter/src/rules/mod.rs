@@ -67,7 +67,15 @@ pub fn lint_file(
     }
 
     for ns in sema.namespaces.iter() {
-        collect_namespace_scopes(db, config, *ns, &mut all_scopes, &mut body_scopes, &mut all_usings, diagnostics);
+        collect_namespace_scopes(
+            db,
+            config,
+            *ns,
+            &mut all_scopes,
+            &mut body_scopes,
+            &mut all_usings,
+            diagnostics,
+        );
     }
 
     for program in sema.programs.iter() {
@@ -110,7 +118,15 @@ fn collect_namespace_scopes<'db>(
     }
 
     for nested in ns.namespaces(db) {
-        collect_namespace_scopes(db, config, *nested, all_scopes, body_scopes, all_usings, diagnostics);
+        collect_namespace_scopes(
+            db,
+            config,
+            *nested,
+            all_scopes,
+            body_scopes,
+            all_usings,
+            diagnostics,
+        );
     }
 }
 

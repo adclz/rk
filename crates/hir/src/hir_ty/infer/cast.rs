@@ -1,7 +1,4 @@
-use crate::{
-    hir_def::expressions::spec::ElementarySpec,
-    hir_ty::ty::Type,
-};
+use crate::{hir_def::expressions::spec::ElementarySpec, hir_ty::ty::Type};
 
 #[derive(Debug, PartialEq, Eq, Clone)]
 pub struct ExplicitCast<'db> {

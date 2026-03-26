@@ -148,10 +148,7 @@ impl MirType {
     pub fn is_scalar(&self) -> bool {
         matches!(
             self,
-            MirType::Elementary(_)
-                | MirType::Enum(_)
-                | MirType::Subrange(_)
-                | MirType::Pointer(_)
+            MirType::Elementary(_) | MirType::Enum(_) | MirType::Subrange(_) | MirType::Pointer(_)
         )
     }
 }
@@ -159,10 +156,23 @@ impl MirType {
 impl MirElementary {
     pub fn size_bytes(self) -> u32 {
         match self {
-            MirElementary::Bool | MirElementary::SInt | MirElementary::USInt | MirElementary::Byte | MirElementary::Char => 4,
-            MirElementary::Int | MirElementary::UInt | MirElementary::Word | MirElementary::WChar => 4,
-            MirElementary::DInt | MirElementary::UDInt | MirElementary::DWord | MirElementary::Real => 4,
-            MirElementary::LInt | MirElementary::ULInt | MirElementary::LWord | MirElementary::LReal => 8,
+            MirElementary::Bool
+            | MirElementary::SInt
+            | MirElementary::USInt
+            | MirElementary::Byte
+            | MirElementary::Char => 4,
+            MirElementary::Int
+            | MirElementary::UInt
+            | MirElementary::Word
+            | MirElementary::WChar => 4,
+            MirElementary::DInt
+            | MirElementary::UDInt
+            | MirElementary::DWord
+            | MirElementary::Real => 4,
+            MirElementary::LInt
+            | MirElementary::ULInt
+            | MirElementary::LWord
+            | MirElementary::LReal => 8,
             MirElementary::Time | MirElementary::LTime => 8,
             MirElementary::Date | MirElementary::LDate => 8,
             MirElementary::Tod | MirElementary::LTod => 8,

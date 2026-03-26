@@ -6,10 +6,7 @@ use hir::hir_def::interned::identifier::Ident;
 #[derive(Debug, Clone)]
 pub enum MirStmt {
     /// Simple assignment: place = expr.
-    Assign {
-        target: MirPlace,
-        value: MirExpr,
-    },
+    Assign { target: MirPlace, value: MirExpr },
 
     /// Function/method call as statement (result discarded if any).
     Call(MirCall),
@@ -78,10 +75,7 @@ pub enum MirStmt {
     Continue,
 
     /// Direct memory store for flat initialization sequences.
-    MemStore {
-        offset: u32,
-        value: MirConstant,
-    },
+    MemStore { offset: u32, value: MirConstant },
 
     /// Direct WASM instruction from a `{wasm}` pragma: params pushed in
     /// order, the result popped and stored.

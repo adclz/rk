@@ -16,9 +16,9 @@ mod exceptions_spike;
 mod execution;
 mod function_blocks;
 mod imports;
+mod mir_smoke;
 mod ref_to;
 mod references;
-mod mir_smoke;
 mod structs;
 
 #[fixture]
@@ -91,8 +91,8 @@ fn compile_to_wasm_impl(db: &mut RootDatabase, source: &str, check_diagnostics: 
     }
 
     // MIR pipeline: HIR → MIR → WASM
-    let mir_module = mir::lower::lower_module::lower_module(db, &sem_idx)
-        .expect("MIR lowering failed");
+    let mir_module =
+        mir::lower::lower_module::lower_module(db, &sem_idx).expect("MIR lowering failed");
 
     let wasm_module = crate::from_mir::generate_wasm(db, &mir_module);
     wasm_module.finish()

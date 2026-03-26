@@ -75,11 +75,7 @@ impl<'db> ParseSpec<'db> for ast::generated::DataTypeAccess {
                     sema,
                     into.Ref.cast(sema.ast),
                 )?;
-                Ok(sema.new_spec(
-                    SpecKind::Into(ident),
-                    into.into(),
-                    sema.current_scope,
-                ))
+                Ok(sema.new_spec(SpecKind::Into(ident), into.into(), sema.current_scope))
             }
         }
     }

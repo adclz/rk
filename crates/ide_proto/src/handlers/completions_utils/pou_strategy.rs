@@ -113,9 +113,7 @@ impl<'db> CompletionCtx {
 
         // Methods have the same var section structure as functions
         match ctx.head_location {
-            HeadLocation::BeforeVars
-            | HeadLocation::InVars
-            | HeadLocation::InBodyAfterVars => {
+            HeadLocation::BeforeVars | HeadLocation::InVars | HeadLocation::InBodyAfterVars => {
                 add_var_snippets(
                     Function::allowed().difference(ctx.active_variable_sections()),
                     &mut self.items,

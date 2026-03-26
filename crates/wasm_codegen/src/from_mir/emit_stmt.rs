@@ -5,12 +5,14 @@ use hir::hir_def::interned::identifier::Ident;
 use mir::{
     expr::{MirConstant, MirExpr, MirPlace},
     stmt::{MirCasePattern, MirStmt},
-    types::MirElementary,
 };
 use rustc_hash::FxHashMap;
 use wasm_encoder::{BlockType, Instruction, MemArg};
 
-use super::{LocalInfo, emit_expr::{emit_addr_of, emit_expr, emit_typed_mem_load, mem_arg}};
+use super::{
+    LocalInfo,
+    emit_expr::{emit_addr_of, emit_expr, emit_typed_mem_load, mem_arg},
+};
 
 /// Context for statement emission.
 struct Ctx<'a> {
@@ -27,7 +29,11 @@ pub(crate) fn emit_stmts_with_return(
     fn_indices: &FxHashMap<Ident, u32>,
     return_local: Option<u32>,
 ) {
-    let ctx = Ctx { locals, fn_indices, return_local };
+    let ctx = Ctx {
+        locals,
+        fn_indices,
+        return_local,
+    };
     emit_stmts(func, stmts, &ctx);
 }
 
@@ -44,7 +50,12 @@ fn emit_stmt(func: &mut wasm_encoder::Function, stmt: &MirStmt, ctx: &Ctx) {
         }
 
         MirStmt::Call(call) => {
-            emit_expr(func, &MirExpr::Call(call.clone()), ctx.locals, ctx.fn_indices);
+            emit_expr(
+                func,
+                &MirExpr::Call(call.clone()),
+                ctx.locals,
+                ctx.fn_indices,
+            );
             if call.return_type != mir::types::MirType::Void {
                 func.instruction(&Instruction::Drop);
             }
@@ -57,7 +68,12 @@ fn emit_stmt(func: &mut wasm_encoder::Function, stmt: &MirStmt, ctx: &Ctx) {
             func.instruction(&Instruction::Return);
         }
 
-        MirStmt::If { condition, then_body, else_ifs, else_body } => {
+        MirStmt::If {
+            condition,
+            then_body,
+            else_ifs,
+            else_body,
+        } => {
             emit_expr(func, condition, ctx.locals, ctx.fn_indices);
             func.instruction(&Instruction::If(BlockType::Empty));
             emit_stmts(func, then_body, ctx);
@@ -80,7 +96,11 @@ fn emit_stmt(func: &mut wasm_encoder::Function, stmt: &MirStmt, ctx: &Ctx) {
             }
         }
 
-        MirStmt::Case { selector, arms, else_body } => {
+        MirStmt::Case {
+            selector,
+            arms,
+            else_body,
+        } => {
             func.instruction(&Instruction::Block(BlockType::Empty));
 
             for arm in arms {
@@ -121,7 +141,14 @@ fn emit_stmt(func: &mut wasm_encoder::Function, stmt: &MirStmt, ctx: &Ctx) {
             func.instruction(&Instruction::End); // outer block
         }
 
-        MirStmt::For { control_var, control_type, start, end, step, body } => {
+        MirStmt::For {
+            control_var,
+            control_type,
+            start,
+            end,
+            step,
+            body,
+        } => {
             let ctrl_idx = match ctx.locals.get(control_var) {
                 Some(LocalInfo::Scalar { index, .. }) => *index,
                 _ => return,
@@ -214,7 +241,9 @@ fn emit_stmt(func: &mut wasm_encoder::Function, stmt: &MirStmt, ctx: &Ctx) {
             // 1. Write input values to the FB instance's fields in memory
             for (field_offset, value, elem) in input_writes {
                 // Push address (instance base + field offset)
-                func.instruction(&Instruction::I32Const((instance_addr + field_offset) as i32));
+                func.instruction(&Instruction::I32Const(
+                    (instance_addr + field_offset) as i32,
+                ));
                 // Emit value
                 emit_expr(func, value, ctx.locals, ctx.fn_indices);
                 // Store typed
@@ -232,7 +261,9 @@ fn emit_stmt(func: &mut wasm_encoder::Function, stmt: &MirStmt, ctx: &Ctx) {
                 // First: emit target address
                 emit_addr_of(func, target, ctx.locals);
                 // Then: load from instance field
-                func.instruction(&Instruction::I32Const((instance_addr + field_offset) as i32));
+                func.instruction(&Instruction::I32Const(
+                    (instance_addr + field_offset) as i32,
+                ));
                 let elem_ty = mir::types::MirType::Elementary(*elem);
                 emit_typed_mem_load(func, &elem_ty);
                 // Store to target
@@ -240,33 +271,28 @@ fn emit_stmt(func: &mut wasm_encoder::Function, stmt: &MirStmt, ctx: &Ctx) {
             }
         }
 
-        MirStmt::WasmIntrinsic { instruction, params, result } => {
+        MirStmt::WasmIntrinsic {
+            instruction,
+            params,
+            result,
+        } => {
             // Push params on stack
             for param_name in params {
-                if let Some(info) = ctx.locals.get(param_name) {
-                    match info {
-                        LocalInfo::Scalar { index, .. } => {
-                            func.instruction(&Instruction::LocalGet(*index));
-                        }
-                        _ => {}
+                if let Some(info) = ctx.locals.get(param_name)
+                    && let LocalInfo::Scalar { index, .. } = info {
+                        func.instruction(&Instruction::LocalGet(*index));
                     }
-                }
             }
 
             // Emit the WASM instruction
             emit_wasm_instruction(func, instruction);
 
             // Store result
-            if let Some(result_name) = result {
-                if let Some(info) = ctx.locals.get(result_name) {
-                    match info {
-                        LocalInfo::Scalar { index, .. } => {
-                            func.instruction(&Instruction::LocalSet(*index));
-                        }
-                        _ => {}
+            if let Some(result_name) = result
+                && let Some(info) = ctx.locals.get(result_name)
+                    && let LocalInfo::Scalar { index, .. } = info {
+                        func.instruction(&Instruction::LocalSet(*index));
                     }
-                }
-            }
         }
 
         MirStmt::DebugTrap { .. } => {}
@@ -277,38 +303,92 @@ fn emit_stmt(func: &mut wasm_encoder::Function, stmt: &MirStmt, ctx: &Ctx) {
 fn emit_wasm_instruction(func: &mut wasm_encoder::Function, name: &str) {
     match name {
         // Integer arithmetic/bitwise (32-bit)
-        "i32.shl" => { func.instruction(&Instruction::I32Shl); }
-        "i32.shr_u" => { func.instruction(&Instruction::I32ShrU); }
-        "i32.shr_s" => { func.instruction(&Instruction::I32ShrS); }
-        "i32.rotl" => { func.instruction(&Instruction::I32Rotl); }
-        "i32.rotr" => { func.instruction(&Instruction::I32Rotr); }
-        "i32.and" => { func.instruction(&Instruction::I32And); }
-        "i32.or" => { func.instruction(&Instruction::I32Or); }
-        "i32.xor" => { func.instruction(&Instruction::I32Xor); }
+        "i32.shl" => {
+            func.instruction(&Instruction::I32Shl);
+        }
+        "i32.shr_u" => {
+            func.instruction(&Instruction::I32ShrU);
+        }
+        "i32.shr_s" => {
+            func.instruction(&Instruction::I32ShrS);
+        }
+        "i32.rotl" => {
+            func.instruction(&Instruction::I32Rotl);
+        }
+        "i32.rotr" => {
+            func.instruction(&Instruction::I32Rotr);
+        }
+        "i32.and" => {
+            func.instruction(&Instruction::I32And);
+        }
+        "i32.or" => {
+            func.instruction(&Instruction::I32Or);
+        }
+        "i32.xor" => {
+            func.instruction(&Instruction::I32Xor);
+        }
         // Integer arithmetic/bitwise (64-bit)
-        "i64.shl" => { func.instruction(&Instruction::I64Shl); }
-        "i64.shr_u" => { func.instruction(&Instruction::I64ShrU); }
-        "i64.shr_s" => { func.instruction(&Instruction::I64ShrS); }
-        "i64.rotl" => { func.instruction(&Instruction::I64Rotl); }
-        "i64.rotr" => { func.instruction(&Instruction::I64Rotr); }
+        "i64.shl" => {
+            func.instruction(&Instruction::I64Shl);
+        }
+        "i64.shr_u" => {
+            func.instruction(&Instruction::I64ShrU);
+        }
+        "i64.shr_s" => {
+            func.instruction(&Instruction::I64ShrS);
+        }
+        "i64.rotl" => {
+            func.instruction(&Instruction::I64Rotl);
+        }
+        "i64.rotr" => {
+            func.instruction(&Instruction::I64Rotr);
+        }
         // Float conversions
-        "f32.convert_i32_s" => { func.instruction(&Instruction::F32ConvertI32S); }
-        "f32.convert_i32_u" => { func.instruction(&Instruction::F32ConvertI32U); }
-        "f32.convert_i64_s" => { func.instruction(&Instruction::F32ConvertI64S); }
-        "f64.convert_i32_s" => { func.instruction(&Instruction::F64ConvertI32S); }
-        "f64.convert_i64_s" => { func.instruction(&Instruction::F64ConvertI64S); }
+        "f32.convert_i32_s" => {
+            func.instruction(&Instruction::F32ConvertI32S);
+        }
+        "f32.convert_i32_u" => {
+            func.instruction(&Instruction::F32ConvertI32U);
+        }
+        "f32.convert_i64_s" => {
+            func.instruction(&Instruction::F32ConvertI64S);
+        }
+        "f64.convert_i32_s" => {
+            func.instruction(&Instruction::F64ConvertI32S);
+        }
+        "f64.convert_i64_s" => {
+            func.instruction(&Instruction::F64ConvertI64S);
+        }
         // Int truncations from float
-        "i32.trunc_f32_s" => { func.instruction(&Instruction::I32TruncF32S); }
-        "i32.trunc_f64_s" => { func.instruction(&Instruction::I32TruncF64S); }
-        "i64.trunc_f32_s" => { func.instruction(&Instruction::I64TruncF32S); }
-        "i64.trunc_f64_s" => { func.instruction(&Instruction::I64TruncF64S); }
+        "i32.trunc_f32_s" => {
+            func.instruction(&Instruction::I32TruncF32S);
+        }
+        "i32.trunc_f64_s" => {
+            func.instruction(&Instruction::I32TruncF64S);
+        }
+        "i64.trunc_f32_s" => {
+            func.instruction(&Instruction::I64TruncF32S);
+        }
+        "i64.trunc_f64_s" => {
+            func.instruction(&Instruction::I64TruncF64S);
+        }
         // Float promotions/demotions
-        "f32.demote_f64" => { func.instruction(&Instruction::F32DemoteF64); }
-        "f64.promote_f32" => { func.instruction(&Instruction::F64PromoteF32); }
+        "f32.demote_f64" => {
+            func.instruction(&Instruction::F32DemoteF64);
+        }
+        "f64.promote_f32" => {
+            func.instruction(&Instruction::F64PromoteF32);
+        }
         // Integer wrapping/extending
-        "i32.wrap_i64" => { func.instruction(&Instruction::I32WrapI64); }
-        "i64.extend_i32_s" => { func.instruction(&Instruction::I64ExtendI32S); }
-        "i64.extend_i32_u" => { func.instruction(&Instruction::I64ExtendI32U); }
+        "i32.wrap_i64" => {
+            func.instruction(&Instruction::I32WrapI64);
+        }
+        "i64.extend_i32_s" => {
+            func.instruction(&Instruction::I64ExtendI32S);
+        }
+        "i64.extend_i32_u" => {
+            func.instruction(&Instruction::I64ExtendI32U);
+        }
         _ => {
             // Unknown instruction — emit unreachable as a trap
             func.instruction(&Instruction::Unreachable);
@@ -339,7 +419,10 @@ fn emit_assignment(
                             emit_mem_store(func, 4, 4);
                         }
                     }
-                    LocalInfo::Pointer { index, pointee_elem } => {
+                    LocalInfo::Pointer {
+                        index,
+                        pointee_elem,
+                    } => {
                         func.instruction(&Instruction::LocalGet(*index));
                         emit_expr(func, value, ctx.locals, ctx.fn_indices);
                         if let Some(elem) = pointee_elem {
@@ -348,7 +431,10 @@ fn emit_assignment(
                             emit_mem_store(func, 4, 4);
                         }
                     }
-                    LocalInfo::StringParam { ptr_index, len_index } => {
+                    LocalInfo::StringParam {
+                        ptr_index,
+                        len_index,
+                    } => {
                         // Value pushes (ptr, len) pair on stack
                         emit_expr(func, value, ctx.locals, ctx.fn_indices);
                         func.instruction(&Instruction::LocalSet(*len_index));
@@ -376,32 +462,51 @@ fn emit_assignment(
                                     _ => None,
                                 } {
                                     match src_info {
-                                        LocalInfo::StringParam { ptr_index, len_index } => {
-                                            func.instruction(&Instruction::I32Const(*address as i32));
+                                        LocalInfo::StringParam {
+                                            ptr_index,
+                                            len_index,
+                                        } => {
+                                            func.instruction(&Instruction::I32Const(
+                                                *address as i32,
+                                            ));
                                             func.instruction(&Instruction::LocalGet(*ptr_index));
                                             func.instruction(&Instruction::I32Store(mem_arg(0, 2)));
-                                            func.instruction(&Instruction::I32Const(*address as i32 + 4));
+                                            func.instruction(&Instruction::I32Const(
+                                                *address as i32 + 4,
+                                            ));
                                             func.instruction(&Instruction::LocalGet(*len_index));
                                             func.instruction(&Instruction::I32Store(mem_arg(0, 2)));
                                         }
                                         LocalInfo::StringMemory { address: src_addr } => {
                                             // Copy ptr
-                                            func.instruction(&Instruction::I32Const(*address as i32));
-                                            func.instruction(&Instruction::I32Const(*src_addr as i32));
+                                            func.instruction(&Instruction::I32Const(
+                                                *address as i32,
+                                            ));
+                                            func.instruction(&Instruction::I32Const(
+                                                *src_addr as i32,
+                                            ));
                                             func.instruction(&Instruction::I32Load(mem_arg(0, 2)));
                                             func.instruction(&Instruction::I32Store(mem_arg(0, 2)));
                                             // Copy len
-                                            func.instruction(&Instruction::I32Const(*address as i32 + 4));
-                                            func.instruction(&Instruction::I32Const(*src_addr as i32 + 4));
+                                            func.instruction(&Instruction::I32Const(
+                                                *address as i32 + 4,
+                                            ));
+                                            func.instruction(&Instruction::I32Const(
+                                                *src_addr as i32 + 4,
+                                            ));
                                             func.instruction(&Instruction::I32Load(mem_arg(0, 2)));
                                             func.instruction(&Instruction::I32Store(mem_arg(0, 2)));
                                         }
                                         _ => {
                                             // Fallback: zero out
-                                            func.instruction(&Instruction::I32Const(*address as i32));
+                                            func.instruction(&Instruction::I32Const(
+                                                *address as i32,
+                                            ));
                                             func.instruction(&Instruction::I32Const(0));
                                             func.instruction(&Instruction::I32Store(mem_arg(0, 2)));
-                                            func.instruction(&Instruction::I32Const(*address as i32 + 4));
+                                            func.instruction(&Instruction::I32Const(
+                                                *address as i32 + 4,
+                                            ));
                                             func.instruction(&Instruction::I32Const(0));
                                             func.instruction(&Instruction::I32Store(mem_arg(0, 2)));
                                         }
@@ -433,12 +538,24 @@ fn emit_assignment(
 
 fn emit_constant_expr(func: &mut wasm_encoder::Function, c: &MirConstant) {
     match c {
-        MirConstant::Bool(v) => { func.instruction(&Instruction::I32Const(if *v { 1 } else { 0 })); }
-        MirConstant::I32(v) => { func.instruction(&Instruction::I32Const(*v)); }
-        MirConstant::I64(v) => { func.instruction(&Instruction::I64Const(*v)); }
-        MirConstant::F32(v) => { func.instruction(&Instruction::F32Const((*v).into())); }
-        MirConstant::F64(v) => { func.instruction(&Instruction::F64Const((*v).into())); }
-        MirConstant::Null => { func.instruction(&Instruction::I32Const(0)); }
+        MirConstant::Bool(v) => {
+            func.instruction(&Instruction::I32Const(if *v { 1 } else { 0 }));
+        }
+        MirConstant::I32(v) => {
+            func.instruction(&Instruction::I32Const(*v));
+        }
+        MirConstant::I64(v) => {
+            func.instruction(&Instruction::I64Const(*v));
+        }
+        MirConstant::F32(v) => {
+            func.instruction(&Instruction::F32Const((*v).into()));
+        }
+        MirConstant::F64(v) => {
+            func.instruction(&Instruction::F64Const((*v).into()));
+        }
+        MirConstant::Null => {
+            func.instruction(&Instruction::I32Const(0));
+        }
     }
 }
 
@@ -446,27 +563,51 @@ fn emit_constant_store(func: &mut wasm_encoder::Function, value: &MirConstant) {
     match value {
         MirConstant::Bool(v) => {
             func.instruction(&Instruction::I32Const(if *v { 1 } else { 0 }));
-            func.instruction(&Instruction::I32Store(MemArg { offset: 0, align: 2, memory_index: 0 }));
+            func.instruction(&Instruction::I32Store(MemArg {
+                offset: 0,
+                align: 2,
+                memory_index: 0,
+            }));
         }
         MirConstant::I32(v) => {
             func.instruction(&Instruction::I32Const(*v));
-            func.instruction(&Instruction::I32Store(MemArg { offset: 0, align: 2, memory_index: 0 }));
+            func.instruction(&Instruction::I32Store(MemArg {
+                offset: 0,
+                align: 2,
+                memory_index: 0,
+            }));
         }
         MirConstant::I64(v) => {
             func.instruction(&Instruction::I64Const(*v));
-            func.instruction(&Instruction::I64Store(MemArg { offset: 0, align: 3, memory_index: 0 }));
+            func.instruction(&Instruction::I64Store(MemArg {
+                offset: 0,
+                align: 3,
+                memory_index: 0,
+            }));
         }
         MirConstant::F32(v) => {
             func.instruction(&Instruction::F32Const((*v).into()));
-            func.instruction(&Instruction::F32Store(MemArg { offset: 0, align: 2, memory_index: 0 }));
+            func.instruction(&Instruction::F32Store(MemArg {
+                offset: 0,
+                align: 2,
+                memory_index: 0,
+            }));
         }
         MirConstant::F64(v) => {
             func.instruction(&Instruction::F64Const((*v).into()));
-            func.instruction(&Instruction::F64Store(MemArg { offset: 0, align: 3, memory_index: 0 }));
+            func.instruction(&Instruction::F64Store(MemArg {
+                offset: 0,
+                align: 3,
+                memory_index: 0,
+            }));
         }
         MirConstant::Null => {
             func.instruction(&Instruction::I32Const(0));
-            func.instruction(&Instruction::I32Store(MemArg { offset: 0, align: 2, memory_index: 0 }));
+            func.instruction(&Instruction::I32Store(MemArg {
+                offset: 0,
+                align: 2,
+                memory_index: 0,
+            }));
         }
     }
 }
@@ -474,8 +615,20 @@ fn emit_constant_store(func: &mut wasm_encoder::Function, value: &MirConstant) {
 fn emit_mem_store(func: &mut wasm_encoder::Function, size: u32, align: u32) {
     let align_log2 = align.trailing_zeros();
     match size {
-        8 => { func.instruction(&Instruction::I64Store(MemArg { offset: 0, align: align_log2, memory_index: 0 })); }
-        _ => { func.instruction(&Instruction::I32Store(MemArg { offset: 0, align: align_log2.min(2), memory_index: 0 })); }
+        8 => {
+            func.instruction(&Instruction::I64Store(MemArg {
+                offset: 0,
+                align: align_log2,
+                memory_index: 0,
+            }));
+        }
+        _ => {
+            func.instruction(&Instruction::I32Store(MemArg {
+                offset: 0,
+                align: align_log2.min(2),
+                memory_index: 0,
+            }));
+        }
     }
 }
 
@@ -483,16 +636,32 @@ fn emit_typed_mem_store(func: &mut wasm_encoder::Function, ty: &mir::types::MirT
     let align_log2 = ty.alignment().trailing_zeros();
     match ty {
         mir::types::MirType::Elementary(e) if e.is_float() && e.is_64bit() => {
-            func.instruction(&Instruction::F64Store(MemArg { offset: 0, align: align_log2, memory_index: 0 }));
+            func.instruction(&Instruction::F64Store(MemArg {
+                offset: 0,
+                align: align_log2,
+                memory_index: 0,
+            }));
         }
         mir::types::MirType::Elementary(e) if e.is_float() => {
-            func.instruction(&Instruction::F32Store(MemArg { offset: 0, align: align_log2, memory_index: 0 }));
+            func.instruction(&Instruction::F32Store(MemArg {
+                offset: 0,
+                align: align_log2,
+                memory_index: 0,
+            }));
         }
         mir::types::MirType::Elementary(e) if e.is_64bit() => {
-            func.instruction(&Instruction::I64Store(MemArg { offset: 0, align: align_log2, memory_index: 0 }));
+            func.instruction(&Instruction::I64Store(MemArg {
+                offset: 0,
+                align: align_log2,
+                memory_index: 0,
+            }));
         }
         _ => {
-            func.instruction(&Instruction::I32Store(MemArg { offset: 0, align: align_log2.min(2), memory_index: 0 }));
+            func.instruction(&Instruction::I32Store(MemArg {
+                offset: 0,
+                align: align_log2.min(2),
+                memory_index: 0,
+            }));
         }
     }
 }

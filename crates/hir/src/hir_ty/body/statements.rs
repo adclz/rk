@@ -436,24 +436,21 @@ impl<'db> StmtsResolverCtx<'db> {
                     };
 
                     // Check if the name is the enclosing POU's own name (return variable)
-                    let is_pou_name = |ident: &crate::hir_def::interned::identifier::Ident| {
-                        match scope_kind {
+                    let is_pou_name =
+                        |ident: &crate::hir_def::interned::identifier::Ident| match scope_kind {
                             crate::hir_def::scope::ScopeKind::Pou(pou) => {
                                 pou.get_name_ident(db) == *ident
                             }
-                            crate::hir_def::scope::ScopeKind::MethodDecl(m) => {
-                                m.name(db) == *ident
-                            }
+                            crate::hir_def::scope::ScopeKind::MethodDecl(m) => m.name(db) == *ident,
                             _ => false,
-                        }
-                    };
+                        };
 
                     // Check that each param variable exists in scope
                     for param in &extern_decl.params {
                         if !is_known_var(&param.ident) && !is_pou_name(&param.ident) {
                             ctx.errors.push(
                                 ResolveError::ExternVariableNotFound {
-                                    ident: param.clone(),
+                                    ident: *param,
                                     scope: self.scope,
                                 }
                                 .to_diagnostic(db),
@@ -463,17 +460,16 @@ impl<'db> StmtsResolverCtx<'db> {
 
                     // Check that result variable exists in scope
                     // (can be a local variable or the POU name for return value)
-                    if let Some(result) = &extern_decl.result {
-                        if !is_known_var(&result.ident) && !is_pou_name(&result.ident) {
+                    if let Some(result) = &extern_decl.result
+                        && !is_known_var(&result.ident) && !is_pou_name(&result.ident) {
                             ctx.errors.push(
                                 ResolveError::ExternVariableNotFound {
-                                    ident: result.clone(),
+                                    ident: *result,
                                     scope: self.scope,
                                 }
                                 .to_diagnostic(db),
                             );
                         }
-                    }
                 }
                 StmtKind::WasmPragma(_) => {
                     // Wasm intrinsic — no type inference needed

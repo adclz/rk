@@ -132,7 +132,11 @@ impl ErrorCode for SyntaxError {
 }
 
 impl SyntaxError {
-    pub fn from_parse_error(db: &dyn WorkspaceDataBase, file: File, err: &ParseErrorAccumulator) -> Self {
+    pub fn from_parse_error(
+        db: &dyn WorkspaceDataBase,
+        file: File,
+        err: &ParseErrorAccumulator,
+    ) -> Self {
         match &err.0 {
             ParseError::LexerError { span, error } => match error {
                 LexerError::Missing {
@@ -170,7 +174,7 @@ impl SyntaxError {
                         span: range.into(),
                         err,
                     }
-                },
+                }
             },
             _ => unreachable!("Only lexer errors should be present here"),
         }

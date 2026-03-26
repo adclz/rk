@@ -194,7 +194,7 @@ pub fn find_in_parent_pous<'db>(
             _ => {
                 return PouResolution::Ambiguous(
                     matches.into_iter().map(|(p, ns, _)| (p, ns)).collect(),
-                )
+                );
             }
         }
     }
@@ -250,13 +250,11 @@ impl<'db> Type<'db> {
                 }
 
                 // Check if the identifier matches the POU name (function return type)
-                if let ScopeKind::Pou(pou) = get_scope(db, scope).kind {
-                    if pou.get_name_ident(db) == ident {
-                        if let Some(ret_spec) = scope.return_type(db) {
+                if let ScopeKind::Pou(pou) = get_scope(db, scope).kind
+                    && pou.get_name_ident(db) == ident
+                        && let Some(ret_spec) = scope.return_type(db) {
                             return Self::resolve_spec(db, *ret_spec);
                         }
-                    }
-                }
 
                 Type::Never
             }

@@ -327,22 +327,39 @@ impl<'db> Parse<'db> for ast::generated::Stmt {
             StmtType::WasmPragma(pragma) => {
                 let doc = sema.file.document(sema.db).as_bytes();
 
-                let type_ref = pragma.type_ref.as_ref()
+                let type_ref = pragma
+                    .type_ref
+                    .as_ref()
                     .map(|tr| SpanIdent::from_node(sema.db, sema, tr.cast(sema.ast)))
                     .transpose()?;
 
-                let instr_text = pragma.instruction.cast(sema.ast).get_text(doc)
-                    .map_err(|e| SyntaxError::SyntaxError { span: pragma.instruction.cast(sema.ast).get_span(), err: e.to_string() }.to_diagnostic(sema.db))?;
+                let instr_text = pragma
+                    .instruction
+                    .cast(sema.ast)
+                    .get_text(doc)
+                    .map_err(|e| {
+                        SyntaxError::SyntaxError {
+                            span: pragma.instruction.cast(sema.ast).get_span(),
+                            err: e.to_string(),
+                        }
+                        .to_diagnostic(sema.db)
+                    })?;
                 let instruction = CompactString::from(&instr_text[1..instr_text.len() - 1]);
 
                 let params = pragma.params.as_ref().map_or(Ok(vec![]), |p| {
-                    p.cast(sema.ast).var.iter()
+                    p.cast(sema.ast)
+                        .var
+                        .iter()
                         .map(|id| SpanIdent::from_node(sema.db, sema, id.cast(sema.ast)))
                         .collect::<Result<Vec<_>, _>>()
                 })?;
 
-                let result = pragma.result.as_ref()
-                    .map(|r| SpanIdent::from_node(sema.db, sema, r.cast(sema.ast).var.cast(sema.ast)))
+                let result = pragma
+                    .result
+                    .as_ref()
+                    .map(|r| {
+                        SpanIdent::from_node(sema.db, sema, r.cast(sema.ast).var.cast(sema.ast))
+                    })
                     .transpose()?;
 
                 Ok(Stmt::new(
@@ -360,25 +377,41 @@ impl<'db> Parse<'db> for ast::generated::Stmt {
             StmtType::ExternPragma(pragma) => {
                 let doc = sema.file.document(sema.db).as_bytes();
 
-                let module_text = pragma.module.cast(sema.ast).get_text(doc)
-                    .map_err(|e| SyntaxError::SyntaxError { span: pragma.module.cast(sema.ast).get_span(), err: e.to_string() }.to_diagnostic(sema.db))?;
+                let module_text = pragma.module.cast(sema.ast).get_text(doc).map_err(|e| {
+                    SyntaxError::SyntaxError {
+                        span: pragma.module.cast(sema.ast).get_span(),
+                        err: e.to_string(),
+                    }
+                    .to_diagnostic(sema.db)
+                })?;
                 // Strip surrounding single quotes
                 let module = CompactString::from(&module_text[1..module_text.len() - 1]);
 
-                let name_text = pragma.name.cast(sema.ast).get_text(doc)
-                    .map_err(|e| SyntaxError::SyntaxError { span: pragma.name.cast(sema.ast).get_span(), err: e.to_string() }.to_diagnostic(sema.db))?;
+                let name_text = pragma.name.cast(sema.ast).get_text(doc).map_err(|e| {
+                    SyntaxError::SyntaxError {
+                        span: pragma.name.cast(sema.ast).get_span(),
+                        err: e.to_string(),
+                    }
+                    .to_diagnostic(sema.db)
+                })?;
                 let name = CompactString::from(&name_text[1..name_text.len() - 1]);
 
                 // Parse optional param variable references
                 let params = pragma.params.as_ref().map_or(Ok(vec![]), |p| {
-                    p.cast(sema.ast).var.iter()
+                    p.cast(sema.ast)
+                        .var
+                        .iter()
                         .map(|id| SpanIdent::from_node(sema.db, sema, id.cast(sema.ast)))
                         .collect::<Result<Vec<_>, _>>()
                 })?;
 
                 // Parse optional result variable reference
-                let result = pragma.result.as_ref()
-                    .map(|r| SpanIdent::from_node(sema.db, sema, r.cast(sema.ast).var.cast(sema.ast)))
+                let result = pragma
+                    .result
+                    .as_ref()
+                    .map(|r| {
+                        SpanIdent::from_node(sema.db, sema, r.cast(sema.ast).var.cast(sema.ast))
+                    })
                     .transpose()?;
 
                 Ok(Stmt::new(

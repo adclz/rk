@@ -32,12 +32,11 @@ pub fn resolve_func_call<'db>(
     // as CallableType, unwrap it back to the original function/fb/method type.
     // CallableType.normalize() returns the *return type*, which would cause
     // as_callable() to fail on re-entry.
-    if let Some(path_expr) = func_call.path(db).expr(db) {
-        if let Some(Type::CallableType(c)) = ctx.type_of_path_expr.get(&path_expr).copied() {
+    if let Some(path_expr) = func_call.path(db).expr(db)
+        && let Some(Type::CallableType(c)) = ctx.type_of_path_expr.get(&path_expr).copied() {
             let original = c.inner_callable();
             ctx.type_of_path_expr.insert(path_expr, original);
         }
-    }
 
     let access_typ = ctx.get_type_of_begin_path_expr(db, func_call.path(db));
 
@@ -175,10 +174,7 @@ fn apply_param_coercion<'db>(
 
             if (var.is_in_out(db) || var.is_output(db)) && ctx.is_constant_access(db, variable) {
                 ctx.errors.push(
-                    ControlFlowError::AssignToConstant {
-                        access: call_site,
-                    }
-                    .to_diagnostic(db),
+                    ControlFlowError::AssignToConstant { access: call_site }.to_diagnostic(db),
                 );
             }
 
@@ -226,7 +222,6 @@ fn coerce_with_var_target<'db>(
         );
     }
 }
-
 
 /// Result of resolving a single parameter against a callable's signature.
 pub enum ParamMatch<'db> {
@@ -276,12 +271,11 @@ pub fn resolve_params<'db>(
                 // Skip parameters already filled by named arguments
                 let def_map = callable.def_map(db);
                 while formal_idx < def_map.local_variables.len() {
-                    if let Some((name, _)) = def_map.local_variables.get_index(formal_idx) {
-                        if named_params.contains(name) {
+                    if let Some((name, _)) = def_map.local_variables.get_index(formal_idx)
+                        && named_params.contains(name) {
                             formal_idx += 1;
                             continue;
                         }
-                    }
                     break;
                 }
 

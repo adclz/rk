@@ -4,10 +4,10 @@
 //! Non-WASI imports are imported as flat component functions.
 
 use db::WorkspaceDataBase;
-use mir::types::{MirElementary, MirType};
 use mir::MirModule;
+use mir::types::{MirElementary, MirType};
 use wasm_encoder::{
-    CanonicalOption, ComponentBuilder, ComponentExportKind, ComponentTypeRef, ComponentValType,
+    ComponentBuilder, ComponentExportKind, ComponentTypeRef, ComponentValType,
     ExportKind, InstanceType, ModuleArg, PrimitiveValType,
 };
 
@@ -16,15 +16,24 @@ fn mir_to_prim(ty: &MirType) -> PrimitiveValType {
         MirType::Elementary(e) => match e {
             MirElementary::Bool => PrimitiveValType::Bool,
             MirElementary::SInt | MirElementary::Int | MirElementary::DInt => PrimitiveValType::S32,
-            MirElementary::USInt | MirElementary::UInt | MirElementary::UDInt => PrimitiveValType::U32,
-            MirElementary::Byte | MirElementary::Word | MirElementary::DWord => PrimitiveValType::U32,
+            MirElementary::USInt | MirElementary::UInt | MirElementary::UDInt => {
+                PrimitiveValType::U32
+            }
+            MirElementary::Byte | MirElementary::Word | MirElementary::DWord => {
+                PrimitiveValType::U32
+            }
             MirElementary::LInt => PrimitiveValType::S64,
             MirElementary::ULInt | MirElementary::LWord => PrimitiveValType::U64,
             MirElementary::Real => PrimitiveValType::F32,
             MirElementary::LReal => PrimitiveValType::F64,
-            MirElementary::Time | MirElementary::LTime | MirElementary::Date
-            | MirElementary::LDate | MirElementary::Tod | MirElementary::LTod
-            | MirElementary::DateAndTime | MirElementary::LDateTime => PrimitiveValType::U64,
+            MirElementary::Time
+            | MirElementary::LTime
+            | MirElementary::Date
+            | MirElementary::LDate
+            | MirElementary::Tod
+            | MirElementary::LTod
+            | MirElementary::DateAndTime
+            | MirElementary::LDateTime => PrimitiveValType::U64,
             MirElementary::Char | MirElementary::WChar => PrimitiveValType::Char,
         },
         MirType::Pointer(_) | MirType::String(_) => PrimitiveValType::U32,
@@ -33,25 +42,32 @@ fn mir_to_prim(ty: &MirType) -> PrimitiveValType {
 }
 
 pub fn to_kebab_case(s: &str) -> String {
-    let raw: String = s.chars()
+    let raw: String = s
+        .chars()
         .map(|c| if c.is_alphanumeric() { c } else { '-' })
         .collect();
     let mut result = String::new();
     let mut prev_hyphen = true;
     for c in raw.chars() {
         if c == '-' {
-            if !prev_hyphen { result.push('-'); }
+            if !prev_hyphen {
+                result.push('-');
+            }
             prev_hyphen = true;
         } else {
             result.push(c);
             prev_hyphen = false;
         }
     }
-    if result.ends_with('-') { result.pop(); }
+    if result.ends_with('-') {
+        result.pop();
+    }
     result.to_lowercase()
 }
 
-fn expand_component_params(params: &[mir::function::MirParam]) -> Vec<(&'static str, ComponentValType)> {
+fn expand_component_params(
+    params: &[mir::function::MirParam],
+) -> Vec<(&'static str, ComponentValType)> {
     let mut result = Vec::new();
     let mut idx = 0;
     for p in params {
@@ -103,7 +119,9 @@ pub fn wrap_in_component(
 
     for (i, ext) in module.extern_functions.iter().enumerate() {
         if ext.module.starts_with("wasi:") {
-            let iface = wasi_interfaces.iter_mut().find(|w| w.module == ext.module.as_str());
+            let iface = wasi_interfaces
+                .iter_mut()
+                .find(|w| w.module == ext.module.as_str());
             let func = WasiFunc {
                 name: ext.import_name.to_string(),
                 params: ext.params.clone(),
@@ -133,7 +151,9 @@ pub fn wrap_in_component(
         let mut inst_type = InstanceType::new();
         for (func_i, func) in iface.functions.iter().enumerate() {
             let params = expand_component_params(&func.params);
-            let result = func.return_type.as_ref()
+            let result = func
+                .return_type
+                .as_ref()
                 .filter(|t| !matches!(t, MirType::Void))
                 .map(|t| ComponentValType::Primitive(mir_to_prim(t)));
             let mut enc = inst_type.ty().function();
@@ -145,18 +165,12 @@ pub fn wrap_in_component(
         let inst_type_idx = builder.type_instance(None, &inst_type);
 
         // Import the instance
-        let instance_idx = builder.import(
-            &iface.module,
-            ComponentTypeRef::Instance(inst_type_idx),
-        );
+        let instance_idx = builder.import(&iface.module, ComponentTypeRef::Instance(inst_type_idx));
 
         // Alias each function from the instance and lower it
         for func in &iface.functions {
-            let comp_func_idx = builder.alias_export(
-                instance_idx,
-                &func.name,
-                ComponentExportKind::Func,
-            );
+            let comp_func_idx =
+                builder.alias_export(instance_idx, &func.name, ComponentExportKind::Func);
             let core_func_idx = builder.lower_func(None, comp_func_idx, vec![]);
             lowered_core_func_indices.push((func.extern_idx, core_func_idx));
         }
@@ -165,7 +179,9 @@ pub fn wrap_in_component(
     // === Step 1b: Define types + import flat (non-WASI) functions ===
     for (ext_idx, ext) in &flat_imports {
         let params = expand_component_params(&ext.params);
-        let result = ext.return_type.as_ref()
+        let result = ext
+            .return_type
+            .as_ref()
             .filter(|t| !matches!(t, MirType::Void))
             .map(|t| ComponentValType::Primitive(mir_to_prim(t)));
         let (type_idx, mut enc) = builder.type_function(None);
@@ -216,26 +232,34 @@ pub fn wrap_in_component(
     let core_instance_idx = builder.core_instantiate(None, core_module_idx, instantiate_args);
 
     // Alias memory
-    let _core_memory_idx = builder.core_alias_export(None, core_instance_idx, "memory", ExportKind::Memory);
+    let _core_memory_idx =
+        builder.core_alias_export(None, core_instance_idx, "memory", ExportKind::Memory);
 
     // === Step 4: Lift + export test functions ===
     for func in &module.functions {
-        if !func.is_test { continue; }
+        if !func.is_test {
+            continue;
+        }
 
-        let raw_name = func.export_name.as_ref()
+        let raw_name = func
+            .export_name
+            .as_ref()
             .map(|s| s.to_string())
             .unwrap_or_else(|| func.name.text(db).to_string());
         let export_name = to_kebab_case(&raw_name);
 
         let params = expand_component_params(&func.params);
-        let result = func.return_type.as_ref()
+        let result = func
+            .return_type
+            .as_ref()
             .filter(|t| !matches!(t, MirType::Void))
             .map(|t| ComponentValType::Primitive(mir_to_prim(t)));
         let (type_idx, mut enc) = builder.type_function(None);
         enc.params(params);
         enc.result(result);
 
-        let core_func_idx = builder.core_alias_export(None, core_instance_idx, &raw_name, ExportKind::Func);
+        let core_func_idx =
+            builder.core_alias_export(None, core_instance_idx, &raw_name, ExportKind::Func);
         let comp_func_idx = builder.lift_func(None, core_func_idx, type_idx, vec![]);
         builder.export(&export_name, ComponentExportKind::Func, comp_func_idx, None);
     }

@@ -228,13 +228,34 @@ impl<'db> Type<'db> {
     /// Includes the enclosing namespace path and the type's own name.
     pub fn qualified_path(&self, db: &'db dyn WorkspaceDataBase) -> String {
         let (scope_id, name) = match self {
-            Self::Program(p) => (p.get_scope_id(db), p.get_name_ident(db).text(db).to_string()),
-            Self::Function(f) => (f.get_scope_id(db), f.get_name_ident(db).text(db).to_string()),
-            Self::FunctionBlock(fb) => (fb.get_scope_id(db), fb.get_name_ident(db).text(db).to_string()),
-            Self::MethodDecl(m) => (m.get_scope_id(db), m.get_name_ident(db).text(db).to_string()),
-            Self::Class(c) => (c.get_scope_id(db), c.get_name_ident(db).text(db).to_string()),
-            Self::Interface(i) => (i.get_scope_id(db), i.get_name_ident(db).text(db).to_string()),
-            Self::DataType(dt) => (dt.get_scope_id(db), dt.get_name_ident(db).text(db).to_string()),
+            Self::Program(p) => (
+                p.get_scope_id(db),
+                p.get_name_ident(db).text(db).to_string(),
+            ),
+            Self::Function(f) => (
+                f.get_scope_id(db),
+                f.get_name_ident(db).text(db).to_string(),
+            ),
+            Self::FunctionBlock(fb) => (
+                fb.get_scope_id(db),
+                fb.get_name_ident(db).text(db).to_string(),
+            ),
+            Self::MethodDecl(m) => (
+                m.get_scope_id(db),
+                m.get_name_ident(db).text(db).to_string(),
+            ),
+            Self::Class(c) => (
+                c.get_scope_id(db),
+                c.get_name_ident(db).text(db).to_string(),
+            ),
+            Self::Interface(i) => (
+                i.get_scope_id(db),
+                i.get_name_ident(db).text(db).to_string(),
+            ),
+            Self::DataType(dt) => (
+                dt.get_scope_id(db),
+                dt.get_name_ident(db).text(db).to_string(),
+            ),
             _ => return Default::default(),
         };
 

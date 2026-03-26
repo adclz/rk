@@ -226,13 +226,14 @@ impl<'db> InferExprCtx<'db> {
                                 | ParamAssignKind::NonFormal { value } => {
                                     // Check if the declared var type is ANY/INTO —
                                     // skip args with concrete declared types (e.g. SEL's G: BOOL)
-                                    if let Some(var_decl) = inference_result.variable_for_param(*p) {
-                                        let var_ty: Type<'db> = var_decl.spec(db).infer(db).normalize(db);
-                                        if let Type::Elementary(var_e) = var_ty {
-                                            if !var_e.is_any() {
+                                    if let Some(var_decl) = inference_result.variable_for_param(*p)
+                                    {
+                                        let var_ty: Type<'db> =
+                                            var_decl.spec(db).infer(db).normalize(db);
+                                        if let Type::Elementary(var_e) = var_ty
+                                            && !var_e.is_any() {
                                                 return None;
                                             }
-                                        }
                                     }
                                     let arg_ty = inference_result.get_type_of_expr(value);
                                     let arg_normalized = arg_ty.normalize(db);

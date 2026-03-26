@@ -1,10 +1,7 @@
 use db::WorkspaceDataBase;
 use hir::{
     hir_def::{
-        expressions::{
-            expression::InitExprKind,
-            statement::StmtKind,
-        },
+        expressions::{expression::InitExprKind, statement::StmtKind},
         interned::identifier::Ident,
         pous::{
             class::Class,
@@ -18,14 +15,13 @@ use hir::{
 };
 use rustc_hash::FxHashSet;
 
-use std::rc::Rc;
 use std::cell::RefCell;
+use std::rc::Rc;
 
 use crate::{
-    expr::{MirExpr, MirPlace},
+    expr::MirPlace,
     function::{
-        MirFunction, MirLinkage, MirLocal, MirLocalKind, MirParam,
-        MirParamKind, MirStorage,
+        MirFunction, MirLinkage, MirLocal, MirLocalKind, MirParam, MirParamKind, MirStorage,
     },
     lower::{
         lower_expr::ExprLowerCtx,
@@ -99,7 +95,9 @@ pub fn lower_function<'db>(
             ty: ret_ty.clone(),
             init: None,
             kind: MirLocalKind::Var,
-            storage: MirStorage::Scalar { local_index: next_local_idx },
+            storage: MirStorage::Scalar {
+                local_index: next_local_idx,
+            },
         });
         next_local_idx += 1;
     }
@@ -142,11 +140,10 @@ pub fn lower_function<'db>(
             VariableKind::Input | VariableKind::InOut | VariableKind::Output => continue,
             _ => {}
         }
-        if let Some(init_expr) = var.init(db) {
-            if let Some(stmt) = lower_var_init(db, var.name(db), init_expr)? {
+        if let Some(init_expr) = var.init(db)
+            && let Some(stmt) = lower_var_init(db, var.name(db), init_expr)? {
                 init_stmts.push(stmt);
             }
-        }
     }
 
     // 5. Lower body statements
@@ -159,9 +156,10 @@ pub fn lower_function<'db>(
     let body = body;
 
     // Determine linkage — check if there's an extern pragma
-    let is_extern = func.statements(db).iter().any(|s| {
-        matches!(s.stmt(db), StmtKind::ExternPragma(_))
-    });
+    let is_extern = func
+        .statements(db)
+        .iter()
+        .any(|s| matches!(s.stmt(db), StmtKind::ExternPragma(_)));
 
     let linkage = if is_extern {
         MirLinkage::Internal // extern functions are imports, handled separately
@@ -264,7 +262,9 @@ pub fn lower_function_block<'db>(
                 ty: ret_ty.clone(),
                 init: None,
                 kind: MirLocalKind::Var,
-                storage: MirStorage::Scalar { local_index: next_local_idx },
+                storage: MirStorage::Scalar {
+                    local_index: next_local_idx,
+                },
             });
             next_local_idx += 1;
         }
@@ -334,16 +334,22 @@ pub fn lower_function_block<'db>(
         // Body lowering with the `this` struct context.
         let this_struct = match &fb_type {
             MirType::Struct(s) => s.clone(),
-            _ => return Err(LowerTypeError::UnsupportedType("FB type is not a struct".into())),
+            _ => {
+                return Err(LowerTypeError::UnsupportedType(
+                    "FB type is not a struct".into(),
+                ));
+            }
         };
-        let body_stmts = crate::lower::lower_stmt::lower_stmts_fb_body(db, fb.statements(db), this_struct, string_pool.clone())?;
+        let body_stmts = crate::lower::lower_stmt::lower_stmts_fb_body(
+            db,
+            fb.statements(db),
+            this_struct,
+            string_pool.clone(),
+        )?;
 
         let body_name = Ident::new(
             db,
-            compact_str::CompactString::from(format!(
-                "{}$__body__",
-                fb.name(db).text(db)
-            )),
+            compact_str::CompactString::from(format!("{}$__body__", fb.name(db).text(db))),
         );
 
         functions.push(MirFunction {
@@ -443,7 +449,9 @@ pub fn lower_class<'db>(
                 ty: ret_ty.clone(),
                 init: None,
                 kind: MirLocalKind::Var,
-                storage: MirStorage::Scalar { local_index: next_local_idx },
+                storage: MirStorage::Scalar {
+                    local_index: next_local_idx,
+                },
             });
             next_local_idx += 1;
         }
@@ -491,13 +499,7 @@ pub fn lower_program<'db>(
 
     for var in program.variables(db) {
         let ty = lower_var_type(db, *var)?;
-        let storage = compute_storage(
-            var.name(db),
-            &ty,
-            false,
-            &mut next_local_idx,
-            memory_layout,
-        );
+        let storage = compute_storage(var.name(db), &ty, false, &mut next_local_idx, memory_layout);
         locals.push(MirLocal {
             name: var.name(db),
             ty,
@@ -563,7 +565,7 @@ fn collect_address_taken_vars<'db>(
     stmts: &[hir::hir_def::expressions::statement::Stmt<'db>],
 ) -> FxHashSet<Ident> {
     use hir::hir_def::expressions::expression::{
-        ExprKind, PrimaryExpr, RefValue, PathExprKind, VarAccess,
+        ExprKind, PrimaryExpr, RefValue,
     };
 
     let mut result = FxHashSet::default();
@@ -587,17 +589,24 @@ fn collect_address_taken_vars<'db>(
             ExprKind::PrimaryExpr(PrimaryExpr::FuncCall(fc)) => {
                 for param in fc.params(db) {
                     match param.kind(db) {
-                        hir::hir_def::expressions::expression::ParamAssignKind::NonFormal { value }
-                        | hir::hir_def::expressions::expression::ParamAssignKind::FormalInput { value, .. } => {
+                        hir::hir_def::expressions::expression::ParamAssignKind::NonFormal {
+                            value,
+                        }
+                        | hir::hir_def::expressions::expression::ParamAssignKind::FormalInput {
+                            value,
+                            ..
+                        } => {
                             walk_expr(db, value, result);
                         }
-                        hir::hir_def::expressions::expression::ParamAssignKind::FormalOutput { variable, .. } => {
+                        hir::hir_def::expressions::expression::ParamAssignKind::FormalOutput {
+                            variable,
+                            ..
+                        } => {
                             // OUT => x takes the address of x
-                            if let hir::hir_def::expressions::expression::VariableAccessKind::Symbolic(begin_path) = &variable.kind(db) {
-                                if let Some(path_expr) = begin_path.expr(db) {
+                            if let hir::hir_def::expressions::expression::VariableAccessKind::Symbolic(begin_path) = &variable.kind(db)
+                                && let Some(path_expr) = begin_path.expr(db) {
                                     result.insert(path_expr.ident(db).ident);
                                 }
-                            }
                         }
                     }
                 }
@@ -627,12 +636,9 @@ fn collect_address_taken_vars<'db>(
     ) {
         use hir::hir_def::expressions::statement::StmtKind;
         for stmt in stmts {
-            match stmt.stmt(db) {
-                StmtKind::Assignment { target: _, var: _ } => {
-                    // `var` is the target and `target` the value expression, as HIR
-                    // names them.
-                }
-                _ => {}
+            if let StmtKind::Assignment { target: _, var: _ } = stmt.stmt(db) {
+                // `var` is the target and `target` the value expression, as HIR
+                // names them.
             }
             // Walk all expressions in the statement
             walk_stmt_exprs(db, *stmt, result);
@@ -649,7 +655,12 @@ fn collect_address_taken_vars<'db>(
             StmtKind::Assignment { var: _, target } => {
                 walk_expr(db, *target, result);
             }
-            StmtKind::If { condition, then, else_if, else_ } => {
+            StmtKind::If {
+                condition,
+                then,
+                else_if,
+                else_,
+            } => {
                 walk_expr(db, *condition, result);
                 if let Some(stmts) = then {
                     walk_stmts(db, stmts, result);
@@ -662,7 +673,13 @@ fn collect_address_taken_vars<'db>(
                     walk_stmts(db, stmts, result);
                 }
             }
-            StmtKind::For { start, end, step, body, .. } => {
+            StmtKind::For {
+                start,
+                end,
+                step,
+                body,
+                ..
+            } => {
                 walk_expr(db, *start, result);
                 walk_expr(db, *end, result);
                 if let Some(s) = step {
@@ -678,7 +695,11 @@ fn collect_address_taken_vars<'db>(
                 walk_expr(db, *condition, result);
                 walk_stmts(db, body, result);
             }
-            StmtKind::Case { condition, cases, else_ } => {
+            StmtKind::Case {
+                condition,
+                cases,
+                else_,
+            } => {
                 walk_expr(db, *condition, result);
                 for (_, body) in cases {
                     walk_stmts(db, body, result);
@@ -695,11 +716,10 @@ fn collect_address_taken_vars<'db>(
                             walk_expr(db, value, result);
                         }
                         hir::hir_def::expressions::expression::ParamAssignKind::FormalOutput { variable, .. } => {
-                            if let hir::hir_def::expressions::expression::VariableAccessKind::Symbolic(begin_path) = &variable.kind(db) {
-                                if let Some(path_expr) = begin_path.expr(db) {
+                            if let hir::hir_def::expressions::expression::VariableAccessKind::Symbolic(begin_path) = &variable.kind(db)
+                                && let Some(path_expr) = begin_path.expr(db) {
                                     result.insert(path_expr.ident(db).ident);
                                 }
-                            }
                         }
                     }
                 }
@@ -721,7 +741,10 @@ fn lower_var_init<'db>(
 ) -> Result<Option<MirStmt>, LowerTypeError> {
     match init_expr.kind(db) {
         InitExprKind::ConstantExpr(expr) => {
-            let ctx = ExprLowerCtx::new(db, Rc::new(RefCell::new(super::lower_expr::StringPool::default())));
+            let ctx = ExprLowerCtx::new(
+                db,
+                Rc::new(RefCell::new(super::lower_expr::StringPool::default())),
+            );
             let value = ctx.lower_expr(expr)?;
             Ok(Some(MirStmt::Assign {
                 target: MirPlace::Local(var_name),

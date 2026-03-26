@@ -311,8 +311,7 @@ impl Ident {
 
     #[salsa::tracked]
     pub fn as_tod(self, db: &dyn WorkspaceDataBase) -> Result<Time, time::error::Parse> {
-        let fmt =
-            format_description!("[hour]:[minute]:[second][optional [.[subsecond]]]");
+        let fmt = format_description!("[hour]:[minute]:[second][optional [.[subsecond]]]");
         Time::parse(
             &self
                 .text(db)
@@ -326,8 +325,7 @@ impl Ident {
 
     #[salsa::tracked]
     pub fn as_long_tod(self, db: &dyn WorkspaceDataBase) -> Result<Time, time::error::Parse> {
-        let fmt =
-            format_description!("[hour]:[minute]:[second][optional [.[subsecond]]]");
+        let fmt = format_description!("[hour]:[minute]:[second][optional [.[subsecond]]]");
         Time::parse(
             &self
                 .text(db)
@@ -462,12 +460,8 @@ impl Integer {
             IntegerKind::Binary => {
                 u8::from_str_radix(check_sign(text.trim_start_matches("2#"))?, 2)
             }
-            IntegerKind::Octal => {
-                u8::from_str_radix(check_sign(text.trim_start_matches("8#"))?, 8)
-            }
-            IntegerKind::Hex => {
-                u8::from_str_radix(check_sign(text.trim_start_matches("16#"))?, 16)
-            }
+            IntegerKind::Octal => u8::from_str_radix(check_sign(text.trim_start_matches("8#"))?, 8),
+            IntegerKind::Hex => u8::from_str_radix(check_sign(text.trim_start_matches("16#"))?, 16),
             IntegerKind::Signed => check_sign(&text)?.parse(),
         }
         .map_err(|err| err.into())

@@ -2,10 +2,7 @@ use auto_lsp::lsp_types::{DiagnosticSeverity, DiagnosticTag};
 use db::WorkspaceDataBase;
 use hir::{
     HirNodeInfo,
-    hir_def::{
-        scope::ScopeId,
-        using::Using,
-    },
+    hir_def::{scope::ScopeId, using::Using},
     hir_ty::{body::infer_body, head::signature::infer_signature},
 };
 use ide_diagnostic::{ErrorCode, IdeDiagnostic, diag};

@@ -149,9 +149,7 @@ pub fn lower_struct_type_named<'db>(
     offset = align_to(offset, max_align);
 
     // Use provided name or create an anonymous one
-    let struct_name = name.unwrap_or_else(|| {
-        Ident::new(db, CompactString::from("<anon_struct>"))
-    });
+    let struct_name = name.unwrap_or_else(|| Ident::new(db, CompactString::from("<anon_struct>")));
 
     Ok(MirType::Struct(MirStructType {
         name: struct_name,
@@ -222,9 +220,7 @@ pub fn lower_enum_type_named<'db>(
         variants.push((variant_name, i as i64));
     }
 
-    let enum_name = name.unwrap_or_else(|| {
-        Ident::new(db, CompactString::from("<anon_enum>"))
-    });
+    let enum_name = name.unwrap_or_else(|| Ident::new(db, CompactString::from("<anon_enum>")));
 
     // Enums are stored as DInt by default
     Ok(MirType::Enum(MirEnumType {
@@ -251,11 +247,7 @@ fn lower_subrange_type<'db>(
     let lower = extract_integer_literal(db, subrange.lower(db))? as i64;
     let upper = extract_integer_literal(db, subrange.upper(db))? as i64;
 
-    Ok(MirType::Subrange(MirSubrangeType {
-        base,
-        lower,
-        upper,
-    }))
+    Ok(MirType::Subrange(MirSubrangeType { base, lower, upper }))
 }
 
 /// Lower a FunctionBlock type to MirType::Struct (same layout as a struct with FB variables as fields).
@@ -334,10 +326,7 @@ pub fn lower_class_type<'db>(
 }
 
 fn is_string_type(spec: ElementarySpec) -> bool {
-    matches!(
-        spec,
-        ElementarySpec::String | ElementarySpec::WString
-    )
+    matches!(spec, ElementarySpec::String | ElementarySpec::WString)
 }
 
 fn elementary_to_string_kind(spec: ElementarySpec) -> MirStringKind {

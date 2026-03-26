@@ -1,23 +1,26 @@
 use db::WorkspaceDataBase;
 use hir::{
     hir_def::expressions::{
-        spec::ElementarySpec,
         expression::{
             AddOperatorKind, BooleanOperatorKind, ComparisonOperatorKind, Elementary, Expr,
             ExprKind, InitExprKind, MultOperatorKind, ParamAssignKind, PathExprKind, PrimaryExpr,
             RefValue, UnaryOperatorKind, VarAccess, VariableAccess, VariableAccessKind,
         },
         invocation::InvocationKind,
+        spec::ElementarySpec,
         statement::CaseKind,
     },
     hir_ty::{infer::Infer, ty::Type},
 };
 
-use std::rc::Rc;
 use std::cell::RefCell;
+use std::rc::Rc;
 
 use crate::{
-    expr::{MirArgKind, MirBinOp, MirCall, MirCallArg, MirConstant, MirExpr, MirOutputBinding, MirPlace, MirUnaryOp},
+    expr::{
+        MirArgKind, MirBinOp, MirCall, MirCallArg, MirConstant, MirExpr,
+        MirPlace, MirUnaryOp,
+    },
     lower::lower_type::{LowerTypeError, elementary_spec_to_mir, lower_type},
     stmt::MirCasePattern,
     types::{MirElementary, MirType},
@@ -49,7 +52,11 @@ pub struct StringPool {
 
 impl StringPool {
     pub fn new(base_offset: u32) -> Self {
-        Self { entries: Vec::new(), next_offset: base_offset, base_offset }
+        Self {
+            entries: Vec::new(),
+            next_offset: base_offset,
+            base_offset,
+        }
     }
 
     /// Intern a string literal. Returns (id, offset, len).
@@ -80,15 +87,38 @@ impl StringPool {
 
 impl<'db> ExprLowerCtx<'db> {
     pub fn new(db: &'db dyn WorkspaceDataBase, string_pool: Rc<RefCell<StringPool>>) -> Self {
-        Self { db, any_override: None, this_struct: None, string_pool }
+        Self {
+            db,
+            any_override: None,
+            this_struct: None,
+            string_pool,
+        }
     }
 
-    pub fn with_any_override(db: &'db dyn WorkspaceDataBase, concrete: ElementarySpec, string_pool: Rc<RefCell<StringPool>>) -> Self {
-        Self { db, any_override: Some(concrete), this_struct: None, string_pool }
+    pub fn with_any_override(
+        db: &'db dyn WorkspaceDataBase,
+        concrete: ElementarySpec,
+        string_pool: Rc<RefCell<StringPool>>,
+    ) -> Self {
+        Self {
+            db,
+            any_override: Some(concrete),
+            this_struct: None,
+            string_pool,
+        }
     }
 
-    pub fn with_this_struct(db: &'db dyn WorkspaceDataBase, struct_type: crate::types::MirStructType, string_pool: Rc<RefCell<StringPool>>) -> Self {
-        Self { db, any_override: None, this_struct: Some(struct_type), string_pool }
+    pub fn with_this_struct(
+        db: &'db dyn WorkspaceDataBase,
+        struct_type: crate::types::MirStructType,
+        string_pool: Rc<RefCell<StringPool>>,
+    ) -> Self {
+        Self {
+            db,
+            any_override: None,
+            this_struct: Some(struct_type),
+            string_pool,
+        }
     }
 
     /// Lower a HIR type, substituting ANY types if we're in a monomorphization context.
@@ -166,7 +196,10 @@ impl<'db> ExprLowerCtx<'db> {
                 self.lower_binop(MirBinOp::Power, *left, *right, expr)
             }
 
-            ExprKind::UnaryOperator { expr: inner, operator } => {
+            ExprKind::UnaryOperator {
+                expr: inner,
+                operator,
+            } => {
                 let op = match operator {
                     UnaryOperatorKind::Plus => {
                         // Plus is a no-op
@@ -265,13 +298,18 @@ impl<'db> ExprLowerCtx<'db> {
 
             PrimaryExpr::VariableAccess(var_access) => {
                 let place = self.lower_variable_access(*var_access)?;
-                let ty = self.lower_type_resolved( parent_expr.infer(self.db)).unwrap_or(MirType::Void);
+                let ty = self
+                    .lower_type_resolved(parent_expr.infer(self.db))
+                    .unwrap_or(MirType::Void);
                 Ok(MirExpr::Load(place, ty))
             }
 
             PrimaryExpr::FuncCall(func_call) => self.lower_func_call(*func_call, Some(parent_expr)),
 
-            PrimaryExpr::EnumValue { name: _, variant: _ } => {
+            PrimaryExpr::EnumValue {
+                name: _,
+                variant: _,
+            } => {
                 // Enum values are integer constants — resolve via type inference
                 let ty = parent_expr.infer(self.db);
                 match ty.normalize(self.db) {
@@ -374,9 +412,14 @@ impl<'db> ExprLowerCtx<'db> {
             Elementary::InferInteger(int) => {
                 let ty = parent_expr.infer(db);
                 match ty.normalize(db) {
-                    Type::Elementary(spec) if elementary_spec_to_mir(spec).map_or(false, |e| e.is_64bit()) => {
+                    Type::Elementary(spec)
+                        if elementary_spec_to_mir(spec).is_ok_and(|e| e.is_64bit()) =>
+                    {
                         let val = int.as_i64(db).map_err(|e| {
-                            LowerTypeError::UnsupportedType(format!("InferInteger i64 error: {}", e))
+                            LowerTypeError::UnsupportedType(format!(
+                                "InferInteger i64 error: {}",
+                                e
+                            ))
                         })?;
                         Ok(MirExpr::Constant(MirConstant::I64(val)))
                     }
@@ -420,12 +463,13 @@ impl<'db> ExprLowerCtx<'db> {
                 let text = raw.trim_matches('\'').trim_matches('"');
                 let (id, offset, len) = self.string_pool.borrow_mut().intern(text);
                 Ok(MirExpr::StringLiteral { id, offset, len })
-            },
+            }
 
             // Time literals — stored as nanoseconds (i64)
             Elementary::Time(ident) | Elementary::LTime(ident) => {
-                let duration = ident.as_time(self.db)
-                    .map_err(|e| LowerTypeError::UnsupportedType(format!("Invalid time literal: {:?}", e)))?;
+                let duration = ident.as_time(self.db).map_err(|e| {
+                    LowerTypeError::UnsupportedType(format!("Invalid time literal: {:?}", e))
+                })?;
                 let nanos = duration.whole_nanoseconds() as i64;
                 Ok(MirExpr::Constant(MirConstant::I64(nanos)))
             }
@@ -448,9 +492,7 @@ impl<'db> ExprLowerCtx<'db> {
         var_access: VariableAccess<'db>,
     ) -> Result<MirPlace, LowerTypeError> {
         match var_access.kind(self.db) {
-            VariableAccessKind::Symbolic(begin_path) => {
-                self.lower_begin_path_to_place(begin_path)
-            }
+            VariableAccessKind::Symbolic(begin_path) => self.lower_begin_path_to_place(begin_path),
             VariableAccessKind::Direct(_) => Err(LowerTypeError::UnsupportedType(
                 "Direct variable access not yet supported".to_string(),
             )),
@@ -467,18 +509,17 @@ impl<'db> ExprLowerCtx<'db> {
         })?;
 
         // Check for THIS invocation — if present, the path is relative to the 'this' pointer
-        if let Some(invocation) = begin_path.invocation(self.db) {
-            if invocation.kind(self.db) == InvocationKind::This {
+        if let Some(invocation) = begin_path.invocation(self.db)
+            && invocation.kind(self.db) == InvocationKind::This {
                 return self.lower_this_path(path_expr);
             }
-        }
 
         // Resolve the base variable name from the root VarAccess in the chain
         let base_ident = self.find_root_var_ident(path_expr);
 
         // In FB body context, check if this variable is a field of the 'this' struct
-        if let Some(ref this_struct) = self.this_struct {
-            if let Some(field) = this_struct.fields.iter().find(|f| f.name == base_ident) {
+        if let Some(ref this_struct) = self.this_struct
+            && let Some(field) = this_struct.fields.iter().find(|f| f.name == base_ident) {
                 let base = MirPlace::ThisField {
                     field_name: base_ident,
                     field_offset: field.offset,
@@ -486,7 +527,6 @@ impl<'db> ExprLowerCtx<'db> {
                 };
                 return self.lower_path_expr_chain(base, path_expr);
             }
-        }
         let base = MirPlace::Local(base_ident);
 
         // Walk the path expression chain for field/index/deref
@@ -503,7 +543,8 @@ impl<'db> ExprLowerCtx<'db> {
                 let field_name = match &var {
                     VarAccess::Simple(span_ident) => span_ident.ident,
                 };
-                let field_type = self.lower_type_resolved( path_expr.infer(self.db))
+                let field_type = self
+                    .lower_type_resolved(path_expr.infer(self.db))
                     .unwrap_or(MirType::Elementary(MirElementary::Int));
 
                 // Resolve field offset from the this pointer's type
@@ -524,7 +565,8 @@ impl<'db> ExprLowerCtx<'db> {
                 let field_name = match &field_expr.var {
                     VarAccess::Simple(span_ident) => span_ident.ident,
                 };
-                let field_type = self.lower_type_resolved( path_expr.infer(self.db))
+                let field_type = self
+                    .lower_type_resolved(path_expr.infer(self.db))
                     .unwrap_or(MirType::Void);
                 let base_type = field_expr.path.infer(self.db);
                 let field_offset = self.resolve_field_offset(base_type, field_name);
@@ -558,7 +600,8 @@ impl<'db> ExprLowerCtx<'db> {
             }
             PathExprKind::Deref(deref_expr) => {
                 let inner = self.lower_this_path(deref_expr.path)?;
-                let pointee_type = self.lower_type_resolved( path_expr.infer(self.db))
+                let pointee_type = self
+                    .lower_type_resolved(path_expr.infer(self.db))
                     .unwrap_or(MirType::Void);
                 Ok(MirPlace::Deref {
                     base: Box::new(inner),
@@ -569,14 +612,8 @@ impl<'db> ExprLowerCtx<'db> {
     }
 
     /// Resolve the THIS type from the scope (walks up to find the method's parent FB/Class).
-    fn resolve_this_type(
-        &self,
-        scope_id: hir::hir_def::scope::ScopeId<'db>,
-    ) -> Option<MirType> {
-        use hir::hir_def::{
-            scope::ScopeKind,
-            semantic_index::get_scope,
-        };
+    fn resolve_this_type(&self, scope_id: hir::hir_def::scope::ScopeId<'db>) -> Option<MirType> {
+        use hir::hir_def::{scope::ScopeKind, semantic_index::get_scope};
 
         // Walk up the scope chain to find the parent POU (FB or Class)
         let mut current = Some(scope_id);
@@ -584,10 +621,10 @@ impl<'db> ExprLowerCtx<'db> {
             let scope = get_scope(self.db, sid);
             match scope.kind {
                 ScopeKind::Pou(hir::hir_def::pous::pou::Pou::FunctionBlock(fb)) => {
-                    return self.lower_type_resolved( Type::FunctionBlock(fb)).ok();
+                    return self.lower_type_resolved(Type::FunctionBlock(fb)).ok();
                 }
                 ScopeKind::Pou(hir::hir_def::pous::pou::Pou::Class(class)) => {
-                    return self.lower_type_resolved( Type::Class(class)).ok();
+                    return self.lower_type_resolved(Type::Class(class)).ok();
                 }
                 _ => {
                     current = scope.parent;
@@ -628,7 +665,8 @@ impl<'db> ExprLowerCtx<'db> {
                 // Resolve field type and offset from the base type
                 // The PathExpr for the field resolves to the field's type
                 let field_hir_type = path_expr.infer(self.db);
-                let field_type = self.lower_type_resolved( field_hir_type)
+                let field_type = self
+                    .lower_type_resolved(field_hir_type)
                     .unwrap_or(MirType::Void);
 
                 // Resolve field offset from the base (struct/FB) type
@@ -670,7 +708,8 @@ impl<'db> ExprLowerCtx<'db> {
             PathExprKind::Deref(deref_expr) => {
                 let inner = self.lower_path_expr_chain(base, deref_expr.path)?;
                 let pointee_hir_type = path_expr.infer(self.db);
-                let pointee_type = self.lower_type_resolved( pointee_hir_type)
+                let pointee_type = self
+                    .lower_type_resolved(pointee_hir_type)
                     .unwrap_or(MirType::Void);
                 Ok(MirPlace::Deref {
                     base: Box::new(inner),
@@ -678,9 +717,7 @@ impl<'db> ExprLowerCtx<'db> {
                 })
             }
 
-            PathExprKind::VarAccess(_) => {
-                Ok(base)
-            }
+            PathExprKind::VarAccess(_) => Ok(base),
         }
     }
 
@@ -707,11 +744,8 @@ impl<'db> ExprLowerCtx<'db> {
     }
 
     /// Resolve array element info from an array type.
-    fn resolve_array_info(
-        &self,
-        array_type: Type<'db>,
-    ) -> (MirType, u32, i64) {
-        let mir = self.lower_type_resolved( array_type).ok();
+    fn resolve_array_info(&self, array_type: Type<'db>) -> (MirType, u32, i64) {
+        let mir = self.lower_type_resolved(array_type).ok();
         if let Some(MirType::Array(ref a)) = mir {
             let lower_bound = a.dimensions.first().map(|(l, _)| *l).unwrap_or(0);
             return (*a.element_type.clone(), a.element_size, lower_bound);
@@ -734,14 +768,14 @@ impl<'db> ExprLowerCtx<'db> {
             })?;
 
         let mut args = Vec::new();
-        let mut output_bindings = Vec::new();
+        let output_bindings = Vec::new();
 
         // Track which params were explicitly provided (by position for non-formal, by name for formal)
         let call_params = func_call.params(self.db);
         let mut provided_names: rustc_hash::FxHashSet<hir::hir_def::interned::identifier::Ident> =
             rustc_hash::FxHashSet::default();
 
-        for (i, param) in call_params.iter().enumerate() {
+        for param in call_params.iter() {
             match param.kind(self.db) {
                 ParamAssignKind::NonFormal { value } => {
                     args.push(MirCallArg {
@@ -749,14 +783,21 @@ impl<'db> ExprLowerCtx<'db> {
                         kind: MirArgKind::ByValue,
                     });
                 }
-                ParamAssignKind::FormalInput { value, param: param_ident } => {
+                ParamAssignKind::FormalInput {
+                    value,
+                    param: param_ident,
+                } => {
                     provided_names.insert(param_ident.ident);
                     args.push(MirCallArg {
                         value: self.lower_expr(value)?,
                         kind: MirArgKind::ByValue,
                     });
                 }
-                ParamAssignKind::FormalOutput { variable, param: param_ident, .. } => {
+                ParamAssignKind::FormalOutput {
+                    variable,
+                    param: param_ident,
+                    ..
+                } => {
                     provided_names.insert(param_ident.ident);
                     let place = self.lower_variable_access(variable)?;
                     args.push(MirCallArg {
@@ -861,7 +902,11 @@ impl<'db> ExprLowerCtx<'db> {
         let fb_mir_type = lower_type(self.db, hir::hir_ty::ty::Type::FunctionBlock(fb))?;
         let struct_type = match &fb_mir_type {
             MirType::Struct(s) => s,
-            _ => return Err(LowerTypeError::UnsupportedType("FB type is not a struct".to_string())),
+            _ => {
+                return Err(LowerTypeError::UnsupportedType(
+                    "FB type is not a struct".to_string(),
+                ));
+            }
         };
 
         // Build input writes from the call arguments
@@ -873,7 +918,10 @@ impl<'db> ExprLowerCtx<'db> {
 
         for param in func_call.params(self.db) {
             match param.kind(self.db) {
-                ParamAssignKind::FormalInput { param: param_ident, value } => {
+                ParamAssignKind::FormalInput {
+                    param: param_ident,
+                    value,
+                } => {
                     let param_name = param_ident.ident;
                     // Find the field in the struct
                     if let Some(field) = struct_type.fields.iter().find(|f| f.name == param_name) {
@@ -888,13 +936,15 @@ impl<'db> ExprLowerCtx<'db> {
                 ParamAssignKind::NonFormal { value } => {
                     // Positional: match to next input variable
                     // Find the i-th input variable
-                    let input_vars: Vec<_> = fb_vars.iter()
+                    let input_vars: Vec<_> = fb_vars
+                        .iter()
                         .filter(|v| v.kind(self.db) == VariableKind::Input)
                         .collect();
                     let idx = input_writes.len();
                     if idx < input_vars.len() {
                         let var_name = input_vars[idx].name(self.db);
-                        if let Some(field) = struct_type.fields.iter().find(|f| f.name == var_name) {
+                        if let Some(field) = struct_type.fields.iter().find(|f| f.name == var_name)
+                        {
                             let mir_elem = match &field.ty {
                                 MirType::Elementary(e) => *e,
                                 _ => continue,
@@ -904,7 +954,11 @@ impl<'db> ExprLowerCtx<'db> {
                         }
                     }
                 }
-                ParamAssignKind::FormalOutput { param: param_ident, variable, .. } => {
+                ParamAssignKind::FormalOutput {
+                    param: param_ident,
+                    variable,
+                    ..
+                } => {
                     let param_name = param_ident.ident;
                     if let Some(field) = struct_type.fields.iter().find(|f| f.name == param_name) {
                         let mir_elem = match &field.ty {
@@ -970,7 +1024,10 @@ impl<'db> ExprLowerCtx<'db> {
     }
 
     /// Public accessor for type_to_mir_elementary (used by lower_stmt).
-    pub fn type_to_mir_elementary_pub(&self, ty: Type<'db>) -> Result<MirElementary, LowerTypeError> {
+    pub fn type_to_mir_elementary_pub(
+        &self,
+        ty: Type<'db>,
+    ) -> Result<MirElementary, LowerTypeError> {
         self.type_to_mir_elementary(ty)
     }
 
@@ -1018,11 +1075,11 @@ impl<'db> ExprLowerCtx<'db> {
                     Ok(MirElementary::Int)
                 }
             }
-            Type::CallableType(ct) => {
+            Type::CallableType(_ct) => {
                 // Already normalized by normalize() but just in case
                 self.type_to_mir_elementary(normalized)
             }
-            Type::Infer(infer_ty) => {
+            Type::Infer(_infer_ty) => {
                 // Deferred integer/float — default to i32/f32
                 Ok(MirElementary::Int)
             }

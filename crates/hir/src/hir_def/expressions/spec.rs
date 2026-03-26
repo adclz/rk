@@ -205,13 +205,15 @@ impl ElementarySpec {
             Self::AnyChar => matches!(concrete, Self::Char | Self::WChar),
             Self::AnyDate => matches!(
                 concrete,
-                Self::Date | Self::LDate | Self::DateAndTime | Self::LDateTime | Self::Tod | Self::LTod
+                Self::Date
+                    | Self::LDate
+                    | Self::DateAndTime
+                    | Self::LDateTime
+                    | Self::Tod
+                    | Self::LTod
             ),
             Self::AnyDuration => matches!(concrete, Self::Time | Self::LTime),
-            Self::AnySigned => matches!(
-                concrete,
-                Self::SInt | Self::Int | Self::DInt | Self::LInt
-            ),
+            Self::AnySigned => matches!(concrete, Self::SInt | Self::Int | Self::DInt | Self::LInt),
             Self::AnyUnsigned => matches!(
                 concrete,
                 Self::USInt | Self::UInt | Self::UDInt | Self::ULInt

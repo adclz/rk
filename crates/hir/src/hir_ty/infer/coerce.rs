@@ -5,7 +5,10 @@ use crate::{
     CallSite, HirNodeInfo,
     check::errors::{ToIdeDiagnostic, e3_type::TypeError, e10_control_flow::ControlFlowError},
     hir_def::{
-        expressions::{expression::{AddOperatorKind, MultOperatorKind}, spec::ElementarySpec},
+        expressions::{
+            expression::{AddOperatorKind, MultOperatorKind},
+            spec::ElementarySpec,
+        },
         pous::pou::Pou,
     },
     hir_ty::{
@@ -77,11 +80,7 @@ impl<'db> Type<'db> {
     }
 
     pub fn supports_power(&self, _db: &'db dyn WorkspaceDataBase) -> bool {
-        self.is_float()
-            || matches!(
-                self,
-                Type::Elementary(ElementarySpec::AnyReal)
-            )
+        self.is_float() || matches!(self, Type::Elementary(ElementarySpec::AnyReal))
     }
 
     pub fn supports_bool_op(&self, _db: &'db dyn WorkspaceDataBase) -> bool {
@@ -212,9 +211,12 @@ impl<'db> Type<'db> {
                         });
                     }
                 }
-                a1.of_type(db)
-                    .infer(db)
-                    .coerce_with_type(db, a2.of_type(db).infer(db), None, resolver)
+                a1.of_type(db).infer(db).coerce_with_type(
+                    db,
+                    a2.of_type(db).infer(db),
+                    None,
+                    resolver,
+                )
             }
             // check array spec equality
             (Type::Array(a1), rhs) => {
@@ -433,10 +435,7 @@ impl<'db> Type<'db> {
                 // a CONSTANT variable cannot be assigned to
                 if variable.qualifier(db).contains(crate::Qualifier::CONSTANT) {
                     ctx.errors.push(
-                        ControlFlowError::AssignToConstant {
-                            access: call_site,
-                        }
-                        .to_diagnostic(db),
+                        ControlFlowError::AssignToConstant { access: call_site }.to_diagnostic(db),
                     );
                 }
             }
@@ -533,4 +532,3 @@ impl<'db> CoerceError<'db> {
         .to_diagnostic(db)
     }
 }
-

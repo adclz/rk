@@ -23,9 +23,7 @@ pub enum VisibilityError<'db> {
         target: CallSite<'db>,
     },
     /// Attempting to reference a {test}-annotated POU from non-test code.
-    TestOnly {
-        call_site: CallSite<'db>,
-    },
+    TestOnly { call_site: CallSite<'db> },
 }
 
 impl ErrorCode for VisibilityError<'_> {

@@ -30,7 +30,6 @@ impl<'db> Pou<'db> {
             _ => Modifier::empty(),
         }
     }
-
 }
 
 impl<'db> HirNodeInfo<'db> for Pou<'db> {

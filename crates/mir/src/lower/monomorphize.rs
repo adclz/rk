@@ -15,9 +15,7 @@ use compact_str::CompactString;
 use db::WorkspaceDataBase;
 use hir::{
     hir_def::{
-        expressions::spec::ElementarySpec,
-        extern_decl::ExternDecl,
-        interned::identifier::Ident,
+        expressions::spec::ElementarySpec, extern_decl::ExternDecl, interned::identifier::Ident,
         pous::function::Function,
     },
     hir_ty::{infer::Infer, ty::Type},
@@ -28,8 +26,8 @@ use crate::{
     MirModule,
     expr::{MirArgKind, MirCall, MirConstant, MirExpr},
     function::{
-        MirExternFunction, MirFunction, MirLinkage, MirLocal, MirLocalKind, MirParam,
-        MirParamKind, MirStorage,
+        MirExternFunction, MirFunction, MirLinkage, MirLocal, MirLocalKind, MirParam, MirParamKind,
+        MirStorage,
     },
     lower::lower_type::{LowerTypeError, elementary_spec_to_mir, lower_type},
     memory::{MirAllocKind, MirMemoryLayout},
@@ -57,27 +55,29 @@ pub fn detect_any_function<'db>(
     let make_info = |e: ElementarySpec| {
         let extern_decl = find_extern_decl(db, func);
         let wasm_decl = find_wasm_decl(db, func);
-        AnyFunctionInfo { func, any_spec: e, extern_decl, wasm_decl }
+        AnyFunctionInfo {
+            func,
+            any_spec: e,
+            extern_decl,
+            wasm_decl,
+        }
     };
 
     // Check return type first
-    if let Some(ret) = func.return_type(db) {
-        if let Type::Elementary(e) = ret.infer(db) {
-            if e.is_any() {
+    if let Some(ret) = func.return_type(db)
+        && let Type::Elementary(e) = ret.infer(db)
+            && e.is_any() {
                 return Some(make_info(e));
             }
-        }
-    }
 
     // Check parameters
     let scope_id = func.scope_id(db);
     let def_map = scope_id.def_map(db);
     for (_name, var) in &def_map.local_variables {
-        if let Type::Elementary(e) = var.spec(db).infer(db) {
-            if e.is_any() {
+        if let Type::Elementary(e) = var.spec(db).infer(db)
+            && e.is_any() {
                 return Some(make_info(e));
             }
-        }
     }
 
     None
@@ -117,37 +117,77 @@ fn find_wasm_decl<'db>(
 pub fn concrete_types_for_any(any_spec: ElementarySpec) -> &'static [ElementarySpec] {
     match any_spec {
         ElementarySpec::AnyNum => &[
-            ElementarySpec::SInt, ElementarySpec::Int, ElementarySpec::DInt, ElementarySpec::LInt,
-            ElementarySpec::USInt, ElementarySpec::UInt, ElementarySpec::UDInt, ElementarySpec::ULInt,
-            ElementarySpec::Real, ElementarySpec::LReal,
+            ElementarySpec::SInt,
+            ElementarySpec::Int,
+            ElementarySpec::DInt,
+            ElementarySpec::LInt,
+            ElementarySpec::USInt,
+            ElementarySpec::UInt,
+            ElementarySpec::UDInt,
+            ElementarySpec::ULInt,
+            ElementarySpec::Real,
+            ElementarySpec::LReal,
         ],
         ElementarySpec::AnyInt => &[
-            ElementarySpec::SInt, ElementarySpec::Int, ElementarySpec::DInt, ElementarySpec::LInt,
-            ElementarySpec::USInt, ElementarySpec::UInt, ElementarySpec::UDInt, ElementarySpec::ULInt,
+            ElementarySpec::SInt,
+            ElementarySpec::Int,
+            ElementarySpec::DInt,
+            ElementarySpec::LInt,
+            ElementarySpec::USInt,
+            ElementarySpec::UInt,
+            ElementarySpec::UDInt,
+            ElementarySpec::ULInt,
         ],
         ElementarySpec::AnySigned => &[
-            ElementarySpec::SInt, ElementarySpec::Int, ElementarySpec::DInt, ElementarySpec::LInt,
+            ElementarySpec::SInt,
+            ElementarySpec::Int,
+            ElementarySpec::DInt,
+            ElementarySpec::LInt,
         ],
         ElementarySpec::AnyUnsigned => &[
-            ElementarySpec::USInt, ElementarySpec::UInt, ElementarySpec::UDInt, ElementarySpec::ULInt,
+            ElementarySpec::USInt,
+            ElementarySpec::UInt,
+            ElementarySpec::UDInt,
+            ElementarySpec::ULInt,
         ],
         ElementarySpec::AnyReal => &[ElementarySpec::Real, ElementarySpec::LReal],
         ElementarySpec::AnyBit => &[
-            ElementarySpec::Bool, ElementarySpec::Byte, ElementarySpec::Word,
-            ElementarySpec::DWord, ElementarySpec::LWord,
+            ElementarySpec::Bool,
+            ElementarySpec::Byte,
+            ElementarySpec::Word,
+            ElementarySpec::DWord,
+            ElementarySpec::LWord,
         ],
         ElementarySpec::AnyMagnitude => &[
-            ElementarySpec::SInt, ElementarySpec::Int, ElementarySpec::DInt, ElementarySpec::LInt,
-            ElementarySpec::USInt, ElementarySpec::UInt, ElementarySpec::UDInt, ElementarySpec::ULInt,
-            ElementarySpec::Real, ElementarySpec::LReal,
-            ElementarySpec::Time, ElementarySpec::LTime,
+            ElementarySpec::SInt,
+            ElementarySpec::Int,
+            ElementarySpec::DInt,
+            ElementarySpec::LInt,
+            ElementarySpec::USInt,
+            ElementarySpec::UInt,
+            ElementarySpec::UDInt,
+            ElementarySpec::ULInt,
+            ElementarySpec::Real,
+            ElementarySpec::LReal,
+            ElementarySpec::Time,
+            ElementarySpec::LTime,
         ],
         ElementarySpec::AnyElementary | ElementarySpec::Any => &[
-            ElementarySpec::SInt, ElementarySpec::Int, ElementarySpec::DInt, ElementarySpec::LInt,
-            ElementarySpec::USInt, ElementarySpec::UInt, ElementarySpec::UDInt, ElementarySpec::ULInt,
-            ElementarySpec::Real, ElementarySpec::LReal,
-            ElementarySpec::Bool, ElementarySpec::Byte, ElementarySpec::Word,
-            ElementarySpec::DWord, ElementarySpec::LWord,
+            ElementarySpec::SInt,
+            ElementarySpec::Int,
+            ElementarySpec::DInt,
+            ElementarySpec::LInt,
+            ElementarySpec::USInt,
+            ElementarySpec::UInt,
+            ElementarySpec::UDInt,
+            ElementarySpec::ULInt,
+            ElementarySpec::Real,
+            ElementarySpec::LReal,
+            ElementarySpec::Bool,
+            ElementarySpec::Byte,
+            ElementarySpec::Word,
+            ElementarySpec::DWord,
+            ElementarySpec::LWord,
         ],
         _ => &[],
     }
@@ -163,7 +203,7 @@ pub fn monomorphize<'db>(
     db: &'db dyn WorkspaceDataBase,
     module: &mut MirModule,
     any_functions: &[AnyFunctionInfo<'db>],
-    memory_layout: &mut MirMemoryLayout,
+    _memory_layout: &mut MirMemoryLayout,
     string_pool: std::rc::Rc<std::cell::RefCell<super::lower_expr::StringPool>>,
 ) -> Result<(), LowerTypeError> {
     // Collect which ANY_* functions exist by name
@@ -210,8 +250,8 @@ pub fn monomorphize<'db>(
 
             if let Some(wasm_decl) = &info.wasm_decl {
                 // Wasm intrinsic ANY_* function → build monomorphized function with concrete types
+                
                 use crate::function::*;
-                use crate::expr::*;
                 use crate::stmt::*;
                 use hir::hir_def::pous::variable::VariableKind;
 
@@ -240,7 +280,8 @@ pub fn monomorphize<'db>(
                     }
                 }
 
-                let return_type = info.func
+                let return_type = info
+                    .func
                     .return_type(db)
                     .map(|spec| resolve_any_type(db, spec.infer(db), *concrete_spec))
                     .transpose()?;
@@ -274,7 +315,9 @@ pub fn monomorphize<'db>(
                     ty: concrete_mir.clone(),
                     init: None,
                     kind: MirLocalKind::Var,
-                    storage: MirStorage::Scalar { local_index: params.len() as u32 },
+                    storage: MirStorage::Scalar {
+                        local_index: params.len() as u32,
+                    },
                 }];
 
                 module.functions.push(MirFunction {
@@ -326,11 +369,8 @@ pub fn monomorphize<'db>(
                     .map(|spec| resolve_any_type(db, spec.infer(db), *concrete_spec))
                     .transpose()?;
 
-                let import_name = CompactString::from(format!(
-                    "{}.{}",
-                    &extern_decl.name,
-                    type_suffix
-                ));
+                let import_name =
+                    CompactString::from(format!("{}.{}", &extern_decl.name, type_suffix));
 
                 module.extern_functions.push(MirExternFunction {
                     name: mono_name,
@@ -345,8 +385,7 @@ pub fn monomorphize<'db>(
                 // Skip variadic functions (they're inlined at call sites)
                 let scope_id = info.func.scope_id(db);
                 let def_map = scope_id.def_map(db);
-                let has_variadic = def_map.local_variables.values()
-                    .any(|v| v.variadic(db));
+                let has_variadic = def_map.local_variables.values().any(|v| v.variadic(db));
                 if has_variadic {
                     continue;
                 }
@@ -445,7 +484,10 @@ fn lower_monomorphized_local<'db>(
                     storage,
                 });
             }
-            other => unreachable!("unexpected variable kind {:?} in monomorphized function", other),
+            other => unreachable!(
+                "unexpected variable kind {:?} in monomorphized function",
+                other
+            ),
         }
     }
 
@@ -460,13 +502,20 @@ fn lower_monomorphized_local<'db>(
             ty: ret_ty.clone(),
             init: None,
             kind: MirLocalKind::Var,
-            storage: MirStorage::Scalar { local_index: next_local_idx },
+            storage: MirStorage::Scalar {
+                local_index: next_local_idx,
+            },
         });
         next_local_idx += 1;
     }
 
     // Lower body statements with ANY type override
-    let body = crate::lower::lower_stmt::lower_stmts_with_ctx(db, func.statements(db), Some(concrete_spec), string_pool)?;
+    let body = crate::lower::lower_stmt::lower_stmts_with_ctx(
+        db,
+        func.statements(db),
+        Some(concrete_spec),
+        string_pool,
+    )?;
 
     Ok(MirFunction {
         name: mono_name,
@@ -622,23 +671,25 @@ fn discover_calls_in_call(
     let concrete = match &call.return_type {
         MirType::Elementary(e) => Some(*e),
         _ => {
-            let non_bool = call.args.iter()
+            let non_bool = call
+                .args
+                .iter()
                 .filter(|a| a.kind == MirArgKind::ByValue)
                 .find_map(|a| infer_concrete_type_from_expr(&a.value))
                 .filter(|e| !matches!(e, MirElementary::Bool));
             non_bool.or_else(|| {
-                call.args.iter()
+                call.args
+                    .iter()
                     .filter(|a| a.kind == MirArgKind::ByValue)
                     .find_map(|a| infer_concrete_type_from_expr(&a.value))
             })
         }
     };
 
-    if let Some(concrete) = concrete {
-        if let Some(spec) = mir_elementary_to_spec(concrete) {
+    if let Some(concrete) = concrete
+        && let Some(spec) = mir_elementary_to_spec(concrete) {
             out.entry(call.callee).or_default().insert(spec);
         }
-    }
 }
 
 /// Try to determine the concrete elementary type of a MIR expression.
@@ -815,22 +866,24 @@ fn rewrite_call(
     let concrete = match &call.return_type {
         MirType::Elementary(e) => Some(*e),
         _ => {
-            let non_bool = call.args.iter()
+            let non_bool = call
+                .args
+                .iter()
                 .filter(|a| a.kind == MirArgKind::ByValue)
                 .find_map(|a| infer_concrete_type_from_expr(&a.value))
                 .filter(|e| !matches!(e, MirElementary::Bool));
             non_bool.or_else(|| {
-                call.args.iter()
+                call.args
+                    .iter()
                     .filter(|a| a.kind == MirArgKind::ByValue)
                     .find_map(|a| infer_concrete_type_from_expr(&a.value))
             })
         }
     };
 
-    if let Some(concrete_elem) = concrete {
-        if let Some(&(mono_name, new_idx)) = mono_indices.get(&(call.callee, concrete_elem)) {
+    if let Some(concrete_elem) = concrete
+        && let Some(&(mono_name, new_idx)) = mono_indices.get(&(call.callee, concrete_elem)) {
             call.callee = mono_name;
             call.callee_index = new_idx;
         }
-    }
 }

@@ -374,11 +374,7 @@ impl<'db> BodyInferenceResult<'db> {
 
     /// Check whether an expression is a DataType constant access.
     /// Returns true if the expr is a variable access rooted in a DataType.
-    pub fn is_constant_type(
-        &self,
-        db: &'db dyn WorkspaceDataBase,
-        expr: Expr<'db>,
-    ) -> bool {
+    pub fn is_constant_type(&self, db: &'db dyn WorkspaceDataBase, expr: Expr<'db>) -> bool {
         if let ExprKind::PrimaryExpr(PrimaryExpr::VariableAccess(va)) = expr.expr(db) {
             self.is_constant_access(db, *va)
         } else {

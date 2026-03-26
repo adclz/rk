@@ -1,5 +1,8 @@
 use ast::generated::DataTypeDecl;
-use auto_lsp::{default::db::{file::File, tracked::get_ast}, lsp_types::CompletionItem};
+use auto_lsp::{
+    default::db::{file::File, tracked::get_ast},
+    lsp_types::CompletionItem,
+};
 use db::WorkspaceDataBase;
 use hir::{
     CallSite, HasName, HirNodeInfo,
@@ -95,7 +98,6 @@ pub fn complete(
 
     target.completion(db, &req).unwrap_or_default()
 }
-
 
 impl<'db> CompletionHandler<'db> for HirNode<'db> {
     fn completion(
@@ -233,7 +235,7 @@ impl<'db> CompletionHandler<'db> for Pou<'db> {
             ctx.items.extend(static_snippets::all_stmts());
 
             let scope = get_scope(db, self.get_scope_id(db));
-            maybe_add_self_return(db, &scope, &mut ctx.items);
+            maybe_add_self_return(db, scope, &mut ctx.items);
         }
 
         Some(ctx.take_items())
@@ -270,7 +272,7 @@ impl<'db> CompletionHandler<'db> for MethodRef<'db> {
             ctx.items.extend(static_snippets::all_stmts());
 
             let scope = get_scope(db, self.get_scope_id(db));
-            maybe_add_self_return(db, &scope, &mut ctx.items);
+            maybe_add_self_return(db, scope, &mut ctx.items);
         }
 
         Some(ctx.take_items())
@@ -435,12 +437,12 @@ impl<'db> CompletionHandler<'db> for PathExpr<'db> {
 
         // check if we're in a pou/program/method body, if so add all statements as completion items
         let scope = get_scope(db, self.get_scope_id(db));
-        let in_body = is_in_body(&scope, &mut ctx, db);
+        let in_body = is_in_body(scope, &mut ctx, db);
         if in_body {
             ctx.scope_completion(self.get_scope_id(db), &req.query, db);
             ctx.items.extend(static_snippets::all_stmts());
             ctx.items.extend(static_snippets::elem_type_names_init());
-            maybe_add_self_return(db, &scope, &mut ctx.items);
+            maybe_add_self_return(db, scope, &mut ctx.items);
         }
 
         Some(ctx.take_items())
@@ -464,12 +466,12 @@ impl<'db> CompletionHandler<'db> for VariableAccess<'db> {
 
         // check if we're in a pou/program/method body, if so add all statements as completion items
         let scope = get_scope(db, self.get_scope_id(db));
-        let in_body = is_in_body(&scope, &mut ctx, db);
+        let in_body = is_in_body(scope, &mut ctx, db);
         if in_body {
             ctx.scope_completion(self.get_scope_id(db), &req.query, db);
             ctx.items.extend(static_snippets::all_stmts());
             ctx.items.extend(static_snippets::elem_type_names_init());
-            maybe_add_self_return(db, &scope, &mut ctx.items);
+            maybe_add_self_return(db, scope, &mut ctx.items);
         }
 
         Some(ctx.take_items())
@@ -492,12 +494,12 @@ impl<'db> CompletionHandler<'db> for Expr<'db> {
 
         // check if we're in a pou/program/method body, if so add all statements as completion items
         let scope = get_scope(db, self.get_scope_id(db));
-        let in_body = is_in_body(&scope, &mut ctx, db);
+        let in_body = is_in_body(scope, &mut ctx, db);
         if in_body {
             ctx.scope_completion(self.get_scope_id(db), &req.query, db);
             ctx.items.extend(static_snippets::all_stmts());
             ctx.items.extend(static_snippets::elem_type_names_init());
-            maybe_add_self_return(db, &scope, &mut ctx.items);
+            maybe_add_self_return(db, scope, &mut ctx.items);
         }
 
         Some(ctx.take_items())
@@ -646,21 +648,30 @@ impl<'db> CompletionHandler<'db> for Using<'db> {
     }
 }
 
-
-
 /// Check if the cursor is in the body of a POU, program, or method.
-fn is_in_body<'db>(scope: &Scope<'db>, ctx: &mut CompletionCtx, db: &'db dyn WorkspaceDataBase) -> bool {
+fn is_in_body<'db>(
+    scope: &Scope<'db>,
+    ctx: &mut CompletionCtx,
+    db: &'db dyn WorkspaceDataBase,
+) -> bool {
     let loc = match scope.kind {
         ScopeKind::Pou(pou) => ctx.located_pou_completion(pou, db).head_location,
         ScopeKind::Program(prog) => ctx.located_program_completion(prog, db).head_location,
-        ScopeKind::MethodDecl(m) => ctx.located_method_completion(MethodRef::Declared(m), db).head_location,
+        ScopeKind::MethodDecl(m) => {
+            ctx.located_method_completion(MethodRef::Declared(m), db)
+                .head_location
+        }
         _ => return false,
     };
     loc.is_in_body()
 }
 
 /// If the scope is a function or method with a return type, push a self-return completion item.
-fn maybe_add_self_return(db: &dyn WorkspaceDataBase, scope: &hir::hir_def::scope::Scope<'_>, items: &mut Vec<CompletionItem>) {
+fn maybe_add_self_return(
+    db: &dyn WorkspaceDataBase,
+    scope: &hir::hir_def::scope::Scope<'_>,
+    items: &mut Vec<CompletionItem>,
+) {
     match scope.kind {
         ScopeKind::Pou(Pou::Function(f)) => {
             if let Some(ret_spec) = f.return_type(db) {

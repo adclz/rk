@@ -6,7 +6,10 @@ use wasm_encoder::Instruction;
 
 /// Emit cast instructions for `MirExpr::Cast { from, to }`.
 /// Returns the instructions to append.
-pub(crate) fn emit_cast_instructions(from: MirElementary, to: MirElementary) -> Vec<Instruction<'static>> {
+pub(crate) fn emit_cast_instructions(
+    from: MirElementary,
+    to: MirElementary,
+) -> Vec<Instruction<'static>> {
     if from == to {
         return Vec::new();
     }

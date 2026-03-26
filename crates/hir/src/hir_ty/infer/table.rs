@@ -239,5 +239,4 @@ impl<'db> InferenceTable<'db> {
             };
         }
     }
-
 }

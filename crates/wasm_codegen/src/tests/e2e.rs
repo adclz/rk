@@ -52,8 +52,8 @@ END_FUNCTION
 
     let file = super::add_source(&mut with_db, source);
     let sem_idx = hir::hir_def::semantic_index::semantic_index(&with_db, file);
-    let mir_module = mir::lower::lower_module::lower_module(&with_db, &sem_idx)
-        .expect("MIR lowering failed");
+    let mir_module =
+        mir::lower::lower_module::lower_module(&with_db, &sem_idx).expect("MIR lowering failed");
     let core_bytes = crate::from_mir::generate_wasm(&with_db, &mir_module).finish();
     let component_bytes = crate::component::wrap_in_component(&with_db, &core_bytes, &mir_module)
         .expect("Component wrapping failed");
@@ -91,13 +91,12 @@ END_FUNCTION
 
     let file = super::add_source(&mut with_db, source);
     let sem_idx = hir::hir_def::semantic_index::semantic_index(&with_db, file);
-    let mir_module = mir::lower::lower_module::lower_module(&with_db, &sem_idx)
-        .expect("MIR lowering failed");
+    let mir_module =
+        mir::lower::lower_module::lower_module(&with_db, &sem_idx).expect("MIR lowering failed");
     let core_bytes = crate::from_mir::generate_wasm(&with_db, &mir_module).finish();
 
-    let component_bytes =
-        crate::component::wrap_in_component(&with_db, &core_bytes, &mir_module)
-            .expect("Component wrapping failed");
+    let component_bytes = crate::component::wrap_in_component(&with_db, &core_bytes, &mir_module)
+        .expect("Component wrapping failed");
 
     assert!(component_bytes.len() > 8, "Component should have content");
     assert_eq!(

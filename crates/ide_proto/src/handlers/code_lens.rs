@@ -1,7 +1,7 @@
 use auto_lsp::lsp_types::{CodeLens, Command};
 use db::WorkspaceDataBase;
-use hir::{HasName, HirNodeInfo, hir_def::hir_node::HirNode, hir_def::pous::pou::Pou};
 use hir::hir_ty::ty::Type;
+use hir::{HasName, HirNodeInfo, hir_def::hir_node::HirNode, hir_def::pous::pou::Pou};
 use serde_json::to_value;
 
 use crate::handlers::{CodeLensHandler, implementation::find_all_implementations};
@@ -52,7 +52,9 @@ impl<'db> CodeLensHandler<'db> for Pou<'db> {
             Pou::Function(f) if f.is_test(db) => {
                 let qualified = Type::new_pou(db, *self).qualified_path(db);
                 Some(test_code_lens(
-                    self.get_span(db).lsp_with_enc(self.get_scope_id(db).file(db).document(db)).unwrap(),
+                    self.get_span(db)
+                        .lsp_with_enc(self.get_scope_id(db).file(db).document(db))
+                        .unwrap(),
                     self.get_scope_id(db).file(db).url(db).as_str(),
                     &qualified,
                 ))

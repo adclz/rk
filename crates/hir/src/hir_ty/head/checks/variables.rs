@@ -61,9 +61,8 @@ impl<'db> InitInference<'db> {
                 }
 
                 if !var.is_input(db) {
-                    self.errors.push(
-                        ResolveError::VariadicNotInInput { var: *var }.to_diagnostic(db),
-                    );
+                    self.errors
+                        .push(ResolveError::VariadicNotInInput { var: *var }.to_diagnostic(db));
                 }
 
                 if let Some(first) = first_variadic {

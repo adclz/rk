@@ -143,11 +143,7 @@ pub fn document_links(db: &dyn WorkspaceDataBase, file: File) -> Vec<DocumentLin
 }
 
 /// Convert a byte range in source text to a [`Span`].
-pub(crate) fn byte_range_to_span(
-    source: &str,
-    start_byte: usize,
-    end_byte: usize,
-) -> Span {
+pub(crate) fn byte_range_to_span(source: &str, start_byte: usize, end_byte: usize) -> Span {
     let (start_row, start_col) = byte_offset_to_point(source, start_byte);
     let (end_row, end_col) = byte_offset_to_point(source, end_byte);
 

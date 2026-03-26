@@ -1,6 +1,6 @@
 pub mod config;
-pub mod extern_decl;
 pub mod expressions;
+pub mod extern_decl;
 pub mod hir_node;
 pub mod interned;
 pub mod namespace;

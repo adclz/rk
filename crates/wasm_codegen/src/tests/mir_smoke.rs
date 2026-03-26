@@ -1,6 +1,6 @@
 //! Smoke tests for the MIR-based codegen pipeline.
 
-use crate::tests::{compile_to_wasm, validate_wasm, execute_wasm, with_db};
+use crate::tests::{compile_to_wasm, execute_wasm, validate_wasm, with_db};
 use rstest::*;
 
 #[rstest]

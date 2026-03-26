@@ -27,7 +27,10 @@ END_PROGRAM
     add_sources(&mut with_db, &[source]);
     let tests = discover_all_tests(&with_db);
 
-    let names: Vec<_> = tests.iter().map(|t| t.qualified_name().to_string()).collect();
+    let names: Vec<_> = tests
+        .iter()
+        .map(|t| t.qualified_name().to_string())
+        .collect();
     assert_eq!(names.len(), 2);
     assert!(names.contains(&"test_one".to_string()));
     assert!(names.contains(&"test_two".to_string()));
@@ -55,7 +58,10 @@ END_FUNCTION
     add_sources(&mut with_db, &[source]);
     let tests = discover_all_tests(&with_db);
 
-    let names: Vec<_> = tests.iter().map(|t| t.qualified_name().to_string()).collect();
+    let names: Vec<_> = tests
+        .iter()
+        .map(|t| t.qualified_name().to_string())
+        .collect();
     assert_eq!(names.len(), 2);
     assert!(names.contains(&"Std.Math.test_abs".to_string()));
     assert!(names.contains(&"global_test".to_string()));

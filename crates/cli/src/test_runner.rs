@@ -6,7 +6,7 @@
 
 use std::time::Instant;
 
-use wasmtime::component::{Component, Linker, Val};
+use wasmtime::component::{Component, Linker};
 use wasmtime::{Config, Engine, Store};
 use wasmtime_wasi::{WasiCtx, WasiCtxBuilder, WasiView};
 use yansi::Paint;
@@ -40,18 +40,12 @@ impl WasiView for HostState {
 }
 
 /// Discover tests from the manifest file.
-fn discover_tests(
-    workspace: &std::path::Path,
-) -> Vec<(String, String)> {
+fn discover_tests(workspace: &std::path::Path) -> Vec<(String, String)> {
     let manifest_path = workspace.join("rk_build").join("test").join("manifest");
     let bytes = match std::fs::read(&manifest_path) {
         Ok(b) => b,
         Err(e) => {
-            eprintln!(
-                "{}failed to read manifest: {}",
-                "error: ".bold().red(),
-                e
-            );
+            eprintln!("{}failed to read manifest: {}", "error: ".bold().red(), e);
             return vec![];
         }
     };
@@ -62,11 +56,7 @@ fn discover_tests(
             .map(|t| (t.path.clone(), t.export.clone()))
             .collect(),
         Err(e) => {
-            eprintln!(
-                "{}failed to parse manifest: {}",
-                "error: ".bold().red(),
-                e
-            );
+            eprintln!("{}failed to parse manifest: {}", "error: ".bold().red(), e);
             vec![]
         }
     }
@@ -82,7 +72,9 @@ fn build_linker(engine: &Engine) -> WasmResult<Linker<HostState>> {
     // Assert — takes (ptr, len) as u32 pairs (strings are flattened)
     linker.root().func_wrap(
         "assert-fail",
-        |_store: wasmtime::StoreContextMut<'_, HostState>, (ptr, len): (u32, u32)| -> WasmResult<()> {
+        |_store: wasmtime::StoreContextMut<'_, HostState>,
+         (ptr, len): (u32, u32)|
+         -> WasmResult<()> {
             if len > 0 {
                 Err(wasmtime::Error::msg(format!(
                     "assertion failed: (ptr={}, len={})",
@@ -103,32 +95,62 @@ fn build_linker(engine: &Engine) -> WasmResult<Linker<HostState>> {
 fn register_all_math(linker: &mut Linker<HostState>) -> WasmResult<()> {
     macro_rules! math1_i32 {
         ($name:literal, $op:expr) => {
-            linker.root().func_wrap($name, |_: wasmtime::StoreContextMut<'_, HostState>, (v,): (i32,)| -> WasmResult<(i32,)> { Ok(($op(v),)) })?;
+            linker.root().func_wrap(
+                $name,
+                |_: wasmtime::StoreContextMut<'_, HostState>, (v,): (i32,)| -> WasmResult<(i32,)> {
+                    Ok(($op(v),))
+                },
+            )?;
         };
     }
     macro_rules! math1_i64 {
         ($name:literal, $op:expr) => {
-            linker.root().func_wrap($name, |_: wasmtime::StoreContextMut<'_, HostState>, (v,): (i64,)| -> WasmResult<(i64,)> { Ok(($op(v),)) })?;
+            linker.root().func_wrap(
+                $name,
+                |_: wasmtime::StoreContextMut<'_, HostState>, (v,): (i64,)| -> WasmResult<(i64,)> {
+                    Ok(($op(v),))
+                },
+            )?;
         };
     }
     macro_rules! math1_f32 {
         ($name:literal, $method:ident) => {
-            linker.root().func_wrap($name, |_: wasmtime::StoreContextMut<'_, HostState>, (v,): (f32,)| -> WasmResult<(f32,)> { Ok((v.$method(),)) })?;
+            linker.root().func_wrap(
+                $name,
+                |_: wasmtime::StoreContextMut<'_, HostState>, (v,): (f32,)| -> WasmResult<(f32,)> {
+                    Ok((v.$method(),))
+                },
+            )?;
         };
     }
     macro_rules! math1_f64 {
         ($name:literal, $method:ident) => {
-            linker.root().func_wrap($name, |_: wasmtime::StoreContextMut<'_, HostState>, (v,): (f64,)| -> WasmResult<(f64,)> { Ok((v.$method(),)) })?;
+            linker.root().func_wrap(
+                $name,
+                |_: wasmtime::StoreContextMut<'_, HostState>, (v,): (f64,)| -> WasmResult<(f64,)> {
+                    Ok((v.$method(),))
+                },
+            )?;
         };
     }
     macro_rules! math2_f32 {
         ($name:literal, $method:ident) => {
-            linker.root().func_wrap($name, |_: wasmtime::StoreContextMut<'_, HostState>, (a, b): (f32, f32)| -> WasmResult<(f32,)> { Ok((a.$method(b),)) })?;
+            linker.root().func_wrap(
+                $name,
+                |_: wasmtime::StoreContextMut<'_, HostState>,
+                 (a, b): (f32, f32)|
+                 -> WasmResult<(f32,)> { Ok((a.$method(b),)) },
+            )?;
         };
     }
     macro_rules! math2_f64 {
         ($name:literal, $method:ident) => {
-            linker.root().func_wrap($name, |_: wasmtime::StoreContextMut<'_, HostState>, (a, b): (f64, f64)| -> WasmResult<(f64,)> { Ok((a.$method(b),)) })?;
+            linker.root().func_wrap(
+                $name,
+                |_: wasmtime::StoreContextMut<'_, HostState>,
+                 (a, b): (f64, f64)|
+                 -> WasmResult<(f64,)> { Ok((a.$method(b),)) },
+            )?;
         };
     }
 
@@ -137,10 +159,30 @@ fn register_all_math(linker: &mut Linker<HostState>) -> WasmResult<()> {
     math1_i32!("math-abs-int", i32::abs);
     math1_i32!("math-abs-dint", i32::abs);
     math1_i64!("math-abs-lint", i64::abs);
-    linker.root().func_wrap("math-abs-usint", |_: wasmtime::StoreContextMut<'_, HostState>, (v,): (u32,)| -> WasmResult<(u32,)> { Ok((v,)) })?;
-    linker.root().func_wrap("math-abs-uint", |_: wasmtime::StoreContextMut<'_, HostState>, (v,): (u32,)| -> WasmResult<(u32,)> { Ok((v,)) })?;
-    linker.root().func_wrap("math-abs-udint", |_: wasmtime::StoreContextMut<'_, HostState>, (v,): (u32,)| -> WasmResult<(u32,)> { Ok((v,)) })?;
-    linker.root().func_wrap("math-abs-ulint", |_: wasmtime::StoreContextMut<'_, HostState>, (v,): (u64,)| -> WasmResult<(u64,)> { Ok((v,)) })?;
+    linker.root().func_wrap(
+        "math-abs-usint",
+        |_: wasmtime::StoreContextMut<'_, HostState>, (v,): (u32,)| -> WasmResult<(u32,)> {
+            Ok((v,))
+        },
+    )?;
+    linker.root().func_wrap(
+        "math-abs-uint",
+        |_: wasmtime::StoreContextMut<'_, HostState>, (v,): (u32,)| -> WasmResult<(u32,)> {
+            Ok((v,))
+        },
+    )?;
+    linker.root().func_wrap(
+        "math-abs-udint",
+        |_: wasmtime::StoreContextMut<'_, HostState>, (v,): (u32,)| -> WasmResult<(u32,)> {
+            Ok((v,))
+        },
+    )?;
+    linker.root().func_wrap(
+        "math-abs-ulint",
+        |_: wasmtime::StoreContextMut<'_, HostState>, (v,): (u64,)| -> WasmResult<(u64,)> {
+            Ok((v,))
+        },
+    )?;
     math1_f32!("math-abs-real", abs);
     math1_f64!("math-abs-lreal", abs);
 
@@ -236,10 +278,13 @@ pub fn run_tests(
     println!("{}  {} test(s)", "    Running".dim(), total);
 
     for (display_name, export_name) in &tests {
-        let mut store = Store::new(&engine, HostState {
-            wasi: WasiCtxBuilder::new().build(),
-            table: wasmtime::component::ResourceTable::new(),
-        });
+        let mut store = Store::new(
+            &engine,
+            HostState {
+                wasi: WasiCtxBuilder::new().build(),
+                table: wasmtime::component::ResourceTable::new(),
+            },
+        );
         let start = Instant::now();
 
         // Convert export name to kebab-case (component uses kebab names)
@@ -247,41 +292,37 @@ pub fn run_tests(
 
         let outcome = match linker.instantiate(&mut store, &component) {
             Err(e) => TestOutcome::Fail(format!("instantiation failed: {}", e)),
-            Ok(instance) => {
-                match instance.get_func(&mut store, &kebab_name) {
-                    None => TestOutcome::Fail(format!("export '{}' not found", kebab_name)),
-                    Some(func) => {
-                        match func.call(&mut store, &[], &mut []) {
-                            Ok(()) => {
-                                if let Err(e) = func.post_return(&mut store) {
-                                    TestOutcome::Fail(format!("post_return: {}", e))
-                                } else {
-                                    TestOutcome::Pass
-                                }
-                            }
-                            Err(e) => {
-                                let mut reason = None;
-                                let mut source: Option<&dyn std::error::Error> = Some(&*e);
-                                while let Some(err) = source {
-                                    let msg = err.to_string();
-                                    if msg.starts_with("assertion failed") {
-                                        reason = Some(msg);
-                                        break;
-                                    }
-                                    source = err.source();
-                                }
-                                TestOutcome::Fail(reason.unwrap_or_else(|| {
-                                    e.to_string()
-                                        .lines()
-                                        .next()
-                                        .unwrap_or("unknown error")
-                                        .to_string()
-                                }))
-                            }
+            Ok(instance) => match instance.get_func(&mut store, &kebab_name) {
+                None => TestOutcome::Fail(format!("export '{}' not found", kebab_name)),
+                Some(func) => match func.call(&mut store, &[], &mut []) {
+                    Ok(()) => {
+                        if let Err(e) = func.post_return(&mut store) {
+                            TestOutcome::Fail(format!("post_return: {}", e))
+                        } else {
+                            TestOutcome::Pass
                         }
                     }
-                }
-            }
+                    Err(e) => {
+                        let mut reason = None;
+                        let mut source: Option<&dyn std::error::Error> = Some(&*e);
+                        while let Some(err) = source {
+                            let msg = err.to_string();
+                            if msg.starts_with("assertion failed") {
+                                reason = Some(msg);
+                                break;
+                            }
+                            source = err.source();
+                        }
+                        TestOutcome::Fail(reason.unwrap_or_else(|| {
+                            e.to_string()
+                                .lines()
+                                .next()
+                                .unwrap_or("unknown error")
+                                .to_string()
+                        }))
+                    }
+                },
+            },
         };
 
         let duration = start.elapsed();

@@ -116,19 +116,17 @@ END_FUNCTION
 
     let wasm_bytes = compile_to_wasm(&mut with_db, source);
 
-    let result: i32 =
-        execute_wasm_with_imports(&wasm_bytes, "add_one", (10i32,), |linker| {
-            linker
-                .func_wrap("math", "negate", |x: i32| -> i32 { -x })
-                .unwrap();
-        });
+    let result: i32 = execute_wasm_with_imports(&wasm_bytes, "add_one", (10i32,), |linker| {
+        linker
+            .func_wrap("math", "negate", |x: i32| -> i32 { -x })
+            .unwrap();
+    });
     assert_eq!(result, 11);
 
-    let result: i32 =
-        execute_wasm_with_imports(&wasm_bytes, "add_two", (10i32,), |linker| {
-            linker
-                .func_wrap("math", "negate", |x: i32| -> i32 { -x })
-                .unwrap();
-        });
+    let result: i32 = execute_wasm_with_imports(&wasm_bytes, "add_two", (10i32,), |linker| {
+        linker
+            .func_wrap("math", "negate", |x: i32| -> i32 { -x })
+            .unwrap();
+    });
     assert_eq!(result, 12);
 }

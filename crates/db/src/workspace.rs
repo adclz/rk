@@ -107,7 +107,10 @@ fn resolve_all(
         Some(path) => match std::fs::read_to_string(path) {
             Ok(source) => match crate::config_file::parse_config(&source) {
                 Ok(config) => (
-                    config.stdlib_path().map(PathBuf::from).filter(|p| p.exists()),
+                    config
+                        .stdlib_path()
+                        .map(PathBuf::from)
+                        .filter(|p| p.exists()),
                     config.disable_stdlib(),
                 ),
                 Err(e) => {

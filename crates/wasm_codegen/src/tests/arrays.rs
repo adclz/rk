@@ -151,9 +151,15 @@ fn test_array_of_real(mut with_db: db::RootDatabase) {
     let module = wasmtime::Module::new(&engine, &wasm_bytes).unwrap();
     let mut store = wasmtime::Store::new(&engine, ());
     let instance = wasmtime::Instance::new(&mut store, &module, &[]).unwrap();
-    let func = instance.get_typed_func::<(), f32>(&mut store, "test_real_arr").unwrap();
+    let func = instance
+        .get_typed_func::<(), f32>(&mut store, "test_real_arr")
+        .unwrap();
     let result = func.call(&mut store, ()).unwrap();
-    assert!((result - 7.5).abs() < 0.001, "Sum should be 7.5, got {}", result);
+    assert!(
+        (result - 7.5).abs() < 0.001,
+        "Sum should be 7.5, got {}",
+        result
+    );
 }
 
 #[rstest]
@@ -183,7 +189,9 @@ fn test_array_of_struct(mut with_db: db::RootDatabase) {
     let module = wasmtime::Module::new(&engine, &wasm_bytes).unwrap();
     let mut store = wasmtime::Store::new(&engine, ());
     let instance = wasmtime::Instance::new(&mut store, &module, &[]).unwrap();
-    let func = instance.get_typed_func::<(), i32>(&mut store, "test_struct_arr").unwrap();
+    let func = instance
+        .get_typed_func::<(), i32>(&mut store, "test_struct_arr")
+        .unwrap();
     let result = func.call(&mut store, ()).unwrap();
     assert_eq!(result, 50, "pts[0].x + pts[1].y = 10 + 40 = 50");
 }
@@ -214,7 +222,9 @@ fn test_array_passed_to_function(mut with_db: db::RootDatabase) {
     let module = wasmtime::Module::new(&engine, &wasm_bytes).unwrap();
     let mut store = wasmtime::Store::new(&engine, ());
     let instance = wasmtime::Instance::new(&mut store, &module, &[]).unwrap();
-    let func = instance.get_typed_func::<(), i32>(&mut store, "test_arr_call").unwrap();
+    let func = instance
+        .get_typed_func::<(), i32>(&mut store, "test_arr_call")
+        .unwrap();
     let result = func.call(&mut store, ()).unwrap();
     assert_eq!(result, 300, "arr[0] + arr[1] = 100 + 200 = 300");
 }
@@ -244,7 +254,9 @@ fn test_array_in_for_loop_with_computation(mut with_db: db::RootDatabase) {
     let module = wasmtime::Module::new(&engine, &wasm_bytes).unwrap();
     let mut store = wasmtime::Store::new(&engine, ());
     let instance = wasmtime::Instance::new(&mut store, &module, &[]).unwrap();
-    let func = instance.get_typed_func::<(), i32>(&mut store, "test_arr_compute").unwrap();
+    let func = instance
+        .get_typed_func::<(), i32>(&mut store, "test_arr_compute")
+        .unwrap();
     let result = func.call(&mut store, ()).unwrap();
     // Sum of squares 0..9 = 0+1+4+9+16+25+36+49+64+81 = 285
     assert_eq!(result, 285, "Sum of squares 0..9 should be 285");
