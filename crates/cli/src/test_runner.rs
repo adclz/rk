@@ -188,11 +188,11 @@ fn fmt_duration(d: std::time::Duration) -> String {
 /// Reads the test manifest from `<workspace>/rk_build/manifest`.
 /// Returns the number of failures.
 pub fn run_tests(
-    wasm_bytes: &[u8],
+    wasm_path: &std::path::Path,
     workspace: &std::path::Path,
     filter: Option<&str>,
 ) -> usize {
-    let manifest_path = workspace.join("rk_build").join("manifest");
+    let manifest_path = workspace.join("rk_build").join("test").join("manifest");
     let manifest = match std::fs::read(&manifest_path) {
         Ok(bytes) => match mir::test_manifest::TestManifest::from_msgpack(&bytes) {
             Ok(m) => m,
@@ -207,7 +207,7 @@ pub fn run_tests(
         }
     };
     let engine = Engine::default();
-    let module = match Module::new(&engine, wasm_bytes) {
+    let module = match Module::from_file(&engine, wasm_path) {
         Ok(m) => m,
         Err(e) => {
             eprintln!("{}{}", "wasm error: ".bold().red(), e);
