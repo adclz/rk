@@ -11,6 +11,10 @@ All timers share a common interface:
 */
 NAMESPACE Std.Timers
 
+    FUNCTION __monotonic_now : TIME
+        {extern 'wasi:clocks/monotonic-clock@0.2.6' 'now' (result __monotonic_now)}
+    END_FUNCTION
+
     /*
     ## TP - Pulse Timer
 
@@ -25,7 +29,7 @@ NAMESPACE Std.Timers
         pulse: TP;
     END_VAR
     
-    pulse(IN := trigger, PT := T#5s);
+    pulse(trigger, PT := T#5s);
     IF pulse.Q THEN
         // pulse is active
     END_IF;
@@ -45,6 +49,8 @@ NAMESPACE Std.Timers
             PREV_IN: BOOL := FALSE;
             CURRENT_TIME, START_TIME: TIME;
         END_VAR
+
+        CURRENT_TIME := __monotonic_now();
 
         IF ((STATE = 0) AND NOT(PREV_IN) AND IN) THEN
             STATE := 1;
@@ -83,7 +89,7 @@ NAMESPACE Std.Timers
         delay: TON;
     END_VAR
     
-    delay(IN := start_signal, PT := T#3s);
+    delay(start_signal, PT := T#3s);
     IF delay.Q THEN
         // 3 seconds have passed since start_signal went TRUE
     END_IF;
@@ -103,6 +109,8 @@ NAMESPACE Std.Timers
             PREV_IN: BOOL := FALSE;
             CURRENT_TIME, START_TIME: TIME;
         END_VAR
+
+        CURRENT_TIME := __monotonic_now();
 
         IF ((STATE = 0) AND NOT(PREV_IN) AND IN) THEN
             STATE := 1;
@@ -142,7 +150,7 @@ NAMESPACE Std.Timers
         off_delay: TOF;
     END_VAR
     
-    off_delay(IN := motor_running, PT := T#10s);
+    off_delay(motor_running, PT := T#10s);
     cooling_fan := off_delay.Q; // fan runs 10s after motor stops
     ```
     */
@@ -160,6 +168,8 @@ NAMESPACE Std.Timers
             PREV_IN: BOOL := FALSE;
             CURRENT_TIME, START_TIME: TIME;
         END_VAR
+
+        CURRENT_TIME := __monotonic_now();
 
         IF ((STATE = 0) AND PREV_IN AND NOT(IN)) THEN
             STATE := 1;

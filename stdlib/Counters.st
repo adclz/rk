@@ -24,7 +24,7 @@ NAMESPACE Std.Counters
         counter: CTU;
     END_VAR
 
-    counter(CU := sensor, R := reset_btn, PV := 100);
+    counter(CU := sensor, reset_btn, PV := 100);
     IF counter.Q THEN
         // target count reached
     END_IF;
@@ -115,7 +115,7 @@ NAMESPACE Std.Counters
         counter: CTUD;
     END_VAR
 
-    counter(CU := up_btn, CD := down_btn, R := FALSE, LD := FALSE, PV := 100);
+    counter(CU := up_btn, CD := down_btn, FALSE, LD := FALSE, PV := 100);
     ```
     */
     FUNCTION_BLOCK CTUD
