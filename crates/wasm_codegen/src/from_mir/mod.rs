@@ -123,7 +123,7 @@ impl<'a> WasmGen<'a> {
             wasm_encoder::EntityType::Function(type_idx),
         );
 
-        // Re-export the import with the IEC function name
+        // Re-export the import so it can be called by name from tests
         let export_name = ext_fn.name.text(self.db).to_string();
         let wasm_idx = self.index_remap.get(&ext_fn.index).copied().unwrap_or(ext_fn.index);
         self.export_section.export(
@@ -146,7 +146,7 @@ impl<'a> WasmGen<'a> {
         // Register function
         self.fn_section.function(type_idx);
 
-        // Export if needed
+        // Export every public function.
         if func.linkage == MirLinkage::Export {
             let export_name = func.export_name.as_ref()
                 .map(|s| s.to_string())

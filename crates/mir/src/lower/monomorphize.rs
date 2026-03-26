@@ -286,6 +286,7 @@ pub fn monomorphize<'db>(
                     locals,
                     body,
                     linkage: MirLinkage::Export,
+                    is_test: false,
                     export_name: None,
                 });
             } else if let Some(extern_decl) = &info.extern_decl {
@@ -476,6 +477,7 @@ fn lower_monomorphized_local<'db>(
         locals,
         body,
         linkage: MirLinkage::Export,
+        is_test: false,
         export_name: None,
     })
 }

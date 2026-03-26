@@ -558,6 +558,7 @@ pub fn lower_wasm_intrinsic<'db>(
         locals,
         body,
         linkage: MirLinkage::Export,
+        is_test: false,
         export_name: None,
     })
 }

@@ -192,9 +192,10 @@ pub fn wrap_in_component(
     );
 
     // === Step 8: Define export types + canon lift + export ===
+    // Only lift test functions to the component level.
+    // All other functions stay internal to the core module.
     for func in &module.functions {
-        // Only export public functions
-        if func.linkage != mir::function::MirLinkage::Export {
+        if !func.is_test {
             continue;
         }
 
@@ -203,6 +204,7 @@ pub fn wrap_in_component(
             .as_ref()
             .map(|s| s.to_string())
             .unwrap_or_else(|| func.name.text(db).to_string());
+
         let export_name = to_kebab_case(&raw_name);
 
         // Define type

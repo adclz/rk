@@ -50,9 +50,20 @@ FUNCTION test_abs
 END_FUNCTION
     "#;
 
-    let wasm_bytes = compile_to_wasm(&mut with_db, source);
+    let file = super::add_source(&mut with_db, source);
+    let sem_idx = hir::hir_def::semantic_index::semantic_index(&with_db, file);
+    let mir_module = mir::lower::lower_module::lower_module(&with_db, &sem_idx)
+        .expect("MIR lowering failed");
+    let wasm_bytes = crate::from_mir::generate_wasm(&with_db, &mir_module).finish();
 
-    let failures = rk::test_runner::run_tests(&wasm_bytes, None);
+    // Write manifest to temp dir
+    let tmp = std::env::temp_dir().join("rk_e2e_test");
+    let build_dir = tmp.join("rk_build");
+    std::fs::create_dir_all(&build_dir).unwrap();
+    std::fs::write(build_dir.join("manifest"), mir_module.test_manifest.to_msgpack()).unwrap();
+
+    let failures = rk::test_runner::run_tests(&wasm_bytes, &tmp, None);
+    let _ = std::fs::remove_dir_all(&tmp);
     assert_eq!(failures, 0, "Expected all e2e tests to pass");
 }
 

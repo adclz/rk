@@ -25,13 +25,13 @@ enum TestOutcome {
 /// Host functions provided to the WASM module.
 struct HostState;
 
-/// Discover all test exports (functions containing "test_") from a WASM module.
-/// Test names may be qualified (e.g. "Std.Bits.Test.test_shl_byte") or bare ("test_foo").
-fn discover_tests(module: &Module) -> Vec<String> {
-    module
-        .exports()
-        .filter(|e| e.name().contains("test_") && e.ty().func().is_some())
-        .map(|e| e.name().to_string())
+/// Discover tests from the MIR test manifest.
+/// Returns (display_path, wasm_export_name) pairs.
+fn discover_tests(manifest: &mir::test_manifest::TestManifest) -> Vec<(String, String)> {
+    manifest
+        .tests
+        .iter()
+        .map(|t| (t.path.clone(), t.export.clone()))
         .collect()
 }
 
@@ -185,8 +185,27 @@ fn fmt_duration(d: std::time::Duration) -> String {
 }
 
 /// Run tests from a compiled WASM module.
+/// Reads the test manifest from `<workspace>/rk_build/manifest`.
 /// Returns the number of failures.
-pub fn run_tests(wasm_bytes: &[u8], filter: Option<&str>) -> usize {
+pub fn run_tests(
+    wasm_bytes: &[u8],
+    workspace: &std::path::Path,
+    filter: Option<&str>,
+) -> usize {
+    let manifest_path = workspace.join("rk_build").join("manifest");
+    let manifest = match std::fs::read(&manifest_path) {
+        Ok(bytes) => match mir::test_manifest::TestManifest::from_msgpack(&bytes) {
+            Ok(m) => m,
+            Err(e) => {
+                eprintln!("{}failed to parse manifest: {}", "error: ".bold().red(), e);
+                return 1;
+            }
+        },
+        Err(e) => {
+            eprintln!("{}failed to read manifest at {}: {}", "error: ".bold().red(), manifest_path.display(), e);
+            return 1;
+        }
+    };
     let engine = Engine::default();
     let module = match Module::new(&engine, wasm_bytes) {
         Ok(m) => m,
@@ -196,13 +215,14 @@ pub fn run_tests(wasm_bytes: &[u8], filter: Option<&str>) -> usize {
         }
     };
 
-    let mut test_names = discover_tests(&module);
+    let mut tests = discover_tests(&manifest);
 
     if let Some(f) = filter {
-        test_names.retain(|n| n.contains(f));
+        let f_lower = f.to_lowercase();
+        tests.retain(|(path, _)| path.to_lowercase().contains(&f_lower));
     }
 
-    if test_names.is_empty() {
+    if tests.is_empty() {
         println!("No test functions found");
         return 1;
     }
@@ -215,20 +235,20 @@ pub fn run_tests(wasm_bytes: &[u8], filter: Option<&str>) -> usize {
         }
     };
 
-    let total = test_names.len();
+    let total = tests.len();
     let mut results: Vec<TestResult> = Vec::with_capacity(total);
     let total_start = Instant::now();
 
     println!("{}  {} test(s)", "    Running".dim(), total);
 
-    for name in &test_names {
+    for (display_name, export_name) in &tests {
         // Fresh store per test - full memory isolation
         let mut store = Store::new(&engine, HostState);
         let start = Instant::now();
 
         let outcome = match linker.instantiate(&mut store, &module) {
             Err(e) => TestOutcome::Fail(format!("instantiation failed: {}", e)),
-            Ok(instance) => match instance.get_typed_func::<(), ()>(&mut store, name) {
+            Ok(instance) => match instance.get_typed_func::<(), ()>(&mut store, export_name) {
                 Err(e) => TestOutcome::Fail(format!("export error: {}", e)),
                 Ok(func) => match func.call(&mut store, ()) {
                     Ok(()) => TestOutcome::Pass,
@@ -260,7 +280,7 @@ pub fn run_tests(wasm_bytes: &[u8], filter: Option<&str>) -> usize {
                     "        {} {} {}",
                     "PASS".green(),
                     format!("[{:>7}]", fmt_duration(duration)).dim(),
-                    name,
+                    display_name,
                 );
             }
             TestOutcome::Fail(_) => {
@@ -268,13 +288,13 @@ pub fn run_tests(wasm_bytes: &[u8], filter: Option<&str>) -> usize {
                     "        {} {} {}",
                     "FAIL".red(),
                     format!("[{:>7}]", fmt_duration(duration)).dim(),
-                    name,
+                    display_name,
                 );
             }
         }
 
         results.push(TestResult {
-            name: name.clone(),
+            name: display_name.clone(),
             outcome,
             duration,
         });

@@ -33,6 +33,9 @@ pub struct MirFunction {
     /// How this function should appear externally.
     pub linkage: MirLinkage,
 
+    /// Whether this function is a test (marked with `{test}` pragma).
+    pub is_test: bool,
+
     /// Optional qualified export name (e.g. "Std.Bits.Test.test_shl_byte").
     /// When set, WASM codegen uses this instead of `name` for the export.
     pub export_name: Option<CompactString>,

@@ -178,6 +178,7 @@ pub fn lower_function<'db>(
         locals,
         body,
         linkage,
+        is_test: func.is_test(db),
         export_name: None,
     })
 }
@@ -289,6 +290,7 @@ pub fn lower_function_block<'db>(
             locals,
             body,
             linkage: MirLinkage::Export,
+            is_test: false,
             export_name: None,
         });
         idx += 1;
@@ -353,6 +355,7 @@ pub fn lower_function_block<'db>(
             locals: body_locals,
             body: body_stmts,
             linkage: MirLinkage::Export,
+            is_test: false,
             export_name: None,
         });
     }
@@ -466,6 +469,7 @@ pub fn lower_class<'db>(
             locals,
             body,
             linkage: MirLinkage::Export,
+            is_test: false,
             export_name: None,
         });
         idx += 1;
@@ -514,6 +518,7 @@ pub fn lower_program<'db>(
         locals,
         body,
         linkage: MirLinkage::Export,
+        is_test: false,
         export_name: None,
     })
 }
