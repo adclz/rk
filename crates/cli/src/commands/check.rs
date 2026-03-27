@@ -1,4 +1,6 @@
 use auto_lsp::default::db::BaseDatabase;
+use ide_diagnostic::IdeDiagnostic;
+use rayon::iter::{IntoParallelIterator, ParallelIterator};
 use yansi::Paint;
 
 use crate::diagnostics::report_diagnostics;
@@ -20,20 +22,30 @@ pub fn run_check(workspace: &std::path::Path, verbose: bool) {
 
     let linter_config = db::config_file::get_config(&db).linter.clone();
 
-    let mut _has_errors = false;
+    // Collect diagnostics in parallel across files
+    let files = db.get_files();
+    let per_file: Vec<_> = files
+        .into_par_iter()
+        .map_with(db.clone(), |db, file| {
+            let file = *file;
+            let mut diagnostics = hir::check::diagnostics_for_file(db, file)
+                .as_ref()
+                .clone();
+            if let Some(ref linter_config) = linter_config {
+                linter::lint_file(db, file, linter_config, &mut diagnostics);
+            }
+            (file, diagnostics)
+        })
+        .collect();
+
+    // Report sequentially
+    let mut has_errors = false;
     let mut total_errors = 0;
     let mut total_warnings = 0;
 
-    for file in db.get_files().iter() {
-        let mut diagnostics = hir::check::diagnostics_for_file(&db, *file)
-            .as_ref()
-            .clone();
-        if let Some(ref linter_config) = linter_config {
-            linter::lint_file(&db, *file, linter_config, &mut diagnostics);
-        }
-
+    for (file, diagnostics) in &per_file {
         if !diagnostics.is_empty() {
-            _has_errors = true;
+            has_errors = true;
 
             report_diagnostics(
                 &db,
@@ -41,7 +53,7 @@ pub fn run_check(workspace: &std::path::Path, verbose: bool) {
                 config,
                 file.url(&db),
                 &file.document(&db).texter.text,
-                &diagnostics,
+                diagnostics,
                 &caches,
                 &mut total_errors,
                 &mut total_warnings,
@@ -56,7 +68,7 @@ pub fn run_check(workspace: &std::path::Path, verbose: bool) {
         total_warnings.to_string().fg(ariadne::Color::Yellow)
     );
 
-    if _has_errors {
+    if has_errors {
         std::process::exit(1);
     }
 }

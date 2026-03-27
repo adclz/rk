@@ -1,6 +1,7 @@
 use auto_lsp::default::db::BaseDatabase;
 use db::RootDatabase;
 use hir::hir_def::semantic_index::semantic_index;
+use rayon::iter::{IntoParallelIterator, ParallelIterator};
 use yansi::Paint;
 
 use crate::diagnostics::report_diagnostics;
@@ -8,7 +9,6 @@ use crate::diagnostics::report_diagnostics;
 /// Check diagnostics and lower HIR → MIR → core WASM.
 /// Returns (core_bytes, mir_module).
 pub fn build_core(db: &RootDatabase, workspace: &std::path::Path, _verbose: bool) -> (Vec<u8>, mir::MirModule) {
-    let mut _has_errors = false;
     let workspace_path = std::fs::canonicalize(workspace).unwrap_or_else(|_| workspace.to_path_buf());
     let config = ariadne::Config::new().with_color(true).with_tab_width(2);
 
@@ -18,22 +18,32 @@ pub fn build_core(db: &RootDatabase, workspace: &std::path::Path, _verbose: bool
         .map(|file| (file.url(db).as_str(), file.document(db).as_str()))
         .collect::<Vec<(&str, &str)>>();
 
+    // Collect diagnostics in parallel across files
+    let files = db.get_files();
+    let per_file: Vec<_> = files
+        .into_par_iter()
+        .map_with(db.clone(), |db, file| {
+            let file = *file;
+            let diagnostics = hir::check::diagnostics_for_file(db, file)
+                .as_ref()
+                .clone();
+            (file, diagnostics)
+        })
+        .collect();
+
+    // Report sequentially
     let mut total_errors = 0;
     let mut total_warnings = 0;
 
-    for file in db.get_files().iter() {
-        let diagnostics = hir::check::diagnostics_for_file(db, *file);
-
+    for (file, diagnostics) in &per_file {
         if !diagnostics.is_empty() {
-            _has_errors = true;
-
             report_diagnostics(
                 db,
                 &workspace_path,
                 config,
                 file.url(db),
                 &file.document(db).texter.text,
-                &diagnostics,
+                diagnostics,
                 &caches,
                 &mut total_errors,
                 &mut total_warnings,
@@ -96,7 +106,7 @@ pub fn optimize_wasm(wasm_bytes: Vec<u8>, opt_level: Option<&str>, verbose: bool
 
     let original_size = wasm_bytes.len();
 
-    // wasm-opt requires file paths — use temp files
+    // wasm-opt requires file paths - use temp files
     let infile = std::env::temp_dir().join("rk_wasm_opt_in.wasm");
     let outfile = std::env::temp_dir().join("rk_wasm_opt_out.wasm");
 
