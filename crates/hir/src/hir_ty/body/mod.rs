@@ -5,6 +5,7 @@ use rustc_hash::{FxHashMap, FxHashSet};
 use crate::{
     CallSite, HirNodeInfo,
     hir_def::{
+        interned::identifier::Ident,
         expressions::{
             expression::{
                 BeginPathExpr, Expr, ExprKind, InitExprKind, ParamAssign, PathExpr, PrimaryExpr,
@@ -184,6 +185,14 @@ pub struct BodyInferenceResult<'db> {
     // Mapping from path expressions to their adjustment sequences.
     pub path_expr_adjustments: FxHashMap<PathExpr<'db>, Vec<Adjustment<'db>>>,
 
+    /// Resolved ANY_* type substitutions for FB instances.
+    /// Key: (FB variable declaration, ANY_* variable name in the FB)
+    /// Value: concrete ElementarySpec resolved from call-site arguments.
+    ///
+    /// Example: `VAR timer: CTU; END_VAR; timer(PV := 5);`
+    /// → `(timer_var_decl, "PV") → ElementarySpec::Int`
+    pub fb_any_resolutions: FxHashMap<(VariableDecl<'db>, Ident), crate::hir_def::expressions::spec::ElementarySpec>,
+
     // Errors encountered during inference
     pub errors: Vec<IdeDiagnostic>,
 
@@ -246,6 +255,7 @@ impl<'db> BodyInferenceResult<'db> {
             dead_code_statements: Vec::new(),
             mismatched_for_step: Vec::new(),
             ref_null_state: FxHashMap::default(),
+            fb_any_resolutions: FxHashMap::default(),
         }
     }
 

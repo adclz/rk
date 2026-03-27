@@ -35,3 +35,4 @@ pub mod var_decls;
 pub mod variadics;
 pub mod visibility;
 pub mod walk_hir;
+pub mod fb_generics;

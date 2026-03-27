@@ -4,6 +4,7 @@ use rustc_hash::{FxHashMap, FxHashSet};
 
 use crate::check::errors::e1_duplicates::DuplicateError;
 use crate::check::errors::e3_type::TypeError;
+use crate::hir_ty::infer::Infer;
 use crate::check::errors::e10_control_flow::ControlFlowError;
 use crate::hir_def::expressions::expression::{Expr, ParamAssign};
 use crate::hir_def::interned::identifier::Ident;
@@ -104,16 +105,63 @@ pub fn resolve_func_call<'db>(
     let matches = resolve_params(db, func_call.params(db), callable, &mut ctx.errors);
 
     // Apply coercion and body-level checks on matched parameters
-    for m in matches {
+    for m in &matches {
         match m {
             ParamMatch::Matched(param, var) => {
-                apply_param_coercion(db, resolver, callable, param, var, ctx);
+                apply_param_coercion(db, resolver, callable, *param, *var, ctx);
             }
             ParamMatch::Variadic(param, var, pos) => {
-                ctx.variadic_position.insert(param, pos);
-                apply_param_coercion(db, resolver, callable, param, var, ctx);
+                ctx.variadic_position.insert(*param, *pos);
+                apply_param_coercion(db, resolver, callable, *param, *var, ctx);
             }
             ParamMatch::Error => {}
+        }
+    }
+
+    // Record ANY_* type resolutions for FB instances.
+    // When an FB variable has ANY_* type and the call site provides a concrete value,
+    // store the mapping so the MIR can monomorphize the FB struct.
+    if let CallableType::FunctionBlock(_fb) = callable {
+        // Find the FB instance variable from the call path
+        let instance_var = func_call.path(db).expr(db).and_then(|pe| {
+            let ident = pe.ident(db).ident;
+            let def_map = ctx.scope.def_map(db);
+            def_map.local_variables.get(&ident).copied()
+                .or_else(|| def_map.global_variables.get(&ident).copied())
+        });
+
+        if let Some(instance_var) = instance_var {
+            for m in &matches {
+                let (param, var) = match m {
+                    ParamMatch::Matched(p, v) | ParamMatch::Variadic(p, v, _) => (*p, *v),
+                    ParamMatch::Error => continue,
+                };
+
+                // Check if the FB variable has an ANY_* type
+                let var_type = var.spec(db).infer(db).normalize(db);
+                if let Type::Elementary(elem) = var_type {
+                    if elem.is_any() {
+                        // Get the concrete type from the argument
+                        let arg_type = match param.kind(db) {
+                            ParamAssignKind::NonFormal { value }
+                            | ParamAssignKind::FormalInput { value, .. } => {
+                                ctx.type_of_expr.get(&value).copied()
+                                    .or_else(|| Some(value.infer(db)))
+                            }
+                            _ => None,
+                        };
+
+                        if let Some(Type::Elementary(concrete)) = arg_type {
+                            if !concrete.is_any() {
+                                ctx.fb_any_resolutions.insert(
+                                    (instance_var, var.name(db)),
+                                    concrete,
+                                );
+                            }
+                        }
+                    }
+                }
+            }
         }
     }
 }
