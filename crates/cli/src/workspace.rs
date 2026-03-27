@@ -2,10 +2,22 @@ use auto_lsp::lsp_types::{PositionEncodingKind, Url};
 use db::RootDatabase;
 use db::loader::load_workspace;
 use db::workspace::Workspace;
+use yansi::Paint;
 
 use crate::diagnostics::report_diagnostics;
 
 pub fn init_db(workspace: &std::path::Path, verbose: bool, load_stdlib: bool) -> Option<RootDatabase> {
+    let workspace_path = std::fs::canonicalize(workspace).unwrap_or_else(|_| workspace.to_path_buf());
+
+    if db::loader::resolve_config_file(workspace).is_none() {
+        eprintln!(
+            "{}no config.toml found in {}",
+            "Error: ".red(),
+            workspace_path.display()
+        );
+        return None;
+    }
+
     if verbose {
         println!("scanning workspace: {}", workspace.display());
     }
@@ -29,8 +41,6 @@ pub fn init_db(workspace: &std::path::Path, verbose: bool, load_stdlib: bool) ->
     if load_stdlib {
         db::loader::load_stdlib(&mut db);
     }
-
-    let workspace_path = std::fs::canonicalize(workspace).unwrap_or_else(|_| workspace.to_path_buf());
 
     // Report config errors
     let config = ariadne::Config::new().with_color(true).with_tab_width(2);
