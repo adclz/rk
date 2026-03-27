@@ -232,8 +232,43 @@ fn emit_stmt(func: &mut wasm_encoder::Function, stmt: &MirStmt, ctx: &Ctx) {
                 mir::expr::MirPlace::Local(ident) => {
                     match ctx.locals.get(ident) {
                         Some(LocalInfo::Memory { address, .. }) => *address,
-                        _ => return, // can't resolve
+                        _ => return,
                     }
+                }
+                mir::expr::MirPlace::ThisField { field_offset, .. } => {
+                    // Nested FB: instance at this_ptr + field_offset.
+                    // Use dynamic addressing since the base comes from local 0 (this ptr).
+                    let base_offset = *field_offset;
+
+                    // 1. Write inputs to nested instance fields
+                    for (fo, value, elem) in input_writes {
+                        // Address: local.get 0 + base_offset + field_offset
+                        func.instruction(&Instruction::LocalGet(0));
+                        func.instruction(&Instruction::I32Const((base_offset + fo) as i32));
+                        func.instruction(&Instruction::I32Add);
+                        emit_expr(func, value, ctx.locals, ctx.fn_indices);
+                        emit_typed_mem_store(func, &mir::types::MirType::Elementary(*elem));
+                    }
+
+                    // 2. Call __body__(&nested_instance)
+                    let body_idx = ctx.fn_indices.get(body_func).copied().unwrap_or(0);
+                    func.instruction(&Instruction::LocalGet(0));
+                    if base_offset > 0 {
+                        func.instruction(&Instruction::I32Const(base_offset as i32));
+                        func.instruction(&Instruction::I32Add);
+                    }
+                    func.instruction(&Instruction::Call(body_idx));
+
+                    // 3. Read outputs from nested instance
+                    for (fo, target, elem) in output_reads {
+                        emit_addr_of(func, target, ctx.locals);
+                        func.instruction(&Instruction::LocalGet(0));
+                        func.instruction(&Instruction::I32Const((base_offset + fo) as i32));
+                        func.instruction(&Instruction::I32Add);
+                        emit_typed_mem_load(func, &mir::types::MirType::Elementary(*elem));
+                        emit_typed_mem_store(func, &mir::types::MirType::Elementary(*elem));
+                    }
+                    return;
                 }
                 _ => return,
             };
@@ -653,6 +688,20 @@ fn emit_typed_mem_store(func: &mut wasm_encoder::Function, ty: &mir::types::MirT
             func.instruction(&Instruction::I64Store(MemArg {
                 offset: 0,
                 align: align_log2,
+                memory_index: 0,
+            }));
+        }
+        mir::types::MirType::Elementary(e) if e.size_bytes() == 1 => {
+            func.instruction(&Instruction::I32Store8(MemArg {
+                offset: 0,
+                align: 0,
+                memory_index: 0,
+            }));
+        }
+        mir::types::MirType::Elementary(e) if e.size_bytes() == 2 => {
+            func.instruction(&Instruction::I32Store16(MemArg {
+                offset: 0,
+                align: align_log2.min(1),
                 memory_index: 0,
             }));
         }

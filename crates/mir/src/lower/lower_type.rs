@@ -255,13 +255,55 @@ pub fn lower_fb_type<'db>(
     db: &'db dyn WorkspaceDataBase,
     fb: FunctionBlock<'db>,
 ) -> Result<MirType, LowerTypeError> {
+    lower_fb_type_with_subs(db, fb, &rustc_hash::FxHashMap::default())
+}
+
+/// Lower a FunctionBlock type with ANY_* type substitutions.
+/// `any_subs` maps variable names to concrete ElementarySpec types.
+pub fn lower_fb_type_with_subs<'db>(
+    db: &'db dyn WorkspaceDataBase,
+    fb: FunctionBlock<'db>,
+    any_subs: &rustc_hash::FxHashMap<hir::hir_def::interned::identifier::Ident, hir::hir_def::expressions::spec::ElementarySpec>,
+) -> Result<MirType, LowerTypeError> {
     let mut offset = 0u32;
     let mut max_align = 1u32;
     let mut fields = Vec::new();
 
     for var in fb.variables(db) {
         let var_type = var.spec(db).infer(db);
-        let mir_type = lower_type(db, var_type)?;
+
+        // Check if this variable has an ANY_* type that should be substituted
+        let mir_type = if let hir::hir_ty::ty::Type::Elementary(elem) = var_type {
+            if elem.is_any() {
+                if let Some(concrete) = any_subs.get(&var.name(db)) {
+                    MirType::Elementary(elementary_spec_to_mir(*concrete)?)
+                } else {
+                    // Check if it's an INTO(ref) — resolve from the referenced variable's substitution
+                    if let hir::hir_def::expressions::spec::SpecKind::Into(ident) = var.spec(db).kind(db) {
+                        if let Some(concrete) = any_subs.get(&ident.ident) {
+                            MirType::Elementary(elementary_spec_to_mir(*concrete)?)
+                        } else {
+                            lower_type(db, var_type)?
+                        }
+                    } else {
+                        lower_type(db, var_type)?
+                    }
+                }
+            } else {
+                lower_type(db, var_type)?
+            }
+        } else {
+            // Check if this is an INTO(ref) variable even if var_type isn't Elementary
+            if let hir::hir_def::expressions::spec::SpecKind::Into(ident) = var.spec(db).kind(db) {
+                if let Some(concrete) = any_subs.get(&ident.ident) {
+                    MirType::Elementary(elementary_spec_to_mir(*concrete)?)
+                } else {
+                    lower_type(db, var_type)?
+                }
+            } else {
+                lower_type(db, var_type)?
+            }
+        };
         let field_align = mir_type.alignment();
         let field_size = mir_type.size_bytes();
 

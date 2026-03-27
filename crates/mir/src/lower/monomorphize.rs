@@ -514,6 +514,7 @@ fn lower_monomorphized_local<'db>(
         db,
         func.statements(db),
         Some(concrete_spec),
+        None,
         string_pool,
     )?;
 

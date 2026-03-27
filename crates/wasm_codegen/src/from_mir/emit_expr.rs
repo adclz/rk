@@ -560,6 +560,12 @@ pub(crate) fn emit_typed_mem_load(func: &mut wasm_encoder::Function, ty: &MirTyp
         MirType::Elementary(e) if e.is_64bit() => {
             func.instruction(&Instruction::I64Load(mem_arg(0, align_log2)));
         }
+        MirType::Elementary(e) if e.size_bytes() == 1 => {
+            func.instruction(&Instruction::I32Load8U(mem_arg(0, 0)));
+        }
+        MirType::Elementary(e) if e.size_bytes() == 2 => {
+            func.instruction(&Instruction::I32Load16U(mem_arg(0, align_log2.min(1))));
+        }
         _ => {
             func.instruction(&Instruction::I32Load(mem_arg(0, align_log2.min(2))));
         }
@@ -570,6 +576,12 @@ pub(crate) fn emit_typed_mem_load(func: &mut wasm_encoder::Function, ty: &MirTyp
 fn emit_mem_load(func: &mut wasm_encoder::Function, size: u32, align: u32) {
     let align_log2 = align.trailing_zeros();
     match size {
+        1 => {
+            func.instruction(&Instruction::I32Load8U(mem_arg(0, 0)));
+        }
+        2 => {
+            func.instruction(&Instruction::I32Load16U(mem_arg(0, align_log2.min(1))));
+        }
         4 => {
             func.instruction(&Instruction::I32Load(mem_arg(0, align_log2)));
         }

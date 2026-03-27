@@ -17,10 +17,7 @@ use std::cell::RefCell;
 use std::rc::Rc;
 
 use crate::{
-    expr::{
-        MirArgKind, MirBinOp, MirCall, MirCallArg, MirConstant, MirExpr,
-        MirPlace, MirUnaryOp,
-    },
+    expr::{MirArgKind, MirBinOp, MirCall, MirCallArg, MirConstant, MirExpr, MirPlace, MirUnaryOp},
     lower::lower_type::{LowerTypeError, elementary_spec_to_mir, lower_type},
     stmt::MirCasePattern,
     types::{MirElementary, MirType},
@@ -35,6 +32,11 @@ pub struct ExprLowerCtx<'db> {
     /// The `this` struct when lowering an FB body: member accesses become
     /// `ThisField`.
     pub this_struct: Option<crate::types::MirStructType>,
+    /// FB ANY_* substitutions — maps FB name → (var name → concrete ElementarySpec).
+    pub fb_subs: Option<std::rc::Rc<rustc_hash::FxHashMap<
+        hir::hir_def::interned::identifier::Ident,
+        rustc_hash::FxHashMap<hir::hir_def::interned::identifier::Ident, ElementarySpec>,
+    >>>,
     /// String literal pool — shared across all functions in the module.
     pub string_pool: std::rc::Rc<std::cell::RefCell<StringPool>>,
 }
@@ -91,6 +93,7 @@ impl<'db> ExprLowerCtx<'db> {
             db,
             any_override: None,
             this_struct: None,
+            fb_subs: None,
             string_pool,
         }
     }
@@ -104,6 +107,7 @@ impl<'db> ExprLowerCtx<'db> {
             db,
             any_override: Some(concrete),
             this_struct: None,
+            fb_subs: None,
             string_pool,
         }
     }
@@ -117,6 +121,7 @@ impl<'db> ExprLowerCtx<'db> {
             db,
             any_override: None,
             this_struct: Some(struct_type),
+            fb_subs: None,
             string_pool,
         }
     }
@@ -128,6 +133,15 @@ impl<'db> ExprLowerCtx<'db> {
             (Type::Elementary(e), Some(concrete)) if e.is_any() => {
                 let mir = elementary_spec_to_mir(concrete)?;
                 Ok(MirType::Elementary(mir))
+            }
+            (Type::FunctionBlock(fb), _) => {
+                // Use FB substitutions if available
+                if let Some(ref subs_map) = self.fb_subs {
+                    if let Some(subs) = subs_map.get(&fb.name(self.db)) {
+                        return crate::lower::lower_type::lower_fb_type_with_subs(self.db, *fb, subs);
+                    }
+                }
+                lower_type(self.db, normalized)
             }
             _ => lower_type(self.db, normalized),
         }
@@ -510,23 +524,25 @@ impl<'db> ExprLowerCtx<'db> {
 
         // Check for THIS invocation — if present, the path is relative to the 'this' pointer
         if let Some(invocation) = begin_path.invocation(self.db)
-            && invocation.kind(self.db) == InvocationKind::This {
-                return self.lower_this_path(path_expr);
-            }
+            && invocation.kind(self.db) == InvocationKind::This
+        {
+            return self.lower_this_path(path_expr);
+        }
 
         // Resolve the base variable name from the root VarAccess in the chain
         let base_ident = self.find_root_var_ident(path_expr);
 
         // In FB body context, check if this variable is a field of the 'this' struct
         if let Some(ref this_struct) = self.this_struct
-            && let Some(field) = this_struct.fields.iter().find(|f| f.name == base_ident) {
-                let base = MirPlace::ThisField {
-                    field_name: base_ident,
-                    field_offset: field.offset,
-                    field_type: field.ty.clone(),
-                };
-                return self.lower_path_expr_chain(base, path_expr);
-            }
+            && let Some(field) = this_struct.fields.iter().find(|f| f.name == base_ident)
+        {
+            let base = MirPlace::ThisField {
+                field_name: base_ident,
+                field_offset: field.offset,
+                field_type: field.ty.clone(),
+            };
+            return self.lower_path_expr_chain(base, path_expr);
+        }
         let base = MirPlace::Local(base_ident);
 
         // Walk the path expression chain for field/index/deref
@@ -896,10 +912,23 @@ impl<'db> ExprLowerCtx<'db> {
             .map(|pe| pe.ident(self.db).ident)
             .ok_or_else(|| LowerTypeError::UnsupportedType("FB call without name".to_string()))?;
 
-        let instance = MirPlace::Local(instance_ident);
+        // In FB body context, the nested FB instance is a field of 'this', not a local.
+        let instance = if let Some(ref this_struct) = self.this_struct {
+            if let Some(field) = this_struct.fields.iter().find(|f| f.name == instance_ident) {
+                MirPlace::ThisField {
+                    field_name: instance_ident,
+                    field_offset: field.offset,
+                    field_type: field.ty.clone(),
+                }
+            } else {
+                MirPlace::Local(instance_ident)
+            }
+        } else {
+            MirPlace::Local(instance_ident)
+        };
 
-        // Get the FB struct type for field offsets
-        let fb_mir_type = lower_type(self.db, hir::hir_ty::ty::Type::FunctionBlock(fb))?;
+        // Get the FB struct type for field offsets (uses FB subs if available)
+        let fb_mir_type = self.lower_type_resolved(hir::hir_ty::ty::Type::FunctionBlock(fb))?;
         let struct_type = match &fb_mir_type {
             MirType::Struct(s) => s,
             _ => {

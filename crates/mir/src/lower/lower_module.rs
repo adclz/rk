@@ -2,7 +2,7 @@ use compact_str::CompactString;
 use db::WorkspaceDataBase;
 use hir::hir_def::{
     expressions::statement::StmtKind,
-    pous::{function::Function, pou::Pou, variable::VariableKind},
+    pous::{function::Function, function_block::FunctionBlock, pou::Pou, variable::VariableKind},
     semantic_index::SemanticIndex,
 };
 use hir::hir_ty::infer::Infer;
@@ -13,7 +13,7 @@ use crate::{
     function::{MirExternFunction, MirParam, MirParamKind},
     lower::{
         lower_func::{lower_class, lower_function, lower_function_block, lower_program},
-        lower_type::{LowerTypeError, lower_fb_type, lower_type},
+        lower_type::{LowerTypeError, lower_fb_type, lower_fb_type_with_subs, lower_type},
         monomorphize::{AnyFunctionInfo, detect_any_function, monomorphize},
     },
     memory::MirMemoryLayout,
@@ -70,6 +70,27 @@ fn lower_module_from_pous<'db>(
         super::lower_expr::StringPool::new(0), // base offset set later after memory layout is finalized
     ));
     let mut next_fn_idx: u32 = 0;
+
+    // Pre-compute ANY_* substitutions for all FBs.
+    // Key: FB name, Value: map of variable name → concrete ElementarySpec.
+    let mut all_fb_subs: FxHashMap<
+        hir::hir_def::interned::identifier::Ident,
+        FxHashMap<hir::hir_def::interned::identifier::Ident, hir::hir_def::expressions::spec::ElementarySpec>,
+    > = FxHashMap::default();
+    for (pou, _) in all_pous.iter() {
+        if let Pou::FunctionBlock(fb) = pou {
+            let has_any = fb.variables(db).iter().any(|v| {
+                let ty = v.spec(db).infer(db).normalize(db);
+                matches!(ty, hir::hir_ty::ty::Type::Elementary(e) if e.is_any())
+            });
+            if has_any {
+                let subs = collect_fb_any_subs(db, all_pous, *fb);
+                if !subs.is_empty() {
+                    all_fb_subs.insert(fb.name(db), subs);
+                }
+            }
+        }
+    }
 
     // Collect ANY_* functions for deferred monomorphization
     let mut any_functions: Vec<AnyFunctionInfo<'db>> = Vec::new();
@@ -192,6 +213,7 @@ fn lower_module_from_pous<'db>(
                     next_fn_idx,
                     &mut memory_layout,
                     string_pool.clone(),
+                    &all_fb_subs,
                 )?;
                 mir_func.export_name = make_export_name(ns_prefix, func.name(db).text(db));
                 function_indices.insert(func.name(db), next_fn_idx);
@@ -216,17 +238,20 @@ fn lower_module_from_pous<'db>(
             }
 
             Pou::FunctionBlock(fb) => {
-                // Skip FBs with ANY_* typed variables (need monomorphization, not yet supported for FBs)
                 let has_any = fb.variables(db).iter().any(|v| {
                     let ty = v.spec(db).infer(db).normalize(db);
                     matches!(ty, hir::hir_ty::ty::Type::Elementary(e) if e.is_any())
                 });
-                if has_any {
-                    continue;
-                }
 
-                // Build instance type
-                let fb_mir_type = lower_fb_type(db, *fb)?;
+                // For FBs with ANY_* vars, collect resolutions from all function bodies
+                let any_subs = if has_any {
+                    collect_fb_any_subs(db, all_pous, *fb)
+                } else {
+                    FxHashMap::default()
+                };
+
+                // Build instance type (with substitutions if ANY)
+                let fb_mir_type = lower_fb_type_with_subs(db, *fb, &any_subs)?;
                 if let MirType::Struct(ref struct_type) = fb_mir_type {
                     let inst_fields: Vec<MirInstanceField> = struct_type
                         .fields
@@ -261,6 +286,7 @@ fn lower_module_from_pous<'db>(
                     next_fn_idx,
                     &mut memory_layout,
                     string_pool.clone(),
+                    &any_subs,
                 )?;
                 for mf in method_funcs {
                     function_indices.insert(mf.name, mf.index);
@@ -350,6 +376,8 @@ fn lower_module_from_pous<'db>(
     // Sort test entries by path for deterministic output
     test_entries.sort_by(|a, b| a.path.cmp(&b.path));
 
+    let static_mem_end = memory_layout.total_size();
+
     let mut module = MirModule {
         functions,
         extern_functions,
@@ -375,10 +403,24 @@ fn lower_module_from_pous<'db>(
         )?;
     }
 
-    // Phase 5: Extract interned string data into the module
+    // Phase 5: Rebase string pool to start AFTER all static memory allocations,
+    // then extract interned string data into the module.
+    {
+        let mut pool = string_pool.borrow_mut();
+        // Shift all string entry offsets by the static memory size
+        for (offset, _) in pool.entries.iter_mut() {
+            *offset += static_mem_end;
+        }
+    }
     module.string_data = std::mem::take(&mut string_pool.borrow_mut().entries)
         .into_iter()
         .collect();
+
+    // Also rebase string literal offsets in all function bodies
+    let string_base = static_mem_end;
+    for func in &mut module.functions {
+        rebase_string_offsets(&mut func.body, string_base);
+    }
 
     Ok(module)
 }
@@ -628,4 +670,111 @@ fn find_extern_decl<'db>(
             None
         }
     })
+}
+
+/// Collect ANY_* type substitutions for a function block from all call sites.
+/// Walks all function bodies and collects `fb_any_resolutions` from their inference results.
+fn collect_fb_any_subs<'db>(
+    db: &'db dyn WorkspaceDataBase,
+    all_pous: &[(&Pou<'db>, Option<String>)],
+    target_fb: FunctionBlock<'db>,
+) -> FxHashMap<hir::hir_def::interned::identifier::Ident, hir::hir_def::expressions::spec::ElementarySpec> {
+    use hir::hir_ty::body::infer_body;
+
+    let mut subs = FxHashMap::default();
+    let target_name = target_fb.name(db);
+
+    for (pou, _) in all_pous {
+        let scope = match pou {
+            Pou::Function(f) => f.scope_id(db),
+            Pou::FunctionBlock(fb) => fb.scope_id(db),
+            _ => continue,
+        };
+
+        let body = infer_body(db, scope);
+        for ((var_decl, field_name), concrete) in &body.fb_any_resolutions {
+            // Check if this variable's type matches the target FB
+            let var_type = var_decl.spec(db).infer(db).normalize(db);
+            let is_target = match var_type {
+                hir::hir_ty::ty::Type::FunctionBlock(fb) => fb.name(db) == target_name,
+                _ => false,
+            };
+            if is_target {
+                subs.insert(*field_name, *concrete);
+            }
+        }
+    }
+
+    subs
+}
+
+/// Rebase all StringLiteral offsets in MIR statements by adding `base` to each offset.
+fn rebase_string_offsets(stmts: &mut [crate::stmt::MirStmt], base: u32) {
+    use crate::expr::MirExpr;
+    use crate::stmt::MirStmt;
+
+    for stmt in stmts {
+        match stmt {
+            MirStmt::Assign { value, .. } => rebase_expr(value, base),
+            MirStmt::Call(call) => {
+                for arg in &mut call.args {
+                    rebase_expr(&mut arg.value, base);
+                }
+            }
+            MirStmt::FbCall { input_writes, .. } => {
+                for (_, value, _) in input_writes {
+                    rebase_expr(value, base);
+                }
+            }
+            MirStmt::If { condition, then_body, else_body, .. } => {
+                rebase_expr(condition, base);
+                rebase_string_offsets(then_body, base);
+                if let Some(else_body) = else_body {
+                    rebase_string_offsets(else_body, base);
+                }
+            }
+            MirStmt::While { condition, body, .. } => {
+                rebase_expr(condition, base);
+                rebase_string_offsets(body, base);
+            }
+            MirStmt::For { body, .. } => {
+                rebase_string_offsets(body, base);
+            }
+            MirStmt::Repeat { condition, body, .. } => {
+                rebase_expr(condition, base);
+                rebase_string_offsets(body, base);
+            }
+            MirStmt::Case { arms, else_body, .. } => {
+                for arm in arms {
+                    rebase_string_offsets(&mut arm.body, base);
+                }
+                if let Some(else_body) = else_body {
+                    rebase_string_offsets(else_body, base);
+                }
+            }
+            _ => {}
+        }
+    }
+}
+
+fn rebase_expr(expr: &mut crate::expr::MirExpr, base: u32) {
+    use crate::expr::MirExpr;
+    match expr {
+        MirExpr::StringLiteral { offset, .. } => {
+            *offset += base;
+        }
+        MirExpr::BinOp { lhs, rhs, .. } => {
+            rebase_expr(lhs, base);
+            rebase_expr(rhs, base);
+        }
+        MirExpr::UnaryOp { expr: operand, .. } => {
+            rebase_expr(operand, base);
+        }
+        MirExpr::Call(call) => {
+            for arg in &mut call.args {
+                rebase_expr(&mut arg.value, base);
+            }
+        }
+        _ => {}
+    }
 }

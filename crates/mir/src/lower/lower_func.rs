@@ -13,7 +13,7 @@ use hir::{
     },
     hir_ty::{infer::Infer, ty::Type},
 };
-use rustc_hash::FxHashSet;
+use rustc_hash::{FxHashMap, FxHashSet};
 
 use std::cell::RefCell;
 use std::rc::Rc;
@@ -40,6 +40,10 @@ pub fn lower_function<'db>(
     index: u32,
     memory_layout: &mut MirMemoryLayout,
     string_pool: Rc<RefCell<super::lower_expr::StringPool>>,
+    fb_subs: &FxHashMap<
+        hir::hir_def::interned::identifier::Ident,
+        FxHashMap<hir::hir_def::interned::identifier::Ident, hir::hir_def::expressions::spec::ElementarySpec>,
+    >,
 ) -> Result<MirFunction, LowerTypeError> {
     let mut params = Vec::new();
     let mut locals = Vec::new();
@@ -109,7 +113,7 @@ pub fn lower_function<'db>(
             _ => {}
         }
 
-        let ty = lower_var_type(db, *var)?;
+        let ty = lower_var_type_with_fb_subs(db, *var, fb_subs)?;
         let storage = compute_storage(
             var.name(db),
             &ty,
@@ -146,8 +150,12 @@ pub fn lower_function<'db>(
             }
     }
 
-    // 5. Lower body statements
-    let mut body = lower_stmts(db, func.statements(db), string_pool.clone())?;
+    // 5. Lower body statements (with FB subs for generic FB instantiation)
+    let mut body = if fb_subs.is_empty() {
+        lower_stmts(db, func.statements(db), string_pool.clone())?
+    } else {
+        crate::lower::lower_stmt::lower_stmts_with_fb_subs(db, func.statements(db), fb_subs, string_pool.clone())?
+    };
     // Prepend initializers
     if !init_stmts.is_empty() {
         init_stmts.append(&mut body);
@@ -188,6 +196,7 @@ pub fn lower_function_block<'db>(
     start_index: u32,
     memory_layout: &mut MirMemoryLayout,
     string_pool: Rc<RefCell<super::lower_expr::StringPool>>,
+    any_subs: &rustc_hash::FxHashMap<hir::hir_def::interned::identifier::Ident, hir::hir_def::expressions::spec::ElementarySpec>,
 ) -> Result<Vec<MirFunction>, LowerTypeError> {
     let mut functions = Vec::new();
     let mut idx = start_index;
@@ -198,8 +207,8 @@ pub fn lower_function_block<'db>(
         let mut locals = Vec::new();
         let mut next_local_idx: u32 = 1; // 0 is 'this'
 
-        // 'this' pointer parameter
-        let fb_type = lower_type(db, Type::FunctionBlock(fb))?;
+        // 'this' pointer parameter (use substitutions for ANY types)
+        let fb_type = super::lower_type::lower_fb_type_with_subs(db, fb, any_subs)?;
         params.push(MirParam {
             name: Ident::new(db, compact_str::CompactString::from("this")),
             ty: MirType::Pointer(Box::new(fb_type)),
@@ -299,7 +308,7 @@ pub fn lower_function_block<'db>(
     // Lower FB body as __body__ function
     // All variables (input, output, var) are accessed through the 'this' pointer.
     if !fb.statements(db).is_empty() {
-        let fb_type = lower_type(db, Type::FunctionBlock(fb))?;
+        let fb_type = super::lower_type::lower_fb_type_with_subs(db, fb, any_subs)?;
         let body_params = vec![MirParam {
             name: Ident::new(db, compact_str::CompactString::from("this")),
             ty: MirType::Pointer(Box::new(fb_type.clone())),
@@ -340,11 +349,20 @@ pub fn lower_function_block<'db>(
                 ));
             }
         };
+        // Build a global-shaped fb_subs map with just this FB's substitutions
+        let fb_subs_map = if any_subs.is_empty() {
+            None
+        } else {
+            let mut map = FxHashMap::default();
+            map.insert(fb.name(db), any_subs.clone());
+            Some(map)
+        };
         let body_stmts = crate::lower::lower_stmt::lower_stmts_fb_body(
             db,
             fb.statements(db),
             this_struct,
             string_pool.clone(),
+            fb_subs_map.as_ref(),
         )?;
 
         let body_name = Ident::new(
@@ -556,6 +574,28 @@ fn lower_var_type<'db>(
 ) -> Result<MirType, LowerTypeError> {
     let ty = var.spec(db).infer(db);
     lower_type(db, ty)
+}
+
+/// Lower a variable's type, resolving FB types using the global ANY substitution map.
+fn lower_var_type_with_fb_subs<'db>(
+    db: &'db dyn WorkspaceDataBase,
+    var: VariableDecl<'db>,
+    fb_subs: &FxHashMap<
+        hir::hir_def::interned::identifier::Ident,
+        FxHashMap<hir::hir_def::interned::identifier::Ident, hir::hir_def::expressions::spec::ElementarySpec>,
+    >,
+) -> Result<MirType, LowerTypeError> {
+    let ty = var.spec(db).infer(db);
+    match ty {
+        Type::FunctionBlock(fb) => {
+            if let Some(subs) = fb_subs.get(&fb.name(db)) {
+                super::lower_type::lower_fb_type_with_subs(db, fb, subs)
+            } else {
+                lower_type(db, ty)
+            }
+        }
+        _ => lower_type(db, ty),
+    }
 }
 
 /// Collect identifiers of variables whose address is taken (via REF()).
