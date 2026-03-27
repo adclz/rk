@@ -15,10 +15,15 @@ pub fn run_compile(
         std::process::exit(1);
     };
 
+    // CLI flag takes precedence over config.toml
+    let config = db::config_file::get_config(&db);
+    let config_opt = config.settings.as_ref().and_then(|s| s.opt_level.as_deref());
+    let effective_opt = opt_level.or(config_opt);
+
     let (core_bytes, mir_module) = build_core(&db, workspace, verbose);
 
     // Release profile: optimize core → wrap in component
-    let optimized = optimize_wasm(core_bytes, opt_level, verbose);
+    let optimized = optimize_wasm(core_bytes, effective_opt, verbose);
     let component_bytes = wasm_codegen::component::wrap_in_component(&db, &optimized, &mir_module)
         .unwrap_or_else(|e| {
             eprintln!("{}{}", "component error: ".bold().red(), e);
