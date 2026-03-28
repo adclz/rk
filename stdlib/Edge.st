@@ -100,12 +100,10 @@ NAMESPACE Std.Edge
         {test}
         FUNCTION test_f_trig_stays_false_on_low
         VAR trig : F_TRIG; END_VAR
-            // First call with FALSE triggers initial edge (M starts FALSE)
             trig(CLK := FALSE);
-            ASSERT(trig.Q);
-            // Second call: no transition, Q should be FALSE
+            ASSERT(trig.Q, 'first call: Q should be TRUE (initial falling edge)');
             trig(CLK := FALSE);
-            ASSERT(NOT trig.Q);
+            ASSERT(NOT trig.Q, 'second call: Q should be FALSE (no transition)');
         END_FUNCTION
 
     END_NAMESPACE
