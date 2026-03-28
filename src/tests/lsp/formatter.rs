@@ -852,8 +852,7 @@ END_FUNCTION_BLOCK
     	END_VAR
 
     	test := %IX0.0
-    	A :=
-    	COUNTER.UP(
+    	A := COUNTER.UP(
     		ENO => %MX1
     	);
 
@@ -1546,5 +1545,44 @@ END_NAMESPACE
     	END_FUNCTION_BLOCK
 
     END_NAMESPACE
+    ");
+}
+
+#[rstest]
+pub fn long_chained_expression(mut with_db: RootDatabase) {
+    // Only one line break in the chain — formatter should break ALL OR operators
+    let source = r#"
+FUNCTION REVERSE: BYTE
+    VAR_INPUT
+        IN: BYTE;
+    END_VAR
+
+    REVERSE :=
+    SHL(IN, 7) OR
+    SHR(IN, 7) OR (ROR(IN, 3) AND 2#01000100) OR (ROL(IN, 3) AND 2#00100010) OR (SHL(IN, 1) AND 2#00010000) OR (SHR(IN, 1) AND 2#00001000);
+END_FUNCTION
+"#;
+
+    add_sources(&mut with_db, &[source]);
+    let document = with_db
+        .get_files()
+        .iter()
+        .last()
+        .unwrap()
+        .document(&with_db);
+
+    assert_snapshot!(fmt(document), @r"
+    FUNCTION REVERSE: BYTE
+    	VAR_INPUT
+    		IN: BYTE;
+    	END_VAR
+
+    	REVERSE := SHL(IN, 7)
+    		OR SHR(IN, 7)
+    		OR (ROR(IN, 3) AND 2#01000100)
+    		OR (ROL(IN, 3) AND 2#00100010)
+    		OR (SHL(IN, 1) AND 2#00010000)
+    		OR (SHR(IN, 1) AND 2#00001000);
+    END_FUNCTION
     ");
 }

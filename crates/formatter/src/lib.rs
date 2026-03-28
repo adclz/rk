@@ -177,7 +177,6 @@ static NEW_LINES: &str = r#"
     "PROGRAM"
     "RESOURCE"
     (assign)
-    (func_call)
     (invocation)
     (super_body_invocation)
     (extern_pragma)
@@ -191,6 +190,9 @@ static NEW_LINES: &str = r#"
     "EXIT"
     "CONTINUE"
 ] @prepend_spaced_softline
+
+; func_call as a statement (inside stmt_list) — not inside expressions
+(stmt_list (func_call) @prepend_spaced_softline)
 
  (
   "," @append_spaced_softline
@@ -224,6 +226,24 @@ static NEW_LINES: &str = r#"
 (case_stmt "OF" @append_hardline)
 
 ["ELSE" "ELSIF"] @prepend_hardline
+
+; Binary operators: if any operator in the chain breaks, they all break
+["OR" "XOR" "&" "AND" "MOD" "**"] @prepend_spaced_softline
+(eq) @prepend_spaced_softline
+(ord) @prepend_spaced_softline
+(add) @prepend_spaced_softline
+(mult) @prepend_spaced_softline
+
+; Continuation indent: binary operator chains indent one level
+; The indent starts before the first operator and ends after the right operand
+(or_operator "OR" @prepend_indent_start right: (_) @append_indent_end)
+(xor_operator "XOR" @prepend_indent_start right: (_) @append_indent_end)
+(and_operator ["&" "AND"] @prepend_indent_start right: (_) @append_indent_end)
+(add_operator (add) @prepend_indent_start right: (_) @append_indent_end)
+(mult_operator (mult) @prepend_indent_start right: (_) @append_indent_end)
+(eq_operator (eq) @prepend_indent_start right: (_) @append_indent_end)
+(ord_operator (ord) @prepend_indent_start right: (_) @append_indent_end)
+(power_operator "**" @prepend_indent_start right: (_) @append_indent_end)
 "#;
 
 static BLOCKS: &str = r#"
