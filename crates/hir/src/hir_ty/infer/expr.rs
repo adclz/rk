@@ -1,5 +1,6 @@
 use db::WorkspaceDataBase;
 
+use crate::hir_def::expressions::expression::ParamAssignKind;
 use crate::{
     CallSite, HirNodeInfo,
     check::errors::{ToIdeDiagnostic, e3_type::TypeError, e7_enum::EnumError},
@@ -212,17 +213,43 @@ impl<'db> InferExprCtx<'db> {
             PrimaryExpr::FuncCall(call) => {
                 resolve_func_call(db, self.resolver, *call, inference_result);
                 let ty = inference_result.get_type_of_begin_path_expr(db, call.path(db));
-                // For generic functions, the CallableType normalizes to
-                // Type::Generic(T). Apply the substitutions inferred during
-                // the call to resolve T → the concrete type (e.g. REAL).
-                let resolved = ty
-                    .normalize(db)
-                    .apply_generic_substitution(db, &inference_result.generic_substitutions);
-                // If the type is still generic (e.g. substitutions could not be
-                // computed because an argument was unresolved), fall back to Never
-                // to prevent cascading errors from unresolved generic types.
-                if matches!(resolved, Type::Generic(_)) {
-                    Type::Never
+                let resolved = ty.normalize(db);
+                if let Type::Elementary(e) = resolved {
+                    if e.is_any() {
+                        // ANY_* return type: resolve from the first argument whose
+                        // DECLARED parameter type is ANY_* or INTO(...).
+                        // Skip args with concrete declared types (e.g. SEL's G: BOOL).
+                        call.params(db)
+                            .iter()
+                            .find_map(|p| match p.kind(db) {
+                                ParamAssignKind::FormalInput { value, .. }
+                                | ParamAssignKind::NonFormal { value } => {
+                                    // Check if the declared var type is ANY/INTO —
+                                    // skip args with concrete declared types (e.g. SEL's G: BOOL)
+                                    if let Some(var_decl) = inference_result.variable_for_param(*p)
+                                    {
+                                        let var_ty: Type<'db> =
+                                            var_decl.spec(db).infer(db).normalize(db);
+                                        if let Type::Elementary(var_e) = var_ty
+                                            && !var_e.is_any() {
+                                                return None;
+                                            }
+                                    }
+                                    let arg_ty = inference_result.get_type_of_expr(value);
+                                    let arg_normalized = arg_ty.normalize(db);
+                                    match arg_normalized {
+                                        Type::Elementary(arg_e) if !arg_e.is_any() => {
+                                            Some(arg_normalized)
+                                        }
+                                        _ => None,
+                                    }
+                                }
+                                _ => None,
+                            })
+                            .unwrap_or(resolved)
+                    } else {
+                        resolved
+                    }
                 } else {
                     resolved
                 }

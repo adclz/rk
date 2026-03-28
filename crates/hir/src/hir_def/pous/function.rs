@@ -3,9 +3,9 @@ use db::WorkspaceDataBase;
 use crate::{
     AstId, HasName, HirNodeInfo,
     hir_def::{
-        expressions::{spec::Spec, statement::Stmt},
+        expressions::{expression::ParamAssign, spec::Spec, statement::Stmt},
         interned::identifier::Ident,
-        pous::{generics::GenericParam, variable::VariableDecl},
+        pous::variable::VariableDecl,
         scope::ScopeId,
     },
 };
@@ -15,12 +15,15 @@ pub struct Function<'db> {
     pub name: Ident,
 
     #[tracked]
-    #[no_eq]
-    pub name_id: AstId,
+    pub is_test: bool,
 
     #[tracked]
     #[returns(ref)]
-    pub generics: Vec<GenericParam<'db>>,
+    pub cases: Vec<Vec<ParamAssign<'db>>>,
+
+    #[tracked]
+    #[no_eq]
+    pub name_id: AstId,
 
     #[tracked]
     #[returns(ref)]

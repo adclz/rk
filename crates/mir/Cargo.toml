@@ -1,0 +1,18 @@
+[package]
+name = "mir"
+version = "0.1.0"
+authors = { workspace = true }
+license = { workspace = true }
+edition = { workspace = true }
+publish = false
+
+[dependencies]
+auto-lsp = { workspace = true }
+db = { workspace = true }
+hir = { workspace = true }
+salsa = { workspace = true }
+rustc-hash = { workspace = true }
+compact_str = { workspace = true }
+thiserror = "2.0"
+serde = { version = "1", features = ["derive"] }
+rmp-serde = "1.3"

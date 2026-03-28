@@ -1,4 +1,4 @@
-import { commands, window, workspace, Disposable, Position, Selection, Uri } from "vscode";
+import { commands, window, workspace, Disposable, Position, Selection, Uri, Task, TaskScope, TaskRevealKind, TaskPanelKind, ShellExecution, tasks } from "vscode";
 
 export function registerCommands(
     restartServer: () => Promise<void>,
@@ -21,6 +21,33 @@ export function registerCommands(
                 window.showErrorMessage(`Failed to show implementations: ${error}`);
                 return null;
             }
+        })
+    );
+
+    disposables.push(
+        commands.registerCommand("rk.runTest", async (uri?: string, testName?: string) => {
+            if (!uri || !testName) {
+                window.showWarningMessage("No test to run");
+                return;
+            }
+
+            const workspaceFolder = workspace.workspaceFolders?.[0]?.uri.fsPath;
+            if (!workspaceFolder) {
+                window.showErrorMessage("No workspace folder found");
+                return;
+            }
+
+            const bareName = testName.includes(".") ? testName.split(".").pop()! : testName;
+
+            const task = new Task(
+                { type: "rk-test", testName },
+                TaskScope.Workspace,
+                bareName,
+                "rk",
+                new ShellExecution(`rk test "${testName}"`, { cwd: workspaceFolder }),
+            );
+            task.presentationOptions = { reveal: TaskRevealKind.Always, panel: TaskPanelKind.Dedicated };
+            await tasks.executeTask(task);
         })
     );
 

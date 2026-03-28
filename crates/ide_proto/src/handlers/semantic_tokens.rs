@@ -19,9 +19,7 @@ use crate::{
     CLASS, ENUM, ENUM_MEMBER, FUNCTION, INTERFACE, METHOD, NAMESPACE, STRUCT, SUPPORTED_TYPES,
     comment_index::comment_index,
     handlers::SemanticTokensHandler,
-    handlers::document_links::{
-        byte_range_to_span, find_bracket_refs, resolve_bracket_ref_to_pou,
-    },
+    handlers::document_links::{byte_range_to_span, find_bracket_refs, resolve_bracket_ref_to_pou},
 };
 
 impl<'db> SemanticTokensHandler<'db> for HirNode<'db> {
@@ -35,7 +33,7 @@ impl<'db> SemanticTokensHandler<'db> for HirNode<'db> {
             HirNode::MethodRef(m) => m.semantic_tokens(db, builder),
             HirNode::VariableDecl(v) => v.semantic_tokens(db, builder),
             HirNode::Spec(v) => v.semantic_tokens(db, builder),
-            // todo: The first path expr will highlight the whole path 
+            // todo: The first path expr will highlight the whole path
             //HirNode::PathExpr(p) => p.semantic_tokens(db, builder),
             HirNode::VariableAccess(v) => v.semantic_tokens(db, builder),
             HirNode::Expr(e) => e.semantic_tokens(db, builder),
@@ -190,16 +188,13 @@ impl<'db> SemanticTokensHandler<'db> for Expr<'db> {
     ) {
         let typ = self.infer(db);
 
-        match self.expr(db) {
-            ExprKind::PrimaryExpr(PrimaryExpr::EnumValue { name, variant }) => {
-                builder.push(
-                    name.get_span(db).lsp(),
-                    SUPPORTED_TYPES.iter().position(|x| *x == ENUM).unwrap() as u32,
-                    0,
-                );
-                semantic_tokens_for_type(db, typ, builder, variant.get_span(db));
-            }
-            _ => (),
+        if let ExprKind::PrimaryExpr(PrimaryExpr::EnumValue { name, variant }) = self.expr(db) {
+            builder.push(
+                name.get_span(db).lsp(),
+                SUPPORTED_TYPES.iter().position(|x| *x == ENUM).unwrap() as u32,
+                0,
+            );
+            semantic_tokens_for_type(db, typ, builder, variant.get_span(db));
         }
     }
 }

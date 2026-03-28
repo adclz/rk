@@ -75,11 +75,7 @@ pub struct CommentIndex {
 }
 
 impl CommentIndex {
-    pub fn find_nearby_comment(
-        &self,
-        document: &Document,
-        range: &Span,
-    ) -> Option<&Comment> {
+    pub fn find_nearby_comment(&self, document: &Document, range: &Span) -> Option<&Comment> {
         let line = range.start_point.row;
         let column = range.start_point.column;
 

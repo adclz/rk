@@ -4,9 +4,7 @@ use hir::{
     HasName, HirNodeInfo,
     hir_def::{
         config::ConfigDecl,
-        expressions::expression::{
-            InitExpr, InitExprKind, ParamAssign, ParamAssignKind,
-        },
+        expressions::expression::{InitExpr, InitExprKind, ParamAssign, ParamAssignKind},
         hir_node::HirNode,
         namespace::NamespaceDecl,
         pous::pou::Pou,
@@ -82,11 +80,7 @@ impl<'db> InlayHintHandler<'db> for ParamAssign<'db> {
         let infer = infer_body(db, self.scope_id(db));
         infer.variable_of_param.get(self).map(|var| {
             let label = if var.variadic(db) {
-                let pos = infer
-                    .variadic_position
-                    .get(self)
-                    .copied()
-                    .unwrap_or(0);
+                let pos = infer.variadic_position.get(self).copied().unwrap_or(0);
                 format!("({pos}):")
             } else {
                 let name = var.name(db).text(db);

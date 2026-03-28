@@ -1,0 +1,8 @@
+[project]
+name = "Oscat"
+version = "0.0"
+
+[linter.rules]
+unused-variable = true
+shadowing-variable = true
+duplicate-var-section = true

@@ -1,9 +1,11 @@
 use db::WorkspaceDataBase;
 
+use crate::hir_def::extern_decl::WasmDecl;
 use crate::{
     AstId, HirNodeInfo,
     hir_def::{
         expressions::expression::{BeginPathExpr, Expr, FuncCall, VariableAccess},
+        extern_decl::ExternDecl,
         scope::ScopeId,
     },
 };
@@ -71,6 +73,8 @@ pub enum StmtKind<'db> {
     },
     Exit,
     Continue,
+    ExternPragma(ExternDecl<'db>),
+    WasmPragma(WasmDecl<'db>),
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, salsa::Update)]

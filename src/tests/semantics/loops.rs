@@ -34,7 +34,7 @@ END_FUNCTION_BLOCK"#;
        |              |
        |              `-- consider explicitly casting with 'BOOL_TO_INT(O)'
        |
-       | Help: insert explicit cast 'INT_TO_BOOL(O)'
+       | Help: insert explicit cast 'BOOL_TO_INT(O)'
     ---'
     ");
 }
@@ -68,7 +68,7 @@ END_FUNCTION_BLOCK"#;
        |                    |
        |                    `-- consider explicitly casting with 'BOOL_TO_INT(O)'
        |
-       | Help: insert explicit cast 'INT_TO_BOOL(O)'
+       | Help: insert explicit cast 'BOOL_TO_INT(O)'
     ---'
     ");
 }
@@ -102,7 +102,7 @@ END_FUNCTION_BLOCK"#;
        |                         |
        |                         `-- consider explicitly casting with 'BOOL_TO_INT(O)'
        |
-       | Help: insert explicit cast 'INT_TO_BOOL(O)'
+       | Help: insert explicit cast 'BOOL_TO_INT(O)'
     ---'
     ");
 }

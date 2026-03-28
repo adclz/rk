@@ -215,7 +215,7 @@ END_FUNCTION_BLOCK"#;
         |                     |
         |                     `--- consider explicitly casting with 'BOOL_TO_INT(TRUE)'
         |
-        | Help: insert explicit cast 'INT_TO_BOOL(TRUE)'
+        | Help: insert explicit cast 'BOOL_TO_INT(TRUE)'
     ----'
     [E0301] Error: type mismatch
         ,-[ file:///test0.st:20:19 ]
@@ -241,7 +241,7 @@ END_FUNCTION_BLOCK"#;
         |                       |
         |                       `------ consider explicitly casting with 'BOOL_TO_INT(variable1)'
         |
-        | Help: insert explicit cast 'INT_TO_BOOL(variable1)'
+        | Help: insert explicit cast 'BOOL_TO_INT(variable1)'
     ----'
     ");
 }
@@ -399,11 +399,11 @@ FUNCTION BYTE_TO_INT : INT
     END_VAR
 END_FUNCTION
 
-FUNCTION LIMIT<T: ANY_NUM> : T
+FUNCTION LIMIT : ANY_NUM
     VAR_INPUT
-        MN : T;
-        IN : T;
-        MX : T;
+        MN : INTO(LIMIT);
+        IN : INTO(LIMIT);
+        MX : INTO(LIMIT);
     END_VAR
 
     IF IN < MN THEN

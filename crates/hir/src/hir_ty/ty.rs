@@ -1,6 +1,3 @@
-use db::WorkspaceDataBase;
-use rustc_hash::FxHashMap;
-
 use crate::{
     AstId, HasName, HirNodeInfo,
     hir_def::{
@@ -15,7 +12,6 @@ use crate::{
             data_type::DataType,
             function::Function,
             function_block::FunctionBlock,
-            generics::GenericParam,
             interface::Interface,
             pou::Pou,
             variable::{DirectVariable, VariableDecl},
@@ -25,6 +21,7 @@ use crate::{
     },
     hir_ty::{def_map::LocalDefMap, head::inheritance::MethodRef, infer::Infer},
 };
+use db::WorkspaceDataBase;
 
 #[derive(Clone, Copy, Debug, Hash, PartialEq, Eq, salsa::Update, Default)]
 pub enum Type<'db> {
@@ -63,8 +60,6 @@ pub enum Type<'db> {
     CallableType(CallableType<'db>),
     // Void type, usually the result of a call that does not return anything
     Void,
-    // Generic Param
-    Generic(GenericParam<'db>),
     // Never type, represents an unresolvable type
     // Important: this type will stop propagation of errors and
     // therefore *requires* a diagnostic to be emitted when created
@@ -147,12 +142,11 @@ impl<'db> CallableType<'db> {
         self.def_map(db).local_variables.len()
     }
 
-    pub fn generics(&self, db: &'db dyn WorkspaceDataBase) -> &'db [GenericParam<'db>] {
+    pub fn inner_callable(&self) -> Type<'db> {
         match self {
-            CallableType::Function(f) => f.generics(db),
-            CallableType::FunctionBlock(fb) => fb.generics(db),
-            // TODO: add generics support for Method
-            CallableType::MethodDecl(_) => &[],
+            CallableType::Function(f) => Type::Function(*f),
+            CallableType::FunctionBlock(fb) => Type::FunctionBlock(*fb),
+            CallableType::MethodDecl(m) => Type::MethodDecl(*m),
         }
     }
 }
@@ -247,26 +241,6 @@ impl<'db> Type<'db> {
         multibits: Option<MultibitsPart>,
     ) -> Self {
         Type::Variable((var, multibits))
-    }
-
-    /// Apply generic type substitutions to this type
-    /// If this is a Generic type, returns the substituted concrete type
-    /// Otherwise returns self unchanged
-    pub fn apply_generic_substitution(
-        &self,
-        db: &'db dyn WorkspaceDataBase,
-        substitutions: &FxHashMap<Ident, Type<'db>>,
-    ) -> Type<'db> {
-        match self {
-            Type::Generic(param) => {
-                // Look up the generic parameter in the substitution map
-                let param_name = param.name(db);
-                substitutions.get(&param_name).copied().unwrap_or(*self)
-            }
-            // TODO: Handle nested generic types (e.g., Array<T>, Struct with T fields)
-            // For now, only handle direct generic parameters
-            _ => *self,
-        }
     }
 
     pub fn as_callable(&self, db: &'db dyn WorkspaceDataBase) -> Option<CallableType<'db>> {

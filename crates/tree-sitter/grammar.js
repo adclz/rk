@@ -337,6 +337,55 @@ module.exports = grammar({
 
     pragma: ($) => seq("{", repeat(choice(/[^*]/, /\*[^)]/)), "}"),
 
+    // Extern pragma - declares a WASM import binding
+    // {extern 'module' 'name'}                                    — non-generic
+    extern_pragma: ($) =>
+      prec(1, seq(
+        "{",
+        "extern",
+        field("module", $.pragma_string),
+        field("name", $.pragma_string),
+        field("params", optional($.extern_param_list)),
+        field("result", optional($.extern_result)),
+        "}",
+      )),
+
+    extern_param_list: ($) =>
+      seq("(", "params", repeat1(field("var", $.identifier)), ")"),
+
+    extern_result: ($) =>
+      seq("(", "result", field("var", $.identifier), ")"),
+
+    // Wasm intrinsic pragma - emits a WASM instruction directly
+    // {wasm [type_ref] 'instruction' (params ...) (result ...)}
+    wasm_pragma: ($) =>
+      prec(1, seq(
+        "{",
+        "wasm",
+        field("type_ref", optional($.identifier)),
+        field("instruction", $.pragma_string),
+        field("params", optional($.extern_param_list)),
+        field("result", optional($.extern_result)),
+        "}",
+      )),
+
+    pragma_string: (_) => /\'[^\']*\'/,
+
+    // Test pragma - marks a POU as a test entry point
+    // {test}
+    test_pragma: (_) => prec(1, token(seq("{", "test", "}"))),
+
+    // Case pragma - parameterized test case values
+    // {case(5, 10)}                  - positional
+    // {case(x := 5, y := 10)}       - named
+    // {case(5, y := 10)}            - mixed
+    case_pragma: ($) =>
+      prec(1, seq(
+        token(prec(1, seq("{", "case", "("))),
+          field("args", commaSep($.param_assign_input)),
+        ")", "}",
+      )),
+
     // Table 5 - Numeric literal
 
     constant: ($) =>
@@ -357,9 +406,17 @@ module.exports = grammar({
 
     unsigned_int: ($) => token(/[0-9][0-9_]*/),
 
-    // The precedence here is necessary to avoid conflicts with the unary minus operator
+    // token() prevents whitespace between sign and digits:
+    // -42 is a signed literal, - 42 is unary minus on 42.
+    // No precedence needed — token boundary disambiguates.
     signed_int: ($) =>
-      prec(RK_PREC.unary + 1, seq(optional(choice("+", "-")), $.unsigned_int)),
+      choice(
+        $._explicit_signed_int,
+        $.unsigned_int,
+      ),
+
+    _explicit_signed_int: (_) =>
+      token(seq(choice("+", "-"), /[0-9][0-9_]*/)),
 
     binary_int: (_) => token(seq("2#", /[?:_01]*/)),
 
@@ -370,12 +427,26 @@ module.exports = grammar({
     real_literal: ($) =>
       seq(
         optional(seq(field("type", $.real_type_name), "#")),
-        // Same as Unsigned int, but with a dot and optional exponent
-        prec(
-          RK_PREC.unary + 1,
-          seq(optional(choice("+", "-")), field("value", $.real_value)),
-        ),
+        field("value", $.signed_real_value),
       ),
+
+    // Signed real value: sign + real digits with no whitespace allowed.
+    // -3.7 is a signed literal, - 3.7 is unary minus on 3.7.
+    // No precedence needed — token boundary disambiguates.
+    signed_real_value: ($) =>
+      choice(
+        $._explicit_signed_real,
+        $.real_value,
+      ),
+
+    _explicit_signed_real: (_) =>
+      token(seq(
+        choice("+", "-"),
+        choice(
+          /[0-9][0-9_]*\.[0-9][0-9_]*([eE][-+]?[0-9][0-9_]*)?/,
+          /[0-9][0-9_]*[eE][-+]?[0-9][0-9_]*/,
+        ),
+      )),
 
     real_value: ($) =>
       token(
@@ -521,7 +592,11 @@ module.exports = grammar({
     // Table 10 - Elementary data types
 
     data_type_access: ($) =>
-      choice($.namespace_access, $._elem_type_name),
+      choice($.namespace_access, $._elem_type_name, $.into_spec),
+
+    // INTO(var) — type must be implicitly convertible to the referenced variable's type
+    into_spec: ($) =>
+      seq("INTO", "(", field("ref", $.identifier), ")"),
 
     _elem_type_name: ($) =>
       choice(
@@ -531,7 +606,27 @@ module.exports = grammar({
         $.any_time_type_name,
         $.any_tod_type_name,
         $.any_dt_type_name,
-        $.string_type_name
+        $.string_type_name,
+        $.any_type_name,
+      ),
+
+    // IEC 61131-3 ANY type hierarchy - used as type specs for polymorphic parameters
+    any_type_name: ($) =>
+      choice(
+        alias("ANY", $.any_name),
+        alias("ANY_NUM", $.any_num_name),
+        alias("ANY_INT", $.any_int_name),
+        alias("ANY_SIGNED", $.any_signed_name),
+        alias("ANY_UNSIGNED", $.any_unsigned_name),
+        alias("ANY_REAL", $.any_real_name),
+        alias("ANY_BIT", $.any_bit_name),
+        alias("ANY_ELEMENTARY", $.any_elementary_name),
+        alias("ANY_MAGNITUDE", $.any_magnitude_name),
+        alias("ANY_CHARS", $.any_chars_name),
+        alias("ANY_CHAR", $.any_char_name),
+        alias("ANY_STRING", $.any_string_name),
+        alias("ANY_DATE", $.any_date_name),
+        alias("ANY_DURATION", $.any_duration_name),
       ),
 
     numeric_type_name: ($) => choice($.int_type_name, $.real_type_name),
@@ -1060,10 +1155,11 @@ module.exports = grammar({
 
     func_decl: ($) =>
       seq(
+        field("test", optional($.test_pragma)),
+        field("cases", repeat($.case_pragma)),
         "FUNCTION",
         field("spec", optional($.access_spec)),
         field("name", $.identifier),
-        field("generic_spec", optional($.generic_spec)),
         optional(seq(":", field("return_type", $.data_type_access))),
         field("directives", repeat($.using_directive)),
         field("variables", repeat($._func_variables)),
@@ -1091,7 +1187,6 @@ module.exports = grammar({
         "FUNCTION_BLOCK",
         field("qualifier", optional(choice("FINAL", "ABSTRACT"))),
         field("name", $.identifier),
-        field("generic_spec", optional($.generic_spec)),
         optional($.ERR_implements_before_extends),
         optional(seq("EXTENDS", field("extends", $.namespace_access))),
         optional(repeat($.ERR_extends_multiple_times)),
@@ -1219,7 +1314,6 @@ module.exports = grammar({
         "CLASS",
         field("modifier", optional(choice("FINAL", "ABSTRACT"))),
         field("name", $.identifier),
-        field("generic_spec", optional($.generic_spec)),
         field("directives", repeat($.using_directive)),
         optional($.ERR_implements_before_extends),
         optional(seq("EXTENDS", field("extends", $.namespace_access))),
@@ -1295,6 +1389,8 @@ module.exports = grammar({
 
     prog_decl: ($) =>
       seq(
+        field("test", optional($.test_pragma)),
+        field("cases", repeat($.case_pragma)),
         "PROGRAM",
         field("name", $.identifier),
         field(
@@ -1719,7 +1815,7 @@ module.exports = grammar({
       ),
 
     unary_operator: ($) =>
-      seq(field("operator", $.unary), field("expr", $._expression)),
+      prec.left(RK_PREC.unary, seq(field("operator", $.unary), field("expr", $._expression))),
 
     unary: ($) => prec(RK_PREC.unary, choice("-", "+", "NOT")),
 
@@ -1743,20 +1839,12 @@ module.exports = grammar({
     func_call: ($) =>
       seq(
         field("function", $.begin_path_expression),
-        optional(field("type_args", $.generic_type_args)),
         "(",
         prec(
           RK_PREC.parameter_list,
           field("params", commaSep($.param_assign)),
         ),
         ")",
-      ),
-
-    generic_type_args: ($) =>
-      seq(
-        "<",
-        commaSep1(field("type_arg", $.data_type_access)),
-        ">",
       ),
 
     stmt_list: ($) => prec.left(repeat1(seq($._stmt, optional(";")))),
@@ -1781,6 +1869,8 @@ module.exports = grammar({
         $.repeat_stmt,
         "EXIT",
         "CONTINUE",
+        $.extern_pragma,
+        $.wasm_pragma,
       ),
 
     // assignment: $ => seq(
@@ -1979,24 +2069,6 @@ module.exports = grammar({
 
     empty_path_expression: ($) => prec(-1, $.path_expression),
 
-    generic_spec: ($) => seq("<", $.generic_params, ">"),
-
-    generic_params: ($) => commaSep1($.generic_rule),
-
-    generic_rule: ($) => seq(
-      field("generic_name", $.identifier),
-      ":",
-      field("generic_type", $.identifier),
-      repeat(
-        seq(
-          "+",
-          "INTO",
-          "<",
-          field("constraint", $.data_type_access),
-          ">"
-        )
-      )
-    ),
 
     IQM: ($) => choice("I", "Q", "M"),
 

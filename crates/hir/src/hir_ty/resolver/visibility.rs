@@ -108,6 +108,31 @@ pub fn check_visibility<'db>(
     }
 }
 
+/// Check that non-test code does not reference {test}-annotated items.
+///
+/// Test items can reference anything, but non-test items cannot reference test items.
+pub fn check_test_visibility<'db>(
+    db: &'db dyn WorkspaceDataBase,
+    call_site: &CallSite<'db>,
+    target_scope_id: ScopeId<'db>,
+    errors: &mut Vec<IdeDiagnostic>,
+) {
+    let target_scope = get_scope(db, target_scope_id);
+    if !target_scope.is_test(db) {
+        return;
+    }
+    let caller_scope = get_scope(db, call_site.scope);
+    if caller_scope.is_test(db) {
+        return;
+    }
+    errors.push(
+        VisibilityError::TestOnly {
+            call_site: *call_site,
+        }
+        .to_diagnostic(db),
+    );
+}
+
 /// Check if the calling scope is in a POU that derives from the method's POU
 fn is_derived_pou<'db>(
     db: &'db dyn WorkspaceDataBase,

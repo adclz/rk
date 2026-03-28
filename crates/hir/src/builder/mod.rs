@@ -15,7 +15,6 @@ pub mod data_type;
 pub mod expression;
 pub mod function;
 pub mod function_block;
-pub mod generics;
 pub mod interface;
 pub mod namespace;
 pub mod program;

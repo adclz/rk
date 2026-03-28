@@ -56,17 +56,40 @@ static SURROUND_SPACES: &str = r#"
 [")" "]" ":" ";" "," "." (deref_sign)] @prepend_antispace
 ["NOT" ":"] @append_space
 
-; Remove space between sign and value in signed literals
-(signed_int "-" @append_antispace)
-(signed_int "+" @append_antispace)
-(real_literal "-" @append_antispace)
-(real_literal "+" @append_antispace)
+; signed_int and signed_real_value: sign is part of the token, no formatting needed
 
-; Generics: no spaces around < and > in generic contexts
-(generic_type_args "<" @prepend_antispace @append_antispace)
-(generic_type_args ">" @prepend_antispace @append_antispace)
-(generic_spec "<" @prepend_antispace @append_antispace)
-(generic_spec ">" @prepend_antispace @append_antispace)
+; INTO spec: no space between INTO and (
+(into_spec "INTO" @append_antispace)
+
+; Extern pragma: normalize spacing between children
+(extern_pragma "{" @append_antispace)
+(extern_pragma "extern" @append_space)
+(extern_pragma module: (pragma_string) @append_space)
+(extern_pragma name: (pragma_string) @append_space)
+(extern_pragma params: (extern_param_list) @prepend_space)
+(extern_pragma result: (extern_result) @prepend_space)
+(extern_pragma "}" @prepend_antispace)
+
+; Wasm pragma: normalize spacing between children
+(wasm_pragma "{" @append_antispace)
+(wasm_pragma "wasm" @append_space)
+(wasm_pragma type_ref: (identifier) @append_space)
+(wasm_pragma instruction: (pragma_string) @append_space)
+(wasm_pragma params: (extern_param_list) @prepend_space)
+(wasm_pragma result: (extern_result) @prepend_space)
+(wasm_pragma "}" @prepend_antispace)
+
+; Shared pragma helpers
+(extern_param_list "(" @append_antispace)
+(extern_param_list "params" @append_space)
+(extern_param_list ")" @prepend_antispace)
+(extern_result "(" @append_antispace)
+(extern_result "result" @append_space)
+(extern_result ")" @prepend_antispace)
+(pragma_string) @leaf
+
+; Test pragma: on its own line before the POU keyword
+(test_pragma) @leaf @append_hardline
 "#;
 
 static NEW_LINES: &str = r#"
@@ -164,6 +187,8 @@ static NEW_LINES: &str = r#"
     (func_call)
     (invocation)
     (super_body_invocation)
+    (extern_pragma)
+    (wasm_pragma)
     "RETURN"
     (if_stmt)
     (case_stmt)
@@ -335,6 +360,7 @@ static ALLOW_BLANK_LINE: &str = r#"
     "STRUCT" "END_STRUCT"
     (line_comment) (c_style_comment) (pascal_style_comment)
     (namespace_elements)
+    (test_pragma)
 ] @allow_blank_line_before
 
 (stmt_list . (_) @allow_blank_line_before)

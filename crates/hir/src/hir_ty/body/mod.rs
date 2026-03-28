@@ -5,6 +5,7 @@ use rustc_hash::{FxHashMap, FxHashSet};
 use crate::{
     CallSite, HirNodeInfo,
     hir_def::{
+        interned::identifier::Ident,
         expressions::{
             expression::{
                 BeginPathExpr, Expr, ExprKind, InitExprKind, ParamAssign, PathExpr, PrimaryExpr,
@@ -13,7 +14,6 @@ use crate::{
             invocation::Invocation,
             statement::Stmt,
         },
-        interned::identifier::Ident,
         pous::{
             pou::Pou,
             variable::{DirectVariable, VariableDecl, VariableKind},
@@ -185,9 +185,13 @@ pub struct BodyInferenceResult<'db> {
     // Mapping from path expressions to their adjustment sequences.
     pub path_expr_adjustments: FxHashMap<PathExpr<'db>, Vec<Adjustment<'db>>>,
 
-    // Generic type substitutions for this scope
-    // Maps generic parameter names to their concrete types (e.g., T -> INT)
-    pub generic_substitutions: FxHashMap<Ident, Type<'db>>,
+    /// Resolved ANY_* type substitutions for FB instances.
+    /// Key: (FB variable declaration, ANY_* variable name in the FB)
+    /// Value: concrete ElementarySpec resolved from call-site arguments.
+    ///
+    /// Example: `VAR timer: CTU; END_VAR; timer(PV := 5);`
+    /// → `(timer_var_decl, "PV") → ElementarySpec::Int`
+    pub fb_any_resolutions: FxHashMap<(VariableDecl<'db>, Ident), crate::hir_def::expressions::spec::ElementarySpec>,
 
     // Errors encountered during inference
     pub errors: Vec<IdeDiagnostic>,
@@ -241,7 +245,6 @@ impl<'db> BodyInferenceResult<'db> {
             type_of_expr: FxHashMap::default(),
             type_of_path_expr: FxHashMap::default(),
             path_expr_adjustments: FxHashMap::default(),
-            generic_substitutions: FxHashMap::default(),
             errors: Vec::new(),
             variables_used: FxHashSet::default(),
             usings_used: FxHashSet::default(),
@@ -252,6 +255,7 @@ impl<'db> BodyInferenceResult<'db> {
             dead_code_statements: Vec::new(),
             mismatched_for_step: Vec::new(),
             ref_null_state: FxHashMap::default(),
+            fb_any_resolutions: FxHashMap::default(),
         }
     }
 
@@ -380,11 +384,7 @@ impl<'db> BodyInferenceResult<'db> {
 
     /// Check whether an expression is a DataType constant access.
     /// Returns true if the expr is a variable access rooted in a DataType.
-    pub fn is_constant_expr(
-        &self,
-        db: &'db dyn WorkspaceDataBase,
-        expr: Expr<'db>,
-    ) -> bool {
+    pub fn is_constant_type(&self, db: &'db dyn WorkspaceDataBase, expr: Expr<'db>) -> bool {
         if let ExprKind::PrimaryExpr(PrimaryExpr::VariableAccess(va)) = expr.expr(db) {
             self.is_constant_access(db, *va)
         } else {

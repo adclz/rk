@@ -273,7 +273,8 @@ END_PROGRAM
               (constant
                 (numeric_literal
                   (real_literal
-                    (real_value)))))))))
+                    (signed_real_value
+                      (real_value))))))))))
     (temp_var_decls
       (temp_var
         (variable_list

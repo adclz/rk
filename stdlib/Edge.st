@@ -67,4 +67,45 @@ NAMESPACE Std.Edge
         M := NOT CLK;
     END_FUNCTION_BLOCK
 
+    NAMESPACE Test
+        USING Std.Unit
+        USING Std.Edge
+
+        {test}
+        FUNCTION test_r_trig_rising_edge
+        VAR trig : R_TRIG; END_VAR
+            trig(CLK := FALSE);
+            ASSERT(NOT trig.Q);
+            trig(CLK := TRUE);
+            ASSERT(trig.Q);
+        END_FUNCTION
+
+        {test}
+        FUNCTION test_r_trig_stays_false_on_high
+        VAR trig : R_TRIG; END_VAR
+            trig(CLK := TRUE);
+            trig(CLK := TRUE);
+            ASSERT(NOT trig.Q);
+        END_FUNCTION
+
+        {test}
+        FUNCTION test_f_trig_falling_edge
+        VAR trig : F_TRIG; END_VAR
+            trig(CLK := TRUE);
+            ASSERT(NOT trig.Q);
+            trig(CLK := FALSE);
+            ASSERT(trig.Q);
+        END_FUNCTION
+
+        {test}
+        FUNCTION test_f_trig_stays_false_on_low
+        VAR trig : F_TRIG; END_VAR
+            trig(CLK := FALSE);
+            ASSERT(trig.Q, 'first call: Q should be TRUE (initial falling edge)');
+            trig(CLK := FALSE);
+            ASSERT(NOT trig.Q, 'second call: Q should be FALSE (no transition)');
+        END_FUNCTION
+
+    END_NAMESPACE
+
 END_NAMESPACE

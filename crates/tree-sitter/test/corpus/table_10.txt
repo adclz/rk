@@ -184,7 +184,8 @@ END_FUNCTION
                   (constant
                     (numeric_literal
                       (real_literal
-                        (real_value))))))))
+                        (signed_real_value
+                          (real_value)))))))))
           (var_decl_init_list
             (variable_list
               (identifier))
@@ -198,7 +199,8 @@ END_FUNCTION
                   (constant
                     (numeric_literal
                       (real_literal
-                        (real_value))))))))
+                        (signed_real_value
+                          (real_value)))))))))
           (var_decl_init_list
             (variable_list
               (identifier))

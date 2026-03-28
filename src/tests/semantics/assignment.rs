@@ -31,7 +31,7 @@ END_FUNCTION_BLOCK"#;
        |                |
        |                `----- consider explicitly casting with 'ULINT_TO_INT(ULINT#5)'
        |
-       | Help: insert explicit cast 'INT_TO_ULINT(ULINT#5)'
+       | Help: insert explicit cast 'ULINT_TO_INT(ULINT#5)'
     ---'
     ");
 }
@@ -94,7 +94,7 @@ END_FUNCTION"#;
        |               |
        |               `----- consider explicitly casting with 'ULINT_TO_INT(ULINT#5)'
        |
-       | Help: insert explicit cast 'INT_TO_ULINT(ULINT#5)'
+       | Help: insert explicit cast 'ULINT_TO_INT(ULINT#5)'
     ---'
     ");
 }
@@ -157,7 +157,7 @@ END_FUNCTION_BLOCK"#;
        |              |
        |              `----- consider explicitly casting with 'ULINT_TO_INT(ULINT#5)'
        |
-       | Help: insert explicit cast 'INT_TO_ULINT(ULINT#5)'
+       | Help: insert explicit cast 'ULINT_TO_INT(ULINT#5)'
     ---'
     ");
 }
@@ -276,7 +276,7 @@ END_FUNCTION_BLOCK"#;
         |               |
         |               `---- consider explicitly casting with 'BOOL_TO_INT(fn1())'
         |
-        | Help: insert explicit cast 'INT_TO_BOOL(fn1())'
+        | Help: insert explicit cast 'BOOL_TO_INT(fn1())'
     ----'
     ");
 }
@@ -307,7 +307,7 @@ END_FUNCTION_BLOCK"#;
        |                    |
        |                    `-------- consider explicitly casting with 'BOOL_TO_INT(TRUE AND FALSE)'
        |
-       | Help: insert explicit cast 'INT_TO_BOOL(TRUE AND FALSE)'
+       | Help: insert explicit cast 'BOOL_TO_INT(TRUE AND FALSE)'
     ---'
     ");
 }
@@ -379,7 +379,7 @@ END_FUNCTION_BLOCK"#;
         |                  |
         |                  `----- consider explicitly casting with 'BOOL_TO_INT((a < b))'
         |
-        | Help: insert explicit cast 'INT_TO_BOOL((a < b))'
+        | Help: insert explicit cast 'BOOL_TO_INT((a < b))'
     ----'
     ");
 }

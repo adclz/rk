@@ -172,8 +172,7 @@ END_TYPE
             (constant
               (numeric_literal
                 (int_literal
-                  (signed_int
-                    (unsigned_int))))))
+                  (signed_int)))))
           (constant_expr
             (constant
               (numeric_literal
@@ -230,8 +229,7 @@ END_TYPE
                   (constant
                     (numeric_literal
                       (int_literal
-                        (signed_int
-                          (unsigned_int))))))))))
+                        (signed_int)))))))))
         (init_elem
           (array_index_elem
             (unsigned_int)
@@ -327,8 +325,7 @@ END_TYPE
               (constant
                 (numeric_literal
                   (int_literal
-                    (signed_int
-                      (unsigned_int))))))))
+                    (signed_int)))))))
         (struct_elem_decl
           (identifier)
           (simple_type_spec
@@ -665,7 +662,8 @@ END_TYPE
               (constant
                 (numeric_literal
                   (real_literal
-                    (real_value)))))))
+                    (signed_real_value
+                      (real_value))))))))
         (line_comment)))))
 
 ================================================================================
@@ -701,7 +699,8 @@ END_TYPE
           (constant
             (numeric_literal
               (real_literal
-                (real_value)))))))
+                (signed_real_value
+                  (real_value))))))))
     (type_decl
       (identifier)
       (simple_type_spec
@@ -758,4 +757,5 @@ END_TYPE
             (constant
               (numeric_literal
                 (real_literal
-                  (real_value))))))))))
+                  (signed_real_value
+                    (real_value)))))))))))

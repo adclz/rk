@@ -74,6 +74,20 @@ impl ElementarySpec {
             Self::LTime => "LTIME",
             Self::Tod => "TOD",
             Self::LTod => "LTOD",
+            Self::Any => "ANY",
+            Self::AnyNum => "ANY_NUM",
+            Self::AnyInt => "ANY_INT",
+            Self::AnyReal => "ANY_REAL",
+            Self::AnyBit => "ANY_BIT",
+            Self::AnyElementary => "ANY_ELEMENTARY",
+            Self::AnyMagnitude => "ANY_MAGNITUDE",
+            Self::AnyChars => "ANY_CHARS",
+            Self::AnyChar => "ANY_CHAR",
+            Self::AnyString => "ANY_STRING",
+            Self::AnyDate => "ANY_DATE",
+            Self::AnyDuration => "ANY_DURATION",
+            Self::AnySigned => "ANY_SIGNED",
+            Self::AnyUnsigned => "ANY_UNSIGNED",
         }
     }
 }
@@ -106,7 +120,6 @@ impl<'db> Type<'db> {
             Self::Null => "NULL",
             Self::Infer(_) => "INFER",
             Self::Void => "VOID",
-            Self::Generic(_) => "GENERIC",
             Self::Never => "NEVER",
         }
     }
@@ -179,7 +192,6 @@ impl<'db> Type<'db> {
                 InferType::Float(f) => format!("{{float}} {}", f.text(db)),
             },
             Self::Void => "void".into(),
-            Self::Generic(generic) => generic.generic_contraint(db).value.text(db).to_string(),
             Self::Never => "{unknown}".into(),
         }
     }
@@ -210,6 +222,51 @@ impl<'db> Type<'db> {
         }
 
         result
+    }
+
+    /// Returns the fully qualified dotted path for this type (e.g., `Std.Math.Test.test_abs`).
+    /// Includes the enclosing namespace path and the type's own name.
+    pub fn qualified_path(&self, db: &'db dyn WorkspaceDataBase) -> String {
+        let (scope_id, name) = match self {
+            Self::Program(p) => (
+                p.get_scope_id(db),
+                p.get_name_ident(db).text(db).to_string(),
+            ),
+            Self::Function(f) => (
+                f.get_scope_id(db),
+                f.get_name_ident(db).text(db).to_string(),
+            ),
+            Self::FunctionBlock(fb) => (
+                fb.get_scope_id(db),
+                fb.get_name_ident(db).text(db).to_string(),
+            ),
+            Self::MethodDecl(m) => (
+                m.get_scope_id(db),
+                m.get_name_ident(db).text(db).to_string(),
+            ),
+            Self::Class(c) => (
+                c.get_scope_id(db),
+                c.get_name_ident(db).text(db).to_string(),
+            ),
+            Self::Interface(i) => (
+                i.get_scope_id(db),
+                i.get_name_ident(db).text(db).to_string(),
+            ),
+            Self::DataType(dt) => (
+                dt.get_scope_id(db),
+                dt.get_name_ident(db).text(db).to_string(),
+            ),
+            _ => return Default::default(),
+        };
+
+        let sema = semantic_index(db, scope_id.file(db));
+        for scope in sema.scope_iterator(db, scope_id) {
+            if let ScopeKind::Namespace(ns) = scope.kind {
+                return format!("{}.{}", ns.path(db).to_string_dotted(db), name);
+            }
+        }
+
+        name
     }
 
     pub fn full_type_name(&self, db: &'db dyn WorkspaceDataBase) -> String {

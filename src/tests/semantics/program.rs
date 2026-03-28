@@ -31,7 +31,7 @@ END_PROGRAM"#;
        |                |
        |                `----- consider explicitly casting with 'ULINT_TO_INT(ULINT#5)'
        |
-       | Help: insert explicit cast 'INT_TO_ULINT(ULINT#5)'
+       | Help: insert explicit cast 'ULINT_TO_INT(ULINT#5)'
     ---'
     ");
 }

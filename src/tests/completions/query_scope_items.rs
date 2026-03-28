@@ -117,7 +117,10 @@ pub fn data_type_completion_no_parentheses(mut with_db: RootDatabase) {
     let debug = format!("{completions:?}");
 
     // DataType should be in completions
-    assert!(debug.contains("MY_CONSTANTS"), "MY_CONSTANTS should appear in completions");
+    assert!(
+        debug.contains("MY_CONSTANTS"),
+        "MY_CONSTANTS should appear in completions"
+    );
 
     // DataType should NOT have parentheses in insert_text
     assert!(
@@ -126,7 +129,10 @@ pub fn data_type_completion_no_parentheses(mut with_db: RootDatabase) {
     );
 
     // Function should still have parentheses
-    assert!(debug.contains("fn1()"), "Function completion should include parentheses");
+    assert!(
+        debug.contains("fn1()"),
+        "Function completion should include parentheses"
+    );
 }
 
 #[rstest]

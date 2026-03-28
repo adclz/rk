@@ -166,6 +166,22 @@ pub enum ResolveError<'db> {
         max_offset: usize,
         base_type: Type<'db>,
     },
+    /// An extern pragma references a variable that does not exist in scope.
+    ExternVariableNotFound {
+        ident: SpanIdent<'db>,
+        scope: ScopeId<'db>,
+    },
+    /// INTO(ref) references an identifier not found in scope.
+    IntoRefNotFound {
+        spec: Spec<'db>,
+        ident: Ident,
+    },
+    /// INTO(ref) references a non-elementary type (e.g. a struct or array variable).
+    IntoRefNotAny {
+        spec: Spec<'db>,
+        ident: Ident,
+        ty: Type<'db>,
+    },
 }
 
 impl<'db> ErrorCode for ResolveError<'db> {
@@ -199,6 +215,9 @@ impl<'db> ErrorCode for ResolveError<'db> {
             Self::MultipleVariadicVariables { .. } => "E0227",
             Self::VariadicMixedWithOtherInputs { .. } => "E0228",
             Self::MultibitsOutOfRange { .. } => "E0229",
+            Self::ExternVariableNotFound { .. } => "E0230",
+            Self::IntoRefNotFound { .. } => "E0231",
+            Self::IntoRefNotAny { .. } => "E0232",
         }
     }
 
@@ -229,6 +248,9 @@ impl<'db> ErrorCode for ResolveError<'db> {
             | Self::ConfigInstInitFieldNotFound { .. } => "configuration error",
             Self::MultipleItemsInScope { .. } => "multiple items in scope",
             Self::MultibitsOutOfRange { .. } => "multibit access out of range",
+            Self::ExternVariableNotFound { .. } => "extern variable not found",
+            Self::IntoRefNotFound { .. } => "INTO reference not found",
+            Self::IntoRefNotAny { .. } => "INTO reference must be an ANY type",
         }
     }
 }
@@ -644,13 +666,19 @@ impl<'db> ToIdeDiagnostic<'db> for ResolveError<'db> {
                     .call();
 
                 diag.with_related(Related::new(
-                    format!("first variadic variable '{}' declared here", first.name(db).text(db)),
+                    format!(
+                        "first variadic variable '{}' declared here",
+                        first.name(db).text(db)
+                    ),
                     first.scope_id(db).file(db),
                     first.get_span(db),
                 ));
                 diag
             }
-            Self::VariadicMixedWithOtherInputs { variadic_var, other_var } => {
+            Self::VariadicMixedWithOtherInputs {
+                variadic_var,
+                other_var,
+            } => {
                 let mut diag = diag()
                     .message(format!(
                         "variadic parameter '{}' must be the only VAR_INPUT parameter",
@@ -662,11 +690,16 @@ impl<'db> ToIdeDiagnostic<'db> for ResolveError<'db> {
                     .call();
 
                 diag.with_related(Related::new(
-                    format!("variadic parameter '{}' declared here", variadic_var.name(db).text(db)),
+                    format!(
+                        "variadic parameter '{}' declared here",
+                        variadic_var.name(db).text(db)
+                    ),
                     variadic_var.scope_id(db).file(db),
                     variadic_var.get_span(db),
                 ));
-                diag.with_note("a variadic parameter must be the only parameter in VAR_INPUT".into());
+                diag.with_note(
+                    "a variadic parameter must be the only parameter in VAR_INPUT".into(),
+                );
                 diag
             }
             Self::MultibitsOutOfRange {
@@ -693,6 +726,30 @@ impl<'db> ToIdeDiagnostic<'db> for ResolveError<'db> {
                     var.scope_id(db).file(db),
                     var.get_span(db),
                 ));
+
+                diag
+            }
+            Self::ExternVariableNotFound { ident, scope } => {
+                let name = ident.text(db);
+
+                let mut diag = diag()
+                    .message(format!(
+                        "no variable '{}' found in scope for extern pragma",
+                        name,
+                    ))
+                    .severity(DiagnosticSeverity::ERROR)
+                    .desc(self)
+                    .range(ident.get_span(db))
+                    .call();
+
+                // Search for similar names to suggest
+                let mut query = Query::new(name.to_string());
+                query.fuzzy();
+                let results = SymbolSearch::new(|_, _| true)
+                    .with_scope(*scope)
+                    .with_query(query)
+                    .search(db);
+                list_candidates(db, name, &mut diag, &results, Some(*scope));
 
                 diag
             }
@@ -744,6 +801,55 @@ impl<'db> ToIdeDiagnostic<'db> for ResolveError<'db> {
                         "qualify the name to resolve the ambiguity: {}",
                         qualified.join(" or "),
                     ));
+                }
+
+                diag
+            }
+            Self::IntoRefNotFound { spec, ident } => {
+                let name = ident.text(db);
+                diag()
+                    .message(format!("INTO reference '{}' not found in scope", name))
+                    .severity(DiagnosticSeverity::ERROR)
+                    .desc(self)
+                    .range(spec.get_span(db))
+                    .call()
+            }
+            Self::IntoRefNotAny { spec, ident, ty } => {
+                let name = ident.text(db);
+                let mut diag = diag()
+                    .message(format!(
+                        "INTO reference '{}' must have an ANY type, got '{}'",
+                        name,
+                        ty.type_name(db),
+                    ))
+                    .severity(DiagnosticSeverity::ERROR)
+                    .desc(self)
+                    .range(spec.get_span(db))
+                    .call();
+
+                diag.with_note(
+                    "only variables with ANY types (e.g. ANY_INT, ANY_REAL, ANY_BIT) can be used as INTO references".into(),
+                );
+
+                let scope = spec.scope_id(db);
+                if let Some(ret_spec) = scope.return_type(db)
+                    && let SpecKind::Simple(elem) = ret_spec.kind(db)
+                    && elem.is_any()
+                {
+                    let scope_kind = get_scope(db, scope).kind;
+                    let callable_name = match scope_kind {
+                        ScopeKind::Pou(pou) => Some(pou.get_name_ident(db).text(db)),
+                        ScopeKind::MethodDecl(m) => Some(m.get_name_ident(db).text(db)),
+                        ScopeKind::MethodProt(m) => Some(m.get_name_ident(db).text(db)),
+                        _ => None,
+                    };
+                    if let Some(callable_name) = callable_name {
+                        diag.with_note(format!(
+                            "you may also use INTO({}) to reference the return type '{}'",
+                            callable_name,
+                            elem.type_name(),
+                        ));
+                    }
                 }
 
                 diag
@@ -804,7 +910,10 @@ fn list_candidates<'db>(
     let imported: Vec<_> = results
         .imported_pous()
         .filter(|(ns, pou)| {
-            seen.insert((ns.to_string(db), pou.get_name_ident(db).text(db).to_string()))
+            seen.insert((
+                ns.to_string(db),
+                pou.get_name_ident(db).text(db).to_string(),
+            ))
         })
         .take(6)
         .collect();
@@ -813,8 +922,9 @@ fn list_candidates<'db>(
         let display_count = count.min(5);
 
         let mut note = match count {
-            1 => "an item with a similar name is available, but needs to be imported:\n"
-                .to_string(),
+            1 => {
+                "an item with a similar name is available, but needs to be imported:\n".to_string()
+            }
             _ => "items with similar names are available, but need to be imported:\n".to_string(),
         };
 

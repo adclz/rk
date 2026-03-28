@@ -4,7 +4,6 @@ use db::WorkspaceDataBase;
 use crate::Visibility;
 use crate::hir_def::config::ConfigDecl;
 use crate::hir_def::expressions::spec::Spec;
-use crate::hir_def::pous::generics::GenericParam;
 use crate::hir_def::pous::interface::MethodPrototype;
 use crate::hir_def::program::ProgramDecl;
 use crate::hir_def::semantic_index::semantic_index;
@@ -59,17 +58,6 @@ impl<'db> ScopeId<'db> {
             },
             ScopeKind::MethodDecl(m) => m.return_type(db)?,
             ScopeKind::MethodProt(m) => m.return_type(db)?,
-            _ => None?,
-        })
-    }
-
-    pub fn generics(&self, db: &'db dyn WorkspaceDataBase) -> Option<&'db Vec<GenericParam<'db>>> {
-        Some(match get_scope(db, *self).kind {
-            ScopeKind::Pou(pou) => match pou {
-                Pou::Function(f) => f.generics(db),
-                Pou::FunctionBlock(fb) => fb.generics(db),
-                _ => None?,
-            },
             _ => None?,
         })
     }
@@ -179,6 +167,17 @@ impl<'db> Scope<'db> {
 
     pub fn is_method_prot(&self) -> bool {
         matches!(self.kind, ScopeKind::MethodProt(_))
+    }
+
+    pub fn is_test(&self, db: &'db dyn WorkspaceDataBase) -> bool {
+        match self.kind {
+            ScopeKind::Program(p) => p.is_test(db),
+            ScopeKind::Pou(pou) => match pou {
+                Pou::Function(f) => f.is_test(db),
+                _ => false,
+            },
+            _ => false,
+        }
     }
 }
 

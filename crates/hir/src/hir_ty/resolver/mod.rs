@@ -7,7 +7,7 @@ pub mod visibility;
 pub mod walk;
 
 use crate::{
-    HasName, HirNodeInfo,
+    CallSite, HasName, HirNodeInfo,
     check::errors::{ToIdeDiagnostic, e2_resolve::ResolveError},
     hir_def::{
         expressions::expression::{
@@ -22,7 +22,7 @@ use crate::{
         body::BodyInferenceResult,
         expr_store::PathExprWalkStep,
         index_graphs::namespace_index,
-        resolver::walk::PathPlaceBuilder,
+        resolver::{visibility::check_test_visibility, walk::PathPlaceBuilder},
         ty::Type,
     },
 };
@@ -89,19 +89,19 @@ impl<'db> Resolver<'db> {
                     .insert(path_expr, Type::MethodDecl(method.into()));
                 true
             }
-            name::NameResolution::Generic(g) => {
-                ctx.type_of_path_expr.insert(path_expr, Type::Generic(g));
-                true
-            }
             name::NameResolution::Pou(pou, using) => {
                 if let Some(using) = using {
                     ctx.usings_used.insert(using);
                 }
+                let call_site = CallSite::new(path_expr.scope_id(db), path_expr.get_id(db));
+                check_test_visibility(db, &call_site, pou.get_scope_id(db), &mut ctx.errors);
                 ctx.type_of_path_expr
                     .insert(path_expr, Type::new_pou(db, pou));
                 true
             }
             name::NameResolution::Program(prog) => {
+                let call_site = CallSite::new(path_expr.scope_id(db), path_expr.get_id(db));
+                check_test_visibility(db, &call_site, prog.scope_id(db), &mut ctx.errors);
                 ctx.type_of_path_expr.insert(path_expr, Type::Program(prog));
                 true
             }
@@ -121,18 +121,17 @@ impl<'db> Resolver<'db> {
                 // check whether the namespace prefix itself is invalid. If the prefix
                 // is not a real namespace (e.g. it's a TYPE name), point the error at
                 // the first step rather than the last — the root cause is the prefix.
-                let error_expr =
-                    if let Some(ns_path) = &access.namespace
-                        && namespace_index(db, **ns_path).is_empty()
-                    {
-                        path_expr
-                            .flatten(db)
-                            .first()
-                            .map(|step| step.get_expr(db))
-                            .unwrap_or(path_expr)
-                    } else {
-                        path_expr
-                    };
+                let error_expr = if let Some(ns_path) = &access.namespace
+                    && namespace_index(db, **ns_path).is_empty()
+                {
+                    path_expr
+                        .flatten(db)
+                        .first()
+                        .map(|step| step.get_expr(db))
+                        .unwrap_or(path_expr)
+                } else {
+                    path_expr
+                };
                 ctx.errors.push(
                     ResolveError::NoItemInScope {
                         expr: error_expr,
@@ -249,8 +248,7 @@ impl<'db> Resolver<'db> {
                         && let Some(pou) = base.as_pou(db)
                         && pou.get_name_ident(db) == ident.ident
                     {
-                        ctx.type_of_path_expr
-                            .insert(step.get_expr(db), base);
+                        ctx.type_of_path_expr.insert(step.get_expr(db), base);
                         if single_step {
                             // Single-step: resolve the whole path as the function type
                             ctx.type_of_path_expr.insert(path_expr, base);
@@ -275,8 +273,8 @@ impl<'db> Resolver<'db> {
                     // first step as a POU name and continue walking the remaining steps.
                     // Only DataTypes are allowed here — Functions/FBs are not valid
                     // constant-access targets.
-                    if steps.len() > 1 {
-                        if let PathExprWalkStep::Field { ident, .. } = step {
+                    if steps.len() > 1
+                        && let PathExprWalkStep::Field { ident, .. } = step {
                             let access = NamespaceAccess::new(db, None, *ident);
                             if let name::NameResolution::Pou(pou @ Pou::DataType(_), using) =
                                 name::resolve_name(db, &access, path_expr.get_scope_id(db))
@@ -294,7 +292,6 @@ impl<'db> Resolver<'db> {
                                 continue;
                             }
                         }
-                    }
                 }
                 return;
             }
@@ -318,22 +315,18 @@ impl<'db> Resolver<'db> {
 
         // For multi-step paths with multibit access (e.g. SX[SN].0), apply
         // multibit to the final resolved type now that indexing/deref is done.
-        if !single_step {
-            if let Some(mb) = multibits {
-                if let Some(last_step) = steps.last() {
+        if !single_step
+            && let Some(mb) = multibits
+                && let Some(last_step) = steps.last() {
                     let last_expr = last_step.get_expr(db);
-                    let mb_type =
-                        crate::hir_ty::infer::normalize::multibits_to_type(db, mb);
+                    let mb_type = crate::hir_ty::infer::normalize::multibits_to_type(db, mb);
                     // Update type_of_path_expr and also replace the last adjustment
                     // target (e.g. array index target) with the multibit type.
                     ctx.type_of_path_expr.insert(last_expr, mb_type);
-                    if let Some(adjustments) = ctx.path_expr_adjustments.get_mut(&last_expr) {
-                        if let Some(last_adj) = adjustments.last_mut() {
+                    if let Some(adjustments) = ctx.path_expr_adjustments.get_mut(&last_expr)
+                        && let Some(last_adj) = adjustments.last_mut() {
                             last_adj.target = mb_type;
                         }
-                    }
                 }
-            }
-        }
     }
 }

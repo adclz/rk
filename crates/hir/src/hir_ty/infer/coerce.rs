@@ -5,7 +5,10 @@ use crate::{
     CallSite, HirNodeInfo,
     check::errors::{ToIdeDiagnostic, e3_type::TypeError, e10_control_flow::ControlFlowError},
     hir_def::{
-        expressions::expression::{AddOperatorKind, MultOperatorKind},
+        expressions::{
+            expression::{AddOperatorKind, MultOperatorKind},
+            spec::ElementarySpec,
+        },
         pous::pou::Pou,
     },
     hir_ty::{
@@ -26,85 +29,82 @@ pub struct CoerceError<'db> {
 pub type CoerceResult<'db> = Result<(), CoerceError<'db>>;
 
 impl<'db> Type<'db> {
-    pub fn supports_add(&self, db: &'db dyn WorkspaceDataBase) -> bool {
+    pub fn supports_add(&self, _db: &'db dyn WorkspaceDataBase) -> bool {
         self.is_numeric()
             || self.is_time()
-            || match self {
-                Type::Generic(generic) => generic
-                    .as_builtin_generic(db)
-                    .map(|g| g.supports_add())
-                    .unwrap_or(false),
-                _ => false,
-            }
+            || matches!(
+                self,
+                Type::Elementary(
+                    ElementarySpec::Any
+                        | ElementarySpec::AnyMagnitude
+                        | ElementarySpec::AnyNum
+                        | ElementarySpec::AnyInt
+                        | ElementarySpec::AnySigned
+                        | ElementarySpec::AnyUnsigned
+                        | ElementarySpec::AnyReal
+                        | ElementarySpec::AnyElementary
+                        | ElementarySpec::AnyDuration
+                )
+            )
     }
 
-    pub fn supports_mul(&self, db: &'db dyn WorkspaceDataBase) -> bool {
+    pub fn supports_mul(&self, _db: &'db dyn WorkspaceDataBase) -> bool {
         self.is_numeric()
-            || match self {
-                Type::Generic(generic) => generic
-                    .as_builtin_generic(db)
-                    .map(|g| g.supports_mul())
-                    .unwrap_or(false),
-                _ => false,
-            }
+            || matches!(
+                self,
+                Type::Elementary(
+                    ElementarySpec::AnyNum
+                        | ElementarySpec::AnyInt
+                        | ElementarySpec::AnySigned
+                        | ElementarySpec::AnyUnsigned
+                        | ElementarySpec::AnyReal
+                )
+            )
     }
 
     pub fn supports_div(&self, db: &'db dyn WorkspaceDataBase) -> bool {
-        self.is_numeric()
-            || match self {
-                Type::Generic(generic) => generic
-                    .as_builtin_generic(db)
-                    .map(|g| g.supports_mul())
-                    .unwrap_or(false),
-                _ => false,
-            }
+        self.supports_mul(db)
     }
 
-    pub fn supports_mod(&self, db: &'db dyn WorkspaceDataBase) -> bool {
+    pub fn supports_mod(&self, _db: &'db dyn WorkspaceDataBase) -> bool {
         self.is_signed_integer()
             || self.is_unsigned_integer()
-            || match self {
-                Type::Generic(generic) => generic
-                    .as_builtin_generic(db)
-                    .map(|g| g.supports_mod())
-                    .unwrap_or(false),
-                _ => false,
-            }
+            || matches!(
+                self,
+                Type::Elementary(
+                    ElementarySpec::AnyInt
+                        | ElementarySpec::AnySigned
+                        | ElementarySpec::AnyUnsigned
+                )
+            )
     }
 
-    pub fn supports_power(&self, db: &'db dyn WorkspaceDataBase) -> bool {
-        self.is_float()
-            || match self {
-                Type::Generic(generic) => generic
-                    .as_builtin_generic(db)
-                    .map(|g| g.supports_power())
-                    .unwrap_or(false),
-                _ => false,
-            }
+    pub fn supports_power(&self, _db: &'db dyn WorkspaceDataBase) -> bool {
+        self.is_float() || matches!(self, Type::Elementary(ElementarySpec::AnyReal))
     }
 
-    pub fn supports_bool_op(&self, db: &'db dyn WorkspaceDataBase) -> bool {
+    pub fn supports_bool_op(&self, _db: &'db dyn WorkspaceDataBase) -> bool {
         self.is_boolean()
             || self.is_numeric()
-            || match self {
-                Type::Generic(generic) => generic
-                    .as_builtin_generic(db)
-                    .map(|g| g.supports_bool_op() || g.is_numeric())
-                    .unwrap_or(false),
-                _ => false,
-            }
+            || matches!(
+                self,
+                Type::Elementary(
+                    ElementarySpec::AnyBit
+                        | ElementarySpec::AnyNum
+                        | ElementarySpec::AnyInt
+                        | ElementarySpec::AnySigned
+                        | ElementarySpec::AnyUnsigned
+                        | ElementarySpec::AnyReal
+                )
+            )
     }
 
     pub fn supports_comparison(&self, db: &'db dyn WorkspaceDataBase) -> bool {
-        matches!(self, Type::Elementary(_)) || matches!(self, Type::Generic(_))
+        matches!(self, Type::Elementary(_))
     }
 
     pub fn can_be_variadic(&self, db: &'db dyn WorkspaceDataBase) -> bool {
         matches!(self, Type::Elementary(_))
-            || match self {
-                Type::Generic(generic) => generic.as_builtin_generic(db).is_some(),
-                _ => false,
-            }
     }
 
     // Type coercion check
@@ -211,9 +211,12 @@ impl<'db> Type<'db> {
                         });
                     }
                 }
-                a1.of_type(db)
-                    .infer(db)
-                    .coerce_with_type(db, a2.of_type(db).infer(db), None, resolver)
+                a1.of_type(db).infer(db).coerce_with_type(
+                    db,
+                    a2.of_type(db).infer(db),
+                    None,
+                    resolver,
+                )
             }
             // check array spec equality
             (Type::Array(a1), rhs) => {
@@ -228,7 +231,23 @@ impl<'db> Type<'db> {
                     .coerce_with_type(db, *rhs, adjustments, resolver)
             }
             (Type::Elementary(lhs), Type::Elementary(rhs)) => {
+                // Two ANY_* specs of *different* kinds are never assignable.
+                // Same ANY_* kind is allowed (e.g. two INTO(fn) params sharing the same anchor).
+                if lhs.is_any() && rhs.is_any() && lhs != *rhs {
+                    return Err(CoerceError {
+                        expected: *self,
+                        actual: to,
+                        adjustment: None,
+                    });
+                }
                 if lhs == *rhs {
+                    return Ok(());
+                }
+                // ANY_* specs accept any concrete type in their group
+                if lhs.is_any() && lhs.accepts(*rhs) {
+                    return Ok(());
+                }
+                if rhs.is_any() && rhs.accepts(lhs) {
                     return Ok(());
                 }
                 // try implicit conversions in both directions
@@ -241,34 +260,6 @@ impl<'db> Type<'db> {
                     }),
                 }
             }
-            // Generic types: check constraint compatibility with concrete types
-            (Type::Elementary(elem), Type::Generic(generic)) => {
-                if let Some(any) = generic.as_builtin_generic(db)
-                    && any.contains(elem)
-                {
-                    return Ok(());
-                }
-                Err(CoerceError {
-                    expected: *self,
-                    actual: to,
-                    adjustment: None,
-                })
-            }
-            (Type::Generic(generic), Type::Elementary(elem)) => {
-                if let Some(any) = generic.as_builtin_generic(db)
-                    && any.contains(*elem)
-                {
-                    return Ok(());
-                }
-                Err(CoerceError {
-                    expected: *self,
-                    actual: to,
-                    adjustment: None,
-                })
-            }
-            // Generic ↔ Generic: always allow within bodies
-            // (actual compatibility checked at instantiation/call site)
-            (Type::Generic(_), Type::Generic(_)) => Ok(()),
             (Type::RefTo(_), Type::Null) => Ok(()),
             (Type::RefTo(lhs), Type::RefTo(rhs)) => {
                 lhs.infer(db)
@@ -444,10 +435,7 @@ impl<'db> Type<'db> {
                 // a CONSTANT variable cannot be assigned to
                 if variable.qualifier(db).contains(crate::Qualifier::CONSTANT) {
                     ctx.errors.push(
-                        ControlFlowError::AssignToConstant {
-                            access: call_site,
-                        }
-                        .to_diagnostic(db),
+                        ControlFlowError::AssignToConstant { access: call_site }.to_diagnostic(db),
                     );
                 }
             }
@@ -544,4 +532,3 @@ impl<'db> CoerceError<'db> {
         .to_diagnostic(db)
     }
 }
-

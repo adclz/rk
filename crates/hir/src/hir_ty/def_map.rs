@@ -8,7 +8,6 @@ use crate::{
         expressions::spec::{Enum, EnumVariant, SpecKind, Struct, StructElement},
         interned::identifier::Ident,
         pous::{
-            generics::GenericParam,
             pou::Pou,
             variable::{VariableDecl, VariableKind},
         },
@@ -32,8 +31,6 @@ pub struct LocalDefMap<'db> {
     pub global_variables: FxHashMap<Ident, VariableDecl<'db>>,
     /// Methods declared in this scope (for CLASSes, INTERFACEs, FUNCTION BLOCKs)
     pub declared_methods: FxHashMap<Ident, MethodRef<'db>>,
-    /// Generics
-    pub generics: FxHashMap<Ident, GenericParam<'db>>,
 }
 
 #[salsa::tracked]
@@ -45,15 +42,6 @@ impl<'db> ScopeId<'db> {
             local_variables: self.local_variables(db),
             global_variables: self.global_variables(db),
             declared_methods: self.declared_methods(db),
-            generics: self
-                .generics(db)
-                .map(|generics| {
-                    generics
-                        .iter()
-                        .map(|generic| (generic.get_name_ident(db), *generic))
-                        .collect()
-                })
-                .unwrap_or_default(),
         }
     }
 

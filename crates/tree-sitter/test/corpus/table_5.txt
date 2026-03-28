@@ -29,8 +29,7 @@ END_FUNCTION
             (constant
               (numeric_literal
                 (int_literal
-                  (signed_int
-                    (unsigned_int)))))))
+                  (signed_int))))))
         (assign
           (variable_access
             (variable
@@ -68,8 +67,7 @@ END_FUNCTION
             (constant
               (numeric_literal
                 (int_literal
-                  (signed_int
-                    (unsigned_int)))))))))))
+                  (signed_int))))))))))
 
 ================================================================================
 Real literal
@@ -101,7 +99,8 @@ END_FUNCTION
             (constant
               (numeric_literal
                 (real_literal
-                  (real_value))))))
+                  (signed_real_value
+                    (real_value)))))))
         (assign
           (variable_access
             (variable
@@ -113,7 +112,8 @@ END_FUNCTION
             (constant
               (numeric_literal
                 (real_literal
-                  (real_value))))))
+                  (signed_real_value
+                    (real_value)))))))
         (assign
           (variable_access
             (variable
@@ -125,7 +125,8 @@ END_FUNCTION
             (constant
               (numeric_literal
                 (real_literal
-                  (real_value))))))))))
+                  (signed_real_value
+                    (real_value)))))))))))
 
 ================================================================================
 Binary literal
@@ -324,8 +325,7 @@ END_FUNCTION
                     (int_type_name
                       (sign_int_type_name
                         (int_name))))
-                  (signed_int
-                    (unsigned_int)))))))
+                  (signed_int))))))
         (assign
           (variable_access
             (variable

@@ -33,7 +33,10 @@ pub fn document_symbols(
         .iter()
         .filter(|ns| {
             let scope = get_scope(db, ns.scope_id(db));
-            matches!(scope.parent.map(|p| get_scope(db, p).kind), Some(ScopeKind::Global) | None)
+            matches!(
+                scope.parent.map(|p| get_scope(db, p).kind),
+                Some(ScopeKind::Global) | None
+            )
         })
         .for_each(|ns| ns.document_symbols(db, &mut builder));
     sema.configs

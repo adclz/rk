@@ -69,6 +69,14 @@ impl<'db> ParseSpec<'db> for ast::generated::DataTypeAccess {
                 elem_type_name.to_spec(sema)
             }
             ast::generated::DataTypeAccess::NamespaceAccess(target) => target.to_spec(sema),
+            ast::generated::DataTypeAccess::IntoSpec(into) => {
+                let ident = crate::hir_def::interned::identifier::SpanIdent::from_node(
+                    sema.db,
+                    sema,
+                    into.Ref.cast(sema.ast),
+                )?;
+                Ok(sema.new_spec(SpecKind::Into(ident), into.into(), sema.current_scope))
+            }
         }
     }
 }
@@ -251,6 +259,26 @@ impl<'db> ParseSpec<'db> for ast::generated::ElemTypeName {
                             sema.current_scope,
                         ),
                 }
+            }
+            AstSpec::AnyTypeName(any) => {
+                type AnyKind = ast::generated::AnyBitName_AnyCharName_AnyCharsName_AnyDateName_AnyDurationName_AnyElementaryName_AnyIntName_AnyMagnitudeName_AnyName_AnyNumName_AnyRealName_AnySignedName_AnyStringName_AnyUnsignedName;
+                let spec = match any.children.cast(sema.ast) {
+                    AnyKind::AnyName(_) => ElementarySpec::Any,
+                    AnyKind::AnyNumName(_) => ElementarySpec::AnyNum,
+                    AnyKind::AnyIntName(_) => ElementarySpec::AnyInt,
+                    AnyKind::AnyRealName(_) => ElementarySpec::AnyReal,
+                    AnyKind::AnyBitName(_) => ElementarySpec::AnyBit,
+                    AnyKind::AnyElementaryName(_) => ElementarySpec::AnyElementary,
+                    AnyKind::AnyMagnitudeName(_) => ElementarySpec::AnyMagnitude,
+                    AnyKind::AnyCharsName(_) => ElementarySpec::AnyChars,
+                    AnyKind::AnyCharName(_) => ElementarySpec::AnyChar,
+                    AnyKind::AnyStringName(_) => ElementarySpec::AnyString,
+                    AnyKind::AnyDateName(_) => ElementarySpec::AnyDate,
+                    AnyKind::AnyDurationName(_) => ElementarySpec::AnyDuration,
+                    AnyKind::AnySignedName(_) => ElementarySpec::AnySigned,
+                    AnyKind::AnyUnsignedName(_) => ElementarySpec::AnyUnsigned,
+                };
+                sema.new_spec(SpecKind::Simple(spec), self.into(), sema.current_scope)
             }
         })
     }

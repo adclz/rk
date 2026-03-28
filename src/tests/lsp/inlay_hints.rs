@@ -13,7 +13,6 @@ use rstest::rstest;
 use crate::tests::utils::add_sources;
 use crate::tests::utils::with_db;
 
-
 #[rstest]
 pub fn pous_inlay_hints(mut with_db: RootDatabase) {
     let source = r#"

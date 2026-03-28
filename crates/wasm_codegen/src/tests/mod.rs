@@ -8,14 +8,15 @@ use db::RootDatabase;
 use hir::{check::diagnostics_for_file, hir_def::semantic_index::semantic_index};
 use rstest::*;
 
-use crate::debug::CodeGenConfig;
-
 // Test modules - only execution tests, no validation-only tests
 mod arrays;
 mod control_flow;
-mod debug;
+mod e2e;
+mod exceptions_spike;
 mod execution;
 mod function_blocks;
+mod imports;
+mod mir_smoke;
 mod ref_to;
 mod references;
 mod structs;
@@ -63,86 +64,6 @@ pub fn compile_to_wasm_checked(db: &mut RootDatabase, source: &str) -> Vec<u8> {
     compile_to_wasm_impl(db, source, true)
 }
 
-/// Compile IEC source to WASM with custom code generation configuration.
-///
-/// Returns both the WASM bytes and debug information.
-pub fn compile_to_wasm_with_config(
-    db: &mut RootDatabase,
-    source: &str,
-    config: CodeGenConfig,
-) -> (Vec<u8>, crate::debug::DebugInfo) {
-    let file = add_source(db, source);
-    let sem_idx = semantic_index(db, file);
-
-    let mut codegen = crate::ModuleCodeGen::new_with_config(db, config);
-
-    // Generate code for all POUs in the source
-    for pou in sem_idx.global_pous.iter() {
-        match pou {
-            hir::hir_def::pous::pou::Pou::Function(func) => {
-                codegen.generate_function(*func);
-            }
-            hir::hir_def::pous::pou::Pou::FunctionBlock(fb) => {
-                codegen.generate_function_block(*fb);
-            }
-            hir::hir_def::pous::pou::Pou::Class(class) => {
-                codegen.generate_class(*class);
-            }
-            _ => {}
-        }
-    }
-
-    // Generate code for all PROGRAMs
-    for program in sem_idx.programs.iter() {
-        codegen.generate_program(*program);
-    }
-
-    // Build the module with all sections
-    let mut module = wasm_encoder::Module::new();
-    module.section(&codegen.type_section);
-    module.section(&codegen.fn_section);
-
-    // Add memory section
-    let memory_size = codegen.memory_layout.total_size();
-    let memory_min_pages = if memory_size > 0 {
-        (memory_size + 65535) / 65536
-    } else {
-        1
-    };
-
-    let mut memory_section = wasm_encoder::MemorySection::new();
-    memory_section.memory(wasm_encoder::MemoryType {
-        minimum: memory_min_pages as u64,
-        maximum: None,
-        memory64: false,
-        shared: false,
-        page_size_log2: None,
-    });
-    module.section(&memory_section);
-
-    // Add global section if it has debug globals
-    if codegen.global_section.len() > 0 {
-        module.section(&codegen.global_section);
-    }
-
-    // Export memory
-    let mut export_section = codegen.export_section;
-    export_section.export("memory", wasm_encoder::ExportKind::Memory, 0);
-
-    // Export debug globals if present
-    if let Some(idx) = codegen.debug_enabled_global {
-        export_section.export("debug_enabled", wasm_encoder::ExportKind::Global, idx);
-    }
-    if let Some(idx) = codegen.debug_trap_id_global {
-        export_section.export("debug_trap_id", wasm_encoder::ExportKind::Global, idx);
-    }
-
-    module.section(&export_section);
-    module.section(&codegen.code_section);
-
-    (module.finish(), codegen.debug_info)
-}
-
 fn compile_to_wasm_impl(db: &mut RootDatabase, source: &str, check_diagnostics: bool) -> Vec<u8> {
     let file = add_source(db, source);
     let sem_idx = semantic_index(db, file);
@@ -156,7 +77,6 @@ fn compile_to_wasm_impl(db: &mut RootDatabase, source: &str, check_diagnostics: 
                 diagnostics.len()
             );
             for diag in diagnostics.iter().take(10) {
-                // Limit to first 10 errors
                 let inner = &diag.diagnostic;
                 error_msg.push_str(&format!("  [{:?}] {}\n", inner.severity, inner.message));
             }
@@ -170,60 +90,12 @@ fn compile_to_wasm_impl(db: &mut RootDatabase, source: &str, check_diagnostics: 
         }
     }
 
-    let mut codegen = crate::ModuleCodeGen::new(db);
+    // MIR pipeline: HIR → MIR → WASM
+    let mir_module =
+        mir::lower::lower_module::lower_module(db, &sem_idx).expect("MIR lowering failed");
 
-    // Generate code for all POUs in the source
-    for pou in sem_idx.global_pous.iter() {
-        match pou {
-            hir::hir_def::pous::pou::Pou::Function(func) => {
-                codegen.generate_function(*func);
-            }
-            hir::hir_def::pous::pou::Pou::FunctionBlock(fb) => {
-                codegen.generate_function_block(*fb);
-            }
-            hir::hir_def::pous::pou::Pou::Class(class) => {
-                codegen.generate_class(*class);
-            }
-            _ => {}
-        }
-    }
-
-    // Generate code for all PROGRAMs
-    for program in sem_idx.programs.iter() {
-        codegen.generate_program(*program);
-    }
-
-    // Build and return the module with all sections
-    let mut module = wasm_encoder::Module::new();
-    module.section(&codegen.type_section);
-    module.section(&codegen.fn_section);
-
-    // Add memory section if we allocated any memory, or just add a minimal one
-    let memory_size = codegen.memory_layout.total_size();
-    let memory_min_pages = if memory_size > 0 {
-        (memory_size + 65535) / 65536
-    } else {
-        1 // At least 1 page for pointer operations
-    };
-
-    let mut memory_section = wasm_encoder::MemorySection::new();
-    memory_section.memory(wasm_encoder::MemoryType {
-        minimum: memory_min_pages as u64,
-        maximum: None,
-        memory64: false,
-        shared: false,
-        page_size_log2: None,
-    });
-    module.section(&memory_section);
-
-    // Export memory so tests can access it
-    let mut export_section = codegen.export_section;
-    export_section.export("memory", wasm_encoder::ExportKind::Memory, 0);
-    module.section(&export_section);
-
-    module.section(&codegen.code_section);
-
-    module.finish()
+    let wasm_module = crate::from_mir::generate_wasm(db, &mir_module);
+    wasm_module.finish()
 }
 
 /// Helper to validate WASM bytes using wasmtime.
@@ -264,6 +136,40 @@ where
     let mut store = wasmtime::Store::new(&engine, ());
     let instance =
         wasmtime::Instance::new(&mut store, &module, &[]).expect("Failed to instantiate");
+
+    let func = instance
+        .get_typed_func::<P, R>(&mut store, func_name)
+        .unwrap_or_else(|_| panic!("Failed to get function '{}'", func_name));
+
+    func.call(&mut store, params)
+        .unwrap_or_else(|e| panic!("Failed to call function '{}': {}", func_name, e))
+}
+
+/// Helper to execute a WASM function that requires imports (extern pragmas).
+///
+/// Uses a wasmtime Linker to provide the import functions before instantiation.
+/// The `define_imports` closure receives a `&mut Linker<()>` to register host functions.
+pub fn execute_wasm_with_imports<P, R, F>(
+    wasm_bytes: &[u8],
+    func_name: &str,
+    params: P,
+    define_imports: F,
+) -> R
+where
+    P: wasmtime::WasmParams,
+    R: wasmtime::WasmResults,
+    F: FnOnce(&mut wasmtime::Linker<()>),
+{
+    let engine = wasmtime::Engine::default();
+    let module = wasmtime::Module::new(&engine, wasm_bytes).expect("Failed to create module");
+    let mut store = wasmtime::Store::new(&engine, ());
+    let mut linker = wasmtime::Linker::new(&engine);
+
+    define_imports(&mut linker);
+
+    let instance = linker
+        .instantiate(&mut store, &module)
+        .expect("Failed to instantiate with imports");
 
     let func = instance
         .get_typed_func::<P, R>(&mut store, func_name)

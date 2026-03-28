@@ -92,17 +92,10 @@ impl<'db> SemanticIndexBuilder<'db> {
         let usings = self.parse_usings(&func.directives);
         let usings = self.parse_or_default(usings);
 
-        let generics = if let Some(generics) = &func.generic_spec {
-            self.parse_generic_params(generics.cast(self.ast))?
-        } else {
-            vec![]
-        };
-
         let result = Pou::FunctionBlock(FunctionBlock::new(
             self.db,
             name,
             func.name.cast(self.ast).into(),
-            generics,
             extends,
             implements,
             variables,

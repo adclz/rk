@@ -108,6 +108,10 @@
         "named": true
       },
       {
+        "type": "any_type_name",
+        "named": true
+      },
+      {
         "type": "bit_str_type_name",
         "named": true
       },
@@ -532,6 +536,10 @@
         "named": true
       },
       {
+        "type": "extern_pragma",
+        "named": true
+      },
+      {
         "type": "for_stmt",
         "named": true
       },
@@ -545,6 +553,10 @@
       },
       {
         "type": "repeat_stmt",
+        "named": true
+      },
+      {
+        "type": "wasm_pragma",
         "named": true
       },
       {
@@ -643,6 +655,10 @@
     "subtypes": [
       {
         "type": "_elem_type_name",
+        "named": true
+      },
+      {
+        "type": "into_spec",
         "named": true
       },
       {
@@ -1540,6 +1556,73 @@
     }
   },
   {
+    "type": "any_type_name",
+    "named": true,
+    "fields": {},
+    "children": {
+      "multiple": false,
+      "required": true,
+      "types": [
+        {
+          "type": "any_bit_name",
+          "named": true
+        },
+        {
+          "type": "any_char_name",
+          "named": true
+        },
+        {
+          "type": "any_chars_name",
+          "named": true
+        },
+        {
+          "type": "any_date_name",
+          "named": true
+        },
+        {
+          "type": "any_duration_name",
+          "named": true
+        },
+        {
+          "type": "any_elementary_name",
+          "named": true
+        },
+        {
+          "type": "any_int_name",
+          "named": true
+        },
+        {
+          "type": "any_magnitude_name",
+          "named": true
+        },
+        {
+          "type": "any_name",
+          "named": true
+        },
+        {
+          "type": "any_num_name",
+          "named": true
+        },
+        {
+          "type": "any_real_name",
+          "named": true
+        },
+        {
+          "type": "any_signed_name",
+          "named": true
+        },
+        {
+          "type": "any_string_name",
+          "named": true
+        },
+        {
+          "type": "any_unsigned_name",
+          "named": true
+        }
+      ]
+    }
+  },
+  {
     "type": "array_conformand",
     "named": true,
     "fields": {},
@@ -1907,6 +1990,26 @@
     }
   },
   {
+    "type": "case_pragma",
+    "named": true,
+    "fields": {
+      "args": {
+        "multiple": true,
+        "required": false,
+        "types": [
+          {
+            "type": ",",
+            "named": false
+          },
+          {
+            "type": "param_assign_input",
+            "named": true
+          }
+        ]
+      }
+    }
+  },
+  {
     "type": "case_selection",
     "named": true,
     "fields": {
@@ -2037,16 +2140,6 @@
         "types": [
           {
             "type": "namespace_access",
-            "named": true
-          }
-        ]
-      },
-      "generic_spec": {
-        "multiple": false,
-        "required": false,
-        "types": [
-          {
-            "type": "generic_spec",
             "named": true
           }
         ]
@@ -2648,6 +2741,84 @@
     }
   },
   {
+    "type": "extern_param_list",
+    "named": true,
+    "fields": {
+      "var": {
+        "multiple": true,
+        "required": true,
+        "types": [
+          {
+            "type": "identifier",
+            "named": true
+          }
+        ]
+      }
+    }
+  },
+  {
+    "type": "extern_pragma",
+    "named": true,
+    "fields": {
+      "module": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "pragma_string",
+            "named": true
+          }
+        ]
+      },
+      "name": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "pragma_string",
+            "named": true
+          }
+        ]
+      },
+      "params": {
+        "multiple": false,
+        "required": false,
+        "types": [
+          {
+            "type": "extern_param_list",
+            "named": true
+          }
+        ]
+      },
+      "result": {
+        "multiple": false,
+        "required": false,
+        "types": [
+          {
+            "type": "extern_result",
+            "named": true
+          }
+        ]
+      }
+    }
+  },
+  {
+    "type": "extern_result",
+    "named": true,
+    "fields": {
+      "var": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "identifier",
+            "named": true
+          }
+        ]
+      }
+    }
+  },
+  {
     "type": "external_decl",
     "named": true,
     "fields": {
@@ -2760,16 +2931,6 @@
         "types": [
           {
             "type": "namespace_access",
-            "named": true
-          }
-        ]
-      },
-      "generic_spec": {
-        "multiple": false,
-        "required": false,
-        "types": [
-          {
-            "type": "generic_spec",
             "named": true
           }
         ]
@@ -3276,16 +3437,6 @@
             "named": true
           }
         ]
-      },
-      "type_args": {
-        "multiple": false,
-        "required": false,
-        "types": [
-          {
-            "type": "generic_type_args",
-            "named": true
-          }
-        ]
       }
     }
   },
@@ -3303,22 +3454,22 @@
           }
         ]
       },
+      "cases": {
+        "multiple": true,
+        "required": false,
+        "types": [
+          {
+            "type": "case_pragma",
+            "named": true
+          }
+        ]
+      },
       "directives": {
         "multiple": true,
         "required": false,
         "types": [
           {
             "type": "using_directive",
-            "named": true
-          }
-        ]
-      },
-      "generic_spec": {
-        "multiple": false,
-        "required": false,
-        "types": [
-          {
-            "type": "generic_spec",
             "named": true
           }
         ]
@@ -3353,94 +3504,22 @@
           }
         ]
       },
+      "test": {
+        "multiple": false,
+        "required": false,
+        "types": [
+          {
+            "type": "test_pragma",
+            "named": true
+          }
+        ]
+      },
       "variables": {
         "multiple": true,
         "required": false,
         "types": [
           {
             "type": "_func_variables",
-            "named": true
-          }
-        ]
-      }
-    }
-  },
-  {
-    "type": "generic_params",
-    "named": true,
-    "fields": {},
-    "children": {
-      "multiple": true,
-      "required": true,
-      "types": [
-        {
-          "type": "generic_rule",
-          "named": true
-        }
-      ]
-    }
-  },
-  {
-    "type": "generic_rule",
-    "named": true,
-    "fields": {
-      "constraint": {
-        "multiple": true,
-        "required": false,
-        "types": [
-          {
-            "type": "data_type_access",
-            "named": true
-          }
-        ]
-      },
-      "generic_name": {
-        "multiple": false,
-        "required": true,
-        "types": [
-          {
-            "type": "identifier",
-            "named": true
-          }
-        ]
-      },
-      "generic_type": {
-        "multiple": false,
-        "required": true,
-        "types": [
-          {
-            "type": "identifier",
-            "named": true
-          }
-        ]
-      }
-    }
-  },
-  {
-    "type": "generic_spec",
-    "named": true,
-    "fields": {},
-    "children": {
-      "multiple": false,
-      "required": true,
-      "types": [
-        {
-          "type": "generic_params",
-          "named": true
-        }
-      ]
-    }
-  },
-  {
-    "type": "generic_type_args",
-    "named": true,
-    "fields": {
-      "type_arg": {
-        "multiple": true,
-        "required": true,
-        "types": [
-          {
-            "type": "data_type_access",
             "named": true
           }
         ]
@@ -3920,6 +3999,22 @@
           "named": true
         }
       ]
+    }
+  },
+  {
+    "type": "into_spec",
+    "named": true,
+    "fields": {
+      "ref": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "identifier",
+            "named": true
+          }
+        ]
+      }
     }
   },
   {
@@ -5220,6 +5315,16 @@
           }
         ]
       },
+      "cases": {
+        "multiple": true,
+        "required": false,
+        "types": [
+          {
+            "type": "case_pragma",
+            "named": true
+          }
+        ]
+      },
       "declarations": {
         "multiple": true,
         "required": false,
@@ -5283,6 +5388,16 @@
             "named": true
           }
         ]
+      },
+      "test": {
+        "multiple": false,
+        "required": false,
+        "types": [
+          {
+            "type": "test_pragma",
+            "named": true
+          }
+        ]
       }
     }
   },
@@ -5320,7 +5435,7 @@
         "required": true,
         "types": [
           {
-            "type": "real_value",
+            "type": "signed_real_value",
             "named": true
           }
         ]
@@ -5661,10 +5776,25 @@
     "fields": {},
     "children": {
       "multiple": false,
-      "required": true,
+      "required": false,
       "types": [
         {
           "type": "unsigned_int",
+          "named": true
+        }
+      ]
+    }
+  },
+  {
+    "type": "signed_real_value",
+    "named": true,
+    "fields": {},
+    "children": {
+      "multiple": false,
+      "required": false,
+      "types": [
+        {
+          "type": "real_value",
           "named": true
         }
       ]
@@ -6269,6 +6399,11 @@
     }
   },
   {
+    "type": "test_pragma",
+    "named": true,
+    "fields": {}
+  },
+  {
     "type": "this_invocation",
     "named": true,
     "fields": {
@@ -6855,6 +6990,52 @@
         "types": [
           {
             "type": "data_type_access",
+            "named": true
+          }
+        ]
+      }
+    }
+  },
+  {
+    "type": "wasm_pragma",
+    "named": true,
+    "fields": {
+      "instruction": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "pragma_string",
+            "named": true
+          }
+        ]
+      },
+      "params": {
+        "multiple": false,
+        "required": false,
+        "types": [
+          {
+            "type": "extern_param_list",
+            "named": true
+          }
+        ]
+      },
+      "result": {
+        "multiple": false,
+        "required": false,
+        "types": [
+          {
+            "type": "extern_result",
+            "named": true
+          }
+        ]
+      },
+      "type_ref": {
+        "multiple": false,
+        "required": false,
+        "types": [
+          {
+            "type": "identifier",
             "named": true
           }
         ]
@@ -7557,6 +7738,62 @@
     "named": true
   },
   {
+    "type": "any_bit_name",
+    "named": true
+  },
+  {
+    "type": "any_char_name",
+    "named": true
+  },
+  {
+    "type": "any_chars_name",
+    "named": true
+  },
+  {
+    "type": "any_date_name",
+    "named": true
+  },
+  {
+    "type": "any_duration_name",
+    "named": true
+  },
+  {
+    "type": "any_elementary_name",
+    "named": true
+  },
+  {
+    "type": "any_int_name",
+    "named": true
+  },
+  {
+    "type": "any_magnitude_name",
+    "named": true
+  },
+  {
+    "type": "any_name",
+    "named": true
+  },
+  {
+    "type": "any_num_name",
+    "named": true
+  },
+  {
+    "type": "any_real_name",
+    "named": true
+  },
+  {
+    "type": "any_signed_name",
+    "named": true
+  },
+  {
+    "type": "any_string_name",
+    "named": true
+  },
+  {
+    "type": "any_unsigned_name",
+    "named": true
+  },
+  {
     "type": "binary_int",
     "named": true
   },
@@ -7611,6 +7848,10 @@
   {
     "type": "dword_name",
     "named": true
+  },
+  {
+    "type": "extern",
+    "named": false
   },
   {
     "type": "fbd_network",
@@ -7746,7 +7987,15 @@
     "named": true
   },
   {
+    "type": "params",
+    "named": false
+  },
+  {
     "type": "partly",
+    "named": true
+  },
+  {
+    "type": "pragma_string",
     "named": true
   },
   {
@@ -7780,6 +8029,10 @@
   {
     "type": "ref_to",
     "named": true
+  },
+  {
+    "type": "result",
+    "named": false
   },
   {
     "type": "sint_name",
@@ -7820,6 +8073,10 @@
   {
     "type": "usint_name",
     "named": true
+  },
+  {
+    "type": "wasm",
+    "named": false
   },
   {
     "type": "wchar_name",

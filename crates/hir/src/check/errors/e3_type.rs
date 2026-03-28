@@ -8,15 +8,8 @@ use crate::{
     CallSite, HasName, HirNodeInfo,
     check::errors::ToIdeDiagnostic,
     hir_def::{
-        expressions::{
-            expression::{AddOperatorKind, Expr, MultOperatorKind},
-            spec::Spec,
-        },
-        interned::identifier::Ident,
-        pous::{
-            generics::{AnyGeneric, GenericParam},
-            variable::VariableDecl,
-        },
+        expressions::expression::{AddOperatorKind, Expr, MultOperatorKind},
+        pous::variable::VariableDecl,
     },
     hir_ty::{
         body::{Adjust, Adjustment},
@@ -78,43 +71,6 @@ pub enum TypeError<'db> {
         target: Type<'db>,
         err: InferLiteralError,
     },
-    InvalidGenericType {
-        param: GenericParam<'db>,
-    },
-    UnknownGenericConstraint {
-        param: GenericParam<'db>,
-        constraint: Spec<'db>,
-    },
-    InvalidGenericConstraint {
-        param: GenericParam<'db>,
-        constraint: Spec<'db>,
-    },
-    SelfReferentialIntoConstraint {
-        param: GenericParam<'db>,
-        constraint: Spec<'db>,
-    },
-    MissingTypeArguments {
-        func_name: Ident,
-        call_site: CallSite<'db>,
-    },
-    WrongTypeArgumentArity {
-        func_name: Ident,
-        expected: usize,
-        actual: usize,
-        call_site: CallSite<'db>,
-    },
-    TypeArgumentConstraintMismatch {
-        concrete_type: Type<'db>,
-        param_name: Ident,
-        constraint: AnyGeneric,
-        call_site: CallSite<'db>,
-    },
-    TypeArgumentIntoConstraintMismatch {
-        type_arg: Type<'db>,
-        into_target: Type<'db>,
-        param_name: Ident,
-        call_site: CallSite<'db>,
-    },
     NonVariadicFoldParameter {
         var: VariableDecl<'db>,
         call_site: CallSite<'db>,
@@ -145,14 +101,6 @@ impl<'db> ErrorCode for TypeError<'db> {
             Self::NotPowerable { .. } => "E0305",
             Self::NotABoolean { .. } => "E0306",
             Self::InferLiteralError { .. } => "E0309",
-            Self::InvalidGenericType { .. } => "E0310",
-            Self::UnknownGenericConstraint { .. } => "E0311",
-            Self::InvalidGenericConstraint { .. } => "E0312",
-            Self::SelfReferentialIntoConstraint { .. } => "E0312",
-            Self::MissingTypeArguments { .. } => "E0313",
-            Self::WrongTypeArgumentArity { .. } => "E0314",
-            Self::TypeArgumentConstraintMismatch { .. } => "E0315",
-            Self::TypeArgumentIntoConstraintMismatch { .. } => "E0316",
             Self::NonVariadicFoldParameter { .. } => "E0317",
             Self::UnsupportedOperator { .. } => "E0318",
             Self::AssignAttemptRequiresRef { .. } => "E0319",
@@ -164,12 +112,6 @@ impl<'db> ErrorCode for TypeError<'db> {
     fn description(&self) -> &'static str {
         match self {
             Self::InferLiteralError { .. } => "invalid literal",
-            Self::MissingTypeArguments { .. } => "missing type arguments",
-            Self::WrongTypeArgumentArity { .. } => "wrong number of type arguments",
-            Self::TypeArgumentConstraintMismatch { .. } => "type argument constraint mismatch",
-            Self::TypeArgumentIntoConstraintMismatch { .. } => {
-                "type argument INTO constraint mismatch"
-            }
             Self::AssignAttemptRequiresRef { .. } | Self::AssignAttemptInvalidRhs { .. } => {
                 "invalid assignment attempt"
             }
@@ -314,103 +256,6 @@ impl<'db> ToIdeDiagnostic<'db> for TypeError<'db> {
                 .severity(DiagnosticSeverity::ERROR)
                 .desc(self)
                 .range(expr.get_span(db))
-                .call(),
-            Self::InvalidGenericType { param } => diag()
-                .message(format!(
-                    "generic '{}' has invalid type '{}'",
-                    param.name(db).text(db),
-                    param.generic_contraint(db).value.text(db)
-                ))
-                .severity(DiagnosticSeverity::ERROR)
-                .desc(self)
-                .range(param.generic_contraint(db).value.get_span(db))
-                .call(),
-            Self::UnknownGenericConstraint { param, constraint } => diag()
-                .message(format!(
-                    "generic '{}' has unknown constraint '{}'",
-                    param.name(db).text(db),
-                    constraint.as_call_site(db).to_string(db)
-                ))
-                .severity(DiagnosticSeverity::ERROR)
-                .desc(self)
-                .range(constraint.as_call_site(db).get_span(db))
-                .call(),
-            Self::InvalidGenericConstraint { param, constraint } => diag()
-                .message(format!(
-                    "INTO constraint on '{}' must target a sibling generic parameter, got '{}'",
-                    param.name(db).text(db),
-                    constraint.as_call_site(db).to_string(db)
-                ))
-                .severity(DiagnosticSeverity::ERROR)
-                .desc(self)
-                .range(constraint.as_call_site(db).get_span(db))
-                .call(),
-            Self::SelfReferentialIntoConstraint { param, constraint } => diag()
-                .message(format!(
-                    "INTO constraint on '{}' cannot reference itself",
-                    param.name(db).text(db),
-                ))
-                .severity(DiagnosticSeverity::ERROR)
-                .desc(self)
-                .range(constraint.as_call_site(db).get_span(db))
-                .call(),
-            Self::MissingTypeArguments {
-                func_name,
-                call_site,
-            } => diag()
-                .message(format!(
-                    "generic function '{}' requires explicit type arguments",
-                    func_name.text(db)
-                ))
-                .severity(DiagnosticSeverity::ERROR)
-                .desc(self)
-                .range(call_site.get_span(db))
-                .call(),
-            Self::WrongTypeArgumentArity {
-                func_name,
-                expected,
-                actual,
-                call_site,
-            } => diag()
-                .message(format!(
-                    "expected {} type argument(s), got {}",
-                    expected, actual
-                ))
-                .severity(DiagnosticSeverity::ERROR)
-                .desc(self)
-                .range(call_site.get_span(db))
-                .call(),
-            Self::TypeArgumentConstraintMismatch {
-                concrete_type,
-                param_name,
-                constraint,
-                call_site,
-            } => diag()
-                .message(format!(
-                    "type '{}' does not satisfy constraint '{}' (on generic parameter '{}')",
-                    concrete_type.type_name(db),
-                    constraint,
-                    param_name.text(db),
-                ))
-                .severity(DiagnosticSeverity::ERROR)
-                .desc(self)
-                .range(call_site.get_span(db))
-                .call(),
-            Self::TypeArgumentIntoConstraintMismatch {
-                type_arg,
-                into_target,
-                param_name,
-                call_site,
-            } => diag()
-                .message(format!(
-                    "'{}' cannot be implicitly cast into '{}' (INTO constraint on '{}')",
-                    type_arg.type_name(db),
-                    into_target.type_name(db),
-                    param_name.text(db),
-                ))
-                .severity(DiagnosticSeverity::ERROR)
-                .desc(self)
-                .range(call_site.get_span(db))
                 .call(),
             Self::NonVariadicFoldParameter { var, call_site } => {
                 let mut diag = diag()
@@ -708,8 +553,8 @@ fn explicit_cast_suggestion(
         diag.with_fix(CodeAction {
             title: format!(
                 "insert explicit cast '{}_TO_{}({})'",
-                lhs.type_name(),
                 rhs.type_name(),
+                lhs.type_name(),
                 actual_site.to_string(db)
             ),
             edit: Some(WorkspaceEdit::new(HashMap::new())),

@@ -408,7 +408,7 @@ FUNCTION_BLOCK fb1
         param_out: INT;
     END_VAR
 
-	fn(param => param_out);
+	fn(params => param_out);
 END_FUNCTION_BLOCK
         "#;
 
@@ -416,13 +416,9 @@ END_FUNCTION_BLOCK
     [E0209] Error: function call parameter mismatch
         ,-[ file:///test0.st:14:5 ]
         |
-     14 |     fn(param => param_out);
-        |        ^^|^^
-        |          `---- unknown output parameter 'param'
-        |
-        | Note: 'fn' has parameters with similar name:
-        |       - param1
-        |       - param2
+     14 |     fn(params => param_out);
+        |        ^^^|^^
+        |           `---- unknown output parameter 'params'
     ----'
     ");
 }

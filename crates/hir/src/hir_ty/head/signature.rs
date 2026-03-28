@@ -3,21 +3,24 @@ use ide_diagnostic::IdeDiagnostic;
 use rustc_hash::{FxHashMap, FxHashSet};
 
 use crate::{
-    HasName, HirNodeInfo,
-    check::errors::{ToIdeDiagnostic, e2_resolve::ResolveError, e3_type::TypeError},
+    CallSite, HasName, HirNodeInfo,
+    check::errors::{ToIdeDiagnostic, e2_resolve::ResolveError},
     hir_def::{
         config::ConfigResource,
         expressions::spec::{Spec, SpecKind},
-        interned::identifier::Ident,
-        pous::{generics::AnyGeneric, pou::Pou, variable::VariableKind},
+        pous::{pou::Pou, variable::VariableKind},
         scope::{ScopeId, ScopeKind},
         semantic_index::get_scope,
         using::Using,
     },
     hir_ty::{
         index_graphs::external_var_lookup,
-        resolver::name::{NameResolution, resolve_name},
-        ty::Type,
+        resolver::{
+            func_call::resolve_params,
+            name::{NameResolution, resolve_name},
+            visibility::check_test_visibility,
+        },
+        ty::{CallableType, Type},
     },
 };
 
@@ -36,14 +39,6 @@ pub struct ArrayElementPosition {
     pub count: usize,
 }
 
-#[derive(Debug, Copy, Clone, PartialEq, Eq, Hash, salsa::Update)]
-pub enum Constraint {
-    /// Main type bound (e.g., `T: ANY_INT`)
-    TypeBound(AnyGeneric),
-    /// INTO<OtherGenericParam> constraint (e.g., `INTO<U>` where U is a sibling generic)
-    GenericParameter(Ident),
-}
-
 #[derive(Debug, PartialEq, Eq, salsa::Update)]
 pub struct Signature<'db> {
     // Scope where this InferenceResult was emitted
@@ -51,9 +46,6 @@ pub struct Signature<'db> {
 
     /// Mapping of specs to their inferred types
     pub type_of_specs: FxHashMap<Spec<'db>, Type<'db>>,
-
-    //// Mapping of generic parameters to their spec constraints (for generics declared on this POU)
-    pub constraint_of_generic: FxHashMap<Ident, Vec<Constraint>>,
 
     /// USING directives that were used during signature inference (for unused-import linter)
     pub usings_used: FxHashSet<Using<'db>>,
@@ -67,7 +59,6 @@ impl<'db> Signature<'db> {
         Self {
             scope,
             type_of_specs: FxHashMap::default(),
-            constraint_of_generic: FxHashMap::default(),
             usings_used: FxHashSet::default(),
             errors: Vec::new(),
         }
@@ -81,85 +72,13 @@ impl<'db> Signature<'db> {
         }
 
         self.infer_extends_implements(db);
-        self.infer_generics(db);
         self.infer_variables(db);
         self.infer_return_type(db);
         self.infer_access_decls(db);
         self.infer_config_resources(db);
+        self.infer_test_cases(db);
 
         self
-    }
-
-    fn infer_generics(&mut self, db: &'db dyn WorkspaceDataBase) {
-        let generics = match self.scope.generics(db) {
-            Some(generics) => generics,
-            None => return,
-        };
-
-        let generics_hashmap = &self.scope.def_map(db).generics;
-
-        for generic in generics {
-            let builtin = generic.as_builtin_generic(db);
-            if builtin.is_none() {
-                self.errors
-                    .push(TypeError::InvalidGenericType { param: *generic }.to_diagnostic(db));
-            }
-
-            // Store the main type bound (e.g., ANY_INT from `T: ANY_INT`)
-            if let Some(any) = builtin {
-                self.constraint_of_generic
-                    .entry(generic.name(db))
-                    .or_default()
-                    .push(Constraint::TypeBound(any));
-            }
-
-            let param_name = generic.name(db);
-
-            for constraint in generic.spec_constraints(db) {
-                match constraint.spec.kind(db) {
-                    SpecKind::Target(target) if target.path.namespace.is_none() => {
-                        let target_ident = target.path.target;
-                        if let Some(target_generic) = generics_hashmap.get(&target_ident) {
-                            // INTO<T> where T is the same parameter is self-referential
-                            if target_generic.name(db) == param_name {
-                                self.errors.push(
-                                    TypeError::SelfReferentialIntoConstraint {
-                                        param: *generic,
-                                        constraint: constraint.spec,
-                                    }
-                                    .to_diagnostic(db),
-                                );
-                            } else {
-                                // INTO<U> where U is a sibling generic parameter — valid
-                                self.constraint_of_generic
-                                    .entry(param_name)
-                                    .or_default()
-                                    .push(Constraint::GenericParameter(target_generic.name(db)));
-                            }
-                        } else {
-                            // Not a sibling generic parameter — invalid
-                            self.errors.push(
-                                TypeError::InvalidGenericConstraint {
-                                    param: *generic,
-                                    constraint: constraint.spec,
-                                }
-                                .to_diagnostic(db),
-                            );
-                        }
-                    }
-                    _ => {
-                        // INTO target must be a generic parameter, nothing else
-                        self.errors.push(
-                            TypeError::InvalidGenericConstraint {
-                                param: *generic,
-                                constraint: constraint.spec,
-                            }
-                            .to_diagnostic(db),
-                        );
-                    }
-                }
-            }
-        }
     }
 
     fn infer_return_type(&mut self, db: &'db dyn WorkspaceDataBase) {
@@ -299,12 +218,20 @@ impl<'db> Signature<'db> {
     fn infer_spec(&mut self, db: &'db dyn WorkspaceDataBase, spec: Spec<'db>) -> Type<'db> {
         let typ = Type::resolve_spec(db, spec);
 
-        // Track USING directives used by Target specs (for unused-import linter)
+        // Track USING directives and check test visibility for Target specs
         if let SpecKind::Target(target) = spec.kind(db) {
-            if let NameResolution::Pou(_, Some(using)) =
-                resolve_name(db, &target.path, spec.scope_id(db))
-            {
-                self.usings_used.insert(using);
+            let call_site = CallSite::new(spec.scope_id(db), spec.id(db));
+            match resolve_name(db, &target.path, spec.scope_id(db)) {
+                NameResolution::Pou(pou, using) => {
+                    if let Some(using) = using {
+                        self.usings_used.insert(using);
+                    }
+                    check_test_visibility(db, &call_site, pou.get_scope_id(db), &mut self.errors);
+                }
+                NameResolution::Program(prog) => {
+                    check_test_visibility(db, &call_site, prog.scope_id(db), &mut self.errors);
+                }
+                _ => {}
             }
         }
 
@@ -370,5 +297,18 @@ impl<'db> Signature<'db> {
         };
         self.type_of_specs.insert(spec, typ);
         typ
+    }
+
+    fn infer_test_cases(&mut self, db: &'db dyn WorkspaceDataBase) {
+        let scope = get_scope(db, self.scope);
+
+        let (cases, callable) = match scope.kind {
+            ScopeKind::Pou(Pou::Function(f)) => (f.cases(db), CallableType::Function(f)),
+            _ => return,
+        };
+
+        for case in cases {
+            resolve_params(db, case, callable, &mut self.errors);
+        }
     }
 }

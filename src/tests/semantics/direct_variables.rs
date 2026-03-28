@@ -116,7 +116,7 @@ END_FUNCTION_BLOCK"#;
        |               |
        |               `--- consider explicitly casting with 'DWORD_TO_REAL(%ID0)'
        |
-       | Help: insert explicit cast 'REAL_TO_DWORD(%ID0)'
+       | Help: insert explicit cast 'DWORD_TO_REAL(%ID0)'
     ---'
     ");
 }
@@ -294,7 +294,7 @@ END_FUNCTION_BLOCK"#;
        |             |
        |             `---- consider explicitly casting with 'DWORD_TO_REAL(Lo.%D0)'
        |
-       | Help: insert explicit cast 'REAL_TO_DWORD(Lo.%D0)'
+       | Help: insert explicit cast 'DWORD_TO_REAL(Lo.%D0)'
     ---'
     ");
 }

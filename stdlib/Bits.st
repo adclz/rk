@@ -8,7 +8,7 @@ The result type matches the input type.
 */
 NAMESPACE Std.Bits
 
-    /*
+	/*
     ## SHL - Shift Left
 
     Shifts `IN` left by `N` bit positions, filling with zeros.
@@ -17,18 +17,20 @@ NAMESPACE Std.Bits
     - **N**: `ANY_INT` (shift count)
 
     ```iecst
-    result := SHL(IN := 16#0F, N := 4); // 16#F0
-    result := SHL(IN := 16#01, N := 8); // 16#0100
+    result := SHL(16#0F, 4); // 16#F0
+    result := SHL(16#01, 8); // 16#0100
     ```
     */
-    FUNCTION SHL<T: ANY_BIT, Y: ANY_INT> : T
-        VAR_INPUT
-            IN: T;
-            N: Y;
-        END_VAR
-    END_FUNCTION
+	FUNCTION SHL: ANY_BIT
+		VAR_INPUT
+			IN: INTO(SHL);
+			N: INT;
+		END_VAR
+		{wasm IN 'shl' (params IN N) (result SHL)}
+	END_FUNCTION
 
-    /*
+	
+	/*
     ## SHR - Shift Right
 
     Shifts `IN` right by `N` bit positions, filling with zeros.
@@ -37,17 +39,19 @@ NAMESPACE Std.Bits
     - **N**: `ANY_INT` (shift count)
 
     ```iecst
-    result := SHR(IN := 16#F0, N := 4); // 16#0F
+    result := SHR(16#F0, 4); // 16#0F
     ```
     */
-    FUNCTION SHR<T: ANY_BIT, Y: ANY_INT> : T
-        VAR_INPUT
-            IN: T;
-            N: Y;
-        END_VAR
-    END_FUNCTION
+	FUNCTION SHR: ANY_BIT
+		VAR_INPUT
+			IN: INTO(SHR);
+			N: INT;
+		END_VAR
+		{wasm IN 'shr_u' (params IN N) (result SHR)}
+	END_FUNCTION
 
-    /*
+	
+	/*
     ## ROL - Rotate Left
 
     Rotates `IN` left by `N` bit positions.
@@ -57,17 +61,19 @@ NAMESPACE Std.Bits
     - **N**: `ANY_INT` (rotate count)
 
     ```iecst
-    result := ROL(IN := 16#81, N := 1); // 16#03 (BYTE)
+    result := ROL(16#81, 1); // 16#03 (BYTE)
     ```
     */
-    FUNCTION ROL<T: ANY_BIT, Y: ANY_INT> : T
-        VAR_INPUT
-            IN: T;
-            N: Y;
-        END_VAR
-    END_FUNCTION
+	FUNCTION ROL: ANY_BIT
+		VAR_INPUT
+			IN: INTO(ROL);
+			N: INT;
+		END_VAR
+		{wasm IN 'rotl' (params IN N) (result ROL)}
+	END_FUNCTION
 
-    /*
+	
+	/*
     ## ROR - Rotate Right
 
     Rotates `IN` right by `N` bit positions.
@@ -77,14 +83,48 @@ NAMESPACE Std.Bits
     - **N**: `ANY_INT` (rotate count)
 
     ```iecst
-    result := ROR(IN := 16#81, N := 1); // 16#C0 (BYTE)
+    result := ROR(16#81, 1); // 16#C0 (BYTE)
     ```
     */
-    FUNCTION ROR<T: ANY_BIT, Y: ANY_INT> : T
-        VAR_INPUT
-            IN: T;
-            N: Y;
-        END_VAR
-    END_FUNCTION
+	FUNCTION ROR: ANY_BIT
+		VAR_INPUT
+			IN: INTO(ROR);
+			N: INT;
+		END_VAR
+		{wasm IN 'rotr' (params IN N) (result ROR)}
+	END_FUNCTION
+
+	NAMESPACE Test
+		USING Std.Unit
+
+		{test}
+		FUNCTION test_shl_byte ASSERT_EQ(SHL(BYTE#16#0F, 4), BYTE#16#F0);
+		END_FUNCTION
+
+		{test}
+		FUNCTION test_shl_word ASSERT_EQ(SHL(WORD#16#0001, 8), WORD#16#0100);
+		END_FUNCTION
+
+		{test}
+		FUNCTION test_shr_byte ASSERT_EQ(SHR(BYTE#16#F0, 4), BYTE#16#0F);
+		END_FUNCTION
+
+		{test}
+		FUNCTION test_shr_word ASSERT_EQ(SHR(WORD#16#0100, 8), WORD#16#0001);
+		END_FUNCTION
+
+		{test}
+		FUNCTION test_rol_dword ASSERT_EQ(ROL(DWORD#1, 4), DWORD#16);
+		END_FUNCTION
+
+		{test}
+		FUNCTION test_ror_dword
+			// ROR(16, 4) = 1
+			ASSERT_EQ(ROR(DWORD#16, 4), DWORD#1);
+		END_FUNCTION
+
+	
+	END_NAMESPACE
+
 
 END_NAMESPACE

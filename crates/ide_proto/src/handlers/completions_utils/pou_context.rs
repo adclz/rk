@@ -237,8 +237,8 @@ impl HeadResult {
         ) {
             // No vars and no methods — POU is empty or has only body statements.
             (None, None, None, None) => {
-                if let Some(body_node) = body {
-                    if offset >= body_node.start_byte() && offset <= body_node.end_byte() {
+                if let Some(body_node) = body
+                    && offset >= body_node.start_byte() && offset <= body_node.end_byte() {
                         let body_text = &source[body_node.start_byte()..body_node.end_byte()];
                         let first_char = body_text.trim_start().chars().next();
                         if matches!(first_char, Some('V') | Some('E') | Some('M')) {
@@ -246,7 +246,6 @@ impl HeadResult {
                         }
                         return HeadLocation::InBody;
                     }
-                }
                 // No vars, no methods, no body (or cursor outside body) — the POU
                 // is effectively empty.  Offer both VAR snippets and body completions.
                 HeadLocation::InBodyAfterVars
@@ -360,7 +359,8 @@ END_FUNCTION_BLOCK
 
         // Test offset inside VAR_INPUT
         let offset = source.find("in1").unwrap();
-        let results = HeadResult::query_var_decls(root_node, source, root_node.range().into(), offset);
+        let results =
+            HeadResult::query_var_decls(root_node, source, root_node.range().into(), offset);
         assert_eq!(results.inputs.is_some(), true);
         assert_eq!(results.outputs.is_some(), true);
         assert_eq!(results.in_outs.is_some(), true);
@@ -447,7 +447,8 @@ END_FUNCTION_BLOCK
 
         // Cursor right after FUNCTION_BLOCK declaration
         let offset = source.find("FUNCTION_BLOCK FB1").unwrap() + "FUNCTION_BLOCK FB1".len();
-        let results = HeadResult::query_var_decls(root_node, source, root_node.range().into(), offset);
+        let results =
+            HeadResult::query_var_decls(root_node, source, root_node.range().into(), offset);
 
         assert_eq!(results.head_location, HeadLocation::BeforeVars);
     }
@@ -475,7 +476,8 @@ END_FUNCTION_BLOCK
         // Cursor between VAR_INPUT and VAR_OUTPUT (after first END_VAR)
         let first_end_var = source.find("END_VAR").unwrap() + "END_VAR".len();
         let offset = first_end_var + 1;
-        let results = HeadResult::query_var_decls(root_node, source, root_node.range().into(), offset);
+        let results =
+            HeadResult::query_var_decls(root_node, source, root_node.range().into(), offset);
 
         assert_eq!(results.head_location, HeadLocation::InVars);
         assert_eq!(results.inside_var_section, VarSection::empty());
@@ -504,7 +506,8 @@ END_FUNCTION_BLOCK
         let end_var_pos = source.find("END_VAR").unwrap() + "END_VAR".len();
         let offset = end_var_pos + 1; // Position at the first newline after END_VAR
 
-        let results = HeadResult::query_var_decls(root_node, source, root_node.range().into(), offset);
+        let results =
+            HeadResult::query_var_decls(root_node, source, root_node.range().into(), offset);
 
         assert_eq!(results.head_location, HeadLocation::BeforeMethods);
     }
@@ -531,7 +534,8 @@ END_FUNCTION_BLOCK
 
         // Cursor inside method body
         let offset = source.find("// method body").unwrap();
-        let results = HeadResult::query_var_decls(root_node, source, root_node.range().into(), offset);
+        let results =
+            HeadResult::query_var_decls(root_node, source, root_node.range().into(), offset);
 
         assert_eq!(results.head_location, HeadLocation::InMethods);
     }
@@ -559,7 +563,8 @@ END_FUNCTION_BLOCK
 
         // Cursor after methods
         let offset = source.find("// statement area").unwrap();
-        let results = HeadResult::query_var_decls(root_node, source, root_node.range().into(), offset);
+        let results =
+            HeadResult::query_var_decls(root_node, source, root_node.range().into(), offset);
 
         assert_eq!(results.head_location, HeadLocation::InBody);
     }
@@ -580,7 +585,8 @@ END_FUNCTION_BLOCK
         // Cursor in empty function block — no vars, no methods, no body.
         // Should be InBodyAfterVars so both VAR snippets and body completions are offered.
         let offset = source.find("FUNCTION_BLOCK FB1").unwrap() + "FUNCTION_BLOCK FB1".len();
-        let results = HeadResult::query_var_decls(root_node, source, root_node.range().into(), offset);
+        let results =
+            HeadResult::query_var_decls(root_node, source, root_node.range().into(), offset);
 
         assert_eq!(results.head_location, HeadLocation::InBodyAfterVars);
     }
@@ -613,7 +619,8 @@ END_FUNCTION_BLOCK
         let first_end = source.find("END_METHOD").unwrap() + "END_METHOD".len();
         let offset = first_end + 2; // Position between the two methods
 
-        let results = HeadResult::query_var_decls(root_node, source, root_node.range().into(), offset);
+        let results =
+            HeadResult::query_var_decls(root_node, source, root_node.range().into(), offset);
 
         // Between methods should be InMethods (to allow adding more methods)
         assert_eq!(results.head_location, HeadLocation::InMethods);
@@ -638,7 +645,8 @@ END_FUNCTION_BLOCK
 
         // Cursor inside the body which starts with 'V'
         let offset = source.find("V\n").unwrap();
-        let results = HeadResult::query_var_decls(root_node, source, root_node.range().into(), offset);
+        let results =
+            HeadResult::query_var_decls(root_node, source, root_node.range().into(), offset);
 
         // Body starts with 'V', so it should be InBodyAfterVars
         assert_eq!(results.head_location, HeadLocation::InBodyAfterVars);
@@ -663,7 +671,8 @@ END_FUNCTION_BLOCK
 
         // Cursor at the start, body begins with 'M'
         let offset = source.find("M\n").unwrap();
-        let results = HeadResult::query_var_decls(root_node, source, root_node.range().into(), offset);
+        let results =
+            HeadResult::query_var_decls(root_node, source, root_node.range().into(), offset);
 
         // Body starts with 'M', so it should be InBodyAfterVars
         assert_eq!(results.head_location, HeadLocation::InBodyAfterVars);
@@ -687,7 +696,8 @@ END_FUNCTION_BLOCK
 
         // Cursor at body which starts with 'V' after method
         let offset = source.find("V\n").unwrap();
-        let results = HeadResult::query_var_decls(root_node, source, root_node.range().into(), offset);
+        let results =
+            HeadResult::query_var_decls(root_node, source, root_node.range().into(), offset);
 
         // Body starts with 'V' after methods, so it should be InBodyAfterMethods
         assert_eq!(results.head_location, HeadLocation::InBodyAfterMethods);
@@ -711,7 +721,8 @@ END_FUNCTION_BLOCK
 
         // Cursor at regular statement after method
         let offset = source.find("x := 5").unwrap();
-        let results = HeadResult::query_var_decls(root_node, source, root_node.range().into(), offset);
+        let results =
+            HeadResult::query_var_decls(root_node, source, root_node.range().into(), offset);
 
         // Body does NOT start with V/E/M, so it should be regular InBody
         assert_eq!(results.head_location, HeadLocation::InBody);

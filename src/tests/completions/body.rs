@@ -251,7 +251,10 @@ END_FUNCTION
     let debug = format!("{completions:?}");
 
     // Should contain the function name with (Self) description
-    assert!(debug.contains("my_func"), "should suggest function name for return value");
+    assert!(
+        debug.contains("my_func"),
+        "should suggest function name for return value"
+    );
     assert!(debug.contains("Self"), "should mark as Self");
 }
 
@@ -284,7 +287,10 @@ END_FUNCTION
     let debug = format!("{completions:?}");
 
     // Should NOT suggest the function name as Self
-    assert!(!debug.contains("(Self)"), "should not suggest Self for void function");
+    assert!(
+        !debug.contains("(Self)"),
+        "should not suggest Self for void function"
+    );
 }
 
 /// Method with a return type should suggest its own name for return value assignment.
@@ -318,7 +324,10 @@ END_FUNCTION_BLOCK
     let completions = node.completion(&with_db, &req).unwrap();
     let debug = format!("{completions:?}");
 
-    assert!(debug.contains("my_method"), "should suggest method name for return value");
+    assert!(
+        debug.contains("my_method"),
+        "should suggest method name for return value"
+    );
     assert!(debug.contains("Self"), "should mark as Self");
 }
 
@@ -353,7 +362,10 @@ END_FUNCTION_BLOCK
     let debug = format!("{completions:?}");
 
     // Should NOT suggest the method name as Self
-    assert!(!debug.contains("(Self)"), "should not suggest Self for void method");
+    assert!(
+        !debug.contains("(Self)"),
+        "should not suggest Self for void method"
+    );
 }
 
 /// Function with no VAR sections should still provide body completions (scope items, statements).
@@ -382,7 +394,10 @@ END_FUNCTION
     let debug = format!("{completions:?}");
 
     // Should have body completions (statements, self-return) not just VAR snippets
-    assert!(debug.contains("my_func"), "should suggest function name for return value");
+    assert!(
+        debug.contains("my_func"),
+        "should suggest function name for return value"
+    );
     assert!(debug.contains("Self"), "should mark as Self");
     assert!(debug.contains("IF"), "should suggest statements like IF");
 }
@@ -416,7 +431,10 @@ END_FUNCTION
     let completions = node.completion(&with_db, &req).unwrap();
     let debug = format!("{completions:?}");
 
-    assert!(debug.contains("my_func"), "should suggest function name even on PathExpr");
+    assert!(
+        debug.contains("my_func"),
+        "should suggest function name even on PathExpr"
+    );
     assert!(debug.contains("Self"), "should mark as Self");
 }
 
@@ -451,7 +469,10 @@ END_FUNCTION_BLOCK
     let completions = node.completion(&with_db, &req).unwrap();
     let debug = format!("{completions:?}");
 
-    assert!(debug.contains("my_method"), "should suggest method name even on PathExpr");
+    assert!(
+        debug.contains("my_method"),
+        "should suggest method name even on PathExpr"
+    );
     assert!(debug.contains("Self"), "should mark as Self");
 }
 

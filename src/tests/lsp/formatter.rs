@@ -952,13 +952,12 @@ END_FUNCTION
 }
 
 #[rstest]
-pub fn generics(mut with_db: RootDatabase) {
+pub fn any_type_spec_formatting(mut with_db: RootDatabase) {
     let source = r#"
-FUNCTION fn2 < T : ANY > : INT
-END_FUNCTION
-
-FUNCTION fn1
-    fn2  <  INT  > ( x := 1 )
+FUNCTION fn2 : ANY_NUM
+    VAR_INPUT
+        x :  ANY_NUM ;
+    END_VAR
 END_FUNCTION
 "#;
 
@@ -971,19 +970,23 @@ END_FUNCTION
         .document(&with_db);
 
     assert_snapshot!(fmt(document), @r"
-    FUNCTION fn2<T: ANY>: INT
-    END_FUNCTION
-
-    FUNCTION fn1 fn2<INT>(x := 1)
+    FUNCTION fn2: ANY_NUM
+    	VAR_INPUT
+    		x: ANY_NUM;
+    	END_VAR
     END_FUNCTION
     ");
 }
 
 #[rstest]
-pub fn generics_multiline(mut with_db: RootDatabase) {
+pub fn into_spec_formatting(mut with_db: RootDatabase) {
     let source = r#"
-FUNCTION_BLOCK fb1 < T : ANY , U : ANY_INT >
-END_FUNCTION_BLOCK
+FUNCTION fn1
+    VAR_INPUT
+        value :  ANY ;
+        target :  INTO( value ) ;
+    END_VAR
+END_FUNCTION
 "#;
 
     add_sources(&mut with_db, &[source]);
@@ -995,8 +998,12 @@ END_FUNCTION_BLOCK
         .document(&with_db);
 
     assert_snapshot!(fmt(document), @r"
-    FUNCTION_BLOCK fb1<T: ANY, U: ANY_INT>
-    END_FUNCTION_BLOCK
+    FUNCTION fn1
+    	VAR_INPUT
+    		value: ANY;
+    		target: INTO(value);
+    	END_VAR
+    END_FUNCTION
     ");
 }
 
@@ -1429,5 +1436,80 @@ END_FUNCTION_BLOCK
     		i: INT;
     	END_VAR
     END_FUNCTION_BLOCK
+    ");
+}
+
+#[rstest]
+pub fn extern_pragma_formatting(mut with_db: RootDatabase) {
+    // Bad formatting: missing spaces
+    let source = r#"
+FUNCTION test : INT
+VAR_INPUT IN : INT; END_VAR
+    {extern'math''abs'(params IN)(result test)}
+END_FUNCTION
+"#;
+
+    add_sources(&mut with_db, &[source]);
+    let document = with_db
+        .get_files()
+        .iter()
+        .last()
+        .unwrap()
+        .document(&with_db);
+
+    assert_snapshot!(fmt(document), @r"
+    FUNCTION test: INT
+    	VAR_INPUT
+    		IN: INT;
+    	END_VAR
+    	{extern 'math' 'abs' (params IN) (result test)}
+    END_FUNCTION
+    ");
+}
+
+#[rstest]
+pub fn test_pragma_formatting(mut with_db: RootDatabase) {
+    let source = r#"
+{test}
+FUNCTION my_test : INT
+END_FUNCTION
+"#;
+
+    add_sources(&mut with_db, &[source]);
+    let document = with_db
+        .get_files()
+        .iter()
+        .last()
+        .unwrap()
+        .document(&with_db);
+
+    assert_snapshot!(fmt(document), @r"
+    {test}
+    FUNCTION my_test: INT
+    END_FUNCTION
+    ");
+}
+
+#[rstest]
+pub fn test_pragma_on_program(mut with_db: RootDatabase) {
+    let source = r#"
+{test}
+PROGRAM my_test
+    x := 1;
+END_PROGRAM
+"#;
+
+    add_sources(&mut with_db, &[source]);
+    let document = with_db
+        .get_files()
+        .iter()
+        .last()
+        .unwrap()
+        .document(&with_db);
+
+    assert_snapshot!(fmt(document), @r"
+    {test}
+    PROGRAM my_test x := 1;
+    END_PROGRAM
     ");
 }

@@ -222,7 +222,7 @@ fn on_requests<Db: WorkspaceDataBase + Clone + RefUnwindSafe>(
         )
         .on::<Completion, _>(ThreadIntent::LatencySensitive, completions)
         .on::<DocumentDiagnosticRequest, _>(ThreadIntent::Worker, diagnostics)
-        .on::<WorkspaceDiagnosticRequest, _>(ThreadIntent::Worker, workspace_diagnostics)
+        .on_mut::<WorkspaceDiagnosticRequest, _>(|s, p| workspace_diagnostics(s, p))
         .on::<DocumentSymbolRequest, _>(ThreadIntent::Worker, document_symbols)
         .on::<HoverRequest, _>(ThreadIntent::Worker, hover)
         .on::<CodeActionRequest, _>(ThreadIntent::Worker, code_actions)

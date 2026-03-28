@@ -121,7 +121,9 @@ fn check_pou_node(pou_node: tree_sitter::Node, diagnostics: &mut Vec<IdeDiagnost
         };
         let key = section_key(&child);
 
-        if seen.contains_key(&key) {
+        if let std::collections::hash_map::Entry::Vacant(e) = seen.entry(key) {
+            e.insert(child.range());
+        } else {
             let range = child.range();
             let mut d = diag()
                 .message(format!("duplicate {name} section"))
@@ -133,8 +135,6 @@ fn check_pou_node(pou_node: tree_sitter::Node, diagnostics: &mut Vec<IdeDiagnost
             d.with_note("merge this section with the existing one above".to_string());
 
             diagnostics.push(d);
-        } else {
-            seen.insert(key, child.range());
         }
     }
 }

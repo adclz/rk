@@ -46,6 +46,9 @@ pub enum SpecKind<'db> {
 
     // Targeting a POU or namespace (has to be resolved)
     Target(SpanNamespaceAccess<'db>),
+
+    // INTO(ref) — type must be implicitly convertible to the referenced variable's type
+    Into(SpanIdent<'db>),
 }
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq, Hash, salsa::Update)]
@@ -79,6 +82,21 @@ pub enum ElementarySpec {
     LTime,
     Tod,
     LTod,
+    // ANY type hierarchy — polymorphic type specs
+    Any,
+    AnyNum,
+    AnyInt,
+    AnyReal,
+    AnyBit,
+    AnyElementary,
+    AnyMagnitude,
+    AnyChars,
+    AnyChar,
+    AnyString,
+    AnyDate,
+    AnyDuration,
+    AnySigned,
+    AnyUnsigned,
 }
 
 impl ElementarySpec {
@@ -113,11 +131,95 @@ impl ElementarySpec {
             | ElementarySpec::LTime
             | ElementarySpec::Tod
             | ElementarySpec::LTod => true,
+            // ANY types are polymorphic, not simple concrete types
+            ElementarySpec::Any
+            | ElementarySpec::AnyNum
+            | ElementarySpec::AnyInt
+            | ElementarySpec::AnyReal
+            | ElementarySpec::AnyBit
+            | ElementarySpec::AnyElementary
+            | ElementarySpec::AnyMagnitude
+            | ElementarySpec::AnyChars
+            | ElementarySpec::AnyChar
+            | ElementarySpec::AnyString
+            | ElementarySpec::AnyDate
+            | ElementarySpec::AnyDuration
+            | ElementarySpec::AnySigned
+            | ElementarySpec::AnyUnsigned => false,
         }
     }
 
     pub fn is_complex(&self) -> bool {
         !self.is_simple()
+    }
+
+    /// Returns true if this is an ANY_* polymorphic type spec.
+    pub fn is_any(&self) -> bool {
+        matches!(
+            self,
+            Self::Any
+                | Self::AnyNum
+                | Self::AnyInt
+                | Self::AnyReal
+                | Self::AnyBit
+                | Self::AnyElementary
+                | Self::AnyMagnitude
+                | Self::AnyChars
+                | Self::AnyChar
+                | Self::AnyString
+                | Self::AnyDate
+                | Self::AnyDuration
+                | Self::AnySigned
+                | Self::AnyUnsigned
+        )
+    }
+
+    /// Checks if a concrete ElementarySpec is accepted by this ANY_* spec.
+    /// Returns false if `self` is not an ANY_* variant.
+    pub fn accepts(&self, concrete: ElementarySpec) -> bool {
+        match self {
+            Self::Any => true,
+            Self::AnyElementary => concrete.is_simple(),
+            Self::AnyMagnitude => {
+                Self::AnyNum.accepts(concrete) || Self::AnyDuration.accepts(concrete)
+            }
+            Self::AnyNum => Self::AnyReal.accepts(concrete) || Self::AnyInt.accepts(concrete),
+            Self::AnyInt => matches!(
+                concrete,
+                Self::SInt
+                    | Self::Int
+                    | Self::DInt
+                    | Self::LInt
+                    | Self::USInt
+                    | Self::UInt
+                    | Self::UDInt
+                    | Self::ULInt
+            ),
+            Self::AnyReal => matches!(concrete, Self::Real | Self::LReal),
+            Self::AnyBit => matches!(
+                concrete,
+                Self::Bool | Self::Byte | Self::Word | Self::DWord | Self::LWord
+            ),
+            Self::AnyChars => Self::AnyString.accepts(concrete) || Self::AnyChar.accepts(concrete),
+            Self::AnyString => matches!(concrete, Self::String | Self::WString),
+            Self::AnyChar => matches!(concrete, Self::Char | Self::WChar),
+            Self::AnyDate => matches!(
+                concrete,
+                Self::Date
+                    | Self::LDate
+                    | Self::DateAndTime
+                    | Self::LDateTime
+                    | Self::Tod
+                    | Self::LTod
+            ),
+            Self::AnyDuration => matches!(concrete, Self::Time | Self::LTime),
+            Self::AnySigned => matches!(concrete, Self::SInt | Self::Int | Self::DInt | Self::LInt),
+            Self::AnyUnsigned => matches!(
+                concrete,
+                Self::USInt | Self::UInt | Self::UDInt | Self::ULInt
+            ),
+            _ => false,
+        }
     }
 }
 

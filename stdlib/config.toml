@@ -1,0 +1,6 @@
+[project]
+name = "stdlib"
+version = "0.1"
+
+[settings]
+disable_stdlib = true

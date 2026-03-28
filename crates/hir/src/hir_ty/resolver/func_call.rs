@@ -1,18 +1,21 @@
 use db::WorkspaceDataBase;
+use ide_diagnostic::IdeDiagnostic;
 use rustc_hash::{FxHashMap, FxHashSet};
 
 use crate::check::errors::e1_duplicates::DuplicateError;
 use crate::check::errors::e3_type::TypeError;
+use crate::hir_ty::infer::Infer;
 use crate::check::errors::e10_control_flow::ControlFlowError;
-use crate::hir_def::expressions::expression::Expr;
+use crate::hir_def::expressions::expression::{Expr, ParamAssign};
+use crate::hir_def::interned::identifier::Ident;
 use crate::hir_def::pous::variable::VariableDecl;
 use crate::{
-    CallSite, HasName, HirNodeInfo,
+    CallSite,
     check::errors::{ToIdeDiagnostic, e2_resolve::ResolveError},
     hir_def::expressions::expression::{FuncCall, ParamAssignKind},
     hir_ty::{
         body::BodyInferenceResult,
-        infer::{Infer, expr::InferExprCtx},
+        infer::expr::InferExprCtx,
         resolver::Resolver,
         ty::{CallableType, Type},
     },
@@ -30,16 +33,11 @@ pub fn resolve_func_call<'db>(
     // as CallableType, unwrap it back to the original function/fb/method type.
     // CallableType.normalize() returns the *return type*, which would cause
     // as_callable() to fail on re-entry.
-    if let Some(path_expr) = func_call.path(db).expr(db) {
-        if let Some(Type::CallableType(c)) = ctx.type_of_path_expr.get(&path_expr).copied() {
-            let original = match c {
-                CallableType::Function(f) => Type::Function(f),
-                CallableType::FunctionBlock(fb) => Type::FunctionBlock(fb),
-                CallableType::MethodDecl(m) => Type::MethodDecl(m),
-            };
+    if let Some(path_expr) = func_call.path(db).expr(db)
+        && let Some(Type::CallableType(c)) = ctx.type_of_path_expr.get(&path_expr).copied() {
+            let original = c.inner_callable();
             ctx.type_of_path_expr.insert(path_expr, original);
         }
-    }
 
     let access_typ = ctx.get_type_of_begin_path_expr(db, func_call.path(db));
 
@@ -84,26 +82,7 @@ pub fn resolve_func_call<'db>(
             .insert(expr, Type::CallableType(callable));
     }
 
-    // Validate generic type arguments
-    // Returns: None = success, Some(true) = failed due to Never args, Some(false) = real failure
-    let generic_result = validate_generic_type_args(db, &callable, func_call, ctx, resolver);
-    if let Some(caused_by_never) = generic_result {
-        if !caused_by_never {
-            // Real constraint/arity failure — set Never to suppress cascading errors
-            if let Some(expr) = func_call.path(db).expr(db) {
-                ctx.type_of_path_expr.insert(expr, Type::Never);
-            }
-        }
-        // Either way, skip parameter coercion
-        return;
-    }
-
-    let mut seen = FxHashMap::default();
-    let mut formal_idx = 0;
-    let mut variadic_count = 0;
     let len = func_call.params(db).len();
-
-    // Check if the callable has a variadic parameter
     let has_variadic = callable
         .def_map(db)
         .local_variables
@@ -122,204 +101,142 @@ pub fn resolve_func_call<'db>(
         );
     }
 
-    // Pre-collect named parameter idents so positional args skip them
-    let named_params: FxHashSet<_> = func_call
-        .params(db)
-        .iter()
-        .filter_map(|p| match p.kind(db) {
-            ParamAssignKind::FormalInput { param, .. } => Some(param.ident),
-            ParamAssignKind::FormalOutput { param, .. } => Some(param.ident),
-            _ => None,
-        })
-        .collect();
+    // Resolve parameter matching (shared with {case} pragma validation)
+    let matches = resolve_params(db, func_call.params(db), callable, &mut ctx.errors);
 
-    for parameter in func_call.params(db) {
-        match parameter.kind(db) {
-            ParamAssignKind::NonFormal { value } => {
-                // Skip parameters already filled by named arguments
-                let def_map = callable.def_map(db);
-                while formal_idx < def_map.local_variables.len() {
-                    if let Some((name, _)) = def_map.local_variables.get_index(formal_idx) {
-                        if named_params.contains(name) {
-                            formal_idx += 1;
-                            continue;
+    // Apply coercion and body-level checks on matched parameters
+    for m in &matches {
+        match m {
+            ParamMatch::Matched(param, var) => {
+                apply_param_coercion(db, resolver, callable, *param, *var, ctx);
+            }
+            ParamMatch::Variadic(param, var, pos) => {
+                ctx.variadic_position.insert(*param, *pos);
+                apply_param_coercion(db, resolver, callable, *param, *var, ctx);
+            }
+            ParamMatch::Error => {}
+        }
+    }
+
+    // Record ANY_* type resolutions for FB instances.
+    // When an FB variable has ANY_* type and the call site provides a concrete value,
+    // store the mapping so the MIR can monomorphize the FB struct.
+    if let CallableType::FunctionBlock(_fb) = callable {
+        // Find the FB instance variable from the call path
+        let instance_var = func_call.path(db).expr(db).and_then(|pe| {
+            let ident = pe.ident(db).ident;
+            let def_map = ctx.scope.def_map(db);
+            def_map.local_variables.get(&ident).copied()
+                .or_else(|| def_map.global_variables.get(&ident).copied())
+        });
+
+        if let Some(instance_var) = instance_var {
+            for m in &matches {
+                let (param, var) = match m {
+                    ParamMatch::Matched(p, v) | ParamMatch::Variadic(p, v, _) => (*p, *v),
+                    ParamMatch::Error => continue,
+                };
+
+                // Check if the FB variable has an ANY_* type
+                let var_type = var.spec(db).infer(db).normalize(db);
+                if let Type::Elementary(elem) = var_type {
+                    if elem.is_any() {
+                        // Get the concrete type from the argument
+                        let arg_type = match param.kind(db) {
+                            ParamAssignKind::NonFormal { value }
+                            | ParamAssignKind::FormalInput { value, .. } => {
+                                ctx.type_of_expr.get(&value).copied()
+                                    .or_else(|| Some(value.infer(db)))
+                            }
+                            _ => None,
+                        };
+
+                        if let Some(Type::Elementary(concrete)) = arg_type {
+                            if !concrete.is_any() {
+                                ctx.fb_any_resolutions.insert(
+                                    (instance_var, var.name(db)),
+                                    concrete,
+                                );
+                            }
                         }
                     }
-                    break;
-                }
-
-                // Try to get the param by index; if the current param is variadic,
-                // stay on it for all remaining arguments
-                let var = callable
-                    .def_map(db)
-                    .local_variables
-                    .values()
-                    .nth(formal_idx);
-
-                // If we've gone past the last param, check if the last one is variadic
-                let var = var.or_else(|| {
-                    if has_variadic {
-                        callable
-                            .def_map(db)
-                            .local_variables
-                            .values()
-                            .rev()
-                            .find(|v| v.variadic(db))
-                    } else {
-                        None
-                    }
-                });
-
-                if let Some(var) = var {
-                    coerce_with_var_target(db, resolver, value, *var, ctx);
-
-                    // constant types cannot be passed to VAR_IN_OUT / VAR_OUTPUT
-                    if (var.is_in_out(db) || var.is_output(db))
-                        && ctx.is_constant_expr(db, value)
-                    {
-                        ctx.errors.push(
-                            ControlFlowError::AssignToConstant {
-                                access: CallSite::from_scoped(db, &value),
-                            }
-                            .to_diagnostic(db),
-                        );
-                    }
-
-                    if var.is_output(db) {
-                        ctx.errors.push(
-                            ResolveError::OutputParameterUsedAsInput {
-                                func: callable,
-                                var: *var,
-                                expr: value,
-                                param: formal_idx,
-                            }
-                            .to_diagnostic(db),
-                        );
-                    }
-                    ctx.variable_of_param.insert(*parameter, *var);
-
-                    // Don't advance past a variadic parameter
-                    if var.variadic(db) {
-                        variadic_count += 1;
-                        ctx.variadic_position.insert(*parameter, variadic_count);
-                    } else {
-                        formal_idx += 1;
-                    }
-                } else {
-                    ctx.errors.push(
-                        ResolveError::UnknownNonFormalParameter {
-                            func: callable,
-                            expr: value,
-                            param: formal_idx,
-                        }
-                        .to_diagnostic(db),
-                    );
-                    formal_idx += 1;
                 }
             }
-            ParamAssignKind::FormalInput { param, value } => {
-                if let Some(seen) = seen.insert(param.ident, parameter) {
-                    ctx.errors.push(
-                        DuplicateError::Parameter {
-                            param_1: *seen,
-                            param_2: *parameter,
-                            name: param.ident,
-                        }
-                        .to_diagnostic(db),
-                    );
-                    continue;
-                }
-                let var = callable.def_map(db).local_variables.get(&param.ident);
+        }
+    }
+}
 
-                if let Some(var) = var {
-                    coerce_with_var_target(db, resolver, value, *var, ctx);
+fn apply_param_coercion<'db>(
+    db: &'db dyn WorkspaceDataBase,
+    resolver: Resolver<'db>,
+    callable: CallableType<'db>,
+    param: ParamAssign<'db>,
+    var: VariableDecl<'db>,
+    ctx: &mut BodyInferenceResult<'db>,
+) {
+    match param.kind(db) {
+        ParamAssignKind::NonFormal { value } => {
+            coerce_with_var_target(db, resolver, value, var, ctx);
 
-                    // constant types cannot be passed to VAR_IN_OUT / VAR_OUTPUT
-                    // parameters (which are mutable references)
-                    if (var.is_in_out(db) || var.is_output(db))
-                        && ctx.is_constant_expr(db, value)
-                    {
-                        ctx.errors.push(
-                            crate::check::errors::e10_control_flow::ControlFlowError::AssignToConstant {
-                                access: CallSite::from_scoped(db, &value),
-                            }
-                            .to_diagnostic(db),
-                        );
+            if (var.is_in_out(db) || var.is_output(db)) && ctx.is_constant_type(db, value) {
+                ctx.errors.push(
+                    ControlFlowError::AssignToConstant {
+                        access: CallSite::from_scoped(db, &value),
                     }
-
-                    ctx.variable_of_param.insert(*parameter, *var);
-                } else {
-                    ctx.errors.push(
-                        ResolveError::UnknownInputParameter {
-                            func: callable,
-                            param,
-                        }
-                        .to_diagnostic(db),
-                    );
-                }
+                    .to_diagnostic(db),
+                );
             }
-            ParamAssignKind::FormalOutput {
-                not,
-                param,
-                variable,
-            } => {
-                // check duplicates
-                if let Some(seen) = seen.insert(param.ident, parameter) {
-                    ctx.errors.push(
-                        DuplicateError::Parameter {
-                            param_1: *seen,
-                            param_2: *parameter,
-                            name: param.ident,
-                        }
-                        .to_diagnostic(db),
-                    );
-                    continue;
-                }
 
-                if let Some(lhs_var) = callable.def_map(db).local_variables.get(&param.ident) {
-                    let lhs_typ = Type::new_var(db, *lhs_var);
-
-                    resolver.resolve_variable_access(db, variable, ctx);
-                    let call_site = CallSite::from_scoped(db, &variable);
-
-                    let rhs_typ = ctx.type_of_variable_access_with_adjustments(db, variable);
-
-                    // constant types cannot be passed to VAR_IN_OUT / VAR_OUTPUT
-                    // parameters (which are mutable references)
-                    if (lhs_var.is_in_out(db) || lhs_var.is_output(db))
-                        && ctx.is_constant_access(db, variable)
-                    {
-                        ctx.errors.push(
-                            crate::check::errors::e10_control_flow::ControlFlowError::AssignToConstant {
-                                access: call_site,
-                            }
-                            .to_diagnostic(db),
-                        );
+            if var.is_output(db) {
+                ctx.errors.push(
+                    ResolveError::OutputParameterUsedAsInput {
+                        func: callable,
+                        var,
+                        expr: value,
+                        param: 0,
                     }
-
-                    // is the variable assignable?
-                    rhs_typ.check_assignable(db, call_site, ctx);
-
-                    // type coercion
-                    lhs_typ
-                        .coerce_with_type(db, rhs_typ, None, resolver)
-                        .map_err(|err| {
-                            ctx.errors
-                                .push(err.into_non_assignable(db, rhs_typ, call_site))
-                        })
-                        .ok();
-
-                    ctx.variable_of_param.insert(*parameter, *lhs_var);
-                } else {
-                    ctx.errors.push(
-                        ResolveError::UnknownOutputParameter {
-                            func: callable,
-                            param,
-                        }
-                        .to_diagnostic(db),
-                    );
-                }
+                    .to_diagnostic(db),
+                );
             }
+            ctx.variable_of_param.insert(param, var);
+        }
+        ParamAssignKind::FormalInput { value, .. } => {
+            coerce_with_var_target(db, resolver, value, var, ctx);
+
+            if (var.is_in_out(db) || var.is_output(db)) && ctx.is_constant_type(db, value) {
+                ctx.errors.push(
+                    ControlFlowError::AssignToConstant {
+                        access: CallSite::from_scoped(db, &value),
+                    }
+                    .to_diagnostic(db),
+                );
+            }
+            ctx.variable_of_param.insert(param, var);
+        }
+        ParamAssignKind::FormalOutput { variable, .. } => {
+            let lhs_typ = Type::new_var(db, var);
+
+            resolver.resolve_variable_access(db, variable, ctx);
+            let call_site = CallSite::from_scoped(db, &variable);
+            let rhs_typ = ctx.type_of_variable_access_with_adjustments(db, variable);
+
+            if (var.is_in_out(db) || var.is_output(db)) && ctx.is_constant_access(db, variable) {
+                ctx.errors.push(
+                    ControlFlowError::AssignToConstant { access: call_site }.to_diagnostic(db),
+                );
+            }
+
+            rhs_typ.check_assignable(db, call_site, ctx);
+
+            lhs_typ
+                .coerce_with_type(db, rhs_typ, None, resolver)
+                .map_err(|err| {
+                    ctx.errors
+                        .push(err.into_non_assignable(db, rhs_typ, call_site))
+                })
+                .ok();
+
+            ctx.variable_of_param.insert(param, var);
         }
     }
 }
@@ -339,260 +256,59 @@ fn coerce_with_var_target<'db>(
     }
     caller_infer_ctx.check_expr(db, expr, ctx);
 
-    // Check if this variable's type involves generic substitutions
-    let var_type = var.spec(db).infer(db);
-    let has_generic_subst =
-        matches!(var_type, Type::Generic(_)) && !ctx.generic_substitutions.is_empty();
-
-    if has_generic_subst {
-        use crate::hir_ty::infer::table::InferenceTable;
-
-        // Apply generic substitutions to get the concrete expected type
-        let expected_type = var_type.apply_generic_substitution(db, &ctx.generic_substitutions);
-
-        // Use InferenceTable to resolve Type::Infer variants
-        let rhs_type = ctx.type_of_expr[&expr];
-        let mut table = InferenceTable::new();
-        table.set_target_type(db, Some(expected_type.into()), expected_type);
-        table.add_type(db, expr, rhs_type, resolver);
-        table.resolve_completly(db, resolver, ctx);
-
-        // Perform coercion: expected (variable type) coerces TO actual (expression type)
-        let actual_type = ctx.type_of_expr_with_adjustments(db, expr);
-        let call_site = CallSite::from_scoped(db, &expr);
-
-        if let Err(e) = expected_type.coerce_with_type(
-            db,
-            actual_type,
-            ctx.adjustments_of_expr(db, expr),
-            resolver,
-        ) {
-            ctx.errors.push(
-                TypeError::NotAssignable {
-                    base_target: expected_type,
-                    lhs: e.expected,
-                    rhs: e.actual,
-                    adjustment: e.adjustment,
-                    expr: call_site,
-                }
-                .to_diagnostic(db),
-            );
-        }
-    } else {
-        // Non-generic path: use the original coercion logic
-        if let Err(e) = caller_infer_ctx.coerce_var_decl_with_expr(db, var, expr, ctx) {
-            let base_target = Type::new_var(db, var);
-            ctx.errors.push(
-                TypeError::NotAssignable {
-                    base_target,
-                    lhs: e.expected,
-                    rhs: e.actual,
-                    adjustment: e.adjustment,
-                    expr: CallSite::from_scoped(db, &expr),
-                }
-                .to_diagnostic(db),
-            );
-        }
-    }
-}
-
-/// Returns `None` if validation succeeded.
-/// Returns `Some(true)` if it failed due to Never-typed arguments (already-reported errors).
-/// Returns `Some(false)` if it failed for a real reason (constraint mismatch, etc.).
-fn validate_generic_type_args<'db>(
-    db: &'db dyn WorkspaceDataBase,
-    callable: &crate::hir_ty::ty::CallableType<'db>,
-    func_call: FuncCall<'db>,
-    ctx: &mut BodyInferenceResult<'db>,
-    resolver: Resolver<'db>,
-) -> Option<bool> {
-    let generics = callable.generics(db);
-    if generics.is_empty() {
-        return None;
-    }
-
-    let type_args = func_call.type_args(db);
-    let call_site = CallSite::from_scoped(db, &func_call.path(db));
-    let callable_name = callable.get_name_ident(db);
-    let callable_scope = callable.get_scope_id(db);
-
-    // Try to infer generic types from arguments if not explicitly provided
-    if type_args.is_empty() {
-        let (inferred_types, has_never_args) =
-            infer_generic_types_from_args(db, callable, func_call, ctx, resolver);
-
-        if inferred_types.len() == generics.len() {
-            // Successfully inferred all generic types — validate and store
-            if !validate_and_store_generic_substitutions(
-                db,
-                generics,
-                &inferred_types,
-                callable_scope,
-                call_site,
-                ctx,
-            ) {
-                return Some(false);
-            }
-            return None;
-        }
-
-        // If inference failed because arguments were Never (already-reported errors),
-        // don't emit an additional "missing type arguments" diagnostic.
-        if has_never_args {
-            return Some(true);
-        }
-
-        // E0313: Could not infer types - require explicit type arguments
+    if let Err(e) = caller_infer_ctx.coerce_var_decl_with_expr(db, var, expr, ctx) {
+        let base_target = Type::new_var(db, var);
         ctx.errors.push(
-            TypeError::MissingTypeArguments {
-                func_name: callable_name,
-                call_site,
+            TypeError::NotAssignable {
+                base_target,
+                lhs: e.expected,
+                rhs: e.actual,
+                adjustment: e.adjustment,
+                expr: CallSite::from_scoped(db, &expr),
             }
             .to_diagnostic(db),
         );
-        return Some(false);
-    }
-
-    // E0314: Wrong number of type arguments
-    if type_args.len() != generics.len() {
-        ctx.errors.push(
-            TypeError::WrongTypeArgumentArity {
-                func_name: callable_name,
-                expected: generics.len(),
-                actual: type_args.len(),
-                call_site,
-            }
-            .to_diagnostic(db),
-        );
-        return Some(false);
-    }
-
-    // Resolve concrete types from type argument specs
-    // Note: We use Type::resolve_spec directly because type argument specs
-    // are not processed during signature inference (they're in the body, not variable declarations),
-    // so Spec::infer() would return Type::Never.
-    let concrete_types: Vec<_> = type_args
-        .iter()
-        .map(|s| Type::resolve_spec(db, *s))
-        .collect();
-
-    // Validate and store
-    match validate_and_store_generic_substitutions(
-        db,
-        generics,
-        &concrete_types,
-        callable_scope,
-        call_site,
-        ctx,
-    ) {
-        true => None,
-        false => Some(false),
     }
 }
 
-/// Validate all constraints (type bounds + INTO), then store the substitution map.
-/// Uses the signature's pre-computed `constraint_of_generic` — a single source of truth.
-/// Returns true if all constraints passed, false if any failed.
-fn validate_and_store_generic_substitutions<'db>(
-    db: &'db dyn WorkspaceDataBase,
-    generics: &[crate::hir_def::pous::generics::GenericParam<'db>],
-    concrete_types: &[Type<'db>],
-    callable_scope: crate::hir_def::scope::ScopeId<'db>,
-    call_site: CallSite<'db>,
-    ctx: &mut BodyInferenceResult<'db>,
-) -> bool {
-    use crate::hir_ty::head::signature::{Constraint, infer_signature};
-
-    // Build the substitution map first (needed for GenericParameter constraints)
-    for (generic_param, concrete_type) in generics.iter().zip(concrete_types.iter()) {
-        ctx.generic_substitutions
-            .insert(generic_param.name(db), *concrete_type);
-    }
-
-    // Validate ALL constraints from the signature in one pass
-    let signature = infer_signature(db, callable_scope);
-    let mut ok = true;
-
-    for (generic_param, concrete_type) in generics.iter().zip(concrete_types.iter()) {
-        let param_name = generic_param.name(db);
-
-        let constraints = match signature.constraint_of_generic.get(&param_name) {
-            Some(c) => c,
-            None => continue,
-        };
-
-        for constraint in constraints {
-            match constraint {
-                Constraint::TypeBound(any) => {
-                    // Main type bound (T: ANY_INT) — E0315
-                    if !type_satisfies_any_constraint(concrete_type, *any) {
-                        ctx.errors.push(
-                            TypeError::TypeArgumentConstraintMismatch {
-                                concrete_type: *concrete_type,
-                                param_name,
-                                constraint: *any,
-                                call_site,
-                            }
-                            .to_diagnostic(db),
-                        );
-                        ok = false;
-                    }
-                }
-                Constraint::GenericParameter(other_param_name) => {
-                    // INTO<U> — cross-parameter constraint — E0316
-                    if let Some(&other_concrete) = ctx.generic_substitutions.get(other_param_name)
-                        && !type_satisfies_into_constraint(db, concrete_type, &other_concrete)
-                    {
-                        ctx.errors.push(
-                            TypeError::TypeArgumentIntoConstraintMismatch {
-                                type_arg: *concrete_type,
-                                into_target: other_concrete,
-                                param_name,
-                                call_site,
-                            }
-                            .to_diagnostic(db),
-                        );
-                        ok = false;
-                    }
-                }
-            }
-        }
-    }
-
-    ok
+/// Result of resolving a single parameter against a callable's signature.
+pub enum ParamMatch<'db> {
+    /// Positional or named param matched a variable declaration.
+    Matched(ParamAssign<'db>, VariableDecl<'db>),
+    /// Matched a variadic parameter, with the variadic position (1-indexed).
+    Variadic(ParamAssign<'db>, VariableDecl<'db>, usize),
+    /// No match - error already emitted.
+    Error,
 }
 
-/// Infer generic type arguments from function call arguments.
-/// Returns a vector of inferred types, one for each generic parameter.
-/// Returns `(inferred_types, has_never_args)`.
-/// `has_never_args` is true when at least one argument resolved to `Never`,
-/// meaning inference gaps are caused by already-reported errors and should
-/// not emit additional "missing type arguments" diagnostics.
-fn infer_generic_types_from_args<'db>(
+/// Resolve a list of parameters against a callable's signature.
+///
+/// Shared matching logic used by both function calls and {case} pragmas.
+/// Handles positional/named param resolution, variadic parameters, duplicate
+/// detection, and emits errors for unknown params.
+pub fn resolve_params<'db>(
     db: &'db dyn WorkspaceDataBase,
-    callable: &crate::hir_ty::ty::CallableType<'db>,
-    func_call: FuncCall<'db>,
-    ctx: &mut BodyInferenceResult<'db>,
-    resolver: Resolver<'db>,
-) -> (Vec<Type<'db>>, bool) {
-    let generics = callable.generics(db);
-    if generics.is_empty() {
-        return (vec![], false);
-    }
-
-    // Map from generic parameter index to inferred type
-    let mut inferred: FxHashMap<usize, Type<'db>> = FxHashMap::default();
-    let mut has_never_args = false;
-
-    let params = func_call.params(db);
-    let def_map = callable.def_map(db);
+    params: &[ParamAssign<'db>],
+    callable: CallableType<'db>,
+    errors: &mut Vec<IdeDiagnostic>,
+) -> Vec<ParamMatch<'db>> {
+    let mut results = vec![];
+    let mut seen: FxHashMap<Ident, ParamAssign<'db>> = FxHashMap::default();
     let mut formal_idx = 0;
+    let mut variadic_count = 0;
+
+    let has_variadic = callable
+        .def_map(db)
+        .local_variables
+        .values()
+        .any(|v| v.variadic(db));
 
     // Pre-collect named parameter idents so positional args skip them
     let named_params: FxHashSet<_> = params
         .iter()
         .filter_map(|p| match p.kind(db) {
             ParamAssignKind::FormalInput { param, .. } => Some(param.ident),
+            ParamAssignKind::FormalOutput { param, .. } => Some(param.ident),
             _ => None,
         })
         .collect();
@@ -601,171 +317,113 @@ fn infer_generic_types_from_args<'db>(
         match parameter.kind(db) {
             ParamAssignKind::NonFormal { value } => {
                 // Skip parameters already filled by named arguments
+                let def_map = callable.def_map(db);
                 while formal_idx < def_map.local_variables.len() {
-                    if let Some((name, _)) = def_map.local_variables.get_index(formal_idx) {
-                        if named_params.contains(name) {
+                    if let Some((name, _)) = def_map.local_variables.get_index(formal_idx)
+                        && named_params.contains(name) {
                             formal_idx += 1;
                             continue;
                         }
-                    }
                     break;
                 }
 
-                let var = def_map.local_variables.values().nth(formal_idx);
-                if let Some(var) = var {
-                    let expected_type = var.spec(db).infer(db);
-                    let actual_type = infer_expr_type_for_inference(db, resolver, value, ctx);
-                    if actual_type.is_never() {
-                        has_never_args = true;
+                let var = callable
+                    .def_map(db)
+                    .local_variables
+                    .values()
+                    .nth(formal_idx);
+
+                // If past the last param, check if a variadic param exists
+                let var = var.or_else(|| {
+                    if has_variadic {
+                        callable
+                            .def_map(db)
+                            .local_variables
+                            .values()
+                            .rev()
+                            .find(|v| v.variadic(db))
+                    } else {
+                        None
                     }
-                    unify_types(db, expected_type, actual_type, generics, &mut inferred);
-                }
-                formal_idx += 1;
-            }
-            ParamAssignKind::FormalInput { param, value } => {
-                let var = def_map.local_variables.get(&param.ident);
+                });
+
                 if let Some(var) = var {
-                    let expected_type = var.spec(db).infer(db);
-                    let actual_type = infer_expr_type_for_inference(db, resolver, value, ctx);
-                    if actual_type.is_never() {
-                        has_never_args = true;
-                    }
-                    unify_types(db, expected_type, actual_type, generics, &mut inferred);
-                }
-            }
-            ParamAssignKind::FormalOutput { .. } => continue,
-        }
-    }
-
-    // Convert the map to a vector, in the order of generic parameters
-    let mut result = Vec::with_capacity(generics.len());
-    for (idx, _) in generics.iter().enumerate() {
-        match inferred.get(&idx) {
-            Some(&typ) => result.push(typ),
-            None => return (vec![], has_never_args), // Could not infer this parameter
-        }
-    }
-    (result, has_never_args)
-}
-
-/// Helper function to infer the type of an expression for type inference
-/// This is a lightweight version that doesn't do full type checking
-fn infer_expr_type_for_inference<'db>(
-    db: &'db dyn WorkspaceDataBase,
-    resolver: Resolver<'db>,
-    expr: Expr<'db>,
-    ctx: &mut BodyInferenceResult<'db>,
-) -> Type<'db> {
-    // Resolve the expression if not already done
-    if !ctx.type_of_expr.contains_key(&expr) {
-        let mut infer_ctx = InferExprCtx::new(resolver);
-        infer_ctx.resolve_expr(db, expr, ctx);
-    }
-
-    // Use type_of_expr_with_adjustments to account for array indexing,
-    // deref, etc. — e.g. CONSTANTS_SETUP.DECADES[0] should yield REAL,
-    // not ARRAY OF REAL.
-    let typ = ctx.type_of_expr_with_adjustments(db, expr);
-    normalize_for_inference(db, typ)
-}
-
-/// Normalize types to their concrete elementary types for inference
-fn normalize_for_inference<'db>(db: &'db dyn WorkspaceDataBase, typ: Type<'db>) -> Type<'db> {
-    match typ {
-        Type::Infer(infer) => infer.to_ty(db),
-        Type::Variable((var, _)) => var.spec(db).infer(db).normalize(db),
-        // Function/Method names used as values represent the return value.
-        Type::Function(_) | Type::MethodDecl(_) => match typ.with_return_type(db) {
-            Some(ret) => ret.normalize(db),
-            None => Type::Void,
-        },
-        _ => typ.normalize(db),
-    }
-}
-
-/// Unify expected and actual types to infer generic parameter types
-fn unify_types<'db>(
-    db: &'db dyn WorkspaceDataBase,
-    expected: Type<'db>,
-    actual: Type<'db>,
-    generics: &[crate::hir_def::pous::generics::GenericParam<'db>],
-    inferred: &mut FxHashMap<usize, Type<'db>>,
-) {
-    // Never types already have their own diagnostic — skip them to avoid
-    // cascading "does not satisfy constraint" errors.
-    if actual.is_never() {
-        return;
-    }
-
-    match expected {
-        Type::Generic(param) => {
-            // Find the index of this generic parameter
-            let param_name = param.name(db);
-            if let Some(idx) = generics.iter().position(|p| p.name(db) == param_name) {
-                // Check if we already inferred a type for this parameter
-                if let Some(&existing) = inferred.get(&idx) {
-                    // Type must match - if it doesn't, inference fails
-                    // We'll let the caller handle this by checking if all params were inferred
-                    if existing != actual {
-                        // Conflicting inference - leave it to fail later
+                    if var.variadic(db) {
+                        variadic_count += 1;
+                        results.push(ParamMatch::Variadic(*parameter, *var, variadic_count));
+                    } else {
+                        results.push(ParamMatch::Matched(*parameter, *var));
+                        formal_idx += 1;
                     }
                 } else {
-                    // Record the inferred type
-                    inferred.insert(idx, actual);
+                    errors.push(
+                        ResolveError::UnknownNonFormalParameter {
+                            func: callable,
+                            expr: value,
+                            param: formal_idx,
+                        }
+                        .to_diagnostic(db),
+                    );
+                    results.push(ParamMatch::Error);
+                    formal_idx += 1;
+                }
+            }
+            ParamAssignKind::FormalInput { param, .. } => {
+                if let Some(prev) = seen.insert(param.ident, *parameter) {
+                    errors.push(
+                        DuplicateError::Parameter {
+                            param_1: prev,
+                            param_2: *parameter,
+                            name: param.ident,
+                        }
+                        .to_diagnostic(db),
+                    );
+                    results.push(ParamMatch::Error);
+                    continue;
+                }
+
+                if let Some(var) = callable.def_map(db).local_variables.get(&param.ident) {
+                    results.push(ParamMatch::Matched(*parameter, *var));
+                } else {
+                    errors.push(
+                        ResolveError::UnknownInputParameter {
+                            func: callable,
+                            param,
+                        }
+                        .to_diagnostic(db),
+                    );
+                    results.push(ParamMatch::Error);
+                }
+            }
+            ParamAssignKind::FormalOutput { param, .. } => {
+                if let Some(prev) = seen.insert(param.ident, *parameter) {
+                    errors.push(
+                        DuplicateError::Parameter {
+                            param_1: prev,
+                            param_2: *parameter,
+                            name: param.ident,
+                        }
+                        .to_diagnostic(db),
+                    );
+                    results.push(ParamMatch::Error);
+                    continue;
+                }
+
+                if let Some(var) = callable.def_map(db).local_variables.get(&param.ident) {
+                    results.push(ParamMatch::Matched(*parameter, *var));
+                } else {
+                    errors.push(
+                        ResolveError::UnknownOutputParameter {
+                            func: callable,
+                            param,
+                        }
+                        .to_diagnostic(db),
+                    );
+                    results.push(ParamMatch::Error);
                 }
             }
         }
-        Type::Array(arr) => {
-            // If the expected type is an array of generic element, unify recursively
-            if let Type::Array(actual_arr) = actual {
-                let expected_elem = arr.of_type(db).infer(db);
-                let actual_elem = actual_arr.of_type(db).infer(db);
-                unify_types(db, expected_elem, actual_elem, generics, inferred);
-            }
-        }
-        _ => {
-            // Other types don't help with inference
-        }
-    }
-}
-
-/// Check if a concrete type satisfies an INTO<target> constraint.
-/// The concrete type must either be the same as the target, or implicitly castable to it.
-fn type_satisfies_into_constraint<'db>(
-    db: &'db dyn WorkspaceDataBase,
-    concrete: &Type<'db>,
-    into_target: &Type<'db>,
-) -> bool {
-    // Same type always satisfies
-    if concrete == into_target {
-        return true;
     }
 
-    // Both must be elementary types for implicit cast checking
-    let concrete_elem = match concrete {
-        Type::Elementary(e) => e,
-        _ => return false,
-    };
-
-    let target_elem = match into_target {
-        Type::Elementary(e) => e,
-        _ => return false,
-    };
-
-    // Check if concrete can be implicitly cast to target
-    // target.implicit_cast(source) returns Some if source can be implicitly cast to target
-    target_elem.implicit_cast(*concrete_elem).is_some()
-}
-
-fn type_satisfies_any_constraint(
-    typ: &Type,
-    constraint: crate::hir_def::pous::generics::AnyGeneric,
-) -> bool {
-    use crate::hir_def::pous::generics::AnyGeneric;
-    match typ {
-        Type::Elementary(elem) => constraint.contains(*elem),
-        // ANY matches all types (elementary + derived)
-        _ if matches!(constraint, AnyGeneric::ANY) => true,
-        _ => false,
-    }
+    results
 }
