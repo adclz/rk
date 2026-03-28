@@ -164,15 +164,8 @@ static NEW_LINES: &str = r#"
     (struct_elem_decl)
 ] @prepend_hardline
 
- [
-    "END_NAMESPACE"
-    "END_FUNCTION"
-    "END_CLASS"
-    "END_FUNCTION_BLOCK"
-    "END_TYPE"
-    "END_INTERFACE"
-    "END_METHOD"
-] @append_hardline
+; Blank line after closing keywords is handled by @allow_blank_line_before
+; on the next declaration — no @append_hardline needed here.
 ("USING" (_) ";"? @append_hardline)
 
 (func_decl variables: (_) . body: (func_body) @prepend_hardline)

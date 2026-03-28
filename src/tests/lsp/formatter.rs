@@ -1513,3 +1513,38 @@ END_PROGRAM
     END_PROGRAM
     ");
 }
+
+#[rstest]
+pub fn no_double_blank_line_before_end_namespace(mut with_db: RootDatabase) {
+    let source = r#"
+NAMESPACE Foo
+
+    FUNCTION_BLOCK Bar
+    VAR
+        x: INT;
+    END_VAR
+    END_FUNCTION_BLOCK
+
+END_NAMESPACE
+"#;
+
+    add_sources(&mut with_db, &[source]);
+    let document = with_db
+        .get_files()
+        .iter()
+        .last()
+        .unwrap()
+        .document(&with_db);
+
+    assert_snapshot!(fmt(document), @r"
+    NAMESPACE Foo
+
+    	FUNCTION_BLOCK Bar
+    		VAR
+    			x: INT;
+    		END_VAR
+    	END_FUNCTION_BLOCK
+
+    END_NAMESPACE
+    ");
+}
