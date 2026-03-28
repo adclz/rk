@@ -243,9 +243,9 @@ fn lower_module_from_pous<'db>(
                     matches!(ty, hir::hir_ty::ty::Type::Elementary(e) if e.is_any())
                 });
 
-                // For FBs with ANY_* vars, collect resolutions from all function bodies
+                // For FBs with ANY_* vars, use pre-computed resolutions
                 let any_subs = if has_any {
-                    collect_fb_any_subs(db, all_pous, *fb)
+                    all_fb_subs.get(&fb.name(db)).cloned().unwrap_or_default()
                 } else {
                     FxHashMap::default()
                 };
