@@ -7,7 +7,7 @@ Both blocks latch the previous `CLK` value to detect transitions.
 */
 NAMESPACE Std.Edge
 
-    /*
+	/*
     ## R_TRIG - Rising Edge Detector
 
     Output `Q` is **TRUE** for one cycle when `CLK` transitions from FALSE to TRUE.
@@ -23,21 +23,21 @@ NAMESPACE Std.Edge
     END_IF;
     ```
     */
-    FUNCTION_BLOCK R_TRIG
-        VAR_INPUT
-            CLK: BOOL;
-        END_VAR
-        VAR_OUTPUT
-            Q: BOOL;
-        END_VAR
-        VAR
-            M: BOOL;
-        END_VAR
-        Q := CLK AND NOT M;
-        M := CLK;
-    END_FUNCTION_BLOCK
+	FUNCTION_BLOCK R_TRIG
+		VAR_INPUT
+			CLK: BOOL;
+		END_VAR
+		VAR_OUTPUT
+			Q: BOOL;
+		END_VAR
+		VAR
+			M: BOOL;
+		END_VAR
+		Q := CLK AND NOT M;
+		M := CLK;
+	END_FUNCTION_BLOCK
 
-    /*
+	/*
     ## F_TRIG - Falling Edge Detector
 
     Output `Q` is **TRUE** for one cycle when `CLK` transitions from TRUE to FALSE.
@@ -53,59 +53,65 @@ NAMESPACE Std.Edge
     END_IF;
     ```
     */
-    FUNCTION_BLOCK F_TRIG
-        VAR_INPUT
-            CLK: BOOL;
-        END_VAR
-        VAR_OUTPUT
-            Q: BOOL;
-        END_VAR
-        VAR
-            M: BOOL;
-        END_VAR
-        Q := NOT CLK AND NOT M;
-        M := NOT CLK;
-    END_FUNCTION_BLOCK
+	FUNCTION_BLOCK F_TRIG
+		VAR_INPUT
+			CLK: BOOL;
+		END_VAR
+		VAR_OUTPUT
+			Q: BOOL;
+		END_VAR
+		VAR
+			M: BOOL;
+		END_VAR
+		Q := NOT CLK AND NOT M;
+		M := NOT CLK;
+	END_FUNCTION_BLOCK
 
-    NAMESPACE Test
-        USING Std.Unit
-        USING Std.Edge
+	NAMESPACE Test
+		USING Std.Unit
+		USING Std.Edge
 
-        {test}
-        FUNCTION test_r_trig_rising_edge
-        VAR trig : R_TRIG; END_VAR
-            trig(CLK := FALSE);
-            ASSERT(NOT trig.Q);
-            trig(CLK := TRUE);
-            ASSERT(trig.Q);
-        END_FUNCTION
+		{test}
+		FUNCTION test_r_trig_rising_edge
+			VAR
+				trig: R_TRIG;
+			END_VAR
+			trig(CLK := FALSE);
+			ASSERT(NOT trig.Q);
+			trig(CLK := TRUE);
+			ASSERT(trig.Q);
+		END_FUNCTION
 
-        {test}
-        FUNCTION test_r_trig_stays_false_on_high
-        VAR trig : R_TRIG; END_VAR
-            trig(CLK := TRUE);
-            trig(CLK := TRUE);
-            ASSERT(NOT trig.Q);
-        END_FUNCTION
+		{test}
+		FUNCTION test_r_trig_stays_false_on_high
+			VAR
+				trig: R_TRIG;
+			END_VAR
+			trig(CLK := TRUE);
+			trig(CLK := TRUE);
+			ASSERT(NOT trig.Q);
+		END_FUNCTION
 
-        {test}
-        FUNCTION test_f_trig_falling_edge
-        VAR trig : F_TRIG; END_VAR
-            trig(CLK := TRUE);
-            ASSERT(NOT trig.Q);
-            trig(CLK := FALSE);
-            ASSERT(trig.Q);
-        END_FUNCTION
+		{test}
+		FUNCTION test_f_trig_falling_edge
+			VAR
+				trig: F_TRIG;
+			END_VAR
+			trig(CLK := TRUE);
+			ASSERT(NOT trig.Q);
+			trig(CLK := FALSE);
+			ASSERT(trig.Q);
+		END_FUNCTION
 
-        {test}
-        FUNCTION test_f_trig_stays_false_on_low
-        VAR trig : F_TRIG; END_VAR
-            trig(CLK := FALSE);
-            ASSERT(trig.Q, 'first call: Q should be TRUE (initial falling edge)');
-            trig(CLK := FALSE);
-            ASSERT(NOT trig.Q, 'second call: Q should be FALSE (no transition)');
-        END_FUNCTION
-
-    END_NAMESPACE
-
+		{test}
+		FUNCTION test_f_trig_stays_false_on_low
+			VAR
+				trig: F_TRIG;
+			END_VAR
+			trig(CLK := FALSE);
+			ASSERT(trig.Q, 'first call: Q should be TRUE (initial falling edge)');
+			trig(CLK := FALSE);
+			ASSERT(NOT trig.Q, 'second call: Q should be FALSE (no transition)');
+		END_FUNCTION
+	END_NAMESPACE
 END_NAMESPACE

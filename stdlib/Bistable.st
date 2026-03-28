@@ -33,7 +33,6 @@ NAMESPACE Std.Bistable
 		END_VAR Q1 := S1 OR ((NOT R) AND Q1);
 	END_FUNCTION_BLOCK
 
-	
 	/*
     ## RS - Reset-Dominant Bistable
 
@@ -112,9 +111,5 @@ NAMESPACE Std.Bistable
 			latch(TRUE, TRUE);
 			ASSERT(NOT latch.Q1);
 		END_FUNCTION
-
-	
 	END_NAMESPACE
-
-
 END_NAMESPACE

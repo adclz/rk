@@ -34,7 +34,6 @@ NAMESPACE Std.Selection
 		END_IF;
 	END_FUNCTION
 
-	
 	/*
     ## MAX - Maximum
 
@@ -53,7 +52,6 @@ NAMESPACE Std.Selection
 		END_VAR
 	END_FUNCTION
 
-	
 	/*
     ## MIN - Minimum
 
@@ -72,7 +70,6 @@ NAMESPACE Std.Selection
 		END_VAR
 	END_FUNCTION
 
-	
 	/*
     ## LIMIT - Bounding
 
@@ -126,7 +123,6 @@ NAMESPACE Std.Selection
 		FUNCTION test_sel_real_false ASSERT_EQ(SEL(FALSE, 1.0, 3.14), 1.0);
 		END_FUNCTION
 
-		
 		// LIMIT tests
 
 		{test}
@@ -160,9 +156,5 @@ NAMESPACE Std.Selection
 		{test}
 		FUNCTION test_limit_real_in_range ASSERT_EQ(LIMIT(0.0, 5.5, 10.0), 5.5);
 		END_FUNCTION
-
-	
 	END_NAMESPACE
-
-
 END_NAMESPACE

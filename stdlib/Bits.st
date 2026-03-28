@@ -29,7 +29,6 @@ NAMESPACE Std.Bits
 		{wasm IN 'shl' (params IN N) (result SHL)}
 	END_FUNCTION
 
-	
 	/*
     ## SHR - Shift Right
 
@@ -50,7 +49,6 @@ NAMESPACE Std.Bits
 		{wasm IN 'shr_u' (params IN N) (result SHR)}
 	END_FUNCTION
 
-	
 	/*
     ## ROL - Rotate Left
 
@@ -72,7 +70,6 @@ NAMESPACE Std.Bits
 		{wasm IN 'rotl' (params IN N) (result ROL)}
 	END_FUNCTION
 
-	
 	/*
     ## ROR - Rotate Right
 
@@ -122,9 +119,5 @@ NAMESPACE Std.Bits
 			// ROR(16, 4) = 1
 			ASSERT_EQ(ROR(DWORD#16, 4), DWORD#1);
 		END_FUNCTION
-
-	
 	END_NAMESPACE
-
-
 END_NAMESPACE

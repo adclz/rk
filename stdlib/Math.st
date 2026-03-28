@@ -28,7 +28,6 @@ NAMESPACE Std.Math
 		ADD := ... args+
 	END_FUNCTION
 
-	
 	/*
     ## MUL - Multiplication
 
@@ -48,7 +47,6 @@ NAMESPACE Std.Math
 		MUL := ... args*
 	END_FUNCTION
 
-	
 	/*
     ## SUB - Subtraction
 
@@ -68,7 +66,6 @@ NAMESPACE Std.Math
 		SUB := ... args-
 	END_FUNCTION
 
-	
 	/*
     ## DIV - Division
 
@@ -90,7 +87,6 @@ NAMESPACE Std.Math
 		DIV := ... args/
 	END_FUNCTION
 
-	
 	/*
     ## MOD - Modulo
 
@@ -110,7 +106,6 @@ NAMESPACE Std.Math
 		MOD := ... args%
 	END_FUNCTION
 
-	
 	/*
     ## ABS - Absolute Value
 
@@ -130,7 +125,6 @@ NAMESPACE Std.Math
 		{extern 'math' 'abs' (params IN) (result ABS)}
 	END_FUNCTION
 
-	
 	/*
     ## SQRT - Square Root
 
@@ -150,7 +144,6 @@ NAMESPACE Std.Math
 		{extern 'math' 'sqrt' (params IN) (result SQRT)}
 	END_FUNCTION
 
-	
 	/*
     ## LN - Natural Logarithm
 
@@ -170,7 +163,6 @@ NAMESPACE Std.Math
 		{extern 'math' 'ln' (params IN) (result LN)}
 	END_FUNCTION
 
-	
 	/*
     ## LOG - Common Logarithm
 
@@ -190,7 +182,6 @@ NAMESPACE Std.Math
 		{extern 'math' 'log' (params IN) (result LOG)}
 	END_FUNCTION
 
-	
 	/*
     ## EXP - Natural Exponential
 
@@ -210,7 +201,6 @@ NAMESPACE Std.Math
 		{extern 'math' 'exp' (params IN) (result EXP)}
 	END_FUNCTION
 
-	
 	/*
     ## SIN - Sine
 
@@ -230,7 +220,6 @@ NAMESPACE Std.Math
 		{extern 'math' 'sin' (params IN) (result SIN)}
 	END_FUNCTION
 
-	
 	/*
     ## COS - Cosine
 
@@ -250,7 +239,6 @@ NAMESPACE Std.Math
 		{extern 'math' 'cos' (params IN) (result COS)}
 	END_FUNCTION
 
-	
 	/*
     ## TAN - Tangent
 
@@ -270,7 +258,6 @@ NAMESPACE Std.Math
 		{extern 'math' 'tan' (params IN) (result TAN)}
 	END_FUNCTION
 
-	
 	/*
     ## ASIN - Arc Sine
 
@@ -290,7 +277,6 @@ NAMESPACE Std.Math
 		{extern 'math' 'asin' (params IN) (result ASIN)}
 	END_FUNCTION
 
-	
 	/*
     ## ACOS - Arc Cosine
 
@@ -310,7 +296,6 @@ NAMESPACE Std.Math
 		{extern 'math' 'acos' (params IN) (result ACOS)}
 	END_FUNCTION
 
-	
 	/*
     ## ATAN - Arc Tangent
 
@@ -330,7 +315,6 @@ NAMESPACE Std.Math
 		{extern 'math' 'atan' (params IN) (result ATAN)}
 	END_FUNCTION
 
-	
 	/*
     ## ATAN2 - Two-Argument Arc Tangent
 
@@ -352,7 +336,6 @@ NAMESPACE Std.Math
 		{extern 'math' 'atan2' (params IN IN2) (result ATAN2)}
 	END_FUNCTION
 
-	
 	/*
     ## EXPT - Exponentiation
 
@@ -378,7 +361,7 @@ NAMESPACE Std.Math
 		// ----- ABS (extern, ANY_NUM) ──────────────────────────────────
 		{test}
 		FUNCTION test_abs_positive ASSERT(ABS(5) = 5);
-		END_FUNCTION	
+		END_FUNCTION
 
 		{test}
 		FUNCTION test_abs_negative ASSERT(ABS(-42) = 42);
@@ -387,7 +370,6 @@ NAMESPACE Std.Math
 		{test}
 		FUNCTION test_abs_zero ASSERT(ABS(0) = 0);
 		END_FUNCTION
-		
 
 		{test}
 		FUNCTION test_abs_real ASSERT(ABS(-2.5) = 2.5);
@@ -398,10 +380,8 @@ NAMESPACE Std.Math
 		END_FUNCTION
 
 		{test}
-		FUNCTION test_abs_with_message
-			ASSERT(ABS(-7) = 7, 'ABS should return the positive value');
+		FUNCTION test_abs_with_message ASSERT(ABS(-7) = 7, 'ABS should return the positive value');
 		END_FUNCTION
-
 
 		// ----- SQRT (extern, ANY_REAL) ────────────────────────────────
 		{test}
@@ -416,7 +396,6 @@ NAMESPACE Std.Math
 		FUNCTION test_sqrt_1 ASSERT(SQRT(1.0) = 1.0);
 		END_FUNCTION
 
-		
 		// ----- Trigonometric (extern, ANY_REAL) ───────────────────────
 		{test}
 		FUNCTION test_sin_zero ASSERT(SIN(0.0) = 0.0);
@@ -442,7 +421,6 @@ NAMESPACE Std.Math
 		FUNCTION test_atan_zero ASSERT(ATAN(0.0) = 0.0);
 		END_FUNCTION
 
-		
 		// ----- Logarithmic / Exponential (extern, ANY_REAL) ──────────
 		{test}
 		FUNCTION test_ln_1 ASSERT(LN(1.0) = 0.0);
@@ -456,7 +434,6 @@ NAMESPACE Std.Math
 		FUNCTION test_exp_0 ASSERT(EXP(0.0) = 1.0);
 		END_FUNCTION
 
-		
 		// ----- Arithmetic operators --------------------------------------------------------------------------------
 		{test}
 		FUNCTION test_add_int
@@ -534,7 +511,6 @@ NAMESPACE Std.Math
 			ASSERT(c = 26);
 		END_FUNCTION
 
-		
 		// ----- Variable assignment --------------------------------------------------------------------------------─
 		{test}
 		FUNCTION test_var_assignment
@@ -578,7 +554,6 @@ NAMESPACE Std.Math
 			ASSERT(r = 3.14);
 		END_FUNCTION
 
-		
 		// ----- Boolean logic --------------------------------------------------------------------------------───────
 		{test}
 		FUNCTION test_bool_and_tt
@@ -642,7 +617,6 @@ NAMESPACE Std.Math
 			ASSERT(NOT (a XOR b));
 		END_FUNCTION
 
-		
 		// ----- Comparison operators --------------------------------------------------------------------------------
 		{test}
 		FUNCTION test_cmp_eq
@@ -695,7 +669,6 @@ NAMESPACE Std.Math
 			ASSERT(a >= 5);
 		END_FUNCTION
 
-		
 		// ----- Control flow: IF --------------------------------------------------------------------------------────
 		{test}
 		FUNCTION test_if_true
@@ -748,7 +721,6 @@ NAMESPACE Std.Math
 			ASSERT(r = 20);
 		END_FUNCTION
 
-		
 		// ----- Control flow: FOR --------------------------------------------------------------------------------───
 		{test}
 		FUNCTION test_for_sum
@@ -786,7 +758,6 @@ NAMESPACE Std.Math
 			ASSERT(r = 1);
 		END_FUNCTION
 
-		
 		// ----- Control flow: WHILE --------------------------------------------------------------------------------─
 		{test}
 		FUNCTION test_while_count
@@ -810,7 +781,6 @@ NAMESPACE Std.Math
 			ASSERT(count = 0);
 		END_FUNCTION
 
-		
 		// ----- Control flow: REPEAT --------------------------------------------------------------------------------
 		{test}
 		FUNCTION test_repeat_until
@@ -823,7 +793,6 @@ NAMESPACE Std.Math
 			ASSERT(count = 5);
 		END_FUNCTION
 
-		
 		// ----- Function calls with return values ──────────────────────
 		{test}
 		FUNCTION test_func_return
@@ -834,7 +803,6 @@ NAMESPACE Std.Math
 			ASSERT(r = 99);
 		END_FUNCTION
 
-		
 		// Chained ANY_* calls via intermediate variable
 		{test}
 		FUNCTION test_chained_abs
@@ -847,7 +815,6 @@ NAMESPACE Std.Math
 			ASSERT(r = 5);
 		END_FUNCTION
 
-		
 		// ----- Type widths --------------------------------------------------------------------------------─────────
 		{test}
 		FUNCTION test_lint_arithmetic
@@ -871,9 +838,5 @@ NAMESPACE Std.Math
 			// Can't compare exactly, but c * 3.0 should be 1.0
 			ASSERT(c * b = a);
 		END_FUNCTION
-
-	
 	END_NAMESPACE
-
-
 END_NAMESPACE
