@@ -245,31 +245,37 @@ pub(crate) fn semantic_tokens_for_type<'db>(
     builder: &mut SemanticTokensBuilder,
     span: Span,
 ) {
+    let range = span.lsp();
+    // Semantic tokens cannot span multiple lines; skip if the span is multi-line
+    // to avoid subtract-with-overflow in the builder.
+    if range.start.line != range.end.line {
+        return;
+    }
     match typ.normalize(db) {
         Type::Class(_) => {
             builder.push(
-                span.lsp(),
+                range,
                 SUPPORTED_TYPES.iter().position(|x| *x == CLASS).unwrap() as u32,
                 0,
             );
         }
         Type::FunctionBlock(_) | Type::Function(_) | Type::Program(_) => {
             builder.push(
-                span.lsp(),
+                range,
                 SUPPORTED_TYPES.iter().position(|x| *x == FUNCTION).unwrap() as u32,
                 0,
             );
         }
         Type::MethodDecl(_) => {
             builder.push(
-                span.lsp(),
+                range,
                 SUPPORTED_TYPES.iter().position(|x| *x == METHOD).unwrap() as u32,
                 0,
             );
         }
         Type::Interface(_) => {
             builder.push(
-                span.lsp(),
+                range,
                 SUPPORTED_TYPES
                     .iter()
                     .position(|x| *x == INTERFACE)
@@ -279,21 +285,21 @@ pub(crate) fn semantic_tokens_for_type<'db>(
         }
         Type::Struct(_) => {
             builder.push(
-                span.lsp(),
+                range,
                 SUPPORTED_TYPES.iter().position(|x| *x == STRUCT).unwrap() as u32,
                 0,
             );
         }
         Type::Enum(_) => {
             builder.push(
-                span.lsp(),
+                range,
                 SUPPORTED_TYPES.iter().position(|x| *x == ENUM).unwrap() as u32,
                 0,
             );
         }
         Type::EnumVariant(_) => {
             builder.push(
-                span.lsp(),
+                range,
                 SUPPORTED_TYPES
                     .iter()
                     .position(|x| *x == ENUM_MEMBER)
