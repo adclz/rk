@@ -1942,7 +1942,6 @@
   {
     "type": "c_style_comment",
     "named": true,
-    "extra": true,
     "fields": {},
     "children": {
       "multiple": false,
@@ -5014,7 +5013,6 @@
   {
     "type": "pascal_style_comment",
     "named": true,
-    "extra": true,
     "fields": {},
     "children": {
       "multiple": false,
@@ -5083,7 +5081,6 @@
   {
     "type": "pragma",
     "named": true,
-    "extra": true,
     "fields": {}
   },
   {

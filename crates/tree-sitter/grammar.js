@@ -231,6 +231,7 @@ module.exports = grammar({
     [$.variable, $.func_call],
     [$.func_call, $._stmt],
     [$.case_selection],
+    [$.case_body],
   ],
 
   word: ($) => $.identifier,
@@ -1956,9 +1957,10 @@ module.exports = grammar({
       seq(
         field("case_of", $.case_list),
         ":",
-        field("case_do", optional($.stmt_list)),
-        optional(";"),
+        field("case_do", optional(alias($.case_body, $.stmt_list))),
       ),
+
+    case_body: ($) => repeat1(seq($._stmt, optional(";"))),
 
     //Case_List : Case_List_Elem ( ',' Case_List_Elem )*;
     case_list: ($) => commaSep1($.case_list_elem),
