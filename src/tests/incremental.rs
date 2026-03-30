@@ -159,6 +159,8 @@ fn body_edit_only_reruns_semantic_index_for_changed_file(
         WillDiscardStaleOutput { execute_key: semantic_index(Id(1)), output_key: Expr(Id(2003)) }
         WillDiscardStaleOutput { execute_key: semantic_index(Id(1)), output_key: Stmt(Id(2802)) }
         WillExecute { database_key: Integer::as_i16_(Id(2402)) }
+        WillExecute { database_key: diagnostics_for_file(Id(0)) }
+        WillExecute { database_key: diagnostics_for_file(Id(1)) }
         WillExecute { database_key: file_global_pous(Id(1)) }
         WillExecute { database_key: get_ast(Id(1)) }
         WillExecute { database_key: get_scope(Id(404)) }
@@ -266,6 +268,8 @@ fn body_edit_does_not_reinfer_signature_of_other_file(
         WillDiscardStaleOutput { execute_key: semantic_index(Id(1)), output_key: Expr(Id(2003)) }
         WillDiscardStaleOutput { execute_key: semantic_index(Id(1)), output_key: Stmt(Id(2802)) }
         WillExecute { database_key: Integer::as_i16_(Id(2402)) }
+        WillExecute { database_key: diagnostics_for_file(Id(0)) }
+        WillExecute { database_key: diagnostics_for_file(Id(1)) }
         WillExecute { database_key: file_global_pous(Id(1)) }
         WillExecute { database_key: get_ast(Id(1)) }
         WillExecute { database_key: get_scope(Id(404)) }
@@ -408,6 +412,8 @@ fn editing_unrelated_pou_does_not_invalidate_cross_file_dependent(
         WillDiscardStaleOutput { execute_key: semantic_index(Id(0)), output_key: Expr(Id(2005)) }
         WillDiscardStaleOutput { execute_key: semantic_index(Id(0)), output_key: Stmt(Id(2801)) }
         WillExecute { database_key: Integer::as_i16_(Id(2401)) }
+        WillExecute { database_key: diagnostics_for_file(Id(0)) }
+        WillExecute { database_key: diagnostics_for_file(Id(1)) }
         WillExecute { database_key: file_global_pous(Id(0)) }
         WillExecute { database_key: get_ast(Id(0)) }
         WillExecute { database_key: get_scope(Id(401)) }
@@ -525,6 +531,8 @@ fn dependency_body_edit_does_not_reinfer_dependent(
         WillDiscardStaleOutput { execute_key: semantic_index(Id(0)), output_key: Expr(Id(2002)) }
         WillDiscardStaleOutput { execute_key: semantic_index(Id(0)), output_key: Stmt(Id(2800)) }
         WillExecute { database_key: Integer::as_i16_(Id(2401)) }
+        WillExecute { database_key: diagnostics_for_file(Id(0)) }
+        WillExecute { database_key: diagnostics_for_file(Id(1)) }
         WillExecute { database_key: file_global_pous(Id(0)) }
         WillExecute { database_key: get_ast(Id(0)) }
         WillExecute { database_key: get_scope(Id(401)) }
@@ -655,6 +663,8 @@ fn signature_change_does_reinfer_dependent_body(
         WillExecute { database_key: Ident::as_f32_(Id(805)) }
         WillExecute { database_key: PathExpr < 'db >::flatten_(Id(1400g1)) }
         WillExecute { database_key: PathExpr < 'db >::flatten_(Id(1401g1)) }
+        WillExecute { database_key: diagnostics_for_file(Id(0)) }
+        WillExecute { database_key: diagnostics_for_file(Id(1)) }
         WillExecute { database_key: file_global_pous(Id(0)) }
         WillExecute { database_key: get_ast(Id(0)) }
         WillExecute { database_key: get_scope(Id(401)) }
