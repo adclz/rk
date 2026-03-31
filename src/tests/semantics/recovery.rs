@@ -422,3 +422,43 @@ END_FUNCTION_BLOCK
     ----'
     ");
 }
+
+#[rstest]
+fn suggest_this_variable_in_method(mut with_db: RootDatabase) {
+    let source = r#"
+FUNCTION_BLOCK Motor
+    VAR
+        speed: INT;
+        running: BOOL;
+    END_VAR
+
+    METHOD start
+        speed := 100;
+        running := TRUE;
+    END_METHOD
+END_FUNCTION_BLOCK
+"#;
+
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r#"
+    [E0204] Error: no item found in scope
+       ,-[ file:///test0.st:9:9 ]
+       |
+     9 |         speed := 100;
+       |         ^^|^^
+       |           `---- no item "speed" found in scope
+       |
+       | Note: an item available via THIS:
+       |       - THIS.speed
+    ---'
+    [E0204] Error: no item found in scope
+        ,-[ file:///test0.st:10:9 ]
+        |
+     10 |         running := TRUE;
+        |         ^^^|^^^
+        |            `----- no item "running" found in scope
+        |
+        | Note: an item available via THIS:
+        |       - THIS.running
+    ----'
+    "#);
+}

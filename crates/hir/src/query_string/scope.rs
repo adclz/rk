@@ -10,7 +10,7 @@ use crate::{
         namespace::NamespaceDecl,
         pous::{pou::Pou, variable::VariableDecl},
         scope::{ScopeId, ScopeKind},
-        semantic_index::semantic_index,
+        semantic_index::{get_scope, semantic_index},
     },
     hir_ty::index_graphs::namespace_index,
     query_string::{
@@ -118,6 +118,30 @@ impl<'db, F: Fn(&Pou<'db>, &'db dyn WorkspaceDataBase) -> bool> SymbolSearch<'db
             FxHashSet::default()
         };
 
+        // Phase 1b: If inside a METHOD, also collect variables from the parent FB/class
+        // as ThisVariable - these are accessible via THIS.variable
+        if self.include_variables {
+            if let Some(scope) = self.scope {
+                let scope_data = get_scope(db, scope);
+                if matches!(scope_data.kind, ScopeKind::MethodDecl(_)) {
+                    if let Some(parent_id) = scope_data.parent {
+                        if let Some(parent_vars) = parent_id.variables(db) {
+                            for var in parent_vars {
+                                let name = var.name(db).text(db);
+                                if query.mode.check(&query.query, query.case_sensitive, &name)
+                                    && !scope_variables.contains(name.as_str())
+                                {
+                                    search_result
+                                        .symbols
+                                        .push(SearchSymbol::ThisVariable(*var));
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
         // Phase 2: Search for POUs and/or namespaces in file+stdlib indexes
         if self.include_pous || self.include_namespaces {
             let local = self.scope.map(|s| discover_in_scope(db, s));
@@ -143,6 +167,8 @@ impl<'db, F: Fn(&Pou<'db>, &'db dyn WorkspaceDataBase) -> bool> SymbolSearch<'db
 #[derive(Clone)]
 pub enum SearchSymbol<'db> {
     Variable(VariableDecl<'db>),
+    /// A variable accessible via THIS in a method's parent FB/class scope.
+    ThisVariable(VariableDecl<'db>),
     LocalPou(Pou<'db>),
     ImportedPou(NamespacePath, Pou<'db>),
     Namespace(NamespaceDecl<'db>),
@@ -159,6 +185,14 @@ impl<'db> SearchResult<'db> {
     pub fn variables(&self) -> impl Iterator<Item = &VariableDecl<'db>> {
         self.symbols.iter().filter_map(|s| match s {
             SearchSymbol::Variable(v) => Some(v),
+            _ => None,
+        })
+    }
+
+    /// Get all variables accessible via THIS (parent FB/class scope)
+    pub fn this_variables(&self) -> impl Iterator<Item = &VariableDecl<'db>> {
+        self.symbols.iter().filter_map(|s| match s {
+            SearchSymbol::ThisVariable(v) => Some(v),
             _ => None,
         })
     }

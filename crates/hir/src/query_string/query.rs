@@ -66,10 +66,10 @@ impl SearchMode {
 
 #[derive(Debug, Clone)]
 pub struct Query {
-    query: String,
+    pub(crate) query: String,
     lowercased: String,
-    mode: SearchMode,
-    case_sensitive: bool,
+    pub(crate) mode: SearchMode,
+    pub(crate) case_sensitive: bool,
 }
 
 impl Query {

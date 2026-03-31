@@ -890,6 +890,29 @@ fn list_candidates<'db>(
         suggest_similar_note(&owner, "item", diag, var_names.iter().map(|n| n.as_str()));
     }
 
+    // Suggest THIS.variable for variables in the parent FB/class scope (method context only)
+    let this_names: Vec<_> = results
+        .this_variables()
+        .map(|v| v.name(db).text(db).to_string())
+        .collect();
+    if !this_names.is_empty() {
+        let count = this_names.len().min(5);
+        let mut note = format!(
+            "{} available via THIS:\n",
+            if count > 1 { "items" } else { "an item" }
+        );
+        for (i, name) in this_names.iter().take(count).enumerate() {
+            if i > 0 {
+                note.push('\n');
+            }
+            note.push_str(&format!("- THIS.{}", name));
+        }
+        if this_names.len() > 5 {
+            note.push_str("\n  ...");
+        }
+        diag.with_note(note);
+    }
+
     // Suggest local POUs with similar names
     let local_names: Vec<_> = results
         .local_pous()
