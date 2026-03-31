@@ -166,3 +166,33 @@ fn underscore_not_reported(mut with_db: RootDatabase) {
     "#;
     assert_snapshot!(test_lint_diagnostics(&mut with_db, &[source]), @r"");
 }
+
+#[rstest]
+fn variable_used_via_this_in_method_not_flagged(mut with_db: RootDatabase) {
+    let source = r#"
+        FUNCTION_BLOCK Motor
+        VAR
+            speed : INT;
+            unused_var : INT;
+        END_VAR
+
+        METHOD start
+            THIS.speed := 100;
+        END_METHOD
+        END_FUNCTION_BLOCK
+    "#;
+    // speed is used via THIS in a method - should NOT be flagged
+    // unused_var is never used anywhere - should be flagged
+    assert_snapshot!(test_lint_diagnostics(&mut with_db, &[source]), @r"
+    [W0101] Warning: unused code
+       ,-[ file:///test0.st:5:13 ]
+       |
+     5 |             unused_var : INT;
+       |             ^^^^^^^^|^^^^^^^
+       |                     `--------- unused variable 'unused_var'
+       |
+       | Note: if this is intentional, prefix it with an underscore:
+       |       '_unused_var'
+    ---'
+    ");
+}

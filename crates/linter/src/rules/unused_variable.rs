@@ -7,7 +7,7 @@ use hir::{
         scope::{ScopeId, ScopeKind},
         semantic_index::get_scope,
     },
-    hir_ty::body::BodyInferenceResult,
+    hir_ty::body::{BodyInferenceResult, infer_body},
 };
 use ide_diagnostic::{ErrorCode, IdeDiagnostic, diag};
 
@@ -34,8 +34,20 @@ pub fn check<'db>(
 ) {
     let def_map = scope.def_map(db);
 
+    // Collect variables used in the body itself
+    let mut all_used = body.variables_used.clone();
+
+    // For FB/class scopes, also collect variables used by child methods via THIS
+    if let Some(methods) = scope.method_declarations(db) {
+        for method in methods {
+            let method_scope = method.get_scope_id(db);
+            let method_body = infer_body(db, method_scope);
+            all_used.extend(method_body.variables_used.iter().copied());
+        }
+    }
+
     for var in def_map.global_variables.values() {
-        check_variable(db, scope, *var, &body.variables_used, diagnostics);
+        check_variable(db, scope, *var, &all_used, diagnostics);
     }
 }
 
