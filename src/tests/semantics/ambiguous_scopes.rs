@@ -31,7 +31,7 @@ fn ambiguous_using_same_name(mut with_db: RootDatabase) {
         |
      17 |             test := SharedName();
         |                     ^^^^^|^^^^
-        |                          `------ multiple items named 'SharedName' available in scope:
+        |                          `------ multiple items named 'SharedName' available in scope
         |
         | Note: qualify the name to resolve the ambiguity: ns1.SharedName or ns2.SharedName
     ----'
@@ -73,11 +73,23 @@ fn ambiguous_using_duplicate_in_same_namespace(mut with_db: RootDatabase) {
     [E0225] Error: multiple items in scope
         ,-[ file:///test0.st:16:21 ]
         |
-     16 |             test := SharedName();
-        |                     ^^^^^|^^^^
-        |                          `------ multiple items named 'SharedName' available in scope:
+      3 |   ,->             FUNCTION SharedName : INT
+        :   :
+      5 |   |->             END_FUNCTION
+        |   |
+        |   `------------------------------ 'SharedName' declared here
         |
-        | Note: 'SharedName' is declared multiple times in namespace 'ns', fix the duplicate declaration first
+      9 | ,--->             FUNCTION SharedName : INT
+        : :
+     11 | |--->             END_FUNCTION
+        | |
+        | `-------------------------------- 'SharedName' declared here
+        |
+     16 |                   test := SharedName();
+        |                           ^^^^^|^^^^
+        |                                `------ multiple items named 'SharedName' available in scope
+        |
+        |       Note: 'SharedName' is declared multiple times in namespace 'ns'
     ----'
     ");
 }
@@ -192,15 +204,15 @@ fn ambiguous_using_same_name_in_spec(mut with_db: RootDatabase) {
             test := 0;
         END_FUNCTION
     "#;
-    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r#"
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
     [E0225] Error: multiple items in scope
         ,-[ file:///test0.st:16:18 ]
         |
      16 |             fb : SharedFB;
         |                  ^^^^|^^^
-        |                      `----- multiple items named 'SharedFB' available in scope:
+        |                      `----- multiple items named 'SharedFB' available in scope
         |
         | Note: qualify the name to resolve the ambiguity: ns1.SharedFB or ns2.SharedFB
     ----'
-    "#);
+    ");
 }

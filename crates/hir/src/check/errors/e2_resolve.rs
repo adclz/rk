@@ -769,7 +769,7 @@ impl<'db> ToIdeDiagnostic<'db> for ResolveError<'db> {
                 let duplicated: Vec<_> = counts
                     .iter()
                     .filter(|(_, count)| **count > 1)
-                    .map(|(ns, _)| ns.to_string(db))
+                    .map(|(ns, _)| ns)
                     .collect();
                 let distinct: Vec<_> = counts
                     .iter()
@@ -777,9 +777,8 @@ impl<'db> ToIdeDiagnostic<'db> for ResolveError<'db> {
                     .map(|(ns, _)| ns.to_string(db))
                     .collect();
 
-                let message = format!("multiple items named '{}' available in scope:", name);
                 let mut diag = diag()
-                    .message(message)
+                    .message(format!("multiple items named '{}' available in scope", name))
                     .severity(DiagnosticSeverity::ERROR)
                     .desc(self)
                     .range(*span)
@@ -787,9 +786,19 @@ impl<'db> ToIdeDiagnostic<'db> for ResolveError<'db> {
 
                 for ns in &duplicated {
                     diag.with_note(format!(
-                        "'{}' is declared multiple times in namespace '{}', fix the duplicate declaration first",
-                        name, ns,
+                        "'{}' is declared multiple times in namespace '{}'",
+                        name, ns.to_string(db),
                     ));
+
+                    for (pou, pou_ns) in candidates {
+                        if pou_ns == *ns {
+                            diag.with_related(Related::new(
+                                format!("'{}' declared here", name),
+                                pou.get_scope_id(db).file(db),
+                                pou.get_span(db),
+                            ));
+                        }
+                    }
                 }
 
                 if distinct.len() > 1 {
