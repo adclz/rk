@@ -45,8 +45,6 @@ use auto_lsp::lsp_types::{
     WorkspaceDocumentDiagnosticReport, WorkspaceFullDocumentDiagnosticReport,
     WorkspaceUnchangedDocumentDiagnosticReport,
 };
-use auto_lsp::default::db::BaseDatabase;
-use auto_lsp::server::Session;
 use db::{WorkspaceDataBase, config_file::get_config};
 use hir::check::diagnostics_for_file;
 use rayon::iter::{IntoParallelIterator, ParallelIterator};
@@ -129,10 +127,9 @@ pub fn diagnostics<Db: WorkspaceDataBase + Clone + RefUnwindSafe>(
 // ── Workspace diagnostics (all files) ───────────────────────────────────
 
 pub fn workspace_diagnostics<Db: WorkspaceDataBase + Clone + RefUnwindSafe>(
-    session: &mut Session<Db>,
+    db: &Db,
     params: WorkspaceDiagnosticParams,
 ) -> anyhow::Result<WorkspaceDiagnosticReportResult> {
-    let db = &session.db;
     let config = get_config(db).clone();
 
     // Index previous result IDs by URI for O(1) lookup.

@@ -122,9 +122,12 @@ pub fn boot() -> Result<(), Box<dyn Error + Send + Sync>> {
                 workspace: WORKSPACE_PROVIDER.clone(),
                 diagnostic_provider: Some(DiagnosticServerCapabilities::Options(
                     DiagnosticOptions {
+                        identifier: Some("rk".to_string()),
                         workspace_diagnostics: true,
                         inter_file_dependencies: true,
-                        ..Default::default()
+                        work_done_progress_options: WorkDoneProgressOptions {
+                            work_done_progress: Some(true),
+                        },
                     },
                 )),
                 text_document_sync: TEXT_DOCUMENT_SYNC.clone(),
@@ -222,7 +225,7 @@ fn on_requests<Db: WorkspaceDataBase + Clone + RefUnwindSafe>(
         )
         .on::<Completion, _>(ThreadIntent::LatencySensitive, completions)
         .on::<DocumentDiagnosticRequest, _>(ThreadIntent::Worker, diagnostics)
-        .on_mut::<WorkspaceDiagnosticRequest, _>(|s, p| workspace_diagnostics(s, p))
+        .on::<WorkspaceDiagnosticRequest, _>(ThreadIntent::Worker, workspace_diagnostics)
         .on::<DocumentSymbolRequest, _>(ThreadIntent::Worker, document_symbols)
         .on::<HoverRequest, _>(ThreadIntent::Worker, hover)
         .on::<CodeActionRequest, _>(ThreadIntent::Worker, code_actions)
@@ -244,46 +247,29 @@ fn on_notifications(
     registry: &mut NotificationRegistry<RootDatabase>,
 ) -> &mut NotificationRegistry<RootDatabase> {
     registry
-        // DidOpenTextDocument events are also emitted when a LLM / Agent creates temporary files.
-        // We only want to process files with the .st extension that are part of the workspace.
         .on_mut::<DidOpenTextDocument, _>(|s, p| {
             match p.text_document.uri.as_str().ends_with(".st") {
                 true => {
-                    // Don't re-add stdlib files as workspace files.
-                    // auto-lsp's open_text_document only checks workspace_files,
-                    // so opening a stdlib file (e.g. via go-to-definition) would
-                    // create a duplicate entry and cause false "duplicate POU" errors.
                     if s.db.get_std_lib_files().contains_key(&p.text_document.uri) {
                         return Ok(());
                     }
                     Ok(open_text_document(s, p)?)
                 }
-                false => {
-                    //log::warn!("Ignored opening file: {}", p.text_document.uri);
-                    Ok(())
-                }
+                false => Ok(()),
             }
         })
         .on_mut::<DidChangeTextDocument, _>(|s, p| {
             match p.text_document.uri.as_str().ends_with(".st") {
                 true => {
-                    // Don't re-add stdlib files as workspace files.
-                    // auto-lsp's change_text_document only checks workspace_files,
-                    // so opening a stdlib file (e.g. via go-to-definition) would
-                    // create a duplicate entry and cause false "duplicate POU" errors.
                     if s.db.get_std_lib_files().contains_key(&p.text_document.uri) {
                         return Ok(());
                     }
                     Ok(change_text_document(s, p)?)
                 }
-                false => {
-                    // tracing::trace!("Ignored DidChangeTextDocument for non-.st file: {}", p.text_document.uri);
-                    Ok(())
-                }
+                false => Ok(()),
             }
         })
         .on_mut::<DidChangeWatchedFiles, _>(|s, p| {
-            // Check if any changed file is the workspace config.toml
             let config_changed = Workspace::try_get(&s.db)
                 .and_then(|c| c.workspace_folder(&s.db).cloned())
                 .and_then(|ws| Url::from_file_path(ws.join("config.toml")).ok())
@@ -420,8 +406,11 @@ pub fn send_request<N: lsp_types::request::Request>(
     session: &Session<impl salsa::Database>,
     params: N::Params,
 ) -> anyhow::Result<()> {
+    use std::sync::atomic::{AtomicI32, Ordering};
+    static NEXT_ID: AtomicI32 = AtomicI32::new(1);
+
     let params_value = serde_json::to_value(&params)?;
-    let id = lsp_server::RequestId::from(N::METHOD.to_string());
+    let id = lsp_server::RequestId::from(NEXT_ID.fetch_add(1, Ordering::Relaxed));
 
     let n = lsp_server::Request {
         method: N::METHOD.into(),
