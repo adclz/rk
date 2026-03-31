@@ -76,6 +76,7 @@ pub enum SyntaxError {
     SingleAfterPriority(Span),
     MissingPriority(Span),
     ArrayConformandNotSupported(Span),
+    AccessSpecNotAllowedInMethodPrototype(Span),
     // todo: use custom lexer to handle syntax errors unhandled by tree-sitter
     SyntaxError {
         span: Span,
@@ -122,6 +123,7 @@ impl ErrorCode for SyntaxError {
             SyntaxError::SingleAfterPriority(_) => "E0034",
             SyntaxError::MissingPriority(_) => "E0035",
             SyntaxError::ArrayConformandNotSupported(_) => "E0036",
+            SyntaxError::AccessSpecNotAllowedInMethodPrototype(_) => "E0037",
             SyntaxError::SyntaxError { .. } => "E0050",
         }
     }
@@ -649,6 +651,17 @@ impl<'db> ToIdeDiagnostic<'db> for SyntaxError {
                 .desc(self)
                 .range(*span)
                 .call(),
+            Self::AccessSpecNotAllowedInMethodPrototype(span) => {
+                let mut diag = diag()
+                    .message("access specifiers are not allowed on interface method prototypes".into())
+                    .severity(DiagnosticSeverity::ERROR)
+                    .desc(self)
+                    .range(*span)
+                    .call();
+
+                diag.with_note("interface methods are implicitly PUBLIC".into());
+                diag
+            }
             Self::SyntaxError { span, err } => diag()
                 .message(err.to_string())
                 .severity(DiagnosticSeverity::ERROR)

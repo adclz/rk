@@ -88,6 +88,13 @@ impl<'db> SemanticIndexBuilder<'db> {
             .map(|i| i.cast(self.ast).to_spec(self))
             .transpose()?;
 
+        if let Some(err) = &method.children {
+            self.errors.push(
+                SyntaxError::AccessSpecNotAllowedInMethodPrototype(err.cast(self.ast).get_span())
+                    .to_diagnostic(self.db),
+            );
+        }
+
         let mut variables = vec![];
         for variable in method.variables.iter() {
             match variable.cast(self.ast) {

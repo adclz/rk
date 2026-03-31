@@ -435,6 +435,14 @@
         "name": "var_decls"
       }
     },
+    "ERR_access_spec_in_method_prototype": {
+      "type": "PREC",
+      "value": -1,
+      "content": {
+        "type": "SYMBOL",
+        "name": "access_spec"
+      }
+    },
     "line_comment": {
       "type": "TOKEN",
       "content": {
@@ -6283,6 +6291,18 @@
         {
           "type": "STRING",
           "value": "METHOD"
+        },
+        {
+          "type": "CHOICE",
+          "members": [
+            {
+              "type": "SYMBOL",
+              "name": "ERR_access_spec_in_method_prototype"
+            },
+            {
+              "type": "BLANK"
+            }
+          ]
         },
         {
           "type": "FIELD",

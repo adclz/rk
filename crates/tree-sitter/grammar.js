@@ -324,6 +324,8 @@ module.exports = grammar({
     ERR_var_global_not_allowed: ($) => prec(-1, $.global_var_decls), // VAR_GLOBAL
     ERR_var_not_allowed: ($) => prec(-1, $.var_decls), // VAR
 
+    ERR_access_spec_in_method_prototype: ($) => prec(-1, $.access_spec),
+
     // Table 3 - Comments
 
     line_comment: ($) => token(seq("//", /.*/)),
@@ -1352,6 +1354,7 @@ module.exports = grammar({
     method_prototype: ($) =>
       seq(
         "METHOD",
+        optional($.ERR_access_spec_in_method_prototype),
         field("name", $.identifier),
         optional(seq(":", field("data_type", $.data_type_access))),
         field("variables", repeat($._method_prot_variables)),
@@ -1872,6 +1875,7 @@ module.exports = grammar({
         "CONTINUE",
         $.extern_pragma,
         $.wasm_pragma,
+        // method_decl
       ),
 
     // assignment: $ => seq(

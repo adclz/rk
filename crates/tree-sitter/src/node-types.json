@@ -740,6 +740,21 @@
     ]
   },
   {
+    "type": "ERR_access_spec_in_method_prototype",
+    "named": true,
+    "fields": {},
+    "children": {
+      "multiple": false,
+      "required": true,
+      "types": [
+        {
+          "type": "access_spec",
+          "named": true
+        }
+      ]
+    }
+  },
+  {
     "type": "ERR_assign_func_call",
     "named": true,
     "fields": {},
@@ -1942,6 +1957,7 @@
   {
     "type": "c_style_comment",
     "named": true,
+    "extra": true,
     "fields": {},
     "children": {
       "multiple": false,
@@ -4475,6 +4491,16 @@
           }
         ]
       }
+    },
+    "children": {
+      "multiple": false,
+      "required": false,
+      "types": [
+        {
+          "type": "ERR_access_spec_in_method_prototype",
+          "named": true
+        }
+      ]
     }
   },
   {
@@ -5013,6 +5039,7 @@
   {
     "type": "pascal_style_comment",
     "named": true,
+    "extra": true,
     "fields": {},
     "children": {
       "multiple": false,
@@ -5081,6 +5108,7 @@
   {
     "type": "pragma",
     "named": true,
+    "extra": true,
     "fields": {}
   },
   {

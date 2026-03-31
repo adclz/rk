@@ -1076,3 +1076,32 @@ END_CONFIGURATION"#;
     ---'
     ");
 }
+
+#[rstest]
+fn access_spec_not_allowed_in_method_prototype(mut with_db: RootDatabase) {
+    let source = r#"
+INTERFACE IMotor
+    PUBLIC METHOD start
+    END_METHOD
+    PRIVATE METHOD stop : BOOL
+    END_METHOD
+END_INTERFACE
+"#;
+
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
+    [E0050] Error: syntax
+       ,-[ file:///test0.st:3:5 ]
+       |
+     3 |     PUBLIC METHOD start
+       |     ^^^|^^
+       |        `---- Unexpected token(s): 'PUBLIC'
+    ---'
+    [E0050] Error: syntax
+       ,-[ file:///test0.st:5:5 ]
+       |
+     5 |     PRIVATE METHOD stop : BOOL
+       |     ^^^|^^^
+       |        `----- Unexpected token(s): 'PRIVATE'
+    ---'
+    ");
+}
