@@ -67,11 +67,11 @@ impl<'db> CompletionBuilder {
 
         let insert_text = match self.mode {
             QueryMode::Head => variable_name.to_string(),
-            QueryMode::Body => match typ {
-                Type::Function(_) | Type::FunctionBlock(_) => {
-                    build_call_signature(db, &variable_name, variable.get_scope_id(db))
+            QueryMode::Body => match typ.as_callable(db) {
+                Some(callable) => {
+                    build_call_signature(db, &variable_name, callable.get_scope_id(db))
                 }
-                _ => variable_name.to_string(),
+                None => variable_name.to_string(),
             },
         };
 
