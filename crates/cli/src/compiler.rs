@@ -7,8 +7,8 @@ use yansi::Paint;
 use crate::diagnostics::report_diagnostics;
 
 /// Check diagnostics and lower HIR → MIR → core WASM.
-/// Returns (core_bytes, mir_module).
-pub fn build_core(db: &RootDatabase, workspace: &std::path::Path, _verbose: bool) -> (Vec<u8>, mir::MirModule) {
+/// Returns `None` if there are errors or codegen fails.
+pub fn build_core(db: &RootDatabase, workspace: &std::path::Path, _verbose: bool) -> Option<(Vec<u8>, mir::MirModule)> {
     let workspace_path = std::fs::canonicalize(workspace).unwrap_or_else(|_| workspace.to_path_buf());
     let config = ariadne::Config::new().with_color(true).with_tab_width(2);
 
@@ -57,7 +57,7 @@ pub fn build_core(db: &RootDatabase, workspace: &std::path::Path, _verbose: bool
             "compilation failed: ".bold().red(),
             total_errors,
         );
-        std::process::exit(1);
+        return None;
     }
 
     let sem_indices: Vec<_> = db
@@ -66,14 +66,16 @@ pub fn build_core(db: &RootDatabase, workspace: &std::path::Path, _verbose: bool
         .map(|file| semantic_index(db, *file))
         .collect();
 
-    let mir_module =
-        mir::lower::lower_module::lower_modules(db, &sem_indices).unwrap_or_else(|e| {
+    let mir_module = match mir::lower::lower_module::lower_modules(db, &sem_indices) {
+        Ok(m) => m,
+        Err(e) => {
             eprintln!("{}{}", "codegen error: ".bold().red(), e);
-            std::process::exit(1);
-        });
+            return None;
+        }
+    };
 
     let wasm_module = wasm_codegen::from_mir::generate_wasm(db, &mir_module);
-    (wasm_module.finish(), mir_module)
+    Some((wasm_module.finish(), mir_module))
 }
 
 /// Run wasm-opt on the WASM bytes if an optimization level is specified.

@@ -15,7 +15,9 @@ pub fn run_test(
     };
 
     // Test profile: core module → component (no optimization)
-    let (core_bytes, mir_module) = build_core(&db, workspace, verbose);
+    let Some((core_bytes, mir_module)) = build_core(&db, workspace, verbose) else {
+        std::process::exit(1);
+    };
     let component_bytes = wasm_codegen::component::wrap_in_component(&db, &core_bytes, &mir_module)
         .unwrap_or_else(|e| {
             eprintln!("{}{}", "component error: ".bold().red(), e);

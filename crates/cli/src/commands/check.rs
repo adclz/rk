@@ -1,14 +1,27 @@
 use auto_lsp::default::db::BaseDatabase;
-use ide_diagnostic::IdeDiagnostic;
 use rayon::iter::{IntoParallelIterator, ParallelIterator};
 use yansi::Paint;
 
 use crate::diagnostics::report_diagnostics;
 use crate::workspace::init_db;
 
-pub fn run_check(workspace: &std::path::Path, verbose: bool) {
+pub fn run_check(workspace: &std::path::Path, watch: bool, verbose: bool) {
+    if watch {
+        crate::watcher::watch_and_run(workspace, || {
+            check_once(workspace, verbose);
+        });
+    } else {
+        let has_errors = check_once(workspace, verbose);
+        if has_errors {
+            std::process::exit(1);
+        }
+    }
+}
+
+/// Run diagnostics once. Returns `true` if errors were found.
+fn check_once(workspace: &std::path::Path, verbose: bool) -> bool {
     let Some(db) = init_db(workspace, verbose, true) else {
-        return;
+        return true;
     };
 
     let workspace_path = std::fs::canonicalize(workspace).unwrap_or_else(|_| workspace.to_path_buf());
@@ -68,7 +81,5 @@ pub fn run_check(workspace: &std::path::Path, verbose: bool) {
         total_warnings.to_string().fg(ariadne::Color::Yellow)
     );
 
-    if has_errors {
-        std::process::exit(1);
-    }
+    has_errors
 }

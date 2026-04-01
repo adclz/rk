@@ -9,10 +9,27 @@ pub fn run_compile(
     output: Option<&PathBuf>,
     no_stdlib: bool,
     opt_level: Option<&str>,
+    watch: bool,
+    verbose: bool,
+) {
+    if watch {
+        crate::watcher::watch_and_run(workspace, || {
+            compile_once(workspace, output, no_stdlib, opt_level, verbose);
+        });
+    } else {
+        compile_once(workspace, output, no_stdlib, opt_level, verbose);
+    }
+}
+
+fn compile_once(
+    workspace: &std::path::Path,
+    output: Option<&PathBuf>,
+    no_stdlib: bool,
+    opt_level: Option<&str>,
     verbose: bool,
 ) {
     let Some(db) = init_db(workspace, verbose, !no_stdlib) else {
-        std::process::exit(1);
+        return;
     };
 
     // CLI flag takes precedence over config.toml
@@ -20,15 +37,19 @@ pub fn run_compile(
     let config_opt = config.settings.as_ref().and_then(|s| s.opt_level.as_deref());
     let effective_opt = opt_level.or(config_opt);
 
-    let (core_bytes, mir_module) = build_core(&db, workspace, verbose);
+    let Some((core_bytes, mir_module)) = build_core(&db, workspace, verbose) else {
+        return;
+    };
 
     // Release profile: optimize core → wrap in component
     let optimized = optimize_wasm(core_bytes, effective_opt, verbose);
-    let component_bytes = wasm_codegen::component::wrap_in_component(&db, &optimized, &mir_module)
-        .unwrap_or_else(|e| {
+    let component_bytes = match wasm_codegen::component::wrap_in_component(&db, &optimized, &mir_module) {
+        Ok(bytes) => bytes,
+        Err(e) => {
             eprintln!("{}{}", "component error: ".bold().red(), e);
-            std::process::exit(1);
-        });
+            return;
+        }
+    };
 
     // Default output: <workspace>/rk_build/release/output.wasm
     let build_dir = workspace.join("rk_build").join("release");
@@ -37,26 +58,26 @@ pub fn run_compile(
 
     // Create output directory if needed
     if let Some(parent) = output.parent() {
-        std::fs::create_dir_all(parent).unwrap_or_else(|e| {
+        if let Err(e) = std::fs::create_dir_all(parent) {
             eprintln!(
                 "{}failed to create directory {}: {}",
                 "error: ".bold().red(),
                 parent.display(),
                 e
             );
-            std::process::exit(1);
-        });
+            return;
+        }
     }
 
-    std::fs::write(output, &component_bytes).unwrap_or_else(|e| {
+    if let Err(e) = std::fs::write(output, &component_bytes) {
         eprintln!(
             "{}failed to write {}: {}",
             "error: ".bold().red(),
             output.display(),
             e
         );
-        std::process::exit(1);
-    });
+        return;
+    }
 
     println!(
         "{}{} ({} bytes)",
