@@ -119,3 +119,5 @@ formatter = { workspace = true }
 topiary-core = { workspace = true }
 wasmparser = { workspace = true }
 static_assertions = { workspace = true }
+rk = { path = "crates/cli" }
+tempfile = "3"

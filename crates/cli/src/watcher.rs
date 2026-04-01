@@ -206,8 +206,12 @@ fn file_type_from_path(path: &Path) -> CreatedKind {
     }
 }
 
-/// Only care about `.st` files and `config.toml`.
+/// Only care about `.st` files and `config.toml`, excluding build output.
 fn is_relevant_path(path: &Path) -> bool {
+    // Ignore our own build output to prevent infinite loops with compile --watch
+    if path.components().any(|c| c.as_os_str() == "rk_build") {
+        return false;
+    }
     path.extension().is_some_and(|ext| ext == "st")
         || path.file_name().is_some_and(|name| name == "config.toml")
 }
