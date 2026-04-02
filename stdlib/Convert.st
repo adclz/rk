@@ -13,6 +13,7 @@ NAMESPACE Std.Convert
 
 	/* ## LREAL (f64) Conversions */
 
+	{info = 'narrowing conversion, possible loss of value'}
 	FUNCTION LREAL_TO_REAL: REAL
 		VAR_INPUT
 			IN: LREAL;
@@ -20,6 +21,7 @@ NAMESPACE Std.Convert
 		{wasm 'f32.demote_f64' (params IN) (result LREAL_TO_REAL)}
 	END_FUNCTION
 
+	{info = 'narrowing conversion, possible loss of value'}
 	FUNCTION LREAL_TO_LINT: LINT
 		VAR_INPUT
 			IN: LREAL;
@@ -27,6 +29,7 @@ NAMESPACE Std.Convert
 		{wasm 'i64.trunc_f64_s' (params IN) (result LREAL_TO_LINT)}
 	END_FUNCTION
 
+	{info = 'narrowing conversion, possible loss of value'}
 	FUNCTION LREAL_TO_DINT: DINT
 		VAR_INPUT
 			IN: LREAL;
@@ -34,6 +37,7 @@ NAMESPACE Std.Convert
 		{wasm 'i32.trunc_f64_s' (params IN) (result LREAL_TO_DINT)}
 	END_FUNCTION
 
+	{info = 'narrowing conversion, possible loss of value'}
 	FUNCTION LREAL_TO_INT: INT
 		VAR_INPUT
 			IN: LREAL;
@@ -41,6 +45,7 @@ NAMESPACE Std.Convert
 		{wasm 'i32.trunc_f64_s' (params IN) (result LREAL_TO_INT)}
 	END_FUNCTION
 
+	{info = 'narrowing conversion, possible loss of value'}
 	FUNCTION LREAL_TO_SINT: SINT
 		VAR_INPUT
 			IN: LREAL;
@@ -48,6 +53,7 @@ NAMESPACE Std.Convert
 		{wasm 'i32.trunc_f64_s' (params IN) (result LREAL_TO_SINT)}
 	END_FUNCTION
 
+	{info = 'narrowing conversion, possible loss of value'}
 	FUNCTION LREAL_TO_ULINT: ULINT
 		VAR_INPUT
 			IN: LREAL;
@@ -55,6 +61,7 @@ NAMESPACE Std.Convert
 		{wasm 'i64.trunc_f64_u' (params IN) (result LREAL_TO_ULINT)}
 	END_FUNCTION
 
+	{info = 'narrowing conversion, possible loss of value'}
 	FUNCTION LREAL_TO_UDINT: UDINT
 		VAR_INPUT
 			IN: LREAL;
@@ -62,6 +69,7 @@ NAMESPACE Std.Convert
 		{wasm 'i32.trunc_f64_u' (params IN) (result LREAL_TO_UDINT)}
 	END_FUNCTION
 
+	{info = 'narrowing conversion, possible loss of value'}
 	FUNCTION LREAL_TO_UINT: UINT
 		VAR_INPUT
 			IN: LREAL;
@@ -69,6 +77,7 @@ NAMESPACE Std.Convert
 		{wasm 'i32.trunc_f64_u' (params IN) (result LREAL_TO_UINT)}
 	END_FUNCTION
 
+	{info = 'narrowing conversion, possible loss of value'}
 	FUNCTION LREAL_TO_USINT: USINT
 		VAR_INPUT
 			IN: LREAL;
@@ -76,6 +85,7 @@ NAMESPACE Std.Convert
 		{wasm 'i32.trunc_f64_u' (params IN) (result LREAL_TO_USINT)}
 	END_FUNCTION
 
+	{info = 'narrowing conversion, possible loss of value'}
 	FUNCTION LREAL_TO_LWORD: LWORD
 		VAR_INPUT
 			IN: LREAL;
@@ -85,6 +95,7 @@ NAMESPACE Std.Convert
 
 	/* ## REAL (f32) Conversions */
 
+	{info = 'narrowing conversion, possible loss of value'}
 	FUNCTION REAL_TO_LINT: LINT
 		VAR_INPUT
 			IN: REAL;
@@ -92,6 +103,7 @@ NAMESPACE Std.Convert
 		{wasm 'i64.trunc_f32_s' (params IN) (result REAL_TO_LINT)}
 	END_FUNCTION
 
+	{info = 'narrowing conversion, possible loss of value'}
 	FUNCTION REAL_TO_DINT: DINT
 		VAR_INPUT
 			IN: REAL;
@@ -99,6 +111,7 @@ NAMESPACE Std.Convert
 		{wasm 'i32.trunc_f32_s' (params IN) (result REAL_TO_DINT)}
 	END_FUNCTION
 
+	{info = 'narrowing conversion, possible loss of value'}
 	FUNCTION REAL_TO_INT: INT
 		VAR_INPUT
 			IN: REAL;
@@ -106,6 +119,7 @@ NAMESPACE Std.Convert
 		{wasm 'i32.trunc_f32_s' (params IN) (result REAL_TO_INT)}
 	END_FUNCTION
 
+	{info = 'narrowing conversion, possible loss of value'}
 	FUNCTION REAL_TO_SINT: SINT
 		VAR_INPUT
 			IN: REAL;
@@ -113,6 +127,7 @@ NAMESPACE Std.Convert
 		{wasm 'i32.trunc_f32_s' (params IN) (result REAL_TO_SINT)}
 	END_FUNCTION
 
+	{info = 'narrowing conversion, possible loss of value'}
 	FUNCTION REAL_TO_ULINT: ULINT
 		VAR_INPUT
 			IN: REAL;
@@ -120,6 +135,7 @@ NAMESPACE Std.Convert
 		{wasm 'i64.trunc_f32_u' (params IN) (result REAL_TO_ULINT)}
 	END_FUNCTION
 
+	{info = 'narrowing conversion, possible loss of value'}
 	FUNCTION REAL_TO_UDINT: UDINT
 		VAR_INPUT
 			IN: REAL;
@@ -127,6 +143,7 @@ NAMESPACE Std.Convert
 		{wasm 'i32.trunc_f32_u' (params IN) (result REAL_TO_UDINT)}
 	END_FUNCTION
 
+	{info = 'narrowing conversion, possible loss of value'}
 	FUNCTION REAL_TO_UINT: UINT
 		VAR_INPUT
 			IN: REAL;
@@ -134,6 +151,7 @@ NAMESPACE Std.Convert
 		{wasm 'i32.trunc_f32_u' (params IN) (result REAL_TO_UINT)}
 	END_FUNCTION
 
+	{info = 'narrowing conversion, possible loss of value'}
 	FUNCTION REAL_TO_USINT: USINT
 		VAR_INPUT
 			IN: REAL;
@@ -141,6 +159,7 @@ NAMESPACE Std.Convert
 		{wasm 'i32.trunc_f32_u' (params IN) (result REAL_TO_USINT)}
 	END_FUNCTION
 
+	{info = 'narrowing conversion, possible loss of value'}
 	FUNCTION REAL_TO_DWORD: DWORD
 		VAR_INPUT
 			IN: REAL;
@@ -157,6 +176,7 @@ NAMESPACE Std.Convert
 		{wasm 'f64.convert_i64_s' (params IN) (result LINT_TO_LREAL)}
 	END_FUNCTION
 
+	{info = 'narrowing conversion, possible loss of value'}
 	FUNCTION LINT_TO_REAL: REAL
 		VAR_INPUT
 			IN: LINT;
@@ -164,6 +184,7 @@ NAMESPACE Std.Convert
 		{wasm 'f32.convert_i64_s' (params IN) (result LINT_TO_REAL)}
 	END_FUNCTION
 
+	{info = 'narrowing conversion, possible loss of value'}
 	FUNCTION LINT_TO_DINT: DINT
 		VAR_INPUT
 			IN: LINT;
@@ -171,6 +192,7 @@ NAMESPACE Std.Convert
 		{wasm 'i32.wrap_i64' (params IN) (result LINT_TO_DINT)}
 	END_FUNCTION
 
+	{info = 'narrowing conversion, possible loss of value'}
 	FUNCTION LINT_TO_INT: INT
 		VAR_INPUT
 			IN: LINT;
@@ -178,6 +200,7 @@ NAMESPACE Std.Convert
 		{wasm 'i32.wrap_i64' (params IN) (result LINT_TO_INT)}
 	END_FUNCTION
 
+	{info = 'narrowing conversion, possible loss of value'}
 	FUNCTION LINT_TO_SINT: SINT
 		VAR_INPUT
 			IN: LINT;
@@ -192,6 +215,7 @@ NAMESPACE Std.Convert
 		{wasm 'nop' (params IN) (result LINT_TO_ULINT)}
 	END_FUNCTION
 
+	{info = 'narrowing conversion, possible loss of value'}
 	FUNCTION LINT_TO_UDINT: UDINT
 		VAR_INPUT
 			IN: LINT;
@@ -199,6 +223,7 @@ NAMESPACE Std.Convert
 		{wasm 'i32.wrap_i64' (params IN) (result LINT_TO_UDINT)}
 	END_FUNCTION
 
+	{info = 'narrowing conversion, possible loss of value'}
 	FUNCTION LINT_TO_UINT: UINT
 		VAR_INPUT
 			IN: LINT;
@@ -206,6 +231,7 @@ NAMESPACE Std.Convert
 		{wasm 'i32.wrap_i64' (params IN) (result LINT_TO_UINT)}
 	END_FUNCTION
 
+	{info = 'narrowing conversion, possible loss of value'}
 	FUNCTION LINT_TO_USINT: USINT
 		VAR_INPUT
 			IN: LINT;
@@ -220,6 +246,7 @@ NAMESPACE Std.Convert
 		{wasm 'nop' (params IN) (result LINT_TO_LWORD)}
 	END_FUNCTION
 
+	{info = 'narrowing conversion, possible loss of value'}
 	FUNCTION LINT_TO_DWORD: DWORD
 		VAR_INPUT
 			IN: LINT;
@@ -227,6 +254,7 @@ NAMESPACE Std.Convert
 		{wasm 'i32.wrap_i64' (params IN) (result LINT_TO_DWORD)}
 	END_FUNCTION
 
+	{info = 'narrowing conversion, possible loss of value'}
 	FUNCTION LINT_TO_WORD: WORD
 		VAR_INPUT
 			IN: LINT;
@@ -234,6 +262,7 @@ NAMESPACE Std.Convert
 		{wasm 'i32.wrap_i64' (params IN) (result LINT_TO_WORD)}
 	END_FUNCTION
 
+	{info = 'narrowing conversion, possible loss of value'}
 	FUNCTION LINT_TO_BYTE: BYTE
 		VAR_INPUT
 			IN: LINT;
@@ -250,6 +279,7 @@ NAMESPACE Std.Convert
 		{wasm 'f32.convert_i32_s' (params IN) (result DINT_TO_REAL)}
 	END_FUNCTION
 	// DINT → smaller signed: identity (all i32 in WASM)
+	{info = 'narrowing conversion, possible loss of value'}
 	FUNCTION DINT_TO_INT: INT
 		VAR_INPUT
 			IN: DINT;
@@ -257,6 +287,7 @@ NAMESPACE Std.Convert
 		{wasm 'nop' (params IN) (result DINT_TO_INT)}
 	END_FUNCTION
 
+	{info = 'narrowing conversion, possible loss of value'}
 	FUNCTION DINT_TO_SINT: SINT
 		VAR_INPUT
 			IN: DINT;
@@ -279,6 +310,7 @@ NAMESPACE Std.Convert
 		{wasm 'nop' (params IN) (result DINT_TO_UDINT)}
 	END_FUNCTION
 
+	{info = 'narrowing conversion, possible loss of value'}
 	FUNCTION DINT_TO_UINT: UINT
 		VAR_INPUT
 			IN: DINT;
@@ -286,6 +318,7 @@ NAMESPACE Std.Convert
 		{wasm 'nop' (params IN) (result DINT_TO_UINT)}
 	END_FUNCTION
 
+	{info = 'narrowing conversion, possible loss of value'}
 	FUNCTION DINT_TO_USINT: USINT
 		VAR_INPUT
 			IN: DINT;
@@ -307,6 +340,7 @@ NAMESPACE Std.Convert
 		{wasm 'nop' (params IN) (result DINT_TO_DWORD)}
 	END_FUNCTION
 
+	{info = 'narrowing conversion, possible loss of value'}
 	FUNCTION DINT_TO_WORD: WORD
 		VAR_INPUT
 			IN: DINT;
@@ -314,6 +348,7 @@ NAMESPACE Std.Convert
 		{wasm 'nop' (params IN) (result DINT_TO_WORD)}
 	END_FUNCTION
 
+	{info = 'narrowing conversion, possible loss of value'}
 	FUNCTION DINT_TO_BYTE: BYTE
 		VAR_INPUT
 			IN: DINT;
@@ -323,6 +358,7 @@ NAMESPACE Std.Convert
 
 	/* ## INT (i32 signed, 16-bit semantic) — all i32 in WASM */
 
+	{info = 'narrowing conversion, possible loss of value'}
 	FUNCTION INT_TO_SINT: SINT
 		VAR_INPUT
 			IN: INT;
@@ -351,6 +387,7 @@ NAMESPACE Std.Convert
 		{wasm 'nop' (params IN) (result INT_TO_UINT)}
 	END_FUNCTION
 
+	{info = 'narrowing conversion, possible loss of value'}
 	FUNCTION INT_TO_USINT: USINT
 		VAR_INPUT
 			IN: INT;
@@ -379,6 +416,7 @@ NAMESPACE Std.Convert
 		{wasm 'nop' (params IN) (result INT_TO_WORD)}
 	END_FUNCTION
 
+	{info = 'narrowing conversion, possible loss of value'}
 	FUNCTION INT_TO_BYTE: BYTE
 		VAR_INPUT
 			IN: INT;
@@ -453,6 +491,7 @@ NAMESPACE Std.Convert
 		{wasm 'f64.convert_i64_u' (params IN) (result ULINT_TO_LREAL)}
 	END_FUNCTION
 
+	{info = 'narrowing conversion, possible loss of value'}
 	FUNCTION ULINT_TO_REAL: REAL
 		VAR_INPUT
 			IN: ULINT;
@@ -467,6 +506,7 @@ NAMESPACE Std.Convert
 		{wasm 'nop' (params IN) (result ULINT_TO_LINT)}
 	END_FUNCTION
 
+	{info = 'narrowing conversion, possible loss of value'}
 	FUNCTION ULINT_TO_DINT: DINT
 		VAR_INPUT
 			IN: ULINT;
@@ -474,6 +514,7 @@ NAMESPACE Std.Convert
 		{wasm 'i32.wrap_i64' (params IN) (result ULINT_TO_DINT)}
 	END_FUNCTION
 
+	{info = 'narrowing conversion, possible loss of value'}
 	FUNCTION ULINT_TO_INT: INT
 		VAR_INPUT
 			IN: ULINT;
@@ -481,6 +522,7 @@ NAMESPACE Std.Convert
 		{wasm 'i32.wrap_i64' (params IN) (result ULINT_TO_INT)}
 	END_FUNCTION
 
+	{info = 'narrowing conversion, possible loss of value'}
 	FUNCTION ULINT_TO_SINT: SINT
 		VAR_INPUT
 			IN: ULINT;
@@ -488,6 +530,7 @@ NAMESPACE Std.Convert
 		{wasm 'i32.wrap_i64' (params IN) (result ULINT_TO_SINT)}
 	END_FUNCTION
 
+	{info = 'narrowing conversion, possible loss of value'}
 	FUNCTION ULINT_TO_UDINT: UDINT
 		VAR_INPUT
 			IN: ULINT;
@@ -495,6 +538,7 @@ NAMESPACE Std.Convert
 		{wasm 'i32.wrap_i64' (params IN) (result ULINT_TO_UDINT)}
 	END_FUNCTION
 
+	{info = 'narrowing conversion, possible loss of value'}
 	FUNCTION ULINT_TO_UINT: UINT
 		VAR_INPUT
 			IN: ULINT;
@@ -502,6 +546,7 @@ NAMESPACE Std.Convert
 		{wasm 'i32.wrap_i64' (params IN) (result ULINT_TO_UINT)}
 	END_FUNCTION
 
+	{info = 'narrowing conversion, possible loss of value'}
 	FUNCTION ULINT_TO_USINT: USINT
 		VAR_INPUT
 			IN: ULINT;
@@ -516,6 +561,7 @@ NAMESPACE Std.Convert
 		{wasm 'nop' (params IN) (result ULINT_TO_LWORD)}
 	END_FUNCTION
 
+	{info = 'narrowing conversion, possible loss of value'}
 	FUNCTION ULINT_TO_DWORD: DWORD
 		VAR_INPUT
 			IN: ULINT;
@@ -523,6 +569,7 @@ NAMESPACE Std.Convert
 		{wasm 'i32.wrap_i64' (params IN) (result ULINT_TO_DWORD)}
 	END_FUNCTION
 
+	{info = 'narrowing conversion, possible loss of value'}
 	FUNCTION ULINT_TO_WORD: WORD
 		VAR_INPUT
 			IN: ULINT;
@@ -530,6 +577,7 @@ NAMESPACE Std.Convert
 		{wasm 'i32.wrap_i64' (params IN) (result ULINT_TO_WORD)}
 	END_FUNCTION
 
+	{info = 'narrowing conversion, possible loss of value'}
 	FUNCTION ULINT_TO_BYTE: BYTE
 		VAR_INPUT
 			IN: ULINT;
@@ -553,6 +601,7 @@ NAMESPACE Std.Convert
 		{wasm 'nop' (params IN) (result UDINT_TO_DINT)}
 	END_FUNCTION
 
+	{info = 'narrowing conversion, possible loss of value'}
 	FUNCTION UDINT_TO_INT: INT
 		VAR_INPUT
 			IN: UDINT;
@@ -560,6 +609,7 @@ NAMESPACE Std.Convert
 		{wasm 'nop' (params IN) (result UDINT_TO_INT)}
 	END_FUNCTION
 
+	{info = 'narrowing conversion, possible loss of value'}
 	FUNCTION UDINT_TO_SINT: SINT
 		VAR_INPUT
 			IN: UDINT;
@@ -567,6 +617,7 @@ NAMESPACE Std.Convert
 		{wasm 'nop' (params IN) (result UDINT_TO_SINT)}
 	END_FUNCTION
 
+	{info = 'narrowing conversion, possible loss of value'}
 	FUNCTION UDINT_TO_UINT: UINT
 		VAR_INPUT
 			IN: UDINT;
@@ -574,6 +625,7 @@ NAMESPACE Std.Convert
 		{wasm 'nop' (params IN) (result UDINT_TO_UINT)}
 	END_FUNCTION
 
+	{info = 'narrowing conversion, possible loss of value'}
 	FUNCTION UDINT_TO_USINT: USINT
 		VAR_INPUT
 			IN: UDINT;
@@ -595,6 +647,7 @@ NAMESPACE Std.Convert
 		{wasm 'nop' (params IN) (result UDINT_TO_DWORD)}
 	END_FUNCTION
 
+	{info = 'narrowing conversion, possible loss of value'}
 	FUNCTION UDINT_TO_WORD: WORD
 		VAR_INPUT
 			IN: UDINT;
@@ -602,6 +655,7 @@ NAMESPACE Std.Convert
 		{wasm 'nop' (params IN) (result UDINT_TO_WORD)}
 	END_FUNCTION
 
+	{info = 'narrowing conversion, possible loss of value'}
 	FUNCTION UDINT_TO_BYTE: BYTE
 		VAR_INPUT
 			IN: UDINT;
@@ -618,6 +672,7 @@ NAMESPACE Std.Convert
 		{wasm 'nop' (params IN) (result UINT_TO_INT)}
 	END_FUNCTION
 
+	{info = 'narrowing conversion, possible loss of value'}
 	FUNCTION UINT_TO_SINT: SINT
 		VAR_INPUT
 			IN: UINT;
@@ -625,6 +680,7 @@ NAMESPACE Std.Convert
 		{wasm 'nop' (params IN) (result UINT_TO_SINT)}
 	END_FUNCTION
 
+	{info = 'narrowing conversion, possible loss of value'}
 	FUNCTION UINT_TO_USINT: USINT
 		VAR_INPUT
 			IN: UINT;
@@ -653,6 +709,7 @@ NAMESPACE Std.Convert
 		{wasm 'nop' (params IN) (result UINT_TO_WORD)}
 	END_FUNCTION
 
+	{info = 'narrowing conversion, possible loss of value'}
 	FUNCTION UINT_TO_BYTE: BYTE
 		VAR_INPUT
 			IN: UINT;
@@ -711,6 +768,7 @@ NAMESPACE Std.Convert
 		{wasm 'nop' (params IN) (result LWORD_TO_LINT)}
 	END_FUNCTION
 
+	{info = 'narrowing conversion, possible loss of value'}
 	FUNCTION LWORD_TO_DINT: DINT
 		VAR_INPUT
 			IN: LWORD;
@@ -718,6 +776,7 @@ NAMESPACE Std.Convert
 		{wasm 'i32.wrap_i64' (params IN) (result LWORD_TO_DINT)}
 	END_FUNCTION
 
+	{info = 'narrowing conversion, possible loss of value'}
 	FUNCTION LWORD_TO_INT: INT
 		VAR_INPUT
 			IN: LWORD;
@@ -725,6 +784,7 @@ NAMESPACE Std.Convert
 		{wasm 'i32.wrap_i64' (params IN) (result LWORD_TO_INT)}
 	END_FUNCTION
 
+	{info = 'narrowing conversion, possible loss of value'}
 	FUNCTION LWORD_TO_SINT: SINT
 		VAR_INPUT
 			IN: LWORD;
@@ -739,6 +799,7 @@ NAMESPACE Std.Convert
 		{wasm 'nop' (params IN) (result LWORD_TO_ULINT)}
 	END_FUNCTION
 
+	{info = 'narrowing conversion, possible loss of value'}
 	FUNCTION LWORD_TO_UDINT: UDINT
 		VAR_INPUT
 			IN: LWORD;
@@ -746,6 +807,7 @@ NAMESPACE Std.Convert
 		{wasm 'i32.wrap_i64' (params IN) (result LWORD_TO_UDINT)}
 	END_FUNCTION
 
+	{info = 'narrowing conversion, possible loss of value'}
 	FUNCTION LWORD_TO_UINT: UINT
 		VAR_INPUT
 			IN: LWORD;
@@ -753,6 +815,7 @@ NAMESPACE Std.Convert
 		{wasm 'i32.wrap_i64' (params IN) (result LWORD_TO_UINT)}
 	END_FUNCTION
 
+	{info = 'narrowing conversion, possible loss of value'}
 	FUNCTION LWORD_TO_USINT: USINT
 		VAR_INPUT
 			IN: LWORD;
@@ -760,6 +823,7 @@ NAMESPACE Std.Convert
 		{wasm 'i32.wrap_i64' (params IN) (result LWORD_TO_USINT)}
 	END_FUNCTION
 
+	{info = 'narrowing conversion, possible loss of value'}
 	FUNCTION LWORD_TO_DWORD: DWORD
 		VAR_INPUT
 			IN: LWORD;
@@ -767,6 +831,7 @@ NAMESPACE Std.Convert
 		{wasm 'i32.wrap_i64' (params IN) (result LWORD_TO_DWORD)}
 	END_FUNCTION
 
+	{info = 'narrowing conversion, possible loss of value'}
 	FUNCTION LWORD_TO_WORD: WORD
 		VAR_INPUT
 			IN: LWORD;
@@ -774,6 +839,7 @@ NAMESPACE Std.Convert
 		{wasm 'i32.wrap_i64' (params IN) (result LWORD_TO_WORD)}
 	END_FUNCTION
 
+	{info = 'narrowing conversion, possible loss of value'}
 	FUNCTION LWORD_TO_BYTE: BYTE
 		VAR_INPUT
 			IN: LWORD;
@@ -804,6 +870,7 @@ NAMESPACE Std.Convert
 		{wasm 'nop' (params IN) (result DWORD_TO_DINT)}
 	END_FUNCTION
 
+	{info = 'narrowing conversion, possible loss of value'}
 	FUNCTION DWORD_TO_INT: INT
 		VAR_INPUT
 			IN: DWORD;
@@ -811,6 +878,7 @@ NAMESPACE Std.Convert
 		{wasm 'nop' (params IN) (result DWORD_TO_INT)}
 	END_FUNCTION
 
+	{info = 'narrowing conversion, possible loss of value'}
 	FUNCTION DWORD_TO_SINT: SINT
 		VAR_INPUT
 			IN: DWORD;
@@ -832,6 +900,7 @@ NAMESPACE Std.Convert
 		{wasm 'nop' (params IN) (result DWORD_TO_UDINT)}
 	END_FUNCTION
 
+	{info = 'narrowing conversion, possible loss of value'}
 	FUNCTION DWORD_TO_UINT: UINT
 		VAR_INPUT
 			IN: DWORD;
@@ -839,6 +908,7 @@ NAMESPACE Std.Convert
 		{wasm 'nop' (params IN) (result DWORD_TO_UINT)}
 	END_FUNCTION
 
+	{info = 'narrowing conversion, possible loss of value'}
 	FUNCTION DWORD_TO_USINT: USINT
 		VAR_INPUT
 			IN: DWORD;
@@ -846,6 +916,7 @@ NAMESPACE Std.Convert
 		{wasm 'nop' (params IN) (result DWORD_TO_USINT)}
 	END_FUNCTION
 
+	{info = 'narrowing conversion, possible loss of value'}
 	FUNCTION DWORD_TO_WORD: WORD
 		VAR_INPUT
 			IN: DWORD;
@@ -853,6 +924,7 @@ NAMESPACE Std.Convert
 		{wasm 'nop' (params IN) (result DWORD_TO_WORD)}
 	END_FUNCTION
 
+	{info = 'narrowing conversion, possible loss of value'}
 	FUNCTION DWORD_TO_BYTE: BYTE
 		VAR_INPUT
 			IN: DWORD;
@@ -883,6 +955,7 @@ NAMESPACE Std.Convert
 		{wasm 'nop' (params IN) (result WORD_TO_INT)}
 	END_FUNCTION
 
+	{info = 'narrowing conversion, possible loss of value'}
 	FUNCTION WORD_TO_SINT: SINT
 		VAR_INPUT
 			IN: WORD;
@@ -911,6 +984,7 @@ NAMESPACE Std.Convert
 		{wasm 'nop' (params IN) (result WORD_TO_UINT)}
 	END_FUNCTION
 
+	{info = 'narrowing conversion, possible loss of value'}
 	FUNCTION WORD_TO_USINT: USINT
 		VAR_INPUT
 			IN: WORD;
@@ -918,6 +992,7 @@ NAMESPACE Std.Convert
 		{wasm 'nop' (params IN) (result WORD_TO_USINT)}
 	END_FUNCTION
 
+	{info = 'narrowing conversion, possible loss of value'}
 	FUNCTION WORD_TO_BYTE: BYTE
 		VAR_INPUT
 			IN: WORD;
