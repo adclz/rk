@@ -720,7 +720,6 @@ fn collect_fb_any_subs<'db>(
 
 /// Rebase all StringLiteral offsets in MIR statements by adding `base` to each offset.
 fn rebase_string_offsets(stmts: &mut [crate::stmt::MirStmt], base: u32) {
-    
     use crate::stmt::MirStmt;
 
     for stmt in stmts {

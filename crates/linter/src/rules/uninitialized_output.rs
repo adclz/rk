@@ -4,10 +4,13 @@ use hir::{
     HasName, HirNodeInfo,
     hir_def::{
         expressions::{
-            expression::{VariableAccessKind},
+            expression::VariableAccessKind,
             statement::{Stmt, StmtKind},
         },
-        pous::{pou::Pou, variable::{VariableDecl, VariableKind}},
+        pous::{
+            pou::Pou,
+            variable::{VariableDecl, VariableKind},
+        },
         scope::{ScopeId, ScopeKind},
         semantic_index::get_scope,
     },
@@ -146,8 +149,7 @@ fn collect_assigned_variables<'db>(
                 let Some(path_expr) = begin.expr(db) else {
                     continue;
                 };
-                if let Some(&Type::Variable((var_decl, _))) =
-                    body.type_of_path_expr.get(&path_expr)
+                if let Some(&Type::Variable((var_decl, _))) = body.type_of_path_expr.get(&path_expr)
                 {
                     assigned.insert(var_decl);
                 }

@@ -98,16 +98,17 @@ pub fn diagnostics<Db: WorkspaceDataBase + Clone + RefUnwindSafe>(
 
     // If the client already has this exact result, skip resending.
     if let Some(ref prev_id) = params.previous_result_id
-        && *prev_id == new_id {
-            return Ok(DocumentDiagnosticReportResult::Report(
-                DocumentDiagnosticReport::Unchanged(RelatedUnchangedDocumentDiagnosticReport {
-                    related_documents: None,
-                    unchanged_document_diagnostic_report: UnchangedDocumentDiagnosticReport {
-                        result_id: new_id,
-                    },
-                }),
-            ));
-        }
+        && *prev_id == new_id
+    {
+        return Ok(DocumentDiagnosticReportResult::Report(
+            DocumentDiagnosticReport::Unchanged(RelatedUnchangedDocumentDiagnosticReport {
+                related_documents: None,
+                unchanged_document_diagnostic_report: UnchangedDocumentDiagnosticReport {
+                    result_id: new_id,
+                },
+            }),
+        ));
+    }
 
     Ok(DocumentDiagnosticReportResult::Report(
         DocumentDiagnosticReport::Full(RelatedFullDocumentDiagnosticReport {

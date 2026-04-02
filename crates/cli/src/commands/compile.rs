@@ -62,15 +62,16 @@ fn compile_once(
 
     // Create output directory if needed
     if let Some(parent) = output.parent()
-        && let Err(e) = std::fs::create_dir_all(parent) {
-            eprintln!(
-                "{}failed to create directory {}: {}",
-                "error: ".bold().red(),
-                parent.display(),
-                e
-            );
-            return;
-        }
+        && let Err(e) = std::fs::create_dir_all(parent)
+    {
+        eprintln!(
+            "{}failed to create directory {}: {}",
+            "error: ".bold().red(),
+            parent.display(),
+            e
+        );
+        return;
+    }
 
     if let Err(e) = std::fs::write(output, &component_bytes) {
         eprintln!(

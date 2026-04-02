@@ -115,9 +115,7 @@ pub fn check_condition<'db>(
 
     diagnostics.push(
         diag()
-            .message(format!(
-                "{keyword} condition is always {value_str}",
-            ))
+            .message(format!("{keyword} condition is always {value_str}",))
             .desc(&ConstantCondition)
             .range(condition.get_span(db))
             .severity(DiagnosticSeverity::WARNING)

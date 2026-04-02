@@ -124,9 +124,12 @@ fn check_statements<'db>(
 /// Called by the unified visitor after branches have already been recursed.
 pub fn check_if<'db>(
     db: &'db dyn WorkspaceDataBase,
-    stmt: Stmt<'db>,
+    _stmt: Stmt<'db>,
     then: &Option<Vec<Stmt<'db>>>,
-    else_if: &[(hir::hir_def::expressions::expression::Expr<'db>, Vec<Stmt<'db>>)],
+    else_if: &[(
+        hir::hir_def::expressions::expression::Expr<'db>,
+        Vec<Stmt<'db>>,
+    )],
     else_: &Option<Vec<Stmt<'db>>>,
     diagnostics: &mut Vec<IdeDiagnostic>,
 ) {

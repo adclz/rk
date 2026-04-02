@@ -5,7 +5,6 @@
 
 use db::{WorkspaceDataBase, config_file::LinterConfig};
 use hir::{
-    HirNodeInfo,
     hir_def::{
         expressions::statement::{Stmt, StmtKind},
         pous::pou::Pou,
@@ -16,7 +15,10 @@ use hir::{
 };
 use ide_diagnostic::IdeDiagnostic;
 
-use super::{constant_condition, input_assignment, missing_input_param, negated_condition, run_lint, self_assignment, uninitialized_output, unnecessary_else};
+use super::{
+    constant_condition, input_assignment, missing_input_param, negated_condition, run_lint,
+    self_assignment, uninitialized_output, unnecessary_else,
+};
 
 /// Run all statement-walking lints in a single pass over the statement tree.
 pub fn check<'db>(
@@ -62,7 +64,9 @@ pub fn check<'db>(
 
     // Post-walk: check uninitialized outputs
     if let Some(assigned) = assigned_vars {
-        run_lint(uninitialized_output::NAME, diagnostics, |d| uninitialized_output::check_outputs(db, scope, &assigned, d));
+        run_lint(uninitialized_output::NAME, diagnostics, |d| {
+            uninitialized_output::check_outputs(db, scope, &assigned, d)
+        });
     }
 }
 
@@ -94,32 +98,38 @@ fn visit_statements<'db>(
     ctx: &VisitorCtx,
     stmts: &[Stmt<'db>],
     diagnostics: &mut Vec<IdeDiagnostic>,
-    assigned_vars: &mut Option<rustc_hash::FxHashSet<hir::hir_def::pous::variable::VariableDecl<'db>>>,
+    assigned_vars: &mut Option<
+        rustc_hash::FxHashSet<hir::hir_def::pous::variable::VariableDecl<'db>>,
+    >,
 ) {
     for stmt in stmts {
         match stmt.stmt(db) {
             StmtKind::Assignment { var, target } => {
                 if ctx.input_assignment {
-                    run_lint(input_assignment::NAME, diagnostics, |d| input_assignment::check_assignment(db, body, *var, d));
+                    run_lint(input_assignment::NAME, diagnostics, |d| {
+                        input_assignment::check_assignment(db, body, *var, d)
+                    });
                 }
                 if ctx.self_assignment {
-                    run_lint(self_assignment::NAME, diagnostics, |d| self_assignment::check_assignment(db, body, *stmt, *var, *target, d));
+                    run_lint(self_assignment::NAME, diagnostics, |d| {
+                        self_assignment::check_assignment(db, body, *stmt, *var, *target, d)
+                    });
                 }
-                if ctx.uninitialized_output {
-                    if let Some(assigned) = assigned_vars.as_mut() {
+                if ctx.uninitialized_output
+                    && let Some(assigned) = assigned_vars.as_mut() {
                         uninitialized_output::collect_assigned(db, body, *var, assigned);
                     }
-                }
             }
             StmtKind::AssignmentAttempt { var, .. } => {
                 if ctx.input_assignment {
-                    run_lint(input_assignment::NAME, diagnostics, |d| input_assignment::check_assignment(db, body, *var, d));
+                    run_lint(input_assignment::NAME, diagnostics, |d| {
+                        input_assignment::check_assignment(db, body, *var, d)
+                    });
                 }
-                if ctx.uninitialized_output {
-                    if let Some(assigned) = assigned_vars.as_mut() {
+                if ctx.uninitialized_output
+                    && let Some(assigned) = assigned_vars.as_mut() {
                         uninitialized_output::collect_assigned(db, body, *var, assigned);
                     }
-                }
             }
             StmtKind::If {
                 condition,
@@ -129,14 +139,18 @@ fn visit_statements<'db>(
                 ..
             } => {
                 if ctx.constant_condition {
-                    run_lint(constant_condition::NAME, diagnostics, |d| constant_condition::check_condition(db, condition, "IF", d));
+                    run_lint(constant_condition::NAME, diagnostics, |d| {
+                        constant_condition::check_condition(db, condition, "IF", d)
+                    });
                 }
                 if let Some(stmts) = then {
                     visit_statements(db, body, ctx, stmts, diagnostics, assigned_vars);
                 }
                 for (cond, stmts) in else_if {
                     if ctx.constant_condition {
-                        run_lint(constant_condition::NAME, diagnostics, |d| constant_condition::check_condition(db, cond, "ELSIF", d));
+                        run_lint(constant_condition::NAME, diagnostics, |d| {
+                            constant_condition::check_condition(db, cond, "ELSIF", d)
+                        });
                     }
                     visit_statements(db, body, ctx, stmts, diagnostics, assigned_vars);
                 }
@@ -144,25 +158,37 @@ fn visit_statements<'db>(
                     visit_statements(db, body, ctx, stmts, diagnostics, assigned_vars);
                 }
                 if ctx.unnecessary_else {
-                    run_lint(unnecessary_else::NAME, diagnostics, |d| unnecessary_else::check_if(db, *stmt, then, else_if, else_, d));
+                    run_lint(unnecessary_else::NAME, diagnostics, |d| {
+                        unnecessary_else::check_if(db, *stmt, then, else_if, else_, d)
+                    });
                 }
                 if ctx.negated_condition && else_if.is_empty() {
-                    run_lint(negated_condition::NAME, diagnostics, |d| negated_condition::check_if(db, condition, then, else_, d));
+                    run_lint(negated_condition::NAME, diagnostics, |d| {
+                        negated_condition::check_if(db, condition, then, else_, d)
+                    });
                 }
             }
             StmtKind::While {
-                condition, body: loop_body, ..
+                condition,
+                body: loop_body,
+                ..
             } => {
                 if ctx.constant_condition {
-                    run_lint(constant_condition::NAME, diagnostics, |d| constant_condition::check_condition(db, condition, "WHILE", d));
+                    run_lint(constant_condition::NAME, diagnostics, |d| {
+                        constant_condition::check_condition(db, condition, "WHILE", d)
+                    });
                 }
                 visit_statements(db, body, ctx, loop_body, diagnostics, assigned_vars);
             }
             StmtKind::Repeat {
-                condition, body: loop_body, ..
+                condition,
+                body: loop_body,
+                ..
             } => {
                 if ctx.constant_condition {
-                    run_lint(constant_condition::NAME, diagnostics, |d| constant_condition::check_condition(db, condition, "UNTIL", d));
+                    run_lint(constant_condition::NAME, diagnostics, |d| {
+                        constant_condition::check_condition(db, condition, "UNTIL", d)
+                    });
                 }
                 visit_statements(db, body, ctx, loop_body, diagnostics, assigned_vars);
             }
@@ -176,10 +202,14 @@ fn visit_statements<'db>(
             }
             StmtKind::FuncCall(call) => {
                 if ctx.missing_input_param {
-                    run_lint(missing_input_param::NAME, diagnostics, |d| missing_input_param::check_func_call(db, body, *stmt, *call, d));
+                    run_lint(missing_input_param::NAME, diagnostics, |d| {
+                        missing_input_param::check_func_call(db, body, *stmt, *call, d)
+                    });
                 }
             }
-            StmtKind::For { body: loop_body, .. } => {
+            StmtKind::For {
+                body: loop_body, ..
+            } => {
                 visit_statements(db, body, ctx, loop_body, diagnostics, assigned_vars);
             }
             _ => {}

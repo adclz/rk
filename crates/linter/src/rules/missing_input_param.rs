@@ -2,11 +2,11 @@ use auto_lsp::lsp_types::DiagnosticSeverity;
 use db::WorkspaceDataBase;
 use hir::{
     HasName, HirNodeInfo,
-    hir_def::{
-        expressions::expression::FuncCall,
-        pous::variable::VariableKind,
+    hir_def::{expressions::expression::FuncCall, pous::variable::VariableKind},
+    hir_ty::{
+        body::BodyInferenceResult,
+        ty::Type,
     },
-    hir_ty::{body::BodyInferenceResult, ty::{CallableType, Type}},
 };
 use ide_diagnostic::{ErrorCode, IdeDiagnostic, Related, diag};
 
@@ -75,7 +75,10 @@ pub fn check_func_call<'db>(
     }
 
     let callable_name = callable.get_name_ident(db).text(db);
-    let missing_names: Vec<_> = missing.iter().map(|v| v.name(db).text(db).to_string()).collect();
+    let missing_names: Vec<_> = missing
+        .iter()
+        .map(|v| v.name(db).text(db).to_string())
+        .collect();
 
     let mut d = diag()
         .message(format!(

@@ -67,8 +67,8 @@ impl<'db> SemanticIndexBuilder<'db> {
         &self,
         warn: &ast::generated::WarnPragma,
     ) -> Option<crate::hir_def::pous::warn_pragma::WarnPragma> {
-        use auto_lsp::core::ast::AstNode;
         use crate::hir_def::pous::warn_pragma::{WarnPragma, WarnPragmaLevel};
+        use auto_lsp::core::ast::AstNode;
 
         let doc = self.file.document(self.db).as_bytes();
 

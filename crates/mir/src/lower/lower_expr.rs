@@ -149,11 +149,10 @@ impl<'db> ExprLowerCtx<'db> {
             (Type::FunctionBlock(fb), _) => {
                 // Use FB substitutions if available
                 if let Some(ref subs_map) = self.fb_subs
-                    && let Some(subs) = subs_map.get(&fb.name(self.db)) {
-                        return crate::lower::lower_type::lower_fb_type_with_subs(
-                            self.db, *fb, subs,
-                        );
-                    }
+                    && let Some(subs) = subs_map.get(&fb.name(self.db))
+                {
+                    return crate::lower::lower_type::lower_fb_type_with_subs(self.db, *fb, subs);
+                }
                 lower_type(self.db, normalized)
             }
             _ => lower_type(self.db, normalized),

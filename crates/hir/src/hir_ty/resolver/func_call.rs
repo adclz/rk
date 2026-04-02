@@ -144,24 +144,26 @@ pub fn resolve_func_call<'db>(
                 // Check if the FB variable has an ANY_* type
                 let var_type = var.spec(db).infer(db).normalize(db);
                 if let Type::Elementary(elem) = var_type
-                    && elem.is_any() {
-                        // Get the concrete type from the argument
-                        let arg_type = match param.kind(db) {
-                            ParamAssignKind::NonFormal { value }
-                            | ParamAssignKind::FormalInput { value, .. } => ctx
-                                .type_of_expr
-                                .get(&value)
-                                .copied()
-                                .or_else(|| Some(value.infer(db))),
-                            _ => None,
-                        };
+                    && elem.is_any()
+                {
+                    // Get the concrete type from the argument
+                    let arg_type = match param.kind(db) {
+                        ParamAssignKind::NonFormal { value }
+                        | ParamAssignKind::FormalInput { value, .. } => ctx
+                            .type_of_expr
+                            .get(&value)
+                            .copied()
+                            .or_else(|| Some(value.infer(db))),
+                        _ => None,
+                    };
 
-                        if let Some(Type::Elementary(concrete)) = arg_type
-                            && !concrete.is_any() {
-                                ctx.fb_any_resolutions
-                                    .insert((instance_var, var.name(db)), concrete);
-                            }
+                    if let Some(Type::Elementary(concrete)) = arg_type
+                        && !concrete.is_any()
+                    {
+                        ctx.fb_any_resolutions
+                            .insert((instance_var, var.name(db)), concrete);
                     }
+                }
             }
         }
     }

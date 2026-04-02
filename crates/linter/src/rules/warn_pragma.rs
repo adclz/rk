@@ -1,7 +1,9 @@
 use auto_lsp::lsp_types::DiagnosticSeverity;
 use db::WorkspaceDataBase;
 use hir::{
-    HasName, HirNodeInfo, hir_def::pous::warn_pragma::WarnPragmaLevel, hir_ty::{body::BodyInferenceResult, ty::Type}
+    HasName, HirNodeInfo,
+    hir_def::pous::warn_pragma::WarnPragmaLevel,
+    hir_ty::{body::BodyInferenceResult, ty::Type},
 };
 use ide_diagnostic::{ErrorCode, IdeDiagnostic, Related, diag};
 

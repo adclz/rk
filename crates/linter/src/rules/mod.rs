@@ -25,8 +25,8 @@ pub mod negated_condition;
 pub mod self_assignment;
 pub mod shadowing_variable;
 pub mod stmt_visitor;
-pub mod unnecessary_else;
 pub mod uninitialized_output;
+pub mod unnecessary_else;
 pub mod unused_import;
 pub mod unused_return_type;
 pub mod unused_variable;
@@ -43,7 +43,9 @@ pub fn lint_file(
     diagnostics: &mut Vec<IdeDiagnostic>,
 ) {
     // File-level lints (tree-sitter based, run once per file)
-    run_lint(duplicate_var_section::NAME, diagnostics, |d| duplicate_var_section::check(db, file, config, d));
+    run_lint(duplicate_var_section::NAME, diagnostics, |d| {
+        duplicate_var_section::check(db, file, config, d)
+    });
 
     // Scope-level lints (HIR based)
     let sema = semantic_index(db, file);
@@ -95,7 +97,9 @@ pub fn lint_file(
 
     // File-level lint: unused imports (needs all scopes collected)
     if config.is_enabled(unused_import::NAME) {
-        run_lint(unused_import::NAME, diagnostics, |d| unused_import::check(db, &all_scopes, &body_scopes, &all_usings, d));
+        run_lint(unused_import::NAME, diagnostics, |d| {
+            unused_import::check(db, &all_scopes, &body_scopes, &all_usings, d)
+        });
     }
 }
 
@@ -175,30 +179,46 @@ fn lint_scope<'db>(
     let body = infer_body(db, scope);
 
     if config.is_enabled(unused_variable::NAME) {
-        run_lint(unused_variable::NAME, diagnostics, |d| unused_variable::check(db, scope, body, d));
+        run_lint(unused_variable::NAME, diagnostics, |d| {
+            unused_variable::check(db, scope, body, d)
+        });
     }
     if config.is_enabled(shadowing_variable::NAME) {
-        run_lint(shadowing_variable::NAME, diagnostics, |d| shadowing_variable::check(db, body, d));
+        run_lint(shadowing_variable::NAME, diagnostics, |d| {
+            shadowing_variable::check(db, body, d)
+        });
     }
     if config.is_enabled(unused_return_type::NAME) {
-        run_lint(unused_return_type::NAME, diagnostics, |d| unused_return_type::check(db, body, d));
+        run_lint(unused_return_type::NAME, diagnostics, |d| {
+            unused_return_type::check(db, body, d)
+        });
     }
     if config.is_enabled(effectless_statement::NAME) {
-        run_lint(effectless_statement::NAME, diagnostics, |d| effectless_statement::check(db, body, d));
+        run_lint(effectless_statement::NAME, diagnostics, |d| {
+            effectless_statement::check(db, body, d)
+        });
     }
     if config.is_enabled(case_without_else::NAME) {
-        run_lint(case_without_else::NAME, diagnostics, |d| case_without_else::check(db, body, d));
+        run_lint(case_without_else::NAME, diagnostics, |d| {
+            case_without_else::check(db, body, d)
+        });
     }
     if config.is_enabled(dead_code::NAME) {
-        run_lint(dead_code::NAME, diagnostics, |d| dead_code::check(db, body, d));
+        run_lint(dead_code::NAME, diagnostics, |d| {
+            dead_code::check(db, body, d)
+        });
     }
     if config.is_enabled(for_loop_step_sign::NAME) {
-        run_lint(for_loop_step_sign::NAME, diagnostics, |d| for_loop_step_sign::check(db, body, d));
+        run_lint(for_loop_step_sign::NAME, diagnostics, |d| {
+            for_loop_step_sign::check(db, body, d)
+        });
     }
     // Statement-walking lints: single pass over the statement tree
     stmt_visitor::check(db, config, scope, body, diagnostics);
 
     if config.is_enabled(warn_pragma::NAME) {
-        run_lint(warn_pragma::NAME, diagnostics, |d| warn_pragma::check(db, body, d));
+        run_lint(warn_pragma::NAME, diagnostics, |d| {
+            warn_pragma::check(db, body, d)
+        });
     }
 }

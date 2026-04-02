@@ -1,7 +1,7 @@
 use auto_lsp::lsp_types::DiagnosticSeverity;
 use db::WorkspaceDataBase;
 use hir::{
-    HasName, HirNodeInfo,
+    HirNodeInfo,
     hir_def::{
         expressions::{
             expression::{ExprKind, PrimaryExpr, VariableAccess, VariableAccessKind},
