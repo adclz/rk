@@ -9,7 +9,7 @@ use auto_lsp::{
 use db::WorkspaceDataBase;
 use topiary_core::{Language, Operation, TopiaryQuery, formatter};
 
-static SURROUND_SPACES: &str = r#"
+static SURROUND_SPACES: &str = r##"
 [
     "CONFIGURATION" "END_CONFIGURATION"
     "RESOURCE" "END_RESOURCE"
@@ -61,6 +61,9 @@ static SURROUND_SPACES: &str = r#"
 ; INTO spec: no space between INTO and (
 (into_spec "INTO" @append_antispace)
 
+; Enum value: no space around # (Color#Red, not Color # Red)
+(enum_value "#" @prepend_antispace @append_antispace)
+
 ; Extern pragma: normalize spacing between children
 (extern_pragma "{" @append_antispace)
 (extern_pragma "extern" @append_space)
@@ -90,7 +93,7 @@ static SURROUND_SPACES: &str = r#"
 
 ; Test pragma: on its own line before the POU keyword
 (test_pragma) @leaf @append_hardline
-"#;
+"##;
 
 static NEW_LINES: &str = r#"
 ; VAR sections that never have qualifiers

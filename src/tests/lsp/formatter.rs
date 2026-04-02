@@ -1586,3 +1586,60 @@ END_FUNCTION
     END_FUNCTION
     ");
 }
+
+#[rstest]
+pub fn enum_type_formatting(mut with_db: RootDatabase) {
+    let source = r#"
+TYPE Color : (Red, Green, Blue)
+END_TYPE
+
+TYPE Status : INT (Running := 1, Stopped := 2, Error := 3)
+END_TYPE
+"#;
+
+    add_sources(&mut with_db, &[source]);
+    let document = with_db.get_files().iter().last().unwrap().document(&with_db);
+
+    assert_snapshot!(fmt(document), @r"
+    TYPE
+    	Color: (Red, Green, Blue)
+    END_TYPE
+
+    TYPE
+    	Status: INT(Running := 1, Stopped := 2, Error := 3)
+    END_TYPE
+    ");
+}
+
+#[rstest]
+pub fn enum_value_formatting(mut with_db: RootDatabase) {
+    let source = r#"
+TYPE Color : (Red, Green, Blue)
+END_TYPE
+
+FUNCTION test : INT
+VAR
+    c : Color := Color#Red;
+END_VAR
+    c := Color#Green;
+    test := 0;
+END_FUNCTION
+"#;
+
+    add_sources(&mut with_db, &[source]);
+    let document = with_db.get_files().iter().last().unwrap().document(&with_db);
+
+    assert_snapshot!(fmt(document), @r"
+    TYPE
+    	Color: (Red, Green, Blue)
+    END_TYPE
+
+    FUNCTION test: INT
+    	VAR
+    		c: Color := Color#Red;
+    	END_VAR
+    	c := Color#Green;
+    	test := 0;
+    END_FUNCTION
+    ");
+}
