@@ -14,6 +14,7 @@ use hir::{
 use ide_diagnostic::IdeDiagnostic;
 
 pub mod case_without_else;
+pub mod constant_condition;
 pub mod dead_code;
 pub mod duplicate_var_section;
 pub mod effectless_statement;
@@ -180,5 +181,8 @@ fn lint_scope<'db>(
     }
     if config.is_enabled(self_assignment::NAME) {
         self_assignment::check(db, scope, body, diagnostics);
+    }
+    if config.is_enabled(constant_condition::NAME) {
+        constant_condition::check(db, scope, diagnostics);
     }
 }

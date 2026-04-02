@@ -1,4 +1,5 @@
 mod case_without_else;
+mod constant_condition;
 mod dead_code;
 mod duplicate_var_section;
 mod effectless_statement;
