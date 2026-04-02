@@ -30,6 +30,7 @@ pub mod uninitialized_output;
 pub mod unused_import;
 pub mod unused_return_type;
 pub mod unused_variable;
+pub mod warn_pragma;
 
 /// Run all lint rules on a file, appending warnings to `diagnostics`.
 ///
@@ -183,4 +184,8 @@ fn lint_scope<'db>(
     }
     // Statement-walking lints: single pass over the statement tree
     stmt_visitor::check(db, config, scope, body, diagnostics);
+
+    if config.is_enabled(warn_pragma::NAME) {
+        warn_pragma::check(db, body, diagnostics);
+    }
 }

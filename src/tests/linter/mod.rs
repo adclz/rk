@@ -14,3 +14,4 @@ mod uninitialized_output;
 mod unused_import;
 mod unused_return_type;
 mod unused_variable;
+mod warn_pragma;
