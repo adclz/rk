@@ -334,7 +334,13 @@ impl<'db> StmtsResolverCtx<'db> {
 
                     let typ = ctx.type_of_begin_expr_with_adjustments(db, call.path(db));
 
-                    if typ.with_return_type(db).is_some() {
+                    let callable = match typ {
+                        Type::CallableType(ct) => Some(ct),
+                        _ => typ.as_callable(db),
+                    };
+                    if let Some(callable) = callable
+                        && callable.inner_callable().with_return_type(db).is_some()
+                    {
                         ctx.unused_return_types.push((*stmt, typ));
                     }
                 }
@@ -461,15 +467,17 @@ impl<'db> StmtsResolverCtx<'db> {
                     // Check that result variable exists in scope
                     // (can be a local variable or the POU name for return value)
                     if let Some(result) = &extern_decl.result
-                        && !is_known_var(&result.ident) && !is_pou_name(&result.ident) {
-                            ctx.errors.push(
-                                ResolveError::ExternVariableNotFound {
-                                    ident: *result,
-                                    scope: self.scope,
-                                }
-                                .to_diagnostic(db),
-                            );
-                        }
+                        && !is_known_var(&result.ident)
+                        && !is_pou_name(&result.ident)
+                    {
+                        ctx.errors.push(
+                            ResolveError::ExternVariableNotFound {
+                                ident: *result,
+                                scope: self.scope,
+                            }
+                            .to_diagnostic(db),
+                        );
+                    }
                 }
                 StmtKind::WasmPragma(_) => {
                     // Wasm intrinsic — no type inference needed
