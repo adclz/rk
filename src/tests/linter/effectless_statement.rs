@@ -22,6 +22,8 @@ fn bare_variable_reference(mut with_db: RootDatabase) {
      6 |             x;
        |             |
        |             `-- statement has no effect
+       |
+       | Note: lint rule: effectless-statement
     ---'
     ");
 }
@@ -103,6 +105,8 @@ fn effectless_in_program(mut with_db: RootDatabase) {
      6 |             x;
        |             |
        |             `-- statement has no effect
+       |
+       | Note: lint rule: effectless-statement
     ---'
     ");
 }
@@ -124,6 +128,8 @@ fn effectless_in_function_block(mut with_db: RootDatabase) {
      6 |             x;
        |             |
        |             `-- statement has no effect
+       |
+       | Note: lint rule: effectless-statement
     ---'
     ");
 }

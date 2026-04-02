@@ -20,6 +20,8 @@ END_FUNCTION
      3 |     IF TRUE THEN
        |        ^^|^
        |          `--- IF condition is always TRUE
+       |
+       | Note: lint rule: constant-condition
     ---'
     ");
 }
@@ -40,6 +42,8 @@ END_FUNCTION
      3 |     IF FALSE THEN
        |        ^^|^^
        |          `---- IF condition is always FALSE
+       |
+       | Note: lint rule: constant-condition
     ---'
     ");
 }
@@ -60,6 +64,8 @@ END_FUNCTION
      3 |     WHILE TRUE DO
        |           ^^|^
        |             `--- WHILE condition is always TRUE
+       |
+       | Note: lint rule: constant-condition
     ---'
     ");
 }
@@ -81,6 +87,8 @@ END_FUNCTION
      5 |     UNTIL FALSE
        |           ^^|^^
        |             `---- UNTIL condition is always FALSE
+       |
+       | Note: lint rule: constant-condition
     ---'
     ");
 }
@@ -136,6 +144,8 @@ END_FUNCTION
      8 |     ELSIF TRUE THEN
        |           ^^|^
        |             `--- ELSIF condition is always TRUE
+       |
+       | Note: lint rule: constant-condition
     ---'
     ");
 }
@@ -156,6 +166,8 @@ END_FUNCTION
      3 |     IF (TRUE) THEN
        |        ^^^|^^
        |           `---- IF condition is always TRUE
+       |
+       | Note: lint rule: constant-condition
     ---'
     ");
 }

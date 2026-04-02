@@ -55,6 +55,8 @@ fn ascending_with_negative_step_warning(mut with_db: RootDatabase) {
      8 | |->             END_FOR;
        | |
        | `-------------------------- FOR loop step direction mismatches bounds direction
+       |
+       |     Note: lint rule: for-loop-step-sign
     ---'
     ");
 }
@@ -80,6 +82,8 @@ fn descending_with_positive_step_warning(mut with_db: RootDatabase) {
      8 | |->             END_FOR;
        | |
        | `-------------------------- FOR loop step direction mismatches bounds direction
+       |
+       |     Note: lint rule: for-loop-step-sign
     ---'
     ");
 }
@@ -120,6 +124,8 @@ fn descending_default_step_warning(mut with_db: RootDatabase) {
      8 | |->             END_FOR;
        | |
        | `-------------------------- FOR loop step direction mismatches bounds direction
+       |
+       |     Note: lint rule: for-loop-step-sign
     ---'
     ");
 }

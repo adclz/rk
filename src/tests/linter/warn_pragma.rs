@@ -27,6 +27,8 @@ END_FUNCTION"#;
      8 |     x := fn1();
        |          ^|^
        |           `--- this function is deprecated, use fn2 instead
+       |
+       | Note: lint rule: warn-pragma
     ---'
     ");
 }
@@ -54,6 +56,8 @@ END_FUNCTION"#;
      8 |     x := old_fn();
        |          ^^^|^^
        |             `---- prefer new_fn for better performance
+       |
+       | Note: lint rule: warn-pragma
     ---'
     ");
 }
@@ -82,6 +86,8 @@ END_FUNCTION"#;
      9 |     fb(_x := 1);
        |     ^|
        |      `-- use NewFB instead
+       |
+       | Note: lint rule: warn-pragma
     ---'
     ");
 }
@@ -112,6 +118,8 @@ END_FUNCTION"#;
      11 |     y := fb.doStuff();
         |             ^^^|^^^
         |                `----- this method is deprecated
+        |
+        | Note: lint rule: warn-pragma
     ----'
     ");
 }
@@ -144,6 +152,8 @@ END_FUNCTION"#;
      8 |     x := old();
        |          ^|^
        |           `--- deprecated
+       |
+       | Note: lint rule: warn-pragma
     ---'
     [L0117] Warning: call site notice
         ,-[ file:///test0.st:13:10 ]
@@ -155,6 +165,8 @@ END_FUNCTION"#;
      13 |     y := old();
         |          ^|^
         |           `--- deprecated
+        |
+        | Note: lint rule: warn-pragma
     ----'
     ");
 }

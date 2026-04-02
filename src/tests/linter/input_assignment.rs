@@ -26,6 +26,8 @@ END_FUNCTION
      6 |     x := 42;
        |     |
        |     `-- assignment to VAR_INPUT 'x'
+       |
+       | Note: lint rule: input-assignment
     ---'
     ");
 }
@@ -51,6 +53,8 @@ END_FUNCTION_BLOCK
      6 |     x := 42;
        |     |
        |     `-- assignment to VAR_INPUT 'x'
+       |
+       | Note: lint rule: input-assignment
     ---'
     ");
 }
@@ -108,6 +112,8 @@ END_FUNCTION_BLOCK
      7 |         x := 0;
        |         |
        |         `-- assignment to VAR_INPUT 'x'
+       |
+       | Note: lint rule: input-assignment
     ---'
     ");
 }

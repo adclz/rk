@@ -26,6 +26,8 @@ END_FUNCTION
      10 |         test := 0;
         |         ^^^^|^^^^
         |             `------ unnecessary ELSE branch: all preceding branches end with RETURN, EXIT, or CONTINUE
+        |
+        | Note: lint rule: unnecessary-else
     ----'
     ");
 }
@@ -53,6 +55,8 @@ END_FUNCTION
      10 |             test := i;
         |             ^^^^|^^^^
         |                 `------ unnecessary ELSE branch: all preceding branches end with RETURN, EXIT, or CONTINUE
+        |
+        | Note: lint rule: unnecessary-else
     ----'
     ");
 }
@@ -80,6 +84,8 @@ END_FUNCTION
      10 |             test := i;
         |             ^^^^|^^^^
         |                 `------ unnecessary ELSE branch: all preceding branches end with RETURN, EXIT, or CONTINUE
+        |
+        | Note: lint rule: unnecessary-else
     ----'
     ");
 }
@@ -142,6 +148,8 @@ END_FUNCTION
      13 |         test := 0;
         |         ^^^^|^^^^
         |             `------ unnecessary ELSE branch: all preceding branches end with RETURN, EXIT, or CONTINUE
+        |
+        | Note: lint rule: unnecessary-else
     ----'
     ");
 }

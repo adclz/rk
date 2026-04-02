@@ -24,8 +24,10 @@ fn statement_after_return(mut with_db: RootDatabase) {
        |             ^^^|^^^
        |                `----- unused variable 'x'
        |
-       | Note: if this is intentional, prefix it with an underscore:
-       |       '_x'
+       | Note 1: if this is intentional, prefix it with an underscore:
+       |         '_x'
+       |
+       | Note 2: lint rule: unused-variable
     ---'
     [L0107] Warning: unreachable code
        ,-[ file:///test0.st:8:13 ]
@@ -33,6 +35,8 @@ fn statement_after_return(mut with_db: RootDatabase) {
      8 |             x := 2;
        |             ^^^|^^
        |                `---- unreachable statement
+       |
+       | Note: lint rule: dead-code
     ---'
     ");
 }
@@ -73,6 +77,8 @@ fn statement_after_exit_in_loop(mut with_db: RootDatabase) {
      9 |                 test := 0;
        |                 ^^^^|^^^^
        |                     `------ unreachable statement
+       |
+       | Note: lint rule: dead-code
     ---'
     ");
 }
@@ -97,6 +103,8 @@ fn statement_after_continue_in_loop(mut with_db: RootDatabase) {
      8 |                 test := i;
        |                 ^^^^|^^^^
        |                     `------ unreachable statement
+       |
+       | Note: lint rule: dead-code
     ---'
     ");
 }
@@ -122,6 +130,8 @@ fn code_in_different_if_branch_no_warning(mut with_db: RootDatabase) {
      9 |                 test := x;
        |                 ^^^^|^^^^
        |                     `------ unnecessary ELSE branch: all preceding branches end with RETURN, EXIT, or CONTINUE
+       |
+       | Note: lint rule: unnecessary-else
     ---'
     ");
 }
@@ -148,8 +158,10 @@ fn multiple_statements_after_return(mut with_db: RootDatabase) {
        |             ^^^|^^^
        |                `----- unused variable 'x'
        |
-       | Note: if this is intentional, prefix it with an underscore:
-       |       '_x'
+       | Note 1: if this is intentional, prefix it with an underscore:
+       |         '_x'
+       |
+       | Note 2: lint rule: unused-variable
     ---'
     [L0101] Warning: unused code
        ,-[ file:///test0.st:5:13 ]
@@ -158,8 +170,10 @@ fn multiple_statements_after_return(mut with_db: RootDatabase) {
        |             ^^^|^^^
        |                `----- unused variable 'y'
        |
-       | Note: if this is intentional, prefix it with an underscore:
-       |       '_y'
+       | Note 1: if this is intentional, prefix it with an underscore:
+       |         '_y'
+       |
+       | Note 2: lint rule: unused-variable
     ---'
     [L0107] Warning: unreachable code
        ,-[ file:///test0.st:9:13 ]
@@ -167,6 +181,8 @@ fn multiple_statements_after_return(mut with_db: RootDatabase) {
      9 |             x := 2;
        |             ^^^|^^
        |                `---- unreachable statement
+       |
+       | Note: lint rule: dead-code
     ---'
     [L0107] Warning: unreachable code
         ,-[ file:///test0.st:10:13 ]
@@ -174,6 +190,8 @@ fn multiple_statements_after_return(mut with_db: RootDatabase) {
      10 |             y := 3;
         |             ^^^|^^
         |                `---- unreachable statement
+        |
+        | Note: lint rule: dead-code
     ----'
     ");
 }

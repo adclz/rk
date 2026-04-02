@@ -30,6 +30,8 @@ END_FUNCTION_BLOCK
      11 |     add(a := 1);
         |     ^^^^^|^^^^^
         |          `------- unused return value of 'add'
+        |
+        | Note: lint rule: unused-return-type
     ----'
     [L0116] Advice: missing input parameter
         ,-[ file:///test0.st:11:5 ]
@@ -41,6 +43,8 @@ END_FUNCTION_BLOCK
      11 |     add(a := 1);
         |     ^^^^^|^^^^^
         |          `------- call to 'add' is missing 1 input parameter: b
+        |
+        | Note: lint rule: missing-input-param
     ----'
     ");
 }
@@ -71,6 +75,8 @@ END_FUNCTION_BLOCK
      11 |     add(a := 1, b := 2);
         |     ^^^^^^^^^|^^^^^^^^^
         |              `----------- unused return value of 'add'
+        |
+        | Note: lint rule: unused-return-type
     ----'
     ");
 }
@@ -97,6 +103,8 @@ END_FUNCTION_BLOCK
      7 |     noop();
        |     ^^^|^^
        |        `---- unused return value of 'noop'
+       |
+       | Note: lint rule: unused-return-type
     ---'
     ");
 }
@@ -128,6 +136,8 @@ END_FUNCTION_BLOCK
      12 |     compute(x := 1);
         |     ^^^^^^^|^^^^^^^
         |            `--------- unused return value of 'compute'
+        |
+        | Note: lint rule: unused-return-type
     ----'
     [L0116] Advice: missing input parameter
         ,-[ file:///test0.st:12:5 ]
@@ -142,6 +152,8 @@ END_FUNCTION_BLOCK
      12 |     compute(x := 1);
         |     ^^^^^^^|^^^^^^^
         |            `--------- call to 'compute' is missing 2 input parameters: y, z
+        |
+        | Note: lint rule: missing-input-param
     ----'
     ");
 }
@@ -173,8 +185,10 @@ END_FUNCTION_BLOCK
        |         ^^^|^^^
        |            `----- unused variable 'a'
        |
-       | Note: if this is intentional, prefix it with an underscore:
-       |       '_a'
+       | Note 1: if this is intentional, prefix it with an underscore:
+       |         '_a'
+       |
+       | Note 2: lint rule: unused-variable
     ---'
     [L0101] Warning: unused code
        ,-[ file:///test0.st:6:9 ]
@@ -183,8 +197,10 @@ END_FUNCTION_BLOCK
        |         ^^^|^^^
        |            `----- unused variable 'b'
        |
-       | Note: if this is intentional, prefix it with an underscore:
-       |       '_b'
+       | Note 1: if this is intentional, prefix it with an underscore:
+       |         '_b'
+       |
+       | Note 2: lint rule: unused-variable
     ---'
     [L0116] Advice: missing input parameter
         ,-[ file:///test0.st:15:5 ]
@@ -196,6 +212,8 @@ END_FUNCTION_BLOCK
      15 |     fb.set_values(a := 1);
         |     ^^^^^^^^^^|^^^^^^^^^^
         |               `------------ call to 'set_values' is missing 1 input parameter: b
+        |
+        | Note: lint rule: missing-input-param
     ----'
     ");
 }
@@ -226,6 +244,8 @@ END_FUNCTION_BLOCK
      11 |     add(1, 2);
         |     ^^^^|^^^^
         |         `------ unused return value of 'add'
+        |
+        | Note: lint rule: unused-return-type
     ----'
     ");
 }

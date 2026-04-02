@@ -22,6 +22,8 @@ END_FUNCTION
      6 |     x := x;
        |     ^^^|^^
        |        `---- variable 'x' is assigned to itself
+       |
+       | Note: lint rule: self-assignment
     ---'
     ");
 }
@@ -76,6 +78,8 @@ END_FUNCTION
      8 |         x := x;
        |         ^^^|^^
        |            `---- variable 'x' is assigned to itself
+       |
+       | Note: lint rule: self-assignment
     ---'
     ");
 }
@@ -97,6 +101,8 @@ END_FUNCTION_BLOCK
      6 |     counter := counter;
        |     ^^^^^^^^^|^^^^^^^^
        |              `---------- variable 'counter' is assigned to itself
+       |
+       | Note: lint rule: self-assignment
     ---'
     ");
 }

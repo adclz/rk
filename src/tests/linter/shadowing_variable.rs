@@ -32,6 +32,8 @@ fn variable_shadows_function_block(mut with_db: RootDatabase) {
      2 |         FUNCTION_BLOCK PrintLog
        |                        ^^^^|^^^
        |                            `----- POU PrintLog is declared here
+       |
+       | Note: lint rule: shadowing-variable
     ---'
     ");
 }
@@ -65,6 +67,8 @@ fn variable_shadows_function(mut with_db: RootDatabase) {
      2 |         FUNCTION helper : INT
        |                  ^^^|^^
        |                     `---- POU helper is declared here
+       |
+       | Note: lint rule: shadowing-variable
     ---'
     ");
 }
@@ -99,6 +103,8 @@ fn variable_shadows_data_type(mut with_db: RootDatabase) {
      2 |         TYPE MyType : STRUCT
        |              ^^^|^^
        |                 `---- POU MyType is declared here
+       |
+       | Note: lint rule: shadowing-variable
     ---'
     ");
 }
@@ -145,8 +151,10 @@ fn no_shadowing_when_variable_unused(mut with_db: RootDatabase) {
        |             ^^^^^^^|^^^^^^^
        |                    `--------- unused variable 'PrintLog'
        |
-       | Note: if this is intentional, prefix it with an underscore:
-       |       '_PrintLog'
+       | Note 1: if this is intentional, prefix it with an underscore:
+       |         '_PrintLog'
+       |
+       | Note 2: lint rule: unused-variable
     ---'
     ");
 }

@@ -27,7 +27,9 @@ fn duplicate_var_in_function(mut with_db: RootDatabase) {
        | |
        | `--------------------- duplicate VAR section
        |
-       |     Note: merge this section with the existing one above
+       |     Note 1: merge this section with the existing one above
+       |
+       |     Note 2: lint rule: duplicate-var-section
     ---'
     ");
 }
@@ -55,7 +57,9 @@ fn duplicate_var_input_in_function(mut with_db: RootDatabase) {
        | |
        | `--------------------- duplicate VAR_INPUT section
        |
-       |     Note: merge this section with the existing one above
+       |     Note 1: merge this section with the existing one above
+       |
+       |     Note 2: lint rule: duplicate-var-section
     ---'
     ");
 }
@@ -83,7 +87,9 @@ fn duplicate_var_in_function_block(mut with_db: RootDatabase) {
        | |
        | `--------------------- duplicate VAR section
        |
-       |     Note: merge this section with the existing one above
+       |     Note 1: merge this section with the existing one above
+       |
+       |     Note 2: lint rule: duplicate-var-section
     ---'
     ");
 }
@@ -111,7 +117,9 @@ fn duplicate_var_input_in_function_block(mut with_db: RootDatabase) {
        | |
        | `--------------------- duplicate VAR_INPUT section
        |
-       |     Note: merge this section with the existing one above
+       |     Note 1: merge this section with the existing one above
+       |
+       |     Note 2: lint rule: duplicate-var-section
     ---'
     [L0110] Warning: assignment to input variable
        ,-[ file:///test0.st:9:13 ]
@@ -123,6 +131,8 @@ fn duplicate_var_input_in_function_block(mut with_db: RootDatabase) {
      9 |             x := y;
        |             |
        |             `-- assignment to VAR_INPUT 'x'
+       |
+       | Note: lint rule: input-assignment
     ---'
     ");
 }
@@ -150,7 +160,9 @@ fn duplicate_var_in_program(mut with_db: RootDatabase) {
        | |
        | `--------------------- duplicate VAR section
        |
-       |     Note: merge this section with the existing one above
+       |     Note 1: merge this section with the existing one above
+       |
+       |     Note 2: lint rule: duplicate-var-section
     ---'
     ");
 }
@@ -180,7 +192,9 @@ fn duplicate_var_in_method(mut with_db: RootDatabase) {
        | |
        | `--------------------- duplicate VAR section
        |
-       |     Note: merge this section with the existing one above
+       |     Note 1: merge this section with the existing one above
+       |
+       |     Note 2: lint rule: duplicate-var-section
     ---'
     ");
 }

@@ -26,6 +26,8 @@ END_FUNCTION_BLOCK
      3 |     USING Tools;
        |           ^^|^^
        |             `---- unused import 'Tools'
+       |
+       | Note: lint rule: unused-import
     ---'
     ");
 }
@@ -80,6 +82,8 @@ END_FUNCTION
      4 |     USING Utils;
        |           ^^|^^
        |             `---- unused import 'Utils'
+       |
+       | Note: lint rule: unused-import
     ---'
     ");
 }
@@ -188,6 +192,8 @@ END_FUNCTION
      2 | USING Tools;
        |       ^^|^^
        |         `---- unused import 'Tools'
+       |
+       | Note: lint rule: unused-import
     ---'
     ");
 }

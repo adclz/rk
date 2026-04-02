@@ -44,6 +44,8 @@ fn case_without_else_warning(mut with_db: RootDatabase) {
      9 | |->             END_CASE;
        | |
        | `--------------------------- CASE statement has no ELSE branch
+       |
+       |     Note: lint rule: case-without-else
     ---'
     ");
 }
@@ -76,6 +78,8 @@ fn nested_case_inner_missing_else(mut with_db: RootDatabase) {
      11 | |->                     END_CASE;
         | |
         | `----------------------------------- CASE statement has no ELSE branch
+        |
+        |     Note: lint rule: case-without-else
     ----'
     ");
 }
@@ -102,6 +106,8 @@ fn case_in_program(mut with_db: RootDatabase) {
      9 | |->             END_CASE;
        | |
        | `--------------------------- CASE statement has no ELSE branch
+       |
+       |     Note: lint rule: case-without-else
     ---'
     ");
 }

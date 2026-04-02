@@ -23,8 +23,10 @@ fn unused_local_variable(mut with_db: RootDatabase) {
        |             ^^^|^^^
        |                `----- unused variable 'y'
        |
-       | Note: if this is intentional, prefix it with an underscore:
-       |       '_y'
+       | Note 1: if this is intentional, prefix it with an underscore:
+       |         '_y'
+       |
+       | Note 2: lint rule: unused-variable
     ---'
     ");
 }
@@ -48,8 +50,10 @@ fn unused_variable_in_function_block(mut with_db: RootDatabase) {
        |             ^^^|^^^
        |                `----- unused variable 'y'
        |
-       | Note: if this is intentional, prefix it with an underscore:
-       |       '_y'
+       | Note 1: if this is intentional, prefix it with an underscore:
+       |         '_y'
+       |
+       | Note 2: lint rule: unused-variable
     ---'
     ");
 }
@@ -73,8 +77,10 @@ fn unused_variable_in_program(mut with_db: RootDatabase) {
        |             ^^^|^^^
        |                `----- unused variable 'y'
        |
-       | Note: if this is intentional, prefix it with an underscore:
-       |       '_y'
+       | Note 1: if this is intentional, prefix it with an underscore:
+       |         '_y'
+       |
+       | Note 2: lint rule: unused-variable
     ---'
     ");
 }
@@ -109,6 +115,8 @@ fn output_not_reported(mut with_db: RootDatabase) {
      4 |             result : INT;
        |             ^^^^^^|^^^^^
        |                   `------- VAR_OUTPUT 'result' is never assigned in the body
+       |
+       | Note: lint rule: uninitialized-output
     ---'
     ");
 }
@@ -156,8 +164,10 @@ fn unused_input_on_function(mut with_db: RootDatabase) {
        |             ^^^|^^^
        |                `----- unused variable 'b'
        |
-       | Note: if this is intentional, prefix it with an underscore:
-       |       '_b'
+       | Note 1: if this is intentional, prefix it with an underscore:
+       |         '_b'
+       |
+       | Note 2: lint rule: unused-variable
     ---'
     ");
 }
@@ -199,8 +209,10 @@ fn variable_used_via_this_in_method_not_flagged(mut with_db: RootDatabase) {
        |             ^^^^^^^^|^^^^^^^
        |                     `--------- unused variable 'unused_var'
        |
-       | Note: if this is intentional, prefix it with an underscore:
-       |       '_unused_var'
+       | Note 1: if this is intentional, prefix it with an underscore:
+       |         '_unused_var'
+       |
+       | Note 2: lint rule: unused-variable
     ---'
     ");
 }

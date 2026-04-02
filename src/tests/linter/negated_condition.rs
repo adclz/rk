@@ -32,6 +32,8 @@ END_FUNCTION
      9 |         test := 1;
        |         ^^^^|^^^^
        |             `------ with this
+       |
+       | Note: lint rule: negated-condition
     ---'
     ");
 }

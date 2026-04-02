@@ -34,6 +34,8 @@ END_FUNCTION
      14 |     add(a := 1, b := 2);
         |     ^^^^^^^^^|^^^^^^^^^
         |              `----------- unused return value of 'add'
+        |
+        | Note: lint rule: unused-return-type
     ----'
     ");
 }
@@ -133,6 +135,8 @@ END_FUNCTION
      12 |     fb.get_value();
         |     ^^^^^^^|^^^^^^
         |            `-------- unused return value of 'get_value'
+        |
+        | Note: lint rule: unused-return-type
     ----'
     ");
 }
@@ -206,6 +210,8 @@ END_FUNCTION_BLOCK
      13 |     compute(x := inst_x);
         |     ^^^^^^^^^^|^^^^^^^^^
         |               `----------- unused return value of 'compute'
+        |
+        | Note: lint rule: unused-return-type
     ----'
     ");
 }
