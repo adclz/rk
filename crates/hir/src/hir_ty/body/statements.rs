@@ -189,7 +189,7 @@ impl<'db> StmtsResolverCtx<'db> {
 
                     // THEN
                     if let Some(then) = then {
-                        self.check_statements(db, resolver, then, NestedScope::None, ctx);
+                        self.check_statements(db, resolver, then, nested_scope, ctx);
                     }
                     let then_state = ctx.ref_null_state.clone();
 
@@ -213,14 +213,14 @@ impl<'db> StmtsResolverCtx<'db> {
                             ));
                         }
 
-                        self.check_statements(db, resolver, stmts, NestedScope::None, ctx);
+                        self.check_statements(db, resolver, stmts, nested_scope, ctx);
                         branch_states.push(ctx.ref_null_state.clone());
                     }
 
                     // ELSE
                     if let Some(else_) = else_ {
                         ctx.ref_null_state = pre_if_state.clone();
-                        self.check_statements(db, resolver, else_, NestedScope::None, ctx);
+                        self.check_statements(db, resolver, else_, nested_scope, ctx);
                         branch_states.push(ctx.ref_null_state.clone());
                     } else {
                         // No ELSE means the pre-IF state is a possible path
@@ -347,9 +347,13 @@ impl<'db> StmtsResolverCtx<'db> {
 
                 StmtKind::Continue | StmtKind::Exit => {
                     if nested_scope != NestedScope::Loop {
-                        ctx.errors.push(
-                            ControlFlowError::ContinueOutsideLoop { stmt: *stmt }.to_diagnostic(db),
-                        );
+                        let err = match stmt.stmt(db) {
+                            StmtKind::Continue => {
+                                ControlFlowError::ContinueOutsideLoop { stmt: *stmt }
+                            }
+                            _ => ControlFlowError::ExitOutsideLoop { stmt: *stmt },
+                        };
+                        ctx.errors.push(err.to_diagnostic(db));
                     }
 
                     // Remaining statements in this block are unreachable
@@ -413,12 +417,12 @@ impl<'db> StmtsResolverCtx<'db> {
                             }
                         }
 
-                        self.check_statements(db, resolver, stmts, NestedScope::None, ctx);
+                        self.check_statements(db, resolver, stmts, nested_scope, ctx);
                     }
 
                     // check else
                     if let Some(else_) = else_ {
-                        self.check_statements(db, resolver, else_, NestedScope::None, ctx);
+                        self.check_statements(db, resolver, else_, nested_scope, ctx);
                     } else {
                         ctx.case_without_else.push(*stmt);
                     }

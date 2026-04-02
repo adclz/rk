@@ -49,13 +49,6 @@ END_VAR
 END_FUNCTION
 "#;
     assert_snapshot!(test_lint_diagnostics(&mut with_db, &[source]), @r"
-    [E1001] Error: control flow violation
-       ,-[ file:///test0.st:8:13 ]
-       |
-     8 |             EXIT;
-       |             ^^|^
-       |               `--- 'CONTINUE' can only be used inside loops
-    ---'
     [W0113] Advice: unnecessary ELSE
         ,-[ file:///test0.st:7:9 ]
         |
@@ -85,13 +78,6 @@ END_VAR
 END_FUNCTION
 "#;
     assert_snapshot!(test_lint_diagnostics(&mut with_db, &[source]), @r"
-    [E1001] Error: control flow violation
-       ,-[ file:///test0.st:8:13 ]
-       |
-     8 |             CONTINUE;
-       |             ^^^^|^^^
-       |                 `----- 'CONTINUE' can only be used inside loops
-    ---'
     [W0113] Advice: unnecessary ELSE
         ,-[ file:///test0.st:7:9 ]
         |
