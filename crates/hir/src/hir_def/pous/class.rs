@@ -5,7 +5,7 @@ use crate::{
     hir_def::{
         expressions::{spec::Spec, statement::Stmt},
         interned::identifier::Ident,
-        pous::variable::VariableDecl,
+        pous::{variable::VariableDecl, warn_pragma::WarnPragma},
         scope::ScopeId,
     },
 };
@@ -100,6 +100,10 @@ pub struct MethodDecl<'db> {
     #[no_eq]
     #[returns(ref)]
     pub stmts: Vec<Stmt<'db>>,
+
+    #[tracked]
+    #[returns(as_ref)]
+    pub warn_pragma: Option<WarnPragma>,
 
     #[tracked]
     #[no_eq]

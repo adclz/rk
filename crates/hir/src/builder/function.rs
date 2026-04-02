@@ -52,6 +52,11 @@ impl<'db> SemanticIndexBuilder<'db> {
 
         let cases = self.parse_cases(&func.cases);
 
+        let warn_pragma = func
+            .warn
+            .as_ref()
+            .and_then(|w| self.parse_warn_pragma(w.cast(self.ast)));
+
         let result = Pou::Function(Function::new(
             self.db,
             name,
@@ -61,6 +66,7 @@ impl<'db> SemanticIndexBuilder<'db> {
             variables,
             statements,
             return_type,
+            warn_pragma,
             func.into(),
             scope_id,
         ));

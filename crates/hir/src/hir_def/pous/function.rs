@@ -5,7 +5,7 @@ use crate::{
     hir_def::{
         expressions::{expression::ParamAssign, spec::Spec, statement::Stmt},
         interned::identifier::Ident,
-        pous::variable::VariableDecl,
+        pous::{variable::VariableDecl, warn_pragma::WarnPragma},
         scope::ScopeId,
     },
 };
@@ -37,6 +37,11 @@ pub struct Function<'db> {
     #[tracked]
     #[returns(as_ref)]
     pub return_type: Option<Spec<'db>>,
+
+    #[tracked]
+    #[no_eq]
+    #[returns(as_ref)]
+    pub warn_pragma: Option<WarnPragma>,
 
     #[tracked]
     #[no_eq]

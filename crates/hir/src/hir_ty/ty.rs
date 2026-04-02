@@ -149,6 +149,20 @@ impl<'db> CallableType<'db> {
             CallableType::MethodDecl(m) => Type::MethodDecl(*m),
         }
     }
+
+    pub fn warn_pragma(
+        &self,
+        db: &'db dyn WorkspaceDataBase,
+    ) -> Option<&'db crate::hir_def::pous::warn_pragma::WarnPragma> {
+        match self {
+            CallableType::Function(f) => f.warn_pragma(db),
+            CallableType::FunctionBlock(fb) => fb.warn_pragma(db),
+            CallableType::MethodDecl(m) => match m {
+                MethodRef::Prototype(_) => None,
+                MethodRef::Declared(d) => d.warn_pragma(db),
+            },
+        }
+    }
 }
 
 impl<'db> HirNodeInfo<'db> for CallableType<'db> {
