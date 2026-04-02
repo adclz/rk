@@ -2,6 +2,7 @@ import { commands, window, workspace, Disposable, Position, Selection, Uri, Task
 
 export function registerCommands(
     restartServer: () => Promise<void>,
+    stopServer: () => Promise<void>,
     showStatusMenu: () => Promise<void>,
 ) {
     const disposables: Disposable[] = [];
@@ -53,6 +54,10 @@ export function registerCommands(
 
     disposables.push(
         commands.registerCommand("rk.restartServer", restartServer)
+    );
+
+    disposables.push(
+        commands.registerCommand("rk.stopServer", stopServer)
     );
 
     disposables.push(
