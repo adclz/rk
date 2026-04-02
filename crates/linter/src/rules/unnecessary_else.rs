@@ -78,31 +78,29 @@ fn check_statements<'db>(
                     continue;
                 }
 
-                let then_exits = then
-                    .as_ref()
-                    .is_some_and(|stmts| ends_with_exit(db, stmts));
+                let then_exits = then.as_ref().is_some_and(|stmts| ends_with_exit(db, stmts));
                 if !then_exits {
                     continue;
                 }
 
-                let all_elsif_exit = else_if
-                    .iter()
-                    .all(|(_, stmts)| ends_with_exit(db, stmts));
+                let all_elsif_exit = else_if.iter().all(|(_, stmts)| ends_with_exit(db, stmts));
                 if !all_elsif_exit {
                     continue;
                 }
 
-                diagnostics.push(
+                for else_ in else_stmts {
+                    diagnostics.push(
                     diag()
                         .message(
                             "unnecessary ELSE branch: all preceding branches end with RETURN, EXIT, or CONTINUE"
                                 .to_string(),
                         )
                         .desc(&UnnecessaryElse)
-                        .range(stmt.get_span(db))
+                        .range(else_.get_span(db))
                         .severity(DiagnosticSeverity::INFORMATION)
                         .call(),
                 );
+                }
             }
             StmtKind::Case { cases, else_, .. } => {
                 for (_, stmts) in cases {

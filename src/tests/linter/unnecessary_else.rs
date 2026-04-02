@@ -21,13 +21,11 @@ END_FUNCTION
 "#;
     assert_snapshot!(test_lint_diagnostics(&mut with_db, &[source]), @r"
     [W0113] Advice: unnecessary ELSE
-        ,-[ file:///test0.st:6:5 ]
+        ,-[ file:///test0.st:10:9 ]
         |
-      6 | ,->     IF x > 0 THEN
-        : :
-     11 | |->     END_IF;
-        | |
-        | `----------------- unnecessary ELSE branch: all preceding branches end with RETURN, EXIT, or CONTINUE
+     10 |         test := 0;
+        |         ^^^^|^^^^
+        |             `------ unnecessary ELSE branch: all preceding branches end with RETURN, EXIT, or CONTINUE
     ----'
     ");
 }
@@ -50,13 +48,11 @@ END_FUNCTION
 "#;
     assert_snapshot!(test_lint_diagnostics(&mut with_db, &[source]), @r"
     [W0113] Advice: unnecessary ELSE
-        ,-[ file:///test0.st:7:9 ]
+        ,-[ file:///test0.st:10:13 ]
         |
-      7 | ,->         IF i > 5 THEN
-        : :
-     11 | |->         END_IF;
-        | |
-        | `--------------------- unnecessary ELSE branch: all preceding branches end with RETURN, EXIT, or CONTINUE
+     10 |             test := i;
+        |             ^^^^|^^^^
+        |                 `------ unnecessary ELSE branch: all preceding branches end with RETURN, EXIT, or CONTINUE
     ----'
     ");
 }
@@ -79,13 +75,11 @@ END_FUNCTION
 "#;
     assert_snapshot!(test_lint_diagnostics(&mut with_db, &[source]), @r"
     [W0113] Advice: unnecessary ELSE
-        ,-[ file:///test0.st:7:9 ]
+        ,-[ file:///test0.st:10:13 ]
         |
-      7 | ,->         IF i > 5 THEN
-        : :
-     11 | |->         END_IF;
-        | |
-        | `--------------------- unnecessary ELSE branch: all preceding branches end with RETURN, EXIT, or CONTINUE
+     10 |             test := i;
+        |             ^^^^|^^^^
+        |                 `------ unnecessary ELSE branch: all preceding branches end with RETURN, EXIT, or CONTINUE
     ----'
     ");
 }
@@ -143,13 +137,11 @@ END_FUNCTION
 "#;
     assert_snapshot!(test_lint_diagnostics(&mut with_db, &[source]), @r"
     [W0113] Advice: unnecessary ELSE
-        ,-[ file:///test0.st:6:5 ]
+        ,-[ file:///test0.st:13:9 ]
         |
-      6 | ,->     IF x > 10 THEN
-        : :
-     14 | |->     END_IF;
-        | |
-        | `----------------- unnecessary ELSE branch: all preceding branches end with RETURN, EXIT, or CONTINUE
+     13 |         test := 0;
+        |         ^^^^|^^^^
+        |             `------ unnecessary ELSE branch: all preceding branches end with RETURN, EXIT, or CONTINUE
     ----'
     ");
 }

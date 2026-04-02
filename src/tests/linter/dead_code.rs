@@ -115,7 +115,15 @@ fn code_in_different_if_branch_no_warning(mut with_db: RootDatabase) {
             END_IF;
         END_FUNCTION
     "#;
-    assert_snapshot!(test_lint_diagnostics(&mut with_db, &[source]), @r"");
+    assert_snapshot!(test_lint_diagnostics(&mut with_db, &[source]), @r"
+    [W0113] Advice: unnecessary ELSE
+       ,-[ file:///test0.st:9:17 ]
+       |
+     9 |                 test := x;
+       |                 ^^^^|^^^^
+       |                     `------ unnecessary ELSE branch: all preceding branches end with RETURN, EXIT, or CONTINUE
+    ---'
+    ");
 }
 
 #[rstest]
