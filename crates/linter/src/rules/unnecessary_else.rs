@@ -120,6 +120,48 @@ fn check_statements<'db>(
     }
 }
 
+/// Check a single IF statement for unnecessary ELSE.
+/// Called by the unified visitor after branches have already been recursed.
+pub fn check_if<'db>(
+    db: &'db dyn WorkspaceDataBase,
+    stmt: Stmt<'db>,
+    then: &Option<Vec<Stmt<'db>>>,
+    else_if: &[(hir::hir_def::expressions::expression::Expr<'db>, Vec<Stmt<'db>>)],
+    else_: &Option<Vec<Stmt<'db>>>,
+    diagnostics: &mut Vec<IdeDiagnostic>,
+) {
+    let Some(else_stmts) = else_ else {
+        return;
+    };
+    if else_stmts.is_empty() {
+        return;
+    }
+
+    let then_exits = then.as_ref().is_some_and(|stmts| ends_with_exit(db, stmts));
+    if !then_exits {
+        return;
+    }
+
+    let all_elsif_exit = else_if.iter().all(|(_, stmts)| ends_with_exit(db, stmts));
+    if !all_elsif_exit {
+        return;
+    }
+
+    for else_ in else_stmts {
+        diagnostics.push(
+            diag()
+                .message(
+                    "unnecessary ELSE branch: all preceding branches end with RETURN, EXIT, or CONTINUE"
+                        .to_string(),
+                )
+                .desc(&UnnecessaryElse)
+                .range(else_.get_span(db))
+                .severity(DiagnosticSeverity::INFORMATION)
+                .call(),
+        );
+    }
+}
+
 /// Returns true if the statement list ends with an unconditional exit
 /// (RETURN, EXIT, or CONTINUE).
 fn ends_with_exit<'db>(db: &'db dyn WorkspaceDataBase, stmts: &[Stmt<'db>]) -> bool {

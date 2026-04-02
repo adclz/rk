@@ -59,7 +59,7 @@ fn check_statements<'db>(
     for stmt in stmts {
         match stmt.stmt(db) {
             StmtKind::Assignment { var, target } => {
-                check_self_assign(db, body, *stmt, *var, *target, diagnostics);
+                check_assignment(db, body, *stmt, *var, *target, diagnostics);
             }
             StmtKind::If {
                 then,
@@ -95,7 +95,7 @@ fn check_statements<'db>(
     }
 }
 
-fn check_self_assign<'db>(
+pub fn check_assignment<'db>(
     db: &'db dyn WorkspaceDataBase,
     body: &BodyInferenceResult<'db>,
     stmt: Stmt<'db>,

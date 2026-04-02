@@ -22,6 +22,7 @@ pub mod for_loop_step_sign;
 pub mod input_assignment;
 pub mod self_assignment;
 pub mod shadowing_variable;
+pub mod stmt_visitor;
 pub mod unnecessary_else;
 pub mod uninitialized_output;
 pub mod unused_import;
@@ -178,19 +179,6 @@ fn lint_scope<'db>(
     if config.is_enabled(for_loop_step_sign::NAME) {
         for_loop_step_sign::check(db, body, diagnostics);
     }
-    if config.is_enabled(input_assignment::NAME) {
-        input_assignment::check(db, scope, body, diagnostics);
-    }
-    if config.is_enabled(self_assignment::NAME) {
-        self_assignment::check(db, scope, body, diagnostics);
-    }
-    if config.is_enabled(constant_condition::NAME) {
-        constant_condition::check(db, scope, diagnostics);
-    }
-    if config.is_enabled(uninitialized_output::NAME) {
-        uninitialized_output::check(db, scope, body, diagnostics);
-    }
-    if config.is_enabled(unnecessary_else::NAME) {
-        unnecessary_else::check(db, scope, diagnostics);
-    }
+    // Statement-walking lints: single pass over the statement tree
+    stmt_visitor::check(db, config, scope, body, diagnostics);
 }

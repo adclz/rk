@@ -102,7 +102,15 @@ fn output_not_reported(mut with_db: RootDatabase) {
         END_VAR
         END_FUNCTION_BLOCK
     "#;
-    assert_snapshot!(test_lint_diagnostics(&mut with_db, &[source]), @r"");
+    assert_snapshot!(test_lint_diagnostics(&mut with_db, &[source]), @r"
+    [W0114] Warning: uninitialized output
+       ,-[ file:///test0.st:4:13 ]
+       |
+     4 |             result : INT;
+       |             ^^^^^^|^^^^^
+       |                   `------- VAR_OUTPUT 'result' is never assigned in the body
+    ---'
+    ");
 }
 
 #[rstest]

@@ -59,7 +59,7 @@ fn check_statements<'db>(
     for stmt in stmts {
         match stmt.stmt(db) {
             StmtKind::Assignment { var, .. } | StmtKind::AssignmentAttempt { var, .. } => {
-                check_var_access(db, body, *var, diagnostics);
+                check_assignment(db, body, *var, diagnostics);
             }
             StmtKind::If {
                 then,
@@ -95,7 +95,7 @@ fn check_statements<'db>(
     }
 }
 
-fn check_var_access<'db>(
+pub fn check_assignment<'db>(
     db: &'db dyn WorkspaceDataBase,
     body: &BodyInferenceResult<'db>,
     var_access: VariableAccess<'db>,

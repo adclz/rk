@@ -102,7 +102,7 @@ fn check_statements<'db>(
     }
 }
 
-fn check_condition<'db>(
+pub fn check_condition<'db>(
     db: &'db dyn WorkspaceDataBase,
     condition: &Expr<'db>,
     keyword: &str,
