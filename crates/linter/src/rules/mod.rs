@@ -19,6 +19,7 @@ pub mod duplicate_var_section;
 pub mod effectless_statement;
 pub mod for_loop_step_sign;
 pub mod input_assignment;
+pub mod self_assignment;
 pub mod shadowing_variable;
 pub mod unused_import;
 pub mod unused_return_type;
@@ -176,5 +177,8 @@ fn lint_scope<'db>(
     }
     if config.is_enabled(input_assignment::NAME) {
         input_assignment::check(db, scope, body, diagnostics);
+    }
+    if config.is_enabled(self_assignment::NAME) {
+        self_assignment::check(db, scope, body, diagnostics);
     }
 }
