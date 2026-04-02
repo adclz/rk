@@ -329,6 +329,9 @@ impl<'db> Type<'db> {
 
     pub fn with_location(&self, db: &'db dyn WorkspaceDataBase, diag: &mut IdeDiagnostic) {
         match self {
+            Self::CallableType(typ) => {
+                typ.inner_callable().with_location(db, diag);
+            }
             Self::Variable((v, multibits)) => match v.spec(db).kind(db) {
                 SpecKind::Target(t) => {
                     v.spec(db).infer(db).with_location(db, diag);

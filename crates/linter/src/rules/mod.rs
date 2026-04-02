@@ -20,6 +20,7 @@ pub mod duplicate_var_section;
 pub mod effectless_statement;
 pub mod for_loop_step_sign;
 pub mod input_assignment;
+pub mod negated_condition;
 pub mod self_assignment;
 pub mod shadowing_variable;
 pub mod stmt_visitor;

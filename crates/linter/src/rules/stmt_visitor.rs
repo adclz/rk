@@ -16,7 +16,7 @@ use hir::{
 };
 use ide_diagnostic::IdeDiagnostic;
 
-use super::{constant_condition, input_assignment, self_assignment, uninitialized_output, unnecessary_else};
+use super::{constant_condition, input_assignment, negated_condition, self_assignment, uninitialized_output, unnecessary_else};
 
 /// Run all statement-walking lints in a single pass over the statement tree.
 pub fn check<'db>(
@@ -43,9 +43,10 @@ pub fn check<'db>(
         constant_condition: config.is_enabled(constant_condition::NAME),
         unnecessary_else: config.is_enabled(unnecessary_else::NAME),
         uninitialized_output: config.is_enabled(uninitialized_output::NAME),
+        negated_condition: config.is_enabled(negated_condition::NAME),
     };
 
-    // Nothing enabled — skip walk entirely
+    // Nothing enabled - skip walk entirely
     if !ctx.any_enabled() {
         return;
     }
@@ -70,6 +71,7 @@ struct VisitorCtx {
     constant_condition: bool,
     unnecessary_else: bool,
     uninitialized_output: bool,
+    negated_condition: bool,
 }
 
 impl VisitorCtx {
@@ -79,6 +81,7 @@ impl VisitorCtx {
             || self.constant_condition
             || self.unnecessary_else
             || self.uninitialized_output
+            || self.negated_condition
     }
 }
 
@@ -139,6 +142,9 @@ fn visit_statements<'db>(
                 }
                 if ctx.unnecessary_else {
                     unnecessary_else::check_if(db, *stmt, then, else_if, else_, diagnostics);
+                }
+                if ctx.negated_condition && else_if.is_empty() {
+                    negated_condition::check_if(db, condition, then, else_, diagnostics);
                 }
             }
             StmtKind::While {

@@ -27,6 +27,10 @@ END_FUNCTION
     [W0104] Advice: unused return value
         ,-[ file:///test0.st:14:5 ]
         |
+      2 | FUNCTION add : INT
+        |          ^|^
+        |           `--- FUNCTION 'add' is defined here, with return type 'INT'
+        |
      14 |     add(a := 1, b := 2);
         |     ^^^^^^^^^|^^^^^^^^^
         |              `----------- unused return value of 'add'
@@ -122,6 +126,10 @@ END_FUNCTION
     [W0104] Advice: unused return value
         ,-[ file:///test0.st:12:5 ]
         |
+      3 |     METHOD PUBLIC get_value : INT
+        |                   ^^^^|^^^^
+        |                       `------ METHOD 'get_value' is defined here, with return type 'INT'
+        |
      12 |     fb.get_value();
         |     ^^^^^^^|^^^^^^
         |            `-------- unused return value of 'get_value'
@@ -190,6 +198,10 @@ END_FUNCTION_BLOCK
     assert_snapshot!(test_lint_diagnostics(&mut with_db, &[source]), @r"
     [W0104] Advice: unused return value
         ,-[ file:///test0.st:13:5 ]
+        |
+      2 | FUNCTION compute : INT
+        |          ^^^|^^^
+        |             `----- FUNCTION 'compute' is defined here, with return type 'INT'
         |
      13 |     compute(x := inst_x);
         |     ^^^^^^^^^^|^^^^^^^^^

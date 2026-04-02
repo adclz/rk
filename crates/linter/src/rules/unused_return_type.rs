@@ -24,13 +24,16 @@ pub fn check<'db>(
     diagnostics: &mut Vec<IdeDiagnostic>,
 ) {
     for (stmt, typ) in &body.unused_return_types {
-        diagnostics.push(
+        let mut diag = 
             diag()
                 .message(format!("unused return value of '{}'", typ.type_name(db)))
                 .desc(&UnusedReturnType)
                 .range(stmt.get_span(db))
                 .severity(DiagnosticSeverity::INFORMATION)
-                .call(),
-        );
+                .call();
+        
+        typ.with_location(db, &mut diag);
+
+        diagnostics.push(diag);
     }
 }
