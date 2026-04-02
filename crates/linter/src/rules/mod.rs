@@ -23,6 +23,7 @@ pub mod input_assignment;
 pub mod self_assignment;
 pub mod shadowing_variable;
 pub mod unnecessary_else;
+pub mod uninitialized_output;
 pub mod unused_import;
 pub mod unused_return_type;
 pub mod unused_variable;
@@ -185,6 +186,9 @@ fn lint_scope<'db>(
     }
     if config.is_enabled(constant_condition::NAME) {
         constant_condition::check(db, scope, diagnostics);
+    }
+    if config.is_enabled(uninitialized_output::NAME) {
+        uninitialized_output::check(db, scope, body, diagnostics);
     }
     if config.is_enabled(unnecessary_else::NAME) {
         unnecessary_else::check(db, scope, diagnostics);
