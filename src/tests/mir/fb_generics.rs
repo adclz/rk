@@ -126,6 +126,29 @@ END_FUNCTION
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"");
 }
 
+// ── MIR: FB ANY_INT across multiple files ──────────────────────────────
+
+#[rstest]
+fn fb_any_int_cross_file(mut with_db: RootDatabase) {
+    let fb_source = r#"
+FUNCTION_BLOCK CTU
+VAR_INPUT PV: ANY_INT; END_VAR
+VAR_OUTPUT CV: INTO(PV); END_VAR
+    CV := PV;
+END_FUNCTION_BLOCK
+    "#;
+    let caller_source = r#"
+FUNCTION test
+VAR counter : CTU; END_VAR
+    counter(PV := 10);
+END_FUNCTION
+    "#;
+    assert_snapshot!(mir_exports(&mut with_db, &[fb_source, caller_source]), @r"
+    export CTU$__body__(*struct(CTU))
+    export test()
+    ");
+}
+
 // ── MIR: FB with ANY_INT lowers to concrete struct ──────────────────────
 
 #[rstest]

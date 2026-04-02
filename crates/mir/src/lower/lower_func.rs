@@ -357,12 +357,17 @@ pub fn lower_function_block<'db>(
             map.insert(fb.name(db), any_subs.clone());
             Some(map)
         };
+        // Pick the concrete type from the ANY_* substitutions for expression lowering.
+        // All ANY_* variables in the FB resolve to the same concrete type group
+        // (via INTO chains), so taking the first value is correct.
+        let any_override = any_subs.values().next().copied();
         let body_stmts = crate::lower::lower_stmt::lower_stmts_fb_body(
             db,
             fb.statements(db),
             this_struct,
             string_pool.clone(),
             fb_subs_map.as_ref(),
+            any_override,
         )?;
 
         let body_name = Ident::new(

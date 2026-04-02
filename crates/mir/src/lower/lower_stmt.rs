@@ -78,8 +78,10 @@ pub fn lower_stmts_fb_body<'db>(
     this_struct: crate::types::MirStructType,
     string_pool: std::rc::Rc<std::cell::RefCell<super::lower_expr::StringPool>>,
     fb_subs: Option<&FbSubsMap>,
+    any_override: Option<hir::hir_def::expressions::spec::ElementarySpec>,
 ) -> Result<Vec<MirStmt>, LowerTypeError> {
     let mut ctx = ExprLowerCtx::with_this_struct(db, this_struct, string_pool);
+    ctx.any_override = any_override;
     if let Some(subs) = fb_subs {
         ctx.fb_subs = Some(std::rc::Rc::new(subs.clone()));
     }

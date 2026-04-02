@@ -479,6 +479,31 @@ END_FUNCTION
 "#],
         },
         ErrorExample {
+            code: "E0037",
+            category: "Syntax",
+            title: "Access specifier on interface method prototype",
+            description: "Access specifiers (PUBLIC, PRIVATE, etc.) are not allowed on interface method prototypes. Interface methods are implicitly PUBLIC.",
+            sources: &[r#"
+INTERFACE iface
+    METHOD PUBLIC m1
+    END_METHOD
+END_INTERFACE
+"#],
+        },
+        ErrorExample {
+            code: "E0038",
+            category: "Syntax",
+            title: "Method declaration in body",
+            description: "A METHOD declaration cannot appear inside the body (statement list) of a POU. Methods must be declared at the top level of a FUNCTION_BLOCK or CLASS.",
+            sources: &[r#"
+FUNCTION_BLOCK fb1
+    x := 1;
+    METHOD m1
+    END_METHOD
+END_FUNCTION_BLOCK
+"#],
+        },
+        ErrorExample {
             code: "E0050",
             category: "Syntax",
             title: "Generic syntax error",
@@ -654,16 +679,6 @@ END_PROGRAM
 
 PROGRAM p1
 END_PROGRAM
-"#],
-        },
-        ErrorExample {
-            code: "E0112",
-            category: "Duplicates",
-            title: "Duplicate generic parameter",
-            description: "Two generic parameters on the same function have the same name.",
-            sources: &[r#"
-FUNCTION fn1<T: ANY, T: ANY> : INT
-END_FUNCTION
 "#],
         },
         ErrorExample {
@@ -1098,21 +1113,15 @@ END_FUNCTION_BLOCK
         ErrorExample {
             code: "E0227",
             category: "Resolution",
-            title: "Input variable not assignable",
-            description: "A `VAR_INPUT` variable cannot be assigned to from within the calling scope.",
+            title: "Multiple variadic variables",
+            description: "Only one variadic parameter is allowed per POU.",
             sources: &[r#"
 FUNCTION fn1
-    VAR_OUTPUT
-        param1: INT;
+    VAR_INPUT
+        a: INT...
+        b: INT...
     END_VAR
 END_FUNCTION
-
-FUNCTION_BLOCK fb1
-    VAR_INPUT
-        b1: INT;
-    END_VAR
-    fn1(param1 => b1);
-END_FUNCTION_BLOCK
 "#],
         },
         ErrorExample {
@@ -1147,6 +1156,45 @@ VAR
 END_VAR
     test();
 END_FUNCTION_BLOCK
+"#],
+        },
+        ErrorExample {
+            code: "E0230",
+            category: "Resolution",
+            title: "Extern variable not found",
+            description: "An `{extern}` pragma references a variable that does not exist in the current scope.",
+            sources: &[r#"
+FUNCTION test : INT
+VAR_INPUT x : INT; END_VAR
+    {extern 'math' 'abs' (params unknown_var) (result test)}
+END_FUNCTION
+"#],
+        },
+        ErrorExample {
+            code: "E0231",
+            category: "Resolution",
+            title: "INTO reference not found",
+            description: "An `INTO(ref)` type specification references an identifier that is not found in scope.",
+            sources: &[r#"
+FUNCTION fn1
+    VAR_INPUT
+        x: INTO(nonexistent);
+    END_VAR
+END_FUNCTION
+"#],
+        },
+        ErrorExample {
+            code: "E0232",
+            category: "Resolution",
+            title: "INTO reference must be an ANY type",
+            description: "An `INTO(ref)` constraint must reference a variable declared with an `ANY_*` type specification.",
+            sources: &[r#"
+FUNCTION fn1
+    VAR_INPUT
+        value: INT;
+        target: INTO(value);
+    END_VAR
+END_FUNCTION
 "#],
         },
         // ── E03xx: Type system ───────────────────────────────────────────
@@ -1617,103 +1665,6 @@ END_VAR
 END_FUNCTION_BLOCK
 "#],
         },
-        // Generic type errors
-        ErrorExample {
-            code: "E0310",
-            category: "Type System",
-            title: "Invalid generic type",
-            description: "The generic constraint uses an invalid type. Only ANY, ANY_INT, etc. are valid.",
-            sources: &[r#"
-FUNCTION fn1<GT: INT>
-END_FUNCTION
-"#],
-        },
-        ErrorExample {
-            code: "E0311",
-            category: "Type System",
-            title: "Unknown generic constraint",
-            description: "A generic parameter uses an unknown constraint. Only type groups like ANY, ANY_INT, ANY_REAL, etc. are valid.",
-            sources: &[r#"
-FUNCTION fn1<GT: UNKNOWN_TYPE>
-END_FUNCTION
-"#],
-        },
-        ErrorExample {
-            code: "E0312",
-            category: "Type System",
-            title: "Invalid generic constraint",
-            description: "INTO constraints must target a sibling generic parameter. Concrete types, type groups, and self-references are not allowed.",
-            sources: &[r#"
-FUNCTION fn1<GT: ANY_INT + INTO<INT>>
-END_FUNCTION
-"#],
-        },
-        ErrorExample {
-            code: "E0313",
-            category: "Type System",
-            title: "Missing type arguments",
-            description: "A generic function requires explicit type arguments but the compiler cannot infer them from the call arguments.",
-            sources: &[r#"
-FUNCTION fn1<T: ANY> : T
-END_FUNCTION
-
-FUNCTION_BLOCK fb1
-    fn1();
-END_FUNCTION_BLOCK
-"#],
-        },
-        ErrorExample {
-            code: "E0314",
-            category: "Type System",
-            title: "Wrong number of type arguments",
-            description: "A generic function call passes more or fewer type arguments than expected.",
-            sources: &[r#"
-FUNCTION fn1<T: ANY> : INT
-VAR_INPUT
-    x: T;
-END_VAR
-END_FUNCTION
-
-FUNCTION_BLOCK fb1
-    fn1<INT, BOOL>(5);
-END_FUNCTION_BLOCK
-"#],
-        },
-        ErrorExample {
-            code: "E0315",
-            category: "Type System",
-            title: "Type argument constraint mismatch",
-            description: "A type argument does not satisfy the generic constraint.",
-            sources: &[r#"
-FUNCTION fn1<T: ANY_INT> : INT
-VAR_INPUT
-    x: T;
-END_VAR
-END_FUNCTION
-
-FUNCTION_BLOCK fb1
-    fn1<STRING>('hello');
-END_FUNCTION_BLOCK
-"#],
-        },
-        ErrorExample {
-            code: "E0316",
-            category: "Type System",
-            title: "Type argument INTO constraint mismatch",
-            description: "A type argument cannot be implicitly cast into the type of the referenced generic parameter.",
-            sources: &[r#"
-FUNCTION widen<A: ANY_INT, B: ANY_INT + INTO<A>> : A
-    VAR_INPUT
-        x: B;
-    END_VAR
-    widen := x;
-END_FUNCTION
-
-FUNCTION test : INT
-    test := widen<INT, DINT>(5);
-END_FUNCTION
-"#],
-        },
         ErrorExample {
             code: "E0317",
             category: "Type System",
@@ -1831,6 +1782,21 @@ FUNCTION_BLOCK fn1
         obj: Base;
     END_VAR
     obj.myProtectedMethod();
+END_FUNCTION_BLOCK
+"#],
+        },
+        ErrorExample {
+            code: "E0404",
+            category: "Visibility",
+            title: "Cannot access test-only item",
+            description: "Items annotated with `{test}` can only be accessed from other test-annotated code.",
+            sources: &[r#"
+{test}
+FUNCTION test_helper : INT
+END_FUNCTION
+
+FUNCTION_BLOCK fb1
+    test_helper();
 END_FUNCTION_BLOCK
 "#],
         },
@@ -2264,6 +2230,25 @@ VAR
 END_VAR
     fn1 := x + y;
 END_FUNCTION
+"#],
+        },
+        ErrorExample {
+            code: "W0104",
+            category: "Linter Warnings",
+            title: "Unused return value",
+            description: "A function call discards a return value. If the return value is intentionally ignored, assign it to a variable.",
+            sources: &[r#"
+FUNCTION add : INT
+VAR_INPUT
+    a : INT;
+    b : INT;
+END_VAR
+    add := a + b;
+END_FUNCTION
+
+FUNCTION_BLOCK fb1
+    add(a := 1, b := 2);
+END_FUNCTION_BLOCK
 "#],
         },
         ErrorExample {

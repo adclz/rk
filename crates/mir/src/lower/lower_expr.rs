@@ -134,6 +134,14 @@ impl<'db> ExprLowerCtx<'db> {
                 let mir = elementary_spec_to_mir(concrete)?;
                 Ok(MirType::Elementary(mir))
             }
+            (Type::Elementary(e), None) if e.is_any() => {
+                if let Some(concrete) = self.resolve_any_from_fb_subs(*e) {
+                    let mir = elementary_spec_to_mir(concrete)?;
+                    Ok(MirType::Elementary(mir))
+                } else {
+                    lower_type(self.db, normalized)
+                }
+            }
             (Type::FunctionBlock(fb), _) => {
                 // Use FB substitutions if available
                 if let Some(ref subs_map) = self.fb_subs {
@@ -1072,6 +1080,8 @@ impl<'db> ExprLowerCtx<'db> {
             Type::Elementary(spec) if spec.is_any() => {
                 if let Some(concrete) = self.any_override {
                     elementary_spec_to_mir(concrete)
+                } else if let Some(concrete) = self.resolve_any_from_fb_subs(spec) {
+                    elementary_spec_to_mir(concrete)
                 } else {
                     elementary_spec_to_mir(spec)
                 }
@@ -1117,6 +1127,20 @@ impl<'db> ExprLowerCtx<'db> {
                 normalized
             ))),
         }
+    }
+
+    /// Try to resolve an ANY_* type from FB substitutions.
+    /// Looks through all FB subs for a concrete type that matches the ANY_* group.
+    fn resolve_any_from_fb_subs(&self, any_spec: ElementarySpec) -> Option<ElementarySpec> {
+        let subs_map = self.fb_subs.as_ref()?;
+        for fb_subs in subs_map.values() {
+            for concrete in fb_subs.values() {
+                if any_spec.accepts(*concrete) {
+                    return Some(*concrete);
+                }
+            }
+        }
+        None
     }
 }
 

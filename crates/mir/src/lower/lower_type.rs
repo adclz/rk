@@ -109,6 +109,22 @@ pub fn elementary_spec_to_mir(spec: ElementarySpec) -> Result<MirElementary, Low
     })
 }
 
+/// Resolve an ANY_* type by finding a matching concrete type in the substitution map.
+fn resolve_any_from_subs(
+    any_spec: ElementarySpec,
+    subs: &rustc_hash::FxHashMap<Ident, ElementarySpec>,
+) -> Result<MirType, LowerTypeError> {
+    for concrete in subs.values() {
+        if any_spec.accepts(*concrete) {
+            return Ok(MirType::Elementary(elementary_spec_to_mir(*concrete)?));
+        }
+    }
+    Err(LowerTypeError::UnsupportedType(format!(
+        "ANY type specs cannot be lowered: {:?}",
+        any_spec
+    )))
+}
+
 fn lower_struct_type<'db>(
     db: &'db dyn WorkspaceDataBase,
     struct_type: Struct<'db>,
@@ -277,17 +293,16 @@ pub fn lower_fb_type_with_subs<'db>(
             if elem.is_any() {
                 if let Some(concrete) = any_subs.get(&var.name(db)) {
                     MirType::Elementary(elementary_spec_to_mir(*concrete)?)
-                } else {
-                    // Check if it's an INTO(ref) — resolve from the referenced variable's substitution
-                    if let hir::hir_def::expressions::spec::SpecKind::Into(ident) = var.spec(db).kind(db) {
-                        if let Some(concrete) = any_subs.get(&ident.ident) {
-                            MirType::Elementary(elementary_spec_to_mir(*concrete)?)
-                        } else {
-                            lower_type(db, var_type)?
-                        }
+                } else if let hir::hir_def::expressions::spec::SpecKind::Into(ident) = var.spec(db).kind(db) {
+                    // INTO(ref) — resolve from the referenced variable's substitution
+                    if let Some(concrete) = any_subs.get(&ident.ident) {
+                        MirType::Elementary(elementary_spec_to_mir(*concrete)?)
                     } else {
-                        lower_type(db, var_type)?
+                        resolve_any_from_subs(elem, any_subs)?
                     }
+                } else {
+                    // Fallback: find any concrete sub that matches this ANY group
+                    resolve_any_from_subs(elem, any_subs)?
                 }
             } else {
                 lower_type(db, var_type)?

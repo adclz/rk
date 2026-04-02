@@ -25,15 +25,18 @@ VAR
     count : INT;
 END_VAR
 
-    count := count + 1;
-
 METHOD GetCount : INT
     GetCount := count;
 END_METHOD
 
+    count := count + 1;
+
 END_FUNCTION_BLOCK
     "#;
-    assert_snapshot!(mir_exports(&mut with_db, &[source]), @"export Counter$GetCount(*struct(Counter)) -> Int");
+    assert_snapshot!(mir_exports(&mut with_db, &[source]), @r"
+    export Counter$GetCount(*struct(Counter)) -> Int
+    export Counter$__body__(*struct(Counter))
+    ");
 }
 
 #[rstest]

@@ -1,5 +1,5 @@
 use auto_lsp::default::db::BaseDatabase;
-use db::RootDatabase;
+use db::{RootDatabase, WorkspaceDataBase};
 use hir::hir_def::semantic_index::semantic_index;
 use rayon::iter::{IntoParallelIterator, ParallelIterator};
 use yansi::Paint;
@@ -63,6 +63,7 @@ pub fn build_core(db: &RootDatabase, workspace: &std::path::Path, _verbose: bool
     let sem_indices: Vec<_> = db
         .get_files()
         .iter()
+        .chain(db.get_std_lib_files().iter())
         .map(|file| semantic_index(db, *file))
         .collect();
 

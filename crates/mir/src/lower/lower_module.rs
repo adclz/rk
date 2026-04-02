@@ -243,9 +243,14 @@ fn lower_module_from_pous<'db>(
                     matches!(ty, hir::hir_ty::ty::Type::Elementary(e) if e.is_any())
                 });
 
-                // For FBs with ANY_* vars, use pre-computed resolutions
+                // For FBs with ANY_* vars, use pre-computed resolutions.
+                // If no call-site provided concrete types, skip this FB entirely
+                // (it can't be instantiated without concrete types).
                 let any_subs = if has_any {
-                    all_fb_subs.get(&fb.name(db)).cloned().unwrap_or_default()
+                    match all_fb_subs.get(&fb.name(db)) {
+                        Some(subs) if !subs.is_empty() => subs.clone(),
+                        _ => continue,
+                    }
                 } else {
                     FxHashMap::default()
                 };
