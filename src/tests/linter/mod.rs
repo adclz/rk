@@ -5,6 +5,7 @@ mod duplicate_var_section;
 mod effectless_statement;
 mod for_loop_step_sign;
 mod input_assignment;
+mod missing_input_param;
 mod negated_condition;
 mod self_assignment;
 mod shadowing_variable;

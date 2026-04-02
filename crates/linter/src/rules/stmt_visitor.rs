@@ -16,7 +16,7 @@ use hir::{
 };
 use ide_diagnostic::IdeDiagnostic;
 
-use super::{constant_condition, input_assignment, negated_condition, self_assignment, uninitialized_output, unnecessary_else};
+use super::{constant_condition, input_assignment, missing_input_param, negated_condition, self_assignment, uninitialized_output, unnecessary_else};
 
 /// Run all statement-walking lints in a single pass over the statement tree.
 pub fn check<'db>(
@@ -44,6 +44,7 @@ pub fn check<'db>(
         unnecessary_else: config.is_enabled(unnecessary_else::NAME),
         uninitialized_output: config.is_enabled(uninitialized_output::NAME),
         negated_condition: config.is_enabled(negated_condition::NAME),
+        missing_input_param: config.is_enabled(missing_input_param::NAME),
     };
 
     // Nothing enabled - skip walk entirely
@@ -72,6 +73,7 @@ struct VisitorCtx {
     unnecessary_else: bool,
     uninitialized_output: bool,
     negated_condition: bool,
+    missing_input_param: bool,
 }
 
 impl VisitorCtx {
@@ -82,6 +84,7 @@ impl VisitorCtx {
             || self.unnecessary_else
             || self.uninitialized_output
             || self.negated_condition
+            || self.missing_input_param
     }
 }
 
@@ -169,6 +172,11 @@ fn visit_statements<'db>(
                 }
                 if let Some(stmts) = else_ {
                     visit_statements(db, body, ctx, stmts, diagnostics, assigned_vars);
+                }
+            }
+            StmtKind::FuncCall(call) => {
+                if ctx.missing_input_param {
+                    missing_input_param::check_func_call(db, body, *stmt, *call, diagnostics);
                 }
             }
             StmtKind::For { body: loop_body, .. } => {
