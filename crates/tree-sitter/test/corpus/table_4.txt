@@ -2,13 +2,19 @@
 Pragma with { … } curly brackets 
 ================================================================================
 
-{VERSION 2.0}
-{AUTHOR JHC}
-{x:= 256, y:= 384}
+// Void pragmas are not supported; only recognized pragmas
+// ({test}, {case(...)}, {extern ...}, {wasm ...}, {warn = ...}, {info = ...})
+// are valid.
+// {VERSION 2.0}
+// {AUTHOR JHC}
+// {x:= 256, y:= 384}
 
 --------------------------------------------------------------------------------
 
-   (source_file
-      (pragma)
-      (pragma)
-      (pragma))
+(source_file
+  (line_comment)
+  (line_comment)
+  (line_comment)
+  (line_comment)
+  (line_comment)
+  (line_comment))
