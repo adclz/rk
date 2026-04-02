@@ -58,7 +58,7 @@ fn main() {
         eprint!("  Generating {}...", ex.code);
 
         let mut db = RootDatabase::default();
-        let run_linter = ex.code.starts_with('W');
+        let run_linter = ex.code.starts_with('L');
         let ansi_output = render::compile_and_render(&mut db, ex.sources, run_linter);
 
         if ansi_output.is_empty() {

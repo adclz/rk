@@ -388,10 +388,12 @@ END_FUNCTION_BLOCK
             title: "VAR_EXTERNAL not allowed in this context",
             description: "`VAR_EXTERNAL` can only be used inside PROGRAM, FUNCTION_BLOCK, or FUNCTION.",
             sources: &[r#"
-INTERFACE i1
-    VAR_EXTERNAL
+INTERFACE in
+    METHOD m
+        VAR_EXTERNAL
 
-    END_VAR
+        END_VAR
+    END_METHOD
 END_INTERFACE
 "#],
         },
@@ -414,11 +416,11 @@ END_FUNCTION_BLOCK
             title: "VAR not allowed in this context",
             description: "`VAR` can only be used inside FUNCTION, FUNCTION_BLOCK, or PROGRAM.",
             sources: &[r#"
-INTERFACE i1
+CONFIGURATION MyCfg
     VAR
 
     END_VAR
-END_INTERFACE
+END_CONFIGURATION
 "#],
         },
         ErrorExample {
@@ -909,11 +911,11 @@ END_FUNCTION_BLOCK
             code: "E0214",
             category: "Resolution",
             title: "Elementary type initialized with parentheses",
-            description: "Elementary types like INT, BOOL, REAL cannot be initialized with `()` syntax. Use `:=` instead.",
+            description: "Elementary types like INT, BOOL, REAL cannot be initialized with `()`",
             sources: &[r#"
 FUNCTION_BLOCK fb1
 VAR
-    x : INT(5);
+    x : INT := ();
 END_VAR
 END_FUNCTION_BLOCK
 "#],
@@ -2180,7 +2182,7 @@ END_FUNCTION_BLOCK
         },
         // ── W01xx: Linter warnings ───────────────────────────────────────
         ErrorExample {
-            code: "W0101",
+            code: "L0101",
             category: "Linter Warnings",
             title: "Unused variable",
             description: "A variable is declared but never used in the body.",
@@ -2195,7 +2197,7 @@ END_FUNCTION
 "#],
         },
         ErrorExample {
-            code: "W0102",
+            code: "L0102",
             category: "Linter Warnings",
             title: "Variable shadows POU",
             description: "A variable name shadows a POU (function, function block, class, etc.) available in scope.",
@@ -2216,7 +2218,7 @@ END_FUNCTION
             ],
         },
         ErrorExample {
-            code: "W0103",
+            code: "L0103",
             category: "Linter Warnings",
             title: "Duplicate variable section",
             description: "The same variable section type (VAR, VAR_INPUT, etc.) appears more than once in a POU. Merge them into one.",
@@ -2233,7 +2235,7 @@ END_FUNCTION
 "#],
         },
         ErrorExample {
-            code: "W0104",
+            code: "L0104",
             category: "Linter Warnings",
             title: "Unused return value",
             description: "A function call discards a return value. If the return value is intentionally ignored, assign it to a variable.",
@@ -2252,7 +2254,7 @@ END_FUNCTION_BLOCK
 "#],
         },
         ErrorExample {
-            code: "W0105",
+            code: "L0105",
             category: "Linter Warnings",
             title: "Effectless statement",
             description: "A statement has no side effects and does nothing.",
@@ -2267,7 +2269,7 @@ END_FUNCTION
 "#],
         },
         ErrorExample {
-            code: "W0106",
+            code: "L0106",
             category: "Linter Warnings",
             title: "CASE without ELSE",
             description: "A CASE statement has no ELSE branch, which may leave unhandled cases.",
@@ -2284,7 +2286,7 @@ END_FUNCTION
 "#],
         },
         ErrorExample {
-            code: "W0107",
+            code: "L0107",
             category: "Linter Warnings",
             title: "Unreachable code",
             description: "A statement appears after an unconditional control flow statement (RETURN, EXIT, CONTINUE) and can never be reached.",
@@ -2297,7 +2299,7 @@ END_FUNCTION
 "#],
         },
         ErrorExample {
-            code: "W0108",
+            code: "L0108",
             category: "Linter Warnings",
             title: "FOR loop step sign mismatch",
             description: "The FOR loop step direction does not match the bounds direction.",
@@ -2313,7 +2315,7 @@ END_FUNCTION
 "#],
         },
         ErrorExample {
-            code: "W0110",
+            code: "L0110",
             category: "Linter Warnings",
             title: "Assignment to input variable",
             description: "A `VAR_INPUT` variable is being assigned inside the POU body. Inputs are meant to be set by callers.",
@@ -2327,7 +2329,7 @@ END_FUNCTION_BLOCK
 "#],
         },
         ErrorExample {
-            code: "W0109",
+            code: "L0109",
             category: "Linter Warnings",
             title: "Unused import",
             description: "A `USING` directive imports a namespace that is never referenced.",
@@ -2344,6 +2346,119 @@ FUNCTION_BLOCK fb1
 END_FUNCTION_BLOCK
 "#,
             ],
+        },
+        ErrorExample {
+            code: "L0116",
+            category: "Linter Warnings",
+            title: "Missing input parameter",
+            description: "A function or method call does not pass all required `VAR_INPUT` parameters.",
+            sources: &[r#"
+FUNCTION add : INT
+VAR_INPUT
+    a : INT;
+    b : INT;
+END_VAR
+END_FUNCTION
+
+FUNCTION_BLOCK caller
+    add(a := 1);
+END_FUNCTION_BLOCK
+"#],
+        },
+        ErrorExample {
+            code: "L0115",
+            category: "Linter Warnings",
+            title: "Negated condition",
+            description: "An `IF NOT ... THEN ... ELSE` can be simplified by swapping the branches and removing the negation.",
+            sources: &[r#"
+FUNCTION test : INT
+VAR
+    flag : BOOL;
+END_VAR
+    IF NOT flag THEN
+        test := 0;
+    ELSE
+        test := 1;
+    END_IF;
+END_FUNCTION
+"#],
+        },
+        ErrorExample {
+            code: "L0114",
+            category: "Linter Warnings",
+            title: "Uninitialized output",
+            description: "A `VAR_OUTPUT` variable is never assigned in the body. Callers may read an undefined value.",
+            sources: &[r#"
+FUNCTION compute : INT
+VAR_OUTPUT
+    status : INT;
+END_VAR
+    compute := 42;
+END_FUNCTION
+"#],
+        },
+        ErrorExample {
+            code: "L0113",
+            category: "Linter Warnings",
+            title: "Unnecessary ELSE",
+            description: "The ELSE branch is unnecessary because all preceding IF/ELSIF branches end with RETURN, EXIT, or CONTINUE.",
+            sources: &[r#"
+FUNCTION test : INT
+VAR
+    x : INT;
+END_VAR
+    IF x > 0 THEN
+        test := 1;
+        RETURN;
+    ELSE
+        test := 0;
+    END_IF;
+END_FUNCTION
+"#],
+        },
+        ErrorExample {
+            code: "L0112",
+            category: "Linter Warnings",
+            title: "Constant condition",
+            description: "A condition in an IF, WHILE, or REPEAT statement is always TRUE or always FALSE.",
+            sources: &[r#"
+FUNCTION test : INT
+    IF TRUE THEN
+        test := 1;
+    END_IF;
+END_FUNCTION
+"#],
+        },
+        ErrorExample {
+            code: "L0111",
+            category: "Linter Warnings",
+            title: "Self-assignment",
+            description: "A variable is assigned to itself, which has no effect.",
+            sources: &[r#"
+FUNCTION test : INT
+VAR
+    x : INT;
+END_VAR
+    x := x;
+    test := 0;
+END_FUNCTION
+"#],
+        },
+        ErrorExample {
+            code: "L0117",
+            category: "Linter Warnings",
+            title: "Call site pragma notice",
+            description: "A call targets a POU annotated with {warn = '...'} or {info = '...'}, indicating deprecation or other notices.",
+            sources: &[r#"
+{warn = 'this function is deprecated, use fn2 instead'}
+FUNCTION fn1 : INT
+END_FUNCTION
+
+FUNCTION caller : INT
+VAR x : INT; END_VAR
+    x := fn1();
+END_FUNCTION
+"#],
         },
     ]
 }
