@@ -7,6 +7,7 @@ mod for_loop_step_sign;
 mod input_assignment;
 mod self_assignment;
 mod shadowing_variable;
+mod unnecessary_else;
 mod unused_import;
 mod unused_return_type;
 mod unused_variable;

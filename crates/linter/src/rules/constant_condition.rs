@@ -130,12 +130,7 @@ fn check_condition<'db>(
 fn is_boolean_literal<'db>(db: &'db dyn WorkspaceDataBase, expr: &Expr<'db>) -> Option<bool> {
     match expr.expr(db) {
         ExprKind::PrimaryExpr(PrimaryExpr::Literal(Elementary::Bool(ident))) => {
-            let text = ident.text(db);
-            if text.eq_ignore_ascii_case("TRUE") || text == "1" {
-                Some(true)
-            } else {
-                Some(false)
-            }
+            Some(true)
         }
         ExprKind::PrimaryExpr(PrimaryExpr::ParenthesizedExpr { expr }) => {
             is_boolean_literal(db, expr)
