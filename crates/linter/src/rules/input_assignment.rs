@@ -17,12 +17,12 @@ use ide_diagnostic::{ErrorCode, IdeDiagnostic, Related, diag};
 
 pub const NAME: &str = "input-assignment";
 
-/// W0110: assigning to a VAR_INPUT variable.
+/// L0110: assigning to a VAR_INPUT variable.
 struct InputAssignment;
 
 impl ErrorCode for InputAssignment {
     fn code(&self) -> &'static str {
-        "W0110"
+        "L0110"
     }
 
     fn description(&self) -> &'static str {

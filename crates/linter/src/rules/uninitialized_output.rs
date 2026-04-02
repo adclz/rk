@@ -18,12 +18,12 @@ use rustc_hash::FxHashSet;
 
 pub const NAME: &str = "uninitialized-output";
 
-/// W0114: a VAR_OUTPUT variable is never assigned in the body.
+/// L0114: a VAR_OUTPUT variable is never assigned in the body.
 struct UninitializedOutput;
 
 impl ErrorCode for UninitializedOutput {
     fn code(&self) -> &'static str {
-        "W0114"
+        "L0114"
     }
 
     fn description(&self) -> &'static str {

@@ -13,12 +13,12 @@ use ide_diagnostic::{ErrorCode, IdeDiagnostic, diag};
 
 pub const NAME: &str = "unnecessary-else";
 
-/// W0113: ELSE branch is unnecessary because the IF/ELSIF body always exits.
+/// L0113: ELSE branch is unnecessary because the IF/ELSIF body always exits.
 struct UnnecessaryElse;
 
 impl ErrorCode for UnnecessaryElse {
     fn code(&self) -> &'static str {
-        "W0113"
+        "L0113"
     }
 
     fn description(&self) -> &'static str {

@@ -16,7 +16,7 @@ END_VAR
 END_FUNCTION
 "#;
     assert_snapshot!(test_lint_diagnostics(&mut with_db, &[source]), @r"
-    [W0111] Warning: self-assignment
+    [L0111] Warning: self-assignment
        ,-[ file:///test0.st:6:5 ]
        |
      6 |     x := x;
@@ -70,7 +70,7 @@ END_VAR
 END_FUNCTION
 "#;
     assert_snapshot!(test_lint_diagnostics(&mut with_db, &[source]), @r"
-    [W0111] Warning: self-assignment
+    [L0111] Warning: self-assignment
        ,-[ file:///test0.st:8:9 ]
        |
      8 |         x := x;
@@ -91,7 +91,7 @@ END_VAR
 END_FUNCTION_BLOCK
 "#;
     assert_snapshot!(test_lint_diagnostics(&mut with_db, &[source]), @r"
-    [W0111] Warning: self-assignment
+    [L0111] Warning: self-assignment
        ,-[ file:///test0.st:6:5 ]
        |
      6 |     counter := counter;

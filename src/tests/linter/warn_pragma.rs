@@ -17,7 +17,7 @@ VAR x : INT; END_VAR
 END_FUNCTION"#;
 
     assert_snapshot!(test_lint_diagnostics(&mut with_db, &[source]), @r"
-    [W0117] Warning: call site notice
+    [L0117] Warning: call site notice
        ,-[ file:///test0.st:8:10 ]
        |
      3 | FUNCTION fn1 : INT
@@ -44,7 +44,7 @@ VAR x : INT; END_VAR
 END_FUNCTION"#;
 
     assert_snapshot!(test_lint_diagnostics(&mut with_db, &[source]), @r"
-    [W0117] Advice: call site notice
+    [L0117] Advice: call site notice
        ,-[ file:///test0.st:8:10 ]
        |
      3 | FUNCTION old_fn : INT
@@ -72,7 +72,7 @@ VAR fb : OldFB; END_VAR
 END_FUNCTION"#;
 
     assert_snapshot!(test_lint_diagnostics(&mut with_db, &[source]), @r"
-    [W0117] Warning: call site notice
+    [L0117] Warning: call site notice
        ,-[ file:///test0.st:9:5 ]
        |
      3 | FUNCTION_BLOCK OldFB
@@ -102,7 +102,7 @@ VAR fb : MyFB; y : INT; END_VAR
 END_FUNCTION"#;
 
     assert_snapshot!(test_lint_diagnostics(&mut with_db, &[source]), @r"
-    [W0117] Warning: call site notice
+    [L0117] Warning: call site notice
         ,-[ file:///test0.st:11:13 ]
         |
       5 |     METHOD PUBLIC doStuff : INT
@@ -134,7 +134,7 @@ VAR y : INT; END_VAR
 END_FUNCTION"#;
 
     assert_snapshot!(test_lint_diagnostics(&mut with_db, &[source]), @r"
-    [W0117] Warning: call site notice
+    [L0117] Warning: call site notice
        ,-[ file:///test0.st:8:10 ]
        |
      3 | FUNCTION old : INT
@@ -145,7 +145,7 @@ END_FUNCTION"#;
        |          ^|^
        |           `--- deprecated
     ---'
-    [W0117] Warning: call site notice
+    [L0117] Warning: call site notice
         ,-[ file:///test0.st:13:10 ]
         |
       3 | FUNCTION old : INT

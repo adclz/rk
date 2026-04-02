@@ -20,7 +20,7 @@ END_FUNCTION_BLOCK
 "#,
     ];
     assert_snapshot!(test_lint_diagnostics(&mut with_db, sources), @r"
-    [W0109] Warning: unused import
+    [L0109] Warning: unused import
        ,-[ file:///test1.st:3:11 ]
        |
      3 |     USING Tools;
@@ -74,7 +74,7 @@ END_FUNCTION
 "#,
     ];
     assert_snapshot!(test_lint_diagnostics(&mut with_db, sources), @r"
-    [W0109] Warning: unused import
+    [L0109] Warning: unused import
        ,-[ file:///test1.st:4:11 ]
        |
      4 |     USING Utils;
@@ -182,7 +182,7 @@ END_FUNCTION
 "#,
     ];
     assert_snapshot!(test_lint_diagnostics(&mut with_db, sources), @r"
-    [W0109] Warning: unused import
+    [L0109] Warning: unused import
        ,-[ file:///test1.st:2:7 ]
        |
      2 | USING Tools;

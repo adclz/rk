@@ -19,7 +19,7 @@ END_VAR
 END_FUNCTION
 "#;
     assert_snapshot!(test_lint_diagnostics(&mut with_db, &[source]), @r"
-    [W0115] Advice: negated condition
+    [L0115] Advice: negated condition
        ,-[ file:///test0.st:6:8 ]
        |
      6 |     IF NOT flag THEN

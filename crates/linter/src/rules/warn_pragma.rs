@@ -11,7 +11,7 @@ struct WarnPragmaLint;
 
 impl ErrorCode for WarnPragmaLint {
     fn code(&self) -> &'static str {
-        "W0117"
+        "L0117"
     }
 
     fn description(&self) -> &'static str {

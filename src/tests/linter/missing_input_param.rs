@@ -20,7 +20,7 @@ FUNCTION_BLOCK caller
 END_FUNCTION_BLOCK
 "#;
     assert_snapshot!(test_lint_diagnostics(&mut with_db, &[source]), @r"
-    [W0104] Advice: unused return value
+    [L0104] Advice: unused return value
         ,-[ file:///test0.st:11:5 ]
         |
       2 | FUNCTION add : INT
@@ -31,7 +31,7 @@ END_FUNCTION_BLOCK
         |     ^^^^^|^^^^^
         |          `------- unused return value of 'add'
     ----'
-    [W0116] Warning: missing input parameter
+    [L0116] Advice: missing input parameter
         ,-[ file:///test0.st:11:5 ]
         |
       5 |     b : INT;
@@ -61,7 +61,7 @@ FUNCTION_BLOCK caller
 END_FUNCTION_BLOCK
 "#;
     assert_snapshot!(test_lint_diagnostics(&mut with_db, &[source]), @r"
-    [W0104] Advice: unused return value
+    [L0104] Advice: unused return value
         ,-[ file:///test0.st:11:5 ]
         |
       2 | FUNCTION add : INT
@@ -87,7 +87,7 @@ FUNCTION_BLOCK caller
 END_FUNCTION_BLOCK
 "#;
     assert_snapshot!(test_lint_diagnostics(&mut with_db, &[source]), @r"
-    [W0104] Advice: unused return value
+    [L0104] Advice: unused return value
        ,-[ file:///test0.st:7:5 ]
        |
      2 | FUNCTION noop : INT
@@ -118,7 +118,7 @@ FUNCTION_BLOCK caller
 END_FUNCTION_BLOCK
 "#;
     assert_snapshot!(test_lint_diagnostics(&mut with_db, &[source]), @r"
-    [W0104] Advice: unused return value
+    [L0104] Advice: unused return value
         ,-[ file:///test0.st:12:5 ]
         |
       2 | FUNCTION compute : INT
@@ -129,7 +129,7 @@ END_FUNCTION_BLOCK
         |     ^^^^^^^|^^^^^^^
         |            `--------- unused return value of 'compute'
     ----'
-    [W0116] Warning: missing input parameter
+    [L0116] Advice: missing input parameter
         ,-[ file:///test0.st:12:5 ]
         |
       5 |     y : INT;
@@ -166,7 +166,7 @@ END_VAR
 END_FUNCTION_BLOCK
 "#;
     assert_snapshot!(test_lint_diagnostics(&mut with_db, &[source]), @r"
-    [W0101] Warning: unused code
+    [L0101] Warning: unused code
        ,-[ file:///test0.st:5:9 ]
        |
      5 |         a : INT;
@@ -176,7 +176,7 @@ END_FUNCTION_BLOCK
        | Note: if this is intentional, prefix it with an underscore:
        |       '_a'
     ---'
-    [W0101] Warning: unused code
+    [L0101] Warning: unused code
        ,-[ file:///test0.st:6:9 ]
        |
      6 |         b : INT;
@@ -186,7 +186,7 @@ END_FUNCTION_BLOCK
        | Note: if this is intentional, prefix it with an underscore:
        |       '_b'
     ---'
-    [W0116] Warning: missing input parameter
+    [L0116] Advice: missing input parameter
         ,-[ file:///test0.st:15:5 ]
         |
       6 |         b : INT;
@@ -216,7 +216,7 @@ FUNCTION_BLOCK caller
 END_FUNCTION_BLOCK
 "#;
     assert_snapshot!(test_lint_diagnostics(&mut with_db, &[source]), @r"
-    [W0104] Advice: unused return value
+    [L0104] Advice: unused return value
         ,-[ file:///test0.st:11:5 ]
         |
       2 | FUNCTION add : INT

@@ -15,7 +15,7 @@ END_VAR
 END_FUNCTION
 "#;
     assert_snapshot!(test_lint_diagnostics(&mut with_db, &[source]), @r"
-    [W0114] Warning: uninitialized output
+    [L0114] Warning: uninitialized output
        ,-[ file:///test0.st:4:5 ]
        |
      4 |     result : INT;
@@ -82,14 +82,14 @@ END_VAR
 END_FUNCTION_BLOCK
 "#;
     assert_snapshot!(test_lint_diagnostics(&mut with_db, &[source]), @r"
-    [W0114] Warning: uninitialized output
+    [L0114] Warning: uninitialized output
        ,-[ file:///test0.st:4:5 ]
        |
      4 |     done : BOOL;
        |     ^^^^^|^^^^^
        |          `------- VAR_OUTPUT 'done' is never assigned in the body
     ---'
-    [W0114] Warning: uninitialized output
+    [L0114] Warning: uninitialized output
        ,-[ file:///test0.st:5:5 ]
        |
      5 |     value : INT;

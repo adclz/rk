@@ -14,7 +14,7 @@ FUNCTION test : INT
 END_FUNCTION
 "#;
     assert_snapshot!(test_lint_diagnostics(&mut with_db, &[source]), @r"
-    [W0112] Warning: constant condition
+    [L0112] Warning: constant condition
        ,-[ file:///test0.st:3:8 ]
        |
      3 |     IF TRUE THEN
@@ -34,7 +34,7 @@ FUNCTION test : INT
 END_FUNCTION
 "#;
     assert_snapshot!(test_lint_diagnostics(&mut with_db, &[source]), @r"
-    [W0112] Warning: constant condition
+    [L0112] Warning: constant condition
        ,-[ file:///test0.st:3:8 ]
        |
      3 |     IF FALSE THEN
@@ -54,7 +54,7 @@ FUNCTION test : INT
 END_FUNCTION
 "#;
     assert_snapshot!(test_lint_diagnostics(&mut with_db, &[source]), @r"
-    [W0112] Warning: constant condition
+    [L0112] Warning: constant condition
        ,-[ file:///test0.st:3:11 ]
        |
      3 |     WHILE TRUE DO
@@ -75,7 +75,7 @@ FUNCTION test : INT
 END_FUNCTION
 "#;
     assert_snapshot!(test_lint_diagnostics(&mut with_db, &[source]), @r"
-    [W0112] Warning: constant condition
+    [L0112] Warning: constant condition
        ,-[ file:///test0.st:5:11 ]
        |
      5 |     UNTIL FALSE
@@ -130,7 +130,7 @@ END_VAR
 END_FUNCTION
 "#;
     assert_snapshot!(test_lint_diagnostics(&mut with_db, &[source]), @r"
-    [W0112] Warning: constant condition
+    [L0112] Warning: constant condition
        ,-[ file:///test0.st:8:11 ]
        |
      8 |     ELSIF TRUE THEN
@@ -150,7 +150,7 @@ FUNCTION test : INT
 END_FUNCTION
 "#;
     assert_snapshot!(test_lint_diagnostics(&mut with_db, &[source]), @r"
-    [W0112] Warning: constant condition
+    [L0112] Warning: constant condition
        ,-[ file:///test0.st:3:8 ]
        |
      3 |     IF (TRUE) THEN

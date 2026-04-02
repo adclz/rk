@@ -20,7 +20,7 @@ fn variable_shadows_function_block(mut with_db: RootDatabase) {
         END_FUNCTION
     "#;
     assert_snapshot!(test_lint_diagnostics(&mut with_db, &[source_fb, source_fn]), @r"
-    [W0102] Advice: name shadowing
+    [L0102] Advice: name shadowing
        ,-[ file:///test1.st:4:13 ]
        |
      4 |             PrintLog : BOOL;
@@ -53,7 +53,7 @@ fn variable_shadows_function(mut with_db: RootDatabase) {
         END_FUNCTION
     "#;
     assert_snapshot!(test_lint_diagnostics(&mut with_db, &[source_fn1, source_fn2]), @r"
-    [W0102] Advice: name shadowing
+    [L0102] Advice: name shadowing
        ,-[ file:///test1.st:4:13 ]
        |
      4 |             helper : INT;
@@ -87,7 +87,7 @@ fn variable_shadows_data_type(mut with_db: RootDatabase) {
         END_FUNCTION
     "#;
     assert_snapshot!(test_lint_diagnostics(&mut with_db, &[source_type, source_fn]), @r"
-    [W0102] Advice: name shadowing
+    [L0102] Advice: name shadowing
        ,-[ file:///test1.st:4:13 ]
        |
      4 |             MyType : INT;
@@ -124,7 +124,7 @@ fn no_shadowing_when_names_differ(mut with_db: RootDatabase) {
 #[rstest]
 fn no_shadowing_when_variable_unused(mut with_db: RootDatabase) {
     // Variable declared with same name as POU but never used in body.
-    // Shadowing is usage-based, so only W0101 (unused) is emitted.
+    // Shadowing is usage-based, so only L0101 (unused) is emitted.
     let source_fb = r#"
         FUNCTION_BLOCK PrintLog
         END_FUNCTION_BLOCK
@@ -138,7 +138,7 @@ fn no_shadowing_when_variable_unused(mut with_db: RootDatabase) {
         END_FUNCTION
     "#;
     assert_snapshot!(test_lint_diagnostics(&mut with_db, &[source_fb, source_fn]), @r"
-    [W0101] Warning: unused code
+    [L0101] Warning: unused code
        ,-[ file:///test1.st:4:13 ]
        |
      4 |             PrintLog : BOOL;

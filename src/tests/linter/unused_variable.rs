@@ -16,7 +16,7 @@ fn unused_local_variable(mut with_db: RootDatabase) {
         END_FUNCTION
     "#;
     assert_snapshot!(test_lint_diagnostics(&mut with_db, &[source]), @r"
-    [W0101] Warning: unused code
+    [L0101] Warning: unused code
        ,-[ file:///test0.st:5:13 ]
        |
      5 |             y : INT;
@@ -41,7 +41,7 @@ fn unused_variable_in_function_block(mut with_db: RootDatabase) {
         END_FUNCTION_BLOCK
     "#;
     assert_snapshot!(test_lint_diagnostics(&mut with_db, &[source]), @r"
-    [W0101] Warning: unused code
+    [L0101] Warning: unused code
        ,-[ file:///test0.st:5:13 ]
        |
      5 |             y : INT;
@@ -66,7 +66,7 @@ fn unused_variable_in_program(mut with_db: RootDatabase) {
         END_PROGRAM
     "#;
     assert_snapshot!(test_lint_diagnostics(&mut with_db, &[source]), @r"
-    [W0101] Warning: unused code
+    [L0101] Warning: unused code
        ,-[ file:///test0.st:5:13 ]
        |
      5 |             y : INT;
@@ -103,7 +103,7 @@ fn output_not_reported(mut with_db: RootDatabase) {
         END_FUNCTION_BLOCK
     "#;
     assert_snapshot!(test_lint_diagnostics(&mut with_db, &[source]), @r"
-    [W0114] Warning: uninitialized output
+    [L0114] Warning: uninitialized output
        ,-[ file:///test0.st:4:13 ]
        |
      4 |             result : INT;
@@ -149,7 +149,7 @@ fn unused_input_on_function(mut with_db: RootDatabase) {
         END_FUNCTION
     "#;
     assert_snapshot!(test_lint_diagnostics(&mut with_db, &[source]), @r"
-    [W0101] Warning: unused code
+    [L0101] Warning: unused code
        ,-[ file:///test0.st:5:13 ]
        |
      5 |             b : INT;
@@ -192,7 +192,7 @@ fn variable_used_via_this_in_method_not_flagged(mut with_db: RootDatabase) {
     // speed is used via THIS in a method - should NOT be flagged
     // unused_var is never used anywhere - should be flagged
     assert_snapshot!(test_lint_diagnostics(&mut with_db, &[source]), @r"
-    [W0101] Warning: unused code
+    [L0101] Warning: unused code
        ,-[ file:///test0.st:5:13 ]
        |
      5 |             unused_var : INT;

@@ -16,7 +16,7 @@ fn bare_variable_reference(mut with_db: RootDatabase) {
         END_FUNCTION
     "#;
     assert_snapshot!(test_lint_diagnostics(&mut with_db, &[source]), @r"
-    [W0105] Warning: effectless statement
+    [L0105] Warning: effectless statement
        ,-[ file:///test0.st:6:13 ]
        |
      6 |             x;
@@ -97,7 +97,7 @@ fn effectless_in_program(mut with_db: RootDatabase) {
         END_PROGRAM
     "#;
     assert_snapshot!(test_lint_diagnostics(&mut with_db, &[source]), @r"
-    [W0105] Warning: effectless statement
+    [L0105] Warning: effectless statement
        ,-[ file:///test0.st:6:13 ]
        |
      6 |             x;
@@ -118,7 +118,7 @@ fn effectless_in_function_block(mut with_db: RootDatabase) {
         END_FUNCTION_BLOCK
     "#;
     assert_snapshot!(test_lint_diagnostics(&mut with_db, &[source]), @r"
-    [W0105] Warning: effectless statement
+    [L0105] Warning: effectless statement
        ,-[ file:///test0.st:6:13 ]
        |
      6 |             x;

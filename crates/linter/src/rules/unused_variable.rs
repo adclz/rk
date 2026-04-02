@@ -13,12 +13,12 @@ use ide_diagnostic::{ErrorCode, IdeDiagnostic, diag};
 
 pub const NAME: &str = "unused-variable";
 
-/// W0101: variable is declared but never used in the body.
+/// L0101: variable is declared but never used in the body.
 struct UnusedVariable;
 
 impl ErrorCode for UnusedVariable {
     fn code(&self) -> &'static str {
-        "W0101"
+        "L0101"
     }
 
     fn description(&self) -> &'static str {

@@ -36,7 +36,7 @@ fn case_without_else_warning(mut with_db: RootDatabase) {
         END_FUNCTION
     "#;
     assert_snapshot!(test_lint_diagnostics(&mut with_db, &[source]), @r"
-    [W0106] Warning: CASE without ELSE
+    [L0106] Warning: CASE without ELSE
        ,-[ file:///test0.st:6:13 ]
        |
      6 | ,->             CASE x OF
@@ -68,7 +68,7 @@ fn nested_case_inner_missing_else(mut with_db: RootDatabase) {
         END_FUNCTION
     "#;
     assert_snapshot!(test_lint_diagnostics(&mut with_db, &[source]), @r"
-    [W0106] Warning: CASE without ELSE
+    [L0106] Warning: CASE without ELSE
         ,-[ file:///test0.st:9:21 ]
         |
       9 | ,->                     CASE y OF
@@ -94,7 +94,7 @@ fn case_in_program(mut with_db: RootDatabase) {
         END_PROGRAM
     "#;
     assert_snapshot!(test_lint_diagnostics(&mut with_db, &[source]), @r"
-    [W0106] Warning: CASE without ELSE
+    [L0106] Warning: CASE without ELSE
        ,-[ file:///test0.st:7:13 ]
        |
      7 | ,->             CASE x OF

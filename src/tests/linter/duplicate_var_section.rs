@@ -18,7 +18,7 @@ fn duplicate_var_in_function(mut with_db: RootDatabase) {
         END_FUNCTION
     "#;
     assert_snapshot!(test_lint_diagnostics(&mut with_db, &[source]), @r"
-    [W0103] Warning: duplicate variable section
+    [L0103] Warning: duplicate variable section
        ,-[ file:///test0.st:6:9 ]
        |
      6 | ,->         VAR
@@ -46,7 +46,7 @@ fn duplicate_var_input_in_function(mut with_db: RootDatabase) {
         END_FUNCTION
     "#;
     assert_snapshot!(test_lint_diagnostics(&mut with_db, &[source]), @r"
-    [W0103] Warning: duplicate variable section
+    [L0103] Warning: duplicate variable section
        ,-[ file:///test0.st:6:9 ]
        |
      6 | ,->         VAR_INPUT
@@ -74,7 +74,7 @@ fn duplicate_var_in_function_block(mut with_db: RootDatabase) {
         END_FUNCTION_BLOCK
     "#;
     assert_snapshot!(test_lint_diagnostics(&mut with_db, &[source]), @r"
-    [W0103] Warning: duplicate variable section
+    [L0103] Warning: duplicate variable section
        ,-[ file:///test0.st:6:9 ]
        |
      6 | ,->         VAR
@@ -102,7 +102,7 @@ fn duplicate_var_input_in_function_block(mut with_db: RootDatabase) {
         END_FUNCTION_BLOCK
     "#;
     assert_snapshot!(test_lint_diagnostics(&mut with_db, &[source]), @r"
-    [W0103] Warning: duplicate variable section
+    [L0103] Warning: duplicate variable section
        ,-[ file:///test0.st:6:9 ]
        |
      6 | ,->         VAR_INPUT
@@ -113,7 +113,7 @@ fn duplicate_var_input_in_function_block(mut with_db: RootDatabase) {
        |
        |     Note: merge this section with the existing one above
     ---'
-    [W0110] Warning: assignment to input variable
+    [L0110] Warning: assignment to input variable
        ,-[ file:///test0.st:9:13 ]
        |
      4 |             x : INT;
@@ -141,7 +141,7 @@ fn duplicate_var_in_program(mut with_db: RootDatabase) {
         END_PROGRAM
     "#;
     assert_snapshot!(test_lint_diagnostics(&mut with_db, &[source]), @r"
-    [W0103] Warning: duplicate variable section
+    [L0103] Warning: duplicate variable section
        ,-[ file:///test0.st:6:9 ]
        |
      6 | ,->         VAR
@@ -171,7 +171,7 @@ fn duplicate_var_in_method(mut with_db: RootDatabase) {
         END_FUNCTION_BLOCK
     "#;
     assert_snapshot!(test_lint_diagnostics(&mut with_db, &[source]), @r"
-    [W0103] Warning: duplicate variable section
+    [L0103] Warning: duplicate variable section
        ,-[ file:///test0.st:7:9 ]
        |
      7 | ,->         VAR

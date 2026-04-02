@@ -16,7 +16,7 @@ END_VAR
 END_FUNCTION
 "#;
     assert_snapshot!(test_lint_diagnostics(&mut with_db, &[source]), @r"
-    [W0110] Warning: assignment to input variable
+    [L0110] Warning: assignment to input variable
        ,-[ file:///test0.st:6:5 ]
        |
      4 |     x : INT;
@@ -41,7 +41,7 @@ END_VAR
 END_FUNCTION_BLOCK
 "#;
     assert_snapshot!(test_lint_diagnostics(&mut with_db, &[source]), @r"
-    [W0110] Warning: assignment to input variable
+    [L0110] Warning: assignment to input variable
        ,-[ file:///test0.st:6:5 ]
        |
      4 |     x : INT;
@@ -98,7 +98,7 @@ END_VAR
 END_FUNCTION_BLOCK
 "#;
     assert_snapshot!(test_lint_diagnostics(&mut with_db, &[source]), @r"
-    [W0110] Warning: assignment to input variable
+    [L0110] Warning: assignment to input variable
        ,-[ file:///test0.st:7:9 ]
        |
      4 |     x : INT;

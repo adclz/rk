@@ -5,12 +5,12 @@ use ide_diagnostic::{ErrorCode, IdeDiagnostic, diag};
 
 pub const NAME: &str = "unused-return-type";
 
-/// W0104: function call discards a return value.
+/// L0104: function call discards a return value.
 struct UnusedReturnType;
 
 impl ErrorCode for UnusedReturnType {
     fn code(&self) -> &'static str {
-        "W0104"
+        "L0104"
     }
 
     fn description(&self) -> &'static str {

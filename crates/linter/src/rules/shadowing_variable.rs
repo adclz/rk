@@ -5,12 +5,12 @@ use ide_diagnostic::{ErrorCode, IdeDiagnostic, Related, diag};
 
 pub const NAME: &str = "shadowing-variable";
 
-/// W0102: variable name shadows a POU (function, function block, class, etc.)
+/// L0102: variable name shadows a POU (function, function block, class, etc.)
 struct ShadowingVariable;
 
 impl ErrorCode for ShadowingVariable {
     fn code(&self) -> &'static str {
-        "W0102"
+        "L0102"
     }
 
     fn description(&self) -> &'static str {

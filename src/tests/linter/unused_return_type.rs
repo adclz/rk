@@ -24,7 +24,7 @@ END_VAR
 END_FUNCTION
     "#;
     assert_snapshot!(test_lint_diagnostics(&mut with_db, &[source]), @r"
-    [W0104] Advice: unused return value
+    [L0104] Advice: unused return value
         ,-[ file:///test0.st:14:5 ]
         |
       2 | FUNCTION add : INT
@@ -123,7 +123,7 @@ END_VAR
 END_FUNCTION
 "#;
     assert_snapshot!(test_lint_diagnostics(&mut with_db, &[source]), @r"
-    [W0104] Advice: unused return value
+    [L0104] Advice: unused return value
         ,-[ file:///test0.st:12:5 ]
         |
       3 |     METHOD PUBLIC get_value : INT
@@ -196,7 +196,7 @@ END_VAR
 END_FUNCTION_BLOCK
 "#;
     assert_snapshot!(test_lint_diagnostics(&mut with_db, &[source]), @r"
-    [W0104] Advice: unused return value
+    [L0104] Advice: unused return value
         ,-[ file:///test0.st:13:5 ]
         |
       2 | FUNCTION compute : INT

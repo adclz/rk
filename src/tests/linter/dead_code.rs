@@ -17,7 +17,7 @@ fn statement_after_return(mut with_db: RootDatabase) {
         END_FUNCTION
     "#;
     assert_snapshot!(test_lint_diagnostics(&mut with_db, &[source]), @r"
-    [W0101] Warning: unused code
+    [L0101] Warning: unused code
        ,-[ file:///test0.st:4:13 ]
        |
      4 |             x : INT;
@@ -27,7 +27,7 @@ fn statement_after_return(mut with_db: RootDatabase) {
        | Note: if this is intentional, prefix it with an underscore:
        |       '_x'
     ---'
-    [W0107] Warning: unreachable code
+    [L0107] Warning: unreachable code
        ,-[ file:///test0.st:8:13 ]
        |
      8 |             x := 2;
@@ -67,7 +67,7 @@ fn statement_after_exit_in_loop(mut with_db: RootDatabase) {
         END_FUNCTION
     "#;
     assert_snapshot!(test_lint_diagnostics(&mut with_db, &[source]), @r"
-    [W0107] Warning: unreachable code
+    [L0107] Warning: unreachable code
        ,-[ file:///test0.st:9:17 ]
        |
      9 |                 test := 0;
@@ -91,7 +91,7 @@ fn statement_after_continue_in_loop(mut with_db: RootDatabase) {
         END_FUNCTION
     "#;
     assert_snapshot!(test_lint_diagnostics(&mut with_db, &[source]), @r"
-    [W0107] Warning: unreachable code
+    [L0107] Warning: unreachable code
        ,-[ file:///test0.st:8:17 ]
        |
      8 |                 test := i;
@@ -116,7 +116,7 @@ fn code_in_different_if_branch_no_warning(mut with_db: RootDatabase) {
         END_FUNCTION
     "#;
     assert_snapshot!(test_lint_diagnostics(&mut with_db, &[source]), @r"
-    [W0113] Advice: unnecessary ELSE
+    [L0113] Advice: unnecessary ELSE
        ,-[ file:///test0.st:9:17 ]
        |
      9 |                 test := x;
@@ -141,7 +141,7 @@ fn multiple_statements_after_return(mut with_db: RootDatabase) {
         END_FUNCTION
     "#;
     assert_snapshot!(test_lint_diagnostics(&mut with_db, &[source]), @r"
-    [W0101] Warning: unused code
+    [L0101] Warning: unused code
        ,-[ file:///test0.st:4:13 ]
        |
      4 |             x : INT;
@@ -151,7 +151,7 @@ fn multiple_statements_after_return(mut with_db: RootDatabase) {
        | Note: if this is intentional, prefix it with an underscore:
        |       '_x'
     ---'
-    [W0101] Warning: unused code
+    [L0101] Warning: unused code
        ,-[ file:///test0.st:5:13 ]
        |
      5 |             y : INT;
@@ -161,14 +161,14 @@ fn multiple_statements_after_return(mut with_db: RootDatabase) {
        | Note: if this is intentional, prefix it with an underscore:
        |       '_y'
     ---'
-    [W0107] Warning: unreachable code
+    [L0107] Warning: unreachable code
        ,-[ file:///test0.st:9:13 ]
        |
      9 |             x := 2;
        |             ^^^|^^
        |                `---- unreachable statement
     ---'
-    [W0107] Warning: unreachable code
+    [L0107] Warning: unreachable code
         ,-[ file:///test0.st:10:13 ]
         |
      10 |             y := 3;
