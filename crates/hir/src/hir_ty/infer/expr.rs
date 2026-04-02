@@ -231,9 +231,10 @@ impl<'db> InferExprCtx<'db> {
                                         let var_ty: Type<'db> =
                                             var_decl.spec(db).infer(db).normalize(db);
                                         if let Type::Elementary(var_e) = var_ty
-                                            && !var_e.is_any() {
-                                                return None;
-                                            }
+                                            && !var_e.is_any()
+                                        {
+                                            return None;
+                                        }
                                     }
                                     let arg_ty = inference_result.get_type_of_expr(value);
                                     let arg_normalized = arg_ty.normalize(db);

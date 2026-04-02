@@ -42,7 +42,10 @@ pub fn lower_function<'db>(
     string_pool: Rc<RefCell<super::lower_expr::StringPool>>,
     fb_subs: &FxHashMap<
         hir::hir_def::interned::identifier::Ident,
-        FxHashMap<hir::hir_def::interned::identifier::Ident, hir::hir_def::expressions::spec::ElementarySpec>,
+        FxHashMap<
+            hir::hir_def::interned::identifier::Ident,
+            hir::hir_def::expressions::spec::ElementarySpec,
+        >,
     >,
 ) -> Result<MirFunction, LowerTypeError> {
     let mut params = Vec::new();
@@ -145,16 +148,22 @@ pub fn lower_function<'db>(
             _ => {}
         }
         if let Some(init_expr) = var.init(db)
-            && let Some(stmt) = lower_var_init(db, var.name(db), init_expr)? {
-                init_stmts.push(stmt);
-            }
+            && let Some(stmt) = lower_var_init(db, var.name(db), init_expr)?
+        {
+            init_stmts.push(stmt);
+        }
     }
 
     // 5. Lower body statements (with FB subs for generic FB instantiation)
     let mut body = if fb_subs.is_empty() {
         lower_stmts(db, func.statements(db), string_pool.clone())?
     } else {
-        crate::lower::lower_stmt::lower_stmts_with_fb_subs(db, func.statements(db), fb_subs, string_pool.clone())?
+        crate::lower::lower_stmt::lower_stmts_with_fb_subs(
+            db,
+            func.statements(db),
+            fb_subs,
+            string_pool.clone(),
+        )?
     };
     // Prepend initializers
     if !init_stmts.is_empty() {
@@ -196,7 +205,10 @@ pub fn lower_function_block<'db>(
     start_index: u32,
     memory_layout: &mut MirMemoryLayout,
     string_pool: Rc<RefCell<super::lower_expr::StringPool>>,
-    any_subs: &rustc_hash::FxHashMap<hir::hir_def::interned::identifier::Ident, hir::hir_def::expressions::spec::ElementarySpec>,
+    any_subs: &rustc_hash::FxHashMap<
+        hir::hir_def::interned::identifier::Ident,
+        hir::hir_def::expressions::spec::ElementarySpec,
+    >,
 ) -> Result<Vec<MirFunction>, LowerTypeError> {
     let mut functions = Vec::new();
     let mut idx = start_index;
@@ -587,7 +599,10 @@ fn lower_var_type_with_fb_subs<'db>(
     var: VariableDecl<'db>,
     fb_subs: &FxHashMap<
         hir::hir_def::interned::identifier::Ident,
-        FxHashMap<hir::hir_def::interned::identifier::Ident, hir::hir_def::expressions::spec::ElementarySpec>,
+        FxHashMap<
+            hir::hir_def::interned::identifier::Ident,
+            hir::hir_def::expressions::spec::ElementarySpec,
+        >,
     >,
 ) -> Result<MirType, LowerTypeError> {
     let ty = var.spec(db).infer(db);
@@ -609,9 +624,7 @@ fn collect_address_taken_vars<'db>(
     db: &'db dyn WorkspaceDataBase,
     stmts: &[hir::hir_def::expressions::statement::Stmt<'db>],
 ) -> FxHashSet<Ident> {
-    use hir::hir_def::expressions::expression::{
-        ExprKind, PrimaryExpr, RefValue,
-    };
+    use hir::hir_def::expressions::expression::{ExprKind, PrimaryExpr, RefValue};
 
     let mut result = FxHashSet::default();
 

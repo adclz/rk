@@ -178,15 +178,17 @@ impl<'a> WasmGen<'a> {
         let mut extra_locals: Vec<(u32, ValType)> = Vec::new();
         // Return value local
         if let Some(ref ret_ty) = func.return_type
-            && let Some(vt) = mir_type_to_val_type(ret_ty) {
-                extra_locals.push((1, vt));
-            }
+            && let Some(vt) = mir_type_to_val_type(ret_ty)
+        {
+            extra_locals.push((1, vt));
+        }
         // Local variables that are scalars
         for local in &func.locals {
             if let MirStorage::Scalar { .. } = local.storage
-                && let Some(vt) = mir_type_to_val_type(&local.ty) {
-                    extra_locals.push((1, vt));
-                }
+                && let Some(vt) = mir_type_to_val_type(&local.ty)
+            {
+                extra_locals.push((1, vt));
+            }
         }
 
         // Emit function body

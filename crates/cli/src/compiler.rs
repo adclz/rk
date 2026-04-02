@@ -8,8 +8,13 @@ use crate::diagnostics::report_diagnostics;
 
 /// Check diagnostics and lower HIR → MIR → core WASM.
 /// Returns `None` if there are errors or codegen fails.
-pub fn build_core(db: &RootDatabase, workspace: &std::path::Path, _verbose: bool) -> Option<(Vec<u8>, mir::MirModule)> {
-    let workspace_path = std::fs::canonicalize(workspace).unwrap_or_else(|_| workspace.to_path_buf());
+pub fn build_core(
+    db: &RootDatabase,
+    workspace: &std::path::Path,
+    _verbose: bool,
+) -> Option<(Vec<u8>, mir::MirModule)> {
+    let workspace_path =
+        std::fs::canonicalize(workspace).unwrap_or_else(|_| workspace.to_path_buf());
     let config = ariadne::Config::new().with_color(true).with_tab_width(2);
 
     let caches = db
@@ -24,9 +29,7 @@ pub fn build_core(db: &RootDatabase, workspace: &std::path::Path, _verbose: bool
         .into_par_iter()
         .map_with(db.clone(), |db, file| {
             let file = *file;
-            let diagnostics = hir::check::diagnostics_for_file(db, file)
-                .as_ref()
-                .clone();
+            let diagnostics = hir::check::diagnostics_for_file(db, file).as_ref().clone();
             (file, diagnostics)
         })
         .collect();

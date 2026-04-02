@@ -238,14 +238,16 @@ impl HeadResult {
             // No vars and no methods — POU is empty or has only body statements.
             (None, None, None, None) => {
                 if let Some(body_node) = body
-                    && offset >= body_node.start_byte() && offset <= body_node.end_byte() {
-                        let body_text = &source[body_node.start_byte()..body_node.end_byte()];
-                        let first_char = body_text.trim_start().chars().next();
-                        if matches!(first_char, Some('V') | Some('E') | Some('M')) {
-                            return HeadLocation::InBodyAfterVars;
-                        }
-                        return HeadLocation::InBody;
+                    && offset >= body_node.start_byte()
+                    && offset <= body_node.end_byte()
+                {
+                    let body_text = &source[body_node.start_byte()..body_node.end_byte()];
+                    let first_char = body_text.trim_start().chars().next();
+                    if matches!(first_char, Some('V') | Some('E') | Some('M')) {
+                        return HeadLocation::InBodyAfterVars;
                     }
+                    return HeadLocation::InBody;
+                }
                 // No vars, no methods, no body (or cursor outside body) — the POU
                 // is effectively empty.  Offer both VAR snippets and body completions.
                 HeadLocation::InBodyAfterVars

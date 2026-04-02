@@ -264,9 +264,10 @@ pub fn discover_all_tests<'db>(db: &'db dyn WorkspaceDataBase) -> Vec<TestItem<'
         // Global test functions
         for pou in file_global_pous(db, file).iter() {
             if let Pou::Function(f) = pou
-                && f.is_test(db) {
-                    tests.push(TestItem::Function(*f, f.name(db).text(db).to_string()));
-                }
+                && f.is_test(db)
+            {
+                tests.push(TestItem::Function(*f, f.name(db).text(db).to_string()));
+            }
         }
 
         // Global test programs
@@ -294,12 +295,13 @@ fn discover_tests_in_namespace<'db>(
 
     for pou in ns.pous(db).iter() {
         if let Pou::Function(f) = pou
-            && f.is_test(db) {
-                tests.push(TestItem::Function(
-                    *f,
-                    format!("{}.{}", ns_prefix, f.name(db).text(db)),
-                ));
-            }
+            && f.is_test(db)
+        {
+            tests.push(TestItem::Function(
+                *f,
+                format!("{}.{}", ns_prefix, f.name(db).text(db)),
+            ));
+        }
     }
 
     for child_ns in ns.namespaces(db).iter() {
@@ -320,13 +322,15 @@ pub fn find_test<'db>(
         // Global scope: check functions then programs
         let name = Ident::from_slice(db, parts[0]);
         if let Some(Pou::Function(f)) = pou_index(db, name)
-            && f.is_test(db) {
-                return Some(TestItem::Function(f, qualified_name.to_string()));
-            }
+            && f.is_test(db)
+        {
+            return Some(TestItem::Function(f, qualified_name.to_string()));
+        }
         if let Some(prog) = program_index(db, name)
-            && prog.is_test(db) {
-                return Some(TestItem::Program(prog, qualified_name.to_string()));
-            }
+            && prog.is_test(db)
+        {
+            return Some(TestItem::Program(prog, qualified_name.to_string()));
+        }
         None
     } else {
         // Namespaced: split into namespace path + item name
@@ -338,9 +342,10 @@ pub fn find_test<'db>(
         let name = Ident::from_slice(db, item_name);
 
         if let Some(Pou::Function(f)) = namespace_pou_index(db, ns_path, name)
-            && f.is_test(db) {
-                return Some(TestItem::Function(f, qualified_name.to_string()));
-            }
+            && f.is_test(db)
+        {
+            return Some(TestItem::Function(f, qualified_name.to_string()));
+        }
         None
     }
 }

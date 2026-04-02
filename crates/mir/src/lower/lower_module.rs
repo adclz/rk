@@ -13,7 +13,7 @@ use crate::{
     function::{MirExternFunction, MirParam, MirParamKind},
     lower::{
         lower_func::{lower_class, lower_function, lower_function_block, lower_program},
-        lower_type::{LowerTypeError, lower_fb_type, lower_fb_type_with_subs, lower_type},
+        lower_type::{LowerTypeError, lower_fb_type_with_subs, lower_type},
         monomorphize::{AnyFunctionInfo, detect_any_function, monomorphize},
     },
     memory::MirMemoryLayout,
@@ -75,7 +75,10 @@ fn lower_module_from_pous<'db>(
     // Key: FB name, Value: map of variable name → concrete ElementarySpec.
     let mut all_fb_subs: FxHashMap<
         hir::hir_def::interned::identifier::Ident,
-        FxHashMap<hir::hir_def::interned::identifier::Ident, hir::hir_def::expressions::spec::ElementarySpec>,
+        FxHashMap<
+            hir::hir_def::interned::identifier::Ident,
+            hir::hir_def::expressions::spec::ElementarySpec,
+        >,
     > = FxHashMap::default();
     for (pou, _) in all_pous.iter() {
         if let Pou::FunctionBlock(fb) = pou {
@@ -177,9 +180,10 @@ fn lower_module_from_pous<'db>(
                     }
                 });
                 if let Some(wasm_decl) = wasm_decl {
-                    if let Ok(mut mir_func) = lower_wasm_intrinsic(db, *func, &wasm_decl, next_fn_idx) {
-                        mir_func.export_name =
-                            make_export_name(ns_prefix, func.name(db).text(db));
+                    if let Ok(mut mir_func) =
+                        lower_wasm_intrinsic(db, *func, &wasm_decl, next_fn_idx)
+                    {
+                        mir_func.export_name = make_export_name(ns_prefix, func.name(db).text(db));
 
                         if func.is_test(db) {
                             let export_name = mir_func
@@ -437,9 +441,7 @@ fn build_test_cases<'db>(
     base_export: &str,
 ) -> Vec<crate::test_manifest::TestCase> {
     use crate::test_manifest::{TestCase, TestValue};
-    use hir::hir_def::expressions::expression::{
-        ExprKind, ParamAssignKind, PrimaryExpr,
-    };
+    use hir::hir_def::expressions::expression::{ExprKind, ParamAssignKind, PrimaryExpr};
 
     func.cases(db)
         .iter()
@@ -683,7 +685,10 @@ fn collect_fb_any_subs<'db>(
     db: &'db dyn WorkspaceDataBase,
     all_pous: &[(&Pou<'db>, Option<String>)],
     target_fb: FunctionBlock<'db>,
-) -> FxHashMap<hir::hir_def::interned::identifier::Ident, hir::hir_def::expressions::spec::ElementarySpec> {
+) -> FxHashMap<
+    hir::hir_def::interned::identifier::Ident,
+    hir::hir_def::expressions::spec::ElementarySpec,
+> {
     use hir::hir_ty::body::infer_body;
 
     let mut subs = FxHashMap::default();
@@ -715,7 +720,7 @@ fn collect_fb_any_subs<'db>(
 
 /// Rebase all StringLiteral offsets in MIR statements by adding `base` to each offset.
 fn rebase_string_offsets(stmts: &mut [crate::stmt::MirStmt], base: u32) {
-    use crate::expr::MirExpr;
+    
     use crate::stmt::MirStmt;
 
     for stmt in stmts {
@@ -731,25 +736,36 @@ fn rebase_string_offsets(stmts: &mut [crate::stmt::MirStmt], base: u32) {
                     rebase_expr(value, base);
                 }
             }
-            MirStmt::If { condition, then_body, else_body, .. } => {
+            MirStmt::If {
+                condition,
+                then_body,
+                else_body,
+                ..
+            } => {
                 rebase_expr(condition, base);
                 rebase_string_offsets(then_body, base);
                 if let Some(else_body) = else_body {
                     rebase_string_offsets(else_body, base);
                 }
             }
-            MirStmt::While { condition, body, .. } => {
+            MirStmt::While {
+                condition, body, ..
+            } => {
                 rebase_expr(condition, base);
                 rebase_string_offsets(body, base);
             }
             MirStmt::For { body, .. } => {
                 rebase_string_offsets(body, base);
             }
-            MirStmt::Repeat { condition, body, .. } => {
+            MirStmt::Repeat {
+                condition, body, ..
+            } => {
                 rebase_expr(condition, base);
                 rebase_string_offsets(body, base);
             }
-            MirStmt::Case { arms, else_body, .. } => {
+            MirStmt::Case {
+                arms, else_body, ..
+            } => {
                 for arm in arms {
                     rebase_string_offsets(&mut arm.body, base);
                 }

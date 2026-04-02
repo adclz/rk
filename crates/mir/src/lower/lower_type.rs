@@ -279,7 +279,10 @@ pub fn lower_fb_type<'db>(
 pub fn lower_fb_type_with_subs<'db>(
     db: &'db dyn WorkspaceDataBase,
     fb: FunctionBlock<'db>,
-    any_subs: &rustc_hash::FxHashMap<hir::hir_def::interned::identifier::Ident, hir::hir_def::expressions::spec::ElementarySpec>,
+    any_subs: &rustc_hash::FxHashMap<
+        hir::hir_def::interned::identifier::Ident,
+        hir::hir_def::expressions::spec::ElementarySpec,
+    >,
 ) -> Result<MirType, LowerTypeError> {
     let mut offset = 0u32;
     let mut max_align = 1u32;
@@ -293,7 +296,9 @@ pub fn lower_fb_type_with_subs<'db>(
             if elem.is_any() {
                 if let Some(concrete) = any_subs.get(&var.name(db)) {
                     MirType::Elementary(elementary_spec_to_mir(*concrete)?)
-                } else if let hir::hir_def::expressions::spec::SpecKind::Into(ident) = var.spec(db).kind(db) {
+                } else if let hir::hir_def::expressions::spec::SpecKind::Into(ident) =
+                    var.spec(db).kind(db)
+                {
                     // INTO(ref) — resolve from the referenced variable's substitution
                     if let Some(concrete) = any_subs.get(&ident.ident) {
                         MirType::Elementary(elementary_spec_to_mir(*concrete)?)

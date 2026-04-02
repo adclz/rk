@@ -63,30 +63,31 @@ impl<'db> InitInference<'db> {
 
         // Check if it matches the POU name (function return type)
         if let ScopeKind::Pou(pou) = get_scope(db, scope).kind
-            && pou.get_name_ident(db) == ident {
-                match scope.return_type(db) {
-                    Some(ret_spec) => {
-                        let ty = Type::resolve_spec(db, *ret_spec);
-                        if !matches!(ty, Type::Elementary(e) if e.is_any()) {
-                            self.errors.push(
-                                ResolveError::IntoRefNotAny { spec, ident, ty }.to_diagnostic(db),
-                            );
-                        }
-                    }
-                    None => {
-                        // POU has no return type — INTO(fn_name) is invalid
+            && pou.get_name_ident(db) == ident
+        {
+            match scope.return_type(db) {
+                Some(ret_spec) => {
+                    let ty = Type::resolve_spec(db, *ret_spec);
+                    if !matches!(ty, Type::Elementary(e) if e.is_any()) {
                         self.errors.push(
-                            ResolveError::IntoRefNotAny {
-                                spec,
-                                ident,
-                                ty: Type::Never,
-                            }
-                            .to_diagnostic(db),
+                            ResolveError::IntoRefNotAny { spec, ident, ty }.to_diagnostic(db),
                         );
                     }
                 }
-                return;
+                None => {
+                    // POU has no return type — INTO(fn_name) is invalid
+                    self.errors.push(
+                        ResolveError::IntoRefNotAny {
+                            spec,
+                            ident,
+                            ty: Type::Never,
+                        }
+                        .to_diagnostic(db),
+                    );
+                }
             }
+            return;
+        }
 
         // Not found
         self.errors

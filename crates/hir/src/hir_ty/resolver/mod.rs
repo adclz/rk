@@ -274,24 +274,25 @@ impl<'db> Resolver<'db> {
                     // Only DataTypes are allowed here — Functions/FBs are not valid
                     // constant-access targets.
                     if steps.len() > 1
-                        && let PathExprWalkStep::Field { ident, .. } = step {
-                            let access = NamespaceAccess::new(db, None, *ident);
-                            if let name::NameResolution::Pou(pou @ Pou::DataType(_), using) =
-                                name::resolve_name(db, &access, path_expr.get_scope_id(db))
-                            {
-                                if let Some(using) = using {
-                                    ctx.usings_used.insert(using);
-                                }
-                                // Remove the FQ error — this path is valid so far.
-                                ctx.errors.pop();
-                                let ty = Type::new_pou(db, pou);
-                                ctx.type_of_path_expr.insert(step.get_expr(db), ty);
-                                current = ty;
-                                place.current_typ = ty;
-                                place.current_path = step.get_expr(db);
-                                continue;
+                        && let PathExprWalkStep::Field { ident, .. } = step
+                    {
+                        let access = NamespaceAccess::new(db, None, *ident);
+                        if let name::NameResolution::Pou(pou @ Pou::DataType(_), using) =
+                            name::resolve_name(db, &access, path_expr.get_scope_id(db))
+                        {
+                            if let Some(using) = using {
+                                ctx.usings_used.insert(using);
                             }
+                            // Remove the FQ error — this path is valid so far.
+                            ctx.errors.pop();
+                            let ty = Type::new_pou(db, pou);
+                            ctx.type_of_path_expr.insert(step.get_expr(db), ty);
+                            current = ty;
+                            place.current_typ = ty;
+                            place.current_path = step.get_expr(db);
+                            continue;
                         }
+                    }
                 }
                 return;
             }
@@ -317,16 +318,18 @@ impl<'db> Resolver<'db> {
         // multibit to the final resolved type now that indexing/deref is done.
         if !single_step
             && let Some(mb) = multibits
-                && let Some(last_step) = steps.last() {
-                    let last_expr = last_step.get_expr(db);
-                    let mb_type = crate::hir_ty::infer::normalize::multibits_to_type(db, mb);
-                    // Update type_of_path_expr and also replace the last adjustment
-                    // target (e.g. array index target) with the multibit type.
-                    ctx.type_of_path_expr.insert(last_expr, mb_type);
-                    if let Some(adjustments) = ctx.path_expr_adjustments.get_mut(&last_expr)
-                        && let Some(last_adj) = adjustments.last_mut() {
-                            last_adj.target = mb_type;
-                        }
-                }
+            && let Some(last_step) = steps.last()
+        {
+            let last_expr = last_step.get_expr(db);
+            let mb_type = crate::hir_ty::infer::normalize::multibits_to_type(db, mb);
+            // Update type_of_path_expr and also replace the last adjustment
+            // target (e.g. array index target) with the multibit type.
+            ctx.type_of_path_expr.insert(last_expr, mb_type);
+            if let Some(adjustments) = ctx.path_expr_adjustments.get_mut(&last_expr)
+                && let Some(last_adj) = adjustments.last_mut()
+            {
+                last_adj.target = mb_type;
+            }
+        }
     }
 }

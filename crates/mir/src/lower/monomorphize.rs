@@ -66,18 +66,20 @@ pub fn detect_any_function<'db>(
     // Check return type first
     if let Some(ret) = func.return_type(db)
         && let Type::Elementary(e) = ret.infer(db)
-            && e.is_any() {
-                return Some(make_info(e));
-            }
+        && e.is_any()
+    {
+        return Some(make_info(e));
+    }
 
     // Check parameters
     let scope_id = func.scope_id(db);
     let def_map = scope_id.def_map(db);
     for (_name, var) in &def_map.local_variables {
         if let Type::Elementary(e) = var.spec(db).infer(db)
-            && e.is_any() {
-                return Some(make_info(e));
-            }
+            && e.is_any()
+        {
+            return Some(make_info(e));
+        }
     }
 
     None
@@ -250,7 +252,7 @@ pub fn monomorphize<'db>(
 
             if let Some(wasm_decl) = &info.wasm_decl {
                 // Wasm intrinsic ANY_* function → build monomorphized function with concrete types
-                
+
                 use crate::function::*;
                 use crate::stmt::*;
                 use hir::hir_def::pous::variable::VariableKind;
@@ -688,9 +690,10 @@ fn discover_calls_in_call(
     };
 
     if let Some(concrete) = concrete
-        && let Some(spec) = mir_elementary_to_spec(concrete) {
-            out.entry(call.callee).or_default().insert(spec);
-        }
+        && let Some(spec) = mir_elementary_to_spec(concrete)
+    {
+        out.entry(call.callee).or_default().insert(spec);
+    }
 }
 
 /// Try to determine the concrete elementary type of a MIR expression.
@@ -883,8 +886,9 @@ fn rewrite_call(
     };
 
     if let Some(concrete_elem) = concrete
-        && let Some(&(mono_name, new_idx)) = mono_indices.get(&(call.callee, concrete_elem)) {
-            call.callee = mono_name;
-            call.callee_index = new_idx;
-        }
+        && let Some(&(mono_name, new_idx)) = mono_indices.get(&(call.callee, concrete_elem))
+    {
+        call.callee = mono_name;
+        call.callee_index = new_idx;
+    }
 }

@@ -37,7 +37,9 @@ fn new_st_file() {
 
     let collected = collect(&watcher, &events);
     assert!(
-        collected.iter().any(|e| e.contains("Created") && e.contains("test.st")),
+        collected
+            .iter()
+            .any(|e| e.contains("Created") && e.contains("test.st")),
         "expected Created event for test.st, got: {collected:?}"
     );
 }
@@ -54,7 +56,9 @@ fn changed_st_file() {
 
     let collected = collect(&watcher, &events);
     assert!(
-        collected.iter().any(|e| e.contains("Changed") && e.contains("main.st")),
+        collected
+            .iter()
+            .any(|e| e.contains("Changed") && e.contains("main.st")),
         "expected Changed event for main.st, got: {collected:?}"
     );
 }
@@ -71,7 +75,9 @@ fn deleted_st_file() {
 
     let collected = collect(&watcher, &events);
     assert!(
-        collected.iter().any(|e| e.contains("Deleted") && e.contains("old.st")),
+        collected
+            .iter()
+            .any(|e| e.contains("Deleted") && e.contains("old.st")),
         "expected Deleted event for old.st, got: {collected:?}"
     );
 }
@@ -89,11 +95,15 @@ fn renamed_st_file() {
 
     let collected = collect(&watcher, &events);
     assert!(
-        collected.iter().any(|e| e.contains("Deleted") && e.contains("before.st")),
+        collected
+            .iter()
+            .any(|e| e.contains("Deleted") && e.contains("before.st")),
         "expected Deleted event for before.st, got: {collected:?}"
     );
     assert!(
-        collected.iter().any(|e| e.contains("Created") && e.contains("after.st")),
+        collected
+            .iter()
+            .any(|e| e.contains("Created") && e.contains("after.st")),
         "expected Created event for after.st, got: {collected:?}"
     );
 }
@@ -139,11 +149,17 @@ fn nested_st_file() {
 
     let (watcher, events) = setup(dir.path());
 
-    std::fs::write(sub.join("motor.st"), "FUNCTION_BLOCK Motor END_FUNCTION_BLOCK").unwrap();
+    std::fs::write(
+        sub.join("motor.st"),
+        "FUNCTION_BLOCK Motor END_FUNCTION_BLOCK",
+    )
+    .unwrap();
 
     let collected = collect(&watcher, &events);
     assert!(
-        collected.iter().any(|e| e.contains("Created") && e.contains("motor.st")),
+        collected
+            .iter()
+            .any(|e| e.contains("Created") && e.contains("motor.st")),
         "expected Created event for nested motor.st, got: {collected:?}"
     );
 }

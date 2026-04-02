@@ -250,7 +250,9 @@ END_FUNCTION
     let module = Module::new(&engine, &wasm_bytes).unwrap();
     let mut store = Store::new(&engine, ());
     let instance = Instance::new(&mut store, &module, &[]).unwrap();
-    let func = instance.get_typed_func::<(), i32>(&mut store, "test").unwrap();
+    let func = instance
+        .get_typed_func::<(), i32>(&mut store, "test")
+        .unwrap();
     let result = func.call(&mut store, ()).unwrap();
     assert_eq!(result, 1, "fb.y should be TRUE (1) after fb(x := TRUE)");
 }
@@ -285,9 +287,14 @@ END_FUNCTION
     let module = Module::new(&engine, &wasm_bytes).unwrap();
     let mut store = Store::new(&engine, ());
     let instance = Instance::new(&mut store, &module, &[]).unwrap();
-    let func = instance.get_typed_func::<(), i32>(&mut store, "test").unwrap();
+    let func = instance
+        .get_typed_func::<(), i32>(&mut store, "test")
+        .unwrap();
     let result = func.call(&mut store, ()).unwrap();
-    assert_eq!(result, 1, "Q should be TRUE: NOT FALSE AND NOT FALSE = TRUE");
+    assert_eq!(
+        result, 1,
+        "Q should be TRUE: NOT FALSE AND NOT FALSE = TRUE"
+    );
 }
 
 #[rstest]
@@ -329,7 +336,9 @@ END_FUNCTION
     let module = Module::new(&engine, &wasm_bytes).unwrap();
     let mut store = Store::new(&engine, ());
     let instance = Instance::new(&mut store, &module, &[]).unwrap();
-    let func = instance.get_typed_func::<(), i32>(&mut store, "test").unwrap();
+    let func = instance
+        .get_typed_func::<(), i32>(&mut store, "test")
+        .unwrap();
     let result = func.call(&mut store, ()).unwrap();
     assert_eq!(result, 1, "CV should be 1 after first rising edge");
 }
@@ -370,9 +379,14 @@ END_FUNCTION
     let module = Module::new(&engine, &wasm_bytes).unwrap();
     let mut store = Store::new(&engine, ());
     let instance = Instance::new(&mut store, &module, &[]).unwrap();
-    let func = instance.get_typed_func::<(), i32>(&mut store, "test").unwrap();
+    let func = instance
+        .get_typed_func::<(), i32>(&mut store, "test")
+        .unwrap();
     let result = func.call(&mut store, ()).unwrap();
-    assert_eq!(result, 1, "CV should be 1 after first rising edge (nested R_TRIG)");
+    assert_eq!(
+        result, 1,
+        "CV should be 1 after first rising edge (nested R_TRIG)"
+    );
 }
 
 #[rstest]
@@ -410,7 +424,6 @@ END_FUNCTION
     std::fs::write("/tmp/nested_fb.wasm", &wasm_bytes).unwrap();
     eprintln!("Wrote /tmp/nested_fb.wasm ({} bytes)", wasm_bytes.len());
 }
-
 
 #[rstest]
 fn test_nested_fb_counter_two_edges(mut with_db: db::RootDatabase) {
@@ -450,7 +463,9 @@ END_FUNCTION
     let module = Module::new(&engine, &wasm_bytes).unwrap();
     let mut store = Store::new(&engine, ());
     let instance = Instance::new(&mut store, &module, &[]).unwrap();
-    let func = instance.get_typed_func::<(), i32>(&mut store, "test").unwrap();
+    let func = instance
+        .get_typed_func::<(), i32>(&mut store, "test")
+        .unwrap();
     let result = func.call(&mut store, ()).unwrap();
     assert_eq!(result, 2, "CV should be 2 after two rising edges");
 }
@@ -505,13 +520,20 @@ END_FUNCTION
     let module = Module::new(&engine, &wasm_bytes).unwrap();
     let linker = {
         let mut l = wasmtime::Linker::new(&engine);
-        l.func_wrap("assert", "fail", |_ptr: i32, _len: i32| -> Result<(), wasmtime::Error> {
-            Err(wasmtime::Error::msg("assertion failed"))
-        }).unwrap();
+        l.func_wrap(
+            "assert",
+            "fail",
+            |_ptr: i32, _len: i32| -> Result<(), wasmtime::Error> {
+                Err(wasmtime::Error::msg("assertion failed"))
+            },
+        )
+        .unwrap();
         l
     };
     let mut store = Store::new(&engine, ());
     let instance = linker.instantiate(&mut store, &module).unwrap();
-    let func = instance.get_typed_func::<(), ()>(&mut store, "test_ctu").unwrap();
+    let func = instance
+        .get_typed_func::<(), ()>(&mut store, "test_ctu")
+        .unwrap();
     func.call(&mut store, ()).unwrap();
 }

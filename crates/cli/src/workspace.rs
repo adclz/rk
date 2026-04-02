@@ -6,8 +6,13 @@ use yansi::Paint;
 
 use crate::diagnostics::report_diagnostics;
 
-pub fn init_db(workspace: &std::path::Path, verbose: bool, load_stdlib: bool) -> Option<RootDatabase> {
-    let workspace_path = std::fs::canonicalize(workspace).unwrap_or_else(|_| workspace.to_path_buf());
+pub fn init_db(
+    workspace: &std::path::Path,
+    verbose: bool,
+    load_stdlib: bool,
+) -> Option<RootDatabase> {
+    let workspace_path =
+        std::fs::canonicalize(workspace).unwrap_or_else(|_| workspace.to_path_buf());
 
     if db::loader::resolve_config_file(workspace).is_none() {
         eprintln!(

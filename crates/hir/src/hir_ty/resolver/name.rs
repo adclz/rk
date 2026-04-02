@@ -252,9 +252,10 @@ impl<'db> Type<'db> {
                 // Check if the identifier matches the POU name (function return type)
                 if let ScopeKind::Pou(pou) = get_scope(db, scope).kind
                     && pou.get_name_ident(db) == ident
-                        && let Some(ret_spec) = scope.return_type(db) {
-                            return Self::resolve_spec(db, *ret_spec);
-                        }
+                    && let Some(ret_spec) = scope.return_type(db)
+                {
+                    return Self::resolve_spec(db, *ret_spec);
+                }
 
                 Type::Never
             }

@@ -778,7 +778,10 @@ impl<'db> ToIdeDiagnostic<'db> for ResolveError<'db> {
                     .collect();
 
                 let mut diag = diag()
-                    .message(format!("multiple items named '{}' available in scope", name))
+                    .message(format!(
+                        "multiple items named '{}' available in scope",
+                        name
+                    ))
                     .severity(DiagnosticSeverity::ERROR)
                     .desc(self)
                     .range(*span)
@@ -787,7 +790,8 @@ impl<'db> ToIdeDiagnostic<'db> for ResolveError<'db> {
                 for ns in &duplicated {
                     diag.with_note(format!(
                         "'{}' is declared multiple times in namespace '{}'",
-                        name, ns.to_string(db),
+                        name,
+                        ns.to_string(db),
                     ));
 
                     for (pou, pou_ns) in candidates {

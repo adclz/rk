@@ -5,7 +5,6 @@ use rustc_hash::{FxHashMap, FxHashSet};
 use crate::{
     CallSite, HirNodeInfo,
     hir_def::{
-        interned::identifier::Ident,
         expressions::{
             expression::{
                 BeginPathExpr, Expr, ExprKind, InitExprKind, ParamAssign, PathExpr, PrimaryExpr,
@@ -14,6 +13,7 @@ use crate::{
             invocation::Invocation,
             statement::Stmt,
         },
+        interned::identifier::Ident,
         pous::{
             pou::Pou,
             variable::{DirectVariable, VariableDecl, VariableKind},
@@ -191,7 +191,8 @@ pub struct BodyInferenceResult<'db> {
     ///
     /// Example: `VAR timer: CTU; END_VAR; timer(PV := 5);`
     /// → `(timer_var_decl, "PV") → ElementarySpec::Int`
-    pub fb_any_resolutions: FxHashMap<(VariableDecl<'db>, Ident), crate::hir_def::expressions::spec::ElementarySpec>,
+    pub fb_any_resolutions:
+        FxHashMap<(VariableDecl<'db>, Ident), crate::hir_def::expressions::spec::ElementarySpec>,
 
     // Errors encountered during inference
     pub errors: Vec<IdeDiagnostic>,

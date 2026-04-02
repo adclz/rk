@@ -216,14 +216,14 @@ fn is_relevant_path(path: &Path) -> bool {
         || path.file_name().is_some_and(|name| name == "config.toml")
 }
 
-// Messages 
+// Messages
 
 enum DebouncerMessage {
     Event(notify::Event),
     Flush,
 }
 
-// Watcher 
+// Watcher
 
 struct WatcherInner {
     _watcher: notify::RecommendedWatcher,
@@ -239,10 +239,7 @@ pub struct Watcher {
 
 impl Watcher {
     /// Create a new watcher for `workspace`, calling `handler` with batched events.
-    pub fn new(
-        workspace: &Path,
-        handler: impl Fn(Vec<ChangeEvent>) + Send + 'static,
-    ) -> Self {
+    pub fn new(workspace: &Path, handler: impl Fn(Vec<ChangeEvent>) + Send + 'static) -> Self {
         let (tx, rx) = mpsc::channel::<DebouncerMessage>();
 
         let tx_notify = tx.clone();
@@ -311,10 +308,7 @@ impl Drop for Watcher {
 }
 
 /// The debouncer thread main loop.
-fn debouncer_loop(
-    rx: mpsc::Receiver<DebouncerMessage>,
-    handler: impl Fn(Vec<ChangeEvent>),
-) {
+fn debouncer_loop(rx: mpsc::Receiver<DebouncerMessage>, handler: impl Fn(Vec<ChangeEvent>)) {
     loop {
         // Block until first event
         let msg = match rx.recv() {

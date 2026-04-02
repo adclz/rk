@@ -97,21 +97,17 @@ pub fn diagnostics<Db: WorkspaceDataBase + Clone + RefUnwindSafe>(
     let new_id = fingerprint(&items);
 
     // If the client already has this exact result, skip resending.
-    if let Some(ref prev_id) = params.previous_result_id {
-        if *prev_id == new_id {
+    if let Some(ref prev_id) = params.previous_result_id
+        && *prev_id == new_id {
             return Ok(DocumentDiagnosticReportResult::Report(
-                DocumentDiagnosticReport::Unchanged(
-                    RelatedUnchangedDocumentDiagnosticReport {
-                        related_documents: None,
-                        unchanged_document_diagnostic_report:
-                            UnchangedDocumentDiagnosticReport {
-                                result_id: new_id,
-                            },
+                DocumentDiagnosticReport::Unchanged(RelatedUnchangedDocumentDiagnosticReport {
+                    related_documents: None,
+                    unchanged_document_diagnostic_report: UnchangedDocumentDiagnosticReport {
+                        result_id: new_id,
                     },
-                ),
+                }),
             ));
         }
-    }
 
     Ok(DocumentDiagnosticReportResult::Report(
         DocumentDiagnosticReport::Full(RelatedFullDocumentDiagnosticReport {
@@ -180,25 +176,22 @@ pub fn workspace_diagnostics<Db: WorkspaceDataBase + Clone + RefUnwindSafe>(
                 WorkspaceDocumentDiagnosticReport::Unchanged(
                     WorkspaceUnchangedDocumentDiagnosticReport {
                         version,
-                        unchanged_document_diagnostic_report:
-                            UnchangedDocumentDiagnosticReport {
-                                result_id: new_id,
-                            },
+                        unchanged_document_diagnostic_report: UnchangedDocumentDiagnosticReport {
+                            result_id: new_id,
+                        },
                         uri,
                     },
                 )
             } else {
                 // Changed or new — send full diagnostics.
-                WorkspaceDocumentDiagnosticReport::Full(
-                    WorkspaceFullDocumentDiagnosticReport {
-                        version,
-                        full_document_diagnostic_report: FullDocumentDiagnosticReport {
-                            result_id: Some(new_id),
-                            items,
-                        },
-                        uri,
+                WorkspaceDocumentDiagnosticReport::Full(WorkspaceFullDocumentDiagnosticReport {
+                    version,
+                    full_document_diagnostic_report: FullDocumentDiagnosticReport {
+                        result_id: Some(new_id),
+                        items,
                     },
-                )
+                    uri,
+                })
             }
         })
         .collect();

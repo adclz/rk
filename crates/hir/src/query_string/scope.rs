@@ -120,27 +120,22 @@ impl<'db, F: Fn(&Pou<'db>, &'db dyn WorkspaceDataBase) -> bool> SymbolSearch<'db
 
         // Phase 1b: If inside a METHOD, also collect variables from the parent FB/class
         // as ThisVariable - these are accessible via THIS.variable
-        if self.include_variables {
-            if let Some(scope) = self.scope {
+        if self.include_variables
+            && let Some(scope) = self.scope {
                 let scope_data = get_scope(db, scope);
-                if matches!(scope_data.kind, ScopeKind::MethodDecl(_)) {
-                    if let Some(parent_id) = scope_data.parent {
-                        if let Some(parent_vars) = parent_id.variables(db) {
+                if matches!(scope_data.kind, ScopeKind::MethodDecl(_))
+                    && let Some(parent_id) = scope_data.parent
+                        && let Some(parent_vars) = parent_id.variables(db) {
                             for var in parent_vars {
                                 let name = var.name(db).text(db);
-                                if query.mode.check(&query.query, query.case_sensitive, &name)
+                                if query.mode.check(&query.query, query.case_sensitive, name)
                                     && !scope_variables.contains(name.as_str())
                                 {
-                                    search_result
-                                        .symbols
-                                        .push(SearchSymbol::ThisVariable(*var));
+                                    search_result.symbols.push(SearchSymbol::ThisVariable(*var));
                                 }
                             }
                         }
-                    }
-                }
             }
-        }
 
         // Phase 2: Search for POUs and/or namespaces in file+stdlib indexes
         if self.include_pous || self.include_namespaces {

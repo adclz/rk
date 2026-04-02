@@ -24,7 +24,8 @@ fn check_once(workspace: &std::path::Path, verbose: bool) -> bool {
         return true;
     };
 
-    let workspace_path = std::fs::canonicalize(workspace).unwrap_or_else(|_| workspace.to_path_buf());
+    let workspace_path =
+        std::fs::canonicalize(workspace).unwrap_or_else(|_| workspace.to_path_buf());
     let config = ariadne::Config::new().with_color(true).with_tab_width(2);
 
     let caches = db
@@ -41,9 +42,7 @@ fn check_once(workspace: &std::path::Path, verbose: bool) -> bool {
         .into_par_iter()
         .map_with(db.clone(), |db, file| {
             let file = *file;
-            let mut diagnostics = hir::check::diagnostics_for_file(db, file)
-                .as_ref()
-                .clone();
+            let mut diagnostics = hir::check::diagnostics_for_file(db, file).as_ref().clone();
             if let Some(ref linter_config) = linter_config {
                 linter::lint_file(db, file, linter_config, &mut diagnostics);
             }

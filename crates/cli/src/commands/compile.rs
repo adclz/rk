@@ -34,7 +34,10 @@ fn compile_once(
 
     // CLI flag takes precedence over config.toml
     let config = db::config_file::get_config(&db);
-    let config_opt = config.settings.as_ref().and_then(|s| s.opt_level.as_deref());
+    let config_opt = config
+        .settings
+        .as_ref()
+        .and_then(|s| s.opt_level.as_deref());
     let effective_opt = opt_level.or(config_opt);
 
     let Some((core_bytes, mir_module)) = build_core(&db, workspace, verbose) else {
@@ -43,13 +46,14 @@ fn compile_once(
 
     // Release profile: optimize core → wrap in component
     let optimized = optimize_wasm(core_bytes, effective_opt, verbose);
-    let component_bytes = match wasm_codegen::component::wrap_in_component(&db, &optimized, &mir_module) {
-        Ok(bytes) => bytes,
-        Err(e) => {
-            eprintln!("{}{}", "component error: ".bold().red(), e);
-            return;
-        }
-    };
+    let component_bytes =
+        match wasm_codegen::component::wrap_in_component(&db, &optimized, &mir_module) {
+            Ok(bytes) => bytes,
+            Err(e) => {
+                eprintln!("{}{}", "component error: ".bold().red(), e);
+                return;
+            }
+        };
 
     // Default output: <workspace>/rk_build/release/output.wasm
     let build_dir = workspace.join("rk_build").join("release");
@@ -57,8 +61,8 @@ fn compile_once(
     let output = output.unwrap_or(&default_output);
 
     // Create output directory if needed
-    if let Some(parent) = output.parent() {
-        if let Err(e) = std::fs::create_dir_all(parent) {
+    if let Some(parent) = output.parent()
+        && let Err(e) = std::fs::create_dir_all(parent) {
             eprintln!(
                 "{}failed to create directory {}: {}",
                 "error: ".bold().red(),
@@ -67,7 +71,6 @@ fn compile_once(
             );
             return;
         }
-    }
 
     if let Err(e) = std::fs::write(output, &component_bytes) {
         eprintln!(

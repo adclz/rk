@@ -655,7 +655,9 @@ impl<'db> ToIdeDiagnostic<'db> for SyntaxError {
                 .call(),
             Self::AccessSpecNotAllowedInMethodPrototype(span) => {
                 let mut diag = diag()
-                    .message("access specifiers are not allowed on interface method prototypes".into())
+                    .message(
+                        "access specifiers are not allowed on interface method prototypes".into(),
+                    )
                     .severity(DiagnosticSeverity::ERROR)
                     .desc(self)
                     .range(*span)

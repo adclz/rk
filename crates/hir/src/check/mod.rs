@@ -30,7 +30,7 @@ pub mod check_duplicates;
 pub mod check_recursion;
 pub mod errors;
 
-#[salsa::tracked(returns(ref))] 
+#[salsa::tracked(returns(ref))]
 pub fn diagnostics_for_file(db: &dyn WorkspaceDataBase, file: File) -> Arc<Vec<IdeDiagnostic>> {
     if let Some(config) = Workspace::try_get(db)
         && config.config_file(db).is_none()

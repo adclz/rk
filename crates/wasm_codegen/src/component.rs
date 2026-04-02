@@ -7,8 +7,8 @@ use db::WorkspaceDataBase;
 use mir::MirModule;
 use mir::types::{MirElementary, MirType};
 use wasm_encoder::{
-    ComponentBuilder, ComponentExportKind, ComponentTypeRef, ComponentValType,
-    ExportKind, InstanceType, ModuleArg, PrimitiveValType,
+    ComponentBuilder, ComponentExportKind, ComponentTypeRef, ComponentValType, ExportKind,
+    InstanceType, ModuleArg, PrimitiveValType,
 };
 
 fn mir_to_prim(ty: &MirType) -> PrimitiveValType {

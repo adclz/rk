@@ -25,7 +25,10 @@ fn needs_cast<'db>(
 
 type FbSubsMap = rustc_hash::FxHashMap<
     hir::hir_def::interned::identifier::Ident,
-    rustc_hash::FxHashMap<hir::hir_def::interned::identifier::Ident, hir::hir_def::expressions::spec::ElementarySpec>,
+    rustc_hash::FxHashMap<
+        hir::hir_def::interned::identifier::Ident,
+        hir::hir_def::expressions::spec::ElementarySpec,
+    >,
 >;
 
 /// Lower a slice of HIR statements to MIR statements.

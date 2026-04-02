@@ -33,10 +33,14 @@ pub struct ExprLowerCtx<'db> {
     /// `ThisField`.
     pub this_struct: Option<crate::types::MirStructType>,
     /// FB ANY_* substitutions — maps FB name → (var name → concrete ElementarySpec).
-    pub fb_subs: Option<std::rc::Rc<rustc_hash::FxHashMap<
-        hir::hir_def::interned::identifier::Ident,
-        rustc_hash::FxHashMap<hir::hir_def::interned::identifier::Ident, ElementarySpec>,
-    >>>,
+    pub fb_subs: Option<
+        std::rc::Rc<
+            rustc_hash::FxHashMap<
+                hir::hir_def::interned::identifier::Ident,
+                rustc_hash::FxHashMap<hir::hir_def::interned::identifier::Ident, ElementarySpec>,
+            >,
+        >,
+    >,
     /// String literal pool — shared across all functions in the module.
     pub string_pool: std::rc::Rc<std::cell::RefCell<StringPool>>,
 }
@@ -144,11 +148,12 @@ impl<'db> ExprLowerCtx<'db> {
             }
             (Type::FunctionBlock(fb), _) => {
                 // Use FB substitutions if available
-                if let Some(ref subs_map) = self.fb_subs {
-                    if let Some(subs) = subs_map.get(&fb.name(self.db)) {
-                        return crate::lower::lower_type::lower_fb_type_with_subs(self.db, *fb, subs);
+                if let Some(ref subs_map) = self.fb_subs
+                    && let Some(subs) = subs_map.get(&fb.name(self.db)) {
+                        return crate::lower::lower_type::lower_fb_type_with_subs(
+                            self.db, *fb, subs,
+                        );
                     }
-                }
                 lower_type(self.db, normalized)
             }
             _ => lower_type(self.db, normalized),

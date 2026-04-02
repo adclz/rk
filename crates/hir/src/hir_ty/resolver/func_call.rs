@@ -4,11 +4,11 @@ use rustc_hash::{FxHashMap, FxHashSet};
 
 use crate::check::errors::e1_duplicates::DuplicateError;
 use crate::check::errors::e3_type::TypeError;
-use crate::hir_ty::infer::Infer;
 use crate::check::errors::e10_control_flow::ControlFlowError;
 use crate::hir_def::expressions::expression::{Expr, ParamAssign};
 use crate::hir_def::interned::identifier::Ident;
 use crate::hir_def::pous::variable::VariableDecl;
+use crate::hir_ty::infer::Infer;
 use crate::{
     CallSite,
     check::errors::{ToIdeDiagnostic, e2_resolve::ResolveError},
@@ -34,10 +34,11 @@ pub fn resolve_func_call<'db>(
     // CallableType.normalize() returns the *return type*, which would cause
     // as_callable() to fail on re-entry.
     if let Some(path_expr) = func_call.path(db).expr(db)
-        && let Some(Type::CallableType(c)) = ctx.type_of_path_expr.get(&path_expr).copied() {
-            let original = c.inner_callable();
-            ctx.type_of_path_expr.insert(path_expr, original);
-        }
+        && let Some(Type::CallableType(c)) = ctx.type_of_path_expr.get(&path_expr).copied()
+    {
+        let original = c.inner_callable();
+        ctx.type_of_path_expr.insert(path_expr, original);
+    }
 
     let access_typ = ctx.get_type_of_begin_path_expr(db, func_call.path(db));
 
@@ -126,7 +127,10 @@ pub fn resolve_func_call<'db>(
         let instance_var = func_call.path(db).expr(db).and_then(|pe| {
             let ident = pe.ident(db).ident;
             let def_map = ctx.scope.def_map(db);
-            def_map.local_variables.get(&ident).copied()
+            def_map
+                .local_variables
+                .get(&ident)
+                .copied()
                 .or_else(|| def_map.global_variables.get(&ident).copied())
         });
 
@@ -139,28 +143,25 @@ pub fn resolve_func_call<'db>(
 
                 // Check if the FB variable has an ANY_* type
                 let var_type = var.spec(db).infer(db).normalize(db);
-                if let Type::Elementary(elem) = var_type {
-                    if elem.is_any() {
+                if let Type::Elementary(elem) = var_type
+                    && elem.is_any() {
                         // Get the concrete type from the argument
                         let arg_type = match param.kind(db) {
                             ParamAssignKind::NonFormal { value }
-                            | ParamAssignKind::FormalInput { value, .. } => {
-                                ctx.type_of_expr.get(&value).copied()
-                                    .or_else(|| Some(value.infer(db)))
-                            }
+                            | ParamAssignKind::FormalInput { value, .. } => ctx
+                                .type_of_expr
+                                .get(&value)
+                                .copied()
+                                .or_else(|| Some(value.infer(db))),
                             _ => None,
                         };
 
-                        if let Some(Type::Elementary(concrete)) = arg_type {
-                            if !concrete.is_any() {
-                                ctx.fb_any_resolutions.insert(
-                                    (instance_var, var.name(db)),
-                                    concrete,
-                                );
+                        if let Some(Type::Elementary(concrete)) = arg_type
+                            && !concrete.is_any() {
+                                ctx.fb_any_resolutions
+                                    .insert((instance_var, var.name(db)), concrete);
                             }
-                        }
                     }
-                }
             }
         }
     }
@@ -320,10 +321,11 @@ pub fn resolve_params<'db>(
                 let def_map = callable.def_map(db);
                 while formal_idx < def_map.local_variables.len() {
                     if let Some((name, _)) = def_map.local_variables.get_index(formal_idx)
-                        && named_params.contains(name) {
-                            formal_idx += 1;
-                            continue;
-                        }
+                        && named_params.contains(name)
+                    {
+                        formal_idx += 1;
+                        continue;
+                    }
                     break;
                 }
 

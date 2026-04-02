@@ -229,12 +229,10 @@ fn emit_stmt(func: &mut wasm_encoder::Function, stmt: &MirStmt, ctx: &Ctx) {
         } => {
             // Get the instance's memory address
             let instance_addr = match instance {
-                mir::expr::MirPlace::Local(ident) => {
-                    match ctx.locals.get(ident) {
-                        Some(LocalInfo::Memory { address, .. }) => *address,
-                        _ => return,
-                    }
-                }
+                mir::expr::MirPlace::Local(ident) => match ctx.locals.get(ident) {
+                    Some(LocalInfo::Memory { address, .. }) => *address,
+                    _ => return,
+                },
                 mir::expr::MirPlace::ThisField { field_offset, .. } => {
                     // Nested FB: instance at this_ptr + field_offset.
                     // Use dynamic addressing since the base comes from local 0 (this ptr).
@@ -314,9 +312,10 @@ fn emit_stmt(func: &mut wasm_encoder::Function, stmt: &MirStmt, ctx: &Ctx) {
             // Push params on stack
             for param_name in params {
                 if let Some(info) = ctx.locals.get(param_name)
-                    && let LocalInfo::Scalar { index, .. } = info {
-                        func.instruction(&Instruction::LocalGet(*index));
-                    }
+                    && let LocalInfo::Scalar { index, .. } = info
+                {
+                    func.instruction(&Instruction::LocalGet(*index));
+                }
             }
 
             // Emit the WASM instruction
@@ -325,9 +324,10 @@ fn emit_stmt(func: &mut wasm_encoder::Function, stmt: &MirStmt, ctx: &Ctx) {
             // Store result
             if let Some(result_name) = result
                 && let Some(info) = ctx.locals.get(result_name)
-                    && let LocalInfo::Scalar { index, .. } = info {
-                        func.instruction(&Instruction::LocalSet(*index));
-                    }
+                && let LocalInfo::Scalar { index, .. } = info
+            {
+                func.instruction(&Instruction::LocalSet(*index));
+            }
         }
 
         MirStmt::DebugTrap { .. } => {}

@@ -1,10 +1,10 @@
 use auto_lsp::default::db::BaseDatabase;
 use db::RootDatabase;
 use hir::HirNodeInfo;
+use ide_proto::handlers::completions_utils::QueryMode;
 use ide_proto::handlers::completions_utils::completion_item_builder::{
     CompletionBuilder, build_call_signature,
 };
-use ide_proto::handlers::completions_utils::QueryMode;
 use insta::assert_snapshot;
 use rstest::rstest;
 
