@@ -1,0 +1,114 @@
+================================================================================
+Warn pragma on function
+================================================================================
+
+{warn = 'this function is deprecated'}
+FUNCTION fn1 : INT
+END_FUNCTION
+
+--------------------------------------------------------------------------------
+
+(source_file
+  (func_decl
+    warn: (warn_pragma
+      level: (warn_pragma_level
+        (warn))
+      message: (pragma_string))
+    name: (identifier)
+    return_type: (numeric_type_name
+      (int_type_name
+        (sign_int_type_name
+          (int_name))))))
+
+================================================================================
+Info pragma on function
+================================================================================
+
+{info = 'prefer new_fn'}
+FUNCTION fn2 : INT
+END_FUNCTION
+
+--------------------------------------------------------------------------------
+
+(source_file
+  (func_decl
+    warn: (warn_pragma
+      level: (warn_pragma_level
+        (info))
+      message: (pragma_string))
+    name: (identifier)
+    return_type: (numeric_type_name
+      (int_type_name
+        (sign_int_type_name
+          (int_name))))))
+
+================================================================================
+Warn pragma on function block
+================================================================================
+
+{warn = 'use NewFB instead'}
+FUNCTION_BLOCK OldFB
+END_FUNCTION_BLOCK
+
+--------------------------------------------------------------------------------
+
+(source_file
+  (fb_decl
+    warn: (warn_pragma
+      level: (warn_pragma_level
+        (warn))
+      message: (pragma_string))
+    name: (identifier)))
+
+================================================================================
+Warn pragma on method
+================================================================================
+
+FUNCTION_BLOCK MyFB
+    {warn = 'deprecated method'}
+    METHOD PUBLIC doStuff : INT
+    END_METHOD
+END_FUNCTION_BLOCK
+
+--------------------------------------------------------------------------------
+
+(source_file
+  (fb_decl
+    name: (identifier)
+    method: (method_decl
+      warn: (warn_pragma
+        level: (warn_pragma_level
+          (warn))
+        message: (pragma_string))
+      access: (access_spec
+        (public))
+      name: (identifier)
+      return_type: (numeric_type_name
+        (int_type_name
+          (sign_int_type_name
+            (int_name)))))))
+
+================================================================================
+Warn pragma combined with test pragma on function
+================================================================================
+
+{warn = 'deprecated'}
+{test}
+FUNCTION test_fn : INT
+END_FUNCTION
+
+--------------------------------------------------------------------------------
+
+(source_file
+  (func_decl
+    warn: (warn_pragma
+      level: (warn_pragma_level
+        (warn))
+      message: (pragma_string))
+    test: (test_pragma)
+    name: (identifier)
+    return_type: (numeric_type_name
+      (int_type_name
+        (sign_int_type_name
+          (int_name))))))
+

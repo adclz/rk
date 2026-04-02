@@ -376,6 +376,23 @@ module.exports = grammar({
 
     pragma_string: (_) => /\'[^\']*\'/,
 
+    // Warn/info pragma - emits a diagnostic at call sites of the annotated POU
+    // {warn = 'message'} or {info = 'message'}
+    warn_pragma: ($) =>
+      prec(1, seq(
+        "{",
+        field("level", $.warn_pragma_level),
+        "=",
+        field("message", $.pragma_string),
+        "}",
+      )),
+
+    warn_pragma_level: ($) =>
+      choice(
+        alias("warn", $.warn),
+        alias("info", $.info),
+      ),
+
     // Test pragma - marks a POU as a test entry point
     // {test}
     test_pragma: (_) => prec(1, token(seq("{", "test", "}"))),
@@ -1160,6 +1177,7 @@ module.exports = grammar({
 
     func_decl: ($) =>
       seq(
+        field("warn", optional($.warn_pragma)),
         field("test", optional($.test_pragma)),
         field("cases", repeat($.case_pragma)),
         "FUNCTION",
@@ -1189,6 +1207,7 @@ module.exports = grammar({
 
     fb_decl: ($) =>
       seq(
+        field("warn", optional($.warn_pragma)),
         "FUNCTION_BLOCK",
         field("qualifier", optional(choice("FINAL", "ABSTRACT"))),
         field("name", $.identifier),
@@ -1283,6 +1302,7 @@ module.exports = grammar({
 
     method_decl: ($) =>
       seq(
+        field("warn", optional($.warn_pragma)),
         "METHOD",
         field("access", optional($.access_spec)),
         field("modifier", optional(choice("FINAL", "ABSTRACT"))),

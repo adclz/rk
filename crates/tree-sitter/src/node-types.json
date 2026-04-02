@@ -3022,6 +3022,16 @@
             "named": true
           }
         ]
+      },
+      "warn": {
+        "multiple": false,
+        "required": false,
+        "types": [
+          {
+            "type": "warn_pragma",
+            "named": true
+          }
+        ]
       }
     },
     "children": {
@@ -3554,6 +3564,16 @@
         "types": [
           {
             "type": "_func_variables",
+            "named": true
+          }
+        ]
+      },
+      "warn": {
+        "multiple": false,
+        "required": false,
+        "types": [
+          {
+            "type": "warn_pragma",
             "named": true
           }
         ]
@@ -4470,6 +4490,16 @@
         "types": [
           {
             "type": "_method_decl_variables",
+            "named": true
+          }
+        ]
+      },
+      "warn": {
+        "multiple": false,
+        "required": false,
+        "types": [
+          {
+            "type": "warn_pragma",
             "named": true
           }
         ]
@@ -7041,6 +7071,51 @@
     }
   },
   {
+    "type": "warn_pragma",
+    "named": true,
+    "fields": {
+      "level": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "warn_pragma_level",
+            "named": true
+          }
+        ]
+      },
+      "message": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "pragma_string",
+            "named": true
+          }
+        ]
+      }
+    }
+  },
+  {
+    "type": "warn_pragma_level",
+    "named": true,
+    "fields": {},
+    "children": {
+      "multiple": false,
+      "required": true,
+      "types": [
+        {
+          "type": "info",
+          "named": true
+        },
+        {
+          "type": "warn",
+          "named": true
+        }
+      ]
+    }
+  },
+  {
     "type": "wasm_pragma",
     "named": true,
     "fields": {
@@ -7974,6 +8049,10 @@
     "named": true
   },
   {
+    "type": "info",
+    "named": true
+  },
+  {
     "type": "int_name",
     "named": true
   },
@@ -8116,6 +8195,10 @@
   },
   {
     "type": "usint_name",
+    "named": true
+  },
+  {
+    "type": "warn",
     "named": true
   },
   {

@@ -756,6 +756,66 @@
       "type": "PATTERN",
       "value": "\\'[^\\']*\\'"
     },
+    "warn_pragma": {
+      "type": "PREC",
+      "value": 1,
+      "content": {
+        "type": "SEQ",
+        "members": [
+          {
+            "type": "STRING",
+            "value": "{"
+          },
+          {
+            "type": "FIELD",
+            "name": "level",
+            "content": {
+              "type": "SYMBOL",
+              "name": "warn_pragma_level"
+            }
+          },
+          {
+            "type": "STRING",
+            "value": "="
+          },
+          {
+            "type": "FIELD",
+            "name": "message",
+            "content": {
+              "type": "SYMBOL",
+              "name": "pragma_string"
+            }
+          },
+          {
+            "type": "STRING",
+            "value": "}"
+          }
+        ]
+      }
+    },
+    "warn_pragma_level": {
+      "type": "CHOICE",
+      "members": [
+        {
+          "type": "ALIAS",
+          "content": {
+            "type": "STRING",
+            "value": "warn"
+          },
+          "named": true,
+          "value": "warn"
+        },
+        {
+          "type": "ALIAS",
+          "content": {
+            "type": "STRING",
+            "value": "info"
+          },
+          "named": true,
+          "value": "info"
+        }
+      ]
+    },
     "test_pragma": {
       "type": "PREC",
       "value": 1,
@@ -5014,6 +5074,22 @@
       "members": [
         {
           "type": "FIELD",
+          "name": "warn",
+          "content": {
+            "type": "CHOICE",
+            "members": [
+              {
+                "type": "SYMBOL",
+                "name": "warn_pragma"
+              },
+              {
+                "type": "BLANK"
+              }
+            ]
+          }
+        },
+        {
+          "type": "FIELD",
           "name": "test",
           "content": {
             "type": "CHOICE",
@@ -5205,6 +5281,22 @@
     "fb_decl": {
       "type": "SEQ",
       "members": [
+        {
+          "type": "FIELD",
+          "name": "warn",
+          "content": {
+            "type": "CHOICE",
+            "members": [
+              {
+                "type": "SYMBOL",
+                "name": "warn_pragma"
+              },
+              {
+                "type": "BLANK"
+              }
+            ]
+          }
+        },
         {
           "type": "STRING",
           "value": "FUNCTION_BLOCK"
@@ -5798,6 +5890,22 @@
     "method_decl": {
       "type": "SEQ",
       "members": [
+        {
+          "type": "FIELD",
+          "name": "warn",
+          "content": {
+            "type": "CHOICE",
+            "members": [
+              {
+                "type": "SYMBOL",
+                "name": "warn_pragma"
+              },
+              {
+                "type": "BLANK"
+              }
+            ]
+          }
+        },
         {
           "type": "STRING",
           "value": "METHOD"
