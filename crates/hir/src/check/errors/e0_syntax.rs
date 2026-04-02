@@ -77,6 +77,7 @@ pub enum SyntaxError {
     MissingPriority(Span),
     ArrayConformandNotSupported(Span),
     AccessSpecNotAllowedInMethodPrototype(Span),
+    MethodDeclInBody(Span),
     // todo: use custom lexer to handle syntax errors unhandled by tree-sitter
     SyntaxError {
         span: Span,
@@ -124,6 +125,7 @@ impl ErrorCode for SyntaxError {
             SyntaxError::MissingPriority(_) => "E0035",
             SyntaxError::ArrayConformandNotSupported(_) => "E0036",
             SyntaxError::AccessSpecNotAllowedInMethodPrototype(_) => "E0037",
+            SyntaxError::MethodDeclInBody(_) => "E0038",
             SyntaxError::SyntaxError { .. } => "E0050",
         }
     }
@@ -662,6 +664,12 @@ impl<'db> ToIdeDiagnostic<'db> for SyntaxError {
                 diag.with_note("interface methods are implicitly PUBLIC".into());
                 diag
             }
+            Self::MethodDeclInBody(span) => diag()
+                .message("method declarations are not allowed inside a body".into())
+                .severity(DiagnosticSeverity::ERROR)
+                .desc(self)
+                .range(*span)
+                .call(),
             Self::SyntaxError { span, err } => diag()
                 .message(err.to_string())
                 .severity(DiagnosticSeverity::ERROR)

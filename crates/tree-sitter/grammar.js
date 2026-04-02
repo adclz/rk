@@ -326,6 +326,8 @@ module.exports = grammar({
 
     ERR_access_spec_in_method_prototype: ($) => prec(-1, $.access_spec),
 
+    ERR_method_decl_in_body: ($) => prec(-1, $.method_decl),
+
     // Table 3 - Comments
 
     line_comment: ($) => token(seq("//", /.*/)),
@@ -1875,7 +1877,7 @@ module.exports = grammar({
         "CONTINUE",
         $.extern_pragma,
         $.wasm_pragma,
-        // method_decl
+        $.ERR_method_decl_in_body
       ),
 
     // assignment: $ => seq(

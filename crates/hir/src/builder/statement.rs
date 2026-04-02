@@ -374,6 +374,12 @@ impl<'db> Parse<'db> for ast::generated::Stmt {
                     sema.current_scope,
                 ))
             }
+            StmtType::ERRMethodDeclInBody(err) => {
+                return Err(
+                    SyntaxError::MethodDeclInBody(err.get_span())
+                        .to_diagnostic(sema.db),
+                );
+            }
             StmtType::ExternPragma(pragma) => {
                 let doc = sema.file.document(sema.db).as_bytes();
 

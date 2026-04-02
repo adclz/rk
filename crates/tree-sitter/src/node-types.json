@@ -516,6 +516,10 @@
         "named": false
       },
       {
+        "type": "ERR_method_decl_in_body",
+        "named": true
+      },
+      {
         "type": "EXIT",
         "named": false
       },
@@ -910,6 +914,21 @@
       "types": [
         {
           "type": "identifier",
+          "named": true
+        }
+      ]
+    }
+  },
+  {
+    "type": "ERR_method_decl_in_body",
+    "named": true,
+    "fields": {},
+    "children": {
+      "multiple": false,
+      "required": true,
+      "types": [
+        {
+          "type": "method_decl",
           "named": true
         }
       ]

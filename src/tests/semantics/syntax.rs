@@ -1081,27 +1081,60 @@ END_CONFIGURATION"#;
 fn access_spec_not_allowed_in_method_prototype(mut with_db: RootDatabase) {
     let source = r#"
 INTERFACE IMotor
-    PUBLIC METHOD start
+    METHOD PUBLIC start
     END_METHOD
-    PRIVATE METHOD stop : BOOL
+    METHOD PRIVATE stop : BOOL
     END_METHOD
 END_INTERFACE
 "#;
 
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E0050] Error: syntax
-       ,-[ file:///test0.st:3:5 ]
+    [E0037] Error: syntax
+       ,-[ file:///test0.st:3:12 ]
        |
-     3 |     PUBLIC METHOD start
-       |     ^^^|^^
-       |        `---- Unexpected token(s): 'PUBLIC'
+     3 |     METHOD PUBLIC start
+       |            ^^^|^^
+       |               `---- access specifiers are not allowed on interface method prototypes
+       |
+       | Note: interface methods are implicitly PUBLIC
     ---'
-    [E0050] Error: syntax
-       ,-[ file:///test0.st:5:5 ]
+    [E0037] Error: syntax
+       ,-[ file:///test0.st:5:12 ]
        |
-     5 |     PRIVATE METHOD stop : BOOL
-       |     ^^^|^^^
-       |        `----- Unexpected token(s): 'PRIVATE'
+     5 |     METHOD PRIVATE stop : BOOL
+       |            ^^^|^^^
+       |               `----- access specifiers are not allowed on interface method prototypes
+       |
+       | Note: interface methods are implicitly PUBLIC
     ---'
     ");
+}
+
+#[rstest]
+fn method_decl_in_body(mut with_db: RootDatabase) {
+    let source = r#"
+FUNCTION_BLOCK fb1
+    x := 1;
+    METHOD m1
+    END_METHOD
+END_FUNCTION_BLOCK
+"#;
+
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r#"
+    [E0038] Error: syntax
+       ,-[ file:///test0.st:4:5 ]
+       |
+     4 | ,->     METHOD m1
+     5 | |->     END_METHOD
+       | |
+       | `-------------------- method declarations are not allowed inside a body
+    ---'
+    [E0204] Error: no item found in scope
+       ,-[ file:///test0.st:3:5 ]
+       |
+     3 |     x := 1;
+       |     |
+       |     `-- no item "x" found in scope
+    ---'
+    "#);
 }

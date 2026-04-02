@@ -948,6 +948,40 @@ END_CONFIGURATION
       (external_var_decls))))
 
 ================================================================================
+method decl in body
+================================================================================
+
+FUNCTION_BLOCK fb1
+    x := 1;
+    METHOD m1
+    END_METHOD
+END_FUNCTION_BLOCK
+
+--------------------------------------------------------------------------------
+
+(source_file
+  (fb_decl
+    (identifier)
+    (fb_body
+      (stmt_list
+        (assign
+          (variable_access
+            (variable
+              (begin_path_expression
+                (path_expression
+                  (var_access
+                    (field))))))
+          (assignment
+            (constant
+              (numeric_literal
+                (int_literal
+                  (signed_int
+                    (unsigned_int)))))))
+        (ERR_method_decl_in_body
+          (method_decl
+            (identifier)))))))
+
+================================================================================
 single after interval
 ================================================================================
 

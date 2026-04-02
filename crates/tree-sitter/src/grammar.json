@@ -443,6 +443,14 @@
         "name": "access_spec"
       }
     },
+    "ERR_method_decl_in_body": {
+      "type": "PREC",
+      "value": -1,
+      "content": {
+        "type": "SYMBOL",
+        "name": "method_decl"
+      }
+    },
     "line_comment": {
       "type": "TOKEN",
       "content": {
@@ -9169,6 +9177,10 @@
         {
           "type": "SYMBOL",
           "name": "wasm_pragma"
+        },
+        {
+          "type": "SYMBOL",
+          "name": "ERR_method_decl_in_body"
         }
       ]
     },
