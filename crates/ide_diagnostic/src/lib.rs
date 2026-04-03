@@ -31,6 +31,18 @@ impl IdeDiagnostic {
         &self.diagnostic.range
     }
 
+    pub fn notes(&self) -> &[String] {
+        &self.notes
+    }
+
+    pub fn related(&self) -> &[Related] {
+        &self.related
+    }
+
+    pub fn code_desc(&self) -> Option<&str> {
+        self.code_desc
+    }
+
     pub fn to_lsp_diagnostic(&self, db: &dyn BaseDatabase) -> Diagnostic {
         let related = self
             .related

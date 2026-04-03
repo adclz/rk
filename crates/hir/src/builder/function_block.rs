@@ -50,7 +50,11 @@ impl<'db> SemanticIndexBuilder<'db> {
             type Error = ast::generated::ERRExtendsMultipleTimes_ERRFbVariablesAfterMethod_ERRImplementsBeforeExtends_ERRImplementsMultipleTimes;
             match f.cast(self.ast) {
                 Error::ERRExtendsMultipleTimes(err) => {
-                    self.errors.push(SyntaxError::MultipleExtends(err.get_span()).to_diagnostic(self.db));
+                    self.errors.push(SyntaxError::MultipleExtends {
+                        location: err.get_span(),
+                        first_extend_span: func.extends.as_ref().unwrap().cast(self.ast).get_span(),
+                        file: self.file,
+                    }.to_diagnostic(self.db));
                 },
                 Error::ERRImplementsBeforeExtends(err) => {
                     self.errors.push(SyntaxError::ImplementsBeforeExtends(err.get_span()).to_diagnostic(self.db));

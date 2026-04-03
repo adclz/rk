@@ -8,7 +8,7 @@ use crate::hir_def::pous::class::{Class, MethodDecl};
 use crate::hir_def::pous::pou::Pou;
 use crate::hir_def::scope::{ScopeId, ScopeKind};
 use crate::hir_ty::head::inheritance::MethodRef;
-use crate::{Modifier, Visibility};
+use crate::{HirNodeInfo, Modifier, Visibility};
 use ast::generated::{ClassDecl, ClassVariables};
 use auto_lsp::anyhow;
 use auto_lsp::core::ast::{AstNode, AstNodeId};
@@ -100,7 +100,11 @@ impl<'db> SemanticIndexBuilder<'db> {
             type Error = ast::generated::ERRClassVariablesAfterMethod_ERRExtendsMultipleTimes_ERRImplementsBeforeExtends_ERRImplementsMultipleTimes;
             match f.cast(self.ast) {
                 Error::ERRExtendsMultipleTimes(err) => {
-                    self.errors.push(SyntaxError::MultipleExtends(err.get_span()).to_diagnostic(self.db));
+                    self.errors.push(SyntaxError::MultipleExtends {
+                        location: err.get_span(),
+                        first_extend_span: class.extends.as_ref().unwrap().cast(self.ast).get_span(),
+                        file: self.file,
+                    }.to_diagnostic(self.db));
                 },
                 Error::ERRImplementsBeforeExtends(err) => {
                     self.errors.push(SyntaxError::ImplementsBeforeExtends(err.get_span()).to_diagnostic(self.db));

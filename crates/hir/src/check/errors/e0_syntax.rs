@@ -12,12 +12,19 @@ use auto_lsp::{
 use db::WorkspaceDataBase;
 use ide_diagnostic::{ErrorCode, IdeDiagnostic, Related, action, diag, edit};
 
-use crate::check::errors::ToIdeDiagnostic;
+use crate::{HirNodeInfo, check::errors::ToIdeDiagnostic};
 
 #[derive(Debug, Clone, PartialEq, Eq, salsa::Update)]
 pub enum SyntaxError {
     InvalidPouKeyword(Span),
-    MultipleExtends(Span),
+    MultipleExtends {
+        /// Span of the second (duplicate) EXTENDS clause
+        location: Span,
+        /// Span of the first EXTENDS clause
+        first_extend_span: Span,
+        /// File containing both clauses
+        file: File,
+    },
     MultipleImplements(Span),
     ImplementsBeforeExtends(Span),
     ClassVariablesAfterMethod(Span),
@@ -88,7 +95,7 @@ pub enum SyntaxError {
 impl ErrorCode for SyntaxError {
     fn code(&self) -> &'static str {
         match self {
-            SyntaxError::MultipleExtends(_) => "E0001",
+            SyntaxError::MultipleExtends { .. } => "E0001",
             SyntaxError::MultipleImplements(_) => "E0002",
             SyntaxError::ImplementsBeforeExtends(_) => "E0003",
             SyntaxError::ClassVariablesAfterMethod(_) => "E0004",
@@ -188,12 +195,38 @@ impl SyntaxError {
 impl<'db> ToIdeDiagnostic<'db> for SyntaxError {
     fn to_diagnostic(&self, db: &'db dyn WorkspaceDataBase) -> IdeDiagnostic {
         match self {
-            Self::MultipleExtends(span) => diag()
-                .message("multiple extends declarations".into())
-                .severity(DiagnosticSeverity::ERROR)
-                .desc(self)
-                .range(*span)
-                .call(),
+            Self::MultipleExtends {
+                location,
+                first_extend_span,
+                file,
+            } => {
+                let doc = file.document(db);
+                let src = doc.as_str();
+
+                let extract = |span: &Span| -> String {
+                    src.get(span.start_byte..span.end_byte)
+                        .unwrap_or("")
+                        .replace("EXTENDS ", "")
+                        .trim()
+                        .to_string()
+                };
+                let second = extract(location);
+                let first = extract(first_extend_span);
+
+                let mut diag = diag()
+                    .message("multiple extends declarations".into())
+                    .severity(DiagnosticSeverity::ERROR)
+                    .desc(self)
+                    .range(*location)
+                    .call();
+
+                diag.with_related(Related::new(
+                    format!("merge {second} with {first}: EXTENDS {first}, {second}"),
+                    *file,
+                    *first_extend_span,
+                ));
+                diag
+            }
             Self::MultipleImplements(span) => diag()
                 .message("multiple implements declarations".into())
                 .severity(DiagnosticSeverity::ERROR)

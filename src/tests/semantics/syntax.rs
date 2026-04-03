@@ -125,7 +125,9 @@ END_FUNCTION_BLOCK"#;
        ,-[ file:///test0.st:8:29 ]
        |
      8 | FUNCTION_BLOCK fn EXTENDS a EXTENDS b
-       |                             ^^^^|^^^^
+       |                           | ^^^^|^^^^
+       |                           `------------ merge b with a: EXTENDS a, b
+       |                                 |
        |                                 `------ multiple extends declarations
     ---'
     ");
