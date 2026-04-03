@@ -33,7 +33,13 @@ pub enum SyntaxError {
         /// File containing both clauses
         file: File,
     },
-    ImplementsBeforeExtends(Span),
+    ImplementsBeforeExtends {
+        /// Span of the misplaced IMPLEMENTS clause
+        implements_span: Span,
+        /// Span of the EXTENDS clause
+        extends_span: Span,
+        file: File,
+    },
     ClassVariablesAfterMethod(Span),
     FbVariablesAfterMethod(Span),
     MissingVarType(Span),
@@ -104,7 +110,7 @@ impl ErrorCode for SyntaxError {
         match self {
             SyntaxError::MultipleExtends { .. } => "E0001",
             SyntaxError::MultipleImplements { .. } => "E0002",
-            SyntaxError::ImplementsBeforeExtends(_) => "E0003",
+            SyntaxError::ImplementsBeforeExtends { .. } => "E0003",
             SyntaxError::ClassVariablesAfterMethod(_) => "E0004",
             SyntaxError::FbVariablesAfterMethod(_) => "E0005",
             SyntaxError::MissingVarType(_) => "E0006",
@@ -228,7 +234,7 @@ impl<'db> ToIdeDiagnostic<'db> for SyntaxError {
                     .call();
 
                 diag.with_related(Related::new(
-                    format!("merge into single clause: EXTENDS {first}, {second}"),
+                    format!("merge into single clause: 'EXTENDS {first}, {second}'"),
                     *file,
                     *first_extend_span,
                 ));
@@ -260,18 +266,42 @@ impl<'db> ToIdeDiagnostic<'db> for SyntaxError {
                     .call();
 
                 diag.with_related(Related::new(
-                    format!("merge into single clause: IMPLEMENTS {first}, {second}"),
+                    format!("merge into single clause: 'IMPLEMENTS {first}, {second}'"),
                     *file,
                     *first_implements_span,
                 ));
                 diag
             }
-            Self::ImplementsBeforeExtends(span) => diag()
-                .message("implements must be declared after extends".into())
-                .severity(DiagnosticSeverity::ERROR)
-                .desc(self)
-                .range(*span)
-                .call(),
+            Self::ImplementsBeforeExtends {
+                implements_span,
+                extends_span,
+                file,
+            } => {
+                let doc = file.document(db);
+                let src = doc.as_str();
+
+                let extract = |span: &Span| -> String {
+                    src.get(span.start_byte..span.end_byte)
+                        .unwrap_or("")
+                        .trim()
+                        .to_string()
+                };
+                let implements_text = extract(implements_span);
+
+                let mut diag = diag()
+                    .message("IMPLEMENTS must be declared after EXTENDS".into())
+                    .severity(DiagnosticSeverity::ERROR)
+                    .desc(self)
+                    .range(*implements_span)
+                    .call();
+
+                diag.with_related(Related::new(
+                    format!("move '{implements_text}' here"),
+                    *file,
+                    *extends_span,
+                ));
+                diag
+            }
             Self::ClassVariablesAfterMethod(span) => diag()
                 .message("class variable declarations must appear before methods".into())
                 .severity(DiagnosticSeverity::ERROR)

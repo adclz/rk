@@ -57,7 +57,11 @@ impl<'db> SemanticIndexBuilder<'db> {
                     }.to_diagnostic(self.db));
                 },
                 Error::ERRImplementsBeforeExtends(err) => {
-                    self.errors.push(SyntaxError::ImplementsBeforeExtends(err.get_span()).to_diagnostic(self.db));
+                    self.errors.push(SyntaxError::ImplementsBeforeExtends {
+                        implements_span: err.get_span(),
+                        extends_span: func.extends.as_ref().unwrap().cast(self.ast).get_span(),
+                        file: self.file,
+                    }.to_diagnostic(self.db));
                 },
                 Error::ERRImplementsMultipleTimes(err) => {
                     self.errors.push(SyntaxError::MultipleImplements {

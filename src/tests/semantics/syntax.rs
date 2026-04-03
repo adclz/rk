@@ -77,8 +77,10 @@ END_FUNCTION_BLOCK"#;
        ,-[ file:///test0.st:5:19 ]
        |
      5 | FUNCTION_BLOCK fn IMPLEMENTS a EXTENDS b
-       |                   ^^^^^^|^^^^^
-       |                         `------- implements must be declared after extends
+       |                   ^^^^^^|^^^^^         |
+       |                         `----------------- IMPLEMENTS must be declared after EXTENDS
+       |                                        |
+       |                                        `-- move 'IMPLEMENTS a' here
     ---'
     ");
 }
@@ -102,7 +104,7 @@ END_FUNCTION_BLOCK"#;
        |
      8 | FUNCTION_BLOCK fn IMPLEMENTS a IMPLEMENTS b
        |                              | ^^^^^^|^^^^^
-       |                              `--------------- merge into single clause: IMPLEMENTS a, b
+       |                              `--------------- merge into single clause: 'IMPLEMENTS a, b'
        |                                      |
        |                                      `------- multiple IMPLEMENTS declarations are not allowed
     ---'
@@ -128,7 +130,7 @@ END_FUNCTION_BLOCK"#;
        |
      8 | FUNCTION_BLOCK fn EXTENDS a EXTENDS b
        |                           | ^^^^|^^^^
-       |                           `------------ merge into single clause: EXTENDS a, b
+       |                           `------------ merge into single clause: 'EXTENDS a, b'
        |                                 |
        |                                 `------ multiple EXTENDS declarations are not allowed
     ---'
