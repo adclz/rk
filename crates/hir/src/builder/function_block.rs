@@ -71,7 +71,14 @@ impl<'db> SemanticIndexBuilder<'db> {
                     }.to_diagnostic(self.db));
                 },
                 Error::ERRFbVariablesAfterMethod(err) => {
-                    self.errors.push(SyntaxError::FbVariablesAfterMethod(err.get_span()).to_diagnostic(self.db));
+
+                let first_method_span = func.method.first().unwrap().cast(self.ast).get_span();
+                    
+                    self.errors.push(SyntaxError::FbVariablesAfterMethod {
+                        var_span: err.get_span(),
+                        method_span: first_method_span,
+                        file: self.file
+                    }.to_diagnostic(self.db));
                 },
             }
         });

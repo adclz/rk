@@ -121,7 +121,13 @@ impl<'db> SemanticIndexBuilder<'db> {
                     }.to_diagnostic(self.db));
                 },
                 Error::ERRClassVariablesAfterMethod(err) => {
-                    self.errors.push(SyntaxError::ClassVariablesAfterMethod(err.get_span()).to_diagnostic(self.db));
+                    let first_method_span = class.methods.first().unwrap().cast(self.ast).get_span();
+                    
+                    self.errors.push(SyntaxError::ClassVariablesAfterMethod {
+                        var_span: err.get_span(),
+                        method_span: first_method_span,
+                        file: self.file
+                    }.to_diagnostic(self.db));
                 },
             }
         });

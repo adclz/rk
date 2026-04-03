@@ -245,6 +245,7 @@ END_FUNCTION_BLOCK
     ");
 }
 
+// todo: this is wrong! there's no recovery here!
 #[rstest]
 fn fuzzy_struct_path_expr(mut with_db: RootDatabase) {
     let source = r#"
@@ -408,7 +409,7 @@ FUNCTION_BLOCK fb1
         param_out: INT;
     END_VAR
 
-	fn(params => param_out);
+	fn(param => param_out);
 END_FUNCTION_BLOCK
         "#;
 
@@ -416,9 +417,13 @@ END_FUNCTION_BLOCK
     [E0209] Error: function call parameter mismatch
         ,-[ file:///test0.st:14:5 ]
         |
-     14 |     fn(params => param_out);
-        |        ^^^|^^
-        |           `---- unknown output parameter 'params'
+     14 |     fn(param => param_out);
+        |        ^^|^^
+        |          `---- unknown output parameter 'param'
+        |
+        | Note: 'fn' has parameters with similar name:
+        |       - param1
+        |       - param2
     ----'
     ");
 }

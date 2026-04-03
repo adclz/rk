@@ -354,11 +354,15 @@ END_CLASS"#;
     [E0004] Error: syntax
         ,-[ file:///test0.st:6:5 ]
         |
+      4 |         METHOD PROTECTED myProtectedMethod END_METHOD
+        |         |
+        |         `- move variables before methods here
+        |
       6 | ,->     VAR
         : :
      12 | |->     END_VAR
         | |
-        | `----------------- class variable declarations must appear before methods
+        | `----------------- CLASS variable declarations must appear before methods
     ----'
     ");
 }
@@ -383,6 +387,10 @@ END_FUNCTION_BLOCK"#;
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
     [E0005] Error: syntax
         ,-[ file:///test0.st:6:5 ]
+        |
+      4 |         METHOD PROTECTED myProtectedMethod END_METHOD
+        |         |
+        |         `- move variables before methods here
         |
       6 | ,->     VAR
         : :

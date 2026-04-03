@@ -40,8 +40,20 @@ pub enum SyntaxError {
         extends_span: Span,
         file: File,
     },
-    ClassVariablesAfterMethod(Span),
-    FbVariablesAfterMethod(Span),
+    ClassVariablesAfterMethod {
+        /// Span of the misplaced variables
+        var_span: Span,
+        /// Span of the first METHOD
+        method_span: Span,
+        file: File,
+    },
+    FbVariablesAfterMethod {
+        /// Span of the misplaced variables
+        var_span: Span,
+        /// Span of the first METHOD
+        method_span: Span,
+        file: File,
+    },
     MissingVarType(Span),
     UnexpectedVarInit(Span),
     IncompleteEdgeQualifier(Span),
@@ -111,8 +123,8 @@ impl ErrorCode for SyntaxError {
             SyntaxError::MultipleExtends { .. } => "E0001",
             SyntaxError::MultipleImplements { .. } => "E0002",
             SyntaxError::ImplementsBeforeExtends { .. } => "E0003",
-            SyntaxError::ClassVariablesAfterMethod(_) => "E0004",
-            SyntaxError::FbVariablesAfterMethod(_) => "E0005",
+            SyntaxError::ClassVariablesAfterMethod { .. } => "E0004",
+            SyntaxError::FbVariablesAfterMethod { .. } => "E0005",
             SyntaxError::MissingVarType(_) => "E0006",
             SyntaxError::UnexpectedVarInit(_) => "E0007",
             SyntaxError::IncompleteEdgeQualifier(_) => "E0008",
@@ -302,18 +314,64 @@ impl<'db> ToIdeDiagnostic<'db> for SyntaxError {
                 ));
                 diag
             }
-            Self::ClassVariablesAfterMethod(span) => diag()
-                .message("class variable declarations must appear before methods".into())
-                .severity(DiagnosticSeverity::ERROR)
-                .desc(self)
-                .range(*span)
-                .call(),
-            Self::FbVariablesAfterMethod(span) => diag()
-                .message("FB variable declarations must appear before methods".into())
-                .severity(DiagnosticSeverity::ERROR)
-                .desc(self)
-                .range(*span)
-                .call(),
+            Self::ClassVariablesAfterMethod {
+                file,
+                var_span,
+                method_span,
+            } => {
+
+                // We do not want to highlight the first method, just the start point
+                let method_span_start = Span::from(
+                    Range {
+                        start_byte: method_span.start_byte,
+                        end_byte: method_span.start_byte,
+                        start_point: method_span.start_point,
+                        end_point: method_span.start_point
+                    }
+                );
+
+                let mut diag = diag()
+                    .message("CLASS variable declarations must appear before methods".into())
+                    .severity(DiagnosticSeverity::ERROR)
+                    .desc(self)
+                    .range(*var_span)
+                    .call();
+
+                diag.with_related(Related::new(
+                    "move variables before methods here".into(), 
+                    *file, 
+                method_span_start));
+                diag
+            },
+            Self::FbVariablesAfterMethod {
+                file,
+                var_span,
+                method_span,
+            } => {
+
+                // We do not want to highlight the first method, just the start point
+                let method_span_start = Span::from(
+                    Range {
+                        start_byte: method_span.start_byte,
+                        end_byte: method_span.start_byte,
+                        start_point: method_span.start_point,
+                        end_point: method_span.start_point
+                    }
+                );
+
+                let mut diag = diag()
+                    .message("FB variable declarations must appear before methods".into())
+                    .severity(DiagnosticSeverity::ERROR)
+                    .desc(self)
+                    .range(*var_span)
+                    .call();
+
+                diag.with_related(Related::new(
+                    "move variables before methods here".into(), 
+                    *file, 
+                method_span_start));
+                diag
+            },
             Self::MissingVarType(span) => diag()
                 .message("variable type is missing".into())
                 .severity(DiagnosticSeverity::ERROR)

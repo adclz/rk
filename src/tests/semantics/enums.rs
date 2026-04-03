@@ -27,6 +27,34 @@ fn invalid_enum_type(mut with_db: RootDatabase) {
 }
 
 #[rstest]
+fn access_enum_variant_on_non_enum_type(mut with_db: RootDatabase) {
+    let source = r#"
+        TYPE
+            List: INT (A, B, C);
+        END_TYPE
+
+        FUNCTION fn
+            VAR 
+                test: List
+                type: BOOL;
+            END_VAR
+
+            test := type#A
+        END_FUNCTION
+        "#;
+
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
+    [E0702] Error: invalid enum access
+        ,-[ file:///test0.st:12:21 ]
+        |
+     12 |             test := type#A
+        |                     ^^|^
+        |                       `--- 'BOOL' is not an ENUM type
+    ----'
+    ");
+}
+
+#[rstest]
 fn type_mismatch_enum_variant_decl(mut with_db: RootDatabase) {
     let source = r#"
         TYPE
