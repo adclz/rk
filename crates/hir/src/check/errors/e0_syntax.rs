@@ -25,7 +25,14 @@ pub enum SyntaxError {
         /// File containing both clauses
         file: File,
     },
-    MultipleImplements(Span),
+    MultipleImplements {
+        /// Span of the second (duplicate) IMPLEMENTS clause
+        location: Span,
+        /// Span of the first IMPLEMENTS clause
+        first_implements_span: Span,
+        /// File containing both clauses
+        file: File,
+    },
     ImplementsBeforeExtends(Span),
     ClassVariablesAfterMethod(Span),
     FbVariablesAfterMethod(Span),
@@ -96,7 +103,7 @@ impl ErrorCode for SyntaxError {
     fn code(&self) -> &'static str {
         match self {
             SyntaxError::MultipleExtends { .. } => "E0001",
-            SyntaxError::MultipleImplements(_) => "E0002",
+            SyntaxError::MultipleImplements { .. } => "E0002",
             SyntaxError::ImplementsBeforeExtends(_) => "E0003",
             SyntaxError::ClassVariablesAfterMethod(_) => "E0004",
             SyntaxError::FbVariablesAfterMethod(_) => "E0005",
@@ -214,25 +221,51 @@ impl<'db> ToIdeDiagnostic<'db> for SyntaxError {
                 let first = extract(first_extend_span);
 
                 let mut diag = diag()
-                    .message("multiple extends declarations".into())
+                    .message("multiple EXTENDS declarations are not allowed".into())
                     .severity(DiagnosticSeverity::ERROR)
                     .desc(self)
                     .range(*location)
                     .call();
 
                 diag.with_related(Related::new(
-                    format!("merge {second} with {first}: EXTENDS {first}, {second}"),
+                    format!("merge into single clause: EXTENDS {first}, {second}"),
                     *file,
                     *first_extend_span,
                 ));
                 diag
             }
-            Self::MultipleImplements(span) => diag()
-                .message("multiple implements declarations".into())
-                .severity(DiagnosticSeverity::ERROR)
-                .desc(self)
-                .range(*span)
-                .call(),
+            Self::MultipleImplements {
+                location,
+                first_implements_span,
+                file,
+            } => {
+                let doc = file.document(db);
+                let src = doc.as_str();
+
+                let extract = |span: &Span| -> String {
+                    src.get(span.start_byte..span.end_byte)
+                        .unwrap_or("")
+                        .replace("IMPLEMENTS ", "")
+                        .trim()
+                        .to_string()
+                };
+                let second = extract(location);
+                let first = extract(first_implements_span);
+
+                let mut diag = diag()
+                    .message("multiple IMPLEMENTS declarations are not allowed".into())
+                    .severity(DiagnosticSeverity::ERROR)
+                    .desc(self)
+                    .range(*location)
+                    .call();
+
+                diag.with_related(Related::new(
+                    format!("merge into single clause: IMPLEMENTS {first}, {second}"),
+                    *file,
+                    *first_implements_span,
+                ));
+                diag
+            }
             Self::ImplementsBeforeExtends(span) => diag()
                 .message("implements must be declared after extends".into())
                 .severity(DiagnosticSeverity::ERROR)

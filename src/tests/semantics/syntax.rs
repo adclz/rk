@@ -101,8 +101,10 @@ END_FUNCTION_BLOCK"#;
        ,-[ file:///test0.st:8:32 ]
        |
      8 | FUNCTION_BLOCK fn IMPLEMENTS a IMPLEMENTS b
-       |                                ^^^^^^|^^^^^
-       |                                      `------- multiple implements declarations
+       |                              | ^^^^^^|^^^^^
+       |                              `--------------- merge into single clause: IMPLEMENTS a, b
+       |                                      |
+       |                                      `------- multiple IMPLEMENTS declarations are not allowed
     ---'
     ");
 }
@@ -126,9 +128,9 @@ END_FUNCTION_BLOCK"#;
        |
      8 | FUNCTION_BLOCK fn EXTENDS a EXTENDS b
        |                           | ^^^^|^^^^
-       |                           `------------ merge b with a: EXTENDS a, b
+       |                           `------------ merge into single clause: EXTENDS a, b
        |                                 |
-       |                                 `------ multiple extends declarations
+       |                                 `------ multiple EXTENDS declarations are not allowed
     ---'
     ");
 }
