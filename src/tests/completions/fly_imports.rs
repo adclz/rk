@@ -32,7 +32,7 @@ END_FUNCTION
     assert!(format!("{completions:?}").contains("fn2"));
 
     // fn1 should have an additional namespace prefix (check for the escaped newline in debug output)
-    assert!(format!("{completions:?}").contains(r#""USING ns;\n""#));
+    assert!(format!("{completions:?}").contains(r#""USING ns;\n\n""#));
 }
 
 #[rstest]

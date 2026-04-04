@@ -211,7 +211,7 @@ impl<'db> CompletionBuilder {
             let namespace_str = ns.to_string(db);
             Some(TextEdit {
                 range: *range,
-                new_text: format!("{}USING {namespace_str};\n", indent),
+                new_text: format!("{}USING {namespace_str};\n\n", indent),
             })
         } else {
             None
