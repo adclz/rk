@@ -171,3 +171,37 @@ END_FUNCTION
     ---'
     ");
 }
+
+#[rstest]
+fn implicit_boolean_literals(mut with_db: RootDatabase) {
+    let source = r#"
+FUNCTION test : INT
+    IF BOOL#TRUE THEN
+        test := 1;
+    END_IF
+    IF BOOL#FALSE THEN
+        test := 1;
+    END_IF;
+END_FUNCTION
+"#;
+    assert_snapshot!(test_lint_diagnostics(&mut with_db, &[source]), @r"
+    [L0112] Warning: constant condition
+       ,-[ file:///test0.st:3:8 ]
+       |
+     3 |     IF BOOL#TRUE THEN
+       |        ^^^^|^^^^
+       |            `------ IF condition is always TRUE
+       |
+       | Note: lint rule: constant-condition
+    ---'
+    [L0112] Warning: constant condition
+       ,-[ file:///test0.st:6:8 ]
+       |
+     6 |     IF BOOL#FALSE THEN
+       |        ^^^^^|^^^^
+       |             `------ IF condition is always FALSE
+       |
+       | Note: lint rule: constant-condition
+    ---'
+    ");
+}
