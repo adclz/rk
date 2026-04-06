@@ -1,6 +1,7 @@
 mod case_without_else;
 mod constant_condition;
 mod dead_code;
+mod division_by_zero;
 mod duplicate_var_section;
 mod effectless_statement;
 mod for_loop_step_sign;
