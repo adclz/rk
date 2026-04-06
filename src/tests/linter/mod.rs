@@ -1,3 +1,4 @@
+mod bool_comparison;
 mod case_without_else;
 mod constant_condition;
 mod dead_code;

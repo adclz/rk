@@ -16,8 +16,8 @@ use hir::{
 use ide_diagnostic::IdeDiagnostic;
 
 use super::{
-    constant_condition, input_assignment, missing_input_param, negated_condition, run_lint,
-    self_assignment, uninitialized_output, unnecessary_else,
+    bool_comparison, constant_condition, input_assignment, missing_input_param, negated_condition,
+    run_lint, self_assignment, uninitialized_output, unnecessary_else,
 };
 
 /// Run all statement-walking lints in a single pass over the statement tree.
@@ -47,6 +47,7 @@ pub fn check<'db>(
         uninitialized_output: config.is_enabled(uninitialized_output::NAME),
         negated_condition: config.is_enabled(negated_condition::NAME),
         missing_input_param: config.is_enabled(missing_input_param::NAME),
+        bool_comparison: config.is_enabled(bool_comparison::NAME),
     };
 
     // Nothing enabled - skip walk entirely
@@ -78,6 +79,7 @@ struct VisitorCtx {
     uninitialized_output: bool,
     negated_condition: bool,
     missing_input_param: bool,
+    bool_comparison: bool,
 }
 
 impl VisitorCtx {
@@ -89,6 +91,7 @@ impl VisitorCtx {
             || self.uninitialized_output
             || self.negated_condition
             || self.missing_input_param
+            || self.bool_comparison
     }
 }
 
@@ -105,6 +108,11 @@ fn visit_statements<'db>(
     for stmt in stmts {
         match stmt.stmt(db) {
             StmtKind::Assignment { var, target } => {
+                if ctx.bool_comparison {
+                    run_lint(bool_comparison::NAME, diagnostics, |d| {
+                        bool_comparison::check_expr(db, target, d)
+                    });
+                }
                 if ctx.input_assignment {
                     run_lint(input_assignment::NAME, diagnostics, |d| {
                         input_assignment::check_assignment(db, body, *var, d)
@@ -138,6 +146,11 @@ fn visit_statements<'db>(
                 else_,
                 ..
             } => {
+                if ctx.bool_comparison {
+                    run_lint(bool_comparison::NAME, diagnostics, |d| {
+                        bool_comparison::check_expr(db, condition, d)
+                    });
+                }
                 if ctx.constant_condition {
                     run_lint(constant_condition::NAME, diagnostics, |d| {
                         constant_condition::check_condition(db, condition, "IF", d)
@@ -147,6 +160,11 @@ fn visit_statements<'db>(
                     visit_statements(db, body, ctx, stmts, diagnostics, assigned_vars);
                 }
                 for (cond, stmts) in else_if {
+                    if ctx.bool_comparison {
+                        run_lint(bool_comparison::NAME, diagnostics, |d| {
+                            bool_comparison::check_expr(db, cond, d)
+                        });
+                    }
                     if ctx.constant_condition {
                         run_lint(constant_condition::NAME, diagnostics, |d| {
                             constant_condition::check_condition(db, cond, "ELSIF", d)
@@ -173,6 +191,11 @@ fn visit_statements<'db>(
                 body: loop_body,
                 ..
             } => {
+                if ctx.bool_comparison {
+                    run_lint(bool_comparison::NAME, diagnostics, |d| {
+                        bool_comparison::check_expr(db, condition, d)
+                    });
+                }
                 if ctx.constant_condition {
                     run_lint(constant_condition::NAME, diagnostics, |d| {
                         constant_condition::check_condition(db, condition, "WHILE", d)
@@ -185,6 +208,11 @@ fn visit_statements<'db>(
                 body: loop_body,
                 ..
             } => {
+                if ctx.bool_comparison {
+                    run_lint(bool_comparison::NAME, diagnostics, |d| {
+                        bool_comparison::check_expr(db, condition, d)
+                    });
+                }
                 if ctx.constant_condition {
                     run_lint(constant_condition::NAME, diagnostics, |d| {
                         constant_condition::check_condition(db, condition, "UNTIL", d)

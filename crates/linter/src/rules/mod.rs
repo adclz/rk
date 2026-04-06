@@ -13,9 +13,11 @@ use hir::{
 };
 use ide_diagnostic::IdeDiagnostic;
 
+pub mod bool_comparison;
 pub mod case_without_else;
 pub mod constant_condition;
 pub mod dead_code;
+pub mod division_by_zero;
 pub mod duplicate_var_section;
 pub mod effectless_statement;
 pub mod for_loop_step_sign;
@@ -201,6 +203,11 @@ fn lint_scope<'db>(
     if config.is_enabled(case_without_else::NAME) {
         run_lint(case_without_else::NAME, diagnostics, |d| {
             case_without_else::check(db, body, d)
+        });
+    }
+    if config.is_enabled(division_by_zero::NAME) {
+        run_lint(division_by_zero::NAME, diagnostics, |d| {
+            division_by_zero::check(db, scope, d)
         });
     }
     if config.is_enabled(dead_code::NAME) {
