@@ -17,8 +17,8 @@ use ide_diagnostic::IdeDiagnostic;
 
 use super::{
     bool_comparison, constant_condition, identical_sub_expr, input_assignment,
-    missing_input_param, negated_condition, run_lint, self_assignment, self_comparison,
-    uninitialized_output, unnecessary_else,
+    missing_input_param, negated_condition, redundant_not, run_lint, self_assignment,
+    self_comparison, uninitialized_output, unnecessary_else,
 };
 
 /// Run all statement-walking lints in a single pass over the statement tree.
@@ -51,6 +51,7 @@ pub fn check<'db>(
         bool_comparison: config.is_enabled(bool_comparison::NAME),
         self_comparison: config.is_enabled(self_comparison::NAME),
         identical_sub_expr: config.is_enabled(identical_sub_expr::NAME),
+        redundant_not: config.is_enabled(redundant_not::NAME),
     };
 
     // Nothing enabled - skip walk entirely
@@ -85,6 +86,7 @@ struct VisitorCtx {
     bool_comparison: bool,
     self_comparison: bool,
     identical_sub_expr: bool,
+    redundant_not: bool,
 }
 
 impl VisitorCtx {
@@ -99,6 +101,7 @@ impl VisitorCtx {
             || self.bool_comparison
             || self.self_comparison
             || self.identical_sub_expr
+            || self.redundant_not
     }
 }
 
@@ -128,6 +131,11 @@ fn visit_statements<'db>(
                 if ctx.identical_sub_expr {
                     run_lint(identical_sub_expr::NAME, diagnostics, |d| {
                         identical_sub_expr::check_expr(db, body, target, d)
+                    });
+                }
+                if ctx.redundant_not {
+                    run_lint(redundant_not::NAME, diagnostics, |d| {
+                        redundant_not::check_expr(db, target, d)
                     });
                 }
                 if ctx.input_assignment {
@@ -176,6 +184,11 @@ fn visit_statements<'db>(
                 if ctx.identical_sub_expr {
                     run_lint(identical_sub_expr::NAME, diagnostics, |d| {
                         identical_sub_expr::check_expr(db, body, condition, d)
+                    });
+                }
+                if ctx.redundant_not {
+                    run_lint(redundant_not::NAME, diagnostics, |d| {
+                        redundant_not::check_expr(db, condition, d)
                     });
                 }
                 if ctx.constant_condition {

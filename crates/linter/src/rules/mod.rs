@@ -25,6 +25,7 @@ pub mod identical_sub_expr;
 pub mod input_assignment;
 pub mod missing_input_param;
 pub mod negated_condition;
+pub mod redundant_not;
 pub mod self_assignment;
 pub mod self_comparison;
 pub mod shadowing_variable;
