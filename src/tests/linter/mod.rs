@@ -17,6 +17,7 @@ mod redundant_not;
 mod self_assignment;
 mod self_comparison;
 mod shadowing_variable;
+mod sub_self;
 mod uninitialized_output;
 mod unnecessary_else;
 mod unused_import;

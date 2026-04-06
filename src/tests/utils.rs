@@ -227,6 +227,7 @@ const ALL_LINT_RULES: &[&str] = &[
     "redundant-not",
     "identity-operation",
     "empty-body",
+    "sub-self",
 ];
 
 fn test_lint_diagnostics_with_config<'db>(

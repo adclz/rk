@@ -18,7 +18,7 @@ use ide_diagnostic::IdeDiagnostic;
 use super::{
     bool_comparison, constant_condition, identical_sub_expr, identity_operation,
     input_assignment, missing_input_param, negated_condition, redundant_not, run_lint,
-    self_assignment, self_comparison, uninitialized_output, unnecessary_else,
+    self_assignment, self_comparison, sub_self, uninitialized_output, unnecessary_else,
 };
 
 /// Run all statement-walking lints in a single pass over the statement tree.
@@ -53,6 +53,7 @@ pub fn check<'db>(
         identical_sub_expr: config.is_enabled(identical_sub_expr::NAME),
         identity_operation: config.is_enabled(identity_operation::NAME),
         redundant_not: config.is_enabled(redundant_not::NAME),
+        sub_self: config.is_enabled(sub_self::NAME),
     };
 
     // Nothing enabled - skip walk entirely
@@ -89,6 +90,7 @@ struct VisitorCtx {
     identical_sub_expr: bool,
     redundant_not: bool,
     identity_operation: bool,
+    sub_self: bool,
 }
 
 impl VisitorCtx {
@@ -105,6 +107,7 @@ impl VisitorCtx {
             || self.identical_sub_expr
             || self.redundant_not
             || self.identity_operation
+            || self.sub_self
     }
 }
 
@@ -144,6 +147,11 @@ fn visit_statements<'db>(
                 if ctx.identity_operation {
                     run_lint(identity_operation::NAME, diagnostics, |d| {
                         identity_operation::check_expr(db, target, d)
+                    });
+                }
+                if ctx.sub_self {
+                    run_lint(sub_self::NAME, diagnostics, |d| {
+                        sub_self::check_expr(db, body, target, d)
                     });
                 }
                 if ctx.input_assignment {

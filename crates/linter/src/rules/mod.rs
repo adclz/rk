@@ -32,6 +32,7 @@ pub mod redundant_not;
 pub mod self_assignment;
 pub mod self_comparison;
 pub mod shadowing_variable;
+pub mod sub_self;
 pub mod stmt_visitor;
 pub mod uninitialized_output;
 pub mod unnecessary_else;
