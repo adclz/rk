@@ -1,3 +1,5 @@
+use auto_lsp::core::span::Span;
+use auto_lsp::default::db::file::File;
 use auto_lsp::lsp_types::{DiagnosticSeverity, DiagnosticTag};
 use db::WorkspaceDataBase;
 use hir::{
@@ -25,11 +27,15 @@ impl ErrorCode for DuplicateCase {
     }
 }
 
-/// Check a single CASE statement's selectors for duplicates.
-///
-/// For expressions, we use the source text (`as_call_site().to_string()`) as the
-/// dedup key. This naturally disambiguates `STATE#A` from `STATE2#A`.
-/// For subranges, we compare evaluated integer bounds.
+/// A resolved range with its source span and file.
+struct SeenRange {
+    lo: u64,
+    hi: u64,
+    span: Span,
+    file: File,
+}
+
+/// Check a single CASE statement's selectors for duplicates and overlaps.
 pub fn check_case<'db>(
     db: &'db dyn WorkspaceDataBase,
     cases: &[(
@@ -39,49 +45,133 @@ pub fn check_case<'db>(
     diagnostics: &mut Vec<IdeDiagnostic>,
 ) {
     let mut seen_exprs: FxHashMap<String, CaseKind<'db>> = FxHashMap::default();
-    let mut seen_ranges: FxHashMap<(u64, u64), CaseKind<'db>> = FxHashMap::default();
+    let mut seen_ranges: Vec<SeenRange> = Vec::new();
 
     for (selectors, _) in cases {
         for selector in selectors {
             match selector {
                 CaseKind::Expression(expr) => {
                     let key = expr.as_call_site(db).to_string(db).to_string();
+
+                    // Check exact duplicate
                     if let Some(first) = seen_exprs.insert(key.clone(), *selector) {
-                        emit_dup(db, &first, expr, &key, diagnostics);
+                        emit(db, &first, expr.get_span(db), &format!(
+                            "CASE selector '{key}' is duplicated, second branch is unreachable"
+                        ), diagnostics);
+                        continue;
+                    }
+
+                    // Check if this integer value falls inside an existing range
+                    if let Some(val) = eval_integer(db, expr) {
+                        for prev in &seen_ranges {
+                            if val >= prev.lo && val <= prev.hi {
+                                let mut d = diag()
+                                    .message(format!(
+                                        "CASE selector '{key}' is already covered by range '{}..{}'",
+                                        prev.lo, prev.hi
+                                    ))
+                                    .desc(&DuplicateCase)
+                                    .range(expr.get_span(db))
+                                    .severity(DiagnosticSeverity::WARNING)
+                                    .tags(vec![DiagnosticTag::UNNECESSARY])
+                                    .call();
+                                d.with_related(Related::new(
+                                    "range defined here".into(),
+                                    prev.file,
+                                    prev.span,
+                                ));
+                                diagnostics.push(d);
+                                break;
+                            }
+                        }
                     }
                 }
                 CaseKind::Subrange { lower, upper } => {
                     if let (Some(lo), Some(hi)) =
                         (eval_integer(db, lower), eval_integer(db, upper))
                     {
-                        if let Some(first) = seen_ranges.insert((lo, hi), *selector) {
-                            let display = format!("{lo}..{hi}");
-                            let span = lower.get_span(db);
+                        let span = lower.get_span(db);
+                        let file = lower.get_scope_id(db).file(db);
+
+                        // Check exact duplicate range
+                        let exact_dup = seen_ranges.iter().find(|r| r.lo == lo && r.hi == hi);
+                        if let Some(prev) = exact_dup {
                             let mut d = diag()
                                 .message(format!(
-                                    "CASE range '{display}' is duplicated, second branch is unreachable"
+                                    "CASE range '{lo}..{hi}' is duplicated, second branch is unreachable"
                                 ))
                                 .desc(&DuplicateCase)
                                 .range(span)
                                 .severity(DiagnosticSeverity::WARNING)
                                 .tags(vec![DiagnosticTag::UNNECESSARY])
                                 .call();
-
-                            let (file, range) = match first {
-                                CaseKind::Expression(expr) => {
-                                    (expr.get_scope_id(db).file(db), expr.get_span(db))
-                                }
-                                CaseKind::Subrange { lower, .. } => {
-                                    (lower.get_scope_id(db).file(db), lower.get_span(db))
-                                }
-                            };
                             d.with_related(Related::new(
                                 "CASE selector is already defined here".into(),
-                                file,
-                                range,
+                                prev.file,
+                                prev.span,
                             ));
                             diagnostics.push(d);
+                            continue;
                         }
+
+                        // Check overlap with existing ranges
+                        for prev in &seen_ranges {
+                            if lo <= prev.hi && hi >= prev.lo {
+                                let mut d = diag()
+                                    .message(format!(
+                                        "CASE range '{lo}..{hi}' overlaps with '{}'",
+                                        format_range(prev)
+                                    ))
+                                    .desc(&DuplicateCase)
+                                    .range(span)
+                                    .severity(DiagnosticSeverity::WARNING)
+                                    .call();
+                                d.with_related(Related::new(
+                                    "overlapping range defined here".into(),
+                                    prev.file,
+                                    prev.span,
+                                ));
+                                diagnostics.push(d);
+                                break;
+                            }
+                        }
+
+                        // Check if any existing expression value falls in this new range
+                        for (key, prev_selector) in &seen_exprs {
+                            let val = match prev_selector {
+                                CaseKind::Expression(e) => eval_integer(db, e),
+                                _ => None,
+                            };
+                            if let Some(val) = val {
+                                if val >= lo && val <= hi {
+                                    let prev_span = match prev_selector {
+                                        CaseKind::Expression(e) => e.get_span(db),
+                                        _ => continue,
+                                    };
+                                    let prev_file = match prev_selector {
+                                        CaseKind::Expression(e) => e.get_scope_id(db).file(db),
+                                        _ => continue,
+                                    };
+                                    let mut d = diag()
+                                        .message(format!(
+                                            "CASE range '{lo}..{hi}' covers already defined selector '{key}'"
+                                        ))
+                                        .desc(&DuplicateCase)
+                                        .range(span)
+                                        .severity(DiagnosticSeverity::WARNING)
+                                        .call();
+                                    d.with_related(Related::new(
+                                        "selector defined here".into(),
+                                        prev_file,
+                                        prev_span,
+                                    ));
+                                    diagnostics.push(d);
+                                    break;
+                                }
+                            }
+                        }
+
+                        seen_ranges.push(SeenRange { lo, hi, span, file });
                     }
                 }
             }
@@ -89,19 +179,21 @@ pub fn check_case<'db>(
     }
 }
 
-fn emit_dup(
+fn format_range(r: &SeenRange) -> String {
+    format!("{}..{}", r.lo, r.hi)
+}
+
+fn emit(
     db: &dyn WorkspaceDataBase,
     first: &CaseKind<'_>,
-    expr: &Expr<'_>,
-    display: &str,
+    span: Span,
+    message: &str,
     diagnostics: &mut Vec<IdeDiagnostic>,
 ) {
     let mut d = diag()
-        .message(format!(
-            "CASE selector '{display}' is duplicated, second branch is unreachable"
-        ))
+        .message(message.to_string())
         .desc(&DuplicateCase)
-        .range(expr.get_span(db))
+        .range(span)
         .severity(DiagnosticSeverity::WARNING)
         .tags(vec![DiagnosticTag::UNNECESSARY])
         .call();

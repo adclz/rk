@@ -195,3 +195,98 @@ END_FUNCTION
 "#;
     assert_snapshot!(test_single_lint(&mut with_db, &[source], "duplicate-case"), @"");
 }
+
+#[rstest]
+fn overlapping_ranges(mut with_db: RootDatabase) {
+    let source = r#"
+FUNCTION test : INT
+VAR x : INT; END_VAR
+    CASE x OF
+        1..5: test := 10;
+        3..8: test := 20;
+    END_CASE;
+END_FUNCTION
+"#;
+    assert_snapshot!(test_single_lint(&mut with_db, &[source], "duplicate-case"), @r"
+    [L0127] Warning: duplicate CASE selector
+       ,-[ file:///test0.st:6:9 ]
+       |
+     5 |         1..5: test := 10;
+       |         |
+       |         `-- overlapping range defined here
+     6 |         3..8: test := 20;
+       |         |
+       |         `-- CASE range '3..8' overlaps with '1..5'
+       |
+       | Note: lint rule: duplicate-case
+    ---'
+    ");
+}
+
+#[rstest]
+fn value_covered_by_range(mut with_db: RootDatabase) {
+    let source = r#"
+FUNCTION test : INT
+VAR x : INT; END_VAR
+    CASE x OF
+        1..10: test := 10;
+        5: test := 20;
+    END_CASE;
+END_FUNCTION
+"#;
+    assert_snapshot!(test_single_lint(&mut with_db, &[source], "duplicate-case"), @r"
+    [L0127] Warning: duplicate CASE selector
+       ,-[ file:///test0.st:6:9 ]
+       |
+     5 |         1..10: test := 10;
+       |         |
+       |         `-- range defined here
+     6 |         5: test := 20;
+       |         |
+       |         `-- CASE selector '5' is already covered by range '1..10'
+       |
+       | Note: lint rule: duplicate-case
+    ---'
+    ");
+}
+
+#[rstest]
+fn range_covers_existing_value(mut with_db: RootDatabase) {
+    let source = r#"
+FUNCTION test : INT
+VAR x : INT; END_VAR
+    CASE x OF
+        5: test := 10;
+        1..10: test := 20;
+    END_CASE;
+END_FUNCTION
+"#;
+    assert_snapshot!(test_single_lint(&mut with_db, &[source], "duplicate-case"), @r"
+    [L0127] Warning: duplicate CASE selector
+       ,-[ file:///test0.st:6:9 ]
+       |
+     5 |         5: test := 10;
+       |         |
+       |         `-- selector defined here
+     6 |         1..10: test := 20;
+       |         |
+       |         `-- CASE range '1..10' covers already defined selector '5'
+       |
+       | Note: lint rule: duplicate-case
+    ---'
+    ");
+}
+
+#[rstest]
+fn non_overlapping_ranges_no_warning(mut with_db: RootDatabase) {
+    let source = r#"
+FUNCTION test : INT
+VAR x : INT; END_VAR
+    CASE x OF
+        1..5: test := 10;
+        6..10: test := 20;
+    END_CASE;
+END_FUNCTION
+"#;
+    assert_snapshot!(test_single_lint(&mut with_db, &[source], "duplicate-case"), @r"");
+}
