@@ -20,6 +20,7 @@ pub mod dead_code;
 pub mod division_by_zero;
 pub mod duplicate_namespace;
 pub mod duplicate_var_section;
+pub mod empty_body;
 pub mod effectless_statement;
 pub mod for_loop_step_sign;
 pub mod identical_sub_expr;
@@ -188,6 +189,12 @@ fn lint_scope<'db>(
     }
 
     body_scopes.push(scope);
+
+    if config.is_enabled(empty_body::NAME) {
+        run_lint(empty_body::NAME, diagnostics, |d| {
+            empty_body::check(db, scope, d)
+        });
+    }
 
     let body = infer_body(db, scope);
 
