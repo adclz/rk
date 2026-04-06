@@ -18,6 +18,7 @@ pub mod case_without_else;
 pub mod constant_condition;
 pub mod dead_code;
 pub mod division_by_zero;
+pub mod duplicate_case;
 pub mod duplicate_namespace;
 pub mod duplicate_var_section;
 pub mod empty_body;

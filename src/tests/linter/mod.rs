@@ -3,6 +3,7 @@ mod case_without_else;
 mod constant_condition;
 mod dead_code;
 mod division_by_zero;
+mod duplicate_case;
 mod duplicate_namespace;
 mod duplicate_var_section;
 mod empty_body;

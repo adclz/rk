@@ -77,7 +77,7 @@ pub enum StmtKind<'db> {
     WasmPragma(WasmDecl<'db>),
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Hash, salsa::Update)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, salsa::Update)]
 pub enum CaseKind<'db> {
     Expression(Expr<'db>),
     Subrange { lower: Expr<'db>, upper: Expr<'db> },

@@ -228,6 +228,7 @@ const ALL_LINT_RULES: &[&str] = &[
     "identity-operation",
     "empty-body",
     "sub-self",
+    "duplicate-case",
 ];
 
 fn test_lint_diagnostics_with_config<'db>(

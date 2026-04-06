@@ -16,7 +16,7 @@ use hir::{
 use ide_diagnostic::IdeDiagnostic;
 
 use super::{
-    bool_comparison, constant_condition, identical_sub_expr, identity_operation,
+    bool_comparison, constant_condition, duplicate_case, identical_sub_expr, identity_operation,
     input_assignment, missing_input_param, negated_condition, redundant_not, run_lint,
     self_assignment, self_comparison, sub_self, uninitialized_output, unnecessary_else,
 };
@@ -54,6 +54,7 @@ pub fn check<'db>(
         identity_operation: config.is_enabled(identity_operation::NAME),
         redundant_not: config.is_enabled(redundant_not::NAME),
         sub_self: config.is_enabled(sub_self::NAME),
+        duplicate_case: config.is_enabled(duplicate_case::NAME),
     };
 
     // Nothing enabled - skip walk entirely
@@ -91,6 +92,7 @@ struct VisitorCtx {
     redundant_not: bool,
     identity_operation: bool,
     sub_self: bool,
+    duplicate_case: bool,
 }
 
 impl VisitorCtx {
@@ -108,6 +110,7 @@ impl VisitorCtx {
             || self.redundant_not
             || self.identity_operation
             || self.sub_self
+            || self.duplicate_case
     }
 }
 
@@ -277,6 +280,11 @@ fn visit_statements<'db>(
                 visit_statements(db, body, ctx, loop_body, diagnostics, assigned_vars);
             }
             StmtKind::Case { cases, else_, .. } => {
+                if ctx.duplicate_case {
+                    run_lint(duplicate_case::NAME, diagnostics, |d| {
+                        duplicate_case::check_case(db, cases, d)
+                    });
+                }
                 for (_, stmts) in cases {
                     visit_statements(db, body, ctx, stmts, diagnostics, assigned_vars);
                 }
