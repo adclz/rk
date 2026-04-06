@@ -18,10 +18,12 @@ pub mod case_without_else;
 pub mod constant_condition;
 pub mod dead_code;
 pub mod division_by_zero;
+pub mod duplicate_namespace;
 pub mod duplicate_var_section;
 pub mod effectless_statement;
 pub mod for_loop_step_sign;
 pub mod identical_sub_expr;
+pub mod identity_operation;
 pub mod input_assignment;
 pub mod missing_input_param;
 pub mod negated_condition;
@@ -47,10 +49,16 @@ pub fn lint_file(
     config: &LinterConfig,
     diagnostics: &mut Vec<IdeDiagnostic>,
 ) {
-    // File-level lints (tree-sitter based, run once per file)
+    // File-level lints
     run_lint(duplicate_var_section::NAME, diagnostics, |d| {
         duplicate_var_section::check(db, file, config, d)
     });
+
+    if config.is_enabled(duplicate_namespace::NAME) {
+        run_lint(duplicate_namespace::NAME, diagnostics, |d| {
+            duplicate_namespace::check(db, file, d)
+        });
+    }
 
     // Scope-level lints (HIR based)
     let sema = semantic_index(db, file);

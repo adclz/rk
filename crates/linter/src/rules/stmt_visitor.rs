@@ -16,9 +16,9 @@ use hir::{
 use ide_diagnostic::IdeDiagnostic;
 
 use super::{
-    bool_comparison, constant_condition, identical_sub_expr, input_assignment,
-    missing_input_param, negated_condition, redundant_not, run_lint, self_assignment,
-    self_comparison, uninitialized_output, unnecessary_else,
+    bool_comparison, constant_condition, identical_sub_expr, identity_operation,
+    input_assignment, missing_input_param, negated_condition, redundant_not, run_lint,
+    self_assignment, self_comparison, uninitialized_output, unnecessary_else,
 };
 
 /// Run all statement-walking lints in a single pass over the statement tree.
@@ -51,6 +51,7 @@ pub fn check<'db>(
         bool_comparison: config.is_enabled(bool_comparison::NAME),
         self_comparison: config.is_enabled(self_comparison::NAME),
         identical_sub_expr: config.is_enabled(identical_sub_expr::NAME),
+        identity_operation: config.is_enabled(identity_operation::NAME),
         redundant_not: config.is_enabled(redundant_not::NAME),
     };
 
@@ -87,6 +88,7 @@ struct VisitorCtx {
     self_comparison: bool,
     identical_sub_expr: bool,
     redundant_not: bool,
+    identity_operation: bool,
 }
 
 impl VisitorCtx {
@@ -102,6 +104,7 @@ impl VisitorCtx {
             || self.self_comparison
             || self.identical_sub_expr
             || self.redundant_not
+            || self.identity_operation
     }
 }
 
@@ -136,6 +139,11 @@ fn visit_statements<'db>(
                 if ctx.redundant_not {
                     run_lint(redundant_not::NAME, diagnostics, |d| {
                         redundant_not::check_expr(db, target, d)
+                    });
+                }
+                if ctx.identity_operation {
+                    run_lint(identity_operation::NAME, diagnostics, |d| {
+                        identity_operation::check_expr(db, target, d)
                     });
                 }
                 if ctx.input_assignment {
