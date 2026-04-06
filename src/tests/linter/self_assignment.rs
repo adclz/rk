@@ -2,7 +2,7 @@ use db::RootDatabase;
 use insta::assert_snapshot;
 use rstest::rstest;
 
-use crate::tests::utils::{test_lint_diagnostics, with_db};
+use crate::tests::utils::{test_single_lint, with_db};
 
 #[rstest]
 fn simple_self_assignment(mut with_db: RootDatabase) {
@@ -15,7 +15,7 @@ END_VAR
     test := 0;
 END_FUNCTION
 "#;
-    assert_snapshot!(test_lint_diagnostics(&mut with_db, &[source]), @r"
+    assert_snapshot!(test_single_lint(&mut with_db, &[source], "self-assignment"), @r"
     [L0111] Warning: self-assignment
        ,-[ file:///test0.st:6:5 ]
        |
@@ -40,7 +40,7 @@ END_VAR
     test := 0;
 END_FUNCTION
 "#;
-    assert_snapshot!(test_lint_diagnostics(&mut with_db, &[source]), @r"");
+    assert_snapshot!(test_single_lint(&mut with_db, &[source], "self-assignment"), @r"");
 }
 
 #[rstest]
@@ -54,7 +54,7 @@ END_VAR
     test := 0;
 END_FUNCTION
 "#;
-    assert_snapshot!(test_lint_diagnostics(&mut with_db, &[source]), @r"");
+    assert_snapshot!(test_single_lint(&mut with_db, &[source], "self-assignment"), @r"");
 }
 
 #[rstest]
@@ -71,7 +71,7 @@ END_VAR
     test := 0;
 END_FUNCTION
 "#;
-    assert_snapshot!(test_lint_diagnostics(&mut with_db, &[source]), @r"
+    assert_snapshot!(test_single_lint(&mut with_db, &[source], "self-assignment"), @r"
     [L0111] Warning: self-assignment
        ,-[ file:///test0.st:8:9 ]
        |
@@ -94,7 +94,7 @@ END_VAR
     counter := counter;
 END_FUNCTION_BLOCK
 "#;
-    assert_snapshot!(test_lint_diagnostics(&mut with_db, &[source]), @r"
+    assert_snapshot!(test_single_lint(&mut with_db, &[source], "self-assignment"), @r"
     [L0111] Warning: self-assignment
        ,-[ file:///test0.st:6:5 ]
        |

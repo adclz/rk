@@ -2,7 +2,7 @@ use db::RootDatabase;
 use insta::assert_snapshot;
 use rstest::rstest;
 
-use crate::tests::utils::{test_lint_diagnostics, with_db};
+use crate::tests::utils::{test_single_lint, with_db};
 
 #[rstest]
 fn duplicate_var_in_function(mut with_db: RootDatabase) {
@@ -17,7 +17,7 @@ fn duplicate_var_in_function(mut with_db: RootDatabase) {
             fn1 := x + y;
         END_FUNCTION
     "#;
-    assert_snapshot!(test_lint_diagnostics(&mut with_db, &[source]), @r"
+    assert_snapshot!(test_single_lint(&mut with_db, &[source], "duplicate-var-section"), @r"
     [L0103] Warning: duplicate variable section
        ,-[ file:///test0.st:6:9 ]
        |
@@ -47,7 +47,7 @@ fn duplicate_var_input_in_function(mut with_db: RootDatabase) {
             fn1 := x + y;
         END_FUNCTION
     "#;
-    assert_snapshot!(test_lint_diagnostics(&mut with_db, &[source]), @r"
+    assert_snapshot!(test_single_lint(&mut with_db, &[source], "duplicate-var-section"), @r"
     [L0103] Warning: duplicate variable section
        ,-[ file:///test0.st:6:9 ]
        |
@@ -77,7 +77,7 @@ fn duplicate_var_in_function_block(mut with_db: RootDatabase) {
             x := y;
         END_FUNCTION_BLOCK
     "#;
-    assert_snapshot!(test_lint_diagnostics(&mut with_db, &[source]), @r"
+    assert_snapshot!(test_single_lint(&mut with_db, &[source], "duplicate-var-section"), @r"
     [L0103] Warning: duplicate variable section
        ,-[ file:///test0.st:6:9 ]
        |
@@ -107,7 +107,7 @@ fn duplicate_var_input_in_function_block(mut with_db: RootDatabase) {
             x := y;
         END_FUNCTION_BLOCK
     "#;
-    assert_snapshot!(test_lint_diagnostics(&mut with_db, &[source]), @r"
+    assert_snapshot!(test_single_lint(&mut with_db, &[source], "duplicate-var-section"), @r"
     [L0103] Warning: duplicate variable section
        ,-[ file:///test0.st:6:9 ]
        |
@@ -120,19 +120,6 @@ fn duplicate_var_input_in_function_block(mut with_db: RootDatabase) {
        |     Note 1: merge this section with the existing one above
        |
        |     Note 2: lint rule: duplicate-var-section
-    ---'
-    [L0110] Warning: assignment to input variable
-       ,-[ file:///test0.st:9:13 ]
-       |
-     4 |             x : INT;
-       |             |
-       |             `-- 'x' is declared here
-       |
-     9 |             x := y;
-       |             |
-       |             `-- assignment to VAR_INPUT 'x'
-       |
-       | Note: lint rule: input-assignment
     ---'
     ");
 }
@@ -150,7 +137,7 @@ fn duplicate_var_in_program(mut with_db: RootDatabase) {
             x := y;
         END_PROGRAM
     "#;
-    assert_snapshot!(test_lint_diagnostics(&mut with_db, &[source]), @r"
+    assert_snapshot!(test_single_lint(&mut with_db, &[source], "duplicate-var-section"), @r"
     [L0103] Warning: duplicate variable section
        ,-[ file:///test0.st:6:9 ]
        |
@@ -182,7 +169,7 @@ fn duplicate_var_in_method(mut with_db: RootDatabase) {
         END_METHOD
         END_FUNCTION_BLOCK
     "#;
-    assert_snapshot!(test_lint_diagnostics(&mut with_db, &[source]), @r"
+    assert_snapshot!(test_single_lint(&mut with_db, &[source], "duplicate-var-section"), @r"
     [L0103] Warning: duplicate variable section
        ,-[ file:///test0.st:7:9 ]
        |
@@ -217,7 +204,7 @@ fn different_var_sections_no_warning(mut with_db: RootDatabase) {
             fn1 := z;
         END_FUNCTION
     "#;
-    assert_snapshot!(test_lint_diagnostics(&mut with_db, &[source]), @r"");
+    assert_snapshot!(test_single_lint(&mut with_db, &[source], "duplicate-var-section"), @r"");
 }
 
 #[rstest]
@@ -230,5 +217,5 @@ fn single_var_section_no_warning(mut with_db: RootDatabase) {
             fn1 := x;
         END_FUNCTION
     "#;
-    assert_snapshot!(test_lint_diagnostics(&mut with_db, &[source]), @r"");
+    assert_snapshot!(test_single_lint(&mut with_db, &[source], "duplicate-var-section"), @r"");
 }

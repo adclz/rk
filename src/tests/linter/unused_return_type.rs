@@ -2,7 +2,7 @@ use db::RootDatabase;
 use insta::assert_snapshot;
 use rstest::rstest;
 
-use crate::tests::utils::{test_lint_diagnostics, with_db};
+use crate::tests::utils::{test_single_lint, with_db};
 
 #[rstest]
 fn function_call_discards_return_value(mut with_db: RootDatabase) {
@@ -23,7 +23,7 @@ END_VAR
     test := x;
 END_FUNCTION
     "#;
-    assert_snapshot!(test_lint_diagnostics(&mut with_db, &[source]), @r"
+    assert_snapshot!(test_single_lint(&mut with_db, &[source], "unused-return-type"), @r"
     [L0104] Advice: unused return value
         ,-[ file:///test0.st:14:5 ]
         |
@@ -59,7 +59,7 @@ fn return_value_assigned(mut with_db: RootDatabase) {
             test := x;
         END_FUNCTION
     "#;
-    assert_snapshot!(test_lint_diagnostics(&mut with_db, &[source]), @r"");
+    assert_snapshot!(test_single_lint(&mut with_db, &[source], "unused-return-type"), @r"");
 }
 
 #[rstest]
@@ -83,7 +83,7 @@ fn no_return_type_no_warning(mut with_db: RootDatabase) {
             test := 0;
         END_FUNCTION
     "#;
-    assert_snapshot!(test_lint_diagnostics(&mut with_db, &[source]), @r"");
+    assert_snapshot!(test_single_lint(&mut with_db, &[source], "unused-return-type"), @r"");
 }
 
 #[rstest]
@@ -104,7 +104,7 @@ fn function_block_call_no_warning(mut with_db: RootDatabase) {
             test := 0;
         END_FUNCTION
     "#;
-    assert_snapshot!(test_lint_diagnostics(&mut with_db, &[source]), @r"");
+    assert_snapshot!(test_single_lint(&mut with_db, &[source], "unused-return-type"), @r"");
 }
 
 #[rstest]
@@ -124,7 +124,7 @@ END_VAR
     test := 0;
 END_FUNCTION
 "#;
-    assert_snapshot!(test_lint_diagnostics(&mut with_db, &[source]), @r"
+    assert_snapshot!(test_single_lint(&mut with_db, &[source], "unused-return-type"), @r"
     [L0104] Advice: unused return value
         ,-[ file:///test0.st:12:5 ]
         |
@@ -157,7 +157,7 @@ END_VAR
     test := fb.get_value();
 END_FUNCTION
 "#;
-    assert_snapshot!(test_lint_diagnostics(&mut with_db, &[source]), @r"");
+    assert_snapshot!(test_single_lint(&mut with_db, &[source], "unused-return-type"), @"");
 }
 
 #[rstest]
@@ -179,7 +179,7 @@ END_VAR
     test := 0;
 END_FUNCTION
 "#;
-    assert_snapshot!(test_lint_diagnostics(&mut with_db, &[source]), @r"");
+    assert_snapshot!(test_single_lint(&mut with_db, &[source], "unused-return-type"), @"");
 }
 
 #[rstest]
@@ -199,7 +199,7 @@ END_VAR
     compute(x := inst_x);
 END_FUNCTION_BLOCK
 "#;
-    assert_snapshot!(test_lint_diagnostics(&mut with_db, &[source]), @r"
+    assert_snapshot!(test_single_lint(&mut with_db, &[source], "unused-return-type"), @r"
     [L0104] Advice: unused return value
         ,-[ file:///test0.st:13:5 ]
         |

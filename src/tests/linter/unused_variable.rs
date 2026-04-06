@@ -2,7 +2,7 @@ use db::RootDatabase;
 use insta::assert_snapshot;
 use rstest::rstest;
 
-use crate::tests::utils::{test_lint_diagnostics, with_db};
+use crate::tests::utils::{test_single_lint, with_db};
 
 #[rstest]
 fn unused_local_variable(mut with_db: RootDatabase) {
@@ -15,7 +15,7 @@ fn unused_local_variable(mut with_db: RootDatabase) {
             fn1 := x;
         END_FUNCTION
     "#;
-    assert_snapshot!(test_lint_diagnostics(&mut with_db, &[source]), @r"
+    assert_snapshot!(test_single_lint(&mut with_db, &[source], "unused-variable"), @r"
     [L0101] Warning: unused code
        ,-[ file:///test0.st:5:13 ]
        |
@@ -42,7 +42,7 @@ fn unused_variable_in_function_block(mut with_db: RootDatabase) {
             x := 1;
         END_FUNCTION_BLOCK
     "#;
-    assert_snapshot!(test_lint_diagnostics(&mut with_db, &[source]), @r"
+    assert_snapshot!(test_single_lint(&mut with_db, &[source], "unused-variable"), @r"
     [L0101] Warning: unused code
        ,-[ file:///test0.st:5:13 ]
        |
@@ -69,7 +69,7 @@ fn unused_variable_in_program(mut with_db: RootDatabase) {
             x := 1;
         END_PROGRAM
     "#;
-    assert_snapshot!(test_lint_diagnostics(&mut with_db, &[source]), @r"
+    assert_snapshot!(test_single_lint(&mut with_db, &[source], "unused-variable"), @r"
     [L0101] Warning: unused code
        ,-[ file:///test0.st:5:13 ]
        |
@@ -96,7 +96,7 @@ fn all_variables_used(mut with_db: RootDatabase) {
             fn1 := x + y;
         END_FUNCTION
     "#;
-    assert_snapshot!(test_lint_diagnostics(&mut with_db, &[source]), @r"");
+    assert_snapshot!(test_single_lint(&mut with_db, &[source], "unused-variable"), @r"");
 }
 
 #[rstest]
@@ -108,17 +108,7 @@ fn output_not_reported(mut with_db: RootDatabase) {
         END_VAR
         END_FUNCTION_BLOCK
     "#;
-    assert_snapshot!(test_lint_diagnostics(&mut with_db, &[source]), @r"
-    [L0114] Warning: uninitialized output
-       ,-[ file:///test0.st:4:13 ]
-       |
-     4 |             result : INT;
-       |             ^^^^^^|^^^^^
-       |                   `------- VAR_OUTPUT 'result' is never assigned in the body
-       |
-       | Note: lint rule: uninitialized-output
-    ---'
-    ");
+    assert_snapshot!(test_single_lint(&mut with_db, &[source], "unused-variable"), @"");
 }
 
 #[rstest]
@@ -130,7 +120,7 @@ fn inout_not_reported(mut with_db: RootDatabase) {
         END_VAR
         END_FUNCTION_BLOCK
     "#;
-    assert_snapshot!(test_lint_diagnostics(&mut with_db, &[source]), @r"");
+    assert_snapshot!(test_single_lint(&mut with_db, &[source], "unused-variable"), @"");
 }
 
 #[rstest]
@@ -142,7 +132,7 @@ fn input_on_program_not_reported(mut with_db: RootDatabase) {
         END_VAR
         END_PROGRAM
     "#;
-    assert_snapshot!(test_lint_diagnostics(&mut with_db, &[source]), @r"");
+    assert_snapshot!(test_single_lint(&mut with_db, &[source], "unused-variable"), @"");
 }
 
 #[rstest]
@@ -156,7 +146,7 @@ fn unused_input_on_function(mut with_db: RootDatabase) {
             fn1 := a;
         END_FUNCTION
     "#;
-    assert_snapshot!(test_lint_diagnostics(&mut with_db, &[source]), @r"
+    assert_snapshot!(test_single_lint(&mut with_db, &[source], "unused-variable"), @r"
     [L0101] Warning: unused code
        ,-[ file:///test0.st:5:13 ]
        |
@@ -182,7 +172,7 @@ fn underscore_not_reported(mut with_db: RootDatabase) {
             fn1 := 0;
         END_FUNCTION
     "#;
-    assert_snapshot!(test_lint_diagnostics(&mut with_db, &[source]), @r"");
+    assert_snapshot!(test_single_lint(&mut with_db, &[source], "unused-variable"), @r"");
 }
 
 #[rstest]
@@ -201,7 +191,7 @@ fn variable_used_via_this_in_method_not_flagged(mut with_db: RootDatabase) {
     "#;
     // speed is used via THIS in a method - should NOT be flagged
     // unused_var is never used anywhere - should be flagged
-    assert_snapshot!(test_lint_diagnostics(&mut with_db, &[source]), @r"
+    assert_snapshot!(test_single_lint(&mut with_db, &[source], "unused-variable"), @r"
     [L0101] Warning: unused code
        ,-[ file:///test0.st:5:13 ]
        |

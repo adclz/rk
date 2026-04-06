@@ -2,7 +2,7 @@ use db::RootDatabase;
 use insta::assert_snapshot;
 use rstest::rstest;
 
-use crate::tests::utils::{test_lint_diagnostics, with_db};
+use crate::tests::utils::{test_single_lint, with_db};
 
 #[rstest]
 fn assign_to_var_input(mut with_db: RootDatabase) {
@@ -15,7 +15,7 @@ END_VAR
     test := x;
 END_FUNCTION
 "#;
-    assert_snapshot!(test_lint_diagnostics(&mut with_db, &[source]), @r"
+    assert_snapshot!(test_single_lint(&mut with_db, &[source], "input-assignment"), @r"
     [L0110] Warning: assignment to input variable
        ,-[ file:///test0.st:6:5 ]
        |
@@ -42,7 +42,7 @@ END_VAR
     x := 42;
 END_FUNCTION_BLOCK
 "#;
-    assert_snapshot!(test_lint_diagnostics(&mut with_db, &[source]), @r"
+    assert_snapshot!(test_single_lint(&mut with_db, &[source], "input-assignment"), @r"
     [L0110] Warning: assignment to input variable
        ,-[ file:///test0.st:6:5 ]
        |
@@ -72,7 +72,7 @@ END_VAR
     _y := x;
 END_FUNCTION_BLOCK
 "#;
-    assert_snapshot!(test_lint_diagnostics(&mut with_db, &[source]), @r"");
+    assert_snapshot!(test_single_lint(&mut with_db, &[source], "input-assignment"), @r"");
 }
 
 #[rstest]
@@ -86,7 +86,7 @@ END_VAR
     test := x;
 END_FUNCTION
 "#;
-    assert_snapshot!(test_lint_diagnostics(&mut with_db, &[source]), @r"");
+    assert_snapshot!(test_single_lint(&mut with_db, &[source], "input-assignment"), @r"");
 }
 
 #[rstest]
@@ -101,7 +101,7 @@ END_VAR
     END_IF;
 END_FUNCTION_BLOCK
 "#;
-    assert_snapshot!(test_lint_diagnostics(&mut with_db, &[source]), @r"
+    assert_snapshot!(test_single_lint(&mut with_db, &[source], "input-assignment"), @r"
     [L0110] Warning: assignment to input variable
        ,-[ file:///test0.st:7:9 ]
        |

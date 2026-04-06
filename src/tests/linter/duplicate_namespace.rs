@@ -2,7 +2,7 @@ use db::RootDatabase;
 use insta::assert_snapshot;
 use rstest::rstest;
 
-use crate::tests::utils::{test_lint_diagnostics, with_db};
+use crate::tests::utils::{test_single_lint, with_db};
 
 #[rstest]
 fn same_namespace_twice(mut with_db: RootDatabase) {
@@ -15,7 +15,7 @@ NAMESPACE MyProject
     FUNCTION fn2 : INT END_FUNCTION
 END_NAMESPACE
 "#;
-    assert_snapshot!(test_lint_diagnostics(&mut with_db, &[source]), @r"
+    assert_snapshot!(test_single_lint(&mut with_db, &[source], "duplicate-namespace"), @r"
     [L0123] Advice: duplicate namespace in same file
        ,-[ file:///test0.st:6:11 ]
        |
@@ -43,7 +43,7 @@ NAMESPACE MyProject.Motors
     FUNCTION fn2 : INT END_FUNCTION
 END_NAMESPACE
 "#;
-    assert_snapshot!(test_lint_diagnostics(&mut with_db, &[source]), @r"
+    assert_snapshot!(test_single_lint(&mut with_db, &[source], "duplicate-namespace"), @r"
     [L0123] Advice: duplicate namespace in same file
        ,-[ file:///test0.st:6:11 ]
        |
@@ -71,7 +71,7 @@ NAMESPACE MyProject.Sensors
     FUNCTION fn2 : INT END_FUNCTION
 END_NAMESPACE
 "#;
-    assert_snapshot!(test_lint_diagnostics(&mut with_db, &[source]), @r"");
+    assert_snapshot!(test_single_lint(&mut with_db, &[source], "duplicate-namespace"), @r"");
 }
 
 #[rstest]
@@ -89,7 +89,7 @@ NAMESPACE Ns
     FUNCTION fn3 : INT END_FUNCTION
 END_NAMESPACE
 "#;
-    assert_snapshot!(test_lint_diagnostics(&mut with_db, &[source]), @r"
+    assert_snapshot!(test_single_lint(&mut with_db, &[source], "duplicate-namespace"), @r"
     [L0123] Advice: duplicate namespace in same file
        ,-[ file:///test0.st:6:11 ]
        |

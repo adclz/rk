@@ -2,7 +2,7 @@ use db::RootDatabase;
 use insta::assert_snapshot;
 use rstest::rstest;
 
-use crate::tests::utils::{test_lint_diagnostics, with_db};
+use crate::tests::utils::{test_single_lint, with_db};
 
 #[rstest]
 fn if_return_then_else(mut with_db: RootDatabase) {
@@ -19,7 +19,7 @@ END_VAR
     END_IF;
 END_FUNCTION
 "#;
-    assert_snapshot!(test_lint_diagnostics(&mut with_db, &[source]), @r"
+    assert_snapshot!(test_single_lint(&mut with_db, &[source], "unnecessary-else"), @r"
     [L0113] Advice: unnecessary ELSE
         ,-[ file:///test0.st:10:9 ]
         |
@@ -48,7 +48,7 @@ END_VAR
     END_FOR;
 END_FUNCTION
 "#;
-    assert_snapshot!(test_lint_diagnostics(&mut with_db, &[source]), @r"
+    assert_snapshot!(test_single_lint(&mut with_db, &[source], "unnecessary-else"), @r"
     [L0113] Advice: unnecessary ELSE
         ,-[ file:///test0.st:10:13 ]
         |
@@ -77,7 +77,7 @@ END_VAR
     END_FOR;
 END_FUNCTION
 "#;
-    assert_snapshot!(test_lint_diagnostics(&mut with_db, &[source]), @r"
+    assert_snapshot!(test_single_lint(&mut with_db, &[source], "unnecessary-else"), @r"
     [L0113] Advice: unnecessary ELSE
         ,-[ file:///test0.st:10:13 ]
         |
@@ -104,7 +104,7 @@ END_VAR
     END_IF;
 END_FUNCTION
 "#;
-    assert_snapshot!(test_lint_diagnostics(&mut with_db, &[source]), @r"");
+    assert_snapshot!(test_single_lint(&mut with_db, &[source], "unnecessary-else"), @r"");
 }
 
 #[rstest]
@@ -120,7 +120,7 @@ END_VAR
     test := 0;
 END_FUNCTION
 "#;
-    assert_snapshot!(test_lint_diagnostics(&mut with_db, &[source]), @r"");
+    assert_snapshot!(test_single_lint(&mut with_db, &[source], "unnecessary-else"), @r"");
 }
 
 #[rstest]
@@ -141,7 +141,7 @@ END_VAR
     END_IF;
 END_FUNCTION
 "#;
-    assert_snapshot!(test_lint_diagnostics(&mut with_db, &[source]), @r"
+    assert_snapshot!(test_single_lint(&mut with_db, &[source], "unnecessary-else"), @r"
     [L0113] Advice: unnecessary ELSE
         ,-[ file:///test0.st:13:9 ]
         |
@@ -171,5 +171,5 @@ END_VAR
     END_IF;
 END_FUNCTION
 "#;
-    assert_snapshot!(test_lint_diagnostics(&mut with_db, &[source]), @r"");
+    assert_snapshot!(test_single_lint(&mut with_db, &[source], "unnecessary-else"), @r"");
 }

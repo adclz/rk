@@ -2,7 +2,7 @@ use db::RootDatabase;
 use insta::assert_snapshot;
 use rstest::rstest;
 
-use crate::tests::utils::{test_lint_diagnostics, with_db};
+use crate::tests::utils::{test_single_lint, with_db};
 
 #[rstest]
 fn if_always_true(mut with_db: RootDatabase) {
@@ -13,7 +13,7 @@ FUNCTION test : INT
     END_IF;
 END_FUNCTION
 "#;
-    assert_snapshot!(test_lint_diagnostics(&mut with_db, &[source]), @r"
+    assert_snapshot!(test_single_lint(&mut with_db, &[source], "constant-condition"), @r"
     [L0112] Warning: constant condition
        ,-[ file:///test0.st:3:8 ]
        |
@@ -35,7 +35,7 @@ FUNCTION test : INT
     END_IF;
 END_FUNCTION
 "#;
-    assert_snapshot!(test_lint_diagnostics(&mut with_db, &[source]), @r"
+    assert_snapshot!(test_single_lint(&mut with_db, &[source], "constant-condition"), @r"
     [L0112] Warning: constant condition
        ,-[ file:///test0.st:3:8 ]
        |
@@ -57,7 +57,7 @@ FUNCTION test : INT
     END_WHILE;
 END_FUNCTION
 "#;
-    assert_snapshot!(test_lint_diagnostics(&mut with_db, &[source]), @r"
+    assert_snapshot!(test_single_lint(&mut with_db, &[source], "constant-condition"), @r"
     [L0112] Warning: constant condition
        ,-[ file:///test0.st:3:11 ]
        |
@@ -80,7 +80,7 @@ FUNCTION test : INT
     END_REPEAT;
 END_FUNCTION
 "#;
-    assert_snapshot!(test_lint_diagnostics(&mut with_db, &[source]), @r"
+    assert_snapshot!(test_single_lint(&mut with_db, &[source], "constant-condition"), @r"
     [L0112] Warning: constant condition
        ,-[ file:///test0.st:5:11 ]
        |
@@ -105,7 +105,7 @@ END_VAR
     END_IF;
 END_FUNCTION
 "#;
-    assert_snapshot!(test_lint_diagnostics(&mut with_db, &[source]), @r"");
+    assert_snapshot!(test_single_lint(&mut with_db, &[source], "constant-condition"), @r"");
 }
 
 #[rstest]
@@ -120,7 +120,7 @@ END_VAR
     END_IF;
 END_FUNCTION
 "#;
-    assert_snapshot!(test_lint_diagnostics(&mut with_db, &[source]), @r"");
+    assert_snapshot!(test_single_lint(&mut with_db, &[source], "constant-condition"), @r"");
 }
 
 #[rstest]
@@ -137,7 +137,7 @@ END_VAR
     END_IF;
 END_FUNCTION
 "#;
-    assert_snapshot!(test_lint_diagnostics(&mut with_db, &[source]), @r"
+    assert_snapshot!(test_single_lint(&mut with_db, &[source], "constant-condition"), @r"
     [L0112] Warning: constant condition
        ,-[ file:///test0.st:8:11 ]
        |
@@ -159,7 +159,7 @@ FUNCTION test : INT
     END_IF;
 END_FUNCTION
 "#;
-    assert_snapshot!(test_lint_diagnostics(&mut with_db, &[source]), @r"
+    assert_snapshot!(test_single_lint(&mut with_db, &[source], "constant-condition"), @r"
     [L0112] Warning: constant condition
        ,-[ file:///test0.st:3:8 ]
        |
@@ -184,7 +184,7 @@ FUNCTION test : INT
     END_IF;
 END_FUNCTION
 "#;
-    assert_snapshot!(test_lint_diagnostics(&mut with_db, &[source]), @r"
+    assert_snapshot!(test_single_lint(&mut with_db, &[source], "constant-condition"), @r"
     [L0112] Warning: constant condition
        ,-[ file:///test0.st:3:8 ]
        |

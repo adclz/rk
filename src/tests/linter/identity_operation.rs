@@ -2,7 +2,7 @@ use db::RootDatabase;
 use insta::assert_snapshot;
 use rstest::rstest;
 
-use crate::tests::utils::{test_lint_diagnostics, with_db};
+use crate::tests::utils::{test_single_lint, with_db};
 
 #[rstest]
 fn multiply_by_one(mut with_db: RootDatabase) {
@@ -12,7 +12,7 @@ VAR x : INT; END_VAR
     x := x * 1;
 END_FUNCTION
 "#;
-    assert_snapshot!(test_lint_diagnostics(&mut with_db, &[source]), @r"
+    assert_snapshot!(test_single_lint(&mut with_db, &[source], "identity-operation"), @r"
     [L0124] Advice: identity operation
        ,-[ file:///test0.st:4:10 ]
        |
@@ -33,7 +33,7 @@ VAR x : INT; END_VAR
     x := 1 * x;
 END_FUNCTION
 "#;
-    assert_snapshot!(test_lint_diagnostics(&mut with_db, &[source]), @r"
+    assert_snapshot!(test_single_lint(&mut with_db, &[source], "identity-operation"), @r"
     [L0124] Advice: identity operation
        ,-[ file:///test0.st:4:10 ]
        |
@@ -54,7 +54,7 @@ VAR x : INT; END_VAR
     x := x / 1;
 END_FUNCTION
 "#;
-    assert_snapshot!(test_lint_diagnostics(&mut with_db, &[source]), @r"
+    assert_snapshot!(test_single_lint(&mut with_db, &[source], "identity-operation"), @r"
     [L0124] Advice: identity operation
        ,-[ file:///test0.st:4:10 ]
        |
@@ -75,7 +75,7 @@ VAR x : INT; END_VAR
     x := x + 0;
 END_FUNCTION
 "#;
-    assert_snapshot!(test_lint_diagnostics(&mut with_db, &[source]), @r"
+    assert_snapshot!(test_single_lint(&mut with_db, &[source], "identity-operation"), @r"
     [L0124] Advice: identity operation
        ,-[ file:///test0.st:4:10 ]
        |
@@ -96,7 +96,7 @@ VAR x : INT; END_VAR
     x := 0 + x;
 END_FUNCTION
 "#;
-    assert_snapshot!(test_lint_diagnostics(&mut with_db, &[source]), @r"
+    assert_snapshot!(test_single_lint(&mut with_db, &[source], "identity-operation"), @r"
     [L0124] Advice: identity operation
        ,-[ file:///test0.st:4:10 ]
        |
@@ -117,7 +117,7 @@ VAR x : INT; END_VAR
     x := x - 0;
 END_FUNCTION
 "#;
-    assert_snapshot!(test_lint_diagnostics(&mut with_db, &[source]), @r"
+    assert_snapshot!(test_single_lint(&mut with_db, &[source], "identity-operation"), @r"
     [L0124] Advice: identity operation
        ,-[ file:///test0.st:4:10 ]
        |
@@ -138,7 +138,7 @@ VAR x : REAL; END_VAR
     x := x * 1.0;
 END_FUNCTION
 "#;
-    assert_snapshot!(test_lint_diagnostics(&mut with_db, &[source]), @r"
+    assert_snapshot!(test_single_lint(&mut with_db, &[source], "identity-operation"), @r"
     [L0124] Advice: identity operation
        ,-[ file:///test0.st:4:10 ]
        |
@@ -159,7 +159,7 @@ VAR x : INT; END_VAR
     x := x * INT#1;
 END_FUNCTION
 "#;
-    assert_snapshot!(test_lint_diagnostics(&mut with_db, &[source]), @r"
+    assert_snapshot!(test_single_lint(&mut with_db, &[source], "identity-operation"), @r"
     [L0124] Advice: identity operation
        ,-[ file:///test0.st:4:10 ]
        |
@@ -180,7 +180,7 @@ VAR x : INT; END_VAR
     x := x * 2;
 END_FUNCTION
 "#;
-    assert_snapshot!(test_lint_diagnostics(&mut with_db, &[source]), @r"");
+    assert_snapshot!(test_single_lint(&mut with_db, &[source], "identity-operation"), @r"");
 }
 
 #[rstest]
@@ -191,5 +191,5 @@ VAR x : INT; END_VAR
     x := x + 5;
 END_FUNCTION
 "#;
-    assert_snapshot!(test_lint_diagnostics(&mut with_db, &[source]), @r"");
+    assert_snapshot!(test_single_lint(&mut with_db, &[source], "identity-operation"), @r"");
 }

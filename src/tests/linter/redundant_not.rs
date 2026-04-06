@@ -2,7 +2,7 @@ use db::RootDatabase;
 use insta::assert_snapshot;
 use rstest::rstest;
 
-use crate::tests::utils::{test_lint_diagnostics, with_db};
+use crate::tests::utils::{test_single_lint, with_db};
 
 #[rstest]
 fn not_not_variable(mut with_db: RootDatabase) {
@@ -14,7 +14,7 @@ END_VAR
     test := NOT NOT x;
 END_FUNCTION
 "#;
-    assert_snapshot!(test_lint_diagnostics(&mut with_db, &[source]), @r"
+    assert_snapshot!(test_single_lint(&mut with_db, &[source], "redundant-not"), @r"
     [L0122] Advice: redundant NOT
        ,-[ file:///test0.st:6:13 ]
        |
@@ -39,7 +39,7 @@ END_VAR
     END_IF;
 END_FUNCTION
 "#;
-    assert_snapshot!(test_lint_diagnostics(&mut with_db, &[source]), @r"
+    assert_snapshot!(test_single_lint(&mut with_db, &[source], "redundant-not"), @r"
     [L0122] Advice: redundant NOT
        ,-[ file:///test0.st:6:8 ]
        |
@@ -62,7 +62,7 @@ END_VAR
     test := NOT x;
 END_FUNCTION
 "#;
-    assert_snapshot!(test_lint_diagnostics(&mut with_db, &[source]), @r"");
+    assert_snapshot!(test_single_lint(&mut with_db, &[source], "redundant-not"), @r"");
 }
 
 #[rstest]
@@ -76,7 +76,7 @@ END_VAR
     test := y AND NOT NOT x;
 END_FUNCTION
 "#;
-    assert_snapshot!(test_lint_diagnostics(&mut with_db, &[source]), @r"
+    assert_snapshot!(test_single_lint(&mut with_db, &[source], "redundant-not"), @r"
     [L0122] Advice: redundant NOT
        ,-[ file:///test0.st:7:19 ]
        |

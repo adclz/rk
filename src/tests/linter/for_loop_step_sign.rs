@@ -2,7 +2,7 @@ use db::RootDatabase;
 use insta::assert_snapshot;
 use rstest::rstest;
 
-use crate::tests::utils::{test_lint_diagnostics, with_db};
+use crate::tests::utils::{test_single_lint, with_db};
 
 #[rstest]
 fn ascending_with_positive_step_no_warning(mut with_db: RootDatabase) {
@@ -16,7 +16,7 @@ fn ascending_with_positive_step_no_warning(mut with_db: RootDatabase) {
             END_FOR;
         END_FUNCTION
     "#;
-    assert_snapshot!(test_lint_diagnostics(&mut with_db, &[source]), @r"");
+    assert_snapshot!(test_single_lint(&mut with_db, &[source], "for-loop-step-sign"), @r"");
 }
 
 #[rstest]
@@ -31,7 +31,7 @@ fn descending_with_negative_step_no_warning(mut with_db: RootDatabase) {
             END_FOR;
         END_FUNCTION
     "#;
-    assert_snapshot!(test_lint_diagnostics(&mut with_db, &[source]), @r"");
+    assert_snapshot!(test_single_lint(&mut with_db, &[source], "for-loop-step-sign"), @r"");
 }
 
 #[rstest]
@@ -46,7 +46,7 @@ fn ascending_with_negative_step_warning(mut with_db: RootDatabase) {
             END_FOR;
         END_FUNCTION
     "#;
-    assert_snapshot!(test_lint_diagnostics(&mut with_db, &[source]), @r"
+    assert_snapshot!(test_single_lint(&mut with_db, &[source], "for-loop-step-sign"), @r"
     [L0108] Advice: FOR loop step sign mismatch
        ,-[ file:///test0.st:6:13 ]
        |
@@ -73,7 +73,7 @@ fn descending_with_positive_step_warning(mut with_db: RootDatabase) {
             END_FOR;
         END_FUNCTION
     "#;
-    assert_snapshot!(test_lint_diagnostics(&mut with_db, &[source]), @r"
+    assert_snapshot!(test_single_lint(&mut with_db, &[source], "for-loop-step-sign"), @r"
     [L0108] Advice: FOR loop step sign mismatch
        ,-[ file:///test0.st:6:13 ]
        |
@@ -100,7 +100,7 @@ fn ascending_default_step_no_warning(mut with_db: RootDatabase) {
             END_FOR;
         END_FUNCTION
     "#;
-    assert_snapshot!(test_lint_diagnostics(&mut with_db, &[source]), @r"");
+    assert_snapshot!(test_single_lint(&mut with_db, &[source], "for-loop-step-sign"), @r"");
 }
 
 #[rstest]
@@ -115,7 +115,7 @@ fn descending_default_step_warning(mut with_db: RootDatabase) {
             END_FOR;
         END_FUNCTION
     "#;
-    assert_snapshot!(test_lint_diagnostics(&mut with_db, &[source]), @r"
+    assert_snapshot!(test_single_lint(&mut with_db, &[source], "for-loop-step-sign"), @r"
     [L0108] Advice: FOR loop step sign mismatch
        ,-[ file:///test0.st:6:13 ]
        |
@@ -142,5 +142,5 @@ fn equal_bounds_no_warning(mut with_db: RootDatabase) {
             END_FOR;
         END_FUNCTION
     "#;
-    assert_snapshot!(test_lint_diagnostics(&mut with_db, &[source]), @r"");
+    assert_snapshot!(test_single_lint(&mut with_db, &[source], "for-loop-step-sign"), @r"");
 }

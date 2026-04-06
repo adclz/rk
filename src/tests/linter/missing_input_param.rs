@@ -2,7 +2,7 @@ use db::RootDatabase;
 use insta::assert_snapshot;
 use rstest::rstest;
 
-use crate::tests::utils::{test_lint_diagnostics, with_db};
+use crate::tests::utils::{test_single_lint, with_db};
 
 #[rstest]
 fn missing_one_input(mut with_db: RootDatabase) {
@@ -19,20 +19,7 @@ FUNCTION_BLOCK caller
     add(a := 1);
 END_FUNCTION_BLOCK
 "#;
-    assert_snapshot!(test_lint_diagnostics(&mut with_db, &[source]), @r"
-    [L0104] Advice: unused return value
-        ,-[ file:///test0.st:11:5 ]
-        |
-      2 | FUNCTION add : INT
-        |          ^|^
-        |           `--- FUNCTION 'add' is defined here, with return type 'INT'
-        |
-     11 |     add(a := 1);
-        |     ^^^^^|^^^^^
-        |          `------- unused return value of 'add'
-        |
-        | Note: lint rule: unused-return-type
-    ----'
+    assert_snapshot!(test_single_lint(&mut with_db, &[source], "missing-input-param"), @r"
     [L0116] Advice: missing input parameter
         ,-[ file:///test0.st:11:5 ]
         |
@@ -64,21 +51,7 @@ FUNCTION_BLOCK caller
     add(a := 1, b := 2);
 END_FUNCTION_BLOCK
 "#;
-    assert_snapshot!(test_lint_diagnostics(&mut with_db, &[source]), @r"
-    [L0104] Advice: unused return value
-        ,-[ file:///test0.st:11:5 ]
-        |
-      2 | FUNCTION add : INT
-        |          ^|^
-        |           `--- FUNCTION 'add' is defined here, with return type 'INT'
-        |
-     11 |     add(a := 1, b := 2);
-        |     ^^^^^^^^^|^^^^^^^^^
-        |              `----------- unused return value of 'add'
-        |
-        | Note: lint rule: unused-return-type
-    ----'
-    ");
+    assert_snapshot!(test_single_lint(&mut with_db, &[source], "missing-input-param"), @"");
 }
 
 #[rstest]
@@ -92,21 +65,7 @@ FUNCTION_BLOCK caller
     noop();
 END_FUNCTION_BLOCK
 "#;
-    assert_snapshot!(test_lint_diagnostics(&mut with_db, &[source]), @r"
-    [L0104] Advice: unused return value
-       ,-[ file:///test0.st:7:5 ]
-       |
-     2 | FUNCTION noop : INT
-       |          ^^|^
-       |            `--- FUNCTION 'noop' is defined here, with return type 'INT'
-       |
-     7 |     noop();
-       |     ^^^|^^
-       |        `---- unused return value of 'noop'
-       |
-       | Note: lint rule: unused-return-type
-    ---'
-    ");
+    assert_snapshot!(test_single_lint(&mut with_db, &[source], "missing-input-param"), @"");
 }
 
 #[rstest]
@@ -125,20 +84,7 @@ FUNCTION_BLOCK caller
     compute(x := 1);
 END_FUNCTION_BLOCK
 "#;
-    assert_snapshot!(test_lint_diagnostics(&mut with_db, &[source]), @r"
-    [L0104] Advice: unused return value
-        ,-[ file:///test0.st:12:5 ]
-        |
-      2 | FUNCTION compute : INT
-        |          ^^^|^^^
-        |             `----- FUNCTION 'compute' is defined here, with return type 'INT'
-        |
-     12 |     compute(x := 1);
-        |     ^^^^^^^|^^^^^^^
-        |            `--------- unused return value of 'compute'
-        |
-        | Note: lint rule: unused-return-type
-    ----'
+    assert_snapshot!(test_single_lint(&mut with_db, &[source], "missing-input-param"), @r"
     [L0116] Advice: missing input parameter
         ,-[ file:///test0.st:12:5 ]
         |
@@ -177,31 +123,7 @@ END_VAR
     fb.set_values(a := 1);
 END_FUNCTION_BLOCK
 "#;
-    assert_snapshot!(test_lint_diagnostics(&mut with_db, &[source]), @r"
-    [L0101] Warning: unused code
-       ,-[ file:///test0.st:5:9 ]
-       |
-     5 |         a : INT;
-       |         ^^^|^^^
-       |            `----- unused variable 'a'
-       |
-       | Note 1: if this is intentional, prefix it with an underscore:
-       |         '_a'
-       |
-       | Note 2: lint rule: unused-variable
-    ---'
-    [L0101] Warning: unused code
-       ,-[ file:///test0.st:6:9 ]
-       |
-     6 |         b : INT;
-       |         ^^^|^^^
-       |            `----- unused variable 'b'
-       |
-       | Note 1: if this is intentional, prefix it with an underscore:
-       |         '_b'
-       |
-       | Note 2: lint rule: unused-variable
-    ---'
+    assert_snapshot!(test_single_lint(&mut with_db, &[source], "missing-input-param"), @r"
     [L0116] Advice: missing input parameter
         ,-[ file:///test0.st:15:5 ]
         |
@@ -233,19 +155,5 @@ FUNCTION_BLOCK caller
     add(1, 2);
 END_FUNCTION_BLOCK
 "#;
-    assert_snapshot!(test_lint_diagnostics(&mut with_db, &[source]), @r"
-    [L0104] Advice: unused return value
-        ,-[ file:///test0.st:11:5 ]
-        |
-      2 | FUNCTION add : INT
-        |          ^|^
-        |           `--- FUNCTION 'add' is defined here, with return type 'INT'
-        |
-     11 |     add(1, 2);
-        |     ^^^^|^^^^
-        |         `------ unused return value of 'add'
-        |
-        | Note: lint rule: unused-return-type
-    ----'
-    ");
+    assert_snapshot!(test_single_lint(&mut with_db, &[source], "missing-input-param"), @"");
 }

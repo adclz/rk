@@ -2,7 +2,7 @@ use db::RootDatabase;
 use insta::assert_snapshot;
 use rstest::rstest;
 
-use crate::tests::utils::{test_lint_diagnostics, with_db};
+use crate::tests::utils::{test_single_lint, with_db};
 
 #[rstest]
 fn statement_after_return(mut with_db: RootDatabase) {
@@ -16,19 +16,7 @@ fn statement_after_return(mut with_db: RootDatabase) {
             x := 2;
         END_FUNCTION
     "#;
-    assert_snapshot!(test_lint_diagnostics(&mut with_db, &[source]), @r"
-    [L0101] Warning: unused code
-       ,-[ file:///test0.st:4:13 ]
-       |
-     4 |             x : INT;
-       |             ^^^|^^^
-       |                `----- unused variable 'x'
-       |
-       | Note 1: if this is intentional, prefix it with an underscore:
-       |         '_x'
-       |
-       | Note 2: lint rule: unused-variable
-    ---'
+    assert_snapshot!(test_single_lint(&mut with_db, &[source], "dead-code"), @r"
     [L0107] Warning: unreachable code
        ,-[ file:///test0.st:8:13 ]
        |
@@ -53,7 +41,7 @@ fn return_at_end_no_warning(mut with_db: RootDatabase) {
             RETURN;
         END_FUNCTION
     "#;
-    assert_snapshot!(test_lint_diagnostics(&mut with_db, &[source]), @r"");
+    assert_snapshot!(test_single_lint(&mut with_db, &[source], "dead-code"), @r"");
 }
 
 #[rstest]
@@ -70,7 +58,7 @@ fn statement_after_exit_in_loop(mut with_db: RootDatabase) {
             END_FOR;
         END_FUNCTION
     "#;
-    assert_snapshot!(test_lint_diagnostics(&mut with_db, &[source]), @r"
+    assert_snapshot!(test_single_lint(&mut with_db, &[source], "dead-code"), @r"
     [L0107] Warning: unreachable code
        ,-[ file:///test0.st:9:17 ]
        |
@@ -96,7 +84,7 @@ fn statement_after_continue_in_loop(mut with_db: RootDatabase) {
             END_FOR;
         END_FUNCTION
     "#;
-    assert_snapshot!(test_lint_diagnostics(&mut with_db, &[source]), @r"
+    assert_snapshot!(test_single_lint(&mut with_db, &[source], "dead-code"), @r"
     [L0107] Warning: unreachable code
        ,-[ file:///test0.st:8:17 ]
        |
@@ -123,17 +111,7 @@ fn code_in_different_if_branch_no_warning(mut with_db: RootDatabase) {
             END_IF;
         END_FUNCTION
     "#;
-    assert_snapshot!(test_lint_diagnostics(&mut with_db, &[source]), @r"
-    [L0113] Advice: unnecessary ELSE
-       ,-[ file:///test0.st:9:17 ]
-       |
-     9 |                 test := x;
-       |                 ^^^^|^^^^
-       |                     `------ unnecessary ELSE branch: all preceding branches end with RETURN, EXIT, or CONTINUE
-       |
-       | Note: lint rule: unnecessary-else
-    ---'
-    ");
+    assert_snapshot!(test_single_lint(&mut with_db, &[source], "dead-code"), @"");
 }
 
 #[rstest]
@@ -150,31 +128,7 @@ fn multiple_statements_after_return(mut with_db: RootDatabase) {
             y := 3;
         END_FUNCTION
     "#;
-    assert_snapshot!(test_lint_diagnostics(&mut with_db, &[source]), @r"
-    [L0101] Warning: unused code
-       ,-[ file:///test0.st:4:13 ]
-       |
-     4 |             x : INT;
-       |             ^^^|^^^
-       |                `----- unused variable 'x'
-       |
-       | Note 1: if this is intentional, prefix it with an underscore:
-       |         '_x'
-       |
-       | Note 2: lint rule: unused-variable
-    ---'
-    [L0101] Warning: unused code
-       ,-[ file:///test0.st:5:13 ]
-       |
-     5 |             y : INT;
-       |             ^^^|^^^
-       |                `----- unused variable 'y'
-       |
-       | Note 1: if this is intentional, prefix it with an underscore:
-       |         '_y'
-       |
-       | Note 2: lint rule: unused-variable
-    ---'
+    assert_snapshot!(test_single_lint(&mut with_db, &[source], "dead-code"), @r"
     [L0107] Warning: unreachable code
        ,-[ file:///test0.st:9:13 ]
        |

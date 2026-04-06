@@ -2,7 +2,7 @@ use db::RootDatabase;
 use insta::assert_snapshot;
 use rstest::rstest;
 
-use crate::tests::utils::{test_lint_diagnostics, with_db};
+use crate::tests::utils::{test_single_lint, with_db};
 
 #[rstest]
 fn case_with_else_no_warning(mut with_db: RootDatabase) {
@@ -19,7 +19,7 @@ fn case_with_else_no_warning(mut with_db: RootDatabase) {
             END_CASE;
         END_FUNCTION
     "#;
-    assert_snapshot!(test_lint_diagnostics(&mut with_db, &[source]), @r"");
+    assert_snapshot!(test_single_lint(&mut with_db, &[source], "case-without-else"), @r"");
 }
 
 #[rstest]
@@ -35,7 +35,7 @@ fn case_without_else_warning(mut with_db: RootDatabase) {
             END_CASE;
         END_FUNCTION
     "#;
-    assert_snapshot!(test_lint_diagnostics(&mut with_db, &[source]), @r"
+    assert_snapshot!(test_single_lint(&mut with_db, &[source], "case-without-else"), @r"
     [L0106] Warning: CASE without ELSE
        ,-[ file:///test0.st:6:13 ]
        |
@@ -69,7 +69,7 @@ fn nested_case_inner_missing_else(mut with_db: RootDatabase) {
             END_CASE;
         END_FUNCTION
     "#;
-    assert_snapshot!(test_lint_diagnostics(&mut with_db, &[source]), @r"
+    assert_snapshot!(test_single_lint(&mut with_db, &[source], "case-without-else"), @r"
     [L0106] Warning: CASE without ELSE
         ,-[ file:///test0.st:9:21 ]
         |
@@ -97,7 +97,7 @@ fn case_in_program(mut with_db: RootDatabase) {
             END_CASE;
         END_PROGRAM
     "#;
-    assert_snapshot!(test_lint_diagnostics(&mut with_db, &[source]), @r"
+    assert_snapshot!(test_single_lint(&mut with_db, &[source], "case-without-else"), @r"
     [L0106] Warning: CASE without ELSE
        ,-[ file:///test0.st:7:13 ]
        |

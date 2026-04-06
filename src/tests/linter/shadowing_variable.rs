@@ -2,7 +2,7 @@ use db::RootDatabase;
 use insta::assert_snapshot;
 use rstest::rstest;
 
-use crate::tests::utils::{test_lint_diagnostics, with_db};
+use crate::tests::utils::{test_single_lint, with_db};
 
 #[rstest]
 fn variable_shadows_function_block(mut with_db: RootDatabase) {
@@ -19,7 +19,7 @@ fn variable_shadows_function_block(mut with_db: RootDatabase) {
             test := 0;
         END_FUNCTION
     "#;
-    assert_snapshot!(test_lint_diagnostics(&mut with_db, &[source_fb, source_fn]), @r"
+    assert_snapshot!(test_single_lint(&mut with_db, &[source_fb, source_fn], "shadowing-variable"), @r"
     [L0102] Advice: name shadowing
        ,-[ file:///test1.st:4:13 ]
        |
@@ -54,7 +54,7 @@ fn variable_shadows_function(mut with_db: RootDatabase) {
             test := helper;
         END_FUNCTION
     "#;
-    assert_snapshot!(test_lint_diagnostics(&mut with_db, &[source_fn1, source_fn2]), @r"
+    assert_snapshot!(test_single_lint(&mut with_db, &[source_fn1, source_fn2], "shadowing-variable"), @r"
     [L0102] Advice: name shadowing
        ,-[ file:///test1.st:4:13 ]
        |
@@ -90,7 +90,7 @@ fn variable_shadows_data_type(mut with_db: RootDatabase) {
             test := MyType;
         END_FUNCTION
     "#;
-    assert_snapshot!(test_lint_diagnostics(&mut with_db, &[source_type, source_fn]), @r"
+    assert_snapshot!(test_single_lint(&mut with_db, &[source_type, source_fn], "shadowing-variable"), @r"
     [L0102] Advice: name shadowing
        ,-[ file:///test1.st:4:13 ]
        |
@@ -124,7 +124,7 @@ fn no_shadowing_when_names_differ(mut with_db: RootDatabase) {
             test := x;
         END_FUNCTION
     "#;
-    assert_snapshot!(test_lint_diagnostics(&mut with_db, &[source_fb, source_fn]), @r"");
+    assert_snapshot!(test_single_lint(&mut with_db, &[source_fb, source_fn], "shadowing-variable"), @"");
 }
 
 #[rstest]
@@ -143,18 +143,5 @@ fn no_shadowing_when_variable_unused(mut with_db: RootDatabase) {
             test := 0;
         END_FUNCTION
     "#;
-    assert_snapshot!(test_lint_diagnostics(&mut with_db, &[source_fb, source_fn]), @r"
-    [L0101] Warning: unused code
-       ,-[ file:///test1.st:4:13 ]
-       |
-     4 |             PrintLog : BOOL;
-       |             ^^^^^^^|^^^^^^^
-       |                    `--------- unused variable 'PrintLog'
-       |
-       | Note 1: if this is intentional, prefix it with an underscore:
-       |         '_PrintLog'
-       |
-       | Note 2: lint rule: unused-variable
-    ---'
-    ");
+    assert_snapshot!(test_single_lint(&mut with_db, &[source_fb, source_fn], "shadowing-variable"), @"");
 }

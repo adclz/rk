@@ -2,7 +2,7 @@ use db::RootDatabase;
 use insta::assert_snapshot;
 use rstest::rstest;
 
-use crate::tests::utils::{test_lint_diagnostics, with_db};
+use crate::tests::utils::{test_single_lint, with_db};
 
 #[rstest]
 fn bare_variable_reference(mut with_db: RootDatabase) {
@@ -15,7 +15,7 @@ fn bare_variable_reference(mut with_db: RootDatabase) {
             test := 0;
         END_FUNCTION
     "#;
-    assert_snapshot!(test_lint_diagnostics(&mut with_db, &[source]), @r"
+    assert_snapshot!(test_single_lint(&mut with_db, &[source], "effectless-statement"), @r"
     [L0105] Warning: effectless statement
        ,-[ file:///test0.st:6:13 ]
        |
@@ -39,7 +39,7 @@ fn bare_literal(mut with_db: RootDatabase) {
             test := x;
         END_FUNCTION
     "#;
-    assert_snapshot!(test_lint_diagnostics(&mut with_db, &[source]), @r"
+    assert_snapshot!(test_single_lint(&mut with_db, &[source], "effectless-statement"), @r"
     [E0050] Error: syntax
        ,-[ file:///test0.st:6:13 ]
        |
@@ -61,7 +61,7 @@ fn assignment_no_warning(mut with_db: RootDatabase) {
             test := x;
         END_FUNCTION
     "#;
-    assert_snapshot!(test_lint_diagnostics(&mut with_db, &[source]), @r"");
+    assert_snapshot!(test_single_lint(&mut with_db, &[source], "effectless-statement"), @r"");
 }
 
 #[rstest]
@@ -85,7 +85,7 @@ fn function_call_no_warning(mut with_db: RootDatabase) {
             test := 0;
         END_FUNCTION
     "#;
-    assert_snapshot!(test_lint_diagnostics(&mut with_db, &[source]), @r"");
+    assert_snapshot!(test_single_lint(&mut with_db, &[source], "effectless-statement"), @r"");
 }
 
 #[rstest]
@@ -98,7 +98,7 @@ fn effectless_in_program(mut with_db: RootDatabase) {
             x;
         END_PROGRAM
     "#;
-    assert_snapshot!(test_lint_diagnostics(&mut with_db, &[source]), @r"
+    assert_snapshot!(test_single_lint(&mut with_db, &[source], "effectless-statement"), @r"
     [L0105] Warning: effectless statement
        ,-[ file:///test0.st:6:13 ]
        |
@@ -121,7 +121,7 @@ fn effectless_in_function_block(mut with_db: RootDatabase) {
             x;
         END_FUNCTION_BLOCK
     "#;
-    assert_snapshot!(test_lint_diagnostics(&mut with_db, &[source]), @r"
+    assert_snapshot!(test_single_lint(&mut with_db, &[source], "effectless-statement"), @r"
     [L0105] Warning: effectless statement
        ,-[ file:///test0.st:6:13 ]
        |

@@ -2,7 +2,7 @@ use db::RootDatabase;
 use insta::assert_snapshot;
 use rstest::rstest;
 
-use crate::tests::utils::{test_lint_diagnostics, with_db};
+use crate::tests::utils::{test_single_lint, with_db};
 
 #[rstest]
 fn output_never_assigned(mut with_db: RootDatabase) {
@@ -14,7 +14,7 @@ END_VAR
     test := 0;
 END_FUNCTION
 "#;
-    assert_snapshot!(test_lint_diagnostics(&mut with_db, &[source]), @r"
+    assert_snapshot!(test_single_lint(&mut with_db, &[source], "uninitialized-output"), @r"
     [L0114] Warning: uninitialized output
        ,-[ file:///test0.st:4:5 ]
        |
@@ -38,7 +38,7 @@ END_VAR
     test := 0;
 END_FUNCTION
 "#;
-    assert_snapshot!(test_lint_diagnostics(&mut with_db, &[source]), @r"");
+    assert_snapshot!(test_single_lint(&mut with_db, &[source], "uninitialized-output"), @r"");
 }
 
 #[rstest]
@@ -57,7 +57,7 @@ END_VAR
     test := 0;
 END_FUNCTION
 "#;
-    assert_snapshot!(test_lint_diagnostics(&mut with_db, &[source]), @r"");
+    assert_snapshot!(test_single_lint(&mut with_db, &[source], "uninitialized-output"), @r"");
 }
 
 #[rstest]
@@ -70,7 +70,7 @@ END_VAR
     test := 0;
 END_FUNCTION
 "#;
-    assert_snapshot!(test_lint_diagnostics(&mut with_db, &[source]), @r"");
+    assert_snapshot!(test_single_lint(&mut with_db, &[source], "uninitialized-output"), @r"");
 }
 
 #[rstest]
@@ -83,7 +83,7 @@ VAR_OUTPUT
 END_VAR
 END_FUNCTION_BLOCK
 "#;
-    assert_snapshot!(test_lint_diagnostics(&mut with_db, &[source]), @r"
+    assert_snapshot!(test_single_lint(&mut with_db, &[source], "uninitialized-output"), @r"
     [L0114] Warning: uninitialized output
        ,-[ file:///test0.st:4:5 ]
        |

@@ -2,7 +2,7 @@ use db::RootDatabase;
 use insta::assert_snapshot;
 use rstest::rstest;
 
-use crate::tests::utils::{test_lint_diagnostics, with_db};
+use crate::tests::utils::{test_single_lint, with_db};
 
 #[rstest]
 fn warn_pragma_on_function(mut with_db: RootDatabase) {
@@ -16,7 +16,7 @@ VAR x : INT; END_VAR
     x := fn1();
 END_FUNCTION"#;
 
-    assert_snapshot!(test_lint_diagnostics(&mut with_db, &[source]), @r"
+    assert_snapshot!(test_single_lint(&mut with_db, &[source], "warn-pragma"), @r"
     [L0117] Warning: call site notice
        ,-[ file:///test0.st:8:10 ]
        |
@@ -45,7 +45,7 @@ VAR x : INT; END_VAR
     x := old_fn();
 END_FUNCTION"#;
 
-    assert_snapshot!(test_lint_diagnostics(&mut with_db, &[source]), @r"
+    assert_snapshot!(test_single_lint(&mut with_db, &[source], "warn-pragma"), @r"
     [L0117] Advice: call site notice
        ,-[ file:///test0.st:8:10 ]
        |
@@ -75,7 +75,7 @@ VAR fb : OldFB; END_VAR
     fb(_x := 1);
 END_FUNCTION"#;
 
-    assert_snapshot!(test_lint_diagnostics(&mut with_db, &[source]), @r"
+    assert_snapshot!(test_single_lint(&mut with_db, &[source], "warn-pragma"), @r"
     [L0117] Warning: call site notice
        ,-[ file:///test0.st:9:5 ]
        |
@@ -107,7 +107,7 @@ VAR fb : MyFB; y : INT; END_VAR
     y := fb.doStuff();
 END_FUNCTION"#;
 
-    assert_snapshot!(test_lint_diagnostics(&mut with_db, &[source]), @r"
+    assert_snapshot!(test_single_lint(&mut with_db, &[source], "warn-pragma"), @r"
     [L0117] Warning: call site notice
         ,-[ file:///test0.st:11:13 ]
         |
@@ -141,7 +141,7 @@ VAR y : INT; END_VAR
     y := old();
 END_FUNCTION"#;
 
-    assert_snapshot!(test_lint_diagnostics(&mut with_db, &[source]), @r"
+    assert_snapshot!(test_single_lint(&mut with_db, &[source], "warn-pragma"), @r"
     [L0117] Warning: call site notice
        ,-[ file:///test0.st:8:10 ]
        |

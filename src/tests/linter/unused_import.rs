@@ -2,7 +2,7 @@ use db::RootDatabase;
 use insta::assert_snapshot;
 use rstest::rstest;
 
-use crate::tests::utils::{test_lint_diagnostics, with_db};
+use crate::tests::utils::{test_single_lint, with_db};
 
 #[rstest]
 fn unused_using_directive(mut with_db: RootDatabase) {
@@ -19,7 +19,7 @@ FUNCTION_BLOCK fb1
 END_FUNCTION_BLOCK
 "#,
     ];
-    assert_snapshot!(test_lint_diagnostics(&mut with_db, sources), @r"
+    assert_snapshot!(test_single_lint(&mut with_db, sources, "unused-import"), @r"
     [L0109] Warning: unused import
        ,-[ file:///test1.st:3:11 ]
        |
@@ -49,7 +49,7 @@ FUNCTION test : INT
 END_FUNCTION
 "#,
     ];
-    assert_snapshot!(test_lint_diagnostics(&mut with_db, sources), @r"");
+    assert_snapshot!(test_single_lint(&mut with_db, sources, "unused-import"), @r"");
 }
 
 #[rstest]
@@ -75,7 +75,7 @@ FUNCTION test : INT
 END_FUNCTION
 "#,
     ];
-    assert_snapshot!(test_lint_diagnostics(&mut with_db, sources), @r"
+    assert_snapshot!(test_single_lint(&mut with_db, sources, "unused-import"), @r"
     [L0109] Warning: unused import
        ,-[ file:///test1.st:4:11 ]
        |
@@ -95,7 +95,7 @@ FUNCTION test : INT
     test := 0;
 END_FUNCTION
 "#;
-    assert_snapshot!(test_lint_diagnostics(&mut with_db, &[source]), @r"");
+    assert_snapshot!(test_single_lint(&mut with_db, &[source], "unused-import"), @r"");
 }
 
 #[rstest]
@@ -117,7 +117,7 @@ END_FUNCTION_BLOCK
 "#,
     ];
     // USING is used only in variable type spec (head-level), should not warn
-    assert_snapshot!(test_lint_diagnostics(&mut with_db, sources), @r"");
+    assert_snapshot!(test_single_lint(&mut with_db, sources, "unused-import"), @"");
 }
 
 #[rstest]
@@ -140,7 +140,7 @@ END_FUNCTION_BLOCK
 "#,
     ];
     // Global USING used in a type spec (head-level) should not warn
-    assert_snapshot!(test_lint_diagnostics(&mut with_db, sources), @r"");
+    assert_snapshot!(test_single_lint(&mut with_db, sources, "unused-import"), @"");
 }
 
 #[rstest]
@@ -165,7 +165,7 @@ END_NAMESPACE
 "#,
     ];
     // Global USING used by a POU inside a namespace should not warn
-    assert_snapshot!(test_lint_diagnostics(&mut with_db, sources), @r"");
+    assert_snapshot!(test_single_lint(&mut with_db, sources, "unused-import"), @"");
 }
 
 #[rstest]
@@ -185,7 +185,7 @@ FUNCTION test : INT
 END_FUNCTION
 "#,
     ];
-    assert_snapshot!(test_lint_diagnostics(&mut with_db, sources), @r"
+    assert_snapshot!(test_single_lint(&mut with_db, sources, "unused-import"), @r"
     [L0109] Warning: unused import
        ,-[ file:///test1.st:2:7 ]
        |

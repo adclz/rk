@@ -2,7 +2,7 @@ use db::RootDatabase;
 use insta::assert_snapshot;
 use rstest::rstest;
 
-use crate::tests::utils::{test_lint_diagnostics, with_db};
+use crate::tests::utils::{test_single_lint, with_db};
 
 #[rstest]
 fn division_by_literal_zero(mut with_db: RootDatabase) {
@@ -14,7 +14,7 @@ END_VAR
     x := 10 / 0;
 END_FUNCTION
 "#;
-    assert_snapshot!(test_lint_diagnostics(&mut with_db, &[source]), @r"
+    assert_snapshot!(test_single_lint(&mut with_db, &[source], "division-by-zero"), @r"
     [L0118] Warning: division by zero
        ,-[ file:///test0.st:6:15 ]
        |
@@ -37,7 +37,7 @@ END_VAR
     x := 10 MOD 0;
 END_FUNCTION
 "#;
-    assert_snapshot!(test_lint_diagnostics(&mut with_db, &[source]), @r"
+    assert_snapshot!(test_single_lint(&mut with_db, &[source], "division-by-zero"), @r"
     [L0118] Warning: division by zero
        ,-[ file:///test0.st:6:17 ]
        |
@@ -60,7 +60,7 @@ END_VAR
     x := 10 / 2;
 END_FUNCTION
 "#;
-    assert_snapshot!(test_lint_diagnostics(&mut with_db, &[source]), @r"");
+    assert_snapshot!(test_single_lint(&mut with_db, &[source], "division-by-zero"), @r"");
 }
 
 #[rstest]
@@ -74,7 +74,7 @@ END_VAR
     x := 10 / y;
 END_FUNCTION
 "#;
-    assert_snapshot!(test_lint_diagnostics(&mut with_db, &[source]), @r"");
+    assert_snapshot!(test_single_lint(&mut with_db, &[source], "division-by-zero"), @r"");
 }
 
 #[rstest]
@@ -87,7 +87,7 @@ END_VAR
     x := 10 / (0);
 END_FUNCTION
 "#;
-    assert_snapshot!(test_lint_diagnostics(&mut with_db, &[source]), @r"
+    assert_snapshot!(test_single_lint(&mut with_db, &[source], "division-by-zero"), @r"
     [L0118] Warning: division by zero
        ,-[ file:///test0.st:6:15 ]
        |
@@ -110,7 +110,7 @@ END_VAR
     x := 10.0 / 0.0;
 END_FUNCTION
 "#;
-    assert_snapshot!(test_lint_diagnostics(&mut with_db, &[source]), @r"
+    assert_snapshot!(test_single_lint(&mut with_db, &[source], "division-by-zero"), @r"
     [L0118] Warning: division by zero
        ,-[ file:///test0.st:6:17 ]
        |
@@ -159,7 +159,7 @@ END_VAR
     n := 1.0 / LREAL#0.0;
 END_FUNCTION
 "#;
-    assert_snapshot!(test_lint_diagnostics(&mut with_db, &[source]), @r"
+    assert_snapshot!(test_single_lint(&mut with_db, &[source], "division-by-zero"), @r"
     [L0118] Warning: division by zero
         ,-[ file:///test0.st:19:14 ]
         |
@@ -303,7 +303,7 @@ END_VAR
     c := 1 / 8#0;
 END_FUNCTION
 "#;
-    assert_snapshot!(test_lint_diagnostics(&mut with_db, &[source]), @r"
+    assert_snapshot!(test_single_lint(&mut with_db, &[source], "division-by-zero"), @r"
     [L0118] Warning: division by zero
        ,-[ file:///test0.st:8:14 ]
        |
@@ -344,5 +344,5 @@ END_VAR
     x := 10 * 0;
 END_FUNCTION
 "#;
-    assert_snapshot!(test_lint_diagnostics(&mut with_db, &[source]), @r"");
+    assert_snapshot!(test_single_lint(&mut with_db, &[source], "division-by-zero"), @r"");
 }

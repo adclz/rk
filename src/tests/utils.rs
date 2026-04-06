@@ -180,9 +180,62 @@ pub fn test_snapshot<'db>(
 /// Like [`test_diagnostics`] but also runs the linter (all rules enabled),
 /// so lint warnings are included.
 pub fn test_lint_diagnostics<'db>(db: &'db mut RootDatabase, source: &'db [&'db str]) -> String {
+    let linter_config = db::config_file::LinterConfig::default();
+    test_lint_diagnostics_with_config(db, source, &linter_config)
+}
+
+/// Run only a single lint rule, ignoring all others.
+/// This prevents unrelated lints from polluting snapshots.
+pub fn test_single_lint<'db>(
+    db: &'db mut RootDatabase,
+    source: &'db [&'db str],
+    rule_name: &str,
+) -> String {
+    let mut rules = std::collections::BTreeMap::new();
+    // Disable everything by setting a catch-all pattern is not possible,
+    // so we explicitly disable all known rules and enable only the one we want.
+    for name in ALL_LINT_RULES {
+        rules.insert(name.to_string(), *name == rule_name);
+    }
+    let linter_config = db::config_file::LinterConfig { rules: Some(rules) };
+    test_lint_diagnostics_with_config(db, source, &linter_config)
+}
+
+const ALL_LINT_RULES: &[&str] = &[
+    "unused-variable",
+    "shadowing-variable",
+    "unused-return-type",
+    "effectless-statement",
+    "case-without-else",
+    "dead-code",
+    "for-loop-step-sign",
+    "input-assignment",
+    "self-assignment",
+    "constant-condition",
+    "unnecessary-else",
+    "uninitialized-output",
+    "negated-condition",
+    "missing-input-param",
+    "warn-pragma",
+    "unused-import",
+    "duplicate-var-section",
+    "duplicate-namespace",
+    "division-by-zero",
+    "bool-comparison",
+    "self-comparison",
+    "identical-sub-expr",
+    "redundant-not",
+    "identity-operation",
+    "empty-body",
+];
+
+fn test_lint_diagnostics_with_config<'db>(
+    db: &'db mut RootDatabase,
+    source: &'db [&'db str],
+    linter_config: &db::config_file::LinterConfig,
+) -> String {
     add_sources(db, source);
     let mut cache = vec![];
-    let linter_config = db::config_file::LinterConfig::default();
 
     let mut files = db.get_files().iter().map(|file| *file).collect::<Vec<_>>();
     files.sort_by_key(|file| {
@@ -201,7 +254,7 @@ pub fn test_lint_diagnostics<'db>(db: &'db mut RootDatabase, source: &'db [&'db 
 
     for file in files {
         let mut all = diagnostics_for_file(db, file).as_ref().clone();
-        linter::lint_file(db, file, &linter_config, &mut all);
+        linter::lint_file(db, file, linter_config, &mut all);
         all.iter().for_each(|d| {
             d.create_report(
                 db,
