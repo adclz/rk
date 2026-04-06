@@ -20,6 +20,7 @@ pub mod dead_code;
 pub mod division_by_zero;
 pub mod duplicate_case;
 pub mod duplicate_namespace;
+pub mod single_element_array;
 pub mod duplicate_var_section;
 pub mod empty_body;
 pub mod effectless_statement;
@@ -195,6 +196,22 @@ fn lint_scope<'db>(
     if config.is_enabled(empty_body::NAME) {
         run_lint(empty_body::NAME, diagnostics, |d| {
             empty_body::check(db, scope, d)
+        });
+    }
+    if config.is_enabled(single_element_array::NAME) {
+        let variables: &[hir::hir_def::pous::variable::VariableDecl] =
+            match get_scope(db, scope).kind {
+                ScopeKind::Pou(Pou::Function(f)) => f.variables(db),
+                ScopeKind::Pou(Pou::FunctionBlock(fb)) => fb.variables(db),
+                ScopeKind::Pou(Pou::Class(cl)) => cl.variables(db),
+                ScopeKind::MethodDecl(m) => m.variables(db),
+                ScopeKind::Program(program) => program.variables(db),
+                _ => &[],
+            };
+        run_lint(single_element_array::NAME, diagnostics, |d| {
+            for var in variables {
+                single_element_array::check_spec(db, &var.spec(db).kind(db), d);
+            }
         });
     }
 

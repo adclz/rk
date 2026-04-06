@@ -229,6 +229,7 @@ const ALL_LINT_RULES: &[&str] = &[
     "empty-body",
     "sub-self",
     "duplicate-case",
+    "single-element-array",
 ];
 
 fn test_lint_diagnostics_with_config<'db>(

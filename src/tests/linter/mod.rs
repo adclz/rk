@@ -5,6 +5,7 @@ mod dead_code;
 mod division_by_zero;
 mod duplicate_case;
 mod duplicate_namespace;
+mod single_element_array;
 mod duplicate_var_section;
 mod empty_body;
 mod effectless_statement;
