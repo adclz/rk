@@ -21,6 +21,7 @@ pub mod division_by_zero;
 pub mod duplicate_var_section;
 pub mod effectless_statement;
 pub mod for_loop_step_sign;
+pub mod identical_sub_expr;
 pub mod input_assignment;
 pub mod missing_input_param;
 pub mod negated_condition;
