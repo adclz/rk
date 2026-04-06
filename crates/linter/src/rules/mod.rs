@@ -25,6 +25,7 @@ pub mod input_assignment;
 pub mod missing_input_param;
 pub mod negated_condition;
 pub mod self_assignment;
+pub mod self_comparison;
 pub mod shadowing_variable;
 pub mod stmt_visitor;
 pub mod uninitialized_output;

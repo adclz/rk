@@ -17,7 +17,7 @@ use ide_diagnostic::IdeDiagnostic;
 
 use super::{
     bool_comparison, constant_condition, input_assignment, missing_input_param, negated_condition,
-    run_lint, self_assignment, uninitialized_output, unnecessary_else,
+    run_lint, self_assignment, self_comparison, uninitialized_output, unnecessary_else,
 };
 
 /// Run all statement-walking lints in a single pass over the statement tree.
@@ -48,6 +48,7 @@ pub fn check<'db>(
         negated_condition: config.is_enabled(negated_condition::NAME),
         missing_input_param: config.is_enabled(missing_input_param::NAME),
         bool_comparison: config.is_enabled(bool_comparison::NAME),
+        self_comparison: config.is_enabled(self_comparison::NAME),
     };
 
     // Nothing enabled - skip walk entirely
@@ -80,6 +81,7 @@ struct VisitorCtx {
     negated_condition: bool,
     missing_input_param: bool,
     bool_comparison: bool,
+    self_comparison: bool,
 }
 
 impl VisitorCtx {
@@ -92,6 +94,7 @@ impl VisitorCtx {
             || self.negated_condition
             || self.missing_input_param
             || self.bool_comparison
+            || self.self_comparison
     }
 }
 
@@ -111,6 +114,11 @@ fn visit_statements<'db>(
                 if ctx.bool_comparison {
                     run_lint(bool_comparison::NAME, diagnostics, |d| {
                         bool_comparison::check_expr(db, target, d)
+                    });
+                }
+                if ctx.self_comparison {
+                    run_lint(self_comparison::NAME, diagnostics, |d| {
+                        self_comparison::check_expr(db, body, target, d)
                     });
                 }
                 if ctx.input_assignment {
@@ -149,6 +157,11 @@ fn visit_statements<'db>(
                 if ctx.bool_comparison {
                     run_lint(bool_comparison::NAME, diagnostics, |d| {
                         bool_comparison::check_expr(db, condition, d)
+                    });
+                }
+                if ctx.self_comparison {
+                    run_lint(self_comparison::NAME, diagnostics, |d| {
+                        self_comparison::check_expr(db, body, condition, d)
                     });
                 }
                 if ctx.constant_condition {

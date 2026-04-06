@@ -10,6 +10,7 @@ mod input_assignment;
 mod missing_input_param;
 mod negated_condition;
 mod self_assignment;
+mod self_comparison;
 mod shadowing_variable;
 mod uninitialized_output;
 mod unnecessary_else;
