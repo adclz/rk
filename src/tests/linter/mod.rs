@@ -14,6 +14,7 @@ mod identical_sub_expr;
 mod identity_operation;
 mod input_assignment;
 mod missing_input_param;
+mod negated_comparison;
 mod negated_condition;
 mod redundant_not;
 mod self_assignment;

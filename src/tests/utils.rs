@@ -192,45 +192,12 @@ pub fn test_single_lint<'db>(
     rule_name: &str,
 ) -> String {
     let mut rules = std::collections::BTreeMap::new();
-    // Disable everything by setting a catch-all pattern is not possible,
-    // so we explicitly disable all known rules and enable only the one we want.
-    for name in ALL_LINT_RULES {
+    for name in linter::rules::ALL_RULE_NAMES {
         rules.insert(name.to_string(), *name == rule_name);
     }
     let linter_config = db::config_file::LinterConfig { rules: Some(rules) };
     test_lint_diagnostics_with_config(db, source, &linter_config)
 }
-
-const ALL_LINT_RULES: &[&str] = &[
-    "unused-variable",
-    "shadowing-variable",
-    "unused-return-type",
-    "effectless-statement",
-    "case-without-else",
-    "dead-code",
-    "for-loop-step-sign",
-    "input-assignment",
-    "self-assignment",
-    "constant-condition",
-    "unnecessary-else",
-    "uninitialized-output",
-    "negated-condition",
-    "missing-input-param",
-    "warn-pragma",
-    "unused-import",
-    "duplicate-var-section",
-    "duplicate-namespace",
-    "division-by-zero",
-    "bool-comparison",
-    "self-comparison",
-    "identical-sub-expr",
-    "redundant-not",
-    "identity-operation",
-    "empty-body",
-    "sub-self",
-    "duplicate-case",
-    "single-element-array",
-];
 
 fn test_lint_diagnostics_with_config<'db>(
     db: &'db mut RootDatabase,

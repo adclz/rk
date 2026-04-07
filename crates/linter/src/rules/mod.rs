@@ -29,6 +29,7 @@ pub mod identical_sub_expr;
 pub mod identity_operation;
 pub mod input_assignment;
 pub mod missing_input_param;
+pub mod negated_comparison;
 pub mod negated_condition;
 pub mod redundant_not;
 pub mod self_assignment;
@@ -42,6 +43,39 @@ pub mod unused_import;
 pub mod unused_return_type;
 pub mod unused_variable;
 pub mod warn_pragma;
+
+/// All lint rule names, for building configs that enable/disable specific rules.
+pub const ALL_RULE_NAMES: &[&str] = &[
+    bool_comparison::NAME,
+    case_without_else::NAME,
+    constant_condition::NAME,
+    dead_code::NAME,
+    division_by_zero::NAME,
+    duplicate_case::NAME,
+    duplicate_namespace::NAME,
+    duplicate_var_section::NAME,
+    effectless_statement::NAME,
+    empty_body::NAME,
+    for_loop_step_sign::NAME,
+    identical_sub_expr::NAME,
+    identity_operation::NAME,
+    input_assignment::NAME,
+    missing_input_param::NAME,
+    negated_comparison::NAME,
+    negated_condition::NAME,
+    redundant_not::NAME,
+    self_assignment::NAME,
+    self_comparison::NAME,
+    shadowing_variable::NAME,
+    single_element_array::NAME,
+    sub_self::NAME,
+    uninitialized_output::NAME,
+    unnecessary_else::NAME,
+    unused_import::NAME,
+    unused_return_type::NAME,
+    unused_variable::NAME,
+    warn_pragma::NAME,
+];
 
 /// Run all lint rules on a file, appending warnings to `diagnostics`.
 ///
