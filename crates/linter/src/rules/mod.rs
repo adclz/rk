@@ -41,6 +41,7 @@ pub mod sub_self;
 pub mod stmt_visitor;
 pub mod uninitialized_output;
 pub mod unnecessary_else;
+pub mod unnecessary_parens;
 pub mod unused_import;
 pub mod unused_return_type;
 pub mod unused_variable;

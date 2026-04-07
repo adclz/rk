@@ -25,6 +25,7 @@ mod shadowing_variable;
 mod sub_self;
 mod uninitialized_output;
 mod unnecessary_else;
+mod unnecessary_parens;
 mod unused_import;
 mod unused_return_type;
 mod unused_variable;

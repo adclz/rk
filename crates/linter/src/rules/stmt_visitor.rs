@@ -19,9 +19,11 @@ use hir::{
 use ide_diagnostic::IdeDiagnostic;
 
 use super::{
-    bool_comparison, constant_condition, duplicate_case, empty_case_branch, for_zero_step, identical_sub_expr, identity_operation,
+    bool_comparison, constant_condition, duplicate_case, empty_case_branch, for_zero_step,
+    identical_sub_expr, identity_operation,
     input_assignment, missing_input_param, negated_comparison, negated_condition, redundant_not,
     run_lint, self_assignment, self_comparison, sub_self, uninitialized_output, unnecessary_else,
+    unnecessary_parens,
 };
 
 /// Run all statement-walking lints in a single pass over the statement tree.
@@ -61,6 +63,7 @@ pub fn check<'db>(
         duplicate_case: config.is_enabled(duplicate_case::NAME),
         empty_case_branch: config.is_enabled(empty_case_branch::NAME),
         for_zero_step: config.is_enabled(for_zero_step::NAME),
+        unnecessary_parens: config.is_enabled(unnecessary_parens::NAME),
     };
 
     if !ctx.any_enabled() {
@@ -100,6 +103,7 @@ struct VisitorCtx {
     duplicate_case: bool,
     empty_case_branch: bool,
     for_zero_step: bool,
+    unnecessary_parens: bool,
 }
 
 impl VisitorCtx {
@@ -121,6 +125,7 @@ impl VisitorCtx {
             || self.duplicate_case
             || self.empty_case_branch
             || self.for_zero_step
+            || self.unnecessary_parens
     }
 
     fn any_expr_lint(&self) -> bool {
@@ -131,6 +136,7 @@ impl VisitorCtx {
             || self.identity_operation
             || self.sub_self
             || self.negated_comparison
+            || self.unnecessary_parens
     }
 }
 
@@ -183,6 +189,11 @@ fn check_expr_lints<'db>(
     if ctx.negated_comparison {
         run_lint(negated_comparison::NAME, diagnostics, |d| {
             negated_comparison::check_node(db, expr, d)
+        });
+    }
+    if ctx.unnecessary_parens {
+        run_lint(unnecessary_parens::NAME, diagnostics, |d| {
+            unnecessary_parens::check_node(db, expr, d)
         });
     }
 
