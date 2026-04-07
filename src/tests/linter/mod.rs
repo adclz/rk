@@ -1,5 +1,6 @@
 mod bool_comparison;
 mod case_without_else;
+mod collapsible_if;
 mod constant_condition;
 mod constant_loop_bounds;
 mod dead_code;

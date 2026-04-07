@@ -15,6 +15,7 @@ use ide_diagnostic::IdeDiagnostic;
 
 pub mod bool_comparison;
 pub mod case_without_else;
+pub mod collapsible_if;
 pub mod constant_condition;
 pub mod dead_code;
 pub mod division_by_zero;
@@ -54,6 +55,7 @@ pub mod constant_loop_bounds;
 pub const ALL_RULE_NAMES: &[&str] = &[
     bool_comparison::NAME,
     case_without_else::NAME,
+    collapsible_if::NAME,
     constant_condition::NAME,
     constant_loop_bounds::NAME,
     dead_code::NAME,

@@ -19,7 +19,7 @@ use hir::{
 use ide_diagnostic::IdeDiagnostic;
 
 use super::{
-    constant_loop_bounds,
+    collapsible_if, constant_loop_bounds,
     bool_comparison, constant_condition, duplicate_case, empty_case_branch, for_zero_step,
     identical_sub_expr, identity_operation, input_assignment, loop_var_modified,
     missing_input_param, negated_comparison, negated_condition, redundant_not, run_lint,
@@ -49,6 +49,7 @@ pub fn check<'db>(
     let ctx = VisitorCtx {
         input_assignment: config.is_enabled(input_assignment::NAME),
         self_assignment: config.is_enabled(self_assignment::NAME),
+        collapsible_if: config.is_enabled(collapsible_if::NAME),
         constant_condition: config.is_enabled(constant_condition::NAME),
         constant_loop_bounds: config.is_enabled(constant_loop_bounds::NAME),
         unnecessary_else: config.is_enabled(unnecessary_else::NAME),
@@ -101,6 +102,7 @@ pub fn check<'db>(
 struct VisitorCtx {
     input_assignment: bool,
     self_assignment: bool,
+    collapsible_if: bool,
     constant_condition: bool,
     constant_loop_bounds: bool,
     unnecessary_else: bool,
@@ -126,6 +128,7 @@ impl VisitorCtx {
     fn any_enabled(&self) -> bool {
         self.input_assignment
             || self.self_assignment
+            || self.collapsible_if
             || self.constant_condition
             || self.constant_loop_bounds
             || self.unnecessary_else
@@ -355,6 +358,11 @@ fn visit_statements<'db>(
                 if ctx.negated_condition && else_if.is_empty() {
                     run_lint(negated_condition::NAME, diagnostics, |d| {
                         negated_condition::check_if(db, condition, then, else_, d)
+                    });
+                }
+                if ctx.collapsible_if {
+                    run_lint(collapsible_if::NAME, diagnostics, |d| {
+                        collapsible_if::check_if(db, *stmt, condition, then, else_if, else_, d)
                     });
                 }
             }
