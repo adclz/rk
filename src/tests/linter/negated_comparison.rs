@@ -13,7 +13,7 @@ VAR x : INT; y : INT; END_VAR
 END_FUNCTION
 "#;
     assert_snapshot!(test_single_lint(&mut with_db, &[source], "negated-comparison"), @r"
-    [L0129] Advice: negated comparison
+    [L0129] Info: negated comparison
        ,-[ file:///test0.st:4:13 ]
        |
      4 |     test := NOT (x = y);
@@ -36,7 +36,7 @@ VAR x : INT; y : INT; END_VAR
 END_FUNCTION
 "#;
     assert_snapshot!(test_single_lint(&mut with_db, &[source], "negated-comparison"), @r"
-    [L0129] Advice: negated comparison
+    [L0129] Info: negated comparison
        ,-[ file:///test0.st:4:13 ]
        |
      4 |     test := NOT (x <> y);
@@ -59,7 +59,7 @@ VAR x : INT; y : INT; END_VAR
 END_FUNCTION
 "#;
     assert_snapshot!(test_single_lint(&mut with_db, &[source], "negated-comparison"), @r"
-    [L0129] Advice: negated comparison
+    [L0129] Info: negated comparison
        ,-[ file:///test0.st:4:13 ]
        |
      4 |     test := NOT (x < y);
@@ -82,7 +82,7 @@ VAR x : INT; y : INT; END_VAR
 END_FUNCTION
 "#;
     assert_snapshot!(test_single_lint(&mut with_db, &[source], "negated-comparison"), @r"
-    [L0129] Advice: negated comparison
+    [L0129] Info: negated comparison
        ,-[ file:///test0.st:4:13 ]
        |
      4 |     test := NOT (x > y);
@@ -105,7 +105,7 @@ VAR x : INT; y : INT; END_VAR
 END_FUNCTION
 "#;
     assert_snapshot!(test_single_lint(&mut with_db, &[source], "negated-comparison"), @r"
-    [L0129] Advice: negated comparison
+    [L0129] Info: negated comparison
        ,-[ file:///test0.st:4:13 ]
        |
      4 |     test := NOT (x <= y);
@@ -128,7 +128,7 @@ VAR x : INT; y : INT; END_VAR
 END_FUNCTION
 "#;
     assert_snapshot!(test_single_lint(&mut with_db, &[source], "negated-comparison"), @r"
-    [L0129] Advice: negated comparison
+    [L0129] Info: negated comparison
        ,-[ file:///test0.st:4:13 ]
        |
      4 |     test := NOT (x >= y);
@@ -153,7 +153,7 @@ VAR x : INT; y : INT; END_VAR
 END_FUNCTION
 "#;
     assert_snapshot!(test_single_lint(&mut with_db, &[source], "negated-comparison"), @r"
-    [L0129] Advice: negated comparison
+    [L0129] Info: negated comparison
        ,-[ file:///test0.st:4:8 ]
        |
      4 |     IF NOT (x > y) THEN
@@ -192,7 +192,7 @@ END_FUNCTION
        |
        | Help: insert explicit cast 'BOOL_TO_INT(NOT (x > y))'
     ---'
-    [L0129] Advice: negated comparison
+    [L0129] Info: negated comparison
        ,-[ file:///test0.st:4:14 ]
        |
      4 |     FOR x := NOT (x > y) TO 1 BY 1 DO

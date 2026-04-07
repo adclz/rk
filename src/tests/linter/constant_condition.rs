@@ -160,6 +160,15 @@ FUNCTION test : INT
 END_FUNCTION
 "#;
     assert_snapshot!(test_single_lint(&mut with_db, &[source], "constant-condition"), @r"
+    [L0132] Info: unnecessary parentheses
+       ,-[ file:///test0.st:3:8 ]
+       |
+     3 |     IF (TRUE) THEN
+       |        ^^^|^^
+       |           `---- unnecessary parentheses around 'TRUE'
+       |
+       | Note: lint rule: unnecessary-parens
+    ---'
     [L0112] Warning: constant condition
        ,-[ file:///test0.st:3:8 ]
        |

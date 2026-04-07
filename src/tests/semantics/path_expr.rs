@@ -101,7 +101,7 @@ END_FUNCTION
     assert_snapshot!(test_snapshot(&mut with_db, &[source], |db, file| {
         path_expr_diagnostics(db, file, "fn")
     }), @r"
-    Advice: VARIABLE [Index -> INT]
+    Info: VARIABLE [Index -> INT]
        ,-[ file:///test0.st:7:2 ]
        |
      7 |     test[0] := 0;
@@ -135,7 +135,7 @@ END_FUNCTION
     assert_snapshot!(test_snapshot(&mut with_db, &[source], |db, file| {
         path_expr_diagnostics(db, file, "fn")
     }), @r"
-    Advice: VARIABLE <none>
+    Info: VARIABLE <none>
         ,-[ file:///test0.st:13:2 ]
         |
      13 |     test.power[0] := 0.2;
@@ -171,7 +171,7 @@ END_FUNCTION
     assert_snapshot!(test_snapshot(&mut with_db, &[source], |db, file| {
         path_expr_diagnostics(db, file, "fn")
     }), @r"
-    Advice: VARIABLE <none>
+    Info: VARIABLE <none>
         ,-[ file:///test0.st:13:2 ]
         |
      13 |     myRefInt := REF(myA1[11]);
@@ -203,7 +203,7 @@ END_FUNCTION
     assert_snapshot!(test_snapshot(&mut with_db, &[source], |db, file| {
         path_expr_diagnostics(db, file, "fn")
     }), @r"
-    Advice: VARIABLE <none>
+    Info: VARIABLE <none>
        ,-[ file:///test0.st:9:2 ]
        |
      9 |     myInt := myA1[2][3];
@@ -237,7 +237,7 @@ END_FUNCTION
     assert_snapshot!(test_snapshot(&mut with_db, &[source], |db, file| {
         path_expr_diagnostics(db, file, "fn")
     }), @r"
-    Advice: VARIABLE <none>
+    Info: VARIABLE <none>
        ,-[ file:///test0.st:9:2 ]
        |
      9 |     myInt := REF(myA1[2][3]);
@@ -281,7 +281,7 @@ END_FUNCTION
     ");
     let file = *with_db.get_files().iter().last().unwrap();
     assert_snapshot!(render_snapshot(&with_db, file, path_expr_diagnostics(&with_db, file, "fn")), @r"
-    Advice: VARIABLE [Index -> BOOL]
+    Info: VARIABLE [Index -> BOOL]
        ,-[ file:///test0.st:7:2 ]
        |
      7 |     test[0] := 0.5;

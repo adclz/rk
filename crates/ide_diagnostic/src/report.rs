@@ -16,13 +16,18 @@ impl IdeDiagnostic {
         config: Option<ariadne::Config>,
         format: bool,
     ) -> Report<'report, (&'report str, std::ops::Range<usize>)> {
+        if !format {
+            yansi::disable();
+        }
         let error_kind = match &self.diagnostic.severity {
             Some(auto_lsp::lsp_types::DiagnosticSeverity::ERROR) => ariadne::ReportKind::Error,
             Some(auto_lsp::lsp_types::DiagnosticSeverity::WARNING) => ariadne::ReportKind::Warning,
             Some(auto_lsp::lsp_types::DiagnosticSeverity::INFORMATION) => {
-                ariadne::ReportKind::Advice
+                ariadne::ReportKind::Custom(&"Info", yansi::Color::Blue)
             }
-            Some(auto_lsp::lsp_types::DiagnosticSeverity::HINT) => ariadne::ReportKind::Advice,
+            Some(auto_lsp::lsp_types::DiagnosticSeverity::HINT) => {
+                ariadne::ReportKind::Custom(&"Hint", yansi::Color::BrightBlue)
+            }
             _ => ariadne::ReportKind::Error,
         };
 

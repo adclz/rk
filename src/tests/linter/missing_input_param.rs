@@ -20,7 +20,7 @@ FUNCTION_BLOCK caller
 END_FUNCTION_BLOCK
 "#;
     assert_snapshot!(test_single_lint(&mut with_db, &[source], "missing-input-param"), @r"
-    [L0116] Advice: missing input parameter
+    [L0116] Hint: missing input parameter
         ,-[ file:///test0.st:11:5 ]
         |
       5 |     b : INT;
@@ -85,7 +85,7 @@ FUNCTION_BLOCK caller
 END_FUNCTION_BLOCK
 "#;
     assert_snapshot!(test_single_lint(&mut with_db, &[source], "missing-input-param"), @r"
-    [L0116] Advice: missing input parameter
+    [L0116] Hint: missing input parameter
         ,-[ file:///test0.st:12:5 ]
         |
       5 |     y : INT;
@@ -124,7 +124,7 @@ END_VAR
 END_FUNCTION_BLOCK
 "#;
     assert_snapshot!(test_single_lint(&mut with_db, &[source], "missing-input-param"), @r"
-    [L0116] Advice: missing input parameter
+    [L0116] Hint: missing input parameter
         ,-[ file:///test0.st:15:5 ]
         |
       6 |         b : INT;

@@ -20,7 +20,7 @@ fn variable_shadows_function_block(mut with_db: RootDatabase) {
         END_FUNCTION
     "#;
     assert_snapshot!(test_single_lint(&mut with_db, &[source_fb, source_fn], "shadowing-variable"), @r"
-    [L0102] Advice: name shadowing
+    [L0102] Info: name shadowing
        ,-[ file:///test1.st:4:13 ]
        |
      4 |             PrintLog : BOOL;
@@ -55,7 +55,7 @@ fn variable_shadows_function(mut with_db: RootDatabase) {
         END_FUNCTION
     "#;
     assert_snapshot!(test_single_lint(&mut with_db, &[source_fn1, source_fn2], "shadowing-variable"), @r"
-    [L0102] Advice: name shadowing
+    [L0102] Info: name shadowing
        ,-[ file:///test1.st:4:13 ]
        |
      4 |             helper : INT;
@@ -91,7 +91,7 @@ fn variable_shadows_data_type(mut with_db: RootDatabase) {
         END_FUNCTION
     "#;
     assert_snapshot!(test_single_lint(&mut with_db, &[source_type, source_fn], "shadowing-variable"), @r"
-    [L0102] Advice: name shadowing
+    [L0102] Info: name shadowing
        ,-[ file:///test1.st:4:13 ]
        |
      4 |             MyType : INT;

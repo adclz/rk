@@ -273,7 +273,7 @@ fn walk_array_init_expression(mut with_db: RootDatabase) {
     assert_snapshot!(test_snapshot(&mut with_db, &[source], |db, file| {
         init_expr_diagnostics(db, file, "fn")
     }), @r"
-    Advice: DATATYPE
+    Info: DATATYPE
        ,-[ file:///test0.st:8:31 ]
        |
      8 |                 Base : Engine := [5];
@@ -304,7 +304,7 @@ fn struct_fields(mut with_db: RootDatabase) {
     assert_snapshot!(test_snapshot(&mut with_db, &[source], |db, file| {
         init_expr_diagnostics(db, file, "fn")
     }), @r"
-    Advice: DATATYPE
+    Info: DATATYPE
         ,-[ file:///test0.st:11:31 ]
         |
      11 |                 Base : Engine := (power := 100, oil := 10.0);

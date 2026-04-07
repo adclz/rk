@@ -11,7 +11,7 @@ FUNCTION fn1 : INT
 END_FUNCTION
 "#;
     assert_snapshot!(test_single_lint(&mut with_db, &[source], "empty-body"), @r"
-    [L0125] Advice: empty body
+    [L0125] Hint: empty body
        ,-[ file:///test0.st:2:1 ]
        |
      2 | ,-> FUNCTION fn1 : INT
@@ -31,7 +31,7 @@ FUNCTION_BLOCK fb1
 END_FUNCTION_BLOCK
 "#;
     assert_snapshot!(test_single_lint(&mut with_db, &[source], "empty-body"), @r"
-    [L0125] Advice: empty body
+    [L0125] Hint: empty body
        ,-[ file:///test0.st:2:1 ]
        |
      2 | ,-> FUNCTION_BLOCK fb1
@@ -53,7 +53,7 @@ CLASS c1
 END_CLASS
 "#;
     assert_snapshot!(test_single_lint(&mut with_db, &[source], "empty-body"), @r"
-    [L0125] Advice: empty body
+    [L0125] Hint: empty body
        ,-[ file:///test0.st:3:5 ]
        |
      3 | ,->     METHOD m1 : INT
@@ -97,7 +97,7 @@ END_VAR
 END_FUNCTION
 "#;
     assert_snapshot!(test_single_lint(&mut with_db, &[source], "empty-body"), @r"
-    [L0125] Advice: empty body
+    [L0125] Hint: empty body
        ,-[ file:///test0.st:2:1 ]
        |
      2 | ,-> FUNCTION fn1 : INT

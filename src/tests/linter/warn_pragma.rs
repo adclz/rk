@@ -46,7 +46,7 @@ VAR x : INT; END_VAR
 END_FUNCTION"#;
 
     assert_snapshot!(test_single_lint(&mut with_db, &[source], "warn-pragma"), @r"
-    [L0117] Advice: call site notice
+    [L0117] Info: call site notice
        ,-[ file:///test0.st:8:10 ]
        |
      3 | FUNCTION old_fn : INT

@@ -27,7 +27,7 @@ END_FUNCTION
     let refs = node.locations(&with_db).unwrap();
 
     assert_snapshot!(render_references(&with_db, &refs, "MyFB"), @r"
-    Advice: 2 reference(s) to 'MyFB'
+    Info: 2 reference(s) to 'MyFB'
        ,-[ file:///test0.st:1:16 ]
        |
      1 | FUNCTION_BLOCK MyFB
@@ -60,7 +60,7 @@ END_FUNCTION
     let refs = node.locations(&with_db).unwrap();
 
     assert_snapshot!(render_references(&with_db, &refs, "x"), @r"
-    Advice: 4 reference(s) to 'x'
+    Info: 4 reference(s) to 'x'
        ,-[ file:///test0.st:3:5 ]
        |
      3 |     x : INT;
@@ -98,7 +98,7 @@ END_FUNCTION
     let refs = node.locations(&with_db).unwrap();
 
     assert_snapshot!(render_references(&with_db, &refs, "x"), @r"
-    Advice: 4 reference(s) to 'x'
+    Info: 4 reference(s) to 'x'
        ,-[ file:///test0.st:3:5 ]
        |
      3 |     x : INT;
@@ -147,7 +147,7 @@ END_FUNCTION
     let refs = node.locations(&with_db).unwrap();
 
     assert_snapshot!(render_references(&with_db, &refs, "SharedFB"), @r"
-    Advice: 3 reference(s) to 'SharedFB'
+    Info: 3 reference(s) to 'SharedFB'
        ,-[ file:///test0.st:1:16 ]
        |
      1 | FUNCTION_BLOCK SharedFB
@@ -194,7 +194,7 @@ END_FUNCTION
     let refs = node.locations(&with_db).unwrap();
 
     assert_snapshot!(render_references(&with_db, &refs, "x"), @r"
-    Advice: 2 reference(s) to 'x'
+    Info: 2 reference(s) to 'x'
        ,-[ file:///test0.st:3:5 ]
        |
      3 |     x : INT;
@@ -232,7 +232,7 @@ END_NAMESPACE
     let refs = node.locations(&with_db).unwrap();
 
     assert_snapshot!(render_references(&with_db, &refs, "MyNs"), @r"
-    Advice: 2 reference(s) to 'MyNs'
+    Info: 2 reference(s) to 'MyNs'
        ,-[ file:///test0.st:1:11 ]
        |
      1 | NAMESPACE MyNs
@@ -271,7 +271,7 @@ END_FUNCTION
     let refs = node.locations(&with_db).unwrap();
 
     assert_snapshot!(render_references(&with_db, &refs, "MyNs"), @r"
-    Advice: 2 reference(s) to 'MyNs'
+    Info: 2 reference(s) to 'MyNs'
        ,-[ file:///test0.st:1:11 ]
        |
      1 | NAMESPACE MyNs
@@ -316,7 +316,7 @@ END_FUNCTION_BLOCK
     let refs = node.locations(&with_db).unwrap();
 
     assert_snapshot!(render_references(&with_db, &refs, "fuel"), @r"
-    Advice: 4 reference(s) to 'fuel'
+    Info: 4 reference(s) to 'fuel'
         ,-[ file:///test0.st:4:9 ]
         |
       4 |         fuel: BOOL;
@@ -368,7 +368,7 @@ END_FUNCTION_BLOCK
     let refs = node.locations(&with_db).unwrap();
 
     assert_snapshot!(render_references(&with_db, &refs, "fuel"), @r"
-    Advice: 4 reference(s) to 'fuel'
+    Info: 4 reference(s) to 'fuel'
         ,-[ file:///test0.st:4:9 ]
         |
       4 |         fuel: BOOL;
@@ -392,24 +392,24 @@ END_FUNCTION_BLOCK
     let refs = node.locations(&with_db).unwrap();
 
     assert_snapshot!(render_references(&with_db, &refs, "engine"), @r"
-       Advice: 4 reference(s) to 'engine'
-           ,-[ file:///test0.st:7:9 ]
-           |
-         7 |         engine: SubEngine;
-           |         ^^^|^^
-           |            `---- 4 reference(s) to 'engine'
-           |
-        16 |     my_var.engine.fuel := my_var.engine.fuel;
-           |            ^^^|^^                ^^^|^^
-           |               `-------------------------- reference
-           |                                     |
-           |                                     `---- reference
-           |
-        18 |     my_var.engine.fuel := 0;
-           |            ^^^|^^
-           |               `---- reference
-       ----'
-       ");
+    Info: 4 reference(s) to 'engine'
+        ,-[ file:///test0.st:7:9 ]
+        |
+      7 |         engine: SubEngine;
+        |         ^^^|^^
+        |            `---- 4 reference(s) to 'engine'
+        |
+     16 |     my_var.engine.fuel := my_var.engine.fuel;
+        |            ^^^|^^                ^^^|^^
+        |               `-------------------------- reference
+        |                                     |
+        |                                     `---- reference
+        |
+     18 |     my_var.engine.fuel := 0;
+        |            ^^^|^^
+        |               `---- reference
+    ----'
+    ");
 }
 
 #[rstest]
@@ -435,7 +435,7 @@ END_FUNCTION
     let refs = node.locations(&with_db).unwrap();
 
     assert_snapshot!(render_references(&with_db, &refs, "MyNs"), @r"
-    Advice: 2 reference(s) to 'MyNs'
+    Info: 2 reference(s) to 'MyNs'
        ,-[ file:///test0.st:1:11 ]
        |
      1 | NAMESPACE MyNs

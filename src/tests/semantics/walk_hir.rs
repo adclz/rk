@@ -25,7 +25,7 @@ FUNCTION_BLOCK fb1
 END_FUNCTION_BLOCK"#;
 
     assert_snapshot!(test_snapshot(&mut with_db, &[source], walk_hir_diagnostics), @r"
-    Advice: PouDecl(FunctionBlock)
+    Info: PouDecl(FunctionBlock)
        ,-[ file:///test0.st:2:16 ]
        |
      2 | FUNCTION_BLOCK fb1
@@ -54,7 +54,7 @@ CLASS C2
 END_CLASS"#;
 
     assert_snapshot!(test_snapshot(&mut with_db, &[source], walk_hir_diagnostics), @r"
-    Advice: PouDecl(Class)
+    Info: PouDecl(Class)
        ,-[ file:///test0.st:2:7 ]
        |
      2 | CLASS C2
@@ -83,7 +83,7 @@ INTERFACE ROOM
 END_INTERFACE "#;
 
     assert_snapshot!(test_snapshot(&mut with_db, &[source], walk_hir_diagnostics), @r"
-    Advice: PouDecl(Interface)
+    Info: PouDecl(Interface)
        ,-[ file:///test0.st:2:11 ]
        |
      2 | INTERFACE ROOM
@@ -121,7 +121,7 @@ FUNCTION_BLOCK fb1
 END_FUNCTION_BLOCK"#;
 
     assert_snapshot!(test_snapshot(&mut with_db, &[source], walk_hir_diagnostics), @r"
-    Advice: PouDecl(FunctionBlock)
+    Info: PouDecl(FunctionBlock)
         ,-[ file:///test0.st:2:16 ]
         |
       2 | FUNCTION_BLOCK fb1
@@ -215,7 +215,7 @@ FUNCTION_BLOCK fb1 EXTENDS base
 END_FUNCTION_BLOCK"#;
 
     assert_snapshot!(test_snapshot(&mut with_db, &[source], walk_hir_diagnostics), @r"
-    Advice: PouDecl(FunctionBlock)
+    Info: PouDecl(FunctionBlock)
        ,-[ file:///test0.st:2:16 ]
        |
      2 | FUNCTION_BLOCK fb1 EXTENDS base
