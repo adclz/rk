@@ -47,6 +47,7 @@ pub mod unused_import;
 pub mod unused_return_type;
 pub mod unused_variable;
 pub mod warn_pragma;
+pub mod yoda_condition;
 pub mod constant_loop_bounds;
 
 /// All lint rule names, for building configs that enable/disable specific rules.
@@ -85,6 +86,7 @@ pub const ALL_RULE_NAMES: &[&str] = &[
     unused_return_type::NAME,
     unused_variable::NAME,
     warn_pragma::NAME,
+    yoda_condition::NAME,
 ];
 
 /// Run all lint rules on a file, appending warnings to `diagnostics`.

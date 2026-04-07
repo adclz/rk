@@ -24,7 +24,7 @@ use super::{
     identical_sub_expr, identity_operation, input_assignment, loop_var_modified,
     missing_input_param, negated_comparison, negated_condition, redundant_not, run_lint,
     self_assignment, self_comparison, sub_self, uninitialized_output, unnecessary_else,
-    unnecessary_parens,
+    unnecessary_parens, yoda_condition,
 };
 
 /// Run all statement-walking lints in a single pass over the statement tree.
@@ -67,6 +67,7 @@ pub fn check<'db>(
         for_zero_step: config.is_enabled(for_zero_step::NAME),
         loop_var_modified: config.is_enabled(loop_var_modified::NAME),
         unnecessary_parens: config.is_enabled(unnecessary_parens::NAME),
+        yoda_condition: config.is_enabled(yoda_condition::NAME),
     };
 
     if !ctx.any_enabled() {
@@ -118,6 +119,7 @@ struct VisitorCtx {
     for_zero_step: bool,
     loop_var_modified: bool,
     unnecessary_parens: bool,
+    yoda_condition: bool,
 }
 
 impl VisitorCtx {
@@ -142,6 +144,7 @@ impl VisitorCtx {
             || self.for_zero_step
             || self.loop_var_modified
             || self.unnecessary_parens
+            || self.yoda_condition
     }
 
     fn any_expr_lint(&self) -> bool {
@@ -153,6 +156,7 @@ impl VisitorCtx {
             || self.sub_self
             || self.negated_comparison
             || self.unnecessary_parens
+            || self.yoda_condition
     }
 }
 
@@ -210,6 +214,11 @@ fn check_expr_lints<'db>(
     if ctx.unnecessary_parens {
         run_lint(unnecessary_parens::NAME, diagnostics, |d| {
             unnecessary_parens::check_node(db, expr, d)
+        });
+    }
+    if ctx.yoda_condition {
+        run_lint(yoda_condition::NAME, diagnostics, |d| {
+            yoda_condition::check_node(db, expr, d)
         });
     }
 
