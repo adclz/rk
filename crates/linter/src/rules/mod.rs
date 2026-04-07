@@ -19,6 +19,7 @@ pub mod constant_condition;
 pub mod dead_code;
 pub mod division_by_zero;
 pub mod duplicate_case;
+pub mod empty_case_branch;
 pub mod duplicate_namespace;
 pub mod single_element_array;
 pub mod duplicate_var_section;

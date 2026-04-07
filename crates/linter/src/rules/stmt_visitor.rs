@@ -19,7 +19,7 @@ use hir::{
 use ide_diagnostic::IdeDiagnostic;
 
 use super::{
-    bool_comparison, constant_condition, duplicate_case, identical_sub_expr, identity_operation,
+    bool_comparison, constant_condition, duplicate_case, empty_case_branch, identical_sub_expr, identity_operation,
     input_assignment, missing_input_param, negated_comparison, negated_condition, redundant_not,
     run_lint, self_assignment, self_comparison, sub_self, uninitialized_output, unnecessary_else,
 };
@@ -59,6 +59,7 @@ pub fn check<'db>(
         sub_self: config.is_enabled(sub_self::NAME),
         negated_comparison: config.is_enabled(negated_comparison::NAME),
         duplicate_case: config.is_enabled(duplicate_case::NAME),
+        empty_case_branch: config.is_enabled(empty_case_branch::NAME),
     };
 
     if !ctx.any_enabled() {
@@ -96,6 +97,7 @@ struct VisitorCtx {
     sub_self: bool,
     negated_comparison: bool,
     duplicate_case: bool,
+    empty_case_branch: bool,
 }
 
 impl VisitorCtx {
@@ -115,6 +117,7 @@ impl VisitorCtx {
             || self.sub_self
             || self.negated_comparison
             || self.duplicate_case
+            || self.empty_case_branch
     }
 
     fn any_expr_lint(&self) -> bool {
@@ -328,6 +331,11 @@ fn visit_statements<'db>(
                 if ctx.duplicate_case {
                     run_lint(duplicate_case::NAME, diagnostics, |d| {
                         duplicate_case::check_case(db, cases, d)
+                    });
+                }
+                if ctx.empty_case_branch {
+                    run_lint(empty_case_branch::NAME, diagnostics, |d| {
+                        empty_case_branch::check_case(db, cases, d)
                     });
                 }
                 for (_, stmts) in cases {
