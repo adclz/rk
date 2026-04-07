@@ -24,7 +24,7 @@ impl ErrorCode for SubSelf {
     }
 }
 
-pub fn check_expr<'db>(
+pub fn check_node<'db>(
     db: &'db dyn WorkspaceDataBase,
     body: &BodyInferenceResult<'db>,
     expr: &Expr<'db>,
@@ -36,8 +36,6 @@ pub fn check_expr<'db>(
             operator: AddOperatorKind::Minus,
             right,
         } => {
-            check_expr(db, body, left, diagnostics);
-            check_expr(db, body, right, diagnostics);
 
             if let Some(name) = same_variable(db, body, left, right) {
                 diagnostics.push(
@@ -49,20 +47,6 @@ pub fn check_expr<'db>(
                         .call(),
                 );
             }
-        }
-        ExprKind::AddOperator { left, right, .. }
-        | ExprKind::MultOperator { left, right, .. }
-        | ExprKind::BooleanOperator { left, right, .. }
-        | ExprKind::ComparisonOperator { left, right, .. }
-        | ExprKind::PowerOperator { left, right } => {
-            check_expr(db, body, left, diagnostics);
-            check_expr(db, body, right, diagnostics);
-        }
-        ExprKind::UnaryOperator { expr, .. } => {
-            check_expr(db, body, expr, diagnostics);
-        }
-        ExprKind::PrimaryExpr(PrimaryExpr::ParenthesizedExpr { expr }) => {
-            check_expr(db, body, expr, diagnostics);
         }
         _ => {}
     }

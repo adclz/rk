@@ -23,7 +23,7 @@ impl ErrorCode for RedundantNot {
     }
 }
 
-pub fn check_expr<'db>(
+pub fn check_node<'db>(
     db: &'db dyn WorkspaceDataBase,
     expr: &Expr<'db>,
     diagnostics: &mut Vec<IdeDiagnostic>,
@@ -49,21 +49,6 @@ pub fn check_expr<'db>(
                 );
             }
             // Recurse into inner
-            check_expr(db, inner, diagnostics);
-        }
-        ExprKind::UnaryOperator { expr: inner, .. } => {
-            check_expr(db, inner, diagnostics);
-        }
-        ExprKind::AddOperator { left, right, .. }
-        | ExprKind::MultOperator { left, right, .. }
-        | ExprKind::BooleanOperator { left, right, .. }
-        | ExprKind::ComparisonOperator { left, right, .. }
-        | ExprKind::PowerOperator { left, right } => {
-            check_expr(db, left, diagnostics);
-            check_expr(db, right, diagnostics);
-        }
-        ExprKind::PrimaryExpr(PrimaryExpr::ParenthesizedExpr { expr }) => {
-            check_expr(db, expr, diagnostics);
         }
         _ => {}
     }

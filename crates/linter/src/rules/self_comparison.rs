@@ -25,7 +25,7 @@ impl ErrorCode for SelfComparison {
 }
 
 /// Check a comparison expression for `x = x`, `x <> x`, `x > x`, etc.
-pub fn check_expr<'db>(
+pub fn check_node<'db>(
     db: &'db dyn WorkspaceDataBase,
     body: &BodyInferenceResult<'db>,
     expr: &Expr<'db>,
@@ -37,8 +37,6 @@ pub fn check_expr<'db>(
             operator,
             right,
         } => {
-            check_expr(db, body, left, diagnostics);
-            check_expr(db, body, right, diagnostics);
 
             if let Some(var_name) = same_variable(db, body, left, right) {
                 let op = operator.as_str();
@@ -61,19 +59,6 @@ pub fn check_expr<'db>(
                         .call(),
                 );
             }
-        }
-        ExprKind::AddOperator { left, right, .. }
-        | ExprKind::MultOperator { left, right, .. }
-        | ExprKind::BooleanOperator { left, right, .. }
-        | ExprKind::PowerOperator { left, right } => {
-            check_expr(db, body, left, diagnostics);
-            check_expr(db, body, right, diagnostics);
-        }
-        ExprKind::UnaryOperator { expr, .. } => {
-            check_expr(db, body, expr, diagnostics);
-        }
-        ExprKind::PrimaryExpr(PrimaryExpr::ParenthesizedExpr { expr }) => {
-            check_expr(db, body, expr, diagnostics);
         }
         _ => {}
     }

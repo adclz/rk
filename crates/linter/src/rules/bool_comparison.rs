@@ -22,62 +22,35 @@ impl ErrorCode for BoolComparison {
     }
 }
 
-/// Check a single expression for `x = TRUE`, `x = FALSE`, `x <> TRUE`, `x <> FALSE`.
-pub fn check_expr<'db>(
+/// Check a single node (no recursion) for `x = TRUE`, `x = FALSE`, `x <> TRUE`, `x <> FALSE`.
+pub fn check_node<'db>(
     db: &'db dyn WorkspaceDataBase,
     expr: &Expr<'db>,
     diagnostics: &mut Vec<IdeDiagnostic>,
 ) {
-    match expr.expr(db) {
-        ExprKind::ComparisonOperator {
-            left,
-            operator,
-            right,
-        } => {
-            // Recurse into subexpressions
-            check_expr(db, left, diagnostics);
-            check_expr(db, right, diagnostics);
-
-            // Only = and <> are relevant for bool comparison
-            if !matches!(operator, ComparisonOperatorKind::Eq | ComparisonOperatorKind::Ne) {
-                return;
-            }
-
-            let (suggestion, span) =
-                if let Some(val) = is_bool_literal(db, right) {
-                    let s = simplification(*operator, &val);
-                    (s, expr.get_span(db))
-                } else if let Some(val) = is_bool_literal(db, left) {
-                    let s = simplification(*operator, &val);
-                    (s, expr.get_span(db))
-                } else {
-                    return;
-                };
-
-            diagnostics.push(
-                diag()
-                    .message(format!("comparison with boolean literal can be simplified to {suggestion}"))
-                    .desc(&BoolComparison)
-                    .range(span)
-                    .severity(DiagnosticSeverity::INFORMATION)
-                    .call(),
-            );
-        }
-        ExprKind::AddOperator { left, right, .. }
-        | ExprKind::MultOperator { left, right, .. }
-        | ExprKind::BooleanOperator { left, right, .. }
-        | ExprKind::PowerOperator { left, right } => {
-            check_expr(db, left, diagnostics);
-            check_expr(db, right, diagnostics);
-        }
-        ExprKind::UnaryOperator { expr, .. } => {
-            check_expr(db, expr, diagnostics);
-        }
-        ExprKind::PrimaryExpr(PrimaryExpr::ParenthesizedExpr { expr }) => {
-            check_expr(db, expr, diagnostics);
-        }
-        _ => {}
+    let ExprKind::ComparisonOperator { left, operator, right } = expr.expr(db) else {
+        return;
+    };
+    if !matches!(operator, ComparisonOperatorKind::Eq | ComparisonOperatorKind::Ne) {
+        return;
     }
+
+    let suggestion = if let Some(val) = is_bool_literal(db, right) {
+        simplification(*operator, &val)
+    } else if let Some(val) = is_bool_literal(db, left) {
+        simplification(*operator, &val)
+    } else {
+        return;
+    };
+
+    diagnostics.push(
+        diag()
+            .message(format!("comparison with boolean literal can be simplified to {suggestion}"))
+            .desc(&BoolComparison)
+            .range(expr.get_span(db))
+            .severity(DiagnosticSeverity::INFORMATION)
+            .call(),
+    );
 }
 
 fn is_bool_literal<'db>(db: &'db dyn WorkspaceDataBase, expr: &Expr<'db>) -> Option<String> {
@@ -85,20 +58,16 @@ fn is_bool_literal<'db>(db: &'db dyn WorkspaceDataBase, expr: &Expr<'db>) -> Opt
         ExprKind::PrimaryExpr(PrimaryExpr::Literal(Elementary::Bool(ident))) => {
             Some(ident.text(db).to_uppercase().to_string())
         }
-        ExprKind::PrimaryExpr(PrimaryExpr::ParenthesizedExpr { expr }) => {
-            is_bool_literal(db, expr)
-        }
         _ => None,
     }
 }
 
-/// Returns the simplified form as a hint string.
 fn simplification(op: ComparisonOperatorKind, bool_val: &str) -> &'static str {
     match (op, bool_val == "TRUE") {
-        (ComparisonOperatorKind::Eq, true) => "the variable itself",   // x = TRUE  -  x
-        (ComparisonOperatorKind::Eq, false) => "NOT variable",         // x = FALSE -  NOT x
-        (ComparisonOperatorKind::Ne, true) => "NOT variable",          // x <> TRUE -  NOT x
-        (ComparisonOperatorKind::Ne, false) => "the variable itself",  // x <> FALSE - x
+        (ComparisonOperatorKind::Eq, true) => "the variable itself",
+        (ComparisonOperatorKind::Eq, false) => "NOT variable",
+        (ComparisonOperatorKind::Ne, true) => "NOT variable",
+        (ComparisonOperatorKind::Ne, false) => "the variable itself",
         _ => unreachable!(),
     }
 }

@@ -23,7 +23,7 @@ impl ErrorCode for IdentityOperation {
     }
 }
 
-pub fn check_expr<'db>(
+pub fn check_node<'db>(
     db: &'db dyn WorkspaceDataBase,
     expr: &Expr<'db>,
     diagnostics: &mut Vec<IdeDiagnostic>,
@@ -34,8 +34,6 @@ pub fn check_expr<'db>(
             operator,
             right,
         } => {
-            check_expr(db, left, diagnostics);
-            check_expr(db, right, diagnostics);
 
             match operator {
                 MultOperatorKind::Mul => {
@@ -58,8 +56,6 @@ pub fn check_expr<'db>(
             operator,
             right,
         } => {
-            check_expr(db, left, diagnostics);
-            check_expr(db, right, diagnostics);
 
             match operator {
                 AddOperatorKind::Plus => {
@@ -75,18 +71,6 @@ pub fn check_expr<'db>(
                     }
                 }
             }
-        }
-        ExprKind::BooleanOperator { left, right, .. }
-        | ExprKind::ComparisonOperator { left, right, .. }
-        | ExprKind::PowerOperator { left, right } => {
-            check_expr(db, left, diagnostics);
-            check_expr(db, right, diagnostics);
-        }
-        ExprKind::UnaryOperator { expr, .. } => {
-            check_expr(db, expr, diagnostics);
-        }
-        ExprKind::PrimaryExpr(PrimaryExpr::ParenthesizedExpr { expr }) => {
-            check_expr(db, expr, diagnostics);
         }
         _ => {}
     }

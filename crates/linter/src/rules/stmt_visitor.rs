@@ -6,7 +6,10 @@
 use db::{WorkspaceDataBase, config_file::LinterConfig};
 use hir::{
     hir_def::{
-        expressions::statement::{Stmt, StmtKind},
+        expressions::{
+            expression::Expr,
+            statement::{Stmt, StmtKind},
+        },
         pous::pou::Pou,
         scope::{ScopeId, ScopeKind},
         semantic_index::get_scope,
@@ -17,8 +20,8 @@ use ide_diagnostic::IdeDiagnostic;
 
 use super::{
     bool_comparison, constant_condition, duplicate_case, identical_sub_expr, identity_operation,
-    input_assignment, missing_input_param, negated_condition, redundant_not, run_lint,
-    self_assignment, self_comparison, sub_self, uninitialized_output, unnecessary_else,
+    input_assignment, missing_input_param, negated_comparison, negated_condition, redundant_not,
+    run_lint, self_assignment, self_comparison, sub_self, uninitialized_output, unnecessary_else,
 };
 
 /// Run all statement-walking lints in a single pass over the statement tree.
@@ -54,10 +57,10 @@ pub fn check<'db>(
         identity_operation: config.is_enabled(identity_operation::NAME),
         redundant_not: config.is_enabled(redundant_not::NAME),
         sub_self: config.is_enabled(sub_self::NAME),
+        negated_comparison: config.is_enabled(negated_comparison::NAME),
         duplicate_case: config.is_enabled(duplicate_case::NAME),
     };
 
-    // Nothing enabled - skip walk entirely
     if !ctx.any_enabled() {
         return;
     }
@@ -70,7 +73,6 @@ pub fn check<'db>(
 
     visit_statements(db, body, &ctx, statements, diagnostics, &mut assigned_vars);
 
-    // Post-walk: check uninitialized outputs
     if let Some(assigned) = assigned_vars {
         run_lint(uninitialized_output::NAME, diagnostics, |d| {
             uninitialized_output::check_outputs(db, scope, &assigned, d)
@@ -92,6 +94,7 @@ struct VisitorCtx {
     redundant_not: bool,
     identity_operation: bool,
     sub_self: bool,
+    negated_comparison: bool,
     duplicate_case: bool,
 }
 
@@ -110,7 +113,90 @@ impl VisitorCtx {
             || self.redundant_not
             || self.identity_operation
             || self.sub_self
+            || self.negated_comparison
             || self.duplicate_case
+    }
+
+    fn any_expr_lint(&self) -> bool {
+        self.bool_comparison
+            || self.self_comparison
+            || self.identical_sub_expr
+            || self.redundant_not
+            || self.identity_operation
+            || self.sub_self
+            || self.negated_comparison
+    }
+}
+
+/// Recursively walk an expression tree and run all expression-level lints at each node.
+/// Each lint only checks the current node - the recursion is handled here.
+fn check_expr_lints<'db>(
+    db: &'db dyn WorkspaceDataBase,
+    body: &BodyInferenceResult<'db>,
+    ctx: &VisitorCtx,
+    expr: &Expr<'db>,
+    diagnostics: &mut Vec<IdeDiagnostic>,
+) {
+    use hir::hir_def::expressions::expression::{ExprKind, PrimaryExpr};
+
+    if !ctx.any_expr_lint() {
+        return;
+    }
+
+    // Run all lints on the current node
+    if ctx.bool_comparison {
+        run_lint(bool_comparison::NAME, diagnostics, |d| {
+            bool_comparison::check_node(db, expr, d)
+        });
+    }
+    if ctx.self_comparison {
+        run_lint(self_comparison::NAME, diagnostics, |d| {
+            self_comparison::check_node(db, body, expr, d)
+        });
+    }
+    if ctx.identical_sub_expr {
+        run_lint(identical_sub_expr::NAME, diagnostics, |d| {
+            identical_sub_expr::check_node(db, body, expr, d)
+        });
+    }
+    if ctx.redundant_not {
+        run_lint(redundant_not::NAME, diagnostics, |d| {
+            redundant_not::check_node(db, expr, d)
+        });
+    }
+    if ctx.identity_operation {
+        run_lint(identity_operation::NAME, diagnostics, |d| {
+            identity_operation::check_node(db, expr, d)
+        });
+    }
+    if ctx.sub_self {
+        run_lint(sub_self::NAME, diagnostics, |d| {
+            sub_self::check_node(db, body, expr, d)
+        });
+    }
+    if ctx.negated_comparison {
+        run_lint(negated_comparison::NAME, diagnostics, |d| {
+            negated_comparison::check_node(db, expr, d)
+        });
+    }
+
+    // Recurse into sub-expressions (single place for all lints)
+    match expr.expr(db) {
+        ExprKind::AddOperator { left, right, .. }
+        | ExprKind::MultOperator { left, right, .. }
+        | ExprKind::BooleanOperator { left, right, .. }
+        | ExprKind::ComparisonOperator { left, right, .. }
+        | ExprKind::PowerOperator { left, right } => {
+            check_expr_lints(db, body, ctx, left, diagnostics);
+            check_expr_lints(db, body, ctx, right, diagnostics);
+        }
+        ExprKind::UnaryOperator { expr, .. } => {
+            check_expr_lints(db, body, ctx, expr, diagnostics);
+        }
+        ExprKind::PrimaryExpr(PrimaryExpr::ParenthesizedExpr { expr }) => {
+            check_expr_lints(db, body, ctx, expr, diagnostics);
+        }
+        _ => {}
     }
 }
 
@@ -127,36 +213,7 @@ fn visit_statements<'db>(
     for stmt in stmts {
         match stmt.stmt(db) {
             StmtKind::Assignment { var, target } => {
-                if ctx.bool_comparison {
-                    run_lint(bool_comparison::NAME, diagnostics, |d| {
-                        bool_comparison::check_expr(db, target, d)
-                    });
-                }
-                if ctx.self_comparison {
-                    run_lint(self_comparison::NAME, diagnostics, |d| {
-                        self_comparison::check_expr(db, body, target, d)
-                    });
-                }
-                if ctx.identical_sub_expr {
-                    run_lint(identical_sub_expr::NAME, diagnostics, |d| {
-                        identical_sub_expr::check_expr(db, body, target, d)
-                    });
-                }
-                if ctx.redundant_not {
-                    run_lint(redundant_not::NAME, diagnostics, |d| {
-                        redundant_not::check_expr(db, target, d)
-                    });
-                }
-                if ctx.identity_operation {
-                    run_lint(identity_operation::NAME, diagnostics, |d| {
-                        identity_operation::check_expr(db, target, d)
-                    });
-                }
-                if ctx.sub_self {
-                    run_lint(sub_self::NAME, diagnostics, |d| {
-                        sub_self::check_expr(db, body, target, d)
-                    });
-                }
+                check_expr_lints(db, body, ctx, target, diagnostics);
                 if ctx.input_assignment {
                     run_lint(input_assignment::NAME, diagnostics, |d| {
                         input_assignment::check_assignment(db, body, *var, d)
@@ -168,48 +225,31 @@ fn visit_statements<'db>(
                     });
                 }
                 if ctx.uninitialized_output
-                    && let Some(assigned) = assigned_vars.as_mut() {
-                        uninitialized_output::collect_assigned(db, body, *var, assigned);
-                    }
+                    && let Some(assigned) = assigned_vars.as_mut()
+                {
+                    uninitialized_output::collect_assigned(db, body, *var, assigned);
+                }
             }
-            StmtKind::AssignmentAttempt { var, .. } => {
+            StmtKind::AssignmentAttempt { var, target } => {
+                check_expr_lints(db, body, ctx, target, diagnostics);
                 if ctx.input_assignment {
                     run_lint(input_assignment::NAME, diagnostics, |d| {
                         input_assignment::check_assignment(db, body, *var, d)
                     });
                 }
                 if ctx.uninitialized_output
-                    && let Some(assigned) = assigned_vars.as_mut() {
-                        uninitialized_output::collect_assigned(db, body, *var, assigned);
-                    }
+                    && let Some(assigned) = assigned_vars.as_mut()
+                {
+                    uninitialized_output::collect_assigned(db, body, *var, assigned);
+                }
             }
             StmtKind::If {
                 condition,
                 then,
                 else_if,
                 else_,
-                ..
             } => {
-                if ctx.bool_comparison {
-                    run_lint(bool_comparison::NAME, diagnostics, |d| {
-                        bool_comparison::check_expr(db, condition, d)
-                    });
-                }
-                if ctx.self_comparison {
-                    run_lint(self_comparison::NAME, diagnostics, |d| {
-                        self_comparison::check_expr(db, body, condition, d)
-                    });
-                }
-                if ctx.identical_sub_expr {
-                    run_lint(identical_sub_expr::NAME, diagnostics, |d| {
-                        identical_sub_expr::check_expr(db, body, condition, d)
-                    });
-                }
-                if ctx.redundant_not {
-                    run_lint(redundant_not::NAME, diagnostics, |d| {
-                        redundant_not::check_expr(db, condition, d)
-                    });
-                }
+                check_expr_lints(db, body, ctx, condition, diagnostics);
                 if ctx.constant_condition {
                     run_lint(constant_condition::NAME, diagnostics, |d| {
                         constant_condition::check_condition(db, condition, "IF", d)
@@ -219,11 +259,7 @@ fn visit_statements<'db>(
                     visit_statements(db, body, ctx, stmts, diagnostics, assigned_vars);
                 }
                 for (cond, stmts) in else_if {
-                    if ctx.bool_comparison {
-                        run_lint(bool_comparison::NAME, diagnostics, |d| {
-                            bool_comparison::check_expr(db, cond, d)
-                        });
-                    }
+                    check_expr_lints(db, body, ctx, cond, diagnostics);
                     if ctx.constant_condition {
                         run_lint(constant_condition::NAME, diagnostics, |d| {
                             constant_condition::check_condition(db, cond, "ELSIF", d)
@@ -248,13 +284,8 @@ fn visit_statements<'db>(
             StmtKind::While {
                 condition,
                 body: loop_body,
-                ..
             } => {
-                if ctx.bool_comparison {
-                    run_lint(bool_comparison::NAME, diagnostics, |d| {
-                        bool_comparison::check_expr(db, condition, d)
-                    });
-                }
+                check_expr_lints(db, body, ctx, condition, diagnostics);
                 if ctx.constant_condition {
                     run_lint(constant_condition::NAME, diagnostics, |d| {
                         constant_condition::check_condition(db, condition, "WHILE", d)
@@ -262,16 +293,25 @@ fn visit_statements<'db>(
                 }
                 visit_statements(db, body, ctx, loop_body, diagnostics, assigned_vars);
             }
+            StmtKind::For {
+                body: loop_body,
+                start,
+                end,
+                step,
+                ..
+            } => {
+                visit_statements(db, body, ctx, loop_body, diagnostics, assigned_vars);
+                check_expr_lints(db, body, ctx, start, diagnostics);
+                check_expr_lints(db, body, ctx, end, diagnostics);
+                if let Some(step) = step {
+                    check_expr_lints(db, body, ctx, step, diagnostics);
+                }
+            }
             StmtKind::Repeat {
                 condition,
                 body: loop_body,
-                ..
             } => {
-                if ctx.bool_comparison {
-                    run_lint(bool_comparison::NAME, diagnostics, |d| {
-                        bool_comparison::check_expr(db, condition, d)
-                    });
-                }
+                check_expr_lints(db, body, ctx, condition, diagnostics);
                 if ctx.constant_condition {
                     run_lint(constant_condition::NAME, diagnostics, |d| {
                         constant_condition::check_condition(db, condition, "UNTIL", d)
@@ -279,7 +319,12 @@ fn visit_statements<'db>(
                 }
                 visit_statements(db, body, ctx, loop_body, diagnostics, assigned_vars);
             }
-            StmtKind::Case { cases, else_, .. } => {
+            StmtKind::Case { 
+                condition,
+                cases, 
+                else_ 
+            } => {
+                check_expr_lints(db, body, ctx, condition, diagnostics);
                 if ctx.duplicate_case {
                     run_lint(duplicate_case::NAME, diagnostics, |d| {
                         duplicate_case::check_case(db, cases, d)
@@ -298,11 +343,6 @@ fn visit_statements<'db>(
                         missing_input_param::check_func_call(db, body, *stmt, *call, d)
                     });
                 }
-            }
-            StmtKind::For {
-                body: loop_body, ..
-            } => {
-                visit_statements(db, body, ctx, loop_body, diagnostics, assigned_vars);
             }
             _ => {}
         }
