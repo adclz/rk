@@ -7,10 +7,10 @@ use db::{WorkspaceDataBase, config_file::LinterConfig};
 use hir::{
     hir_def::{
         expressions::{
-            expression::Expr,
+            expression::{Expr, VariableAccess},
             statement::{Stmt, StmtKind},
         },
-        pous::pou::Pou,
+        pous::{pou::Pou, variable::VariableDecl},
         scope::{ScopeId, ScopeKind},
         semantic_index::get_scope,
     },
@@ -21,7 +21,8 @@ use ide_diagnostic::IdeDiagnostic;
 use super::{
     bool_comparison, constant_condition, duplicate_case, empty_case_branch, for_zero_step,
     identical_sub_expr, identity_operation,
-    input_assignment, missing_input_param, negated_comparison, negated_condition, redundant_not,
+    input_assignment, loop_var_modified, missing_input_param, negated_comparison,
+    negated_condition, redundant_not,
     run_lint, self_assignment, self_comparison, sub_self, uninitialized_output, unnecessary_else,
     unnecessary_parens,
 };
@@ -63,6 +64,7 @@ pub fn check<'db>(
         duplicate_case: config.is_enabled(duplicate_case::NAME),
         empty_case_branch: config.is_enabled(empty_case_branch::NAME),
         for_zero_step: config.is_enabled(for_zero_step::NAME),
+        loop_var_modified: config.is_enabled(loop_var_modified::NAME),
         unnecessary_parens: config.is_enabled(unnecessary_parens::NAME),
     };
 
@@ -76,7 +78,16 @@ pub fn check<'db>(
         None
     };
 
-    visit_statements(db, body, &ctx, statements, diagnostics, &mut assigned_vars);
+    let mut active_loop_vars: Vec<(VariableDecl<'db>, VariableAccess<'db>)> = Vec::new();
+    visit_statements(
+        db,
+        body,
+        &ctx,
+        statements,
+        diagnostics,
+        &mut assigned_vars,
+        &mut active_loop_vars,
+    );
 
     if let Some(assigned) = assigned_vars {
         run_lint(uninitialized_output::NAME, diagnostics, |d| {
@@ -103,6 +114,7 @@ struct VisitorCtx {
     duplicate_case: bool,
     empty_case_branch: bool,
     for_zero_step: bool,
+    loop_var_modified: bool,
     unnecessary_parens: bool,
 }
 
@@ -125,6 +137,7 @@ impl VisitorCtx {
             || self.duplicate_case
             || self.empty_case_branch
             || self.for_zero_step
+            || self.loop_var_modified
             || self.unnecessary_parens
     }
 
@@ -226,6 +239,7 @@ fn visit_statements<'db>(
     assigned_vars: &mut Option<
         rustc_hash::FxHashSet<hir::hir_def::pous::variable::VariableDecl<'db>>,
     >,
+    active_loop_vars: &mut Vec<(VariableDecl<'db>, VariableAccess<'db>)>,
 ) {
     for stmt in stmts {
         match stmt.stmt(db) {
@@ -241,6 +255,11 @@ fn visit_statements<'db>(
                         self_assignment::check_assignment(db, body, *stmt, *var, *target, d)
                     });
                 }
+                if ctx.loop_var_modified {
+                    run_lint(loop_var_modified::NAME, diagnostics, |d| {
+                        loop_var_modified::check_assignment(db, body, *var, active_loop_vars, d)
+                    });
+                }
                 if ctx.uninitialized_output
                     && let Some(assigned) = assigned_vars.as_mut()
                 {
@@ -252,6 +271,11 @@ fn visit_statements<'db>(
                 if ctx.input_assignment {
                     run_lint(input_assignment::NAME, diagnostics, |d| {
                         input_assignment::check_assignment(db, body, *var, d)
+                    });
+                }
+                if ctx.loop_var_modified {
+                    run_lint(loop_var_modified::NAME, diagnostics, |d| {
+                        loop_var_modified::check_assignment(db, body, *var, active_loop_vars, d)
                     });
                 }
                 if ctx.uninitialized_output
@@ -273,7 +297,7 @@ fn visit_statements<'db>(
                     });
                 }
                 if let Some(stmts) = then {
-                    visit_statements(db, body, ctx, stmts, diagnostics, assigned_vars);
+                    visit_statements(db, body, ctx, stmts, diagnostics, assigned_vars, active_loop_vars);
                 }
                 for (cond, stmts) in else_if {
                     check_expr_lints(db, body, ctx, cond, diagnostics);
@@ -282,10 +306,10 @@ fn visit_statements<'db>(
                             constant_condition::check_condition(db, cond, "ELSIF", d)
                         });
                     }
-                    visit_statements(db, body, ctx, stmts, diagnostics, assigned_vars);
+                    visit_statements(db, body, ctx, stmts, diagnostics, assigned_vars, active_loop_vars);
                 }
                 if let Some(stmts) = else_ {
-                    visit_statements(db, body, ctx, stmts, diagnostics, assigned_vars);
+                    visit_statements(db, body, ctx, stmts, diagnostics, assigned_vars, active_loop_vars);
                 }
                 if ctx.unnecessary_else {
                     run_lint(unnecessary_else::NAME, diagnostics, |d| {
@@ -308,16 +332,29 @@ fn visit_statements<'db>(
                         constant_condition::check_condition(db, condition, "WHILE", d)
                     });
                 }
-                visit_statements(db, body, ctx, loop_body, diagnostics, assigned_vars);
+                visit_statements(db, body, ctx, loop_body, diagnostics, assigned_vars, active_loop_vars);
             }
             StmtKind::For {
                 body: loop_body,
                 start,
                 end,
                 step,
-                ..
+                control_variable,
             } => {
-                visit_statements(db, body, ctx, loop_body, diagnostics, assigned_vars);
+                let pushed = if ctx.loop_var_modified {
+                    if let Some(decl) = loop_var_modified::resolve_control_var(db, body, *control_variable) {
+                        active_loop_vars.push((decl, *control_variable));
+                        true
+                    } else {
+                        false
+                    }
+                } else {
+                    false
+                };
+                visit_statements(db, body, ctx, loop_body, diagnostics, assigned_vars, active_loop_vars);
+                if pushed {
+                    active_loop_vars.pop();
+                }
                 check_expr_lints(db, body, ctx, start, diagnostics);
                 check_expr_lints(db, body, ctx, end, diagnostics);
                 if let Some(step) = step {
@@ -339,7 +376,7 @@ fn visit_statements<'db>(
                         constant_condition::check_condition(db, condition, "UNTIL", d)
                     });
                 }
-                visit_statements(db, body, ctx, loop_body, diagnostics, assigned_vars);
+                visit_statements(db, body, ctx, loop_body, diagnostics, assigned_vars, active_loop_vars);
             }
             StmtKind::Case { 
                 condition,
@@ -358,10 +395,10 @@ fn visit_statements<'db>(
                     });
                 }
                 for (_, stmts) in cases {
-                    visit_statements(db, body, ctx, stmts, diagnostics, assigned_vars);
+                    visit_statements(db, body, ctx, stmts, diagnostics, assigned_vars, active_loop_vars);
                 }
                 if let Some(stmts) = else_ {
-                    visit_statements(db, body, ctx, stmts, diagnostics, assigned_vars);
+                    visit_statements(db, body, ctx, stmts, diagnostics, assigned_vars, active_loop_vars);
                 }
             }
             StmtKind::FuncCall(call) => {

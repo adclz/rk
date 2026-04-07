@@ -30,6 +30,7 @@ pub mod for_zero_step;
 pub mod identical_sub_expr;
 pub mod identity_operation;
 pub mod input_assignment;
+pub mod loop_var_modified;
 pub mod missing_input_param;
 pub mod negated_comparison;
 pub mod negated_condition;
@@ -65,6 +66,7 @@ pub const ALL_RULE_NAMES: &[&str] = &[
     identical_sub_expr::NAME,
     identity_operation::NAME,
     input_assignment::NAME,
+    loop_var_modified::NAME,
     missing_input_param::NAME,
     negated_comparison::NAME,
     negated_condition::NAME,

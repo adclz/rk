@@ -15,6 +15,7 @@ mod for_zero_step;
 mod identical_sub_expr;
 mod identity_operation;
 mod input_assignment;
+mod loop_var_modified;
 mod missing_input_param;
 mod negated_comparison;
 mod negated_condition;
