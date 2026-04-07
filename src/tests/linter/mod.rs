@@ -11,6 +11,7 @@ mod duplicate_var_section;
 mod empty_body;
 mod effectless_statement;
 mod for_loop_step_sign;
+mod for_zero_step;
 mod identical_sub_expr;
 mod identity_operation;
 mod input_assignment;

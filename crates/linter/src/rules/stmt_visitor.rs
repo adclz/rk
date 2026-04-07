@@ -19,7 +19,7 @@ use hir::{
 use ide_diagnostic::IdeDiagnostic;
 
 use super::{
-    bool_comparison, constant_condition, duplicate_case, empty_case_branch, identical_sub_expr, identity_operation,
+    bool_comparison, constant_condition, duplicate_case, empty_case_branch, for_zero_step, identical_sub_expr, identity_operation,
     input_assignment, missing_input_param, negated_comparison, negated_condition, redundant_not,
     run_lint, self_assignment, self_comparison, sub_self, uninitialized_output, unnecessary_else,
 };
@@ -60,6 +60,7 @@ pub fn check<'db>(
         negated_comparison: config.is_enabled(negated_comparison::NAME),
         duplicate_case: config.is_enabled(duplicate_case::NAME),
         empty_case_branch: config.is_enabled(empty_case_branch::NAME),
+        for_zero_step: config.is_enabled(for_zero_step::NAME),
     };
 
     if !ctx.any_enabled() {
@@ -98,6 +99,7 @@ struct VisitorCtx {
     negated_comparison: bool,
     duplicate_case: bool,
     empty_case_branch: bool,
+    for_zero_step: bool,
 }
 
 impl VisitorCtx {
@@ -118,6 +120,7 @@ impl VisitorCtx {
             || self.negated_comparison
             || self.duplicate_case
             || self.empty_case_branch
+            || self.for_zero_step
     }
 
     fn any_expr_lint(&self) -> bool {
@@ -308,6 +311,11 @@ fn visit_statements<'db>(
                 check_expr_lints(db, body, ctx, end, diagnostics);
                 if let Some(step) = step {
                     check_expr_lints(db, body, ctx, step, diagnostics);
+                    if ctx.for_zero_step {
+                        run_lint(for_zero_step::NAME, diagnostics, |d| {
+                            for_zero_step::check_step(db, step, d)
+                        });
+                    }
                 }
             }
             StmtKind::Repeat {
