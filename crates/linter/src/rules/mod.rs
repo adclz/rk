@@ -47,12 +47,14 @@ pub mod unused_import;
 pub mod unused_return_type;
 pub mod unused_variable;
 pub mod warn_pragma;
+pub mod constant_loop_bounds;
 
 /// All lint rule names, for building configs that enable/disable specific rules.
 pub const ALL_RULE_NAMES: &[&str] = &[
     bool_comparison::NAME,
     case_without_else::NAME,
     constant_condition::NAME,
+    constant_loop_bounds::NAME,
     dead_code::NAME,
     division_by_zero::NAME,
     duplicate_case::NAME,

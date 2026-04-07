@@ -1,6 +1,7 @@
 mod bool_comparison;
 mod case_without_else;
 mod constant_condition;
+mod constant_loop_bounds;
 mod dead_code;
 mod division_by_zero;
 mod duplicate_case;

@@ -19,11 +19,11 @@ use hir::{
 use ide_diagnostic::IdeDiagnostic;
 
 use super::{
+    constant_loop_bounds,
     bool_comparison, constant_condition, duplicate_case, empty_case_branch, for_zero_step,
-    identical_sub_expr, identity_operation,
-    input_assignment, loop_var_modified, missing_input_param, negated_comparison,
-    negated_condition, redundant_not,
-    run_lint, self_assignment, self_comparison, sub_self, uninitialized_output, unnecessary_else,
+    identical_sub_expr, identity_operation, input_assignment, loop_var_modified,
+    missing_input_param, negated_comparison, negated_condition, redundant_not, run_lint,
+    self_assignment, self_comparison, sub_self, uninitialized_output, unnecessary_else,
     unnecessary_parens,
 };
 
@@ -50,6 +50,7 @@ pub fn check<'db>(
         input_assignment: config.is_enabled(input_assignment::NAME),
         self_assignment: config.is_enabled(self_assignment::NAME),
         constant_condition: config.is_enabled(constant_condition::NAME),
+        constant_loop_bounds: config.is_enabled(constant_loop_bounds::NAME),
         unnecessary_else: config.is_enabled(unnecessary_else::NAME),
         uninitialized_output: config.is_enabled(uninitialized_output::NAME),
         negated_condition: config.is_enabled(negated_condition::NAME),
@@ -100,6 +101,7 @@ struct VisitorCtx {
     input_assignment: bool,
     self_assignment: bool,
     constant_condition: bool,
+    constant_loop_bounds: bool,
     unnecessary_else: bool,
     uninitialized_output: bool,
     negated_condition: bool,
@@ -123,6 +125,7 @@ impl VisitorCtx {
         self.input_assignment
             || self.self_assignment
             || self.constant_condition
+            || self.constant_loop_bounds
             || self.unnecessary_else
             || self.uninitialized_output
             || self.negated_condition
@@ -297,7 +300,15 @@ fn visit_statements<'db>(
                     });
                 }
                 if let Some(stmts) = then {
-                    visit_statements(db, body, ctx, stmts, diagnostics, assigned_vars, active_loop_vars);
+                    visit_statements(
+                        db,
+                        body,
+                        ctx,
+                        stmts,
+                        diagnostics,
+                        assigned_vars,
+                        active_loop_vars,
+                    );
                 }
                 for (cond, stmts) in else_if {
                     check_expr_lints(db, body, ctx, cond, diagnostics);
@@ -306,10 +317,26 @@ fn visit_statements<'db>(
                             constant_condition::check_condition(db, cond, "ELSIF", d)
                         });
                     }
-                    visit_statements(db, body, ctx, stmts, diagnostics, assigned_vars, active_loop_vars);
+                    visit_statements(
+                        db,
+                        body,
+                        ctx,
+                        stmts,
+                        diagnostics,
+                        assigned_vars,
+                        active_loop_vars,
+                    );
                 }
                 if let Some(stmts) = else_ {
-                    visit_statements(db, body, ctx, stmts, diagnostics, assigned_vars, active_loop_vars);
+                    visit_statements(
+                        db,
+                        body,
+                        ctx,
+                        stmts,
+                        diagnostics,
+                        assigned_vars,
+                        active_loop_vars,
+                    );
                 }
                 if ctx.unnecessary_else {
                     run_lint(unnecessary_else::NAME, diagnostics, |d| {
@@ -332,7 +359,15 @@ fn visit_statements<'db>(
                         constant_condition::check_condition(db, condition, "WHILE", d)
                     });
                 }
-                visit_statements(db, body, ctx, loop_body, diagnostics, assigned_vars, active_loop_vars);
+                visit_statements(
+                    db,
+                    body,
+                    ctx,
+                    loop_body,
+                    diagnostics,
+                    assigned_vars,
+                    active_loop_vars,
+                );
             }
             StmtKind::For {
                 body: loop_body,
@@ -342,7 +377,9 @@ fn visit_statements<'db>(
                 control_variable,
             } => {
                 let pushed = if ctx.loop_var_modified {
-                    if let Some(decl) = loop_var_modified::resolve_control_var(db, body, *control_variable) {
+                    if let Some(decl) =
+                        loop_var_modified::resolve_control_var(db, body, *control_variable)
+                    {
                         active_loop_vars.push((decl, *control_variable));
                         true
                     } else {
@@ -351,12 +388,25 @@ fn visit_statements<'db>(
                 } else {
                     false
                 };
-                visit_statements(db, body, ctx, loop_body, diagnostics, assigned_vars, active_loop_vars);
+                visit_statements(
+                    db,
+                    body,
+                    ctx,
+                    loop_body,
+                    diagnostics,
+                    assigned_vars,
+                    active_loop_vars,
+                );
                 if pushed {
                     active_loop_vars.pop();
                 }
                 check_expr_lints(db, body, ctx, start, diagnostics);
                 check_expr_lints(db, body, ctx, end, diagnostics);
+                if ctx.constant_loop_bounds {
+                    run_lint(constant_loop_bounds::NAME, diagnostics, |d| {
+                        constant_loop_bounds::check(db, start, end, d);
+                    });
+                }
                 if let Some(step) = step {
                     check_expr_lints(db, body, ctx, step, diagnostics);
                     if ctx.for_zero_step {
@@ -376,12 +426,20 @@ fn visit_statements<'db>(
                         constant_condition::check_condition(db, condition, "UNTIL", d)
                     });
                 }
-                visit_statements(db, body, ctx, loop_body, diagnostics, assigned_vars, active_loop_vars);
+                visit_statements(
+                    db,
+                    body,
+                    ctx,
+                    loop_body,
+                    diagnostics,
+                    assigned_vars,
+                    active_loop_vars,
+                );
             }
-            StmtKind::Case { 
+            StmtKind::Case {
                 condition,
-                cases, 
-                else_ 
+                cases,
+                else_,
             } => {
                 check_expr_lints(db, body, ctx, condition, diagnostics);
                 if ctx.duplicate_case {
@@ -395,10 +453,26 @@ fn visit_statements<'db>(
                     });
                 }
                 for (_, stmts) in cases {
-                    visit_statements(db, body, ctx, stmts, diagnostics, assigned_vars, active_loop_vars);
+                    visit_statements(
+                        db,
+                        body,
+                        ctx,
+                        stmts,
+                        diagnostics,
+                        assigned_vars,
+                        active_loop_vars,
+                    );
                 }
                 if let Some(stmts) = else_ {
-                    visit_statements(db, body, ctx, stmts, diagnostics, assigned_vars, active_loop_vars);
+                    visit_statements(
+                        db,
+                        body,
+                        ctx,
+                        stmts,
+                        diagnostics,
+                        assigned_vars,
+                        active_loop_vars,
+                    );
                 }
             }
             StmtKind::FuncCall(call) => {
