@@ -28,6 +28,7 @@ pub mod duplicate_var_section;
 pub mod empty_body;
 pub mod effectless_statement;
 pub mod for_loop_step_sign;
+pub mod generic_extern;
 pub mod for_zero_step;
 pub mod identical_sub_expr;
 pub mod identity_operation;
@@ -70,6 +71,7 @@ pub const ALL_RULE_NAMES: &[&str] = &[
     empty_if_branch::NAME,
     for_loop_step_sign::NAME,
     for_zero_step::NAME,
+    generic_extern::NAME,
     identical_sub_expr::NAME,
     identity_operation::NAME,
     input_assignment::NAME,
@@ -246,6 +248,11 @@ fn lint_scope<'db>(
     if config.is_enabled(empty_body::NAME) {
         run_lint(empty_body::NAME, diagnostics, |d| {
             empty_body::check(db, scope, d)
+        });
+    }
+    if config.is_enabled(generic_extern::NAME) {
+        run_lint(generic_extern::NAME, diagnostics, |d| {
+            generic_extern::check(db, scope, d)
         });
     }
     if config.is_enabled(single_element_array::NAME) {
