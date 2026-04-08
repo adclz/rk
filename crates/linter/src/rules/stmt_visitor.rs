@@ -23,7 +23,7 @@ use super::{
     bool_comparison, constant_condition, duplicate_case, empty_case_branch, empty_if_branch,
     for_zero_step,
     identical_sub_expr, identity_operation, input_assignment, loop_var_modified,
-    missing_input_param, negated_comparison, negated_condition, redundant_not, run_lint,
+    missing_input_param, missing_return, negated_comparison, negated_condition, redundant_not, run_lint,
     self_assignment, self_comparison, sub_self, uninitialized_output, unnecessary_else,
     unnecessary_parens, yoda_condition,
 };
@@ -58,6 +58,7 @@ pub fn check<'db>(
         uninitialized_output: config.is_enabled(uninitialized_output::NAME),
         negated_condition: config.is_enabled(negated_condition::NAME),
         missing_input_param: config.is_enabled(missing_input_param::NAME),
+        missing_return: config.is_enabled(missing_return::NAME),
         bool_comparison: config.is_enabled(bool_comparison::NAME),
         self_comparison: config.is_enabled(self_comparison::NAME),
         identical_sub_expr: config.is_enabled(identical_sub_expr::NAME),
@@ -83,16 +84,27 @@ pub fn check<'db>(
         None
     };
 
+    let mut return_assigned = false;
+
     let mut active_loop_vars: Vec<(VariableDecl<'db>, VariableAccess<'db>)> = Vec::new();
     visit_statements(
         db,
         body,
         &ctx,
+        scope,
         statements,
         diagnostics,
         &mut assigned_vars,
         &mut active_loop_vars,
+        &mut return_assigned,
     );
+
+    // Post-walk: missing return
+    if ctx.missing_return {
+        run_lint(missing_return::NAME, diagnostics, |d| {
+            missing_return::check_result(db, scope, return_assigned, d)
+        });
+    }
 
     if let Some(assigned) = assigned_vars {
         run_lint(uninitialized_output::NAME, diagnostics, |d| {
@@ -112,6 +124,7 @@ struct VisitorCtx {
     uninitialized_output: bool,
     negated_condition: bool,
     missing_input_param: bool,
+    missing_return: bool,
     bool_comparison: bool,
     self_comparison: bool,
     identical_sub_expr: bool,
@@ -139,6 +152,7 @@ impl VisitorCtx {
             || self.uninitialized_output
             || self.negated_condition
             || self.missing_input_param
+            || self.missing_return
             || self.bool_comparison
             || self.self_comparison
             || self.identical_sub_expr
@@ -253,12 +267,14 @@ fn visit_statements<'db>(
     db: &'db dyn WorkspaceDataBase,
     body: &BodyInferenceResult<'db>,
     ctx: &VisitorCtx,
+    scope: ScopeId<'db>,
     stmts: &[Stmt<'db>],
     diagnostics: &mut Vec<IdeDiagnostic>,
     assigned_vars: &mut Option<
         rustc_hash::FxHashSet<hir::hir_def::pous::variable::VariableDecl<'db>>,
     >,
     active_loop_vars: &mut Vec<(VariableDecl<'db>, VariableAccess<'db>)>,
+    return_assigned: &mut bool,
 ) {
     for stmt in stmts {
         match stmt.stmt(db) {
@@ -279,6 +295,11 @@ fn visit_statements<'db>(
                         loop_var_modified::check_assignment(db, body, *var, active_loop_vars, d)
                     });
                 }
+                if ctx.missing_return && !*return_assigned
+                    && missing_return::check_assignment(db, body, *var, scope)
+                {
+                    *return_assigned = true;
+                }
                 if ctx.uninitialized_output
                     && let Some(assigned) = assigned_vars.as_mut()
                 {
@@ -296,6 +317,11 @@ fn visit_statements<'db>(
                     run_lint(loop_var_modified::NAME, diagnostics, |d| {
                         loop_var_modified::check_assignment(db, body, *var, active_loop_vars, d)
                     });
+                }
+                if ctx.missing_return && !*return_assigned
+                    && missing_return::check_assignment(db, body, *var, scope)
+                {
+                    *return_assigned = true;
                 }
                 if ctx.uninitialized_output
                     && let Some(assigned) = assigned_vars.as_mut()
@@ -320,10 +346,12 @@ fn visit_statements<'db>(
                         db,
                         body,
                         ctx,
+                        scope,
                         stmts,
                         diagnostics,
                         assigned_vars,
                         active_loop_vars,
+                        return_assigned,
                     );
                 }
                 for (cond, stmts) in else_if {
@@ -337,10 +365,12 @@ fn visit_statements<'db>(
                         db,
                         body,
                         ctx,
+                        scope,
                         stmts,
                         diagnostics,
                         assigned_vars,
                         active_loop_vars,
+                        return_assigned,
                     );
                 }
                 if let Some(stmts) = else_ {
@@ -348,10 +378,12 @@ fn visit_statements<'db>(
                         db,
                         body,
                         ctx,
+                        scope,
                         stmts,
                         diagnostics,
                         assigned_vars,
                         active_loop_vars,
+                        return_assigned,
                     );
                 }
                 if ctx.unnecessary_else {
@@ -389,10 +421,12 @@ fn visit_statements<'db>(
                     db,
                     body,
                     ctx,
+                    scope,
                     loop_body,
                     diagnostics,
                     assigned_vars,
                     active_loop_vars,
+                    return_assigned,
                 );
             }
             StmtKind::For {
@@ -418,10 +452,12 @@ fn visit_statements<'db>(
                     db,
                     body,
                     ctx,
+                    scope,
                     loop_body,
                     diagnostics,
                     assigned_vars,
                     active_loop_vars,
+                    return_assigned,
                 );
                 if pushed {
                     active_loop_vars.pop();
@@ -456,10 +492,12 @@ fn visit_statements<'db>(
                     db,
                     body,
                     ctx,
+                    scope,
                     loop_body,
                     diagnostics,
                     assigned_vars,
                     active_loop_vars,
+                    return_assigned,
                 );
             }
             StmtKind::Case {
@@ -483,10 +521,12 @@ fn visit_statements<'db>(
                         db,
                         body,
                         ctx,
+                        scope,
                         stmts,
                         diagnostics,
                         assigned_vars,
                         active_loop_vars,
+                        return_assigned,
                     );
                 }
                 if let Some(stmts) = else_ {
@@ -494,10 +534,12 @@ fn visit_statements<'db>(
                         db,
                         body,
                         ctx,
+                        scope,
                         stmts,
                         diagnostics,
                         assigned_vars,
                         active_loop_vars,
+                        return_assigned,
                     );
                 }
             }

@@ -21,6 +21,7 @@ mod identity_operation;
 mod input_assignment;
 mod loop_var_modified;
 mod missing_input_param;
+mod missing_return;
 mod negated_comparison;
 mod negated_condition;
 mod redundant_not;

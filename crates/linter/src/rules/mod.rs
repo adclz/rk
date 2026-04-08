@@ -35,6 +35,7 @@ pub mod identity_operation;
 pub mod input_assignment;
 pub mod loop_var_modified;
 pub mod missing_input_param;
+pub mod missing_return;
 pub mod negated_comparison;
 pub mod negated_condition;
 pub mod redundant_not;
@@ -78,6 +79,7 @@ pub const ALL_RULE_NAMES: &[&str] = &[
     input_assignment::NAME,
     loop_var_modified::NAME,
     missing_input_param::NAME,
+    missing_return::NAME,
     negated_comparison::NAME,
     negated_condition::NAME,
     redundant_not::NAME,
