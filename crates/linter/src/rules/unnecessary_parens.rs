@@ -8,12 +8,12 @@ use ide_diagnostic::{ErrorCode, IdeDiagnostic, diag};
 
 pub const NAME: &str = "unnecessary-parens";
 
-/// L0132: unnecessary parentheses around a simple expression.
+/// L0207: unnecessary parentheses around a simple expression.
 struct UnnecessaryParens;
 
 impl ErrorCode for UnnecessaryParens {
     fn code(&self) -> &'static str {
-        "L0132"
+        "L0207"
     }
 
     fn description(&self) -> &'static str {
@@ -53,7 +53,7 @@ pub fn check_node<'db>(
                 ))
                 .desc(&UnnecessaryParens)
                 .range(expr.get_span(db))
-                .severity(DiagnosticSeverity::INFORMATION)
+                .severity(DiagnosticSeverity::HINT)
                 .call(),
         );
     }

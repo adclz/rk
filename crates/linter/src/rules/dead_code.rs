@@ -5,12 +5,12 @@ use ide_diagnostic::{ErrorCode, IdeDiagnostic, diag};
 
 pub const NAME: &str = "dead-code";
 
-/// L0107: unreachable statement.
+/// L0301: unreachable statement.
 struct DeadCode;
 
 impl ErrorCode for DeadCode {
     fn code(&self) -> &'static str {
-        "L0107"
+        "L0301"
     }
 
     fn description(&self) -> &'static str {

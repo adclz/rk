@@ -7,6 +7,7 @@ mod dead_code;
 mod division_by_zero;
 mod duplicate_case;
 mod empty_case_branch;
+mod empty_if_branch;
 mod duplicate_namespace;
 mod single_element_array;
 mod duplicate_var_section;

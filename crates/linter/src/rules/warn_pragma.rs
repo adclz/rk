@@ -9,15 +9,27 @@ use ide_diagnostic::{ErrorCode, IdeDiagnostic, Related, diag};
 
 pub const NAME: &str = "warn-pragma";
 
-struct WarnPragmaLint;
+struct InfoPragma;
 
-impl ErrorCode for WarnPragmaLint {
+impl ErrorCode for InfoPragma {
     fn code(&self) -> &'static str {
-        "L0117"
+        "L0001"
     }
 
     fn description(&self) -> &'static str {
-        "call site notice"
+        "call site info notice"
+    }
+}
+
+struct WarnPragma;
+
+impl ErrorCode for WarnPragma {
+    fn code(&self) -> &'static str {
+        "L0002"
+    }
+
+    fn description(&self) -> &'static str {
+        "call site warning notice"
     }
 }
 
@@ -37,17 +49,20 @@ pub fn check<'db>(
             continue;
         };
 
-        let severity = match pragma.level {
-            WarnPragmaLevel::Warn => DiagnosticSeverity::WARNING,
-            WarnPragmaLevel::Info => DiagnosticSeverity::INFORMATION,
+        let mut diag = match pragma.level {
+            WarnPragmaLevel::Warn => diag()
+                .message(pragma.message.to_string())
+                .desc(&WarnPragma)
+                .range(path_expr.get_span(db))
+                .severity(DiagnosticSeverity::WARNING)
+                .call(),
+            WarnPragmaLevel::Info => diag()
+                .message(pragma.message.to_string())
+                .desc(&InfoPragma)
+                .range(path_expr.get_span(db))
+                .severity(DiagnosticSeverity::INFORMATION)
+                .call(),
         };
-
-        let mut diag = diag()
-            .message(pragma.message.to_string())
-            .desc(&WarnPragmaLint)
-            .range(path_expr.get_span(db))
-            .severity(severity)
-            .call();
 
         diag.with_related(Related::new(
             "notice emitted here".into(),

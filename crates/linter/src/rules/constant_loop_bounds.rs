@@ -8,12 +8,12 @@ use ide_diagnostic::{ErrorCode, IdeDiagnostic, diag};
 
 pub const NAME: &str = "constant-loop-bounds";
 
-/// L0134: FOR loop start equals end, always exactly one iteration.
+/// L0314: FOR loop start equals end, always exactly one iteration.
 struct ConstantLoopBounds;
 
 impl ErrorCode for ConstantLoopBounds {
     fn code(&self) -> &'static str {
-        "L0134"
+        "L0314"
     }
 
     fn description(&self) -> &'static str {
@@ -38,7 +38,7 @@ pub fn check<'db>(
                 ))
                 .desc(&ConstantLoopBounds)
                 .range(start.get_span(db))
-                .severity(DiagnosticSeverity::INFORMATION)
+                .severity(DiagnosticSeverity::WARNING)
                 .call(),
         );
     }

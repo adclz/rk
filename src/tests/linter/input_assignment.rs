@@ -16,7 +16,7 @@ END_VAR
 END_FUNCTION
 "#;
     assert_snapshot!(test_single_lint(&mut with_db, &[source], "input-assignment"), @r"
-    [L0110] Warning: assignment to input variable
+    [L0303] Warning: assignment to input variable
        ,-[ file:///test0.st:6:5 ]
        |
      4 |     x : INT;
@@ -43,7 +43,7 @@ END_VAR
 END_FUNCTION_BLOCK
 "#;
     assert_snapshot!(test_single_lint(&mut with_db, &[source], "input-assignment"), @r"
-    [L0110] Warning: assignment to input variable
+    [L0303] Warning: assignment to input variable
        ,-[ file:///test0.st:6:5 ]
        |
      4 |     x : INT;
@@ -102,7 +102,7 @@ END_VAR
 END_FUNCTION_BLOCK
 "#;
     assert_snapshot!(test_single_lint(&mut with_db, &[source], "input-assignment"), @r"
-    [L0110] Warning: assignment to input variable
+    [L0303] Warning: assignment to input variable
        ,-[ file:///test0.st:7:9 ]
        |
      4 |     x : INT;

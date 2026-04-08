@@ -11,12 +11,12 @@ use ide_diagnostic::{ErrorCode, IdeDiagnostic, Related, diag};
 
 pub const NAME: &str = "negated-condition";
 
-/// L0115: IF NOT ... THEN ... ELSE can be simplified by swapping branches.
+/// L0104: IF NOT ... THEN ... ELSE can be simplified by swapping branches.
 struct NegatedCondition;
 
 impl ErrorCode for NegatedCondition {
     fn code(&self) -> &'static str {
-        "L0115"
+        "L0104"
     }
 
     fn description(&self) -> &'static str {

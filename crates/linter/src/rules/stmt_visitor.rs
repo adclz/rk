@@ -20,7 +20,8 @@ use ide_diagnostic::IdeDiagnostic;
 
 use super::{
     collapsible_if, constant_loop_bounds,
-    bool_comparison, constant_condition, duplicate_case, empty_case_branch, for_zero_step,
+    bool_comparison, constant_condition, duplicate_case, empty_case_branch, empty_if_branch,
+    for_zero_step,
     identical_sub_expr, identity_operation, input_assignment, loop_var_modified,
     missing_input_param, negated_comparison, negated_condition, redundant_not, run_lint,
     self_assignment, self_comparison, sub_self, uninitialized_output, unnecessary_else,
@@ -50,6 +51,7 @@ pub fn check<'db>(
         input_assignment: config.is_enabled(input_assignment::NAME),
         self_assignment: config.is_enabled(self_assignment::NAME),
         collapsible_if: config.is_enabled(collapsible_if::NAME),
+        empty_if_branch: config.is_enabled(empty_if_branch::NAME),
         constant_condition: config.is_enabled(constant_condition::NAME),
         constant_loop_bounds: config.is_enabled(constant_loop_bounds::NAME),
         unnecessary_else: config.is_enabled(unnecessary_else::NAME),
@@ -103,6 +105,7 @@ struct VisitorCtx {
     input_assignment: bool,
     self_assignment: bool,
     collapsible_if: bool,
+    empty_if_branch: bool,
     constant_condition: bool,
     constant_loop_bounds: bool,
     unnecessary_else: bool,
@@ -129,6 +132,7 @@ impl VisitorCtx {
         self.input_assignment
             || self.self_assignment
             || self.collapsible_if
+            || self.empty_if_branch
             || self.constant_condition
             || self.constant_loop_bounds
             || self.unnecessary_else
@@ -363,6 +367,11 @@ fn visit_statements<'db>(
                 if ctx.collapsible_if {
                     run_lint(collapsible_if::NAME, diagnostics, |d| {
                         collapsible_if::check_if(db, *stmt, condition, then, else_if, else_, d)
+                    });
+                }
+                if ctx.empty_if_branch {
+                    run_lint(empty_if_branch::NAME, diagnostics, |d| {
+                        empty_if_branch::check_if(db, *stmt, condition, then, else_if, else_, d)
                     });
                 }
             }

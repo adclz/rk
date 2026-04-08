@@ -5,12 +5,12 @@ use ide_diagnostic::{ErrorCode, IdeDiagnostic, diag};
 
 pub const NAME: &str = "effectless-statement";
 
-/// L0105: statement has no effect.
+/// L0211: statement has no effect.
 struct EffectlessStatement;
 
 impl ErrorCode for EffectlessStatement {
     fn code(&self) -> &'static str {
-        "L0105"
+        "L0211"
     }
 
     fn description(&self) -> &'static str {
@@ -29,7 +29,7 @@ pub fn check<'db>(
                 .message("statement has no effect".to_string())
                 .desc(&EffectlessStatement)
                 .range(stmt.get_span(db))
-                .severity(DiagnosticSeverity::WARNING)
+                .severity(DiagnosticSeverity::HINT)
                 .call(),
         );
     }

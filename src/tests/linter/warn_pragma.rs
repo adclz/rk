@@ -17,7 +17,7 @@ VAR x : INT; END_VAR
 END_FUNCTION"#;
 
     assert_snapshot!(test_single_lint(&mut with_db, &[source], "warn-pragma"), @r"
-    [L0117] Warning: call site notice
+    [L0002] Warning: call site warning notice
        ,-[ file:///test0.st:8:10 ]
        |
      3 | FUNCTION fn1 : INT
@@ -46,7 +46,7 @@ VAR x : INT; END_VAR
 END_FUNCTION"#;
 
     assert_snapshot!(test_single_lint(&mut with_db, &[source], "warn-pragma"), @r"
-    [L0117] Info: call site notice
+    [L0001] Info: call site info notice
        ,-[ file:///test0.st:8:10 ]
        |
      3 | FUNCTION old_fn : INT
@@ -76,7 +76,7 @@ VAR fb : OldFB; END_VAR
 END_FUNCTION"#;
 
     assert_snapshot!(test_single_lint(&mut with_db, &[source], "warn-pragma"), @r"
-    [L0117] Warning: call site notice
+    [L0002] Warning: call site warning notice
        ,-[ file:///test0.st:9:5 ]
        |
      3 | FUNCTION_BLOCK OldFB
@@ -108,7 +108,7 @@ VAR fb : MyFB; y : INT; END_VAR
 END_FUNCTION"#;
 
     assert_snapshot!(test_single_lint(&mut with_db, &[source], "warn-pragma"), @r"
-    [L0117] Warning: call site notice
+    [L0002] Warning: call site warning notice
         ,-[ file:///test0.st:11:13 ]
         |
       5 |     METHOD PUBLIC doStuff : INT
@@ -142,7 +142,7 @@ VAR y : INT; END_VAR
 END_FUNCTION"#;
 
     assert_snapshot!(test_single_lint(&mut with_db, &[source], "warn-pragma"), @r"
-    [L0117] Warning: call site notice
+    [L0002] Warning: call site warning notice
        ,-[ file:///test0.st:8:10 ]
        |
      3 | FUNCTION old : INT
@@ -155,7 +155,7 @@ END_FUNCTION"#;
        |
        | Note: lint rule: warn-pragma
     ---'
-    [L0117] Warning: call site notice
+    [L0002] Warning: call site warning notice
         ,-[ file:///test0.st:13:10 ]
         |
       3 | FUNCTION old : INT

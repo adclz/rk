@@ -13,7 +13,7 @@ VAR x : INT; END_VAR
 END_FUNCTION
 "#;
     assert_snapshot!(test_single_lint(&mut with_db, &[source], "identity-operation"), @r"
-    [L0124] Info: identity operation
+    [L0312] Info: identity operation
        ,-[ file:///test0.st:4:10 ]
        |
      4 |     x := x * 1;
@@ -34,7 +34,7 @@ VAR x : INT; END_VAR
 END_FUNCTION
 "#;
     assert_snapshot!(test_single_lint(&mut with_db, &[source], "identity-operation"), @r"
-    [L0124] Info: identity operation
+    [L0312] Info: identity operation
        ,-[ file:///test0.st:4:10 ]
        |
      4 |     x := 1 * x;
@@ -55,7 +55,7 @@ VAR x : INT; END_VAR
 END_FUNCTION
 "#;
     assert_snapshot!(test_single_lint(&mut with_db, &[source], "identity-operation"), @r"
-    [L0124] Info: identity operation
+    [L0312] Info: identity operation
        ,-[ file:///test0.st:4:10 ]
        |
      4 |     x := x / 1;
@@ -76,7 +76,7 @@ VAR x : INT; END_VAR
 END_FUNCTION
 "#;
     assert_snapshot!(test_single_lint(&mut with_db, &[source], "identity-operation"), @r"
-    [L0124] Info: identity operation
+    [L0312] Info: identity operation
        ,-[ file:///test0.st:4:10 ]
        |
      4 |     x := x + 0;
@@ -97,7 +97,7 @@ VAR x : INT; END_VAR
 END_FUNCTION
 "#;
     assert_snapshot!(test_single_lint(&mut with_db, &[source], "identity-operation"), @r"
-    [L0124] Info: identity operation
+    [L0312] Info: identity operation
        ,-[ file:///test0.st:4:10 ]
        |
      4 |     x := 0 + x;
@@ -118,7 +118,7 @@ VAR x : INT; END_VAR
 END_FUNCTION
 "#;
     assert_snapshot!(test_single_lint(&mut with_db, &[source], "identity-operation"), @r"
-    [L0124] Info: identity operation
+    [L0312] Info: identity operation
        ,-[ file:///test0.st:4:10 ]
        |
      4 |     x := x - 0;
@@ -139,7 +139,7 @@ VAR x : REAL; END_VAR
 END_FUNCTION
 "#;
     assert_snapshot!(test_single_lint(&mut with_db, &[source], "identity-operation"), @r"
-    [L0124] Info: identity operation
+    [L0312] Info: identity operation
        ,-[ file:///test0.st:4:10 ]
        |
      4 |     x := x * 1.0;
@@ -160,7 +160,7 @@ VAR x : INT; END_VAR
 END_FUNCTION
 "#;
     assert_snapshot!(test_single_lint(&mut with_db, &[source], "identity-operation"), @r"
-    [L0124] Info: identity operation
+    [L0312] Info: identity operation
        ,-[ file:///test0.st:4:10 ]
        |
      4 |     x := x * INT#1;

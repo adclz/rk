@@ -16,12 +16,12 @@ use ide_diagnostic::{ErrorCode, IdeDiagnostic, diag};
 
 pub const NAME: &str = "constant-condition";
 
-/// L0112: condition is always true or always false.
+/// L0304: condition is always true or always false.
 struct ConstantCondition;
 
 impl ErrorCode for ConstantCondition {
     fn code(&self) -> &'static str {
-        "L0112"
+        "L0304"
     }
 
     fn description(&self) -> &'static str {

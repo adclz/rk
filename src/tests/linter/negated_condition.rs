@@ -19,7 +19,7 @@ END_VAR
 END_FUNCTION
 "#;
     assert_snapshot!(test_single_lint(&mut with_db, &[source], "negated-condition"), @r"
-    [L0115] Info: negated condition
+    [L0104] Info: negated condition
        ,-[ file:///test0.st:6:8 ]
        |
      6 |     IF NOT flag THEN

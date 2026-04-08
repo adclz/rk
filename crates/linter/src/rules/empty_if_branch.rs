@@ -1,0 +1,77 @@
+use auto_lsp::lsp_types::DiagnosticSeverity;
+use db::WorkspaceDataBase;
+use hir::{
+    HirNodeInfo,
+    hir_def::expressions::{
+        expression::Expr,
+        statement::{Stmt, StmtKind},
+    },
+};
+use ide_diagnostic::{ErrorCode, IdeDiagnostic, diag};
+
+pub const NAME: &str = "empty-if-branch";
+
+/// L0210: IF, ELSIF, or ELSE branch with no statements.
+struct EmptyIfBranch;
+
+impl ErrorCode for EmptyIfBranch {
+    fn code(&self) -> &'static str {
+        "L0210"
+    }
+
+    fn description(&self) -> &'static str {
+        "empty IF branch"
+    }
+}
+
+pub fn check_if<'db>(
+    db: &'db dyn WorkspaceDataBase,
+    stmt: Stmt<'db>,
+    condition: &Expr<'db>,
+    then: &Option<Vec<Stmt<'db>>>,
+    else_if: &[(Expr<'db>, Vec<Stmt<'db>>)],
+    else_: &Option<Vec<Stmt<'db>>>,
+    diagnostics: &mut Vec<IdeDiagnostic>,
+) {
+    // Check empty THEN
+    let then_empty = match then {
+        None => true,
+        Some(v) => v.is_empty(),
+    };
+    if then_empty {
+        diagnostics.push(
+            diag()
+                .message("IF branch has no statements".to_string())
+                .desc(&EmptyIfBranch)
+                .range(condition.get_span(db))
+                .severity(DiagnosticSeverity::HINT)
+                .call(),
+        );
+    }
+
+    // Check empty ELSIF branches
+    for (cond, stmts) in else_if {
+        if stmts.is_empty() {
+            diagnostics.push(
+                diag()
+                    .message("ELSIF branch has no statements".to_string())
+                    .desc(&EmptyIfBranch)
+                    .range(cond.get_span(db))
+                    .severity(DiagnosticSeverity::HINT)
+                    .call(),
+            );
+        }
+    }
+
+    // Check empty ELSE
+    if matches!(else_, Some(v) if v.is_empty()) {
+        diagnostics.push(
+            diag()
+                .message("ELSE branch has no statements".to_string())
+                .desc(&EmptyIfBranch)
+                .range(stmt.get_span(db))
+                .severity(DiagnosticSeverity::HINT)
+                .call(),
+        );
+    }
+}

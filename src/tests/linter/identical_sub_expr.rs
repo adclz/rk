@@ -15,7 +15,7 @@ END_VAR
 END_FUNCTION
 "#;
     assert_snapshot!(test_single_lint(&mut with_db, &[source], "identical-sub-expr"), @r"
-    [L0121] Warning: identical subexpressions
+    [L0311] Warning: identical subexpressions
        ,-[ file:///test0.st:6:13 ]
        |
      6 |     test := x AND x;
@@ -38,7 +38,7 @@ END_VAR
 END_FUNCTION
 "#;
     assert_snapshot!(test_single_lint(&mut with_db, &[source], "identical-sub-expr"), @r"
-    [L0121] Warning: identical subexpressions
+    [L0311] Warning: identical subexpressions
        ,-[ file:///test0.st:6:13 ]
        |
      6 |     test := x OR x;
@@ -61,7 +61,7 @@ END_VAR
 END_FUNCTION
 "#;
     assert_snapshot!(test_single_lint(&mut with_db, &[source], "identical-sub-expr"), @r"
-    [L0121] Warning: identical subexpressions
+    [L0311] Warning: identical subexpressions
        ,-[ file:///test0.st:6:13 ]
        |
      6 |     test := x XOR x;
@@ -100,7 +100,7 @@ END_VAR
 END_FUNCTION
 "#;
     assert_snapshot!(test_single_lint(&mut with_db, &[source], "identical-sub-expr"), @r"
-    [L0121] Warning: identical subexpressions
+    [L0311] Warning: identical subexpressions
        ,-[ file:///test0.st:6:8 ]
        |
      6 |     IF flag OR flag THEN
@@ -123,7 +123,7 @@ END_VAR
 END_FUNCTION
 "#;
     assert_snapshot!(test_single_lint(&mut with_db, &[source], "identical-sub-expr"), @r"
-    [L0121] Warning: identical subexpressions
+    [L0311] Warning: identical subexpressions
        ,-[ file:///test0.st:6:13 ]
        |
      6 |     test := NOT x AND NOT x;

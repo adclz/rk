@@ -13,7 +13,7 @@ VAR x : INT; END_VAR
 END_FUNCTION
 "#;
     assert_snapshot!(test_single_lint(&mut with_db, &[source], "sub-self"), @r"
-    [L0126] Warning: subtraction from self
+    [L0313] Warning: subtraction from self
        ,-[ file:///test0.st:4:13 ]
        |
      4 |     test := x - x;
@@ -34,7 +34,7 @@ VAR x : INT; y : INT; END_VAR
 END_FUNCTION
 "#;
     assert_snapshot!(test_single_lint(&mut with_db, &[source], "sub-self"), @r"
-    [L0126] Warning: subtraction from self
+    [L0313] Warning: subtraction from self
        ,-[ file:///test0.st:4:18 ]
        |
      4 |     test := y + (x - x);

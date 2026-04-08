@@ -11,12 +11,12 @@ use ide_diagnostic::{ErrorCode, IdeDiagnostic, diag};
 
 pub const NAME: &str = "self-comparison";
 
-/// L0120: variable is compared to itself.
+/// L0310: variable is compared to itself.
 struct SelfComparison;
 
 impl ErrorCode for SelfComparison {
     fn code(&self) -> &'static str {
-        "L0120"
+        "L0310"
     }
 
     fn description(&self) -> &'static str {

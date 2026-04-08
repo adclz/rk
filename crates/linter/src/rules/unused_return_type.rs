@@ -5,12 +5,12 @@ use ide_diagnostic::{ErrorCode, IdeDiagnostic, diag};
 
 pub const NAME: &str = "unused-return-type";
 
-/// L0104: function call discards a return value.
+/// L0202: function call discards a return value.
 struct UnusedReturnType;
 
 impl ErrorCode for UnusedReturnType {
     fn code(&self) -> &'static str {
-        "L0104"
+        "L0202"
     }
 
     fn description(&self) -> &'static str {
@@ -28,7 +28,7 @@ pub fn check<'db>(
             .message(format!("unused return value of '{}'", typ.type_name(db)))
             .desc(&UnusedReturnType)
             .range(stmt.get_span(db))
-            .severity(DiagnosticSeverity::INFORMATION)
+            .severity(DiagnosticSeverity::HINT)
             .call();
 
         typ.with_location(db, &mut diag);

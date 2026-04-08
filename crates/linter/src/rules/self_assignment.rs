@@ -17,12 +17,12 @@ use ide_diagnostic::{ErrorCode, IdeDiagnostic, diag};
 
 pub const NAME: &str = "self-assignment";
 
-/// L0111: variable is assigned to itself.
+/// L0309: variable is assigned to itself.
 struct SelfAssignment;
 
 impl ErrorCode for SelfAssignment {
     fn code(&self) -> &'static str {
-        "L0111"
+        "L0309"
     }
 
     fn description(&self) -> &'static str {

@@ -127,7 +127,7 @@ fn check_pou_node(pou_node: tree_sitter::Node, diagnostics: &mut Vec<IdeDiagnost
             let range = child.range();
             let mut d = diag()
                 .message(format!("duplicate {name} section"))
-                .severity(DiagnosticSeverity::WARNING)
+                .severity(DiagnosticSeverity::INFORMATION)
                 .desc(&DuplicateVarSection)
                 .range(Span::from(range))
                 .call();

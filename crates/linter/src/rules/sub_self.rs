@@ -11,12 +11,12 @@ use ide_diagnostic::{ErrorCode, IdeDiagnostic, diag};
 
 pub const NAME: &str = "sub-self";
 
-/// L0126: subtracting a variable from itself is always 0.
+/// L0313: subtracting a variable from itself is always 0.
 struct SubSelf;
 
 impl ErrorCode for SubSelf {
     fn code(&self) -> &'static str {
-        "L0126"
+        "L0313"
     }
 
     fn description(&self) -> &'static str {

@@ -10,12 +10,12 @@ use ide_diagnostic::{ErrorCode, IdeDiagnostic, diag};
 
 pub const NAME: &str = "redundant-not";
 
-/// L0122: double negation `NOT NOT x` can be simplified.
+/// L0108: double negation `NOT NOT x` can be simplified.
 struct RedundantNot;
 
 impl ErrorCode for RedundantNot {
     fn code(&self) -> &'static str {
-        "L0122"
+        "L0108"
     }
 
     fn description(&self) -> &'static str {

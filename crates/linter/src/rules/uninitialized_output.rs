@@ -21,12 +21,12 @@ use rustc_hash::FxHashSet;
 
 pub const NAME: &str = "uninitialized-output";
 
-/// L0114: a VAR_OUTPUT variable is never assigned in the body.
+/// L0105: a VAR_OUTPUT variable is never assigned in the body.
 struct UninitializedOutput;
 
 impl ErrorCode for UninitializedOutput {
     fn code(&self) -> &'static str {
-        "L0114"
+        "L0105"
     }
 
     fn description(&self) -> &'static str {
@@ -77,7 +77,7 @@ pub fn check<'db>(
                 .message(format!("VAR_OUTPUT '{name}' is never assigned in the body"))
                 .desc(&UninitializedOutput)
                 .range(var.get_span(db))
-                .severity(DiagnosticSeverity::WARNING)
+                .severity(DiagnosticSeverity::INFORMATION)
                 .call(),
         );
     }
@@ -127,7 +127,7 @@ pub fn check_outputs<'db>(
                 .message(format!("VAR_OUTPUT '{name}' is never assigned in the body"))
                 .desc(&UninitializedOutput)
                 .range(var.get_span(db))
-                .severity(DiagnosticSeverity::WARNING)
+                .severity(DiagnosticSeverity::INFORMATION)
                 .call(),
         );
     }

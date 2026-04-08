@@ -94,7 +94,7 @@ fn check_variable<'db>(
 
     let mut diag = diag()
         .message(format!("unused variable '{name}'"))
-        .severity(DiagnosticSeverity::WARNING)
+        .severity(DiagnosticSeverity::INFORMATION)
         .tags(vec![DiagnosticTag::UNNECESSARY])
         .desc(&UnusedVariable)
         .range(var.get_span(db))

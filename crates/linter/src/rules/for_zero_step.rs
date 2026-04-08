@@ -8,12 +8,12 @@ use ide_diagnostic::{ErrorCode, IdeDiagnostic, diag};
 
 pub const NAME: &str = "for-zero-step";
 
-/// L0131: FOR loop with a step of 0 will loop forever.
+/// L0307: FOR loop with a step of 0 will loop forever.
 struct ForZeroStep;
 
 impl ErrorCode for ForZeroStep {
     fn code(&self) -> &'static str {
-        "L0131"
+        "L0307"
     }
 
     fn description(&self) -> &'static str {

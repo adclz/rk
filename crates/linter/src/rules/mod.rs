@@ -21,6 +21,7 @@ pub mod dead_code;
 pub mod division_by_zero;
 pub mod duplicate_case;
 pub mod empty_case_branch;
+pub mod empty_if_branch;
 pub mod duplicate_namespace;
 pub mod single_element_array;
 pub mod duplicate_var_section;
@@ -66,6 +67,7 @@ pub const ALL_RULE_NAMES: &[&str] = &[
     effectless_statement::NAME,
     empty_body::NAME,
     empty_case_branch::NAME,
+    empty_if_branch::NAME,
     for_loop_step_sign::NAME,
     for_zero_step::NAME,
     identical_sub_expr::NAME,

@@ -12,12 +12,12 @@ use ide_diagnostic::{ErrorCode, IdeDiagnostic, Related, diag};
 
 pub const NAME: &str = "missing-input-param";
 
-/// L0116: a function call does not pass all required VAR_INPUT parameters.
+/// L0204: a function call does not pass all required VAR_INPUT parameters.
 struct MissingInputParam;
 
 impl ErrorCode for MissingInputParam {
     fn code(&self) -> &'static str {
-        "L0116"
+        "L0204"
     }
 
     fn description(&self) -> &'static str {

@@ -10,12 +10,12 @@ use rustc_hash::FxHashSet;
 
 pub const NAME: &str = "unused-import";
 
-/// L0109: USING directive is never used.
+/// L0201: USING directive is never used.
 struct UnusedImport;
 
 impl ErrorCode for UnusedImport {
     fn code(&self) -> &'static str {
-        "L0109"
+        "L0201"
     }
 
     fn description(&self) -> &'static str {
@@ -62,7 +62,7 @@ pub fn check<'db>(
         diagnostics.push(
             diag()
                 .message(format!("unused import '{name}'"))
-                .severity(DiagnosticSeverity::WARNING)
+                .severity(DiagnosticSeverity::HINT)
                 .tags(vec![DiagnosticTag::UNNECESSARY])
                 .desc(&UnusedImport)
                 .range(using.get_span(db))

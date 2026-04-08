@@ -8,12 +8,12 @@ use ide_diagnostic::{ErrorCode, IdeDiagnostic, diag};
 
 pub const NAME: &str = "single-element-array";
 
-/// L0128: array dimension with equal lower and upper bounds has only one element.
+/// L0110: array dimension with equal lower and upper bounds has only one element.
 struct SingleElementArray;
 
 impl ErrorCode for SingleElementArray {
     fn code(&self) -> &'static str {
-        "L0128"
+        "L0110"
     }
 
     fn description(&self) -> &'static str {
@@ -41,7 +41,7 @@ pub fn check_spec<'db>(
                             ))
                             .desc(&SingleElementArray)
                             .range(lower.get_span(db))
-                            .severity(DiagnosticSeverity::WARNING)
+                            .severity(DiagnosticSeverity::INFORMATION)
                             .call(),
                     );
                 }

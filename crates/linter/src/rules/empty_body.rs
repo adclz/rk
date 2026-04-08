@@ -12,12 +12,12 @@ use ide_diagnostic::{ErrorCode, IdeDiagnostic, diag};
 
 pub const NAME: &str = "empty-body";
 
-/// L0125: function or method has an empty body.
+/// L0205: function or method has an empty body.
 struct EmptyBody;
 
 impl ErrorCode for EmptyBody {
     fn code(&self) -> &'static str {
-        "L0125"
+        "L0205"
     }
 
     fn description(&self) -> &'static str {

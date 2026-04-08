@@ -8,12 +8,12 @@ use ide_diagnostic::{ErrorCode, IdeDiagnostic, diag};
 
 pub const NAME: &str = "empty-case-branch";
 
-/// L0130: CASE branch with no statements.
+/// L0206: CASE branch with no statements.
 struct EmptyCaseBranch;
 
 impl ErrorCode for EmptyCaseBranch {
     fn code(&self) -> &'static str {
-        "L0130"
+        "L0206"
     }
 
     fn description(&self) -> &'static str {

@@ -15,7 +15,7 @@ VAR i : INT; END_VAR
 END_FUNCTION
 "#;
     assert_snapshot!(test_single_lint(&mut with_db, &[source], "for-zero-step"), @r"
-    [L0131] Warning: FOR loop with zero step
+    [L0307] Warning: FOR loop with zero step
        ,-[ file:///test0.st:4:25 ]
        |
      4 |     FOR i := 0 TO 10 BY 0 DO
@@ -64,7 +64,7 @@ VAR i : INT; END_VAR
 END_FUNCTION
 "#;
     assert_snapshot!(test_single_lint(&mut with_db, &[source], "for-zero-step"), @r"
-    [L0131] Warning: FOR loop with zero step
+    [L0307] Warning: FOR loop with zero step
        ,-[ file:///test0.st:4:25 ]
        |
      4 |     FOR i := 0 TO 10 BY INT#0 DO

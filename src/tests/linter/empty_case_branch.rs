@@ -16,7 +16,7 @@ VAR x : INT; END_VAR
 END_FUNCTION
 "#;
     assert_snapshot!(test_single_lint(&mut with_db, &[source], "empty-case-branch"), @r"
-    [L0130] Hint: empty CASE branch
+    [L0206] Hint: empty CASE branch
        ,-[ file:///test0.st:5:9 ]
        |
      5 |         1:
@@ -55,7 +55,7 @@ VAR x : INT; END_VAR
 END_FUNCTION
 "#;
     assert_snapshot!(test_single_lint(&mut with_db, &[source], "empty-case-branch"), @r"
-    [L0130] Hint: empty CASE branch
+    [L0206] Hint: empty CASE branch
        ,-[ file:///test0.st:5:9 ]
        |
      5 |         1:
@@ -64,7 +64,7 @@ END_FUNCTION
        |
        | Note: lint rule: empty-case-branch
     ---'
-    [L0130] Hint: empty CASE branch
+    [L0206] Hint: empty CASE branch
        ,-[ file:///test0.st:6:9 ]
        |
      6 |         2:

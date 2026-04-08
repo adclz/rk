@@ -10,12 +10,12 @@ use ide_diagnostic::{ErrorCode, IdeDiagnostic, diag};
 
 pub const NAME: &str = "identity-operation";
 
-/// L0124: operation with identity value has no effect.
+/// L0312: operation with identity value has no effect.
 struct IdentityOperation;
 
 impl ErrorCode for IdentityOperation {
     fn code(&self) -> &'static str {
-        "L0124"
+        "L0312"
     }
 
     fn description(&self) -> &'static str {
@@ -89,7 +89,7 @@ fn emit<'db>(
             ))
             .desc(&IdentityOperation)
             .range(expr.get_span(db))
-            .severity(DiagnosticSeverity::INFORMATION)
+            .severity(DiagnosticSeverity::WARNING)
             .call(),
     );
 }
