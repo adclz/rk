@@ -25,6 +25,7 @@ mod negated_comparison;
 mod negated_condition;
 mod redundant_not;
 mod self_assignment;
+mod self_shadowing;
 mod self_comparison;
 mod shadowing_variable;
 mod sub_self;

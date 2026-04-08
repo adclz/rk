@@ -39,6 +39,7 @@ pub mod negated_comparison;
 pub mod negated_condition;
 pub mod redundant_not;
 pub mod self_assignment;
+pub mod self_shadowing;
 pub mod self_comparison;
 pub mod shadowing_variable;
 pub mod sub_self;
@@ -82,6 +83,7 @@ pub const ALL_RULE_NAMES: &[&str] = &[
     redundant_not::NAME,
     self_assignment::NAME,
     self_comparison::NAME,
+    self_shadowing::NAME,
     shadowing_variable::NAME,
     single_element_array::NAME,
     sub_self::NAME,
@@ -248,6 +250,11 @@ fn lint_scope<'db>(
     if config.is_enabled(empty_body::NAME) {
         run_lint(empty_body::NAME, diagnostics, |d| {
             empty_body::check(db, scope, d)
+        });
+    }
+    if config.is_enabled(self_shadowing::NAME) {
+        run_lint(self_shadowing::NAME, diagnostics, |d| {
+            self_shadowing::check(db, scope, d)
         });
     }
     if config.is_enabled(generic_extern::NAME) {
