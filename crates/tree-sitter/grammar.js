@@ -252,7 +252,7 @@ module.exports = grammar({
           $.interface_decl,
           // Global using
           $.using_directive,
-          $.ERR_invalid_pou_keyword,
+          //$.ERR_invalid_pou_keyword,
         ),
       ),
 
@@ -397,6 +397,10 @@ module.exports = grammar({
     // {test}
     test_pragma: (_) => prec(1, token(seq("{", "test", "}"))),
 
+    // Once pragma - the annotated callable should only be called once per body
+    // {once}
+    once_pragma: (_) => prec(1, token(seq("{", "once", "}"))),
+
     // Case pragma - parameterized test case values
     // {case(5, 10)}                  - positional
     // {case(x := 5, y := 10)}       - named
@@ -407,6 +411,16 @@ module.exports = grammar({
           field("args", commaSep($.param_assign_input)),
         ")", "}",
       )),
+
+    // Unified POU pragma list - validated during HIR building
+    // Covers: {test}, {once}, {warn = '...'}, {info = '...'}, {case(...)}
+    pou_pragma: ($) =>
+      choice(
+        $.test_pragma,
+        $.once_pragma,
+        $.warn_pragma,
+        $.case_pragma,
+      ),
 
     // Table 5 - Numeric literal
 
@@ -1177,9 +1191,7 @@ module.exports = grammar({
 
     func_decl: ($) =>
       seq(
-        field("warn", optional($.warn_pragma)),
-        field("test", optional($.test_pragma)),
-        field("cases", repeat($.case_pragma)),
+        field("pragmas", repeat($.pou_pragma)),
         "FUNCTION",
         field("spec", optional($.access_spec)),
         field("name", $.identifier),
@@ -1207,7 +1219,7 @@ module.exports = grammar({
 
     fb_decl: ($) =>
       seq(
-        field("warn", optional($.warn_pragma)),
+        field("pragmas", repeat($.pou_pragma)),
         "FUNCTION_BLOCK",
         field("qualifier", optional(choice("FINAL", "ABSTRACT"))),
         field("name", $.identifier),
@@ -1302,7 +1314,7 @@ module.exports = grammar({
 
     method_decl: ($) =>
       seq(
-        field("warn", optional($.warn_pragma)),
+        field("pragmas", repeat($.pou_pragma)),
         "METHOD",
         field("access", optional($.access_spec)),
         field("modifier", optional(choice("FINAL", "ABSTRACT"))),
@@ -1415,8 +1427,7 @@ module.exports = grammar({
 
     prog_decl: ($) =>
       seq(
-        field("test", optional($.test_pragma)),
-        field("cases", repeat($.case_pragma)),
+        field("pragmas", repeat($.pou_pragma)),
         "PROGRAM",
         field("name", $.identifier),
         field(
@@ -1692,7 +1703,7 @@ module.exports = grammar({
           $.class_decl,
           $.interface_decl,
           $.namespace_decl,
-          $.ERR_invalid_pou_keyword,
+          //$.ERR_invalid_pou_keyword,
           $.ERR_program_not_allowed_in_namespace,
           $.ERR_config_not_allowed_in_namespace,
         ),

@@ -10,7 +10,8 @@ END_FUNCTION
 
 (source_file
   (func_decl
-    test: (test_pragma)
+    pragmas: (pou_pragma
+      (test_pragma))
     name: (identifier)
     return_type: (numeric_type_name
       (int_type_name
@@ -29,7 +30,8 @@ END_PROGRAM
 
 (source_file
   (prog_decl
-    test: (test_pragma)
+    pragmas: (pou_pragma
+      (test_pragma))
     name: (identifier)))
 
 ================================================================================
@@ -64,32 +66,35 @@ END_FUNCTION
 
 (source_file
   (func_decl
-    test: (test_pragma)
-    cases: (case_pragma
-      args: (param_assign_input
-        value: (constant
-          (numeric_literal
-            (int_literal
-              int: (signed_int
-                (unsigned_int))))))
-      args: (param_assign_input
-        value: (constant
-          (numeric_literal
-            (int_literal
-              int: (signed_int
-                (unsigned_int)))))))
-    cases: (case_pragma
-      args: (param_assign_input
-        value: (constant
-          (numeric_literal
-            (int_literal
-              int: (signed_int)))))
-      args: (param_assign_input
-        value: (constant
-          (numeric_literal
-            (int_literal
-              int: (signed_int
-                (unsigned_int)))))))
+    pragmas: (pou_pragma
+      (test_pragma))
+    pragmas: (pou_pragma
+      (case_pragma
+        args: (param_assign_input
+          value: (constant
+            (numeric_literal
+              (int_literal
+                int: (signed_int
+                  (unsigned_int))))))
+        args: (param_assign_input
+          value: (constant
+            (numeric_literal
+              (int_literal
+                int: (signed_int
+                  (unsigned_int))))))))
+    pragmas: (pou_pragma
+      (case_pragma
+        args: (param_assign_input
+          value: (constant
+            (numeric_literal
+              (int_literal
+                int: (signed_int)))))
+        args: (param_assign_input
+          value: (constant
+            (numeric_literal
+              (int_literal
+                int: (signed_int
+                  (unsigned_int))))))))
     name: (identifier)
     return_type: (numeric_type_name
       (int_type_name
@@ -129,22 +134,134 @@ END_FUNCTION
 
 (source_file
   (func_decl
-    test: (test_pragma)
-    cases: (case_pragma
-      args: (param_assign_input
-        param: (identifier)
-        value: (constant
-          (numeric_literal
-            (int_literal
-              int: (signed_int
-                (unsigned_int))))))
-      args: (param_assign_input
-        param: (identifier)
-        value: (constant
-          (numeric_literal
-            (int_literal
-              int: (signed_int
-                (unsigned_int)))))))
+    pragmas: (pou_pragma
+      (test_pragma))
+    pragmas: (pou_pragma
+      (case_pragma
+        args: (param_assign_input
+          param: (identifier)
+          value: (constant
+            (numeric_literal
+              (int_literal
+                int: (signed_int
+                  (unsigned_int))))))
+        args: (param_assign_input
+          param: (identifier)
+          value: (constant
+            (numeric_literal
+              (int_literal
+                int: (signed_int
+                  (unsigned_int))))))))
+    name: (identifier)
+    return_type: (numeric_type_name
+      (int_type_name
+        (sign_int_type_name
+          (int_name))))
+    variables: (input_decls
+      (input_var
+        variables: (variable_list
+          (identifier))
+        type: (var_decl_init
+          spec: (simple_type_spec
+            (numeric_type_name
+              (int_type_name
+                (sign_int_type_name
+                  (int_name)))))))
+      (input_var
+        variables: (variable_list
+          (identifier))
+        type: (var_decl_init
+          spec: (simple_type_spec
+            (numeric_type_name
+              (int_type_name
+                (sign_int_type_name
+                  (int_name))))))))))
+
+================================================================================
+Once pragma on function
+================================================================================
+
+{once}
+FUNCTION setup : INT
+END_FUNCTION
+
+--------------------------------------------------------------------------------
+
+(source_file
+  (func_decl
+    pragmas: (pou_pragma
+      (once_pragma))
+    name: (identifier)
+    return_type: (numeric_type_name
+      (int_type_name
+        (sign_int_type_name
+          (int_name))))))
+
+================================================================================
+Once pragma on method
+================================================================================
+
+FUNCTION_BLOCK MyFB
+    {once}
+    METHOD PUBLIC init : INT
+    END_METHOD
+END_FUNCTION_BLOCK
+
+--------------------------------------------------------------------------------
+
+(source_file
+  (fb_decl
+    name: (identifier)
+    method: (method_decl
+      pragmas: (pou_pragma
+        (once_pragma))
+      access: (access_spec
+        (public))
+      name: (identifier)
+      return_type: (numeric_type_name
+        (int_type_name
+          (sign_int_type_name
+            (int_name)))))))
+
+================================================================================
+Multiple pragmas combined
+================================================================================
+
+{warn = 'deprecated'}
+{test}
+{once}
+{case(1, 2)}
+FUNCTION test_fn : INT
+VAR_INPUT a : INT; b : INT; END_VAR
+END_FUNCTION
+
+--------------------------------------------------------------------------------
+
+(source_file
+  (func_decl
+    pragmas: (pou_pragma
+      (warn_pragma
+        level: (warn_pragma_level
+          (warn))
+        message: (pragma_string)))
+    pragmas: (pou_pragma
+      (test_pragma))
+    pragmas: (pou_pragma
+      (once_pragma))
+    pragmas: (pou_pragma
+      (case_pragma
+        args: (param_assign_input
+          value: (constant
+            (numeric_literal
+              (int_literal
+                int: (signed_int
+                  (unsigned_int))))))
+        args: (param_assign_input
+          value: (constant
+            (numeric_literal
+              (int_literal
+                int: (signed_int
+                  (unsigned_int))))))))
     name: (identifier)
     return_type: (numeric_type_name
       (int_type_name

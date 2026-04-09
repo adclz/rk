@@ -43,10 +43,6 @@
           {
             "type": "SYMBOL",
             "name": "using_directive"
-          },
-          {
-            "type": "SYMBOL",
-            "name": "ERR_invalid_pou_keyword"
           }
         ]
       }
@@ -840,6 +836,30 @@
         }
       }
     },
+    "once_pragma": {
+      "type": "PREC",
+      "value": 1,
+      "content": {
+        "type": "TOKEN",
+        "content": {
+          "type": "SEQ",
+          "members": [
+            {
+              "type": "STRING",
+              "value": "{"
+            },
+            {
+              "type": "STRING",
+              "value": "once"
+            },
+            {
+              "type": "STRING",
+              "value": "}"
+            }
+          ]
+        }
+      }
+    },
     "case_pragma": {
       "type": "PREC",
       "value": 1,
@@ -917,6 +937,27 @@
           }
         ]
       }
+    },
+    "pou_pragma": {
+      "type": "CHOICE",
+      "members": [
+        {
+          "type": "SYMBOL",
+          "name": "test_pragma"
+        },
+        {
+          "type": "SYMBOL",
+          "name": "once_pragma"
+        },
+        {
+          "type": "SYMBOL",
+          "name": "warn_pragma"
+        },
+        {
+          "type": "SYMBOL",
+          "name": "case_pragma"
+        }
+      ]
     },
     "constant": {
       "type": "CHOICE",
@@ -5082,44 +5123,12 @@
       "members": [
         {
           "type": "FIELD",
-          "name": "warn",
-          "content": {
-            "type": "CHOICE",
-            "members": [
-              {
-                "type": "SYMBOL",
-                "name": "warn_pragma"
-              },
-              {
-                "type": "BLANK"
-              }
-            ]
-          }
-        },
-        {
-          "type": "FIELD",
-          "name": "test",
-          "content": {
-            "type": "CHOICE",
-            "members": [
-              {
-                "type": "SYMBOL",
-                "name": "test_pragma"
-              },
-              {
-                "type": "BLANK"
-              }
-            ]
-          }
-        },
-        {
-          "type": "FIELD",
-          "name": "cases",
+          "name": "pragmas",
           "content": {
             "type": "REPEAT",
             "content": {
               "type": "SYMBOL",
-              "name": "case_pragma"
+              "name": "pou_pragma"
             }
           }
         },
@@ -5291,18 +5300,13 @@
       "members": [
         {
           "type": "FIELD",
-          "name": "warn",
+          "name": "pragmas",
           "content": {
-            "type": "CHOICE",
-            "members": [
-              {
-                "type": "SYMBOL",
-                "name": "warn_pragma"
-              },
-              {
-                "type": "BLANK"
-              }
-            ]
+            "type": "REPEAT",
+            "content": {
+              "type": "SYMBOL",
+              "name": "pou_pragma"
+            }
           }
         },
         {
@@ -5900,18 +5904,13 @@
       "members": [
         {
           "type": "FIELD",
-          "name": "warn",
+          "name": "pragmas",
           "content": {
-            "type": "CHOICE",
-            "members": [
-              {
-                "type": "SYMBOL",
-                "name": "warn_pragma"
-              },
-              {
-                "type": "BLANK"
-              }
-            ]
+            "type": "REPEAT",
+            "content": {
+              "type": "SYMBOL",
+              "name": "pou_pragma"
+            }
           }
         },
         {
@@ -6624,28 +6623,12 @@
       "members": [
         {
           "type": "FIELD",
-          "name": "test",
-          "content": {
-            "type": "CHOICE",
-            "members": [
-              {
-                "type": "SYMBOL",
-                "name": "test_pragma"
-              },
-              {
-                "type": "BLANK"
-              }
-            ]
-          }
-        },
-        {
-          "type": "FIELD",
-          "name": "cases",
+          "name": "pragmas",
           "content": {
             "type": "REPEAT",
             "content": {
               "type": "SYMBOL",
-              "name": "case_pragma"
+              "name": "pou_pragma"
             }
           }
         },
@@ -8317,10 +8300,6 @@
           {
             "type": "SYMBOL",
             "name": "namespace_decl"
-          },
-          {
-            "type": "SYMBOL",
-            "name": "ERR_invalid_pou_keyword"
           },
           {
             "type": "SYMBOL",

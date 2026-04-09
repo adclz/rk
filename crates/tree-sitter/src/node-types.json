@@ -905,21 +905,6 @@
     "fields": {}
   },
   {
-    "type": "ERR_invalid_pou_keyword",
-    "named": true,
-    "fields": {},
-    "children": {
-      "multiple": false,
-      "required": true,
-      "types": [
-        {
-          "type": "identifier",
-          "named": true
-        }
-      ]
-    }
-  },
-  {
     "type": "ERR_method_decl_in_body",
     "named": true,
     "fields": {},
@@ -2999,6 +2984,16 @@
           }
         ]
       },
+      "pragmas": {
+        "multiple": true,
+        "required": false,
+        "types": [
+          {
+            "type": "pou_pragma",
+            "named": true
+          }
+        ]
+      },
       "qualifier": {
         "multiple": false,
         "required": false,
@@ -3019,16 +3014,6 @@
         "types": [
           {
             "type": "_fb_variables",
-            "named": true
-          }
-        ]
-      },
-      "warn": {
-        "multiple": false,
-        "required": false,
-        "types": [
-          {
-            "type": "warn_pragma",
             "named": true
           }
         ]
@@ -3498,16 +3483,6 @@
           }
         ]
       },
-      "cases": {
-        "multiple": true,
-        "required": false,
-        "types": [
-          {
-            "type": "case_pragma",
-            "named": true
-          }
-        ]
-      },
       "directives": {
         "multiple": true,
         "required": false,
@@ -3524,6 +3499,16 @@
         "types": [
           {
             "type": "identifier",
+            "named": true
+          }
+        ]
+      },
+      "pragmas": {
+        "multiple": true,
+        "required": false,
+        "types": [
+          {
+            "type": "pou_pragma",
             "named": true
           }
         ]
@@ -3548,32 +3533,12 @@
           }
         ]
       },
-      "test": {
-        "multiple": false,
-        "required": false,
-        "types": [
-          {
-            "type": "test_pragma",
-            "named": true
-          }
-        ]
-      },
       "variables": {
         "multiple": true,
         "required": false,
         "types": [
           {
             "type": "_func_variables",
-            "named": true
-          }
-        ]
-      },
-      "warn": {
-        "multiple": false,
-        "required": false,
-        "types": [
-          {
-            "type": "warn_pragma",
             "named": true
           }
         ]
@@ -4474,6 +4439,16 @@
           }
         ]
       },
+      "pragmas": {
+        "multiple": true,
+        "required": false,
+        "types": [
+          {
+            "type": "pou_pragma",
+            "named": true
+          }
+        ]
+      },
       "return_type": {
         "multiple": false,
         "required": false,
@@ -4490,16 +4465,6 @@
         "types": [
           {
             "type": "_method_decl_variables",
-            "named": true
-          }
-        ]
-      },
-      "warn": {
-        "multiple": false,
-        "required": false,
-        "types": [
-          {
-            "type": "warn_pragma",
             "named": true
           }
         ]
@@ -4735,10 +4700,6 @@
           "named": true
         },
         {
-          "type": "ERR_invalid_pou_keyword",
-          "named": true
-        },
-        {
           "type": "ERR_program_not_allowed_in_namespace",
           "named": true
         },
@@ -4866,6 +4827,11 @@
         }
       ]
     }
+  },
+  {
+    "type": "once_pragma",
+    "named": true,
+    "fields": {}
   },
   {
     "type": "or_operator",
@@ -5123,6 +5089,33 @@
         },
         {
           "type": "var_access",
+          "named": true
+        }
+      ]
+    }
+  },
+  {
+    "type": "pou_pragma",
+    "named": true,
+    "fields": {},
+    "children": {
+      "multiple": false,
+      "required": true,
+      "types": [
+        {
+          "type": "case_pragma",
+          "named": true
+        },
+        {
+          "type": "once_pragma",
+          "named": true
+        },
+        {
+          "type": "test_pragma",
+          "named": true
+        },
+        {
+          "type": "warn_pragma",
           "named": true
         }
       ]
@@ -5389,16 +5382,6 @@
           }
         ]
       },
-      "cases": {
-        "multiple": true,
-        "required": false,
-        "types": [
-          {
-            "type": "case_pragma",
-            "named": true
-          }
-        ]
-      },
       "declarations": {
         "multiple": true,
         "required": false,
@@ -5463,12 +5446,12 @@
           }
         ]
       },
-      "test": {
-        "multiple": false,
+      "pragmas": {
+        "multiple": true,
         "required": false,
         "types": [
           {
-            "type": "test_pragma",
+            "type": "pou_pragma",
             "named": true
           }
         ]
@@ -5932,10 +5915,6 @@
       "multiple": true,
       "required": false,
       "types": [
-        {
-          "type": "ERR_invalid_pou_keyword",
-          "named": true
-        },
         {
           "type": "class_decl",
           "named": true

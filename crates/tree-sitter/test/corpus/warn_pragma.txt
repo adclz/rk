@@ -10,10 +10,11 @@ END_FUNCTION
 
 (source_file
   (func_decl
-    warn: (warn_pragma
-      level: (warn_pragma_level
-        (warn))
-      message: (pragma_string))
+    pragmas: (pou_pragma
+      (warn_pragma
+        level: (warn_pragma_level
+          (warn))
+        message: (pragma_string)))
     name: (identifier)
     return_type: (numeric_type_name
       (int_type_name
@@ -32,10 +33,11 @@ END_FUNCTION
 
 (source_file
   (func_decl
-    warn: (warn_pragma
-      level: (warn_pragma_level
-        (info))
-      message: (pragma_string))
+    pragmas: (pou_pragma
+      (warn_pragma
+        level: (warn_pragma_level
+          (info))
+        message: (pragma_string)))
     name: (identifier)
     return_type: (numeric_type_name
       (int_type_name
@@ -54,10 +56,11 @@ END_FUNCTION_BLOCK
 
 (source_file
   (fb_decl
-    warn: (warn_pragma
-      level: (warn_pragma_level
-        (warn))
-      message: (pragma_string))
+    pragmas: (pou_pragma
+      (warn_pragma
+        level: (warn_pragma_level
+          (warn))
+        message: (pragma_string)))
     name: (identifier)))
 
 ================================================================================
@@ -76,10 +79,11 @@ END_FUNCTION_BLOCK
   (fb_decl
     name: (identifier)
     method: (method_decl
-      warn: (warn_pragma
-        level: (warn_pragma_level
-          (warn))
-        message: (pragma_string))
+      pragmas: (pou_pragma
+        (warn_pragma
+          level: (warn_pragma_level
+            (warn))
+          message: (pragma_string)))
       access: (access_spec
         (public))
       name: (identifier)
@@ -101,14 +105,15 @@ END_FUNCTION
 
 (source_file
   (func_decl
-    warn: (warn_pragma
-      level: (warn_pragma_level
-        (warn))
-      message: (pragma_string))
-    test: (test_pragma)
+    pragmas: (pou_pragma
+      (warn_pragma
+        level: (warn_pragma_level
+          (warn))
+        message: (pragma_string)))
+    pragmas: (pou_pragma
+      (test_pragma))
     name: (identifier)
     return_type: (numeric_type_name
       (int_type_name
         (sign_int_type_name
           (int_name))))))
-
