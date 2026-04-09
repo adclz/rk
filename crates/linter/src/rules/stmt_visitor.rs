@@ -21,7 +21,7 @@ use ide_diagnostic::IdeDiagnostic;
 use super::{
     collapsible_if, constant_loop_bounds,
     bool_comparison, constant_condition, duplicate_case, empty_case_branch, empty_if_branch,
-    external_mutation,
+    empty_loop_body, external_mutation,
     for_zero_step,
     identical_sub_expr, identity_operation, input_assignment, loop_var_modified,
     missing_input_param, missing_return, negated_comparison, negated_condition, redundant_not, run_lint,
@@ -53,6 +53,7 @@ pub fn check<'db>(
         self_assignment: config.is_enabled(self_assignment::NAME),
         collapsible_if: config.is_enabled(collapsible_if::NAME),
         empty_if_branch: config.is_enabled(empty_if_branch::NAME),
+        empty_loop_body: config.is_enabled(empty_loop_body::NAME),
         external_mutation: config.is_enabled(external_mutation::NAME),
         constant_condition: config.is_enabled(constant_condition::NAME),
         constant_loop_bounds: config.is_enabled(constant_loop_bounds::NAME),
@@ -120,6 +121,7 @@ struct VisitorCtx {
     self_assignment: bool,
     collapsible_if: bool,
     empty_if_branch: bool,
+    empty_loop_body: bool,
     external_mutation: bool,
     constant_condition: bool,
     constant_loop_bounds: bool,
@@ -149,6 +151,7 @@ impl VisitorCtx {
             || self.self_assignment
             || self.collapsible_if
             || self.empty_if_branch
+            || self.empty_loop_body
             || self.external_mutation
             || self.constant_condition
             || self.constant_loop_bounds
@@ -431,6 +434,11 @@ fn visit_statements<'db>(
                         constant_condition::check_condition(db, condition, "WHILE", d)
                     });
                 }
+                if ctx.empty_loop_body {
+                    run_lint(empty_loop_body::NAME, diagnostics, |d| {
+                        empty_loop_body::check_while(db, condition, loop_body, d)
+                    });
+                }
                 visit_statements(
                     db,
                     body,
@@ -483,6 +491,11 @@ fn visit_statements<'db>(
                         constant_loop_bounds::check(db, start, end, d);
                     });
                 }
+                if ctx.empty_loop_body {
+                    run_lint(empty_loop_body::NAME, diagnostics, |d| {
+                        empty_loop_body::check_for(db, *stmt, loop_body, d)
+                    });
+                }
                 if let Some(step) = step {
                     check_expr_lints(db, body, ctx, step, diagnostics);
                     if ctx.for_zero_step {
@@ -500,6 +513,11 @@ fn visit_statements<'db>(
                 if ctx.constant_condition {
                     run_lint(constant_condition::NAME, diagnostics, |d| {
                         constant_condition::check_condition(db, condition, "UNTIL", d)
+                    });
+                }
+                if ctx.empty_loop_body {
+                    run_lint(empty_loop_body::NAME, diagnostics, |d| {
+                        empty_loop_body::check_repeat(db, condition, loop_body, d)
                     });
                 }
                 visit_statements(
