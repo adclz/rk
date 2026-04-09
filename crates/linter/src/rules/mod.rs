@@ -23,6 +23,7 @@ pub mod duplicate_case;
 pub mod empty_case_branch;
 pub mod empty_if_branch;
 pub mod empty_loop_body;
+pub mod empty_type;
 pub mod duplicate_namespace;
 pub mod single_element_array;
 pub mod duplicate_var_section;
@@ -75,6 +76,7 @@ pub const ALL_RULE_NAMES: &[&str] = &[
     external_mutation::NAME,
     empty_if_branch::NAME,
     empty_loop_body::NAME,
+    empty_type::NAME,
     for_loop_step_sign::NAME,
     for_zero_step::NAME,
     generic_extern::NAME,
@@ -149,6 +151,15 @@ pub fn lint_file(
                 all_usings.extend_from_slice(method_scope.usings(db));
                 all_scopes.push(method_scope);
                 lint_scope(db, config, method_scope, &mut body_scopes, diagnostics);
+            }
+        }
+
+        // DataType-level lints
+        if config.is_enabled(empty_type::NAME) {
+            if let Pou::DataType(dt) = pou {
+                run_lint(empty_type::NAME, diagnostics, |d| {
+                    empty_type::check(db, *dt, d)
+                });
             }
         }
     }
