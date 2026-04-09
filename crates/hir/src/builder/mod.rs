@@ -17,6 +17,7 @@ pub mod function;
 pub mod function_block;
 pub mod interface;
 pub mod namespace;
+pub mod pragmas;
 pub mod program;
 pub mod semantic_index;
 pub mod statement;
@@ -62,24 +63,3 @@ pub trait Parse<'db> {
     ) -> anyhow::Result<Self::Output, IdeDiagnostic>;
 }
 
-impl<'db> SemanticIndexBuilder<'db> {
-    pub fn parse_warn_pragma(
-        &self,
-        warn: &ast::generated::WarnPragma,
-    ) -> Option<crate::hir_def::pous::warn_pragma::WarnPragma> {
-        use crate::hir_def::pous::warn_pragma::{WarnPragma, WarnPragmaLevel};
-        use auto_lsp::core::ast::AstNode;
-
-        let doc = self.file.document(self.db).as_bytes();
-
-        let level = match warn.level.cast(self.ast).children.cast(self.ast) {
-            ast::generated::Info_Warn::Warn(_) => WarnPragmaLevel::Warn,
-            ast::generated::Info_Warn::Info(_) => WarnPragmaLevel::Info,
-        };
-
-        let msg_text = warn.message.cast(self.ast).get_text(doc).ok()?;
-        let message = compact_str::CompactString::from(&msg_text[1..msg_text.len() - 1]);
-
-        Some(WarnPragma { level, message })
-    }
-}

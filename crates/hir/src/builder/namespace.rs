@@ -19,7 +19,7 @@ impl<'db> SemanticIndexBuilder<'db> {
         nested: &ast::generated::NamespaceDecl,
     ) -> anyhow::Result<NamespaceDecl<'db>, IdeDiagnostic> {
         type Decl =
-            ast::generated::ERRConfigNotAllowedInNamespace_ERRInvalidPouKeyword_ERRProgramNotAllowedInNamespace_ClassDecl_DataTypeDecl_FbDecl_FuncDecl_InterfaceDecl_NamespaceDecl;
+            ast::generated::ERRConfigNotAllowedInNamespace_ERRProgramNotAllowedInNamespace_ClassDecl_DataTypeDecl_FbDecl_FuncDecl_InterfaceDecl_NamespaceDecl;
 
         let scope_id = self.generate_scope_id();
         let path = SpanNamespacePath::from((self.db, parent_path, self.current_scope));
@@ -61,11 +61,6 @@ impl<'db> SemanticIndexBuilder<'db> {
                     }
                     Decl::InterfaceDecl(interface) => {
                         pous.push(self.parse_interface(interface)?);
-                    }
-                    Decl::ERRInvalidPouKeyword(err) => {
-                        self.errors.push(
-                            SyntaxError::InvalidPouKeyword(err.get_span()).to_diagnostic(self.db),
-                        );
                     }
                     Decl::ERRProgramNotAllowedInNamespace(err) => {
                         self.errors.push(

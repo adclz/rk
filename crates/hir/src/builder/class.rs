@@ -283,10 +283,7 @@ impl<'db> SemanticIndexBuilder<'db> {
             None => Visibility::PROTECTED,
         };
 
-        let warn_pragma = method
-            .warn
-            .as_ref()
-            .and_then(|w| self.parse_warn_pragma(w.cast(self.ast)));
+        let pragmas = self.parse_pou_pragmas(&method.pragmas);
 
         let result = MethodDecl::new(
             self.db,
@@ -298,7 +295,7 @@ impl<'db> SemanticIndexBuilder<'db> {
             visibility,
             method._override.is_some(),
             body,
-            warn_pragma,
+            pragmas.warn_pragma,
             method.into(),
             scope_id,
         );

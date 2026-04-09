@@ -111,10 +111,7 @@ impl<'db> SemanticIndexBuilder<'db> {
         let usings = self.parse_usings(&func.directives);
         let usings = self.parse_or_default(usings);
 
-        let warn_pragma = func
-            .warn
-            .as_ref()
-            .and_then(|w| self.parse_warn_pragma(w.cast(self.ast)));
+        let pragmas = self.parse_pou_pragmas(&func.pragmas);
 
         let result = Pou::FunctionBlock(FunctionBlock::new(
             self.db,
@@ -126,7 +123,7 @@ impl<'db> SemanticIndexBuilder<'db> {
             self.parse_methods(&func.method),
             statements,
             modifiers,
-            warn_pragma,
+            pragmas.warn_pragma,
             func.into(),
             scope_id,
         ));

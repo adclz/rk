@@ -50,23 +50,18 @@ impl<'db> SemanticIndexBuilder<'db> {
         let name = Ident::from_node(self.db, self.file, func.name.cast(self.ast))?;
         let usings = self.parse_usings(&func.directives)?;
 
-        let cases = self.parse_cases(&func.cases);
-
-        let warn_pragma = func
-            .warn
-            .as_ref()
-            .and_then(|w| self.parse_warn_pragma(w.cast(self.ast)));
+        let pragmas = self.parse_pou_pragmas(&func.pragmas);
 
         let result = Pou::Function(Function::new(
             self.db,
             name,
-            func.test.is_some(),
-            cases,
+            pragmas.is_test,
+            pragmas.cases,
             func.name.cast(self.ast).into(),
             variables,
             statements,
             return_type,
-            warn_pragma,
+            pragmas.warn_pragma,
             func.into(),
             scope_id,
         ));
@@ -127,42 +122,4 @@ impl<'db> SemanticIndexBuilder<'db> {
         variables
     }
 
-    pub(crate) fn parse_cases(
-        &mut self,
-        cases: &[auto_lsp::core::ast::AstNodeId<ast::generated::CasePragma>],
-    ) -> Vec<Vec<ParamAssign<'db>>> {
-        cases
-            .iter()
-            .map(|case_id| {
-                let case = case_id.cast(self.ast);
-                let mut args = vec![];
-                for arg_id in case.args.iter() {
-                    match arg_id.cast(self.ast) {
-                        ast::generated::Comma_ParamAssignInput::ParamAssignInput(p) => {
-                            let kind = match p.param.as_ref() {
-                                Some(param) => {
-                                    let param =
-                                        SpanIdent::from_node(self.db, self, param.cast(self.ast));
-                                    let value = p.value.cast(self.ast).parse(self);
-                                    match (param, value) {
-                                        (Ok(param), Ok(value)) => {
-                                            ParamAssignKind::FormalInput { param, value }
-                                        }
-                                        _ => continue,
-                                    }
-                                }
-                                None => match p.value.cast(self.ast).parse(self) {
-                                    Ok(value) => ParamAssignKind::NonFormal { value },
-                                    _ => continue,
-                                },
-                            };
-                            args.push(self.new_param(p.into(), self.current_scope, kind));
-                        }
-                        _ => {} // skip commas
-                    }
-                }
-                args
-            })
-            .collect()
-    }
 }

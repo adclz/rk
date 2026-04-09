@@ -278,13 +278,10 @@ impl<'db> SemanticIndexBuilder<'db> {
         let global_scope = ScopeId::global(self.db, self.file);
 
         for child in self.source.children.iter() {
-            type SourceFileDecl = ast::generated::ERRInvalidPouKeyword_ClassDecl_ConfigDecl_DataTypeDecl_FbDecl_FuncDecl_InterfaceDecl_NamespaceDecl_ProgDecl_UsingDirective;
+            type SourceFileDecl = ast::generated::ClassDecl_ConfigDecl_DataTypeDecl_FbDecl_FuncDecl_InterfaceDecl_NamespaceDecl_ProgDecl_UsingDirective;
 
             self.current_scope = global_scope;
             match child.cast(self.ast) {
-                SourceFileDecl::ERRInvalidPouKeyword(err) => self
-                    .errors
-                    .push(SyntaxError::InvalidPouKeyword(err.get_span()).to_diagnostic(self.db)),
                 SourceFileDecl::NamespaceDecl(namespace) => {
                     let path = match self.get_namespace_path(namespace) {
                         Ok(path) => path,

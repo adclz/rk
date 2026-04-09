@@ -43,13 +43,13 @@ impl<'db> SemanticIndexBuilder<'db> {
             }
         });
 
-        let cases = self.parse_cases(&program.cases);
+        let pragmas = self.parse_pou_pragmas(&program.pragmas);
 
         let result = ProgramDecl::new(
             self.db,
             name,
-            program.test.is_some(),
-            cases,
+            pragmas.is_test,
+            pragmas.cases,
             program.name.cast(self.ast).into(),
             prog_access_decls,
             variables,
