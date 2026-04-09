@@ -781,7 +781,7 @@ module.exports = grammar({
       seq(
         field("elem_type", optional($._elem_type_name)),
         "(",
-        commaSep1($.enum_value_spec),
+        commaSep($.enum_value_spec),
         ")",
       ),
 
