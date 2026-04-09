@@ -26,6 +26,7 @@ pub mod duplicate_namespace;
 pub mod single_element_array;
 pub mod duplicate_var_section;
 pub mod empty_body;
+pub mod external_mutation;
 pub mod effectless_statement;
 pub mod for_loop_step_sign;
 pub mod generic_extern;
@@ -70,6 +71,7 @@ pub const ALL_RULE_NAMES: &[&str] = &[
     effectless_statement::NAME,
     empty_body::NAME,
     empty_case_branch::NAME,
+    external_mutation::NAME,
     empty_if_branch::NAME,
     for_loop_step_sign::NAME,
     for_zero_step::NAME,

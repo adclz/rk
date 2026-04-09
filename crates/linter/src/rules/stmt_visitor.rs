@@ -21,6 +21,7 @@ use ide_diagnostic::IdeDiagnostic;
 use super::{
     collapsible_if, constant_loop_bounds,
     bool_comparison, constant_condition, duplicate_case, empty_case_branch, empty_if_branch,
+    external_mutation,
     for_zero_step,
     identical_sub_expr, identity_operation, input_assignment, loop_var_modified,
     missing_input_param, missing_return, negated_comparison, negated_condition, redundant_not, run_lint,
@@ -52,6 +53,7 @@ pub fn check<'db>(
         self_assignment: config.is_enabled(self_assignment::NAME),
         collapsible_if: config.is_enabled(collapsible_if::NAME),
         empty_if_branch: config.is_enabled(empty_if_branch::NAME),
+        external_mutation: config.is_enabled(external_mutation::NAME),
         constant_condition: config.is_enabled(constant_condition::NAME),
         constant_loop_bounds: config.is_enabled(constant_loop_bounds::NAME),
         unnecessary_else: config.is_enabled(unnecessary_else::NAME),
@@ -118,6 +120,7 @@ struct VisitorCtx {
     self_assignment: bool,
     collapsible_if: bool,
     empty_if_branch: bool,
+    external_mutation: bool,
     constant_condition: bool,
     constant_loop_bounds: bool,
     unnecessary_else: bool,
@@ -146,6 +149,7 @@ impl VisitorCtx {
             || self.self_assignment
             || self.collapsible_if
             || self.empty_if_branch
+            || self.external_mutation
             || self.constant_condition
             || self.constant_loop_bounds
             || self.unnecessary_else
@@ -285,6 +289,11 @@ fn visit_statements<'db>(
                         input_assignment::check_assignment(db, body, *var, d)
                     });
                 }
+                if ctx.external_mutation {
+                    run_lint(external_mutation::NAME, diagnostics, |d| {
+                        external_mutation::check_assignment(db, body, *var, d)
+                    });
+                }
                 if ctx.self_assignment {
                     run_lint(self_assignment::NAME, diagnostics, |d| {
                         self_assignment::check_assignment(db, body, *stmt, *var, *target, d)
@@ -311,6 +320,11 @@ fn visit_statements<'db>(
                 if ctx.input_assignment {
                     run_lint(input_assignment::NAME, diagnostics, |d| {
                         input_assignment::check_assignment(db, body, *var, d)
+                    });
+                }
+                if ctx.external_mutation {
+                    run_lint(external_mutation::NAME, diagnostics, |d| {
+                        external_mutation::check_assignment(db, body, *var, d)
                     });
                 }
                 if ctx.loop_var_modified {
