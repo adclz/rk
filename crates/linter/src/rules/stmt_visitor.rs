@@ -22,7 +22,7 @@ use super::{
     collapsible_if, constant_loop_bounds,
     bool_comparison, constant_condition, duplicate_case, empty_case_branch, empty_if_branch,
     empty_loop_body, external_mutation,
-    for_zero_step,
+    default_for_step, for_zero_step,
     identical_sub_expr, identity_operation, input_assignment, loop_var_modified,
     missing_input_param, missing_return, negated_comparison, negated_condition, redundant_not, run_lint,
     self_assignment, self_comparison, sub_self, uninitialized_output, unnecessary_else,
@@ -71,6 +71,7 @@ pub fn check<'db>(
         negated_comparison: config.is_enabled(negated_comparison::NAME),
         duplicate_case: config.is_enabled(duplicate_case::NAME),
         empty_case_branch: config.is_enabled(empty_case_branch::NAME),
+        default_for_step: config.is_enabled(default_for_step::NAME),
         for_zero_step: config.is_enabled(for_zero_step::NAME),
         loop_var_modified: config.is_enabled(loop_var_modified::NAME),
         unnecessary_parens: config.is_enabled(unnecessary_parens::NAME),
@@ -139,6 +140,7 @@ struct VisitorCtx {
     negated_comparison: bool,
     duplicate_case: bool,
     empty_case_branch: bool,
+    default_for_step: bool,
     for_zero_step: bool,
     loop_var_modified: bool,
     unnecessary_parens: bool,
@@ -169,6 +171,7 @@ impl VisitorCtx {
             || self.negated_comparison
             || self.duplicate_case
             || self.empty_case_branch
+            || self.default_for_step
             || self.for_zero_step
             || self.loop_var_modified
             || self.unnecessary_parens
@@ -501,6 +504,11 @@ fn visit_statements<'db>(
                     if ctx.for_zero_step {
                         run_lint(for_zero_step::NAME, diagnostics, |d| {
                             for_zero_step::check_step(db, step, d)
+                        });
+                    }
+                    if ctx.default_for_step {
+                        run_lint(default_for_step::NAME, diagnostics, |d| {
+                            default_for_step::check_step(db, step, d)
                         });
                     }
                 }

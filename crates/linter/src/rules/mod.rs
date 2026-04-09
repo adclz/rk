@@ -18,6 +18,7 @@ pub mod case_without_else;
 pub mod collapsible_if;
 pub mod constant_condition;
 pub mod dead_code;
+pub mod default_for_step;
 pub mod division_by_zero;
 pub mod duplicate_case;
 pub mod empty_case_branch;
@@ -66,6 +67,7 @@ pub const ALL_RULE_NAMES: &[&str] = &[
     constant_condition::NAME,
     constant_loop_bounds::NAME,
     dead_code::NAME,
+    default_for_step::NAME,
     division_by_zero::NAME,
     duplicate_case::NAME,
     duplicate_namespace::NAME,
