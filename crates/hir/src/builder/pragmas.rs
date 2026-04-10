@@ -17,20 +17,25 @@ impl<'db> SemanticIndexBuilder<'db> {
 
         for pragma_id in pragmas {
             let pragma = pragma_id.cast(self.ast);
+            // Use the PouPragma wrapper node for the span (it wraps the inner pragma)
+            let si = match SpanIdent::from_node(self.db, self, pragma) {
+                Ok(si) => si,
+                Err(_) => continue,
+            };
             match pragma.children.cast(self.ast) {
                 PragmaKind::TestPragma(_) => {
-                    result.push(Pragma::Test);
+                    result.push(Pragma::Test(si));
                 }
                 PragmaKind::OncePragma(_) => {
-                    result.push(Pragma::Once);
+                    result.push(Pragma::Once(si));
                 }
                 PragmaKind::WarnPragma(warn) => {
                     if let Some(wp) = self.parse_warn_pragma(&warn) {
-                        result.push(Pragma::Warn(wp));
+                        result.push(Pragma::Warn(si, wp));
                     }
                 }
                 PragmaKind::CasePragma(case) => {
-                    result.push(Pragma::Case(self.parse_single_case(&case)));
+                    result.push(Pragma::Case(si, self.parse_single_case(&case)));
                 }
             }
         }

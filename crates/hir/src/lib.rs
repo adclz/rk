@@ -121,23 +121,23 @@ pub trait HasPragmas<'db>: HirNodeInfo<'db> {
     fn get_pragmas(&self, db: &'db dyn WorkspaceDataBase) -> &'db [hir_def::pous::pragma::Pragma<'db>];
 
     fn is_test(&self, db: &'db dyn WorkspaceDataBase) -> bool {
-        self.get_pragmas(db).iter().any(|p| matches!(p, hir_def::pous::pragma::Pragma::Test))
+        self.get_pragmas(db).iter().any(|p| matches!(p, hir_def::pous::pragma::Pragma::Test(_)))
     }
 
     fn is_once(&self, db: &'db dyn WorkspaceDataBase) -> bool {
-        self.get_pragmas(db).iter().any(|p| matches!(p, hir_def::pous::pragma::Pragma::Once))
+        self.get_pragmas(db).iter().any(|p| matches!(p, hir_def::pous::pragma::Pragma::Once(_)))
     }
 
     fn warn_pragma(&self, db: &'db dyn WorkspaceDataBase) -> Option<&'db hir_def::pous::pragma::WarnPragma> {
         self.get_pragmas(db).iter().find_map(|p| match p {
-            hir_def::pous::pragma::Pragma::Warn(w) => Some(w),
+            hir_def::pous::pragma::Pragma::Warn(_, w) => Some(w),
             _ => None,
         })
     }
 
     fn cases(&self, db: &'db dyn WorkspaceDataBase) -> Vec<&'db Vec<hir_def::expressions::expression::ParamAssign<'db>>> {
         self.get_pragmas(db).iter().filter_map(|p| match p {
-            hir_def::pous::pragma::Pragma::Case(c) => Some(c),
+            hir_def::pous::pragma::Pragma::Case(_, c) => Some(c),
             _ => None,
         }).collect()
     }
