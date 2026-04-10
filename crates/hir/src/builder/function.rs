@@ -3,10 +3,8 @@ use crate::builder::semantic_index::SemanticIndexBuilder;
 use crate::builder::{Parse, ParseSpec, ParseVarSection};
 use crate::check::errors::ToIdeDiagnostic;
 use crate::check::errors::e0_syntax::SyntaxError;
-use crate::hir_def::expressions::expression::ParamAssign;
-use crate::hir_def::expressions::expression::ParamAssignKind;
 use crate::hir_def::hir_node::HirNode;
-use crate::hir_def::interned::identifier::{Ident, SpanIdent};
+use crate::hir_def::interned::identifier::Ident;
 use crate::hir_def::pous::function::Function;
 use crate::hir_def::pous::pou::Pou;
 use crate::hir_def::pous::variable::VariableDecl;
@@ -119,5 +117,4 @@ impl<'db> SemanticIndexBuilder<'db> {
 
         variables
     }
-
 }

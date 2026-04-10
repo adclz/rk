@@ -28,10 +28,18 @@ pub fn check_node<'db>(
     expr: &Expr<'db>,
     diagnostics: &mut Vec<IdeDiagnostic>,
 ) {
-    let ExprKind::ComparisonOperator { left, operator, right } = expr.expr(db) else {
+    let ExprKind::ComparisonOperator {
+        left,
+        operator,
+        right,
+    } = expr.expr(db)
+    else {
         return;
     };
-    if !matches!(operator, ComparisonOperatorKind::Eq | ComparisonOperatorKind::Ne) {
+    if !matches!(
+        operator,
+        ComparisonOperatorKind::Eq | ComparisonOperatorKind::Ne
+    ) {
         return;
     }
 
@@ -45,7 +53,9 @@ pub fn check_node<'db>(
 
     diagnostics.push(
         diag()
-            .message(format!("comparison with boolean literal can be simplified to {suggestion}"))
+            .message(format!(
+                "comparison with boolean literal can be simplified to {suggestion}"
+            ))
             .desc(&BoolComparison)
             .range(expr.get_span(db))
             .severity(DiagnosticSeverity::INFORMATION)

@@ -2,10 +2,7 @@ use auto_lsp::lsp_types::DiagnosticSeverity;
 use db::WorkspaceDataBase;
 use hir::{
     HirNodeInfo,
-    hir_def::expressions::{
-        expression::Expr,
-        statement::{Stmt},
-    },
+    hir_def::expressions::{expression::Expr, statement::Stmt},
 };
 use ide_diagnostic::{ErrorCode, IdeDiagnostic, diag};
 

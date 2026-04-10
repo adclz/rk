@@ -4,5 +4,5 @@ pub mod function;
 pub mod function_block;
 pub mod interface;
 pub mod pou;
-pub mod variable;
 pub mod pragma;
+pub mod variable;

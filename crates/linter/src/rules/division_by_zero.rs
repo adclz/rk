@@ -4,9 +4,7 @@ use hir::{
     HirNodeInfo,
     hir_def::{
         expressions::{
-            expression::{
-                Elementary, Expr, ExprKind, MultOperatorKind, PrimaryExpr,
-            },
+            expression::{Elementary, Expr, ExprKind, MultOperatorKind, PrimaryExpr},
             statement::{Stmt, StmtKind},
         },
         pous::pou::Pou,
@@ -126,8 +124,8 @@ fn check_expr<'db>(
             check_expr(db, right, diagnostics);
 
             // Only flag / and MOD
-            if matches!(operator, MultOperatorKind::Div | MultOperatorKind::Mod) {
-                if is_zero_literal(db, right) {
+            if matches!(operator, MultOperatorKind::Div | MultOperatorKind::Mod)
+                && is_zero_literal(db, right) {
                     let op = operator.as_str();
                     diagnostics.push(
                         diag()
@@ -138,7 +136,6 @@ fn check_expr<'db>(
                             .call(),
                     );
                 }
-            }
         }
         ExprKind::AddOperator { left, right, .. }
         | ExprKind::BooleanOperator { left, right, .. }
@@ -160,10 +157,8 @@ fn check_expr<'db>(
 /// Check if an expression is a literal integer zero (0, in any base or type prefix).
 fn is_zero_literal<'db>(db: &'db dyn WorkspaceDataBase, expr: &Expr<'db>) -> bool {
     match expr.expr(db) {
-        ExprKind::PrimaryExpr(PrimaryExpr::Literal(lit)) => is_zero_elementary(db, &lit),
-        ExprKind::PrimaryExpr(PrimaryExpr::ParenthesizedExpr { expr }) => {
-            is_zero_literal(db, expr)
-        }
+        ExprKind::PrimaryExpr(PrimaryExpr::Literal(lit)) => is_zero_elementary(db, lit),
+        ExprKind::PrimaryExpr(PrimaryExpr::ParenthesizedExpr { expr }) => is_zero_literal(db, expr),
         _ => false,
     }
 }

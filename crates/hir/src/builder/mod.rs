@@ -62,4 +62,3 @@ pub trait Parse<'db> {
         sema: &mut SemanticIndexBuilder<'db>,
     ) -> anyhow::Result<Self::Output, IdeDiagnostic>;
 }
-

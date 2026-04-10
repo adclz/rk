@@ -55,9 +55,15 @@ pub fn check_case<'db>(
 
                     // Check exact duplicate
                     if let Some(first) = seen_exprs.insert(key.clone(), *selector) {
-                        emit(db, &first, expr.get_span(db), &format!(
-                            "CASE selector '{key}' is duplicated, second branch is unreachable"
-                        ), diagnostics);
+                        emit(
+                            db,
+                            &first,
+                            expr.get_span(db),
+                            &format!(
+                                "CASE selector '{key}' is duplicated, second branch is unreachable"
+                            ),
+                            diagnostics,
+                        );
                         continue;
                     }
 
@@ -87,8 +93,7 @@ pub fn check_case<'db>(
                     }
                 }
                 CaseKind::Subrange { lower, upper } => {
-                    if let (Some(lo), Some(hi)) =
-                        (eval_integer(db, lower), eval_integer(db, upper))
+                    if let (Some(lo), Some(hi)) = (eval_integer(db, lower), eval_integer(db, upper))
                     {
                         let span = lower.get_span(db);
                         let file = lower.get_scope_id(db).file(db);
@@ -142,8 +147,8 @@ pub fn check_case<'db>(
                                 CaseKind::Expression(e) => eval_integer(db, e),
                                 _ => None,
                             };
-                            if let Some(val) = val {
-                                if val >= lo && val <= hi {
+                            if let Some(val) = val
+                                && val >= lo && val <= hi {
                                     let prev_span = match prev_selector {
                                         CaseKind::Expression(e) => e.get_span(db),
                                         _ => continue,
@@ -168,7 +173,6 @@ pub fn check_case<'db>(
                                     diagnostics.push(d);
                                     break;
                                 }
-                            }
                         }
 
                         seen_ranges.push(SeenRange { lo, hi, span, file });

@@ -30,7 +30,12 @@ pub fn check_node<'db>(
     expr: &Expr<'db>,
     diagnostics: &mut Vec<IdeDiagnostic>,
 ) {
-    let ExprKind::BooleanOperator { left, operator, right } = expr.expr(db) else {
+    let ExprKind::BooleanOperator {
+        left,
+        operator,
+        right,
+    } = expr.expr(db)
+    else {
         return;
     };
     if !same_expr(db, body, left, right) {
@@ -44,7 +49,9 @@ pub fn check_node<'db>(
     };
     diagnostics.push(
         diag()
-            .message(format!("identical expressions on both sides of '{op}', {hint}"))
+            .message(format!(
+                "identical expressions on both sides of '{op}', {hint}"
+            ))
             .desc(&IdenticalSubExpr)
             .range(expr.get_span(db))
             .severity(DiagnosticSeverity::WARNING)
@@ -78,8 +85,14 @@ fn same_expr<'db>(
             same_expr(db, body, left, re)
         }
         (
-            ExprKind::UnaryOperator { expr: le, operator: lo },
-            ExprKind::UnaryOperator { expr: re, operator: ro },
+            ExprKind::UnaryOperator {
+                expr: le,
+                operator: lo,
+            },
+            ExprKind::UnaryOperator {
+                expr: re,
+                operator: ro,
+            },
         ) => lo == ro && same_expr(db, body, le, re),
         _ => false,
     }

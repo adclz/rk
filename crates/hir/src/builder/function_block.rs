@@ -73,7 +73,6 @@ impl<'db> SemanticIndexBuilder<'db> {
                 Error::ERRFbVariablesAfterMethod(err) => {
 
                 let first_method_span = func.method.first().unwrap().cast(self.ast).get_span();
-                    
                     self.errors.push(SyntaxError::FbVariablesAfterMethod {
                         var_span: err.get_span(),
                         method_span: first_method_span,

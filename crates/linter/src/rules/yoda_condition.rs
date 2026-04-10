@@ -62,7 +62,7 @@ pub fn check_node<'db>(
 fn is_literal<'db>(db: &'db dyn WorkspaceDataBase, expr: &Expr<'db>) -> bool {
     match expr.expr(db) {
         ExprKind::PrimaryExpr(PrimaryExpr::Literal(_)) => true,
-        ExprKind::PrimaryExpr(PrimaryExpr::ParenthesizedExpr { expr }) => is_literal(db, &expr),
+        ExprKind::PrimaryExpr(PrimaryExpr::ParenthesizedExpr { expr }) => is_literal(db, expr),
         _ => false,
     }
 }

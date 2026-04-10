@@ -9,8 +9,6 @@ use ide_diagnostic::IdeDiagnostic;
 use index::IndexVec;
 use rustc_hash::FxHashMap;
 
-use crate::check::errors::ToIdeDiagnostic;
-use crate::check::errors::e0_syntax::SyntaxError;
 use crate::hir_def::config::ConfigDecl;
 use crate::hir_def::hir_node::HirNode;
 use crate::hir_def::interned::identifier::SpanIdent;

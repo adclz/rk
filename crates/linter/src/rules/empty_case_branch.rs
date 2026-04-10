@@ -1,9 +1,6 @@
 use auto_lsp::lsp_types::DiagnosticSeverity;
 use db::WorkspaceDataBase;
-use hir::{
-    HirNodeInfo,
-    hir_def::expressions::statement::CaseKind,
-};
+use hir::{HirNodeInfo, hir_def::expressions::statement::CaseKind};
 use ide_diagnostic::{ErrorCode, IdeDiagnostic, diag};
 
 pub const NAME: &str = "empty-case-branch";

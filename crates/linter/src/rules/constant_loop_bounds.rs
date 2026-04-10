@@ -1,9 +1,6 @@
 use auto_lsp::lsp_types::DiagnosticSeverity;
 use db::WorkspaceDataBase;
-use hir::{
-    HirNodeInfo,
-    hir_def::expressions::expression::Expr,
-};
+use hir::{HirNodeInfo, hir_def::expressions::expression::Expr};
 use ide_diagnostic::{ErrorCode, IdeDiagnostic, diag};
 
 pub const NAME: &str = "constant-loop-bounds";

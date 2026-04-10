@@ -1,5 +1,6 @@
 use crate::{
-    AstId, HasName, HasPragmas, HirNodeInfo, hir_def::{
+    AstId, HasName, HasPragmas, HirNodeInfo,
+    hir_def::{
         config::{ConfigDecl, ResourceDecl, TaskConfig},
         expressions::{
             expression::{Elementary, Integer, MultibitsPart},
@@ -7,11 +8,19 @@ use crate::{
         },
         interned::identifier::{Ident, SpanIdent},
         pous::{
-            class::Class, data_type::DataType, function::Function, function_block::FunctionBlock, interface::Interface, pou::Pou, pragma::WarnPragma, variable::{DirectVariable, VariableDecl}
+            class::Class,
+            data_type::DataType,
+            function::Function,
+            function_block::FunctionBlock,
+            interface::Interface,
+            pou::Pou,
+            pragma::WarnPragma,
+            variable::{DirectVariable, VariableDecl},
         },
         program::ProgramDecl,
         scope::ScopeId,
-    }, hir_ty::{def_map::LocalDefMap, head::inheritance::MethodRef, infer::Infer}
+    },
+    hir_ty::{def_map::LocalDefMap, head::inheritance::MethodRef, infer::Infer},
 };
 use db::WorkspaceDataBase;
 

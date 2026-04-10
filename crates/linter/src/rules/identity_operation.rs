@@ -33,45 +33,39 @@ pub fn check_node<'db>(
             left,
             operator,
             right,
-        } => {
-
-            match operator {
-                MultOperatorKind::Mul => {
-                    if is_one(db, right) {
-                        emit(db, expr, "* 1", diagnostics);
-                    } else if is_one(db, left) {
-                        emit(db, expr, "1 *", diagnostics);
-                    }
+        } => match operator {
+            MultOperatorKind::Mul => {
+                if is_one(db, right) {
+                    emit(db, expr, "* 1", diagnostics);
+                } else if is_one(db, left) {
+                    emit(db, expr, "1 *", diagnostics);
                 }
-                MultOperatorKind::Div => {
-                    if is_one(db, right) {
-                        emit(db, expr, "/ 1", diagnostics);
-                    }
-                }
-                _ => {}
             }
-        }
+            MultOperatorKind::Div => {
+                if is_one(db, right) {
+                    emit(db, expr, "/ 1", diagnostics);
+                }
+            }
+            _ => {}
+        },
         ExprKind::AddOperator {
             left,
             operator,
             right,
-        } => {
-
-            match operator {
-                AddOperatorKind::Plus => {
-                    if is_zero(db, right) {
-                        emit(db, expr, "+ 0", diagnostics);
-                    } else if is_zero(db, left) {
-                        emit(db, expr, "0 +", diagnostics);
-                    }
-                }
-                AddOperatorKind::Minus => {
-                    if is_zero(db, right) {
-                        emit(db, expr, "- 0", diagnostics);
-                    }
+        } => match operator {
+            AddOperatorKind::Plus => {
+                if is_zero(db, right) {
+                    emit(db, expr, "+ 0", diagnostics);
+                } else if is_zero(db, left) {
+                    emit(db, expr, "0 +", diagnostics);
                 }
             }
-        }
+            AddOperatorKind::Minus => {
+                if is_zero(db, right) {
+                    emit(db, expr, "- 0", diagnostics);
+                }
+            }
+        },
         _ => {}
     }
 }
@@ -96,7 +90,7 @@ fn emit<'db>(
 
 fn is_one<'db>(db: &'db dyn WorkspaceDataBase, expr: &Expr<'db>) -> bool {
     match expr.expr(db) {
-        ExprKind::PrimaryExpr(PrimaryExpr::Literal(lit)) => is_one_elementary(db, &lit),
+        ExprKind::PrimaryExpr(PrimaryExpr::Literal(lit)) => is_one_elementary(db, lit),
         ExprKind::PrimaryExpr(PrimaryExpr::ParenthesizedExpr { expr }) => is_one(db, expr),
         _ => false,
     }
@@ -126,7 +120,7 @@ fn is_one_elementary(db: &dyn WorkspaceDataBase, lit: &Elementary) -> bool {
 
 fn is_zero<'db>(db: &'db dyn WorkspaceDataBase, expr: &Expr<'db>) -> bool {
     match expr.expr(db) {
-        ExprKind::PrimaryExpr(PrimaryExpr::Literal(lit)) => is_zero_elementary(db, &lit),
+        ExprKind::PrimaryExpr(PrimaryExpr::Literal(lit)) => is_zero_elementary(db, lit),
         ExprKind::PrimaryExpr(PrimaryExpr::ParenthesizedExpr { expr }) => is_zero(db, expr),
         _ => false,
     }

@@ -3,10 +3,7 @@ use db::WorkspaceDataBase;
 use hir::{
     HirNodeInfo,
     hir_def::{
-        pous::{
-            pou::Pou,
-            pragma::Pragma,
-        },
+        pous::{pou::Pou, pragma::Pragma},
         scope::{ScopeId, ScopeKind},
         semantic_index::get_scope,
     },

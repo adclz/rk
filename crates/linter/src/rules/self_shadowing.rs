@@ -3,7 +3,7 @@ use auto_lsp::default::db::file::File;
 use auto_lsp::lsp_types::DiagnosticSeverity;
 use db::WorkspaceDataBase;
 use hir::{
-    HasName, HirNodeInfo,
+    HasName,
     hir_def::{
         pous::{pou::Pou, variable::VariableDecl},
         scope::{ScopeId, ScopeKind},

@@ -1,9 +1,6 @@
 use auto_lsp::lsp_types::DiagnosticSeverity;
 use db::WorkspaceDataBase;
-use hir::{
-    HirNodeInfo,
-    hir_def::{namespace::NamespaceDecl, semantic_index::semantic_index},
-};
+use hir::hir_def::{namespace::NamespaceDecl, semantic_index::semantic_index};
 use ide_diagnostic::{ErrorCode, IdeDiagnostic, diag};
 use rustc_hash::FxHashMap;
 
@@ -30,8 +27,10 @@ pub fn check<'db>(
     let sema = semantic_index(db, file);
 
     // Group namespaces by their path
-    let mut seen: FxHashMap<hir::hir_def::interned::namespace::NamespacePath, Vec<NamespaceDecl<'db>>> =
-        FxHashMap::default();
+    let mut seen: FxHashMap<
+        hir::hir_def::interned::namespace::NamespacePath,
+        Vec<NamespaceDecl<'db>>,
+    > = FxHashMap::default();
 
     for ns in sema.namespaces.iter() {
         seen.entry(*ns.path(db)).or_default().push(*ns);

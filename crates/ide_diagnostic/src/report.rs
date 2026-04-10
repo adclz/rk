@@ -23,10 +23,10 @@ impl IdeDiagnostic {
             Some(auto_lsp::lsp_types::DiagnosticSeverity::ERROR) => ariadne::ReportKind::Error,
             Some(auto_lsp::lsp_types::DiagnosticSeverity::WARNING) => ariadne::ReportKind::Warning,
             Some(auto_lsp::lsp_types::DiagnosticSeverity::INFORMATION) => {
-                ariadne::ReportKind::Custom(&"Info", yansi::Color::Blue)
+                ariadne::ReportKind::Custom("Info", yansi::Color::Blue)
             }
             Some(auto_lsp::lsp_types::DiagnosticSeverity::HINT) => {
-                ariadne::ReportKind::Custom(&"Hint", yansi::Color::BrightBlue)
+                ariadne::ReportKind::Custom("Hint", yansi::Color::BrightBlue)
             }
             _ => ariadne::ReportKind::Error,
         };

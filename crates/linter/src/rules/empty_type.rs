@@ -2,10 +2,7 @@ use auto_lsp::lsp_types::DiagnosticSeverity;
 use db::WorkspaceDataBase;
 use hir::{
     HasName,
-    hir_def::{
-        expressions::spec::SpecKind,
-        pous::data_type::DataType,
-    },
+    hir_def::{expressions::spec::SpecKind, pous::data_type::DataType},
 };
 use ide_diagnostic::{ErrorCode, IdeDiagnostic, diag};
 

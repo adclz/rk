@@ -33,18 +33,25 @@ pub fn check<'db>(
     let scope_data = get_scope(db, scope);
 
     let (statements, name, kind_str, span) = match &scope_data.kind {
-        ScopeKind::Pou(Pou::Function(f)) => {
-            (f.statements(db), f.name(db).text(db), "FUNCTION", f.get_span(db))
-        }
-        ScopeKind::Pou(Pou::FunctionBlock(fb)) => {
-            (fb.statements(db), fb.name(db).text(db), "FUNCTION_BLOCK", fb.get_span(db))
-        }
-        ScopeKind::MethodDecl(m) => {
-            (m.stmts(db), m.name(db).text(db), "METHOD", m.get_span(db))
-        }
-        ScopeKind::Program(p) => {
-            (p.statements(db), p.name(db).text(db), "PROGRAM", p.get_span(db))
-        }
+        ScopeKind::Pou(Pou::Function(f)) => (
+            f.statements(db),
+            f.name(db).text(db),
+            "FUNCTION",
+            f.get_span(db),
+        ),
+        ScopeKind::Pou(Pou::FunctionBlock(fb)) => (
+            fb.statements(db),
+            fb.name(db).text(db),
+            "FUNCTION_BLOCK",
+            fb.get_span(db),
+        ),
+        ScopeKind::MethodDecl(m) => (m.stmts(db), m.name(db).text(db), "METHOD", m.get_span(db)),
+        ScopeKind::Program(p) => (
+            p.statements(db),
+            p.name(db).text(db),
+            "PROGRAM",
+            p.get_span(db),
+        ),
         _ => return,
     };
 

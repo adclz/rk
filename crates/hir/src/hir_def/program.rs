@@ -7,13 +7,12 @@ use crate::{
     AstId, HasName, HasPragmas, HirNodeInfo,
     hir_def::{
         config::AccessDirection,
-        expressions::{
-            expression::PathExpr,
-            spec::Spec,
-            statement::Stmt,
-        },
+        expressions::{expression::PathExpr, spec::Spec, statement::Stmt},
         interned::identifier::Ident,
-        pous::{pragma::Pragma, variable::{DirectVariable, LocatedVariable, VariableDecl}},
+        pous::{
+            pragma::Pragma,
+            variable::{DirectVariable, LocatedVariable, VariableDecl},
+        },
         scope::ScopeId,
         semantic_index::semantic_index,
     },

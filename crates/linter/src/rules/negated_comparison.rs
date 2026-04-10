@@ -28,42 +28,39 @@ pub fn check_node<'db>(
     expr: &Expr<'db>,
     diagnostics: &mut Vec<IdeDiagnostic>,
 ) {
-    match expr.expr(db) {
-        ExprKind::UnaryOperator {
+    if let ExprKind::UnaryOperator {
             expr: inner,
             operator: UnaryOperatorKind::Not,
-        } => {
-            // Check NOT (comparison) or NOT comparison
-            if let Some((op, lhs, rhs)) = unwrap_comparison(db, inner) {
-                let inv = invert(op);
+        } = expr.expr(db) {
+        // Check NOT (comparison) or NOT comparison
+        if let Some((op, lhs, rhs)) = unwrap_comparison(db, inner) {
+            let inv = invert(op);
 
-                let mut diag = diag()
-                    .message(format!(
-                        "NOT with '{}' can be simplified to '{}'",
-                        op.as_str(),
-                        inv.as_str()
-                    ))
-                    .desc(&NegatedComparison)
-                    .range(expr.get_span(db))
-                    .severity(DiagnosticSeverity::INFORMATION)
-                    .call();
+            let mut diag = diag()
+                .message(format!(
+                    "NOT with '{}' can be simplified to '{}'",
+                    op.as_str(),
+                    inv.as_str()
+                ))
+                .desc(&NegatedComparison)
+                .range(expr.get_span(db))
+                .severity(DiagnosticSeverity::INFORMATION)
+                .call();
 
-                diag.with_related(Related::new(
-                    format!(
-                        "replace 'NOT {}' with '{} {} {}'",
-                        inner.as_call_site(db).to_string(db),
-                        lhs.as_call_site(db).to_string(db),
-                        inv,
-                        rhs.as_call_site(db).to_string(db)
-                    ),
-                    inner.get_scope_id(db).file(db),
-                    inner.get_span(db),
-                ));
+            diag.with_related(Related::new(
+                format!(
+                    "replace 'NOT {}' with '{} {} {}'",
+                    inner.as_call_site(db).to_string(db),
+                    lhs.as_call_site(db).to_string(db),
+                    inv,
+                    rhs.as_call_site(db).to_string(db)
+                ),
+                inner.get_scope_id(db).file(db),
+                inner.get_span(db),
+            ));
 
-                diagnostics.push(diag);
-            }
+            diagnostics.push(diag);
         }
-        _ => {}
     }
 }
 
@@ -73,7 +70,11 @@ fn unwrap_comparison<'db>(
     expr: &Expr<'db>,
 ) -> Option<(ComparisonOperatorKind, Expr<'db>, Expr<'db>)> {
     match expr.expr(db) {
-        ExprKind::ComparisonOperator { operator, left, right } => Some((*operator, *left, *right)),
+        ExprKind::ComparisonOperator {
+            operator,
+            left,
+            right,
+        } => Some((*operator, *left, *right)),
         ExprKind::PrimaryExpr(PrimaryExpr::ParenthesizedExpr { expr }) => {
             unwrap_comparison(db, expr)
         }

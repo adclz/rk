@@ -19,13 +19,11 @@ use hir::{
 use ide_diagnostic::IdeDiagnostic;
 
 use super::{
-    collapsible_if, constant_loop_bounds,
-    bool_comparison, constant_condition, duplicate_case, empty_case_branch, empty_if_branch,
-    empty_loop_body, external_mutation,
-    default_for_step, for_zero_step,
-    identical_sub_expr, identity_operation, input_assignment, loop_var_modified,
-    missing_input_param, missing_return, negated_comparison, negated_condition, redundant_not, run_lint,
-    self_assignment, self_comparison, sub_self, uninitialized_output, unnecessary_else,
+    bool_comparison, collapsible_if, constant_condition, constant_loop_bounds, default_for_step,
+    duplicate_case, empty_case_branch, empty_if_branch, empty_loop_body, external_mutation,
+    for_zero_step, identical_sub_expr, identity_operation, input_assignment, loop_var_modified,
+    missing_input_param, missing_return, negated_comparison, negated_condition, redundant_not,
+    run_lint, self_assignment, self_comparison, sub_self, uninitialized_output, unnecessary_else,
     unnecessary_parens, yoda_condition,
 };
 
@@ -310,7 +308,8 @@ fn visit_statements<'db>(
                         loop_var_modified::check_assignment(db, body, *var, active_loop_vars, d)
                     });
                 }
-                if ctx.missing_return && !*return_assigned
+                if ctx.missing_return
+                    && !*return_assigned
                     && missing_return::check_assignment(db, body, *var, scope)
                 {
                     *return_assigned = true;
@@ -338,7 +337,8 @@ fn visit_statements<'db>(
                         loop_var_modified::check_assignment(db, body, *var, active_loop_vars, d)
                     });
                 }
-                if ctx.missing_return && !*return_assigned
+                if ctx.missing_return
+                    && !*return_assigned
                     && missing_return::check_assignment(db, body, *var, scope)
                 {
                     *return_assigned = true;

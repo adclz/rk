@@ -30,25 +30,23 @@ pub fn check_node<'db>(
     expr: &Expr<'db>,
     diagnostics: &mut Vec<IdeDiagnostic>,
 ) {
-    match expr.expr(db) {
-        ExprKind::AddOperator {
+    if let ExprKind::AddOperator {
             left,
             operator: AddOperatorKind::Minus,
             right,
-        } => {
-
-            if let Some(name) = same_variable(db, body, left, right) {
-                diagnostics.push(
-                    diag()
-                        .message(format!("'{name}' is subtracted from itself, result is always 0"))
-                        .desc(&SubSelf)
-                        .range(expr.get_span(db))
-                        .severity(DiagnosticSeverity::WARNING)
-                        .call(),
-                );
-            }
+        } = expr.expr(db) {
+        if let Some(name) = same_variable(db, body, left, right) {
+            diagnostics.push(
+                diag()
+                    .message(format!(
+                        "'{name}' is subtracted from itself, result is always 0"
+                    ))
+                    .desc(&SubSelf)
+                    .range(expr.get_span(db))
+                    .severity(DiagnosticSeverity::WARNING)
+                    .call(),
+            );
         }
-        _ => {}
     }
 }
 

@@ -122,9 +122,7 @@ pub fn compile_and_render(
         for name in linter::ALL_RULE_NAMES {
             rules.insert(name.to_string(), *name == rule);
         }
-        db::config_file::LinterConfig {
-            rules: Some(rules),
-        }
+        db::config_file::LinterConfig { rules: Some(rules) }
     });
 
     for (file_idx, file) in files.iter().enumerate() {
@@ -170,37 +168,36 @@ pub fn compile_and_render(
                 code,
                 code_desc: d.code_desc().map(|s| s.to_string()),
                 notes: d.notes().to_vec(),
-                related: d.related().iter().map(|r| {
-                    let rel_src = r.file.document(db);
-                    let (rel_line, rel_col) = byte_to_line_col(rel_src.as_str(), r.range.start_byte);
-                    let rel_line = rel_line.saturating_sub(leading_blanks as usize);
-                    (r.message.clone(), rel_line as u32, rel_col as u32)
-                }).collect(),
+                related: d
+                    .related()
+                    .iter()
+                    .map(|r| {
+                        let rel_src = r.file.document(db);
+                        let (rel_line, rel_col) =
+                            byte_to_line_col(rel_src.as_str(), r.range.start_byte);
+                        let rel_line = rel_line.saturating_sub(leading_blanks as usize);
+                        (r.message.clone(), rel_line as u32, rel_col as u32)
+                    })
+                    .collect(),
                 fixes: d.fixes().iter().map(|f| f.title.clone()).collect(),
                 source_idx: file_idx,
             });
 
-            d.create_report(
-                db,
-                file.url(db),
-                source_text.as_str(),
-                Some(config),
-                true,
-            )
-            .write(
-                FnCache::new(
-                    (move |id: &&str| Err(format!("Failed to fetch source '{id}'")))
-                        as fn(&&str) -> _,
+            d.create_report(db, file.url(db), source_text.as_str(), Some(config), true)
+                .write(
+                    FnCache::new(
+                        (move |id: &&str| Err(format!("Failed to fetch source '{id}'")))
+                            as fn(&&str) -> _,
+                    )
+                    .with_sources(
+                        file_sources
+                            .iter()
+                            .map(|(id, s)| (*id, Source::from(*s)))
+                            .collect(),
+                    ),
+                    &mut output,
                 )
-                .with_sources(
-                    file_sources
-                        .iter()
-                        .map(|(id, s)| (*id, Source::from(*s)))
-                        .collect(),
-                ),
-                &mut output,
-            )
-            .unwrap();
+                .unwrap();
         }
     }
 
@@ -226,7 +223,10 @@ fn json_escape(s: &str) -> String {
 }
 
 fn json_str_array(items: &[String]) -> String {
-    let escaped: Vec<String> = items.iter().map(|s| format!("\"{}\"", json_escape(s))).collect();
+    let escaped: Vec<String> = items
+        .iter()
+        .map(|s| format!("\"{}\"", json_escape(s)))
+        .collect();
     format!("[{}]", escaped.join(","))
 }
 

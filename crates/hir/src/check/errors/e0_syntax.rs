@@ -12,7 +12,7 @@ use auto_lsp::{
 use db::WorkspaceDataBase;
 use ide_diagnostic::{ErrorCode, IdeDiagnostic, Related, action, diag, edit};
 
-use crate::{HirNodeInfo, check::errors::ToIdeDiagnostic};
+use crate::check::errors::ToIdeDiagnostic;
 
 #[derive(Debug, Clone, PartialEq, Eq, salsa::Update)]
 pub enum SyntaxError {
@@ -319,16 +319,13 @@ impl<'db> ToIdeDiagnostic<'db> for SyntaxError {
                 var_span,
                 method_span,
             } => {
-
                 // We do not want to highlight the first method, just the start point
-                let method_span_start = Span::from(
-                    Range {
-                        start_byte: method_span.start_byte,
-                        end_byte: method_span.start_byte,
-                        start_point: method_span.start_point,
-                        end_point: method_span.start_point
-                    }
-                );
+                let method_span_start = Span::from(Range {
+                    start_byte: method_span.start_byte,
+                    end_byte: method_span.start_byte,
+                    start_point: method_span.start_point,
+                    end_point: method_span.start_point,
+                });
 
                 let mut diag = diag()
                     .message("CLASS variable declarations must appear before methods".into())
@@ -338,26 +335,24 @@ impl<'db> ToIdeDiagnostic<'db> for SyntaxError {
                     .call();
 
                 diag.with_related(Related::new(
-                    "move variables before methods here".into(), 
-                    *file, 
-                method_span_start));
+                    "move variables before methods here".into(),
+                    *file,
+                    method_span_start,
+                ));
                 diag
-            },
+            }
             Self::FbVariablesAfterMethod {
                 file,
                 var_span,
                 method_span,
             } => {
-
                 // We do not want to highlight the first method, just the start point
-                let method_span_start = Span::from(
-                    Range {
-                        start_byte: method_span.start_byte,
-                        end_byte: method_span.start_byte,
-                        start_point: method_span.start_point,
-                        end_point: method_span.start_point
-                    }
-                );
+                let method_span_start = Span::from(Range {
+                    start_byte: method_span.start_byte,
+                    end_byte: method_span.start_byte,
+                    start_point: method_span.start_point,
+                    end_point: method_span.start_point,
+                });
 
                 let mut diag = diag()
                     .message("FB variable declarations must appear before methods".into())
@@ -367,11 +362,12 @@ impl<'db> ToIdeDiagnostic<'db> for SyntaxError {
                     .call();
 
                 diag.with_related(Related::new(
-                    "move variables before methods here".into(), 
-                    *file, 
-                method_span_start));
+                    "move variables before methods here".into(),
+                    *file,
+                    method_span_start,
+                ));
                 diag
-            },
+            }
             Self::MissingVarType(span) => diag()
                 .message("variable type is missing".into())
                 .severity(DiagnosticSeverity::ERROR)

@@ -2,9 +2,7 @@ use auto_lsp::lsp_types::DiagnosticSeverity;
 use db::WorkspaceDataBase;
 use hir::{
     HasName, HirNodeInfo,
-    hir_def::expressions::expression::{
-        PathExprKind, VariableAccess, VariableAccessKind,
-    },
+    hir_def::expressions::expression::{PathExprKind, VariableAccess, VariableAccessKind},
     hir_ty::{body::BodyInferenceResult, head::signature::infer_signature, ty::Type},
 };
 use ide_diagnostic::{ErrorCode, IdeDiagnostic, diag};
@@ -64,9 +62,7 @@ pub fn check_assignment<'db>(
             let sig = infer_signature(db, decl.get_scope_id(db));
             let var_type = sig.type_of_specs.get(&decl.spec(db));
             match var_type {
-                Some(Type::FunctionBlock(_) | Type::Class(_)) => {
-                    decl.get_name_ident(db).text(db)
-                }
+                Some(Type::FunctionBlock(_) | Type::Class(_)) => decl.get_name_ident(db).text(db),
                 _ => return,
             }
         }

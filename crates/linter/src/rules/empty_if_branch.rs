@@ -4,7 +4,7 @@ use hir::{
     HirNodeInfo,
     hir_def::expressions::{
         expression::Expr,
-        statement::{Stmt, StmtKind},
+        statement::Stmt,
     },
 };
 use ide_diagnostic::{ErrorCode, IdeDiagnostic, diag};

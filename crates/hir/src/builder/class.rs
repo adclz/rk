@@ -122,7 +122,6 @@ impl<'db> SemanticIndexBuilder<'db> {
                 },
                 Error::ERRClassVariablesAfterMethod(err) => {
                     let first_method_span = class.methods.first().unwrap().cast(self.ast).get_span();
-                    
                     self.errors.push(SyntaxError::ClassVariablesAfterMethod {
                         var_span: err.get_span(),
                         method_span: first_method_span,

@@ -31,36 +31,32 @@ pub fn check_node<'db>(
     expr: &Expr<'db>,
     diagnostics: &mut Vec<IdeDiagnostic>,
 ) {
-    match expr.expr(db) {
-        ExprKind::ComparisonOperator {
+    if let ExprKind::ComparisonOperator {
             left,
             operator,
             right,
-        } => {
-
-            if let Some(var_name) = same_variable(db, body, left, right) {
-                let op = operator.as_str();
-                let result_hint = match operator {
-                    ComparisonOperatorKind::Eq
-                    | ComparisonOperatorKind::Le
-                    | ComparisonOperatorKind::Ge => "always TRUE",
-                    ComparisonOperatorKind::Ne
-                    | ComparisonOperatorKind::Lt
-                    | ComparisonOperatorKind::Gt => "always FALSE",
-                };
-                diagnostics.push(
-                    diag()
-                        .message(format!(
-                            "'{var_name}' is compared to itself with '{op}', result is {result_hint}"
-                        ))
-                        .desc(&SelfComparison)
-                        .range(expr.get_span(db))
-                        .severity(DiagnosticSeverity::WARNING)
-                        .call(),
-                );
-            }
+        } = expr.expr(db) {
+        if let Some(var_name) = same_variable(db, body, left, right) {
+            let op = operator.as_str();
+            let result_hint = match operator {
+                ComparisonOperatorKind::Eq
+                | ComparisonOperatorKind::Le
+                | ComparisonOperatorKind::Ge => "always TRUE",
+                ComparisonOperatorKind::Ne
+                | ComparisonOperatorKind::Lt
+                | ComparisonOperatorKind::Gt => "always FALSE",
+            };
+            diagnostics.push(
+                diag()
+                    .message(format!(
+                        "'{var_name}' is compared to itself with '{op}', result is {result_hint}"
+                    ))
+                    .desc(&SelfComparison)
+                    .range(expr.get_span(db))
+                    .severity(DiagnosticSeverity::WARNING)
+                    .call(),
+            );
         }
-        _ => {}
     }
 }
 

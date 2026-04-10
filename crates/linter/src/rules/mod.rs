@@ -17,40 +17,41 @@ pub mod bool_comparison;
 pub mod case_without_else;
 pub mod collapsible_if;
 pub mod constant_condition;
+pub mod constant_loop_bounds;
 pub mod dead_code;
 pub mod default_for_step;
 pub mod division_by_zero;
 pub mod duplicate_case;
+pub mod duplicate_namespace;
+pub mod duplicate_var_section;
+pub mod effectless_statement;
+pub mod empty_body;
 pub mod empty_case_branch;
 pub mod empty_if_branch;
 pub mod empty_loop_body;
 pub mod empty_type;
-pub mod duplicate_namespace;
-pub mod single_element_array;
-pub mod duplicate_var_section;
-pub mod empty_body;
 pub mod external_mutation;
-pub mod effectless_statement;
 pub mod for_loop_step_sign;
-pub mod generic_extern;
 pub mod for_zero_step;
+pub mod generic_extern;
 pub mod identical_sub_expr;
-pub mod invalid_pragma;
-pub mod once_violation;
 pub mod identity_operation;
 pub mod input_assignment;
+pub mod invalid_pragma;
 pub mod loop_var_modified;
 pub mod missing_input_param;
 pub mod missing_return;
 pub mod negated_comparison;
 pub mod negated_condition;
+pub mod once_violation;
 pub mod redundant_not;
 pub mod self_assignment;
-pub mod self_shadowing;
 pub mod self_comparison;
+pub mod self_shadowing;
 pub mod shadowing_variable;
-pub mod sub_self;
+pub mod single_element_array;
 pub mod stmt_visitor;
+pub mod sub_self;
 pub mod uninitialized_output;
 pub mod unnecessary_else;
 pub mod unnecessary_parens;
@@ -59,7 +60,6 @@ pub mod unused_return_type;
 pub mod unused_variable;
 pub mod warn_pragma;
 pub mod yoda_condition;
-pub mod constant_loop_bounds;
 
 /// All lint rule names, for building configs that enable/disable specific rules.
 pub const ALL_RULE_NAMES: &[&str] = &[
@@ -161,13 +161,12 @@ pub fn lint_file(
         }
 
         // DataType-level lints
-        if config.is_enabled(empty_type::NAME) {
-            if let Pou::DataType(dt) = pou {
+        if config.is_enabled(empty_type::NAME)
+            && let Pou::DataType(dt) = pou {
                 run_lint(empty_type::NAME, diagnostics, |d| {
                     empty_type::check(db, *dt, d)
                 });
             }
-        }
     }
 
     for ns in sema.namespaces.iter() {
@@ -302,7 +301,7 @@ fn lint_scope<'db>(
             };
         run_lint(single_element_array::NAME, diagnostics, |d| {
             for var in variables {
-                single_element_array::check_spec(db, &var.spec(db).kind(db), d);
+                single_element_array::check_spec(db, var.spec(db).kind(db), d);
             }
         });
     }

@@ -42,9 +42,7 @@ pub fn check<'db>(
             ScopeKind::Pou(Pou::Function(f)) => {
                 (f.statements(db), f.variables(db), Some(f.name(db).text(db)))
             }
-            ScopeKind::MethodDecl(m) => {
-                (m.stmts(db), m.variables(db), Some(m.name(db).text(db)))
-            }
+            ScopeKind::MethodDecl(m) => (m.stmts(db), m.variables(db), Some(m.name(db).text(db))),
             _ => return,
         };
 
@@ -83,9 +81,9 @@ pub fn check<'db>(
 
             // Result may be the POU name (return type)
             if pou_name.is_some_and(|n| n == result_name) {
-                if let Some(ret_spec) = scope.return_type(db) {
-                    if let SpecKind::Simple(e) = ret_spec.kind(db) {
-                        if e.is_any() {
+                if let Some(ret_spec) = scope.return_type(db)
+                    && let SpecKind::Simple(e) = ret_spec.kind(db)
+                        && e.is_any() {
                             let type_name = e.type_name();
                             let mut d = diag()
                                 .message(format!(
@@ -103,8 +101,6 @@ pub fn check<'db>(
                             ));
                             diagnostics.push(d);
                         }
-                    }
-                }
             } else if let Some((type_name, var)) = find_generic_var(db, result_name, variables) {
                 let mut d = diag()
                     .message(format!(

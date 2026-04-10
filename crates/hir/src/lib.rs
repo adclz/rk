@@ -118,34 +118,55 @@ pub trait HirNodeInfo<'db> {
 }
 
 pub trait HasPragmas<'db>: HirNodeInfo<'db> {
-    fn get_pragmas(&self, db: &'db dyn WorkspaceDataBase) -> &'db [hir_def::pous::pragma::Pragma<'db>];
+    fn get_pragmas(
+        &self,
+        db: &'db dyn WorkspaceDataBase,
+    ) -> &'db [hir_def::pous::pragma::Pragma<'db>];
 
-    fn test_pragma(&self, db: &'db dyn WorkspaceDataBase) -> Option<&'db hir_def::interned::identifier::SpanIdent<'db>> {
+    fn test_pragma(
+        &self,
+        db: &'db dyn WorkspaceDataBase,
+    ) -> Option<&'db hir_def::interned::identifier::SpanIdent<'db>> {
         self.get_pragmas(db).iter().find_map(|p| match p {
             hir_def::pous::pragma::Pragma::Test(s) => Some(s),
             _ => None,
         })
     }
 
-    fn once_pragma(&self, db: &'db dyn WorkspaceDataBase) -> Option<&'db hir_def::interned::identifier::SpanIdent<'db>> {
+    fn once_pragma(
+        &self,
+        db: &'db dyn WorkspaceDataBase,
+    ) -> Option<&'db hir_def::interned::identifier::SpanIdent<'db>> {
         self.get_pragmas(db).iter().find_map(|p| match p {
             hir_def::pous::pragma::Pragma::Once(s) => Some(s),
             _ => None,
         })
     }
 
-    fn warn_pragma(&self, db: &'db dyn WorkspaceDataBase) -> Option<(&'db hir_def::interned::identifier::SpanIdent<'db>, &'db hir_def::pous::pragma::WarnPragma)> {
+    fn warn_pragma(
+        &self,
+        db: &'db dyn WorkspaceDataBase,
+    ) -> Option<(
+        &'db hir_def::interned::identifier::SpanIdent<'db>,
+        &'db hir_def::pous::pragma::WarnPragma,
+    )> {
         self.get_pragmas(db).iter().find_map(|p| match p {
             hir_def::pous::pragma::Pragma::Warn(s, w) => Some((s, w)),
             _ => None,
         })
     }
 
-    fn cases(&self, db: &'db dyn WorkspaceDataBase) -> Vec<&'db Vec<hir_def::expressions::expression::ParamAssign<'db>>> {
-        self.get_pragmas(db).iter().filter_map(|p| match p {
-            hir_def::pous::pragma::Pragma::Case(_, c) => Some(c),
-            _ => None,
-        }).collect()
+    fn cases(
+        &self,
+        db: &'db dyn WorkspaceDataBase,
+    ) -> Vec<&'db Vec<hir_def::expressions::expression::ParamAssign<'db>>> {
+        self.get_pragmas(db)
+            .iter()
+            .filter_map(|p| match p {
+                hir_def::pous::pragma::Pragma::Case(_, c) => Some(c),
+                _ => None,
+            })
+            .collect()
     }
 
     fn is_test(&self, db: &'db dyn WorkspaceDataBase) -> bool {

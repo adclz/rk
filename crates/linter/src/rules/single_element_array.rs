@@ -1,9 +1,6 @@
 use auto_lsp::lsp_types::DiagnosticSeverity;
 use db::WorkspaceDataBase;
-use hir::{
-    HirNodeInfo,
-    hir_def::expressions::spec::SpecKind,
-};
+use hir::{HirNodeInfo, hir_def::expressions::spec::SpecKind};
 use ide_diagnostic::{ErrorCode, IdeDiagnostic, diag};
 
 pub const NAME: &str = "single-element-array";
@@ -31,8 +28,8 @@ pub fn check_spec<'db>(
         for (dim_idx, (lower, upper)) in array.subranges(db).iter().enumerate() {
             let lo: Option<u64> = lower.as_range(db);
             let hi: Option<u64> = upper.as_range(db);
-            if let (Some(lo), Some(hi)) = (lo, hi) {
-                if lo == hi {
+            if let (Some(lo), Some(hi)) = (lo, hi)
+                && lo == hi {
                     diagnostics.push(
                         diag()
                             .message(format!(
@@ -45,9 +42,8 @@ pub fn check_spec<'db>(
                             .call(),
                     );
                 }
-            }
         }
         // Recurse into nested array types
-        check_spec(db, &array.of_type(db).kind(db), diagnostics);
+        check_spec(db, array.of_type(db).kind(db), diagnostics);
     }
 }

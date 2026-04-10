@@ -4,7 +4,9 @@ use hir::{
     HasPragmas, HirNodeInfo,
     hir_def::expressions::expression::PathExpr,
     hir_ty::{
-        body::BodyInferenceResult, head::inheritance::MethodRef, ty::{CallableType, Type}
+        body::BodyInferenceResult,
+        head::inheritance::MethodRef,
+        ty::{CallableType, Type},
     },
 };
 use ide_diagnostic::{ErrorCode, IdeDiagnostic, Related, diag};
