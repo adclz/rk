@@ -15,7 +15,7 @@ END_VAR
 END_FUNCTION
 "#;
     assert_snapshot!(test_single_lint(&mut with_db, &[source], "generic-extern"), @r"
-    [L0120] Info: generic extern function
+    [L0112] Info: generic extern function
        ,-[ file:///test0.st:6:35 ]
        |
      4 |     IN : INTO(SQRT);
@@ -28,7 +28,7 @@ END_FUNCTION
        |
        | Note: lint rule: generic-extern
     ---'
-    [L0120] Info: generic extern function
+    [L0112] Info: generic extern function
        ,-[ file:///test0.st:6:47 ]
        |
      2 | FUNCTION SQRT : ANY_REAL
@@ -65,7 +65,7 @@ END_VAR
 END_FUNCTION
 "#;
     assert_snapshot!(test_single_lint(&mut with_db, &[source], "generic-extern"), @r"
-    [L0120] Info: generic extern function
+    [L0112] Info: generic extern function
        ,-[ file:///test0.st:6:34 ]
        |
      4 |     IN : INTO(ABS);
@@ -78,7 +78,7 @@ END_FUNCTION
        |
        | Note: lint rule: generic-extern
     ---'
-    [L0120] Info: generic extern function
+    [L0112] Info: generic extern function
        ,-[ file:///test0.st:6:46 ]
        |
      2 | FUNCTION ABS : ANY_NUM

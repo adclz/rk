@@ -16,7 +16,7 @@ struct OnceViolation;
 
 impl ErrorCode for OnceViolation {
     fn code(&self) -> &'static str {
-        "L0402"
+        "L0004"
     }
 
     fn description(&self) -> &'static str {
@@ -68,35 +68,50 @@ pub fn check<'db>(
     }
 
     for (name, info) in &once_calls {
-        if info.calls.len() > 1 {
-            // Get the declaration site of the {once} callable
-            let decl_file = info.callable.get_scope_id(db).file(db);
-            let decl_span = info.callable.get_span(db);
+        if info.calls.len() < 2 {
+            continue;
+        }
 
-            for call in &info.calls[1..] {
-                let mut d = diag()
-                    .message(format!(
-                        "'{name}' is marked {{once}} but is called more than once in this body"
-                    ))
-                    .desc(&OnceViolation)
-                    .range(call.get_span(db))
-                    .severity(DiagnosticSeverity::INFORMATION)
-                    .call();
+        // Sort calls by source position so first/second is deterministic
+        let mut sorted_calls = info.calls.clone();
+        sorted_calls.sort_by_key(|c| c.get_span(db).start_byte);
 
-                d.with_related(Related::new(
-                    "first call here".to_string(),
-                    info.calls[0].get_scope_id(db).file(db),
-                    info.calls[0].get_span(db),
-                ));
+        // Get the {once} pragma span from the callable
+        let once_span = match &info.callable {
+            CallableType::Function(f) => f.once_pragma(db).map(|s| s.get_span(db)),
+            CallableType::FunctionBlock(fb) => fb.once_pragma(db).map(|s| s.get_span(db)),
+            CallableType::MethodDecl(m) => match m {
+                MethodRef::Declared(d) => d.once_pragma(db).map(|s| s.get_span(db)),
+                _ => None,
+            },
+        };
+        let decl_file = info.callable.get_scope_id(db).file(db);
 
+        for call in &sorted_calls[1..] {
+            let mut d = diag()
+                .message(format!(
+                    "'{name}' is marked {{once}} but is called more than once in this body"
+                ))
+                .desc(&OnceViolation)
+                .range(call.get_span(db))
+                .severity(DiagnosticSeverity::INFORMATION)
+                .call();
+
+            d.with_related(Related::new(
+                "first call here".to_string(),
+                sorted_calls[0].get_scope_id(db).file(db),
+                sorted_calls[0].get_span(db),
+            ));
+
+            if let Some(pragma_span) = once_span {
                 d.with_related(Related::new(
                     "{once} pragma declared here".to_string(),
                     decl_file,
-                    decl_span,
+                    pragma_span,
                 ));
-
-                diagnostics.push(d);
             }
+
+            diagnostics.push(d);
         }
     }
 }

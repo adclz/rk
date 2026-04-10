@@ -19,21 +19,11 @@ struct InvalidPragma;
 
 impl ErrorCode for InvalidPragma {
     fn code(&self) -> &'static str {
-        "L0401"
+        "L0003"
     }
 
     fn description(&self) -> &'static str {
         "invalid pragma for this POU"
-    }
-}
-
-fn get_pou_span<'db>(db: &'db dyn WorkspaceDataBase, kind: &ScopeKind<'db>) -> auto_lsp::core::span::Span {
-    match kind {
-        ScopeKind::Pou(Pou::Function(f)) => f.get_span(db),
-        ScopeKind::Pou(Pou::FunctionBlock(fb)) => fb.get_span(db),
-        ScopeKind::MethodDecl(m) => m.get_span(db),
-        ScopeKind::Program(p) => p.get_span(db),
-        _ => unreachable!(),
     }
 }
 

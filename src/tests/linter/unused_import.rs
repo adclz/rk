@@ -20,7 +20,7 @@ END_FUNCTION_BLOCK
 "#,
     ];
     assert_snapshot!(test_single_lint(&mut with_db, sources, "unused-import"), @r"
-    [L0104] Warning: unused import
+    [L0201] Hint: unused import
        ,-[ file:///test1.st:3:11 ]
        |
      3 |     USING Tools;
@@ -76,7 +76,7 @@ END_FUNCTION
 "#,
     ];
     assert_snapshot!(test_single_lint(&mut with_db, sources, "unused-import"), @r"
-    [L0104] Warning: unused import
+    [L0201] Hint: unused import
        ,-[ file:///test1.st:4:11 ]
        |
      4 |     USING Utils;
@@ -186,7 +186,7 @@ END_FUNCTION
 "#,
     ];
     assert_snapshot!(test_single_lint(&mut with_db, sources, "unused-import"), @r"
-    [L0104] Warning: unused import
+    [L0201] Hint: unused import
        ,-[ file:///test1.st:2:7 ]
        |
      2 | USING Tools;

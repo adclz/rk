@@ -13,7 +13,7 @@ VAR x : INT; END_VAR
 END_FUNCTION
 "#;
     assert_snapshot!(test_single_lint(&mut with_db, &[source], "unnecessary-parens"), @r"
-    [L0207] Info: unnecessary parentheses
+    [L0207] Hint: unnecessary parentheses
        ,-[ file:///test0.st:4:13 ]
        |
      4 |     test := (x);
@@ -33,7 +33,7 @@ FUNCTION test : INT
 END_FUNCTION
 "#;
     assert_snapshot!(test_single_lint(&mut with_db, &[source], "unnecessary-parens"), @r"
-    [L0207] Info: unnecessary parentheses
+    [L0207] Hint: unnecessary parentheses
        ,-[ file:///test0.st:3:13 ]
        |
      3 |     test := (42);
@@ -56,7 +56,7 @@ VAR x : BOOL; END_VAR
 END_FUNCTION
 "#;
     assert_snapshot!(test_single_lint(&mut with_db, &[source], "unnecessary-parens"), @r"
-    [L0207] Info: unnecessary parentheses
+    [L0207] Hint: unnecessary parentheses
        ,-[ file:///test0.st:4:8 ]
        |
      4 |     IF (x) THEN

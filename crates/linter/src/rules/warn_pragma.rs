@@ -45,7 +45,7 @@ pub fn check<'db>(
             _ => continue,
         };
 
-        let Some(pragma) = callable.warn_pragma(db) else {
+        let Some((pragma_span, pragma)) = callable.warn_pragma(db) else {
             continue;
         };
 
@@ -65,9 +65,9 @@ pub fn check<'db>(
         };
 
         diag.with_related(Related::new(
-            "notice emitted here".into(),
-            callable.get_scope_id(db).file(db),
-            callable.get_name_span(db),
+            "pragma declared here".into(),
+            pragma_span.get_scope_id(db).file(db),
+            pragma_span.get_span(db),
         ));
 
         diagnostics.push(diag);

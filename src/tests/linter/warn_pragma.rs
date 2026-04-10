@@ -20,9 +20,9 @@ END_FUNCTION"#;
     [L0002] Warning: call site warning notice
        ,-[ file:///test0.st:8:10 ]
        |
-     3 | FUNCTION fn1 : INT
-       |          ^|^
-       |           `--- notice emitted here
+     2 | {warn = 'this function is deprecated, use fn2 instead'}
+       | ^^^^^^^^^^^^^^^^^^^^^^^^^^^|^^^^^^^^^^^^^^^^^^^^^^^^^^^
+       |                            `----------------------------- pragma declared here
        |
      8 |     x := fn1();
        |          ^|^
@@ -49,9 +49,9 @@ END_FUNCTION"#;
     [L0001] Info: call site info notice
        ,-[ file:///test0.st:8:10 ]
        |
-     3 | FUNCTION old_fn : INT
-       |          ^^^|^^
-       |             `---- notice emitted here
+     2 | {info = 'prefer new_fn for better performance'}
+       | ^^^^^^^^^^^^^^^^^^^^^^^|^^^^^^^^^^^^^^^^^^^^^^^
+       |                        `------------------------- pragma declared here
        |
      8 |     x := old_fn();
        |          ^^^|^^
@@ -79,9 +79,9 @@ END_FUNCTION"#;
     [L0002] Warning: call site warning notice
        ,-[ file:///test0.st:9:5 ]
        |
-     3 | FUNCTION_BLOCK OldFB
-       |                ^^|^^
-       |                  `---- notice emitted here
+     2 | {warn = 'use NewFB instead'}
+       | ^^^^^^^^^^^^^^|^^^^^^^^^^^^^
+       |               `--------------- pragma declared here
        |
      9 |     fb(_x := 1);
        |     ^|
@@ -111,9 +111,9 @@ END_FUNCTION"#;
     [L0002] Warning: call site warning notice
         ,-[ file:///test0.st:11:13 ]
         |
-      5 |     METHOD PUBLIC doStuff : INT
-        |                   ^^^|^^^
-        |                      `----- notice emitted here
+      4 |     {warn = 'this method is deprecated'}
+        |     ^^^^^^^^^^^^^^^^^^|^^^^^^^^^^^^^^^^^
+        |                       `------------------- pragma declared here
         |
      11 |     y := fb.doStuff();
         |             ^^^|^^^
@@ -145,9 +145,9 @@ END_FUNCTION"#;
     [L0002] Warning: call site warning notice
        ,-[ file:///test0.st:8:10 ]
        |
-     3 | FUNCTION old : INT
-       |          ^|^
-       |           `--- notice emitted here
+     2 | {warn = 'deprecated'}
+       | ^^^^^^^^^^|^^^^^^^^^^
+       |           `------------ pragma declared here
        |
      8 |     x := old();
        |          ^|^
@@ -158,9 +158,9 @@ END_FUNCTION"#;
     [L0002] Warning: call site warning notice
         ,-[ file:///test0.st:13:10 ]
         |
-      3 | FUNCTION old : INT
-        |          ^|^
-        |           `--- notice emitted here
+      2 | {warn = 'deprecated'}
+        | ^^^^^^^^^^|^^^^^^^^^^
+        |           `------------ pragma declared here
         |
      13 |     y := old();
         |          ^|^

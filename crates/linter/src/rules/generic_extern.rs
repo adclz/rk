@@ -16,13 +16,13 @@ use ide_diagnostic::{ErrorCode, IdeDiagnostic, Related, diag};
 
 pub const NAME: &str = "generic-extern";
 
-/// L0120: extern pragma references a generic parameter — the host must provide
+/// L0112: extern pragma references a generic parameter — the host must provide
 /// an implementation for each concrete type the ANY_* constraint accepts.
 struct GenericExtern;
 
 impl ErrorCode for GenericExtern {
     fn code(&self) -> &'static str {
-        "L0120"
+        "L0112"
     }
 
     fn description(&self) -> &'static str {

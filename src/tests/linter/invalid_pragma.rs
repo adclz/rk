@@ -22,7 +22,7 @@ FUNCTION_BLOCK my_fb
 END_FUNCTION_BLOCK
 "#;
     assert_snapshot!(test_single_lint(&mut with_db, &[source], "invalid-pragma"), @r"
-    [L0401] Warning: invalid pragma for this POU
+    [L0003] Warning: invalid pragma for this POU
        ,-[ file:///test0.st:2:1 ]
        |
      2 | {test}
@@ -44,7 +44,7 @@ CLASS c1
 END_CLASS
 "#;
     assert_snapshot!(test_single_lint(&mut with_db, &[source], "invalid-pragma"), @r"
-    [L0401] Warning: invalid pragma for this POU
+    [L0003] Warning: invalid pragma for this POU
        ,-[ file:///test0.st:3:5 ]
        |
      3 |     {test}
@@ -74,7 +74,7 @@ PROGRAM main
 END_PROGRAM
 "#;
     assert_snapshot!(test_single_lint(&mut with_db, &[source], "invalid-pragma"), @r"
-    [L0401] Warning: invalid pragma for this POU
+    [L0003] Warning: invalid pragma for this POU
        ,-[ file:///test0.st:2:1 ]
        |
      2 | {once}
@@ -95,7 +95,7 @@ VAR_INPUT a : INT; b : INT; END_VAR
 END_FUNCTION
 "#;
     assert_snapshot!(test_single_lint(&mut with_db, &[source], "invalid-pragma"), @r"
-    [L0401] Warning: invalid pragma for this POU
+    [L0003] Warning: invalid pragma for this POU
        ,-[ file:///test0.st:2:1 ]
        |
      2 | {case(1, 2)}

@@ -18,23 +18,21 @@ FUNCTION main : INT
 END_FUNCTION
 "#;
     assert_snapshot!(test_single_lint(&mut with_db, &[source], "once-violation"), @r"
-    [L0402] Info: calling a {once} function more than once
+    [L0004] Info: calling a {once} function more than once
        ,-[ file:///test0.st:9:5 ]
        |
-     2 | ,-> {once}
-       : :
-     5 | |-> END_FUNCTION
-       | |
-       | `------------------ {once} pragma declared here
+     2 | {once}
+       | ^^^|^^
+       |    `---- {once} pragma declared here
        |
-     8 |         setup();
-       |         ^^|^^
-       |           `---- first call here
-     9 |         setup();
-       |         ^^|^^
-       |           `---- 'setup' is marked {once} but is called more than once in this body
-       | |
-       | |   Note: lint rule: once-violation
+     8 |     setup();
+       |     ^^|^^
+       |       `---- first call here
+     9 |     setup();
+       |     ^^|^^
+       |       `---- 'setup' is marked {once} but is called more than once in this body
+       |
+       | Note: lint rule: once-violation
     ---'
     ");
 }
@@ -86,25 +84,42 @@ VAR fb : MyFB; END_VAR
 END_FUNCTION
 "#;
     assert_snapshot!(test_single_lint(&mut with_db, &[source], "once-violation"), @r"
-    [L0402] Info: calling a {once} function more than once
-        ,-[ file:///test0.st:11:8 ]
+    [L0004] Info: calling a {once} function more than once
+        ,-[ file:///test0.st:12:8 ]
         |
-      3 | ,->     {once}
-        : :
-      6 | |->     END_METHOD
-        | |
-        | `-------------------- {once} pragma declared here
+      3 |     {once}
+        |     ^^^|^^
+        |        `---- {once} pragma declared here
         |
-     11 |         fb.init();
-        |            ^^|^
-        |              `--- 'init' is marked {once} but is called more than once in this body
-     12 |         fb.init();
-        |            ^^|^
-        |              `--- first call here
+     11 |     fb.init();
+        |        ^^|^
+        |          `--- first call here
+     12 |     fb.init();
+        |        ^^|^
+        |          `--- 'init' is marked {once} but is called more than once in this body
         |
-        |     Note: lint rule: once-violation
+        | Note: lint rule: once-violation
     ----'
     ");
+}
+
+#[rstest]
+fn once_fb_called_twice(mut with_db: RootDatabase) {
+    let source = r#"
+{once}
+FUNCTION_BLOCK Initializer
+END_FUNCTION_BLOCK
+
+FUNCTION main : INT
+VAR
+    a : Initializer;
+    b : Initializer;
+END_VAR
+    a();
+    b();
+END_FUNCTION
+"#;
+    assert_snapshot!(test_single_lint(&mut with_db, &[source], "once-violation"), @r"");
 }
 
 #[rstest]
