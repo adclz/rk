@@ -7,6 +7,8 @@ pub struct ErrorExample {
     pub title: &'static str,
     pub description: &'static str,
     pub sources: &'static [&'static str],
+    /// When set, only this lint rule is enabled for the example.
+    pub lint_rule: Option<&'static str>,
 }
 
 pub fn all_examples() -> Vec<ErrorExample> {
@@ -27,6 +29,7 @@ END_CLASS
 CLASS c3
 END_CLASS
 "#],
+            lint_rule: None,
         },
         ErrorExample {
             code: "E0002",
@@ -43,6 +46,7 @@ END_INTERFACE
 FUNCTION_BLOCK fn IMPLEMENTS a IMPLEMENTS b
 END_FUNCTION_BLOCK
 "#],
+            lint_rule: None,
         },
         ErrorExample {
             code: "E0003",
@@ -56,6 +60,7 @@ END_CLASS
 FUNCTION_BLOCK fn IMPLEMENTS a EXTENDS b
 END_FUNCTION_BLOCK
 "#],
+            lint_rule: None,
         },
         ErrorExample {
             code: "E0004",
@@ -70,6 +75,7 @@ CLASS c1
     END_VAR
 END_CLASS
 "#],
+            lint_rule: None,
         },
         ErrorExample {
             code: "E0005",
@@ -84,6 +90,7 @@ FUNCTION_BLOCK fb1
     END_VAR
 END_FUNCTION_BLOCK
 "#],
+            lint_rule: None,
         },
         ErrorExample {
             code: "E0006",
@@ -97,6 +104,7 @@ VAR
 END_VAR
 END_FUNCTION_BLOCK
 "#],
+            lint_rule: None,
         },
         ErrorExample {
             code: "E0007",
@@ -110,6 +118,7 @@ VAR_IN_OUT
 END_VAR
 END_FUNCTION_BLOCK
 "#],
+            lint_rule: None,
         },
         ErrorExample {
             code: "E0008",
@@ -123,6 +132,7 @@ VAR_INPUT
 END_VAR
 END_FUNCTION_BLOCK
 "#],
+            lint_rule: None,
         },
         ErrorExample {
             code: "E0009",
@@ -134,6 +144,7 @@ FUNCTION fn1 : INT
     fn1 := THIS.x;
 END_FUNCTION
 "#],
+            lint_rule: None,
         },
         ErrorExample {
             code: "E0010",
@@ -145,6 +156,7 @@ FUNCTION fn1 : INT
     fn1 := SUPER.x;
 END_FUNCTION
 "#],
+            lint_rule: None,
         },
         ErrorExample {
             code: "E0011",
@@ -158,6 +170,7 @@ FUNCTION_BLOCK fb1
     fn1() := 5;
 END_FUNCTION_BLOCK
 "#],
+            lint_rule: None,
         },
         ErrorExample {
             code: "E0012",
@@ -172,6 +185,7 @@ END_VAR
     x := ;
 END_FUNCTION_BLOCK
 "#],
+            lint_rule: None,
         },
         ErrorExample {
             code: "E0013",
@@ -186,6 +200,7 @@ END_VAR
     x = 5;
 END_FUNCTION_BLOCK
 "#],
+            lint_rule: None,
         },
         ErrorExample {
             code: "E0014",
@@ -200,6 +215,7 @@ END_VAR
     x : 5;
 END_FUNCTION_BLOCK
 "#],
+            lint_rule: None,
         },
         ErrorExample {
             code: "E0015",
@@ -215,6 +231,7 @@ END_VAR
     END_FOR;
 END_FUNCTION_BLOCK
 "#],
+            lint_rule: None,
         },
         ErrorExample {
             code: "E0016",
@@ -230,6 +247,7 @@ END_VAR
     END_FOR;
 END_FUNCTION_BLOCK
 "#],
+            lint_rule: None,
         },
         ErrorExample {
             code: "E0017",
@@ -243,6 +261,7 @@ VAR
 END_VAR
 END_FUNCTION_BLOCK
 "#],
+            lint_rule: None,
         },
         ErrorExample {
             code: "E0018",
@@ -253,6 +272,7 @@ END_FUNCTION_BLOCK
 HELLO world
 END_FUNCTION
 "#],
+            lint_rule: None,
         },
         ErrorExample {
             code: "E0019",
@@ -263,6 +283,7 @@ END_FUNCTION
 NAMESPACE
 END_NAMESPACE
 "#],
+            lint_rule: None,
         },
         ErrorExample {
             code: "E0020",
@@ -277,6 +298,7 @@ END_VAR
     x => 5;
 END_FUNCTION_BLOCK
 "#],
+            lint_rule: None,
         },
         ErrorExample {
             code: "E0021",
@@ -292,6 +314,7 @@ END_VAR
     END_FOR;
 END_FUNCTION_BLOCK
 "#],
+            lint_rule: None,
         },
         ErrorExample {
             code: "E0022",
@@ -304,6 +327,7 @@ NAMESPACE ns1
     END_PROGRAM
 END_NAMESPACE
 "#],
+            lint_rule: None,
         },
         ErrorExample {
             code: "E0023",
@@ -316,6 +340,7 @@ NAMESPACE ns1
     END_CONFIGURATION
 END_NAMESPACE
 "#],
+            lint_rule: None,
         },
         ErrorExample {
             code: "E0024",
@@ -329,6 +354,7 @@ CLASS c1
     END_VAR
 END_CLASS
 "#],
+            lint_rule: None,
         },
         ErrorExample {
             code: "E0025",
@@ -342,6 +368,7 @@ CLASS c1
     END_VAR
 END_CLASS
 "#],
+            lint_rule: None,
         },
         ErrorExample {
             code: "E0026",
@@ -355,6 +382,7 @@ FUNCTION_BLOCK fb1
     END_VAR
 END_FUNCTION_BLOCK
 "#],
+            lint_rule: None,
         },
         ErrorExample {
             code: "E0027",
@@ -368,6 +396,7 @@ FUNCTION_BLOCK fb1
     END_VAR
 END_FUNCTION_BLOCK
 "#],
+            lint_rule: None,
         },
         ErrorExample {
             code: "E0028",
@@ -381,6 +410,7 @@ FUNCTION_BLOCK fb1
     END_VAR
 END_FUNCTION_BLOCK
 "#],
+            lint_rule: None,
         },
         ErrorExample {
             code: "E0029",
@@ -396,6 +426,7 @@ INTERFACE in
     END_METHOD
 END_INTERFACE
 "#],
+            lint_rule: None,
         },
         ErrorExample {
             code: "E0030",
@@ -409,6 +440,7 @@ FUNCTION_BLOCK fb1
     END_VAR
 END_FUNCTION_BLOCK
 "#],
+            lint_rule: None,
         },
         ErrorExample {
             code: "E0031",
@@ -422,6 +454,7 @@ CONFIGURATION MyCfg
     END_VAR
 END_CONFIGURATION
 "#],
+            lint_rule: None,
         },
         ErrorExample {
             code: "E0032",
@@ -433,6 +466,7 @@ CONFIGURATION config1
     TASK task1(INTERVAL := T#20ms, SINGLE := var1, PRIORITY := 1);
 END_CONFIGURATION
 "#],
+            lint_rule: None,
         },
         ErrorExample {
             code: "E0033",
@@ -444,6 +478,7 @@ CONFIGURATION config1
     TASK task1(PRIORITY := 1, INTERVAL := T#20ms);
 END_CONFIGURATION
 "#],
+            lint_rule: None,
         },
         ErrorExample {
             code: "E0034",
@@ -455,6 +490,7 @@ CONFIGURATION config1
     TASK task1(PRIORITY := 1, SINGLE := var1);
 END_CONFIGURATION
 "#],
+            lint_rule: None,
         },
         ErrorExample {
             code: "E0035",
@@ -466,6 +502,7 @@ CONFIGURATION config1
     TASK task1(INTERVAL := T#20ms);
 END_CONFIGURATION
 "#],
+            lint_rule: None,
         },
         ErrorExample {
             code: "E0036",
@@ -479,6 +516,7 @@ VAR_INPUT
 END_VAR
 END_FUNCTION
 "#],
+            lint_rule: None,
         },
         ErrorExample {
             code: "E0037",
@@ -491,6 +529,7 @@ INTERFACE iface
     END_METHOD
 END_INTERFACE
 "#],
+            lint_rule: None,
         },
         ErrorExample {
             code: "E0038",
@@ -504,6 +543,7 @@ FUNCTION_BLOCK fb1
     END_METHOD
 END_FUNCTION_BLOCK
 "#],
+            lint_rule: None,
         },
         ErrorExample {
             code: "E0050",
@@ -518,6 +558,7 @@ END_VAR
     x := 1 +;
 END_FUNCTION_BLOCK
 "#],
+            lint_rule: None,
         },
         // ── E01xx: Duplicate definitions ─────────────────────────────────
         ErrorExample {
@@ -534,6 +575,7 @@ FUNCTION fn1 : INT
     fn1 := 1;
 END_FUNCTION
 "#],
+            lint_rule: None,
         },
         ErrorExample {
             code: "E0102",
@@ -548,6 +590,7 @@ VAR
 END_VAR
 END_FUNCTION_BLOCK
 "#],
+            lint_rule: None,
         },
         ErrorExample {
             code: "E0103",
@@ -561,6 +604,7 @@ TYPE s1 : STRUCT
 END_STRUCT
 END_TYPE
 "#],
+            lint_rule: None,
         },
         ErrorExample {
             code: "E0104",
@@ -571,6 +615,7 @@ END_TYPE
 TYPE e1 : (Red, Green, Red)
 END_TYPE
 "#],
+            lint_rule: None,
         },
         ErrorExample {
             code: "E0105",
@@ -583,6 +628,7 @@ CLASS c1
     METHOD m1 END_METHOD
 END_CLASS
 "#],
+            lint_rule: None,
         },
         ErrorExample {
             code: "E0106",
@@ -595,6 +641,7 @@ INTERFACE i1
     METHOD m1 END_METHOD
 END_INTERFACE
 "#],
+            lint_rule: None,
         },
         ErrorExample {
             code: "E0107",
@@ -614,6 +661,7 @@ CLASS c1 IMPLEMENTS i1, i2
     METHOD m1 END_METHOD
 END_CLASS
 "#],
+            lint_rule: None,
         },
         ErrorExample {
             code: "E0108",
@@ -632,6 +680,7 @@ FUNCTION_BLOCK fb1
     fn1(param1 := 0, param1 := 1);
 END_FUNCTION_BLOCK
 "#],
+            lint_rule: None,
         },
         ErrorExample {
             code: "E0109",
@@ -650,6 +699,7 @@ FUNCTION_BLOCK fb1
     USING ns1;
 END_FUNCTION_BLOCK
 "#],
+            lint_rule: None,
         },
         ErrorExample {
             code: "E0110",
@@ -669,6 +719,7 @@ VAR
 END_VAR
 END_FUNCTION_BLOCK
 "#],
+            lint_rule: None,
         },
         ErrorExample {
             code: "E0111",
@@ -682,6 +733,7 @@ END_PROGRAM
 PROGRAM p1
 END_PROGRAM
 "#],
+            lint_rule: None,
         },
         ErrorExample {
             code: "E0113",
@@ -695,6 +747,7 @@ END_CONFIGURATION
 CONFIGURATION c1
 END_CONFIGURATION
 "#],
+            lint_rule: None,
         },
         ErrorExample {
             code: "E0114",
@@ -707,6 +760,7 @@ CONFIGURATION config1
     TASK task1(PRIORITY := 2);
 END_CONFIGURATION
 "#],
+            lint_rule: None,
         },
         ErrorExample {
             code: "E0115",
@@ -723,6 +777,7 @@ CONFIGURATION config1
     PROGRAM inst1 WITH task1 : prog1;
 END_CONFIGURATION
 "#],
+            lint_rule: None,
         },
         ErrorExample {
             code: "E0116",
@@ -739,6 +794,7 @@ CONFIGURATION config1
     END_RESOURCE
 END_CONFIGURATION
 "#],
+            lint_rule: None,
         },
         // ── E02xx: Resolution / Semantic ─────────────────────────────────
         ErrorExample {
@@ -754,6 +810,7 @@ END_VAR
     x := unknown_var;
 END_FUNCTION_BLOCK
 "#],
+            lint_rule: None,
         },
         ErrorExample {
             code: "E0205",
@@ -772,6 +829,7 @@ FUNCTION_BLOCK fb1
     fn1(0, 1.5, 5);
 END_FUNCTION_BLOCK
 "#],
+            lint_rule: None,
         },
         ErrorExample {
             code: "E0206",
@@ -789,6 +847,7 @@ FUNCTION_BLOCK fb1
     fn1(0, 1);
 END_FUNCTION_BLOCK
 "#],
+            lint_rule: None,
         },
         ErrorExample {
             code: "E0207",
@@ -809,6 +868,7 @@ FUNCTION_BLOCK fb1
     fn1(1, 2);
 END_FUNCTION_BLOCK
 "#],
+            lint_rule: None,
         },
         ErrorExample {
             code: "E0208",
@@ -826,6 +886,7 @@ FUNCTION_BLOCK fb1
     fn1(unknown := TRUE);
 END_FUNCTION_BLOCK
 "#],
+            lint_rule: None,
         },
         ErrorExample {
             code: "E0209",
@@ -840,6 +901,7 @@ FUNCTION_BLOCK fb1
     fn1(unknown => TRUE);
 END_FUNCTION_BLOCK
 "#],
+            lint_rule: None,
         },
         ErrorExample {
             code: "E0210",
@@ -859,6 +921,7 @@ VAR
 END_VAR
 END_FUNCTION_BLOCK
 "#],
+            lint_rule: None,
         },
         ErrorExample {
             code: "E0211",
@@ -878,6 +941,7 @@ END_VAR
     x.field2 := 5;
 END_FUNCTION_BLOCK
 "#],
+            lint_rule: None,
         },
         ErrorExample {
             code: "E0212",
@@ -892,6 +956,7 @@ END_VAR
     x^ := 5;
 END_FUNCTION_BLOCK
 "#],
+            lint_rule: None,
         },
         ErrorExample {
             code: "E0213",
@@ -906,6 +971,7 @@ END_VAR
     x[0] := 5;
 END_FUNCTION_BLOCK
 "#],
+            lint_rule: None,
         },
         ErrorExample {
             code: "E0214",
@@ -919,6 +985,7 @@ VAR
 END_VAR
 END_FUNCTION_BLOCK
 "#],
+            lint_rule: None,
         },
         ErrorExample {
             code: "E0215",
@@ -936,6 +1003,7 @@ VAR
 END_VAR
 END_FUNCTION_BLOCK
 "#],
+            lint_rule: None,
         },
         ErrorExample {
             code: "E0216",
@@ -947,6 +1015,7 @@ FUNCTION_BLOCK fb1
     USING unknown_namespace;
 END_FUNCTION_BLOCK
 "#],
+            lint_rule: None,
         },
         ErrorExample {
             code: "E0218",
@@ -959,6 +1028,7 @@ CONFIGURATION config1
     PROGRAM inst1 WITH task1 : unknown_prog;
 END_CONFIGURATION
 "#],
+            lint_rule: None,
         },
         ErrorExample {
             code: "E0219",
@@ -973,6 +1043,7 @@ CONFIGURATION config1
     PROGRAM inst1 WITH unknown_task : prog1;
 END_CONFIGURATION
 "#],
+            lint_rule: None,
         },
         ErrorExample {
             code: "E0220",
@@ -991,6 +1062,7 @@ CONFIGURATION config1
     PROGRAM inst1 WITH task1 : prog1;
 END_CONFIGURATION
 "#],
+            lint_rule: None,
         },
         ErrorExample {
             code: "E0221",
@@ -1012,6 +1084,7 @@ CONFIGURATION config1
     PROGRAM inst1 WITH task1 : prog1;
 END_CONFIGURATION
 "#],
+            lint_rule: None,
         },
         ErrorExample {
             code: "E0222",
@@ -1019,17 +1092,22 @@ END_CONFIGURATION
             title: "Configuration instance unknown",
             description: "A `VAR_CONFIG` path references a program instance that does not exist.",
             sources: &[r#"
-PROGRAM prog1
+PROGRAM MyProg
+    VAR
+        x : INT;
+    END_VAR
 END_PROGRAM
 
-CONFIGURATION config1
-    TASK task1(PRIORITY := 1);
-    PROGRAM inst1 WITH task1 : prog1;
+CONFIGURATION MyCfg
+    TASK t1(PRIORITY := 1);
+    PROGRAM inst1 WITH t1 : MyProg;
+
     VAR_CONFIG
-        unknown_inst.x : INT;
+        noSuchInst.x : INT := 42;
     END_VAR
 END_CONFIGURATION
 "#],
+            lint_rule: None,
         },
         ErrorExample {
             code: "E0223",
@@ -1037,17 +1115,22 @@ END_CONFIGURATION
             title: "Configuration field not found",
             description: "A `VAR_CONFIG` path references a field that does not exist on the resolved type.",
             sources: &[r#"
-PROGRAM prog1
+PROGRAM MyProg
+    VAR
+        x : INT;
+    END_VAR
 END_PROGRAM
 
-CONFIGURATION config1
-    TASK task1(PRIORITY := 1);
-    PROGRAM inst1 WITH task1 : prog1;
+CONFIGURATION MyCfg
+    TASK t1(PRIORITY := 1);
+    PROGRAM inst1 WITH t1 : MyProg;
+
     VAR_CONFIG
-        inst1.nonexistent_field : INT;
+        inst1.nonexistent : INT := 42;
     END_VAR
 END_CONFIGURATION
 "#],
+            lint_rule: None,
         },
         ErrorExample {
             code: "E0224",
@@ -1067,6 +1150,7 @@ FUNCTION sum_all : INT
     END_VAR
 END_FUNCTION
 "#],
+            lint_rule: None,
         },
         ErrorExample {
             code: "E0225",
@@ -1092,6 +1176,7 @@ FUNCTION test : INT
     test := SharedName();
 END_FUNCTION
 "#],
+            lint_rule: None,
         },
         // Assignment / call violations (moved from E10xx)
         ErrorExample {
@@ -1111,6 +1196,7 @@ END_VAR
     x := fn1;
 END_FUNCTION_BLOCK
 "#],
+            lint_rule: None,
         },
         ErrorExample {
             code: "E0227",
@@ -1125,6 +1211,7 @@ FUNCTION fn1
     END_VAR
 END_FUNCTION
 "#],
+            lint_rule: None,
         },
         ErrorExample {
             code: "E0228",
@@ -1145,6 +1232,7 @@ FUNCTION_BLOCK fb1
     fn1(param1 => b1);
 END_FUNCTION_BLOCK
 "#],
+            lint_rule: None,
         },
         ErrorExample {
             code: "E0229",
@@ -1159,6 +1247,7 @@ END_VAR
     test();
 END_FUNCTION_BLOCK
 "#],
+            lint_rule: None,
         },
         ErrorExample {
             code: "E0230",
@@ -1171,6 +1260,7 @@ VAR_INPUT x : INT; END_VAR
     {extern 'math' 'abs' (params unknown_var) (result test)}
 END_FUNCTION
 "#],
+            lint_rule: None,
         },
         ErrorExample {
             code: "E0231",
@@ -1184,6 +1274,7 @@ FUNCTION fn1
     END_VAR
 END_FUNCTION
 "#],
+            lint_rule: None,
         },
         ErrorExample {
             code: "E0232",
@@ -1198,6 +1289,7 @@ FUNCTION fn1
     END_VAR
 END_FUNCTION
 "#],
+            lint_rule: None,
         },
         // ── E03xx: Type system ───────────────────────────────────────────
         ErrorExample {
@@ -1213,6 +1305,7 @@ END_VAR
     x := 'hello';
 END_FUNCTION_BLOCK
 "#],
+            lint_rule: None,
         },
         ErrorExample {
             code: "E0302",
@@ -1229,6 +1322,7 @@ END_VAR
     z := x > y;
 END_FUNCTION_BLOCK
 "#],
+            lint_rule: None,
         },
         ErrorExample {
             code: "E0303",
@@ -1245,6 +1339,7 @@ END_VAR
     z := x + y;
 END_FUNCTION_BLOCK
 "#],
+            lint_rule: None,
         },
         ErrorExample {
             code: "E0304",
@@ -1261,6 +1356,7 @@ END_VAR
     z := x * y;
 END_FUNCTION_BLOCK
 "#],
+            lint_rule: None,
         },
         ErrorExample {
             code: "E0305",
@@ -1277,6 +1373,7 @@ END_VAR
     z := x ** y;
 END_FUNCTION_BLOCK
 "#],
+            lint_rule: None,
         },
         ErrorExample {
             code: "E0306",
@@ -1292,6 +1389,7 @@ END_VAR
     END_IF;
 END_FUNCTION_BLOCK
 "#],
+            lint_rule: None,
         },
         // E0309 — Invalid literal (many subtypes)
         ErrorExample {
@@ -1307,6 +1405,7 @@ END_VAR
     x := 5.5;
 END_FUNCTION
 "#],
+            lint_rule: None,
         },
         // ── E0309 subtypes: generated for all elementary types ──────────
         // Signed integers — overflow
@@ -1322,6 +1421,7 @@ VAR
 END_VAR
 END_FUNCTION_BLOCK
 "#],
+            lint_rule: None,
         },
         ErrorExample {
             code: "E0309_INT",
@@ -1335,6 +1435,7 @@ VAR
 END_VAR
 END_FUNCTION_BLOCK
 "#],
+            lint_rule: None,
         },
         ErrorExample {
             code: "E0309_DINT",
@@ -1348,6 +1449,7 @@ VAR
 END_VAR
 END_FUNCTION_BLOCK
 "#],
+            lint_rule: None,
         },
         ErrorExample {
             code: "E0309_LINT",
@@ -1361,6 +1463,7 @@ VAR
 END_VAR
 END_FUNCTION_BLOCK
 "#],
+            lint_rule: None,
         },
         // Unsigned integers — overflow
         ErrorExample {
@@ -1375,6 +1478,7 @@ VAR
 END_VAR
 END_FUNCTION_BLOCK
 "#],
+            lint_rule: None,
         },
         ErrorExample {
             code: "E0309_UINT",
@@ -1388,6 +1492,7 @@ VAR
 END_VAR
 END_FUNCTION_BLOCK
 "#],
+            lint_rule: None,
         },
         ErrorExample {
             code: "E0309_UDINT",
@@ -1401,6 +1506,7 @@ VAR
 END_VAR
 END_FUNCTION_BLOCK
 "#],
+            lint_rule: None,
         },
         ErrorExample {
             code: "E0309_ULINT",
@@ -1414,6 +1520,7 @@ VAR
 END_VAR
 END_FUNCTION_BLOCK
 "#],
+            lint_rule: None,
         },
         // Unsigned integers — negative sign
         ErrorExample {
@@ -1428,6 +1535,7 @@ VAR
 END_VAR
 END_FUNCTION_BLOCK
 "#],
+            lint_rule: None,
         },
         ErrorExample {
             code: "E0309_UINT_NEG",
@@ -1441,6 +1549,7 @@ VAR
 END_VAR
 END_FUNCTION_BLOCK
 "#],
+            lint_rule: None,
         },
         ErrorExample {
             code: "E0309_UDINT_NEG",
@@ -1454,6 +1563,7 @@ VAR
 END_VAR
 END_FUNCTION_BLOCK
 "#],
+            lint_rule: None,
         },
         ErrorExample {
             code: "E0309_ULINT_NEG",
@@ -1467,6 +1577,7 @@ VAR
 END_VAR
 END_FUNCTION_BLOCK
 "#],
+            lint_rule: None,
         },
         // BYTE/WORD/DWORD/LWORD — overflow (same check as unsigned)
         ErrorExample {
@@ -1481,6 +1592,7 @@ VAR
 END_VAR
 END_FUNCTION_BLOCK
 "#],
+            lint_rule: None,
         },
         ErrorExample {
             code: "E0309_WORD",
@@ -1494,6 +1606,7 @@ VAR
 END_VAR
 END_FUNCTION_BLOCK
 "#],
+            lint_rule: None,
         },
         ErrorExample {
             code: "E0309_DWORD",
@@ -1507,6 +1620,7 @@ VAR
 END_VAR
 END_FUNCTION_BLOCK
 "#],
+            lint_rule: None,
         },
         ErrorExample {
             code: "E0309_LWORD",
@@ -1520,6 +1634,7 @@ VAR
 END_VAR
 END_FUNCTION_BLOCK
 "#],
+            lint_rule: None,
         },
         // Boolean
         ErrorExample {
@@ -1534,6 +1649,7 @@ VAR
 END_VAR
 END_FUNCTION_BLOCK
 "#],
+            lint_rule: None,
         },
         // Strings — length overflow
         ErrorExample {
@@ -1548,6 +1664,7 @@ VAR
 END_VAR
 END_FUNCTION_BLOCK
 "#],
+            lint_rule: None,
         },
         ErrorExample {
             code: "E0309_WSTRING_LEN",
@@ -1561,6 +1678,7 @@ VAR
 END_VAR
 END_FUNCTION_BLOCK
 "#],
+            lint_rule: None,
         },
         ErrorExample {
             code: "E0309_CHAR",
@@ -1574,6 +1692,7 @@ VAR
 END_VAR
 END_FUNCTION_BLOCK
 "#],
+            lint_rule: None,
         },
         ErrorExample {
             code: "E0309_WCHAR",
@@ -1587,6 +1706,7 @@ VAR
 END_VAR
 END_FUNCTION_BLOCK
 "#],
+            lint_rule: None,
         },
         // Date/time literals
         ErrorExample {
@@ -1601,6 +1721,7 @@ VAR
 END_VAR
 END_FUNCTION_BLOCK
 "#],
+            lint_rule: None,
         },
         ErrorExample {
             code: "E0309_LTOD",
@@ -1614,6 +1735,7 @@ VAR
 END_VAR
 END_FUNCTION_BLOCK
 "#],
+            lint_rule: None,
         },
         ErrorExample {
             code: "E0309_DATE",
@@ -1627,6 +1749,7 @@ VAR
 END_VAR
 END_FUNCTION_BLOCK
 "#],
+            lint_rule: None,
         },
         ErrorExample {
             code: "E0309_LDATE",
@@ -1640,6 +1763,7 @@ VAR
 END_VAR
 END_FUNCTION_BLOCK
 "#],
+            lint_rule: None,
         },
         ErrorExample {
             code: "E0309_DT",
@@ -1653,6 +1777,7 @@ VAR
 END_VAR
 END_FUNCTION_BLOCK
 "#],
+            lint_rule: None,
         },
         ErrorExample {
             code: "E0309_LDT",
@@ -1666,6 +1791,7 @@ VAR
 END_VAR
 END_FUNCTION_BLOCK
 "#],
+            lint_rule: None,
         },
         ErrorExample {
             code: "E0317",
@@ -1680,6 +1806,7 @@ FUNCTION sum_all : INT
     sum_all := ...args+
 END_FUNCTION
 "#],
+            lint_rule: None,
         },
         ErrorExample {
             code: "E0318",
@@ -1697,6 +1824,7 @@ PROGRAM A
     x := 5 + Motor;
 END_PROGRAM
 "#],
+            lint_rule: None,
         },
         ErrorExample {
             code: "E0319",
@@ -1712,6 +1840,7 @@ END_VAR
     x ?= y;
 END_FUNCTION_BLOCK
 "#],
+            lint_rule: None,
         },
         ErrorExample {
             code: "E0320",
@@ -1727,6 +1856,7 @@ END_VAR
     x ?= y;
 END_FUNCTION_BLOCK
 "#],
+            lint_rule: None,
         },
         // ── E04xx: Visibility ────────────────────────────────────────────
         ErrorExample {
@@ -1745,6 +1875,7 @@ CLASS Mid EXTENDS Base
     END_METHOD
 END_CLASS
 "#],
+            lint_rule: None,
         },
         ErrorExample {
             code: "E0402",
@@ -1768,6 +1899,7 @@ NAMESPACE ns2
     END_CLASS
 END_NAMESPACE
 "#],
+            lint_rule: None,
         },
         ErrorExample {
             code: "E0403",
@@ -1786,6 +1918,7 @@ FUNCTION_BLOCK fn1
     obj.myProtectedMethod();
 END_FUNCTION_BLOCK
 "#],
+            lint_rule: None,
         },
         ErrorExample {
             code: "E0404",
@@ -1801,6 +1934,7 @@ FUNCTION_BLOCK fb1
     test_helper();
 END_FUNCTION_BLOCK
 "#],
+            lint_rule: None,
         },
         // ── E05xx: Inheritance ───────────────────────────────────────────
         ErrorExample {
@@ -1815,6 +1949,7 @@ CLASS fb1
     END_METHOD
 END_CLASS
 "#],
+            lint_rule: None,
         },
         ErrorExample {
             code: "E0502",
@@ -1826,6 +1961,7 @@ FUNCTION fn1 : INT
     fn1 := SUPER.x;
 END_FUNCTION
 "#],
+            lint_rule: None,
         },
         ErrorExample {
             code: "E0503",
@@ -1837,6 +1973,7 @@ FUNCTION fn1 : INT
     fn1 := THIS.x;
 END_FUNCTION
 "#],
+            lint_rule: None,
         },
         ErrorExample {
             code: "E0504",
@@ -1852,6 +1989,7 @@ CLASS Derived EXTENDS Base
     METHOD PUBLIC OVERRIDE myMethod : INT  END_METHOD
 END_CLASS
 "#],
+            lint_rule: None,
         },
         ErrorExample {
             code: "E0505",
@@ -1867,6 +2005,7 @@ CLASS Derived EXTENDS Base
     METHOD PUBLIC myMethod : INT  END_METHOD
 END_CLASS
 "#],
+            lint_rule: None,
         },
         ErrorExample {
             code: "E0506",
@@ -1881,6 +2020,7 @@ END_CLASS
 CLASS Derived EXTENDS Base
 END_CLASS
 "#],
+            lint_rule: None,
         },
         ErrorExample {
             code: "E0507",
@@ -1895,6 +2035,7 @@ CLASS Derived EXTENDS Base
     METHOD PUBLIC OVERRIDE myMethod : INT  END_METHOD
 END_CLASS
 "#],
+            lint_rule: None,
         },
         ErrorExample {
             code: "E0508",
@@ -1906,6 +2047,7 @@ CLASS ABSTRACT Base
     METHOD PUBLIC myMethod : INT  END_METHOD
 END_CLASS
 "#],
+            lint_rule: None,
         },
         ErrorExample {
             code: "E0509",
@@ -1920,6 +2062,7 @@ END_INTERFACE
 CLASS MyClass IMPLEMENTS IMyInterface
 END_CLASS
 "#],
+            lint_rule: None,
         },
         ErrorExample {
             code: "E0510",
@@ -1934,6 +2077,7 @@ FUNCTION_BLOCK fb1
     THIS.decl1();
 END_FUNCTION_BLOCK
 "#],
+            lint_rule: None,
         },
         ErrorExample {
             code: "E0511",
@@ -1949,6 +2093,7 @@ FUNCTION_BLOCK fb1 EXTENDS base
     SUPER.super_method1()
 END_FUNCTION_BLOCK
 "#],
+            lint_rule: None,
         },
         ErrorExample {
             code: "E0512",
@@ -1968,6 +2113,7 @@ CLASS Derived EXTENDS Base
     END_METHOD
 END_CLASS
 "#],
+            lint_rule: None,
         },
         ErrorExample {
             code: "E0513",
@@ -1979,6 +2125,7 @@ FUNCTION_BLOCK fb1
     SUPER.method1()
 END_FUNCTION_BLOCK
 "#],
+            lint_rule: None,
         },
         // ── E06xx: Arrays ────────────────────────────────────────────────
         ErrorExample {
@@ -1993,6 +2140,7 @@ VAR
 END_VAR
 END_FUNCTION_BLOCK
 "#],
+            lint_rule: None,
         },
         ErrorExample {
             code: "E0602",
@@ -2006,6 +2154,7 @@ VAR
 END_VAR
 END_FUNCTION_BLOCK
 "#],
+            lint_rule: None,
         },
         ErrorExample {
             code: "E0603",
@@ -2019,6 +2168,7 @@ VAR
 END_VAR
 END_FUNCTION_BLOCK
 "#],
+            lint_rule: None,
         },
         ErrorExample {
             code: "E0605",
@@ -2032,6 +2182,7 @@ VAR
 END_VAR
 END_FUNCTION_BLOCK
 "#],
+            lint_rule: None,
         },
         ErrorExample {
             code: "E0607",
@@ -2045,6 +2196,7 @@ VAR
 END_VAR
 END_FUNCTION_BLOCK
 "#],
+            lint_rule: None,
         },
         // ── E07xx: Enums ─────────────────────────────────────────────────
         ErrorExample {
@@ -2056,6 +2208,7 @@ END_FUNCTION_BLOCK
 TYPE e1 : REAL (Red, Green, Blue)
 END_TYPE
 "#],
+            lint_rule: None,
         },
         ErrorExample {
             code: "E0702",
@@ -2070,6 +2223,7 @@ END_VAR
     x := INT#Red;
 END_FUNCTION_BLOCK
 "#],
+            lint_rule: None,
         },
         ErrorExample {
             code: "E0703",
@@ -2086,6 +2240,7 @@ END_VAR
     c := Color#Yellow;
 END_FUNCTION_BLOCK
 "#],
+            lint_rule: None,
         },
         // ── E08xx: Subranges ─────────────────────────────────────────────
         ErrorExample {
@@ -2097,6 +2252,7 @@ END_FUNCTION_BLOCK
 TYPE s1 : REAL (0..100)
 END_TYPE
 "#],
+            lint_rule: None,
         },
         // ── E09xx: Recursion ─────────────────────────────────────────────
         ErrorExample {
@@ -2110,6 +2266,7 @@ TYPE s1 : STRUCT
 END_STRUCT
 END_TYPE
 "#],
+            lint_rule: None,
         },
         ErrorExample {
             code: "E0902",
@@ -2127,6 +2284,7 @@ TYPE b : STRUCT
 END_STRUCT
 END_TYPE
 "#],
+            lint_rule: None,
         },
         // ── E10xx: Control flow ──────────────────────────────────────────
         ErrorExample {
@@ -2139,6 +2297,7 @@ FUNCTION_BLOCK fb1
     CONTINUE;
 END_FUNCTION_BLOCK
 "#],
+            lint_rule: None,
         },
         ErrorExample {
             code: "E1002",
@@ -2150,6 +2309,7 @@ FUNCTION_BLOCK fb1
     EXIT;
 END_FUNCTION_BLOCK
 "#],
+            lint_rule: None,
         },
         ErrorExample {
             code: "E1003",
@@ -2165,6 +2325,7 @@ END_VAR
     x := ptr^;
 END_FUNCTION_BLOCK
 "#],
+            lint_rule: None,
         },
         ErrorExample {
             code: "E1004",
@@ -2179,11 +2340,79 @@ END_VAR
     x := 20;
 END_FUNCTION_BLOCK
 "#],
+            lint_rule: None,
         },
-        // ── W01xx: Linter warnings ───────────────────────────────────────
+        // ── Pragma ──────────────────────────────────────────────
+        ErrorExample {
+            code: "L0001",
+            category: "Pragma",
+            title: "Info pragma notice",
+            description: "A call targets a POU annotated with `{info = '...'}`, providing an informational notice at the call site.",
+            sources: &[r#"
+{info = 'prefer new_fn for better performance'}
+FUNCTION old_fn : INT
+END_FUNCTION
+
+FUNCTION caller : INT
+VAR x : INT; END_VAR
+    x := old_fn();
+END_FUNCTION
+"#],
+            lint_rule: Some("warn-pragma"),
+        },
+        ErrorExample {
+            code: "L0002",
+            category: "Pragma",
+            title: "Warning pragma notice",
+            description: "A call targets a POU annotated with `{warn = '...'}`, indicating deprecation or other warnings at the call site.",
+            sources: &[r#"
+{warn = 'this function is deprecated, use fn2 instead'}
+FUNCTION fn1 : INT
+END_FUNCTION
+
+FUNCTION caller : INT
+VAR x : INT; END_VAR
+    x := fn1();
+END_FUNCTION
+"#],
+            lint_rule: Some("warn-pragma"),
+        },
+        ErrorExample {
+            code: "L0003",
+            category: "Pragma",
+            title: "Invalid pragma for POU",
+            description: "A pragma is used on a POU type where it is not valid. For example, `{test}` is only valid on FUNCTION and PROGRAM, not on FUNCTION_BLOCK or METHOD.",
+            sources: &[r#"
+{test}
+FUNCTION_BLOCK MyFB
+END_FUNCTION_BLOCK
+"#],
+            lint_rule: Some("invalid-pragma"),
+        },
+        ErrorExample {
+            code: "L0004",
+            category: "Pragma",
+            title: "Once-function called multiple times",
+            description: "A function, function block, or method marked with `{once}` is called more than once in the same body. The `{once}` pragma indicates it should only be invoked once per execution cycle.",
+            sources: &[r#"
+{once}
+FUNCTION init : INT
+    init := 42;
+END_FUNCTION
+
+FUNCTION caller : INT
+VAR x : INT; y : INT; END_VAR
+    x := init();
+    y := init();
+    caller := x + y;
+END_FUNCTION
+"#],
+            lint_rule: Some("once-violation"),
+        },
+        // ── L01xx: Linter Info ────────────────────────────────────
         ErrorExample {
             code: "L0101",
-            category: "Linter Warnings",
+            category: "Linter Info",
             title: "Unused variable",
             description: "A variable is declared but never used in the body.",
             sources: &[r#"
@@ -2195,10 +2424,11 @@ END_VAR
     fn1 := x;
 END_FUNCTION
 "#],
+            lint_rule: Some("unused-variable"),
         },
         ErrorExample {
             code: "L0102",
-            category: "Linter Warnings",
+            category: "Linter Info",
             title: "Variable shadows POU",
             description: "A variable name shadows a POU (function, function block, class, etc.) available in scope.",
             sources: &[
@@ -2216,10 +2446,11 @@ END_VAR
 END_FUNCTION
 "#,
             ],
+            lint_rule: Some("shadowing-variable"),
         },
         ErrorExample {
             code: "L0103",
-            category: "Linter Warnings",
+            category: "Linter Info",
             title: "Duplicate variable section",
             description: "The same variable section type (VAR, VAR_INPUT, etc.) appears more than once in a POU. Merge them into one.",
             sources: &[r#"
@@ -2233,141 +2464,11 @@ END_VAR
     fn1 := x + y;
 END_FUNCTION
 "#],
+            lint_rule: Some("duplicate-var-section"),
         },
         ErrorExample {
             code: "L0104",
-            category: "Linter Warnings",
-            title: "Unused return value",
-            description: "A function call discards a return value. If the return value is intentionally ignored, assign it to a variable.",
-            sources: &[r#"
-FUNCTION add : INT
-VAR_INPUT
-    a : INT;
-    b : INT;
-END_VAR
-    add := a + b;
-END_FUNCTION
-
-FUNCTION_BLOCK fb1
-    add(a := 1, b := 2);
-END_FUNCTION_BLOCK
-"#],
-        },
-        ErrorExample {
-            code: "L0105",
-            category: "Linter Warnings",
-            title: "Effectless statement",
-            description: "A statement has no side effects and does nothing.",
-            sources: &[r#"
-FUNCTION test : INT
-VAR
-    x : INT;
-END_VAR
-    x;
-    test := 0;
-END_FUNCTION
-"#],
-        },
-        ErrorExample {
-            code: "L0106",
-            category: "Linter Warnings",
-            title: "CASE without ELSE",
-            description: "A CASE statement has no ELSE branch, which may leave unhandled cases.",
-            sources: &[r#"
-FUNCTION test : INT
-VAR
-    x : INT;
-END_VAR
-    CASE x OF
-        1: test := 1;
-        2: test := 2;
-    END_CASE;
-END_FUNCTION
-"#],
-        },
-        ErrorExample {
-            code: "L0107",
-            category: "Linter Warnings",
-            title: "Unreachable code",
-            description: "A statement appears after an unconditional control flow statement (RETURN, EXIT, CONTINUE) and can never be reached.",
-            sources: &[r#"
-FUNCTION test : INT
-    test := 1;
-    RETURN;
-    test := 2;
-END_FUNCTION
-"#],
-        },
-        ErrorExample {
-            code: "L0108",
-            category: "Linter Warnings",
-            title: "FOR loop step sign mismatch",
-            description: "The FOR loop step direction does not match the bounds direction.",
-            sources: &[r#"
-FUNCTION test : INT
-VAR
-    i : INT;
-END_VAR
-    FOR i := 1 TO 10 BY -1 DO
-        test := i;
-    END_FOR;
-END_FUNCTION
-"#],
-        },
-        ErrorExample {
-            code: "L0110",
-            category: "Linter Warnings",
-            title: "Assignment to input variable",
-            description: "A `VAR_INPUT` variable is being assigned inside the POU body. Inputs are meant to be set by callers.",
-            sources: &[r#"
-FUNCTION_BLOCK fb1
-VAR_INPUT
-    x : INT;
-END_VAR
-    x := 42;
-END_FUNCTION_BLOCK
-"#],
-        },
-        ErrorExample {
-            code: "L0109",
-            category: "Linter Warnings",
-            title: "Unused import",
-            description: "A `USING` directive imports a namespace that is never referenced.",
-            sources: &[
-                r#"
-NAMESPACE Tools
-    FUNCTION_BLOCK Logger
-    END_FUNCTION_BLOCK
-END_NAMESPACE
-"#,
-                r#"
-FUNCTION_BLOCK fb1
-    USING Tools;
-END_FUNCTION_BLOCK
-"#,
-            ],
-        },
-        ErrorExample {
-            code: "L0116",
-            category: "Linter Warnings",
-            title: "Missing input parameter",
-            description: "A function or method call does not pass all required `VAR_INPUT` parameters.",
-            sources: &[r#"
-FUNCTION add : INT
-VAR_INPUT
-    a : INT;
-    b : INT;
-END_VAR
-END_FUNCTION
-
-FUNCTION_BLOCK caller
-    add(a := 1);
-END_FUNCTION_BLOCK
-"#],
-        },
-        ErrorExample {
-            code: "L0115",
-            category: "Linter Warnings",
+            category: "Linter Info",
             title: "Negated condition",
             description: "An `IF NOT ... THEN ... ELSE` can be simplified by swapping the branches and removing the negation.",
             sources: &[r#"
@@ -2382,10 +2483,11 @@ END_VAR
     END_IF;
 END_FUNCTION
 "#],
+            lint_rule: Some("negated-condition"),
         },
         ErrorExample {
-            code: "L0114",
-            category: "Linter Warnings",
+            code: "L0105",
+            category: "Linter Info",
             title: "Uninitialized output",
             description: "A `VAR_OUTPUT` variable is never assigned in the body. Callers may read an undefined value.",
             sources: &[r#"
@@ -2396,10 +2498,11 @@ END_VAR
     compute := 42;
 END_FUNCTION
 "#],
+            lint_rule: Some("uninitialized-output"),
         },
         ErrorExample {
-            code: "L0113",
-            category: "Linter Warnings",
+            code: "L0106",
+            category: "Linter Info",
             title: "Unnecessary ELSE",
             description: "The ELSE branch is unnecessary because all preceding IF/ELSIF branches end with RETURN, EXIT, or CONTINUE.",
             sources: &[r#"
@@ -2415,10 +2518,386 @@ END_VAR
     END_IF;
 END_FUNCTION
 "#],
+            lint_rule: Some("unnecessary-else"),
+        },
+        ErrorExample {
+            code: "L0107",
+            category: "Linter Info",
+            title: "Boolean comparison",
+            description: "A comparison with a boolean literal can be simplified. Use the variable directly or negate it.",
+            sources: &[r#"
+FUNCTION test : INT
+VAR
+    flag : BOOL;
+END_VAR
+    IF flag = TRUE THEN
+        test := 1;
+    END_IF;
+END_FUNCTION
+"#],
+            lint_rule: Some("bool-comparison"),
+        },
+        ErrorExample {
+            code: "L0108",
+            category: "Linter Info",
+            title: "Redundant NOT",
+            description: "A double negation (`NOT NOT x`) can be simplified to just `x`.",
+            sources: &[r#"
+FUNCTION test : BOOL
+VAR
+    flag : BOOL;
+END_VAR
+    test := NOT NOT flag;
+END_FUNCTION
+"#],
+            lint_rule: Some("redundant-not"),
+        },
+        ErrorExample {
+            code: "L0109",
+            category: "Linter Info",
+            title: "Duplicate namespace",
+            description: "The same namespace is declared more than once in the same file. Merge them into one.",
+            sources: &[r#"
+NAMESPACE Utils
+    FUNCTION fn1 : INT
+    END_FUNCTION
+END_NAMESPACE
+
+NAMESPACE Utils
+    FUNCTION fn2 : INT
+    END_FUNCTION
+END_NAMESPACE
+"#],
+            lint_rule: Some("duplicate-namespace"),
+        },
+        ErrorExample {
+            code: "L0110",
+            category: "Linter Info",
+            title: "Single-element array",
+            description: "An array dimension has equal lower and upper bounds, resulting in an array with only one element.",
+            sources: &[r#"
+FUNCTION test : INT
+VAR
+    arr : ARRAY[5..5] OF INT;
+END_VAR
+    test := arr[5];
+END_FUNCTION
+"#],
+            lint_rule: Some("single-element-array"),
+        },
+        ErrorExample {
+            code: "L0111",
+            category: "Linter Info",
+            title: "Negated comparison",
+            description: "`NOT (x = y)` can be simplified to `x <> y`, and similar for other comparison operators.",
+            sources: &[r#"
+FUNCTION test : BOOL
+VAR
+    x : INT;
+    y : INT;
+END_VAR
+    test := NOT (x = y);
+END_FUNCTION
+"#],
+            lint_rule: Some("negated-comparison"),
         },
         ErrorExample {
             code: "L0112",
-            category: "Linter Warnings",
+            category: "Linter Info",
+            title: "Generic extern function",
+            description: "An `{extern}` pragma references generic parameters. The host must provide an implementation for each concrete type the `ANY_*` constraint accepts.",
+            sources: &[r#"
+FUNCTION SQRT : ANY_REAL
+VAR_INPUT
+    IN : INTO(SQRT);
+END_VAR
+    {extern 'math' 'sqrt' (params IN) (result SQRT)}
+END_FUNCTION
+"#],
+            lint_rule: Some("generic-extern"),
+        },
+        // ── L02xx: Linter Hint ────────────────────────────────────
+        ErrorExample {
+            code: "L0201",
+            category: "Linter Hint",
+            title: "Unused import",
+            description: "A `USING` directive imports a namespace that is never referenced.",
+            sources: &[
+                r#"
+NAMESPACE Tools
+    FUNCTION_BLOCK Logger
+    END_FUNCTION_BLOCK
+END_NAMESPACE
+"#,
+                r#"
+FUNCTION_BLOCK fb1
+    USING Tools;
+END_FUNCTION_BLOCK
+"#,
+            ],
+            lint_rule: Some("unused-import"),
+        },
+        ErrorExample {
+            code: "L0202",
+            category: "Linter Hint",
+            title: "Unused return value",
+            description: "A function call discards a return value. If the return value is intentionally ignored, assign it to a variable.",
+            sources: &[r#"
+FUNCTION add : INT
+VAR_INPUT
+    a : INT;
+    b : INT;
+END_VAR
+    add := a + b;
+END_FUNCTION
+
+FUNCTION_BLOCK fb1
+    add(a := 1, b := 2);
+END_FUNCTION_BLOCK
+"#],
+            lint_rule: Some("unused-return-type"),
+        },
+        ErrorExample {
+            code: "L0203",
+            category: "Linter Hint",
+            title: "CASE without ELSE",
+            description: "A CASE statement has no ELSE branch, which may leave unhandled cases.",
+            sources: &[r#"
+FUNCTION test : INT
+VAR
+    x : INT;
+END_VAR
+    CASE x OF
+        1: test := 1;
+        2: test := 2;
+    END_CASE;
+END_FUNCTION
+"#],
+            lint_rule: Some("case-without-else"),
+        },
+        ErrorExample {
+            code: "L0204",
+            category: "Linter Hint",
+            title: "Missing input parameter",
+            description: "A function or method call does not pass all required `VAR_INPUT` parameters.",
+            sources: &[r#"
+FUNCTION add : INT
+VAR_INPUT
+    a : INT;
+    b : INT;
+END_VAR
+END_FUNCTION
+
+FUNCTION_BLOCK caller
+    add(a := 1);
+END_FUNCTION_BLOCK
+"#],
+            lint_rule: Some("missing-input-param"),
+        },
+        ErrorExample {
+            code: "L0205",
+            category: "Linter Hint",
+            title: "Empty body",
+            description: "A function, function block, method, or program has an empty body.",
+            sources: &[r#"
+FUNCTION compute : INT
+END_FUNCTION
+"#],
+            lint_rule: Some("empty-body"),
+        },
+        ErrorExample {
+            code: "L0206",
+            category: "Linter Hint",
+            title: "Empty CASE branch",
+            description: "A CASE branch has no statements, which may indicate a missing implementation.",
+            sources: &[r#"
+FUNCTION test : INT
+VAR x : INT; END_VAR
+    CASE x OF
+        1:
+        2: test := 20;
+    END_CASE;
+END_FUNCTION
+"#],
+            lint_rule: Some("empty-case-branch"),
+        },
+        ErrorExample {
+            code: "L0207",
+            category: "Linter Hint",
+            title: "Unnecessary parentheses",
+            description: "Parentheses around a simple variable or literal have no effect and can be removed.",
+            sources: &[r#"
+FUNCTION test : INT
+VAR x : INT; END_VAR
+    test := (x);
+END_FUNCTION
+"#],
+            lint_rule: Some("unnecessary-parens"),
+        },
+        ErrorExample {
+            code: "L0208",
+            category: "Linter Hint",
+            title: "Yoda condition",
+            description: "A literal value appears on the left side of a comparison. Swap operands for conventional order.",
+            sources: &[r#"
+FUNCTION test : INT
+VAR
+    x : INT;
+END_VAR
+    IF 5 = x THEN
+        test := 1;
+    END_IF;
+END_FUNCTION
+"#],
+            lint_rule: Some("yoda-condition"),
+        },
+        ErrorExample {
+            code: "L0209",
+            category: "Linter Hint",
+            title: "Collapsible IF",
+            description: "Two nested IF statements without ELSE branches can be collapsed into a single `IF a AND b THEN`.",
+            sources: &[r#"
+FUNCTION test : INT
+VAR
+    a : BOOL;
+    b : BOOL;
+END_VAR
+    IF a THEN
+        IF b THEN
+            test := 1;
+        END_IF;
+    END_IF;
+END_FUNCTION
+"#],
+            lint_rule: Some("collapsible-if"),
+        },
+        ErrorExample {
+            code: "L0210",
+            category: "Linter Hint",
+            title: "Empty IF branch",
+            description: "An IF or ELSIF branch has no statements.",
+            sources: &[r#"
+FUNCTION test : INT
+VAR
+    x : BOOL;
+END_VAR
+    IF x THEN
+    END_IF;
+END_FUNCTION
+"#],
+            lint_rule: Some("empty-if-branch"),
+        },
+        ErrorExample {
+            code: "L0211",
+            category: "Linter Hint",
+            title: "Effectless statement",
+            description: "A statement has no side effects and does nothing.",
+            sources: &[r#"
+FUNCTION test : INT
+VAR
+    x : INT;
+END_VAR
+    x;
+    test := 0;
+END_FUNCTION
+"#],
+            lint_rule: Some("effectless-statement"),
+        },
+        ErrorExample {
+            code: "L0212",
+            category: "Linter Hint",
+            title: "Empty loop body",
+            description: "A FOR, WHILE, or REPEAT loop has no statements in its body.",
+            sources: &[r#"
+FUNCTION test : INT
+VAR
+    i : INT;
+END_VAR
+    FOR i := 0 TO 10 DO
+    END_FOR;
+END_FUNCTION
+"#],
+            lint_rule: Some("empty-loop-body"),
+        },
+        ErrorExample {
+            code: "L0213",
+            category: "Linter Hint",
+            title: "Empty type declaration",
+            description: "A STRUCT has no fields or an ENUM has no variants.",
+            sources: &[r#"
+TYPE EmptyStruct : STRUCT
+END_STRUCT;
+END_TYPE
+"#],
+            lint_rule: Some("empty-type"),
+        },
+        ErrorExample {
+            code: "L0214",
+            category: "Linter Hint",
+            title: "Redundant FOR loop step",
+            description: "A FOR loop step of 1 is the default and the `BY 1` clause can be omitted.",
+            sources: &[r#"
+FUNCTION test : INT
+VAR
+    i : INT;
+END_VAR
+    FOR i := 0 TO 10 BY 1 DO
+        test := i;
+    END_FOR;
+END_FUNCTION
+"#],
+            lint_rule: Some("default-for-step"),
+        },
+        // ── L03xx: Linter Warning ─────────────────────────────────
+        ErrorExample {
+            code: "L0301",
+            category: "Linter Warning",
+            title: "Unreachable code",
+            description: "A statement appears after an unconditional control flow statement (RETURN, EXIT, CONTINUE) and can never be reached.",
+            sources: &[r#"
+FUNCTION test : INT
+    test := 1;
+    RETURN;
+    test := 2;
+END_FUNCTION
+"#],
+            lint_rule: Some("dead-code"),
+        },
+        ErrorExample {
+            code: "L0302",
+            category: "Linter Warning",
+            title: "FOR loop step sign mismatch",
+            description: "The FOR loop step direction does not match the bounds direction.",
+            sources: &[r#"
+FUNCTION test : INT
+VAR
+    i : INT;
+END_VAR
+    FOR i := 1 TO 10 BY -1 DO
+        test := i;
+    END_FOR;
+END_FUNCTION
+"#],
+            lint_rule: Some("for-loop-step-sign"),
+        },
+        ErrorExample {
+            code: "L0303",
+            category: "Linter Warning",
+            title: "Assignment to input variable",
+            description: "A `VAR_INPUT` variable is being assigned inside the POU body. Inputs are meant to be set by callers.",
+            sources: &[r#"
+FUNCTION_BLOCK fb1
+VAR_INPUT
+    x : INT;
+END_VAR
+    x := 42;
+END_FUNCTION_BLOCK
+"#],
+            lint_rule: Some("input-assignment"),
+        },
+        ErrorExample {
+            code: "L0304",
+            category: "Linter Warning",
             title: "Constant condition",
             description: "A condition in an IF, WHILE, or REPEAT statement is always TRUE or always FALSE.",
             sources: &[r#"
@@ -2428,10 +2907,77 @@ FUNCTION test : INT
     END_IF;
 END_FUNCTION
 "#],
+            lint_rule: Some("constant-condition"),
         },
         ErrorExample {
-            code: "L0111",
-            category: "Linter Warnings",
+            code: "L0305",
+            category: "Linter Warning",
+            title: "Division by zero",
+            description: "A division or modulo operation uses a literal zero as the divisor.",
+            sources: &[r#"
+FUNCTION test : INT
+VAR
+    x : INT;
+END_VAR
+    x := 10 / 0;
+    test := x;
+END_FUNCTION
+"#],
+            lint_rule: Some("division-by-zero"),
+        },
+        ErrorExample {
+            code: "L0306",
+            category: "Linter Warning",
+            title: "Duplicate CASE value",
+            description: "Two or more CASE branches use the same selector value. Only the first branch will ever match.",
+            sources: &[r#"
+FUNCTION test : INT
+VAR
+    x : INT;
+END_VAR
+    CASE x OF
+        1: test := 10;
+        1: test := 20;
+    END_CASE;
+END_FUNCTION
+"#],
+            lint_rule: Some("duplicate-case"),
+        },
+        ErrorExample {
+            code: "L0307",
+            category: "Linter Warning",
+            title: "FOR loop with zero step",
+            description: "A FOR loop with a step of 0 will never terminate.",
+            sources: &[r#"
+FUNCTION test : INT
+VAR i : INT; END_VAR
+    FOR i := 0 TO 10 BY 0 DO
+        test := i;
+    END_FOR;
+END_FUNCTION
+"#],
+            lint_rule: Some("for-zero-step"),
+        },
+        ErrorExample {
+            code: "L0308",
+            category: "Linter Warning",
+            title: "Loop variable modified",
+            description: "A FOR loop control variable is modified inside the loop body. This can cause unexpected iteration behavior.",
+            sources: &[r#"
+FUNCTION test : INT
+VAR
+    i : INT;
+END_VAR
+    FOR i := 0 TO 10 DO
+        i := i + 2;
+    END_FOR;
+END_FUNCTION
+"#],
+            lint_rule: Some("loop-var-modified"),
+        },
+        ErrorExample {
+            code: "L0309",
+            category: "Linter Warning",
             title: "Self-assignment",
             description: "A variable is assigned to itself, which has no effect.",
             sources: &[r#"
@@ -2443,22 +2989,137 @@ END_VAR
     test := 0;
 END_FUNCTION
 "#],
+            lint_rule: Some("self-assignment"),
         },
         ErrorExample {
-            code: "L0117",
-            category: "Linter Warnings",
-            title: "Call site pragma notice",
-            description: "A call targets a POU annotated with {warn = '...'} or {info = '...'}, indicating deprecation or other notices.",
+            code: "L0310",
+            category: "Linter Warning",
+            title: "Self-comparison",
+            description: "A variable is compared to itself. The result is always TRUE or always FALSE.",
             sources: &[r#"
-{warn = 'this function is deprecated, use fn2 instead'}
-FUNCTION fn1 : INT
-END_FUNCTION
-
-FUNCTION caller : INT
-VAR x : INT; END_VAR
-    x := fn1();
+FUNCTION test : INT
+VAR
+    x : INT;
+END_VAR
+    IF x = x THEN
+        test := 1;
+    END_IF;
 END_FUNCTION
 "#],
+            lint_rule: Some("self-comparison"),
+        },
+        ErrorExample {
+            code: "L0311",
+            category: "Linter Warning",
+            title: "Identical subexpressions",
+            description: "Both sides of a boolean operator are identical. This is likely a copy-paste error.",
+            sources: &[r#"
+FUNCTION test : BOOL
+VAR
+    a : BOOL;
+END_VAR
+    test := a AND a;
+END_FUNCTION
+"#],
+            lint_rule: Some("identical-sub-expr"),
+        },
+        ErrorExample {
+            code: "L0312",
+            category: "Linter Warning",
+            title: "Identity operation",
+            description: "An operation with an identity value has no effect (adding 0, multiplying by 1, etc.).",
+            sources: &[r#"
+FUNCTION test : INT
+VAR
+    x : INT;
+END_VAR
+    x := x + 0;
+    test := x * 1;
+END_FUNCTION
+"#],
+            lint_rule: Some("identity-operation"),
+        },
+        ErrorExample {
+            code: "L0313",
+            category: "Linter Warning",
+            title: "Subtraction from self",
+            description: "Subtracting a variable from itself always results in 0.",
+            sources: &[r#"
+FUNCTION test : INT
+VAR
+    x : INT;
+END_VAR
+    test := x - x;
+END_FUNCTION
+"#],
+            lint_rule: Some("sub-self"),
+        },
+        ErrorExample {
+            code: "L0314",
+            category: "Linter Warning",
+            title: "Constant FOR loop bounds",
+            description: "A FOR loop has equal start and end bounds, so the body executes exactly once.",
+            sources: &[r#"
+FUNCTION test : INT
+VAR
+    i : INT;
+END_VAR
+    FOR i := 5 TO 5 DO
+        test := i;
+    END_FOR;
+END_FUNCTION
+"#],
+            lint_rule: Some("constant-loop-bounds"),
+        },
+        ErrorExample {
+            code: "L0315",
+            category: "Linter Warning",
+            title: "Variable shadows its own POU",
+            description: "A variable has the same name as the function block, method, or program it is declared in.",
+            sources: &[r#"
+FUNCTION_BLOCK MyFB
+VAR
+    MyFB : INT;
+END_VAR
+END_FUNCTION_BLOCK
+"#],
+            lint_rule: Some("self-shadowing"),
+        },
+        ErrorExample {
+            code: "L0316",
+            category: "Linter Warning",
+            title: "Missing return assignment",
+            description: "A function or method declares a return type but never assigns the return value.",
+            sources: &[r#"
+FUNCTION foo : INT
+VAR
+    x : INT;
+END_VAR
+    x := 42;
+END_FUNCTION
+"#],
+            lint_rule: Some("missing-return"),
+        },
+        ErrorExample {
+            code: "L0317",
+            category: "Linter Warning",
+            title: "External instance mutation",
+            description: "A field of a function block or class instance is directly modified from outside. Instances should own their data.",
+            sources: &[r#"
+FUNCTION_BLOCK MyFB
+VAR
+    x : INT;
+END_VAR
+END_FUNCTION_BLOCK
+
+FUNCTION caller : INT
+VAR
+    fb : MyFB;
+END_VAR
+    fb.x := 42;
+END_FUNCTION
+"#],
+            lint_rule: Some("external-mutation"),
         },
     ]
 }

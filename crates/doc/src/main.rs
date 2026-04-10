@@ -9,6 +9,14 @@ use db::RootDatabase;
 
 const TM_GRAMMAR: &str = include_str!("../../../vscode/syntaxes/st.tmLanguage.json");
 
+fn json_escape(s: &str) -> String {
+    s.replace('\\', "\\\\")
+        .replace('"', "\\\"")
+        .replace('\n', "\\n")
+        .replace('\r', "\\r")
+        .replace('\t', "\\t")
+}
+
 fn main() {
     let crate_dir = Path::new(env!("CARGO_MANIFEST_DIR"));
     let out_dir = std::env::args()
@@ -36,11 +44,16 @@ fn main() {
 
     let ordered_categories: Vec<(&str, Vec<(&str, &str)>)> = category_order
         .iter()
-        .map(|cat| (*cat, categories.get(cat).cloned().unwrap_or_default()))
+        .map(|cat| {
+            let mut entries = categories.get(cat).cloned().unwrap_or_default();
+            entries.sort_by_key(|(code, _)| *code);
+            (*cat, entries)
+        })
         .collect();
 
-    // Build all entry HTML fragments grouped by category
+    // Build all entry HTML fragments grouped by category + JSON API
     let mut body = String::new();
+    let mut json_entries: Vec<String> = Vec::new();
     let mut success_count = 0;
     let mut fail_count = 0;
     let mut current_category = "";
@@ -58,8 +71,8 @@ fn main() {
         eprint!("  Generating {}...", ex.code);
 
         let mut db = RootDatabase::default();
-        let run_linter = ex.code.starts_with('L');
-        let ansi_output = render::compile_and_render(&mut db, ex.sources, run_linter);
+        let (ansi_output, diag_spans) =
+            render::compile_and_render(&mut db, ex.sources, ex.lint_rule);
 
         if ansi_output.is_empty() {
             eprintln!(" WARNING: no diagnostics produced!");
@@ -70,7 +83,8 @@ fn main() {
                 ex.title,
                 ex.description,
                 ex.sources,
-                "<span class=\"warning\">No compiler output — example may need updating.</span>",
+                "<span class=\"no-output\">No compiler output - example may need updating.</span>",
+                &[],
             ));
             continue;
         }
@@ -82,6 +96,25 @@ fn main() {
             ex.description,
             ex.sources,
             &report_html,
+            &diag_spans,
+        ));
+
+        // Collect JSON entry for API
+        let sources_json: Vec<String> = ex
+            .sources
+            .iter()
+            .map(|s| {
+                let trimmed = s.trim_matches('\n');
+                format!("\"{}\"", json_escape(trimmed))
+            })
+            .collect();
+        json_entries.push(format!(
+            r#"  {{"code":"{}","category":"{}","title":"{}","description":"{}","sources":[{}]}}"#,
+            json_escape(ex.code),
+            json_escape(ex.category),
+            json_escape(ex.title),
+            json_escape(ex.description),
+            sources_json.join(","),
         ));
 
         success_count += 1;
@@ -94,9 +127,15 @@ fn main() {
     // Assemble full page
     let page = render::render_page(&sidebar, &body, TM_GRAMMAR, success_count, fail_count);
 
-    let output_file = out_dir.join("index.html");
-    fs::write(&output_file, &page).expect("failed to write index.html");
+    let output_file = out_dir.join("reference.html");
+    fs::write(&output_file, &page).expect("failed to write reference.html");
+
+    // Write JSON API for agents
+    let json_file = out_dir.join("diagnostics.json");
+    let json_content = format!("[\n{}\n]\n", json_entries.join(",\n"));
+    fs::write(&json_file, &json_content).expect("failed to write diagnostics.json");
 
     eprintln!("\nDone! {success_count} diagnostics documented, {fail_count} warnings.");
     eprintln!("Output: {}", output_file.display());
+    eprintln!("API:    {}", json_file.display());
 }
