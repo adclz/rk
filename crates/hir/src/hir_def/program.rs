@@ -4,7 +4,7 @@ use auto_lsp::lsp_types::Url;
 use db::WorkspaceDataBase;
 
 use crate::{
-    AstId, HasName, HirNodeInfo,
+    AstId, HasName, HasPragmas, HirNodeInfo,
     hir_def::{
         config::AccessDirection,
         expressions::{
@@ -76,6 +76,12 @@ impl<'db> HirNodeInfo<'db> for ProgramDecl<'db> {
 
     fn get_scope_id(&self, db: &'db dyn WorkspaceDataBase) -> ScopeId<'db> {
         self.scope_id(db)
+    }
+}
+
+impl<'db> HasPragmas<'db> for ProgramDecl<'db> {
+    fn get_pragmas(&self, db: &'db dyn WorkspaceDataBase) -> &'db [Pragma<'db>] {
+        self.pragmas(db)
     }
 }
 

@@ -1,7 +1,7 @@
 use db::WorkspaceDataBase;
 
 use crate::{
-    AstId, HasName, HirNodeInfo, Modifier,
+    AstId, HasName, HasPragmas, HirNodeInfo, Modifier,
     hir_def::{
         expressions::{spec::Spec, statement::Stmt},
         interned::identifier::Ident,
@@ -61,6 +61,12 @@ impl<'db> HirNodeInfo<'db> for FunctionBlock<'db> {
 
     fn get_scope_id(&self, db: &'db dyn WorkspaceDataBase) -> ScopeId<'db> {
         self.scope_id(db)
+    }
+}
+
+impl<'db> HasPragmas<'db> for FunctionBlock<'db> {
+    fn get_pragmas(&self, db: &'db dyn WorkspaceDataBase) -> &'db [Pragma<'db>] {
+        self.pragmas(db)
     }
 }
 
