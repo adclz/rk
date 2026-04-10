@@ -1,0 +1,100 @@
+use auto_lsp::lsp_types::DiagnosticSeverity;
+use db::WorkspaceDataBase;
+use hir::{
+    HirNodeInfo,
+    hir_def::{
+        pous::{
+            pou::Pou,
+            pragma::Pragma,
+        },
+        scope::{ScopeId, ScopeKind},
+        semantic_index::get_scope,
+    },
+};
+use ide_diagnostic::{ErrorCode, IdeDiagnostic, diag};
+
+pub const NAME: &str = "invalid-pragma";
+
+struct InvalidPragma;
+
+impl ErrorCode for InvalidPragma {
+    fn code(&self) -> &'static str {
+        "L0401"
+    }
+
+    fn description(&self) -> &'static str {
+        "invalid pragma for this POU"
+    }
+}
+
+fn get_pou_span<'db>(db: &'db dyn WorkspaceDataBase, kind: &ScopeKind<'db>) -> auto_lsp::core::span::Span {
+    match kind {
+        ScopeKind::Pou(Pou::Function(f)) => f.get_span(db),
+        ScopeKind::Pou(Pou::FunctionBlock(fb)) => fb.get_span(db),
+        ScopeKind::MethodDecl(m) => m.get_span(db),
+        ScopeKind::Program(p) => p.get_span(db),
+        _ => unreachable!(),
+    }
+}
+
+pub fn check<'db>(
+    db: &'db dyn WorkspaceDataBase,
+    scope: ScopeId<'db>,
+    diagnostics: &mut Vec<IdeDiagnostic>,
+) {
+    let scope_data = get_scope(db, scope);
+    let kind = &scope_data.kind;
+
+    let pragmas = match kind {
+        ScopeKind::Pou(Pou::Function(f)) => f.pragmas(db),
+        ScopeKind::Pou(Pou::FunctionBlock(fb)) => fb.pragmas(db),
+        ScopeKind::MethodDecl(m) => m.pragmas(db),
+        ScopeKind::Program(p) => p.pragmas(db),
+        _ => return,
+    };
+
+    let has_test = pragmas.iter().any(|p| matches!(p, Pragma::Test(_)));
+
+    for pragma in pragmas {
+        let (invalid, reason) = match pragma {
+            Pragma::Test(_) => match kind {
+                ScopeKind::Pou(Pou::Function(_)) | ScopeKind::Program(_) => (false, ""),
+                ScopeKind::Pou(Pou::FunctionBlock(_)) => {
+                    (true, "{test} is not valid on FUNCTION_BLOCK")
+                }
+                ScopeKind::MethodDecl(_) => (true, "{test} is not valid on METHOD"),
+                _ => (false, ""),
+            },
+            Pragma::Once(_) => match kind {
+                ScopeKind::Program(_) => (true, "{once} is not valid on PROGRAM"),
+                _ => (false, ""),
+            },
+            Pragma::Case(_, _) => {
+                if !has_test {
+                    (true, "{case} requires {test} on the same POU")
+                } else {
+                    match kind {
+                        ScopeKind::Pou(Pou::Function(_)) | ScopeKind::Program(_) => (false, ""),
+                        ScopeKind::Pou(Pou::FunctionBlock(_)) => {
+                            (true, "{case} is not valid on FUNCTION_BLOCK")
+                        }
+                        ScopeKind::MethodDecl(_) => (true, "{case} is not valid on METHOD"),
+                        _ => (false, ""),
+                    }
+                }
+            }
+            Pragma::Warn(_, _) => (false, ""),
+        };
+
+        if invalid {
+            diagnostics.push(
+                diag()
+                    .message(reason.to_string())
+                    .desc(&InvalidPragma)
+                    .range(pragma.span_ident().get_span(db))
+                    .severity(DiagnosticSeverity::WARNING)
+                    .call(),
+            );
+        }
+    }
+}

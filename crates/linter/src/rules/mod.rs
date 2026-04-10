@@ -35,6 +35,8 @@ pub mod for_loop_step_sign;
 pub mod generic_extern;
 pub mod for_zero_step;
 pub mod identical_sub_expr;
+pub mod invalid_pragma;
+pub mod once_violation;
 pub mod identity_operation;
 pub mod input_assignment;
 pub mod loop_var_modified;
@@ -85,11 +87,13 @@ pub const ALL_RULE_NAMES: &[&str] = &[
     identical_sub_expr::NAME,
     identity_operation::NAME,
     input_assignment::NAME,
+    invalid_pragma::NAME,
     loop_var_modified::NAME,
     missing_input_param::NAME,
     missing_return::NAME,
     negated_comparison::NAME,
     negated_condition::NAME,
+    once_violation::NAME,
     redundant_not::NAME,
     self_assignment::NAME,
     self_comparison::NAME,
@@ -271,6 +275,11 @@ fn lint_scope<'db>(
             empty_body::check(db, scope, d)
         });
     }
+    if config.is_enabled(invalid_pragma::NAME) {
+        run_lint(invalid_pragma::NAME, diagnostics, |d| {
+            invalid_pragma::check(db, scope, d)
+        });
+    }
     if config.is_enabled(self_shadowing::NAME) {
         run_lint(self_shadowing::NAME, diagnostics, |d| {
             self_shadowing::check(db, scope, d)
@@ -346,6 +355,11 @@ fn lint_scope<'db>(
     if config.is_enabled(warn_pragma::NAME) {
         run_lint(warn_pragma::NAME, diagnostics, |d| {
             warn_pragma::check(db, body, d)
+        });
+    }
+    if config.is_enabled(once_violation::NAME) {
+        run_lint(once_violation::NAME, diagnostics, |d| {
+            once_violation::check(db, body, d)
         });
     }
 }
