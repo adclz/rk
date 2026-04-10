@@ -55,13 +55,11 @@ impl<'db> SemanticIndexBuilder<'db> {
         let result = Pou::Function(Function::new(
             self.db,
             name,
-            pragmas.is_test,
-            pragmas.cases,
+            pragmas,
             func.name.cast(self.ast).into(),
             variables,
             statements,
             return_type,
-            pragmas.warn_pragma,
             func.into(),
             scope_id,
         ));

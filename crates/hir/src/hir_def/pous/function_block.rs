@@ -5,7 +5,7 @@ use crate::{
     hir_def::{
         expressions::{spec::Spec, statement::Stmt},
         interned::identifier::Ident,
-        pous::{class::MethodDecl, variable::VariableDecl, warn_pragma::WarnPragma},
+        pous::{class::MethodDecl, pragma::Pragma, variable::VariableDecl},
         scope::ScopeId,
     },
 };
@@ -43,9 +43,8 @@ pub struct FunctionBlock<'db> {
     pub modifier: Modifier,
 
     #[tracked]
-    #[no_eq]
-    #[returns(as_ref)]
-    pub warn_pragma: Option<WarnPragma>,
+    #[returns(ref)]
+    pub pragmas: Vec<Pragma<'db>>,
 
     #[tracked]
     #[no_eq]

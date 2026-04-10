@@ -2,46 +2,35 @@ use crate::builder::semantic_index::SemanticIndexBuilder;
 use crate::builder::Parse;
 use crate::hir_def::expressions::expression::{ParamAssign, ParamAssignKind};
 use crate::hir_def::interned::identifier::SpanIdent;
-use crate::hir_def::pous::warn_pragma::{WarnPragma, WarnPragmaLevel};
+use crate::hir_def::pous::pragma::{Pragma, WarnPragma, WarnPragmaLevel};
 use auto_lsp::core::ast::AstNode;
 
-/// Extracted pragma data from a unified `pou_pragma` list.
-pub struct ParsedPouPragmas<'db> {
-    pub is_test: bool,
-    pub is_once: bool,
-    pub warn_pragma: Option<WarnPragma>,
-    pub cases: Vec<Vec<ParamAssign<'db>>>,
-}
-
 impl<'db> SemanticIndexBuilder<'db> {
-    /// Parse the unified `pragmas` list from a POU declaration.
+    /// Parse the unified `pragmas` list from a POU declaration into `Vec<Pragma>`.
     pub fn parse_pou_pragmas(
         &mut self,
         pragmas: &[auto_lsp::core::ast::AstNodeId<ast::generated::PouPragma>],
-    ) -> ParsedPouPragmas<'db> {
+    ) -> Vec<Pragma<'db>> {
         use ast::generated::CasePragma_OncePragma_TestPragma_WarnPragma as PragmaKind;
 
-        let mut result = ParsedPouPragmas {
-            is_test: false,
-            is_once: false,
-            warn_pragma: None,
-            cases: vec![],
-        };
+        let mut result = Vec::new();
 
         for pragma_id in pragmas {
             let pragma = pragma_id.cast(self.ast);
             match pragma.children.cast(self.ast) {
                 PragmaKind::TestPragma(_) => {
-                    result.is_test = true;
+                    result.push(Pragma::Test);
                 }
                 PragmaKind::OncePragma(_) => {
-                    result.is_once = true;
+                    result.push(Pragma::Once);
                 }
                 PragmaKind::WarnPragma(warn) => {
-                    result.warn_pragma = self.parse_warn_pragma(&warn);
+                    if let Some(wp) = self.parse_warn_pragma(&warn) {
+                        result.push(Pragma::Warn(wp));
+                    }
                 }
                 PragmaKind::CasePragma(case) => {
-                    result.cases.push(self.parse_single_case(&case));
+                    result.push(Pragma::Case(self.parse_single_case(&case)));
                 }
             }
         }
@@ -89,7 +78,7 @@ impl<'db> SemanticIndexBuilder<'db> {
                     };
                     args.push(self.new_param(p.into(), self.current_scope, kind));
                 }
-                _ => {} // skip commas
+                _ => {}
             }
         }
         args

@@ -264,7 +264,7 @@ pub fn discover_all_tests<'db>(db: &'db dyn WorkspaceDataBase) -> Vec<TestItem<'
         // Global test functions
         for pou in file_global_pous(db, file).iter() {
             if let Pou::Function(f) = pou
-                && f.is_test(db)
+                && crate::hir_def::pous::pragma::is_test(db, f.pragmas(db))
             {
                 tests.push(TestItem::Function(*f, f.name(db).text(db).to_string()));
             }
@@ -272,7 +272,7 @@ pub fn discover_all_tests<'db>(db: &'db dyn WorkspaceDataBase) -> Vec<TestItem<'
 
         // Global test programs
         for prog in file_programs(db, file).iter() {
-            if prog.is_test(db) {
+            if crate::hir_def::pous::pragma::is_test(db, prog.pragmas(db)) {
                 tests.push(TestItem::Program(*prog, prog.name(db).text(db).to_string()));
             }
         }
@@ -295,7 +295,7 @@ fn discover_tests_in_namespace<'db>(
 
     for pou in ns.pous(db).iter() {
         if let Pou::Function(f) = pou
-            && f.is_test(db)
+            && crate::hir_def::pous::pragma::is_test(db, f.pragmas(db))
         {
             tests.push(TestItem::Function(
                 *f,
@@ -322,12 +322,12 @@ pub fn find_test<'db>(
         // Global scope: check functions then programs
         let name = Ident::from_slice(db, parts[0]);
         if let Some(Pou::Function(f)) = pou_index(db, name)
-            && f.is_test(db)
+            && crate::hir_def::pous::pragma::is_test(db, f.pragmas(db))
         {
             return Some(TestItem::Function(f, qualified_name.to_string()));
         }
         if let Some(prog) = program_index(db, name)
-            && prog.is_test(db)
+            && crate::hir_def::pous::pragma::is_test(db, prog.pragmas(db))
         {
             return Some(TestItem::Program(prog, qualified_name.to_string()));
         }
@@ -342,7 +342,7 @@ pub fn find_test<'db>(
         let name = Ident::from_slice(db, item_name);
 
         if let Some(Pou::Function(f)) = namespace_pou_index(db, ns_path, name)
-            && f.is_test(db)
+            && crate::hir_def::pous::pragma::is_test(db, f.pragmas(db))
         {
             return Some(TestItem::Function(f, qualified_name.to_string()));
         }

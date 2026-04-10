@@ -302,12 +302,12 @@ impl<'db> Signature<'db> {
     fn infer_test_cases(&mut self, db: &'db dyn WorkspaceDataBase) {
         let scope = get_scope(db, self.scope);
 
-        let (cases, callable) = match scope.kind {
-            ScopeKind::Pou(Pou::Function(f)) => (f.cases(db), CallableType::Function(f)),
+        let (pragmas, callable) = match scope.kind {
+            ScopeKind::Pou(Pou::Function(f)) => (f.pragmas(db), CallableType::Function(f)),
             _ => return,
         };
 
-        for case in cases {
+        for case in crate::hir_def::pous::pragma::cases(pragmas) {
             resolve_params(db, case, callable, &mut self.errors);
         }
     }

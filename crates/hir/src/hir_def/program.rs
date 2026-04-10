@@ -8,12 +8,12 @@ use crate::{
     hir_def::{
         config::AccessDirection,
         expressions::{
-            expression::{ParamAssign, PathExpr},
+            expression::PathExpr,
             spec::Spec,
             statement::Stmt,
         },
         interned::identifier::Ident,
-        pous::variable::{DirectVariable, LocatedVariable, VariableDecl},
+        pous::{pragma::Pragma, variable::{DirectVariable, LocatedVariable, VariableDecl}},
         scope::ScopeId,
         semantic_index::semantic_index,
     },
@@ -37,11 +37,8 @@ pub struct ProgramDecl<'db> {
     pub name: Ident,
 
     #[tracked]
-    pub is_test: bool,
-
-    #[tracked]
     #[returns(ref)]
-    pub cases: Vec<Vec<ParamAssign<'db>>>,
+    pub pragmas: Vec<Pragma<'db>>,
 
     #[tracked]
     #[no_eq]

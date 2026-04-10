@@ -10,7 +10,7 @@ impl<'db> CodeLensHandler<'db> for HirNode<'db> {
     fn code_lens(&self, db: &'db dyn WorkspaceDataBase) -> Option<CodeLens> {
         match self {
             HirNode::PouDecl(pou) => pou.code_lens(db),
-            HirNode::Program(prog) if prog.is_test(db) => {
+            HirNode::Program(prog) if hir::hir_def::pous::pragma::is_test(db, prog.pragmas(db)) => {
                 let qualified = Type::Program(*prog).qualified_path(db);
                 Some(test_code_lens(
                     prog.get_span(db).lsp(),
@@ -49,7 +49,7 @@ impl<'db> CodeLensHandler<'db> for Pou<'db> {
                     })
                 }
             }
-            Pou::Function(f) if f.is_test(db) => {
+            Pou::Function(f) if hir::hir_def::pous::pragma::is_test(db, f.pragmas(db)) => {
                 let qualified = Type::new_pou(db, *self).qualified_path(db);
                 Some(test_code_lens(
                     self.get_span(db)

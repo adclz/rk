@@ -295,7 +295,7 @@ impl<'db> SemanticIndexBuilder<'db> {
             visibility,
             method._override.is_some(),
             body,
-            pragmas.warn_pragma,
+            pragmas,
             method.into(),
             scope_id,
         );

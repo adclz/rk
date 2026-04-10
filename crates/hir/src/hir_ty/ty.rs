@@ -153,13 +153,14 @@ impl<'db> CallableType<'db> {
     pub fn warn_pragma(
         &self,
         db: &'db dyn WorkspaceDataBase,
-    ) -> Option<&'db crate::hir_def::pous::warn_pragma::WarnPragma> {
+    ) -> Option<&'db crate::hir_def::pous::pragma::WarnPragma> {
+        use crate::hir_def::pous::pragma;
         match self {
-            CallableType::Function(f) => f.warn_pragma(db),
-            CallableType::FunctionBlock(fb) => fb.warn_pragma(db),
+            CallableType::Function(f) => pragma::warn_pragma(f.pragmas(db)),
+            CallableType::FunctionBlock(fb) => pragma::warn_pragma(fb.pragmas(db)),
             CallableType::MethodDecl(m) => match m {
                 MethodRef::Prototype(_) => None,
-                MethodRef::Declared(d) => d.warn_pragma(db),
+                MethodRef::Declared(d) => pragma::warn_pragma(d.pragmas(db)),
             },
         }
     }

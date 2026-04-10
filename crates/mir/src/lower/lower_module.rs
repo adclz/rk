@@ -185,7 +185,7 @@ fn lower_module_from_pous<'db>(
                     {
                         mir_func.export_name = make_export_name(ns_prefix, func.name(db).text(db));
 
-                        if func.is_test(db) {
+                        if hir::hir_def::pous::pragma::is_test(db, func.pragmas(db)) {
                             let export_name = mir_func
                                 .export_name
                                 .as_ref()
@@ -224,7 +224,7 @@ fn lower_module_from_pous<'db>(
                 next_fn_idx += 1;
 
                 // Collect test entry if marked with {test}
-                if func.is_test(db) {
+                if hir::hir_def::pous::pragma::is_test(db, func.pragmas(db)) {
                     let export_name = mir_func
                         .export_name
                         .as_ref()
@@ -364,7 +364,7 @@ fn lower_module_from_pous<'db>(
         )?;
         mir_func.export_name = make_export_name(ns_prefix, program.name(db).text(db));
 
-        if program.is_test(db) {
+        if hir::hir_def::pous::pragma::is_test(db, program.pragmas(db)) {
             let export_name = mir_func
                 .export_name
                 .as_ref()
@@ -443,7 +443,7 @@ fn build_test_cases<'db>(
     use crate::test_manifest::{TestCase, TestValue};
     use hir::hir_def::expressions::expression::{ExprKind, ParamAssignKind, PrimaryExpr};
 
-    func.cases(db)
+    hir::hir_def::pous::pragma::cases(func.pragmas(db))
         .iter()
         .enumerate()
         .map(|(i, case_params)| {

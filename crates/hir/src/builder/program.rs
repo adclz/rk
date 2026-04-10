@@ -48,8 +48,7 @@ impl<'db> SemanticIndexBuilder<'db> {
         let result = ProgramDecl::new(
             self.db,
             name,
-            pragmas.is_test,
-            pragmas.cases,
+            pragmas,
             program.name.cast(self.ast).into(),
             prog_access_decls,
             variables,

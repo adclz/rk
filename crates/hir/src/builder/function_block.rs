@@ -123,7 +123,7 @@ impl<'db> SemanticIndexBuilder<'db> {
             self.parse_methods(&func.method),
             statements,
             modifiers,
-            pragmas.warn_pragma,
+            pragmas,
             func.into(),
             scope_id,
         ));

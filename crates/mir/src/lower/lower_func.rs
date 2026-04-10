@@ -193,7 +193,7 @@ pub fn lower_function<'db>(
         locals,
         body,
         linkage,
-        is_test: func.is_test(db),
+        is_test: hir::hir_def::pous::pragma::is_test(db, func.pragmas(db)),
         export_name: None,
     })
 }

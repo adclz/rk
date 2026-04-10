@@ -170,10 +170,11 @@ impl<'db> Scope<'db> {
     }
 
     pub fn is_test(&self, db: &'db dyn WorkspaceDataBase) -> bool {
+        use crate::hir_def::pous::pragma;
         match self.kind {
-            ScopeKind::Program(p) => p.is_test(db),
+            ScopeKind::Program(p) => pragma::is_test(db, p.pragmas(db)),
             ScopeKind::Pou(pou) => match pou {
-                Pou::Function(f) => f.is_test(db),
+                Pou::Function(f) => pragma::is_test(db, f.pragmas(db)),
                 _ => false,
             },
             _ => false,
