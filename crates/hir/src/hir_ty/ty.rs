@@ -1,25 +1,17 @@
 use crate::{
-    AstId, HasName, HirNodeInfo,
-    hir_def::{
+    AstId, HasName, HasPragmas, HirNodeInfo, hir_def::{
         config::{ConfigDecl, ResourceDecl, TaskConfig},
         expressions::{
             expression::{Elementary, Integer, MultibitsPart},
             spec::{Array, ElementarySpec, Enum, Spec, Struct, StructElement, SubRange},
         },
-        interned::identifier::Ident,
+        interned::identifier::{Ident, SpanIdent},
         pous::{
-            class::Class,
-            data_type::DataType,
-            function::Function,
-            function_block::FunctionBlock,
-            interface::Interface,
-            pou::Pou,
-            variable::{DirectVariable, VariableDecl},
+            class::Class, data_type::DataType, function::Function, function_block::FunctionBlock, interface::Interface, pou::Pou, pragma::WarnPragma, variable::{DirectVariable, VariableDecl}
         },
         program::ProgramDecl,
         scope::ScopeId,
-    },
-    hir_ty::{def_map::LocalDefMap, head::inheritance::MethodRef, infer::Infer},
+    }, hir_ty::{def_map::LocalDefMap, head::inheritance::MethodRef, infer::Infer}
 };
 use db::WorkspaceDataBase;
 
@@ -153,14 +145,13 @@ impl<'db> CallableType<'db> {
     pub fn warn_pragma(
         &self,
         db: &'db dyn WorkspaceDataBase,
-    ) -> Option<&'db crate::hir_def::pous::pragma::WarnPragma> {
-        use crate::hir_def::pous::pragma;
+    ) -> Option<(&'db SpanIdent<'db>, &'db WarnPragma)> {
         match self {
-            CallableType::Function(f) => pragma::warn_pragma(f.pragmas(db)),
-            CallableType::FunctionBlock(fb) => pragma::warn_pragma(fb.pragmas(db)),
+            CallableType::Function(f) => f.warn_pragma(db),
+            CallableType::FunctionBlock(fb) => fb.warn_pragma(db),
             CallableType::MethodDecl(m) => match m {
                 MethodRef::Prototype(_) => None,
-                MethodRef::Declared(d) => pragma::warn_pragma(d.pragmas(db)),
+                MethodRef::Declared(d) => d.warn_pragma(db),
             },
         }
     }
@@ -415,7 +406,7 @@ impl<'db> Type<'db> {
     /// and have no runtime value.
     ///
     /// Exceptions: Function and MethodDecl can appear in self-assignment
-    /// (assigning to own return value) — handled by `check_not_direct_type`.
+    /// (assigning to own return value) - handled by `check_not_direct_type`.
     pub fn is_direct_type(&self) -> bool {
         matches!(
             self,
