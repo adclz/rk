@@ -9,7 +9,8 @@ use mir::{
 use rustc_hash::FxHashMap;
 use wasm_encoder::{Instruction, MemArg};
 
-use super::{LocalInfo, mir_cast::emit_cast_instructions};
+use crate::{LocalInfo, mir_cast::emit_cast_instructions};
+
 
 /// Emit instructions for a MIR expression (pushes result onto stack).
 pub(crate) fn emit_expr(
@@ -568,28 +569,6 @@ pub(crate) fn emit_typed_mem_load(func: &mut wasm_encoder::Function, ty: &MirTyp
         }
         _ => {
             func.instruction(&Instruction::I32Load(mem_arg(0, align_log2.min(2))));
-        }
-    }
-}
-
-/// Emit a memory load instruction based on size (fallback for untyped contexts).
-fn emit_mem_load(func: &mut wasm_encoder::Function, size: u32, align: u32) {
-    let align_log2 = align.trailing_zeros();
-    match size {
-        1 => {
-            func.instruction(&Instruction::I32Load8U(mem_arg(0, 0)));
-        }
-        2 => {
-            func.instruction(&Instruction::I32Load16U(mem_arg(0, align_log2.min(1))));
-        }
-        4 => {
-            func.instruction(&Instruction::I32Load(mem_arg(0, align_log2)));
-        }
-        8 => {
-            func.instruction(&Instruction::I64Load(mem_arg(0, align_log2)));
-        }
-        _ => {
-            func.instruction(&Instruction::I32Load(mem_arg(0, 2)));
         }
     }
 }
