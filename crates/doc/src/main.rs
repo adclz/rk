@@ -28,7 +28,11 @@ fn main() {
 
     let examples = examples::all_examples();
 
-    // Group by category, preserving order within each category
+    // Index examples by code for ordered iteration
+    let example_by_code: BTreeMap<&str, &examples::ErrorExample> =
+        examples.iter().map(|ex| (ex.code, ex)).collect();
+
+    // Group by category, preserving first-seen category order
     let mut categories: BTreeMap<&str, Vec<(&str, &str)>> = BTreeMap::new();
     let mut category_order: Vec<&str> = Vec::new();
 
@@ -51,74 +55,74 @@ fn main() {
         })
         .collect();
 
-    // Build all entry HTML fragments grouped by category + JSON API
+    // Build body in the same order as the sidebar (sorted by code within each category)
     let mut body = String::new();
     let mut json_entries: Vec<String> = Vec::new();
     let mut success_count = 0;
     let mut fail_count = 0;
-    let mut current_category = "";
 
-    for ex in &examples {
-        // Insert category heading when category changes
-        if ex.category != current_category {
-            current_category = ex.category;
-            let slug = current_category.to_lowercase().replace(' ', "-");
-            body.push_str(&format!(
-                "<h1 class=\"category-heading\" id=\"cat-{slug}\">{current_category}</h1>\n"
-            ));
-        }
+    for (category, entries) in &ordered_categories {
+        let slug = category.to_lowercase().replace(' ', "-");
+        body.push_str(&format!(
+            "<h1 class=\"category-heading\" id=\"cat-{slug}\">{category}</h1>\n"
+        ));
 
-        eprint!("  Generating {}...", ex.code);
+        for (code, _) in entries {
+            let ex = example_by_code
+                .get(code)
+                .expect("example must exist for sidebar entry");
 
-        let mut db = RootDatabase::default();
-        let (ansi_output, diag_spans) =
-            render::compile_and_render(&mut db, ex.sources, ex.lint_rule);
+            eprint!("  Generating {}...", ex.code);
 
-        if ansi_output.is_empty() {
-            eprintln!(" WARNING: no diagnostics produced!");
-            fail_count += 1;
+            let mut db = RootDatabase::default();
+            let (ansi_output, diag_spans) =
+                render::compile_and_render(&mut db, ex.sources, ex.lint_rule);
 
+            if ansi_output.is_empty() {
+                eprintln!(" WARNING: no diagnostics produced!");
+                fail_count += 1;
+
+                body.push_str(&render::render_entry_html(
+                    ex.code,
+                    ex.title,
+                    ex.description,
+                    ex.sources,
+                    "<span class=\"no-output\">No compiler output - example may need updating.</span>",
+                    &[],
+                ));
+                continue;
+            }
+
+            let report_html = render::ansi_to_html_fragment(&ansi_output);
             body.push_str(&render::render_entry_html(
                 ex.code,
                 ex.title,
                 ex.description,
                 ex.sources,
-                "<span class=\"no-output\">No compiler output - example may need updating.</span>",
-                &[],
+                &report_html,
+                &diag_spans,
             ));
-            continue;
+
+            let sources_json: Vec<String> = ex
+                .sources
+                .iter()
+                .map(|s| {
+                    let trimmed = s.trim_matches('\n');
+                    format!("\"{}\"", json_escape(trimmed))
+                })
+                .collect();
+            json_entries.push(format!(
+                r#"  {{"code":"{}","category":"{}","title":"{}","description":"{}","sources":[{}]}}"#,
+                json_escape(ex.code),
+                json_escape(ex.category),
+                json_escape(ex.title),
+                json_escape(ex.description),
+                sources_json.join(","),
+            ));
+
+            success_count += 1;
+            eprintln!(" ok");
         }
-
-        let report_html = render::ansi_to_html_fragment(&ansi_output);
-        body.push_str(&render::render_entry_html(
-            ex.code,
-            ex.title,
-            ex.description,
-            ex.sources,
-            &report_html,
-            &diag_spans,
-        ));
-
-        // Collect JSON entry for API
-        let sources_json: Vec<String> = ex
-            .sources
-            .iter()
-            .map(|s| {
-                let trimmed = s.trim_matches('\n');
-                format!("\"{}\"", json_escape(trimmed))
-            })
-            .collect();
-        json_entries.push(format!(
-            r#"  {{"code":"{}","category":"{}","title":"{}","description":"{}","sources":[{}]}}"#,
-            json_escape(ex.code),
-            json_escape(ex.category),
-            json_escape(ex.title),
-            json_escape(ex.description),
-            sources_json.join(","),
-        ));
-
-        success_count += 1;
-        eprintln!(" ok");
     }
 
     // Build sidebar
