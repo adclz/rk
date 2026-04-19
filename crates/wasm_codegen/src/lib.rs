@@ -11,7 +11,6 @@ pub mod mir_cast;
 #[cfg(test)]
 pub mod tests;
 
-
 use db::WorkspaceDataBase;
 use mir::{
     MirModule,
@@ -72,13 +71,48 @@ struct WasmGen<'a> {
     index_remap: FxHashMap<u32, u32>,
 }
 
+/// WASM page size.
+const WASM_PAGE: u32 = 65536;
+
+/// Number of 64KiB pages the core module needs to cover its static allocations.
+pub(crate) fn core_memory_pages(layout: &mir::memory::MirMemoryLayout) -> u64 {
+    let total = layout.total_size();
+    if total == 0 {
+        1
+    } else {
+        total.div_ceil(WASM_PAGE) as u64
+    }
+}
+
 impl<'a> WasmGen<'a> {
     fn new(db: &'a dyn WorkspaceDataBase, module: &'a MirModule) -> Self {
+        // Import memory from `env` as the first entry of the import section.
+        //
+        // The main module imports memory (rather than defining it) so the
+        // component wrapper can supply a memory via a helper core module that
+        // is instantiated *before* canonical lowering. This lets canon
+        // `Memory(idx)` options reference a core memory that exists at the
+        // time of lowering — if main defined its own memory, memory would
+        // only exist after main's instantiation, which happens *after*
+        // lowering, breaking the canonical ABI ordering.
+        let mut import_section = wasm_encoder::ImportSection::new();
+        import_section.import(
+            "env",
+            "memory",
+            wasm_encoder::EntityType::Memory(wasm_encoder::MemoryType {
+                minimum: core_memory_pages(&module.memory_layout),
+                maximum: None,
+                memory64: false,
+                shared: false,
+                page_size_log2: None,
+            }),
+        );
+
         Self {
             db,
             module,
             type_section: Default::default(),
-            import_section: Default::default(),
+            import_section,
             fn_section: Default::default(),
             export_section: Default::default(),
             code_section: Default::default(),
@@ -243,36 +277,14 @@ impl<'a> WasmGen<'a> {
     }
 
     fn finish(mut self) -> wasm_encoder::Module {
-        let mut module = wasm_encoder::Module::new();
-        module.section(&self.type_section);
-
-        if !self.import_section.is_empty() {
-            module.section(&self.import_section);
-        }
-
-        module.section(&self.fn_section);
-
-        // Memory section — always at least 1 page for pointer operations
-        let total_mem = self.module.memory_layout.total_size();
-        let pages = if total_mem > 0 {
-            total_mem.div_ceil(65536)
-        } else {
-            1
-        };
-        let mut mem_section = wasm_encoder::MemorySection::new();
-        mem_section.memory(wasm_encoder::MemoryType {
-            minimum: pages as u64,
-            maximum: None,
-            memory64: false,
-            shared: false,
-            page_size_log2: None,
-        });
-        module.section(&mem_section);
-
-        // Export memory
+        // Re-export the imported memory, for tests and inspection tools.
         self.export_section
             .export("memory", wasm_encoder::ExportKind::Memory, 0);
 
+        let mut module = wasm_encoder::Module::new();
+        module.section(&self.type_section);
+        module.section(&self.import_section);
+        module.section(&self.fn_section);
         module.section(&self.export_section);
         module.section(&self.code_section);
 

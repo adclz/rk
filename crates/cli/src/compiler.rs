@@ -78,7 +78,7 @@ pub fn build_core(
         }
     };
 
-    let wasm_module = wasm_codegen::from_mir::generate_wasm(db, &mir_module);
+    let wasm_module = wasm_codegen::generate_wasm(db, &mir_module);
     Some((wasm_module.finish(), mir_module))
 }
 

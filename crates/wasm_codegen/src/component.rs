@@ -5,10 +5,12 @@
 
 use db::WorkspaceDataBase;
 use mir::MirModule;
+use mir::function::MirParam;
 use mir::types::{MirElementary, MirType};
 use wasm_encoder::{
-    ComponentBuilder, ComponentExportKind, ComponentTypeRef, ComponentValType, ExportKind,
-    InstanceType, ModuleArg, PrimitiveValType,
+    CanonicalOption, ComponentBuilder, ComponentExportKind, ComponentTypeRef, ComponentValType,
+    ExportKind, ExportSection, InstanceType, MemorySection, MemoryType, ModuleArg,
+    PrimitiveValType,
 };
 
 fn mir_to_prim(ty: &MirType) -> PrimitiveValType {
@@ -36,7 +38,8 @@ fn mir_to_prim(ty: &MirType) -> PrimitiveValType {
             | MirElementary::LDateTime => PrimitiveValType::U64,
             MirElementary::Char | MirElementary::WChar => PrimitiveValType::Char,
         },
-        MirType::Pointer(_) | MirType::String(_) => PrimitiveValType::U32,
+        MirType::Pointer(_) => PrimitiveValType::U32,
+        MirType::String(_) => PrimitiveValType::String,
         _ => PrimitiveValType::S32,
     }
 }
@@ -68,26 +71,14 @@ pub fn to_kebab_case(s: &str) -> String {
 fn expand_component_params(
     params: &[mir::function::MirParam],
 ) -> Vec<(&'static str, ComponentValType)> {
-    let mut result = Vec::new();
-    let mut idx = 0;
-    for p in params {
-        match &p.ty {
-            MirType::String(_) => {
-                let n1: &'static str = Box::leak(format!("p{}", idx).into_boxed_str());
-                result.push((n1, ComponentValType::Primitive(PrimitiveValType::U32)));
-                idx += 1;
-                let n2: &'static str = Box::leak(format!("p{}", idx).into_boxed_str());
-                result.push((n2, ComponentValType::Primitive(PrimitiveValType::U32)));
-                idx += 1;
-            }
-            ty => {
-                let n: &'static str = Box::leak(format!("p{}", idx).into_boxed_str());
-                result.push((n, ComponentValType::Primitive(mir_to_prim(ty))));
-                idx += 1;
-            }
-        }
-    }
-    result
+    params
+        .iter()
+        .enumerate()
+        .map(|(idx, p)| {
+            let n: &'static str = Box::leak(format!("p{}", idx).into_boxed_str());
+            (n, ComponentValType::Primitive(mir_to_prim(&p.ty)))
+        })
+        .collect()
 }
 
 /// A WASI interface import: module path + list of functions.
@@ -106,12 +97,50 @@ struct WasiFunc {
     extern_idx: usize,
 }
 
+/// True if any param or the return type is a `string` — meaning the lift/lower
+/// adapter will touch linear memory and needs `Memory + UTF8` canonical options.
+fn has_string(params: &[MirParam], return_type: &Option<MirType>) -> bool {
+    params.iter().any(|p| matches!(p.ty, MirType::String(_)))
+        || matches!(return_type, Some(MirType::String(_)))
+}
+
+/// Build a memory-only core module: `(module (memory 1) (export "memory" (memory 0)))`.
+/// Instantiated before lowering so canon `Memory(0)` has a memory to point at,
+/// and passed as the `"env"` instance when instantiating the main module.
+fn build_memory_helper(min_pages: u64) -> Vec<u8> {
+    let mut m = wasm_encoder::Module::new();
+    let mut mem = MemorySection::new();
+    mem.memory(MemoryType {
+        minimum: min_pages,
+        maximum: None,
+        memory64: false,
+        shared: false,
+        page_size_log2: None,
+    });
+    m.section(&mem);
+    let mut exp = ExportSection::new();
+    exp.export("memory", ExportKind::Memory, 0);
+    m.section(&exp);
+    m.finish()
+}
+
 pub fn wrap_in_component(
     db: &dyn WorkspaceDataBase,
     core_wasm: &[u8],
     module: &MirModule,
 ) -> Result<Vec<u8>, String> {
     let mut builder = ComponentBuilder::default();
+
+    // === Step 0: Provide memory via a helper core module ===
+    // The helper is instantiated first so canonical `Memory(idx)` options on
+    // subsequent lower_func/lift_func calls can reference a real core memory.
+    // The main module then imports this same memory via its `env` argument.
+    let helper_bytes = build_memory_helper(crate::core_memory_pages(&module.memory_layout));
+    let helper_module_idx = builder.core_module_raw(None, &helper_bytes);
+    let env_instance_idx =
+        builder.core_instantiate(None, helper_module_idx, Vec::<(&str, ModuleArg)>::new());
+    let core_memory_idx =
+        builder.core_alias_export(None, env_instance_idx, "memory", ExportKind::Memory);
 
     // Separate WASI interface imports from flat imports
     let mut wasi_interfaces: Vec<WasiInterface> = Vec::new();
@@ -140,6 +169,14 @@ pub fn wrap_in_component(
             flat_imports.push((i, ext));
         }
     }
+
+    // Canonical options to supply when a signature contains a string.
+    // Guest-to-host only for now: no realloc, no post-return — host just
+    // reads our memory at the (ptr, len) we hand over.
+    let string_opts = vec![
+        CanonicalOption::Memory(core_memory_idx),
+        CanonicalOption::UTF8,
+    ];
 
     // === Step 1a: Import WASI interfaces as instance imports ===
     // For each WASI interface, define an instance type with its functions,
@@ -171,7 +208,12 @@ pub fn wrap_in_component(
         for func in &iface.functions {
             let comp_func_idx =
                 builder.alias_export(instance_idx, &func.name, ComponentExportKind::Func);
-            let core_func_idx = builder.lower_func(None, comp_func_idx, vec![]);
+            let opts: Vec<CanonicalOption> = if has_string(&func.params, &func.return_type) {
+                string_opts.clone()
+            } else {
+                Vec::new()
+            };
+            let core_func_idx = builder.lower_func(None, comp_func_idx, opts);
             lowered_core_func_indices.push((func.extern_idx, core_func_idx));
         }
     }
@@ -190,7 +232,12 @@ pub fn wrap_in_component(
 
         let import_name = to_kebab_case(&format!("{}-{}", ext.module, ext.import_name));
         let comp_func_idx = builder.import(&import_name, ComponentTypeRef::Func(type_idx));
-        let core_func_idx = builder.lower_func(None, comp_func_idx, vec![]);
+        let opts: Vec<CanonicalOption> = if has_string(&ext.params, &ext.return_type) {
+            string_opts.clone()
+        } else {
+            Vec::new()
+        };
+        let core_func_idx = builder.lower_func(None, comp_func_idx, opts);
         lowered_core_func_indices.push((*ext_idx, core_func_idx));
     }
 
@@ -223,17 +270,18 @@ pub fn wrap_in_component(
     }
 
     // === Step 3: Embed + instantiate core module ===
+    // Main module imports memory from `env` (the helper instance) plus all the
+    // lowered function imports grouped by their module name.
     let core_module_idx = builder.core_module_raw(None, core_wasm);
-    let instantiate_args: Vec<(&str, ModuleArg)> = import_instance_names
-        .iter()
-        .zip(import_instance_indices.iter())
-        .map(|(name, idx)| (name.as_str(), ModuleArg::Instance(*idx)))
-        .collect();
+    let mut instantiate_args: Vec<(&str, ModuleArg)> =
+        vec![("env", ModuleArg::Instance(env_instance_idx))];
+    instantiate_args.extend(
+        import_instance_names
+            .iter()
+            .zip(import_instance_indices.iter())
+            .map(|(name, idx)| (name.as_str(), ModuleArg::Instance(*idx))),
+    );
     let core_instance_idx = builder.core_instantiate(None, core_module_idx, instantiate_args);
-
-    // Alias memory
-    let _core_memory_idx =
-        builder.core_alias_export(None, core_instance_idx, "memory", ExportKind::Memory);
 
     // === Step 4: Lift + export test functions ===
     for func in &module.functions {
@@ -260,7 +308,12 @@ pub fn wrap_in_component(
 
         let core_func_idx =
             builder.core_alias_export(None, core_instance_idx, &raw_name, ExportKind::Func);
-        let comp_func_idx = builder.lift_func(None, core_func_idx, type_idx, vec![]);
+        let opts: Vec<CanonicalOption> = if has_string(&func.params, &func.return_type) {
+            string_opts.clone()
+        } else {
+            Vec::new()
+        };
+        let comp_func_idx = builder.lift_func(None, core_func_idx, type_idx, opts);
         builder.export(&export_name, ComponentExportKind::Func, comp_func_idx, None);
     }
 

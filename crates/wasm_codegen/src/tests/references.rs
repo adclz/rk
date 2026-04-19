@@ -23,7 +23,7 @@ fn test_var_in_out_read(mut with_db: db::RootDatabase) {
     let mut store = wasmtime::Store::new(&engine, ());
 
     // Instantiate module (it has its own memory)
-    let instance = wasmtime::Instance::new(&mut store, &module, &[]).unwrap();
+    let instance = super::instantiate_with_memory(&mut store, &module);
 
     // Get the memory and write value 42 at address 0
     let memory = instance
@@ -60,7 +60,7 @@ fn test_var_in_out_write(mut with_db: db::RootDatabase) {
     let mut store = wasmtime::Store::new(&engine, ());
 
     // Instantiate module
-    let instance = wasmtime::Instance::new(&mut store, &module, &[]).unwrap();
+    let instance = super::instantiate_with_memory(&mut store, &module);
 
     // Get memory and initialize with 0
     let memory = instance
@@ -103,7 +103,7 @@ fn test_var_in_out_increment(mut with_db: db::RootDatabase) {
     let mut store = wasmtime::Store::new(&engine, ());
 
     // Instantiate module
-    let instance = wasmtime::Instance::new(&mut store, &module, &[]).unwrap();
+    let instance = super::instantiate_with_memory(&mut store, &module);
 
     // Get memory and initialize with 10
     let memory = instance
@@ -146,7 +146,7 @@ fn test_var_in_out_real(mut with_db: db::RootDatabase) {
     let mut store = wasmtime::Store::new(&engine, ());
 
     // Instantiate module
-    let instance = wasmtime::Instance::new(&mut store, &module, &[]).unwrap();
+    let instance = super::instantiate_with_memory(&mut store, &module);
 
     // Get memory and initialize with 3.5
     let memory = instance
@@ -192,7 +192,7 @@ fn test_var_in_out_with_var_input(mut with_db: db::RootDatabase) {
     let mut store = wasmtime::Store::new(&engine, ());
 
     // Instantiate module
-    let instance = wasmtime::Instance::new(&mut store, &module, &[]).unwrap();
+    let instance = super::instantiate_with_memory(&mut store, &module);
 
     // Get memory and initialize target with 100
     let memory = instance

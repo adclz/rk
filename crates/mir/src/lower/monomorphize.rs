@@ -534,15 +534,6 @@ fn lower_monomorphized_local<'db>(
     })
 }
 
-/// Resolve an already-lowered MIR type, substituting ANY-like elementary types.
-fn resolve_any_mir_type(ty: &MirType, concrete: MirElementary) -> MirType {
-    match ty {
-        // If the type couldn't be lowered (was ANY), use the concrete type
-        MirType::Void => MirType::Elementary(concrete),
-        _ => ty.clone(),
-    }
-}
-
 /// Resolve a type, substituting ANY_* with the concrete type.
 fn resolve_any_type<'db>(
     db: &'db dyn WorkspaceDataBase,

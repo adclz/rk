@@ -21,7 +21,7 @@ fn test_execute_simple_arithmetic(mut with_db: db::RootDatabase) {
     let engine = Engine::default();
     let module = Module::new(&engine, &wasm_bytes).expect("Failed to create module");
     let mut store = Store::new(&engine, ());
-    let instance = Instance::new(&mut store, &module, &[]).expect("Failed to instantiate");
+    let instance = super::instantiate_with_memory(&mut store, &module);
 
     let add_func = instance
         .get_typed_func::<(i32, i32), i32>(&mut store, "add")
@@ -53,7 +53,7 @@ fn test_execute_factorial(mut with_db: db::RootDatabase) {
     let engine = Engine::default();
     let module = Module::new(&engine, &wasm_bytes).expect("Failed to create module");
     let mut store = Store::new(&engine, ());
-    let instance = Instance::new(&mut store, &module, &[]).expect("Failed to instantiate");
+    let instance = super::instantiate_with_memory(&mut store, &module);
 
     let factorial_func = instance
         .get_typed_func::<i32, i32>(&mut store, "factorial")
@@ -95,7 +95,7 @@ fn test_execute_chained_calls(mut with_db: db::RootDatabase) {
     let engine = Engine::default();
     let module = Module::new(&engine, &wasm_bytes).expect("Failed to create module");
     let mut store = Store::new(&engine, ());
-    let instance = Instance::new(&mut store, &module, &[]).expect("Failed to instantiate");
+    let instance = super::instantiate_with_memory(&mut store, &module);
 
     let process_func = instance
         .get_typed_func::<i32, i32>(&mut store, "process")
@@ -127,7 +127,7 @@ fn test_execute_implicit_cast_int_to_real(mut with_db: db::RootDatabase) {
     let engine = Engine::default();
     let module = Module::new(&engine, &wasm_bytes).expect("Failed to create module");
     let mut store = Store::new(&engine, ());
-    let instance = Instance::new(&mut store, &module, &[]).expect("Failed to instantiate");
+    let instance = super::instantiate_with_memory(&mut store, &module);
 
     let func = instance
         .get_typed_func::<i32, f32>(&mut store, "int_to_real")
@@ -159,7 +159,7 @@ fn test_execute_implicit_cast_in_arithmetic(mut with_db: db::RootDatabase) {
     let engine = Engine::default();
     let module = Module::new(&engine, &wasm_bytes).expect("Failed to create module");
     let mut store = Store::new(&engine, ());
-    let instance = Instance::new(&mut store, &module, &[]).expect("Failed to instantiate");
+    let instance = super::instantiate_with_memory(&mut store, &module);
 
     let func = instance
         .get_typed_func::<i32, f32>(&mut store, "mixed_arithmetic")
@@ -189,7 +189,7 @@ fn test_default_int_param(mut with_db: db::RootDatabase) {
     let engine = wasmtime::Engine::default();
     let module = wasmtime::Module::new(&engine, &wasm_bytes).unwrap();
     let mut store = wasmtime::Store::new(&engine, ());
-    let instance = wasmtime::Instance::new(&mut store, &module, &[]).unwrap();
+    let instance = super::instantiate_with_memory(&mut store, &module);
     let func = instance
         .get_typed_func::<(), i32>(&mut store, "test_default")
         .unwrap();
@@ -217,7 +217,7 @@ fn test_default_param_override(mut with_db: db::RootDatabase) {
     let engine = wasmtime::Engine::default();
     let module = wasmtime::Module::new(&engine, &wasm_bytes).unwrap();
     let mut store = wasmtime::Store::new(&engine, ());
-    let instance = wasmtime::Instance::new(&mut store, &module, &[]).unwrap();
+    let instance = super::instantiate_with_memory(&mut store, &module);
     let func = instance
         .get_typed_func::<(), i32>(&mut store, "test_override")
         .unwrap();
@@ -249,7 +249,7 @@ END_FUNCTION
     let engine = Engine::default();
     let module = Module::new(&engine, &wasm_bytes).unwrap();
     let mut store = Store::new(&engine, ());
-    let instance = Instance::new(&mut store, &module, &[]).unwrap();
+    let instance = super::instantiate_with_memory(&mut store, &module);
     let func = instance
         .get_typed_func::<(), i32>(&mut store, "test")
         .unwrap();
@@ -286,7 +286,7 @@ END_FUNCTION
     let engine = Engine::default();
     let module = Module::new(&engine, &wasm_bytes).unwrap();
     let mut store = Store::new(&engine, ());
-    let instance = Instance::new(&mut store, &module, &[]).unwrap();
+    let instance = super::instantiate_with_memory(&mut store, &module);
     let func = instance
         .get_typed_func::<(), i32>(&mut store, "test")
         .unwrap();
@@ -335,7 +335,7 @@ END_FUNCTION
     let engine = Engine::default();
     let module = Module::new(&engine, &wasm_bytes).unwrap();
     let mut store = Store::new(&engine, ());
-    let instance = Instance::new(&mut store, &module, &[]).unwrap();
+    let instance = super::instantiate_with_memory(&mut store, &module);
     let func = instance
         .get_typed_func::<(), i32>(&mut store, "test")
         .unwrap();
@@ -378,7 +378,7 @@ END_FUNCTION
     let engine = Engine::default();
     let module = Module::new(&engine, &wasm_bytes).unwrap();
     let mut store = Store::new(&engine, ());
-    let instance = Instance::new(&mut store, &module, &[]).unwrap();
+    let instance = super::instantiate_with_memory(&mut store, &module);
     let func = instance
         .get_typed_func::<(), i32>(&mut store, "test")
         .unwrap();
@@ -462,7 +462,7 @@ END_FUNCTION
     let engine = Engine::default();
     let module = Module::new(&engine, &wasm_bytes).unwrap();
     let mut store = Store::new(&engine, ());
-    let instance = Instance::new(&mut store, &module, &[]).unwrap();
+    let instance = super::instantiate_with_memory(&mut store, &module);
     let func = instance
         .get_typed_func::<(), i32>(&mut store, "test")
         .unwrap();
@@ -518,8 +518,12 @@ END_FUNCTION
 
     let engine = Engine::default();
     let module = Module::new(&engine, &wasm_bytes).unwrap();
+    let mut store = Store::new(&engine, ());
+    let memory =
+        wasmtime::Memory::new(&mut store, wasmtime::MemoryType::new(1, None)).unwrap();
     let linker = {
         let mut l = wasmtime::Linker::new(&engine);
+        l.define(&store, "env", "memory", memory).unwrap();
         l.func_wrap(
             "assert",
             "fail",
@@ -530,7 +534,6 @@ END_FUNCTION
         .unwrap();
         l
     };
-    let mut store = Store::new(&engine, ());
     let instance = linker.instantiate(&mut store, &module).unwrap();
     let func = instance
         .get_typed_func::<(), ()>(&mut store, "test_ctu")

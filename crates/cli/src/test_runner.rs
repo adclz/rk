@@ -69,19 +69,20 @@ fn build_linker(engine: &Engine) -> WasmResult<Linker<HostState>> {
     // WASI p2 — provides clocks, filesystem, etc.
     wasmtime_wasi::p2::add_to_linker_sync(&mut linker)?;
 
-    // Assert — takes (ptr, len) as u32 pairs (strings are flattened)
+    // Assert — the component advertises a proper `string` param; the canonical
+    // ABI lowers (ptr, len) from guest memory into a host String for us.
     linker.root().func_wrap(
         "assert-fail",
         |_store: wasmtime::StoreContextMut<'_, HostState>,
-         (ptr, len): (u32, u32)|
+         (msg,): (String,)|
          -> WasmResult<()> {
-            if len > 0 {
-                Err(wasmtime::Error::msg(format!(
-                    "assertion failed: (ptr={}, len={})",
-                    ptr, len
-                )))
-            } else {
+            if msg.is_empty() {
                 Err(wasmtime::Error::msg("assertion failed"))
+            } else {
+                Err(wasmtime::Error::msg(format!(
+                    "assertion failed: {}",
+                    msg
+                )))
             }
         },
     )?;

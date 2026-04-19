@@ -94,7 +94,7 @@ fn compile_to_wasm_impl(db: &mut RootDatabase, source: &str, check_diagnostics: 
     let mir_module =
         mir::lower::lower_module::lower_module(db, &sem_idx).expect("MIR lowering failed");
 
-    let wasm_module = crate::from_mir::generate_wasm(db, &mir_module);
+    let wasm_module = crate::generate_wasm(db, &mir_module);
     wasm_module.finish()
 }
 
@@ -126,23 +126,27 @@ pub fn validate_wasm(wasm_bytes: &[u8]) -> Result<(), Box<dyn std::error::Error>
 /// // One i32 parameter, returns f32
 /// let result: f32 = execute_wasm(&wasm_bytes, "to_float", 42);
 /// ```
+/// Instantiate a core module produced by `generate_wasm`, providing the
+/// `env.memory` import that the module now requires (see `WasmGen::new`).
+///
+/// Use in tests that build their own engine/store rather than going through
+/// `execute_wasm` / `execute_wasm_with_imports`.
+pub fn instantiate_with_memory(
+    store: &mut wasmtime::Store<()>,
+    module: &wasmtime::Module,
+) -> wasmtime::Instance {
+    let memory =
+        wasmtime::Memory::new(&mut *store, wasmtime::MemoryType::new(1, None)).expect("memory");
+    wasmtime::Instance::new(store, module, &[memory.into()])
+        .expect("Failed to instantiate with memory")
+}
+
 pub fn execute_wasm<P, R>(wasm_bytes: &[u8], func_name: &str, params: P) -> R
 where
     P: wasmtime::WasmParams,
     R: wasmtime::WasmResults,
 {
-    let engine = wasmtime::Engine::default();
-    let module = wasmtime::Module::new(&engine, wasm_bytes).expect("Failed to create module");
-    let mut store = wasmtime::Store::new(&engine, ());
-    let instance =
-        wasmtime::Instance::new(&mut store, &module, &[]).expect("Failed to instantiate");
-
-    let func = instance
-        .get_typed_func::<P, R>(&mut store, func_name)
-        .unwrap_or_else(|_| panic!("Failed to get function '{}'", func_name));
-
-    func.call(&mut store, params)
-        .unwrap_or_else(|e| panic!("Failed to call function '{}': {}", func_name, e))
+    execute_wasm_with_imports(wasm_bytes, func_name, params, |_| {})
 }
 
 /// Helper to execute a WASM function that requires imports (extern pragmas).
@@ -164,6 +168,14 @@ where
     let module = wasmtime::Module::new(&engine, wasm_bytes).expect("Failed to create module");
     let mut store = wasmtime::Store::new(&engine, ());
     let mut linker = wasmtime::Linker::new(&engine);
+
+    // The core module imports its memory from `env`. Provide a host-owned memory
+    // that the module can load/store into during the test.
+    let memory =
+        wasmtime::Memory::new(&mut store, wasmtime::MemoryType::new(1, None)).expect("memory");
+    linker
+        .define(&store, "env", "memory", memory)
+        .expect("define env.memory");
 
     define_imports(&mut linker);
 

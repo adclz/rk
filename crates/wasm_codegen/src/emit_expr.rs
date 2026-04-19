@@ -11,7 +11,6 @@ use wasm_encoder::{Instruction, MemArg};
 
 use crate::{LocalInfo, mir_cast::emit_cast_instructions};
 
-
 /// Emit instructions for a MIR expression (pushes result onto stack).
 pub(crate) fn emit_expr(
     func: &mut wasm_encoder::Function,

@@ -23,7 +23,7 @@ fn test_if_else(mut with_db: db::RootDatabase) {
     let engine = wasmtime::Engine::default();
     let module = wasmtime::Module::new(&engine, &wasm_bytes).unwrap();
     let mut store = wasmtime::Store::new(&engine, ());
-    let instance = wasmtime::Instance::new(&mut store, &module, &[]).unwrap();
+    let instance = super::instantiate_with_memory(&mut store, &module);
 
     let abs_value = instance
         .get_typed_func::<i32, i32>(&mut store, "abs_value")
@@ -60,7 +60,7 @@ fn test_nested_if(mut with_db: db::RootDatabase) {
     let engine = wasmtime::Engine::default();
     let module = wasmtime::Module::new(&engine, &wasm_bytes).unwrap();
     let mut store = wasmtime::Store::new(&engine, ());
-    let instance = wasmtime::Instance::new(&mut store, &module, &[]).unwrap();
+    let instance = super::instantiate_with_memory(&mut store, &module);
 
     let classify = instance
         .get_typed_func::<i32, i32>(&mut store, "classify")
@@ -103,7 +103,7 @@ fn test_case_statement(mut with_db: db::RootDatabase) {
     let engine = wasmtime::Engine::default();
     let module = wasmtime::Module::new(&engine, &wasm_bytes).unwrap();
     let mut store = wasmtime::Store::new(&engine, ());
-    let instance = wasmtime::Instance::new(&mut store, &module, &[]).unwrap();
+    let instance = super::instantiate_with_memory(&mut store, &module);
 
     let day_type = instance
         .get_typed_func::<i32, i32>(&mut store, "day_type")
@@ -157,7 +157,7 @@ fn test_for_loop(mut with_db: db::RootDatabase) {
     let engine = wasmtime::Engine::default();
     let module = wasmtime::Module::new(&engine, &wasm_bytes).unwrap();
     let mut store = wasmtime::Store::new(&engine, ());
-    let instance = wasmtime::Instance::new(&mut store, &module, &[]).unwrap();
+    let instance = super::instantiate_with_memory(&mut store, &module);
 
     let sum_to_n = instance
         .get_typed_func::<i32, i32>(&mut store, "sum_to_n")
@@ -197,7 +197,7 @@ fn test_while_loop(mut with_db: db::RootDatabase) {
     let engine = wasmtime::Engine::default();
     let module = wasmtime::Module::new(&engine, &wasm_bytes).unwrap();
     let mut store = wasmtime::Store::new(&engine, ());
-    let instance = wasmtime::Instance::new(&mut store, &module, &[]).unwrap();
+    let instance = super::instantiate_with_memory(&mut store, &module);
 
     let power_of_two = instance
         .get_typed_func::<i32, i32>(&mut store, "power_of_two")
@@ -236,7 +236,7 @@ fn test_repeat_loop(mut with_db: db::RootDatabase) {
     let engine = wasmtime::Engine::default();
     let module = wasmtime::Module::new(&engine, &wasm_bytes).unwrap();
     let mut store = wasmtime::Store::new(&engine, ());
-    let instance = wasmtime::Instance::new(&mut store, &module, &[]).unwrap();
+    let instance = super::instantiate_with_memory(&mut store, &module);
 
     let find_divisor = instance
         .get_typed_func::<i32, i32>(&mut store, "find_divisor")

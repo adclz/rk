@@ -22,7 +22,7 @@ fn test_array_write_and_read(mut with_db: db::RootDatabase) {
     let engine = wasmtime::Engine::default();
     let module = wasmtime::Module::new(&engine, &wasm_bytes).unwrap();
     let mut store = wasmtime::Store::new(&engine, ());
-    let instance = wasmtime::Instance::new(&mut store, &module, &[]).unwrap();
+    let instance = super::instantiate_with_memory(&mut store, &module);
 
     let test_array = instance
         .get_typed_func::<(), i32>(&mut store, "test_array")
@@ -61,7 +61,7 @@ fn test_array_sum(mut with_db: db::RootDatabase) {
     let engine = wasmtime::Engine::default();
     let module = wasmtime::Module::new(&engine, &wasm_bytes).unwrap();
     let mut store = wasmtime::Store::new(&engine, ());
-    let instance = wasmtime::Instance::new(&mut store, &module, &[]).unwrap();
+    let instance = super::instantiate_with_memory(&mut store, &module);
 
     let sum_array = instance
         .get_typed_func::<(), i32>(&mut store, "sum_array")
@@ -92,7 +92,7 @@ fn test_2d_array_access(mut with_db: db::RootDatabase) {
     let engine = wasmtime::Engine::default();
     let module = wasmtime::Module::new(&engine, &wasm_bytes).unwrap();
     let mut store = wasmtime::Store::new(&engine, ());
-    let instance = wasmtime::Instance::new(&mut store, &module, &[]).unwrap();
+    let instance = super::instantiate_with_memory(&mut store, &module);
 
     let test_2d = instance
         .get_typed_func::<(), i32>(&mut store, "test_2d")
@@ -122,7 +122,7 @@ fn test_array_with_non_zero_base(mut with_db: db::RootDatabase) {
     let engine = wasmtime::Engine::default();
     let module = wasmtime::Module::new(&engine, &wasm_bytes).unwrap();
     let mut store = wasmtime::Store::new(&engine, ());
-    let instance = wasmtime::Instance::new(&mut store, &module, &[]).unwrap();
+    let instance = super::instantiate_with_memory(&mut store, &module);
 
     let test_offset = instance
         .get_typed_func::<(), i32>(&mut store, "test_offset")
@@ -150,7 +150,7 @@ fn test_array_of_real(mut with_db: db::RootDatabase) {
     let engine = wasmtime::Engine::default();
     let module = wasmtime::Module::new(&engine, &wasm_bytes).unwrap();
     let mut store = wasmtime::Store::new(&engine, ());
-    let instance = wasmtime::Instance::new(&mut store, &module, &[]).unwrap();
+    let instance = super::instantiate_with_memory(&mut store, &module);
     let func = instance
         .get_typed_func::<(), f32>(&mut store, "test_real_arr")
         .unwrap();
@@ -188,7 +188,7 @@ fn test_array_of_struct(mut with_db: db::RootDatabase) {
     let engine = wasmtime::Engine::default();
     let module = wasmtime::Module::new(&engine, &wasm_bytes).unwrap();
     let mut store = wasmtime::Store::new(&engine, ());
-    let instance = wasmtime::Instance::new(&mut store, &module, &[]).unwrap();
+    let instance = super::instantiate_with_memory(&mut store, &module);
     let func = instance
         .get_typed_func::<(), i32>(&mut store, "test_struct_arr")
         .unwrap();
@@ -221,7 +221,7 @@ fn test_array_passed_to_function(mut with_db: db::RootDatabase) {
     let engine = wasmtime::Engine::default();
     let module = wasmtime::Module::new(&engine, &wasm_bytes).unwrap();
     let mut store = wasmtime::Store::new(&engine, ());
-    let instance = wasmtime::Instance::new(&mut store, &module, &[]).unwrap();
+    let instance = super::instantiate_with_memory(&mut store, &module);
     let func = instance
         .get_typed_func::<(), i32>(&mut store, "test_arr_call")
         .unwrap();
@@ -253,7 +253,7 @@ fn test_array_in_for_loop_with_computation(mut with_db: db::RootDatabase) {
     let engine = wasmtime::Engine::default();
     let module = wasmtime::Module::new(&engine, &wasm_bytes).unwrap();
     let mut store = wasmtime::Store::new(&engine, ());
-    let instance = wasmtime::Instance::new(&mut store, &module, &[]).unwrap();
+    let instance = super::instantiate_with_memory(&mut store, &module);
     let func = instance
         .get_typed_func::<(), i32>(&mut store, "test_arr_compute")
         .unwrap();

@@ -28,7 +28,7 @@ fn test_struct_field_access(mut with_db: db::RootDatabase) {
     let engine = wasmtime::Engine::default();
     let module = wasmtime::Module::new(&engine, &wasm_bytes).unwrap();
     let mut store = wasmtime::Store::new(&engine, ());
-    let instance = wasmtime::Instance::new(&mut store, &module, &[]).unwrap();
+    let instance = super::instantiate_with_memory(&mut store, &module);
 
     let get_x = instance
         .get_typed_func::<(), i32>(&mut store, "get_x")
@@ -63,7 +63,7 @@ fn test_struct_computation(mut with_db: db::RootDatabase) {
     let engine = wasmtime::Engine::default();
     let module = wasmtime::Module::new(&engine, &wasm_bytes).unwrap();
     let mut store = wasmtime::Store::new(&engine, ());
-    let instance = wasmtime::Instance::new(&mut store, &module, &[]).unwrap();
+    let instance = super::instantiate_with_memory(&mut store, &module);
 
     let area = instance
         .get_typed_func::<(), i32>(&mut store, "area")
@@ -108,7 +108,7 @@ fn test_nested_struct(mut with_db: db::RootDatabase) {
     let engine = wasmtime::Engine::default();
     let module = wasmtime::Module::new(&engine, &wasm_bytes).unwrap();
     let mut store = wasmtime::Store::new(&engine, ());
-    let instance = wasmtime::Instance::new(&mut store, &module, &[]).unwrap();
+    let instance = super::instantiate_with_memory(&mut store, &module);
 
     let test_nested = instance
         .get_typed_func::<(), i32>(&mut store, "test_nested")

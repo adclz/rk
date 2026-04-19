@@ -18,7 +18,7 @@ fn test_null_ref(mut with_db: db::RootDatabase) {
     let module = wasmtime::Module::new(&engine, &wasm_bytes).unwrap();
     let mut store = wasmtime::Store::new(&engine, ());
 
-    let instance = wasmtime::Instance::new(&mut store, &module, &[]).unwrap();
+    let instance = super::instantiate_with_memory(&mut store, &module);
 
     // Call function
     let func = instance
@@ -51,7 +51,7 @@ fn test_ref_to_var_in_out(mut with_db: db::RootDatabase) {
     let module = wasmtime::Module::new(&engine, &wasm_bytes).unwrap();
     let mut store = wasmtime::Store::new(&engine, ());
 
-    let instance = wasmtime::Instance::new(&mut store, &module, &[]).unwrap();
+    let instance = super::instantiate_with_memory(&mut store, &module);
 
     // Get memory and set value at address 0
     let memory = instance
@@ -91,7 +91,7 @@ fn test_ref_to_assignment_var_in_out(mut with_db: db::RootDatabase) {
     let module = wasmtime::Module::new(&engine, &wasm_bytes).unwrap();
     let mut store = wasmtime::Store::new(&engine, ());
 
-    let instance = wasmtime::Instance::new(&mut store, &module, &[]).unwrap();
+    let instance = super::instantiate_with_memory(&mut store, &module);
 
     // Get memory and initialize
     let memory = instance
@@ -134,7 +134,7 @@ fn test_ref_to_local_read(mut with_db: db::RootDatabase) {
     let module = wasmtime::Module::new(&engine, &wasm_bytes).unwrap();
     let mut store = wasmtime::Store::new(&engine, ());
 
-    let instance = wasmtime::Instance::new(&mut store, &module, &[]).unwrap();
+    let instance = super::instantiate_with_memory(&mut store, &module);
 
     let func = instance
         .get_typed_func::<(), i32>(&mut store, "test_ref")
@@ -165,7 +165,7 @@ fn test_ref_to_local_write(mut with_db: db::RootDatabase) {
     let module = wasmtime::Module::new(&engine, &wasm_bytes).unwrap();
     let mut store = wasmtime::Store::new(&engine, ());
 
-    let instance = wasmtime::Instance::new(&mut store, &module, &[]).unwrap();
+    let instance = super::instantiate_with_memory(&mut store, &module);
 
     let func = instance
         .get_typed_func::<(), i32>(&mut store, "test_ref_assign")
@@ -198,7 +198,7 @@ fn test_multiple_deref(mut with_db: db::RootDatabase) {
     let module = wasmtime::Module::new(&engine, &wasm_bytes).unwrap();
     let mut store = wasmtime::Store::new(&engine, ());
 
-    let instance = wasmtime::Instance::new(&mut store, &module, &[]).unwrap();
+    let instance = super::instantiate_with_memory(&mut store, &module);
 
     let func = instance
         .get_typed_func::<(), i32>(&mut store, "test_double_deref")

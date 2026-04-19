@@ -28,7 +28,7 @@ fn test_fb_method_execution(mut with_db: db::RootDatabase) {
     let engine = wasmtime::Engine::default();
     let module = wasmtime::Module::new(&engine, &wasm_bytes).unwrap();
     let mut store = wasmtime::Store::new(&engine, ());
-    let instance = wasmtime::Instance::new(&mut store, &module, &[]).unwrap();
+    let instance = super::instantiate_with_memory(&mut store, &module);
 
     // Get memory and allocate FB instance (just one INT: count = 0)
     let memory = instance

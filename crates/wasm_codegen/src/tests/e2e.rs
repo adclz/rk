@@ -54,7 +54,7 @@ END_FUNCTION
     let sem_idx = hir::hir_def::semantic_index::semantic_index(&with_db, file);
     let mir_module =
         mir::lower::lower_module::lower_module(&with_db, &sem_idx).expect("MIR lowering failed");
-    let core_bytes = crate::from_mir::generate_wasm(&with_db, &mir_module).finish();
+    let core_bytes = crate::generate_wasm(&with_db, &mir_module).finish();
     let component_bytes = crate::component::wrap_in_component(&with_db, &core_bytes, &mir_module)
         .expect("Component wrapping failed");
 
@@ -75,6 +75,72 @@ END_FUNCTION
     assert_eq!(failures, 0, "Expected all e2e tests to pass");
 }
 
+/// Verify that a non-empty STRING literal passed from guest to host survives
+/// the canonical ABI `lower` adapter intact.
+///
+/// Guest calls an imported host function `capture-msg(msg: string)` with a
+/// string literal. Host-side closure records the received String. Assert it
+/// matches what the guest sent.
+#[rstest]
+fn test_string_guest_to_host(mut with_db: db::RootDatabase) {
+    use std::sync::{Arc, Mutex};
+    use wasmtime::component::{Component, Linker};
+    use wasmtime::{Engine, Store};
+
+    let source = r#"
+FUNCTION capture_msg
+VAR_INPUT msg : STRING; END_VAR
+    {extern 'host' 'capture-msg' (params msg)}
+END_FUNCTION
+
+{test}
+FUNCTION test_send_string
+    capture_msg(msg := 'hello from ST');
+END_FUNCTION
+    "#;
+
+    let file = super::add_source(&mut with_db, source);
+    let sem_idx = hir::hir_def::semantic_index::semantic_index(&with_db, file);
+    let mir_module =
+        mir::lower::lower_module::lower_module(&with_db, &sem_idx).expect("MIR lowering failed");
+    let core_bytes = crate::generate_wasm(&with_db, &mir_module).finish();
+    let component_bytes = crate::component::wrap_in_component(&with_db, &core_bytes, &mir_module)
+        .expect("Component wrapping failed");
+
+    let engine = Engine::default();
+    let component = Component::new(&engine, &component_bytes).expect("valid component");
+
+    let captured: Arc<Mutex<Option<String>>> = Arc::new(Mutex::new(None));
+    let captured_clone = Arc::clone(&captured);
+
+    let mut linker: Linker<()> = Linker::new(&engine);
+    linker
+        .root()
+        .func_wrap(
+            "host-capture-msg",
+            move |_ctx: wasmtime::StoreContextMut<'_, ()>,
+                  (msg,): (String,)|
+                  -> wasmtime::Result<()> {
+                *captured_clone.lock().unwrap() = Some(msg);
+                Ok(())
+            },
+        )
+        .expect("register host import");
+
+    let mut store = Store::new(&engine, ());
+    let instance = linker
+        .instantiate(&mut store, &component)
+        .expect("instantiate");
+
+    let func = instance
+        .get_func(&mut store, "test-send-string")
+        .expect("export");
+    func.call(&mut store, &[], &mut []).expect("call test");
+
+    let received = captured.lock().unwrap().clone();
+    assert_eq!(received.as_deref(), Some("hello from ST"));
+}
+
 #[rstest]
 fn test_component_wrapping(mut with_db: db::RootDatabase) {
     let source = r#"
@@ -93,7 +159,7 @@ END_FUNCTION
     let sem_idx = hir::hir_def::semantic_index::semantic_index(&with_db, file);
     let mir_module =
         mir::lower::lower_module::lower_module(&with_db, &sem_idx).expect("MIR lowering failed");
-    let core_bytes = crate::from_mir::generate_wasm(&with_db, &mir_module).finish();
+    let core_bytes = crate::generate_wasm(&with_db, &mir_module).finish();
 
     let component_bytes = crate::component::wrap_in_component(&with_db, &core_bytes, &mir_module)
         .expect("Component wrapping failed");

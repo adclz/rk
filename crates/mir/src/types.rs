@@ -2,7 +2,6 @@ use compact_str::CompactString;
 use hir::hir_def::interned::identifier::Ident;
 
 /// A fully resolved, concrete type with known size and alignment.
-/// No generics, no ANY_*, no Type::Never, no Type::Variable indirections.
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum MirType {
     /// Primitive scalar type (bool, integers, reals, time types).
