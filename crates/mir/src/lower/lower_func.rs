@@ -95,18 +95,19 @@ pub fn lower_function<'db>(
         })
         .transpose()?;
 
-    // If there's a return type, allocate a local for it (named after the function)
+    // If there's a return type, allocate a slot for it (named after the function).
+    // Scalar types go into a WASM local; non-scalar (STRING, structs) live in
+    // linear memory — the codegen epilogue reads from that slot to produce the
+    // function's return value.
     if let Some(ref ret_ty) = return_type {
+        let storage = compute_storage(func.name(db), ret_ty, false, &mut next_local_idx, memory_layout);
         locals.push(MirLocal {
             name: func.name(db),
             ty: ret_ty.clone(),
             init: None,
             kind: MirLocalKind::Var,
-            storage: MirStorage::Scalar {
-                local_index: next_local_idx,
-            },
+            storage,
         });
-        next_local_idx += 1;
     }
 
     // 3. Local variables (Var, Temp — Output is a parameter now)
@@ -276,18 +277,16 @@ pub fn lower_function_block<'db>(
             })
             .transpose()?;
 
-        // If there's a return type, allocate a local for it (named after the method)
+        // The return slot (scalar → wasm local, else linear memory).
         if let Some(ref ret_ty) = return_type {
+            let storage = compute_storage(method.name(db), ret_ty, false, &mut next_local_idx, memory_layout);
             locals.push(MirLocal {
                 name: method.name(db),
                 ty: ret_ty.clone(),
                 init: None,
                 kind: MirLocalKind::Var,
-                storage: MirStorage::Scalar {
-                    local_index: next_local_idx,
-                },
+                storage,
             });
-            next_local_idx += 1;
         }
 
         let body = lower_stmts(db, method.stmts(db), string_pool.clone())?;
@@ -477,18 +476,16 @@ pub fn lower_class<'db>(
             })
             .transpose()?;
 
-        // Return local
+        // Return local: scalar → WASM local, non-scalar → linear memory.
         if let Some(ref ret_ty) = return_type {
+            let storage = compute_storage(method.name(db), ret_ty, false, &mut next_local_idx, memory_layout);
             locals.push(MirLocal {
                 name: method.name(db),
                 ty: ret_ty.clone(),
                 init: None,
                 kind: MirLocalKind::Var,
-                storage: MirStorage::Scalar {
-                    local_index: next_local_idx,
-                },
+                storage,
             });
-            next_local_idx += 1;
         }
 
         let body = lower_stmts(db, method.stmts(db), string_pool.clone())?;

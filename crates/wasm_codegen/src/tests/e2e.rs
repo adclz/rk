@@ -141,6 +141,80 @@ END_FUNCTION
     assert_eq!(received.as_deref(), Some("hello from ST"));
 }
 
+/// Verify that a STRING *returned* from a guest function reaches the host
+/// as a proper component-level `string`.
+///
+/// Exercises: multi-value core return `(i32, i32)`, canon `lift_func` with
+/// `[Memory(0), UTF8]`, host-side `String` reception.
+#[rstest]
+fn test_string_guest_return(mut with_db: db::RootDatabase) {
+    use wasmtime::component::{Component, Linker};
+    use wasmtime::{Engine, Store};
+
+    let source = r#"
+FUNCTION greet : STRING
+    greet := 'hello from ST';
+END_FUNCTION
+
+FUNCTION check_greet
+VAR_INPUT msg : STRING; END_VAR
+    {extern 'host' 'check-greet' (params msg)}
+END_FUNCTION
+
+{test}
+FUNCTION test_greet_returns_string
+    check_greet(msg := greet());
+END_FUNCTION
+    "#;
+
+    // The test function calls an imported `check-greet(s: string)` with the
+    // result of `greet()`. The host-side closure asserts the received bytes.
+    let file = super::add_source(&mut with_db, source);
+    let sem_idx = hir::hir_def::semantic_index::semantic_index(&with_db, file);
+    let mir_module =
+        mir::lower::lower_module::lower_module(&with_db, &sem_idx).expect("MIR lowering failed");
+    let core_bytes = crate::generate_wasm(&with_db, &mir_module).finish();
+    let component_bytes = crate::component::wrap_in_component(&with_db, &core_bytes, &mir_module)
+        .expect("Component wrapping failed");
+
+    let engine = Engine::default();
+    let component = Component::new(&engine, &component_bytes).expect("valid component");
+
+    use std::sync::{Arc, Mutex};
+    let captured: Arc<Mutex<Option<String>>> = Arc::new(Mutex::new(None));
+    let captured_clone = Arc::clone(&captured);
+
+    let mut linker: Linker<()> = Linker::new(&engine);
+    linker
+        .root()
+        .func_wrap(
+            "host-check-greet",
+            move |_ctx: wasmtime::StoreContextMut<'_, ()>,
+                  (msg,): (String,)|
+                  -> wasmtime::Result<()> {
+                *captured_clone.lock().unwrap() = Some(msg);
+                Ok(())
+            },
+        )
+        .expect("register host import");
+
+    let mut store = Store::new(&engine, ());
+    let instance = linker
+        .instantiate(&mut store, &component)
+        .expect("instantiate");
+
+    let func = instance
+        .get_func(&mut store, "test-greet-returns-string")
+        .expect("export");
+    func.call(&mut store, &[], &mut []).expect("call test");
+
+    assert_eq!(
+        captured.lock().unwrap().as_deref(),
+        Some("hello from ST"),
+        "host should receive the string returned by greet()"
+    );
+}
+
 #[rstest]
 fn test_component_wrapping(mut with_db: db::RootDatabase) {
     let source = r#"

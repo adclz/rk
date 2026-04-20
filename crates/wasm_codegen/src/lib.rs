@@ -232,18 +232,27 @@ impl<'a> WasmGen<'a> {
         // Emit function body
         let mut wasm_func = wasm_encoder::Function::new(extra_locals);
 
-        // Find return local index if function returns a value.
+        // Find the return slot for scalar-or-string returns.
         // Use origin_name because methods store return locals under the bare method name,
         // while func.name is the qualified "FB$Method" name.
-        let return_local = if func.return_type.is_some() {
+        enum ReturnSlot {
+            Scalar(u32),
+            StringMem(u32),
+        }
+        let return_slot: Option<ReturnSlot> = if func.return_type.is_some() {
             local_map
                 .get(&func.origin_name)
                 .and_then(|info| match info {
-                    LocalInfo::Scalar { index, .. } => Some(*index),
+                    LocalInfo::Scalar { index, .. } => Some(ReturnSlot::Scalar(*index)),
+                    LocalInfo::StringMemory { address } => Some(ReturnSlot::StringMem(*address)),
                     _ => None,
                 })
         } else {
             None
+        };
+        let return_local = match &return_slot {
+            Some(ReturnSlot::Scalar(idx)) => Some(*idx),
+            _ => None,
         };
 
         // Build remapped function indices for call instructions
@@ -266,9 +275,27 @@ impl<'a> WasmGen<'a> {
             return_local,
         );
 
-        // Push return value at function end
-        if let Some(ret_idx) = return_local {
-            wasm_func.instruction(&Instruction::LocalGet(ret_idx));
+        // Push return value at function end.
+        match return_slot {
+            Some(ReturnSlot::Scalar(ret_idx)) => {
+                wasm_func.instruction(&Instruction::LocalGet(ret_idx));
+            }
+            Some(ReturnSlot::StringMem(addr)) => {
+                // Multi-value return: push (ptr, len) read from the return slot.
+                wasm_func.instruction(&Instruction::I32Const(addr as i32));
+                wasm_func.instruction(&Instruction::I32Load(wasm_encoder::MemArg {
+                    offset: 0,
+                    align: 2,
+                    memory_index: 0,
+                }));
+                wasm_func.instruction(&Instruction::I32Const(addr as i32 + 4));
+                wasm_func.instruction(&Instruction::I32Load(wasm_encoder::MemArg {
+                    offset: 0,
+                    align: 2,
+                    memory_index: 0,
+                }));
+            }
+            None => {}
         }
 
         // End function
@@ -339,6 +366,10 @@ fn build_signature(
     }
 
     let results = match return_type {
+        // A STRING return flattens to (ptr, len) per the component-model
+        // canonical ABI. The function body pushes the two i32s in that order
+        // at the epilogue (see `emit_function`).
+        Some(MirType::String(_)) => vec![ValType::I32, ValType::I32],
         Some(ty) => mir_type_to_val_type(ty)
             .map(|vt| vec![vt])
             .unwrap_or_default(),
