@@ -5,7 +5,7 @@ use rstest::rstest;
 use crate::tests::utils::test_diagnostics;
 use crate::tests::utils::with_db;
 
-// ── Valid: ANY_* return type with INTO(fn) params ────────────────────────
+// -- Valid: ANY_* return type with INTO(fn) params ------------------------
 
 #[rstest]
 fn valid_any_int_function_with_int(mut with_db: RootDatabase) {
@@ -90,7 +90,7 @@ END_FUNCTION"#;
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @"");
 }
 
-// ── Valid: ANY_* group membership at call site ───────────────────────────
+// -- Valid: ANY_* group membership at call site ---------------------------
 
 #[rstest]
 fn valid_any_num_with_int(mut with_db: RootDatabase) {
@@ -167,7 +167,7 @@ END_FUNCTION"#;
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @"");
 }
 
-// ── Invalid: concrete type not in ANY_* group ───────────────────────────
+// -- Invalid: concrete type not in ANY_* group ---------------------------
 
 #[rstest]
 fn invalid_any_num_with_bool(mut with_db: RootDatabase) {
@@ -234,10 +234,20 @@ END_FUNCTION"#;
        |                 ^^^|^^^
        |                    `----- expected 'ANY_CHAR', got 'STRING'
     ---'
+    [E0301] Error: type mismatch
+       ,-[ file:///test0.st:8:13 ]
+       |
+     7 | FUNCTION test : STRING
+       |          ^^|^
+       |            `--- FUNCTION 'test' is defined here, with return type 'STRING'
+     8 |     test := fn1('hello');
+       |             ^^^^^^|^^^^^
+       |                   `------- expected 'STRING', got 'ANY_CHAR'
+    ---'
     ");
 }
 
-// ── FUNCTION_BLOCK with ANY_* specs ─────────────────────────────────────
+// -- FUNCTION_BLOCK with ANY_* specs -------------------------------------
 
 #[rstest]
 fn valid_fb_with_any_int(mut with_db: RootDatabase) {
@@ -307,7 +317,7 @@ END_FUNCTION"#;
     ");
 }
 
-// ── INTO(ref) constraint tests ──────────────────────────────────────────
+// -- INTO(ref) constraint tests ------------------------------------------
 
 #[rstest]
 fn valid_into_constraint(mut with_db: RootDatabase) {
@@ -326,7 +336,7 @@ END_FUNCTION"#;
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @"");
 }
 
-// ── Return type inference from ANY_* ────────────────────────────────────
+// -- Return type inference from ANY_* ------------------------------------
 
 #[rstest]
 fn valid_any_num_return_type_in_assignment(mut with_db: RootDatabase) {
@@ -352,7 +362,7 @@ END_FUNCTION"#;
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @"");
 }
 
-// ── ANY_* with array element access ─────────────────────────────────────
+// -- ANY_* with array element access -------------------------------------
 
 #[rstest]
 fn valid_any_real_inferred_from_array_index(mut with_db: RootDatabase) {
@@ -398,7 +408,7 @@ END_FUNCTION
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @"");
 }
 
-// ── Error cascading: unresolved args should not cascade ─────────────────
+// -- Error cascading: unresolved args should not cascade -----------------
 
 #[rstest]
 fn any_real_does_not_cascade_on_never_arg(mut with_db: RootDatabase) {
@@ -413,7 +423,7 @@ FUNCTION TANH : REAL
     VAR_INPUT
         X: REAL;
     END_VAR
-    // lowercase 'x' is unresolved — should only report "no item found",
+    // lowercase 'x' is unresolved - should only report "no item found",
     // not cascade into a type mismatch on EXP's parameter.
     TANH := 1.0 - 2.0 / (EXP(2.0 * x) + 1.0);
 END_FUNCTION
@@ -454,7 +464,7 @@ FUNCTION SWAP_BYTE2: DWORD
 
 END_FUNCTION
 "#;
-    // lowercase 'in' is unresolved — should only report "no item found",
+    // lowercase 'in' is unresolved - should only report "no item found",
     // not panic from unresolved type in binary expression coercion.
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r#"
     [E0204] Error: no item found in scope
@@ -492,4 +502,153 @@ END_FUNCTION
         | Help: insert explicit cast 'INT_TO_DWORD((ROR(in ,8) AND 16#FF00FF00))'
     ----'
     "#);
+}
+
+// -- INTO / ANY_* bindings at a call site -------------------------------
+//
+// For an `ANY_*` return type, the concrete result type is resolved by
+// folding all args tied to `ANY_*` / `INTO(X)` params through the inference
+// table, which promotes to the *widest* concrete arg type. Per-arg coercion
+// still uses the abstract bound (ANY_BIT accepts any bit type individually),
+// so widening stays silent. Narrowing is caught at the assignment level by
+// the existing E0301 rule — no separate "identity" check is needed.
+
+#[rstest]
+fn into_binding_same_concrete_type(mut with_db: RootDatabase) {
+    let source = r#"
+FUNCTION ROR : ANY_BIT
+    VAR_INPUT
+        IN: INTO(ROR);
+        N: INTO(ROR);
+    END_VAR
+END_FUNCTION
+
+FUNCTION test : DWORD
+    test := ROR(DWORD#0, DWORD#8);
+END_FUNCTION
+"#;
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @"");
+}
+
+#[rstest]
+fn into_binding_heterogeneous_widens_to_master(mut with_db: RootDatabase) {
+    // Master (from `test : DWORD`) = DWORD. BYTE arg widens to DWORD.
+    let source = r#"
+FUNCTION ROR : ANY_BIT
+    VAR_INPUT
+        IN: INTO(ROR);
+        N: INTO(ROR);
+    END_VAR
+END_FUNCTION
+
+FUNCTION test : DWORD
+    test := ROR(BYTE#0, DWORD#8);
+END_FUNCTION
+"#;
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @"");
+}
+
+#[rstest]
+fn into_binding_reversed_widening(mut with_db: RootDatabase) {
+    let source = r#"
+FUNCTION ROR : ANY_BIT
+    VAR_INPUT
+        IN: INTO(ROR);
+        N: INTO(ROR);
+    END_VAR
+END_FUNCTION
+
+FUNCTION test : DWORD
+    test := ROR(DWORD#0, BYTE#8);
+END_FUNCTION
+"#;
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @"");
+}
+
+#[rstest]
+fn independent_any_int_params_are_uncorrelated(mut with_db: RootDatabase) {
+    // Two bare `ANY_INT` params are independent polymorphic slots - a caller
+    // is free to pass different concrete int types. If the user wants them
+    // correlated, they write `INTO(other_param)` on one of them.
+    let source = r#"
+FUNCTION add_same : INT
+    VAR_INPUT
+        a: ANY_INT;
+        b: ANY_INT;
+    END_VAR
+    add_same := 0;
+END_FUNCTION
+
+FUNCTION test : INT
+    test := add_same(INT#1, DINT#2);
+END_FUNCTION
+"#;
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @"");
+}
+
+#[rstest]
+fn ror_heterogeneous_args_widens_to_dword_context(mut with_db: RootDatabase) {
+    // Widest of {BYTE, DWORD} = DWORD; return type = DWORD; assigns cleanly
+    // into DWORD context.
+    let source = r#"
+FUNCTION ROR : ANY_BIT
+    VAR_INPUT
+        IN: INTO(ROR);
+        N: INTO(ROR);
+    END_VAR
+END_FUNCTION
+
+FUNCTION SWAP_BYTE2: DWORD
+    VAR_INPUT IN: DWORD; END_VAR
+    SWAP_BYTE2 := ROR(BYTE#0, DWORD#08);
+END_FUNCTION
+"#;
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @"");
+}
+
+#[rstest]
+fn ror_heterogeneous_args_fails_to_narrow_into_byte_context(mut with_db: RootDatabase) {
+    // Widest of {BYTE, DWORD} = DWORD; return type = DWORD; BYTE target
+    // needs narrowing — E0301 fires at the assignment, regardless of arg
+    // order. Previously the arg order silently determined whether this
+    // error fired.
+    let source = r#"
+FUNCTION ROR : ANY_BIT
+    VAR_INPUT
+        IN: INTO(ROR);
+        N: INTO(ROR);
+    END_VAR
+END_FUNCTION
+
+FUNCTION SWAP_BYTE2: BYTE
+    VAR_INPUT IN: DWORD; END_VAR
+    SWAP_BYTE2 := ROR(BYTE#0, DWORD#08);
+END_FUNCTION
+"#;
+    // Expect E0301 at the assignment site.
+    let diagnostics = test_diagnostics(&mut with_db, &[source]);
+    assert!(
+        diagnostics.contains("[E0301]"),
+        "expected E0301 narrowing error; got:\n{}",
+        diagnostics
+    );
+}
+
+#[rstest]
+fn distinct_any_kinds_are_independent(mut with_db: RootDatabase) {
+    // ANY_INT and ANY_REAL are separate slots - heterogeneous args are fine.
+    let source = r#"
+FUNCTION pair_ok : INT
+    VAR_INPUT
+        i: ANY_INT;
+        r: ANY_REAL;
+    END_VAR
+    pair_ok := 0;
+END_FUNCTION
+
+FUNCTION test : INT
+    test := pair_ok(INT#1, LREAL#2.0);
+END_FUNCTION
+"#;
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @"");
 }

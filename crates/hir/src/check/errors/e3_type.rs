@@ -94,12 +94,12 @@ pub enum TypeError<'db> {
     },
 
     /// Use site supplies `<...>` on a POU that declares no `ANY_*` generic
-    /// parameters — e.g. `VAR x : Plain<INT>;` where `Plain` has no ANY_* fields.
+    /// parameters - e.g. `VAR x : Plain<INT>;` where `Plain` has no ANY_* fields.
     GenericArgsOnNonGenericType {
         name: String,
         spec: Spec<'db>,
     },
-    /// Use site omits `<...>` on a generic POU — e.g. `VAR c : Counter;`
+    /// Use site omits `<...>` on a generic POU - e.g. `VAR c : Counter;`
     /// where `Counter` has `VAR_INPUT x : ANY_INT;`. The compiler can no
     /// longer silently infer through struct fields, so the args are required.
     MissingGenericArgs {
@@ -120,6 +120,7 @@ pub enum TypeError<'db> {
         bound: ElementarySpec,
         arg_spec: Spec<'db>,
     },
+
 }
 
 impl<'db> ErrorCode for TypeError<'db> {
