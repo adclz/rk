@@ -11,10 +11,12 @@ use crate::{
                 RefValue, VariableAccess, VariableAccessKind,
             },
             invocation::Invocation,
+            spec::SpecKind,
             statement::Stmt,
         },
         interned::identifier::Ident,
         pous::{
+            generics::derive_generic_params,
             pou::Pou,
             variable::{DirectVariable, VariableDecl, VariableKind},
         },
@@ -25,7 +27,10 @@ use crate::{
     hir_ty::{
         body::statements::{NestedScope, StmtsResolverCtx},
         infer::Infer,
-        resolver::Resolver,
+        resolver::{
+            Resolver,
+            name::{NameResolution, resolve_name},
+        },
         ty::Type,
     },
 };
@@ -56,6 +61,12 @@ pub fn infer_body<'db>(
     // Initialize null state tracking for REF_TO local variables
     init_ref_null_states(db, scope, &mut result);
 
+    // Populate fb_any_resolutions from explicit `<T>` type arguments on VARs.
+    // This replaces the old call-site inference path (removed from
+    // `resolver::func_call`) so monomorphization works even without a call
+    // - e.g. an FB instance stored in a struct field.
+    init_fb_generic_bindings(db, scope, &mut result);
+
     let resolver = Resolver::for_scope(db, scope);
 
     ctx.check_statements(db, resolver, statements, NestedScope::None, &mut result);
@@ -82,7 +93,7 @@ fn init_ref_null_states<'db>(
     };
 
     for var in variables {
-        // Skip input/in_out — caller's responsibility
+        // Skip input/in_out - caller's responsibility
         if matches!(var.kind(db), VariableKind::Input | VariableKind::InOut) {
             continue;
         }
@@ -101,6 +112,77 @@ fn init_ref_null_states<'db>(
                 None => NullState::Uninitialized(var_site),
             };
             result.ref_null_state.insert(*var, state);
+        }
+    }
+}
+
+/// Populate `fb_any_resolutions` from each VAR whose spec is a `Target`
+/// carrying explicit `<T>` type arguments - e.g. `VAR c : Counter<INT>;`.
+///
+/// For every `ANY_*` field on the referenced FB/Class, we find the parameter
+/// slot whose bound matches that kind and record the arg as the concrete
+/// binding for that field. Multiple fields of the same `ANY_*` kind share
+/// the same slot
+///
+/// Errors like arity or bound mismatch are already reported at `check_spec`
+/// time; this function bails out silently in those cases.
+fn init_fb_generic_bindings<'db>(
+    db: &'db dyn WorkspaceDataBase,
+    scope: ScopeId<'db>,
+    result: &mut BodyInferenceResult<'db>,
+) {
+    let variables = match get_scope(db, scope).kind {
+        ScopeKind::Pou(pou) => match pou {
+            Pou::Function(f) => f.variables(db),
+            Pou::FunctionBlock(fb) => fb.variables(db),
+            _ => return,
+        },
+        ScopeKind::MethodDecl(m) => m.variables(db),
+        ScopeKind::Program(p) => p.variables(db),
+        _ => return,
+    };
+
+    for var in variables {
+        let SpecKind::Target(target) = var.spec(db).kind(db) else {
+            continue;
+        };
+        if target.type_args.is_empty() {
+            continue;
+        }
+
+        let pou = match resolve_name(db, &target.path, scope) {
+            NameResolution::Pou(p, _) => p,
+            _ => continue,
+        };
+
+        let params = derive_generic_params(db, &pou);
+        if params.len() != target.type_args.len() {
+            continue;
+        }
+
+        let pou_fields = match pou {
+            Pou::FunctionBlock(fb) => fb.variables(db),
+            Pou::Class(c) => c.variables(db),
+            _ => continue,
+        };
+
+        for field in pou_fields {
+            let SpecKind::Simple(field_any) = field.spec(db).kind(db) else {
+                continue;
+            };
+            if !field_any.is_any() {
+                continue;
+            }
+            let Some(idx) = params.iter().position(|p| p.bound == *field_any) else {
+                continue;
+            };
+            if let Type::Elementary(concrete) = Type::resolve_spec(db, target.type_args[idx])
+                && !concrete.is_any()
+            {
+                result
+                    .fb_any_resolutions
+                    .insert((*var, field.name(db)), concrete);
+            }
         }
     }
 }
@@ -367,7 +449,7 @@ impl<'db> BodyInferenceResult<'db> {
 
     /// Check whether a variable access is rooted in a DataType (constant).
     /// The first resolved step in the path determines constness.
-    /// Only applies to multi-step paths (e.g., TYPE_NAME.field) — bare type
+    /// Only applies to multi-step paths (e.g., TYPE_NAME.field) - bare type
     /// names are handled by check_not_direct_type.
     pub fn is_constant_access(
         &self,

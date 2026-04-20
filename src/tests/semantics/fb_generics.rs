@@ -275,6 +275,25 @@ END_FUNCTION
 }
 
 #[rstest]
+fn fb_any_bound_even_without_call_site(mut with_db: RootDatabase) {
+    // Declaring the VAR alone is enoughn the explicit `<INT>` binding is
+    // recorded in `fb_any_resolutions` directly from the VAR's spec, without
+    // needing a `counter(...)` call to trigger inference.
+    let source = r#"
+FUNCTION_BLOCK CTU
+VAR_INPUT
+    PV: ANY_INT;
+END_VAR
+END_FUNCTION_BLOCK
+
+FUNCTION test
+VAR counter : CTU<INT>; END_VAR
+END_FUNCTION
+    "#;
+    assert_snapshot!(fb_resolutions_in(&mut with_db, &[source], "test"), @"counter.PV → Int");
+}
+
+#[rstest]
 fn fb_any_multiple_call_sites_same_type(mut with_db: RootDatabase) {
     let source = r#"
 FUNCTION_BLOCK CTU
