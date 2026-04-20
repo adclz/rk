@@ -8,7 +8,10 @@ use crate::{
     CallSite, HasName, HirNodeInfo,
     check::errors::ToIdeDiagnostic,
     hir_def::{
-        expressions::expression::{AddOperatorKind, Expr, MultOperatorKind},
+        expressions::{
+            expression::{AddOperatorKind, Expr, MultOperatorKind},
+            spec::{ElementarySpec, Spec},
+        },
         pous::variable::VariableDecl,
     },
     hir_ty::{
@@ -89,6 +92,34 @@ pub enum TypeError<'db> {
         rhs: Type<'db>,
         call_site: CallSite<'db>,
     },
+
+    /// Use site supplies `<...>` on a POU that declares no `ANY_*` generic
+    /// parameters — e.g. `VAR x : Plain<INT>;` where `Plain` has no ANY_* fields.
+    GenericArgsOnNonGenericType {
+        name: String,
+        spec: Spec<'db>,
+    },
+    /// Use site omits `<...>` on a generic POU — e.g. `VAR c : Counter;`
+    /// where `Counter` has `VAR_INPUT x : ANY_INT;`. The compiler can no
+    /// longer silently infer through struct fields, so the args are required.
+    MissingGenericArgs {
+        name: String,
+        expected: usize,
+        spec: Spec<'db>,
+    },
+    /// Arg count does not match the derived parameter list.
+    WrongNumberOfGenericArgs {
+        name: String,
+        expected: usize,
+        actual: usize,
+        spec: Spec<'db>,
+    },
+    /// A supplied type argument does not satisfy its corresponding `ANY_*` bound.
+    TypeArgDoesNotMatchBound {
+        arg_ty: Type<'db>,
+        bound: ElementarySpec,
+        arg_spec: Spec<'db>,
+    },
 }
 
 impl<'db> ErrorCode for TypeError<'db> {
@@ -105,6 +136,10 @@ impl<'db> ErrorCode for TypeError<'db> {
             Self::UnsupportedOperator { .. } => "E0318",
             Self::AssignAttemptRequiresRef { .. } => "E0319",
             Self::AssignAttemptInvalidRhs { .. } => "E0320",
+            Self::GenericArgsOnNonGenericType { .. } => "E0321",
+            Self::MissingGenericArgs { .. } => "E0322",
+            Self::WrongNumberOfGenericArgs { .. } => "E0323",
+            Self::TypeArgDoesNotMatchBound { .. } => "E0324",
             Self::Other { .. } => "E0350",
         }
     }
@@ -115,6 +150,10 @@ impl<'db> ErrorCode for TypeError<'db> {
             Self::AssignAttemptRequiresRef { .. } | Self::AssignAttemptInvalidRhs { .. } => {
                 "invalid assignment attempt"
             }
+            Self::GenericArgsOnNonGenericType { .. }
+            | Self::MissingGenericArgs { .. }
+            | Self::WrongNumberOfGenericArgs { .. }
+            | Self::TypeArgDoesNotMatchBound { .. } => "generic type arguments",
             _ => "type mismatch",
         }
     }
@@ -361,6 +400,61 @@ impl<'db> ToIdeDiagnostic<'db> for TypeError<'db> {
                 rhs.with_location(db, &mut diag);
                 diag
             }
+            Self::GenericArgsOnNonGenericType { name, spec } => diag()
+                .message(format!(
+                    "'{}' is not generic and does not take type arguments",
+                    name
+                ))
+                .severity(DiagnosticSeverity::ERROR)
+                .desc(self)
+                .range(spec.get_span(db))
+                .call(),
+            Self::MissingGenericArgs {
+                name,
+                expected,
+                spec,
+            } => diag()
+                .message(format!(
+                    "'{}' is generic and requires {} type argument{}",
+                    name,
+                    expected,
+                    if *expected == 1 { "" } else { "s" },
+                ))
+                .severity(DiagnosticSeverity::ERROR)
+                .desc(self)
+                .range(spec.get_span(db))
+                .call(),
+            Self::WrongNumberOfGenericArgs {
+                name,
+                expected,
+                actual,
+                spec,
+            } => diag()
+                .message(format!(
+                    "'{}' expects {} type argument{}, got {}",
+                    name,
+                    expected,
+                    if *expected == 1 { "" } else { "s" },
+                    actual,
+                ))
+                .severity(DiagnosticSeverity::ERROR)
+                .desc(self)
+                .range(spec.get_span(db))
+                .call(),
+            Self::TypeArgDoesNotMatchBound {
+                arg_ty,
+                bound,
+                arg_spec,
+            } => diag()
+                .message(format!(
+                    "type argument '{}' does not conform to bound '{}'",
+                    arg_ty.type_name(db),
+                    bound.type_name(),
+                ))
+                .severity(DiagnosticSeverity::ERROR)
+                .desc(self)
+                .range(arg_spec.get_span(db))
+                .call(),
         }
     }
 }

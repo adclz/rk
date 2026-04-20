@@ -149,7 +149,6 @@ fn body_edit_only_reruns_semantic_index_for_changed_file(
         DidValidateMemoizedValue { database_key: infer_initialization(Id(401)) }
         DidValidateMemoizedValue { database_key: infer_initialization(Id(402)) }
         DidValidateMemoizedValue { database_key: infer_initialization(Id(404)) }
-        DidValidateMemoizedValue { database_key: infer_initialization(Id(405)) }
         DidValidateMemoizedValue { database_key: infer_signature(Id(401)) }
         DidValidateMemoizedValue { database_key: infer_signature(Id(402)) }
         DidValidateMemoizedValue { database_key: infer_signature(Id(404)) }
@@ -166,6 +165,7 @@ fn body_edit_only_reruns_semantic_index_for_changed_file(
         WillExecute { database_key: get_scope(Id(404)) }
         WillExecute { database_key: get_scope(Id(405)) }
         WillExecute { database_key: infer_body(Id(405)) }
+        WillExecute { database_key: infer_initialization(Id(405)) }
         WillExecute { database_key: infer_signature(Id(405)) }
         WillExecute { database_key: semantic_index(Id(1)) }
         ");
@@ -258,7 +258,6 @@ fn body_edit_does_not_reinfer_signature_of_other_file(
         DidValidateMemoizedValue { database_key: infer_initialization(Id(401)) }
         DidValidateMemoizedValue { database_key: infer_initialization(Id(402)) }
         DidValidateMemoizedValue { database_key: infer_initialization(Id(404)) }
-        DidValidateMemoizedValue { database_key: infer_initialization(Id(405)) }
         DidValidateMemoizedValue { database_key: infer_signature(Id(401)) }
         DidValidateMemoizedValue { database_key: infer_signature(Id(402)) }
         DidValidateMemoizedValue { database_key: infer_signature(Id(404)) }
@@ -275,6 +274,7 @@ fn body_edit_does_not_reinfer_signature_of_other_file(
         WillExecute { database_key: get_scope(Id(404)) }
         WillExecute { database_key: get_scope(Id(405)) }
         WillExecute { database_key: infer_body(Id(405)) }
+        WillExecute { database_key: infer_initialization(Id(405)) }
         WillExecute { database_key: infer_signature(Id(405)) }
         WillExecute { database_key: semantic_index(Id(1)) }
         ");
@@ -644,7 +644,6 @@ fn signature_change_does_reinfer_dependent_body(
         DidValidateMemoizedValue { database_key: infer_body(Id(404)) }
         DidValidateMemoizedValue { database_key: infer_initialization(Id(401)) }
         DidValidateMemoizedValue { database_key: infer_initialization(Id(404)) }
-        DidValidateMemoizedValue { database_key: infer_initialization(Id(405)) }
         DidValidateMemoizedValue { database_key: infer_signature(Id(401)) }
         DidValidateMemoizedValue { database_key: infer_signature(Id(404)) }
         DidValidateMemoizedValue { database_key: infer_signature(Id(405)) }
@@ -672,6 +671,7 @@ fn signature_change_does_reinfer_dependent_body(
         WillExecute { database_key: infer_body(Id(402)) }
         WillExecute { database_key: infer_body(Id(405)) }
         WillExecute { database_key: infer_initialization(Id(402)) }
+        WillExecute { database_key: infer_initialization(Id(405)) }
         WillExecute { database_key: infer_signature(Id(402)) }
         WillExecute { database_key: semantic_index(Id(0)) }
         ");

@@ -2,13 +2,19 @@ use db::WorkspaceDataBase;
 
 use crate::{
     HasName,
-    check::errors::{ToIdeDiagnostic, e2_resolve::ResolveError},
+    check::errors::{ToIdeDiagnostic, e2_resolve::ResolveError, e3_type::TypeError},
     hir_def::{
         expressions::spec::{Spec, SpecKind},
+        interned::namespace::SpanNamespaceAccess,
+        pous::generics::{GenericParam, derive_generic_params},
         scope::ScopeKind,
         semantic_index::get_scope,
     },
-    hir_ty::{head::init_inference::InitInference, ty::Type},
+    hir_ty::{
+        head::init_inference::InitInference,
+        resolver::name::{NameResolution, resolve_name},
+        ty::Type,
+    },
 };
 
 pub mod array;
@@ -37,7 +43,81 @@ impl<'db> InitInference<'db> {
             SpecKind::Into(span_ident) => {
                 self.check_into(db, spec, span_ident);
             }
+            SpecKind::Target(target) => {
+                self.check_target_generic_args(db, spec, target);
+            }
             _ => {}
+        }
+    }
+
+    /// Validate that a `user_type_ref` supplying `<...>` (or a bare reference
+    /// to a generic POU) matches the referenced FB/Class's implicit parameter
+    /// list — the ordered, deduplicated set of `ANY_*` specs on its top-level
+    /// variables. Emits an E032x diagnostic on any mismatch.
+    fn check_target_generic_args(
+        &mut self,
+        db: &'db dyn WorkspaceDataBase,
+        spec: Spec<'db>,
+        target: &SpanNamespaceAccess<'db>,
+    ) {
+        // Resolve the path to a POU; ignore non-resolution errors (E02xx
+        // resolver already reports those).
+        let pou = match resolve_name(db, &target.path, spec.scope_id(db)) {
+            NameResolution::Pou(p, _) => p,
+            _ => return,
+        };
+        let params: Vec<GenericParam> = derive_generic_params(db, &pou);
+        let args = &target.type_args;
+        let name = pou.get_name_ident(db).text(db).to_string();
+
+        match (params.is_empty(), args.is_empty()) {
+            // Non-generic POU + no args supplied — nothing to check.
+            (true, true) => {}
+            // Non-generic POU + user wrote `<...>` — reject.
+            (true, false) => {
+                self.errors.push(
+                    TypeError::GenericArgsOnNonGenericType { name, spec }.to_diagnostic(db),
+                );
+            }
+            // Generic POU + user wrote nothing — require explicit args.
+            (false, true) => {
+                self.errors.push(
+                    TypeError::MissingGenericArgs {
+                        name,
+                        expected: params.len(),
+                        spec,
+                    }
+                    .to_diagnostic(db),
+                );
+            }
+            // Generic POU + user wrote args — check count then bounds.
+            (false, false) => {
+                if params.len() != args.len() {
+                    self.errors.push(
+                        TypeError::WrongNumberOfGenericArgs {
+                            name,
+                            expected: params.len(),
+                            actual: args.len(),
+                            spec,
+                        }
+                        .to_diagnostic(db),
+                    );
+                    return;
+                }
+                for (param, arg_spec) in params.iter().zip(args.iter()) {
+                    let arg_ty = Type::resolve_spec(db, *arg_spec);
+                    if !matches!(&arg_ty, Type::Elementary(e) if param.bound.accepts(*e)) {
+                        self.errors.push(
+                            TypeError::TypeArgDoesNotMatchBound {
+                                arg_ty,
+                                bound: param.bound,
+                                arg_spec: *arg_spec,
+                            }
+                            .to_diagnostic(db),
+                        );
+                    }
+                }
+            }
         }
     }
 

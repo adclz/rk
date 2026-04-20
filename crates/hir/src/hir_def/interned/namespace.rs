@@ -1,4 +1,5 @@
 use crate::AstId;
+use crate::hir_def::expressions::spec::Spec;
 use ide_diagnostic::IdeDiagnostic;
 
 use crate::builder::semantic_index::SemanticIndexBuilder;
@@ -216,23 +217,31 @@ impl From<(&dyn WorkspaceDataBase, &Vec<Ident>)> for NamespacePath {
     }
 }
 
-/// A [`SpannedPath`] is a wrapper around a [`NamespaceAccess`] that includes a span
+/// A [`SpannedPath`] is a wrapper around a [`NamespaceAccess`] that includes a span.
+///
+/// `type_args` holds any explicit type arguments supplied at a `user_type_ref`
+/// use site - e.g. `Counter<INT>` stores `[Int-Spec]` here. For bare
+/// `namespace_access` references (no `<...>` in the grammar), this is empty.
+/// Equality and hashing include `type_args` so `Counter<INT>` and
+/// `Counter<DINT>` compare as distinct.
 #[derive(Debug, Clone, salsa::Update)]
 pub struct SpanNamespaceAccess<'db> {
     pub id: AstId,
     pub scope_id: ScopeId<'db>,
     pub path: NamespaceAccess<'db>,
+    pub type_args: Vec<Spec<'db>>,
 }
 
 impl PartialEq for SpanNamespaceAccess<'_> {
     fn eq(&self, other: &Self) -> bool {
-        self.path == other.path
+        self.path == other.path && self.type_args == other.type_args
     }
 }
 
 impl Hash for SpanNamespaceAccess<'_> {
     fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
         self.path.hash(state);
+        self.type_args.hash(state);
     }
 }
 
@@ -258,6 +267,7 @@ impl<'db> SpanNamespaceAccess<'db> {
             id: fq_name.into(),
             scope_id: sema.current_scope,
             path: NamespaceAccess::from_ast(db, sema, fq_name)?,
+            type_args: vec![],
         })
     }
 

@@ -266,7 +266,7 @@ END_FUNCTION_BLOCK
 
 FUNCTION test : INT
     VAR
-        c : container;
+        c : container<INT>;
     END_VAR
     c(value := 42);
     test := 0;
@@ -286,7 +286,7 @@ END_FUNCTION_BLOCK
 
 FUNCTION test : INT
     VAR
-        c : container;
+        c : container<INT>;
     END_VAR
     c(value := 1.5);
     test := 0;

@@ -42,7 +42,7 @@ VAR_OUTPUT CV: INTO(PV); END_VAR
 END_FUNCTION_BLOCK
 
 FUNCTION test
-VAR counter : CTU; END_VAR
+VAR counter : CTU<INT>; END_VAR
     counter(PV := 10);
 END_FUNCTION
     "#;
@@ -57,7 +57,7 @@ VAR_INPUT value: ANY_REAL; END_VAR
 END_FUNCTION_BLOCK
 
 FUNCTION test
-VAR fb : MyFB; END_VAR
+VAR fb : MyFB<REAL>; END_VAR
     fb(value := 3.14);
 END_FUNCTION
     "#;
@@ -72,7 +72,7 @@ VAR_INPUT PV: ANY_INT; END_VAR
 END_FUNCTION_BLOCK
 
 FUNCTION test
-VAR counter : CTU; END_VAR
+VAR counter : CTU<LINT>; END_VAR
     counter(PV := LINT#100);
 END_FUNCTION
     "#;
@@ -102,7 +102,7 @@ VAR_INPUT PV: ANY_INT; END_VAR
 END_FUNCTION_BLOCK
 
 FUNCTION test
-VAR counter : CTU; END_VAR
+VAR counter : CTU<INT>; END_VAR
     counter(PV := 10);
     counter(PV := 20);
 END_FUNCTION
@@ -119,7 +119,7 @@ VAR_OUTPUT CV: INTO(PV); END_VAR
 END_FUNCTION_BLOCK
 
 FUNCTION test
-VAR counter : CTU; END_VAR
+VAR counter : CTU<INT>; END_VAR
     counter(PV := 10);
 END_FUNCTION
     "#;
@@ -139,7 +139,7 @@ END_FUNCTION_BLOCK
     "#;
     let caller_source = r#"
 FUNCTION test
-VAR counter : CTU; END_VAR
+VAR counter : CTU<INT>; END_VAR
     counter(PV := 10);
 END_FUNCTION
     "#;
@@ -161,7 +161,7 @@ VAR_OUTPUT CV: INTO(PV); END_VAR
 END_FUNCTION_BLOCK
 
 FUNCTION test
-VAR counter : CTU; END_VAR
+VAR counter : CTU<INT>; END_VAR
     counter(PV := 10);
 END_FUNCTION
     "#;
@@ -181,7 +181,7 @@ VAR_OUTPUT CV: INTO(PV); END_VAR
 END_FUNCTION_BLOCK
 
 FUNCTION test : INT
-VAR counter : CTU; END_VAR
+VAR counter : CTU<INT>; END_VAR
     counter(PV := 42);
     test := counter.CV;
 END_FUNCTION

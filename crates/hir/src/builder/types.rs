@@ -69,6 +69,30 @@ impl<'db> ParseSpec<'db> for ast::generated::DataTypeAccess {
                 elem_type_name.to_spec(sema)
             }
             ast::generated::DataTypeAccess::NamespaceAccess(target) => target.to_spec(sema),
+            ast::generated::DataTypeAccess::UserTypeRef(user_ref) => {
+                // `Counter<INT>` - build the path spec and attach the parsed
+                // type arguments. Validation against the referenced FB's
+                // implicit ANY_* param list happens later (arg count match +
+                // bound conformance); at this layer we only record what the
+                // user wrote.
+                let path_ast = user_ref.path.cast(sema.ast);
+                let mut path = SpanNamespaceAccess::from_ast(sema.db, sema, path_ast)?;
+                let args_ast = user_ref.type_args.cast(sema.ast);
+                let args: Vec<Spec<'db>> = args_ast
+                    .arg
+                    .iter()
+                    .filter_map(|a| {
+                        let s = a.cast(sema.ast).to_spec(sema);
+                        sema.try_parse(s)
+                    })
+                    .collect();
+                path.type_args = args;
+                Ok(sema.new_spec(
+                    SpecKind::Target(path),
+                    user_ref.into(),
+                    sema.current_scope,
+                ))
+            }
             ast::generated::DataTypeAccess::IntoSpec(into) => {
                 let ident = crate::hir_def::interned::identifier::SpanIdent::from_node(
                     sema.db,
