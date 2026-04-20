@@ -668,6 +668,10 @@
       {
         "type": "namespace_access",
         "named": true
+      },
+      {
+        "type": "user_type_ref",
+        "named": true
       }
     ]
   },
@@ -6650,6 +6654,22 @@
     }
   },
   {
+    "type": "type_arg_list",
+    "named": true,
+    "fields": {
+      "arg": {
+        "multiple": true,
+        "required": true,
+        "types": [
+          {
+            "type": "data_type_access",
+            "named": true
+          }
+        ]
+      }
+    }
+  },
+  {
     "type": "type_decl",
     "named": true,
     "fields": {
@@ -6764,6 +6784,32 @@
           "named": true
         }
       ]
+    }
+  },
+  {
+    "type": "user_type_ref",
+    "named": true,
+    "fields": {
+      "path": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "namespace_access",
+            "named": true
+          }
+        ]
+      },
+      "type_args": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "type_arg_list",
+            "named": true
+          }
+        ]
+      }
     }
   },
   {

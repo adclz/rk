@@ -1,0 +1,114 @@
+================================================================================
+VAR declaration with explicit type argument
+================================================================================
+
+FUNCTION_BLOCK Main
+VAR c : Counter<INT>; END_VAR
+END_FUNCTION_BLOCK
+
+--------------------------------------------------------------------------------
+
+(source_file
+  (fb_decl
+    (identifier)
+    (var_decls
+      (var_decl_init_list
+        (variable_list
+          (identifier))
+        (var_decl_init
+          (simple_type_spec
+            (user_type_ref
+              (namespace_access
+                (identifier))
+              (type_arg_list
+                (numeric_type_name
+                  (int_type_name
+                    (sign_int_type_name
+                      (int_name))))))))))))
+
+================================================================================
+STRUCT field with generic type argument
+================================================================================
+
+TYPE MyStruct : STRUCT
+    counter : Counter<DINT>;
+END_STRUCT END_TYPE
+
+--------------------------------------------------------------------------------
+
+(source_file
+  (data_type_decl
+    (type_decl
+      (identifier)
+      (struct_type_spec
+        (struct_elem_decl
+          (identifier)
+          (simple_type_spec
+            (user_type_ref
+              (namespace_access
+                (identifier))
+              (type_arg_list
+                (numeric_type_name
+                  (int_type_name
+                    (sign_int_type_name
+                      (dint_name))))))))))))
+
+================================================================================
+Nested generic type argument
+================================================================================
+
+FUNCTION_BLOCK Main
+VAR p : Pair<INT, Counter<DINT>>; END_VAR
+END_FUNCTION_BLOCK
+
+--------------------------------------------------------------------------------
+
+(source_file
+  (fb_decl
+    (identifier)
+    (var_decls
+      (var_decl_init_list
+        (variable_list
+          (identifier))
+        (var_decl_init
+          (simple_type_spec
+            (user_type_ref
+              (namespace_access
+                (identifier))
+              (type_arg_list
+                (numeric_type_name
+                  (int_type_name
+                    (sign_int_type_name
+                      (int_name))))
+                (user_type_ref
+                  (namespace_access
+                    (identifier))
+                  (type_arg_list
+                    (numeric_type_name
+                      (int_type_name
+                        (sign_int_type_name
+                          (dint_name))))))))))))))
+
+================================================================================
+TYPE alias is fully specialized (no generic params on TYPE itself)
+================================================================================
+
+TYPE
+    CTU_DINT : Counter<DINT>;
+END_TYPE
+
+--------------------------------------------------------------------------------
+
+(source_file
+  (data_type_decl
+    (type_decl
+      (identifier)
+      (simple_type_spec
+        (user_type_ref
+          (namespace_access
+            (identifier))
+          (type_arg_list
+            (numeric_type_name
+              (int_type_name
+                (sign_int_type_name
+                  (dint_name))))))))))

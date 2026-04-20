@@ -1920,6 +1920,10 @@
       "members": [
         {
           "type": "SYMBOL",
+          "name": "user_type_ref"
+        },
+        {
+          "type": "SYMBOL",
           "name": "namespace_access"
         },
         {
@@ -1929,6 +1933,73 @@
         {
           "type": "SYMBOL",
           "name": "into_spec"
+        }
+      ]
+    },
+    "user_type_ref": {
+      "type": "SEQ",
+      "members": [
+        {
+          "type": "FIELD",
+          "name": "path",
+          "content": {
+            "type": "SYMBOL",
+            "name": "namespace_access"
+          }
+        },
+        {
+          "type": "FIELD",
+          "name": "type_args",
+          "content": {
+            "type": "SYMBOL",
+            "name": "type_arg_list"
+          }
+        }
+      ]
+    },
+    "type_arg_list": {
+      "type": "SEQ",
+      "members": [
+        {
+          "type": "STRING",
+          "value": "<"
+        },
+        {
+          "type": "SEQ",
+          "members": [
+            {
+              "type": "FIELD",
+              "name": "arg",
+              "content": {
+                "type": "SYMBOL",
+                "name": "data_type_access"
+              }
+            },
+            {
+              "type": "REPEAT",
+              "content": {
+                "type": "SEQ",
+                "members": [
+                  {
+                    "type": "STRING",
+                    "value": ","
+                  },
+                  {
+                    "type": "FIELD",
+                    "name": "arg",
+                    "content": {
+                      "type": "SYMBOL",
+                      "name": "data_type_access"
+                    }
+                  }
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "type": "STRING",
+          "value": ">"
         }
       ]
     },

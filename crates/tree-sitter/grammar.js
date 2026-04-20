@@ -343,7 +343,7 @@ module.exports = grammar({
     pragma: ($) => seq("{", repeat(choice(/[^*]/, /\*[^)]/)), "}"),
 
     // Extern pragma - declares a WASM import binding
-    // {extern 'module' 'name'}                                    — non-generic
+    // {extern 'module' 'name'}                                    - non-generic
     extern_pragma: ($) =>
       prec(1, seq(
         "{",
@@ -444,7 +444,7 @@ module.exports = grammar({
 
     // token() prevents whitespace between sign and digits:
     // -42 is a signed literal, - 42 is unary minus on 42.
-    // No precedence needed — token boundary disambiguates.
+    // No precedence needed - token boundary disambiguates.
     signed_int: ($) =>
       choice(
         $._explicit_signed_int,
@@ -468,7 +468,7 @@ module.exports = grammar({
 
     // Signed real value: sign + real digits with no whitespace allowed.
     // -3.7 is a signed literal, - 3.7 is unary minus on 3.7.
-    // No precedence needed — token boundary disambiguates.
+    // No precedence needed - token boundary disambiguates.
     signed_real_value: ($) =>
       choice(
         $._explicit_signed_real,
@@ -627,10 +627,27 @@ module.exports = grammar({
 
     // Table 10 - Elementary data types
 
+    // A bare user-type name parses as `namespace_access`; supplying `<T, ...>`
+    // promotes it to `user_type_ref`. Keeping the two shapes distinct means
+    // existing corpus tests and HIR consumers that never cared about generics
+    // stay untouched.
     data_type_access: ($) =>
-      choice($.namespace_access, $._elem_type_name, $.into_spec),
+      choice($.user_type_ref, $.namespace_access, $._elem_type_name, $.into_spec),
 
-    // INTO(var) — type must be implicitly convertible to the referenced variable's type
+    // Reference to a user-defined type with explicit type arguments.
+    // HIR/MIR must verify that the referenced type actually declares generic
+    // parameters and that arg count/kinds match.
+    user_type_ref: ($) =>
+      seq(
+        field("path", $.namespace_access),
+        field("type_args", $.type_arg_list),
+      ),
+
+    // <T, DINT, Foo<INT>>  - comma-separated type arguments.
+    type_arg_list: ($) =>
+      seq("<", commaSep1(field("arg", $.data_type_access)), ">"),
+
+    // INTO(var) - type must be implicitly convertible to the referenced variable's type
     into_spec: ($) =>
       seq("INTO", "(", field("ref", $.identifier), ")"),
 
