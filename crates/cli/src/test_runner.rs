@@ -248,6 +248,11 @@ pub fn run_tests(
         Ok(c) => c,
         Err(e) => {
             eprintln!("{}{}", "wasm error: ".bold().red(), e);
+            let mut src = e.source();
+            while let Some(cause) = src {
+                eprintln!("  caused by: {}", cause);
+                src = cause.source();
+            }
             return 1;
         }
     };
