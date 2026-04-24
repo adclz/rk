@@ -511,7 +511,7 @@ END_FUNCTION
 // table, which promotes to the *widest* concrete arg type. Per-arg coercion
 // still uses the abstract bound (ANY_BIT accepts any bit type individually),
 // so widening stays silent. Narrowing is caught at the assignment level by
-// the existing E0301 rule — no separate "identity" check is needed.
+// the existing E0301 rule - no separate "identity" check is needed.
 
 #[rstest]
 fn into_binding_same_concrete_type(mut with_db: RootDatabase) {
@@ -607,9 +607,46 @@ END_FUNCTION
 }
 
 #[rstest]
+fn ror_incompatible_arg_type_does_not_hijack_return(mut with_db: RootDatabase) {
+    // A REAL in an ANY_BIT slot is already an E0301 at the per-arg level.
+    // Previously the inference-table's byte-size promotion let REAL take
+    // over the BYTE first-arg (REAL is "larger"), which resolved the return
+    // to REAL and produced a second cascading assignment error. The fixed
+    // table only promotes when implicit widening is actually defined, so
+    // REAL is skipped here and only one error is reported.
+    let source = r#"
+FUNCTION ROR : ANY_BIT
+    VAR_INPUT
+        IN: INTO(ROR);
+        N: INTO(ROR);
+    END_VAR
+END_FUNCTION
+
+FUNCTION SWAP_BYTE2: BYTE
+    VAR_INPUT IN: DWORD; END_VAR
+    SWAP_BYTE2 := ROR(BYTE#0, 0.8);
+END_FUNCTION
+"#;
+    let diagnostics = test_diagnostics(&mut with_db, &[source]);
+    // Exactly one E0301 - the per-arg one about 0.8 being REAL, not the
+    // return-type cascade.
+    assert_eq!(
+        diagnostics.matches("[E0301]").count(),
+        1,
+        "expected exactly one E0301; got:\n{}",
+        diagnostics
+    );
+    assert!(
+        diagnostics.contains("expected 'ANY_BIT', got 'REAL'"),
+        "expected the per-arg ANY_BIT mismatch; got:\n{}",
+        diagnostics
+    );
+}
+
+#[rstest]
 fn ror_heterogeneous_args_fails_to_narrow_into_byte_context(mut with_db: RootDatabase) {
     // Widest of {BYTE, DWORD} = DWORD; return type = DWORD; BYTE target
-    // needs narrowing — E0301 fires at the assignment, regardless of arg
+    // needs narrowing - E0301 fires at the assignment, regardless of arg
     // order. Previously the arg order silently determined whether this
     // error fired.
     let source = r#"
