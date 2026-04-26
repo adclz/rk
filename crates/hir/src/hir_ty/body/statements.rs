@@ -484,7 +484,24 @@ impl<'db> StmtsResolverCtx<'db> {
                     }
                 }
                 StmtKind::WasmPragma(_) => {
-                    // Wasm intrinsic — no type inference needed
+                    // Wasm intrinsic, no type inference needed
+                }
+                StmtKind::PreprocessIf { branches } => {
+                    // Each arm's body is plain ST; recurse and let the
+                    // existing checker run on the contained statements.
+                    // Type-checking the condition (`<ident> is <type>`) and
+                    // exhaustiveness across `ANY_*` bounds are E0325 / E0326
+                    // separate dedicated checks; this pass just walks the
+                    // bodies for inference.
+                    for branch in branches {
+                        self.check_statements(
+                            db,
+                            resolver,
+                            branch.body.as_slice(),
+                            nested_scope,
+                            ctx,
+                        );
+                    }
                 }
             }
         }

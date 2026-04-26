@@ -184,7 +184,14 @@ pub fn wrap_in_component(
     let mut lowered_core_func_indices: Vec<(usize, u32)> = Vec::new(); // (extern_idx, core_func_idx)
 
     for iface in &wasi_interfaces {
-        // Define the instance type
+        // Define the instance type.
+        //
+        // Component-model extern names must be kebab-case. Our internal
+        // `import_name` (e.g. monomorphized `now.TIME`) carries a `.` that
+        // is valid at the MIR layer but not at the component boundary — the
+        // validator rejects it with "is not a valid extern name". We kebab
+        // the name for both the instance-type export and the later alias
+        // lookup so the two sides stay consistent.
         let mut inst_type = InstanceType::new();
         for (func_i, func) in iface.functions.iter().enumerate() {
             let params = expand_component_params(&func.params);
@@ -196,7 +203,7 @@ pub fn wrap_in_component(
             let mut enc = inst_type.ty().function();
             enc.params(params);
             enc.result(result);
-            inst_type.export(&func.name, ComponentTypeRef::Func(func_i as u32));
+            inst_type.export(&to_kebab_case(&func.name), ComponentTypeRef::Func(func_i as u32));
         }
 
         let inst_type_idx = builder.type_instance(None, &inst_type);
@@ -206,8 +213,11 @@ pub fn wrap_in_component(
 
         // Alias each function from the instance and lower it
         for func in &iface.functions {
-            let comp_func_idx =
-                builder.alias_export(instance_idx, &func.name, ComponentExportKind::Func);
+            let comp_func_idx = builder.alias_export(
+                instance_idx,
+                &to_kebab_case(&func.name),
+                ComponentExportKind::Func,
+            );
             let opts: Vec<CanonicalOption> = if has_string(&func.params, &func.return_type) {
                 string_opts.clone()
             } else {

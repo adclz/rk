@@ -1,12 +1,14 @@
+use auto_lsp::core::ast::AstNodeId;
 use compact_str::CompactString;
 
 use crate::builder::Parse;
+use crate::builder::ParseSpec;
 use crate::builder::expression::ParseVariableAccess;
 use crate::builder::semantic_index::SemanticIndexBuilder;
 use crate::check::errors::ToIdeDiagnostic;
 use crate::check::errors::e0_syntax::SyntaxError;
 use crate::hir_def::expressions::expression::{FuncCall, ParamAssignKind};
-use crate::hir_def::expressions::statement::{CaseKind, Stmt, StmtKind};
+use crate::hir_def::expressions::statement::{CaseKind, PreprocessBranch, PreprocessCond, Stmt, StmtKind};
 use crate::hir_def::extern_decl::ExternDecl;
 use crate::hir_def::interned::identifier::SpanIdent;
 use auto_lsp::anyhow::{self};
@@ -429,8 +431,58 @@ impl<'db> Parse<'db> for ast::generated::Stmt {
                     sema.current_scope,
                 ))
             }
+            StmtType::PreprocessIf(preprocess) => {
+                let mut branches = Vec::with_capacity(1 + preprocess.elif.len());
+                branches.push(parse_preprocess_branch(
+                    sema,
+                    preprocess.if_cond.cast(sema.ast),
+                    preprocess.if_body.as_ref(),
+                )?);
+                for elif_id in &preprocess.elif {
+                    let elif = elif_id.cast(sema.ast);
+                    branches.push(parse_preprocess_branch(
+                        sema,
+                        elif.elif_cond.cast(sema.ast),
+                        elif.elif_body.as_ref(),
+                    )?);
+                }
+                Ok(Stmt::new(
+                    sema.db,
+                    StmtKind::PreprocessIf { branches },
+                    preprocess.into(),
+                    sema.current_scope,
+                ))
+            }
         }
     }
+}
+
+fn parse_preprocess_branch<'db>(
+    sema: &mut SemanticIndexBuilder<'db>,
+    cond_ast: &ast::generated::PreprocessCond,
+    body_ast: Option<&AstNodeId<ast::generated::StmtList>>,
+) -> anyhow::Result<PreprocessBranch<'db>, IdeDiagnostic> {
+    let ident = SpanIdent::from_node(sema.db, sema, cond_ast.ident.cast(sema.ast))?;
+    let expected = cond_ast.Type.cast(sema.ast).to_spec(sema)?;
+
+    let body = body_ast
+        .map(|stmts| {
+            stmts
+                .cast(sema.ast)
+                .children
+                .iter()
+                .filter_map(|stmt| {
+                    let r = stmt.cast(sema.ast).parse(sema);
+                    sema.try_parse(r)
+                })
+                .collect()
+        })
+        .unwrap_or_default();
+
+    Ok(PreprocessBranch {
+        cond: PreprocessCond { ident, expected },
+        body,
+    })
 }
 
 impl<'db> Parse<'db> for ast::generated::Assign {

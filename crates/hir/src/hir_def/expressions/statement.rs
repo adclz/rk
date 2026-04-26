@@ -4,8 +4,12 @@ use crate::hir_def::extern_decl::WasmDecl;
 use crate::{
     AstId, HirNodeInfo,
     hir_def::{
-        expressions::expression::{BeginPathExpr, Expr, FuncCall, VariableAccess},
+        expressions::{
+            expression::{BeginPathExpr, Expr, FuncCall, VariableAccess},
+            spec::Spec,
+        },
         extern_decl::ExternDecl,
+        interned::identifier::SpanIdent,
         scope::ScopeId,
     },
 };
@@ -75,6 +79,25 @@ pub enum StmtKind<'db> {
     Continue,
     ExternPragma(ExternDecl<'db>),
     WasmPragma(WasmDecl<'db>),
+    PreprocessIf {
+        branches: Vec<PreprocessBranch<'db>>,
+    },
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Hash, salsa::Update)]
+pub struct PreprocessBranch<'db> {
+    pub cond: PreprocessCond<'db>,
+    pub body: Vec<Stmt<'db>>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Hash, salsa::Update)]
+pub struct PreprocessCond<'db> {
+    /// The identifier being narrowed (a function/method param or local).
+    pub ident: SpanIdent<'db>,
+    /// The type the branch fires for. Carried as a [`Spec`] so the existing
+    /// type-spec machinery (resolution, `Type::resolve_spec`) applies
+    /// uniformly to elementary names and user-defined types.
+    pub expected: Spec<'db>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, salsa::Update)]
