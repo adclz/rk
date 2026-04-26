@@ -1925,6 +1925,10 @@ module.exports = grammar({
         "CONTINUE",
         $.extern_pragma,
         $.wasm_pragma,
+        // Compile-time preprocessor — `{#if x is INT}` … `{#elif y is REAL}` … `{#endif}`.
+        // Only valid inside generic ({preprocess}-tagged) functions; HIR enforces
+        // both that constraint and decl-site exhaustiveness across `ANY_*` bounds.
+        $.preprocess_if,
         $.ERR_method_decl_in_body
       ),
 
@@ -1995,6 +1999,46 @@ module.exports = grammar({
         field("else_if_cond", $._expression),
         "THEN",
         field("else_if_body", optional($.stmt_list)),
+      ),
+
+    // Compile-time `{#if x is INT}` block. The condition pins one ANY_*/INTO
+    // slot to a concrete elementary or user type. At MIR monomorphization the
+    // matching arm becomes the function body; at HIR we check that every
+    // variant of the bound is covered (E0325) and that any nested `{extern}`
+    // pragma sees only resolved types (E0326).
+    preprocess_if: ($) =>
+      seq(
+        "{",
+        "#if",
+        field("if_cond", $.preprocess_cond),
+        "}",
+        field("if_body", optional($.stmt_list)),
+        field("elif", repeat($.preprocess_elif)),
+        "{",
+        "#endif",
+        "}",
+      ),
+
+    preprocess_elif: ($) =>
+      // Right-associative: an `{` following an `#elif` body is greedily
+      // consumed as the next pragma-statement (e.g. nested `{extern …}`),
+      // not as the start of the next `#elif`. Otherwise tree-sitter can't
+      // decide which arm a stray pragma belongs to.
+      prec.right(
+        seq(
+          "{",
+          "#elif",
+          field("elif_cond", $.preprocess_cond),
+          "}",
+          field("elif_body", optional($.stmt_list)),
+        ),
+      ),
+
+    preprocess_cond: ($) =>
+      seq(
+        field("ident", $.identifier),
+        "is",
+        field("type", $.data_type_access),
       ),
 
     case_stmt: ($) =>

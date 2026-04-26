@@ -556,6 +556,10 @@
         "named": true
       },
       {
+        "type": "preprocess_if",
+        "named": true
+      },
+      {
         "type": "repeat_stmt",
         "named": true
       },
@@ -5158,6 +5162,94 @@
     "fields": {}
   },
   {
+    "type": "preprocess_cond",
+    "named": true,
+    "fields": {
+      "ident": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "identifier",
+            "named": true
+          }
+        ]
+      },
+      "type": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "data_type_access",
+            "named": true
+          }
+        ]
+      }
+    }
+  },
+  {
+    "type": "preprocess_elif",
+    "named": true,
+    "fields": {
+      "elif_body": {
+        "multiple": false,
+        "required": false,
+        "types": [
+          {
+            "type": "stmt_list",
+            "named": true
+          }
+        ]
+      },
+      "elif_cond": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "preprocess_cond",
+            "named": true
+          }
+        ]
+      }
+    }
+  },
+  {
+    "type": "preprocess_if",
+    "named": true,
+    "fields": {
+      "elif": {
+        "multiple": true,
+        "required": false,
+        "types": [
+          {
+            "type": "preprocess_elif",
+            "named": true
+          }
+        ]
+      },
+      "if_body": {
+        "multiple": false,
+        "required": false,
+        "types": [
+          {
+            "type": "stmt_list",
+            "named": true
+          }
+        ]
+      },
+      "if_cond": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "preprocess_cond",
+            "named": true
+          }
+        ]
+      }
+    }
+  },
+  {
     "type": "prog_access_decl",
     "named": true,
     "fields": {
@@ -7262,6 +7354,18 @@
     "named": false
   },
   {
+    "type": "#elif",
+    "named": false
+  },
+  {
+    "type": "#endif",
+    "named": false
+  },
+  {
+    "type": "#if",
+    "named": false
+  },
+  {
     "type": "$",
     "named": false
   },
@@ -8084,6 +8188,10 @@
   {
     "type": "internal",
     "named": true
+  },
+  {
+    "type": "is",
+    "named": false
   },
   {
     "type": "l_date_and_time_type_name",
