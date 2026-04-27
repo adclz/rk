@@ -24,6 +24,7 @@ pub mod nullability;
 pub mod path_expr;
 pub mod polymorphism;
 pub mod pragmas;
+pub mod preprocess;
 pub mod program;
 pub mod recovery;
 pub mod recursive;

@@ -9,9 +9,12 @@ use crate::{
     hir_def::{
         expressions::{
             expression::{Elementary, Expr, ExprKind, PrimaryExpr, UnaryOperatorKind},
+            spec::{ElementarySpec, Spec, SpecKind},
             statement::{CaseKind, Stmt, StmtKind},
         },
-        scope::ScopeId,
+        interned::identifier::Ident,
+        scope::{ScopeId, ScopeKind},
+        semantic_index::get_scope,
     },
     hir_ty::{
         body::{Adjust, BodyInferenceResult, NullState},
@@ -487,12 +490,6 @@ impl<'db> StmtsResolverCtx<'db> {
                     // Wasm intrinsic, no type inference needed
                 }
                 StmtKind::PreprocessIf { branches } => {
-                    // Each arm's body is plain ST; recurse and let the
-                    // existing checker run on the contained statements.
-                    // Type-checking the condition (`<ident> is <type>`) and
-                    // exhaustiveness across `ANY_*` bounds are E0325 / E0326
-                    // separate dedicated checks; this pass just walks the
-                    // bodies for inference.
                     for branch in branches {
                         self.check_statements(
                             db,
@@ -516,5 +513,245 @@ impl<'db> StmtsResolverCtx<'db> {
     ) {
         infer.resolve_expr(db, expr, ctx);
         infer.check_expr(db, expr, ctx);
+    }
+}
+
+/// Validates `{#if}` conditions and `{wasm}` pragmas inside the function
+/// body.
+///
+/// Three validations on every `{#if x is T}` cond, regardless of whether
+/// it sits inside an enclosing chain:
+/// - **E0325** `x` doesn't resolve in scope.
+/// - **E0326** `x` resolves but is concrete (the chain through `INTO(...)`
+///   bottoms out at a non-`ANY_*` spec) — the branch can never narrow.
+/// - **E0327** `T` isn't a variant of `x`'s `ANY_*` bound.
+///
+/// One validation on `{wasm}` pragmas inside a chain:
+/// - **E0328** a referenced ident's anchor isn't pinned by the enclosing
+///   `{#if}`. Wasm intrinsics emit a single concrete instruction, so an
+///   unpinned ANY_* would not have a type to encode against.
+///
+/// `{extern}` pragmas are intentionally untouched — those are host
+/// imports and the host can polymorphic-dispatch lazily (the
+/// `generic-extern` lint flags the case informationally).
+pub(crate) fn check_preprocess<'db>(
+    db: &'db dyn WorkspaceDataBase,
+    scope: ScopeId<'db>,
+    statements: &[Stmt<'db>],
+    fixed: &rustc_hash::FxHashMap<Ident, ElementarySpec>,
+    inside_if: bool,
+    ctx: &mut BodyInferenceResult<'db>,
+) {
+    let def_map = scope.def_map(db);
+    for stmt in statements {
+        match stmt.stmt(db) {
+            StmtKind::WasmPragma(decl) if inside_if => {
+                if let Some(t) = &decl.type_ref {
+                    check_wasm_ident(db, scope, &def_map, fixed, t, ctx);
+                }
+                for p in &decl.params {
+                    check_wasm_ident(db, scope, &def_map, fixed, p, ctx);
+                }
+                if let Some(r) = &decl.result {
+                    check_wasm_ident(db, scope, &def_map, fixed, r, ctx);
+                }
+            }
+            StmtKind::PreprocessIf { branches } => {
+                for branch in branches {
+                    let mut child = fixed.clone();
+                    if let Some(anchor_spec) =
+                        check_cond(db, scope, &def_map, branch, ctx)
+                        && let Type::Elementary(e) =
+                            Type::resolve_spec(db, branch.cond.expected)
+                    {
+                        child.insert(anchor_spec, e);
+                    }
+                    check_preprocess(db, scope, &branch.body, &child, true, ctx);
+                }
+            }
+            // Recurse into structured control flow — pragmas can hide
+            // arbitrarily deep, even if it's an unusual style.
+            StmtKind::If {
+                then,
+                else_if,
+                else_,
+                ..
+            } => {
+                if let Some(stmts) = then {
+                    check_preprocess(db, scope, stmts, fixed, inside_if, ctx);
+                }
+                for (_, body) in else_if {
+                    check_preprocess(db, scope, body, fixed, inside_if, ctx);
+                }
+                if let Some(stmts) = else_ {
+                    check_preprocess(db, scope, stmts, fixed, inside_if, ctx);
+                }
+            }
+            StmtKind::Case { cases, else_, .. } => {
+                for (_, body) in cases {
+                    check_preprocess(db, scope, body, fixed, inside_if, ctx);
+                }
+                if let Some(stmts) = else_ {
+                    check_preprocess(db, scope, stmts, fixed, inside_if, ctx);
+                }
+            }
+            StmtKind::For { body, .. }
+            | StmtKind::While { body, .. }
+            | StmtKind::Repeat { body, .. } => {
+                check_preprocess(db, scope, body, fixed, inside_if, ctx);
+            }
+            _ => {}
+        }
+    }
+}
+
+/// Validate one `{#if x is T}` cond. Returns the canonical anchor ident
+/// (i.e. the variable that owns the `ANY_*` bound) on success so the
+/// caller can extend its `fixed` map. Returns `None` when any of E0325,
+/// E0326, or E0327 fired.
+fn check_cond<'db>(
+    db: &'db dyn WorkspaceDataBase,
+    scope: ScopeId<'db>,
+    def_map: &crate::hir_ty::def_map::LocalDefMap<'db>,
+    branch: &crate::hir_def::expressions::statement::PreprocessBranch<'db>,
+    ctx: &mut BodyInferenceResult<'db>,
+) -> Option<Ident> {
+    let span_ident = &branch.cond.ident;
+    let ident = span_ident.ident;
+
+    let Some(_) = lookup_spec(db, scope, def_map, ident) else {
+        ctx.errors.push(
+            TypeError::PreprocessIdentNotFound {
+                ident: ident.text(db).to_string(),
+                site: CallSite::from_scoped(db, span_ident),
+            }
+            .to_diagnostic(db),
+        );
+        return None;
+    };
+
+    let Some(anchor) = canonical_anchor(db, scope, def_map, ident) else {
+        // Spec exists but isn't rooted in ANY_* (concrete or non-Into chain).
+        let actual_spec = lookup_spec(db, scope, def_map, ident)
+            .expect("just checked existence");
+        ctx.errors.push(
+            TypeError::PreprocessIdentNotGeneric {
+                ident: ident.text(db).to_string(),
+                actual_spec,
+                site: CallSite::from_scoped(db, span_ident),
+            }
+            .to_diagnostic(db),
+        );
+        return None;
+    };
+
+    let bound = lookup_any_bound(db, scope, def_map, anchor)
+        .expect("canonical_anchor returned ident with ANY_* bound");
+
+    let expected_ty = Type::resolve_spec(db, branch.cond.expected);
+    match expected_ty {
+        Type::Elementary(e) if bound.accepts(e) => Some(anchor),
+        // Type::Never propagates from a previous resolution failure
+        // already reported elsewhere — don't pile on.
+        Type::Never => None,
+        _ => {
+            ctx.errors.push(
+                TypeError::PreprocessTypeNotInBound {
+                    expected_ty,
+                    bound,
+                    spec: branch.cond.expected,
+                }
+                .to_diagnostic(db),
+            );
+            None
+        }
+    }
+}
+
+fn check_wasm_ident<'db>(
+    db: &'db dyn WorkspaceDataBase,
+    scope: ScopeId<'db>,
+    def_map: &crate::hir_ty::def_map::LocalDefMap<'db>,
+    fixed: &rustc_hash::FxHashMap<Ident, ElementarySpec>,
+    span_ident: &crate::hir_def::interned::identifier::SpanIdent<'db>,
+    ctx: &mut BodyInferenceResult<'db>,
+) {
+    let Some(anchor) = canonical_anchor(db, scope, def_map, span_ident.ident) else {
+        return;
+    };
+    if fixed.contains_key(&anchor) {
+        return;
+    }
+    let Some(bound) = lookup_any_bound(db, scope, def_map, anchor) else {
+        return;
+    };
+    ctx.errors.push(
+        TypeError::WasmUnresolvedGeneric {
+            param: span_ident.ident.text(db).to_string(),
+            bound,
+            site: CallSite::from_scoped(db, span_ident),
+        }
+        .to_diagnostic(db),
+    );
+}
+
+/// Walk `INTO(X)` chains until we hit a bare `ANY_*` spec; return the
+/// canonical anchor ident (the variable that owns the bound). `None` if
+/// the chain resolves to a concrete type or can't be resolved.
+fn canonical_anchor<'db>(
+    db: &'db dyn WorkspaceDataBase,
+    scope: ScopeId<'db>,
+    def_map: &crate::hir_ty::def_map::LocalDefMap<'db>,
+    ident: Ident,
+) -> Option<Ident> {
+    let mut current = ident;
+    for _ in 0..16 {
+        let spec = lookup_spec(db, scope, def_map, current)?;
+        match spec.kind(db) {
+            SpecKind::Simple(e) if e.is_any() => return Some(current),
+            SpecKind::Into(target) => current = target.ident,
+            _ => return None,
+        }
+    }
+    None
+}
+
+fn lookup_any_bound<'db>(
+    db: &'db dyn WorkspaceDataBase,
+    scope: ScopeId<'db>,
+    def_map: &crate::hir_ty::def_map::LocalDefMap<'db>,
+    ident: Ident,
+) -> Option<ElementarySpec> {
+    let spec = lookup_spec(db, scope, def_map, ident)?;
+    match spec.kind(db) {
+        SpecKind::Simple(e) if e.is_any() => Some(*e),
+        _ => None,
+    }
+}
+
+/// Resolve an ident to its declaring spec — local var, global var, or the
+/// enclosing POU's return type when the ident matches the POU/method name.
+fn lookup_spec<'db>(
+    db: &'db dyn WorkspaceDataBase,
+    scope: ScopeId<'db>,
+    def_map: &crate::hir_ty::def_map::LocalDefMap<'db>,
+    ident: Ident,
+) -> Option<Spec<'db>> {
+    if let Some(v) = def_map
+        .local_variables
+        .get(&ident)
+        .or_else(|| def_map.global_variables.get(&ident))
+    {
+        return Some(v.spec(db));
+    }
+    let pou_match = match get_scope(db, scope).kind {
+        ScopeKind::Pou(pou) => pou.get_name_ident(db) == ident,
+        ScopeKind::MethodDecl(m) => m.name(db) == ident,
+        _ => false,
+    };
+    if pou_match {
+        scope.return_type(db).copied()
+    } else {
+        None
     }
 }

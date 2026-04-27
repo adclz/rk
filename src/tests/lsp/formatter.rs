@@ -1653,3 +1653,104 @@ END_FUNCTION
     END_FUNCTION
     ");
 }
+
+#[rstest]
+pub fn generic_type_args_at_var_site(mut with_db: RootDatabase) {
+    let source = r#"
+FUNCTION_BLOCK Outer
+VAR
+    c1 :   Counter < INT >  ;
+    c2 : ns . Counter<INT,DINT> ;
+END_VAR
+END_FUNCTION_BLOCK
+"#;
+
+    add_sources(&mut with_db, &[source]);
+    let document = with_db
+        .get_files()
+        .iter()
+        .last()
+        .unwrap()
+        .document(&with_db);
+
+    assert_snapshot!(fmt(document), @r"
+    FUNCTION_BLOCK Outer
+    	VAR
+    		c1: Counter<INT>;
+    		c2: ns.Counter<INT, DINT>;
+    	END_VAR
+    END_FUNCTION_BLOCK
+    ");
+}
+
+#[rstest]
+pub fn preprocess_if_endif_only(mut with_db: RootDatabase) {
+    let source = r#"
+FUNCTION SHL : ANY_BIT
+VAR_INPUT IN : INTO(SHL); N : INT; END_VAR
+{#if IN is BYTE}
+{wasm IN 'shl' (params IN N) (result SHL)}
+{#endif}
+END_FUNCTION
+"#;
+
+    add_sources(&mut with_db, &[source]);
+    let document = with_db
+        .get_files()
+        .iter()
+        .last()
+        .unwrap()
+        .document(&with_db);
+
+    assert_snapshot!(fmt(document), @r"
+    FUNCTION SHL: ANY_BIT
+    	VAR_INPUT
+    		IN: INTO(SHL);
+    		N: INT;
+    	END_VAR
+    	{#if IN is BYTE}
+    		{wasm IN 'shl' (params IN N) (result SHL)}
+    	{#endif}
+    END_FUNCTION
+    ");
+}
+
+#[rstest]
+pub fn preprocess_if_elif_chain(mut with_db: RootDatabase) {
+    let source = r#"
+FUNCTION SHL : ANY_BIT
+VAR_INPUT IN : INTO(SHL); N : INT; END_VAR
+{ #if IN is BYTE }
+{wasm IN 'shl' (params IN N) (result SHL)}
+{ #elif IN is WORD }
+{wasm IN 'shl' (params IN N) (result SHL)}
+{ #elif IN is DWORD }
+{wasm IN 'shl' (params IN N) (result SHL)}
+{ #endif }
+END_FUNCTION
+"#;
+
+    add_sources(&mut with_db, &[source]);
+    let document = with_db
+        .get_files()
+        .iter()
+        .last()
+        .unwrap()
+        .document(&with_db);
+
+    assert_snapshot!(fmt(document), @r"
+    FUNCTION SHL: ANY_BIT
+    	VAR_INPUT
+    		IN: INTO(SHL);
+    		N: INT;
+    	END_VAR
+    	{#if IN is BYTE}
+    		{wasm IN 'shl' (params IN N) (result SHL)}
+    	{#elif IN is WORD}
+    		{wasm IN 'shl' (params IN N) (result SHL)}
+    	{#elif IN is DWORD}
+    		{wasm IN 'shl' (params IN N) (result SHL)}
+    	{#endif}
+    END_FUNCTION
+    ");
+}

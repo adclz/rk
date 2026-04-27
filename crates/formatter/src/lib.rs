@@ -93,9 +93,27 @@ static SURROUND_SPACES: &str = r##"
 
 ; Test pragma: on its own line before the POU keyword
 (test_pragma) @leaf @append_hardline
+
+; Generic type arguments: "Counter<INT, DINT>" - tight angle brackets,
+; comma-separated args. Overrides the global comparison-op spacing on
+; "<" / ">".
+(type_arg_list "<" @prepend_antispace @append_antispace)
+(type_arg_list ">" @prepend_antispace @append_antispace)
+(user_type_ref path: (_) @append_antispace)
+
+; Preprocessor `{#if … is T}` / `{#elif …}` / `{#endif}` - keep braces
+; tight around the keyword and identifiers; one space around `is`.
+(preprocess_if "{" @append_antispace)
+(preprocess_if "}" @prepend_antispace)
+(preprocess_if "#if" @append_space)
+(preprocess_if "#endif" @prepend_antispace @append_antispace)
+(preprocess_elif "{" @append_antispace)
+(preprocess_elif "}" @prepend_antispace)
+(preprocess_elif "#elif" @append_space)
+(preprocess_cond "is" @prepend_space @append_space)
 "##;
 
-static NEW_LINES: &str = r#"
+static NEW_LINES: &str = r##"
 ; VAR sections that never have qualifiers
 [
     "VAR_IN_OUT"
@@ -104,7 +122,7 @@ static NEW_LINES: &str = r#"
 ] @prepend_hardline @append_hardline
 
 ; VAR sections that can have CONSTANT/RETAIN/NON_RETAIN qualifiers
-; (no @append_hardline — declarations already have @prepend_hardline)
+; (no @append_hardline - declarations already have @prepend_hardline)
 [
     "VAR"
     "VAR_INPUT"
@@ -168,7 +186,7 @@ static NEW_LINES: &str = r#"
 ] @prepend_hardline
 
 ; Blank line after closing keywords is handled by @allow_blank_line_before
-; on the next declaration — no @append_hardline needed here.
+; on the next declaration - no @append_hardline needed here.
 ("USING" (_) ";"? @append_hardline)
 
 (func_decl variables: (_) . body: (func_body) @prepend_hardline)
@@ -184,6 +202,7 @@ static NEW_LINES: &str = r#"
     (super_body_invocation)
     (extern_pragma)
     (wasm_pragma)
+    (preprocess_if)
     "RETURN"
     (if_stmt)
     (case_stmt)
@@ -194,7 +213,7 @@ static NEW_LINES: &str = r#"
     "CONTINUE"
 ] @prepend_spaced_softline
 
-; func_call as a statement (inside stmt_list) — not inside expressions
+; func_call as a statement (inside stmt_list) - not inside expressions
 (stmt_list (func_call) @prepend_spaced_softline)
 
  (
@@ -247,7 +266,27 @@ static NEW_LINES: &str = r#"
 (eq_operator (eq) @prepend_indent_start right: (_) @append_indent_end)
 (ord_operator (ord) @prepend_indent_start right: (_) @append_indent_end)
 (power_operator "**" @prepend_indent_start right: (_) @append_indent_end)
-"#;
+
+; Preprocess layout: opening "{#if …}" on its own line, body indented;
+; "{#elif …}" and "{#endif}" each dedent back to the parent level on
+; their own line (mirrors how IF / ELSIF / END_IF are handled above).
+(preprocess_if
+  if_cond: (_)
+  .
+  "}" @append_hardline @append_indent_start
+)
+(preprocess_if
+  "{" @prepend_hardline @prepend_indent_end
+  .
+  "#endif"
+)
+(preprocess_elif "{" @prepend_hardline @prepend_indent_end)
+(preprocess_elif
+  elif_cond: (_)
+  .
+  "}" @append_hardline @append_indent_start
+)
+"##;
 
 static BLOCKS: &str = r#"
 (func_call

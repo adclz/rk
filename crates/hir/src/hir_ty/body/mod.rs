@@ -25,7 +25,7 @@ use crate::{
         using::Using,
     },
     hir_ty::{
-        body::statements::{NestedScope, StmtsResolverCtx},
+        body::statements::{NestedScope, StmtsResolverCtx, check_preprocess},
         infer::Infer,
         resolver::{
             Resolver,
@@ -70,6 +70,8 @@ pub fn infer_body<'db>(
     let resolver = Resolver::for_scope(db, scope);
 
     ctx.check_statements(db, resolver, statements, NestedScope::None, &mut result);
+
+    check_preprocess(db, scope, statements, &FxHashMap::default(), false, &mut result);
 
     result
 }

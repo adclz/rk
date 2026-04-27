@@ -153,6 +153,46 @@ impl ElementarySpec {
         !self.is_simple()
     }
 
+    /// Enumerate every concrete elementary type accepted by this `ANY_*`
+    /// spec. Returns an empty vec for non-ANY_* receivers. Used by the
+    /// preprocess exhaustiveness check (E0325) to compute which variants
+    /// a `{#if}` chain must cover.
+    pub fn concrete_variants(&self) -> Vec<ElementarySpec> {
+        if !self.is_any() {
+            return Vec::new();
+        }
+        const ALL: &[ElementarySpec] = &[
+            ElementarySpec::Bool,
+            ElementarySpec::Byte,
+            ElementarySpec::Word,
+            ElementarySpec::DWord,
+            ElementarySpec::LWord,
+            ElementarySpec::SInt,
+            ElementarySpec::USInt,
+            ElementarySpec::Int,
+            ElementarySpec::UInt,
+            ElementarySpec::DInt,
+            ElementarySpec::UDInt,
+            ElementarySpec::LInt,
+            ElementarySpec::ULInt,
+            ElementarySpec::Real,
+            ElementarySpec::LReal,
+            ElementarySpec::String,
+            ElementarySpec::WString,
+            ElementarySpec::Char,
+            ElementarySpec::WChar,
+            ElementarySpec::Date,
+            ElementarySpec::LDate,
+            ElementarySpec::DateAndTime,
+            ElementarySpec::LDateTime,
+            ElementarySpec::Time,
+            ElementarySpec::LTime,
+            ElementarySpec::Tod,
+            ElementarySpec::LTod,
+        ];
+        ALL.iter().copied().filter(|c| self.accepts(*c)).collect()
+    }
+
     /// Returns true if this is an ANY_* polymorphic type spec.
     pub fn is_any(&self) -> bool {
         matches!(
@@ -304,4 +344,93 @@ pub struct SubRange<'db> {
     pub _type: Spec<'db>,
     pub lower: Expr<'db>,
     pub upper: Expr<'db>,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// Verify that every `ANY_*` variant returns the exact set of concrete
+    /// elementary types it accepts. Locks the exhaustiveness check's expected
+    /// set against accidental drift (e.g. someone adds a new concrete type
+    /// to the language but forgets to update `concrete_variants`).
+    #[test]
+    fn concrete_variants_for_each_any() {
+        use ElementarySpec::*;
+        let cases: &[(ElementarySpec, &[ElementarySpec])] = &[
+            (
+                AnyInt,
+                &[SInt, USInt, Int, UInt, DInt, UDInt, LInt, ULInt],
+            ),
+            (AnyReal, &[Real, LReal]),
+            (AnyBit, &[Bool, Byte, Word, DWord, LWord]),
+            (AnySigned, &[SInt, Int, DInt, LInt]),
+            (AnyUnsigned, &[USInt, UInt, UDInt, ULInt]),
+            (
+                AnyNum,
+                &[
+                    SInt, USInt, Int, UInt, DInt, UDInt, LInt, ULInt, Real, LReal,
+                ],
+            ),
+            (
+                AnyMagnitude,
+                &[
+                    SInt, USInt, Int, UInt, DInt, UDInt, LInt, ULInt, Real, LReal, Time, LTime,
+                ],
+            ),
+            (AnyDuration, &[Time, LTime]),
+            (
+                AnyDate,
+                &[Date, LDate, DateAndTime, LDateTime, Tod, LTod],
+            ),
+            (AnyChar, &[Char, WChar]),
+            (AnyString, &[String, WString]),
+            (AnyChars, &[String, WString, Char, WChar]),
+        ];
+
+        for (any, expected) in cases {
+            let got = any.concrete_variants();
+            // Sort both sides on byte-pattern of the discriminants for
+            // order-independent equality. Vec equality would care about
+            // ordering; here we only care that the *sets* match.
+            let mut got_sorted = got.clone();
+            got_sorted.sort_by_key(|e| format!("{:?}", e));
+            let mut expected_sorted: Vec<ElementarySpec> = expected.to_vec();
+            expected_sorted.sort_by_key(|e| format!("{:?}", e));
+            assert_eq!(
+                got_sorted, expected_sorted,
+                "{any:?}: got {got:?}, expected {expected:?}",
+            );
+        }
+    }
+
+    /// `concrete_variants` on a non-ANY_* spec must return empty — concrete
+    /// types don't enumerate themselves.
+    #[test]
+    fn concrete_variants_empty_for_concrete() {
+        use ElementarySpec::*;
+        for c in [Int, Real, Bool, Byte, Time, String, Char] {
+            assert!(
+                c.concrete_variants().is_empty(),
+                "concrete spec {c:?} should yield empty variant set",
+            );
+        }
+    }
+
+    /// `Any` is the universal supertype; `AnyElementary` covers everything
+    /// `is_simple` does. Both should be non-empty and contain a representative
+    /// of each major category.
+    #[test]
+    fn concrete_variants_universal_specs_are_non_empty() {
+        use ElementarySpec::*;
+        let any = Any.concrete_variants();
+        let any_elem = AnyElementary.concrete_variants();
+        for representative in [Int, Real, Bool, Time, Date, String] {
+            assert!(any.contains(&representative), "Any missing {representative:?}");
+            assert!(
+                any_elem.contains(&representative),
+                "AnyElementary missing {representative:?}"
+            );
+        }
+    }
 }
