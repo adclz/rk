@@ -276,6 +276,11 @@ pub fn lower_fb_type<'db>(
 
 /// Lower a FunctionBlock type with ANY_* type substitutions.
 /// `any_subs` maps variable names to concrete ElementarySpec types.
+///
+/// The resulting struct's `name` is `fb.name(db)`. For per-instantiation
+/// lowering (where two instantiations of the same FB need distinct
+/// struct names like `Counter$INT` and `Counter$DINT`), use
+/// [`lower_fb_type_with_subs_named`].
 pub fn lower_fb_type_with_subs<'db>(
     db: &'db dyn WorkspaceDataBase,
     fb: FunctionBlock<'db>,
@@ -283,6 +288,21 @@ pub fn lower_fb_type_with_subs<'db>(
         hir::hir_def::interned::identifier::Ident,
         hir::hir_def::expressions::spec::ElementarySpec,
     >,
+) -> Result<MirType, LowerTypeError> {
+    lower_fb_type_with_subs_named(db, fb, any_subs, fb.name(db))
+}
+
+/// Like [`lower_fb_type_with_subs`] but overrides the struct's name.
+/// Used by FB monomorphization so each `(FB, T)` instantiation gets a
+/// uniquely-named MIR struct.
+pub fn lower_fb_type_with_subs_named<'db>(
+    db: &'db dyn WorkspaceDataBase,
+    fb: FunctionBlock<'db>,
+    any_subs: &rustc_hash::FxHashMap<
+        hir::hir_def::interned::identifier::Ident,
+        hir::hir_def::expressions::spec::ElementarySpec,
+    >,
+    name: hir::hir_def::interned::identifier::Ident,
 ) -> Result<MirType, LowerTypeError> {
     let mut offset = 0u32;
     let mut max_align = 1u32;
@@ -342,7 +362,7 @@ pub fn lower_fb_type_with_subs<'db>(
     offset = align_to(offset, max_align);
 
     Ok(MirType::Struct(MirStructType {
-        name: fb.name(db),
+        name,
         fields,
         size: offset,
         align: max_align,

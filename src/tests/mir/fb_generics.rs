@@ -144,7 +144,7 @@ VAR counter : CTU<INT>; END_VAR
 END_FUNCTION
     "#;
     assert_snapshot!(mir_exports(&mut with_db, &[fb_source, caller_source]), @r"
-    export CTU$__body__(*struct(CTU))
+    export CTU$INT$__body__(*struct(CTU$INT))
     export test()
     ");
 }
@@ -166,7 +166,7 @@ VAR counter : CTU<INT>; END_VAR
 END_FUNCTION
     "#;
     assert_snapshot!(mir_exports(&mut with_db, &[source]), @r"
-    export CTU$__body__(*struct(CTU))
+    export CTU$INT$__body__(*struct(CTU$INT))
     export test()
     ");
 }
@@ -187,7 +187,7 @@ VAR counter : CTU<INT>; END_VAR
 END_FUNCTION
     "#;
     assert_snapshot!(mir_exports(&mut with_db, &[source]), @r"
-    export CTU$__body__(*struct(CTU))
+    export CTU$INT$__body__(*struct(CTU$INT))
     export test() -> Int
     ");
 }

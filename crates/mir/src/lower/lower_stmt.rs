@@ -50,6 +50,35 @@ pub fn lower_stmts_with_fb_subs<'db>(
     lower_stmts_with_ctx(db, stmts, None, Some(fb_subs), string_pool)
 }
 
+/// Lower with both legacy `fb_subs` and a per-function var-name → mangled
+/// FB name map. The latter is consulted when constructing FbCall body
+/// names so generic FB instantiations route to their per-T `__body__`.
+pub fn lower_stmts_with_fb_subs_and_mangling<'db>(
+    db: &'db dyn WorkspaceDataBase,
+    stmts: &[Stmt<'db>],
+    fb_subs: &FbSubsMap,
+    local_fb_mangling: &rustc_hash::FxHashMap<
+        hir::hir_def::interned::identifier::Ident,
+        hir::hir_def::interned::identifier::Ident,
+    >,
+    string_pool: std::rc::Rc<std::cell::RefCell<super::lower_expr::StringPool>>,
+) -> Result<Vec<MirStmt>, LowerTypeError> {
+    let mut ctx = super::lower_expr::ExprLowerCtx::new(db, string_pool);
+    if !fb_subs.is_empty() {
+        ctx.fb_subs = Some(std::rc::Rc::new(fb_subs.clone()));
+    }
+    if !local_fb_mangling.is_empty() {
+        ctx.local_fb_mangling = Some(std::rc::Rc::new(local_fb_mangling.clone()));
+    }
+    let mut result = Vec::new();
+    for stmt in stmts {
+        if let Some(mir_stmt) = lower_stmt(&ctx, *stmt)? {
+            result.push(mir_stmt);
+        }
+    }
+    Ok(result)
+}
+
 /// Lower a slice of HIR statements with an optional ANY type override for monomorphization.
 pub fn lower_stmts_with_ctx<'db>(
     db: &'db dyn WorkspaceDataBase,

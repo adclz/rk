@@ -47,6 +47,7 @@ pub fn lower_function<'db>(
             hir::hir_def::expressions::spec::ElementarySpec,
         >,
     >,
+    fb_mangling: &super::monomorphize::FbInstanceMap<'db>,
 ) -> Result<MirFunction, LowerTypeError> {
     let mut params = Vec::new();
     let mut locals = Vec::new();
@@ -56,7 +57,7 @@ pub fn lower_function<'db>(
     let address_taken = collect_address_taken_vars(db, func.statements(db));
 
     // 1. Build parameters (Input, InOut, Output)
-    // VAR_OUTPUT is passed as a pointer at the WASM level — the function writes through it.
+    // VAR_OUTPUT is passed as a pointer at the WASM level - the function writes through it.
     for var in func.variables(db) {
         match var.kind(db) {
             VariableKind::Input => {
@@ -95,10 +96,8 @@ pub fn lower_function<'db>(
         })
         .transpose()?;
 
-    // If there's a return type, allocate a slot for it (named after the function).
-    // Scalar types go into a WASM local; non-scalar (STRING, structs) live in
-    // linear memory — the codegen epilogue reads from that slot to produce the
-    // function's return value.
+    // The return slot, named after the function: scalars in a wasm local,
+    // STRING and aggregates in linear memory.
     if let Some(ref ret_ty) = return_type {
         let storage = compute_storage(func.name(db), ret_ty, false, &mut next_local_idx, memory_layout);
         locals.push(MirLocal {
@@ -110,14 +109,14 @@ pub fn lower_function<'db>(
         });
     }
 
-    // 3. Local variables (Var, Temp — Output is a parameter now)
+    // 3. Local variables (Var, Temp - Output is a parameter now)
     for var in func.variables(db) {
         match var.kind(db) {
             VariableKind::Input | VariableKind::InOut | VariableKind::Output => continue,
             _ => {}
         }
 
-        let ty = lower_var_type_with_fb_subs(db, *var, fb_subs)?;
+        let ty = lower_var_type_with_mangling(db, *var, fb_subs, fb_mangling)?;
         let storage = compute_storage(
             var.name(db),
             &ty,
@@ -156,13 +155,28 @@ pub fn lower_function<'db>(
     }
 
     // 5. Lower body statements (with FB subs for generic FB instantiation)
-    let mut body = if fb_subs.is_empty() {
+    // Build a per-function var-name → mangled-FB-name lookup so FB
+    // calls inside the body resolve to the right `__body__` per
+    // concrete `T` (e.g. `c_int : Counter<INT>` calls
+    // `Counter$INT$__body__`).
+    let mut local_fb_mangling: FxHashMap<
+        hir::hir_def::interned::identifier::Ident,
+        hir::hir_def::interned::identifier::Ident,
+    > = FxHashMap::default();
+    for var in func.variables(db) {
+        if let Some(mangled) = fb_mangling.mangled_for_var(*var) {
+            local_fb_mangling.insert(var.name(db), mangled);
+        }
+    }
+
+    let mut body = if fb_subs.is_empty() && local_fb_mangling.is_empty() {
         lower_stmts(db, func.statements(db), string_pool.clone())?
     } else {
-        crate::lower::lower_stmt::lower_stmts_with_fb_subs(
+        crate::lower::lower_stmt::lower_stmts_with_fb_subs_and_mangling(
             db,
             func.statements(db),
             fb_subs,
+            &local_fb_mangling,
             string_pool.clone(),
         )?
     };
@@ -173,7 +187,7 @@ pub fn lower_function<'db>(
     }
     let body = body;
 
-    // Determine linkage — check if there's an extern pragma
+    // Determine linkage - check if there's an extern pragma
     let is_extern = func
         .statements(db)
         .iter()
@@ -210,6 +224,7 @@ pub fn lower_function_block<'db>(
         hir::hir_def::interned::identifier::Ident,
         hir::hir_def::expressions::spec::ElementarySpec,
     >,
+    mangled_name: hir::hir_def::interned::identifier::Ident,
 ) -> Result<Vec<MirFunction>, LowerTypeError> {
     let mut functions = Vec::new();
     let mut idx = start_index;
@@ -221,7 +236,12 @@ pub fn lower_function_block<'db>(
         let mut next_local_idx: u32 = 1; // 0 is 'this'
 
         // 'this' pointer parameter (use substitutions for ANY types)
-        let fb_type = super::lower_type::lower_fb_type_with_subs(db, fb, any_subs)?;
+        let fb_type = super::lower_type::lower_fb_type_with_subs_named(
+            db,
+            fb,
+            any_subs,
+            mangled_name,
+        )?;
         params.push(MirParam {
             name: Ident::new(db, compact_str::CompactString::from("this")),
             ty: MirType::Pointer(Box::new(fb_type)),
@@ -296,7 +316,7 @@ pub fn lower_function_block<'db>(
             db,
             compact_str::CompactString::from(format!(
                 "{}${}",
-                fb.name(db).text(db),
+                mangled_name.text(db),
                 method.name(db).text(db)
             )),
         );
@@ -319,7 +339,12 @@ pub fn lower_function_block<'db>(
     // Lower FB body as __body__ function
     // All variables (input, output, var) are accessed through the 'this' pointer.
     if !fb.statements(db).is_empty() {
-        let fb_type = super::lower_type::lower_fb_type_with_subs(db, fb, any_subs)?;
+        let fb_type = super::lower_type::lower_fb_type_with_subs_named(
+            db,
+            fb,
+            any_subs,
+            mangled_name,
+        )?;
         let body_params = vec![MirParam {
             name: Ident::new(db, compact_str::CompactString::from("this")),
             ty: MirType::Pointer(Box::new(fb_type.clone())),
@@ -372,9 +397,23 @@ pub fn lower_function_block<'db>(
         // All ANY_* variables in the FB resolve to the same concrete type group
         // (via INTO chains), so taking the first value is correct.
         let any_override = any_subs.values().next().copied();
+        // Resolve `{#if X is T}` arms against the concrete type before
+        // lowering - same dispatch as functions, just for FB bodies.
+        let expanded_owned;
+        let body_input: &[hir::hir_def::expressions::statement::Stmt<'db>] = match any_override {
+            Some(concrete) => {
+                expanded_owned = super::monomorphize::expanded_body_for_concrete(
+                    db,
+                    fb.statements(db),
+                    concrete,
+                );
+                &expanded_owned
+            }
+            None => fb.statements(db),
+        };
         let body_stmts = crate::lower::lower_stmt::lower_stmts_fb_body(
             db,
-            fb.statements(db),
+            body_input,
             this_struct,
             string_pool.clone(),
             fb_subs_map.as_ref(),
@@ -383,7 +422,10 @@ pub fn lower_function_block<'db>(
 
         let body_name = Ident::new(
             db,
-            compact_str::CompactString::from(format!("{}$__body__", fb.name(db).text(db))),
+            compact_str::CompactString::from(format!(
+                "{}$__body__",
+                mangled_name.text(db)
+            )),
         );
 
         functions.push(MirFunction {
@@ -590,8 +632,10 @@ fn lower_var_type<'db>(
     lower_type(db, ty)
 }
 
-/// Lower a variable's type, resolving FB types using the global ANY substitution map.
-fn lower_var_type_with_fb_subs<'db>(
+/// Lower a variable's type, resolving FB types using the per-variable
+/// FB instantiation map (preferred), with fallback to the legacy
+/// global FB-name → subs map.
+fn lower_var_type_with_mangling<'db>(
     db: &'db dyn WorkspaceDataBase,
     var: VariableDecl<'db>,
     fb_subs: &FxHashMap<
@@ -601,17 +645,29 @@ fn lower_var_type_with_fb_subs<'db>(
             hir::hir_def::expressions::spec::ElementarySpec,
         >,
     >,
+    fb_mangling: &super::monomorphize::FbInstanceMap<'db>,
 ) -> Result<MirType, LowerTypeError> {
     let ty = var.spec(db).infer(db);
-    match ty {
-        Type::FunctionBlock(fb) => {
-            if let Some(subs) = fb_subs.get(&fb.name(db)) {
-                super::lower_type::lower_fb_type_with_subs(db, fb, subs)
-            } else {
-                lower_type(db, ty)
-            }
-        }
-        _ => lower_type(db, ty),
+    let Type::FunctionBlock(fb) = ty else {
+        return lower_type(db, ty);
+    };
+    // Prefer per-variable mangled instantiation: this picks the correct
+    // struct name when two variables of the same FB use distinct
+    // concrete types (e.g. `Counter<INT>` and `Counter<DINT>`).
+    if let Some(mangled) = fb_mangling.mangled_for_var(var) {
+        let subs = fb_mangling
+            .subs_for_mangled(mangled)
+            .cloned()
+            .unwrap_or_default();
+        return super::lower_type::lower_fb_type_with_subs_named(db, fb, &subs, mangled);
+    }
+    // Fallback: non-generic FB or unrecognized variable — keep the
+    // legacy subs lookup so existing single-instantiation behavior is
+    // preserved.
+    if let Some(subs) = fb_subs.get(&fb.name(db)) {
+        super::lower_type::lower_fb_type_with_subs(db, fb, subs)
+    } else {
+        lower_type(db, ty)
     }
 }
 
@@ -634,7 +690,7 @@ fn collect_address_taken_vars<'db>(
             ExprKind::PrimaryExpr(PrimaryExpr::RefValue {
                 value: RefValue::Address(begin_path),
             }) => {
-                // REF(var) — extract the variable name
+                // REF(var) - extract the variable name
                 if let Some(path_expr) = begin_path.expr(db) {
                     let ident = path_expr.ident(db).ident;
                     result.insert(ident);

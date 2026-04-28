@@ -71,8 +71,31 @@ fn lower_module_from_pous<'db>(
     ));
     let mut next_fn_idx: u32 = 0;
 
-    // Pre-compute ANY_* substitutions for all FBs.
-    // Key: FB name, Value: map of variable name → concrete ElementarySpec.
+    // Collect every unique FB instantiation actually used at call
+    // sites. `var_to_mangled_fb` maps each FB-instance variable to its
+    // mangled FB name so consumers can look up the right type.
+    let (fb_instances, var_to_mangled_fb) =
+        super::monomorphize::collect_fb_instantiations(db, all_pous);
+    // Group instantiations by FB so the FB-iteration loop can run them
+    // back-to-back.
+    let mut fb_instances_by_name: FxHashMap<
+        hir::hir_def::interned::identifier::Ident,
+        Vec<&super::monomorphize::FbInstance<'db>>,
+    > = FxHashMap::default();
+    for inst in &fb_instances {
+        fb_instances_by_name
+            .entry(inst.fb.name(db))
+            .or_default()
+            .push(inst);
+    }
+    // Per-variable mangling lookup used by consumers
+    // (function-local variable typing, FB calls).
+    let fb_mangling =
+        super::monomorphize::FbInstanceMap::from_instances(fb_instances.clone(), var_to_mangled_fb);
+    // Backward-compat: bridge to the old `all_fb_subs` shape consumed
+    // by `lower_function` / `ExprLowerCtx.fb_subs`. Last-write-wins per
+    // FB name (same as the pre-refactor behavior). The per-variable
+    // path will replace this shortly.
     let mut all_fb_subs: FxHashMap<
         hir::hir_def::interned::identifier::Ident,
         FxHashMap<
@@ -80,18 +103,9 @@ fn lower_module_from_pous<'db>(
             hir::hir_def::expressions::spec::ElementarySpec,
         >,
     > = FxHashMap::default();
-    for (pou, _) in all_pous.iter() {
-        if let Pou::FunctionBlock(fb) = pou {
-            let has_any = fb.variables(db).iter().any(|v| {
-                let ty = v.spec(db).infer(db).normalize(db);
-                matches!(ty, hir::hir_ty::ty::Type::Elementary(e) if e.is_any())
-            });
-            if has_any {
-                let subs = collect_fb_any_subs(db, all_pous, *fb);
-                if !subs.is_empty() {
-                    all_fb_subs.insert(fb.name(db), subs);
-                }
-            }
+    for inst in &fb_instances {
+        if !inst.subs.is_empty() {
+            all_fb_subs.insert(inst.fb.name(db), inst.subs.clone());
         }
     }
 
@@ -218,6 +232,7 @@ fn lower_module_from_pous<'db>(
                     &mut memory_layout,
                     string_pool.clone(),
                     &all_fb_subs,
+                    &fb_mangling,
                 )?;
                 mir_func.export_name = make_export_name(ns_prefix, func.name(db).text(db));
                 function_indices.insert(func.name(db), next_fn_idx);
@@ -242,65 +257,65 @@ fn lower_module_from_pous<'db>(
             }
 
             Pou::FunctionBlock(fb) => {
-                let has_any = fb.variables(db).iter().any(|v| {
-                    let ty = v.spec(db).infer(db).normalize(db);
-                    matches!(ty, hir::hir_ty::ty::Type::Elementary(e) if e.is_any())
-                });
-
-                // For FBs with ANY_* vars, use pre-computed resolutions.
-                // If no call-site provided concrete types, skip this FB entirely
-                // (it can't be instantiated without concrete types).
-                let any_subs = if has_any {
-                    match all_fb_subs.get(&fb.name(db)) {
-                        Some(subs) if !subs.is_empty() => subs.clone(),
-                        _ => continue,
-                    }
-                } else {
-                    FxHashMap::default()
+                // Emit one set of (instance type + body + methods) per
+                // unique `(FB, T)` instantiation. Generic FBs that were
+                // never instantiated produce no entries in the
+                // collector; skip them here too.
+                let Some(insts) = fb_instances_by_name.get(&fb.name(db)) else {
+                    continue;
                 };
 
-                // Build instance type (with substitutions if ANY)
-                let fb_mir_type = lower_fb_type_with_subs(db, *fb, &any_subs)?;
-                if let MirType::Struct(ref struct_type) = fb_mir_type {
-                    let inst_fields: Vec<MirInstanceField> = struct_type
-                        .fields
-                        .iter()
-                        .map(|f| {
-                            let nested = match &f.ty {
-                                MirType::Struct(inner) => Some(inner.name),
-                                _ => None,
-                            };
-                            MirInstanceField {
-                                name: f.name,
-                                ty: f.ty.clone(),
-                                offset: f.offset,
-                                nested_instance: nested,
-                                init: None, // TODO: compute initializers
-                            }
-                        })
-                        .collect();
+                for inst in insts {
+                    let any_subs = inst.subs.clone();
+                    let mangled = inst.mangled_name;
 
-                    instance_types.push(MirInstanceType {
-                        name: fb.name(db),
-                        fields: inst_fields,
-                        size: struct_type.size,
-                        align: struct_type.align,
-                    });
-                }
+                    // Instance type with the mangled struct name.
+                    let fb_mir_type =
+                        super::lower_type::lower_fb_type_with_subs_named(
+                            db, *fb, &any_subs, mangled,
+                        )?;
+                    if let MirType::Struct(ref struct_type) = fb_mir_type {
+                        let inst_fields: Vec<MirInstanceField> = struct_type
+                            .fields
+                            .iter()
+                            .map(|f| {
+                                let nested = match &f.ty {
+                                    MirType::Struct(inner) => Some(inner.name),
+                                    _ => None,
+                                };
+                                MirInstanceField {
+                                    name: f.name,
+                                    ty: f.ty.clone(),
+                                    offset: f.offset,
+                                    nested_instance: nested,
+                                    init: None, // TODO: compute initializers
+                                }
+                            })
+                            .collect();
 
-                // Lower methods
-                let method_funcs = lower_function_block(
-                    db,
-                    *fb,
-                    next_fn_idx,
-                    &mut memory_layout,
-                    string_pool.clone(),
-                    &any_subs,
-                )?;
-                for mf in method_funcs {
-                    function_indices.insert(mf.name, mf.index);
-                    next_fn_idx += 1;
-                    functions.push(mf);
+                        instance_types.push(MirInstanceType {
+                            name: mangled,
+                            fields: inst_fields,
+                            size: struct_type.size,
+                            align: struct_type.align,
+                        });
+                    }
+
+                    // Lower methods + __body__ with the mangled name.
+                    let method_funcs = lower_function_block(
+                        db,
+                        *fb,
+                        next_fn_idx,
+                        &mut memory_layout,
+                        string_pool.clone(),
+                        &any_subs,
+                        mangled,
+                    )?;
+                    for mf in method_funcs {
+                        function_indices.insert(mf.name, mf.index);
+                        next_fn_idx += 1;
+                        functions.push(mf);
+                    }
                 }
             }
 

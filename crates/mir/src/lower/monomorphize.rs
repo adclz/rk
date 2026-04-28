@@ -1,6 +1,6 @@
 //! Monomorphization of ANY_* functions.
 //!
-//! ANY_* functions are polymorphic — they accept parameters typed as AnyInt, AnyReal, etc.
+//! ANY_* functions are polymorphic - they accept parameters typed as AnyInt, AnyReal, etc.
 //! This module handles instantiating concrete copies for each call site.
 //!
 //! The approach:
@@ -36,15 +36,17 @@ use crate::{
 };
 
 /// Info about an ANY_* function pending monomorphization.
+///
+/// The wasm/extern classification is intentionally not stored here -
+/// with `{#if X is T}` arms, different concrete `T`s can route through
+/// different pragmas (or no pragma, falling through to local-body
+/// lowering). The classification is recomputed per-`T` in
+/// [`monomorphize`] from the expanded body.
 #[derive(Clone)]
 pub struct AnyFunctionInfo<'db> {
     pub func: Function<'db>,
     /// The ANY_* spec on the return type (or first ANY_* param).
     pub any_spec: ElementarySpec,
-    /// If extern, the extern declaration.
-    pub extern_decl: Option<ExternDecl<'db>>,
-    /// If wasm intrinsic, the wasm declaration.
-    pub wasm_decl: Option<hir::hir_def::extern_decl::WasmDecl<'db>>,
 }
 
 /// Detect whether a function has ANY_* typed parameters or return type.
@@ -52,23 +54,12 @@ pub fn detect_any_function<'db>(
     db: &'db dyn WorkspaceDataBase,
     func: Function<'db>,
 ) -> Option<AnyFunctionInfo<'db>> {
-    let make_info = |e: ElementarySpec| {
-        let extern_decl = find_extern_decl(db, func);
-        let wasm_decl = find_wasm_decl(db, func);
-        AnyFunctionInfo {
-            func,
-            any_spec: e,
-            extern_decl,
-            wasm_decl,
-        }
-    };
-
     // Check return type first
     if let Some(ret) = func.return_type(db)
         && let Type::Elementary(e) = ret.infer(db)
         && e.is_any()
     {
-        return Some(make_info(e));
+        return Some(AnyFunctionInfo { func, any_spec: e });
     }
 
     // Check parameters
@@ -78,20 +69,63 @@ pub fn detect_any_function<'db>(
         if let Type::Elementary(e) = var.spec(db).infer(db)
             && e.is_any()
         {
-            return Some(make_info(e));
+            return Some(AnyFunctionInfo { func, any_spec: e });
         }
     }
 
     None
 }
 
-/// Find extern pragma in a function's statements.
-fn find_extern_decl<'db>(
+/// Resolve `{#if X is T}` arms against a concrete type, returning a flat
+/// statement list for that monomorphization.
+///
+/// For each `PreprocessIf`, the first arm whose `cond.expected` resolves
+/// to `concrete` is inlined recursively (arms can nest). If no arm
+/// matches, the entire `PreprocessIf` is dropped - the implementer's
+/// responsibility to cover variants they care about. All other
+/// statements pass through unchanged.
+///
+/// This mirrors Zig's `zirCondbr`: when the cond is a known value, only
+/// the matching arm is analyzed; non-taken arms are never visited.
+pub(crate) fn expanded_body_for_concrete<'db>(
     db: &'db dyn WorkspaceDataBase,
-    func: Function<'db>,
+    stmts: &[hir::hir_def::expressions::statement::Stmt<'db>],
+    concrete: ElementarySpec,
+) -> Vec<hir::hir_def::expressions::statement::Stmt<'db>> {
+    use hir::hir_def::expressions::spec::SpecKind;
+    use hir::hir_def::expressions::statement::StmtKind;
+    let mut result = Vec::new();
+    for stmt in stmts {
+        match stmt.stmt(db) {
+            StmtKind::PreprocessIf { branches } => {
+                for branch in branches {
+                    // The cond's expected spec lives in the body, not in
+                    // the signature, so `Spec::infer` returns `Never`
+                    // (it only knows about signature-level specs). Read
+                    // the kind directly. E0327 already rejected anything
+                    // other than a concrete elementary, so a `Simple`
+                    // match is the only thing we need to handle.
+                    if let SpecKind::Simple(e) = branch.cond.expected.kind(db)
+                        && *e == concrete
+                    {
+                        result.extend(expanded_body_for_concrete(db, &branch.body, concrete));
+                        break;
+                    }
+                }
+            }
+            _ => result.push(*stmt),
+        }
+    }
+    result
+}
+
+/// Find extern pragma in a flat statement list.
+fn find_extern_decl_in<'db>(
+    db: &'db dyn WorkspaceDataBase,
+    stmts: &[hir::hir_def::expressions::statement::Stmt<'db>],
 ) -> Option<ExternDecl<'db>> {
     use hir::hir_def::expressions::statement::StmtKind;
-    func.statements(db).iter().find_map(|stmt| {
+    stmts.iter().find_map(|stmt| {
         if let StmtKind::ExternPragma(decl) = stmt.stmt(db) {
             Some(decl.clone())
         } else {
@@ -100,13 +134,210 @@ fn find_extern_decl<'db>(
     })
 }
 
-/// Find wasm pragma in a function's statements.
-fn find_wasm_decl<'db>(
+/// One concrete instantiation of a (generic) FB.
+///
+/// For non-generic FBs, `subs` is empty and `mangled_name == fb.name(db)`.
+/// For generic FBs, `subs` carries each ANY_* field's concrete binding,
+/// and `mangled_name` interleaves the concretes (e.g. `Counter$INT`).
+#[derive(Clone)]
+pub struct FbInstance<'db> {
+    pub fb: hir::hir_def::pous::function_block::FunctionBlock<'db>,
+    pub subs: FxHashMap<Ident, ElementarySpec>,
+    pub mangled_name: Ident,
+}
+
+/// Per-variable lookup from a `VariableDecl` to the mangled FB name of
+/// its concrete instantiation, plus the underlying instances.
+///
+/// Replaces the legacy `fb_subs: Map<fb_name, Map<field, concrete>>`
+/// shape, which collapsed all instantiations of one FB into a single
+/// substitution map (last-write-wins).
+#[derive(Default, Clone)]
+pub struct FbInstanceMap<'db> {
+    pub var_to_mangled: FxHashMap<
+        hir::hir_def::pous::variable::VariableDecl<'db>,
+        Ident,
+    >,
+    pub by_mangled: FxHashMap<Ident, FbInstance<'db>>,
+}
+
+impl<'db> FbInstanceMap<'db> {
+    pub fn from_instances(
+        instances: Vec<FbInstance<'db>>,
+        var_to_mangled: FxHashMap<
+            hir::hir_def::pous::variable::VariableDecl<'db>,
+            Ident,
+        >,
+    ) -> Self {
+        let mut by_mangled = FxHashMap::default();
+        for inst in instances {
+            by_mangled.insert(inst.mangled_name, inst);
+        }
+        FbInstanceMap {
+            var_to_mangled,
+            by_mangled,
+        }
+    }
+
+    /// Mangled name for a variable's FB instantiation, if it's an FB
+    /// instance. Returns `None` for non-FB variables and for FB
+    /// variables that the collector didn't tag (e.g. unused or
+    /// non-generic FBs that fall back to bare names elsewhere).
+    pub fn mangled_for_var(
+        &self,
+        var: hir::hir_def::pous::variable::VariableDecl<'db>,
+    ) -> Option<Ident> {
+        self.var_to_mangled.get(&var).copied()
+    }
+
+    /// Look up the substitution map for a mangled name.
+    pub fn subs_for_mangled(&self, mangled: Ident) -> Option<&FxHashMap<Ident, ElementarySpec>> {
+        self.by_mangled.get(&mangled).map(|i| &i.subs)
+    }
+}
+
+/// Mangle a generic FB instantiation into a unique name.
+///
+/// - Non-generic (empty subs) → returns `fb_name` unchanged so existing
+///   names like `Counter$__body__` keep working for non-generic FBs.
+/// - Generic (one or more subs) → joins concretes by `$` in
+///   field-name-sorted order to make the mangling deterministic.
+pub fn mangle_fb_name<'db>(
     db: &'db dyn WorkspaceDataBase,
-    func: Function<'db>,
+    fb_name: Ident,
+    subs: &FxHashMap<Ident, ElementarySpec>,
+) -> Ident {
+    if subs.is_empty() {
+        return fb_name;
+    }
+    let mut entries: Vec<_> = subs.iter().collect();
+    entries.sort_by(|a, b| a.0.text(db).cmp(b.0.text(db)));
+    let mut s = fb_name.text(db).to_string();
+    for (_, concrete) in entries {
+        s.push('$');
+        s.push_str(concrete.type_name());
+    }
+    Ident::new(db, compact_str::CompactString::from(s))
+}
+
+/// Walk every body's `fb_any_resolutions` and collect the unique set of
+/// FB instantiations actually used at call sites.
+///
+/// Returns:
+/// - `instances`: list of unique `FbInstance`s (by `(fb_name,
+///   sorted_subs)`); also includes a default empty-subs instantiation
+///   for every non-generic FB so the existing struct/body emission path
+///   stays uniform.
+/// - `var_to_mangled`: per-`VariableDecl` lookup mapping each FB-instance
+///   variable to its mangled FB name. Used to type variables and route
+///   call sites to the correct `__body__`.
+pub fn collect_fb_instantiations<'db>(
+    db: &'db dyn WorkspaceDataBase,
+    all_pous: &[(&hir::hir_def::pous::pou::Pou<'db>, Option<String>)],
+) -> (
+    Vec<FbInstance<'db>>,
+    FxHashMap<hir::hir_def::pous::variable::VariableDecl<'db>, Ident>,
+) {
+    use hir::HasName;
+    use hir::HirNodeInfo;
+    use hir::hir_def::pous::pou::Pou;
+    use hir::hir_ty::body::infer_body;
+    use hir::hir_ty::infer::Infer;
+
+    // Canonical key: (fb_name, sorted concrete bindings as a Vec).
+    let mut by_canonical: rustc_hash::FxHashMap<
+        (Ident, Vec<(Ident, ElementarySpec)>),
+        Ident,
+    > = FxHashMap::default();
+    let mut instances: Vec<FbInstance<'db>> = Vec::new();
+    let mut var_to_mangled: FxHashMap<
+        hir::hir_def::pous::variable::VariableDecl<'db>,
+        Ident,
+    > = FxHashMap::default();
+
+    // Walk every POU body's fb_any_resolutions, group by VariableDecl,
+    // and collect unique (fb, subs) tuples.
+    for (pou, _) in all_pous {
+        let scope = match pou {
+            Pou::Function(f) => f.scope_id(db),
+            Pou::FunctionBlock(fb) => fb.scope_id(db),
+            Pou::Class(c) => c.scope_id(db),
+            _ => continue,
+        };
+
+        // Also walk method scopes inside FBs/Classes so per-method
+        // bodies' instantiations are seen.
+        let body = infer_body(db, scope);
+        let mut per_var: FxHashMap<
+            hir::hir_def::pous::variable::VariableDecl<'db>,
+            FxHashMap<Ident, ElementarySpec>,
+        > = FxHashMap::default();
+        for ((var_decl, field), concrete) in &body.fb_any_resolutions {
+            per_var.entry(*var_decl).or_default().insert(*field, *concrete);
+        }
+
+        for (var_decl, subs) in per_var {
+            let var_ty = var_decl.spec(db).infer(db).normalize(db);
+            let fb = match var_ty {
+                hir::hir_ty::ty::Type::FunctionBlock(fb) => fb,
+                _ => continue,
+            };
+
+            let mut sorted: Vec<(Ident, ElementarySpec)> =
+                subs.iter().map(|(k, v)| (*k, *v)).collect();
+            sorted.sort_by(|a, b| a.0.text(db).cmp(b.0.text(db)));
+            let key = (fb.name(db), sorted);
+
+            let mangled = match by_canonical.get(&key) {
+                Some(m) => *m,
+                None => {
+                    let m = mangle_fb_name(db, fb.name(db), &subs);
+                    by_canonical.insert(key, m);
+                    instances.push(FbInstance {
+                        fb,
+                        subs: subs.clone(),
+                        mangled_name: m,
+                    });
+                    m
+                }
+            };
+            var_to_mangled.insert(var_decl, mangled);
+        }
+    }
+
+    // Add a default (empty-subs) instantiation for every non-generic FB
+    // so the lowering loop can iterate uniformly over `instances`.
+    for (pou, _) in all_pous {
+        if let Pou::FunctionBlock(fb) = pou {
+            let has_any = fb.variables(db).iter().any(|v| {
+                let ty = v.spec(db).infer(db).normalize(db);
+                matches!(ty, hir::hir_ty::ty::Type::Elementary(e) if e.is_any())
+            });
+            if has_any {
+                continue;
+            }
+            let key = (fb.name(db), Vec::new());
+            if !by_canonical.contains_key(&key) {
+                by_canonical.insert(key, fb.name(db));
+                instances.push(FbInstance {
+                    fb: *fb,
+                    subs: FxHashMap::default(),
+                    mangled_name: fb.name(db),
+                });
+            }
+        }
+    }
+
+    (instances, var_to_mangled)
+}
+
+/// Find wasm pragma in a flat statement list.
+fn find_wasm_decl_in<'db>(
+    db: &'db dyn WorkspaceDataBase,
+    stmts: &[hir::hir_def::expressions::statement::Stmt<'db>],
 ) -> Option<hir::hir_def::extern_decl::WasmDecl<'db>> {
     use hir::hir_def::expressions::statement::StmtKind;
-    func.statements(db).iter().find_map(|stmt| {
+    stmts.iter().find_map(|stmt| {
         if let StmtKind::WasmPragma(decl) = stmt.stmt(db) {
             Some(decl.clone())
         } else {
@@ -250,7 +481,15 @@ pub fn monomorphize<'db>(
                 CompactString::from(format!("{}.{}", func_name.text(db), type_suffix)),
             );
 
-            if let Some(wasm_decl) = &info.wasm_decl {
+            // Resolve `{#if}` arms against this concrete type and classify
+            // the resulting body. Arms that don't match `concrete_spec` are
+            // dropped; arms that do match are inlined.
+            let expanded =
+                expanded_body_for_concrete(db, info.func.statements(db), *concrete_spec);
+            let wasm_decl_for_t = find_wasm_decl_in(db, &expanded);
+            let extern_decl_for_t = find_extern_decl_in(db, &expanded);
+
+            if let Some(wasm_decl) = &wasm_decl_for_t {
                 // Wasm intrinsic ANY_* function → build monomorphized function with concrete types
 
                 use crate::function::*;
@@ -334,7 +573,7 @@ pub fn monomorphize<'db>(
                     is_test: false,
                     export_name: None,
                 });
-            } else if let Some(extern_decl) = &info.extern_decl {
+            } else if let Some(extern_decl) = &extern_decl_for_t {
                 // Extern ANY_* function → generate MirExternFunction with suffixed name
                 let mut params = Vec::new();
                 for var in info.func.variables(db) {
@@ -511,10 +750,12 @@ fn lower_monomorphized_local<'db>(
         next_local_idx += 1;
     }
 
-    // Lower body statements with ANY type override
+    // Resolve `{#if}` arms against this concrete type, then lower the
+    // resulting flat body with the ANY override.
+    let expanded = expanded_body_for_concrete(db, func.statements(db), concrete_spec);
     let body = crate::lower::lower_stmt::lower_stmts_with_ctx(
         db,
-        func.statements(db),
+        &expanded,
         Some(concrete_spec),
         None,
         string_pool,
@@ -701,7 +942,7 @@ fn infer_concrete_type_from_expr(expr: &MirExpr) -> Option<MirElementary> {
         MirExpr::BinOp { ty, .. } => Some(*ty),
         MirExpr::UnaryOp { ty, .. } => Some(*ty),
         MirExpr::Cast { to, .. } => Some(*to),
-        // For loads and calls, we'd need type context — but the expression
+        // For loads and calls, we'd need type context - but the expression
         // was already typed during lowering. The call's return_type carries it.
         MirExpr::Call(call) => match &call.return_type {
             MirType::Elementary(e) => Some(*e),

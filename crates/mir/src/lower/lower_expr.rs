@@ -32,7 +32,7 @@ pub struct ExprLowerCtx<'db> {
     /// The `this` struct when lowering an FB body: member accesses become
     /// `ThisField`.
     pub this_struct: Option<crate::types::MirStructType>,
-    /// FB ANY_* substitutions — maps FB name → (var name → concrete ElementarySpec).
+    /// FB ANY_* substitutions - maps FB name → (var name → concrete ElementarySpec).
     pub fb_subs: Option<
         std::rc::Rc<
             rustc_hash::FxHashMap<
@@ -41,7 +41,21 @@ pub struct ExprLowerCtx<'db> {
             >,
         >,
     >,
-    /// String literal pool — shared across all functions in the module.
+    /// Per-variable mangled FB-instance name lookup. Built per-function
+    /// from the module's `FbInstanceMap`: each entry maps a local
+    /// variable's name to the mangled FB name of its concrete
+    /// instantiation (e.g. `c_int` → `Counter$INT`). Used when
+    /// constructing `FbCall.body_func` so call sites land on the
+    /// correct per-T `__body__`.
+    pub local_fb_mangling: Option<
+        std::rc::Rc<
+            rustc_hash::FxHashMap<
+                hir::hir_def::interned::identifier::Ident,
+                hir::hir_def::interned::identifier::Ident,
+            >,
+        >,
+    >,
+    /// String literal pool - shared across all functions in the module.
     pub string_pool: std::rc::Rc<std::cell::RefCell<StringPool>>,
 }
 
@@ -52,7 +66,7 @@ pub struct StringPool {
     pub entries: Vec<(u32, Vec<u8>)>,
     /// Current offset in the data section (grows as strings are added).
     next_offset: u32,
-    /// Base offset — string data starts AFTER all static memory (globals, FB instances).
+    /// Base offset - string data starts AFTER all static memory (globals, FB instances).
     pub base_offset: u32,
 }
 
@@ -98,6 +112,7 @@ impl<'db> ExprLowerCtx<'db> {
             any_override: None,
             this_struct: None,
             fb_subs: None,
+            local_fb_mangling: None,
             string_pool,
         }
     }
@@ -112,6 +127,7 @@ impl<'db> ExprLowerCtx<'db> {
             any_override: Some(concrete),
             this_struct: None,
             fb_subs: None,
+            local_fb_mangling: None,
             string_pool,
         }
     }
@@ -126,6 +142,7 @@ impl<'db> ExprLowerCtx<'db> {
             any_override: None,
             this_struct: Some(struct_type),
             fb_subs: None,
+            local_fb_mangling: None,
             string_pool,
         }
     }
@@ -336,7 +353,7 @@ impl<'db> ExprLowerCtx<'db> {
                 name: _,
                 variant: _,
             } => {
-                // Enum values are integer constants — resolve via type inference
+                // Enum values are integer constants - resolve via type inference
                 let ty = parent_expr.infer(self.db);
                 match ty.normalize(self.db) {
                     Type::EnumVariant(_) | Type::Elementary(_) => {
@@ -434,7 +451,7 @@ impl<'db> ExprLowerCtx<'db> {
                 Ok(MirExpr::Constant(MirConstant::F64(val)))
             }
 
-            // Infer types — resolve using parent expression type
+            // Infer types - resolve using parent expression type
             Elementary::InferInteger(int) => {
                 let ty = parent_expr.infer(db);
                 match ty.normalize(db) {
@@ -479,7 +496,7 @@ impl<'db> ExprLowerCtx<'db> {
                 }
             }
 
-            // String/Char literals — intern in the string pool
+            // String/Char literals - intern in the string pool
             Elementary::String(ident)
             | Elementary::WString(ident)
             | Elementary::Char(ident)
@@ -491,7 +508,7 @@ impl<'db> ExprLowerCtx<'db> {
                 Ok(MirExpr::StringLiteral { id, offset, len })
             }
 
-            // Time literals — stored as nanoseconds (i64)
+            // Time literals - stored as nanoseconds (i64)
             Elementary::Time(ident) | Elementary::LTime(ident) => {
                 let duration = ident.as_time(self.db).map_err(|e| {
                     LowerTypeError::UnsupportedType(format!("Invalid time literal: {:?}", e))
@@ -500,7 +517,7 @@ impl<'db> ExprLowerCtx<'db> {
                 Ok(MirExpr::Constant(MirConstant::I64(nanos)))
             }
 
-            // Date/DateTime/TimeOfDay — not yet supported
+            // Date/DateTime/TimeOfDay - not yet supported
             Elementary::Date(_)
             | Elementary::LDate(_)
             | Elementary::DateAndTime(_)
@@ -534,7 +551,7 @@ impl<'db> ExprLowerCtx<'db> {
             LowerTypeError::UnsupportedType("Path without path expression".to_string())
         })?;
 
-        // Check for THIS invocation — if present, the path is relative to the 'this' pointer
+        // Check for THIS invocation - if present, the path is relative to the 'this' pointer
         if let Some(invocation) = begin_path.invocation(self.db)
             && invocation.kind(self.db) == InvocationKind::This
         {
@@ -588,7 +605,7 @@ impl<'db> ExprLowerCtx<'db> {
                 })
             }
             PathExprKind::Field(field_expr) => {
-                // Nested field: THIS.a.b — lower the inner path first
+                // Nested field: THIS.a.b - lower the inner path first
                 let inner = self.lower_this_path(field_expr.path)?;
                 let field_name = match &field_expr.var {
                     VarAccess::Simple(span_ident) => span_ident.ident,
@@ -876,12 +893,12 @@ impl<'db> ExprLowerCtx<'db> {
                                     });
                                 }
                                 Err(_) => {
-                                    // Failed to lower default — skip
+                                    // Failed to lower default - skip
                                 }
                             }
                         }
                         _ => {
-                            // Complex init (struct/array) — not yet supported as default
+                            // Complex init (struct/array) - not yet supported as default
                         }
                     }
                 }
@@ -1013,12 +1030,20 @@ impl<'db> ExprLowerCtx<'db> {
             }
         }
 
-        // Body function name: "FBName$__body__"
+        // Body function name. For generic FBs, use the per-variable
+        // mangled name (e.g. `Counter$INT$__body__`); fall back to the
+        // bare FB name for non-generic FBs or when no mangling info is
+        // available.
+        let mangled_root = self
+            .local_fb_mangling
+            .as_ref()
+            .and_then(|m| m.get(&instance_ident).copied())
+            .unwrap_or(fb.name(self.db));
         let body_func = hir::hir_def::interned::identifier::Ident::new(
             self.db,
             compact_str::CompactString::from(format!(
                 "{}$__body__",
-                fb.name(self.db).text(self.db)
+                mangled_root.text(self.db)
             )),
         );
 
@@ -1110,7 +1135,7 @@ impl<'db> ExprLowerCtx<'db> {
             Type::Struct(_) | Type::StructElement(_) => {
                 Ok(MirElementary::Int) // fallback
             }
-            // Function/FunctionBlock used as return value — resolve via return type
+            // Function/FunctionBlock used as return value - resolve via return type
             Type::Function(f) => {
                 if let Some(ret) = f.return_type(self.db) {
                     self.type_to_mir_elementary(ret.infer(self.db))
@@ -1123,7 +1148,7 @@ impl<'db> ExprLowerCtx<'db> {
                 self.type_to_mir_elementary(normalized)
             }
             Type::Infer(_infer_ty) => {
-                // Deferred integer/float — default to i32/f32
+                // Deferred integer/float - default to i32/f32
                 Ok(MirElementary::Int)
             }
             _ => Err(LowerTypeError::UnsupportedType(format!(
@@ -1180,7 +1205,7 @@ fn wider_type(a: MirElementary, b: MirElementary) -> MirElementary {
         return MirElementary::ULInt;
     }
 
-    // Both 32-bit — signed wins
+    // Both 32-bit - signed wins
     if a.is_signed() || b.is_signed() {
         return MirElementary::DInt;
     }
