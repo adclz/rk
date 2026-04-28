@@ -79,7 +79,7 @@ END_NAMESPACE
     "#;
     assert_snapshot!(mir_exports(&mut with_db, &[source]), @r"
     export Std.Math.Test.test_abs() -> Int
-    import math.abs.INT(Int) -> Int [from ABS]
+    import math.abs.INT(Int) -> Int [from Std.Math.ABS]
     ");
 }
 

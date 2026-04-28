@@ -76,17 +76,14 @@ fn lower_module_from_pous<'db>(
     // mangled FB name so consumers can look up the right type.
     let (fb_instances, var_to_mangled_fb) =
         super::monomorphize::collect_fb_instantiations(db, all_pous);
-    // Group instantiations by FB so the FB-iteration loop can run them
-    // back-to-back.
-    let mut fb_instances_by_name: FxHashMap<
-        hir::hir_def::interned::identifier::Ident,
+    // Group instantiations by FB *identity* (not bare name) so two
+    // same-named FBs in different namespaces don't share a bucket.
+    let mut fb_instances_by_fb: FxHashMap<
+        hir::hir_def::pous::function_block::FunctionBlock<'db>,
         Vec<&super::monomorphize::FbInstance<'db>>,
     > = FxHashMap::default();
     for inst in &fb_instances {
-        fb_instances_by_name
-            .entry(inst.fb.name(db))
-            .or_default()
-            .push(inst);
+        fb_instances_by_fb.entry(inst.fb).or_default().push(inst);
     }
     // Per-variable mangling lookup used by consumers
     // (function-local variable typing, FB calls).
@@ -139,7 +136,7 @@ fn lower_module_from_pous<'db>(
 
             // Lower non-ANY extern function to MirExternFunction
             let mir_ext = lower_extern_function(db, *func, &extern_decl, next_fn_idx)?;
-            function_indices.insert(func.name(db), next_fn_idx);
+            function_indices.insert(mir_ext.name, next_fn_idx);
             next_fn_idx += 1;
             extern_functions.push(mir_ext);
         }
@@ -149,14 +146,15 @@ fn lower_module_from_pous<'db>(
     for (pou, ns_prefix) in all_pous.iter() {
         match pou {
             Pou::Function(func) => {
+                let func_id = super::monomorphize::qualified_pou_ident(
+                    db,
+                    hir::hir_ty::ty::Type::Function(*func),
+                );
                 // Skip already-processed externs and ANY_* functions
-                if function_indices.contains_key(&func.name(db)) {
+                if function_indices.contains_key(&func_id) {
                     continue;
                 }
-                if any_functions
-                    .iter()
-                    .any(|a| a.func.name(db) == func.name(db))
-                {
+                if any_functions.iter().any(|a| a.func == *func) {
                     continue;
                 }
 
@@ -204,7 +202,7 @@ fn lower_module_from_pous<'db>(
                                 .export_name
                                 .as_ref()
                                 .map(|s| s.to_string())
-                                .unwrap_or_else(|| func.name(db).text(db).to_string());
+                                .unwrap_or_else(|| mir_func.name.text(db).to_string());
                             let cases = build_test_cases(db, *func, &export_name);
                             test_entries.push(crate::test_manifest::TestEntry {
                                 path: export_name.clone(),
@@ -213,7 +211,7 @@ fn lower_module_from_pous<'db>(
                             });
                         }
 
-                        function_indices.insert(func.name(db), next_fn_idx);
+                        function_indices.insert(mir_func.name, next_fn_idx);
                         next_fn_idx += 1;
                         functions.push(mir_func);
                     }
@@ -235,7 +233,7 @@ fn lower_module_from_pous<'db>(
                     &fb_mangling,
                 )?;
                 mir_func.export_name = make_export_name(ns_prefix, func.name(db).text(db));
-                function_indices.insert(func.name(db), next_fn_idx);
+                function_indices.insert(mir_func.name, next_fn_idx);
                 next_fn_idx += 1;
 
                 // Collect test entry if marked with {test}
@@ -244,7 +242,7 @@ fn lower_module_from_pous<'db>(
                         .export_name
                         .as_ref()
                         .map(|s| s.to_string())
-                        .unwrap_or_else(|| func.name(db).text(db).to_string());
+                        .unwrap_or_else(|| mir_func.name.text(db).to_string());
                     let cases = build_test_cases(db, *func, &export_name);
                     test_entries.push(crate::test_manifest::TestEntry {
                         path: export_name.clone(),
@@ -261,7 +259,7 @@ fn lower_module_from_pous<'db>(
                 // unique `(FB, T)` instantiation. Generic FBs that were
                 // never instantiated produce no entries in the
                 // collector; skip them here too.
-                let Some(insts) = fb_instances_by_name.get(&fb.name(db)) else {
+                let Some(insts) = fb_instances_by_fb.get(fb) else {
                     continue;
                 };
 
@@ -342,7 +340,10 @@ fn lower_module_from_pous<'db>(
                         .collect();
 
                     instance_types.push(MirInstanceType {
-                        name: class.name(db),
+                        name: super::monomorphize::qualified_pou_ident(
+                            db,
+                            hir::hir_ty::ty::Type::Class(*class),
+                        ),
                         fields: inst_fields,
                         size: struct_type.size,
                         align: struct_type.align,
@@ -384,7 +385,7 @@ fn lower_module_from_pous<'db>(
                 .export_name
                 .as_ref()
                 .map(|s| s.to_string())
-                .unwrap_or_else(|| program.name(db).text(db).to_string());
+                .unwrap_or_else(|| mir_func.name.text(db).to_string());
             test_entries.push(crate::test_manifest::TestEntry {
                 path: export_name.clone(),
                 export: export_name,
@@ -392,7 +393,7 @@ fn lower_module_from_pous<'db>(
             });
         }
 
-        function_indices.insert(program.name(db), next_fn_idx);
+        function_indices.insert(mir_func.name, next_fn_idx);
         next_fn_idx += 1;
         functions.push(mir_func);
     }
@@ -577,7 +578,10 @@ fn lower_extern_function<'db>(
         .transpose()?;
 
     Ok(MirExternFunction {
-        name: func.name(db),
+        name: super::monomorphize::qualified_pou_ident(
+            db,
+            hir::hir_ty::ty::Type::Function(func),
+        ),
         index,
         module: extern_decl.module.clone(),
         import_name: extern_decl.name.clone(),
@@ -667,7 +671,10 @@ pub fn lower_wasm_intrinsic<'db>(
     }
 
     Ok(MirFunction {
-        name: func.name(db),
+        name: super::monomorphize::qualified_pou_ident(
+            db,
+            hir::hir_ty::ty::Type::Function(func),
+        ),
         origin_name: func.name(db),
         index,
         params,

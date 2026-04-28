@@ -805,12 +805,24 @@ impl<'db> ExprLowerCtx<'db> {
         call_expr: Option<Expr<'db>>,
     ) -> Result<MirExpr, LowerTypeError> {
         let path = func_call.path(self.db);
-        let callee_name = path
-            .expr(self.db)
-            .map(|pe| pe.ident(self.db).ident)
-            .ok_or_else(|| {
-                LowerTypeError::UnsupportedType("Function call without name".to_string())
-            })?;
+        // The namespace-qualified identifier the producer registered in
+        // `function_indices`; the bare last segment for callees that do not
+        // resolve.
+        let callee_name = match path.infer(self.db) {
+            Type::Function(f) => crate::lower::monomorphize::qualified_pou_ident(
+                self.db,
+                Type::Function(f),
+            ),
+            Type::CallableType(hir::hir_ty::ty::CallableType::Function(f)) => {
+                crate::lower::monomorphize::qualified_pou_ident(self.db, Type::Function(f))
+            }
+            _ => path
+                .expr(self.db)
+                .map(|pe| pe.ident(self.db).ident)
+                .ok_or_else(|| {
+                    LowerTypeError::UnsupportedType("Function call without name".to_string())
+                })?,
+        };
 
         let mut args = Vec::new();
         let output_bindings = Vec::new();
@@ -1031,14 +1043,18 @@ impl<'db> ExprLowerCtx<'db> {
         }
 
         // Body function name. For generic FBs, use the per-variable
-        // mangled name (e.g. `Counter$INT$__body__`); fall back to the
-        // bare FB name for non-generic FBs or when no mangling info is
-        // available.
+        // mangled name (e.g. `NsA.Counter$INT$__body__`); fall back to
+        // the FB's namespace-qualified name for non-generic FBs.
         let mangled_root = self
             .local_fb_mangling
             .as_ref()
             .and_then(|m| m.get(&instance_ident).copied())
-            .unwrap_or(fb.name(self.db));
+            .unwrap_or_else(|| {
+                crate::lower::monomorphize::qualified_pou_ident(
+                    self.db,
+                    hir::hir_ty::ty::Type::FunctionBlock(fb),
+                )
+            });
         let body_func = hir::hir_def::interned::identifier::Ident::new(
             self.db,
             compact_str::CompactString::from(format!(

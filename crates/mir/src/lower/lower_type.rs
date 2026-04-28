@@ -400,7 +400,10 @@ pub fn lower_class_type<'db>(
     offset = align_to(offset, max_align);
 
     Ok(MirType::Struct(MirStructType {
-        name: class.name(db),
+        name: super::monomorphize::qualified_pou_ident(
+            db,
+            hir::hir_ty::ty::Type::Class(class),
+        ),
         fields,
         size: offset,
         align: max_align,

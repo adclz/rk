@@ -200,7 +200,7 @@ pub fn lower_function<'db>(
     };
 
     Ok(MirFunction {
-        name: func.name(db),
+        name: super::monomorphize::qualified_pou_ident(db, Type::Function(func)),
         origin_name: func.name(db),
         index,
         params,
@@ -532,12 +532,15 @@ pub fn lower_class<'db>(
 
         let body = lower_stmts(db, method.stmts(db), string_pool.clone())?;
 
-        // Qualified name: "ClassName$MethodName"
+        // Qualified name: "<NsPath>.ClassName$MethodName" (or
+        // "ClassName$MethodName" for top-level classes).
+        let class_qualified =
+            super::monomorphize::qualified_pou_ident(db, Type::Class(class));
         let qualified_name = Ident::new(
             db,
             compact_str::CompactString::from(format!(
                 "{}${}",
-                class.name(db).text(db),
+                class_qualified.text(db),
                 method.name(db).text(db)
             )),
         );
@@ -586,7 +589,7 @@ pub fn lower_program<'db>(
     let body = lower_stmts(db, program.statements(db), string_pool.clone())?;
 
     Ok(MirFunction {
-        name: program.name(db),
+        name: super::monomorphize::qualified_pou_ident(db, Type::Program(program)),
         origin_name: program.name(db),
         index,
         params: Vec::new(),

@@ -220,6 +220,43 @@ pub fn mangle_fb_name<'db>(
     Ident::new(db, compact_str::CompactString::from(s))
 }
 
+/// The namespace-qualified name of a POU (bare for a top-level one): the
+/// canonical MIR identifier, so `NsA.foo` and `NsB.foo` stay distinct.
+pub fn qualified_pou_ident<'db>(
+    db: &'db dyn WorkspaceDataBase,
+    ty: hir::hir_ty::ty::Type<'db>,
+) -> Ident {
+    use hir::HirNodeInfo;
+    use hir::hir_def::scope::ScopeKind;
+    use hir::hir_def::semantic_index::semantic_index;
+
+    let (scope_id, bare) = match ty {
+        hir::hir_ty::ty::Type::Function(f) => (f.get_scope_id(db), f.name(db)),
+        hir::hir_ty::ty::Type::FunctionBlock(fb) => (fb.get_scope_id(db), fb.name(db)),
+        hir::hir_ty::ty::Type::Class(c) => (c.get_scope_id(db), c.name(db)),
+        hir::hir_ty::ty::Type::Interface(i) => (i.get_scope_id(db), i.name(db)),
+        hir::hir_ty::ty::Type::DataType(dt) => (dt.get_scope_id(db), dt.name(db)),
+        hir::hir_ty::ty::Type::Program(p) => (p.get_scope_id(db), p.name(db)),
+        _ => return Ident::new(db, compact_str::CompactString::from("")),
+    };
+
+    if scope_id.is_global(db) {
+        return bare;
+    }
+
+    let sema = semantic_index(db, scope_id.file(db));
+    for scope in sema.scope_iterator(db, scope_id) {
+        if let ScopeKind::Namespace(ns) = scope.kind {
+            let ns_str = ns.path(db).to_string(db);
+            return Ident::new(
+                db,
+                compact_str::CompactString::from(format!("{}.{}", ns_str, bare.text(db))),
+            );
+        }
+    }
+    bare
+}
+
 /// Walk every body's `fb_any_resolutions` and collect the unique set of
 /// FB instantiations actually used at call sites.
 ///
@@ -283,15 +320,20 @@ pub fn collect_fb_instantiations<'db>(
                 _ => continue,
             };
 
+            // Use the FB's namespace-qualified name as the mangling
+            // basis so two same-named FBs in different namespaces don't
+            // collide (e.g. `NsA.Counter$INT`, `NsB.Counter$INT`).
+            let qualified = qualified_pou_ident(db, hir::hir_ty::ty::Type::FunctionBlock(fb));
+
             let mut sorted: Vec<(Ident, ElementarySpec)> =
                 subs.iter().map(|(k, v)| (*k, *v)).collect();
             sorted.sort_by(|a, b| a.0.text(db).cmp(b.0.text(db)));
-            let key = (fb.name(db), sorted);
+            let key = (qualified, sorted);
 
             let mangled = match by_canonical.get(&key) {
                 Some(m) => *m,
                 None => {
-                    let m = mangle_fb_name(db, fb.name(db), &subs);
+                    let m = mangle_fb_name(db, qualified, &subs);
                     by_canonical.insert(key, m);
                     instances.push(FbInstance {
                         fb,
@@ -316,13 +358,14 @@ pub fn collect_fb_instantiations<'db>(
             if has_any {
                 continue;
             }
-            let key = (fb.name(db), Vec::new());
+            let qualified = qualified_pou_ident(db, hir::hir_ty::ty::Type::FunctionBlock(*fb));
+            let key = (qualified, Vec::new());
             if !by_canonical.contains_key(&key) {
-                by_canonical.insert(key, fb.name(db));
+                by_canonical.insert(key, qualified);
                 instances.push(FbInstance {
                     fb: *fb,
                     subs: FxHashMap::default(),
-                    mangled_name: fb.name(db),
+                    mangled_name: qualified,
                 });
             }
         }
@@ -439,10 +482,13 @@ pub fn monomorphize<'db>(
     _memory_layout: &mut MirMemoryLayout,
     string_pool: std::rc::Rc<std::cell::RefCell<super::lower_expr::StringPool>>,
 ) -> Result<(), LowerTypeError> {
-    // Collect which ANY_* functions exist by name
+    // Collect which ANY_* functions exist by qualified name. The
+    // discovery walk matches `MirCall.callee` against this set, and
+    // call sites carry namespace-qualified callee names (e.g.
+    // `NsA.abs`) — so the set is keyed the same way.
     let any_func_names: FxHashSet<Ident> = any_functions
         .iter()
-        .map(|info| info.func.name(db))
+        .map(|info| qualified_pou_ident(db, hir::hir_ty::ty::Type::Function(info.func)))
         .collect();
 
     // Phase 1: Discover which concrete types are actually used at call sites
@@ -459,7 +505,10 @@ pub fn monomorphize<'db>(
     let mut next_fn_idx = module.functions.len() as u32 + module.extern_functions.len() as u32;
 
     for info in any_functions {
-        let func_name = info.func.name(db);
+        // Use the qualified name as the canonical MIR identifier so
+        // monomorphizations and call-site lookups stay aligned with
+        // the rest of the module's `function_indices`.
+        let func_name = qualified_pou_ident(db, hir::hir_ty::ty::Type::Function(info.func));
 
         // Get the concrete types actually needed (from call sites)
         // Fall back to all types in the ANY group if no calls found

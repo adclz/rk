@@ -50,7 +50,7 @@ NAMESPACE Std.Bistable
     END_FUNCTION_BLOCK
 END_NAMESPACE
     "#;
-    assert_snapshot!(mir_exports(&mut with_db, &[source]), @"export RS$__body__(*struct(RS))");
+    assert_snapshot!(mir_exports(&mut with_db, &[source]), @"export Std.Bistable.RS$__body__(*struct(Std.Bistable.RS))");
 }
 
 #[rstest]
