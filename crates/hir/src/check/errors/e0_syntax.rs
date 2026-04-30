@@ -16,7 +16,6 @@ use crate::check::errors::ToIdeDiagnostic;
 
 #[derive(Debug, Clone, PartialEq, Eq, salsa::Update)]
 pub enum SyntaxError {
-    InvalidPouKeyword(Span),
     MultipleExtends {
         /// Span of the second (duplicate) EXTENDS clause
         location: Span,
@@ -137,7 +136,6 @@ impl ErrorCode for SyntaxError {
             SyntaxError::MissingDotInForList { .. } => "E0015",
             SyntaxError::MissingEqualInForList { .. } => "E0016",
             SyntaxError::FunctionCallInInitExpression(_) => "E0017",
-            SyntaxError::InvalidPouKeyword(_) => "E0018",
             SyntaxError::MissingNode { .. } => "E0019",
             SyntaxError::OutputAssignInAssignment { .. } => "E0020",
             SyntaxError::OutputAssignInForList { .. } => "E0021",
@@ -612,13 +610,6 @@ impl<'db> ToIdeDiagnostic<'db> for SyntaxError {
 
                 diag
             }
-            Self::InvalidPouKeyword(span) => diag()
-                .message("invalid POU keyword".into())
-                .severity(DiagnosticSeverity::ERROR)
-                .desc(self)
-                .range(*span)
-                .call(),
-
             Self::FunctionCallInInitExpression(span) => diag()
                 .message("function call in initialization expression is not allowed".into())
                 .severity(DiagnosticSeverity::ERROR)

@@ -332,20 +332,28 @@ impl<'db> SemanticIndexBuilder<'db> {
             }
         }
 
-        let path = path.ok_or_else(|| {
-            crate::check::errors::e0_syntax::SyntaxError::InvalidPouKeyword(cnxn.get_span())
-                .to_diagnostic(self.db)
-        })?;
+        // The grammar's `prog_cnxn` rule requires a path expression
+        // plus exactly one of (source, sink). Partial/recovered parses
+        // can still leave us short, so surface that as a syntax error
+        // (E0019) rather than panic.
+        let missing = |what: &str| {
+            crate::check::errors::e0_syntax::SyntaxError::MissingNode {
+                file: self.file,
+                span: cnxn.get_span(),
+                err: format!("prog_cnxn missing {what}"),
+                grammar_name: "prog_cnxn",
+            }
+            .to_diagnostic(self.db)
+        };
+
+        let path = path.ok_or_else(|| missing("path expression"))?;
 
         if let Some(source) = source {
             Ok(ProgCnxn::Source { path, source })
         } else if let Some(sink) = sink {
             Ok(ProgCnxn::Sink { path, sink })
         } else {
-            Err(
-                crate::check::errors::e0_syntax::SyntaxError::InvalidPouKeyword(cnxn.get_span())
-                    .to_diagnostic(self.db),
-            )
+            Err(missing("source or sink"))
         }
     }
 
@@ -459,9 +467,17 @@ impl<'db> SemanticIndexBuilder<'db> {
             }
         }
 
+        // Grammar normally guarantees an init expression on a config
+        // inst declaration; partial/recovered parses may still leave
+        // us short, so surface that as a syntax error (E0019).
         let init = init_expr.ok_or_else(|| {
-            crate::check::errors::e0_syntax::SyntaxError::InvalidPouKeyword(inst.get_span())
-                .to_diagnostic(self.db)
+            crate::check::errors::e0_syntax::SyntaxError::MissingNode {
+                file: self.file,
+                span: inst.get_span(),
+                err: "config inst missing init expression".into(),
+                grammar_name: "config_inst_init",
+            }
+            .to_diagnostic(self.db)
         })?;
 
         Ok(crate::hir_def::config::ConfigInstInit {
