@@ -353,6 +353,10 @@ END_FUNCTION_BLOCK"#;
      4 |         s : STRING := "hello";
        |                    ^^^^^|^^^^
        |                         `------ expected 'STRING', got 'WSTRING'
+       |                         |
+       |                         `------ consider explicitly casting with 'WSTRING_TO_STRING(:= "hello")'
+       |
+       | Help: insert explicit cast 'WSTRING_TO_STRING(:= "hello")'
     ---'
     "#);
 }

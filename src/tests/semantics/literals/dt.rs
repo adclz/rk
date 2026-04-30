@@ -96,6 +96,10 @@ END_FUNCTION_BLOCK"#;
      4 |         test1: DT := LDT#1984-06-25-15:36:55.360227400;
        |                   ^^^^^^^^^^^^^^^^^^|^^^^^^^^^^^^^^^^^
        |                                     `------------------- expected 'DT', got 'LDT'
+       |                                     |
+       |                                     `------------------- consider explicitly casting with 'LDT_TO_DT(:= LDT#1984-06-25-15:36:55.360227400)'
+       |
+       | Help: insert explicit cast 'LDT_TO_DT(:= LDT#1984-06-25-15:36:55.360227400)'
     ---'
     ");
 }

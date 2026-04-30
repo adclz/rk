@@ -190,16 +190,46 @@ impl<'db> ElementarySpec {
             },
             Word => match self {
                 LInt | DInt | Int | SInt | ULInt | UDInt | UInt | USInt | Byte => true,
+                WChar => true, // wchar is the size of a word
                 _ => false,
             },
             Byte => match self {
                 LInt | DInt | Int | SInt | ULInt | UDInt | UInt | USInt => true,
+                Char => true, // char is the size of a byte
                 _ => false,
             },
             Bool | REDGEBool | FEDGEBool => match self {
                 LInt | DInt | Int | SInt | ULInt | UDInt | UInt | USInt => true,
                 _ => false,
             },
+            LTime => match self {
+                Time => true,
+                _ => false,
+            }
+            LDateTime => match self {
+                DateAndTime | LDate | Date | LTod | Tod => true,
+                _ => false,
+            }
+            DateAndTime => match self {
+                LDate | Date | LTod | Tod => true,
+                _ => false
+            }
+            LDate => match self {
+                Date => true,
+                _ => false
+            }
+            LTod => match self {
+                Tod => true,
+                _ => false
+            }
+            WString => match self {
+                String => true,
+                _ => false
+            }
+            WChar => match self {
+                Char => true,
+                _ => false
+            }
             _ => false,
         }
     }

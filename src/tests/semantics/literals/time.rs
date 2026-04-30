@@ -188,6 +188,10 @@ END_FUNCTION_BLOCK"#;
      4 |         test1: TIME := LTIME#5s;
        |                     ^^^^^|^^^^^
        |                          `------- expected 'TIME', got 'LTIME'
+       |                          |
+       |                          `------- consider explicitly casting with 'LTIME_TO_TIME(:= LTIME#5s)'
+       |
+       | Help: insert explicit cast 'LTIME_TO_TIME(:= LTIME#5s)'
     ---'
     ");
 }
