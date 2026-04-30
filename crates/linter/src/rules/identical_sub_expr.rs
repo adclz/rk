@@ -70,9 +70,13 @@ fn same_expr<'db>(
             ExprKind::PrimaryExpr(PrimaryExpr::VariableAccess(la)),
             ExprKind::PrimaryExpr(PrimaryExpr::VariableAccess(ra)),
         ) => {
-            let lv = resolve_var(db, body, la);
-            let rv = resolve_var(db, body, ra);
-            lv.is_some() && lv == rv
+            match (
+                body.type_of_variable_access_with_adjustments(db, *la),
+                body.type_of_variable_access_with_adjustments(db, *ra),
+            ) {
+                (Type::Variable((l_var, _)), Type::Variable((r_var, _))) => l_var == r_var,
+                _ => false,
+            }
         }
         (
             ExprKind::PrimaryExpr(PrimaryExpr::ParenthesizedExpr { expr: le }),
@@ -98,17 +102,3 @@ fn same_expr<'db>(
     }
 }
 
-fn resolve_var<'db>(
-    db: &'db dyn WorkspaceDataBase,
-    body: &BodyInferenceResult<'db>,
-    access: &hir::hir_def::expressions::expression::VariableAccess<'db>,
-) -> Option<hir::hir_def::pous::variable::VariableDecl<'db>> {
-    let VariableAccessKind::Symbolic(begin) = access.kind(db) else {
-        return None;
-    };
-    let path = begin.expr(db)?;
-    let Type::Variable((var, _)) = body.type_of_path_expr.get(&path)? else {
-        return None;
-    };
-    Some(*var)
-}
