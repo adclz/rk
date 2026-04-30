@@ -206,3 +206,46 @@ fn variable_used_via_this_in_method_not_flagged(mut with_db: RootDatabase) {
     ---'
     ");
 }
+
+#[rstest]
+fn extern_pragma_param_counts_as_used(mut with_db: RootDatabase) {
+    // `IN` is referenced only by the {extern} pragma - that should
+    // count as a use, not a dead variable.
+    let source = r#"
+        FUNCTION abs : REAL
+        VAR_INPUT IN : REAL; END_VAR
+            {extern 'math' 'abs' (params IN) (result abs)}
+        END_FUNCTION
+    "#;
+    assert_snapshot!(test_single_lint(&mut with_db, &[source], "unused-variable"), @"");
+}
+
+#[rstest]
+fn wasm_pragma_params_count_as_used(mut with_db: RootDatabase) {
+    // `IN` and `N` are only referenced by the {wasm} pragma - both
+    // should count as used.
+    let source = r#"
+        FUNCTION SHL : DWORD
+        VAR_INPUT
+            IN : DWORD;
+            N : INT;
+        END_VAR
+            {wasm 'i32.shl' (params IN N) (result SHL)}
+        END_FUNCTION
+    "#;
+    assert_snapshot!(test_single_lint(&mut with_db, &[source], "unused-variable"), @"");
+}
+
+#[rstest]
+fn preprocess_if_cond_counts_as_used(mut with_db: RootDatabase) {
+    // `x` appears only in the `{#if}` condition - that's still a use.
+    let source = r#"
+        FUNCTION foo : ANY_INT
+        VAR_INPUT x : INTO(foo); END_VAR
+        {#if x is INT}
+            foo := INT#0;
+        {#endif}
+        END_FUNCTION
+    "#;
+    assert_snapshot!(test_single_lint(&mut with_db, &[source], "unused-variable"), @"");
+}

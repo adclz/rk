@@ -443,9 +443,12 @@ impl<'db> StmtsResolverCtx<'db> {
                     let def_map = self.scope.def_map(db);
                     let scope_kind = crate::hir_def::semantic_index::get_scope(db, self.scope).kind;
 
-                    let is_known_var = |ident: &crate::hir_def::interned::identifier::Ident| {
-                        def_map.local_variables.contains_key(ident)
-                            || def_map.global_variables.contains_key(ident)
+                    let lookup_var = |ident: &crate::hir_def::interned::identifier::Ident| {
+                        def_map
+                            .local_variables
+                            .get(ident)
+                            .or_else(|| def_map.global_variables.get(ident))
+                            .copied()
                     };
 
                     // Check if the name is the enclosing POU's own name (return variable)
@@ -458,9 +461,13 @@ impl<'db> StmtsResolverCtx<'db> {
                             _ => false,
                         };
 
-                    // Check that each param variable exists in scope
+                    // Check that each param variable exists in scope; mark
+                    // resolved ones as used so the unused-variable lint
+                    // doesn't fire on them.
                     for param in &extern_decl.params {
-                        if !is_known_var(&param.ident) && !is_pou_name(&param.ident) {
+                        if let Some(var) = lookup_var(&param.ident) {
+                            ctx.variables_used.insert(var);
+                        } else if !is_pou_name(&param.ident) {
                             ctx.errors.push(
                                 ResolveError::ExternVariableNotFound {
                                     ident: *param,
@@ -471,26 +478,59 @@ impl<'db> StmtsResolverCtx<'db> {
                         }
                     }
 
-                    // Check that result variable exists in scope
-                    // (can be a local variable or the POU name for return value)
-                    if let Some(result) = &extern_decl.result
-                        && !is_known_var(&result.ident)
-                        && !is_pou_name(&result.ident)
-                    {
-                        ctx.errors.push(
-                            ResolveError::ExternVariableNotFound {
-                                ident: *result,
-                                scope: self.scope,
-                            }
-                            .to_diagnostic(db),
-                        );
+                    // Result: same treatment. (POU-name results don't
+                    // map to a VariableDecl, so nothing to mark.)
+                    if let Some(result) = &extern_decl.result {
+                        if let Some(var) = lookup_var(&result.ident) {
+                            ctx.variables_used.insert(var);
+                        } else if !is_pou_name(&result.ident) {
+                            ctx.errors.push(
+                                ResolveError::ExternVariableNotFound {
+                                    ident: *result,
+                                    scope: self.scope,
+                                }
+                                .to_diagnostic(db),
+                            );
+                        }
                     }
                 }
-                StmtKind::WasmPragma(_) => {
-                    // Wasm intrinsic, no type inference needed
+                StmtKind::WasmPragma(wasm_decl) => {
+                    // Wasm intrinsic doesn't need type inference, but we
+                    // still need to mark referenced variables as used so
+                    // the unused-variable lint doesn't flag them.
+                    let def_map = self.scope.def_map(db);
+                    let mut mark = |ident: &crate::hir_def::interned::identifier::Ident| {
+                        if let Some(var) = def_map
+                            .local_variables
+                            .get(ident)
+                            .or_else(|| def_map.global_variables.get(ident))
+                        {
+                            ctx.variables_used.insert(*var);
+                        }
+                    };
+                    if let Some(t) = &wasm_decl.type_ref {
+                        mark(&t.ident);
+                    }
+                    for p in &wasm_decl.params {
+                        mark(&p.ident);
+                    }
+                    if let Some(r) = &wasm_decl.result {
+                        mark(&r.ident);
+                    }
                 }
                 StmtKind::PreprocessIf { branches } => {
+                    let def_map = self.scope.def_map(db);
                     for branch in branches {
+                        // The cond's ident is a real reference — mark
+                        // the variable as used so the unused-variable
+                        // lint doesn't flag it.
+                        if let Some(var) = def_map
+                            .local_variables
+                            .get(&branch.cond.ident.ident)
+                            .or_else(|| def_map.global_variables.get(&branch.cond.ident.ident))
+                        {
+                            ctx.variables_used.insert(*var);
+                        }
                         self.check_statements(
                             db,
                             resolver,
