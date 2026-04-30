@@ -76,7 +76,7 @@ pub fn check<'db>(
             diag()
                 .message(format!("VAR_OUTPUT '{name}' is never assigned in the body"))
                 .desc(&UninitializedOutput)
-                .range(var.get_span(db))
+                .range(var.get_name_span(db))
                 .severity(DiagnosticSeverity::INFORMATION)
                 .call(),
         );
@@ -126,7 +126,7 @@ pub fn check_outputs<'db>(
             diag()
                 .message(format!("VAR_OUTPUT '{name}' is never assigned in the body"))
                 .desc(&UninitializedOutput)
-                .range(var.get_span(db))
+                .range(var.get_name_span(db))
                 .severity(DiagnosticSeverity::INFORMATION)
                 .call(),
         );

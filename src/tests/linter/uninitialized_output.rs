@@ -19,8 +19,8 @@ END_FUNCTION
        ,-[ file:///test0.st:4:5 ]
        |
      4 |     result : INT;
-       |     ^^^^^^|^^^^^
-       |           `------- VAR_OUTPUT 'result' is never assigned in the body
+       |     ^^^|^^
+       |        `---- VAR_OUTPUT 'result' is never assigned in the body
        |
        | Note: lint rule: uninitialized-output
     ---'
@@ -88,8 +88,8 @@ END_FUNCTION_BLOCK
        ,-[ file:///test0.st:4:5 ]
        |
      4 |     done : BOOL;
-       |     ^^^^^|^^^^^
-       |          `------- VAR_OUTPUT 'done' is never assigned in the body
+       |     ^^|^
+       |       `--- VAR_OUTPUT 'done' is never assigned in the body
        |
        | Note: lint rule: uninitialized-output
     ---'
@@ -97,8 +97,8 @@ END_FUNCTION_BLOCK
        ,-[ file:///test0.st:5:5 ]
        |
      5 |     value : INT;
-       |     ^^^^^|^^^^^
-       |          `------- VAR_OUTPUT 'value' is never assigned in the body
+       |     ^^|^^
+       |       `---- VAR_OUTPUT 'value' is never assigned in the body
        |
        | Note: lint rule: uninitialized-output
     ---'

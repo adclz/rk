@@ -97,7 +97,7 @@ fn check_variable<'db>(
         .severity(DiagnosticSeverity::INFORMATION)
         .tags(vec![DiagnosticTag::UNNECESSARY])
         .desc(&UnusedVariable)
-        .range(var.get_span(db))
+        .range(var.get_name_span(db))
         .call();
 
     diag.with_note(format!(

@@ -20,8 +20,8 @@ fn unused_local_variable(mut with_db: RootDatabase) {
        ,-[ file:///test0.st:5:13 ]
        |
      5 |             y : INT;
-       |             ^^^|^^^
-       |                `----- unused variable 'y'
+       |             |
+       |             `-- unused variable 'y'
        |
        | Note 1: if this is intentional, prefix it with an underscore:
        |         '_y'
@@ -47,8 +47,8 @@ fn unused_variable_in_function_block(mut with_db: RootDatabase) {
        ,-[ file:///test0.st:5:13 ]
        |
      5 |             y : INT;
-       |             ^^^|^^^
-       |                `----- unused variable 'y'
+       |             |
+       |             `-- unused variable 'y'
        |
        | Note 1: if this is intentional, prefix it with an underscore:
        |         '_y'
@@ -74,8 +74,8 @@ fn unused_variable_in_program(mut with_db: RootDatabase) {
        ,-[ file:///test0.st:5:13 ]
        |
      5 |             y : INT;
-       |             ^^^|^^^
-       |                `----- unused variable 'y'
+       |             |
+       |             `-- unused variable 'y'
        |
        | Note 1: if this is intentional, prefix it with an underscore:
        |         '_y'
@@ -151,8 +151,8 @@ fn unused_input_on_function(mut with_db: RootDatabase) {
        ,-[ file:///test0.st:5:13 ]
        |
      5 |             b : INT;
-       |             ^^^|^^^
-       |                `----- unused variable 'b'
+       |             |
+       |             `-- unused variable 'b'
        |
        | Note 1: if this is intentional, prefix it with an underscore:
        |         '_b'
@@ -196,8 +196,8 @@ fn variable_used_via_this_in_method_not_flagged(mut with_db: RootDatabase) {
        ,-[ file:///test0.st:5:13 ]
        |
      5 |             unused_var : INT;
-       |             ^^^^^^^^|^^^^^^^
-       |                     `--------- unused variable 'unused_var'
+       |             ^^^^^|^^^^
+       |                  `------ unused variable 'unused_var'
        |
        | Note 1: if this is intentional, prefix it with an underscore:
        |         '_unused_var'
