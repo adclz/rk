@@ -126,8 +126,8 @@ pub enum TypeError<'db> {
         ident: String,
         site: CallSite<'db>,
     },
-    /// `{#if x is T}` where `x` resolves but isn't generic (its spec —
-    /// or the chain through `INTO(...)` — is concrete). The branch can
+    /// `{#if x is T}` where `x` resolves but isn't generic (its spec -
+    /// or the chain through `INTO(...)` - is concrete). The branch can
     /// never narrow anything; either drop the dispatch or pick a
     /// generic param.
     PreprocessIdentNotGeneric {
@@ -136,7 +136,7 @@ pub enum TypeError<'db> {
         site: CallSite<'db>,
     },
     /// `{#if x is T}` where `T` isn't a concrete variant of `x`'s
-    /// `ANY_*` bound — e.g. `x: ANY_INT` matched against `STRING`.
+    /// `ANY_*` bound - e.g. `x: ANY_INT` matched against `STRING`.
     /// The branch can never fire at codegen time.
     PreprocessTypeNotInBound {
         expected_ty: Type<'db>,
@@ -146,7 +146,7 @@ pub enum TypeError<'db> {
     /// A `{wasm …}` pragma references a parameter whose anchor isn't
     /// pinned by the enclosing `{#if}` chain. Unlike `{extern}`, which
     /// can defer per-variant dispatch to the host, a wasm intrinsic
-    /// emits a single concrete instruction — so the codegen needs the
+    /// emits a single concrete instruction - so the codegen needs the
     /// concrete type at this exact point.
     WasmUnresolvedGeneric {
         param: String,
@@ -405,6 +405,21 @@ impl<'db> ToIdeDiagnostic<'db> for TypeError<'db> {
                     }
                 }
 
+                // For range-overflow errors, attach a note showing the
+                // valid integer-encoding range so the user knows why a
+                // literal was rejected and where the cutoff sits.
+                if let InferLiteralError::DurationOutOfRange {
+                    type_name,
+                    min,
+                    max,
+                    ..
+                } = err
+                {
+                    diag.with_note(
+                        format!("valid range for {type_name}: {min} to {max}").into(),
+                    );
+                }
+
                 target.with_location(db, &mut diag);
 
                 diag
@@ -621,7 +636,25 @@ pub enum InferLiteralError {
     // Inner
     ExpectedNumber,
     InvalidNumber(String),
+    /// Internal overflow when accumulating duration components in
+    /// `i64` nanoseconds - only reachable for absurd input like
+    /// `T#9999999d`.
     DurationOverflow,
+    /// Literal's integer encoding is outside the type's representable
+    /// range. Bounds are pre-formatted IEC literals (e.g.
+    /// `T#-24d20h31m23s648ms`, `DT#1901-12-13-20:45:52`) hard-coded per
+    /// type so the diagnostic note can show them verbatim.
+    DurationOutOfRange {
+        /// Source-level type name (e.g. "TIME", "DT").
+        type_name: &'static str,
+        /// Minimum value as an IEC literal string.
+        min: &'static str,
+        /// Maximum value as an IEC literal string.
+        max: &'static str,
+        /// True when the value exceeds `max` (overflow); false when
+        /// below `min` (underflow).
+        above_max: bool,
+    },
 
     Invalid_TIME_Unit(String),
     Invalid_TIME_Components,
@@ -693,6 +726,17 @@ impl InferLiteralError {
             InferLiteralError::ExpectedNumber => "expected number",
             InferLiteralError::InvalidNumber(st) => return st.to_owned(),
             InferLiteralError::DurationOverflow => "duration overflow",
+            InferLiteralError::DurationOutOfRange {
+                type_name,
+                above_max,
+                ..
+            } => {
+                return if *above_max {
+                    format!("{type_name} value exceeds the supported maximum")
+                } else {
+                    format!("{type_name} value is below the supported minimum")
+                };
+            }
 
             InferLiteralError::Invalid_TIME_Unit(st) => return st.to_owned(),
             InferLiteralError::Invalid_TIME_Components => "invalid TIME components",

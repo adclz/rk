@@ -123,3 +123,117 @@ END_FUNCTION_BLOCK"#;
     ---'
     ");
 }
+
+// ── Integer encoding (DT → i32 secs, LDT → i64 ns since 1970-01-01) ──
+//
+// `DT` (i32 seconds) covers ≈ 1901-12-13 to 2038-01-19.
+// `LDT` (i64 ns) covers ≈ 1677-09-21 to 2262-04-11.
+// Out-of-range literals on either type surface as E0309 with the
+// supported bounds shown as IEC literals.
+
+use crate::tests::semantics::literals::parse_literal;
+
+#[rstest]
+#[case("DT#1970-01-01-00:00:00", 0)]
+#[case("DT#1970-01-01-00:00:01", 1)]
+#[case("DT#1970-01-01-00:01:00", 60)]
+#[case("DT#1970-01-02-00:00:00", 86_400)]
+#[case("DT#2000-01-01-00:00:00", 946_684_800)]
+fn dt_secs_i32(mut with_db: RootDatabase, #[case] literal: &str, #[case] expected: i32) {
+    let id = parse_literal(&mut with_db, "DATE_AND_TIME", literal);
+    assert_eq!(id.as_dt_secs_i32(&with_db).unwrap(), expected);
+}
+
+#[rstest]
+fn dt_underflow_before_1901_diagnostic(mut with_db: RootDatabase) {
+    let source = r#"
+FUNCTION_BLOCK fb1
+    VAR
+        x : DATE_AND_TIME := DT#1800-01-01-00:00:00;
+    END_VAR
+END_FUNCTION_BLOCK"#;
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
+    [E0309] Error: invalid literal
+       ,-[ file:///test0.st:4:30 ]
+       |
+     4 |         x : DATE_AND_TIME := DT#1800-01-01-00:00:00;
+       |                              ^^^^^^^^^^^|^^^^^^^^^^
+       |                                         `------------ cannot infer 'DATE_AND_TIME literal' to 'DT': DT value is below the supported minimum
+       |
+       | Note: valid range for DT: DT#1901-12-13-20:45:52 to DT#2038-01-19-03:14:07
+    ---'
+    ");
+}
+
+#[rstest]
+fn dt_overflow_after_2038_diagnostic(mut with_db: RootDatabase) {
+    let source = r#"
+FUNCTION_BLOCK fb1
+    VAR
+        x : DATE_AND_TIME := DT#3000-01-01-00:00:00;
+    END_VAR
+END_FUNCTION_BLOCK"#;
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
+    [E0309] Error: invalid literal
+       ,-[ file:///test0.st:4:30 ]
+       |
+     4 |         x : DATE_AND_TIME := DT#3000-01-01-00:00:00;
+       |                              ^^^^^^^^^^^|^^^^^^^^^^
+       |                                         `------------ cannot infer 'DATE_AND_TIME literal' to 'DT': DT value exceeds the supported maximum
+       |
+       | Note: valid range for DT: DT#1901-12-13-20:45:52 to DT#2038-01-19-03:14:07
+    ---'
+    ");
+}
+
+#[rstest]
+#[case("LDT#1970-01-01-00:00:00", 0)]
+#[case("LDT#1970-01-01-00:00:00.000000001", 1)]
+#[case("LDT#1970-01-01-00:00:01", 1_000_000_000)]
+#[case("LDT#1970-01-02-00:00:00", 86_400_000_000_000)]
+fn ldt_ns_i64(mut with_db: RootDatabase, #[case] literal: &str, #[case] expected: i64) {
+    let id = parse_literal(&mut with_db, "LDATE_AND_TIME", literal);
+    assert_eq!(id.as_ldt_ns_i64(&with_db).unwrap(), expected);
+}
+
+#[rstest]
+fn ldt_overflow_after_2262_diagnostic(mut with_db: RootDatabase) {
+    let source = r#"
+FUNCTION_BLOCK fb1
+    VAR
+        x : LDATE_AND_TIME := LDT#3000-01-01-00:00:00;
+    END_VAR
+END_FUNCTION_BLOCK"#;
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
+    [E0309] Error: invalid literal
+       ,-[ file:///test0.st:4:31 ]
+       |
+     4 |         x : LDATE_AND_TIME := LDT#3000-01-01-00:00:00;
+       |                               ^^^^^^^^^^^|^^^^^^^^^^^
+       |                                          `------------- cannot infer 'LDATE_AND_TIME literal' to 'LDT': LDT value exceeds the supported maximum
+       |
+       | Note: valid range for LDT: LDT#1677-09-21-00:12:43.145224192 to LDT#2262-04-11-23:47:16.854775807
+    ---'
+    ");
+}
+
+#[rstest]
+fn ldt_underflow_before_1677_diagnostic(mut with_db: RootDatabase) {
+    let source = r#"
+FUNCTION_BLOCK fb1
+    VAR
+        x : LDATE_AND_TIME := LDT#1500-01-01-00:00:00;
+    END_VAR
+END_FUNCTION_BLOCK"#;
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
+    [E0309] Error: invalid literal
+       ,-[ file:///test0.st:4:31 ]
+       |
+     4 |         x : LDATE_AND_TIME := LDT#1500-01-01-00:00:00;
+       |                               ^^^^^^^^^^^|^^^^^^^^^^^
+       |                                          `------------- cannot infer 'LDATE_AND_TIME literal' to 'LDT': LDT value is below the supported minimum
+       |
+       | Note: valid range for LDT: LDT#1677-09-21-00:12:43.145224192 to LDT#2262-04-11-23:47:16.854775807
+    ---'
+    ");
+}

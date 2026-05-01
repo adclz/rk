@@ -124,3 +124,32 @@ END_FUNCTION_BLOCK"#;
     ---'
     ");
 }
+
+// ── Integer encoding (DATE / LDATE → i32 / i64 days since 1970-01-01) ──
+//
+// Both encodings have effectively unlimited range (i32 days covers
+// ±5.8M years), so no error tests are needed — value-correctness only.
+
+use crate::tests::semantics::literals::parse_literal;
+
+#[rstest]
+#[case("D#1970-01-01", 0)]
+#[case("D#1970-01-02", 1)]
+#[case("D#1970-12-31", 364)]
+#[case("D#1971-01-01", 365)]
+// 1972 is a leap year (366 days). 1973-01-01 = 365+365+366 = 1096.
+#[case("D#1973-01-01", 1_096)]
+#[case("D#2020-01-01", 18_262)]
+fn date_days_i32(mut with_db: RootDatabase, #[case] literal: &str, #[case] expected: i32) {
+    let id = parse_literal(&mut with_db, "DATE", literal);
+    assert_eq!(id.as_date_days_i32(&with_db).unwrap(), expected);
+}
+
+#[rstest]
+#[case("LD#1970-01-01", 0)]
+#[case("LD#1970-01-02", 1)]
+#[case("LD#2020-01-01", 18_262)]
+fn ldate_days_i64(mut with_db: RootDatabase, #[case] literal: &str, #[case] expected: i64) {
+    let id = parse_literal(&mut with_db, "LDATE", literal);
+    assert_eq!(id.as_ldate_days_i64(&with_db).unwrap(), expected);
+}

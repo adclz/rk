@@ -20,33 +20,15 @@ use time::{Date, Duration, PrimitiveDateTime, Time, macros::format_description};
 
 impl<'db> Elementary {
     pub fn check(&self, db: &'db dyn WorkspaceDataBase) -> Result<(), InferLiteralError> {
-        match self {
-            Elementary::Date(dt) => dt
-                .as_date(db)
-                .map(|_| ())
-                .map_err(|e| InferLiteralError::Invalid_DATE_Format(e.to_string())),
-            Elementary::LDate(dt) => dt
-                .as_long_date(db)
-                .map(|_| ())
-                .map_err(|e| InferLiteralError::Invalid_LDATE_Format(e.to_string())),
-            Elementary::TimeOfDay(tod) => tod
-                .as_tod(db)
-                .map(|_| ())
-                .map_err(|e| InferLiteralError::Invalid_TOD_Format(e.to_string())),
-            Elementary::LTod(ltod) => ltod
-                .as_long_tod(db)
-                .map(|_| ())
-                .map_err(|e| InferLiteralError::Invalid_LTOD_Format(e.to_string())),
-            Elementary::DateAndTime(dt) => dt
-                .as_date_time(db)
-                .map(|_| ())
-                .map_err(|e| InferLiteralError::Invalid_DT_Format(e.to_string())),
-            Elementary::LDateTime(ldt) => ldt
-                .as_long_date_time(db)
-                .map(|_| ())
-                .map_err(|e| InferLiteralError::Invalid_LDT_Format(e.to_string())),
-            Elementary::Time(t) => t.as_time(db).map(|_| ()),
-            Elementary::LTime(lt) => lt.as_ltime(db).map(|_| ()),
+    match self {
+            Elementary::Date(dt) => dt.as_date_days_i32(db).map(|_| ()),
+            Elementary::LDate(dt) => dt.as_ldate_days_i64(db).map(|_| ()),
+            Elementary::TimeOfDay(tod) => tod.as_tod_ms_i32(db).map(|_| ()),
+            Elementary::LTod(ltod) => ltod.as_ltod_ns_i64(db).map(|_| ()),
+            Elementary::DateAndTime(dt) => dt.as_dt_secs_i32(db).map(|_| ()),
+            Elementary::LDateTime(ldt) => ldt.as_ldt_ns_i64(db).map(|_| ()),
+            Elementary::Time(t) => t.as_time_ms_i32(db).map(|_| ()),
+            Elementary::LTime(lt) => lt.as_ltime_ns_i64(db).map(|_| ()),
             Elementary::String(s) => s.as_single_string(db).map(|_| ()),
             Elementary::WString(s) => s.as_double_string(db).map(|_| ()),
             Elementary::Char(s) => {
@@ -404,6 +386,210 @@ impl Ident {
         let value = text.split_once('#').map_or(text.as_str(), |(_, v)| v);
         parse_duration_components(value, "LTIME")
     }
+
+    //   TIME  > i32  ms    (duration; max ≈24.8 days)
+    //   LTIME > i64  ns    (duration; effectively unlimited)
+    //   DATE  > i32  days since 1970-01-01
+    //   LDATE > i64  days since 1970-01-01
+    //   TOD   > i32  ms since 00:00:00
+    //   LTOD  > i64  ns since 00:00:00
+    //   DT    > i32  seconds since 1970-01-01-00:00:00 (2038 problem)
+    //   LDT   > i64  ns since 1970-01-01-00:00:00      (~292 year range)
+    //
+    // The narrow (i32) forms can overflow on extreme inputs. When they do,
+    // we surface `DurationOverflow` so the user gets a typed E0309 with a
+    // hint to use the L-prefixed variant.
+
+    /// TIME literal as `i32` milliseconds. Errors with
+    /// `DurationOutOfRange` when the duration doesn't fit in `i32` ms
+    /// (≈ ±24.8 days).
+    #[salsa::tracked]
+    pub fn as_time_ms_i32(self, db: &dyn WorkspaceDataBase) -> Result<i32, InferLiteralError> {
+        let dur = self
+            .as_time(db)
+            .map_err(|e| retag_overflow(e, self, db, "TIME", TIME_MIN, TIME_MAX))?;
+        check_i32_range(dur.whole_milliseconds(), "TIME", TIME_MIN, TIME_MAX)
+    }
+
+    /// LTIME literal as `i64` nanoseconds. Errors with
+    /// `DurationOutOfRange` only on truly absurd inputs (≈ ±292 years).
+    #[salsa::tracked]
+    pub fn as_ltime_ns_i64(self, db: &dyn WorkspaceDataBase) -> Result<i64, InferLiteralError> {
+        let dur = self
+            .as_ltime(db)
+            .map_err(|e| retag_overflow(e, self, db, "LTIME", LTIME_MIN, LTIME_MAX))?;
+        check_i64_range(dur.whole_nanoseconds(), "LTIME", LTIME_MIN, LTIME_MAX)
+    }
+
+    /// DATE literal as `i32` days since 1970-01-01.
+    #[salsa::tracked]
+    pub fn as_date_days_i32(self, db: &dyn WorkspaceDataBase) -> Result<i32, InferLiteralError> {
+        let date = self
+            .as_date(db)
+            .map_err(|e| InferLiteralError::Invalid_DATE_Format(e.to_string()))?;
+        Ok(date.to_julian_day() - UNIX_EPOCH_JULIAN_DAY)
+    }
+
+    /// LDATE literal as `i64` days since 1970-01-01.
+    #[salsa::tracked]
+    pub fn as_ldate_days_i64(self, db: &dyn WorkspaceDataBase) -> Result<i64, InferLiteralError> {
+        let date = self
+            .as_long_date(db)
+            .map_err(|e| InferLiteralError::Invalid_LDATE_Format(e.to_string()))?;
+        Ok((date.to_julian_day() - UNIX_EPOCH_JULIAN_DAY) as i64)
+    }
+
+    /// TOD literal as `i32` milliseconds since midnight. The semantic
+    /// range (00:00:00..23:59:59.999, ≈ 86.4M ms) sits comfortably
+    /// inside `i32`, so no range check is needed.
+    #[salsa::tracked]
+    pub fn as_tod_ms_i32(self, db: &dyn WorkspaceDataBase) -> Result<i32, InferLiteralError> {
+        let t = self
+            .as_tod(db)
+            .map_err(|e| InferLiteralError::Invalid_TOD_Format(e.to_string()))?;
+        let (h, m, s, ns) = t.as_hms_nano();
+        let ms = (h as i64 * 3600 + m as i64 * 60 + s as i64) * 1000
+            + (ns as i64 / 1_000_000);
+        Ok(ms as i32)
+    }
+
+    /// LTOD literal as `i64` nanoseconds since midnight. Always fits.
+    #[salsa::tracked]
+    pub fn as_ltod_ns_i64(self, db: &dyn WorkspaceDataBase) -> Result<i64, InferLiteralError> {
+        let t = self
+            .as_long_tod(db)
+            .map_err(|e| InferLiteralError::Invalid_LTOD_Format(e.to_string()))?;
+        let (h, m, s, ns) = t.as_hms_nano();
+        Ok((h as i64 * 3600 + m as i64 * 60 + s as i64) * 1_000_000_000 + ns as i64)
+    }
+
+    /// DT literal as `i32` seconds since the Unix epoch. Errors with
+    /// `DurationOutOfRange` outside the i32-second range
+    /// (≈ 1901-12-13 to 2038-01-19).
+    #[salsa::tracked]
+    pub fn as_dt_secs_i32(self, db: &dyn WorkspaceDataBase) -> Result<i32, InferLiteralError> {
+        let dt = self
+            .as_date_time(db)
+            .map_err(|e| InferLiteralError::Invalid_DT_Format(e.to_string()))?;
+        check_i32_range(
+            dt.assume_utc().unix_timestamp() as i128,
+            "DT",
+            DT_MIN,
+            DT_MAX,
+        )
+    }
+
+    /// LDT literal as `i64` nanoseconds since the Unix epoch.
+    #[salsa::tracked]
+    pub fn as_ldt_ns_i64(self, db: &dyn WorkspaceDataBase) -> Result<i64, InferLiteralError> {
+        let dt = self
+            .as_long_date_time(db)
+            .map_err(|e| InferLiteralError::Invalid_LDT_Format(e.to_string()))?;
+        check_i64_range(
+            dt.assume_utc().unix_timestamp_nanos(),
+            "LDT",
+            LDT_MIN,
+            LDT_MAX,
+        )
+    }
+}
+
+/// Julian day number for 1970-01-01 (the Unix epoch).
+const UNIX_EPOCH_JULIAN_DAY: i32 = 2_440_588;
+
+// Pre-formatted IEC literals for the i32/i64 bounds of each
+// integer-encoded duration / datetime type. Hard-coded here so
+// `DurationOutOfRange` can carry them as `&'static str` without
+// allocating per diagnostic.
+const TIME_MIN: &str = "T#-24d20h31m23s648ms";
+const TIME_MAX: &str = "T#24d20h31m23s647ms";
+const LTIME_MIN: &str = "LT#-106751d23h47m16s854ms775us808ns";
+const LTIME_MAX: &str = "LT#106751d23h47m16s854ms775us807ns";
+const DT_MIN: &str = "DT#1901-12-13-20:45:52";
+const DT_MAX: &str = "DT#2038-01-19-03:14:07";
+const LDT_MIN: &str = "LDT#1677-09-21-00:12:43.145224192";
+const LDT_MAX: &str = "LDT#2262-04-11-23:47:16.854775807";
+
+/// Re-tag the inner `DurationOverflow` (raised when component
+/// accumulation overflows `i64` ns) as the typed `DurationOutOfRange`
+/// for a specific type, so the diagnostic carries the literal bounds.
+/// Direction is inferred from the original literal's sign (a `-` after
+/// the `#` means below-min; otherwise above-max).
+fn retag_overflow(
+    err: InferLiteralError,
+    ident: Ident,
+    db: &dyn WorkspaceDataBase,
+    type_name: &'static str,
+    min: &'static str,
+    max: &'static str,
+) -> InferLiteralError {
+    match err {
+        InferLiteralError::DurationOverflow => {
+            let above_max = !ident.text(db).contains("#-");
+            InferLiteralError::DurationOutOfRange {
+                type_name,
+                min,
+                max,
+                above_max,
+            }
+        }
+        other => other,
+    }
+}
+
+/// Narrow an `i128` integer encoding to `i32`, producing a
+/// `DurationOutOfRange` diagnostic with the type's name and the
+/// pre-formatted bound literals when the value is out of range.
+fn check_i32_range(
+    value: i128,
+    type_name: &'static str,
+    min: &'static str,
+    max: &'static str,
+) -> Result<i32, InferLiteralError> {
+    if value > i32::MAX as i128 {
+        return Err(InferLiteralError::DurationOutOfRange {
+            type_name,
+            min,
+            max,
+            above_max: true,
+        });
+    }
+    if value < i32::MIN as i128 {
+        return Err(InferLiteralError::DurationOutOfRange {
+            type_name,
+            min,
+            max,
+            above_max: false,
+        });
+    }
+    Ok(value as i32)
+}
+
+/// Narrow an `i128` integer encoding to `i64`. Same shape as
+/// [`check_i32_range`]; only triggers on truly absurd inputs.
+fn check_i64_range(
+    value: i128,
+    type_name: &'static str,
+    min: &'static str,
+    max: &'static str,
+) -> Result<i64, InferLiteralError> {
+    if value > i64::MAX as i128 {
+        return Err(InferLiteralError::DurationOutOfRange {
+            type_name,
+            min,
+            max,
+            above_max: true,
+        });
+    }
+    if value < i64::MIN as i128 {
+        return Err(InferLiteralError::DurationOutOfRange {
+            type_name,
+            min,
+            max,
+            above_max: false,
+        });
+    }
+    Ok(value as i64)
 }
 
 #[derive(Debug, PartialEq, Eq, Clone)]
@@ -654,14 +840,22 @@ fn parse_duration_components(s: &str, kind: &'static str) -> Result<Duration, In
             // Value is already converted to nanoseconds
             value
         } else {
-            // Integer value, needs conversion
+            // Integer value, needs conversion. Use `checked_mul` so an
+            // absurd literal like `LT#9999999d` surfaces as
+            // `DurationOverflow` instead of panicking (debug) or
+            // silently wrapping (release).
+            let mul = |factor: i64| {
+                value
+                    .checked_mul(factor)
+                    .ok_or(InferLiteralError::DurationOverflow)
+            };
             match unit {
-                "D" => value * 24 * 60 * 60 * 1_000_000_000,
-                "H" => value * 60 * 60 * 1_000_000_000,
-                "M" => value * 60 * 1_000_000_000,
-                "S" => value * 1_000_000_000,
-                "MS" => value * 1_000_000,
-                "US" => value * 1_000,
+                "D" => mul(86_400_000_000_000)?,
+                "H" => mul(3_600_000_000_000)?,
+                "M" => mul(60_000_000_000)?,
+                "S" => mul(1_000_000_000)?,
+                "MS" => mul(1_000_000)?,
+                "US" => mul(1_000)?,
                 "NS" => value,
                 _ => {
                     return Err(InferLiteralError::Invalid_TIME_Unit(unit.to_string()));

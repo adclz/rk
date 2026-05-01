@@ -71,7 +71,7 @@ END_FUNCTION_BLOCK"#
     insta::allow_duplicates! { assert_snapshot!(test_diagnostics(&mut with_db, &[&source]), @""); }
 }
 
-// TOD → LTOD implicit cast
+// TOD > LTOD implicit cast
 #[rstest]
 fn valid_tod_to_ltod_implicit(mut with_db: RootDatabase) {
     let source = r#"
@@ -84,7 +84,7 @@ END_FUNCTION_BLOCK"#;
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @"");
 }
 
-// LTOD → TOD narrowing is not allowed
+// LTOD > TOD narrowing is not allowed
 #[rstest]
 fn invalid_ltod_to_tod(mut with_db: RootDatabase) {
     let source = r#"
@@ -126,4 +126,33 @@ END_FUNCTION_BLOCK"#;
        |                             `---------- expected 'INT', got 'TOD'
     ---'
     ");
+}
+
+// -- Integer encoding (TOD > i32 ms, LTOD > i64 ns since midnight) -----
+//
+// 24h fits in both `i32` ms (max 86_400_000) and `i64` ns
+// (max 86.4×10¹²), so no error tests are needed.
+
+use crate::tests::semantics::literals::parse_literal;
+
+#[rstest]
+#[case("TOD#00:00:00", 0)]
+#[case("TOD#00:00:01", 1_000)]
+#[case("TOD#00:01:00", 60_000)]
+#[case("TOD#01:00:00", 3_600_000)]
+#[case("TOD#23:59:59", 86_399_000)]
+#[case("TOD#12:34:56.789", 12 * 3_600_000 + 34 * 60_000 + 56_000 + 789)]
+fn tod_ms_i32(mut with_db: RootDatabase, #[case] literal: &str, #[case] expected: i32) {
+    let id = parse_literal(&mut with_db, "TOD", literal);
+    assert_eq!(id.as_tod_ms_i32(&with_db).unwrap(), expected);
+}
+
+#[rstest]
+#[case("LTOD#00:00:00", 0)]
+#[case("LTOD#00:00:00.000000001", 1)]
+#[case("LTOD#00:00:01", 1_000_000_000)]
+#[case("LTOD#23:59:59.999999999", 86_399_999_999_999)]
+fn ltod_ns_i64(mut with_db: RootDatabase, #[case] literal: &str, #[case] expected: i64) {
+    let id = parse_literal(&mut with_db, "LTOD", literal);
+    assert_eq!(id.as_ltod_ns_i64(&with_db).unwrap(), expected);
 }

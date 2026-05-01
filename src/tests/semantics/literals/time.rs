@@ -195,3 +195,121 @@ END_FUNCTION_BLOCK"#;
     ---'
     ");
 }
+
+// ── Integer encoding (TIME → i32 ms, LTIME → i64 ns) ────────────────────
+//
+// TIME literals decode to `i32` milliseconds (range ≈ ±24.8 days);
+// LTIME to `i64` nanoseconds (≈ ±292 years). Out-of-range literals
+// surface as E0309 with the supported bounds shown as IEC literals.
+
+use crate::tests::semantics::literals::parse_literal;
+
+#[rstest]
+#[case("T#0ms", 0)]
+#[case("T#1ms", 1)]
+#[case("T#1s", 1_000)]
+#[case("T#1m", 60_000)]
+#[case("T#1h", 3_600_000)]
+#[case("T#1d", 86_400_000)]
+#[case("T#-1d", -86_400_000)]
+fn time_ms_i32(mut with_db: RootDatabase, #[case] literal: &str, #[case] expected: i32) {
+    let id = parse_literal(&mut with_db, "TIME", literal);
+    assert_eq!(id.as_time_ms_i32(&with_db).unwrap(), expected);
+}
+
+#[rstest]
+fn time_overflow_more_than_max_i32_ms_diagnostic(mut with_db: RootDatabase) {
+    let source = r#"
+FUNCTION_BLOCK fb1
+    VAR
+        x : TIME := T#100d;
+    END_VAR
+END_FUNCTION_BLOCK"#;
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
+    [E0309] Error: invalid literal
+       ,-[ file:///test0.st:4:21 ]
+       |
+     4 |         x : TIME := T#100d;
+       |                     ^^^|^^
+       |                        `---- cannot infer 'TIME literal' to 'TIME': TIME value exceeds the supported maximum
+       |
+       | Note: valid range for TIME: T#-24d20h31m23s648ms to T#24d20h31m23s647ms
+    ---'
+    ");
+}
+
+#[rstest]
+fn time_underflow_less_than_min_i32_ms_diagnostic(mut with_db: RootDatabase) {
+    let source = r#"
+FUNCTION_BLOCK fb1
+    VAR
+        x : TIME := T#-100d;
+    END_VAR
+END_FUNCTION_BLOCK"#;
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
+    [E0309] Error: invalid literal
+       ,-[ file:///test0.st:4:21 ]
+       |
+     4 |         x : TIME := T#-100d;
+       |                     ^^^|^^^
+       |                        `----- cannot infer 'TIME literal' to 'TIME': TIME value is below the supported minimum
+       |
+       | Note: valid range for TIME: T#-24d20h31m23s648ms to T#24d20h31m23s647ms
+    ---'
+    ");
+}
+
+#[rstest]
+#[case("LT#0ns", 0)]
+#[case("LT#1ns", 1)]
+#[case("LT#1us", 1_000)]
+#[case("LT#1ms", 1_000_000)]
+#[case("LT#1s", 1_000_000_000)]
+#[case("LT#-1s", -1_000_000_000)]
+fn ltime_ns_i64(mut with_db: RootDatabase, #[case] literal: &str, #[case] expected: i64) {
+    let id = parse_literal(&mut with_db, "LTIME", literal);
+    assert_eq!(id.as_ltime_ns_i64(&with_db).unwrap(), expected);
+}
+
+#[rstest]
+fn ltime_overflow_diagnostic(mut with_db: RootDatabase) {
+    // `LT#9999999d` exceeds i64 ns (max ≈ 106751 days).
+    let source = r#"
+FUNCTION_BLOCK fb1
+    VAR
+        x : LTIME := LT#9999999d;
+    END_VAR
+END_FUNCTION_BLOCK"#;
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
+    [E0309] Error: invalid literal
+       ,-[ file:///test0.st:4:22 ]
+       |
+     4 |         x : LTIME := LT#9999999d;
+       |                      ^^^^^|^^^^^
+       |                           `------- cannot infer 'LTIME literal' to 'LTIME': LTIME value exceeds the supported maximum
+       |
+       | Note: valid range for LTIME: LT#-106751d23h47m16s854ms775us808ns to LT#106751d23h47m16s854ms775us807ns
+    ---'
+    ");
+}
+
+#[rstest]
+fn ltime_underflow_diagnostic(mut with_db: RootDatabase) {
+    let source = r#"
+FUNCTION_BLOCK fb1
+    VAR
+        x : LTIME := LT#-9999999d;
+    END_VAR
+END_FUNCTION_BLOCK"#;
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
+    [E0309] Error: invalid literal
+       ,-[ file:///test0.st:4:22 ]
+       |
+     4 |         x : LTIME := LT#-9999999d;
+       |                      ^^^^^^|^^^^^
+       |                            `------- cannot infer 'LTIME literal' to 'LTIME': LTIME value is below the supported minimum
+       |
+       | Note: valid range for LTIME: LT#-106751d23h47m16s854ms775us808ns to LT#106751d23h47m16s854ms775us807ns
+    ---'
+    ");
+}
