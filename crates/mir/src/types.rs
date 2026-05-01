@@ -172,10 +172,19 @@ impl MirElementary {
             | MirElementary::ULInt
             | MirElementary::LWord
             | MirElementary::LReal => 8,
-            MirElementary::Time | MirElementary::LTime => 8,
-            MirElementary::Date | MirElementary::LDate => 8,
-            MirElementary::Tod | MirElementary::LTod => 8,
-            MirElementary::DateAndTime | MirElementary::LDateTime => 8,
+            // Date / time encodings
+            //   TIME = i32 ms,           LTIME = i64 ns
+            //   DATE = i32 days-1970,    LDATE = i64 days-1970
+            //   TOD  = i32 ms-of-day,    LTOD  = i64 ns-of-day
+            //   DT   = i32 secs-1970,    LDT   = i64 ns-1970
+            MirElementary::Time => 4,
+            MirElementary::LTime => 8,
+            MirElementary::Date => 4,
+            MirElementary::LDate => 8,
+            MirElementary::Tod => 4,
+            MirElementary::LTod => 8,
+            MirElementary::DateAndTime => 4,
+            MirElementary::LDateTime => 8,
         }
     }
 

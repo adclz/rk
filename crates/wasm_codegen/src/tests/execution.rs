@@ -540,3 +540,95 @@ END_FUNCTION
         .unwrap();
     func.call(&mut store, ()).unwrap();
 }
+
+/// Sanity-check the date/time integer encoding end-to-end. The cast emitter
+/// is responsible for the unit conversions documented in `stdlib/Convert.st`;
+/// these round-trips would silently misbehave if the i32/i64 split or the
+/// `* / 1_000_000` (and friends) scaling regressed.
+#[rstest]
+fn test_execute_datetime_round_trip(mut with_db: db::RootDatabase) {
+    let source = r#"
+        // TIME (i32 ms) -> LTIME (i64 ns): widening with * 1_000_000
+        FUNCTION time_to_ltime : LTIME
+        VAR_INPUT t : TIME; END_VAR
+            time_to_ltime := t;
+        END_FUNCTION
+
+        // LTIME (i64 ns) -> TIME (i32 ms): explicit narrow with / 1_000_000
+        FUNCTION ltime_to_time_inline : TIME
+        VAR_INPUT lt : LTIME; END_VAR
+        VAR result : TIME; END_VAR
+            {wasm 'cast' (params lt) (result result)}
+            ltime_to_time_inline := result;
+        END_FUNCTION
+
+        // DT (i32 secs) -> DATE (i32 days): div by 86400
+        FUNCTION dt_to_date_inline : DATE
+        VAR_INPUT d : DATE_AND_TIME; END_VAR
+        VAR result : DATE; END_VAR
+            {wasm 'cast' (params d) (result result)}
+            dt_to_date_inline := result;
+        END_FUNCTION
+
+        // DT -> TOD (ms-of-day): (secs % 86400) * 1000
+        FUNCTION dt_to_tod_inline : TOD
+        VAR_INPUT d : DATE_AND_TIME; END_VAR
+        VAR result : TOD; END_VAR
+            {wasm 'cast' (params d) (result result)}
+            dt_to_tod_inline := result;
+        END_FUNCTION
+
+        // LDT (i64 ns) -> LTOD (i64 ns-of-day): mod by 86_400_000_000_000
+        FUNCTION ldt_to_ltod_inline : LTOD
+        VAR_INPUT l : LDATE_AND_TIME; END_VAR
+        VAR result : LTOD; END_VAR
+            {wasm 'cast' (params l) (result result)}
+            ldt_to_ltod_inline := result;
+        END_FUNCTION
+    "#;
+
+    let wasm_bytes = compile_to_wasm(&mut with_db, source);
+    let engine = Engine::default();
+    let module = Module::new(&engine, &wasm_bytes).expect("Failed to create module");
+    let mut store = Store::new(&engine, ());
+    let instance = super::instantiate_with_memory(&mut store, &module);
+
+    // 5 ms -> 5_000_000 ns
+    let f = instance
+        .get_typed_func::<i32, i64>(&mut store, "time_to_ltime")
+        .unwrap();
+    assert_eq!(f.call(&mut store, 5).unwrap(), 5_000_000);
+
+    // 1500 ns -> 0 ms (truncating). 5_000_000 ns -> 5 ms.
+    let f = instance
+        .get_typed_func::<i64, i32>(&mut store, "ltime_to_time_inline")
+        .unwrap();
+    assert_eq!(f.call(&mut store, 1500).unwrap(), 0);
+    assert_eq!(f.call(&mut store, 5_000_000).unwrap(), 5);
+
+    // 86_399 secs (just under one day) -> 0 days. 86_400 secs -> 1 day.
+    // 1973-01-01 = 1096 days from 1970-01-01 (1970 + 1971 + 1972 leap = 365+365+366).
+    let f = instance
+        .get_typed_func::<i32, i32>(&mut store, "dt_to_date_inline")
+        .unwrap();
+    assert_eq!(f.call(&mut store, 86_399).unwrap(), 0);
+    assert_eq!(f.call(&mut store, 86_400).unwrap(), 1);
+    assert_eq!(f.call(&mut store, 1_096 * 86_400).unwrap(), 1_096);
+
+    // DT 12:34:56 (= 12*3600 + 34*60 + 56 = 45_296 secs into the day)
+    // -> TOD 45_296_000 ms-of-day.
+    let f = instance
+        .get_typed_func::<i32, i32>(&mut store, "dt_to_tod_inline")
+        .unwrap();
+    let secs_into_day = 12 * 3600 + 34 * 60 + 56;
+    assert_eq!(f.call(&mut store, secs_into_day).unwrap(), secs_into_day * 1_000);
+    // 1 day + 1 sec since epoch -> 1 sec-of-day -> 1000 ms-of-day.
+    assert_eq!(f.call(&mut store, 86_400 + 1).unwrap(), 1_000);
+
+    // LDT 1 day + 500 ns -> LTOD 500 ns.
+    let f = instance
+        .get_typed_func::<i64, i64>(&mut store, "ldt_to_ltod_inline")
+        .unwrap();
+    assert_eq!(f.call(&mut store, 86_400_000_000_000 + 500).unwrap(), 500);
+    assert_eq!(f.call(&mut store, 86_400_000_000_000 * 2 + 1).unwrap(), 1);
+}

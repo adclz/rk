@@ -9,14 +9,30 @@ use crate::{
     stmt::MirStmt,
 };
 
+/// Resolve a HIR type for cast checks: `normalize`, plus the extra hop
+/// from a bare `Type::Function`/`Type::MethodDecl` (a function name used
+/// as its own return slot) to its return type.
+fn resolve_for_cast<'db>(
+    db: &'db dyn WorkspaceDataBase,
+    ty: hir::hir_ty::ty::Type<'db>,
+) -> hir::hir_ty::ty::Type<'db> {
+    let ty = ty.normalize(db);
+    match ty {
+        hir::hir_ty::ty::Type::Function(_) | hir::hir_ty::ty::Type::MethodDecl(_) => {
+            ty.with_return_type(db).map_or(ty, |rt| rt.normalize(db))
+        }
+        _ => ty,
+    }
+}
+
 /// Check if we need an implicit cast between two HIR types.
 fn needs_cast<'db>(
     db: &'db dyn WorkspaceDataBase,
     from: hir::hir_ty::ty::Type<'db>,
     to: hir::hir_ty::ty::Type<'db>,
 ) -> bool {
-    let from = from.normalize(db);
-    let to = to.normalize(db);
+    let from = resolve_for_cast(db, from);
+    let to = resolve_for_cast(db, to);
     match (&from, &to) {
         (hir::hir_ty::ty::Type::Elementary(f), hir::hir_ty::ty::Type::Elementary(t)) => f != t,
         _ => false,
@@ -135,9 +151,11 @@ fn lower_stmt<'db>(
     match stmt.stmt(ctx.db) {
         StmtKind::Assignment { var, target } => {
             let place = ctx.lower_variable_access(*var)?;
-            // Get target variable type for implicit cast insertion
-            let var_type = var.infer(ctx.db);
-            let target_type = target.infer(ctx.db);
+            // Get target variable type for implicit cast insertion. Resolve
+            // through `Type::Function` / `Type::MethodDecl` so assigning to
+            // the function-name return slot uses the declared return type.
+            let var_type = resolve_for_cast(ctx.db, var.infer(ctx.db));
+            let target_type = resolve_for_cast(ctx.db, target.infer(ctx.db));
             let value = if needs_cast(ctx.db, target_type, var_type) {
                 // Insert cast from expression type to variable type
                 let from = ctx.type_to_mir_elementary_pub(target_type)?;

@@ -508,24 +508,56 @@ impl<'db> ExprLowerCtx<'db> {
                 Ok(MirExpr::StringLiteral { id, offset, len })
             }
 
-            // Time literals - stored as nanoseconds (i64)
-            Elementary::Time(ident) | Elementary::LTime(ident) => {
-                let duration = ident.as_time(self.db).map_err(|e| {
-                    LowerTypeError::UnsupportedType(format!("Invalid time literal: {:?}", e))
+            // Time and date literals decode to the storage encodings (`types.rs`);
+            // the HIR helpers parse and range-check.
+            Elementary::Time(ident) => {
+                let val = ident.as_time_ms_i32(self.db).map_err(|e| {
+                    LowerTypeError::UnsupportedType(format!("Invalid TIME literal: {e:?}"))
                 })?;
-                let nanos = duration.whole_nanoseconds() as i64;
-                Ok(MirExpr::Constant(MirConstant::I64(nanos)))
+                Ok(MirExpr::Constant(MirConstant::I32(val)))
             }
-
-            // Date/DateTime/TimeOfDay - not yet supported
-            Elementary::Date(_)
-            | Elementary::LDate(_)
-            | Elementary::DateAndTime(_)
-            | Elementary::LDateTime(_)
-            | Elementary::TimeOfDay(_)
-            | Elementary::LTod(_) => Err(LowerTypeError::UnsupportedType(
-                "Date/DateTime literals not yet supported".to_string(),
-            )),
+            Elementary::LTime(ident) => {
+                let val = ident.as_ltime_ns_i64(self.db).map_err(|e| {
+                    LowerTypeError::UnsupportedType(format!("Invalid LTIME literal: {e:?}"))
+                })?;
+                Ok(MirExpr::Constant(MirConstant::I64(val)))
+            }
+            Elementary::Date(ident) => {
+                let val = ident.as_date_days_i32(self.db).map_err(|e| {
+                    LowerTypeError::UnsupportedType(format!("Invalid DATE literal: {e:?}"))
+                })?;
+                Ok(MirExpr::Constant(MirConstant::I32(val)))
+            }
+            Elementary::LDate(ident) => {
+                let val = ident.as_ldate_days_i64(self.db).map_err(|e| {
+                    LowerTypeError::UnsupportedType(format!("Invalid LDATE literal: {e:?}"))
+                })?;
+                Ok(MirExpr::Constant(MirConstant::I64(val)))
+            }
+            Elementary::TimeOfDay(ident) => {
+                let val = ident.as_tod_ms_i32(self.db).map_err(|e| {
+                    LowerTypeError::UnsupportedType(format!("Invalid TOD literal: {e:?}"))
+                })?;
+                Ok(MirExpr::Constant(MirConstant::I32(val)))
+            }
+            Elementary::LTod(ident) => {
+                let val = ident.as_ltod_ns_i64(self.db).map_err(|e| {
+                    LowerTypeError::UnsupportedType(format!("Invalid LTOD literal: {e:?}"))
+                })?;
+                Ok(MirExpr::Constant(MirConstant::I64(val)))
+            }
+            Elementary::DateAndTime(ident) => {
+                let val = ident.as_dt_secs_i32(self.db).map_err(|e| {
+                    LowerTypeError::UnsupportedType(format!("Invalid DT literal: {e:?}"))
+                })?;
+                Ok(MirExpr::Constant(MirConstant::I32(val)))
+            }
+            Elementary::LDateTime(ident) => {
+                let val = ident.as_ldt_ns_i64(self.db).map_err(|e| {
+                    LowerTypeError::UnsupportedType(format!("Invalid LDT literal: {e:?}"))
+                })?;
+                Ok(MirExpr::Constant(MirConstant::I64(val)))
+            }
         }
     }
 
