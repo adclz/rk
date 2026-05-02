@@ -1,5 +1,5 @@
 //! Emit WASM instructions from MIR statements.
-//! Purely mechanical — reads structured control flow and emits WASM blocks.
+//! Purely mechanical - reads structured control flow and emits WASM blocks.
 
 use hir::hir_def::interned::identifier::Ident;
 use mir::{
@@ -309,6 +309,49 @@ fn emit_stmt(func: &mut wasm_encoder::Function, stmt: &MirStmt, ctx: &Ctx) {
             params,
             result,
         } => {
+            // Integer ABS has no wasm op: branchless `select` for signed, a no-op
+            // for unsigned.
+            if instruction == "i32.abs" || instruction == "i64.abs" {
+                let in_name = params.first().expect("abs needs an input param");
+                let (in_idx, elem) = match ctx.locals.get(in_name) {
+                    Some(LocalInfo::Scalar { index, elem, .. }) => (*index, *elem),
+                    _ => panic!("abs input must be a scalar local"),
+                };
+                if elem.is_signed() {
+                    if elem.is_64bit() {
+                        // -x
+                        func.instruction(&Instruction::I64Const(0));
+                        func.instruction(&Instruction::LocalGet(in_idx));
+                        func.instruction(&Instruction::I64Sub);
+                        // x
+                        func.instruction(&Instruction::LocalGet(in_idx));
+                        // x < 0 ?
+                        func.instruction(&Instruction::LocalGet(in_idx));
+                        func.instruction(&Instruction::I64Const(0));
+                        func.instruction(&Instruction::I64LtS);
+                        func.instruction(&Instruction::Select);
+                    } else {
+                        func.instruction(&Instruction::I32Const(0));
+                        func.instruction(&Instruction::LocalGet(in_idx));
+                        func.instruction(&Instruction::I32Sub);
+                        func.instruction(&Instruction::LocalGet(in_idx));
+                        func.instruction(&Instruction::LocalGet(in_idx));
+                        func.instruction(&Instruction::I32Const(0));
+                        func.instruction(&Instruction::I32LtS);
+                        func.instruction(&Instruction::Select);
+                    }
+                } else {
+                    // Unsigned: identity.
+                    func.instruction(&Instruction::LocalGet(in_idx));
+                }
+                if let Some(result_name) = result
+                    && let Some(LocalInfo::Scalar { index, .. }) = ctx.locals.get(result_name)
+                {
+                    func.instruction(&Instruction::LocalSet(*index));
+                }
+                return;
+            }
+
             // Push params on stack
             for param_name in params {
                 if let Some(info) = ctx.locals.get(param_name)
@@ -424,8 +467,21 @@ fn emit_wasm_instruction(func: &mut wasm_encoder::Function, name: &str) {
         "i64.extend_i32_u" => {
             func.instruction(&Instruction::I64ExtendI32U);
         }
+        // Float math intrinsics (single-instruction)
+        "f32.sqrt" => {
+            func.instruction(&Instruction::F32Sqrt);
+        }
+        "f64.sqrt" => {
+            func.instruction(&Instruction::F64Sqrt);
+        }
+        "f32.abs" => {
+            func.instruction(&Instruction::F32Abs);
+        }
+        "f64.abs" => {
+            func.instruction(&Instruction::F64Abs);
+        }
         _ => {
-            // Unknown instruction — emit unreachable as a trap
+            // Unknown instruction - emit unreachable as a trap
             func.instruction(&Instruction::Unreachable);
         }
     }
