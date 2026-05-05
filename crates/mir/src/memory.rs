@@ -1,12 +1,26 @@
 use hir::hir_def::interned::identifier::Ident;
 
-/// Memory layout for the entire module — fully resolved during MIR lowering.
-#[derive(Debug, Clone, Default)]
+/// Bytes reserved at the bottom of linear memory before any IEC allocation:
+/// the grafted `wasm_builtins` use `[0, 8192)` as their shadow stack and
+/// `[8192, 9008)` for their data segments; rounded up to 16 KiB.
+pub const BUILTIN_RESERVED_FLOOR: u32 = 16_384;
+
+/// Memory layout for the entire module - fully resolved during MIR lowering.
+#[derive(Debug, Clone)]
 pub struct MirMemoryLayout {
     /// Current offset (next available address).
     offset: u32,
     /// All allocations in order.
     pub allocations: Vec<MirAllocation>,
+}
+
+impl Default for MirMemoryLayout {
+    fn default() -> Self {
+        Self {
+            offset: BUILTIN_RESERVED_FLOOR,
+            allocations: Vec::new(),
+        }
+    }
 }
 
 /// A single allocation in linear memory.

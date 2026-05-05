@@ -19,6 +19,9 @@ struct Ctx<'a> {
     locals: &'a FxHashMap<Ident, LocalInfo>,
     fn_indices: &'a FxHashMap<Ident, u32>,
     return_local: Option<u32>,
+    /// Builtin instruction name (`f32.sin`) → wasm index of its grafted
+    /// implementation.
+    builtin_indices: &'a FxHashMap<String, u32>,
 }
 
 /// Emit a list of MIR statements with return local context.
@@ -27,12 +30,14 @@ pub(crate) fn emit_stmts_with_return(
     stmts: &[MirStmt],
     locals: &FxHashMap<Ident, LocalInfo>,
     fn_indices: &FxHashMap<Ident, u32>,
+    builtin_indices: &FxHashMap<String, u32>,
     return_local: Option<u32>,
 ) {
     let ctx = Ctx {
         locals,
         fn_indices,
         return_local,
+        builtin_indices,
     };
     emit_stmts(func, stmts, &ctx);
 }
@@ -309,6 +314,24 @@ fn emit_stmt(func: &mut wasm_encoder::Function, stmt: &MirStmt, ctx: &Ctx) {
             params,
             result,
         } => {
+            // Builtins (e.g. `f32.sin`, `f64.exp`): the grafted WASM
+            // function is already in the output module — emit a `call`
+            // to it instead of a raw instruction.
+            if let Some(&fn_idx) = ctx.builtin_indices.get(instruction.as_str()) {
+                for param_name in params {
+                    if let Some(LocalInfo::Scalar { index, .. }) = ctx.locals.get(param_name) {
+                        func.instruction(&Instruction::LocalGet(*index));
+                    }
+                }
+                func.instruction(&Instruction::Call(fn_idx));
+                if let Some(result_name) = result
+                    && let Some(LocalInfo::Scalar { index, .. }) = ctx.locals.get(result_name)
+                {
+                    func.instruction(&Instruction::LocalSet(*index));
+                }
+                return;
+            }
+
             // Integer ABS has no wasm op: branchless `select` for signed, a no-op
             // for unsigned.
             if instruction == "i32.abs" || instruction == "i64.abs" {

@@ -8,6 +8,9 @@ pub mod emit_expr;
 pub mod emit_stmt;
 pub mod mir_cast;
 
+mod builtins;
+mod graft;
+
 #[cfg(test)]
 pub mod tests;
 
@@ -63,12 +66,16 @@ struct WasmGen<'a> {
     type_section: wasm_encoder::TypeSection,
     import_section: wasm_encoder::ImportSection,
     fn_section: wasm_encoder::FunctionSection,
+    global_section: wasm_encoder::GlobalSection,
     export_section: wasm_encoder::ExportSection,
     code_section: wasm_encoder::CodeSection,
+    extra_data_section: wasm_encoder::DataSection,
     next_type_idx: u32,
     /// MIR function index → wasm index: wasm requires all imports first, MIR
     /// may interleave them.
     index_remap: FxHashMap<u32, u32>,
+    /// Builtin name (`f32.sin`) → wasm index of the grafted implementation.
+    builtin_indices: FxHashMap<String, u32>,
 }
 
 /// WASM page size.
@@ -114,44 +121,142 @@ impl<'a> WasmGen<'a> {
             type_section: Default::default(),
             import_section,
             fn_section: Default::default(),
+            global_section: Default::default(),
             export_section: Default::default(),
             code_section: Default::default(),
+            extra_data_section: Default::default(),
             next_type_idx: 0,
             index_remap: FxHashMap::default(),
+            builtin_indices: FxHashMap::default(),
         }
     }
 
     fn emit_all(&mut self) {
-        // Build a corrected index map: all imports first, then locals.
-        // MIR may have assigned indices in a different order (e.g., monomorphized
-        // externs appended after locals), but WASM requires imports before locals.
+        // Pre-scan: which `wasm_builtins` exports any function references. The
+        // graft goes between imports and user functions, so user indices skip
+        // past it.
+        let names_used = self.collect_builtin_names();
+
+        // Index layout in the output module:
+        //   [imports] [grafted builtins] [user functions]
+        let n_imports = self.module.extern_functions.len() as u32;
+        let n_builtins = self.preflight_graft_count(&names_used);
+
         let mut index_remap: FxHashMap<u32, u32> = FxHashMap::default();
         let mut wasm_idx: u32 = 0;
 
-        // 1. Assign WASM indices for all imports
+        // 1. Assign WASM indices for all imports.
         for ext_fn in &self.module.extern_functions {
             index_remap.insert(ext_fn.index, wasm_idx);
             wasm_idx += 1;
         }
 
-        // 2. Assign WASM indices for all local functions
+        // 2. Reserve indices for grafted builtins; the graft runs after the
+        //    imports.
+        wasm_idx += n_builtins;
+
+        // 3. Assign WASM indices for all local (user) functions.
         for func in &self.module.functions {
             index_remap.insert(func.index, wasm_idx);
             wasm_idx += 1;
         }
-
-        // Store the remap for use during code emission
+        let _ = n_imports;
         self.index_remap = index_remap;
 
-        // 3. Emit imports
+        // 4. Emit imports.
         for ext_fn in &self.module.extern_functions {
             self.emit_import(ext_fn);
         }
 
-        // 4. Emit local functions
+        // 5. Graft builtins. Their function indices land in
+        //    [n_imports, n_imports + n_builtins) — exactly the slot we
+        //    reserved above.
+        if !names_used.is_empty() {
+            let plan = crate::graft::graft_builtins(
+                names_used.iter().map(String::as_str),
+                &mut self.type_section,
+                &mut self.fn_section,
+                &mut self.code_section,
+                &mut self.global_section,
+                &mut self.extra_data_section,
+                &mut self.next_type_idx,
+                /* base_fn_idx = */ self.module.extern_functions.len() as u32,
+            );
+            self.builtin_indices = plan.name_to_wasm_idx;
+        }
+
+        // 6. Emit user functions.
         for func in &self.module.functions {
             self.emit_function(func);
         }
+    }
+
+    /// Walk every user function's body and collect the set of WASM
+    /// instruction names that hit `BUILTIN_NAMES`. Returned as a sorted
+    /// `Vec` for deterministic graft order.
+    fn collect_builtin_names(&self) -> Vec<String> {
+        use mir::stmt::MirStmt;
+        let mut found = rustc_hash::FxHashSet::default();
+        fn walk(stmts: &[MirStmt], found: &mut rustc_hash::FxHashSet<String>) {
+            for stmt in stmts {
+                match stmt {
+                    MirStmt::WasmIntrinsic { instruction, .. } => {
+                        if crate::builtins::lookup(instruction.as_str()).is_some() {
+                            found.insert(instruction.to_string());
+                        }
+                    }
+                    MirStmt::If {
+                        then_body,
+                        else_ifs,
+                        else_body,
+                        ..
+                    } => {
+                        walk(then_body, found);
+                        for (_, body) in else_ifs {
+                            walk(body, found);
+                        }
+                        if let Some(b) = else_body {
+                            walk(b, found);
+                        }
+                    }
+                    MirStmt::Case { arms, else_body, .. } => {
+                        for arm in arms {
+                            walk(&arm.body, found);
+                        }
+                        if let Some(b) = else_body {
+                            walk(b, found);
+                        }
+                    }
+                    MirStmt::For { body, .. }
+                    | MirStmt::While { body, .. }
+                    | MirStmt::Repeat { body, .. } => walk(body, found),
+                    _ => {}
+                }
+            }
+        }
+        for func in &self.module.functions {
+            walk(&func.body, &mut found);
+        }
+        let mut v: Vec<String> = found.into_iter().collect();
+        v.sort();
+        v
+    }
+
+    /// Count how many bundle functions a graft of these names would pull
+    /// in, without actually grafting. Mirrors the closure walk in `graft`.
+    fn preflight_graft_count(&self, names: &[String]) -> u32 {
+        if names.is_empty() {
+            return 0;
+        }
+        let mut seen = rustc_hash::FxHashSet::default();
+        for name in names {
+            if let Some(root) = crate::builtins::lookup(name) {
+                for idx in crate::builtins::transitive_closure(root) {
+                    seen.insert(idx);
+                }
+            }
+        }
+        seen.len() as u32
     }
 
     fn emit_import(&mut self, ext_fn: &MirExternFunction) {
@@ -272,6 +377,7 @@ impl<'a> WasmGen<'a> {
             &func.body,
             &local_map,
             &remapped_fn_indices,
+            &self.builtin_indices,
             return_local,
         );
 
@@ -312,12 +418,20 @@ impl<'a> WasmGen<'a> {
         module.section(&self.type_section);
         module.section(&self.import_section);
         module.section(&self.fn_section);
+        // Global section is only emitted when builtins were grafted (the
+        // bundle's stack pointer + static markers). Empty otherwise.
+        if !self.builtin_indices.is_empty() {
+            module.section(&self.global_section);
+        }
         module.section(&self.export_section);
         module.section(&self.code_section);
 
-        // Data section for string literals
-        if !self.module.string_data.is_empty() {
-            let mut data_section = wasm_encoder::DataSection::new();
+        // IEC string data and grafted data segments both target memory 0 and
+        // never overlap (the IEC layout starts at `BUILTIN_RESERVED_FLOOR`).
+        let has_iec_data = !self.module.string_data.is_empty();
+        let has_builtin_data = !self.builtin_indices.is_empty();
+        if has_iec_data || has_builtin_data {
+            let mut data_section = self.extra_data_section;
             for (offset, bytes) in &self.module.string_data {
                 data_section.active(
                     0,

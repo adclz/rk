@@ -10,8 +10,11 @@ publish = false
 db = { workspace = true }
 hir = { workspace = true }
 wasm-encoder = { workspace = true }
+wasmparser = { workspace = true }
 rustc-hash = { workspace = true }
 mir = { workspace = true }
+phf = { workspace = true }
+wasm_builtins_generated = { path = "../wasm_builtins_generated" }
 
 [dev-dependencies]
 auto-lsp = { workspace = true, features = ["lsp_server"] }
