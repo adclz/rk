@@ -36,10 +36,10 @@ fn mir_to_prim(ty: &MirType) -> PrimitiveValType {
             | MirElementary::LTod
             | MirElementary::DateAndTime
             | MirElementary::LDateTime => PrimitiveValType::U64,
-            MirElementary::Char | MirElementary::WChar => PrimitiveValType::Char,
+            MirElementary::Char => PrimitiveValType::Char,
         },
         MirType::Pointer(_) => PrimitiveValType::U32,
-        MirType::String(_) => PrimitiveValType::String,
+        MirType::String => PrimitiveValType::String,
         _ => PrimitiveValType::S32,
     }
 }
@@ -100,8 +100,8 @@ struct WasiFunc {
 /// True if any param or the return type is a `string` — meaning the lift/lower
 /// adapter will touch linear memory and needs `Memory + UTF8` canonical options.
 fn has_string(params: &[MirParam], return_type: &Option<MirType>) -> bool {
-    params.iter().any(|p| matches!(p.ty, MirType::String(_)))
-        || matches!(return_type, Some(MirType::String(_)))
+    params.iter().any(|p| matches!(p.ty, MirType::String))
+        || matches!(return_type, Some(MirType::String))
 }
 
 /// Build a memory-only core module: `(module (memory 1) (export "memory" (memory 0)))`.

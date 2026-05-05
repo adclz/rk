@@ -497,10 +497,7 @@ impl<'db> ExprLowerCtx<'db> {
             }
 
             // String/Char literals - intern in the string pool
-            Elementary::String(ident)
-            | Elementary::WString(ident)
-            | Elementary::Char(ident)
-            | Elementary::WChar(ident) => {
+            Elementary::String(ident) | Elementary::Char(ident) => {
                 let raw = ident.text(self.db).to_string();
                 // Strip surrounding quotes (' or ")
                 let text = raw.trim_matches('\'').trim_matches('"');

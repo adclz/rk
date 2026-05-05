@@ -463,7 +463,7 @@ fn build_signature(
             }
             MirParamKind::Input => {
                 match &param.ty {
-                    MirType::String(_) => {
+                    MirType::String => {
                         wasm_params.push(ValType::I32); // ptr
                         wasm_params.push(ValType::I32); // len
                     }
@@ -483,7 +483,7 @@ fn build_signature(
         // A STRING return flattens to (ptr, len) per the component-model
         // canonical ABI. The function body pushes the two i32s in that order
         // at the epilogue (see `emit_function`).
-        Some(MirType::String(_)) => vec![ValType::I32, ValType::I32],
+        Some(MirType::String) => vec![ValType::I32, ValType::I32],
         Some(ty) => mir_type_to_val_type(ty)
             .map(|vt| vec![vt])
             .unwrap_or_default(),
@@ -534,7 +534,7 @@ pub(crate) fn build_local_map(
             }
             MirParamKind::Input => {
                 match &param.ty {
-                    MirType::String(_) => {
+                    MirType::String => {
                         // String params take 2 WASM params (ptr, len)
                         map.insert(
                             param.name,
@@ -590,7 +590,7 @@ pub(crate) fn build_local_map(
                 size,
                 align,
             } => match &local.ty {
-                MirType::String(_) => {
+                MirType::String => {
                     map.insert(local.name, LocalInfo::StringMemory { address });
                 }
                 ty => {

@@ -7,8 +7,8 @@ pub enum MirType {
     /// Primitive scalar type (bool, integers, reals, time types).
     Elementary(MirElementary),
 
-    /// Fixed-size string (ptr + len representation).
-    String(MirStringKind),
+    /// Fixed-size UTF-8 string (ptr + len representation).
+    String,
 
     /// Struct with known field layout.
     Struct(MirStructType),
@@ -48,7 +48,6 @@ pub enum MirElementary {
     Real,
     LReal,
     Char,
-    WChar,
     Time,
     LTime,
     Date,
@@ -59,11 +58,6 @@ pub enum MirElementary {
     LDateTime,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub enum MirStringKind {
-    String,
-    WString,
-}
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct MirStructType {
@@ -119,7 +113,7 @@ impl MirType {
     pub fn size_bytes(&self) -> u32 {
         match self {
             MirType::Elementary(e) => e.size_bytes(),
-            MirType::String(_) => 8, // ptr (i32) + len (i32)
+            MirType::String => 8, // ptr (i32) + len (i32)
             MirType::Struct(s) => s.size,
             MirType::Array(a) => a.size,
             MirType::Enum(e) => e.storage.size_bytes(),
@@ -133,7 +127,7 @@ impl MirType {
     pub fn alignment(&self) -> u32 {
         match self {
             MirType::Elementary(e) => e.alignment(),
-            MirType::String(_) => 4,
+            MirType::String => 4,
             MirType::Struct(s) => s.align,
             MirType::Array(a) => a.align,
             MirType::Enum(e) => e.storage.alignment(),
@@ -160,10 +154,7 @@ impl MirElementary {
             | MirElementary::USInt
             | MirElementary::Byte
             | MirElementary::Char => 4,
-            MirElementary::Int
-            | MirElementary::UInt
-            | MirElementary::Word
-            | MirElementary::WChar => 4,
+            MirElementary::Int | MirElementary::UInt | MirElementary::Word => 4,
             MirElementary::DInt
             | MirElementary::UDInt
             | MirElementary::DWord

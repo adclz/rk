@@ -16,7 +16,7 @@ use compact_str::CompactString;
 use crate::{
     memory::align_to,
     types::{
-        MirArrayType, MirElementary, MirEnumType, MirStringKind, MirStructField, MirStructType,
+        MirArrayType, MirElementary, MirEnumType, MirStructField, MirStructType,
         MirSubrangeType, MirType,
     },
 };
@@ -39,9 +39,7 @@ pub fn lower_type<'db>(
     let ty = ty.normalize(db);
 
     match ty {
-        Type::Elementary(spec) if is_string_type(spec) => {
-            Ok(MirType::String(elementary_to_string_kind(spec)))
-        }
+        Type::Elementary(ElementarySpec::String) => Ok(MirType::String),
 
         Type::Elementary(spec) => {
             let mir_elem = elementary_spec_to_mir(spec)?;
@@ -91,7 +89,6 @@ pub fn elementary_spec_to_mir(spec: ElementarySpec) -> Result<MirElementary, Low
         ElementarySpec::Real => MirElementary::Real,
         ElementarySpec::LReal => MirElementary::LReal,
         ElementarySpec::Char => MirElementary::Char,
-        ElementarySpec::WChar => MirElementary::WChar,
         ElementarySpec::Time => MirElementary::Time,
         ElementarySpec::LTime => MirElementary::LTime,
         ElementarySpec::Date => MirElementary::Date,
@@ -408,17 +405,6 @@ pub fn lower_class_type<'db>(
         size: offset,
         align: max_align,
     }))
-}
-
-fn is_string_type(spec: ElementarySpec) -> bool {
-    matches!(spec, ElementarySpec::String | ElementarySpec::WString)
-}
-
-fn elementary_to_string_kind(spec: ElementarySpec) -> MirStringKind {
-    match spec {
-        ElementarySpec::WString => MirStringKind::WString,
-        _ => MirStringKind::String,
-    }
 }
 
 fn extract_integer_literal<'db>(

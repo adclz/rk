@@ -1024,7 +1024,6 @@ fn mir_elementary_to_spec(elem: MirElementary) -> Option<ElementarySpec> {
         MirElementary::Real => ElementarySpec::Real,
         MirElementary::LReal => ElementarySpec::LReal,
         MirElementary::Char => ElementarySpec::Char,
-        MirElementary::WChar => ElementarySpec::WChar,
         MirElementary::Time => ElementarySpec::Time,
         MirElementary::LTime => ElementarySpec::LTime,
         MirElementary::Date => ElementarySpec::Date,
