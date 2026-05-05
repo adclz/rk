@@ -266,10 +266,7 @@ FUNCTION fn
    VAR
 
       string: CHAR := '';
-      wstring: WCHAR := "";
-
       char: CHAR := '$00';
-      wchar: WCHAR := "$0000";
 
    END_VAR
 
@@ -300,39 +297,13 @@ END_FUNCTION
             (var_decl_init
               (simple_type_spec
                 (string_type_name
-                  (wchar_name)))
-              (simple_type_init
-                (constant_expr
-                  (constant
-                    (char_literal
-                      (char_str
-                        (d_byte_char_str))))))))
-          (var_decl_init_list
-            (variable_list
-              (identifier))
-            (var_decl_init
-              (simple_type_spec
-                (string_type_name
                   (char_name)))
               (simple_type_init
                 (constant_expr
                   (constant
                     (char_literal
                       (char_str
-                        (s_byte_char_str))))))))
-          (var_decl_init_list
-            (variable_list
-              (identifier))
-            (var_decl_init
-              (simple_type_spec
-                (string_type_name
-                  (wchar_name)))
-              (simple_type_init
-                (constant_expr
-                  (constant
-                    (char_literal
-                      (char_str
-                        (d_byte_char_str)))))))))))
+                        (s_byte_char_str)))))))))))
 
 ================================================================================
 Time and Tod

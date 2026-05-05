@@ -705,18 +705,10 @@ module.exports = grammar({
     real_type_name: ($) =>
       choice(alias("REAL", $.real_name), alias("LREAL", $.lreal_name)),
 
-    string_type_name: ($) =>
-      choice(
-        $.string_name,
-        $.wstring_name,
-        $.char_name,
-        $.wchar_name,
-      ),
+    string_type_name: ($) => choice($.string_name, $.char_name),
 
     string_name: ($) => seq("STRING", optional(seq("[", $.unsigned_int, "]"))),
-    wstring_name: ($) => seq("WSTRING", optional(seq("[", $.unsigned_int, "]"))),
     char_name: ($) => "CHAR",
-    wchar_name: ($) => "WCHAR",
 
     any_time_type_name: ($) => choice($.time_type_name, $.l_time_type_name),
 
@@ -1201,7 +1193,7 @@ module.exports = grammar({
       ),
 
     // Var_Spec : Simple_Spec | Array_Spec | Struct_Type_Access
-    // | ( 'STRING' | 'WSTRING' ) ( '[' Unsigned_Int ']' )?;
+    // | 'STRING' ( '[' Unsigned_Int ']' )?;
     var_spec: ($) => $.data_type_access,
 
     // Table 19 - Function declaration
