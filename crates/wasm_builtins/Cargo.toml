@@ -1,0 +1,23 @@
+[package]
+name = "wasm_builtins"
+version = "0.1.0"
+edition = "2024"
+publish = false
+
+# Compiled to wasm32-unknown-unknown by `wasm_codegen`'s build.rs and embedded
+# as a static byte slice. Exports each IEC math intrinsic under a stable name
+# (e.g. `f32_sin`, `f64_cos`) so the codegen can graft it into output modules
+# instead of issuing a host import.
+
+[lib]
+crate-type = ["cdylib"]
+
+[dependencies]
+libm = "0.2"
+
+[profile.release]
+opt-level = "z"
+lto = true
+codegen-units = 1
+panic = "abort"
+strip = true

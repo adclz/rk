@@ -1,0 +1,18 @@
+[package]
+name = "wasm_builtins_generated"
+version = "0.1.0"
+authors = { workspace = true }
+license = { workspace = true }
+edition = { workspace = true }
+publish = false
+build = "build.rs"
+
+# Holds the precompiled bytes + metadata extracted from `wasm_builtins`.
+# `src/lib.rs` is generated at build time by this crate's `build.rs` and is
+
+[dependencies]
+phf = { workspace = true }
+wasm-encoder = { workspace = true }
+
+[build-dependencies]
+wasmparser = { workspace = true }
