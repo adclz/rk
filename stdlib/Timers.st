@@ -1,8 +1,6 @@
 /*
 # Standard Timer Function Blocks
 
-IEC 61131-3 **Table 37** - Pulse, on-delay, and off-delay timers.
-
 All timers share a common interface:
 - `IN`: BOOL trigger input
 - `PT`: TIME preset duration
@@ -10,6 +8,26 @@ All timers share a common interface:
 - `ET`: TIME elapsed time
 */
 NAMESPACE Std.Timers
+	USING Std.Convert;
+	USING Std.Generics;
+
+	NAMESPACE Legacy
+		// Aliases for Timers
+		TYPE
+			// Alias of [TOF] with `TIME`
+			TOF_TIME: TOF<TIME>;
+			// Alias of [TOF] with `LTIME`
+			TOF_LTIME: TOF<LTIME>;
+			// Alias of [TON] with `TIME`
+			TON_TIME: TON<TIME>;
+			// Alias of [TON] with `LTIME`
+			TON_LTIME: TON<LTIME>;
+			// Alias of [TP] with `TIME`
+			TP_TIME: TP<TIME>;
+			// Alias of [TP] with `LTIME`
+			TP_LTIME: TP<LTIME>;
+		END_TYPE
+	END_NAMESPACE
 
 	/* 
     ## WASI monotonic clock
@@ -20,7 +38,15 @@ NAMESPACE Std.Timers
     
     [See WASI documentation](https://github.com/WebAssembly/WASI/blob/main/proposals/clocks/README.md)
     */
-	FUNCTION MONOTONIC_TIME: TIME {extern 'wasi:clocks/monotonic-clock@0.2.6' 'now' (result MONOTONIC_TIME)}
+	FUNCTION PRIVATE MONOTONIC_LTIME: LTIME {extern 'wasi:clocks/monotonic-clock@0.2.6' 'now' (result MONOTONIC_LTIME)}
+	END_FUNCTION
+
+	FUNCTION PLC_TIME: ANY_DURATION
+		{#if PLC_TIME is LTIME}
+			PLC_TIME := MONOTONIC_LTIME();
+		{#elif PLC_TIME is TIME}
+			PLC_TIME := LTIME_TO_TIME(MONOTONIC_LTIME());
+		{#endif}
 	END_FUNCTION
 
 	/*
@@ -46,19 +72,19 @@ NAMESPACE Std.Timers
 	FUNCTION_BLOCK TP
 		VAR_INPUT
 			IN: BOOL;
-			PT: TIME;
+			PT: ANY_DURATION;
 		END_VAR
 		VAR_OUTPUT
 			Q: BOOL := FALSE;
-			ET: TIME := T#0s;
+			ET: INTO(PT)
 		END_VAR
 		VAR
 			STATE: SINT := 0;
 			PREV_IN: BOOL := FALSE;
-			CURRENT_TIME, START_TIME: TIME;
+			CURRENT_TIME, START_TIME: INTO(PT);
 		END_VAR
 
-		CURRENT_TIME := MONOTONIC_TIME();
+		CURRENT_TIME := PLC_TIME();
 		IF ((STATE = 0) AND NOT (PREV_IN) AND IN) THEN
 			STATE := 1;
 			Q := TRUE;
@@ -73,7 +99,7 @@ NAMESPACE Std.Timers
 			END_IF;
 		END_IF;
 		IF ((STATE = 2) AND NOT (IN)) THEN
-			ET := T#0s;
+			ET := ANY_DURATION_DEFAULT();
 			STATE := 0;
 		END_IF;
 		PREV_IN := IN;
@@ -103,26 +129,26 @@ NAMESPACE Std.Timers
 	FUNCTION_BLOCK TON
 		VAR_INPUT
 			IN: BOOL;
-			PT: TIME;
+			PT: ANY_DURATION;
 		END_VAR
 		VAR_OUTPUT
 			Q: BOOL := FALSE;
-			ET: TIME := T#0s;
+			ET: INTO(PT);
 		END_VAR
 		VAR
 			STATE: SINT := 0;
 			PREV_IN: BOOL := FALSE;
-			CURRENT_TIME, START_TIME: TIME;
+			CURRENT_TIME, START_TIME: INTO(PT);
 		END_VAR
 
-		CURRENT_TIME := MONOTONIC_TIME();
+		CURRENT_TIME := PLC_TIME();
 		IF ((STATE = 0) AND NOT (PREV_IN) AND IN) THEN
 			STATE := 1;
 			Q := FALSE;
 			START_TIME := CURRENT_TIME;
 		ELSE
 			IF (NOT (IN)) THEN
-				ET := T#0s;
+				ET := ANY_DURATION_DEFAULT();
 				Q := FALSE;
 				STATE := 0;
 			ELSIF (STATE = 1) THEN
@@ -160,25 +186,25 @@ NAMESPACE Std.Timers
 	FUNCTION_BLOCK TOF
 		VAR_INPUT
 			IN: BOOL;
-			PT: TIME;
+			PT: ANY_DURATION;
 		END_VAR
 		VAR_OUTPUT
 			Q: BOOL := FALSE;
-			ET: TIME := T#0s;
+			ET: INTO(PT);
 		END_VAR
 		VAR
 			STATE: SINT := 0;
 			PREV_IN: BOOL := FALSE;
-			CURRENT_TIME, START_TIME: TIME;
+			CURRENT_TIME, START_TIME: INTO(PT);
 		END_VAR
 
-		CURRENT_TIME := MONOTONIC_TIME();
+		CURRENT_TIME := PLC_TIME();
 		IF ((STATE = 0) AND PREV_IN AND NOT (IN)) THEN
 			STATE := 1;
 			START_TIME := CURRENT_TIME;
 		ELSE
 			IF (IN) THEN
-				ET := T#0s;
+				ET := ANY_DURATION_DEFAULT();
 				STATE := 0;
 			ELSIF (STATE = 1) THEN
 				IF ((START_TIME + PT) <= CURRENT_TIME) THEN
@@ -202,7 +228,7 @@ NAMESPACE Std.Timers
 		{test}
 		FUNCTION test_ton_expires
 			VAR
-				timer: TON;
+				timer: TON<TIME>;
 			END_VAR
 			timer(IN := TRUE, PT := T#1ms);
 			WHILE NOT timer.Q DO
@@ -214,7 +240,7 @@ NAMESPACE Std.Timers
 		{test}
 		FUNCTION test_ton_not_started
 			VAR
-				timer: TON;
+				timer: TON<TIME>;
 			END_VAR
 			timer(IN := FALSE, PT := T#1ms);
 			ASSERT(NOT timer.Q, 'TON Q should be FALSE when IN is FALSE');
@@ -223,7 +249,7 @@ NAMESPACE Std.Timers
 		{test}
 		FUNCTION test_ton_reset
 			VAR
-				timer: TON;
+				timer: TON<TIME>;
 			END_VAR
 			timer(IN := TRUE, PT := T#100ms);
 			ASSERT(NOT timer.Q, 'TON Q should be FALSE immediately');
@@ -237,7 +263,7 @@ NAMESPACE Std.Timers
 		{test}
 		FUNCTION test_tof_stays_true_after_falling_edge
 			VAR
-				timer: TOF;
+				timer: TOF<TIME>;
 			END_VAR
 			// Rising edge: Q becomes TRUE immediately
 			timer(IN := TRUE, PT := T#100ms);
@@ -250,7 +276,7 @@ NAMESPACE Std.Timers
 		{test}
 		FUNCTION test_tof_expires
 			VAR
-				timer: TOF;
+				timer: TOF<TIME>;
 			END_VAR
 			timer(IN := TRUE, PT := T#1ms);
 			timer(IN := FALSE, PT := T#1ms);
@@ -264,7 +290,7 @@ NAMESPACE Std.Timers
 		{test}
 		FUNCTION test_tof_reset_on_rising_edge
 			VAR
-				timer: TOF;
+				timer: TOF<TIME>;
 			END_VAR
 			timer(IN := TRUE, PT := T#1ms);
 			timer(IN := FALSE, PT := T#1ms);
@@ -278,7 +304,7 @@ NAMESPACE Std.Timers
 		{test}
 		FUNCTION test_tp_pulse_starts
 			VAR
-				timer: TP;
+				timer: TP<TIME>;
 			END_VAR
 			timer(IN := TRUE, PT := T#100ms);
 			ASSERT(timer.Q, 'TP Q should be TRUE on rising edge');
@@ -287,7 +313,7 @@ NAMESPACE Std.Timers
 		{test}
 		FUNCTION test_tp_pulse_expires
 			VAR
-				timer: TP;
+				timer: TP<TIME>;
 			END_VAR
 			timer(IN := TRUE, PT := T#1ms);
 			WHILE timer.Q DO
@@ -299,7 +325,7 @@ NAMESPACE Std.Timers
 		{test}
 		FUNCTION test_tp_ignores_input_during_pulse
 			VAR
-				timer: TP;
+				timer: TP<TIME>;
 			END_VAR
 			timer(IN := TRUE, PT := T#100ms);
 			ASSERT(timer.Q, 'TP Q should be TRUE');

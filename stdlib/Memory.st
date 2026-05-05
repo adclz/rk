@@ -30,7 +30,7 @@ NAMESPACE Std.Memory
 		{test}
 		FUNCTION test_move_int
 			VAR
-				x: INT;
+				x: INT := 0;
 			END_VAR
 			MOVE(42, OUT => x);
 			ASSERT_EQ(x, 42);
@@ -39,7 +39,7 @@ NAMESPACE Std.Memory
 		{test}
 		FUNCTION test_move_real
 			VAR
-				x: REAL;
+				x: REAL := 0.0;
 			END_VAR
 			MOVE(3.14, OUT => x);
 			ASSERT_EQ(x, 3.14);
@@ -48,7 +48,7 @@ NAMESPACE Std.Memory
 		{test}
 		FUNCTION test_move_bool
 			VAR
-				x: BOOL;
+				x: BOOL := FALSE;
 			END_VAR
 			MOVE(TRUE, OUT => x);
 			ASSERT(x);

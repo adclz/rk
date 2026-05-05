@@ -9,6 +9,37 @@ and preset value `PV`. Edge detection is performed internally using `R_TRIG`.
 NAMESPACE Std.Counters
 	USING Std.Edge
 
+	NAMESPACE Legacy
+		TYPE 
+			// Alias of [CTU] with `SINT`
+			CTU_SINT: CTU<SINT>
+			// Alias of [CTU] with `INT`
+			CTU_INT: CTU<INT>
+			// Alias of [CTU] with `DINT`
+			CTU_DINT: CTU<DINT>
+			// Alias of [CTU] with `LINT`
+			CTU_LINT: CTU<LINT>
+
+			// Alias of [CTD] with `SINT`
+			CTD_SINT: CTD<SINT>
+			// Alias of [CTD] with `INT`
+			CTD_INT: CTD<INT>
+			// Alias of [CTD] with `DINT`
+			CTD_DINT: CTD<DINT>
+			// Alias of [CTD] with `LINT`
+			CTD_LINT: CTD<LINT>
+
+			// Alias of [CTUD] with `SINT`
+			CTUD_SINT: CTUD<SINT>
+			// Alias of [CTUD] with `INT`
+			CTUD_INT: CTUD<INT>
+			// Alias of [CTUD] with `DINT`
+			CTUD_DINT: CTUD<DINT>
+			// Alias of [CTUD] with `LINT`
+			CTUD_LINT: CTUD<LINT>
+		END_TYPE
+	END_NAMESPACE
+
 	/*
     ## CTU - Count Up
 
@@ -159,13 +190,16 @@ NAMESPACE Std.Counters
 		USING Std.Unit;
 		USING Std.Edge;
 		USING Std.Counters;
+	USING Std.Counters.Legacy;
 
-		// ── CTU (Count Up) ────────────────────────────────────────
 
+		// -- CTU (Count Up) ----------------------------------------
+
+		
 		{test}
 		FUNCTION test_ctu_counts_up
 			VAR
-				counter: CTU;
+				counter: CTU<INT>;
 			END_VAR
 			counter(CU := TRUE, R := FALSE, PV := 3);
 			ASSERT(counter.CV = 1, 'CV should be 1 after first rising edge');
@@ -177,7 +211,7 @@ NAMESPACE Std.Counters
 		{test}
 		FUNCTION test_ctu_reaches_preset
 			VAR
-				counter: CTU;
+				counter: CTU<INT>;
 				i: INT;
 			END_VAR
 			FOR i := 1 TO 5 DO
@@ -191,7 +225,7 @@ NAMESPACE Std.Counters
 		{test}
 		FUNCTION test_ctu_reset
 			VAR
-				counter: CTU;
+				counter: CTU<INT>;
 			END_VAR
 			counter(CU := TRUE, R := FALSE, PV := 10);
 			counter(CU := FALSE, R := FALSE, PV := 10);
@@ -205,7 +239,7 @@ NAMESPACE Std.Counters
 		{test}
 		FUNCTION test_ctu_no_count_without_edge
 			VAR
-				counter: CTU;
+				counter: CTU<INT>;
 			END_VAR
 			counter(CU := TRUE, R := FALSE, PV := 10);
 			ASSERT(counter.CV = 1, 'CV should be 1 after first call');
@@ -213,12 +247,12 @@ NAMESPACE Std.Counters
 			ASSERT(counter.CV = 1, 'CV should stay 1 without falling then rising edge');
 		END_FUNCTION
 
-		// ── CTD (Count Down) ──────────────────────────────────────
+		// -- CTD (Count Down) --------------------------------------
 
 		{test}
 		FUNCTION test_ctd_counts_down
 			VAR
-				counter: CTD;
+				counter: CTD<INT>;
 			END_VAR
 			counter(CD := FALSE, LD := TRUE, PV := 3);
 			ASSERT(counter.CV = 3, 'CV should be PV after load');
@@ -232,7 +266,7 @@ NAMESPACE Std.Counters
 		{test}
 		FUNCTION test_ctd_reaches_zero
 			VAR
-				counter: CTD;
+				counter: CTD<INT>;
 				i: INT;
 			END_VAR
 			counter(CD := FALSE, LD := TRUE, PV := 2);
@@ -247,7 +281,7 @@ NAMESPACE Std.Counters
 		{test}
 		FUNCTION test_ctd_load_resets
 			VAR
-				counter: CTD;
+				counter: CTD<INT>;
 			END_VAR
 			counter(CD := FALSE, LD := TRUE, PV := 5);
 			counter(CD := TRUE, LD := FALSE, PV := 5);
@@ -259,12 +293,12 @@ NAMESPACE Std.Counters
 			ASSERT(NOT counter.Q, 'Q should be FALSE after reload');
 		END_FUNCTION
 
-		// ── CTUD (Count Up/Down) ──────────────────────────────────
+		// -- CTUD (Count Up/Down) ----------------------------------
 
 		{test}
 		FUNCTION test_ctud_counts_up
 			VAR
-				counter: CTUD;
+				counter: CTUD<INT>;
 			END_VAR
 			counter(CU := TRUE, CD := FALSE, R := FALSE, LD := FALSE, PV := 5);
 			ASSERT(counter.CV = 1, 'CV should be 1 after count up');
@@ -275,7 +309,7 @@ NAMESPACE Std.Counters
 		{test}
 		FUNCTION test_ctud_counts_down
 			VAR
-				counter: CTUD;
+				counter: CTUD<INT>;
 			END_VAR
 			counter(CU := FALSE, CD := FALSE, R := FALSE, LD := TRUE, PV := 3);
 			ASSERT(counter.CV = 3, 'CV should be PV after load');
@@ -286,7 +320,7 @@ NAMESPACE Std.Counters
 		{test}
 		FUNCTION test_ctud_reset
 			VAR
-				counter: CTUD;
+				counter: CTUD<INT>;
 			END_VAR
 			counter(CU := FALSE, CD := FALSE, R := FALSE, LD := TRUE, PV := 5);
 			ASSERT(counter.CV = 5, 'CV should be PV after load');
@@ -298,7 +332,7 @@ NAMESPACE Std.Counters
 		{test}
 		FUNCTION test_ctud_load
 			VAR
-				counter: CTUD;
+				counter: CTUD<INT>;
 			END_VAR
 			counter(CU := TRUE, CD := FALSE, R := FALSE, LD := FALSE, PV := 5);
 			counter(CU := FALSE, CD := FALSE, R := FALSE, LD := FALSE, PV := 5);
@@ -312,7 +346,7 @@ NAMESPACE Std.Counters
 		{test}
 		FUNCTION test_ctud_simultaneous_edges_ignored
 			VAR
-				counter: CTUD;
+				counter: CTUD<INT>;
 			END_VAR
 			counter(CU := FALSE, CD := FALSE, R := FALSE, LD := TRUE, PV := 3);
 			ASSERT(counter.CV = 3, 'CV should be PV after load');
@@ -324,7 +358,7 @@ NAMESPACE Std.Counters
 		{test}
 		FUNCTION test_ctud_reset_takes_priority_over_load
 			VAR
-				counter: CTUD;
+				counter: CTUD<INT>;
 			END_VAR
 			counter(CU := FALSE, CD := FALSE, R := FALSE, LD := TRUE, PV := 5);
 			ASSERT(counter.CV = 5, 'CV should be PV after load');

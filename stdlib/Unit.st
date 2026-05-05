@@ -5,7 +5,10 @@ Helper functions for writing test assertions in Structured Text.
 */
 NAMESPACE Std.Unit
 
-	FUNCTION PRIVATE __ASSERT_FAIL
+	/*  The 'assert:fail' function is provided by the test runtime.
+	
+	Running the test binary without the correct runtime will fail at dynamic binding */
+ 	FUNCTION PRIVATE __ASSERT_FAIL
 		VAR_INPUT
 			message: STRING;
 		END_VAR

@@ -1,13 +1,13 @@
 /*
 # Standard Type Conversion Functions
 
-IEC 61131-3 **Table 22** — Explicit type conversion (narrowing casts).
+IEC 61131-3 **Table 22** - Explicit type conversion (narrowing casts).
 
 These functions handle conversions that are **not** covered by implicit casting,
 typically narrowing conversions where precision or range may be lost.
 
 Each function follows the naming convention `<SOURCE>_TO_<TARGET>`.
-All conversions use {wasm} intrinsics — zero overhead, single instruction.
+All conversions use {wasm} intrinsics - zero overhead, single instruction.
 */
 NAMESPACE Std.Convert
 
@@ -207,7 +207,7 @@ NAMESPACE Std.Convert
 		END_VAR
 		{wasm 'i32.wrap_i64' (params IN) (result LINT_TO_SINT)}
 	END_FUNCTION
-	// LINT → unsigned: same i64 bit pattern
+	// LINT to unsigned: same i64 bit pattern
 	FUNCTION LINT_TO_ULINT: ULINT
 		VAR_INPUT
 			IN: LINT;
@@ -238,7 +238,7 @@ NAMESPACE Std.Convert
 		END_VAR
 		{wasm 'i32.wrap_i64' (params IN) (result LINT_TO_USINT)}
 	END_FUNCTION
-	// LINT → bit types: reinterpret
+	// LINT to bit types: reinterpret
 	FUNCTION LINT_TO_LWORD: LWORD
 		VAR_INPUT
 			IN: LINT;
@@ -278,7 +278,7 @@ NAMESPACE Std.Convert
 		END_VAR
 		{wasm 'f32.convert_i32_s' (params IN) (result DINT_TO_REAL)}
 	END_FUNCTION
-	// DINT → smaller signed: identity (all i32 in WASM)
+	// DINT to smaller signed: identity (all i32 in WASM)
 	{info = 'narrowing conversion, possible loss of value'}
 	FUNCTION DINT_TO_INT: INT
 		VAR_INPUT
@@ -295,7 +295,7 @@ NAMESPACE Std.Convert
 		{wasm 'nop' (params IN) (result DINT_TO_SINT)}
 	END_FUNCTION
 
-	// DINT → unsigned: same i32 bit pattern
+	// DINT to unsigned: same i32 bit pattern
 	FUNCTION DINT_TO_ULINT: ULINT
 		VAR_INPUT
 			IN: DINT;
@@ -325,7 +325,7 @@ NAMESPACE Std.Convert
 		END_VAR
 		{wasm 'nop' (params IN) (result DINT_TO_USINT)}
 	END_FUNCTION
-	// DINT → bit types
+	// DINT to bit types
 	FUNCTION DINT_TO_LWORD: LWORD
 		VAR_INPUT
 			IN: DINT;
@@ -356,7 +356,7 @@ NAMESPACE Std.Convert
 		{wasm 'nop' (params IN) (result DINT_TO_BYTE)}
 	END_FUNCTION
 
-	/* ## INT (i32 signed, 16-bit semantic) — all i32 in WASM */
+	/* ## INT (i32 signed, 16-bit semantic) - all i32 in WASM */
 
 	{info = 'narrowing conversion, possible loss of value'}
 	FUNCTION INT_TO_SINT: SINT
@@ -663,7 +663,7 @@ NAMESPACE Std.Convert
 		{wasm 'nop' (params IN) (result UDINT_TO_BYTE)}
 	END_FUNCTION
 
-	/* ## UINT / USINT — all i32 in WASM, identity casts */
+	/* ## UINT / USINT - all i32 in WASM, identity casts */
 
 	FUNCTION UINT_TO_INT: INT
 		VAR_INPUT
@@ -932,7 +932,7 @@ NAMESPACE Std.Convert
 		{wasm 'nop' (params IN) (result DWORD_TO_BYTE)}
 	END_FUNCTION
 
-	/* ## WORD / BYTE — all i32 identity */
+	/* ## WORD / BYTE - all i32 identity */
 
 	FUNCTION WORD_TO_LINT: LINT
 		VAR_INPUT
@@ -1056,7 +1056,7 @@ NAMESPACE Std.Convert
 		{wasm 'nop' (params IN) (result BYTE_TO_USINT)}
 	END_FUNCTION
 
-	/* ## BOOL Conversions — BOOL is i32 (0 or 1) */
+	/* ## BOOL Conversions - BOOL is i32 (0 or 1) */
 
 	FUNCTION BOOL_TO_LINT: LINT
 		VAR_INPUT
@@ -1114,12 +1114,128 @@ NAMESPACE Std.Convert
 		{wasm 'nop' (params IN) (result BOOL_TO_USINT)}
 	END_FUNCTION
 
+	/* ## Duration narrowings (LTIME / LDATE / LTOD / LDT → 32-bit) */
+
+	{info = 'narrowing conversion, possible loss of value'}
+	FUNCTION LTIME_TO_TIME: TIME
+		VAR_INPUT
+			IN: LTIME;
+		END_VAR
+		{wasm 'i32.wrap_i64' (params IN) (result LTIME_TO_TIME)}
+	END_FUNCTION
+
+	{info = 'narrowing conversion, possible loss of value'}
+	FUNCTION LDATE_TO_DATE: DATE
+		VAR_INPUT
+			IN: LDATE;
+		END_VAR
+		{wasm 'i32.wrap_i64' (params IN) (result LDATE_TO_DATE)}
+	END_FUNCTION
+
+	{info = 'narrowing conversion, possible loss of value'}
+	FUNCTION LTOD_TO_TOD: TOD
+		VAR_INPUT
+			IN: LTOD;
+		END_VAR
+		{wasm 'i32.wrap_i64' (params IN) (result LTOD_TO_TOD)}
+	END_FUNCTION
+
+	{info = 'narrowing conversion, possible loss of value'}
+	FUNCTION LDT_TO_DT: DATE_AND_TIME
+		VAR_INPUT
+			IN: LDATE_AND_TIME;
+		END_VAR
+		{wasm 'i32.wrap_i64' (params IN) (result LDT_TO_DT)}
+	END_FUNCTION
+
+	/* ## Date / time-of-day decompositions
+
+	   `DT` and `LDT` carry both a date and a time-of-day component. With
+	   the integer encoding (`DT` = i32 secs since 1970, `LDT` = i64 ns
+	   since 1970), each extraction is a single division or modulo: the
+	   codegen lowers these casts directly, no host import required.
+	*/
+
+	FUNCTION DT_TO_DATE: DATE
+		VAR_INPUT IN: DATE_AND_TIME; END_VAR
+		{wasm 'cast' (params IN) (result DT_TO_DATE)}
+	END_FUNCTION
+
+	FUNCTION DT_TO_LDATE: LDATE
+		VAR_INPUT IN: DATE_AND_TIME; END_VAR
+		{wasm 'cast' (params IN) (result DT_TO_LDATE)}
+	END_FUNCTION
+
+	FUNCTION DT_TO_TOD: TIME_OF_DAY
+		VAR_INPUT IN: DATE_AND_TIME; END_VAR
+		{wasm 'cast' (params IN) (result DT_TO_TOD)}
+	END_FUNCTION
+
+	FUNCTION DT_TO_LTOD: LTIME_OF_DAY
+		VAR_INPUT IN: DATE_AND_TIME; END_VAR
+		{wasm 'cast' (params IN) (result DT_TO_LTOD)}
+	END_FUNCTION
+
+	FUNCTION LDT_TO_DATE: DATE
+		VAR_INPUT IN: LDATE_AND_TIME; END_VAR
+		{wasm 'cast' (params IN) (result LDT_TO_DATE)}
+	END_FUNCTION
+
+	FUNCTION LDT_TO_LDATE: LDATE
+		VAR_INPUT IN: LDATE_AND_TIME; END_VAR
+		{wasm 'cast' (params IN) (result LDT_TO_LDATE)}
+	END_FUNCTION
+
+	FUNCTION LDT_TO_TOD: TIME_OF_DAY
+		VAR_INPUT IN: LDATE_AND_TIME; END_VAR
+		{wasm 'cast' (params IN) (result LDT_TO_TOD)}
+	END_FUNCTION
+
+	FUNCTION LDT_TO_LTOD: LTIME_OF_DAY
+		VAR_INPUT IN: LDATE_AND_TIME; END_VAR
+		{wasm 'cast' (params IN) (result LDT_TO_LTOD)}
+	END_FUNCTION
+
+	/* ## CHAR / WCHAR conversions
+
+	   At the WASM level both CHAR and WCHAR are i32 carrying their
+	   semantic value (8-bit and 16-bit respectively). Reinterpreting
+	   between them is a `nop` modulo storage truncation; widenings are
+	   already implicit, narrowings keep the loss-of-value annotation.
+	*/
+
+	FUNCTION BYTE_TO_CHAR: CHAR
+		VAR_INPUT IN: BYTE; END_VAR
+		{wasm 'nop' (params IN) (result BYTE_TO_CHAR)}
+	END_FUNCTION
+
+	FUNCTION WORD_TO_WCHAR: WCHAR
+		VAR_INPUT IN: WORD; END_VAR
+		{wasm 'nop' (params IN) (result WORD_TO_WCHAR)}
+	END_FUNCTION
+
+	{info = 'narrowing conversion, possible loss of value'}
+	FUNCTION WCHAR_TO_CHAR: CHAR
+		VAR_INPUT IN: WCHAR; END_VAR
+		{wasm 'nop' (params IN) (result WCHAR_TO_CHAR)}
+	END_FUNCTION
+
+	/* ## STRING / WSTRING conversions
+
+	   WSTRING is UTF-16 and STRING is single-byte; transcoding is the
+	   runtime's responsibility. Implementation deferred:
+	   `WSTRING_TO_STRING` would have the host return a STRING to the
+	   guest, which requires the canonical-ABI `realloc` option (host
+	   allocates guest-side memory for the result). The codegen
+	   currently wires guest→host strings only.
+	*/
+
 	/* ## Tests */
 
 	NAMESPACE Test
 		USING Std.Unit
 
-		// Float → Int (truncation)
+		// Float to Int (truncation)
 		{test}
 		FUNCTION test_real_to_int
 			VAR
@@ -1156,7 +1272,7 @@ NAMESPACE Std.Convert
 			ASSERT(r = 1000000);
 		END_FUNCTION
 
-		// Int → Float (promotion)
+		// Int to Float (promotion)
 		{test}
 		FUNCTION test_dint_to_real
 			VAR

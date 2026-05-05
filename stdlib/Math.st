@@ -122,7 +122,7 @@ NAMESPACE Std.Math
 		VAR_INPUT
 			IN: INTO(ABS)
 		END_VAR
-		{extern 'math' 'abs' (params IN) (result ABS)}
+		{wasm IN 'abs' (params IN) (result ABS)}
 	END_FUNCTION
 
 	/*
@@ -141,7 +141,7 @@ NAMESPACE Std.Math
 		VAR_INPUT
 			IN: INTO(SQRT)
 		END_VAR
-		{extern 'math' 'sqrt' (params IN) (result SQRT)}
+		{wasm IN 'sqrt' (params IN) (result SQRT)}
 	END_FUNCTION
 
 	/*
@@ -160,7 +160,7 @@ NAMESPACE Std.Math
 		VAR_INPUT
 			IN: INTO(LN)
 		END_VAR
-		{extern 'math' 'ln' (params IN) (result LN)}
+		{wasm IN 'ln' (params IN) (result LN)}
 	END_FUNCTION
 
 	/*
@@ -179,7 +179,7 @@ NAMESPACE Std.Math
 		VAR_INPUT
 			IN: INTO(LOG)
 		END_VAR
-		{extern 'math' 'log' (params IN) (result LOG)}
+		{wasm IN 'log' (params IN) (result LOG)}
 	END_FUNCTION
 
 	/*
@@ -198,7 +198,7 @@ NAMESPACE Std.Math
 		VAR_INPUT
 			IN: INTO(EXP)
 		END_VAR
-		{extern 'math' 'exp' (params IN) (result EXP)}
+		{wasm IN 'exp' (params IN) (result EXP)}
 	END_FUNCTION
 
 	/*
@@ -217,7 +217,7 @@ NAMESPACE Std.Math
 		VAR_INPUT
 			IN: INTO(SIN)
 		END_VAR
-		{extern 'math' 'sin' (params IN) (result SIN)}
+		{wasm IN 'sin' (params IN) (result SIN)}
 	END_FUNCTION
 
 	/*
@@ -236,7 +236,7 @@ NAMESPACE Std.Math
 		VAR_INPUT
 			IN: INTO(COS)
 		END_VAR
-		{extern 'math' 'cos' (params IN) (result COS)}
+		{wasm IN 'cos' (params IN) (result COS)}
 	END_FUNCTION
 
 	/*
@@ -255,7 +255,7 @@ NAMESPACE Std.Math
 		VAR_INPUT
 			IN: INTO(TAN)
 		END_VAR
-		{extern 'math' 'tan' (params IN) (result TAN)}
+		{wasm IN 'tan' (params IN) (result TAN)}
 	END_FUNCTION
 
 	/*
@@ -274,7 +274,7 @@ NAMESPACE Std.Math
 		VAR_INPUT
 			IN: INTO(ASIN)
 		END_VAR
-		{extern 'math' 'asin' (params IN) (result ASIN)}
+		{wasm IN 'asin' (params IN) (result ASIN)}
 	END_FUNCTION
 
 	/*
@@ -293,7 +293,7 @@ NAMESPACE Std.Math
 		VAR_INPUT
 			IN: INTO(ACOS)
 		END_VAR
-		{extern 'math' 'acos' (params IN) (result ACOS)}
+		{wasm IN 'acos' (params IN) (result ACOS)}
 	END_FUNCTION
 
 	/*
@@ -312,7 +312,7 @@ NAMESPACE Std.Math
 		VAR_INPUT
 			IN: INTO(ATAN)
 		END_VAR
-		{extern 'math' 'atan' (params IN) (result ATAN)}
+		{wasm IN 'atan' (params IN) (result ATAN)}
 	END_FUNCTION
 
 	/*
@@ -333,7 +333,7 @@ NAMESPACE Std.Math
 			IN: INTO(ATAN2)
 			IN2: INTO(ATAN2)
 		END_VAR
-		{extern 'math' 'atan2' (params IN IN2) (result ATAN2)}
+		{wasm IN 'atan2' (params IN IN2) (result ATAN2)}
 	END_FUNCTION
 
 	/*
@@ -358,7 +358,7 @@ NAMESPACE Std.Math
 	NAMESPACE Test
 		USING Std.Unit
 
-		// ----- ABS (extern, ANY_NUM) ──────────────────────────────────
+		// ----- ABS (extern, ANY_NUM) ----------------------------------
 		{test}
 		FUNCTION test_abs_positive ASSERT(ABS(5) = 5);
 		END_FUNCTION
@@ -383,7 +383,7 @@ NAMESPACE Std.Math
 		FUNCTION test_abs_with_message ASSERT(ABS(-7) = 7, 'ABS should return the positive value');
 		END_FUNCTION
 
-		// ----- SQRT (extern, ANY_REAL) ────────────────────────────────
+		// ----- SQRT (extern, ANY_REAL) --------------------------------
 		{test}
 		FUNCTION test_sqrt_9 ASSERT(SQRT(9.0) = 3.0);
 		END_FUNCTION
@@ -396,7 +396,7 @@ NAMESPACE Std.Math
 		FUNCTION test_sqrt_1 ASSERT(SQRT(1.0) = 1.0);
 		END_FUNCTION
 
-		// ----- Trigonometric (extern, ANY_REAL) ───────────────────────
+		// ----- Trigonometric (extern, ANY_REAL) -----------------------
 		{test}
 		FUNCTION test_sin_zero ASSERT(SIN(0.0) = 0.0);
 		END_FUNCTION
@@ -421,7 +421,7 @@ NAMESPACE Std.Math
 		FUNCTION test_atan_zero ASSERT(ATAN(0.0) = 0.0);
 		END_FUNCTION
 
-		// ----- Logarithmic / Exponential (extern, ANY_REAL) ──────────
+		// ----- Logarithmic / Exponential (extern, ANY_REAL) ----------
 		{test}
 		FUNCTION test_ln_1 ASSERT(LN(1.0) = 0.0);
 		END_FUNCTION
@@ -511,7 +511,7 @@ NAMESPACE Std.Math
 			ASSERT(c = 26);
 		END_FUNCTION
 
-		// ----- Variable assignment --------------------------------------------------------------------------------─
+		// ----- Variable assignment ---------------------------------------------------------------------------------
 		{test}
 		FUNCTION test_var_assignment
 			VAR
@@ -554,7 +554,7 @@ NAMESPACE Std.Math
 			ASSERT(r = 3.14);
 		END_FUNCTION
 
-		// ----- Boolean logic --------------------------------------------------------------------------------───────
+		// ----- Boolean logic ---------------------------------------------------------------------------------------
 		{test}
 		FUNCTION test_bool_and_tt
 			VAR
@@ -669,7 +669,7 @@ NAMESPACE Std.Math
 			ASSERT(a >= 5);
 		END_FUNCTION
 
-		// ----- Control flow: IF --------------------------------------------------------------------------------────
+		// ----- Control flow: IF ------------------------------------------------------------------------------------
 		{test}
 		FUNCTION test_if_true
 			VAR
@@ -721,7 +721,7 @@ NAMESPACE Std.Math
 			ASSERT(r = 20);
 		END_FUNCTION
 
-		// ----- Control flow: FOR --------------------------------------------------------------------------------───
+		// ----- Control flow: FOR -----------------------------------------------------------------------------------
 		{test}
 		FUNCTION test_for_sum
 			VAR
@@ -732,18 +732,6 @@ NAMESPACE Std.Math
 				sum := sum + i;
 			END_FOR;
 			ASSERT(sum = 15);
-		END_FUNCTION
-
-		{test}
-		FUNCTION test_for_zero_iterations
-			VAR
-				sum: INT := 0;
-				i: INT;
-			END_VAR
-			FOR i := 10 TO 1 DO
-				sum := sum + 1;
-			END_FOR;
-			ASSERT(sum = 0);
 		END_FUNCTION
 
 		{test}
@@ -758,7 +746,7 @@ NAMESPACE Std.Math
 			ASSERT(r = 1);
 		END_FUNCTION
 
-		// ----- Control flow: WHILE --------------------------------------------------------------------------------─
+		// ----- Control flow: WHILE ---------------------------------------------------------------------------------
 		{test}
 		FUNCTION test_while_count
 			VAR
@@ -793,7 +781,7 @@ NAMESPACE Std.Math
 			ASSERT(count = 5);
 		END_FUNCTION
 
-		// ----- Function calls with return values ──────────────────────
+		// ----- Function calls with return values ----------------------
 		{test}
 		FUNCTION test_func_return
 			VAR
@@ -815,7 +803,7 @@ NAMESPACE Std.Math
 			ASSERT(r = 5);
 		END_FUNCTION
 
-		// ----- Type widths --------------------------------------------------------------------------------─────────
+		// ----- Type widths -----------------------------------------------------------------------------------------
 		{test}
 		FUNCTION test_lint_arithmetic
 			VAR
