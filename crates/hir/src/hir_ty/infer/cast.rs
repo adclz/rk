@@ -118,11 +118,6 @@ impl<'db> ElementarySpec {
                 String => String,
                 _ => None?,
             },
-            // WCHAR WSTRING
-            WChar => match self {
-                WString => WString,
-                _ => None?,
-            },
             _ => None?,
         })
     }
@@ -190,7 +185,6 @@ impl<'db> ElementarySpec {
             },
             Word => match self {
                 LInt | DInt | Int | SInt | ULInt | UDInt | UInt | USInt | Byte => true,
-                WChar => true, // wchar is the size of a word
                 _ => false,
             },
             Byte => match self {
@@ -220,14 +214,6 @@ impl<'db> ElementarySpec {
             }
             LTod => match self {
                 Tod => true,
-                _ => false
-            }
-            WString => match self {
-                String => true,
-                _ => false
-            }
-            WChar => match self {
-                Char => true,
                 _ => false
             }
             _ => false,

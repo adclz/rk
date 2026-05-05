@@ -627,11 +627,8 @@ pub enum InferLiteralError {
     Invalid_LDT_Literal,
 
     Invalid_STRING_Literal,
-    Invalid_WSTRING_Literal,
     Invalid_CHAR_Length(usize),
-    Invalid_WCHAR_Length(usize),
     Invalid_STRING_Length { max: u64, got: usize },
-    Invalid_WSTRING_Length { max: u64, got: usize },
 
     // Inner
     ExpectedNumber,
@@ -671,10 +668,6 @@ pub enum InferLiteralError {
     Incomplete_STRING_XX_Escape,
     Invalid_STRING_Hex_Escape,
     Invalid_STRING_CHAR(String),
-
-    Incomplete_WSTRING_XXXX_Escape,
-    Invalid_WSTRING_Hex_Escape(String),
-    Invalid_WSTRING_Unicode_Scalar(String),
 }
 
 impl InferLiteralError {
@@ -709,18 +702,11 @@ impl InferLiteralError {
             InferLiteralError::Invalid_LDT_Literal => "invalid LDT literal",
 
             InferLiteralError::Invalid_STRING_Literal => "invalid STRING literal",
-            InferLiteralError::Invalid_WSTRING_Literal => "invalid WSTRING literal",
             InferLiteralError::Invalid_CHAR_Length(len) => {
                 return format!("CHAR literal must be exactly 1 character, got {len}");
             }
-            InferLiteralError::Invalid_WCHAR_Length(len) => {
-                return format!("WCHAR literal must be exactly 1 character, got {len}");
-            }
             InferLiteralError::Invalid_STRING_Length { max, got } => {
                 return format!("STRING literal exceeds maximum length of {max}, got {got}");
-            }
-            InferLiteralError::Invalid_WSTRING_Length { max, got } => {
-                return format!("WSTRING literal exceeds maximum length of {max}, got {got}");
             }
 
             InferLiteralError::ExpectedNumber => "expected number",
@@ -754,12 +740,6 @@ impl InferLiteralError {
             }
             InferLiteralError::Invalid_STRING_Hex_Escape => "invalid STRING hex escape sequence",
             InferLiteralError::Invalid_STRING_CHAR(st) => return st.to_owned(),
-
-            InferLiteralError::Incomplete_WSTRING_XXXX_Escape => {
-                "incomplete WSTRING XXXX escape sequence"
-            }
-            InferLiteralError::Invalid_WSTRING_Hex_Escape(st) => return st.to_owned(),
-            InferLiteralError::Invalid_WSTRING_Unicode_Scalar(st) => return st.to_owned(),
         }
         .to_string()
     }

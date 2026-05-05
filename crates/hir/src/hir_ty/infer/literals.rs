@@ -30,18 +30,10 @@ impl<'db> Elementary {
             Elementary::Time(t) => t.as_time_ms_i32(db).map(|_| ()),
             Elementary::LTime(lt) => lt.as_ltime_ns_i64(db).map(|_| ()),
             Elementary::String(s) => s.as_single_string(db).map(|_| ()),
-            Elementary::WString(s) => s.as_double_string(db).map(|_| ()),
             Elementary::Char(s) => {
                 let bytes = s.as_single_string(db)?;
                 if bytes.len() != 1 {
                     return Err(InferLiteralError::Invalid_CHAR_Length(bytes.len()));
-                }
-                Ok(())
-            }
-            Elementary::WChar(s) => {
-                let chars = s.as_double_string(db)?;
-                if chars.len() != 1 {
-                    return Err(InferLiteralError::Invalid_WCHAR_Length(chars.len()));
                 }
                 Ok(())
             }
@@ -363,14 +355,6 @@ impl Ident {
         db: &dyn WorkspaceDataBase,
     ) -> Result<Vec<u8>, InferLiteralError> {
         parse_single_byte_string(&self.text(db).replace("STRING#", ""))
-    }
-
-    #[salsa::tracked]
-    pub fn as_double_string(
-        self,
-        db: &dyn WorkspaceDataBase,
-    ) -> Result<Vec<char>, InferLiteralError> {
-        parse_double_byte_string(&self.text(db).replace("WSTRING#", ""))
     }
 
     #[salsa::tracked]
@@ -775,38 +759,6 @@ pub fn parse_single_byte_string(s: &str) -> Result<Vec<u8>, InferLiteralError> {
                 return Err(InferLiteralError::Invalid_STRING_CHAR(c.to_string()));
             }
             result.push(c as u8);
-        }
-    }
-    Ok(result)
-}
-
-pub fn parse_double_byte_string(s: &str) -> Result<Vec<char>, InferLiteralError> {
-    let inner = &s[1..s.len() - 1];
-    let mut result = Vec::new();
-    let mut chars = inner.chars().peekable();
-
-    while let Some(c) = chars.next() {
-        if c == '$' {
-            let h1 = chars
-                .next()
-                .ok_or(InferLiteralError::Incomplete_WSTRING_XXXX_Escape)?;
-            let h2 = chars
-                .next()
-                .ok_or(InferLiteralError::Incomplete_WSTRING_XXXX_Escape)?;
-            let h3 = chars
-                .next()
-                .ok_or(InferLiteralError::Incomplete_WSTRING_XXXX_Escape)?;
-            let h4 = chars
-                .next()
-                .ok_or(InferLiteralError::Incomplete_WSTRING_XXXX_Escape)?;
-            let hex = format!("{h1}{h2}{h3}{h4}");
-            let code = u16::from_str_radix(&hex, 16)
-                .map_err(|_| InferLiteralError::Invalid_WSTRING_Hex_Escape(hex.to_string()))?;
-            result.push(char::from_u32(code as u32).ok_or_else(|| {
-                InferLiteralError::Invalid_WSTRING_Unicode_Scalar(hex.to_string())
-            })?);
-        } else {
-            result.push(c);
         }
     }
     Ok(result)

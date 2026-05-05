@@ -381,17 +381,15 @@ impl<'db> Parse<'db> for ast::generated::Constant {
                     match &char_literal.kind {
                         Some(kind) => {
                             match kind.cast(sema.ast).children.cast(sema.ast) {
-                                ast::generated::CharName_StringName_WcharName_WstringName::StringName(_) => Elementary::String(value_ident),
-                                ast::generated::CharName_StringName_WcharName_WstringName::WstringName(_) => Elementary::WString(value_ident),
-                                ast::generated::CharName_StringName_WcharName_WstringName::CharName(_) => Elementary::Char(value_ident),
-                                ast::generated::CharName_StringName_WcharName_WstringName::WcharName(_) => Elementary::WChar(value_ident),
+                                ast::generated::CharName_StringName::StringName(_) => Elementary::String(value_ident),
+                                ast::generated::CharName_StringName::CharName(_) => Elementary::Char(value_ident),
                             }
                         }
                         None => {
                             match value.children.cast(sema.ast) {
-                                ast::generated::DByteCharStr_HexInt_SByteCharStr::SByteCharStr(_) => Elementary::String(value_ident),
-                                ast::generated::DByteCharStr_HexInt_SByteCharStr::DByteCharStr(_) => Elementary::WString(value_ident),
-                                ast::generated::DByteCharStr_HexInt_SByteCharStr::HexInt(_) => Elementary::String(value_ident),
+                                ast::generated::DByteCharStr_HexInt_SByteCharStr::SByteCharStr(_)
+                                | ast::generated::DByteCharStr_HexInt_SByteCharStr::DByteCharStr(_)
+                                | ast::generated::DByteCharStr_HexInt_SByteCharStr::HexInt(_) => Elementary::String(value_ident),
                             }
                         }
                     }

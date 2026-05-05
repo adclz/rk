@@ -113,9 +113,8 @@ impl<'db> InitInference<'db> {
         spec_kind: &SpecKind<'db>,
         init: InitExpr<'db>,
     ) {
-        let (max_len_expr, is_wstring) = match spec_kind {
-            SpecKind::SizedString(length) => (length, false),
-            SpecKind::SizedWString(length) => (length, true),
+        let max_len_expr = match spec_kind {
+            SpecKind::SizedString(length) => length,
             _ => return,
         };
 
@@ -133,31 +132,21 @@ impl<'db> InitInference<'db> {
             return;
         };
 
+        // Both single-quoted and (legacy) double-quoted forms now resolve
+        // to STRING; single-byte payload measurement covers both.
         let actual_len = match elem {
-            Elementary::String(s) if !is_wstring => s.as_single_string(db).ok().map(|v| v.len()),
-            Elementary::WString(s) if is_wstring => s.as_double_string(db).ok().map(|v| v.len()),
+            Elementary::String(s) => s.as_single_string(db).ok().map(|v| v.len()),
             _ => None,
         };
 
         if let Some(actual_len) = actual_len
             && actual_len as u64 > max_len
         {
-            let err = if is_wstring {
-                InferLiteralError::Invalid_WSTRING_Length {
-                    max: max_len,
-                    got: actual_len,
-                }
-            } else {
-                InferLiteralError::Invalid_STRING_Length {
-                    max: max_len,
-                    got: actual_len,
-                }
+            let err = InferLiteralError::Invalid_STRING_Length {
+                max: max_len,
+                got: actual_len,
             };
-            let target = if is_wstring {
-                Type::Elementary(crate::hir_def::expressions::spec::ElementarySpec::WString)
-            } else {
-                Type::Elementary(crate::hir_def::expressions::spec::ElementarySpec::String)
-            };
+            let target = Type::Elementary(crate::hir_def::expressions::spec::ElementarySpec::String);
             self.errors.push(
                 TypeError::InferLiteralError {
                     expr,

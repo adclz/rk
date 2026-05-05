@@ -225,7 +225,6 @@ impl<'db> Type<'db> {
         match spec.kind(db) {
             SpecKind::Simple(elem) => Type::Elementary(*elem),
             SpecKind::SizedString(_) => Type::Elementary(ElementarySpec::String),
-            SpecKind::SizedWString(_) => Type::Elementary(ElementarySpec::WString),
             SpecKind::Ref(ref_to) => Type::RefTo(*ref_to),
             SpecKind::Struct(strukt) => Type::Struct(*strukt),
             SpecKind::Array(arr) => Type::Array(*arr),

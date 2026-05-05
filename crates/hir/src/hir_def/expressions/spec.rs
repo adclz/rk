@@ -37,9 +37,8 @@ pub enum SpecKind<'db> {
     Subrange(SubRange<'db>),
     Enum(Enum<'db>),
 
-    // Sized string types (STRING[N], WSTRING[N])
+    // Sized string types (STRING[N])
     SizedString(Expr<'db>),
-    SizedWString(Expr<'db>),
 
     // Reference to another spec
     Ref(Spec<'db>),
@@ -71,9 +70,7 @@ pub enum ElementarySpec {
     Real,
     LReal,
     String,
-    WString,
     Char,
-    WChar,
     Date,
     LDate,
     DateAndTime,
@@ -120,9 +117,7 @@ impl ElementarySpec {
             | ElementarySpec::Real
             | ElementarySpec::LReal
             | ElementarySpec::String
-            | ElementarySpec::WString
             | ElementarySpec::Char
-            | ElementarySpec::WChar
             | ElementarySpec::Date
             | ElementarySpec::LDate
             | ElementarySpec::DateAndTime
@@ -178,9 +173,7 @@ impl ElementarySpec {
             ElementarySpec::Real,
             ElementarySpec::LReal,
             ElementarySpec::String,
-            ElementarySpec::WString,
             ElementarySpec::Char,
-            ElementarySpec::WChar,
             ElementarySpec::Date,
             ElementarySpec::LDate,
             ElementarySpec::DateAndTime,
@@ -241,8 +234,8 @@ impl ElementarySpec {
                 Self::Bool | Self::Byte | Self::Word | Self::DWord | Self::LWord
             ),
             Self::AnyChars => Self::AnyString.accepts(concrete) || Self::AnyChar.accepts(concrete),
-            Self::AnyString => matches!(concrete, Self::String | Self::WString),
-            Self::AnyChar => matches!(concrete, Self::Char | Self::WChar),
+            Self::AnyString => matches!(concrete, Self::String),
+            Self::AnyChar => matches!(concrete, Self::Char),
             Self::AnyDate => matches!(
                 concrete,
                 Self::Date
@@ -383,9 +376,9 @@ mod tests {
                 AnyDate,
                 &[Date, LDate, DateAndTime, LDateTime, Tod, LTod],
             ),
-            (AnyChar, &[Char, WChar]),
-            (AnyString, &[String, WString]),
-            (AnyChars, &[String, WString, Char, WChar]),
+            (AnyChar, &[Char]),
+            (AnyString, &[String]),
+            (AnyChars, &[String, Char]),
         ];
 
         for (any, expected) in cases {

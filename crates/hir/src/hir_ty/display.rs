@@ -31,13 +31,6 @@ fn spec_type_name<'db>(db: &'db dyn WorkspaceDataBase, spec: Spec<'db>) -> Strin
                 .unwrap_or_default();
             format!("STRING[{}]", len)
         }
-        SpecKind::SizedWString(length) => {
-            let len = length
-                .as_range(db)
-                .map(|n| n.to_string())
-                .unwrap_or_default();
-            format!("WSTRING[{}]", len)
-        }
         _ => spec.infer(db).type_name(db),
     }
 }
@@ -63,9 +56,7 @@ impl ElementarySpec {
             Self::Real => "REAL",
             Self::LReal => "LREAL",
             Self::String => "STRING",
-            Self::WString => "WSTRING",
             Self::Char => "CHAR",
-            Self::WChar => "WCHAR",
             Self::Date => "DATE",
             Self::LDate => "LDATE",
             Self::DateAndTime => "DT",
@@ -516,8 +507,8 @@ impl<'db> PrimaryExpr<'db> {
                 Elementary::Date(_) => "DATE literal",
                 Elementary::TimeOfDay(_) => "TIME_OF_DAY literal",
                 Elementary::LTod(_) => "LTOD literal",
-                Elementary::String(_) | Elementary::WString(_) => "<string>",
-                Elementary::Char(_) | Elementary::WChar(_) => "<char>",
+                Elementary::String(_) => "<string>",
+                Elementary::Char(_) => "<char>",
                 Elementary::InferInteger(_) => "<integer>",
                 Elementary::InferFloat(_) => "<float>",
             },

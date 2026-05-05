@@ -523,9 +523,7 @@ pub enum Elementary {
 
     // strings
     String(Ident),
-    WString(Ident),
     Char(Ident),
-    WChar(Ident),
 
     // Has to be solved later
     InferInteger(Integer),
