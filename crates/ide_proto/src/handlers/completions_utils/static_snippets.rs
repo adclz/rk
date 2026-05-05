@@ -372,9 +372,7 @@ pub fn elem_type_names() -> Vec<CompletionItem> {
         time(),
         ltime(),
         string(),
-        wstring(),
         char(),
-        wchar(),
     ]
 }
 
@@ -402,9 +400,7 @@ pub fn elem_type_names_init() -> Vec<CompletionItem> {
         time_init(),
         ltime_init(),
         string_init(),
-        wstring_init(),
         char_init(),
-        wchar_init(),
     ]
 }
 
@@ -462,7 +458,5 @@ gen_elem_data_types_snippets! {
     ltime => LTIME  = "0s",
     bool => BOOL = "FALSE",
     string => STRING = "''",
-    wstring => WSTRING = "''",
-    char => CHAR = "''",
-    wchar => WCHAR = "''"
+    char => CHAR = "''"
 }

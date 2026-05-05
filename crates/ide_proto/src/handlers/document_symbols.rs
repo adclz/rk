@@ -164,7 +164,7 @@ impl<'db> DocumentSymbolsHandler<'db> for Pou<'db> {
                     SpecKind::Array(_) | SpecKind::ArrayConformand(_) | SpecKind::Subrange(_) => {
                         SymbolKind::ARRAY
                     }
-                    SpecKind::SizedString(_) | SpecKind::SizedWString(_) => SymbolKind::STRING,
+                    SpecKind::SizedString(_) => SymbolKind::STRING,
                     SpecKind::Simple(simple) => match simple {
                         ElementarySpec::Bool
                         | ElementarySpec::FEDGEBool
@@ -183,10 +183,7 @@ impl<'db> DocumentSymbolsHandler<'db> for Pou<'db> {
                         | ElementarySpec::ULInt
                         | ElementarySpec::Real
                         | ElementarySpec::LReal => SymbolKind::NUMBER,
-                        ElementarySpec::Char
-                        | ElementarySpec::WChar
-                        | ElementarySpec::String
-                        | ElementarySpec::WString => SymbolKind::STRING,
+                        ElementarySpec::Char | ElementarySpec::String => SymbolKind::STRING,
                         ElementarySpec::Time
                         | ElementarySpec::LTime
                         | ElementarySpec::Tod
