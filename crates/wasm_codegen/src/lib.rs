@@ -14,16 +14,136 @@ mod graft;
 #[cfg(test)]
 pub mod tests;
 
+use std::cell::Cell;
+
 use db::WorkspaceDataBase;
 use mir::{
     MirModule,
+    expr::{MirArgKind, MirCall, MirExpr},
     function::{MirExternFunction, MirFunction, MirLinkage, MirParam, MirParamKind, MirStorage},
+    stmt::MirStmt,
     types::{MirElementary, MirType},
 };
 use rustc_hash::FxHashMap;
 use wasm_encoder::{Instruction, ValType};
 
+use self::emit_expr::{SNAPSHOT_CTX, StringSnapshotCtx};
 use self::emit_stmt::emit_stmts_with_return;
+
+/// Capacity of the per-call-site scratch slots that snapshot nested
+/// STRING-returning call results. Matches `mir::types::DEFAULT_STRING_CAPACITY`
+/// - sized to fit any plain-`STRING` producer's output. Producers declared
+/// `STRING[N]` with N > 80 would silently truncate snapshots; the typical
+/// stdlib operates well below that threshold.
+const STRING_SCRATCH_CAPACITY: u32 = 80;
+const STRING_SCRATCH_SLOT_SIZE: u32 = (4 + STRING_SCRATCH_CAPACITY + 3) & !3;
+
+fn count_nested_string_calls_stmts(stmts: &[MirStmt]) -> u32 {
+    let mut total = 0;
+    for stmt in stmts {
+        total += count_nested_string_calls_stmt(stmt);
+    }
+    total
+}
+
+fn count_nested_string_calls_stmt(stmt: &MirStmt) -> u32 {
+    match stmt {
+        MirStmt::Assign { value, .. } => count_nested_string_calls_expr(value),
+        MirStmt::Return => 0,
+        MirStmt::If {
+            condition,
+            then_body,
+            else_ifs,
+            else_body,
+        } => {
+            let mut n = count_nested_string_calls_expr(condition);
+            n += count_nested_string_calls_stmts(then_body);
+            for (cond, body) in else_ifs {
+                n += count_nested_string_calls_expr(cond);
+                n += count_nested_string_calls_stmts(body);
+            }
+            if let Some(eb) = else_body {
+                n += count_nested_string_calls_stmts(eb);
+            }
+            n
+        }
+        MirStmt::Case {
+            selector,
+            arms,
+            else_body,
+        } => {
+            let mut n = count_nested_string_calls_expr(selector);
+            for arm in arms {
+                n += count_nested_string_calls_stmts(&arm.body);
+            }
+            if let Some(eb) = else_body {
+                n += count_nested_string_calls_stmts(eb);
+            }
+            n
+        }
+        MirStmt::For {
+            start,
+            end,
+            step,
+            body,
+            ..
+        } => {
+            let mut n = count_nested_string_calls_expr(start);
+            n += count_nested_string_calls_expr(end);
+            n += count_nested_string_calls_expr(step);
+            n += count_nested_string_calls_stmts(body);
+            n
+        }
+        MirStmt::While { condition, body } | MirStmt::Repeat { condition, body } => {
+            count_nested_string_calls_expr(condition) + count_nested_string_calls_stmts(body)
+        }
+        MirStmt::Call(call) => count_nested_in_call(call),
+        MirStmt::FbCall { input_writes, .. } => {
+            // Input value expressions may contain nested STRING calls.
+            let mut n = 0;
+            for (_, value, _) in input_writes {
+                n += count_nested_string_calls_expr(value);
+            }
+            n
+        }
+        MirStmt::MemStore { .. }
+        | MirStmt::WasmIntrinsic { .. }
+        | MirStmt::Exit
+        | MirStmt::Continue
+        | MirStmt::DebugTrap { .. } => 0,
+    }
+}
+
+fn count_nested_string_calls_expr(expr: &MirExpr) -> u32 {
+    match expr {
+        MirExpr::Call(call) => count_nested_in_call(call),
+        MirExpr::BinOp { lhs, rhs, .. } => {
+            count_nested_string_calls_expr(lhs) + count_nested_string_calls_expr(rhs)
+        }
+        MirExpr::UnaryOp { expr, .. } | MirExpr::Cast { expr, .. } => {
+            count_nested_string_calls_expr(expr)
+        }
+        _ => 0,
+    }
+}
+
+fn count_nested_in_call(call: &MirCall) -> u32 {
+    let mut n = 0;
+    for arg in &call.args {
+        if matches!(arg.kind, MirArgKind::ByValue) {
+            // This arg position needs a snapshot if the value is itself a
+            // STRING-returning Call.
+            if let MirExpr::Call(inner) = &arg.value
+                && matches!(inner.return_type, MirType::String { .. })
+            {
+                n += 1;
+            }
+        }
+        // An arg's expression tree may contain its own nested STRING calls.
+        n += count_nested_string_calls_expr(&arg.value);
+    }
+    n
+}
 
 /// Generate a WASM module from a fully-lowered MirModule.
 /// Needs the db to resolve Ident → string for export names.
@@ -37,27 +157,33 @@ pub fn generate_wasm(db: &dyn WorkspaceDataBase, module: &MirModule) -> wasm_enc
 #[derive(Debug, Clone)]
 pub(crate) enum LocalInfo {
     /// Scalar held in a WASM local.
-    Scalar {
-        index: u32,
-        val_type: ValType,
-        elem: MirElementary,
-    },
+    Scalar { index: u32, elem: MirElementary },
     /// Memory-resident variable at a fixed address.
     Memory {
         address: u32,
-        size: u32,
-        align: u32,
         elem: Option<MirElementary>,
     },
-    /// Pointer (VAR_IN_OUT) — i32 local holding an address.
+    /// Pointer (VAR_IN_OUT) - i32 local holding an address.
     Pointer {
         index: u32,
         pointee_elem: Option<MirElementary>,
     },
-    /// String parameter — two consecutive i32 locals (ptr, len).
+    /// String parameter - two consecutive i32 locals (ptr, len).
     StringParam { ptr_index: u32, len_index: u32 },
-    /// String in memory — two i32s at address (ptr at addr, len at addr+4).
-    StringMemory { address: u32 },
+    /// STRING `VAR_IN_OUT`: the function may mutate the caller's buffer,
+    /// writing the length to `*addr` and bytes to `addr + 4`; `cap_index`
+    /// clamps writes.
+    StringInOutParam { addr_index: u32, cap_index: u32 },
+    /// String in memory. Layout starting at `address`:
+    ///   `addr + 0..4`  - `ptr` (i32), points at the embedded buffer
+    ///   `addr + 4..8`  - `len` (i32), current byte length, ≤ `capacity`
+    ///   `addr + 8..8+capacity` - embedded buffer
+    /// `capacity` comes from the declared `STRING[N]` (or
+    /// `DEFAULT_STRING_CAPACITY` for plain `STRING`). The header is
+    /// initialized at function entry so `ptr` always points at this
+    /// variable's own buffer; assignment is a bounded `memcpy` into the
+    /// buffer rather than a header alias.
+    StringMemory { address: u32, capacity: u32 },
 }
 
 struct WasmGen<'a> {
@@ -76,14 +202,29 @@ struct WasmGen<'a> {
     index_remap: FxHashMap<u32, u32>,
     /// Builtin name (`f32.sin`) → wasm index of the grafted implementation.
     builtin_indices: FxHashMap<String, u32>,
+    /// Next free address for STRING snapshot scratch slots, past the MIR
+    /// static layout.
+    string_scratch_floor: Cell<u32>,
+}
+
+/// Sum the snapshot scratch needs across every function in the module.
+fn module_total_scratch_slots(module: &MirModule) -> u32 {
+    let mut total = 0;
+    for func in &module.functions {
+        total += count_nested_string_calls_stmts(&func.body);
+    }
+    total
 }
 
 /// WASM page size.
 const WASM_PAGE: u32 = 65536;
 
-/// Number of 64KiB pages the core module needs to cover its static allocations.
-pub(crate) fn core_memory_pages(layout: &mir::memory::MirMemoryLayout) -> u64 {
-    let total = layout.total_size();
+/// Number of 64KiB pages the core module needs to cover its static
+/// allocations plus per-call-site STRING snapshot scratch slots.
+pub(crate) fn core_memory_pages(module: &MirModule) -> u64 {
+    let static_total = module.memory_layout.total_size();
+    let scratch_total = module_total_scratch_slots(module) * STRING_SCRATCH_SLOT_SIZE;
+    let total = static_total + scratch_total;
     if total == 0 {
         1
     } else {
@@ -93,27 +234,22 @@ pub(crate) fn core_memory_pages(layout: &mir::memory::MirMemoryLayout) -> u64 {
 
 impl<'a> WasmGen<'a> {
     fn new(db: &'a dyn WorkspaceDataBase, module: &'a MirModule) -> Self {
-        // Import memory from `env` as the first entry of the import section.
-        //
-        // The main module imports memory (rather than defining it) so the
-        // component wrapper can supply a memory via a helper core module that
-        // is instantiated *before* canonical lowering. This lets canon
-        // `Memory(idx)` options reference a core memory that exists at the
-        // time of lowering — if main defined its own memory, memory would
-        // only exist after main's instantiation, which happens *after*
-        // lowering, breaking the canonical ABI ordering.
+        // Memory is imported from `env`, first in the import section, so a host
+        // supplies it.
         let mut import_section = wasm_encoder::ImportSection::new();
         import_section.import(
             "env",
             "memory",
             wasm_encoder::EntityType::Memory(wasm_encoder::MemoryType {
-                minimum: core_memory_pages(&module.memory_layout),
+                minimum: core_memory_pages(module),
                 maximum: None,
                 memory64: false,
                 shared: false,
                 page_size_log2: None,
             }),
         );
+
+        let scratch_floor = Cell::new(module.memory_layout.total_size());
 
         Self {
             db,
@@ -128,7 +264,17 @@ impl<'a> WasmGen<'a> {
             next_type_idx: 0,
             index_remap: FxHashMap::default(),
             builtin_indices: FxHashMap::default(),
+            string_scratch_floor: scratch_floor,
         }
+    }
+
+    /// Allocate a fresh per-call-site STRING snapshot scratch slot.
+    /// Returns the base address (where the 4-byte length prefix lives).
+    fn alloc_scratch_slot(&self) -> u32 {
+        let addr = self.string_scratch_floor.get();
+        self.string_scratch_floor
+            .set(addr + STRING_SCRATCH_SLOT_SIZE);
+        addr
     }
 
     fn emit_all(&mut self) {
@@ -169,7 +315,7 @@ impl<'a> WasmGen<'a> {
         }
 
         // 5. Graft builtins. Their function indices land in
-        //    [n_imports, n_imports + n_builtins) — exactly the slot we
+        //    [n_imports, n_imports + n_builtins) - exactly the slot we
         //    reserved above.
         if !names_used.is_empty() {
             let plan = crate::graft::graft_builtins(
@@ -237,6 +383,29 @@ impl<'a> WasmGen<'a> {
         for func in &self.module.functions {
             walk(&func.body, &mut found);
         }
+
+        // Force-include `rk.str_assign` whenever any function has a STRING
+        // local - every `string_var := <expr>` assignment lowers to a call
+        // into this helper. The pre-pass needs to know in advance so the
+        // helper is grafted alongside math intrinsics. Also force-include
+        // when *any* function nests STRING-returning calls, since the
+        // codegen-driven snapshot dance dispatches through the same helper.
+        let any_string_local = self.module.functions.iter().any(|f| {
+            f.locals
+                .iter()
+                .any(|l| matches!(l.ty, MirType::String { .. }))
+        });
+        let any_nested_string_call = self
+            .module
+            .functions
+            .iter()
+            .any(|f| count_nested_string_calls_stmts(&f.body) > 0);
+        if (any_string_local || any_nested_string_call)
+            && crate::builtins::lookup("rk.str_assign").is_some()
+        {
+            found.insert("rk.str_assign".to_string());
+        }
+
         let mut v: Vec<String> = found.into_iter().collect();
         v.sort();
         v
@@ -314,7 +483,7 @@ impl<'a> WasmGen<'a> {
                 .export(&export_name, wasm_encoder::ExportKind::Func, wasm_idx);
         }
 
-        // Build local map from params + locals
+        // Build local map from params + locals.
         let local_map = build_local_map(func);
 
         // Build extra locals (non-parameter WASM locals)
@@ -334,6 +503,23 @@ impl<'a> WasmGen<'a> {
             }
         }
 
+        // STRING snapshot dance temps (ptr_tmp, len_tmp) - only allocated
+        // when the function actually contains nested STRING-returning calls.
+        let nested_str_count = count_nested_string_calls_stmts(&func.body);
+        let snapshot_local_indices = if nested_str_count > 0 {
+            let next_idx = (params.len() as u32)
+                + extra_locals.iter().map(|(c, _)| *c).sum::<u32>();
+            extra_locals.push((2, ValType::I32));
+            Some((next_idx, next_idx + 1))
+        } else {
+            None
+        };
+
+        // One scratch slot per nested STRING call, past the MIR static layout.
+        let scratch_slots: Vec<u32> = (0..nested_str_count)
+            .map(|_| self.alloc_scratch_slot())
+            .collect();
+
         // Emit function body
         let mut wasm_func = wasm_encoder::Function::new(extra_locals);
 
@@ -349,7 +535,9 @@ impl<'a> WasmGen<'a> {
                 .get(&func.origin_name)
                 .and_then(|info| match info {
                     LocalInfo::Scalar { index, .. } => Some(ReturnSlot::Scalar(*index)),
-                    LocalInfo::StringMemory { address } => Some(ReturnSlot::StringMem(*address)),
+                    LocalInfo::StringMemory { address, .. } => {
+                        Some(ReturnSlot::StringMem(*address))
+                    }
                     _ => None,
                 })
         } else {
@@ -371,6 +559,29 @@ impl<'a> WasmGen<'a> {
             })
             .collect();
 
+        // The per-function snapshot context `emit_call` consults for nested
+        // STRING-returning calls.
+        let prev_ctx = if let Some((ptr_tmp, len_tmp)) = snapshot_local_indices {
+            let str_assign_idx = self
+                .builtin_indices
+                .get("rk.str_assign")
+                .copied()
+                .expect(
+                    "rk.str_assign must be grafted whenever a function nests STRING-returning calls",
+                );
+            let ctx = StringSnapshotCtx {
+                slots: scratch_slots,
+                slot_capacity: STRING_SCRATCH_CAPACITY,
+                next_slot: 0,
+                ptr_tmp,
+                len_tmp,
+                str_assign_idx,
+            };
+            SNAPSHOT_CTX.with(|cell| cell.replace(Some(ctx)))
+        } else {
+            SNAPSHOT_CTX.with(|cell| cell.replace(None))
+        };
+
         // Emit statements
         emit_stmts_with_return(
             &mut wasm_func,
@@ -381,20 +592,21 @@ impl<'a> WasmGen<'a> {
             return_local,
         );
 
+        // Restore the prior context.
+        SNAPSHOT_CTX.with(|cell| cell.replace(prev_ctx));
+
         // Push return value at function end.
         match return_slot {
             Some(ReturnSlot::Scalar(ret_idx)) => {
                 wasm_func.instruction(&Instruction::LocalGet(ret_idx));
             }
             Some(ReturnSlot::StringMem(addr)) => {
-                // Multi-value return: push (ptr, len) read from the return slot.
-                wasm_func.instruction(&Instruction::I32Const(addr as i32));
-                wasm_func.instruction(&Instruction::I32Load(wasm_encoder::MemArg {
-                    offset: 0,
-                    align: 2,
-                    memory_index: 0,
-                }));
+                // Multi-value return: push (ptr, len). Layout: 4-byte
+                // length at `addr`, embedded buffer starts at `addr + 4`.
+                // Push the buffer base as ptr (constant, no load) then
+                // load the length.
                 wasm_func.instruction(&Instruction::I32Const(addr as i32 + 4));
+                wasm_func.instruction(&Instruction::I32Const(addr as i32));
                 wasm_func.instruction(&Instruction::I32Load(wasm_encoder::MemArg {
                     offset: 0,
                     align: 2,
@@ -458,12 +670,20 @@ fn build_signature(
     let mut wasm_params = Vec::new();
     for param in params {
         match param.kind {
+            MirParamKind::InOut | MirParamKind::Output
+                if matches!(&param.ty, MirType::Pointer(inner) if matches!(inner.as_ref(), MirType::String { .. })) =>
+            {
+                // STRING `VAR_IN_OUT` / `VAR_OUTPUT` is (addr, cap), so mutators
+                // can clamp writes.
+                wasm_params.push(ValType::I32); // addr
+                wasm_params.push(ValType::I32); // cap
+            }
             MirParamKind::This | MirParamKind::InOut | MirParamKind::Output => {
                 wasm_params.push(ValType::I32); // pointer
             }
             MirParamKind::Input => {
                 match &param.ty {
-                    MirType::String => {
+                    MirType::String { .. } => {
                         wasm_params.push(ValType::I32); // ptr
                         wasm_params.push(ValType::I32); // len
                     }
@@ -481,9 +701,9 @@ fn build_signature(
 
     let results = match return_type {
         // A STRING return flattens to (ptr, len) per the component-model
-        // canonical ABI. The function body pushes the two i32s in that order
-        // at the epilogue (see `emit_function`).
-        Some(MirType::String) => vec![ValType::I32, ValType::I32],
+        // canonical ABI. The function body pushes the two i32s in that
+        // order at the epilogue (see `emit_function`).
+        Some(MirType::String { .. }) => vec![ValType::I32, ValType::I32],
         Some(ty) => mir_type_to_val_type(ty)
             .map(|vt| vec![vt])
             .unwrap_or_default(),
@@ -500,7 +720,7 @@ pub(crate) fn build_local_map(
     let mut map = FxHashMap::default();
     let mut param_idx: u32 = 0;
 
-    // Parameters — mapped by their position in the WASM signature
+    // Parameters - mapped by their position in the WASM signature
     for param in &func.params {
         match param.kind {
             MirParamKind::This => {
@@ -514,6 +734,22 @@ pub(crate) fn build_local_map(
                 param_idx += 1;
             }
             MirParamKind::InOut | MirParamKind::Output => {
+                // STRING `VAR_IN_OUT` / `VAR_OUTPUT` flatten to (addr, cap) (see
+                // `build_signature`).
+                if let MirType::Pointer(inner) = &param.ty
+                    && matches!(inner.as_ref(), MirType::String { .. })
+                {
+                    map.insert(
+                        param.name,
+                        LocalInfo::StringInOutParam {
+                            addr_index: param_idx,
+                            cap_index: param_idx + 1,
+                        },
+                    );
+                    param_idx += 2;
+                    continue;
+                }
+
                 // For InOut/Output, the pointee is the actual type (unwrap Pointer wrapper)
                 let pointee_elem = match &param.ty {
                     MirType::Pointer(inner) => match inner.as_ref() {
@@ -534,7 +770,7 @@ pub(crate) fn build_local_map(
             }
             MirParamKind::Input => {
                 match &param.ty {
-                    MirType::String => {
+                    MirType::String { .. } => {
                         // String params take 2 WASM params (ptr, len)
                         map.insert(
                             param.name,
@@ -551,12 +787,10 @@ pub(crate) fn build_local_map(
                             MirType::Pointer(_) => MirElementary::Int,
                             _ => MirElementary::Int,
                         };
-                        let val_type = mir_elementary_to_val_type(elem);
                         map.insert(
                             param.name,
                             LocalInfo::Scalar {
                                 index: param_idx,
-                                val_type,
                                 elem,
                             },
                         );
@@ -575,38 +809,30 @@ pub(crate) fn build_local_map(
                     MirType::Elementary(e) => *e,
                     _ => MirElementary::Int,
                 };
-                let val_type = mir_elementary_to_val_type(elem);
                 map.insert(
                     local.name,
                     LocalInfo::Scalar {
                         index: local_index,
-                        val_type,
                         elem,
                     },
                 );
             }
-            MirStorage::Memory {
-                address,
-                size,
-                align,
-            } => match &local.ty {
-                MirType::String => {
-                    map.insert(local.name, LocalInfo::StringMemory { address });
+            MirStorage::Memory { address, .. } => match &local.ty {
+                MirType::String { capacity } => {
+                    map.insert(
+                        local.name,
+                        LocalInfo::StringMemory {
+                            address,
+                            capacity: *capacity,
+                        },
+                    );
                 }
                 ty => {
                     let elem = match ty {
                         MirType::Elementary(e) => Some(*e),
                         _ => None,
                     };
-                    map.insert(
-                        local.name,
-                        LocalInfo::Memory {
-                            address,
-                            size,
-                            align,
-                            elem,
-                        },
-                    );
+                    map.insert(local.name, LocalInfo::Memory { address, elem });
                 }
             },
         }

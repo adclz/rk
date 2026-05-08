@@ -1,17 +1,12 @@
-//! Math intrinsics pulled from `crates/wasm_builtins`, embedded at build
-//! time. The codegen looks up a function by its dotted IEC name (e.g.
-//! `f32.sin`), then grafts the function's body — plus every helper it
-//! transitively calls — into the output module on demand.
-//!
-//! Prototype status: the lookup + transitive-closure helpers are wired up,
-//! but the call-relocation / dedup graft into the output module is not yet
-//! implemented — that's the next PR.
+//! Math intrinsics from `crates/wasm_builtins`, embedded at build time: a
+//! function is looked up by its dotted IEC name (`f32.sin`) and grafted,
+//! with every helper it transitively calls, into the output module.
 
 #![allow(dead_code)]
 
 pub(crate) use wasm_builtins_generated::{
     BUILTIN_DATA, BUILTIN_FUNCS, BUILTIN_GLOBALS, BUILTIN_NAMES, BUILTIN_SIGS, BUNDLE_MEMORY_TOP,
-    BuiltinCallSite, BuiltinFunc, BuiltinGlobal, BuiltinSig,
+    BuiltinCallSite, BuiltinFunc, BuiltinSig,
 };
 
 /// Look up a builtin by its dotted name; real WASM instructions take
@@ -22,7 +17,7 @@ pub(crate) fn lookup(name: &str) -> Option<u32> {
 
 /// Walk the call graph from `root_idx`, collecting every function index
 /// the root transitively depends on, including itself. Order is
-/// post-order so callees appear before callers — useful when grafting
+/// post-order so callees appear before callers - useful when grafting
 /// into an output module that needs forward-declared indices.
 pub(crate) fn transitive_closure(root_idx: u32) -> Vec<u32> {
     use rustc_hash::FxHashSet;
@@ -69,9 +64,7 @@ mod tests {
 
     #[test]
     fn transitive_closure_post_orders_dependencies() {
-        // sin pulls in libm helpers (k_sin, rem_pio2, …). The closure must
-        // contain at least the root, and the root must be the last entry
-        // (post-order — callees before callers).
+        // sin pulls in libm helpers; the root is the last entry (post-order).
         let root = lookup("f64.sin").expect("f64.sin");
         let order = transitive_closure(root);
         assert!(!order.is_empty());
@@ -79,7 +72,7 @@ mod tests {
     }
 
     #[test]
-    #[ignore = "informational — run with --nocapture to see footprint"]
+    #[ignore = "informational - run with --nocapture to see footprint"]
     fn print_closure_sizes() {
         let names = [
             "f32.sin", "f32.cos", "f32.tan", "f32.exp", "f32.ln",

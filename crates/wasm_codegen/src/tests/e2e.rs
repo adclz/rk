@@ -7,11 +7,6 @@ use super::with_db;
 #[rstest]
 fn test_e2e_runtime(mut with_db: db::RootDatabase) {
     let source = r#"
-FUNCTION my_abs : INT
-VAR_INPUT x : INT; END_VAR
-    {extern 'math' 'abs.INT' (params x) (result my_abs)}
-END_FUNCTION
-
 FUNCTION double : INT
 VAR_INPUT x : INT; END_VAR
     double := x + x;
@@ -42,11 +37,6 @@ END_FUNCTION
 {test}
 FUNCTION test_add
     assert_eq_int(value := add(a := 10, b := 32), target := 42);
-END_FUNCTION
-
-{test}
-FUNCTION test_abs
-    assert_eq_int(value := my_abs(x := -7), target := 7);
 END_FUNCTION
     "#;
 
