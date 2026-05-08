@@ -1,14 +1,25 @@
 use compact_str::CompactString;
 use hir::hir_def::interned::identifier::Ident;
 
+/// Default declared capacity (bytes) for a plain `STRING` without an
+/// explicit `[N]` size. other toolchains uses 80, another toolchain uses 254. We pick 80 
+/// matches the most common reference implementation and keeps the
+/// header+buffer total at 88 bytes (cheap to allocate per variable).
+pub const DEFAULT_STRING_CAPACITY: u32 = 80;
+
 /// A fully resolved, concrete type with known size and alignment.
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum MirType {
     /// Primitive scalar type (bool, integers, reals, time types).
     Elementary(MirElementary),
 
-    /// Fixed-size UTF-8 string (ptr + len representation).
-    String,
+    /// Fixed-size UTF-8 string. Stored in linear memory as an 8-byte
+    /// header (`ptr: i32`, `len: i32`) immediately followed by `capacity`
+    /// bytes of embedded buffer. The header's `ptr` is initialized to
+    /// point at the embedded buffer at function entry; producers
+    /// (CONCAT, INSERT, …) write into that buffer and update `len`.
+    /// Total in-memory size is `8 + capacity`.
+    String { capacity: u32 },
 
     /// Struct with known field layout.
     Struct(MirStructType),
@@ -29,7 +40,7 @@ pub enum MirType {
     Void,
 }
 
-/// Concrete elementary types — every ANY_* has been resolved to one of these.
+/// Concrete elementary types  every ANY_* has been resolved to one of these.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum MirElementary {
     Bool,
@@ -113,7 +124,7 @@ impl MirType {
     pub fn size_bytes(&self) -> u32 {
         match self {
             MirType::Elementary(e) => e.size_bytes(),
-            MirType::String => 8, // ptr (i32) + len (i32)
+            MirType::String { capacity } => 4 + capacity, // ptr (i32) + len (i32)
             MirType::Struct(s) => s.size,
             MirType::Array(a) => a.size,
             MirType::Enum(e) => e.storage.size_bytes(),
@@ -127,7 +138,7 @@ impl MirType {
     pub fn alignment(&self) -> u32 {
         match self {
             MirType::Elementary(e) => e.alignment(),
-            MirType::String => 4,
+            MirType::String { .. } => 4,
             MirType::Struct(s) => s.align,
             MirType::Array(a) => a.align,
             MirType::Enum(e) => e.storage.alignment(),

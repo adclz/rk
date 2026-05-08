@@ -39,7 +39,9 @@ pub fn lower_type<'db>(
     let ty = ty.normalize(db);
 
     match ty {
-        Type::Elementary(ElementarySpec::String) => Ok(MirType::String),
+        Type::Elementary(ElementarySpec::String) => Ok(MirType::String {
+            capacity: crate::types::DEFAULT_STRING_CAPACITY,
+        }),
 
         Type::Elementary(spec) => {
             let mir_elem = elementary_spec_to_mir(spec)?;

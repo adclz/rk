@@ -1,5 +1,7 @@
 //! Emit WASM instructions from MIR expressions.
-//! Purely mechanical — reads pre-resolved types, places, and indices.
+//! Purely mechanical - reads pre-resolved types, places, and indices.
+
+use std::cell::RefCell;
 
 use hir::hir_def::interned::identifier::Ident;
 use mir::{
@@ -10,6 +12,67 @@ use rustc_hash::FxHashMap;
 use wasm_encoder::{Instruction, MemArg};
 
 use crate::{LocalInfo, mir_cast::emit_cast_instructions};
+
+/// Per-function context for snapshotting nested STRING-returning call
+/// results: producers write into one static return slot per callee, so a
+/// nested call's result is copied into a unique scratch slot before the
+/// next argument is evaluated.
+pub(crate) struct StringSnapshotCtx {
+    /// Pre-allocated scratch slot addresses for each nested STRING-returning
+    /// call in this function (in encounter order).
+    pub slots: Vec<u32>,
+    /// Capacity each slot was sized to (uniform for now).
+    pub slot_capacity: u32,
+    /// Index into `slots` for the next nested STRING call.
+    pub next_slot: usize,
+    /// i32 temp holding the source ptr during a snapshot.
+    pub ptr_tmp: u32,
+    /// i32 temp holding the source len during a snapshot.
+    pub len_tmp: u32,
+    /// WASM index of the grafted `rk.str_assign` helper.
+    pub str_assign_idx: u32,
+}
+
+thread_local! {
+    /// Active snapshot context for the current function being emitted.
+    /// Set by `emit_function` before walking the body, torn down after.
+    pub(crate) static SNAPSHOT_CTX: RefCell<Option<StringSnapshotCtx>> =
+        const { RefCell::new(None) };
+}
+
+/// Emit the snapshot dance for a STRING-returning call result currently on
+/// the stack as `(ptr, len)`. Replaces the top two stack values with
+/// `(scratch+4, len)` where `scratch` is a freshly-allocated per-call-site
+/// slot, and the source bytes have been memcpy'd into it via
+/// `rk_str_assign`.
+fn emit_string_snapshot(func: &mut wasm_encoder::Function) {
+    SNAPSHOT_CTX.with(|cell| {
+        let mut borrow = cell.borrow_mut();
+        let Some(ctx) = borrow.as_mut() else {
+            return;
+        };
+        let slot_addr = ctx.slots[ctx.next_slot];
+        let slot_cap = ctx.slot_capacity;
+        ctx.next_slot += 1;
+        let ptr_tmp = ctx.ptr_tmp;
+        let len_tmp = ctx.len_tmp;
+        let str_assign = ctx.str_assign_idx;
+        // Stack: [ptr, len]
+        func.instruction(&Instruction::LocalSet(len_tmp));
+        func.instruction(&Instruction::LocalSet(ptr_tmp));
+        // rk_str_assign(slot_addr, slot_cap, ptr_tmp, len_tmp)
+        func.instruction(&Instruction::I32Const(slot_addr as i32));
+        func.instruction(&Instruction::I32Const(slot_cap as i32));
+        func.instruction(&Instruction::LocalGet(ptr_tmp));
+        func.instruction(&Instruction::LocalGet(len_tmp));
+        func.instruction(&Instruction::Call(str_assign));
+        // Push (scratch+4, len_tmp) - `rk_str_assign` clamps to slot_cap so
+        // len_tmp may overstate the actually-written length, but slot_cap
+        // matches the producer's max output for the targeted call sites.
+        func.instruction(&Instruction::I32Const(slot_addr as i32 + 4));
+        func.instruction(&Instruction::LocalGet(len_tmp));
+    });
+}
 
 /// Emit instructions for a MIR expression (pushes result onto stack).
 pub(crate) fn emit_expr(
@@ -123,16 +186,29 @@ fn emit_load(
                         func.instruction(&Instruction::LocalGet(*ptr_index));
                         func.instruction(&Instruction::LocalGet(*len_index));
                     }
-                    LocalInfo::StringMemory { address } => {
-                        // Load ptr from addr, len from addr+4
+                    LocalInfo::StringMemory { address, .. } => {
+                        // Layout: 4-byte len at `address`, then embedded
+                        // buffer at `address + 4`. Push (ptr, len) where
+                        // ptr is a const (no load) and len is loaded.
+                        func.instruction(&Instruction::I32Const(*address as i32 + 4));
                         func.instruction(&Instruction::I32Const(*address as i32));
                         func.instruction(&Instruction::I32Load(mem_arg(0, 2)));
-                        func.instruction(&Instruction::I32Const(*address as i32 + 4));
+                    }
+                    LocalInfo::StringInOutParam {
+                        addr_index, ..
+                    } => {
+                        // Reading a STRING `VAR_IN_OUT` param from inside
+                        // its function body: synthesise (ptr, len) where
+                        // ptr = addr+4 and len = *addr.
+                        func.instruction(&Instruction::LocalGet(*addr_index));
+                        func.instruction(&Instruction::I32Const(4));
+                        func.instruction(&Instruction::I32Add);
+                        func.instruction(&Instruction::LocalGet(*addr_index));
                         func.instruction(&Instruction::I32Load(mem_arg(0, 2)));
                     }
                 }
             } else {
-                // Variable not in local map — push 0 as fallback
+                // Variable not in local map - push 0 as fallback
                 func.instruction(&Instruction::I32Const(0));
             }
         }
@@ -207,18 +283,21 @@ pub(crate) fn emit_addr_of(
                         func.instruction(&Instruction::LocalGet(*index));
                     }
                     LocalInfo::Scalar { .. } => {
-                        // Address of a scalar — shouldn't happen if MIR is correct
+                        // Address of a scalar - shouldn't happen if MIR is correct
                         // (address-taken scalars are in memory)
                     }
                     LocalInfo::StringParam { .. } => {
                         // String params are on the stack, not addressable
                     }
-                    LocalInfo::StringMemory { address } => {
+                    LocalInfo::StringMemory { address, .. } => {
                         func.instruction(&Instruction::I32Const(*address as i32));
+                    }
+                    LocalInfo::StringInOutParam { addr_index, .. } => {
+                        func.instruction(&Instruction::LocalGet(*addr_index));
                     }
                 }
             } else {
-                // Variable not in local map — emit 0 as fallback address
+                // Variable not in local map - emit 0 as fallback address
                 func.instruction(&Instruction::I32Const(0));
             }
         }
@@ -271,8 +350,39 @@ fn emit_call(
     // Emit arguments
     for arg in &call.args {
         match arg.kind {
-            MirArgKind::ByValue => emit_expr(func, &arg.value, locals, fn_indices),
+            MirArgKind::ByValue => {
+                emit_expr(func, &arg.value, locals, fn_indices);
+                // A STRING-returning call as a `ByValue` arg points into the
+                // callee's static return slot; snapshot it so the next arg
+                // cannot clobber it.
+                if let MirExpr::Call(inner) = &arg.value
+                    && matches!(inner.return_type, MirType::String { .. })
+                {
+                    emit_string_snapshot(func);
+                }
+            }
             MirArgKind::ByRef => {
+                // STRING `VAR_IN_OUT` flattens to (addr, cap) - symmetric
+                // with the (ptr, len) we use for STRING `VAR_INPUT`. The
+                // callee mutator clamps writes against cap.
+                if let MirExpr::AddrOf(MirPlace::Local(name)) = &arg.value {
+                    match locals.get(name) {
+                        Some(LocalInfo::StringMemory { address, capacity }) => {
+                            func.instruction(&Instruction::I32Const(*address as i32));
+                            func.instruction(&Instruction::I32Const(*capacity as i32));
+                            continue;
+                        }
+                        Some(LocalInfo::StringInOutParam {
+                            addr_index,
+                            cap_index,
+                        }) => {
+                            func.instruction(&Instruction::LocalGet(*addr_index));
+                            func.instruction(&Instruction::LocalGet(*cap_index));
+                            continue;
+                        }
+                        _ => {}
+                    }
+                }
                 if let MirExpr::AddrOf(place) = &arg.value {
                     emit_addr_of(func, place, locals);
                 } else {
@@ -521,10 +631,10 @@ fn emit_unaryop(func: &mut wasm_encoder::Function, op: MirUnaryOp, ty: MirElemen
                 // Actually need: push 0, then swap... WASM doesn't have swap.
                 // The correct approach: emit 0 first, then the value, then sub.
                 // But the value was already emitted. We'd need to restructure.
-                // For now, this is a known limitation — proper fix needs operand reordering.
+                // For now, this is a known limitation - proper fix needs operand reordering.
             } else {
                 // 0 - value for i32
-                // Same issue — value already on stack.
+                // Same issue - value already on stack.
                 // Workaround: use (i32.const 0) (local.get tmp) (i32.sub)
                 // For now emit xor with -1 and add 1 (two's complement negate)
                 func.instruction(&Instruction::I32Const(-1));

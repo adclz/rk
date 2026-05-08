@@ -314,17 +314,66 @@ fn emit_stmt(func: &mut wasm_encoder::Function, stmt: &MirStmt, ctx: &Ctx) {
             params,
             result,
         } => {
-            // Builtins (e.g. `f32.sin`, `f64.exp`): the grafted WASM
-            // function is already in the output module — emit a `call`
-            // to it instead of a raw instruction.
+            // A builtin (`f32.sin`, `str_byte_len`) is a `call` to the grafted
+            // function; each param is pushed as the ABI demands (a STRING as
+            // `(ptr, len)`).
             if let Some(&fn_idx) = ctx.builtin_indices.get(instruction.as_str()) {
+                // A string producer (result declared STRING) takes
+                // `(...args, out_addr, out_cap)` and writes the destination
+                // directly; nothing is returned.
+                let producer_out: Option<(u32, u32)> = result.and_then(|name| {
+                    match ctx.locals.get(&name)? {
+                        LocalInfo::StringMemory { address, capacity } => {
+                            Some((*address, *capacity))
+                        }
+                        _ => None,
+                    }
+                });
+
+                // Push regular params first.
                 for param_name in params {
-                    if let Some(LocalInfo::Scalar { index, .. }) = ctx.locals.get(param_name) {
-                        func.instruction(&Instruction::LocalGet(*index));
+                    match ctx.locals.get(param_name) {
+                        Some(LocalInfo::Scalar { index, .. }) => {
+                            func.instruction(&Instruction::LocalGet(*index));
+                        }
+                        Some(LocalInfo::StringParam {
+                            ptr_index,
+                            len_index,
+                        }) => {
+                            func.instruction(&Instruction::LocalGet(*ptr_index));
+                            func.instruction(&Instruction::LocalGet(*len_index));
+                        }
+                        Some(LocalInfo::StringInOutParam {
+                            addr_index,
+                            cap_index,
+                        }) => {
+                            // A STRING `VAR_IN_OUT` (addr, cap) pair goes straight
+                            // to the mutator.
+                            func.instruction(&Instruction::LocalGet(*addr_index));
+                            func.instruction(&Instruction::LocalGet(*cap_index));
+                        }
+                        Some(LocalInfo::StringMemory { address, .. }) => {
+                            // STRING var passed by value: push (ptr, len).
+                            func.instruction(&Instruction::I32Const(*address as i32 + 4));
+                            func.instruction(&Instruction::I32Const(*address as i32));
+                            func.instruction(&Instruction::I32Load(mem_arg(0, 2)));
+                        }
+                        _ => {}
                     }
                 }
+
+                // The producer's (out_addr, out_cap): a static slot or the
+                // function's own out-buffer params.
+                if let Some((addr, cap)) = producer_out {
+                    func.instruction(&Instruction::I32Const(addr as i32));
+                    func.instruction(&Instruction::I32Const(cap as i32));
+                }
+
                 func.instruction(&Instruction::Call(fn_idx));
-                if let Some(result_name) = result
+
+                // The scalar path stores the result; a producer already wrote it.
+                if producer_out.is_none()
+                    && let Some(result_name) = result
                     && let Some(LocalInfo::Scalar { index, .. }) = ctx.locals.get(result_name)
                 {
                     func.instruction(&Instruction::LocalSet(*index));
@@ -554,89 +603,95 @@ fn emit_assignment(
                         func.instruction(&Instruction::LocalSet(*len_index));
                         func.instruction(&Instruction::LocalSet(*ptr_index));
                     }
-                    LocalInfo::StringMemory { address } => {
-                        // For string literals: we know it pushes (ptr, len)
-                        // For string params/locals: also (ptr, len)
-                        // Store ptr at addr, len at addr+4 as two separate stores
+                    LocalInfo::StringMemory { address, capacity } => {
+                        // String layout at `address`: 4-byte length, then
+                        // `capacity` bytes of embedded buffer. Assignment
+                        // dispatches to the `rk_str_assign` helper, which
+                        // bounds the source length to `capacity`, writes
+                        // it into the header, and memcpys the bytes into
+                        // the buffer. Calling convention:
+                        //   `rk_str_assign(dest_addr, dest_cap, src_ptr, src_len)`
+                        let assign_idx = ctx
+                            .builtin_indices
+                            .get("rk.str_assign")
+                            .copied()
+                            .expect(
+                                "rk.str_assign must be grafted whenever a function has a STRING local",
+                            );
+
+                        // Push dest_addr, dest_cap (compile-time constants).
+                        func.instruction(&Instruction::I32Const(*address as i32));
+                        func.instruction(&Instruction::I32Const(*capacity as i32));
+
+                        // Push (src_ptr, src_len) - sourced from each value
+                        // kind. Falls through to `emit_expr` for anything
+                        // other than the three common direct cases (literal,
+                        // string-param load, string-var load); that path
+                        // produces (ptr, len) on the stack the same way.
                         match value {
                             MirExpr::StringLiteral { offset, len, .. } => {
-                                // Store ptr
-                                func.instruction(&Instruction::I32Const(*address as i32));
                                 func.instruction(&Instruction::I32Const(*offset as i32));
-                                func.instruction(&Instruction::I32Store(mem_arg(0, 2)));
-                                // Store len
-                                func.instruction(&Instruction::I32Const(*address as i32 + 4));
                                 func.instruction(&Instruction::I32Const(*len as i32));
-                                func.instruction(&Instruction::I32Store(mem_arg(0, 2)));
                             }
-                            MirExpr::Load(place, _) => {
-                                // Load the source string (ptr, len) and store to target
-                                if let Some(src_info) = match place {
-                                    MirPlace::Local(id) => ctx.locals.get(id),
-                                    _ => None,
-                                } {
-                                    match src_info {
-                                        LocalInfo::StringParam {
-                                            ptr_index,
-                                            len_index,
-                                        } => {
-                                            func.instruction(&Instruction::I32Const(
-                                                *address as i32,
-                                            ));
-                                            func.instruction(&Instruction::LocalGet(*ptr_index));
-                                            func.instruction(&Instruction::I32Store(mem_arg(0, 2)));
-                                            func.instruction(&Instruction::I32Const(
-                                                *address as i32 + 4,
-                                            ));
-                                            func.instruction(&Instruction::LocalGet(*len_index));
-                                            func.instruction(&Instruction::I32Store(mem_arg(0, 2)));
-                                        }
-                                        LocalInfo::StringMemory { address: src_addr } => {
-                                            // Copy ptr
-                                            func.instruction(&Instruction::I32Const(
-                                                *address as i32,
-                                            ));
-                                            func.instruction(&Instruction::I32Const(
-                                                *src_addr as i32,
-                                            ));
-                                            func.instruction(&Instruction::I32Load(mem_arg(0, 2)));
-                                            func.instruction(&Instruction::I32Store(mem_arg(0, 2)));
-                                            // Copy len
-                                            func.instruction(&Instruction::I32Const(
-                                                *address as i32 + 4,
-                                            ));
-                                            func.instruction(&Instruction::I32Const(
-                                                *src_addr as i32 + 4,
-                                            ));
-                                            func.instruction(&Instruction::I32Load(mem_arg(0, 2)));
-                                            func.instruction(&Instruction::I32Store(mem_arg(0, 2)));
-                                        }
-                                        _ => {
-                                            // Fallback: zero out
-                                            func.instruction(&Instruction::I32Const(
-                                                *address as i32,
-                                            ));
-                                            func.instruction(&Instruction::I32Const(0));
-                                            func.instruction(&Instruction::I32Store(mem_arg(0, 2)));
-                                            func.instruction(&Instruction::I32Const(
-                                                *address as i32 + 4,
-                                            ));
-                                            func.instruction(&Instruction::I32Const(0));
-                                            func.instruction(&Instruction::I32Store(mem_arg(0, 2)));
-                                        }
+                            MirExpr::Load(MirPlace::Local(id), _)
+                                if matches!(
+                                    ctx.locals.get(id),
+                                    Some(LocalInfo::StringParam { .. })
+                                        | Some(LocalInfo::StringMemory { .. })
+                                ) =>
+                            {
+                                match ctx.locals.get(id) {
+                                    Some(LocalInfo::StringParam {
+                                        ptr_index,
+                                        len_index,
+                                    }) => {
+                                        func.instruction(&Instruction::LocalGet(*ptr_index));
+                                        func.instruction(&Instruction::LocalGet(*len_index));
                                     }
+                                    Some(LocalInfo::StringMemory {
+                                        address: src_addr, ..
+                                    }) => {
+                                        // Source ptr = src_addr + 4 (start
+                                        // of embedded buffer), len loaded
+                                        // from src_addr.
+                                        func.instruction(&Instruction::I32Const(
+                                            *src_addr as i32 + 4,
+                                        ));
+                                        func.instruction(&Instruction::I32Const(*src_addr as i32));
+                                        func.instruction(&Instruction::I32Load(mem_arg(0, 2)));
+                                    }
+                                    _ => unreachable!(),
                                 }
                             }
                             _ => {
-                                // Default: zero-initialize (empty string)
-                                func.instruction(&Instruction::I32Const(*address as i32));
-                                func.instruction(&Instruction::I32Const(0));
-                                func.instruction(&Instruction::I32Store(mem_arg(0, 2)));
-                                func.instruction(&Instruction::I32Const(*address as i32 + 4));
-                                func.instruction(&Instruction::I32Const(0));
-                                func.instruction(&Instruction::I32Store(mem_arg(0, 2)));
+                                // Function calls returning STRING and any
+                                // other producer expression: emit_expr
+                                // pushes (ptr, len) directly onto the stack.
+                                emit_expr(func, value, ctx.locals, ctx.fn_indices);
                             }
                         }
+
+                        func.instruction(&Instruction::Call(assign_idx));
+                    }
+                    LocalInfo::StringInOutParam {
+                        addr_index,
+                        cap_index,
+                    } => {
+                        // Assignment into a STRING `VAR_IN_OUT` param -
+                        // e.g. `dest := …` inside a mutator function body
+                        // where `dest` is the in/out param. Forward the
+                        // caller-supplied (addr, cap) to `rk_str_assign`.
+                        let assign_idx = ctx
+                            .builtin_indices
+                            .get("rk.str_assign")
+                            .copied()
+                            .expect(
+                                "rk.str_assign must be grafted whenever a function has a STRING local",
+                            );
+                        func.instruction(&Instruction::LocalGet(*addr_index));
+                        func.instruction(&Instruction::LocalGet(*cap_index));
+                        emit_expr(func, value, ctx.locals, ctx.fn_indices);
+                        func.instruction(&Instruction::Call(assign_idx));
                     }
                 }
             }

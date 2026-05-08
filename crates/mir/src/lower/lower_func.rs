@@ -626,13 +626,27 @@ fn compute_storage(
     }
 }
 
-/// Lower a variable's type spec via HIR inference.
+/// Lower a variable's type spec, recovering a declared `STRING[N]`
+/// capacity that `Type::normalize` collapses.
 fn lower_var_type<'db>(
     db: &'db dyn WorkspaceDataBase,
     var: VariableDecl<'db>,
 ) -> Result<MirType, LowerTypeError> {
+    use hir::hir_def::expressions::spec::SpecKind;
+
     let ty = var.spec(db).infer(db);
-    lower_type(db, ty)
+    let mir = lower_type(db, ty)?;
+
+    // For STRING types, override the default capacity with the declared
+    // `[N]` if the spec carries one.
+    if matches!(mir, MirType::String { .. }) {
+        if let SpecKind::SizedString(length_expr) = var.spec(db).kind(db)
+            && let Some(n) = length_expr.as_range(db)
+        {
+            return Ok(MirType::String { capacity: n as u32 });
+        }
+    }
+    Ok(mir)
 }
 
 /// Lower a variable's type, resolving FB types using the per-variable
@@ -652,7 +666,9 @@ fn lower_var_type_with_mangling<'db>(
 ) -> Result<MirType, LowerTypeError> {
     let ty = var.spec(db).infer(db);
     let Type::FunctionBlock(fb) = ty else {
-        return lower_type(db, ty);
+        // Non-FB types: use the per-variable lowering so spec-level
+        // overrides (e.g. `STRING[N]` capacity) survive.
+        return lower_var_type(db, var);
     };
     // Prefer per-variable mangled instantiation: this picks the correct
     // struct name when two variables of the same FB use distinct

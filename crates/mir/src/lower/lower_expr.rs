@@ -861,23 +861,87 @@ impl<'db> ExprLowerCtx<'db> {
         let mut provided_names: rustc_hash::FxHashSet<hir::hir_def::interned::identifier::Ident> =
             rustc_hash::FxHashSet::default();
 
-        for param in call_params.iter() {
+        // Pre-resolve callee parameter kinds so we can decide ByVal vs ByRef
+        // per arg. `def_map.local_variables` is an `FxIndexMap` that
+        // preserves declaration order and only contains Input/InOut/Output
+        // - exactly the param list for positional calls.
+        let callable_for_kinds = match path.infer(self.db) {
+            Type::CallableType(ct) => Some(ct),
+            Type::Function(f) => Some(hir::hir_ty::ty::CallableType::Function(f)),
+            Type::FunctionBlock(fb) => Some(hir::hir_ty::ty::CallableType::FunctionBlock(fb)),
+            _ => None,
+        };
+        let param_kinds: Vec<hir::hir_def::pous::variable::VariableKind> =
+            if let Some(c) = &callable_for_kinds {
+                c.def_map(self.db)
+                    .local_variables
+                    .values()
+                    .map(|v| v.kind(self.db).clone())
+                    .collect()
+            } else {
+                Vec::new()
+            };
+        let kind_by_name: rustc_hash::FxHashMap<
+            hir::hir_def::interned::identifier::Ident,
+            hir::hir_def::pous::variable::VariableKind,
+        > = if let Some(c) = &callable_for_kinds {
+            c.def_map(self.db)
+                .local_variables
+                .iter()
+                .map(|(n, v)| (*n, v.kind(self.db).clone()))
+                .collect()
+        } else {
+            rustc_hash::FxHashMap::default()
+        };
+
+        use hir::hir_def::pous::variable::VariableKind;
+        // Wrap a lowered value as ByRef when the target param is
+        // `VAR_IN_OUT` / `VAR_OUTPUT`. Falls back to ByValue when the value
+        // isn't a simple Load (we still need to lower function-style
+        // expressions where we have no place to take an address of -
+        // the type checker rejects those before they get here).
+        let to_byref = |mir: MirExpr| match mir {
+            MirExpr::Load(place, _) => MirCallArg {
+                value: MirExpr::AddrOf(place),
+                kind: MirArgKind::ByRef,
+            },
+            other => MirCallArg {
+                value: other,
+                kind: MirArgKind::ByValue,
+            },
+        };
+
+        for (i, param) in call_params.iter().enumerate() {
             match param.kind(self.db) {
                 ParamAssignKind::NonFormal { value } => {
-                    args.push(MirCallArg {
-                        value: self.lower_expr(value)?,
-                        kind: MirArgKind::ByValue,
-                    });
+                    let lowered = self.lower_expr(value)?;
+                    let kind = param_kinds.get(i);
+                    if matches!(kind, Some(VariableKind::InOut | VariableKind::Output)) {
+                        args.push(to_byref(lowered));
+                    } else {
+                        args.push(MirCallArg {
+                            value: lowered,
+                            kind: MirArgKind::ByValue,
+                        });
+                    }
                 }
                 ParamAssignKind::FormalInput {
                     value,
                     param: param_ident,
                 } => {
                     provided_names.insert(param_ident.ident);
-                    args.push(MirCallArg {
-                        value: self.lower_expr(value)?,
-                        kind: MirArgKind::ByValue,
-                    });
+                    let lowered = self.lower_expr(value)?;
+                    // `name := value` syntax also covers `VAR_IN_OUT` -
+                    // look up the actual param kind by name to decide.
+                    let kind = kind_by_name.get(&param_ident.ident);
+                    if matches!(kind, Some(VariableKind::InOut | VariableKind::Output)) {
+                        args.push(to_byref(lowered));
+                    } else {
+                        args.push(MirCallArg {
+                            value: lowered,
+                            kind: MirArgKind::ByValue,
+                        });
+                    }
                 }
                 ParamAssignKind::FormalOutput {
                     variable,

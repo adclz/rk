@@ -15,6 +15,7 @@ use crate::builtins::{
 };
 
 /// Result of grafting all referenced builtins.
+#[cfg_attr(not(test), allow(dead_code))]
 pub(crate) struct GraftPlan {
     /// Number of builtin functions appended (after imports, before user fns).
     pub n_funcs: u32,
@@ -27,15 +28,10 @@ pub(crate) struct GraftPlan {
     pub rk_layout_floor: u32,
 }
 
-/// Append every builtin in `names_used` (and its transitive helpers) to the
-/// caller's sections. The caller is responsible for placing the function
-/// emissions *after* imports and *before* user-defined functions so the
-/// resulting indices line up.
-///
-/// `global_section` and `data_section` receive the bundle's stack-pointer
-/// global and polynomial-coefficient data on the first call to graft —
-/// these are fixed-format and shared across every grafted body. If no
-/// builtins are referenced, both sections are left untouched.
+/// Append every builtin in `names_used` and its helpers to the caller's
+/// sections, which must place them after imports and before user
+/// functions. The bundle's stack-pointer global and data go in on the
+/// first graft.
 pub(crate) fn graft_builtins<'a>(
     names_used: impl IntoIterator<Item = &'a str>,
     type_section: &mut TypeSection,
@@ -154,7 +150,7 @@ fn rewrite_body(entry: &BuiltinFunc, bundle_to_wasm: &FxHashMap<u32, u32>) -> Ve
         let new_target = bundle_to_wasm
             .get(&cs.target)
             .copied()
-            .expect("call target not in graft set — closure walk missed a callee");
+            .expect("call target not in graft set - closure walk missed a callee");
         write_uleb128(&mut new, new_target);
         // Skip past the original operand bytes.
         cursor = op_off + cs.operand_width as usize;
@@ -242,7 +238,7 @@ mod tests {
             plan.n_funcs,
         );
 
-        // 1 page of memory is enough — bundle was built with -zstack-size=8192
+        // 1 page of memory is enough - bundle was built with -zstack-size=8192
         // so its data lives below 64 KiB.
         let mut memories = wasm_encoder::MemorySection::new();
         memories.memory(wasm_encoder::MemoryType {

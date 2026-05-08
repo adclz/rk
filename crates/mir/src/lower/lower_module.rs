@@ -193,7 +193,7 @@ fn lower_module_from_pous<'db>(
                 });
                 if let Some(wasm_decl) = wasm_decl {
                     if let Ok(mut mir_func) =
-                        lower_wasm_intrinsic(db, *func, &wasm_decl, next_fn_idx)
+                        lower_wasm_intrinsic(db, *func, &wasm_decl, next_fn_idx, &mut memory_layout)
                     {
                         mir_func.export_name = make_export_name(ns_prefix, func.name(db).text(db));
 
@@ -598,6 +598,7 @@ pub fn lower_wasm_intrinsic<'db>(
     func: Function<'db>,
     wasm_decl: &hir::hir_def::extern_decl::WasmDecl<'db>,
     index: u32,
+    memory_layout: &mut MirMemoryLayout,
 ) -> Result<crate::function::MirFunction, LowerTypeError> {
     use crate::expr::*;
     use crate::function::*;
@@ -607,22 +608,43 @@ pub fn lower_wasm_intrinsic<'db>(
     // Parse the instruction to determine from/to types
     let _instruction = wasm_decl.instruction.as_str();
 
-    // Build params
+    // Build params. Handles all three modes:
+    //   - Input   → param value
+    //   - InOut   → caller's buffer, mutable
+    //   - Output  → caller's buffer, write-only
+    // Reference modes are wrapped in `MirType::Pointer` so the codegen
+    // knows to flatten STRING references into the (addr, cap) pair.
     let mut params = Vec::new();
     let mut param_name = None;
     let mut param_elem = None;
     for var in func.variables(db) {
-        if matches!(var.kind(db), VariableKind::Input) {
-            let ty = lower_type(db, var.spec(db).infer(db))?;
-            if let MirType::Elementary(e) = &ty {
-                param_elem = Some(*e);
+        match var.kind(db) {
+            VariableKind::Input => {
+                let ty = lower_type(db, var.spec(db).infer(db))?;
+                if let MirType::Elementary(e) = &ty {
+                    param_elem = Some(*e);
+                }
+                param_name = Some(var.name(db));
+                params.push(MirParam {
+                    name: var.name(db),
+                    ty,
+                    kind: MirParamKind::Input,
+                });
             }
-            param_name = Some(var.name(db));
-            params.push(MirParam {
-                name: var.name(db),
-                ty,
-                kind: MirParamKind::Input,
-            });
+            VariableKind::InOut | VariableKind::Output => {
+                let ty = lower_type(db, var.spec(db).infer(db))?;
+                let kind = if var.kind(db) == VariableKind::InOut {
+                    MirParamKind::InOut
+                } else {
+                    MirParamKind::Output
+                };
+                params.push(MirParam {
+                    name: var.name(db),
+                    ty: MirType::Pointer(Box::new(ty)),
+                    kind,
+                });
+            }
+            _ => {}
         }
     }
 
@@ -636,24 +658,56 @@ pub fn lower_wasm_intrinsic<'db>(
         return_elem = Some(*e);
     }
 
-    // Return local - needed so the local map has an entry for the return variable
+    // Return local - needed so the local map has an entry for the return
+    // variable. STRING returns require Memory storage so the codegen can
+    // allocate the embedded buffer and producer builtins can write
+    // directly into it; everything else uses a WASM-local scalar.
     let mut locals = Vec::new();
     let return_local_idx = params.len() as u32; // after all params
     if let Some(ref ret_ty) = return_type {
+        let storage = match ret_ty {
+            MirType::String { .. } => {
+                let size = ret_ty.size_bytes();
+                let align = ret_ty.alignment();
+                let address = memory_layout.allocate(
+                    func.name(db),
+                    size,
+                    align,
+                    crate::memory::MirAllocKind::Variable,
+                );
+                MirStorage::Memory {
+                    address,
+                    size,
+                    align,
+                }
+            }
+            _ => MirStorage::Scalar {
+                local_index: return_local_idx,
+            },
+        };
         locals.push(crate::function::MirLocal {
             name: func.name(db),
             ty: ret_ty.clone(),
             init: None,
             kind: crate::function::MirLocalKind::Var,
-            storage: MirStorage::Scalar {
-                local_index: return_local_idx,
-            },
+            storage,
         });
     }
 
-    // Build body: result := cast(param)
-    let mut body = Vec::new();
-    if let (Some(p_name), Some(from), Some(to)) = (param_name, param_elem, return_elem) {
+    // Build body. Two shapes:
+    //
+    // 1. **Single elementary input → elementary output**: emit a Cast so the
+    //    cast emitter (mir_cast.rs) can translate to the appropriate WASM
+    //    op or unit-conversion sequence. Covers all of Convert.st today.
+    //
+    // 2. **Anything else** (multiple inputs, STRING params, etc.): emit a
+    //    `WasmIntrinsic` whose instruction string is consumed by the
+    //    codegen - either dispatched into `BUILTIN_NAMES` (graft a call to
+    //    a `wasm_builtins` function) or matched in `emit_wasm_instruction`.
+    //    Used by the new string-inspection helpers (`str_byte_len`,
+    //    `str_char_count`, etc.) where the cast machinery doesn't apply.
+    let body = if let (Some(p_name), Some(from), Some(to)) = (param_name, param_elem, return_elem)
+    {
         let load = MirExpr::Load(MirPlace::Local(p_name), MirType::Elementary(from));
         let cast_expr = if from == to {
             load
@@ -664,11 +718,22 @@ pub fn lower_wasm_intrinsic<'db>(
                 to,
             }
         };
-        body.push(MirStmt::Assign {
+        vec![MirStmt::Assign {
             target: MirPlace::Local(func.name(db)),
             value: cast_expr,
-        });
-    }
+        }]
+    } else {
+        let param_names: Vec<_> = params.iter().map(|p| p.name).collect();
+        vec![MirStmt::WasmIntrinsic {
+            instruction: wasm_decl.instruction.clone(),
+            params: param_names,
+            result: if return_type.is_some() {
+                Some(func.name(db))
+            } else {
+                None
+            },
+        }]
+    };
 
     Ok(MirFunction {
         name: super::monomorphize::qualified_pou_ident(
