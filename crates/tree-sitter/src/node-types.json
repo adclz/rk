@@ -1595,14 +1595,6 @@
           "named": true
         },
         {
-          "type": "any_char_name",
-          "named": true
-        },
-        {
-          "type": "any_chars_name",
-          "named": true
-        },
-        {
           "type": "any_date_name",
           "named": true
         },
@@ -1636,10 +1628,6 @@
         },
         {
           "type": "any_signed_name",
-          "named": true
-        },
-        {
-          "type": "any_string_name",
           "named": true
         },
         {
@@ -7963,14 +7951,6 @@
     "named": true
   },
   {
-    "type": "any_char_name",
-    "named": true
-  },
-  {
-    "type": "any_chars_name",
-    "named": true
-  },
-  {
     "type": "any_date_name",
     "named": true
   },
@@ -8004,10 +7984,6 @@
   },
   {
     "type": "any_signed_name",
-    "named": true
-  },
-  {
-    "type": "any_string_name",
     "named": true
   },
   {

@@ -2153,33 +2153,6 @@
           "type": "ALIAS",
           "content": {
             "type": "STRING",
-            "value": "ANY_CHARS"
-          },
-          "named": true,
-          "value": "any_chars_name"
-        },
-        {
-          "type": "ALIAS",
-          "content": {
-            "type": "STRING",
-            "value": "ANY_CHAR"
-          },
-          "named": true,
-          "value": "any_char_name"
-        },
-        {
-          "type": "ALIAS",
-          "content": {
-            "type": "STRING",
-            "value": "ANY_STRING"
-          },
-          "named": true,
-          "value": "any_string_name"
-        },
-        {
-          "type": "ALIAS",
-          "content": {
-            "type": "STRING",
             "value": "ANY_DATE"
           },
           "named": true,
