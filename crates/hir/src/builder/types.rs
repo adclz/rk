@@ -252,7 +252,7 @@ impl<'db> ParseSpec<'db> for ast::generated::ElemTypeName {
                 }
             }
             AstSpec::AnyTypeName(any) => {
-                type AnyKind = ast::generated::AnyBitName_AnyCharName_AnyCharsName_AnyDateName_AnyDurationName_AnyElementaryName_AnyIntName_AnyMagnitudeName_AnyName_AnyNumName_AnyRealName_AnySignedName_AnyStringName_AnyUnsignedName;
+                type AnyKind = ast::generated::AnyBitName_AnyDateName_AnyDurationName_AnyElementaryName_AnyIntName_AnyMagnitudeName_AnyName_AnyNumName_AnyRealName_AnySignedName_AnyUnsignedName;
                 let spec = match any.children.cast(sema.ast) {
                     AnyKind::AnyName(_) => ElementarySpec::Any,
                     AnyKind::AnyNumName(_) => ElementarySpec::AnyNum,
@@ -261,9 +261,6 @@ impl<'db> ParseSpec<'db> for ast::generated::ElemTypeName {
                     AnyKind::AnyBitName(_) => ElementarySpec::AnyBit,
                     AnyKind::AnyElementaryName(_) => ElementarySpec::AnyElementary,
                     AnyKind::AnyMagnitudeName(_) => ElementarySpec::AnyMagnitude,
-                    AnyKind::AnyCharsName(_) => ElementarySpec::AnyChars,
-                    AnyKind::AnyCharName(_) => ElementarySpec::AnyChar,
-                    AnyKind::AnyStringName(_) => ElementarySpec::AnyString,
                     AnyKind::AnyDateName(_) => ElementarySpec::AnyDate,
                     AnyKind::AnyDurationName(_) => ElementarySpec::AnyDuration,
                     AnyKind::AnySignedName(_) => ElementarySpec::AnySigned,

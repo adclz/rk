@@ -87,9 +87,6 @@ pub enum ElementarySpec {
     AnyBit,
     AnyElementary,
     AnyMagnitude,
-    AnyChars,
-    AnyChar,
-    AnyString,
     AnyDate,
     AnyDuration,
     AnySigned,
@@ -134,9 +131,6 @@ impl ElementarySpec {
             | ElementarySpec::AnyBit
             | ElementarySpec::AnyElementary
             | ElementarySpec::AnyMagnitude
-            | ElementarySpec::AnyChars
-            | ElementarySpec::AnyChar
-            | ElementarySpec::AnyString
             | ElementarySpec::AnyDate
             | ElementarySpec::AnyDuration
             | ElementarySpec::AnySigned
@@ -197,9 +191,6 @@ impl ElementarySpec {
                 | Self::AnyBit
                 | Self::AnyElementary
                 | Self::AnyMagnitude
-                | Self::AnyChars
-                | Self::AnyChar
-                | Self::AnyString
                 | Self::AnyDate
                 | Self::AnyDuration
                 | Self::AnySigned
@@ -233,9 +224,6 @@ impl ElementarySpec {
                 concrete,
                 Self::Bool | Self::Byte | Self::Word | Self::DWord | Self::LWord
             ),
-            Self::AnyChars => Self::AnyString.accepts(concrete) || Self::AnyChar.accepts(concrete),
-            Self::AnyString => matches!(concrete, Self::String),
-            Self::AnyChar => matches!(concrete, Self::Char),
             Self::AnyDate => matches!(
                 concrete,
                 Self::Date
@@ -376,9 +364,6 @@ mod tests {
                 AnyDate,
                 &[Date, LDate, DateAndTime, LDateTime, Tod, LTod],
             ),
-            (AnyChar, &[Char]),
-            (AnyString, &[String]),
-            (AnyChars, &[String, Char]),
         ];
 
         for (any, expected) in cases {

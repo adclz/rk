@@ -137,36 +137,6 @@ END_FUNCTION"#;
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @"");
 }
 
-#[rstest]
-fn valid_any_chars_with_string(mut with_db: RootDatabase) {
-    let source = r#"
-FUNCTION fn1 : ANY_CHARS
-    VAR_INPUT x: INTO(fn1); END_VAR
-    fn1 := x;
-END_FUNCTION
-
-FUNCTION test : STRING
-    test := fn1('hello');
-END_FUNCTION"#;
-
-    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @"");
-}
-
-#[rstest]
-fn valid_any_char_with_char(mut with_db: RootDatabase) {
-    let source = r#"
-FUNCTION fn1 : ANY_CHAR
-    VAR_INPUT x: INTO(fn1); END_VAR
-    fn1 := x;
-END_FUNCTION
-
-FUNCTION test : CHAR
-    test := fn1(CHAR#'a');
-END_FUNCTION"#;
-
-    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @"");
-}
-
 // -- Invalid: concrete type not in ANY_* group ---------------------------
 
 #[rstest]
@@ -206,43 +176,6 @@ END_FUNCTION"#;
        |                 `------ consider explicitly casting with 'BOOL_TO_INT(fn1(TRUE))'
        |
        | Help: insert explicit cast 'BOOL_TO_INT(fn1(TRUE))'
-    ---'
-    ");
-}
-
-#[rstest]
-fn invalid_any_char_with_string(mut with_db: RootDatabase) {
-    let source = r#"
-FUNCTION fn1 : ANY_CHAR
-    VAR_INPUT x: INTO(fn1); END_VAR
-    fn1 := x;
-END_FUNCTION
-
-FUNCTION test : STRING
-    test := fn1('hello');
-END_FUNCTION"#;
-
-    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E0301] Error: type mismatch
-       ,-[ file:///test0.st:8:17 ]
-       |
-     3 |     VAR_INPUT x: INTO(fn1); END_VAR
-       |               |
-       |               `-- type is declared by variable 'x' here
-       |
-     8 |     test := fn1('hello');
-       |                 ^^^|^^^
-       |                    `----- expected 'ANY_CHAR', got 'STRING'
-    ---'
-    [E0301] Error: type mismatch
-       ,-[ file:///test0.st:8:13 ]
-       |
-     7 | FUNCTION test : STRING
-       |          ^^|^
-       |            `--- FUNCTION 'test' is defined here, with return type 'STRING'
-     8 |     test := fn1('hello');
-       |             ^^^^^^|^^^^^
-       |                   `------- expected 'STRING', got 'ANY_CHAR'
     ---'
     ");
 }

@@ -496,13 +496,25 @@ impl<'db> ExprLowerCtx<'db> {
                 }
             }
 
-            // String/Char literals - intern in the string pool
-            Elementary::String(ident) | Elementary::Char(ident) => {
+            // String literal — intern UTF-8 bytes in the string pool and
+            // emit a `(offset, len)` reference.
+            Elementary::String(ident) => {
                 let raw = ident.text(self.db).to_string();
-                // Strip surrounding quotes (' or ")
                 let text = raw.trim_matches('\'').trim_matches('"');
                 let (id, offset, len) = self.string_pool.borrow_mut().intern(text);
                 Ok(MirExpr::StringLiteral { id, offset, len })
+            }
+
+            // Char literal (`CHAR#'X'`) — decode the single character to its
+            // UTF-32 code point and emit an `i32` constant. CHAR variables
+            // are scalar i32 (UTF-32) at the WASM ABI; to feed a CHAR into
+            // a STRING-shaped slot, the user calls `Std.Convert.CHAR_TO_STRING`
+            // explicitly.
+            Elementary::Char(ident) => {
+                let raw = ident.text(self.db).to_string();
+                let text = raw.trim_matches('\'').trim_matches('"');
+                let codepoint = text.chars().next().map(|c| c as u32).unwrap_or(0);
+                Ok(MirExpr::Constant(MirConstant::I32(codepoint as i32)))
             }
 
             // Time and date literals decode to the storage encodings (`types.rs`);
