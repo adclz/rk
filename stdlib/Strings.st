@@ -1,17 +1,5 @@
 /*
-# Standard String Functions
-
-IEC 61131-3 Table 34 character-string functions. STRING is treated as a
-raw byte sequence; all functions operate on bytes (1-indexed positions).
-For ASCII data this matches the spec's character semantics directly; for
-multi-byte UTF-8 content, slicing operations may split a code point —
-call `IS_UTF8` to validate buffers received from external sources.
-
-Producers that return STRING (CONCAT, LEFT, RIGHT, MID, INSERT, DELETE,
-REPLACE) are reentrance-safe under nesting: the codegen snapshots each
-nested STRING result into a per-call-site scratch slot before evaluating
-the next argument, so sibling calls to the same producer don't clobber
-each other.
+Standard String Functions
 */
 NAMESPACE Std.Strings
 
@@ -42,7 +30,8 @@ NAMESPACE Std.Strings
 	/* ## FIND — 1-indexed byte position of NEEDLE in HAYSTACK
 
 	   Returns 0 when not found. An empty NEEDLE returns 1 (consistent
-	   with IEC 61131-3 FIND semantics). */
+	   with IEC 61131-3 FIND semantics). To search for a single CHAR,
+	   wrap it with `Std.Convert.CHAR_TO_STRING(c)`. */
 	FUNCTION FIND: UDINT
 		VAR_INPUT
 			HAYSTACK: STRING;
@@ -64,7 +53,8 @@ NAMESPACE Std.Strings
 	   UTF-8.
 	*/
 
-	/* ## CONCAT — append B after A, truncate to result capacity */
+	/* ## CONCAT — append B after A, truncate to result capacity.
+	   To concatenate a CHAR, wrap it with `Std.Convert.CHAR_TO_STRING(c)`. */
 	FUNCTION CONCAT: STRING
 		VAR_INPUT
 			A: STRING;
@@ -101,7 +91,8 @@ NAMESPACE Std.Strings
 		{wasm 'str.byte_mid' (params S N P) (result MID)}
 	END_FUNCTION
 
-	/* ## INSERT — insert INS into S after byte position P (0 = front) */
+	/* ## INSERT — insert INS into S after byte position P (0 = front).
+	   To insert a single CHAR, wrap it with `Std.Convert.CHAR_TO_STRING(c)`. */
 	FUNCTION INSERT: STRING
 		VAR_INPUT
 			S: STRING;
@@ -121,7 +112,8 @@ NAMESPACE Std.Strings
 		{wasm 'str.byte_delete' (params S N P) (result DELETE)}
 	END_FUNCTION
 
-	/* ## REPLACE — replace N bytes at position P with INS */
+	/* ## REPLACE — replace N bytes at position P with INS.
+	   To replace with a single CHAR, wrap it with `Std.Convert.CHAR_TO_STRING(c)`. */
 	FUNCTION REPLACE: STRING
 		VAR_INPUT
 			S: STRING;
@@ -136,6 +128,7 @@ NAMESPACE Std.Strings
 
 	NAMESPACE Test
 		USING Std.Unit
+		USING Std.Convert
 
 		{test}
 		FUNCTION test_len_ascii
@@ -304,6 +297,94 @@ NAMESPACE Std.Strings
 			result := CONCAT(LEFT('hello world', 5), '!');
 			ASSERT(LEN(result) = 6);
 			ASSERT(FIND(result, 'hello!') = 1);
+		END_FUNCTION
+
+		/* CHAR-as-string usage — explicit conversion via
+		   `Std.Convert.CHAR_TO_STRING`. CHAR is an i32 code point at
+		   the WASM ABI; CONCAT/INSERT/REPLACE/FIND all take STRING args,
+		   so users wrap CHAR values explicitly. */
+
+		{test}
+		FUNCTION test_concat_char_literal_right
+			VAR result: STRING; END_VAR
+			result := CONCAT('hello', CHAR_TO_STRING(CHAR#'!'));
+			ASSERT(LEN(result) = 6);
+			ASSERT(FIND(result, 'hello!') = 1);
+		END_FUNCTION
+
+		{test}
+		FUNCTION test_concat_char_literal_left
+			VAR result: STRING; END_VAR
+			result := CONCAT(CHAR_TO_STRING(CHAR#'>'), ' message');
+			ASSERT(LEN(result) = 9);
+			ASSERT(FIND(result, '> message') = 1);
+		END_FUNCTION
+
+		{test}
+		FUNCTION test_find_char_literal_needle
+			ASSERT(FIND('hello', CHAR_TO_STRING(CHAR#'l')) = 3);
+		END_FUNCTION
+
+		{test}
+		FUNCTION test_insert_char_literal
+			VAR result: STRING; END_VAR
+			result := INSERT('helloworld', CHAR_TO_STRING(CHAR#' '), 5);
+			ASSERT(LEN(result) = 11);
+			ASSERT(FIND(result, 'hello world') = 1);
+		END_FUNCTION
+
+		{test}
+		FUNCTION test_replace_char_literal
+			VAR result: STRING; END_VAR
+			// Replace 5 bytes at byte 7 of 'hello world' with the single CHAR '!'.
+			result := REPLACE('hello world', CHAR_TO_STRING(CHAR#'!'), 5, 7);
+			ASSERT(LEN(result) = 7);
+			ASSERT(FIND(result, 'hello !') = 1);
+		END_FUNCTION
+
+		{test}
+		FUNCTION test_concat_char_var
+			VAR
+				bang: CHAR := CHAR#'!';
+				result: STRING;
+			END_VAR
+			result := CONCAT('hello', CHAR_TO_STRING(bang));
+			ASSERT(LEN(result) = 6);
+			ASSERT(FIND(result, 'hello!') = 1);
+		END_FUNCTION
+
+		{test}
+		FUNCTION test_find_char_var
+			VAR
+				needle: CHAR := CHAR#'l';
+			END_VAR
+			ASSERT(FIND('hello', CHAR_TO_STRING(needle)) = 3);
+		END_FUNCTION
+
+		{test}
+		FUNCTION test_concat_char_var_left
+			VAR
+				prefix: CHAR := CHAR#'>';
+				result: STRING;
+			END_VAR
+			result := CONCAT(CHAR_TO_STRING(prefix), ' message');
+			ASSERT(LEN(result) = 9);
+			ASSERT(FIND(result, '> message') = 1);
+		END_FUNCTION
+
+		{test}
+		FUNCTION test_concat_two_char_vars
+			// Two nested CHAR_TO_STRING calls — each must get its own
+			// per-call-site scratch slot, the second mustn't clobber the
+			// first before the outer CONCAT reads them.
+			VAR
+				a: CHAR := CHAR#'a';
+				b: CHAR := CHAR#'b';
+				result: STRING;
+			END_VAR
+			result := CONCAT(CHAR_TO_STRING(a), CHAR_TO_STRING(b));
+			ASSERT(LEN(result) = 2);
+			ASSERT(FIND(result, 'ab') = 1);
 		END_FUNCTION
 
 	END_NAMESPACE

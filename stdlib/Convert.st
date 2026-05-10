@@ -1196,44 +1196,113 @@ NAMESPACE Std.Convert
 		{wasm 'cast' (params IN) (result LDT_TO_LTOD)}
 	END_FUNCTION
 
-	/* ## CHAR / WCHAR conversions
-
-	   At the WASM level both CHAR and WCHAR are i32 carrying their
-	   semantic value (8-bit and 16-bit respectively). Reinterpreting
-	   between them is a `nop` modulo storage truncation; widenings are
-	   already implicit, narrowings keep the loss-of-value annotation.
-	*/
+	/* ## CHAR conversions */
 
 	FUNCTION BYTE_TO_CHAR: CHAR
 		VAR_INPUT IN: BYTE; END_VAR
 		{wasm 'nop' (params IN) (result BYTE_TO_CHAR)}
 	END_FUNCTION
 
-	FUNCTION WORD_TO_WCHAR: WCHAR
+	/* ## CHAR_TO_STRING — encode a CHAR (UTF-32 code point) as a STRING.
+
+	   The only path from a CHAR scalar to a STRING-shaped value. CHAR is
+	   stored as an i32 code point at the WASM ABI; this writes the UTF-8
+	   encoding (1-4 bytes) into the function's STRING return slot.
+
+	   Invalid code points (surrogates, > U+10FFFF) yield an empty string. */
+	FUNCTION CHAR_TO_STRING: STRING
+		VAR_INPUT
+			IN: CHAR;
+		END_VAR
+		{wasm 'rk.str_from_char' (params IN) (result CHAR_TO_STRING)}
+	END_FUNCTION
+
+	/* ## Scalar → STRING conversions
+
+	   Each function formats its input as decimal text (or `"TRUE"`/`"FALSE"`
+	   for BOOL) into a fresh STRING return slot. Truncation is silent if
+	   the result exceeds the default STRING capacity. */
+
+	FUNCTION BOOL_TO_STRING: STRING
+		VAR_INPUT IN: BOOL; END_VAR
+		{wasm 'rk.str_from_bool' (params IN) (result BOOL_TO_STRING)}
+	END_FUNCTION
+
+	FUNCTION SINT_TO_STRING: STRING
+		VAR_INPUT IN: SINT; END_VAR
+		{wasm 'rk.str_from_i32' (params IN) (result SINT_TO_STRING)}
+	END_FUNCTION
+
+	FUNCTION INT_TO_STRING: STRING
+		VAR_INPUT IN: INT; END_VAR
+		{wasm 'rk.str_from_i32' (params IN) (result INT_TO_STRING)}
+	END_FUNCTION
+
+	FUNCTION DINT_TO_STRING: STRING
+		VAR_INPUT IN: DINT; END_VAR
+		{wasm 'rk.str_from_i32' (params IN) (result DINT_TO_STRING)}
+	END_FUNCTION
+
+	FUNCTION LINT_TO_STRING: STRING
+		VAR_INPUT IN: LINT; END_VAR
+		{wasm 'rk.str_from_i64' (params IN) (result LINT_TO_STRING)}
+	END_FUNCTION
+
+	FUNCTION USINT_TO_STRING: STRING
+		VAR_INPUT IN: USINT; END_VAR
+		{wasm 'rk.str_from_u32' (params IN) (result USINT_TO_STRING)}
+	END_FUNCTION
+
+	FUNCTION UINT_TO_STRING: STRING
+		VAR_INPUT IN: UINT; END_VAR
+		{wasm 'rk.str_from_u32' (params IN) (result UINT_TO_STRING)}
+	END_FUNCTION
+
+	FUNCTION UDINT_TO_STRING: STRING
+		VAR_INPUT IN: UDINT; END_VAR
+		{wasm 'rk.str_from_u32' (params IN) (result UDINT_TO_STRING)}
+	END_FUNCTION
+
+	FUNCTION ULINT_TO_STRING: STRING
+		VAR_INPUT IN: ULINT; END_VAR
+		{wasm 'rk.str_from_u64' (params IN) (result ULINT_TO_STRING)}
+	END_FUNCTION
+
+	FUNCTION BYTE_TO_STRING: STRING
+		VAR_INPUT IN: BYTE; END_VAR
+		{wasm 'rk.str_from_u32' (params IN) (result BYTE_TO_STRING)}
+	END_FUNCTION
+
+	FUNCTION WORD_TO_STRING: STRING
 		VAR_INPUT IN: WORD; END_VAR
-		{wasm 'nop' (params IN) (result WORD_TO_WCHAR)}
+		{wasm 'rk.str_from_u32' (params IN) (result WORD_TO_STRING)}
 	END_FUNCTION
 
-	{info = 'narrowing conversion, possible loss of value'}
-	FUNCTION WCHAR_TO_CHAR: CHAR
-		VAR_INPUT IN: WCHAR; END_VAR
-		{wasm 'nop' (params IN) (result WCHAR_TO_CHAR)}
+	FUNCTION DWORD_TO_STRING: STRING
+		VAR_INPUT IN: DWORD; END_VAR
+		{wasm 'rk.str_from_u32' (params IN) (result DWORD_TO_STRING)}
 	END_FUNCTION
 
-	/* ## STRING / WSTRING conversions
+	FUNCTION LWORD_TO_STRING: STRING
+		VAR_INPUT IN: LWORD; END_VAR
+		{wasm 'rk.str_from_u64' (params IN) (result LWORD_TO_STRING)}
+	END_FUNCTION
 
-	   WSTRING is UTF-16 and STRING is single-byte; transcoding is the
-	   runtime's responsibility. Implementation deferred:
-	   `WSTRING_TO_STRING` would have the host return a STRING to the
-	   guest, which requires the canonical-ABI `realloc` option (host
-	   allocates guest-side memory for the result). The codegen
-	   currently wires guest→host strings only.
-	*/
+	FUNCTION REAL_TO_STRING: STRING
+		VAR_INPUT IN: REAL; END_VAR
+		{wasm 'rk.str_from_f32' (params IN) (result REAL_TO_STRING)}
+	END_FUNCTION
+
+	FUNCTION LREAL_TO_STRING: STRING
+		VAR_INPUT IN: LREAL; END_VAR
+		{wasm 'rk.str_from_f64' (params IN) (result LREAL_TO_STRING)}
+	END_FUNCTION
 
 	/* ## Tests */
 
 	NAMESPACE Test
 		USING Std.Unit
+		USING Std.Strings
 
 		// Float to Int (truncation)
 		{test}
@@ -1399,6 +1468,134 @@ NAMESPACE Std.Convert
 			b := REAL_TO_INT(a);
 			c := DINT_TO_REAL(b);
 			ASSERT(c = 42.0);
+		END_FUNCTION
+
+		// ----- Scalar → STRING ------------------------------------------------------------------------------
+
+		{test}
+		FUNCTION test_bool_to_string_true
+			VAR s: STRING; END_VAR
+			s := BOOL_TO_STRING(TRUE);
+			ASSERT(LEN(s) = 4);
+			ASSERT(FIND(s, 'TRUE') = 1);
+		END_FUNCTION
+
+		{test}
+		FUNCTION test_bool_to_string_false
+			VAR s: STRING; END_VAR
+			s := BOOL_TO_STRING(FALSE);
+			ASSERT(LEN(s) = 5);
+			ASSERT(FIND(s, 'FALSE') = 1);
+		END_FUNCTION
+
+		{test}
+		FUNCTION test_int_to_string_positive
+			VAR s: STRING; END_VAR
+			s := INT_TO_STRING(42);
+			ASSERT(LEN(s) = 2);
+			ASSERT(FIND(s, '42') = 1);
+		END_FUNCTION
+
+		{test}
+		FUNCTION test_int_to_string_zero
+			VAR s: STRING; END_VAR
+			s := INT_TO_STRING(0);
+			ASSERT(LEN(s) = 1);
+			ASSERT(FIND(s, '0') = 1);
+		END_FUNCTION
+
+		{test}
+		FUNCTION test_int_to_string_negative
+			VAR s: STRING; END_VAR
+			s := INT_TO_STRING(-7);
+			ASSERT(LEN(s) = 2);
+			ASSERT(FIND(s, '-7') = 1);
+		END_FUNCTION
+
+		{test}
+		FUNCTION test_dint_to_string_large
+			VAR s: STRING; END_VAR
+			s := DINT_TO_STRING(2147483647);
+			ASSERT(LEN(s) = 10);
+			ASSERT(FIND(s, '2147483647') = 1);
+		END_FUNCTION
+
+		{test}
+		FUNCTION test_dint_to_string_negative_large
+			VAR s: STRING; END_VAR
+			s := DINT_TO_STRING(-2147483647);
+			ASSERT(LEN(s) = 11);
+			ASSERT(FIND(s, '-2147483647') = 1);
+		END_FUNCTION
+
+		{test}
+		FUNCTION test_lint_to_string_large
+			VAR s: STRING; END_VAR
+			s := LINT_TO_STRING(LINT#9223372036854775807);
+			ASSERT(LEN(s) = 19);
+			ASSERT(FIND(s, '9223372036854775807') = 1);
+		END_FUNCTION
+
+		{test}
+		FUNCTION test_uint_to_string
+			VAR s: STRING; END_VAR
+			s := UINT_TO_STRING(65535);
+			ASSERT(LEN(s) = 5);
+			ASSERT(FIND(s, '65535') = 1);
+		END_FUNCTION
+
+		{test}
+		FUNCTION test_udint_to_string
+			VAR s: STRING; END_VAR
+			s := UDINT_TO_STRING(1000000);
+			ASSERT(LEN(s) = 7);
+			ASSERT(FIND(s, '1000000') = 1);
+		END_FUNCTION
+
+		{test}
+		FUNCTION test_byte_to_string
+			VAR s: STRING; END_VAR
+			s := BYTE_TO_STRING(255);
+			ASSERT(LEN(s) = 3);
+			ASSERT(FIND(s, '255') = 1);
+		END_FUNCTION
+
+		{test}
+		FUNCTION test_real_to_string_basic
+			VAR s: STRING; END_VAR
+			s := REAL_TO_STRING(1.5);
+			// "1.500000" — 8 bytes
+			ASSERT(LEN(s) = 8);
+			ASSERT(FIND(s, '1.500000') = 1);
+		END_FUNCTION
+
+		{test}
+		FUNCTION test_real_to_string_negative
+			VAR s: STRING; END_VAR
+			s := REAL_TO_STRING(-3.25);
+			ASSERT(FIND(s, '-3.250000') = 1);
+		END_FUNCTION
+
+		{test}
+		FUNCTION test_real_to_string_zero
+			VAR s: STRING; END_VAR
+			s := REAL_TO_STRING(0.0);
+			ASSERT(FIND(s, '0.000000') = 1);
+		END_FUNCTION
+
+		{test}
+		FUNCTION test_lreal_to_string_basic
+			VAR s: STRING; END_VAR
+			s := LREAL_TO_STRING(2.5);
+			ASSERT(FIND(s, '2.500000') = 1);
+		END_FUNCTION
+
+		// Composition with string ops — convert and concatenate.
+		{test}
+		FUNCTION test_int_to_string_in_concat
+			VAR s: STRING; END_VAR
+			s := CONCAT('Temperature: ', INT_TO_STRING(42));
+			ASSERT(FIND(s, 'Temperature: 42') = 1);
 		END_FUNCTION
 	END_NAMESPACE
 END_NAMESPACE

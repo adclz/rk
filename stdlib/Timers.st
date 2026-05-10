@@ -9,7 +9,6 @@ All timers share a common interface:
 */
 NAMESPACE Std.Timers
 	USING Std.Convert;
-	USING Std.Generics;
 
 	NAMESPACE Legacy
 		// Aliases for Timers
@@ -99,7 +98,7 @@ NAMESPACE Std.Timers
 			END_IF;
 		END_IF;
 		IF ((STATE = 2) AND NOT (IN)) THEN
-			ET := ANY_DURATION_DEFAULT();
+			ET := T#0s;
 			STATE := 0;
 		END_IF;
 		PREV_IN := IN;
@@ -148,7 +147,7 @@ NAMESPACE Std.Timers
 			START_TIME := CURRENT_TIME;
 		ELSE
 			IF (NOT (IN)) THEN
-				ET := ANY_DURATION_DEFAULT();
+				ET := T#0s;
 				Q := FALSE;
 				STATE := 0;
 			ELSIF (STATE = 1) THEN
@@ -204,7 +203,7 @@ NAMESPACE Std.Timers
 			START_TIME := CURRENT_TIME;
 		ELSE
 			IF (IN) THEN
-				ET := ANY_DURATION_DEFAULT();
+				ET := T#0s;
 				STATE := 0;
 			ELSIF (STATE = 1) THEN
 				IF ((START_TIME + PT) <= CURRENT_TIME) THEN
