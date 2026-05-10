@@ -130,13 +130,215 @@ pub extern "C" fn rk_str_assign(
         (dest_addr as *mut u32).write_unaligned(take);
         // Copy bytes into the embedded buffer (just past the header).
         if take > 0 {
-            core::ptr::copy_nonoverlapping(
+            core::ptr::copy(
                 src_ptr,
                 (dest_addr + 4) as *mut u8,
                 take as usize,
             );
         }
     }
+}
+
+/// Encode a UTF-32 code point as UTF-8 into the STRING slot at `out_addr`;
+/// backs `Std.Convert.CHAR_TO_STRING`. An invalid code point or an
+/// over-capacity slot writes zero length.
+#[unsafe(no_mangle)]
+pub extern "C" fn rk_str_from_char(codepoint: u32, out_addr: u32, out_cap: u32) {
+    let Some(c) = char::from_u32(codepoint) else {
+        unsafe { (out_addr as *mut u32).write_unaligned(0) };
+        return;
+    };
+    let mut buf = [0u8; 4];
+    let len = c.encode_utf8(&mut buf).len() as u32;
+    let take = len.min(out_cap);
+    unsafe {
+        (out_addr as *mut u32).write_unaligned(take);
+        if take > 0 {
+            core::ptr::copy(
+                buf.as_ptr(),
+                (out_addr + 4) as *mut u8,
+                take as usize,
+            );
+        }
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Scalar → STRING formatters: each takes the value plus the caller's
+// STRING slot `(out_addr, out_cap)` and writes `[u32 length][bytes...]`.
+// Used by `Std.Convert.*_TO_STRING`.
+// ---------------------------------------------------------------------------
+
+/// Common tail: copy `src[..len]` into the STRING slot at `out_addr`,
+/// truncating to `out_cap` and writing the length prefix.
+#[inline]
+fn rk_str_emit(out_addr: u32, out_cap: u32, src: &[u8]) {
+    let len = (src.len() as u32).min(out_cap);
+    unsafe {
+        (out_addr as *mut u32).write_unaligned(len);
+        if len > 0 {
+            core::ptr::copy(src.as_ptr(), (out_addr + 4) as *mut u8, len as usize);
+        }
+    }
+}
+
+/// Decimal-format a `u64` into `buf` right-aligned; `buf` must hold 20
+/// bytes.
+#[inline]
+fn fmt_u64<'a>(mut value: u64, buf: &'a mut [u8]) -> &'a [u8] {
+    let mut pos = buf.len();
+    if value == 0 {
+        pos -= 1;
+        buf[pos] = b'0';
+        return &buf[pos..];
+    }
+    while value > 0 {
+        pos -= 1;
+        buf[pos] = b'0' + (value % 10) as u8;
+        value /= 10;
+    }
+    &buf[pos..]
+}
+
+/// Decimal-format an `i64` into `buf` right-aligned; `i64::MIN` via the
+/// unsigned magnitude.
+#[inline]
+fn fmt_i64<'a>(value: i64, buf: &'a mut [u8]) -> &'a [u8] {
+    if value >= 0 {
+        return fmt_u64(value as u64, buf);
+    }
+    // Magnitude as u64 — works for `i64::MIN` because `(MIN as u64).wrapping_neg() == 9223372036854775808`.
+    let mag = (value as u64).wrapping_neg();
+    // Format the magnitude, then prepend '-' one byte before the digits.
+    let digit_len = fmt_u64(mag, buf).len();
+    let start = buf.len() - digit_len - 1;
+    buf[start] = b'-';
+    &buf[start..]
+}
+
+/// `BOOL → STRING`: writes `"TRUE"` or `"FALSE"` per IEC convention
+/// (Rust's `Display` would lowercase). 0 maps to FALSE, anything else TRUE.
+#[unsafe(no_mangle)]
+pub extern "C" fn rk_str_from_bool(value: u32, out_addr: u32, out_cap: u32) {
+    let s: &[u8] = if value == 0 { b"FALSE" } else { b"TRUE" };
+    rk_str_emit(out_addr, out_cap, s);
+}
+
+/// `<signed i32> → STRING` (SINT, INT, DINT). e.g. `-42` → `"-42"`.
+#[unsafe(no_mangle)]
+pub extern "C" fn rk_str_from_i32(value: i32, out_addr: u32, out_cap: u32) {
+    let mut buf = [0u8; 20];
+    let bytes = fmt_i64(value as i64, &mut buf);
+    rk_str_emit(out_addr, out_cap, bytes);
+}
+
+/// `<unsigned i32> → STRING` (USINT, UINT, UDINT, BYTE, WORD, DWORD).
+#[unsafe(no_mangle)]
+pub extern "C" fn rk_str_from_u32(value: u32, out_addr: u32, out_cap: u32) {
+    let mut buf = [0u8; 20];
+    let bytes = fmt_u64(value as u64, &mut buf);
+    rk_str_emit(out_addr, out_cap, bytes);
+}
+
+/// `LINT → STRING`. Round-trips `i64::MIN`.
+#[unsafe(no_mangle)]
+pub extern "C" fn rk_str_from_i64(value: i64, out_addr: u32, out_cap: u32) {
+    let mut buf = [0u8; 20];
+    let bytes = fmt_i64(value, &mut buf);
+    rk_str_emit(out_addr, out_cap, bytes);
+}
+
+/// `<unsigned i64> → STRING` (ULINT, LWORD).
+#[unsafe(no_mangle)]
+pub extern "C" fn rk_str_from_u64(value: u64, out_addr: u32, out_cap: u32) {
+    let mut buf = [0u8; 20];
+    let bytes = fmt_u64(value, &mut buf);
+    rk_str_emit(out_addr, out_cap, bytes);
+}
+
+/// Manually format an `f64` as `[-]<int>.<frac6>` with 6 fractional
+/// digits — avoids `core::fmt`'s trait-object dispatch (which compiles
+/// to `call_indirect` against a function table the graft doesn't carry).
+/// Special cases: `NaN` → `"NaN"`, ±∞ → `"Inf"` / `"-Inf"`.
+///
+/// Trailing zeros in the fractional part are *not* trimmed — `1.5` shows
+/// as `"1.500000"`. This is a deliberate trade-off: a trim adds branches
+/// and the round-trip with `STRING_TO_LREAL` (when we add it) doesn't
+/// care about trailing zeros.
+fn fmt_f64<'a>(value: f64, buf: &'a mut [u8]) -> &'a [u8] {
+    if value.is_nan() {
+        buf[..3].copy_from_slice(b"NaN");
+        return &buf[..3];
+    }
+    let neg = value.is_sign_negative();
+    if value.is_infinite() {
+        if neg {
+            buf[..4].copy_from_slice(b"-Inf");
+            return &buf[..4];
+        } else {
+            buf[..3].copy_from_slice(b"Inf");
+            return &buf[..3];
+        }
+    }
+    // Magnitude. `libm::fabs` handles negatives without floating-point
+    // ops on signs.
+    let mag = libm::fabs(value);
+    let int_part = libm::floor(mag);
+    let frac = mag - int_part;
+    let int_u = int_part as u64;
+    // Six fractional digits: `1_000_000` chosen because `f64` has
+    // ~15-17 decimal digits of precision; keeping 6 frac digits is
+    // a useful default and fits with a 6-digit u64 slot.
+    let frac_u = libm::floor(frac * 1_000_000.0 + 0.5) as u64;
+    // Carry a frac rollover (e.g. 0.9999996) into the int part.
+    let (int_u, frac_u) = if frac_u >= 1_000_000 {
+        (int_u + 1, frac_u - 1_000_000)
+    } else {
+        (int_u, frac_u)
+    };
+
+    // Build the textual form: [-]<int>.<6-digit frac>.
+    // Stage int digits then frac digits in two scratch slots; final
+    // assembly into `buf` happens below.
+    let mut int_scratch = [0u8; 20];
+    let int_digits = fmt_u64(int_u, &mut int_scratch);
+
+    let total_len = (if neg { 1 } else { 0 }) + int_digits.len() + 1 + 6;
+    let mut pos = 0;
+    if neg {
+        buf[pos] = b'-';
+        pos += 1;
+    }
+    buf[pos..pos + int_digits.len()].copy_from_slice(int_digits);
+    pos += int_digits.len();
+    buf[pos] = b'.';
+    pos += 1;
+    // Frac with leading zeros, six digits.
+    let mut f = frac_u;
+    let frac_start = pos;
+    pos += 6;
+    for i in 0..6 {
+        buf[pos - 1 - i] = b'0' + (f % 10) as u8;
+        f /= 10;
+    }
+    let _ = frac_start; // kept for clarity
+    &buf[..total_len]
+}
+
+/// `REAL → STRING`. Six fractional digits, e.g. `1.5_f32 → "1.500000"`.
+#[unsafe(no_mangle)]
+pub extern "C" fn rk_str_from_f32(value: f32, out_addr: u32, out_cap: u32) {
+    let mut buf = [0u8; 32];
+    let bytes = fmt_f64(value as f64, &mut buf);
+    rk_str_emit(out_addr, out_cap, bytes);
+}
+
+/// `LREAL → STRING`. Six fractional digits.
+#[unsafe(no_mangle)]
+pub extern "C" fn rk_str_from_f64(value: f64, out_addr: u32, out_cap: u32) {
+    let mut buf = [0u8; 32];
+    let bytes = fmt_f64(value, &mut buf);
+    rk_str_emit(out_addr, out_cap, bytes);
 }
 
 /// Length in raw bytes - STRINGs are stored as `(ptr, len)`, this just
@@ -187,7 +389,7 @@ unsafe fn str_emit_bytes(out_addr: u32, out_cap: u32, bytes: &[u8]) {
     unsafe {
         (out_addr as *mut u32).write_unaligned(take);
         if take > 0 {
-            core::ptr::copy_nonoverlapping(
+            core::ptr::copy(
                 bytes.as_ptr(),
                 (out_addr + 4) as *mut u8,
                 take as usize,
@@ -215,14 +417,14 @@ pub extern "C" fn str_concat(
     unsafe {
         (out_addr as *mut u32).write_unaligned(total);
         if take_a > 0 {
-            core::ptr::copy_nonoverlapping(
+            core::ptr::copy(
                 a.as_ptr(),
                 (out_addr + 4) as *mut u8,
                 take_a as usize,
             );
         }
         if take_b > 0 {
-            core::ptr::copy_nonoverlapping(
+            core::ptr::copy(
                 b.as_ptr(),
                 (out_addr + 4 + take_a) as *mut u8,
                 take_b as usize,
@@ -302,17 +504,17 @@ pub extern "C" fn str_byte_insert(
         (out_addr as *mut u32).write_unaligned(total);
         let buf = (out_addr + 4) as *mut u8;
         if take_left > 0 {
-            core::ptr::copy_nonoverlapping(s.as_ptr(), buf, take_left as usize);
+            core::ptr::copy(s.as_ptr(), buf, take_left as usize);
         }
         if take_ins > 0 {
-            core::ptr::copy_nonoverlapping(
+            core::ptr::copy(
                 ins.as_ptr(),
                 buf.add(take_left as usize),
                 take_ins as usize,
             );
         }
         if take_right > 0 {
-            core::ptr::copy_nonoverlapping(
+            core::ptr::copy(
                 s.as_ptr().add(split),
                 buf.add((take_left + take_ins) as usize),
                 take_right as usize,
@@ -346,10 +548,10 @@ pub extern "C" fn str_byte_delete(
         (out_addr as *mut u32).write_unaligned(total);
         let buf = (out_addr + 4) as *mut u8;
         if take_left > 0 {
-            core::ptr::copy_nonoverlapping(s.as_ptr(), buf, take_left as usize);
+            core::ptr::copy(s.as_ptr(), buf, take_left as usize);
         }
         if take_right > 0 {
-            core::ptr::copy_nonoverlapping(
+            core::ptr::copy(
                 s.as_ptr().add(end),
                 buf.add(take_left as usize),
                 take_right as usize,
@@ -388,17 +590,17 @@ pub extern "C" fn str_byte_replace(
         (out_addr as *mut u32).write_unaligned(total);
         let buf = (out_addr + 4) as *mut u8;
         if take_left > 0 {
-            core::ptr::copy_nonoverlapping(s.as_ptr(), buf, take_left as usize);
+            core::ptr::copy(s.as_ptr(), buf, take_left as usize);
         }
         if take_ins > 0 {
-            core::ptr::copy_nonoverlapping(
+            core::ptr::copy(
                 ins.as_ptr(),
                 buf.add(take_left as usize),
                 take_ins as usize,
             );
         }
         if take_right > 0 {
-            core::ptr::copy_nonoverlapping(
+            core::ptr::copy(
                 s.as_ptr().add(end),
                 buf.add((take_left + take_ins) as usize),
                 take_right as usize,
