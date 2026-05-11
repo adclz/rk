@@ -13,7 +13,7 @@ struct EmptyType;
 
 impl ErrorCode for EmptyType {
     fn code(&self) -> &'static str {
-        "L0213"
+        "L0214"
     }
 
     fn description(&self) -> &'static str {

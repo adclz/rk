@@ -10,7 +10,7 @@ struct EffectlessStatement;
 
 impl ErrorCode for EffectlessStatement {
     fn code(&self) -> &'static str {
-        "L0211"
+        "L0212"
     }
 
     fn description(&self) -> &'static str {

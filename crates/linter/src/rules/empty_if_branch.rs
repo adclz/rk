@@ -16,7 +16,7 @@ struct EmptyIfBranch;
 
 impl ErrorCode for EmptyIfBranch {
     fn code(&self) -> &'static str {
-        "L0210"
+        "L0211"
     }
 
     fn description(&self) -> &'static str {

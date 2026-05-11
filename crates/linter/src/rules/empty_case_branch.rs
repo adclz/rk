@@ -10,7 +10,7 @@ struct EmptyCaseBranch;
 
 impl ErrorCode for EmptyCaseBranch {
     fn code(&self) -> &'static str {
-        "L0206"
+        "L0207"
     }
 
     fn description(&self) -> &'static str {

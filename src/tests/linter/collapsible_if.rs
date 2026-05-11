@@ -20,7 +20,7 @@ END_VAR
 END_FUNCTION
 "#;
     assert_snapshot!(test_single_lint(&mut with_db, &[source], "collapsible-if"), @r"
-    [L0209] Hint: collapsible IF statements
+    [L0210] Hint: collapsible IF statements
         ,-[ file:///test0.st:7:5 ]
         |
       7 | ,->     IF a THEN

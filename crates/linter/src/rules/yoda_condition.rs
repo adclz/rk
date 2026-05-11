@@ -13,7 +13,7 @@ struct YodaCondition;
 
 impl ErrorCode for YodaCondition {
     fn code(&self) -> &'static str {
-        "L0208"
+        "L0209"
     }
 
     fn description(&self) -> &'static str {

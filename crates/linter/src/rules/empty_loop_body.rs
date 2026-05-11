@@ -13,7 +13,7 @@ struct EmptyLoopBody;
 
 impl ErrorCode for EmptyLoopBody {
     fn code(&self) -> &'static str {
-        "L0212"
+        "L0213"
     }
 
     fn description(&self) -> &'static str {

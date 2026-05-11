@@ -13,7 +13,7 @@ struct UnnecessaryParens;
 
 impl ErrorCode for UnnecessaryParens {
     fn code(&self) -> &'static str {
-        "L0207"
+        "L0208"
     }
 
     fn description(&self) -> &'static str {

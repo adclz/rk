@@ -17,7 +17,7 @@ struct EmptyBody;
 
 impl ErrorCode for EmptyBody {
     fn code(&self) -> &'static str {
-        "L0205"
+        "L0206"
     }
 
     fn description(&self) -> &'static str {

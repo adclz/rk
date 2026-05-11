@@ -16,7 +16,7 @@ struct CollapsibleIf;
 
 impl ErrorCode for CollapsibleIf {
     fn code(&self) -> &'static str {
-        "L0209"
+        "L0210"
     }
 
     fn description(&self) -> &'static str {

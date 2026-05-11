@@ -17,7 +17,7 @@ END_VAR
 END_FUNCTION
 "#;
     assert_snapshot!(test_single_lint(&mut with_db, &[source], "yoda-condition"), @r"
-    [L0208] Hint: yoda condition
+    [L0209] Hint: yoda condition
        ,-[ file:///test0.st:6:8 ]
        |
      6 |     IF 5 = x THEN
@@ -87,7 +87,7 @@ END_VAR
 END_FUNCTION
 "#;
     assert_snapshot!(test_single_lint(&mut with_db, &[source], "yoda-condition"), @r"
-    [L0208] Hint: yoda condition
+    [L0209] Hint: yoda condition
        ,-[ file:///test0.st:6:8 ]
        |
      6 |     IF 0 < x THEN
