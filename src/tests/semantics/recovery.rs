@@ -391,6 +391,22 @@ END_FUNCTION_BLOCK
         |       - param1
         |       - param2
     ----'
+    [E0233] Error: missing required parameter
+        ,-[ file:///test0.st:11:2 ]
+        |
+      4 |        param1: INT;
+        |        ^^^^^|^^^^^
+        |             `------- parameter 'param1' declared here
+      5 |        param2: REAL;
+        |        ^^^^^^|^^^^^
+        |              `------- parameter 'param2' declared here
+        |
+     11 |     fn(param := 0);
+        |     ^|
+        |      `-- call to 'fn' is missing 2 required parameters: 'param1', 'param2'
+        |
+        | Note: VAR_INPUT on FUNCTION/METHOD parameters must be supplied unless the declaration provides a scalar default value
+    ----'
     ");
 }
 

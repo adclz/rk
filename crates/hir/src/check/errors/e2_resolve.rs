@@ -182,6 +182,15 @@ pub enum ResolveError<'db> {
         ident: Ident,
         ty: Type<'db>,
     },
+    /// One or more required call-site parameters (VAR_INPUT on FUNCTION/METHOD
+    /// without a scalar default, or VAR_IN_OUT on any callable) were not
+    /// supplied. All missing params for a single call site are collapsed into
+    /// one diagnostic.
+    MissingRequiredParameter {
+        func: CallableType<'db>,
+        vars: Vec<VariableDecl<'db>>,
+        func_call: FuncCall<'db>,
+    },
 }
 
 impl<'db> ErrorCode for ResolveError<'db> {
@@ -218,6 +227,7 @@ impl<'db> ErrorCode for ResolveError<'db> {
             Self::ExternVariableNotFound { .. } => "E0230",
             Self::IntoRefNotFound { .. } => "E0231",
             Self::IntoRefNotAny { .. } => "E0232",
+            Self::MissingRequiredParameter { .. } => "E0233",
         }
     }
 
@@ -251,6 +261,7 @@ impl<'db> ErrorCode for ResolveError<'db> {
             Self::ExternVariableNotFound { .. } => "extern variable not found",
             Self::IntoRefNotFound { .. } => "INTO reference not found",
             Self::IntoRefNotAny { .. } => "INTO reference must be an ANY type",
+            Self::MissingRequiredParameter { .. } => "missing required parameter",
         }
     }
 }
@@ -863,6 +874,56 @@ impl<'db> ToIdeDiagnostic<'db> for ResolveError<'db> {
                             elem.type_name(),
                         ));
                     }
+                }
+
+                diag
+            }
+            Self::MissingRequiredParameter {
+                func,
+                vars,
+                func_call,
+            } => {
+                let names: Vec<String> = vars
+                    .iter()
+                    .map(|v| format!("'{}'", v.name(db).text(db)))
+                    .collect();
+                let names_joined = names.join(", ");
+
+                let mut diag = diag()
+                    .message(format!(
+                        "call to '{}' is missing {} required parameter{}: {}",
+                        func.get_name_ident(db).text(db),
+                        vars.len(),
+                        if vars.len() > 1 { "s" } else { "" },
+                        names_joined,
+                    ))
+                    .severity(DiagnosticSeverity::ERROR)
+                    .desc(self)
+                    .range(func_call.path(db).get_span(db))
+                    .call();
+
+                let any_input = vars.iter().any(|v| v.is_input(db));
+                let any_in_out = vars.iter().any(|v| v.is_in_out(db));
+
+                if any_input {
+                    diag.with_note(
+                        "VAR_INPUT on FUNCTION/METHOD parameters must be supplied unless the declaration provides a scalar default value"
+                            .to_string(),
+                    );
+                }
+                if any_in_out {
+                    diag.with_note(
+                        "VAR_IN_OUT parameters bind to caller-side l-values and must always be supplied"
+                            .to_string(),
+                    );
+                }
+
+                for var in vars {
+                    diag.with_related(Related::new(
+                        format!("parameter '{}' declared here", var.name(db).text(db)),
+                        var.scope_id(db).file(db),
+                        var.get_span(db),
+                    ));
                 }
 
                 diag

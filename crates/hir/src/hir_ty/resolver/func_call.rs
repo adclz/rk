@@ -117,6 +117,65 @@ pub fn resolve_func_call<'db>(
             ParamMatch::Error => {}
         }
     }
+
+    // Flag any expected param that is required-at-call-site but not supplied.
+    let matched_idents: FxHashSet<Ident> = matches
+        .iter()
+        .filter_map(|m| match m {
+            ParamMatch::Matched(_, var) | ParamMatch::Variadic(_, var, _) => Some(var.name(db)),
+            ParamMatch::Error => None,
+        })
+        .collect();
+
+    let mut missing: Vec<VariableDecl<'db>> = Vec::new();
+    for (var_name, var) in &callable.def_map(db).local_variables {
+        if matched_idents.contains(var_name) {
+            continue;
+        }
+        if var.variadic(db) {
+            // Variadic params accept zero or more values — empty is valid.
+            continue;
+        }
+        if is_param_required(db, callable, *var) {
+            missing.push(*var);
+        }
+    }
+    if !missing.is_empty() {
+        ctx.errors.push(
+            ResolveError::MissingRequiredParameter {
+                func: callable,
+                vars: missing,
+                func_call,
+            }
+            .to_diagnostic(db),
+        );
+    }
+}
+
+/// Returns `true` if `var` must be supplied as an argument at every call site
+/// of `callable`.
+fn is_param_required<'db>(
+    db: &'db dyn WorkspaceDataBase,
+    callable: CallableType<'db>,
+    var: VariableDecl<'db>,
+) -> bool {
+    if var.is_in_out(db) {
+        return true;
+    }
+    if !var.is_input(db) {
+        // Non-parameter locals (Var, Temp, Output, External, ...) aren't required at call sites.
+        return false;
+    }
+    match callable {
+        CallableType::FunctionBlock(_) => false,
+        CallableType::Function(_) | CallableType::MethodDecl(_) => match var.init(db) {
+            Some(init) => !matches!(
+                init.kind(db),
+                crate::hir_def::expressions::expression::InitExprKind::ConstantExpr(_)
+            ),
+            None => true,
+        },
+    }
 }
 
 fn apply_param_coercion<'db>(

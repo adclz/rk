@@ -96,6 +96,19 @@ END_FUNCTION_BLOCK"#;
         |         ^^^|^^^
         |            `----- unknown input parameter 'unknown'
     ----'
+    [E0233] Error: missing required parameter
+       ,-[ file:///test0.st:9:5 ]
+       |
+     4 |         u: BOOL;
+       |         ^^^|^^^
+       |            `----- parameter 'u' declared here
+       |
+     9 |     fn(
+       |     ^|
+       |      `-- call to 'fn' is missing 1 required parameter: 'u'
+       |
+       | Note: VAR_INPUT on FUNCTION/METHOD parameters must be supplied unless the declaration provides a scalar default value
+    ---'
     ");
 }
 
@@ -325,6 +338,19 @@ END_FUNCTION_BLOCK"#;
         |                          |
         |                          `------- duplicate parameter 'param1' found
     ----'
+    [E0233] Error: missing required parameter
+        ,-[ file:///test0.st:11:5 ]
+        |
+      5 |         param2: INT;
+        |         ^^^^^|^^^^^
+        |              `------- parameter 'param2' declared here
+        |
+     11 |     fn(param1 := 0, param1 := 1);
+        |     ^|
+        |      `-- call to 'fn' is missing 1 required parameter: 'param2'
+        |
+        | Note: VAR_INPUT on FUNCTION/METHOD parameters must be supplied unless the declaration provides a scalar default value
+    ----'
     ");
 }
 
@@ -442,4 +468,286 @@ FUNCTION_BLOCK fb1
 END_FUNCTION_BLOCK"#;
 
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @"");
+}
+
+#[rstest]
+fn missing_function_var_input(mut with_db: RootDatabase) {
+    let source = r#"
+FUNCTION fn : INT
+    VAR_INPUT
+        a: INT;
+        b: REAL;
+    END_VAR
+    fn := 0;
+END_FUNCTION
+
+FUNCTION_BLOCK fb1
+    fn();
+END_FUNCTION_BLOCK"#;
+
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
+    [E0233] Error: missing required parameter
+        ,-[ file:///test0.st:11:5 ]
+        |
+      4 |         a: INT;
+        |         ^^^|^^
+        |            `---- parameter 'a' declared here
+      5 |         b: REAL;
+        |         ^^^|^^^
+        |            `----- parameter 'b' declared here
+        |
+     11 |     fn();
+        |     ^|
+        |      `-- call to 'fn' is missing 2 required parameters: 'a', 'b'
+        |
+        | Note: VAR_INPUT on FUNCTION/METHOD parameters must be supplied unless the declaration provides a scalar default value
+    ----'
+    ");
+}
+
+#[rstest]
+fn missing_function_var_input_partial(mut with_db: RootDatabase) {
+    let source = r#"
+FUNCTION fn : INT
+    VAR_INPUT
+        a: INT;
+        b: REAL;
+    END_VAR
+    fn := 0;
+END_FUNCTION
+
+FUNCTION_BLOCK fb1
+    fn(a := 1);
+END_FUNCTION_BLOCK"#;
+
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
+    [E0233] Error: missing required parameter
+        ,-[ file:///test0.st:11:5 ]
+        |
+      5 |         b: REAL;
+        |         ^^^|^^^
+        |            `----- parameter 'b' declared here
+        |
+     11 |     fn(a := 1);
+        |     ^|
+        |      `-- call to 'fn' is missing 1 required parameter: 'b'
+        |
+        | Note: VAR_INPUT on FUNCTION/METHOD parameters must be supplied unless the declaration provides a scalar default value
+    ----'
+    ");
+}
+
+// FUNCTION VAR_INPUT with a scalar default value can be omitted at the call site.
+#[rstest]
+fn function_var_input_with_default(mut with_db: RootDatabase) {
+    let source = r#"
+FUNCTION fn : INT
+    VAR_INPUT
+        a: INT := 42;
+        b: REAL := 1.5;
+    END_VAR
+    fn := a;
+END_FUNCTION
+
+FUNCTION_BLOCK fb1
+    VAR x: INT; END_VAR
+    x := fn();
+END_FUNCTION_BLOCK"#;
+
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @"");
+}
+
+// Mixing: one VAR_INPUT has a default, the other does not.
+// The one without a default is required.
+#[rstest]
+fn function_var_input_partial_default(mut with_db: RootDatabase) {
+    let source = r#"
+FUNCTION fn : INT
+    VAR_INPUT
+        a: INT;
+        b: REAL := 1.5;
+    END_VAR
+    fn := a;
+END_FUNCTION
+
+FUNCTION_BLOCK fb1
+    VAR x: INT; END_VAR
+    x := fn();
+END_FUNCTION_BLOCK"#;
+
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
+    [E0233] Error: missing required parameter
+        ,-[ file:///test0.st:12:10 ]
+        |
+      4 |         a: INT;
+        |         ^^^|^^
+        |            `---- parameter 'a' declared here
+        |
+     12 |     x := fn();
+        |          ^|
+        |           `-- call to 'fn' is missing 1 required parameter: 'a'
+        |
+        | Note: VAR_INPUT on FUNCTION/METHOD parameters must be supplied unless the declaration provides a scalar default value
+    ----'
+    ");
+}
+
+// A compound (struct-literal) default value cannot yet be materialized at the
+// call site, so the param remains required.
+#[rstest]
+fn function_var_input_with_struct_default_still_required(mut with_db: RootDatabase) {
+    let source = r#"
+TYPE point :
+    STRUCT
+        x: INT;
+        y: INT;
+    END_STRUCT
+END_TYPE
+
+FUNCTION fn : INT
+    VAR_INPUT
+        p: point := (x := 1, y := 2);
+    END_VAR
+    fn := p.x;
+END_FUNCTION
+
+FUNCTION_BLOCK fb1
+    VAR r: INT; END_VAR
+    r := fn();
+END_FUNCTION_BLOCK"#;
+
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
+    [E0233] Error: missing required parameter
+        ,-[ file:///test0.st:18:10 ]
+        |
+     11 |         p: point := (x := 1, y := 2);
+        |         ^^^^^^^^^^^^^^|^^^^^^^^^^^^^
+        |                       `--------------- parameter 'p' declared here
+        |
+     18 |     r := fn();
+        |          ^|
+        |           `-- call to 'fn' is missing 1 required parameter: 'p'
+        |
+        | Note: VAR_INPUT on FUNCTION/METHOD parameters must be supplied unless the declaration provides a scalar default value
+    ----'
+    ");
+}
+
+// FUNCTION_BLOCK: omitting VAR_INPUT at a call site is OK — the FB instance
+// retains the value across calls.
+#[rstest]
+fn function_block_var_input_omitted(mut with_db: RootDatabase) {
+    let source = r#"
+FUNCTION_BLOCK ramp
+    VAR_INPUT
+        target: INT;
+    END_VAR
+END_FUNCTION_BLOCK
+
+FUNCTION_BLOCK fb1
+    VAR
+        r: ramp;
+    END_VAR
+    r();
+END_FUNCTION_BLOCK"#;
+
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @"");
+}
+
+// VAR_IN_OUT is always required, regardless of POU kind, because it must bind
+// to a caller-side l-value.
+#[rstest]
+fn missing_function_var_in_out(mut with_db: RootDatabase) {
+    let source = r#"
+FUNCTION fn : INT
+    VAR_IN_OUT
+        a: INT;
+    END_VAR
+    fn := a;
+END_FUNCTION
+
+FUNCTION_BLOCK fb1
+    fn();
+END_FUNCTION_BLOCK"#;
+
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
+    [E0233] Error: missing required parameter
+        ,-[ file:///test0.st:10:5 ]
+        |
+      4 |         a: INT;
+        |         ^^^|^^
+        |            `---- parameter 'a' declared here
+        |
+     10 |     fn();
+        |     ^|
+        |      `-- call to 'fn' is missing 1 required parameter: 'a'
+        |
+        | Note: VAR_IN_OUT parameters bind to caller-side l-values and must always be supplied
+    ----'
+    ");
+}
+
+#[rstest]
+fn missing_fb_var_in_out(mut with_db: RootDatabase) {
+    let source = r#"
+FUNCTION_BLOCK driver
+    VAR_IN_OUT
+        target: INT;
+    END_VAR
+END_FUNCTION_BLOCK
+
+FUNCTION_BLOCK fb1
+    VAR
+        d: driver;
+    END_VAR
+    d();
+END_FUNCTION_BLOCK"#;
+
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
+    [E0233] Error: missing required parameter
+        ,-[ file:///test0.st:12:5 ]
+        |
+      4 |         target: INT;
+        |         ^^^^^|^^^^^
+        |              `------- parameter 'target' declared here
+        |
+     12 |     d();
+        |     |
+        |     `-- call to 'driver' is missing 1 required parameter: 'target'
+        |
+        | Note: VAR_IN_OUT parameters bind to caller-side l-values and must always be supplied
+    ----'
+    ");
+}
+
+// METHODs behave like FUNCTIONs for the required-VAR_INPUT rule.
+#[rstest]
+fn missing_method_var_input(mut with_db: RootDatabase) {
+    let source = r#"
+FUNCTION_BLOCK fb1
+    METHOD m : INT
+        VAR_INPUT
+            a: INT;
+        END_VAR
+        m := a;
+    END_METHOD
+
+    THIS.m();
+END_FUNCTION_BLOCK"#;
+
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
+    [E0233] Error: missing required parameter
+        ,-[ file:///test0.st:10:5 ]
+        |
+      5 |             a: INT;
+        |             ^^^|^^
+        |                `---- parameter 'a' declared here
+        |
+     10 |     THIS.m();
+        |     ^^^|^^
+        |        `---- call to 'm' is missing 1 required parameter: 'a'
+        |
+        | Note: VAR_INPUT on FUNCTION/METHOD parameters must be supplied unless the declaration provides a scalar default value
+    ----'
+    ");
 }
