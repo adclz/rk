@@ -3,13 +3,18 @@ use db::WorkspaceDataBase;
 use hir::{
     HasName, HirNodeInfo,
     hir_def::{expressions::expression::FuncCall, pous::variable::VariableKind},
-    hir_ty::{body::BodyInferenceResult, ty::Type},
+    hir_ty::{body::BodyInferenceResult, ty::{CallableType, Type}},
 };
 use ide_diagnostic::{ErrorCode, IdeDiagnostic, Related, diag};
 
 pub const NAME: &str = "missing-input-param";
 
-/// L0204: a function call does not pass all required VAR_INPUT parameters.
+/// L0204: a FUNCTION_BLOCK or PROGRAM call does not pass every declared
+/// VAR_INPUT. Per other toolchains this is *not* a hard error — the FB/PROGRAM
+/// instance retains the previous value (or compiler-initialised default).
+/// We surface it as a lint so the user is notified that not all inputs
+/// were wired. FUNCTION/METHOD callsites are covered by `E0233` instead,
+/// so this lint deliberately skips them to avoid overlap.
 struct MissingInputParam;
 
 impl ErrorCode for MissingInputParam {
@@ -22,8 +27,6 @@ impl ErrorCode for MissingInputParam {
     }
 }
 
-/// Check a FuncCall for missing VAR_INPUT parameters.
-/// Called by the unified visitor.
 pub fn check_func_call<'db>(
     db: &'db dyn WorkspaceDataBase,
     body: &BodyInferenceResult<'db>,
@@ -31,7 +34,6 @@ pub fn check_func_call<'db>(
     func_call: FuncCall<'db>,
     diagnostics: &mut Vec<IdeDiagnostic>,
 ) {
-    // Resolve the callable type
     let typ = body.type_of_begin_expr_with_adjustments(db, func_call.path(db));
     let callable = match typ {
         Type::CallableType(ct) => ct,
@@ -41,7 +43,12 @@ pub fn check_func_call<'db>(
         },
     };
 
-    // Skip variadic functions - they have flexible parameter counts
+    // FUNCTION and METHOD calls are covered by the hard-error E0233 path.
+    // Linting them would duplicate that diagnostic.
+    if !matches!(callable, CallableType::FunctionBlock(_)) {
+        return;
+    }
+
     let has_variadic = callable
         .def_map(db)
         .local_variables
@@ -51,14 +58,12 @@ pub fn check_func_call<'db>(
         return;
     }
 
-    // Collect the set of variables that were matched by the call's params
     let matched_vars: rustc_hash::FxHashSet<_> = func_call
         .params(db)
         .iter()
         .filter_map(|param| body.variable_of_param.get(param).copied())
         .collect();
 
-    // Find missing VAR_INPUT parameters
     let missing: Vec<_> = callable
         .def_map(db)
         .local_variables
@@ -72,9 +77,9 @@ pub fn check_func_call<'db>(
     }
 
     let callable_name = callable.get_name_ident(db).text(db);
-    let missing_names: Vec<_> = missing
+    let names: Vec<_> = missing
         .iter()
-        .map(|v| v.name(db).text(db).to_string())
+        .map(|v| format!("'{}'", v.name(db).text(db)))
         .collect();
 
     let mut d = diag()
@@ -83,14 +88,13 @@ pub fn check_func_call<'db>(
             callable_name,
             missing.len(),
             if missing.len() > 1 { "s" } else { "" },
-            missing_names.join(", "),
+            names.join(", "),
         ))
         .desc(&MissingInputParam)
         .range(stmt.get_span(db))
         .severity(DiagnosticSeverity::HINT)
         .call();
 
-    // Add related info pointing to the declaration of each missing param
     let file = callable.get_scope_id(db).file(db);
     for var in &missing {
         d.with_related(Related::new(

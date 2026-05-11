@@ -15,12 +15,14 @@ END_VAR
 END_FUNCTION
 "#;
     assert_snapshot!(test_single_lint(&mut with_db, &[source], "uninitialized-output"), @r"
-    [L0105] Info: uninitialized output
+    [L0205] Info: uninitialized output
        ,-[ file:///test0.st:4:5 ]
        |
      4 |     result : INT;
        |     ^^^|^^
-       |        `---- VAR_OUTPUT 'result' is never assigned in the body
+       |        `---- 1 VAR_OUTPUT is never assigned in the body: 'result'
+       |        |
+       |        `---- 'result' declared here
        |
        | Note: lint rule: uninitialized-output
     ---'
@@ -84,21 +86,17 @@ END_VAR
 END_FUNCTION_BLOCK
 "#;
     assert_snapshot!(test_single_lint(&mut with_db, &[source], "uninitialized-output"), @r"
-    [L0105] Info: uninitialized output
+    [L0205] Info: uninitialized output
        ,-[ file:///test0.st:4:5 ]
        |
      4 |     done : BOOL;
        |     ^^|^
-       |       `--- VAR_OUTPUT 'done' is never assigned in the body
-       |
-       | Note: lint rule: uninitialized-output
-    ---'
-    [L0105] Info: uninitialized output
-       ,-[ file:///test0.st:5:5 ]
-       |
+       |       `--- 2 VAR_OUTPUT are never assigned in the body: 'done', 'value'
+       |       |
+       |       `--- 'done' declared here
      5 |     value : INT;
        |     ^^|^^
-       |       `---- VAR_OUTPUT 'value' is never assigned in the body
+       |       `---- 'value' declared here
        |
        | Note: lint rule: uninitialized-output
     ---'

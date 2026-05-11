@@ -1,85 +1,35 @@
 use auto_lsp::lsp_types::DiagnosticSeverity;
 use db::WorkspaceDataBase;
 use hir::{
-    HasName, HirNodeInfo,
+    HasName,
     hir_def::{
-        expressions::{
-            expression::VariableAccessKind,
-            statement::{Stmt, StmtKind},
-        },
-        pous::{
-            pou::Pou,
-            variable::{VariableDecl, VariableKind},
-        },
-        scope::{ScopeId, ScopeKind},
-        semantic_index::get_scope,
+        expressions::expression::VariableAccessKind,
+        pous::variable::{VariableDecl, VariableKind},
+        scope::ScopeId,
     },
     hir_ty::{body::BodyInferenceResult, ty::Type},
 };
-use ide_diagnostic::{ErrorCode, IdeDiagnostic, diag};
+use ide_diagnostic::{ErrorCode, IdeDiagnostic, Related, diag};
 use rustc_hash::FxHashSet;
 
 pub const NAME: &str = "uninitialized-output";
 
-/// L0105: a VAR_OUTPUT variable is never assigned in the body.
+/// L0105: one or more VAR_OUTPUT variables are never assigned in the body.
+///
+/// All uninitialized outputs for a given POU body are collapsed into a single
+/// diagnostic so the user gets one summary instead of N pointers. Per other toolchains
+/// VAR_OUTPUT semantics, leaving an output unassigned is permitted for
+/// FUNCTION_BLOCK / PROGRAM (compiler zero-inits the instance field) but
+/// surfacing it as an INFO-level lint helps catch unintended omissions.
 struct UninitializedOutput;
 
 impl ErrorCode for UninitializedOutput {
     fn code(&self) -> &'static str {
-        "L0105"
+        "L0205"
     }
 
     fn description(&self) -> &'static str {
         "uninitialized output"
-    }
-}
-
-pub fn check<'db>(
-    db: &'db dyn WorkspaceDataBase,
-    scope: ScopeId<'db>,
-    body: &BodyInferenceResult<'db>,
-    diagnostics: &mut Vec<IdeDiagnostic>,
-) {
-    let statements = match get_scope(db, scope).kind {
-        ScopeKind::Pou(pou) => match pou {
-            Pou::Function(f) => f.statements(db),
-            Pou::FunctionBlock(fb) => fb.statements(db),
-            _ => return,
-        },
-        ScopeKind::MethodDecl(m) => m.stmts(db),
-        ScopeKind::Program(program) => program.statements(db),
-        _ => return,
-    };
-
-    // Collect all variables that are assigned in the body
-    let mut assigned = FxHashSet::default();
-    collect_assigned_variables(db, body, statements, &mut assigned);
-
-    // Check each VAR_OUTPUT
-    let def_map = scope.def_map(db);
-    for var in def_map.global_variables.values() {
-        if var.kind(db) != VariableKind::Output {
-            continue;
-        }
-
-        // Skip if the variable has an initializer
-        if var.init(db).is_some() {
-            continue;
-        }
-
-        if assigned.contains(var) {
-            continue;
-        }
-
-        let name = var.get_name_ident(db).text(db);
-        diagnostics.push(
-            diag()
-                .message(format!("VAR_OUTPUT '{name}' is never assigned in the body"))
-                .desc(&UninitializedOutput)
-                .range(var.get_name_span(db))
-                .severity(DiagnosticSeverity::INFORMATION)
-                .call(),
-        );
     }
 }
 
@@ -111,79 +61,47 @@ pub fn check_outputs<'db>(
     diagnostics: &mut Vec<IdeDiagnostic>,
 ) {
     let def_map = scope.def_map(db);
-    for var in def_map.global_variables.values() {
-        if var.kind(db) != VariableKind::Output {
-            continue;
-        }
-        if var.init(db).is_some() {
-            continue;
-        }
-        if assigned.contains(var) {
-            continue;
-        }
-        let name = var.get_name_ident(db).text(db);
-        diagnostics.push(
-            diag()
-                .message(format!("VAR_OUTPUT '{name}' is never assigned in the body"))
-                .desc(&UninitializedOutput)
-                .range(var.get_name_span(db))
-                .severity(DiagnosticSeverity::INFORMATION)
-                .call(),
-        );
-    }
-}
+    let missing: Vec<_> = def_map
+        .global_variables
+        .values()
+        .filter(|var| var.kind(db) == VariableKind::Output)
+        .filter(|var| var.init(db).is_none())
+        .filter(|var| !assigned.contains(*var))
+        .copied()
+        .collect();
 
-fn collect_assigned_variables<'db>(
-    db: &'db dyn WorkspaceDataBase,
-    body: &BodyInferenceResult<'db>,
-    stmts: &[Stmt<'db>],
-    assigned: &mut FxHashSet<VariableDecl<'db>>,
-) {
-    for stmt in stmts {
-        match stmt.stmt(db) {
-            StmtKind::Assignment { var, .. } | StmtKind::AssignmentAttempt { var, .. } => {
-                // Resolve the LHS variable
-                let VariableAccessKind::Symbolic(begin) = var.kind(db) else {
-                    continue;
-                };
-                let Some(path_expr) = begin.expr(db) else {
-                    continue;
-                };
-                if let Some(&Type::Variable((var_decl, _))) = body.type_of_path_expr.get(&path_expr)
-                {
-                    assigned.insert(var_decl);
-                }
-            }
-            StmtKind::If {
-                then,
-                else_if,
-                else_,
-                ..
-            } => {
-                if let Some(stmts) = then {
-                    collect_assigned_variables(db, body, stmts, assigned);
-                }
-                for (_, stmts) in else_if {
-                    collect_assigned_variables(db, body, stmts, assigned);
-                }
-                if let Some(stmts) = else_ {
-                    collect_assigned_variables(db, body, stmts, assigned);
-                }
-            }
-            StmtKind::Case { cases, else_, .. } => {
-                for (_, stmts) in cases {
-                    collect_assigned_variables(db, body, stmts, assigned);
-                }
-                if let Some(stmts) = else_ {
-                    collect_assigned_variables(db, body, stmts, assigned);
-                }
-            }
-            StmtKind::For { body: stmts, .. }
-            | StmtKind::While { body: stmts, .. }
-            | StmtKind::Repeat { body: stmts, .. } => {
-                collect_assigned_variables(db, body, stmts, assigned);
-            }
-            _ => {}
-        }
+    if missing.is_empty() {
+        return;
     }
+
+    let names: Vec<_> = missing
+        .iter()
+        .map(|v| format!("'{}'", v.name(db).text(db)))
+        .collect();
+
+    // Anchor the diagnostic on the first uninitialized output's name span.
+    // The related-info entries cover the rest of the declarations.
+    let anchor = missing[0].get_name_span(db);
+
+    let mut d = diag()
+        .message(format!(
+            "{} VAR_OUTPUT {} never assigned in the body: {}",
+            missing.len(),
+            if missing.len() > 1 { "are" } else { "is" },
+            names.join(", "),
+        ))
+        .desc(&UninitializedOutput)
+        .range(anchor)
+        .severity(DiagnosticSeverity::INFORMATION)
+        .call();
+
+    for var in &missing {
+        d.with_related(Related::new(
+            format!("'{}' declared here", var.name(db).text(db)),
+            var.scope_id(db).file(db),
+            var.get_name_span(db),
+        ));
+    }
+
+    diagnostics.push(d);
 }
