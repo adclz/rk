@@ -439,6 +439,25 @@ impl<'db> StmtsResolverCtx<'db> {
                     break;
                 }
 
+                StmtKind::Raise { message } => {
+                    // The message expression must be STRING
+                    self.infer_and_check_expr(db, &mut infer, *message, ctx);
+                    let string_ty = Type::Elementary(ElementarySpec::String);
+                    if let Err(err) =
+                        infer.coerce_type_with_expr(db, string_ty, *message, ctx)
+                    {
+                        ctx.errors.push(err.into_non_assignable(
+                            db,
+                            string_ty,
+                            CallSite::from_scoped(db, message),
+                        ));
+                    }
+                    for dead in &statements[i + 1..] {
+                        ctx.dead_code_statements.push(*dead);
+                    }
+                    break;
+                }
+
                 StmtKind::ExternPragma(extern_decl) => {
                     let def_map = self.scope.def_map(db);
                     let scope_kind = crate::hir_def::semantic_index::get_scope(db, self.scope).kind;

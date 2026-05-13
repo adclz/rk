@@ -77,6 +77,9 @@ pub enum StmtKind<'db> {
     },
     Exit,
     Continue,
+    Raise {
+        message: Expr<'db>,
+    },
     ExternPragma(ExternDecl<'db>),
     WasmPragma(WasmDecl<'db>),
     PreprocessIf {

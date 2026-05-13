@@ -326,6 +326,15 @@ impl<'db> Parse<'db> for ast::generated::Stmt {
                 stmt.into(),
                 sema.current_scope,
             )),
+            StmtType::RaiseStmt(raise) => {
+                let message = raise.message.cast(sema.ast).parse(sema)?;
+                Ok(Stmt::new(
+                    sema.db,
+                    StmtKind::Raise { message },
+                    raise.into(),
+                    sema.current_scope,
+                ))
+            }
             StmtType::WasmPragma(pragma) => {
                 let doc = sema.file.document(sema.db).as_bytes();
 
