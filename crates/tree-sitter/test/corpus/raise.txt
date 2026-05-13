@@ -1,0 +1,52 @@
+================================================================================
+__RAISE - literal message
+================================================================================
+
+FUNCTION fn
+	__RAISE('oops');
+END_FUNCTION
+
+--------------------------------------------------------------------------------
+
+(source_file
+  (func_decl
+    (identifier)
+    (func_body
+      (stmt_list
+        (raise_stmt
+          (constant
+            (char_literal
+              (char_str
+                (s_byte_char_str)))))))))
+
+================================================================================
+__RAISE - variable message
+================================================================================
+
+FUNCTION fn
+	VAR msg : STRING; END_VAR
+	__RAISE(msg);
+END_FUNCTION
+
+--------------------------------------------------------------------------------
+
+(source_file
+  (func_decl
+    (identifier)
+    (var_decls
+      (var_decl_init_list
+        (variable_list
+          (identifier))
+        (var_decl_init
+          (simple_type_spec
+            (string_type_name
+              (string_name))))))
+    (func_body
+      (stmt_list
+        (raise_stmt
+          (variable_access
+            (variable
+              (begin_path_expression
+                (path_expression
+                  (var_access
+                    (field)))))))))))

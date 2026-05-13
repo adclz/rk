@@ -159,6 +159,9 @@ const RESERVED_NAMES = [
   "END_WHILE",
   "EXIT",
   "RETURN",
+  // Exception throw (no in-language catch; propagates to the host).
+  // Used by the stdlib's `__ASSERT_FAIL` and any future panic-shape paths.
+  "__RAISE",
   // References
   "AT",
   "%",
@@ -1912,6 +1915,8 @@ module.exports = grammar({
         $.repeat_stmt,
         "EXIT",
         "CONTINUE",
+        // Throws a wasm-level exception with a STRING payload
+        $.raise_stmt,
         $.extern_pragma,
         $.wasm_pragma,
         // Compile-time preprocessor — `{#if x is INT}` … `{#elif y is REAL}` … `{#endif}`.
@@ -2097,6 +2102,9 @@ module.exports = grammar({
         field("repeat_cond", $._expression),
         "END_REPEAT",
       ),
+
+    raise_stmt: ($) =>
+      seq("__RAISE", "(", field("message", $._expression), ")"),
 
     // Other
 

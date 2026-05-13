@@ -9265,6 +9265,10 @@
         },
         {
           "type": "SYMBOL",
+          "name": "raise_stmt"
+        },
+        {
+          "type": "SYMBOL",
           "name": "extern_pragma"
         },
         {
@@ -10093,6 +10097,31 @@
         }
       ]
     },
+    "raise_stmt": {
+      "type": "SEQ",
+      "members": [
+        {
+          "type": "STRING",
+          "value": "__RAISE"
+        },
+        {
+          "type": "STRING",
+          "value": "("
+        },
+        {
+          "type": "FIELD",
+          "name": "message",
+          "content": {
+            "type": "SYMBOL",
+            "name": "_expression"
+          }
+        },
+        {
+          "type": "STRING",
+          "value": ")"
+        }
+      ]
+    },
     "namespace_access": {
       "type": "CHOICE",
       "members": [
@@ -10779,6 +10808,10 @@
       {
         "type": "STRING",
         "value": "RETURN"
+      },
+      {
+        "type": "STRING",
+        "value": "__RAISE"
       },
       {
         "type": "STRING",

@@ -560,6 +560,10 @@
         "named": true
       },
       {
+        "type": "raise_stmt",
+        "named": true
+      },
+      {
         "type": "repeat_stmt",
         "named": true
       },
@@ -5543,6 +5547,22 @@
     }
   },
   {
+    "type": "raise_stmt",
+    "named": true,
+    "fields": {
+      "message": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "_expression",
+            "named": true
+          }
+        ]
+      }
+    }
+  },
+  {
     "type": "ranges",
     "named": true,
     "fields": {},
@@ -7940,6 +7960,10 @@
   },
   {
     "type": "]",
+    "named": false
+  },
+  {
+    "type": "__RAISE",
     "named": false
   },
   {
