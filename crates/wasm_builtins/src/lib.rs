@@ -4,6 +4,7 @@
 //! `<wasm_type>_<op>` (`f32.sin` → `f32_sin`).
 
 #![no_std]
+#![allow(clippy::not_unsafe_ptr_arg_deref)]
 
 /// `no_std` panic landing for the builtins crate. Re-throws any Rust
 /// panic as `$rk_exception` so user code can `TRY ... CATCH ... END_TRY`

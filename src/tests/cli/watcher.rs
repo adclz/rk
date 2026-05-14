@@ -227,7 +227,7 @@ fn rk_build_output_ignored() {
     let (watcher, events) = setup(dir.path());
 
     // Simulate compile output — should NOT trigger events
-    std::fs::write(build_dir.join("output.wasm"), &[0u8; 100]).unwrap();
+    std::fs::write(build_dir.join("output.wasm"), [0u8; 100]).unwrap();
     // Also test .st files inside rk_build (e.g. intermediate artifacts)
     std::fs::write(build_dir.join("gen.st"), "PROGRAM p END_PROGRAM").unwrap();
 

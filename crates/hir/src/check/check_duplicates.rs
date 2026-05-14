@@ -89,21 +89,18 @@ pub fn check_duplicate_namespaces<'db>(
     errors: &mut Vec<IdeDiagnostic>,
 ) {
     for pou in namespace.pous(db).iter() {
-        match namespace_pou_index(db, *namespace.path(db), pou.get_name_ident(db)) {
-            Some(indexed) => {
-                // If this POU is not the indexed one, it's a duplicate
-                if *pou != indexed {
-                    errors.push(
-                        DuplicateError::Pou {
-                            pou1: *pou,
-                            pou2: indexed,
-                        }
-                        .to_diagnostic(db),
-                    );
+        // If a POU is not in the index, we can't say it's a duplicate
+        if let Some(indexed) =
+            namespace_pou_index(db, *namespace.path(db), pou.get_name_ident(db))
+            && *pou != indexed
+        {
+            errors.push(
+                DuplicateError::Pou {
+                    pou1: *pou,
+                    pou2: indexed,
                 }
-            }
-            // If a POU is not in the index, we can't say it's a duplicate
-            _ => (),
+                .to_diagnostic(db),
+            );
         }
     }
 }

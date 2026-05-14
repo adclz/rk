@@ -6,7 +6,7 @@ pub struct ExplicitCast<'db> {
     to: Type<'db>,
 }
 
-impl<'db> ElementarySpec {
+impl ElementarySpec {
     /// Implicit casts according to IEC 61131-3 standard
     ///
     /// See 6.6.1.6 Data type conversion
@@ -128,94 +128,36 @@ impl<'db> ElementarySpec {
     pub fn explicit_cast(&self, typ: ElementarySpec) -> bool {
         use ElementarySpec::*;
         match typ {
-            LReal => match self {
-                Real | LInt | DInt | Int | SInt | ULInt | UDInt | UInt | USInt | LWord => true,
-                _ => false,
-            },
-            Real => match self {
-                LInt | DInt | Int | SInt | ULInt | UDInt | UInt | USInt | DWord => true,
-                _ => false,
-            },
-            LInt => match self {
-                LReal | Real | DInt | Int | SInt | ULInt | UDInt | UInt | USInt | LWord | DWord
-                | Word | Byte => true,
-                _ => false,
-            },
-            DInt => match self {
-                Real | Int | SInt | ULInt | UDInt | UInt | USInt | LWord | DWord | Word | Byte => {
-                    true
-                }
-                _ => false,
-            },
-            Int => match self {
-                SInt | ULInt | UDInt | UInt | USInt | LWord | DWord | Word | Byte => true,
-                _ => false,
-            },
-            SInt => match self {
-                ULInt | UDInt | UInt | USInt | LWord | DWord | Word | Byte => true,
-                _ => false,
-            },
-            ULInt => match self {
-                LReal | Real | LInt | DInt | Int | SInt | UDInt | UInt | USInt | LWord | DWord
-                | Word | Byte => true,
-                _ => false,
-            },
-            UDInt => match self {
-                Real | DInt | Int | SInt | UInt | USInt | LWord | DWord | Word | Byte => true,
-                _ => false,
-            },
-            UInt => match self {
-                Int | SInt | USInt | LWord | DWord | Word | Byte => true,
-                _ => false,
-            },
-            USInt => match self {
-                SInt | LWord | DWord | Word | Byte => true,
-                _ => false,
-            },
-            LWord => match self {
-                LReal | LInt | DInt | Int | SInt | ULInt | UDInt | UInt | USInt | DWord | Word
-                | Byte => true,
-                _ => false,
-            },
-            DWord => match self {
-                Real | LInt | DInt | Int | SInt | ULInt | UDInt | UInt | USInt | Word | Byte => {
-                    true
-                }
-                _ => false,
-            },
-            Word => match self {
-                LInt | DInt | Int | SInt | ULInt | UDInt | UInt | USInt | Byte => true,
-                _ => false,
-            },
+            LReal => matches!(self, Real | LInt | DInt | Int | SInt | ULInt | UDInt | UInt | USInt | LWord),
+            Real => matches!(self, LInt | DInt | Int | SInt | ULInt | UDInt | UInt | USInt | DWord),
+            LInt => matches!(self, LReal | Real | DInt | Int | SInt | ULInt | UDInt | UInt | USInt | LWord | DWord | Word | Byte),
+            DInt => matches!(
+                self,
+                Real | Int | SInt | ULInt | UDInt | UInt | USInt | LWord | DWord | Word | Byte
+            ),
+            Int => matches!(self, SInt | ULInt | UDInt | UInt | USInt | LWord | DWord | Word | Byte),
+            SInt => matches!(self, ULInt | UDInt | UInt | USInt | LWord | DWord | Word | Byte),
+            ULInt => matches!(self, LReal | Real | LInt | DInt | Int | SInt | UDInt | UInt | USInt | LWord | DWord | Word | Byte),
+            UDInt => matches!(self, Real | DInt | Int | SInt | UInt | USInt | LWord | DWord | Word | Byte),
+            UInt => matches!(self, Int | SInt | USInt | LWord | DWord | Word | Byte),
+            USInt => matches!(self, SInt | LWord | DWord | Word | Byte),
+            LWord => matches!(self, LReal | LInt | DInt | Int | SInt | ULInt | UDInt | UInt | USInt | DWord | Word | Byte),
+            DWord => matches!(
+                self,
+                Real | LInt | DInt | Int | SInt | ULInt | UDInt | UInt | USInt | Word | Byte
+            ),
+            Word => matches!(self, LInt | DInt | Int | SInt | ULInt | UDInt | UInt | USInt | Byte),
             Byte => match self {
                 LInt | DInt | Int | SInt | ULInt | UDInt | UInt | USInt => true,
                 Char => true, // char is the size of a byte
                 _ => false,
             },
-            Bool | REDGEBool | FEDGEBool => match self {
-                LInt | DInt | Int | SInt | ULInt | UDInt | UInt | USInt => true,
-                _ => false,
-            },
-            LTime => match self {
-                Time => true,
-                _ => false,
-            }
-            LDateTime => match self {
-                DateAndTime | LDate | Date | LTod | Tod => true,
-                _ => false,
-            }
-            DateAndTime => match self {
-                LDate | Date | LTod | Tod => true,
-                _ => false
-            }
-            LDate => match self {
-                Date => true,
-                _ => false
-            }
-            LTod => match self {
-                Tod => true,
-                _ => false
-            }
+            Bool | REDGEBool | FEDGEBool => matches!(self, LInt | DInt | Int | SInt | ULInt | UDInt | UInt | USInt),
+            LTime => matches!(self, Time),
+            LDateTime => matches!(self, DateAndTime | LDate | Date | LTod | Tod),
+            DateAndTime => matches!(self, LDate | Date | LTod | Tod),
+            LDate => matches!(self, Date),
+            LTod => matches!(self, Tod),
             _ => false,
         }
     }

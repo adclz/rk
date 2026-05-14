@@ -128,18 +128,16 @@ pub(crate) fn graft_builtins<'a>(
 
         // Register the function's signature in the output type section
         // (deduped across builtins that share a signature).
-        let wasm_type_idx = *sig_to_type_idx
-            .entry(entry.sig_idx)
-            .or_insert_with(|| {
-                let sig: &BuiltinSig = &BUILTIN_SIGS[entry.sig_idx as usize];
-                type_section
-                    .ty()
-                    .function(sig.params.iter().copied(), sig.results.iter().copied());
-                let idx = *next_type_idx;
-                *next_type_idx += 1;
-                n_types += 1;
-                idx
-            });
+        let wasm_type_idx = *sig_to_type_idx.entry(entry.sig_idx).or_insert_with(|| {
+            let sig: &BuiltinSig = &BUILTIN_SIGS[entry.sig_idx as usize];
+            type_section
+                .ty()
+                .function(sig.params.iter().copied(), sig.results.iter().copied());
+            let idx = *next_type_idx;
+            *next_type_idx += 1;
+            n_types += 1;
+            idx
+        });
 
         fn_section.function(wasm_type_idx);
         bundle_to_wasm.insert(bundle_idx, next_fn_idx);
@@ -291,10 +289,9 @@ mod tests {
         let sin_idx = plan.name_to_wasm_idx["f32.sin"];
         assert!(plan.rk_layout_floor > 0);
 
-        types.ty().function(
-            [wasm_encoder::ValType::F32],
-            [wasm_encoder::ValType::F32],
-        );
+        types
+            .ty()
+            .function([wasm_encoder::ValType::F32], [wasm_encoder::ValType::F32]);
         let wrapper_type = next_type;
         funcs.function(wrapper_type);
 
@@ -305,11 +302,7 @@ mod tests {
         code.function(&wrapper);
 
         let mut exports = wasm_encoder::ExportSection::new();
-        exports.export(
-            "wrapper",
-            wasm_encoder::ExportKind::Func,
-            plan.n_funcs,
-        );
+        exports.export("wrapper", wasm_encoder::ExportKind::Func, plan.n_funcs);
 
         // 1 page of memory is enough - bundle was built with -zstack-size=8192
         // so its data lives below 64 KiB.
@@ -413,8 +406,7 @@ mod execute_tests {
         let engine = Engine::default();
         let module = Module::new(&engine, &bytes).expect("validate");
         let mut store = Store::new(&engine, ());
-        let instance =
-            wasmtime::Instance::new(&mut store, &module, &[]).expect("instantiate");
+        let instance = wasmtime::Instance::new(&mut store, &module, &[]).expect("instantiate");
         let f = instance
             .get_typed_func::<f32, f32>(&mut store, "wrapper")
             .unwrap();
@@ -432,8 +424,7 @@ mod execute_tests {
         let engine = Engine::default();
         let module = Module::new(&engine, &bytes).expect("validate");
         let mut store = Store::new(&engine, ());
-        let instance =
-            wasmtime::Instance::new(&mut store, &module, &[]).expect("instantiate");
+        let instance = wasmtime::Instance::new(&mut store, &module, &[]).expect("instantiate");
         let f = instance
             .get_typed_func::<f64, f64>(&mut store, "wrapper")
             .unwrap();
@@ -590,8 +581,7 @@ mod execute_tests {
         let engine = Engine::new(&config).unwrap();
         let module = Module::new(&engine, &bytes).expect("compile");
         let mut store = Store::new(&engine, ());
-        let instance =
-            wasmtime::Instance::new(&mut store, &module, &[]).expect("instantiate");
+        let instance = wasmtime::Instance::new(&mut store, &module, &[]).expect("instantiate");
         let try_div = instance
             .get_typed_func::<(i32, i32), (i32, i32, i32)>(&mut store, "try_div")
             .unwrap();
@@ -732,8 +722,7 @@ mod execute_tests {
         let engine = Engine::new(&config).unwrap();
         let module = Module::new(&engine, &bytes).expect("compile");
         let mut store = Store::new(&engine, ());
-        let instance =
-            wasmtime::Instance::new(&mut store, &module, &[]).expect("instantiate");
+        let instance = wasmtime::Instance::new(&mut store, &module, &[]).expect("instantiate");
         let f = instance
             .get_typed_func::<(), ()>(&mut store, "wrapper")
             .unwrap();

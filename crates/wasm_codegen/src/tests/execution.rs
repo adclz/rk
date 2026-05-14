@@ -523,8 +523,7 @@ END_FUNCTION
     };
     let module = Module::new(&engine, &wasm_bytes).unwrap();
     let mut store = Store::new(&engine, ());
-    let memory =
-        wasmtime::Memory::new(&mut store, wasmtime::MemoryType::new(1, None)).unwrap();
+    let memory = wasmtime::Memory::new(&mut store, wasmtime::MemoryType::new(1, None)).unwrap();
     let linker = {
         let mut l = wasmtime::Linker::new(&engine);
         l.define(&store, "env", "memory", memory).unwrap();
@@ -632,7 +631,10 @@ fn test_execute_datetime_round_trip(mut with_db: db::RootDatabase) {
         .get_typed_func::<i32, i32>(&mut store, "dt_to_tod_inline")
         .unwrap();
     let secs_into_day = 12 * 3600 + 34 * 60 + 56;
-    assert_eq!(f.call(&mut store, secs_into_day).unwrap(), secs_into_day * 1_000);
+    assert_eq!(
+        f.call(&mut store, secs_into_day).unwrap(),
+        secs_into_day * 1_000
+    );
     // 1 day + 1 sec since epoch -> 1 sec-of-day -> 1000 ms-of-day.
     assert_eq!(f.call(&mut store, 86_400 + 1).unwrap(), 1_000);
 

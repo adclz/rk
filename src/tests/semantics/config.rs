@@ -1,4 +1,3 @@
-use std::ops::ControlFlow;
 
 use auto_lsp::default::db::BaseDatabase;
 use db::RootDatabase;
@@ -9,8 +8,6 @@ use hir::hir_ty::config::infer_config_result;
 use hir::hir_ty::index_graphs::config_index;
 use hir::hir_ty::infer::Infer;
 use hir::hir_ty::ty::Type;
-use ide_proto::hir_node::HirNode;
-use ide_proto::walk::WalkHir;
 use insta::assert_snapshot;
 use rstest::rstest;
 

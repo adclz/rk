@@ -9,7 +9,6 @@ pub mod tod;
 
 use auto_lsp::default::db::BaseDatabase;
 use db::RootDatabase;
-use hir::HasName;
 use hir::hir_def::expressions::expression::{Elementary, ExprKind, InitExprKind, PrimaryExpr};
 use hir::hir_def::interned::identifier::Ident;
 use hir::hir_def::pous::pou::Pou;
@@ -21,11 +20,7 @@ use crate::tests::utils::{add_sources, find_pou_with_name};
 /// inside a function block called `fb1`. Returns the literal's `Ident`
 /// so each per-type integer-encoding test can call the matching
 /// `Ident::as_*` helper directly.
-pub(super) fn parse_literal<'db>(
-    db: &'db mut RootDatabase,
-    ty: &str,
-    literal: &str,
-) -> Ident {
+pub(super) fn parse_literal(db: &mut RootDatabase, ty: &str, literal: &str) -> Ident {
     let source = format!(
         "FUNCTION_BLOCK fb1\n\
          VAR\n\

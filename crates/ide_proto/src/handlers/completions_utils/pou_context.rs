@@ -363,9 +363,9 @@ END_FUNCTION_BLOCK
         let offset = source.find("in1").unwrap();
         let results =
             HeadResult::query_var_decls(root_node, source, root_node.range().into(), offset);
-        assert_eq!(results.inputs.is_some(), true);
-        assert_eq!(results.outputs.is_some(), true);
-        assert_eq!(results.in_outs.is_some(), true);
+        assert!(results.inputs.is_some());
+        assert!(results.outputs.is_some());
+        assert!(results.in_outs.is_some());
         assert_eq!(results.inside_var_section, VarSection::INPUTS);
         assert_eq!(
             results.active_variable_sections(),
@@ -419,9 +419,9 @@ END_FUNCTION_BLOCK
             }),
             offset,
         );
-        assert_eq!(results.inputs.is_none(), true);
-        assert_eq!(results.outputs.is_none(), true);
-        assert_eq!(results.in_outs.is_some(), true);
+        assert!(results.inputs.is_none());
+        assert!(results.outputs.is_none());
+        assert!(results.in_outs.is_some());
         assert_eq!(results.inside_var_section, VarSection::IN_OUTS);
         assert_eq!(results.active_variable_sections(), VarSection::IN_OUTS);
         assert_eq!(

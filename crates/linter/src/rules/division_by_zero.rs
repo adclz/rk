@@ -125,17 +125,18 @@ fn check_expr<'db>(
 
             // Only flag / and MOD
             if matches!(operator, MultOperatorKind::Div | MultOperatorKind::Mod)
-                && is_zero_literal(db, right) {
-                    let op = operator.as_str();
-                    diagnostics.push(
-                        diag()
-                            .message(format!("division by zero: right-hand side of '{op}' is 0"))
-                            .desc(&DivisionByZero)
-                            .range(right.get_span(db))
-                            .severity(DiagnosticSeverity::WARNING)
-                            .call(),
-                    );
-                }
+                && is_zero_literal(db, right)
+            {
+                let op = operator.as_str();
+                diagnostics.push(
+                    diag()
+                        .message(format!("division by zero: right-hand side of '{op}' is 0"))
+                        .desc(&DivisionByZero)
+                        .range(right.get_span(db))
+                        .severity(DiagnosticSeverity::WARNING)
+                        .call(),
+                );
+            }
         }
         ExprKind::AddOperator { left, right, .. }
         | ExprKind::BooleanOperator { left, right, .. }

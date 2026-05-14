@@ -83,9 +83,10 @@ pub fn check<'db>(
             if pou_name.is_some_and(|n| n == result_name) {
                 if let Some(ret_spec) = scope.return_type(db)
                     && let SpecKind::Simple(e) = ret_spec.kind(db)
-                        && e.is_any() {
-                            let type_name = e.type_name();
-                            let mut d = diag()
+                    && e.is_any()
+                {
+                    let type_name = e.type_name();
+                    let mut d = diag()
                                 .message(format!(
                                     "extern result '{result_name}' has generic return type {type_name}: \
                                      the host must provide an implementation for each concrete type variant"
@@ -94,13 +95,13 @@ pub fn check<'db>(
                                 .range(result.get_span(db))
                                 .severity(DiagnosticSeverity::INFORMATION)
                                 .call();
-                            d.with_related(Related::new(
-                                format!("return type is {type_name}"),
-                                file,
-                                ret_spec.get_span(db),
-                            ));
-                            diagnostics.push(d);
-                        }
+                    d.with_related(Related::new(
+                        format!("return type is {type_name}"),
+                        file,
+                        ret_spec.get_span(db),
+                    ));
+                    diagnostics.push(d);
+                }
             } else if let Some((type_name, var)) = find_generic_var(db, result_name, variables) {
                 let mut d = diag()
                     .message(format!(

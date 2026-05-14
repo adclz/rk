@@ -27,9 +27,10 @@ pub fn check_node<'db>(
     diagnostics: &mut Vec<IdeDiagnostic>,
 ) {
     if let ExprKind::UnaryOperator {
-            expr: inner,
-            operator: UnaryOperatorKind::Not,
-        } = expr.expr(db) {
+        expr: inner,
+        operator: UnaryOperatorKind::Not,
+    } = expr.expr(db)
+    {
         // Check for NOT NOT x
         if let ExprKind::UnaryOperator {
             operator: UnaryOperatorKind::Not,
@@ -38,9 +39,7 @@ pub fn check_node<'db>(
         {
             diagnostics.push(
                 diag()
-                    .message(
-                        "double negation: 'NOT NOT x' can be simplified to 'x'".to_string(),
-                    )
+                    .message("double negation: 'NOT NOT x' can be simplified to 'x'".to_string())
                     .desc(&RedundantNot)
                     .range(expr.get_span(db))
                     .severity(DiagnosticSeverity::INFORMATION)

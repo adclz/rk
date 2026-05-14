@@ -34,8 +34,8 @@ fn format_adjustments<'db>(
 
 /// Collects path expression diagnostics for a POU.
 /// Each path expression gets a label showing its resolved type and adjustments.
-fn path_expr_diagnostics<'db>(
-    db: &'db dyn WorkspaceDataBase,
+fn path_expr_diagnostics(
+    db: &dyn WorkspaceDataBase,
     file: File,
     pou_name: &str,
 ) -> Vec<IdeDiagnostic> {

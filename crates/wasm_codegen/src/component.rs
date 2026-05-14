@@ -100,7 +100,9 @@ struct WasiFunc {
 /// True if any param or the return type is a `string` — meaning the lift/lower
 /// adapter will touch linear memory and needs `Memory + UTF8` canonical options.
 fn has_string(params: &[MirParam], return_type: &Option<MirType>) -> bool {
-    params.iter().any(|p| matches!(p.ty, MirType::String { .. }))
+    params
+        .iter()
+        .any(|p| matches!(p.ty, MirType::String { .. }))
         || matches!(return_type, Some(MirType::String { .. }))
 }
 
@@ -203,7 +205,10 @@ pub fn wrap_in_component(
             let mut enc = inst_type.ty().function();
             enc.params(params);
             enc.result(result);
-            inst_type.export(&to_kebab_case(&func.name), ComponentTypeRef::Func(func_i as u32));
+            inst_type.export(
+                &to_kebab_case(&func.name),
+                ComponentTypeRef::Func(func_i as u32),
+            );
         }
 
         let inst_type_idx = builder.type_instance(None, &inst_type);
@@ -307,7 +312,10 @@ pub fn wrap_in_component(
     // every test function's signature.
     let test_result_ty_idx = {
         let (idx, enc) = builder.type_defined(None);
-        enc.result(None, Some(ComponentValType::Primitive(PrimitiveValType::String)));
+        enc.result(
+            None,
+            Some(ComponentValType::Primitive(PrimitiveValType::String)),
+        );
         idx
     };
 

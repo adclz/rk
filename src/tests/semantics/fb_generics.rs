@@ -10,13 +10,13 @@
 use auto_lsp::default::db::BaseDatabase;
 use db::RootDatabase;
 use hir::HasName;
+use hir::HirNodeInfo;
 use hir::hir_def::expressions::spec::{ElementarySpec, Spec, SpecKind};
 use hir::hir_def::pous::function_block::FunctionBlock;
 use hir::hir_def::pous::generics::fb_generic_params;
 use hir::hir_def::pous::pou::Pou;
 use hir::hir_def::semantic_index::semantic_index;
 use hir::hir_ty::body::infer_body;
-use hir::HirNodeInfo;
 use insta::assert_snapshot;
 use rstest::rstest;
 

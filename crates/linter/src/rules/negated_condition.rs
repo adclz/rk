@@ -76,11 +76,11 @@ pub fn check_if<'db>(
 }
 
 fn is_negated<'db>(db: &'db dyn WorkspaceDataBase, expr: &Expr<'db>) -> bool {
-    match expr.expr(db) {
+    matches!(
+        expr.expr(db),
         ExprKind::UnaryOperator {
             operator: UnaryOperatorKind::Not,
             ..
-        } => true,
-        _ => false,
-    }
+        }
+    )
 }

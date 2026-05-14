@@ -21,7 +21,7 @@ impl<'db> InitInference<'db> {
         let typ = subrange._type(db).infer(db);
 
         match typ {
-            Type::Elementary(elementary) => match elementary {
+            Type::Elementary(
                 ElementarySpec::Byte
                 | ElementarySpec::Word
                 | ElementarySpec::DWord
@@ -33,18 +33,8 @@ impl<'db> InitInference<'db> {
                 | ElementarySpec::DInt
                 | ElementarySpec::UDInt
                 | ElementarySpec::LInt
-                | ElementarySpec::ULInt => {}
-                _ => {
-                    self.errors.push(
-                        SubRangeError::InvalidSubrangeType {
-                            spec: subrange._type(db),
-                            typ,
-                        }
-                        .to_diagnostic(db),
-                    );
-                    return;
-                }
-            },
+                | ElementarySpec::ULInt,
+            ) => {}
             _ => {
                 self.errors.push(
                     SubRangeError::InvalidSubrangeType {

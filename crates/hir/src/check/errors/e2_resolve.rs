@@ -393,10 +393,7 @@ impl<'db> ToIdeDiagnostic<'db> for ResolveError<'db> {
                     None => {
                         let mut query = Query::new(path.path.target.ident.text(db).to_string());
                         query.exact();
-                        let items = SymbolSearch::new(|pou, db| match pou {
-                            Pou::Function(_) => false,
-                            _ => true,
-                        })
+                        let items = SymbolSearch::new(|pou, db| !matches!(pou, Pou::Function(_)))
                         .with_scope(path.scope_id)
                         .with_query(query)
                         .only_pous()

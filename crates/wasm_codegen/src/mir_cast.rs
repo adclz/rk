@@ -137,10 +137,7 @@ pub(crate) fn emit_cast_instructions(
 /// Division uses WASM signed truncation: results are off by one for negative
 /// timestamps (pre-1970) when the remainder is non-zero — accepted because
 /// IEC controllers typically operate on post-epoch dates.
-fn emit_datetime_cast(
-    from: MirElementary,
-    to: MirElementary,
-) -> Option<Vec<Instruction<'static>>> {
+fn emit_datetime_cast(from: MirElementary, to: MirElementary) -> Option<Vec<Instruction<'static>>> {
     use MirElementary::*;
     const NS_PER_MS: i64 = 1_000_000;
     const NS_PER_S: i64 = 1_000_000_000;
@@ -173,10 +170,7 @@ fn emit_datetime_cast(
         ],
 
         // DT (i32 secs since epoch) decompositions
-        (DateAndTime, Date) => vec![
-            Instruction::I32Const(SECS_PER_DAY),
-            Instruction::I32DivS,
-        ],
+        (DateAndTime, Date) => vec![Instruction::I32Const(SECS_PER_DAY), Instruction::I32DivS],
         (DateAndTime, LDate) => vec![
             Instruction::I32Const(SECS_PER_DAY),
             Instruction::I32DivS,
@@ -202,10 +196,7 @@ fn emit_datetime_cast(
             Instruction::I64DivS,
             Instruction::I32WrapI64,
         ],
-        (LDateTime, LDate) => vec![
-            Instruction::I64Const(NS_PER_DAY),
-            Instruction::I64DivS,
-        ],
+        (LDateTime, LDate) => vec![Instruction::I64Const(NS_PER_DAY), Instruction::I64DivS],
         (LDateTime, Tod) => vec![
             Instruction::I64Const(NS_PER_DAY),
             Instruction::I64RemS,
@@ -213,10 +204,7 @@ fn emit_datetime_cast(
             Instruction::I64DivS,
             Instruction::I32WrapI64,
         ],
-        (LDateTime, LTod) => vec![
-            Instruction::I64Const(NS_PER_DAY),
-            Instruction::I64RemS,
-        ],
+        (LDateTime, LTod) => vec![Instruction::I64Const(NS_PER_DAY), Instruction::I64RemS],
 
         _ => return None,
     };

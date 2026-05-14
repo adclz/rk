@@ -6,7 +6,7 @@ use db::RootDatabase;
 use hir::HirNodeInfo;
 use hir::hir_def::hir_node::HirNode;
 use hir::hir_def::semantic_index::semantic_index;
-use ide_proto::handlers::{DefinitionHandler, HoverHandler};
+use ide_proto::handlers::DefinitionHandler;
 use ide_proto::walk::{WalkHir, descendant_at};
 use insta::assert_snapshot;
 use rstest::rstest;

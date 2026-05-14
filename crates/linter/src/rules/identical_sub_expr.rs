@@ -3,7 +3,7 @@ use db::WorkspaceDataBase;
 use hir::{
     HirNodeInfo,
     hir_def::expressions::expression::{
-        BooleanOperatorKind, Expr, ExprKind, PrimaryExpr, VariableAccessKind,
+        BooleanOperatorKind, Expr, ExprKind, PrimaryExpr,
     },
     hir_ty::{body::BodyInferenceResult, ty::Type},
 };
@@ -101,4 +101,3 @@ fn same_expr<'db>(
         _ => false,
     }
 }
-

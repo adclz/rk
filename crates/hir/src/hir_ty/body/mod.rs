@@ -71,7 +71,14 @@ pub fn infer_body<'db>(
 
     ctx.check_statements(db, resolver, statements, NestedScope::None, &mut result);
 
-    check_preprocess(db, scope, statements, &FxHashMap::default(), false, &mut result);
+    check_preprocess(
+        db,
+        scope,
+        statements,
+        &FxHashMap::default(),
+        false,
+        &mut result,
+    );
 
     result
 }
@@ -508,10 +515,9 @@ impl<'db> BodyInferenceResult<'db> {
             ExprKind::PrimaryExpr(PrimaryExpr::VariableAccess(var)) => {
                 self.adjustments_of_var_access(db, *var)
             }
-            ExprKind::PrimaryExpr(PrimaryExpr::RefValue { value }) => match value {
-                RefValue::Address(address) => self.adjustments_of_begin_path_expr(db, *address),
-                _ => None,
-            },
+            ExprKind::PrimaryExpr(PrimaryExpr::RefValue {
+                value: RefValue::Address(address),
+            }) => self.adjustments_of_begin_path_expr(db, *address),
             _ => None,
         }
     }

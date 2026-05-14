@@ -8,7 +8,9 @@ use crate::builder::semantic_index::SemanticIndexBuilder;
 use crate::check::errors::ToIdeDiagnostic;
 use crate::check::errors::e0_syntax::SyntaxError;
 use crate::hir_def::expressions::expression::{FuncCall, ParamAssignKind};
-use crate::hir_def::expressions::statement::{CaseKind, PreprocessBranch, PreprocessCond, Stmt, StmtKind};
+use crate::hir_def::expressions::statement::{
+    CaseKind, PreprocessBranch, PreprocessCond, Stmt, StmtKind,
+};
 use crate::hir_def::extern_decl::ExternDecl;
 use crate::hir_def::interned::identifier::SpanIdent;
 use auto_lsp::anyhow::{self};

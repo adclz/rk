@@ -2,7 +2,7 @@ use compact_str::CompactString;
 use db::WorkspaceDataBase;
 use hir::hir_def::{
     expressions::statement::StmtKind,
-    pous::{function::Function, function_block::FunctionBlock, pou::Pou, variable::VariableKind},
+    pous::{function::Function, pou::Pou, variable::VariableKind},
     semantic_index::SemanticIndex,
 };
 use hir::hir_ty::infer::Infer;
@@ -13,7 +13,7 @@ use crate::{
     function::{MirExternFunction, MirParam, MirParamKind},
     lower::{
         lower_func::{lower_class, lower_function, lower_function_block, lower_program},
-        lower_type::{LowerTypeError, lower_fb_type_with_subs, lower_type},
+        lower_type::{LowerTypeError, lower_type},
         monomorphize::{AnyFunctionInfo, detect_any_function, monomorphize},
     },
     memory::MirMemoryLayout,
@@ -265,10 +265,9 @@ fn lower_module_from_pous<'db>(
                     let mangled = inst.mangled_name;
 
                     // Instance type with the mangled struct name.
-                    let fb_mir_type =
-                        super::lower_type::lower_fb_type_with_subs_named(
-                            db, *fb, &any_subs, mangled,
-                        )?;
+                    let fb_mir_type = super::lower_type::lower_fb_type_with_subs_named(
+                        db, *fb, &any_subs, mangled,
+                    )?;
                     if let MirType::Struct(ref struct_type) = fb_mir_type {
                         let inst_fields: Vec<MirInstanceField> = struct_type
                             .fields
@@ -575,10 +574,7 @@ fn lower_extern_function<'db>(
         .transpose()?;
 
     Ok(MirExternFunction {
-        name: super::monomorphize::qualified_pou_ident(
-            db,
-            hir::hir_ty::ty::Type::Function(func),
-        ),
+        name: super::monomorphize::qualified_pou_ident(db, hir::hir_ty::ty::Type::Function(func)),
         index,
         module: extern_decl.module.clone(),
         import_name: extern_decl.name.clone(),
@@ -737,10 +733,7 @@ pub fn lower_wasm_intrinsic<'db>(
     };
 
     Ok(MirFunction {
-        name: super::monomorphize::qualified_pou_ident(
-            db,
-            hir::hir_ty::ty::Type::Function(func),
-        ),
+        name: super::monomorphize::qualified_pou_ident(db, hir::hir_ty::ty::Type::Function(func)),
         origin_name: func.name(db),
         index,
         params,
@@ -765,45 +758,6 @@ fn find_extern_decl<'db>(
             None
         }
     })
-}
-
-/// Collect ANY_* type substitutions for a function block from all call sites.
-/// Walks all function bodies and collects `fb_any_resolutions` from their inference results.
-fn collect_fb_any_subs<'db>(
-    db: &'db dyn WorkspaceDataBase,
-    all_pous: &[(&Pou<'db>, Option<String>)],
-    target_fb: FunctionBlock<'db>,
-) -> FxHashMap<
-    hir::hir_def::interned::identifier::Ident,
-    hir::hir_def::expressions::spec::ElementarySpec,
-> {
-    use hir::hir_ty::body::infer_body;
-
-    let mut subs = FxHashMap::default();
-    let target_name = target_fb.name(db);
-
-    for (pou, _) in all_pous {
-        let scope = match pou {
-            Pou::Function(f) => f.scope_id(db),
-            Pou::FunctionBlock(fb) => fb.scope_id(db),
-            _ => continue,
-        };
-
-        let body = infer_body(db, scope);
-        for ((var_decl, field_name), concrete) in &body.fb_any_resolutions {
-            // Check if this variable's type matches the target FB
-            let var_type = var_decl.spec(db).infer(db).normalize(db);
-            let is_target = match var_type {
-                hir::hir_ty::ty::Type::FunctionBlock(fb) => fb.name(db) == target_name,
-                _ => false,
-            };
-            if is_target {
-                subs.insert(*field_name, *concrete);
-            }
-        }
-    }
-
-    subs
 }
 
 /// Rebase all StringLiteral offsets in MIR statements by adding `base` to each offset.

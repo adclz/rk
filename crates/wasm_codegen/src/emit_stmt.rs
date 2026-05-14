@@ -328,14 +328,13 @@ fn emit_stmt(func: &mut wasm_encoder::Function, stmt: &MirStmt, ctx: &Ctx) {
                 // A string producer (result declared STRING) takes
                 // `(...args, out_addr, out_cap)` and writes the destination
                 // directly; nothing is returned.
-                let producer_out: Option<(u32, u32)> = result.and_then(|name| {
-                    match ctx.locals.get(&name)? {
+                let producer_out: Option<(u32, u32)> =
+                    result.and_then(|name| match ctx.locals.get(&name)? {
                         LocalInfo::StringMemory { address, capacity } => {
                             Some((*address, *capacity))
                         }
                         _ => None,
-                    }
-                });
+                    });
 
                 // Push regular params first.
                 for param_name in params {
@@ -464,9 +463,9 @@ fn emit_stmt(func: &mut wasm_encoder::Function, stmt: &MirStmt, ctx: &Ctx) {
             // is guaranteed `Some` here by the WasmGen pre-pass that runs
             // before any function emission.
             emit_expr(func, message, ctx.locals, ctx.fn_indices);
-            let tag_idx = ctx.rk_exception_tag_idx.expect(
-                "MIR contains MirStmt::Raise but no $rk_exception tag was registered",
-            );
+            let tag_idx = ctx
+                .rk_exception_tag_idx
+                .expect("MIR contains MirStmt::Raise but no $rk_exception tag was registered");
             func.instruction(&Instruction::Throw(tag_idx));
         }
     }
@@ -634,13 +633,9 @@ fn emit_assignment(
                         // it into the header, and memcpys the bytes into
                         // the buffer. Calling convention:
                         //   `rk_str_assign(dest_addr, dest_cap, src_ptr, src_len)`
-                        let assign_idx = ctx
-                            .builtin_indices
-                            .get("rk.str_assign")
-                            .copied()
-                            .expect(
-                                "rk.str_assign must be grafted whenever a function has a STRING local",
-                            );
+                        let assign_idx = ctx.builtin_indices.get("rk.str_assign").copied().expect(
+                            "rk.str_assign must be grafted whenever a function has a STRING local",
+                        );
 
                         // Push dest_addr, dest_cap (compile-time constants).
                         func.instruction(&Instruction::I32Const(*address as i32));
@@ -704,13 +699,9 @@ fn emit_assignment(
                         // e.g. `dest := …` inside a mutator function body
                         // where `dest` is the in/out param. Forward the
                         // caller-supplied (addr, cap) to `rk_str_assign`.
-                        let assign_idx = ctx
-                            .builtin_indices
-                            .get("rk.str_assign")
-                            .copied()
-                            .expect(
-                                "rk.str_assign must be grafted whenever a function has a STRING local",
-                            );
+                        let assign_idx = ctx.builtin_indices.get("rk.str_assign").copied().expect(
+                            "rk.str_assign must be grafted whenever a function has a STRING local",
+                        );
                         func.instruction(&Instruction::LocalGet(*addr_index));
                         func.instruction(&Instruction::LocalGet(*cap_index));
                         emit_expr(func, value, ctx.locals, ctx.fn_indices);

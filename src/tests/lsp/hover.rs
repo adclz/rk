@@ -43,7 +43,7 @@ fn hover_markup(contents: HoverContents) -> Option<String> {
         HoverContents::Scalar(marked) => Some(marker_string_to_string(marked)),
         HoverContents::Array(arr) => Some(
             arr.into_iter()
-                .map(|marked| marker_string_to_string(marked))
+                .map(marker_string_to_string)
                 .collect::<Vec<String>>()
                 .join("\n"),
         ),

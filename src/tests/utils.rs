@@ -432,7 +432,7 @@ pub fn hir_node_span<'db>(db: &'db dyn WorkspaceDataBase, node: &HirNode<'db>) -
 }
 
 /// Walks the HIR for a file and returns diagnostics labeling each visited node.
-pub fn walk_hir_diagnostics<'db>(db: &'db dyn WorkspaceDataBase, file: File) -> Vec<IdeDiagnostic> {
+pub fn walk_hir_diagnostics(db: &dyn WorkspaceDataBase, file: File) -> Vec<IdeDiagnostic> {
     let sema = semantic_index(db, file);
     let mut nodes: Vec<(String, Span, File)> = vec![];
 

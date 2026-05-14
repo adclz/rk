@@ -16,8 +16,8 @@ use compact_str::CompactString;
 use crate::{
     memory::align_to,
     types::{
-        MirArrayType, MirElementary, MirEnumType, MirStructField, MirStructType,
-        MirSubrangeType, MirType,
+        MirArrayType, MirElementary, MirEnumType, MirStructField, MirStructType, MirSubrangeType,
+        MirType,
     },
 };
 
@@ -399,10 +399,7 @@ pub fn lower_class_type<'db>(
     offset = align_to(offset, max_align);
 
     Ok(MirType::Struct(MirStructType {
-        name: super::monomorphize::qualified_pou_ident(
-            db,
-            hir::hir_ty::ty::Type::Class(class),
-        ),
+        name: super::monomorphize::qualified_pou_ident(db, hir::hir_ty::ty::Type::Class(class)),
         fields,
         size: offset,
         align: max_align,

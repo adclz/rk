@@ -1,5 +1,4 @@
 use auto_lsp::core::span::Span;
-use auto_lsp::default::db::BaseDatabase;
 use auto_lsp::default::db::file::File;
 use auto_lsp::lsp_types::DiagnosticSeverity;
 use db::RootDatabase;
@@ -217,8 +216,8 @@ fn unexpected_array(mut with_db: RootDatabase) {
 
 /// Collects init expression diagnostics for a POU.
 /// Each init expression gets a label showing its resolved type.
-fn init_expr_diagnostics<'db>(
-    db: &'db dyn WorkspaceDataBase,
+fn init_expr_diagnostics(
+    db: &dyn WorkspaceDataBase,
     file: File,
     pou_name: &str,
 ) -> Vec<IdeDiagnostic> {

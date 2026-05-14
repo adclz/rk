@@ -17,8 +17,14 @@ fn main() {
     let builtins_crate = workspace_root.join("crates").join("wasm_builtins");
     let out_dir = PathBuf::from(std::env::var_os("OUT_DIR").unwrap());
 
-    println!("cargo:rerun-if-changed={}", builtins_crate.join("src").display());
-    println!("cargo:rerun-if-changed={}", builtins_crate.join("Cargo.toml").display());
+    println!(
+        "cargo:rerun-if-changed={}",
+        builtins_crate.join("src").display()
+    );
+    println!(
+        "cargo:rerun-if-changed={}",
+        builtins_crate.join("Cargo.toml").display()
+    );
     println!("cargo:rerun-if-changed=build.rs");
 
     // Use a dedicated target dir so the recursive cargo invocation doesn't
@@ -233,7 +239,8 @@ fn parse_module(wasm: &[u8]) -> ParsedModule {
                     let offset = match &d.kind {
                         wasmparser::DataKind::Active { offset_expr, .. } => {
                             const_expr_i32(offset_expr)
-                                .expect("active data offset must be i32.const") as u32
+                                .expect("active data offset must be i32.const")
+                                as u32
                         }
                         wasmparser::DataKind::Passive => {
                             panic!("passive data segments not supported in builtins")
@@ -308,7 +315,13 @@ fn parse_module(wasm: &[u8]) -> ParsedModule {
             entry.export_name = Some(name);
         }
     }
-    ParsedModule { sigs, imports, funcs, globals, data }
+    ParsedModule {
+        sigs,
+        imports,
+        funcs,
+        globals,
+        data,
+    }
 }
 
 /// Parse a `(i32.const N) end` constant initializer expression.

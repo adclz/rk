@@ -222,10 +222,7 @@ fn count_nested_string_calls_stmt(stmt: &MirStmt) -> u32 {
 /// Returns `true` when any function in `module` contains a `MirStmt::Raise`,
 /// triggering the codegen to declare the module-level `$rk_exception` tag.
 pub(crate) fn module_uses_raise(module: &MirModule) -> bool {
-    module
-        .functions
-        .iter()
-        .any(|f| stmts_use_raise(&f.body))
+    module.functions.iter().any(|f| stmts_use_raise(&f.body))
 }
 
 fn stmts_use_raise(stmts: &[MirStmt]) -> bool {
@@ -251,9 +248,9 @@ fn stmt_uses_raise(stmt: &MirStmt) -> bool {
             arms.iter().any(|a| stmts_use_raise(&a.body))
                 || else_body.as_ref().is_some_and(|b| stmts_use_raise(b))
         }
-        MirStmt::For { body, .. }
-        | MirStmt::While { body, .. }
-        | MirStmt::Repeat { body, .. } => stmts_use_raise(body),
+        MirStmt::For { body, .. } | MirStmt::While { body, .. } | MirStmt::Repeat { body, .. } => {
+            stmts_use_raise(body)
+        }
         _ => false,
     }
 }
@@ -473,8 +470,7 @@ impl<'a> WasmGen<'a> {
     fn alloc_test_result_area(&self) -> u32 {
         let raw = self.test_result_floor.get();
         let aligned = (raw + 3) & !3;
-        self.test_result_floor
-            .set(aligned + TEST_RESULT_AREA_SIZE);
+        self.test_result_floor.set(aligned + TEST_RESULT_AREA_SIZE);
         aligned
     }
     fn emit_all(&mut self) {
@@ -619,7 +615,9 @@ impl<'a> WasmGen<'a> {
                             walk(b, found);
                         }
                     }
-                    MirStmt::Case { arms, else_body, .. } => {
+                    MirStmt::Case {
+                        arms, else_body, ..
+                    } => {
                         for arm in arms {
                             walk(&arm.body, found);
                         }
@@ -793,8 +791,8 @@ impl<'a> WasmGen<'a> {
         // when the function actually contains nested STRING-returning calls.
         let nested_str_count = count_nested_string_calls_stmts(&func.body);
         let snapshot_local_indices = if nested_str_count > 0 {
-            let next_idx = (params.len() as u32)
-                + extra_locals.iter().map(|(c, _)| *c).sum::<u32>();
+            let next_idx =
+                (params.len() as u32) + extra_locals.iter().map(|(c, _)| *c).sum::<u32>();
             extra_locals.push((2, ValType::I32));
             Some((next_idx, next_idx + 1))
         } else {
@@ -848,13 +846,9 @@ impl<'a> WasmGen<'a> {
         // The per-function snapshot context `emit_call` consults for nested
         // STRING-returning calls.
         let prev_ctx = if let Some((ptr_tmp, len_tmp)) = snapshot_local_indices {
-            let str_assign_idx = self
-                .builtin_indices
-                .get("rk.str_assign")
-                .copied()
-                .expect(
-                    "rk.str_assign must be grafted whenever a function nests STRING-returning calls",
-                );
+            let str_assign_idx = self.builtin_indices.get("rk.str_assign").copied().expect(
+                "rk.str_assign must be grafted whenever a function nests STRING-returning calls",
+            );
             let ctx = StringSnapshotCtx {
                 slots: scratch_slots,
                 slot_capacity: STRING_SCRATCH_CAPACITY,
@@ -943,10 +937,9 @@ impl<'a> WasmGen<'a> {
         // Test functions always have signature `() -> i32` regardless of
         // their MIR-declared params/return (which is `()` for `{test}`).
         let type_idx = self.next_type_idx;
-        self.type_section.ty().function(
-            std::iter::empty::<ValType>(),
-            vec![ValType::I32],
-        );
+        self.type_section
+            .ty()
+            .function(std::iter::empty::<ValType>(), vec![ValType::I32]);
         self.next_type_idx += 1;
         self.fn_section.function(type_idx);
 
@@ -1008,13 +1001,9 @@ impl<'a> WasmGen<'a> {
         // SNAPSHOT_CTX reuses the two scratch locals; snapshots and the catch
         // shuffle never run concurrently.
         let prev_ctx = if nested_str_count > 0 {
-            let str_assign_idx = self
-                .builtin_indices
-                .get("rk.str_assign")
-                .copied()
-                .expect(
-                    "rk.str_assign must be grafted whenever a function nests STRING-returning calls",
-                );
+            let str_assign_idx = self.builtin_indices.get("rk.str_assign").copied().expect(
+                "rk.str_assign must be grafted whenever a function nests STRING-returning calls",
+            );
             let ctx = StringSnapshotCtx {
                 slots: scratch_slots,
                 slot_capacity: STRING_SCRATCH_CAPACITY,
@@ -1032,9 +1021,9 @@ impl<'a> WasmGen<'a> {
             "rk_exception_tag_idx must be set whenever any function (including tests) is emitted: \
              the test wrapper always uses the tag for `try_table (catch $rk_exception)`",
         );
-        let catch_block_ty = self.test_catch_block_type_idx.expect(
-            "test_catch_block_type_idx must be set when emitting a {test} function",
-        );
+        let catch_block_ty = self
+            .test_catch_block_type_idx
+            .expect("test_catch_block_type_idx must be set when emitting a {test} function");
 
         // block $on_catch (result i32 i32)
         wasm_func.instruction(&Instruction::Block(wasm_encoder::BlockType::FunctionType(
@@ -1168,8 +1157,7 @@ fn build_signature(
     let mut wasm_params = Vec::new();
     for param in params {
         match param.kind {
-            MirParamKind::InOut | MirParamKind::Output
-                if matches!(&param.ty, MirType::Pointer(inner) if matches!(inner.as_ref(), MirType::String { .. })) =>
+            MirParamKind::InOut | MirParamKind::Output if matches!(&param.ty, MirType::Pointer(inner) if matches!(inner.as_ref(), MirType::String { .. })) =>
             {
                 // STRING `VAR_IN_OUT` / `VAR_OUTPUT` is (addr, cap), so mutators
                 // can clamp writes.

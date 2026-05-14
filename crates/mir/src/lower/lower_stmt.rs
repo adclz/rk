@@ -181,11 +181,10 @@ fn lower_stmt<'db>(
             let callee_type = path.infer(ctx.db).normalize(ctx.db);
 
             let fb = match callee_type {
-                hir::hir_ty::ty::Type::FunctionBlock(fb) => Some(fb),
-                hir::hir_ty::ty::Type::CallableType(ct) => match ct {
-                    hir::hir_ty::ty::CallableType::FunctionBlock(fb) => Some(fb),
-                    _ => None,
-                },
+                hir::hir_ty::ty::Type::FunctionBlock(fb)
+                | hir::hir_ty::ty::Type::CallableType(
+                    hir::hir_ty::ty::CallableType::FunctionBlock(fb),
+                ) => Some(fb),
                 _ => None,
             };
             if let Some(fb) = fb {

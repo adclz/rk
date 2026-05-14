@@ -27,10 +27,9 @@ use crate::{
     expr::{MirArgKind, MirCall, MirConstant, MirExpr},
     function::{
         MirExternFunction, MirFunction, MirLinkage, MirLocal, MirLocalKind, MirParam, MirParamKind,
-        MirStorage,
     },
     lower::lower_type::{LowerTypeError, elementary_spec_to_mir, lower_type},
-    memory::{MirAllocKind, MirMemoryLayout},
+    memory::MirMemoryLayout,
     stmt::MirStmt,
     types::{MirElementary, MirType},
 };
@@ -154,20 +153,14 @@ pub struct FbInstance<'db> {
 /// substitution map (last-write-wins).
 #[derive(Default, Clone)]
 pub struct FbInstanceMap<'db> {
-    pub var_to_mangled: FxHashMap<
-        hir::hir_def::pous::variable::VariableDecl<'db>,
-        Ident,
-    >,
+    pub var_to_mangled: FxHashMap<hir::hir_def::pous::variable::VariableDecl<'db>, Ident>,
     pub by_mangled: FxHashMap<Ident, FbInstance<'db>>,
 }
 
 impl<'db> FbInstanceMap<'db> {
     pub fn from_instances(
         instances: Vec<FbInstance<'db>>,
-        var_to_mangled: FxHashMap<
-            hir::hir_def::pous::variable::VariableDecl<'db>,
-            Ident,
-        >,
+        var_to_mangled: FxHashMap<hir::hir_def::pous::variable::VariableDecl<'db>, Ident>,
     ) -> Self {
         let mut by_mangled = FxHashMap::default();
         for inst in instances {
@@ -202,8 +195,8 @@ impl<'db> FbInstanceMap<'db> {
 ///   names like `Counter$__body__` keep working for non-generic FBs.
 /// - Generic (one or more subs) → joins concretes by `$` in
 ///   field-name-sorted order to make the mangling deterministic.
-pub fn mangle_fb_name<'db>(
-    db: &'db dyn WorkspaceDataBase,
+pub fn mangle_fb_name(
+    db: &dyn WorkspaceDataBase,
     fb_name: Ident,
     subs: &FxHashMap<Ident, ElementarySpec>,
 ) -> Ident {
@@ -275,22 +268,16 @@ pub fn collect_fb_instantiations<'db>(
     Vec<FbInstance<'db>>,
     FxHashMap<hir::hir_def::pous::variable::VariableDecl<'db>, Ident>,
 ) {
-    use hir::HasName;
-    use hir::HirNodeInfo;
     use hir::hir_def::pous::pou::Pou;
     use hir::hir_ty::body::infer_body;
     use hir::hir_ty::infer::Infer;
 
     // Canonical key: (fb_name, sorted concrete bindings as a Vec).
-    let mut by_canonical: rustc_hash::FxHashMap<
-        (Ident, Vec<(Ident, ElementarySpec)>),
-        Ident,
-    > = FxHashMap::default();
+    let mut by_canonical: rustc_hash::FxHashMap<(Ident, Vec<(Ident, ElementarySpec)>), Ident> =
+        FxHashMap::default();
     let mut instances: Vec<FbInstance<'db>> = Vec::new();
-    let mut var_to_mangled: FxHashMap<
-        hir::hir_def::pous::variable::VariableDecl<'db>,
-        Ident,
-    > = FxHashMap::default();
+    let mut var_to_mangled: FxHashMap<hir::hir_def::pous::variable::VariableDecl<'db>, Ident> =
+        FxHashMap::default();
 
     // Walk every POU body's fb_any_resolutions, group by VariableDecl,
     // and collect unique (fb, subs) tuples.
@@ -310,7 +297,10 @@ pub fn collect_fb_instantiations<'db>(
             FxHashMap<Ident, ElementarySpec>,
         > = FxHashMap::default();
         for ((var_decl, field), concrete) in &body.fb_any_resolutions {
-            per_var.entry(*var_decl).or_default().insert(*field, *concrete);
+            per_var
+                .entry(*var_decl)
+                .or_default()
+                .insert(*field, *concrete);
         }
 
         for (var_decl, subs) in per_var {
@@ -360,8 +350,8 @@ pub fn collect_fb_instantiations<'db>(
             }
             let qualified = qualified_pou_ident(db, hir::hir_ty::ty::Type::FunctionBlock(*fb));
             let key = (qualified, Vec::new());
-            if !by_canonical.contains_key(&key) {
-                by_canonical.insert(key, qualified);
+            if let std::collections::hash_map::Entry::Vacant(e) = by_canonical.entry(key) {
+                e.insert(qualified);
                 instances.push(FbInstance {
                     fb: *fb,
                     subs: FxHashMap::default(),
@@ -529,224 +519,228 @@ pub fn monomorphize<'db>(
     let mut generated_variants: FxHashSet<(Ident, ElementarySpec)> = FxHashSet::default();
 
     loop {
-    let funcs_at_iter_start = module.functions.len();
+        let funcs_at_iter_start = module.functions.len();
 
-    for info in any_functions {
-        // Use the qualified name as the canonical MIR identifier so
-        // monomorphizations and call-site lookups stay aligned with
-        // the rest of the module's `function_indices`.
-        let func_name = qualified_pou_ident(db, hir::hir_ty::ty::Type::Function(info.func));
+        for info in any_functions {
+            // Use the qualified name as the canonical MIR identifier so
+            // monomorphizations and call-site lookups stay aligned with
+            // the rest of the module's `function_indices`.
+            let func_name = qualified_pou_ident(db, hir::hir_ty::ty::Type::Function(info.func));
 
-        // Get the concrete types actually needed (from call sites)
-        // Fall back to all types in the ANY group if no calls found
-        // (extern functions might be called from host)
-        let concrete_types: Vec<ElementarySpec> = needed_instantiations
-            .get(&func_name)
-            .map(|set| set.iter().copied().collect())
-            .unwrap_or_else(|| concrete_types_for_any(info.any_spec).to_vec());
+            // Get the concrete types actually needed (from call sites)
+            // Fall back to all types in the ANY group if no calls found
+            // (extern functions might be called from host)
+            let concrete_types: Vec<ElementarySpec> = needed_instantiations
+                .get(&func_name)
+                .map(|set| set.iter().copied().collect())
+                .unwrap_or_else(|| concrete_types_for_any(info.any_spec).to_vec());
 
-        for concrete_spec in &concrete_types {
-            // Skip variants we already generated in a previous worklist
-            // iteration. Without this guard, each iteration would re-emit
-            // every variant and push duplicate functions into the module.
-            if !generated_variants.insert((func_name, *concrete_spec)) {
-                continue;
-            }
-
-            let mir_elem = match elementary_spec_to_mir(*concrete_spec) {
-                Ok(e) => e,
-                Err(_) => continue,
-            };
-
-            let type_suffix = concrete_spec.type_name();
-            let mono_name = Ident::new(
-                db,
-                CompactString::from(format!("{}.{}", func_name.text(db), type_suffix)),
-            );
-
-            // Resolve `{#if}` arms against this concrete type and classify
-            // the resulting body. Arms that don't match `concrete_spec` are
-            // dropped; arms that do match are inlined.
-            let expanded =
-                expanded_body_for_concrete(db, info.func.statements(db), *concrete_spec);
-            let wasm_decl_for_t = find_wasm_decl_in(db, &expanded);
-            let extern_decl_for_t = find_extern_decl_in(db, &expanded);
-
-            if let Some(wasm_decl) = &wasm_decl_for_t {
-                // Wasm intrinsic ANY_* function → build monomorphized function with concrete types
-
-                use crate::function::*;
-                use crate::stmt::*;
-                use hir::hir_def::pous::variable::VariableKind;
-
-                let concrete_mir = MirType::Elementary(mir_elem);
-
-                let mut params = Vec::new();
-                for var in info.func.variables(db) {
-                    match var.kind(db) {
-                        VariableKind::Input => {
-                            let ty = resolve_any_type(db, var.spec(db).infer(db), *concrete_spec)?;
-                            params.push(MirParam {
-                                name: var.name(db),
-                                ty,
-                                kind: MirParamKind::Input,
-                            });
-                        }
-                        VariableKind::Output => {
-                            let ty = resolve_any_type(db, var.spec(db).infer(db), *concrete_spec)?;
-                            params.push(MirParam {
-                                name: var.name(db),
-                                ty: MirType::Pointer(Box::new(ty)),
-                                kind: MirParamKind::Output,
-                            });
-                        }
-                        _ => {}
-                    }
-                }
-
-                let return_type = info
-                    .func
-                    .return_type(db)
-                    .map(|spec| resolve_any_type(db, spec.infer(db), *concrete_spec))
-                    .transpose()?;
-
-                // Resolve the instruction name: if type_ref is set, prefix with the WASM type
-                let full_instruction = if wasm_decl.type_ref.is_some() {
-                    // Determine WASM type prefix from the concrete monomorphized type
-                    let prefix = if mir_elem.is_float() {
-                        if mir_elem.is_64bit() { "f64" } else { "f32" }
-                    } else if mir_elem.is_64bit() {
-                        "i64"
-                    } else {
-                        "i32"
-                    };
-                    CompactString::from(format!("{}.{}", prefix, wasm_decl.instruction))
-                } else {
-                    wasm_decl.instruction.clone()
-                };
-
-                let result_name = info.func.name(db);
-                let param_names: Vec<_> = params.iter().map(|p| p.name).collect();
-
-                let body = vec![MirStmt::WasmIntrinsic {
-                    instruction: full_instruction,
-                    params: param_names,
-                    result: Some(result_name),
-                }];
-
-                // Allocate the return-slot storage. Scalars go into a
-                // wasm local, STRING/composite into memory. The wasm
-                // local-index for a scalar slot must reflect total
-                // wasm-slot width (STRING params count as 2), not
-                // logical param count — `param_wasm_width` knows the
-                // rule.
-                let mut next_local_idx: u32 = params
-                    .iter()
-                    .map(|p| crate::lower::lower_func::param_wasm_width(&p.ty, p.kind))
-                    .sum();
-                let storage = crate::lower::lower_func::allocate_local_storage(
-                    result_name,
-                    &concrete_mir,
-                    /* is_address_taken = */ false,
-                    &mut next_local_idx,
-                    &mut module.memory_layout,
-                );
-                let locals = vec![MirLocal {
-                    name: result_name,
-                    ty: concrete_mir.clone(),
-                    init: None,
-                    kind: MirLocalKind::Var,
-                    storage,
-                }];
-
-                module.functions.push(MirFunction {
-                    name: mono_name,
-                    origin_name: info.func.name(db),
-                    index: next_fn_idx,
-                    params,
-                    return_type,
-                    locals,
-                    body,
-                    linkage: MirLinkage::Export,
-                    is_test: false,
-                    export_name: None,
-                });
-            } else if let Some(extern_decl) = &extern_decl_for_t {
-                // Extern ANY_* function → generate MirExternFunction with suffixed name
-                let mut params = Vec::new();
-                for var in info.func.variables(db) {
-                    use hir::hir_def::pous::variable::VariableKind;
-                    match var.kind(db) {
-                        VariableKind::Input => {
-                            let ty = resolve_any_type(db, var.spec(db).infer(db), *concrete_spec)?;
-                            params.push(MirParam {
-                                name: var.name(db),
-                                ty,
-                                kind: MirParamKind::Input,
-                            });
-                        }
-                        VariableKind::InOut | VariableKind::Output => {
-                            let ty = resolve_any_type(db, var.spec(db).infer(db), *concrete_spec)?;
-                            let kind = if var.kind(db) == VariableKind::InOut {
-                                MirParamKind::InOut
-                            } else {
-                                MirParamKind::Output
-                            };
-                            params.push(MirParam {
-                                name: var.name(db),
-                                ty: MirType::Pointer(Box::new(ty)),
-                                kind,
-                            });
-                        }
-                        _ => {}
-                    }
-                }
-
-                let return_type = info
-                    .func
-                    .return_type(db)
-                    .map(|spec| resolve_any_type(db, spec.infer(db), *concrete_spec))
-                    .transpose()?;
-
-                let import_name =
-                    CompactString::from(format!("{}.{}", &extern_decl.name, type_suffix));
-
-                module.extern_functions.push(MirExternFunction {
-                    name: mono_name,
-                    index: next_fn_idx,
-                    module: extern_decl.module.clone(),
-                    import_name,
-                    params,
-                    return_type,
-                    monomorphized_from: Some(func_name),
-                });
-            } else {
-                // Skip variadic functions (they're inlined at call sites)
-                let scope_id = info.func.scope_id(db);
-                let def_map = scope_id.def_map(db);
-                let has_variadic = def_map.local_variables.values().any(|v| v.variadic(db));
-                if has_variadic {
+            for concrete_spec in &concrete_types {
+                // Skip variants we already generated in a previous worklist
+                // iteration. Without this guard, each iteration would re-emit
+                // every variant and push duplicate functions into the module.
+                if !generated_variants.insert((func_name, *concrete_spec)) {
                     continue;
                 }
 
-                // Local ANY_* function → clone body with concrete types
-                let mono_func = lower_monomorphized_local(
-                    db,
-                    info.func,
-                    mono_name,
-                    *concrete_spec,
-                    next_fn_idx,
-                    &mut module.memory_layout,
-                    string_pool.clone(),
-                )?;
-                module.functions.push(mono_func);
-            }
+                let mir_elem = match elementary_spec_to_mir(*concrete_spec) {
+                    Ok(e) => e,
+                    Err(_) => continue,
+                };
 
-            module.function_indices.insert(mono_name, next_fn_idx);
-            mono_indices.insert((func_name, mir_elem), (mono_name, next_fn_idx));
-            next_fn_idx += 1;
+                let type_suffix = concrete_spec.type_name();
+                let mono_name = Ident::new(
+                    db,
+                    CompactString::from(format!("{}.{}", func_name.text(db), type_suffix)),
+                );
+
+                // Resolve `{#if}` arms against this concrete type and classify
+                // the resulting body. Arms that don't match `concrete_spec` are
+                // dropped; arms that do match are inlined.
+                let expanded =
+                    expanded_body_for_concrete(db, info.func.statements(db), *concrete_spec);
+                let wasm_decl_for_t = find_wasm_decl_in(db, &expanded);
+                let extern_decl_for_t = find_extern_decl_in(db, &expanded);
+
+                if let Some(wasm_decl) = &wasm_decl_for_t {
+                    // Wasm intrinsic ANY_* function → build monomorphized function with concrete types
+
+                    use crate::function::*;
+                    use crate::stmt::*;
+                    use hir::hir_def::pous::variable::VariableKind;
+
+                    let concrete_mir = MirType::Elementary(mir_elem);
+
+                    let mut params = Vec::new();
+                    for var in info.func.variables(db) {
+                        match var.kind(db) {
+                            VariableKind::Input => {
+                                let ty =
+                                    resolve_any_type(db, var.spec(db).infer(db), *concrete_spec)?;
+                                params.push(MirParam {
+                                    name: var.name(db),
+                                    ty,
+                                    kind: MirParamKind::Input,
+                                });
+                            }
+                            VariableKind::Output => {
+                                let ty =
+                                    resolve_any_type(db, var.spec(db).infer(db), *concrete_spec)?;
+                                params.push(MirParam {
+                                    name: var.name(db),
+                                    ty: MirType::Pointer(Box::new(ty)),
+                                    kind: MirParamKind::Output,
+                                });
+                            }
+                            _ => {}
+                        }
+                    }
+
+                    let return_type = info
+                        .func
+                        .return_type(db)
+                        .map(|spec| resolve_any_type(db, spec.infer(db), *concrete_spec))
+                        .transpose()?;
+
+                    // Resolve the instruction name: if type_ref is set, prefix with the WASM type
+                    let full_instruction = if wasm_decl.type_ref.is_some() {
+                        // Determine WASM type prefix from the concrete monomorphized type
+                        let prefix = if mir_elem.is_float() {
+                            if mir_elem.is_64bit() { "f64" } else { "f32" }
+                        } else if mir_elem.is_64bit() {
+                            "i64"
+                        } else {
+                            "i32"
+                        };
+                        CompactString::from(format!("{}.{}", prefix, wasm_decl.instruction))
+                    } else {
+                        wasm_decl.instruction.clone()
+                    };
+
+                    let result_name = info.func.name(db);
+                    let param_names: Vec<_> = params.iter().map(|p| p.name).collect();
+
+                    let body = vec![MirStmt::WasmIntrinsic {
+                        instruction: full_instruction,
+                        params: param_names,
+                        result: Some(result_name),
+                    }];
+
+                    // Allocate the return-slot storage. Scalars go into a
+                    // wasm local, STRING/composite into memory. The wasm
+                    // local-index for a scalar slot must reflect total
+                    // wasm-slot width (STRING params count as 2), not
+                    // logical param count — `param_wasm_width` knows the
+                    // rule.
+                    let mut next_local_idx: u32 = params
+                        .iter()
+                        .map(|p| crate::lower::lower_func::param_wasm_width(&p.ty, p.kind))
+                        .sum();
+                    let storage = crate::lower::lower_func::allocate_local_storage(
+                        result_name,
+                        &concrete_mir,
+                        /* is_address_taken = */ false,
+                        &mut next_local_idx,
+                        &mut module.memory_layout,
+                    );
+                    let locals = vec![MirLocal {
+                        name: result_name,
+                        ty: concrete_mir.clone(),
+                        init: None,
+                        kind: MirLocalKind::Var,
+                        storage,
+                    }];
+
+                    module.functions.push(MirFunction {
+                        name: mono_name,
+                        origin_name: info.func.name(db),
+                        index: next_fn_idx,
+                        params,
+                        return_type,
+                        locals,
+                        body,
+                        linkage: MirLinkage::Export,
+                        is_test: false,
+                        export_name: None,
+                    });
+                } else if let Some(extern_decl) = &extern_decl_for_t {
+                    // Extern ANY_* function → generate MirExternFunction with suffixed name
+                    let mut params = Vec::new();
+                    for var in info.func.variables(db) {
+                        use hir::hir_def::pous::variable::VariableKind;
+                        match var.kind(db) {
+                            VariableKind::Input => {
+                                let ty =
+                                    resolve_any_type(db, var.spec(db).infer(db), *concrete_spec)?;
+                                params.push(MirParam {
+                                    name: var.name(db),
+                                    ty,
+                                    kind: MirParamKind::Input,
+                                });
+                            }
+                            VariableKind::InOut | VariableKind::Output => {
+                                let ty =
+                                    resolve_any_type(db, var.spec(db).infer(db), *concrete_spec)?;
+                                let kind = if var.kind(db) == VariableKind::InOut {
+                                    MirParamKind::InOut
+                                } else {
+                                    MirParamKind::Output
+                                };
+                                params.push(MirParam {
+                                    name: var.name(db),
+                                    ty: MirType::Pointer(Box::new(ty)),
+                                    kind,
+                                });
+                            }
+                            _ => {}
+                        }
+                    }
+
+                    let return_type = info
+                        .func
+                        .return_type(db)
+                        .map(|spec| resolve_any_type(db, spec.infer(db), *concrete_spec))
+                        .transpose()?;
+
+                    let import_name =
+                        CompactString::from(format!("{}.{}", &extern_decl.name, type_suffix));
+
+                    module.extern_functions.push(MirExternFunction {
+                        name: mono_name,
+                        index: next_fn_idx,
+                        module: extern_decl.module.clone(),
+                        import_name,
+                        params,
+                        return_type,
+                        monomorphized_from: Some(func_name),
+                    });
+                } else {
+                    // Skip variadic functions (they're inlined at call sites)
+                    let scope_id = info.func.scope_id(db);
+                    let def_map = scope_id.def_map(db);
+                    let has_variadic = def_map.local_variables.values().any(|v| v.variadic(db));
+                    if has_variadic {
+                        continue;
+                    }
+
+                    // Local ANY_* function → clone body with concrete types
+                    let mono_func = lower_monomorphized_local(
+                        db,
+                        info.func,
+                        mono_name,
+                        *concrete_spec,
+                        next_fn_idx,
+                        &mut module.memory_layout,
+                        string_pool.clone(),
+                    )?;
+                    module.functions.push(mono_func);
+                }
+
+                module.function_indices.insert(mono_name, next_fn_idx);
+                mono_indices.insert((func_name, mir_elem), (mono_name, next_fn_idx));
+                next_fn_idx += 1;
+            }
         }
-    }
 
         // Did this iteration push any new functions? If not, fixed
         // point reached.
@@ -1058,10 +1052,7 @@ fn infer_concrete_type_from_expr(expr: &MirExpr) -> Option<MirElementary> {
             MirType::Elementary(e) => Some(*e),
             _ => None,
         },
-        MirExpr::Load(_, ty) => match ty {
-            MirType::Elementary(e) => Some(*e),
-            _ => None,
-        },
+        MirExpr::Load(_, MirType::Elementary(e)) => Some(*e),
         _ => None,
     }
 }

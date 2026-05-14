@@ -106,7 +106,13 @@ pub fn lower_function<'db>(
     // The return slot, named after the function: scalars in a wasm local,
     // STRING and aggregates in linear memory.
     if let Some(ref ret_ty) = return_type {
-        let storage = allocate_local_storage(func.name(db), ret_ty, false, &mut next_local_idx, memory_layout);
+        let storage = allocate_local_storage(
+            func.name(db),
+            ret_ty,
+            false,
+            &mut next_local_idx,
+            memory_layout,
+        );
         locals.push(MirLocal {
             name: func.name(db),
             ty: ret_ty.clone(),
@@ -243,12 +249,8 @@ pub fn lower_function_block<'db>(
         let mut next_local_idx: u32 = 1; // 0 is 'this'
 
         // 'this' pointer parameter (use substitutions for ANY types)
-        let fb_type = super::lower_type::lower_fb_type_with_subs_named(
-            db,
-            fb,
-            any_subs,
-            mangled_name,
-        )?;
+        let fb_type =
+            super::lower_type::lower_fb_type_with_subs_named(db, fb, any_subs, mangled_name)?;
         params.push(MirParam {
             name: Ident::new(db, compact_str::CompactString::from("this")),
             ty: MirType::Pointer(Box::new(fb_type)),
@@ -308,7 +310,13 @@ pub fn lower_function_block<'db>(
 
         // The return slot (scalar → wasm local, else linear memory).
         if let Some(ref ret_ty) = return_type {
-            let storage = allocate_local_storage(method.name(db), ret_ty, false, &mut next_local_idx, memory_layout);
+            let storage = allocate_local_storage(
+                method.name(db),
+                ret_ty,
+                false,
+                &mut next_local_idx,
+                memory_layout,
+            );
             locals.push(MirLocal {
                 name: method.name(db),
                 ty: ret_ty.clone(),
@@ -348,12 +356,8 @@ pub fn lower_function_block<'db>(
     // Lower FB body as __body__ function
     // All variables (input, output, var) are accessed through the 'this' pointer.
     if !fb.statements(db).is_empty() {
-        let fb_type = super::lower_type::lower_fb_type_with_subs_named(
-            db,
-            fb,
-            any_subs,
-            mangled_name,
-        )?;
+        let fb_type =
+            super::lower_type::lower_fb_type_with_subs_named(db, fb, any_subs, mangled_name)?;
         let body_params = vec![MirParam {
             name: Ident::new(db, compact_str::CompactString::from("this")),
             ty: MirType::Pointer(Box::new(fb_type.clone())),
@@ -431,10 +435,7 @@ pub fn lower_function_block<'db>(
 
         let body_name = Ident::new(
             db,
-            compact_str::CompactString::from(format!(
-                "{}$__body__",
-                mangled_name.text(db)
-            )),
+            compact_str::CompactString::from(format!("{}$__body__", mangled_name.text(db))),
         );
 
         functions.push(MirFunction {
@@ -531,7 +532,13 @@ pub fn lower_class<'db>(
 
         // Return local: scalar → WASM local, non-scalar → linear memory.
         if let Some(ref ret_ty) = return_type {
-            let storage = allocate_local_storage(method.name(db), ret_ty, false, &mut next_local_idx, memory_layout);
+            let storage = allocate_local_storage(
+                method.name(db),
+                ret_ty,
+                false,
+                &mut next_local_idx,
+                memory_layout,
+            );
             locals.push(MirLocal {
                 name: method.name(db),
                 ty: ret_ty.clone(),
@@ -545,8 +552,7 @@ pub fn lower_class<'db>(
 
         // Qualified name: "<NsPath>.ClassName$MethodName" (or
         // "ClassName$MethodName" for top-level classes).
-        let class_qualified =
-            super::monomorphize::qualified_pou_ident(db, Type::Class(class));
+        let class_qualified = super::monomorphize::qualified_pou_ident(db, Type::Class(class));
         let qualified_name = Ident::new(
             db,
             compact_str::CompactString::from(format!(
@@ -587,7 +593,8 @@ pub fn lower_program<'db>(
 
     for var in program.variables(db) {
         let ty = lower_var_type(db, *var)?;
-        let storage = allocate_local_storage(var.name(db), &ty, false, &mut next_local_idx, memory_layout);
+        let storage =
+            allocate_local_storage(var.name(db), &ty, false, &mut next_local_idx, memory_layout);
         locals.push(MirLocal {
             name: var.name(db),
             ty,
@@ -689,13 +696,12 @@ fn lower_var_type<'db>(
 
     // For STRING types, override the default capacity with the declared
     // `[N]` if the spec carries one.
-    if matches!(mir, MirType::String { .. }) {
-        if let SpecKind::SizedString(length_expr) = var.spec(db).kind(db)
+    if matches!(mir, MirType::String { .. })
+        && let SpecKind::SizedString(length_expr) = var.spec(db).kind(db)
             && let Some(n) = length_expr.as_range(db)
         {
             return Ok(MirType::String { capacity: n as u32 });
         }
-    }
     Ok(mir)
 }
 

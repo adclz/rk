@@ -2,13 +2,10 @@ use crate::tests::{
     lsp::formatter::fmt,
     utils::{add_sources, with_db},
 };
-use auto_lsp::core::document::Document;
 use auto_lsp::default::db::BaseDatabase;
 use db::RootDatabase;
-use formatter::TOPIARY_LANG;
 use insta::assert_snapshot;
 use rstest::rstest;
-use topiary_core::{Operation, formatter};
 
 #[rstest]
 pub fn counters_ctu(mut with_db: RootDatabase) {

@@ -148,16 +148,18 @@ pub fn check_case<'db>(
                                 _ => None,
                             };
                             if let Some(val) = val
-                                && val >= lo && val <= hi {
-                                    let prev_span = match prev_selector {
-                                        CaseKind::Expression(e) => e.get_span(db),
-                                        _ => continue,
-                                    };
-                                    let prev_file = match prev_selector {
-                                        CaseKind::Expression(e) => e.get_scope_id(db).file(db),
-                                        _ => continue,
-                                    };
-                                    let mut d = diag()
+                                && val >= lo
+                                && val <= hi
+                            {
+                                let prev_span = match prev_selector {
+                                    CaseKind::Expression(e) => e.get_span(db),
+                                    _ => continue,
+                                };
+                                let prev_file = match prev_selector {
+                                    CaseKind::Expression(e) => e.get_scope_id(db).file(db),
+                                    _ => continue,
+                                };
+                                let mut d = diag()
                                         .message(format!(
                                             "CASE range '{lo}..{hi}' covers already defined selector '{key}'"
                                         ))
@@ -165,14 +167,14 @@ pub fn check_case<'db>(
                                         .range(span)
                                         .severity(DiagnosticSeverity::WARNING)
                                         .call();
-                                    d.with_related(Related::new(
-                                        "selector defined here".into(),
-                                        prev_file,
-                                        prev_span,
-                                    ));
-                                    diagnostics.push(d);
-                                    break;
-                                }
+                                d.with_related(Related::new(
+                                    "selector defined here".into(),
+                                    prev_file,
+                                    prev_span,
+                                ));
+                                diagnostics.push(d);
+                                break;
+                            }
                         }
 
                         seen_ranges.push(SeenRange { lo, hi, span, file });
@@ -216,7 +218,7 @@ fn emit(
 
 fn eval_integer<'db>(db: &'db dyn WorkspaceDataBase, expr: &Expr<'db>) -> Option<u64> {
     match expr.expr(db) {
-        ExprKind::PrimaryExpr(PrimaryExpr::Literal(lit)) => match lit {
+        ExprKind::PrimaryExpr(PrimaryExpr::Literal(
             Elementary::InferInteger(i)
             | Elementary::SInt(i)
             | Elementary::Int(i)
@@ -229,9 +231,8 @@ fn eval_integer<'db>(db: &'db dyn WorkspaceDataBase, expr: &Expr<'db>) -> Option
             | Elementary::Byte(i)
             | Elementary::Word(i)
             | Elementary::DWord(i)
-            | Elementary::LWord(i) => i.as_u64(db).ok(),
-            _ => None,
-        },
+            | Elementary::LWord(i),
+        )) => i.as_u64(db).ok(),
         ExprKind::PrimaryExpr(PrimaryExpr::ParenthesizedExpr { expr }) => eval_integer(db, expr),
         _ => None,
     }

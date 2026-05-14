@@ -850,10 +850,9 @@ impl<'db> ExprLowerCtx<'db> {
         // `function_indices`; the bare last segment for callees that do not
         // resolve.
         let callee_name = match path.infer(self.db) {
-            Type::Function(f) => crate::lower::monomorphize::qualified_pou_ident(
-                self.db,
-                Type::Function(f),
-            ),
+            Type::Function(f) => {
+                crate::lower::monomorphize::qualified_pou_ident(self.db, Type::Function(f))
+            }
             Type::CallableType(hir::hir_ty::ty::CallableType::Function(f)) => {
                 crate::lower::monomorphize::qualified_pou_ident(self.db, Type::Function(f))
             }
@@ -1162,10 +1161,7 @@ impl<'db> ExprLowerCtx<'db> {
             });
         let body_func = hir::hir_def::interned::identifier::Ident::new(
             self.db,
-            compact_str::CompactString::from(format!(
-                "{}$__body__",
-                mangled_root.text(self.db)
-            )),
+            compact_str::CompactString::from(format!("{}$__body__", mangled_root.text(self.db))),
         );
 
         Ok(Some(crate::stmt::MirStmt::FbCall {

@@ -443,9 +443,7 @@ impl<'db> StmtsResolverCtx<'db> {
                     // The message expression must be STRING
                     self.infer_and_check_expr(db, &mut infer, *message, ctx);
                     let string_ty = Type::Elementary(ElementarySpec::String);
-                    if let Err(err) =
-                        infer.coerce_type_with_expr(db, string_ty, *message, ctx)
-                    {
+                    if let Err(err) = infer.coerce_type_with_expr(db, string_ty, *message, ctx) {
                         ctx.errors.push(err.into_non_assignable(
                             db,
                             string_ty,
@@ -606,22 +604,20 @@ pub(crate) fn check_preprocess<'db>(
         match stmt.stmt(db) {
             StmtKind::WasmPragma(decl) if inside_if => {
                 if let Some(t) = &decl.type_ref {
-                    check_wasm_ident(db, scope, &def_map, fixed, t, ctx);
+                    check_wasm_ident(db, scope, def_map, fixed, t, ctx);
                 }
                 for p in &decl.params {
-                    check_wasm_ident(db, scope, &def_map, fixed, p, ctx);
+                    check_wasm_ident(db, scope, def_map, fixed, p, ctx);
                 }
                 if let Some(r) = &decl.result {
-                    check_wasm_ident(db, scope, &def_map, fixed, r, ctx);
+                    check_wasm_ident(db, scope, def_map, fixed, r, ctx);
                 }
             }
             StmtKind::PreprocessIf { branches } => {
                 for branch in branches {
                     let mut child = fixed.clone();
-                    if let Some(anchor_spec) =
-                        check_cond(db, scope, &def_map, branch, ctx)
-                        && let Type::Elementary(e) =
-                            Type::resolve_spec(db, branch.cond.expected)
+                    if let Some(anchor_spec) = check_cond(db, scope, def_map, branch, ctx)
+                        && let Type::Elementary(e) = Type::resolve_spec(db, branch.cond.expected)
                     {
                         child.insert(anchor_spec, e);
                     }
@@ -691,8 +687,7 @@ fn check_cond<'db>(
 
     let Some(anchor) = canonical_anchor(db, scope, def_map, ident) else {
         // Spec exists but isn't rooted in ANY_* (concrete or non-Into chain).
-        let actual_spec = lookup_spec(db, scope, def_map, ident)
-            .expect("just checked existence");
+        let actual_spec = lookup_spec(db, scope, def_map, ident).expect("just checked existence");
         ctx.errors.push(
             TypeError::PreprocessIdentNotGeneric {
                 ident: ident.text(db).to_string(),

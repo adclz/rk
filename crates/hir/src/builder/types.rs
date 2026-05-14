@@ -87,11 +87,7 @@ impl<'db> ParseSpec<'db> for ast::generated::DataTypeAccess {
                     })
                     .collect();
                 path.type_args = args;
-                Ok(sema.new_spec(
-                    SpecKind::Target(path),
-                    user_ref.into(),
-                    sema.current_scope,
-                ))
+                Ok(sema.new_spec(SpecKind::Target(path), user_ref.into(), sema.current_scope))
             }
             ast::generated::DataTypeAccess::IntoSpec(into) => {
                 let ident = crate::hir_def::interned::identifier::SpanIdent::from_node(

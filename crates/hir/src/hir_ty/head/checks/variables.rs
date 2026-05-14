@@ -146,7 +146,8 @@ impl<'db> InitInference<'db> {
                 max: max_len,
                 got: actual_len,
             };
-            let target = Type::Elementary(crate::hir_def::expressions::spec::ElementarySpec::String);
+            let target =
+                Type::Elementary(crate::hir_def::expressions::spec::ElementarySpec::String);
             self.errors.push(
                 TypeError::InferLiteralError {
                     expr,

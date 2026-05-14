@@ -89,7 +89,7 @@ use super::{add_source, with_db};
 fn validate(db: &mut db::RootDatabase, source: &str, dump_name: &str) -> Result<(), String> {
     let file = add_source(db, source);
     let sem_idx = hir::hir_def::semantic_index::semantic_index(db, file);
-    let mir_module = match mir::lower::lower_module::lower_module(db, &sem_idx) {
+    let mir_module = match mir::lower::lower_module::lower_module(db, sem_idx) {
         Ok(m) => m,
         Err(e) => return Err(format!("MIR lowering failed: {:?}", e)),
     };
@@ -788,7 +788,7 @@ END_FUNCTION
     );
     let file = add_source(&mut with_db, &src);
     let sem_idx = hir::hir_def::semantic_index::semantic_index(&with_db, file);
-    let mir_module = mir::lower::lower_module::lower_module(&with_db, &sem_idx).unwrap();
+    let mir_module = mir::lower::lower_module::lower_module(&with_db, sem_idx).unwrap();
     let bytes = crate::generate_wasm(&with_db, &mir_module).finish();
 
     let engine = Engine::default();

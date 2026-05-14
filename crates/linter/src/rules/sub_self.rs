@@ -31,11 +31,11 @@ pub fn check_node<'db>(
     diagnostics: &mut Vec<IdeDiagnostic>,
 ) {
     if let ExprKind::AddOperator {
-            left,
-            operator: AddOperatorKind::Minus,
-            right,
-        } = expr.expr(db) {
-        if let Some(name) = same_variable(db, body, left, right) {
+        left,
+        operator: AddOperatorKind::Minus,
+        right,
+    } = expr.expr(db)
+        && let Some(name) = same_variable(db, body, left, right) {
             diagnostics.push(
                 diag()
                     .message(format!(
@@ -47,7 +47,6 @@ pub fn check_node<'db>(
                     .call(),
             );
         }
-    }
 }
 
 fn same_variable<'db>(

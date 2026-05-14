@@ -32,11 +32,11 @@ pub fn check_node<'db>(
     diagnostics: &mut Vec<IdeDiagnostic>,
 ) {
     if let ExprKind::ComparisonOperator {
-            left,
-            operator,
-            right,
-        } = expr.expr(db) {
-        if let Some(var_name) = same_variable(db, body, left, right) {
+        left,
+        operator,
+        right,
+    } = expr.expr(db)
+        && let Some(var_name) = same_variable(db, body, left, right) {
             let op = operator.as_str();
             let result_hint = match operator {
                 ComparisonOperatorKind::Eq
@@ -57,7 +57,6 @@ pub fn check_node<'db>(
                     .call(),
             );
         }
-    }
 }
 
 /// If both expressions resolve to the same variable, return its name.

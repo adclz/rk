@@ -75,9 +75,8 @@ impl<'db> InitInference<'db> {
             (true, true) => {}
             // Non-generic POU + user wrote `<...>` — reject.
             (true, false) => {
-                self.errors.push(
-                    TypeError::GenericArgsOnNonGenericType { name, spec }.to_diagnostic(db),
-                );
+                self.errors
+                    .push(TypeError::GenericArgsOnNonGenericType { name, spec }.to_diagnostic(db));
             }
             // Generic POU + user wrote nothing — require explicit args.
             (false, true) => {

@@ -29,8 +29,9 @@ pub fn check_spec<'db>(
             let lo: Option<u64> = lower.as_range(db);
             let hi: Option<u64> = upper.as_range(db);
             if let (Some(lo), Some(hi)) = (lo, hi)
-                && lo == hi {
-                    diagnostics.push(
+                && lo == hi
+            {
+                diagnostics.push(
                         diag()
                             .message(format!(
                                 "array dimension {} has equal bounds ({lo}..{hi}), contains only one element",
@@ -41,7 +42,7 @@ pub fn check_spec<'db>(
                             .severity(DiagnosticSeverity::INFORMATION)
                             .call(),
                     );
-                }
+            }
         }
         // Recurse into nested array types
         check_spec(db, array.of_type(db).kind(db), diagnostics);

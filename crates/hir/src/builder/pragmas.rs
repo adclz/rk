@@ -60,15 +60,15 @@ impl<'db> SemanticIndexBuilder<'db> {
     fn parse_single_case(&mut self, case: &ast::generated::CasePragma) -> Vec<ParamAssign<'db>> {
         let mut args = vec![];
         for arg_id in case.args.iter() {
-            if let ast::generated::Comma_ParamAssignInput::ParamAssignInput(p) = arg_id.cast(self.ast) {
+            if let ast::generated::Comma_ParamAssignInput::ParamAssignInput(p) =
+                arg_id.cast(self.ast)
+            {
                 let kind = match p.param.as_ref() {
                     Some(param) => {
                         let param = SpanIdent::from_node(self.db, self, param.cast(self.ast));
                         let value = p.value.cast(self.ast).parse(self);
                         match (param, value) {
-                            (Ok(param), Ok(value)) => {
-                                ParamAssignKind::FormalInput { param, value }
-                            }
+                            (Ok(param), Ok(value)) => ParamAssignKind::FormalInput { param, value },
                             _ => continue,
                         }
                     }

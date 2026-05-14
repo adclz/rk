@@ -41,7 +41,7 @@ pub fn check_step<'db>(
 
 fn is_zero<'db>(db: &'db dyn WorkspaceDataBase, expr: &Expr<'db>) -> bool {
     match expr.expr(db) {
-        ExprKind::PrimaryExpr(PrimaryExpr::Literal(lit)) => match lit {
+        ExprKind::PrimaryExpr(PrimaryExpr::Literal(
             Elementary::InferInteger(i)
             | Elementary::SInt(i)
             | Elementary::Int(i)
@@ -54,9 +54,8 @@ fn is_zero<'db>(db: &'db dyn WorkspaceDataBase, expr: &Expr<'db>) -> bool {
             | Elementary::Byte(i)
             | Elementary::Word(i)
             | Elementary::DWord(i)
-            | Elementary::LWord(i) => i.as_u64(db) == Ok(0),
-            _ => false,
-        },
+            | Elementary::LWord(i),
+        )) => i.as_u64(db) == Ok(0),
         ExprKind::PrimaryExpr(PrimaryExpr::ParenthesizedExpr { expr }) => is_zero(db, expr),
         _ => false,
     }

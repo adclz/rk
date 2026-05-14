@@ -227,11 +227,10 @@ END_FUNCTION_BLOCK"#;
     let sema = semantic_index(&with_db, *with_db.get_files().iter().last().unwrap());
     let mut result = vec![];
     let _ = sema.walk_hir(&with_db, &mut |n| {
-        if let HirNode::Param(stmt) = n {
-            if let Some(inlay_hint) = stmt.inlay_hint(&with_db) {
+        if let HirNode::Param(stmt) = n
+            && let Some(inlay_hint) = stmt.inlay_hint(&with_db) {
                 result.push(inlay_hint);
             }
-        }
         ControlFlow::Continue(())
     });
 
@@ -257,11 +256,10 @@ END_FUNCTION_BLOCK"#;
     let sema = semantic_index(&with_db, *with_db.get_files().iter().last().unwrap());
     let mut result = vec![];
     let _ = sema.walk_hir(&with_db, &mut |n| {
-        if let HirNode::Param(stmt) = n {
-            if let Some(inlay_hint) = stmt.inlay_hint(&with_db) {
+        if let HirNode::Param(stmt) = n
+            && let Some(inlay_hint) = stmt.inlay_hint(&with_db) {
                 result.push(inlay_hint);
             }
-        }
         ControlFlow::Continue(())
     });
 
@@ -332,11 +330,10 @@ END_FUNCTION_BLOCK"#;
     let sema = semantic_index(&with_db, *with_db.get_files().iter().last().unwrap());
     let mut result = vec![];
     let _ = sema.walk_hir(&with_db, &mut |n| {
-        if let HirNode::Param(stmt) = n {
-            if let Some(inlay_hint) = stmt.inlay_hint(&with_db) {
+        if let HirNode::Param(stmt) = n
+            && let Some(inlay_hint) = stmt.inlay_hint(&with_db) {
                 result.push(inlay_hint);
             }
-        }
         ControlFlow::Continue(())
     });
 
@@ -451,13 +448,10 @@ END_FUNCTION"#;
     let sema = semantic_index(&with_db, *with_db.get_files().iter().last().unwrap());
     let mut result = vec![];
     let _ = sema.walk_hir(&with_db, &mut |n| {
-        match n {
-            HirNode::InitExpr(curr) => {
-                if let Some(inlay_hint) = curr.inlay_hint(&with_db) {
-                    result.push(inlay_hint);
-                }
+        if let HirNode::InitExpr(curr) = n {
+            if let Some(inlay_hint) = curr.inlay_hint(&with_db) {
+                result.push(inlay_hint);
             }
-            _ => (),
         }
         ControlFlow::Continue(())
     });

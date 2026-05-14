@@ -52,10 +52,7 @@ impl<'db> ScopeId<'db> {
 
     pub fn return_type(&self, db: &'db dyn WorkspaceDataBase) -> Option<&'db Spec<'db>> {
         Some(match get_scope(db, *self).kind {
-            ScopeKind::Pou(pou) => match pou {
-                Pou::Function(f) => f.return_type(db)?,
-                _ => None?,
-            },
+            ScopeKind::Pou(Pou::Function(f)) => f.return_type(db)?,
             ScopeKind::MethodDecl(m) => m.return_type(db)?,
             ScopeKind::MethodProt(m) => m.return_type(db)?,
             _ => None?,
@@ -67,11 +64,8 @@ impl<'db> ScopeId<'db> {
         db: &'db dyn WorkspaceDataBase,
     ) -> Option<&Vec<MethodDecl<'db>>> {
         Some(match get_scope(db, *self).kind {
-            ScopeKind::Pou(pou) => match pou {
-                Pou::Class(cl) => cl.methods(db),
-                Pou::FunctionBlock(fb) => fb.methods(db),
-                _ => None?,
-            },
+            ScopeKind::Pou(Pou::Class(cl)) => cl.methods(db),
+            ScopeKind::Pou(Pou::FunctionBlock(fb)) => fb.methods(db),
             _ => None?,
         })
     }
@@ -81,25 +75,19 @@ impl<'db> ScopeId<'db> {
         db: &'db dyn WorkspaceDataBase,
     ) -> Option<&Vec<MethodPrototype<'db>>> {
         Some(match get_scope(db, *self).kind {
-            ScopeKind::Pou(pou) => match pou {
-                Pou::Interface(it) => it.methods(db),
-                _ => None?,
-            },
+            ScopeKind::Pou(Pou::Interface(it)) => it.methods(db),
             _ => None?,
         })
     }
 
-    pub fn variables<'a, 'b>(
+    pub fn variables<'a>(
         &'a self,
         db: &'db dyn WorkspaceDataBase,
     ) -> Option<&'db Vec<VariableDecl<'db>>> {
         Some(match get_scope(db, *self).kind {
-            ScopeKind::Pou(pou) => match pou {
-                Pou::Function(f) => f.variables(db),
-                Pou::FunctionBlock(fb) => fb.variables(db),
-                Pou::Class(cl) => cl.variables(db),
-                _ => None?,
-            },
+            ScopeKind::Pou(Pou::Function(f)) => f.variables(db),
+            ScopeKind::Pou(Pou::FunctionBlock(fb)) => fb.variables(db),
+            ScopeKind::Pou(Pou::Class(cl)) => cl.variables(db),
             ScopeKind::MethodDecl(m) => m.variables(db),
             ScopeKind::MethodProt(m) => m.variables(db),
             ScopeKind::Program(p) => p.variables(db),
@@ -173,10 +161,7 @@ impl<'db> Scope<'db> {
         use crate::hir_def::pous::pragma;
         match self.kind {
             ScopeKind::Program(p) => pragma::is_test(db, p.pragmas(db)),
-            ScopeKind::Pou(pou) => match pou {
-                Pou::Function(f) => pragma::is_test(db, f.pragmas(db)),
-                _ => false,
-            },
+            ScopeKind::Pou(Pou::Function(f)) => pragma::is_test(db, f.pragmas(db)),
             _ => false,
         }
     }

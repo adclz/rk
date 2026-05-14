@@ -23,11 +23,7 @@ pub(crate) fn transitive_closure(root_idx: u32) -> Vec<u32> {
     use rustc_hash::FxHashSet;
     let mut seen = FxHashSet::default();
     let mut order = Vec::new();
-    fn walk(
-        idx: u32,
-        seen: &mut rustc_hash::FxHashSet<u32>,
-        order: &mut Vec<u32>,
-    ) {
+    fn walk(idx: u32, seen: &mut rustc_hash::FxHashSet<u32>, order: &mut Vec<u32>) {
         if !seen.insert(idx) {
             return;
         }
@@ -72,10 +68,26 @@ mod tests {
     fn every_iec_math_name_resolves() {
         // build.rs compiled the bundle and emitted a phf entry for every export.
         for name in [
-            "f32.sin", "f32.cos", "f32.tan", "f32.asin", "f32.acos", "f32.atan",
-            "f32.atan2", "f32.exp", "f32.ln", "f32.log",
-            "f64.sin", "f64.cos", "f64.tan", "f64.asin", "f64.acos", "f64.atan",
-            "f64.atan2", "f64.exp", "f64.ln", "f64.log",
+            "f32.sin",
+            "f32.cos",
+            "f32.tan",
+            "f32.asin",
+            "f32.acos",
+            "f32.atan",
+            "f32.atan2",
+            "f32.exp",
+            "f32.ln",
+            "f32.log",
+            "f64.sin",
+            "f64.cos",
+            "f64.tan",
+            "f64.asin",
+            "f64.acos",
+            "f64.atan",
+            "f64.atan2",
+            "f64.exp",
+            "f64.ln",
+            "f64.log",
         ] {
             assert!(
                 lookup(name).is_some(),
@@ -97,8 +109,8 @@ mod tests {
     #[ignore = "informational - run with --nocapture to see footprint"]
     fn print_closure_sizes() {
         let names = [
-            "f32.sin", "f32.cos", "f32.tan", "f32.exp", "f32.ln",
-            "f64.sin", "f64.cos", "f64.tan", "f64.exp", "f64.ln",
+            "f32.sin", "f32.cos", "f32.tan", "f32.exp", "f32.ln", "f64.sin", "f64.cos", "f64.tan",
+            "f64.exp", "f64.ln",
         ];
         for name in names {
             let root = lookup(name).unwrap();

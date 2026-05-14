@@ -220,35 +220,34 @@ impl<'db> InferenceTable<'db> {
         resolver: Resolver<'db>,
         results: &mut BodyInferenceResult<'db>,
     ) {
-        // Insert for each expression the final resolved type
+        // Insert for each expression the final resolved type. The
+        // inference *does not* use coercion — it just checks that the
+        // Infer type can be resolved to the final concrete type.
         for (expr, target_type) in &self.types {
-            match target_type {
-                // the inference *does not* use coercion, it just checks if the infer type can be resolved to the final type
-                Type::Infer(infer) => {
-                    // check the literal value against the target type directly
-                    // bare literals adapt to the target type; check_as validates the value range
-                    match infer.check_as(db, elem) {
-                        Ok(typ) => {
-                            results.type_of_expr.insert(*expr, Type::Elementary(elem));
-                        }
-                        Err(err) => {
-                            results.errors.push(
-                                TypeError::InferLiteralError {
-                                    expr: *expr,
-                                    source,
-                                    target: final_ty,
-                                    err,
-                                }
-                                .to_diagnostic(db),
-                            );
+            if let Type::Infer(infer) = target_type {
+                // Check the literal value against the target type directly:
+                // bare literals adapt to the target, `check_as` validates
+                // the value range.
+                match infer.check_as(db, elem) {
+                    Ok(typ) => {
+                        results.type_of_expr.insert(*expr, Type::Elementary(elem));
+                    }
+                    Err(err) => {
+                        results.errors.push(
+                            TypeError::InferLiteralError {
+                                expr: *expr,
+                                source,
+                                target: final_ty,
+                                err,
+                            }
+                            .to_diagnostic(db),
+                        );
 
-                            // Necessary: the Infer variant MUST be replaced by Type::Never
-                            results.type_of_expr.insert(*expr, Type::Never);
-                        }
+                        // Necessary: the Infer variant MUST be replaced by Type::Never
+                        results.type_of_expr.insert(*expr, Type::Never);
                     }
                 }
-                _ => (),
-            };
+            }
         }
     }
 }

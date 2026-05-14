@@ -162,11 +162,12 @@ pub fn lint_file(
 
         // DataType-level lints
         if config.is_enabled(empty_type::NAME)
-            && let Pou::DataType(dt) = pou {
-                run_lint(empty_type::NAME, diagnostics, |d| {
-                    empty_type::check(db, *dt, d)
-                });
-            }
+            && let Pou::DataType(dt) = pou
+        {
+            run_lint(empty_type::NAME, diagnostics, |d| {
+                empty_type::check(db, *dt, d)
+            });
+        }
     }
 
     for ns in sema.namespaces.iter() {

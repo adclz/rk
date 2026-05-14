@@ -93,7 +93,7 @@ fn compile_to_wasm_impl(db: &mut RootDatabase, source: &str, check_diagnostics: 
 
     // MIR pipeline: HIR → MIR → WASM
     let mir_module =
-        mir::lower::lower_module::lower_module(db, &sem_idx).expect("MIR lowering failed");
+        mir::lower::lower_module::lower_module(db, sem_idx).expect("MIR lowering failed");
 
     let wasm_module = crate::generate_wasm(db, &mir_module);
     wasm_module.finish()

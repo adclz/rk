@@ -21,7 +21,7 @@ impl<'db> InitInference<'db> {
             let typ = spec.infer(db);
 
             match typ {
-                Type::Elementary(elementary) => match elementary {
+                Type::Elementary(
                     ElementarySpec::Byte
                     | ElementarySpec::Word
                     | ElementarySpec::DWord
@@ -33,11 +33,8 @@ impl<'db> InitInference<'db> {
                     | ElementarySpec::DInt
                     | ElementarySpec::UDInt
                     | ElementarySpec::LInt
-                    | ElementarySpec::ULInt => {}
-                    _ => self
-                        .errors
-                        .push(EnumError::InvalidEnumType { value: spec, typ }.to_diagnostic(db)),
-                },
+                    | ElementarySpec::ULInt,
+                ) => {}
                 _ => self
                     .errors
                     .push(EnumError::InvalidEnumType { value: spec, typ }.to_diagnostic(db)),

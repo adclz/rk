@@ -7,7 +7,7 @@
 use std::time::Instant;
 
 use wasmtime::component::{Component, Linker, Val};
-use wasmtime::{Config, Engine, RRConfig, Store};
+use wasmtime::{Config, Engine, Store};
 use wasmtime_wasi::{WasiCtx, WasiCtxBuilder, WasiView};
 use yansi::Paint;
 
@@ -176,9 +176,7 @@ pub fn run_tests(
                                         Some(Val::String(s)) if s.is_empty() => {
                                             "<no error messsage provided>".to_string()
                                         }
-                                        Some(Val::String(s)) => {
-                                            s.to_owned()
-                                        }
+                                        Some(Val::String(s)) => s.to_owned(),
                                         _ => "<no error messsage provided>".to_string(),
                                     };
                                     TestOutcome::Fail(msg)
@@ -208,13 +206,10 @@ pub fn run_tests(
                         // source chain. Try that first; fall back to
                         // the first line otherwise.
                         Err(e) => {
-                            let msg = if let Some(trap) =
-                                e.downcast_ref::<wasmtime::Trap>()
-                            {
+                            let msg = if let Some(trap) = e.downcast_ref::<wasmtime::Trap>() {
                                 trap.to_string()
                             } else {
-                                let mut src: Option<&dyn std::error::Error> =
-                                    Some(e.as_ref());
+                                let mut src: Option<&dyn std::error::Error> = Some(e.as_ref());
                                 let mut last = String::new();
                                 while let Some(c) = src {
                                     last = c.to_string();

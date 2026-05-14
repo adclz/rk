@@ -203,9 +203,7 @@ fn emit_load(
                         func.instruction(&Instruction::I32Const(*address as i32));
                         func.instruction(&Instruction::I32Load(mem_arg(0, 2)));
                     }
-                    LocalInfo::StringInOutParam {
-                        addr_index, ..
-                    } => {
+                    LocalInfo::StringInOutParam { addr_index, .. } => {
                         // Reading a STRING `VAR_IN_OUT` param from inside
                         // its function body: synthesise (ptr, len) where
                         // ptr = addr+4 and len = *addr.

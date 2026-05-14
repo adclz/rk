@@ -339,10 +339,7 @@ mod tests {
     fn concrete_variants_for_each_any() {
         use ElementarySpec::*;
         let cases: &[(ElementarySpec, &[ElementarySpec])] = &[
-            (
-                AnyInt,
-                &[SInt, USInt, Int, UInt, DInt, UDInt, LInt, ULInt],
-            ),
+            (AnyInt, &[SInt, USInt, Int, UInt, DInt, UDInt, LInt, ULInt]),
             (AnyReal, &[Real, LReal]),
             (AnyBit, &[Bool, Byte, Word, DWord, LWord]),
             (AnySigned, &[SInt, Int, DInt, LInt]),
@@ -360,10 +357,7 @@ mod tests {
                 ],
             ),
             (AnyDuration, &[Time, LTime]),
-            (
-                AnyDate,
-                &[Date, LDate, DateAndTime, LDateTime, Tod, LTod],
-            ),
+            (AnyDate, &[Date, LDate, DateAndTime, LDateTime, Tod, LTod]),
         ];
 
         for (any, expected) in cases {
@@ -404,7 +398,10 @@ mod tests {
         let any = Any.concrete_variants();
         let any_elem = AnyElementary.concrete_variants();
         for representative in [Int, Real, Bool, Time, Date, String] {
-            assert!(any.contains(&representative), "Any missing {representative:?}");
+            assert!(
+                any.contains(&representative),
+                "Any missing {representative:?}"
+            );
             assert!(
                 any_elem.contains(&representative),
                 "AnyElementary missing {representative:?}"

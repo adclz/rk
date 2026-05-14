@@ -192,8 +192,12 @@ impl<'db> ErrorCode for TypeError<'db> {
             | Self::WrongNumberOfGenericArgs { .. }
             | Self::TypeArgDoesNotMatchBound { .. } => "generic type arguments",
             Self::PreprocessIdentNotFound { .. } => "preprocess condition: unknown identifier",
-            Self::PreprocessIdentNotGeneric { .. } => "preprocess condition: identifier is not generic",
-            Self::PreprocessTypeNotInBound { .. } => "preprocess condition: type not in generic bound",
+            Self::PreprocessIdentNotGeneric { .. } => {
+                "preprocess condition: identifier is not generic"
+            }
+            Self::PreprocessTypeNotInBound { .. } => {
+                "preprocess condition: type not in generic bound"
+            }
             Self::WasmUnresolvedGeneric { .. } => "wasm pragma: generic parameter is not pinned",
             _ => "type mismatch",
         }
@@ -415,9 +419,7 @@ impl<'db> ToIdeDiagnostic<'db> for TypeError<'db> {
                     ..
                 } = err
                 {
-                    diag.with_note(
-                        format!("valid range for {type_name}: {min} to {max}").into(),
-                    );
+                    diag.with_note(format!("valid range for {type_name}: {min} to {max}"));
                 }
 
                 target.with_location(db, &mut diag);
@@ -545,11 +547,7 @@ impl<'db> ToIdeDiagnostic<'db> for TypeError<'db> {
                 .desc(self)
                 .range(spec.get_span(db))
                 .call(),
-            Self::WasmUnresolvedGeneric {
-                param,
-                bound,
-                site,
-            } => {
+            Self::WasmUnresolvedGeneric { param, bound, site } => {
                 let mut diag = diag()
                     .message(format!(
                         "'{}' is bound by '{}' and not pinned by the enclosing '{{#if}}' chain",
@@ -564,8 +562,7 @@ impl<'db> ToIdeDiagnostic<'db> for TypeError<'db> {
                     format!(
                         "wasm pragmas need a concrete type; add a '{{#if {} is …}}' branch",
                         param,
-                    )
-                    .into(),
+                    ),
                 );
                 diag
             }
@@ -628,7 +625,10 @@ pub enum InferLiteralError {
 
     Invalid_STRING_Literal,
     Invalid_CHAR_Length(usize),
-    Invalid_STRING_Length { max: u64, got: usize },
+    Invalid_STRING_Length {
+        max: u64,
+        got: usize,
+    },
 
     // Inner
     ExpectedNumber,

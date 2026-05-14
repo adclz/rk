@@ -1,4 +1,3 @@
-use auto_lsp::default::db::BaseDatabase;
 use db::RootDatabase;
 use hir::hir_ty::index_graphs::{discover_all_tests, find_test};
 use insta::assert_snapshot;

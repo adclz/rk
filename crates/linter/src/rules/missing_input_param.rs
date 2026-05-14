@@ -3,7 +3,10 @@ use db::WorkspaceDataBase;
 use hir::{
     HasName, HirNodeInfo,
     hir_def::{expressions::expression::FuncCall, pous::variable::VariableKind},
-    hir_ty::{body::BodyInferenceResult, ty::{CallableType, Type}},
+    hir_ty::{
+        body::BodyInferenceResult,
+        ty::{CallableType, Type},
+    },
 };
 use ide_diagnostic::{ErrorCode, IdeDiagnostic, Related, diag};
 

@@ -20,7 +20,7 @@ use time::{Date, Duration, PrimitiveDateTime, Time, macros::format_description};
 
 impl<'db> Elementary {
     pub fn check(&self, db: &'db dyn WorkspaceDataBase) -> Result<(), InferLiteralError> {
-    match self {
+        match self {
             Elementary::Date(dt) => dt.as_date_days_i32(db).map(|_| ()),
             Elementary::LDate(dt) => dt.as_ldate_days_i64(db).map(|_| ()),
             Elementary::TimeOfDay(tod) => tod.as_tod_ms_i32(db).map(|_| ()),
@@ -432,8 +432,7 @@ impl Ident {
             .as_tod(db)
             .map_err(|e| InferLiteralError::Invalid_TOD_Format(e.to_string()))?;
         let (h, m, s, ns) = t.as_hms_nano();
-        let ms = (h as i64 * 3600 + m as i64 * 60 + s as i64) * 1000
-            + (ns as i64 / 1_000_000);
+        let ms = (h as i64 * 3600 + m as i64 * 60 + s as i64) * 1000 + (ns as i64 / 1_000_000);
         Ok(ms as i32)
     }
 

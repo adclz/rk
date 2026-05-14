@@ -29,9 +29,10 @@ pub fn check_node<'db>(
     diagnostics: &mut Vec<IdeDiagnostic>,
 ) {
     if let ExprKind::UnaryOperator {
-            expr: inner,
-            operator: UnaryOperatorKind::Not,
-        } = expr.expr(db) {
+        expr: inner,
+        operator: UnaryOperatorKind::Not,
+    } = expr.expr(db)
+    {
         // Check NOT (comparison) or NOT comparison
         if let Some((op, lhs, rhs)) = unwrap_comparison(db, inner) {
             let inv = invert(op);

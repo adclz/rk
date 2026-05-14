@@ -94,7 +94,7 @@ pub struct Ident {
     pub text: CompactString,
 }
 
-impl<'db> Ident {
+impl Ident {
     pub fn from_node(
         db: &dyn WorkspaceDataBase,
         file: File,

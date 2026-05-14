@@ -521,7 +521,7 @@ impl<'db> PrimaryExpr<'db> {
     }
 }
 
-impl<'db> Integer {
+impl Integer {
     pub fn to_string(&self, db: &dyn WorkspaceDataBase) -> String {
         match self.kind(db) {
             IntegerKind::Binary => format!("[Binary] {}", self.ident(db).text(db)),

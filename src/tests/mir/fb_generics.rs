@@ -1,6 +1,5 @@
 use auto_lsp::default::db::BaseDatabase;
 use db::RootDatabase;
-use hir::hir_def::semantic_index::semantic_index;
 use hir::hir_ty::body::infer_body;
 use hir::{HasName, HirNodeInfo};
 use insta::assert_snapshot;
