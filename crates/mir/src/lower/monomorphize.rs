@@ -491,7 +491,13 @@ pub fn monomorphize<'db>(
         .map(|info| qualified_pou_ident(db, hir::hir_ty::ty::Type::Function(info.func)))
         .collect();
 
-    // Phase 1: Discover which concrete types are actually used at call sites
+    // Phase 1: Discover which concrete types are actually used at call sites.
+    //
+    // This walks the *currently-existing* functions in the module.
+    // Generic functions (with ANY params) were already skipped by
+    // `lower_module`, so we only see concrete callers (tests, etc.).
+    // Generated monomorphizations may introduce new needs — those get
+    // picked up by the worklist loop below, not here.
     let mut needed_instantiations: FxHashMap<Ident, FxHashSet<ElementarySpec>> =
         FxHashMap::default();
 
@@ -499,10 +505,31 @@ pub fn monomorphize<'db>(
         discover_calls_in_stmts(&func.body, &any_func_names, &mut needed_instantiations);
     }
 
-    // Phase 2: Generate monomorphized copies
-    // Maps (original_name, concrete_type) → (monomorphized_name, fn_index)
+    // Phase 2: Generate monomorphized copies — iteratively, until no new
+    // `(any_func, concrete_type)` pairs surface.
+    //
+    // Why iterate: a monomorphized function's body can call *another*
+    // ANY function with a concrete type that phase 1 never saw, because
+    // phase 1 only knew about non-generic callers. The poster child
+    // is `Std.Unit.ASSERT_EQ.BYTE`, whose body calls
+    // `Std.Convert.ANY_TO_STRING(value:BYTE)`. Before the loop existed,
+    // we'd generate `ASSERT_EQ.BYTE` (because something asserted BYTEs)
+    // but not `ANY_TO_STRING.BYTE` (nobody called it with BYTE at
+    // module-top-level), and phase 3 couldn't rewrite the call.
+    //
+    // The loop:
+    //   1. Generate every `(func, spec)` pair present in
+    //      `needed_instantiations` that isn't already in
+    //      `generated_variants`.
+    //   2. Scan the newly-pushed bodies for ANY calls and merge their
+    //      needs back into `needed_instantiations`.
+    //   3. Stop when an iteration produces zero new pairs.
     let mut mono_indices: FxHashMap<(Ident, MirElementary), (Ident, u32)> = FxHashMap::default();
     let mut next_fn_idx = module.functions.len() as u32 + module.extern_functions.len() as u32;
+    let mut generated_variants: FxHashSet<(Ident, ElementarySpec)> = FxHashSet::default();
+
+    loop {
+    let funcs_at_iter_start = module.functions.len();
 
     for info in any_functions {
         // Use the qualified name as the canonical MIR identifier so
@@ -519,6 +546,13 @@ pub fn monomorphize<'db>(
             .unwrap_or_else(|| concrete_types_for_any(info.any_spec).to_vec());
 
         for concrete_spec in &concrete_types {
+            // Skip variants we already generated in a previous worklist
+            // iteration. Without this guard, each iteration would re-emit
+            // every variant and push duplicate functions into the module.
+            if !generated_variants.insert((func_name, *concrete_spec)) {
+                continue;
+            }
+
             let mir_elem = match elementary_spec_to_mir(*concrete_spec) {
                 Ok(e) => e,
                 Err(_) => continue,
@@ -600,14 +634,29 @@ pub fn monomorphize<'db>(
                     result: Some(result_name),
                 }];
 
+                // Allocate the return-slot storage. Scalars go into a
+                // wasm local, STRING/composite into memory. The wasm
+                // local-index for a scalar slot must reflect total
+                // wasm-slot width (STRING params count as 2), not
+                // logical param count — `param_wasm_width` knows the
+                // rule.
+                let mut next_local_idx: u32 = params
+                    .iter()
+                    .map(|p| crate::lower::lower_func::param_wasm_width(&p.ty, p.kind))
+                    .sum();
+                let storage = crate::lower::lower_func::allocate_local_storage(
+                    result_name,
+                    &concrete_mir,
+                    /* is_address_taken = */ false,
+                    &mut next_local_idx,
+                    &mut module.memory_layout,
+                );
                 let locals = vec![MirLocal {
                     name: result_name,
                     ty: concrete_mir.clone(),
                     init: None,
                     kind: MirLocalKind::Var,
-                    storage: MirStorage::Scalar {
-                        local_index: params.len() as u32,
-                    },
+                    storage,
                 }];
 
                 module.functions.push(MirFunction {
@@ -699,6 +748,21 @@ pub fn monomorphize<'db>(
         }
     }
 
+        // Did this iteration push any new functions? If not, fixed
+        // point reached.
+        if module.functions.len() == funcs_at_iter_start {
+            break;
+        }
+
+        // Walk the newly-generated bodies and merge any newly-discovered
+        // ANY-call needs back into `needed_instantiations`. Next loop
+        // iteration will see them and generate the corresponding
+        // monomorphizations.
+        for func in &module.functions[funcs_at_iter_start..] {
+            discover_calls_in_stmts(&func.body, &any_func_names, &mut needed_instantiations);
+        }
+    }
+
     // Phase 3: Rewrite call sites in all functions
     for func in &mut module.functions {
         rewrite_calls_in_stmts(&mut func.body, &any_func_names, &mono_indices);
@@ -729,12 +793,13 @@ fn lower_monomorphized_local<'db>(
 
         match var.kind(db) {
             VariableKind::Input => {
-                params.push(MirParam {
+                let param = MirParam {
                     name: var.name(db),
                     ty,
                     kind: MirParamKind::Input,
-                });
-                next_local_idx += 1;
+                };
+                next_local_idx += super::lower_func::param_wasm_width(&param.ty, param.kind);
+                params.push(param);
             }
             VariableKind::InOut | VariableKind::Output => {
                 let kind = if var.kind(db) == VariableKind::InOut {
@@ -742,30 +807,22 @@ fn lower_monomorphized_local<'db>(
                 } else {
                     MirParamKind::Output
                 };
-                params.push(MirParam {
+                let param = MirParam {
                     name: var.name(db),
                     ty: MirType::Pointer(Box::new(ty)),
                     kind,
-                });
-                next_local_idx += 1;
+                };
+                next_local_idx += super::lower_func::param_wasm_width(&param.ty, param.kind);
+                params.push(param);
             }
             VariableKind::Var | VariableKind::Temp => {
-                let storage = if ty.is_scalar() {
-                    let idx = next_local_idx;
-                    next_local_idx += 1;
-                    MirStorage::Scalar { local_index: idx }
-                } else {
-                    let size = ty.size_bytes();
-                    let align = ty.alignment();
-                    let address =
-                        memory_layout.allocate(var.name(db), size, align, MirAllocKind::Variable);
-                    MirStorage::Memory {
-                        address,
-                        size,
-                        align,
-                    }
-                };
-
+                let storage = super::lower_func::allocate_local_storage(
+                    var.name(db),
+                    &ty,
+                    /* is_address_taken = */ false,
+                    &mut next_local_idx,
+                    memory_layout,
+                );
                 locals.push(MirLocal {
                     name: var.name(db),
                     ty,
@@ -787,16 +844,20 @@ fn lower_monomorphized_local<'db>(
         .transpose()?;
 
     if let Some(ref ret_ty) = return_type {
+        let storage = super::lower_func::allocate_local_storage(
+            func.name(db),
+            ret_ty,
+            /* is_address_taken = */ false,
+            &mut next_local_idx,
+            memory_layout,
+        );
         locals.push(MirLocal {
             name: func.name(db),
             ty: ret_ty.clone(),
             init: None,
             kind: MirLocalKind::Var,
-            storage: MirStorage::Scalar {
-                local_index: next_local_idx,
-            },
+            storage,
         });
-        next_local_idx += 1;
     }
 
     // Resolve `{#if}` arms against this concrete type, then lower the

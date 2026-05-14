@@ -58,16 +58,22 @@ pub fn lower_function<'db>(
 
     // 1. Build parameters (Input, InOut, Output)
     // VAR_OUTPUT is passed as a pointer at the WASM level - the function writes through it.
+    //
+    // `next_local_idx` advances by the number of wasm-local slots each
+    // param actually consumes (see `param_wasm_width`) — STRING params
+    // flatten to two i32s, not one, and getting this wrong silently
+    // aliases the param's second slot with later Var locals.
     for var in func.variables(db) {
         match var.kind(db) {
             VariableKind::Input => {
                 let ty = lower_var_type(db, *var)?;
-                params.push(MirParam {
+                let param = MirParam {
                     name: var.name(db),
                     ty: ty.clone(),
                     kind: MirParamKind::Input,
-                });
-                next_local_idx += 1;
+                };
+                next_local_idx += param_wasm_width(&param.ty, param.kind);
+                params.push(param);
             }
             VariableKind::InOut | VariableKind::Output => {
                 let ty = lower_var_type(db, *var)?;
@@ -76,12 +82,13 @@ pub fn lower_function<'db>(
                 } else {
                     MirParamKind::Output
                 };
-                params.push(MirParam {
+                let param = MirParam {
                     name: var.name(db),
                     ty: MirType::Pointer(Box::new(ty)),
                     kind,
-                });
-                next_local_idx += 1;
+                };
+                next_local_idx += param_wasm_width(&param.ty, param.kind);
+                params.push(param);
             }
             _ => {}
         }
@@ -99,7 +106,7 @@ pub fn lower_function<'db>(
     // The return slot, named after the function: scalars in a wasm local,
     // STRING and aggregates in linear memory.
     if let Some(ref ret_ty) = return_type {
-        let storage = compute_storage(func.name(db), ret_ty, false, &mut next_local_idx, memory_layout);
+        let storage = allocate_local_storage(func.name(db), ret_ty, false, &mut next_local_idx, memory_layout);
         locals.push(MirLocal {
             name: func.name(db),
             ty: ret_ty.clone(),
@@ -117,7 +124,7 @@ pub fn lower_function<'db>(
         }
 
         let ty = lower_var_type_with_mangling(db, *var, fb_subs, fb_mangling)?;
-        let storage = compute_storage(
+        let storage = allocate_local_storage(
             var.name(db),
             &ty,
             address_taken.contains(&var.name(db)),
@@ -253,25 +260,27 @@ pub fn lower_function_block<'db>(
             match var.kind(db) {
                 VariableKind::Input => {
                     let ty = lower_var_type(db, *var)?;
-                    params.push(MirParam {
+                    let param = MirParam {
                         name: var.name(db),
                         ty,
                         kind: MirParamKind::Input,
-                    });
-                    next_local_idx += 1;
+                    };
+                    next_local_idx += param_wasm_width(&param.ty, param.kind);
+                    params.push(param);
                 }
                 VariableKind::InOut => {
                     let ty = lower_var_type(db, *var)?;
-                    params.push(MirParam {
+                    let param = MirParam {
                         name: var.name(db),
                         ty: MirType::Pointer(Box::new(ty)),
                         kind: MirParamKind::InOut,
-                    });
-                    next_local_idx += 1;
+                    };
+                    next_local_idx += param_wasm_width(&param.ty, param.kind);
+                    params.push(param);
                 }
                 _ => {
                     let ty = lower_var_type(db, *var)?;
-                    let storage = compute_storage(
+                    let storage = allocate_local_storage(
                         var.name(db),
                         &ty,
                         false,
@@ -299,7 +308,7 @@ pub fn lower_function_block<'db>(
 
         // The return slot (scalar → wasm local, else linear memory).
         if let Some(ref ret_ty) = return_type {
-            let storage = compute_storage(method.name(db), ret_ty, false, &mut next_local_idx, memory_layout);
+            let storage = allocate_local_storage(method.name(db), ret_ty, false, &mut next_local_idx, memory_layout);
             locals.push(MirLocal {
                 name: method.name(db),
                 ty: ret_ty.clone(),
@@ -359,7 +368,7 @@ pub fn lower_function_block<'db>(
         for var in fb.variables(db) {
             if var.kind(db) == VariableKind::Temp {
                 let ty = lower_var_type(db, *var)?;
-                let storage = compute_storage(
+                let storage = allocate_local_storage(
                     var.name(db),
                     &ty,
                     address_taken.contains(&var.name(db)),
@@ -474,25 +483,27 @@ pub fn lower_class<'db>(
             match var.kind(db) {
                 VariableKind::Input => {
                     let ty = lower_var_type(db, *var)?;
-                    params.push(MirParam {
+                    let param = MirParam {
                         name: var.name(db),
                         ty,
                         kind: MirParamKind::Input,
-                    });
-                    next_local_idx += 1;
+                    };
+                    next_local_idx += param_wasm_width(&param.ty, param.kind);
+                    params.push(param);
                 }
                 VariableKind::InOut => {
                     let ty = lower_var_type(db, *var)?;
-                    params.push(MirParam {
+                    let param = MirParam {
                         name: var.name(db),
                         ty: MirType::Pointer(Box::new(ty)),
                         kind: MirParamKind::InOut,
-                    });
-                    next_local_idx += 1;
+                    };
+                    next_local_idx += param_wasm_width(&param.ty, param.kind);
+                    params.push(param);
                 }
                 _ => {
                     let ty = lower_var_type(db, *var)?;
-                    let storage = compute_storage(
+                    let storage = allocate_local_storage(
                         var.name(db),
                         &ty,
                         false,
@@ -520,7 +531,7 @@ pub fn lower_class<'db>(
 
         // Return local: scalar → WASM local, non-scalar → linear memory.
         if let Some(ref ret_ty) = return_type {
-            let storage = compute_storage(method.name(db), ret_ty, false, &mut next_local_idx, memory_layout);
+            let storage = allocate_local_storage(method.name(db), ret_ty, false, &mut next_local_idx, memory_layout);
             locals.push(MirLocal {
                 name: method.name(db),
                 ty: ret_ty.clone(),
@@ -576,7 +587,7 @@ pub fn lower_program<'db>(
 
     for var in program.variables(db) {
         let ty = lower_var_type(db, *var)?;
-        let storage = compute_storage(var.name(db), &ty, false, &mut next_local_idx, memory_layout);
+        let storage = allocate_local_storage(var.name(db), &ty, false, &mut next_local_idx, memory_layout);
         locals.push(MirLocal {
             name: var.name(db),
             ty,
@@ -602,8 +613,47 @@ pub fn lower_program<'db>(
     })
 }
 
-/// Determine storage for a variable (WASM local vs linear memory).
-fn compute_storage(
+/// Number of wasm i32 locals a parameter of the given (lowered) type
+/// and kind consumes when flattened to the wasm function signature.
+///
+/// This needs to match the layout that `build_local_map` in
+/// `wasm_codegen/src/lib.rs` produces, because lowering uses the
+/// returned width to advance the wasm-local index counter that
+/// downstream Var/return-slot allocation reads. Get this wrong and
+/// scalar locals end up assigned to wasm-local indices that alias the
+/// STRING param's `(ptr, len)` slots — a silent corruption the wasm
+/// validator can't catch (everything is i32). See
+/// `crates/wasm_codegen/src/tests/string_audit.rs::known_bug_string_param_clobbered_by_scalar_var`
+/// for the regression test.
+///
+/// Rules:
+/// - `VAR_INPUT STRING` → 2 slots `(ptr, len)`
+/// - `VAR_IN_OUT STRING` / `VAR_OUTPUT STRING` (`MirType::Pointer(STRING)`)
+///    → 2 slots `(addr, cap)`
+/// - everything else (scalars, pointers to scalars, struct refs) → 1 slot
+pub fn param_wasm_width(ty: &MirType, kind: MirParamKind) -> u32 {
+    match (kind, ty) {
+        (MirParamKind::Input, MirType::String { .. }) => 2,
+        (MirParamKind::InOut | MirParamKind::Output, MirType::Pointer(inner))
+            if matches!(inner.as_ref(), MirType::String { .. }) =>
+        {
+            2
+        }
+        _ => 1,
+    }
+}
+
+/// Allocate storage for a variable, picking wasm-local (for scalar
+/// types that aren't address-taken) or linear-memory layout
+/// (everything else, including STRING and any composite type).
+///
+/// The shared form of what used to be open-coded in every MIR
+/// lowering path — `lower_function`, `lower_function_block`,
+/// `lower_wasm_intrinsic`, and the various branches in `monomorphize`.
+/// Each had its own variant; three of them got the type-based
+/// decision wrong for STRING returns at some point in the past, which
+/// is why this lives in one place now.
+pub fn allocate_local_storage(
     name: Ident,
     ty: &MirType,
     is_address_taken: bool,

@@ -93,6 +93,14 @@ pub enum MirStmt {
         trap_id: u32,
         location: MirSourceLocation,
     },
+
+    /// Throws a wasm-level exception carrying a STRING payload. Lowers
+    /// to push `(ptr, len)` from the message expression onto the stack,
+    /// then `throw $rk_exception`. The host catches it at the wasm
+    /// boundary; there is no in-language catch (no `__TRY`).
+    Raise {
+        message: MirExpr,
+    },
 }
 
 #[derive(Debug, Clone)]

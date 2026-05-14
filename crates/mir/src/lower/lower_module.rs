@@ -218,11 +218,8 @@ fn lower_module_from_pous<'db>(
                     continue;
                 }
 
-                // Skip stub functions (no body, no extern pragma)
-                if func.statements(db).is_empty() {
-                    continue;
-                }
-
+                // An empty body is a valid no-op stub and still lowers, so call sites
+                // resolve.
                 let mut mir_func = lower_function(
                     db,
                     *func,
@@ -617,6 +614,7 @@ pub fn lower_wasm_intrinsic<'db>(
     let mut params = Vec::new();
     let mut param_name = None;
     let mut param_elem = None;
+    let mut input_count: u32 = 0;
     for var in func.variables(db) {
         match var.kind(db) {
             VariableKind::Input => {
@@ -625,6 +623,7 @@ pub fn lower_wasm_intrinsic<'db>(
                     param_elem = Some(*e);
                 }
                 param_name = Some(var.name(db));
+                input_count += 1;
                 params.push(MirParam {
                     name: var.name(db),
                     ty,
@@ -662,29 +661,24 @@ pub fn lower_wasm_intrinsic<'db>(
     // variable. STRING returns require Memory storage so the codegen can
     // allocate the embedded buffer and producer builtins can write
     // directly into it; everything else uses a WASM-local scalar.
+    //
+    // The wasm-local index for a scalar return slot is the total number
+    // of wasm slots the params consume, **not** `params.len()`: a STRING
+    // input flattens to two slots. Using `params.len()` would alias the
+    // return slot with the second slot of a STRING param.
     let mut locals = Vec::new();
-    let return_local_idx = params.len() as u32; // after all params
+    let mut next_local_idx: u32 = params
+        .iter()
+        .map(|p| crate::lower::lower_func::param_wasm_width(&p.ty, p.kind))
+        .sum();
     if let Some(ref ret_ty) = return_type {
-        let storage = match ret_ty {
-            MirType::String { .. } => {
-                let size = ret_ty.size_bytes();
-                let align = ret_ty.alignment();
-                let address = memory_layout.allocate(
-                    func.name(db),
-                    size,
-                    align,
-                    crate::memory::MirAllocKind::Variable,
-                );
-                MirStorage::Memory {
-                    address,
-                    size,
-                    align,
-                }
-            }
-            _ => MirStorage::Scalar {
-                local_index: return_local_idx,
-            },
-        };
+        let storage = crate::lower::lower_func::allocate_local_storage(
+            func.name(db),
+            ret_ty,
+            /* is_address_taken = */ false,
+            &mut next_local_idx,
+            memory_layout,
+        );
         locals.push(crate::function::MirLocal {
             name: func.name(db),
             ty: ret_ty.clone(),
@@ -706,7 +700,14 @@ pub fn lower_wasm_intrinsic<'db>(
     //    a `wasm_builtins` function) or matched in `emit_wasm_instruction`.
     //    Used by the new string-inspection helpers (`str_byte_len`,
     //    `str_char_count`, etc.) where the cast machinery doesn't apply.
-    let body = if let (Some(p_name), Some(from), Some(to)) = (param_name, param_elem, return_elem)
+    //
+    // The single-input gate (`input_count == 1`) matters: the loop above
+    // overwrites `param_name`/`param_elem` on each iteration, so without
+    // it a multi-input pragma like `{wasm 'rk.div_i32_checked'
+    // (params a b) (result r)}` would silently fall into the Cast branch
+    // and emit `r := b`, dropping `a` and the builtin call entirely.
+    let body = if input_count == 1
+        && let (Some(p_name), Some(from), Some(to)) = (param_name, param_elem, return_elem)
     {
         let load = MirExpr::Load(MirPlace::Local(p_name), MirType::Elementary(from));
         let cast_expr = if from == to {
@@ -859,6 +860,7 @@ fn rebase_string_offsets(stmts: &mut [crate::stmt::MirStmt], base: u32) {
                     rebase_string_offsets(else_body, base);
                 }
             }
+            MirStmt::Raise { message } => rebase_expr(message, base),
             _ => {}
         }
     }

@@ -334,6 +334,11 @@ fn lower_stmt<'db>(
 
         StmtKind::Continue => Ok(Some(MirStmt::Continue)),
 
+        StmtKind::Raise { message } => {
+            let mir_msg = ctx.lower_expr(*message)?;
+            Ok(Some(MirStmt::Raise { message: mir_msg }))
+        }
+
         StmtKind::ExternPragma(_) => Ok(None), // No MIR equivalent
         StmtKind::WasmPragma(_) => Ok(None),   // Handled at function level, not statement level
         StmtKind::PreprocessIf { .. } => Ok(None), // Resolved at monomorphization, not lowered as a statement
