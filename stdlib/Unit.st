@@ -4,16 +4,8 @@
 Helper functions for writing test assertions in Structured Text.
 */
 NAMESPACE Std.Unit
-
-	/*  The 'assert:fail' function is provided by the test runtime.
-	
-	Running the test binary without the correct runtime will fail at dynamic binding */
- 	FUNCTION PRIVATE __ASSERT_FAIL
-		VAR_INPUT
-			message: STRING;
-		END_VAR
-		{extern 'assert' 'fail' (params message)}
-	END_FUNCTION
+	USING Std.Strings;
+	USING Std.Convert;
 
 	FUNCTION ASSERT
 		VAR_INPUT
@@ -21,8 +13,19 @@ NAMESPACE Std.Unit
 			message: STRING := '';
 		END_VAR
 
+		VAR
+			final_message: STRING;
+		END_VAR
+
 		IF NOT value THEN
-			__ASSERT_FAIL(message);
+			IF LEN(message) = 0 THEN
+				final_message := "assertion failed: ";
+				final_message := CONCAT(final_message, ANY_TO_STRING(value));
+				final_message := CONCAT(final_message, "is not true");
+				__RAISE(final_message);
+			ELSE
+				__RAISE(CONCAT("assertion failed: ", message));
+			END_IF
 		END_IF;
 
 	END_FUNCTION
@@ -34,8 +37,20 @@ NAMESPACE Std.Unit
 			message: STRING := '';
 		END_VAR
 
+		VAR 
+			final_message: STRING;
+		END_VAR
+
 		IF value <> target THEN
-			__ASSERT_FAIL(message);
+			IF LEN(message) = 0 THEN
+				final_message := "assertion failed: ";
+				final_message := CONCAT(final_message, ANY_TO_STRING(value));
+				final_message := CONCAT(final_message, " is not equal to ");
+				final_message := CONCAT(final_message, ANY_TO_STRING(target));
+				__RAISE(final_message);
+			ELSE
+				__RAISE(CONCAT("assertion failed: ", message));
+			END_IF
 		END_IF;
 
 	END_FUNCTION
@@ -47,8 +62,20 @@ NAMESPACE Std.Unit
 			message: STRING := '';
 		END_VAR
 
+		VAR 
+			final_message: STRING;
+		END_VAR
+
 		IF value = target THEN
-			__ASSERT_FAIL(message);
+			IF LEN(message) = 0 THEN
+				final_message := "assertion failed: ";
+				final_message := CONCAT(final_message, ANY_TO_STRING(value));
+				final_message := CONCAT(final_message, "is different than ");
+				final_message := CONCAT(final_message, ANY_TO_STRING(target));
+				__RAISE(final_message);
+			ELSE
+				__RAISE(CONCAT("assertion failed: ", message));
+			END_IF
 		END_IF;
 
 	END_FUNCTION
