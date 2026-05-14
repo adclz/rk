@@ -6,8 +6,8 @@
 
 use std::time::Instant;
 
-use wasmtime::component::{Component, Linker};
-use wasmtime::{Config, Engine, Store};
+use wasmtime::component::{Component, Linker, Val};
+use wasmtime::{Config, Engine, RRConfig, Store};
 use wasmtime_wasi::{WasiCtx, WasiCtxBuilder, WasiView};
 use yansi::Paint;
 
@@ -62,30 +62,17 @@ fn discover_tests(workspace: &std::path::Path) -> Vec<(String, String)> {
     }
 }
 
-/// Build a component linker with WASI + IEC host imports.
+/// Build a component linker with WASI imports.
+///
+/// `{test}` functions are codegen-wrapped in a wasm-level `try_table`
+/// that catches `$rk_exception` and surfaces the message as a typed
+/// `result<unit, string>` Err - no host import is needed for assertion
+/// capture; the canonical-ABI lift handles the payload.
 fn build_linker(engine: &Engine) -> WasmResult<Linker<HostState>> {
     let mut linker = Linker::new(engine);
 
-    // WASI p2 — provides clocks, filesystem, etc.
+    // WASI p2 - provides clocks, filesystem, etc.
     wasmtime_wasi::p2::add_to_linker_sync(&mut linker)?;
-
-    // Assert — the component advertises a proper `string` param; the canonical
-    // ABI lowers (ptr, len) from guest memory into a host String for us.
-    linker.root().func_wrap(
-        "assert-fail",
-        |_store: wasmtime::StoreContextMut<'_, HostState>,
-         (msg,): (String,)|
-         -> WasmResult<()> {
-            if msg.is_empty() {
-                Err(wasmtime::Error::msg("assertion failed"))
-            } else {
-                Err(wasmtime::Error::msg(format!(
-                    "assertion failed: {}",
-                    msg
-                )))
-            }
-        },
-    )?;
 
     Ok(linker)
 }
@@ -110,6 +97,8 @@ pub fn run_tests(
 ) -> usize {
     let mut config = Config::new();
     config.wasm_component_model(true);
+    config.wasm_exceptions(true);
+
     let engine = Engine::new(&config).expect("Failed to create engine");
 
     let component = match Component::from_file(&engine, wasm_path) {
@@ -168,34 +157,83 @@ pub fn run_tests(
             Err(e) => TestOutcome::Fail(format!("instantiation failed: {}", e)),
             Ok(instance) => match instance.get_func(&mut store, &kebab_name) {
                 None => TestOutcome::Fail(format!("export '{}' not found", kebab_name)),
-                Some(func) => match func.call(&mut store, &[], &mut []) {
-                    Ok(()) => {
-                        if let Err(e) = func.post_return(&mut store) {
-                            TestOutcome::Fail(format!("post_return: {}", e))
-                        } else {
-                            TestOutcome::Pass
-                        }
-                    }
-                    Err(e) => {
-                        let mut reason = None;
-                        let mut source: Option<&dyn std::error::Error> = Some(&*e);
-                        while let Some(err) = source {
-                            let msg = err.to_string();
-                            if msg.starts_with("assertion failed") {
-                                reason = Some(msg);
-                                break;
+                Some(func) => {
+                    // `{test}` functions are typed at the component
+                    // boundary as `() -> result<unit, string>`. The
+                    // canonical-ABI lift reads the 12-byte result area
+                    // we wrote in the core function, hands us a typed
+                    // `Val::Result`:
+                    //   - Ok variant  → test passed
+                    //   - Err variant (carrying a string) → assertion
+                    //     message; surface it as the failure reason.
+                    let mut results = [Val::Bool(false)]; // placeholder
+                    match func.call(&mut store, &[], &mut results) {
+                        Ok(()) => {
+                            let outcome = match &results[0] {
+                                Val::Result(Ok(_)) => TestOutcome::Pass,
+                                Val::Result(Err(payload)) => {
+                                    let msg = match payload.as_deref() {
+                                        Some(Val::String(s)) if s.is_empty() => {
+                                            "<no error messsage provided>".to_string()
+                                        }
+                                        Some(Val::String(s)) => {
+                                            s.to_owned()
+                                        }
+                                        _ => "<no error messsage provided>".to_string(),
+                                    };
+                                    TestOutcome::Fail(msg)
+                                }
+                                other => TestOutcome::Fail(format!(
+                                    "unexpected test return shape: {:?}",
+                                    other
+                                )),
+                            };
+                            if let Err(e) = func.post_return(&mut store) {
+                                TestOutcome::Fail(format!("post_return: {}", e))
+                            } else {
+                                outcome
                             }
-                            source = err.source();
                         }
-                        TestOutcome::Fail(reason.unwrap_or_else(|| {
-                            e.to_string()
-                                .lines()
-                                .next()
-                                .unwrap_or("unknown error")
-                                .to_string()
-                        }))
+                        // A trap or other non-typed failure - `__RAISE`
+                        // is caught inside the test wrapper, so reaching
+                        // here means an actual wasm trap (e.g. divide
+                        // by zero, OOB) or a wasmtime-level error.
+                        //
+                        // Wasmtime's `Error::to_string` returns just the
+                        // top-level "error while executing at wasm
+                        // backtrace:" prefix; the actual trap kind
+                        // (`integer divide by zero`, `out of bounds
+                        // memory access`, etc.) lives on the
+                        // downcastable `wasmtime::Trap` carried in the
+                        // source chain. Try that first; fall back to
+                        // the first line otherwise.
+                        Err(e) => {
+                            let msg = if let Some(trap) =
+                                e.downcast_ref::<wasmtime::Trap>()
+                            {
+                                trap.to_string()
+                            } else {
+                                let mut src: Option<&dyn std::error::Error> =
+                                    Some(e.as_ref());
+                                let mut last = String::new();
+                                while let Some(c) = src {
+                                    last = c.to_string();
+                                    src = c.source();
+                                }
+                                if last.is_empty() {
+                                    e.to_string()
+                                        .lines()
+                                        .next()
+                                        .unwrap_or("unknown error")
+                                        .to_string()
+                                } else {
+                                    last
+                                }
+                            };
+                            TestOutcome::Fail(msg)
+                        }
                     }
-                },
+                }
             },
         };
 
@@ -250,12 +288,7 @@ pub fn run_tests(
         println!("     {}:", "Failures".bold().red());
         for f in &failures {
             if let TestOutcome::Fail(reason) = &f.outcome {
-                let display = if let Some(msg) = reason.strip_prefix("assertion failed: ") {
-                    format!("assertion failed: {}", msg.bold())
-                } else {
-                    reason.to_string()
-                };
-                println!("        {} {} — {}", "FAIL".red(), f.name, display);
+                println!("        {} {}: {}", "FAIL".red(), f.name, reason.bold());
             }
         }
         println!(

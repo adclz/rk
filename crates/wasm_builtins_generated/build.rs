@@ -9,7 +9,7 @@
 use std::path::PathBuf;
 use std::process::Command;
 
-use wasmparser::{FuncType, Operator, Parser, Payload, ValType};
+use wasmparser::{FuncType, Operator, Parser, Payload, TypeRef, ValType};
 
 fn main() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
@@ -112,6 +112,19 @@ struct FuncEntry {
     call_sites: Vec<CallSite>,
 }
 
+/// Imported function entry. The bundle's wasm-level function index
+/// space puts imports first, defined functions after; bodies' `Call $idx`
+/// operands referencing `idx < n_imports` target this table.
+///
+/// The codegen layer is responsible for satisfying each import — for the
+/// only currently expected import, `__iec_raise`, it synthesizes an
+/// inline `throw $rk_exception` helper and redirects calls to it.
+struct Import {
+    module: String,
+    name: String,
+    sig_idx: u32,
+}
+
 /// Extracted global declaration. Bodies reference these by index - we
 /// preserve order so a `global.get 0` in a grafted body still hits the
 /// same global once it's appended to the output module.
@@ -132,6 +145,7 @@ struct DataSegment {
 
 struct ParsedModule {
     sigs: Vec<FuncType>,
+    imports: Vec<Import>,
     funcs: Vec<FuncEntry>,
     globals: Vec<Global>,
     data: Vec<DataSegment>,
@@ -141,6 +155,7 @@ fn parse_module(wasm: &[u8]) -> ParsedModule {
     let mut sigs: Vec<FuncType> = Vec::new();
     let mut func_type_indices: Vec<u32> = Vec::new();
     let mut exports: Vec<(String, u32)> = Vec::new();
+    let mut imports: Vec<Import> = Vec::new();
     let mut funcs: Vec<FuncEntry> = Vec::new();
     let mut globals: Vec<Global> = Vec::new();
     let mut data: Vec<DataSegment> = Vec::new();
@@ -151,6 +166,47 @@ fn parse_module(wasm: &[u8]) -> ParsedModule {
             Payload::TypeSection(reader) => {
                 for ty in reader.into_iter_err_on_gc_types() {
                     sigs.push(ty.expect("malformed type"));
+                }
+            }
+            Payload::ImportSection(reader) => {
+                use wasmparser::Imports;
+                for group in reader {
+                    let group = group.expect("malformed import group");
+                    match group {
+                        Imports::Single(_, imp) => {
+                            if let TypeRef::Func(sig_idx) = imp.ty {
+                                imports.push(Import {
+                                    module: imp.module.to_string(),
+                                    name: imp.name.to_string(),
+                                    sig_idx,
+                                });
+                            }
+                        }
+                        Imports::Compact1 { module, items } => {
+                            for item in items {
+                                let item = item.expect("malformed compact1 item");
+                                if let TypeRef::Func(sig_idx) = item.ty {
+                                    imports.push(Import {
+                                        module: module.to_string(),
+                                        name: item.name.to_string(),
+                                        sig_idx,
+                                    });
+                                }
+                            }
+                        }
+                        Imports::Compact2 { module, ty, names } => {
+                            if let TypeRef::Func(sig_idx) = ty {
+                                for name in names {
+                                    let name = name.expect("malformed compact2 name");
+                                    imports.push(Import {
+                                        module: module.to_string(),
+                                        name: name.to_string(),
+                                        sig_idx,
+                                    });
+                                }
+                            }
+                        }
+                    }
                 }
             }
             Payload::FunctionSection(reader) => {
@@ -237,13 +293,22 @@ fn parse_module(wasm: &[u8]) -> ParsedModule {
         }
     }
 
-    // Stamp export names onto the matching function entries.
+    // Stamp export names onto the matching function entries. Wasm export
+    // indices count imports first; subtract `n_imports` to land in
+    // `funcs` (which only holds defined functions, not imports).
+    let n_imports = imports.len() as u32;
     for (name, idx) in exports {
-        if let Some(entry) = funcs.get_mut(idx as usize) {
+        if idx < n_imports {
+            // An export of an import is unusual but legal — skip rather
+            // than misalign with `funcs`.
+            continue;
+        }
+        let local_idx = (idx - n_imports) as usize;
+        if let Some(entry) = funcs.get_mut(local_idx) {
             entry.export_name = Some(name);
         }
     }
-    ParsedModule { sigs, funcs, globals, data }
+    ParsedModule { sigs, imports, funcs, globals, data }
 }
 
 /// Parse a `(i32.const N) end` constant initializer expression.
@@ -290,10 +355,39 @@ fn render_table(parsed: &ParsedModule) -> String {
     }
     s.push_str("];\n\n");
 
+    // Imports. Function imports occupy wasm function indices `0..n_imports`;
+    // bodies whose `Call $idx` operand falls in that range target this
+    // table, and the codegen is responsible for satisfying each one
+    // (typically by synthesizing a helper at graft time).
+    s.push_str("pub struct BuiltinImport {\n");
+    s.push_str("    pub module: &'static str,\n");
+    s.push_str("    pub name: &'static str,\n");
+    s.push_str("    pub sig_idx: u32,\n");
+    s.push_str("}\n\n");
+    s.push_str("pub static BUILTIN_IMPORTS: &[BuiltinImport] = &[\n");
+    for imp in &parsed.imports {
+        s.push_str("    BuiltinImport {\n");
+        s.push_str(&format!("        module: {:?},\n", imp.module));
+        s.push_str(&format!("        name: {:?},\n", imp.name));
+        s.push_str(&format!("        sig_idx: {},\n", imp.sig_idx));
+        s.push_str("    },\n");
+    }
+    s.push_str("];\n\n");
+    s.push_str(&format!(
+        "/// Number of imported functions in the bundle's wasm function\n\
+         /// index space. Targets in `BuiltinCallSite::target` below this\n\
+         /// value refer to `BUILTIN_IMPORTS`; targets at or above index\n\
+         /// into `BUILTIN_FUNCS` after subtracting `N_IMPORTS`.\n\
+         pub const N_IMPORTS: u32 = {};\n\n",
+        parsed.imports.len()
+    ));
+
     // Per-function metadata.
     s.push_str("pub struct BuiltinCallSite {\n");
     s.push_str("    pub operand_offset: u32,\n");
     s.push_str("    pub operand_width: u32,\n");
+    s.push_str("    /// Raw wasm function index from the bundle. Compare\n");
+    s.push_str("    /// against `N_IMPORTS` to distinguish imports vs. locals.\n");
     s.push_str("    pub target: u32,\n");
     s.push_str("}\n\n");
     s.push_str("pub struct BuiltinFunc {\n");

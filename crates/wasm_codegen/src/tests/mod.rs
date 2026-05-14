@@ -19,6 +19,7 @@ mod imports;
 mod mir_smoke;
 mod ref_to;
 mod references;
+mod string_audit;
 mod structs;
 
 #[fixture]

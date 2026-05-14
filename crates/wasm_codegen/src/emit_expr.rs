@@ -38,6 +38,15 @@ thread_local! {
     /// Set by `emit_function` before walking the body, torn down after.
     pub(crate) static SNAPSHOT_CTX: RefCell<Option<StringSnapshotCtx>> =
         const { RefCell::new(None) };
+
+    /// `Ident → text` for every function in the module, so the `emit_call`
+    /// panic can name a missing callee without threading the db through.
+    pub(crate) static FN_NAMES_FOR_DIAGNOSTIC: RefCell<FxHashMap<Ident, String>> =
+        RefCell::new(FxHashMap::default());
+
+    /// The function whose body is being emitted, for the `emit_call` panic.
+    pub(crate) static CURRENT_EMIT_FN: RefCell<Option<String>> =
+        const { RefCell::new(None) };
 }
 
 /// Emit the snapshot dance for a STRING-returning call result currently on
@@ -392,8 +401,45 @@ fn emit_call(
         }
     }
 
-    // Resolve function index. fn_indices maps name → WASM index.
-    let idx = fn_indices.get(&call.callee).copied().unwrap_or(0);
+    // An unresolved callee is a compiler error, never `call 0`.
+    let idx = fn_indices.get(&call.callee).copied().unwrap_or_else(|| {
+        FN_NAMES_FOR_DIAGNOSTIC.with(|cell| {
+            let names = cell.borrow();
+            let missing = names
+                .get(&call.callee)
+                .cloned()
+                .unwrap_or_else(|| format!("{:?}", call.callee));
+            let mut available: Vec<&str> = fn_indices
+                .keys()
+                .filter_map(|k| names.get(k).map(|s| s.as_str()))
+                .collect();
+            available.sort();
+            let caller = CURRENT_EMIT_FN
+                .with(|c| c.borrow().clone())
+                .unwrap_or_else(|| "<unknown>".to_string());
+            // Monomorphized variants of the missing callee, to show whether
+            // the rewrite fired.
+            let mono_variants: Vec<&str> = available
+                .iter()
+                .copied()
+                .filter(|n| n.starts_with(&format!("{}.", missing)))
+                .collect();
+            panic!(
+                "internal compiler error: while emitting `{}`, call site references \
+                 unknown function `{}` — monomorphization or import registration missed \
+                 this callee.\n\
+                 Mono variants of `{}` that *do* exist ({}): {:?}\n\
+                 All available function names ({}): {:?}",
+                caller,
+                missing,
+                missing,
+                mono_variants.len(),
+                mono_variants,
+                available.len(),
+                available,
+            )
+        })
+    });
 
     func.instruction(&Instruction::Call(idx));
 }

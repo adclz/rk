@@ -38,6 +38,110 @@ use self::emit_stmt::emit_stmts_with_return;
 const STRING_SCRATCH_CAPACITY: u32 = 80;
 const STRING_SCRATCH_SLOT_SIZE: u32 = (4 + STRING_SCRATCH_CAPACITY + 3) & !3;
 
+/// Collect every `Call` callee's Ident → text, for the unresolved-callee
+/// panic.
+fn walk_stmts_for_callees(
+    stmts: &[MirStmt],
+    db: &dyn WorkspaceDataBase,
+    names: &mut FxHashMap<hir::hir_def::interned::identifier::Ident, String>,
+) {
+    fn add(
+        call: &MirCall,
+        db: &dyn WorkspaceDataBase,
+        names: &mut FxHashMap<hir::hir_def::interned::identifier::Ident, String>,
+    ) {
+        names
+            .entry(call.callee)
+            .or_insert_with(|| call.callee.text(db).to_string());
+        for arg in &call.args {
+            walk_expr_for_callees(&arg.value, db, names);
+        }
+    }
+    for stmt in stmts {
+        match stmt {
+            MirStmt::Call(call) => add(call, db, names),
+            MirStmt::Assign { value, .. } => walk_expr_for_callees(value, db, names),
+            MirStmt::If {
+                condition,
+                then_body,
+                else_ifs,
+                else_body,
+            } => {
+                walk_expr_for_callees(condition, db, names);
+                walk_stmts_for_callees(then_body, db, names);
+                for (c, b) in else_ifs {
+                    walk_expr_for_callees(c, db, names);
+                    walk_stmts_for_callees(b, db, names);
+                }
+                if let Some(eb) = else_body {
+                    walk_stmts_for_callees(eb, db, names);
+                }
+            }
+            MirStmt::Case {
+                selector,
+                arms,
+                else_body,
+            } => {
+                walk_expr_for_callees(selector, db, names);
+                for arm in arms {
+                    walk_stmts_for_callees(&arm.body, db, names);
+                }
+                if let Some(eb) = else_body {
+                    walk_stmts_for_callees(eb, db, names);
+                }
+            }
+            MirStmt::For {
+                start,
+                end,
+                step,
+                body,
+                ..
+            } => {
+                walk_expr_for_callees(start, db, names);
+                walk_expr_for_callees(end, db, names);
+                walk_expr_for_callees(step, db, names);
+                walk_stmts_for_callees(body, db, names);
+            }
+            MirStmt::While { condition, body } | MirStmt::Repeat { condition, body } => {
+                walk_expr_for_callees(condition, db, names);
+                walk_stmts_for_callees(body, db, names);
+            }
+            MirStmt::FbCall { input_writes, .. } => {
+                for (_, v, _) in input_writes {
+                    walk_expr_for_callees(v, db, names);
+                }
+            }
+            MirStmt::Raise { message } => walk_expr_for_callees(message, db, names),
+            _ => {}
+        }
+    }
+}
+
+fn walk_expr_for_callees(
+    expr: &MirExpr,
+    db: &dyn WorkspaceDataBase,
+    names: &mut FxHashMap<hir::hir_def::interned::identifier::Ident, String>,
+) {
+    match expr {
+        MirExpr::Call(call) => {
+            names
+                .entry(call.callee)
+                .or_insert_with(|| call.callee.text(db).to_string());
+            for arg in &call.args {
+                walk_expr_for_callees(&arg.value, db, names);
+            }
+        }
+        MirExpr::BinOp { lhs, rhs, .. } => {
+            walk_expr_for_callees(lhs, db, names);
+            walk_expr_for_callees(rhs, db, names);
+        }
+        MirExpr::UnaryOp { expr, .. } | MirExpr::Cast { expr, .. } => {
+            walk_expr_for_callees(expr, db, names);
+        }
+        _ => {}
+    }
+}
+
 fn count_nested_string_calls_stmts(stmts: &[MirStmt]) -> u32 {
     let mut total = 0;
     for stmt in stmts {
@@ -106,11 +210,51 @@ fn count_nested_string_calls_stmt(stmt: &MirStmt) -> u32 {
             }
             n
         }
+        MirStmt::Raise { message } => count_nested_string_calls_expr(message),
         MirStmt::MemStore { .. }
         | MirStmt::WasmIntrinsic { .. }
         | MirStmt::Exit
         | MirStmt::Continue
         | MirStmt::DebugTrap { .. } => 0,
+    }
+}
+
+/// Returns `true` when any function in `module` contains a `MirStmt::Raise`,
+/// triggering the codegen to declare the module-level `$rk_exception` tag.
+pub(crate) fn module_uses_raise(module: &MirModule) -> bool {
+    module
+        .functions
+        .iter()
+        .any(|f| stmts_use_raise(&f.body))
+}
+
+fn stmts_use_raise(stmts: &[MirStmt]) -> bool {
+    stmts.iter().any(stmt_uses_raise)
+}
+
+fn stmt_uses_raise(stmt: &MirStmt) -> bool {
+    match stmt {
+        MirStmt::Raise { .. } => true,
+        MirStmt::If {
+            then_body,
+            else_ifs,
+            else_body,
+            ..
+        } => {
+            stmts_use_raise(then_body)
+                || else_ifs.iter().any(|(_, b)| stmts_use_raise(b))
+                || else_body.as_ref().is_some_and(|b| stmts_use_raise(b))
+        }
+        MirStmt::Case {
+            arms, else_body, ..
+        } => {
+            arms.iter().any(|a| stmts_use_raise(&a.body))
+                || else_body.as_ref().is_some_and(|b| stmts_use_raise(b))
+        }
+        MirStmt::For { body, .. }
+        | MirStmt::While { body, .. }
+        | MirStmt::Repeat { body, .. } => stmts_use_raise(body),
+        _ => false,
     }
 }
 
@@ -205,7 +349,27 @@ struct WasmGen<'a> {
     /// Next free address for STRING snapshot scratch slots, past the MIR
     /// static layout.
     string_scratch_floor: Cell<u32>,
+    /// Tag index of the module-level `$rk_exception` tag. `Some` exactly
+    /// when at least one function contains a `MirStmt::Raise`. The tag
+    /// signature is `(i32, i32) -> ()` — the two params carry the
+    /// raised STRING's `(ptr, len)` payload.
+    rk_exception_tag_idx: Option<u32>,
+    /// Type index of `(i32, i32) -> ()`, for the `TagSection`.
+    rk_exception_tag_type_idx: Option<u32>,
+    /// Type index of `() -> (i32, i32)` — the block signature for the
+    /// `$on_catch` block wrapping each `{test}` function's body. The
+    /// `catch $rk_exception` clause delivers the tag's params as the
+    /// block's result, so a `{test}` function's catch handler sees
+    /// `(ptr, len)` on the stack.
+    test_catch_block_type_idx: Option<u32>,
+    /// Bump allocator for `{test}` functions' 12-byte result areas, past the
+    /// STRING-scratch region.
+    test_result_floor: Cell<u32>,
 }
+
+/// Size of the per-`{test}` canonical-ABI `result<unit, string>` area: an
+/// i8 discriminant at 0, the string ptr at 4 and len at 8.
+const TEST_RESULT_AREA_SIZE: u32 = 12;
 
 /// Sum the snapshot scratch needs across every function in the module.
 fn module_total_scratch_slots(module: &MirModule) -> u32 {
@@ -219,12 +383,30 @@ fn module_total_scratch_slots(module: &MirModule) -> u32 {
 /// WASM page size.
 const WASM_PAGE: u32 = 65536;
 
-/// Number of 64KiB pages the core module needs to cover its static
-/// allocations plus per-call-site STRING snapshot scratch slots.
+/// Number of `{test}` functions; one 12-byte result area is reserved per
+/// test.
+fn module_test_count(module: &MirModule) -> u32 {
+    module.functions.iter().filter(|f| f.is_test).count() as u32
+}
+
+/// First byte past all MIR static memory: the layout plus the string-pool
+/// data rebased past it. Scratch slots and test result areas go past this.
+fn static_data_end(module: &MirModule) -> u32 {
+    let layout_end = module.memory_layout.total_size();
+    let strings_end = module
+        .string_data
+        .iter()
+        .map(|(off, bytes)| off + bytes.len() as u32)
+        .max()
+        .unwrap_or(0);
+    layout_end.max(strings_end)
+}
+
 pub(crate) fn core_memory_pages(module: &MirModule) -> u64 {
-    let static_total = module.memory_layout.total_size();
+    let static_total = static_data_end(module);
     let scratch_total = module_total_scratch_slots(module) * STRING_SCRATCH_SLOT_SIZE;
-    let total = static_total + scratch_total;
+    let test_results_total = module_test_count(module) * TEST_RESULT_AREA_SIZE;
+    let total = static_total + scratch_total + test_results_total;
     if total == 0 {
         1
     } else {
@@ -249,7 +431,12 @@ impl<'a> WasmGen<'a> {
             }),
         );
 
-        let scratch_floor = Cell::new(module.memory_layout.total_size());
+        // STRING scratch slots start past the MIR static layout; test result
+        // areas past those.
+        let static_total = static_data_end(module);
+        let scratch_total = module_total_scratch_slots(module) * STRING_SCRATCH_SLOT_SIZE;
+        let scratch_floor = Cell::new(static_total);
+        let test_result_floor = Cell::new(static_total + scratch_total);
 
         Self {
             db,
@@ -265,6 +452,10 @@ impl<'a> WasmGen<'a> {
             index_remap: FxHashMap::default(),
             builtin_indices: FxHashMap::default(),
             string_scratch_floor: scratch_floor,
+            rk_exception_tag_idx: None,
+            rk_exception_tag_type_idx: None,
+            test_catch_block_type_idx: None,
+            test_result_floor,
         }
     }
 
@@ -277,16 +468,42 @@ impl<'a> WasmGen<'a> {
         addr
     }
 
+    /// Allocate a 12-byte `{test}` result area, 4-aligned; the function
+    /// returns its address.
+    fn alloc_test_result_area(&self) -> u32 {
+        let raw = self.test_result_floor.get();
+        let aligned = (raw + 3) & !3;
+        self.test_result_floor
+            .set(aligned + TEST_RESULT_AREA_SIZE);
+        aligned
+    }
     fn emit_all(&mut self) {
+        // The diagnostic reverse-lookup: every function Ident, call-site
+        // callees included, to its text.
+        crate::emit_expr::FN_NAMES_FOR_DIAGNOSTIC.with(|cell| {
+            let mut names = cell.borrow_mut();
+            names.clear();
+            for ext in &self.module.extern_functions {
+                names.insert(ext.name, ext.name.text(self.db).to_string());
+            }
+            for func in &self.module.functions {
+                names.insert(func.name, func.name.text(self.db).to_string());
+                walk_stmts_for_callees(&func.body, self.db, &mut names);
+            }
+        });
+
         // Pre-scan: which `wasm_builtins` exports any function references. The
         // graft goes between imports and user functions, so user indices skip
         // past it.
         let names_used = self.collect_builtin_names();
 
-        // Index layout in the output module:
-        //   [imports] [grafted builtins] [user functions]
+        // Index layout: [imports] [grafted builtins] [user functions]; the
+        // grafted block may include a synthesized `__iec_raise` helper, which
+        // `preflight_graft_count` accounts for.
         let n_imports = self.module.extern_functions.len() as u32;
-        let n_builtins = self.preflight_graft_count(&names_used);
+        let needs_iec_raise_synth = self.preflight_needs_iec_raise(&names_used);
+        let n_builtins =
+            self.preflight_graft_count(&names_used) + if needs_iec_raise_synth { 1 } else { 0 };
 
         let mut index_remap: FxHashMap<u32, u32> = FxHashMap::default();
         let mut wasm_idx: u32 = 0;
@@ -314,9 +531,29 @@ impl<'a> WasmGen<'a> {
             self.emit_import(ext_fn);
         }
 
-        // 5. Graft builtins. Their function indices land in
-        //    [n_imports, n_imports + n_builtins) - exactly the slot we
-        //    reserved above.
+        // 5. Register the module-level `$rk_exception` tag *before*
+        //    grafting. The synth `__iec_raise` helper (emitted inside
+        //    `graft_builtins` when needed) must reference the tag's
+        //    index, so the tag has to exist first. Also covers `__RAISE`
+        //    in user code and `{test}` function wrapping.
+        //    Signature: `(i32, i32) -> ()` carries the raised STRING's
+        //    `(ptr, len)`. Tag index starts at 0 (only one tag per module).
+        if module_uses_raise(self.module)
+            || module_test_count(self.module) > 0
+            || needs_iec_raise_synth
+        {
+            let tag_type_idx = self.next_type_idx;
+            self.type_section.ty().function(
+                vec![wasm_encoder::ValType::I32, wasm_encoder::ValType::I32],
+                std::iter::empty(),
+            );
+            self.next_type_idx += 1;
+            self.rk_exception_tag_idx = Some(0);
+            // Stash the type idx for the `finish()` TagSection emission.
+            self.rk_exception_tag_type_idx = Some(tag_type_idx);
+        }
+
+        // 6. Graft builtins into the reserved slot.
         if !names_used.is_empty() {
             let plan = crate::graft::graft_builtins(
                 names_used.iter().map(String::as_str),
@@ -327,11 +564,28 @@ impl<'a> WasmGen<'a> {
                 &mut self.extra_data_section,
                 &mut self.next_type_idx,
                 /* base_fn_idx = */ self.module.extern_functions.len() as u32,
+                self.rk_exception_tag_idx,
             );
             self.builtin_indices = plan.name_to_wasm_idx;
         }
 
-        // 6. Emit user functions.
+        // 7. If any `{test}` function exists, register the block-type
+        //    used by their `$on_catch` blocks: `() -> (i32, i32)`. The
+        //    `catch $rk_exception` clause hands the tag's (ptr, len)
+        //    to this block as its result, so the catch handler sees
+        //    them on the stack and can write them into the test's
+        //    `result<unit, string>` area.
+        if module_test_count(self.module) > 0 {
+            let test_catch_ty = self.next_type_idx;
+            self.type_section.ty().function(
+                std::iter::empty::<wasm_encoder::ValType>(),
+                vec![wasm_encoder::ValType::I32, wasm_encoder::ValType::I32],
+            );
+            self.next_type_idx += 1;
+            self.test_catch_block_type_idx = Some(test_catch_ty);
+        }
+
+        // 8. Emit user functions.
         for func in &self.module.functions {
             self.emit_function(func);
         }
@@ -411,8 +665,8 @@ impl<'a> WasmGen<'a> {
         v
     }
 
-    /// Count how many bundle functions a graft of these names would pull
-    /// in, without actually grafting. Mirrors the closure walk in `graft`.
+    /// How many bundle functions a graft of `names` would pull in, excluding
+    /// the synthesized helper ([`preflight_needs_iec_raise`]).
     fn preflight_graft_count(&self, names: &[String]) -> u32 {
         if names.is_empty() {
             return 0;
@@ -426,6 +680,28 @@ impl<'a> WasmGen<'a> {
             }
         }
         seen.len() as u32
+    }
+
+    /// True when the graft of `names` would pull in any function that
+    /// calls the `__iec_raise` import — implying we need to emit a
+    /// codegen-synthesized helper that throws `$rk_exception` and reserve
+    /// the corresponding function-index slot.
+    fn preflight_needs_iec_raise(&self, names: &[String]) -> bool {
+        if names.is_empty() {
+            return false;
+        }
+        let mut closure: Vec<u32> = Vec::new();
+        let mut seen = rustc_hash::FxHashSet::default();
+        for name in names {
+            if let Some(root) = crate::builtins::lookup(name) {
+                for idx in crate::builtins::transitive_closure(root) {
+                    if seen.insert(idx) {
+                        closure.push(idx);
+                    }
+                }
+            }
+        }
+        crate::builtins::closure_uses_import(&closure, "__iec_raise")
     }
 
     fn emit_import(&mut self, ext_fn: &MirExternFunction) {
@@ -455,6 +731,16 @@ impl<'a> WasmGen<'a> {
     }
 
     fn emit_function(&mut self, func: &MirFunction) {
+        if func.is_test {
+            self.emit_test_function(func);
+            return;
+        }
+
+        // The diagnostic marker naming the containing function, restored on
+        // exit.
+        crate::emit_expr::CURRENT_EMIT_FN
+            .with(|c| c.replace(Some(func.name.text(self.db).to_string())));
+
         let (params, results) = build_signature(&func.params, &func.return_type);
 
         // Register type
@@ -590,6 +876,7 @@ impl<'a> WasmGen<'a> {
             &remapped_fn_indices,
             &self.builtin_indices,
             return_local,
+            self.rk_exception_tag_idx,
         );
 
         // Restore the prior context.
@@ -621,6 +908,207 @@ impl<'a> WasmGen<'a> {
         self.code_section.function(&wasm_func);
     }
 
+    /// Emit a `{test}` function. The core-wasm signature is `() -> i32`:
+    /// the returned i32 is the address of a 12-byte canonical-ABI
+    /// `result<unit, string>` area. The function body is wrapped in a
+    /// `try_table (catch $rk_exception)` so that a `__RAISE` from any
+    /// nested call lands in the catch handler and is encoded as the Err
+    /// variant. Normal completion leaves the result area's discriminant
+    /// at its zero-initialized value (Ok).
+    ///
+    /// Layout emitted (pseudo-WAT):
+    /// ```text
+    ///   block $on_catch (result i32 i32)
+    ///     try_table (catch $rk_exception 0)
+    ///       <body>
+    ///     end
+    ///     ;; success path
+    ///     i32.const <result_area>
+    ///     return
+    ///   end
+    ///   ;; catch path: (msg_ptr, msg_len) on stack
+    ///   local.set $len_tmp
+    ///   local.set $ptr_tmp
+    ///   i32.const <result_area>; i32.const 1; i32.store8       ;; Err discriminant
+    ///   i32.const <result_area + 4>; local.get $ptr_tmp; i32.store
+    ///   i32.const <result_area + 8>; local.get $len_tmp; i32.store
+    ///   i32.const <result_area>
+    /// ;; falls through to function end with the area's address as the i32 result
+    /// ```
+    fn emit_test_function(&mut self, func: &MirFunction) {
+        // The diagnostic marker, as in `emit_function`.
+        crate::emit_expr::CURRENT_EMIT_FN
+            .with(|c| c.replace(Some(func.name.text(self.db).to_string())));
+
+        // Test functions always have signature `() -> i32` regardless of
+        // their MIR-declared params/return (which is `()` for `{test}`).
+        let type_idx = self.next_type_idx;
+        self.type_section.ty().function(
+            std::iter::empty::<ValType>(),
+            vec![ValType::I32],
+        );
+        self.next_type_idx += 1;
+        self.fn_section.function(type_idx);
+
+        // Exported under the test's name.
+        if func.linkage == MirLinkage::Export {
+            let export_name = func
+                .export_name
+                .as_ref()
+                .map(|s| s.to_string())
+                .unwrap_or_else(|| func.name.text(self.db).to_string());
+            let wasm_idx = self
+                .index_remap
+                .get(&func.index)
+                .copied()
+                .unwrap_or(func.index);
+            self.export_section
+                .export(&export_name, wasm_encoder::ExportKind::Func, wasm_idx);
+        }
+
+        // Per-test 12-byte canonical-ABI result area.
+        let result_area = self.alloc_test_result_area();
+
+        // Build local map + extra locals (mirrors `emit_function`).
+        let local_map = build_local_map(func);
+        let mut extra_locals: Vec<(u32, ValType)> = Vec::new();
+        for local in &func.locals {
+            if let MirStorage::Scalar { .. } = local.storage
+                && let Some(vt) = mir_type_to_val_type(&local.ty)
+            {
+                extra_locals.push((1, vt));
+            }
+        }
+
+        // Two i32 scratch locals for the catch handler to stash `(ptr, len)`.
+        let scratch_base: u32 = extra_locals.iter().map(|(c, _)| *c).sum();
+        extra_locals.push((2, ValType::I32));
+        let ptr_tmp = scratch_base;
+        let len_tmp = scratch_base + 1;
+
+        // Per-call-site STRING snapshot slots for nested STRING-returning
+        // calls inside the test body. Same as `emit_function`.
+        let nested_str_count = count_nested_string_calls_stmts(&func.body);
+        let scratch_slots: Vec<u32> = (0..nested_str_count)
+            .map(|_| self.alloc_scratch_slot())
+            .collect();
+
+        let mut wasm_func = wasm_encoder::Function::new(extra_locals);
+
+        let remapped_fn_indices: FxHashMap<_, _> = self
+            .module
+            .function_indices
+            .iter()
+            .map(|(name, &mir_idx)| {
+                let wasm_idx = self.index_remap.get(&mir_idx).copied().unwrap_or(mir_idx);
+                (*name, wasm_idx)
+            })
+            .collect();
+
+        // SNAPSHOT_CTX reuses the two scratch locals; snapshots and the catch
+        // shuffle never run concurrently.
+        let prev_ctx = if nested_str_count > 0 {
+            let str_assign_idx = self
+                .builtin_indices
+                .get("rk.str_assign")
+                .copied()
+                .expect(
+                    "rk.str_assign must be grafted whenever a function nests STRING-returning calls",
+                );
+            let ctx = StringSnapshotCtx {
+                slots: scratch_slots,
+                slot_capacity: STRING_SCRATCH_CAPACITY,
+                next_slot: 0,
+                ptr_tmp,
+                len_tmp,
+                str_assign_idx,
+            };
+            SNAPSHOT_CTX.with(|cell| cell.replace(Some(ctx)))
+        } else {
+            SNAPSHOT_CTX.with(|cell| cell.replace(None))
+        };
+
+        let tag_idx = self.rk_exception_tag_idx.expect(
+            "rk_exception_tag_idx must be set whenever any function (including tests) is emitted: \
+             the test wrapper always uses the tag for `try_table (catch $rk_exception)`",
+        );
+        let catch_block_ty = self.test_catch_block_type_idx.expect(
+            "test_catch_block_type_idx must be set when emitting a {test} function",
+        );
+
+        // block $on_catch (result i32 i32)
+        wasm_func.instruction(&Instruction::Block(wasm_encoder::BlockType::FunctionType(
+            catch_block_ty,
+        )));
+        //   try_table (catch $rk_exception 0)
+        wasm_func.instruction(&Instruction::TryTable(
+            wasm_encoder::BlockType::Empty,
+            std::borrow::Cow::Owned(vec![wasm_encoder::Catch::One {
+                tag: tag_idx,
+                label: 0, // -> $on_catch (outer scope of try_table)
+            }]),
+        ));
+
+        // The body has no scalar return slot: tests are void at the MIR level.
+        emit_stmts_with_return(
+            &mut wasm_func,
+            &func.body,
+            &local_map,
+            &remapped_fn_indices,
+            &self.builtin_indices,
+            None,
+            self.rk_exception_tag_idx,
+        );
+
+        SNAPSHOT_CTX.with(|cell| cell.replace(prev_ctx));
+
+        // end try_table — only reached on the success (no-throw) path.
+        wasm_func.instruction(&Instruction::End);
+
+        // Success: leave the zero-initialized Ok discriminant in place,
+        // push the area's address as the i32 result, return early.
+        wasm_func.instruction(&Instruction::I32Const(result_area as i32));
+        wasm_func.instruction(&Instruction::Return);
+
+        // end $on_catch — entered only via the catch branch with
+        // `(msg_ptr, msg_len)` on the stack as the block's result.
+        wasm_func.instruction(&Instruction::End);
+
+        // Catch handler: stash, then write Err variant into the area.
+        wasm_func.instruction(&Instruction::LocalSet(len_tmp));
+        wasm_func.instruction(&Instruction::LocalSet(ptr_tmp));
+        // discriminant = 1 (Err) at offset 0
+        wasm_func.instruction(&Instruction::I32Const(result_area as i32));
+        wasm_func.instruction(&Instruction::I32Const(1));
+        wasm_func.instruction(&Instruction::I32Store8(wasm_encoder::MemArg {
+            offset: 0,
+            align: 0,
+            memory_index: 0,
+        }));
+        // string ptr at offset 4
+        wasm_func.instruction(&Instruction::I32Const((result_area + 4) as i32));
+        wasm_func.instruction(&Instruction::LocalGet(ptr_tmp));
+        wasm_func.instruction(&Instruction::I32Store(wasm_encoder::MemArg {
+            offset: 0,
+            align: 2,
+            memory_index: 0,
+        }));
+        // string len at offset 8
+        wasm_func.instruction(&Instruction::I32Const((result_area + 8) as i32));
+        wasm_func.instruction(&Instruction::LocalGet(len_tmp));
+        wasm_func.instruction(&Instruction::I32Store(wasm_encoder::MemArg {
+            offset: 0,
+            align: 2,
+            memory_index: 0,
+        }));
+        // Push the area's address as the i32 result.
+        wasm_func.instruction(&Instruction::I32Const(result_area as i32));
+
+        // End function — i32 on stack.
+        wasm_func.instruction(&Instruction::End);
+        self.code_section.function(&wasm_func);
+    }
+
     fn finish(mut self) -> wasm_encoder::Module {
         // Re-export the imported memory, for tests and inspection tools.
         self.export_section
@@ -630,6 +1118,16 @@ impl<'a> WasmGen<'a> {
         module.section(&self.type_section);
         module.section(&self.import_section);
         module.section(&self.fn_section);
+        // Tag section (per the exception-handling proposal, between Memory
+        // and Global). Only emitted when the module actually `__RAISE`s.
+        if let Some(type_idx) = self.rk_exception_tag_type_idx {
+            let mut tags = wasm_encoder::TagSection::new();
+            tags.tag(wasm_encoder::TagType {
+                kind: wasm_encoder::TagKind::Exception,
+                func_type_idx: type_idx,
+            });
+            module.section(&tags);
+        }
         // Global section is only emitted when builtins were grafted (the
         // bundle's stack pointer + static markers). Empty otherwise.
         if !self.builtin_indices.is_empty() {

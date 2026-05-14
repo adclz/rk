@@ -5,8 +5,8 @@
 #![allow(dead_code)]
 
 pub(crate) use wasm_builtins_generated::{
-    BUILTIN_DATA, BUILTIN_FUNCS, BUILTIN_GLOBALS, BUILTIN_NAMES, BUILTIN_SIGS, BUNDLE_MEMORY_TOP,
-    BuiltinCallSite, BuiltinFunc, BuiltinSig,
+    BUILTIN_DATA, BUILTIN_FUNCS, BUILTIN_GLOBALS, BUILTIN_IMPORTS, BUILTIN_NAMES, BUILTIN_SIGS,
+    BUNDLE_MEMORY_TOP, BuiltinCallSite, BuiltinFunc, BuiltinSig, N_IMPORTS,
 };
 
 /// Look up a builtin by its dotted name; real WASM instructions take
@@ -15,10 +15,10 @@ pub(crate) fn lookup(name: &str) -> Option<u32> {
     BUILTIN_NAMES.get(name).copied()
 }
 
-/// Walk the call graph from `root_idx`, collecting every function index
-/// the root transitively depends on, including itself. Order is
-/// post-order so callees appear before callers - useful when grafting
-/// into an output module that needs forward-declared indices.
+/// Every function index `root_idx` transitively depends on, itself
+/// included, in post-order (callees before callers). Indices are positions
+/// into `BUILTIN_FUNCS`; reachable imports are reported by
+/// [`closure_uses_import`].
 pub(crate) fn transitive_closure(root_idx: u32) -> Vec<u32> {
     use rustc_hash::FxHashSet;
     let mut seen = FxHashSet::default();
@@ -33,13 +33,35 @@ pub(crate) fn transitive_closure(root_idx: u32) -> Vec<u32> {
         }
         if let Some(f) = BUILTIN_FUNCS.get(idx as usize) {
             for cs in f.call_sites {
-                walk(cs.target, seen, order);
+                // Imports have no body in the bundle; the graft synthesizes them.
+                if cs.target < N_IMPORTS {
+                    continue;
+                }
+                walk(cs.target - N_IMPORTS, seen, order);
             }
         }
         order.push(idx);
     }
     walk(root_idx, &mut seen, &mut order);
     order
+}
+
+/// Whether any function in `closure` calls the import `import_name` (the
+/// graft then synthesizes `__iec_raise`).
+pub(crate) fn closure_uses_import(closure: &[u32], import_name: &str) -> bool {
+    let Some(imp_idx) = BUILTIN_IMPORTS
+        .iter()
+        .position(|imp| imp.name == import_name)
+    else {
+        return false;
+    };
+    let wasm_idx = imp_idx as u32; // imports occupy 0..N_IMPORTS
+    closure.iter().any(|&fn_idx| {
+        BUILTIN_FUNCS
+            .get(fn_idx as usize)
+            .map(|f| f.call_sites.iter().any(|cs| cs.target == wasm_idx))
+            .unwrap_or(false)
+    })
 }
 
 #[cfg(test)]

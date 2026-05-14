@@ -22,6 +22,11 @@ struct Ctx<'a> {
     /// Builtin instruction name (`f32.sin`) → wasm index of its grafted
     /// implementation.
     builtin_indices: &'a FxHashMap<String, u32>,
+    /// Index of the module-level `$rk_exception` tag, populated when
+    /// any function in the module contains `MirStmt::Raise`. `None`
+    /// otherwise — in which case `MirStmt::Raise` must never reach
+    /// codegen.
+    rk_exception_tag_idx: Option<u32>,
 }
 
 /// Emit a list of MIR statements with return local context.
@@ -32,12 +37,14 @@ pub(crate) fn emit_stmts_with_return(
     fn_indices: &FxHashMap<Ident, u32>,
     builtin_indices: &FxHashMap<String, u32>,
     return_local: Option<u32>,
+    rk_exception_tag_idx: Option<u32>,
 ) {
     let ctx = Ctx {
         locals,
         fn_indices,
         return_local,
         builtin_indices,
+        rk_exception_tag_idx,
     };
     emit_stmts(func, stmts, &ctx);
 }
@@ -446,6 +453,22 @@ fn emit_stmt(func: &mut wasm_encoder::Function, stmt: &MirStmt, ctx: &Ctx) {
         }
 
         MirStmt::DebugTrap { .. } => {}
+
+        MirStmt::Raise { message } => {
+            // Evaluate the STRING message expression — STRING values leave
+            // `(ptr, len)` on the stack — then throw the module-level
+            // `$rk_exception` tag, which has signature `(i32, i32) -> ()`.
+            //
+            // No in-language catch: the exception propagates to the host
+            // embedder, which surfaces it as a fault. The `rk_exception_tag_idx`
+            // is guaranteed `Some` here by the WasmGen pre-pass that runs
+            // before any function emission.
+            emit_expr(func, message, ctx.locals, ctx.fn_indices);
+            let tag_idx = ctx.rk_exception_tag_idx.expect(
+                "MIR contains MirStmt::Raise but no $rk_exception tag was registered",
+            );
+            func.instruction(&Instruction::Throw(tag_idx));
+        }
     }
 }
 

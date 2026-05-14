@@ -18,7 +18,14 @@ FUNCTION test
     greet();
 END_FUNCTION
     "#;
-    assert_snapshot!(mir_exports(&mut with_db, &[source]), @"export test()");
+    // `greet` has an empty body (just declares VAR_INPUT, returns nothing
+    // — the typical "stub for spec testing" shape). It now appears in
+    // exports as a no-op; previously the codegen dropped empty-body
+    // POUs entirely, which left call sites resolving to func idx 0.
+    assert_snapshot!(mir_exports(&mut with_db, &[source]), @r"
+    export greet(String { capacity: 80 })
+    export test()
+    ");
 }
 
 #[rstest]

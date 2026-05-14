@@ -2,7 +2,7 @@
 
 use crate::tests::{compile_to_wasm, with_db};
 use rstest::*;
-use wasmtime::{Engine, Instance, Module, Store};
+use wasmtime::{Engine, Module, Store};
 
 #[rstest]
 fn test_execute_simple_arithmetic(mut with_db: db::RootDatabase) {
@@ -420,9 +420,7 @@ VAR counter : CTU; END_VAR
 END_FUNCTION
     "#;
 
-    let wasm_bytes = compile_to_wasm(&mut with_db, source);
-    std::fs::write("/tmp/nested_fb.wasm", &wasm_bytes).unwrap();
-    eprintln!("Wrote /tmp/nested_fb.wasm ({} bytes)", wasm_bytes.len());
+    let _wasm_bytes = compile_to_wasm(&mut with_db, source);
 }
 
 #[rstest]
@@ -516,7 +514,13 @@ END_FUNCTION
 
     let wasm_bytes = compile_to_wasm(&mut with_db, source);
 
-    let engine = Engine::default();
+    // The codegen now wraps `{test}` functions in `try_table`, so even
+    // a core-wasm test needs `wasm_exceptions(true)` to load.
+    let engine = {
+        let mut c = wasmtime::Config::new();
+        c.wasm_exceptions(true);
+        Engine::new(&c).unwrap()
+    };
     let module = Module::new(&engine, &wasm_bytes).unwrap();
     let mut store = Store::new(&engine, ());
     let memory =
@@ -535,10 +539,17 @@ END_FUNCTION
         l
     };
     let instance = linker.instantiate(&mut store, &module).unwrap();
+    // `{test}` functions are now codegen-wrapped in a `try_table` and
+    // return an i32 pointer to the canonical-ABI `result<unit, string>`
+    // area. On success the discriminant byte at that address is 0.
     let func = instance
-        .get_typed_func::<(), ()>(&mut store, "test_ctu")
+        .get_typed_func::<(), i32>(&mut store, "test_ctu")
         .unwrap();
-    func.call(&mut store, ()).unwrap();
+    let result_area = func.call(&mut store, ()).unwrap();
+    let mem = instance.get_memory(&mut store, "memory").unwrap();
+    let mut disc = [0u8; 1];
+    mem.read(&store, result_area as usize, &mut disc).unwrap();
+    assert_eq!(disc[0], 0, "test_ctu should pass (Ok discriminant)");
 }
 
 /// Sanity-check the date/time integer encoding end-to-end. The cast emitter

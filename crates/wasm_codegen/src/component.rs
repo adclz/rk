@@ -294,6 +294,23 @@ pub fn wrap_in_component(
     let core_instance_idx = builder.core_instantiate(None, core_module_idx, instantiate_args);
 
     // === Step 4: Lift + export test functions ===
+    //
+    // Test functions are declared at the component-model level with
+    // return type `result<unit, string>`. The corresponding core
+    // function (emitted by `WasmGen::emit_test_function`) has signature
+    // `() -> i32`, where the i32 is the address of a 12-byte
+    // canonical-ABI-encoded `result<unit, string>` area in linear
+    // memory. The canonical-ABI lift reads from that address and
+    // hands the host a typed `Result<(), String>`.
+    //
+    // We define the `result<unit, string>` type once and reuse it for
+    // every test function's signature.
+    let test_result_ty_idx = {
+        let (idx, enc) = builder.type_defined(None);
+        enc.result(None, Some(ComponentValType::Primitive(PrimitiveValType::String)));
+        idx
+    };
+
     for func in &module.functions {
         if !func.is_test {
             continue;
@@ -307,23 +324,20 @@ pub fn wrap_in_component(
         let export_name = to_kebab_case(&raw_name);
 
         let params = expand_component_params(&func.params);
-        let result = func
-            .return_type
-            .as_ref()
-            .filter(|t| !matches!(t, MirType::Void))
-            .map(|t| ComponentValType::Primitive(mir_to_prim(t)));
+        // Test functions always return `result<unit, string>` so the
+        // runner can pick up the assertion message via the Err variant.
+        let result = Some(ComponentValType::Type(test_result_ty_idx));
         let (type_idx, mut enc) = builder.type_function(None);
         enc.params(params);
         enc.result(result);
 
         let core_func_idx =
             builder.core_alias_export(None, core_instance_idx, &raw_name, ExportKind::Func);
-        let opts: Vec<CanonicalOption> = if has_string(&func.params, &func.return_type) {
-            string_opts.clone()
-        } else {
-            Vec::new()
-        };
-        let comp_func_idx = builder.lift_func(None, core_func_idx, type_idx, opts);
+        // The lift always touches memory (it has to read the result
+        // area, and the Err variant carries a string payload), so use
+        // the string opts unconditionally — they include `Memory(core_memory_idx)`
+        // and `UTF8`.
+        let comp_func_idx = builder.lift_func(None, core_func_idx, type_idx, string_opts.clone());
         builder.export(&export_name, ComponentExportKind::Func, comp_func_idx, None);
     }
 
