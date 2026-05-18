@@ -1298,6 +1298,55 @@ NAMESPACE Std.Convert
 		{wasm 'rk.str_from_f64' (params IN) (result LREAL_TO_STRING)}
 	END_FUNCTION
 
+	/* ## ANY_TO_STRING - generic textual formatter
+
+	   Dispatches to the concrete `*_TO_STRING` for any elementary type with
+	   a formatter. STRING inputs pass through unchanged. Types without a
+	   formatter (DATE / TIME / DT / TOD families) fall through to the
+	   default empty result. */
+	FUNCTION ANY_TO_STRING: STRING
+		VAR_INPUT IN: ANY; END_VAR
+
+		ANY_TO_STRING := '';
+
+		{#if IN is BOOL}
+			ANY_TO_STRING := BOOL_TO_STRING(IN);
+		{#elif IN is SINT}
+			ANY_TO_STRING := SINT_TO_STRING(IN);
+		{#elif IN is INT}
+			ANY_TO_STRING := INT_TO_STRING(IN);
+		{#elif IN is DINT}
+			ANY_TO_STRING := DINT_TO_STRING(IN);
+		{#elif IN is LINT}
+			ANY_TO_STRING := LINT_TO_STRING(IN);
+		{#elif IN is USINT}
+			ANY_TO_STRING := USINT_TO_STRING(IN);
+		{#elif IN is UINT}
+			ANY_TO_STRING := UINT_TO_STRING(IN);
+		{#elif IN is UDINT}
+			ANY_TO_STRING := UDINT_TO_STRING(IN);
+		{#elif IN is ULINT}
+			ANY_TO_STRING := ULINT_TO_STRING(IN);
+		{#elif IN is BYTE}
+			ANY_TO_STRING := BYTE_TO_STRING(IN);
+		{#elif IN is WORD}
+			ANY_TO_STRING := WORD_TO_STRING(IN);
+		{#elif IN is DWORD}
+			ANY_TO_STRING := DWORD_TO_STRING(IN);
+		{#elif IN is LWORD}
+			ANY_TO_STRING := LWORD_TO_STRING(IN);
+		{#elif IN is REAL}
+			ANY_TO_STRING := REAL_TO_STRING(IN);
+		{#elif IN is LREAL}
+			ANY_TO_STRING := LREAL_TO_STRING(IN);
+		{#elif IN is CHAR}
+			ANY_TO_STRING := CHAR_TO_STRING(IN);
+		{#elif IN is STRING}
+			ANY_TO_STRING := IN;
+		{#endif}
+
+	END_FUNCTION
+
 	/* ## Tests */
 
 	NAMESPACE Test

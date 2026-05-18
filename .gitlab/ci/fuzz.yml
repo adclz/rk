@@ -1,0 +1,40 @@
+fuzz:
+  image: rust:latest
+  stage: fuzz
+  timeout: 2h
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "schedule"
+    - changes:
+        - crates/fuzz/**
+        - crates/hir/**
+        - crates/db/**
+        - crates/ast/**
+        - crates/formatter/**
+  cache:
+    key: fuzz-${CI_COMMIT_REF_SLUG}
+    paths:
+      - target/
+      - .cargo/
+  script:
+    - cargo run --release --manifest-path crates/fuzz/Cargo.toml --bin corpus_gen --
+        crates/tree-sitter/test/corpus
+        crates/fuzz/corpus
+      || true
+    - cargo build --release --manifest-path crates/fuzz/Cargo.toml --bin fuzz_compiler
+    - cargo build --release --manifest-path crates/fuzz/Cargo.toml --bin fuzz_formatter
+    - timeout 1800 ./target/release/fuzz_compiler  crates/fuzz/corpus -max_total_time=1800 || true
+    - timeout 1800 ./target/release/fuzz_formatter crates/fuzz/corpus -max_total_time=1800 || true
+    - mkdir -p crash_artifacts
+    - find . -maxdepth 1 \( -name "crash-*" -o -name "oom-*" -o -name "leak-*" -o -name "slow-*" \) -exec cp {} crash_artifacts/ \; 2>/dev/null || true
+    - |
+      if [ -n "$(ls -A crash_artifacts 2>/dev/null)" ]; then
+        echo "Crashes found:" && ls -la crash_artifacts/
+        exit 1
+      else
+        echo "No crashes found"
+      fi
+  artifacts:
+    when: on_failure
+    paths:
+      - crash_artifacts/
+    expire_in: 30 days

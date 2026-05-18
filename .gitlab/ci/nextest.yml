@@ -1,0 +1,20 @@
+nextest:
+  image: rust:latest
+  stage: test
+  rules:
+    - changes:
+        - "**/*.rs"
+        - "**/Cargo.toml"
+        - "Cargo.lock"
+        - ".gitlab-ci.yml"
+        - ".gitlab/ci/**"
+  before_script:
+    - rustup target add wasm32-unknown-unknown
+    - cargo install cargo-nextest --locked
+  cache:
+    key: nextest-${CI_COMMIT_REF_SLUG}
+    paths:
+      - target/
+      - .cargo/
+  script:
+    - cargo nextest run --workspace
