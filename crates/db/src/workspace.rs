@@ -119,7 +119,7 @@ fn resolve_all(
                         let range = e
                             .span()
                             .and_then(|span| {
-                                let parsers = ast::RK_PARSER.get("structured_text")?;
+                                let parsers = ast::RK_PARSER.get("st")?;
                                 let tree = parsers.parser.write().parse("".as_bytes(), None)?;
                                 let doc = auto_lsp::core::document::Document::new(
                                     source.clone(),

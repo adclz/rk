@@ -65,7 +65,7 @@ pub fn find_st_files(path: &Path) -> Vec<PathBuf> {
 // --- Parsing ---
 
 /// Reads and parses a single `.st` file, returning the URL and parsed Document.
-fn read_and_parse(path: &Path, parsers: &'static auto_lsp::core::parsers::Parsers) -> ParseResult {
+fn read_and_parse(path: &Path, parsers: &'static auto_lsp::core::parsers::Parser) -> ParseResult {
     let content = std::fs::read_to_string(path)?;
     let absolute_path = std::fs::canonicalize(path)?;
     let url = Url::from_file_path(&absolute_path)
@@ -92,7 +92,7 @@ pub fn load_file(db: &mut RootDatabase, path: &Path) -> Result<File, Box<dyn std
         .db(db)
         .parsers(
             ast::RK_PARSER
-                .get("structured_text")
+                .get("st")
                 .ok_or("Parser not found")?,
         )
         .url(&url)
@@ -107,7 +107,7 @@ pub fn load_file(db: &mut RootDatabase, path: &Path) -> Result<File, Box<dyn std
 /// parallel, Salsa inputs created sequentially.
 pub fn load_workspace(db: &mut RootDatabase, path: &Path) -> Vec<Result<File, String>> {
     let paths = find_st_files(path);
-    let parsers = match ast::RK_PARSER.get("structured_text") {
+    let parsers = match ast::RK_PARSER.get("st") {
         Some(p) => p,
         None => return vec![],
     };
@@ -143,7 +143,7 @@ pub fn load_stdlib(db: &mut RootDatabase) {
     };
 
     let paths = find_st_files(stdlib_path);
-    let parsers = match ast::RK_PARSER.get("structured_text") {
+    let parsers = match ast::RK_PARSER.get("st") {
         Some(p) => p,
         None => return,
     };

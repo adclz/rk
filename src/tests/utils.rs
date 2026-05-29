@@ -48,7 +48,7 @@ pub fn add_sources(db: &mut RootDatabase, sources: &[&str]) {
 
         let file = File::from_string()
             .db(db)
-            .parsers(ast::RK_PARSER.get("structured_text").unwrap())
+            .parsers(ast::RK_PARSER.get("st").unwrap())
             .url(&url)
             .source(source.to_string())
             .call()
