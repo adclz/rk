@@ -1,4 +1,4 @@
-use auto_lsp::core::{semantic_tokens_builder::SemanticTokensBuilder, span::Span};
+use auto_lsp::core::semantic_tokens_builder::SemanticTokensBuilder;
 use db::WorkspaceDataBase;
 use hir::{
     HasName, HirNodeInfo,
@@ -8,7 +8,6 @@ use hir::{
             spec::{Spec, SpecKind},
         },
         hir_node::HirNode,
-        interned::namespace::NamespaceAccess,
         pous::{pou::Pou, variable::VariableDecl},
         using::Using,
     },
@@ -80,10 +79,7 @@ fn comment_bracket_ref_tokens<'db>(
             let content_start = bref.open_byte + 1;
             let content_end = bref.close_byte - 1;
             let span = byte_range_to_span(source, content_start, content_end);
-            if let Some(enc_range) = document.ts_range_to_enc_range(&span) {
-                let span: Span = enc_range.into();
-                semantic_tokens_for_type(db, Type::new_pou(db, pou), builder, span);
-            }
+            semantic_tokens_for_type(db, Type::new_pou(db, pou), builder, span, file);
         }
     }
 }
@@ -100,6 +96,7 @@ impl<'db> SemanticTokensHandler<'db> for Pou<'db> {
             Type::new_pou(db, *self),
             builder,
             self.get_name_span(db),
+            self.get_scope_id(db).file(db),
         );
     }
 }
@@ -112,12 +109,12 @@ impl<'db> SemanticTokensHandler<'db> for MethodRef<'db> {
     ) {
         comment_bracket_ref_tokens(self, db, builder);
         builder.push(
-            self.get_name_span(db).lsp(),
+            hir::denormalize(db, self.get_scope_id(db).file(db), &self.get_name_span(db)).unwrap_or_default(),
             SUPPORTED_TYPES.iter().position(|x| *x == METHOD).unwrap() as u32,
             0,
         );
         if let Some(ret) = self.return_type(db) {
-            semantic_tokens_for_type(db, ret.infer(db), builder, ret.get_span(db));
+            semantic_tokens_for_type(db, ret.infer(db), builder, ret.get_span(db), self.get_scope_id(db).file(db));
         }
     }
 }
@@ -146,6 +143,7 @@ impl<'db> SemanticTokensHandler<'db> for Spec<'db> {
                 SpecKind::Target(t) => t.path.target.get_span(db),
                 _ => self.get_span(db),
             },
+            self.get_scope_id(db).file(db),
         );
     }
 }
@@ -156,7 +154,7 @@ impl<'db> SemanticTokensHandler<'db> for BeginPathExpr<'db> {
         db: &'db dyn WorkspaceDataBase,
         builder: &mut SemanticTokensBuilder,
     ) {
-        semantic_tokens_for_type(db, self.infer(db), builder, self.get_span(db));
+        semantic_tokens_for_type(db, self.infer(db), builder, self.get_span(db), self.get_scope_id(db).file(db));
     }
 }
 
@@ -166,7 +164,7 @@ impl<'db> SemanticTokensHandler<'db> for PathExpr<'db> {
         db: &'db dyn WorkspaceDataBase,
         builder: &mut SemanticTokensBuilder,
     ) {
-        semantic_tokens_for_type(db, self.infer(db), builder, self.get_span(db));
+        semantic_tokens_for_type(db, self.infer(db), builder, self.get_span(db), self.get_scope_id(db).file(db));
     }
 }
 
@@ -176,7 +174,7 @@ impl<'db> SemanticTokensHandler<'db> for VariableAccess<'db> {
         db: &'db dyn WorkspaceDataBase,
         builder: &mut SemanticTokensBuilder,
     ) {
-        semantic_tokens_for_type(db, self.infer(db), builder, self.get_span(db));
+        semantic_tokens_for_type(db, self.infer(db), builder, self.get_span(db), self.get_scope_id(db).file(db));
     }
 }
 
@@ -190,11 +188,11 @@ impl<'db> SemanticTokensHandler<'db> for Expr<'db> {
 
         if let ExprKind::PrimaryExpr(PrimaryExpr::EnumValue { name, variant }) = self.expr(db) {
             builder.push(
-                name.get_span(db).lsp(),
+                hir::denormalize(db, name.get_scope_id(db).file(db), &name.get_span(db)).unwrap_or_default(),
                 SUPPORTED_TYPES.iter().position(|x| *x == ENUM).unwrap() as u32,
                 0,
             );
-            semantic_tokens_for_type(db, typ, builder, variant.get_span(db));
+            semantic_tokens_for_type(db, typ, builder, variant.get_span(db), self.get_scope_id(db).file(db));
         }
     }
 }
@@ -206,29 +204,13 @@ impl<'db> SemanticTokensHandler<'db> for Using<'db> {
         builder: &mut SemanticTokensBuilder,
     ) {
         for (index, _fragment) in self.path(db).fragments(db).iter().enumerate() {
-            let span = self.path(db).get_fragment_ast_node(db, index).get_span();
+            let span = self
+                .path(db)
+                .get_fragment_ast_node(db, index)
+                .get_range()
+                .to_owned();
             builder.push(
-                span.lsp(),
-                SUPPORTED_TYPES
-                    .iter()
-                    .position(|x| *x == NAMESPACE)
-                    .unwrap() as u32,
-                0,
-            );
-        }
-    }
-}
-
-pub fn push_fragments(
-    db: &dyn WorkspaceDataBase,
-    access: &NamespaceAccess,
-    builder: &mut SemanticTokensBuilder,
-) {
-    if let Some(path) = &access.namespace {
-        for (index, _) in path.fragments(db).iter().enumerate() {
-            let span = path.get_fragment_ast_node(db, index).get_span().lsp();
-            builder.push(
-                span,
+                hir::denormalize(db, self.get_scope_id(db).file(db), &span).unwrap_or_default(),
                 SUPPORTED_TYPES
                     .iter()
                     .position(|x| *x == NAMESPACE)
@@ -243,9 +225,10 @@ pub(crate) fn semantic_tokens_for_type<'db>(
     db: &'db dyn WorkspaceDataBase,
     typ: Type<'db>,
     builder: &mut SemanticTokensBuilder,
-    span: Span,
+    span: auto_lsp::tree_sitter::Range,
+    file: auto_lsp::default::db::file::File,
 ) {
-    let range = span.lsp();
+    let range = hir::denormalize(db, file, &span).unwrap_or_default();
     // Semantic tokens cannot span multiple lines; skip if the span is multi-line
     // to avoid subtract-with-overflow in the builder.
     if range.start.line != range.end.line {

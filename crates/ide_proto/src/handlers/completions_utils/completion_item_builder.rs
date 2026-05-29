@@ -2,7 +2,6 @@
 use std::fmt::{Display, format};
 
 use auto_lsp::{
-    core::span::Span,
     lsp_types::{
         self, CompletionItem, CompletionItemKind, CompletionItemLabelDetails, InsertTextFormat,
         InsertTextMode, Range, TextEdit,
@@ -267,16 +266,17 @@ pub fn find_using_range<'db>(
 
 // todo: set indentation
 #[inline]
-fn go_to_next_line(span: Span) -> lsp_types::Range {
-    let lsp_span = span.lsp();
-    // Move to the beginning of the next line to avoid intersection with existing content
+fn go_to_next_line(span: auto_lsp::tree_sitter::Range) -> lsp_types::Range {
+    // Move to the beginning of the next line to avoid intersection with existing content.
+    // Only the line number is needed, and rows are encoding-invariant, so no denormalization.
+    let next_line = span.end_point.row as u32 + 1;
     lsp_types::Range {
         start: lsp_types::Position {
-            line: lsp_span.end.line + 1,
+            line: next_line,
             character: 0,
         },
         end: lsp_types::Position {
-            line: lsp_span.end.line + 1,
+            line: next_line,
             character: 0,
         },
     }

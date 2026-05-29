@@ -2,7 +2,6 @@
 use std::fmt::Display;
 
 use auto_lsp::{
-    core::span::Span,
     lsp_types::{
         self, CompletionItem, CompletionItemKind, CompletionItemLabelDetails, InsertTextFormat,
         InsertTextMode, Range, TextEdit,

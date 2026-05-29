@@ -13,7 +13,7 @@ impl<'db> CodeLensHandler<'db> for HirNode<'db> {
             HirNode::Program(prog) if hir::hir_def::pous::pragma::is_test(db, prog.pragmas(db)) => {
                 let qualified = Type::Program(*prog).qualified_path(db);
                 Some(test_code_lens(
-                    prog.get_span(db).lsp(),
+                    hir::denormalize(db, prog.get_scope_id(db).file(db), &prog.get_span(db)).unwrap_or_default(),
                     prog.get_scope_id(db).file(db).url(db).as_str(),
                     &qualified,
                 ))
@@ -32,7 +32,7 @@ impl<'db> CodeLensHandler<'db> for Pou<'db> {
                     None
                 } else {
                     Some(CodeLens {
-                        range: self.get_span(db).lsp(),
+                        range: hir::denormalize(db, self.get_scope_id(db).file(db), &self.get_span(db)).unwrap_or_default(),
                         command: Some(Command {
                             title: format!(
                                 "{} implementation{}",
@@ -42,7 +42,7 @@ impl<'db> CodeLensHandler<'db> for Pou<'db> {
                             command: "rk.showImplementations".into(),
                             arguments: Some(vec![
                                 to_value(self.get_scope_id(db).file(db).url(db).as_str()).unwrap(),
-                                to_value(self.get_name_span(db).lsp().start).unwrap(),
+                                to_value(hir::denormalize(db, self.get_scope_id(db).file(db), &self.get_name_span(db)).unwrap_or_default().start).unwrap(),
                             ]),
                         }),
                         data: None,
@@ -52,8 +52,7 @@ impl<'db> CodeLensHandler<'db> for Pou<'db> {
             Pou::Function(f) if hir::hir_def::pous::pragma::is_test(db, f.pragmas(db)) => {
                 let qualified = Type::new_pou(db, *self).qualified_path(db);
                 Some(test_code_lens(
-                    self.get_span(db)
-                        .lsp_with_enc(self.get_scope_id(db).file(db).document(db))
+                    hir::denormalize(db, self.get_scope_id(db).file(db), &self.get_span(db))
                         .unwrap(),
                     self.get_scope_id(db).file(db).url(db).as_str(),
                     &qualified,

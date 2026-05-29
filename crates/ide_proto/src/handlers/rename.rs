@@ -16,7 +16,7 @@ impl<'db> RenameHandler<'db> for HirNode<'db> {
                 .entry(loc.file.url(db).clone())
                 .or_default()
                 .push(TextEdit {
-                    range: loc.span.into(),
+                    range: hir::denormalize(db, loc.file, &loc.span).unwrap_or_default(),
                     new_text: new_name.to_string(),
                 });
         }

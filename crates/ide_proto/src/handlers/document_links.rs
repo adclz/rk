@@ -1,4 +1,3 @@
-use auto_lsp::core::span::Span;
 use auto_lsp::default::db::file::File;
 use auto_lsp::lsp_types::{DocumentLink, Location};
 use auto_lsp::tree_sitter;
@@ -93,7 +92,7 @@ pub(crate) fn resolve_bracket_ref_to_pou<'db>(
 pub(crate) fn resolve_bracket_ref(db: &dyn WorkspaceDataBase, content: &str) -> Option<Location> {
     let pou = resolve_bracket_ref_to_pou(db, content)?;
     let file = pou.get_scope_id(db).file(db);
-    let range: auto_lsp::lsp_types::Range = pou.get_name_span(db).into();
+    let range = hir::denormalize(db, file, &pou.get_name_span(db)).unwrap_or_default();
     Some(Location::new(file.url(db).clone(), range))
 }
 
@@ -126,10 +125,9 @@ pub fn document_links(db: &dyn WorkspaceDataBase, file: File) -> Vec<DocumentLin
 
                 let span = byte_range_to_span(source, content_start, content_end);
 
-                if let Some(enc_range) = document.ts_range_to_enc_range(&span) {
-                    let span: Span = enc_range.into();
+                if let Ok(range) = document.denormalize_range(&span) {
                     links.push(DocumentLink {
-                        range: span.into(),
+                        range,
                         target: Some(location.uri),
                         tooltip: Some(bref.content.clone()),
                         data: None,
@@ -142,12 +140,16 @@ pub fn document_links(db: &dyn WorkspaceDataBase, file: File) -> Vec<DocumentLin
     links
 }
 
-/// Convert a byte range in source text to a [`Span`].
-pub(crate) fn byte_range_to_span(source: &str, start_byte: usize, end_byte: usize) -> Span {
+/// Convert a byte range in source text to a [`tree_sitter::Range`].
+pub(crate) fn byte_range_to_span(
+    source: &str,
+    start_byte: usize,
+    end_byte: usize,
+) -> tree_sitter::Range {
     let (start_row, start_col) = byte_offset_to_point(source, start_byte);
     let (end_row, end_col) = byte_offset_to_point(source, end_byte);
 
-    Span::from(tree_sitter::Range {
+    tree_sitter::Range {
         start_byte,
         end_byte,
         start_point: tree_sitter::Point {
@@ -158,7 +160,7 @@ pub(crate) fn byte_range_to_span(source: &str, start_byte: usize, end_byte: usiz
             row: end_row,
             column: end_col,
         },
-    })
+    }
 }
 
 /// Compute (row, column) from a byte offset in source text.

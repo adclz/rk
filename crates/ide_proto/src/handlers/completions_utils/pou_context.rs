@@ -1,6 +1,5 @@
 use std::sync::LazyLock;
 
-use auto_lsp::core::span::Span;
 use auto_lsp::tree_sitter::{self, StreamingIterator};
 
 static VAR_DECLS: &str = r#"
@@ -81,11 +80,11 @@ impl HeadLocation {
 pub struct HeadResult {
     pub head_location: HeadLocation,
     pub inside_var_section: VarSection,
-    pub inputs: Option<Span>,
-    pub outputs: Option<Span>,
-    pub in_outs: Option<Span>,
-    pub temps: Option<Span>,
-    pub vars: Option<Span>,
+    pub inputs: Option<tree_sitter::Range>,
+    pub outputs: Option<tree_sitter::Range>,
+    pub in_outs: Option<tree_sitter::Range>,
+    pub temps: Option<tree_sitter::Range>,
+    pub vars: Option<tree_sitter::Range>,
 }
 
 impl HeadResult {
@@ -123,7 +122,7 @@ impl HeadResult {
     pub fn query_var_decls(
         root_node: tree_sitter::Node,
         source: &str,
-        range: Span,
+        range: tree_sitter::Range,
         offset: usize,
     ) -> Self {
         let mut query_cursor = tree_sitter::QueryCursor::new();
@@ -136,7 +135,7 @@ impl HeadResult {
         let mut temps = None;
         let mut vars = None;
         let mut inside_var_section = VarSection::empty();
-        let mut method_ranges: Vec<Span> = Vec::new();
+        let mut method_ranges: Vec<tree_sitter::Range> = Vec::new();
         let mut body = None;
 
         while let Some((m, capture_index)) = captures.next() {
@@ -149,34 +148,34 @@ impl HeadResult {
                     if is_inside {
                         inside_var_section |= VarSection::INPUTS;
                     }
-                    inputs = Some(capture.node.range().into());
+                    inputs = Some(capture.node.range());
                 }
                 "output_decls" => {
                     if is_inside {
                         inside_var_section |= VarSection::OUTPUTS;
                     }
-                    outputs = Some(capture.node.range().into());
+                    outputs = Some(capture.node.range());
                 }
                 "in_out_decls" => {
                     if is_inside {
                         inside_var_section |= VarSection::IN_OUTS;
                     }
-                    in_outs = Some(capture.node.range().into());
+                    in_outs = Some(capture.node.range());
                 }
                 "temp_var_decls" => {
                     if is_inside {
                         inside_var_section |= VarSection::TEMPS;
                     }
-                    temps = Some(capture.node.range().into());
+                    temps = Some(capture.node.range());
                 }
                 "var_decls" => {
                     if is_inside {
                         inside_var_section |= VarSection::VARS;
                     }
-                    vars = Some(capture.node.range().into());
+                    vars = Some(capture.node.range());
                 }
                 "method" => {
-                    method_ranges.push(capture.node.range().into());
+                    method_ranges.push(capture.node.range());
                 }
                 "body" => {
                     body = Some(capture.node);
@@ -208,8 +207,8 @@ impl HeadResult {
     fn determine_head_location(
         offset: usize,
         inside_var_section: &VarSection,
-        var_ranges: &[Option<Span>],
-        method_ranges: &[Span],
+        var_ranges: &[Option<tree_sitter::Range>],
+        method_ranges: &[tree_sitter::Range],
         body: Option<tree_sitter::Node>,
         source: &str,
     ) -> HeadLocation {

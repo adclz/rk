@@ -110,7 +110,7 @@ impl<'db> HoverHandler<'db> for ProgramDecl<'db> {
                 kind: MarkupKind::Markdown,
                 value: format!("```iecst\n{path}PROGRAM {name}\n```\n{comment}"),
             }),
-            range: Some(self.get_name_span(db).into()),
+            range: Some(hir::denormalize(db, self.get_scope_id(db).file(db), &self.get_name_span(db)).unwrap_or_default()),
         })
     }
 }
@@ -150,7 +150,7 @@ impl<'db> HoverHandler<'db> for Pou<'db> {
                 kind: MarkupKind::Markdown,
                 value: format!("```iecst\n{path}{kind} {name}{return_type}\n```\n{comment}"),
             }),
-            range: Some(self.get_name_span(db).into()),
+            range: Some(hir::denormalize(db, self.get_scope_id(db).file(db), &self.get_name_span(db)).unwrap_or_default()),
         })
     }
 }
@@ -179,7 +179,7 @@ impl<'db> HoverHandler<'db> for VariableDecl<'db> {
                 kind: MarkupKind::Markdown,
                 value: format!("```iecst\n({kind}) {name}: {type_name}\n```\n{comment}"),
             }),
-            range: Some(self.get_name_span(db).into()),
+            range: Some(hir::denormalize(db, self.get_scope_id(db).file(db), &self.get_name_span(db)).unwrap_or_default()),
         })
     }
 }
@@ -210,7 +210,7 @@ impl<'db> HoverHandler<'db> for MethodRef<'db> {
                 kind: MarkupKind::Markdown,
                 value: format!("```iecst\n{path}{kind} {name}{return_type}\n```\n{comment}"),
             }),
-            range: Some(self.get_name_span(db).into()),
+            range: Some(hir::denormalize(db, self.get_scope_id(db).file(db), &self.get_name_span(db)).unwrap_or_default()),
         })
     }
 }
@@ -227,7 +227,7 @@ impl<'db> HoverHandler<'db> for StructElement<'db> {
                 kind: MarkupKind::Markdown,
                 value: format!("```iecst\n{path}{name}: {type_name}\n```\n{comment}"),
             }),
-            range: Some(self.get_name_span(db).into()),
+            range: Some(hir::denormalize(db, self.get_scope_id(db).file(db), &self.get_name_span(db)).unwrap_or_default()),
         })
     }
 }
@@ -299,7 +299,7 @@ impl<'db> HoverHandler<'db> for Using<'db> {
         let mut accumulated_path = vec![];
 
         for (index, fragment) in self.path(db).fragments(db).iter().enumerate() {
-            let span = self.path(db).get_fragment_ast_node(db, index).get_span();
+            let span = self.path(db).get_fragment_ast_node(db, index).get_range().to_owned();
             accumulated_path.push(fragment.text(db).to_string());
 
             if offset >= span.start_byte && offset <= span.end_byte {
@@ -330,7 +330,7 @@ impl<'db> HoverHandler<'db> for Spec<'db> {
             let mut accumulated_path = vec![];
 
             for (index, fragment) in path.fragments(db).iter().enumerate() {
-                let span = path.get_fragment_ast_node(db, index).get_span();
+                let span = path.get_fragment_ast_node(db, index).get_range().to_owned();
                 accumulated_path.push(fragment.text(db).to_string());
 
                 if offset >= span.start_byte && offset <= span.end_byte {
@@ -410,7 +410,7 @@ impl<'db> HoverHandler<'db> for ConfigDecl<'db> {
             contents: HoverContents::Scalar(MarkedString::from_markdown(format!(
                 "\n```iecst\nCONFIGURATION {name}\n```\n"
             ))),
-            range: Some(name_span.into()),
+            range: Some(hir::denormalize(db, self.get_scope_id(db).file(db), &name_span).unwrap_or_default()),
         })
     }
 }
@@ -428,7 +428,7 @@ impl<'db> HoverHandler<'db> for ResourceDecl<'db> {
             contents: HoverContents::Scalar(MarkedString::from_markdown(format!(
                 "\n```iecst\nRESOURCE {name} ON {resource_type}\n```\n"
             ))),
-            range: Some(name_span.into()),
+            range: Some(hir::denormalize(db, self.get_scope_id(db).file(db), &name_span).unwrap_or_default()),
         })
     }
 }
@@ -449,7 +449,7 @@ impl<'db> HoverHandler<'db> for TaskConfig<'db> {
             contents: HoverContents::Scalar(MarkedString::from_markdown(format!(
                 "\n```iecst\nTASK {name} (PRIORITY := {priority})\n```\n"
             ))),
-            range: Some(name_span.into()),
+            range: Some(hir::denormalize(db, self.get_scope_id(db).file(db), &name_span).unwrap_or_default()),
         })
     }
 }
@@ -487,7 +487,7 @@ impl<'db> HoverHandler<'db> for ProgConfig<'db> {
             contents: HoverContents::Scalar(MarkedString::from_markdown(format!(
                 "\n```iecst\nPROGRAM {name}{task_part} : {prog_type}\n```\n"
             ))),
-            range: Some(name_span.into()),
+            range: Some(hir::denormalize(db, self.get_scope_id(db).file(db), &name_span).unwrap_or_default()),
         })
     }
 }

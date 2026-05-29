@@ -1,6 +1,6 @@
 use std::ops::ControlFlow;
 
-use auto_lsp::{core::span::Span, default::db::file::File, lsp_types::Location};
+use auto_lsp::{default::db::file::File, lsp_types::Location, tree_sitter};
 use db::WorkspaceDataBase;
 use hir::{
     HasName, HirNodeInfo,
@@ -18,12 +18,15 @@ use crate::{handlers::ReferencesHandler, walk::WalkHir};
 
 pub struct ReferenceLocation {
     pub file: File,
-    pub span: Span,
+    pub span: tree_sitter::Range,
 }
 
 impl ReferenceLocation {
     pub fn to_location(&self, db: &dyn WorkspaceDataBase) -> Location {
-        Location::new(self.file.url(db).clone(), self.span.into())
+        Location::new(
+            self.file.url(db).clone(),
+            hir::denormalize(db, self.file, &self.span).unwrap_or_default(),
+        )
     }
 }
 
@@ -180,7 +183,7 @@ fn node_reference_ident<'db>(
 fn reference_span<'db>(
     db: &'db dyn WorkspaceDataBase,
     node: &HirNode<'db>,
-) -> auto_lsp::core::span::Span {
+) -> auto_lsp::tree_sitter::Range {
     match node {
         HirNode::PouDecl(pou) => pou.get_name_span(db),
         HirNode::VariableDecl(var) => var.get_name_span(db),

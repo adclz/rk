@@ -1,7 +1,7 @@
 use std::sync::LazyLock;
 
 use auto_lsp::{
-    core::{document::Document, span::Span},
+    core::document::Document,
     default::db::{BaseDatabase, file::File},
     tree_sitter::{self, StreamingIterator},
 };
@@ -31,7 +31,7 @@ pub fn comment_index(db: &dyn BaseDatabase, file: File) -> CommentIndex {
     );
     // Since the standard supports nested comments,
     // we need to carefully ignore them if they are nested
-    let mut curr_range: Option<Span> = None;
+    let mut curr_range: Option<tree_sitter::Range> = None;
 
     while let Some((capture, capture_index)) = captures.next() {
         let capture = capture.captures[*capture_index];
@@ -43,7 +43,7 @@ pub fn comment_index(db: &dyn BaseDatabase, file: File) -> CommentIndex {
         };
 
         let node = capture.node;
-        let range: Span = node.range().into();
+        let range = node.range();
 
         match curr_range {
             Some(curr) => {
@@ -75,7 +75,7 @@ pub struct CommentIndex {
 }
 
 impl CommentIndex {
-    pub fn find_nearby_comment(&self, document: &Document, range: &Span) -> Option<&Comment> {
+    pub fn find_nearby_comment(&self, document: &Document, range: &tree_sitter::Range) -> Option<&Comment> {
         let line = range.start_point.row;
         let column = range.start_point.column;
 
@@ -131,7 +131,7 @@ impl CommentIndex {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct Comment {
-    pub range: Span,
+    pub range: tree_sitter::Range,
     pub kind: CommentKind,
 }
 

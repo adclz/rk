@@ -31,9 +31,9 @@ impl<'db> ImplementationHandler<'db> for Pou<'db> {
                     .iter()
                     .map(|pou| LocationLink {
                         target_uri: pou.get_scope_id(db).file(db).url(db).clone(),
-                        target_range: pou.get_span(db).lsp(),
-                        target_selection_range: pou.get_span(db).lsp(),
-                        origin_selection_range: Some(self.get_span(db).lsp()),
+                        target_range: hir::denormalize(db, pou.get_scope_id(db).file(db), &pou.get_span(db)).unwrap_or_default(),
+                        target_selection_range: hir::denormalize(db, pou.get_scope_id(db).file(db), &pou.get_span(db)).unwrap_or_default(),
+                        origin_selection_range: Some(hir::denormalize(db, self.get_scope_id(db).file(db), &self.get_span(db)).unwrap_or_default()),
                     })
                     .collect();
 

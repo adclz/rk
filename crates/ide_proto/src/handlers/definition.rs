@@ -83,7 +83,7 @@ impl<'db> DefinitionHandler<'db> for Pou<'db> {
     ) -> Option<GotoDefinitionResponse> {
         Some(GotoDefinitionResponse::Scalar(Location::new(
             self.get_scope_id(db).file(db).url(db).to_owned(),
-            self.get_span(db).into(),
+            hir::denormalize(db, self.get_scope_id(db).file(db), &self.get_span(db)).unwrap_or_default(),
         )))
     }
 }
@@ -121,7 +121,7 @@ impl<'db> DefinitionHandler<'db> for Spec<'db> {
             let mut accumulated = vec![];
 
             for (index, fragment) in path.fragments(db).iter().enumerate() {
-                let span = path.get_fragment_ast_node(db, index).get_span();
+                let span = path.get_fragment_ast_node(db, index).get_range().to_owned();
                 accumulated.push(*fragment);
 
                 if offset >= span.start_byte && offset <= span.end_byte {
@@ -230,7 +230,7 @@ impl<'db> DefinitionHandler<'db> for Type<'db> {
 
         Some(GotoDefinitionResponse::Scalar(Location::new(
             loc.get_scope_id(db).file(db).url(db).to_owned(),
-            loc.get_span(db).into(),
+            hir::denormalize(db, loc.get_scope_id(db).file(db), &loc.get_span(db)).unwrap_or_default(),
         )))
     }
 }
@@ -246,7 +246,7 @@ impl<'db> DefinitionHandler<'db> for CallableType<'db> {
             CallableType::FunctionBlock(fb) => Pou::FunctionBlock(*fb).definition(db, offset),
             CallableType::MethodDecl(m) => Some(GotoDefinitionResponse::Scalar(Location::new(
                 m.get_scope_id(db).file(db).url(db).to_owned(),
-                m.get_span(db).into(),
+                hir::denormalize(db, m.get_scope_id(db).file(db), &m.get_span(db)).unwrap_or_default(),
             ))),
         }
     }
@@ -260,7 +260,7 @@ impl<'db> DefinitionHandler<'db> for ConfigDecl<'db> {
     ) -> Option<GotoDefinitionResponse> {
         Some(GotoDefinitionResponse::Scalar(Location::new(
             self.get_scope_id(db).file(db).url(db).to_owned(),
-            self.get_name_span(db).into(),
+            hir::denormalize(db, self.get_scope_id(db).file(db), &self.get_name_span(db)).unwrap_or_default(),
         )))
     }
 }
@@ -273,7 +273,7 @@ impl<'db> DefinitionHandler<'db> for TaskConfig<'db> {
     ) -> Option<GotoDefinitionResponse> {
         Some(GotoDefinitionResponse::Scalar(Location::new(
             self.get_scope_id(db).file(db).url(db).to_owned(),
-            self.name(db).get_span(db).into(),
+            hir::denormalize(db, self.name(db).get_scope_id(db).file(db), &self.name(db).get_span(db)).unwrap_or_default(),
         )))
     }
 }
@@ -310,7 +310,7 @@ fn namespace_definitions(
         .map(|ns| {
             Location::new(
                 ns.scope_id(db).file(db).url(db).to_owned(),
-                ns.name_span(db).into(),
+                hir::denormalize(db, ns.scope_id(db).file(db), &ns.name_span(db)).unwrap_or_default(),
             )
         })
         .collect();
