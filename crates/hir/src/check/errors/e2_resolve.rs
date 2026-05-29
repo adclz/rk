@@ -1,7 +1,7 @@
 use auto_lsp::{
-    core::span::Span,
     default::db::file::File,
     lsp_types::{DiagnosticSeverity, DiagnosticTag},
+    tree_sitter,
 };
 use db::{WorkspaceDataBase, workspace::Workspace};
 use ide_diagnostic::{ErrorCode, IdeDiagnostic, Related, diag};
@@ -155,7 +155,7 @@ pub enum ResolveError<'db> {
     /// Two or more items with the same name are available in scope.
     MultipleItemsInScope {
         name: Ident,
-        span: Span,
+        span: tree_sitter::Range,
         candidates: Vec<(Pou<'db>, NamespacePath)>,
     },
     /// Multibit access offset exceeds the size of the base type.
@@ -267,7 +267,7 @@ impl<'db> ErrorCode for ResolveError<'db> {
 }
 
 impl<'db> ToIdeDiagnostic<'db> for ResolveError<'db> {
-    fn to_diagnostic(&self, db: &'db dyn WorkspaceDataBase) -> IdeDiagnostic {
+    fn to_diagnostic(&self, db: &'db dyn WorkspaceDataBase, file: auto_lsp::default::db::file::File) -> IdeDiagnostic {
         match self {
             Self::IncorrectNumberOfParameters {
                 expected,
@@ -287,18 +287,18 @@ impl<'db> ToIdeDiagnostic<'db> for ResolveError<'db> {
                 ))
                 .severity(DiagnosticSeverity::ERROR)
                 .desc(self)
-                .range(func_call.path(db).get_span(db))
+                .range(crate::denormalize(db, file, &func_call.path(db).get_span(db)).unwrap_or_default())
                 .call(),
             Self::UnknownNonFormalParameter { func, expr, param } => diag()
                 .message(format!("no parameter at index '{}'", param))
-                .range(expr.get_span(db))
+                .range(crate::denormalize(db, file, &expr.get_span(db)).unwrap_or_default())
                 .severity(DiagnosticSeverity::ERROR)
                 .desc(self)
                 .call(),
             Self::UnknownInputParameter { func, param } => {
                 let mut diag = diag()
                     .message(format!("unknown input parameter '{}'", param.text(db)))
-                    .range(param.get_span(db))
+                    .range(crate::denormalize(db, file, &param.get_span(db)).unwrap_or_default())
                     .severity(DiagnosticSeverity::ERROR)
                     .desc(self)
                     .call();
@@ -310,7 +310,7 @@ impl<'db> ToIdeDiagnostic<'db> for ResolveError<'db> {
             Self::UnknownOutputParameter { func, param } => {
                 let mut diag = diag()
                     .message(format!("unknown output parameter '{}'", param.text(db)))
-                    .range(param.get_span(db))
+                    .range(crate::denormalize(db, file, &param.get_span(db)).unwrap_or_default())
                     .severity(DiagnosticSeverity::ERROR)
                     .desc(self)
                     .call();
@@ -330,7 +330,7 @@ impl<'db> ToIdeDiagnostic<'db> for ResolveError<'db> {
                         "output parameter at index '{}' cannot be used as input",
                         param
                     ))
-                    .range(expr.get_span(db))
+                    .range(crate::denormalize(db, file, &expr.get_span(db)).unwrap_or_default())
                     .severity(DiagnosticSeverity::ERROR)
                     .desc(self)
                     .call();
@@ -349,7 +349,7 @@ impl<'db> ToIdeDiagnostic<'db> for ResolveError<'db> {
                     ))
                     .severity(DiagnosticSeverity::ERROR)
                     .desc(self)
-                    .range(expr.get_span(db))
+                    .range(crate::denormalize(db, file, &expr.get_span(db)).unwrap_or_default())
                     .call();
 
                 let mut query = Query::new(expr.ident(db).text(db).to_string());
@@ -382,7 +382,7 @@ impl<'db> ToIdeDiagnostic<'db> for ResolveError<'db> {
                     .message(format!("no item found for path '{}'", path.to_string(db)))
                     .severity(DiagnosticSeverity::ERROR)
                     .desc(self)
-                    .range(path.get_span(db))
+                    .range(crate::denormalize(db, file, &path.get_span(db)).unwrap_or_default())
                     .call();
 
                 let path_str = path.path.to_string(db);
@@ -456,7 +456,7 @@ impl<'db> ToIdeDiagnostic<'db> for ResolveError<'db> {
                     .message(format!("namespace '{}' not found", path.to_string(db)))
                     .severity(DiagnosticSeverity::ERROR)
                     .desc(self)
-                    .range(call_site.get_span(db))
+                    .range(crate::denormalize(db, file, &call_site.get_span(db)).unwrap_or_default())
                     .call();
 
                 let mut ns_query = Query::new(path.to_string(db));
@@ -478,7 +478,7 @@ impl<'db> ToIdeDiagnostic<'db> for ResolveError<'db> {
                     ))
                     .severity(DiagnosticSeverity::ERROR)
                     .desc(self)
-                    .range(expr.get_span(db))
+                    .range(crate::denormalize(db, file, &expr.get_span(db)).unwrap_or_default())
                     .call();
 
                 ty.with_location(db, &mut diag);
@@ -494,7 +494,7 @@ impl<'db> ToIdeDiagnostic<'db> for ResolveError<'db> {
                     ))
                     .severity(DiagnosticSeverity::ERROR)
                     .desc(self)
-                    .range(expr.get_span(db))
+                    .range(crate::denormalize(db, file, &expr.get_span(db)).unwrap_or_default())
                     .call();
 
                 fuzzy_type_fields(db, *ty, &mut diag, ident.text(db).as_str());
@@ -507,19 +507,19 @@ impl<'db> ToIdeDiagnostic<'db> for ResolveError<'db> {
                 ))
                 .severity(DiagnosticSeverity::ERROR)
                 .desc(self)
-                .range(expr.get_span(db))
+                .range(crate::denormalize(db, file, &expr.get_span(db)).unwrap_or_default())
                 .call(),
             Self::IndexNonArrayTypeInitExpr { expr, ty } => ide_diagnostic::diag()
                 .message(format!("cannot index into type '{}'", ty.type_name(db)))
                 .severity(auto_lsp::lsp_types::DiagnosticSeverity::ERROR)
                 .desc(self)
-                .range(expr.get_span(db))
+                .range(crate::denormalize(db, file, &expr.get_span(db)).unwrap_or_default())
                 .call(),
             Self::IndexNonArrayTypePathExpr { expr, ty } => ide_diagnostic::diag()
                 .message(format!("cannot index into type '{}'", ty.type_name(db)))
                 .severity(auto_lsp::lsp_types::DiagnosticSeverity::ERROR)
                 .desc(self)
-                .range(expr.get_span(db))
+                .range(crate::denormalize(db, file, &expr.get_span(db)).unwrap_or_default())
                 .call(),
             Self::NoFieldOnElementaryType { expr, ty } => ide_diagnostic::diag()
                 .message(format!(
@@ -528,7 +528,7 @@ impl<'db> ToIdeDiagnostic<'db> for ResolveError<'db> {
                 ))
                 .severity(auto_lsp::lsp_types::DiagnosticSeverity::ERROR)
                 .desc(self)
-                .range(expr.get_span(db))
+                .range(crate::denormalize(db, file, &expr.get_span(db)).unwrap_or_default())
                 .call(),
             Self::FunctionAsType { expr, ty } => diag()
                 .message(format!(
@@ -537,7 +537,7 @@ impl<'db> ToIdeDiagnostic<'db> for ResolveError<'db> {
                 ))
                 .severity(DiagnosticSeverity::ERROR)
                 .desc(self)
-                .range(expr.get_span(db))
+                .range(crate::denormalize(db, file, &expr.get_span(db)).unwrap_or_default())
                 .call(),
             Self::NoConfigFileFound { file } => {
                 let mut diag = diag()
@@ -545,7 +545,10 @@ impl<'db> ToIdeDiagnostic<'db> for ResolveError<'db> {
                     .severity(DiagnosticSeverity::HINT)
                     .tags(vec![DiagnosticTag::UNNECESSARY])
                     .desc(self)
-                    .range(Span::from(file.document(db).tree.root_node().range()))
+                    .range(
+                        crate::denormalize(db, file, &file.document(db).tree.root_node().range())
+                            .unwrap_or_default(),
+                    )
                     .call();
 
                 diag.with_note(format!(
@@ -568,7 +571,7 @@ impl<'db> ToIdeDiagnostic<'db> for ResolveError<'db> {
                     .message(format!("program type '{name}' not found"))
                     .severity(DiagnosticSeverity::ERROR)
                     .desc(self)
-                    .range(prog_type.get_span(db))
+                    .range(crate::denormalize(db, file, &prog_type.get_span(db)).unwrap_or_default())
                     .call()
             }
             Self::UnknownTaskRef { task } => diag()
@@ -578,7 +581,7 @@ impl<'db> ToIdeDiagnostic<'db> for ResolveError<'db> {
                 ))
                 .severity(DiagnosticSeverity::ERROR)
                 .desc(self)
-                .range(task.get_span(db))
+                .range(crate::denormalize(db, file, &task.get_span(db)).unwrap_or_default())
                 .call(),
             Self::ExternalVarNotFound { var } => diag()
                 .message(format!(
@@ -587,7 +590,7 @@ impl<'db> ToIdeDiagnostic<'db> for ResolveError<'db> {
                 ))
                 .severity(DiagnosticSeverity::ERROR)
                 .desc(self)
-                .range(var.get_span(db))
+                .range(crate::denormalize(db, file, &var.get_span(db)).unwrap_or_default())
                 .call(),
             Self::AccessDeclTypeMismatch {
                 var_origin,
@@ -603,7 +606,7 @@ impl<'db> ToIdeDiagnostic<'db> for ResolveError<'db> {
                     ))
                     .severity(DiagnosticSeverity::ERROR)
                     .desc(self)
-                    .range(spec.get_span(db))
+                    .range(crate::denormalize(db, file, &spec.get_span(db)).unwrap_or_default())
                     .call();
 
                 diag.with_related(Related::new(
@@ -624,7 +627,7 @@ impl<'db> ToIdeDiagnostic<'db> for ResolveError<'db> {
                 ))
                 .severity(DiagnosticSeverity::ERROR)
                 .desc(self)
-                .range(instance_name.get_span(db))
+                .range(crate::denormalize(db, file, &instance_name.get_span(db)).unwrap_or_default())
                 .call(),
             Self::ConfigInstInitFieldNotFound { field, parent_type } => diag()
                 .message(format!(
@@ -634,7 +637,7 @@ impl<'db> ToIdeDiagnostic<'db> for ResolveError<'db> {
                 ))
                 .severity(DiagnosticSeverity::ERROR)
                 .desc(self)
-                .range(field.get_span(db))
+                .range(crate::denormalize(db, file, &field.get_span(db)).unwrap_or_default())
                 .call(),
             Self::NonVariadicTypeForVariable { var, typ } => {
                 let mut diag = diag()
@@ -645,7 +648,7 @@ impl<'db> ToIdeDiagnostic<'db> for ResolveError<'db> {
                     ))
                     .severity(DiagnosticSeverity::ERROR)
                     .desc(self)
-                    .range(var.get_span(db))
+                    .range(crate::denormalize(db, file, &var.get_span(db)).unwrap_or_default())
                     .call();
 
                 diag.with_note("only elementary types can be variadic".into());
@@ -659,7 +662,7 @@ impl<'db> ToIdeDiagnostic<'db> for ResolveError<'db> {
                     ))
                     .severity(DiagnosticSeverity::ERROR)
                     .desc(self)
-                    .range(var.get_span(db))
+                    .range(crate::denormalize(db, file, &var.get_span(db)).unwrap_or_default())
                     .call();
 
                 diag.with_note("variadic parameters are only allowed in VAR_INPUT sections".into());
@@ -670,7 +673,7 @@ impl<'db> ToIdeDiagnostic<'db> for ResolveError<'db> {
                     .message("only one variadic variable is allowed per POU".to_string())
                     .severity(DiagnosticSeverity::ERROR)
                     .desc(self)
-                    .range(second.get_span(db))
+                    .range(crate::denormalize(db, file, &second.get_span(db)).unwrap_or_default())
                     .call();
 
                 diag.with_related(Related::new(
@@ -694,7 +697,7 @@ impl<'db> ToIdeDiagnostic<'db> for ResolveError<'db> {
                     ))
                     .severity(DiagnosticSeverity::ERROR)
                     .desc(self)
-                    .range(other_var.get_span(db))
+                    .range(crate::denormalize(db, file, &other_var.get_span(db)).unwrap_or_default())
                     .call();
 
                 diag.with_related(Related::new(
@@ -726,7 +729,7 @@ impl<'db> ToIdeDiagnostic<'db> for ResolveError<'db> {
                     ))
                     .severity(DiagnosticSeverity::ERROR)
                     .desc(self)
-                    .range(expr.get_span(db))
+                    .range(crate::denormalize(db, file, &expr.get_span(db)).unwrap_or_default())
                     .call();
 
                 diag.with_related(Related::new(
@@ -747,7 +750,7 @@ impl<'db> ToIdeDiagnostic<'db> for ResolveError<'db> {
                     ))
                     .severity(DiagnosticSeverity::ERROR)
                     .desc(self)
-                    .range(ident.get_span(db))
+                    .range(crate::denormalize(db, file, &ident.get_span(db)).unwrap_or_default())
                     .call();
 
                 // Search for similar names to suggest
@@ -792,7 +795,7 @@ impl<'db> ToIdeDiagnostic<'db> for ResolveError<'db> {
                     ))
                     .severity(DiagnosticSeverity::ERROR)
                     .desc(self)
-                    .range(*span)
+                    .range(crate::denormalize(db, file, span).unwrap_or_default())
                     .call();
 
                 for ns in &duplicated {
@@ -832,7 +835,7 @@ impl<'db> ToIdeDiagnostic<'db> for ResolveError<'db> {
                     .message(format!("INTO reference '{}' not found in scope", name))
                     .severity(DiagnosticSeverity::ERROR)
                     .desc(self)
-                    .range(spec.get_span(db))
+                    .range(crate::denormalize(db, file, &spec.get_span(db)).unwrap_or_default())
                     .call()
             }
             Self::IntoRefNotAny { spec, ident, ty } => {
@@ -845,7 +848,7 @@ impl<'db> ToIdeDiagnostic<'db> for ResolveError<'db> {
                     ))
                     .severity(DiagnosticSeverity::ERROR)
                     .desc(self)
-                    .range(spec.get_span(db))
+                    .range(crate::denormalize(db, file, &spec.get_span(db)).unwrap_or_default())
                     .call();
 
                 diag.with_note(
@@ -896,7 +899,7 @@ impl<'db> ToIdeDiagnostic<'db> for ResolveError<'db> {
                     ))
                     .severity(DiagnosticSeverity::ERROR)
                     .desc(self)
-                    .range(func_call.path(db).get_span(db))
+                    .range(crate::denormalize(db, file, &func_call.path(db).get_span(db)).unwrap_or_default())
                     .call();
 
                 let any_input = vars.iter().any(|v| v.is_input(db));

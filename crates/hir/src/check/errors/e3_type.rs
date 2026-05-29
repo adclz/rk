@@ -205,7 +205,7 @@ impl<'db> ErrorCode for TypeError<'db> {
 }
 
 impl<'db> ToIdeDiagnostic<'db> for TypeError<'db> {
-    fn to_diagnostic(&self, db: &'db dyn WorkspaceDataBase) -> IdeDiagnostic {
+    fn to_diagnostic(&self, db: &'db dyn WorkspaceDataBase, file: auto_lsp::default::db::file::File) -> IdeDiagnostic {
         match self {
             Self::NotAssignable {
                 base_target,
@@ -230,7 +230,7 @@ impl<'db> ToIdeDiagnostic<'db> for TypeError<'db> {
                     .message(message)
                     .severity(DiagnosticSeverity::ERROR)
                     .desc(self)
-                    .range(expr.get_span(db))
+                    .range(crate::denormalize(db, file, &expr.get_span(db)).unwrap_or_default())
                     .call();
 
                 base_target.with_location(db, &mut diag);
@@ -252,7 +252,7 @@ impl<'db> ToIdeDiagnostic<'db> for TypeError<'db> {
                     ))
                     .severity(DiagnosticSeverity::ERROR)
                     .desc(self)
-                    .range(expr.get_span(db))
+                    .range(crate::denormalize(db, file, &expr.get_span(db)).unwrap_or_default())
                     .call();
 
                 base_target.with_location(db, &mut diag);
@@ -278,7 +278,7 @@ impl<'db> ToIdeDiagnostic<'db> for TypeError<'db> {
                         adjustment_to_string(db, *rhs, adjustment)
                     ))
                     .desc(self)
-                    .range(expr.get_span(db))
+                    .range(crate::denormalize(db, file, &expr.get_span(db)).unwrap_or_default())
                     .call();
 
                 base_target.with_location(db, &mut diag);
@@ -306,7 +306,7 @@ impl<'db> ToIdeDiagnostic<'db> for TypeError<'db> {
                     ))
                     .severity(DiagnosticSeverity::ERROR)
                     .desc(self)
-                    .range(expr.get_span(db))
+                    .range(crate::denormalize(db, file, &expr.get_span(db)).unwrap_or_default())
                     .call();
 
                 base_target.with_location(db, &mut diag);
@@ -328,7 +328,7 @@ impl<'db> ToIdeDiagnostic<'db> for TypeError<'db> {
                     ))
                     .severity(DiagnosticSeverity::ERROR)
                     .desc(self)
-                    .range(expr.get_span(db))
+                    .range(crate::denormalize(db, file, &expr.get_span(db)).unwrap_or_default())
                     .call();
 
                 base_target.with_location(db, &mut diag);
@@ -339,7 +339,7 @@ impl<'db> ToIdeDiagnostic<'db> for TypeError<'db> {
                 .message(format!("expected a boolean, got {}", typ.type_name(db)))
                 .severity(DiagnosticSeverity::ERROR)
                 .desc(self)
-                .range(expr.get_span(db))
+                .range(crate::denormalize(db, file, &expr.get_span(db)).unwrap_or_default())
                 .call(),
             Self::NonVariadicFoldParameter { var, call_site } => {
                 let mut diag = diag()
@@ -349,7 +349,7 @@ impl<'db> ToIdeDiagnostic<'db> for TypeError<'db> {
                     ))
                     .severity(DiagnosticSeverity::ERROR)
                     .desc(self)
-                    .range(call_site.get_span(db))
+                    .range(crate::denormalize(db, file, &call_site.get_span(db)).unwrap_or_default())
                     .call();
 
                 diag.with_note("... can only be used on VAR_INPUT variables that are declared variadic with the same operator (e.g: INT...)".into());
@@ -368,7 +368,7 @@ impl<'db> ToIdeDiagnostic<'db> for TypeError<'db> {
                     ))
                     .severity(DiagnosticSeverity::ERROR)
                     .desc(self)
-                    .range(call_site.get_span(db))
+                    .range(crate::denormalize(db, file, &call_site.get_span(db)).unwrap_or_default())
                     .call();
 
                 typ.with_location(db, &mut diag);
@@ -378,7 +378,7 @@ impl<'db> ToIdeDiagnostic<'db> for TypeError<'db> {
                 .message(message.clone())
                 .severity(DiagnosticSeverity::ERROR)
                 .desc(self)
-                .range(expr.get_span(db))
+                .range(crate::denormalize(db, file, &expr.get_span(db)).unwrap_or_default())
                 .call(),
             Self::InferLiteralError {
                 err,
@@ -395,7 +395,7 @@ impl<'db> ToIdeDiagnostic<'db> for TypeError<'db> {
                     ))
                     .severity(DiagnosticSeverity::ERROR)
                     .desc(self)
-                    .range(expr.get_span(db))
+                    .range(crate::denormalize(db, file, &expr.get_span(db)).unwrap_or_default())
                     .call();
 
                 if let Some(source) = source {
@@ -434,7 +434,7 @@ impl<'db> ToIdeDiagnostic<'db> for TypeError<'db> {
                     ))
                     .severity(DiagnosticSeverity::ERROR)
                     .desc(self)
-                    .range(call_site.get_span(db))
+                    .range(crate::denormalize(db, file, &call_site.get_span(db)).unwrap_or_default())
                     .call();
 
                 typ.with_location(db, &mut diag);
@@ -452,7 +452,7 @@ impl<'db> ToIdeDiagnostic<'db> for TypeError<'db> {
                     ))
                     .severity(DiagnosticSeverity::ERROR)
                     .desc(self)
-                    .range(call_site.get_span(db))
+                    .range(crate::denormalize(db, file, &call_site.get_span(db)).unwrap_or_default())
                     .call();
 
                 rhs.with_location(db, &mut diag);
@@ -465,7 +465,7 @@ impl<'db> ToIdeDiagnostic<'db> for TypeError<'db> {
                 ))
                 .severity(DiagnosticSeverity::ERROR)
                 .desc(self)
-                .range(spec.get_span(db))
+                .range(crate::denormalize(db, file, &spec.get_span(db)).unwrap_or_default())
                 .call(),
             Self::MissingGenericArgs {
                 name,
@@ -480,7 +480,7 @@ impl<'db> ToIdeDiagnostic<'db> for TypeError<'db> {
                 ))
                 .severity(DiagnosticSeverity::ERROR)
                 .desc(self)
-                .range(spec.get_span(db))
+                .range(crate::denormalize(db, file, &spec.get_span(db)).unwrap_or_default())
                 .call(),
             Self::WrongNumberOfGenericArgs {
                 name,
@@ -497,7 +497,7 @@ impl<'db> ToIdeDiagnostic<'db> for TypeError<'db> {
                 ))
                 .severity(DiagnosticSeverity::ERROR)
                 .desc(self)
-                .range(spec.get_span(db))
+                .range(crate::denormalize(db, file, &spec.get_span(db)).unwrap_or_default())
                 .call(),
             Self::TypeArgDoesNotMatchBound {
                 arg_ty,
@@ -511,13 +511,13 @@ impl<'db> ToIdeDiagnostic<'db> for TypeError<'db> {
                 ))
                 .severity(DiagnosticSeverity::ERROR)
                 .desc(self)
-                .range(arg_spec.get_span(db))
+                .range(crate::denormalize(db, file, &arg_spec.get_span(db)).unwrap_or_default())
                 .call(),
             Self::PreprocessIdentNotFound { ident, site } => diag()
                 .message(format!("'{}' is not in scope", ident))
                 .severity(DiagnosticSeverity::ERROR)
                 .desc(self)
-                .range(site.get_span(db))
+                .range(crate::denormalize(db, file, &site.get_span(db)).unwrap_or_default())
                 .call(),
             Self::PreprocessIdentNotGeneric {
                 ident,
@@ -531,7 +531,7 @@ impl<'db> ToIdeDiagnostic<'db> for TypeError<'db> {
                 ))
                 .severity(DiagnosticSeverity::ERROR)
                 .desc(self)
-                .range(site.get_span(db))
+                .range(crate::denormalize(db, file, &site.get_span(db)).unwrap_or_default())
                 .call(),
             Self::PreprocessTypeNotInBound {
                 expected_ty,
@@ -545,7 +545,7 @@ impl<'db> ToIdeDiagnostic<'db> for TypeError<'db> {
                 ))
                 .severity(DiagnosticSeverity::ERROR)
                 .desc(self)
-                .range(spec.get_span(db))
+                .range(crate::denormalize(db, file, &spec.get_span(db)).unwrap_or_default())
                 .call(),
             Self::WasmUnresolvedGeneric { param, bound, site } => {
                 let mut diag = diag()
@@ -556,7 +556,7 @@ impl<'db> ToIdeDiagnostic<'db> for TypeError<'db> {
                     ))
                     .severity(DiagnosticSeverity::ERROR)
                     .desc(self)
-                    .range(site.get_span(db))
+                    .range(crate::denormalize(db, file, &site.get_span(db)).unwrap_or_default())
                     .call();
                 diag.with_note(
                     format!(

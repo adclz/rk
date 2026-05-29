@@ -136,7 +136,7 @@ impl<'db> Signature<'db> {
                 let var_name = var.get_name_ident(db);
                 if external_var_lookup(db, var_name).is_none() {
                     self.errors
-                        .push(ResolveError::ExternalVarNotFound { var: *var }.to_diagnostic(db));
+                        .push(ResolveError::ExternalVarNotFound { var: *var }.to_diagnostic(db, self.scope.file(db)));
                 }
             }
         }
@@ -198,7 +198,7 @@ impl<'db> Signature<'db> {
                                 expected: declared_ty,
                                 actual: var_ty,
                             }
-                            .to_diagnostic(db),
+                            .to_diagnostic(db, self.scope.file(db)),
                         );
                     }
                 }
@@ -208,7 +208,7 @@ impl<'db> Signature<'db> {
                             expr: decl.variable,
                             scope: self.scope,
                         }
-                        .to_diagnostic(db),
+                        .to_diagnostic(db, self.scope.file(db)),
                     );
                 }
             }
@@ -270,7 +270,7 @@ impl<'db> Signature<'db> {
                                     span: spec.get_span(db),
                                     candidates,
                                 }
-                                .to_diagnostic(db),
+                                .to_diagnostic(db, self.scope.file(db)),
                             );
                         }
                         _ => {
@@ -278,7 +278,7 @@ impl<'db> Signature<'db> {
                                 ResolveError::NoNamespaceItemFound {
                                     path: target.clone(),
                                 }
-                                .to_diagnostic(db),
+                                .to_diagnostic(db, self.scope.file(db)),
                             );
                         }
                     }
@@ -290,7 +290,7 @@ impl<'db> Signature<'db> {
                         expr: spec,
                         ty: typ,
                     }
-                    .to_diagnostic(db),
+                    .to_diagnostic(db, self.scope.file(db)),
                 );
             }
             _ => (),

@@ -773,13 +773,13 @@ impl<'db> Parse<'db> for ast::generated::VarAccess {
             ast::generated::ERRUnexpectedSuperInPath_ERRUnexpectedThisInPath_Field::ERRUnexpectedThisInPath(
                 direct_variable,
             ) => Err(SyntaxError::UnexpectedThis(
-                direct_variable.get_span(),
-            ).to_diagnostic(sema.db)),
+                direct_variable.get_range().to_owned(),
+            ).to_diagnostic(sema.db, sema.file)),
             ast::generated::ERRUnexpectedSuperInPath_ERRUnexpectedThisInPath_Field::ERRUnexpectedSuperInPath(
                 direct_variable,
             ) => Err(SyntaxError::UnexpectedSuper(
-                direct_variable.get_span(),
-            ).to_diagnostic(sema.db)),
+                direct_variable.get_range().to_owned(),
+            ).to_diagnostic(sema.db, sema.file)),
             ast::generated::ERRUnexpectedSuperInPath_ERRUnexpectedThisInPath_Field::Field(field) => Ok(
                 VarAccess::Simple(SpanIdent::from_node(sema.db, sema, field)?),
             ),

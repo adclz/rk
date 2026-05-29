@@ -1,3 +1,4 @@
+use auto_lsp::default::db::file::File;
 use db::WorkspaceDataBase;
 use ide_diagnostic::IdeDiagnostic;
 
@@ -14,7 +15,10 @@ pub mod e8_subrange;
 pub mod e9_recursion;
 
 pub trait ToIdeDiagnostic<'db> {
-    fn to_diagnostic(&self, db: &'db dyn WorkspaceDataBase) -> IdeDiagnostic;
+    /// Builds the IDE diagnostic. `file` is the file the diagnostic's primary range belongs to;
+    /// it is carried (a `Copy` salsa struct) so ranges can be denormalized to the client encoding
+    /// via [`crate::denormalize`] without re-deriving the document per node.
+    fn to_diagnostic(&self, db: &'db dyn WorkspaceDataBase, file: File) -> IdeDiagnostic;
 }
 
 /*

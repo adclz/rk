@@ -3,10 +3,24 @@
 
 use std::ops::Deref;
 
-use auto_lsp::core::{ast::AstNode, span::Span};
+use auto_lsp::core::ast::AstNode;
+use auto_lsp::default::db::file::File;
+use auto_lsp::{lsp_types, tree_sitter};
 use bitflags::bitflags;
 use compact_str::CompactString;
 use db::WorkspaceDataBase;
+
+/// Converts a raw tree-sitter [`tree_sitter::Range`] into an LSP range, adjusting columns to the
+/// client's negotiated encoding via the document of `file`.
+///
+/// Returns `None` if the range cannot be denormalized (out of bounds).
+pub fn denormalize(
+    db: &dyn WorkspaceDataBase,
+    file: impl std::borrow::Borrow<File>,
+    range: &tree_sitter::Range,
+) -> Option<lsp_types::Range> {
+    file.borrow().document(db).denormalize_range(range).ok()
+}
 
 use crate::hir_def::{interned::identifier::Ident, scope::ScopeId, semantic_index::semantic_index};
 
@@ -96,8 +110,11 @@ pub trait HirNodeInfo<'db> {
         }
     }
 
-    fn get_span(&self, db: &'db dyn WorkspaceDataBase) -> Span {
-        let ts_range = *semantic_index(db, self.get_scope_id(db).file(db))
+    /// Returns the raw tree-sitter range (UTF-8 byte columns) of this node.
+    ///
+    /// Convert to an encoding-adjusted LSP range at the boundary with [`denormalize`].
+    fn get_span(&self, db: &'db dyn WorkspaceDataBase) -> tree_sitter::Range {
+        *semantic_index(db, self.get_scope_id(db).file(db))
             .ast
             .get(self.get_id(db).0)
             .unwrap_or_else(|| {
@@ -106,14 +123,7 @@ pub trait HirNodeInfo<'db> {
                     *self.get_id(db)
                 )
             })
-            .get_range();
-
-        self.get_scope_id(db)
-            .file(db)
-            .document(db)
-            .ts_range_to_enc_range(&ts_range)
-            .expect("Failed to adjust a ts range; This is a bug!")
-            .into()
+            .get_range()
     }
 }
 
@@ -183,8 +193,9 @@ pub trait HasName<'db>: HirNodeInfo<'db> {
 
     fn get_name_id(&self, db: &'db dyn WorkspaceDataBase) -> AstId;
 
-    fn get_name_span(&'db self, db: &'db dyn WorkspaceDataBase) -> Span {
-        let ts_range = *semantic_index(db, self.get_scope_id(db).file(db))
+    /// Returns the raw tree-sitter range of this node's name.
+    fn get_name_span(&'db self, db: &'db dyn WorkspaceDataBase) -> tree_sitter::Range {
+        *semantic_index(db, self.get_scope_id(db).file(db))
             .ast
             .get(self.get_name_id(db).0)
             .unwrap_or_else(|| {
@@ -193,14 +204,7 @@ pub trait HasName<'db>: HirNodeInfo<'db> {
                     *self.get_name_id(db)
                 )
             })
-            .get_range();
-
-        self.get_scope_id(db)
-            .file(db)
-            .document(db)
-            .ts_range_to_enc_range(&ts_range)
-            .expect("Failed to adjust a ts range; This is a bug!")
-            .into()
+            .get_range()
     }
 }
 

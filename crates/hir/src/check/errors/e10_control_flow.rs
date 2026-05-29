@@ -74,7 +74,7 @@ impl<'db> ErrorCode for ControlFlowError<'db> {
 }
 
 impl<'db> ToIdeDiagnostic<'db> for ControlFlowError<'db> {
-    fn to_diagnostic(&self, db: &'db dyn WorkspaceDataBase) -> IdeDiagnostic {
+    fn to_diagnostic(&self, db: &'db dyn WorkspaceDataBase, file: auto_lsp::default::db::file::File) -> IdeDiagnostic {
         match self {
             Self::AssignCallableType { typ, access } => diag()
                 .message(format!(
@@ -83,7 +83,7 @@ impl<'db> ToIdeDiagnostic<'db> for ControlFlowError<'db> {
                 ))
                 .severity(DiagnosticSeverity::ERROR)
                 .desc(self)
-                .range(access.get_span(db))
+                .range(crate::denormalize(db, file, &access.get_span(db)).unwrap_or_default())
                 .call(),
             Self::DirectType { expr, typ } => diag()
                 .message(format!(
@@ -92,14 +92,14 @@ impl<'db> ToIdeDiagnostic<'db> for ControlFlowError<'db> {
                 ))
                 .severity(DiagnosticSeverity::ERROR)
                 .desc(self)
-                .range(expr.get_span(db))
+                .range(crate::denormalize(db, file, &expr.get_span(db)).unwrap_or_default())
                 .call(),
             Self::CallNonCallableType { typ, func_call } => {
                 let mut diag = diag()
                     .message(format!("'{}' is not a callable type", typ.type_name(db)))
                     .severity(DiagnosticSeverity::ERROR)
                     .desc(self)
-                    .range(func_call.path(db).get_span(db))
+                    .range(crate::denormalize(db, file, &func_call.path(db).get_span(db)).unwrap_or_default())
                     .call();
 
                 if let Type::FunctionBlock(_) = typ {
@@ -112,13 +112,13 @@ impl<'db> ToIdeDiagnostic<'db> for ControlFlowError<'db> {
             }
             Self::ContinueOutsideLoop { stmt } => diag()
                 .message("'CONTINUE' can only be used inside loops".to_string())
-                .range(stmt.get_span(db))
+                .range(crate::denormalize(db, file, &stmt.get_span(db)).unwrap_or_default())
                 .severity(DiagnosticSeverity::ERROR)
                 .desc(self)
                 .call(),
             Self::ExitOutsideLoop { stmt } => diag()
                 .message("'EXIT' can only be used inside loops".to_string())
-                .range(stmt.get_span(db))
+                .range(crate::denormalize(db, file, &stmt.get_span(db)).unwrap_or_default())
                 .severity(DiagnosticSeverity::ERROR)
                 .desc(self)
                 .call(),
@@ -126,7 +126,7 @@ impl<'db> ToIdeDiagnostic<'db> for ControlFlowError<'db> {
                 .message("cannot assign to constant type".to_string())
                 .severity(DiagnosticSeverity::ERROR)
                 .desc(self)
-                .range(access.get_span(db))
+                .range(crate::denormalize(db, file, &access.get_span(db)).unwrap_or_default())
                 .call(),
             Self::DerefPossiblyNull { var, expr, state } => {
                 let name = var.get_name_ident(db).text(db);
@@ -147,7 +147,7 @@ impl<'db> ToIdeDiagnostic<'db> for ControlFlowError<'db> {
                     .message(message)
                     .severity(DiagnosticSeverity::WARNING)
                     .desc(self)
-                    .range(expr.get_span(db))
+                    .range(crate::denormalize(db, file, &expr.get_span(db)).unwrap_or_default())
                     .call();
                 diag.with_related(Related::new(
                     related_msg,

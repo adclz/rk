@@ -64,14 +64,14 @@ impl<'db> SemanticIndexBuilder<'db> {
                     }
                     Decl::ERRProgramNotAllowedInNamespace(err) => {
                         self.errors.push(
-                            SyntaxError::ProgramNotAllowedInNamespace(err.get_span())
-                                .to_diagnostic(self.db),
+                            SyntaxError::ProgramNotAllowedInNamespace(err.get_range().to_owned())
+                                .to_diagnostic(self.db, self.file),
                         );
                     }
                     Decl::ERRConfigNotAllowedInNamespace(err) => {
                         self.errors.push(
-                            SyntaxError::ConfigNotAllowedInNamespace(err.get_span())
-                                .to_diagnostic(self.db),
+                            SyntaxError::ConfigNotAllowedInNamespace(err.get_range().to_owned())
+                                .to_diagnostic(self.db, self.file),
                         );
                     }
                 }

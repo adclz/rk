@@ -42,7 +42,7 @@ impl ErrorCode for VisibilityError<'_> {
 }
 
 impl<'db> ToIdeDiagnostic<'db> for VisibilityError<'db> {
-    fn to_diagnostic(&self, db: &'db dyn WorkspaceDataBase) -> IdeDiagnostic {
+    fn to_diagnostic(&self, db: &'db dyn WorkspaceDataBase, file: auto_lsp::default::db::file::File) -> IdeDiagnostic {
         match self {
             VisibilityError::Private { call_site, target } => {
                 let mut diag = diag()
@@ -52,7 +52,7 @@ impl<'db> ToIdeDiagnostic<'db> for VisibilityError<'db> {
                     ))
                     .severity(DiagnosticSeverity::ERROR)
                     .desc(self)
-                    .range(call_site.get_span(db))
+                    .range(crate::denormalize(db, file, &call_site.get_span(db)).unwrap_or_default())
                     .call();
 
                 diag.with_note(
@@ -73,7 +73,7 @@ impl<'db> ToIdeDiagnostic<'db> for VisibilityError<'db> {
                     ))
                     .severity(DiagnosticSeverity::ERROR)
                     .desc(self)
-                    .range(call_site.get_span(db))
+                    .range(crate::denormalize(db, file, &call_site.get_span(db)).unwrap_or_default())
                     .call();
 
                 match result {
@@ -108,7 +108,7 @@ impl<'db> ToIdeDiagnostic<'db> for VisibilityError<'db> {
                     ))
                     .severity(DiagnosticSeverity::ERROR)
                     .desc(self)
-                    .range(call_site.get_span(db))
+                    .range(crate::denormalize(db, file, &call_site.get_span(db)).unwrap_or_default())
                     .call();
 
                 diag.with_note("Variables and methods marked PROTECTED are only available within the same POU or derived POUs".into());
@@ -123,7 +123,7 @@ impl<'db> ToIdeDiagnostic<'db> for VisibilityError<'db> {
                     ))
                     .severity(DiagnosticSeverity::ERROR)
                     .desc(self)
-                    .range(call_site.get_span(db))
+                    .range(crate::denormalize(db, file, &call_site.get_span(db)).unwrap_or_default())
                     .call();
 
                 diag.with_note(

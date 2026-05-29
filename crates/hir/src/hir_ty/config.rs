@@ -3,6 +3,7 @@ use ide_diagnostic::IdeDiagnostic;
 use rustc_hash::FxHashMap;
 
 use crate::{
+    HirNodeInfo,
     check::errors::{ToIdeDiagnostic, e1_duplicates::DuplicateError, e2_resolve::ResolveError},
     hir_def::{
         config::{ConfigDecl, ConfigResource, ProgConfig, ResourceDecl, TaskConfig},
@@ -83,7 +84,7 @@ fn infer_config<'db>(
                             task1: t.name(db),
                             task2: first.name(db),
                         }
-                        .to_diagnostic(db),
+                        .to_diagnostic(db, config.get_scope_id(db).file(db)),
                     );
                 } else {
                     config_tasks.insert(t.name(db).ident, *t);
@@ -96,7 +97,7 @@ fn infer_config<'db>(
                             prog1: second,
                             prog2: first,
                         }
-                        .to_diagnostic(db),
+                        .to_diagnostic(db, config.get_scope_id(db).file(db)),
                     );
                 });
             }
@@ -107,7 +108,7 @@ fn infer_config<'db>(
                             res1: second,
                             res2: first,
                         }
-                        .to_diagnostic(db),
+                        .to_diagnostic(db, config.get_scope_id(db).file(db)),
                     );
                 });
                 check_resource_duplicates(db, r, errors);
@@ -153,7 +154,7 @@ fn check_resource_duplicates<'db>(
                     task1: second,
                     task2: first,
                 }
-                .to_diagnostic(db),
+                .to_diagnostic(db, r.get_scope_id(db).file(db)),
             );
         });
     }
@@ -166,7 +167,7 @@ fn check_resource_duplicates<'db>(
                     prog1: second,
                     prog2: first,
                 }
-                .to_diagnostic(db),
+                .to_diagnostic(db, r.get_scope_id(db).file(db)),
             );
         });
     }
@@ -218,7 +219,7 @@ fn validate_prog_config<'db>(
             None => {
                 result
                     .errors
-                    .push(ResolveError::UnknownTaskRef { task: task_ref }.to_diagnostic(db));
+                    .push(ResolveError::UnknownTaskRef { task: task_ref }.to_diagnostic(db, p.get_scope_id(db).file(db)));
             }
         }
     }
@@ -258,7 +259,7 @@ fn validate_config_inst_inits<'db>(
                     ResolveError::ConfigInstInitUnknownInstance {
                         instance_name: first_ident,
                     }
-                    .to_diagnostic(db),
+                    .to_diagnostic(db, config.get_scope_id(db).file(db)),
                 );
                 continue;
             }
@@ -285,7 +286,7 @@ fn validate_config_inst_inits<'db>(
                             field: field_ident,
                             parent_type: current_type,
                         }
-                        .to_diagnostic(db),
+                        .to_diagnostic(db, config.get_scope_id(db).file(db)),
                     );
                     resolved = false;
                     break;
@@ -303,7 +304,7 @@ fn validate_config_inst_inits<'db>(
                             field: field_ident,
                             parent_type: current_type,
                         }
-                        .to_diagnostic(db),
+                        .to_diagnostic(db, config.get_scope_id(db).file(db)),
                     );
                     resolved = false;
                     break;

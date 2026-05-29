@@ -405,7 +405,7 @@ impl<'db> Type<'db> {
                 expr: call_site,
                 typ: *self,
             }
-            .to_diagnostic(db),
+            .to_diagnostic(db, ctx.scope.file(db)),
         );
         false
     }
@@ -429,13 +429,13 @@ impl<'db> Type<'db> {
                             typ: callable_typ,
                             access: call_site,
                         }
-                        .to_diagnostic(db),
+                        .to_diagnostic(db, ctx.scope.file(db)),
                     );
                 }
                 // a CONSTANT variable cannot be assigned to
                 if variable.qualifier(db).contains(crate::Qualifier::CONSTANT) {
                     ctx.errors.push(
-                        ControlFlowError::AssignToConstant { access: call_site }.to_diagnostic(db),
+                        ControlFlowError::AssignToConstant { access: call_site }.to_diagnostic(db, ctx.scope.file(db)),
                     );
                 }
             }
@@ -461,7 +461,7 @@ impl<'db> CoerceError<'db> {
             adjustment: self.adjustment,
             expr: call_site,
         }
-        .to_diagnostic(db)
+        .to_diagnostic(db, call_site.get_scope_id(db).file(db))
     }
 
     pub fn into_non_comparable(
@@ -477,7 +477,7 @@ impl<'db> CoerceError<'db> {
             adjustment: self.adjustment,
             expr: call_site,
         }
-        .to_diagnostic(db)
+        .to_diagnostic(db, call_site.get_scope_id(db).file(db))
     }
 
     pub fn into_non_addable(
@@ -495,7 +495,7 @@ impl<'db> CoerceError<'db> {
             adjustment: self.adjustment,
             expr: call_site,
         }
-        .to_diagnostic(db)
+        .to_diagnostic(db, call_site.get_scope_id(db).file(db))
     }
 
     pub fn into_non_multiplicable(
@@ -513,7 +513,7 @@ impl<'db> CoerceError<'db> {
             adjustment: self.adjustment,
             expr: call_site,
         }
-        .to_diagnostic(db)
+        .to_diagnostic(db, call_site.get_scope_id(db).file(db))
     }
 
     pub fn into_non_powerable(
@@ -529,6 +529,6 @@ impl<'db> CoerceError<'db> {
             adjustment: self.adjustment,
             expr: call_site,
         }
-        .to_diagnostic(db)
+        .to_diagnostic(db, call_site.get_scope_id(db).file(db))
     }
 }

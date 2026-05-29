@@ -55,37 +55,37 @@ impl<'db> SemanticIndexBuilder<'db> {
             match v.cast(self.ast) {
                 ClassVariables::ERRVarInOutNotAllowed(err) => {
                     self.errors.push(
-                        SyntaxError::VarInOutNotAllowed(err.get_span()).to_diagnostic(self.db),
+                        SyntaxError::VarInOutNotAllowed(err.get_range().to_owned()).to_diagnostic(self.db, self.file),
                     );
                 }
                 ClassVariables::ERRVarTempNotAllowed(err) => {
                     self.errors.push(
-                        SyntaxError::VarTempNotAllowed(err.get_span()).to_diagnostic(self.db),
+                        SyntaxError::VarTempNotAllowed(err.get_range().to_owned()).to_diagnostic(self.db, self.file),
                     );
                 }
                 ClassVariables::ERRVarAccessNotAllowed(err) => {
                     self.errors.push(
-                        SyntaxError::VarAccessNotAllowed(err.get_span()).to_diagnostic(self.db),
+                        SyntaxError::VarAccessNotAllowed(err.get_range().to_owned()).to_diagnostic(self.db, self.file),
                     );
                 }
                 ClassVariables::ERRVarConfigNotAllowed(err) => {
                     self.errors.push(
-                        SyntaxError::VarConfigNotAllowed(err.get_span()).to_diagnostic(self.db),
+                        SyntaxError::VarConfigNotAllowed(err.get_range().to_owned()).to_diagnostic(self.db, self.file),
                     );
                 }
                 ClassVariables::ERRVarLocatedNotAllowed(err) => {
                     self.errors.push(
-                        SyntaxError::VarLocatedNotAllowed(err.get_span()).to_diagnostic(self.db),
+                        SyntaxError::VarLocatedNotAllowed(err.get_range().to_owned()).to_diagnostic(self.db, self.file),
                     );
                 }
                 ClassVariables::ERRVarExternalNotAllowed(err) => {
                     self.errors.push(
-                        SyntaxError::VarExternalNotAllowed(err.get_span()).to_diagnostic(self.db),
+                        SyntaxError::VarExternalNotAllowed(err.get_range().to_owned()).to_diagnostic(self.db, self.file),
                     );
                 }
                 ClassVariables::ERRVarGlobalNotAllowed(err) => {
                     self.errors.push(
-                        SyntaxError::VarGlobalNotAllowed(err.get_span()).to_diagnostic(self.db),
+                        SyntaxError::VarGlobalNotAllowed(err.get_range().to_owned()).to_diagnostic(self.db, self.file),
                     );
                 }
                 ClassVariables::ExternalVarDecls(e) => e.parse(self, &mut variables),
@@ -101,32 +101,32 @@ impl<'db> SemanticIndexBuilder<'db> {
             match f.cast(self.ast) {
                 Error::ERRExtendsMultipleTimes(err) => {
                     self.errors.push(SyntaxError::MultipleExtends {
-                        location: err.get_span(),
-                        first_extend_span: class.extends.as_ref().unwrap().cast(self.ast).get_span(),
+                        location: err.get_range().to_owned(),
+                        first_extend_span: class.extends.as_ref().unwrap().cast(self.ast).get_range().to_owned(),
                         file: self.file,
-                    }.to_diagnostic(self.db));
+                    }.to_diagnostic(self.db, self.file));
                 },
                 Error::ERRImplementsBeforeExtends(err) => {
                     self.errors.push(SyntaxError::ImplementsBeforeExtends {
-                        implements_span: err.get_span(),
-                        extends_span: class.extends.as_ref().unwrap().cast(self.ast).get_span(),
+                        implements_span: err.get_range().to_owned(),
+                        extends_span: class.extends.as_ref().unwrap().cast(self.ast).get_range().to_owned(),
                         file: self.file,
-                    }.to_diagnostic(self.db));
+                    }.to_diagnostic(self.db, self.file));
                 },
                 Error::ERRImplementsMultipleTimes(err) => {
                     self.errors.push(SyntaxError::MultipleImplements {
-                        location: err.get_span(),
-                        first_implements_span: class.implements.as_ref().unwrap().cast(self.ast).get_span(),
+                        location: err.get_range().to_owned(),
+                        first_implements_span: class.implements.as_ref().unwrap().cast(self.ast).get_range().to_owned(),
                         file: self.file,
-                    }.to_diagnostic(self.db));
+                    }.to_diagnostic(self.db, self.file));
                 },
                 Error::ERRClassVariablesAfterMethod(err) => {
-                    let first_method_span = class.methods.first().unwrap().cast(self.ast).get_span();
+                    let first_method_span = class.methods.first().unwrap().cast(self.ast).get_range().to_owned();
                     self.errors.push(SyntaxError::ClassVariablesAfterMethod {
-                        var_span: err.get_span(),
+                        var_span: err.get_range().to_owned(),
                         method_span: first_method_span,
                         file: self.file
-                    }.to_diagnostic(self.db));
+                    }.to_diagnostic(self.db, self.file));
                 },
             }
         });
@@ -203,27 +203,27 @@ impl<'db> SemanticIndexBuilder<'db> {
             match v.cast(self.ast) {
                 ast::generated::MethodDeclVariables::ERRVarAccessNotAllowed(err) => {
                     self.errors.push(
-                        SyntaxError::VarAccessNotAllowed(err.get_span()).to_diagnostic(self.db),
+                        SyntaxError::VarAccessNotAllowed(err.get_range().to_owned()).to_diagnostic(self.db, self.file),
                     );
                 }
                 ast::generated::MethodDeclVariables::ERRVarConfigNotAllowed(err) => {
                     self.errors.push(
-                        SyntaxError::VarConfigNotAllowed(err.get_span()).to_diagnostic(self.db),
+                        SyntaxError::VarConfigNotAllowed(err.get_range().to_owned()).to_diagnostic(self.db, self.file),
                     );
                 }
                 ast::generated::MethodDeclVariables::ERRVarExternalNotAllowed(err) => {
                     self.errors.push(
-                        SyntaxError::VarExternalNotAllowed(err.get_span()).to_diagnostic(self.db),
+                        SyntaxError::VarExternalNotAllowed(err.get_range().to_owned()).to_diagnostic(self.db, self.file),
                     );
                 }
                 ast::generated::MethodDeclVariables::ERRVarGlobalNotAllowed(err) => {
                     self.errors.push(
-                        SyntaxError::VarGlobalNotAllowed(err.get_span()).to_diagnostic(self.db),
+                        SyntaxError::VarGlobalNotAllowed(err.get_range().to_owned()).to_diagnostic(self.db, self.file),
                     );
                 }
                 ast::generated::MethodDeclVariables::ERRVarLocatedNotAllowed(err) => {
                     self.errors.push(
-                        SyntaxError::VarLocatedNotAllowed(err.get_span()).to_diagnostic(self.db),
+                        SyntaxError::VarLocatedNotAllowed(err.get_range().to_owned()).to_diagnostic(self.db, self.file),
                     );
                 }
                 ast::generated::MethodDeclVariables::ExternalVarDecls(decls) => {

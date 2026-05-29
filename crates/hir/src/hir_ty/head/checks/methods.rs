@@ -36,7 +36,7 @@ impl<'db> InitInference<'db> {
             {
                 self.errors.push(
                     InheritanceError::AbstractClassHasNoAbstractMethods { class: implementer }
-                        .to_diagnostic(db),
+                        .to_diagnostic(db, self.scope.file(db)),
                 );
             };
         };
@@ -48,7 +48,7 @@ impl<'db> InitInference<'db> {
                     method1: *m1,
                     method2: *m2,
                 }
-                .to_diagnostic(db),
+                .to_diagnostic(db, self.scope.file(db)),
             );
         }
 
@@ -67,7 +67,7 @@ impl<'db> InitInference<'db> {
                                 base_method: inherited_method,
                                 derived_method: *declared_method,
                             }
-                            .to_diagnostic(db),
+                            .to_diagnostic(db, self.scope.file(db)),
                         );
                     }
                     // Override of a concrete method without OVERRIDE keyword.
@@ -84,7 +84,7 @@ impl<'db> InitInference<'db> {
                                 base_method: inherited_method,
                                 derived_method: *declared_method,
                             }
-                            .to_diagnostic(db),
+                            .to_diagnostic(db, self.scope.file(db)),
                         );
                     }
                     _ => {}
@@ -100,7 +100,7 @@ impl<'db> InitInference<'db> {
                             implementer,
                             method: inherited_method,
                         }
-                        .to_diagnostic(db),
+                        .to_diagnostic(db, self.scope.file(db)),
                     );
                 }
 
@@ -110,7 +110,7 @@ impl<'db> InitInference<'db> {
                             implementer,
                             base_method: inherited_method,
                         }
-                        .to_diagnostic(db),
+                        .to_diagnostic(db, self.scope.file(db)),
                     );
                 }
             }
@@ -124,7 +124,7 @@ impl<'db> InitInference<'db> {
                     InheritanceError::EmptyOverride {
                         base_method: *base_method,
                     }
-                    .to_diagnostic(db),
+                    .to_diagnostic(db, self.scope.file(db)),
                 );
             }
         }
@@ -141,7 +141,7 @@ impl<'db> InitInference<'db> {
                                 method1: *method,
                                 method2: *prev,
                             }
-                            .to_diagnostic(db),
+                            .to_diagnostic(db, self.scope.file(db)),
                         );
                     }
                     None => {
@@ -160,7 +160,7 @@ impl<'db> InitInference<'db> {
                             method1: *method,
                             method2: *prev,
                         }
-                        .to_diagnostic(db),
+                        .to_diagnostic(db, self.scope.file(db)),
                     ),
                     None => {
                         seen_prots.insert(method.name(db), *method);
@@ -189,7 +189,7 @@ fn check_signature<'db>(
                 m2,
                 got: sig2.len(),
             }
-            .to_diagnostic(db),
+            .to_diagnostic(db, m1.get_scope_id(db).file(db)),
         );
     }
 
@@ -208,7 +208,7 @@ fn check_signature<'db>(
                     got: var2_typ,
                     method: m2,
                 }
-                .to_diagnostic(db),
+                .to_diagnostic(db, m1.get_scope_id(db).file(db)),
             )
         }
     }

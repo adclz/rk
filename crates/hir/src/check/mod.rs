@@ -36,7 +36,7 @@ pub fn diagnostics_for_file(db: &dyn WorkspaceDataBase, file: File) -> Arc<Vec<I
         && config.config_file(db).is_none()
     {
         return Arc::new(vec![
-            ResolveError::NoConfigFileFound { file }.to_diagnostic(db),
+            ResolveError::NoConfigFileFound { file }.to_diagnostic(db, file),
         ]);
     }
 
@@ -44,7 +44,7 @@ pub fn diagnostics_for_file(db: &dyn WorkspaceDataBase, file: File) -> Arc<Vec<I
 
     let lexer_errors: Vec<IdeDiagnostic> = get_ast::accumulated::<ParseErrorAccumulator>(db, file)
         .into_iter()
-        .map(|e| SyntaxError::from_parse_error(db, file, e).to_diagnostic(db))
+        .map(|e| SyntaxError::from_parse_error(db, file, e).to_diagnostic(db, file))
         .collect::<Vec<_>>();
 
     semantic_index(db, file).check(db, &mut all_diagnostics);

@@ -1,4 +1,4 @@
-use auto_lsp::core::span::Span;
+use auto_lsp::tree_sitter;
 use db::WorkspaceDataBase;
 
 use crate::hir_def::interned::namespace::NamespacePath;
@@ -33,8 +33,8 @@ pub struct NamespaceDecl<'db> {
 }
 
 impl<'db> NamespaceDecl<'db> {
-    pub fn name_span(&'db self, db: &'db dyn WorkspaceDataBase) -> Span {
-        semantic_index(db, self.get_scope_id(db).file(db))
+    pub fn name_span(&'db self, db: &'db dyn WorkspaceDataBase) -> tree_sitter::Range {
+        *semantic_index(db, self.get_scope_id(db).file(db))
             .ast
             .get(self.name_id(db).0)
             .unwrap_or_else(|| {
@@ -43,7 +43,7 @@ impl<'db> NamespaceDecl<'db> {
                     self.name_id(db).0
                 )
             })
-            .get_span()
+            .get_range()
     }
 }
 

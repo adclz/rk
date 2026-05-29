@@ -41,7 +41,7 @@ impl<'db> InitInference<'db> {
                         spec: subrange._type(db),
                         typ,
                     }
-                    .to_diagnostic(db),
+                    .to_diagnostic(db, self.scope.file(db)),
                 );
                 return;
             }
@@ -67,7 +67,7 @@ impl<'db> InitInference<'db> {
                     adjustment: err.adjustment,
                     expr: CallSite::from_scoped(db, &min),
                 }
-                .to_diagnostic(db),
+                .to_diagnostic(db, self.scope.file(db)),
             )
         }
 
@@ -80,7 +80,7 @@ impl<'db> InitInference<'db> {
                     adjustment: err.adjustment,
                     expr: CallSite::from_scoped(db, &max),
                 }
-                .to_diagnostic(db),
+                .to_diagnostic(db, self.scope.file(db)),
             )
         }
     }

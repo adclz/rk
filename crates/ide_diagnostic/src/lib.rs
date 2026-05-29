@@ -1,11 +1,11 @@
 use auto_lsp::{
-    core::{errors::ParseErrorAccumulator, span::Span},
     default::db::{BaseDatabase, file::File},
     lsp_types::{
         self, CodeAction, CodeActionKind, CodeDescription, Diagnostic,
         DiagnosticRelatedInformation, DiagnosticSeverity, DiagnosticTag, Location, NumberOrString,
         Range, TextEdit, Url,
     },
+    tree_sitter,
 };
 
 pub mod report;
@@ -49,7 +49,13 @@ impl IdeDiagnostic {
             .iter()
             .map(|r| DiagnosticRelatedInformation {
                 message: r.message.clone(),
-                location: Location::new(r.file.url(db).to_owned(), r.range.lsp()),
+                location: Location::new(
+                    r.file.url(db).to_owned(),
+                    r.file
+                        .document(db)
+                        .denormalize_range(&r.range)
+                        .unwrap_or_default(),
+                ),
             })
             .collect();
 
@@ -81,11 +87,11 @@ impl IdeDiagnostic {
 pub struct Related {
     pub message: String,
     pub file: File,
-    pub range: Span,
+    pub range: tree_sitter::Range,
 }
 
 impl Related {
-    pub fn new(message: String, file: File, range: Span) -> Self {
+    pub fn new(message: String, file: File, range: tree_sitter::Range) -> Self {
         Self {
             message,
             file,
@@ -150,12 +156,6 @@ impl From<auto_lsp::lsp_types::Diagnostic> for IdeDiagnostic {
     }
 }
 
-impl From<&ParseErrorAccumulator> for IdeDiagnostic {
-    fn from(e: &ParseErrorAccumulator) -> Self {
-        IdeDiagnostic::new(e.0.clone().into())
-    }
-}
-
 pub trait ErrorCode {
     fn code(&self) -> &'static str;
     fn description(&self) -> &'static str;
@@ -178,7 +178,7 @@ struct Desc {
 
 #[bon::builder]
 pub fn diag(
-    range: Span,
+    range: lsp_types::Range,
     message: String,
     source: Option<String>,
     severity: Option<DiagnosticSeverity>,
@@ -193,7 +193,7 @@ pub fn diag(
 ) -> IdeDiagnostic {
     IdeDiagnostic {
         diagnostic: auto_lsp::lsp_types::Diagnostic {
-            range: range.into(),
+            range,
             severity,
             source,
             message,
@@ -235,6 +235,6 @@ pub fn action(
 }
 
 #[bon::builder]
-pub fn edit(range: Span, new_text: String) -> TextEdit {
-    TextEdit::new(range.into(), new_text)
+pub fn edit(range: lsp_types::Range, new_text: String) -> TextEdit {
+    TextEdit::new(range, new_text)
 }

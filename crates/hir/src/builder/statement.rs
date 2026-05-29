@@ -139,20 +139,20 @@ impl<'db> Parse<'db> for ast::generated::Stmt {
                         ast::generated::ERRMissingDotInForControl_ERRMissingEqualInForControl_ERROutputAssignInForControl::ERRMissingDotInForControl(err) => {
                             sema.errors.push(SyntaxError::MissingDotInForList {
                                 file: sema.file,
-                                span: err.get_span(),
-                            }.to_diagnostic(sema.db))
+                                span: err.get_range().to_owned(),
+                            }.to_diagnostic(sema.db, sema.file))
                         }
                         ast::generated::ERRMissingDotInForControl_ERRMissingEqualInForControl_ERROutputAssignInForControl::ERRMissingEqualInForControl(err) => {
                             sema.errors.push(SyntaxError::MissingEqualInForList {
                                 file: sema.file,
-                                span: err.get_span(),
-                            }.to_diagnostic(sema.db))
+                                span: err.get_range().to_owned(),
+                            }.to_diagnostic(sema.db, sema.file))
                         }
                         ast::generated::ERRMissingDotInForControl_ERRMissingEqualInForControl_ERROutputAssignInForControl::ERROutputAssignInForControl(err) => {
                             sema.errors.push(SyntaxError::OutputAssignInForList {
                                 file: sema.file,
-                                span: err.get_span(),
-                            }.to_diagnostic(sema.db))
+                                span: err.get_range().to_owned(),
+                            }.to_diagnostic(sema.db, sema.file))
                         }
                     }
                 });
@@ -352,10 +352,10 @@ impl<'db> Parse<'db> for ast::generated::Stmt {
                     .get_text(doc)
                     .map_err(|e| {
                         SyntaxError::SyntaxError {
-                            span: pragma.instruction.cast(sema.ast).get_span(),
+                            span: pragma.instruction.cast(sema.ast).get_range().to_owned(),
                             err: e.to_string(),
                         }
-                        .to_diagnostic(sema.db)
+                        .to_diagnostic(sema.db, sema.file)
                     })?;
                 let instruction = CompactString::from(&instr_text[1..instr_text.len() - 1]);
 
@@ -388,27 +388,27 @@ impl<'db> Parse<'db> for ast::generated::Stmt {
                 ))
             }
             StmtType::ERRMethodDeclInBody(err) => {
-                Err(SyntaxError::MethodDeclInBody(err.get_span()).to_diagnostic(sema.db))
+                Err(SyntaxError::MethodDeclInBody(err.get_range().to_owned()).to_diagnostic(sema.db, sema.file))
             }
             StmtType::ExternPragma(pragma) => {
                 let doc = sema.file.document(sema.db).as_bytes();
 
                 let module_text = pragma.module.cast(sema.ast).get_text(doc).map_err(|e| {
                     SyntaxError::SyntaxError {
-                        span: pragma.module.cast(sema.ast).get_span(),
+                        span: pragma.module.cast(sema.ast).get_range().to_owned(),
                         err: e.to_string(),
                     }
-                    .to_diagnostic(sema.db)
+                    .to_diagnostic(sema.db, sema.file)
                 })?;
                 // Strip surrounding single quotes
                 let module = CompactString::from(&module_text[1..module_text.len() - 1]);
 
                 let name_text = pragma.name.cast(sema.ast).get_text(doc).map_err(|e| {
                     SyntaxError::SyntaxError {
-                        span: pragma.name.cast(sema.ast).get_span(),
+                        span: pragma.name.cast(sema.ast).get_range().to_owned(),
                         err: e.to_string(),
                     }
-                    .to_diagnostic(sema.db)
+                    .to_diagnostic(sema.db, sema.file)
                 })?;
                 let name = CompactString::from(&name_text[1..name_text.len() - 1]);
 
@@ -505,7 +505,7 @@ impl<'db> Parse<'db> for ast::generated::Assign {
     ) -> anyhow::Result<Stmt<'db>, IdeDiagnostic> {
         let var = match self.variable.cast(sema.ast) {
             ast::generated::ERRAssignFuncCall_VariableAccess::ERRAssignFuncCall(err) => {
-                Err(SyntaxError::AssignToFunctionCall(err.get_span()).to_diagnostic(sema.db))
+                Err(SyntaxError::AssignToFunctionCall(err.get_range().to_owned()).to_diagnostic(sema.db, sema.file))
             }
             ast::generated::ERRAssignFuncCall_VariableAccess::VariableAccess(var) => {
                 var.to_access(sema)
@@ -515,28 +515,28 @@ impl<'db> Parse<'db> for ast::generated::Assign {
         type TargetType = ast::generated::ERREmptyRightHandAssignment_ERRMissingDotInAssignment_ERRMissingEqualInAssignment_ERROutputAssignInAssignment_Assignment_AssignmentAttempt;
         match self.target.cast(sema.ast) {
             TargetType::ERREmptyRightHandAssignment(err) => {
-                Err(SyntaxError::EmptyRightHandSide(err.get_span()).to_diagnostic(sema.db))
+                Err(SyntaxError::EmptyRightHandSide(err.get_range().to_owned()).to_diagnostic(sema.db, sema.file))
             }
             TargetType::ERRMissingDotInAssignment(err) => {
                 Err(SyntaxError::MissingDotInAssignment {
                     file: sema.file,
-                    span: err.get_span(),
+                    span: err.get_range().to_owned(),
                 }
-                .to_diagnostic(sema.db))
+                .to_diagnostic(sema.db, sema.file))
             }
             TargetType::ERRMissingEqualInAssignment(err) => {
                 Err(SyntaxError::MissingEqualInAssignment {
                     file: sema.file,
-                    span: err.get_span(),
+                    span: err.get_range().to_owned(),
                 }
-                .to_diagnostic(sema.db))
+                .to_diagnostic(sema.db, sema.file))
             }
             TargetType::ERROutputAssignInAssignment(err) => {
                 Err(SyntaxError::OutputAssignInAssignment {
                     file: sema.file,
-                    span: err.get_span(),
+                    span: err.get_range().to_owned(),
                 }
-                .to_diagnostic(sema.db))
+                .to_diagnostic(sema.db, sema.file))
             }
             TargetType::Assignment(assign) => Ok(Stmt::new(
                 sema.db,

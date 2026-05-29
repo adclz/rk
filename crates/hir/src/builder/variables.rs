@@ -43,7 +43,7 @@ impl<'db> ParseVarSection<'db> for ast::generated::InputDecls {
             match child.cast(sema.ast) {
                 ast::generated::ERRVariableWithNoSpec_InputVar::ERRVariableWithNoSpec(child) => {
                     sema.errors
-                        .push(SyntaxError::MissingVarType(child.get_span()).to_diagnostic(sema.db));
+                        .push(SyntaxError::MissingVarType(child.get_range().to_owned()).to_diagnostic(sema.db, sema.file));
                     continue;
                 }
                 ast::generated::ERRVariableWithNoSpec_InputVar::InputVar(child) => {
@@ -158,7 +158,7 @@ impl<'db> ParseVarSection<'db> for ast::generated::FbInputDecls {
             match child.cast(sema.ast) {
                 ast::generated::ERRVariableWithNoSpec_FbInputVar::ERRVariableWithNoSpec(child) => {
                     sema.errors
-                        .push(SyntaxError::MissingVarType(child.get_span()).to_diagnostic(sema.db));
+                        .push(SyntaxError::MissingVarType(child.get_range().to_owned()).to_diagnostic(sema.db, sema.file));
                     continue;
                 }
                 ast::generated::ERRVariableWithNoSpec_FbInputVar::FbInputVar(child) => {
@@ -249,7 +249,7 @@ impl<'db> ParseVarSection<'db> for ast::generated::OutputDecls {
             match child.cast(sema.ast) {
                 ast::generated::ERRVariableWithNoSpec_OutputVar::ERRVariableWithNoSpec(child) => {
                     sema.errors
-                        .push(SyntaxError::MissingVarType(child.get_span()).to_diagnostic(sema.db));
+                        .push(SyntaxError::MissingVarType(child.get_range().to_owned()).to_diagnostic(sema.db, sema.file));
                     continue;
                 }
                 ast::generated::ERRVariableWithNoSpec_OutputVar::OutputVar(child) => {
@@ -316,7 +316,7 @@ impl<'db> ParseVarSection<'db> for ast::generated::FbOutputDecls {
             match child.cast(sema.ast) {
                 ast::generated::ERRVariableWithNoSpec_FbOutputVar::ERRVariableWithNoSpec(child) => {
                     sema.errors
-                        .push(SyntaxError::MissingVarType(child.get_span()).to_diagnostic(sema.db));
+                        .push(SyntaxError::MissingVarType(child.get_range().to_owned()).to_diagnostic(sema.db, sema.file));
                     continue;
                 }
                 ast::generated::ERRVariableWithNoSpec_FbOutputVar::FbOutputVar(child) => {
@@ -382,7 +382,7 @@ impl<'db> ParseVarSection<'db> for ast::generated::TempVarDecls {
             match child.cast(sema.ast) {
                 ast::generated::ERRVariableWithNoSpec_TempVar::ERRVariableWithNoSpec(child) => {
                     sema.errors
-                        .push(SyntaxError::MissingVarType(child.get_span()).to_diagnostic(sema.db));
+                        .push(SyntaxError::MissingVarType(child.get_range().to_owned()).to_diagnostic(sema.db, sema.file));
                     continue;
                 }
                 ast::generated::ERRVariableWithNoSpec_TempVar::TempVar(child) => {
@@ -448,7 +448,7 @@ impl<'db> ParseVarSection<'db> for ast::generated::InOutDecls {
             match child.cast(sema.ast) {
                 ast::generated::ERRVariableWithNoSpec_InOutVar::ERRVariableWithNoSpec(child) => {
                     sema.errors
-                        .push(SyntaxError::MissingVarType(child.get_span()).to_diagnostic(sema.db));
+                        .push(SyntaxError::MissingVarType(child.get_range().to_owned()).to_diagnostic(sema.db, sema.file));
                     continue;
                 }
                 ast::generated::ERRVariableWithNoSpec_InOutVar::InOutVar(child) => {
@@ -570,7 +570,7 @@ impl<'db> ParseVarSection<'db> for ast::generated::ExternalVarDecls {
                     child,
                 ) => {
                     sema.errors
-                        .push(SyntaxError::MissingVarType(child.get_span()).to_diagnostic(sema.db));
+                        .push(SyntaxError::MissingVarType(child.get_range().to_owned()).to_diagnostic(sema.db, sema.file));
                     continue;
                 }
             }
@@ -635,7 +635,7 @@ impl<'db> ParseVarSection<'db> for ast::generated::VarDecls {
                     child,
                 ) => {
                     sema.errors
-                        .push(SyntaxError::MissingVarType(child.get_span()).to_diagnostic(sema.db));
+                        .push(SyntaxError::MissingVarType(child.get_range().to_owned()).to_diagnostic(sema.db, sema.file));
                     continue;
                 }
                 ast::generated::ERRVariableWithNoSpec_VarDeclInitList::VarDeclInitList(
@@ -676,7 +676,7 @@ impl<'db> ParseVarSection<'db> for ast::generated::RetainVarDecls {
                     child,
                 ) => {
                     sema.errors
-                        .push(SyntaxError::MissingVarType(child.get_span()).to_diagnostic(sema.db));
+                        .push(SyntaxError::MissingVarType(child.get_range().to_owned()).to_diagnostic(sema.db, sema.file));
                     continue;
                 }
                 ast::generated::ERRVariableWithNoSpec_VarDeclInitList::VarDeclInitList(
@@ -717,7 +717,7 @@ impl<'db> ParseVarSection<'db> for ast::generated::NoRetainVarDecls {
                     err,
                 ) => {
                     sema.errors
-                        .push(SyntaxError::MissingVarType(err.get_span()).to_diagnostic(sema.db));
+                        .push(SyntaxError::MissingVarType(err.get_range().to_owned()).to_diagnostic(sema.db, sema.file));
                     continue;
                 }
                 ast::generated::ERRVariableWithNoSpec_VarDeclInitList::VarDeclInitList(
@@ -910,7 +910,7 @@ impl<'db> ParseSpecInit<'db> for ast::generated::EdgeDecl {
         let spec = match self.edge.cast(sema.ast) {
             ast::generated::ERRInvalidEdgeQualifier_FEDGE_REDGE::ERRInvalidEdgeQualifier(err) => {
                 sema.errors.push(
-                    SyntaxError::IncompleteEdgeQualifier(err.get_span()).to_diagnostic(sema.db),
+                    SyntaxError::IncompleteEdgeQualifier(err.get_range().to_owned()).to_diagnostic(sema.db, sema.file),
                 );
                 Spec::new(
                     sema.db,
@@ -985,8 +985,8 @@ impl<'db> ParseSpecInit<'db> for ast::generated::VarDecl {
 
         if let Some(init) = &self.init {
             sema.errors.push(
-                SyntaxError::UnexpectedVarInit(init.cast(sema.ast).get_span())
-                    .to_diagnostic(sema.db),
+                SyntaxError::UnexpectedVarInit(init.cast(sema.ast).get_range().to_owned())
+                    .to_diagnostic(sema.db, sema.file),
             );
         }
 

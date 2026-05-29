@@ -124,7 +124,7 @@ fn check_multibits_bounds<'db>(
                 max_offset,
                 base_type,
             }
-            .to_diagnostic(db),
+            .to_diagnostic(db, ctx.scope.file(db)),
         );
     }
 }
@@ -292,7 +292,7 @@ impl<'db> Type<'db> {
                         ident: *path_expr.ident(db),
                         ty: place.current_typ,
                     }
-                    .to_diagnostic(db),
+                    .to_diagnostic(db, ctx.scope.file(db)),
                 );
             }
         }
@@ -323,7 +323,7 @@ impl<'db> Type<'db> {
                         ident: **ident,
                         ty: current,
                     }
-                    .to_diagnostic(db),
+                    .to_diagnostic(db, ctx.scope.file(db)),
                 );
             }
         }
@@ -407,7 +407,7 @@ impl<'db> Type<'db> {
                             ident: **ident,
                             ty: place.current_typ,
                         }
-                        .to_diagnostic(db),
+                        .to_diagnostic(db, ctx.scope.file(db)),
                     );
                 }
             }
@@ -439,7 +439,7 @@ impl<'db> Type<'db> {
                 let state = ctx.ref_null_state.get(&var).copied();
                 if let Some(state @ (NullState::Null(_) | NullState::Uninitialized(_))) = state {
                     ctx.errors.push(
-                        ControlFlowError::DerefPossiblyNull { var, expr, state }.to_diagnostic(db),
+                        ControlFlowError::DerefPossiblyNull { var, expr, state }.to_diagnostic(db, ctx.scope.file(db)),
                     );
                 }
             }
@@ -462,7 +462,7 @@ impl<'db> Type<'db> {
                 Err(non_ref) => {
                     if report_errors {
                         ctx.errors.push(
-                            ResolveError::DerefNonRefType { expr, ty: non_ref }.to_diagnostic(db),
+                            ResolveError::DerefNonRefType { expr, ty: non_ref }.to_diagnostic(db, ctx.scope.file(db)),
                         );
                     }
                     break;
@@ -486,7 +486,7 @@ impl<'db> Type<'db> {
                         expr,
                         ty: place.current_typ,
                     }
-                    .to_diagnostic(db),
+                    .to_diagnostic(db, ctx.scope.file(db)),
                 );
             }
             return;
@@ -516,7 +516,7 @@ impl<'db> Type<'db> {
                                 expr,
                                 ty: place.current_typ,
                             }
-                            .to_diagnostic(db),
+                            .to_diagnostic(db, ctx.scope.file(db)),
                         );
                     }
                     return;
@@ -567,7 +567,7 @@ impl<'db> Type<'db> {
                             expr: *expr,
                             ty: place.current_init_typ,
                         }
-                        .to_diagnostic(db),
+                        .to_diagnostic(db, ctx.scope.file(db)),
                     );
                 }
             }
@@ -586,7 +586,7 @@ impl<'db> Type<'db> {
                             expr: *expr,
                             ty: *self,
                         }
-                        .to_diagnostic(db),
+                        .to_diagnostic(db, ctx.scope.file(db)),
                     );
                 }
             },
@@ -625,7 +625,7 @@ impl<'db> Type<'db> {
                         ident: **name,
                         ty: place.current_init_typ,
                     }
-                    .to_diagnostic(db),
+                    .to_diagnostic(db, ctx.scope.file(db)),
                 );
             }
         }

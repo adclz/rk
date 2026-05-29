@@ -51,33 +51,33 @@ impl<'db> SemanticIndexBuilder<'db> {
             match f.cast(self.ast) {
                 Error::ERRExtendsMultipleTimes(err) => {
                     self.errors.push(SyntaxError::MultipleExtends {
-                        location: err.get_span(),
-                        first_extend_span: func.extends.as_ref().unwrap().cast(self.ast).get_span(),
+                        location: err.get_range().to_owned(),
+                        first_extend_span: func.extends.as_ref().unwrap().cast(self.ast).get_range().to_owned(),
                         file: self.file,
-                    }.to_diagnostic(self.db));
+                    }.to_diagnostic(self.db, self.file));
                 },
                 Error::ERRImplementsBeforeExtends(err) => {
                     self.errors.push(SyntaxError::ImplementsBeforeExtends {
-                        implements_span: err.get_span(),
-                        extends_span: func.extends.as_ref().unwrap().cast(self.ast).get_span(),
+                        implements_span: err.get_range().to_owned(),
+                        extends_span: func.extends.as_ref().unwrap().cast(self.ast).get_range().to_owned(),
                         file: self.file,
-                    }.to_diagnostic(self.db));
+                    }.to_diagnostic(self.db, self.file));
                 },
                 Error::ERRImplementsMultipleTimes(err) => {
                     self.errors.push(SyntaxError::MultipleImplements {
-                        location: err.get_span(),
-                        first_implements_span: func.implements.as_ref().unwrap().cast(self.ast).get_span(),
+                        location: err.get_range().to_owned(),
+                        first_implements_span: func.implements.as_ref().unwrap().cast(self.ast).get_range().to_owned(),
                         file: self.file,
-                    }.to_diagnostic(self.db));
+                    }.to_diagnostic(self.db, self.file));
                 },
                 Error::ERRFbVariablesAfterMethod(err) => {
 
-                let first_method_span = func.method.first().unwrap().cast(self.ast).get_span();
+                let first_method_span = func.method.first().unwrap().cast(self.ast).get_range().to_owned();
                     self.errors.push(SyntaxError::FbVariablesAfterMethod {
-                        var_span: err.get_span(),
+                        var_span: err.get_range().to_owned(),
                         method_span: first_method_span,
                         file: self.file
-                    }.to_diagnostic(self.db));
+                    }.to_diagnostic(self.db, self.file));
                 },
             }
         });
@@ -148,22 +148,22 @@ impl<'db> SemanticIndexBuilder<'db> {
             match variable.cast(self.ast) {
                 FbVariables::ERRVarAccessNotAllowed(err) => {
                     self.errors.push(
-                        SyntaxError::VarAccessNotAllowed(err.get_span()).to_diagnostic(self.db),
+                        SyntaxError::VarAccessNotAllowed(err.get_range().to_owned()).to_diagnostic(self.db, self.file),
                     );
                 }
                 FbVariables::ERRVarConfigNotAllowed(err) => {
                     self.errors.push(
-                        SyntaxError::VarConfigNotAllowed(err.get_span()).to_diagnostic(self.db),
+                        SyntaxError::VarConfigNotAllowed(err.get_range().to_owned()).to_diagnostic(self.db, self.file),
                     );
                 }
                 FbVariables::ERRVarLocatedNotAllowed(err) => {
                     self.errors.push(
-                        SyntaxError::VarLocatedNotAllowed(err.get_span()).to_diagnostic(self.db),
+                        SyntaxError::VarLocatedNotAllowed(err.get_range().to_owned()).to_diagnostic(self.db, self.file),
                     );
                 }
                 FbVariables::ERRVarGlobalNotAllowed(err) => {
                     self.errors.push(
-                        SyntaxError::VarGlobalNotAllowed(err.get_span()).to_diagnostic(self.db),
+                        SyntaxError::VarGlobalNotAllowed(err.get_range().to_owned()).to_diagnostic(self.db, self.file),
                     );
                 }
                 FbVariables::FbInputDecls(decls) => decls.parse(self, &mut variables),

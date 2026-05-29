@@ -30,18 +30,18 @@ impl<'db> InitInference<'db> {
                                 upper: upper_range,
                                 upper_expr: upper,
                             }
-                            .to_diagnostic(db),
+                            .to_diagnostic(db, self.scope.file(db)),
                         );
                     }
                 }
                 (None, _) => {
                     self.errors.push(
-                        ArrayError::InvalidArrayLowerValue { value: lower }.to_diagnostic(db),
+                        ArrayError::InvalidArrayLowerValue { value: lower }.to_diagnostic(db, self.scope.file(db)),
                     );
                 }
                 (_, None) => {
                     self.errors.push(
-                        ArrayError::InvalidArrayUpperValue { value: upper }.to_diagnostic(db),
+                        ArrayError::InvalidArrayUpperValue { value: upper }.to_diagnostic(db, self.scope.file(db)),
                     );
                 }
             }

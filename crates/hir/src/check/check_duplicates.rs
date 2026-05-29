@@ -2,7 +2,7 @@ use db::WorkspaceDataBase;
 use ide_diagnostic::IdeDiagnostic;
 
 use crate::{
-    HasName,
+    HasName, HirNodeInfo,
     check::errors::{ToIdeDiagnostic, e1_duplicates::DuplicateError},
     hir_def::{config::ConfigDecl, namespace::NamespaceDecl, pous::pou::Pou, program::ProgramDecl},
     hir_ty::index_graphs::{config_index, namespace_pou_index, pou_index, program_index},
@@ -28,7 +28,7 @@ pub fn check_duplicate_pous<'db>(
                 pou1: pou,
                 pou2: indexed,
             }
-            .to_diagnostic(db),
+            .to_diagnostic(db, pou.get_scope_id(db).file(db)),
         )
     };
 }
@@ -53,7 +53,7 @@ pub fn check_duplicate_programs<'db>(
                 prog1: program,
                 prog2: indexed,
             }
-            .to_diagnostic(db),
+            .to_diagnostic(db, program.get_scope_id(db).file(db)),
         )
     };
 }
@@ -76,7 +76,7 @@ pub fn check_duplicate_configs<'db>(
                 config1: config,
                 config2: indexed,
             }
-            .to_diagnostic(db),
+            .to_diagnostic(db, config.get_scope_id(db).file(db)),
         )
     };
 }
@@ -99,7 +99,7 @@ pub fn check_duplicate_namespaces<'db>(
                     pou1: *pou,
                     pou2: indexed,
                 }
-                .to_diagnostic(db),
+                .to_diagnostic(db, pou.get_scope_id(db).file(db)),
             );
         }
     }

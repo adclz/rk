@@ -50,14 +50,14 @@ impl<'db> ErrorCode for EnumError<'db> {
 }
 
 impl<'db> ToIdeDiagnostic<'db> for EnumError<'db> {
-    fn to_diagnostic(&self, db: &'db dyn WorkspaceDataBase) -> IdeDiagnostic {
+    fn to_diagnostic(&self, db: &'db dyn WorkspaceDataBase, file: auto_lsp::default::db::file::File) -> IdeDiagnostic {
         match self {
             EnumError::InvalidEnumType { value, typ } => {
                 let mut diag = diag()
                     .message(format!("invalid enum type '{}'", typ.type_name(db)))
                     .severity(DiagnosticSeverity::ERROR)
                     .desc(self)
-                    .range(value.get_span(db))
+                    .range(crate::denormalize(db, file, &value.get_span(db)).unwrap_or_default())
                     .call();
 
                 diag.with_note("only numeric integer types are allowed for ENUM".to_string());
@@ -66,7 +66,7 @@ impl<'db> ToIdeDiagnostic<'db> for EnumError<'db> {
             }
             Self::NotAnEnum { expr, item } => diag()
                 .message(format!("'{}' is not an ENUM type", item.type_name(db)))
-                .range(expr.get_span(db))
+                .range(crate::denormalize(db, file, &expr.get_span(db)).unwrap_or_default())
                 .desc(self)
                 .call(),
             Self::EnumVariantNotFound {
@@ -78,7 +78,7 @@ impl<'db> ToIdeDiagnostic<'db> for EnumError<'db> {
                     variant_name.text(db)
                 ))
                 .desc(self)
-                .range(variant_name.get_span(db))
+                .range(crate::denormalize(db, file, &variant_name.get_span(db)).unwrap_or_default())
                 .call(),
         }
     }

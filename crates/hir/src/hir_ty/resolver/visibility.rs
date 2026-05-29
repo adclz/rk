@@ -69,7 +69,7 @@ pub fn check_visibility<'db>(
                     call_site: *call_site,
                     target: target.as_call_site(db),
                 }
-                .to_diagnostic(db),
+                .to_diagnostic(db, call_site.get_scope_id(db).file(db)),
             );
         }
         return;
@@ -87,7 +87,7 @@ pub fn check_visibility<'db>(
                         target: target.as_call_site(db),
                         result,
                     }
-                    .to_diagnostic(db),
+                    .to_diagnostic(db, call_site.get_scope_id(db).file(db)),
                 );
             }
         }
@@ -103,7 +103,7 @@ pub fn check_visibility<'db>(
                 call_site: *call_site,
                 target: target.as_call_site(db),
             }
-            .to_diagnostic(db),
+            .to_diagnostic(db, call_site.get_scope_id(db).file(db)),
         );
     }
 }
@@ -129,7 +129,7 @@ pub fn check_test_visibility<'db>(
         VisibilityError::TestOnly {
             call_site: *call_site,
         }
-        .to_diagnostic(db),
+        .to_diagnostic(db, call_site.get_scope_id(db).file(db)),
     );
 }
 

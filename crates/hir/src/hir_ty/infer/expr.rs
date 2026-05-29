@@ -87,7 +87,7 @@ impl<'db> InferExprCtx<'db> {
                             typ: ty,
                             operator,
                         }
-                        .to_diagnostic(db),
+                        .to_diagnostic(db, inference_results.scope.file(db)),
                     );
                     ty = Type::Never;
                 }
@@ -122,7 +122,7 @@ impl<'db> InferExprCtx<'db> {
                             target: ty,
                             err,
                         }
-                        .to_diagnostic(db),
+                        .to_diagnostic(db, inference_results.scope.file(db)),
                     );
                 }
                 let primary = self.infer_primary(db, primary, inference_results);
@@ -143,7 +143,7 @@ impl<'db> InferExprCtx<'db> {
                                     call_site: curr_expr.as_call_site(db),
                                     var: *var,
                                 }
-                                .to_diagnostic(db),
+                                .to_diagnostic(db, inference_results.scope.file(db)),
                             );
                         }
 
@@ -176,7 +176,7 @@ impl<'db> InferExprCtx<'db> {
                                     typ: Type::new_var(db, *var),
                                     operator: operator.as_str(),
                                 }
-                                .to_diagnostic(db),
+                                .to_diagnostic(db, inference_results.scope.file(db)),
                             );
                         }
 
@@ -273,7 +273,7 @@ impl<'db> InferExprCtx<'db> {
                                     enum_: enm,
                                     variant_name: *variant,
                                 }
-                                .to_diagnostic(db),
+                                .to_diagnostic(db, inference_result.scope.file(db)),
                             );
                             find_enm
                         }),
@@ -284,7 +284,7 @@ impl<'db> InferExprCtx<'db> {
                                 expr: *name,
                                 item: find_enm,
                             }
-                            .to_diagnostic(db),
+                            .to_diagnostic(db, inference_result.scope.file(db)),
                         );
                         Type::Never
                     }

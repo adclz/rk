@@ -37,7 +37,7 @@ impl<'db> InitInference<'db> {
                 ) => {}
                 _ => self
                     .errors
-                    .push(EnumError::InvalidEnumType { value: spec, typ }.to_diagnostic(db)),
+                    .push(EnumError::InvalidEnumType { value: spec, typ }.to_diagnostic(db, self.scope.file(db))),
             }
         }
 
@@ -50,7 +50,7 @@ impl<'db> InitInference<'db> {
                         variant1: *prev,
                         variant2: variant.name,
                     }
-                    .to_diagnostic(db),
+                    .to_diagnostic(db, self.scope.file(db)),
                 ),
                 None => {
                     seen.insert(variant.name.ident, variant.name);
@@ -77,7 +77,7 @@ impl<'db> InitInference<'db> {
                             adjustment: err.adjustment,
                             expr: CallSite::from_scoped(db, &value),
                         }
-                        .to_diagnostic(db),
+                        .to_diagnostic(db, self.scope.file(db)),
                     )
                 }
             }

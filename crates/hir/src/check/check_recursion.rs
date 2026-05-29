@@ -235,7 +235,7 @@ impl<'db> TypeDependencyGraph<'db> {
                             .and_then(|v| v.first())
                             .copied(),
                     }
-                    .to_diagnostic(self.db),
+                    .to_diagnostic(self.db, node.get_scope_id(self.db).file(self.db)),
                 );
                 continue;
             }
@@ -254,7 +254,7 @@ impl<'db> TypeDependencyGraph<'db> {
                             .cloned()
                             .unwrap_or_default(),
                     }
-                    .to_diagnostic(self.db),
+                    .to_diagnostic(self.db, root.get_scope_id(self.db).file(self.db)),
                 );
                 continue;
             }

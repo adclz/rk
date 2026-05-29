@@ -104,10 +104,10 @@ impl Ident {
             db,
             CompactString::from(node.get_text(file.document(db).as_bytes()).map_err(|e| {
                 SyntaxError::SyntaxError {
-                    span: node.get_span(),
+                    span: node.get_range().to_owned(),
                     err: e.to_string(),
                 }
-                .to_diagnostic(db)
+                .to_diagnostic(db, file)
             })?),
         ))
     }

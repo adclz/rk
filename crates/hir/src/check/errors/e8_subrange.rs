@@ -25,14 +25,14 @@ impl<'db> ErrorCode for SubRangeError<'db> {
 }
 
 impl<'db> ToIdeDiagnostic<'db> for SubRangeError<'db> {
-    fn to_diagnostic(&self, db: &'db dyn WorkspaceDataBase) -> IdeDiagnostic {
+    fn to_diagnostic(&self, db: &'db dyn WorkspaceDataBase, file: auto_lsp::default::db::file::File) -> IdeDiagnostic {
         match self {
             SubRangeError::InvalidSubrangeType { spec, typ } => {
                 let mut diag = diag()
                     .message(format!("Invalid subrange type '{}'", typ.type_name(db)))
                     .severity(DiagnosticSeverity::ERROR)
                     .desc(self)
-                    .range(spec.get_span(db))
+                    .range(crate::denormalize(db, file, &spec.get_span(db)).unwrap_or_default())
                     .call();
 
                 diag.with_note("only numeric integer types are allowed for SUBRANGE".to_string());

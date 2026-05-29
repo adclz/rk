@@ -20,7 +20,7 @@ impl<'db> InitInference<'db> {
                             field1: *field,
                             field2: *prev,
                         }
-                        .to_diagnostic(db),
+                        .to_diagnostic(db, self.scope.file(db)),
                     );
                 }
                 None => {

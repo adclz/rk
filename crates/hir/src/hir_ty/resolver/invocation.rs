@@ -53,7 +53,7 @@ pub fn resolve_invocation<'db>(
                             InheritanceError::SuperBodyOnIncompatiblePou {
                                 call_site: CallSite::new(scope, invocation.keyword_id(db)),
                             }
-                            .to_diagnostic(db),
+                            .to_diagnostic(db, ctx.scope.file(db)),
                         );
                     }
                 },
@@ -69,7 +69,7 @@ pub fn resolve_invocation<'db>(
                                     pou,
                                     call_site: CallSite::new(scope, invocation.keyword_id(db)),
                                 }
-                                .to_diagnostic(db),
+                                .to_diagnostic(db, ctx.scope.file(db)),
                             );
                         }
                     }
@@ -84,7 +84,7 @@ pub fn resolve_invocation<'db>(
                                     pou,
                                     call_site: CallSite::new(scope, invocation.keyword_id(db)),
                                 }
-                                .to_diagnostic(db),
+                                .to_diagnostic(db, ctx.scope.file(db)),
                             );
                         }
                     }
@@ -93,7 +93,7 @@ pub fn resolve_invocation<'db>(
                             InheritanceError::SuperOnIncompatiblePou {
                                 call_site: CallSite::new(scope, invocation.keyword_id(db)),
                             }
-                            .to_diagnostic(db),
+                            .to_diagnostic(db, ctx.scope.file(db)),
                         );
                     }
                 },
@@ -108,7 +108,7 @@ pub fn resolve_invocation<'db>(
                             InheritanceError::ThisOnIncompatiblePou {
                                 call_site: CallSite::new(scope, invocation.keyword_id(db)),
                             }
-                            .to_diagnostic(db),
+                            .to_diagnostic(db, ctx.scope.file(db)),
                         );
                     }
                 },

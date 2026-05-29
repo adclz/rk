@@ -1,10 +1,7 @@
 use std::collections::HashMap;
 
 use auto_lsp::{
-    core::{
-        errors::{LexerError, ParseError, ParseErrorAccumulator},
-        span::Span,
-    },
+    core::errors::{LexerError, ParseError, ParseErrorAccumulator},
     default::db::file::File,
     lsp_types::{DiagnosticSeverity, WorkspaceEdit},
     tree_sitter::{self, Range},
@@ -18,100 +15,100 @@ use crate::check::errors::ToIdeDiagnostic;
 pub enum SyntaxError {
     MultipleExtends {
         /// Span of the second (duplicate) EXTENDS clause
-        location: Span,
+        location: Range,
         /// Span of the first EXTENDS clause
-        first_extend_span: Span,
+        first_extend_span: Range,
         /// File containing both clauses
         file: File,
     },
     MultipleImplements {
         /// Span of the second (duplicate) IMPLEMENTS clause
-        location: Span,
+        location: Range,
         /// Span of the first IMPLEMENTS clause
-        first_implements_span: Span,
+        first_implements_span: Range,
         /// File containing both clauses
         file: File,
     },
     ImplementsBeforeExtends {
         /// Span of the misplaced IMPLEMENTS clause
-        implements_span: Span,
+        implements_span: Range,
         /// Span of the EXTENDS clause
-        extends_span: Span,
+        extends_span: Range,
         file: File,
     },
     ClassVariablesAfterMethod {
         /// Span of the misplaced variables
-        var_span: Span,
+        var_span: Range,
         /// Span of the first METHOD
-        method_span: Span,
+        method_span: Range,
         file: File,
     },
     FbVariablesAfterMethod {
         /// Span of the misplaced variables
-        var_span: Span,
+        var_span: Range,
         /// Span of the first METHOD
-        method_span: Span,
+        method_span: Range,
         file: File,
     },
-    MissingVarType(Span),
-    UnexpectedVarInit(Span),
-    IncompleteEdgeQualifier(Span),
-    UnexpectedThis(Span),
-    UnexpectedSuper(Span),
-    AssignToFunctionCall(Span),
-    EmptyRightHandSide(Span),
+    MissingVarType(Range),
+    UnexpectedVarInit(Range),
+    IncompleteEdgeQualifier(Range),
+    UnexpectedThis(Range),
+    UnexpectedSuper(Range),
+    AssignToFunctionCall(Range),
+    EmptyRightHandSide(Range),
     MissingDotInAssignment {
         file: File,
-        span: Span,
+        span: Range,
     },
     MissingEqualInAssignment {
         file: File,
-        span: Span,
+        span: Range,
     },
     MissingDotInForList {
         file: File,
-        span: Span,
+        span: Range,
     },
     MissingEqualInForList {
         file: File,
-        span: Span,
+        span: Range,
     },
-    FunctionCallInInitExpression(Span),
+    FunctionCallInInitExpression(Range),
     OutputAssignInAssignment {
         file: File,
-        span: Span,
+        span: Range,
     },
     OutputAssignInForList {
         file: File,
-        span: Span,
+        span: Range,
     },
-    ProgramNotAllowedInNamespace(Span),
-    ConfigNotAllowedInNamespace(Span),
+    ProgramNotAllowedInNamespace(Range),
+    ConfigNotAllowedInNamespace(Range),
     // tree-sitter
     MissingNode {
         file: File,
-        span: Span,
+        span: Range,
         err: String,
         grammar_name: &'static str,
     },
-    VarInOutNotAllowed(Span),
-    VarTempNotAllowed(Span),
-    VarAccessNotAllowed(Span),
-    VarConfigNotAllowed(Span),
-    VarLocatedNotAllowed(Span),
-    VarExternalNotAllowed(Span),
-    VarGlobalNotAllowed(Span),
-    VarNotAllowed(Span),
-    SingleAfterInterval(Span),
-    IntervalAfterPriority(Span),
-    SingleAfterPriority(Span),
-    MissingPriority(Span),
-    ArrayConformandNotSupported(Span),
-    AccessSpecNotAllowedInMethodPrototype(Span),
-    MethodDeclInBody(Span),
+    VarInOutNotAllowed(Range),
+    VarTempNotAllowed(Range),
+    VarAccessNotAllowed(Range),
+    VarConfigNotAllowed(Range),
+    VarLocatedNotAllowed(Range),
+    VarExternalNotAllowed(Range),
+    VarGlobalNotAllowed(Range),
+    VarNotAllowed(Range),
+    SingleAfterInterval(Range),
+    IntervalAfterPriority(Range),
+    SingleAfterPriority(Range),
+    MissingPriority(Range),
+    ArrayConformandNotSupported(Range),
+    AccessSpecNotAllowedInMethodPrototype(Range),
+    MethodDeclInBody(Range),
     // todo: use custom lexer to handle syntax errors unhandled by tree-sitter
     SyntaxError {
-        span: Span,
+        span: Range,
         err: String,
     },
 }
@@ -172,14 +169,14 @@ impl SyntaxError {
         err: &ParseErrorAccumulator,
     ) -> Self {
         match &err.0 {
-            ParseError::LexerError { span, error } => match error {
+            ParseError::LexerError { error, .. } => match error {
                 LexerError::Missing {
                     range,
                     error,
                     grammar_name,
                 } => SyntaxError::MissingNode {
                     file,
-                    span: range.into(),
+                    span: *range,
                     err: error.to_owned(),
                     grammar_name,
                 },
@@ -205,7 +202,7 @@ impl SyntaxError {
                         error.to_owned()
                     };
                     SyntaxError::SyntaxError {
-                        span: range.into(),
+                        span: *range,
                         err,
                     }
                 }
@@ -216,7 +213,7 @@ impl SyntaxError {
 }
 
 impl<'db> ToIdeDiagnostic<'db> for SyntaxError {
-    fn to_diagnostic(&self, db: &'db dyn WorkspaceDataBase) -> IdeDiagnostic {
+    fn to_diagnostic(&self, db: &'db dyn WorkspaceDataBase, file: auto_lsp::default::db::file::File) -> IdeDiagnostic {
         match self {
             Self::MultipleExtends {
                 location,
@@ -226,7 +223,7 @@ impl<'db> ToIdeDiagnostic<'db> for SyntaxError {
                 let doc = file.document(db);
                 let src = doc.as_str();
 
-                let extract = |span: &Span| -> String {
+                let extract = |span: &Range| -> String {
                     src.get(span.start_byte..span.end_byte)
                         .unwrap_or("")
                         .replace("EXTENDS ", "")
@@ -240,7 +237,7 @@ impl<'db> ToIdeDiagnostic<'db> for SyntaxError {
                     .message("multiple EXTENDS declarations are not allowed".into())
                     .severity(DiagnosticSeverity::ERROR)
                     .desc(self)
-                    .range(*location)
+                    .range(crate::denormalize(db, file, location).unwrap_or_default())
                     .call();
 
                 diag.with_related(Related::new(
@@ -258,7 +255,7 @@ impl<'db> ToIdeDiagnostic<'db> for SyntaxError {
                 let doc = file.document(db);
                 let src = doc.as_str();
 
-                let extract = |span: &Span| -> String {
+                let extract = |span: &Range| -> String {
                     src.get(span.start_byte..span.end_byte)
                         .unwrap_or("")
                         .replace("IMPLEMENTS ", "")
@@ -272,7 +269,7 @@ impl<'db> ToIdeDiagnostic<'db> for SyntaxError {
                     .message("multiple IMPLEMENTS declarations are not allowed".into())
                     .severity(DiagnosticSeverity::ERROR)
                     .desc(self)
-                    .range(*location)
+                    .range(crate::denormalize(db, file, location).unwrap_or_default())
                     .call();
 
                 diag.with_related(Related::new(
@@ -290,7 +287,7 @@ impl<'db> ToIdeDiagnostic<'db> for SyntaxError {
                 let doc = file.document(db);
                 let src = doc.as_str();
 
-                let extract = |span: &Span| -> String {
+                let extract = |span: &Range| -> String {
                     src.get(span.start_byte..span.end_byte)
                         .unwrap_or("")
                         .trim()
@@ -302,7 +299,7 @@ impl<'db> ToIdeDiagnostic<'db> for SyntaxError {
                     .message("IMPLEMENTS must be declared after EXTENDS".into())
                     .severity(DiagnosticSeverity::ERROR)
                     .desc(self)
-                    .range(*implements_span)
+                    .range(crate::denormalize(db, file, implements_span).unwrap_or_default())
                     .call();
 
                 diag.with_related(Related::new(
@@ -318,18 +315,18 @@ impl<'db> ToIdeDiagnostic<'db> for SyntaxError {
                 method_span,
             } => {
                 // We do not want to highlight the first method, just the start point
-                let method_span_start = Span::from(Range {
+                let method_span_start = Range {
                     start_byte: method_span.start_byte,
                     end_byte: method_span.start_byte,
                     start_point: method_span.start_point,
                     end_point: method_span.start_point,
-                });
+                };
 
                 let mut diag = diag()
                     .message("CLASS variable declarations must appear before methods".into())
                     .severity(DiagnosticSeverity::ERROR)
                     .desc(self)
-                    .range(*var_span)
+                    .range(crate::denormalize(db, file, var_span).unwrap_or_default())
                     .call();
 
                 diag.with_related(Related::new(
@@ -345,18 +342,18 @@ impl<'db> ToIdeDiagnostic<'db> for SyntaxError {
                 method_span,
             } => {
                 // We do not want to highlight the first method, just the start point
-                let method_span_start = Span::from(Range {
+                let method_span_start = Range {
                     start_byte: method_span.start_byte,
                     end_byte: method_span.start_byte,
                     start_point: method_span.start_point,
                     end_point: method_span.start_point,
-                });
+                };
 
                 let mut diag = diag()
                     .message("FB variable declarations must appear before methods".into())
                     .severity(DiagnosticSeverity::ERROR)
                     .desc(self)
-                    .range(*var_span)
+                    .range(crate::denormalize(db, file, var_span).unwrap_or_default())
                     .call();
 
                 diag.with_related(Related::new(
@@ -370,50 +367,50 @@ impl<'db> ToIdeDiagnostic<'db> for SyntaxError {
                 .message("variable type is missing".into())
                 .severity(DiagnosticSeverity::ERROR)
                 .desc(self)
-                .range(*span)
+                .range(crate::denormalize(db, file, span).unwrap_or_default())
                 .call(),
             Self::IncompleteEdgeQualifier(span) => diag()
                 .message("incomplete edge qualifier".into())
                 .severity(DiagnosticSeverity::ERROR)
                 .desc(self)
-                .range(*span)
+                .range(crate::denormalize(db, file, span).unwrap_or_default())
                 .call(),
             Self::UnexpectedVarInit(span) => diag()
                 .message("unexpected variable initialization".into())
                 .severity(DiagnosticSeverity::ERROR)
                 .desc(self)
-                .range(*span)
+                .range(crate::denormalize(db, file, span).unwrap_or_default())
                 .call(),
             Self::UnexpectedThis(span) => diag()
                 .message("'THIS' is not valid in this context".into())
                 .severity(DiagnosticSeverity::ERROR)
                 .desc(self)
-                .range(*span)
+                .range(crate::denormalize(db, file, span).unwrap_or_default())
                 .call(),
             Self::UnexpectedSuper(span) => diag()
                 .message("'SUPER' is not valid in this context".into())
                 .severity(DiagnosticSeverity::ERROR)
                 .desc(self)
-                .range(*span)
+                .range(crate::denormalize(db, file, span).unwrap_or_default())
                 .call(),
             Self::AssignToFunctionCall(span) => diag()
                 .message("assignment to function call is not allowed".into())
                 .severity(DiagnosticSeverity::ERROR)
                 .desc(self)
-                .range(*span)
+                .range(crate::denormalize(db, file, span).unwrap_or_default())
                 .call(),
             Self::EmptyRightHandSide(span) => diag()
                 .message("right-hand side of assignment cannot be empty".into())
                 .severity(DiagnosticSeverity::ERROR)
                 .desc(self)
-                .range(*span)
+                .range(crate::denormalize(db, file, span).unwrap_or_default())
                 .call(),
             Self::MissingDotInAssignment { file, span } => {
                 let mut diag = diag()
                     .message("'=' is not a valid assignment sign".into())
                     .severity(DiagnosticSeverity::ERROR)
                     .desc(self)
-                    .range(*span)
+                    .range(crate::denormalize(db, file, span).unwrap_or_default())
                     .call();
 
                 // only replace '=' with ':='
@@ -435,7 +432,7 @@ impl<'db> ToIdeDiagnostic<'db> for SyntaxError {
                         .is_preferred(true)
                         .edit(WorkspaceEdit::new(HashMap::from([(
                             file.url(db).clone(),
-                            vec![edit().new_text(":=".to_string()).range(range.into()).call()],
+                            vec![edit().new_text(":=".to_string()).range(crate::denormalize(db, file, &range).unwrap_or_default()).call()],
                         )])))
                         .call(),
                 );
@@ -447,7 +444,7 @@ impl<'db> ToIdeDiagnostic<'db> for SyntaxError {
                     .message("':' is not a valid assignment sign".into())
                     .severity(DiagnosticSeverity::ERROR)
                     .desc(self)
-                    .range(*span)
+                    .range(crate::denormalize(db, file, span).unwrap_or_default())
                     .call();
 
                 // only replace '=' with ':='
@@ -469,7 +466,7 @@ impl<'db> ToIdeDiagnostic<'db> for SyntaxError {
                         .is_preferred(true)
                         .edit(WorkspaceEdit::new(HashMap::from([(
                             file.url(db).clone(),
-                            vec![edit().new_text(":=".to_string()).range(range.into()).call()],
+                            vec![edit().new_text(":=".to_string()).range(crate::denormalize(db, file, &range).unwrap_or_default()).call()],
                         )])))
                         .call(),
                 );
@@ -481,7 +478,7 @@ impl<'db> ToIdeDiagnostic<'db> for SyntaxError {
                     .message("'=' is not a valid assignment sign".into())
                     .severity(DiagnosticSeverity::ERROR)
                     .desc(self)
-                    .range(*span)
+                    .range(crate::denormalize(db, file, span).unwrap_or_default())
                     .call();
 
                 // only replace '=' with ':='
@@ -503,7 +500,7 @@ impl<'db> ToIdeDiagnostic<'db> for SyntaxError {
                         .is_preferred(true)
                         .edit(WorkspaceEdit::new(HashMap::from([(
                             file.url(db).clone(),
-                            vec![edit().new_text(":=".to_string()).range(range.into()).call()],
+                            vec![edit().new_text(":=".to_string()).range(crate::denormalize(db, file, &range).unwrap_or_default()).call()],
                         )])))
                         .call(),
                 );
@@ -515,7 +512,7 @@ impl<'db> ToIdeDiagnostic<'db> for SyntaxError {
                     .message("':' is not a valid assignment sign".into())
                     .severity(DiagnosticSeverity::ERROR)
                     .desc(self)
-                    .range(*span)
+                    .range(crate::denormalize(db, file, span).unwrap_or_default())
                     .call();
 
                 // only replace '=' with ':='
@@ -537,7 +534,7 @@ impl<'db> ToIdeDiagnostic<'db> for SyntaxError {
                         .is_preferred(true)
                         .edit(WorkspaceEdit::new(HashMap::from([(
                             file.url(db).clone(),
-                            vec![edit().new_text(":=".to_string()).range(range.into()).call()],
+                            vec![edit().new_text(":=".to_string()).range(crate::denormalize(db, file, &range).unwrap_or_default()).call()],
                         )])))
                         .call(),
                 );
@@ -549,7 +546,7 @@ impl<'db> ToIdeDiagnostic<'db> for SyntaxError {
                     .message("'=>' is not a valid assignment sign".into())
                     .severity(DiagnosticSeverity::ERROR)
                     .desc(self)
-                    .range(*span)
+                    .range(crate::denormalize(db, file, span).unwrap_or_default())
                     .call();
 
                 let range = Range {
@@ -570,7 +567,7 @@ impl<'db> ToIdeDiagnostic<'db> for SyntaxError {
                         .is_preferred(true)
                         .edit(WorkspaceEdit::new(HashMap::from([(
                             file.url(db).clone(),
-                            vec![edit().new_text(":=".to_string()).range(range.into()).call()],
+                            vec![edit().new_text(":=".to_string()).range(crate::denormalize(db, file, &range).unwrap_or_default()).call()],
                         )])))
                         .call(),
                 );
@@ -582,7 +579,7 @@ impl<'db> ToIdeDiagnostic<'db> for SyntaxError {
                     .message("'=>' is not a valid assignment sign".into())
                     .severity(DiagnosticSeverity::ERROR)
                     .desc(self)
-                    .range(*span)
+                    .range(crate::denormalize(db, file, span).unwrap_or_default())
                     .call();
 
                 let range = Range {
@@ -603,7 +600,7 @@ impl<'db> ToIdeDiagnostic<'db> for SyntaxError {
                         .is_preferred(true)
                         .edit(WorkspaceEdit::new(HashMap::from([(
                             file.url(db).clone(),
-                            vec![edit().new_text(":=".to_string()).range(range.into()).call()],
+                            vec![edit().new_text(":=".to_string()).range(crate::denormalize(db, file, &range).unwrap_or_default()).call()],
                         )])))
                         .call(),
                 );
@@ -614,7 +611,7 @@ impl<'db> ToIdeDiagnostic<'db> for SyntaxError {
                 .message("function call in initialization expression is not allowed".into())
                 .severity(DiagnosticSeverity::ERROR)
                 .desc(self)
-                .range(*span)
+                .range(crate::denormalize(db, file, span).unwrap_or_default())
                 .call(),
             Self::MissingNode {
                 file,
@@ -623,7 +620,7 @@ impl<'db> ToIdeDiagnostic<'db> for SyntaxError {
                 grammar_name,
             } => {
                 let mut diagnostic = diag()
-                    .range(*span)
+                    .range(crate::denormalize(db, file, span).unwrap_or_default())
                     .message(err.to_string())
                     .source("IEC".into())
                     .desc(self)
@@ -649,7 +646,7 @@ impl<'db> ToIdeDiagnostic<'db> for SyntaxError {
                                 vec![
                                     edit()
                                         .new_text(format!(" {grammar_name}"))
-                                        .range(*span)
+                                        .range(crate::denormalize(db, file, span).unwrap_or_default())
                                         .call(),
                                 ],
                             )])))
@@ -662,20 +659,20 @@ impl<'db> ToIdeDiagnostic<'db> for SyntaxError {
                 .message("programs are not allowed in namespaces".into())
                 .severity(DiagnosticSeverity::ERROR)
                 .desc(self)
-                .range(*span)
+                .range(crate::denormalize(db, file, span).unwrap_or_default())
                 .call(),
             Self::ConfigNotAllowedInNamespace(span) => diag()
                 .message("configs are not allowed in namespaces".into())
                 .severity(DiagnosticSeverity::ERROR)
                 .desc(self)
-                .range(*span)
+                .range(crate::denormalize(db, file, span).unwrap_or_default())
                 .call(),
             Self::VarInOutNotAllowed(span) => {
                 let mut diag = diag()
                     .message("VAR_IN_OUT is not allowed in this context".into())
                     .severity(DiagnosticSeverity::ERROR)
                     .desc(self)
-                    .range(*span)
+                    .range(crate::denormalize(db, file, span).unwrap_or_default())
                     .call();
 
                 diag.with_note(
@@ -688,7 +685,7 @@ impl<'db> ToIdeDiagnostic<'db> for SyntaxError {
                     .message("VAR_TEMP is not allowed in this context".into())
                     .severity(DiagnosticSeverity::ERROR)
                     .desc(self)
-                    .range(*span)
+                    .range(crate::denormalize(db, file, span).unwrap_or_default())
                     .call();
 
                 diag.with_note("VAR_TEMP can only be used inside FUNCTION, FUNCTION_BLOCK".into());
@@ -699,7 +696,7 @@ impl<'db> ToIdeDiagnostic<'db> for SyntaxError {
                     .message("VAR_ACCESS is not allowed in this context".into())
                     .severity(DiagnosticSeverity::ERROR)
                     .desc(self)
-                    .range(*span)
+                    .range(crate::denormalize(db, file, span).unwrap_or_default())
                     .call();
 
                 diag.with_note("VAR_ACCESS can only be used inside PROGRAM".into());
@@ -710,7 +707,7 @@ impl<'db> ToIdeDiagnostic<'db> for SyntaxError {
                     .message("VAR_CONFIG is not allowed in this context".into())
                     .severity(DiagnosticSeverity::ERROR)
                     .desc(self)
-                    .range(*span)
+                    .range(crate::denormalize(db, file, span).unwrap_or_default())
                     .call();
 
                 diag.with_note("VAR_CONFIG can only be used inside CONFIGURATION".into());
@@ -721,7 +718,7 @@ impl<'db> ToIdeDiagnostic<'db> for SyntaxError {
                     .message("VAR_LOCATED is not allowed in this context".into())
                     .severity(DiagnosticSeverity::ERROR)
                     .desc(self)
-                    .range(*span)
+                    .range(crate::denormalize(db, file, span).unwrap_or_default())
                     .call();
 
                 diag.with_note("VAR_LOCATED can only be used inside PROGRAM".into());
@@ -732,7 +729,7 @@ impl<'db> ToIdeDiagnostic<'db> for SyntaxError {
                     .message("VAR_EXTERNAL is not allowed in this context".into())
                     .severity(DiagnosticSeverity::ERROR)
                     .desc(self)
-                    .range(*span)
+                    .range(crate::denormalize(db, file, span).unwrap_or_default())
                     .call();
 
                 diag.with_note(
@@ -745,7 +742,7 @@ impl<'db> ToIdeDiagnostic<'db> for SyntaxError {
                     .message("VAR_GLOBAL is not allowed in this context".into())
                     .severity(DiagnosticSeverity::ERROR)
                     .desc(self)
-                    .range(*span)
+                    .range(crate::denormalize(db, file, span).unwrap_or_default())
                     .call();
 
                 diag.with_note("VAR_GLOBAL can only be used inside PROGRAM, CONFIGURATION".into());
@@ -756,7 +753,7 @@ impl<'db> ToIdeDiagnostic<'db> for SyntaxError {
                     .message("VAR is not allowed in this context".into())
                     .severity(DiagnosticSeverity::ERROR)
                     .desc(self)
-                    .range(*span)
+                    .range(crate::denormalize(db, file, span).unwrap_or_default())
                     .call();
 
                 diag.with_note(
@@ -768,31 +765,31 @@ impl<'db> ToIdeDiagnostic<'db> for SyntaxError {
                 .message("SINGLE cannot be declared after INTERVAL".into())
                 .severity(DiagnosticSeverity::ERROR)
                 .desc(self)
-                .range(*span)
+                .range(crate::denormalize(db, file, span).unwrap_or_default())
                 .call(),
             Self::IntervalAfterPriority(span) => diag()
                 .message("INTERVAL cannot be declared after PRIORITY".into())
                 .severity(DiagnosticSeverity::ERROR)
                 .desc(self)
-                .range(*span)
+                .range(crate::denormalize(db, file, span).unwrap_or_default())
                 .call(),
             Self::SingleAfterPriority(span) => diag()
                 .message("SINGLE cannot be declared after PRIORITY".into())
                 .severity(DiagnosticSeverity::ERROR)
                 .desc(self)
-                .range(*span)
+                .range(crate::denormalize(db, file, span).unwrap_or_default())
                 .call(),
             Self::MissingPriority(span) => diag()
                 .message("PRIORITY is required in TASK configuration".into())
                 .severity(DiagnosticSeverity::ERROR)
                 .desc(self)
-                .range(*span)
+                .range(crate::denormalize(db, file, span).unwrap_or_default())
                 .call(),
             Self::ArrayConformandNotSupported(span) => diag()
                 .message("array conformands (ARRAY[*]) are not supported".into())
                 .severity(DiagnosticSeverity::ERROR)
                 .desc(self)
-                .range(*span)
+                .range(crate::denormalize(db, file, span).unwrap_or_default())
                 .call(),
             Self::AccessSpecNotAllowedInMethodPrototype(span) => {
                 let mut diag = diag()
@@ -801,7 +798,7 @@ impl<'db> ToIdeDiagnostic<'db> for SyntaxError {
                     )
                     .severity(DiagnosticSeverity::ERROR)
                     .desc(self)
-                    .range(*span)
+                    .range(crate::denormalize(db, file, span).unwrap_or_default())
                     .call();
 
                 diag.with_note("interface methods are implicitly PUBLIC".into());
@@ -811,13 +808,13 @@ impl<'db> ToIdeDiagnostic<'db> for SyntaxError {
                 .message("method declarations are not allowed inside a body".into())
                 .severity(DiagnosticSeverity::ERROR)
                 .desc(self)
-                .range(*span)
+                .range(crate::denormalize(db, file, span).unwrap_or_default())
                 .call(),
             Self::SyntaxError { span, err } => diag()
                 .message(err.to_string())
                 .severity(DiagnosticSeverity::ERROR)
                 .desc(self)
-                .range(*span)
+                .range(crate::denormalize(db, file, span).unwrap_or_default())
                 .call(),
         }
     }

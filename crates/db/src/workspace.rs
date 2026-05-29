@@ -72,7 +72,7 @@ impl Workspace {
 
 fn resolve_all(
     workspace_uri: Option<Url>,
-    encoding: &PositionEncodingKind,
+    _encoding: &PositionEncodingKind,
     file_errors: &mut Vec<IdeDiagnostic>,
     notices: &mut Vec<ConfigurationNotice>,
 ) -> (Option<PathBuf>, Option<PathBuf>, Option<PathBuf>) {
@@ -115,19 +115,11 @@ fn resolve_all(
                 ),
                 Err(e) => {
                     if let Ok(_uri) = Url::from_file_path(path) {
-                        // Reuse the already-read `source` for offset→line/col conversion.
+                        // The config parser reports a byte span; convert it to an LSP range by
+                        // counting line breaks in the already-read `source`.
                         let range = e
                             .span()
-                            .and_then(|span| {
-                                let parsers = ast::RK_PARSER.get("st")?;
-                                let tree = parsers.parser.write().parse("".as_bytes(), None)?;
-                                let doc = auto_lsp::core::document::Document::new(
-                                    source.clone(),
-                                    tree,
-                                    Some(encoding),
-                                );
-                                doc.range_at(span).ok()
-                            })
+                            .map(|span| byte_range_to_lsp(&source, span))
                             .unwrap_or_default();
                         file_errors.push(IdeDiagnostic::new(Diagnostic {
                             range,
@@ -185,5 +177,31 @@ impl Display for ConfigurationNotice {
                 write!(f, "standard library not found")
             }
         }
+    }
+}
+
+/// Converts a byte `span` in `source` into an LSP range, for TOML parse
+/// errors; columns are byte offsets, correct for ASCII config files.
+fn byte_range_to_lsp(source: &str, span: std::ops::Range<usize>) -> auto_lsp::lsp_types::Range {
+    let position = |offset: usize| -> auto_lsp::lsp_types::Position {
+        let mut line = 0u32;
+        let mut line_start = 0usize;
+        for (i, b) in source.bytes().enumerate() {
+            if i >= offset {
+                break;
+            }
+            if b == b'\n' {
+                line += 1;
+                line_start = i + 1;
+            }
+        }
+        auto_lsp::lsp_types::Position {
+            line,
+            character: offset.saturating_sub(line_start) as u32,
+        }
+    };
+    auto_lsp::lsp_types::Range {
+        start: position(span.start),
+        end: position(span.end),
     }
 }

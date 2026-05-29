@@ -69,19 +69,19 @@ impl<'db> ErrorCode for ArrayError<'db> {
 }
 
 impl<'db> ToIdeDiagnostic<'db> for ArrayError<'db> {
-    fn to_diagnostic(&self, db: &'db dyn WorkspaceDataBase) -> IdeDiagnostic {
+    fn to_diagnostic(&self, db: &'db dyn WorkspaceDataBase, file: auto_lsp::default::db::file::File) -> IdeDiagnostic {
         match self {
             ArrayError::InvalidArrayLowerValue { value } => diag()
                 .message("invalid lower bound value for ARRAY".to_string())
                 .severity(DiagnosticSeverity::ERROR)
                 .desc(self)
-                .range(value.get_span(db))
+                .range(crate::denormalize(db, file, &value.get_span(db)).unwrap_or_default())
                 .call(),
             ArrayError::InvalidArrayUpperValue { value } => diag()
                 .message("invalid upper bound value for ARRAY".to_string())
                 .severity(DiagnosticSeverity::ERROR)
                 .desc(self)
-                .range(value.get_span(db))
+                .range(crate::denormalize(db, file, &value.get_span(db)).unwrap_or_default())
                 .call(),
             ArrayError::InferiorUpperBound {
                 lower,
@@ -91,7 +91,7 @@ impl<'db> ToIdeDiagnostic<'db> for ArrayError<'db> {
                 .message("upper bound value must be greater than lower bound value".to_string())
                 .severity(DiagnosticSeverity::ERROR)
                 .desc(self)
-                .range(upper_expr.get_span(db))
+                .range(crate::denormalize(db, file, &upper_expr.get_span(db)).unwrap_or_default())
                 .call(),
             Self::TooManyElements {
                 expr,
@@ -105,7 +105,7 @@ impl<'db> ToIdeDiagnostic<'db> for ArrayError<'db> {
                     ))
                     .severity(auto_lsp::lsp_types::DiagnosticSeverity::ERROR)
                     .desc(self)
-                    .range(expr.get_span(db))
+                    .range(crate::denormalize(db, file, &expr.get_span(db)).unwrap_or_default())
                     .call();
 
                 if *dimension > 0_usize {
@@ -121,7 +121,7 @@ impl<'db> ToIdeDiagnostic<'db> for ArrayError<'db> {
                 .message(format!("invalid index value '{}': {err}", size.text(db)))
                 .severity(auto_lsp::lsp_types::DiagnosticSeverity::ERROR)
                 .desc(self)
-                .range(size.get_span(db))
+                .range(crate::denormalize(db, file, &size.get_span(db)).unwrap_or_default())
                 .call(),
             Self::IndexOutOfBounds {
                 size,
@@ -137,7 +137,7 @@ impl<'db> ToIdeDiagnostic<'db> for ArrayError<'db> {
                     ))
                     .severity(auto_lsp::lsp_types::DiagnosticSeverity::ERROR)
                     .desc(self)
-                    .range(size.get_span(db))
+                    .range(crate::denormalize(db, file, &size.get_span(db)).unwrap_or_default())
                     .call();
 
                 if *dimension > 0_usize {

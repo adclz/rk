@@ -218,7 +218,7 @@ impl<'db> InitExprInferenceResult<'db> {
                             size: *size,
                             err: err.to_string(),
                         }
-                        .to_diagnostic(db),
+                        .to_diagnostic(db, self.scope.file(db)),
                     );
                     1
                 }) as usize;
@@ -292,7 +292,7 @@ impl<'db> InitExprInferenceResult<'db> {
                             field1: *expr,
                             field2: prev,
                         }
-                        .to_diagnostic(db),
+                        .to_diagnostic(db, self.scope.file(db)),
                     );
                 }
 
@@ -376,7 +376,7 @@ impl<'db> InitExprInferenceResult<'db> {
                     dimension: dim,
                     max_size: array_size,
                 }
-                .to_diagnostic(db),
+                .to_diagnostic(db, self.scope.file(db)),
             );
         }
     }

@@ -33,7 +33,7 @@ impl ErrorCode for RecursionError<'_> {
 }
 
 impl<'db> ToIdeDiagnostic<'db> for RecursionError<'db> {
-    fn to_diagnostic(&self, db: &'db dyn WorkspaceDataBase) -> IdeDiagnostic {
+    fn to_diagnostic(&self, db: &'db dyn WorkspaceDataBase, file: auto_lsp::default::db::file::File) -> IdeDiagnostic {
         match self {
             RecursionError::DirectRecursion { pou, callsite } => {
                 let mut diag = diag()
@@ -43,7 +43,7 @@ impl<'db> ToIdeDiagnostic<'db> for RecursionError<'db> {
                     ))
                     .severity(DiagnosticSeverity::ERROR)
                     .desc(self)
-                    .range(pou.get_name_span(db))
+                    .range(crate::denormalize(db, file, &pou.get_name_span(db)).unwrap_or_default())
                     .call();
 
                 if let Some(cs) = callsite {
@@ -71,7 +71,7 @@ impl<'db> ToIdeDiagnostic<'db> for RecursionError<'db> {
                     ))
                     .severity(DiagnosticSeverity::ERROR)
                     .desc(self)
-                    .range(pou.get_name_span(db))
+                    .range(crate::denormalize(db, file, &pou.get_name_span(db)).unwrap_or_default())
                     .call();
 
                 for cs in callsite {

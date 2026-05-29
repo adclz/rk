@@ -76,7 +76,7 @@ impl<'db> InitInference<'db> {
             // Non-generic POU + user wrote `<...>` — reject.
             (true, false) => {
                 self.errors
-                    .push(TypeError::GenericArgsOnNonGenericType { name, spec }.to_diagnostic(db));
+                    .push(TypeError::GenericArgsOnNonGenericType { name, spec }.to_diagnostic(db, self.scope.file(db)));
             }
             // Generic POU + user wrote nothing — require explicit args.
             (false, true) => {
@@ -86,7 +86,7 @@ impl<'db> InitInference<'db> {
                         expected: params.len(),
                         spec,
                     }
-                    .to_diagnostic(db),
+                    .to_diagnostic(db, self.scope.file(db)),
                 );
             }
             // Generic POU + user wrote args — check count then bounds.
@@ -99,7 +99,7 @@ impl<'db> InitInference<'db> {
                             actual: args.len(),
                             spec,
                         }
-                        .to_diagnostic(db),
+                        .to_diagnostic(db, self.scope.file(db)),
                     );
                     return;
                 }
@@ -112,7 +112,7 @@ impl<'db> InitInference<'db> {
                                 bound: param.bound,
                                 arg_spec: *arg_spec,
                             }
-                            .to_diagnostic(db),
+                            .to_diagnostic(db, self.scope.file(db)),
                         );
                     }
                 }
@@ -135,7 +135,7 @@ impl<'db> InitInference<'db> {
             let ty = Type::resolve_spec(db, var.spec(db));
             if !matches!(ty, Type::Elementary(e) if e.is_any()) {
                 self.errors
-                    .push(ResolveError::IntoRefNotAny { spec, ident, ty }.to_diagnostic(db));
+                    .push(ResolveError::IntoRefNotAny { spec, ident, ty }.to_diagnostic(db, self.scope.file(db)));
             }
             return;
         }
@@ -149,7 +149,7 @@ impl<'db> InitInference<'db> {
                     let ty = Type::resolve_spec(db, *ret_spec);
                     if !matches!(ty, Type::Elementary(e) if e.is_any()) {
                         self.errors.push(
-                            ResolveError::IntoRefNotAny { spec, ident, ty }.to_diagnostic(db),
+                            ResolveError::IntoRefNotAny { spec, ident, ty }.to_diagnostic(db, self.scope.file(db)),
                         );
                     }
                 }
@@ -161,7 +161,7 @@ impl<'db> InitInference<'db> {
                             ident,
                             ty: Type::Never,
                         }
-                        .to_diagnostic(db),
+                        .to_diagnostic(db, self.scope.file(db)),
                     );
                 }
             }
@@ -170,6 +170,6 @@ impl<'db> InitInference<'db> {
 
         // Not found
         self.errors
-            .push(ResolveError::IntoRefNotFound { spec, ident }.to_diagnostic(db));
+            .push(ResolveError::IntoRefNotFound { spec, ident }.to_diagnostic(db, self.scope.file(db)));
     }
 }

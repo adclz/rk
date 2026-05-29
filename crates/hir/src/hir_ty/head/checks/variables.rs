@@ -37,7 +37,7 @@ impl<'db> InitInference<'db> {
                             var1: *var,
                             var2: *prev,
                         }
-                        .to_diagnostic(db),
+                        .to_diagnostic(db, self.scope.file(db)),
                     );
                 }
                 None => {
@@ -56,13 +56,13 @@ impl<'db> InitInference<'db> {
                             var: *var,
                             typ: var_type,
                         }
-                        .to_diagnostic(db),
+                        .to_diagnostic(db, self.scope.file(db)),
                     );
                 }
 
                 if !var.is_input(db) {
                     self.errors
-                        .push(ResolveError::VariadicNotInInput { var: *var }.to_diagnostic(db));
+                        .push(ResolveError::VariadicNotInInput { var: *var }.to_diagnostic(db, self.scope.file(db)));
                 }
 
                 if let Some(first) = first_variadic {
@@ -71,7 +71,7 @@ impl<'db> InitInference<'db> {
                             first,
                             second: *var,
                         }
-                        .to_diagnostic(db),
+                        .to_diagnostic(db, self.scope.file(db)),
                     );
                 } else {
                     first_variadic = Some(*var);
@@ -100,7 +100,7 @@ impl<'db> InitInference<'db> {
                             variadic_var,
                             other_var: *var,
                         }
-                        .to_diagnostic(db),
+                        .to_diagnostic(db, self.scope.file(db)),
                     );
                 }
             }
@@ -155,7 +155,7 @@ impl<'db> InitInference<'db> {
                     target,
                     err,
                 }
-                .to_diagnostic(db),
+                .to_diagnostic(db, self.scope.file(db)),
             );
         }
     }

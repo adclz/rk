@@ -78,7 +78,7 @@ impl<'db> Resolver<'db> {
                     expr: path_expr,
                     scope: path_expr.scope_id(db),
                 }
-                .to_diagnostic(db),
+                .to_diagnostic(db, ctx.scope.file(db)),
             );
             return false;
         };
@@ -112,7 +112,7 @@ impl<'db> Resolver<'db> {
                         span: path_expr.get_span(db),
                         candidates,
                     }
-                    .to_diagnostic(db),
+                    .to_diagnostic(db, ctx.scope.file(db)),
                 );
                 false
             }
@@ -137,7 +137,7 @@ impl<'db> Resolver<'db> {
                         expr: error_expr,
                         scope: path_expr.scope_id(db),
                     }
-                    .to_diagnostic(db),
+                    .to_diagnostic(db, ctx.scope.file(db)),
                 );
                 false
             }

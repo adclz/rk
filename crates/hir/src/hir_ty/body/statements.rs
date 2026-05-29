@@ -93,7 +93,7 @@ impl<'db> StmtsResolverCtx<'db> {
                                 typ: lhs_typ,
                                 call_site: CallSite::from_scoped(db, var),
                             }
-                            .to_diagnostic(db),
+                            .to_diagnostic(db, ctx.scope.file(db)),
                         );
                     }
 
@@ -109,7 +109,7 @@ impl<'db> StmtsResolverCtx<'db> {
                                     rhs: rhs_typ,
                                     call_site: CallSite::from_scoped(db, target),
                                 }
-                                .to_diagnostic(db),
+                                .to_diagnostic(db, ctx.scope.file(db)),
                             );
                         }
                     }
@@ -124,7 +124,7 @@ impl<'db> StmtsResolverCtx<'db> {
                             ControlFlowError::AssignToConstant {
                                 access: CallSite::from_scoped(db, var),
                             }
-                            .to_diagnostic(db),
+                            .to_diagnostic(db, ctx.scope.file(db)),
                         );
                     }
 
@@ -356,7 +356,7 @@ impl<'db> StmtsResolverCtx<'db> {
                             }
                             _ => ControlFlowError::ExitOutsideLoop { stmt: *stmt },
                         };
-                        ctx.errors.push(err.to_diagnostic(db));
+                        ctx.errors.push(err.to_diagnostic(db, ctx.scope.file(db)));
                     }
 
                     // Remaining statements in this block are unreachable
@@ -490,7 +490,7 @@ impl<'db> StmtsResolverCtx<'db> {
                                     ident: *param,
                                     scope: self.scope,
                                 }
-                                .to_diagnostic(db),
+                                .to_diagnostic(db, ctx.scope.file(db)),
                             );
                         }
                     }
@@ -506,7 +506,7 @@ impl<'db> StmtsResolverCtx<'db> {
                                     ident: *result,
                                     scope: self.scope,
                                 }
-                                .to_diagnostic(db),
+                                .to_diagnostic(db, ctx.scope.file(db)),
                             );
                         }
                     }
@@ -680,7 +680,7 @@ fn check_cond<'db>(
                 ident: ident.text(db).to_string(),
                 site: CallSite::from_scoped(db, span_ident),
             }
-            .to_diagnostic(db),
+            .to_diagnostic(db, ctx.scope.file(db)),
         );
         return None;
     };
@@ -694,7 +694,7 @@ fn check_cond<'db>(
                 actual_spec,
                 site: CallSite::from_scoped(db, span_ident),
             }
-            .to_diagnostic(db),
+            .to_diagnostic(db, ctx.scope.file(db)),
         );
         return None;
     };
@@ -715,7 +715,7 @@ fn check_cond<'db>(
                     bound,
                     spec: branch.cond.expected,
                 }
-                .to_diagnostic(db),
+                .to_diagnostic(db, ctx.scope.file(db)),
             );
             None
         }
@@ -745,7 +745,7 @@ fn check_wasm_ident<'db>(
             bound,
             site: CallSite::from_scoped(db, span_ident),
         }
-        .to_diagnostic(db),
+        .to_diagnostic(db, ctx.scope.file(db)),
     );
 }
 

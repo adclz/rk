@@ -240,7 +240,7 @@ impl<'db> InferenceTable<'db> {
                                 target: final_ty,
                                 err,
                             }
-                            .to_diagnostic(db),
+                            .to_diagnostic(db, results.scope.file(db)),
                         );
 
                         // Necessary: the Infer variant MUST be replaced by Type::Never

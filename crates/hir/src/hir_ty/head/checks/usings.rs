@@ -33,7 +33,7 @@ impl<'db> InitInference<'db> {
                             other: *prev,
                             using: *using,
                         }
-                        .to_diagnostic(db),
+                        .to_diagnostic(db, self.scope.file(db)),
                     );
                 })
                 .or_insert(*using);
@@ -44,7 +44,7 @@ impl<'db> InitInference<'db> {
                         path: using.path(db).path,
                         call_site: CallSite::from_scoped(db, using),
                     }
-                    .to_diagnostic(db),
+                    .to_diagnostic(db, self.scope.file(db)),
                 )
             }
         }

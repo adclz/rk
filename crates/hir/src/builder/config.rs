@@ -43,31 +43,31 @@ impl<'db> SemanticIndexBuilder<'db> {
                 }
                 ConfigVariables::ERRVarNotAllowed(err) => {
                     self.errors
-                        .push(SyntaxError::VarNotAllowed(err.get_span()).to_diagnostic(self.db));
+                        .push(SyntaxError::VarNotAllowed(err.get_range().to_owned()).to_diagnostic(self.db, self.file));
                 }
                 ConfigVariables::ERRVarInOutNotAllowed(err) => {
                     self.errors.push(
-                        SyntaxError::VarInOutNotAllowed(err.get_span()).to_diagnostic(self.db),
+                        SyntaxError::VarInOutNotAllowed(err.get_range().to_owned()).to_diagnostic(self.db, self.file),
                     );
                 }
                 ConfigVariables::ERRVarTempNotAllowed(err) => {
                     self.errors.push(
-                        SyntaxError::VarTempNotAllowed(err.get_span()).to_diagnostic(self.db),
+                        SyntaxError::VarTempNotAllowed(err.get_range().to_owned()).to_diagnostic(self.db, self.file),
                     );
                 }
                 ConfigVariables::ERRVarConfigNotAllowed(err) => {
                     self.errors.push(
-                        SyntaxError::VarConfigNotAllowed(err.get_span()).to_diagnostic(self.db),
+                        SyntaxError::VarConfigNotAllowed(err.get_range().to_owned()).to_diagnostic(self.db, self.file),
                     );
                 }
                 ConfigVariables::ERRVarLocatedNotAllowed(err) => {
                     self.errors.push(
-                        SyntaxError::VarLocatedNotAllowed(err.get_span()).to_diagnostic(self.db),
+                        SyntaxError::VarLocatedNotAllowed(err.get_range().to_owned()).to_diagnostic(self.db, self.file),
                     );
                 }
                 ConfigVariables::ERRVarExternalNotAllowed(err) => {
                     self.errors.push(
-                        SyntaxError::VarExternalNotAllowed(err.get_span()).to_diagnostic(self.db),
+                        SyntaxError::VarExternalNotAllowed(err.get_range().to_owned()).to_diagnostic(self.db, self.file),
                     );
                 }
             }
@@ -200,13 +200,13 @@ impl<'db> SemanticIndexBuilder<'db> {
         for err in init.children.iter() {
             match err.cast(self.ast) {
                 ast::generated::ERRIntervalAfterPriority_ERRSingleAfterInterval_ERRSingleAfterPriorty::ERRSingleAfterInterval(e) => {
-                    self.errors.push(SyntaxError::SingleAfterInterval(e.get_span()).to_diagnostic(self.db));
+                    self.errors.push(SyntaxError::SingleAfterInterval(e.get_range().to_owned()).to_diagnostic(self.db, self.file));
                 }
                 ast::generated::ERRIntervalAfterPriority_ERRSingleAfterInterval_ERRSingleAfterPriorty::ERRSingleAfterPriorty(e) => {
-                    self.errors.push(SyntaxError::SingleAfterPriority(e.get_span()).to_diagnostic(self.db));
+                    self.errors.push(SyntaxError::SingleAfterPriority(e.get_range().to_owned()).to_diagnostic(self.db, self.file));
                 }
                 ast::generated::ERRIntervalAfterPriority_ERRSingleAfterInterval_ERRSingleAfterPriorty::ERRIntervalAfterPriority(e) => {
-                    self.errors.push(SyntaxError::IntervalAfterPriority(e.get_span()).to_diagnostic(self.db));
+                    self.errors.push(SyntaxError::IntervalAfterPriority(e.get_range().to_owned()).to_diagnostic(self.db, self.file));
                 }
             }
         }
@@ -231,7 +231,7 @@ impl<'db> SemanticIndexBuilder<'db> {
 
         if priority.is_none() {
             self.errors
-                .push(SyntaxError::MissingPriority(tc.get_span()).to_diagnostic(self.db));
+                .push(SyntaxError::MissingPriority(tc.get_range().to_owned()).to_diagnostic(self.db, self.file));
         }
 
         let task = TaskConfig::new(
@@ -339,11 +339,11 @@ impl<'db> SemanticIndexBuilder<'db> {
         let missing = |what: &str| {
             crate::check::errors::e0_syntax::SyntaxError::MissingNode {
                 file: self.file,
-                span: cnxn.get_span(),
+                span: cnxn.get_range().to_owned(),
                 err: format!("prog_cnxn missing {what}"),
                 grammar_name: "prog_cnxn",
             }
-            .to_diagnostic(self.db)
+            .to_diagnostic(self.db, self.file)
         };
 
         let path = path.ok_or_else(|| missing("path expression"))?;
@@ -473,11 +473,11 @@ impl<'db> SemanticIndexBuilder<'db> {
         let init = init_expr.ok_or_else(|| {
             crate::check::errors::e0_syntax::SyntaxError::MissingNode {
                 file: self.file,
-                span: inst.get_span(),
+                span: inst.get_range().to_owned(),
                 err: "config inst missing init expression".into(),
                 grammar_name: "config_inst_init",
             }
-            .to_diagnostic(self.db)
+            .to_diagnostic(self.db, self.file)
         })?;
 
         Ok(crate::hir_def::config::ConfigInstInit {

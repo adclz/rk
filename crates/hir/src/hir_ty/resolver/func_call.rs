@@ -9,7 +9,7 @@ use crate::hir_def::expressions::expression::{Expr, ParamAssign};
 use crate::hir_def::interned::identifier::Ident;
 use crate::hir_def::pous::variable::VariableDecl;
 use crate::{
-    CallSite,
+    CallSite, HirNodeInfo,
     check::errors::{ToIdeDiagnostic, e2_resolve::ResolveError},
     hir_def::expressions::expression::{FuncCall, ParamAssignKind},
     hir_ty::{
@@ -56,7 +56,7 @@ pub fn resolve_func_call<'db>(
                 typ: target_typ,
                 func_call,
             }
-            .to_diagnostic(db),
+            .to_diagnostic(db, ctx.scope.file(db)),
         );
         return;
     }
@@ -69,7 +69,7 @@ pub fn resolve_func_call<'db>(
                     typ: target_typ,
                     func_call,
                 }
-                .to_diagnostic(db),
+                .to_diagnostic(db, ctx.scope.file(db)),
             );
             return;
         }
@@ -97,7 +97,7 @@ pub fn resolve_func_call<'db>(
                 func_call,
                 callable,
             }
-            .to_diagnostic(db),
+            .to_diagnostic(db, ctx.scope.file(db)),
         );
     }
 
@@ -147,7 +147,7 @@ pub fn resolve_func_call<'db>(
                 vars: missing,
                 func_call,
             }
-            .to_diagnostic(db),
+            .to_diagnostic(db, ctx.scope.file(db)),
         );
     }
 }
@@ -195,7 +195,7 @@ fn apply_param_coercion<'db>(
                     ControlFlowError::AssignToConstant {
                         access: CallSite::from_scoped(db, &value),
                     }
-                    .to_diagnostic(db),
+                    .to_diagnostic(db, ctx.scope.file(db)),
                 );
             }
 
@@ -207,7 +207,7 @@ fn apply_param_coercion<'db>(
                         expr: value,
                         param: 0,
                     }
-                    .to_diagnostic(db),
+                    .to_diagnostic(db, ctx.scope.file(db)),
                 );
             }
             ctx.variable_of_param.insert(param, var);
@@ -220,7 +220,7 @@ fn apply_param_coercion<'db>(
                     ControlFlowError::AssignToConstant {
                         access: CallSite::from_scoped(db, &value),
                     }
-                    .to_diagnostic(db),
+                    .to_diagnostic(db, ctx.scope.file(db)),
                 );
             }
             ctx.variable_of_param.insert(param, var);
@@ -234,7 +234,7 @@ fn apply_param_coercion<'db>(
 
             if (var.is_in_out(db) || var.is_output(db)) && ctx.is_constant_access(db, variable) {
                 ctx.errors.push(
-                    ControlFlowError::AssignToConstant { access: call_site }.to_diagnostic(db),
+                    ControlFlowError::AssignToConstant { access: call_site }.to_diagnostic(db, ctx.scope.file(db)),
                 );
             }
 
@@ -278,7 +278,7 @@ fn coerce_with_var_target<'db>(
                 adjustment: e.adjustment,
                 expr: CallSite::from_scoped(db, &expr),
             }
-            .to_diagnostic(db),
+            .to_diagnostic(db, ctx.scope.file(db)),
         );
     }
 }
@@ -375,7 +375,7 @@ pub fn resolve_params<'db>(
                             expr: value,
                             param: formal_idx,
                         }
-                        .to_diagnostic(db),
+                        .to_diagnostic(db, callable.get_scope_id(db).file(db)),
                     );
                     results.push(ParamMatch::Error);
                     formal_idx += 1;
@@ -389,7 +389,7 @@ pub fn resolve_params<'db>(
                             param_2: *parameter,
                             name: param.ident,
                         }
-                        .to_diagnostic(db),
+                        .to_diagnostic(db, callable.get_scope_id(db).file(db)),
                     );
                     results.push(ParamMatch::Error);
                     continue;
@@ -403,7 +403,7 @@ pub fn resolve_params<'db>(
                             func: callable,
                             param,
                         }
-                        .to_diagnostic(db),
+                        .to_diagnostic(db, callable.get_scope_id(db).file(db)),
                     );
                     results.push(ParamMatch::Error);
                 }
@@ -416,7 +416,7 @@ pub fn resolve_params<'db>(
                             param_2: *parameter,
                             name: param.ident,
                         }
-                        .to_diagnostic(db),
+                        .to_diagnostic(db, callable.get_scope_id(db).file(db)),
                     );
                     results.push(ParamMatch::Error);
                     continue;
@@ -430,7 +430,7 @@ pub fn resolve_params<'db>(
                             func: callable,
                             param,
                         }
-                        .to_diagnostic(db),
+                        .to_diagnostic(db, callable.get_scope_id(db).file(db)),
                     );
                     results.push(ParamMatch::Error);
                 }
