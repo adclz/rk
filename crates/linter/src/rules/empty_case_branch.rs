@@ -32,8 +32,12 @@ pub fn check_case<'db>(
             // Use the span of the first selector for the diagnostic
             if let Some(first) = selectors.first() {
                 let (span, file) = match first {
-                    CaseKind::Expression(expr) => (expr.get_span(db), expr.get_scope_id(db).file(db)),
-                    CaseKind::Subrange { lower, .. } => (lower.get_span(db), lower.get_scope_id(db).file(db)),
+                    CaseKind::Expression(expr) => {
+                        (expr.get_span(db), expr.get_scope_id(db).file(db))
+                    }
+                    CaseKind::Subrange { lower, .. } => {
+                        (lower.get_span(db), lower.get_scope_id(db).file(db))
+                    }
                 };
                 diagnostics.push(
                     diag()

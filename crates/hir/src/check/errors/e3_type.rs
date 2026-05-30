@@ -205,7 +205,11 @@ impl<'db> ErrorCode for TypeError<'db> {
 }
 
 impl<'db> ToIdeDiagnostic<'db> for TypeError<'db> {
-    fn to_diagnostic(&self, db: &'db dyn WorkspaceDataBase, file: auto_lsp::default::db::file::File) -> IdeDiagnostic {
+    fn to_diagnostic(
+        &self,
+        db: &'db dyn WorkspaceDataBase,
+        file: auto_lsp::default::db::file::File,
+    ) -> IdeDiagnostic {
         match self {
             Self::NotAssignable {
                 base_target,
@@ -349,7 +353,9 @@ impl<'db> ToIdeDiagnostic<'db> for TypeError<'db> {
                     ))
                     .severity(DiagnosticSeverity::ERROR)
                     .desc(self)
-                    .range(crate::denormalize(db, file, &call_site.get_span(db)).unwrap_or_default())
+                    .range(
+                        crate::denormalize(db, file, &call_site.get_span(db)).unwrap_or_default(),
+                    )
                     .call();
 
                 diag.with_note("... can only be used on VAR_INPUT variables that are declared variadic with the same operator (e.g: INT...)".into());
@@ -368,7 +374,9 @@ impl<'db> ToIdeDiagnostic<'db> for TypeError<'db> {
                     ))
                     .severity(DiagnosticSeverity::ERROR)
                     .desc(self)
-                    .range(crate::denormalize(db, file, &call_site.get_span(db)).unwrap_or_default())
+                    .range(
+                        crate::denormalize(db, file, &call_site.get_span(db)).unwrap_or_default(),
+                    )
                     .call();
 
                 typ.with_location(db, &mut diag);
@@ -434,7 +442,9 @@ impl<'db> ToIdeDiagnostic<'db> for TypeError<'db> {
                     ))
                     .severity(DiagnosticSeverity::ERROR)
                     .desc(self)
-                    .range(crate::denormalize(db, file, &call_site.get_span(db)).unwrap_or_default())
+                    .range(
+                        crate::denormalize(db, file, &call_site.get_span(db)).unwrap_or_default(),
+                    )
                     .call();
 
                 typ.with_location(db, &mut diag);
@@ -558,12 +568,10 @@ impl<'db> ToIdeDiagnostic<'db> for TypeError<'db> {
                     .desc(self)
                     .range(crate::denormalize(db, file, &site.get_span(db)).unwrap_or_default())
                     .call();
-                diag.with_note(
-                    format!(
-                        "wasm pragmas need a concrete type; add a '{{#if {} is …}}' branch",
-                        param,
-                    ),
-                );
+                diag.with_note(format!(
+                    "wasm pragmas need a concrete type; add a '{{#if {} is …}}' branch",
+                    param,
+                ));
                 diag
             }
         }

@@ -58,7 +58,10 @@ pub fn workspace_symbols(db: &dyn WorkspaceDataBase, query_str: &str) -> Vec<Wor
             kind: lsp_kind,
             tags: None,
             container_name,
-            location: OneOf::Left(Location::new(file.url(db).clone(), hir::denormalize(db, file, &span).unwrap_or_default())),
+            location: OneOf::Left(Location::new(
+                file.url(db).clone(),
+                hir::denormalize(db, file, &span).unwrap_or_default(),
+            )),
             data: None,
         });
 

@@ -90,8 +90,10 @@ impl<'db> SemanticIndexBuilder<'db> {
 
         if let Some(err) = &method.children {
             self.errors.push(
-                SyntaxError::AccessSpecNotAllowedInMethodPrototype(err.cast(self.ast).get_range().to_owned())
-                    .to_diagnostic(self.db, self.file),
+                SyntaxError::AccessSpecNotAllowedInMethodPrototype(
+                    err.cast(self.ast).get_range().to_owned(),
+                )
+                .to_diagnostic(self.db, self.file),
             );
         }
 
@@ -100,37 +102,44 @@ impl<'db> SemanticIndexBuilder<'db> {
             match variable.cast(self.ast) {
                 ast::generated::MethodProtVariables::ERRVarAccessNotAllowed(err) => {
                     self.errors.push(
-                        SyntaxError::VarAccessNotAllowed(err.get_range().to_owned()).to_diagnostic(self.db, self.file),
+                        SyntaxError::VarAccessNotAllowed(err.get_range().to_owned())
+                            .to_diagnostic(self.db, self.file),
                     );
                 }
                 ast::generated::MethodProtVariables::ERRVarConfigNotAllowed(err) => {
                     self.errors.push(
-                        SyntaxError::VarConfigNotAllowed(err.get_range().to_owned()).to_diagnostic(self.db, self.file),
+                        SyntaxError::VarConfigNotAllowed(err.get_range().to_owned())
+                            .to_diagnostic(self.db, self.file),
                     );
                 }
                 ast::generated::MethodProtVariables::ERRVarLocatedNotAllowed(err) => {
                     self.errors.push(
-                        SyntaxError::VarLocatedNotAllowed(err.get_range().to_owned()).to_diagnostic(self.db, self.file),
+                        SyntaxError::VarLocatedNotAllowed(err.get_range().to_owned())
+                            .to_diagnostic(self.db, self.file),
                     );
                 }
                 ast::generated::MethodProtVariables::ERRVarExternalNotAllowed(err) => {
                     self.errors.push(
-                        SyntaxError::VarExternalNotAllowed(err.get_range().to_owned()).to_diagnostic(self.db, self.file),
+                        SyntaxError::VarExternalNotAllowed(err.get_range().to_owned())
+                            .to_diagnostic(self.db, self.file),
                     );
                 }
                 ast::generated::MethodProtVariables::ERRVarGlobalNotAllowed(err) => {
                     self.errors.push(
-                        SyntaxError::VarGlobalNotAllowed(err.get_range().to_owned()).to_diagnostic(self.db, self.file),
+                        SyntaxError::VarGlobalNotAllowed(err.get_range().to_owned())
+                            .to_diagnostic(self.db, self.file),
                     );
                 }
                 ast::generated::MethodProtVariables::ERRVarInOutNotAllowed(err) => {
                     self.errors.push(
-                        SyntaxError::VarInOutNotAllowed(err.get_range().to_owned()).to_diagnostic(self.db, self.file),
+                        SyntaxError::VarInOutNotAllowed(err.get_range().to_owned())
+                            .to_diagnostic(self.db, self.file),
                     );
                 }
                 ast::generated::MethodProtVariables::ERRVarTempNotAllowed(err) => {
                     self.errors.push(
-                        SyntaxError::VarTempNotAllowed(err.get_range().to_owned()).to_diagnostic(self.db, self.file),
+                        SyntaxError::VarTempNotAllowed(err.get_range().to_owned())
+                            .to_diagnostic(self.db, self.file),
                     );
                 }
                 ast::generated::MethodProtVariables::InputDecls(decls) => {

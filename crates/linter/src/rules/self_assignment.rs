@@ -141,7 +141,10 @@ pub fn check_assignment<'db>(
         diag()
             .message(format!("variable '{name}' is assigned to itself"))
             .desc(&SelfAssignment)
-            .range(hir::denormalize(db, stmt.get_scope_id(db).file(db), &stmt.get_span(db)).unwrap_or_default())
+            .range(
+                hir::denormalize(db, stmt.get_scope_id(db).file(db), &stmt.get_span(db))
+                    .unwrap_or_default(),
+            )
             .severity(DiagnosticSeverity::WARNING)
             .call(),
     );

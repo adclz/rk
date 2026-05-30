@@ -109,12 +109,19 @@ impl<'db> SemanticTokensHandler<'db> for MethodRef<'db> {
     ) {
         comment_bracket_ref_tokens(self, db, builder);
         builder.push(
-            hir::denormalize(db, self.get_scope_id(db).file(db), &self.get_name_span(db)).unwrap_or_default(),
+            hir::denormalize(db, self.get_scope_id(db).file(db), &self.get_name_span(db))
+                .unwrap_or_default(),
             SUPPORTED_TYPES.iter().position(|x| *x == METHOD).unwrap() as u32,
             0,
         );
         if let Some(ret) = self.return_type(db) {
-            semantic_tokens_for_type(db, ret.infer(db), builder, ret.get_span(db), self.get_scope_id(db).file(db));
+            semantic_tokens_for_type(
+                db,
+                ret.infer(db),
+                builder,
+                ret.get_span(db),
+                self.get_scope_id(db).file(db),
+            );
         }
     }
 }
@@ -154,7 +161,13 @@ impl<'db> SemanticTokensHandler<'db> for BeginPathExpr<'db> {
         db: &'db dyn WorkspaceDataBase,
         builder: &mut SemanticTokensBuilder,
     ) {
-        semantic_tokens_for_type(db, self.infer(db), builder, self.get_span(db), self.get_scope_id(db).file(db));
+        semantic_tokens_for_type(
+            db,
+            self.infer(db),
+            builder,
+            self.get_span(db),
+            self.get_scope_id(db).file(db),
+        );
     }
 }
 
@@ -164,7 +177,13 @@ impl<'db> SemanticTokensHandler<'db> for PathExpr<'db> {
         db: &'db dyn WorkspaceDataBase,
         builder: &mut SemanticTokensBuilder,
     ) {
-        semantic_tokens_for_type(db, self.infer(db), builder, self.get_span(db), self.get_scope_id(db).file(db));
+        semantic_tokens_for_type(
+            db,
+            self.infer(db),
+            builder,
+            self.get_span(db),
+            self.get_scope_id(db).file(db),
+        );
     }
 }
 
@@ -174,7 +193,13 @@ impl<'db> SemanticTokensHandler<'db> for VariableAccess<'db> {
         db: &'db dyn WorkspaceDataBase,
         builder: &mut SemanticTokensBuilder,
     ) {
-        semantic_tokens_for_type(db, self.infer(db), builder, self.get_span(db), self.get_scope_id(db).file(db));
+        semantic_tokens_for_type(
+            db,
+            self.infer(db),
+            builder,
+            self.get_span(db),
+            self.get_scope_id(db).file(db),
+        );
     }
 }
 
@@ -188,11 +213,18 @@ impl<'db> SemanticTokensHandler<'db> for Expr<'db> {
 
         if let ExprKind::PrimaryExpr(PrimaryExpr::EnumValue { name, variant }) = self.expr(db) {
             builder.push(
-                hir::denormalize(db, name.get_scope_id(db).file(db), &name.get_span(db)).unwrap_or_default(),
+                hir::denormalize(db, name.get_scope_id(db).file(db), &name.get_span(db))
+                    .unwrap_or_default(),
                 SUPPORTED_TYPES.iter().position(|x| *x == ENUM).unwrap() as u32,
                 0,
             );
-            semantic_tokens_for_type(db, typ, builder, variant.get_span(db), self.get_scope_id(db).file(db));
+            semantic_tokens_for_type(
+                db,
+                typ,
+                builder,
+                variant.get_span(db),
+                self.get_scope_id(db).file(db),
+            );
         }
     }
 }

@@ -31,7 +31,9 @@ impl<'db> InlayHintHandler<'db> for NamespaceDecl<'db> {
     fn inlay_hint(&'db self, db: &'db dyn WorkspaceDataBase) -> Option<InlayHint> {
         Some(InlayHint {
             label: InlayHintLabel::String(format!("NAMESPACE {}", self.path(db).to_string(db))),
-            position: hir::denormalize(db, self.get_scope_id(db).file(db), &self.get_span(db)).unwrap_or_default().end,
+            position: hir::denormalize(db, self.get_scope_id(db).file(db), &self.get_span(db))
+                .unwrap_or_default()
+                .end,
             kind: Some(InlayHintKind::TYPE),
             text_edits: None,
             padding_left: Some(true),
@@ -56,7 +58,9 @@ impl<'db> InlayHintHandler<'db> for Pou<'db> {
                 },
                 self.get_name_ident(db).text(db)
             )),
-            position: hir::denormalize(db, self.get_scope_id(db).file(db), &self.get_span(db)).unwrap_or_default().end,
+            position: hir::denormalize(db, self.get_scope_id(db).file(db), &self.get_span(db))
+                .unwrap_or_default()
+                .end,
             kind: Some(InlayHintKind::TYPE),
             text_edits: None,
             padding_left: Some(true),
@@ -87,7 +91,13 @@ impl<'db> InlayHintHandler<'db> for ParamAssign<'db> {
                 format!("{name}:")
             };
             InlayHint {
-                position: hir::denormalize(db, get_param_start_pos(db, self).get_scope_id(db).file(db), &get_param_start_pos(db, self).get_span(db)).unwrap_or_default().start,
+                position: hir::denormalize(
+                    db,
+                    get_param_start_pos(db, self).get_scope_id(db).file(db),
+                    &get_param_start_pos(db, self).get_span(db),
+                )
+                .unwrap_or_default()
+                .start,
                 label: InlayHintLabel::String(label),
                 kind: Some(InlayHintKind::PARAMETER),
                 padding_left: Some(false),
@@ -106,7 +116,9 @@ impl<'db> InlayHintHandler<'db> for InitExpr<'db> {
 
         match self.kind(db) {
             InitExprKind::StructElement { name, value: _ } => Some(InlayHint {
-                position: hir::denormalize(db, name.get_scope_id(db).file(db), &name.get_span(db)).unwrap_or_default().end,
+                position: hir::denormalize(db, name.get_scope_id(db).file(db), &name.get_span(db))
+                    .unwrap_or_default()
+                    .end,
                 label: InlayHintLabel::String(format!(": {}", typ.type_name(db))),
                 kind: Some(InlayHintKind::TYPE),
                 padding_left: Some(false),
@@ -124,7 +136,9 @@ impl<'db> InlayHintHandler<'db> for ConfigDecl<'db> {
     fn inlay_hint(&'db self, db: &'db dyn WorkspaceDataBase) -> Option<InlayHint> {
         Some(InlayHint {
             label: InlayHintLabel::String(format!("CONFIGURATION {}", self.name(db).text(db))),
-            position: hir::denormalize(db, self.get_scope_id(db).file(db), &self.get_span(db)).unwrap_or_default().end,
+            position: hir::denormalize(db, self.get_scope_id(db).file(db), &self.get_span(db))
+                .unwrap_or_default()
+                .end,
             kind: Some(InlayHintKind::TYPE),
             text_edits: None,
             padding_left: Some(true),

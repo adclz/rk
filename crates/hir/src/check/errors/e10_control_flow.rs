@@ -74,7 +74,11 @@ impl<'db> ErrorCode for ControlFlowError<'db> {
 }
 
 impl<'db> ToIdeDiagnostic<'db> for ControlFlowError<'db> {
-    fn to_diagnostic(&self, db: &'db dyn WorkspaceDataBase, file: auto_lsp::default::db::file::File) -> IdeDiagnostic {
+    fn to_diagnostic(
+        &self,
+        db: &'db dyn WorkspaceDataBase,
+        file: auto_lsp::default::db::file::File,
+    ) -> IdeDiagnostic {
         match self {
             Self::AssignCallableType { typ, access } => diag()
                 .message(format!(
@@ -99,7 +103,10 @@ impl<'db> ToIdeDiagnostic<'db> for ControlFlowError<'db> {
                     .message(format!("'{}' is not a callable type", typ.type_name(db)))
                     .severity(DiagnosticSeverity::ERROR)
                     .desc(self)
-                    .range(crate::denormalize(db, file, &func_call.path(db).get_span(db)).unwrap_or_default())
+                    .range(
+                        crate::denormalize(db, file, &func_call.path(db).get_span(db))
+                            .unwrap_or_default(),
+                    )
                     .call();
 
                 if let Type::FunctionBlock(_) = typ {

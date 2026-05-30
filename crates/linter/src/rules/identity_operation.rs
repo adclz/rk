@@ -82,7 +82,10 @@ fn emit<'db>(
                 "'{op_desc}' has no effect, the result is always the same as the other operand"
             ))
             .desc(&IdentityOperation)
-            .range(hir::denormalize(db, expr.get_scope_id(db).file(db), &expr.get_span(db)).unwrap_or_default())
+            .range(
+                hir::denormalize(db, expr.get_scope_id(db).file(db), &expr.get_span(db))
+                    .unwrap_or_default(),
+            )
             .severity(DiagnosticSeverity::WARNING)
             .call(),
     );

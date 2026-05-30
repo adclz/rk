@@ -132,7 +132,14 @@ fn check_expr<'db>(
                     diag()
                         .message(format!("division by zero: right-hand side of '{op}' is 0"))
                         .desc(&DivisionByZero)
-                        .range(hir::denormalize(db, right.get_scope_id(db).file(db), &right.get_span(db)).unwrap_or_default())
+                        .range(
+                            hir::denormalize(
+                                db,
+                                right.get_scope_id(db).file(db),
+                                &right.get_span(db),
+                            )
+                            .unwrap_or_default(),
+                        )
                         .severity(DiagnosticSeverity::WARNING)
                         .call(),
                 );

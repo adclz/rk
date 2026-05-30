@@ -32,7 +32,10 @@ pub fn check_step<'db>(
             diag()
                 .message("FOR loop step is 0, loop will never terminate".to_string())
                 .desc(&ForZeroStep)
-                .range(hir::denormalize(db, step.get_scope_id(db).file(db), &step.get_span(db)).unwrap_or_default())
+                .range(
+                    hir::denormalize(db, step.get_scope_id(db).file(db), &step.get_span(db))
+                        .unwrap_or_default(),
+                )
                 .severity(DiagnosticSeverity::WARNING)
                 .call(),
         );

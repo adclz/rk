@@ -439,7 +439,8 @@ impl<'db> Type<'db> {
                 let state = ctx.ref_null_state.get(&var).copied();
                 if let Some(state @ (NullState::Null(_) | NullState::Uninitialized(_))) = state {
                     ctx.errors.push(
-                        ControlFlowError::DerefPossiblyNull { var, expr, state }.to_diagnostic(db, ctx.scope.file(db)),
+                        ControlFlowError::DerefPossiblyNull { var, expr, state }
+                            .to_diagnostic(db, ctx.scope.file(db)),
                     );
                 }
             }
@@ -462,7 +463,8 @@ impl<'db> Type<'db> {
                 Err(non_ref) => {
                     if report_errors {
                         ctx.errors.push(
-                            ResolveError::DerefNonRefType { expr, ty: non_ref }.to_diagnostic(db, ctx.scope.file(db)),
+                            ResolveError::DerefNonRefType { expr, ty: non_ref }
+                                .to_diagnostic(db, ctx.scope.file(db)),
                         );
                     }
                     break;

@@ -1,11 +1,9 @@
 #![allow(unused)]
 use std::fmt::Display;
 
-use auto_lsp::{
-    lsp_types::{
-        self, CompletionItem, CompletionItemKind, CompletionItemLabelDetails, InsertTextFormat,
-        InsertTextMode, Range, TextEdit,
-    },
+use auto_lsp::lsp_types::{
+    self, CompletionItem, CompletionItemKind, CompletionItemLabelDetails, InsertTextFormat,
+    InsertTextMode, Range, TextEdit,
 };
 use db::WorkspaceDataBase;
 use hir::{

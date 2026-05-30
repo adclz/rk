@@ -472,10 +472,10 @@ impl<'db> Parse<'db> for ast::generated::InitElem {
                 let kind = InitExprKind::ConstantExpr(expr.children.cast(sema.ast).parse(sema)?);
                 Ok(sema.new_init_expr(kind, self.into(), sema.current_scope))
             }
-            InitElem::ERRFuncCallInInit(err) => {
-                Err(SyntaxError::FunctionCallInInitExpression(err.get_range().to_owned())
-                    .to_diagnostic(sema.db, sema.file))
-            }
+            InitElem::ERRFuncCallInInit(err) => Err(SyntaxError::FunctionCallInInitExpression(
+                err.get_range().to_owned(),
+            )
+            .to_diagnostic(sema.db, sema.file)),
         }
     }
 }
@@ -579,7 +579,10 @@ impl<'db> ParseSpec<'db> for ast::generated::ArrayConformand {
         &self,
         sema: &mut SemanticIndexBuilder<'db>,
     ) -> anyhow::Result<Spec<'db>, IdeDiagnostic> {
-        Err(SyntaxError::ArrayConformandNotSupported(self.get_range().to_owned()).to_diagnostic(sema.db, sema.file))
+        Err(
+            SyntaxError::ArrayConformandNotSupported(self.get_range().to_owned())
+                .to_diagnostic(sema.db, sema.file),
+        )
     }
 }
 

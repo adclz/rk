@@ -32,7 +32,10 @@ pub fn check_for<'db>(
             diag()
                 .message("FOR loop has no statements".to_string())
                 .desc(&EmptyLoopBody)
-                .range(hir::denormalize(db, stmt.get_scope_id(db).file(db), &stmt.get_span(db)).unwrap_or_default())
+                .range(
+                    hir::denormalize(db, stmt.get_scope_id(db).file(db), &stmt.get_span(db))
+                        .unwrap_or_default(),
+                )
                 .severity(DiagnosticSeverity::HINT)
                 .call(),
         );
@@ -50,7 +53,14 @@ pub fn check_while<'db>(
             diag()
                 .message("WHILE loop has no statements".to_string())
                 .desc(&EmptyLoopBody)
-                .range(hir::denormalize(db, condition.get_scope_id(db).file(db), &condition.get_span(db)).unwrap_or_default())
+                .range(
+                    hir::denormalize(
+                        db,
+                        condition.get_scope_id(db).file(db),
+                        &condition.get_span(db),
+                    )
+                    .unwrap_or_default(),
+                )
                 .severity(DiagnosticSeverity::HINT)
                 .call(),
         );
@@ -68,7 +78,14 @@ pub fn check_repeat<'db>(
             diag()
                 .message("REPEAT loop has no statements".to_string())
                 .desc(&EmptyLoopBody)
-                .range(hir::denormalize(db, condition.get_scope_id(db).file(db), &condition.get_span(db)).unwrap_or_default())
+                .range(
+                    hir::denormalize(
+                        db,
+                        condition.get_scope_id(db).file(db),
+                        &condition.get_span(db),
+                    )
+                    .unwrap_or_default(),
+                )
                 .severity(DiagnosticSeverity::HINT)
                 .call(),
         );

@@ -83,27 +83,32 @@ impl<'db> SemanticIndexBuilder<'db> {
             match variable.cast(self.ast) {
                 FuncVariables::ERRVarAccessNotAllowed(err) => {
                     self.errors.push(
-                        SyntaxError::VarAccessNotAllowed(err.get_range().to_owned()).to_diagnostic(self.db, self.file),
+                        SyntaxError::VarAccessNotAllowed(err.get_range().to_owned())
+                            .to_diagnostic(self.db, self.file),
                     );
                 }
                 FuncVariables::ERRVarConfigNotAllowed(err) => {
                     self.errors.push(
-                        SyntaxError::VarConfigNotAllowed(err.get_range().to_owned()).to_diagnostic(self.db, self.file),
+                        SyntaxError::VarConfigNotAllowed(err.get_range().to_owned())
+                            .to_diagnostic(self.db, self.file),
                     );
                 }
                 FuncVariables::ERRVarLocatedNotAllowed(err) => {
                     self.errors.push(
-                        SyntaxError::VarLocatedNotAllowed(err.get_range().to_owned()).to_diagnostic(self.db, self.file),
+                        SyntaxError::VarLocatedNotAllowed(err.get_range().to_owned())
+                            .to_diagnostic(self.db, self.file),
                     );
                 }
                 FuncVariables::ERRVarExternalNotAllowed(err) => {
                     self.errors.push(
-                        SyntaxError::VarExternalNotAllowed(err.get_range().to_owned()).to_diagnostic(self.db, self.file),
+                        SyntaxError::VarExternalNotAllowed(err.get_range().to_owned())
+                            .to_diagnostic(self.db, self.file),
                     );
                 }
                 FuncVariables::ERRVarGlobalNotAllowed(err) => {
                     self.errors.push(
-                        SyntaxError::VarGlobalNotAllowed(err.get_range().to_owned()).to_diagnostic(self.db, self.file),
+                        SyntaxError::VarGlobalNotAllowed(err.get_range().to_owned())
+                            .to_diagnostic(self.db, self.file),
                     );
                 }
                 FuncVariables::InputDecls(decls) => decls.parse(self, &mut variables),

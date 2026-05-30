@@ -388,7 +388,8 @@ impl<'db> Parse<'db> for ast::generated::Stmt {
                 ))
             }
             StmtType::ERRMethodDeclInBody(err) => {
-                Err(SyntaxError::MethodDeclInBody(err.get_range().to_owned()).to_diagnostic(sema.db, sema.file))
+                Err(SyntaxError::MethodDeclInBody(err.get_range().to_owned())
+                    .to_diagnostic(sema.db, sema.file))
             }
             StmtType::ExternPragma(pragma) => {
                 let doc = sema.file.document(sema.db).as_bytes();
@@ -504,9 +505,10 @@ impl<'db> Parse<'db> for ast::generated::Assign {
         sema: &mut SemanticIndexBuilder<'db>,
     ) -> anyhow::Result<Stmt<'db>, IdeDiagnostic> {
         let var = match self.variable.cast(sema.ast) {
-            ast::generated::ERRAssignFuncCall_VariableAccess::ERRAssignFuncCall(err) => {
-                Err(SyntaxError::AssignToFunctionCall(err.get_range().to_owned()).to_diagnostic(sema.db, sema.file))
-            }
+            ast::generated::ERRAssignFuncCall_VariableAccess::ERRAssignFuncCall(err) => Err(
+                SyntaxError::AssignToFunctionCall(err.get_range().to_owned())
+                    .to_diagnostic(sema.db, sema.file),
+            ),
             ast::generated::ERRAssignFuncCall_VariableAccess::VariableAccess(var) => {
                 var.to_access(sema)
             }
@@ -515,7 +517,8 @@ impl<'db> Parse<'db> for ast::generated::Assign {
         type TargetType = ast::generated::ERREmptyRightHandAssignment_ERRMissingDotInAssignment_ERRMissingEqualInAssignment_ERROutputAssignInAssignment_Assignment_AssignmentAttempt;
         match self.target.cast(sema.ast) {
             TargetType::ERREmptyRightHandAssignment(err) => {
-                Err(SyntaxError::EmptyRightHandSide(err.get_range().to_owned()).to_diagnostic(sema.db, sema.file))
+                Err(SyntaxError::EmptyRightHandSide(err.get_range().to_owned())
+                    .to_diagnostic(sema.db, sema.file))
             }
             TargetType::ERRMissingDotInAssignment(err) => {
                 Err(SyntaxError::MissingDotInAssignment {

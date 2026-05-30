@@ -115,7 +115,11 @@ impl ErrorCode for DuplicateError<'_> {
 }
 
 impl<'db> ToIdeDiagnostic<'db> for DuplicateError<'db> {
-    fn to_diagnostic(&self, db: &'db dyn WorkspaceDataBase, file: auto_lsp::default::db::file::File) -> IdeDiagnostic {
+    fn to_diagnostic(
+        &self,
+        db: &'db dyn WorkspaceDataBase,
+        file: auto_lsp::default::db::file::File,
+    ) -> IdeDiagnostic {
         match self {
             Self::Pou { pou1, pou2 } => {
                 let mut diag = diag()
@@ -125,7 +129,9 @@ impl<'db> ToIdeDiagnostic<'db> for DuplicateError<'db> {
                     ))
                     .severity(DiagnosticSeverity::ERROR)
                     .desc(self)
-                    .range(crate::denormalize(db, file, &pou1.get_name_span(db)).unwrap_or_default())
+                    .range(
+                        crate::denormalize(db, file, &pou1.get_name_span(db)).unwrap_or_default(),
+                    )
                     .call();
 
                 diag.with_related(Related::new(
@@ -147,7 +153,9 @@ impl<'db> ToIdeDiagnostic<'db> for DuplicateError<'db> {
                     ))
                     .severity(DiagnosticSeverity::ERROR)
                     .desc(self)
-                    .range(crate::denormalize(db, file, &var1.get_name_span(db)).unwrap_or_default())
+                    .range(
+                        crate::denormalize(db, file, &var1.get_name_span(db)).unwrap_or_default(),
+                    )
                     .call();
 
                 diag.with_related(Related::new(
@@ -191,7 +199,9 @@ impl<'db> ToIdeDiagnostic<'db> for DuplicateError<'db> {
                     ))
                     .severity(DiagnosticSeverity::ERROR)
                     .desc(self)
-                    .range(crate::denormalize(db, file, &field1.get_name_span(db)).unwrap_or_default())
+                    .range(
+                        crate::denormalize(db, file, &field1.get_name_span(db)).unwrap_or_default(),
+                    )
                     .call();
 
                 diag.with_related(Related::new(
@@ -213,7 +223,10 @@ impl<'db> ToIdeDiagnostic<'db> for DuplicateError<'db> {
                     ))
                     .severity(DiagnosticSeverity::ERROR)
                     .desc(self)
-                    .range(crate::denormalize(db, file, &method1.get_name_span(db)).unwrap_or_default())
+                    .range(
+                        crate::denormalize(db, file, &method1.get_name_span(db))
+                            .unwrap_or_default(),
+                    )
                     .call();
 
                 diag.with_related(Related::new(
@@ -235,7 +248,10 @@ impl<'db> ToIdeDiagnostic<'db> for DuplicateError<'db> {
                     ))
                     .severity(DiagnosticSeverity::ERROR)
                     .desc(self)
-                    .range(crate::denormalize(db, file, &method1.get_name_span(db)).unwrap_or_default())
+                    .range(
+                        crate::denormalize(db, file, &method1.get_name_span(db))
+                            .unwrap_or_default(),
+                    )
                     .call();
 
                 diag.with_related(Related::new(
@@ -257,7 +273,10 @@ impl<'db> ToIdeDiagnostic<'db> for DuplicateError<'db> {
                     ))
                     .severity(DiagnosticSeverity::ERROR)
                     .desc(self)
-                    .range(crate::denormalize(db, file, &method1.method.get_name_span(db)).unwrap_or_default())
+                    .range(
+                        crate::denormalize(db, file, &method1.method.get_name_span(db))
+                            .unwrap_or_default(),
+                    )
                     .call();
 
                 diag.with_related(Related::new(
@@ -351,7 +370,9 @@ impl<'db> ToIdeDiagnostic<'db> for DuplicateError<'db> {
                     ))
                     .severity(DiagnosticSeverity::ERROR)
                     .desc(self)
-                    .range(crate::denormalize(db, file, &prog1.get_name_span(db)).unwrap_or_default())
+                    .range(
+                        crate::denormalize(db, file, &prog1.get_name_span(db)).unwrap_or_default(),
+                    )
                     .call();
 
                 diag.with_related(Related::new(
@@ -373,7 +394,10 @@ impl<'db> ToIdeDiagnostic<'db> for DuplicateError<'db> {
                     ))
                     .severity(DiagnosticSeverity::ERROR)
                     .desc(self)
-                    .range(crate::denormalize(db, file, &config1.get_name_span(db)).unwrap_or_default())
+                    .range(
+                        crate::denormalize(db, file, &config1.get_name_span(db))
+                            .unwrap_or_default(),
+                    )
                     .call();
 
                 diag.with_related(Related::new(

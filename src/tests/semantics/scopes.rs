@@ -797,7 +797,8 @@ END_FUNCTION_BLOCK
     assert_eq!(inehrited.len(), 1);
     assert_eq!(
         inehrited
-            .values().next()
+            .values()
+            .next()
             .unwrap()
             .get_name_ident(&with_db)
             .text(&with_db),
@@ -834,7 +835,8 @@ END_FUNCTION_BLOCK
     assert_eq!(inehrited.len(), 1);
     assert_eq!(
         inehrited
-            .values().next()
+            .values()
+            .next()
             .unwrap()
             .get_name_ident(&with_db)
             .text(&with_db),

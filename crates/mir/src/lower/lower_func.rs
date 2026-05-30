@@ -698,10 +698,10 @@ fn lower_var_type<'db>(
     // `[N]` if the spec carries one.
     if matches!(mir, MirType::String { .. })
         && let SpecKind::SizedString(length_expr) = var.spec(db).kind(db)
-            && let Some(n) = length_expr.as_range(db)
-        {
-            return Ok(MirType::String { capacity: n as u32 });
-        }
+        && let Some(n) = length_expr.as_range(db)
+    {
+        return Ok(MirType::String { capacity: n as u32 });
+    }
     Ok(mir)
 }
 

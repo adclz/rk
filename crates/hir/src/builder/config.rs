@@ -42,32 +42,39 @@ impl<'db> SemanticIndexBuilder<'db> {
                     decls.parse(self, &mut variables);
                 }
                 ConfigVariables::ERRVarNotAllowed(err) => {
-                    self.errors
-                        .push(SyntaxError::VarNotAllowed(err.get_range().to_owned()).to_diagnostic(self.db, self.file));
+                    self.errors.push(
+                        SyntaxError::VarNotAllowed(err.get_range().to_owned())
+                            .to_diagnostic(self.db, self.file),
+                    );
                 }
                 ConfigVariables::ERRVarInOutNotAllowed(err) => {
                     self.errors.push(
-                        SyntaxError::VarInOutNotAllowed(err.get_range().to_owned()).to_diagnostic(self.db, self.file),
+                        SyntaxError::VarInOutNotAllowed(err.get_range().to_owned())
+                            .to_diagnostic(self.db, self.file),
                     );
                 }
                 ConfigVariables::ERRVarTempNotAllowed(err) => {
                     self.errors.push(
-                        SyntaxError::VarTempNotAllowed(err.get_range().to_owned()).to_diagnostic(self.db, self.file),
+                        SyntaxError::VarTempNotAllowed(err.get_range().to_owned())
+                            .to_diagnostic(self.db, self.file),
                     );
                 }
                 ConfigVariables::ERRVarConfigNotAllowed(err) => {
                     self.errors.push(
-                        SyntaxError::VarConfigNotAllowed(err.get_range().to_owned()).to_diagnostic(self.db, self.file),
+                        SyntaxError::VarConfigNotAllowed(err.get_range().to_owned())
+                            .to_diagnostic(self.db, self.file),
                     );
                 }
                 ConfigVariables::ERRVarLocatedNotAllowed(err) => {
                     self.errors.push(
-                        SyntaxError::VarLocatedNotAllowed(err.get_range().to_owned()).to_diagnostic(self.db, self.file),
+                        SyntaxError::VarLocatedNotAllowed(err.get_range().to_owned())
+                            .to_diagnostic(self.db, self.file),
                     );
                 }
                 ConfigVariables::ERRVarExternalNotAllowed(err) => {
                     self.errors.push(
-                        SyntaxError::VarExternalNotAllowed(err.get_range().to_owned()).to_diagnostic(self.db, self.file),
+                        SyntaxError::VarExternalNotAllowed(err.get_range().to_owned())
+                            .to_diagnostic(self.db, self.file),
                     );
                 }
             }
@@ -230,8 +237,10 @@ impl<'db> SemanticIndexBuilder<'db> {
         let priority = priority.and_then(|r| self.try_parse(r));
 
         if priority.is_none() {
-            self.errors
-                .push(SyntaxError::MissingPriority(tc.get_range().to_owned()).to_diagnostic(self.db, self.file));
+            self.errors.push(
+                SyntaxError::MissingPriority(tc.get_range().to_owned())
+                    .to_diagnostic(self.db, self.file),
+            );
         }
 
         let task = TaskConfig::new(

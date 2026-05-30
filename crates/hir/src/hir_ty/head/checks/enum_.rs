@@ -35,9 +35,10 @@ impl<'db> InitInference<'db> {
                     | ElementarySpec::LInt
                     | ElementarySpec::ULInt,
                 ) => {}
-                _ => self
-                    .errors
-                    .push(EnumError::InvalidEnumType { value: spec, typ }.to_diagnostic(db, self.scope.file(db))),
+                _ => self.errors.push(
+                    EnumError::InvalidEnumType { value: spec, typ }
+                        .to_diagnostic(db, self.scope.file(db)),
+                ),
             }
         }
 

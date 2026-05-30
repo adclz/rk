@@ -36,27 +36,31 @@ pub fn check_node<'db>(
         operator,
         right,
     } = expr.expr(db)
-        && let Some(var_name) = same_variable(db, body, left, right) {
-            let op = operator.as_str();
-            let result_hint = match operator {
-                ComparisonOperatorKind::Eq
-                | ComparisonOperatorKind::Le
-                | ComparisonOperatorKind::Ge => "always TRUE",
-                ComparisonOperatorKind::Ne
-                | ComparisonOperatorKind::Lt
-                | ComparisonOperatorKind::Gt => "always FALSE",
-            };
-            diagnostics.push(
-                diag()
-                    .message(format!(
-                        "'{var_name}' is compared to itself with '{op}', result is {result_hint}"
-                    ))
-                    .desc(&SelfComparison)
-                    .range(hir::denormalize(db, expr.get_scope_id(db).file(db), &expr.get_span(db)).unwrap_or_default())
-                    .severity(DiagnosticSeverity::WARNING)
-                    .call(),
-            );
-        }
+        && let Some(var_name) = same_variable(db, body, left, right)
+    {
+        let op = operator.as_str();
+        let result_hint = match operator {
+            ComparisonOperatorKind::Eq
+            | ComparisonOperatorKind::Le
+            | ComparisonOperatorKind::Ge => "always TRUE",
+            ComparisonOperatorKind::Ne
+            | ComparisonOperatorKind::Lt
+            | ComparisonOperatorKind::Gt => "always FALSE",
+        };
+        diagnostics.push(
+            diag()
+                .message(format!(
+                    "'{var_name}' is compared to itself with '{op}', result is {result_hint}"
+                ))
+                .desc(&SelfComparison)
+                .range(
+                    hir::denormalize(db, expr.get_scope_id(db).file(db), &expr.get_span(db))
+                        .unwrap_or_default(),
+                )
+                .severity(DiagnosticSeverity::WARNING)
+                .call(),
+        );
+    }
 }
 
 /// If both expressions resolve to the same variable, return its name.

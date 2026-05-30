@@ -33,7 +33,11 @@ impl ErrorCode for RecursionError<'_> {
 }
 
 impl<'db> ToIdeDiagnostic<'db> for RecursionError<'db> {
-    fn to_diagnostic(&self, db: &'db dyn WorkspaceDataBase, file: auto_lsp::default::db::file::File) -> IdeDiagnostic {
+    fn to_diagnostic(
+        &self,
+        db: &'db dyn WorkspaceDataBase,
+        file: auto_lsp::default::db::file::File,
+    ) -> IdeDiagnostic {
         match self {
             RecursionError::DirectRecursion { pou, callsite } => {
                 let mut diag = diag()

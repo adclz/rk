@@ -51,7 +51,14 @@ pub fn check_assignment<'db>(
                     "loop variable '{name}' is modified inside the loop body"
                 ))
                 .desc(&LoopVarModified)
-                .range(hir::denormalize(db, var_access.get_scope_id(db).file(db), &var_access.get_span(db)).unwrap_or_default())
+                .range(
+                    hir::denormalize(
+                        db,
+                        var_access.get_scope_id(db).file(db),
+                        &var_access.get_span(db),
+                    )
+                    .unwrap_or_default(),
+                )
                 .severity(DiagnosticSeverity::WARNING)
                 .call();
 

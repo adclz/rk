@@ -217,9 +217,10 @@ fn validate_prog_config<'db>(
                 result.task_of_prog.insert(*p, *task);
             }
             None => {
-                result
-                    .errors
-                    .push(ResolveError::UnknownTaskRef { task: task_ref }.to_diagnostic(db, p.get_scope_id(db).file(db)));
+                result.errors.push(
+                    ResolveError::UnknownTaskRef { task: task_ref }
+                        .to_diagnostic(db, p.get_scope_id(db).file(db)),
+                );
             }
         }
     }

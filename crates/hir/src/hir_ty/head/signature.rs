@@ -135,8 +135,10 @@ impl<'db> Signature<'db> {
             if var.kind(db) == VariableKind::External {
                 let var_name = var.get_name_ident(db);
                 if external_var_lookup(db, var_name).is_none() {
-                    self.errors
-                        .push(ResolveError::ExternalVarNotFound { var: *var }.to_diagnostic(db, self.scope.file(db)));
+                    self.errors.push(
+                        ResolveError::ExternalVarNotFound { var: *var }
+                            .to_diagnostic(db, self.scope.file(db)),
+                    );
                 }
             }
         }

@@ -1,8 +1,7 @@
 use auto_lsp::lsp_types::DiagnosticSeverity;
 use db::WorkspaceDataBase;
 use hir::{
-    HirNodeInfo,
-    HasName,
+    HasName, HirNodeInfo,
     hir_def::{
         expressions::expression::VariableAccessKind,
         pous::variable::{VariableDecl, VariableKind},
@@ -92,7 +91,9 @@ pub fn check_outputs<'db>(
             names.join(", "),
         ))
         .desc(&UninitializedOutput)
-        .range(hir::denormalize(db, missing[0].get_scope_id(db).file(db), &anchor).unwrap_or_default())
+        .range(
+            hir::denormalize(db, missing[0].get_scope_id(db).file(db), &anchor).unwrap_or_default(),
+        )
         .severity(DiagnosticSeverity::INFORMATION)
         .call();
 

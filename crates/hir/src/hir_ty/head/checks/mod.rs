@@ -75,8 +75,10 @@ impl<'db> InitInference<'db> {
             (true, true) => {}
             // Non-generic POU + user wrote `<...>` — reject.
             (true, false) => {
-                self.errors
-                    .push(TypeError::GenericArgsOnNonGenericType { name, spec }.to_diagnostic(db, self.scope.file(db)));
+                self.errors.push(
+                    TypeError::GenericArgsOnNonGenericType { name, spec }
+                        .to_diagnostic(db, self.scope.file(db)),
+                );
             }
             // Generic POU + user wrote nothing — require explicit args.
             (false, true) => {
@@ -134,8 +136,10 @@ impl<'db> InitInference<'db> {
         if let Some(var) = def_map.local_variables.get(&ident) {
             let ty = Type::resolve_spec(db, var.spec(db));
             if !matches!(ty, Type::Elementary(e) if e.is_any()) {
-                self.errors
-                    .push(ResolveError::IntoRefNotAny { spec, ident, ty }.to_diagnostic(db, self.scope.file(db)));
+                self.errors.push(
+                    ResolveError::IntoRefNotAny { spec, ident, ty }
+                        .to_diagnostic(db, self.scope.file(db)),
+                );
             }
             return;
         }
@@ -149,7 +153,8 @@ impl<'db> InitInference<'db> {
                     let ty = Type::resolve_spec(db, *ret_spec);
                     if !matches!(ty, Type::Elementary(e) if e.is_any()) {
                         self.errors.push(
-                            ResolveError::IntoRefNotAny { spec, ident, ty }.to_diagnostic(db, self.scope.file(db)),
+                            ResolveError::IntoRefNotAny { spec, ident, ty }
+                                .to_diagnostic(db, self.scope.file(db)),
                         );
                     }
                 }
@@ -169,7 +174,8 @@ impl<'db> InitInference<'db> {
         }
 
         // Not found
-        self.errors
-            .push(ResolveError::IntoRefNotFound { spec, ident }.to_diagnostic(db, self.scope.file(db)));
+        self.errors.push(
+            ResolveError::IntoRefNotFound { spec, ident }.to_diagnostic(db, self.scope.file(db)),
+        );
     }
 }

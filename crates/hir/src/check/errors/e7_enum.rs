@@ -50,7 +50,11 @@ impl<'db> ErrorCode for EnumError<'db> {
 }
 
 impl<'db> ToIdeDiagnostic<'db> for EnumError<'db> {
-    fn to_diagnostic(&self, db: &'db dyn WorkspaceDataBase, file: auto_lsp::default::db::file::File) -> IdeDiagnostic {
+    fn to_diagnostic(
+        &self,
+        db: &'db dyn WorkspaceDataBase,
+        file: auto_lsp::default::db::file::File,
+    ) -> IdeDiagnostic {
         match self {
             EnumError::InvalidEnumType { value, typ } => {
                 let mut diag = diag()

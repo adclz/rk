@@ -52,7 +52,10 @@ pub fn check_node<'db>(
                     inner.as_call_site(db).to_string(db)
                 ))
                 .desc(&UnnecessaryParens)
-                .range(hir::denormalize(db, expr.get_scope_id(db).file(db), &expr.get_span(db)).unwrap_or_default())
+                .range(
+                    hir::denormalize(db, expr.get_scope_id(db).file(db), &expr.get_span(db))
+                        .unwrap_or_default(),
+                )
                 .severity(DiagnosticSeverity::HINT)
                 .call(),
         );

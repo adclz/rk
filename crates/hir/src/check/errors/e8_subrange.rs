@@ -25,7 +25,11 @@ impl<'db> ErrorCode for SubRangeError<'db> {
 }
 
 impl<'db> ToIdeDiagnostic<'db> for SubRangeError<'db> {
-    fn to_diagnostic(&self, db: &'db dyn WorkspaceDataBase, file: auto_lsp::default::db::file::File) -> IdeDiagnostic {
+    fn to_diagnostic(
+        &self,
+        db: &'db dyn WorkspaceDataBase,
+        file: auto_lsp::default::db::file::File,
+    ) -> IdeDiagnostic {
         match self {
             SubRangeError::InvalidSubrangeType { spec, typ } => {
                 let mut diag = diag()

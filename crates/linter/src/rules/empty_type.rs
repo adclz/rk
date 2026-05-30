@@ -1,8 +1,7 @@
 use auto_lsp::lsp_types::DiagnosticSeverity;
 use db::WorkspaceDataBase;
 use hir::{
-    HirNodeInfo,
-    HasName,
+    HasName, HirNodeInfo,
     hir_def::{expressions::spec::SpecKind, pous::data_type::DataType},
 };
 use ide_diagnostic::{ErrorCode, IdeDiagnostic, diag};
@@ -35,7 +34,14 @@ pub fn check<'db>(
                     diag()
                         .message(format!("STRUCT '{name}' has no fields"))
                         .desc(&EmptyType)
-                        .range(hir::denormalize(db, dt.get_scope_id(db).file(db), &dt.get_name_span(db)).unwrap_or_default())
+                        .range(
+                            hir::denormalize(
+                                db,
+                                dt.get_scope_id(db).file(db),
+                                &dt.get_name_span(db),
+                            )
+                            .unwrap_or_default(),
+                        )
                         .severity(DiagnosticSeverity::HINT)
                         .call(),
                 );
@@ -48,7 +54,14 @@ pub fn check<'db>(
                     diag()
                         .message(format!("ENUM '{name}' has no variants"))
                         .desc(&EmptyType)
-                        .range(hir::denormalize(db, dt.get_scope_id(db).file(db), &dt.get_name_span(db)).unwrap_or_default())
+                        .range(
+                            hir::denormalize(
+                                db,
+                                dt.get_scope_id(db).file(db),
+                                &dt.get_name_span(db),
+                            )
+                            .unwrap_or_default(),
+                        )
                         .severity(DiagnosticSeverity::HINT)
                         .call(),
                 );

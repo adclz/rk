@@ -435,7 +435,8 @@ impl<'db> Type<'db> {
                 // a CONSTANT variable cannot be assigned to
                 if variable.qualifier(db).contains(crate::Qualifier::CONSTANT) {
                     ctx.errors.push(
-                        ControlFlowError::AssignToConstant { access: call_site }.to_diagnostic(db, ctx.scope.file(db)),
+                        ControlFlowError::AssignToConstant { access: call_site }
+                            .to_diagnostic(db, ctx.scope.file(db)),
                     );
                 }
             }

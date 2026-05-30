@@ -30,7 +30,8 @@ fn apply_rename(db: &RootDatabase, edit: &WorkspaceEdit, sources: &[&str]) -> St
             let file = db.get_file(&url).unwrap();
 
             for edit in sorted {
-                let start = ide_proto::walk::position_to_offset(db, file, edit.range.start).unwrap();
+                let start =
+                    ide_proto::walk::position_to_offset(db, file, edit.range.start).unwrap();
                 let end = ide_proto::walk::position_to_offset(db, file, edit.range.end).unwrap();
                 text.replace_range(start..end, &edit.new_text);
             }

@@ -90,8 +90,7 @@ pub fn check_duplicate_namespaces<'db>(
 ) {
     for pou in namespace.pous(db).iter() {
         // If a POU is not in the index, we can't say it's a duplicate
-        if let Some(indexed) =
-            namespace_pou_index(db, *namespace.path(db), pou.get_name_ident(db))
+        if let Some(indexed) = namespace_pou_index(db, *namespace.path(db), pou.get_name_ident(db))
             && *pou != indexed
         {
             errors.push(

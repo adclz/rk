@@ -36,12 +36,14 @@ impl<'db> InitInference<'db> {
                 }
                 (None, _) => {
                     self.errors.push(
-                        ArrayError::InvalidArrayLowerValue { value: lower }.to_diagnostic(db, self.scope.file(db)),
+                        ArrayError::InvalidArrayLowerValue { value: lower }
+                            .to_diagnostic(db, self.scope.file(db)),
                     );
                 }
                 (_, None) => {
                     self.errors.push(
-                        ArrayError::InvalidArrayUpperValue { value: upper }.to_diagnostic(db, self.scope.file(db)),
+                        ArrayError::InvalidArrayUpperValue { value: upper }
+                            .to_diagnostic(db, self.scope.file(db)),
                     );
                 }
             }

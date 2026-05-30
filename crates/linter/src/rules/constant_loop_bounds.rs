@@ -34,7 +34,10 @@ pub fn check<'db>(
                     "FOR loop bounds are equal (both {start_text}), loop body executes exactly once"
                 ))
                 .desc(&ConstantLoopBounds)
-                .range(hir::denormalize(db, start.get_scope_id(db).file(db), &start.get_span(db)).unwrap_or_default())
+                .range(
+                    hir::denormalize(db, start.get_scope_id(db).file(db), &start.get_span(db))
+                        .unwrap_or_default(),
+                )
                 .severity(DiagnosticSeverity::WARNING)
                 .call(),
         );

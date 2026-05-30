@@ -27,7 +27,10 @@ pub fn check<'db>(
         let mut diag = diag()
             .message(format!("unused return value of '{}'", typ.type_name(db)))
             .desc(&UnusedReturnType)
-            .range(hir::denormalize(db, stmt.get_scope_id(db).file(db), &stmt.get_span(db)).unwrap_or_default())
+            .range(
+                hir::denormalize(db, stmt.get_scope_id(db).file(db), &stmt.get_span(db))
+                    .unwrap_or_default(),
+            )
             .severity(DiagnosticSeverity::HINT)
             .call();
 

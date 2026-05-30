@@ -78,7 +78,14 @@ pub fn check<'db>(
                 diag()
                     .message(reason.to_string())
                     .desc(&InvalidPragma)
-                    .range(hir::denormalize(db, pragma.span_ident().get_scope_id(db).file(db), &pragma.span_ident().get_span(db)).unwrap_or_default())
+                    .range(
+                        hir::denormalize(
+                            db,
+                            pragma.span_ident().get_scope_id(db).file(db),
+                            &pragma.span_ident().get_span(db),
+                        )
+                        .unwrap_or_default(),
+                    )
                     .severity(DiagnosticSeverity::WARNING)
                     .call(),
             );

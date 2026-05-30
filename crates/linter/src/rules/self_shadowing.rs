@@ -1,10 +1,9 @@
-use auto_lsp::tree_sitter;
 use auto_lsp::default::db::file::File;
 use auto_lsp::lsp_types::DiagnosticSeverity;
+use auto_lsp::tree_sitter;
 use db::WorkspaceDataBase;
 use hir::{
-    HirNodeInfo,
-    HasName,
+    HasName, HirNodeInfo,
     hir_def::{
         pous::{pou::Pou, variable::VariableDecl},
         scope::{ScopeId, ScopeKind},
@@ -103,7 +102,10 @@ fn check_variables<'db>(
                     "variable '{pou_name}' has the same name as its declaring {pou_kind}"
                 ))
                 .desc(&SelfShadowing)
-                .range(hir::denormalize(db, var.get_scope_id(db).file(db), &var.get_name_span(db)).unwrap_or_default())
+                .range(
+                    hir::denormalize(db, var.get_scope_id(db).file(db), &var.get_name_span(db))
+                        .unwrap_or_default(),
+                )
                 .severity(DiagnosticSeverity::WARNING)
                 .call();
 

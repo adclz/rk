@@ -116,7 +116,11 @@ impl<'db> ErrorCode for InheritanceError<'db> {
 }
 
 impl<'db> ToIdeDiagnostic<'db> for InheritanceError<'db> {
-    fn to_diagnostic(&self, db: &'db dyn WorkspaceDataBase, file: auto_lsp::default::db::file::File) -> IdeDiagnostic {
+    fn to_diagnostic(
+        &self,
+        db: &'db dyn WorkspaceDataBase,
+        file: auto_lsp::default::db::file::File,
+    ) -> IdeDiagnostic {
         match self {
             Self::SuperBodyOnIncompatiblePou { call_site } => diag()
                 .message("'SUPER()' is not valid in this context".to_string())
@@ -147,7 +151,10 @@ impl<'db> ToIdeDiagnostic<'db> for InheritanceError<'db> {
                     ))
                     .severity(DiagnosticSeverity::ERROR)
                     .desc(self)
-                    .range(crate::denormalize(db, file, &derived_method.get_name_span(db)).unwrap_or_default())
+                    .range(
+                        crate::denormalize(db, file, &derived_method.get_name_span(db))
+                            .unwrap_or_default(),
+                    )
                     .call();
 
                 diag.with_related(Related::new(
@@ -172,7 +179,10 @@ impl<'db> ToIdeDiagnostic<'db> for InheritanceError<'db> {
                     ))
                     .severity(DiagnosticSeverity::ERROR)
                     .desc(self)
-                    .range(crate::denormalize(db, file, &derived_method.get_name_span(db)).unwrap_or_default())
+                    .range(
+                        crate::denormalize(db, file, &derived_method.get_name_span(db))
+                            .unwrap_or_default(),
+                    )
                     .call();
 
                 diag.with_related(Related::new(
@@ -198,7 +208,10 @@ impl<'db> ToIdeDiagnostic<'db> for InheritanceError<'db> {
                     ))
                     .severity(DiagnosticSeverity::ERROR)
                     .desc(self)
-                    .range(crate::denormalize(db, file, &implementer.get_name_span(db)).unwrap_or_default())
+                    .range(
+                        crate::denormalize(db, file, &implementer.get_name_span(db))
+                            .unwrap_or_default(),
+                    )
                     .call();
 
                 diag.with_related(Related::new(
@@ -220,7 +233,10 @@ impl<'db> ToIdeDiagnostic<'db> for InheritanceError<'db> {
                     ))
                     .severity(DiagnosticSeverity::ERROR)
                     .desc(self)
-                    .range(crate::denormalize(db, file, &base_method.get_name_span(db)).unwrap_or_default())
+                    .range(
+                        crate::denormalize(db, file, &base_method.get_name_span(db))
+                            .unwrap_or_default(),
+                    )
                     .call();
 
                 diag.with_note("OVERRIDE is only valid when the method is inherited".into());
@@ -235,7 +251,9 @@ impl<'db> ToIdeDiagnostic<'db> for InheritanceError<'db> {
                     ))
                     .severity(DiagnosticSeverity::ERROR)
                     .desc(self)
-                    .range(crate::denormalize(db, file, &class.get_name_span(db)).unwrap_or_default())
+                    .range(
+                        crate::denormalize(db, file, &class.get_name_span(db)).unwrap_or_default(),
+                    )
                     .call();
 
                 diag.with_note("abstract classes must have at least one abstract method".into());
@@ -253,7 +271,10 @@ impl<'db> ToIdeDiagnostic<'db> for InheritanceError<'db> {
                     ))
                     .severity(DiagnosticSeverity::ERROR)
                     .desc(self)
-                    .range(crate::denormalize(db, file, &implementer.get_name_span(db)).unwrap_or_default())
+                    .range(
+                        crate::denormalize(db, file, &implementer.get_name_span(db))
+                            .unwrap_or_default(),
+                    )
                     .call();
 
                 diag.with_related(Related::new(
@@ -342,7 +363,9 @@ impl<'db> ToIdeDiagnostic<'db> for InheritanceError<'db> {
                     ))
                     .severity(DiagnosticSeverity::ERROR)
                     .desc(self)
-                    .range(crate::denormalize(db, file, &method.get_name_span(db)).unwrap_or_default())
+                    .range(
+                        crate::denormalize(db, file, &method.get_name_span(db)).unwrap_or_default(),
+                    )
                     .call();
 
                 diag.with_note("parameter types must match those of the base method".into());

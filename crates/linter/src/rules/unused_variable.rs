@@ -97,7 +97,10 @@ fn check_variable<'db>(
         .severity(DiagnosticSeverity::INFORMATION)
         .tags(vec![DiagnosticTag::UNNECESSARY])
         .desc(&UnusedVariable)
-        .range(hir::denormalize(db, var.get_scope_id(db).file(db), &var.get_name_span(db)).unwrap_or_default())
+        .range(
+            hir::denormalize(db, var.get_scope_id(db).file(db), &var.get_name_span(db))
+                .unwrap_or_default(),
+        )
         .call();
 
     diag.with_note(format!(

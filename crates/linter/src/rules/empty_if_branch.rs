@@ -40,7 +40,14 @@ pub fn check_if<'db>(
             diag()
                 .message("IF branch has no statements".to_string())
                 .desc(&EmptyIfBranch)
-                .range(hir::denormalize(db, condition.get_scope_id(db).file(db), &condition.get_span(db)).unwrap_or_default())
+                .range(
+                    hir::denormalize(
+                        db,
+                        condition.get_scope_id(db).file(db),
+                        &condition.get_span(db),
+                    )
+                    .unwrap_or_default(),
+                )
                 .severity(DiagnosticSeverity::HINT)
                 .call(),
         );
@@ -53,7 +60,10 @@ pub fn check_if<'db>(
                 diag()
                     .message("ELSIF branch has no statements".to_string())
                     .desc(&EmptyIfBranch)
-                    .range(hir::denormalize(db, cond.get_scope_id(db).file(db), &cond.get_span(db)).unwrap_or_default())
+                    .range(
+                        hir::denormalize(db, cond.get_scope_id(db).file(db), &cond.get_span(db))
+                            .unwrap_or_default(),
+                    )
                     .severity(DiagnosticSeverity::HINT)
                     .call(),
             );
@@ -66,7 +76,10 @@ pub fn check_if<'db>(
             diag()
                 .message("ELSE branch has no statements".to_string())
                 .desc(&EmptyIfBranch)
-                .range(hir::denormalize(db, stmt.get_scope_id(db).file(db), &stmt.get_span(db)).unwrap_or_default())
+                .range(
+                    hir::denormalize(db, stmt.get_scope_id(db).file(db), &stmt.get_span(db))
+                        .unwrap_or_default(),
+                )
                 .severity(DiagnosticSeverity::HINT)
                 .call(),
         );

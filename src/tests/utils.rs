@@ -5,9 +5,9 @@ use ariadne::CharSet;
 use ariadne::Config;
 use ariadne::FnCache;
 use ariadne::Source;
-use auto_lsp::tree_sitter::Range;
 use auto_lsp::default::db::BaseDatabase;
 use auto_lsp::lsp_types::DiagnosticSeverity;
+use auto_lsp::tree_sitter::Range;
 use auto_lsp::{
     default::db::{FileManager, file::File},
     lsp_types::Url,

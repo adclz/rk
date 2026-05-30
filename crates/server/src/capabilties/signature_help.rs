@@ -16,15 +16,13 @@ pub fn signature_help(
         None => return Ok(None),
     };
 
-    let position =
-        position_to_offset(db, file, params.text_document_position_params.position).ok_or_else(
-            || {
-                anyhow::format_err!(
-                    "Invalid position, {:?}",
-                    params.text_document_position_params.position
-                )
-            },
-        )?;
+    let position = position_to_offset(db, file, params.text_document_position_params.position)
+        .ok_or_else(|| {
+            anyhow::format_err!(
+                "Invalid position, {:?}",
+                params.text_document_position_params.position
+            )
+        })?;
 
     Ok(find_signature_help(db, file, position))
 }

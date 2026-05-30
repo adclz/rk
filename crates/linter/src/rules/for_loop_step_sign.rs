@@ -28,7 +28,10 @@ pub fn check<'db>(
             diag()
                 .message("FOR loop step direction mismatches bounds direction".to_string())
                 .desc(&ForLoopStepSign)
-                .range(hir::denormalize(db, stmt.get_scope_id(db).file(db), &stmt.get_span(db)).unwrap_or_default())
+                .range(
+                    hir::denormalize(db, stmt.get_scope_id(db).file(db), &stmt.get_span(db))
+                        .unwrap_or_default(),
+                )
                 .severity(DiagnosticSeverity::WARNING)
                 .call(),
         );

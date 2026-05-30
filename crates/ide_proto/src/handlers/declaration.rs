@@ -35,7 +35,8 @@ impl<'db> DeclarationHandler<'db> for VariableDecl<'db> {
     fn declaration(&'db self, db: &'db dyn WorkspaceDataBase) -> Option<GotoDeclarationResponse> {
         Some(GotoDeclarationResponse::Scalar(Location::new(
             self.get_scope_id(db).file(db).url(db).to_owned(),
-            hir::denormalize(db, self.get_scope_id(db).file(db), &self.get_span(db)).unwrap_or_default(),
+            hir::denormalize(db, self.get_scope_id(db).file(db), &self.get_span(db))
+                .unwrap_or_default(),
         )))
     }
 }
@@ -44,7 +45,8 @@ impl<'db> DeclarationHandler<'db> for StructElement<'db> {
     fn declaration(&'db self, db: &'db dyn WorkspaceDataBase) -> Option<GotoDeclarationResponse> {
         Some(GotoDeclarationResponse::Scalar(Location::new(
             self.scope_id(db).file(db).url(db).to_owned(),
-            hir::denormalize(db, self.get_scope_id(db).file(db), &self.get_span(db)).unwrap_or_default(),
+            hir::denormalize(db, self.get_scope_id(db).file(db), &self.get_span(db))
+                .unwrap_or_default(),
         )))
     }
 }

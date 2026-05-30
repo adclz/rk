@@ -35,18 +35,22 @@ pub fn check_node<'db>(
         operator: AddOperatorKind::Minus,
         right,
     } = expr.expr(db)
-        && let Some(name) = same_variable(db, body, left, right) {
-            diagnostics.push(
-                diag()
-                    .message(format!(
-                        "'{name}' is subtracted from itself, result is always 0"
-                    ))
-                    .desc(&SubSelf)
-                    .range(hir::denormalize(db, expr.get_scope_id(db).file(db), &expr.get_span(db)).unwrap_or_default())
-                    .severity(DiagnosticSeverity::WARNING)
-                    .call(),
-            );
-        }
+        && let Some(name) = same_variable(db, body, left, right)
+    {
+        diagnostics.push(
+            diag()
+                .message(format!(
+                    "'{name}' is subtracted from itself, result is always 0"
+                ))
+                .desc(&SubSelf)
+                .range(
+                    hir::denormalize(db, expr.get_scope_id(db).file(db), &expr.get_span(db))
+                        .unwrap_or_default(),
+                )
+                .severity(DiagnosticSeverity::WARNING)
+                .call(),
+        );
+    }
 }
 
 fn same_variable<'db>(

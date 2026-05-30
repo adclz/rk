@@ -1,6 +1,6 @@
-use auto_lsp::tree_sitter;
 use auto_lsp::default::db::file::File;
 use auto_lsp::lsp_types::{DiagnosticSeverity, DiagnosticTag};
+use auto_lsp::tree_sitter;
 use db::WorkspaceDataBase;
 use hir::{
     HirNodeInfo,

@@ -201,10 +201,7 @@ impl SyntaxError {
                     } else {
                         error.to_owned()
                     };
-                    SyntaxError::SyntaxError {
-                        span: *range,
-                        err,
-                    }
+                    SyntaxError::SyntaxError { span: *range, err }
                 }
             },
             _ => unreachable!("Only lexer errors should be present here"),
@@ -213,7 +210,11 @@ impl SyntaxError {
 }
 
 impl<'db> ToIdeDiagnostic<'db> for SyntaxError {
-    fn to_diagnostic(&self, db: &'db dyn WorkspaceDataBase, file: auto_lsp::default::db::file::File) -> IdeDiagnostic {
+    fn to_diagnostic(
+        &self,
+        db: &'db dyn WorkspaceDataBase,
+        file: auto_lsp::default::db::file::File,
+    ) -> IdeDiagnostic {
         match self {
             Self::MultipleExtends {
                 location,
@@ -432,7 +433,12 @@ impl<'db> ToIdeDiagnostic<'db> for SyntaxError {
                         .is_preferred(true)
                         .edit(WorkspaceEdit::new(HashMap::from([(
                             file.url(db).clone(),
-                            vec![edit().new_text(":=".to_string()).range(crate::denormalize(db, file, &range).unwrap_or_default()).call()],
+                            vec![
+                                edit()
+                                    .new_text(":=".to_string())
+                                    .range(crate::denormalize(db, file, &range).unwrap_or_default())
+                                    .call(),
+                            ],
                         )])))
                         .call(),
                 );
@@ -466,7 +472,12 @@ impl<'db> ToIdeDiagnostic<'db> for SyntaxError {
                         .is_preferred(true)
                         .edit(WorkspaceEdit::new(HashMap::from([(
                             file.url(db).clone(),
-                            vec![edit().new_text(":=".to_string()).range(crate::denormalize(db, file, &range).unwrap_or_default()).call()],
+                            vec![
+                                edit()
+                                    .new_text(":=".to_string())
+                                    .range(crate::denormalize(db, file, &range).unwrap_or_default())
+                                    .call(),
+                            ],
                         )])))
                         .call(),
                 );
@@ -500,7 +511,12 @@ impl<'db> ToIdeDiagnostic<'db> for SyntaxError {
                         .is_preferred(true)
                         .edit(WorkspaceEdit::new(HashMap::from([(
                             file.url(db).clone(),
-                            vec![edit().new_text(":=".to_string()).range(crate::denormalize(db, file, &range).unwrap_or_default()).call()],
+                            vec![
+                                edit()
+                                    .new_text(":=".to_string())
+                                    .range(crate::denormalize(db, file, &range).unwrap_or_default())
+                                    .call(),
+                            ],
                         )])))
                         .call(),
                 );
@@ -534,7 +550,12 @@ impl<'db> ToIdeDiagnostic<'db> for SyntaxError {
                         .is_preferred(true)
                         .edit(WorkspaceEdit::new(HashMap::from([(
                             file.url(db).clone(),
-                            vec![edit().new_text(":=".to_string()).range(crate::denormalize(db, file, &range).unwrap_or_default()).call()],
+                            vec![
+                                edit()
+                                    .new_text(":=".to_string())
+                                    .range(crate::denormalize(db, file, &range).unwrap_or_default())
+                                    .call(),
+                            ],
                         )])))
                         .call(),
                 );
@@ -567,7 +588,12 @@ impl<'db> ToIdeDiagnostic<'db> for SyntaxError {
                         .is_preferred(true)
                         .edit(WorkspaceEdit::new(HashMap::from([(
                             file.url(db).clone(),
-                            vec![edit().new_text(":=".to_string()).range(crate::denormalize(db, file, &range).unwrap_or_default()).call()],
+                            vec![
+                                edit()
+                                    .new_text(":=".to_string())
+                                    .range(crate::denormalize(db, file, &range).unwrap_or_default())
+                                    .call(),
+                            ],
                         )])))
                         .call(),
                 );
@@ -600,7 +626,12 @@ impl<'db> ToIdeDiagnostic<'db> for SyntaxError {
                         .is_preferred(true)
                         .edit(WorkspaceEdit::new(HashMap::from([(
                             file.url(db).clone(),
-                            vec![edit().new_text(":=".to_string()).range(crate::denormalize(db, file, &range).unwrap_or_default()).call()],
+                            vec![
+                                edit()
+                                    .new_text(":=".to_string())
+                                    .range(crate::denormalize(db, file, &range).unwrap_or_default())
+                                    .call(),
+                            ],
                         )])))
                         .call(),
                 );
@@ -646,7 +677,9 @@ impl<'db> ToIdeDiagnostic<'db> for SyntaxError {
                                 vec![
                                     edit()
                                         .new_text(format!(" {grammar_name}"))
-                                        .range(crate::denormalize(db, file, span).unwrap_or_default())
+                                        .range(
+                                            crate::denormalize(db, file, span).unwrap_or_default(),
+                                        )
                                         .call(),
                                 ],
                             )])))

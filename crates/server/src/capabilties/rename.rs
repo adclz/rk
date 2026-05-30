@@ -21,7 +21,10 @@ pub fn rename(
 
     let position = position_to_offset(db, file, params.text_document_position.position)
         .ok_or_else(|| {
-            anyhow::format_err!("Invalid position, {:?}", params.text_document_position.position)
+            anyhow::format_err!(
+                "Invalid position, {:?}",
+                params.text_document_position.position
+            )
         })?;
 
     Ok(descendant_at(db, file, position).and_then(|s| s.rename(db, &params.new_name)))

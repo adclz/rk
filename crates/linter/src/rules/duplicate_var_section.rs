@@ -109,7 +109,12 @@ fn section_display_name(child: &tree_sitter::Node) -> Option<String> {
     }
 }
 
-fn check_pou_node(db: &dyn BaseDatabase, file: File, pou_node: tree_sitter::Node, diagnostics: &mut Vec<IdeDiagnostic>) {
+fn check_pou_node(
+    db: &dyn BaseDatabase,
+    file: File,
+    pou_node: tree_sitter::Node,
+    diagnostics: &mut Vec<IdeDiagnostic>,
+) {
     // Track: section key → range of the first occurrence
     let mut seen: FxHashMap<String, tree_sitter::Range> = FxHashMap::default();
 
@@ -128,7 +133,11 @@ fn check_pou_node(db: &dyn BaseDatabase, file: File, pou_node: tree_sitter::Node
                 .message(format!("duplicate {name} section"))
                 .severity(DiagnosticSeverity::INFORMATION)
                 .desc(&DuplicateVarSection)
-                .range(file.document(db).denormalize_range(&range).unwrap_or_default())
+                .range(
+                    file.document(db)
+                        .denormalize_range(&range)
+                        .unwrap_or_default(),
+                )
                 .call();
 
             d.with_note("merge this section with the existing one above".to_string());

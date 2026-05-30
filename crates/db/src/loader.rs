@@ -90,11 +90,7 @@ pub fn load_file(db: &mut RootDatabase, path: &Path) -> Result<File, Box<dyn std
 
     let file = File::from_string()
         .db(db)
-        .parsers(
-            ast::RK_PARSER
-                .get("st")
-                .ok_or("Parser not found")?,
-        )
+        .parsers(ast::RK_PARSER.get("st").ok_or("Parser not found")?)
         .url(&url)
         .source(content)
         .call()?;

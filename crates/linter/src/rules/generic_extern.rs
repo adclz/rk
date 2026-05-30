@@ -63,7 +63,10 @@ pub fn check<'db>(
                          the host must provide an implementation for each concrete type variant"
                     ))
                     .desc(&GenericExtern)
-                    .range(hir::denormalize(db, param.get_scope_id(db).file(db), &param.get_span(db)).unwrap_or_default())
+                    .range(
+                        hir::denormalize(db, param.get_scope_id(db).file(db), &param.get_span(db))
+                            .unwrap_or_default(),
+                    )
                     .severity(DiagnosticSeverity::INFORMATION)
                     .call();
                 d.with_related(Related::new(
@@ -109,7 +112,14 @@ pub fn check<'db>(
                          the host must provide an implementation for each concrete type variant"
                     ))
                     .desc(&GenericExtern)
-                    .range(hir::denormalize(db, result.get_scope_id(db).file(db), &result.get_span(db)).unwrap_or_default())
+                    .range(
+                        hir::denormalize(
+                            db,
+                            result.get_scope_id(db).file(db),
+                            &result.get_span(db),
+                        )
+                        .unwrap_or_default(),
+                    )
                     .severity(DiagnosticSeverity::INFORMATION)
                     .call();
                 d.with_related(Related::new(

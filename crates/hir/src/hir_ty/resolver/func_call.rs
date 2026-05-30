@@ -234,7 +234,8 @@ fn apply_param_coercion<'db>(
 
             if (var.is_in_out(db) || var.is_output(db)) && ctx.is_constant_access(db, variable) {
                 ctx.errors.push(
-                    ControlFlowError::AssignToConstant { access: call_site }.to_diagnostic(db, ctx.scope.file(db)),
+                    ControlFlowError::AssignToConstant { access: call_site }
+                        .to_diagnostic(db, ctx.scope.file(db)),
                 );
             }
 

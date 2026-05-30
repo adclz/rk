@@ -76,10 +76,9 @@ fn byte_offset(source: &str, line: u32, character: u32) -> usize {
     let mut byte_pos = 0;
 
     for (i, ch) in source.char_indices() {
-        if current_line == line
-            && (i - byte_pos) as u32 >= character {
-                return i;
-            }
+        if current_line == line && (i - byte_pos) as u32 >= character {
+            return i;
+        }
         if ch == '\n' {
             if current_line == line {
                 return i; // character was past end of line

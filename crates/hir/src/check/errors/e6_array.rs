@@ -69,7 +69,11 @@ impl<'db> ErrorCode for ArrayError<'db> {
 }
 
 impl<'db> ToIdeDiagnostic<'db> for ArrayError<'db> {
-    fn to_diagnostic(&self, db: &'db dyn WorkspaceDataBase, file: auto_lsp::default::db::file::File) -> IdeDiagnostic {
+    fn to_diagnostic(
+        &self,
+        db: &'db dyn WorkspaceDataBase,
+        file: auto_lsp::default::db::file::File,
+    ) -> IdeDiagnostic {
         match self {
             ArrayError::InvalidArrayLowerValue { value } => diag()
                 .message("invalid lower bound value for ARRAY".to_string())

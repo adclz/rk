@@ -58,8 +58,14 @@ impl<'db> DocumentSymbolsHandler<'db> for ProgramDecl<'db> {
             detail: Some("PROGRAM".to_string()),
             kind: auto_lsp::lsp_types::SymbolKind::MODULE, // Program
             deprecated: None,
-            range: hir::denormalize(db, self.get_scope_id(db).file(db), &self.get_span(db)).unwrap_or_default(),
-            selection_range: hir::denormalize(db, self.get_scope_id(db).file(db), &self.get_name_span(db)).unwrap_or_default(),
+            range: hir::denormalize(db, self.get_scope_id(db).file(db), &self.get_span(db))
+                .unwrap_or_default(),
+            selection_range: hir::denormalize(
+                db,
+                self.get_scope_id(db).file(db),
+                &self.get_name_span(db),
+            )
+            .unwrap_or_default(),
             children: Some(nested_builder.finalize()),
             tags: None,
         });
@@ -92,8 +98,14 @@ impl<'db> DocumentSymbolsHandler<'db> for NamespaceDecl<'db> {
             detail: Some("NAMESPACE".to_string()),
             kind: auto_lsp::lsp_types::SymbolKind::NAMESPACE, // Namespace
             deprecated: None,
-            range: hir::denormalize(db, self.get_scope_id(db).file(db), &self.get_span(db)).unwrap_or_default(),
-            selection_range: hir::denormalize(db, self.get_scope_id(db).file(db), &self.name_span(db)).unwrap_or_default(),
+            range: hir::denormalize(db, self.get_scope_id(db).file(db), &self.get_span(db))
+                .unwrap_or_default(),
+            selection_range: hir::denormalize(
+                db,
+                self.get_scope_id(db).file(db),
+                &self.name_span(db),
+            )
+            .unwrap_or_default(),
             children: Some(nested_builder.finalize()),
             tags: None,
         });
@@ -199,8 +211,14 @@ impl<'db> DocumentSymbolsHandler<'db> for Pou<'db> {
                 Pou::Interface(_) => SymbolKind::INTERFACE,
             },
             deprecated: None,
-            range: hir::denormalize(db, self.get_scope_id(db).file(db), &self.get_span(db)).unwrap_or_default(),
-            selection_range: hir::denormalize(db, self.get_scope_id(db).file(db), &self.get_name_span(db)).unwrap_or_default(),
+            range: hir::denormalize(db, self.get_scope_id(db).file(db), &self.get_span(db))
+                .unwrap_or_default(),
+            selection_range: hir::denormalize(
+                db,
+                self.get_scope_id(db).file(db),
+                &self.get_name_span(db),
+            )
+            .unwrap_or_default(),
             children: Some(nested_builder.finalize()),
             tags: None,
         });
@@ -226,8 +244,14 @@ impl<'db> DocumentSymbolsHandler<'db> for VariableDecl<'db> {
             detail: Some(infer.type_of_specs[&self.spec(db)].type_name(db)),
             kind: SymbolKind::VARIABLE,
             deprecated: None,
-            range: hir::denormalize(db, self.get_scope_id(db).file(db), &self.get_span(db)).unwrap_or_default(),
-            selection_range: hir::denormalize(db, self.get_scope_id(db).file(db), &self.get_name_span(db)).unwrap_or_default(),
+            range: hir::denormalize(db, self.get_scope_id(db).file(db), &self.get_span(db))
+                .unwrap_or_default(),
+            selection_range: hir::denormalize(
+                db,
+                self.get_scope_id(db).file(db),
+                &self.get_name_span(db),
+            )
+            .unwrap_or_default(),
             children: None,
             tags: None,
         });
@@ -264,8 +288,14 @@ impl<'db> DocumentSymbolsHandler<'db> for MethodRef<'db> {
             )),
             kind: SymbolKind::METHOD,
             deprecated: None,
-            range: hir::denormalize(db, self.get_scope_id(db).file(db), &self.get_span(db)).unwrap_or_default(),
-            selection_range: hir::denormalize(db, self.get_scope_id(db).file(db), &self.get_name_span(db)).unwrap_or_default(),
+            range: hir::denormalize(db, self.get_scope_id(db).file(db), &self.get_span(db))
+                .unwrap_or_default(),
+            selection_range: hir::denormalize(
+                db,
+                self.get_scope_id(db).file(db),
+                &self.get_name_span(db),
+            )
+            .unwrap_or_default(),
             children: Some(nested_builder.finalize()),
             tags: None,
         });
@@ -303,8 +333,14 @@ impl<'db> DocumentSymbolsHandler<'db> for ConfigDecl<'db> {
             detail: Some("CONFIGURATION".to_string()),
             kind: SymbolKind::MODULE,
             deprecated: None,
-            range: hir::denormalize(db, self.get_scope_id(db).file(db), &self.get_span(db)).unwrap_or_default(),
-            selection_range: hir::denormalize(db, self.get_scope_id(db).file(db), &self.get_name_span(db)).unwrap_or_default(),
+            range: hir::denormalize(db, self.get_scope_id(db).file(db), &self.get_span(db))
+                .unwrap_or_default(),
+            selection_range: hir::denormalize(
+                db,
+                self.get_scope_id(db).file(db),
+                &self.get_name_span(db),
+            )
+            .unwrap_or_default(),
             children: Some(nested_builder.finalize()),
             tags: None,
         });
@@ -337,8 +373,14 @@ impl<'db> DocumentSymbolsHandler<'db> for ResourceDecl<'db> {
             )),
             kind: SymbolKind::MODULE,
             deprecated: None,
-            range: hir::denormalize(db, self.get_scope_id(db).file(db), &self.get_span(db)).unwrap_or_default(),
-            selection_range: hir::denormalize(db, self.name(db).get_scope_id(db).file(db), &self.name(db).get_span(db)).unwrap_or_default(),
+            range: hir::denormalize(db, self.get_scope_id(db).file(db), &self.get_span(db))
+                .unwrap_or_default(),
+            selection_range: hir::denormalize(
+                db,
+                self.name(db).get_scope_id(db).file(db),
+                &self.name(db).get_span(db),
+            )
+            .unwrap_or_default(),
             children: Some(nested_builder.finalize()),
             tags: None,
         });
@@ -358,8 +400,14 @@ impl<'db> DocumentSymbolsHandler<'db> for ProgConfig<'db> {
             detail: Some("PROGRAM".to_string()),
             kind: SymbolKind::MODULE,
             deprecated: None,
-            range: hir::denormalize(db, self.get_scope_id(db).file(db), &self.get_span(db)).unwrap_or_default(),
-            selection_range: hir::denormalize(db, self.name(db).get_scope_id(db).file(db), &self.name(db).get_span(db)).unwrap_or_default(),
+            range: hir::denormalize(db, self.get_scope_id(db).file(db), &self.get_span(db))
+                .unwrap_or_default(),
+            selection_range: hir::denormalize(
+                db,
+                self.name(db).get_scope_id(db).file(db),
+                &self.name(db).get_span(db),
+            )
+            .unwrap_or_default(),
             children: None,
             tags: None,
         });

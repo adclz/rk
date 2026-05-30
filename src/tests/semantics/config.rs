@@ -1,4 +1,3 @@
-
 use auto_lsp::default::db::BaseDatabase;
 use db::RootDatabase;
 use hir::check::diagnostics_for_file;

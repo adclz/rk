@@ -267,7 +267,11 @@ impl<'db> ErrorCode for ResolveError<'db> {
 }
 
 impl<'db> ToIdeDiagnostic<'db> for ResolveError<'db> {
-    fn to_diagnostic(&self, db: &'db dyn WorkspaceDataBase, file: auto_lsp::default::db::file::File) -> IdeDiagnostic {
+    fn to_diagnostic(
+        &self,
+        db: &'db dyn WorkspaceDataBase,
+        file: auto_lsp::default::db::file::File,
+    ) -> IdeDiagnostic {
         match self {
             Self::IncorrectNumberOfParameters {
                 expected,
@@ -287,7 +291,10 @@ impl<'db> ToIdeDiagnostic<'db> for ResolveError<'db> {
                 ))
                 .severity(DiagnosticSeverity::ERROR)
                 .desc(self)
-                .range(crate::denormalize(db, file, &func_call.path(db).get_span(db)).unwrap_or_default())
+                .range(
+                    crate::denormalize(db, file, &func_call.path(db).get_span(db))
+                        .unwrap_or_default(),
+                )
                 .call(),
             Self::UnknownNonFormalParameter { func, expr, param } => diag()
                 .message(format!("no parameter at index '{}'", param))
@@ -394,10 +401,10 @@ impl<'db> ToIdeDiagnostic<'db> for ResolveError<'db> {
                         let mut query = Query::new(path.path.target.ident.text(db).to_string());
                         query.exact();
                         let items = SymbolSearch::new(|pou, db| !matches!(pou, Pou::Function(_)))
-                        .with_scope(path.scope_id)
-                        .with_query(query)
-                        .only_pous()
-                        .search(db);
+                            .with_scope(path.scope_id)
+                            .with_query(query)
+                            .only_pous()
+                            .search(db);
 
                         list_candidates(
                             db,
@@ -456,7 +463,9 @@ impl<'db> ToIdeDiagnostic<'db> for ResolveError<'db> {
                     .message(format!("namespace '{}' not found", path.to_string(db)))
                     .severity(DiagnosticSeverity::ERROR)
                     .desc(self)
-                    .range(crate::denormalize(db, file, &call_site.get_span(db)).unwrap_or_default())
+                    .range(
+                        crate::denormalize(db, file, &call_site.get_span(db)).unwrap_or_default(),
+                    )
                     .call();
 
                 let mut ns_query = Query::new(path.to_string(db));
@@ -571,7 +580,9 @@ impl<'db> ToIdeDiagnostic<'db> for ResolveError<'db> {
                     .message(format!("program type '{name}' not found"))
                     .severity(DiagnosticSeverity::ERROR)
                     .desc(self)
-                    .range(crate::denormalize(db, file, &prog_type.get_span(db)).unwrap_or_default())
+                    .range(
+                        crate::denormalize(db, file, &prog_type.get_span(db)).unwrap_or_default(),
+                    )
                     .call()
             }
             Self::UnknownTaskRef { task } => diag()
@@ -627,7 +638,9 @@ impl<'db> ToIdeDiagnostic<'db> for ResolveError<'db> {
                 ))
                 .severity(DiagnosticSeverity::ERROR)
                 .desc(self)
-                .range(crate::denormalize(db, file, &instance_name.get_span(db)).unwrap_or_default())
+                .range(
+                    crate::denormalize(db, file, &instance_name.get_span(db)).unwrap_or_default(),
+                )
                 .call(),
             Self::ConfigInstInitFieldNotFound { field, parent_type } => diag()
                 .message(format!(
@@ -697,7 +710,9 @@ impl<'db> ToIdeDiagnostic<'db> for ResolveError<'db> {
                     ))
                     .severity(DiagnosticSeverity::ERROR)
                     .desc(self)
-                    .range(crate::denormalize(db, file, &other_var.get_span(db)).unwrap_or_default())
+                    .range(
+                        crate::denormalize(db, file, &other_var.get_span(db)).unwrap_or_default(),
+                    )
                     .call();
 
                 diag.with_related(Related::new(
@@ -899,7 +914,10 @@ impl<'db> ToIdeDiagnostic<'db> for ResolveError<'db> {
                     ))
                     .severity(DiagnosticSeverity::ERROR)
                     .desc(self)
-                    .range(crate::denormalize(db, file, &func_call.path(db).get_span(db)).unwrap_or_default())
+                    .range(
+                        crate::denormalize(db, file, &func_call.path(db).get_span(db))
+                            .unwrap_or_default(),
+                    )
                     .call();
 
                 let any_input = vars.iter().any(|v| v.is_input(db));
