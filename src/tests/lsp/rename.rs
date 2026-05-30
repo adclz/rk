@@ -27,11 +27,11 @@ fn apply_rename(db: &RootDatabase, edit: &WorkspaceEdit, sources: &[&str]) -> St
                     .then(b.range.end.cmp(&a.range.end))
             });
 
-            let document = db.get_file(&url).unwrap().document(db);
+            let file = db.get_file(&url).unwrap();
 
             for edit in sorted {
-                let start = document.offset_at(edit.range.start).unwrap();
-                let end = document.offset_at(edit.range.end).unwrap();
+                let start = ide_proto::walk::position_to_offset(db, file, edit.range.start).unwrap();
+                let end = ide_proto::walk::position_to_offset(db, file, edit.range.end).unwrap();
                 text.replace_range(start..end, &edit.new_text);
             }
         }

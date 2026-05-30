@@ -5,7 +5,7 @@ use ariadne::CharSet;
 use ariadne::Config;
 use ariadne::FnCache;
 use ariadne::Source;
-use auto_lsp::core::span::Span;
+use auto_lsp::tree_sitter::Range;
 use auto_lsp::default::db::BaseDatabase;
 use auto_lsp::lsp_types::DiagnosticSeverity;
 use auto_lsp::{
@@ -296,7 +296,7 @@ pub fn render_references(db: &RootDatabase, refs: &[ReferenceLocation], name: &s
 
     let first = sorted[0];
     let mut diag = ide_diagnostic::diag()
-        .range(first.span)
+        .range(hir::denormalize(db, first.file, &first.span).unwrap_or_default())
         .message(format!("{} reference(s) to '{name}'", sorted.len()))
         .severity(DiagnosticSeverity::INFORMATION)
         .call();
@@ -407,7 +407,7 @@ pub fn hir_node_label(node: &HirNode) -> String {
 
 /// Returns the appropriate span for a HirNode in diagnostic snapshots.
 /// Uses name span for declarations (compact), full span for expressions.
-pub fn hir_node_span<'db>(db: &'db dyn WorkspaceDataBase, node: &HirNode<'db>) -> Span {
+pub fn hir_node_span<'db>(db: &'db dyn WorkspaceDataBase, node: &HirNode<'db>) -> Range {
     match node {
         HirNode::PouDecl(pou) => pou.get_name_span(db),
         HirNode::Program(p) => p.get_name_span(db),
@@ -421,7 +421,7 @@ pub fn hir_node_span<'db>(db: &'db dyn WorkspaceDataBase, node: &HirNode<'db>) -
 /// Walks the HIR for a file and returns diagnostics labeling each visited node.
 pub fn walk_hir_diagnostics(db: &dyn WorkspaceDataBase, file: File) -> Vec<IdeDiagnostic> {
     let sema = semantic_index(db, file);
-    let mut nodes: Vec<(String, Span, File)> = vec![];
+    let mut nodes: Vec<(String, Range, File)> = vec![];
 
     let _ = sema.walk_hir(db, &mut |node: HirNode<'_>| {
         let label = hir_node_label(&node);
@@ -435,9 +435,9 @@ pub fn walk_hir_diagnostics(db: &dyn WorkspaceDataBase, file: File) -> Vec<IdeDi
         return vec![];
     }
 
-    let (first_label, first_span, _) = &nodes[0];
+    let (first_label, first_span, first_file) = &nodes[0];
     let mut diag = ide_diagnostic::diag()
-        .range(*first_span)
+        .range(hir::denormalize(db, *first_file, first_span).unwrap_or_default())
         .message(first_label.clone())
         .severity(DiagnosticSeverity::INFORMATION)
         .call();

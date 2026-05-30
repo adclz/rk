@@ -1,4 +1,4 @@
-use auto_lsp::core::span::Span;
+use auto_lsp::tree_sitter::Range;
 use auto_lsp::default::db::BaseDatabase;
 use auto_lsp::default::db::file::File;
 use auto_lsp::lsp_types::DiagnosticSeverity;
@@ -46,7 +46,7 @@ fn path_expr_diagnostics(
 
     let infer_result = infer_body(db, pou.get_scope_id(db));
 
-    let mut entries: Vec<(Span, String)> = vec![];
+    let mut entries: Vec<(Range, String)> = vec![];
     for (path_expr, typ) in &infer_result.type_of_path_expr {
         let span = path_expr.get_span(db);
         let adjs = infer_result.adjustments_of_path_expr(*path_expr);
@@ -70,7 +70,7 @@ fn path_expr_diagnostics(
 
     let (first_span, first_label) = &entries[0];
     let mut diag = ide_diagnostic::diag()
-        .range(*first_span)
+        .range(hir::denormalize(db, file, first_span).unwrap_or_default())
         .message(first_label.clone())
         .severity(DiagnosticSeverity::INFORMATION)
         .call();

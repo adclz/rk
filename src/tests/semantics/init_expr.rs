@@ -1,4 +1,4 @@
-use auto_lsp::core::span::Span;
+use auto_lsp::tree_sitter::Range;
 use auto_lsp::default::db::file::File;
 use auto_lsp::lsp_types::DiagnosticSeverity;
 use db::RootDatabase;
@@ -228,7 +228,7 @@ fn init_expr_diagnostics(
 
     let infer_result = infer_initialization(db, pou.get_scope_id(db));
 
-    let mut entries: Vec<(Span, String)> = vec![];
+    let mut entries: Vec<(Range, String)> = vec![];
     for (init_expr, typ) in &infer_result.init_expr_result.type_of_init_expr {
         let span = init_expr.get_span(db);
         entries.push((span, typ.kind().to_string()));
@@ -242,7 +242,7 @@ fn init_expr_diagnostics(
 
     let (first_span, first_label) = &entries[0];
     let mut diag = ide_diagnostic::diag()
-        .range(*first_span)
+        .range(hir::denormalize(db, file, first_span).unwrap_or_default())
         .message(first_label.clone())
         .severity(DiagnosticSeverity::INFORMATION)
         .call();
