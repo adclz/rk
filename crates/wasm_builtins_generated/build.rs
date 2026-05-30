@@ -49,7 +49,12 @@ fn main() {
     // since this is a build.rs). `--config` injects the same setting
     // explicitly and survives the recursive invocation.
     .arg("--config")
-    .arg(r#"target.wasm32-unknown-unknown.rustflags=["-C", "link-arg=-zstack-size=8192"]"#)
+    // `--allow-undefined`: `__iec_raise` is a deliberate undefined import (its body is synthesized
+    // at graft time). Older `wasm-ld` imported undefined symbols by default; newer toolchains error
+    // on them, so allow it explicitly. (Restores the pre-1.96 default; harmless on older ones.)
+    .arg(
+        r#"target.wasm32-unknown-unknown.rustflags=["-C", "link-arg=-zstack-size=8192", "-C", "link-arg=--allow-undefined"]"#,
+    )
     // Cargo passes its own RUSTFLAGS / encoded RUSTFLAGS to build.rs's
     // subprocesses, which take priority over our `--config` override. Clear
     // them so the override actually applies.
