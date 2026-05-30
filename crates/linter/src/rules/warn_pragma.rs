@@ -53,13 +53,13 @@ pub fn check<'db>(
             WarnPragmaLevel::Warn => diag()
                 .message(pragma.message.to_string())
                 .desc(&WarnPragma)
-                .range(path_expr.get_span(db))
+                .range(hir::denormalize(db, path_expr.get_scope_id(db).file(db), &path_expr.get_span(db)).unwrap_or_default())
                 .severity(DiagnosticSeverity::WARNING)
                 .call(),
             WarnPragmaLevel::Info => diag()
                 .message(pragma.message.to_string())
                 .desc(&InfoPragma)
-                .range(path_expr.get_span(db))
+                .range(hir::denormalize(db, path_expr.get_scope_id(db).file(db), &path_expr.get_span(db)).unwrap_or_default())
                 .severity(DiagnosticSeverity::INFORMATION)
                 .call(),
         };

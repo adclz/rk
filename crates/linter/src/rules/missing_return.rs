@@ -88,7 +88,7 @@ pub fn check_result<'db>(
                 "{pou_kind} '{pou_name}' has a return type but never assigns a return value"
             ))
             .desc(&MissingReturn)
-            .range(name_span)
+            .range(hir::denormalize(db, scope.file(db), &name_span).unwrap_or_default())
             .severity(DiagnosticSeverity::WARNING)
             .call(),
     );

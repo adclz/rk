@@ -28,7 +28,7 @@ pub fn check<'db>(
             diag()
                 .message("CASE statement has no ELSE branch".to_string())
                 .desc(&CaseWithoutElse)
-                .range(stmt.get_span(db))
+                .range(hir::denormalize(db, stmt.get_scope_id(db).file(db), &stmt.get_span(db)).unwrap_or_default())
                 .severity(DiagnosticSeverity::HINT)
                 .call(),
         );

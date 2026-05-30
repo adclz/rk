@@ -96,7 +96,7 @@ fn check_statements<'db>(
                                 .to_string(),
                         )
                         .desc(&UnnecessaryElse)
-                        .range(else_.get_span(db))
+                        .range(hir::denormalize(db, else_.get_scope_id(db).file(db), &else_.get_span(db)).unwrap_or_default())
                         .severity(DiagnosticSeverity::INFORMATION)
                         .call(),
                 );
@@ -158,7 +158,7 @@ pub fn check_if<'db>(
                         .to_string(),
                 )
                 .desc(&UnnecessaryElse)
-                .range(else_.get_span(db))
+                .range(hir::denormalize(db, else_.get_scope_id(db).file(db), &else_.get_span(db)).unwrap_or_default())
                 .severity(DiagnosticSeverity::INFORMATION)
                 .call(),
         );

@@ -31,15 +31,15 @@ pub fn check_case<'db>(
         if stmts.is_empty() {
             // Use the span of the first selector for the diagnostic
             if let Some(first) = selectors.first() {
-                let span = match first {
-                    CaseKind::Expression(expr) => expr.get_span(db),
-                    CaseKind::Subrange { lower, .. } => lower.get_span(db),
+                let (span, file) = match first {
+                    CaseKind::Expression(expr) => (expr.get_span(db), expr.get_scope_id(db).file(db)),
+                    CaseKind::Subrange { lower, .. } => (lower.get_span(db), lower.get_scope_id(db).file(db)),
                 };
                 diagnostics.push(
                     diag()
                         .message("CASE branch has no statements".to_string())
                         .desc(&EmptyCaseBranch)
-                        .range(span)
+                        .range(hir::denormalize(db, file, &span).unwrap_or_default())
                         .severity(DiagnosticSeverity::HINT)
                         .call(),
                 );

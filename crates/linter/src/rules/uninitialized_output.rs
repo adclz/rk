@@ -1,6 +1,7 @@
 use auto_lsp::lsp_types::DiagnosticSeverity;
 use db::WorkspaceDataBase;
 use hir::{
+    HirNodeInfo,
     HasName,
     hir_def::{
         expressions::expression::VariableAccessKind,
@@ -91,7 +92,7 @@ pub fn check_outputs<'db>(
             names.join(", "),
         ))
         .desc(&UninitializedOutput)
-        .range(anchor)
+        .range(hir::denormalize(db, missing[0].get_scope_id(db).file(db), &anchor).unwrap_or_default())
         .severity(DiagnosticSeverity::INFORMATION)
         .call();
 

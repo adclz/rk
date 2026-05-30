@@ -28,7 +28,7 @@ pub fn check<'db>(
             diag()
                 .message("statement has no effect".to_string())
                 .desc(&EffectlessStatement)
-                .range(stmt.get_span(db))
+                .range(hir::denormalize(db, stmt.get_scope_id(db).file(db), &stmt.get_span(db)).unwrap_or_default())
                 .severity(DiagnosticSeverity::HINT)
                 .call(),
         );

@@ -76,7 +76,7 @@ pub fn check_assignment<'db>(
                 "direct mutation of '{instance_name}.{field_name}' - instances should own their data"
             ))
             .desc(&ExternalMutation)
-            .range(var.get_span(db))
+            .range(hir::denormalize(db, var.get_scope_id(db).file(db), &var.get_span(db)).unwrap_or_default())
             .severity(DiagnosticSeverity::WARNING)
             .call(),
     );

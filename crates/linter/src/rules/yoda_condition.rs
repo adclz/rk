@@ -40,7 +40,7 @@ pub fn check_node<'db>(
         let mut diag = diag()
             .message("literal value on the left side of comparison".to_string())
             .desc(&YodaCondition)
-            .range(expr.get_span(db))
+            .range(hir::denormalize(db, expr.get_scope_id(db).file(db), &expr.get_span(db)).unwrap_or_default())
             .severity(DiagnosticSeverity::HINT)
             .call();
 

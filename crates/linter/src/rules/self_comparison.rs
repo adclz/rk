@@ -52,7 +52,7 @@ pub fn check_node<'db>(
                         "'{var_name}' is compared to itself with '{op}', result is {result_hint}"
                     ))
                     .desc(&SelfComparison)
-                    .range(expr.get_span(db))
+                    .range(hir::denormalize(db, expr.get_scope_id(db).file(db), &expr.get_span(db)).unwrap_or_default())
                     .severity(DiagnosticSeverity::WARNING)
                     .call(),
             );

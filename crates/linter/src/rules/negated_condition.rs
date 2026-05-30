@@ -57,7 +57,7 @@ pub fn check_if<'db>(
     let mut d = diag()
         .message("remove NOT and swap the THEN and ELSE bodies".to_string())
         .desc(&NegatedCondition)
-        .range(condition.get_span(db))
+        .range(hir::denormalize(db, condition.get_scope_id(db).file(db), &condition.get_span(db)).unwrap_or_default())
         .severity(DiagnosticSeverity::INFORMATION)
         .call();
 

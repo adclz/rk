@@ -117,7 +117,7 @@ pub fn check_condition<'db>(
         diag()
             .message(format!("{keyword} condition is always {value_str}",))
             .desc(&ConstantCondition)
-            .range(condition.get_span(db))
+            .range(hir::denormalize(db, condition.get_scope_id(db).file(db), &condition.get_span(db)).unwrap_or_default())
             .severity(DiagnosticSeverity::WARNING)
             .call(),
     );

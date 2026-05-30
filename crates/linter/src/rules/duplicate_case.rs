@@ -1,4 +1,4 @@
-use auto_lsp::core::span::Span;
+use auto_lsp::tree_sitter;
 use auto_lsp::default::db::file::File;
 use auto_lsp::lsp_types::{DiagnosticSeverity, DiagnosticTag};
 use db::WorkspaceDataBase;
@@ -31,7 +31,7 @@ impl ErrorCode for DuplicateCase {
 struct SeenRange {
     lo: u64,
     hi: u64,
-    span: Span,
+    span: tree_sitter::Range,
     file: File,
 }
 
@@ -59,6 +59,7 @@ pub fn check_case<'db>(
                             db,
                             &first,
                             expr.get_span(db),
+                            expr.get_scope_id(db).file(db),
                             &format!(
                                 "CASE selector '{key}' is duplicated, second branch is unreachable"
                             ),
@@ -77,7 +78,7 @@ pub fn check_case<'db>(
                                         prev.lo, prev.hi
                                     ))
                                     .desc(&DuplicateCase)
-                                    .range(expr.get_span(db))
+                                    .range(hir::denormalize(db, expr.get_scope_id(db).file(db), &expr.get_span(db)).unwrap_or_default())
                                     .severity(DiagnosticSeverity::WARNING)
                                     .tags(vec![DiagnosticTag::UNNECESSARY])
                                     .call();
@@ -106,7 +107,7 @@ pub fn check_case<'db>(
                                     "CASE range '{lo}..{hi}' is duplicated, second branch is unreachable"
                                 ))
                                 .desc(&DuplicateCase)
-                                .range(span)
+                                .range(hir::denormalize(db, file, &span).unwrap_or_default())
                                 .severity(DiagnosticSeverity::WARNING)
                                 .tags(vec![DiagnosticTag::UNNECESSARY])
                                 .call();
@@ -128,7 +129,7 @@ pub fn check_case<'db>(
                                         format_range(prev)
                                     ))
                                     .desc(&DuplicateCase)
-                                    .range(span)
+                                    .range(hir::denormalize(db, file, &span).unwrap_or_default())
                                     .severity(DiagnosticSeverity::WARNING)
                                     .call();
                                 d.with_related(Related::new(
@@ -164,7 +165,7 @@ pub fn check_case<'db>(
                                             "CASE range '{lo}..{hi}' covers already defined selector '{key}'"
                                         ))
                                         .desc(&DuplicateCase)
-                                        .range(span)
+                                        .range(hir::denormalize(db, file, &span).unwrap_or_default())
                                         .severity(DiagnosticSeverity::WARNING)
                                         .call();
                                 d.with_related(Related::new(
@@ -192,26 +193,27 @@ fn format_range(r: &SeenRange) -> String {
 fn emit(
     db: &dyn WorkspaceDataBase,
     first: &CaseKind<'_>,
-    span: Span,
+    span: tree_sitter::Range,
+    file: File,
     message: &str,
     diagnostics: &mut Vec<IdeDiagnostic>,
 ) {
     let mut d = diag()
         .message(message.to_string())
         .desc(&DuplicateCase)
-        .range(span)
+        .range(hir::denormalize(db, file, &span).unwrap_or_default())
         .severity(DiagnosticSeverity::WARNING)
         .tags(vec![DiagnosticTag::UNNECESSARY])
         .call();
 
-    let (file, range) = match first {
+    let (related_file, related_range) = match first {
         CaseKind::Expression(expr) => (expr.get_scope_id(db).file(db), expr.get_span(db)),
         CaseKind::Subrange { lower, .. } => (lower.get_scope_id(db).file(db), lower.get_span(db)),
     };
     d.with_related(Related::new(
         "CASE selector is already defined here".into(),
-        file,
-        range,
+        related_file,
+        related_range,
     ));
     diagnostics.push(d);
 }

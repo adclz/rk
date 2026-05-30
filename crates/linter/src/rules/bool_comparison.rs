@@ -57,7 +57,7 @@ pub fn check_node<'db>(
                 "comparison with boolean literal can be simplified to {suggestion}"
             ))
             .desc(&BoolComparison)
-            .range(expr.get_span(db))
+            .range(hir::denormalize(db, expr.get_scope_id(db).file(db), &expr.get_span(db)).unwrap_or_default())
             .severity(DiagnosticSeverity::INFORMATION)
             .call(),
     );

@@ -38,7 +38,7 @@ pub fn check_spec<'db>(
                                 dim_idx + 1
                             ))
                             .desc(&SingleElementArray)
-                            .range(lower.get_span(db))
+                            .range(hir::denormalize(db, lower.get_scope_id(db).file(db), &lower.get_span(db)).unwrap_or_default())
                             .severity(DiagnosticSeverity::INFORMATION)
                             .call(),
                     );

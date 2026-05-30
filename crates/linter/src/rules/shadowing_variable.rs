@@ -32,7 +32,7 @@ pub fn check<'db>(
             ))
             .severity(DiagnosticSeverity::INFORMATION)
             .desc(&ShadowingVariable)
-            .range(var.get_span(db))
+            .range(hir::denormalize(db, var.get_scope_id(db).file(db), &var.get_span(db)).unwrap_or_default())
             .call();
 
         diag.with_related(Related::new(

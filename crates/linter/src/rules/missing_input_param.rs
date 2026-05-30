@@ -94,7 +94,7 @@ pub fn check_func_call<'db>(
             names.join(", "),
         ))
         .desc(&MissingInputParam)
-        .range(stmt.get_span(db))
+        .range(hir::denormalize(db, stmt.get_scope_id(db).file(db), &stmt.get_span(db)).unwrap_or_default())
         .severity(DiagnosticSeverity::HINT)
         .call();
 

@@ -67,7 +67,7 @@ pub fn check_if<'db>(
     let mut diag = diag()
         .message("IF statements can be collapsed into a single one".to_string())
         .desc(&CollapsibleIf)
-        .range(stmt.get_span(db))
+        .range(hir::denormalize(db, stmt.get_scope_id(db).file(db), &stmt.get_span(db)).unwrap_or_default())
         .severity(DiagnosticSeverity::HINT)
         .call();
 

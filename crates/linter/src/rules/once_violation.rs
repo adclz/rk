@@ -95,7 +95,7 @@ pub fn check<'db>(
                     "'{name}' is marked {{once}} but is called more than once in this body"
                 ))
                 .desc(&OnceViolation)
-                .range(call.get_span(db))
+                .range(hir::denormalize(db, call.get_scope_id(db).file(db), &call.get_span(db)).unwrap_or_default())
                 .severity(DiagnosticSeverity::INFORMATION)
                 .call();
 

@@ -31,7 +31,7 @@ pub fn check_step<'db>(
             diag()
                 .message("FOR loop step of 1 is the default and can be omitted".to_string())
                 .desc(&DefaultForStep)
-                .range(step.get_span(db))
+                .range(hir::denormalize(db, step.get_scope_id(db).file(db), &step.get_span(db)).unwrap_or_default())
                 .severity(DiagnosticSeverity::HINT)
                 .call(),
         );

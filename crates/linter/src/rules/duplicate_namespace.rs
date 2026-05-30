@@ -1,5 +1,6 @@
 use auto_lsp::lsp_types::DiagnosticSeverity;
 use db::WorkspaceDataBase;
+use hir::HirNodeInfo;
 use hir::hir_def::{namespace::NamespaceDecl, semantic_index::semantic_index};
 use ide_diagnostic::{ErrorCode, IdeDiagnostic, diag};
 use rustc_hash::FxHashMap;
@@ -50,7 +51,7 @@ pub fn check<'db>(
                     "NAMESPACE '{path_str}' is declared multiple times in this file, consider merging"
                 ))
                 .desc(&DuplicateNamespace)
-                .range(ns.name_span(db))
+                .range(hir::denormalize(db, ns.get_scope_id(db).file(db), &ns.name_span(db)).unwrap_or_default())
                 .severity(DiagnosticSeverity::INFORMATION)
                 .call();
             d.with_related(ide_diagnostic::Related {

@@ -60,7 +60,7 @@ pub fn check<'db>(
             diag()
                 .message(format!("{kind_str} '{name}' has an empty body"))
                 .desc(&EmptyBody)
-                .range(span)
+                .range(hir::denormalize(db, scope.file(db), &span).unwrap_or_default())
                 .severity(DiagnosticSeverity::HINT)
                 .call(),
         );

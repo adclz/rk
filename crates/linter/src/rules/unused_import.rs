@@ -65,7 +65,7 @@ pub fn check<'db>(
                 .severity(DiagnosticSeverity::HINT)
                 .tags(vec![DiagnosticTag::UNNECESSARY])
                 .desc(&UnusedImport)
-                .range(using.get_span(db))
+                .range(hir::denormalize(db, using.get_scope_id(db).file(db), &using.get_span(db)).unwrap_or_default())
                 .call(),
         );
     }

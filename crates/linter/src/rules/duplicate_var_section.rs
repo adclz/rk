@@ -1,7 +1,6 @@
 use std::sync::LazyLock;
 
 use auto_lsp::{
-    core::span::Span,
     default::db::{BaseDatabase, file::File},
     lsp_types::DiagnosticSeverity,
     tree_sitter::{self, StreamingIterator},
@@ -76,7 +75,7 @@ pub fn check(
 
     while let Some((capture, capture_index)) = captures.next() {
         let pou_node = capture.captures[*capture_index].node;
-        check_pou_node(pou_node, diagnostics);
+        check_pou_node(db, file, pou_node, diagnostics);
     }
 }
 
@@ -110,7 +109,7 @@ fn section_display_name(child: &tree_sitter::Node) -> Option<String> {
     }
 }
 
-fn check_pou_node(pou_node: tree_sitter::Node, diagnostics: &mut Vec<IdeDiagnostic>) {
+fn check_pou_node(db: &dyn BaseDatabase, file: File, pou_node: tree_sitter::Node, diagnostics: &mut Vec<IdeDiagnostic>) {
     // Track: section key → range of the first occurrence
     let mut seen: FxHashMap<String, tree_sitter::Range> = FxHashMap::default();
 
@@ -129,7 +128,7 @@ fn check_pou_node(pou_node: tree_sitter::Node, diagnostics: &mut Vec<IdeDiagnost
                 .message(format!("duplicate {name} section"))
                 .severity(DiagnosticSeverity::INFORMATION)
                 .desc(&DuplicateVarSection)
-                .range(Span::from(range))
+                .range(file.document(db).denormalize_range(&range).unwrap_or_default())
                 .call();
 
             d.with_note("merge this section with the existing one above".to_string());

@@ -121,7 +121,7 @@ pub fn check_assignment<'db>(
     let mut diag = diag()
         .message(format!("assignment to VAR_INPUT '{name}'"))
         .desc(&InputAssignment)
-        .range(var_access.get_span(db))
+        .range(hir::denormalize(db, var_access.get_scope_id(db).file(db), &var_access.get_span(db)).unwrap_or_default())
         .severity(DiagnosticSeverity::WARNING)
         .call();
 

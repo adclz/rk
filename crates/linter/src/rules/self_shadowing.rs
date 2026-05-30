@@ -1,8 +1,9 @@
-use auto_lsp::core::span::Span;
+use auto_lsp::tree_sitter;
 use auto_lsp::default::db::file::File;
 use auto_lsp::lsp_types::DiagnosticSeverity;
 use db::WorkspaceDataBase;
 use hir::{
+    HirNodeInfo,
     HasName,
     hir_def::{
         pous::{pou::Pou, variable::VariableDecl},
@@ -90,7 +91,7 @@ fn check_variables<'db>(
     db: &'db dyn WorkspaceDataBase,
     pou_name: &str,
     pou_kind: &str,
-    pou_name_span: Span,
+    pou_name_span: tree_sitter::Range,
     variables: &[VariableDecl<'db>],
     file: File,
     diagnostics: &mut Vec<IdeDiagnostic>,
@@ -102,7 +103,7 @@ fn check_variables<'db>(
                     "variable '{pou_name}' has the same name as its declaring {pou_kind}"
                 ))
                 .desc(&SelfShadowing)
-                .range(var.get_name_span(db))
+                .range(hir::denormalize(db, var.get_scope_id(db).file(db), &var.get_name_span(db)).unwrap_or_default())
                 .severity(DiagnosticSeverity::WARNING)
                 .call();
 

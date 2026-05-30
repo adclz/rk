@@ -53,7 +53,7 @@ pub fn check_node<'db>(
                 "identical expressions on both sides of '{op}', {hint}"
             ))
             .desc(&IdenticalSubExpr)
-            .range(expr.get_span(db))
+            .range(hir::denormalize(db, expr.get_scope_id(db).file(db), &expr.get_span(db)).unwrap_or_default())
             .severity(DiagnosticSeverity::WARNING)
             .call(),
     );
