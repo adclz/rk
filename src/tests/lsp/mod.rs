@@ -2,6 +2,7 @@ pub mod code_lens;
 pub mod comment_index;
 pub mod completion_snippets;
 pub mod definition;
+pub mod denormalize;
 pub mod document_links;
 pub mod document_symbols;
 pub mod formatter;
