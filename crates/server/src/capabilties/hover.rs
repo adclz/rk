@@ -4,7 +4,10 @@ use auto_lsp::{
 };
 use db::WorkspaceDataBase;
 use hir::hir_def::semantic_index::semantic_index;
-use ide_proto::{handlers::HoverHandler, walk::descendant_at};
+use ide_proto::{
+    handlers::HoverHandler,
+    walk::{descendant_at, position_to_offset},
+};
 
 pub fn hover(db: &impl WorkspaceDataBase, params: HoverParams) -> anyhow::Result<Option<Hover>> {
     let _hover_span = tracing::info_span!("hover").entered();
@@ -16,16 +19,15 @@ pub fn hover(db: &impl WorkspaceDataBase, params: HoverParams) -> anyhow::Result
         None => return Ok(None),
     };
 
-    let document = file.document(db);
-
-    let position = document
-        .offset_at(params.text_document_position_params.position)
-        .ok_or_else(|| {
-            anyhow::format_err!(
-                "Invalid position, {:?}",
-                params.text_document_position_params.position
-            )
-        })?;
+    let position =
+        position_to_offset(db, file, params.text_document_position_params.position).ok_or_else(
+            || {
+                anyhow::format_err!(
+                    "Invalid position, {:?}",
+                    params.text_document_position_params.position
+                )
+            },
+        )?;
 
     let sema = semantic_index(db, file);
 

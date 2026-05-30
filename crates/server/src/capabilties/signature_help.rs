@@ -3,7 +3,7 @@ use auto_lsp::{
     lsp_types::{SignatureHelp, SignatureHelpParams},
 };
 use db::WorkspaceDataBase;
-use ide_proto::handlers::signature_help::find_signature_help;
+use ide_proto::{handlers::signature_help::find_signature_help, walk::position_to_offset};
 
 pub fn signature_help(
     db: &impl WorkspaceDataBase,
@@ -16,16 +16,15 @@ pub fn signature_help(
         None => return Ok(None),
     };
 
-    let document = file.document(db);
-
-    let position = document
-        .offset_at(params.text_document_position_params.position)
-        .ok_or_else(|| {
-            anyhow::format_err!(
-                "Invalid position, {:?}",
-                params.text_document_position_params.position
-            )
-        })?;
+    let position =
+        position_to_offset(db, file, params.text_document_position_params.position).ok_or_else(
+            || {
+                anyhow::format_err!(
+                    "Invalid position, {:?}",
+                    params.text_document_position_params.position
+                )
+            },
+        )?;
 
     Ok(find_signature_help(db, file, position))
 }

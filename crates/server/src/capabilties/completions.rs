@@ -3,7 +3,7 @@ use auto_lsp::{
     lsp_types::{CompletionParams, CompletionResponse},
 };
 use db::WorkspaceDataBase;
-use ide_proto::handlers::completions::complete;
+use ide_proto::{handlers::completions::complete, walk::position_to_offset};
 
 pub fn completions(
     db: &impl WorkspaceDataBase,
@@ -16,15 +16,13 @@ pub fn completions(
         None => return Ok(None),
     };
 
-    let doc = file.document(db);
-
     let position = params.text_document_position.position;
     let trigger_character = params
         .context
         .as_ref()
         .and_then(|ctx| ctx.trigger_character.clone());
 
-    let offset = match doc.offset_at(position) {
+    let offset = match position_to_offset(db, file, position) {
         Some(offset) => offset,
         None => return Ok(None),
     };

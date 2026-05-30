@@ -8,7 +8,10 @@ use auto_lsp::{
 };
 use db::WorkspaceDataBase;
 use hir::{HirNodeInfo, hir_def::semantic_index::semantic_index};
-use ide_proto::{handlers::SemanticTokensHandler, walk::WalkHir};
+use ide_proto::{
+    handlers::SemanticTokensHandler,
+    walk::{WalkHir, position_to_offset},
+};
 
 pub fn semantic_tokens_full(
     db: &impl WorkspaceDataBase,
@@ -44,13 +47,9 @@ pub fn semantic_tokens_range(
         None => return Ok(None),
     };
 
-    let document = file.document(db);
-
-    let start_offset = document
-        .offset_at(params.range.start)
+    let start_offset = position_to_offset(db, file, params.range.start)
         .ok_or_else(|| anyhow::format_err!("Invalid range start, {:?}", params.range.start))?;
-    let end_offset = document
-        .offset_at(params.range.end)
+    let end_offset = position_to_offset(db, file, params.range.end)
         .ok_or_else(|| anyhow::format_err!("Invalid range end, {:?}", params.range.end))?;
 
     let mut builder = SemanticTokensBuilder::new("".into());

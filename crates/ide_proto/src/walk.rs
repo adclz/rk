@@ -1,6 +1,7 @@
 use std::ops::ControlFlow;
 
 use auto_lsp::default::db::file::File;
+use auto_lsp::lsp_types;
 use db::WorkspaceDataBase;
 use hir::{
     HirNodeInfo,
@@ -9,6 +10,39 @@ use hir::{
         semantic_index::{NodeKey, SemanticIndex, semantic_index},
     },
 };
+
+/// Converts an LSP [`lsp_types::Position`] (in the client's negotiated encoding) into a UTF-8 byte
+/// offset into the document.
+///
+/// The client always sends a position, never an offset; like rust-analyzer's `from_proto::offset`,
+/// we convert at the boundary and work with byte offsets internally. The position is first
+/// normalized to UTF-8 (row, byte-column) via the document, then resolved against the line starts.
+///
+/// Returns `None` if the position is out of bounds.
+pub fn position_to_offset(
+    db: &dyn WorkspaceDataBase,
+    file: File,
+    position: lsp_types::Position,
+) -> Option<usize> {
+    let document = file.document(db);
+    let norm = document.normalize_position(&position).ok()?;
+    let source = document.as_str();
+
+    // Byte index of the start of line `norm.line`.
+    let mut line_start = 0usize;
+    let mut line = 0u32;
+    for (i, b) in source.bytes().enumerate() {
+        if line == norm.line {
+            break;
+        }
+        if b == b'\n' {
+            line += 1;
+            line_start = i + 1;
+        }
+    }
+
+    Some(line_start + norm.character as usize)
+}
 
 pub trait WalkHir<'db> {
     fn walk_hir<F>(&self, db: &'db dyn WorkspaceDataBase, f: &mut F) -> ControlFlow<()>
