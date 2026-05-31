@@ -310,7 +310,7 @@ pub fn comment_bracket_ref_pou(mut with_db: RootDatabase) {
 FUNCTION_BLOCK MyFB
 END_FUNCTION_BLOCK
 
-// Uses [MyFB] internally
+(* Uses [MyFB] internally *)
 FUNCTION fn1 : INT
 END_FUNCTION"#;
 
@@ -344,7 +344,7 @@ pub fn comment_bracket_ref_class(mut with_db: RootDatabase) {
 CLASS MyClass
 END_CLASS
 
-// See [MyClass]
+(* See [MyClass] *)
 FUNCTION fn1 : INT
 END_FUNCTION"#;
 
@@ -379,7 +379,7 @@ END_FUNCTION_BLOCK
 
 FUNCTION fn1 : INT
 VAR
-    // Controls [Actuator]
+    (* Controls [Actuator] *)
     x : INT;
 END_VAR
 END_FUNCTION"#;
@@ -411,7 +411,7 @@ END_FUNCTION"#;
 #[rstest]
 pub fn comment_bracket_ref_unresolved_no_token(mut with_db: RootDatabase) {
     let source = r#"
-// See [NonExistent]
+(* See [NonExistent] *)
 FUNCTION fn1 : INT
 END_FUNCTION"#;
 
@@ -444,7 +444,7 @@ END_CLASS
 INTERFACE IController
 END_INTERFACE
 
-// Combines [Sensor] and [IController]
+(* Combines [Sensor] and [IController] *)
 FUNCTION_BLOCK MyFB
 END_FUNCTION_BLOCK"#;
 

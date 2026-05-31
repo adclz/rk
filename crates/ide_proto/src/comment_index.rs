@@ -83,36 +83,28 @@ impl CommentIndex {
         let line = range.start_point.row;
         let column = range.start_point.column;
 
-        // First: check lines above
+        // First: check lines above. Only block comments count as documentation;
+        // `//` line comments are intentionally ignored (see `Comment::is_doc`).
         for row in (0..line).rev() {
-            if let Some(comment) = self.map.get(&row) {
-                // Check if the comment is actually above the line (not to the right)
-                let text = document
-                    .as_str()
-                    .get(comment.range.start_byte..comment.range.end_byte)
-                    .unwrap_or("");
-
-                if match comment.kind {
-                    CommentKind::C => text.starts_with("/*"),
-                    CommentKind::Pascal => text.starts_with("(*"),
-                    CommentKind::Line => text.starts_with("//"),
-                } {
-                    return Some(comment);
-                }
+            if let Some(comment) = self.map.get(&row)
+                && comment.is_doc()
+            {
+                return Some(comment);
             }
             if let Some(line_content) = document.texter.get_row(row)
                 && !line_content.is_empty()
             {
-                // Still no comment, but there's a non-empty line
+                // Non-empty line that isn't a doc comment: stop searching upward.
                 break;
             }
         }
 
-        // Second: check for comments on the same line
+        // Second: check for a (doc) comment trailing on the same line
         let same_line_comments = self.map.get(&line);
         let mut best_right: Option<&Comment> = None;
 
         if let Some(comment) = same_line_comments
+            && comment.is_doc()
             && comment.range.start_point.column >= column
         {
             match &best_right {
@@ -147,6 +139,13 @@ pub enum CommentKind {
 }
 
 impl Comment {
+    /// Whether this comment is treated as documentation (shown in hover and used
+    /// for `[TypeName]` doc references). Only block comments `(* *)` / `/* */`
+    /// qualify; `//` line comments are intentionally excluded.
+    pub fn is_doc(&self) -> bool {
+        matches!(self.kind, CommentKind::C | CommentKind::Pascal)
+    }
+
     pub fn to_string(&self, document: &Document) -> String {
         let text = document
             .as_str()

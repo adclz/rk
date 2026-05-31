@@ -6,7 +6,7 @@ use db::RootDatabase;
 use ide_proto::comment_index::comment_index;
 
 #[test]
-fn single_line_comment() {
+fn line_comment_above_is_ignored() {
     let mut db = RootDatabase::default();
     let url = lsp_types::Url::parse("file:///test.st").unwrap();
     let source = r#"
@@ -36,13 +36,12 @@ END_FUNCTION
         start_point: tree_sitter::Point { row: 2, column: 0 },
         end_point: tree_sitter::Point { row: 2, column: 0 },
     };
-    let comment = index.find_nearby_comment(document, &range.into()).unwrap();
-
-    assert_eq!(comment.to_string(document), "This is a single line comment");
+    // `//` line comments are not documentation (see `Comment::is_doc`).
+    assert!(index.find_nearby_comment(document, &range.into()).is_none());
 }
 
 #[test]
-fn comment_to_the_right_on_same_line() {
+fn line_comment_to_the_right_is_ignored() {
     let mut db = RootDatabase::default();
     let url = lsp_types::Url::parse("file:///right.st").unwrap();
     let source = r#"
@@ -72,12 +71,12 @@ END_FUNCTION
         end_point: tree_sitter::Point { row: 1, column: 9 },
     };
 
-    let comment = index.find_nearby_comment(document, &range.into()).unwrap();
-    assert_eq!(comment.to_string(document), "right side comment");
+    // A trailing `//` comment is not documentation.
+    assert!(index.find_nearby_comment(document, &range.into()).is_none());
 }
 
 #[test]
-fn blank_lines() {
+fn line_comment_across_blank_lines_is_ignored() {
     let mut db = RootDatabase::default();
     let url = lsp_types::Url::parse("file:///blank.st").unwrap();
     let source = r#"
@@ -110,8 +109,8 @@ END_FUNCTION
         start_point: tree_sitter::Point { row: 5, column: 0 },
         end_point: tree_sitter::Point { row: 5, column: 0 },
     };
-    let comment = index.find_nearby_comment(document, &range.into()).unwrap();
-    assert_eq!(comment.to_string(document), "Separated by blank lines");
+    // A `//` comment (even adjacent across blank lines) is not documentation.
+    assert!(index.find_nearby_comment(document, &range.into()).is_none());
 }
 
 #[test]

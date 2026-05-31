@@ -85,8 +85,6 @@ END_CLASS
     FUNCTION fn1
     ```
 
-    ---
-    # fn1 comment
     ```iecst
     FUNCTION_BLOCK fb1
     ```
@@ -189,8 +187,6 @@ END_FUNCTION_BLOCK
     (VAR) var1: INT
     ```
 
-    ---
-    # var1 comment
     ```iecst
     (VAR) var2: INT
     ```
@@ -698,7 +694,7 @@ pub fn hover_comment_bracket_ref_link(mut with_db: RootDatabase) {
 FUNCTION_BLOCK MyFB
 END_FUNCTION_BLOCK
 
-// Uses [MyFB] internally
+(* Uses [MyFB] internally *)
 FUNCTION fn1
 END_FUNCTION
 "#;
@@ -735,7 +731,7 @@ END_FUNCTION
 #[rstest]
 pub fn hover_comment_bracket_ref_unresolved(mut with_db: RootDatabase) {
     let source = r#"
-// References [NonExistent] type
+(* References [NonExistent] type *)
 FUNCTION fn1
 END_FUNCTION
 "#;
@@ -761,7 +757,7 @@ END_CLASS
 
 FUNCTION fn1
 VAR
-    // Controls a [Sensor]
+    (* Controls a [Sensor] *)
     x : INT;
 END_VAR
 END_FUNCTION
