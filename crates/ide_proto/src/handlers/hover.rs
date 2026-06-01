@@ -1,5 +1,6 @@
 #![allow(unused)]
 use ast::generated::InitElem;
+use auto_lsp::default::db::file::File;
 use auto_lsp::lsp_types::{Hover, HoverContents, MarkedString, MarkupContent, MarkupKind};
 use db::WorkspaceDataBase;
 use hir::{
@@ -39,6 +40,50 @@ use crate::{
     },
     hir_node::{HasComment, MaybeHirNode, get_param_start_pos},
 };
+
+/// The file holding this type's declaration, when it has a single named declaration
+/// site. Used to keep hover ranges same-file (see [`guard_same_file`]).
+fn type_def_file<'db>(db: &'db dyn WorkspaceDataBase, ty: Type<'db>) -> Option<File> {
+    let node: &dyn HirNodeInfo<'db> = match &ty {
+        Type::CallableType(c) => return callable_def_file(db, c),
+        Type::Program(p) => p as _,
+        Type::Function(f) => f as _,
+        Type::FunctionBlock(f) => f as _,
+        Type::Class(c) => c as _,
+        Type::Interface(i) => i as _,
+        Type::DataType(dt) => dt as _,
+        Type::StructElement(st) => st as _,
+        Type::MethodDecl(m) => m as _,
+        Type::Variable((var, _multibits)) => var as _,
+        _ => return None,
+    };
+    Some(node.get_scope_id(db).file(db))
+}
+
+fn callable_def_file<'db>(db: &'db dyn WorkspaceDataBase, ty: &CallableType<'db>) -> Option<File> {
+    Some(match ty {
+        CallableType::Function(f) => f.get_scope_id(db).file(db),
+        CallableType::FunctionBlock(fb) => fb.get_scope_id(db).file(db),
+        CallableType::MethodDecl(m) => m.get_scope_id(db).file(db),
+    })
+}
+
+/// LSP `Hover.range` is always interpreted in the requested document, so a decl-site
+/// range pointing into another file would land on unrelated text (and run out of
+/// bounds → highlighting a whole block). When the resolved definition is not in
+/// `req_file`, drop the range; the client then highlights the hovered word instead.
+fn guard_same_file<'db>(
+    db: &'db dyn WorkspaceDataBase,
+    hover: &mut Hover,
+    ty: Type<'db>,
+    req_file: File,
+) {
+    if let Some(def_file) = type_def_file(db, ty)
+        && def_file != req_file
+    {
+        hover.range = None;
+    }
+}
 
 impl<'db> HoverHandler<'db> for HirNode<'db> {
     fn hover(&'db self, db: &'db dyn WorkspaceDataBase, offset: usize) -> Option<Hover> {
@@ -260,13 +305,19 @@ impl<'db> HoverHandler<'db> for InitExpr<'db> {
                 range: None,
             });
         }
-        self.infer(db).hover(db, offset)
+        let ty = self.infer(db);
+        let mut hover = ty.hover(db, offset)?;
+        guard_same_file(db, &mut hover, ty, self.get_scope_id(db).file(db));
+        Some(hover)
     }
 }
 
 impl<'db> HoverHandler<'db> for BeginPathExpr<'db> {
     fn hover(&'db self, db: &'db dyn WorkspaceDataBase, offset: usize) -> Option<Hover> {
-        self.infer(db).hover(db, offset)
+        let ty = self.infer(db);
+        let mut hover = ty.hover(db, offset)?;
+        guard_same_file(db, &mut hover, ty, self.get_scope_id(db).file(db));
+        Some(hover)
     }
 }
 
@@ -287,25 +338,36 @@ impl<'db> HoverHandler<'db> for PathExpr<'db> {
                 });
             }
         }
-        ty.hover(db, offset)
+        let mut hover = ty.hover(db, offset)?;
+        guard_same_file(db, &mut hover, ty, self.get_scope_id(db).file(db));
+        Some(hover)
     }
 }
 
 impl<'db> HoverHandler<'db> for Expr<'db> {
     fn hover(&'db self, db: &'db dyn WorkspaceDataBase, offset: usize) -> Option<Hover> {
-        self.infer(db).hover(db, offset)
+        let ty = self.infer(db);
+        let mut hover = ty.hover(db, offset)?;
+        guard_same_file(db, &mut hover, ty, self.get_scope_id(db).file(db));
+        Some(hover)
     }
 }
 
 impl<'db> HoverHandler<'db> for VariableAccess<'db> {
     fn hover(&'db self, db: &'db dyn WorkspaceDataBase, offset: usize) -> Option<Hover> {
-        self.infer(db).hover(db, offset)
+        let ty = self.infer(db);
+        let mut hover = ty.hover(db, offset)?;
+        guard_same_file(db, &mut hover, ty, self.get_scope_id(db).file(db));
+        Some(hover)
     }
 }
 
 impl<'db> HoverHandler<'db> for ParamAssign<'db> {
     fn hover(&'db self, db: &'db dyn WorkspaceDataBase, offset: usize) -> Option<Hover> {
-        self.infer(db).hover(db, offset)
+        let ty = self.infer(db);
+        let mut hover = ty.hover(db, offset)?;
+        guard_same_file(db, &mut hover, ty, self.get_scope_id(db).file(db));
+        Some(hover)
     }
 }
 
@@ -369,7 +431,10 @@ NAMESPACE {}
             }
         }
 
-        self.infer(db).hover(db, offset)
+        let ty = self.infer(db);
+        let mut hover = ty.hover(db, offset)?;
+        guard_same_file(db, &mut hover, ty, self.get_scope_id(db).file(db));
+        Some(hover)
     }
 }
 

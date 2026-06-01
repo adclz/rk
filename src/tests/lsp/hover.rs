@@ -850,3 +850,43 @@ fn array_bound_expr_hover_variable(mut with_db: RootDatabase) {
     ```
     ");
 }
+
+#[rstest]
+fn hover_range_same_file_highlights_declaration(mut with_db: RootDatabase) {
+    // The declaration and the call live in the same file: the hover range is allowed to
+    // point at the declaration site (this is the intentional decl-site highlight).
+    let source = "FUNCTION helper : INT\nEND_FUNCTION\n\nFUNCTION main : INT\n    helper();\nEND_FUNCTION\n";
+    add_sources(&mut with_db, &[source]);
+    let file = *with_db.get_files().iter().last().unwrap();
+
+    let usage = source.rfind("helper").unwrap();
+    let node = ide_proto::walk::descendant_at(&with_db, file, usage).unwrap();
+    let hover = node.hover(&with_db, usage).unwrap();
+
+    let range = hover.range.expect("same-file hover should carry a decl-site range");
+    // `helper` is declared on line 0 after "FUNCTION ".
+    assert_eq!(range.start.line, 0);
+    assert_eq!(range.start.character, "FUNCTION ".len() as u32);
+}
+
+#[rstest]
+fn hover_range_cross_file_has_no_range(mut with_db: RootDatabase) {
+    // The definition lives in another file. LSP `Hover.range` cannot point across files,
+    // so the range is dropped (otherwise it would land on unrelated text in this file).
+    let lib = "FUNCTION helper : INT\nEND_FUNCTION\n";
+    let user = "FUNCTION main : INT\n    helper();\nEND_FUNCTION\n";
+    add_sources(&mut with_db, &[lib, user]);
+    let file = with_db
+        .get_file(&auto_lsp::lsp_types::Url::parse("file:///test1.st").unwrap())
+        .unwrap();
+
+    let usage = user.find("helper").unwrap();
+    let node = ide_proto::walk::descendant_at(&with_db, file, usage).unwrap();
+    let hover = node.hover(&with_db, usage).unwrap();
+
+    assert!(
+        hover.range.is_none(),
+        "cross-file hover must not carry a range, got {:?}",
+        hover.range
+    );
+}
