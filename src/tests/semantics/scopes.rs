@@ -36,7 +36,7 @@ fn diagnostics_on_empty_file() {
     let source = r#""#;
     let file = File::from_string()
         .db(&db)
-        .parsers(ast::RK_PARSER.get("st").unwrap())
+        .parsers(&ast::RK_PARSER)
         .url(&url)
         .source(source.to_string())
         .call()
@@ -67,7 +67,7 @@ fn global_scope() {
 "#;
     let file = File::from_string()
         .db(&db)
-        .parsers(ast::RK_PARSER.get("st").unwrap())
+        .parsers(&ast::RK_PARSER)
         .url(&url)
         .source(source.to_string())
         .call()
@@ -126,7 +126,7 @@ END_NAMESPACE
 "#;
     let file = File::from_string()
         .db(&db)
-        .parsers(ast::RK_PARSER.get("st").unwrap())
+        .parsers(&ast::RK_PARSER)
         .url(&url)
         .source(source.to_string())
         .call()
@@ -183,7 +183,7 @@ END_NAMESPACE
 "#;
     let file = File::from_string()
         .db(&db)
-        .parsers(ast::RK_PARSER.get("st").unwrap())
+        .parsers(&ast::RK_PARSER)
         .url(&url)
         .source(source.to_string())
         .call()

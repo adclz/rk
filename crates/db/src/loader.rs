@@ -90,7 +90,7 @@ pub fn load_file(db: &mut RootDatabase, path: &Path) -> Result<File, Box<dyn std
 
     let file = File::from_string()
         .db(db)
-        .parsers(ast::RK_PARSER.get("st").ok_or("Parser not found")?)
+        .parsers(&ast::RK_PARSER)
         .url(&url)
         .source(content)
         .call()?;
@@ -103,10 +103,7 @@ pub fn load_file(db: &mut RootDatabase, path: &Path) -> Result<File, Box<dyn std
 /// parallel, Salsa inputs created sequentially.
 pub fn load_workspace(db: &mut RootDatabase, path: &Path) -> Vec<Result<File, String>> {
     let paths = find_st_files(path);
-    let parsers = match ast::RK_PARSER.get("st") {
-        Some(p) => p,
-        None => return vec![],
-    };
+    let parsers = &*ast::RK_PARSER;
 
     let parsed: Vec<_> = paths
         .into_par_iter()
@@ -139,10 +136,7 @@ pub fn load_stdlib(db: &mut RootDatabase) {
     };
 
     let paths = find_st_files(stdlib_path);
-    let parsers = match ast::RK_PARSER.get("st") {
-        Some(p) => p,
-        None => return,
-    };
+    let parsers = &*ast::RK_PARSER;
 
     let parsed: Vec<_> = paths
         .into_par_iter()

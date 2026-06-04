@@ -38,7 +38,7 @@ fn add_source_enc(db: &mut RootDatabase, source: &str, encoding: &PositionEncodi
     let url = Url::parse("file:///enc.st").unwrap();
     let file = File::from_string()
         .db(db)
-        .parsers(ast::RK_PARSER.get("st").unwrap())
+        .parsers(&ast::RK_PARSER)
         .url(&url)
         .source(source.to_string())
         .encoding(encoding)

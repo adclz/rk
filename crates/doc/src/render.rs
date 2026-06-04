@@ -85,7 +85,7 @@ pub fn compile_and_render(
         let url = Url::parse(&format!("file:///example{i}.st")).unwrap();
         let file = File::from_string()
             .db(db)
-            .parsers(ast::RK_PARSER.get("st").unwrap())
+            .parsers(&ast::RK_PARSER)
             .url(&url)
             .source(source.trim_start_matches('\n').to_string())
             .call()

@@ -245,7 +245,7 @@ pub fn setup_db(sources: &[&str]) -> (RootDatabase, Vec<File>) {
 
         let file = File::from_string()
             .db(&db)
-            .parsers(ast::RK_PARSER.get("st").unwrap())
+            .parsers(&ast::RK_PARSER)
             .url(&url)
             .source(source.to_string())
             .call()

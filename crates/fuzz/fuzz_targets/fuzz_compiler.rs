@@ -32,7 +32,7 @@ fn do_fuzz(case: &[u8]) -> Corpus {
     // Try to parse the input source code
     let file = match File::from_string()
         .db(&db)
-        .parsers(ast::RK_PARSER.get("st").unwrap())
+        .parsers(&ast::RK_PARSER)
         .url(&url)
         .source(source.to_string())
         .call()

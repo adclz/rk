@@ -116,7 +116,6 @@ pub fn boot() -> Result<(), Box<dyn Error + Send + Sync>> {
 
     let (mut session, params) = Session::create(
         InitOptions {
-            parsers: &RK_PARSER,
             capabilities: ServerCapabilities {
                 document_symbol_provider: Some(OneOf::Left(true)),
                 workspace: WORKSPACE_PROVIDER.clone(),
@@ -253,7 +252,7 @@ fn on_notifications(
                     if s.db.get_std_lib_files().contains_key(&p.text_document.uri) {
                         return Ok(());
                     }
-                    Ok(open_text_document(s, p)?)
+                    Ok(open_text_document(s, p, &RK_PARSER)?)
                 }
                 false => Ok(()),
             }
@@ -281,7 +280,11 @@ fn on_notifications(
                     .and_then(|path| Url::from_file_path(path).ok());
                 refresh_configuration(s, workspace_uri)?;
             } else {
-                changed_watched_files(s, p)?;
+                changed_watched_files(s, p, |url| {
+                    let path = url.to_file_path().ok()?;
+                    let ext = path.extension()?.to_str()?;
+                    (ext == "st").then(|| &*RK_PARSER)
+                })?;
             }
 
             send_request::<lsp_types::request::WorkspaceDiagnosticRefresh>(s, ())?;
