@@ -1103,6 +1103,35 @@ impl<'a> WasmGen<'a> {
         self.export_section
             .export("memory", wasm_encoder::ExportKind::Memory, 0);
 
+        // The RETAIN band bounds as two immutable i32 globals, appended after
+        // any grafted globals; `retain_size == 0` means no retained variables.
+        let retain_global = |value: u32| {
+            (
+                wasm_encoder::GlobalType {
+                    val_type: wasm_encoder::ValType::I32,
+                    mutable: false,
+                    shared: false,
+                },
+                wasm_encoder::ConstExpr::i32_const(value as i32),
+            )
+        };
+        let retain_base_idx = self.global_section.len();
+        let (ty, init) = retain_global(self.module.retain_base);
+        self.global_section.global(ty, &init);
+        let retain_size_idx = self.global_section.len();
+        let (ty, init) = retain_global(self.module.retain_size);
+        self.global_section.global(ty, &init);
+        self.export_section.export(
+            "retain_base",
+            wasm_encoder::ExportKind::Global,
+            retain_base_idx,
+        );
+        self.export_section.export(
+            "retain_size",
+            wasm_encoder::ExportKind::Global,
+            retain_size_idx,
+        );
+
         let mut module = wasm_encoder::Module::new();
         module.section(&self.type_section);
         module.section(&self.import_section);
@@ -1117,11 +1146,9 @@ impl<'a> WasmGen<'a> {
             });
             module.section(&tags);
         }
-        // Global section is only emitted when builtins were grafted (the
-        // bundle's stack pointer + static markers). Empty otherwise.
-        if !self.builtin_indices.is_empty() {
-            module.section(&self.global_section);
-        }
+        // The global section always carries the two RETAIN-band globals;
+        // grafted globals precede them.
+        module.section(&self.global_section);
         module.section(&self.export_section);
         module.section(&self.code_section);
 

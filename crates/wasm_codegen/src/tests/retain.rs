@@ -74,6 +74,34 @@ fn run_scans(wasm: &[u8], scans: usize, read_addr: u32) -> i32 {
     i32::from_le_bytes(buf)
 }
 
+/// Read the `retain_base` / `retain_size` globals the module exports for the
+/// host runtime.
+fn read_retain_globals(wasm: &[u8]) -> (i32, i32) {
+    let engine = wasmtime::Engine::default();
+    let module = wasmtime::Module::new(&engine, wasm).expect("valid module");
+    let mut store = wasmtime::Store::new(&engine, ());
+    let memory =
+        wasmtime::Memory::new(&mut store, wasmtime::MemoryType::new(1, None)).expect("memory");
+    let mut linker = wasmtime::Linker::new(&engine);
+    linker
+        .define(&store, "env", "memory", memory)
+        .expect("define env.memory");
+    let instance = linker
+        .instantiate(&mut store, &module)
+        .expect("instantiate");
+    let read = |store: &mut wasmtime::Store<()>, name: &str| {
+        instance
+            .get_global(&mut *store, name)
+            .unwrap_or_else(|| panic!("module exports global '{name}'"))
+            .get(store)
+            .i32()
+            .expect("global is i32")
+    };
+    let base = read(&mut store, "retain_base");
+    let size = read(&mut store, "retain_size");
+    (base, size)
+}
+
 /// A `VAR RETAIN` scalar lands in the exported retain band and keeps its value
 /// across repeated scans against the same memory.
 #[rstest]
@@ -108,6 +136,13 @@ fn retain_scalar_lives_in_band_and_persists(mut with_db: db::RootDatabase) {
     // Driving the scan 3 times must increment the persisted counter to 3 —
     // proving the var is real memory at the band base, not a resettable local.
     assert_eq!(run_scans(&wasm, 3, mir.retain_base), 3);
+
+    // Step 3: the band bounds are exported as globals matching the MIR, so a
+    // host runtime can locate the snapshot region from the binary alone.
+    let (base, size) = read_retain_globals(&wasm);
+    assert_eq!(base as u32, mir.retain_base, "exported retain_base == MIR");
+    assert_eq!(size as u32, mir.retain_size, "exported retain_size == MIR");
+    assert_eq!(size, 4, "single INT retained => 4-byte region");
 }
 
 /// Control: a plain PROGRAM `VAR` produces no retain band, yet (per Step 2a) is
@@ -135,4 +170,8 @@ fn plain_program_var_persists_without_a_retain_band(mut with_db: db::RootDatabas
         3,
         "a Static PROGRAM var must persist across scans"
     );
+
+    // The bounds globals still exist, reporting an empty region.
+    let (_base, size) = read_retain_globals(&wasm);
+    assert_eq!(size, 0, "no RETAIN vars => exported retain_size is 0");
 }
