@@ -44,6 +44,11 @@ pub struct MirModule {
 
     /// Test manifest: metadata about test functions and their cases.
     pub test_manifest: TestManifest,
+
+    /// Start of the contiguous RETAIN band the host snapshots and restores;
+    /// `retain_size == 0` without `RETAIN` variables.
+    pub retain_base: u32,
+    pub retain_size: u32,
 }
 
 /// An interned string literal.

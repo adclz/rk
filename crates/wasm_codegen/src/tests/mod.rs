@@ -65,6 +65,19 @@ pub fn compile_to_wasm_checked(db: &mut RootDatabase, source: &str) -> Vec<u8> {
     compile_to_wasm_impl(db, source, true)
 }
 
+/// Lower IEC source to MIR and WASM in a single pass, returning both. Use this
+/// when a test needs to inspect the MIR layout (e.g. the retain band bounds or
+/// a variable's storage) and run the emitted module against it. Lowering only
+/// once avoids registering the same source twice (which would duplicate POUs).
+pub fn compile_to_mir_and_wasm(db: &mut RootDatabase, source: &str) -> (mir::MirModule, Vec<u8>) {
+    let file = add_source(db, source);
+    let sem_idx = semantic_index(db, file);
+    let mir_module =
+        mir::lower::lower_module::lower_module(db, sem_idx).expect("MIR lowering failed");
+    let wasm = crate::generate_wasm(db, &mir_module).finish();
+    (mir_module, wasm)
+}
+
 fn compile_to_wasm_impl(db: &mut RootDatabase, source: &str, check_diagnostics: bool) -> Vec<u8> {
     let file = add_source(db, source);
     let sem_idx = semantic_index(db, file);

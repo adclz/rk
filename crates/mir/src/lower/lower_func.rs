@@ -610,16 +610,37 @@ pub fn lower_program<'db>(
 
     for var in program.variables(db) {
         let ty = lower_var_type(db, *var)?;
-        let storage =
-            allocate_local_storage(var.name(db), &ty, false, &mut next_local_idx, memory_layout);
+        // PROGRAM keeps state across scans, so its VARs are Static (or
+        // Retain/Global per section/qualifier) — unlike FUNCTION locals.
+        let var_storage = classify_var_storage(db, *var, /* persists = */ true);
+        // A persistent VAR can never be a wasm local (locals reset every
+        // scan call), so force it into linear memory even when it is a
+        // scalar. Only VAR_TEMP (Automatic) may stay a wasm local.
+        let force_memory = var_storage != MirVariableStorage::Automatic;
+        let storage = allocate_local_storage(
+            var.name(db),
+            &ty,
+            force_memory,
+            &mut next_local_idx,
+            memory_layout,
+        );
+        // RETAIN vars must survive power cycles: register them so Step 2b.2
+        // can gather them into a contiguous, host-snapshottable band.
+        if var_storage == MirVariableStorage::Retain
+            && let MirStorage::Memory {
+                address,
+                size,
+                align,
+            } = storage
+        {
+            memory_layout.record_retain(var.name(db), address, size, align);
+        }
         locals.push(MirLocal {
             name: var.name(db),
             ty,
             init: None,
             kind: MirLocalKind::Var,
-            // PROGRAM keeps state across scans, so its VARs are Static (or
-            // Retain/Global per section/qualifier) — unlike FUNCTION locals.
-            var_storage: classify_var_storage(db, *var, /* persists = */ true),
+            var_storage,
             storage,
         });
     }
@@ -670,9 +691,17 @@ pub fn param_wasm_width(ty: &MirType, kind: MirParamKind) -> u32 {
     }
 }
 
-/// Allocate storage for a variable, picking wasm-local (for scalar
-/// types that aren't address-taken) or linear-memory layout
+/// Allocate storage for a variable, picking a wasm-local (only for a
+/// scalar that may be kept in a register) or a linear-memory address
 /// (everything else, including STRING and any composite type).
+///
+/// `force_memory` makes a scalar live in linear memory even though its
+/// type would otherwise fit a wasm local. Two situations require it:
+/// - the scalar is **address-taken** (`REF(x)`), so it needs an address;
+/// - the scalar is **persistent** (a PROGRAM/FB-instance `VAR`,
+///   `var_storage != Automatic`): wasm locals are reset on every call, so
+///   anything that must survive across scan cycles cannot be a local. Only
+///   `Automatic` storage (function locals, `VAR_TEMP`) may use a wasm local.
 ///
 /// The shared form of what used to be open-coded in every MIR
 /// lowering path — `lower_function`, `lower_function_block`,
@@ -683,11 +712,11 @@ pub fn param_wasm_width(ty: &MirType, kind: MirParamKind) -> u32 {
 pub fn allocate_local_storage(
     name: Ident,
     ty: &MirType,
-    is_address_taken: bool,
+    force_memory: bool,
     next_local_idx: &mut u32,
     memory_layout: &mut MirMemoryLayout,
 ) -> MirStorage {
-    if ty.is_scalar() && !is_address_taken {
+    if ty.is_scalar() && !force_memory {
         let idx = *next_local_idx;
         *next_local_idx += 1;
         MirStorage::Scalar { local_index: idx }

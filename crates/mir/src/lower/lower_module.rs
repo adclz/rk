@@ -397,8 +397,6 @@ fn lower_module_from_pous<'db>(
     // Sort test entries by path for deterministic output
     test_entries.sort_by(|a, b| a.path.cmp(&b.path));
 
-    let static_mem_end = memory_layout.total_size();
-
     let mut module = MirModule {
         functions,
         extern_functions,
@@ -411,6 +409,8 @@ fn lower_module_from_pous<'db>(
         test_manifest: crate::test_manifest::TestManifest {
             tests: test_entries,
         },
+        retain_base: 0,
+        retain_size: 0,
     };
 
     // Phase 4: Monomorphization - discovers call sites, generates concrete copies
@@ -423,6 +423,30 @@ fn lower_module_from_pous<'db>(
             string_pool.clone(),
         )?;
     }
+
+    // Phase 4.5: Relocate RETAIN variables into one contiguous, host-snapshottable
+    // band. Done AFTER monomorphization so the band sits above every variable,
+    // instance, and monomorphized-slot allocation; then patch the moved addresses
+    // into each function's locals — the only place a variable's absolute address
+    // is stored (body statements resolve addresses via the local map at codegen).
+    let retain_band = module.memory_layout.finalize_retain_band();
+    if retain_band.size > 0 {
+        for func in &mut module.functions {
+            for local in &mut func.locals {
+                if let crate::function::MirStorage::Memory { address, .. } = &mut local.storage
+                    && let Some(&new_addr) = retain_band.remap.get(address)
+                {
+                    *address = new_addr;
+                }
+            }
+        }
+    }
+    module.retain_base = retain_band.base;
+    module.retain_size = retain_band.size;
+
+    // End of all static memory, captured after phases 4/4.5 so the string
+    // pool is placed past everything.
+    let static_mem_end = module.memory_layout.total_size();
 
     // Phase 5: Rebase string pool to start AFTER all static memory allocations,
     // then extract interned string data into the module.
