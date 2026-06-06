@@ -27,6 +27,7 @@ use crate::{
     expr::{MirArgKind, MirCall, MirConstant, MirExpr},
     function::{
         MirExternFunction, MirFunction, MirLinkage, MirLocal, MirLocalKind, MirParam, MirParamKind,
+        MirVariableStorage,
     },
     lower::lower_type::{LowerTypeError, elementary_spec_to_mir, lower_type},
     memory::MirMemoryLayout,
@@ -649,6 +650,8 @@ pub fn monomorphize<'db>(
                         init: None,
                         kind: MirLocalKind::Var,
                         storage,
+                        // Monomorphized FUNCTION result slot — stateless.
+                        var_storage: MirVariableStorage::Automatic,
                     }];
 
                     module.functions.push(MirFunction {
@@ -823,6 +826,8 @@ fn lower_monomorphized_local<'db>(
                     init: None,
                     kind: MirLocalKind::Var,
                     storage,
+                    // Monomorphized FUNCTION local — stateless.
+                    var_storage: MirVariableStorage::Automatic,
                 });
             }
             other => unreachable!(
@@ -851,6 +856,8 @@ fn lower_monomorphized_local<'db>(
             init: None,
             kind: MirLocalKind::Var,
             storage,
+            // Monomorphized FUNCTION return slot — stateless.
+            var_storage: MirVariableStorage::Automatic,
         });
     }
 

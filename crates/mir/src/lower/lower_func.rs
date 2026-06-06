@@ -1,5 +1,6 @@
 use db::WorkspaceDataBase;
 use hir::{
+    Qualifier,
     hir_def::{
         expressions::{expression::InitExprKind, statement::StmtKind},
         interned::identifier::Ident,
@@ -22,6 +23,7 @@ use crate::{
     expr::MirPlace,
     function::{
         MirFunction, MirLinkage, MirLocal, MirLocalKind, MirParam, MirParamKind, MirStorage,
+        MirVariableStorage,
     },
     lower::{
         lower_expr::ExprLowerCtx,
@@ -119,6 +121,8 @@ pub fn lower_function<'db>(
             init: None,
             kind: MirLocalKind::Var,
             storage,
+            // Synthetic return slot in a stateless FUNCTION.
+            var_storage: MirVariableStorage::Automatic,
         });
     }
 
@@ -150,6 +154,8 @@ pub fn lower_function<'db>(
             init: None, // TODO: lower initializers
             kind,
             storage,
+            // FUNCTION locals are stateless — automatic regardless of section.
+            var_storage: MirVariableStorage::Automatic,
         });
     }
 
@@ -295,6 +301,8 @@ pub fn lower_function_block<'db>(
                         init: None,
                         kind: MirLocalKind::Var,
                         storage,
+                        // FB/class method local — stateless per call.
+                        var_storage: MirVariableStorage::Automatic,
                     });
                 }
             }
@@ -323,6 +331,8 @@ pub fn lower_function_block<'db>(
                 init: None,
                 kind: MirLocalKind::Var,
                 storage,
+                // Synthetic method return slot — stateless per call.
+                var_storage: MirVariableStorage::Automatic,
             });
         }
 
@@ -385,6 +395,9 @@ pub fn lower_function_block<'db>(
                     init: None,
                     kind: MirLocalKind::Var,
                     storage,
+                    // Only VAR_TEMP reaches here (FB persistent state lives in
+                    // the instance struct behind `this`).
+                    var_storage: MirVariableStorage::Automatic,
                 });
             }
         }
@@ -517,6 +530,8 @@ pub fn lower_class<'db>(
                         init: None,
                         kind: MirLocalKind::Var,
                         storage,
+                        // FB/class method local — stateless per call.
+                        var_storage: MirVariableStorage::Automatic,
                     });
                 }
             }
@@ -545,6 +560,8 @@ pub fn lower_class<'db>(
                 init: None,
                 kind: MirLocalKind::Var,
                 storage,
+                // Synthetic method return slot — stateless per call.
+                var_storage: MirVariableStorage::Automatic,
             });
         }
 
@@ -600,6 +617,9 @@ pub fn lower_program<'db>(
             ty,
             init: None,
             kind: MirLocalKind::Var,
+            // PROGRAM keeps state across scans, so its VARs are Static (or
+            // Retain/Global per section/qualifier) — unlike FUNCTION locals.
+            var_storage: classify_var_storage(db, *var, /* persists = */ true),
             storage,
         });
     }
@@ -680,6 +700,30 @@ pub fn allocate_local_storage(
             size,
             align,
         }
+    }
+}
+
+/// Classify a variable's storage *duration* (lifetime) for the runtime.
+///
+/// `persists` is true when the containing POU keeps state across scans — a
+/// `PROGRAM` or a `FUNCTION_BLOCK` instance. A `FUNCTION` is stateless, so
+/// all of its locals are [`MirVariableStorage::Automatic`] regardless of
+/// section or qualifier.
+///
+/// Note this reads `var.kind` directly, so `VAR_TEMP` is `Automatic` even
+/// inside a persistent POU, and `VAR_GLOBAL` is `Global` regardless of
+/// `persists`.
+fn classify_var_storage<'db>(
+    db: &'db dyn WorkspaceDataBase,
+    var: VariableDecl<'db>,
+    persists: bool,
+) -> MirVariableStorage {
+    match var.kind(db) {
+        VariableKind::Temp => MirVariableStorage::Automatic,
+        VariableKind::Global => MirVariableStorage::Global,
+        _ if !persists => MirVariableStorage::Automatic,
+        _ if var.qualifier(db).contains(Qualifier::RETAIN) => MirVariableStorage::Retain,
+        _ => MirVariableStorage::Static,
     }
 }
 
