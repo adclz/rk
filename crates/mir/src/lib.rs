@@ -1,6 +1,7 @@
 pub mod expr;
 pub mod function;
 pub mod memory;
+pub mod schedule;
 pub mod stmt;
 pub mod test_manifest;
 pub mod types;
@@ -49,6 +50,11 @@ pub struct MirModule {
     /// `retain_size == 0` without `RETAIN` variables.
     pub retain_base: u32,
     pub retain_size: u32,
+
+    /// Resolved task schedule of the module's CONFIGURATION, or `None` when the
+    /// module has no configuration (e.g. a bare `{test}` program). Drives the
+    /// generated `__init`/per-task entries and the runtime's scan loop.
+    pub schedule: Option<schedule::MirSchedule>,
 }
 
 /// An interned string literal.

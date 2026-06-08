@@ -29,14 +29,16 @@ pub fn lower_modules<'db>(
     let mut all_pous: Vec<(&Pou<'db>, Option<String>)> = Vec::new();
     let mut all_programs: Vec<(&hir::hir_def::program::ProgramDecl<'db>, Option<String>)> =
         Vec::new();
+    let mut all_configs: Vec<hir::hir_def::config::ConfigDecl<'db>> = Vec::new();
     for index in indices {
         all_pous.extend(index.global_pous.iter().map(|p| (p, None)));
         all_programs.extend(index.programs.iter().map(|p| (p, None)));
+        all_configs.extend(index.configs.iter().copied());
         for ns in index.namespaces.iter() {
             collect_namespace_pous(db, ns, &mut all_pous);
         }
     }
-    lower_module_from_pous(db, &all_pous, &all_programs)
+    lower_module_from_pous(db, &all_pous, &all_programs, &all_configs)
 }
 
 /// Lower a complete HIR semantic index into a MirModule.
@@ -52,6 +54,7 @@ pub fn lower_module<'db>(
             .map(|p| (p, None))
             .collect::<Vec<_>>(),
         &index.programs.iter().map(|p| (p, None)).collect::<Vec<_>>(),
+        &index.configs.iter().copied().collect::<Vec<_>>(),
     )
 }
 
@@ -59,6 +62,7 @@ fn lower_module_from_pous<'db>(
     db: &'db dyn WorkspaceDataBase,
     all_pous: &[(&Pou<'db>, Option<String>)],
     all_programs: &[(&hir::hir_def::program::ProgramDecl<'db>, Option<String>)],
+    all_configs: &[hir::hir_def::config::ConfigDecl<'db>],
 ) -> Result<MirModule, LowerTypeError> {
     let mut functions = Vec::new();
     let mut extern_functions = Vec::new();
@@ -411,6 +415,7 @@ fn lower_module_from_pous<'db>(
         },
         retain_base: 0,
         retain_size: 0,
+        schedule: crate::schedule::lower_schedule(db, all_configs),
     };
 
     // Phase 4: Monomorphization - discovers call sites, generates concrete copies
@@ -422,6 +427,47 @@ fn lower_module_from_pous<'db>(
             &mut MirMemoryLayout::new(),
             string_pool.clone(),
         )?;
+    }
+
+    // Phase 4.4: synthesize one entry function per scheduled task (cooperative
+    // model B — the runtime calls these). Each `__task_<i>` runs its task's
+    // program bodies in order. Done after monomorphization so the function
+    // indices continue the same contiguous scheme it uses.
+    if let Some(sched) = module.schedule.clone() {
+        let mut idx = module.functions.len() as u32 + module.extern_functions.len() as u32;
+        for (i, task) in sched.tasks.iter().enumerate() {
+            let entry = hir::hir_def::interned::identifier::Ident::new(
+                db,
+                compact_str::CompactString::from(format!("__task_{i}")),
+            );
+            let body = task
+                .programs
+                .iter()
+                .map(|prog| {
+                    crate::stmt::MirStmt::Call(crate::expr::MirCall {
+                        callee: *prog,
+                        callee_index: 0, // resolved by name at codegen
+                        args: Vec::new(),
+                        return_type: crate::types::MirType::Void,
+                        output_bindings: Vec::new(),
+                    })
+                })
+                .collect();
+            module.functions.push(crate::function::MirFunction {
+                name: entry,
+                origin_name: entry,
+                index: idx,
+                params: Vec::new(),
+                return_type: None,
+                locals: Vec::new(),
+                body,
+                linkage: crate::function::MirLinkage::Export,
+                is_test: false,
+                export_name: Some(compact_str::CompactString::from(format!("__task_{i}"))),
+            });
+            module.function_indices.insert(entry, idx);
+            idx += 1;
+        }
     }
 
     // Phase 4.5: Relocate RETAIN variables into one contiguous, host-snapshottable
