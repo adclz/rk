@@ -175,3 +175,51 @@ fn plain_program_var_persists_without_a_retain_band(mut with_db: db::RootDatabas
     let (_base, size) = read_retain_globals(&wasm);
     assert_eq!(size, 0, "no RETAIN vars => exported retain_size is 0");
 }
+
+/// Full pipeline: compile real IEC source to wasm, then drive it through the
+/// `runtime` host across a simulated power cycle. The retained counter must
+/// continue from its persisted value rather than reset — proving the whole
+/// chain (compiler → retain band → exported bounds → host snapshot/restore).
+#[rstest]
+fn end_to_end_retain_survives_power_cycle(mut with_db: db::RootDatabase) {
+    use runtime::{Config, Plc};
+
+    let source = r#"
+        PROGRAM Main
+        VAR RETAIN counter : INT; END_VAR
+            counter := counter + 1;
+        END_PROGRAM
+    "#;
+    let (_mir, wasm) = compile_to_mir_and_wasm(&mut with_db, source);
+
+    let path = std::env::temp_dir().join(format!("rk_e2e_retain_{}.bin", std::process::id()));
+    let _ = std::fs::remove_file(&path);
+
+    let read_counter = |plc: &Plc| i32::from_le_bytes(plc.read_retain()[..4].try_into().unwrap());
+
+    // Boot 1: cold start, run 3 scans, persist to the retain file.
+    {
+        let cfg = Config {
+            entry: None,
+            retain_path: Some(path.clone()),
+        };
+        let mut plc = Plc::load(&wasm, cfg).expect("load (boot 1)");
+        plc.run(3).expect("scans");
+        assert_eq!(read_counter(&plc), 3);
+        plc.snapshot_retain().expect("snapshot");
+    }
+
+    // Boot 2 (power cycle): a fresh instance restores and continues 3 -> 5.
+    {
+        let cfg = Config {
+            entry: None,
+            retain_path: Some(path.clone()),
+        };
+        let mut plc = Plc::load(&wasm, cfg).expect("load (boot 2)");
+        assert_eq!(read_counter(&plc), 3, "counter restored from the previous boot");
+        plc.run(2).expect("scans");
+        assert_eq!(read_counter(&plc), 5);
+    }
+
+    std::fs::remove_file(&path).ok();
+}
