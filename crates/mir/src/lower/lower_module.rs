@@ -1026,7 +1026,11 @@ fn add_global<'db>(
     table: &mut GlobalTable<'db>,
 ) -> Result<(), LowerTypeError> {
     use hir::hir_ty::infer::Infer;
-    let ty = super::lower_type::lower_type(db, v.spec(db).infer(db))?;
+    let ty = super::lower_type::apply_sized_string(
+        db,
+        v.spec(db),
+        super::lower_type::lower_type(db, v.spec(db).infer(db))?,
+    );
     let size = ty.size_bytes();
     let align = ty.alignment();
     let addr = memory_layout.allocate(v.name(db), size, align, crate::memory::MirAllocKind::Variable);

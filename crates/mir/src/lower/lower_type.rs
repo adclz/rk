@@ -124,6 +124,25 @@ fn resolve_any_from_subs(
     )))
 }
 
+/// Honor a declared `STRING[N]` capacity. `lower_type` always yields the default
+/// capacity because `Type::normalize` collapses the `[N]`; recover it from the
+/// variable/field's unnormalized `SizedString` spec. A no-op for non-STRING
+/// types, so it can be applied uniformly after lowering any field's type.
+pub(crate) fn apply_sized_string<'db>(
+    db: &'db dyn WorkspaceDataBase,
+    spec: hir::hir_def::expressions::spec::Spec<'db>,
+    mir: MirType,
+) -> MirType {
+    use hir::hir_def::expressions::spec::SpecKind;
+    if matches!(mir, MirType::String { .. })
+        && let SpecKind::SizedString(length_expr) = spec.kind(db)
+        && let Some(n) = length_expr.as_range(db)
+    {
+        return MirType::String { capacity: n as u32 };
+    }
+    mir
+}
+
 fn lower_struct_type<'db>(
     db: &'db dyn WorkspaceDataBase,
     struct_type: Struct<'db>,
@@ -144,7 +163,7 @@ pub fn lower_struct_type_named<'db>(
 
     for element in struct_type.elements(db) {
         let field_type = element.spec(db).infer(db);
-        let mir_type = lower_type(db, field_type)?;
+        let mir_type = apply_sized_string(db, element.spec(db), lower_type(db, field_type)?);
         let field_align = mir_type.alignment();
         let field_size = mir_type.size_bytes();
 
@@ -348,6 +367,7 @@ pub fn lower_fb_type_with_subs_named<'db>(
                 lower_type(db, var_type)?
             }
         };
+        let mir_type = apply_sized_string(db, var.spec(db), mir_type);
         let field_align = mir_type.alignment();
         let field_size = mir_type.size_bytes();
 
@@ -392,7 +412,7 @@ pub fn lower_program_type<'db>(
         if var.kind(db) == hir::hir_def::pous::variable::VariableKind::External {
             continue;
         }
-        let mir_type = lower_type(db, var.spec(db).infer(db))?;
+        let mir_type = apply_sized_string(db, var.spec(db), lower_type(db, var.spec(db).infer(db))?);
         let field_align = mir_type.alignment();
         let field_size = mir_type.size_bytes();
 
@@ -428,7 +448,7 @@ pub fn lower_class_type<'db>(
     // TODO: Handle inheritance — include parent class fields first
     for var in class.variables(db) {
         let var_type = var.spec(db).infer(db);
-        let mir_type = lower_type(db, var_type)?;
+        let mir_type = apply_sized_string(db, var.spec(db), lower_type(db, var_type)?);
         let field_align = mir_type.alignment();
         let field_size = mir_type.size_bytes();
 

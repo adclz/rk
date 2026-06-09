@@ -225,6 +225,56 @@ fn string_field_as_var_in_out(mut with_db: db::RootDatabase) {
     assert_eq!(read_retain_string(&plc), "hi-inout");
 }
 
+/// A declared `STRING[N]` capacity is honored for an instance FIELD: assigning a
+/// longer string clamps to N (with the old bug, fields defaulted to capacity 80
+/// and would store the whole string).
+#[rstest]
+fn sized_string_field_clamps_to_capacity(mut with_db: db::RootDatabase) {
+    let source = r#"
+        PROGRAM P
+        VAR RETAIN s : STRING[3]; END_VAR
+            s := 'hello';
+        END_PROGRAM
+
+        CONFIGURATION Cfg
+            RESOURCE Res ON CPU
+                TASK T(INTERVAL := T#10ms, PRIORITY := 1);
+                PROGRAM P1 WITH T : P;
+            END_RESOURCE
+        END_CONFIGURATION
+    "#;
+    let (_mir, wasm) = compile_to_mir_and_wasm(&mut with_db, source);
+
+    let mut plc = Plc::load(&wasm, Config::default()).expect("load");
+    plc.run(1).expect("scan");
+    assert_eq!(read_retain_string(&plc), "hel", "STRING[3] clamps 'hello'");
+}
+
+/// `STRING[N]` capacity is honored for a VAR_GLOBAL too.
+#[rstest]
+fn sized_string_global_clamps_to_capacity(mut with_db: db::RootDatabase) {
+    let source = r#"
+        PROGRAM P
+        VAR RETAIN seen : STRING[10]; END_VAR
+            g := 'abcdef';
+            seen := g;
+        END_PROGRAM
+
+        CONFIGURATION Cfg
+        VAR_GLOBAL g : STRING[4]; END_VAR
+            RESOURCE Res ON CPU
+                TASK T(INTERVAL := T#10ms, PRIORITY := 1);
+                PROGRAM P1 WITH T : P;
+            END_RESOURCE
+        END_CONFIGURATION
+    "#;
+    let (_mir, wasm) = compile_to_mir_and_wasm(&mut with_db, source);
+
+    let mut plc = Plc::load(&wasm, Config::default()).expect("load");
+    plc.run(1).expect("scan");
+    assert_eq!(read_retain_string(&plc), "abcd", "STRING[4] global clamps 'abcdef'");
+}
+
 /// A STRING VAR_GLOBAL written by one program and read by another.
 #[rstest]
 fn string_global_shared(mut with_db: db::RootDatabase) {
