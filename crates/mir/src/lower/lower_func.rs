@@ -1011,3 +1011,31 @@ fn lower_var_init<'db>(
         _ => Ok(None),
     }
 }
+
+/// Lower a constant scalar initializer to its value expression, for baking into
+/// the module's `__init` (program/FB-instance fields and globals, which can't
+/// use the FUNCTION prepend pattern — that would reset state every scan).
+///
+/// Returns `None` for aggregates (array/struct — TODO) and for anything that
+/// isn't a plain scalar constant: a STRING literal would need the module string
+/// pool, and const-expr arithmetic is deferred.
+pub(crate) fn lower_const_init_value<'db>(
+    db: &'db dyn WorkspaceDataBase,
+    init_expr: hir::hir_def::expressions::expression::InitExpr<'db>,
+) -> Result<Option<crate::expr::MirExpr>, LowerTypeError> {
+    match init_expr.kind(db) {
+        InitExprKind::ConstantExpr(expr) => {
+            let ctx = ExprLowerCtx::new(
+                db,
+                Rc::new(RefCell::new(super::lower_expr::StringPool::default())),
+            );
+            let value = ctx.lower_expr(expr)?;
+            if matches!(value, crate::expr::MirExpr::Constant(_)) {
+                Ok(Some(value))
+            } else {
+                Ok(None)
+            }
+        }
+        _ => Ok(None),
+    }
+}

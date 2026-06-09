@@ -529,6 +529,32 @@ fn lower_module_from_pous<'db>(
         resolve_global_places(func, &global_table);
     }
 
+    // Generate `__init`: write each scalar constant initializer (config/resource
+    // VAR_GLOBALs + program instance fields) to its FINAL address exactly once.
+    // The runtime calls `__init` after instantiation and BEFORE restoring retain,
+    // so a RETAIN var's initializer is its cold-start value (overridden on warm
+    // start). Addresses are final here (post-relocation). Functions keep using
+    // the prepend pattern (stateless), so they're not included.
+    let init_stmts = collect_const_inits(db, all_configs, &global_table, &module.schedule, &program_infos)?;
+    if !init_stmts.is_empty() {
+        let idx = module.functions.len() as u32 + module.extern_functions.len() as u32;
+        let name =
+            hir::hir_def::interned::identifier::Ident::new(db, compact_str::CompactString::from("__init"));
+        module.functions.push(crate::function::MirFunction {
+            name,
+            origin_name: name,
+            index: idx,
+            params: Vec::new(),
+            return_type: None,
+            locals: Vec::new(),
+            body: init_stmts,
+            linkage: crate::function::MirLinkage::Export,
+            is_test: false,
+            export_name: Some(compact_str::CompactString::from("__init")),
+        });
+        module.function_indices.insert(name, idx);
+    }
+
     // End of all static memory, captured after phases 4/4.5 so the string
     // pool is placed past everything.
     let static_mem_end = module.memory_layout.total_size();
@@ -1164,4 +1190,84 @@ fn rewrite_globals_body(
     for stmt in body {
         rewrite_globals_stmt(stmt, globals, locals);
     }
+}
+
+/// Collect `Assign { Global{addr}, <const> }` statements for every scalar
+/// constant initializer that must run once at startup: config/resource
+/// VAR_GLOBALs and program-instance fields. Addresses are taken from the
+/// already-finalized global table and instance bases.
+fn collect_const_inits<'db>(
+    db: &'db dyn WorkspaceDataBase,
+    configs: &[hir::hir_def::config::ConfigDecl<'db>],
+    global_table: &GlobalTable<'db>,
+    schedule: &Option<crate::schedule::MirSchedule>,
+    program_infos: &FxHashMap<
+        hir::hir_def::interned::identifier::Ident,
+        crate::schedule::ProgramInfo<'db>,
+    >,
+) -> Result<Vec<crate::stmt::MirStmt>, LowerTypeError> {
+    use crate::expr::MirPlace;
+    use crate::stmt::MirStmt;
+    use hir::hir_def::config::ConfigResource;
+
+    let mut stmts = Vec::new();
+
+    // Config/resource VAR_GLOBALs.
+    for config in configs {
+        let mut globals: Vec<&hir::hir_def::pous::variable::VariableDecl<'db>> =
+            config.variables(db).iter().collect();
+        for res in config.resources(db) {
+            if let ConfigResource::Resource(r) = res {
+                globals.extend(r.variables(db).iter());
+            }
+        }
+        for v in globals {
+            if let Some((addr, ty)) = global_table.get(&v.name(db))
+                && let Some(init) = v.init(db)
+                && let Some(value) = super::lower_func::lower_const_init_value(db, init)?
+            {
+                stmts.push(MirStmt::Assign {
+                    target: MirPlace::Global {
+                        address: *addr,
+                        ty: ty.clone(),
+                    },
+                    value,
+                });
+            }
+        }
+    }
+
+    // Program instance fields.
+    if let Some(sched) = schedule {
+        for task in &sched.tasks {
+            for inst in &task.programs {
+                let Some(info) = program_infos.get(&inst.prog_name) else {
+                    continue;
+                };
+                for field in &info.struct_type.fields {
+                    let Some(var) = info
+                        .decl
+                        .variables(db)
+                        .iter()
+                        .find(|v| v.name(db) == field.name)
+                    else {
+                        continue;
+                    };
+                    let Some(init) = var.init(db) else { continue };
+                    let Some(value) = super::lower_func::lower_const_init_value(db, init)? else {
+                        continue;
+                    };
+                    stmts.push(MirStmt::Assign {
+                        target: MirPlace::Global {
+                            address: inst.instance_addr + field.offset,
+                            ty: field.ty.clone(),
+                        },
+                        value,
+                    });
+                }
+            }
+        }
+    }
+
+    Ok(stmts)
 }

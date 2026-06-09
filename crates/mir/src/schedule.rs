@@ -39,6 +39,9 @@ pub struct ProgramInfo<'db> {
 /// A configured program instance a task runs.
 #[derive(Debug, Clone)]
 pub struct MirProgInstance {
+    /// The program TYPE's name (key into the module's program info — used to
+    /// find the instance's field layout + initializers).
+    pub prog_name: Ident,
     /// The `Type$__body__` function to call.
     pub body_fn: Ident,
     /// Base address of this instance's state in linear memory.
@@ -133,6 +136,7 @@ pub fn lower_schedule<'db>(
         }
 
         let instance = MirProgInstance {
+            prog_name: prog_decl.name(db),
             body_fn: info.body_fn,
             instance_addr: base,
         };
