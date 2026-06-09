@@ -129,7 +129,9 @@ VAR x : INT; END_VAR
     x := 42;
 END_PROGRAM
     "#;
-    assert_snapshot!(mir_exports(&mut with_db, &[source]), @"export test_something()");
+    // A PROGRAM lowers to a `this`-parameterized body (FB-instance model), so it
+    // exports `<Prog>$__body__(this)` rather than a bare `()` entry.
+    assert_snapshot!(mir_exports(&mut with_db, &[source]), @"export test_something$__body__(*struct(test_something))");
 }
 
 // --- Test manifest tests ---
@@ -213,7 +215,9 @@ VAR x : INT; END_VAR
     x := 42;
 END_PROGRAM
     "#;
-    assert_snapshot!(mir_test_manifest(&mut with_db, &[source]), @"test test_something");
+    // A PROGRAM is instance-based (no `()` entry), so `{test}` on a program is
+    // not discovered as a runnable test — `{test}` is function-only for now.
+    assert_snapshot!(mir_test_manifest(&mut with_db, &[source]), @"");
 }
 
 #[rstest]

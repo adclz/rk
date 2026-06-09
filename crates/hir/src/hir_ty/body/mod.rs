@@ -300,6 +300,12 @@ pub struct BodyInferenceResult<'db> {
     // Populated during statement resolution for use by the linter.
     pub variables_shadowing: FxHashMap<VariableDecl<'db>, Pou<'db>>,
 
+    // Config/resource VAR_GLOBALs accessed directly by name without a matching
+    // VAR_EXTERNAL declaration (direct access). Resolution still
+    // succeeds; the linter warns, since strict IEC wants an explicit
+    // VAR_EXTERNAL. Records (access path expr, resolved global decl).
+    pub globals_without_external: Vec<(PathExpr<'db>, VariableDecl<'db>)>,
+
     // Function calls whose return value is discarded.
     // Populated during statement resolution for use by the linter.
     pub unused_return_types: Vec<(Stmt<'db>, Type<'db>)>,
@@ -341,6 +347,7 @@ impl<'db> BodyInferenceResult<'db> {
             variables_used: FxHashSet::default(),
             usings_used: FxHashSet::default(),
             variables_shadowing: FxHashMap::default(),
+            globals_without_external: Vec::new(),
             unused_return_types: Vec::new(),
             effectless_statements: Vec::new(),
             case_without_else: Vec::new(),

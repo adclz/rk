@@ -268,6 +268,33 @@ impl<'db> Resolver<'db> {
                         return;
                     }
 
+                    // Direct access to a config/resource VAR_GLOBAL.
+                    // A declared VAR_EXTERNAL resolves above (it's a POU variable),
+                    // so reaching here means the global was NOT imported via
+                    // VAR_EXTERNAL. We resolve it anyway and record it so the linter
+                    // can warn — strict IEC wants an explicit VAR_EXTERNAL.
+                    if let PathExprWalkStep::Field { ident, .. } = step
+                        && let Some(global) =
+                            crate::hir_ty::index_graphs::external_var_lookup(db, ident.ident)
+                    {
+                        // try_resolve_as_fq pushed a "not found" error; this access is
+                        // actually valid, so drop it.
+                        ctx.errors.pop();
+                        let ty = Type::new_var_with_multibits(db, global, step_multibits);
+                        ctx.type_of_path_expr.insert(step.get_expr(db), ty);
+                        ctx.variables_used.insert(global);
+                        ctx.globals_without_external.push((step.get_expr(db), global));
+                        if single_step {
+                            ctx.type_of_path_expr.insert(path_expr, ty);
+                            return;
+                        } else {
+                            current = ty;
+                            place.current_typ = ty;
+                            place.current_path = step.get_expr(db);
+                            continue;
+                        }
+                    }
+
                     // FQ failed. For multi-step paths like TYPE_NAME.field, the first
                     // step may be a DataType used as a constant. Try resolving just the
                     // first step as a POU name and continue walking the remaining steps.

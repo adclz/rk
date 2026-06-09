@@ -34,6 +34,7 @@ pub mod external_mutation;
 pub mod for_loop_step_sign;
 pub mod for_zero_step;
 pub mod generic_extern;
+pub mod global_without_external;
 pub mod identical_sub_expr;
 pub mod identity_operation;
 pub mod input_assignment;
@@ -84,6 +85,7 @@ pub const ALL_RULE_NAMES: &[&str] = &[
     for_loop_step_sign::NAME,
     for_zero_step::NAME,
     generic_extern::NAME,
+    global_without_external::NAME,
     identical_sub_expr::NAME,
     identity_operation::NAME,
     input_assignment::NAME,
@@ -317,6 +319,11 @@ fn lint_scope<'db>(
     if config.is_enabled(shadowing_variable::NAME) {
         run_lint(shadowing_variable::NAME, diagnostics, |d| {
             shadowing_variable::check(db, body, d)
+        });
+    }
+    if config.is_enabled(global_without_external::NAME) {
+        run_lint(global_without_external::NAME, diagnostics, |d| {
+            global_without_external::check(db, body, d)
         });
     }
     if config.is_enabled(unused_return_type::NAME) {

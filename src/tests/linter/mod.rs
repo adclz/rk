@@ -19,6 +19,7 @@ mod external_mutation;
 mod for_loop_step_sign;
 mod for_zero_step;
 mod generic_extern;
+mod global_without_external;
 mod identical_sub_expr;
 mod identity_operation;
 mod input_assignment;
