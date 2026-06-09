@@ -1138,7 +1138,7 @@ impl<'a> WasmGen<'a> {
         // exported `__task_<i>` entry whenever `tick % __task_<i>__period == 0`,
         // iterating i in 0..__task_count (already priority-sorted by MIR).
         if let Some(schedule) = &self.module.schedule {
-            let mut i32_global = |section: &mut wasm_encoder::GlobalSection, value: i32| {
+            let i32_global = |section: &mut wasm_encoder::GlobalSection, value: i32| {
                 let idx = section.len();
                 section.global(
                     wasm_encoder::GlobalType {

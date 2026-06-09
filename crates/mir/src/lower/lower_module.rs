@@ -369,37 +369,43 @@ fn lower_module_from_pous<'db>(
         }
     }
 
-    // Phase 3: Process programs
-    for (program, ns_prefix) in all_programs.iter() {
-        let mut mir_func = lower_program(
+    // Phase 3: programs. A PROGRAM lowers like an FB; instances are allocated
+    // per program configuration when the schedule is built.
+    let mut program_infos: FxHashMap<
+        hir::hir_def::interned::identifier::Ident,
+        crate::schedule::ProgramInfo<'db>,
+    > = FxHashMap::default();
+    for (program, _ns_prefix) in all_programs.iter() {
+        let (mir_func, prog_type) = lower_program(
             db,
             **program,
             next_fn_idx,
             &mut memory_layout,
             string_pool.clone(),
         )?;
-        mir_func.export_name = make_export_name(ns_prefix, program.name(db).text(db));
-
-        if hir::hir_def::pous::pragma::is_test(db, program.pragmas(db)) {
-            let export_name = mir_func
-                .export_name
-                .as_ref()
-                .map(|s| s.to_string())
-                .unwrap_or_else(|| mir_func.name.text(db).to_string());
-            test_entries.push(crate::test_manifest::TestEntry {
-                path: export_name.clone(),
-                export: export_name,
-                cases: vec![],
-            });
+        let body_fn = mir_func.name;
+        if let crate::types::MirType::Struct(struct_type) = &prog_type {
+            program_infos.insert(
+                program.name(db),
+                crate::schedule::ProgramInfo {
+                    body_fn,
+                    struct_type: struct_type.clone(),
+                    decl: **program,
+                },
+            );
         }
-
-        function_indices.insert(mir_func.name, next_fn_idx);
+        function_indices.insert(body_fn, next_fn_idx);
         next_fn_idx += 1;
         functions.push(mir_func);
     }
 
     // Sort test entries by path for deterministic output
     test_entries.sort_by(|a, b| a.path.cmp(&b.path));
+
+    // Build the CONFIGURATION's schedule: allocate one instance per program
+    // configuration (recording its RETAIN fields) and resolve task periods.
+    let schedule =
+        crate::schedule::lower_schedule(db, all_configs, &mut memory_layout, &program_infos);
 
     let mut module = MirModule {
         functions,
@@ -415,7 +421,7 @@ fn lower_module_from_pous<'db>(
         },
         retain_base: 0,
         retain_size: 0,
-        schedule: crate::schedule::lower_schedule(db, all_configs),
+        schedule,
     };
 
     // Phase 4: Monomorphization - discovers call sites, generates concrete copies
@@ -429,10 +435,42 @@ fn lower_module_from_pous<'db>(
         )?;
     }
 
-    // Phase 4.4: synthesize one entry function per scheduled task (cooperative
+    // Phase 4.5: Relocate RETAIN variables into one contiguous, host-snapshottable
+    // band. Done AFTER monomorphization so the band sits above every variable,
+    // instance, and monomorphized-slot allocation; then patch the moved addresses
+    // into each function's locals — the only place a variable's absolute address
+    // is stored (body statements resolve addresses via the local map at codegen).
+    let retain_band = module.memory_layout.finalize_retain_band();
+    if retain_band.size > 0 {
+        for func in &mut module.functions {
+            for local in &mut func.locals {
+                if let crate::function::MirStorage::Memory { address, .. } = &mut local.storage
+                    && let Some(&new_addr) = retain_band.remap.get(address)
+                {
+                    *address = new_addr;
+                }
+            }
+        }
+        // A retain-holding program instance is relocated whole; patch its base
+        // so the tasks pass the band address as `this`.
+        if let Some(sched) = &mut module.schedule {
+            for task in &mut sched.tasks {
+                for inst in &mut task.programs {
+                    if let Some(&new_addr) = retain_band.remap.get(&inst.instance_addr) {
+                        inst.instance_addr = new_addr;
+                    }
+                }
+            }
+        }
+    }
+    module.retain_base = retain_band.base;
+    module.retain_size = retain_band.size;
+
+    // Phase 4.6: synthesize one entry function per scheduled task (cooperative
     // model B — the runtime calls these). Each `__task_<i>` runs its task's
-    // program bodies in order. Done after monomorphization so the function
-    // indices continue the same contiguous scheme it uses.
+    // program instances in order, calling `Type$__body__(this = instance_addr)`.
+    // Done AFTER the retain relocation so instance addresses are final, and
+    // after monomorphization so function indices continue its contiguous scheme.
     if let Some(sched) = module.schedule.clone() {
         let mut idx = module.functions.len() as u32 + module.extern_functions.len() as u32;
         for (i, task) in sched.tasks.iter().enumerate() {
@@ -443,11 +481,16 @@ fn lower_module_from_pous<'db>(
             let body = task
                 .programs
                 .iter()
-                .map(|prog| {
+                .map(|inst| {
                     crate::stmt::MirStmt::Call(crate::expr::MirCall {
-                        callee: *prog,
+                        callee: inst.body_fn,
                         callee_index: 0, // resolved by name at codegen
-                        args: Vec::new(),
+                        args: vec![crate::expr::MirCallArg {
+                            value: crate::expr::MirExpr::Constant(crate::expr::MirConstant::I32(
+                                inst.instance_addr as i32,
+                            )),
+                            kind: crate::expr::MirArgKind::ByValue,
+                        }],
                         return_type: crate::types::MirType::Void,
                         output_bindings: Vec::new(),
                     })
@@ -469,26 +512,6 @@ fn lower_module_from_pous<'db>(
             idx += 1;
         }
     }
-
-    // Phase 4.5: Relocate RETAIN variables into one contiguous, host-snapshottable
-    // band. Done AFTER monomorphization so the band sits above every variable,
-    // instance, and monomorphized-slot allocation; then patch the moved addresses
-    // into each function's locals — the only place a variable's absolute address
-    // is stored (body statements resolve addresses via the local map at codegen).
-    let retain_band = module.memory_layout.finalize_retain_band();
-    if retain_band.size > 0 {
-        for func in &mut module.functions {
-            for local in &mut func.locals {
-                if let crate::function::MirStorage::Memory { address, .. } = &mut local.storage
-                    && let Some(&new_addr) = retain_band.remap.get(address)
-                {
-                    *address = new_addr;
-                }
-            }
-        }
-    }
-    module.retain_base = retain_band.base;
-    module.retain_size = retain_band.size;
 
     // End of all static memory, captured after phases 4/4.5 so the string
     // pool is placed past everything.

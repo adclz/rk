@@ -195,6 +195,43 @@ fn scheduler_runs_tasks_at_their_rates_and_persists(mut with_db: db::RootDatabas
     std::fs::remove_file(&path).ok();
 }
 
+/// The point of the instance model: two instances of the SAME program type have
+/// independent state. `P1` (fast) and `P2` (slow) share the `Counter` type but
+/// run at different rates, so their retained counters diverge.
+#[rstest]
+fn two_instances_of_one_program_type_are_independent(mut with_db: db::RootDatabase) {
+    use runtime::{Config, Plc};
+
+    let source = r#"
+        PROGRAM Counter
+        VAR RETAIN n : INT; END_VAR
+            n := n + 1;
+        END_PROGRAM
+
+        CONFIGURATION Cfg
+            RESOURCE Res ON CPU
+                TASK Fast(INTERVAL := T#10ms, PRIORITY := 1);
+                TASK Slow(INTERVAL := T#20ms, PRIORITY := 2);
+                PROGRAM P1 WITH Fast : Counter;
+                PROGRAM P2 WITH Slow : Counter;
+            END_RESOURCE
+        END_CONFIGURATION
+    "#;
+    let (mir, wasm) = compile_to_mir_and_wasm(&mut with_db, source);
+
+    // Two independent Counter instances => an 8-byte retain band ([P1.n, P2.n]).
+    assert_eq!(mir.retain_size, 8, "two INT instances => 8 bytes");
+
+    let mut plc = Plc::load(&wasm, Config::default()).expect("load");
+    plc.run(4).expect("scans");
+
+    // Fast ran at ticks 0,1,2,3 (4x); Slow at 0,2 (2x). Same type, distinct state.
+    let r = plc.read_retain();
+    let p1 = i32::from_le_bytes(r[0..4].try_into().unwrap());
+    let p2 = i32::from_le_bytes(r[4..8].try_into().unwrap());
+    assert_eq!((p1, p2), (4, 2), "independent per-instance state");
+}
+
 /// A module with no CONFIGURATION (e.g. a bare program) has no schedule.
 #[rstest]
 fn no_configuration_yields_no_schedule(mut with_db: db::RootDatabase) {

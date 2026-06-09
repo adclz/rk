@@ -368,6 +368,45 @@ pub fn lower_fb_type_with_subs_named<'db>(
     }))
 }
 
+/// Lower a PROGRAM's variables into a struct type — its instance layout.
+///
+/// A PROGRAM is compiled like a FUNCTION_BLOCK (a struct of its variables plus a
+/// `this`-parameterized body), so its persistent state lives in an instance of
+/// this struct. Programs aren't generic, so there are no ANY_* substitutions to
+/// resolve — every field is a plain `lower_type` of the variable's spec.
+pub fn lower_program_type<'db>(
+    db: &'db dyn WorkspaceDataBase,
+    program: hir::hir_def::program::ProgramDecl<'db>,
+) -> Result<MirType, LowerTypeError> {
+    let mut offset = 0u32;
+    let mut max_align = 1u32;
+    let mut fields = Vec::new();
+
+    for var in program.variables(db) {
+        let mir_type = lower_type(db, var.spec(db).infer(db))?;
+        let field_align = mir_type.alignment();
+        let field_size = mir_type.size_bytes();
+
+        max_align = max_align.max(field_align);
+        offset = align_to(offset, field_align);
+        fields.push(MirStructField {
+            name: var.name(db),
+            ty: mir_type,
+            offset,
+        });
+        offset += field_size;
+    }
+
+    offset = align_to(offset, max_align);
+
+    Ok(MirType::Struct(MirStructType {
+        name: program.name(db),
+        fields,
+        size: offset,
+        align: max_align,
+    }))
+}
+
 /// Lower a Class type to MirType::Struct.
 pub fn lower_class_type<'db>(
     db: &'db dyn WorkspaceDataBase,

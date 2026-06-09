@@ -1,6 +1,5 @@
 use db::WorkspaceDataBase;
 use hir::{
-    Qualifier,
     hir_def::{
         expressions::{expression::InitExprKind, statement::StmtKind},
         interned::identifier::Ident,
@@ -597,68 +596,86 @@ pub fn lower_class<'db>(
     Ok(functions)
 }
 
-/// Lower a PROGRAM to a MirFunction (zero-param exported function).
+/// Lower a PROGRAM's body to `<Prog>$__body__(this)` plus its instance
+/// struct: a PROGRAM is compiled like a FUNCTION_BLOCK, with only
+/// `VAR_TEMP` body-local. Instances are allocated per program
+/// configuration in `lower_module`.
 pub fn lower_program<'db>(
     db: &'db dyn WorkspaceDataBase,
     program: ProgramDecl<'db>,
     index: u32,
     memory_layout: &mut MirMemoryLayout,
     string_pool: Rc<RefCell<super::lower_expr::StringPool>>,
-) -> Result<MirFunction, LowerTypeError> {
-    let mut locals = Vec::new();
-    let mut next_local_idx: u32 = 0;
-
-    for var in program.variables(db) {
-        let ty = lower_var_type(db, *var)?;
-        // PROGRAM keeps state across scans, so its VARs are Static (or
-        // Retain/Global per section/qualifier) — unlike FUNCTION locals.
-        let var_storage = classify_var_storage(db, *var, /* persists = */ true);
-        // A persistent VAR can never be a wasm local (locals reset every
-        // scan call), so force it into linear memory even when it is a
-        // scalar. Only VAR_TEMP (Automatic) may stay a wasm local.
-        let force_memory = var_storage != MirVariableStorage::Automatic;
-        let storage = allocate_local_storage(
-            var.name(db),
-            &ty,
-            force_memory,
-            &mut next_local_idx,
-            memory_layout,
-        );
-        // RETAIN vars must survive power cycles: register them so Step 2b.2
-        // can gather them into a contiguous, host-snapshottable band.
-        if var_storage == MirVariableStorage::Retain
-            && let MirStorage::Memory {
-                address,
-                size,
-                align,
-            } = storage
-        {
-            memory_layout.record_retain(var.name(db), address, size, align);
+) -> Result<(MirFunction, MirType), LowerTypeError> {
+    let prog_type = super::lower_type::lower_program_type(db, program)?;
+    let this_struct = match &prog_type {
+        MirType::Struct(s) => s.clone(),
+        _ => {
+            return Err(LowerTypeError::UnsupportedType(
+                "program type is not a struct".into(),
+            ));
         }
-        locals.push(MirLocal {
-            name: var.name(db),
-            ty,
-            init: None,
-            kind: MirLocalKind::Var,
-            var_storage,
-            storage,
-        });
+    };
+
+    let params = vec![MirParam {
+        name: Ident::new(db, compact_str::CompactString::from("this")),
+        ty: MirType::Pointer(Box::new(prog_type.clone())),
+        kind: MirParamKind::This,
+    }];
+
+    // VAR_TEMP become body locals (automatic); persistent vars are instance
+    // fields accessed through `this`.
+    let mut locals = Vec::new();
+    let mut next_local_idx: u32 = 1; // 0 is 'this'
+    let address_taken = collect_address_taken_vars(db, program.statements(db));
+    for var in program.variables(db) {
+        if var.kind(db) == VariableKind::Temp {
+            let ty = lower_var_type(db, *var)?;
+            let storage = allocate_local_storage(
+                var.name(db),
+                &ty,
+                address_taken.contains(&var.name(db)),
+                &mut next_local_idx,
+                memory_layout,
+            );
+            locals.push(MirLocal {
+                name: var.name(db),
+                ty,
+                init: None,
+                kind: MirLocalKind::Var,
+                storage,
+                var_storage: MirVariableStorage::Automatic,
+            });
+        }
     }
 
-    let body = lower_stmts(db, program.statements(db), string_pool.clone())?;
+    let body = crate::lower::lower_stmt::lower_stmts_fb_body(
+        db,
+        program.statements(db),
+        this_struct,
+        string_pool.clone(),
+        None,
+        None,
+    )?;
 
-    Ok(MirFunction {
-        name: super::monomorphize::qualified_pou_ident(db, Type::Program(program)),
+    let body_name = Ident::new(
+        db,
+        compact_str::CompactString::from(format!("{}$__body__", program.name(db).text(db))),
+    );
+
+    let func = MirFunction {
+        name: body_name,
         origin_name: program.name(db),
         index,
-        params: Vec::new(),
+        params,
         return_type: None,
         locals,
         body,
         linkage: MirLinkage::Export,
         is_test: false,
         export_name: None,
-    })
+    };
+    Ok((func, prog_type))
 }
 
 /// Number of wasm i32 locals a parameter of the given (lowered) type
@@ -729,30 +746,6 @@ pub fn allocate_local_storage(
             size,
             align,
         }
-    }
-}
-
-/// Classify a variable's storage *duration* (lifetime) for the runtime.
-///
-/// `persists` is true when the containing POU keeps state across scans — a
-/// `PROGRAM` or a `FUNCTION_BLOCK` instance. A `FUNCTION` is stateless, so
-/// all of its locals are [`MirVariableStorage::Automatic`] regardless of
-/// section or qualifier.
-///
-/// Note this reads `var.kind` directly, so `VAR_TEMP` is `Automatic` even
-/// inside a persistent POU, and `VAR_GLOBAL` is `Global` regardless of
-/// `persists`.
-fn classify_var_storage<'db>(
-    db: &'db dyn WorkspaceDataBase,
-    var: VariableDecl<'db>,
-    persists: bool,
-) -> MirVariableStorage {
-    match var.kind(db) {
-        VariableKind::Temp => MirVariableStorage::Automatic,
-        VariableKind::Global => MirVariableStorage::Global,
-        _ if !persists => MirVariableStorage::Automatic,
-        _ if var.qualifier(db).contains(Qualifier::RETAIN) => MirVariableStorage::Retain,
-        _ => MirVariableStorage::Static,
     }
 }
 
