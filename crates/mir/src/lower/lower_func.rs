@@ -128,7 +128,11 @@ pub fn lower_function<'db>(
     // 3. Local variables (Var, Temp - Output is a parameter now)
     for var in func.variables(db) {
         match var.kind(db) {
-            VariableKind::Input | VariableKind::InOut | VariableKind::Output => continue,
+            // VAR_EXTERNAL resolves to a global's address, not a function local.
+            VariableKind::Input
+            | VariableKind::InOut
+            | VariableKind::Output
+            | VariableKind::External => continue,
             _ => {}
         }
 

@@ -308,6 +308,11 @@ pub fn lower_fb_type_with_subs_named<'db>(
     let mut fields = Vec::new();
 
     for var in fb.variables(db) {
+        // VAR_EXTERNAL references a global, not the FB's own state — it resolves
+        // to the global's address, so keep it out of the instance.
+        if var.kind(db) == hir::hir_def::pous::variable::VariableKind::External {
+            continue;
+        }
         let var_type = var.spec(db).infer(db);
 
         // Check if this variable has an ANY_* type that should be substituted
@@ -383,6 +388,10 @@ pub fn lower_program_type<'db>(
     let mut fields = Vec::new();
 
     for var in program.variables(db) {
+        // VAR_EXTERNAL resolves to a global's address; not instance state.
+        if var.kind(db) == hir::hir_def::pous::variable::VariableKind::External {
+            continue;
+        }
         let mir_type = lower_type(db, var.spec(db).infer(db))?;
         let field_align = mir_type.alignment();
         let field_size = mir_type.size_bytes();

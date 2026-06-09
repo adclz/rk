@@ -402,6 +402,10 @@ fn lower_module_from_pous<'db>(
     // Sort test entries by path for deterministic output
     test_entries.sort_by(|a, b| a.path.cmp(&b.path));
 
+    // Allocate storage for every config/resource VAR_GLOBAL. Bodies referenced
+    // these as `Local(name)`; a post-pass below rewrites them to `Global`.
+    let mut global_table = build_global_table(db, all_configs, &mut memory_layout)?;
+
     // Build the CONFIGURATION's schedule: allocate one instance per program
     // configuration (recording its RETAIN fields) and resolve task periods.
     let schedule =
@@ -462,6 +466,12 @@ fn lower_module_from_pous<'db>(
                 }
             }
         }
+        // RETAIN globals are relocated into the band too; patch their addresses.
+        for (addr, _) in global_table.values_mut() {
+            if let Some(&new_addr) = retain_band.remap.get(&*addr) {
+                *addr = new_addr;
+            }
+        }
     }
     module.retain_base = retain_band.base;
     module.retain_size = retain_band.size;
@@ -511,6 +521,12 @@ fn lower_module_from_pous<'db>(
             module.function_indices.insert(entry, idx);
             idx += 1;
         }
+    }
+
+    // Rewrite `Local(name)` -> `Global` for every global a body referenced,
+    // now that addresses are final.
+    for func in &mut module.functions {
+        resolve_global_places(func, &global_table);
     }
 
     // End of all static memory, captured after phases 4/4.5 so the string
@@ -934,5 +950,218 @@ fn rebase_expr(expr: &mut crate::expr::MirExpr, base: u32) {
             }
         }
         _ => {}
+    }
+}
+
+// ---------------------------------------------------------------------------
+// VAR_GLOBAL lowering
+// ---------------------------------------------------------------------------
+
+type GlobalTable<'db> =
+    FxHashMap<hir::hir_def::interned::identifier::Ident, (u32, crate::types::MirType)>;
+
+/// Allocate a linear-memory slot for every config/resource VAR_GLOBAL and build
+/// the symbol table (name -> (address, type)). RETAIN globals are recorded into
+/// the host-snapshottable band. Located (`AT %…`) globals are treated as plain
+/// storage for now — hardware mapping is not implemented.
+fn build_global_table<'db>(
+    db: &'db dyn WorkspaceDataBase,
+    configs: &[hir::hir_def::config::ConfigDecl<'db>],
+    memory_layout: &mut MirMemoryLayout,
+) -> Result<GlobalTable<'db>, LowerTypeError> {
+    use hir::hir_def::config::ConfigResource;
+    let mut table = GlobalTable::default();
+    for config in configs {
+        for v in config.variables(db) {
+            add_global(db, v, memory_layout, &mut table)?;
+        }
+        for res in config.resources(db) {
+            if let ConfigResource::Resource(r) = res {
+                for v in r.variables(db) {
+                    add_global(db, v, memory_layout, &mut table)?;
+                }
+            }
+        }
+    }
+    Ok(table)
+}
+
+fn add_global<'db>(
+    db: &'db dyn WorkspaceDataBase,
+    v: &hir::hir_def::pous::variable::VariableDecl<'db>,
+    memory_layout: &mut MirMemoryLayout,
+    table: &mut GlobalTable<'db>,
+) -> Result<(), LowerTypeError> {
+    use hir::hir_ty::infer::Infer;
+    let ty = super::lower_type::lower_type(db, v.spec(db).infer(db))?;
+    let size = ty.size_bytes();
+    let align = ty.alignment();
+    let addr = memory_layout.allocate(v.name(db), size, align, crate::memory::MirAllocKind::Variable);
+    if v.qualifier(db).contains(hir::Qualifier::RETAIN) {
+        memory_layout.record_retain(v.name(db), addr, size, align);
+    }
+    table.insert(v.name(db), (addr, ty));
+    Ok(())
+}
+
+/// Rewrite `MirPlace::Local(name)` references to globals into `MirPlace::Global`.
+/// A body lowers a global reference (direct or VAR_EXTERNAL) as `Local(name)`,
+/// since the address isn't known at body-lowering time. A name is a global iff
+/// it's in `globals` AND not an actual local/param of this function (locals
+/// shadow globals).
+fn resolve_global_places(func: &mut crate::function::MirFunction, globals: &GlobalTable<'_>) {
+    use rustc_hash::FxHashSet;
+    let mut locals: FxHashSet<_> = func.locals.iter().map(|l| l.name).collect();
+    locals.extend(func.params.iter().map(|p| p.name));
+    for stmt in &mut func.body {
+        rewrite_globals_stmt(stmt, globals, &locals);
+    }
+}
+
+fn rewrite_globals_place(
+    place: &mut crate::expr::MirPlace,
+    globals: &GlobalTable<'_>,
+    locals: &rustc_hash::FxHashSet<hir::hir_def::interned::identifier::Ident>,
+) {
+    use crate::expr::MirPlace;
+    match place {
+        MirPlace::Local(name) => {
+            if !locals.contains(name)
+                && let Some((address, ty)) = globals.get(name)
+            {
+                *place = MirPlace::Global {
+                    address: *address,
+                    ty: ty.clone(),
+                };
+            }
+        }
+        MirPlace::Field { base, .. } | MirPlace::Deref { base, .. } => {
+            rewrite_globals_place(base, globals, locals);
+        }
+        MirPlace::Index { base, index, .. } => {
+            rewrite_globals_place(base, globals, locals);
+            rewrite_globals_expr(index, globals, locals);
+        }
+        MirPlace::ThisField { .. } | MirPlace::Global { .. } => {}
+    }
+}
+
+fn rewrite_globals_expr(
+    expr: &mut crate::expr::MirExpr,
+    globals: &GlobalTable<'_>,
+    locals: &rustc_hash::FxHashSet<hir::hir_def::interned::identifier::Ident>,
+) {
+    use crate::expr::MirExpr;
+    match expr {
+        MirExpr::Load(place, _) | MirExpr::AddrOf(place) => {
+            rewrite_globals_place(place, globals, locals);
+        }
+        MirExpr::BinOp { lhs, rhs, .. } => {
+            rewrite_globals_expr(lhs, globals, locals);
+            rewrite_globals_expr(rhs, globals, locals);
+        }
+        MirExpr::UnaryOp { expr, .. } | MirExpr::Cast { expr, .. } => {
+            rewrite_globals_expr(expr, globals, locals);
+        }
+        MirExpr::Call(call) => {
+            for arg in &mut call.args {
+                rewrite_globals_expr(&mut arg.value, globals, locals);
+            }
+        }
+        MirExpr::Constant(_) | MirExpr::StringLiteral { .. } => {}
+    }
+}
+
+fn rewrite_globals_stmt(
+    stmt: &mut crate::stmt::MirStmt,
+    globals: &GlobalTable<'_>,
+    locals: &rustc_hash::FxHashSet<hir::hir_def::interned::identifier::Ident>,
+) {
+    use crate::stmt::MirStmt;
+    match stmt {
+        MirStmt::Assign { target, value } => {
+            rewrite_globals_place(target, globals, locals);
+            rewrite_globals_expr(value, globals, locals);
+        }
+        MirStmt::Call(call) => {
+            for arg in &mut call.args {
+                rewrite_globals_expr(&mut arg.value, globals, locals);
+            }
+            for binding in &mut call.output_bindings {
+                rewrite_globals_place(&mut binding.target, globals, locals);
+            }
+        }
+        MirStmt::FbCall {
+            instance,
+            input_writes,
+            output_reads,
+            ..
+        } => {
+            rewrite_globals_place(instance, globals, locals);
+            for (_, value, _) in input_writes {
+                rewrite_globals_expr(value, globals, locals);
+            }
+            for (_, target, _) in output_reads {
+                rewrite_globals_place(target, globals, locals);
+            }
+        }
+        MirStmt::If {
+            condition,
+            then_body,
+            else_ifs,
+            else_body,
+        } => {
+            rewrite_globals_expr(condition, globals, locals);
+            rewrite_globals_body(then_body, globals, locals);
+            for (cond, body) in else_ifs {
+                rewrite_globals_expr(cond, globals, locals);
+                rewrite_globals_body(body, globals, locals);
+            }
+            if let Some(body) = else_body {
+                rewrite_globals_body(body, globals, locals);
+            }
+        }
+        MirStmt::Case {
+            selector,
+            arms,
+            else_body,
+        } => {
+            rewrite_globals_expr(selector, globals, locals);
+            for arm in arms {
+                rewrite_globals_body(&mut arm.body, globals, locals);
+            }
+            if let Some(body) = else_body {
+                rewrite_globals_body(body, globals, locals);
+            }
+        }
+        MirStmt::For {
+            start, end, step, body, ..
+        } => {
+            rewrite_globals_expr(start, globals, locals);
+            rewrite_globals_expr(end, globals, locals);
+            rewrite_globals_expr(step, globals, locals);
+            rewrite_globals_body(body, globals, locals);
+        }
+        MirStmt::While { condition, body } | MirStmt::Repeat { condition, body } => {
+            rewrite_globals_expr(condition, globals, locals);
+            rewrite_globals_body(body, globals, locals);
+        }
+        MirStmt::Raise { message } => rewrite_globals_expr(message, globals, locals),
+        MirStmt::Return
+        | MirStmt::Exit
+        | MirStmt::Continue
+        | MirStmt::MemStore { .. }
+        | MirStmt::WasmIntrinsic { .. }
+        | MirStmt::DebugTrap { .. } => {}
+    }
+}
+
+fn rewrite_globals_body(
+    body: &mut [crate::stmt::MirStmt],
+    globals: &GlobalTable<'_>,
+    locals: &rustc_hash::FxHashSet<hir::hir_def::interned::identifier::Ident>,
+) {
+    for stmt in body {
+        rewrite_globals_stmt(stmt, globals, locals);
     }
 }

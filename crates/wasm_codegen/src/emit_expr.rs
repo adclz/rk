@@ -270,6 +270,12 @@ fn emit_load(
             }
             emit_typed_mem_load(func, field_type);
         }
+
+        MirPlace::Global { address, ty } => {
+            // A VAR_GLOBAL at a fixed address: a type-aware load.
+            func.instruction(&Instruction::I32Const(*address as i32));
+            emit_typed_mem_load(func, ty);
+        }
     }
 }
 
@@ -344,6 +350,10 @@ pub(crate) fn emit_addr_of(
                 func.instruction(&Instruction::I32Const(*field_offset as i32));
                 func.instruction(&Instruction::I32Add);
             }
+        }
+        MirPlace::Global { address, .. } => {
+            // The address of a VAR_GLOBAL is just its fixed linear-memory address.
+            func.instruction(&Instruction::I32Const(*address as i32));
         }
     }
 }
