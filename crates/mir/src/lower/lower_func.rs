@@ -1030,12 +1030,113 @@ pub(crate) fn lower_const_init_value<'db>(
                 Rc::new(RefCell::new(super::lower_expr::StringPool::default())),
             );
             let value = ctx.lower_expr(expr)?;
-            if matches!(value, crate::expr::MirExpr::Constant(_)) {
+            if is_const_value(&value) {
                 Ok(Some(value))
             } else {
                 Ok(None)
             }
         }
         _ => Ok(None),
+    }
+}
+
+/// A pure compile-time-constant value: a literal or arithmetic over literals.
+/// Decides whether an initializer can be baked into `__init` and computed at
+/// startup. Excludes variable loads (which would create init-order hazards),
+/// calls, and string literals (which would need the module string pool).
+fn is_const_value(e: &crate::expr::MirExpr) -> bool {
+    use crate::expr::MirExpr;
+    match e {
+        MirExpr::Constant(_) => true,
+        MirExpr::BinOp { lhs, rhs, .. } => is_const_value(lhs) && is_const_value(rhs),
+        MirExpr::UnaryOp { expr, .. } => is_const_value(expr),
+        MirExpr::Cast { expr, .. } => is_const_value(expr),
+        MirExpr::Load(..)
+        | MirExpr::Call(_)
+        | MirExpr::AddrOf(_)
+        | MirExpr::StringLiteral { .. } => false,
+    }
+}
+
+/// Recursively lower an initializer for a value of `ty` at absolute address
+/// `base` into flat scalar `Assign { Global, const }` stores. Handles scalars,
+/// 1-D arrays, and structs (with arbitrary nesting). Returns `false` for
+/// anything not yet supported — a non-const/string leaf, repetition `[n(v)]`,
+/// multi-dimensional arrays, or a shape mismatch — and the caller then drops
+/// the WHOLE initializer (no partial init; unlisted elements rely on the
+/// zero-initialized memory image).
+pub(crate) fn lower_init_into<'db>(
+    db: &'db dyn WorkspaceDataBase,
+    base: u32,
+    ty: &crate::types::MirType,
+    init: hir::hir_def::expressions::expression::InitExpr<'db>,
+    out: &mut Vec<crate::stmt::MirStmt>,
+) -> Result<bool, LowerTypeError> {
+    use crate::expr::MirPlace;
+    use crate::stmt::MirStmt;
+    use crate::types::MirType;
+    use hir::hir_def::expressions::expression::InitExprKind;
+
+    match init.kind(db) {
+        // Scalar leaf (also covers enum/subrange, which store as integers).
+        InitExprKind::ConstantExpr(_) => match lower_const_init_value(db, init)? {
+            Some(value) => {
+                out.push(MirStmt::Assign {
+                    target: MirPlace::Global {
+                        address: base,
+                        ty: ty.clone(),
+                    },
+                    value,
+                });
+                Ok(true)
+            }
+            None => Ok(false),
+        },
+
+        // Struct: `(field := value, ...)`.
+        InitExprKind::StructInit { values } => {
+            let MirType::Struct(s) = ty else { return Ok(false) };
+            for v in &values {
+                let InitExprKind::StructElement { name, value } = v.kind(db) else {
+                    return Ok(false);
+                };
+                let Some(field) = s.fields.iter().find(|f| f.name == name.ident) else {
+                    return Ok(false);
+                };
+                if !lower_init_into(db, base + field.offset, &field.ty, *value, out)? {
+                    return Ok(false);
+                }
+            }
+            Ok(true)
+        }
+
+        // 1-D array: `[v0, v1, ...]` (repetition + multi-dim deferred).
+        InitExprKind::ArrayInit { values } => {
+            let MirType::Array(arr) = ty else { return Ok(false) };
+            if arr.dimensions.len() != 1 {
+                return Ok(false);
+            }
+            for (idx, v) in values.iter().enumerate() {
+                let idx = idx as u32;
+                if idx >= arr.total_elements
+                    || matches!(v.kind(db), InitExprKind::ArrayIndexedElement { .. })
+                {
+                    return Ok(false);
+                }
+                if !lower_init_into(
+                    db,
+                    base + idx * arr.element_size,
+                    arr.element_type.as_ref(),
+                    *v,
+                    out,
+                )? {
+                    return Ok(false);
+                }
+            }
+            Ok(true)
+        }
+
+        // StructElement / ArrayIndexedElement only ever appear nested above.
+        _ => Ok(false),
     }
 }

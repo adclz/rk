@@ -40,6 +40,31 @@ fn program_field_initializer_runs_once(mut with_db: db::RootDatabase) {
     assert_eq!(read_first_i32(&plc), 8, "then incremented by the scan");
 }
 
+/// A constant-expression initializer (arithmetic over literals) is evaluated
+/// and applied at load.
+#[rstest]
+fn const_expr_initializer(mut with_db: db::RootDatabase) {
+    let source = r#"
+        PROGRAM P
+        VAR RETAIN x : INT := 2 + 3 * 4; END_VAR
+            x := x + 1;
+        END_PROGRAM
+
+        CONFIGURATION Cfg
+            RESOURCE Res ON CPU
+                TASK T(INTERVAL := T#10ms, PRIORITY := 1);
+                PROGRAM P1 WITH T : P;
+            END_RESOURCE
+        END_CONFIGURATION
+    "#;
+    let (_mir, wasm) = compile_to_mir_and_wasm(&mut with_db, source);
+
+    let mut plc = Plc::load(&wasm, Config::default()).expect("load");
+    assert_eq!(read_first_i32(&plc), 14, "2 + 3*4 = 14 at load");
+    plc.run(1).expect("scan");
+    assert_eq!(read_first_i32(&plc), 15);
+}
+
 /// A config VAR_GLOBAL initializer is applied at load and visible to programs.
 #[rstest]
 fn global_initializer_applied(mut with_db: db::RootDatabase) {
@@ -63,6 +88,56 @@ fn global_initializer_applied(mut with_db: db::RootDatabase) {
     plc.run(1).expect("scan"); // Mirror copies g (== 42) into seen
     let seen = i32::from_le_bytes(plc.read_retain()[..4].try_into().unwrap());
     assert_eq!(seen, 42, "global initialized to 42, read by the program");
+}
+
+/// A 1-D array initializer `[10, 20, 30]` is applied element-by-element at load.
+#[rstest]
+fn array_initializer(mut with_db: db::RootDatabase) {
+    let source = r#"
+        PROGRAM P
+        VAR RETAIN seen : INT; END_VAR
+        VAR a : ARRAY[0..2] OF INT := [10, 20, 30]; END_VAR
+            seen := a[0] + a[1] + a[2];
+        END_PROGRAM
+
+        CONFIGURATION Cfg
+            RESOURCE Res ON CPU
+                TASK T(INTERVAL := T#10ms, PRIORITY := 1);
+                PROGRAM P1 WITH T : P;
+            END_RESOURCE
+        END_CONFIGURATION
+    "#;
+    let (_mir, wasm) = compile_to_mir_and_wasm(&mut with_db, source);
+
+    let mut plc = Plc::load(&wasm, Config::default()).expect("load");
+    plc.run(1).expect("scan");
+    assert_eq!(read_first_i32(&plc), 60, "10 + 20 + 30 from the array init");
+}
+
+/// A struct initializer `(x := 3, y := 4)` is applied field-by-field at load.
+#[rstest]
+fn struct_initializer(mut with_db: db::RootDatabase) {
+    let source = r#"
+        TYPE Point : STRUCT x : INT; y : INT; END_STRUCT; END_TYPE
+
+        PROGRAM P
+        VAR RETAIN seen : INT; END_VAR
+        VAR pt : Point := (x := 3, y := 4); END_VAR
+            seen := pt.x * 100 + pt.y;
+        END_PROGRAM
+
+        CONFIGURATION Cfg
+            RESOURCE Res ON CPU
+                TASK T(INTERVAL := T#10ms, PRIORITY := 1);
+                PROGRAM P1 WITH T : P;
+            END_RESOURCE
+        END_CONFIGURATION
+    "#;
+    let (_mir, wasm) = compile_to_mir_and_wasm(&mut with_db, source);
+
+    let mut plc = Plc::load(&wasm, Config::default()).expect("load");
+    plc.run(1).expect("scan");
+    assert_eq!(read_first_i32(&plc), 304, "x*100 + y = 3*100 + 4 from struct init");
 }
 
 /// A RETAIN var's initializer is its COLD-start value only: on a warm restart

@@ -1206,8 +1206,6 @@ fn collect_const_inits<'db>(
         crate::schedule::ProgramInfo<'db>,
     >,
 ) -> Result<Vec<crate::stmt::MirStmt>, LowerTypeError> {
-    use crate::expr::MirPlace;
-    use crate::stmt::MirStmt;
     use hir::hir_def::config::ConfigResource;
 
     let mut stmts = Vec::new();
@@ -1224,15 +1222,12 @@ fn collect_const_inits<'db>(
         for v in globals {
             if let Some((addr, ty)) = global_table.get(&v.name(db))
                 && let Some(init) = v.init(db)
-                && let Some(value) = super::lower_func::lower_const_init_value(db, init)?
             {
-                stmts.push(MirStmt::Assign {
-                    target: MirPlace::Global {
-                        address: *addr,
-                        ty: ty.clone(),
-                    },
-                    value,
-                });
+                // All-or-nothing: only commit if the whole initializer lowers.
+                let mut local = Vec::new();
+                if super::lower_func::lower_init_into(db, *addr, ty, init, &mut local)? {
+                    stmts.extend(local);
+                }
             }
         }
     }
@@ -1254,16 +1249,16 @@ fn collect_const_inits<'db>(
                         continue;
                     };
                     let Some(init) = var.init(db) else { continue };
-                    let Some(value) = super::lower_func::lower_const_init_value(db, init)? else {
-                        continue;
-                    };
-                    stmts.push(MirStmt::Assign {
-                        target: MirPlace::Global {
-                            address: inst.instance_addr + field.offset,
-                            ty: field.ty.clone(),
-                        },
-                        value,
-                    });
+                    let mut local = Vec::new();
+                    if super::lower_func::lower_init_into(
+                        db,
+                        inst.instance_addr + field.offset,
+                        &field.ty,
+                        init,
+                        &mut local,
+                    )? {
+                        stmts.extend(local);
+                    }
                 }
             }
         }
