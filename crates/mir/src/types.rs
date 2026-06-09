@@ -13,12 +13,12 @@ pub enum MirType {
     /// Primitive scalar type (bool, integers, reals, time types).
     Elementary(MirElementary),
 
-    /// Fixed-size UTF-8 string. Stored in linear memory as an 8-byte
-    /// header (`ptr: i32`, `len: i32`) immediately followed by `capacity`
-    /// bytes of embedded buffer. The header's `ptr` is initialized to
-    /// point at the embedded buffer at function entry; producers
-    /// (CONCAT, INSERT, …) write into that buffer and update `len`.
-    /// Total in-memory size is `8 + capacity`.
+    /// Fixed-size UTF-8 string. Stored in linear memory as a 4-byte length
+    /// prefix (`len: i32`) immediately followed by `capacity` bytes of embedded
+    /// buffer: `[len] @ addr`, bytes at `addr + 4`. There is no stored pointer —
+    /// the buffer pointer is implicit (`addr + 4`). Producers (CONCAT, INSERT, …)
+    /// and assignment write into the buffer and update `len` via `rk.str_assign`
+    /// (a capacity-bounded copy). Total in-memory size is `4 + capacity`.
     String { capacity: u32 },
 
     /// Struct with known field layout.

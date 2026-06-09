@@ -22,6 +22,7 @@ mod mir_smoke;
 mod ref_to;
 mod references;
 mod schedule;
+mod static_strings;
 mod string_audit;
 mod structs;
 

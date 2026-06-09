@@ -535,7 +535,14 @@ fn lower_module_from_pous<'db>(
     // so a RETAIN var's initializer is its cold-start value (overridden on warm
     // start). Addresses are final here (post-relocation). Functions keep using
     // the prepend pattern (stateless), so they're not included.
-    let init_stmts = collect_const_inits(db, all_configs, &global_table, &module.schedule, &program_infos)?;
+    let init_stmts = collect_const_inits(
+        db,
+        all_configs,
+        &global_table,
+        &module.schedule,
+        &program_infos,
+        &string_pool,
+    )?;
     if !init_stmts.is_empty() {
         let idx = module.functions.len() as u32 + module.extern_functions.len() as u32;
         let name =
@@ -1205,6 +1212,7 @@ fn collect_const_inits<'db>(
         hir::hir_def::interned::identifier::Ident,
         crate::schedule::ProgramInfo<'db>,
     >,
+    string_pool: &std::rc::Rc<std::cell::RefCell<crate::lower::lower_expr::StringPool>>,
 ) -> Result<Vec<crate::stmt::MirStmt>, LowerTypeError> {
     use hir::hir_def::config::ConfigResource;
 
@@ -1225,7 +1233,8 @@ fn collect_const_inits<'db>(
             {
                 // All-or-nothing: only commit if the whole initializer lowers.
                 let mut local = Vec::new();
-                if super::lower_func::lower_init_into(db, *addr, ty, init, &mut local)? {
+                if super::lower_func::lower_init_into(db, *addr, ty, init, &mut local, string_pool)?
+                {
                     stmts.extend(local);
                 }
             }
@@ -1256,6 +1265,7 @@ fn collect_const_inits<'db>(
                         &field.ty,
                         init,
                         &mut local,
+                        string_pool,
                     )? {
                         stmts.extend(local);
                     }

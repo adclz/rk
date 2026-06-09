@@ -155,11 +155,130 @@ fn emit_constant(func: &mut wasm_encoder::Function, c: &MirConstant) {
     }
 }
 
+/// Whether `place` holds a STRING — selects string-operand codegen (a `(ptr,
+/// len)` pair / `rk.str_assign`) over a scalar load/store. True for every place
+/// kind a string can live at: locals (the three string `LocalInfo`s), instance
+/// fields, globals, array elements, and derefs.
+pub(crate) fn place_is_string(place: &MirPlace, locals: &FxHashMap<Ident, LocalInfo>) -> bool {
+    match place {
+        MirPlace::Local(id) => matches!(
+            locals.get(id),
+            Some(
+                LocalInfo::StringParam { .. }
+                    | LocalInfo::StringMemory { .. }
+                    | LocalInfo::StringInOutParam { .. }
+            )
+        ),
+        MirPlace::Field { field_type, .. } | MirPlace::ThisField { field_type, .. } => {
+            matches!(field_type, MirType::String { .. })
+        }
+        MirPlace::Global { ty, .. } => matches!(ty, MirType::String { .. }),
+        MirPlace::Index { element_type, .. } => matches!(element_type, MirType::String { .. }),
+        MirPlace::Deref { pointee_type, .. } => matches!(pointee_type, MirType::String { .. }),
+    }
+}
+
+/// Push a string operand's `(ptr, len)` for any place: a borrowed
+/// `VAR_INPUT` view reads its two locals; every owned string is addressed
+/// via `emit_addr_of`, `ptr = header+4`, `len = *header`.
+pub(crate) fn emit_str_place_value(
+    func: &mut wasm_encoder::Function,
+    place: &MirPlace,
+    locals: &FxHashMap<Ident, LocalInfo>,
+) {
+    if let MirPlace::Local(id) = place
+        && let Some(LocalInfo::StringParam {
+            ptr_index,
+            len_index,
+        }) = locals.get(id)
+    {
+        func.instruction(&Instruction::LocalGet(*ptr_index));
+        func.instruction(&Instruction::LocalGet(*len_index));
+        return;
+    }
+    // Owned inline buffer: ptr = header + 4, len = *header.
+    emit_addr_of(func, place, locals);
+    func.instruction(&Instruction::I32Const(4));
+    func.instruction(&Instruction::I32Add);
+    emit_addr_of(func, place, locals);
+    func.instruction(&Instruction::I32Load(mem_arg(0, 2)));
+}
+
+/// A buffer-backed string is one that owns an inline `[len]+buffer` at an
+/// address — i.e. any string place EXCEPT a borrowed `VAR_INPUT` view, whose
+/// assignment rebinds its `(ptr, len)` locals rather than copying into a buffer.
+/// These are the targets that route through `rk.str_assign`.
+pub(crate) fn is_buffer_string(place: &MirPlace, locals: &FxHashMap<Ident, LocalInfo>) -> bool {
+    if let MirPlace::Local(id) = place
+        && matches!(locals.get(id), Some(LocalInfo::StringParam { .. }))
+    {
+        return false;
+    }
+    place_is_string(place, locals)
+}
+
+/// Push a string source as `(ptr, len)`: a literal, a place load, or a
+/// STRING-returning call.
+pub(crate) fn emit_str_value(
+    func: &mut wasm_encoder::Function,
+    value: &MirExpr,
+    locals: &FxHashMap<Ident, LocalInfo>,
+    fn_indices: &FxHashMap<Ident, u32>,
+) {
+    match value {
+        MirExpr::StringLiteral { offset, len, .. } => {
+            func.instruction(&Instruction::I32Const(*offset as i32));
+            func.instruction(&Instruction::I32Const(*len as i32));
+        }
+        MirExpr::Load(place, _) => emit_str_place_value(func, place, locals),
+        _ => emit_expr(func, value, locals, fn_indices),
+    }
+}
+
+/// Push the capacity (`rk.str_assign`'s `dest_cap` clamp) of a string place:
+/// a compile-time constant from its `STRING[N]` type for owned storage, or the
+/// caller-supplied `cap` local for a `VAR_IN_OUT` param.
+pub(crate) fn emit_string_capacity(
+    func: &mut wasm_encoder::Function,
+    place: &MirPlace,
+    locals: &FxHashMap<Ident, LocalInfo>,
+) {
+    let cap = match place {
+        MirPlace::Local(id) => match locals.get(id) {
+            Some(LocalInfo::StringMemory { capacity, .. }) => *capacity,
+            Some(LocalInfo::StringInOutParam { cap_index, .. }) => {
+                func.instruction(&Instruction::LocalGet(*cap_index));
+                return;
+            }
+            _ => unreachable!("non-string local has no capacity"),
+        },
+        MirPlace::ThisField { field_type, .. } | MirPlace::Field { field_type, .. } => {
+            string_capacity_of(field_type)
+        }
+        MirPlace::Global { ty, .. } => string_capacity_of(ty),
+        MirPlace::Index { element_type, .. } => string_capacity_of(element_type),
+        MirPlace::Deref { pointee_type, .. } => string_capacity_of(pointee_type),
+    };
+    func.instruction(&Instruction::I32Const(cap as i32));
+}
+
+fn string_capacity_of(ty: &MirType) -> u32 {
+    match ty {
+        MirType::String { capacity } => *capacity,
+        _ => unreachable!("expected a STRING type for capacity"),
+    }
+}
+
 fn emit_load(
     func: &mut wasm_encoder::Function,
     place: &MirPlace,
     locals: &FxHashMap<Ident, LocalInfo>,
 ) {
+    // Strings are `(ptr, len)` operands, not scalar loads.
+    if place_is_string(place, locals) {
+        emit_str_place_value(func, place, locals);
+        return;
+    }
     match place {
         MirPlace::Local(ident) => {
             if let Some(info) = locals.get(ident) {
@@ -187,31 +306,11 @@ fn emit_load(
                             func.instruction(&Instruction::I32Load(mem_arg(0, 2)));
                         }
                     }
-                    LocalInfo::StringParam {
-                        ptr_index,
-                        len_index,
-                    } => {
-                        // Push (ptr, len) pair on the stack
-                        func.instruction(&Instruction::LocalGet(*ptr_index));
-                        func.instruction(&Instruction::LocalGet(*len_index));
-                    }
-                    LocalInfo::StringMemory { address, .. } => {
-                        // Layout: 4-byte len at `address`, then embedded
-                        // buffer at `address + 4`. Push (ptr, len) where
-                        // ptr is a const (no load) and len is loaded.
-                        func.instruction(&Instruction::I32Const(*address as i32 + 4));
-                        func.instruction(&Instruction::I32Const(*address as i32));
-                        func.instruction(&Instruction::I32Load(mem_arg(0, 2)));
-                    }
-                    LocalInfo::StringInOutParam { addr_index, .. } => {
-                        // Reading a STRING `VAR_IN_OUT` param from inside
-                        // its function body: synthesise (ptr, len) where
-                        // ptr = addr+4 and len = *addr.
-                        func.instruction(&Instruction::LocalGet(*addr_index));
-                        func.instruction(&Instruction::I32Const(4));
-                        func.instruction(&Instruction::I32Add);
-                        func.instruction(&Instruction::LocalGet(*addr_index));
-                        func.instruction(&Instruction::I32Load(mem_arg(0, 2)));
+                    LocalInfo::StringParam { .. }
+                    | LocalInfo::StringMemory { .. }
+                    | LocalInfo::StringInOutParam { .. } => {
+                        // Handled above by `place_is_string` / `emit_str_place_value`.
+                        unreachable!("string local reached scalar emit_load")
                     }
                 }
             } else {
@@ -379,26 +478,14 @@ fn emit_call(
                 }
             }
             MirArgKind::ByRef => {
-                // STRING `VAR_IN_OUT` flattens to (addr, cap) - symmetric
-                // with the (ptr, len) we use for STRING `VAR_INPUT`. The
-                // callee mutator clamps writes against cap.
-                if let MirExpr::AddrOf(MirPlace::Local(name)) = &arg.value {
-                    match locals.get(name) {
-                        Some(LocalInfo::StringMemory { address, capacity }) => {
-                            func.instruction(&Instruction::I32Const(*address as i32));
-                            func.instruction(&Instruction::I32Const(*capacity as i32));
-                            continue;
-                        }
-                        Some(LocalInfo::StringInOutParam {
-                            addr_index,
-                            cap_index,
-                        }) => {
-                            func.instruction(&Instruction::LocalGet(*addr_index));
-                            func.instruction(&Instruction::LocalGet(*cap_index));
-                            continue;
-                        }
-                        _ => {}
-                    }
+                // STRING `VAR_IN_OUT` flattens to (header_addr, cap), for any
+                // buffer-backed place; the callee clamps writes against cap.
+                if let MirExpr::AddrOf(place) = &arg.value
+                    && is_buffer_string(place, locals)
+                {
+                    emit_addr_of(func, place, locals);
+                    emit_string_capacity(func, place, locals);
+                    continue;
                 }
                 if let MirExpr::AddrOf(place) = &arg.value {
                     emit_addr_of(func, place, locals);

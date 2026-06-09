@@ -219,6 +219,79 @@ fn count_nested_string_calls_stmt(stmt: &MirStmt) -> u32 {
     }
 }
 
+/// Whether any function assigns to a buffer-backed STRING *field* or *global*.
+/// These lower to `rk.str_assign` just like STRING-local assignments, so the
+/// helper must be grafted even when the module has no STRING locals (otherwise
+/// `emit_string_assign` hits an ungrafted index). STRING locals are detected
+/// separately by the `any_string_local` scan.
+fn module_assigns_static_string(module: &MirModule) -> bool {
+    module
+        .functions
+        .iter()
+        .any(|f| stmts_assign_static_string(&f.body))
+}
+
+fn stmts_assign_static_string(stmts: &[MirStmt]) -> bool {
+    stmts.iter().any(stmt_assigns_static_string)
+}
+
+fn stmt_assigns_static_string(stmt: &MirStmt) -> bool {
+    match stmt {
+        MirStmt::Assign { target, .. } => place_is_static_string(target),
+        MirStmt::If {
+            then_body,
+            else_ifs,
+            else_body,
+            ..
+        } => {
+            stmts_assign_static_string(then_body)
+                || else_ifs.iter().any(|(_, b)| stmts_assign_static_string(b))
+                || else_body
+                    .as_ref()
+                    .is_some_and(|b| stmts_assign_static_string(b))
+        }
+        MirStmt::Case {
+            arms, else_body, ..
+        } => {
+            arms.iter().any(|a| stmts_assign_static_string(&a.body))
+                || else_body
+                    .as_ref()
+                    .is_some_and(|b| stmts_assign_static_string(b))
+        }
+        MirStmt::For { body, .. } => stmts_assign_static_string(body),
+        MirStmt::While { body, .. } | MirStmt::Repeat { body, .. } => {
+            stmts_assign_static_string(body)
+        }
+        _ => false,
+    }
+}
+
+/// A STRING param, possibly by reference: `VAR_IN_OUT`/`VAR_OUTPUT` strings lower
+/// to `Pointer(String)`. These can be assignment targets routed through
+/// `rk.str_assign`, so they must arm the graft trigger.
+fn param_is_stringish(ty: &MirType) -> bool {
+    match ty {
+        MirType::String { .. } => true,
+        MirType::Pointer(inner) => matches!(inner.as_ref(), MirType::String { .. }),
+        _ => false,
+    }
+}
+
+/// A STRING field/global/element place (not a `Local` — local strings are
+/// covered by `any_string_local`).
+fn place_is_static_string(place: &mir::expr::MirPlace) -> bool {
+    use mir::expr::MirPlace;
+    match place {
+        MirPlace::ThisField { field_type, .. } | MirPlace::Field { field_type, .. } => {
+            matches!(field_type, MirType::String { .. })
+        }
+        MirPlace::Global { ty, .. } => matches!(ty, MirType::String { .. }),
+        MirPlace::Index { element_type, .. } => matches!(element_type, MirType::String { .. }),
+        MirPlace::Deref { pointee_type, .. } => matches!(pointee_type, MirType::String { .. }),
+        MirPlace::Local(_) => false,
+    }
+}
+
 /// Returns `true` when any function in `module` contains a `MirStmt::Raise`,
 /// triggering the codegen to declare the module-level `$rk_exception` tag.
 pub(crate) fn module_uses_raise(module: &MirModule) -> bool {
@@ -316,14 +389,14 @@ pub(crate) enum LocalInfo {
     /// clamps writes.
     StringInOutParam { addr_index: u32, cap_index: u32 },
     /// String in memory. Layout starting at `address`:
-    ///   `addr + 0..4`  - `ptr` (i32), points at the embedded buffer
-    ///   `addr + 4..8`  - `len` (i32), current byte length, ≤ `capacity`
-    ///   `addr + 8..8+capacity` - embedded buffer
-    /// `capacity` comes from the declared `STRING[N]` (or
-    /// `DEFAULT_STRING_CAPACITY` for plain `STRING`). The header is
-    /// initialized at function entry so `ptr` always points at this
-    /// variable's own buffer; assignment is a bounded `memcpy` into the
-    /// buffer rather than a header alias.
+    ///   `addr + 0..4`           - `len` (i32), current byte length, ≤ `capacity`
+    ///   `addr + 4..4+capacity`  - embedded buffer
+    /// There is no stored pointer — the buffer pointer is implicit (`addr + 4`).
+    /// `capacity` comes from the declared `STRING[N]` (or `DEFAULT_STRING_CAPACITY`
+    /// for plain `STRING`). Assignment is a bounded `memcpy` into the buffer via
+    /// `rk.str_assign`. Reads/writes are addressed the same way as any string
+    /// place (local, field, global) — see `emit_str_place_value` /
+    /// `emit_string_assign`.
     StringMemory { address: u32, capacity: u32 },
 }
 
@@ -646,13 +719,19 @@ impl<'a> WasmGen<'a> {
             f.locals
                 .iter()
                 .any(|l| matches!(l.ty, MirType::String { .. }))
+                // STRING params too: a `VAR_IN_OUT`/`VAR_OUTPUT` string (lowered
+                // to `Pointer(String)`) is assigned via rk.str_assign.
+                || f.params.iter().any(|p| param_is_stringish(&p.ty))
         });
         let any_nested_string_call = self
             .module
             .functions
             .iter()
             .any(|f| count_nested_string_calls_stmts(&f.body) > 0);
-        if (any_string_local || any_nested_string_call)
+        // Also force-include when a STRING field/global is assigned: those route
+        // through rk.str_assign too, but live outside `f.locals`.
+        let any_static_string = module_assigns_static_string(self.module);
+        if (any_string_local || any_nested_string_call || any_static_string)
             && crate::builtins::lookup("rk.str_assign").is_some()
         {
             found.insert("rk.str_assign".to_string());

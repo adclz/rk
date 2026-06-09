@@ -3,7 +3,7 @@
 
 use hir::hir_def::interned::identifier::Ident;
 use mir::{
-    expr::{MirConstant, MirExpr, MirPlace},
+    expr::{MirConstant, MirExpr},
     stmt::{MirCasePattern, MirStmt},
 };
 use rustc_hash::FxHashMap;
@@ -11,7 +11,10 @@ use wasm_encoder::{BlockType, Instruction, MemArg};
 
 use super::{
     LocalInfo,
-    emit_expr::{emit_addr_of, emit_expr, emit_typed_mem_load, mem_arg},
+    emit_expr::{
+        emit_addr_of, emit_expr, emit_str_value, emit_string_capacity, emit_typed_mem_load,
+        is_buffer_string, mem_arg,
+    },
 };
 
 /// Context for statement emission.
@@ -581,12 +584,42 @@ fn emit_wasm_instruction(func: &mut wasm_encoder::Function, name: &str) {
     }
 }
 
+/// Unified STRING assignment into a buffer-backed target (local buffer, instance
+/// field, global, array element, or `VAR_IN_OUT`). The dest header address is
+/// computed uniformly via `emit_addr_of`; `rk.str_assign(dest_addr, dest_cap,
+/// src_ptr, src_len)` does a capacity-bounded `memcpy` into the inline buffer
+/// and updates the length prefix.
+fn emit_string_assign(
+    func: &mut wasm_encoder::Function,
+    target: &mir::expr::MirPlace,
+    value: &MirExpr,
+    ctx: &Ctx,
+) {
+    let assign_idx = ctx
+        .builtin_indices
+        .get("rk.str_assign")
+        .copied()
+        .expect("rk.str_assign must be grafted for STRING assignment");
+    emit_addr_of(func, target, ctx.locals);
+    emit_string_capacity(func, target, ctx.locals);
+    emit_str_value(func, value, ctx.locals, ctx.fn_indices);
+    func.instruction(&Instruction::Call(assign_idx));
+}
+
 fn emit_assignment(
     func: &mut wasm_encoder::Function,
     target: &mir::expr::MirPlace,
     value: &MirExpr,
     ctx: &Ctx,
 ) {
+    // Unified string write: any buffer-backed STRING target copies through
+    // rk.str_assign, regardless of where it lives. A borrowed VAR_INPUT view
+    // target (not buffer-backed) rebinds its (ptr, len) locals — handled in the
+    // Local match below.
+    if is_buffer_string(target, ctx.locals) {
+        emit_string_assign(func, target, value, ctx);
+        return;
+    }
     match target {
         mir::expr::MirPlace::Local(ident) => {
             if let Some(info) = ctx.locals.get(ident) {
@@ -625,87 +658,10 @@ fn emit_assignment(
                         func.instruction(&Instruction::LocalSet(*len_index));
                         func.instruction(&Instruction::LocalSet(*ptr_index));
                     }
-                    LocalInfo::StringMemory { address, capacity } => {
-                        // String layout at `address`: 4-byte length, then
-                        // `capacity` bytes of embedded buffer. Assignment
-                        // dispatches to the `rk_str_assign` helper, which
-                        // bounds the source length to `capacity`, writes
-                        // it into the header, and memcpys the bytes into
-                        // the buffer. Calling convention:
-                        //   `rk_str_assign(dest_addr, dest_cap, src_ptr, src_len)`
-                        let assign_idx = ctx.builtin_indices.get("rk.str_assign").copied().expect(
-                            "rk.str_assign must be grafted whenever a function has a STRING local",
-                        );
-
-                        // Push dest_addr, dest_cap (compile-time constants).
-                        func.instruction(&Instruction::I32Const(*address as i32));
-                        func.instruction(&Instruction::I32Const(*capacity as i32));
-
-                        // Push (src_ptr, src_len) - sourced from each value
-                        // kind. Falls through to `emit_expr` for anything
-                        // other than the three common direct cases (literal,
-                        // string-param load, string-var load); that path
-                        // produces (ptr, len) on the stack the same way.
-                        match value {
-                            MirExpr::StringLiteral { offset, len, .. } => {
-                                func.instruction(&Instruction::I32Const(*offset as i32));
-                                func.instruction(&Instruction::I32Const(*len as i32));
-                            }
-                            MirExpr::Load(MirPlace::Local(id), _)
-                                if matches!(
-                                    ctx.locals.get(id),
-                                    Some(LocalInfo::StringParam { .. })
-                                        | Some(LocalInfo::StringMemory { .. })
-                                ) =>
-                            {
-                                match ctx.locals.get(id) {
-                                    Some(LocalInfo::StringParam {
-                                        ptr_index,
-                                        len_index,
-                                    }) => {
-                                        func.instruction(&Instruction::LocalGet(*ptr_index));
-                                        func.instruction(&Instruction::LocalGet(*len_index));
-                                    }
-                                    Some(LocalInfo::StringMemory {
-                                        address: src_addr, ..
-                                    }) => {
-                                        // Source ptr = src_addr + 4 (start
-                                        // of embedded buffer), len loaded
-                                        // from src_addr.
-                                        func.instruction(&Instruction::I32Const(
-                                            *src_addr as i32 + 4,
-                                        ));
-                                        func.instruction(&Instruction::I32Const(*src_addr as i32));
-                                        func.instruction(&Instruction::I32Load(mem_arg(0, 2)));
-                                    }
-                                    _ => unreachable!(),
-                                }
-                            }
-                            _ => {
-                                // Function calls returning STRING and any
-                                // other producer expression: emit_expr
-                                // pushes (ptr, len) directly onto the stack.
-                                emit_expr(func, value, ctx.locals, ctx.fn_indices);
-                            }
-                        }
-
-                        func.instruction(&Instruction::Call(assign_idx));
-                    }
-                    LocalInfo::StringInOutParam {
-                        addr_index,
-                        cap_index,
-                    } => {
-                        // Assignment into a STRING `VAR_IN_OUT` param -
-                        // e.g. `dest := …` inside a mutator function body
-                        // where `dest` is the in/out param. Forward the
-                        // caller-supplied (addr, cap) to `rk_str_assign`.
-                        let assign_idx = ctx.builtin_indices.get("rk.str_assign").copied().expect(
-                            "rk.str_assign must be grafted whenever a function has a STRING local",
-                        );
-                        func.instruction(&Instruction::LocalGet(*addr_index));
-                        func.instruction(&Instruction::LocalGet(*cap_index));
-                        emit_expr(func, value, ctx.locals, ctx.fn_indices);
-                        func.instruction(&Instruction::Call(assign_idx));
+                    LocalInfo::StringMemory { .. } | LocalInfo::StringInOutParam { .. } => {
+                        // Buffer-backed strings are handled above by
+                        // `is_buffer_string` / `emit_string_assign`.
+                        unreachable!("buffer-backed string target reached scalar emit_assignment")
                     }
                 }
             }

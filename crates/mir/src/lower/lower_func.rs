@@ -1012,23 +1012,22 @@ fn lower_var_init<'db>(
     }
 }
 
-/// Lower a constant scalar initializer to its value expression, for baking into
-/// the module's `__init` (program/FB-instance fields and globals, which can't
-/// use the FUNCTION prepend pattern — that would reset state every scan).
+/// Lower a constant initializer to its value expression, for baking into the
+/// module's `__init` (program/FB-instance fields and globals, which can't use
+/// the FUNCTION prepend pattern — that would reset state every scan). Interns
+/// string literals into the shared module `string_pool` so their offsets are
+/// valid (and rebased) in the final data section.
 ///
-/// Returns `None` for aggregates (array/struct — TODO) and for anything that
-/// isn't a plain scalar constant: a STRING literal would need the module string
-/// pool, and const-expr arithmetic is deferred.
+/// Returns `None` for aggregates (handled by `lower_init_into`) and for anything
+/// that isn't a constant: variable loads and calls.
 pub(crate) fn lower_const_init_value<'db>(
     db: &'db dyn WorkspaceDataBase,
     init_expr: hir::hir_def::expressions::expression::InitExpr<'db>,
+    string_pool: &Rc<RefCell<super::lower_expr::StringPool>>,
 ) -> Result<Option<crate::expr::MirExpr>, LowerTypeError> {
     match init_expr.kind(db) {
         InitExprKind::ConstantExpr(expr) => {
-            let ctx = ExprLowerCtx::new(
-                db,
-                Rc::new(RefCell::new(super::lower_expr::StringPool::default())),
-            );
+            let ctx = ExprLowerCtx::new(db, string_pool.clone());
             let value = ctx.lower_expr(expr)?;
             if is_const_value(&value) {
                 Ok(Some(value))
@@ -1040,21 +1039,19 @@ pub(crate) fn lower_const_init_value<'db>(
     }
 }
 
-/// A pure compile-time-constant value: a literal or arithmetic over literals.
-/// Decides whether an initializer can be baked into `__init` and computed at
-/// startup. Excludes variable loads (which would create init-order hazards),
-/// calls, and string literals (which would need the module string pool).
+/// A value that can be baked into `__init`: a scalar literal, a string literal,
+/// or arithmetic over literals (computed once at startup). Excludes variable
+/// loads (init-order hazards) and calls. A `StringLiteral` is allowed because
+/// its assignment routes through `rk.str_assign`, a bounded copy into the
+/// destination's inline buffer.
 fn is_const_value(e: &crate::expr::MirExpr) -> bool {
     use crate::expr::MirExpr;
     match e {
-        MirExpr::Constant(_) => true,
+        MirExpr::Constant(_) | MirExpr::StringLiteral { .. } => true,
         MirExpr::BinOp { lhs, rhs, .. } => is_const_value(lhs) && is_const_value(rhs),
         MirExpr::UnaryOp { expr, .. } => is_const_value(expr),
         MirExpr::Cast { expr, .. } => is_const_value(expr),
-        MirExpr::Load(..)
-        | MirExpr::Call(_)
-        | MirExpr::AddrOf(_)
-        | MirExpr::StringLiteral { .. } => false,
+        MirExpr::Load(..) | MirExpr::Call(_) | MirExpr::AddrOf(_) => false,
     }
 }
 
@@ -1071,6 +1068,7 @@ pub(crate) fn lower_init_into<'db>(
     ty: &crate::types::MirType,
     init: hir::hir_def::expressions::expression::InitExpr<'db>,
     out: &mut Vec<crate::stmt::MirStmt>,
+    string_pool: &Rc<RefCell<super::lower_expr::StringPool>>,
 ) -> Result<bool, LowerTypeError> {
     use crate::expr::MirPlace;
     use crate::stmt::MirStmt;
@@ -1078,8 +1076,8 @@ pub(crate) fn lower_init_into<'db>(
     use hir::hir_def::expressions::expression::InitExprKind;
 
     match init.kind(db) {
-        // Scalar leaf (also covers enum/subrange, which store as integers).
-        InitExprKind::ConstantExpr(_) => match lower_const_init_value(db, init)? {
+        // Scalar/string leaf (also covers enum/subrange, which store as integers).
+        InitExprKind::ConstantExpr(_) => match lower_const_init_value(db, init, string_pool)? {
             Some(value) => {
                 out.push(MirStmt::Assign {
                     target: MirPlace::Global {
@@ -1103,7 +1101,7 @@ pub(crate) fn lower_init_into<'db>(
                 let Some(field) = s.fields.iter().find(|f| f.name == name.ident) else {
                     return Ok(false);
                 };
-                if !lower_init_into(db, base + field.offset, &field.ty, *value, out)? {
+                if !lower_init_into(db, base + field.offset, &field.ty, *value, out, string_pool)? {
                     return Ok(false);
                 }
             }
@@ -1129,6 +1127,7 @@ pub(crate) fn lower_init_into<'db>(
                     arr.element_type.as_ref(),
                     *v,
                     out,
+                    string_pool,
                 )? {
                     return Ok(false);
                 }
