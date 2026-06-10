@@ -114,6 +114,117 @@ fn array_initializer(mut with_db: db::RootDatabase) {
     assert_eq!(read_first_i32(&plc), 60, "10 + 20 + 30 from the array init");
 }
 
+/// Nested multi-dim bracket init `[[1,2,3],[4,5,6]]` fills row-major. (Was a
+/// silent runtime zero before the HIR-authoritative resolution refactor — MIR
+/// dropped nested brackets.)
+#[rstest]
+fn nested_multidim_array_initializer(mut with_db: db::RootDatabase) {
+    let source = r#"
+        TYPE Matrix : ARRAY[0..1, 0..2] OF INT; END_TYPE
+
+        PROGRAM P
+        VAR RETAIN m : Matrix := [[1, 2, 3], [4, 5, 6]]; END_VAR
+            ;
+        END_PROGRAM
+
+        CONFIGURATION Cfg
+            RESOURCE Res ON CPU
+                TASK T(INTERVAL := T#10ms, PRIORITY := 1);
+                PROGRAM P1 WITH T : P;
+            END_RESOURCE
+        END_CONFIGURATION
+    "#;
+    let (_mir, wasm) = compile_to_mir_and_wasm(&mut with_db, source);
+
+    // `m` is the only RETAIN field → the band IS the flattened matrix. Read the
+    // 6 INT elements (row-major) directly. (Multi-dim element ACCESS in a body is
+    // a separate, unimplemented feature, so we verify the init via the band.)
+    let plc = Plc::load(&wasm, Config::default()).expect("load");
+    let r = plc.read_retain();
+    let vals: Vec<i32> = (0..6)
+        .map(|i| i32::from_le_bytes(r[i * 4..i * 4 + 4].try_into().unwrap()))
+        .collect();
+    assert_eq!(vals, vec![1, 2, 3, 4, 5, 6], "row-major flatten of [[1,2,3],[4,5,6]]");
+}
+
+/// Nested repetition `[2(3(5))]` = 2×(3×5) = six 5s. (Was a silent runtime zero.)
+#[rstest]
+fn nested_repetition_array_initializer(mut with_db: db::RootDatabase) {
+    let source = r#"
+        PROGRAM P
+        VAR RETAIN total : INT; END_VAR
+        VAR a : ARRAY[0..5] OF INT := [2(3(5))]; END_VAR
+            total := a[0] + a[1] + a[2] + a[3] + a[4] + a[5];
+        END_PROGRAM
+
+        CONFIGURATION Cfg
+            RESOURCE Res ON CPU
+                TASK T(INTERVAL := T#10ms, PRIORITY := 1);
+                PROGRAM P1 WITH T : P;
+            END_RESOURCE
+        END_CONFIGURATION
+    "#;
+    let (_mir, wasm) = compile_to_mir_and_wasm(&mut with_db, source);
+
+    let mut plc = Plc::load(&wasm, Config::default()).expect("load");
+    plc.run(1).expect("scan");
+    assert_eq!(read_first_i32(&plc), 30, "[2(3(5))] = six 5s");
+}
+
+/// Underscore-separated repeat count `[1_0(7)]` = ten 7s. (Was a silent runtime
+/// zero — MIR's old `parse::<u32>()` choked on the `_`.)
+#[rstest]
+fn underscore_repeat_count_initializer(mut with_db: db::RootDatabase) {
+    let source = r#"
+        PROGRAM P
+        VAR RETAIN total : INT; END_VAR
+        VAR a : ARRAY[0..9] OF INT := [1_0(7)]; END_VAR
+            total := a[0]+a[1]+a[2]+a[3]+a[4]+a[5]+a[6]+a[7]+a[8]+a[9];
+        END_PROGRAM
+
+        CONFIGURATION Cfg
+            RESOURCE Res ON CPU
+                TASK T(INTERVAL := T#10ms, PRIORITY := 1);
+                PROGRAM P1 WITH T : P;
+            END_RESOURCE
+        END_CONFIGURATION
+    "#;
+    let (_mir, wasm) = compile_to_mir_and_wasm(&mut with_db, source);
+
+    let mut plc = Plc::load(&wasm, Config::default()).expect("load");
+    plc.run(1).expect("scan");
+    assert_eq!(read_first_i32(&plc), 70, "[1_0(7)] = ten 7s");
+}
+
+/// A FUNCTION-local aggregate initializer is applied (prepended, re-run each
+/// call). Previously dropped — `lower_var_init` only handled scalar locals.
+#[rstest]
+fn function_local_array_initializer(mut with_db: db::RootDatabase) {
+    let source = r#"
+        FUNCTION sum_init : INT
+        VAR a : ARRAY[0..2] OF INT := [100, 20, 3]; END_VAR
+            sum_init := a[0] + a[1] + a[2];
+        END_FUNCTION
+
+        PROGRAM P
+        VAR RETAIN seen : INT; END_VAR
+            seen := sum_init();
+        END_PROGRAM
+
+        CONFIGURATION Cfg
+            RESOURCE Res ON CPU
+                TASK T(INTERVAL := T#10ms, PRIORITY := 1);
+                PROGRAM P1 WITH T : P;
+            END_RESOURCE
+        END_CONFIGURATION
+    "#;
+    let (_mir, wasm) = compile_to_mir_and_wasm(&mut with_db, source);
+
+    let mut plc = Plc::load(&wasm, Config::default()).expect("load");
+    plc.run(1).expect("scan");
+    assert_eq!(read_first_i32(&plc), 123, "function-local array init [100,20,3]");
+}
+
 /// A struct initializer `(x := 3, y := 4)` is applied field-by-field at load.
 #[rstest]
 fn struct_initializer(mut with_db: db::RootDatabase) {

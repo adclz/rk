@@ -1,7 +1,7 @@
 use db::WorkspaceDataBase;
 use hir::{
     hir_def::{
-        expressions::{expression::InitExprKind, statement::StmtKind},
+        expressions::statement::StmtKind,
         interned::identifier::Ident,
         pous::{
             class::Class,
@@ -19,7 +19,6 @@ use std::cell::RefCell;
 use std::rc::Rc;
 
 use crate::{
-    expr::MirPlace,
     function::{
         MirFunction, MirLinkage, MirLocal, MirLocalKind, MirParam, MirParamKind, MirStorage,
         MirVariableStorage,
@@ -169,10 +168,16 @@ pub fn lower_function<'db>(
             VariableKind::Input | VariableKind::InOut | VariableKind::Output => continue,
             _ => {}
         }
-        if let Some(init_expr) = var.init(db)
-            && let Some(stmt) = lower_var_init(db, var.name(db), init_expr)?
-        {
-            init_stmts.push(stmt);
+        if let Some(init_expr) = var.init(db) {
+            let var_ty = lower_var_type(db, *var)?;
+            lower_var_init(
+                db,
+                var.name(db),
+                &var_ty,
+                init_expr,
+                &string_pool,
+                &mut init_stmts,
+            )?;
         }
     }
 
@@ -978,55 +983,114 @@ fn collect_address_taken_vars<'db>(
     result
 }
 
-/// Lower a variable initializer to an assignment statement.
-/// Returns None if the init expression can't be lowered (e.g., complex struct inits).
+/// Lower a FUNCTION-local variable initializer to prepended assignment(s). A
+/// FUNCTION is stateless, so its locals are re-initialized on every call — these
+/// statements run at the top of the body. Consumes the HIR's authoritative
+/// resolved leaves (the same source as the stateful `__init` path), so aggregate
+/// inits (arrays, structs, multi-dim, repetition) lower correctly instead of
+/// being dropped. Each leaf targets the local at its path offset.
 fn lower_var_init<'db>(
     db: &'db dyn WorkspaceDataBase,
     var_name: Ident,
-    init_expr: hir::hir_def::expressions::expression::InitExpr<'db>,
-) -> Result<Option<MirStmt>, LowerTypeError> {
-    match init_expr.kind(db) {
-        InitExprKind::ConstantExpr(expr) => {
-            let ctx = ExprLowerCtx::new(
-                db,
-                Rc::new(RefCell::new(super::lower_expr::StringPool::default())),
-            );
-            let value = ctx.lower_expr(expr)?;
-            Ok(Some(MirStmt::Assign {
-                target: MirPlace::Local(var_name),
-                value,
-            }))
-        }
-        // TODO: ArrayInit, StructInit
-        _ => Ok(None),
-    }
-}
-
-/// Lower a constant initializer to its value expression, for baking into the
-/// module's `__init` (program/FB-instance fields and globals, which can't use
-/// the FUNCTION prepend pattern — that would reset state every scan). Interns
-/// string literals into the shared module `string_pool` so their offsets are
-/// valid (and rebased) in the final data section.
-///
-/// Returns `None` for aggregates (handled by `lower_init_into`) and for anything
-/// that isn't a constant: variable loads and calls.
-pub(crate) fn lower_const_init_value<'db>(
-    db: &'db dyn WorkspaceDataBase,
+    var_ty: &crate::types::MirType,
     init_expr: hir::hir_def::expressions::expression::InitExpr<'db>,
     string_pool: &Rc<RefCell<super::lower_expr::StringPool>>,
-) -> Result<Option<crate::expr::MirExpr>, LowerTypeError> {
-    match init_expr.kind(db) {
-        InitExprKind::ConstantExpr(expr) => {
-            let ctx = ExprLowerCtx::new(db, string_pool.clone());
-            let value = ctx.lower_expr(expr)?;
-            if is_const_value(&value) {
-                Ok(Some(value))
-            } else {
-                Ok(None)
+    out: &mut Vec<MirStmt>,
+) -> Result<(), LowerTypeError> {
+    use crate::expr::MirPlace;
+    use hir::hir_ty::head::init_inference::infer_initialization;
+
+    let scope = init_expr.scope_id(db);
+    let inference = infer_initialization(db, scope);
+    let Some(leaves) = inference.init_expr_result.resolved.get(&init_expr) else {
+        return Ok(());
+    };
+    for leaf in leaves {
+        let value = ExprLowerCtx::new(db, string_pool.clone()).lower_expr(leaf.value)?;
+        let target = if leaf.path.is_empty() {
+            MirPlace::Local(var_name)
+        } else {
+            let Some((offset, leaf_ty)) = walk_init_path(var_ty, &leaf.path) else {
+                continue;
+            };
+            // `field_name` is metadata only — addressing uses `field_offset` over
+            // the local's base address.
+            MirPlace::Field {
+                base: Box::new(MirPlace::Local(var_name)),
+                field_name: var_name,
+                field_offset: offset,
+                field_type: leaf_ty,
             }
-        }
-        _ => Ok(None),
+        };
+        out.push(MirStmt::Assign { target, value });
     }
+    Ok(())
+}
+
+/// Emit one `Assign { Global, value }` per resolved initializer leaf; MIR
+/// walks each leaf's path over the layout and never re-walks the
+/// `InitExpr` tree.
+pub(crate) fn lower_resolved_init_into<'db>(
+    db: &'db dyn WorkspaceDataBase,
+    base: u32,
+    ty: &crate::types::MirType,
+    init: hir::hir_def::expressions::expression::InitExpr<'db>,
+    out: &mut Vec<crate::stmt::MirStmt>,
+    string_pool: &Rc<RefCell<super::lower_expr::StringPool>>,
+) -> Result<(), LowerTypeError> {
+    use crate::expr::MirPlace;
+    use crate::stmt::MirStmt;
+    use hir::hir_ty::head::init_inference::infer_initialization;
+
+    let scope = init.scope_id(db);
+    let inference = infer_initialization(db, scope);
+    let Some(leaves) = inference.init_expr_result.resolved.get(&init) else {
+        return Ok(()); // HIR produced no resolved leaves (non-flattenable init)
+    };
+    for leaf in leaves {
+        let value = ExprLowerCtx::new(db, string_pool.clone()).lower_expr(leaf.value)?;
+        if !is_const_value(&value) {
+            continue; // non-const init element — validated/diagnosed by the HIR
+        }
+        let Some((offset, leaf_ty)) = walk_init_path(ty, &leaf.path) else {
+            continue;
+        };
+        out.push(MirStmt::Assign {
+            target: MirPlace::Global {
+                address: base + offset,
+                ty: leaf_ty,
+            },
+            value,
+        });
+    }
+    Ok(())
+}
+
+/// Walk a resolved leaf's path over the layout to its byte offset and
+/// type.
+fn walk_init_path(
+    root: &crate::types::MirType,
+    path: &[hir::hir_ty::head::init_inference::InitPathStep],
+) -> Option<(u32, crate::types::MirType)> {
+    use crate::types::MirType;
+    use hir::hir_ty::head::init_inference::InitPathStep;
+    let mut offset = 0u32;
+    let mut cur = root;
+    for step in path {
+        match (cur, step) {
+            (MirType::Struct(s), InitPathStep::Field(name)) => {
+                let f = s.fields.iter().find(|f| f.name == *name)?;
+                offset += f.offset;
+                cur = &f.ty;
+            }
+            (MirType::Array(a), InitPathStep::ArrayElem(idx)) => {
+                offset += *idx * a.element_size;
+                cur = a.element_type.as_ref();
+            }
+            _ => return None,
+        }
+    }
+    Some((offset, cur.clone()))
 }
 
 /// A value that can be baked into `__init`: a scalar literal, a string literal,
@@ -1045,87 +1109,3 @@ fn is_const_value(e: &crate::expr::MirExpr) -> bool {
     }
 }
 
-/// Recursively lower an initializer for a value of `ty` at absolute address
-/// `base` into flat scalar `Assign { Global, const }` stores. Handles scalars,
-/// 1-D arrays, and structs (with arbitrary nesting). Returns `false` for
-/// anything not yet supported — a non-const/string leaf, repetition `[n(v)]`,
-/// multi-dimensional arrays, or a shape mismatch — and the caller then drops
-/// the WHOLE initializer (no partial init; unlisted elements rely on the
-/// zero-initialized memory image).
-pub(crate) fn lower_init_into<'db>(
-    db: &'db dyn WorkspaceDataBase,
-    base: u32,
-    ty: &crate::types::MirType,
-    init: hir::hir_def::expressions::expression::InitExpr<'db>,
-    out: &mut Vec<crate::stmt::MirStmt>,
-    string_pool: &Rc<RefCell<super::lower_expr::StringPool>>,
-) -> Result<bool, LowerTypeError> {
-    use crate::expr::MirPlace;
-    use crate::stmt::MirStmt;
-    use crate::types::MirType;
-    use hir::hir_def::expressions::expression::InitExprKind;
-
-    match init.kind(db) {
-        // Scalar/string leaf (also covers enum/subrange, which store as integers).
-        InitExprKind::ConstantExpr(_) => match lower_const_init_value(db, init, string_pool)? {
-            Some(value) => {
-                out.push(MirStmt::Assign {
-                    target: MirPlace::Global {
-                        address: base,
-                        ty: ty.clone(),
-                    },
-                    value,
-                });
-                Ok(true)
-            }
-            None => Ok(false),
-        },
-
-        // Struct: `(field := value, ...)`.
-        InitExprKind::StructInit { values } => {
-            let MirType::Struct(s) = ty else { return Ok(false) };
-            for v in &values {
-                let InitExprKind::StructElement { name, value } = v.kind(db) else {
-                    return Ok(false);
-                };
-                let Some(field) = s.fields.iter().find(|f| f.name == name.ident) else {
-                    return Ok(false);
-                };
-                if !lower_init_into(db, base + field.offset, &field.ty, *value, out, string_pool)? {
-                    return Ok(false);
-                }
-            }
-            Ok(true)
-        }
-
-        // 1-D array: `[v0, v1, ...]` (repetition + multi-dim deferred).
-        InitExprKind::ArrayInit { values } => {
-            let MirType::Array(arr) = ty else { return Ok(false) };
-            if arr.dimensions.len() != 1 {
-                return Ok(false);
-            }
-            for (idx, v) in values.iter().enumerate() {
-                let idx = idx as u32;
-                if idx >= arr.total_elements
-                    || matches!(v.kind(db), InitExprKind::ArrayIndexedElement { .. })
-                {
-                    return Ok(false);
-                }
-                if !lower_init_into(
-                    db,
-                    base + idx * arr.element_size,
-                    arr.element_type.as_ref(),
-                    *v,
-                    out,
-                    string_pool,
-                )? {
-                    return Ok(false);
-                }
-            }
-            Ok(true)
-        }
-
-        // StructElement / ArrayIndexedElement only ever appear nested above.
-        _ => Ok(false),
-    }
-}

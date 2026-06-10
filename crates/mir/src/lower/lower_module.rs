@@ -1235,12 +1235,14 @@ fn collect_const_inits<'db>(
             if let Some((addr, ty)) = global_table.get(&v.name(db))
                 && let Some(init) = v.init(db)
             {
-                // All-or-nothing: only commit if the whole initializer lowers.
-                let mut local = Vec::new();
-                if super::lower_func::lower_init_into(db, *addr, ty, init, &mut local, string_pool)?
-                {
-                    stmts.extend(local);
-                }
+                super::lower_func::lower_resolved_init_into(
+                    db,
+                    *addr,
+                    ty,
+                    init,
+                    &mut stmts,
+                    string_pool,
+                )?;
             }
         }
     }
@@ -1262,17 +1264,14 @@ fn collect_const_inits<'db>(
                         continue;
                     };
                     let Some(init) = var.init(db) else { continue };
-                    let mut local = Vec::new();
-                    if super::lower_func::lower_init_into(
+                    super::lower_func::lower_resolved_init_into(
                         db,
                         inst.instance_addr + field.offset,
                         &field.ty,
                         init,
-                        &mut local,
+                        &mut stmts,
                         string_pool,
-                    )? {
-                        stmts.extend(local);
-                    }
+                    )?;
                 }
             }
         }
