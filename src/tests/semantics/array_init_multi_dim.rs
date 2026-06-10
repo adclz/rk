@@ -508,3 +508,74 @@ fn non_zero_based_array_overflow(mut with_db: RootDatabase) {
     ---'
     ");
 }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Init-expr edge cases, against the IEC semantics this codebase implements:
+// brackets are NESTING levels (one `[` per dimension / array-typed field),
+// partial init is allowed (only a MAX check, no per-row minimum), and `x(y)`
+// fills x*y positions. These assert what INFERENCE does (diagnostic or none).
+// ─────────────────────────────────────────────────────────────────────────────
+
+/// CORRECT: a flat list for a multi-dim array is "too many" at the OUTER bracket
+/// level. `ARRAY[1..2,1..3]` holds 2 rows at the top level, so a flat
+/// `[1,2,3,4,5,6]` presents 6 there → E0605. Each row needs its own bracket.
+#[rstest]
+fn flat_list_for_multidim_is_too_many(mut with_db: RootDatabase) {
+    let source = r#"
+        TYPE Matrix : ARRAY[1..2, 1..3] OF INT; END_TYPE
+        FUNCTION Test
+            VAR Data : Matrix := [1, 2, 3, 4, 5, 6]; END_VAR
+        END_FUNCTION
+        "#;
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
+    [E0605] Error: invalid array access
+       ,-[ file:///test0.st:4:41 ]
+       |
+     4 |             VAR Data : Matrix := [1, 2, 3, 4, 5, 6]; END_VAR
+       |                                         |
+       |                                         `-- too many elements in array initializer (expected at most 2)
+    ---'
+    ");
+}
+
+/// CORRECT: partial init is allowed — no per-row MINIMUM check, only a max. A
+/// short row (`[1,2]` where the dim holds 3) fills partially, the rest default,
+/// so ragged rows are accepted by design.
+#[rstest]
+fn partial_rows_accepted(mut with_db: RootDatabase) {
+    let source = r#"
+        TYPE Matrix : ARRAY[1..2, 1..3] OF INT; END_TYPE
+        FUNCTION Test
+            VAR Data : Matrix := [[1, 2], [3, 4, 5]]; END_VAR
+        END_FUNCTION
+        "#;
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @"");
+}
+
+/// CORRECT (fixed): `[2([1, 2, 3])]` is 2 copies of the bracketed row `[1,2,3]` —
+/// valid for a 2x3. Previously it spuriously errored E0213 (and was sibling-
+/// dependent) because bracket detection didn't see through the repetition; the
+/// multi-dim branch now descends a dimension for `n([..])` too.
+#[rstest]
+fn sized_index_of_bracket_row_accepted(mut with_db: RootDatabase) {
+    let source = r#"
+        TYPE Matrix : ARRAY[1..2, 1..3] OF INT; END_TYPE
+        FUNCTION Test
+            VAR Data : Matrix := [2([1, 2, 3])]; END_VAR
+        END_FUNCTION
+        "#;
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @"");
+}
+
+/// The nested multi-dim form `[[1,2,3],[4,5,6]]` is the valid IEC spelling
+/// (brackets = nesting): inference accepts it with no diagnostic.
+#[rstest]
+fn nested_multidim_bracket_typechecks(mut with_db: RootDatabase) {
+    let source = r#"
+        TYPE Matrix : ARRAY[0..1, 0..2] OF INT; END_TYPE
+        FUNCTION Test
+            VAR Data : Matrix := [[1, 2, 3], [4, 5, 6]]; END_VAR
+        END_FUNCTION
+        "#;
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @"");
+}

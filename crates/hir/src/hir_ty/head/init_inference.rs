@@ -6,7 +6,7 @@ use crate::{
     CallSite,
     check::errors::{ToIdeDiagnostic, e1_duplicates::DuplicateError, e6_array::ArrayError},
     hir_def::{
-        expressions::expression::InitExpr,
+        expressions::expression::{Expr, InitExpr, InitExprKind},
         interned::identifier::Ident,
         pous::pou::Pou,
         scope::{ScopeId, ScopeKind},
@@ -83,13 +83,22 @@ impl<'db> InitInference<'db> {
     }
 }
 
-/// Information about an element's position in an array initializer
-#[derive(Debug, Clone, Copy, PartialEq, Eq, salsa::Update)]
-pub struct ArrayElementPosition {
-    /// The dimension this element is in (0 for first dimension, etc.)
-    pub dimension: usize,
-    /// Number of elements this initializer fills (1 for single values, N for N(value))
-    pub count: usize,
+/// One step from the initialized variable's root to a leaf value: either into a
+/// struct/FB field by name, or into an array at a flat (row-major) element index.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, salsa::Update)]
+pub enum InitPathStep {
+    Field(Ident),
+    ArrayElem(u32),
+}
+
+/// A fully-resolved leaf of an initializer: the constant `value` belongs at
+/// `path` from the variable root. This is the authoritative, flattened output of
+/// init inference — produced once here, with validation, so consumers (MIR
+/// lowering) never re-walk or re-interpret the raw `InitExpr` tree.
+#[derive(Debug, Clone, PartialEq, Eq, salsa::Update)]
+pub struct ResolvedInit<'db> {
+    pub path: Vec<InitPathStep>,
+    pub value: Expr<'db>,
 }
 
 #[derive(Debug, PartialEq, Eq, salsa::Update)]
@@ -98,8 +107,9 @@ pub struct InitExprInferenceResult<'db> {
     pub scope: ScopeId<'db>,
     /// Mapping of init expr to their resolved types
     pub type_of_init_expr: FxHashMap<InitExpr<'db>, Type<'db>>,
-    /// Mapping of init expr to their position in array (if applicable)
-    pub array_positions: FxHashMap<InitExpr<'db>, ArrayElementPosition>,
+    /// Resolved, flattened leaves per root initializer expression — the
+    /// authoritative output consumed by MIR lowering.
+    pub resolved: FxHashMap<InitExpr<'db>, Vec<ResolvedInit<'db>>>,
     /// Errors encountered during inference
     pub errors: Vec<IdeDiagnostic>,
 }
@@ -108,7 +118,7 @@ impl<'db> InitExprInferenceResult<'db> {
     pub(crate) fn new(scope: ScopeId<'db>) -> Self {
         Self {
             type_of_init_expr: FxHashMap::default(),
-            array_positions: FxHashMap::default(),
+            resolved: FxHashMap::default(),
             scope,
             errors: Vec::new(),
         }
@@ -129,6 +139,16 @@ impl<'db> InitExprInferenceResult<'db> {
             current_init_typ: typ,
         };
         self.resolve_steps(db, typ, &mut place, body_ctx, &mut ctx, map);
+
+        // Produce the authoritative, flattened resolved leaves. This is a pure,
+        // type-DIRECTED-by-structure pass (brackets = nesting): it flattens the
+        // initializer into row-major (path, value) leaves for MIR to consume.
+        // Validation lives in the walk above; this never re-validates.
+        let mut leaves = Vec::new();
+        resolve_leaves(db, expr, &mut Vec::new(), &mut leaves);
+        if !leaves.is_empty() {
+            self.resolved.insert(expr, leaves);
+        }
     }
 
     fn resolve_steps(
@@ -174,12 +194,12 @@ impl<'db> InitExprInferenceResult<'db> {
                         };
 
                         let num_dims = array.subranges(db).len();
-                        // Multi-dimensional bracket init: inner brackets group the next dimension.
-                        // Only applies when children are ArrayInit (not SizedIndex which handles
-                        // its own dimension tracking).
-                        let has_inner_brackets = values
-                            .iter()
-                            .any(|v| matches!(v, InitExprWalkStep::ArrayInit { .. }));
+                        // Multi-dimensional bracket init: an inner bracket opens the next
+                        // dimension. Detect brackets even when wrapped in a repetition
+                        // (`n([..])`) — otherwise `[2([1,2,3])]` would type-check its inner
+                        // bracket against the scalar element type and spuriously emit E0213
+                        // (and the result would depend on whether a bracket sibling exists).
+                        let has_inner_brackets = values.iter().any(step_contains_bracket);
 
                         if has_inner_brackets && num_dims > 1 && ctx.current_dim() < num_dims - 1 {
                             // Multi-dimensional bracket init: each inner bracket is one
@@ -222,17 +242,6 @@ impl<'db> InitExprInferenceResult<'db> {
                     );
                     1
                 }) as usize;
-
-                // Record position information
-                if ctx.array_root.is_some() {
-                    self.array_positions.insert(
-                        *expr,
-                        ArrayElementPosition {
-                            dimension: ctx.current_dim(),
-                            count: repeat_count,
-                        },
-                    );
-                }
 
                 // Check bounds before advancing
                 let end_pos = ctx.current_pos() + repeat_count;
@@ -305,17 +314,6 @@ impl<'db> InitExprInferenceResult<'db> {
                 self.resolve_step(db, field_type, place, body_ctx, ctx, value);
             }
             InitExprWalkStep::ConstantExpr { expr, value } => {
-                // Record position information
-                if ctx.array_root.is_some() {
-                    self.array_positions.insert(
-                        *expr,
-                        ArrayElementPosition {
-                            dimension: ctx.current_dim(),
-                            count: 1,
-                        },
-                    );
-                }
-
                 // Type check the constant expression
                 let mut infer_ctx = InferExprCtx::new(Resolver::for_scope(db, self.scope));
                 infer_ctx.resolve_expr(db, *value, body_ctx);
@@ -447,5 +445,100 @@ impl<'db> InitContext<'db> {
 
     fn clear_fields(&mut self) {
         self.seen_fields.clear();
+    }
+}
+
+// The authoritative, flattened output of an initializer, derived PURELY from
+// the init's bracket structure (brackets = nesting levels). It does no
+// validation — that is the diagnostic walk's job — so it never grows arms for
+// type-mismatch handling. MIR consumes `ResolvedInit` leaves directly instead
+// of re-walking the InitExpr tree.
+
+/// Flatten an initializer into row-major (path, value) leaves at `path`.
+fn resolve_leaves<'db>(
+    db: &'db dyn WorkspaceDataBase,
+    init: InitExpr<'db>,
+    path: &mut Vec<InitPathStep>,
+    out: &mut Vec<ResolvedInit<'db>>,
+) {
+    match init.kind(db) {
+        InitExprKind::ConstantExpr(value) => {
+            out.push(ResolvedInit {
+                path: path.clone(),
+                value,
+            });
+        }
+        InitExprKind::StructInit { values } => {
+            for v in &values {
+                if let InitExprKind::StructElement { name, value } = v.kind(db) {
+                    path.push(InitPathStep::Field(name.ident));
+                    resolve_leaves(db, *value, path, out);
+                    path.pop();
+                }
+            }
+        }
+        InitExprKind::ArrayInit { .. } => {
+            // A fresh row-major flat index for each array (nested/sub-arrays
+            // restart at 0 — MIR offsets each by its own element_size).
+            let mut flat = 0u32;
+            resolve_array_into(db, init, path, &mut flat, out);
+        }
+        // StructElement / ArrayIndexedElement only ever appear nested above.
+        _ => {}
+    }
+}
+
+/// Place each element of an array bracket at the next flat (row-major) index.
+fn resolve_array_into<'db>(
+    db: &'db dyn WorkspaceDataBase,
+    bracket: InitExpr<'db>,
+    path: &mut Vec<InitPathStep>,
+    flat: &mut u32,
+    out: &mut Vec<ResolvedInit<'db>>,
+) {
+    if let InitExprKind::ArrayInit { values } = bracket.kind(db) {
+        for child in &values {
+            array_element(db, *child, path, flat, out);
+        }
+    }
+}
+
+/// One slot of an array at the current flat index: a nested bracket continues
+/// the same flat counter (next dimension), a repetition `x(y)` expands in place,
+/// and a scalar/struct element claims one flat slot.
+fn array_element<'db>(
+    db: &'db dyn WorkspaceDataBase,
+    elem: InitExpr<'db>,
+    path: &mut Vec<InitPathStep>,
+    flat: &mut u32,
+    out: &mut Vec<ResolvedInit<'db>>,
+) {
+    match elem.kind(db) {
+        InitExprKind::ArrayInit { .. } => resolve_array_into(db, elem, path, flat, out),
+        InitExprKind::ArrayIndexedElement { size, values } => {
+            let n = size.as_u64(db).unwrap_or(0);
+            for _ in 0..n {
+                for v in &values {
+                    array_element(db, *v, path, flat, out);
+                }
+            }
+        }
+        _ => {
+            path.push(InitPathStep::ArrayElem(*flat));
+            *flat += 1;
+            resolve_leaves(db, elem, path, out);
+            path.pop();
+        }
+    }
+}
+
+/// Whether an init step contains a bracket (`ArrayInit`), even when wrapped in a
+/// repetition group (`n([..])`). Routes multi-dim bracket init to the
+/// dimension-descending branch regardless of repetition wrapping.
+fn step_contains_bracket(step: &InitExprWalkStep) -> bool {
+    match step {
+        InitExprWalkStep::ArrayInit { .. } => true,
+        InitExprWalkStep::SizedIndex { values, .. } => values.iter().any(step_contains_bracket),
+        _ => false,
     }
 }

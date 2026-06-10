@@ -316,3 +316,101 @@ fn struct_fields(mut with_db: RootDatabase) {
     ----'
     ");
 }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Init-expr edge cases, against this codebase's IEC semantics: partial init is
+// allowed (only a max check), and a repetition `x(y)` fills x*y positions. These
+// assert what INFERENCE does — a diagnostic, or none for accepted-by-design init.
+// ─────────────────────────────────────────────────────────────────────────────
+
+/// CORRECT: a struct init missing a field is partial init (the field defaults) —
+/// there is no completeness/minimum check, so it is accepted by design.
+#[rstest]
+fn partial_struct_init_accepted(mut with_db: RootDatabase) {
+    let source = r#"
+        TYPE Engine: STRUCT power : INT; oil : REAL; END_STRUCT END_TYPE
+        FUNCTION Test
+            VAR e : Engine := (power := 100); END_VAR
+        END_FUNCTION
+        "#;
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @"");
+}
+
+/// CORRECT: an empty initializer is full partial init (all default). No
+/// under-fill check, accepted by design.
+#[rstest]
+fn empty_array_init_accepted(mut with_db: RootDatabase) {
+    let source = r#"
+        FUNCTION Test
+            VAR a : ARRAY[0..3] OF INT := []; END_VAR
+        END_FUNCTION
+        "#;
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @"");
+}
+
+/// A digit-separator in a repeat count `[1_0(7)]` (count = 10) is accepted by
+/// inference (the count is read via `as_u64`, which strips `_`).
+#[rstest]
+fn underscore_repeat_count_typechecks(mut with_db: RootDatabase) {
+    let source = r#"
+        FUNCTION Test
+            VAR a : ARRAY[0..9] OF INT := [1_0(7)]; END_VAR
+        END_FUNCTION
+        "#;
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @"");
+}
+
+/// Nested repetition `[2(3(5))]` = 2×(3×5) = 6 positions, exactly filling
+/// `ARRAY[0..5]`: inference accepts it (no diagnostic).
+#[rstest]
+fn nested_repetition_typechecks(mut with_db: RootDatabase) {
+    let source = r#"
+        FUNCTION Test
+            VAR a : ARRAY[0..5] OF INT := [2(3(5))]; END_VAR
+        END_FUNCTION
+        "#;
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @"");
+}
+
+/// LIMITATION: a radix repetition count `[16#4(0)]` is not accepted — the grammar
+/// constrains the count to a decimal literal, so `16#4` is a syntax error. A
+/// clearer "count must be a decimal literal" diagnostic would help.
+#[rstest]
+fn radix_repeat_count_rejected(mut with_db: RootDatabase) {
+    let source = r#"
+        FUNCTION Test
+            VAR a : ARRAY[0..3] OF INT := [16#4(0)]; END_VAR
+        END_FUNCTION
+        "#;
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
+    [E0050] Error: syntax
+       ,-[ file:///test0.st:3:44 ]
+       |
+     3 |             VAR a : ARRAY[0..3] OF INT := [16#4(0)]; END_VAR
+       |                                            ^^|^
+       |                                              `--- Unexpected token(s): '16#4'
+    ---'
+    ");
+}
+
+/// LIMITATION: a named-constant count `[FOO(0)]` (a other toolchains idiom) is not
+/// accepted — the count must be a literal, so it mis-parses as a function call in
+/// init (E0017). A clearer diagnostic would help.
+/// TODO: we might accept this in a next version
+#[rstest]
+fn named_constant_repeat_count_rejected(mut with_db: RootDatabase) {
+    let source = r#"
+        FUNCTION Test
+            VAR a : ARRAY[0..3] OF INT := [FOO(0)]; END_VAR
+        END_FUNCTION
+        "#;
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
+    [E0017] Error: syntax
+       ,-[ file:///test0.st:3:44 ]
+       |
+     3 |             VAR a : ARRAY[0..3] OF INT := [FOO(0)]; END_VAR
+       |                                            ^^^|^^
+       |                                               `---- function call in initialization expression is not allowed
+    ---'
+    ");
+}
