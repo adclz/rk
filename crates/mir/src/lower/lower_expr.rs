@@ -674,8 +674,9 @@ impl<'db> ExprLowerCtx<'db> {
                     ));
                 };
                 let array_hir_type = index_expr.path.infer(self.db);
+                let dim = self.index_dimension(index_expr.path);
                 let (element_type, element_size, lower_bound) =
-                    self.resolve_array_info(array_hir_type);
+                    self.resolve_array_dim_info(array_hir_type, dim);
                 Ok(MirPlace::Index {
                     base: Box::new(inner),
                     index: Box::new(index),
@@ -779,8 +780,9 @@ impl<'db> ExprLowerCtx<'db> {
 
                 // Resolve element type from the array's base type
                 let array_hir_type = index_expr.path.infer(self.db);
+                let dim = self.index_dimension(index_expr.path);
                 let (element_type, element_size, lower_bound) =
-                    self.resolve_array_info(array_hir_type);
+                    self.resolve_array_dim_info(array_hir_type, dim);
 
                 Ok(MirPlace::Index {
                     base: Box::new(inner),
@@ -829,15 +831,40 @@ impl<'db> ExprLowerCtx<'db> {
         0
     }
 
-    /// Resolve array element info from an array type.
-    fn resolve_array_info(&self, array_type: Type<'db>) -> (MirType, u32, i64) {
+    /// For a multi-dimensional array, each chained `Index` (`m[i][j]`) addresses
+    /// one dimension: the innermost `m[i]` is dimension 0, `m[i][j]` is dimension
+    /// 1, etc. The dimension is the number of `Index` nodes below this one in the
+    /// path chain. (`path` is the inner path of the current index, so counting
+    /// from there yields this index's own dimension.)
+    fn index_dimension(
+        &self,
+        path: hir::hir_def::expressions::expression::PathExpr<'db>,
+    ) -> usize {
+        match path.expr(self.db) {
+            PathExprKind::Index(inner) => 1 + self.index_dimension(inner.path),
+            _ => 0,
+        }
+    }
+
+    /// `(element_type, byte_stride, lower_bound)` for dimension `dim`,
+    /// row-major: `stride = element_size × ∏(later sizes)`.
+    fn resolve_array_dim_info(&self, array_type: Type<'db>, dim: usize) -> (MirType, u32, i64) {
         let mir = self.lower_type_resolved(array_type).ok();
         if let Some(MirType::Array(ref a)) = mir {
-            let lower_bound = a.dimensions.first().map(|(l, _)| *l).unwrap_or(0);
-            return (*a.element_type.clone(), a.element_size, lower_bound);
+            let later: u32 = a
+                .dimensions
+                .get(dim + 1..)
+                .unwrap_or(&[])
+                .iter()
+                .map(|(l, h)| (h - l + 1) as u32)
+                .product();
+            let stride = a.element_size * later;
+            let lower_bound = a.dimensions.get(dim).map(|(l, _)| *l).unwrap_or(0);
+            return (*a.element_type.clone(), stride, lower_bound);
         }
         (MirType::Void, 4, 0)
     }
+
 
     /// Lower a function call expression.
     pub fn lower_func_call(

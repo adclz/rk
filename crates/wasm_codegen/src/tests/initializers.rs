@@ -147,6 +147,94 @@ fn nested_multidim_array_initializer(mut with_db: db::RootDatabase) {
     assert_eq!(vals, vec![1, 2, 3, 4, 5, 6], "row-major flatten of [[1,2,3],[4,5,6]]");
 }
 
+/// Multi-dimensional element ACCESS via chained brackets `m[i][j]` (the valid IEC
+/// syntax — the comma form `m[i,j]` is initializer-only). Each chained `Index`
+/// addresses one dimension; the positional checksum pins every cell row-major.
+/// (`DINT` because the weights overflow 16-bit `INT`.)
+#[rstest]
+fn multidim_element_access(mut with_db: db::RootDatabase) {
+    let source = r#"
+        TYPE Matrix : ARRAY[0..1, 0..2] OF DINT; END_TYPE
+
+        PROGRAM P
+        VAR RETAIN total : DINT; END_VAR
+        VAR m : Matrix := [[1, 2, 3], [4, 5, 6]]; END_VAR
+            total := m[0][0]*100000 + m[0][1]*10000 + m[0][2]*1000
+                   + m[1][0]*100 + m[1][1]*10 + m[1][2];
+        END_PROGRAM
+
+        CONFIGURATION Cfg
+            RESOURCE Res ON CPU
+                TASK T(INTERVAL := T#10ms, PRIORITY := 1);
+                PROGRAM P1 WITH T : P;
+            END_RESOURCE
+        END_CONFIGURATION
+    "#;
+    let (_mir, wasm) = compile_to_mir_and_wasm(&mut with_db, source);
+
+    let mut plc = Plc::load(&wasm, Config::default()).expect("load");
+    plc.run(1).expect("scan");
+    assert_eq!(read_first_i32(&plc), 123456, "m[i][j] reads row-major");
+}
+
+/// 3-D access `c[i][j][k]` — verifies `index_dimension` counts arbitrary chain
+/// depth and the stride product generalizes past 2-D (2×2×2, flat 1..8).
+#[rstest]
+fn three_dim_element_access(mut with_db: db::RootDatabase) {
+    let source = r#"
+        PROGRAM P
+        VAR RETAIN total : DINT; END_VAR
+        VAR c : ARRAY[0..1, 0..1, 0..1] OF DINT
+              := [[[1, 2], [3, 4]], [[5, 6], [7, 8]]]; END_VAR
+            total := c[0][0][0]*10000000 + c[0][0][1]*1000000
+                   + c[0][1][0]*100000   + c[0][1][1]*10000
+                   + c[1][0][0]*1000     + c[1][0][1]*100
+                   + c[1][1][0]*10       + c[1][1][1];
+        END_PROGRAM
+
+        CONFIGURATION Cfg
+            RESOURCE Res ON CPU
+                TASK T(INTERVAL := T#10ms, PRIORITY := 1);
+                PROGRAM P1 WITH T : P;
+            END_RESOURCE
+        END_CONFIGURATION
+    "#;
+    let (_mir, wasm) = compile_to_mir_and_wasm(&mut with_db, source);
+
+    let mut plc = Plc::load(&wasm, Config::default()).expect("load");
+    plc.run(1).expect("scan");
+    assert_eq!(read_first_i32(&plc), 12345678, "c[i][j][k] reads row-major");
+}
+
+/// Writing `m[i][j] := v` uses the same per-dimension offset as reads: overwrite
+/// one cell of an initialized matrix and confirm only that cell changed. `m[1][0]`
+/// (weight ×100) goes 4→9, so the checksum shifts by +500 (123456 → 123956); a
+/// wrong write offset would change a different weight.
+#[rstest]
+fn multidim_element_write(mut with_db: db::RootDatabase) {
+    let source = r#"
+        PROGRAM P
+        VAR RETAIN total : DINT; END_VAR
+        VAR m : ARRAY[0..1, 0..2] OF DINT := [[1, 2, 3], [4, 5, 6]]; END_VAR
+            m[1][0] := 9;
+            total := m[0][0]*100000 + m[0][1]*10000 + m[0][2]*1000
+                   + m[1][0]*100 + m[1][1]*10 + m[1][2];
+        END_PROGRAM
+
+        CONFIGURATION Cfg
+            RESOURCE Res ON CPU
+                TASK T(INTERVAL := T#10ms, PRIORITY := 1);
+                PROGRAM P1 WITH T : P;
+            END_RESOURCE
+        END_CONFIGURATION
+    "#;
+    let (_mir, wasm) = compile_to_mir_and_wasm(&mut with_db, source);
+
+    let mut plc = Plc::load(&wasm, Config::default()).expect("load");
+    plc.run(1).expect("scan");
+    assert_eq!(read_first_i32(&plc), 123956, "m[1][0]:=9 hits only flat index 3");
+}
+
 /// Nested repetition `[2(3(5))]` = 2×(3×5) = six 5s. (Was a silent runtime zero.)
 #[rstest]
 fn nested_repetition_array_initializer(mut with_db: db::RootDatabase) {
