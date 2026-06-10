@@ -30,15 +30,6 @@ pub fn infer_signature<'db>(db: &'db dyn WorkspaceDataBase, scope: ScopeId<'db>)
     Signature::new(scope).infer_signature(db)
 }
 
-/// Information about an element's position in an array initializer
-#[derive(Debug, Clone, Copy, PartialEq, Eq, salsa::Update)]
-pub struct ArrayElementPosition {
-    /// The dimension this element is in (0 for first dimension, etc.)
-    pub dimension: usize,
-    /// Number of elements this initializer fills (1 for single values, N for N(value))
-    pub count: usize,
-}
-
 #[derive(Debug, PartialEq, Eq, salsa::Update)]
 pub struct Signature<'db> {
     // Scope where this InferenceResult was emitted
