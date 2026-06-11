@@ -144,7 +144,11 @@ fn nested_multidim_array_initializer(mut with_db: db::RootDatabase) {
     let vals: Vec<i32> = (0..6)
         .map(|i| i32::from_le_bytes(r[i * 4..i * 4 + 4].try_into().unwrap()))
         .collect();
-    assert_eq!(vals, vec![1, 2, 3, 4, 5, 6], "row-major flatten of [[1,2,3],[4,5,6]]");
+    assert_eq!(
+        vals,
+        vec![1, 2, 3, 4, 5, 6],
+        "row-major flatten of [[1,2,3],[4,5,6]]"
+    );
 }
 
 /// Multi-dimensional element ACCESS via chained brackets `m[i][j]` (the valid IEC
@@ -232,7 +236,11 @@ fn multidim_element_write(mut with_db: db::RootDatabase) {
 
     let mut plc = Plc::load(&wasm, Config::default()).expect("load");
     plc.run(1).expect("scan");
-    assert_eq!(read_first_i32(&plc), 123956, "m[1][0]:=9 hits only flat index 3");
+    assert_eq!(
+        read_first_i32(&plc),
+        123956,
+        "m[1][0]:=9 hits only flat index 3"
+    );
 }
 
 /// Nested repetition `[2(3(5))]` = 2×(3×5) = six 5s. (Was a silent runtime zero.)
@@ -310,7 +318,11 @@ fn function_local_array_initializer(mut with_db: db::RootDatabase) {
 
     let mut plc = Plc::load(&wasm, Config::default()).expect("load");
     plc.run(1).expect("scan");
-    assert_eq!(read_first_i32(&plc), 123, "function-local array init [100,20,3]");
+    assert_eq!(
+        read_first_i32(&plc),
+        123,
+        "function-local array init [100,20,3]"
+    );
 }
 
 /// A struct initializer `(x := 3, y := 4)` is applied field-by-field at load.
@@ -336,7 +348,11 @@ fn struct_initializer(mut with_db: db::RootDatabase) {
 
     let mut plc = Plc::load(&wasm, Config::default()).expect("load");
     plc.run(1).expect("scan");
-    assert_eq!(read_first_i32(&plc), 304, "x*100 + y = 3*100 + 4 from struct init");
+    assert_eq!(
+        read_first_i32(&plc),
+        304,
+        "x*100 + y = 3*100 + 4 from struct init"
+    );
 }
 
 /// A RETAIN var's initializer is its COLD-start value only: on a warm restart

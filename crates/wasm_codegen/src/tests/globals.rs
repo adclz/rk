@@ -83,7 +83,8 @@ fn host_reads_and_writes_global(mut with_db: db::RootDatabase) {
     );
 
     // Host writes g = 777; the next scan sees it.
-    plc.write_globals(0, &777i32.to_le_bytes()).expect("write global");
+    plc.write_globals(0, &777i32.to_le_bytes())
+        .expect("write global");
     plc.run(1).expect("scan");
     assert_eq!(
         i32::from_le_bytes(plc.read_retain()[0..4].try_into().unwrap()),

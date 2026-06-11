@@ -412,7 +412,8 @@ pub fn lower_program_type<'db>(
         if var.kind(db) == hir::hir_def::pous::variable::VariableKind::External {
             continue;
         }
-        let mir_type = apply_sized_string(db, var.spec(db), lower_type(db, var.spec(db).infer(db))?);
+        let mir_type =
+            apply_sized_string(db, var.spec(db), lower_type(db, var.spec(db).infer(db))?);
         let field_align = mir_type.alignment();
         let field_size = mir_type.size_bytes();
 

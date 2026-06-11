@@ -550,8 +550,10 @@ fn lower_module_from_pous<'db>(
     )?;
     if !init_stmts.is_empty() {
         let idx = module.functions.len() as u32 + module.extern_functions.len() as u32;
-        let name =
-            hir::hir_def::interned::identifier::Ident::new(db, compact_str::CompactString::from("__init"));
+        let name = hir::hir_def::interned::identifier::Ident::new(
+            db,
+            compact_str::CompactString::from("__init"),
+        );
         module.functions.push(crate::function::MirFunction {
             name,
             origin_name: name,
@@ -1038,7 +1040,12 @@ fn add_global<'db>(
     );
     let size = ty.size_bytes();
     let align = ty.alignment();
-    let addr = memory_layout.allocate(v.name(db), size, align, crate::memory::MirAllocKind::Variable);
+    let addr = memory_layout.allocate(
+        v.name(db),
+        size,
+        align,
+        crate::memory::MirAllocKind::Variable,
+    );
     // RETAIN globals are flagged so the globals band overlaps the retain
     // band on them.
     let retain = v.qualifier(db).contains(hir::Qualifier::RETAIN);
@@ -1178,7 +1185,11 @@ fn rewrite_globals_stmt(
             }
         }
         MirStmt::For {
-            start, end, step, body, ..
+            start,
+            end,
+            step,
+            body,
+            ..
         } => {
             rewrite_globals_expr(start, globals, locals);
             rewrite_globals_expr(end, globals, locals);

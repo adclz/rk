@@ -133,10 +133,7 @@ pub enum MirPlace {
     /// lower a global reference as `Local(name)` (the address isn't known at
     /// body-lowering time); a post-pass in `lower_module` rewrites those whose
     /// name matches the module's global symbol table into this variant.
-    Global {
-        address: u32,
-        ty: MirType,
-    },
+    Global { address: u32, ty: MirType },
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

@@ -836,10 +836,7 @@ impl<'db> ExprLowerCtx<'db> {
     /// 1, etc. The dimension is the number of `Index` nodes below this one in the
     /// path chain. (`path` is the inner path of the current index, so counting
     /// from there yields this index's own dimension.)
-    fn index_dimension(
-        &self,
-        path: hir::hir_def::expressions::expression::PathExpr<'db>,
-    ) -> usize {
+    fn index_dimension(&self, path: hir::hir_def::expressions::expression::PathExpr<'db>) -> usize {
         match path.expr(self.db) {
             PathExprKind::Index(inner) => 1 + self.index_dimension(inner.path),
             _ => 0,
@@ -864,7 +861,6 @@ impl<'db> ExprLowerCtx<'db> {
         }
         (MirType::Void, 4, 0)
     }
-
 
     /// Lower a function call expression.
     pub fn lower_func_call(

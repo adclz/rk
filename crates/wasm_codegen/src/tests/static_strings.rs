@@ -82,7 +82,11 @@ fn string_field_initializer(mut with_db: db::RootDatabase) {
     let (_mir, wasm) = compile_to_mir_and_wasm(&mut with_db, source);
 
     let plc = Plc::load(&wasm, Config::default()).expect("load");
-    assert_eq!(read_retain_string(&plc), "init!", "initializer applied at load");
+    assert_eq!(
+        read_retain_string(&plc),
+        "init!",
+        "initializer applied at load"
+    );
 }
 
 /// A STRING VAR_GLOBAL initializer is applied at load and visible to programs.
@@ -272,7 +276,11 @@ fn sized_string_global_clamps_to_capacity(mut with_db: db::RootDatabase) {
 
     let mut plc = Plc::load(&wasm, Config::default()).expect("load");
     plc.run(1).expect("scan");
-    assert_eq!(read_retain_string(&plc), "abcd", "STRING[4] global clamps 'abcdef'");
+    assert_eq!(
+        read_retain_string(&plc),
+        "abcd",
+        "STRING[4] global clamps 'abcdef'"
+    );
 }
 
 /// A STRING VAR_GLOBAL written by one program and read by another.

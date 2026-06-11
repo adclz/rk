@@ -105,8 +105,16 @@ fn config_emits_task_entries_and_scheduler_globals(mut with_db: db::RootDatabase
 
     assert_eq!(read_i32(&mut store, "__task_count"), 2);
     assert_eq!(read_i64(&mut store, "__common_ticktime_ns"), 10_000_000);
-    assert_eq!(read_i32(&mut store, "__task_0__period"), 1, "Fast = 10ms/10ms");
-    assert_eq!(read_i32(&mut store, "__task_1__period"), 2, "Slow = 20ms/10ms");
+    assert_eq!(
+        read_i32(&mut store, "__task_0__period"),
+        1,
+        "Fast = 10ms/10ms"
+    );
+    assert_eq!(
+        read_i32(&mut store, "__task_1__period"),
+        2,
+        "Slow = 20ms/10ms"
+    );
 
     // Both task entries exist and run their programs without trapping.
     for entry in ["__task_0", "__task_1"] {

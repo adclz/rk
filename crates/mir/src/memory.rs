@@ -122,7 +122,14 @@ impl MirMemoryLayout {
 
     /// Register an already-allocated config/resource VAR_GLOBAL so it can be
     /// gathered into the contiguous host-visible band. Pure bookkeeping.
-    pub fn record_global(&mut self, name: Ident, address: u32, size: u32, align: u32, retain: bool) {
+    pub fn record_global(
+        &mut self,
+        name: Ident,
+        address: u32,
+        size: u32,
+        align: u32,
+        retain: bool,
+    ) {
         self.global_allocations.push(GlobalEntry {
             name,
             address,

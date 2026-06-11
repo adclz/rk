@@ -16,8 +16,8 @@ use hir::{
         config::{ConfigDecl, ConfigResource, DataSource, TaskConfig},
         expressions::expression::{Elementary, ExprKind, PrimaryExpr},
         interned::identifier::Ident,
-        program::ProgramDecl,
         pous::variable::VariableKind,
+        program::ProgramDecl,
     },
     hir_ty::config::infer_config_result,
 };
