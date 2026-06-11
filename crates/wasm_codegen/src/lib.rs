@@ -1211,6 +1211,27 @@ impl<'a> WasmGen<'a> {
             retain_size_idx,
         );
 
+        // The host-visible GLOBALS band: every config/resource VAR_GLOBAL,
+        // gathered contiguous so an HMI/host can read/write them as one region
+        // (same two-integer contract as retain). `globals_size == 0` means none.
+        // RETAIN globals overlap the retain band, so they appear in both.
+        let globals_base_idx = self.global_section.len();
+        let (ty, init) = retain_global(self.module.globals_base);
+        self.global_section.global(ty, &init);
+        let globals_size_idx = self.global_section.len();
+        let (ty, init) = retain_global(self.module.globals_size);
+        self.global_section.global(ty, &init);
+        self.export_section.export(
+            "globals_base",
+            wasm_encoder::ExportKind::Global,
+            globals_base_idx,
+        );
+        self.export_section.export(
+            "globals_size",
+            wasm_encoder::ExportKind::Global,
+            globals_size_idx,
+        );
+
         // Scheduler metadata for the CONFIGURATION's tasks (cooperative model
         // B). The runtime reads these to drive the scan loop: it advances one
         // `tick` every `__common_ticktime_ns`, and on each tick calls the

@@ -51,6 +51,14 @@ pub struct MirModule {
     pub retain_base: u32,
     pub retain_size: u32,
 
+    /// Start address + byte length of the contiguous GLOBALS band — every
+    /// config/resource `VAR_GLOBAL`, gathered so the host (HMI) can read/write
+    /// them as one region (mirrors the retain band). `globals_size == 0` when
+    /// there are no globals. RETAIN globals sit in the overlap with the retain
+    /// band, so they are both host-visible here and persisted there.
+    pub globals_base: u32,
+    pub globals_size: u32,
+
     /// Resolved task schedule of the module's CONFIGURATION, or `None` when the
     /// module has no configuration (e.g. a bare `{test}` program). Drives the
     /// generated `__init`/per-task entries and the runtime's scan loop.

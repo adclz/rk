@@ -425,6 +425,8 @@ fn lower_module_from_pous<'db>(
         },
         retain_base: 0,
         retain_size: 0,
+        globals_base: 0,
+        globals_size: 0,
         schedule,
     };
 
@@ -444,12 +446,12 @@ fn lower_module_from_pous<'db>(
     // instance, and monomorphized-slot allocation; then patch the moved addresses
     // into each function's locals — the only place a variable's absolute address
     // is stored (body statements resolve addresses via the local map at codegen).
-    let retain_band = module.memory_layout.finalize_retain_band();
-    if retain_band.size > 0 {
+    let bands = module.memory_layout.finalize_bands();
+    if !bands.remap.is_empty() {
         for func in &mut module.functions {
             for local in &mut func.locals {
                 if let crate::function::MirStorage::Memory { address, .. } = &mut local.storage
-                    && let Some(&new_addr) = retain_band.remap.get(address)
+                    && let Some(&new_addr) = bands.remap.get(address)
                 {
                     *address = new_addr;
                 }
@@ -460,21 +462,24 @@ fn lower_module_from_pous<'db>(
         if let Some(sched) = &mut module.schedule {
             for task in &mut sched.tasks {
                 for inst in &mut task.programs {
-                    if let Some(&new_addr) = retain_band.remap.get(&inst.instance_addr) {
+                    if let Some(&new_addr) = bands.remap.get(&inst.instance_addr) {
                         inst.instance_addr = new_addr;
                     }
                 }
             }
         }
-        // RETAIN globals are relocated into the band too; patch their addresses.
+        // Every global is relocated into the globals band; patch its address so
+        // body references (resolved via the global table) hit the band.
         for (addr, _) in global_table.values_mut() {
-            if let Some(&new_addr) = retain_band.remap.get(&*addr) {
+            if let Some(&new_addr) = bands.remap.get(&*addr) {
                 *addr = new_addr;
             }
         }
     }
-    module.retain_base = retain_band.base;
-    module.retain_size = retain_band.size;
+    module.retain_base = bands.retain_base;
+    module.retain_size = bands.retain_size;
+    module.globals_base = bands.globals_base;
+    module.globals_size = bands.globals_size;
 
     // Phase 4.6: synthesize one entry function per scheduled task (cooperative
     // model B — the runtime calls these). Each `__task_<i>` runs its task's
@@ -1034,9 +1039,10 @@ fn add_global<'db>(
     let size = ty.size_bytes();
     let align = ty.alignment();
     let addr = memory_layout.allocate(v.name(db), size, align, crate::memory::MirAllocKind::Variable);
-    if v.qualifier(db).contains(hir::Qualifier::RETAIN) {
-        memory_layout.record_retain(v.name(db), addr, size, align);
-    }
+    // RETAIN globals are flagged so the globals band overlaps the retain
+    // band on them.
+    let retain = v.qualifier(db).contains(hir::Qualifier::RETAIN);
+    memory_layout.record_global(v.name(db), addr, size, align, retain);
     table.insert(v.name(db), (addr, ty));
     Ok(())
 }
