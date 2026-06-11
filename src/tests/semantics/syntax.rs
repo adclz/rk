@@ -1152,3 +1152,26 @@ END_FUNCTION_BLOCK
     ---'
     "#);
 }
+
+#[rstest]
+fn comma_index_access_rejected(mut with_db: RootDatabase) {
+    // `m[i, j]` (comma) is initializer-only syntax; element access must chain
+    // (`m[i][j]`). The grammar's `index_value` is shared `commaSep1`, so the HIR
+    // builder rejects more-than-one index with a clear, actionable message.
+    let source = r#"
+        TYPE Matrix : ARRAY[0..1, 0..2] OF INT; END_TYPE
+        FUNCTION test : INT
+        VAR m : Matrix; END_VAR
+            test := m[0, 0];
+        END_FUNCTION
+        "#;
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
+    [E0018] Error: syntax
+       ,-[ file:///test0.st:5:21 ]
+       |
+     5 |             test := m[0, 0];
+       |                     ^^^|^^^
+       |                        `----- comma-separated indices are not allowed in array access; use chained subscripts, e.g. `a[i][j]`
+    ---'
+    ");
+}

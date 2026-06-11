@@ -727,9 +727,11 @@ END_FUNCTION
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @"");
 }
 
-/// Multi-dimensional array indexing with comma syntax should resolve to element type.
+/// Multi-dimensional array indexing with chained subscripts resolves to the
+/// element type. (The comma form `xy[i, j]` is rejected by the grammar — access
+/// is one index per `[]`, multi-dim chains: `xy[i][j]`.)
 #[rstest]
-fn multi_dimensional_array_comma_index(mut with_db: RootDatabase) {
+fn multi_dimensional_array_chained_index(mut with_db: RootDatabase) {
     let source = r#"
 FUNCTION POLYNOM_INT : REAL
 VAR_INPUT
@@ -741,11 +743,11 @@ VAR
     xy : ARRAY[1..5, 0..1] OF REAL;
     x : REAL;
 END_VAR
-    x := xy[1, 0];
-    x := xy[j, 1];
-    x := xy[j, 1] - xy[j - 1, 1];
-    x := x - xy[1, 0];
-    POLYNOM_INT := X - xy[i, 0];
+    x := xy[1][0];
+    x := xy[j][1];
+    x := xy[j][1] - xy[j - 1][1];
+    x := x - xy[1][0];
+    POLYNOM_INT := X - xy[i][0];
 END_FUNCTION
 "#;
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @"");
