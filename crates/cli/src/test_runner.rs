@@ -39,27 +39,37 @@ impl WasiView for HostState {
     }
 }
 
-/// Discover tests from the manifest file.
-fn discover_tests(workspace: &std::path::Path) -> Vec<(String, String)> {
-    let manifest_path = workspace.join("rk_build").join("test").join("manifest");
-    let bytes = match std::fs::read(&manifest_path) {
-        Ok(b) => b,
-        Err(e) => {
-            eprintln!("{}failed to read manifest: {}", "error: ".bold().red(), e);
-            return vec![];
-        }
-    };
-    match mir::test_manifest::TestManifest::from_msgpack(&bytes) {
-        Ok(manifest) => manifest
+/// Discover tests from the `rk.test-manifest` custom section embedded in the
+/// component binary.
+fn discover_tests(component_bytes: &[u8]) -> Vec<(String, String)> {
+    match read_manifest_section(component_bytes) {
+        Some(manifest) => manifest
             .tests
             .iter()
             .map(|t| (t.path.clone(), t.export.clone()))
             .collect(),
-        Err(e) => {
-            eprintln!("{}failed to parse manifest: {}", "error: ".bold().red(), e);
+        None => {
+            eprintln!(
+                "{}no test manifest found in component (missing `{}` custom section)",
+                "error: ".bold().red(),
+                mir::test_manifest::TEST_MANIFEST_SECTION
+            );
             vec![]
         }
     }
+}
+
+/// Find the `rk.test-manifest` custom section in the component binary and
+/// decode the MessagePack [`mir::test_manifest::TestManifest`] it carries.
+fn read_manifest_section(bytes: &[u8]) -> Option<mir::test_manifest::TestManifest> {
+    for payload in wasmparser::Parser::new(0).parse_all(bytes) {
+        if let Ok(wasmparser::Payload::CustomSection(reader)) = payload
+            && reader.name() == mir::test_manifest::TEST_MANIFEST_SECTION
+        {
+            return mir::test_manifest::TestManifest::from_msgpack(reader.data()).ok();
+        }
+    }
+    None
 }
 
 /// Build a component linker with WASI imports.
@@ -89,19 +99,24 @@ fn fmt_duration(d: std::time::Duration) -> String {
 }
 
 /// Run tests from a compiled WASM component.
-/// Reads the test manifest from `<workspace>/rk_build/test/manifest`.
-pub fn run_tests(
-    wasm_path: &std::path::Path,
-    workspace: &std::path::Path,
-    filter: Option<&str>,
-) -> usize {
+/// Reads the test manifest from the component's `rk.test-manifest` custom
+/// section — there is no sidecar file.
+pub fn run_tests(wasm_path: &std::path::Path, filter: Option<&str>) -> usize {
     let mut config = Config::new();
     config.wasm_component_model(true);
     config.wasm_exceptions(true);
 
     let engine = Engine::new(&config).expect("Failed to create engine");
 
-    let component = match Component::from_file(&engine, wasm_path) {
+    let bytes = match std::fs::read(wasm_path) {
+        Ok(b) => b,
+        Err(e) => {
+            eprintln!("{}failed to read component: {}", "error: ".bold().red(), e);
+            return 1;
+        }
+    };
+
+    let component = match Component::from_binary(&engine, &bytes) {
         Ok(c) => c,
         Err(e) => {
             eprintln!("{}{}", "wasm error: ".bold().red(), e);
@@ -114,7 +129,7 @@ pub fn run_tests(
         }
     };
 
-    let mut tests = discover_tests(workspace);
+    let mut tests = discover_tests(&bytes);
 
     if let Some(f) = filter {
         let f_lower = f.to_lowercase();

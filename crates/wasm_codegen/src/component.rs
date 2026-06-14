@@ -349,5 +349,15 @@ pub fn wrap_in_component(
         builder.export(&export_name, ComponentExportKind::Func, comp_func_idx, None);
     }
 
+    // === Step 5: Embed the test manifest as a custom section ===
+    // The runner reads this back out of the component binary instead of a
+    // loose sidecar file, so the manifest can never drift from the wasm it
+    // describes. Same custom-section mechanism debug symbols will use.
+    let manifest_bytes = module.test_manifest.to_msgpack();
+    builder.custom_section(&wasm_encoder::CustomSection {
+        name: std::borrow::Cow::Borrowed(mir::test_manifest::TEST_MANIFEST_SECTION),
+        data: std::borrow::Cow::Owned(manifest_bytes),
+    });
+
     Ok(builder.finish())
 }

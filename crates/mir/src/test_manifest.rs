@@ -1,9 +1,15 @@
 //! Test manifest — serialized metadata about test functions and their cases.
 //!
-//! Stored as a MessagePack-encoded custom section in the WASM module.
-//! The test runner reads this to discover and execute tests.
+//! Embedded in the compiled component as the [`TEST_MANIFEST_SECTION`] custom
+//! section (MessagePack-encoded). The test runner reads it back out of the
+//! binary — no sidecar file — so the manifest can never drift from the wasm
+//! it describes.
 
 use serde::{Deserialize, Serialize};
+
+/// Name of the custom wasm section that carries the MessagePack-encoded
+/// [`TestManifest`] inside the compiled component.
+pub const TEST_MANIFEST_SECTION: &str = "test-manifest";
 
 /// The complete test manifest for a module.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]

@@ -37,11 +37,9 @@ pub fn run_test(
         std::process::exit(1);
     });
 
-    // Write test manifest
-    let manifest_bytes = mir_module.test_manifest.to_msgpack();
-    std::fs::write(build_dir.join("manifest"), &manifest_bytes).ok();
-
-    let failures = crate::test_runner::run_tests(&wasm_path, workspace, filter);
+    // The test manifest is embedded as a custom section inside the component
+    // itself (see `wrap_in_component`), so there is no sidecar file to write.
+    let failures = crate::test_runner::run_tests(&wasm_path, filter);
     if failures > 0 {
         std::process::exit(1);
     }
