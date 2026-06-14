@@ -20,6 +20,7 @@ members = [
     "crates/wasm_codegen",
     "crates/wasm_builtins_generated",
     "crates/mir",
+    "crates/debug_format",
     "crates/cli",
     "crates/benchmark",
     "crates/linter",
@@ -46,6 +47,7 @@ ide_proto = { path = "crates/ide_proto" }
 hir = { path = "crates/hir" }
 wasm_codegen = { path = "crates/wasm_codegen" }
 mir = { path = "crates/mir" }
+debug_format = { path = "crates/debug_format" }
 formatter = { path = "crates/formatter" }
 linter = { path = "crates/linter" }
 index = { path = "crates/index" }
