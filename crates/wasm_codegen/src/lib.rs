@@ -1315,6 +1315,14 @@ impl<'a> WasmGen<'a> {
             module.section(&data_section);
         }
 
+        // The debug-symbol table (`debug-symbols`), for by-name monitoring;
+        // strippable.
+        let debug_bytes = self.module.debug_symbols.to_msgpack();
+        module.section(&wasm_encoder::CustomSection {
+            name: std::borrow::Cow::Borrowed(mir::debug_symbols::DEBUG_SYMBOLS_SECTION),
+            data: std::borrow::Cow::Owned(debug_bytes),
+        });
+
         module
     }
 }

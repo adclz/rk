@@ -1,3 +1,4 @@
+pub mod debug_symbols;
 pub mod expr;
 pub mod function;
 pub mod memory;
@@ -11,6 +12,7 @@ pub mod lower;
 use hir::hir_def::interned::identifier::Ident;
 use rustc_hash::FxHashMap;
 
+use crate::debug_symbols::DebugSymbols;
 use crate::function::{MirExternFunction, MirFunction};
 use crate::memory::MirMemoryLayout;
 use crate::test_manifest::TestManifest;
@@ -63,6 +65,10 @@ pub struct MirModule {
     /// module has no configuration (e.g. a bare `{test}` program). Drives the
     /// generated `__init`/per-task entries and the runtime's scan loop.
     pub schedule: Option<schedule::MirSchedule>,
+
+    /// Debug-symbol table: every debuggable variable at its absolute address,
+    /// emitted as the `debug-symbols` section.
+    pub debug_symbols: DebugSymbols,
 }
 
 /// An interned string literal.

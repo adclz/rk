@@ -428,6 +428,7 @@ fn lower_module_from_pous<'db>(
         globals_base: 0,
         globals_size: 0,
         schedule,
+        debug_symbols: crate::debug_symbols::DebugSymbols::new(),
     };
 
     // Phase 4: Monomorphization - discovers call sites, generates concrete copies
@@ -480,6 +481,39 @@ fn lower_module_from_pous<'db>(
     module.retain_size = bands.retain_size;
     module.globals_base = bands.globals_base;
     module.globals_size = bands.globals_size;
+
+    // Build the debug-symbol table now that every address is final (post band
+    // relocation): program-instance fields and config/resource globals, each
+    // walked down to its elementary leaves (recursing into nested FB/struct
+    // fields to build dotted paths). The runtime reads this to monitor
+    // variables by name. Sorted by path for deterministic output.
+    let mut symbols = Vec::new();
+    if let Some(sched) = &module.schedule {
+        for task in &sched.tasks {
+            for inst in &task.programs {
+                if let Some(info) = program_infos.get(&inst.prog_name) {
+                    for f in &info.struct_type.fields {
+                        let path = crate::debug_symbols::join_path(db, inst.inst_name.text(db), f.name);
+                        crate::debug_symbols::walk_type(
+                            db,
+                            &path,
+                            inst.instance_addr + f.offset,
+                            &f.ty,
+                            &mut symbols,
+                        );
+                    }
+                }
+            }
+        }
+    }
+    for (name, (addr, ty)) in &global_table {
+        crate::debug_symbols::collect_root(db, name.text(db), *addr, ty, &mut symbols);
+    }
+    symbols.sort_by(|a, b| a.path.cmp(&b.path));
+    module.debug_symbols = crate::debug_symbols::DebugSymbols {
+        version: crate::debug_symbols::DEBUG_SYMBOLS_VERSION,
+        symbols,
+    };
 
     // Phase 4.6: synthesize one entry function per scheduled task (cooperative
     // model B — the runtime calls these). Each `__task_<i>` runs its task's
