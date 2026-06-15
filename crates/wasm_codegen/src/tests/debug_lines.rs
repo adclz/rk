@@ -106,3 +106,37 @@ fn statements_map_to_source_lines(mut with_db: db::RootDatabase) {
     assert!(dbg.source_position(calc_idx, 0).is_none());
     assert!(dbg.source_position(9999, bstart).is_none());
 }
+
+/// `line_to_pc` (the reverse lookup a debugger uses to set a breakpoint by
+/// source line) yields a wasm pc that resolves back to the same line — so
+/// "break at file:line" needs no codegen, just the debug-lines table.
+#[rstest]
+fn line_to_pc_round_trips(mut with_db: db::RootDatabase) {
+    let source = r#"
+        FUNCTION calc : INT
+        VAR_INPUT x : INT; END_VAR
+        VAR y : INT; END_VAR
+            y := x + 1;
+            y := y * 2;
+            calc := y - 3;
+        END_FUNCTION
+    "#;
+    let (_mir, wasm) = compile_to_mir_and_wasm(&mut with_db, source);
+    let dbg = DebugInfo::from_wasm(&wasm);
+
+    for stmt in ["y := x + 1", "y := y * 2", "calc := y - 3"] {
+        let line = row_of(source, stmt);
+        let (defined, pc) = dbg
+            .line_to_pc(0, line)
+            .unwrap_or_else(|| panic!("no breakpoint pc for line {line} (`{stmt}`)"));
+        // The breakpoint pc resolves back to the same source line.
+        assert_eq!(
+            dbg.source_position(defined, pc).map(|p| p.line),
+            Some(line),
+            "line_to_pc → source_position round-trip for `{stmt}`"
+        );
+    }
+
+    // A line with no code (the blank first line) has no breakpoint location.
+    assert!(dbg.line_to_pc(0, 0).is_none());
+}

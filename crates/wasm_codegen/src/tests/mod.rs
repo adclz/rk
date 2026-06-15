@@ -13,6 +13,7 @@ mod arrays;
 mod control_flow;
 mod debug_functions;
 mod debug_lines;
+mod debug_stacktrace;
 mod debug_symbols;
 mod e2e;
 mod exceptions_spike;
