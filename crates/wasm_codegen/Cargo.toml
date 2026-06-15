@@ -21,7 +21,7 @@ wasm_builtins_generated = { path = "../wasm_builtins_generated" }
 auto-lsp = { workspace = true, features = ["lsp_server"] }
 ast = { workspace = true }
 rstest = { workspace = true }
-wasmtime = "43.0.0"
+wasmtime = "45.0.1"
 rk = { path = "../cli" }
 rand = "0.8"
 runtime = { path = "../runtime" }
