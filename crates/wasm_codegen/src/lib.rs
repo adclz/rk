@@ -435,6 +435,8 @@ struct WasmGen<'a> {
     /// Bump allocator for `{test}` functions' 12-byte result areas, past the
     /// STRING-scratch region.
     test_result_floor: Cell<u32>,
+    /// Per-function `DebugTrap` records, for the `debug-lines` section.
+    func_lines: FxHashMap<u32, Vec<(u32, mir::stmt::MirSourceLocation)>>,
 }
 
 /// Size of the per-`{test}` canonical-ABI `result<unit, string>` area: an
@@ -526,6 +528,7 @@ impl<'a> WasmGen<'a> {
             rk_exception_tag_type_idx: None,
             test_catch_block_type_idx: None,
             test_result_floor,
+            func_lines: FxHashMap::default(),
         }
     }
 
@@ -942,7 +945,7 @@ impl<'a> WasmGen<'a> {
         };
 
         // Emit statements
-        emit_stmts_with_return(
+        let lines = emit_stmts_with_return(
             &mut wasm_func,
             &func.body,
             &local_map,
@@ -951,6 +954,9 @@ impl<'a> WasmGen<'a> {
             return_local,
             self.rk_exception_tag_idx,
         );
+        if !lines.is_empty() {
+            self.func_lines.insert(func.index, lines);
+        }
 
         // Restore the prior context.
         SNAPSHOT_CTX.with(|cell| cell.replace(prev_ctx));
@@ -1118,7 +1124,7 @@ impl<'a> WasmGen<'a> {
         ));
 
         // The body has no scalar return slot: tests are void at the MIR level.
-        emit_stmts_with_return(
+        let lines = emit_stmts_with_return(
             &mut wasm_func,
             &func.body,
             &local_map,
@@ -1127,6 +1133,9 @@ impl<'a> WasmGen<'a> {
             None,
             self.rk_exception_tag_idx,
         );
+        if !lines.is_empty() {
+            self.func_lines.insert(func.index, lines);
+        }
 
         SNAPSHOT_CTX.with(|cell| cell.replace(prev_ctx));
 
@@ -1361,6 +1370,42 @@ impl<'a> WasmGen<'a> {
         module.section(&wasm_encoder::CustomSection {
             name: std::borrow::Cow::Borrowed(debug_format::DEBUG_FUNCTIONS_SECTION),
             data: std::borrow::Cow::Owned(debug_functions.to_msgpack()),
+        });
+
+        // `debug-lines`: per-function (within-body offset → source position),
+        // keyed by DefinedFuncIndex. A consumer maps wasmtime's absolute wasm_pc
+        // to a within-body offset via the function body's start in the binary,
+        // then binary-searches for the largest offset <= within-body.
+        let mut func_line_tables: Vec<debug_format::FuncLines> = self
+            .func_lines
+            .iter()
+            .filter_map(|(mir_idx, recs)| {
+                let widx = *self.index_remap.get(mir_idx)?;
+                let mut lines: Vec<debug_format::LineEntry> = recs
+                    .iter()
+                    .map(|(offset, loc)| debug_format::LineEntry {
+                        offset: *offset,
+                        file: loc.file_id,
+                        line: loc.line,
+                        col: loc.column,
+                    })
+                    .collect();
+                lines.sort_by_key(|e| e.offset);
+                Some(debug_format::FuncLines {
+                    defined_index: widx - n_func_imports,
+                    lines,
+                })
+            })
+            .collect();
+        func_line_tables.sort_by_key(|f| f.defined_index);
+        let debug_lines = debug_format::DebugLines {
+            version: debug_format::DEBUG_LINES_VERSION,
+            files: Vec::new(), // v1: single-file ⇒ file id 0; path table deferred
+            functions: func_line_tables,
+        };
+        module.section(&wasm_encoder::CustomSection {
+            name: std::borrow::Cow::Borrowed(debug_format::DEBUG_LINES_SECTION),
+            data: std::borrow::Cow::Owned(debug_lines.to_msgpack()),
         });
 
         // The debug-symbol table (`debug-symbols`), for by-name monitoring;

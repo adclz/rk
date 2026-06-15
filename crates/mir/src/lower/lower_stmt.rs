@@ -1,4 +1,5 @@
 use db::WorkspaceDataBase;
+use hir::HirNodeInfo;
 use hir::hir_def::expressions::statement::{Stmt, StmtKind};
 use hir::hir_ty::infer::Infer;
 
@@ -6,7 +7,7 @@ use crate::{
     expr::MirConstant,
     lower::lower_expr::ExprLowerCtx,
     lower::lower_type::{LowerTypeError, elementary_spec_to_mir},
-    stmt::MirStmt,
+    stmt::{MirSourceLocation, MirStmt},
 };
 
 /// Resolve a HIR type for cast checks: `normalize`, plus the extra hop
@@ -86,13 +87,7 @@ pub fn lower_stmts_with_fb_subs_and_mangling<'db>(
     if !local_fb_mangling.is_empty() {
         ctx.local_fb_mangling = Some(std::rc::Rc::new(local_fb_mangling.clone()));
     }
-    let mut result = Vec::new();
-    for stmt in stmts {
-        if let Some(mir_stmt) = lower_stmt(&ctx, *stmt)? {
-            result.push(mir_stmt);
-        }
-    }
-    Ok(result)
+    lower_stmts_inner(&ctx, stmts)
 }
 
 /// Lower a slice of HIR statements with an optional ANY type override for monomorphization.
@@ -110,13 +105,7 @@ pub fn lower_stmts_with_ctx<'db>(
     if let Some(subs) = fb_subs {
         ctx.fb_subs = Some(std::rc::Rc::new(subs.clone()));
     }
-    let mut result = Vec::new();
-    for stmt in stmts {
-        if let Some(mir_stmt) = lower_stmt(&ctx, *stmt)? {
-            result.push(mir_stmt);
-        }
-    }
-    Ok(result)
+    lower_stmts_inner(&ctx, stmts)
 }
 
 /// Lower a slice of HIR statements in a FB body context where variables are struct fields.
@@ -133,13 +122,7 @@ pub fn lower_stmts_fb_body<'db>(
     if let Some(subs) = fb_subs {
         ctx.fb_subs = Some(std::rc::Rc::new(subs.clone()));
     }
-    let mut result = Vec::new();
-    for stmt in stmts {
-        if let Some(mir_stmt) = lower_stmt(&ctx, *stmt)? {
-            result.push(mir_stmt);
-        }
-    }
-    Ok(result)
+    lower_stmts_inner(&ctx, stmts)
 }
 
 /// Lower a single HIR statement to a MIR statement.
@@ -350,7 +333,9 @@ fn lower_stmt<'db>(
     }
 }
 
-/// Helper: lower a slice of statements using an existing context.
+/// The chokepoint every statement sequence funnels through; it inserts a
+/// [`MirStmt::DebugTrap`] marker before each statement, which emits no
+/// wasm and records the code offset for the `debug-lines` table.
 fn lower_stmts_inner<'db>(
     ctx: &ExprLowerCtx<'db>,
     stmts: &[Stmt<'db>],
@@ -358,8 +343,24 @@ fn lower_stmts_inner<'db>(
     let mut result = Vec::new();
     for stmt in stmts {
         if let Some(mir_stmt) = lower_stmt(ctx, *stmt)? {
+            result.push(MirStmt::DebugTrap {
+                trap_id: 0, // A.3 assigns unique ids for the `__dbg` stop hook
+                location: stmt_location(ctx.db, *stmt),
+            });
             result.push(mir_stmt);
         }
     }
     Ok(result)
+}
+
+/// The source position (file/line/column) of a HIR statement, for the line
+/// table. Lines and columns are 0-based (tree-sitter rows/columns).
+fn stmt_location<'db>(db: &'db dyn WorkspaceDataBase, stmt: Stmt<'db>) -> MirSourceLocation {
+    let range = stmt.get_span(db);
+    MirSourceLocation {
+        // v1: single-file programs ⇒ file 0. Multi-file ids are deferred.
+        file_id: 0,
+        line: range.start_point.row as u32,
+        column: range.start_point.column as u32,
+    }
 }

@@ -4,7 +4,7 @@
 use hir::hir_def::interned::identifier::Ident;
 use mir::{
     expr::{MirConstant, MirExpr},
-    stmt::{MirCasePattern, MirStmt},
+    stmt::{MirCasePattern, MirSourceLocation, MirStmt},
 };
 use rustc_hash::FxHashMap;
 use wasm_encoder::{BlockType, Instruction, MemArg};
@@ -30,9 +30,14 @@ struct Ctx<'a> {
     /// otherwise — in which case `MirStmt::Raise` must never reach
     /// codegen.
     rk_exception_tag_idx: Option<u32>,
+    /// `(within-body offset, source location)` at each `DebugTrap`, for the
+    /// `debug-lines` table.
+    lines: &'a std::cell::RefCell<Vec<(u32, MirSourceLocation)>>,
 }
 
-/// Emit a list of MIR statements with return local context.
+/// Emit a list of MIR statements with return local context. Returns the
+/// `(within-body offset, source location)` records gathered from the body's
+/// `DebugTrap` markers, for the `debug-lines` table.
 pub(crate) fn emit_stmts_with_return(
     func: &mut wasm_encoder::Function,
     stmts: &[MirStmt],
@@ -41,15 +46,20 @@ pub(crate) fn emit_stmts_with_return(
     builtin_indices: &FxHashMap<String, u32>,
     return_local: Option<u32>,
     rk_exception_tag_idx: Option<u32>,
-) {
-    let ctx = Ctx {
-        locals,
-        fn_indices,
-        return_local,
-        builtin_indices,
-        rk_exception_tag_idx,
-    };
-    emit_stmts(func, stmts, &ctx);
+) -> Vec<(u32, MirSourceLocation)> {
+    let lines = std::cell::RefCell::new(Vec::new());
+    {
+        let ctx = Ctx {
+            locals,
+            fn_indices,
+            return_local,
+            builtin_indices,
+            rk_exception_tag_idx,
+            lines: &lines,
+        };
+        emit_stmts(func, stmts, &ctx);
+    }
+    lines.into_inner()
 }
 
 fn emit_stmts(func: &mut wasm_encoder::Function, stmts: &[MirStmt], ctx: &Ctx) {
@@ -454,7 +464,13 @@ fn emit_stmt(func: &mut wasm_encoder::Function, stmt: &MirStmt, ctx: &Ctx) {
             }
         }
 
-        MirStmt::DebugTrap { .. } => {}
+        MirStmt::DebugTrap { location, .. } => {
+            // Position marker: within-body offset → source position. No
+            // instructions.
+            ctx.lines
+                .borrow_mut()
+                .push((func.byte_len() as u32, location.clone()));
+        }
 
         MirStmt::Raise { message } => {
             // Evaluate the STRING message expression — STRING values leave

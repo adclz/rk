@@ -154,3 +154,59 @@ impl DebugFunctions {
         rmp_serde::from_slice(bytes)
     }
 }
+
+// ---------------------------------------------------------------------------
+// Lines — mapping wasm code offsets to IEC source positions
+// ---------------------------------------------------------------------------
+
+/// Custom wasm section carrying the MessagePack-encoded [`DebugLines`].
+pub const DEBUG_LINES_SECTION: &str = "debug-lines";
+
+/// On-wire format version for [`DebugLines`].
+pub const DEBUG_LINES_VERSION: u16 = 1;
+
+/// Per-function line tables: within-body offset → IEC source position. A
+/// consumer converts an absolute `wasm_pc` to within-body via the body's
+/// start, then takes the largest `offset <= within_body`.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct DebugLines {
+    pub version: u16,
+    /// Source file paths, indexed by `LineEntry::file`.
+    pub files: Vec<String>,
+    /// Per defined function, sorted by `defined_index`.
+    pub functions: Vec<FuncLines>,
+}
+
+/// The line table for one defined wasm function.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct FuncLines {
+    /// `DefinedFuncIndex` (excludes imports) — matches `FrameHandle`.
+    pub defined_index: u32,
+    /// Statement entries, sorted ascending by `offset`.
+    pub lines: Vec<LineEntry>,
+}
+
+/// One statement's within-body offset and the source position it maps to.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub struct LineEntry {
+    /// Within-body byte offset of the statement's first instruction.
+    pub offset: u32,
+    /// Index into [`DebugLines::files`].
+    pub file: u32,
+    /// 0-based source line.
+    pub line: u32,
+    /// 0-based source column.
+    pub col: u32,
+}
+
+impl DebugLines {
+    /// Serialize to MessagePack bytes.
+    pub fn to_msgpack(&self) -> Vec<u8> {
+        rmp_serde::to_vec(self).expect("DebugLines serialization should not fail")
+    }
+
+    /// Deserialize from MessagePack bytes.
+    pub fn from_msgpack(bytes: &[u8]) -> Result<Self, rmp_serde::decode::Error> {
+        rmp_serde::from_slice(bytes)
+    }
+}
