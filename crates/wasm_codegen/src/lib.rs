@@ -437,6 +437,9 @@ struct WasmGen<'a> {
     test_result_floor: Cell<u32>,
     /// Per-function `DebugTrap` records, for the `debug-lines` section.
     func_lines: FxHashMap<u32, Vec<(u32, mir::stmt::MirSourceLocation)>>,
+    /// Per-function scalar locals `(wasm index, name, elem)`, for the
+    /// `debug-locals` section.
+    func_locals: FxHashMap<u32, Vec<(u32, String, MirElementary)>>,
 }
 
 /// Size of the per-`{test}` canonical-ABI `result<unit, string>` area: an
@@ -529,6 +532,7 @@ impl<'a> WasmGen<'a> {
             test_catch_block_type_idx: None,
             test_result_floor,
             func_lines: FxHashMap::default(),
+            func_locals: FxHashMap::default(),
         }
     }
 
@@ -851,6 +855,22 @@ impl<'a> WasmGen<'a> {
 
         // Build local map from params + locals.
         let local_map = build_local_map(func);
+
+        // Collect scalar locals (params + VARs held in wasm locals) for the
+        // `debug-locals` table, so a debugger can label `FrameHandle::local(i)`.
+        let mut scalar_locals: Vec<(u32, String, MirElementary)> = local_map
+            .iter()
+            .filter_map(|(name, info)| match info {
+                LocalInfo::Scalar { index, elem } => {
+                    Some((*index, name.text(self.db).to_string(), *elem))
+                }
+                _ => None,
+            })
+            .collect();
+        scalar_locals.sort_by_key(|(idx, _, _)| *idx);
+        if !scalar_locals.is_empty() {
+            self.func_locals.insert(func.index, scalar_locals);
+        }
 
         // Build extra locals (non-parameter WASM locals)
         let mut extra_locals: Vec<(u32, ValType)> = Vec::new();
@@ -1406,6 +1426,39 @@ impl<'a> WasmGen<'a> {
         module.section(&wasm_encoder::CustomSection {
             name: std::borrow::Cow::Borrowed(debug_format::DEBUG_LINES_SECTION),
             data: std::borrow::Cow::Owned(debug_lines.to_msgpack()),
+        });
+
+        // `debug-locals`: per-function scalar-local labels (wasm local index →
+        // IEC name/type), keyed by DefinedFuncIndex, so a debugger names the
+        // values `FrameHandle::local(i)` returns.
+        let mut func_local_tables: Vec<debug_format::FuncLocals> = self
+            .func_locals
+            .iter()
+            .filter_map(|(mir_idx, locals)| {
+                let widx = *self.index_remap.get(mir_idx)?;
+                let mut vars: Vec<debug_format::LocalVar> = locals
+                    .iter()
+                    .map(|(wasm_index, name, elem)| debug_format::LocalVar {
+                        wasm_index: *wasm_index,
+                        name: name.clone(),
+                        ty: mir::debug_symbols::sym_type_of(*elem),
+                    })
+                    .collect();
+                vars.sort_by_key(|v| v.wasm_index);
+                Some(debug_format::FuncLocals {
+                    defined_index: widx - n_func_imports,
+                    locals: vars,
+                })
+            })
+            .collect();
+        func_local_tables.sort_by_key(|f| f.defined_index);
+        let debug_locals = debug_format::DebugLocals {
+            version: debug_format::DEBUG_LOCALS_VERSION,
+            functions: func_local_tables,
+        };
+        module.section(&wasm_encoder::CustomSection {
+            name: std::borrow::Cow::Borrowed(debug_format::DEBUG_LOCALS_SECTION),
+            data: std::borrow::Cow::Owned(debug_locals.to_msgpack()),
         });
 
         // The debug-symbol table (`debug-symbols`), for by-name monitoring;

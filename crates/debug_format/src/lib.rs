@@ -210,3 +210,52 @@ impl DebugLines {
         rmp_serde::from_slice(bytes)
     }
 }
+
+// ---------------------------------------------------------------------------
+// Locals — labeling a frame's wasm local slots with IEC names/types
+// ---------------------------------------------------------------------------
+
+/// Custom wasm section carrying the MessagePack-encoded [`DebugLocals`].
+pub const DEBUG_LOCALS_SECTION: &str = "debug-locals";
+
+/// On-wire format version for [`DebugLocals`].
+pub const DEBUG_LOCALS_VERSION: u16 = 1;
+
+/// Per-function scalar-local tables: wasm local slot → IEC name and type;
+/// memory-resident variables are reached via [`DebugSymbols`].
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct DebugLocals {
+    pub version: u16,
+    /// Per defined function, sorted by `defined_index`.
+    pub functions: Vec<FuncLocals>,
+}
+
+/// The scalar-local table for one defined wasm function.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct FuncLocals {
+    /// `DefinedFuncIndex` (excludes imports) — matches `FrameHandle`.
+    pub defined_index: u32,
+    /// Scalar locals, sorted ascending by `wasm_index`.
+    pub locals: Vec<LocalVar>,
+}
+
+/// One scalar local: its wasm local slot index + IEC name and type.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct LocalVar {
+    /// Index for `FrameHandle::local(i)`.
+    pub wasm_index: u32,
+    pub name: String,
+    pub ty: SymType,
+}
+
+impl DebugLocals {
+    /// Serialize to MessagePack bytes.
+    pub fn to_msgpack(&self) -> Vec<u8> {
+        rmp_serde::to_vec(self).expect("DebugLocals serialization should not fail")
+    }
+
+    /// Deserialize from MessagePack bytes.
+    pub fn from_msgpack(bytes: &[u8]) -> Result<Self, rmp_serde::decode::Error> {
+        rmp_serde::from_slice(bytes)
+    }
+}

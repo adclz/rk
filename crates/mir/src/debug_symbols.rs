@@ -16,7 +16,7 @@ use db::WorkspaceDataBase;
 use hir::hir_def::interned::identifier::Ident;
 
 /// Map a resolved elementary type to its on-wire [`SymType`] tag.
-fn sym_type_of(e: MirElementary) -> SymType {
+pub fn sym_type_of(e: MirElementary) -> SymType {
     match e {
         MirElementary::Bool => SymType::Bool,
         MirElementary::SInt => SymType::SInt,
