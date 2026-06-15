@@ -114,3 +114,43 @@ impl Default for DebugSymbols {
         Self::new()
     }
 }
+
+// ---------------------------------------------------------------------------
+// Functions — naming wasm stack frames
+// ---------------------------------------------------------------------------
+
+/// Custom wasm section carrying the MessagePack-encoded [`DebugFunctions`].
+pub const DEBUG_FUNCTIONS_SECTION: &str = "debug-functions";
+
+/// On-wire format version for [`DebugFunctions`].
+pub const DEBUG_FUNCTIONS_VERSION: u16 = 1;
+
+/// Each defined (non-import) wasm function to its IEC name, keyed by the
+/// `DefinedFuncIndex` wasmtime's `FrameHandle` reports.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct DebugFunctions {
+    pub version: u16,
+    /// One entry per nameable defined function, sorted by `defined_index`.
+    pub functions: Vec<FuncEntry>,
+}
+
+/// One defined wasm function and its IEC name.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct FuncEntry {
+    /// `DefinedFuncIndex` (excludes imports).
+    pub defined_index: u32,
+    /// The function's IEC name (e.g. `Motor$spin`, `Main$__body__`).
+    pub name: String,
+}
+
+impl DebugFunctions {
+    /// Serialize to MessagePack bytes.
+    pub fn to_msgpack(&self) -> Vec<u8> {
+        rmp_serde::to_vec(self).expect("DebugFunctions serialization should not fail")
+    }
+
+    /// Deserialize from MessagePack bytes.
+    pub fn from_msgpack(bytes: &[u8]) -> Result<Self, rmp_serde::decode::Error> {
+        rmp_serde::from_slice(bytes)
+    }
+}

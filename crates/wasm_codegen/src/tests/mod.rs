@@ -11,6 +11,7 @@ use rstest::*;
 // Test modules - only execution tests, no validation-only tests
 mod arrays;
 mod control_flow;
+mod debug_functions;
 mod debug_symbols;
 mod e2e;
 mod exceptions_spike;

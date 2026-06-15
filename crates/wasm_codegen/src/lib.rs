@@ -1315,6 +1315,54 @@ impl<'a> WasmGen<'a> {
             module.section(&data_section);
         }
 
+        // The wasm `name` section: every function by its final index, for
+        // backtraces and tooling.
+        let n_func_imports = self.module.extern_functions.len() as u32;
+        let mut named: Vec<(u32, String)> = Vec::new();
+        for ext in &self.module.extern_functions {
+            if let Some(&idx) = self.index_remap.get(&ext.index) {
+                named.push((idx, ext.name.text(self.db).to_string()));
+            }
+        }
+        for func in &self.module.functions {
+            if let Some(&idx) = self.index_remap.get(&func.index) {
+                named.push((idx, func.name.text(self.db).to_string()));
+            }
+        }
+        named.sort_by_key(|(idx, _)| *idx);
+        let mut fn_names = wasm_encoder::NameMap::new();
+        for (idx, name) in &named {
+            fn_names.append(*idx, name);
+        }
+        let mut name_section = wasm_encoder::NameSection::new();
+        name_section.functions(&fn_names);
+        module.section(&name_section);
+
+        // `debug-functions`: DefinedFuncIndex → IEC name, keyed as `FrameHandle`
+        // reports it (imports excluded).
+        let mut func_entries: Vec<debug_format::FuncEntry> = self
+            .module
+            .functions
+            .iter()
+            .filter_map(|func| {
+                self.index_remap
+                    .get(&func.index)
+                    .map(|&widx| debug_format::FuncEntry {
+                        defined_index: widx - n_func_imports,
+                        name: func.name.text(self.db).to_string(),
+                    })
+            })
+            .collect();
+        func_entries.sort_by_key(|e| e.defined_index);
+        let debug_functions = debug_format::DebugFunctions {
+            version: debug_format::DEBUG_FUNCTIONS_VERSION,
+            functions: func_entries,
+        };
+        module.section(&wasm_encoder::CustomSection {
+            name: std::borrow::Cow::Borrowed(debug_format::DEBUG_FUNCTIONS_SECTION),
+            data: std::borrow::Cow::Owned(debug_functions.to_msgpack()),
+        });
+
         // The debug-symbol table (`debug-symbols`), for by-name monitoring;
         // strippable.
         let debug_bytes = self.module.debug_symbols.to_msgpack();

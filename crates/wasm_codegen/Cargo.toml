@@ -13,6 +13,7 @@ wasm-encoder = { workspace = true }
 wasmparser = { workspace = true }
 rustc-hash = { workspace = true }
 mir = { workspace = true }
+debug_format = { workspace = true }
 phf = { workspace = true }
 wasm_builtins_generated = { path = "../wasm_builtins_generated" }
 
