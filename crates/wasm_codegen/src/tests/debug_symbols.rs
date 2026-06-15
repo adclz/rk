@@ -6,7 +6,8 @@
 use crate::tests::{compile_to_mir_and_wasm, with_db};
 use mir::debug_symbols::{DEBUG_SYMBOLS_SECTION, DEBUG_SYMBOLS_VERSION, DebugSymbols, SymType};
 use rstest::*;
-use runtime::{Config, Plc, VarValue};
+use runtime::debug::{DebugInfo, VarValue};
+use runtime::{Config, Plc};
 
 /// Builtin shadow-stack + data live below this; no IEC variable may sit lower.
 const BUILTIN_RESERVED_FLOOR: u32 = 16_384;
@@ -129,8 +130,9 @@ fn no_config_emits_empty_symbol_table(mut with_db: db::RootDatabase) {
     assert_eq!(parsed.version, DEBUG_SYMBOLS_VERSION);
 }
 
-/// End-to-end monitoring: load a configured program into the runtime and
-/// read/write its variables by qualified name through the debug-symbol table.
+/// End-to-end monitoring: a `DebugInfo` (parsed from the binary) reads/writes a
+/// running PLC's variables by qualified name through the Plc's address-based
+/// memory access — the Plc itself stays name-agnostic.
 #[rstest]
 fn runtime_reads_and_writes_vars_by_name(mut with_db: db::RootDatabase) {
     let source = r#"
@@ -154,29 +156,30 @@ fn runtime_reads_and_writes_vars_by_name(mut with_db: db::RootDatabase) {
     "#;
     let (_mir, wasm) = compile_to_mir_and_wasm(&mut with_db, source);
     let mut plc = Plc::load(&wasm, Config::default()).expect("load PLC");
+    let dbg = DebugInfo::from_wasm(&wasm);
 
-    // The runtime exposes the same variables the section carries.
-    let names: Vec<&str> = plc.list_symbols().iter().map(|s| s.path.as_str()).collect();
+    // The debug view exposes the same variables the section carries.
+    let names: Vec<&str> = dbg.list_symbols().iter().map(|s| s.path.as_str()).collect();
     assert_eq!(names, vec!["Run.flag", "Run.speed", "g_count"]);
-    assert!(plc.read_var("Run.nope").is_none(), "unknown path => None");
+    assert!(dbg.read_var(&plc, "Run.nope").is_none(), "unknown path => None");
 
     // After three scans, `speed := speed + 1` has run three times.
     plc.run(3).expect("scans");
-    assert_eq!(plc.read_var("Run.speed"), Some(VarValue::I16(3)));
-    assert_eq!(plc.read_var("Run.flag"), Some(VarValue::Bool(false)));
+    assert_eq!(dbg.read_var(&plc, "Run.speed"), Some(VarValue::I16(3)));
+    assert_eq!(dbg.read_var(&plc, "Run.flag"), Some(VarValue::Bool(false)));
 
     // Force `speed` to 100; the next scan increments it to 101.
-    plc.write_var("Run.speed", VarValue::I16(100))
+    dbg.write_var(&mut plc, "Run.speed", VarValue::I16(100))
         .expect("force speed");
-    assert_eq!(plc.read_var("Run.speed"), Some(VarValue::I16(100)));
+    assert_eq!(dbg.read_var(&plc, "Run.speed"), Some(VarValue::I16(100)));
     plc.run(1).expect("scan");
-    assert_eq!(plc.read_var("Run.speed"), Some(VarValue::I16(101)));
+    assert_eq!(dbg.read_var(&plc, "Run.speed"), Some(VarValue::I16(101)));
 
     // A config global is read/written by name the same way.
-    plc.write_var("g_count", VarValue::I32(42))
+    dbg.write_var(&mut plc, "g_count", VarValue::I32(42))
         .expect("force global");
-    assert_eq!(plc.read_var("g_count"), Some(VarValue::I32(42)));
+    assert_eq!(dbg.read_var(&plc, "g_count"), Some(VarValue::I32(42)));
 
     // Writing a value whose type doesn't match the symbol is rejected.
-    assert!(plc.write_var("Run.speed", VarValue::Bool(true)).is_err());
+    assert!(dbg.write_var(&mut plc, "Run.speed", VarValue::Bool(true)).is_err());
 }
