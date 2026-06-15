@@ -24,4 +24,4 @@ rstest = { workspace = true }
 wasmtime = "45.0.1"
 rk = { path = "../cli" }
 rand = "0.8"
-runtime = { path = "../runtime" }
+pollster = "0.4"
