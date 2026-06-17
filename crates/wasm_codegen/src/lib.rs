@@ -3,7 +3,6 @@
 //! Uses the MIR pipeline: HIR → MIR → WASM (via `from_mir`).
 
 pub mod component;
-pub mod debug;
 pub mod emit_expr;
 pub mod emit_stmt;
 pub mod mir_cast;
