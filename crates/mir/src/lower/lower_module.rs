@@ -6,7 +6,7 @@ use hir::hir_def::{
     semantic_index::SemanticIndex,
 };
 use hir::hir_ty::infer::Infer;
-use rustc_hash::FxHashMap;
+use rustc_hash::{FxHashMap, FxHashSet};
 
 use crate::{
     MirInstanceField, MirInstanceType, MirModule,
@@ -429,6 +429,7 @@ fn lower_module_from_pous<'db>(
         globals_size: 0,
         schedule,
         debug_symbols: crate::debug_symbols::DebugSymbols::new(),
+        source_files: Vec::new(),
     };
 
     // Phase 4: Monomorphization - discovers call sites, generates concrete copies
@@ -624,6 +625,19 @@ fn lower_module_from_pous<'db>(
     let string_base = static_mem_end;
     for func in &mut module.functions {
         rebase_string_offsets(&mut func.body, string_base);
+    }
+
+    // Collect the distinct source files (in deterministic body order, including
+    // monomorphized copies) into the ordered table emitted as `DebugLines::files`;
+    // codegen resolves each statement's `file_url` to its index against it.
+    // Synthesized `__init`/`__task` carry no DebugTrap markers.
+    {
+        let mut seen: FxHashSet<CompactString> = FxHashSet::default();
+        let mut source_files: Vec<String> = Vec::new();
+        for func in &module.functions {
+            collect_source_files(&func.body, &mut seen, &mut source_files);
+        }
+        module.source_files = source_files;
     }
 
     Ok(module)
@@ -1024,6 +1038,54 @@ fn rebase_expr(expr: &mut crate::expr::MirExpr, base: u32) {
             }
         }
         _ => {}
+    }
+}
+
+/// Collect the distinct source-file URLs referenced by `DebugTrap`
+/// locations, in first-encounter order.
+fn collect_source_files(
+    stmts: &[crate::stmt::MirStmt],
+    seen: &mut FxHashSet<CompactString>,
+    source_files: &mut Vec<String>,
+) {
+    use crate::stmt::MirStmt;
+    for stmt in stmts {
+        match stmt {
+            MirStmt::DebugTrap { location, .. } => {
+                if seen.insert(location.file_url.clone()) {
+                    source_files.push(location.file_url.to_string());
+                }
+            }
+            MirStmt::If {
+                then_body,
+                else_ifs,
+                else_body,
+                ..
+            } => {
+                collect_source_files(then_body, seen, source_files);
+                for (_, body) in else_ifs {
+                    collect_source_files(body, seen, source_files);
+                }
+                if let Some(else_body) = else_body {
+                    collect_source_files(else_body, seen, source_files);
+                }
+            }
+            MirStmt::While { body, .. } | MirStmt::Repeat { body, .. } => {
+                collect_source_files(body, seen, source_files);
+            }
+            MirStmt::For { body, .. } => collect_source_files(body, seen, source_files),
+            MirStmt::Case {
+                arms, else_body, ..
+            } => {
+                for arm in arms {
+                    collect_source_files(&arm.body, seen, source_files);
+                }
+                if let Some(else_body) = else_body {
+                    collect_source_files(else_body, seen, source_files);
+                }
+            }
+            _ => {}
+        }
     }
 }
 

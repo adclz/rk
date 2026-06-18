@@ -1,5 +1,6 @@
 use crate::expr::{MirCall, MirConstant, MirExpr, MirPlace};
 use crate::types::MirElementary;
+use compact_str::CompactString;
 use hir::hir_def::interned::identifier::Ident;
 
 /// A statement in MIR.
@@ -88,11 +89,9 @@ pub enum MirStmt {
         result: Option<Ident>,
     },
 
-    /// Debug trap point (optional, only when debug mode enabled).
-    DebugTrap {
-        trap_id: u32,
-        location: MirSourceLocation,
-    },
+    /// Debug stop-point marker: no wasm, only the statement's position for
+    /// the `debug-lines` table.
+    DebugTrap { location: MirSourceLocation },
 
     /// Throws a wasm-level exception carrying a STRING payload. Lowers
     /// to push `(ptr, len)` from the message expression onto the stack,
@@ -121,7 +120,10 @@ pub enum MirCasePattern {
 
 #[derive(Debug, Clone)]
 pub struct MirSourceLocation {
-    pub file_id: u32,
+    /// Source file URL; its index into the module's file table is resolved
+    /// at codegen.
+    pub file_url: CompactString,
+    /// 0-based source line and column (tree-sitter row/column).
     pub line: u32,
     pub column: u32,
 }

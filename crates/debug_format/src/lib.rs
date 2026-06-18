@@ -162,8 +162,9 @@ impl DebugFunctions {
 /// Custom wasm section carrying the MessagePack-encoded [`DebugLines`].
 pub const DEBUG_LINES_SECTION: &str = "debug-lines";
 
-/// On-wire format version for [`DebugLines`].
-pub const DEBUG_LINES_VERSION: u16 = 1;
+/// On-wire format version for [`DebugLines`]. v2 populates `files` (per-file
+/// `LineEntry::file` indices); v1 hardcoded file 0.
+pub const DEBUG_LINES_VERSION: u16 = 2;
 
 /// Per-function line tables: within-body offset → IEC source position. A
 /// consumer converts an absolute `wasm_pc` to within-body via the body's

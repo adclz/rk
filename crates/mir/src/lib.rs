@@ -69,6 +69,10 @@ pub struct MirModule {
     /// Debug-symbol table: every debuggable variable at its absolute address,
     /// emitted as the `debug-symbols` section.
     pub debug_symbols: DebugSymbols,
+
+    /// Source file URLs, indexed by `MirSourceLocation::file_id` and emitted
+    /// as `DebugLines::files`.
+    pub source_files: Vec<String>,
 }
 
 /// An interned string literal.

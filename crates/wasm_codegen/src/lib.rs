@@ -1391,10 +1391,16 @@ impl<'a> WasmGen<'a> {
             data: std::borrow::Cow::Owned(debug_functions.to_msgpack()),
         });
 
-        // `debug-lines`: per-function (within-body offset → source position),
-        // keyed by DefinedFuncIndex. A consumer maps wasmtime's absolute wasm_pc
-        // to a within-body offset via the function body's start in the binary,
-        // then binary-searches for the largest offset <= within-body.
+        // `debug-lines`: per-function (within-body offset → source position) by
+        // DefinedFuncIndex, each statement's file resolved to its index in the
+        // module's file table.
+        let file_index: FxHashMap<&str, u32> = self
+            .module
+            .source_files
+            .iter()
+            .enumerate()
+            .map(|(i, f)| (f.as_str(), i as u32))
+            .collect();
         let mut func_line_tables: Vec<debug_format::FuncLines> = self
             .func_lines
             .iter()
@@ -1404,7 +1410,7 @@ impl<'a> WasmGen<'a> {
                     .iter()
                     .map(|(offset, loc)| debug_format::LineEntry {
                         offset: *offset,
-                        file: loc.file_id,
+                        file: file_index.get(loc.file_url.as_str()).copied().unwrap_or(0),
                         line: loc.line,
                         col: loc.column,
                     })
@@ -1419,7 +1425,7 @@ impl<'a> WasmGen<'a> {
         func_line_tables.sort_by_key(|f| f.defined_index);
         let debug_lines = debug_format::DebugLines {
             version: debug_format::DEBUG_LINES_VERSION,
-            files: Vec::new(), // v1: single-file ⇒ file id 0; path table deferred
+            files: self.module.source_files.clone(),
             functions: func_line_tables,
         };
         module.section(&wasm_encoder::CustomSection {

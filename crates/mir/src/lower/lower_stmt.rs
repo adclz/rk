@@ -344,7 +344,6 @@ fn lower_stmts_inner<'db>(
     for stmt in stmts {
         if let Some(mir_stmt) = lower_stmt(ctx, *stmt)? {
             result.push(MirStmt::DebugTrap {
-                trap_id: 0, // A.3 assigns unique ids for the `__dbg` stop hook
                 location: stmt_location(ctx.db, *stmt),
             });
             result.push(mir_stmt);
@@ -357,9 +356,11 @@ fn lower_stmts_inner<'db>(
 /// table. Lines and columns are 0-based (tree-sitter rows/columns).
 fn stmt_location<'db>(db: &'db dyn WorkspaceDataBase, stmt: Stmt<'db>) -> MirSourceLocation {
     let range = stmt.get_span(db);
+    // Only the file is recorded; its index into the module's file table is
+    // resolved at codegen, once every module is lowered.
+    let file_url = stmt.get_scope_id(db).file(db).url(db).as_str().into();
     MirSourceLocation {
-        // v1: single-file programs ⇒ file 0. Multi-file ids are deferred.
-        file_id: 0,
+        file_url,
         line: range.start_point.row as u32,
         column: range.start_point.column as u32,
     }
