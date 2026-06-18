@@ -140,3 +140,66 @@ fn line_to_pc_round_trips(mut with_db: db::RootDatabase) {
     // A line with no code (the blank first line) has no breakpoint location.
     assert!(dbg.line_to_pc(0, 0).is_none());
 }
+
+/// With several functions plus a CONFIGURATION (so synthesized `__init`/`__task`
+/// and builtins share the module and the defined-index base is non-trivial),
+/// `debug-functions` and `debug-lines` must agree on each function's
+/// `DefinedFuncIndex`: the function whose body holds a statement is the one
+/// named for that index, and its breakpoint pc round-trips to the statement's
+/// row. A mismatched `widx − n_func_imports` base between the two sections would
+/// resolve a statement to the wrong (or unnamed) function — a silent corruption
+/// the single-function tests above cannot catch.
+#[rstest]
+fn functions_and_lines_agree_on_index(mut with_db: db::RootDatabase) {
+    let source = r#"
+        FUNCTION add : INT
+        VAR_INPUT a : INT; b : INT; END_VAR
+            add := a + b;
+        END_FUNCTION
+
+        FUNCTION mul : INT
+        VAR_INPUT a : INT; b : INT; END_VAR
+            mul := a * b;
+        END_FUNCTION
+
+        PROGRAM Main
+        VAR count : INT; END_VAR
+            count := add(a := count, b := mul(a := 2, b := 3));
+        END_PROGRAM
+
+        CONFIGURATION Cfg
+            RESOURCE Res ON CPU
+                TASK T(INTERVAL := T#10ms, PRIORITY := 1);
+                PROGRAM Run WITH T : Main;
+            END_RESOURCE
+        END_CONFIGURATION
+    "#;
+    let (_mir, wasm) = compile_to_mir_and_wasm(&mut with_db, source);
+    let dbg = DebugInfo::from_wasm(&wasm);
+
+    // The function whose body holds each statement is the one named for it, and
+    // the breakpoint pc resolves back to the statement's row.
+    for (needle, stmt) in [
+        ("add", "add := a + b"),
+        ("mul", "mul := a * b"),
+        ("Main", "count := add(a := count"),
+    ] {
+        let row = row_of(source, stmt);
+        let (idx, pc) = dbg
+            .line_to_pc(0, row)
+            .unwrap_or_else(|| panic!("no breakpoint pc for `{stmt}` (row {row})"));
+        let name = dbg
+            .function_name(idx)
+            .unwrap_or_else(|| panic!("`{stmt}` resolved to unnamed defined index {idx}"));
+        assert!(
+            name.contains(needle),
+            "`{stmt}` (row {row}) resolved to fn `{name}` at idx {idx}, expected `{needle}` — \
+             debug-functions and debug-lines disagree on the defined-index base"
+        );
+        assert_eq!(
+            dbg.source_position(idx, pc).map(|p| p.line),
+            Some(row),
+            "breakpoint pc for `{stmt}` must resolve back to row {row}"
+        );
+    }
+}
