@@ -24,7 +24,7 @@ pub fn init_db(
     }
 
     if verbose {
-        println!("scanning workspace: {}", workspace.display());
+        eprintln!("scanning workspace: {}", workspace.display());
     }
 
     let mut db = RootDatabase::default();
@@ -78,7 +78,7 @@ pub fn init_db(
     let results = load_workspace(&mut db, workspace);
 
     if results.is_empty() {
-        println!("no .st files found in workspace");
+        eprintln!("no .st files found in workspace");
         return None;
     }
 
@@ -86,11 +86,11 @@ pub fn init_db(
         match result {
             Ok(file) => {
                 if verbose {
-                    println!("  loaded {}", file.url(&db));
+                    eprintln!("  loaded {}", file.url(&db));
                 }
             }
             Err(e) => {
-                println!("  failed to load: {}", e);
+                eprintln!("  failed to load: {}", e);
             }
         }
     }

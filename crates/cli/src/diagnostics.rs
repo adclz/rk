@@ -44,6 +44,8 @@ pub fn report_diagnostics(
 
         let output = String::from_utf8_lossy(&buffer);
         let shortened = output.replace(url_str, &rel_path);
-        print!("{}", shortened);
+        // Diagnostics go to stderr (stdout is reserved for results — and for the
+        // debugger transport when the debugger serves over stdio).
+        eprint!("{}", shortened);
     }
 }
