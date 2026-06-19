@@ -301,3 +301,39 @@ fn runtime_reads_writes_string_by_name(mut with_db: db::RootDatabase) {
     // A type mismatch is still rejected.
     assert!(dbg.write_var(&mut plc, "Run.label", VarValue::I16(1)).is_err());
 }
+
+/// `read_all` snapshots every monitorable variable's current value in one call —
+/// the watch/trace bulk read, no engine or breakpoint involved.
+#[rstest]
+fn read_all_snapshots_all_variables(mut with_db: db::RootDatabase) {
+    let source = r#"
+        PROGRAM Main
+        VAR
+            speed : INT;
+            flag : BOOL;
+        END_VAR
+            speed := speed + 1;
+        END_PROGRAM
+
+        CONFIGURATION Cfg
+            VAR_GLOBAL
+                g_count : DINT;
+            END_VAR
+            RESOURCE Res ON CPU
+                TASK T(INTERVAL := T#10ms, PRIORITY := 1);
+                PROGRAM Run WITH T : Main;
+            END_RESOURCE
+        END_CONFIGURATION
+    "#;
+    let (_mir, wasm) = compile_to_mir_and_wasm(&mut with_db, source);
+    let mut plc = Plc::load(&wasm, Config::default()).expect("load PLC");
+    let dbg = DebugInfo::from_wasm(&wasm);
+
+    plc.run(2).expect("scans");
+
+    let snap: std::collections::HashMap<&str, VarValue> = dbg.read_all(&plc).into_iter().collect();
+    assert_eq!(snap.len(), dbg.list_symbols().len(), "one value per symbol");
+    assert_eq!(snap["Run.speed"], VarValue::I16(2));
+    assert_eq!(snap["Run.flag"], VarValue::Bool(false));
+    assert_eq!(snap["g_count"], VarValue::I32(0));
+}
