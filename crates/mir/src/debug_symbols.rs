@@ -2,10 +2,12 @@
 //! [`debug_format`] crate (so the runtime can read them without depending on the
 //! compiler); this module walks MIR to populate them.
 //!
-//! v1 scope: variables of *elementary* type only — config/resource globals and
-//! program-instance fields, with nested structs traversed to build dotted
-//! paths. Arrays, strings, enums, subranges and pointers are not yet emitted as
-//! leaves (a struct that *contains* them is still traversed for its scalars).
+//! Scope: config/resource globals and program-instance fields, walked down to
+//! their elementary leaves — through nested structs (dotted paths) and arrays
+//! (`[i]` / `[i,j]` IEC subscripts). Enums and subranges emit a leaf of their
+//! underlying integer; STRING emits a leaf carrying its capacity (the runtime
+//! decodes the length prefix). Pointers (REF_TO / VAR_IN_OUT — a raw address)
+//! are not yet emitted as leaves.
 
 pub use debug_format::{
     DEBUG_SYMBOLS_SECTION, DEBUG_SYMBOLS_VERSION, DebugSymbols, SymType, Symbol,
@@ -45,10 +47,17 @@ pub fn sym_type_of(e: MirElementary) -> SymType {
     }
 }
 
+/// Max array elements enumerated as individual leaves, bounding symbol-table
+/// growth on large arrays. An array larger than this contributes no leaves.
+const MAX_ARRAY_LEAVES: u32 = 1024;
+
 /// Recursively emit a [`Symbol`] for every elementary leaf reachable from a
-/// root variable at `addr` with type `ty`, naming each by its dotted `path`.
-/// Structs are traversed (field offsets added to `addr`); aggregate or opaque
-/// types (arrays, strings, enums, subranges, pointers) are skipped in v1.
+/// root variable at `addr` with type `ty`, naming each by its dotted/subscripted
+/// `path`. Structs add `.field` and their offset; arrays add `[i]`/`[i,j]` and
+/// `i * element_size`; enums/subranges emit one leaf of their underlying
+/// integer; STRING emits a leaf carrying its capacity. Pointers are not emitted
+/// (see module docs). The match is exhaustive so a new [`MirType`] forces a
+/// deliberate debug-symbols decision.
 pub fn walk_type(
     db: &dyn WorkspaceDataBase,
     path: &str,
@@ -63,16 +72,76 @@ pub fn walk_type(
             size: e.size_bytes(),
             ty: sym_type_of(*e),
         }),
+        // Enum / Subrange are stored as their underlying integer; emit one leaf
+        // of that type. (Symbolic variant / bound display is a richer wire format.)
+        MirType::Enum(e) => out.push(Symbol {
+            path: path.to_string(),
+            address: addr,
+            size: e.storage.size_bytes(),
+            ty: sym_type_of(e.storage),
+        }),
+        MirType::Subrange(s) => out.push(Symbol {
+            path: path.to_string(),
+            address: addr,
+            size: s.base.size_bytes(),
+            ty: sym_type_of(s.base),
+        }),
         MirType::Struct(s) => {
             for f in &s.fields {
                 let child = format!("{path}.{}", f.name.text(db));
                 walk_type(db, &child, addr + f.offset, &f.ty, out);
             }
         }
-        // v1: arrays, strings, enums, subranges and pointers are not yet
-        // emitted as debuggable leaves.
-        _ => {}
+        // Flat row-major elements (`lower_func`: `offset += idx * element_size`),
+        // each named by its IEC subscript(s); recurses, so an array of
+        // structs/arrays expands to scalar leaves. Capped to bound the table —
+        // note nested aggregates can still multiply below the cap.
+        MirType::Array(a) => {
+            if a.total_elements > MAX_ARRAY_LEAVES {
+                return;
+            }
+            for k in 0..a.total_elements {
+                let child = array_index_path(path, k, &a.dimensions);
+                walk_type(db, &child, addr + k * a.element_size, &a.element_type, out);
+            }
+        }
+        // STRING → one leaf carrying capacity; the runtime reads the 4-byte len
+        // prefix then that many UTF-8 bytes.
+        MirType::String { capacity } => out.push(Symbol {
+            path: path.to_string(),
+            address: addr,
+            size: 4 + *capacity,
+            ty: SymType::String {
+                capacity: *capacity,
+            },
+        }),
+        // Pointers are raw addresses; not emitted yet.
+        MirType::Pointer(_) | MirType::Void => {}
     }
+}
+
+/// Build an array element's IEC-subscripted path from the flat row-major index
+/// `flat` and the array's `dimensions` (`(lower, upper)` per dim). IEC subscript
+/// of a dimension = `lower + index`; the rightmost dimension varies fastest, so
+/// e.g. flat 0 of `ARRAY[1..2, 1..3]` is `[1,1]`, flat 3 is `[2,1]`.
+fn array_index_path(path: &str, flat: u32, dimensions: &[(i64, i64)]) -> String {
+    if dimensions.is_empty() {
+        return format!("{path}[{flat}]");
+    }
+    let mut subs = vec![0i64; dimensions.len()];
+    let mut rem = flat as i64;
+    for d in (0..dimensions.len()).rev() {
+        let (lo, hi) = dimensions[d];
+        let size = (hi - lo + 1).max(1);
+        subs[d] = lo + rem % size;
+        rem /= size;
+    }
+    let joined = subs
+        .iter()
+        .map(|s| s.to_string())
+        .collect::<Vec<_>>()
+        .join(",");
+    format!("{path}[{joined}]")
 }
 
 /// Emit symbols for one root variable named `root` whose storage starts at

@@ -12,7 +12,8 @@ use serde::{Deserialize, Serialize};
 pub const DEBUG_SYMBOLS_SECTION: &str = "debug-symbols";
 
 /// On-wire format version. Bump on any breaking change to the layout below.
-pub const DEBUG_SYMBOLS_VERSION: u16 = 1;
+/// v2 adds `SymType::String { capacity }`.
+pub const DEBUG_SYMBOLS_VERSION: u16 = 2;
 
 /// The complete debug-symbol table for a module.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -65,6 +66,9 @@ pub enum SymType {
     LTod,
     DateAndTime,
     LDateTime,
+    /// Fixed-capacity IEC STRING: a 4-byte little-endian `len` prefix followed by
+    /// `capacity` bytes of UTF-8 buffer (total `4 + capacity`).
+    String { capacity: u32 },
 }
 
 impl SymType {
@@ -72,6 +76,7 @@ impl SymType {
     /// 8-byte slot in linear memory.
     pub fn size_bytes(self) -> u32 {
         match self {
+            SymType::String { capacity } => 4 + capacity,
             SymType::LInt
             | SymType::ULInt
             | SymType::LWord
@@ -86,7 +91,8 @@ impl SymType {
 
     /// Whether this value occupies an 8-byte slot.
     pub fn is_64bit(self) -> bool {
-        self.size_bytes() == 8
+        // A STRING slot is never a scalar 64-bit value, even when 4 + capacity == 8.
+        !matches!(self, SymType::String { .. }) && self.size_bytes() == 8
     }
 }
 
