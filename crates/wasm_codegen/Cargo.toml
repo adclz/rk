@@ -25,3 +25,4 @@ wasmtime = "45.0.1"
 rk = { path = "../cli" }
 rand = "0.8"
 pollster = "0.4"
+futures = "0.3"

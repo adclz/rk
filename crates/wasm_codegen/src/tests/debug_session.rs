@@ -3,8 +3,9 @@
 //! breakpoint), run a scan, and confirm the hit captures a source-level stack.
 
 use crate::tests::{compile_to_mir_and_wasm, with_db};
+use futures::StreamExt;
 use rstest::*;
-use runtime::debug_session::DebugSession;
+use runtime::debug_session::{DebugCommand, DebugSession};
 
 /// 0-based source line of the first occurrence of `needle`.
 fn row_of(src: &str, needle: &str) -> u32 {
@@ -58,4 +59,63 @@ fn breakpoint_captures_source_level_stack(mut with_db: db::RootDatabase) {
         Some(line),
         "stopped exactly at the breakpoint line"
     );
+}
+
+/// Interactive mode genuinely *halts*: the scan does not finish until the UI
+/// sends `Continue`. We drive the scan and the control channel concurrently and
+/// assert the `Stop` arrives (with the right stack) before the scan completes.
+#[rstest]
+fn interactive_breakpoint_halts_until_continue(mut with_db: db::RootDatabase) {
+    let source = r#"
+        PROGRAM Main
+        VAR count : INT; END_VAR
+            count := count + 1;
+        END_PROGRAM
+
+        CONFIGURATION Cfg
+            RESOURCE Res ON CPU
+                TASK T(INTERVAL := T#10ms, PRIORITY := 1);
+                PROGRAM Run WITH T : Main;
+            END_RESOURCE
+        END_CONFIGURATION
+    "#;
+    let (_mir, wasm) = compile_to_mir_and_wasm(&mut with_db, source);
+    let line = row_of(source, "count := count + 1");
+
+    pollster::block_on(async {
+        let (mut sess, mut ctrl) = DebugSession::load_interactive(&wasm)
+            .await
+            .expect("load interactive debug session");
+        assert!(sess.set_breakpoint(0, line), "breakpoint set at the assignment");
+
+        // The debugger UI: wait for the breakpoint to fire, inspect, resume.
+        let ui = async {
+            let stop = ctrl.stops.next().await.expect("a stop at the breakpoint");
+            let top = &stop.stack[0];
+            assert!(
+                top.function.as_deref().is_some_and(|n| n.contains("Main")),
+                "parked at Main's body, got {:?}",
+                stop.stack
+            );
+            assert_eq!(
+                top.source.as_ref().map(|s| s.line),
+                Some(line),
+                "parked exactly at the breakpoint line"
+            );
+            ctrl.commands
+                .unbounded_send(DebugCommand::Continue)
+                .expect("send continue to the parked session");
+            stop
+        };
+
+        // `join!` drives both: the scan parks in `handle`, the UI receives the
+        // stop and sends `Continue`, then the scan resumes and finishes. If the
+        // scan didn't actually halt, the UI would never see a stop.
+        let (scan, stop) = futures::join!(sess.run(1), ui);
+        scan.expect("scan completes after continue");
+        assert_eq!(
+            stop.stack[0].source.as_ref().map(|s| s.line),
+            Some(line)
+        );
+    });
 }
