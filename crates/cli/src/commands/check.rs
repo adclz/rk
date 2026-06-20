@@ -69,6 +69,7 @@ fn check_once(workspace: &std::path::Path, verbose: bool) -> bool {
                 &caches,
                 &mut total_errors,
                 &mut total_warnings,
+                &mut std::io::stderr(),
             );
         }
     }

@@ -1,3 +1,5 @@
+use std::io::Write;
+
 use auto_lsp::default::db::BaseDatabase;
 use db::{RootDatabase, WorkspaceDataBase};
 use hir::hir_def::semantic_index::semantic_index;
@@ -6,13 +8,14 @@ use yansi::Paint;
 
 use crate::diagnostics::report_diagnostics;
 
-/// Check diagnostics and lower HIR → MIR → core WASM.
-/// Returns `None` if there are errors or codegen fails.
+/// Check diagnostics and lower HIR → MIR → core WASM. On success returns the
+/// core wasm + MIR; on failure returns the rendered diagnostics (also echoed to
+/// stderr) so callers like the debugger can forward them over the debugger transport.
 pub fn build_core(
     db: &RootDatabase,
     workspace: &std::path::Path,
     _verbose: bool,
-) -> Option<(Vec<u8>, mir::MirModule)> {
+) -> Result<(Vec<u8>, mir::MirModule), String> {
     let workspace_path =
         std::fs::canonicalize(workspace).unwrap_or_else(|_| workspace.to_path_buf());
     let config = ariadne::Config::new().with_color(true).with_tab_width(2);
@@ -34,9 +37,12 @@ pub fn build_core(
         })
         .collect();
 
-    // Report sequentially
+    // Report sequentially into a buffer so the text can be both echoed to stderr
+    // (CLI commands) and returned to the caller (the debugger forwards it over the
+    // debugger transport — stdout there is the transport, and stderr isn't shown in VSCode).
     let mut total_errors = 0;
     let mut total_warnings = 0;
+    let mut rendered: Vec<u8> = Vec::new();
 
     for (file, diagnostics) in &per_file {
         if !diagnostics.is_empty() {
@@ -50,9 +56,13 @@ pub fn build_core(
                 &caches,
                 &mut total_errors,
                 &mut total_warnings,
+                &mut rendered,
             );
         }
     }
+
+    // Echo to stderr for CLI usage; the debugger reads the returned string instead.
+    let _ = std::io::stderr().write_all(&rendered);
 
     if total_errors > 0 {
         eprintln!(
@@ -60,7 +70,11 @@ pub fn build_core(
             "compilation failed: ".bold().red(),
             total_errors,
         );
-        return None;
+        let mut text = String::from_utf8_lossy(&rendered).into_owned();
+        text.push_str(&format!(
+            "\ncompilation failed: {total_errors} error(s) found, cannot compile.\n"
+        ));
+        return Err(text);
     }
 
     let sem_indices: Vec<_> = db
@@ -74,12 +88,18 @@ pub fn build_core(
         Ok(m) => m,
         Err(e) => {
             eprintln!("{}{}", "codegen error: ".bold().red(), e);
-            return None;
+            return Err(format!("codegen error: {e}"));
         }
     };
 
     let wasm_module = wasm_codegen::generate_wasm(db, &mir_module);
-    Some((wasm_module.finish(), mir_module))
+    Ok((wasm_module.finish(), mir_module))
+}
+
+/// Path of the debug **core** artifact: `rk compile --debug` writes it and
+/// the debugger loads it.
+pub fn debug_core_path(workspace: &std::path::Path) -> std::path::PathBuf {
+    workspace.join("rk_build").join("debug").join("core.wasm")
 }
 
 /// Run wasm-opt on the WASM bytes if an optimization level is specified.

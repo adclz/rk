@@ -1,3 +1,5 @@
+use std::io::Write;
+
 use auto_lsp::lsp_types::Url;
 use db::RootDatabase;
 use ide_diagnostic::IdeDiagnostic;
@@ -15,6 +17,7 @@ pub fn report_diagnostics(
     caches: &Vec<(&str, &str)>,
     total_errors: &mut i32,
     total_warnings: &mut i32,
+    out: &mut dyn Write,
 ) {
     let url_str = url.as_str();
     let rel_path = url
@@ -44,8 +47,9 @@ pub fn report_diagnostics(
 
         let output = String::from_utf8_lossy(&buffer);
         let shortened = output.replace(url_str, &rel_path);
-        // Diagnostics go to stderr (stdout is reserved for results — and for the
-        // debugger transport when the debugger serves over stdio).
-        eprint!("{}", shortened);
+        // Render to the caller's sink — stderr for CLI commands, or an in-memory
+        // buffer for the debugger (which forwards the text over the debugger transport,
+        // since stdout is the debugger transport there).
+        let _ = write!(out, "{}", shortened);
     }
 }

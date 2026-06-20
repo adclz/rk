@@ -67,6 +67,7 @@ pub fn init_db(
             &caches,
             &mut total_errors,
             &mut total_warnings,
+            &mut std::io::stderr(),
         );
 
         if !config_errors.is_empty() {
