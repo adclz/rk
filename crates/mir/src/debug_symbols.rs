@@ -63,6 +63,7 @@ pub fn walk_type(
     path: &str,
     addr: u32,
     ty: &MirType,
+    global: bool,
     out: &mut Vec<Symbol>,
 ) {
     match ty {
@@ -71,6 +72,7 @@ pub fn walk_type(
             address: addr,
             size: e.size_bytes(),
             ty: sym_type_of(*e),
+            global,
         }),
         // Enum / Subrange are stored as their underlying integer; emit one leaf
         // of that type. (Symbolic variant / bound display is a richer wire format.)
@@ -79,17 +81,19 @@ pub fn walk_type(
             address: addr,
             size: e.storage.size_bytes(),
             ty: sym_type_of(e.storage),
+            global,
         }),
         MirType::Subrange(s) => out.push(Symbol {
             path: path.to_string(),
             address: addr,
             size: s.base.size_bytes(),
             ty: sym_type_of(s.base),
+            global,
         }),
         MirType::Struct(s) => {
             for f in &s.fields {
                 let child = format!("{path}.{}", f.name.text(db));
-                walk_type(db, &child, addr + f.offset, &f.ty, out);
+                walk_type(db, &child, addr + f.offset, &f.ty, global, out);
             }
         }
         // Flat row-major elements (`lower_func`: `offset += idx * element_size`),
@@ -102,7 +106,7 @@ pub fn walk_type(
             }
             for k in 0..a.total_elements {
                 let child = array_index_path(path, k, &a.dimensions);
-                walk_type(db, &child, addr + k * a.element_size, &a.element_type, out);
+                walk_type(db, &child, addr + k * a.element_size, &a.element_type, global, out);
             }
         }
         // STRING → one leaf carrying capacity; the runtime reads the 4-byte len
@@ -114,6 +118,7 @@ pub fn walk_type(
             ty: SymType::String {
                 capacity: *capacity,
             },
+            global,
         }),
         // Pointers are raw addresses; not emitted yet.
         MirType::Pointer(_) | MirType::Void => {}
@@ -151,9 +156,10 @@ pub fn collect_root(
     root: &str,
     base: u32,
     ty: &MirType,
+    global: bool,
     out: &mut Vec<Symbol>,
 ) {
-    walk_type(db, root, base, ty, out);
+    walk_type(db, root, base, ty, global, out);
 }
 
 /// A leaf symbol's dotted path from a root segment and a field name.

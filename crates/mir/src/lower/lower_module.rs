@@ -500,6 +500,7 @@ fn lower_module_from_pous<'db>(
                             &path,
                             inst.instance_addr + f.offset,
                             &f.ty,
+                            false, // program-instance field
                             &mut symbols,
                         );
                     }
@@ -508,7 +509,7 @@ fn lower_module_from_pous<'db>(
         }
     }
     for (name, (addr, ty)) in &global_table {
-        crate::debug_symbols::collect_root(db, name.text(db), *addr, ty, &mut symbols);
+        crate::debug_symbols::collect_root(db, name.text(db), *addr, ty, true, &mut symbols);
     }
     symbols.sort_by(|a, b| a.path.cmp(&b.path));
     module.debug_symbols = crate::debug_symbols::DebugSymbols {

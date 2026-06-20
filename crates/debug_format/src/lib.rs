@@ -12,8 +12,8 @@ use serde::{Deserialize, Serialize};
 pub const DEBUG_SYMBOLS_SECTION: &str = "debug-symbols";
 
 /// On-wire format version. Bump on any breaking change to the layout below.
-/// v2 adds `SymType::String { capacity }`.
-pub const DEBUG_SYMBOLS_VERSION: u16 = 2;
+/// v2 adds `SymType::String { capacity }`; v3 adds `Symbol.global`.
+pub const DEBUG_SYMBOLS_VERSION: u16 = 3;
 
 /// The complete debug-symbol table for a module.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -36,6 +36,9 @@ pub struct Symbol {
     pub size: u32,
     /// Elementary type — tells a consumer how to decode the bytes.
     pub ty: SymType,
+    /// `true` for a config/resource `VAR_GLOBAL`, `false` for a program-instance
+    /// field — lets a debugger group variables into Globals vs Locals.
+    pub global: bool,
 }
 
 /// Elementary type tag. Mirrors the compiler's elementary types but stands on
