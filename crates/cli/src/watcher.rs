@@ -3,7 +3,8 @@ use std::sync::mpsc;
 use std::time::{Duration, Instant};
 
 use notify::{EventKind, RecursiveMode, Watcher as _};
-use yansi::Paint;
+
+use crate::ui;
 
 const DEBOUNCE_TIMEOUT: Duration = Duration::from_millis(10);
 const MAX_HOLD: Duration = Duration::from_secs(3);
@@ -249,7 +250,7 @@ impl Watcher {
             }
         })
         .unwrap_or_else(|e| {
-            eprintln!("{}{}", "watcher error: ".bold().red(), e);
+            ui::error(format!("watcher: {e}"));
             std::process::exit(1);
         });
 
@@ -272,7 +273,7 @@ impl Watcher {
             ._watcher
             .watch(workspace, RecursiveMode::Recursive)
             .unwrap_or_else(|e| {
-                eprintln!("{}{}", "watcher error: ".bold().red(), e);
+                ui::error(format!("watcher: {e}"));
                 std::process::exit(1);
             });
 
@@ -370,11 +371,12 @@ pub fn watch_and_run(workspace: &Path, mut on_change: impl FnMut()) {
         let _ = tx.send(());
     });
 
-    println!("{}", "watching for changes...".dim());
+    ui::detail("watching for changes...");
 
     while rx.recv().is_ok() {
-        println!("\n{}", "file change detected, re-running...".dim());
+        println!();
+        ui::detail("file change detected, re-running...");
         on_change();
-        println!("{}", "watching for changes...".dim());
+        ui::detail("watching for changes...");
     }
 }

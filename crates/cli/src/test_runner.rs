@@ -11,6 +11,8 @@ use wasmtime::{Config, Engine, Store};
 use wasmtime_wasi::{WasiCtx, WasiCtxBuilder, WasiView};
 use yansi::Paint;
 
+use crate::ui;
+
 type WasmResult<T> = wasmtime::Result<T>;
 
 struct TestResult {
@@ -49,11 +51,10 @@ fn discover_tests(component_bytes: &[u8]) -> Vec<(String, String)> {
             .map(|t| (t.path.clone(), t.export.clone()))
             .collect(),
         None => {
-            eprintln!(
-                "{}no test manifest found in component (missing `{}` custom section)",
-                "error: ".bold().red(),
+            ui::error(format!(
+                "no test manifest found in component (missing `{}` custom section)",
                 mir::test_manifest::TEST_MANIFEST_SECTION
-            );
+            ));
             vec![]
         }
     }
@@ -111,7 +112,7 @@ pub fn run_tests(wasm_path: &std::path::Path, filter: Option<&str>) -> usize {
     let bytes = match std::fs::read(wasm_path) {
         Ok(b) => b,
         Err(e) => {
-            eprintln!("{}failed to read component: {}", "error: ".bold().red(), e);
+            ui::error(format!("failed to read component: {e}"));
             return 1;
         }
     };
@@ -119,7 +120,7 @@ pub fn run_tests(wasm_path: &std::path::Path, filter: Option<&str>) -> usize {
     let component = match Component::from_binary(&engine, &bytes) {
         Ok(c) => c,
         Err(e) => {
-            eprintln!("{}{}", "wasm error: ".bold().red(), e);
+            ui::error(format!("wasm: {e}"));
             let mut src = e.source();
             while let Some(cause) = src {
                 eprintln!("  caused by: {}", cause);
@@ -144,7 +145,7 @@ pub fn run_tests(wasm_path: &std::path::Path, filter: Option<&str>) -> usize {
     let linker = match build_linker(&engine) {
         Ok(l) => l,
         Err(e) => {
-            eprintln!("{}{}", "linker error: ".bold().red(), e);
+            ui::error(format!("linker: {e}"));
             return 1;
         }
     };

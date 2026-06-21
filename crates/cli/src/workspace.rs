@@ -2,10 +2,14 @@ use auto_lsp::lsp_types::{PositionEncodingKind, Url};
 use db::RootDatabase;
 use db::loader::load_workspace;
 use db::workspace::Workspace;
-use yansi::Paint;
 
-use crate::diagnostics::report_diagnostics;
+use crate::diagnostics::DiagnosticReporter;
+use crate::ui;
 
+/// Load and parse a workspace into a fresh [`RootDatabase`]. Returns `None` (and
+/// reports why on stderr) if the workspace has no `config.toml`, the config is
+/// invalid, or it holds no `.st` files. All output goes to **stderr**: the debugger
+/// calls this while stdout is the debugger transport.
 pub fn init_db(
     workspace: &std::path::Path,
     verbose: bool,
@@ -15,11 +19,10 @@ pub fn init_db(
         std::fs::canonicalize(workspace).unwrap_or_else(|_| workspace.to_path_buf());
 
     if db::loader::resolve_config_file(workspace).is_none() {
-        eprintln!(
-            "{}no config.toml found in {}",
-            "Error: ".red(),
+        ui::error(format!(
+            "no config.toml found in {}",
             workspace_path.display()
-        );
+        ));
         return None;
     }
 
@@ -47,26 +50,16 @@ pub fn init_db(
         db::loader::load_stdlib(&mut db);
     }
 
-    // Report config errors
-    let config = ariadne::Config::new().with_color(true).with_tab_width(2);
+    // Report config errors against the config file's own source.
     if let Some(config_file) = Workspace::try_get(&db).and_then(|w| w.config_file(&db)) {
         let config_file_url = Url::from_file_path(config_file).unwrap();
         let config_file_content = std::fs::read_to_string(config_file).unwrap();
-        let caches = vec![(config_file_url.as_str(), config_file_content.as_str())];
 
-        let mut total_errors = 0;
-        let mut total_warnings = 0;
-
-        report_diagnostics(
-            &db,
-            &workspace_path,
-            config,
+        let reporter = DiagnosticReporter::new(&db, workspace);
+        reporter.report_external(
             &config_file_url,
             &config_file_content,
             &config_errors,
-            &caches,
-            &mut total_errors,
-            &mut total_warnings,
             &mut std::io::stderr(),
         );
 
@@ -79,7 +72,7 @@ pub fn init_db(
     let results = load_workspace(&mut db, workspace);
 
     if results.is_empty() {
-        eprintln!("no .st files found in workspace");
+        ui::error("no .st files found in workspace");
         return None;
     }
 
@@ -90,9 +83,7 @@ pub fn init_db(
                     eprintln!("  loaded {}", file.url(&db));
                 }
             }
-            Err(e) => {
-                eprintln!("  failed to load: {}", e);
-            }
+            Err(e) => ui::error(format!("failed to load: {e}")),
         }
     }
 

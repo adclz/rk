@@ -1,6 +1,5 @@
-use yansi::Paint;
-
 use crate::compiler::build_core;
+use crate::error::{CliError, CliResult};
 use crate::workspace::init_db;
 
 pub fn run_test(
@@ -9,39 +8,28 @@ pub fn run_test(
     filter: Option<&str>,
     _opt_level: Option<&str>,
     verbose: bool,
-) {
-    let Some(db) = init_db(workspace, verbose, !no_stdlib) else {
-        std::process::exit(1);
-    };
+) -> CliResult<()> {
+    let db = init_db(workspace, verbose, !no_stdlib).ok_or(CliError::Failed)?;
 
-    // Test profile: core module → component (no optimization)
-    let (core_bytes, mir_module) = match build_core(&db, workspace, verbose) {
-        Ok(v) => v,
-        Err(_) => std::process::exit(1), // diagnostics already echoed to stderr
-    };
+    // Test profile: core module → component (no optimization).
+    let (core_bytes, mir_module) =
+        build_core(&db, workspace, verbose).map_err(|_| CliError::Failed)?;
     let component_bytes = wasm_codegen::component::wrap_in_component(&db, &core_bytes, &mir_module)
-        .unwrap_or_else(|e| {
-            eprintln!("{}{}", "component error: ".bold().red(), e);
-            std::process::exit(1);
-        });
+        .map_err(|e| CliError::msg(format!("component: {e}")))?;
 
-    // Write component to rk_build/test/
+    // Write the component to rk_build/test/. The test manifest is embedded as a
+    // custom section inside the component (see `wrap_in_component`), so there is
+    // no sidecar file to write.
     let build_dir = workspace.join("rk_build").join("test");
     std::fs::create_dir_all(&build_dir).ok();
     let wasm_path = build_dir.join("output.wasm");
-    std::fs::write(&wasm_path, &component_bytes).unwrap_or_else(|e| {
-        eprintln!(
-            "{}failed to write test binary: {}",
-            "error: ".bold().red(),
-            e
-        );
-        std::process::exit(1);
-    });
+    std::fs::write(&wasm_path, &component_bytes)
+        .map_err(|e| CliError::msg(format!("writing test binary: {e}")))?;
 
-    // The test manifest is embedded as a custom section inside the component
-    // itself (see `wrap_in_component`), so there is no sidecar file to write.
     let failures = crate::test_runner::run_tests(&wasm_path, filter);
     if failures > 0 {
-        std::process::exit(1);
+        Err(CliError::Failed)
+    } else {
+        Ok(())
     }
 }

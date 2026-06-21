@@ -3,10 +3,9 @@ use std::io::Write;
 use auto_lsp::default::db::BaseDatabase;
 use db::{RootDatabase, WorkspaceDataBase};
 use hir::hir_def::semantic_index::semantic_index;
-use rayon::iter::{IntoParallelIterator, ParallelIterator};
-use yansi::Paint;
 
-use crate::diagnostics::report_diagnostics;
+use crate::diagnostics::{DiagnosticReporter, collect_diagnostics};
+use crate::ui;
 
 /// Check diagnostics and lower HIR → MIR → core WASM. On success returns the
 /// core wasm + MIR; on failure returns the rendered diagnostics (also echoed to
@@ -16,59 +15,21 @@ pub fn build_core(
     workspace: &std::path::Path,
     _verbose: bool,
 ) -> Result<(Vec<u8>, mir::MirModule), String> {
-    let workspace_path =
-        std::fs::canonicalize(workspace).unwrap_or_else(|_| workspace.to_path_buf());
-    let config = ariadne::Config::new().with_color(true).with_tab_width(2);
-
-    let caches = db
-        .get_files()
-        .iter()
-        .map(|file| (file.url(db).as_str(), file.document(db).as_str()))
-        .collect::<Vec<(&str, &str)>>();
-
-    // Collect diagnostics in parallel across files
-    let files = db.get_files();
-    let per_file: Vec<_> = files
-        .into_par_iter()
-        .map_with(db.clone(), |db, file| {
-            let file = *file;
-            let diagnostics = hir::check::diagnostics_for_file(db, file).as_ref().clone();
-            (file, diagnostics)
-        })
-        .collect();
-
-    // Report sequentially into a buffer so the text can be both echoed to stderr
-    // (CLI commands) and returned to the caller (the debugger forwards it over the
-    // debugger transport — stdout there is the transport, and stderr isn't shown in VSCode).
-    let mut total_errors = 0;
-    let mut total_warnings = 0;
+    // Report into a buffer so the text can be both echoed to stderr (CLI
+    // commands) and returned to the caller (the debugger forwards it over the debugger
+    // transport — stdout there is the transport, and stderr isn't shown in VSCode).
+    let per_file = collect_diagnostics(db, false);
+    let reporter = DiagnosticReporter::new(db, workspace);
     let mut rendered: Vec<u8> = Vec::new();
-
-    for (file, diagnostics) in &per_file {
-        if !diagnostics.is_empty() {
-            report_diagnostics(
-                db,
-                &workspace_path,
-                config,
-                file.url(db),
-                &file.document(db).texter.text,
-                diagnostics,
-                &caches,
-                &mut total_errors,
-                &mut total_warnings,
-                &mut rendered,
-            );
-        }
-    }
+    let (total_errors, _total_warnings) = reporter.report_files(&per_file, &mut rendered);
 
     // Echo to stderr for CLI usage; the debugger reads the returned string instead.
     let _ = std::io::stderr().write_all(&rendered);
 
     if total_errors > 0 {
-        eprintln!(
-            "\n{}{} error(s) found, cannot compile.",
-            "compilation failed: ".bold().red(),
-            total_errors,
+        ui::failure(
+            "compilation failed:",
+            format!("{total_errors} error(s) found, cannot compile."),
         );
         let mut text = String::from_utf8_lossy(&rendered).into_owned();
         text.push_str(&format!(
@@ -87,7 +48,7 @@ pub fn build_core(
     let mir_module = match mir::lower::lower_module::lower_modules(db, &sem_indices) {
         Ok(m) => m,
         Err(e) => {
-            eprintln!("{}{}", "codegen error: ".bold().red(), e);
+            ui::error(format!("codegen: {e}"));
             return Err(format!("codegen error: {e}"));
         }
     };
@@ -117,17 +78,15 @@ pub fn optimize_wasm(wasm_bytes: Vec<u8>, opt_level: Option<&str>, verbose: bool
         "s" => wasm_opt::OptimizationOptions::new_optimize_for_size(),
         "z" => wasm_opt::OptimizationOptions::new_optimize_for_size_aggressively(),
         _ => {
-            eprintln!(
-                "{}unknown optimization level '{}' (valid: 0-4, s, z)",
-                "warning: ".bold().yellow(),
-                level
-            );
+            ui::warn(format!(
+                "unknown optimization level '{level}' (valid: 0-4, s, z)"
+            ));
             return wasm_bytes;
         }
     };
 
     if verbose {
-        println!("{}wasm-opt -O{}", "    Optimizing ".dim(), level);
+        ui::detail(format!("    Optimizing wasm-opt -O{level}"));
     }
 
     let original_size = wasm_bytes.len();
@@ -137,11 +96,7 @@ pub fn optimize_wasm(wasm_bytes: Vec<u8>, opt_level: Option<&str>, verbose: bool
     let outfile = std::env::temp_dir().join("rk_wasm_opt_out.wasm");
 
     if let Err(e) = std::fs::write(&infile, &wasm_bytes) {
-        eprintln!(
-            "{}failed to write temp file: {}",
-            "warning: ".bold().yellow(),
-            e
-        );
+        ui::warn(format!("failed to write temp file: {e}"));
         return wasm_bytes;
     }
 
@@ -154,20 +109,19 @@ pub fn optimize_wasm(wasm_bytes: Vec<u8>, opt_level: Option<&str>, verbose: bool
             if verbose {
                 let savings = original_size as f64 - optimized.len() as f64;
                 let pct = (savings / original_size as f64) * 100.0;
-                println!(
-                    "{}{} → {} bytes ({:.1}% reduction)",
-                    "    Optimized ".dim(),
+                ui::detail(format!(
+                    "    Optimized {} → {} bytes ({:.1}% reduction)",
                     original_size,
                     optimized.len(),
                     pct
-                );
+                ));
             }
             optimized
         }
         Err(e) => {
             let _ = std::fs::remove_file(&infile);
             let _ = std::fs::remove_file(&outfile);
-            eprintln!("{}wasm-opt failed: {}", "warning: ".bold().yellow(), e);
+            ui::warn(format!("wasm-opt failed: {e}"));
             wasm_bytes
         }
     }

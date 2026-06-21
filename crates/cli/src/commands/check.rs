@@ -1,85 +1,42 @@
-use auto_lsp::default::db::BaseDatabase;
-use rayon::iter::{IntoParallelIterator, ParallelIterator};
 use yansi::Paint;
 
-use crate::diagnostics::report_diagnostics;
+use crate::diagnostics::{DiagnosticReporter, collect_diagnostics};
+use crate::error::{CliError, CliResult};
+use crate::ui;
 use crate::workspace::init_db;
 
-pub fn run_check(workspace: &std::path::Path, watch: bool, verbose: bool) {
+pub fn run_check(workspace: &std::path::Path, watch: bool, verbose: bool) -> CliResult<()> {
     if watch {
         crate::watcher::watch_and_run(workspace, || {
-            check_once(workspace, verbose);
+            let _ = check_once(workspace, verbose);
         });
+        Ok(())
     } else {
-        let has_errors = check_once(workspace, verbose);
-        if has_errors {
-            std::process::exit(1);
-        }
+        check_once(workspace, verbose)
     }
 }
 
-/// Run diagnostics once. Returns `true` if errors were found.
-fn check_once(workspace: &std::path::Path, verbose: bool) -> bool {
-    let Some(db) = init_db(workspace, verbose, true) else {
-        return true;
-    };
+/// Run diagnostics once. `Err(Failed)` if any file reported diagnostics.
+fn check_once(workspace: &std::path::Path, verbose: bool) -> CliResult<()> {
+    let db = init_db(workspace, verbose, true).ok_or(CliError::Failed)?;
 
-    let workspace_path =
-        std::fs::canonicalize(workspace).unwrap_or_else(|_| workspace.to_path_buf());
-    let config = ariadne::Config::new().with_color(true).with_tab_width(2);
+    let per_file = collect_diagnostics(&db, true);
+    let reporter = DiagnosticReporter::new(&db, workspace);
+    let (errors, warnings) = reporter.report_files(&per_file, &mut std::io::stderr());
 
-    let caches = db
-        .get_files()
-        .iter()
-        .map(|file| (file.url(&db).as_str(), file.document(&db).as_str()))
-        .collect::<Vec<(&str, &str)>>();
-
-    let linter_config = db::config_file::get_config(&db).linter.clone();
-
-    // Collect diagnostics in parallel across files
-    let files = db.get_files();
-    let per_file: Vec<_> = files
-        .into_par_iter()
-        .map_with(db.clone(), |db, file| {
-            let file = *file;
-            let mut diagnostics = hir::check::diagnostics_for_file(db, file).as_ref().clone();
-            if let Some(ref linter_config) = linter_config {
-                linter::lint_file(db, file, linter_config, &mut diagnostics);
-            }
-            (file, diagnostics)
-        })
-        .collect();
-
-    // Report sequentially
-    let mut has_errors = false;
-    let mut total_errors = 0;
-    let mut total_warnings = 0;
-
-    for (file, diagnostics) in &per_file {
-        if !diagnostics.is_empty() {
-            has_errors = true;
-
-            report_diagnostics(
-                &db,
-                &workspace_path,
-                config,
-                file.url(&db),
-                &file.document(&db).texter.text,
-                diagnostics,
-                &caches,
-                &mut total_errors,
-                &mut total_warnings,
-                &mut std::io::stderr(),
-            );
-        }
-    }
-
-    println!(
-        "\n{}{} error(s), {} warning(s) found.",
-        "diagnostics complete: ".bold().bright_green(),
-        total_errors.to_string().fg(ariadne::Color::Red),
-        total_warnings.to_string().fg(ariadne::Color::Yellow)
+    println!();
+    ui::success(
+        "diagnostics complete:",
+        format!(
+            "{} error(s), {} warning(s) found.",
+            errors.red(),
+            warnings.yellow()
+        ),
     );
 
-    has_errors
+    if per_file.iter().any(|(_, diagnostics)| !diagnostics.is_empty()) {
+        Err(CliError::Failed)
+    } else {
+        Ok(())
+    }
 }
