@@ -5,7 +5,8 @@
 use crate::tests::{compile_to_mir_and_wasm, with_db};
 use futures::StreamExt;
 use rstest::*;
-use runtime::debug_session::{DebugCommand, DebugSession};
+use runtime::debug::VarValue;
+use runtime::debug_session::{DebugCommand, DebugSession, StepKind, Stop};
 
 /// 0-based source line of the first occurrence of `needle`.
 fn row_of(src: &str, needle: &str) -> u32 {
@@ -117,5 +118,174 @@ fn interactive_breakpoint_halts_until_continue(mut with_db: db::RootDatabase) {
             stop.stack[0].source.as_ref().map(|s| s.line),
             Some(line)
         );
+    });
+}
+
+/// 0-based source line of a stop's innermost frame.
+fn top_line(stop: &Stop) -> Option<u32> {
+    stop.stack
+        .first()
+        .and_then(|f| f.source.as_ref())
+        .map(|p| p.line)
+}
+
+/// A program with a function call, for the stepping tests.
+const STEP_SRC: &str = r#"
+    FUNCTION Add : INT
+    VAR_INPUT a : INT; b : INT; END_VAR
+        Add := a + b;
+    END_FUNCTION
+
+    PROGRAM Main
+    VAR x : INT; y : INT; END_VAR
+        x := 1;
+        y := Add(x, 2);
+        x := y;
+    END_PROGRAM
+
+    CONFIGURATION Cfg
+        RESOURCE Res ON CPU
+            TASK T(INTERVAL := T#10ms, PRIORITY := 1);
+            PROGRAM Run WITH T : Main;
+        END_RESOURCE
+    END_CONFIGURATION
+"#;
+
+/// `next` (step over) stops at the next line in the same frame, stepping *over* a
+/// call rather than into it.
+#[rstest]
+fn step_over_skips_a_call(mut with_db: db::RootDatabase) {
+    let (_mir, wasm) = compile_to_mir_and_wasm(&mut with_db, STEP_SRC);
+    let r1 = row_of(STEP_SRC, "x := 1");
+    let r2 = row_of(STEP_SRC, "y := Add");
+    let r3 = row_of(STEP_SRC, "x := y");
+    pollster::block_on(async {
+        let (mut sess, mut ctrl) = DebugSession::load_interactive(&wasm).await.unwrap();
+        assert!(sess.set_breakpoint(0, r1));
+        let ui = async {
+            assert_eq!(top_line(&ctrl.stops.next().await.unwrap()), Some(r1), "breakpoint at x := 1");
+            ctrl.commands.unbounded_send(DebugCommand::Step(StepKind::Over)).unwrap();
+            assert_eq!(top_line(&ctrl.stops.next().await.unwrap()), Some(r2), "next → y := Add");
+            ctrl.commands.unbounded_send(DebugCommand::Step(StepKind::Over)).unwrap();
+            assert_eq!(top_line(&ctrl.stops.next().await.unwrap()), Some(r3), "next steps over the call → x := y");
+            ctrl.commands.unbounded_send(DebugCommand::Continue).unwrap();
+        };
+        let (scan, _) = futures::join!(sess.run(1), ui);
+        scan.expect("scan completes");
+    });
+}
+
+/// `stepIn` descends into a called function, stopping at its first statement.
+#[rstest]
+fn step_into_enters_a_call(mut with_db: db::RootDatabase) {
+    let (_mir, wasm) = compile_to_mir_and_wasm(&mut with_db, STEP_SRC);
+    let r2 = row_of(STEP_SRC, "y := Add");
+    let ra = row_of(STEP_SRC, "Add := a + b");
+    pollster::block_on(async {
+        let (mut sess, mut ctrl) = DebugSession::load_interactive(&wasm).await.unwrap();
+        assert!(sess.set_breakpoint(0, r2));
+        let ui = async {
+            assert_eq!(top_line(&ctrl.stops.next().await.unwrap()), Some(r2), "breakpoint at the call");
+            ctrl.commands.unbounded_send(DebugCommand::Step(StepKind::Into)).unwrap();
+            assert_eq!(top_line(&ctrl.stops.next().await.unwrap()), Some(ra), "stepIn enters Add's body");
+            ctrl.commands.unbounded_send(DebugCommand::Continue).unwrap();
+        };
+        let (scan, _) = futures::join!(sess.run(1), ui);
+        scan.expect("scan completes");
+    });
+}
+
+/// Pause halts a freely-running scan (no breakpoint) at the next source line.
+#[rstest]
+fn pause_stops_a_running_scan(mut with_db: db::RootDatabase) {
+    let source = r#"
+        PROGRAM Main
+        VAR count : INT; END_VAR
+            count := count + 1;
+        END_PROGRAM
+
+        CONFIGURATION Cfg
+            RESOURCE Res ON CPU
+                TASK T(INTERVAL := T#10ms, PRIORITY := 1);
+                PROGRAM Run WITH T : Main;
+            END_RESOURCE
+        END_CONFIGURATION
+    "#;
+    let (_mir, wasm) = compile_to_mir_and_wasm(&mut with_db, source);
+    let line = row_of(source, "count := count + 1");
+    pollster::block_on(async {
+        let (mut sess, mut ctrl) = DebugSession::load_interactive(&wasm).await.unwrap();
+        // No breakpoint — request a pause; the scan stops at the next source line.
+        sess.request_pause();
+        let ui = async {
+            let stop = ctrl.stops.next().await.expect("pause produces a stop");
+            assert!(
+                stop.stack[0].function.as_deref().is_some_and(|n| n.contains("Main")),
+                "paused inside Main, got {:?}",
+                stop.stack
+            );
+            assert_eq!(top_line(&stop), Some(line), "paused at the first statement");
+            ctrl.commands.unbounded_send(DebugCommand::Continue).unwrap();
+        };
+        let (scan, _) = futures::join!(sess.run(1), ui);
+        scan.expect("scan completes");
+    });
+}
+
+/// The stop snapshot carries the program's variables with their current values.
+#[rstest]
+fn stop_snapshots_variables(mut with_db: db::RootDatabase) {
+    let source = r#"
+        PROGRAM Main
+        VAR count : INT; flag : BOOL; END_VAR
+            count := count + 1;
+            flag := TRUE;
+        END_PROGRAM
+
+        CONFIGURATION Cfg
+            RESOURCE Res ON CPU
+                TASK T(INTERVAL := T#10ms, PRIORITY := 1);
+                PROGRAM Run WITH T : Main;
+            END_RESOURCE
+        END_CONFIGURATION
+    "#;
+    let (_mir, wasm) = compile_to_mir_and_wasm(&mut with_db, source);
+    let line = row_of(source, "flag := TRUE"); // after the increment, so count == 1
+    pollster::block_on(async {
+        let (mut sess, mut ctrl) = DebugSession::load_interactive(&wasm).await.unwrap();
+        assert!(sess.set_breakpoint(0, line));
+        let ui = async {
+            let stop = ctrl.stops.next().await.expect("a stop");
+            let count = stop
+                .variables
+                .iter()
+                .find(|(n, _, _)| n.ends_with("count"))
+                .expect("count in the snapshot");
+            assert_eq!(count.1, VarValue::I16(1), "count == 1 after the first increment");
+            assert!(!count.2, "a program variable is not flagged global");
+            ctrl.commands.unbounded_send(DebugCommand::Continue).unwrap();
+        };
+        let (scan, _) = futures::join!(sess.run(1), ui);
+        scan.expect("scan completes");
+    });
+}
+
+/// `stepOut` runs the rest of the current function and stops back in the caller.
+#[rstest]
+fn step_out_returns_to_caller(mut with_db: db::RootDatabase) {
+    let (_mir, wasm) = compile_to_mir_and_wasm(&mut with_db, STEP_SRC);
+    let ra = row_of(STEP_SRC, "Add := a + b");
+    let r2 = row_of(STEP_SRC, "y := Add");
+    pollster::block_on(async {
+        let (mut sess, mut ctrl) = DebugSession::load_interactive(&wasm).await.unwrap();
+        assert!(sess.set_breakpoint(0, ra)); // inside Add
+        let ui = async {
+            assert_eq!(top_line(&ctrl.stops.next().await.unwrap()), Some(ra), "breakpoint inside Add");
+            ctrl.commands.unbounded_send(DebugCommand::Step(StepKind::Out)).unwrap();
+            assert_eq!(top_line(&ctrl.stops.next().await.unwrap()), Some(r2), "stepOut returns to the caller");
+            ctrl.commands.unbounded_send(DebugCommand::Continue).unwrap();
+        };
+        let (scan, _) = futures::join!(sess.run(1), ui);
+        scan.expect("scan completes");
     });
 }
