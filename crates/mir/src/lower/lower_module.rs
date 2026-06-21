@@ -494,7 +494,8 @@ fn lower_module_from_pous<'db>(
             for inst in &task.programs {
                 if let Some(info) = program_infos.get(&inst.prog_name) {
                     for f in &info.struct_type.fields {
-                        let path = crate::debug_symbols::join_path(db, inst.inst_name.text(db), f.name);
+                        let path =
+                            crate::debug_symbols::join_path(db, inst.inst_name.text(db), f.name);
                         crate::debug_symbols::walk_type(
                             db,
                             &path,

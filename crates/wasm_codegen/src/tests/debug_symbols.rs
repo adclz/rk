@@ -161,7 +161,10 @@ fn runtime_reads_and_writes_vars_by_name(mut with_db: db::RootDatabase) {
     // The debug view exposes the same variables the section carries.
     let names: Vec<&str> = dbg.list_symbols().iter().map(|s| s.path.as_str()).collect();
     assert_eq!(names, vec!["Run.flag", "Run.speed", "g_count"]);
-    assert!(dbg.read_var(&plc, "Run.nope").is_none(), "unknown path => None");
+    assert!(
+        dbg.read_var(&plc, "Run.nope").is_none(),
+        "unknown path => None"
+    );
 
     // After three scans, `speed := speed + 1` has run three times.
     plc.run(3).expect("scans");
@@ -181,7 +184,10 @@ fn runtime_reads_and_writes_vars_by_name(mut with_db: db::RootDatabase) {
     assert_eq!(dbg.read_var(&plc, "g_count"), Some(VarValue::I32(42)));
 
     // Writing a value whose type doesn't match the symbol is rejected.
-    assert!(dbg.write_var(&mut plc, "Run.speed", VarValue::Bool(true)).is_err());
+    assert!(
+        dbg.write_var(&mut plc, "Run.speed", VarValue::Bool(true))
+            .is_err()
+    );
 }
 
 /// Aggregates: arrays expand to per-element leaves with IEC subscripts (1-D and
@@ -212,13 +218,19 @@ fn aggregate_symbols(mut with_db: db::RootDatabase) {
     "#;
     let (mir, wasm) = compile_to_mir_and_wasm(&mut with_db, source);
     let parsed = read_debug_symbols(&wasm);
-    assert_eq!(parsed, mir.debug_symbols, "section round-trips the MIR table");
+    assert_eq!(
+        parsed, mir.debug_symbols,
+        "section round-trips the MIR table"
+    );
 
     let by_path = |p: &str| parsed.symbols.iter().find(|s| s.path == p);
 
     // 1-D array → one INT leaf per IEC subscript (lower bound 1), 4 bytes apart.
     for p in ["Run.arr[1]", "Run.arr[2]", "Run.arr[3]"] {
-        assert_eq!(by_path(p).unwrap_or_else(|| panic!("missing {p}")).ty, SymType::Int);
+        assert_eq!(
+            by_path(p).unwrap_or_else(|| panic!("missing {p}")).ty,
+            SymType::Int
+        );
     }
     let a1 = by_path("Run.arr[1]").unwrap().address;
     assert_eq!(by_path("Run.arr[2]").unwrap().address, a1 + 4);
@@ -232,7 +244,12 @@ fn aggregate_symbols(mut with_db: db::RootDatabase) {
     assert_eq!(by_path("Run.grid[0,1]").unwrap().address, g00 + 4);
     assert_eq!(by_path("Run.grid[1,0]").unwrap().address, g00 + 8);
     assert_eq!(by_path("Run.grid[1,1]").unwrap().address, g00 + 12);
-    for p in ["Run.grid[0,0]", "Run.grid[0,1]", "Run.grid[1,0]", "Run.grid[1,1]"] {
+    for p in [
+        "Run.grid[0,0]",
+        "Run.grid[0,1]",
+        "Run.grid[1,0]",
+        "Run.grid[1,1]",
+    ] {
         assert_eq!(by_path(p).unwrap().ty, SymType::DInt, "{p} type");
     }
 
@@ -299,7 +316,10 @@ fn runtime_reads_writes_string_by_name(mut with_db: db::RootDatabase) {
     );
 
     // A type mismatch is still rejected.
-    assert!(dbg.write_var(&mut plc, "Run.label", VarValue::I16(1)).is_err());
+    assert!(
+        dbg.write_var(&mut plc, "Run.label", VarValue::I16(1))
+            .is_err()
+    );
 }
 
 /// `read_all` snapshots every monitorable variable's current value in one call —

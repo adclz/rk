@@ -9,7 +9,9 @@ use runtime::debug::DebugInfo;
 
 /// 0-based source line of the first occurrence of `needle`.
 fn row_of(src: &str, needle: &str) -> u32 {
-    let byte = src.find(needle).unwrap_or_else(|| panic!("`{needle}` not in source"));
+    let byte = src
+        .find(needle)
+        .unwrap_or_else(|| panic!("`{needle}` not in source"));
     src[..byte].bytes().filter(|&b| b == b'\n').count() as u32
 }
 
@@ -44,11 +46,15 @@ fn trap_yields_source_level_stack_trace(mut with_db: db::RootDatabase) {
     let mut linker = wasmtime::Linker::new(&engine);
     let memory = wasmtime::Memory::new(&mut store, wasmtime::MemoryType::new(1, None)).unwrap();
     linker.define(&store, "env", "memory", memory).unwrap();
-    let instance = linker.instantiate(&mut store, &module).expect("instantiate");
+    let instance = linker
+        .instantiate(&mut store, &module)
+        .expect("instantiate");
     let caller = instance
         .get_typed_func::<i32, i32>(&mut store, "caller")
         .expect("caller export");
-    let err = caller.call(&mut store, 0).expect_err("div-by-zero must trap");
+    let err = caller
+        .call(&mut store, 0)
+        .expect_err("div-by-zero must trap");
 
     // The trap carries a WasmBacktrace; resolve every frame to IEC name + line.
     let bt = err

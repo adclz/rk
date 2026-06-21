@@ -10,7 +10,9 @@ use runtime::debug_session::{DebugCommand, DebugSession, StepKind, Stop};
 
 /// 0-based source line of the first occurrence of `needle`.
 fn row_of(src: &str, needle: &str) -> u32 {
-    let byte = src.find(needle).unwrap_or_else(|| panic!("`{needle}` not in source"));
+    let byte = src
+        .find(needle)
+        .unwrap_or_else(|| panic!("`{needle}` not in source"));
     src[..byte].bytes().filter(|&b| b == b'\n').count() as u32
 }
 
@@ -39,7 +41,10 @@ fn breakpoint_captures_source_level_stack(mut with_db: db::RootDatabase) {
     // boundary with pollster.
     let mut sess = pollster::block_on(DebugSession::load(&wasm)).expect("load debug session");
     let line = row_of(source, "count := count + 1");
-    assert!(sess.set_breakpoint(0, line), "breakpoint set at the assignment");
+    assert!(
+        sess.set_breakpoint(0, line),
+        "breakpoint set at the assignment"
+    );
 
     pollster::block_on(sess.run(1)).expect("scan");
 
@@ -87,7 +92,10 @@ fn interactive_breakpoint_halts_until_continue(mut with_db: db::RootDatabase) {
         let (mut sess, mut ctrl) = DebugSession::load_interactive(&wasm)
             .await
             .expect("load interactive debug session");
-        assert!(sess.set_breakpoint(0, line), "breakpoint set at the assignment");
+        assert!(
+            sess.set_breakpoint(0, line),
+            "breakpoint set at the assignment"
+        );
 
         // The debugger UI: wait for the breakpoint to fire, inspect, resume.
         let ui = async {
@@ -114,10 +122,7 @@ fn interactive_breakpoint_halts_until_continue(mut with_db: db::RootDatabase) {
         // scan didn't actually halt, the UI would never see a stop.
         let (scan, stop) = futures::join!(sess.run(1), ui);
         scan.expect("scan completes after continue");
-        assert_eq!(
-            stop.stack[0].source.as_ref().map(|s| s.line),
-            Some(line)
-        );
+        assert_eq!(stop.stack[0].source.as_ref().map(|s| s.line), Some(line));
     });
 }
 
@@ -163,12 +168,30 @@ fn step_over_skips_a_call(mut with_db: db::RootDatabase) {
         let (mut sess, mut ctrl) = DebugSession::load_interactive(&wasm).await.unwrap();
         assert!(sess.set_breakpoint(0, r1));
         let ui = async {
-            assert_eq!(top_line(&ctrl.stops.next().await.unwrap()), Some(r1), "breakpoint at x := 1");
-            ctrl.commands.unbounded_send(DebugCommand::Step(StepKind::Over)).unwrap();
-            assert_eq!(top_line(&ctrl.stops.next().await.unwrap()), Some(r2), "next → y := Add");
-            ctrl.commands.unbounded_send(DebugCommand::Step(StepKind::Over)).unwrap();
-            assert_eq!(top_line(&ctrl.stops.next().await.unwrap()), Some(r3), "next steps over the call → x := y");
-            ctrl.commands.unbounded_send(DebugCommand::Continue).unwrap();
+            assert_eq!(
+                top_line(&ctrl.stops.next().await.unwrap()),
+                Some(r1),
+                "breakpoint at x := 1"
+            );
+            ctrl.commands
+                .unbounded_send(DebugCommand::Step(StepKind::Over))
+                .unwrap();
+            assert_eq!(
+                top_line(&ctrl.stops.next().await.unwrap()),
+                Some(r2),
+                "next → y := Add"
+            );
+            ctrl.commands
+                .unbounded_send(DebugCommand::Step(StepKind::Over))
+                .unwrap();
+            assert_eq!(
+                top_line(&ctrl.stops.next().await.unwrap()),
+                Some(r3),
+                "next steps over the call → x := y"
+            );
+            ctrl.commands
+                .unbounded_send(DebugCommand::Continue)
+                .unwrap();
         };
         let (scan, _) = futures::join!(sess.run(1), ui);
         scan.expect("scan completes");
@@ -185,10 +208,22 @@ fn step_into_enters_a_call(mut with_db: db::RootDatabase) {
         let (mut sess, mut ctrl) = DebugSession::load_interactive(&wasm).await.unwrap();
         assert!(sess.set_breakpoint(0, r2));
         let ui = async {
-            assert_eq!(top_line(&ctrl.stops.next().await.unwrap()), Some(r2), "breakpoint at the call");
-            ctrl.commands.unbounded_send(DebugCommand::Step(StepKind::Into)).unwrap();
-            assert_eq!(top_line(&ctrl.stops.next().await.unwrap()), Some(ra), "stepIn enters Add's body");
-            ctrl.commands.unbounded_send(DebugCommand::Continue).unwrap();
+            assert_eq!(
+                top_line(&ctrl.stops.next().await.unwrap()),
+                Some(r2),
+                "breakpoint at the call"
+            );
+            ctrl.commands
+                .unbounded_send(DebugCommand::Step(StepKind::Into))
+                .unwrap();
+            assert_eq!(
+                top_line(&ctrl.stops.next().await.unwrap()),
+                Some(ra),
+                "stepIn enters Add's body"
+            );
+            ctrl.commands
+                .unbounded_send(DebugCommand::Continue)
+                .unwrap();
         };
         let (scan, _) = futures::join!(sess.run(1), ui);
         scan.expect("scan completes");
@@ -220,12 +255,17 @@ fn pause_stops_a_running_scan(mut with_db: db::RootDatabase) {
         let ui = async {
             let stop = ctrl.stops.next().await.expect("pause produces a stop");
             assert!(
-                stop.stack[0].function.as_deref().is_some_and(|n| n.contains("Main")),
+                stop.stack[0]
+                    .function
+                    .as_deref()
+                    .is_some_and(|n| n.contains("Main")),
                 "paused inside Main, got {:?}",
                 stop.stack
             );
             assert_eq!(top_line(&stop), Some(line), "paused at the first statement");
-            ctrl.commands.unbounded_send(DebugCommand::Continue).unwrap();
+            ctrl.commands
+                .unbounded_send(DebugCommand::Continue)
+                .unwrap();
         };
         let (scan, _) = futures::join!(sess.run(1), ui);
         scan.expect("scan completes");
@@ -261,9 +301,15 @@ fn stop_snapshots_variables(mut with_db: db::RootDatabase) {
                 .iter()
                 .find(|(n, _, _)| n.ends_with("count"))
                 .expect("count in the snapshot");
-            assert_eq!(count.1, VarValue::I16(1), "count == 1 after the first increment");
+            assert_eq!(
+                count.1,
+                VarValue::I16(1),
+                "count == 1 after the first increment"
+            );
             assert!(!count.2, "a program variable is not flagged global");
-            ctrl.commands.unbounded_send(DebugCommand::Continue).unwrap();
+            ctrl.commands
+                .unbounded_send(DebugCommand::Continue)
+                .unwrap();
         };
         let (scan, _) = futures::join!(sess.run(1), ui);
         scan.expect("scan completes");
@@ -280,10 +326,22 @@ fn step_out_returns_to_caller(mut with_db: db::RootDatabase) {
         let (mut sess, mut ctrl) = DebugSession::load_interactive(&wasm).await.unwrap();
         assert!(sess.set_breakpoint(0, ra)); // inside Add
         let ui = async {
-            assert_eq!(top_line(&ctrl.stops.next().await.unwrap()), Some(ra), "breakpoint inside Add");
-            ctrl.commands.unbounded_send(DebugCommand::Step(StepKind::Out)).unwrap();
-            assert_eq!(top_line(&ctrl.stops.next().await.unwrap()), Some(r2), "stepOut returns to the caller");
-            ctrl.commands.unbounded_send(DebugCommand::Continue).unwrap();
+            assert_eq!(
+                top_line(&ctrl.stops.next().await.unwrap()),
+                Some(ra),
+                "breakpoint inside Add"
+            );
+            ctrl.commands
+                .unbounded_send(DebugCommand::Step(StepKind::Out))
+                .unwrap();
+            assert_eq!(
+                top_line(&ctrl.stops.next().await.unwrap()),
+                Some(r2),
+                "stepOut returns to the caller"
+            );
+            ctrl.commands
+                .unbounded_send(DebugCommand::Continue)
+                .unwrap();
         };
         let (scan, _) = futures::join!(sess.run(1), ui);
         scan.expect("scan completes");

@@ -52,11 +52,24 @@ fn functions_named_by_defined_index(mut with_db: db::RootDatabase) {
     // Entries are sorted, uniquely indexed, and cover the functions we wrote
     // plus the synthesized program body.
     assert_eq!(df.version, debug_format::DEBUG_FUNCTIONS_VERSION);
-    assert!(df.functions.windows(2).all(|w| w[0].defined_index < w[1].defined_index));
+    assert!(
+        df.functions
+            .windows(2)
+            .all(|w| w[0].defined_index < w[1].defined_index)
+    );
     let names: Vec<&str> = df.functions.iter().map(|f| f.name.as_str()).collect();
-    assert!(names.iter().any(|n| n.contains("add")), "no `add` in {names:?}");
-    assert!(names.iter().any(|n| n.contains("mul")), "no `mul` in {names:?}");
-    assert!(names.iter().any(|n| n.contains("Main")), "no program body in {names:?}");
+    assert!(
+        names.iter().any(|n| n.contains("add")),
+        "no `add` in {names:?}"
+    );
+    assert!(
+        names.iter().any(|n| n.contains("mul")),
+        "no `mul` in {names:?}"
+    );
+    assert!(
+        names.iter().any(|n| n.contains("Main")),
+        "no program body in {names:?}"
+    );
 
     // DebugInfo resolves every DefinedFuncIndex back to its name; unknown
     // indices (imports, builtins, out-of-range) resolve to None.

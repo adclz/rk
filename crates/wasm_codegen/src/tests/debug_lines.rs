@@ -238,23 +238,39 @@ fn breakpoints_resolve_per_file(mut with_db: db::RootDatabase) {
     let url_b = file_b.url(&with_db).as_str().to_string();
     let files = dbg.source_files();
     assert_eq!(files.len(), 2, "two source files, got {files:?}");
-    let fi_a = files.iter().position(|f| f == &url_a).expect("file A in table") as u32;
-    let fi_b = files.iter().position(|f| f == &url_b).expect("file B in table") as u32;
+    let fi_a = files
+        .iter()
+        .position(|f| f == &url_a)
+        .expect("file A in table") as u32;
+    let fi_b = files
+        .iter()
+        .position(|f| f == &url_b)
+        .expect("file B in table") as u32;
     assert_ne!(fi_a, fi_b);
 
     let row = row_of(src_a, "fa := x + 1");
-    assert_eq!(row, row_of(src_b, "fb := x + 2"), "test relies on identical rows");
+    assert_eq!(
+        row,
+        row_of(src_b, "fb := x + 2"),
+        "test relies on identical rows"
+    );
 
     // Same row, different file ⇒ different function.
     let (ia, pa) = dbg.line_to_pc(fi_a, row).expect("breakpoint in file A");
-    assert!(dbg.function_name(ia).unwrap().contains("fa"), "file A row → fa");
+    assert!(
+        dbg.function_name(ia).unwrap().contains("fa"),
+        "file A row → fa"
+    );
     assert_eq!(
         dbg.source_position(ia, pa).map(|p| (p.file, p.line)),
         Some((fi_a, row))
     );
 
     let (ib, pb) = dbg.line_to_pc(fi_b, row).expect("breakpoint in file B");
-    assert!(dbg.function_name(ib).unwrap().contains("fb"), "file B row → fb");
+    assert!(
+        dbg.function_name(ib).unwrap().contains("fb"),
+        "file B row → fb"
+    );
     assert_eq!(
         dbg.source_position(ib, pb).map(|p| (p.file, p.line)),
         Some((fi_b, row))

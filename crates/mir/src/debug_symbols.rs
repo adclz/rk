@@ -106,7 +106,14 @@ pub fn walk_type(
             }
             for k in 0..a.total_elements {
                 let child = array_index_path(path, k, &a.dimensions);
-                walk_type(db, &child, addr + k * a.element_size, &a.element_type, global, out);
+                walk_type(
+                    db,
+                    &child,
+                    addr + k * a.element_size,
+                    &a.element_type,
+                    global,
+                    out,
+                );
             }
         }
         // STRING → one leaf carrying capacity; the runtime reads the 4-byte len

@@ -69,7 +69,10 @@ fn compile_once(
             }
         };
 
-    let default_output = workspace.join("rk_build").join("release").join("output.wasm");
+    let default_output = workspace
+        .join("rk_build")
+        .join("release")
+        .join("output.wasm");
     let output = output.unwrap_or(&default_output);
     write_output(output, &component_bytes, "compiled: ");
 }

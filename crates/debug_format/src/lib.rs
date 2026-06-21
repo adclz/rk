@@ -71,7 +71,9 @@ pub enum SymType {
     LDateTime,
     /// Fixed-capacity IEC STRING: a 4-byte little-endian `len` prefix followed by
     /// `capacity` bytes of UTF-8 buffer (total `4 + capacity`).
-    String { capacity: u32 },
+    String {
+        capacity: u32,
+    },
 }
 
 impl SymType {
