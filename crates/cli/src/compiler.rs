@@ -57,6 +57,37 @@ pub fn build_core(
     Ok((wasm_module.finish(), mir_module))
 }
 
+/// Like [`build_core`] but never writes to stderr or stdout; on failure
+/// it returns the rendered diagnostics.
+pub fn build_core_quiet(
+    db: &RootDatabase,
+    workspace: &std::path::Path,
+    _verbose: bool,
+) -> Result<(Vec<u8>, mir::MirModule), String> {
+    let per_file = collect_diagnostics(db, false);
+    let reporter = DiagnosticReporter::new(db, workspace);
+    let mut rendered: Vec<u8> = Vec::new();
+    let (total_errors, _total_warnings) = reporter.report_files(&per_file, &mut rendered);
+    if total_errors > 0 {
+        let mut text = String::from_utf8_lossy(&rendered).into_owned();
+        text.push_str(&format!(
+            "\ncompilation failed: {total_errors} error(s) found, cannot compile.\n"
+        ));
+        return Err(text);
+    }
+
+    let sem_indices: Vec<_> = db
+        .get_files()
+        .iter()
+        .chain(db.get_std_lib_files().iter())
+        .map(|file| semantic_index(db, *file))
+        .collect();
+    let mir_module = mir::lower::lower_module::lower_modules(db, &sem_indices)
+        .map_err(|e| format!("codegen error: {e}"))?;
+    let wasm_module = wasm_codegen::generate_wasm(db, &mir_module);
+    Ok((wasm_module.finish(), mir_module))
+}
+
 /// Path of the debug **core** artifact: `rk compile --debug` writes it and
 /// the debugger loads it.
 pub fn debug_core_path(workspace: &std::path::Path) -> std::path::PathBuf {
