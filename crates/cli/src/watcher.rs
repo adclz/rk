@@ -239,45 +239,41 @@ pub struct Watcher {
 }
 
 impl Watcher {
-    /// Create a new watcher for `workspace`, calling `handler` with batched events.
+    /// Create a watcher for `workspace`, calling `handler` with batched
+    /// events; exits the process on failure (see [`try_new`](Self::try_new)).
     pub fn new(workspace: &Path, handler: impl Fn(Vec<ChangeEvent>) + Send + 'static) -> Self {
+        Self::try_new(workspace, handler).unwrap_or_else(|e| {
+            ui::error(format!("watcher: {e}"));
+            std::process::exit(1);
+        })
+    }
+
+    /// Like [`new`](Self::new) but fallible.
+    pub fn try_new(
+        workspace: &Path,
+        handler: impl Fn(Vec<ChangeEvent>) + Send + 'static,
+    ) -> notify::Result<Self> {
         let (tx, rx) = mpsc::channel::<DebouncerMessage>();
 
         let tx_notify = tx.clone();
-        let watcher = notify::recommended_watcher(move |res: notify::Result<notify::Event>| {
+        let mut watcher = notify::recommended_watcher(move |res: notify::Result<notify::Event>| {
             if let Ok(event) = res {
                 let _ = tx_notify.send(DebouncerMessage::Event(event));
             }
-        })
-        .unwrap_or_else(|e| {
-            ui::error(format!("watcher: {e}"));
-            std::process::exit(1);
-        });
+        })?;
+        watcher.watch(workspace, RecursiveMode::Recursive)?;
 
         let thread = std::thread::spawn(move || {
             debouncer_loop(rx, handler);
         });
 
-        let mut w = Watcher {
+        Ok(Watcher {
             inner: Some(WatcherInner {
                 _watcher: watcher,
                 sender: tx,
                 thread: Some(thread),
             }),
-        };
-
-        // Start watching
-        w.inner
-            .as_mut()
-            .unwrap()
-            ._watcher
-            .watch(workspace, RecursiveMode::Recursive)
-            .unwrap_or_else(|e| {
-                ui::error(format!("watcher: {e}"));
-                std::process::exit(1);
-            });
-
-        w
+        })
     }
 
     /// Force flush any pending events.
