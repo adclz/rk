@@ -79,42 +79,6 @@ impl<'db> StmtsResolverCtx<'db> {
                     ctx.effectless_statements.push(*stmt);
                 }
 
-                StmtKind::AssignmentAttempt { var, target } => {
-                    resolver.resolve_variable_access(db, *var, ctx);
-                    let base_typ = ctx.get_type_of_variable_access(db, *var);
-                    let lhs_typ = base_typ.normalize(db);
-
-                    base_typ.check_assignable(db, CallSite::from_scoped(db, var), ctx);
-
-                    // LHS must be REF_TO
-                    if !matches!(lhs_typ, Type::RefTo(_) | Type::Never) {
-                        ctx.errors.push(
-                            TypeError::AssignAttemptRequiresRef {
-                                typ: lhs_typ,
-                                call_site: CallSite::from_scoped(db, var),
-                            }
-                            .to_diagnostic(db, ctx.scope.file(db)),
-                        );
-                    }
-
-                    self.infer_and_check_expr(db, &mut infer, *target, ctx);
-
-                    // Check RHS is REF_TO or Interface
-                    if matches!(lhs_typ, Type::RefTo(_)) {
-                        let rhs_typ = ctx.get_type_of_expr(*target).normalize(db);
-                        if lhs_typ.coerce_assign_attempt(db, rhs_typ).is_err() {
-                            ctx.errors.push(
-                                TypeError::AssignAttemptInvalidRhs {
-                                    lhs: lhs_typ,
-                                    rhs: rhs_typ,
-                                    call_site: CallSite::from_scoped(db, target),
-                                }
-                                .to_diagnostic(db, ctx.scope.file(db)),
-                            );
-                        }
-                    }
-                }
-
                 StmtKind::Assignment { var, target } => {
                     resolver.resolve_variable_access(db, *var, ctx);
                     let base_typ = ctx.get_type_of_variable_access(db, *var);

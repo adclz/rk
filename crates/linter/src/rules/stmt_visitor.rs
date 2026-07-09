@@ -320,35 +320,6 @@ fn visit_statements<'db>(
                     uninitialized_output::collect_assigned(db, body, *var, assigned);
                 }
             }
-            StmtKind::AssignmentAttempt { var, target } => {
-                check_expr_lints(db, body, ctx, target, diagnostics);
-                if ctx.input_assignment {
-                    run_lint(input_assignment::NAME, diagnostics, |d| {
-                        input_assignment::check_assignment(db, body, *var, d)
-                    });
-                }
-                if ctx.external_mutation {
-                    run_lint(external_mutation::NAME, diagnostics, |d| {
-                        external_mutation::check_assignment(db, body, *var, d)
-                    });
-                }
-                if ctx.loop_var_modified {
-                    run_lint(loop_var_modified::NAME, diagnostics, |d| {
-                        loop_var_modified::check_assignment(db, body, *var, active_loop_vars, d)
-                    });
-                }
-                if ctx.missing_return
-                    && !*return_assigned
-                    && missing_return::check_assignment(db, body, *var, scope)
-                {
-                    *return_assigned = true;
-                }
-                if ctx.uninitialized_output
-                    && let Some(assigned) = assigned_vars.as_mut()
-                {
-                    uninitialized_output::collect_assigned(db, body, *var, assigned);
-                }
-            }
             StmtKind::If {
                 condition,
                 then,

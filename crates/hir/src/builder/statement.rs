@@ -514,7 +514,7 @@ impl<'db> Parse<'db> for ast::generated::Assign {
             }
         }?;
 
-        type TargetType = ast::generated::ERREmptyRightHandAssignment_ERRMissingDotInAssignment_ERRMissingEqualInAssignment_ERROutputAssignInAssignment_Assignment_AssignmentAttempt;
+        type TargetType = ast::generated::ERREmptyRightHandAssignment_ERRMissingDotInAssignment_ERRMissingEqualInAssignment_ERROutputAssignInAssignment_Assignment;
         match self.target.cast(sema.ast) {
             TargetType::ERREmptyRightHandAssignment(err) => {
                 Err(SyntaxError::EmptyRightHandSide(err.get_range().to_owned())
@@ -546,15 +546,6 @@ impl<'db> Parse<'db> for ast::generated::Assign {
                 StmtKind::Assignment {
                     var,
                     target: assign.children.cast(sema.ast).parse(sema)?,
-                },
-                self.into(),
-                sema.current_scope,
-            )),
-            TargetType::AssignmentAttempt(attempt) => Ok(Stmt::new(
-                sema.db,
-                StmtKind::AssignmentAttempt {
-                    var,
-                    target: attempt.children.cast(sema.ast).parse(sema)?,
                 },
                 self.into(),
                 sema.current_scope,

@@ -83,15 +83,6 @@ pub enum TypeError<'db> {
         operator: &'static str,
         call_site: CallSite<'db>,
     },
-    AssignAttemptRequiresRef {
-        typ: Type<'db>,
-        call_site: CallSite<'db>,
-    },
-    AssignAttemptInvalidRhs {
-        lhs: Type<'db>,
-        rhs: Type<'db>,
-        call_site: CallSite<'db>,
-    },
 
     /// Use site supplies `<...>` on a POU that declares no `ANY_*` generic
     /// parameters - e.g. `VAR x : Plain<INT>;` where `Plain` has no ANY_* fields.
@@ -167,8 +158,6 @@ impl<'db> ErrorCode for TypeError<'db> {
             Self::InferLiteralError { .. } => "E0309",
             Self::NonVariadicFoldParameter { .. } => "E0317",
             Self::UnsupportedOperator { .. } => "E0318",
-            Self::AssignAttemptRequiresRef { .. } => "E0319",
-            Self::AssignAttemptInvalidRhs { .. } => "E0320",
             Self::GenericArgsOnNonGenericType { .. } => "E0321",
             Self::MissingGenericArgs { .. } => "E0322",
             Self::WrongNumberOfGenericArgs { .. } => "E0323",
@@ -184,9 +173,6 @@ impl<'db> ErrorCode for TypeError<'db> {
     fn description(&self) -> &'static str {
         match self {
             Self::InferLiteralError { .. } => "invalid literal",
-            Self::AssignAttemptRequiresRef { .. } | Self::AssignAttemptInvalidRhs { .. } => {
-                "invalid assignment attempt"
-            }
             Self::GenericArgsOnNonGenericType { .. }
             | Self::MissingGenericArgs { .. }
             | Self::WrongNumberOfGenericArgs { .. }
@@ -432,40 +418,6 @@ impl<'db> ToIdeDiagnostic<'db> for TypeError<'db> {
 
                 target.with_location(db, &mut diag);
 
-                diag
-            }
-            Self::AssignAttemptRequiresRef { typ, call_site } => {
-                let mut diag = diag()
-                    .message(format!(
-                        "assignment attempt '?=' requires a REF_TO variable, got '{}'",
-                        typ.type_name(db),
-                    ))
-                    .severity(DiagnosticSeverity::ERROR)
-                    .desc(self)
-                    .range(
-                        crate::denormalize(db, file, &call_site.get_span(db)).unwrap_or_default(),
-                    )
-                    .call();
-
-                typ.with_location(db, &mut diag);
-                diag
-            }
-            Self::AssignAttemptInvalidRhs {
-                lhs,
-                rhs,
-                call_site,
-            } => {
-                let mut diag = diag()
-                    .message(format!(
-                        "assignment attempt '?=' requires a REF_TO or interface on the right-hand side, got '{}'",
-                        rhs.type_name(db),
-                    ))
-                    .severity(DiagnosticSeverity::ERROR)
-                    .desc(self)
-                    .range(crate::denormalize(db, file, &call_site.get_span(db)).unwrap_or_default())
-                    .call();
-
-                rhs.with_location(db, &mut diag);
                 diag
             }
             Self::GenericArgsOnNonGenericType { name, spec } => diag()

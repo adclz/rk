@@ -1785,10 +1785,6 @@
           {
             "type": "assignment",
             "named": true
-          },
-          {
-            "type": "assignment_attempt",
-            "named": true
           }
         ]
       },
@@ -1810,21 +1806,6 @@
   },
   {
     "type": "assignment",
-    "named": true,
-    "fields": {},
-    "children": {
-      "multiple": false,
-      "required": true,
-      "types": [
-        {
-          "type": "_expression",
-          "named": true
-        }
-      ]
-    }
-  },
-  {
-    "type": "assignment_attempt",
     "named": true,
     "fields": {},
     "children": {
@@ -7508,10 +7489,6 @@
   },
   {
     "type": ">=",
-    "named": false
-  },
-  {
-    "type": "?=",
     "named": false
   },
   {

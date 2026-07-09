@@ -281,7 +281,7 @@ fn find_func_call_in_stmts<'db>(
             StmtKind::FuncCall(fc) => {
                 *best = Some(*fc);
             }
-            StmtKind::Assignment { target, .. } | StmtKind::AssignmentAttempt { target, .. } => {
+            StmtKind::Assignment { target, .. } => {
                 find_func_call_in_expr(db, target, offset, best);
             }
             StmtKind::If {

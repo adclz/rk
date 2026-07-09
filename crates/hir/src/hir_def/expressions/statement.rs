@@ -43,10 +43,6 @@ pub enum StmtKind<'db> {
         var: VariableAccess<'db>,
         target: Expr<'db>,
     },
-    AssignmentAttempt {
-        var: VariableAccess<'db>,
-        target: Expr<'db>, // todo: replace with ref or identifier
-    },
     FuncCall(FuncCall<'db>),
     Return,
     If {

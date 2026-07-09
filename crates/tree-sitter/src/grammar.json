@@ -9313,10 +9313,6 @@
             "members": [
               {
                 "type": "SYMBOL",
-                "name": "assignment_attempt"
-              },
-              {
-                "type": "SYMBOL",
                 "name": "assignment"
               },
               {
@@ -9346,19 +9342,6 @@
         {
           "type": "STRING",
           "value": ":="
-        },
-        {
-          "type": "SYMBOL",
-          "name": "_expression"
-        }
-      ]
-    },
-    "assignment_attempt": {
-      "type": "SEQ",
-      "members": [
-        {
-          "type": "STRING",
-          "value": "?="
         },
         {
           "type": "SYMBOL",

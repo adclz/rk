@@ -1935,18 +1935,12 @@ module.exports = grammar({
     //    ':=',
     //    choice($.ref_name, $.ref_deref, $.ref_value)
     //),
-    // assignment_attempt: $ => seq(
-    //    field("value", choice($.identifier, $.ref_deref)),
-    //    '?=',
-    //    field("target", choice($.identifier, $.ref_deref, $.ref_value))
-    //),
     assign: ($) =>
       seq(
         field("variable", choice($.variable_access, $.ERR_assign_func_call)),
         field(
           "target",
           choice(
-            $.assignment_attempt,
             $.assignment,
             $.ERR_empty_right_hand_assignment,
             $.ERR_missing_dot_in_assignment,
@@ -1957,8 +1951,6 @@ module.exports = grammar({
       ),
 
     assignment: ($) => seq(":=", $._expression),
-
-    assignment_attempt: ($) => seq("?=", $._expression),
 
     param_assign: ($) => choice($.param_assign_input, $.param_assign_output),
 

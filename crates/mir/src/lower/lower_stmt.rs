@@ -325,10 +325,6 @@ fn lower_stmt<'db>(
         StmtKind::WasmPragma(_) => Ok(None),   // Handled at function level, not statement level
         StmtKind::PreprocessIf { .. } => Ok(None), // Resolved at monomorphization, not lowered as a statement
 
-        StmtKind::AssignmentAttempt { .. } => Err(LowerTypeError::UnsupportedType(
-            "AssignmentAttempt not yet supported".to_string(),
-        )),
-
         StmtKind::EmptyPathExpression(_) => Ok(None),
     }
 }

@@ -57,9 +57,6 @@ fn check_statements<'db>(
             StmtKind::Assignment { target, .. } => {
                 check_expr(db, target, diagnostics);
             }
-            StmtKind::AssignmentAttempt { target, .. } => {
-                check_expr(db, target, diagnostics);
-            }
             StmtKind::If {
                 condition,
                 then,
