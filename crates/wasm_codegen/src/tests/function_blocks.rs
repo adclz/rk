@@ -59,3 +59,65 @@ fn test_fb_method_execution(mut with_db: db::RootDatabase) {
     let count = get_count.call(&mut store, fb_address).unwrap();
     assert_eq!(count, 2, "Count should be 2 after two increments");
 }
+
+/// Calling `a.inc()` / `b.inc()` from ST must dispatch to `Counter#inc` with each
+/// instance's own address as `this` — the two counters stay independent. A wrong
+/// or shared `this` would change the sum.
+#[rstest]
+fn test_st_method_call_isolates_instances(mut with_db: db::RootDatabase) {
+    let source = r#"
+        FUNCTION_BLOCK Counter
+        VAR c : INT; END_VAR
+        METHOD PUBLIC inc : INT
+            THIS.c := THIS.c + 1;
+            inc := THIS.c;
+        END_METHOD
+        END_FUNCTION_BLOCK
+
+        FUNCTION test : INT
+        VAR a : Counter; b : Counter; END_VAR
+            a.inc();                      (* a.c = 1 *)
+            a.inc();                      (* a.c = 2 *)
+            b.inc();                      (* b.c = 1 *)
+            test := a.inc() + b.inc();    (* 3 + 2 = 5 *)
+        END_FUNCTION
+    "#;
+    let wasm = compile_to_wasm(&mut with_db, source);
+    let result: i32 = super::execute_wasm(&wasm, "test", ());
+    assert_eq!(
+        result, 5,
+        "isolated instances: a reaches 3, b reaches 2 (a shared `this` would give 9)"
+    );
+}
+
+/// An inherited method resolves to the *base* it is declared on (`Base#inc`), not
+/// the receiver's derived type — and runs, with the derived instance's address as
+/// `this` (base fields sit at offset 0). Exercises the HIR-faithful owner
+/// resolution: a receiver-type derivation would have built the never-registered
+/// `Derived#inc`.
+#[rstest]
+fn test_st_inherited_method_call(mut with_db: db::RootDatabase) {
+    let source = r#"
+        FUNCTION_BLOCK Base
+        VAR c : INT; END_VAR
+        METHOD PUBLIC inc : INT
+            THIS.c := THIS.c + 1;
+            inc := THIS.c;
+        END_METHOD
+        END_FUNCTION_BLOCK
+
+        FUNCTION_BLOCK Derived EXTENDS Base
+        VAR d : INT; END_VAR
+        END_FUNCTION_BLOCK
+
+        FUNCTION test_inh : INT
+        VAR a : Derived; END_VAR
+            a.inc();
+            a.inc();
+            test_inh := a.inc();          (* 3 — inherited Base#inc on a Derived *)
+        END_FUNCTION
+    "#;
+    let wasm = compile_to_wasm(&mut with_db, source);
+    let result: i32 = super::execute_wasm(&wasm, "test_inh", ());
+    assert_eq!(result, 3, "inherited method runs on the derived instance");
+}

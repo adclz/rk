@@ -862,6 +862,125 @@ impl<'db> ExprLowerCtx<'db> {
         (MirType::Void, 4, 0)
     }
 
+    /// For an instance-method call `receiver.method(...)`: the mangled callee,
+    /// the receiver place (its address is the `this` pointer) and the return
+    /// type. `None` for ordinary calls.
+    fn resolve_method_call(
+        &self,
+        path: hir::hir_def::expressions::expression::BeginPathExpr<'db>,
+    ) -> Result<
+        Option<(hir::hir_def::interned::identifier::Ident, MirPlace, Type<'db>)>,
+        LowerTypeError,
+    > {
+        use hir::hir_def::expressions::expression::PathExprKind;
+        use hir::hir_def::scope::ScopeKind;
+        use hir::hir_def::semantic_index::get_scope;
+        use hir::hir_ty::head::inheritance::MethodRef;
+        use hir::hir_ty::ty::CallableType;
+
+        // HIR resolved the callee, walking `EXTENDS` for inherited methods.
+        let method = match path.infer(self.db) {
+            Type::MethodDecl(m) => m,
+            Type::CallableType(CallableType::MethodDecl(m)) => m,
+            _ => return Ok(None),
+        };
+        let method_decl = match method {
+            MethodRef::Declared(md) => md,
+            MethodRef::Prototype(_) => {
+                return Err(LowerTypeError::UnsupportedType(
+                    "calling an interface/prototype method is not yet supported".to_string(),
+                ));
+            }
+        };
+
+        // The owner is the method's DECLARING POU — the name the method function
+        // is registered under. For an inherited method this is the *base*, not the
+        // receiver's derived type, so deriving the owner from the receiver would
+        // build the wrong symbol (`Derived#m` vs the registered `Base#m`).
+        let owner_pou = {
+            let method_scope = get_scope(self.db, method_decl.scope_id(self.db));
+            let parent = method_scope.parent.ok_or_else(|| {
+                LowerTypeError::UnsupportedType("method scope has no owner".to_string())
+            })?;
+            match get_scope(self.db, parent).kind {
+                ScopeKind::Pou(pou) => pou,
+                _ => {
+                    return Err(LowerTypeError::UnsupportedType(
+                        "method owner is not a POU".to_string(),
+                    ));
+                }
+            }
+        };
+
+        // `receiver.method` is a Field whose `.path` is the receiver instance.
+        let field = match path.expr(self.db).map(|pe| pe.expr(self.db)) {
+            Some(PathExprKind::Field(fe)) => fe,
+            _ => {
+                return Err(LowerTypeError::UnsupportedType(
+                    "unsupported method-call form (expected `instance.method(...)`)".to_string(),
+                ));
+            }
+        };
+        let receiver_path = field.path;
+        let root_ident = self.find_root_var_ident(receiver_path);
+
+        // A generic/monomorphized instance registers its methods under the mangled
+        // instance name (`Counter$INT#m`); deriving that from the declaring POU
+        // needs the receiver's concrete type-args, which isn't wired yet. Defer it
+        // with a clear error instead of building a name that would miss.
+        if self
+            .local_fb_mangling
+            .as_ref()
+            .is_some_and(|m| m.contains_key(&root_ident))
+        {
+            return Err(LowerTypeError::UnsupportedType(
+                "method calls on generic function-block instances are not yet supported"
+                    .to_string(),
+            ));
+        }
+
+        let owner_mangled = crate::lower::monomorphize::qualified_pou_ident(
+            self.db,
+            Type::new_pou(self.db, owner_pou),
+        );
+        let callee = hir::hir_def::interned::identifier::Ident::new(
+            self.db,
+            compact_str::CompactString::from(format!(
+                "{}#{}",
+                owner_mangled.text(self.db),
+                method_decl.name(self.db).text(self.db)
+            )),
+        );
+
+        let receiver = self.lower_receiver_place(receiver_path)?;
+        let ret = method
+            .return_type(self.db)
+            .map(|spec| spec.infer(self.db))
+            .unwrap_or(Type::Void);
+        Ok(Some((callee, receiver, ret)))
+    }
+
+    /// Lower a receiver path (`a`, `a.b`, `arr[i]`) to the place of the FB
+    /// instance whose address becomes `this`.
+    fn lower_receiver_place(
+        &self,
+        receiver: hir::hir_def::expressions::expression::PathExpr<'db>,
+    ) -> Result<MirPlace, LowerTypeError> {
+        let root = self.find_root_var_ident(receiver);
+        let base = if let Some(ref this_struct) = self.this_struct
+            && let Some(field) = this_struct.fields.iter().find(|f| f.name == root)
+        {
+            MirPlace::ThisField {
+                field_name: root,
+                field_offset: field.offset,
+                field_type: field.ty.clone(),
+            }
+        } else {
+            MirPlace::Local(root)
+        };
+        self.lower_path_expr_chain(base, receiver)
+    }
+
     /// Lower a function call expression.
     pub fn lower_func_call(
         &self,
@@ -869,22 +988,29 @@ impl<'db> ExprLowerCtx<'db> {
         call_expr: Option<Expr<'db>>,
     ) -> Result<MirExpr, LowerTypeError> {
         let path = func_call.path(self.db);
+        // An instance-method call resolves to the mangled symbol plus a `this`
+        // pointer.
+        let method_target = self.resolve_method_call(path)?;
         // The namespace-qualified identifier the producer registered in
         // `function_indices`; the bare last segment for callees that do not
         // resolve.
-        let callee_name = match path.infer(self.db) {
-            Type::Function(f) => {
-                crate::lower::monomorphize::qualified_pou_ident(self.db, Type::Function(f))
+        let callee_name = if let Some((callee, _, _)) = &method_target {
+            *callee
+        } else {
+            match path.infer(self.db) {
+                Type::Function(f) => {
+                    crate::lower::monomorphize::qualified_pou_ident(self.db, Type::Function(f))
+                }
+                Type::CallableType(hir::hir_ty::ty::CallableType::Function(f)) => {
+                    crate::lower::monomorphize::qualified_pou_ident(self.db, Type::Function(f))
+                }
+                _ => path
+                    .expr(self.db)
+                    .map(|pe| pe.ident(self.db).ident)
+                    .ok_or_else(|| {
+                        LowerTypeError::UnsupportedType("Function call without name".to_string())
+                    })?,
             }
-            Type::CallableType(hir::hir_ty::ty::CallableType::Function(f)) => {
-                crate::lower::monomorphize::qualified_pou_ident(self.db, Type::Function(f))
-            }
-            _ => path
-                .expr(self.db)
-                .map(|pe| pe.ident(self.db).ident)
-                .ok_or_else(|| {
-                    LowerTypeError::UnsupportedType("Function call without name".to_string())
-                })?,
         };
 
         let mut args = Vec::new();
@@ -903,6 +1029,7 @@ impl<'db> ExprLowerCtx<'db> {
             Type::CallableType(ct) => Some(ct),
             Type::Function(f) => Some(hir::hir_ty::ty::CallableType::Function(f)),
             Type::FunctionBlock(fb) => Some(hir::hir_ty::ty::CallableType::FunctionBlock(fb)),
+            Type::MethodDecl(m) => Some(hir::hir_ty::ty::CallableType::MethodDecl(m)),
             _ => None,
         };
         let param_kinds: Vec<hir::hir_def::pous::variable::VariableKind> =
@@ -1044,11 +1171,25 @@ impl<'db> ExprLowerCtx<'db> {
             }
         }
 
-        // Return type: use call-site inference (resolves ANY → concrete) when available,
-        // fallback to path inference for statement-level calls (void return).
-        let return_type = call_expr
-            .map(|e| e.infer(self.db))
-            .unwrap_or_else(|| path.infer(self.db));
+        // A method call prepends the receiver's address as the `this` pointer.
+        if let Some((_, receiver, _)) = &method_target {
+            args.insert(
+                0,
+                MirCallArg {
+                    value: MirExpr::AddrOf(receiver.clone()),
+                    kind: MirArgKind::ByRef,
+                },
+            );
+        }
+
+        // Call-site inference first, then the method's declared return:
+        // `path.infer()` on a method is the method type, not its return.
+        let return_type = call_expr.map(|e| e.infer(self.db)).unwrap_or_else(|| {
+            method_target
+                .as_ref()
+                .map(|(_, _, ret)| *ret)
+                .unwrap_or_else(|| path.infer(self.db))
+        });
         let mir_return_type = match return_type.normalize(self.db) {
             Type::Void | Type::Never => MirType::Void,
             ty => self.lower_type_resolved(ty).unwrap_or(MirType::Void),
