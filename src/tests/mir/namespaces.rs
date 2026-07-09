@@ -120,8 +120,8 @@ END_VAR
 END_FUNCTION
 "#;
     assert_snapshot!(mir_exports(&mut with_db, &[source]), @r"
-    export NsA.Counter$reset(*struct(NsA.Counter))
-    export NsB.Counter$reset(*struct(NsB.Counter))
+    export NsA.Counter#reset(*struct(NsA.Counter))
+    export NsB.Counter#reset(*struct(NsB.Counter))
     export test()
     ");
 }
@@ -163,8 +163,8 @@ END_VAR
 END_FUNCTION
 "#;
     assert_snapshot!(mir_exports(&mut with_db, &[source]), @r"
-    export NsA.MyClass$inc(*struct(NsA.MyClass))
-    export NsB.MyClass$inc(*struct(NsB.MyClass))
+    export NsA.MyClass#inc(*struct(NsA.MyClass))
+    export NsB.MyClass#inc(*struct(NsB.MyClass))
     export test()
     ");
 }

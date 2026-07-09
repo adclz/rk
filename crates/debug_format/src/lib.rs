@@ -150,7 +150,8 @@ pub struct DebugFunctions {
 pub struct FuncEntry {
     /// `DefinedFuncIndex` (excludes imports).
     pub defined_index: u32,
-    /// The function's IEC name (e.g. `Motor$spin`, `Main$__body__`).
+    /// The function's IEC name (e.g. `Motor#spin` for a method, `Main$__body__`
+    /// for a POU body). Stored verbatim — never parsed by the debug layer.
     pub name: String,
 }
 

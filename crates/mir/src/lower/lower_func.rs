@@ -346,11 +346,16 @@ pub fn lower_function_block<'db>(
 
         let body = lower_stmts(db, method.stmts(db), string_pool.clone())?;
 
-        // Qualified name: "FBName$MethodName"
+        // Method symbol: `<mangledFB>#<method>`. The `#` separator is distinct
+        // from `$` (monomorphization type-suffix) and `.` (namespace) so the
+        // symbol is unambiguously parseable regardless of the FB's mono-arity —
+        // e.g. `Counter$INT#inc` is FB `Counter`, type-suffix `INT`, method `inc`.
+        // Overloading `$` for both suffixes and methods was arity-dependent and
+        // fragile (see the method-call callee resolution).
         let qualified_name = Ident::new(
             db,
             compact_str::CompactString::from(format!(
-                "{}${}",
+                "{}#{}",
                 mangled_name.text(db),
                 method.name(db).text(db)
             )),
@@ -575,13 +580,12 @@ pub fn lower_class<'db>(
 
         let body = lower_stmts(db, method.stmts(db), string_pool.clone())?;
 
-        // Qualified name: "<NsPath>.ClassName$MethodName" (or
-        // "ClassName$MethodName" for top-level classes).
+        // Method symbol: `<NsPath.>Class#Method` (see the FB-method site).
         let class_qualified = super::monomorphize::qualified_pou_ident(db, Type::Class(class));
         let qualified_name = Ident::new(
             db,
             compact_str::CompactString::from(format!(
-                "{}${}",
+                "{}#{}",
                 class_qualified.text(db),
                 method.name(db).text(db)
             )),

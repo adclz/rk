@@ -34,7 +34,7 @@ END_METHOD
 END_FUNCTION_BLOCK
     "#;
     assert_snapshot!(mir_exports(&mut with_db, &[source]), @r"
-    export Counter$GetCount(*struct(Counter)) -> Int
+    export Counter#GetCount(*struct(Counter)) -> Int
     export Counter$__body__(*struct(Counter))
     ");
 }

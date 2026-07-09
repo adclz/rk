@@ -908,9 +908,8 @@ impl<'a> WasmGen<'a> {
         // Emit function body
         let mut wasm_func = wasm_encoder::Function::new(extra_locals);
 
-        // Find the return slot for scalar-or-string returns.
-        // Use origin_name because methods store return locals under the bare method name,
-        // while func.name is the qualified "FB$Method" name.
+        // The return slot, by `origin_name`: methods store it under the bare
+        // method name.
         enum ReturnSlot {
             Scalar(u32),
             StringMem(u32),

@@ -41,7 +41,7 @@ fn test_fb_method_execution(mut with_db: db::RootDatabase) {
 
     // Call Increment method (should increment count and return 1)
     let increment = instance
-        .get_typed_func::<i32, i32>(&mut store, "Counter$Increment")
+        .get_typed_func::<i32, i32>(&mut store, "Counter#Increment")
         .expect("Failed to get Increment method");
 
     let result1 = increment.call(&mut store, fb_address).unwrap();
@@ -53,7 +53,7 @@ fn test_fb_method_execution(mut with_db: db::RootDatabase) {
 
     // Call GetCount to verify state
     let get_count = instance
-        .get_typed_func::<i32, i32>(&mut store, "Counter$GetCount")
+        .get_typed_func::<i32, i32>(&mut store, "Counter#GetCount")
         .expect("Failed to get GetCount method");
 
     let count = get_count.call(&mut store, fb_address).unwrap();
