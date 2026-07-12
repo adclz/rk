@@ -583,6 +583,72 @@ impl<'db> ExprLowerCtx<'db> {
         }
     }
 
+    /// Build the base `MirPlace` for a path root.
+    ///
+    /// The member-vs-local **decision** is HIR's: MIR must not re-resolve names
+    /// against `this_struct`, because that name match ignores shadowing. A
+    /// method local that shares a name with an FB member shadows it in
+    /// IEC (and in HIR name resolution), so it must lower to a wasm
+    /// `Local`, not a `ThisField`. We ask HIR whether the root binds to a
+    /// variable declared in the enclosing *method's own scope*; if so it is a
+    /// genuine local. For every other case (real members, globals, unresolved
+    /// names during error recovery) we fall back to the historical
+    /// `this_struct` layout heuristic — `this_struct` is retained ONLY to
+    /// resolve a member's this-relative offset, never to decide membership.
+    fn root_place(
+        &self,
+        root: hir::hir_def::expressions::expression::PathExpr<'db>,
+        ident: hir::hir_def::interned::identifier::Ident,
+    ) -> MirPlace {
+        // No `this` pointer (e.g. a free function body): nothing can be a
+        // member, so the root is always a local. Also skips the HIR query.
+        let Some(this_struct) = self.this_struct.as_ref() else {
+            return MirPlace::Local(ident);
+        };
+
+        // HIR says this root is one of the method's own locals/params/return →
+        // it shadows any same-named member.
+        if self.root_is_method_local(root) {
+            return MirPlace::Local(ident);
+        }
+
+        // Otherwise: legacy heuristic. A name present in the FB/Class layout is
+        // a member (offset from `this_struct`); anything else is a local.
+        match this_struct.fields.iter().find(|f| f.name == ident) {
+            Some(field) => MirPlace::ThisField {
+                field_name: ident,
+                field_offset: field.offset,
+                field_type: field.ty.clone(),
+            },
+            None => MirPlace::Local(ident),
+        }
+    }
+
+    /// Did HIR resolve the root of `path` to a variable declared in the current
+    /// method/prototype scope (a genuine local/param/return), as opposed to an
+    /// FB/Class member, a global, or an unresolved name? Drives `root_place`.
+    fn root_is_method_local(
+        &self,
+        path: hir::hir_def::expressions::expression::PathExpr<'db>,
+    ) -> bool {
+        use hir::HirNodeInfo;
+        use hir::hir_def::{scope::ScopeKind, semantic_index::get_scope};
+        use hir::hir_ty::body::infer_body;
+
+        let body = infer_body(self.db, path.scope_id(self.db));
+        // `flatten()[0]` is the innermost root step.
+        let Some(root_expr) = path.flatten(self.db).first().map(|s| s.get_expr(self.db)) else {
+            return false;
+        };
+        match body.type_of_path_expr.get(&root_expr).copied() {
+            Some(Type::Variable((var, _))) => matches!(
+                get_scope(self.db, var.get_scope_id(self.db)).kind,
+                ScopeKind::MethodDecl(_) | ScopeKind::MethodProt(_)
+            ),
+            _ => false,
+        }
+    }
+
     /// Lower a BeginPathExpr to a MirPlace, handling nested field/index/deref chains.
     fn lower_begin_path_to_place(
         &self,
@@ -602,18 +668,9 @@ impl<'db> ExprLowerCtx<'db> {
         // Resolve the base variable name from the root VarAccess in the chain
         let base_ident = self.find_root_var_ident(path_expr);
 
-        // In FB body context, check if this variable is a field of the 'this' struct
-        if let Some(ref this_struct) = self.this_struct
-            && let Some(field) = this_struct.fields.iter().find(|f| f.name == base_ident)
-        {
-            let base = MirPlace::ThisField {
-                field_name: base_ident,
-                field_offset: field.offset,
-                field_type: field.ty.clone(),
-            };
-            return self.lower_path_expr_chain(base, path_expr);
-        }
-        let base = MirPlace::Local(base_ident);
+        // Member-vs-local is HIR's decision; `this_struct` only supplies the
+        // offset.
+        let base = self.root_place(path_expr, base_ident);
 
         // Walk the path expression chain for field/index/deref
         self.lower_path_expr_chain(base, path_expr)
@@ -967,17 +1024,7 @@ impl<'db> ExprLowerCtx<'db> {
         receiver: hir::hir_def::expressions::expression::PathExpr<'db>,
     ) -> Result<MirPlace, LowerTypeError> {
         let root = self.find_root_var_ident(receiver);
-        let base = if let Some(ref this_struct) = self.this_struct
-            && let Some(field) = this_struct.fields.iter().find(|f| f.name == root)
-        {
-            MirPlace::ThisField {
-                field_name: root,
-                field_offset: field.offset,
-                field_type: field.ty.clone(),
-            }
-        } else {
-            MirPlace::Local(root)
-        };
+        let base = self.root_place(receiver, root);
         self.lower_path_expr_chain(base, receiver)
     }
 
@@ -1215,26 +1262,16 @@ impl<'db> ExprLowerCtx<'db> {
 
         let path = func_call.path(self.db);
 
-        // Get the instance variable name (the callee is a variable, not a type)
-        let instance_ident = path
+        // Get the instance variable path (the callee is a variable, not a type)
+        let instance_path = path
             .expr(self.db)
-            .map(|pe| pe.ident(self.db).ident)
             .ok_or_else(|| LowerTypeError::UnsupportedType("FB call without name".to_string()))?;
+        let instance_ident = instance_path.ident(self.db).ident;
 
-        // In FB body context, the nested FB instance is a field of 'this', not a local.
-        let instance = if let Some(ref this_struct) = self.this_struct {
-            if let Some(field) = this_struct.fields.iter().find(|f| f.name == instance_ident) {
-                MirPlace::ThisField {
-                    field_name: instance_ident,
-                    field_offset: field.offset,
-                    field_type: field.ty.clone(),
-                }
-            } else {
-                MirPlace::Local(instance_ident)
-            }
-        } else {
-            MirPlace::Local(instance_ident)
-        };
+        // Member-vs-local is HIR's decision (see `root_place`): a nested FB
+        // instance that is a 'this' member lowers to ThisField, but a same-named
+        // method local shadows it.
+        let instance = self.root_place(instance_path, instance_ident);
 
         // Get the FB struct type for field offsets (uses FB subs if available)
         let fb_mir_type = self.lower_type_resolved(hir::hir_ty::ty::Type::FunctionBlock(fb))?;

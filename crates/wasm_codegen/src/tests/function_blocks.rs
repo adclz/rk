@@ -90,6 +90,66 @@ fn test_st_method_call_isolates_instances(mut with_db: db::RootDatabase) {
     );
 }
 
+/// A method body accesses its FB's members by BARE name (implicit `THIS`) — no
+/// `THIS.` required. It must resolve to the instance's member and codegen as a
+/// this-relative access, exactly like the explicit `THIS.c` form: same isolated
+/// result (5), proving bare `c` is the instance field, not something stray.
+#[rstest]
+fn test_st_method_bare_member_access(mut with_db: db::RootDatabase) {
+    let source = r#"
+        FUNCTION_BLOCK Counter
+        VAR c : INT; END_VAR
+        METHOD PUBLIC inc : INT
+            c := c + 1;
+            inc := c;
+        END_METHOD
+        END_FUNCTION_BLOCK
+
+        FUNCTION test : INT
+        VAR a : Counter; b : Counter; END_VAR
+            a.inc();
+            a.inc();
+            b.inc();
+            test := a.inc() + b.inc();    (* 3 + 2 = 5 *)
+        END_FUNCTION
+    "#;
+    let wasm = compile_to_wasm(&mut with_db, source);
+    let result: i32 = super::execute_wasm(&wasm, "test", ());
+    assert_eq!(result, 5, "bare member access resolves to the instance field");
+}
+
+/// A method LOCAL that shares a name with an FB member SHADOWS the member — as
+/// in IEC and HIR name resolution. Lowering must defer this decision to
+/// HIR (not re-match names against the `this_struct` layout), so bare `c` inside
+/// the method is the local, while `THIS.c` still reaches the member. Before the
+/// HIR-driven fix, MIR matched `c` against the struct first and this returned 99
+/// (the member) — a silent miscompile.
+#[rstest]
+fn test_st_method_local_shadows_member(mut with_db: db::RootDatabase) {
+    let source = r#"
+        FUNCTION_BLOCK Counter
+        VAR c : INT; END_VAR
+        METHOD PUBLIC shadowed : INT
+            VAR c : INT; END_VAR
+            c := 5;              (* the method-LOCAL c *)
+            THIS.c := 99;        (* the MEMBER c — must not alias the local *)
+            shadowed := c;       (* returns the LOCAL: 5, not 99 *)
+        END_METHOD
+        END_FUNCTION_BLOCK
+
+        FUNCTION test : INT
+        VAR a : Counter; END_VAR
+            test := a.shadowed();
+        END_FUNCTION
+    "#;
+    let wasm = compile_to_wasm(&mut with_db, source);
+    let result: i32 = super::execute_wasm(&wasm, "test", ());
+    assert_eq!(
+        result, 5,
+        "the shadowing method-local wins; the member (99) is a separate slot"
+    );
+}
+
 /// An inherited method resolves to the *base* it is declared on (`Base#inc`), not
 /// the receiver's derived type — and runs, with the derived instance's address as
 /// `this` (base fields sit at offset 0). Exercises the HIR-faithful owner

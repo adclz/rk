@@ -445,7 +445,10 @@ END_FUNCTION_BLOCK
 }
 
 #[rstest]
-fn suggest_this_variable_in_method(mut with_db: RootDatabase) {
+fn bare_member_access_in_method_is_valid(mut with_db: RootDatabase) {
+    // A method body may access its FB's members by bare name (implicit THIS),
+    // as in IEC. `THIS.` is optional (kept for disambiguation), so this
+    // resolves with no diagnostics.
     let source = r#"
 FUNCTION_BLOCK Motor
     VAR
@@ -460,26 +463,5 @@ FUNCTION_BLOCK Motor
 END_FUNCTION_BLOCK
 "#;
 
-    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r#"
-    [E0204] Error: no item found in scope
-       ,-[ file:///test0.st:9:9 ]
-       |
-     9 |         speed := 100;
-       |         ^^|^^
-       |           `---- no item "speed" found in scope
-       |
-       | Note: an item available via THIS:
-       |       - THIS.speed
-    ---'
-    [E0204] Error: no item found in scope
-        ,-[ file:///test0.st:10:9 ]
-        |
-     10 |         running := TRUE;
-        |         ^^^|^^^
-        |            `----- no item "running" found in scope
-        |
-        | Note: an item available via THIS:
-        |       - THIS.running
-    ----'
-    "#);
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"");
 }

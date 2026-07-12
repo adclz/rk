@@ -265,6 +265,16 @@ pub fn lower_function_block<'db>(
         // 'this' pointer parameter (use substitutions for ANY types)
         let fb_type =
             super::lower_type::lower_fb_type_with_subs_named(db, fb, any_subs, mangled_name)?;
+        // The method body resolves bare member access (implicit THIS) against
+        // this struct.
+        let this_struct = match &fb_type {
+            MirType::Struct(s) => s.clone(),
+            _ => {
+                return Err(LowerTypeError::UnsupportedType(
+                    "FB type is not a struct".into(),
+                ));
+            }
+        };
         params.push(MirParam {
             name: Ident::new(db, compact_str::CompactString::from("this")),
             ty: MirType::Pointer(Box::new(fb_type)),
@@ -344,7 +354,24 @@ pub fn lower_function_block<'db>(
             });
         }
 
-        let body = lower_stmts(db, method.stmts(db), string_pool.clone())?;
+        // Same FB-substitution context as the FB body, so bare member access and
+        // any monomorphized member types resolve consistently inside methods.
+        let fb_subs_map = if any_subs.is_empty() {
+            None
+        } else {
+            let mut map = FxHashMap::default();
+            map.insert(fb.name(db), any_subs.clone());
+            Some(map)
+        };
+        let any_override = any_subs.values().next().copied();
+        let body = crate::lower::lower_stmt::lower_stmts_fb_body(
+            db,
+            method.stmts(db),
+            this_struct,
+            string_pool.clone(),
+            fb_subs_map.as_ref(),
+            any_override,
+        )?;
 
         // Method symbol: `<mangledFB>#<method>`. The `#` separator is distinct
         // from `$` (monomorphization type-suffix) and `.` (namespace) so the
@@ -499,6 +526,16 @@ pub fn lower_class<'db>(
 
         // 'this' pointer parameter
         let class_type = lower_type(db, Type::Class(class))?;
+        // The method body resolves bare member access (implicit THIS) against
+        // this struct.
+        let this_struct = match &class_type {
+            MirType::Struct(s) => s.clone(),
+            _ => {
+                return Err(LowerTypeError::UnsupportedType(
+                    "class type is not a struct".into(),
+                ));
+            }
+        };
         params.push(MirParam {
             name: Ident::new(db, compact_str::CompactString::from("this")),
             ty: MirType::Pointer(Box::new(class_type)),
@@ -578,7 +615,14 @@ pub fn lower_class<'db>(
             });
         }
 
-        let body = lower_stmts(db, method.stmts(db), string_pool.clone())?;
+        let body = crate::lower::lower_stmt::lower_stmts_fb_body(
+            db,
+            method.stmts(db),
+            this_struct,
+            string_pool.clone(),
+            None,
+            None,
+        )?;
 
         // Method symbol: `<NsPath.>Class#Method` (see the FB-method site).
         let class_qualified = super::monomorphize::qualified_pou_ident(db, Type::Class(class));

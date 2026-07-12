@@ -15,7 +15,8 @@ use crate::{
         },
         interned::identifier::{Ident, SpanIdent},
         pous::{pou::Pou, variable::VariableDecl},
-        scope::ScopeId,
+        scope::{ScopeId, ScopeKind},
+        semantic_index::get_scope,
     },
     hir_ty::{
         body::{Adjustment, AdjustmentInfo, BodyInferenceResult, NullState},
@@ -129,6 +130,17 @@ fn check_multibits_bounds<'db>(
     }
 }
 
+/// The FB/Class that declares a method — its enclosing POU, reached via the
+/// method scope's parent. Used to resolve bare member access inside a method as
+/// an implicit `THIS`.
+fn method_owner_pou<'db>(db: &'db dyn WorkspaceDataBase, m: MethodRef<'db>) -> Option<Pou<'db>> {
+    let parent = get_scope(db, m.get_scope_id(db)).parent?;
+    match get_scope(db, parent).kind {
+        ScopeKind::Pou(pou) => Some(pou),
+        _ => None,
+    }
+}
+
 impl<'db> Type<'db> {
     /// Peel through `Variable`, `DataType` and `StructElement` wrappers,
     /// returning the inner spec type and any multibits qualifier.
@@ -176,6 +188,17 @@ impl<'db> Type<'db> {
                         // Check inherited methods (from EXTENDS / IMPLEMENTS)
                         match inherited_methods(db, pou).methods.get(name) {
                             Some(inherited) => FieldLookup::Method(inherited.method),
+                            None => FieldLookup::NotFound,
+                        }
+                    } else if let Type::MethodDecl(m) = self {
+                        // Inside a method body, a bare name that isn't one of the
+                        // method's own locals/params/return resolves to a MEMBER of
+                        // the enclosing FB/Class — an implicit THIS. Method-locals
+                        // (checked above) shadow members, as in IEC.
+                        // Recurse on the owner so its own members AND inherited ones
+                        // are covered.
+                        match method_owner_pou(db, *m) {
+                            Some(owner) => Type::new_pou(db, owner).resolve_field(db, name),
                             None => FieldLookup::NotFound,
                         }
                     } else {
