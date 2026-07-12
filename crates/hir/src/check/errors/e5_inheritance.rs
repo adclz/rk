@@ -72,6 +72,13 @@ pub enum InheritanceError<'db> {
         pou: Pou<'db>,
         call_site: CallSite<'db>,
     },
+    /// A method invoked through an interface-typed reference. Interface methods
+    /// are prototypes with no body; calling one would require dynamic dispatch,
+    /// which this compiler does not provide (calls are resolved statically).
+    MethodCallThroughInterface {
+        method: MethodRef<'db>,
+        path: PathExpr<'db>,
+    },
 }
 
 impl<'db> ErrorCode for InheritanceError<'db> {
@@ -91,6 +98,7 @@ impl<'db> ErrorCode for InheritanceError<'db> {
             Self::SignatureParametersCountMismatch { .. } => "E0512",
             Self::SignatureTypeMismatch { .. } => "E0512",
             Self::SuperButNoExtends { .. } => "E0513",
+            Self::MethodCallThroughInterface { .. } => "E0514",
         }
     }
 
@@ -111,6 +119,7 @@ impl<'db> ErrorCode for InheritanceError<'db> {
             Self::SignatureParametersCountMismatch { .. } | Self::SignatureTypeMismatch { .. } => {
                 "method signature mismatch"
             }
+            Self::MethodCallThroughInterface { .. } => "unsupported interface dispatch",
         }
     }
 }
@@ -319,6 +328,28 @@ impl<'db> ToIdeDiagnostic<'db> for InheritanceError<'db> {
                         caller.get_name_span(db),
                     ));
                 }
+                diag
+            }
+            Self::MethodCallThroughInterface { method, path } => {
+                let mut diag = diag()
+                    .message(format!(
+                        "cannot call method '{}' through an interface reference",
+                        method.get_name_ident(db).text(db)
+                    ))
+                    .severity(DiagnosticSeverity::ERROR)
+                    .desc(self)
+                    .range(crate::denormalize(db, file, &path.get_span(db)).unwrap_or_default())
+                    .call();
+
+                diag.with_related(Related::new(
+                    format!(
+                        "method '{}' is only a prototype, declared in the interface here",
+                        method.get_name_ident(db).text(db)
+                    ),
+                    method.get_scope_id(db).file(db),
+                    method.get_name_span(db),
+                ));
+                diag.with_note("interface methods can not be called directly".into());
                 diag
             }
             Self::SignatureParametersCountMismatch {

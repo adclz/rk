@@ -384,3 +384,42 @@ fn concrete_method_still_requires_override(mut with_db: RootDatabase) {
     ---'
     ");
 }
+
+#[rstest]
+fn call_method_through_interface_reference(mut with_db: RootDatabase) {
+    // Calling a method through an interface-typed variable would require
+    // dynamic dispatch, which this compiler does not provide (calls are
+    // resolved statically / by monomorphization). It must be a clean error.
+    let source = r#"
+        INTERFACE IFoo
+            METHOD doThing : INT END_METHOD
+        END_INTERFACE
+
+        FUNCTION_BLOCK FB IMPLEMENTS IFoo
+            METHOD doThing : INT
+                doThing := 1;
+            END_METHOD
+        END_FUNCTION_BLOCK
+
+        FUNCTION test : INT
+        VAR i : IFoo; END_VAR
+            test := i.doThing();
+        END_FUNCTION
+    "#;
+
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
+    [E0514] Error: unsupported interface dispatch
+        ,-[ file:///test0.st:14:23 ]
+        |
+      3 |             METHOD doThing : INT END_METHOD
+        |                    ^^^|^^^
+        |                       `----- method 'doThing' is only a prototype, declared in the interface here
+        |
+     14 |             test := i.doThing();
+        |                       ^^^|^^^
+        |                          `----- cannot call method 'doThing' through an interface reference
+        |
+        | Note: interface methods can not be called directly
+    ----'
+    ");
+}

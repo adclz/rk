@@ -35,7 +35,21 @@ PROGRAM A
 END_PROGRAM
     "#;
 
-    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"");
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
+    [E0514] Error: unsupported interface dispatch
+        ,-[ file:///test0.st:25:19 ]
+        |
+      3 |     METHOD DoWork : INT
+        |            ^^^|^^
+        |               `---- method 'DoWork' is only a prototype, declared in the interface here
+        |
+     25 |     result := itf.DoWork(x := 5);
+        |                   ^^^|^^
+        |                      `---- cannot call method 'DoWork' through an interface reference
+        |
+        | Note: interface methods can not be called directly
+    ----'
+    ");
 }
 
 #[rstest]
@@ -58,7 +72,21 @@ PROGRAM A
 END_PROGRAM
     "#;
 
-    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"");
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
+    [E0514] Error: unsupported interface dispatch
+        ,-[ file:///test0.st:15:9 ]
+        |
+      3 |     METHOD Reset END_METHOD
+        |            ^^|^^
+        |              `---- method 'Reset' is only a prototype, declared in the interface here
+        |
+     15 |     itf.Reset();
+        |         ^^|^^
+        |           `---- cannot call method 'Reset' through an interface reference
+        |
+        | Note: interface methods can not be called directly
+    ----'
+    ");
 }
 
 #[rstest]
@@ -113,20 +141,18 @@ END_PROGRAM
     "#;
 
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E0301] Error: type mismatch
-        ,-[ file:///test0.st:15:21 ]
+    [E0514] Error: unsupported interface dispatch
+        ,-[ file:///test0.st:15:9 ]
         |
-      5 |             x: INT;
-        |             |
-        |             `-- type is declared by variable 'x' here
+      3 |     METHOD DoWork
+        |            ^^^|^^
+        |               `---- method 'DoWork' is only a prototype, declared in the interface here
         |
      15 |     itf.DoWork(x := TRUE);
-        |                     ^^|^
-        |                       `--- expected 'INT', got 'BOOL'
-        |                       |
-        |                       `--- consider explicitly casting with 'BOOL_TO_INT(TRUE)'
+        |         ^^^|^^
+        |            `---- cannot call method 'DoWork' through an interface reference
         |
-        | Help: insert explicit cast 'BOOL_TO_INT(TRUE)'
+        | Note: interface methods can not be called directly
     ----'
     ");
 }
@@ -154,7 +180,34 @@ PROGRAM A
 END_PROGRAM
     "#;
 
-    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @"");
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
+    [E0514] Error: unsupported interface dispatch
+        ,-[ file:///test0.st:17:14 ]
+        |
+      3 |     METHOD BaseMethod : INT END_METHOD
+        |            ^^^^^|^^^^
+        |                 `------ method 'BaseMethod' is only a prototype, declared in the interface here
+        |
+     17 |     x := itf.BaseMethod();
+        |              ^^^^^|^^^^
+        |                   `------ cannot call method 'BaseMethod' through an interface reference
+        |
+        | Note: interface methods can not be called directly
+    ----'
+    [E0514] Error: unsupported interface dispatch
+        ,-[ file:///test0.st:18:14 ]
+        |
+      7 |     METHOD DerivedMethod : BOOL END_METHOD
+        |            ^^^^^^|^^^^^^
+        |                  `-------- method 'DerivedMethod' is only a prototype, declared in the interface here
+        |
+     18 |     y := itf.DerivedMethod();
+        |              ^^^^^^|^^^^^^
+        |                    `-------- cannot call method 'DerivedMethod' through an interface reference
+        |
+        | Note: interface methods can not be called directly
+    ----'
+    ");
 }
 
 #[rstest]
