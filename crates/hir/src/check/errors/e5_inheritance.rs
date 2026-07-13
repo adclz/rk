@@ -6,7 +6,7 @@ use crate::{
     CallSite, HasName, HirNodeInfo,
     check::errors::ToIdeDiagnostic,
     hir_def::{
-        expressions::{expression::PathExpr, invocation::Invocation},
+        expressions::{expression::PathExpr, invocation::Invocation, spec::Spec},
         pous::{
             interface::Interface,
             pou::Pou,
@@ -84,6 +84,22 @@ pub enum InheritanceError<'db> {
         var: VariableDecl<'db>,
         interface: Interface<'db>,
     },
+    /// An interface used as a function/method return type. Interfaces are only
+    /// allowed as VAR_INPUT / VAR_IN_OUT parameters (Design 1) — a return would
+    /// flow the concrete type callee→caller, which can't be monomorphized.
+    InterfaceNotAllowedInReturn {
+        interface: Interface<'db>,
+        spec: Spec<'db>,
+    },
+    /// An interface nested inside an aggregate type — an array element, a
+    /// reference target, or a struct field (e.g. `ARRAY OF ITF1`, `REF_TO ITF1`,
+    /// `STRUCT f : ITF1`). Unlike a direct interface (which is allowed as a
+    /// param), a nested interface has NO valid placement: it is stored /
+    /// heterogeneous state that can't be monomorphized.
+    InterfaceNotAllowedNested {
+        interface: Interface<'db>,
+        spec: Spec<'db>,
+    },
 }
 
 impl<'db> ErrorCode for InheritanceError<'db> {
@@ -104,6 +120,8 @@ impl<'db> ErrorCode for InheritanceError<'db> {
             Self::SignatureTypeMismatch { .. } => "E0512",
             Self::SuperButNoExtends { .. } => "E0513",
             Self::InterfaceOnlyAllowedAsParam { .. } => "E0514",
+            Self::InterfaceNotAllowedInReturn { .. } => "E0515",
+            Self::InterfaceNotAllowedNested { .. } => "E0516",
         }
     }
 
@@ -124,7 +142,9 @@ impl<'db> ErrorCode for InheritanceError<'db> {
             Self::SignatureParametersCountMismatch { .. } | Self::SignatureTypeMismatch { .. } => {
                 "method signature mismatch"
             }
-            Self::InterfaceOnlyAllowedAsParam { .. } => "interface type not allowed here",
+            Self::InterfaceOnlyAllowedAsParam { .. }
+            | Self::InterfaceNotAllowedInReturn { .. }
+            | Self::InterfaceNotAllowedNested { .. } => "interface type not allowed here",
         }
     }
 }
@@ -368,6 +388,50 @@ impl<'db> ToIdeDiagnostic<'db> for InheritanceError<'db> {
                     interface.get_name_span(db),
                 ));
                 diag.with_note("interfaces are supported only as VAR_INPUT or VAR_IN_OUT parameters".into());
+                diag
+            }
+            Self::InterfaceNotAllowedInReturn { interface, spec } => {
+                let mut diag = diag()
+                    .message(format!(
+                        "interface type '{}' is not allowed as a return type",
+                        interface.get_name_ident(db).text(db)
+                    ))
+                    .severity(DiagnosticSeverity::ERROR)
+                    .desc(self)
+                    .range(crate::denormalize(db, file, &spec.get_span(db)).unwrap_or_default())
+                    .call();
+
+                diag.with_related(Related::new(
+                    format!(
+                        "interface '{}' is defined here",
+                        interface.get_name_ident(db).text(db)
+                    ),
+                    interface.get_scope_id(db).file(db),
+                    interface.get_name_span(db),
+                ));
+                diag.with_note("interfaces are supported only as VAR_INPUT or VAR_IN_OUT parameters".into());
+                diag
+            }
+            Self::InterfaceNotAllowedNested { interface, spec } => {
+                let mut diag = diag()
+                    .message(format!(
+                        "interface type '{}' cannot be nested inside another type (array, reference, or struct)",
+                        interface.get_name_ident(db).text(db)
+                    ))
+                    .severity(DiagnosticSeverity::ERROR)
+                    .desc(self)
+                    .range(crate::denormalize(db, file, &spec.get_span(db)).unwrap_or_default())
+                    .call();
+
+                diag.with_related(Related::new(
+                    format!(
+                        "interface '{}' is defined here",
+                        interface.get_name_ident(db).text(db)
+                    ),
+                    interface.get_scope_id(db).file(db),
+                    interface.get_name_span(db),
+                ));
+                diag.with_note("an interface may only appear directly as a VAR_INPUT or VAR_IN_OUT parameter".into());
                 diag
             }
             Self::SignatureParametersCountMismatch {

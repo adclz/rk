@@ -141,7 +141,164 @@ END_FUNCTION
     ");
 }
 
+#[rstest]
+fn interface_array_rejected(mut with_db: RootDatabase) {
+    // Nested interface: `ARRAY OF ITF1` is a stored, heterogeneous collection —
+    // rejected, since a per-element concrete type can't be monomorphized.
+    let source = r#"
+INTERFACE ITF1
+    METHOD DoWork END_METHOD
+END_INTERFACE
+
+PROGRAM A
+    VAR
+        arr: ARRAY[0..2] OF ITF1;
+    END_VAR
+END_PROGRAM
+    "#;
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
+    [E0516] Error: interface type not allowed here
+       ,-[ file:///test0.st:8:14 ]
+       |
+     2 | INTERFACE ITF1
+       |           ^^|^
+       |             `--- interface 'ITF1' is defined here
+       |
+     8 |         arr: ARRAY[0..2] OF ITF1;
+       |              ^^^^^^^^^|^^^^^^^^^
+       |                       `----------- interface type 'ITF1' cannot be nested inside another type (array, reference, or struct)
+       |
+       | Note: an interface may only appear directly as a VAR_INPUT or VAR_IN_OUT parameter
+    ---'
+    ");
+}
+
+#[rstest]
+fn interface_return_type_rejected(mut with_db: RootDatabase) {
+    // An interface return type flows the concrete type callee→caller and can't
+    // be monomorphized.
+    let source = r#"
+INTERFACE ITF1
+    METHOD DoWork END_METHOD
+END_INTERFACE
+
+FUNCTION Make : ITF1
+END_FUNCTION
+    "#;
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
+    [E0515] Error: interface type not allowed here
+       ,-[ file:///test0.st:6:17 ]
+       |
+     2 | INTERFACE ITF1
+       |           ^^|^
+       |             `--- interface 'ITF1' is defined here
+       |
+     6 | FUNCTION Make : ITF1
+       |                 ^^|^
+       |                   `--- interface type 'ITF1' is not allowed as a return type
+       |
+       | Note: interfaces are supported only as VAR_INPUT or VAR_IN_OUT parameters
+    ---'
+    ");
+}
+
 // --- allowed: interface as VAR_INPUT / VAR_IN_OUT parameter (no E0514) ---
+
+#[rstest]
+fn interface_named_struct_field_rejected(mut with_db: RootDatabase) {
+    // An interface as a field of a named STRUCT type is stored state → rejected
+    // at the struct's definition.
+    let source = r#"
+INTERFACE ITF1
+    METHOD DoWork END_METHOD
+END_INTERFACE
+
+TYPE Holder :
+    STRUCT
+        dev: ITF1;
+    END_STRUCT
+END_TYPE
+    "#;
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
+    [E0516] Error: interface type not allowed here
+       ,-[ file:///test0.st:8:14 ]
+       |
+     2 | INTERFACE ITF1
+       |           ^^|^
+       |             `--- interface 'ITF1' is defined here
+       |
+     8 |         dev: ITF1;
+       |              ^^|^
+       |                `--- interface type 'ITF1' cannot be nested inside another type (array, reference, or struct)
+       |
+       | Note: an interface may only appear directly as a VAR_INPUT or VAR_IN_OUT parameter
+    ---'
+    ");
+}
+
+#[rstest]
+fn interface_inline_struct_field_rejected(mut with_db: RootDatabase) {
+    // Same for an inline struct in a variable declaration.
+    let source = r#"
+INTERFACE ITF1
+    METHOD DoWork END_METHOD
+END_INTERFACE
+
+PROGRAM A
+    VAR
+        s: STRUCT dev: ITF1; END_STRUCT;
+    END_VAR
+END_PROGRAM
+    "#;
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
+    [E0516] Error: interface type not allowed here
+       ,-[ file:///test0.st:8:24 ]
+       |
+     2 | INTERFACE ITF1
+       |           ^^|^
+       |             `--- interface 'ITF1' is defined here
+       |
+     8 |         s: STRUCT dev: ITF1; END_STRUCT;
+       |                        ^^|^
+       |                          `--- interface type 'ITF1' cannot be nested inside another type (array, reference, or struct)
+       |
+       | Note: an interface may only appear directly as a VAR_INPUT or VAR_IN_OUT parameter
+    ---'
+    ");
+}
+
+#[rstest]
+fn interface_array_param_still_rejected(mut with_db: RootDatabase) {
+    // A NESTED interface is rejected even as a parameter: `ARRAY OF ITF1` is
+    // heterogeneous and can't be monomorphized, unlike a direct interface param.
+    let source = r#"
+INTERFACE ITF1
+    METHOD DoWork END_METHOD
+END_INTERFACE
+
+FUNCTION Use : INT
+    VAR_INPUT
+        arr: ARRAY[0..2] OF ITF1;
+    END_VAR
+    Use := 0;
+END_FUNCTION
+    "#;
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
+    [E0516] Error: interface type not allowed here
+       ,-[ file:///test0.st:8:14 ]
+       |
+     2 | INTERFACE ITF1
+       |           ^^|^
+       |             `--- interface 'ITF1' is defined here
+       |
+     8 |         arr: ARRAY[0..2] OF ITF1;
+       |              ^^^^^^^^^|^^^^^^^^^
+       |                       `----------- interface type 'ITF1' cannot be nested inside another type (array, reference, or struct)
+       |
+       | Note: an interface may only appear directly as a VAR_INPUT or VAR_IN_OUT parameter
+    ---'
+    ");
+}
 
 #[rstest]
 fn interface_input_param_allowed(mut with_db: RootDatabase) {

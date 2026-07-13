@@ -8,7 +8,7 @@ use crate::{
     hir_def::{
         config::ConfigResource,
         expressions::spec::{Spec, SpecKind},
-        pous::{pou::Pou, variable::VariableKind},
+        pous::{interface::Interface, pou::Pou, variable::VariableKind},
         scope::{ScopeId, ScopeKind},
         semantic_index::get_scope,
         using::Using,
@@ -28,6 +28,23 @@ use crate::{
 #[salsa::tracked(returns(ref))]
 pub fn infer_signature<'db>(db: &'db dyn WorkspaceDataBase, scope: ScopeId<'db>) -> Signature<'db> {
     Signature::new(scope).infer_signature(db)
+}
+
+/// Find an interface reachable at the leaf of a spec — directly, or through an
+/// array element / reference target (e.g. `ARRAY OF ITF1`, `REF_TO ITF1`). Used
+/// to reject interface types outside VAR_INPUT / VAR_IN_OUT parameters.
+fn spec_interface<'db>(
+    db: &'db dyn WorkspaceDataBase,
+    spec: Spec<'db>,
+) -> Option<Interface<'db>> {
+    match spec.kind(db) {
+        SpecKind::Array(arr) => spec_interface(db, arr.of_type(db)),
+        SpecKind::Ref(rf) => spec_interface(db, *rf),
+        _ => match Type::resolve_spec(db, spec) {
+            Type::Interface(i) => Some(i),
+            _ => None,
+        },
+    }
 }
 
 #[derive(Debug, PartialEq, Eq, salsa::Update)]
@@ -77,6 +94,18 @@ impl<'db> Signature<'db> {
 
         if let Some(ret_type) = return_typ {
             let _ = self.infer_spec(db, *ret_type);
+
+            // Design 1: an interface may not be a return type — that would flow
+            // the concrete type callee→caller, which can't be monomorphized.
+            if let Some(interface) = spec_interface(db, *ret_type) {
+                self.errors.push(
+                    InheritanceError::InterfaceNotAllowedInReturn {
+                        interface,
+                        spec: *ret_type,
+                    }
+                    .to_diagnostic(db, self.scope.file(db)),
+                );
+            }
         }
     }
 
@@ -121,23 +150,33 @@ impl<'db> Signature<'db> {
         };
 
         for var in variables {
-            let typ_of_var = self.infer_spec(db, var.spec(db));
+            let _ = self.infer_spec(db, var.spec(db));
 
-            // Design 1 (params-only): interface types are supported ONLY as
-            // VAR_INPUT / VAR_IN_OUT parameters, where they are monomorphized to
-            // a concrete type. Reject them anywhere else (stored VAR, members,
-            // globals, temps, outputs), so no interface value can outlive a call
-            // or be dispatched dynamically.
-            if let Type::Interface(interface) = typ_of_var
-                && !matches!(var.kind(db), VariableKind::Input | VariableKind::InOut)
-            {
-                self.errors.push(
-                    InheritanceError::InterfaceOnlyAllowedAsParam {
-                        var: *var,
-                        interface,
+            // Design 1 (params-only): a DIRECT interface is allowed only as a
+            // VAR_INPUT / VAR_IN_OUT parameter (it monomorphizes to a concrete
+            // type); elsewhere it is E0514. A NESTED interface (array element,
+            // ref target — e.g. `ARRAY OF ITF1`, `REF_TO ITF1`) has no valid
+            // placement at all, not even as a param, so it is E0516.
+            if let Some(interface) = spec_interface(db, var.spec(db)) {
+                if matches!(Type::resolve_spec(db, var.spec(db)), Type::Interface(_)) {
+                    if !matches!(var.kind(db), VariableKind::Input | VariableKind::InOut) {
+                        self.errors.push(
+                            InheritanceError::InterfaceOnlyAllowedAsParam {
+                                var: *var,
+                                interface,
+                            }
+                            .to_diagnostic(db, self.scope.file(db)),
+                        );
                     }
-                    .to_diagnostic(db, self.scope.file(db)),
-                );
+                } else {
+                    self.errors.push(
+                        InheritanceError::InterfaceNotAllowedNested {
+                            interface,
+                            spec: var.spec(db),
+                        }
+                        .to_diagnostic(db, self.scope.file(db)),
+                    );
+                }
             }
 
             if var.kind(db) == VariableKind::External {
@@ -260,6 +299,18 @@ impl<'db> Signature<'db> {
             SpecKind::Struct(strukt) => {
                 for field in &strukt.elements(db) {
                     self.infer_spec(db, field.spec(db));
+
+                    // Design 1: an interface as a struct field is stored state —
+                    // reject it (incl. nested, e.g. a field of `ARRAY OF ITF1`).
+                    if let Some(interface) = spec_interface(db, field.spec(db)) {
+                        self.errors.push(
+                            InheritanceError::InterfaceNotAllowedNested {
+                                interface,
+                                spec: field.spec(db),
+                            }
+                            .to_diagnostic(db, self.scope.file(db)),
+                        );
+                    }
                 }
             }
             SpecKind::Ref(rf) => {
