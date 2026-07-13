@@ -4,7 +4,7 @@ use rustc_hash::{FxHashMap, FxHashSet};
 
 use crate::{
     CallSite, HasName, HirNodeInfo,
-    check::errors::{ToIdeDiagnostic, e2_resolve::ResolveError},
+    check::errors::{ToIdeDiagnostic, e2_resolve::ResolveError, e5_inheritance::InheritanceError},
     hir_def::{
         config::ConfigResource,
         expressions::spec::{Spec, SpecKind},
@@ -122,6 +122,23 @@ impl<'db> Signature<'db> {
 
         for var in variables {
             let typ_of_var = self.infer_spec(db, var.spec(db));
+
+            // Design 1 (params-only): interface types are supported ONLY as
+            // VAR_INPUT / VAR_IN_OUT parameters, where they are monomorphized to
+            // a concrete type. Reject them anywhere else (stored VAR, members,
+            // globals, temps, outputs), so no interface value can outlive a call
+            // or be dispatched dynamically.
+            if let Type::Interface(interface) = typ_of_var
+                && !matches!(var.kind(db), VariableKind::Input | VariableKind::InOut)
+            {
+                self.errors.push(
+                    InheritanceError::InterfaceOnlyAllowedAsParam {
+                        var: *var,
+                        interface,
+                    }
+                    .to_diagnostic(db, self.scope.file(db)),
+                );
+            }
 
             if var.kind(db) == VariableKind::External {
                 let var_name = var.get_name_ident(db);

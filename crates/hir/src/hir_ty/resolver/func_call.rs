@@ -4,7 +4,6 @@ use rustc_hash::{FxHashMap, FxHashSet};
 
 use crate::check::errors::e1_duplicates::DuplicateError;
 use crate::check::errors::e3_type::TypeError;
-use crate::check::errors::e5_inheritance::InheritanceError;
 use crate::check::errors::e10_control_flow::ControlFlowError;
 use crate::hir_def::expressions::expression::{Expr, ParamAssign};
 use crate::hir_def::interned::identifier::Ident;
@@ -75,24 +74,6 @@ pub fn resolve_func_call<'db>(
             return;
         }
     };
-
-    // An interface method is a prototype with no body: calling it through an
-    // interface-typed reference would require dynamic dispatch, which is not
-    // supported (calls are resolved statically / by monomorphization). Report
-    // and stop before treating it as a real, callable target.
-    if let CallableType::MethodDecl(m) = callable
-        && m.is_prototype()
-        && let Some(path_expr) = func_call.path(db).expr(db)
-    {
-        ctx.errors.push(
-            InheritanceError::MethodCallThroughInterface {
-                method: m,
-                path: path_expr,
-            }
-            .to_diagnostic(db, ctx.scope.file(db)),
-        );
-        return;
-    }
 
     // func call requires the type to be a [`CallableType`] otherwise the coercion layer will
     // assume we are calling a non-callable type

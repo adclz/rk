@@ -7,7 +7,11 @@ use crate::{
     check::errors::ToIdeDiagnostic,
     hir_def::{
         expressions::{expression::PathExpr, invocation::Invocation},
-        pous::pou::Pou,
+        pous::{
+            interface::Interface,
+            pou::Pou,
+            variable::{VariableDecl, VariableKind},
+        },
     },
     hir_ty::{head::inheritance::MethodRef, ty::Type},
 };
@@ -72,12 +76,13 @@ pub enum InheritanceError<'db> {
         pou: Pou<'db>,
         call_site: CallSite<'db>,
     },
-    /// A method invoked through an interface-typed reference. Interface methods
-    /// are prototypes with no body; calling one would require dynamic dispatch,
-    /// which this compiler does not provide (calls are resolved statically).
-    MethodCallThroughInterface {
-        method: MethodRef<'db>,
-        path: PathExpr<'db>,
+    /// An interface type used in a variable that is not a `VAR_INPUT` /
+    /// `VAR_IN_OUT` parameter. Interfaces are supported only as (statically
+    /// monomorphized) parameters — not stored, output, or returned — so every
+    /// call through one resolves to a concrete type at compile time.
+    InterfaceOnlyAllowedAsParam {
+        var: VariableDecl<'db>,
+        interface: Interface<'db>,
     },
 }
 
@@ -98,7 +103,7 @@ impl<'db> ErrorCode for InheritanceError<'db> {
             Self::SignatureParametersCountMismatch { .. } => "E0512",
             Self::SignatureTypeMismatch { .. } => "E0512",
             Self::SuperButNoExtends { .. } => "E0513",
-            Self::MethodCallThroughInterface { .. } => "E0514",
+            Self::InterfaceOnlyAllowedAsParam { .. } => "E0514",
         }
     }
 
@@ -119,7 +124,7 @@ impl<'db> ErrorCode for InheritanceError<'db> {
             Self::SignatureParametersCountMismatch { .. } | Self::SignatureTypeMismatch { .. } => {
                 "method signature mismatch"
             }
-            Self::MethodCallThroughInterface { .. } => "unsupported interface dispatch",
+            Self::InterfaceOnlyAllowedAsParam { .. } => "interface type not allowed here",
         }
     }
 }
@@ -330,26 +335,39 @@ impl<'db> ToIdeDiagnostic<'db> for InheritanceError<'db> {
                 }
                 diag
             }
-            Self::MethodCallThroughInterface { method, path } => {
+            Self::InterfaceOnlyAllowedAsParam { var, interface } => {
+                let section = match var.kind(db) {
+                    VariableKind::Var => "VAR",
+                    VariableKind::Output => "VAR_OUTPUT",
+                    VariableKind::External => "VAR_EXTERNAL",
+                    VariableKind::Global => "VAR_GLOBAL",
+                    VariableKind::Access => "VAR_ACCESS",
+                    VariableKind::Temp => "VAR_TEMP",
+                    VariableKind::Config => "VAR_CONFIG",
+                    VariableKind::Input => "VAR_INPUT",
+                    VariableKind::InOut => "VAR_IN_OUT",
+                };
                 let mut diag = diag()
                     .message(format!(
-                        "cannot call method '{}' through an interface reference",
-                        method.get_name_ident(db).text(db)
+                        "interface type '{}' is not allowed in {section}",
+                        interface.get_name_ident(db).text(db)
                     ))
                     .severity(DiagnosticSeverity::ERROR)
                     .desc(self)
-                    .range(crate::denormalize(db, file, &path.get_span(db)).unwrap_or_default())
+                    .range(
+                        crate::denormalize(db, file, &var.get_name_span(db)).unwrap_or_default(),
+                    )
                     .call();
 
                 diag.with_related(Related::new(
                     format!(
-                        "method '{}' is only a prototype, declared in the interface here",
-                        method.get_name_ident(db).text(db)
+                        "interface '{}' is defined here",
+                        interface.get_name_ident(db).text(db)
                     ),
-                    method.get_scope_id(db).file(db),
-                    method.get_name_span(db),
+                    interface.get_scope_id(db).file(db),
+                    interface.get_name_span(db),
                 ));
-                diag.with_note("interface methods can not be called directly".into());
+                diag.with_note("interfaces are supported only as VAR_INPUT or VAR_IN_OUT parameters".into());
                 diag
             }
             Self::SignatureParametersCountMismatch {

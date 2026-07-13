@@ -943,13 +943,13 @@ impl<'db> ExprLowerCtx<'db> {
         };
         let method_decl = match method {
             MethodRef::Declared(md) => md,
-            // Defense-in-depth: HIR already reports E0514 for calling a method
-            // through an interface reference (a prototype has no body to
-            // dispatch to), so codegen should never reach a well-formed program
-            // here. Kept as a hard stop against silently miscompiling.
+            // A call through an interface parameter (Design 1: interfaces only as
+            // VAR_INPUT/VAR_IN_OUT) is a valid, type-checked call that Phase B
+            // will monomorphize to a direct `Concrete#method`. Until that lands,
+            // codegen can't resolve the concrete target, so stop cleanly here.
             MethodRef::Prototype(_) => {
                 return Err(LowerTypeError::UnsupportedType(
-                    "calling an interface/prototype method is not supported (see E0514)".to_string(),
+                    "interface method calls are not yet monomorphized (Phase B)".to_string(),
                 ));
             }
         };
