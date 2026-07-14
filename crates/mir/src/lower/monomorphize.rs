@@ -201,15 +201,24 @@ pub fn mangle_fb_name(
     fb_name: Ident,
     subs: &FxHashMap<Ident, ElementarySpec>,
 ) -> Ident {
-    if subs.is_empty() {
-        return fb_name;
-    }
     let mut entries: Vec<_> = subs.iter().collect();
     entries.sort_by(|a, b| a.0.text(db).cmp(b.0.text(db)));
-    let mut s = fb_name.text(db).to_string();
-    for (_, concrete) in entries {
+    let parts: Vec<&str> = entries.iter().map(|(_, c)| c.type_name()).collect();
+    mangle_generic_name(db, fb_name, &parts)
+}
+
+/// Build a monomorphization symbol `base$Part1$Part2…` from already-sorted
+/// concrete part names, or `base` unchanged when there are no parts. Shared by
+/// FB-instance mangling ([`mangle_fb_name`]) and interface-param specialization
+/// (`mono_iface`) so the `$`-suffix convention can't drift between them.
+pub fn mangle_generic_name(db: &dyn WorkspaceDataBase, base: Ident, parts: &[&str]) -> Ident {
+    if parts.is_empty() {
+        return base;
+    }
+    let mut s = base.text(db).to_string();
+    for p in parts {
         s.push('$');
-        s.push_str(concrete.type_name());
+        s.push_str(p);
     }
     Ident::new(db, compact_str::CompactString::from(s))
 }
