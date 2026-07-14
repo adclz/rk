@@ -3,7 +3,7 @@ use ide_diagnostic::IdeDiagnostic;
 use rustc_hash::{FxHashMap, FxHashSet};
 
 use crate::{
-    CallSite, HirNodeInfo,
+    CallSite, HasName, HirNodeInfo,
     hir_def::{
         expressions::{
             expression::{
@@ -61,6 +61,9 @@ pub fn infer_body<'db>(
     // Initialize null state tracking for REF_TO local variables
     init_ref_null_states(db, scope, &mut result);
 
+    // Record method locals/params that shadow an owner FB/Class member.
+    init_method_member_shadows(db, scope, &mut result);
+
     // Populate fb_any_resolutions from explicit `<T>` type arguments on VARs.
     // This replaces the old call-site inference path (removed from
     // `resolver::func_call`) so monomorphization works even without a call
@@ -81,6 +84,34 @@ pub fn infer_body<'db>(
     );
 
     result
+}
+
+/// A method local/parameter that has the same name as a member of the owner
+/// FB/Class shadows it (the local wins, per HIR name resolution). Record each
+/// (method variable → shadowed member) for the linter.
+fn init_method_member_shadows<'db>(
+    db: &'db dyn WorkspaceDataBase,
+    scope: ScopeId<'db>,
+    result: &mut BodyInferenceResult<'db>,
+) {
+    let scope_data = get_scope(db, scope);
+    let ScopeKind::MethodDecl(method) = scope_data.kind else {
+        return;
+    };
+    let Some(parent) = scope_data.parent else {
+        return;
+    };
+    let members: &[VariableDecl<'db>] = match get_scope(db, parent).kind {
+        ScopeKind::Pou(Pou::FunctionBlock(fb)) => fb.variables(db),
+        ScopeKind::Pou(Pou::Class(cl)) => cl.variables(db),
+        _ => return,
+    };
+    for mvar in method.variables(db) {
+        let name = mvar.get_name_ident(db);
+        if let Some(member) = members.iter().find(|m| m.get_name_ident(db) == name) {
+            result.method_shadowed_members.insert(*mvar, *member);
+        }
+    }
 }
 
 /// Scan all variables in the scope and initialize null state tracking
@@ -300,6 +331,11 @@ pub struct BodyInferenceResult<'db> {
     // Populated during statement resolution for use by the linter.
     pub variables_shadowing: FxHashMap<VariableDecl<'db>, Pou<'db>>,
 
+    // Method locals/params that shadow a member of the owner FB/Class (same
+    // name). Maps the method variable → the shadowed member. Populated for
+    // method bodies for use by the linter.
+    pub method_shadowed_members: FxHashMap<VariableDecl<'db>, VariableDecl<'db>>,
+
     // Config/resource VAR_GLOBALs accessed directly by name without a matching
     // VAR_EXTERNAL declaration (direct access). Resolution still
     // succeeds; the linter warns, since strict IEC wants an explicit
@@ -347,6 +383,7 @@ impl<'db> BodyInferenceResult<'db> {
             variables_used: FxHashSet::default(),
             usings_used: FxHashSet::default(),
             variables_shadowing: FxHashMap::default(),
+            method_shadowed_members: FxHashMap::default(),
             globals_without_external: Vec::new(),
             unused_return_types: Vec::new(),
             effectless_statements: Vec::new(),

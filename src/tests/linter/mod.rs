@@ -33,6 +33,7 @@ mod once_violation;
 mod redundant_not;
 mod self_assignment;
 mod self_comparison;
+mod method_shadows_member;
 mod self_shadowing;
 mod shadowing_variable;
 mod single_element_array;

@@ -40,6 +40,7 @@ pub mod identity_operation;
 pub mod input_assignment;
 pub mod invalid_pragma;
 pub mod loop_var_modified;
+pub mod method_shadows_member;
 pub mod missing_input_param;
 pub mod missing_return;
 pub mod negated_comparison;
@@ -91,6 +92,7 @@ pub const ALL_RULE_NAMES: &[&str] = &[
     input_assignment::NAME,
     invalid_pragma::NAME,
     loop_var_modified::NAME,
+    method_shadows_member::NAME,
     missing_input_param::NAME,
     missing_return::NAME,
     negated_comparison::NAME,
@@ -319,6 +321,11 @@ fn lint_scope<'db>(
     if config.is_enabled(shadowing_variable::NAME) {
         run_lint(shadowing_variable::NAME, diagnostics, |d| {
             shadowing_variable::check(db, body, d)
+        });
+    }
+    if config.is_enabled(method_shadows_member::NAME) {
+        run_lint(method_shadows_member::NAME, diagnostics, |d| {
+            method_shadows_member::check(db, body, d)
         });
     }
     if config.is_enabled(global_without_external::NAME) {
