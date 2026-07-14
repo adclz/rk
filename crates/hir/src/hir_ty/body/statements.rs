@@ -4,7 +4,7 @@ use crate::{
     CallSite, HasName, HirNodeInfo,
     check::errors::{
         ToIdeDiagnostic, e2_resolve::ResolveError, e3_type::TypeError,
-        e10_control_flow::ControlFlowError,
+        e5_inheritance::InheritanceError, e10_control_flow::ControlFlowError,
     },
     hir_def::{
         expressions::{
@@ -18,7 +18,7 @@ use crate::{
     },
     hir_ty::{
         body::{Adjust, BodyInferenceResult, NullState},
-        infer::expr::InferExprCtx,
+        infer::{Infer, expr::InferExprCtx},
         resolver::{Resolver, func_call::resolve_func_call},
         ty::Type,
     },
@@ -93,6 +93,21 @@ impl<'db> StmtsResolverCtx<'db> {
                     }
 
                     base_typ.check_assignable(db, CallSite::from_scoped(db, var), ctx);
+
+                    // Design 1: an interface parameter is a fixed binding to the
+                    // concrete type the caller supplied; reassigning it would
+                    // break monomorphization (see E0517).
+                    if let Type::Variable((var_decl, _)) = base_typ
+                        && matches!(var_decl.spec(db).infer(db).normalize(db), Type::Interface(_))
+                    {
+                        ctx.errors.push(
+                            InheritanceError::InterfaceParamNotAssignable {
+                                var: var_decl,
+                                access: *var,
+                            }
+                            .to_diagnostic(db, ctx.scope.file(db)),
+                        );
+                    }
 
                     self.infer_and_check_expr(db, &mut infer, *target, ctx);
 

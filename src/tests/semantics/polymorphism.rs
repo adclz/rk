@@ -374,3 +374,35 @@ END_PROGRAM
     ----'
     ");
 }
+
+#[rstest]
+fn interface_param_reassignment_rejected(mut with_db: RootDatabase) {
+    // An interface VAR_IN_OUT param is a fixed binding to the caller's concrete
+    // type; reassigning it would break monomorphization (the body is specialized
+    // to one concrete type) → E0517.
+    let source = r#"
+INTERFACE ITF1
+    METHOD DoWork END_METHOD
+END_INTERFACE
+
+FUNCTION Use : INT
+    VAR_IN_OUT a : ITF1; b : ITF1; END_VAR
+    a := b;
+    Use := 0;
+END_FUNCTION
+    "#;
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
+    [E0517] Error: interface parameter is not assignable
+       ,-[ file:///test0.st:8:5 ]
+       |
+     7 |     VAR_IN_OUT a : ITF1; b : ITF1; END_VAR
+       |                |
+       |                `-- interface parameter 'a' is declared here
+     8 |     a := b;
+       |     |
+       |     `-- cannot assign to interface parameter 'a'
+       |
+       | Note: an interface parameter is a fixed binding to the concrete type passed by the caller; it can be used (methods called, passed on) but not reassigned
+    ---'
+    ");
+}

@@ -6,7 +6,11 @@ use crate::{
     CallSite, HasName, HirNodeInfo,
     check::errors::ToIdeDiagnostic,
     hir_def::{
-        expressions::{expression::PathExpr, invocation::Invocation, spec::Spec},
+        expressions::{
+            expression::{PathExpr, VariableAccess},
+            invocation::Invocation,
+            spec::Spec,
+        },
         pous::{
             interface::Interface,
             pou::Pou,
@@ -100,6 +104,14 @@ pub enum InheritanceError<'db> {
         interface: Interface<'db>,
         spec: Spec<'db>,
     },
+    /// Assignment to an interface parameter. An interface `VAR_IN_OUT` param is a
+    /// fixed binding to the concrete type the caller supplied; reassigning it
+    /// would break monomorphization (the body is specialized to one concrete
+    /// type) and write a wrong-typed value into the caller's concrete slot.
+    InterfaceParamNotAssignable {
+        var: VariableDecl<'db>,
+        access: VariableAccess<'db>,
+    },
 }
 
 impl<'db> ErrorCode for InheritanceError<'db> {
@@ -122,6 +134,7 @@ impl<'db> ErrorCode for InheritanceError<'db> {
             Self::InterfaceOnlyAllowedAsParam { .. } => "E0514",
             Self::InterfaceNotAllowedInReturn { .. } => "E0515",
             Self::InterfaceNotAllowedNested { .. } => "E0516",
+            Self::InterfaceParamNotAssignable { .. } => "E0517",
         }
     }
 
@@ -145,6 +158,7 @@ impl<'db> ErrorCode for InheritanceError<'db> {
             Self::InterfaceOnlyAllowedAsParam { .. }
             | Self::InterfaceNotAllowedInReturn { .. }
             | Self::InterfaceNotAllowedNested { .. } => "interface type not allowed here",
+            Self::InterfaceParamNotAssignable { .. } => "interface parameter is not assignable",
         }
     }
 }
@@ -432,6 +446,23 @@ impl<'db> ToIdeDiagnostic<'db> for InheritanceError<'db> {
                     interface.get_name_span(db),
                 ));
                 diag.with_note("an interface may only appear directly as a VAR_INPUT or VAR_IN_OUT parameter".into());
+                diag
+            }
+            Self::InterfaceParamNotAssignable { var, access } => {
+                let name = var.get_name_ident(db).text(db);
+                let mut diag = diag()
+                    .message(format!("cannot assign to interface parameter '{name}'"))
+                    .severity(DiagnosticSeverity::ERROR)
+                    .desc(self)
+                    .range(crate::denormalize(db, file, &access.get_span(db)).unwrap_or_default())
+                    .call();
+
+                diag.with_related(Related::new(
+                    format!("interface parameter '{name}' is declared here"),
+                    var.get_scope_id(db).file(db),
+                    var.get_name_span(db),
+                ));
+                diag.with_note("an interface parameter is a fixed binding to the concrete type passed by the caller; it can be used (methods called, passed on) but not reassigned".into());
                 diag
             }
             Self::SignatureParametersCountMismatch {
