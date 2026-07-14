@@ -182,6 +182,70 @@ fn test_st_inherited_method_call(mut with_db: db::RootDatabase) {
     assert_eq!(result, 3, "inherited method runs on the derived instance");
 }
 
+/// `THIS.m()` — an explicit self method call from inside another method — lowers
+/// to a direct `Counter#Inc` on the current `this` pointer (offset 0), exactly
+/// like the implicit-receiver forms. `IncTwice` calls `THIS.Inc()` twice, so the
+/// shared instance's `c` advances 0→1→2 and the wrapper sees 2. A wrong `this`
+/// (fresh/zero) would not accumulate.
+#[rstest]
+fn test_st_this_method_call(mut with_db: db::RootDatabase) {
+    let source = r#"
+        FUNCTION_BLOCK Counter
+        VAR c : INT; END_VAR
+        METHOD Inc : INT
+            THIS.c := THIS.c + 1;
+            Inc := THIS.c;
+        END_METHOD
+        METHOD IncTwice : INT
+            THIS.Inc();
+            IncTwice := THIS.Inc();
+        END_METHOD
+        END_FUNCTION_BLOCK
+
+        FUNCTION test_this : INT
+        VAR a : Counter; END_VAR
+            test_this := a.IncTwice();     (* Inc->1, Inc->2 on the same instance *)
+        END_FUNCTION
+    "#;
+    let wasm = compile_to_wasm(&mut with_db, source);
+    let result: i32 = super::execute_wasm(&wasm, "test_this", ());
+    assert_eq!(result, 2, "THIS.Inc() twice on the same instance yields 2");
+}
+
+/// `SUPER.m()` — static (non-virtual) dispatch to the *base* method on the same
+/// `this` (IEC tables 9b/10b). `Derived.Tick` overrides `Base.Tick` and calls
+/// `SUPER.Tick()`, which must resolve to `Base#Tick` (increment `c`), NOT back to
+/// `Derived#Tick` (that would recurse forever). Each call: base `c`+1, then +100.
+/// So two calls give 101 then 102 — the 102 proves both the base dispatch and the
+/// shared instance state.
+#[rstest]
+fn test_st_super_method_call(mut with_db: db::RootDatabase) {
+    let source = r#"
+        FUNCTION_BLOCK Base
+        VAR c : INT; END_VAR
+        METHOD Tick : INT
+            THIS.c := THIS.c + 1;
+            Tick := THIS.c;
+        END_METHOD
+        END_FUNCTION_BLOCK
+
+        FUNCTION_BLOCK Derived EXTENDS Base
+        METHOD OVERRIDE Tick : INT
+            Tick := SUPER.Tick() + 100;    (* base Tick on the same this, then +100 *)
+        END_METHOD
+        END_FUNCTION_BLOCK
+
+        FUNCTION test_super : INT
+        VAR a : Derived; END_VAR
+            a.Tick();                      (* c:0->1 -> 101 (discarded) *)
+            test_super := a.Tick();        (* c:1->2 -> 102 *)
+        END_FUNCTION
+    "#;
+    let wasm = compile_to_wasm(&mut with_db, source);
+    let result: i32 = super::execute_wasm(&wasm, "test_super", ());
+    assert_eq!(result, 102, "SUPER.Tick() dispatches to Base#Tick on the same instance");
+}
+
 /// Phase B: an interface `VAR_IN_OUT` parameter is monomorphized per concrete
 /// implementer. `drive(dev := w)` specializes `drive` to `drive$Worker` and
 /// lowers `dev.Run()` to a direct `Worker#Run`; `drive(dev := h)` specializes to

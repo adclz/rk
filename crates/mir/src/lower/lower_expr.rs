@@ -976,8 +976,6 @@ impl<'db> ExprLowerCtx<'db> {
     > {
         use hir::HasName;
         use hir::hir_def::expressions::expression::PathExprKind;
-        use hir::hir_def::scope::ScopeKind;
-        use hir::hir_def::semantic_index::get_scope;
         use hir::hir_ty::head::inheritance::MethodRef;
         use hir::hir_ty::ty::CallableType;
 
@@ -987,6 +985,49 @@ impl<'db> ExprLowerCtx<'db> {
             Type::CallableType(CallableType::MethodDecl(m)) => m,
             _ => return Ok(None),
         };
+
+        // `THIS.m()` / `SUPER.m()`: HIR resolved `method` (the override for
+        // `THIS`, the base method for `SUPER`, IEC tables 9b/10b). The receiver
+        // is the current `this` pointer.
+        if let Some(kind) = path.invocation(self.db).map(|i| i.kind(self.db)) {
+            match kind {
+                InvocationKind::This | InvocationKind::Super => {
+                    let method_decl = match method {
+                        MethodRef::Declared(md) => md,
+                        MethodRef::Prototype(_) => {
+                            return Err(LowerTypeError::UnsupportedType(
+                                "THIS/SUPER method call unexpectedly resolved to an \
+                                 interface prototype"
+                                    .to_string(),
+                            ));
+                        }
+                    };
+                    let callee = self.method_callee_symbol(method_decl)?;
+                    let receiver = MirPlace::ThisField {
+                        field_name: hir::hir_def::interned::identifier::Ident::new(
+                            self.db,
+                            compact_str::CompactString::from("THIS"),
+                        ),
+                        field_offset: 0,
+                        field_type: MirType::Elementary(MirElementary::Int),
+                    };
+                    let ret = method
+                        .return_type(self.db)
+                        .map(|spec| spec.infer(self.db))
+                        .unwrap_or(Type::Void);
+                    return Ok(Some((callee, receiver, ret)));
+                }
+                // `SUPER()` calls the base function-block *body* (IEC 10c), a distinct
+                // construct — not a method call, so not handled on this path.
+                InvocationKind::SuperBody => {
+                    return Err(LowerTypeError::UnsupportedType(
+                        "SUPER() (base function-block body call) is not yet supported"
+                            .to_string(),
+                    ));
+                }
+            }
+        }
+
         // `receiver.method` is a Field whose `.path` is the receiver instance.
         let field = match path.expr(self.db).map(|pe| pe.expr(self.db)) {
             Some(PathExprKind::Field(fe)) => fe,
@@ -1052,26 +1093,6 @@ impl<'db> ExprLowerCtx<'db> {
             }
         };
 
-        // The owner is the method's DECLARING POU — the name the method function
-        // is registered under. For an inherited method this is the *base*, not the
-        // receiver's derived type, so deriving the owner from the receiver would
-        // build the wrong symbol (`Derived#m` vs the registered `Base#m`). For an
-        // interface call it is the resolved concrete implementer (`Worker`).
-        let owner_pou = {
-            let method_scope = get_scope(self.db, method_decl.scope_id(self.db));
-            let parent = method_scope.parent.ok_or_else(|| {
-                LowerTypeError::UnsupportedType("method scope has no owner".to_string())
-            })?;
-            match get_scope(self.db, parent).kind {
-                ScopeKind::Pou(pou) => pou,
-                _ => {
-                    return Err(LowerTypeError::UnsupportedType(
-                        "method owner is not a POU".to_string(),
-                    ));
-                }
-            }
-        };
-
         // A generic/monomorphized instance registers its methods under the mangled
         // instance name (`Counter$INT#m`); deriving that from the declaring POU
         // needs the receiver's concrete type-args, which isn't wired yet. Defer it
@@ -1087,18 +1108,7 @@ impl<'db> ExprLowerCtx<'db> {
             ));
         }
 
-        let owner_mangled = crate::lower::monomorphize::qualified_pou_ident(
-            self.db,
-            Type::new_pou(self.db, owner_pou),
-        );
-        let callee = hir::hir_def::interned::identifier::Ident::new(
-            self.db,
-            compact_str::CompactString::from(format!(
-                "{}#{}",
-                owner_mangled.text(self.db),
-                method_decl.name(self.db).text(self.db)
-            )),
-        );
+        let callee = self.method_callee_symbol(method_decl)?;
 
         let receiver = self.lower_receiver_place(receiver_path)?;
         let ret = method
@@ -1106,6 +1116,44 @@ impl<'db> ExprLowerCtx<'db> {
             .map(|spec| spec.infer(self.db))
             .unwrap_or(Type::Void);
         Ok(Some((callee, receiver, ret)))
+    }
+
+    /// The `#`-mangled symbol of a method: its declaring POU's qualified
+    /// name, `#`, the method name. For a base method that is `Base#m`.
+    fn method_callee_symbol(
+        &self,
+        method_decl: hir::hir_def::pous::class::MethodDecl<'db>,
+    ) -> Result<hir::hir_def::interned::identifier::Ident, LowerTypeError> {
+        use hir::hir_def::scope::ScopeKind;
+        use hir::hir_def::semantic_index::get_scope;
+
+        let owner_pou = {
+            let method_scope = get_scope(self.db, method_decl.scope_id(self.db));
+            let parent = method_scope.parent.ok_or_else(|| {
+                LowerTypeError::UnsupportedType("method scope has no owner".to_string())
+            })?;
+            match get_scope(self.db, parent).kind {
+                ScopeKind::Pou(pou) => pou,
+                _ => {
+                    return Err(LowerTypeError::UnsupportedType(
+                        "method owner is not a POU".to_string(),
+                    ));
+                }
+            }
+        };
+
+        let owner_mangled = crate::lower::monomorphize::qualified_pou_ident(
+            self.db,
+            Type::new_pou(self.db, owner_pou),
+        );
+        Ok(hir::hir_def::interned::identifier::Ident::new(
+            self.db,
+            compact_str::CompactString::from(format!(
+                "{}#{}",
+                owner_mangled.text(self.db),
+                method_decl.name(self.db).text(self.db)
+            )),
+        ))
     }
 
     /// Lower a receiver path (`a`, `a.b`, `arr[i]`) to the place of the FB
