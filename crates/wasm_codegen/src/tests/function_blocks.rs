@@ -181,3 +181,174 @@ fn test_st_inherited_method_call(mut with_db: db::RootDatabase) {
     let result: i32 = super::execute_wasm(&wasm, "test_inh", ());
     assert_eq!(result, 3, "inherited method runs on the derived instance");
 }
+
+/// Phase B: an interface `VAR_IN_OUT` parameter is monomorphized per concrete
+/// implementer. `drive(dev := w)` specializes `drive` to `drive$Worker` and
+/// lowers `dev.Run()` to a direct `Worker#Run`; `drive(dev := h)` specializes to
+/// `drive$Heater` → `Heater#Run`. Distinct results (10 vs 20) prove genuine
+/// per-concrete dispatch — a shared/wrong `this` or a single collapsed
+/// specialization could not yield both.
+#[rstest]
+fn test_st_interface_param_monomorphized(mut with_db: db::RootDatabase) {
+    let source = r#"
+        INTERFACE ITF1
+            METHOD Run : INT END_METHOD
+        END_INTERFACE
+
+        FUNCTION_BLOCK Worker IMPLEMENTS ITF1
+            METHOD Run : INT
+                Run := 10;
+            END_METHOD
+        END_FUNCTION_BLOCK
+
+        FUNCTION_BLOCK Heater IMPLEMENTS ITF1
+            METHOD Run : INT
+                Run := 20;
+            END_METHOD
+        END_FUNCTION_BLOCK
+
+        FUNCTION drive : INT
+        VAR_IN_OUT dev : ITF1; END_VAR
+            drive := dev.Run();
+        END_FUNCTION
+
+        FUNCTION test : INT
+        VAR w : Worker; h : Heater; END_VAR
+            test := drive(dev := w) + drive(dev := h);   (* 10 + 20 = 30 *)
+        END_FUNCTION
+    "#;
+    let wasm = compile_to_wasm(&mut with_db, source);
+    let result: i32 = super::execute_wasm(&wasm, "test", ());
+    assert_eq!(result, 30, "Worker#Run (10) + Heater#Run (20) via monomorphized interface params");
+}
+
+/// Phase B: a bare statement-context call `bump(dev := w);` (no assignment) must
+/// also be collected and routed to the specialization — the collection walks the
+/// statement tree, not just expression-context calls. Two calls mutate the same
+/// instance through the interface method, proving state persists.
+#[rstest]
+fn test_st_interface_param_statement_context(mut with_db: db::RootDatabase) {
+    let source = r#"
+        INTERFACE ICounter
+            METHOD Inc END_METHOD
+        END_INTERFACE
+        FUNCTION_BLOCK Counter IMPLEMENTS ICounter
+            VAR c : INT; END_VAR
+            METHOD Inc
+                c := c + 1;
+            END_METHOD
+            METHOD Get : INT
+                Get := c;
+            END_METHOD
+        END_FUNCTION_BLOCK
+        FUNCTION bump : INT
+            VAR_IN_OUT dev : ICounter; END_VAR
+            dev.Inc();
+            bump := 0;
+        END_FUNCTION
+        FUNCTION test : INT
+        VAR w : Counter; END_VAR
+            bump(dev := w);
+            bump(dev := w);
+            test := w.Get();
+        END_FUNCTION
+    "#;
+    let wasm = compile_to_wasm(&mut with_db, source);
+    let result: i32 = super::execute_wasm(&wasm, "test", ());
+    assert_eq!(result, 2, "two bare-statement bump() calls mutate w.c to 2");
+}
+
+/// Phase B: the interface argument may be `THIS` (self) — inside `Dog.CallVia`,
+/// `invoke(s := THIS)` passes the current instance. Collection resolves THIS's
+/// type to the enclosing FB (`Dog`), specializes `invoke$Dog`, and the `this`
+/// pointer passed to `invoke` is the method's own `this` (= &d).
+#[rstest]
+fn test_st_interface_arg_this(mut with_db: db::RootDatabase) {
+    let source = r#"
+        INTERFACE ISpeaker
+            METHOD Speak : INT END_METHOD
+        END_INTERFACE
+        FUNCTION_BLOCK Dog IMPLEMENTS ISpeaker
+            METHOD Speak : INT
+                Speak := 7;
+            END_METHOD
+            METHOD CallVia : INT
+                CallVia := invoke(s := THIS);
+            END_METHOD
+        END_FUNCTION_BLOCK
+        FUNCTION invoke : INT
+        VAR_IN_OUT s : ISpeaker; END_VAR
+            invoke := s.Speak();
+        END_FUNCTION
+        FUNCTION test : INT
+        VAR d : Dog; END_VAR
+            test := d.CallVia();
+        END_FUNCTION
+    "#;
+    let wasm = compile_to_wasm(&mut with_db, source);
+    let result: i32 = super::execute_wasm(&wasm, "test", ());
+    assert_eq!(result, 7, "invoke(s := THIS) dispatches to Dog#Speak on the self instance");
+}
+
+/// Phase B: an interface method with its own parameter — `dev.Add(x := 41)` must
+/// pass the argument (41) alongside the `this` pointer.
+#[rstest]
+fn test_st_interface_method_with_arg(mut with_db: db::RootDatabase) {
+    let source = r#"
+        INTERFACE IAdder
+            METHOD Add : INT
+                VAR_INPUT x : INT; END_VAR
+            END_METHOD
+        END_INTERFACE
+        FUNCTION_BLOCK Plus IMPLEMENTS IAdder
+            METHOD Add : INT
+                VAR_INPUT x : INT; END_VAR
+                Add := x + 1;
+            END_METHOD
+        END_FUNCTION_BLOCK
+        FUNCTION apply : INT
+        VAR_IN_OUT dev : IAdder; END_VAR
+            apply := dev.Add(x := 41);
+        END_FUNCTION
+        FUNCTION test : INT
+        VAR p : Plus; END_VAR
+            test := apply(dev := p);
+        END_FUNCTION
+    "#;
+    let wasm = compile_to_wasm(&mut with_db, source);
+    let result: i32 = super::execute_wasm(&wasm, "test", ());
+    assert_eq!(result, 42, "dev.Add(x := 41) → Plus#Add(this, 41) → 42");
+}
+
+/// Phase B: an interface method that MUTATES instance state — `dev.Inc()` writes
+/// through the `this` pointer to the real Counter, and the mutation persists
+/// across two calls (0 + 0 + 2). Proves `this` is the live instance, not a copy.
+#[rstest]
+fn test_st_interface_method_mutates_instance(mut with_db: db::RootDatabase) {
+    let source = r#"
+        INTERFACE ICounter
+            METHOD Inc END_METHOD
+        END_INTERFACE
+        FUNCTION_BLOCK Counter IMPLEMENTS ICounter
+            VAR c : INT; END_VAR
+            METHOD Inc
+                c := c + 1;
+            END_METHOD
+            METHOD Get : INT
+                Get := c;
+            END_METHOD
+        END_FUNCTION_BLOCK
+        FUNCTION bump : INT
+            VAR_IN_OUT dev : ICounter; END_VAR
+            dev.Inc();
+            bump := 0;
+        END_FUNCTION
+        FUNCTION test : INT
+        VAR w : Counter; END_VAR
+            test := bump(dev := w) + bump(dev := w) + w.Get();
+        END_FUNCTION
+    "#;
+    let wasm = compile_to_wasm(&mut with_db, source);
+    let result: i32 = super::execute_wasm(&wasm, "test", ());
+    assert_eq!(result, 2, "two dev.Inc() through the interface mutate w.c to 2");
+}

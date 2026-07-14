@@ -48,6 +48,20 @@ pub fn lower_function<'db>(
         >,
     >,
     fb_mangling: &super::monomorphize::FbInstanceMap<'db>,
+    // Phase B: for a specialized copy, each interface param's concrete
+    // implementer.
+    iface_subs: Option<
+        &FxHashMap<
+            hir::hir_def::interned::identifier::Ident,
+            hir::hir_def::pous::pou::Pou<'db>,
+        >,
+    >,
+    // Phase B: module-global call-site -> mangled specialization rewrites, so
+    // calls in this body route to the right specialization.
+    iface_call_rewrites: &FxHashMap<
+        hir::hir_def::expressions::expression::FuncCall<'db>,
+        hir::hir_def::interned::identifier::Ident,
+    >,
 ) -> Result<MirFunction, LowerTypeError> {
     let mut params = Vec::new();
     let mut locals = Vec::new();
@@ -64,6 +78,21 @@ pub fn lower_function<'db>(
     // flatten to two i32s, not one, and getting this wrong silently
     // aliases the param's second slot with later Var locals.
     for var in func.variables(db) {
+        // Phase B: an interface VAR_IN_OUT param is specialized to a pointer to
+        // the concrete implementer's instance struct — the same calling
+        // convention as a normal InOut FB pointer, so the arg (`&aWorker`)
+        // becomes `dev`, and `dev.Method()`'s `this` falls out for free.
+        if let Some(concrete) = iface_subs.and_then(|m| m.get(&var.name(db))) {
+            let ty = lower_type(db, hir::hir_ty::ty::Type::new_pou(db, *concrete))?;
+            let param = MirParam {
+                name: var.name(db),
+                ty: MirType::Pointer(Box::new(ty)),
+                kind: MirParamKind::InOut,
+            };
+            next_local_idx += param_wasm_width(&param.ty, param.kind);
+            params.push(param);
+            continue;
+        }
         match var.kind(db) {
             VariableKind::Input => {
                 let ty = lower_var_type(db, *var)?;
@@ -196,7 +225,11 @@ pub fn lower_function<'db>(
         }
     }
 
-    let mut body = if fb_subs.is_empty() && local_fb_mangling.is_empty() {
+    let needs_full_ctx = !fb_subs.is_empty()
+        || !local_fb_mangling.is_empty()
+        || iface_subs.is_some_and(|m| !m.is_empty())
+        || !iface_call_rewrites.is_empty();
+    let mut body = if !needs_full_ctx {
         lower_stmts(db, func.statements(db), string_pool.clone())?
     } else {
         crate::lower::lower_stmt::lower_stmts_with_fb_subs_and_mangling(
@@ -204,6 +237,8 @@ pub fn lower_function<'db>(
             func.statements(db),
             fb_subs,
             &local_fb_mangling,
+            iface_subs,
+            iface_call_rewrites,
             string_pool.clone(),
         )?
     };
@@ -252,6 +287,7 @@ pub fn lower_function_block<'db>(
         hir::hir_def::expressions::spec::ElementarySpec,
     >,
     mangled_name: hir::hir_def::interned::identifier::Ident,
+    iface_call_rewrites: &super::mono_iface::IfaceCallRewrites<'db>,
 ) -> Result<Vec<MirFunction>, LowerTypeError> {
     let mut functions = Vec::new();
     let mut idx = start_index;
@@ -371,6 +407,7 @@ pub fn lower_function_block<'db>(
             string_pool.clone(),
             fb_subs_map.as_ref(),
             any_override,
+            iface_call_rewrites,
         )?;
 
         // Method symbol: `<mangledFB>#<method>`. The `#` separator is distinct
@@ -484,6 +521,7 @@ pub fn lower_function_block<'db>(
             string_pool.clone(),
             fb_subs_map.as_ref(),
             any_override,
+            iface_call_rewrites,
         )?;
 
         let body_name = Ident::new(
@@ -515,6 +553,7 @@ pub fn lower_class<'db>(
     start_index: u32,
     memory_layout: &mut MirMemoryLayout,
     string_pool: Rc<RefCell<super::lower_expr::StringPool>>,
+    iface_call_rewrites: &super::mono_iface::IfaceCallRewrites<'db>,
 ) -> Result<Vec<MirFunction>, LowerTypeError> {
     let mut functions = Vec::new();
     let mut idx = start_index;
@@ -622,6 +661,7 @@ pub fn lower_class<'db>(
             string_pool.clone(),
             None,
             None,
+            iface_call_rewrites,
         )?;
 
         // Method symbol: `<NsPath.>Class#Method` (see the FB-method site).
@@ -663,6 +703,7 @@ pub fn lower_program<'db>(
     index: u32,
     memory_layout: &mut MirMemoryLayout,
     string_pool: Rc<RefCell<super::lower_expr::StringPool>>,
+    iface_call_rewrites: &super::mono_iface::IfaceCallRewrites<'db>,
 ) -> Result<(MirFunction, MirType), LowerTypeError> {
     let prog_type = super::lower_type::lower_program_type(db, program)?;
     let this_struct = match &prog_type {
@@ -713,6 +754,7 @@ pub fn lower_program<'db>(
         string_pool.clone(),
         None,
         None,
+        iface_call_rewrites,
     )?;
 
     let body_name = Ident::new(

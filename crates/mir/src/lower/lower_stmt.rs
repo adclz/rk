@@ -70,12 +70,23 @@ pub fn lower_stmts_with_fb_subs<'db>(
 /// Lower with both legacy `fb_subs` and a per-function var-name → mangled
 /// FB name map. The latter is consulted when constructing FbCall body
 /// names so generic FB instantiations route to their per-T `__body__`.
+#[allow(clippy::too_many_arguments)]
 pub fn lower_stmts_with_fb_subs_and_mangling<'db>(
     db: &'db dyn WorkspaceDataBase,
     stmts: &[Stmt<'db>],
     fb_subs: &FbSubsMap,
     local_fb_mangling: &rustc_hash::FxHashMap<
         hir::hir_def::interned::identifier::Ident,
+        hir::hir_def::interned::identifier::Ident,
+    >,
+    iface_subs: Option<
+        &rustc_hash::FxHashMap<
+            hir::hir_def::interned::identifier::Ident,
+            hir::hir_def::pous::pou::Pou<'db>,
+        >,
+    >,
+    iface_call_rewrites: &rustc_hash::FxHashMap<
+        hir::hir_def::expressions::expression::FuncCall<'db>,
         hir::hir_def::interned::identifier::Ident,
     >,
     string_pool: std::rc::Rc<std::cell::RefCell<super::lower_expr::StringPool>>,
@@ -86,6 +97,14 @@ pub fn lower_stmts_with_fb_subs_and_mangling<'db>(
     }
     if !local_fb_mangling.is_empty() {
         ctx.local_fb_mangling = Some(std::rc::Rc::new(local_fb_mangling.clone()));
+    }
+    if let Some(is) = iface_subs
+        && !is.is_empty()
+    {
+        ctx.iface_subs = Some(std::rc::Rc::new(is.clone()));
+    }
+    if !iface_call_rewrites.is_empty() {
+        ctx.iface_call_rewrites = Some(std::rc::Rc::new(iface_call_rewrites.clone()));
     }
     lower_stmts_inner(&ctx, stmts)
 }
@@ -109,6 +128,7 @@ pub fn lower_stmts_with_ctx<'db>(
 }
 
 /// Lower a slice of HIR statements in a FB body context where variables are struct fields.
+#[allow(clippy::too_many_arguments)]
 pub fn lower_stmts_fb_body<'db>(
     db: &'db dyn WorkspaceDataBase,
     stmts: &[Stmt<'db>],
@@ -116,11 +136,15 @@ pub fn lower_stmts_fb_body<'db>(
     string_pool: std::rc::Rc<std::cell::RefCell<super::lower_expr::StringPool>>,
     fb_subs: Option<&FbSubsMap>,
     any_override: Option<hir::hir_def::expressions::spec::ElementarySpec>,
+    iface_call_rewrites: &super::mono_iface::IfaceCallRewrites<'db>,
 ) -> Result<Vec<MirStmt>, LowerTypeError> {
     let mut ctx = ExprLowerCtx::with_this_struct(db, this_struct, string_pool);
     ctx.any_override = any_override;
     if let Some(subs) = fb_subs {
         ctx.fb_subs = Some(std::rc::Rc::new(subs.clone()));
+    }
+    if !iface_call_rewrites.is_empty() {
+        ctx.iface_call_rewrites = Some(std::rc::Rc::new(iface_call_rewrites.clone()));
     }
     lower_stmts_inner(&ctx, stmts)
 }

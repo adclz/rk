@@ -85,3 +85,89 @@ fn functions_named_by_defined_index(mut with_db: db::RootDatabase) {
     }
     assert!(dbg.function_name(u32::MAX).is_none());
 }
+
+/// Phase B: monomorphized interface specializations (`drive$Worker`,
+/// `drive$Heater`) are real defined functions, so they appear by name in the
+/// debug-functions table — a debugger can name a stack frame inside one. The
+/// un-specialized `drive` (which has no MIR type) is never emitted. Also
+/// exercises interface-param calls from a PROGRAM body.
+#[rstest]
+fn interface_specializations_named(mut with_db: db::RootDatabase) {
+    let source = r#"
+        INTERFACE ITF1
+            METHOD Run : INT END_METHOD
+        END_INTERFACE
+        FUNCTION_BLOCK Worker IMPLEMENTS ITF1
+            METHOD Run : INT
+                Run := 10;
+            END_METHOD
+        END_FUNCTION_BLOCK
+        FUNCTION_BLOCK Heater IMPLEMENTS ITF1
+            METHOD Run : INT
+                Run := 20;
+            END_METHOD
+        END_FUNCTION_BLOCK
+        FUNCTION drive : INT
+        VAR_IN_OUT dev : ITF1; END_VAR
+            drive := dev.Run();
+        END_FUNCTION
+        PROGRAM Main
+        VAR w : Worker; h : Heater; total : INT; END_VAR
+            total := drive(dev := w) + drive(dev := h);
+        END_PROGRAM
+        CONFIGURATION Cfg
+            RESOURCE Res ON CPU
+                TASK T(INTERVAL := T#10ms, PRIORITY := 1);
+                PROGRAM Run WITH T : Main;
+            END_RESOURCE
+        END_CONFIGURATION
+    "#;
+    let (_mir, wasm) = compile_to_mir_and_wasm(&mut with_db, source);
+    let df = read_debug_functions(&wasm);
+    let names: Vec<&str> = df.functions.iter().map(|f| f.name.as_str()).collect();
+    assert!(names.contains(&"drive$Worker"), "specialization named: {names:?}");
+    assert!(names.contains(&"drive$Heater"), "specialization named: {names:?}");
+    assert!(
+        !names.contains(&"drive"),
+        "the un-specialized `drive` must not be emitted: {names:?}"
+    );
+}
+
+/// Phase B: two arguments of the SAME concrete type share ONE specialization —
+/// `drive(dev := w1) + drive(dev := w2)` (both Worker) yields a single
+/// `drive$Worker`, not two (canonical dedup on (function, concrete bindings)).
+#[rstest]
+fn interface_specialization_deduped(mut with_db: db::RootDatabase) {
+    let source = r#"
+        INTERFACE ITF1
+            METHOD Run : INT END_METHOD
+        END_INTERFACE
+        FUNCTION_BLOCK Worker IMPLEMENTS ITF1
+            METHOD Run : INT
+                Run := 5;
+            END_METHOD
+        END_FUNCTION_BLOCK
+        FUNCTION drive : INT
+        VAR_IN_OUT dev : ITF1; END_VAR
+            drive := dev.Run();
+        END_FUNCTION
+        PROGRAM Main
+        VAR w1 : Worker; w2 : Worker; total : INT; END_VAR
+            total := drive(dev := w1) + drive(dev := w2);
+        END_PROGRAM
+        CONFIGURATION Cfg
+            RESOURCE Res ON CPU
+                TASK T(INTERVAL := T#10ms, PRIORITY := 1);
+                PROGRAM Run WITH T : Main;
+            END_RESOURCE
+        END_CONFIGURATION
+    "#;
+    let (_mir, wasm) = compile_to_mir_and_wasm(&mut with_db, source);
+    let df = read_debug_functions(&wasm);
+    let n = df
+        .functions
+        .iter()
+        .filter(|f| f.name.as_str() == "drive$Worker")
+        .count();
+    assert_eq!(n, 1, "two Worker args share a single drive$Worker specialization");
+}

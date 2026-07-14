@@ -110,6 +110,19 @@ fn lower_module_from_pous<'db>(
         }
     }
 
+    // Phase B: interface-parameter monomorphization. Collect every function
+    // specialization needed by a call site (`drive$Worker`) plus the call-site →
+    // mangled-name rewrites, and group specializations by their source function.
+    let (iface_instances, iface_call_rewrites) =
+        super::mono_iface::collect_iface_instantiations(db, all_pous, all_programs);
+    let mut iface_by_func: FxHashMap<
+        hir::hir_def::pous::function::Function<'db>,
+        Vec<&super::mono_iface::IfaceInstance<'db>>,
+    > = FxHashMap::default();
+    for inst in &iface_instances {
+        iface_by_func.entry(inst.func).or_default().push(inst);
+    }
+
     // Collect ANY_* functions for deferred monomorphization
     let mut any_functions: Vec<AnyFunctionInfo<'db>> = Vec::new();
 
@@ -222,6 +235,41 @@ fn lower_module_from_pous<'db>(
                     continue;
                 }
 
+                // Phase B: a function with an interface VAR_IN_OUT param cannot
+                // be lowered as-is (its interface param has no MIR type). Emit
+                // one specialized copy per concrete instantiation instead
+                // (`drive$Worker`, `drive$Heater`); call sites route to them via
+                // `iface_call_rewrites`.
+                let has_iface_param = func.variables(db).iter().any(|v| {
+                    matches!(
+                        v.kind(db),
+                        hir::hir_def::pous::variable::VariableKind::InOut
+                    ) && matches!(
+                        v.spec(db).infer(db).normalize(db),
+                        hir::hir_ty::ty::Type::Interface(_)
+                    )
+                });
+                if has_iface_param {
+                    for inst in iface_by_func.get(func).into_iter().flatten() {
+                        let mut mir_func = lower_function(
+                            db,
+                            *func,
+                            next_fn_idx,
+                            &mut memory_layout,
+                            string_pool.clone(),
+                            &all_fb_subs,
+                            &fb_mangling,
+                            Some(&inst.iface_subs),
+                            &iface_call_rewrites,
+                        )?;
+                        mir_func.name = inst.mangled_name;
+                        function_indices.insert(mir_func.name, next_fn_idx);
+                        next_fn_idx += 1;
+                        functions.push(mir_func);
+                    }
+                    continue;
+                }
+
                 // An empty body is a valid no-op stub and still lowers, so call sites
                 // resolve.
                 let mut mir_func = lower_function(
@@ -232,6 +280,8 @@ fn lower_module_from_pous<'db>(
                     string_pool.clone(),
                     &all_fb_subs,
                     &fb_mangling,
+                    None,
+                    &iface_call_rewrites,
                 )?;
                 mir_func.export_name = make_export_name(ns_prefix, func.name(db).text(db));
                 function_indices.insert(mir_func.name, next_fn_idx);
@@ -308,6 +358,7 @@ fn lower_module_from_pous<'db>(
                         string_pool.clone(),
                         &any_subs,
                         mangled,
+                        &iface_call_rewrites,
                     )?;
                     for mf in method_funcs {
                         function_indices.insert(mf.name, mf.index);
@@ -357,6 +408,7 @@ fn lower_module_from_pous<'db>(
                     next_fn_idx,
                     &mut memory_layout,
                     string_pool.clone(),
+                    &iface_call_rewrites,
                 )?;
                 for mf in method_funcs {
                     function_indices.insert(mf.name, mf.index);
@@ -382,6 +434,7 @@ fn lower_module_from_pous<'db>(
             next_fn_idx,
             &mut memory_layout,
             string_pool.clone(),
+            &iface_call_rewrites,
         )?;
         let body_fn = mir_func.name;
         if let crate::types::MirType::Struct(struct_type) = &prog_type {

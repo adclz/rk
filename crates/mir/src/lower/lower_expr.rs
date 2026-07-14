@@ -57,6 +57,26 @@ pub struct ExprLowerCtx<'db> {
     >,
     /// String literal pool - shared across all functions in the module.
     pub string_pool: std::rc::Rc<std::cell::RefCell<StringPool>>,
+    /// Phase B: in a specialized body (`drive$Worker`), each interface param's
+    /// concrete POU.
+    pub iface_subs: Option<
+        std::rc::Rc<
+            rustc_hash::FxHashMap<
+                hir::hir_def::interned::identifier::Ident,
+                hir::hir_def::pous::pou::Pou<'db>,
+            >,
+        >,
+    >,
+    /// Phase B: call site → mangled specialization (`drive` -> `drive$Worker`),
+    /// module-global.
+    pub iface_call_rewrites: Option<
+        std::rc::Rc<
+            rustc_hash::FxHashMap<
+                hir::hir_def::expressions::expression::FuncCall<'db>,
+                hir::hir_def::interned::identifier::Ident,
+            >,
+        >,
+    >,
 }
 
 /// String literal pool: unique strings and their offsets in the data section.
@@ -114,6 +134,8 @@ impl<'db> ExprLowerCtx<'db> {
             fb_subs: None,
             local_fb_mangling: None,
             string_pool,
+            iface_subs: None,
+            iface_call_rewrites: None,
         }
     }
 
@@ -129,6 +151,8 @@ impl<'db> ExprLowerCtx<'db> {
             fb_subs: None,
             local_fb_mangling: None,
             string_pool,
+            iface_subs: None,
+            iface_call_rewrites: None,
         }
     }
 
@@ -144,6 +168,8 @@ impl<'db> ExprLowerCtx<'db> {
             fb_subs: None,
             local_fb_mangling: None,
             string_pool,
+            iface_subs: None,
+            iface_call_rewrites: None,
         }
     }
 
@@ -654,9 +680,28 @@ impl<'db> ExprLowerCtx<'db> {
         &self,
         begin_path: hir::hir_def::expressions::expression::BeginPathExpr<'db>,
     ) -> Result<MirPlace, LowerTypeError> {
-        let path_expr = begin_path.expr(self.db).ok_or_else(|| {
-            LowerTypeError::UnsupportedType("Path without path expression".to_string())
-        })?;
+        let path_expr = match begin_path.expr(self.db) {
+            Some(pe) => pe,
+            None => {
+                // Bare `THIS`, as an interface argument: the instance base,
+                // `AddrOf(ThisField{0})`.
+                if begin_path.invocation(self.db).map(|i| i.kind(self.db))
+                    == Some(InvocationKind::This)
+                {
+                    return Ok(MirPlace::ThisField {
+                        field_name: hir::hir_def::interned::identifier::Ident::new(
+                            self.db,
+                            compact_str::CompactString::from("THIS"),
+                        ),
+                        field_offset: 0,
+                        field_type: MirType::Elementary(MirElementary::Int),
+                    });
+                }
+                return Err(LowerTypeError::UnsupportedType(
+                    "Path without path expression".to_string(),
+                ));
+            }
+        };
 
         // Check for THIS invocation - if present, the path is relative to the 'this' pointer
         if let Some(invocation) = begin_path.invocation(self.db)
@@ -929,6 +974,7 @@ impl<'db> ExprLowerCtx<'db> {
         Option<(hir::hir_def::interned::identifier::Ident, MirPlace, Type<'db>)>,
         LowerTypeError,
     > {
+        use hir::HasName;
         use hir::hir_def::expressions::expression::PathExprKind;
         use hir::hir_def::scope::ScopeKind;
         use hir::hir_def::semantic_index::get_scope;
@@ -941,23 +987,76 @@ impl<'db> ExprLowerCtx<'db> {
             Type::CallableType(CallableType::MethodDecl(m)) => m,
             _ => return Ok(None),
         };
+        // `receiver.method` is a Field whose `.path` is the receiver instance.
+        let field = match path.expr(self.db).map(|pe| pe.expr(self.db)) {
+            Some(PathExprKind::Field(fe)) => fe,
+            _ => {
+                return Err(LowerTypeError::UnsupportedType(
+                    "unsupported method-call form (expected `instance.method(...)`)".to_string(),
+                ));
+            }
+        };
+        let receiver_path = field.path;
+        let root_ident = self.find_root_var_ident(receiver_path);
+
         let method_decl = match method {
             MethodRef::Declared(md) => md,
-            // A call through an interface parameter (Design 1: interfaces only as
-            // VAR_INPUT/VAR_IN_OUT) is a valid, type-checked call that Phase B
-            // will monomorphize to a direct `Concrete#method`. Until that lands,
-            // codegen can't resolve the concrete target, so stop cleanly here.
-            MethodRef::Prototype(_) => {
-                return Err(LowerTypeError::UnsupportedType(
-                    "interface method calls are not yet monomorphized (Phase B)".to_string(),
-                ));
+            // Phase B: a call through an interface param; the concrete implementer
+            // is known via `iface_subs`.
+            MethodRef::Prototype(proto) => {
+                use hir::HirNodeInfo;
+                use hir::hir_def::pous::pou::Pou;
+                let concrete = self
+                    .iface_subs
+                    .as_ref()
+                    .and_then(|m| m.get(&root_ident).copied())
+                    .ok_or_else(|| {
+                        LowerTypeError::UnsupportedType(
+                            "interface method call not monomorphized (receiver is not a specialized interface param)"
+                                .to_string(),
+                        )
+                    })?;
+                let name = proto.get_name_ident(self.db);
+                // Prefer the implementer's OWN declared method; fall back to one
+                // it inherits from a base. `inherited_methods` on the implementer
+                // returns the interface prototype for this name, not the impl.
+                let concrete_scope = match concrete {
+                    Pou::FunctionBlock(fb) => fb.get_scope_id(self.db),
+                    Pou::Class(c) => c.get_scope_id(self.db),
+                    _ => {
+                        return Err(LowerTypeError::UnsupportedType(
+                            "interface implementer is not a function block or class".to_string(),
+                        ));
+                    }
+                };
+                let resolved = concrete_scope
+                    .def_map(self.db)
+                    .declared_methods
+                    .get(&name)
+                    .copied()
+                    .or_else(|| {
+                        hir::hir_ty::head::inheritance::inherited_methods(self.db, concrete)
+                            .methods
+                            .get(&name)
+                            .map(|im| im.method)
+                    });
+                match resolved {
+                    Some(MethodRef::Declared(d)) => d,
+                    _ => {
+                        return Err(LowerTypeError::UnsupportedType(format!(
+                            "no concrete implementation of interface method '{}'",
+                            name.text(self.db)
+                        )));
+                    }
+                }
             }
         };
 
         // The owner is the method's DECLARING POU — the name the method function
         // is registered under. For an inherited method this is the *base*, not the
         // receiver's derived type, so deriving the owner from the receiver would
-        // build the wrong symbol (`Derived#m` vs the registered `Base#m`).
+        // build the wrong symbol (`Derived#m` vs the registered `Base#m`). For an
+        // interface call it is the resolved concrete implementer (`Worker`).
         let owner_pou = {
             let method_scope = get_scope(self.db, method_decl.scope_id(self.db));
             let parent = method_scope.parent.ok_or_else(|| {
@@ -972,18 +1071,6 @@ impl<'db> ExprLowerCtx<'db> {
                 }
             }
         };
-
-        // `receiver.method` is a Field whose `.path` is the receiver instance.
-        let field = match path.expr(self.db).map(|pe| pe.expr(self.db)) {
-            Some(PathExprKind::Field(fe)) => fe,
-            _ => {
-                return Err(LowerTypeError::UnsupportedType(
-                    "unsupported method-call form (expected `instance.method(...)`)".to_string(),
-                ));
-            }
-        };
-        let receiver_path = field.path;
-        let root_ident = self.find_root_var_ident(receiver_path);
 
         // A generic/monomorphized instance registers its methods under the mangled
         // instance name (`Counter$INT#m`); deriving that from the declaring POU
@@ -1047,6 +1134,15 @@ impl<'db> ExprLowerCtx<'db> {
         // resolve.
         let callee_name = if let Some((callee, _, _)) = &method_target {
             *callee
+        } else if let Some(mangled) = self
+            .iface_call_rewrites
+            .as_ref()
+            .and_then(|m| m.get(&func_call).copied())
+        {
+            // Phase B: this call passes an interface arg to a function with an
+            // interface param — route it to the concrete specialization
+            // (`drive` -> `drive$Worker`).
+            mangled
         } else {
             match path.infer(self.db) {
                 Type::Function(f) => {
