@@ -416,3 +416,339 @@ fn test_st_interface_method_mutates_instance(mut with_db: db::RootDatabase) {
     let result: i32 = super::execute_wasm(&wasm, "test", ());
     assert_eq!(result, 2, "two dev.Inc() through the interface mutate w.c to 2");
 }
+
+/// TRANSITIVE monomorphization: `outer` forwards its own interface `VAR_IN_OUT`
+/// param onward to `inner(dev := dev)`. The concrete implementer is only known in
+/// the SPECIALIZATION (`outer$Counter`), where `dev` is bound to `Counter`; the
+/// worklist must resolve the forwarded `dev` through that binding and specialize
+/// `inner` -> `inner$Counter` too, lowering its `dev.Inc()` to `Counter#Inc`.
+/// Before transitive collection, `outer(dev := w)` emitted `outer$Counter` whose
+/// body still called a bare, unspecialized `inner` — a miscompile. Two `outer`
+/// calls mutate `w.c` to 2 through the two-level forward.
+#[rstest]
+fn test_st_interface_param_transitive(mut with_db: db::RootDatabase) {
+    let source = r#"
+        INTERFACE ICounter
+            METHOD Inc END_METHOD
+            METHOD Get : INT END_METHOD
+        END_INTERFACE
+        FUNCTION_BLOCK Counter IMPLEMENTS ICounter
+            VAR c : INT; END_VAR
+            METHOD Inc
+                c := c + 1;
+            END_METHOD
+            METHOD Get : INT
+                Get := c;
+            END_METHOD
+        END_FUNCTION_BLOCK
+        FUNCTION inner : INT
+            VAR_IN_OUT dev : ICounter; END_VAR
+            dev.Inc();
+            inner := 0;
+        END_FUNCTION
+        FUNCTION outer : INT
+            VAR_IN_OUT dev : ICounter; END_VAR
+            inner(dev := dev);        (* forward the interface param onward *)
+            outer := 0;
+        END_FUNCTION
+        FUNCTION test : INT
+        VAR w : Counter; END_VAR
+            test := outer(dev := w) + outer(dev := w) + w.Get();
+        END_FUNCTION
+    "#;
+    let wasm = compile_to_wasm(&mut with_db, source);
+    let result: i32 = super::execute_wasm(&wasm, "test", ());
+    assert_eq!(result, 2, "two forwards reach Counter#Inc through outer$C -> inner$C");
+}
+
+/// TRANSITIVE, TWO implementers: `mid` forwards `s` to `leaf(s := s)`, and `test`
+/// calls `mid` with two different concretes (Inc1 +1, Inc10 +10). Correct
+/// transitive monomorphization must produce DISTINCT chains — `mid$Inc1 ->
+/// leaf$Inc1 -> Inc1#Step` and `mid$Inc10 -> leaf$Inc10 -> Inc10#Step`. A
+/// collapsed/shared specialization (both forwards routed to one `leaf`) could not
+/// yield 1 + 10 = 11; it would give 2 or 20.
+#[rstest]
+fn test_st_interface_param_transitive_two_impls(mut with_db: db::RootDatabase) {
+    let source = r#"
+        INTERFACE IStep
+            METHOD Step END_METHOD
+            METHOD Get : INT END_METHOD
+        END_INTERFACE
+        FUNCTION_BLOCK Inc1 IMPLEMENTS IStep
+            VAR v : INT; END_VAR
+            METHOD Step
+                v := v + 1;
+            END_METHOD
+            METHOD Get : INT
+                Get := v;
+            END_METHOD
+        END_FUNCTION_BLOCK
+        FUNCTION_BLOCK Inc10 IMPLEMENTS IStep
+            VAR v : INT; END_VAR
+            METHOD Step
+                v := v + 10;
+            END_METHOD
+            METHOD Get : INT
+                Get := v;
+            END_METHOD
+        END_FUNCTION_BLOCK
+        FUNCTION leaf : INT
+            VAR_IN_OUT s : IStep; END_VAR
+            s.Step();
+            leaf := 0;
+        END_FUNCTION
+        FUNCTION mid : INT
+            VAR_IN_OUT s : IStep; END_VAR
+            leaf(s := s);             (* forward onward *)
+            mid := 0;
+        END_FUNCTION
+        FUNCTION test2 : INT
+        VAR a : Inc1; b : Inc10; END_VAR
+            mid(s := a);              (* mid$Inc1 -> leaf$Inc1 -> Inc1#Step: a.v = 1 *)
+            mid(s := b);              (* mid$Inc10 -> leaf$Inc10 -> Inc10#Step: b.v = 10 *)
+            test2 := a.Get() + b.Get();
+        END_FUNCTION
+    "#;
+    let wasm = compile_to_wasm(&mut with_db, source);
+    let result: i32 = super::execute_wasm(&wasm, "test2", ());
+    assert_eq!(result, 11, "distinct transitive chains: Inc1 (+1) and Inc10 (+10)");
+}
+
+/// TRANSITIVE, THREE levels: `l1` -> `l2` -> `l3` each forward the interface param
+/// onward, and only `l3` actually calls `dev.Inc()`. The worklist must propagate
+/// the concrete binding through the whole chain (`l1$C` -> `l2$C` -> `l3$C`), at
+/// arbitrary depth. Three `l1(dev := w)` calls drive `w.c` to 3.
+#[rstest]
+fn test_st_interface_param_transitive_three_levels(mut with_db: db::RootDatabase) {
+    let source = r#"
+        INTERFACE ICounter
+            METHOD Inc END_METHOD
+            METHOD Get : INT END_METHOD
+        END_INTERFACE
+        FUNCTION_BLOCK Counter IMPLEMENTS ICounter
+            VAR c : INT; END_VAR
+            METHOD Inc
+                c := c + 1;
+            END_METHOD
+            METHOD Get : INT
+                Get := c;
+            END_METHOD
+        END_FUNCTION_BLOCK
+        FUNCTION l3 : INT
+            VAR_IN_OUT dev : ICounter; END_VAR
+            dev.Inc();
+            l3 := 0;
+        END_FUNCTION
+        FUNCTION l2 : INT
+            VAR_IN_OUT dev : ICounter; END_VAR
+            l3(dev := dev);
+            l2 := 0;
+        END_FUNCTION
+        FUNCTION l1 : INT
+            VAR_IN_OUT dev : ICounter; END_VAR
+            l2(dev := dev);
+            l1 := 0;
+        END_FUNCTION
+        FUNCTION test3 : INT
+        VAR w : Counter; END_VAR
+            l1(dev := w);
+            l1(dev := w);
+            l1(dev := w);
+            test3 := w.Get();
+        END_FUNCTION
+    "#;
+    let wasm = compile_to_wasm(&mut with_db, source);
+    let result: i32 = super::execute_wasm(&wasm, "test3", ());
+    assert_eq!(result, 3, "concrete binding propagates through a 3-level forward chain");
+}
+
+/// Regression for the seed change: interface-param functions are no longer walked
+/// in the seed pass (only as specializations, by the worklist). So a call INSIDE a
+/// specialization body — whether it FORWARDS the interface param (`helper(dev :=
+/// dev)`) or passes a CONCRETE local (`helper(dev := local)`) — must be collected
+/// by the per-instance walk. Both routes here target `helper$Counter`; the forward
+/// mutates `w`, the concrete-local mutates an internal `local` (unobservable), so
+/// `w.c` ends at 1.
+#[rstest]
+fn test_st_interface_param_specialization_body_calls(mut with_db: db::RootDatabase) {
+    let source = r#"
+        INTERFACE ICounter
+            METHOD Inc END_METHOD
+            METHOD Get : INT END_METHOD
+        END_INTERFACE
+        FUNCTION_BLOCK Counter IMPLEMENTS ICounter
+            VAR c : INT; END_VAR
+            METHOD Inc
+                c := c + 1;
+            END_METHOD
+            METHOD Get : INT
+                Get := c;
+            END_METHOD
+        END_FUNCTION_BLOCK
+        FUNCTION helper : INT
+            VAR_IN_OUT dev : ICounter; END_VAR
+            dev.Inc();
+            helper := dev.Get();
+        END_FUNCTION
+        FUNCTION outer : INT
+            VAR_IN_OUT dev : ICounter; END_VAR
+            VAR local : Counter; END_VAR
+            helper(dev := dev);            (* forward: mutates the caller's w *)
+            outer := helper(dev := local); (* concrete local inside the specialization *)
+        END_FUNCTION
+        FUNCTION test_body : INT
+        VAR w : Counter; END_VAR
+            outer(dev := w);
+            test_body := w.Get();
+        END_FUNCTION
+    "#;
+    let wasm = compile_to_wasm(&mut with_db, source);
+    let result: i32 = super::execute_wasm(&wasm, "test_body", ());
+    assert_eq!(result, 1, "both the forwarded and concrete-local calls resolve to helper$Counter");
+}
+
+/// Keying torture (from the adversarial finder): `mid`'s own params are named
+/// `p, q` — IDENTICAL to `leaf`'s — and it forwards them SWAPPED: `leaf(p := q,
+/// q := p)`. `resolve_concrete` must key the active substitution by the ARG's name
+/// (`q` -> Ten, `p` -> One) while the new instance binds by the CALLEE's param name
+/// -> `leaf` gets `{p: Ten, q: One}`. Any confusion of which name is the key would
+/// silently drop the swap and yield 1001 instead of 10 + 100*1 = 110.
+#[rstest]
+fn test_st_interface_param_same_name_swapped_forward(mut with_db: db::RootDatabase) {
+    let source = r#"
+        INTERFACE I
+            METHOD V : INT END_METHOD
+        END_INTERFACE
+        FUNCTION_BLOCK One IMPLEMENTS I
+            METHOD V : INT  V := 1; END_METHOD
+        END_FUNCTION_BLOCK
+        FUNCTION_BLOCK Ten IMPLEMENTS I
+            METHOD V : INT  V := 10; END_METHOD
+        END_FUNCTION_BLOCK
+        FUNCTION leaf : INT
+            VAR_IN_OUT p : I; q : I; END_VAR
+            leaf := p.V() + 100 * q.V();
+        END_FUNCTION
+        FUNCTION mid : INT
+            VAR_IN_OUT p : I; q : I; END_VAR
+            mid := leaf(p := q, q := p);   (* swap, with names identical to leaf's *)
+        END_FUNCTION
+        FUNCTION entry : INT
+        VAR x : One; y : Ten; END_VAR
+            entry := mid(p := x, q := y);
+        END_FUNCTION
+    "#;
+    let wasm = compile_to_wasm(&mut with_db, source);
+    let r: i32 = super::execute_wasm(&wasm, "entry", ());
+    assert_eq!(r, 110, "arg-name keying binds leaf p->Ten, q->One (swap preserved)");
+}
+
+/// Per-instance rewrites invariant (from the adversarial finder): `mid` is
+/// instantiated TWICE — `mid$One_Ten` and `mid$Ten_One` — and both share the SAME
+/// inner `leaf(p := a, q := b)` `FuncCall` node, which must rewrite to DIFFERENT
+/// `leaf` specializations per `mid` instance. A single shared/global rewrite
+/// (last-writer-wins) would collapse both to one `leaf` spec. Correct:
+/// `mid$One_Ten` -> leaf(One,Ten)=1001; `mid$Ten_One` -> leaf(Ten,One)=110;
+/// 1001 + 10000*110 = 1101001.
+#[rstest]
+fn test_st_interface_param_per_instance_rewrites(mut with_db: db::RootDatabase) {
+    let source = r#"
+        INTERFACE I
+            METHOD V : INT END_METHOD
+        END_INTERFACE
+        FUNCTION_BLOCK One IMPLEMENTS I
+            METHOD V : INT  V := 1; END_METHOD
+        END_FUNCTION_BLOCK
+        FUNCTION_BLOCK Ten IMPLEMENTS I
+            METHOD V : INT  V := 10; END_METHOD
+        END_FUNCTION_BLOCK
+        FUNCTION leaf : INT
+            VAR_IN_OUT p : I; q : I; END_VAR
+            leaf := p.V() + 100 * q.V();
+        END_FUNCTION
+        FUNCTION mid : INT
+            VAR_IN_OUT a : I; b : I; END_VAR
+            mid := leaf(p := a, q := b);
+        END_FUNCTION
+        FUNCTION entry : INT
+        VAR x : One; y : Ten; END_VAR
+            entry := mid(a := x, b := y) + 10000 * mid(a := y, b := x);
+        END_FUNCTION
+    "#;
+    let wasm = compile_to_wasm(&mut with_db, source);
+    let r: i32 = super::execute_wasm(&wasm, "entry", ());
+    assert_eq!(r, 1101001, "the one inner FuncCall routes to two different leaf specs");
+}
+
+/// A self-recursive interface-param function forwards to ITSELF (`f(dev := dev)`)
+/// with a base case. The worklist re-encounters `f`'s own forwarded self-call
+/// while processing `f$Counter`; `by_canonical` must dedup it back to `f$Counter`
+/// (else collection never reaches fixpoint) AND record the self-call in
+/// `f$Counter`'s own rewrites pointing at `f$Counter` — leaving it un-rewritten
+/// would target the bare, never-emitted `f`. Runs `dev.Inc()` until `Get()` = 3.
+#[rstest]
+fn test_st_interface_param_self_recursive_forward(mut with_db: db::RootDatabase) {
+    let source = r#"
+        INTERFACE ICounter
+            METHOD Inc END_METHOD
+            METHOD Get : INT END_METHOD
+        END_INTERFACE
+        FUNCTION_BLOCK Counter IMPLEMENTS ICounter
+            VAR c : INT; END_VAR
+            METHOD Inc  c := c + 1; END_METHOD
+            METHOD Get : INT  Get := c; END_METHOD
+        END_FUNCTION_BLOCK
+        FUNCTION f : INT
+            VAR_IN_OUT dev : ICounter; END_VAR
+            IF dev.Get() < 3 THEN
+                dev.Inc();
+                f(dev := dev);          (* self-recursive forward *)
+            END_IF
+            f := 0;
+        END_FUNCTION
+        FUNCTION test : INT
+        VAR w : Counter; END_VAR
+            f(dev := w);
+            test := w.Get();
+        END_FUNCTION
+    "#;
+    let wasm = compile_to_wasm(&mut with_db, source);
+    let r: i32 = super::execute_wasm(&wasm, "test", ());
+    assert_eq!(r, 3, "self-recursive forward terminates and routes to f$Counter");
+}
+
+/// THIS forwarded transitively: a METHOD passes `THIS` into an interface-param
+/// function (`outer(s := THIS)`), which then FORWARDS it onward (`inner(s := s)`).
+/// The `THIS` concrete is bound in the SEED (via `self_pou` = the method's owner,
+/// `Dog`), seeding `outer$Dog`; the worklist must then expand that instance's
+/// forwarded `inner(s := s)` to `inner$Dog`. So the seed's `self_pou` binding has
+/// to compose with the transitive worklist — `s.Speak()` reaches `Dog#Speak` = 7.
+#[rstest]
+fn test_st_interface_param_this_forwarded_transitively(mut with_db: db::RootDatabase) {
+    let source = r#"
+        INTERFACE ISpeaker
+            METHOD Speak : INT END_METHOD
+        END_INTERFACE
+        FUNCTION_BLOCK Dog IMPLEMENTS ISpeaker
+            METHOD Speak : INT  Speak := 7; END_METHOD
+            METHOD PUBLIC Run : INT
+                Run := outer(s := THIS);      (* pass THIS into an iface-param fn *)
+            END_METHOD
+        END_FUNCTION_BLOCK
+        FUNCTION inner : INT
+            VAR_IN_OUT s : ISpeaker; END_VAR
+            inner := s.Speak();
+        END_FUNCTION
+        FUNCTION outer : INT
+            VAR_IN_OUT s : ISpeaker; END_VAR
+            outer := inner(s := s);           (* forward THIS onward *)
+        END_FUNCTION
+        FUNCTION test : INT
+        VAR d : Dog; END_VAR
+            test := d.Run();
+        END_FUNCTION
+    "#;
+    let wasm = compile_to_wasm(&mut with_db, source);
+    let r: i32 = super::execute_wasm(&wasm, "test", ());
+    assert_eq!(r, 7, "THIS bound in the seed (self_pou=Dog) drives outer$Dog -> inner$Dog");
+}

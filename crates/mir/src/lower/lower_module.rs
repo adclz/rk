@@ -260,7 +260,8 @@ fn lower_module_from_pous<'db>(
                             &all_fb_subs,
                             &fb_mangling,
                             Some(&inst.iface_subs),
-                            &iface_call_rewrites,
+                            // A specialization's body uses its own rewrites.
+                            &inst.call_rewrites,
                         )?;
                         mir_func.name = inst.mangled_name;
                         function_indices.insert(mir_func.name, next_fn_idx);

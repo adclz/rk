@@ -38,10 +38,16 @@ pub struct IfaceInstance<'db> {
     /// interface param name -> concrete implementer POU
     pub iface_subs: FxHashMap<Ident, Pou<'db>>,
     pub mangled_name: Ident,
+    /// Rewrites for calls inside this specialization's body: a forwarded
+    /// interface param resolves to a different transitive specialization per
+    /// binding.
+    pub call_rewrites: FxHashMap<FuncCall<'db>, Ident>,
 }
 
-/// Walk every POU body; for each call to a function with interface parameters,
-/// record the specialization it needs and the call-site -> mangled-name rewrite.
+/// Walk every POU body; for each call to a function with interface
+/// parameters, record the specialization it needs and the call rewrite.
+/// Seed from the generically emitted bodies, then process each
+/// specialization with its own substitution active, to fixpoint.
 pub fn collect_iface_instantiations<'db>(
     db: &'db dyn WorkspaceDataBase,
     all_pous: &[(&Pou<'db>, Option<String>)],
@@ -50,37 +56,50 @@ pub fn collect_iface_instantiations<'db>(
     // Canonical key: (qualified func name, sorted [(param name, qualified concrete)]).
     let mut by_canonical: FxHashMap<(Ident, Vec<(Ident, Ident)>), Ident> = FxHashMap::default();
     let mut instances: Vec<IfaceInstance<'db>> = Vec::new();
-    let mut call_rewrites: FxHashMap<FuncCall<'db>, Ident> = FxHashMap::default();
+    // Rewrites for the generic bodies; specializations own theirs.
+    let mut global_rewrites: FxHashMap<FuncCall<'db>, Ident> = FxHashMap::default();
+    let no_subs: FxHashMap<Ident, Pou<'db>> = FxHashMap::default();
 
+    // --- Seed ---
     for (pou, _) in all_pous {
         // Walk every body of this POU — its own statements plus each method's —
         // for calls in BOTH expression and statement context.
         match pou {
-            Pou::Function(f) => process_body(
-                db,
-                f.scope_id(db),
-                f.statements(db),
-                &mut by_canonical,
-                &mut instances,
-                &mut call_rewrites,
-            ),
+            Pou::Function(f) => {
+                // Interface-param functions are emitted only as specializations; the
+                // worklist walks them.
+                if f.variables(db).iter().any(is_iface_param(db)) {
+                    continue;
+                }
+                process_body(
+                    db,
+                    f.scope_id(db),
+                    f.statements(db),
+                    &no_subs,
+                    &mut by_canonical,
+                    &mut instances,
+                    &mut global_rewrites,
+                );
+            }
             Pou::FunctionBlock(fb) => {
                 process_body(
                     db,
                     fb.scope_id(db),
                     fb.statements(db),
+                    &no_subs,
                     &mut by_canonical,
                     &mut instances,
-                    &mut call_rewrites,
+                    &mut global_rewrites,
                 );
                 for m in fb.methods(db) {
                     process_body(
                         db,
                         m.scope_id(db),
                         m.stmts(db),
+                        &no_subs,
                         &mut by_canonical,
                         &mut instances,
-                        &mut call_rewrites,
+                        &mut global_rewrites,
                     );
                 }
             }
@@ -90,9 +109,10 @@ pub fn collect_iface_instantiations<'db>(
                         db,
                         m.scope_id(db),
                         m.stmts(db),
+                        &no_subs,
                         &mut by_canonical,
                         &mut instances,
-                        &mut call_rewrites,
+                        &mut global_rewrites,
                     );
                 }
             }
@@ -106,23 +126,46 @@ pub fn collect_iface_instantiations<'db>(
             db,
             program.scope_id(db),
             program.statements(db),
+            &no_subs,
             &mut by_canonical,
             &mut instances,
-            &mut call_rewrites,
+            &mut global_rewrites,
         );
     }
 
-    (instances, call_rewrites)
+    // Worklist to fixpoint: `by_canonical` dedups, so this terminates even
+    // for mutually forwarding functions.
+    let mut i = 0;
+    while i < instances.len() {
+        let func = instances[i].func;
+        let subs = instances[i].iface_subs.clone();
+        let mut inst_rewrites: FxHashMap<FuncCall<'db>, Ident> = FxHashMap::default();
+        process_body(
+            db,
+            func.scope_id(db),
+            func.statements(db),
+            &subs,
+            &mut by_canonical,
+            &mut instances,
+            &mut inst_rewrites,
+        );
+        instances[i].call_rewrites = inst_rewrites;
+        i += 1;
+    }
+
+    (instances, global_rewrites)
 }
 
-/// Collect + process every call in one body (statement- and expression-context).
+/// Collect and process every call in one body under the active
+/// substitution `subs`; rewrites are written to `out_rewrites`.
 fn process_body<'db>(
     db: &'db dyn WorkspaceDataBase,
     scope: ScopeId<'db>,
     stmts: &[Stmt<'db>],
+    subs: &FxHashMap<Ident, Pou<'db>>,
     by_canonical: &mut FxHashMap<(Ident, Vec<(Ident, Ident)>), Ident>,
     instances: &mut Vec<IfaceInstance<'db>>,
-    call_rewrites: &mut FxHashMap<FuncCall<'db>, Ident>,
+    out_rewrites: &mut FxHashMap<FuncCall<'db>, Ident>,
 ) {
     // The POU whose instance `THIS` refers to in this body: the FB/Class itself
     // for its own body, or the owner for a method body. Used to resolve a `THIS`
@@ -139,7 +182,16 @@ fn process_body<'db>(
     let mut calls = Vec::new();
     collect_calls(db, stmts, &mut calls);
     for fc in calls {
-        process_call(db, fc, body, self_pou, by_canonical, instances, call_rewrites);
+        process_call(
+            db,
+            fc,
+            body,
+            self_pou,
+            subs,
+            by_canonical,
+            instances,
+            out_rewrites,
+        );
     }
 }
 
@@ -271,9 +323,10 @@ fn process_call<'db>(
     fc: FuncCall<'db>,
     body: &hir::hir_ty::body::BodyInferenceResult<'db>,
     self_pou: Option<Pou<'db>>,
+    subs: &FxHashMap<Ident, Pou<'db>>,
     by_canonical: &mut FxHashMap<(Ident, Vec<(Ident, Ident)>), Ident>,
     instances: &mut Vec<IfaceInstance<'db>>,
-    call_rewrites: &mut FxHashMap<FuncCall<'db>, Ident>,
+    out_rewrites: &mut FxHashMap<FuncCall<'db>, Ident>,
 ) {
     // The callee must be a plain function.
     let func = match fc.path(db).infer(db) {
@@ -303,9 +356,8 @@ fn process_call<'db>(
             }
             ParamAssignKind::FormalOutput { .. } => continue,
         };
-        // `THIS` as the argument resolves to the enclosing FB/Class (its type
-        // lives in `type_of_invocation`, not `type_of_expr`, so resolve it from
-        // the body's self-POU). Otherwise take the argument's concrete type.
+        // `THIS` resolves to the enclosing FB/Class; otherwise the argument's
+        // concrete type, through the active substitution.
         let concrete = if is_this_arg(db, arg) {
             self_pou
         } else {
@@ -314,7 +366,7 @@ fn process_call<'db>(
                 .get(&arg)
                 .copied()
                 .unwrap_or_else(|| arg.infer(db));
-            concrete_pou_of(db, arg_ty)
+            resolve_concrete(db, arg_ty, subs)
         };
         if let Some(concrete) = concrete {
             iface_subs.insert(param.name(db), concrete);
@@ -344,11 +396,13 @@ fn process_call<'db>(
                 func,
                 iface_subs: iface_subs.clone(),
                 mangled_name: m,
+                // Filled when this instance is processed by the worklist.
+                call_rewrites: FxHashMap::default(),
             });
             m
         }
     };
-    call_rewrites.insert(fc, mangled);
+    out_rewrites.insert(fc, mangled);
 }
 
 /// A param is an interface param iff it is `VAR_IN_OUT` and its (direct) type is
@@ -362,6 +416,27 @@ fn is_iface_param<'db>(
         matches!(var.kind(db), VariableKind::InOut)
             && matches!(var.spec(db).infer(db).normalize(db), Type::Interface(_))
     }
+}
+
+/// Resolve an argument's type to the concrete implementer it binds, honoring the
+/// active substitution. The raw type of a bare variable access is
+/// `Type::Variable((decl, _))` (before `normalize` peels it); if `decl` is an
+/// interface param bound by `subs` — i.e. a *forwarded* interface param in a
+/// specialized body — its concrete implementer is fixed there. Names are unique
+/// within a scope and interface locals are forbidden (E0514), so matching the
+/// substitution by the variable's name is unambiguous. Otherwise fall back to the
+/// static concrete type (a concrete FB/Class arg, or `THIS` handled by the caller).
+fn resolve_concrete<'db>(
+    db: &'db dyn WorkspaceDataBase,
+    ty: Type<'db>,
+    subs: &FxHashMap<Ident, Pou<'db>>,
+) -> Option<Pou<'db>> {
+    if let Type::Variable((var_decl, _)) = ty
+        && let Some(pou) = subs.get(&var_decl.name(db))
+    {
+        return Some(*pou);
+    }
+    concrete_pou_of(db, ty)
 }
 
 /// The concrete FB/Class POU a value type denotes, or `None`.

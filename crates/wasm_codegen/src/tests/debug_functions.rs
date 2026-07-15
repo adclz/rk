@@ -171,3 +171,49 @@ fn interface_specialization_deduped(mut with_db: db::RootDatabase) {
         .count();
     assert_eq!(n, 1, "two Worker args share a single drive$Worker specialization");
 }
+
+/// Transitive: `outer` forwards its interface param to `inner(dev := dev)`. Both
+/// levels must be specialized per concrete implementer, so ALL FOUR of
+/// `outer$Worker`, `outer$Heater`, `inner$Worker`, `inner$Heater` are emitted (the
+/// `inner$*` pair proves the forwarded param was resolved through the enclosing
+/// specialization's binding), and neither bare `outer` nor bare `inner` survives.
+#[rstest]
+fn interface_transitive_specializations_named(mut with_db: db::RootDatabase) {
+    let source = r#"
+        INTERFACE ITF1
+            METHOD Run : INT END_METHOD
+        END_INTERFACE
+        FUNCTION_BLOCK Worker IMPLEMENTS ITF1
+            METHOD Run : INT
+                Run := 10;
+            END_METHOD
+        END_FUNCTION_BLOCK
+        FUNCTION_BLOCK Heater IMPLEMENTS ITF1
+            METHOD Run : INT
+                Run := 20;
+            END_METHOD
+        END_FUNCTION_BLOCK
+        FUNCTION inner : INT
+        VAR_IN_OUT dev : ITF1; END_VAR
+            inner := dev.Run();
+        END_FUNCTION
+        FUNCTION outer : INT
+        VAR_IN_OUT dev : ITF1; END_VAR
+            outer := inner(dev := dev);
+        END_FUNCTION
+        FUNCTION run : INT
+        VAR w : Worker; h : Heater; END_VAR
+            run := outer(dev := w) + outer(dev := h);
+        END_FUNCTION
+    "#;
+    let (_mir, wasm) = compile_to_mir_and_wasm(&mut with_db, source);
+    let df = read_debug_functions(&wasm);
+    let names: Vec<&str> = df.functions.iter().map(|f| f.name.as_str()).collect();
+    for expected in ["outer$Worker", "outer$Heater", "inner$Worker", "inner$Heater"] {
+        assert!(names.contains(&expected), "missing {expected}: {names:?}");
+    }
+    assert!(
+        !names.contains(&"outer") && !names.contains(&"inner"),
+        "un-specialized interface-param functions must not be emitted: {names:?}"
+    );
+}
