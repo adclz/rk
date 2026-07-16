@@ -1249,6 +1249,32 @@ impl<'db> ExprLowerCtx<'db> {
         } else {
             rustc_hash::FxHashMap::default()
         };
+        // An interface-typed param is passed BY REFERENCE regardless of kind: an
+        // interface value is a reference, so a `VAR_INPUT` interface hands over the
+        // address (a copy of the reference), exactly like `VAR_IN_OUT`. The callee
+        // specialization expects a pointer to the concrete instance, so the arg
+        // must be `ByRef` (an `AddrOf`), not a by-value struct copy.
+        let param_is_iface: Vec<bool> = if let Some(c) = &callable_for_kinds {
+            c.def_map(self.db)
+                .local_variables
+                .values()
+                .map(|v| crate::lower::mono_iface::is_interface_param(self.db, v))
+                .collect()
+        } else {
+            Vec::new()
+        };
+        let iface_by_name: rustc_hash::FxHashMap<
+            hir::hir_def::interned::identifier::Ident,
+            bool,
+        > = if let Some(c) = &callable_for_kinds {
+            c.def_map(self.db)
+                .local_variables
+                .iter()
+                .map(|(n, v)| (*n, crate::lower::mono_iface::is_interface_param(self.db, v)))
+                .collect()
+        } else {
+            rustc_hash::FxHashMap::default()
+        };
 
         use hir::hir_def::pous::variable::VariableKind;
         // Wrap a lowered value as ByRef when the target param is
@@ -1272,7 +1298,11 @@ impl<'db> ExprLowerCtx<'db> {
                 ParamAssignKind::NonFormal { value } => {
                     let lowered = self.lower_expr(value)?;
                     let kind = param_kinds.get(i);
-                    if matches!(kind, Some(VariableKind::InOut | VariableKind::Output)) {
+                    // `VAR_IN_OUT`/`VAR_OUTPUT`, or ANY interface param (a
+                    // reference, passed by address) → `ByRef`.
+                    let by_ref = matches!(kind, Some(VariableKind::InOut | VariableKind::Output))
+                        || param_is_iface.get(i).copied().unwrap_or(false);
+                    if by_ref {
                         args.push(to_byref(lowered));
                     } else {
                         args.push(MirCallArg {
@@ -1287,10 +1317,16 @@ impl<'db> ExprLowerCtx<'db> {
                 } => {
                     provided_names.insert(param_ident.ident);
                     let lowered = self.lower_expr(value)?;
-                    // `name := value` syntax also covers `VAR_IN_OUT` -
-                    // look up the actual param kind by name to decide.
+                    // `name := value` syntax also covers `VAR_IN_OUT` and interface
+                    // params - look up the actual param kind / interface-ness by
+                    // name to decide `ByRef` vs `ByValue`.
                     let kind = kind_by_name.get(&param_ident.ident);
-                    if matches!(kind, Some(VariableKind::InOut | VariableKind::Output)) {
+                    let by_ref = matches!(kind, Some(VariableKind::InOut | VariableKind::Output))
+                        || iface_by_name
+                            .get(&param_ident.ident)
+                            .copied()
+                            .unwrap_or(false);
+                    if by_ref {
                         args.push(to_byref(lowered));
                     } else {
                         args.push(MirCallArg {

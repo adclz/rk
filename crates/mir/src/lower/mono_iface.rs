@@ -405,17 +405,27 @@ fn process_call<'db>(
     out_rewrites.insert(fc, mangled);
 }
 
-/// A param is an interface param iff it is `VAR_IN_OUT` and its (direct) type is
-/// an interface. Nested interfaces are rejected by E0516, so a direct
-/// `Type::Interface` is the only case here. (Spike scope: `VAR_IN_OUT` only —
-/// the natural form for interfaces; `VAR_INPUT` copy-semantics is a follow-up.)
+/// A param is an interface param iff it is a `VAR_INPUT` / `VAR_IN_OUT` param and
+/// its (direct) type is an interface. Nested interfaces are rejected by E0516, so
+/// a direct `Type::Interface` is the only case here. Both kinds monomorphize
+/// identically: an interface value is a *reference*, so `VAR_INPUT` passes the
+/// address (a copy of the reference) and `VAR_IN_OUT` passes the reference — the
+/// callee receives a pointer to the concrete instance either way, and we have
+/// banned rebinding (E0517), which is the only behavioural difference between
+/// them. (Matches other toolchains: the `INTERFACE` keyword forces address-passing for
+/// both.)
+pub(crate) fn is_interface_param<'db>(
+    db: &'db dyn WorkspaceDataBase,
+    var: &VariableDecl<'db>,
+) -> bool {
+    matches!(var.kind(db), VariableKind::InOut | VariableKind::Input)
+        && matches!(var.spec(db).infer(db).normalize(db), Type::Interface(_))
+}
+
 fn is_iface_param<'db>(
     db: &'db dyn WorkspaceDataBase,
 ) -> impl Fn(&VariableDecl<'db>) -> bool + 'db {
-    move |var: &VariableDecl<'db>| {
-        matches!(var.kind(db), VariableKind::InOut)
-            && matches!(var.spec(db).infer(db).normalize(db), Type::Interface(_))
-    }
+    move |var: &VariableDecl<'db>| is_interface_param(db, var)
 }
 
 /// Resolve an argument's type to the concrete implementer it binds, honoring the

@@ -752,3 +752,105 @@ fn test_st_interface_param_this_forwarded_transitively(mut with_db: db::RootData
     let r: i32 = super::execute_wasm(&wasm, "test", ());
     assert_eq!(r, 7, "THIS bound in the seed (self_pou=Dog) drives outer$Dog -> inner$Dog");
 }
+
+/// `VAR_INPUT` interface param. An interface value is a REFERENCE, so `VAR_INPUT`
+/// passes the address (a copy of the reference), not a by-value struct copy — the
+/// callee gets a pointer to the same instance and its `dev.Inc()` mutates the
+/// caller's `w`. Before widening the monomorphization to `Input`, this hard-errored
+/// at MIR (`UnsupportedType("Interface(...)")`). Two calls take `w.c` 0->1->2; the
+/// second returns 2, plus `w.Get()` = 2 -> 4.
+#[rstest]
+fn test_st_interface_var_input_param(mut with_db: db::RootDatabase) {
+    let source = r#"
+        INTERFACE I
+            METHOD Inc END_METHOD
+            METHOD Get : INT END_METHOD
+        END_INTERFACE
+        FUNCTION_BLOCK C IMPLEMENTS I
+            VAR c : INT; END_VAR
+            METHOD Inc  c := c + 1; END_METHOD
+            METHOD Get : INT  Get := c; END_METHOD
+        END_FUNCTION_BLOCK
+        FUNCTION use_input : INT
+            VAR_INPUT dev : I; END_VAR
+            dev.Inc();
+            use_input := dev.Get();
+        END_FUNCTION
+        FUNCTION test : INT
+        VAR w : C; END_VAR
+            use_input(dev := w);
+            test := use_input(dev := w) + w.Get();
+        END_FUNCTION
+    "#;
+    let wasm = compile_to_wasm(&mut with_db, source);
+    let r: i32 = super::execute_wasm(&wasm, "test", ());
+    assert_eq!(r, 4, "VAR_INPUT interface is a reference: mutation persists to w");
+}
+
+/// `VAR_INPUT` interface param monomorphizes per concrete implementer, exactly like
+/// `VAR_IN_OUT`. `pick(dev := a)` specializes to `pick$One` (-> One#V = 1),
+/// `pick(dev := b)` to `pick$Ten` (-> Ten#V = 10). Distinct results prove genuine
+/// per-concrete dispatch with zero runtime dispatch: 1 + 100*10 = 1001.
+#[rstest]
+fn test_st_interface_var_input_two_impls(mut with_db: db::RootDatabase) {
+    let source = r#"
+        INTERFACE I
+            METHOD V : INT END_METHOD
+        END_INTERFACE
+        FUNCTION_BLOCK One IMPLEMENTS I
+            METHOD V : INT  V := 1; END_METHOD
+        END_FUNCTION_BLOCK
+        FUNCTION_BLOCK Ten IMPLEMENTS I
+            METHOD V : INT  V := 10; END_METHOD
+        END_FUNCTION_BLOCK
+        FUNCTION pick : INT
+            VAR_INPUT dev : I; END_VAR
+            pick := dev.V();
+        END_FUNCTION
+        FUNCTION test : INT
+        VAR a : One; b : Ten; END_VAR
+            test := pick(dev := a) + 100 * pick(dev := b);
+        END_FUNCTION
+    "#;
+    let wasm = compile_to_wasm(&mut with_db, source);
+    let r: i32 = super::execute_wasm(&wasm, "test", ());
+    assert_eq!(r, 1001, "pick$One -> 1, pick$Ten -> 10, distinct specializations");
+}
+
+/// Mixed-kind forwarding: a `VAR_INPUT` interface param is forwarded onward to a
+/// `VAR_IN_OUT` interface param (`leaf(dev := dev)`). Both kinds are references, so
+/// the transitive worklist specializes both (`mid$C` -> `leaf$C`) and the shared
+/// instance's mutation persists through the whole chain: two calls drive `w.c` to 2.
+#[rstest]
+fn test_st_interface_var_input_forwarded_to_inout(mut with_db: db::RootDatabase) {
+    let source = r#"
+        INTERFACE I
+            METHOD Inc END_METHOD
+            METHOD Get : INT END_METHOD
+        END_INTERFACE
+        FUNCTION_BLOCK C IMPLEMENTS I
+            VAR c : INT; END_VAR
+            METHOD Inc  c := c + 1; END_METHOD
+            METHOD Get : INT  Get := c; END_METHOD
+        END_FUNCTION_BLOCK
+        FUNCTION leaf : INT
+            VAR_IN_OUT dev : I; END_VAR
+            dev.Inc();
+            leaf := 0;
+        END_FUNCTION
+        FUNCTION mid : INT
+            VAR_INPUT dev : I; END_VAR
+            leaf(dev := dev);          (* VAR_INPUT forwarded to VAR_IN_OUT *)
+            mid := 0;
+        END_FUNCTION
+        FUNCTION test : INT
+        VAR w : C; END_VAR
+            mid(dev := w);
+            mid(dev := w);
+            test := w.Get();
+        END_FUNCTION
+    "#;
+    let wasm = compile_to_wasm(&mut with_db, source);
+    let r: i32 = super::execute_wasm(&wasm, "test", ());
+    assert_eq!(r, 2, "VAR_INPUT forwarded to VAR_IN_OUT: mutation persists through mid$C -> leaf$C");
+}

@@ -235,20 +235,12 @@ fn lower_module_from_pous<'db>(
                     continue;
                 }
 
-                // Phase B: a function with an interface VAR_IN_OUT param cannot
-                // be lowered as-is (its interface param has no MIR type). Emit
-                // one specialized copy per concrete instantiation instead
-                // (`drive$Worker`, `drive$Heater`); call sites route to them via
-                // `iface_call_rewrites`.
-                let has_iface_param = func.variables(db).iter().any(|v| {
-                    matches!(
-                        v.kind(db),
-                        hir::hir_def::pous::variable::VariableKind::InOut
-                    ) && matches!(
-                        v.spec(db).infer(db).normalize(db),
-                        hir::hir_ty::ty::Type::Interface(_)
-                    )
-                });
+                // Phase B: a function with an interface param has no generic form; one
+                // copy per concrete instantiation (`drive$Worker`).
+                let has_iface_param = func
+                    .variables(db)
+                    .iter()
+                    .any(|v| super::mono_iface::is_interface_param(db, v));
                 if has_iface_param {
                     for inst in iface_by_func.get(func).into_iter().flatten() {
                         let mut mir_func = lower_function(
