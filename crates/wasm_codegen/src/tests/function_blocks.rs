@@ -182,6 +182,33 @@ fn test_st_inherited_method_call(mut with_db: db::RootDatabase) {
     assert_eq!(result, 3, "inherited method runs on the derived instance");
 }
 
+/// `ARRAY OF <FB>` with a method call on an element. Indexing must compute the
+/// element's own address so each instance keeps independent state: `arr[0]`
+/// reaches 3 and `arr[1]` reaches 2, summing to 5. A shared/wrong element address
+/// would change the sum.
+#[rstest]
+fn test_st_array_of_fb_instances(mut with_db: db::RootDatabase) {
+    let source = r#"
+        FUNCTION_BLOCK Counter
+        VAR c : INT; END_VAR
+            METHOD Inc : INT
+                c := c + 1;
+                Inc := c;
+            END_METHOD
+        END_FUNCTION_BLOCK
+        FUNCTION test : INT
+        VAR arr : ARRAY[0..2] OF Counter; END_VAR
+            arr[0].Inc();
+            arr[0].Inc();
+            arr[1].Inc();
+            test := arr[0].Inc() + arr[1].Inc();
+        END_FUNCTION
+    "#;
+    let wasm = compile_to_wasm(&mut with_db, source);
+    let result: i32 = super::execute_wasm(&wasm, "test", ());
+    assert_eq!(result, 5, "array-of-FB elements keep independent state (3 + 2)");
+}
+
 /// `THIS.m()` — an explicit self method call from inside another method — lowers
 /// to a direct `Counter#Inc` on the current `this` pointer (offset 0), exactly
 /// like the implicit-receiver forms. `IncTwice` calls `THIS.Inc()` twice, so the

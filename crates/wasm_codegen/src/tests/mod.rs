@@ -10,6 +10,7 @@ use rstest::*;
 
 // Test modules - only execution tests, no validation-only tests
 mod arrays;
+mod classes;
 mod control_flow;
 mod debug_functions;
 mod debug_lines;
