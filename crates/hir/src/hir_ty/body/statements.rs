@@ -76,6 +76,28 @@ impl<'db> StmtsResolverCtx<'db> {
             match stmt.stmt(db) {
                 StmtKind::EmptyPathExpression(expr) => {
                     resolver.resolve_begin_path_expr(db, *expr, None, ctx);
+                    // Rule 2 (IEC 6.6.7.2.9): SUPER() shall occur once in the FB
+                    // body. Track the first; a second occurrence is E0519,
+                    // pointing back to the first. (SUPER() in a method is E0518,
+                    // handled in resolve_invocation, so restrict to FB bodies.)
+                    if expr.invocation(db).map(|i| i.kind(db))
+                        == Some(crate::hir_def::expressions::invocation::InvocationKind::SuperBody)
+                        && matches!(
+                            get_scope(db, self.scope).kind,
+                            ScopeKind::Pou(crate::hir_def::pous::pou::Pou::FunctionBlock(_))
+                        )
+                    {
+                        match ctx.first_super_body {
+                            Some(first) => ctx.errors.push(
+                                InheritanceError::SuperBodyMultiple {
+                                    call_site: stmt.as_call_site(db),
+                                    first: first.as_call_site(db),
+                                }
+                                .to_diagnostic(db, ctx.scope.file(db)),
+                            ),
+                            None => ctx.first_super_body = Some(*stmt),
+                        }
+                    }
                     ctx.effectless_statements.push(*stmt);
                 }
 

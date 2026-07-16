@@ -366,6 +366,11 @@ pub struct BodyInferenceResult<'db> {
     // Tracks whether a reference variable is initialized / null / non-null
     // through linear statement flow.
     pub ref_null_state: FxHashMap<VariableDecl<'db>, NullState<'db>>,
+
+    // The first `SUPER()` (base-body call) statement seen in a function block
+    // body. Per IEC 6.6.7.2.9 rule 2, `SUPER()` shall occur once — a second
+    // occurrence is reported (E0519), pointing back to this first one.
+    pub first_super_body: Option<Stmt<'db>>,
 }
 
 impl<'db> BodyInferenceResult<'db> {
@@ -392,6 +397,7 @@ impl<'db> BodyInferenceResult<'db> {
             mismatched_for_step: Vec::new(),
             ref_null_state: FxHashMap::default(),
             fb_any_resolutions: FxHashMap::default(),
+            first_super_body: None,
         }
     }
 

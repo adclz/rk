@@ -82,12 +82,14 @@ CLASS fb1
     END_METHOD
 END_CLASS"#;
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E0501] Error: invalid use of SUPER or THIS
+    [E0518] Error: invalid use of SUPER or THIS
        ,-[ file:///test0.st:4:9 ]
        |
      4 |         SUPER()
        |         ^^|^^
-       |           `---- 'SUPER()' is not valid in this context
+       |           `---- 'SUPER()' cannot be called in a method of a function block
+       |
+       | Note: SUPER() is only valid in the function block body, not in a method
     ---'
     ");
 }
@@ -283,7 +285,33 @@ END_FUNCTION_BLOCK
        |         ^^|^^
        |           `---- 'SUPER()' cannot be called in a method of a function block
        |
-       | Note: SUPER() (the base function-block body call) is only valid in the function block body, not in a method
+       | Note: SUPER() is only valid in the function block body, not in a method
+    ---'
+    ");
+}
+
+#[rstest]
+fn super_body_multiple(mut with_db: RootDatabase) {
+    // Rule 2: SUPER() shall occur once. A second SUPER() -> E0519, with related
+    // info pointing at the first.
+    let source = r#"
+FUNCTION_BLOCK base
+END_FUNCTION_BLOCK
+FUNCTION_BLOCK derived EXTENDS base
+    SUPER();
+    SUPER();
+END_FUNCTION_BLOCK
+    "#;
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
+    [E0519] Error: invalid use of SUPER or THIS
+       ,-[ file:///test0.st:6:5 ]
+       |
+     5 |     SUPER();
+       |     ^^^|^^^
+       |        `----- 'SUPER()' is already called here
+     6 |     SUPER();
+       |     ^^^|^^^
+       |        `----- 'SUPER()' may only be called once in a function block body
     ---'
     ");
 }

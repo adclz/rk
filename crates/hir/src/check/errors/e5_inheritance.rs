@@ -118,6 +118,13 @@ pub enum InheritanceError<'db> {
     SuperBodyInMethod {
         call_site: CallSite<'db>,
     },
+    /// More than one `SUPER()` in a function block body. Per IEC 6.6.7.2.9 rule 2,
+    /// the call of `SUPER()` shall occur once. `call_site` is the offending
+    /// (second) call; `first` is the first `SUPER()`, shown as related info.
+    SuperBodyMultiple {
+        call_site: CallSite<'db>,
+        first: CallSite<'db>,
+    },
 }
 
 impl<'db> ErrorCode for InheritanceError<'db> {
@@ -142,6 +149,7 @@ impl<'db> ErrorCode for InheritanceError<'db> {
             Self::InterfaceNotAllowedNested { .. } => "E0516",
             Self::InterfaceParamNotAssignable { .. } => "E0517",
             Self::SuperBodyInMethod { .. } => "E0518",
+            Self::SuperBodyMultiple { .. } => "E0519",
         }
     }
 
@@ -151,7 +159,8 @@ impl<'db> ErrorCode for InheritanceError<'db> {
             | Self::SuperOnIncompatiblePou { .. }
             | Self::ThisOnIncompatiblePou { .. }
             | Self::SuperButNoExtends { .. }
-            | Self::SuperBodyInMethod { .. } => "invalid use of SUPER or THIS",
+            | Self::SuperBodyInMethod { .. }
+            | Self::SuperBodyMultiple { .. } => "invalid use of SUPER or THIS",
             Self::OverrideFinalMethod { .. } | Self::MissingOverride { .. } => "override violation",
             Self::MissingAbstractMethod { .. }
             | Self::EmptyOverride { .. }
@@ -547,6 +556,24 @@ impl<'db> ToIdeDiagnostic<'db> for InheritanceError<'db> {
                 diag.with_note(
                     "SUPER() is only valid in the function block body, not in a method".into(),
                 );
+                diag
+            }
+            Self::SuperBodyMultiple { call_site, first } => {
+                let mut diag = diag()
+                    .message(
+                        "'SUPER()' may only be called once in a function block body".to_string(),
+                    )
+                    .range(
+                        crate::denormalize(db, file, &call_site.get_span(db)).unwrap_or_default(),
+                    )
+                    .severity(DiagnosticSeverity::ERROR)
+                    .desc(self)
+                    .call();
+                diag.with_related(Related::new(
+                    "'SUPER()' is already called here".to_string(),
+                    file,
+                    first.get_span(db),
+                ));
                 diag
             }
         }
