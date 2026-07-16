@@ -17,6 +17,8 @@ jobs:
     env:
       CARGO_TERM_COLOR: always
     steps:
+      - name: Install wasm32
+        run: rustup target add wasm32-unknown-unknown
       - name: Install nextest
         uses: taiki-e/install-action@nextest
       - uses: actions/checkout@v4
