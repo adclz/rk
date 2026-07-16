@@ -349,7 +349,18 @@ fn lower_stmt<'db>(
         StmtKind::WasmPragma(_) => Ok(None),   // Handled at function level, not statement level
         StmtKind::PreprocessIf { .. } => Ok(None), // Resolved at monomorphization, not lowered as a statement
 
-        StmtKind::EmptyPathExpression(_) => Ok(None),
+        StmtKind::EmptyPathExpression(begin_path) => {
+            // `SUPER()` — call the immediate base FB's cyclic body on the current
+            // `this`. It parses as a bare begin-path statement (the `()` belongs to
+            // the `SuperBody` invocation, not a param list), so it lands here, not
+            // in `FuncCall`. HIR (`resolve_invocation`) validated it (E0501/E0513).
+            if begin_path.invocation(ctx.db).map(|i| i.kind(ctx.db))
+                == Some(hir::hir_def::expressions::invocation::InvocationKind::SuperBody)
+            {
+                return ctx.lower_super_body_call(*begin_path);
+            }
+            Ok(None)
+        }
     }
 }
 

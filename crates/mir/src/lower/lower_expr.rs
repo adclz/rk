@@ -823,6 +823,89 @@ impl<'db> ExprLowerCtx<'db> {
         None
     }
 
+    /// Like [`resolve_this_type`](Self::resolve_this_type) but returns the
+    /// enclosing POU itself (the FB/Class whose instance `THIS` refers to),
+    /// walking up from a method scope to its owner. Used to resolve `SUPER()`'s
+    /// base from the current FB's `EXTENDS`.
+    fn resolve_this_pou(
+        &self,
+        scope_id: hir::hir_def::scope::ScopeId<'db>,
+    ) -> Option<hir::hir_def::pous::pou::Pou<'db>> {
+        use hir::hir_def::pous::pou::Pou;
+        use hir::hir_def::{scope::ScopeKind, semantic_index::get_scope};
+
+        let mut current = Some(scope_id);
+        while let Some(sid) = current {
+            let scope = get_scope(self.db, sid);
+            match scope.kind {
+                ScopeKind::Pou(pou @ (Pou::FunctionBlock(_) | Pou::Class(_))) => return Some(pou),
+                _ => current = scope.parent,
+            }
+        }
+        None
+    }
+
+    /// Lower `SUPER()` — a call to the immediate base FB's cyclic body on the
+    /// current `this`. FBs are single-inheritance (`EXTENDS` at most one base),
+    /// so there is exactly one target: `Base$__body__(this)`. HIR already
+    /// validated the invocation (E0501/E0513); we resolve the base from the
+    /// current FB's `EXTENDS` and pass the current instance pointer
+    /// (`AddrOf(ThisField{0})` = `LocalGet(0)`).
+    pub fn lower_super_body_call(
+        &self,
+        begin_path: hir::hir_def::expressions::expression::BeginPathExpr<'db>,
+    ) -> Result<Option<crate::stmt::MirStmt>, LowerTypeError> {
+        use hir::hir_def::pous::pou::Pou;
+
+        let scope = begin_path.scope_id(self.db);
+        let current = self.resolve_this_pou(scope).ok_or_else(|| {
+            LowerTypeError::UnsupportedType("SUPER() outside a function block".to_string())
+        })?;
+        // The base FB from `EXTENDS` (single inheritance -> one target).
+        let base = match current {
+            Pou::FunctionBlock(fb) => fb
+                .extends(self.db)
+                .and_then(|spec| spec.infer(self.db).normalize(self.db).as_pou(self.db)),
+            _ => None,
+        };
+        let base_pou = match base {
+            Some(p @ Pou::FunctionBlock(_)) => p,
+            _ => {
+                return Err(LowerTypeError::UnsupportedType(
+                    "SUPER() base is not a function block".to_string(),
+                ));
+            }
+        };
+
+        // Body function `Base$__body__`, called with the current instance pointer.
+        let base_q = crate::lower::monomorphize::qualified_pou_ident(
+            self.db,
+            Type::new_pou(self.db, base_pou),
+        );
+        let body_name = hir::hir_def::interned::identifier::Ident::new(
+            self.db,
+            compact_str::CompactString::from(format!("{}$__body__", base_q.text(self.db))),
+        );
+        let this_arg = MirCallArg {
+            value: MirExpr::AddrOf(MirPlace::ThisField {
+                field_name: hir::hir_def::interned::identifier::Ident::new(
+                    self.db,
+                    compact_str::CompactString::from("THIS"),
+                ),
+                field_offset: 0,
+                field_type: MirType::Elementary(MirElementary::Int),
+            }),
+            kind: MirArgKind::ByRef,
+        };
+        Ok(Some(crate::stmt::MirStmt::Call(MirCall {
+            callee: body_name,
+            callee_index: 0,
+            args: vec![this_arg],
+            return_type: MirType::Void,
+            output_bindings: Vec::new(),
+        })))
+    }
+
     fn resolve_field_offset_from_mir(
         &self,
         this_type: &Option<MirType>,
@@ -1017,14 +1100,9 @@ impl<'db> ExprLowerCtx<'db> {
                         .unwrap_or(Type::Void);
                     return Ok(Some((callee, receiver, ret)));
                 }
-                // `SUPER()` calls the base function-block *body* (IEC 10c), a distinct
-                // construct — not a method call, so not handled on this path.
-                InvocationKind::SuperBody => {
-                    return Err(LowerTypeError::UnsupportedType(
-                        "SUPER() (base function-block body call) is not yet supported"
-                            .to_string(),
-                    ));
-                }
+                // `SUPER()` is a base-body call lowered in `lower_super_body_call`; it
+                // never reaches here.
+                InvocationKind::SuperBody => return Ok(None),
             }
         }
 

@@ -854,3 +854,79 @@ fn test_st_interface_var_input_forwarded_to_inout(mut with_db: db::RootDatabase)
     let r: i32 = super::execute_wasm(&wasm, "test", ());
     assert_eq!(r, 2, "VAR_INPUT forwarded to VAR_IN_OUT: mutation persists through mid$C -> leaf$C");
 }
+
+/// `SUPER()` (IEC 10c) — a derived FB's body calls the immediate base FB's cyclic
+/// body on the *same* instance. `Derived`'s body is just `SUPER()`, which lowers
+/// to `Base$__body__(this)`; `Base`'s body does `c := c + 5`. Invoking
+/// `Derived$__body__` twice on one instance drives the shared `c` (Base's field,
+/// at offset 0) to 10. Uses direct body invocation + memory read to observe.
+#[rstest]
+fn test_st_super_body_call(mut with_db: db::RootDatabase) {
+    let source = r#"
+        FUNCTION_BLOCK Base
+        VAR c : INT; END_VAR
+            c := c + 5;
+        END_FUNCTION_BLOCK
+        FUNCTION_BLOCK Derived EXTENDS Base
+            SUPER();
+        END_FUNCTION_BLOCK
+    "#;
+    let wasm = compile_to_wasm(&mut with_db, source);
+    let engine = wasmtime::Engine::default();
+    let module = wasmtime::Module::new(&engine, &wasm).unwrap();
+    let mut store = wasmtime::Store::new(&engine, ());
+    let instance = super::instantiate_with_memory(&mut store, &module);
+    let memory = instance.get_memory(&mut store, "memory").unwrap();
+    memory.write(&mut store, 0, &0i32.to_le_bytes()).unwrap();
+    let body = instance
+        .get_typed_func::<i32, ()>(&mut store, "Derived$__body__")
+        .unwrap();
+    body.call(&mut store, 0).unwrap();
+    body.call(&mut store, 0).unwrap();
+    let mut buf = [0u8; 4];
+    memory.read(&store, 0, &mut buf).unwrap();
+    assert_eq!(
+        i32::from_le_bytes(buf),
+        10,
+        "SUPER() runs Base$__body__ on the shared instance (c += 5 each)"
+    );
+}
+
+/// `SUPER()` does NOT auto-chain — each level opts in. `C EXTENDS B EXTENDS A`:
+/// `C`'s body calls `SUPER()` (-> `B$__body__`), and `B`'s body ALSO calls
+/// `SUPER()` (-> `A$__body__`), so only through explicit chaining does `A`'s body
+/// (`n := n + 1`) run. One `C$__body__` call increments `n` once; two calls -> 2.
+#[rstest]
+fn test_st_super_body_multi_level(mut with_db: db::RootDatabase) {
+    let source = r#"
+        FUNCTION_BLOCK A
+        VAR n : INT; END_VAR
+            n := n + 1;
+        END_FUNCTION_BLOCK
+        FUNCTION_BLOCK B EXTENDS A
+            SUPER();
+        END_FUNCTION_BLOCK
+        FUNCTION_BLOCK C EXTENDS B
+            SUPER();
+        END_FUNCTION_BLOCK
+    "#;
+    let wasm = compile_to_wasm(&mut with_db, source);
+    let engine = wasmtime::Engine::default();
+    let module = wasmtime::Module::new(&engine, &wasm).unwrap();
+    let mut store = wasmtime::Store::new(&engine, ());
+    let instance = super::instantiate_with_memory(&mut store, &module);
+    let memory = instance.get_memory(&mut store, "memory").unwrap();
+    memory.write(&mut store, 0, &0i32.to_le_bytes()).unwrap();
+    let body = instance
+        .get_typed_func::<i32, ()>(&mut store, "C$__body__")
+        .unwrap();
+    body.call(&mut store, 0).unwrap();
+    body.call(&mut store, 0).unwrap();
+    let mut buf = [0u8; 4];
+    memory.read(&store, 0, &mut buf).unwrap();
+    assert_eq!(
+        i32::from_le_bytes(buf),
+        2,
+        "C -> SUPER() -> B -> SUPER() -> A body chains only via explicit SUPER()"
+    );
+}
