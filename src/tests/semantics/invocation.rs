@@ -354,3 +354,31 @@ END_FUNCTION_BLOCK
     "#;
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @"");
 }
+
+#[rstest]
+fn inherited_member_shadowed(mut with_db: RootDatabase) {
+    // Rule 3: variable names in base and derived FBs shall be unique -> E0521.
+    let source = r#"
+FUNCTION_BLOCK base
+VAR c : INT; END_VAR
+END_FUNCTION_BLOCK
+FUNCTION_BLOCK derived EXTENDS base
+VAR c : INT; END_VAR
+END_FUNCTION_BLOCK
+    "#;
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
+    [E0521] Error: inheritance violation
+       ,-[ file:///test0.st:6:5 ]
+       |
+     3 | VAR c : INT; END_VAR
+       |     |
+       |     `-- inherited variable 'c' is declared here
+       |
+     6 | VAR c : INT; END_VAR
+       |     |
+       |     `-- variable 'c' is already declared in a base function block
+       |
+       | Note: variable names in a base and derived function block must be unique
+    ---'
+    ");
+}

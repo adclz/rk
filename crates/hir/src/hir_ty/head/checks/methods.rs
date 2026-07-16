@@ -3,7 +3,7 @@ use ide_diagnostic::IdeDiagnostic;
 use rustc_hash::FxHashMap;
 
 use crate::{
-    HirNodeInfo, Modifier,
+    HasName, HirNodeInfo, Modifier,
     check::errors::{
         ToIdeDiagnostic, e1_duplicates::DuplicateError, e5_inheritance::InheritanceError,
     },
@@ -13,6 +13,7 @@ use crate::{
             inheritance::{MethodRef, inherited_methods},
             init_inference::InitInference,
         },
+        infer::Infer,
         ty::Type,
     },
 };
@@ -128,6 +129,45 @@ impl<'db> InitInference<'db> {
                 );
             }
         }
+
+        // Rule 3 (IEC 6.6.7.2.9): the names of the variables in the base and the
+        // derived function blocks shall be unique. Walk the EXTENDS chain and
+        // report any own variable whose name collides with an inherited one
+        // (the derived body and the base body — reachable via SUPER() — would
+        // otherwise operate on two distinct, same-named slots).
+        // `def_map.local_variables` is params-only; Rule 3 covers ALL variables
+        // (esp. `VAR` members), so read them from the FB directly.
+        if let Pou::FunctionBlock(fb) = implementer {
+            let own = fb.variables(db);
+            if !own.is_empty() {
+                // Nearest inherited declaration per name, walking up the chain.
+                let mut inherited = FxHashMap::default();
+                let mut visited = rustc_hash::FxHashSet::default();
+                let mut current = extends_pou(db, implementer);
+                while let Some(base) = current {
+                    if !visited.insert(base) {
+                        break; // guard against EXTENDS cycles (reported elsewhere)
+                    }
+                    if let Pou::FunctionBlock(base_fb) = base {
+                        for v in base_fb.variables(db) {
+                            inherited.entry(v.get_name_ident(db)).or_insert(*v);
+                        }
+                    }
+                    current = extends_pou(db, base);
+                }
+                for v in own {
+                    if let Some(base_decl) = inherited.get(&v.get_name_ident(db)) {
+                        self.errors.push(
+                            InheritanceError::InheritedMemberShadowed {
+                                derived: *v,
+                                base: *base_decl,
+                            }
+                            .to_diagnostic(db, self.scope.file(db)),
+                        );
+                    }
+                }
+            }
+        }
     }
 
     pub(crate) fn check_methods(&mut self, db: &'db dyn WorkspaceDataBase) {
@@ -212,4 +252,14 @@ fn check_signature<'db>(
             )
         }
     }
+}
+
+/// The immediate base POU an FB or Class extends, if any (single inheritance).
+fn extends_pou<'db>(db: &'db dyn WorkspaceDataBase, pou: Pou<'db>) -> Option<Pou<'db>> {
+    let spec = match pou {
+        Pou::FunctionBlock(fb) => fb.extends(db)?,
+        Pou::Class(cl) => cl.extends(db)?,
+        _ => return None,
+    };
+    spec.infer(db).normalize(db).as_pou(db)
 }

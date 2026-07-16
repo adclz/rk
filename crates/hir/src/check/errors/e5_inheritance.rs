@@ -130,6 +130,14 @@ pub enum InheritanceError<'db> {
     SuperBodyInLoop {
         call_site: CallSite<'db>,
     },
+    /// A derived FB/Class declares a variable whose name collides with one
+    /// inherited (transitively) from a base. Per IEC 6.6.7.2.9 rule 3, the names
+    /// of the variables in the base and the derived function blocks shall be
+    /// unique. `derived` is the redeclaration; `base` the inherited declaration.
+    InheritedMemberShadowed {
+        derived: VariableDecl<'db>,
+        base: VariableDecl<'db>,
+    },
 }
 
 impl<'db> ErrorCode for InheritanceError<'db> {
@@ -156,6 +164,7 @@ impl<'db> ErrorCode for InheritanceError<'db> {
             Self::SuperBodyInMethod { .. } => "E0518",
             Self::SuperBodyMultiple { .. } => "E0519",
             Self::SuperBodyInLoop { .. } => "E0520",
+            Self::InheritedMemberShadowed { .. } => "E0521",
         }
     }
 
@@ -172,7 +181,8 @@ impl<'db> ErrorCode for InheritanceError<'db> {
             Self::MissingAbstractMethod { .. }
             | Self::EmptyOverride { .. }
             | Self::AbstractClassHasNoAbstractMethods { .. }
-            | Self::UnimplementedInterfaceMethod { .. } => "inheritance violation",
+            | Self::UnimplementedInterfaceMethod { .. }
+            | Self::InheritedMemberShadowed { .. } => "inheritance violation",
             Self::UnresolvedThisMethod { .. } | Self::UnresolvedSuperMethod { .. } => {
                 "unresolved method in inheritance context"
             }
@@ -592,6 +602,28 @@ impl<'db> ToIdeDiagnostic<'db> for InheritanceError<'db> {
                     .severity(DiagnosticSeverity::ERROR)
                     .desc(self)
                     .call();
+                diag
+            }
+            Self::InheritedMemberShadowed { derived, base } => {
+                let name = derived.get_name_ident(db).text(db);
+                let mut diag = diag()
+                    .message(format!(
+                        "variable '{name}' is already declared in a base function block"
+                    ))
+                    .range(
+                        crate::denormalize(db, file, &derived.get_name_span(db)).unwrap_or_default(),
+                    )
+                    .severity(DiagnosticSeverity::ERROR)
+                    .desc(self)
+                    .call();
+                diag.with_related(Related::new(
+                    format!("inherited variable '{name}' is declared here"),
+                    base.get_scope_id(db).file(db),
+                    base.get_name_span(db),
+                ));
+                diag.with_note(
+                    "variable names in a base and derived function block must be unique".into(),
+                );
                 diag
             }
         }
