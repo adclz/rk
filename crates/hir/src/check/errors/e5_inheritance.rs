@@ -125,6 +125,11 @@ pub enum InheritanceError<'db> {
         call_site: CallSite<'db>,
         first: CallSite<'db>,
     },
+    /// `SUPER()` nested inside a loop (`FOR`/`WHILE`/`REPEAT`). Per IEC 6.6.7.2.9
+    /// rule 2, the call of `SUPER()` shall not be in a loop.
+    SuperBodyInLoop {
+        call_site: CallSite<'db>,
+    },
 }
 
 impl<'db> ErrorCode for InheritanceError<'db> {
@@ -150,6 +155,7 @@ impl<'db> ErrorCode for InheritanceError<'db> {
             Self::InterfaceParamNotAssignable { .. } => "E0517",
             Self::SuperBodyInMethod { .. } => "E0518",
             Self::SuperBodyMultiple { .. } => "E0519",
+            Self::SuperBodyInLoop { .. } => "E0520",
         }
     }
 
@@ -160,7 +166,8 @@ impl<'db> ErrorCode for InheritanceError<'db> {
             | Self::ThisOnIncompatiblePou { .. }
             | Self::SuperButNoExtends { .. }
             | Self::SuperBodyInMethod { .. }
-            | Self::SuperBodyMultiple { .. } => "invalid use of SUPER or THIS",
+            | Self::SuperBodyMultiple { .. }
+            | Self::SuperBodyInLoop { .. } => "invalid use of SUPER or THIS",
             Self::OverrideFinalMethod { .. } | Self::MissingOverride { .. } => "override violation",
             Self::MissingAbstractMethod { .. }
             | Self::EmptyOverride { .. }
@@ -574,6 +581,17 @@ impl<'db> ToIdeDiagnostic<'db> for InheritanceError<'db> {
                     file,
                     first.get_span(db),
                 ));
+                diag
+            }
+            Self::SuperBodyInLoop { call_site } => {
+                let diag = diag()
+                    .message("'SUPER()' cannot be called inside a loop".to_string())
+                    .range(
+                        crate::denormalize(db, file, &call_site.get_span(db)).unwrap_or_default(),
+                    )
+                    .severity(DiagnosticSeverity::ERROR)
+                    .desc(self)
+                    .call();
                 diag
             }
         }

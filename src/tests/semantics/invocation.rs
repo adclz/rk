@@ -82,14 +82,12 @@ CLASS fb1
     END_METHOD
 END_CLASS"#;
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E0518] Error: invalid use of SUPER or THIS
+    [E0501] Error: invalid use of SUPER or THIS
        ,-[ file:///test0.st:4:9 ]
        |
      4 |         SUPER()
        |         ^^|^^
-       |           `---- 'SUPER()' cannot be called in a method of a function block
-       |
-       | Note: SUPER() is only valid in the function block body, not in a method
+       |           `---- 'SUPER()' is not valid in this context
     ---'
     ");
 }
@@ -314,4 +312,45 @@ END_FUNCTION_BLOCK
        |        `----- 'SUPER()' may only be called once in a function block body
     ---'
     ");
+}
+
+#[rstest]
+fn super_body_in_loop(mut with_db: RootDatabase) {
+    // Rule 2: SUPER() shall not be in a loop -> E0520.
+    let source = r#"
+FUNCTION_BLOCK base
+END_FUNCTION_BLOCK
+FUNCTION_BLOCK derived EXTENDS base
+    VAR i : INT; END_VAR
+    FOR i := 1 TO 3 DO
+        SUPER();
+    END_FOR
+END_FUNCTION_BLOCK
+    "#;
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
+    [E0520] Error: invalid use of SUPER or THIS
+       ,-[ file:///test0.st:7:9 ]
+       |
+     7 |         SUPER();
+       |         ^^^|^^^
+       |            `----- 'SUPER()' cannot be called inside a loop
+    ---'
+    ");
+}
+
+#[rstest]
+fn super_body_valid(mut with_db: RootDatabase) {
+    // Valid: exactly one SUPER(), in the FB body (not a loop, not a method),
+    // in an FB that extends a base. No diagnostics. An IF (not a loop) is fine.
+    let source = r#"
+FUNCTION_BLOCK base
+END_FUNCTION_BLOCK
+FUNCTION_BLOCK derived EXTENDS base
+    VAR flag : BOOL; END_VAR
+    IF flag THEN
+        SUPER();
+    END_IF
+END_FUNCTION_BLOCK
+    "#;
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @"");
 }

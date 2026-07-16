@@ -20,10 +20,19 @@ pub fn resolve_invocation<'db>(
 ) -> Option<Pou<'db>> {
     match get_scope(db, scope).kind {
         ScopeKind::MethodDecl(m) => {
+            let method_scope = get_scope(db, m.scope_id(db));
+            let parent = method_scope
+                .parent
+                .expect("A method scope always has a parent scope");
             // Rule 5 (IEC 6.6.7.2.9): `SUPER()` (the base-body call) may only
             // appear in the function block BODY, not in a method. `THIS` and
             // `SUPER.<method>` ARE valid in methods, so reject only `SuperBody`.
-            if invocation.kind(db) == InvocationKind::SuperBody {
+            // Only for FB methods — in a CLASS method `SUPER()` is invalid for a
+            // different reason (a class has no body, E0501), which the recursion
+            // below produces.
+            if invocation.kind(db) == InvocationKind::SuperBody
+                && matches!(get_scope(db, parent).kind, ScopeKind::Pou(Pou::FunctionBlock(_)))
+            {
                 ctx.errors.push(
                     InheritanceError::SuperBodyInMethod {
                         call_site: CallSite::new(scope, invocation.keyword_id(db)),
@@ -32,10 +41,6 @@ pub fn resolve_invocation<'db>(
                 );
                 return None;
             }
-            let scope = get_scope(db, m.scope_id(db));
-            let parent = scope
-                .parent
-                .expect("A method scope always has a parent scope");
             return resolve_invocation(db, parent, invocation, ctx);
         }
         ScopeKind::Pou(pou) => {

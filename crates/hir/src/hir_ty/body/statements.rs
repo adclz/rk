@@ -87,6 +87,15 @@ impl<'db> StmtsResolverCtx<'db> {
                             ScopeKind::Pou(crate::hir_def::pous::pou::Pou::FunctionBlock(_))
                         )
                     {
+                        // Rule 2: SUPER() shall not be in a loop.
+                        if nested_scope == NestedScope::Loop {
+                            ctx.errors.push(
+                                InheritanceError::SuperBodyInLoop {
+                                    call_site: stmt.as_call_site(db),
+                                }
+                                .to_diagnostic(db, ctx.scope.file(db)),
+                            );
+                        }
                         match ctx.first_super_body {
                             Some(first) => ctx.errors.push(
                                 InheritanceError::SuperBodyMultiple {
