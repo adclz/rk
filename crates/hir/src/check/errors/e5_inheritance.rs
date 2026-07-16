@@ -112,6 +112,12 @@ pub enum InheritanceError<'db> {
         var: VariableDecl<'db>,
         access: VariableAccess<'db>,
     },
+    /// `SUPER()` (base function-block body call) used inside a METHOD. Per IEC
+    /// 6.6.7.2.9 rule 5, `SUPER()` may only appear in the function block BODY,
+    /// not in a method of a function block.
+    SuperBodyInMethod {
+        call_site: CallSite<'db>,
+    },
 }
 
 impl<'db> ErrorCode for InheritanceError<'db> {
@@ -135,6 +141,7 @@ impl<'db> ErrorCode for InheritanceError<'db> {
             Self::InterfaceNotAllowedInReturn { .. } => "E0515",
             Self::InterfaceNotAllowedNested { .. } => "E0516",
             Self::InterfaceParamNotAssignable { .. } => "E0517",
+            Self::SuperBodyInMethod { .. } => "E0518",
         }
     }
 
@@ -143,7 +150,8 @@ impl<'db> ErrorCode for InheritanceError<'db> {
             Self::SuperBodyOnIncompatiblePou { .. }
             | Self::SuperOnIncompatiblePou { .. }
             | Self::ThisOnIncompatiblePou { .. }
-            | Self::SuperButNoExtends { .. } => "invalid use of SUPER or THIS",
+            | Self::SuperButNoExtends { .. }
+            | Self::SuperBodyInMethod { .. } => "invalid use of SUPER or THIS",
             Self::OverrideFinalMethod { .. } | Self::MissingOverride { .. } => "override violation",
             Self::MissingAbstractMethod { .. }
             | Self::EmptyOverride { .. }
@@ -525,6 +533,22 @@ impl<'db> ToIdeDiagnostic<'db> for InheritanceError<'db> {
                 .severity(DiagnosticSeverity::ERROR)
                 .desc(self)
                 .call(),
+            Self::SuperBodyInMethod { call_site } => {
+                let mut diag = diag()
+                    .message(
+                        "'SUPER()' cannot be called in a method of a function block".to_string(),
+                    )
+                    .range(
+                        crate::denormalize(db, file, &call_site.get_span(db)).unwrap_or_default(),
+                    )
+                    .severity(DiagnosticSeverity::ERROR)
+                    .desc(self)
+                    .call();
+                diag.with_note(
+                    "SUPER() is only valid in the function block body, not in a method".into(),
+                );
+                diag
+            }
         }
     }
 }

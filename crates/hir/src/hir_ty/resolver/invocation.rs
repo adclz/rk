@@ -20,6 +20,18 @@ pub fn resolve_invocation<'db>(
 ) -> Option<Pou<'db>> {
     match get_scope(db, scope).kind {
         ScopeKind::MethodDecl(m) => {
+            // Rule 5 (IEC 6.6.7.2.9): `SUPER()` (the base-body call) may only
+            // appear in the function block BODY, not in a method. `THIS` and
+            // `SUPER.<method>` ARE valid in methods, so reject only `SuperBody`.
+            if invocation.kind(db) == InvocationKind::SuperBody {
+                ctx.errors.push(
+                    InheritanceError::SuperBodyInMethod {
+                        call_site: CallSite::new(scope, invocation.keyword_id(db)),
+                    }
+                    .to_diagnostic(db, ctx.scope.file(db)),
+                );
+                return None;
+            }
             let scope = get_scope(db, m.scope_id(db));
             let parent = scope
                 .parent

@@ -261,3 +261,29 @@ END_FUNCTION_BLOCK
     ---'
     ");
 }
+
+#[rstest]
+fn super_body_in_method(mut with_db: RootDatabase) {
+    // Rule 5: SUPER() (base-body call) in a METHOD is forbidden, even when the FB
+    // extends a base (so E0513 does not apply) -> E0518.
+    let source = r#"
+FUNCTION_BLOCK base
+END_FUNCTION_BLOCK
+FUNCTION_BLOCK derived EXTENDS base
+    METHOD m1
+        SUPER()
+    END_METHOD
+END_FUNCTION_BLOCK
+    "#;
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
+    [E0518] Error: invalid use of SUPER or THIS
+       ,-[ file:///test0.st:6:9 ]
+       |
+     6 |         SUPER()
+       |         ^^|^^
+       |           `---- 'SUPER()' cannot be called in a method of a function block
+       |
+       | Note: SUPER() (the base function-block body call) is only valid in the function block body, not in a method
+    ---'
+    ");
+}
