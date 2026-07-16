@@ -241,3 +241,23 @@ END_FUNCTION_BLOCK
     ----'
     ");
 }
+
+#[rstest]
+fn super_body_no_extends(mut with_db: RootDatabase) {
+    // SUPER() (base-body call) in an FB with no EXTENDS -> E0513: there is no
+    // base function block whose body could be executed.
+    let source = r#"
+FUNCTION_BLOCK fb1
+    SUPER()
+END_FUNCTION_BLOCK
+    "#;
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
+    [E0513] Error: invalid use of SUPER or THIS
+       ,-[ file:///test0.st:3:5 ]
+       |
+     3 |     SUPER()
+       |     ^^|^^
+       |       `---- 'SUPER' used but no EXTENDS clause found on 'fb1'
+    ---'
+    ");
+}

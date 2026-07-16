@@ -44,9 +44,21 @@ pub fn resolve_invocation<'db>(
             match invocation.kind(db) {
                 InvocationKind::SuperBody => match pou {
                     Pou::FunctionBlock(fb) => {
-                        ctx.type_of_invocation
-                            .insert(invocation, Type::new_pou(db, pou));
-                        return Some(pou);
+                        // `SUPER()` executes the BASE FB's body, so the FB must
+                        // EXTEND one (mirror the `SUPER.<method>` check, E0513).
+                        if fb.extends(db).is_some() {
+                            ctx.type_of_invocation
+                                .insert(invocation, Type::new_pou(db, pou));
+                            return Some(pou);
+                        } else {
+                            ctx.errors.push(
+                                InheritanceError::SuperButNoExtends {
+                                    pou,
+                                    call_site: CallSite::new(scope, invocation.keyword_id(db)),
+                                }
+                                .to_diagnostic(db, ctx.scope.file(db)),
+                            );
+                        }
                     }
                     _ => {
                         ctx.errors.push(
