@@ -641,12 +641,28 @@ impl<'db> ExprLowerCtx<'db> {
         // Otherwise: legacy heuristic. A name present in the FB/Class layout is
         // a member (offset from `this_struct`); anything else is a local.
         match this_struct.fields.iter().find(|f| f.name == ident) {
-            Some(field) => MirPlace::ThisField {
-                field_name: ident,
-                field_offset: field.offset,
-                field_type: field.ty.clone(),
-            },
+            Some(field) => {
+                let this_field = MirPlace::ThisField {
+                    field_name: ident,
+                    field_offset: field.offset,
+                    field_type: field.ty.clone(),
+                };
+                Self::wrap_inout_deref(field, this_field)
+            }
             None => MirPlace::Local(ident),
+        }
+    }
+
+    /// A `VAR_IN_OUT` member holds a pointer to the caller's l-value, so its
+    /// place is wrapped in a `Deref`; a `REF_TO` member is dereferenced only
+    /// where the user writes `^`.
+    fn wrap_inout_deref(field: &crate::types::MirStructField, place: MirPlace) -> MirPlace {
+        match (&field.by_ref, &field.ty) {
+            (true, MirType::Pointer(pointee)) => MirPlace::Deref {
+                base: Box::new(place),
+                pointee_type: (**pointee).clone(),
+            },
+            _ => place,
         }
     }
 
@@ -731,14 +747,28 @@ impl<'db> ExprLowerCtx<'db> {
                 let field_name = match &var {
                     VarAccess::Simple(span_ident) => span_ident.ident,
                 };
-                let field_type = self
-                    .lower_type_resolved(path_expr.infer(self.db))
-                    .unwrap_or(MirType::Elementary(MirElementary::Int));
 
                 // Resolve field offset from the this pointer's type
                 // The THIS type is resolved from the method's parent FB/Class
                 let scope_id = path_expr.scope_id(self.db);
                 let this_type = self.resolve_this_type(scope_id);
+
+                // The resolved this-struct field carries the pointer type and `by_ref`
+                // flag; the inferred type is the error-recovery fallback.
+                if let Some(MirType::Struct(s)) = &this_type
+                    && let Some(field) = s.fields.iter().find(|f| f.name == field_name)
+                {
+                    let this_field = MirPlace::ThisField {
+                        field_name,
+                        field_offset: field.offset,
+                        field_type: field.ty.clone(),
+                    };
+                    return Ok(Self::wrap_inout_deref(field, this_field));
+                }
+
+                let field_type = self
+                    .lower_type_resolved(path_expr.infer(self.db))
+                    .unwrap_or(MirType::Elementary(MirElementary::Int));
                 let field_offset = self.resolve_field_offset_from_mir(&this_type, field_name);
 
                 Ok(MirPlace::ThisField {
@@ -1289,192 +1319,37 @@ impl<'db> ExprLowerCtx<'db> {
         let mut args = Vec::new();
         let output_bindings = Vec::new();
 
-        // Track which params were explicitly provided (by position for non-formal, by name for formal)
         let call_params = func_call.params(self.db);
-        let mut provided_names: rustc_hash::FxHashSet<hir::hir_def::interned::identifier::Ident> =
-            rustc_hash::FxHashSet::default();
 
-        // Pre-resolve callee parameter kinds so we can decide ByVal vs ByRef
-        // per arg. `def_map.local_variables` is an `FxIndexMap` that
-        // preserves declaration order and only contains Input/InOut/Output
-        // - exactly the param list for positional calls.
-        let callable_for_kinds = match path.infer(self.db) {
+        // The callee's signature, from the `CallableType` HIR stored; the bare
+        // variants cover statement calls.
+        let callable = match path.infer(self.db) {
             Type::CallableType(ct) => Some(ct),
             Type::Function(f) => Some(hir::hir_ty::ty::CallableType::Function(f)),
             Type::FunctionBlock(fb) => Some(hir::hir_ty::ty::CallableType::FunctionBlock(fb)),
             Type::MethodDecl(m) => Some(hir::hir_ty::ty::CallableType::MethodDecl(m)),
             _ => None,
         };
-        let param_kinds: Vec<hir::hir_def::pous::variable::VariableKind> =
-            if let Some(c) = &callable_for_kinds {
-                c.def_map(self.db)
-                    .local_variables
-                    .values()
-                    .map(|v| v.kind(self.db).clone())
-                    .collect()
-            } else {
-                Vec::new()
-            };
-        let kind_by_name: rustc_hash::FxHashMap<
-            hir::hir_def::interned::identifier::Ident,
-            hir::hir_def::pous::variable::VariableKind,
-        > = if let Some(c) = &callable_for_kinds {
-            c.def_map(self.db)
-                .local_variables
-                .iter()
-                .map(|(n, v)| (*n, v.kind(self.db).clone()))
-                .collect()
-        } else {
-            rustc_hash::FxHashMap::default()
-        };
-        // An interface-typed param is passed BY REFERENCE regardless of kind: an
-        // interface value is a reference, so a `VAR_INPUT` interface hands over the
-        // address (a copy of the reference), exactly like `VAR_IN_OUT`. The callee
-        // specialization expects a pointer to the concrete instance, so the arg
-        // must be `ByRef` (an `AddrOf`), not a by-value struct copy.
-        let param_is_iface: Vec<bool> = if let Some(c) = &callable_for_kinds {
-            c.def_map(self.db)
-                .local_variables
-                .values()
-                .map(|v| crate::lower::mono_iface::is_interface_param(self.db, v))
-                .collect()
-        } else {
-            Vec::new()
-        };
-        let iface_by_name: rustc_hash::FxHashMap<
-            hir::hir_def::interned::identifier::Ident,
-            bool,
-        > = if let Some(c) = &callable_for_kinds {
-            c.def_map(self.db)
-                .local_variables
-                .iter()
-                .map(|(n, v)| (*n, crate::lower::mono_iface::is_interface_param(self.db, v)))
-                .collect()
-        } else {
-            rustc_hash::FxHashMap::default()
-        };
 
-        use hir::hir_def::pous::variable::VariableKind;
-        // Wrap a lowered value as ByRef when the target param is
-        // `VAR_IN_OUT` / `VAR_OUTPUT`. Falls back to ByValue when the value
-        // isn't a simple Load (we still need to lower function-style
-        // expressions where we have no place to take an address of -
-        // the type checker rejects those before they get here).
-        let to_byref = |mir: MirExpr| match mir {
-            MirExpr::Load(place, _) => MirCallArg {
-                value: MirExpr::AddrOf(place),
-                kind: MirArgKind::ByRef,
-            },
-            other => MirCallArg {
-                value: other,
-                kind: MirArgKind::ByValue,
-            },
-        };
-
-        for (i, param) in call_params.iter().enumerate() {
-            match param.kind(self.db) {
-                ParamAssignKind::NonFormal { value } => {
-                    let lowered = self.lower_expr(value)?;
-                    let kind = param_kinds.get(i);
-                    // `VAR_IN_OUT`/`VAR_OUTPUT`, or ANY interface param (a
-                    // reference, passed by address) → `ByRef`.
-                    let by_ref = matches!(kind, Some(VariableKind::InOut | VariableKind::Output))
-                        || param_is_iface.get(i).copied().unwrap_or(false);
-                    if by_ref {
-                        args.push(to_byref(lowered));
-                    } else {
-                        args.push(MirCallArg {
-                            value: lowered,
-                            kind: MirArgKind::ByValue,
-                        });
-                    }
-                }
-                ParamAssignKind::FormalInput {
-                    value,
-                    param: param_ident,
-                } => {
-                    provided_names.insert(param_ident.ident);
-                    let lowered = self.lower_expr(value)?;
-                    // `name := value` syntax also covers `VAR_IN_OUT` and interface
-                    // params - look up the actual param kind / interface-ness by
-                    // name to decide `ByRef` vs `ByValue`.
-                    let kind = kind_by_name.get(&param_ident.ident);
-                    let by_ref = matches!(kind, Some(VariableKind::InOut | VariableKind::Output))
-                        || iface_by_name
-                            .get(&param_ident.ident)
-                            .copied()
-                            .unwrap_or(false);
-                    if by_ref {
-                        args.push(to_byref(lowered));
-                    } else {
-                        args.push(MirCallArg {
-                            value: lowered,
-                            kind: MirArgKind::ByValue,
-                        });
-                    }
-                }
-                ParamAssignKind::FormalOutput {
-                    variable,
-                    param: param_ident,
-                    ..
-                } => {
-                    provided_names.insert(param_ident.ident);
-                    let place = self.lower_variable_access(variable)?;
-                    args.push(MirCallArg {
-                        value: MirExpr::AddrOf(place),
-                        kind: MirArgKind::ByRef,
-                    });
-                }
-            }
-        }
-
-        // Fill in default values for omitted parameters.
-        // Resolve the callee's variable declarations to find params with defaults.
-        // Use the raw inferred type (before normalization) to get the CallableType.
-        let callee_type_raw = path.infer(self.db);
-        let callable = match callee_type_raw {
-            Type::CallableType(ct) => Some(ct),
-            Type::Function(f) => Some(hir::hir_ty::ty::CallableType::Function(f)),
-            Type::FunctionBlock(fb) => Some(hir::hir_ty::ty::CallableType::FunctionBlock(fb)),
-            _ => None,
-        };
         if let Some(callable) = callable {
-            let def_map = callable.def_map(self.db);
-            let provided_count = call_params.len();
-
-            for (i, (var_name, var_decl)) in def_map.local_variables.iter().enumerate() {
-                // Skip params that were explicitly provided
-                if i < provided_count && provided_names.is_empty() {
-                    // Non-formal call: first N params are positional
-                    continue;
-                }
-                if provided_names.contains(var_name) {
-                    continue;
-                }
-                // Only fill defaults for params beyond what was provided positionally
-                if i < provided_count {
-                    continue;
-                }
-
-                // Check if this variable has a default value
-                if let Some(init) = &var_decl.init(self.db) {
-                    match init.kind(self.db) {
-                        InitExprKind::ConstantExpr(expr) => {
-                            match self.lower_expr(expr) {
-                                Ok(mir_expr) => {
-                                    args.push(MirCallArg {
-                                        value: mir_expr,
-                                        kind: MirArgKind::ByValue,
-                                    });
-                                }
-                                Err(_) => {
-                                    // Failed to lower default - skip
-                                }
-                            }
-                        }
-                        _ => {
-                            // Complex init (struct/array) - not yet supported as default
-                        }
+            self.build_call_args(func_call, callable, &mut args)?;
+        } else {
+            // Unresolved callee: no signature to order against, so call-site order.
+            for param in call_params {
+                match param.kind(self.db) {
+                    ParamAssignKind::NonFormal { value }
+                    | ParamAssignKind::FormalInput { value, .. } => {
+                        args.push(MirCallArg {
+                            value: self.lower_expr(value)?,
+                            kind: MirArgKind::ByValue,
+                        });
+                    }
+                    ParamAssignKind::FormalOutput { variable, .. } => {
+                        let place = self.lower_variable_access(variable)?;
+                        args.push(MirCallArg {
+                            value: MirExpr::AddrOf(place),
+                            kind: MirArgKind::ByRef,
+                        });
                     }
                 }
             }
@@ -1513,6 +1388,118 @@ impl<'db> ExprLowerCtx<'db> {
         }))
     }
 
+    /// Build a direct call's argument list in the callee's parameter
+    /// declaration order — the order codegen binds them (`emit_call` is purely
+    /// positional), which is also the order `lower_func` builds the callee's
+    /// signature in.
+    ///
+    /// Call-site params are matched to declarations through HIR's
+    /// `variable_of_param` — the authoritative matching (formal args in any
+    /// order, positional args skipping named ones) — instead of re-deriving it
+    /// here. An omitted FUNCTION/METHOD input falls back to its declared
+    /// constant default; E0233 guarantees one exists when the code
+    /// type-checks.
+    fn build_call_args(
+        &self,
+        func_call: hir::hir_def::expressions::expression::FuncCall<'db>,
+        callable: hir::hir_ty::ty::CallableType<'db>,
+        args: &mut Vec<MirCallArg>,
+    ) -> Result<(), LowerTypeError> {
+        use hir::hir_def::pous::variable::VariableKind;
+
+        let path = func_call.path(self.db);
+        let body = hir::hir_ty::body::infer_body(self.db, path.scope_id(self.db));
+
+        // Declared param → the call-site assigns bound to it, in call order
+        // (a variadic param collects several).
+        let mut assigns_of_var: rustc_hash::FxHashMap<
+            hir::hir_def::pous::variable::VariableDecl<'db>,
+            Vec<hir::hir_def::expressions::expression::ParamAssign<'db>>,
+        > = rustc_hash::FxHashMap::default();
+        for pa in func_call.params(self.db) {
+            if let Some(var) = body.variable_of_param.get(pa) {
+                assigns_of_var.entry(*var).or_default().push(*pa);
+            }
+        }
+
+        // Only FUNCTION/METHOD calls synthesize omitted defaults — an FB call
+        // leaves the instance field untouched instead (`lower_fb_invocation`).
+        let fills_defaults = matches!(
+            callable,
+            hir::hir_ty::ty::CallableType::Function(_)
+                | hir::hir_ty::ty::CallableType::MethodDecl(_)
+        );
+
+        // Wrap a lowered value as ByRef when the target param is
+        // `VAR_IN_OUT` / `VAR_OUTPUT`. Falls back to ByValue when the value
+        // isn't a simple Load (we still need to lower function-style
+        // expressions where we have no place to take an address of -
+        // the type checker rejects those before they get here).
+        let to_byref = |mir: MirExpr| match mir {
+            MirExpr::Load(place, _) => MirCallArg {
+                value: MirExpr::AddrOf(place),
+                kind: MirArgKind::ByRef,
+            },
+            other => MirCallArg {
+                value: other,
+                kind: MirArgKind::ByValue,
+            },
+        };
+
+        for var in callable.def_map(self.db).local_variables.values() {
+            // An interface value is a reference, so an interface-typed param passes
+            // the address whatever its kind.
+            let by_ref = matches!(
+                var.kind(self.db),
+                VariableKind::InOut | VariableKind::Output
+            ) || crate::lower::mono_iface::is_interface_param(self.db, var);
+
+            let Some(assigns) = assigns_of_var.get(var) else {
+                // Omitted at the call site. Zero variadic args is valid; an
+                // omitted FB input has instance storage; other omissions are
+                // rejected upstream (E0233) or unsupported (aggregate
+                // defaults, discarded outputs).
+                if fills_defaults
+                    && !var.variadic(self.db)
+                    && var.kind(self.db) == VariableKind::Input
+                    && let Some(init) = var.init(self.db)
+                    && let InitExprKind::ConstantExpr(expr) = init.kind(self.db)
+                {
+                    args.push(MirCallArg {
+                        value: self.lower_expr(expr)?,
+                        kind: MirArgKind::ByValue,
+                    });
+                }
+                continue;
+            };
+
+            for pa in assigns {
+                match pa.kind(self.db) {
+                    ParamAssignKind::NonFormal { value }
+                    | ParamAssignKind::FormalInput { value, .. } => {
+                        let lowered = self.lower_expr(value)?;
+                        if by_ref {
+                            args.push(to_byref(lowered));
+                        } else {
+                            args.push(MirCallArg {
+                                value: lowered,
+                                kind: MirArgKind::ByValue,
+                            });
+                        }
+                    }
+                    ParamAssignKind::FormalOutput { variable, .. } => {
+                        let place = self.lower_variable_access(variable)?;
+                        args.push(MirCallArg {
+                            value: MirExpr::AddrOf(place),
+                            kind: MirArgKind::ByRef,
+                        });
+                    }
+                }
+            }
+        }
+        Ok(())
+    }
+
     /// Lower an FB invocation statement: write the inputs into the instance,
     /// call `__body__(&instance)`, read the outputs.
     pub fn lower_fb_invocation(
@@ -1520,8 +1507,6 @@ impl<'db> ExprLowerCtx<'db> {
         func_call: hir::hir_def::expressions::expression::FuncCall<'db>,
         fb: hir::hir_def::pous::function_block::FunctionBlock<'db>,
     ) -> Result<Option<crate::stmt::MirStmt>, LowerTypeError> {
-        use hir::hir_def::pous::variable::VariableKind;
-
         let path = func_call.path(self.db);
 
         // Get the instance variable path (the callee is a variable, not a type)
@@ -1546,58 +1531,56 @@ impl<'db> ExprLowerCtx<'db> {
             }
         };
 
-        // Build input writes from the call arguments
+        // Build input writes from the call arguments. Each call-site param is
+        // matched to its declared variable through HIR's `variable_of_param` —
+        // the authoritative matching, which handles positional args mixed with
+        // named ones (a positional arg binds to the first input not claimed by
+        // name, regardless of call order).
         let mut input_writes = Vec::new();
         let mut output_reads = Vec::new();
 
-        // Map FB input variable names to field offsets
-        let fb_vars: Vec<_> = fb.variables(self.db).to_vec();
+        let body = hir::hir_ty::body::infer_body(self.db, path.scope_id(self.db));
 
         for param in func_call.params(self.db) {
+            let Some(var) = body.variable_of_param.get(param) else {
+                continue; // unmatched param - error already reported by HIR
+            };
+            let var_name = var.name(self.db);
             match param.kind(self.db) {
-                ParamAssignKind::FormalInput {
-                    param: param_ident,
-                    value,
-                } => {
-                    let param_name = param_ident.ident;
-                    // Find the field in the struct
-                    if let Some(field) = struct_type.fields.iter().find(|f| f.name == param_name) {
-                        let mir_elem = match &field.ty {
-                            MirType::Elementary(e) => *e,
-                            _ => continue, // skip non-elementary fields for now
-                        };
-                        let expr = self.lower_expr(value)?;
-                        input_writes.push((field.offset, expr, mir_elem));
-                    }
-                }
-                ParamAssignKind::NonFormal { value } => {
-                    // Positional: match to next input variable
-                    // Find the i-th input variable
-                    let input_vars: Vec<_> = fb_vars
-                        .iter()
-                        .filter(|v| v.kind(self.db) == VariableKind::Input)
-                        .collect();
-                    let idx = input_writes.len();
-                    if idx < input_vars.len() {
-                        let var_name = input_vars[idx].name(self.db);
-                        if let Some(field) = struct_type.fields.iter().find(|f| f.name == var_name)
-                        {
-                            let mir_elem = match &field.ty {
-                                MirType::Elementary(e) => *e,
-                                _ => continue,
-                            };
-                            let expr = self.lower_expr(value)?;
-                            input_writes.push((field.offset, expr, mir_elem));
+                ParamAssignKind::FormalInput { value, .. }
+                | ParamAssignKind::NonFormal { value } => {
+                    let Some(field) = struct_type.fields.iter().find(|f| f.name == var_name)
+                    else {
+                        continue;
+                    };
+                    // VAR_IN_OUT is by-reference: the instance field is
+                    // a pointer. Store the address of the caller's l-value ONCE
+                    // before the body — the body reads/writes through it, so
+                    // there is no value copy-in and (unlike a C-emitting compiler) no copy-out.
+                    if field.by_ref {
+                        // Must be an l-value (`Load(place, _)`) to take its
+                        // address. A non-l-value inout arg is malformed (HIR
+                        // accepts it today); skip rather than store a bogus
+                        // address — that gap belongs to the FUNCTION-inout work.
+                        if let MirExpr::Load(place, _) = self.lower_expr(value)? {
+                            input_writes.push((
+                                field.offset,
+                                MirExpr::AddrOf(place),
+                                MirElementary::DWord,
+                            ));
                         }
+                        continue;
                     }
+                    // Plain VAR_INPUT: copy the value into the elementary field.
+                    let mir_elem = match &field.ty {
+                        MirType::Elementary(e) => *e,
+                        _ => continue, // skip non-elementary fields for now
+                    };
+                    let expr = self.lower_expr(value)?;
+                    input_writes.push((field.offset, expr, mir_elem));
                 }
-                ParamAssignKind::FormalOutput {
-                    param: param_ident,
-                    variable,
-                    ..
-                } => {
-                    let param_name = param_ident.ident;
-                    if let Some(field) = struct_type.fields.iter().find(|f| f.name == param_name) {
+                ParamAssignKind::FormalOutput { variable, .. } => {
+                    if let Some(field) = struct_type.fields.iter().find(|f| f.name == var_name) {
                         let mir_elem = match &field.ty {
                             MirType::Elementary(e) => *e,
                             _ => continue,

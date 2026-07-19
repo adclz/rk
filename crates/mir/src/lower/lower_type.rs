@@ -174,6 +174,7 @@ pub fn lower_struct_type_named<'db>(
             name: element.name(db),
             ty: mir_type,
             offset,
+            by_ref: false,
         });
 
         offset += field_size;
@@ -368,6 +369,16 @@ pub fn lower_fb_type_with_subs_named<'db>(
             }
         };
         let mir_type = apply_sized_string(db, var.spec(db), mir_type);
+        // A VAR_IN_OUT field holds the address of the caller's l-value: a
+        // pointer the body auto-derefs and the call site writes once.
+        // Wrapping the *resolved* concrete type means a generic `Counter$INT`
+        // inout becomes `Pointer(Int)` for every monomorphization.
+        let is_inout = var.kind(db) == hir::hir_def::pous::variable::VariableKind::InOut;
+        let mir_type = if is_inout {
+            MirType::Pointer(Box::new(mir_type))
+        } else {
+            mir_type
+        };
         let field_align = mir_type.alignment();
         let field_size = mir_type.size_bytes();
 
@@ -378,6 +389,7 @@ pub fn lower_fb_type_with_subs_named<'db>(
             name: var.name(db),
             ty: mir_type,
             offset,
+            by_ref: is_inout,
         });
 
         offset += field_size;
@@ -423,6 +435,9 @@ pub fn lower_program_type<'db>(
             name: var.name(db),
             ty: mir_type,
             offset,
+            // PROGRAM instances are driven by the scheduler, never through an
+            // `FbCall`, so PROGRAM VAR_IN_OUT stays value-based.
+            by_ref: false,
         });
         offset += field_size;
     }
@@ -460,6 +475,8 @@ pub fn lower_class_type<'db>(
             name: var.name(db),
             ty: mir_type,
             offset,
+            // A CLASS has no cyclic body and no VAR_IN_OUT fields to bind.
+            by_ref: false,
         });
 
         offset += field_size;

@@ -1064,6 +1064,11 @@ fn collect_address_taken_vars<'db>(
                         }
                     }
                 }
+                // A FUNCTION_BLOCK VAR_IN_OUT arg is passed by reference: the
+                // call site stores `&arg` into the instance's pointer field
+                // (see lower_fb_invocation), so a scalar arg must live in linear
+                // memory, not a bare wasm local, for its address to exist.
+                mark_fb_inout_args(db, *fc, result);
             }
             _ => {}
         }
@@ -1071,6 +1076,50 @@ fn collect_address_taken_vars<'db>(
 
     walk_stmts(db, stmts, &mut result);
     result
+}
+
+/// Mark the root variable of every VAR_IN_OUT argument of a FUNCTION_BLOCK
+/// invocation as address-taken, so `&arg` (stored into the instance's pointer
+/// field) has an addressable target. No-op for FUNCTION calls (their inout
+/// handling is separate) and for aggregate args (already memory-resident).
+fn mark_fb_inout_args<'db>(
+    db: &'db dyn WorkspaceDataBase,
+    fc: hir::hir_def::expressions::expression::FuncCall<'db>,
+    result: &mut FxHashSet<Ident>,
+) {
+    use hir::hir_def::expressions::expression::{
+        ExprKind, ParamAssignKind, PrimaryExpr, VariableAccessKind,
+    };
+    use hir::hir_ty::ty::{CallableType, Type};
+
+    let path = fc.path(db);
+    let is_fb = matches!(
+        path.infer(db).normalize(db),
+        Type::FunctionBlock(_) | Type::CallableType(CallableType::FunctionBlock(_))
+    );
+    if !is_fb {
+        return;
+    }
+    let body = hir::hir_ty::body::infer_body(db, path.scope_id(db));
+    for param in fc.params(db) {
+        let Some(var) = body.variable_of_param.get(param) else {
+            continue;
+        };
+        if !var.is_in_out(db) {
+            continue;
+        }
+        let value = match param.kind(db) {
+            ParamAssignKind::NonFormal { value }
+            | ParamAssignKind::FormalInput { value, .. } => value,
+            ParamAssignKind::FormalOutput { .. } => continue,
+        };
+        if let ExprKind::PrimaryExpr(PrimaryExpr::VariableAccess(va)) = value.expr(db)
+            && let VariableAccessKind::Symbolic(begin_path) = va.kind(db)
+            && let Some(path_expr) = begin_path.expr(db)
+        {
+            result.insert(path_expr.ident(db).ident);
+        }
+    }
 }
 
 /// Lower a FUNCTION-local variable initializer to prepended assignment(s). A

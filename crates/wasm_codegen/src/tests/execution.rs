@@ -225,6 +225,232 @@ fn test_default_param_override(mut with_db: db::RootDatabase) {
     assert_eq!(result, 25, "5 + 20 = 25");
 }
 
+/// Formal (named) arguments may appear in any order at the call site — the
+/// emitted args must be bound by parameter name, not call-site position.
+#[rstest]
+fn test_named_args_out_of_order(mut with_db: db::RootDatabase) {
+    let source = r#"
+        FUNCTION sub2 : INT
+        VAR_INPUT
+            a : INT;
+            b : INT;
+        END_VAR
+            sub2 := a - b;
+        END_FUNCTION
+
+        FUNCTION test : INT
+            test := sub2(b := 3, a := 10);
+        END_FUNCTION
+    "#;
+    let wasm = super::compile_to_wasm_checked(&mut with_db, source);
+    let result: i32 = super::execute_wasm(&wasm, "test", ());
+    assert_eq!(result, 7, "a(10) - b(3) = 7");
+}
+
+/// A defaulted parameter declared *before* a provided named argument must
+/// still be synthesized at the call site, in declaration order.
+#[rstest]
+fn test_default_param_before_named(mut with_db: db::RootDatabase) {
+    let source = r#"
+        FUNCTION sub_default : INT
+        VAR_INPUT
+            a : INT := 10;
+            b : INT;
+        END_VAR
+            sub_default := a - b;
+        END_FUNCTION
+
+        FUNCTION test : INT
+            test := sub_default(b := 4);
+        END_FUNCTION
+    "#;
+    let wasm = super::compile_to_wasm_checked(&mut with_db, source);
+    let result: i32 = super::execute_wasm(&wasm, "test", ());
+    assert_eq!(result, 6, "default(10) - 4 = 6");
+}
+
+/// METHOD calls fill omitted defaulted VAR_INPUTs exactly like functions —
+/// the default is synthesized after the implicit `this` receiver.
+#[rstest]
+fn test_method_omitted_default_param(mut with_db: db::RootDatabase) {
+    let source = r#"
+        FUNCTION_BLOCK Fb
+            METHOD PUBLIC add2 : INT
+            VAR_INPUT
+                a : INT;
+                b : INT := 10;
+            END_VAR
+                add2 := a + b;
+            END_METHOD
+        END_FUNCTION_BLOCK
+
+        FUNCTION test : INT
+        VAR fb : Fb; END_VAR
+            test := fb.add2(a := 5);
+        END_FUNCTION
+    "#;
+    let wasm = super::compile_to_wasm_checked(&mut with_db, source);
+    let result: i32 = super::execute_wasm(&wasm, "test", ());
+    assert_eq!(result, 15, "5 + default(10) = 15");
+}
+
+/// Mixed formal + positional args on an FB invocation: a positional arg binds
+/// to the first input *not* claimed by a named one, regardless of call order.
+#[rstest]
+fn test_fb_mixed_named_then_positional(mut with_db: db::RootDatabase) {
+    let source = r#"
+        FUNCTION_BLOCK diff
+        VAR_INPUT
+            a : INT;
+            b : INT;
+        END_VAR
+        VAR_OUTPUT
+            o : INT;
+        END_VAR
+            o := a - b;
+        END_FUNCTION_BLOCK
+
+        FUNCTION test : INT
+        VAR inst : diff; END_VAR
+            inst(b := 3, 10);
+            test := inst.o;
+        END_FUNCTION
+    "#;
+    let wasm = super::compile_to_wasm_checked(&mut with_db, source);
+    let result: i32 = super::execute_wasm(&wasm, "test", ());
+    assert_eq!(result, 7, "a(10) - b(3) = 7");
+}
+
+/// FB VAR_IN_OUT copy-back (a C-emitting compiler/other toolchains): after `$__body__`, the instance
+/// field is copied back into the caller's variable. `d(v := x)` with x=21 and
+/// `v := v * 2` must leave x = 42. (Regression: previously only the copy-in was
+/// emitted, so x silently kept 21.)
+#[rstest]
+fn test_fb_inout_copyback(mut with_db: db::RootDatabase) {
+    let source = r#"
+        FUNCTION_BLOCK doubler
+            VAR_IN_OUT v : INT; END_VAR
+            v := v * 2;
+        END_FUNCTION_BLOCK
+
+        FUNCTION test : INT
+        VAR d : doubler; x : INT := 21; END_VAR
+            d(v := x);
+            test := x;
+        END_FUNCTION
+    "#;
+    let wasm = super::compile_to_wasm_checked(&mut with_db, source);
+    let result: i32 = super::execute_wasm(&wasm, "test", ());
+    assert_eq!(result, 42, "FB inout copy-back: x becomes 42");
+}
+
+/// FB VAR_IN_OUT copy-back also fires for the positional (non-formal) arg form
+/// `d(x)`, and round-trips across two calls (42 -> 84).
+#[rstest]
+fn test_fb_inout_copyback_positional(mut with_db: db::RootDatabase) {
+    let source = r#"
+        FUNCTION_BLOCK doubler
+            VAR_IN_OUT v : INT; END_VAR
+            v := v * 2;
+        END_FUNCTION_BLOCK
+
+        FUNCTION test : INT
+        VAR d : doubler; x : INT := 21; END_VAR
+            d(x);
+            d(x);
+            test := x;
+        END_FUNCTION
+    "#;
+    let wasm = super::compile_to_wasm_checked(&mut with_db, source);
+    let result: i32 = super::execute_wasm(&wasm, "test", ());
+    assert_eq!(result, 84, "positional inout copy-back round-trips: 21->42->84");
+}
+
+/// A VAR_IN_OUT bound to a struct field as the caller l-value: the field is
+/// already memory-resident, and the copy-back must target `p.n` specifically.
+#[rstest]
+fn test_fb_inout_copyback_field_target(mut with_db: db::RootDatabase) {
+    let source = r#"
+        TYPE Pair : STRUCT n : INT; other : INT; END_STRUCT; END_TYPE
+
+        FUNCTION_BLOCK doubler
+            VAR_IN_OUT v : INT; END_VAR
+            v := v * 2;
+        END_FUNCTION_BLOCK
+
+        FUNCTION test : INT
+        VAR d : doubler; p : Pair; END_VAR
+            p.n := 21;
+            p.other := 5;
+            d(v := p.n);
+            test := p.n + p.other;
+        END_FUNCTION
+    "#;
+    let wasm = super::compile_to_wasm_checked(&mut with_db, source);
+    let result: i32 = super::execute_wasm(&wasm, "test", ());
+    assert_eq!(result, 47, "copy-back writes p.n=42, leaves p.other=5 -> 47");
+}
+
+/// The behavioral discriminator between by-reference and copy-in/copy-out:
+/// the SAME caller variable is bound to two VAR_IN_OUT params. The body writes
+/// through the first (`a := 100`) and then reads the second (`b`). Under
+/// by-reference both params alias the one variable, so `b` observes 100 live
+/// and the FB reports 100. Under copy-in/copy-out each param would be an
+/// independent snapshot and `b` would still read the original value — so this
+/// test can only pass if the switch to references actually happened.
+#[rstest]
+fn test_fb_inout_aliasing(mut with_db: db::RootDatabase) {
+    let source = r#"
+        FUNCTION_BLOCK aliaser
+            VAR_IN_OUT a : INT; b : INT; END_VAR
+            VAR_OUTPUT seen : INT; END_VAR
+            a := 100;
+            seen := b;
+        END_FUNCTION_BLOCK
+
+        FUNCTION test : INT
+        VAR fb : aliaser; x : INT := 7; END_VAR
+            fb(a := x, b := x);
+            test := fb.seen;
+        END_FUNCTION
+    "#;
+    let wasm = super::compile_to_wasm_checked(&mut with_db, source);
+    let result: i32 = super::execute_wasm(&wasm, "test", ());
+    assert_eq!(
+        result, 100,
+        "by-reference: writing through `a` is visible via `b` (same var); \
+         copy-in/copy-out would report 7"
+    );
+}
+
+/// A struct VAR_IN_OUT is passed by reference (one address stored, no value
+/// copy of the aggregate). The body mutates one field through the reference and
+/// the caller observes it — proving aggregate inouts work end-to-end (the old
+/// `_ => continue` silently dropped them).
+#[rstest]
+fn test_fb_inout_aggregate_byref(mut with_db: db::RootDatabase) {
+    let source = r#"
+        TYPE Vec2 : STRUCT x : INT; y : INT; END_STRUCT; END_TYPE
+
+        FUNCTION_BLOCK bump
+            VAR_IN_OUT v : Vec2; END_VAR
+            v.x := v.x + 10;
+            v.y := v.y + 20;
+        END_FUNCTION_BLOCK
+
+        FUNCTION test : INT
+        VAR fb : bump; p : Vec2; END_VAR
+            p.x := 1;
+            p.y := 2;
+            fb(v := p);
+            test := p.x + p.y;
+        END_FUNCTION
+    "#;
+    let wasm = super::compile_to_wasm_checked(&mut with_db, source);
+    let result: i32 = super::execute_wasm(&wasm, "test", ());
+    assert_eq!(result, 33, "struct inout by-ref: (1+10) + (2+20) = 33");
+}
+
 #[rstest]
 fn test_fb_bool_output(mut with_db: db::RootDatabase) {
     let source = r#"

@@ -86,6 +86,12 @@ pub struct MirStructField {
     pub name: Ident,
     pub ty: MirType,
     pub offset: u32,
+    /// True when `ty` is a `Pointer` that must be transparently dereferenced on
+    /// access — i.e. a `VAR_IN_OUT` instance field holding the address of the
+    /// caller's l-value (other toolchains by-reference semantics). Distinguishes it from
+    /// an explicit `REF_TO` pointer field, which the user derefs with `^` and
+    /// which must NOT auto-deref. See `root_place` / `lower_fb_invocation`.
+    pub by_ref: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
