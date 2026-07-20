@@ -20,6 +20,7 @@ mod e2e;
 mod exceptions_spike;
 mod execution;
 mod function_blocks;
+mod function_inputs;
 mod function_outputs;
 mod globals;
 mod imports;

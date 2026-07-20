@@ -41,6 +41,18 @@ pub enum MirExpr {
     /// Take the address of a place (REF operator).
     AddrOf(MirPlace),
 
+    /// Copy `size` bytes from `src` into the scratch local `scratch`, then
+    /// yield the scratch's address. Used for aggregate (struct/array)
+    /// `VAR_INPUT` args on FUNCTION/METHOD calls: the callee receives a
+    /// pointer to a call-entry snapshot — value semantics, mirroring the FB
+    /// input copy-in. The scratch is a synthesized memory-forced local of the
+    /// calling function (see `ExprLowerCtx::call_scratch`).
+    CopyIntoScratch {
+        scratch: Ident,
+        src: MirPlace,
+        size: u32,
+    },
+
     /// String literal reference.
     StringLiteral {
         /// Index into MirModule::string_literals.

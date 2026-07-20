@@ -77,17 +77,20 @@ pub struct ExprLowerCtx<'db> {
             >,
         >,
     >,
-    /// Scratch locals synthesized for DISCARDED `VAR_OUTPUT` call args
-    /// (`(name, value type)`): the callee's signature still expects a pointer,
-    /// so the call site passes the address of a throwaway local in the calling
-    /// function. Collected here during body lowering; the function-lowering
-    /// caller drains it into the `MirFunction`'s locals (memory-forced, so the
-    /// address exists). See `build_call_args`.
-    pub discard_scratch: std::rc::Rc<std::cell::RefCell<DiscardScratch>>,
+    /// Scratch locals synthesized at call sites (`(name, value type)`):
+    /// - `$discard$N` — a DISCARDED `VAR_OUTPUT`'s pointer arg points at a
+    ///   throwaway local instead of leaving the callee's param unfed;
+    /// - `$argcopy$N` — an aggregate `VAR_INPUT` arg is copied into a scratch
+    ///   whose address the callee receives (call-entry snapshot, value
+    ///   semantics — see `MirExpr::CopyIntoScratch`).
+    /// Collected during body lowering; the function-lowering caller drains
+    /// them into the `MirFunction`'s locals (memory-forced, so the address
+    /// exists). See `build_call_args`.
+    pub call_scratch: std::rc::Rc<std::cell::RefCell<CallScratch>>,
 }
 
-/// Scratch locals synthesized for discarded `VAR_OUTPUT` args: `(name, type)`.
-pub type DiscardScratch = Vec<(hir::hir_def::interned::identifier::Ident, MirType)>;
+/// Scratch locals synthesized for call args: `(name, type)`.
+pub type CallScratch = Vec<(hir::hir_def::interned::identifier::Ident, MirType)>;
 
 /// String literal pool: unique strings and their offsets in the data section.
 #[derive(Debug, Default)]
@@ -146,7 +149,7 @@ impl<'db> ExprLowerCtx<'db> {
             string_pool,
             iface_subs: None,
             iface_call_rewrites: None,
-            discard_scratch: Default::default(),
+            call_scratch: Default::default(),
         }
     }
 
@@ -164,7 +167,7 @@ impl<'db> ExprLowerCtx<'db> {
             string_pool,
             iface_subs: None,
             iface_call_rewrites: None,
-            discard_scratch: Default::default(),
+            call_scratch: Default::default(),
         }
     }
 
@@ -182,7 +185,7 @@ impl<'db> ExprLowerCtx<'db> {
             string_pool,
             iface_subs: None,
             iface_call_rewrites: None,
-            discard_scratch: Default::default(),
+            call_scratch: Default::default(),
         }
     }
 
@@ -1490,15 +1493,25 @@ impl<'db> ExprLowerCtx<'db> {
                             // A discarded VAR_OUTPUT still needs a pointer param: point
                             // it at a throwaway memory-forced scratch (a STRING scratch
                             // gets a real buffer).
-                            let ty = crate::lower::lower_func::lower_var_type(self.db, *var)?;
+                            //
+                            // An unresolved ANY_* output (generic builtin whose
+                            // concrete type is picked during monomorphization)
+                            // can't be lowered here — any elementary fits in an
+                            // 8-byte scratch, so use LWORD.
+                            let hir_ty = var.spec(self.db).infer(self.db).normalize(self.db);
+                            let ty = if matches!(&hir_ty, Type::Elementary(e) if e.is_any()) {
+                                MirType::Elementary(crate::types::MirElementary::LWord)
+                            } else {
+                                crate::lower::lower_func::lower_var_type(self.db, *var)?
+                            };
                             let name = hir::hir_def::interned::identifier::Ident::new(
                                 self.db,
                                 compact_str::CompactString::from(format!(
                                     "$discard${}",
-                                    self.discard_scratch.borrow().len()
+                                    self.call_scratch.borrow().len()
                                 )),
                             );
-                            self.discard_scratch.borrow_mut().push((name, ty));
+                            self.call_scratch.borrow_mut().push((name, ty));
                             args.push(MirCallArg {
                                 value: MirExpr::AddrOf(MirPlace::Local(name)),
                                 kind: MirArgKind::ByRef,
@@ -1517,12 +1530,49 @@ impl<'db> ExprLowerCtx<'db> {
                         let lowered = self.lower_expr(value)?;
                         if by_ref {
                             args.push(to_byref(lowered));
-                        } else {
-                            args.push(MirCallArg {
-                                value: lowered,
-                                kind: MirArgKind::ByValue,
-                            });
+                            continue;
                         }
+                        // Aggregate VAR_INPUT: copy into a scratch and pass its address (the
+                        // call-entry snapshot). Gated on the HIR type: unresolved ANY_* params
+                        // are never aggregates.
+                        let is_aggregate = matches!(
+                            var.spec(self.db).infer(self.db).normalize(self.db),
+                            Type::Struct(_) | Type::Array(_)
+                        );
+                        if fills_defaults && is_aggregate {
+                            let var_ty =
+                                crate::lower::lower_func::lower_var_type(self.db, *var)?;
+                            if matches!(var_ty, MirType::Struct(_) | MirType::Array(_)) {
+                                let MirExpr::Load(src, _) = lowered else {
+                                    return Err(LowerTypeError::UnsupportedType(
+                                        "aggregate VAR_INPUT argument must be a variable"
+                                            .to_string(),
+                                    ));
+                                };
+                                let name = hir::hir_def::interned::identifier::Ident::new(
+                                    self.db,
+                                    compact_str::CompactString::from(format!(
+                                        "$argcopy${}",
+                                        self.call_scratch.borrow().len()
+                                    )),
+                                );
+                                let size = var_ty.size_bytes();
+                                self.call_scratch.borrow_mut().push((name, var_ty));
+                                args.push(MirCallArg {
+                                    value: MirExpr::CopyIntoScratch {
+                                        scratch: name,
+                                        src,
+                                        size,
+                                    },
+                                    kind: MirArgKind::ByValue,
+                                });
+                                continue;
+                            }
+                        }
+                        args.push(MirCallArg {
+                            value: lowered,
+                            kind: MirArgKind::ByValue,
+                        });
                     }
                     ParamAssignKind::FormalOutput { variable, .. } => {
                         let place = self.lower_variable_access(variable)?;

@@ -125,6 +125,19 @@ pub(crate) fn emit_expr(
 
         MirExpr::AddrOf(place) => emit_addr_of(func, place, locals),
 
+        // Aggregate VAR_INPUT arg: copy into the scratch and yield its address.
+        MirExpr::CopyIntoScratch { scratch, src, size } => {
+            let dst = mir::expr::MirPlace::Local(*scratch);
+            emit_addr_of(func, &dst, locals); // dst
+            emit_addr_of(func, src, locals); // src
+            func.instruction(&Instruction::I32Const(*size as i32)); // len
+            func.instruction(&Instruction::MemoryCopy {
+                src_mem: 0,
+                dst_mem: 0,
+            });
+            emit_addr_of(func, &dst, locals); // the arg value
+        }
+
         MirExpr::StringLiteral { offset, len, .. } => {
             func.instruction(&Instruction::I32Const(*offset as i32));
             func.instruction(&Instruction::I32Const(*len as i32));

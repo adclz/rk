@@ -95,7 +95,7 @@ pub fn lower_function<'db>(
         }
         match var.kind(db) {
             VariableKind::Input => {
-                let ty = lower_var_type(db, *var)?;
+                let ty = input_param_type(lower_var_type(db, *var)?);
                 let param = MirParam {
                     name: var.name(db),
                     ty: ty.clone(),
@@ -229,7 +229,7 @@ pub fn lower_function<'db>(
         || !local_fb_mangling.is_empty()
         || iface_subs.is_some_and(|m| !m.is_empty())
         || !iface_call_rewrites.is_empty();
-    let (mut body, discard_scratch) = if !needs_full_ctx {
+    let (mut body, call_scratch) = if !needs_full_ctx {
         lower_stmts(db, func.statements(db), string_pool.clone())?
     } else {
         crate::lower::lower_stmt::lower_stmts_with_fb_subs_and_mangling(
@@ -242,8 +242,8 @@ pub fn lower_function<'db>(
             string_pool.clone(),
         )?
     };
-    append_discard_scratch_locals(
-        discard_scratch,
+    append_call_scratch_locals(
+        call_scratch,
         &mut locals,
         &mut next_local_idx,
         memory_layout,
@@ -327,7 +327,7 @@ pub fn lower_function_block<'db>(
         for var in method.variables(db) {
             match var.kind(db) {
                 VariableKind::Input => {
-                    let ty = lower_var_type(db, *var)?;
+                    let ty = input_param_type(lower_var_type(db, *var)?);
                     let param = MirParam {
                         name: var.name(db),
                         ty,
@@ -406,7 +406,7 @@ pub fn lower_function_block<'db>(
             Some(map)
         };
         let any_override = any_subs.values().next().copied();
-        let (body, discard_scratch) = crate::lower::lower_stmt::lower_stmts_fb_body(
+        let (body, call_scratch) = crate::lower::lower_stmt::lower_stmts_fb_body(
             db,
             method.stmts(db),
             this_struct,
@@ -415,8 +415,8 @@ pub fn lower_function_block<'db>(
             any_override,
             iface_call_rewrites,
         )?;
-        append_discard_scratch_locals(
-            discard_scratch,
+        append_call_scratch_locals(
+            call_scratch,
             &mut locals,
             &mut next_local_idx,
             memory_layout,
@@ -526,7 +526,7 @@ pub fn lower_function_block<'db>(
             }
             None => fb.statements(db),
         };
-        let (body_stmts, discard_scratch) = crate::lower::lower_stmt::lower_stmts_fb_body(
+        let (body_stmts, call_scratch) = crate::lower::lower_stmt::lower_stmts_fb_body(
             db,
             body_input,
             this_struct,
@@ -535,8 +535,8 @@ pub fn lower_function_block<'db>(
             any_override,
             iface_call_rewrites,
         )?;
-        append_discard_scratch_locals(
-            discard_scratch,
+        append_call_scratch_locals(
+            call_scratch,
             &mut body_locals,
             &mut next_local_idx,
             memory_layout,
@@ -603,7 +603,7 @@ pub fn lower_class<'db>(
         for var in method.variables(db) {
             match var.kind(db) {
                 VariableKind::Input => {
-                    let ty = lower_var_type(db, *var)?;
+                    let ty = input_param_type(lower_var_type(db, *var)?);
                     let param = MirParam {
                         name: var.name(db),
                         ty,
@@ -672,7 +672,7 @@ pub fn lower_class<'db>(
             });
         }
 
-        let (body, discard_scratch) = crate::lower::lower_stmt::lower_stmts_fb_body(
+        let (body, call_scratch) = crate::lower::lower_stmt::lower_stmts_fb_body(
             db,
             method.stmts(db),
             this_struct,
@@ -681,8 +681,8 @@ pub fn lower_class<'db>(
             None,
             iface_call_rewrites,
         )?;
-        append_discard_scratch_locals(
-            discard_scratch,
+        append_call_scratch_locals(
+            call_scratch,
             &mut locals,
             &mut next_local_idx,
             memory_layout,
@@ -771,7 +771,7 @@ pub fn lower_program<'db>(
         }
     }
 
-    let (body, discard_scratch) = crate::lower::lower_stmt::lower_stmts_fb_body(
+    let (body, call_scratch) = crate::lower::lower_stmt::lower_stmts_fb_body(
         db,
         program.statements(db),
         this_struct,
@@ -780,8 +780,8 @@ pub fn lower_program<'db>(
         None,
         iface_call_rewrites,
     )?;
-    append_discard_scratch_locals(
-        discard_scratch,
+    append_call_scratch_locals(
+        call_scratch,
         &mut locals,
         &mut next_local_idx,
         memory_layout,
@@ -855,11 +855,22 @@ pub fn param_wasm_width(ty: &MirType, kind: MirParamKind) -> u32 {
 /// Each had its own variant; three of them got the type-based
 /// decision wrong for STRING returns at some point in the past, which
 /// is why this lives in one place now.
+/// Aggregate (struct/array) `VAR_INPUT`s are received as a POINTER to the
+/// caller's call-entry snapshot (the caller copies the arg into a scratch
+/// local and passes its address — `MirExpr::CopyIntoScratch` — mirroring the
+/// FB input copy-in). Everything else stays a value param.
+pub(crate) fn input_param_type(ty: MirType) -> MirType {
+    match ty {
+        MirType::Struct(_) | MirType::Array(_) => MirType::Pointer(Box::new(ty)),
+        other => other,
+    }
+}
+
 /// Drain the scratch locals a body's lowering synthesized into the
 /// function's locals; memory-forced, since the call site takes their
 /// address.
-pub(crate) fn append_discard_scratch_locals(
-    scratch: crate::lower::lower_expr::DiscardScratch,
+pub(crate) fn append_call_scratch_locals(
+    scratch: crate::lower::lower_expr::CallScratch,
     locals: &mut Vec<MirLocal>,
     next_local_idx: &mut u32,
     memory_layout: &mut MirMemoryLayout,
@@ -1287,6 +1298,9 @@ fn is_const_value(e: &crate::expr::MirExpr) -> bool {
         MirExpr::BinOp { lhs, rhs, .. } => is_const_value(lhs) && is_const_value(rhs),
         MirExpr::UnaryOp { expr, .. } => is_const_value(expr),
         MirExpr::Cast { expr, .. } => is_const_value(expr),
-        MirExpr::Load(..) | MirExpr::Call(_) | MirExpr::AddrOf(_) => false,
+        MirExpr::Load(..)
+        | MirExpr::Call(_)
+        | MirExpr::AddrOf(_)
+        | MirExpr::CopyIntoScratch { .. } => false,
     }
 }

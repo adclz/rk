@@ -585,8 +585,9 @@ pub fn monomorphize<'db>(
                     for var in info.func.variables(db) {
                         match var.kind(db) {
                             VariableKind::Input => {
-                                let ty =
-                                    resolve_any_type(db, var.spec(db).infer(db), *concrete_spec)?;
+                                let ty = super::lower_func::input_param_type(
+                                    resolve_any_type(db, var.spec(db).infer(db), *concrete_spec)?,
+                                );
                                 params.push(MirParam {
                                     name: var.name(db),
                                     ty,
@@ -682,8 +683,9 @@ pub fn monomorphize<'db>(
                         use hir::hir_def::pous::variable::VariableKind;
                         match var.kind(db) {
                             VariableKind::Input => {
-                                let ty =
-                                    resolve_any_type(db, var.spec(db).infer(db), *concrete_spec)?;
+                                let ty = super::lower_func::input_param_type(
+                                    resolve_any_type(db, var.spec(db).infer(db), *concrete_spec)?,
+                                );
                                 params.push(MirParam {
                                     name: var.name(db),
                                     ty,
@@ -801,7 +803,7 @@ fn lower_monomorphized_local<'db>(
             VariableKind::Input => {
                 let param = MirParam {
                     name: var.name(db),
-                    ty,
+                    ty: super::lower_func::input_param_type(ty),
                     kind: MirParamKind::Input,
                 };
                 next_local_idx += super::lower_func::param_wasm_width(&param.ty, param.kind);
@@ -873,15 +875,15 @@ fn lower_monomorphized_local<'db>(
     // Resolve `{#if}` arms against this concrete type, then lower the
     // resulting flat body with the ANY override.
     let expanded = expanded_body_for_concrete(db, func.statements(db), concrete_spec);
-    let (body, discard_scratch) = crate::lower::lower_stmt::lower_stmts_with_ctx(
+    let (body, call_scratch) = crate::lower::lower_stmt::lower_stmts_with_ctx(
         db,
         &expanded,
         Some(concrete_spec),
         None,
         string_pool,
     )?;
-    super::lower_func::append_discard_scratch_locals(
-        discard_scratch,
+    super::lower_func::append_call_scratch_locals(
+        call_scratch,
         &mut locals,
         &mut next_local_idx,
         memory_layout,

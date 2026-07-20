@@ -53,7 +53,7 @@ pub fn lower_stmts<'db>(
     db: &'db dyn WorkspaceDataBase,
     stmts: &[Stmt<'db>],
     string_pool: std::rc::Rc<std::cell::RefCell<super::lower_expr::StringPool>>,
-) -> Result<(Vec<MirStmt>, super::lower_expr::DiscardScratch), LowerTypeError> {
+) -> Result<(Vec<MirStmt>, super::lower_expr::CallScratch), LowerTypeError> {
     lower_stmts_with_ctx(db, stmts, None, None, string_pool)
 }
 
@@ -63,7 +63,7 @@ pub fn lower_stmts_with_fb_subs<'db>(
     stmts: &[Stmt<'db>],
     fb_subs: &FbSubsMap,
     string_pool: std::rc::Rc<std::cell::RefCell<super::lower_expr::StringPool>>,
-) -> Result<(Vec<MirStmt>, super::lower_expr::DiscardScratch), LowerTypeError> {
+) -> Result<(Vec<MirStmt>, super::lower_expr::CallScratch), LowerTypeError> {
     lower_stmts_with_ctx(db, stmts, None, Some(fb_subs), string_pool)
 }
 
@@ -90,7 +90,7 @@ pub fn lower_stmts_with_fb_subs_and_mangling<'db>(
         hir::hir_def::interned::identifier::Ident,
     >,
     string_pool: std::rc::Rc<std::cell::RefCell<super::lower_expr::StringPool>>,
-) -> Result<(Vec<MirStmt>, super::lower_expr::DiscardScratch), LowerTypeError> {
+) -> Result<(Vec<MirStmt>, super::lower_expr::CallScratch), LowerTypeError> {
     let mut ctx = super::lower_expr::ExprLowerCtx::new(db, string_pool);
     if !fb_subs.is_empty() {
         ctx.fb_subs = Some(std::rc::Rc::new(fb_subs.clone()));
@@ -107,7 +107,7 @@ pub fn lower_stmts_with_fb_subs_and_mangling<'db>(
         ctx.iface_call_rewrites = Some(std::rc::Rc::new(iface_call_rewrites.clone()));
     }
     let stmts = lower_stmts_inner(&ctx, stmts)?;
-    Ok((stmts, ctx.discard_scratch.take()))
+    Ok((stmts, ctx.call_scratch.take()))
 }
 
 /// Lower a slice of HIR statements with an optional ANY type override for monomorphization.
@@ -117,7 +117,7 @@ pub fn lower_stmts_with_ctx<'db>(
     any_override: Option<hir::hir_def::expressions::spec::ElementarySpec>,
     fb_subs: Option<&FbSubsMap>,
     string_pool: std::rc::Rc<std::cell::RefCell<super::lower_expr::StringPool>>,
-) -> Result<(Vec<MirStmt>, super::lower_expr::DiscardScratch), LowerTypeError> {
+) -> Result<(Vec<MirStmt>, super::lower_expr::CallScratch), LowerTypeError> {
     let mut ctx = match any_override {
         Some(concrete) => ExprLowerCtx::with_any_override(db, concrete, string_pool),
         None => ExprLowerCtx::new(db, string_pool),
@@ -126,7 +126,7 @@ pub fn lower_stmts_with_ctx<'db>(
         ctx.fb_subs = Some(std::rc::Rc::new(subs.clone()));
     }
     let stmts = lower_stmts_inner(&ctx, stmts)?;
-    Ok((stmts, ctx.discard_scratch.take()))
+    Ok((stmts, ctx.call_scratch.take()))
 }
 
 /// Lower a slice of HIR statements in a FB body context where variables are struct fields.
@@ -139,7 +139,7 @@ pub fn lower_stmts_fb_body<'db>(
     fb_subs: Option<&FbSubsMap>,
     any_override: Option<hir::hir_def::expressions::spec::ElementarySpec>,
     iface_call_rewrites: &super::mono_iface::IfaceCallRewrites<'db>,
-) -> Result<(Vec<MirStmt>, super::lower_expr::DiscardScratch), LowerTypeError> {
+) -> Result<(Vec<MirStmt>, super::lower_expr::CallScratch), LowerTypeError> {
     let mut ctx = ExprLowerCtx::with_this_struct(db, this_struct, string_pool);
     ctx.any_override = any_override;
     if let Some(subs) = fb_subs {
@@ -149,7 +149,7 @@ pub fn lower_stmts_fb_body<'db>(
         ctx.iface_call_rewrites = Some(std::rc::Rc::new(iface_call_rewrites.clone()));
     }
     let stmts = lower_stmts_inner(&ctx, stmts)?;
-    Ok((stmts, ctx.discard_scratch.take()))
+    Ok((stmts, ctx.call_scratch.take()))
 }
 
 /// Lower a single HIR statement to a MIR statement.
