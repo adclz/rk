@@ -23,6 +23,7 @@ mod function_blocks;
 mod globals;
 mod imports;
 mod initializers;
+mod inout;
 mod mir_smoke;
 mod ref_to;
 mod references;
