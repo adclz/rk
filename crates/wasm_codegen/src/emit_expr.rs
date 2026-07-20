@@ -771,6 +771,8 @@ fn emit_binop(func: &mut wasm_encoder::Function, op: MirBinOp, ty: MirElementary
 
 fn emit_unaryop(func: &mut wasm_encoder::Function, op: MirUnaryOp, ty: MirElementary) {
     match op {
+        // Two's-complement negation `-x = (x ^ -1) + 1` works on the operand
+        // already on the stack.
         MirUnaryOp::Neg => {
             if ty.is_float() {
                 if ty.is_64bit() {
@@ -779,18 +781,11 @@ fn emit_unaryop(func: &mut wasm_encoder::Function, op: MirUnaryOp, ty: MirElemen
                     func.instruction(&Instruction::F32Neg);
                 }
             } else if ty.is_64bit() {
-                func.instruction(&Instruction::I64Const(0));
-                func.instruction(&Instruction::I64Sub);
-                // Swap: we need 0 - value, but value is already on stack
-                // Actually need: push 0, then swap... WASM doesn't have swap.
-                // The correct approach: emit 0 first, then the value, then sub.
-                // But the value was already emitted. We'd need to restructure.
-                // For now, this is a known limitation - proper fix needs operand reordering.
+                func.instruction(&Instruction::I64Const(-1));
+                func.instruction(&Instruction::I64Xor);
+                func.instruction(&Instruction::I64Const(1));
+                func.instruction(&Instruction::I64Add);
             } else {
-                // 0 - value for i32
-                // Same issue - value already on stack.
-                // Workaround: use (i32.const 0) (local.get tmp) (i32.sub)
-                // For now emit xor with -1 and add 1 (two's complement negate)
                 func.instruction(&Instruction::I32Const(-1));
                 func.instruction(&Instruction::I32Xor);
                 func.instruction(&Instruction::I32Const(1));
@@ -806,6 +801,18 @@ fn emit_unaryop(func: &mut wasm_encoder::Function, op: MirUnaryOp, ty: MirElemen
             } else {
                 func.instruction(&Instruction::I32Const(-1));
                 func.instruction(&Instruction::I32Xor);
+                // A BYTE/WORD complement stays within the logical width.
+                match ty {
+                    MirElementary::Byte => {
+                        func.instruction(&Instruction::I32Const(0xFF));
+                        func.instruction(&Instruction::I32And);
+                    }
+                    MirElementary::Word => {
+                        func.instruction(&Instruction::I32Const(0xFFFF));
+                        func.instruction(&Instruction::I32And);
+                    }
+                    _ => {}
+                }
             }
         }
     }

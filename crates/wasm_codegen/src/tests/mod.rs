@@ -33,6 +33,7 @@ mod schedule;
 mod static_strings;
 mod string_audit;
 mod structs;
+mod unary_ops;
 
 #[fixture]
 pub fn with_db() -> RootDatabase {
