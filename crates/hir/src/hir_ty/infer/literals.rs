@@ -712,24 +712,41 @@ impl Integer {
         }
     }
 
+    /// Radix literals (2#/8#/16#) are BIT PATTERNS: parse as the unsigned
+    /// width and reinterpret, so `16#FFFFFFFF` is a valid DWORD (-1 as the
+    /// i32 storage) instead of a signed-overflow parse error. Decimal keeps
+    /// signed parsing.
     #[salsa::tracked]
     pub fn as_i32(self, db: &dyn WorkspaceDataBase) -> Result<i32, std::num::ParseIntError> {
         let text = strip_underscores(self.ident(db).text(db));
         match self.kind(db) {
-            IntegerKind::Binary => i32::from_str_radix(text.trim_start_matches("2#"), 2),
-            IntegerKind::Octal => i32::from_str_radix(text.trim_start_matches("8#"), 8),
-            IntegerKind::Hex => i32::from_str_radix(text.trim_start_matches("16#"), 16),
+            IntegerKind::Binary => {
+                u32::from_str_radix(text.trim_start_matches("2#"), 2).map(|v| v as i32)
+            }
+            IntegerKind::Octal => {
+                u32::from_str_radix(text.trim_start_matches("8#"), 8).map(|v| v as i32)
+            }
+            IntegerKind::Hex => {
+                u32::from_str_radix(text.trim_start_matches("16#"), 16).map(|v| v as i32)
+            }
             IntegerKind::Signed => text.parse(),
         }
     }
 
+    /// See [`as_i32`](Self::as_i32) — radix literals parse as u64 bit patterns.
     #[salsa::tracked]
     pub fn as_i64(self, db: &dyn WorkspaceDataBase) -> Result<i64, std::num::ParseIntError> {
         let text = strip_underscores(self.ident(db).text(db));
         match self.kind(db) {
-            IntegerKind::Binary => i64::from_str_radix(text.trim_start_matches("2#"), 2),
-            IntegerKind::Octal => i64::from_str_radix(text.trim_start_matches("8#"), 8),
-            IntegerKind::Hex => i64::from_str_radix(text.trim_start_matches("16#"), 16),
+            IntegerKind::Binary => {
+                u64::from_str_radix(text.trim_start_matches("2#"), 2).map(|v| v as i64)
+            }
+            IntegerKind::Octal => {
+                u64::from_str_radix(text.trim_start_matches("8#"), 8).map(|v| v as i64)
+            }
+            IntegerKind::Hex => {
+                u64::from_str_radix(text.trim_start_matches("16#"), 16).map(|v| v as i64)
+            }
             IntegerKind::Signed => text.parse(),
         }
     }
