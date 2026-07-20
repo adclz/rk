@@ -873,13 +873,19 @@ fn lower_monomorphized_local<'db>(
     // Resolve `{#if}` arms against this concrete type, then lower the
     // resulting flat body with the ANY override.
     let expanded = expanded_body_for_concrete(db, func.statements(db), concrete_spec);
-    let body = crate::lower::lower_stmt::lower_stmts_with_ctx(
+    let (body, discard_scratch) = crate::lower::lower_stmt::lower_stmts_with_ctx(
         db,
         &expanded,
         Some(concrete_spec),
         None,
         string_pool,
     )?;
+    super::lower_func::append_discard_scratch_locals(
+        discard_scratch,
+        &mut locals,
+        &mut next_local_idx,
+        memory_layout,
+    );
 
     Ok(MirFunction {
         name: mono_name,

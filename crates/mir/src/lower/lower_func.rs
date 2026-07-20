@@ -229,7 +229,7 @@ pub fn lower_function<'db>(
         || !local_fb_mangling.is_empty()
         || iface_subs.is_some_and(|m| !m.is_empty())
         || !iface_call_rewrites.is_empty();
-    let mut body = if !needs_full_ctx {
+    let (mut body, discard_scratch) = if !needs_full_ctx {
         lower_stmts(db, func.statements(db), string_pool.clone())?
     } else {
         crate::lower::lower_stmt::lower_stmts_with_fb_subs_and_mangling(
@@ -242,6 +242,12 @@ pub fn lower_function<'db>(
             string_pool.clone(),
         )?
     };
+    append_discard_scratch_locals(
+        discard_scratch,
+        &mut locals,
+        &mut next_local_idx,
+        memory_layout,
+    );
     // Prepend initializers
     if !init_stmts.is_empty() {
         init_stmts.append(&mut body);
@@ -400,7 +406,7 @@ pub fn lower_function_block<'db>(
             Some(map)
         };
         let any_override = any_subs.values().next().copied();
-        let body = crate::lower::lower_stmt::lower_stmts_fb_body(
+        let (body, discard_scratch) = crate::lower::lower_stmt::lower_stmts_fb_body(
             db,
             method.stmts(db),
             this_struct,
@@ -409,6 +415,12 @@ pub fn lower_function_block<'db>(
             any_override,
             iface_call_rewrites,
         )?;
+        append_discard_scratch_locals(
+            discard_scratch,
+            &mut locals,
+            &mut next_local_idx,
+            memory_layout,
+        );
 
         // Method symbol: `<mangledFB>#<method>`. The `#` separator is distinct
         // from `$` (monomorphization type-suffix) and `.` (namespace) so the
@@ -514,7 +526,7 @@ pub fn lower_function_block<'db>(
             }
             None => fb.statements(db),
         };
-        let body_stmts = crate::lower::lower_stmt::lower_stmts_fb_body(
+        let (body_stmts, discard_scratch) = crate::lower::lower_stmt::lower_stmts_fb_body(
             db,
             body_input,
             this_struct,
@@ -523,6 +535,12 @@ pub fn lower_function_block<'db>(
             any_override,
             iface_call_rewrites,
         )?;
+        append_discard_scratch_locals(
+            discard_scratch,
+            &mut body_locals,
+            &mut next_local_idx,
+            memory_layout,
+        );
 
         let body_name = Ident::new(
             db,
@@ -654,7 +672,7 @@ pub fn lower_class<'db>(
             });
         }
 
-        let body = crate::lower::lower_stmt::lower_stmts_fb_body(
+        let (body, discard_scratch) = crate::lower::lower_stmt::lower_stmts_fb_body(
             db,
             method.stmts(db),
             this_struct,
@@ -663,6 +681,12 @@ pub fn lower_class<'db>(
             None,
             iface_call_rewrites,
         )?;
+        append_discard_scratch_locals(
+            discard_scratch,
+            &mut locals,
+            &mut next_local_idx,
+            memory_layout,
+        );
 
         // Method symbol: `<NsPath.>Class#Method` (see the FB-method site).
         let class_qualified = super::monomorphize::qualified_pou_ident(db, Type::Class(class));
@@ -747,7 +771,7 @@ pub fn lower_program<'db>(
         }
     }
 
-    let body = crate::lower::lower_stmt::lower_stmts_fb_body(
+    let (body, discard_scratch) = crate::lower::lower_stmt::lower_stmts_fb_body(
         db,
         program.statements(db),
         this_struct,
@@ -756,6 +780,12 @@ pub fn lower_program<'db>(
         None,
         iface_call_rewrites,
     )?;
+    append_discard_scratch_locals(
+        discard_scratch,
+        &mut locals,
+        &mut next_local_idx,
+        memory_layout,
+    );
 
     let body_name = Ident::new(
         db,
@@ -825,6 +855,28 @@ pub fn param_wasm_width(ty: &MirType, kind: MirParamKind) -> u32 {
 /// Each had its own variant; three of them got the type-based
 /// decision wrong for STRING returns at some point in the past, which
 /// is why this lives in one place now.
+/// Drain the scratch locals a body's lowering synthesized into the
+/// function's locals; memory-forced, since the call site takes their
+/// address.
+pub(crate) fn append_discard_scratch_locals(
+    scratch: crate::lower::lower_expr::DiscardScratch,
+    locals: &mut Vec<MirLocal>,
+    next_local_idx: &mut u32,
+    memory_layout: &mut MirMemoryLayout,
+) {
+    for (name, ty) in scratch {
+        let storage = allocate_local_storage(name, &ty, true, next_local_idx, memory_layout);
+        locals.push(MirLocal {
+            name,
+            ty,
+            init: None,
+            kind: MirLocalKind::Temp,
+            storage,
+            var_storage: MirVariableStorage::Automatic,
+        });
+    }
+}
+
 pub fn allocate_local_storage(
     name: Ident,
     ty: &MirType,
@@ -850,7 +902,7 @@ pub fn allocate_local_storage(
 
 /// Lower a variable's type spec, recovering a declared `STRING[N]`
 /// capacity that `Type::normalize` collapses.
-fn lower_var_type<'db>(
+pub(crate) fn lower_var_type<'db>(
     db: &'db dyn WorkspaceDataBase,
     var: VariableDecl<'db>,
 ) -> Result<MirType, LowerTypeError> {
@@ -951,6 +1003,9 @@ fn collect_address_taken_vars<'db>(
                         }
                     }
                 }
+                // Inout args take the variable's address too (see the
+                // statement-position FuncCall arm).
+                mark_inout_call_args(db, *fc, result);
             }
             ExprKind::PrimaryExpr(PrimaryExpr::ParenthesizedExpr { expr: inner }) => {
                 walk_expr(db, *inner, result);
@@ -1064,11 +1119,9 @@ fn collect_address_taken_vars<'db>(
                         }
                     }
                 }
-                // A FUNCTION_BLOCK VAR_IN_OUT arg is passed by reference: the
-                // call site stores `&arg` into the instance's pointer field
-                // (see lower_fb_invocation), so a scalar arg must live in linear
-                // memory, not a bare wasm local, for its address to exist.
-                mark_fb_inout_args(db, *fc, result);
+                // A VAR_IN_OUT arg is passed by reference on every callable, so a
+                // scalar arg must live in linear memory.
+                mark_inout_call_args(db, *fc, result);
             }
             _ => {}
         }
@@ -1078,11 +1131,9 @@ fn collect_address_taken_vars<'db>(
     result
 }
 
-/// Mark the root variable of every VAR_IN_OUT argument of a FUNCTION_BLOCK
-/// invocation as address-taken, so `&arg` (stored into the instance's pointer
-/// field) has an addressable target. No-op for FUNCTION calls (their inout
-/// handling is separate) and for aggregate args (already memory-resident).
-fn mark_fb_inout_args<'db>(
+/// Mark the root variable of every VAR_IN_OUT argument as address-taken,
+/// so `&arg` has a target; matters for scalar locals.
+fn mark_inout_call_args<'db>(
     db: &'db dyn WorkspaceDataBase,
     fc: hir::hir_def::expressions::expression::FuncCall<'db>,
     result: &mut FxHashSet<Ident>,
@@ -1090,16 +1141,8 @@ fn mark_fb_inout_args<'db>(
     use hir::hir_def::expressions::expression::{
         ExprKind, ParamAssignKind, PrimaryExpr, VariableAccessKind,
     };
-    use hir::hir_ty::ty::{CallableType, Type};
 
     let path = fc.path(db);
-    let is_fb = matches!(
-        path.infer(db).normalize(db),
-        Type::FunctionBlock(_) | Type::CallableType(CallableType::FunctionBlock(_))
-    );
-    if !is_fb {
-        return;
-    }
     let body = hir::hir_ty::body::infer_body(db, path.scope_id(db));
     for param in fc.params(db) {
         let Some(var) = body.variable_of_param.get(param) else {

@@ -276,3 +276,79 @@ fn fb_inout_non_lvalue_rejected(mut with_db: db::RootDatabase) {
     );
     assert_eq!(diags.len(), 2, "no other diagnostics expected: {diags:?}");
 }
+
+/// FUNCTION VAR_IN_OUT bound to a plain scalar FUNCTION-local: the arg must be
+/// forced into linear memory so its address exists. (Regression: the
+/// address-taken pass only covered FB calls, so `fn2(x)` emitted an
+/// addressless AddrOf -> invalid wasm.)
+#[rstest]
+fn fn_inout_scalar_local(mut with_db: db::RootDatabase) {
+    let source = r#"
+        FUNCTION fn2 : INT
+        VAR_IN_OUT io : INT; END_VAR
+            io := io + 1;
+            fn2 := 0;
+        END_FUNCTION
+
+        FUNCTION test : INT
+        VAR x : INT := 10; END_VAR
+            fn2(x);
+            fn2(io := x);
+            test := x;
+        END_FUNCTION
+    "#;
+    let wasm = compile_to_wasm_checked(&mut with_db, source);
+    let result: i32 = super::execute_wasm(&wasm, "test", ());
+    assert_eq!(result, 12, "two inout calls increment x: 10 -> 12");
+}
+
+/// FUNCTION VAR_IN_OUT with a STRUCT: by-reference, the callee mutates the
+/// caller's fields through the pointer.
+#[rstest]
+fn fn_inout_struct(mut with_db: db::RootDatabase) {
+    let source = r#"
+        TYPE Vec2 : STRUCT x : INT; y : INT; END_STRUCT; END_TYPE
+
+        FUNCTION bump : INT
+        VAR_IN_OUT v : Vec2; END_VAR
+            v.x := v.x + 10;
+            v.y := v.y + 20;
+            bump := 0;
+        END_FUNCTION
+
+        FUNCTION test : INT
+        VAR p : Vec2; END_VAR
+            p.x := 1;
+            p.y := 2;
+            bump(v := p);
+            test := p.x + p.y;
+        END_FUNCTION
+    "#;
+    let wasm = compile_to_wasm_checked(&mut with_db, source);
+    let result: i32 = super::execute_wasm(&wasm, "test", ());
+    assert_eq!(result, 33, "struct inout on a FUNCTION: (1+10) + (2+20)");
+}
+
+/// FUNCTION VAR_IN_OUT with an ARRAY: element writes through the reference.
+#[rstest]
+fn fn_inout_array(mut with_db: db::RootDatabase) {
+    let source = r#"
+        FUNCTION dbl : INT
+        VAR_IN_OUT arr : ARRAY[0..1] OF INT; END_VAR
+            arr[0] := arr[0] * 2;
+            arr[1] := arr[1] * 2;
+            dbl := 0;
+        END_FUNCTION
+
+        FUNCTION test : INT
+        VAR a : ARRAY[0..1] OF INT; END_VAR
+            a[0] := 3;
+            a[1] := 4;
+            dbl(arr := a);
+            test := a[0] + a[1];
+        END_FUNCTION
+    "#;
+    let wasm = compile_to_wasm_checked(&mut with_db, source);
+    let result: i32 = super::execute_wasm(&wasm, "test", ());
+    assert_eq!(result, 14, "array inout on a FUNCTION: 6 + 8");
+}

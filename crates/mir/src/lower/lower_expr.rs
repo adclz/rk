@@ -77,7 +77,17 @@ pub struct ExprLowerCtx<'db> {
             >,
         >,
     >,
+    /// Scratch locals synthesized for DISCARDED `VAR_OUTPUT` call args
+    /// (`(name, value type)`): the callee's signature still expects a pointer,
+    /// so the call site passes the address of a throwaway local in the calling
+    /// function. Collected here during body lowering; the function-lowering
+    /// caller drains it into the `MirFunction`'s locals (memory-forced, so the
+    /// address exists). See `build_call_args`.
+    pub discard_scratch: std::rc::Rc<std::cell::RefCell<DiscardScratch>>,
 }
+
+/// Scratch locals synthesized for discarded `VAR_OUTPUT` args: `(name, type)`.
+pub type DiscardScratch = Vec<(hir::hir_def::interned::identifier::Ident, MirType)>;
 
 /// String literal pool: unique strings and their offsets in the data section.
 #[derive(Debug, Default)]
@@ -136,6 +146,7 @@ impl<'db> ExprLowerCtx<'db> {
             string_pool,
             iface_subs: None,
             iface_call_rewrites: None,
+            discard_scratch: Default::default(),
         }
     }
 
@@ -153,6 +164,7 @@ impl<'db> ExprLowerCtx<'db> {
             string_pool,
             iface_subs: None,
             iface_call_rewrites: None,
+            discard_scratch: Default::default(),
         }
     }
 
@@ -170,6 +182,7 @@ impl<'db> ExprLowerCtx<'db> {
             string_pool,
             iface_subs: None,
             iface_call_rewrites: None,
+            discard_scratch: Default::default(),
         }
     }
 
@@ -1422,8 +1435,8 @@ impl<'db> ExprLowerCtx<'db> {
             }
         }
 
-        // Only FUNCTION/METHOD calls synthesize omitted defaults — an FB call
-        // leaves the instance field untouched instead (`lower_fb_invocation`).
+        // Only FUNCTION/METHOD calls synthesize args for omitted params; an FB
+        // call leaves the instance field untouched.
         let fills_defaults = matches!(
             callable,
             hir::hir_ty::ty::CallableType::Function(_)
@@ -1456,19 +1469,43 @@ impl<'db> ExprLowerCtx<'db> {
 
             let Some(assigns) = assigns_of_var.get(var) else {
                 // Omitted at the call site. Zero variadic args is valid; an
-                // omitted FB input has instance storage; other omissions are
-                // rejected upstream (E0233) or unsupported (aggregate
-                // defaults, discarded outputs).
-                if fills_defaults
-                    && !var.variadic(self.db)
-                    && var.kind(self.db) == VariableKind::Input
-                    && let Some(init) = var.init(self.db)
-                    && let InitExprKind::ConstantExpr(expr) = init.kind(self.db)
-                {
-                    args.push(MirCallArg {
-                        value: self.lower_expr(expr)?,
-                        kind: MirArgKind::ByValue,
-                    });
+                // omitted FB input has instance storage; FUNCTION/METHOD
+                // inputs fall back to their constant default (E0233 rejects
+                // the rest); a discarded FUNCTION/METHOD output still needs a
+                // pointer arg — synthesized below. Aggregate defaults stay
+                // unsupported.
+                if fills_defaults && !var.variadic(self.db) {
+                    match var.kind(self.db) {
+                        VariableKind::Input => {
+                            if let Some(init) = var.init(self.db)
+                                && let InitExprKind::ConstantExpr(expr) = init.kind(self.db)
+                            {
+                                args.push(MirCallArg {
+                                    value: self.lower_expr(expr)?,
+                                    kind: MirArgKind::ByValue,
+                                });
+                            }
+                        }
+                        VariableKind::Output => {
+                            // A discarded VAR_OUTPUT still needs a pointer param: point
+                            // it at a throwaway memory-forced scratch (a STRING scratch
+                            // gets a real buffer).
+                            let ty = crate::lower::lower_func::lower_var_type(self.db, *var)?;
+                            let name = hir::hir_def::interned::identifier::Ident::new(
+                                self.db,
+                                compact_str::CompactString::from(format!(
+                                    "$discard${}",
+                                    self.discard_scratch.borrow().len()
+                                )),
+                            );
+                            self.discard_scratch.borrow_mut().push((name, ty));
+                            args.push(MirCallArg {
+                                value: MirExpr::AddrOf(MirPlace::Local(name)),
+                                kind: MirArgKind::ByRef,
+                            });
+                        }
+                        _ => {}
+                    }
                 }
                 continue;
             };
