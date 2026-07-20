@@ -122,3 +122,71 @@ fn plain_program_var_has_no_retain_band(mut with_db: db::RootDatabase) {
     assert_eq!(mir.retain_size, 0, "no RETAIN vars => empty retain band");
     assert_eq!(read_retain_globals(&wasm).1, 0);
 }
+
+/// A retained program embedding an FB with a VAR_IN_OUT field. The retain band
+/// is whole-instance granular, so the FB's by-ref pointer field sits inside the
+/// snapshot — and a restored (stale) pointer is harmless because the call site
+/// re-stores `&arg` before every `$__body__` call. IEC-wise VAR_IN_OUT itself
+/// can never be RETAIN (grammar-rejected, E0050); this covers the embedded
+/// case.
+#[rstest]
+fn retained_program_with_fb_inout_survives_power_cycle(mut with_db: db::RootDatabase) {
+    let source = r#"
+        FUNCTION_BLOCK doubler
+            VAR_IN_OUT v : INT; END_VAR
+            v := v * 2;
+        END_FUNCTION_BLOCK
+
+        PROGRAM ProgA
+        VAR RETAIN acc : INT; END_VAR
+        VAR d : doubler; END_VAR
+            acc := acc + 1;
+            d(v := acc);
+        END_PROGRAM
+
+        CONFIGURATION Cfg
+            RESOURCE Res ON CPU
+                TASK T(INTERVAL := T#10ms, PRIORITY := 1);
+                PROGRAM P WITH T : ProgA;
+            END_RESOURCE
+        END_CONFIGURATION
+    "#;
+    let (mir, wasm) = compile_to_mir_and_wasm(&mut with_db, source);
+
+    // Whole-instance banding: acc (4) + the doubler instance (one 4-byte
+    // pointer field) => 8 bytes. The pointer IS part of the snapshot today.
+    assert_eq!(mir.retain_size, 8, "acc + embedded doubler pointer field");
+
+    // acc doubles through the inout each scan: 0 ->2 ->6 ->14.
+    let acc = |plc: &Plc| i32::from_le_bytes(plc.read_retain()[..4].try_into().unwrap());
+    let path = temp_path("fb_inout_retain");
+    {
+        let mut plc = Plc::load(
+            &wasm,
+            Config {
+                entry: None,
+                retain_path: Some(path.clone()),
+            },
+        )
+        .expect("load (boot 1)");
+        plc.run(3).expect("scans");
+        assert_eq!(acc(&plc), 14);
+        plc.snapshot_retain().expect("snapshot");
+    }
+    {
+        let mut plc = Plc::load(
+            &wasm,
+            Config {
+                entry: None,
+                retain_path: Some(path.clone()),
+            },
+        )
+        .expect("load (boot 2)");
+        assert_eq!(acc(&plc), 14, "restored from snapshot");
+        // The restored pointer field is stale until the first call re-stores
+        // it — the scan must still work: (14+1)*2 = 30.
+        plc.run(1).expect("scan after restore");
+        assert_eq!(acc(&plc), 30, "inout works after restore");
+    }
+    std::fs::remove_file(&path).ok();
+}
