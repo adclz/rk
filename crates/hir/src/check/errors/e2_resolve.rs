@@ -200,6 +200,14 @@ pub enum ResolveError<'db> {
         var: VariableDecl<'db>,
         expr: Expr<'db>,
     },
+    /// A RETAIN/NON_RETAIN qualifier on a variable of a stateless POU
+    /// (FUNCTION or METHOD). Retentive behavior requires instance storage —
+    /// only FUNCTION_BLOCK, CLASS, and PROGRAM variables (and VAR_GLOBAL)
+    /// can be retentive.
+    RetainInStatelessPou {
+        var: VariableDecl<'db>,
+        pou_kind: &'static str,
+    },
 }
 
 impl<'db> ErrorCode for ResolveError<'db> {
@@ -238,6 +246,7 @@ impl<'db> ErrorCode for ResolveError<'db> {
             Self::IntoRefNotAny { .. } => "E0232",
             Self::MissingRequiredParameter { .. } => "E0233",
             Self::InOutParameterRequiresLValue { .. } => "E0234",
+            Self::RetainInStatelessPou { .. } => "E0235",
         }
     }
 
@@ -273,6 +282,7 @@ impl<'db> ErrorCode for ResolveError<'db> {
             Self::IntoRefNotAny { .. } => "INTO reference must be an ANY type",
             Self::MissingRequiredParameter { .. } => "missing required parameter",
             Self::InOutParameterRequiresLValue { .. } => "VAR_IN_OUT argument must be a variable",
+            Self::RetainInStatelessPou { .. } => "invalid retentive qualifier",
         }
     }
 }
@@ -977,6 +987,32 @@ impl<'db> ToIdeDiagnostic<'db> for ResolveError<'db> {
                     var.scope_id(db).file(db),
                     var.get_span(db),
                 ));
+
+                diag
+            }
+            Self::RetainInStatelessPou { var, pou_kind } => {
+                let qualifier = if var.qualifier(db).contains(crate::Qualifier::RETAIN) {
+                    "RETAIN"
+                } else {
+                    "NON_RETAIN"
+                };
+                let mut diag = diag()
+                    .message(format!(
+                        "'{}' cannot be {}: a {} is stateless",
+                        var.name(db).text(db),
+                        qualifier,
+                        pou_kind,
+                    ))
+                    .severity(DiagnosticSeverity::ERROR)
+                    .desc(self)
+                    .range(
+                        crate::denormalize(db, file, &var.get_span(db)).unwrap_or_default(),
+                    )
+                    .call();
+                diag.with_note(
+                    "retentive behavior requires instance storage; only FUNCTION_BLOCK, CLASS, and PROGRAM variables (and VAR_GLOBAL) can be RETAIN/NON_RETAIN"
+                        .to_string(),
+                );
 
                 diag
             }

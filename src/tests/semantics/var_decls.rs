@@ -79,3 +79,108 @@ END_PROGRAM"#;
 
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"");
 }
+
+// E0235: RETAIN/NON_RETAIN require instance storage — meaningless on a
+// stateless FUNCTION. The grammar accepts the qualifier on VAR_INPUT /
+// VAR_OUTPUT sections (it is legal there for FBs/programs), so this is a
+// semantic check.
+#[rstest]
+fn invalid_function_retain_qualifiers(mut with_db: RootDatabase) {
+    let source = r#"
+FUNCTION fn : INT
+    VAR_INPUT RETAIN
+        a: INT;
+    END_VAR
+    VAR_OUTPUT NON_RETAIN
+        b: INT;
+    END_VAR
+    fn := a;
+END_FUNCTION"#;
+
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
+    [E0235] Error: invalid retentive qualifier
+       ,-[ file:///test0.st:4:9 ]
+       |
+     4 |         a: INT;
+       |         ^^^|^^
+       |            `---- 'a' cannot be RETAIN: a FUNCTION is stateless
+       |
+       | Note: retentive behavior requires instance storage; only FUNCTION_BLOCK, CLASS, and PROGRAM variables (and VAR_GLOBAL) can be RETAIN/NON_RETAIN
+    ---'
+    [E0235] Error: invalid retentive qualifier
+       ,-[ file:///test0.st:7:9 ]
+       |
+     7 |         b: INT;
+       |         ^^^|^^
+       |            `---- 'b' cannot be NON_RETAIN: a FUNCTION is stateless
+       |
+       | Note: retentive behavior requires instance storage; only FUNCTION_BLOCK, CLASS, and PROGRAM variables (and VAR_GLOBAL) can be RETAIN/NON_RETAIN
+    ---'
+    ");
+}
+
+// E0235 in a METHOD — methods are stateless like functions.
+#[rstest]
+fn invalid_method_retain_qualifier(mut with_db: RootDatabase) {
+    let source = r#"
+FUNCTION_BLOCK fb1
+    METHOD m : INT
+        VAR_INPUT RETAIN
+            x: INT;
+        END_VAR
+        m := x;
+    END_METHOD
+END_FUNCTION_BLOCK"#;
+
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
+    [E0235] Error: invalid retentive qualifier
+       ,-[ file:///test0.st:5:13 ]
+       |
+     5 |             x: INT;
+       |             ^^^|^^
+       |                `---- 'x' cannot be RETAIN: a METHOD is stateless
+       |
+       | Note: retentive behavior requires instance storage; only FUNCTION_BLOCK, CLASS, and PROGRAM variables (and VAR_GLOBAL) can be RETAIN/NON_RETAIN
+    ---'
+    ");
+}
+
+// A `VAR RETAIN` SECTION in a FUNCTION is rejected by the GRAMMAR itself —
+// `retain_var_decls` is not among the stateless POUs' section rules, so this
+// is a syntax error rather than E0235 (context-independent restrictions live
+// in the grammar; the qualifier-on-VAR_INPUT/VAR_OUTPUT case above is the
+// context-dependent one).
+#[rstest]
+fn function_var_retain_section_is_syntax_error(mut with_db: RootDatabase) {
+    let source = r#"
+FUNCTION fn : INT
+    VAR RETAIN
+        c: INT;
+    END_VAR
+    fn := 0;
+END_FUNCTION"#;
+
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
+    [E0050] Error: syntax
+       ,-[ file:///test0.st:3:9 ]
+       |
+     3 | ,->     VAR RETAIN
+     4 | |->         c: INT;
+       | |
+       | `--------------------- Unexpected token(s): 'RETAIN : INT ;'
+    ---'
+    ");
+}
+
+// CLASS variables have instance storage — RETAIN is legal there.
+#[rstest]
+fn valid_class_retain_qualifier(mut with_db: RootDatabase) {
+    let source = r#"
+CLASS c1
+    VAR RETAIN
+        state: INT;
+    END_VAR
+END_CLASS"#;
+
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"");
+}

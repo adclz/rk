@@ -26,10 +26,33 @@ impl<'db> InitInference<'db> {
             None => return,
         };
 
+        // RETAIN/NON_RETAIN require instance storage: meaningless on a
+        // stateless POU (FUNCTION/METHOD), in ANY of its sections (E0235).
+        use crate::hir_def::{pous::pou::Pou, scope::ScopeKind, semantic_index::get_scope};
+        let stateless_pou = match get_scope(db, self.scope).kind {
+            ScopeKind::Pou(Pou::Function(_)) => Some("FUNCTION"),
+            ScopeKind::MethodDecl(_) => Some("METHOD"),
+            ScopeKind::MethodProt(_) => Some("METHOD prototype"),
+            _ => None,
+        };
+
         let mut seen = FxHashMap::default();
         let mut first_variadic: Option<VariableDecl<'db>> = None;
 
         for var in variables {
+            if let Some(pou_kind) = stateless_pou
+                && var
+                    .qualifier(db)
+                    .intersects(crate::Qualifier::RETAIN | crate::Qualifier::NON_RETAIN)
+            {
+                self.errors.push(
+                    ResolveError::RetainInStatelessPou {
+                        var: *var,
+                        pou_kind,
+                    }
+                    .to_diagnostic(db, self.scope.file(db)),
+                );
+            }
             match seen.get(&var.get_name_ident(db)) {
                 Some(prev) => {
                     self.errors.push(
