@@ -252,80 +252,44 @@ fn emit_stmt(func: &mut wasm_encoder::Function, stmt: &MirStmt, ctx: &Ctx) {
             input_writes,
             output_reads,
         } => {
-            // Get the instance's memory address
-            let instance_addr = match instance {
+            // Resolve how to address the instance: a Local instance sits at a
+            // static linear-memory address; a nested FB (a member of `this`)
+            // is addressed dynamically off the this pointer (wasm local 0).
+            let base = match instance {
                 mir::expr::MirPlace::Local(ident) => match ctx.locals.get(ident) {
-                    Some(LocalInfo::Memory { address, .. }) => *address,
+                    Some(LocalInfo::Memory { address, .. }) => FbBase::Static(*address),
                     _ => return,
                 },
                 mir::expr::MirPlace::ThisField { field_offset, .. } => {
-                    // Nested FB: instance at this_ptr + field_offset.
-                    // Use dynamic addressing since the base comes from local 0 (this ptr).
-                    let base_offset = *field_offset;
-
-                    // 1. Write inputs to nested instance fields
-                    for (fo, value, elem) in input_writes {
-                        // Address: local.get 0 + base_offset + field_offset
-                        func.instruction(&Instruction::LocalGet(0));
-                        func.instruction(&Instruction::I32Const((base_offset + fo) as i32));
-                        func.instruction(&Instruction::I32Add);
-                        emit_expr(func, value, ctx.locals, ctx.fn_indices);
-                        emit_typed_mem_store(func, &mir::types::MirType::Elementary(*elem));
-                    }
-
-                    // 2. Call __body__(&nested_instance)
-                    let body_idx = ctx.fn_indices.get(body_func).copied().unwrap_or(0);
-                    func.instruction(&Instruction::LocalGet(0));
-                    if base_offset > 0 {
-                        func.instruction(&Instruction::I32Const(base_offset as i32));
-                        func.instruction(&Instruction::I32Add);
-                    }
-                    func.instruction(&Instruction::Call(body_idx));
-
-                    // 3. Read outputs from nested instance
-                    for (fo, target, elem) in output_reads {
-                        emit_addr_of(func, target, ctx.locals);
-                        func.instruction(&Instruction::LocalGet(0));
-                        func.instruction(&Instruction::I32Const((base_offset + fo) as i32));
-                        func.instruction(&Instruction::I32Add);
-                        emit_typed_mem_load(func, &mir::types::MirType::Elementary(*elem));
-                        emit_typed_mem_store(func, &mir::types::MirType::Elementary(*elem));
-                    }
-                    return;
+                    FbBase::This(*field_offset)
                 }
                 _ => return,
             };
 
-            // 1. Write input values to the FB instance's fields in memory
-            for (field_offset, value, elem) in input_writes {
-                // Push address (instance base + field offset)
-                func.instruction(&Instruction::I32Const(
-                    (instance_addr + field_offset) as i32,
-                ));
-                // Emit value
-                emit_expr(func, value, ctx.locals, ctx.fn_indices);
-                // Store typed
-                let elem_ty = mir::types::MirType::Elementary(*elem);
-                emit_typed_mem_store(func, &elem_ty);
+            // 1. Write input values / inout addresses to the instance's fields
+            for (field_offset, value, ty) in input_writes {
+                emit_fb_field_write(func, base, *field_offset, value, ty, ctx);
             }
 
             // 2. Call __body__(&instance)
             let body_idx = ctx.fn_indices.get(body_func).copied().unwrap_or(0);
-            func.instruction(&Instruction::I32Const(instance_addr as i32));
+            match base {
+                FbBase::Static(addr) => {
+                    func.instruction(&Instruction::I32Const(addr as i32));
+                }
+                FbBase::This(offset) => {
+                    func.instruction(&Instruction::LocalGet(0));
+                    if offset > 0 {
+                        func.instruction(&Instruction::I32Const(offset as i32));
+                        func.instruction(&Instruction::I32Add);
+                    }
+                }
+            }
             func.instruction(&Instruction::Call(body_idx));
 
-            // 3. Read output values from the FB instance's fields
-            for (field_offset, target, elem) in output_reads {
-                // First: emit target address
-                emit_addr_of(func, target, ctx.locals);
-                // Then: load from instance field
-                func.instruction(&Instruction::I32Const(
-                    (instance_addr + field_offset) as i32,
-                ));
-                let elem_ty = mir::types::MirType::Elementary(*elem);
-                emit_typed_mem_load(func, &elem_ty);
-                // Store to target
-                emit_typed_mem_store(func, &elem_ty);
+            // 3. Read output values from the instance's fields
+            for (field_offset, target, ty) in output_reads {
+                emit_fb_field_read(func, base, *field_offset, target, ty, ctx);
             }
         }
 
@@ -597,6 +561,150 @@ fn emit_wasm_instruction(func: &mut wasm_encoder::Function, name: &str) {
             // Unknown instruction - emit unreachable as a trap
             func.instruction(&Instruction::Unreachable);
         }
+    }
+}
+
+/// How an `FbCall`'s instance is addressed: a static linear-memory base for a
+/// Local instance, or `this + offset` for a nested FB member.
+#[derive(Clone, Copy)]
+enum FbBase {
+    Static(u32),
+    This(u32),
+}
+
+/// Push the linear-memory address of `base`'s field at `field_offset`.
+fn push_fb_field_addr(func: &mut wasm_encoder::Function, base: FbBase, field_offset: u32) {
+    match base {
+        FbBase::Static(addr) => {
+            func.instruction(&Instruction::I32Const((addr + field_offset) as i32));
+        }
+        FbBase::This(base_offset) => {
+            func.instruction(&Instruction::LocalGet(0));
+            func.instruction(&Instruction::I32Const((base_offset + field_offset) as i32));
+            func.instruction(&Instruction::I32Add);
+        }
+    }
+}
+
+/// Write one `FbCall` input into an instance field, dispatching on the field
+/// type (see the `MirStmt::FbCall` doc for the per-type shapes).
+fn emit_fb_field_write(
+    func: &mut wasm_encoder::Function,
+    base: FbBase,
+    field_offset: u32,
+    value: &MirExpr,
+    ty: &mir::types::MirType,
+    ctx: &Ctx,
+) {
+    use mir::types::MirType;
+    match ty {
+        MirType::Elementary(_) => {
+            push_fb_field_addr(func, base, field_offset);
+            emit_expr(func, value, ctx.locals, ctx.fn_indices);
+            emit_typed_mem_store(func, ty);
+        }
+        // Enums and subranges are scalars of their storage type.
+        MirType::Enum(e) => {
+            push_fb_field_addr(func, base, field_offset);
+            emit_expr(func, value, ctx.locals, ctx.fn_indices);
+            emit_typed_mem_store(func, &MirType::Elementary(e.storage));
+        }
+        MirType::Subrange(s) => {
+            push_fb_field_addr(func, base, field_offset);
+            emit_expr(func, value, ctx.locals, ctx.fn_indices);
+            emit_typed_mem_store(func, &MirType::Elementary(s.base));
+        }
+        // A by-ref VAR_IN_OUT: the value is `AddrOf(arg)` — store the address.
+        MirType::Pointer(_) => {
+            push_fb_field_addr(func, base, field_offset);
+            emit_expr(func, value, ctx.locals, ctx.fn_indices);
+            emit_mem_store(func, 4, 4);
+        }
+        // STRING input: capacity-bounded copy into the field's inline buffer.
+        // The value pushes the source (ptr, len) pair.
+        MirType::String { capacity } => {
+            let assign_idx = ctx
+                .builtin_indices
+                .get("rk.str_assign")
+                .copied()
+                .expect("rk.str_assign must be grafted for STRING FB inputs");
+            push_fb_field_addr(func, base, field_offset); // dest header addr
+            func.instruction(&Instruction::I32Const(*capacity as i32)); // dest cap
+            emit_str_value(func, value, ctx.locals, ctx.fn_indices); // (src_ptr, src_len)
+            func.instruction(&Instruction::Call(assign_idx));
+        }
+        // Aggregates: the value is `AddrOf(source)` — bulk-copy the bytes.
+        MirType::Struct(_) | MirType::Array(_) => {
+            push_fb_field_addr(func, base, field_offset); // dst
+            emit_expr(func, value, ctx.locals, ctx.fn_indices); // src
+            func.instruction(&Instruction::I32Const(ty.size_bytes() as i32)); // len
+            func.instruction(&Instruction::MemoryCopy {
+                src_mem: 0,
+                dst_mem: 0,
+            });
+        }
+        MirType::Void => {}
+    }
+}
+
+/// Copy one `FbCall` output field back into the bound target place,
+/// dispatching on the field type.
+fn emit_fb_field_read(
+    func: &mut wasm_encoder::Function,
+    base: FbBase,
+    field_offset: u32,
+    target: &mir::expr::MirPlace,
+    ty: &mir::types::MirType,
+    ctx: &Ctx,
+) {
+    use mir::types::MirType;
+    let scalar_copy = |func: &mut wasm_encoder::Function, elem_ty: &MirType| {
+        emit_addr_of(func, target, ctx.locals);
+        push_fb_field_addr(func, base, field_offset);
+        emit_typed_mem_load(func, elem_ty);
+        emit_typed_mem_store(func, elem_ty);
+    };
+    match ty {
+        MirType::Elementary(_) => scalar_copy(func, ty),
+        MirType::Enum(e) => scalar_copy(func, &MirType::Elementary(e.storage)),
+        MirType::Subrange(s) => scalar_copy(func, &MirType::Elementary(s.base)),
+        // A by-ref VAR_IN_OUT field needs no copy-back — the body already
+        // wrote through the caller's address.
+        MirType::Pointer(_) => {}
+        // STRING output: capacity-bounded copy from the field's inline buffer
+        // into the target's buffer.
+        MirType::String { .. } => {
+            let assign_idx = ctx
+                .builtin_indices
+                .get("rk.str_assign")
+                .copied()
+                .expect("rk.str_assign must be grafted for STRING FB outputs");
+            emit_addr_of(func, target, ctx.locals); // dest header addr
+            emit_string_capacity(func, target, ctx.locals); // dest cap
+            // src ptr = field header + 4
+            push_fb_field_addr(func, base, field_offset);
+            func.instruction(&Instruction::I32Const(4));
+            func.instruction(&Instruction::I32Add);
+            // src len = *field header
+            push_fb_field_addr(func, base, field_offset);
+            func.instruction(&Instruction::I32Load(MemArg {
+                offset: 0,
+                align: 2,
+                memory_index: 0,
+            }));
+            func.instruction(&Instruction::Call(assign_idx));
+        }
+        // Aggregates: bulk-copy the field's bytes into the target.
+        MirType::Struct(_) | MirType::Array(_) => {
+            emit_addr_of(func, target, ctx.locals); // dst
+            push_fb_field_addr(func, base, field_offset); // src
+            func.instruction(&Instruction::I32Const(ty.size_bytes() as i32)); // len
+            func.instruction(&Instruction::MemoryCopy {
+                src_mem: 0,
+                dst_mem: 0,
+            });
+        }
+        MirType::Void => {}
     }
 }
 

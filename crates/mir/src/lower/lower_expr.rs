@@ -1559,34 +1559,34 @@ impl<'db> ExprLowerCtx<'db> {
                     // there is no value copy-in and (unlike a C-emitting compiler) no copy-out.
                     if field.by_ref {
                         // Must be an l-value (`Load(place, _)`) to take its
-                        // address. A non-l-value inout arg is malformed (HIR
-                        // accepts it today); skip rather than store a bogus
-                        // address — that gap belongs to the FUNCTION-inout work.
+                        // address — E0234 rejects everything else upstream.
                         if let MirExpr::Load(place, _) = self.lower_expr(value)? {
                             input_writes.push((
                                 field.offset,
                                 MirExpr::AddrOf(place),
-                                MirElementary::DWord,
+                                field.ty.clone(),
                             ));
                         }
                         continue;
                     }
-                    // Plain VAR_INPUT: copy the value into the elementary field.
-                    let mir_elem = match &field.ty {
-                        MirType::Elementary(e) => *e,
-                        _ => continue, // skip non-elementary fields for now
-                    };
+                    // Plain VAR_INPUT: scalars and STRINGs carry the value, aggregates carry
+                    // the source address for a `memory.copy`.
                     let expr = self.lower_expr(value)?;
-                    input_writes.push((field.offset, expr, mir_elem));
+                    let expr = match &field.ty {
+                        MirType::Struct(_) | MirType::Array(_) => match expr {
+                            MirExpr::Load(place, _) => MirExpr::AddrOf(place),
+                            // No address to copy from (not an l-value) —
+                            // nothing sensible to store.
+                            _ => continue,
+                        },
+                        _ => expr,
+                    };
+                    input_writes.push((field.offset, expr, field.ty.clone()));
                 }
                 ParamAssignKind::FormalOutput { variable, .. } => {
                     if let Some(field) = struct_type.fields.iter().find(|f| f.name == var_name) {
-                        let mir_elem = match &field.ty {
-                            MirType::Elementary(e) => *e,
-                            _ => continue,
-                        };
                         let place = self.lower_variable_access(variable)?;
-                        output_reads.push((field.offset, place, mir_elem));
+                        output_reads.push((field.offset, place, field.ty.clone()));
                     }
                 }
             }

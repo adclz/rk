@@ -957,3 +957,117 @@ fn test_st_super_body_multi_level(mut with_db: db::RootDatabase) {
         "C -> SUPER() -> B -> SUPER() -> A body chains only via explicit SUPER()"
     );
 }
+
+/// FB aggregate VAR_INPUT: an ARRAY argument is bulk-copied into the instance
+/// field before the body runs. (Regression: previously non-elementary fields
+/// were silently skipped — the instance array stayed zeroed and sum was 10.)
+#[rstest]
+fn fb_array_input(mut with_db: db::RootDatabase) {
+    let source = r#"
+        FUNCTION_BLOCK SumFb
+        VAR_INPUT arr_in : ARRAY[0..1] OF INT; scal_in : INT; END_VAR
+        VAR_OUTPUT sum : INT; END_VAR
+            sum := arr_in[0] + arr_in[1] + scal_in;
+        END_FUNCTION_BLOCK
+
+        FUNCTION test : INT
+        VAR inst : SumFb; a : ARRAY[0..1] OF INT; END_VAR
+            a[0] := 3;
+            a[1] := 4;
+            inst(arr_in := a, scal_in := 10);
+            test := inst.sum;
+        END_FUNCTION
+    "#;
+    let wasm = super::compile_to_wasm_checked(&mut with_db, source);
+    let result: i32 = super::execute_wasm(&wasm, "test", ());
+    assert_eq!(result, 17, "array input copied into the instance: 3+4+10");
+}
+
+/// FB aggregate VAR_INPUT: a STRUCT argument is bulk-copied by value — the
+/// callee sees the fields, and mutating the caller's struct afterwards does
+/// not retroactively change what the FB consumed.
+#[rstest]
+fn fb_struct_input(mut with_db: db::RootDatabase) {
+    let source = r#"
+        TYPE Vec2 : STRUCT x : INT; y : INT; END_STRUCT; END_TYPE
+
+        FUNCTION_BLOCK AddFb
+        VAR_INPUT v : Vec2; END_VAR
+        VAR_OUTPUT total : INT; END_VAR
+            total := v.x + v.y;
+        END_FUNCTION_BLOCK
+
+        FUNCTION test : INT
+        VAR inst : AddFb; p : Vec2; END_VAR
+            p.x := 3;
+            p.y := 4;
+            inst(v := p);
+            test := inst.total;
+        END_FUNCTION
+    "#;
+    let wasm = super::compile_to_wasm_checked(&mut with_db, source);
+    let result: i32 = super::execute_wasm(&wasm, "test", ());
+    assert_eq!(result, 7, "struct input copied into the instance: 3+4");
+}
+
+/// FB aggregate VAR_OUTPUT bound with `=>`: the STRUCT field is bulk-copied
+/// back into the caller's variable after the body.
+#[rstest]
+fn fb_struct_output_binding(mut with_db: db::RootDatabase) {
+    let source = r#"
+        TYPE Vec2 : STRUCT x : INT; y : INT; END_STRUCT; END_TYPE
+
+        FUNCTION_BLOCK MakeFb
+        VAR_INPUT seed : INT; END_VAR
+        VAR_OUTPUT v : Vec2; END_VAR
+            v.x := seed;
+            v.y := seed * 2;
+        END_FUNCTION_BLOCK
+
+        FUNCTION test : INT
+        VAR inst : MakeFb; got : Vec2; END_VAR
+            inst(seed := 5, v => got);
+            test := got.x + got.y;
+        END_FUNCTION
+    "#;
+    let wasm = super::compile_to_wasm_checked(&mut with_db, source);
+    let result: i32 = super::execute_wasm(&wasm, "test", ());
+    assert_eq!(result, 15, "struct output copied back: 5 + 10");
+}
+
+/// FB STRING VAR_INPUT and VAR_OUTPUT: the input arg is capacity-bounded
+/// copied into the instance field before the body, and the `=>`-bound output
+/// field is copied back into the caller's variable after it.
+#[rstest]
+fn fb_string_input_output(mut with_db: db::RootDatabase) {
+    use runtime::{Config, Plc};
+
+    let source = r#"
+        FUNCTION_BLOCK EchoFb
+        VAR_INPUT s_in : STRING; END_VAR
+        VAR_OUTPUT s_out : STRING; END_VAR
+            s_out := s_in;
+        END_FUNCTION_BLOCK
+
+        PROGRAM P
+        VAR RETAIN r : STRING; END_VAR
+        VAR fb : EchoFb; src : STRING; END_VAR
+            src := 'agg-str';
+            fb(s_in := src, s_out => r);
+        END_PROGRAM
+
+        CONFIGURATION Cfg
+            RESOURCE Res ON CPU
+                TASK T(INTERVAL := T#10ms, PRIORITY := 1);
+                PROGRAM P1 WITH T : P;
+            END_RESOURCE
+        END_CONFIGURATION
+    "#;
+    let (_mir, wasm) = crate::tests::compile_to_mir_and_wasm(&mut with_db, source);
+
+    let mut plc = Plc::load(&wasm, Config::default()).expect("load");
+    plc.run(1).expect("scan");
+    let r = plc.read_retain();
+    let len = i32::from_le_bytes(r[0..4].try_into().unwrap()) as usize;
+    assert_eq!(String::from_utf8_lossy(&r[4..4 + len]), "agg-str");
+}

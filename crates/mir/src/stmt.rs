@@ -1,5 +1,5 @@
 use crate::expr::{MirCall, MirConstant, MirExpr, MirPlace};
-use crate::types::MirElementary;
+use crate::types::{MirElementary, MirType};
 use compact_str::CompactString;
 use hir::hir_def::interned::identifier::Ident;
 
@@ -21,10 +21,16 @@ pub enum MirStmt {
         body_func: Ident,
         /// Function index (resolved during module lowering).
         body_func_index: u32,
-        /// Input field writes: (field_offset, value, field_type).
-        input_writes: Vec<(u32, MirExpr, MirElementary)>,
-        /// Output reads: (field_offset, target_place, field_type).
-        output_reads: Vec<(u32, MirPlace, MirElementary)>,
+        /// Input field writes: (field_offset, value, field_type). The field
+        /// type drives the store shape: Elementary/Enum/Subrange are typed
+        /// scalar stores; Pointer (a by-ref VAR_IN_OUT) stores the address
+        /// carried by the value (an `AddrOf`); String copies via
+        /// `rk.str_assign` (value pushes `(ptr, len)`); Struct/Array bulk-copy
+        /// via `memory.copy` (value is an `AddrOf` of the source aggregate).
+        input_writes: Vec<(u32, MirExpr, MirType)>,
+        /// Output reads: (field_offset, target_place, field_type). Same
+        /// type-driven shapes as `input_writes`, copying field → target.
+        output_reads: Vec<(u32, MirPlace, MirType)>,
     },
 
     /// Return from function.
