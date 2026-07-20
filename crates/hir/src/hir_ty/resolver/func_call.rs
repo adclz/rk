@@ -5,7 +5,7 @@ use rustc_hash::{FxHashMap, FxHashSet};
 use crate::check::errors::e1_duplicates::DuplicateError;
 use crate::check::errors::e3_type::TypeError;
 use crate::check::errors::e10_control_flow::ControlFlowError;
-use crate::hir_def::expressions::expression::{Expr, ParamAssign};
+use crate::hir_def::expressions::expression::{Expr, ExprKind, ParamAssign, PrimaryExpr};
 use crate::hir_def::interned::identifier::Ident;
 use crate::hir_def::pous::variable::VariableDecl;
 use crate::{
@@ -178,6 +178,34 @@ fn is_param_required<'db>(
     }
 }
 
+/// E0234: a VAR_IN_OUT argument must be an l-value (a variable, field, or
+/// array-element access) — it binds the callee to the caller's storage by
+/// reference, so a literal, arithmetic expression, or call result has no
+/// address to bind. Constants are caught separately (AssignToConstant).
+fn check_in_out_lvalue<'db>(
+    db: &'db dyn WorkspaceDataBase,
+    callable: CallableType<'db>,
+    var: VariableDecl<'db>,
+    value: Expr<'db>,
+    ctx: &mut BodyInferenceResult<'db>,
+) {
+    if var.is_in_out(db)
+        && !matches!(
+            value.expr(db),
+            ExprKind::PrimaryExpr(PrimaryExpr::VariableAccess(_))
+        )
+    {
+        ctx.errors.push(
+            ResolveError::InOutParameterRequiresLValue {
+                func: callable,
+                var,
+                expr: value,
+            }
+            .to_diagnostic(db, ctx.scope.file(db)),
+        );
+    }
+}
+
 fn apply_param_coercion<'db>(
     db: &'db dyn WorkspaceDataBase,
     resolver: Resolver<'db>,
@@ -198,6 +226,8 @@ fn apply_param_coercion<'db>(
                     .to_diagnostic(db, ctx.scope.file(db)),
                 );
             }
+
+            check_in_out_lvalue(db, callable, var, value, ctx);
 
             if var.is_output(db) {
                 ctx.errors.push(
@@ -223,6 +253,9 @@ fn apply_param_coercion<'db>(
                     .to_diagnostic(db, ctx.scope.file(db)),
                 );
             }
+
+            check_in_out_lvalue(db, callable, var, value, ctx);
+
             ctx.variable_of_param.insert(param, var);
         }
         ParamAssignKind::FormalOutput { variable, .. } => {

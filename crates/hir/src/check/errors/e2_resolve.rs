@@ -191,6 +191,15 @@ pub enum ResolveError<'db> {
         vars: Vec<VariableDecl<'db>>,
         func_call: FuncCall<'db>,
     },
+    /// A VAR_IN_OUT argument is not an l-value (a variable, field, or array
+    /// element). VAR_IN_OUT binds the callee to the caller's storage by
+    /// reference, so a literal, arithmetic expression, or call result has no
+    /// address to bind.
+    InOutParameterRequiresLValue {
+        func: CallableType<'db>,
+        var: VariableDecl<'db>,
+        expr: Expr<'db>,
+    },
 }
 
 impl<'db> ErrorCode for ResolveError<'db> {
@@ -228,6 +237,7 @@ impl<'db> ErrorCode for ResolveError<'db> {
             Self::IntoRefNotFound { .. } => "E0231",
             Self::IntoRefNotAny { .. } => "E0232",
             Self::MissingRequiredParameter { .. } => "E0233",
+            Self::InOutParameterRequiresLValue { .. } => "E0234",
         }
     }
 
@@ -262,6 +272,7 @@ impl<'db> ErrorCode for ResolveError<'db> {
             Self::IntoRefNotFound { .. } => "INTO reference not found",
             Self::IntoRefNotAny { .. } => "INTO reference must be an ANY type",
             Self::MissingRequiredParameter { .. } => "missing required parameter",
+            Self::InOutParameterRequiresLValue { .. } => "VAR_IN_OUT argument must be a variable",
         }
     }
 }
@@ -943,6 +954,29 @@ impl<'db> ToIdeDiagnostic<'db> for ResolveError<'db> {
                         var.get_span(db),
                     ));
                 }
+
+                diag
+            }
+            Self::InOutParameterRequiresLValue { func, var, expr } => {
+                let mut diag = diag()
+                    .message(format!(
+                        "VAR_IN_OUT parameter '{}' of '{}' requires a variable, not a value",
+                        var.name(db).text(db),
+                        func.get_name_ident(db).text(db),
+                    ))
+                    .severity(DiagnosticSeverity::ERROR)
+                    .desc(self)
+                    .range(crate::denormalize(db, file, &expr.get_span(db)).unwrap_or_default())
+                    .call();
+                diag.with_note(
+                    "VAR_IN_OUT binds the callee to the caller's storage by reference; a literal, expression, or call result has no address to bind"
+                        .to_string(),
+                );
+                diag.with_related(Related::new(
+                    format!("parameter '{}' declared here", var.name(db).text(db)),
+                    var.scope_id(db).file(db),
+                    var.get_span(db),
+                ));
 
                 diag
             }

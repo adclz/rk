@@ -751,3 +751,133 @@ END_FUNCTION_BLOCK"#;
     ----'
     ");
 }
+
+// E0234: a VAR_IN_OUT argument must be an l-value — it binds the callee to the
+// caller's storage by reference, so a literal has no address to bind.
+#[rstest]
+fn invalid_function_var_in_out_literal(mut with_db: RootDatabase) {
+    let source = r#"
+FUNCTION fn : INT
+    VAR_IN_OUT
+        a: INT;
+    END_VAR
+    fn := a;
+END_FUNCTION
+
+FUNCTION_BLOCK fb1
+    fn(a := 5);
+END_FUNCTION_BLOCK"#;
+
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
+    [E0234] Error: VAR_IN_OUT argument must be a variable
+        ,-[ file:///test0.st:10:13 ]
+        |
+      4 |         a: INT;
+        |         ^^^|^^
+        |            `---- parameter 'a' declared here
+        |
+     10 |     fn(a := 5);
+        |             |
+        |             `-- VAR_IN_OUT parameter 'a' of 'fn' requires a variable, not a value
+        |
+        | Note: VAR_IN_OUT binds the callee to the caller's storage by reference; a literal, expression, or call result has no address to bind
+    ----'
+    ");
+}
+
+// E0234 also fires for arithmetic expressions and call results.
+#[rstest]
+fn invalid_function_var_in_out_expression(mut with_db: RootDatabase) {
+    let source = r#"
+FUNCTION fn : INT
+    VAR_IN_OUT
+        a: INT;
+    END_VAR
+    fn := a;
+END_FUNCTION
+
+FUNCTION_BLOCK fb1
+    VAR
+        x: INT;
+    END_VAR
+    fn(x + 1);
+END_FUNCTION_BLOCK"#;
+
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
+    [E0234] Error: VAR_IN_OUT argument must be a variable
+        ,-[ file:///test0.st:13:8 ]
+        |
+      4 |         a: INT;
+        |         ^^^|^^
+        |            `---- parameter 'a' declared here
+        |
+     13 |     fn(x + 1);
+        |        ^^|^^
+        |          `---- VAR_IN_OUT parameter 'a' of 'fn' requires a variable, not a value
+        |
+        | Note: VAR_IN_OUT binds the callee to the caller's storage by reference; a literal, expression, or call result has no address to bind
+    ----'
+    ");
+}
+
+// E0234 on a FUNCTION_BLOCK inout argument.
+#[rstest]
+fn invalid_fb_var_in_out_literal(mut with_db: RootDatabase) {
+    let source = r#"
+FUNCTION_BLOCK driver
+    VAR_IN_OUT
+        target: INT;
+    END_VAR
+END_FUNCTION_BLOCK
+
+FUNCTION_BLOCK fb1
+    VAR
+        d: driver;
+    END_VAR
+    d(target := 42);
+END_FUNCTION_BLOCK"#;
+
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
+    [E0234] Error: VAR_IN_OUT argument must be a variable
+        ,-[ file:///test0.st:12:17 ]
+        |
+      4 |         target: INT;
+        |         ^^^^^|^^^^^
+        |              `------- parameter 'target' declared here
+        |
+     12 |     d(target := 42);
+        |                 ^|
+        |                  `-- VAR_IN_OUT parameter 'target' of 'driver' requires a variable, not a value
+        |
+        | Note: VAR_IN_OUT binds the callee to the caller's storage by reference; a literal, expression, or call result has no address to bind
+    ----'
+    ");
+}
+
+// Valid l-values for VAR_IN_OUT: a variable, a struct field, an array element.
+#[rstest]
+fn valid_var_in_out_lvalues(mut with_db: RootDatabase) {
+    let source = r#"
+TYPE Pair : STRUCT n : INT; END_STRUCT; END_TYPE
+
+FUNCTION fn : INT
+    VAR_IN_OUT
+        a: INT;
+    END_VAR
+    fn := a;
+END_FUNCTION
+
+FUNCTION_BLOCK fb1
+    VAR
+        x: INT;
+        p: Pair;
+        arr: ARRAY[0..2] OF INT;
+    END_VAR
+    fn(a := x);
+    fn(a := p.n);
+    fn(a := arr[1]);
+    fn(x);
+END_FUNCTION_BLOCK"#;
+
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"");
+}
