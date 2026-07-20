@@ -262,7 +262,15 @@ impl<'db> SemanticIndexBuilder<'db> {
     ) -> anyhow::Result<ProgConfig<'db>, IdeDiagnostic> {
         let name = SpanIdent::from_node(self.db, self, pc.name.cast(self.ast))?;
 
-        let retain = pc.retain.is_some();
+        // Tri-state: RETAIN => Some(true), NON_RETAIN => Some(false), absent
+        // => None. (`is_some()` here was a latent bug — it read `PROGRAM
+        // NON_RETAIN` as retained.)
+        let retain = pc.retain.as_ref().map(|r| {
+            matches!(
+                r.cast(self.ast),
+                ast::generated::Operators_3::Token_RETAIN(_)
+            )
+        });
 
         let task = pc.task.iter().find_map(|wid| match wid.cast(self.ast) {
             ast::generated::WITH_Identifier::Identifier(ident) => {

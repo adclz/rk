@@ -19,9 +19,9 @@ use hir::{
         pous::variable::VariableKind,
         program::ProgramDecl,
     },
-    hir_ty::config::infer_config_result,
+    hir_ty::{config::infer_config_result, infer::Infer, ty::Type},
 };
-use rustc_hash::FxHashMap;
+use rustc_hash::{FxHashMap, FxHashSet};
 
 use crate::{memory::MirAllocKind, memory::MirMemoryLayout, types::MirStructType};
 
@@ -118,17 +118,29 @@ pub fn lower_schedule<'db>(
             info.struct_type.align,
             MirAllocKind::InstanceData,
         );
-        // If the program has ANY RETAIN field, persist its whole instance. The
+        // If the program has ANY RETAIN state, persist its whole instance. The
         // body addresses fields via `this + offset`, so individual fields can't
         // be relocated into the band out from under it — we relocate the whole
         // instance instead (its base becomes a band address). The cost: a retain
         // program's non-RETAIN fields are persisted too — a simplification vs.
         // strict per-field RETAIN (a C-emitting compiler copies each retained field in/out).
-        let has_retain = info
-            .struct_type
-            .fields
-            .iter()
-            .any(|f| is_retain_field(db, &info.decl, f.name));
+        //
+        // A config-level qualifier (`PROGRAM RETAIN p WITH t : Type` /
+        // `PROGRAM NON_RETAIN ...`, IEC program configuration) overrides the
+        // declaration-driven decision entirely: RETAIN persists the instance
+        // even without retained fields, NON_RETAIN suppresses persistence even
+        // with them. Otherwise a field is retained if it is RETAIN-qualified
+        // itself OR its type (an FB/class instance, possibly nested) declares
+        // `VAR RETAIN` state internally — other toolchains semantics: FB-internal
+        // RETAIN persists for every instance.
+        let has_retain = match p.retain(db) {
+            Some(config_qualifier) => config_qualifier,
+            None => info
+                .struct_type
+                .fields
+                .iter()
+                .any(|f| is_retain_field(db, &info.decl, f.name)),
+        };
         if has_retain {
             memory_layout.record_retain(
                 p.name(db).ident,
@@ -206,7 +218,10 @@ pub fn lower_schedule<'db>(
     })
 }
 
-/// Whether a program field is a persistent `RETAIN` variable.
+/// Whether a program field is persistent: `RETAIN` itself, or an FB/class
+/// instance (arrays included) whose type declares `VAR RETAIN` anywhere
+/// in its nesting. An explicit `NON_RETAIN` prunes the subtree, internal
+/// `RETAIN` included.
 fn is_retain_field<'db>(
     db: &'db dyn WorkspaceDataBase,
     prog: &ProgramDecl<'db>,
@@ -215,7 +230,43 @@ fn is_retain_field<'db>(
     prog.variables(db).iter().any(|v| {
         v.name(db) == name
             && v.kind(db) != VariableKind::Temp
-            && v.qualifier(db).contains(Qualifier::RETAIN)
+            && !v.qualifier(db).contains(Qualifier::NON_RETAIN)
+            && (v.qualifier(db).contains(Qualifier::RETAIN)
+                || type_has_retain(db, v.spec(db).infer(db), &mut FxHashSet::default()))
+    })
+}
+
+/// Does this type (an FB/class instance, or an array of them) declare RETAIN
+/// state anywhere in its nesting? `visited` guards against type cycles;
+/// NON_RETAIN members prune their subtree (see `is_retain_field`).
+fn type_has_retain<'db>(
+    db: &'db dyn WorkspaceDataBase,
+    ty: Type<'db>,
+    visited: &mut FxHashSet<Ident>,
+) -> bool {
+    let vars = match ty.normalize(db) {
+        Type::FunctionBlock(fb) => {
+            if !visited.insert(fb.name(db)) {
+                return false;
+            }
+            fb.variables(db)
+        }
+        Type::Class(class) => {
+            if !visited.insert(class.name(db)) {
+                return false;
+            }
+            class.variables(db)
+        }
+        Type::Array(arr) => {
+            return type_has_retain(db, arr.of_type(db).infer(db), visited);
+        }
+        _ => return false,
+    };
+    vars.iter().any(|v| {
+        v.kind(db) != VariableKind::Temp
+            && !v.qualifier(db).contains(Qualifier::NON_RETAIN)
+            && (v.qualifier(db).contains(Qualifier::RETAIN)
+                || type_has_retain(db, v.spec(db).infer(db), visited))
     })
 }
 

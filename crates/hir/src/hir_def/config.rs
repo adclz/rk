@@ -133,8 +133,11 @@ impl<'db> HirNodeInfo<'db> for TaskConfig<'db> {
 pub struct ProgConfig<'db> {
     pub name: SpanIdent<'db>,
 
+    /// Config-level retain qualifier: `Some(true)` for `PROGRAM RETAIN ...`,
+    /// `Some(false)` for `PROGRAM NON_RETAIN ...`, `None` when absent (the
+    /// program declaration's own qualifiers decide).
     #[tracked]
-    pub retain: bool,
+    pub retain: Option<bool>,
 
     /// Optional task name from `WITH <task>`, with span for diagnostics.
     #[tracked]

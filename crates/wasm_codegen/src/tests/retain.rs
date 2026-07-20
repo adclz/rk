@@ -190,3 +190,208 @@ fn retained_program_with_fb_inout_survives_power_cycle(mut with_db: db::RootData
     }
     std::fs::remove_file(&path).ok();
 }
+
+/// FB-internal `VAR RETAIN` persists for every instance:
+/// the program itself declares nothing RETAIN — its only retained state lives
+/// inside the nested FB. (Regression: the retain walk only looked at the
+/// program's own qualifiers, so this state was silently never persisted —
+/// retain_size was 0.)
+#[rstest]
+fn fb_internal_retain_persists_power_cycle(mut with_db: db::RootDatabase) {
+    let source = r#"
+        FUNCTION_BLOCK Counter
+        VAR RETAIN c : INT; END_VAR
+            c := c + 1;
+        END_FUNCTION_BLOCK
+
+        PROGRAM ProgA
+        VAR d : Counter; END_VAR
+            d();
+        END_PROGRAM
+
+        CONFIGURATION Cfg
+            RESOURCE Res ON CPU
+                TASK T(INTERVAL := T#10ms, PRIORITY := 1);
+                PROGRAM P WITH T : ProgA;
+            END_RESOURCE
+        END_CONFIGURATION
+    "#;
+    let (mir, wasm) = compile_to_mir_and_wasm(&mut with_db, source);
+
+    // Whole-instance banding: the program instance is just the Counter (4 B).
+    assert_eq!(mir.retain_size, 4, "nested FB retain state must be banded");
+
+    let c = |plc: &Plc| i32::from_le_bytes(plc.read_retain()[..4].try_into().unwrap());
+    let path = temp_path("fb_internal_retain");
+    {
+        let mut plc = Plc::load(
+            &wasm,
+            Config {
+                entry: None,
+                retain_path: Some(path.clone()),
+            },
+        )
+        .expect("load (boot 1)");
+        plc.run(3).expect("scans");
+        assert_eq!(c(&plc), 3);
+        plc.snapshot_retain().expect("snapshot");
+    }
+    {
+        let mut plc = Plc::load(
+            &wasm,
+            Config {
+                entry: None,
+                retain_path: Some(path.clone()),
+            },
+        )
+        .expect("load (boot 2)");
+        assert_eq!(c(&plc), 3, "FB-internal retained counter restored");
+        plc.run(2).expect("scans");
+        assert_eq!(c(&plc), 5);
+    }
+    std::fs::remove_file(&path).ok();
+}
+
+/// Config-level `PROGRAM RETAIN`: persists the instance even though the
+/// program declaration has no RETAIN qualifiers at all.
+#[rstest]
+fn config_level_retain_bands_program(mut with_db: db::RootDatabase) {
+    let source = r#"
+        PROGRAM ProgA
+        VAR counter : INT; END_VAR
+            counter := counter + 1;
+        END_PROGRAM
+
+        CONFIGURATION Cfg
+            RESOURCE Res ON CPU
+                TASK T(INTERVAL := T#10ms, PRIORITY := 1);
+                PROGRAM RETAIN P WITH T : ProgA;
+            END_RESOURCE
+        END_CONFIGURATION
+    "#;
+    let (mir, wasm) = compile_to_mir_and_wasm(&mut with_db, source);
+    assert_eq!(mir.retain_size, 4, "config-level RETAIN bands the instance");
+
+    let c = |plc: &Plc| i32::from_le_bytes(plc.read_retain()[..4].try_into().unwrap());
+    let path = temp_path("cfg_retain");
+    {
+        let mut plc = Plc::load(
+            &wasm,
+            Config {
+                entry: None,
+                retain_path: Some(path.clone()),
+            },
+        )
+        .expect("load (boot 1)");
+        plc.run(3).expect("scans");
+        assert_eq!(c(&plc), 3);
+        plc.snapshot_retain().expect("snapshot");
+    }
+    {
+        let mut plc = Plc::load(
+            &wasm,
+            Config {
+                entry: None,
+                retain_path: Some(path.clone()),
+            },
+        )
+        .expect("load (boot 2)");
+        assert_eq!(c(&plc), 3, "persisted via config-level RETAIN");
+    }
+    std::fs::remove_file(&path).ok();
+}
+
+/// Config-level `PROGRAM NON_RETAIN` suppresses persistence even though the
+/// program declares `VAR RETAIN` state. (Regression: the builder read the
+/// qualifier with `is_some()`, so NON_RETAIN parsed as retained.)
+#[rstest]
+fn config_level_non_retain_suppresses(mut with_db: db::RootDatabase) {
+    let source = r#"
+        PROGRAM ProgA
+        VAR RETAIN counter : INT; END_VAR
+            counter := counter + 1;
+        END_PROGRAM
+
+        CONFIGURATION Cfg
+            RESOURCE Res ON CPU
+                TASK T(INTERVAL := T#10ms, PRIORITY := 1);
+                PROGRAM NON_RETAIN P WITH T : ProgA;
+            END_RESOURCE
+        END_CONFIGURATION
+    "#;
+    let (mir, _wasm) = compile_to_mir_and_wasm(&mut with_db, source);
+    assert_eq!(
+        mir.retain_size, 0,
+        "NON_RETAIN overrides the declaration's RETAIN qualifier"
+    );
+}
+
+/// Explicit NON_RETAIN prunes the whole subtree: the
+/// program var is NON_RETAIN, and even though its FB type declares a RETAIN
+/// fb variable inside, nothing persists — explicit NON_RETAIN is a hard
+/// "never persist this" switch, unlike mere absence of a qualifier.
+#[rstest]
+fn non_retain_var_prunes_internal_retain(mut with_db: db::RootDatabase) {
+    let source = r#"
+        FUNCTION_BLOCK Inner
+        VAR RETAIN c : INT; END_VAR
+            c := c + 1;
+        END_FUNCTION_BLOCK
+
+        FUNCTION_BLOCK Mid
+        VAR RETAIN f : Inner; END_VAR
+            f();
+        END_FUNCTION_BLOCK
+
+        PROGRAM ProgA
+        VAR NON_RETAIN b : Mid; END_VAR
+            b();
+        END_PROGRAM
+
+        CONFIGURATION Cfg
+            RESOURCE Res ON CPU
+                TASK T(INTERVAL := T#10ms, PRIORITY := 1);
+                PROGRAM P WITH T : ProgA;
+            END_RESOURCE
+        END_CONFIGURATION
+    "#;
+    let (mir, _wasm) = compile_to_mir_and_wasm(&mut with_db, source);
+    assert_eq!(
+        mir.retain_size, 0,
+        "NON_RETAIN on the instance prunes internal RETAIN state"
+    );
+}
+
+/// Mere ABSENCE of a qualifier lets nested RETAIN shine through, across two
+/// unqualified levels: prog -> Mid -> Inner(VAR RETAIN c).
+#[rstest]
+fn unqualified_nesting_lets_retain_shine_through(mut with_db: db::RootDatabase) {
+    let source = r#"
+        FUNCTION_BLOCK Inner
+        VAR RETAIN c : INT; END_VAR
+            c := c + 1;
+        END_FUNCTION_BLOCK
+
+        FUNCTION_BLOCK Mid
+        VAR f : Inner; END_VAR
+            f();
+        END_FUNCTION_BLOCK
+
+        PROGRAM ProgA
+        VAR b : Mid; END_VAR
+            b();
+        END_PROGRAM
+
+        CONFIGURATION Cfg
+            RESOURCE Res ON CPU
+                TASK T(INTERVAL := T#10ms, PRIORITY := 1);
+                PROGRAM P WITH T : ProgA;
+            END_RESOURCE
+        END_CONFIGURATION
+    "#;
+    let (mir, _wasm) = compile_to_mir_and_wasm(&mut with_db, source);
+    assert_eq!(
+        mir.retain_size, 4,
+        "two unqualified levels above a VAR RETAIN still band the instance"
+    );
+}
