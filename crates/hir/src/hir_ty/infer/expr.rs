@@ -415,12 +415,28 @@ impl<'db> InferExprCtx<'db> {
             ExprKind::UnaryOperator { expr, operator } => {
                 match operator {
                     UnaryOperatorKind::Not => {
-                        if let Err(err) = self.coerce_type_with_expr(
-                            db,
-                            Type::new_bool(),
-                            *expr,
-                            inference_results,
-                        ) {
+                        // IEC 61131-3: NOT is defined on ANY_BIT — logical
+                        // negation for BOOL, bitwise complement for
+                        // BYTE/WORD/DWORD/LWORD. A bit-string operand passes
+                        // as-is; everything else must coerce to BOOL.
+                        use crate::hir_def::expressions::spec::ElementarySpec;
+                        let operand_ty = inference_results
+                            .type_of_expr
+                            .get(expr)
+                            .copied()
+                            .map(|t| t.normalize(db));
+                        let is_bit_string = matches!(
+                            operand_ty,
+                            Some(Type::Elementary(e)) if ElementarySpec::AnyBit.accepts(e)
+                        );
+                        if !is_bit_string
+                            && let Err(err) = self.coerce_type_with_expr(
+                                db,
+                                Type::new_bool(),
+                                *expr,
+                                inference_results,
+                            )
+                        {
                             inference_results.errors.push(err.into_non_assignable(
                                 db,
                                 inference_results.type_of_expr[expr],
