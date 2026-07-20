@@ -134,6 +134,7 @@ pub fn optimize_wasm(wasm_bytes: Vec<u8>, opt_level: Option<&str>, verbose: bool
     match opts.run(&infile, &outfile) {
         Ok(()) => {
             let optimized = std::fs::read(&outfile).unwrap_or_else(|_| wasm_bytes.clone());
+            let optimized = preserve_retain_map(&wasm_bytes, optimized);
             let _ = std::fs::remove_file(&infile);
             let _ = std::fs::remove_file(&outfile);
 
@@ -155,5 +156,95 @@ pub fn optimize_wasm(wasm_bytes: Vec<u8>, opt_level: Option<&str>, verbose: bool
             ui::warn(format!("wasm-opt failed: {e}"));
             wasm_bytes
         }
+    }
+}
+
+/// The `retain-map` custom section is LOAD-BEARING (per-field RETAIN
+/// persistence — without it the runtime degrades to legacy whole-band
+/// snapshots with wrong IEC cold-start semantics). wasm-opt strips custom
+/// sections, so re-attach it to the optimized module if it got dropped.
+fn preserve_retain_map(original: &[u8], optimized: Vec<u8>) -> Vec<u8> {
+    let find = |bytes: &[u8]| -> Option<Vec<u8>> {
+        for payload in wasmparser::Parser::new(0).parse_all(bytes) {
+            if let Ok(wasmparser::Payload::CustomSection(r)) = payload
+                && r.name() == debug_format::RETAIN_MAP_SECTION
+            {
+                return Some(r.data().to_vec());
+            }
+        }
+        None
+    };
+    let Some(data) = find(original) else {
+        return optimized; // module has no retained state
+    };
+    if find(&optimized).is_some() {
+        return optimized; // survived optimization
+    }
+    // Append the custom section: id 0x00, LEB128 payload size, then
+    // LEB128 name length + name + data. Appending at the end is valid wasm.
+    let name = debug_format::RETAIN_MAP_SECTION.as_bytes();
+    let mut payload = Vec::with_capacity(1 + name.len() + data.len());
+    write_leb128(&mut payload, name.len() as u64);
+    payload.extend_from_slice(name);
+    payload.extend_from_slice(&data);
+    let mut out = optimized;
+    out.push(0x00);
+    write_leb128(&mut out, payload.len() as u64);
+    out.extend_from_slice(&payload);
+    out
+}
+
+/// Unsigned LEB128 encoding (wasm's varint).
+fn write_leb128(out: &mut Vec<u8>, mut v: u64) {
+    loop {
+        let mut b = (v & 0x7f) as u8;
+        v >>= 7;
+        if v != 0 {
+            b |= 0x80;
+        }
+        out.push(b);
+        if v == 0 {
+            break;
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// A minimal module carrying a retain-map section must still carry it
+    /// after release optimization (wasm-opt strips custom sections; we
+    /// re-attach).
+    #[test]
+    fn retain_map_survives_wasm_opt() {
+        // Minimal valid module: magic + version, plus the retain-map custom
+        // section with dummy payload bytes.
+        let mut module = vec![0x00, 0x61, 0x73, 0x6d, 0x01, 0x00, 0x00, 0x00];
+        let name = debug_format::RETAIN_MAP_SECTION.as_bytes();
+        let data = b"dummy-manifest-bytes";
+        let mut payload = Vec::new();
+        write_leb128(&mut payload, name.len() as u64);
+        payload.extend_from_slice(name);
+        payload.extend_from_slice(data);
+        module.push(0x00);
+        write_leb128(&mut module, payload.len() as u64);
+        module.extend_from_slice(&payload);
+
+        let optimized = optimize_wasm(module, Some("s"), false);
+
+        let mut found = None;
+        for p in wasmparser::Parser::new(0).parse_all(&optimized) {
+            if let Ok(wasmparser::Payload::CustomSection(r)) = p
+                && r.name() == debug_format::RETAIN_MAP_SECTION
+            {
+                found = Some(r.data().to_vec());
+            }
+        }
+        assert_eq!(
+            found.as_deref(),
+            Some(data.as_slice()),
+            "retain-map section must survive optimization"
+        );
     }
 }

@@ -67,6 +67,9 @@ pub struct MemoryBands {
     pub retain_size: u32,
     /// Old address → in-band address; applied to every stored absolute address.
     pub remap: FxHashMap<u32, u32>,
+    /// The retained VAR_GLOBALs at their FINAL (in-band) addresses — the
+    /// retain-map builder emits one persistence range per entry.
+    pub retain_globals: Vec<RetainEntry>,
 }
 
 /// A single allocation in linear memory.
@@ -153,6 +156,7 @@ impl MirMemoryLayout {
                 retain_base: p,
                 retain_size: 0,
                 remap: FxHashMap::default(),
+                retain_globals: Vec::new(),
             };
         }
         // `[ non-retain globals | retain globals | retain program-instances ]`,
@@ -177,10 +181,17 @@ impl MirMemoryLayout {
         }
         // Retain globals begin the retain band (overlapping the globals band).
         let mut retain_base: Option<u32> = None;
+        let mut relocated_retain_globals = Vec::new();
         for g in &retain_globals {
             let addr = align_to(cursor, g.align);
             retain_base.get_or_insert(addr);
             remap.insert(g.address, addr);
+            relocated_retain_globals.push(RetainEntry {
+                name: g.name,
+                address: addr,
+                size: g.size,
+                align: g.align,
+            });
             cursor = addr + g.size;
         }
         let globals_end = cursor; // globals band = non-retain + retain globals
@@ -199,6 +210,7 @@ impl MirMemoryLayout {
             retain_base,
             retain_size: cursor - retain_base,
             remap,
+            retain_globals: relocated_retain_globals,
         }
     }
 

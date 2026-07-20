@@ -475,6 +475,7 @@ fn lower_module_from_pous<'db>(
         globals_size: 0,
         schedule,
         debug_symbols: crate::debug_symbols::DebugSymbols::new(),
+        retain_map: debug_format::RetainMap::new(Vec::new()),
         source_files: Vec::new(),
     };
 
@@ -563,6 +564,16 @@ fn lower_module_from_pous<'db>(
         version: crate::debug_symbols::DEBUG_SYMBOLS_VERSION,
         symbols,
     };
+
+    // The per-field retain map from the same final addresses.
+    module.retain_map = crate::retain_map::build_retain_map(
+        db,
+        module.schedule.as_ref(),
+        &program_infos,
+        &bands.retain_globals,
+        bands.retain_base,
+        bands.retain_size,
+    );
 
     // Phase 4.6: synthesize one entry function per scheduled task (cooperative
     // model B — the runtime calls these). Each `__task_<i>` runs its task's

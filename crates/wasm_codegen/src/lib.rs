@@ -1473,6 +1473,15 @@ impl<'a> WasmGen<'a> {
             data: std::borrow::Cow::Owned(debug_bytes),
         });
 
+        // The retain map is load-bearing: the runtime restores only these
+        // ranges. Release optimization must keep it.
+        if !self.module.retain_map.ranges.is_empty() {
+            module.section(&wasm_encoder::CustomSection {
+                name: std::borrow::Cow::Borrowed(debug_format::RETAIN_MAP_SECTION),
+                data: std::borrow::Cow::Owned(self.module.retain_map.to_msgpack()),
+            });
+        }
+
         module
     }
 }

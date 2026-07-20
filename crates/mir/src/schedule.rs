@@ -49,6 +49,9 @@ pub struct MirProgInstance {
     pub body_fn: Ident,
     /// Base address of this instance's state in linear memory.
     pub instance_addr: u32,
+    /// Config-level retain qualifier (`PROGRAM RETAIN p` = `Some(true)`,
+    /// `NON_RETAIN` = `Some(false)`).
+    pub config_retain: Option<bool>,
 }
 
 /// One cyclic TASK and the program instances it runs each time it fires.
@@ -155,6 +158,7 @@ pub fn lower_schedule<'db>(
             prog_name: prog_decl.name(db),
             body_fn: info.body_fn,
             instance_addr: base,
+            config_retain: p.retain(db),
         };
         match grouped.iter_mut().find(|(t, _)| *t == *task) {
             Some((_, v)) => v.push(instance),

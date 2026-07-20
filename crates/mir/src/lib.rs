@@ -1,4 +1,5 @@
 pub mod debug_symbols;
+pub mod retain_map;
 pub mod expr;
 pub mod function;
 pub mod memory;
@@ -69,6 +70,10 @@ pub struct MirModule {
     /// Debug-symbol table: every debuggable variable at its absolute address,
     /// emitted as the `debug-symbols` section.
     pub debug_symbols: DebugSymbols,
+
+    /// Per-field RETAIN map: which byte ranges of the retain band persist
+    /// (see `retain_map`), emitted as the `retain-map` section.
+    pub retain_map: debug_format::RetainMap,
 
     /// Source file URLs, indexed by `MirSourceLocation::file_id` and emitted
     /// as `DebugLines::files`.

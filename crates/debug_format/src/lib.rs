@@ -272,3 +272,88 @@ impl DebugLocals {
         rmp_serde::from_slice(bytes)
     }
 }
+
+// ---------------------------------------------------------------------------
+// Retain map — per-field RETAIN persistence ranges
+// ---------------------------------------------------------------------------
+
+/// Custom wasm section carrying the [`RetainMap`]. Load-bearing for IEC
+/// semantics: it must survive release optimization.
+pub const RETAIN_MAP_SECTION: &str = "retain-map";
+
+/// On-wire format version for [`RetainMap`].
+pub const RETAIN_MAP_VERSION: u16 = 1;
+
+/// The retained byte ranges of a module, inside the retain band;
+/// everything in the band not covered is transient and keeps its
+/// `__init` cold-start value.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct RetainMap {
+    pub version: u16,
+    /// Layout identity: FNV-1a over the sorted `(path, size)` sequence.
+    /// Deliberately EXCLUDES addresses — the retain band may re-base between
+    /// builds without invalidating snapshots (restore scatter-writes to the
+    /// CURRENT addresses), and module bytes are not deterministic.
+    pub layout_hash: u64,
+    /// Retained ranges, sorted by `path` (deterministic; file payload order).
+    pub ranges: Vec<RetainRange>,
+}
+
+/// One retained byte range.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct RetainRange {
+    /// Fully qualified dotted path of the retained variable (or the retained
+    /// sub-run of one, when by-ref pointer holes split it).
+    pub path: String,
+    /// Absolute address in linear memory (post band-relocation).
+    pub addr: u32,
+    /// Size in bytes.
+    pub size: u32,
+}
+
+impl RetainMap {
+    /// Build from ranges: sorts by path and stamps the layout hash.
+    pub fn new(mut ranges: Vec<RetainRange>) -> Self {
+        ranges.sort_by(|a, b| a.path.cmp(&b.path));
+        let layout_hash = Self::hash_layout(&ranges);
+        RetainMap {
+            version: RETAIN_MAP_VERSION,
+            layout_hash,
+            ranges,
+        }
+    }
+
+    /// FNV-1a over the sorted `(path, size)` sequence.
+    fn hash_layout(ranges: &[RetainRange]) -> u64 {
+        const FNV_OFFSET: u64 = 0xcbf29ce484222325;
+        const FNV_PRIME: u64 = 0x100000001b3;
+        let mut h = FNV_OFFSET;
+        let mut eat = |bytes: &[u8]| {
+            for &b in bytes {
+                h ^= b as u64;
+                h = h.wrapping_mul(FNV_PRIME);
+            }
+        };
+        for r in ranges {
+            eat(r.path.as_bytes());
+            eat(&[0]); // separator
+            eat(&r.size.to_le_bytes());
+        }
+        h
+    }
+
+    /// Total retained payload size in bytes (the v2 retain file's data length).
+    pub fn payload_size(&self) -> u32 {
+        self.ranges.iter().map(|r| r.size).sum()
+    }
+
+    /// Serialize to MessagePack bytes.
+    pub fn to_msgpack(&self) -> Vec<u8> {
+        rmp_serde::to_vec(self).expect("RetainMap serialization should not fail")
+    }
+
+    /// Deserialize from MessagePack bytes.
+    pub fn from_msgpack(bytes: &[u8]) -> Result<Self, rmp_serde::decode::Error> {
+        rmp_serde::from_slice(bytes)
+    }
+}
