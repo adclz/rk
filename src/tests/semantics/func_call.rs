@@ -881,3 +881,61 @@ END_FUNCTION_BLOCK"#;
 
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"");
 }
+
+// E0236: a VAR_IN_OUT parameter cannot be bound with output syntax — `=>`
+// would leave the by-reference binding unbound.
+#[rstest]
+fn invalid_var_in_out_arrow_binding(mut with_db: RootDatabase) {
+    let source = r#"
+FUNCTION fn : INT
+    VAR_IN_OUT
+        io: INT;
+    END_VAR
+    fn := io;
+END_FUNCTION
+
+FUNCTION_BLOCK driver
+    VAR_IN_OUT
+        target: INT;
+    END_VAR
+END_FUNCTION_BLOCK
+
+FUNCTION_BLOCK fb1
+    VAR
+        d: driver;
+        x: INT;
+        y: INT;
+    END_VAR
+    fn(io => x);
+    d(target => y);
+END_FUNCTION_BLOCK"#;
+
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
+    [E0236] Error: VAR_IN_OUT parameter bound with output syntax
+        ,-[ file:///test0.st:21:8 ]
+        |
+      4 |         io: INT;
+        |         ^^^|^^^
+        |            `----- parameter 'io' declared here
+        |
+     21 |     fn(io => x);
+        |        ^|
+        |         `-- VAR_IN_OUT parameter 'io' of 'fn' cannot be bound with '=>'
+        |
+        | Note: VAR_IN_OUT is bound by reference at call entry: use io := <variable>
+    ----'
+    [E0236] Error: VAR_IN_OUT parameter bound with output syntax
+        ,-[ file:///test0.st:22:7 ]
+        |
+     11 |         target: INT;
+        |         ^^^^^|^^^^^
+        |              `------- parameter 'target' declared here
+        |
+     22 |     d(target => y);
+        |       ^^^|^^
+        |          `---- VAR_IN_OUT parameter 'target' of 'driver' cannot be bound with '=>'
+        |
+        | Note: VAR_IN_OUT is bound by reference at call entry: use target := <variable>
+    ----'
+    ");
+}

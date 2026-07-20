@@ -258,7 +258,24 @@ fn apply_param_coercion<'db>(
 
             ctx.variable_of_param.insert(param, var);
         }
-        ParamAssignKind::FormalOutput { variable, .. } => {
+        ParamAssignKind::FormalOutput {
+            variable,
+            param: param_ident,
+            ..
+        } => {
+            // E0236: `v => x` on a VAR_IN_OUT would leave the reference
+            // unbound — inouts are bound by reference at call entry with `:=`.
+            if var.is_in_out(db) {
+                ctx.errors.push(
+                    ResolveError::InOutParameterBoundWithArrow {
+                        func: callable,
+                        var,
+                        param: param_ident,
+                    }
+                    .to_diagnostic(db, ctx.scope.file(db)),
+                );
+            }
+
             let lhs_typ = Type::new_var(db, var);
 
             resolver.resolve_variable_access(db, variable, ctx);

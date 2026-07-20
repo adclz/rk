@@ -208,6 +208,14 @@ pub enum ResolveError<'db> {
         var: VariableDecl<'db>,
         pou_kind: &'static str,
     },
+    /// A VAR_IN_OUT parameter bound with output syntax (`v => x`). VAR_IN_OUT
+    /// is bound by reference at call entry with `:=`; `=>` is an output
+    /// copy-back binding and would leave the reference unbound.
+    InOutParameterBoundWithArrow {
+        func: CallableType<'db>,
+        var: VariableDecl<'db>,
+        param: SpanIdent<'db>,
+    },
 }
 
 impl<'db> ErrorCode for ResolveError<'db> {
@@ -247,6 +255,7 @@ impl<'db> ErrorCode for ResolveError<'db> {
             Self::MissingRequiredParameter { .. } => "E0233",
             Self::InOutParameterRequiresLValue { .. } => "E0234",
             Self::RetainInStatelessPou { .. } => "E0235",
+            Self::InOutParameterBoundWithArrow { .. } => "E0236",
         }
     }
 
@@ -283,6 +292,9 @@ impl<'db> ErrorCode for ResolveError<'db> {
             Self::MissingRequiredParameter { .. } => "missing required parameter",
             Self::InOutParameterRequiresLValue { .. } => "VAR_IN_OUT argument must be a variable",
             Self::RetainInStatelessPou { .. } => "invalid retentive qualifier",
+            Self::InOutParameterBoundWithArrow { .. } => {
+                "VAR_IN_OUT parameter bound with output syntax"
+            }
         }
     }
 }
@@ -1013,6 +1025,29 @@ impl<'db> ToIdeDiagnostic<'db> for ResolveError<'db> {
                     "retentive behavior requires instance storage; only FUNCTION_BLOCK, CLASS, and PROGRAM variables (and VAR_GLOBAL) can be RETAIN/NON_RETAIN"
                         .to_string(),
                 );
+
+                diag
+            }
+            Self::InOutParameterBoundWithArrow { func, var, param } => {
+                let mut diag = diag()
+                    .message(format!(
+                        "VAR_IN_OUT parameter '{}' of '{}' cannot be bound with '=>'",
+                        var.name(db).text(db),
+                        func.get_name_ident(db).text(db),
+                    ))
+                    .severity(DiagnosticSeverity::ERROR)
+                    .desc(self)
+                    .range(crate::denormalize(db, file, &param.get_span(db)).unwrap_or_default())
+                    .call();
+                diag.with_note(format!(
+                    "VAR_IN_OUT is bound by reference at call entry: use {} := <variable>",
+                    var.name(db).text(db),
+                ));
+                diag.with_related(Related::new(
+                    format!("parameter '{}' declared here", var.name(db).text(db)),
+                    var.scope_id(db).file(db),
+                    var.get_span(db),
+                ));
 
                 diag
             }

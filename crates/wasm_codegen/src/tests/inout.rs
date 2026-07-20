@@ -352,3 +352,34 @@ fn fn_inout_array(mut with_db: db::RootDatabase) {
     let result: i32 = super::execute_wasm(&wasm, "test", ());
     assert_eq!(result, 14, "array inout on a FUNCTION: 6 + 8");
 }
+
+
+/// E0236: binding a VAR_IN_OUT with `=>` is rejected — under by-ref it would
+/// leave the pointer field unbound (the body would deref address 0).
+#[rstest]
+fn fb_inout_arrow_binding_rejected(mut with_db: db::RootDatabase) {
+    let source = r#"
+        FUNCTION_BLOCK doubler
+            VAR_IN_OUT v : INT; END_VAR
+            v := v * 2;
+        END_FUNCTION_BLOCK
+
+        FUNCTION test : INT
+        VAR d : doubler; x : INT := 21; END_VAR
+            d(v => x);
+            test := x;
+        END_FUNCTION
+    "#;
+    let file = super::add_source(&mut with_db, source);
+    let diags = hir::check::diagnostics_for_file(&with_db, file);
+    let e0236 = diags
+        .iter()
+        .filter(|d| {
+            matches!(
+                &d.diagnostic.code,
+                Some(auto_lsp::lsp_types::NumberOrString::String(s)) if s == "E0236"
+            )
+        })
+        .count();
+    assert_eq!(e0236, 1, "inout bound via => must be rejected: {diags:?}");
+}
