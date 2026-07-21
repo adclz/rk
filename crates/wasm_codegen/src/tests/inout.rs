@@ -383,3 +383,60 @@ fn fb_inout_arrow_binding_rejected(mut with_db: db::RootDatabase) {
         .count();
     assert_eq!(e0236, 1, "inout bound via => must be rejected: {diags:?}");
 }
+
+/// A METHOD accessing the FB's VAR_IN_OUT member — both as bare `v`
+/// (root_place) and explicit `THIS.v` (lower_this_path): each must
+/// auto-dereference the stored pointer. The FB body call binds the pointer
+/// first; the method then mutates the caller's variable through it.
+#[rstest]
+fn fb_inout_method_this_access(mut with_db: db::RootDatabase) {
+    let source = r#"
+        FUNCTION_BLOCK counter
+            VAR_IN_OUT v : INT; END_VAR
+
+            METHOD PUBLIC bump : INT
+                v := v + 1;
+                THIS.v := THIS.v + 10;
+                bump := THIS.v;
+            END_METHOD
+
+            v := v + 1;
+        END_FUNCTION_BLOCK
+
+        FUNCTION test : INT
+        VAR d : counter; x : INT := 5; END_VAR
+            d(v := x);
+            d.bump();
+            test := x;
+        END_FUNCTION
+    "#;
+    let wasm = compile_to_wasm_checked(&mut with_db, source);
+    let result: i32 = super::execute_wasm(&wasm, "test", ());
+    assert_eq!(result, 17, "body +1, method bare +1 and THIS +10: 5 -> 17");
+}
+
+/// The by_ref discriminator: an FB with BOTH a REF_TO input (a Pointer field
+/// the user derefs explicitly with `^`) and a VAR_IN_OUT (a Pointer field
+/// that auto-derefs). Only `MirStructField.by_ref` tells them apart — a
+/// regression here would auto-deref REF members or stop auto-dereffing
+/// inouts.
+#[rstest]
+fn fb_ref_to_member_not_auto_dereffed(mut with_db: db::RootDatabase) {
+    let source = r#"
+        FUNCTION_BLOCK mixer
+            VAR_IN_OUT io : INT; END_VAR
+            VAR_INPUT target : REF_TO INT; END_VAR
+            io := io + 1;
+            target^ := target^ + 100;
+        END_FUNCTION_BLOCK
+
+        FUNCTION test : INT
+        VAR m : mixer; a : INT := 1; b : INT := 2; END_VAR
+            m(io := a, target := REF(b));
+            test := a * 1000 + b;
+        END_FUNCTION
+    "#;
+    let wasm = compile_to_wasm_checked(&mut with_db, source);
+    let result: i32 = super::execute_wasm(&wasm, "test", ());
+    assert_eq!(result, 2102, "io auto-deref: a=2; REF explicit deref: b=102");
+}
