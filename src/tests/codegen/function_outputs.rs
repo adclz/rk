@@ -3,7 +3,7 @@
 //! rules; the callee's pointer param is satisfied by a synthesized scratch
 //! local in the caller, see `build_call_args`).
 
-use crate::tests::{compile_to_wasm_checked, with_db};
+use crate::tests::codegen::{compile_to_wasm_checked, with_db};
 use rstest::*;
 
 /// Bound output `o => x`: the callee writes through a live pointer to `x`.
@@ -222,7 +222,7 @@ fn bound_string_output(mut with_db: db::RootDatabase) {
             END_RESOURCE
         END_CONFIGURATION
     "#;
-    let (_mir, wasm) = crate::tests::compile_to_mir_and_wasm(&mut with_db, source);
+    let (_mir, wasm) = crate::tests::codegen::compile_to_mir_and_wasm(&mut with_db, source);
 
     let mut plc = Plc::load(&wasm, Config::default()).expect("load");
     plc.run(1).expect("scan");

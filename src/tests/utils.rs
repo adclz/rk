@@ -42,6 +42,24 @@ pub fn no_color_and_ascii() -> Config {
         .with_char_set(CharSet::Ascii)
 }
 
+/// Single-source variant of [`add_sources`]: registers one file under a
+/// RANDOM url (so repeated calls in one db never collide) and returns the
+/// `File` for direct queries like `diagnostics_for_file`.
+pub fn add_source(db: &mut RootDatabase, source: &str) -> File {
+    let url = Url::parse(&format!("file:///test{}.st", rand::random::<u32>())).unwrap();
+
+    let file = File::from_string()
+        .db(db)
+        .parsers(&ast::RK_PARSER)
+        .url(&url)
+        .source(source.to_string())
+        .call()
+        .unwrap();
+
+    db.add_file(file).unwrap();
+    file
+}
+
 pub fn add_sources(db: &mut RootDatabase, sources: &[&str]) {
     for (i, source) in sources.iter().enumerate() {
         let url = Url::parse(&format!("file:///test{i}.st")).unwrap();

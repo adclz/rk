@@ -3,7 +3,7 @@
 //! unified string place-addressing (header address via the same machinery as
 //! scalars), not just function-local strings.
 
-use crate::tests::{compile_to_mir_and_wasm, with_db};
+use crate::tests::codegen::{compile_to_mir_and_wasm, with_db};
 use rstest::*;
 use runtime::{Config, Plc};
 

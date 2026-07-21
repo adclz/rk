@@ -1,12 +1,7 @@
 //! Test helpers and modules for WASM codegen.
 
-use auto_lsp::{
-    default::db::{FileManager, file::File},
-    lsp_types::Url,
-};
 use db::RootDatabase;
 use hir::{check::diagnostics_for_file, hir_def::semantic_index::semantic_index};
-use rstest::*;
 
 // Test modules - only execution tests, no validation-only tests
 mod arrays;
@@ -36,25 +31,9 @@ mod string_audit;
 mod structs;
 mod unary_ops;
 
-#[fixture]
-pub fn with_db() -> RootDatabase {
-    RootDatabase::default()
-}
+pub use crate::tests::utils::with_db;
 
-pub fn add_source(db: &mut RootDatabase, source: &str) -> File {
-    let url = Url::parse(&format!("file:///test{}.st", rand::random::<u32>())).unwrap();
-
-    let file = File::from_string()
-        .db(db)
-        .parsers(&ast::RK_PARSER)
-        .url(&url)
-        .source(source.to_string())
-        .call()
-        .unwrap();
-
-    db.add_file(file).unwrap();
-    file
-}
+pub use crate::tests::utils::add_source;
 
 /// Helper function to compile IEC source code to WASM bytes.
 ///
@@ -88,7 +67,7 @@ pub fn compile_to_mir_and_wasm(db: &mut RootDatabase, source: &str) -> (mir::Mir
     let sem_idx = semantic_index(db, file);
     let mir_module =
         mir::lower::lower_module::lower_module(db, sem_idx).expect("MIR lowering failed");
-    let wasm = crate::generate_wasm(db, &mir_module).finish();
+    let wasm = wasm_codegen::generate_wasm(db, &mir_module).finish();
     (mir_module, wasm)
 }
 
@@ -122,7 +101,7 @@ fn compile_to_wasm_impl(db: &mut RootDatabase, source: &str, check_diagnostics: 
     let mir_module =
         mir::lower::lower_module::lower_module(db, sem_idx).expect("MIR lowering failed");
 
-    let wasm_module = crate::generate_wasm(db, &mir_module);
+    let wasm_module = wasm_codegen::generate_wasm(db, &mir_module);
     wasm_module.finish()
 }
 

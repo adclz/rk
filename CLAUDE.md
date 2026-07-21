@@ -184,6 +184,10 @@ All integration tests live in `src/tests/`:
 - `semantics/` — Type checking, diagnostics, error reporting (~30 test modules)
 - `lsp/` — LSP features: hover, document symbols, formatter, semantic tokens, inlay hints, implementations
 - `completions/` — Completion items: body, head, call signatures, fly imports, field, using, query scope
+- `codegen/` — WASM codegen + runtime execution tests (compile IEC → MIR → wasm, run under wasmtime/`runtime::Plc`): value passing, inout, retain, enums, strings, debug/monitoring, scheduling. Helpers (`compile_to_wasm[_checked]`, `compile_to_mir_and_wasm`, `execute_wasm`) live in `codegen/mod.rs`
+- `mir/` — MIR structure/lowering assertions (exports, extern pragmas)
+
+Crates keep only in-crate `#[cfg(test)]` unit tests for crate-private machinery (e.g. `wasm_codegen`'s `graft.rs`/`builtins.rs`, `mir/src/memory.rs`).
 
 ### Standard Test Pattern (Diagnostics)
 

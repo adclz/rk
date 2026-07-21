@@ -1,6 +1,6 @@
 //! Struct execution tests - testing struct field access and manipulation.
 
-use crate::tests::{compile_to_wasm, with_db};
+use crate::tests::codegen::{compile_to_wasm, with_db};
 use rstest::*;
 
 #[rstest]

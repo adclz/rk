@@ -39,8 +39,8 @@ END_FUNCTION
     let sem_idx = hir::hir_def::semantic_index::semantic_index(&with_db, file);
     let mir_module =
         mir::lower::lower_module::lower_module(&with_db, sem_idx).expect("MIR lowering failed");
-    let core_bytes = crate::generate_wasm(&with_db, &mir_module).finish();
-    let component_bytes = crate::component::wrap_in_component(&with_db, &core_bytes, &mir_module)
+    let core_bytes = wasm_codegen::generate_wasm(&with_db, &mir_module).finish();
+    let component_bytes = wasm_codegen::component::wrap_in_component(&with_db, &core_bytes, &mir_module)
         .expect("Component wrapping failed");
 
     // Write component + manifest to temp dir
@@ -76,8 +76,8 @@ END_FUNCTION
     let sem_idx = hir::hir_def::semantic_index::semantic_index(&with_db, file);
     let mir_module =
         mir::lower::lower_module::lower_module(&with_db, sem_idx).expect("MIR lowering failed");
-    let core_bytes = crate::generate_wasm(&with_db, &mir_module).finish();
-    let component_bytes = crate::component::wrap_in_component(&with_db, &core_bytes, &mir_module)
+    let core_bytes = wasm_codegen::generate_wasm(&with_db, &mir_module).finish();
+    let component_bytes = wasm_codegen::component::wrap_in_component(&with_db, &core_bytes, &mir_module)
         .expect("Component wrapping failed");
 
     let tmp = std::env::temp_dir().join("rk_e2e_failing_test_runner");
@@ -152,7 +152,7 @@ END_FUNCTION
     let sem_idx = hir::hir_def::semantic_index::semantic_index(&with_db, file);
     let mir_module =
         mir::lower::lower_module::lower_module(&with_db, sem_idx).expect("MIR lowering failed");
-    let core_bytes = crate::generate_wasm(&with_db, &mir_module).finish();
+    let core_bytes = wasm_codegen::generate_wasm(&with_db, &mir_module).finish();
     let mut features = wasmparser::WasmFeatures::default();
     features.insert(wasmparser::WasmFeatures::EXCEPTIONS);
     let result = wasmparser::Validator::new_with_features(features).validate_all(&core_bytes);
@@ -206,8 +206,8 @@ END_FUNCTION
     let sem_idx = hir::hir_def::semantic_index::semantic_index(&with_db, file);
     let mir_module =
         mir::lower::lower_module::lower_module(&with_db, sem_idx).expect("MIR lowering failed");
-    let core_bytes = crate::generate_wasm(&with_db, &mir_module).finish();
-    let component_bytes = crate::component::wrap_in_component(&with_db, &core_bytes, &mir_module)
+    let core_bytes = wasm_codegen::generate_wasm(&with_db, &mir_module).finish();
+    let component_bytes = wasm_codegen::component::wrap_in_component(&with_db, &core_bytes, &mir_module)
         .expect("Component wrapping failed");
 
     let engine = {
@@ -265,8 +265,8 @@ END_FUNCTION
     let sem_idx = hir::hir_def::semantic_index::semantic_index(&with_db, file);
     let mir_module =
         mir::lower::lower_module::lower_module(&with_db, sem_idx).expect("MIR lowering failed");
-    let core_bytes = crate::generate_wasm(&with_db, &mir_module).finish();
-    let component_bytes = crate::component::wrap_in_component(&with_db, &core_bytes, &mir_module)
+    let core_bytes = wasm_codegen::generate_wasm(&with_db, &mir_module).finish();
+    let component_bytes = wasm_codegen::component::wrap_in_component(&with_db, &core_bytes, &mir_module)
         .expect("Component wrapping failed");
 
     let engine = {
@@ -327,8 +327,8 @@ END_FUNCTION
     let sem_idx = hir::hir_def::semantic_index::semantic_index(&with_db, file);
     let mir_module =
         mir::lower::lower_module::lower_module(&with_db, sem_idx).expect("MIR lowering failed");
-    let core_bytes = crate::generate_wasm(&with_db, &mir_module).finish();
-    let component_bytes = crate::component::wrap_in_component(&with_db, &core_bytes, &mir_module)
+    let core_bytes = wasm_codegen::generate_wasm(&with_db, &mir_module).finish();
+    let component_bytes = wasm_codegen::component::wrap_in_component(&with_db, &core_bytes, &mir_module)
         .expect("Component wrapping failed");
 
     // `{test}` functions are codegen-wrapped in a `try_table`, so the
@@ -413,8 +413,8 @@ END_FUNCTION
     let sem_idx = hir::hir_def::semantic_index::semantic_index(&with_db, file);
     let mir_module =
         mir::lower::lower_module::lower_module(&with_db, sem_idx).expect("MIR lowering failed");
-    let core_bytes = crate::generate_wasm(&with_db, &mir_module).finish();
-    let component_bytes = crate::component::wrap_in_component(&with_db, &core_bytes, &mir_module)
+    let core_bytes = wasm_codegen::generate_wasm(&with_db, &mir_module).finish();
+    let component_bytes = wasm_codegen::component::wrap_in_component(&with_db, &core_bytes, &mir_module)
         .expect("Component wrapping failed");
 
     // `{test}` functions are codegen-wrapped in a `try_table`, so the
@@ -489,9 +489,9 @@ END_FUNCTION
     let sem_idx = hir::hir_def::semantic_index::semantic_index(&with_db, file);
     let mir_module =
         mir::lower::lower_module::lower_module(&with_db, sem_idx).expect("MIR lowering failed");
-    let core_bytes = crate::generate_wasm(&with_db, &mir_module).finish();
+    let core_bytes = wasm_codegen::generate_wasm(&with_db, &mir_module).finish();
 
-    let component_bytes = crate::component::wrap_in_component(&with_db, &core_bytes, &mir_module)
+    let component_bytes = wasm_codegen::component::wrap_in_component(&with_db, &core_bytes, &mir_module)
         .expect("Component wrapping failed");
 
     assert!(component_bytes.len() > 8, "Component should have content");

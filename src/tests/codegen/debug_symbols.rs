@@ -3,7 +3,7 @@
 //! down to elementary leaves) to its absolute linear-memory address. Programs
 //! are instance-based, so a CONFIGURATION is needed to allocate an instance.
 
-use crate::tests::{compile_to_mir_and_wasm, with_db};
+use crate::tests::codegen::{compile_to_mir_and_wasm, with_db};
 use mir::debug_symbols::{DEBUG_SYMBOLS_SECTION, DEBUG_SYMBOLS_VERSION, DebugSymbols, SymType};
 use rstest::*;
 use runtime::debug::{DebugInfo, VarValue};

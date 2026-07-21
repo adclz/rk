@@ -1,6 +1,6 @@
 //! Tests for CONFIGURATION / TASK schedule lowering (Phase 1, cooperative).
 
-use crate::tests::{compile_to_mir_and_wasm, with_db};
+use crate::tests::codegen::{compile_to_mir_and_wasm, with_db};
 use rstest::*;
 
 /// A CONFIGURATION with two cyclic tasks at different rates lowers to a

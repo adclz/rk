@@ -3,7 +3,7 @@
 //! (`func_index` + `module_offset`), and we resolve each frame to its IEC
 //! function name (`debug-functions`) and source line (`debug-lines`).
 
-use crate::tests::{compile_to_mir_and_wasm, with_db};
+use crate::tests::codegen::{compile_to_mir_and_wasm, with_db};
 use rstest::*;
 use runtime::debug::DebugInfo;
 

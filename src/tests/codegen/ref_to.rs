@@ -1,6 +1,6 @@
 //! REF_TO (pointer/reference type) code generation tests.
 
-use crate::tests::{compile_to_wasm, validate_wasm, with_db};
+use crate::tests::codegen::{compile_to_wasm, validate_wasm, with_db};
 use rstest::*;
 
 #[rstest]

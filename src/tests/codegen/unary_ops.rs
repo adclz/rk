@@ -2,7 +2,7 @@
 //! (Regression: 64-bit integer negation emitted `value; i64.const 0; i64.sub`
 //! = `value - 0` — a silent no-op.)
 
-use crate::tests::{compile_to_wasm_checked, with_db};
+use crate::tests::codegen::{compile_to_wasm_checked, with_db};
 use rstest::*;
 
 /// The bug: `-x` on a 64-bit integer must actually negate.

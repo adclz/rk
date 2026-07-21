@@ -10,9 +10,6 @@ pub mod mir_cast;
 mod builtins;
 mod graft;
 
-#[cfg(test)]
-pub mod tests;
-
 use std::cell::Cell;
 
 use db::WorkspaceDataBase;

@@ -1,6 +1,6 @@
 //! WASM execution tests (actually running the generated code).
 
-use crate::tests::{compile_to_wasm, with_db};
+use crate::tests::codegen::{compile_to_wasm, with_db};
 use rstest::*;
 use wasmtime::{Engine, Module, Store};
 

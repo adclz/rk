@@ -1,6 +1,6 @@
 //! Control flow execution tests - IF, CASE, FOR, WHILE, REPEAT.
 
-use crate::tests::{compile_to_wasm, with_db};
+use crate::tests::codegen::{compile_to_wasm, with_db};
 use rstest::*;
 
 #[rstest]

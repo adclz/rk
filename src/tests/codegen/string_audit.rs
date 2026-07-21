@@ -93,7 +93,7 @@ fn validate(db: &mut db::RootDatabase, source: &str, dump_name: &str) -> Result<
         Ok(m) => m,
         Err(e) => return Err(format!("MIR lowering failed: {:?}", e)),
     };
-    let core_bytes = crate::generate_wasm(db, &mir_module).finish();
+    let core_bytes = wasm_codegen::generate_wasm(db, &mir_module).finish();
     let mut features = wasmparser::WasmFeatures::default();
     features.insert(wasmparser::WasmFeatures::EXCEPTIONS);
     match wasmparser::Validator::new_with_features(features).validate_all(&core_bytes) {
@@ -789,7 +789,7 @@ END_FUNCTION
     let file = add_source(&mut with_db, &src);
     let sem_idx = hir::hir_def::semantic_index::semantic_index(&with_db, file);
     let mir_module = mir::lower::lower_module::lower_module(&with_db, sem_idx).unwrap();
-    let bytes = crate::generate_wasm(&with_db, &mir_module).finish();
+    let bytes = wasm_codegen::generate_wasm(&with_db, &mir_module).finish();
 
     let engine = Engine::default();
     let module = Module::new(&engine, &bytes).expect("wasm should validate");

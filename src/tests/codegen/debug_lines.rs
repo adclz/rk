@@ -3,7 +3,7 @@
 //! absolute wasm `pc` back to it (the offset crux confirmed by the runtime's
 //! `framehandle_spike::wasm_pc_is_absolute_operator_offset`).
 
-use crate::tests::{add_source, compile_to_mir_and_wasm, with_db};
+use crate::tests::codegen::{add_source, compile_to_mir_and_wasm, with_db};
 use hir::hir_def::semantic_index::semantic_index;
 use rstest::*;
 use runtime::debug::DebugInfo;
@@ -230,7 +230,7 @@ fn breakpoints_resolve_per_file(mut with_db: db::RootDatabase) {
     let idx_b = semantic_index(&with_db, file_b);
     let module = mir::lower::lower_module::lower_modules(&with_db, &[idx_a, idx_b])
         .expect("multi-file lowering");
-    let wasm = crate::generate_wasm(&with_db, &module).finish();
+    let wasm = wasm_codegen::generate_wasm(&with_db, &module).finish();
     let dbg = DebugInfo::from_wasm(&wasm);
 
     // Both sources appear in the files table; find each file's index by URL.

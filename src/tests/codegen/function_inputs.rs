@@ -5,7 +5,7 @@
 //! never leak across the call boundary. (Regression: aggregates previously
 //! lowered as a bogus 1-slot "value" and the module failed wasm validation.)
 
-use crate::tests::{compile_to_wasm, compile_to_wasm_checked, with_db};
+use crate::tests::codegen::{compile_to_wasm, compile_to_wasm_checked, with_db};
 use rstest::*;
 
 /// The audit probe: a STRUCT passed by value into a FUNCTION.

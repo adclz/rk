@@ -1,7 +1,7 @@
 //! Tests for constant variable initializers: program statics, globals, and the
 //! cold-vs-warm-start interaction with RETAIN. Run once at load via `__init`.
 
-use crate::tests::{compile_to_mir_and_wasm, with_db};
+use crate::tests::codegen::{compile_to_mir_and_wasm, with_db};
 use rstest::*;
 use runtime::{Config, Plc};
 

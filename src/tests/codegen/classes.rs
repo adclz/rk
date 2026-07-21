@@ -3,7 +3,7 @@
 //! emits only `Class#method` (no `Class$__body__`) and cannot be invoked like an
 //! FB instance.
 
-use crate::tests::{compile_to_wasm, with_db};
+use crate::tests::codegen::{compile_to_wasm, with_db};
 use rstest::*;
 
 /// A CLASS instantiated as a local, with a method call that mutates its state.

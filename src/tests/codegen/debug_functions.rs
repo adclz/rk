@@ -2,7 +2,7 @@
 //! reported by wasmtime's `FrameHandle`) to its IEC function name, for naming a
 //! debugger's stack frames. The lookup lives in `DebugInfo`, not the `Plc`.
 
-use crate::tests::{compile_to_mir_and_wasm, with_db};
+use crate::tests::codegen::{compile_to_mir_and_wasm, with_db};
 use rstest::*;
 use runtime::debug::DebugInfo;
 

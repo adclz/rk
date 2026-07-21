@@ -18,11 +18,6 @@ phf = { workspace = true }
 wasm_builtins_generated = { path = "../wasm_builtins_generated" }
 
 [dev-dependencies]
-auto-lsp = { workspace = true, features = ["lsp_server"] }
-ast = { workspace = true }
-rstest = { workspace = true }
+# graft.rs / builtins.rs in-crate #[cfg(test)] modules only; the integration
+# test suite lives in the root package's src/tests/codegen.
 wasmtime = "45.0.1"
-rk = { path = "../cli" }
-rand = "0.8"
-pollster = "0.4"
-futures = "0.3"

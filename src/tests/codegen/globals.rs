@@ -1,7 +1,7 @@
 //! End-to-end tests for VAR_GLOBAL: shared state across programs, accessed both
 //! via VAR_EXTERNAL and directly by name (type-faithful).
 
-use crate::tests::{compile_to_mir_and_wasm, with_db};
+use crate::tests::codegen::{compile_to_mir_and_wasm, with_db};
 use rstest::*;
 use runtime::{Config, Plc};
 

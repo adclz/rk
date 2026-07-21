@@ -1,6 +1,6 @@
 //! Function Block execution tests.
 
-use crate::tests::{compile_to_wasm, with_db};
+use crate::tests::codegen::{compile_to_wasm, with_db};
 use rstest::*;
 
 #[rstest]
@@ -1063,7 +1063,7 @@ fn fb_string_input_output(mut with_db: db::RootDatabase) {
             END_RESOURCE
         END_CONFIGURATION
     "#;
-    let (_mir, wasm) = crate::tests::compile_to_mir_and_wasm(&mut with_db, source);
+    let (_mir, wasm) = crate::tests::codegen::compile_to_mir_and_wasm(&mut with_db, source);
 
     let mut plc = Plc::load(&wasm, Config::default()).expect("load");
     plc.run(1).expect("scan");

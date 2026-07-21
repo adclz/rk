@@ -1,6 +1,6 @@
 //! Reference and pointer code generation tests (VAR_IN_OUT parameters).
 
-use crate::tests::{compile_to_wasm, validate_wasm, with_db};
+use crate::tests::codegen::{compile_to_wasm, validate_wasm, with_db};
 use rstest::*;
 
 #[rstest]

@@ -1,4 +1,5 @@
 pub mod cli;
+pub mod codegen;
 pub mod completions;
 pub mod linter;
 pub mod lsp;

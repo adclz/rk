@@ -3,7 +3,7 @@
 //! body), aliasing, aggregates, nesting/passthrough, STRING, and the E0234
 //! l-value requirement.
 
-use crate::tests::{compile_to_mir_and_wasm, compile_to_wasm_checked, with_db};
+use crate::tests::codegen::{compile_to_mir_and_wasm, compile_to_wasm_checked, with_db};
 use rstest::*;
 use runtime::{Config, Plc};
 

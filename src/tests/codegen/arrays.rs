@@ -1,6 +1,6 @@
 //! Array execution tests - actually running WASM to verify array operations.
 
-use crate::tests::{compile_to_wasm, with_db};
+use crate::tests::codegen::{compile_to_wasm, with_db};
 use rstest::*;
 
 #[rstest]
