@@ -321,7 +321,6 @@ fn test_fb_mixed_named_then_positional(mut with_db: db::RootDatabase) {
     assert_eq!(result, 7, "a(10) - b(3) = 7");
 }
 
-
 #[rstest]
 fn test_fb_bool_output(mut with_db: db::RootDatabase) {
     let source = r#"

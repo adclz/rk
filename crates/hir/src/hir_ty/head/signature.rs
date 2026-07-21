@@ -33,10 +33,7 @@ pub fn infer_signature<'db>(db: &'db dyn WorkspaceDataBase, scope: ScopeId<'db>)
 /// Find an interface reachable at the leaf of a spec — directly, or through an
 /// array element / reference target (e.g. `ARRAY OF ITF1`, `REF_TO ITF1`). Used
 /// to reject interface types outside VAR_INPUT / VAR_IN_OUT parameters.
-fn spec_interface<'db>(
-    db: &'db dyn WorkspaceDataBase,
-    spec: Spec<'db>,
-) -> Option<Interface<'db>> {
+fn spec_interface<'db>(db: &'db dyn WorkspaceDataBase, spec: Spec<'db>) -> Option<Interface<'db>> {
     match spec.kind(db) {
         SpecKind::Array(arr) => spec_interface(db, arr.of_type(db)),
         SpecKind::Ref(rf) => spec_interface(db, *rf),

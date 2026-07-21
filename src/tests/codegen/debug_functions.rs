@@ -125,8 +125,14 @@ fn interface_specializations_named(mut with_db: db::RootDatabase) {
     let (_mir, wasm) = compile_to_mir_and_wasm(&mut with_db, source);
     let df = read_debug_functions(&wasm);
     let names: Vec<&str> = df.functions.iter().map(|f| f.name.as_str()).collect();
-    assert!(names.contains(&"drive$Worker"), "specialization named: {names:?}");
-    assert!(names.contains(&"drive$Heater"), "specialization named: {names:?}");
+    assert!(
+        names.contains(&"drive$Worker"),
+        "specialization named: {names:?}"
+    );
+    assert!(
+        names.contains(&"drive$Heater"),
+        "specialization named: {names:?}"
+    );
     assert!(
         !names.contains(&"drive"),
         "the un-specialized `drive` must not be emitted: {names:?}"
@@ -169,7 +175,10 @@ fn interface_specialization_deduped(mut with_db: db::RootDatabase) {
         .iter()
         .filter(|f| f.name.as_str() == "drive$Worker")
         .count();
-    assert_eq!(n, 1, "two Worker args share a single drive$Worker specialization");
+    assert_eq!(
+        n, 1,
+        "two Worker args share a single drive$Worker specialization"
+    );
 }
 
 /// Transitive: `outer` forwards its interface param to `inner(dev := dev)`. Both
@@ -209,7 +218,12 @@ fn interface_transitive_specializations_named(mut with_db: db::RootDatabase) {
     let (_mir, wasm) = compile_to_mir_and_wasm(&mut with_db, source);
     let df = read_debug_functions(&wasm);
     let names: Vec<&str> = df.functions.iter().map(|f| f.name.as_str()).collect();
-    for expected in ["outer$Worker", "outer$Heater", "inner$Worker", "inner$Heater"] {
+    for expected in [
+        "outer$Worker",
+        "outer$Heater",
+        "inner$Worker",
+        "inner$Heater",
+    ] {
         assert!(names.contains(&expected), "missing {expected}: {names:?}");
     }
     assert!(

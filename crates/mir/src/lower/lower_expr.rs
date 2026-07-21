@@ -1116,7 +1116,11 @@ impl<'db> ExprLowerCtx<'db> {
         &self,
         path: hir::hir_def::expressions::expression::BeginPathExpr<'db>,
     ) -> Result<
-        Option<(hir::hir_def::interned::identifier::Ident, MirPlace, Type<'db>)>,
+        Option<(
+            hir::hir_def::interned::identifier::Ident,
+            MirPlace,
+            Type<'db>,
+        )>,
         LowerTypeError,
     > {
         use hir::HasName;
@@ -1556,8 +1560,7 @@ impl<'db> ExprLowerCtx<'db> {
                             Type::Struct(_) | Type::Array(_)
                         );
                         if fills_defaults && is_aggregate {
-                            let var_ty =
-                                crate::lower::lower_func::lower_var_type(self.db, *var)?;
+                            let var_ty = crate::lower::lower_func::lower_var_type(self.db, *var)?;
                             if matches!(var_ty, MirType::Struct(_) | MirType::Array(_)) {
                                 let MirExpr::Load(src, _) = lowered else {
                                     return Err(LowerTypeError::UnsupportedType(
@@ -1652,8 +1655,7 @@ impl<'db> ExprLowerCtx<'db> {
             match param.kind(self.db) {
                 ParamAssignKind::FormalInput { value, .. }
                 | ParamAssignKind::NonFormal { value } => {
-                    let Some(field) = struct_type.fields.iter().find(|f| f.name == var_name)
-                    else {
+                    let Some(field) = struct_type.fields.iter().find(|f| f.name == var_name) else {
                         continue;
                     };
                     // VAR_IN_OUT is by-reference: the instance field is

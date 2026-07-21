@@ -31,7 +31,10 @@ pub fn resolve_invocation<'db>(
             // different reason (a class has no body, E0501), which the recursion
             // below produces.
             if invocation.kind(db) == InvocationKind::SuperBody
-                && matches!(get_scope(db, parent).kind, ScopeKind::Pou(Pou::FunctionBlock(_)))
+                && matches!(
+                    get_scope(db, parent).kind,
+                    ScopeKind::Pou(Pou::FunctionBlock(_))
+                )
             {
                 ctx.errors.push(
                     InheritanceError::SuperBodyInMethod {

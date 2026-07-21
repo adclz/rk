@@ -34,7 +34,10 @@ fn check_once(workspace: &std::path::Path, verbose: bool) -> CliResult<()> {
         ),
     );
 
-    if per_file.iter().any(|(_, diagnostics)| !diagnostics.is_empty()) {
+    if per_file
+        .iter()
+        .any(|(_, diagnostics)| !diagnostics.is_empty())
+    {
         Err(CliError::Failed)
     } else {
         Ok(())

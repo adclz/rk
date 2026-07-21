@@ -144,7 +144,10 @@ fn discarded_string_output(mut with_db: db::RootDatabase) {
     "#;
     let wasm = compile_to_wasm_checked(&mut with_db, source);
     let result: i32 = super::execute_wasm(&wasm, "test", ());
-    assert_eq!(result, 42, "discarded STRING output: call works, returns 42");
+    assert_eq!(
+        result, 42,
+        "discarded STRING output: call works, returns 42"
+    );
 }
 
 /// Bound STRUCT output: the callee writes fields through its output pointer;
@@ -170,7 +173,10 @@ fn bound_struct_output(mut with_db: db::RootDatabase) {
     "#;
     let wasm = compile_to_wasm_checked(&mut with_db, source);
     let result: i32 = super::execute_wasm(&wasm, "test", ());
-    assert_eq!(result, 15, "struct output written through the pointer: 5 + 10");
+    assert_eq!(
+        result, 15,
+        "struct output written through the pointer: 5 + 10"
+    );
 }
 
 /// Bound ARRAY output: element writes through the output pointer land in the
@@ -194,7 +200,10 @@ fn bound_array_output(mut with_db: db::RootDatabase) {
     "#;
     let wasm = compile_to_wasm_checked(&mut with_db, source);
     let result: i32 = super::execute_wasm(&wasm, "test", ());
-    assert_eq!(result, 33, "array output written through the pointer: 3 + 30");
+    assert_eq!(
+        result, 33,
+        "array output written through the pointer: 3 + 30"
+    );
 }
 
 /// Bound STRING output, verified through the runtime: the callee's
@@ -252,7 +261,10 @@ fn discarded_struct_output(mut with_db: db::RootDatabase) {
     "#;
     let wasm = compile_to_wasm_checked(&mut with_db, source);
     let result: i32 = super::execute_wasm(&wasm, "test", ());
-    assert_eq!(result, 10, "discarded struct output: call works, returns 10");
+    assert_eq!(
+        result, 10,
+        "discarded struct output: call works, returns 10"
+    );
 }
 
 /// Discarded ARRAY output: same — the whole array fits in the scratch local.

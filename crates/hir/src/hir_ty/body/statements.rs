@@ -129,7 +129,10 @@ impl<'db> StmtsResolverCtx<'db> {
                     // concrete type the caller supplied; reassigning it would
                     // break monomorphization (see E0517).
                     if let Type::Variable((var_decl, _)) = base_typ
-                        && matches!(var_decl.spec(db).infer(db).normalize(db), Type::Interface(_))
+                        && matches!(
+                            var_decl.spec(db).infer(db).normalize(db),
+                            Type::Interface(_)
+                        )
                     {
                         ctx.errors.push(
                             InheritanceError::InterfaceParamNotAssignable {

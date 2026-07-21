@@ -51,10 +51,7 @@ pub fn lower_function<'db>(
     // Phase B: for a specialized copy, each interface param's concrete
     // implementer.
     iface_subs: Option<
-        &FxHashMap<
-            hir::hir_def::interned::identifier::Ident,
-            hir::hir_def::pous::pou::Pou<'db>,
-        >,
+        &FxHashMap<hir::hir_def::interned::identifier::Ident, hir::hir_def::pous::pou::Pou<'db>>,
     >,
     // Phase B: module-global call-site -> mangled specialization rewrites, so
     // calls in this body route to the right specialization.
@@ -1163,8 +1160,9 @@ fn mark_inout_call_args<'db>(
             continue;
         }
         let value = match param.kind(db) {
-            ParamAssignKind::NonFormal { value }
-            | ParamAssignKind::FormalInput { value, .. } => value,
+            ParamAssignKind::NonFormal { value } | ParamAssignKind::FormalInput { value, .. } => {
+                value
+            }
             ParamAssignKind::FormalOutput { .. } => continue,
         };
         if let ExprKind::PrimaryExpr(PrimaryExpr::VariableAccess(va)) = value.expr(db)

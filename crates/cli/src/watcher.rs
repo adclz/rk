@@ -256,11 +256,12 @@ impl Watcher {
         let (tx, rx) = mpsc::channel::<DebouncerMessage>();
 
         let tx_notify = tx.clone();
-        let mut watcher = notify::recommended_watcher(move |res: notify::Result<notify::Event>| {
-            if let Ok(event) = res {
-                let _ = tx_notify.send(DebouncerMessage::Event(event));
-            }
-        })?;
+        let mut watcher =
+            notify::recommended_watcher(move |res: notify::Result<notify::Event>| {
+                if let Ok(event) = res {
+                    let _ = tx_notify.send(DebouncerMessage::Event(event));
+                }
+            })?;
         watcher.watch(workspace, RecursiveMode::Recursive)?;
 
         let thread = std::thread::spawn(move || {

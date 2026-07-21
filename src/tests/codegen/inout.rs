@@ -269,8 +269,7 @@ fn fb_inout_non_lvalue_rejected(mut with_db: db::RootDatabase) {
         })
         .count();
     assert_eq!(
-        e0234_count,
-        2,
+        e0234_count, 2,
         "both the FB literal and the FUNCTION expression inout args must be \
          rejected with E0234, got: {diags:?}"
     );
@@ -352,7 +351,6 @@ fn fn_inout_array(mut with_db: db::RootDatabase) {
     let result: i32 = super::execute_wasm(&wasm, "test", ());
     assert_eq!(result, 14, "array inout on a FUNCTION: 6 + 8");
 }
-
 
 /// E0236: binding a VAR_IN_OUT with `=>` is rejected — under by-ref it would
 /// leave the pointer field unbound (the body would deref address 0).
@@ -438,5 +436,8 @@ fn fb_ref_to_member_not_auto_dereffed(mut with_db: db::RootDatabase) {
     "#;
     let wasm = compile_to_wasm_checked(&mut with_db, source);
     let result: i32 = super::execute_wasm(&wasm, "test", ());
-    assert_eq!(result, 2102, "io auto-deref: a=2; REF explicit deref: b=102");
+    assert_eq!(
+        result, 2102,
+        "io auto-deref: a=2; REF explicit deref: b=102"
+    );
 }

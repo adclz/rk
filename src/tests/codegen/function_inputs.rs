@@ -78,7 +78,10 @@ fn fn_struct_input_callee_write_invisible(mut with_db: db::RootDatabase) {
     // Unchecked compile: writing to a VAR_INPUT raises the L0303 lint.
     let wasm = compile_to_wasm(&mut with_db, source);
     let result: i32 = super::execute_wasm(&wasm, "test", ());
-    assert_eq!(result, 30, "callee wrote its snapshot, caller's s unchanged");
+    assert_eq!(
+        result, 30,
+        "callee wrote its snapshot, caller's s unchanged"
+    );
 }
 
 /// Snapshot semantics under aliasing: the SAME struct is bound to a VAR_INPUT

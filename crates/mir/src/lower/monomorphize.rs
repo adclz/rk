@@ -585,9 +585,11 @@ pub fn monomorphize<'db>(
                     for var in info.func.variables(db) {
                         match var.kind(db) {
                             VariableKind::Input => {
-                                let ty = super::lower_func::input_param_type(
-                                    resolve_any_type(db, var.spec(db).infer(db), *concrete_spec)?,
-                                );
+                                let ty = super::lower_func::input_param_type(resolve_any_type(
+                                    db,
+                                    var.spec(db).infer(db),
+                                    *concrete_spec,
+                                )?);
                                 params.push(MirParam {
                                     name: var.name(db),
                                     ty,
@@ -683,9 +685,11 @@ pub fn monomorphize<'db>(
                         use hir::hir_def::pous::variable::VariableKind;
                         match var.kind(db) {
                             VariableKind::Input => {
-                                let ty = super::lower_func::input_param_type(
-                                    resolve_any_type(db, var.spec(db).infer(db), *concrete_spec)?,
-                                );
+                                let ty = super::lower_func::input_param_type(resolve_any_type(
+                                    db,
+                                    var.spec(db).infer(db),
+                                    *concrete_spec,
+                                )?);
                                 params.push(MirParam {
                                     name: var.name(db),
                                     ty,

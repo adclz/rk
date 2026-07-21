@@ -29,7 +29,10 @@ fn test_st_class_method_call(mut with_db: db::RootDatabase) {
     "#;
     let wasm = compile_to_wasm(&mut with_db, source);
     let result: i32 = super::execute_wasm(&wasm, "test", ());
-    assert_eq!(result, 3, "class method call mutates the instance across calls");
+    assert_eq!(
+        result, 3,
+        "class method call mutates the instance across calls"
+    );
 }
 
 /// Class inheritance: `Derived EXTENDS Base` inherits `Base#inc`, called on a
@@ -57,7 +60,10 @@ fn test_st_class_inherited_method(mut with_db: db::RootDatabase) {
     "#;
     let wasm = compile_to_wasm(&mut with_db, source);
     let result: i32 = super::execute_wasm(&wasm, "test", ());
-    assert_eq!(result, 3, "inherited class method runs on the derived instance");
+    assert_eq!(
+        result, 3,
+        "inherited class method runs on the derived instance"
+    );
 }
 
 /// `ARRAY OF <CLASS>` with a method call on an element. Indexing must compute the
@@ -83,7 +89,10 @@ fn test_st_array_of_class_instances(mut with_db: db::RootDatabase) {
     "#;
     let wasm = compile_to_wasm(&mut with_db, source);
     let result: i32 = super::execute_wasm(&wasm, "test", ());
-    assert_eq!(result, 5, "array-of-class elements keep independent state (3 + 2)");
+    assert_eq!(
+        result, 5,
+        "array-of-class elements keep independent state (3 + 2)"
+    );
 }
 
 /// A CLASS as an interface implementer, monomorphized exactly like an FB:
@@ -116,7 +125,10 @@ fn test_st_class_interface_param(mut with_db: db::RootDatabase) {
     "#;
     let wasm = compile_to_wasm(&mut with_db, source);
     let result: i32 = super::execute_wasm(&wasm, "test", ());
-    assert_eq!(result, 2, "class interface implementer specializes to drive$Worker -> Worker#Run");
+    assert_eq!(
+        result, 2,
+        "class interface implementer specializes to drive$Worker -> Worker#Run"
+    );
 }
 
 /// Two distinct CLASS implementers of one interface each get their own
@@ -146,5 +158,8 @@ fn test_st_class_interface_two_impls(mut with_db: db::RootDatabase) {
     "#;
     let wasm = compile_to_wasm(&mut with_db, source);
     let result: i32 = super::execute_wasm(&wasm, "test", ());
-    assert_eq!(result, 1001, "pick$One -> 1, pick$Ten -> 10, distinct class specializations");
+    assert_eq!(
+        result, 1001,
+        "pick$One -> 1, pick$Ten -> 10, distinct class specializations"
+    );
 }

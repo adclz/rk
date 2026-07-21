@@ -128,7 +128,15 @@ fn walk_value<'db>(
             walk_members(db, path, addr, &s.fields, fb.variables(db), retained, out);
         }
         (MirType::Struct(s), Type::Class(class)) => {
-            walk_members(db, path, addr, &s.fields, class.variables(db), retained, out);
+            walk_members(
+                db,
+                path,
+                addr,
+                &s.fields,
+                class.variables(db),
+                retained,
+                out,
+            );
         }
         // Arrays: one range when possible; per-element when the element type
         // needs recursion.

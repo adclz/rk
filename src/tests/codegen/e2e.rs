@@ -40,8 +40,9 @@ END_FUNCTION
     let mir_module =
         mir::lower::lower_module::lower_module(&with_db, sem_idx).expect("MIR lowering failed");
     let core_bytes = wasm_codegen::generate_wasm(&with_db, &mir_module).finish();
-    let component_bytes = wasm_codegen::component::wrap_in_component(&with_db, &core_bytes, &mir_module)
-        .expect("Component wrapping failed");
+    let component_bytes =
+        wasm_codegen::component::wrap_in_component(&with_db, &core_bytes, &mir_module)
+            .expect("Component wrapping failed");
 
     // Write component + manifest to temp dir
     let tmp = std::env::temp_dir().join("rk_e2e_test");
@@ -77,8 +78,9 @@ END_FUNCTION
     let mir_module =
         mir::lower::lower_module::lower_module(&with_db, sem_idx).expect("MIR lowering failed");
     let core_bytes = wasm_codegen::generate_wasm(&with_db, &mir_module).finish();
-    let component_bytes = wasm_codegen::component::wrap_in_component(&with_db, &core_bytes, &mir_module)
-        .expect("Component wrapping failed");
+    let component_bytes =
+        wasm_codegen::component::wrap_in_component(&with_db, &core_bytes, &mir_module)
+            .expect("Component wrapping failed");
 
     let tmp = std::env::temp_dir().join("rk_e2e_failing_test_runner");
     let build_dir = tmp.join("rk_build").join("test");
@@ -207,8 +209,9 @@ END_FUNCTION
     let mir_module =
         mir::lower::lower_module::lower_module(&with_db, sem_idx).expect("MIR lowering failed");
     let core_bytes = wasm_codegen::generate_wasm(&with_db, &mir_module).finish();
-    let component_bytes = wasm_codegen::component::wrap_in_component(&with_db, &core_bytes, &mir_module)
-        .expect("Component wrapping failed");
+    let component_bytes =
+        wasm_codegen::component::wrap_in_component(&with_db, &core_bytes, &mir_module)
+            .expect("Component wrapping failed");
 
     let engine = {
         let mut c = Config::new();
@@ -266,8 +269,9 @@ END_FUNCTION
     let mir_module =
         mir::lower::lower_module::lower_module(&with_db, sem_idx).expect("MIR lowering failed");
     let core_bytes = wasm_codegen::generate_wasm(&with_db, &mir_module).finish();
-    let component_bytes = wasm_codegen::component::wrap_in_component(&with_db, &core_bytes, &mir_module)
-        .expect("Component wrapping failed");
+    let component_bytes =
+        wasm_codegen::component::wrap_in_component(&with_db, &core_bytes, &mir_module)
+            .expect("Component wrapping failed");
 
     let engine = {
         let mut c = Config::new();
@@ -328,8 +332,9 @@ END_FUNCTION
     let mir_module =
         mir::lower::lower_module::lower_module(&with_db, sem_idx).expect("MIR lowering failed");
     let core_bytes = wasm_codegen::generate_wasm(&with_db, &mir_module).finish();
-    let component_bytes = wasm_codegen::component::wrap_in_component(&with_db, &core_bytes, &mir_module)
-        .expect("Component wrapping failed");
+    let component_bytes =
+        wasm_codegen::component::wrap_in_component(&with_db, &core_bytes, &mir_module)
+            .expect("Component wrapping failed");
 
     // `{test}` functions are codegen-wrapped in a `try_table`, so the
     // exceptions proposal must be enabled to load the component.
@@ -414,8 +419,9 @@ END_FUNCTION
     let mir_module =
         mir::lower::lower_module::lower_module(&with_db, sem_idx).expect("MIR lowering failed");
     let core_bytes = wasm_codegen::generate_wasm(&with_db, &mir_module).finish();
-    let component_bytes = wasm_codegen::component::wrap_in_component(&with_db, &core_bytes, &mir_module)
-        .expect("Component wrapping failed");
+    let component_bytes =
+        wasm_codegen::component::wrap_in_component(&with_db, &core_bytes, &mir_module)
+            .expect("Component wrapping failed");
 
     // `{test}` functions are codegen-wrapped in a `try_table`, so the
     // exceptions proposal must be enabled to load the component.
@@ -491,8 +497,9 @@ END_FUNCTION
         mir::lower::lower_module::lower_module(&with_db, sem_idx).expect("MIR lowering failed");
     let core_bytes = wasm_codegen::generate_wasm(&with_db, &mir_module).finish();
 
-    let component_bytes = wasm_codegen::component::wrap_in_component(&with_db, &core_bytes, &mir_module)
-        .expect("Component wrapping failed");
+    let component_bytes =
+        wasm_codegen::component::wrap_in_component(&with_db, &core_bytes, &mir_module)
+            .expect("Component wrapping failed");
 
     assert!(component_bytes.len() > 8, "Component should have content");
     assert_eq!(

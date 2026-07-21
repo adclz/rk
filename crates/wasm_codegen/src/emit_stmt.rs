@@ -260,9 +260,7 @@ fn emit_stmt(func: &mut wasm_encoder::Function, stmt: &MirStmt, ctx: &Ctx) {
                     Some(LocalInfo::Memory { address, .. }) => FbBase::Static(*address),
                     _ => return,
                 },
-                mir::expr::MirPlace::ThisField { field_offset, .. } => {
-                    FbBase::This(*field_offset)
-                }
+                mir::expr::MirPlace::ThisField { field_offset, .. } => FbBase::This(*field_offset),
                 _ => return,
             };
 

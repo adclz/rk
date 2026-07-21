@@ -115,7 +115,10 @@ fn test_st_method_bare_member_access(mut with_db: db::RootDatabase) {
     "#;
     let wasm = compile_to_wasm(&mut with_db, source);
     let result: i32 = super::execute_wasm(&wasm, "test", ());
-    assert_eq!(result, 5, "bare member access resolves to the instance field");
+    assert_eq!(
+        result, 5,
+        "bare member access resolves to the instance field"
+    );
 }
 
 /// A method LOCAL that shares a name with an FB member SHADOWS the member — as
@@ -206,7 +209,10 @@ fn test_st_array_of_fb_instances(mut with_db: db::RootDatabase) {
     "#;
     let wasm = compile_to_wasm(&mut with_db, source);
     let result: i32 = super::execute_wasm(&wasm, "test", ());
-    assert_eq!(result, 5, "array-of-FB elements keep independent state (3 + 2)");
+    assert_eq!(
+        result, 5,
+        "array-of-FB elements keep independent state (3 + 2)"
+    );
 }
 
 /// `THIS.m()` — an explicit self method call from inside another method — lowers
@@ -270,7 +276,10 @@ fn test_st_super_method_call(mut with_db: db::RootDatabase) {
     "#;
     let wasm = compile_to_wasm(&mut with_db, source);
     let result: i32 = super::execute_wasm(&wasm, "test_super", ());
-    assert_eq!(result, 102, "SUPER.Tick() dispatches to Base#Tick on the same instance");
+    assert_eq!(
+        result, 102,
+        "SUPER.Tick() dispatches to Base#Tick on the same instance"
+    );
 }
 
 /// Phase B: an interface `VAR_IN_OUT` parameter is monomorphized per concrete
@@ -310,7 +319,10 @@ fn test_st_interface_param_monomorphized(mut with_db: db::RootDatabase) {
     "#;
     let wasm = compile_to_wasm(&mut with_db, source);
     let result: i32 = super::execute_wasm(&wasm, "test", ());
-    assert_eq!(result, 30, "Worker#Run (10) + Heater#Run (20) via monomorphized interface params");
+    assert_eq!(
+        result, 30,
+        "Worker#Run (10) + Heater#Run (20) via monomorphized interface params"
+    );
 }
 
 /// Phase B: a bare statement-context call `bump(dev := w);` (no assignment) must
@@ -378,7 +390,10 @@ fn test_st_interface_arg_this(mut with_db: db::RootDatabase) {
     "#;
     let wasm = compile_to_wasm(&mut with_db, source);
     let result: i32 = super::execute_wasm(&wasm, "test", ());
-    assert_eq!(result, 7, "invoke(s := THIS) dispatches to Dog#Speak on the self instance");
+    assert_eq!(
+        result, 7,
+        "invoke(s := THIS) dispatches to Dog#Speak on the self instance"
+    );
 }
 
 /// Phase B: an interface method with its own parameter — `dev.Add(x := 41)` must
@@ -441,7 +456,10 @@ fn test_st_interface_method_mutates_instance(mut with_db: db::RootDatabase) {
     "#;
     let wasm = compile_to_wasm(&mut with_db, source);
     let result: i32 = super::execute_wasm(&wasm, "test", ());
-    assert_eq!(result, 2, "two dev.Inc() through the interface mutate w.c to 2");
+    assert_eq!(
+        result, 2,
+        "two dev.Inc() through the interface mutate w.c to 2"
+    );
 }
 
 /// TRANSITIVE monomorphization: `outer` forwards its own interface `VAR_IN_OUT`
@@ -485,7 +503,10 @@ fn test_st_interface_param_transitive(mut with_db: db::RootDatabase) {
     "#;
     let wasm = compile_to_wasm(&mut with_db, source);
     let result: i32 = super::execute_wasm(&wasm, "test", ());
-    assert_eq!(result, 2, "two forwards reach Counter#Inc through outer$C -> inner$C");
+    assert_eq!(
+        result, 2,
+        "two forwards reach Counter#Inc through outer$C -> inner$C"
+    );
 }
 
 /// TRANSITIVE, TWO implementers: `mid` forwards `s` to `leaf(s := s)`, and `test`
@@ -538,7 +559,10 @@ fn test_st_interface_param_transitive_two_impls(mut with_db: db::RootDatabase) {
     "#;
     let wasm = compile_to_wasm(&mut with_db, source);
     let result: i32 = super::execute_wasm(&wasm, "test2", ());
-    assert_eq!(result, 11, "distinct transitive chains: Inc1 (+1) and Inc10 (+10)");
+    assert_eq!(
+        result, 11,
+        "distinct transitive chains: Inc1 (+1) and Inc10 (+10)"
+    );
 }
 
 /// TRANSITIVE, THREE levels: `l1` -> `l2` -> `l3` each forward the interface param
@@ -586,7 +610,10 @@ fn test_st_interface_param_transitive_three_levels(mut with_db: db::RootDatabase
     "#;
     let wasm = compile_to_wasm(&mut with_db, source);
     let result: i32 = super::execute_wasm(&wasm, "test3", ());
-    assert_eq!(result, 3, "concrete binding propagates through a 3-level forward chain");
+    assert_eq!(
+        result, 3,
+        "concrete binding propagates through a 3-level forward chain"
+    );
 }
 
 /// Regression for the seed change: interface-param functions are no longer walked
@@ -631,7 +658,10 @@ fn test_st_interface_param_specialization_body_calls(mut with_db: db::RootDataba
     "#;
     let wasm = compile_to_wasm(&mut with_db, source);
     let result: i32 = super::execute_wasm(&wasm, "test_body", ());
-    assert_eq!(result, 1, "both the forwarded and concrete-local calls resolve to helper$Counter");
+    assert_eq!(
+        result, 1,
+        "both the forwarded and concrete-local calls resolve to helper$Counter"
+    );
 }
 
 /// Keying torture (from the adversarial finder): `mid`'s own params are named
@@ -667,7 +697,10 @@ fn test_st_interface_param_same_name_swapped_forward(mut with_db: db::RootDataba
     "#;
     let wasm = compile_to_wasm(&mut with_db, source);
     let r: i32 = super::execute_wasm(&wasm, "entry", ());
-    assert_eq!(r, 110, "arg-name keying binds leaf p->Ten, q->One (swap preserved)");
+    assert_eq!(
+        r, 110,
+        "arg-name keying binds leaf p->Ten, q->One (swap preserved)"
+    );
 }
 
 /// Per-instance rewrites invariant (from the adversarial finder): `mid` is
@@ -704,7 +737,10 @@ fn test_st_interface_param_per_instance_rewrites(mut with_db: db::RootDatabase) 
     "#;
     let wasm = compile_to_wasm(&mut with_db, source);
     let r: i32 = super::execute_wasm(&wasm, "entry", ());
-    assert_eq!(r, 1101001, "the one inner FuncCall routes to two different leaf specs");
+    assert_eq!(
+        r, 1101001,
+        "the one inner FuncCall routes to two different leaf specs"
+    );
 }
 
 /// A self-recursive interface-param function forwards to ITSELF (`f(dev := dev)`)
@@ -741,7 +777,10 @@ fn test_st_interface_param_self_recursive_forward(mut with_db: db::RootDatabase)
     "#;
     let wasm = compile_to_wasm(&mut with_db, source);
     let r: i32 = super::execute_wasm(&wasm, "test", ());
-    assert_eq!(r, 3, "self-recursive forward terminates and routes to f$Counter");
+    assert_eq!(
+        r, 3,
+        "self-recursive forward terminates and routes to f$Counter"
+    );
 }
 
 /// THIS forwarded transitively: a METHOD passes `THIS` into an interface-param
@@ -777,7 +816,10 @@ fn test_st_interface_param_this_forwarded_transitively(mut with_db: db::RootData
     "#;
     let wasm = compile_to_wasm(&mut with_db, source);
     let r: i32 = super::execute_wasm(&wasm, "test", ());
-    assert_eq!(r, 7, "THIS bound in the seed (self_pou=Dog) drives outer$Dog -> inner$Dog");
+    assert_eq!(
+        r, 7,
+        "THIS bound in the seed (self_pou=Dog) drives outer$Dog -> inner$Dog"
+    );
 }
 
 /// `VAR_INPUT` interface param. An interface value is a REFERENCE, so `VAR_INPUT`
@@ -811,7 +853,10 @@ fn test_st_interface_var_input_param(mut with_db: db::RootDatabase) {
     "#;
     let wasm = compile_to_wasm(&mut with_db, source);
     let r: i32 = super::execute_wasm(&wasm, "test", ());
-    assert_eq!(r, 4, "VAR_INPUT interface is a reference: mutation persists to w");
+    assert_eq!(
+        r, 4,
+        "VAR_INPUT interface is a reference: mutation persists to w"
+    );
 }
 
 /// `VAR_INPUT` interface param monomorphizes per concrete implementer, exactly like
@@ -841,7 +886,10 @@ fn test_st_interface_var_input_two_impls(mut with_db: db::RootDatabase) {
     "#;
     let wasm = compile_to_wasm(&mut with_db, source);
     let r: i32 = super::execute_wasm(&wasm, "test", ());
-    assert_eq!(r, 1001, "pick$One -> 1, pick$Ten -> 10, distinct specializations");
+    assert_eq!(
+        r, 1001,
+        "pick$One -> 1, pick$Ten -> 10, distinct specializations"
+    );
 }
 
 /// Mixed-kind forwarding: a `VAR_INPUT` interface param is forwarded onward to a
@@ -879,7 +927,10 @@ fn test_st_interface_var_input_forwarded_to_inout(mut with_db: db::RootDatabase)
     "#;
     let wasm = compile_to_wasm(&mut with_db, source);
     let r: i32 = super::execute_wasm(&wasm, "test", ());
-    assert_eq!(r, 2, "VAR_INPUT forwarded to VAR_IN_OUT: mutation persists through mid$C -> leaf$C");
+    assert_eq!(
+        r, 2,
+        "VAR_INPUT forwarded to VAR_IN_OUT: mutation persists through mid$C -> leaf$C"
+    );
 }
 
 /// `SUPER()` (IEC 10c) — a derived FB's body calls the immediate base FB's cyclic
@@ -1071,4 +1122,3 @@ fn fb_string_input_output(mut with_db: db::RootDatabase) {
     let len = i32::from_le_bytes(r[0..4].try_into().unwrap()) as usize;
     assert_eq!(String::from_utf8_lossy(&r[4..4 + len]), "agg-str");
 }
-

@@ -80,6 +80,9 @@ fn write_output(output: &std::path::Path, bytes: &[u8], label: &str) -> CliResul
     }
     std::fs::write(output, bytes)
         .map_err(|e| CliError::msg(format!("writing {}: {e}", output.display())))?;
-    ui::success(label, format!("{} ({} bytes)", output.display(), bytes.len()));
+    ui::success(
+        label,
+        format!("{} ({} bytes)", output.display(), bytes.len()),
+    );
     Ok(())
 }

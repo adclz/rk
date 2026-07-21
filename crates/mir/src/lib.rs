@@ -1,8 +1,8 @@
 pub mod debug_symbols;
-pub mod retain_map;
 pub mod expr;
 pub mod function;
 pub mod memory;
+pub mod retain_map;
 pub mod schedule;
 pub mod stmt;
 pub mod test_manifest;

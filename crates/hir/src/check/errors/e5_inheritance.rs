@@ -422,9 +422,7 @@ impl<'db> ToIdeDiagnostic<'db> for InheritanceError<'db> {
                     ))
                     .severity(DiagnosticSeverity::ERROR)
                     .desc(self)
-                    .range(
-                        crate::denormalize(db, file, &var.get_name_span(db)).unwrap_or_default(),
-                    )
+                    .range(crate::denormalize(db, file, &var.get_name_span(db)).unwrap_or_default())
                     .call();
 
                 diag.with_related(Related::new(
@@ -435,7 +433,9 @@ impl<'db> ToIdeDiagnostic<'db> for InheritanceError<'db> {
                     interface.get_scope_id(db).file(db),
                     interface.get_name_span(db),
                 ));
-                diag.with_note("interfaces are supported only as VAR_INPUT or VAR_IN_OUT parameters".into());
+                diag.with_note(
+                    "interfaces are supported only as VAR_INPUT or VAR_IN_OUT parameters".into(),
+                );
                 diag
             }
             Self::InterfaceNotAllowedInReturn { interface, spec } => {
@@ -457,7 +457,9 @@ impl<'db> ToIdeDiagnostic<'db> for InheritanceError<'db> {
                     interface.get_scope_id(db).file(db),
                     interface.get_name_span(db),
                 ));
-                diag.with_note("interfaces are supported only as VAR_INPUT or VAR_IN_OUT parameters".into());
+                diag.with_note(
+                    "interfaces are supported only as VAR_INPUT or VAR_IN_OUT parameters".into(),
+                );
                 diag
             }
             Self::InterfaceNotAllowedNested { interface, spec } => {
@@ -479,7 +481,10 @@ impl<'db> ToIdeDiagnostic<'db> for InheritanceError<'db> {
                     interface.get_scope_id(db).file(db),
                     interface.get_name_span(db),
                 ));
-                diag.with_note("an interface may only appear directly as a VAR_INPUT or VAR_IN_OUT parameter".into());
+                diag.with_note(
+                    "an interface may only appear directly as a VAR_INPUT or VAR_IN_OUT parameter"
+                        .into(),
+                );
                 diag
             }
             Self::InterfaceParamNotAssignable { var, access } => {
@@ -594,15 +599,15 @@ impl<'db> ToIdeDiagnostic<'db> for InheritanceError<'db> {
                 diag
             }
             Self::SuperBodyInLoop { call_site } => {
-                let diag = diag()
+                
+                diag()
                     .message("'SUPER()' cannot be called inside a loop".to_string())
                     .range(
                         crate::denormalize(db, file, &call_site.get_span(db)).unwrap_or_default(),
                     )
                     .severity(DiagnosticSeverity::ERROR)
                     .desc(self)
-                    .call();
-                diag
+                    .call()
             }
             Self::InheritedMemberShadowed { derived, base } => {
                 let name = derived.get_name_ident(db).text(db);
@@ -611,7 +616,8 @@ impl<'db> ToIdeDiagnostic<'db> for InheritanceError<'db> {
                         "variable '{name}' is already declared in a base function block"
                     ))
                     .range(
-                        crate::denormalize(db, file, &derived.get_name_span(db)).unwrap_or_default(),
+                        crate::denormalize(db, file, &derived.get_name_span(db))
+                            .unwrap_or_default(),
                     )
                     .severity(DiagnosticSeverity::ERROR)
                     .desc(self)

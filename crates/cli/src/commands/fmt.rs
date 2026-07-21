@@ -124,7 +124,12 @@ pub fn run_fmt(workspace: &Path, check: bool, verbose: bool) -> CliResult<()> {
 
 /// A per-file `  error <path> — <reason>` line on stderr.
 fn report_file_error(path: &Path, base: &Path, err: &dyn std::fmt::Display) {
-    eprintln!("  {} {} — {}", "error".bold().red(), relative(path, base), err);
+    eprintln!(
+        "  {} {} — {}",
+        "error".bold().red(),
+        relative(path, base),
+        err
+    );
 }
 
 fn collect_st_files(dir: &Path) -> Vec<std::path::PathBuf> {

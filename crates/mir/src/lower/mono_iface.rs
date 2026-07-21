@@ -172,10 +172,14 @@ fn process_body<'db>(
     // interface argument (`f(dev := THIS)`) to its concrete type.
     let self_pou = match get_scope(db, scope).kind {
         ScopeKind::Pou(pou) if matches!(pou, Pou::FunctionBlock(_) | Pou::Class(_)) => Some(pou),
-        _ => get_scope(db, scope).parent.and_then(|p| match get_scope(db, p).kind {
-            ScopeKind::Pou(pou) if matches!(pou, Pou::FunctionBlock(_) | Pou::Class(_)) => Some(pou),
-            _ => None,
-        }),
+        _ => get_scope(db, scope)
+            .parent
+            .and_then(|p| match get_scope(db, p).kind {
+                ScopeKind::Pou(pou) if matches!(pou, Pou::FunctionBlock(_) | Pou::Class(_)) => {
+                    Some(pou)
+                }
+                _ => None,
+            }),
     };
 
     let body = infer_body(db, scope);
@@ -344,7 +348,7 @@ fn process_call<'db>(
     // Bind each interface param to the concrete POU of its argument.
     let mut iface_subs: FxHashMap<Ident, Pou<'db>> = FxHashMap::default();
     for pa in fc.params(db) {
-        let Some(param) = body.variable_of_param.get(&pa).copied() else {
+        let Some(param) = body.variable_of_param.get(pa).copied() else {
             continue;
         };
         if !is_iface_param(db)(&param) {
@@ -389,7 +393,10 @@ fn process_call<'db>(
     let mangled = match by_canonical.get(&key) {
         Some(m) => *m,
         None => {
-            let parts: Vec<&str> = key_concretes.iter().map(|(_, q)| q.text(db).as_str()).collect();
+            let parts: Vec<&str> = key_concretes
+                .iter()
+                .map(|(_, q)| q.text(db).as_str())
+                .collect();
             let m = super::monomorphize::mangle_generic_name(db, func_q, &parts);
             by_canonical.insert(key, m);
             instances.push(IfaceInstance {
@@ -456,4 +463,3 @@ fn concrete_pou_of<'db>(db: &'db dyn WorkspaceDataBase, ty: Type<'db>) -> Option
         _ => None,
     }
 }
-

@@ -1017,9 +1017,7 @@ impl<'db> ToIdeDiagnostic<'db> for ResolveError<'db> {
                     ))
                     .severity(DiagnosticSeverity::ERROR)
                     .desc(self)
-                    .range(
-                        crate::denormalize(db, file, &var.get_span(db)).unwrap_or_default(),
-                    )
+                    .range(crate::denormalize(db, file, &var.get_span(db)).unwrap_or_default())
                     .call();
                 diag.with_note(
                     "retentive behavior requires instance storage; only FUNCTION_BLOCK, CLASS, and PROGRAM variables (and VAR_GLOBAL) can be RETAIN/NON_RETAIN"
