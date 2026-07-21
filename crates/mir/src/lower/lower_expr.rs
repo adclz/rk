@@ -391,23 +391,39 @@ impl<'db> ExprLowerCtx<'db> {
 
             PrimaryExpr::FuncCall(func_call) => self.lower_func_call(*func_call, Some(parent_expr)),
 
-            PrimaryExpr::EnumValue {
-                name: _,
-                variant: _,
-            } => {
-                // Enum values are integer constants - resolve via type inference
-                let ty = parent_expr.infer(self.db);
-                match ty.normalize(self.db) {
-                    Type::EnumVariant(_) | Type::Elementary(_) => {
-                        // For now, emit as i32 constant based on variant index
-                        // TODO: resolve actual enum variant value
-                        Ok(MirExpr::Constant(MirConstant::I32(0)))
+            PrimaryExpr::EnumValue { name, variant } => {
+                // An enum literal is its variant's ordinal in declaration order, at
+                // the enum's storage lane.
+                let mut enum_ty = name.infer(self.db).normalize(self.db);
+                if !matches!(enum_ty, Type::Enum(_)) {
+                    // Initializer paths are typed by init inference, not body inference.
+                    let init_res = hir::hir_ty::head::init_inference::infer_initialization(
+                        self.db,
+                        name.scope_id(self.db),
+                    );
+                    if let Some(pe) = name.expr(self.db)
+                        && let Some(t) = init_res.body_infer_result.type_of_path_expr.get(&pe)
+                    {
+                        enum_ty = t.normalize(self.db);
                     }
-                    _ => Err(LowerTypeError::UnsupportedType(format!(
-                        "Enum value with type {:?}",
-                        ty
-                    ))),
                 }
+                let Type::Enum(e) = enum_ty else {
+                    return Err(LowerTypeError::UnsupportedType(format!(
+                        "Enum literal on non-enum type {:?}",
+                        enum_ty
+                    )));
+                };
+                let ordinal = e
+                    .variants(self.db)
+                    .iter()
+                    .position(|v| v.name.ident == variant.ident)
+                    .ok_or_else(|| {
+                        LowerTypeError::UnsupportedType(format!(
+                            "Unknown enum variant '{}'",
+                            variant.ident.text(self.db)
+                        ))
+                    })?;
+                Ok(MirExpr::Constant(MirConstant::I32(ordinal as i32)))
             }
 
             PrimaryExpr::RefValue { value } => match value {
@@ -1770,6 +1786,9 @@ impl<'db> ExprLowerCtx<'db> {
                 // Enums compare as their storage type
                 Ok(MirElementary::DInt)
             }
+            // A variant literal (`Color#Green`) is a value of its enum, which
+            // stores as DInt (see `lower_enum_type`).
+            Type::EnumVariant(_) => Ok(MirElementary::DInt),
             Type::SubRange(sr) => {
                 let base = sr._type(self.db).infer(self.db);
                 self.type_to_mir_elementary(base)

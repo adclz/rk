@@ -17,6 +17,7 @@ mod debug_lines;
 mod debug_stacktrace;
 mod debug_symbols;
 mod e2e;
+mod enums;
 mod exceptions_spike;
 mod execution;
 mod function_blocks;

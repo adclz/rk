@@ -1071,3 +1071,4 @@ fn fb_string_input_output(mut with_db: db::RootDatabase) {
     let len = i32::from_le_bytes(r[0..4].try_into().unwrap()) as usize;
     assert_eq!(String::from_utf8_lossy(&r[4..4 + len]), "agg-str");
 }
+
