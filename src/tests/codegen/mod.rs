@@ -22,6 +22,7 @@ mod globals;
 mod imports;
 mod initializers;
 mod inout;
+mod overloads;
 mod mir_smoke;
 mod ref_to;
 mod references;

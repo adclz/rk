@@ -240,7 +240,7 @@ pub fn lower_function<'db>(
     };
 
     Ok(MirFunction {
-        name: super::naming::qualified_pou_ident(db, Type::Function(func)),
+        name: super::naming::mir_function_symbol(db, func),
         origin_name: func.name(db),
         index,
         params,

@@ -118,10 +118,7 @@ fn lower_module_from_pous<'db>(
     for (pou, ns_prefix) in all_pous.iter() {
         match pou {
             Pou::Function(func) => {
-                let func_id = super::naming::qualified_pou_ident(
-                    db,
-                    hir::hir_ty::ty::Type::Function(*func),
-                );
+                let func_id = super::naming::mir_function_symbol(db, *func);
                 // Skip already-processed externs
                 if function_indices.contains_key(&func_id) {
                     continue;
@@ -739,7 +736,7 @@ fn lower_extern_function<'db>(
         .transpose()?;
 
     Ok(MirExternFunction {
-        name: super::naming::qualified_pou_ident(db, hir::hir_ty::ty::Type::Function(func)),
+        name: super::naming::mir_function_symbol(db, func),
         index,
         module: extern_decl.module.clone(),
         import_name: extern_decl.name.clone(),
@@ -899,7 +896,7 @@ pub fn lower_wasm_intrinsic<'db>(
     };
 
     Ok(MirFunction {
-        name: super::naming::qualified_pou_ident(db, hir::hir_ty::ty::Type::Function(func)),
+        name: super::naming::mir_function_symbol(db, func),
         origin_name: func.name(db),
         index,
         params,

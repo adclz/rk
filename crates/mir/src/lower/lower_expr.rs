@@ -1249,10 +1249,10 @@ impl<'db> ExprLowerCtx<'db> {
         } else {
             match path.infer(self.db) {
                 Type::Function(f) => {
-                    crate::lower::naming::qualified_pou_ident(self.db, Type::Function(f))
+                    crate::lower::naming::mir_function_symbol(self.db, f)
                 }
                 Type::CallableType(hir::hir_ty::ty::CallableType::Function(f)) => {
-                    crate::lower::naming::qualified_pou_ident(self.db, Type::Function(f))
+                    crate::lower::naming::mir_function_symbol(self.db, f)
                 }
                 _ => path
                     .expr(self.db)
