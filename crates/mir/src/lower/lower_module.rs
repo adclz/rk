@@ -14,7 +14,6 @@ use crate::{
     lower::{
         lower_func::{lower_class, lower_function, lower_function_block, lower_program},
         lower_type::{LowerTypeError, lower_type},
-        monomorphize::{AnyFunctionInfo, detect_any_function, monomorphize},
     },
     memory::MirMemoryLayout,
     types::MirType,
@@ -75,41 +74,6 @@ fn lower_module_from_pous<'db>(
     ));
     let mut next_fn_idx: u32 = 0;
 
-    // Collect every unique FB instantiation actually used at call
-    // sites. `var_to_mangled_fb` maps each FB-instance variable to its
-    // mangled FB name so consumers can look up the right type.
-    let (fb_instances, var_to_mangled_fb) =
-        super::monomorphize::collect_fb_instantiations(db, all_pous);
-    // Group instantiations by FB *identity* (not bare name) so two
-    // same-named FBs in different namespaces don't share a bucket.
-    let mut fb_instances_by_fb: FxHashMap<
-        hir::hir_def::pous::function_block::FunctionBlock<'db>,
-        Vec<&super::monomorphize::FbInstance<'db>>,
-    > = FxHashMap::default();
-    for inst in &fb_instances {
-        fb_instances_by_fb.entry(inst.fb).or_default().push(inst);
-    }
-    // Per-variable mangling lookup used by consumers
-    // (function-local variable typing, FB calls).
-    let fb_mangling =
-        super::monomorphize::FbInstanceMap::from_instances(fb_instances.clone(), var_to_mangled_fb);
-    // Backward-compat: bridge to the old `all_fb_subs` shape consumed
-    // by `lower_function` / `ExprLowerCtx.fb_subs`. Last-write-wins per
-    // FB name (same as the pre-refactor behavior). The per-variable
-    // path will replace this shortly.
-    let mut all_fb_subs: FxHashMap<
-        hir::hir_def::interned::identifier::Ident,
-        FxHashMap<
-            hir::hir_def::interned::identifier::Ident,
-            hir::hir_def::expressions::spec::ElementarySpec,
-        >,
-    > = FxHashMap::default();
-    for inst in &fb_instances {
-        if !inst.subs.is_empty() {
-            all_fb_subs.insert(inst.fb.name(db), inst.subs.clone());
-        }
-    }
-
     // Phase B: interface-parameter monomorphization. Collect every function
     // specialization needed by a call site (`drive$Worker`) plus the call-site →
     // mangled-name rewrites, and group specializations by their source function.
@@ -122,9 +86,6 @@ fn lower_module_from_pous<'db>(
     for inst in &iface_instances {
         iface_by_func.entry(inst.func).or_default().push(inst);
     }
-
-    // Collect ANY_* functions for deferred monomorphization
-    let mut any_functions: Vec<AnyFunctionInfo<'db>> = Vec::new();
 
     // Collect test entries for the manifest
     let mut test_entries: Vec<crate::test_manifest::TestEntry> = Vec::new();
@@ -145,12 +106,6 @@ fn lower_module_from_pous<'db>(
             }
             let extern_decl = extern_decl.unwrap();
 
-            // Check if ANY_* - defer to monomorphization
-            if let Some(any_info) = detect_any_function(db, *func) {
-                any_functions.push(any_info);
-                continue;
-            }
-
             // Lower non-ANY extern function to MirExternFunction
             let mir_ext = lower_extern_function(db, *func, &extern_decl, next_fn_idx)?;
             function_indices.insert(mir_ext.name, next_fn_idx);
@@ -163,15 +118,12 @@ fn lower_module_from_pous<'db>(
     for (pou, ns_prefix) in all_pous.iter() {
         match pou {
             Pou::Function(func) => {
-                let func_id = super::monomorphize::qualified_pou_ident(
+                let func_id = super::naming::qualified_pou_ident(
                     db,
                     hir::hir_ty::ty::Type::Function(*func),
                 );
-                // Skip already-processed externs and ANY_* functions
+                // Skip already-processed externs
                 if function_indices.contains_key(&func_id) {
-                    continue;
-                }
-                if any_functions.iter().any(|a| a.func == *func) {
                     continue;
                 }
 
@@ -184,23 +136,7 @@ fn lower_module_from_pous<'db>(
                     continue;
                 }
 
-                // Check if non-extern ANY_* (deferred) - must check before wasm intrinsic
-                // so that ANY_* wasm functions go through monomorphization
-                if let Some(any_info) = detect_any_function(db, *func) {
-                    any_functions.push(any_info);
-                    continue;
-                }
-
-                // Skip functions with ANY-typed variables that weren't caught above
-                let has_any_var = func.variables(db).iter().any(|v| {
-                    let ty = v.spec(db).infer(db).normalize(db);
-                    matches!(ty, hir::hir_ty::ty::Type::Elementary(e) if e.is_any())
-                });
-                if has_any_var {
-                    continue;
-                }
-
-                // Check if wasm intrinsic (non-ANY) - lower as inline function
+                // Check if wasm intrinsic - lower as inline function
                 let wasm_decl = func.statements(db).iter().find_map(|s| {
                     if let StmtKind::WasmPragma(decl) = s.stmt(db) {
                         Some(decl.clone())
@@ -249,8 +185,6 @@ fn lower_module_from_pous<'db>(
                             next_fn_idx,
                             &mut memory_layout,
                             string_pool.clone(),
-                            &all_fb_subs,
-                            &fb_mangling,
                             Some(&inst.iface_subs),
                             // A specialization's body uses its own rewrites.
                             &inst.call_rewrites,
@@ -271,8 +205,6 @@ fn lower_module_from_pous<'db>(
                     next_fn_idx,
                     &mut memory_layout,
                     string_pool.clone(),
-                    &all_fb_subs,
-                    &fb_mangling,
                     None,
                     &iface_call_rewrites,
                 )?;
@@ -299,65 +231,55 @@ fn lower_module_from_pous<'db>(
             }
 
             Pou::FunctionBlock(fb) => {
-                // Emit one set of (instance type + body + methods) per
-                // unique `(FB, T)` instantiation. Generic FBs that were
-                // never instantiated produce no entries in the
-                // collector; skip them here too.
-                let Some(insts) = fb_instances_by_fb.get(fb) else {
-                    continue;
-                };
+                // Emit one set of (instance type + body + methods) per FB, keyed
+                // by its namespace-qualified name.
+                let fb_qualified = super::naming::qualified_pou_ident(
+                    db,
+                    hir::hir_ty::ty::Type::FunctionBlock(*fb),
+                );
 
-                for inst in insts {
-                    let any_subs = inst.subs.clone();
-                    let mangled = inst.mangled_name;
+                // Instance type.
+                let fb_mir_type = super::lower_type::lower_fb_type(db, *fb)?;
+                if let MirType::Struct(ref struct_type) = fb_mir_type {
+                    let inst_fields: Vec<MirInstanceField> = struct_type
+                        .fields
+                        .iter()
+                        .map(|f| {
+                            let nested = match &f.ty {
+                                MirType::Struct(inner) => Some(inner.name),
+                                _ => None,
+                            };
+                            MirInstanceField {
+                                name: f.name,
+                                ty: f.ty.clone(),
+                                offset: f.offset,
+                                nested_instance: nested,
+                                init: None, // TODO: compute initializers
+                            }
+                        })
+                        .collect();
 
-                    // Instance type with the mangled struct name.
-                    let fb_mir_type = super::lower_type::lower_fb_type_with_subs_named(
-                        db, *fb, &any_subs, mangled,
-                    )?;
-                    if let MirType::Struct(ref struct_type) = fb_mir_type {
-                        let inst_fields: Vec<MirInstanceField> = struct_type
-                            .fields
-                            .iter()
-                            .map(|f| {
-                                let nested = match &f.ty {
-                                    MirType::Struct(inner) => Some(inner.name),
-                                    _ => None,
-                                };
-                                MirInstanceField {
-                                    name: f.name,
-                                    ty: f.ty.clone(),
-                                    offset: f.offset,
-                                    nested_instance: nested,
-                                    init: None, // TODO: compute initializers
-                                }
-                            })
-                            .collect();
+                    instance_types.push(MirInstanceType {
+                        name: fb_qualified,
+                        fields: inst_fields,
+                        size: struct_type.size,
+                        align: struct_type.align,
+                    });
+                }
 
-                        instance_types.push(MirInstanceType {
-                            name: mangled,
-                            fields: inst_fields,
-                            size: struct_type.size,
-                            align: struct_type.align,
-                        });
-                    }
-
-                    // Lower methods + __body__ with the mangled name.
-                    let method_funcs = lower_function_block(
-                        db,
-                        *fb,
-                        next_fn_idx,
-                        &mut memory_layout,
-                        string_pool.clone(),
-                        &any_subs,
-                        mangled,
-                        &iface_call_rewrites,
-                    )?;
-                    for mf in method_funcs {
-                        function_indices.insert(mf.name, mf.index);
-                        next_fn_idx += 1;
-                        functions.push(mf);
-                    }
+                // Lower methods + __body__.
+                let method_funcs = lower_function_block(
+                    db,
+                    *fb,
+                    next_fn_idx,
+                    &mut memory_layout,
+                    string_pool.clone(),
+                    &iface_call_rewrites,
+                )?;
+                for mf in method_funcs {
+                    function_indices.insert(mf.name, mf.index);
+                    next_fn_idx += 1;
+                    functions.push(mf);
                 }
             }
 
@@ -384,7 +306,7 @@ fn lower_module_from_pous<'db>(
                         .collect();
 
                     instance_types.push(MirInstanceType {
-                        name: super::monomorphize::qualified_pou_ident(
+                        name: super::naming::qualified_pou_ident(
                             db,
                             hir::hir_ty::ty::Type::Class(*class),
                         ),
@@ -479,22 +401,9 @@ fn lower_module_from_pous<'db>(
         source_files: Vec::new(),
     };
 
-    // Phase 4: Monomorphization - discovers call sites, generates concrete copies
-    if !any_functions.is_empty() {
-        monomorphize(
-            db,
-            &mut module,
-            &any_functions,
-            &mut MirMemoryLayout::new(),
-            string_pool.clone(),
-        )?;
-    }
-
-    // Phase 4.5: Relocate RETAIN variables into one contiguous, host-snapshottable
-    // band. Done AFTER monomorphization so the band sits above every variable,
-    // instance, and monomorphized-slot allocation; then patch the moved addresses
-    // into each function's locals — the only place a variable's absolute address
-    // is stored (body statements resolve addresses via the local map at codegen).
+    // Phase 4.5: relocate RETAIN variables into one contiguous band above
+    // every other allocation, then patch the moved addresses into each
+    // function's locals.
     let bands = module.memory_layout.finalize_bands();
     if !bands.remap.is_empty() {
         for func in &mut module.functions {
@@ -830,13 +739,12 @@ fn lower_extern_function<'db>(
         .transpose()?;
 
     Ok(MirExternFunction {
-        name: super::monomorphize::qualified_pou_ident(db, hir::hir_ty::ty::Type::Function(func)),
+        name: super::naming::qualified_pou_ident(db, hir::hir_ty::ty::Type::Function(func)),
         index,
         module: extern_decl.module.clone(),
         import_name: extern_decl.name.clone(),
         params,
         return_type,
-        monomorphized_from: None,
     })
 }
 
@@ -991,7 +899,7 @@ pub fn lower_wasm_intrinsic<'db>(
     };
 
     Ok(MirFunction {
-        name: super::monomorphize::qualified_pou_ident(db, hir::hir_ty::ty::Type::Function(func)),
+        name: super::naming::qualified_pou_ident(db, hir::hir_ty::ty::Type::Function(func)),
         origin_name: func.name(db),
         index,
         params,

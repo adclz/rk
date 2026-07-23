@@ -17,27 +17,6 @@ END_FUNCTION
 }
 
 #[rstest]
-fn extern_pragma_any_monomorphizes(mut with_db: RootDatabase) {
-    let source = r#"
-FUNCTION ABS : ANY_NUM
-VAR_INPUT IN : INTO(ABS); END_VAR
-    {extern 'math' 'abs' (params IN) (result ABS)}
-END_FUNCTION
-
-FUNCTION test : INT
-VAR x : INT; y : REAL; END_VAR
-    x := ABS(IN := -1);
-    y := ABS(IN := -1.5);
-END_FUNCTION
-    "#;
-    assert_snapshot!(mir_exports(&mut with_db, &[source]), @r"
-    export test() -> Int
-    import math.abs.INT(Int) -> Int [from ABS]
-    import math.abs.REAL(Real) -> Real [from ABS]
-    ");
-}
-
-#[rstest]
 fn extern_pragma_no_params(mut with_db: RootDatabase) {
     let source = r#"
 FUNCTION __ASSERT_FAIL
@@ -59,31 +38,6 @@ END_FUNCTION
 }
 
 #[rstest]
-fn extern_pragma_in_namespace(mut with_db: RootDatabase) {
-    let source = r#"
-NAMESPACE Std.Math
-    FUNCTION ABS : ANY_NUM
-    VAR_INPUT IN : INTO(ABS); END_VAR
-        {extern 'math' 'abs' (params IN) (result ABS)}
-    END_FUNCTION
-
-    NAMESPACE Test
-        USING Std.Math;
-
-        {test}
-        FUNCTION test_abs : INT
-            test_abs := ABS(IN := -42);
-        END_FUNCTION
-    END_NAMESPACE
-END_NAMESPACE
-    "#;
-    assert_snapshot!(mir_exports(&mut with_db, &[source]), @r"
-    export Std.Math.Test.test_abs() -> Int
-    import math.abs.INT(Int) -> Int [from Std.Math.ABS]
-    ");
-}
-
-#[rstest]
 fn extern_pragma_result_only(mut with_db: RootDatabase) {
     // Extern with no params but a result (e.g., clock.now)
     let source = r#"
@@ -92,24 +46,4 @@ FUNCTION get_time : LINT
 END_FUNCTION
     "#;
     assert_snapshot!(mir_exports(&mut with_db, &[source]), @"import wasi:clocks/monotonic-clock.now() -> LInt");
-}
-
-#[rstest]
-fn extern_from_multiple_files(mut with_db: RootDatabase) {
-    let source1 = r#"
-FUNCTION ABS : ANY_NUM
-VAR_INPUT IN : INTO(ABS); END_VAR
-    {extern 'math' 'abs' (params IN) (result ABS)}
-END_FUNCTION
-    "#;
-    let source2 = r#"
-FUNCTION test
-VAR a : INT; END_VAR
-    a := ABS(IN := -5);
-END_FUNCTION
-    "#;
-    assert_snapshot!(mir_exports(&mut with_db, &[source1, source2]), @r"
-    export test()
-    import math.abs.INT(Int) -> Int [from ABS]
-    ");
 }

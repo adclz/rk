@@ -40,14 +40,6 @@ pub fn lower_function<'db>(
     index: u32,
     memory_layout: &mut MirMemoryLayout,
     string_pool: Rc<RefCell<super::lower_expr::StringPool>>,
-    fb_subs: &FxHashMap<
-        hir::hir_def::interned::identifier::Ident,
-        FxHashMap<
-            hir::hir_def::interned::identifier::Ident,
-            hir::hir_def::expressions::spec::ElementarySpec,
-        >,
-    >,
-    fb_mangling: &super::monomorphize::FbInstanceMap<'db>,
     // Phase B: for a specialized copy, each interface param's concrete
     // implementer.
     iface_subs: Option<
@@ -161,7 +153,7 @@ pub fn lower_function<'db>(
             _ => {}
         }
 
-        let ty = lower_var_type_with_mangling(db, *var, fb_subs, fb_mangling)?;
+        let ty = lower_var_type(db, *var)?;
         let storage = allocate_local_storage(
             var.name(db),
             &ty,
@@ -207,33 +199,16 @@ pub fn lower_function<'db>(
         }
     }
 
-    // 5. Lower body statements (with FB subs for generic FB instantiation)
-    // Build a per-function var-name → mangled-FB-name lookup so FB
-    // calls inside the body resolve to the right `__body__` per
-    // concrete `T` (e.g. `c_int : Counter<INT>` calls
-    // `Counter$INT$__body__`).
-    let mut local_fb_mangling: FxHashMap<
-        hir::hir_def::interned::identifier::Ident,
-        hir::hir_def::interned::identifier::Ident,
-    > = FxHashMap::default();
-    for var in func.variables(db) {
-        if let Some(mangled) = fb_mangling.mangled_for_var(*var) {
-            local_fb_mangling.insert(var.name(db), mangled);
-        }
-    }
-
-    let needs_full_ctx = !fb_subs.is_empty()
-        || !local_fb_mangling.is_empty()
-        || iface_subs.is_some_and(|m| !m.is_empty())
-        || !iface_call_rewrites.is_empty();
+    // 5. Body statements. Interface specialization threads `iface_subs` and
+    // `iface_call_rewrites` into the body.
+    let needs_full_ctx =
+        iface_subs.is_some_and(|m| !m.is_empty()) || !iface_call_rewrites.is_empty();
     let (mut body, call_scratch) = if !needs_full_ctx {
         lower_stmts(db, func.statements(db), string_pool.clone())?
     } else {
-        crate::lower::lower_stmt::lower_stmts_with_fb_subs_and_mangling(
+        crate::lower::lower_stmt::lower_stmts_with_ctx(
             db,
             func.statements(db),
-            fb_subs,
-            &local_fb_mangling,
             iface_subs,
             iface_call_rewrites,
             string_pool.clone(),
@@ -265,7 +240,7 @@ pub fn lower_function<'db>(
     };
 
     Ok(MirFunction {
-        name: super::monomorphize::qualified_pou_ident(db, Type::Function(func)),
+        name: super::naming::qualified_pou_ident(db, Type::Function(func)),
         origin_name: func.name(db),
         index,
         params,
@@ -285,15 +260,14 @@ pub fn lower_function_block<'db>(
     start_index: u32,
     memory_layout: &mut MirMemoryLayout,
     string_pool: Rc<RefCell<super::lower_expr::StringPool>>,
-    any_subs: &rustc_hash::FxHashMap<
-        hir::hir_def::interned::identifier::Ident,
-        hir::hir_def::expressions::spec::ElementarySpec,
-    >,
-    mangled_name: hir::hir_def::interned::identifier::Ident,
     iface_call_rewrites: &super::mono_iface::IfaceCallRewrites<'db>,
 ) -> Result<Vec<MirFunction>, LowerTypeError> {
     let mut functions = Vec::new();
     let mut idx = start_index;
+
+    // The FB's qualified symbol: the instance struct name and every method
+    // symbol derive from it.
+    let fb_qualified = super::naming::qualified_pou_ident(db, Type::FunctionBlock(fb));
 
     // Lower each method as a separate function with 'this' parameter
     for method in fb.methods(db) {
@@ -301,9 +275,8 @@ pub fn lower_function_block<'db>(
         let mut locals = Vec::new();
         let mut next_local_idx: u32 = 1; // 0 is 'this'
 
-        // 'this' pointer parameter (use substitutions for ANY types)
-        let fb_type =
-            super::lower_type::lower_fb_type_with_subs_named(db, fb, any_subs, mangled_name)?;
+        // 'this' pointer parameter — the FB's instance struct.
+        let fb_type = super::lower_type::lower_fb_type(db, fb)?;
         // The method body resolves bare member access (implicit THIS) against
         // this struct.
         let this_struct = match &fb_type {
@@ -393,23 +366,11 @@ pub fn lower_function_block<'db>(
             });
         }
 
-        // Same FB-substitution context as the FB body, so bare member access and
-        // any monomorphized member types resolve consistently inside methods.
-        let fb_subs_map = if any_subs.is_empty() {
-            None
-        } else {
-            let mut map = FxHashMap::default();
-            map.insert(fb.name(db), any_subs.clone());
-            Some(map)
-        };
-        let any_override = any_subs.values().next().copied();
         let (body, call_scratch) = crate::lower::lower_stmt::lower_stmts_fb_body(
             db,
             method.stmts(db),
             this_struct,
             string_pool.clone(),
-            fb_subs_map.as_ref(),
-            any_override,
             iface_call_rewrites,
         )?;
         append_call_scratch_locals(
@@ -419,17 +380,14 @@ pub fn lower_function_block<'db>(
             memory_layout,
         );
 
-        // Method symbol: `<mangledFB>#<method>`. The `#` separator is distinct
-        // from `$` (monomorphization type-suffix) and `.` (namespace) so the
-        // symbol is unambiguously parseable regardless of the FB's mono-arity —
-        // e.g. `Counter$INT#inc` is FB `Counter`, type-suffix `INT`, method `inc`.
-        // Overloading `$` for both suffixes and methods was arity-dependent and
-        // fragile (see the method-call callee resolution).
+        // Method symbol: `<FB>#<method>`. The `#` separator is distinct from `.`
+        // (namespace) so the symbol is unambiguously parseable — e.g.
+        // `NsA.Counter#inc` is FB `NsA.Counter`, method `inc`.
         let qualified_name = Ident::new(
             db,
             compact_str::CompactString::from(format!(
                 "{}#{}",
-                mangled_name.text(db),
+                fb_qualified.text(db),
                 method.name(db).text(db)
             )),
         );
@@ -452,8 +410,7 @@ pub fn lower_function_block<'db>(
     // Lower FB body as __body__ function
     // All variables (input, output, var) are accessed through the 'this' pointer.
     if !fb.statements(db).is_empty() {
-        let fb_type =
-            super::lower_type::lower_fb_type_with_subs_named(db, fb, any_subs, mangled_name)?;
+        let fb_type = super::lower_type::lower_fb_type(db, fb)?;
         let body_params = vec![MirParam {
             name: Ident::new(db, compact_str::CompactString::from("this")),
             ty: MirType::Pointer(Box::new(fb_type.clone())),
@@ -497,39 +454,11 @@ pub fn lower_function_block<'db>(
                 ));
             }
         };
-        // Build a global-shaped fb_subs map with just this FB's substitutions
-        let fb_subs_map = if any_subs.is_empty() {
-            None
-        } else {
-            let mut map = FxHashMap::default();
-            map.insert(fb.name(db), any_subs.clone());
-            Some(map)
-        };
-        // Pick the concrete type from the ANY_* substitutions for expression lowering.
-        // All ANY_* variables in the FB resolve to the same concrete type group
-        // (via INTO chains), so taking the first value is correct.
-        let any_override = any_subs.values().next().copied();
-        // Resolve `{#if X is T}` arms against the concrete type before
-        // lowering - same dispatch as functions, just for FB bodies.
-        let expanded_owned;
-        let body_input: &[hir::hir_def::expressions::statement::Stmt<'db>] = match any_override {
-            Some(concrete) => {
-                expanded_owned = super::monomorphize::expanded_body_for_concrete(
-                    db,
-                    fb.statements(db),
-                    concrete,
-                );
-                &expanded_owned
-            }
-            None => fb.statements(db),
-        };
         let (body_stmts, call_scratch) = crate::lower::lower_stmt::lower_stmts_fb_body(
             db,
-            body_input,
+            fb.statements(db),
             this_struct,
             string_pool.clone(),
-            fb_subs_map.as_ref(),
-            any_override,
             iface_call_rewrites,
         )?;
         append_call_scratch_locals(
@@ -541,7 +470,7 @@ pub fn lower_function_block<'db>(
 
         let body_name = Ident::new(
             db,
-            compact_str::CompactString::from(format!("{}$__body__", mangled_name.text(db))),
+            compact_str::CompactString::from(format!("{}$__body__", fb_qualified.text(db))),
         );
 
         functions.push(MirFunction {
@@ -674,8 +603,6 @@ pub fn lower_class<'db>(
             method.stmts(db),
             this_struct,
             string_pool.clone(),
-            None,
-            None,
             iface_call_rewrites,
         )?;
         append_call_scratch_locals(
@@ -686,7 +613,7 @@ pub fn lower_class<'db>(
         );
 
         // Method symbol: `<NsPath.>Class#Method` (see the FB-method site).
-        let class_qualified = super::monomorphize::qualified_pou_ident(db, Type::Class(class));
+        let class_qualified = super::naming::qualified_pou_ident(db, Type::Class(class));
         let qualified_name = Ident::new(
             db,
             compact_str::CompactString::from(format!(
@@ -773,8 +700,6 @@ pub fn lower_program<'db>(
         program.statements(db),
         this_struct,
         string_pool.clone(),
-        None,
-        None,
         iface_call_rewrites,
     )?;
     append_call_scratch_locals(
@@ -918,47 +843,6 @@ pub(crate) fn lower_var_type<'db>(
     let mir = lower_type(db, ty)?;
     // Honor a declared `STRING[N]` capacity (shared with field/global lowering).
     Ok(super::lower_type::apply_sized_string(db, var.spec(db), mir))
-}
-
-/// Lower a variable's type, resolving FB types using the per-variable
-/// FB instantiation map (preferred), with fallback to the legacy
-/// global FB-name → subs map.
-fn lower_var_type_with_mangling<'db>(
-    db: &'db dyn WorkspaceDataBase,
-    var: VariableDecl<'db>,
-    fb_subs: &FxHashMap<
-        hir::hir_def::interned::identifier::Ident,
-        FxHashMap<
-            hir::hir_def::interned::identifier::Ident,
-            hir::hir_def::expressions::spec::ElementarySpec,
-        >,
-    >,
-    fb_mangling: &super::monomorphize::FbInstanceMap<'db>,
-) -> Result<MirType, LowerTypeError> {
-    let ty = var.spec(db).infer(db);
-    let Type::FunctionBlock(fb) = ty else {
-        // Non-FB types: use the per-variable lowering so spec-level
-        // overrides (e.g. `STRING[N]` capacity) survive.
-        return lower_var_type(db, var);
-    };
-    // Prefer per-variable mangled instantiation: this picks the correct
-    // struct name when two variables of the same FB use distinct
-    // concrete types (e.g. `Counter<INT>` and `Counter<DINT>`).
-    if let Some(mangled) = fb_mangling.mangled_for_var(var) {
-        let subs = fb_mangling
-            .subs_for_mangled(mangled)
-            .cloned()
-            .unwrap_or_default();
-        return super::lower_type::lower_fb_type_with_subs_named(db, fb, &subs, mangled);
-    }
-    // Fallback: non-generic FB or unrecognized variable — keep the
-    // legacy subs lookup so existing single-instantiation behavior is
-    // preserved.
-    if let Some(subs) = fb_subs.get(&fb.name(db)) {
-        super::lower_type::lower_fb_type_with_subs(db, fb, subs)
-    } else {
-        lower_type(db, ty)
-    }
 }
 
 /// Collect identifiers of variables whose address is taken (via REF()).

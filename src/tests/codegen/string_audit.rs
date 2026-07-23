@@ -681,68 +681,6 @@ END_FUNCTION
     validate(&mut with_db, &src, "two_string_params_then_scalar_var").unwrap();
 }
 
-/// ANY-monomorphized function with a 64-bit concrete type calling a
-/// nested 64-bit STRING-returning callee. Reproduces the user's
-/// observed "expected i32, found i64" wasm validation error.
-#[rstest]
-fn any_i64_to_string_chain(mut with_db: db::RootDatabase) {
-    let src = full_source(
-        r#"
-FUNCTION lint_to_string : STRING
-VAR_INPUT v : LINT; END_VAR
-    lint_to_string := 'i64';
-END_FUNCTION
-
-FUNCTION any_to_string : STRING
-VAR_INPUT v : ANY; END_VAR
-    any_to_string := '';
-    {#if v is LINT}
-        any_to_string := lint_to_string(v);
-    {#endif}
-END_FUNCTION
-
-FUNCTION user
-VAR_INPUT n : LINT; END_VAR
-VAR s : STRING; END_VAR
-    s := any_to_string(n);
-END_FUNCTION
-"#,
-    );
-    validate(&mut with_db, &src, "any_i64_to_string_chain").unwrap();
-}
-
-/// Mirror of `ASSERT_EQ` (generic, ANY/INTO + STRING message) instantiated
-/// for `LINT`. Body uses `__RAISE(CONCAT(...))` with the `message`
-/// VAR_INPUT, the pattern the user simplified to. Probes whether the
-/// monomorphize path emits a malformed wasm when the concrete type is
-/// 64-bit and a STRING param trails the 64-bit ANY/INTO params.
-#[rstest]
-fn assert_eq_lint_with_concat(mut with_db: db::RootDatabase) {
-    let src = full_source(
-        r#"
-FUNCTION ASSERT_EQ
-VAR_INPUT
-    value : ANY;
-    target : INTO(value);
-    message : STRING := '';
-END_VAR
-    IF value <> target THEN
-        __RAISE(str_concat('assertion failed: ', message));
-    END_IF;
-END_FUNCTION
-
-{test}
-FUNCTION test_uses_assert_eq
-VAR a : LINT; b : LINT; END_VAR
-    a := LINT#1;
-    b := LINT#2;
-    ASSERT_EQ(a, b, 'not equal');
-END_FUNCTION
-"#,
-    );
-    validate(&mut with_db, &src, "assert_eq_lint_with_concat").unwrap();
-}
-
 /// VAR_IN_OUT STRING param followed by a scalar Var — symmetric to the
 /// `VAR_INPUT` case since both flatten to two wasm i32s.
 #[rstest]

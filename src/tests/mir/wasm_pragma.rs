@@ -17,30 +17,6 @@ END_FUNCTION
 }
 
 #[rstest]
-fn wasm_pragma_any_monomorphizes_with_type_ref(mut with_db: RootDatabase) {
-    let source = r#"
-FUNCTION SHL : ANY_BIT
-VAR_INPUT
-    IN : INTO(SHL);
-    N : INT;
-END_VAR
-    {wasm IN 'shl' (params IN N) (result SHL)}
-END_FUNCTION
-
-FUNCTION test
-VAR x : BYTE; w : WORD; END_VAR
-    x := SHL(IN := BYTE#1, N := 4);
-    w := SHL(IN := WORD#1, N := 8);
-END_FUNCTION
-    "#;
-    assert_snapshot!(mir_exports(&mut with_db, &[source]), @r"
-    export SHL.BYTE(Byte, Int) -> Byte
-    export SHL.WORD(Word, Int) -> Word
-    export test()
-    ");
-}
-
-#[rstest]
 fn wasm_pragma_explicit_instruction(mut with_db: RootDatabase) {
     // No type_ref — instruction used as-is
     let source = r#"
@@ -50,29 +26,6 @@ VAR_INPUT IN : INT; END_VAR
 END_FUNCTION
     "#;
     assert_snapshot!(mir_exports(&mut with_db, &[source]), @"export INT_TO_REAL(Int) -> Real");
-}
-
-#[rstest]
-fn wasm_pragma_multiple_type_variants(mut with_db: RootDatabase) {
-    let source = r#"
-FUNCTION ROL : ANY_BIT
-VAR_INPUT IN : INTO(ROL); N : INT; END_VAR
-    {wasm IN 'rotl' (params IN N) (result ROL)}
-END_FUNCTION
-
-FUNCTION test
-VAR b : BYTE; w : WORD; d : DWORD; END_VAR
-    b := ROL(IN := BYTE#1, N := 1);
-    w := ROL(IN := WORD#1, N := 1);
-    d := ROL(IN := DWORD#1, N := 1);
-END_FUNCTION
-    "#;
-    assert_snapshot!(mir_exports(&mut with_db, &[source]), @r"
-    export ROL.BYTE(Byte, Int) -> Byte
-    export ROL.DWORD(DWord, Int) -> DWord
-    export ROL.WORD(Word, Int) -> Word
-    export test()
-    ");
 }
 
 #[rstest]

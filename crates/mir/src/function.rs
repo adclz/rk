@@ -53,8 +53,6 @@ pub struct MirExternFunction {
     pub import_name: CompactString,
     pub params: Vec<MirParam>,
     pub return_type: Option<MirType>,
-    /// If this was monomorphized from an ANY_* function.
-    pub monomorphized_from: Option<Ident>,
 }
 
 #[derive(Debug, Clone)]

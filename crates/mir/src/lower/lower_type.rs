@@ -108,22 +108,6 @@ pub fn elementary_spec_to_mir(spec: ElementarySpec) -> Result<MirElementary, Low
     })
 }
 
-/// Resolve an ANY_* type by finding a matching concrete type in the substitution map.
-fn resolve_any_from_subs(
-    any_spec: ElementarySpec,
-    subs: &rustc_hash::FxHashMap<Ident, ElementarySpec>,
-) -> Result<MirType, LowerTypeError> {
-    for concrete in subs.values() {
-        if any_spec.accepts(*concrete) {
-            return Ok(MirType::Elementary(elementary_spec_to_mir(*concrete)?));
-        }
-    }
-    Err(LowerTypeError::UnsupportedType(format!(
-        "ANY type specs cannot be lowered: {:?}",
-        any_spec
-    )))
-}
-
 /// Honor a declared `STRING[N]` capacity. `lower_type` always yields the default
 /// capacity because `Type::normalize` collapses the `[N]`; recover it from the
 /// variable/field's unnormalized `SizedString` spec. A no-op for non-STRING
@@ -285,43 +269,12 @@ fn lower_subrange_type<'db>(
     Ok(MirType::Subrange(MirSubrangeType { base, lower, upper }))
 }
 
-/// Lower a FunctionBlock type to MirType::Struct (same layout as a struct with FB variables as fields).
+/// Lower a FunctionBlock to a `MirType::Struct` named with its
+/// namespace-qualified identifier, which nested-FB instance fields
+/// resolve against.
 pub fn lower_fb_type<'db>(
     db: &'db dyn WorkspaceDataBase,
     fb: FunctionBlock<'db>,
-) -> Result<MirType, LowerTypeError> {
-    lower_fb_type_with_subs(db, fb, &rustc_hash::FxHashMap::default())
-}
-
-/// Lower a FunctionBlock type with ANY_* type substitutions.
-/// `any_subs` maps variable names to concrete ElementarySpec types.
-///
-/// The resulting struct's `name` is `fb.name(db)`. For per-instantiation
-/// lowering (where two instantiations of the same FB need distinct
-/// struct names like `Counter$INT` and `Counter$DINT`), use
-/// [`lower_fb_type_with_subs_named`].
-pub fn lower_fb_type_with_subs<'db>(
-    db: &'db dyn WorkspaceDataBase,
-    fb: FunctionBlock<'db>,
-    any_subs: &rustc_hash::FxHashMap<
-        hir::hir_def::interned::identifier::Ident,
-        hir::hir_def::expressions::spec::ElementarySpec,
-    >,
-) -> Result<MirType, LowerTypeError> {
-    lower_fb_type_with_subs_named(db, fb, any_subs, fb.name(db))
-}
-
-/// Like [`lower_fb_type_with_subs`] but overrides the struct's name.
-/// Used by FB monomorphization so each `(FB, T)` instantiation gets a
-/// uniquely-named MIR struct.
-pub fn lower_fb_type_with_subs_named<'db>(
-    db: &'db dyn WorkspaceDataBase,
-    fb: FunctionBlock<'db>,
-    any_subs: &rustc_hash::FxHashMap<
-        hir::hir_def::interned::identifier::Ident,
-        hir::hir_def::expressions::spec::ElementarySpec,
-    >,
-    name: hir::hir_def::interned::identifier::Ident,
 ) -> Result<MirType, LowerTypeError> {
     let mut offset = 0u32;
     let mut max_align = 1u32;
@@ -334,45 +287,9 @@ pub fn lower_fb_type_with_subs_named<'db>(
             continue;
         }
         let var_type = var.spec(db).infer(db);
-
-        // Check if this variable has an ANY_* type that should be substituted
-        let mir_type = if let hir::hir_ty::ty::Type::Elementary(elem) = var_type {
-            if elem.is_any() {
-                if let Some(concrete) = any_subs.get(&var.name(db)) {
-                    MirType::Elementary(elementary_spec_to_mir(*concrete)?)
-                } else if let hir::hir_def::expressions::spec::SpecKind::Into(ident) =
-                    var.spec(db).kind(db)
-                {
-                    // INTO(ref) — resolve from the referenced variable's substitution
-                    if let Some(concrete) = any_subs.get(&ident.ident) {
-                        MirType::Elementary(elementary_spec_to_mir(*concrete)?)
-                    } else {
-                        resolve_any_from_subs(elem, any_subs)?
-                    }
-                } else {
-                    // Fallback: find any concrete sub that matches this ANY group
-                    resolve_any_from_subs(elem, any_subs)?
-                }
-            } else {
-                lower_type(db, var_type)?
-            }
-        } else {
-            // Check if this is an INTO(ref) variable even if var_type isn't Elementary
-            if let hir::hir_def::expressions::spec::SpecKind::Into(ident) = var.spec(db).kind(db) {
-                if let Some(concrete) = any_subs.get(&ident.ident) {
-                    MirType::Elementary(elementary_spec_to_mir(*concrete)?)
-                } else {
-                    lower_type(db, var_type)?
-                }
-            } else {
-                lower_type(db, var_type)?
-            }
-        };
-        let mir_type = apply_sized_string(db, var.spec(db), mir_type);
+        let mir_type = apply_sized_string(db, var.spec(db), lower_type(db, var_type)?);
         // A VAR_IN_OUT field holds the address of the caller's l-value: a
         // pointer the body auto-derefs and the call site writes once.
-        // Wrapping the *resolved* concrete type means a generic `Counter$INT`
-        // inout becomes `Pointer(Int)` for every monomorphization.
         let is_inout = var.kind(db) == hir::hir_def::pous::variable::VariableKind::InOut;
         let mir_type = if is_inout {
             MirType::Pointer(Box::new(mir_type))
@@ -398,7 +315,7 @@ pub fn lower_fb_type_with_subs_named<'db>(
     offset = align_to(offset, max_align);
 
     Ok(MirType::Struct(MirStructType {
-        name,
+        name: super::naming::qualified_pou_ident(db, Type::FunctionBlock(fb)),
         fields,
         size: offset,
         align: max_align,
@@ -485,7 +402,7 @@ pub fn lower_class_type<'db>(
     offset = align_to(offset, max_align);
 
     Ok(MirType::Struct(MirStructType {
-        name: super::monomorphize::qualified_pou_ident(db, hir::hir_ty::ty::Type::Class(class)),
+        name: super::naming::qualified_pou_ident(db, hir::hir_ty::ty::Type::Class(class)),
         fields,
         size: offset,
         align: max_align,

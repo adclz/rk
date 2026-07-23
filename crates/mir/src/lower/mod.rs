@@ -4,4 +4,4 @@ pub mod lower_module;
 pub mod lower_stmt;
 pub mod lower_type;
 pub mod mono_iface;
-pub mod monomorphize;
+pub mod naming;

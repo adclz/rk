@@ -36,17 +36,12 @@ pub fn mir_exports(db: &mut RootDatabase, sources: &[&str]) -> String {
             .as_ref()
             .map(|t| format!(" -> {}", fmt_ty(t, db)))
             .unwrap_or_default();
-        let mono = ext
-            .monomorphized_from
-            .map(|m: Ident| format!(" [from {}]", m.text(db)))
-            .unwrap_or_default();
         lines.push(format!(
-            "import {}.{}({}){}{}",
+            "import {}.{}({}){}",
             ext.module,
             ext.import_name,
             params.join(", "),
-            ret,
-            mono
+            ret
         ));
     }
 

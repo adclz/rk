@@ -287,25 +287,3 @@ fn discarded_array_output(mut with_db: db::RootDatabase) {
     let result: i32 = super::execute_wasm(&wasm, "test", ());
     assert_eq!(result, 8, "discarded array output: call works, returns 8");
 }
-
-/// A discarded output on a GENERIC (ANY_*) function: the output's concrete
-/// type is only picked during monomorphization, so the scratch falls back to
-/// an 8-byte slot that fits any elementary resolution.
-#[rstest]
-fn discarded_any_output(mut with_db: db::RootDatabase) {
-    let source = r#"
-        FUNCTION move2 : INT
-        VAR_INPUT in1 : ANY; END_VAR
-        VAR_OUTPUT out1 : INTO(in1); END_VAR
-            out1 := in1;
-            move2 := 7;
-        END_FUNCTION
-
-        FUNCTION test : INT
-            test := move2(in1 := 42);
-        END_FUNCTION
-    "#;
-    let wasm = compile_to_wasm_checked(&mut with_db, source);
-    let result: i32 = super::execute_wasm(&wasm, "test", ());
-    assert_eq!(result, 7, "generic fn with discarded INTO output");
-}

@@ -26,35 +26,9 @@ use crate::{
 /// Context for expression lowering, carrying shared state.
 pub struct ExprLowerCtx<'db> {
     pub db: &'db dyn WorkspaceDataBase,
-    /// When monomorphizing an ANY_* function, this holds the concrete
-    /// ElementarySpec to substitute for ANY types.
-    pub any_override: Option<ElementarySpec>,
     /// The `this` struct when lowering an FB body: member accesses become
     /// `ThisField`.
     pub this_struct: Option<crate::types::MirStructType>,
-    /// FB ANY_* substitutions - maps FB name → (var name → concrete ElementarySpec).
-    pub fb_subs: Option<
-        std::rc::Rc<
-            rustc_hash::FxHashMap<
-                hir::hir_def::interned::identifier::Ident,
-                rustc_hash::FxHashMap<hir::hir_def::interned::identifier::Ident, ElementarySpec>,
-            >,
-        >,
-    >,
-    /// Per-variable mangled FB-instance name lookup. Built per-function
-    /// from the module's `FbInstanceMap`: each entry maps a local
-    /// variable's name to the mangled FB name of its concrete
-    /// instantiation (e.g. `c_int` → `Counter$INT`). Used when
-    /// constructing `FbCall.body_func` so call sites land on the
-    /// correct per-T `__body__`.
-    pub local_fb_mangling: Option<
-        std::rc::Rc<
-            rustc_hash::FxHashMap<
-                hir::hir_def::interned::identifier::Ident,
-                hir::hir_def::interned::identifier::Ident,
-            >,
-        >,
-    >,
     /// String literal pool - shared across all functions in the module.
     pub string_pool: std::rc::Rc<std::cell::RefCell<StringPool>>,
     /// Phase B: in a specialized body (`drive$Worker`), each interface param's
@@ -142,28 +116,7 @@ impl<'db> ExprLowerCtx<'db> {
     pub fn new(db: &'db dyn WorkspaceDataBase, string_pool: Rc<RefCell<StringPool>>) -> Self {
         Self {
             db,
-            any_override: None,
             this_struct: None,
-            fb_subs: None,
-            local_fb_mangling: None,
-            string_pool,
-            iface_subs: None,
-            iface_call_rewrites: None,
-            call_scratch: Default::default(),
-        }
-    }
-
-    pub fn with_any_override(
-        db: &'db dyn WorkspaceDataBase,
-        concrete: ElementarySpec,
-        string_pool: Rc<RefCell<StringPool>>,
-    ) -> Self {
-        Self {
-            db,
-            any_override: Some(concrete),
-            this_struct: None,
-            fb_subs: None,
-            local_fb_mangling: None,
             string_pool,
             iface_subs: None,
             iface_call_rewrites: None,
@@ -178,10 +131,7 @@ impl<'db> ExprLowerCtx<'db> {
     ) -> Self {
         Self {
             db,
-            any_override: None,
             this_struct: Some(struct_type),
-            fb_subs: None,
-            local_fb_mangling: None,
             string_pool,
             iface_subs: None,
             iface_call_rewrites: None,
@@ -189,33 +139,9 @@ impl<'db> ExprLowerCtx<'db> {
         }
     }
 
-    /// Lower a HIR type, substituting ANY types if we're in a monomorphization context.
+    /// Lower a HIR type to its MIR form (normalizing aliases/variables first).
     pub fn lower_type_resolved(&self, ty: Type<'db>) -> Result<MirType, LowerTypeError> {
-        let normalized = ty.normalize(self.db);
-        match (&normalized, self.any_override) {
-            (Type::Elementary(e), Some(concrete)) if e.is_any() => {
-                let mir = elementary_spec_to_mir(concrete)?;
-                Ok(MirType::Elementary(mir))
-            }
-            (Type::Elementary(e), None) if e.is_any() => {
-                if let Some(concrete) = self.resolve_any_from_fb_subs(*e) {
-                    let mir = elementary_spec_to_mir(concrete)?;
-                    Ok(MirType::Elementary(mir))
-                } else {
-                    lower_type(self.db, normalized)
-                }
-            }
-            (Type::FunctionBlock(fb), _) => {
-                // Use FB substitutions if available
-                if let Some(ref subs_map) = self.fb_subs
-                    && let Some(subs) = subs_map.get(&fb.name(self.db))
-                {
-                    return crate::lower::lower_type::lower_fb_type_with_subs(self.db, *fb, subs);
-                }
-                lower_type(self.db, normalized)
-            }
-            _ => lower_type(self.db, normalized),
-        }
+        lower_type(self.db, ty.normalize(self.db))
     }
 
     /// Lower a HIR expression to a MIR expression.
@@ -940,7 +866,7 @@ impl<'db> ExprLowerCtx<'db> {
         };
 
         // Body function `Base$__body__`, called with the current instance pointer.
-        let base_q = crate::lower::monomorphize::qualified_pou_ident(
+        let base_q = crate::lower::naming::qualified_pou_ident(
             self.db,
             Type::new_pou(self.db, base_pou),
         );
@@ -1237,21 +1163,6 @@ impl<'db> ExprLowerCtx<'db> {
             }
         };
 
-        // A generic/monomorphized instance registers its methods under the mangled
-        // instance name (`Counter$INT#m`); deriving that from the declaring POU
-        // needs the receiver's concrete type-args, which isn't wired yet. Defer it
-        // with a clear error instead of building a name that would miss.
-        if self
-            .local_fb_mangling
-            .as_ref()
-            .is_some_and(|m| m.contains_key(&root_ident))
-        {
-            return Err(LowerTypeError::UnsupportedType(
-                "method calls on generic function-block instances are not yet supported"
-                    .to_string(),
-            ));
-        }
-
         let callee = self.method_callee_symbol(method_decl)?;
 
         let receiver = self.lower_receiver_place(receiver_path)?;
@@ -1286,7 +1197,7 @@ impl<'db> ExprLowerCtx<'db> {
             }
         };
 
-        let owner_mangled = crate::lower::monomorphize::qualified_pou_ident(
+        let owner_mangled = crate::lower::naming::qualified_pou_ident(
             self.db,
             Type::new_pou(self.db, owner_pou),
         );
@@ -1338,10 +1249,10 @@ impl<'db> ExprLowerCtx<'db> {
         } else {
             match path.infer(self.db) {
                 Type::Function(f) => {
-                    crate::lower::monomorphize::qualified_pou_ident(self.db, Type::Function(f))
+                    crate::lower::naming::qualified_pou_ident(self.db, Type::Function(f))
                 }
                 Type::CallableType(hir::hir_ty::ty::CallableType::Function(f)) => {
-                    crate::lower::monomorphize::qualified_pou_ident(self.db, Type::Function(f))
+                    crate::lower::naming::qualified_pou_ident(self.db, Type::Function(f))
                 }
                 _ => path
                     .expr(self.db)
@@ -1513,17 +1424,7 @@ impl<'db> ExprLowerCtx<'db> {
                             // A discarded VAR_OUTPUT still needs a pointer param: point
                             // it at a throwaway memory-forced scratch (a STRING scratch
                             // gets a real buffer).
-                            //
-                            // An unresolved ANY_* output (generic builtin whose
-                            // concrete type is picked during monomorphization)
-                            // can't be lowered here — any elementary fits in an
-                            // 8-byte scratch, so use LWORD.
-                            let hir_ty = var.spec(self.db).infer(self.db).normalize(self.db);
-                            let ty = if matches!(&hir_ty, Type::Elementary(e) if e.is_any()) {
-                                MirType::Elementary(crate::types::MirElementary::LWord)
-                            } else {
-                                crate::lower::lower_func::lower_var_type(self.db, *var)?
-                            };
+                            let ty = crate::lower::lower_func::lower_var_type(self.db, *var)?;
                             let name = hir::hir_def::interned::identifier::Ident::new(
                                 self.db,
                                 compact_str::CompactString::from(format!(
@@ -1697,19 +1598,11 @@ impl<'db> ExprLowerCtx<'db> {
             }
         }
 
-        // Body function name. For generic FBs, use the per-variable
-        // mangled name (e.g. `NsA.Counter$INT$__body__`); fall back to
-        // the FB's namespace-qualified name for non-generic FBs.
-        let mangled_root = self
-            .local_fb_mangling
-            .as_ref()
-            .and_then(|m| m.get(&instance_ident).copied())
-            .unwrap_or_else(|| {
-                crate::lower::monomorphize::qualified_pou_ident(
-                    self.db,
-                    hir::hir_ty::ty::Type::FunctionBlock(fb),
-                )
-            });
+        // The body function: the FB's qualified name plus `$__body__`.
+        let mangled_root = crate::lower::naming::qualified_pou_ident(
+            self.db,
+            hir::hir_ty::ty::Type::FunctionBlock(fb),
+        );
         let body_func = hir::hir_def::interned::identifier::Ident::new(
             self.db,
             compact_str::CompactString::from(format!("{}$__body__", mangled_root.text(self.db))),
@@ -1774,15 +1667,6 @@ impl<'db> ExprLowerCtx<'db> {
     fn type_to_mir_elementary(&self, ty: Type<'db>) -> Result<MirElementary, LowerTypeError> {
         let normalized = ty.normalize(self.db);
         match normalized {
-            Type::Elementary(spec) if spec.is_any() => {
-                if let Some(concrete) = self.any_override {
-                    elementary_spec_to_mir(concrete)
-                } else if let Some(concrete) = self.resolve_any_from_fb_subs(spec) {
-                    elementary_spec_to_mir(concrete)
-                } else {
-                    elementary_spec_to_mir(spec)
-                }
-            }
             Type::Elementary(spec) => elementary_spec_to_mir(spec),
             Type::Enum(_) => {
                 // Enums compare as their storage type
@@ -1827,20 +1711,6 @@ impl<'db> ExprLowerCtx<'db> {
                 normalized
             ))),
         }
-    }
-
-    /// Try to resolve an ANY_* type from FB substitutions.
-    /// Looks through all FB subs for a concrete type that matches the ANY_* group.
-    fn resolve_any_from_fb_subs(&self, any_spec: ElementarySpec) -> Option<ElementarySpec> {
-        let subs_map = self.fb_subs.as_ref()?;
-        for fb_subs in subs_map.values() {
-            for concrete in fb_subs.values() {
-                if any_spec.accepts(*concrete) {
-                    return Some(*concrete);
-                }
-            }
-        }
-        None
     }
 }
 

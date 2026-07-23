@@ -139,25 +139,3 @@ END_FUNCTION
     export test()
     ");
 }
-
-#[rstest]
-fn var_output_any_monomorphized(mut with_db: RootDatabase) {
-    let source = r#"
-FUNCTION MOVE
-    VAR_INPUT IN: ANY; END_VAR
-    VAR_OUTPUT OUT: INTO(IN); END_VAR
-    OUT := IN;
-END_FUNCTION
-
-FUNCTION test
-VAR x : INT; y : REAL; END_VAR
-    MOVE(IN := 42, OUT => x);
-    MOVE(IN := 3.14, OUT => y);
-END_FUNCTION
-    "#;
-    assert_snapshot!(mir_exports(&mut with_db, &[source]), @r"
-    export MOVE.INT(Int, *Int)
-    export MOVE.REAL(Real, *Real)
-    export test()
-    ");
-}

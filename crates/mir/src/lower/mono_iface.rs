@@ -25,7 +25,7 @@ use hir::hir_ty::body::infer_body;
 use hir::hir_ty::infer::Infer;
 use hir::hir_ty::ty::{CallableType, Type};
 
-use super::monomorphize::qualified_pou_ident;
+use super::naming::qualified_pou_ident;
 
 /// Call-site `FuncCall` → the mangled specialization it must call,
 /// threaded into every body.
@@ -397,7 +397,7 @@ fn process_call<'db>(
                 .iter()
                 .map(|(_, q)| q.text(db).as_str())
                 .collect();
-            let m = super::monomorphize::mangle_generic_name(db, func_q, &parts);
+            let m = super::naming::mangle_generic_name(db, func_q, &parts);
             by_canonical.insert(key, m);
             instances.push(IfaceInstance {
                 func,
