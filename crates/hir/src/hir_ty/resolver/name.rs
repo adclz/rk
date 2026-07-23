@@ -8,15 +8,17 @@ use crate::{
             identifier::Ident,
             namespace::{NamespaceAccess, NamespacePath},
         },
-        pous::{class::MethodDecl, pou::Pou},
+        pous::{class::MethodDecl, function::Function, pou::Pou},
         program::ProgramDecl,
         scope::{ScopeId, ScopeKind},
         semantic_index::{get_scope, semantic_index},
         using::Using,
     },
     hir_ty::{
-        index_graphs::{namespace_index, pou_index, program_index},
-        ty::Type,
+        index_graphs::{
+            namespace_index, namespace_pou_candidates, pou_candidates, pou_index, program_index,
+        },
+        ty::{CallableType, Type},
     },
 };
 
@@ -200,6 +202,63 @@ pub fn find_in_parent_pous<'db>(
     }
 
     PouResolution::NotFound
+}
+
+/// Re-select a FUNCTION overload by call arity.
+///
+/// Ordinary name resolution binds a bare function name to the *first* same-name
+/// FUNCTION in scope. When that name is an overload set, this picks the overload
+/// whose parameter count matches the call's argument count. The selection lives
+/// here — in the POU-finding module — so call resolution only supplies the arg
+/// count and stays unaware that overloading exists.
+///
+/// Non-FUNCTION callables and calls whose arity already matches the first-match
+/// pass straight through. If no overload matches the arity, the first-match is
+/// kept, so a genuine arity error still surfaces downstream.
+pub fn select_overload<'db>(
+    db: &'db dyn WorkspaceDataBase,
+    callable: CallableType<'db>,
+    arg_count: usize,
+) -> CallableType<'db> {
+    let CallableType::Function(first) = callable else {
+        return callable;
+    };
+    if first.param_count(db) == arg_count {
+        return callable;
+    }
+
+    let name = first.name(db);
+    let candidates = match function_namespace_path(db, first) {
+        Some(path) => namespace_pou_candidates(db, path, name),
+        None => pou_candidates(db, name),
+    };
+    for c in candidates {
+        if let Pou::Function(f) = c
+            && f.param_count(db) == arg_count
+        {
+            return CallableType::Function(f);
+        }
+    }
+    callable
+}
+
+/// The namespace path a function is declared in, or `None` for a top-level
+/// (global) declaration. Mirrors the namespace walk in `qualified_pou_ident`,
+/// so an overload set is gathered from the same scope the name resolved in.
+fn function_namespace_path<'db>(
+    db: &'db dyn WorkspaceDataBase,
+    f: Function<'db>,
+) -> Option<NamespacePath> {
+    let scope_id = f.scope_id(db);
+    if scope_id.is_global(db) {
+        return None;
+    }
+    for scope in semantic_index(db, scope_id.file(db)).scope_iterator(db, scope_id) {
+        if let ScopeKind::Namespace(ns) = scope.kind {
+            return Some(*ns.path(db));
+        }
+    }
+    None
 }
 
 /// Returns true if the given scope (or any of its ancestors) is a config scope.

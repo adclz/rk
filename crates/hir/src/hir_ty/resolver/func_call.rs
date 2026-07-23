@@ -8,6 +8,7 @@ use crate::check::errors::e10_control_flow::ControlFlowError;
 use crate::hir_def::expressions::expression::{Expr, ExprKind, ParamAssign, PrimaryExpr};
 use crate::hir_def::interned::identifier::Ident;
 use crate::hir_def::pous::variable::VariableDecl;
+use crate::hir_ty::resolver::name::select_overload;
 use crate::{
     CallSite, HirNodeInfo,
     check::errors::{ToIdeDiagnostic, e2_resolve::ResolveError},
@@ -74,6 +75,14 @@ pub fn resolve_func_call<'db>(
             return;
         }
     };
+
+    // Overload selection: name resolution binds a bare function name to the
+    // first same-name FUNCTION in scope; if it's an overload set, re-select the
+    // one whose arity matches this call. Same-arity collisions were already
+    // rejected by the duplicate check, so this is unambiguous. The picking lives
+    // in the resolver (`select_overload`) — this call stays overload-unaware.
+    let callable =
+        select_overload(db, callable, func_call.params(db).len());
 
     // func call requires the type to be a [`CallableType`] otherwise the coercion layer will
     // assume we are calling a non-callable type

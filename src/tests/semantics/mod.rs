@@ -17,6 +17,7 @@ pub mod invocation;
 pub mod literals;
 pub mod loops;
 pub mod nullability;
+pub mod overloads;
 pub mod path_expr;
 pub mod polymorphism;
 pub mod pragmas;
