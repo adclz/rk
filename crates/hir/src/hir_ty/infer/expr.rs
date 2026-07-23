@@ -1,6 +1,5 @@
 use db::WorkspaceDataBase;
 
-use crate::hir_def::expressions::expression::ParamAssignKind;
 use crate::{
     CallSite, HirNodeInfo,
     check::errors::{ToIdeDiagnostic, e3_type::TypeError, e7_enum::EnumError},
@@ -213,46 +212,7 @@ impl<'db> InferExprCtx<'db> {
             PrimaryExpr::FuncCall(call) => {
                 resolve_func_call(db, self.resolver, *call, inference_result);
                 let ty = inference_result.get_type_of_begin_path_expr(db, call.path(db));
-                let resolved = ty.normalize(db);
-                if let Type::Elementary(e) = resolved
-                    && e.is_any()
-                {
-                    // ANY_* return type: fold all concrete arg types across every
-                    // param whose declared type is ANY_*/INTO into an inference
-                    // table, which promotes to the *widest* concrete type. This
-                    // way call-site argument order doesn't matter — `ROR(BYTE#0,
-                    // DWORD#08)` and `ROR(DWORD#0, BYTE#08)` both resolve the
-                    // return to DWORD. Params with concrete declared types
-                    // (e.g. SEL's `G : BOOL`) are skipped.
-                    let mut table = InferenceTable::new();
-                    for p in call.params(db) {
-                        let value = match p.kind(db) {
-                            ParamAssignKind::FormalInput { value, .. }
-                            | ParamAssignKind::NonFormal { value } => value,
-                            _ => continue,
-                        };
-                        if let Some(var_decl) = inference_result.variable_for_param(*p) {
-                            let var_ty = var_decl.spec(db).infer(db).normalize(db);
-                            if let Type::Elementary(var_e) = var_ty
-                                && !var_e.is_any()
-                            {
-                                continue;
-                            }
-                        }
-                        let arg_ty = inference_result.get_type_of_expr(value).normalize(db);
-                        if let Type::Elementary(arg_e) = arg_ty
-                            && !arg_e.is_any()
-                        {
-                            table.add_type(db, value, arg_ty, self.resolver);
-                        }
-                    }
-                    match table.get_final_type() {
-                        ft @ Type::Elementary(_) => ft,
-                        _ => resolved,
-                    }
-                } else {
-                    resolved
-                }
+                ty.normalize(db)
             }
             PrimaryExpr::EnumValue { name, variant } => {
                 self.resolver
@@ -427,7 +387,13 @@ impl<'db> InferExprCtx<'db> {
                             .map(|t| t.normalize(db));
                         let is_bit_string = matches!(
                             operand_ty,
-                            Some(Type::Elementary(e)) if ElementarySpec::AnyBit.accepts(e)
+                            Some(Type::Elementary(
+                                ElementarySpec::Bool
+                                    | ElementarySpec::Byte
+                                    | ElementarySpec::Word
+                                    | ElementarySpec::DWord
+                                    | ElementarySpec::LWord
+                            ))
                         );
                         if !is_bit_string
                             && let Err(err) = self.coerce_type_with_expr(

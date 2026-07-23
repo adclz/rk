@@ -65,17 +65,6 @@ impl ElementarySpec {
             Self::LTime => "LTIME",
             Self::Tod => "TOD",
             Self::LTod => "LTOD",
-            Self::Any => "ANY",
-            Self::AnyNum => "ANY_NUM",
-            Self::AnyInt => "ANY_INT",
-            Self::AnyReal => "ANY_REAL",
-            Self::AnyBit => "ANY_BIT",
-            Self::AnyElementary => "ANY_ELEMENTARY",
-            Self::AnyMagnitude => "ANY_MAGNITUDE",
-            Self::AnyDate => "ANY_DATE",
-            Self::AnyDuration => "ANY_DURATION",
-            Self::AnySigned => "ANY_SIGNED",
-            Self::AnyUnsigned => "ANY_UNSIGNED",
         }
     }
 }

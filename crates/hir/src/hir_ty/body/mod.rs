@@ -11,12 +11,9 @@ use crate::{
                 RefValue, VariableAccess, VariableAccessKind,
             },
             invocation::Invocation,
-            spec::SpecKind,
             statement::Stmt,
         },
-        interned::identifier::Ident,
         pous::{
-            generics::derive_generic_params,
             pou::Pou,
             variable::{DirectVariable, VariableDecl, VariableKind},
         },
@@ -25,12 +22,9 @@ use crate::{
         using::Using,
     },
     hir_ty::{
-        body::statements::{NestedScope, StmtsResolverCtx, check_preprocess},
+        body::statements::{NestedScope, StmtsResolverCtx},
         infer::Infer,
-        resolver::{
-            Resolver,
-            name::{NameResolution, resolve_name},
-        },
+        resolver::Resolver,
         ty::Type,
     },
 };
@@ -64,24 +58,9 @@ pub fn infer_body<'db>(
     // Record method locals/params that shadow an owner FB/Class member.
     init_method_member_shadows(db, scope, &mut result);
 
-    // Populate fb_any_resolutions from explicit `<T>` type arguments on VARs.
-    // This replaces the old call-site inference path (removed from
-    // `resolver::func_call`) so monomorphization works even without a call
-    // - e.g. an FB instance stored in a struct field.
-    init_fb_generic_bindings(db, scope, &mut result);
-
     let resolver = Resolver::for_scope(db, scope);
 
     ctx.check_statements(db, resolver, statements, NestedScope::None, &mut result);
-
-    check_preprocess(
-        db,
-        scope,
-        statements,
-        &FxHashMap::default(),
-        false,
-        &mut result,
-    );
 
     result
 }
@@ -152,77 +131,6 @@ fn init_ref_null_states<'db>(
                 None => NullState::Uninitialized(var_site),
             };
             result.ref_null_state.insert(*var, state);
-        }
-    }
-}
-
-/// Populate `fb_any_resolutions` from each VAR whose spec is a `Target`
-/// carrying explicit `<T>` type arguments - e.g. `VAR c : Counter<INT>;`.
-///
-/// For every `ANY_*` field on the referenced FB/Class, we find the parameter
-/// slot whose bound matches that kind and record the arg as the concrete
-/// binding for that field. Multiple fields of the same `ANY_*` kind share
-/// the same slot
-///
-/// Errors like arity or bound mismatch are already reported at `check_spec`
-/// time; this function bails out silently in those cases.
-fn init_fb_generic_bindings<'db>(
-    db: &'db dyn WorkspaceDataBase,
-    scope: ScopeId<'db>,
-    result: &mut BodyInferenceResult<'db>,
-) {
-    let variables = match get_scope(db, scope).kind {
-        ScopeKind::Pou(pou) => match pou {
-            Pou::Function(f) => f.variables(db),
-            Pou::FunctionBlock(fb) => fb.variables(db),
-            _ => return,
-        },
-        ScopeKind::MethodDecl(m) => m.variables(db),
-        ScopeKind::Program(p) => p.variables(db),
-        _ => return,
-    };
-
-    for var in variables {
-        let SpecKind::Target(target) = var.spec(db).kind(db) else {
-            continue;
-        };
-        if target.type_args.is_empty() {
-            continue;
-        }
-
-        let pou = match resolve_name(db, &target.path, scope) {
-            NameResolution::Pou(p, _) => p,
-            _ => continue,
-        };
-
-        let params = derive_generic_params(db, &pou);
-        if params.len() != target.type_args.len() {
-            continue;
-        }
-
-        let pou_fields = match pou {
-            Pou::FunctionBlock(fb) => fb.variables(db),
-            Pou::Class(c) => c.variables(db),
-            _ => continue,
-        };
-
-        for field in pou_fields {
-            let SpecKind::Simple(field_any) = field.spec(db).kind(db) else {
-                continue;
-            };
-            if !field_any.is_any() {
-                continue;
-            }
-            let Some(idx) = params.iter().position(|p| p.bound == *field_any) else {
-                continue;
-            };
-            if let Type::Elementary(concrete) = Type::resolve_spec(db, target.type_args[idx])
-                && !concrete.is_any()
-            {
-                result
-                    .fb_any_resolutions
-                    .insert((*var, field.name(db)), concrete);
-            }
         }
     }
 }
@@ -307,15 +215,6 @@ pub struct BodyInferenceResult<'db> {
     // Mapping from path expressions to their adjustment sequences.
     pub path_expr_adjustments: FxHashMap<PathExpr<'db>, Vec<Adjustment<'db>>>,
 
-    /// Resolved ANY_* type substitutions for FB instances.
-    /// Key: (FB variable declaration, ANY_* variable name in the FB)
-    /// Value: concrete ElementarySpec resolved from call-site arguments.
-    ///
-    /// Example: `VAR timer: CTU; END_VAR; timer(PV := 5);`
-    /// → `(timer_var_decl, "PV") → ElementarySpec::Int`
-    pub fb_any_resolutions:
-        FxHashMap<(VariableDecl<'db>, Ident), crate::hir_def::expressions::spec::ElementarySpec>,
-
     // Errors encountered during inference
     pub errors: Vec<IdeDiagnostic>,
 
@@ -396,7 +295,6 @@ impl<'db> BodyInferenceResult<'db> {
             dead_code_statements: Vec::new(),
             mismatched_for_step: Vec::new(),
             ref_null_state: FxHashMap::default(),
-            fb_any_resolutions: FxHashMap::default(),
             first_super_body: None,
         }
     }

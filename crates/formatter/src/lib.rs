@@ -58,9 +58,6 @@ static SURROUND_SPACES: &str = r##"
 
 ; signed_int and signed_real_value: sign is part of the token, no formatting needed
 
-; INTO spec: no space between INTO and (
-(into_spec "INTO" @append_antispace)
-
 ; Enum value: no space around # (Color#Red, not Color # Red)
 (enum_value "#" @prepend_antispace @append_antispace)
 
@@ -93,24 +90,6 @@ static SURROUND_SPACES: &str = r##"
 
 ; Test pragma: on its own line before the POU keyword
 (test_pragma) @leaf @append_hardline
-
-; Generic type arguments: "Counter<INT, DINT>" - tight angle brackets,
-; comma-separated args. Overrides the global comparison-op spacing on
-; "<" / ">".
-(type_arg_list "<" @prepend_antispace @append_antispace)
-(type_arg_list ">" @prepend_antispace @append_antispace)
-(user_type_ref path: (_) @append_antispace)
-
-; Preprocessor `{#if … is T}` / `{#elif …}` / `{#endif}` - keep braces
-; tight around the keyword and identifiers; one space around `is`.
-(preprocess_if "{" @append_antispace)
-(preprocess_if "}" @prepend_antispace)
-(preprocess_if "#if" @append_space)
-(preprocess_if "#endif" @prepend_antispace @append_antispace)
-(preprocess_elif "{" @append_antispace)
-(preprocess_elif "}" @prepend_antispace)
-(preprocess_elif "#elif" @append_space)
-(preprocess_cond "is" @prepend_space @append_space)
 "##;
 
 static NEW_LINES: &str = r##"
@@ -202,7 +181,6 @@ static NEW_LINES: &str = r##"
     (super_body_invocation)
     (extern_pragma)
     (wasm_pragma)
-    (preprocess_if)
     "RETURN"
     (if_stmt)
     (case_stmt)
@@ -266,26 +244,6 @@ static NEW_LINES: &str = r##"
 (eq_operator (eq) @prepend_indent_start right: (_) @append_indent_end)
 (ord_operator (ord) @prepend_indent_start right: (_) @append_indent_end)
 (power_operator "**" @prepend_indent_start right: (_) @append_indent_end)
-
-; Preprocess layout: opening "{#if …}" on its own line, body indented;
-; "{#elif …}" and "{#endif}" each dedent back to the parent level on
-; their own line (mirrors how IF / ELSIF / END_IF are handled above).
-(preprocess_if
-  if_cond: (_)
-  .
-  "}" @append_hardline @append_indent_start
-)
-(preprocess_if
-  "{" @prepend_hardline @prepend_indent_end
-  .
-  "#endif"
-)
-(preprocess_elif "{" @prepend_hardline @prepend_indent_end)
-(preprocess_elif
-  elif_cond: (_)
-  .
-  "}" @append_hardline @append_indent_start
-)
 "##;
 
 static BLOCKS: &str = r#"

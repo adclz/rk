@@ -630,29 +630,8 @@ module.exports = grammar({
 
     // Table 10 - Elementary data types
 
-    // A bare user-type name parses as `namespace_access`; supplying `<T, ...>`
-    // promotes it to `user_type_ref`. Keeping the two shapes distinct means
-    // existing corpus tests and HIR consumers that never cared about generics
-    // stay untouched.
     data_type_access: ($) =>
-      choice($.user_type_ref, $.namespace_access, $._elem_type_name, $.into_spec),
-
-    // Reference to a user-defined type with explicit type arguments.
-    // HIR/MIR must verify that the referenced type actually declares generic
-    // parameters and that arg count/kinds match.
-    user_type_ref: ($) =>
-      seq(
-        field("path", $.namespace_access),
-        field("type_args", $.type_arg_list),
-      ),
-
-    // <T, DINT, Foo<INT>>  - comma-separated type arguments.
-    type_arg_list: ($) =>
-      seq("<", commaSep1(field("arg", $.data_type_access)), ">"),
-
-    // INTO(var) - type must be implicitly convertible to the referenced variable's type
-    into_spec: ($) =>
-      seq("INTO", "(", field("ref", $.identifier), ")"),
+      choice($.namespace_access, $._elem_type_name),
 
     _elem_type_name: ($) =>
       choice(
@@ -663,23 +642,6 @@ module.exports = grammar({
         $.any_tod_type_name,
         $.any_dt_type_name,
         $.string_type_name,
-        $.any_type_name,
-      ),
-
-    // IEC 61131-3 ANY type hierarchy - used as type specs for polymorphic parameters
-    any_type_name: ($) =>
-      choice(
-        alias("ANY", $.any_name),
-        alias("ANY_NUM", $.any_num_name),
-        alias("ANY_INT", $.any_int_name),
-        alias("ANY_SIGNED", $.any_signed_name),
-        alias("ANY_UNSIGNED", $.any_unsigned_name),
-        alias("ANY_REAL", $.any_real_name),
-        alias("ANY_BIT", $.any_bit_name),
-        alias("ANY_ELEMENTARY", $.any_elementary_name),
-        alias("ANY_MAGNITUDE", $.any_magnitude_name),
-        alias("ANY_DATE", $.any_date_name),
-        alias("ANY_DURATION", $.any_duration_name),
       ),
 
     numeric_type_name: ($) => choice($.int_type_name, $.real_type_name),
@@ -1919,10 +1881,6 @@ module.exports = grammar({
         $.raise_stmt,
         $.extern_pragma,
         $.wasm_pragma,
-        // Compile-time preprocessor — `{#if x is INT}` … `{#elif y is REAL}` … `{#endif}`.
-        // Only valid inside generic ({preprocess}-tagged) functions; HIR enforces
-        // both that constraint and decl-site exhaustiveness across `ANY_*` bounds.
-        $.preprocess_if,
         $.ERR_method_decl_in_body
       ),
 
@@ -1985,46 +1943,6 @@ module.exports = grammar({
         field("else_if_cond", $._expression),
         "THEN",
         field("else_if_body", optional($.stmt_list)),
-      ),
-
-    // Compile-time `{#if x is INT}` block. The condition pins one ANY_*/INTO
-    // slot to a concrete elementary or user type. At MIR monomorphization the
-    // matching arm becomes the function body; at HIR we check that every
-    // variant of the bound is covered (E0325) and that any nested `{extern}`
-    // pragma sees only resolved types (E0326).
-    preprocess_if: ($) =>
-      seq(
-        "{",
-        "#if",
-        field("if_cond", $.preprocess_cond),
-        "}",
-        field("if_body", optional($.stmt_list)),
-        field("elif", repeat($.preprocess_elif)),
-        "{",
-        "#endif",
-        "}",
-      ),
-
-    preprocess_elif: ($) =>
-      // Right-associative: an `{` following an `#elif` body is greedily
-      // consumed as the next pragma-statement (e.g. nested `{extern …}`),
-      // not as the start of the next `#elif`. Otherwise tree-sitter can't
-      // decide which arm a stray pragma belongs to.
-      prec.right(
-        seq(
-          "{",
-          "#elif",
-          field("elif_cond", $.preprocess_cond),
-          "}",
-          field("elif_body", optional($.stmt_list)),
-        ),
-      ),
-
-    preprocess_cond: ($) =>
-      seq(
-        field("ident", $.identifier),
-        "is",
-        field("type", $.data_type_access),
       ),
 
     case_stmt: ($) =>

@@ -69,34 +69,6 @@ impl<'db> ParseSpec<'db> for ast::generated::DataTypeAccess {
                 elem_type_name.to_spec(sema)
             }
             ast::generated::DataTypeAccess::NamespaceAccess(target) => target.to_spec(sema),
-            ast::generated::DataTypeAccess::UserTypeRef(user_ref) => {
-                // `Counter<INT>` - build the path spec and attach the parsed
-                // type arguments. Validation against the referenced FB's
-                // implicit ANY_* param list happens later (arg count match +
-                // bound conformance); at this layer we only record what the
-                // user wrote.
-                let path_ast = user_ref.path.cast(sema.ast);
-                let mut path = SpanNamespaceAccess::from_ast(sema.db, sema, path_ast)?;
-                let args_ast = user_ref.type_args.cast(sema.ast);
-                let args: Vec<Spec<'db>> = args_ast
-                    .arg
-                    .iter()
-                    .filter_map(|a| {
-                        let s = a.cast(sema.ast).to_spec(sema);
-                        sema.try_parse(s)
-                    })
-                    .collect();
-                path.type_args = args;
-                Ok(sema.new_spec(SpecKind::Target(path), user_ref.into(), sema.current_scope))
-            }
-            ast::generated::DataTypeAccess::IntoSpec(into) => {
-                let ident = crate::hir_def::interned::identifier::SpanIdent::from_node(
-                    sema.db,
-                    sema,
-                    into.Ref.cast(sema.ast),
-                )?;
-                Ok(sema.new_spec(SpecKind::Into(ident), into.into(), sema.current_scope))
-            }
         }
     }
 }
@@ -246,23 +218,6 @@ impl<'db> ParseSpec<'db> for ast::generated::ElemTypeName {
                         sema.current_scope,
                     ),
                 }
-            }
-            AstSpec::AnyTypeName(any) => {
-                type AnyKind = ast::generated::AnyBitName_AnyDateName_AnyDurationName_AnyElementaryName_AnyIntName_AnyMagnitudeName_AnyName_AnyNumName_AnyRealName_AnySignedName_AnyUnsignedName;
-                let spec = match any.children.cast(sema.ast) {
-                    AnyKind::AnyName(_) => ElementarySpec::Any,
-                    AnyKind::AnyNumName(_) => ElementarySpec::AnyNum,
-                    AnyKind::AnyIntName(_) => ElementarySpec::AnyInt,
-                    AnyKind::AnyRealName(_) => ElementarySpec::AnyReal,
-                    AnyKind::AnyBitName(_) => ElementarySpec::AnyBit,
-                    AnyKind::AnyElementaryName(_) => ElementarySpec::AnyElementary,
-                    AnyKind::AnyMagnitudeName(_) => ElementarySpec::AnyMagnitude,
-                    AnyKind::AnyDateName(_) => ElementarySpec::AnyDate,
-                    AnyKind::AnyDurationName(_) => ElementarySpec::AnyDuration,
-                    AnyKind::AnySignedName(_) => ElementarySpec::AnySigned,
-                    AnyKind::AnyUnsignedName(_) => ElementarySpec::AnyUnsigned,
-                };
-                sema.new_spec(SpecKind::Simple(spec), self.into(), sema.current_scope)
             }
         })
     }

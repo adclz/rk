@@ -235,17 +235,3 @@ fn wasm_pragma_params_count_as_used(mut with_db: RootDatabase) {
     "#;
     assert_snapshot!(test_single_lint(&mut with_db, &[source], "unused-variable"), @"");
 }
-
-#[rstest]
-fn preprocess_if_cond_counts_as_used(mut with_db: RootDatabase) {
-    // `x` appears only in the `{#if}` condition - that's still a use.
-    let source = r#"
-        FUNCTION foo : ANY_INT
-        VAR_INPUT x : INTO(foo); END_VAR
-        {#if x is INT}
-            foo := INT#0;
-        {#endif}
-        END_FUNCTION
-    "#;
-    assert_snapshot!(test_single_lint(&mut with_db, &[source], "unused-variable"), @"");
-}

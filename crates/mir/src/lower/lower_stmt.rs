@@ -296,7 +296,6 @@ fn lower_stmt<'db>(
 
         StmtKind::ExternPragma(_) => Ok(None), // No MIR equivalent
         StmtKind::WasmPragma(_) => Ok(None),   // Handled at function level, not statement level
-        StmtKind::PreprocessIf { .. } => Ok(None), // Resolved at monomorphization, not lowered as a statement
 
         StmtKind::EmptyPathExpression(begin_path) => {
             // `SUPER()` — call the immediate base FB's cyclic body on the current

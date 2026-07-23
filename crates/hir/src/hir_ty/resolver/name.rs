@@ -237,27 +237,6 @@ impl<'db> Type<'db> {
                 NameResolution::MethodSelf(m) => Type::MethodDecl(m.into()),
                 NameResolution::Ambiguous(_) | NameResolution::NotFound => Type::Never,
             },
-            // INTO(ref) — resolves to the referenced variable's type
-            SpecKind::Into(span_ident) => {
-                let scope = spec.scope_id(db);
-                let ident = span_ident.ident;
-
-                // Check if the identifier matches a local variable
-                let def_map = scope.def_map(db);
-                if let Some(var) = def_map.local_variables.get(&ident) {
-                    return Type::new_var(db, *var);
-                }
-
-                // Check if the identifier matches the POU name (function return type)
-                if let ScopeKind::Pou(pou) = get_scope(db, scope).kind
-                    && pou.get_name_ident(db) == ident
-                    && let Some(ret_spec) = scope.return_type(db)
-                {
-                    return Self::resolve_spec(db, *ret_spec);
-                }
-
-                Type::Never
-            }
         }
     }
 }

@@ -8,15 +8,12 @@ use crate::{
     CallSite, HasName, HirNodeInfo,
     check::errors::ToIdeDiagnostic,
     hir_def::{
-        expressions::{
-            expression::{AddOperatorKind, Expr, MultOperatorKind},
-            spec::{ElementarySpec, Spec},
-        },
+        expressions::expression::{AddOperatorKind, Expr, MultOperatorKind},
         pous::variable::VariableDecl,
     },
     hir_ty::{
         body::{Adjust, Adjustment},
-        infer::{Infer, table::InferSource},
+        infer::table::InferSource,
         ty::Type,
     },
 };
@@ -83,67 +80,6 @@ pub enum TypeError<'db> {
         operator: &'static str,
         call_site: CallSite<'db>,
     },
-
-    /// Use site supplies `<...>` on a POU that declares no `ANY_*` generic
-    /// parameters - e.g. `VAR x : Plain<INT>;` where `Plain` has no ANY_* fields.
-    GenericArgsOnNonGenericType {
-        name: String,
-        spec: Spec<'db>,
-    },
-    /// Use site omits `<...>` on a generic POU - e.g. `VAR c : Counter;`
-    /// where `Counter` has `VAR_INPUT x : ANY_INT;`. The compiler can no
-    /// longer silently infer through struct fields, so the args are required.
-    MissingGenericArgs {
-        name: String,
-        expected: usize,
-        spec: Spec<'db>,
-    },
-    /// Arg count does not match the derived parameter list.
-    WrongNumberOfGenericArgs {
-        name: String,
-        expected: usize,
-        actual: usize,
-        spec: Spec<'db>,
-    },
-    /// A supplied type argument does not satisfy its corresponding `ANY_*` bound.
-    TypeArgDoesNotMatchBound {
-        arg_ty: Type<'db>,
-        bound: ElementarySpec,
-        arg_spec: Spec<'db>,
-    },
-
-    /// `{#if x is T}` where `x` doesn't resolve in the enclosing scope.
-    PreprocessIdentNotFound {
-        ident: String,
-        site: CallSite<'db>,
-    },
-    /// `{#if x is T}` where `x` resolves but isn't generic (its spec -
-    /// or the chain through `INTO(...)` - is concrete). The branch can
-    /// never narrow anything; either drop the dispatch or pick a
-    /// generic param.
-    PreprocessIdentNotGeneric {
-        ident: String,
-        actual_spec: Spec<'db>,
-        site: CallSite<'db>,
-    },
-    /// `{#if x is T}` where `T` isn't a concrete variant of `x`'s
-    /// `ANY_*` bound - e.g. `x: ANY_INT` matched against `STRING`.
-    /// The branch can never fire at codegen time.
-    PreprocessTypeNotInBound {
-        expected_ty: Type<'db>,
-        bound: ElementarySpec,
-        spec: Spec<'db>,
-    },
-    /// A `{wasm …}` pragma references a parameter whose anchor isn't
-    /// pinned by the enclosing `{#if}` chain. Unlike `{extern}`, which
-    /// can defer per-variant dispatch to the host, a wasm intrinsic
-    /// emits a single concrete instruction - so the codegen needs the
-    /// concrete type at this exact point.
-    WasmUnresolvedGeneric {
-        param: String,
-        bound: ElementarySpec,
-        site: CallSite<'db>,
-    },
 }
 
 impl<'db> ErrorCode for TypeError<'db> {
@@ -158,14 +94,6 @@ impl<'db> ErrorCode for TypeError<'db> {
             Self::InferLiteralError { .. } => "E0309",
             Self::NonVariadicFoldParameter { .. } => "E0317",
             Self::UnsupportedOperator { .. } => "E0318",
-            Self::GenericArgsOnNonGenericType { .. } => "E0321",
-            Self::MissingGenericArgs { .. } => "E0322",
-            Self::WrongNumberOfGenericArgs { .. } => "E0323",
-            Self::TypeArgDoesNotMatchBound { .. } => "E0324",
-            Self::PreprocessIdentNotFound { .. } => "E0325",
-            Self::PreprocessIdentNotGeneric { .. } => "E0326",
-            Self::PreprocessTypeNotInBound { .. } => "E0327",
-            Self::WasmUnresolvedGeneric { .. } => "E0328",
             Self::Other { .. } => "E0350",
         }
     }
@@ -173,18 +101,6 @@ impl<'db> ErrorCode for TypeError<'db> {
     fn description(&self) -> &'static str {
         match self {
             Self::InferLiteralError { .. } => "invalid literal",
-            Self::GenericArgsOnNonGenericType { .. }
-            | Self::MissingGenericArgs { .. }
-            | Self::WrongNumberOfGenericArgs { .. }
-            | Self::TypeArgDoesNotMatchBound { .. } => "generic type arguments",
-            Self::PreprocessIdentNotFound { .. } => "preprocess condition: unknown identifier",
-            Self::PreprocessIdentNotGeneric { .. } => {
-                "preprocess condition: identifier is not generic"
-            }
-            Self::PreprocessTypeNotInBound { .. } => {
-                "preprocess condition: type not in generic bound"
-            }
-            Self::WasmUnresolvedGeneric { .. } => "wasm pragma: generic parameter is not pinned",
             _ => "type mismatch",
         }
     }
@@ -418,112 +334,6 @@ impl<'db> ToIdeDiagnostic<'db> for TypeError<'db> {
 
                 target.with_location(db, &mut diag);
 
-                diag
-            }
-            Self::GenericArgsOnNonGenericType { name, spec } => diag()
-                .message(format!(
-                    "'{}' is not generic and does not take type arguments",
-                    name
-                ))
-                .severity(DiagnosticSeverity::ERROR)
-                .desc(self)
-                .range(crate::denormalize(db, file, &spec.get_span(db)).unwrap_or_default())
-                .call(),
-            Self::MissingGenericArgs {
-                name,
-                expected,
-                spec,
-            } => diag()
-                .message(format!(
-                    "'{}' is generic and requires {} type argument{}",
-                    name,
-                    expected,
-                    if *expected == 1 { "" } else { "s" },
-                ))
-                .severity(DiagnosticSeverity::ERROR)
-                .desc(self)
-                .range(crate::denormalize(db, file, &spec.get_span(db)).unwrap_or_default())
-                .call(),
-            Self::WrongNumberOfGenericArgs {
-                name,
-                expected,
-                actual,
-                spec,
-            } => diag()
-                .message(format!(
-                    "'{}' expects {} type argument{}, got {}",
-                    name,
-                    expected,
-                    if *expected == 1 { "" } else { "s" },
-                    actual,
-                ))
-                .severity(DiagnosticSeverity::ERROR)
-                .desc(self)
-                .range(crate::denormalize(db, file, &spec.get_span(db)).unwrap_or_default())
-                .call(),
-            Self::TypeArgDoesNotMatchBound {
-                arg_ty,
-                bound,
-                arg_spec,
-            } => diag()
-                .message(format!(
-                    "type argument '{}' does not conform to bound '{}'",
-                    arg_ty.type_name(db),
-                    bound.type_name(),
-                ))
-                .severity(DiagnosticSeverity::ERROR)
-                .desc(self)
-                .range(crate::denormalize(db, file, &arg_spec.get_span(db)).unwrap_or_default())
-                .call(),
-            Self::PreprocessIdentNotFound { ident, site } => diag()
-                .message(format!("'{}' is not in scope", ident))
-                .severity(DiagnosticSeverity::ERROR)
-                .desc(self)
-                .range(crate::denormalize(db, file, &site.get_span(db)).unwrap_or_default())
-                .call(),
-            Self::PreprocessIdentNotGeneric {
-                ident,
-                actual_spec,
-                site,
-            } => diag()
-                .message(format!(
-                    "'{}' has concrete type '{}', so this branch can never narrow it",
-                    ident,
-                    actual_spec.infer(db).type_name(db),
-                ))
-                .severity(DiagnosticSeverity::ERROR)
-                .desc(self)
-                .range(crate::denormalize(db, file, &site.get_span(db)).unwrap_or_default())
-                .call(),
-            Self::PreprocessTypeNotInBound {
-                expected_ty,
-                bound,
-                spec,
-            } => diag()
-                .message(format!(
-                    "'{}' is not a variant of '{}'",
-                    expected_ty.type_name(db),
-                    bound.type_name(),
-                ))
-                .severity(DiagnosticSeverity::ERROR)
-                .desc(self)
-                .range(crate::denormalize(db, file, &spec.get_span(db)).unwrap_or_default())
-                .call(),
-            Self::WasmUnresolvedGeneric { param, bound, site } => {
-                let mut diag = diag()
-                    .message(format!(
-                        "'{}' is bound by '{}' and not pinned by the enclosing '{{#if}}' chain",
-                        param,
-                        bound.type_name(),
-                    ))
-                    .severity(DiagnosticSeverity::ERROR)
-                    .desc(self)
-                    .range(crate::denormalize(db, file, &site.get_span(db)).unwrap_or_default())
-                    .call();
-                diag.with_note(format!(
-                    "wasm pragmas need a concrete type; add a '{{#if {} is …}}' branch",
-                    param,
-                ));
                 diag
             }
         }

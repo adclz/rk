@@ -204,7 +204,6 @@ impl<'db> DocumentSymbolsHandler<'db> for Pou<'db> {
                         | ElementarySpec::LDateTime
                         | ElementarySpec::Date
                         | ElementarySpec::LDate => SymbolKind::EVENT,
-                        _ => SymbolKind::TYPE_PARAMETER,
                     },
                     _ => SymbolKind::TYPE_PARAMETER,
                 },
