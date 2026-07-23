@@ -134,15 +134,15 @@ END_FUNCTION_BLOCK
 
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r#"
     [E0101] Error: duplicate definitions
-       ,-[ file:///test0.st:3:11 ]
+       ,-[ file:///test0.st:7:11 ]
        |
      3 |     FUNCTION fn
        |              ^|
-       |               `-- duplicate POU 'fn'
+       |               `-- POU 'fn' is already defined here
        |
      7 |     FUNCTION fn
        |              ^|
-       |               `-- POU 'fn' is already defined here
+       |               `-- duplicate POU 'fn'
     ---'
     [E0204] Error: no item found in scope
         ,-[ file:///test0.st:14:2 ]

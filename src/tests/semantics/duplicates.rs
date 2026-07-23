@@ -107,6 +107,56 @@ END_FUNCTION_BLOCK
     ");
 }
 
+// Two FUNCTIONs may share a name when they differ by the overload discriminant
+// (currently the parameter count) — this is an overload set, not a duplicate.
+#[rstest]
+fn overload_functions_by_arity_accepted(mut with_db: RootDatabase) {
+    let source = r#"
+FUNCTION foo : INT
+VAR_INPUT a : INT; END_VAR
+    foo := a;
+END_FUNCTION
+
+FUNCTION foo : INT
+VAR_INPUT a : INT; b : INT; END_VAR
+    foo := a + b;
+END_FUNCTION
+"#;
+
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @"");
+}
+
+// Same name AND same parameter count is still a duplicate — the arity
+// discriminant can't tell them apart.
+#[rstest]
+fn overload_functions_same_arity_is_duplicate(mut with_db: RootDatabase) {
+    let source = r#"
+FUNCTION foo : INT
+VAR_INPUT a : INT; END_VAR
+    foo := a;
+END_FUNCTION
+
+FUNCTION foo : INT
+VAR_INPUT b : INT; END_VAR
+    foo := b;
+END_FUNCTION
+"#;
+
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
+    [E0101] Error: duplicate definitions
+       ,-[ file:///test0.st:7:10 ]
+       |
+     2 | FUNCTION foo : INT
+       |          ^|^
+       |           `--- POU 'foo' is already defined here
+       |
+     7 | FUNCTION foo : INT
+       |          ^|^
+       |           `--- duplicate POU 'foo'
+    ---'
+    ");
+}
+
 #[rstest]
 fn duplicate_enum_variants(mut with_db: RootDatabase) {
     let source = r#"
@@ -144,15 +194,15 @@ END_NAMESPACE
 
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
     [E0101] Error: duplicate definitions
-       ,-[ file:///test0.st:3:20 ]
+       ,-[ file:///test0.st:7:20 ]
        |
      3 |     FUNCTION_BLOCK fb1
        |                    ^|^
-       |                     `--- duplicate POU 'fb1'
+       |                     `--- POU 'fb1' is already defined here
        |
      7 |     FUNCTION_BLOCK fb1
        |                    ^|^
-       |                     `--- POU 'fb1' is already defined here
+       |                     `--- duplicate POU 'fb1'
     ---'
     ");
 }

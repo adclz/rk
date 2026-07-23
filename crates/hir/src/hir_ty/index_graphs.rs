@@ -178,6 +178,43 @@ pub fn pou_index<'db>(db: &'db dyn WorkspaceDataBase, name: Ident) -> Option<Pou
     None
 }
 
+/// Returns EVERY globally-declared POU with the given name, in a stable
+/// discovery order. Where [`pou_index`] returns the first match, this surfaces
+/// all same-name POUs so overload-aware callers (call resolution, the duplicate
+/// check) can pick among FUNCTION overloads by signature. A non-overloaded name
+/// yields a single-element vec.
+#[tracing::instrument(skip(db))]
+pub fn pou_candidates<'db>(db: &'db dyn WorkspaceDataBase, name: Ident) -> Vec<Pou<'db>> {
+    let mut result = Vec::new();
+    for file in all_files(db) {
+        for p in file_global_pous(db, file).iter() {
+            if p.get_name_ident(db) == name {
+                result.push(*p);
+            }
+        }
+    }
+    result
+}
+
+/// Namespace-scoped counterpart of [`pou_candidates`]: every POU with the given
+/// name declared directly in the namespace `path` (across files that reopen it).
+#[tracing::instrument(skip(db))]
+pub fn namespace_pou_candidates<'db>(
+    db: &'db dyn WorkspaceDataBase,
+    path: NamespacePath,
+    name: Ident,
+) -> Vec<Pou<'db>> {
+    let mut result = Vec::new();
+    for ns in namespace_index(db, path) {
+        for p in ns.pous(db).iter() {
+            if p.get_name_ident(db) == name {
+                result.push(*p);
+            }
+        }
+    }
+    result
+}
+
 /// Finds a globally declared program by name across all files.
 #[tracing::instrument(skip(db))]
 pub fn program_index<'db>(db: &'db dyn WorkspaceDataBase, name: Ident) -> Option<ProgramDecl<'db>> {

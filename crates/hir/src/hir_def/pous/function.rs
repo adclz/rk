@@ -43,6 +43,25 @@ pub struct Function<'db> {
     pub scope_id: ScopeId<'db>,
 }
 
+impl<'db> Function<'db> {
+    /// The number of formal parameters (VAR_INPUT / VAR_OUTPUT / VAR_IN_OUT),
+    /// i.e. the call-site arity. This is the overload discriminant: two
+    /// same-named functions are distinct overloads iff their parameter counts
+    /// differ, and duplicates iff they match.
+    pub fn param_count(&self, db: &'db dyn WorkspaceDataBase) -> usize {
+        use crate::hir_def::pous::variable::VariableKind;
+        self.variables(db)
+            .iter()
+            .filter(|v| {
+                matches!(
+                    v.kind(db),
+                    VariableKind::Input | VariableKind::Output | VariableKind::InOut
+                )
+            })
+            .count()
+    }
+}
+
 impl<'db> HirNodeInfo<'db> for Function<'db> {
     fn get_id(&self, db: &'db dyn WorkspaceDataBase) -> AstId {
         self.id(db)
