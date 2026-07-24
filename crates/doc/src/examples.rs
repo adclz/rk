@@ -1262,35 +1262,6 @@ END_FUNCTION
 "#],
             lint_rule: None,
         },
-        ErrorExample {
-            code: "E0231",
-            category: "Resolution",
-            title: "INTO reference not found",
-            description: "An `INTO(ref)` type specification references an identifier that is not found in scope.",
-            sources: &[r#"
-FUNCTION fn1
-    VAR_INPUT
-        x: INTO(nonexistent);
-    END_VAR
-END_FUNCTION
-"#],
-            lint_rule: None,
-        },
-        ErrorExample {
-            code: "E0232",
-            category: "Resolution",
-            title: "INTO reference must be an ANY type",
-            description: "An `INTO(ref)` constraint must reference a variable declared with an `ANY_*` type specification.",
-            sources: &[r#"
-FUNCTION fn1
-    VAR_INPUT
-        value: INT;
-        target: INTO(value);
-    END_VAR
-END_FUNCTION
-"#],
-            lint_rule: None,
-        },
         // ── E03xx: Type system ───────────────────────────────────────────
         ErrorExample {
             code: "E0301",
@@ -2127,6 +2098,146 @@ END_FUNCTION_BLOCK
 "#],
             lint_rule: None,
         },
+        ErrorExample {
+            code: "E0514",
+            category: "Inheritance",
+            title: "Interface type only allowed as a parameter",
+            description: "An interface type may appear only as a `VAR_INPUT` or `VAR_IN_OUT` parameter, where it is monomorphized to the concrete type passed by the caller. It cannot be a stored `VAR`, member, `VAR_OUTPUT`, `VAR_TEMP`, or global.",
+            sources: &[r#"
+INTERFACE ITF1
+    METHOD DoWork END_METHOD
+END_INTERFACE
+
+PROGRAM Main
+    VAR
+        dev : ITF1;
+    END_VAR
+END_PROGRAM
+"#],
+            lint_rule: None,
+        },
+        ErrorExample {
+            code: "E0515",
+            category: "Inheritance",
+            title: "Interface not allowed as a return type",
+            description: "An interface may not be used as a function or method return type: the concrete type would flow from callee to caller and could not be resolved at compile time.",
+            sources: &[r#"
+INTERFACE ITF1
+    METHOD DoWork END_METHOD
+END_INTERFACE
+
+FUNCTION Make : ITF1
+END_FUNCTION
+"#],
+            lint_rule: None,
+        },
+        ErrorExample {
+            code: "E0516",
+            category: "Inheritance",
+            title: "Interface not allowed nested in an aggregate",
+            description: "An interface may not be nested inside an array, reference, or struct (e.g. `ARRAY OF ITF1`, `REF_TO ITF1`, or a struct field). Such a placement is stored, heterogeneous state that cannot be monomorphized.",
+            sources: &[r#"
+INTERFACE ITF1
+    METHOD DoWork END_METHOD
+END_INTERFACE
+
+PROGRAM Main
+    VAR
+        arr : ARRAY[0..2] OF ITF1;
+    END_VAR
+END_PROGRAM
+"#],
+            lint_rule: None,
+        },
+        ErrorExample {
+            code: "E0517",
+            category: "Inheritance",
+            title: "Assignment to an interface parameter",
+            description: "An interface `VAR_IN_OUT` parameter is a fixed binding to the concrete type passed by the caller. Reassigning it would break monomorphization (the body is specialized to one concrete type), so it can be used — methods called, passed on — but not reassigned.",
+            sources: &[r#"
+INTERFACE ITF1
+    METHOD DoWork END_METHOD
+END_INTERFACE
+
+FUNCTION_BLOCK Impl IMPLEMENTS ITF1
+    METHOD DoWork END_METHOD
+END_FUNCTION_BLOCK
+
+FUNCTION Use : INT
+    VAR_IN_OUT dev : ITF1; END_VAR
+    VAR other : Impl; END_VAR
+    dev := other;
+END_FUNCTION
+"#],
+            lint_rule: None,
+        },
+        ErrorExample {
+            code: "E0518",
+            category: "Inheritance",
+            title: "SUPER() called in a method",
+            description: "`SUPER()` (the base function-block body call) may only appear in the function block body, not in a method of a function block.",
+            sources: &[r#"
+FUNCTION_BLOCK base
+END_FUNCTION_BLOCK
+
+FUNCTION_BLOCK derived EXTENDS base
+    METHOD m1
+        SUPER()
+    END_METHOD
+END_FUNCTION_BLOCK
+"#],
+            lint_rule: None,
+        },
+        ErrorExample {
+            code: "E0519",
+            category: "Inheritance",
+            title: "SUPER() called more than once",
+            description: "The call of `SUPER()` shall occur once in the function block body.",
+            sources: &[r#"
+FUNCTION_BLOCK base
+END_FUNCTION_BLOCK
+
+FUNCTION_BLOCK derived EXTENDS base
+    SUPER();
+    SUPER();
+END_FUNCTION_BLOCK
+"#],
+            lint_rule: None,
+        },
+        ErrorExample {
+            code: "E0520",
+            category: "Inheritance",
+            title: "SUPER() called inside a loop",
+            description: "The call of `SUPER()` shall not be in a loop (`FOR`/`WHILE`/`REPEAT`).",
+            sources: &[r#"
+FUNCTION_BLOCK base
+END_FUNCTION_BLOCK
+
+FUNCTION_BLOCK derived EXTENDS base
+    VAR i : INT; END_VAR
+    FOR i := 1 TO 3 DO
+        SUPER();
+    END_FOR
+END_FUNCTION_BLOCK
+"#],
+            lint_rule: None,
+        },
+        ErrorExample {
+            code: "E0521",
+            category: "Inheritance",
+            title: "Inherited variable name shadowed",
+            description: "The names of the variables in the base and the derived function blocks shall be unique. A derived function block may not redeclare a variable name inherited from a base.",
+            sources: &[r#"
+FUNCTION_BLOCK base
+VAR c : INT; END_VAR
+END_FUNCTION_BLOCK
+
+FUNCTION_BLOCK derived EXTENDS base
+VAR c : INT; END_VAR
+END_FUNCTION_BLOCK
+"#],
+            lint_rule: None,
+        },
         // ── E06xx: Arrays ────────────────────────────────────────────────
         ErrorExample {
             code: "E0601",
@@ -2600,21 +2711,6 @@ END_VAR
 END_FUNCTION
 "#],
             lint_rule: Some("negated-comparison"),
-        },
-        ErrorExample {
-            code: "L0112",
-            category: "Linter Info",
-            title: "Generic extern function",
-            description: "An `{extern}` pragma references generic parameters. The host must provide an implementation for each concrete type the `ANY_*` constraint accepts.",
-            sources: &[r#"
-FUNCTION SQRT : ANY_REAL
-VAR_INPUT
-    IN : INTO(SQRT);
-END_VAR
-    {extern 'math' 'sqrt' (params IN) (result SQRT)}
-END_FUNCTION
-"#],
-            lint_rule: Some("generic-extern"),
         },
         // ── L02xx: Linter Hint ────────────────────────────────────
         ErrorExample {
@@ -3120,6 +3216,27 @@ END_VAR
 END_FUNCTION
 "#],
             lint_rule: Some("external-mutation"),
+        },
+        ErrorExample {
+            code: "L0318",
+            category: "Linter Warning",
+            title: "Method variable shadows an owner member",
+            description: "A method's local or parameter has the same name as a member of the function block or class it belongs to. This is legal — the method variable shadows the member and bare-name access resolves to the local — but it is easy to misread.",
+            sources: &[r#"
+FUNCTION_BLOCK Counter
+VAR
+    c : INT;
+END_VAR
+    METHOD Inc : INT
+    VAR
+        c : INT;
+    END_VAR
+        c := c + 1;
+        Inc := c;
+    END_METHOD
+END_FUNCTION_BLOCK
+"#],
+            lint_rule: Some("method-shadows-member"),
         },
     ]
 }
