@@ -1,4 +1,4 @@
-//! FUNCTION overloads lower to distinct WASM symbols (via the arity
+//! FUNCTION overloads lower to distinct WASM symbols (via the signature
 //! discriminant) and each call routes to the right one.
 
 use crate::tests::codegen::{compile_to_wasm, with_db};
@@ -52,4 +52,31 @@ fn overloaded_real_functions(mut with_db: db::RootDatabase) {
     let wasm = compile_to_wasm(&mut with_db, source);
     let result: f32 = super::execute_wasm(&wasm, "test", ());
     assert_eq!(result, 8.0, "avg/1(3.0) = 3.0, avg/2(2.0, 8.0) = 5.0");
+}
+
+// Same arity, different parameter TYPE — `conv(INT)` and `conv(REAL)` lower to
+// distinct symbols (conv$Int / conv$Real) and each call routes by argument type.
+#[rstest]
+fn same_arity_typed_overloads(mut with_db: db::RootDatabase) {
+    let source = r#"
+        FUNCTION conv : INT
+        VAR_INPUT a : INT; END_VAR
+            conv := a * 2;
+        END_FUNCTION
+
+        FUNCTION conv : INT
+        VAR_INPUT a : REAL; END_VAR
+            conv := 99;
+        END_FUNCTION
+
+        FUNCTION test : INT
+        VAR i : INT; END_VAR
+            i := 5;
+            test := conv(i) + conv(1.0);   // conv(INT)=10 + conv(REAL)=99
+        END_FUNCTION
+    "#;
+
+    let wasm = compile_to_wasm(&mut with_db, source);
+    let result: i32 = super::execute_wasm(&wasm, "test", ());
+    assert_eq!(result, 109, "conv(INT 5) = 10, conv(REAL 1.0) = 99");
 }

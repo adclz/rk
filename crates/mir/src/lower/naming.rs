@@ -6,7 +6,9 @@ use db::WorkspaceDataBase;
 use hir::hir_def::interned::identifier::Ident;
 use hir::hir_def::interned::namespace::NamespacePath;
 use hir::hir_def::pous::{function::Function, pou::Pou};
+use hir::hir_ty::head::signature::function_signature;
 use hir::hir_ty::index_graphs::{namespace_pou_candidates, pou_candidates};
+use hir::hir_ty::ty::Type;
 
 /// `base$Part1$Part2…` from sorted concrete part names, or `base` when
 /// there are none.
@@ -22,21 +24,37 @@ pub fn mangle_generic_name(db: &dyn WorkspaceDataBase, base: Ident, parts: &[&st
     Ident::new(db, CompactString::from(s))
 }
 
-/// The MIR-level symbol for a FUNCTION, used for `function_indices`, call
-/// routing, and the export-name fallback.
-///
-/// A non-overloaded name maps to its plain qualified name (`foo`, `Ns.foo`) — so
-/// exports and existing symbols are unchanged. A FUNCTION that shares its name
-/// with other overloads gets the arity discriminant appended (`foo$2`), giving
-/// each overload a distinct symbol. Call sites resolve the specific overload in
-/// HIR, so definition and call compute the same symbol here.
+/// The MIR symbol of a FUNCTION: its qualified name, with the signature
+/// appended as discriminant when it is overloaded (`SHL$Byte`). Definition
+/// and call compute it the same way.
 pub fn mir_function_symbol<'db>(db: &'db dyn WorkspaceDataBase, f: Function<'db>) -> Ident {
-    let base = qualified_pou_ident(db, hir::hir_ty::ty::Type::Function(f));
+    let base = qualified_pou_ident(db, Type::Function(f));
     if function_is_overloaded(db, f) {
-        let arity = f.param_count(db).to_string();
-        mangle_generic_name(db, base, &[&arity])
+        let parts: Vec<String> = function_signature(db, f)
+            .iter()
+            .map(|t| type_mangle(db, t))
+            .collect();
+        let refs: Vec<&str> = parts.iter().map(|s| s.as_str()).collect();
+        mangle_generic_name(db, base, &refs)
     } else {
         base
+    }
+}
+
+/// A parameter type as a short symbol fragment: elementary types by IEC
+/// name, named types by qualified name, unnamed composites `T`.
+fn type_mangle<'db>(db: &'db dyn WorkspaceDataBase, ty: &Type<'db>) -> String {
+    match ty {
+        Type::Elementary(e) => e.type_name().to_string(),
+        other => {
+            let q = qualified_pou_ident(db, *other);
+            let s = q.text(db);
+            if s.is_empty() {
+                "T".to_string()
+            } else {
+                s.replace('.', "_")
+            }
+        }
     }
 }
 
