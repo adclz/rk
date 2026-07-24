@@ -480,20 +480,26 @@ fn emit_wasm_instruction(func: &mut wasm_encoder::Function, name: &str) {
         "i32.xor" => {
             func.instruction(&Instruction::I32Xor);
         }
-        // Integer arithmetic/bitwise (64-bit)
+        // 64-bit shifts and rotates: the IEC count is INT (i32), extended
+        // to i64.
         "i64.shl" => {
+            func.instruction(&Instruction::I64ExtendI32U);
             func.instruction(&Instruction::I64Shl);
         }
         "i64.shr_u" => {
+            func.instruction(&Instruction::I64ExtendI32U);
             func.instruction(&Instruction::I64ShrU);
         }
         "i64.shr_s" => {
+            func.instruction(&Instruction::I64ExtendI32U);
             func.instruction(&Instruction::I64ShrS);
         }
         "i64.rotl" => {
+            func.instruction(&Instruction::I64ExtendI32U);
             func.instruction(&Instruction::I64Rotl);
         }
         "i64.rotr" => {
+            func.instruction(&Instruction::I64ExtendI32U);
             func.instruction(&Instruction::I64Rotr);
         }
         // Float conversions
