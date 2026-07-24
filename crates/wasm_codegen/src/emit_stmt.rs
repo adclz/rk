@@ -392,6 +392,14 @@ fn emit_stmt(func: &mut wasm_encoder::Function, stmt: &MirStmt, ctx: &Ctx) {
                         func.instruction(&Instruction::I32Const(0));
                         func.instruction(&Instruction::I32LtS);
                         func.instruction(&Instruction::Select);
+                        // Sub-width wrap: ABS(SINT#-128) is -128.
+                        {
+                            let mut instrs = Vec::new();
+                            crate::mir_cast::append_subwidth_normalization(elem, &mut instrs);
+                            for instr in &instrs {
+                                func.instruction(instr);
+                            }
+                        }
                     }
                 } else {
                     // Unsigned: identity.

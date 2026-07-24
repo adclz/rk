@@ -730,9 +730,13 @@ fn test_st_interface_param_per_instance_rewrites(mut with_db: db::RootDatabase) 
             VAR_IN_OUT a : I; b : I; END_VAR
             mid := leaf(p := a, q := b);
         END_FUNCTION
-        FUNCTION entry : INT
-        VAR x : One; y : Ten; END_VAR
-            entry := mid(a := x, b := y) + 10000 * mid(a := y, b := x);
+        FUNCTION entry : DINT
+        VAR x : One; y : Ten; a1 : DINT; a2 : DINT; END_VAR
+            (* DINT accumulators: the 1101001 checksum exceeds INT's 16-bit
+               domain, and sub-width arithmetic wraps at the type width. *)
+            a1 := mid(a := x, b := y);
+            a2 := mid(a := y, b := x);
+            entry := a1 + 10000 * a2;
         END_FUNCTION
     "#;
     let wasm = compile_to_wasm(&mut with_db, source);

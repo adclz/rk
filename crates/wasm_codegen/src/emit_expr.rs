@@ -767,6 +767,31 @@ fn emit_binop(func: &mut wasm_encoder::Function, op: MirBinOp, ty: MirElementary
             // TODO: Power operator not yet supported
         }
     }
+
+    // Sub-width arithmetic wraps at the IEC type width (type-faithful
+    // type-faithful semantics): `USINT 255 + 1` = 0, `INT 32767 + 1` =
+    // -32768, `SINT -128 / -1` = -128. Without this the i32-lane result
+    // escapes the type's domain, persists through stores, and corrupts
+    // downstream compares. Comparisons yield BOOL and And/Or/Xor are
+    // domain-closed, so only the arithmetic ops need it.
+    if matches!(
+        op,
+        MirBinOp::Add | MirBinOp::Sub | MirBinOp::Mul | MirBinOp::Div | MirBinOp::Mod
+    ) && !is_float
+    {
+        normalize_subwidth(func, ty);
+    }
+}
+
+/// Re-normalize an i32-lane arithmetic result into a sub-width type's domain
+/// (see `mir_cast::append_subwidth_normalization`). No-op for BOOL and
+/// 32/64-bit types.
+fn normalize_subwidth(func: &mut wasm_encoder::Function, ty: MirElementary) {
+    let mut instrs = Vec::new();
+    crate::mir_cast::append_subwidth_normalization(ty, &mut instrs);
+    for instr in &instrs {
+        func.instruction(instr);
+    }
 }
 
 fn emit_unaryop(func: &mut wasm_encoder::Function, op: MirUnaryOp, ty: MirElementary) {
@@ -790,6 +815,8 @@ fn emit_unaryop(func: &mut wasm_encoder::Function, op: MirUnaryOp, ty: MirElemen
                 func.instruction(&Instruction::I32Xor);
                 func.instruction(&Instruction::I32Const(1));
                 func.instruction(&Instruction::I32Add);
+                // Sub-width wrap: -(SINT#-128) is -128, not the escaped 128.
+                normalize_subwidth(func, ty);
             }
         }
         MirUnaryOp::Not => {

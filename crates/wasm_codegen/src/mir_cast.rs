@@ -128,17 +128,15 @@ pub(crate) fn emit_cast_instructions(
     instrs
 }
 
-/// Normalize an i32-lane value into a sub-width (8/16-bit) target's domain.
-///
-/// Sub-width types live in i32 locals wider than their IEC domain; the stored
-/// representation invariant is: unsigned types zero-extended, signed types
-/// sign-extended. Every cast INTO a sub-width type truncates to the type
-/// width and re-extends — otherwise the value escapes the target's domain
-/// entirely (`INT_TO_SINT(200)` staying 200 instead of the two's-complement
-/// -56, `INT_TO_UINT(-1)` reading back as 4294967295 instead of 65535).
-/// Idempotent for values already in-domain. BOOL and 32/64-bit targets are
-/// untouched.
-fn append_subwidth_normalization(to: MirElementary, instrs: &mut Vec<Instruction<'static>>) {
+/// Normalize an i32-lane value into a sub-width (8/16-bit) target's
+/// domain: unsigned zero-extended, signed sign-extended, so
+/// `INT_TO_SINT(200)` is -56. Idempotent in-domain; BOOL and 32/64-bit
+/// targets untouched. Also wraps overflowing arithmetic
+/// (`USINT 255 + 1` = 0).
+pub(crate) fn append_subwidth_normalization(
+    to: MirElementary,
+    instrs: &mut Vec<Instruction<'static>>,
+) {
     match to.rk_bits() {
         8 => {
             if to.is_signed() {

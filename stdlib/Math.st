@@ -881,6 +881,42 @@ NAMESPACE Std.Math
 			ASSERT_EQ(ABS(LINT#-5000000000), LINT#5000000000, 'ABS LINT on the i64 lane');
 		END_FUNCTION
 
+		// --- sub-width integer arithmetic wraps at the IEC type width
+		// (type-faithful semantics; a C-emitting compiler's C native types
+		// behave the same). Values must never escape the type's domain ---
+
+		{test}
+		FUNCTION test_subwidth_arithmetic_wraps
+			VAR
+				a: USINT := 255;
+				b: USINT := 1;
+				z: USINT := 0;
+				m: USINT := 16;
+				i: INT := 32767;
+				one: INT := 1;
+				imin: INT := -32768;
+				u16a: UINT := 65535;
+			END_VAR
+			ASSERT(a + b = USINT#0, 'USINT 255+1 wraps to 0');
+			ASSERT(z - b = USINT#255, 'USINT 0-1 wraps to 255');
+			ASSERT(m * m = USINT#0, 'USINT 16*16 wraps to 0');
+			ASSERT(i + one = INT#-32768, 'INT 32767+1 wraps to -32768');
+			ASSERT(imin - one = INT#32767, 'INT -32768-1 wraps to 32767');
+			ASSERT(u16a * u16a = UINT#1, 'UINT 65535*65535 wraps to 1');
+		END_FUNCTION
+
+		{test}
+		FUNCTION test_subwidth_negation_wraps
+			VAR
+				s: SINT := -128;
+				sm1: SINT := -1;
+			END_VAR
+			ASSERT(-s = SINT#-128, 'NEG(SINT#-128) wraps to -128');
+			ASSERT(s / sm1 = SINT#-128, 'SINT -128/-1 wraps to -128');
+			ASSERT(ABS(s) = SINT#-128, 'ABS(SINT#-128) wraps to -128');
+			ASSERT(ABS(SINT#-127) = SINT#127, 'ABS in-range is unaffected');
+		END_FUNCTION
+
 		// --- domain edges (pins current IEEE 754 behavior through libm) ---
 
 		{test}
