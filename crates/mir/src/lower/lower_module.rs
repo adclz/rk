@@ -90,12 +90,6 @@ fn lower_module_from_pous<'db>(
     // Collect test entries for the manifest
     let mut test_entries: Vec<crate::test_manifest::TestEntry> = Vec::new();
 
-    // Helper: build a qualified export name from a namespace prefix and bare name.
-    let make_export_name = |ns_prefix: &Option<String>, bare_name: &str| -> Option<CompactString> {
-        ns_prefix
-            .as_ref()
-            .map(|prefix| CompactString::from(format!("{}.{}", prefix, bare_name)))
-    };
 
     // Phase 1: Process imports first (extern functions get lower indices)
     for (pou, _ns_prefix) in all_pous.iter() {
@@ -115,7 +109,7 @@ fn lower_module_from_pous<'db>(
     }
 
     // Phase 2: Process local functions
-    for (pou, ns_prefix) in all_pous.iter() {
+    for (pou, _ns_prefix) in all_pous.iter() {
         match pou {
             Pou::Function(func) => {
                 let func_id = super::naming::mir_function_symbol(db, *func);
@@ -145,7 +139,7 @@ fn lower_module_from_pous<'db>(
                     if let Ok(mut mir_func) =
                         lower_wasm_intrinsic(db, *func, &wasm_decl, next_fn_idx, &mut memory_layout)
                     {
-                        mir_func.export_name = make_export_name(ns_prefix, func.name(db).text(db));
+                        mir_func.export_name = Some(mir_func.name.text(db).to_string().into());
 
                         if hir::hir_def::pous::pragma::is_test(db, func.pragmas(db)) {
                             let export_name = mir_func
@@ -205,7 +199,8 @@ fn lower_module_from_pous<'db>(
                     None,
                     &iface_call_rewrites,
                 )?;
-                mir_func.export_name = make_export_name(ns_prefix, func.name(db).text(db));
+                // Export under the qualified MIR symbol, so overloads do not collide.
+                mir_func.export_name = Some(mir_func.name.text(db).to_string().into());
                 function_indices.insert(mir_func.name, next_fn_idx);
                 next_fn_idx += 1;
 
@@ -865,7 +860,43 @@ pub fn lower_wasm_intrinsic<'db>(
     // it a multi-input pragma like `{wasm 'rk.div_i32_checked'
     // (params a b) (result r)}` would silently fall into the Cast branch
     // and emit `r := b`, dropping `a` and the builtin call entirely.
-    let body = if input_count == 1
+    // Resolve the `{wasm IN 'op' ...}` type-basis into the concrete op: prefix
+    // the raw op with the wasm value type of the referenced variable
+    // (IN:REAL -> "f32.sqrt", IN:BYTE -> "i32.shl"). This prefixing was
+    // previously supplied by monomorphization; a bare op has no wasm type.
+    let resolved_instruction: CompactString = match &wasm_decl.type_ref {
+        Some(basis) => {
+            let elem = func
+                .variables(db)
+                .iter()
+                .find(|v| v.name(db) == basis.ident)
+                .and_then(|v| match lower_type(db, v.spec(db).infer(db)).ok()? {
+                    MirType::Elementary(e) => Some(e),
+                    _ => None,
+                });
+            match elem {
+                Some(e) => {
+                    let prefix = if e.is_float() {
+                        if e.is_64bit() { "f64" } else { "f32" }
+                    } else if e.is_64bit() {
+                        "i64"
+                    } else {
+                        "i32"
+                    };
+                    CompactString::from(format!("{}.{}", prefix, wasm_decl.instruction))
+                }
+                None => wasm_decl.instruction.clone(),
+            }
+        }
+        None => wasm_decl.instruction.clone(),
+    };
+
+    // A single-input elementary conversion with NO type-basis is a Convert.st
+    // cast (`<SRC>_TO_<TGT>`) — emit a Cast so mir_cast.rs picks the op.
+    // Everything else (type-basis math/bit ops, multi-input, STRING) emits a
+    // WasmIntrinsic carrying the resolved instruction string.
+    let body = if wasm_decl.type_ref.is_none()
+        && input_count == 1
         && let (Some(p_name), Some(from), Some(to)) = (param_name, param_elem, return_elem)
     {
         let load = MirExpr::Load(MirPlace::Local(p_name), MirType::Elementary(from));
@@ -885,7 +916,7 @@ pub fn lower_wasm_intrinsic<'db>(
     } else {
         let param_names: Vec<_> = params.iter().map(|p| p.name).collect();
         vec![MirStmt::WasmIntrinsic {
-            instruction: wasm_decl.instruction.clone(),
+            instruction: resolved_instruction,
             params: param_names,
             result: if return_type.is_some() {
                 Some(func.name(db))

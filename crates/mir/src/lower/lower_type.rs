@@ -99,11 +99,15 @@ pub fn elementary_spec_to_mir(spec: ElementarySpec) -> Result<MirElementary, Low
         ElementarySpec::LTod => MirElementary::LTod,
         ElementarySpec::DateAndTime => MirElementary::DateAndTime,
         ElementarySpec::LDateTime => MirElementary::LDateTime,
-        _ => {
-            return Err(LowerTypeError::UnsupportedType(format!(
-                "ANY type specs cannot be lowered: {:?}",
-                spec
-            )));
+        // STRING is memory-resident (no scalar MIR elementary). Reaching here
+        // means a STRING was used where a scalar is expected — e.g. a STRING
+        // comparison, which codegen does not yet support.
+        ElementarySpec::String => {
+            return Err(LowerTypeError::UnsupportedType(
+                "STRING has no scalar MIR representation (used where a scalar \
+                 elementary is expected, e.g. a STRING comparison)"
+                    .to_string(),
+            ));
         }
     })
 }
