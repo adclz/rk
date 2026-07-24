@@ -130,7 +130,7 @@ impl<'db> Parse<'db> for ast::generated::Stmt {
 
                 let for_list = for_stmt.control_list.cast(sema.ast);
 
-                for_list.children.as_ref().map(|err| {
+                if let Some(err) = for_list.children.as_ref() {
                     match err.cast(sema.ast) {
                         ast::generated::ERRMissingDotInForControl_ERRMissingEqualInForControl_ERROutputAssignInForControl::ERRMissingDotInForControl(err) => {
                             sema.errors.push(SyntaxError::MissingDotInForList {
@@ -151,7 +151,7 @@ impl<'db> Parse<'db> for ast::generated::Stmt {
                             }.to_diagnostic(sema.db, sema.file))
                         }
                     }
-                });
+                }
 
                 let start = for_list.initial_value.cast(sema.ast).parse(sema)?;
 

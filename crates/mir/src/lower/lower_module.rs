@@ -90,7 +90,6 @@ fn lower_module_from_pous<'db>(
     // Collect test entries for the manifest
     let mut test_entries: Vec<crate::test_manifest::TestEntry> = Vec::new();
 
-
     // Phase 1: Process imports first (extern functions get lower indices)
     for (pou, _ns_prefix) in all_pous.iter() {
         if let Pou::Function(func) = pou {

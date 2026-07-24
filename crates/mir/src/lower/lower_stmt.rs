@@ -262,7 +262,7 @@ fn lower_stmt<'db>(
                 control_type: control_elem,
                 start: start_mir,
                 end: end_mir,
-                step: step_mir,
+                step: Box::new(step_mir),
                 body,
             }))
         }

@@ -110,6 +110,7 @@ impl<'db> SemanticIndexBuilder<'db> {
     }
 
     /// Create a VariableDecl, register it in the node index, and return it.
+    #[allow(clippy::too_many_arguments)]
     pub fn new_variable(
         &mut self,
         name: crate::hir_def::interned::identifier::Ident,
@@ -197,6 +198,7 @@ impl<'db> SemanticIndexBuilder<'db> {
     }
 
     /// Create a StructElement, register it in the node index, and return it.
+    #[allow(clippy::too_many_arguments)]
     pub fn new_struct_element(
         &mut self,
         name: crate::hir_def::interned::identifier::Ident,

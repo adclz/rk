@@ -12,7 +12,7 @@ pub mod report;
 
 #[derive(Clone, Debug)]
 pub struct IdeDiagnostic {
-    pub diagnostic: auto_lsp::lsp_types::Diagnostic,
+    pub diagnostic: Box<auto_lsp::lsp_types::Diagnostic>,
     related: Vec<Related>,
     fixes: Vec<auto_lsp::lsp_types::CodeAction>,
     notes: Vec<String>,
@@ -20,7 +20,7 @@ pub struct IdeDiagnostic {
 }
 impl IdeDiagnostic {
     pub fn inner(&self) -> Diagnostic {
-        self.diagnostic.clone()
+        (*self.diagnostic).clone()
     }
 
     pub fn fixes(&self) -> &[CodeAction] {
@@ -117,7 +117,7 @@ impl std::hash::Hash for IdeDiagnostic {
 impl IdeDiagnostic {
     pub fn new(diagnostic: auto_lsp::lsp_types::Diagnostic) -> Self {
         Self {
-            diagnostic,
+            diagnostic: Box::new(diagnostic),
             related: vec![],
             fixes: vec![],
             notes: vec![],
@@ -140,13 +140,13 @@ impl IdeDiagnostic {
 
 impl From<IdeDiagnostic> for auto_lsp::lsp_types::Diagnostic {
     fn from(d: IdeDiagnostic) -> Self {
-        d.diagnostic
+        *d.diagnostic
     }
 }
 
 impl From<&IdeDiagnostic> for auto_lsp::lsp_types::Diagnostic {
     fn from(d: &IdeDiagnostic) -> Self {
-        d.diagnostic.clone()
+        (*d.diagnostic).clone()
     }
 }
 
@@ -192,7 +192,7 @@ pub fn diag(
     desc: Option<Desc>,
 ) -> IdeDiagnostic {
     IdeDiagnostic {
-        diagnostic: auto_lsp::lsp_types::Diagnostic {
+        diagnostic: Box::new(auto_lsp::lsp_types::Diagnostic {
             range,
             severity,
             source,
@@ -204,7 +204,7 @@ pub fn diag(
             tags,
             related_information: None,
             data: None,
-        },
+        }),
         fixes: vec![],
         related: vec![],
         notes: vec![],

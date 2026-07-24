@@ -59,6 +59,9 @@ impl<'db> Type<'db> {
     }
 
     // Type coercion check
+    // `resolver` is part of the public coercion API and is threaded through
+    // recursive calls even though the top level doesn't read it directly.
+    #[allow(clippy::only_used_in_recursion)]
     pub fn coerce_with_type(
         &self,
         db: &'db dyn WorkspaceDataBase,

@@ -1624,4 +1624,3 @@ END_FUNCTION
     END_FUNCTION
     ");
 }
-

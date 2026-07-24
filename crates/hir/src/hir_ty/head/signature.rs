@@ -44,10 +44,7 @@ pub fn infer_signature<'db>(db: &'db dyn WorkspaceDataBase, scope: ScopeId<'db>)
 /// is being built re-enters the head query and salsa-cycles. Only out-of-head
 /// consumers — the duplicate check, overload resolution, MIR symbol mangling —
 /// may call it.
-pub fn function_signature<'db>(
-    db: &'db dyn WorkspaceDataBase,
-    f: Function<'db>,
-) -> Vec<Type<'db>> {
+pub fn function_signature<'db>(db: &'db dyn WorkspaceDataBase, f: Function<'db>) -> Vec<Type<'db>> {
     let sig = infer_signature(db, f.scope_id(db));
     f.variables(db)
         .iter()

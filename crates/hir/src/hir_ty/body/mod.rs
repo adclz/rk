@@ -185,10 +185,10 @@ impl<'db> NullState<'db> {
 /// When the this struct is emitted via the [`infer_body`] query, it is important to note 2 things about the type mappings:
 ///
 /// 1. The types mapped to expressions and invocations are the types *before* any normalization or adjustments are applied.
-/// see the note on normalization in the normalize module.
+///    see the note on normalization in the normalize module.
 ///
 /// 2. There should be no [`Type::Infer`] types in the mappings. All types should be fully resolved,
-/// those that can't be resolved will be represented as [`Type::Never`].
+///    those that can't be resolved will be represented as [`Type::Never`].
 #[derive(Debug, PartialEq, Eq, salsa::Update)]
 pub struct BodyInferenceResult<'db> {
     // Scope where this InferenceResult was emitted

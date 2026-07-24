@@ -301,7 +301,7 @@ impl<'db> ToIdeDiagnostic<'db> for TypeError<'db> {
                         "cannot infer '{}' to '{}': {}",
                         expr.to_string(db),
                         target.type_name(db),
-                        err.to_string()
+                        err
                     ))
                     .severity(DiagnosticSeverity::ERROR)
                     .desc(self)
@@ -440,10 +440,10 @@ pub enum InferLiteralError {
     Invalid_STRING_CHAR(String),
 }
 
-impl InferLiteralError {
-    pub fn to_string(&self) -> String {
-        match self {
-            InferLiteralError::TypeMismatch(st) => return st.to_owned(),
+impl std::fmt::Display for InferLiteralError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let msg = match self {
+            InferLiteralError::TypeMismatch(st) => return f.write_str(st),
 
             InferLiteralError::Invalid_BOOL_Literal => "invalid boolean literal",
             InferLiteralError::Invalid_UNSIGNED_8_BITS_Literal => "invalid USINT literal",
@@ -473,14 +473,14 @@ impl InferLiteralError {
 
             InferLiteralError::Invalid_STRING_Literal => "invalid STRING literal",
             InferLiteralError::Invalid_CHAR_Length(len) => {
-                return format!("CHAR literal must be exactly 1 character, got {len}");
+                return write!(f, "CHAR literal must be exactly 1 character, got {len}");
             }
             InferLiteralError::Invalid_STRING_Length { max, got } => {
-                return format!("STRING literal exceeds maximum length of {max}, got {got}");
+                return write!(f, "STRING literal exceeds maximum length of {max}, got {got}");
             }
 
             InferLiteralError::ExpectedNumber => "expected number",
-            InferLiteralError::InvalidNumber(st) => return st.to_owned(),
+            InferLiteralError::InvalidNumber(st) => return f.write_str(st),
             InferLiteralError::DurationOverflow => "duration overflow",
             InferLiteralError::DurationOutOfRange {
                 type_name,
@@ -488,30 +488,30 @@ impl InferLiteralError {
                 ..
             } => {
                 return if *above_max {
-                    format!("{type_name} value exceeds the supported maximum")
+                    write!(f, "{type_name} value exceeds the supported maximum")
                 } else {
-                    format!("{type_name} value is below the supported minimum")
+                    write!(f, "{type_name} value is below the supported minimum")
                 };
             }
 
-            InferLiteralError::Invalid_TIME_Unit(st) => return st.to_owned(),
+            InferLiteralError::Invalid_TIME_Unit(st) => return f.write_str(st),
             InferLiteralError::Invalid_TIME_Components => "invalid TIME components",
-            InferLiteralError::Invalid_TOD_Format(st) => return st.to_owned(),
-            InferLiteralError::Invalid_LTOD_Format(st) => return st.to_owned(),
+            InferLiteralError::Invalid_TOD_Format(st) => return f.write_str(st),
+            InferLiteralError::Invalid_LTOD_Format(st) => return f.write_str(st),
 
-            InferLiteralError::Invalid_DATE_Format(st) => return st.to_owned(),
-            InferLiteralError::Invalid_LDATE_Format(st) => return st.to_owned(),
+            InferLiteralError::Invalid_DATE_Format(st) => return f.write_str(st),
+            InferLiteralError::Invalid_LDATE_Format(st) => return f.write_str(st),
 
-            InferLiteralError::Invalid_DT_Format(st) => return st.to_owned(),
-            InferLiteralError::Invalid_LDT_Format(st) => return st.to_owned(),
+            InferLiteralError::Invalid_DT_Format(st) => return f.write_str(st),
+            InferLiteralError::Invalid_LDT_Format(st) => return f.write_str(st),
 
             InferLiteralError::Incomplete_STRING_XX_Escape => {
                 "incomplete STRING XX escape sequence"
             }
             InferLiteralError::Invalid_STRING_Hex_Escape => "invalid STRING hex escape sequence",
-            InferLiteralError::Invalid_STRING_CHAR(st) => return st.to_owned(),
-        }
-        .to_string()
+            InferLiteralError::Invalid_STRING_CHAR(st) => return f.write_str(st),
+        };
+        f.write_str(msg)
     }
 }
 

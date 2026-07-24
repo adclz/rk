@@ -51,15 +51,9 @@ pub struct ExprLowerCtx<'db> {
             >,
         >,
     >,
-    /// Scratch locals synthesized at call sites (`(name, value type)`):
-    /// - `$discard$N` — a DISCARDED `VAR_OUTPUT`'s pointer arg points at a
-    ///   throwaway local instead of leaving the callee's param unfed;
-    /// - `$argcopy$N` — an aggregate `VAR_INPUT` arg is copied into a scratch
-    ///   whose address the callee receives (call-entry snapshot, value
-    ///   semantics — see `MirExpr::CopyIntoScratch`).
-    /// Collected during body lowering; the function-lowering caller drains
-    /// them into the `MirFunction`'s locals (memory-forced, so the address
-    /// exists). See `build_call_args`.
+    /// Scratch locals synthesized at call sites: `$discard$N` for a discarded
+    /// `VAR_OUTPUT`, `$argcopy$N` for an aggregate `VAR_INPUT` snapshot. Drained
+    /// into the function's locals by the lowering caller (see `build_call_args`).
     pub call_scratch: std::rc::Rc<std::cell::RefCell<CallScratch>>,
 }
 
@@ -866,10 +860,8 @@ impl<'db> ExprLowerCtx<'db> {
         };
 
         // Body function `Base$__body__`, called with the current instance pointer.
-        let base_q = crate::lower::naming::qualified_pou_ident(
-            self.db,
-            Type::new_pou(self.db, base_pou),
-        );
+        let base_q =
+            crate::lower::naming::qualified_pou_ident(self.db, Type::new_pou(self.db, base_pou));
         let body_name = hir::hir_def::interned::identifier::Ident::new(
             self.db,
             compact_str::CompactString::from(format!("{}$__body__", base_q.text(self.db))),
@@ -1197,10 +1189,8 @@ impl<'db> ExprLowerCtx<'db> {
             }
         };
 
-        let owner_mangled = crate::lower::naming::qualified_pou_ident(
-            self.db,
-            Type::new_pou(self.db, owner_pou),
-        );
+        let owner_mangled =
+            crate::lower::naming::qualified_pou_ident(self.db, Type::new_pou(self.db, owner_pou));
         Ok(hir::hir_def::interned::identifier::Ident::new(
             self.db,
             compact_str::CompactString::from(format!(
@@ -1248,9 +1238,7 @@ impl<'db> ExprLowerCtx<'db> {
             mangled
         } else {
             match path.infer(self.db) {
-                Type::Function(f) => {
-                    crate::lower::naming::mir_function_symbol(self.db, f)
-                }
+                Type::Function(f) => crate::lower::naming::mir_function_symbol(self.db, f),
                 Type::CallableType(hir::hir_ty::ty::CallableType::Function(f)) => {
                     crate::lower::naming::mir_function_symbol(self.db, f)
                 }

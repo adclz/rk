@@ -90,8 +90,8 @@ impl<'db> SpanNamespacePath<'db> {
         &self,
         db: &'db dyn WorkspaceDataBase,
         index: usize,
-    ) -> &'db Box<dyn AstNode> {
-        &get_ast(db, self.scope_id.file(db))[self.spans[index].0]
+    ) -> &'db dyn AstNode {
+        &*get_ast(db, self.scope_id.file(db))[self.spans[index].0]
     }
 }
 

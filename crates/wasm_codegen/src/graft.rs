@@ -43,6 +43,7 @@ pub(crate) struct GraftPlan {
 /// sections, which must place them after imports and before user
 /// functions. The bundle's stack-pointer global and data go in on the
 /// first graft.
+#[allow(clippy::too_many_arguments)]
 pub(crate) fn graft_builtins<'a>(
     names_used: impl IntoIterator<Item = &'a str>,
     type_section: &mut TypeSection,

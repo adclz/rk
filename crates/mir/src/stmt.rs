@@ -59,7 +59,8 @@ pub enum MirStmt {
         start: MirExpr,
         end: MirExpr,
         /// Always present; default 1 is materialized during lowering.
-        step: MirExpr,
+        /// Boxed to keep the variant small (`clippy::large_enum_variant`).
+        step: Box<MirExpr>,
         body: Vec<MirStmt>,
     },
 

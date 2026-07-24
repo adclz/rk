@@ -271,6 +271,7 @@ fn check_expr_lints<'db>(
     }
 }
 
+#[allow(clippy::too_many_arguments)]
 fn visit_statements<'db>(
     db: &'db dyn WorkspaceDataBase,
     body: &BodyInferenceResult<'db>,

@@ -193,8 +193,9 @@ fn call_input_arg_types<'db>(
     let mut types = Vec::new();
     for p in func_call.params(db) {
         let value = match p.kind(db) {
-            ParamAssignKind::NonFormal { value }
-            | ParamAssignKind::FormalInput { value, .. } => value,
+            ParamAssignKind::NonFormal { value } | ParamAssignKind::FormalInput { value, .. } => {
+                value
+            }
             ParamAssignKind::FormalOutput { .. } => continue,
         };
         let mut ictx = InferExprCtx::new(resolver);

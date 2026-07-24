@@ -394,17 +394,13 @@ impl<'db> CompletionHandler<'db> for PathExpr<'db> {
             if let Some(key) = req.node_index_pos {
                 let mut last_path = None;
                 let mut key = key;
-                loop {
-                    if let Some(node) = sema.node_index.get(key) {
-                        // checks this is both a PathExpr and that it resolved to a non-never type
-                        if let HirNode::PathExpr(p) = node
-                            && !p.infer(db).is_never()
-                        {
-                            last_path = Some(p);
-                            key = NodeKey::from_usize(key.index().saturating_add(1));
-                        } else {
-                            break;
-                        }
+                while let Some(node) = sema.node_index.get(key) {
+                    // checks this is both a PathExpr and that it resolved to a non-never type
+                    if let HirNode::PathExpr(p) = node
+                        && !p.infer(db).is_never()
+                    {
+                        last_path = Some(p);
+                        key = NodeKey::from_usize(key.index().saturating_add(1));
                     } else {
                         break;
                     }

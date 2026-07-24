@@ -729,24 +729,10 @@ pub fn lower_program<'db>(
     Ok((func, prog_type))
 }
 
-/// Number of wasm i32 locals a parameter of the given (lowered) type
-/// and kind consumes when flattened to the wasm function signature.
-///
-/// This needs to match the layout that `build_local_map` in
-/// `wasm_codegen/src/lib.rs` produces, because lowering uses the
-/// returned width to advance the wasm-local index counter that
-/// downstream Var/return-slot allocation reads. Get this wrong and
-/// scalar locals end up assigned to wasm-local indices that alias the
-/// STRING param's `(ptr, len)` slots — a silent corruption the wasm
-/// validator can't catch (everything is i32). See
-/// `crates/wasm_codegen/src/tests/string_audit.rs::known_bug_string_param_clobbered_by_scalar_var`
-/// for the regression test.
-///
-/// Rules:
-/// - `VAR_INPUT STRING` → 2 slots `(ptr, len)`
-/// - `VAR_IN_OUT STRING` / `VAR_OUTPUT STRING` (`MirType::Pointer(STRING)`)
-///    → 2 slots `(addr, cap)`
-/// - everything else (scalars, pointers to scalars, struct refs) → 1 slot
+/// Number of wasm i32 locals a parameter consumes in the signature; must
+/// match `build_local_map` in `wasm_codegen`, since lowering advances the
+/// wasm-local index by it. `VAR_INPUT STRING` → `(ptr, len)`, a STRING
+/// pointer → `(addr, cap)`, everything else one slot.
 pub fn param_wasm_width(ty: &MirType, kind: MirParamKind) -> u32 {
     match (kind, ty) {
         (MirParamKind::Input, MirType::String { .. }) => 2,

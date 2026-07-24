@@ -18,7 +18,6 @@ type WasmResult<T> = wasmtime::Result<T>;
 struct TestResult {
     name: String,
     outcome: TestOutcome,
-    duration: std::time::Duration,
 }
 
 enum TestOutcome {
@@ -184,30 +183,23 @@ pub fn run_tests(wasm_path: &std::path::Path, filter: Option<&str>) -> usize {
                     //     message; surface it as the failure reason.
                     let mut results = [Val::Bool(false)]; // placeholder
                     match func.call(&mut store, &[], &mut results) {
-                        Ok(()) => {
-                            let outcome = match &results[0] {
-                                Val::Result(Ok(_)) => TestOutcome::Pass,
-                                Val::Result(Err(payload)) => {
-                                    let msg = match payload.as_deref() {
-                                        Some(Val::String(s)) if s.is_empty() => {
-                                            "<no error messsage provided>".to_string()
-                                        }
-                                        Some(Val::String(s)) => s.to_owned(),
-                                        _ => "<no error messsage provided>".to_string(),
-                                    };
-                                    TestOutcome::Fail(msg)
-                                }
-                                other => TestOutcome::Fail(format!(
-                                    "unexpected test return shape: {:?}",
-                                    other
-                                )),
-                            };
-                            if let Err(e) = func.post_return(&mut store) {
-                                TestOutcome::Fail(format!("post_return: {}", e))
-                            } else {
-                                outcome
+                        Ok(()) => match &results[0] {
+                            Val::Result(Ok(_)) => TestOutcome::Pass,
+                            Val::Result(Err(payload)) => {
+                                let msg = match payload.as_deref() {
+                                    Some(Val::String(s)) if s.is_empty() => {
+                                        "<no error messsage provided>".to_string()
+                                    }
+                                    Some(Val::String(s)) => s.to_owned(),
+                                    _ => "<no error messsage provided>".to_string(),
+                                };
+                                TestOutcome::Fail(msg)
                             }
-                        }
+                            other => TestOutcome::Fail(format!(
+                                "unexpected test return shape: {:?}",
+                                other
+                            )),
+                        },
                         // A trap or other non-typed failure - `__RAISE`
                         // is caught inside the test wrapper, so reaching
                         // here means an actual wasm trap (e.g. divide
@@ -272,7 +264,6 @@ pub fn run_tests(wasm_path: &std::path::Path, filter: Option<&str>) -> usize {
         results.push(TestResult {
             name: display_name.clone(),
             outcome,
-            duration,
         });
     }
 

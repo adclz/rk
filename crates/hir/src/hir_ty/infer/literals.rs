@@ -12,7 +12,7 @@ use crate::{
     hir_ty::ty::{InferType, Type},
 };
 
-use std::{f64, num::ParseIntError, u8};
+use std::num::ParseIntError;
 
 // Figure 12 – Supported implicit type conversions
 
@@ -785,10 +785,10 @@ fn parse_duration_components(s: &str, kind: &'static str) -> Result<Duration, In
     let cleaned = s.replace('_', "");
 
     // Handle optional leading sign (applies to the whole duration)
-    let (is_negative, value_str) = if cleaned.starts_with('-') {
-        (true, &cleaned[1..])
-    } else if cleaned.starts_with('+') {
-        (false, &cleaned[1..])
+    let (is_negative, value_str) = if let Some(stripped) = cleaned.strip_prefix('-') {
+        (true, stripped)
+    } else if let Some(stripped) = cleaned.strip_prefix('+') {
+        (false, stripped)
     } else {
         (false, cleaned.as_str())
     };

@@ -45,7 +45,3 @@ name = "fuzz_formatter"
 path = "fuzz_targets/fuzz_formatter_idempotency.rs"
 test = false
 doc = false
-
-[profile.release]
-lto = true
-opt-level = 3

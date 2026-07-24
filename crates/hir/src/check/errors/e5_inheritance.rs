@@ -598,17 +598,12 @@ impl<'db> ToIdeDiagnostic<'db> for InheritanceError<'db> {
                 ));
                 diag
             }
-            Self::SuperBodyInLoop { call_site } => {
-                
-                diag()
-                    .message("'SUPER()' cannot be called inside a loop".to_string())
-                    .range(
-                        crate::denormalize(db, file, &call_site.get_span(db)).unwrap_or_default(),
-                    )
-                    .severity(DiagnosticSeverity::ERROR)
-                    .desc(self)
-                    .call()
-            }
+            Self::SuperBodyInLoop { call_site } => diag()
+                .message("'SUPER()' cannot be called inside a loop".to_string())
+                .range(crate::denormalize(db, file, &call_site.get_span(db)).unwrap_or_default())
+                .severity(DiagnosticSeverity::ERROR)
+                .desc(self)
+                .call(),
             Self::InheritedMemberShadowed { derived, base } => {
                 let name = derived.get_name_ident(db).text(db);
                 let mut diag = diag()

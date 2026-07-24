@@ -251,6 +251,7 @@ fn collect_scope_variables<'db>(
 }
 
 /// Search file+stdlib indexes for POUs and/or namespaces
+#[allow(clippy::too_many_arguments)]
 fn search_file_indexes<'db>(
     db: &'db dyn WorkspaceDataBase,
     fast_query: &Query,

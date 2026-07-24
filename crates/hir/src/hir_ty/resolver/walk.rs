@@ -389,6 +389,7 @@ impl<'db> Type<'db> {
         }
     }
 
+    #[allow(clippy::too_many_arguments)]
     fn walk_field(
         &self,
         db: &'db dyn WorkspaceDataBase,

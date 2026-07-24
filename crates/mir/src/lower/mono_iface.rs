@@ -31,6 +31,13 @@ use super::naming::qualified_pou_ident;
 /// threaded into every body.
 pub type IfaceCallRewrites<'db> = FxHashMap<FuncCall<'db>, Ident>;
 
+/// Canonical identity of one specialization: `(qualified func name,
+/// sorted [(interface param name, qualified concrete implementer)])`.
+type CanonicalKey = (Ident, Vec<(Ident, Ident)>);
+
+/// Specialization canonical key → mangled name.
+type CanonicalInstanceMap = FxHashMap<CanonicalKey, Ident>;
+
 /// One specialization of a function on the concrete implementers bound to its
 /// interface parameters (e.g. `drive` with `dev -> Worker` => `drive$Worker`).
 pub struct IfaceInstance<'db> {
@@ -53,8 +60,7 @@ pub fn collect_iface_instantiations<'db>(
     all_pous: &[(&Pou<'db>, Option<String>)],
     all_programs: &[(&hir::hir_def::program::ProgramDecl<'db>, Option<String>)],
 ) -> (Vec<IfaceInstance<'db>>, FxHashMap<FuncCall<'db>, Ident>) {
-    // Canonical key: (qualified func name, sorted [(param name, qualified concrete)]).
-    let mut by_canonical: FxHashMap<(Ident, Vec<(Ident, Ident)>), Ident> = FxHashMap::default();
+    let mut by_canonical: CanonicalInstanceMap = FxHashMap::default();
     let mut instances: Vec<IfaceInstance<'db>> = Vec::new();
     // Rewrites for the generic bodies; specializations own theirs.
     let mut global_rewrites: FxHashMap<FuncCall<'db>, Ident> = FxHashMap::default();
@@ -163,7 +169,7 @@ fn process_body<'db>(
     scope: ScopeId<'db>,
     stmts: &[Stmt<'db>],
     subs: &FxHashMap<Ident, Pou<'db>>,
-    by_canonical: &mut FxHashMap<(Ident, Vec<(Ident, Ident)>), Ident>,
+    by_canonical: &mut CanonicalInstanceMap,
     instances: &mut Vec<IfaceInstance<'db>>,
     out_rewrites: &mut FxHashMap<FuncCall<'db>, Ident>,
 ) {
@@ -322,13 +328,14 @@ fn collect_calls_in_args<'db>(
     }
 }
 
+#[allow(clippy::too_many_arguments)]
 fn process_call<'db>(
     db: &'db dyn WorkspaceDataBase,
     fc: FuncCall<'db>,
     body: &hir::hir_ty::body::BodyInferenceResult<'db>,
     self_pou: Option<Pou<'db>>,
     subs: &FxHashMap<Ident, Pou<'db>>,
-    by_canonical: &mut FxHashMap<(Ident, Vec<(Ident, Ident)>), Ident>,
+    by_canonical: &mut CanonicalInstanceMap,
     instances: &mut Vec<IfaceInstance<'db>>,
     out_rewrites: &mut FxHashMap<FuncCall<'db>, Ident>,
 ) {
