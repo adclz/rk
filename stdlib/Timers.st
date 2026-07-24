@@ -310,5 +310,119 @@ NAMESPACE Std.Timers
 			timer(IN := FALSE, PT := T#100ms);
 			ASSERT(timer.Q, 'TP Q should stay TRUE during pulse even if IN drops');
 		END_FUNCTION
+
+		// --- TON must NOT fire before PT: an instant-expiry TON (PT ignored
+		// or inverted compare) passes every spin-loop test above ---
+
+		{test}
+		FUNCTION test_ton_stays_false_before_expiry
+			VAR
+				timer: TON_TIME;
+				i: INT;
+			END_VAR
+			timer(IN := TRUE, PT := T#1h);
+			FOR i := 1 TO 10 DO
+				timer(IN := TRUE, PT := T#1h);
+				ASSERT(NOT timer.Q, 'TON must not fire long before PT elapses');
+			END_FOR;
+			ASSERT(timer.ET < T#1h, 'ET tracks elapsed time below PT');
+		END_FUNCTION
+
+		{test}
+		FUNCTION test_ton_et_clamps_at_pt
+			VAR
+				timer: TON_TIME;
+			END_VAR
+			timer(IN := TRUE, PT := T#1ms);
+			WHILE NOT timer.Q DO
+				timer(IN := TRUE, PT := T#1ms);
+			END_WHILE;
+			ASSERT(timer.ET = T#1ms, 'ET is exactly PT after expiry');
+		END_FUNCTION
+
+		// --- TP terminal state: no auto-refire while IN is held, and a fresh
+		// rising edge after release starts a new pulse ---
+
+		{test}
+		FUNCTION test_tp_post_pulse_retrigger
+			VAR
+				timer: TP_TIME;
+			END_VAR
+			timer(IN := TRUE, PT := T#1ms);
+			WHILE timer.Q DO
+				timer(IN := TRUE, PT := T#1ms);
+			END_WHILE;
+			ASSERT(timer.ET = T#1ms, 'ET clamps at PT when the pulse ends');
+			timer(IN := TRUE, PT := T#1ms);
+			ASSERT(NOT timer.Q, 'held-high IN must not refire the pulse');
+			timer(IN := FALSE, PT := T#1ms);
+			timer(IN := TRUE, PT := T#1ms);
+			ASSERT(timer.Q, 'a new rising edge after release starts a new pulse');
+		END_FUNCTION
+
+		// --- TOF: re-asserting IN cancels the pending expiry; the NEXT
+		// falling edge must get a fresh deadline, not the stale one ---
+
+		{test}
+		FUNCTION test_tof_fresh_deadline_after_reassert
+			VAR
+				timer: TOF_TIME;
+				t0: TIME;
+			END_VAR
+			timer(IN := TRUE, PT := T#50ms);
+			timer(IN := FALSE, PT := T#50ms);
+			// Let the FIRST off-delay deadline pass while IN is re-asserted.
+			t0 := PLC_TIME();
+			WHILE PLC_TIME() - t0 < T#60ms DO
+				timer(IN := TRUE, PT := T#50ms);
+			END_WHILE;
+			// New falling edge: deadline must be now+PT, not the stale t0+PT.
+			timer(IN := FALSE, PT := T#50ms);
+			ASSERT(timer.Q, 'TOF must use a fresh deadline for a new falling edge');
+		END_FUNCTION
+
+		{test}
+		FUNCTION test_tof_et_clamps_at_pt
+			VAR
+				timer: TOF_TIME;
+			END_VAR
+			timer(IN := TRUE, PT := T#1ms);
+			timer(IN := FALSE, PT := T#1ms);
+			WHILE timer.Q DO
+				timer(IN := FALSE, PT := T#1ms);
+			END_WHILE;
+			ASSERT(timer.ET = T#1ms, 'ET is exactly PT after the off-delay expires');
+		END_FUNCTION
+
+		// --- PT = 0 (pins current behavior: the deadline check runs on the
+		// call AFTER the starting edge, so a zero preset needs two calls) ---
+
+		{test}
+		FUNCTION test_pt_zero_pins_current_behavior
+			VAR
+				ton: TON_TIME;
+				tp: TP_TIME;
+			END_VAR
+			ton(IN := TRUE, PT := T#0s);
+			ASSERT(NOT ton.Q, 'TON PT=0: edge call does not evaluate the deadline yet');
+			ton(IN := TRUE, PT := T#0s);
+			ASSERT(ton.Q, 'TON PT=0: fires on the next call');
+			tp(IN := TRUE, PT := T#0s);
+			ASSERT(tp.Q, 'TP PT=0: pulse starts on the edge call');
+			tp(IN := TRUE, PT := T#0s);
+			ASSERT(NOT tp.Q, 'TP PT=0: pulse over on the next call');
+		END_FUNCTION
+
+		// --- the clock itself ---
+
+		{test}
+		FUNCTION test_plc_time_monotonic
+			VAR
+				t1, t2: TIME;
+			END_VAR
+			t1 := PLC_TIME();
+			t2 := PLC_TIME();
+			ASSERT(t2 >= t1, 'PLC_TIME must be monotonic');
+		END_FUNCTION
 	END_NAMESPACE
 END_NAMESPACE

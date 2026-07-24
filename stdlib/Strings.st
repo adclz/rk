@@ -387,6 +387,89 @@ NAMESPACE Std.Strings
 			ASSERT(FIND(result, 'ab') = 1);
 		END_FUNCTION
 
+		// --- return-slot aliasing: results copied into locals must survive
+		// LATER producer calls (the dangerous scenario of a shared static
+		// return slot), and self-argument accumulation must not corrupt ---
+
+		{test}
+		FUNCTION test_result_survives_later_producer_call
+			VAR
+				first, second: STRING;
+			END_VAR
+			first := CONCAT('aa', 'bb');
+			second := CONCAT('cc', 'dd');
+			ASSERT(FIND(first, 'aabb') = 1, 'earlier result must survive a later producer call');
+			ASSERT(FIND(second, 'ccdd') = 1, 'later result is correct too');
+		END_FUNCTION
+
+		{test}
+		FUNCTION test_concat_self_accumulation
+			VAR
+				s: STRING;
+				i: INT;
+			END_VAR
+			s := 'x';
+			FOR i := 1 TO 4 DO
+				s := CONCAT(s, 'y');
+			END_FOR;
+			ASSERT(LEN(s) = 5, 'x + 4 accumulated y');
+			ASSERT(FIND(s, 'xyyyy') = 1, 'self-argument CONCAT accumulates correctly');
+		END_FUNCTION
+
+		// --- slicer bounds: N/P beyond the string must clamp, not underflow ---
+
+		{test}
+		FUNCTION test_right_n_beyond_length
+			VAR
+				s: STRING;
+			END_VAR
+			// RIGHT computes len-N internally: N > len must clamp, not
+			// underflow to a huge unsigned offset.
+			s := RIGHT('hi', 10);
+			ASSERT(LEN(s) = 2, 'RIGHT with N beyond length returns the whole string');
+			ASSERT(FIND(s, 'hi') = 1, 'content intact');
+		END_FUNCTION
+
+		{test}
+		FUNCTION test_mid_beyond_length
+			VAR
+				s: STRING;
+			END_VAR
+			s := MID('hello', 10, 3);
+			ASSERT(LEN(s) = 3, 'MID clamps L to the remaining chars');
+			s := MID('hello', 3, 10);
+			ASSERT(LEN(s) = 0, 'MID with P beyond length yields empty');
+		END_FUNCTION
+
+		{test}
+		FUNCTION test_delete_beyond_length
+			VAR
+				s: STRING;
+			END_VAR
+			// Signature is DELETE(S, N, P): delete N chars at position P.
+			s := DELETE('hello', 3, 10);
+			ASSERT(LEN(s) = 5, 'DELETE at P beyond the end removes nothing');
+			s := DELETE('hello', 10, 3);
+			ASSERT(LEN(s) = 2, 'DELETE clamps N to the remaining chars (keeps "he")');
+			ASSERT(FIND(s, 'he') = 1, 'prefix before P survives');
+		END_FUNCTION
+
+		{test}
+		FUNCTION test_find_no_match_returns_zero
+			ASSERT(FIND('hello', 'xyz') = 0, 'FIND with no match returns 0');
+			ASSERT(FIND('', 'a') = 0, 'FIND in empty string returns 0');
+		END_FUNCTION
+
+		{test}
+		FUNCTION test_len_zero_slices
+			VAR
+				s: STRING;
+			END_VAR
+			s := LEFT('hello', 0);
+			ASSERT(LEN(s) = 0, 'LEFT L=0 is empty');
+			s := MID('hello', 0, 2);
+			ASSERT(LEN(s) = 0, 'MID L=0 is empty');
+		END_FUNCTION
 	END_NAMESPACE
 
 END_NAMESPACE

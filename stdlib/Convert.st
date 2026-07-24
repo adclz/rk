@@ -1597,5 +1597,99 @@ NAMESPACE Std.Convert
 			s := CONCAT('Temperature: ', INT_TO_STRING(42));
 			ASSERT(FIND(s, 'Temperature: 42') = 1);
 		END_FUNCTION
+
+		// --- narrowing truncates to the target width (two's complement),
+		// it must never let a value escape the target's domain ---
+
+		{test}
+		FUNCTION test_int_to_sint_truncates
+			ASSERT_EQ(INT_TO_SINT(INT#200), SINT#-56, '200 = 16#C8, sign bit set as SINT');
+			ASSERT_EQ(INT_TO_SINT(INT#127), SINT#127, 'in-range value unchanged');
+		END_FUNCTION
+
+		{test}
+		FUNCTION test_int_to_uint_masks
+			ASSERT_EQ(INT_TO_UINT(INT#-1), UINT#65535, '-1 reinterprets as all-ones 16-bit');
+		END_FUNCTION
+
+		{test}
+		FUNCTION test_lint_to_int_truncates
+			ASSERT_EQ(LINT_TO_INT(LINT#70000), INT#4464, '70000 = 16#11170, low 16 bits = 16#1170');
+			ASSERT_EQ(LINT_TO_INT(LINT#-70000), INT#-4464, 'negative truncation is twos-complement');
+		END_FUNCTION
+
+		{test}
+		FUNCTION test_dint_to_int_truncates
+			ASSERT_EQ(DINT_TO_INT(DINT#70000), INT#4464, 'same truncation on the i32 lane');
+		END_FUNCTION
+
+		{test}
+		FUNCTION test_ulint_to_usint_truncates
+			ASSERT_EQ(ULINT_TO_USINT(ULINT#300), USINT#44, '300 = 16#12C, low byte = 16#2C');
+		END_FUNCTION
+
+		// --- signed <-> unsigned at the same width is a bit-pattern
+		// reinterpretation of the low bits ---
+
+		{test}
+		FUNCTION test_byte_sint_reinterpret
+			ASSERT_EQ(BYTE_TO_SINT(BYTE#16#C8), SINT#-56, 'byte 16#C8 reads as -56 signed');
+			ASSERT_EQ(SINT_TO_BYTE(SINT#-56), BYTE#16#C8, 'and back');
+		END_FUNCTION
+
+		{test}
+		FUNCTION test_usint_to_sint_reinterpret
+			ASSERT_EQ(USINT_TO_SINT(USINT#200), SINT#-56, 'same-width unsigned to signed');
+		END_FUNCTION
+
+		{test}
+		FUNCTION test_dint_to_word_truncates
+			ASSERT_EQ(DINT_TO_WORD(DINT#-1), WORD#16#FFFF, 'low 16 bits of all-ones');
+		END_FUNCTION
+
+		// --- float <-> bits reinterprets are BIT PATTERNS, not numeric casts ---
+
+		{test}
+		FUNCTION test_real_dword_reinterpret
+			ASSERT_EQ(REAL_TO_DWORD(REAL#1.5), DWORD#16#3FC00000, 'IEEE 754 bits of 1.5f');
+			ASSERT_EQ(DWORD_TO_REAL(DWORD#16#3FC00000), REAL#1.5, 'and back');
+		END_FUNCTION
+
+		{test}
+		FUNCTION test_lreal_lword_reinterpret
+			ASSERT_EQ(LREAL_TO_LWORD(LREAL#1.5), LWORD#16#3FF8_0000_0000_0000, 'IEEE 754 bits of 1.5');
+			ASSERT_EQ(LWORD_TO_LREAL(LWORD#16#3FF8_0000_0000_0000), LREAL#1.5, 'and back');
+		END_FUNCTION
+
+		// --- float -> int truncation semantics at the edges ---
+
+		{test}
+		FUNCTION test_real_to_int_overflow_wraps
+			(* pins current behavior: trunc to i32 then 16-bit truncation
+			   (40000 = 16#9C40, sign bit set) — consistent with the
+			   narrowing rule rather than saturation *)
+			ASSERT_EQ(REAL_TO_INT(REAL#40000.0), INT#-25536, 'out-of-range REAL wraps like an int narrowing');
+		END_FUNCTION
+
+		{test}
+		FUNCTION test_real_to_udint_above_signed_max
+			ASSERT_EQ(REAL_TO_UDINT(REAL#3000000000.0), UDINT#3000000000, 'unsigned trunc above 2^31');
+		END_FUNCTION
+
+		// --- int -> float precision: f32 has a 24-bit mantissa ---
+
+		{test}
+		FUNCTION test_dint_to_real_precision_loss
+			ASSERT(DINT_TO_REAL(DINT#16777217) = 16777216.0, '2^24+1 is not representable in REAL');
+			ASSERT(DINT_TO_REAL(DINT#16777216) = 16777216.0, '2^24 is exact');
+		END_FUNCTION
+
+		// --- duration narrowing scales units (ns -> ms), it is not a raw wrap ---
+
+		{test}
+		FUNCTION test_ltime_to_time_scales
+			ASSERT(LTIME_TO_TIME(LTIME#1s) = T#1s, 'LTIME ns scale to TIME ms');
+			ASSERT(LTIME_TO_TIME(LTIME#1500ms) = T#1500ms, 'sub-second precision survives');
+		END_FUNCTION
 	END_NAMESPACE
 END_NAMESPACE

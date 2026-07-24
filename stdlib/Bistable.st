@@ -111,5 +111,67 @@ NAMESPACE Std.Bistable
 			latch(TRUE, TRUE);
 			ASSERT(NOT latch.Q1);
 		END_FUNCTION
+
+		// --- the latch must LATCH: state persists through (FALSE, FALSE).
+		// A memoryless body (`Q1 := S1`) passes every test above ---
+
+		{test}
+		FUNCTION test_sr_holds_state_after_release
+			VAR
+				latch: SR;
+			END_VAR
+			latch(TRUE, FALSE);
+			latch(FALSE, FALSE);
+			ASSERT(latch.Q1, 'SR must stay set once S1 is released');
+			latch(FALSE, FALSE);
+			ASSERT(latch.Q1, 'and stay set across further idle calls');
+		END_FUNCTION
+
+		{test}
+		FUNCTION test_sr_stays_reset_after_release
+			VAR
+				latch: SR;
+			END_VAR
+			latch(TRUE, FALSE);
+			latch(FALSE, TRUE);
+			latch(FALSE, FALSE);
+			ASSERT(NOT latch.Q1, 'SR must stay reset once R is released');
+		END_FUNCTION
+
+		{test}
+		FUNCTION test_rs_holds_state_after_release
+			VAR
+				latch: RS;
+			END_VAR
+			latch(TRUE, FALSE);
+			latch(FALSE, FALSE);
+			ASSERT(latch.Q1, 'RS must stay set once S is released');
+		END_FUNCTION
+
+		{test}
+		FUNCTION test_rs_dominance_is_not_sticky
+			VAR
+				latch: RS;
+			END_VAR
+			// Reset-dominant call, then a plain set must succeed again.
+			latch(TRUE, TRUE);
+			ASSERT(NOT latch.Q1);
+			latch(TRUE, FALSE);
+			ASSERT(latch.Q1, 'RS must set normally after a dominant reset');
+			latch(FALSE, FALSE);
+			ASSERT(latch.Q1, 'and hold it');
+		END_FUNCTION
+
+		{test}
+		FUNCTION test_sr_toggle_sequence
+			VAR
+				latch: SR;
+			END_VAR
+			latch(TRUE, FALSE);
+			latch(FALSE, TRUE);
+			latch(TRUE, FALSE);
+			latch(FALSE, FALSE);
+			ASSERT(latch.Q1, 'set-reset-set-idle ends set');
+		END_FUNCTION
 	END_NAMESPACE
 END_NAMESPACE

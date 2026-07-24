@@ -591,5 +591,120 @@ NAMESPACE Std.Counters
 			counter(CU := FALSE, CD := FALSE, R := TRUE, LD := TRUE, PV := 5);
 			ASSERT(counter.CV = 0, 'CV should be 0 - reset takes priority over load');
 		END_FUNCTION
+
+		// --- edge semantics on the DOWN paths: a level-triggered CTD/CTUD
+		// (edge detection dropped) passes every test above ---
+
+		{test}
+		FUNCTION test_ctd_no_count_without_edge
+			VAR
+				counter: CTD_INT;
+			END_VAR
+			counter(CD := FALSE, LD := TRUE, PV := 3);
+			ASSERT(counter.CV = 3, 'loaded to PV');
+			counter(CD := TRUE, LD := FALSE, PV := 3);
+			ASSERT(counter.CV = 2, 'first rising edge decrements');
+			counter(CD := TRUE, LD := FALSE, PV := 3);
+			ASSERT(counter.CV = 2, 'held-high CD must not decrement again');
+		END_FUNCTION
+
+		{test}
+		FUNCTION test_ctud_no_count_without_edge
+			VAR
+				counter: CTUD_INT;
+			END_VAR
+			counter(CU := TRUE, CD := FALSE, R := FALSE, LD := FALSE, PV := 5);
+			ASSERT(counter.CV = 1, 'first CU edge counts');
+			counter(CU := TRUE, CD := FALSE, R := FALSE, LD := FALSE, PV := 5);
+			ASSERT(counter.CV = 1, 'held-high CU must not count again');
+			counter(CU := FALSE, CD := TRUE, R := FALSE, LD := FALSE, PV := 5);
+			ASSERT(counter.CV = 0, 'CD edge counts down');
+			counter(CU := FALSE, CD := TRUE, R := FALSE, LD := FALSE, PV := 5);
+			ASSERT(counter.CV = 0, 'held-high CD must not count again');
+		END_FUNCTION
+
+		// --- clamps reached by COUNTING, not only via LD/R ---
+
+		{test}
+		FUNCTION test_ctud_counts_clamp_at_bounds
+			VAR
+				counter: CTUD_INT;
+			END_VAR
+			counter(CU := TRUE, CD := FALSE, R := FALSE, LD := FALSE, PV := 2);
+			counter(CU := FALSE, CD := FALSE, R := FALSE, LD := FALSE, PV := 2);
+			counter(CU := TRUE, CD := FALSE, R := FALSE, LD := FALSE, PV := 2);
+			ASSERT(counter.CV = 2, 'counted up to PV');
+			ASSERT(counter.QU, 'QU at PV');
+			counter(CU := FALSE, CD := FALSE, R := FALSE, LD := FALSE, PV := 2);
+			counter(CU := TRUE, CD := FALSE, R := FALSE, LD := FALSE, PV := 2);
+			ASSERT(counter.CV = 2, 'counting past PV clamps at PV');
+			counter(CU := FALSE, CD := TRUE, R := FALSE, LD := FALSE, PV := 2);
+			counter(CU := FALSE, CD := FALSE, R := FALSE, LD := FALSE, PV := 2);
+			counter(CU := FALSE, CD := TRUE, R := FALSE, LD := FALSE, PV := 2);
+			ASSERT(counter.CV = 0, 'counted back down to 0');
+			ASSERT(counter.QD, 'QD at 0');
+			counter(CU := FALSE, CD := FALSE, R := FALSE, LD := FALSE, PV := 2);
+			counter(CU := FALSE, CD := TRUE, R := FALSE, LD := FALSE, PV := 2);
+			ASSERT(counter.CV = 0, 'counting below 0 clamps at 0');
+		END_FUNCTION
+
+		// --- negative PV: Q is CV >= PV, so it must be TRUE from the start ---
+
+		{test}
+		FUNCTION test_ctu_negative_pv
+			VAR
+				counter: CTU_INT;
+			END_VAR
+			counter(CU := FALSE, R := FALSE, PV := -5);
+			ASSERT(counter.Q, 'CV=0 >= PV=-5, Q immediately TRUE');
+			ASSERT(counter.CV = 0, 'CV does not move without an edge');
+		END_FUNCTION
+
+		// --- width variants: each FB is independent compiled code; only the
+		// _INT family is exercised above ---
+
+		{test}
+		FUNCTION test_ctu_sint_reaches_preset
+			VAR
+				counter: CTU_SINT;
+			END_VAR
+			counter(CU := TRUE, R := FALSE, PV := SINT#2);
+			counter(CU := FALSE, R := FALSE, PV := SINT#2);
+			counter(CU := TRUE, R := FALSE, PV := SINT#2);
+			ASSERT(counter.CV = SINT#2, 'SINT counter reaches PV');
+			ASSERT(counter.Q, 'SINT Q at PV');
+		END_FUNCTION
+
+		{test}
+		FUNCTION test_ctd_dint_counts_down
+			VAR
+				counter: CTD_DINT;
+			END_VAR
+			counter(CD := FALSE, LD := TRUE, PV := DINT#100000);
+			counter(CD := TRUE, LD := FALSE, PV := DINT#100000);
+			ASSERT(counter.CV = DINT#99999, 'DINT counter decrements');
+		END_FUNCTION
+
+		{test}
+		FUNCTION test_ctd_lint_i64_lane
+			VAR
+				counter: CTD_LINT;
+			END_VAR
+			counter(CD := FALSE, LD := TRUE, PV := LINT#5000000000);
+			ASSERT(counter.CV = LINT#5000000000, 'i64-lane load beyond i32 range');
+			counter(CD := TRUE, LD := FALSE, PV := LINT#5000000000);
+			ASSERT(counter.CV = LINT#4999999999, 'i64-lane decrement');
+		END_FUNCTION
+
+		{test}
+		FUNCTION test_ctud_lint_up_down
+			VAR
+				counter: CTUD_LINT;
+			END_VAR
+			counter(CU := TRUE, CD := FALSE, R := FALSE, LD := FALSE, PV := LINT#3);
+			ASSERT(counter.CV = LINT#1, 'LINT CTUD counts up');
+			counter(CU := FALSE, CD := TRUE, R := FALSE, LD := FALSE, PV := LINT#3);
+			ASSERT(counter.CV = LINT#0, 'LINT CTUD counts down');
+		END_FUNCTION
 	END_NAMESPACE
 END_NAMESPACE

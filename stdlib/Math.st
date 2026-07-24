@@ -354,7 +354,7 @@ NAMESPACE Std.Math
 	NAMESPACE Test
 		USING Std.Unit
 
-		// ----- ABS (extern, ANY_NUM) ----------------------------------
+		// ----- ABS (per signed-numeric overloads) ---------------------
 		{test}
 		FUNCTION test_abs_positive ASSERT(ABS(5) = 5);
 		END_FUNCTION
@@ -379,7 +379,7 @@ NAMESPACE Std.Math
 		FUNCTION test_abs_with_message ASSERT(ABS(-7) = 7, 'ABS should return the positive value');
 		END_FUNCTION
 
-		// ----- SQRT (extern, ANY_REAL) --------------------------------
+		// ----- SQRT (REAL/LREAL overloads) ----------------------------
 		{test}
 		FUNCTION test_sqrt_9 ASSERT(SQRT(9.0) = 3.0);
 		END_FUNCTION
@@ -392,7 +392,7 @@ NAMESPACE Std.Math
 		FUNCTION test_sqrt_1 ASSERT(SQRT(1.0) = 1.0);
 		END_FUNCTION
 
-		// ----- Trigonometric (extern, ANY_REAL) -----------------------
+		// ----- Trigonometric (REAL/LREAL overloads) -------------------
 		{test}
 		FUNCTION test_sin_zero ASSERT(SIN(0.0) = 0.0);
 		END_FUNCTION
@@ -417,7 +417,7 @@ NAMESPACE Std.Math
 		FUNCTION test_atan_zero ASSERT(ATAN(0.0) = 0.0);
 		END_FUNCTION
 
-		// ----- Logarithmic / Exponential (extern, ANY_REAL) ----------
+		// ----- Logarithmic / Exponential (REAL/LREAL overloads) ------
 		{test}
 		FUNCTION test_ln_1 ASSERT(LN(1.0) = 0.0);
 		END_FUNCTION
@@ -787,7 +787,7 @@ NAMESPACE Std.Math
 			ASSERT(r = 99);
 		END_FUNCTION
 
-		// Chained ANY_* calls via intermediate variable
+		// Chained calls via intermediate variable
 		{test}
 		FUNCTION test_chained_abs
 			VAR
@@ -821,6 +821,76 @@ NAMESPACE Std.Math
 			c := a / b;
 			// Can't compare exactly, but c * 3.0 should be 1.0
 			ASSERT(c * b = a);
+		END_FUNCTION
+
+		// --- transcendentals at nonzero, non-colliding points: the fixed
+		// points used above (0->0, 1->0, 0->1) are shared across the whole
+		// family, so swapped imports (ln vs log, exp vs cos) pass unnoticed ---
+
+		{test}
+		FUNCTION test_trig_nonzero_points_real
+			ASSERT(ABS(SIN(0.5) - 0.4794255) < 0.0001, 'SIN(0.5)');
+			ASSERT(ABS(COS(1.0) - 0.5403023) < 0.0001, 'COS(1.0)');
+			ASSERT(ABS(TAN(1.0) - 1.5574077) < 0.0001, 'TAN(1.0)');
+			ASSERT(ABS(ASIN(0.5) - 0.5235988) < 0.0001, 'ASIN(0.5) = pi/6');
+			ASSERT(ABS(ACOS(0.5) - 1.0471976) < 0.0001, 'ACOS(0.5) = pi/3');
+			ASSERT(ABS(ATAN(1.0) - 0.7853982) < 0.0001, 'ATAN(1.0) = pi/4');
+		END_FUNCTION
+
+		{test}
+		FUNCTION test_trig_nonzero_points_lreal
+			ASSERT(ABS(SIN(LREAL#0.5) - LREAL#0.479425538604203) < LREAL#0.000000001, 'SIN LREAL');
+			ASSERT(ABS(COS(LREAL#1.0) - LREAL#0.540302305868140) < LREAL#0.000000001, 'COS LREAL');
+			ASSERT(ABS(ATAN(LREAL#1.0) - LREAL#0.785398163397448) < LREAL#0.000000001, 'ATAN LREAL = pi/4');
+		END_FUNCTION
+
+		{test}
+		FUNCTION test_log_exp_nonzero_points
+			ASSERT(ABS(LN(2.0) - 0.6931472) < 0.0001, 'LN(2)');
+			ASSERT(ABS(LOG(100.0) - 2.0) < 0.0001, 'LOG(100) = 2, distinguishes LOG from LN');
+			ASSERT(ABS(EXP(1.0) - 2.7182818) < 0.0001, 'EXP(1) = e');
+			ASSERT(ABS(SQRT(2.0) - 1.4142136) < 0.0001, 'SQRT(2)');
+			ASSERT(ABS(LN(LREAL#2.0) - LREAL#0.693147180559945) < LREAL#0.000000001, 'LN LREAL');
+			ASSERT(ABS(EXP(LREAL#1.0) - LREAL#2.718281828459045) < LREAL#0.000000001, 'EXP LREAL');
+			ASSERT(ABS(LOG(LREAL#1000.0) - LREAL#3.0) < LREAL#0.000000001, 'LOG LREAL');
+			ASSERT(ABS(SQRT(LREAL#2.0) - LREAL#1.414213562373095) < LREAL#0.000000001, 'SQRT LREAL');
+		END_FUNCTION
+
+		// --- ATAN2: the one two-argument function — swapped y/x is only
+		// detectable with an asymmetric quadrant pair ---
+
+		{test}
+		FUNCTION test_atan2_quadrants_real
+			ASSERT(ABS(ATAN2(1.0, -1.0) - 2.3561945) < 0.0001, 'ATAN2(+y,-x) = 3pi/4 (2nd quadrant)');
+			ASSERT(ABS(ATAN2(-1.0, 1.0) - (-0.7853982)) < 0.0001, 'ATAN2(-y,+x) = -pi/4 (4th quadrant)');
+		END_FUNCTION
+
+		{test}
+		FUNCTION test_atan2_quadrants_lreal
+			ASSERT(ABS(ATAN2(LREAL#1.0, LREAL#-1.0) - LREAL#2.356194490192345) < LREAL#0.000000001, 'ATAN2 LREAL 3pi/4');
+			ASSERT(ABS(ATAN2(LREAL#-1.0, LREAL#1.0) - LREAL#-0.785398163397448) < LREAL#0.000000001, 'ATAN2 LREAL -pi/4');
+		END_FUNCTION
+
+		// --- ABS boundaries and the dark overloads ---
+
+		{test}
+		FUNCTION test_abs_boundaries
+			ASSERT_EQ(ABS(SINT#-127), SINT#127, 'ABS SINT near MIN');
+			ASSERT_EQ(ABS(INT#-32767), INT#32767, 'ABS INT near MIN');
+			ASSERT_EQ(ABS(DINT#-2147483647), DINT#2147483647, 'ABS DINT near MIN');
+			ASSERT_EQ(ABS(LINT#-5000000000), LINT#5000000000, 'ABS LINT on the i64 lane');
+		END_FUNCTION
+
+		// --- domain edges (pins current IEEE 754 behavior through libm) ---
+
+		{test}
+		FUNCTION test_float_domain_edges_pin_current
+			(* pins current behavior: IEEE semantics — NaN for out-of-domain,
+			   infinities at the poles. NaN is the only value with x <> x. *)
+			ASSERT(SQRT(-1.0) <> SQRT(-1.0), 'SQRT(-1) is NaN');
+			ASSERT(LN(-1.0) <> LN(-1.0), 'LN(-1) is NaN');
+			ASSERT(LN(0.0) < -1000000.0, 'LN(0) is -inf');
+			ASSERT(EXP(1000.0) > 1000000.0, 'EXP(1000) overflows to +inf');
 		END_FUNCTION
 	END_NAMESPACE
 END_NAMESPACE

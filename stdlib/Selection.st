@@ -536,5 +536,76 @@ NAMESPACE Std.Selection
 		{test}
 		FUNCTION test_limit_real_in_range ASSERT_EQ(LIMIT(0.0, 5.5, 10.0), 5.5);
 		END_FUNCTION
+
+		// --- nonzero-MN clamps: a LIMIT body that never assigns its result
+		// would return the zero-initialized local and still pass every
+		// clamp-low test above — pin clamps whose expected value is NOT 0 ---
+
+		{test}
+		FUNCTION test_limit_nonzero_mn_clamp
+			ASSERT_EQ(LIMIT(INT#20, INT#5, INT#30), INT#20, 'clamp low to a nonzero MN');
+			ASSERT_EQ(LIMIT(INT#-30, INT#-50, INT#-10), INT#-30, 'negative bounds clamp low');
+			ASSERT_EQ(LIMIT(INT#-30, INT#0, INT#-10), INT#-10, 'negative bounds clamp high');
+		END_FUNCTION
+
+		// IEC 61131-3 Table 32.5: OUT := MIN(MAX(IN, MN), MX) — with the
+		// degenerate MN > MX, applying MX last means MX wins.
+		{test}
+		FUNCTION test_limit_mn_greater_than_mx
+			ASSERT_EQ(LIMIT(INT#10, INT#5, INT#0), INT#0, 'MX wins when MN > MX');
+		END_FUNCTION
+
+		// --- typed overload coverage: each overload is independent compiled
+		// code; the untyped-literal tests above only ever reach INT/REAL ---
+
+		{test}
+		FUNCTION test_limit_lint_i64_lane
+			ASSERT_EQ(LIMIT(LINT#-5000000000, LINT#-6000000000, LINT#5000000000), LINT#-5000000000, 'i64 clamp low beyond i32 range');
+			ASSERT_EQ(LIMIT(LINT#0, LINT#6000000000, LINT#5000000000), LINT#5000000000, 'i64 clamp high beyond i32 range');
+		END_FUNCTION
+
+		{test}
+		FUNCTION test_limit_udint_above_signed_max
+			ASSERT_EQ(LIMIT(UDINT#0, UDINT#4000000000, UDINT#3000000000), UDINT#3000000000, 'unsigned compare above 2^31 must not go signed');
+		END_FUNCTION
+
+		{test}
+		FUNCTION test_limit_sint_boundaries
+			ASSERT_EQ(LIMIT(SINT#-128, SINT#-128, SINT#127), SINT#-128, 'SINT MIN passes through');
+			ASSERT_EQ(LIMIT(SINT#-100, SINT#127, SINT#100), SINT#100, 'SINT clamp high');
+		END_FUNCTION
+
+		{test}
+		FUNCTION test_limit_time
+			ASSERT(LIMIT(T#1s, T#500ms, T#10s) = T#1s, 'TIME clamp low');
+			ASSERT(LIMIT(T#1s, T#20s, T#10s) = T#10s, 'TIME clamp high');
+		END_FUNCTION
+
+		{test}
+		FUNCTION test_sel_byte
+			ASSERT_EQ(SEL(FALSE, BYTE#16#AA, BYTE#16#55), BYTE#16#AA, 'SEL BYTE G=FALSE');
+			ASSERT_EQ(SEL(TRUE, BYTE#16#AA, BYTE#16#55), BYTE#16#55, 'SEL BYTE G=TRUE');
+		END_FUNCTION
+
+		{test}
+		FUNCTION test_sel_lword_i64_lane
+			ASSERT_EQ(SEL(TRUE, LWORD#1, LWORD#16#8000_0000_0000_0000), LWORD#16#8000_0000_0000_0000, 'SEL LWORD picks a sign-bit i64 value');
+		END_FUNCTION
+
+		{test}
+		FUNCTION test_sel_lint_boundaries
+			ASSERT_EQ(SEL(FALSE, LINT#-9223372036854775807, LINT#0), LINT#-9223372036854775807, 'SEL LINT near i64 MIN');
+		END_FUNCTION
+
+		{test}
+		FUNCTION test_sel_time
+			ASSERT(SEL(TRUE, T#1s, T#2s) = T#2s, 'SEL TIME');
+		END_FUNCTION
+
+		{test}
+		FUNCTION test_sel_bool
+			ASSERT_EQ(SEL(TRUE, FALSE, TRUE), TRUE, 'SEL BOOL both branches distinct');
+			ASSERT_EQ(SEL(FALSE, FALSE, TRUE), FALSE, 'SEL BOOL G=FALSE');
+		END_FUNCTION
 	END_NAMESPACE
 END_NAMESPACE
