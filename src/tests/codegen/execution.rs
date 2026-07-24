@@ -770,3 +770,58 @@ fn test_execute_datetime_round_trip(mut with_db: db::RootDatabase) {
     assert_eq!(f.call(&mut store, 86_400_000_000_000 + 500).unwrap(), 500);
     assert_eq!(f.call(&mut store, 86_400_000_000_000 * 2 + 1).unwrap(), 1);
 }
+
+/// Sub-width arithmetic wraps at the IEC type width (type-faithful): results
+/// are re-normalized into the 8/16-bit domain after each op instead of
+/// escaping into the i32 lane. `USINT 255 + 1` used to evaluate to 256 — a
+/// value the type cannot hold — and the escape persisted through stores and
+/// comparisons.
+#[rstest]
+fn test_execute_subwidth_arithmetic_wraps(mut with_db: db::RootDatabase) {
+    let source = r#"
+        FUNCTION usint_add : USINT
+        VAR_INPUT a : USINT; b : USINT; END_VAR
+            usint_add := a + b;
+        END_FUNCTION
+
+        FUNCTION int_add : INT
+        VAR_INPUT a : INT; b : INT; END_VAR
+            int_add := a + b;
+        END_FUNCTION
+
+        FUNCTION sint_div : SINT
+        VAR_INPUT a : SINT; b : SINT; END_VAR
+            sint_div := a / b;
+        END_FUNCTION
+    "#;
+    let wasm = compile_to_wasm(&mut with_db, source);
+    let r: i32 = super::execute_wasm(&wasm, "usint_add", (255i32, 1i32));
+    assert_eq!(r, 0, "USINT 255 + 1 wraps to 0");
+    let r: i32 = super::execute_wasm(&wasm, "int_add", (32767i32, 1i32));
+    assert_eq!(r, -32768, "INT 32767 + 1 wraps to -32768");
+    let r: i32 = super::execute_wasm(&wasm, "sint_div", (-128i32, -1i32));
+    assert_eq!(r, -128, "SINT -128 / -1 wraps to -128");
+}
+
+/// Narrowing casts truncate to the target width and re-extend — the value
+/// must never escape the target's domain (INT_TO_SINT-style conversions are
+/// lowered through the same Cast path as language-level narrowing).
+#[rstest]
+fn test_execute_subwidth_cast_normalizes(mut with_db: db::RootDatabase) {
+    let source = r#"
+        FUNCTION to_sint : SINT
+        VAR_INPUT a : INT; END_VAR
+        VAR s : SINT; END_VAR
+            s := INT_TO_SINT(a);
+            to_sint := s;
+        END_FUNCTION
+
+        FUNCTION INT_TO_SINT : SINT
+        VAR_INPUT IN : INT; END_VAR
+            {wasm 'nop' (params IN) (result INT_TO_SINT)}
+        END_FUNCTION
+    "#;
+    let wasm = compile_to_wasm(&mut with_db, source);
+    let r: i32 = super::execute_wasm(&wasm, "to_sint", (200i32,));
+    assert_eq!(r, -56, "INT_TO_SINT(200) truncates to the 8-bit two's-complement -56");
+}

@@ -742,6 +742,62 @@ NAMESPACE Std.Math
 			ASSERT(r = 1);
 		END_FUNCTION
 
+		{test}
+		FUNCTION test_for_descending
+			VAR
+				n: INT := 0;
+				i: INT;
+			END_VAR
+			// A constant negative BY flips the exit comparison — this loop
+			// used to exit before its first iteration.
+			FOR i := 10 TO 1 BY -1 DO
+				n := n + 1;
+			END_FOR;
+			ASSERT(n = 10, 'descending FOR runs all 10 iterations');
+		END_FUNCTION
+
+		{test}
+		FUNCTION test_for_lint_counter
+			VAR
+				n: LINT := 0;
+				i: LINT;
+			END_VAR
+			// i64-lane control variable (used to emit invalid wasm).
+			FOR i := LINT#1 TO LINT#3 DO
+				n := n + i;
+			END_FOR;
+			ASSERT(n = LINT#6, 'LINT FOR loop sums 1+2+3');
+		END_FUNCTION
+
+		{test}
+		FUNCTION test_for_lint_descending_beyond_i32
+			VAR
+				n: LINT := 0;
+				i: LINT;
+			END_VAR
+			FOR i := LINT#5000000002 TO LINT#5000000000 BY LINT#-1 DO
+				n := n + 1;
+			END_FOR;
+			ASSERT(n = LINT#3, 'descending i64 FOR with bounds beyond i32 range');
+		END_FUNCTION
+
+		{test}
+		FUNCTION test_for_subwidth_counter_stays_in_domain
+			VAR
+				n: USINT := 0;
+				i: USINT;
+			END_VAR
+			// Counter increments stay in the type's domain. NOTE: an upper
+			// bound at the type MAX (e.g. TO 255) wraps before the exit
+			// check and never terminates — same documented footgun as
+			// other toolchains; keep bounds below the type maximum.
+			FOR i := 250 TO 254 DO
+				n := n + 1;
+			END_FOR;
+			ASSERT(n = USINT#5, 'body ran 5 times');
+			ASSERT(i = USINT#255, 'counter exits in-domain at 255');
+		END_FUNCTION
+
 		// ----- Control flow: WHILE ---------------------------------------------------------------------------------
 		{test}
 		FUNCTION test_while_count

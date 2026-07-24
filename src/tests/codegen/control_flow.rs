@@ -254,3 +254,118 @@ fn test_repeat_loop(mut with_db: db::RootDatabase) {
         "12 divisible by 2"
     );
 }
+
+/// Descending FOR: a constant negative `BY` flips the exit comparison.
+/// Before the fix the loop compared ascending (`ctrl > end`) regardless of
+/// direction, so `BY -1` exited before its first iteration.
+#[rstest]
+fn test_for_descending(mut with_db: db::RootDatabase) {
+    let source = r#"
+        FUNCTION count_down : INT
+        VAR n : INT; i : INT; END_VAR
+            FOR i := 10 TO 1 BY -1 DO
+                n := n + 1;
+            END_FOR;
+            count_down := n;
+        END_FUNCTION
+    "#;
+    let wasm = compile_to_wasm(&mut with_db, source);
+    let r: i32 = super::execute_wasm(&wasm, "count_down", ());
+    assert_eq!(r, 10, "descending FOR runs all 10 iterations");
+}
+
+/// Descending FOR with a step that overshoots the bound: exits on the first
+/// counter value strictly below `end`.
+#[rstest]
+fn test_for_descending_by_two(mut with_db: db::RootDatabase) {
+    let source = r#"
+        FUNCTION count_down2 : INT
+        VAR n : INT; i : INT; END_VAR
+            FOR i := 10 TO 1 BY -2 DO
+                n := n + 1;
+            END_FOR;
+            count_down2 := n;
+        END_FUNCTION
+    "#;
+    let wasm = compile_to_wasm(&mut with_db, source);
+    let r: i32 = super::execute_wasm(&wasm, "count_down2", ());
+    assert_eq!(r, 5, "10,8,6,4,2 then 0 < 1 exits");
+}
+
+/// Ascending FOR whose range is empty must not iterate (guards that the
+/// descending fix didn't disturb the ascending exit test).
+#[rstest]
+fn test_for_empty_ascending_range(mut with_db: db::RootDatabase) {
+    let source = r#"
+        FUNCTION no_iters : INT
+        VAR n : INT; i : INT; END_VAR
+            FOR i := 5 TO 1 DO
+                n := n + 1;
+            END_FOR;
+            no_iters := n;
+        END_FUNCTION
+    "#;
+    let wasm = compile_to_wasm(&mut with_db, source);
+    let r: i32 = super::execute_wasm(&wasm, "no_iters", ());
+    assert_eq!(r, 0, "start > end with positive step never enters the body");
+}
+
+/// LINT (i64-lane) control variable. Before the fix the bound check and
+/// increment hardcoded i32 ops, producing a module that failed wasm
+/// validation outright.
+#[rstest]
+fn test_for_lint_control_var(mut with_db: db::RootDatabase) {
+    let source = r#"
+        FUNCTION lint_sum : LINT
+        VAR n : LINT; i : LINT; END_VAR
+            FOR i := LINT#1 TO LINT#3 DO
+                n := n + i;
+            END_FOR;
+            lint_sum := n;
+        END_FUNCTION
+    "#;
+    let wasm = compile_to_wasm(&mut with_db, source);
+    let r: i64 = super::execute_wasm(&wasm, "lint_sum", ());
+    assert_eq!(r, 6, "i64 FOR loop sums 1+2+3");
+}
+
+/// Descending i64 FOR with bounds only representable beyond i32.
+#[rstest]
+fn test_for_lint_descending_beyond_i32(mut with_db: db::RootDatabase) {
+    let source = r#"
+        FUNCTION lint_down : LINT
+        VAR n : LINT; i : LINT; END_VAR
+            FOR i := LINT#5000000002 TO LINT#5000000000 BY LINT#-1 DO
+                n := n + 1;
+            END_FOR;
+            lint_down := n;
+        END_FUNCTION
+    "#;
+    let wasm = compile_to_wasm(&mut with_db, source);
+    let r: i64 = super::execute_wasm(&wasm, "lint_down", ());
+    assert_eq!(r, 3, "descending i64 FOR with bounds beyond i32 range");
+}
+
+/// Sub-width control variable: the counter increment normalizes like any
+/// other arithmetic, so the counter never escapes its type's domain. (An
+/// upper bound at the type MAX wraps before the exit check and never
+/// terminates — other toolchains-documented behavior — so bounds here stay below it.)
+#[rstest]
+fn test_for_subwidth_counter_stays_in_domain(mut with_db: db::RootDatabase) {
+    let source = r#"
+        FUNCTION usint_counter : USINT
+        VAR i : USINT; n : USINT; END_VAR
+            FOR i := 250 TO 254 DO
+                n := n + 1;
+            END_FOR;
+            IF n <> 5 THEN
+                usint_counter := 0;
+            ELSE
+                usint_counter := i;
+            END_IF;
+        END_FUNCTION
+    "#;
+    let wasm = compile_to_wasm(&mut with_db, source);
+    let r: i32 = super::execute_wasm(&wasm, "usint_counter", ());
+    assert_eq!(r, 255, "5 iterations and the counter exits in-domain at 255");
+}

@@ -783,10 +783,9 @@ fn emit_binop(func: &mut wasm_encoder::Function, op: MirBinOp, ty: MirElementary
     }
 }
 
-/// Re-normalize an i32-lane arithmetic result into a sub-width type's domain
-/// (see `mir_cast::append_subwidth_normalization`). No-op for BOOL and
-/// 32/64-bit types.
-fn normalize_subwidth(func: &mut wasm_encoder::Function, ty: MirElementary) {
+/// Re-normalize an i32-lane arithmetic result into a sub-width type's
+/// domain; no-op for BOOL and 32/64-bit types.
+pub(crate) fn normalize_subwidth(func: &mut wasm_encoder::Function, ty: MirElementary) {
     let mut instrs = Vec::new();
     crate::mir_cast::append_subwidth_normalization(ty, &mut instrs);
     for instr in &instrs {

@@ -186,22 +186,42 @@ fn emit_stmt(func: &mut wasm_encoder::Function, stmt: &MirStmt, ctx: &Ctx) {
             func.instruction(&Instruction::Block(BlockType::Empty));
             func.instruction(&Instruction::Loop(BlockType::Empty));
 
+            // A descending loop (constant negative BY) exits below the end bound;
+            // non-constant steps default to ascending; unsigned counters are
+            // always ascending.
+            let descending = matches!(&**step, MirExpr::Constant(MirConstant::I32(c)) if *c < 0)
+                || matches!(&**step, MirExpr::Constant(MirConstant::I64(c)) if *c < 0);
+            let is_64 = control_type.is_64bit();
+
             // Check bound
             func.instruction(&Instruction::LocalGet(ctrl_idx));
             emit_expr(func, end, ctx.locals, ctx.fn_indices);
-            if control_type.is_signed() {
-                func.instruction(&Instruction::I32GtS);
-            } else {
-                func.instruction(&Instruction::I32GtU);
-            }
+            let cmp = match (is_64, control_type.is_signed(), descending) {
+                (false, true, false) => Instruction::I32GtS,
+                (false, true, true) => Instruction::I32LtS,
+                (false, false, _) => Instruction::I32GtU,
+                (true, true, false) => Instruction::I64GtS,
+                (true, true, true) => Instruction::I64LtS,
+                (true, false, _) => Instruction::I64GtU,
+            };
+            func.instruction(&cmp);
             func.instruction(&Instruction::BrIf(1));
 
             emit_stmts(func, body, ctx);
 
-            // Increment
+            // Increment. Sub-width counters wrap at the IEC type width like
+            // any other arithmetic — so `FOR i: USINT := 0 TO 255` never
+            // terminates (the counter wraps to 0 before the exit check),
+            // matching a toolchain's documented behavior for an upper bound at
+            // the type maximum.
             func.instruction(&Instruction::LocalGet(ctrl_idx));
             emit_expr(func, step, ctx.locals, ctx.fn_indices);
-            func.instruction(&Instruction::I32Add);
+            if is_64 {
+                func.instruction(&Instruction::I64Add);
+            } else {
+                func.instruction(&Instruction::I32Add);
+                super::emit_expr::normalize_subwidth(func, *control_type);
+            }
             func.instruction(&Instruction::LocalSet(ctrl_idx));
 
             func.instruction(&Instruction::Br(0));
