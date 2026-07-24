@@ -405,6 +405,31 @@ fn emit_stmt(func: &mut wasm_encoder::Function, stmt: &MirStmt, ctx: &Ctx) {
                 return;
             }
 
+            // IEC-width shifts/rotates (`rk.shl8`, `rk.rotl16`, …): raw
+            // wasm shift ops work at the i32/i64 lane width, so sub-width
+            // types need result masking, sub-width rotates need the
+            // shl|shr composition (an 8-bit rotate is NOT a masked
+            // i32.rotl — the wrapped bit lands at bit 31, not bit 7), and
+            // wasm masks the shift count mod lane width, so shift-by-type-
+            // width must be guarded to 0 explicitly. Needs the param
+            // *locals* (IN, N referenced more than once) — same pattern as
+            // the abs block above.
+            if let Some(op) = instruction.strip_prefix("rk.") {
+                let get_local = |name: &_| match ctx.locals.get(name) {
+                    Some(LocalInfo::Scalar { index, .. }) => *index,
+                    _ => panic!("rk.* shift/rotate params must be scalar locals"),
+                };
+                let in_idx = get_local(params.first().expect("rk.* op needs IN"));
+                let n_idx = get_local(params.get(1).expect("rk.* op needs N"));
+                emit_iec_shift_rotate(func, op, in_idx, n_idx);
+                if let Some(result_name) = result
+                    && let Some(LocalInfo::Scalar { index, .. }) = ctx.locals.get(result_name)
+                {
+                    func.instruction(&Instruction::LocalSet(*index));
+                }
+                return;
+            }
+
             // Push params on stack
             for param_name in params {
                 if let Some(info) = ctx.locals.get(param_name)
@@ -452,7 +477,79 @@ fn emit_stmt(func: &mut wasm_encoder::Function, stmt: &MirStmt, ctx: &Ctx) {
     }
 }
 
-/// Map a WASM instruction name string to the corresponding wasm_encoder instruction.
+/// Emit an IEC-width shift/rotate (`shl8`, `shr16`, `rotl8`, …) from the
+/// IN/N param locals, IEC 61131-3 Table 30 semantics: a count `>= W`
+/// yields 0, sub-width results are masked to W bits, sub-width rotates
+/// are composed as `((IN << N') | (IN >> (W - N'))) & mask` with
+/// `N' = N mod W`.
+fn emit_iec_shift_rotate(func: &mut wasm_encoder::Function, op: &str, in_idx: u32, n_idx: u32) {
+    // Shift, W in {8, 16, 32}: shift, mask, then `select(shifted, 0, N <u 32)`.
+    let shift_i32 = |func: &mut wasm_encoder::Function, w: u32, shift_op: Instruction<'static>| {
+        func.instruction(&Instruction::LocalGet(in_idx));
+        func.instruction(&Instruction::LocalGet(n_idx));
+        func.instruction(&shift_op);
+        if w < 32 {
+            func.instruction(&Instruction::I32Const(((1u64 << w) - 1) as i32));
+            func.instruction(&Instruction::I32And);
+        }
+        func.instruction(&Instruction::I32Const(0));
+        func.instruction(&Instruction::LocalGet(n_idx));
+        func.instruction(&Instruction::I32Const(32));
+        func.instruction(&Instruction::I32LtU);
+        func.instruction(&Instruction::Select);
+    };
+    // 64-bit shift: extend the i32 count, guard N >= 64.
+    let shift_i64 = |func: &mut wasm_encoder::Function, shift_op: Instruction<'static>| {
+        func.instruction(&Instruction::LocalGet(in_idx));
+        func.instruction(&Instruction::LocalGet(n_idx));
+        func.instruction(&Instruction::I64ExtendI32U);
+        func.instruction(&shift_op);
+        func.instruction(&Instruction::I64Const(0));
+        func.instruction(&Instruction::LocalGet(n_idx));
+        func.instruction(&Instruction::I32Const(64));
+        func.instruction(&Instruction::I32LtU);
+        func.instruction(&Instruction::Select);
+    };
+    // Sub-width rotate: `((IN fwd N') | (IN back (W - N'))) & mask`,
+    // `N' = N & (W-1)`.
+    let rotate = |func: &mut wasm_encoder::Function,
+                  w: u32,
+                  fwd: Instruction<'static>,
+                  back: Instruction<'static>| {
+        func.instruction(&Instruction::LocalGet(in_idx));
+        func.instruction(&Instruction::LocalGet(n_idx));
+        func.instruction(&Instruction::I32Const((w - 1) as i32));
+        func.instruction(&Instruction::I32And);
+        func.instruction(&fwd);
+        func.instruction(&Instruction::LocalGet(in_idx));
+        func.instruction(&Instruction::I32Const(w as i32));
+        func.instruction(&Instruction::LocalGet(n_idx));
+        func.instruction(&Instruction::I32Const((w - 1) as i32));
+        func.instruction(&Instruction::I32And);
+        func.instruction(&Instruction::I32Sub);
+        func.instruction(&back);
+        func.instruction(&Instruction::I32Or);
+        func.instruction(&Instruction::I32Const(((1u64 << w) - 1) as i32));
+        func.instruction(&Instruction::I32And);
+    };
+
+    match op {
+        "shl8" => shift_i32(func, 8, Instruction::I32Shl),
+        "shl16" => shift_i32(func, 16, Instruction::I32Shl),
+        "shl32" => shift_i32(func, 32, Instruction::I32Shl),
+        "shl64" => shift_i64(func, Instruction::I64Shl),
+        "shr8" => shift_i32(func, 8, Instruction::I32ShrU),
+        "shr16" => shift_i32(func, 16, Instruction::I32ShrU),
+        "shr32" => shift_i32(func, 32, Instruction::I32ShrU),
+        "shr64" => shift_i64(func, Instruction::I64ShrU),
+        "rotl8" => rotate(func, 8, Instruction::I32Shl, Instruction::I32ShrU),
+        "rotl16" => rotate(func, 16, Instruction::I32Shl, Instruction::I32ShrU),
+        "rotr8" => rotate(func, 8, Instruction::I32ShrU, Instruction::I32Shl),
+        "rotr16" => rotate(func, 16, Instruction::I32ShrU, Instruction::I32Shl),
+        other => panic!("unknown rk.* pseudo-op: rk.{}", other),
+    }
+}
+
 fn emit_wasm_instruction(func: &mut wasm_encoder::Function, name: &str) {
     match name {
         // Integer arithmetic/bitwise (32-bit)
@@ -501,6 +598,19 @@ fn emit_wasm_instruction(func: &mut wasm_encoder::Function, name: &str) {
         "i64.rotr" => {
             func.instruction(&Instruction::I64ExtendI32U);
             func.instruction(&Instruction::I64Rotr);
+        }
+        // Bit-pattern reinterprets (Convert.st `REAL_TO_DWORD` family)
+        "i32.reinterpret_f32" => {
+            func.instruction(&Instruction::I32ReinterpretF32);
+        }
+        "i64.reinterpret_f64" => {
+            func.instruction(&Instruction::I64ReinterpretF64);
+        }
+        "f32.reinterpret_i32" => {
+            func.instruction(&Instruction::F32ReinterpretI32);
+        }
+        "f64.reinterpret_i64" => {
+            func.instruction(&Instruction::F64ReinterpretI64);
         }
         // Float conversions
         "f32.convert_i32_s" => {

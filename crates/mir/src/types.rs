@@ -199,6 +199,36 @@ impl MirElementary {
         self.size_bytes()
     }
 
+    /// IEC semantic bit width (BYTE = 8, WORD = 16), distinct from the
+    /// 4-byte-aligned storage size; shifts, rotates and narrowing casts
+    /// respect it.
+    pub fn rk_bits(self) -> u32 {
+        match self {
+            MirElementary::Bool => 1,
+            MirElementary::SInt
+            | MirElementary::USInt
+            | MirElementary::Byte
+            | MirElementary::Char => 8,
+            MirElementary::Int | MirElementary::UInt | MirElementary::Word => 16,
+            MirElementary::DInt
+            | MirElementary::UDInt
+            | MirElementary::DWord
+            | MirElementary::Real
+            | MirElementary::Time
+            | MirElementary::Date
+            | MirElementary::Tod
+            | MirElementary::DateAndTime => 32,
+            MirElementary::LInt
+            | MirElementary::ULInt
+            | MirElementary::LWord
+            | MirElementary::LReal
+            | MirElementary::LTime
+            | MirElementary::LDate
+            | MirElementary::LTod
+            | MirElementary::LDateTime => 64,
+        }
+    }
+
     /// Whether this type maps to a 64-bit WASM value.
     pub fn is_64bit(self) -> bool {
         self.size_bytes() == 8

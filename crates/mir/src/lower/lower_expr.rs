@@ -385,32 +385,33 @@ impl<'db> ExprLowerCtx<'db> {
                 Ok(MirExpr::Constant(MirConstant::I64(val)))
             }
 
-            // Unsigned integers
+            // Unsigned integers parse in the unsigned domain, then reinterpret into
+            // the storage lane.
             Elementary::USInt(int) | Elementary::UInt(int) | Elementary::UDInt(int) => {
-                let val = int.as_i32(db).map_err(|e| {
+                let val = int.as_u32(db).map_err(|e| {
                     LowerTypeError::UnsupportedType(format!("Unsigned int parse error: {}", e))
                 })?;
-                Ok(MirExpr::Constant(MirConstant::I32(val)))
+                Ok(MirExpr::Constant(MirConstant::I32(val as i32)))
             }
             Elementary::ULInt(int) => {
-                let val = int.as_i64(db).map_err(|e| {
+                let val = int.as_u64(db).map_err(|e| {
                     LowerTypeError::UnsupportedType(format!("ULInt parse error: {}", e))
                 })?;
-                Ok(MirExpr::Constant(MirConstant::I64(val)))
+                Ok(MirExpr::Constant(MirConstant::I64(val as i64)))
             }
 
-            // Bit strings
+            // Bit strings: same unsigned-domain rule (`DWORD#3000000000`).
             Elementary::Byte(int) | Elementary::Word(int) | Elementary::DWord(int) => {
-                let val = int.as_i32(db).map_err(|e| {
+                let val = int.as_u32(db).map_err(|e| {
                     LowerTypeError::UnsupportedType(format!("Bit string parse error: {}", e))
                 })?;
-                Ok(MirExpr::Constant(MirConstant::I32(val)))
+                Ok(MirExpr::Constant(MirConstant::I32(val as i32)))
             }
             Elementary::LWord(int) => {
-                let val = int.as_i64(db).map_err(|e| {
+                let val = int.as_u64(db).map_err(|e| {
                     LowerTypeError::UnsupportedType(format!("LWord parse error: {}", e))
                 })?;
-                Ok(MirExpr::Constant(MirConstant::I64(val)))
+                Ok(MirExpr::Constant(MirConstant::I64(val as i64)))
             }
 
             // Floats

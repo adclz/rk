@@ -874,6 +874,35 @@ pub fn lower_wasm_intrinsic<'db>(
                     _ => None,
                 });
             match elem {
+                // Shifts/rotates get IEC-width semantics (`rk.shl8`,
+                // `rk.rotl16`, …), not raw wasm ops: a raw op works at the
+                // i32/i64 lane width, so on sub-width types shifted-out bits
+                // leak past the type width and rotates wrap at bit 31/63
+                // instead of the type's MSB; wasm also masks the count mod
+                // lane width, so shift-by-32 on a DWORD would be a no-op
+                // instead of 0. emit_stmt.rs lowers each pseudo-op to a
+                // mask/guard sequence. 32/64-bit rotates keep the native op:
+                // count mod lane width == count mod type width there.
+                Some(e)
+                    if matches!(
+                        wasm_decl.instruction.as_str(),
+                        "shl" | "shr_u" | "rotl" | "rotr"
+                    ) && !e.is_float() =>
+                {
+                    let bits = e.rk_bits();
+                    match (wasm_decl.instruction.as_str(), bits) {
+                        ("shl", b) => CompactString::from(format!("rk.shl{}", b)),
+                        ("shr_u", b) => CompactString::from(format!("rk.shr{}", b)),
+                        ("rotl", b) if b <= 16 => CompactString::from(format!("rk.rotl{}", b)),
+                        ("rotr", b) if b <= 16 => CompactString::from(format!("rk.rotr{}", b)),
+                        // Full-width rotates are correct natively.
+                        ("rotl", 64) => CompactString::from("i64.rotl"),
+                        ("rotl", _) => CompactString::from("i32.rotl"),
+                        ("rotr", 64) => CompactString::from("i64.rotr"),
+                        ("rotr", _) => CompactString::from("i32.rotr"),
+                        _ => unreachable!(),
+                    }
+                }
                 Some(e) => {
                     let prefix = if e.is_float() {
                         if e.is_64bit() { "f64" } else { "f32" }
@@ -892,10 +921,14 @@ pub fn lower_wasm_intrinsic<'db>(
 
     // A single-input elementary conversion with NO type-basis is a Convert.st
     // cast (`<SRC>_TO_<TGT>`) — emit a Cast so mir_cast.rs picks the op.
+    // EXCEPT reinterprets: `REAL_TO_DWORD` is `i32.reinterpret_f32` (bit
+    // pattern), one token away from the numeric conversion a Cast would emit —
+    // routing it through mir_cast would silently turn it into a truncation.
     // Everything else (type-basis math/bit ops, multi-input, STRING) emits a
     // WasmIntrinsic carrying the resolved instruction string.
     let body = if wasm_decl.type_ref.is_none()
         && input_count == 1
+        && !wasm_decl.instruction.contains("reinterpret")
         && let (Some(p_name), Some(from), Some(to)) = (param_name, param_elem, return_elem)
     {
         let load = MirExpr::Load(MirPlace::Local(p_name), MirType::Elementary(from));

@@ -22,8 +22,11 @@ pub(crate) fn emit_cast_instructions(
     let to_vt = super::mir_elementary_to_val_type(to);
 
     if from_vt == to_vt {
-        // Same WASM type (e.g., SINT -> INT, both i32) — no conversion needed
-        return Vec::new();
+        // Same WASM lane (e.g., SINT -> INT, both i32) — no lane conversion,
+        // but the target may still be sub-width (normalization below).
+        let mut instrs = Vec::new();
+        append_subwidth_normalization(to, &mut instrs);
+        return instrs;
     }
 
     let mut instrs = Vec::new();
@@ -120,7 +123,41 @@ pub(crate) fn emit_cast_instructions(
         }
     }
 
+    append_subwidth_normalization(to, &mut instrs);
+
     instrs
+}
+
+/// Normalize an i32-lane value into a sub-width (8/16-bit) target's domain.
+///
+/// Sub-width types live in i32 locals wider than their IEC domain; the stored
+/// representation invariant is: unsigned types zero-extended, signed types
+/// sign-extended. Every cast INTO a sub-width type truncates to the type
+/// width and re-extends — otherwise the value escapes the target's domain
+/// entirely (`INT_TO_SINT(200)` staying 200 instead of the two's-complement
+/// -56, `INT_TO_UINT(-1)` reading back as 4294967295 instead of 65535).
+/// Idempotent for values already in-domain. BOOL and 32/64-bit targets are
+/// untouched.
+fn append_subwidth_normalization(to: MirElementary, instrs: &mut Vec<Instruction<'static>>) {
+    match to.rk_bits() {
+        8 => {
+            if to.is_signed() {
+                instrs.push(Instruction::I32Extend8S);
+            } else {
+                instrs.push(Instruction::I32Const(0xFF));
+                instrs.push(Instruction::I32And);
+            }
+        }
+        16 => {
+            if to.is_signed() {
+                instrs.push(Instruction::I32Extend16S);
+            } else {
+                instrs.push(Instruction::I32Const(0xFFFF));
+                instrs.push(Instruction::I32And);
+            }
+        }
+        _ => {}
+    }
 }
 
 /// Date / time conversions, matching the integer encodings documented in
