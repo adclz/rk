@@ -15,6 +15,7 @@ use crate::{
         using::Using,
     },
     hir_ty::{
+        head::signature::function_signature,
         index_graphs::{
             namespace_index, namespace_pou_candidates, pou_candidates, pou_index, program_index,
         },
@@ -204,42 +205,130 @@ pub fn find_in_parent_pous<'db>(
     PouResolution::NotFound
 }
 
-/// Re-select a FUNCTION overload by call arity.
+/// Outcome of overload selection.
+pub enum OverloadPick<'db> {
+    /// A unique callable to use — either the resolved overload, or the input
+    /// unchanged when the name isn't an overload set or nothing better matched.
+    One(CallableType<'db>),
+    /// Several overloads are equally viable for the given argument types; the
+    /// caller must disambiguate with an explicit cast.
+    Ambiguous(Vec<Function<'db>>),
+}
+
+/// Select the FUNCTION overload whose signature matches `arg_types`.
 ///
 /// Ordinary name resolution binds a bare function name to the *first* same-name
-/// FUNCTION in scope. When that name is an overload set, this picks the overload
-/// whose parameter count matches the call's argument count. The selection lives
-/// here — in the POU-finding module — so call resolution only supplies the arg
-/// count and stays unaware that overloading exists.
+/// FUNCTION in scope. When that name is an overload set, this re-selects by
+/// matching the call's argument types against each overload's signature
+/// ([`function_signature`]). The selection lives here — in the POU-finding
+/// module — so call resolution only supplies the arg types and stays unaware
+/// that overloading exists.
 ///
-/// Non-FUNCTION callables and calls whose arity already matches the first-match
-/// pass straight through. If no overload matches the arity, the first-match is
-/// kept, so a genuine arity error still surfaces downstream.
+/// Ranking (never guesses): an argument matches a parameter *exactly* (same
+/// type / literal-of-default-type) or by *widening* (implicit cast). An overload
+/// that's exact on every argument is unique and wins. Otherwise a single viable
+/// overload is used; two or more viable ⇒ [`OverloadPick::Ambiguous`]; none ⇒
+/// keep the first-match so the ordinary param-mismatch error surfaces.
 pub fn select_overload<'db>(
     db: &'db dyn WorkspaceDataBase,
     callable: CallableType<'db>,
-    arg_count: usize,
-) -> CallableType<'db> {
+    arg_types: &[Type<'db>],
+) -> OverloadPick<'db> {
     let CallableType::Function(first) = callable else {
-        return callable;
+        return OverloadPick::One(callable);
     };
-    if first.param_count(db) == arg_count {
-        return callable;
-    }
 
     let name = first.name(db);
     let candidates = match function_namespace_path(db, first) {
         Some(path) => namespace_pou_candidates(db, path, name),
         None => pou_candidates(db, name),
     };
-    for c in candidates {
-        if let Pou::Function(f) = c
-            && f.param_count(db) == arg_count
-        {
-            return CallableType::Function(f);
+    let functions: Vec<Function<'db>> = candidates
+        .into_iter()
+        .filter_map(|p| match p {
+            Pou::Function(f) => Some(f),
+            _ => None,
+        })
+        .collect();
+    if functions.len() <= 1 {
+        // Not an overload set — nothing to pick.
+        return OverloadPick::One(callable);
+    }
+
+    let mut exact: Option<Function<'db>> = None;
+    let mut viable: Vec<Function<'db>> = Vec::new();
+    for f in functions {
+        let sig = function_signature(db, f);
+        if sig.len() != arg_types.len() {
+            continue;
+        }
+        let mut all_exact = true;
+        let mut ok = true;
+        for (arg, param) in arg_types.iter().zip(sig.iter()) {
+            match classify_arg(db, *arg, *param) {
+                ArgMatch::Exact => {}
+                ArgMatch::Widen => all_exact = false,
+                ArgMatch::No => {
+                    ok = false;
+                    break;
+                }
+            }
+        }
+        if ok {
+            if all_exact {
+                exact = Some(f);
+            }
+            viable.push(f);
         }
     }
-    callable
+
+    // An all-exact match is unique — two distinct signatures can't both exactly
+    // equal the same argument tuple — so it always wins.
+    if let Some(f) = exact {
+        return OverloadPick::One(CallableType::Function(f));
+    }
+    match viable.len() {
+        0 => OverloadPick::One(callable),
+        1 => OverloadPick::One(CallableType::Function(viable[0])),
+        _ => OverloadPick::Ambiguous(viable),
+    }
+}
+
+enum ArgMatch {
+    Exact,
+    Widen,
+    No,
+}
+
+/// Classify how argument type `arg` matches parameter type `param`.
+fn classify_arg<'db>(db: &'db dyn WorkspaceDataBase, arg: Type<'db>, param: Type<'db>) -> ArgMatch {
+    let arg = arg.normalize(db);
+    let param = param.normalize(db);
+    if arg == param {
+        return ArgMatch::Exact;
+    }
+    // An untyped literal matches its default type (INT / REAL) exactly, and
+    // widens to any larger compatible type (INT->DINT, INT->REAL, REAL->LREAL).
+    // The direction matters: a float literal must NOT match an integer param
+    // even though INT widens to REAL.
+    if let Type::Infer(it) = arg {
+        let default = it.to_spec(db);
+        if let Type::Elementary(p) = param {
+            if default == p {
+                return ArgMatch::Exact;
+            }
+            if p.implicit_cast(default).is_some() {
+                return ArgMatch::Widen;
+            }
+        }
+        return ArgMatch::No;
+    }
+    if let (Type::Elementary(a), Type::Elementary(p)) = (arg, param)
+        && p.implicit_cast(a).is_some()
+    {
+        return ArgMatch::Widen;
+    }
+    ArgMatch::No
 }
 
 /// The namespace path a function is declared in, or `None` for a top-level

@@ -1,7 +1,9 @@
 //! FUNCTION overload resolution — a call binds to the same-name overload whose
-//! parameter count matches the call's argument count. The discriminant is the
-//! arity (see `Function::param_count`); same-arity collisions are rejected by
-//! the duplicate check (see `duplicates.rs`), so resolution is unambiguous.
+//! signature (ordered parameter types, see `function_signature`) matches the
+//! call's argument types. Overloads that are exact-on-every-arg win; when an
+//! argument fits several by widening and none is exact, the call is ambiguous
+//! (E0237) rather than guessed. Identical signatures are rejected as duplicates
+//! (see `duplicates.rs`).
 
 use db::RootDatabase;
 use insta::assert_snapshot;
@@ -71,6 +73,77 @@ END_FUNCTION
      14 |     i := foo(1, 2);     // foo/2 returns STRING -> STRING := INT is a type error
         |          ^^^^|^^^^
         |              `------ expected 'INT', got 'STRING'
+    ----'
+    ");
+}
+
+// Same arity, different parameter TYPE is a legal overload set (not a
+// duplicate), and a call binds by argument type. Distinct return types (INT vs
+// BOOL) make a wrong pick a type error, so a clean run proves correct selection.
+#[rstest]
+fn overload_by_parameter_type(mut with_db: RootDatabase) {
+    let source = r#"
+FUNCTION describe : INT
+VAR_INPUT x : INT; END_VAR
+    describe := 1;
+END_FUNCTION
+
+FUNCTION describe : BOOL
+VAR_INPUT x : REAL; END_VAR
+    describe := TRUE;
+END_FUNCTION
+
+FUNCTION test : INT
+VAR i : INT; r : REAL; n : INT; b : BOOL; END_VAR
+    n := describe(i);   // -> describe(INT) : INT
+    b := describe(r);   // -> describe(REAL) : BOOL
+    test := n;
+END_FUNCTION
+"#;
+
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @"");
+}
+
+// When an argument fits several overloads and none is an exact match, the
+// compiler refuses to guess and reports E0237. `pick(1)` — the untyped literal
+// widens to both DINT and LINT.
+#[rstest]
+fn ambiguous_overload_is_rejected(mut with_db: RootDatabase) {
+    let source = r#"
+FUNCTION pick : INT
+VAR_INPUT x : DINT; END_VAR
+    pick := 1;
+END_FUNCTION
+
+FUNCTION pick : INT
+VAR_INPUT x : LINT; END_VAR
+    pick := 2;
+END_FUNCTION
+
+FUNCTION test : INT
+    test := pick(1);
+END_FUNCTION
+"#;
+
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
+    [E0237] Error: ambiguous overloaded call
+        ,-[ file:///test0.st:13:13 ]
+        |
+      2 | ,---> FUNCTION pick : INT
+        : :
+      5 | |---> END_FUNCTION
+        | |
+        | `-------------------- candidate overload declared here
+        |
+      7 |   ,-> FUNCTION pick : INT
+        :   :
+     10 |   |-> END_FUNCTION
+        |   |
+        |   `------------------ candidate overload declared here
+        |
+     13 |           test := pick(1);
+        |                   ^^|^
+        |                     `--- call to 'pick' is ambiguous: 2 overloads accept these arguments: disambiguate with an explicit cast
     ----'
     ");
 }

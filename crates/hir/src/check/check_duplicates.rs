@@ -5,22 +5,26 @@ use crate::{
     HasName, HirNodeInfo,
     check::errors::{ToIdeDiagnostic, e1_duplicates::DuplicateError},
     hir_def::{config::ConfigDecl, namespace::NamespaceDecl, pous::pou::Pou, program::ProgramDecl},
-    hir_ty::index_graphs::{
-        config_index, namespace_pou_candidates, pou_candidates, program_index,
+    hir_ty::{
+        head::signature::function_signature,
+        index_graphs::{config_index, namespace_pou_candidates, pou_candidates, program_index},
     },
 };
 
 /// Whether two same-named POUs collide (a real duplicate) rather than form a
 /// legal FUNCTION overload set.
 ///
-/// FUNCTIONs may share a name as long as they differ by the overload
-/// discriminant (currently the parameter count — see [`Function::param_count`]).
-/// Every other combination — two same-named FBs/classes/interfaces/data-types,
-/// or a FUNCTION colliding with a non-FUNCTION — is always a duplicate, since
-/// only FUNCTIONs participate in overloading.
+/// FUNCTIONs may share a name as long as they differ by their overload
+/// signature — the ordered list of parameter types (see [`function_signature`]).
+/// Equal signatures are a duplicate; any difference is a legal overload. Every
+/// other combination — two same-named FBs/classes/interfaces/data-types, or a
+/// FUNCTION colliding with a non-FUNCTION — is always a duplicate, since only
+/// FUNCTIONs participate in overloading.
 fn pous_collide<'db>(db: &'db dyn WorkspaceDataBase, a: Pou<'db>, b: Pou<'db>) -> bool {
     match (a, b) {
-        (Pou::Function(fa), Pou::Function(fb)) => fa.param_count(db) == fb.param_count(db),
+        (Pou::Function(fa), Pou::Function(fb)) => {
+            function_signature(db, fa) == function_signature(db, fb)
+        }
         _ => true,
     }
 }

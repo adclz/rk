@@ -18,7 +18,7 @@ use crate::{
             identifier::{Ident, SpanIdent},
             namespace::{NamespacePath, SpanNamespaceAccess},
         },
-        pous::{pou::Pou, variable::VariableDecl},
+        pous::{function::Function, pou::Pou, variable::VariableDecl},
         scope::{ScopeId, ScopeKind},
         semantic_index::get_scope,
     },
@@ -205,6 +205,14 @@ pub enum ResolveError<'db> {
         var: VariableDecl<'db>,
         param: SpanIdent<'db>,
     },
+    /// Several FUNCTION overloads are equally viable for the given argument
+    /// types — the compiler won't guess. The caller must disambiguate with an
+    /// explicit cast. `candidates` are the conflicting overloads.
+    AmbiguousOverload {
+        func_call: FuncCall<'db>,
+        name: Ident,
+        candidates: Vec<Function<'db>>,
+    },
 }
 
 impl<'db> ErrorCode for ResolveError<'db> {
@@ -243,6 +251,7 @@ impl<'db> ErrorCode for ResolveError<'db> {
             Self::InOutParameterRequiresLValue { .. } => "E0234",
             Self::RetainInStatelessPou { .. } => "E0235",
             Self::InOutParameterBoundWithArrow { .. } => "E0236",
+            Self::AmbiguousOverload { .. } => "E0237",
         }
     }
 
@@ -280,6 +289,7 @@ impl<'db> ErrorCode for ResolveError<'db> {
             Self::InOutParameterBoundWithArrow { .. } => {
                 "VAR_IN_OUT parameter bound with output syntax"
             }
+            Self::AmbiguousOverload { .. } => "ambiguous overloaded call",
         }
     }
 }
@@ -314,6 +324,34 @@ impl<'db> ToIdeDiagnostic<'db> for ResolveError<'db> {
                         .unwrap_or_default(),
                 )
                 .call(),
+            Self::AmbiguousOverload {
+                func_call,
+                name,
+                candidates,
+            } => {
+                let mut diag = diag()
+                    .message(format!(
+                        "call to '{}' is ambiguous: {} overloads accept these arguments: disambiguate with an explicit cast",
+                        name.text(db),
+                        candidates.len()
+                    ))
+                    .severity(DiagnosticSeverity::ERROR)
+                    .desc(self)
+                    .range(
+                        crate::denormalize(db, file, &func_call.path(db).get_span(db))
+                            .unwrap_or_default(),
+                    )
+                    .call();
+
+                for c in candidates {
+                    diag.with_related(Related::new(
+                        "candidate overload declared here".to_string(),
+                        c.get_scope_id(db).file(db),
+                        c.get_span(db),
+                    ));
+                }
+                diag
+            }
             Self::UnknownNonFormalParameter { func, expr, param } => diag()
                 .message(format!("no parameter at index '{}'", param))
                 .range(crate::denormalize(db, file, &expr.get_span(db)).unwrap_or_default())

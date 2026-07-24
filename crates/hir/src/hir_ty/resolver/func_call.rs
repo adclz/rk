@@ -8,7 +8,7 @@ use crate::check::errors::e10_control_flow::ControlFlowError;
 use crate::hir_def::expressions::expression::{Expr, ExprKind, ParamAssign, PrimaryExpr};
 use crate::hir_def::interned::identifier::Ident;
 use crate::hir_def::pous::variable::VariableDecl;
-use crate::hir_ty::resolver::name::select_overload;
+use crate::hir_ty::resolver::name::{OverloadPick, select_overload};
 use crate::{
     CallSite, HirNodeInfo,
     check::errors::{ToIdeDiagnostic, e2_resolve::ResolveError},
@@ -78,11 +78,29 @@ pub fn resolve_func_call<'db>(
 
     // Overload selection: name resolution binds a bare function name to the
     // first same-name FUNCTION in scope; if it's an overload set, re-select the
-    // one whose arity matches this call. Same-arity collisions were already
-    // rejected by the duplicate check, so this is unambiguous. The picking lives
-    // in the resolver (`select_overload`) — this call stays overload-unaware.
-    let callable =
-        select_overload(db, callable, func_call.params(db).len());
+    // one whose signature matches this call's argument types. The picking lives
+    // in the resolver (`select_overload`); this call stays overload-unaware —
+    // it just supplies the arg types and handles an ambiguous result.
+    let arg_types = call_input_arg_types(db, resolver, func_call, ctx);
+    let callable = match select_overload(db, callable, &arg_types) {
+        OverloadPick::One(c) => c,
+        OverloadPick::Ambiguous(candidates) => {
+            let name = match candidates.first() {
+                Some(f) => f.name(db),
+                None => return,
+            };
+            ctx.errors.push(
+                ResolveError::AmbiguousOverload {
+                    func_call,
+                    name,
+                    candidates,
+                }
+                .to_diagnostic(db, ctx.scope.file(db)),
+            );
+            // Keep the first-match so downstream param checking still runs.
+            callable
+        }
+    };
 
     // func call requires the type to be a [`CallableType`] otherwise the coercion layer will
     // assume we are calling a non-callable type
@@ -159,6 +177,33 @@ pub fn resolve_func_call<'db>(
             .to_diagnostic(db, ctx.scope.file(db)),
         );
     }
+}
+
+/// The types of a call's positional value arguments (VAR_INPUT / VAR_IN_OUT),
+/// in order — the arguments that drive overload selection. Pure `=>` output
+/// bindings are skipped (they don't participate). Each argument is inferred here
+/// and cached in `ctx.type_of_expr`, so the later coercion pass reuses it rather
+/// than re-resolving (see the guard in `coerce_with_var_target`).
+fn call_input_arg_types<'db>(
+    db: &'db dyn WorkspaceDataBase,
+    resolver: Resolver<'db>,
+    func_call: FuncCall<'db>,
+    ctx: &mut BodyInferenceResult<'db>,
+) -> Vec<Type<'db>> {
+    let mut types = Vec::new();
+    for p in func_call.params(db) {
+        let value = match p.kind(db) {
+            ParamAssignKind::NonFormal { value }
+            | ParamAssignKind::FormalInput { value, .. } => value,
+            ParamAssignKind::FormalOutput { .. } => continue,
+        };
+        let mut ictx = InferExprCtx::new(resolver);
+        if !ctx.type_of_expr.contains_key(&value) {
+            ictx.resolve_expr(db, value, ctx);
+        }
+        types.push(ctx.get_type_of_expr(value));
+    }
+    types
 }
 
 /// Returns `true` if `var` must be supplied as an argument at every call site

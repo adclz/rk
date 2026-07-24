@@ -8,7 +8,7 @@ use crate::{
     hir_def::{
         config::ConfigResource,
         expressions::spec::{Spec, SpecKind},
-        pous::{interface::Interface, pou::Pou, variable::VariableKind},
+        pous::{function::Function, interface::Interface, pou::Pou, variable::VariableKind},
         scope::{ScopeId, ScopeKind},
         semantic_index::get_scope,
         using::Using,
@@ -28,6 +28,38 @@ use crate::{
 #[salsa::tracked(returns(ref))]
 pub fn infer_signature<'db>(db: &'db dyn WorkspaceDataBase, scope: ScopeId<'db>) -> Signature<'db> {
     Signature::new(scope).infer_signature(db)
+}
+
+/// The overload signature of a FUNCTION — the ordered types of the parameters a
+/// caller supplies positionally: `VAR_INPUT` and `VAR_IN_OUT` (pure `VAR_OUTPUT`
+/// `=>` bindings don't participate in selection, so they're excluded).
+///
+/// This is what distinguishes two same-named FUNCTIONs: equal signatures are a
+/// duplicate, differing ones are overloads. It reads the already-inferred head
+/// types (`infer_signature`) rather than re-resolving, so it is a pure consumer
+/// of head inference.
+///
+/// CYCLE HAZARD: never call this from within `infer_signature` (or anything it
+/// transitively runs). Gathering another function's signature while a signature
+/// is being built re-enters the head query and salsa-cycles. Only out-of-head
+/// consumers — the duplicate check, overload resolution, MIR symbol mangling —
+/// may call it.
+pub fn function_signature<'db>(
+    db: &'db dyn WorkspaceDataBase,
+    f: Function<'db>,
+) -> Vec<Type<'db>> {
+    let sig = infer_signature(db, f.scope_id(db));
+    f.variables(db)
+        .iter()
+        .filter(|v| matches!(v.kind(db), VariableKind::Input | VariableKind::InOut))
+        .map(|v| {
+            sig.type_of_specs
+                .get(&v.spec(db))
+                .copied()
+                .unwrap_or(Type::Never)
+                .normalize(db)
+        })
+        .collect()
 }
 
 /// Find an interface reachable at the leaf of a spec — directly, or through an
