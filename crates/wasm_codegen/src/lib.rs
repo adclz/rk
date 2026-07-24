@@ -868,15 +868,11 @@ impl<'a> WasmGen<'a> {
             self.func_locals.insert(func.index, scalar_locals);
         }
 
-        // Build extra locals (non-parameter WASM locals)
+        // Extra (non-parameter) wasm locals. The scalar return slot is not
+        // declared here: MIR allocated it in `func.locals` with a real
+        // `local_index`.
         let mut extra_locals: Vec<(u32, ValType)> = Vec::new();
-        // Return value local
-        if let Some(ref ret_ty) = func.return_type
-            && let Some(vt) = mir_type_to_val_type(ret_ty)
-        {
-            extra_locals.push((1, vt));
-        }
-        // Local variables that are scalars
+        // Local variables that are scalars (includes the return slot).
         for local in &func.locals {
             if let MirStorage::Scalar { .. } = local.storage
                 && let Some(vt) = mir_type_to_val_type(&local.ty)

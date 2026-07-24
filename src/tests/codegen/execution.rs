@@ -33,6 +33,35 @@ fn test_execute_simple_arithmetic(mut with_db: db::RootDatabase) {
     assert_eq!(result, 8, "5 + 3 should equal 8");
 }
 
+/// Regression: a function mixing scalar locals of different wasm value types
+/// (i32 `INT` + i64 `LINT`) must emit valid wasm. `emit_function` used to
+/// declare a phantom wasm local for the scalar return slot on top of the one
+/// already produced from `func.locals`, shifting every subsequent local's *type
+/// declaration* down by one relative to its MIR `local_index`. All-same-valtype
+/// functions survived the shift; here `y : LINT` (i64) would land on an
+/// i32-declared slot and the wasm validator would reject the module. No
+/// generics or FBs involved — the minimal reproducer.
+#[rstest]
+fn test_execute_mixed_width_scalar_locals(mut with_db: db::RootDatabase) {
+    let source = r#"
+        FUNCTION test : LINT
+        VAR
+            x : INT := 1;
+            y : LINT := 2;
+            acc : LINT := 0;
+        END_VAR
+            y := y + 40;
+            acc := x;
+            acc := acc + y;
+            test := acc;
+        END_FUNCTION
+    "#;
+
+    let wasm_bytes = compile_to_wasm(&mut with_db, source);
+    let result: i64 = super::execute_wasm(&wasm_bytes, "test", ());
+    assert_eq!(result, 43, "1 + (2 + 40) = 43 across i32 and i64 locals");
+}
+
 #[rstest]
 fn test_execute_factorial(mut with_db: db::RootDatabase) {
     let source = r#"
