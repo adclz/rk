@@ -1,0 +1,39 @@
+name: stdlib
+on:
+  push:
+    paths:
+      - "**.rs"
+      - "**/Cargo.toml"
+      - "Cargo.lock"
+      - "stdlib/**"
+      - ".github/workflows/ci-stdlib.yml"
+  pull_request:
+    paths:
+      - "**.rs"
+      - "**/Cargo.toml"
+      - "Cargo.lock"
+      - "stdlib/**"
+      - ".github/workflows/ci-stdlib.yml"
+
+jobs:
+  stdlib-test:
+    runs-on: ubuntu-latest
+    env:
+      CARGO_TERM_COLOR: always
+    steps:
+      - name: Free disk space
+        run: |
+          sudo rm -rf /usr/share/dotnet
+          sudo rm -rf /usr/local/lib/android
+          sudo rm -rf /opt/ghc
+          sudo rm -rf /opt/hostedtoolcache/CodeQL
+          sudo docker image prune --all --force
+          df -h
+      - name: Install wasm32
+        run: rustup target add wasm32-unknown-unknown
+      - uses: actions/checkout@v4
+      - uses: Swatinem/rust-cache@v2
+      - name: Build the rk CLI
+        run: cargo build -p rk --release
+      - name: Compile and run the stdlib test suite
+        run: cd stdlib && ../target/release/rk test
