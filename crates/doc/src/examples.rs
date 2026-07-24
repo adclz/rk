@@ -1262,6 +1262,32 @@ END_FUNCTION
 "#],
             lint_rule: None,
         },
+        ErrorExample {
+            code: "E0237",
+            category: "Resolution",
+            title: "Ambiguous overloaded call",
+            description: "A call matches more than one FUNCTION overload and no overload is an exact \
+                          match for every argument, so the compiler refuses to guess. Disambiguate \
+                          with a typed literal or an explicit conversion (e.g. `DINT#5`).",
+            sources: &[r#"
+FUNCTION pick : INT
+VAR_INPUT x : DINT; END_VAR
+    pick := 1;
+END_FUNCTION
+
+FUNCTION pick : INT
+VAR_INPUT x : LINT; END_VAR
+    pick := 2;
+END_FUNCTION
+
+FUNCTION caller : INT
+VAR y : SINT; END_VAR
+    // SINT widens to both DINT and LINT — neither overload is exact.
+    caller := pick(y);
+END_FUNCTION
+"#],
+            lint_rule: None,
+        },
         // ── E03xx: Type system ───────────────────────────────────────────
         ErrorExample {
             code: "E0301",
