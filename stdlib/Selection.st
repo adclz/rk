@@ -284,12 +284,13 @@ NAMESPACE Std.Selection
 			MX: SINT;
 		END_VAR
 
-		IF IN < MN THEN
+		(* IEC 61131-3 Table 32.5: OUT := MIN(MAX(IN, MN), MX) — MX wins when MN > MX. *)
+		LIMIT := IN;
+		IF LIMIT < MN THEN
 			LIMIT := MN;
-		ELSIF IN > MX THEN
+		END_IF;
+		IF LIMIT > MX THEN
 			LIMIT := MX;
-		ELSE
-			LIMIT := IN;
 		END_IF;
 	END_FUNCTION
 
@@ -300,12 +301,13 @@ NAMESPACE Std.Selection
 			MX: INT;
 		END_VAR
 
-		IF IN < MN THEN
+		(* IEC 61131-3 Table 32.5: OUT := MIN(MAX(IN, MN), MX) — MX wins when MN > MX. *)
+		LIMIT := IN;
+		IF LIMIT < MN THEN
 			LIMIT := MN;
-		ELSIF IN > MX THEN
+		END_IF;
+		IF LIMIT > MX THEN
 			LIMIT := MX;
-		ELSE
-			LIMIT := IN;
 		END_IF;
 	END_FUNCTION
 
@@ -316,12 +318,13 @@ NAMESPACE Std.Selection
 			MX: DINT;
 		END_VAR
 
-		IF IN < MN THEN
+		(* IEC 61131-3 Table 32.5: OUT := MIN(MAX(IN, MN), MX) — MX wins when MN > MX. *)
+		LIMIT := IN;
+		IF LIMIT < MN THEN
 			LIMIT := MN;
-		ELSIF IN > MX THEN
+		END_IF;
+		IF LIMIT > MX THEN
 			LIMIT := MX;
-		ELSE
-			LIMIT := IN;
 		END_IF;
 	END_FUNCTION
 
@@ -332,12 +335,13 @@ NAMESPACE Std.Selection
 			MX: LINT;
 		END_VAR
 
-		IF IN < MN THEN
+		(* IEC 61131-3 Table 32.5: OUT := MIN(MAX(IN, MN), MX) — MX wins when MN > MX. *)
+		LIMIT := IN;
+		IF LIMIT < MN THEN
 			LIMIT := MN;
-		ELSIF IN > MX THEN
+		END_IF;
+		IF LIMIT > MX THEN
 			LIMIT := MX;
-		ELSE
-			LIMIT := IN;
 		END_IF;
 	END_FUNCTION
 
@@ -348,12 +352,13 @@ NAMESPACE Std.Selection
 			MX: USINT;
 		END_VAR
 
-		IF IN < MN THEN
+		(* IEC 61131-3 Table 32.5: OUT := MIN(MAX(IN, MN), MX) — MX wins when MN > MX. *)
+		LIMIT := IN;
+		IF LIMIT < MN THEN
 			LIMIT := MN;
-		ELSIF IN > MX THEN
+		END_IF;
+		IF LIMIT > MX THEN
 			LIMIT := MX;
-		ELSE
-			LIMIT := IN;
 		END_IF;
 	END_FUNCTION
 
@@ -364,12 +369,13 @@ NAMESPACE Std.Selection
 			MX: UINT;
 		END_VAR
 
-		IF IN < MN THEN
+		(* IEC 61131-3 Table 32.5: OUT := MIN(MAX(IN, MN), MX) — MX wins when MN > MX. *)
+		LIMIT := IN;
+		IF LIMIT < MN THEN
 			LIMIT := MN;
-		ELSIF IN > MX THEN
+		END_IF;
+		IF LIMIT > MX THEN
 			LIMIT := MX;
-		ELSE
-			LIMIT := IN;
 		END_IF;
 	END_FUNCTION
 
@@ -380,12 +386,13 @@ NAMESPACE Std.Selection
 			MX: UDINT;
 		END_VAR
 
-		IF IN < MN THEN
+		(* IEC 61131-3 Table 32.5: OUT := MIN(MAX(IN, MN), MX) — MX wins when MN > MX. *)
+		LIMIT := IN;
+		IF LIMIT < MN THEN
 			LIMIT := MN;
-		ELSIF IN > MX THEN
+		END_IF;
+		IF LIMIT > MX THEN
 			LIMIT := MX;
-		ELSE
-			LIMIT := IN;
 		END_IF;
 	END_FUNCTION
 
@@ -396,12 +403,13 @@ NAMESPACE Std.Selection
 			MX: ULINT;
 		END_VAR
 
-		IF IN < MN THEN
+		(* IEC 61131-3 Table 32.5: OUT := MIN(MAX(IN, MN), MX) — MX wins when MN > MX. *)
+		LIMIT := IN;
+		IF LIMIT < MN THEN
 			LIMIT := MN;
-		ELSIF IN > MX THEN
+		END_IF;
+		IF LIMIT > MX THEN
 			LIMIT := MX;
-		ELSE
-			LIMIT := IN;
 		END_IF;
 	END_FUNCTION
 
@@ -412,12 +420,13 @@ NAMESPACE Std.Selection
 			MX: REAL;
 		END_VAR
 
-		IF IN < MN THEN
+		(* IEC 61131-3 Table 32.5: OUT := MIN(MAX(IN, MN), MX) — MX wins when MN > MX. *)
+		LIMIT := IN;
+		IF LIMIT < MN THEN
 			LIMIT := MN;
-		ELSIF IN > MX THEN
+		END_IF;
+		IF LIMIT > MX THEN
 			LIMIT := MX;
-		ELSE
-			LIMIT := IN;
 		END_IF;
 	END_FUNCTION
 
@@ -428,12 +437,13 @@ NAMESPACE Std.Selection
 			MX: LREAL;
 		END_VAR
 
-		IF IN < MN THEN
+		(* IEC 61131-3 Table 32.5: OUT := MIN(MAX(IN, MN), MX) — MX wins when MN > MX. *)
+		LIMIT := IN;
+		IF LIMIT < MN THEN
 			LIMIT := MN;
-		ELSIF IN > MX THEN
+		END_IF;
+		IF LIMIT > MX THEN
 			LIMIT := MX;
-		ELSE
-			LIMIT := IN;
 		END_IF;
 	END_FUNCTION
 
@@ -444,12 +454,13 @@ NAMESPACE Std.Selection
 			MX: TIME;
 		END_VAR
 
-		IF IN < MN THEN
+		(* IEC 61131-3 Table 32.5: OUT := MIN(MAX(IN, MN), MX) — MX wins when MN > MX. *)
+		LIMIT := IN;
+		IF LIMIT < MN THEN
 			LIMIT := MN;
-		ELSIF IN > MX THEN
+		END_IF;
+		IF LIMIT > MX THEN
 			LIMIT := MX;
-		ELSE
-			LIMIT := IN;
 		END_IF;
 	END_FUNCTION
 
@@ -460,12 +471,13 @@ NAMESPACE Std.Selection
 			MX: LTIME;
 		END_VAR
 
-		IF IN < MN THEN
+		(* IEC 61131-3 Table 32.5: OUT := MIN(MAX(IN, MN), MX) — MX wins when MN > MX. *)
+		LIMIT := IN;
+		IF LIMIT < MN THEN
 			LIMIT := MN;
-		ELSIF IN > MX THEN
+		END_IF;
+		IF LIMIT > MX THEN
 			LIMIT := MX;
-		ELSE
-			LIMIT := IN;
 		END_IF;
 	END_FUNCTION
 
