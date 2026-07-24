@@ -3,42 +3,12 @@
 
 IEC 61131-3 **Table 36** - Up, down, and up/down counters.
 
-All counters use `ANY_INT` type for the count value `CV`
-and preset value `PV`. Edge detection is performed internally using `R_TRIG`.
+Each counter is provided as a concrete function block per integer type
+(`SINT`, `INT`, `DINT`, `LINT`) for the count value `CV` and preset value `PV`.
+Edge detection is performed internally using `R_TRIG`.
 */
 NAMESPACE Std.Counters
 	USING Std.Edge
-
-	NAMESPACE Legacy
-		TYPE 
-			// Alias of [CTU] with `SINT`
-			CTU_SINT: CTU<SINT>
-			// Alias of [CTU] with `INT`
-			CTU_INT: CTU<INT>
-			// Alias of [CTU] with `DINT`
-			CTU_DINT: CTU<DINT>
-			// Alias of [CTU] with `LINT`
-			CTU_LINT: CTU<LINT>
-
-			// Alias of [CTD] with `SINT`
-			CTD_SINT: CTD<SINT>
-			// Alias of [CTD] with `INT`
-			CTD_INT: CTD<INT>
-			// Alias of [CTD] with `DINT`
-			CTD_DINT: CTD<DINT>
-			// Alias of [CTD] with `LINT`
-			CTD_LINT: CTD<LINT>
-
-			// Alias of [CTUD] with `SINT`
-			CTUD_SINT: CTUD<SINT>
-			// Alias of [CTUD] with `INT`
-			CTUD_INT: CTUD<INT>
-			// Alias of [CTUD] with `DINT`
-			CTUD_DINT: CTUD<DINT>
-			// Alias of [CTUD] with `LINT`
-			CTUD_LINT: CTUD<LINT>
-		END_TYPE
-	END_NAMESPACE
 
 	/*
     ## CTU - Count Up
@@ -52,7 +22,7 @@ NAMESPACE Std.Counters
 
     ```iecst
     VAR
-        counter: CTU;
+        counter: CTU_INT;
     END_VAR
 
     counter(CU := sensor, reset_btn, PV := 100);
@@ -61,15 +31,87 @@ NAMESPACE Std.Counters
     END_IF;
     ```
     */
-	FUNCTION_BLOCK CTU
+	FUNCTION_BLOCK CTU_SINT
 		VAR_INPUT
 			CU: BOOL;
 			R: BOOL;
-			PV: ANY_INT;
+			PV: SINT;
 		END_VAR
 		VAR_OUTPUT
 			Q: BOOL;
-			CV: INTO(PV);
+			CV: SINT;
+		END_VAR
+		VAR
+			CU_T: R_TRIG;
+		END_VAR
+
+		CU_T(CU);
+		IF R THEN
+			CV := 0;
+		ELSIF CU_T.Q AND (CV < PV) THEN
+			CV := CV + 1;
+		END_IF;
+		Q := (CV >= PV);
+	END_FUNCTION_BLOCK
+
+	// Count Up with `INT` count value
+	FUNCTION_BLOCK CTU_INT
+		VAR_INPUT
+			CU: BOOL;
+			R: BOOL;
+			PV: INT;
+		END_VAR
+		VAR_OUTPUT
+			Q: BOOL;
+			CV: INT;
+		END_VAR
+		VAR
+			CU_T: R_TRIG;
+		END_VAR
+
+		CU_T(CU);
+		IF R THEN
+			CV := 0;
+		ELSIF CU_T.Q AND (CV < PV) THEN
+			CV := CV + 1;
+		END_IF;
+		Q := (CV >= PV);
+	END_FUNCTION_BLOCK
+
+	// Count Up with `DINT` count value
+	FUNCTION_BLOCK CTU_DINT
+		VAR_INPUT
+			CU: BOOL;
+			R: BOOL;
+			PV: DINT;
+		END_VAR
+		VAR_OUTPUT
+			Q: BOOL;
+			CV: DINT;
+		END_VAR
+		VAR
+			CU_T: R_TRIG;
+		END_VAR
+
+		CU_T(CU);
+		IF R THEN
+			CV := 0;
+		ELSIF CU_T.Q AND (CV < PV) THEN
+			CV := CV + 1;
+		END_IF;
+		Q := (CV >= PV);
+	END_FUNCTION_BLOCK
+
+	// Count Up with `LINT` count value
+	FUNCTION_BLOCK CTU_LINT
+		VAR_INPUT
+			CU: BOOL;
+			R: BOOL;
+			PV: LINT;
+		END_VAR
+		VAR_OUTPUT
+			Q: BOOL;
+			CV: LINT;
 		END_VAR
 		VAR
 			CU_T: R_TRIG;
@@ -96,7 +138,7 @@ NAMESPACE Std.Counters
 
     ```iecst
     VAR
-        counter: CTD;
+        counter: CTD_INT;
     END_VAR
 
     counter(CD := sensor, LD := load_btn, PV := 50);
@@ -105,15 +147,87 @@ NAMESPACE Std.Counters
     END_IF;
     ```
     */
-	FUNCTION_BLOCK CTD
+	FUNCTION_BLOCK CTD_SINT
 		VAR_INPUT
 			CD: BOOL;
 			LD: BOOL;
-			PV: ANY_INT;
+			PV: SINT;
 		END_VAR
 		VAR_OUTPUT
 			Q: BOOL;
-			CV: INTO(PV);
+			CV: SINT;
+		END_VAR
+		VAR
+			CD_T: R_TRIG;
+		END_VAR
+
+		CD_T(CD);
+		IF LD THEN
+			CV := PV;
+		ELSIF CD_T.Q AND (CV > 0) THEN
+			CV := CV - 1;
+		END_IF;
+		Q := (CV <= 0);
+	END_FUNCTION_BLOCK
+
+	// Count Down with `INT` count value
+	FUNCTION_BLOCK CTD_INT
+		VAR_INPUT
+			CD: BOOL;
+			LD: BOOL;
+			PV: INT;
+		END_VAR
+		VAR_OUTPUT
+			Q: BOOL;
+			CV: INT;
+		END_VAR
+		VAR
+			CD_T: R_TRIG;
+		END_VAR
+
+		CD_T(CD);
+		IF LD THEN
+			CV := PV;
+		ELSIF CD_T.Q AND (CV > 0) THEN
+			CV := CV - 1;
+		END_IF;
+		Q := (CV <= 0);
+	END_FUNCTION_BLOCK
+
+	// Count Down with `DINT` count value
+	FUNCTION_BLOCK CTD_DINT
+		VAR_INPUT
+			CD: BOOL;
+			LD: BOOL;
+			PV: DINT;
+		END_VAR
+		VAR_OUTPUT
+			Q: BOOL;
+			CV: DINT;
+		END_VAR
+		VAR
+			CD_T: R_TRIG;
+		END_VAR
+
+		CD_T(CD);
+		IF LD THEN
+			CV := PV;
+		ELSIF CD_T.Q AND (CV > 0) THEN
+			CV := CV - 1;
+		END_IF;
+		Q := (CV <= 0);
+	END_FUNCTION_BLOCK
+
+	// Count Down with `LINT` count value
+	FUNCTION_BLOCK CTD_LINT
+		VAR_INPUT
+			CD: BOOL;
+			LD: BOOL;
+			PV: LINT;
+		END_VAR
+		VAR_OUTPUT
+			Q: BOOL;
+			CV: LINT;
 		END_VAR
 		VAR
 			CD_T: R_TRIG;
@@ -143,24 +257,138 @@ NAMESPACE Std.Counters
 
     ```iecst
     VAR
-        counter: CTUD;
+        counter: CTUD_INT;
     END_VAR
 
     counter(CU := up_btn, CD := down_btn, FALSE, LD := FALSE, PV := 100);
     ```
     */
-	FUNCTION_BLOCK CTUD
+	FUNCTION_BLOCK CTUD_SINT
 		VAR_INPUT
 			CU: BOOL;
 			CD: BOOL;
 			R: BOOL;
 			LD: BOOL;
-			PV: ANY_INT;
+			PV: SINT;
 		END_VAR
 		VAR_OUTPUT
 			QU: BOOL;
 			QD: BOOL;
-			CV: INTO(PV);
+			CV: SINT;
+		END_VAR
+		VAR
+			CD_T: R_TRIG;
+			CU_T: R_TRIG;
+		END_VAR
+
+		CD_T(CD);
+		CU_T(CU);
+		IF R THEN
+			CV := 0;
+		ELSIF LD THEN
+			CV := PV;
+		ELSE
+			IF NOT (CU_T.Q AND CD_T.Q) THEN
+				IF CU_T.Q AND (CV < PV) THEN
+					CV := CV + 1;
+				ELSIF CD_T.Q AND (CV > 0) THEN
+					CV := CV - 1;
+				END_IF;
+			END_IF;
+		END_IF;
+		QU := (CV >= PV);
+		QD := (CV <= 0);
+	END_FUNCTION_BLOCK
+
+	// Count Up/Down with `INT` count value
+	FUNCTION_BLOCK CTUD_INT
+		VAR_INPUT
+			CU: BOOL;
+			CD: BOOL;
+			R: BOOL;
+			LD: BOOL;
+			PV: INT;
+		END_VAR
+		VAR_OUTPUT
+			QU: BOOL;
+			QD: BOOL;
+			CV: INT;
+		END_VAR
+		VAR
+			CD_T: R_TRIG;
+			CU_T: R_TRIG;
+		END_VAR
+
+		CD_T(CD);
+		CU_T(CU);
+		IF R THEN
+			CV := 0;
+		ELSIF LD THEN
+			CV := PV;
+		ELSE
+			IF NOT (CU_T.Q AND CD_T.Q) THEN
+				IF CU_T.Q AND (CV < PV) THEN
+					CV := CV + 1;
+				ELSIF CD_T.Q AND (CV > 0) THEN
+					CV := CV - 1;
+				END_IF;
+			END_IF;
+		END_IF;
+		QU := (CV >= PV);
+		QD := (CV <= 0);
+	END_FUNCTION_BLOCK
+
+	// Count Up/Down with `DINT` count value
+	FUNCTION_BLOCK CTUD_DINT
+		VAR_INPUT
+			CU: BOOL;
+			CD: BOOL;
+			R: BOOL;
+			LD: BOOL;
+			PV: DINT;
+		END_VAR
+		VAR_OUTPUT
+			QU: BOOL;
+			QD: BOOL;
+			CV: DINT;
+		END_VAR
+		VAR
+			CD_T: R_TRIG;
+			CU_T: R_TRIG;
+		END_VAR
+
+		CD_T(CD);
+		CU_T(CU);
+		IF R THEN
+			CV := 0;
+		ELSIF LD THEN
+			CV := PV;
+		ELSE
+			IF NOT (CU_T.Q AND CD_T.Q) THEN
+				IF CU_T.Q AND (CV < PV) THEN
+					CV := CV + 1;
+				ELSIF CD_T.Q AND (CV > 0) THEN
+					CV := CV - 1;
+				END_IF;
+			END_IF;
+		END_IF;
+		QU := (CV >= PV);
+		QD := (CV <= 0);
+	END_FUNCTION_BLOCK
+
+	// Count Up/Down with `LINT` count value
+	FUNCTION_BLOCK CTUD_LINT
+		VAR_INPUT
+			CU: BOOL;
+			CD: BOOL;
+			R: BOOL;
+			LD: BOOL;
+			PV: LINT;
+		END_VAR
+		VAR_OUTPUT
+			QU: BOOL;
+			QD: BOOL;
+			CV: LINT;
 		END_VAR
 		VAR
 			CD_T: R_TRIG;
@@ -190,16 +418,13 @@ NAMESPACE Std.Counters
 		USING Std.Unit;
 		USING Std.Edge;
 		USING Std.Counters;
-	USING Std.Counters.Legacy;
-
 
 		// -- CTU (Count Up) ----------------------------------------
 
-		
 		{test}
 		FUNCTION test_ctu_counts_up
 			VAR
-				counter: CTU<INT>;
+				counter: CTU_INT;
 			END_VAR
 			counter(CU := TRUE, R := FALSE, PV := 3);
 			ASSERT(counter.CV = 1, 'CV should be 1 after first rising edge');
@@ -211,7 +436,7 @@ NAMESPACE Std.Counters
 		{test}
 		FUNCTION test_ctu_reaches_preset
 			VAR
-				counter: CTU<INT>;
+				counter: CTU_INT;
 				i: INT;
 			END_VAR
 			FOR i := 1 TO 5 DO
@@ -225,7 +450,7 @@ NAMESPACE Std.Counters
 		{test}
 		FUNCTION test_ctu_reset
 			VAR
-				counter: CTU<INT>;
+				counter: CTU_INT;
 			END_VAR
 			counter(CU := TRUE, R := FALSE, PV := 10);
 			counter(CU := FALSE, R := FALSE, PV := 10);
@@ -239,7 +464,7 @@ NAMESPACE Std.Counters
 		{test}
 		FUNCTION test_ctu_no_count_without_edge
 			VAR
-				counter: CTU<INT>;
+				counter: CTU_INT;
 			END_VAR
 			counter(CU := TRUE, R := FALSE, PV := 10);
 			ASSERT(counter.CV = 1, 'CV should be 1 after first call');
@@ -252,7 +477,7 @@ NAMESPACE Std.Counters
 		{test}
 		FUNCTION test_ctd_counts_down
 			VAR
-				counter: CTD<INT>;
+				counter: CTD_INT;
 			END_VAR
 			counter(CD := FALSE, LD := TRUE, PV := 3);
 			ASSERT(counter.CV = 3, 'CV should be PV after load');
@@ -266,7 +491,7 @@ NAMESPACE Std.Counters
 		{test}
 		FUNCTION test_ctd_reaches_zero
 			VAR
-				counter: CTD<INT>;
+				counter: CTD_INT;
 				i: INT;
 			END_VAR
 			counter(CD := FALSE, LD := TRUE, PV := 2);
@@ -281,7 +506,7 @@ NAMESPACE Std.Counters
 		{test}
 		FUNCTION test_ctd_load_resets
 			VAR
-				counter: CTD<INT>;
+				counter: CTD_INT;
 			END_VAR
 			counter(CD := FALSE, LD := TRUE, PV := 5);
 			counter(CD := TRUE, LD := FALSE, PV := 5);
@@ -298,7 +523,7 @@ NAMESPACE Std.Counters
 		{test}
 		FUNCTION test_ctud_counts_up
 			VAR
-				counter: CTUD<INT>;
+				counter: CTUD_INT;
 			END_VAR
 			counter(CU := TRUE, CD := FALSE, R := FALSE, LD := FALSE, PV := 5);
 			ASSERT(counter.CV = 1, 'CV should be 1 after count up');
@@ -309,7 +534,7 @@ NAMESPACE Std.Counters
 		{test}
 		FUNCTION test_ctud_counts_down
 			VAR
-				counter: CTUD<INT>;
+				counter: CTUD_INT;
 			END_VAR
 			counter(CU := FALSE, CD := FALSE, R := FALSE, LD := TRUE, PV := 3);
 			ASSERT(counter.CV = 3, 'CV should be PV after load');
@@ -320,7 +545,7 @@ NAMESPACE Std.Counters
 		{test}
 		FUNCTION test_ctud_reset
 			VAR
-				counter: CTUD<INT>;
+				counter: CTUD_INT;
 			END_VAR
 			counter(CU := FALSE, CD := FALSE, R := FALSE, LD := TRUE, PV := 5);
 			ASSERT(counter.CV = 5, 'CV should be PV after load');
@@ -332,7 +557,7 @@ NAMESPACE Std.Counters
 		{test}
 		FUNCTION test_ctud_load
 			VAR
-				counter: CTUD<INT>;
+				counter: CTUD_INT;
 			END_VAR
 			counter(CU := TRUE, CD := FALSE, R := FALSE, LD := FALSE, PV := 5);
 			counter(CU := FALSE, CD := FALSE, R := FALSE, LD := FALSE, PV := 5);
@@ -346,7 +571,7 @@ NAMESPACE Std.Counters
 		{test}
 		FUNCTION test_ctud_simultaneous_edges_ignored
 			VAR
-				counter: CTUD<INT>;
+				counter: CTUD_INT;
 			END_VAR
 			counter(CU := FALSE, CD := FALSE, R := FALSE, LD := TRUE, PV := 3);
 			ASSERT(counter.CV = 3, 'CV should be PV after load');
@@ -358,7 +583,7 @@ NAMESPACE Std.Counters
 		{test}
 		FUNCTION test_ctud_reset_takes_priority_over_load
 			VAR
-				counter: CTUD<INT>;
+				counter: CTUD_INT;
 			END_VAR
 			counter(CU := FALSE, CD := FALSE, R := FALSE, LD := TRUE, PV := 5);
 			ASSERT(counter.CV = 5, 'CV should be PV after load');
