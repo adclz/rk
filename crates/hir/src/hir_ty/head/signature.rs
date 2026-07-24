@@ -62,6 +62,26 @@ pub fn function_signature<'db>(
         .collect()
 }
 
+/// The minimum number of positional arguments a call to `f` must supply: the
+/// count of VAR_INPUT/VAR_IN_OUT params that are *required* — VAR_IN_OUT, or
+/// VAR_INPUT with no constant default. Trailing params with a constant default
+/// may be omitted. A call is viable for this overload iff
+/// `required <= arg_count <= signature.len()`.
+pub fn function_required_arity<'db>(db: &'db dyn WorkspaceDataBase, f: Function<'db>) -> usize {
+    use crate::hir_def::expressions::expression::InitExprKind;
+    f.variables(db)
+        .iter()
+        .filter(|v| match v.kind(db) {
+            VariableKind::InOut => true,
+            VariableKind::Input => match v.init(db) {
+                Some(init) => !matches!(init.kind(db), InitExprKind::ConstantExpr(_)),
+                None => true,
+            },
+            _ => false,
+        })
+        .count()
+}
+
 /// Find an interface reachable at the leaf of a spec — directly, or through an
 /// array element / reference target (e.g. `ARRAY OF ITF1`, `REF_TO ITF1`). Used
 /// to reject interface types outside VAR_INPUT / VAR_IN_OUT parameters.

@@ -15,7 +15,7 @@ use crate::{
         using::Using,
     },
     hir_ty::{
-        head::signature::function_signature,
+        head::signature::{function_required_arity, function_signature},
         index_graphs::{
             namespace_index, namespace_pou_candidates, pou_candidates, pou_index, program_index,
         },
@@ -259,7 +259,9 @@ pub fn select_overload<'db>(
     let mut viable: Vec<Function<'db>> = Vec::new();
     for f in functions {
         let sig = function_signature(db, f);
-        if sig.len() != arg_types.len() {
+        // Viable arg counts: at least the required params, at most all of them
+        // (trailing defaulted params may be omitted).
+        if arg_types.len() < function_required_arity(db, f) || arg_types.len() > sig.len() {
             continue;
         }
         let mut all_exact = true;
