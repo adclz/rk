@@ -52,132 +52,6 @@ END_FUNCTION
           (int_name))))))
 
 ================================================================================
-Test with positional case pragmas
-================================================================================
-
-{test}
-{case(5, 5)}
-{case(-42, 42)}
-FUNCTION test_abs : INT
-VAR_INPUT x : INT; expected : INT; END_VAR
-END_FUNCTION
-
---------------------------------------------------------------------------------
-
-(source_file
-  (func_decl
-    pragmas: (pou_pragma
-      (test_pragma))
-    pragmas: (pou_pragma
-      (case_pragma
-        args: (param_assign_input
-          value: (constant
-            (numeric_literal
-              (int_literal
-                int: (signed_int
-                  (unsigned_int))))))
-        args: (param_assign_input
-          value: (constant
-            (numeric_literal
-              (int_literal
-                int: (signed_int
-                  (unsigned_int))))))))
-    pragmas: (pou_pragma
-      (case_pragma
-        args: (param_assign_input
-          value: (constant
-            (numeric_literal
-              (int_literal
-                int: (signed_int)))))
-        args: (param_assign_input
-          value: (constant
-            (numeric_literal
-              (int_literal
-                int: (signed_int
-                  (unsigned_int))))))))
-    name: (identifier)
-    return_type: (numeric_type_name
-      (int_type_name
-        (sign_int_type_name
-          (int_name))))
-    variables: (input_decls
-      (input_var
-        variables: (variable_list
-          (identifier))
-        type: (var_decl_init
-          spec: (simple_type_spec
-            (numeric_type_name
-              (int_type_name
-                (sign_int_type_name
-                  (int_name)))))))
-      (input_var
-        variables: (variable_list
-          (identifier))
-        type: (var_decl_init
-          spec: (simple_type_spec
-            (numeric_type_name
-              (int_type_name
-                (sign_int_type_name
-                  (int_name))))))))))
-
-================================================================================
-Test with named case pragmas
-================================================================================
-
-{test}
-{case(x := 0, expected := 0)}
-FUNCTION test_abs : INT
-VAR_INPUT x : INT; expected : INT; END_VAR
-END_FUNCTION
-
---------------------------------------------------------------------------------
-
-(source_file
-  (func_decl
-    pragmas: (pou_pragma
-      (test_pragma))
-    pragmas: (pou_pragma
-      (case_pragma
-        args: (param_assign_input
-          param: (identifier)
-          value: (constant
-            (numeric_literal
-              (int_literal
-                int: (signed_int
-                  (unsigned_int))))))
-        args: (param_assign_input
-          param: (identifier)
-          value: (constant
-            (numeric_literal
-              (int_literal
-                int: (signed_int
-                  (unsigned_int))))))))
-    name: (identifier)
-    return_type: (numeric_type_name
-      (int_type_name
-        (sign_int_type_name
-          (int_name))))
-    variables: (input_decls
-      (input_var
-        variables: (variable_list
-          (identifier))
-        type: (var_decl_init
-          spec: (simple_type_spec
-            (numeric_type_name
-              (int_type_name
-                (sign_int_type_name
-                  (int_name)))))))
-      (input_var
-        variables: (variable_list
-          (identifier))
-        type: (var_decl_init
-          spec: (simple_type_spec
-            (numeric_type_name
-              (int_type_name
-                (sign_int_type_name
-                  (int_name))))))))))
-
-================================================================================
 Once pragma on function
 ================================================================================
 
@@ -230,7 +104,6 @@ Multiple pragmas combined
 {warn = 'deprecated'}
 {test}
 {once}
-{case(1, 2)}
 FUNCTION test_fn : INT
 VAR_INPUT a : INT; b : INT; END_VAR
 END_FUNCTION
@@ -248,20 +121,6 @@ END_FUNCTION
       (test_pragma))
     pragmas: (pou_pragma
       (once_pragma))
-    pragmas: (pou_pragma
-      (case_pragma
-        args: (param_assign_input
-          value: (constant
-            (numeric_literal
-              (int_literal
-                int: (signed_int
-                  (unsigned_int))))))
-        args: (param_assign_input
-          value: (constant
-            (numeric_literal
-              (int_literal
-                int: (signed_int
-                  (unsigned_int))))))))
     name: (identifier)
     return_type: (numeric_type_name
       (int_type_name

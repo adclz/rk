@@ -9,7 +9,7 @@ impl<'db> SemanticIndexBuilder<'db> {
         &mut self,
         pragmas: &[auto_lsp::core::ast::AstNodeId<ast::generated::PouPragma>],
     ) -> Vec<Pragma<'db>> {
-        use ast::generated::CasePragma_OncePragma_TestPragma_WarnPragma as PragmaKind;
+        use ast::generated::OncePragma_TestPragma_WarnPragma as PragmaKind;
 
         let mut result = Vec::new();
 
@@ -32,10 +32,6 @@ impl<'db> SemanticIndexBuilder<'db> {
                         result.push(Pragma::Warn(si, wp));
                     }
                 }
-                // {case(...)} is no longer a supported pragma. The grammar
-                // still emits the node until it is regenerated; ignore it so
-                // this match stays exhaustive over the AST union.
-                PragmaKind::CasePragma(_) => {}
             }
         }
 

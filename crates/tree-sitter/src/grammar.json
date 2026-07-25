@@ -860,84 +860,6 @@
         }
       }
     },
-    "case_pragma": {
-      "type": "PREC",
-      "value": 1,
-      "content": {
-        "type": "SEQ",
-        "members": [
-          {
-            "type": "TOKEN",
-            "content": {
-              "type": "PREC",
-              "value": 1,
-              "content": {
-                "type": "SEQ",
-                "members": [
-                  {
-                    "type": "STRING",
-                    "value": "{"
-                  },
-                  {
-                    "type": "STRING",
-                    "value": "case"
-                  },
-                  {
-                    "type": "STRING",
-                    "value": "("
-                  }
-                ]
-              }
-            }
-          },
-          {
-            "type": "FIELD",
-            "name": "args",
-            "content": {
-              "type": "CHOICE",
-              "members": [
-                {
-                  "type": "SEQ",
-                  "members": [
-                    {
-                      "type": "SYMBOL",
-                      "name": "param_assign_input"
-                    },
-                    {
-                      "type": "REPEAT",
-                      "content": {
-                        "type": "SEQ",
-                        "members": [
-                          {
-                            "type": "STRING",
-                            "value": ","
-                          },
-                          {
-                            "type": "SYMBOL",
-                            "name": "param_assign_input"
-                          }
-                        ]
-                      }
-                    }
-                  ]
-                },
-                {
-                  "type": "BLANK"
-                }
-              ]
-            }
-          },
-          {
-            "type": "STRING",
-            "value": ")"
-          },
-          {
-            "type": "STRING",
-            "value": "}"
-          }
-        ]
-      }
-    },
     "pou_pragma": {
       "type": "CHOICE",
       "members": [
@@ -952,10 +874,6 @@
         {
           "type": "SYMBOL",
           "name": "warn_pragma"
-        },
-        {
-          "type": "SYMBOL",
-          "name": "case_pragma"
         }
       ]
     },

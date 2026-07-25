@@ -404,25 +404,13 @@ module.exports = grammar({
     // {once}
     once_pragma: (_) => prec(1, token(seq("{", "once", "}"))),
 
-    // Case pragma - parameterized test case values
-    // {case(5, 10)}                  - positional
-    // {case(x := 5, y := 10)}       - named
-    // {case(5, y := 10)}            - mixed
-    case_pragma: ($) =>
-      prec(1, seq(
-        token(prec(1, seq("{", "case", "("))),
-          field("args", commaSep($.param_assign_input)),
-        ")", "}",
-      )),
-
     // Unified POU pragma list - validated during HIR building
-    // Covers: {test}, {once}, {warn = '...'}, {info = '...'}, {case(...)}
+    // Covers: {test}, {once}, {warn = '...'}, {info = '...'}
     pou_pragma: ($) =>
       choice(
         $.test_pragma,
         $.once_pragma,
         $.warn_pragma,
-        $.case_pragma,
       ),
 
     // Table 5 - Numeric literal

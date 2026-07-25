@@ -3,7 +3,7 @@ Pragma with { … } curly brackets
 ================================================================================
 
 // Void pragmas are not supported; only recognized pragmas
-// ({test}, {case(...)}, {extern ...}, {wasm ...}, {warn = ...}, {info = ...})
+// ({test}, {extern ...}, {wasm ...}, {warn = ...}, {info = ...})
 // are valid.
 // {VERSION 2.0}
 // {AUTHOR JHC}

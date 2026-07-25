@@ -1919,26 +1919,6 @@
     }
   },
   {
-    "type": "case_pragma",
-    "named": true,
-    "fields": {
-      "args": {
-        "multiple": true,
-        "required": false,
-        "types": [
-          {
-            "type": ",",
-            "named": false
-          },
-          {
-            "type": "param_assign_input",
-            "named": true
-          }
-        ]
-      }
-    }
-  },
-  {
     "type": "case_selection",
     "named": true,
     "fields": {
@@ -4996,10 +4976,6 @@
       "multiple": false,
       "required": true,
       "types": [
-        {
-          "type": "case_pragma",
-          "named": true
-        },
         {
           "type": "once_pragma",
           "named": true
