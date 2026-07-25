@@ -146,11 +146,9 @@ fn lower_module_from_pous<'db>(
                                 .as_ref()
                                 .map(|s| s.to_string())
                                 .unwrap_or_else(|| mir_func.name.text(db).to_string());
-                            let cases = build_test_cases(db, *func, &export_name);
                             test_entries.push(crate::test_manifest::TestEntry {
                                 path: export_name.clone(),
                                 export: export_name,
-                                cases,
                             });
                         }
 
@@ -210,11 +208,9 @@ fn lower_module_from_pous<'db>(
                         .as_ref()
                         .map(|s| s.to_string())
                         .unwrap_or_else(|| mir_func.name.text(db).to_string());
-                    let cases = build_test_cases(db, *func, &export_name);
                     test_entries.push(crate::test_manifest::TestEntry {
                         path: export_name.clone(),
                         export: export_name,
-                        cases,
                     });
                 }
 
@@ -600,82 +596,6 @@ fn lower_module_from_pous<'db>(
     }
 
     Ok(module)
-}
-
-/// Build test cases from a function's `{case(...)}` pragmas.
-fn build_test_cases<'db>(
-    db: &'db dyn WorkspaceDataBase,
-    func: Function<'db>,
-    base_export: &str,
-) -> Vec<crate::test_manifest::TestCase> {
-    use crate::test_manifest::{TestCase, TestValue};
-    use hir::hir_def::expressions::expression::{ExprKind, ParamAssignKind, PrimaryExpr};
-
-    hir::hir_def::pous::pragma::cases(func.pragmas(db))
-        .iter()
-        .enumerate()
-        .map(|(i, case_params)| {
-            let args: Vec<TestValue> = case_params
-                .iter()
-                .filter_map(|param| {
-                    let value_expr = match param.kind(db) {
-                        ParamAssignKind::NonFormal { value } => value,
-                        ParamAssignKind::FormalInput { value, .. } => value,
-                        _ => return None,
-                    };
-                    match value_expr.expr(db) {
-                        ExprKind::PrimaryExpr(PrimaryExpr::Literal(elem)) => {
-                            Some(elementary_to_test_value(db, elem))
-                        }
-                        _ => None,
-                    }
-                })
-                .collect();
-
-            TestCase {
-                export: format!("{}$case_{}", base_export, i),
-                args,
-            }
-        })
-        .collect()
-}
-
-/// Convert an HIR Elementary literal to a TestValue.
-fn elementary_to_test_value(
-    db: &dyn WorkspaceDataBase,
-    elem: &hir::hir_def::expressions::expression::Elementary,
-) -> crate::test_manifest::TestValue {
-    use crate::test_manifest::TestValue;
-    use hir::hir_def::expressions::expression::Elementary;
-
-    match elem {
-        Elementary::Bool(ident) => {
-            let text = ident.text(db);
-            TestValue::Bool(text.eq_ignore_ascii_case("TRUE") || text == "1")
-        }
-        Elementary::SInt(int)
-        | Elementary::Int(int)
-        | Elementary::DInt(int)
-        | Elementary::USInt(int)
-        | Elementary::UInt(int)
-        | Elementary::UDInt(int)
-        | Elementary::Byte(int)
-        | Elementary::Word(int)
-        | Elementary::DWord(int) => TestValue::I32(int.as_i32(db).unwrap_or(0)),
-        Elementary::LInt(int) | Elementary::ULInt(int) | Elementary::LWord(int) => {
-            TestValue::I64(int.as_i64(db).unwrap_or(0))
-        }
-        Elementary::Real(ident) | Elementary::InferFloat(ident) => {
-            let text = ident.text(db);
-            TestValue::F32(text.parse().unwrap_or(0.0))
-        }
-        Elementary::LReal(ident) => {
-            let text = ident.text(db);
-            TestValue::F64(text.parse().unwrap_or(0.0))
-        }
-        Elementary::InferInteger(int) => TestValue::I32(int.as_i32(db).unwrap_or(0)),
-        _ => TestValue::I32(0), // fallback for time/date/string
-    }
 }
 
 /// Recursively collect all POUs from a namespace and its children.

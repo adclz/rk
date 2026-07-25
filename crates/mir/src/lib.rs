@@ -46,7 +46,7 @@ pub struct MirModule {
     /// String data section entries: (offset, bytes).
     pub string_data: Vec<(u32, Vec<u8>)>,
 
-    /// Test manifest: metadata about test functions and their cases.
+    /// Test manifest: metadata about test functions.
     pub test_manifest: TestManifest,
 
     /// Start of the contiguous RETAIN band the host snapshots and restores;
