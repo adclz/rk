@@ -251,3 +251,71 @@ fn derived_class_fields_do_not_alias_base_fields(mut with_db: db::RootDatabase) 
     let result: i32 = super::execute_wasm(&wasm, "test", ());
     assert_eq!(result, 1122, "class base field survives a derived write");
 }
+
+/// A method declared two or more levels up the `EXTENDS` chain must be
+/// inherited. `inherited_methods` used to collect only from the DIRECT bases'
+/// own declarations, so a grandparent's method was invisible and the call
+/// failed to resolve (E0211 "no such field") — the field query recursed the
+/// whole chain while the method query did not.
+#[rstest]
+fn method_inherited_from_a_grandparent(mut with_db: db::RootDatabase) {
+    let source = r#"
+        FUNCTION_BLOCK L1
+        VAR a : INT; END_VAR
+            METHOD PUBLIC FromL1 : INT
+                a := a + 5;
+                FromL1 := a;
+            END_METHOD
+        END_FUNCTION_BLOCK
+
+        FUNCTION_BLOCK L2 EXTENDS L1
+        VAR b : INT; END_VAR
+        END_FUNCTION_BLOCK
+
+        FUNCTION_BLOCK L3 EXTENDS L2
+        VAR c : INT; END_VAR
+        END_FUNCTION_BLOCK
+
+        FUNCTION test : INT
+        VAR x : L3; END_VAR
+            x.FromL1();
+            test := x.FromL1();   (* state persists: 5 then 10 *)
+        END_FUNCTION
+    "#;
+    let wasm = compile_to_wasm(&mut with_db, source);
+    let result: i32 = super::execute_wasm(&wasm, "test", ());
+    assert_eq!(result, 10, "grandparent method runs against the derived instance");
+}
+
+/// Redeclaring a method further down the chain is an OVERRIDE, not a conflict:
+/// the nearest declaration wins and no duplicate diagnostic is produced.
+#[rstest]
+fn nearest_override_wins_along_the_chain(mut with_db: db::RootDatabase) {
+    let source = r#"
+        FUNCTION_BLOCK B1
+        VAR v : INT; END_VAR
+            METHOD PUBLIC Pick : INT
+                Pick := 1;
+            END_METHOD
+        END_FUNCTION_BLOCK
+
+        FUNCTION_BLOCK B2 EXTENDS B1
+        VAR w : INT; END_VAR
+            METHOD PUBLIC OVERRIDE Pick : INT
+                Pick := 2;
+            END_METHOD
+        END_FUNCTION_BLOCK
+
+        FUNCTION_BLOCK B3 EXTENDS B2
+        VAR z : INT; END_VAR
+        END_FUNCTION_BLOCK
+
+        FUNCTION test : INT
+        VAR x : B3; END_VAR
+            test := x.Pick();
+        END_FUNCTION
+    "#;
+    let wasm = compile_to_wasm(&mut with_db, source);
+    let result: i32 = super::execute_wasm(&wasm, "test", ());
+    assert_eq!(result, 2, "B2's override wins over B1's declaration");
+}

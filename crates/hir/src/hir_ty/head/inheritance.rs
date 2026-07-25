@@ -157,66 +157,95 @@ fn resolve_spec_to_pou<'db>(db: &'db dyn WorkspaceDataBase, spec: &Spec<'db>) ->
     }
 }
 
+/// Every POU a POU inherits from DIRECTLY: its `EXTENDS` base (one for an
+/// FB/CLASS, possibly several for an INTERFACE) plus every `IMPLEMENTS`
+/// interface.
+fn direct_bases<'db>(db: &'db dyn WorkspaceDataBase, pou: Pou<'db>) -> Vec<Pou<'db>> {
+    let mut bases = Vec::new();
+    let mut push = |spec: &Spec<'db>| {
+        if let Some(p) = resolve_spec_to_pou(db, spec) {
+            bases.push(p);
+        }
+    };
+    match pou {
+        Pou::Class(class) => {
+            if let Some(base) = class.extends(db) {
+                push(base);
+            }
+            for iface in class.implements(db) {
+                push(iface);
+            }
+        }
+        Pou::FunctionBlock(fb) => {
+            if let Some(base) = fb.extends(db) {
+                push(base);
+            }
+            for iface in fb.implements(db) {
+                push(iface);
+            }
+        }
+        Pou::Interface(iface) => {
+            if let Some(extends) = iface.extends(db) {
+                for spec in extends {
+                    push(spec);
+                }
+            }
+        }
+        _ => {}
+    }
+    bases
+}
+
+/// Every method visible ON `pou` — its own declarations plus everything it
+/// inherits, with a NEARER declaration overriding a farther one.
+///
+/// Ancestors are collected first so a redeclaration closer to `pou` overwrites
+/// it: that is method overriding, not a conflict, and must not be reported as a
+/// duplicate.
+fn chain_methods<'db>(
+    db: &'db dyn WorkspaceDataBase,
+    pou: Pou<'db>,
+    visited: &mut Vec<Pou<'db>>,
+) -> FxHashMap<Ident, InheritedMethod<'db>> {
+    let mut out = FxHashMap::default();
+    // Cyclic inheritance is reported separately (E05xx); stop so this
+    // terminates regardless.
+    if visited.contains(&pou) {
+        return out;
+    }
+    visited.push(pou);
+
+    for base in direct_bases(db, pou) {
+        out.extend(chain_methods(db, base, visited));
+    }
+    for (name, method) in pou.get_scope_id(db).def_map(db).declared_methods.iter() {
+        out.insert(*name, InheritedMethod::new(pou, *method));
+    }
+    out
+}
+
+/// Every method `pou` INHERITS (its own declarations excluded), resolved through
+/// the whole inheritance graph.
+///
+/// A name declared at several depths of one chain is an override — the nearest
+/// wins, silently. A name arriving from two INDEPENDENT bases (two interfaces,
+/// or a base class and an interface) is a genuine conflict and is recorded in
+/// `duplicates` for the E01xx diagnostic.
 #[salsa::tracked(returns(ref))]
 pub fn inherited_methods<'db>(
     db: &'db dyn WorkspaceDataBase,
     pou: Pou<'db>,
 ) -> InheritedMethodSet<'db> {
-    let mut methods = FxHashMap::default();
+    let mut methods: FxHashMap<Ident, InheritedMethod<'db>> = FxHashMap::default();
     let mut duplicates = vec![];
 
-    let mut inherit_from = |src: Pou<'db>| {
-        for method in src.get_scope_id(db).def_map(db).declared_methods.iter() {
-            let m = InheritedMethod::new(src, *method.1);
-            if let Some(dup) = methods.insert(*method.0, m) {
+    for base in direct_bases(db, pou) {
+        let mut visited = vec![pou];
+        for (name, m) in chain_methods(db, base, &mut visited) {
+            if let Some(dup) = methods.insert(name, m) {
                 duplicates.push((dup, m));
             }
         }
-    };
-
-    match pou {
-        Pou::Class(class) => {
-            if let Some(base) = class.extends(db)
-                && let Some(pou) = resolve_spec_to_pou(db, base)
-            {
-                inherit_from(pou);
-            }
-            for iface in class.implements(db) {
-                if let Some(pou) = resolve_spec_to_pou(db, iface)
-                    && matches!(pou, Pou::Interface(_))
-                {
-                    inherit_from(pou);
-                }
-            }
-        }
-
-        Pou::Interface(iface) => {
-            if let Some(extends) = iface.extends(db) {
-                for spec in extends {
-                    if let Some(pou) = resolve_spec_to_pou(db, spec) {
-                        inherit_from(pou);
-                    }
-                }
-            }
-        }
-
-        Pou::FunctionBlock(fb) => {
-            if let Some(base) = fb.extends(db)
-                && let Some(pou) = resolve_spec_to_pou(db, base)
-            {
-                inherit_from(pou);
-            }
-
-            for iface in fb.implements(db) {
-                if let Some(pou) = resolve_spec_to_pou(db, iface)
-                    && matches!(pou, Pou::Interface(_))
-                {
-                    inherit_from(pou);
-                }
-            }
-        }
-
-        _ => {}
     }
 
     InheritedMethodSet {
