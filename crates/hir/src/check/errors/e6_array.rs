@@ -21,8 +21,8 @@ pub enum ArrayError<'db> {
         value: Expr<'db>,
     },
     InferiorUpperBound {
-        lower: u64,
-        upper: u64,
+        lower: i64,
+        upper: i64,
         upper_expr: Expr<'db>,
     },
     TooManyElements {

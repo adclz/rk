@@ -28,41 +28,44 @@ fn unknown_type(mut with_db: RootDatabase) {
 }
 
 #[rstest]
-fn invalid_lower_bound_in_array(mut with_db: RootDatabase) {
+fn negative_lower_bound_is_valid(mut with_db: RootDatabase) {
+    // IEC 61131-3 allows a negative lower bound. This was rejected while array
+    // bounds were folded as UNSIGNED, so `-1` failed to evaluate at all.
     let source = r#"
         TYPE
             List: ARRAY[-1..10] OF INT;
         END_TYPE
         "#;
 
-    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E0601] Error: invalid array bounds
-       ,-[ file:///test0.st:3:25 ]
-       |
-     3 |             List: ARRAY[-1..10] OF INT;
-       |                         ^|
-       |                          `-- invalid lower bound value for ARRAY
-    ---'
-    ");
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @"");
 }
 
 #[rstest]
-fn invalid_upper_bound_in_array(mut with_db: RootDatabase) {
+fn non_constant_array_bound_is_rejected(mut with_db: RootDatabase) {
+    // A bound that is not a compile-time constant still cannot be folded.
+    let source = r#"
+        FUNCTION fn1 : INT
+        VAR x : INT; arr : ARRAY[x..10] OF INT; END_VAR
+        END_FUNCTION
+        "#;
+
+    let out = test_diagnostics(&mut with_db, &[source]);
+    assert!(out.contains("[E0601]"), "expected invalid lower bound, got:\n{out}");
+}
+
+#[rstest]
+fn upper_bound_below_lower_bound_is_rejected(mut with_db: RootDatabase) {
+    // `0..-10` now FOLDS (both are valid constants); what is wrong is the
+    // ordering, so it is reported as an inferior upper bound (E0603) rather
+    // than an unevaluatable value.
     let source = r#"
         TYPE
             List: ARRAY[0..-10] OF INT;
         END_TYPE
         "#;
 
-    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E0602] Error: invalid array bounds
-       ,-[ file:///test0.st:3:28 ]
-       |
-     3 |             List: ARRAY[0..-10] OF INT;
-       |                            ^|^
-       |                             `--- invalid upper bound value for ARRAY
-    ---'
-    ");
+    let out = test_diagnostics(&mut with_db, &[source]);
+    assert!(out.contains("[E0603]"), "expected inferior upper bound, got:\n{out}");
 }
 
 #[rstest]
@@ -85,22 +88,15 @@ fn inferior_upper_bound_in_array(mut with_db: RootDatabase) {
 }
 
 #[rstest]
-fn nested_array_invalid_bound(mut with_db: RootDatabase) {
+fn nested_array_negative_bound_is_valid(mut with_db: RootDatabase) {
+    // A negative bound in ANY dimension of a multi-dimensional array is valid.
     let source = r#"
         TYPE
             List: ARRAY[0..3, -2..1] OF INT;
         END_TYPE
         "#;
 
-    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E0601] Error: invalid array bounds
-       ,-[ file:///test0.st:3:31 ]
-       |
-     3 |             List: ARRAY[0..3, -2..1] OF INT;
-       |                               ^|
-       |                                `-- invalid lower bound value for ARRAY
-    ---'
-    ");
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @"");
 }
 
 #[rstest]

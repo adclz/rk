@@ -252,12 +252,42 @@ impl<'db> InitExpr<'db> {
 }
 
 impl<'db> Expr<'db> {
-    pub fn as_range(self, db: &'db dyn WorkspaceDataBase) -> Option<u64> {
-        match self.expr(db) {
-            ExprKind::PrimaryExpr(PrimaryExpr::Literal(Elementary::InferInteger(v))) => {
-                v.as_u64(db).ok()
-            }
+    /// Evaluate this expression as a compile-time integer.
+    ///
+    /// The single const-integer evaluator: array and subrange bounds, enum
+    /// values and STRING capacities are all folded through here, so what
+    /// validation accepts and what lowering reads can never diverge. Accepts an
+    /// integer literal of any typed or untyped form (`10`, `INT#10`, `16#F`,
+    /// `2#1010`, `-5`).
+    ///
+    /// Named constants are not folded yet; a non-literal simply yields `None`.
+    pub fn as_const_int(self, db: &'db dyn WorkspaceDataBase) -> Option<i64> {
+        let ExprKind::PrimaryExpr(PrimaryExpr::Literal(lit)) = self.expr(db) else {
+            return None;
+        };
+        match lit {
+            Elementary::InferInteger(v)
+            | Elementary::SInt(v)
+            | Elementary::Int(v)
+            | Elementary::DInt(v)
+            | Elementary::LInt(v)
+            | Elementary::USInt(v)
+            | Elementary::UInt(v)
+            | Elementary::UDInt(v)
+            | Elementary::ULInt(v)
+            | Elementary::Byte(v)
+            | Elementary::Word(v)
+            | Elementary::DWord(v)
+            | Elementary::LWord(v) => v.as_i64(db).ok(),
             _ => None,
         }
+    }
+
+    /// Evaluate as a compile-time SIZE — a non-negative constant integer.
+    ///
+    /// Same evaluator as [`Self::as_const_int`], restricted to values a length
+    /// or capacity can take.
+    pub fn as_range(self, db: &'db dyn WorkspaceDataBase) -> Option<u64> {
+        self.as_const_int(db).filter(|v| *v >= 0).map(|v| v as u64)
     }
 }

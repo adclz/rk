@@ -21,7 +21,7 @@ impl<'db> InitInference<'db> {
             infer.resolve_expr(db, upper, &mut self.body_infer_result);
             infer.check_expr(db, upper, &mut self.body_infer_result);
 
-            match (lower.as_range(db), upper.as_range(db)) {
+            match (lower.as_const_int(db), upper.as_const_int(db)) {
                 (Some(lower_range), Some(upper_range)) => {
                     if lower_range > upper_range {
                         self.errors.push(

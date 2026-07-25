@@ -261,3 +261,43 @@ fn test_array_in_for_loop_with_computation(mut with_db: db::RootDatabase) {
     // Sum of squares 0..9 = 0+1+4+9+16+25+36+49+64+81 = 285
     assert_eq!(result, 285, "Sum of squares 0..9 should be 285");
 }
+
+/// A negative lower bound is valid IEC and must address correctly at runtime:
+/// element `arr[-2]` sits at offset 0, and indexing subtracts the (negative)
+/// lower bound. Array bounds were folded as UNSIGNED, so a negative bound never
+/// evaluated and the declaration was rejected outright.
+#[rstest]
+fn negative_lower_bound_array_addresses_correctly(mut with_db: db::RootDatabase) {
+    let source = r#"
+        FUNCTION test : INT
+        VAR arr : ARRAY[-2..2] OF INT; i : INT; END_VAR
+            FOR i := -2 TO 2 DO
+                arr[i] := i * 10;
+            END_FOR;
+            (* -20 + 0 + 20 = 0 proves both ends address distinctly; add a
+               middle element so a collapsed layout cannot also give 0 *)
+            test := arr[-2] + arr[2] + arr[-1] + 100;
+        END_FUNCTION
+    "#;
+    let wasm = compile_to_wasm(&mut with_db, source);
+    let result: i32 = super::execute_wasm(&wasm, "test", ());
+    assert_eq!(result, 90, "-20 + 20 + (-10) + 100");
+}
+
+/// Typed integer literals as bounds (`INT#1..INT#3`) fold like untyped ones.
+/// Validation and lowering used different literal matchers, so this form was
+/// accepted by one and rejected by the other.
+#[rstest]
+fn typed_literal_array_bounds(mut with_db: db::RootDatabase) {
+    let source = r#"
+        FUNCTION test : INT
+        VAR arr : ARRAY[INT#1..INT#3] OF INT; END_VAR
+            arr[1] := 7;
+            arr[3] := 9;
+            test := arr[1] + arr[3];
+        END_FUNCTION
+    "#;
+    let wasm = compile_to_wasm(&mut with_db, source);
+    let result: i32 = super::execute_wasm(&wasm, "test", ());
+    assert_eq!(result, 16, "typed-literal bounds address correctly");
+}

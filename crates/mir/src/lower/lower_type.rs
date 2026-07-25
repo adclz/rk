@@ -2,7 +2,6 @@ use db::WorkspaceDataBase;
 use hir::{
     hir_def::{
         expressions::{
-            expression::{Elementary, ExprKind, PrimaryExpr},
             spec::{Array, ElementarySpec, Struct, SubRange},
         },
         interned::identifier::Ident,
@@ -449,37 +448,21 @@ pub fn lower_class_type<'db>(
     )
 }
 
+/// Fold a compile-time integer (array/subrange bound, enum value).
+///
+/// Delegates to HIR's [`Expr::as_const_int`] — the one const-integer evaluator,
+/// also used by the checks that validate these same expressions. MIR previously
+/// had its own literal matcher, which accepted a different set than the checker
+/// did, so validation and lowering could disagree about what counts as a
+/// constant.
 fn extract_integer_literal<'db>(
     db: &'db dyn WorkspaceDataBase,
     expr: hir::hir_def::expressions::expression::Expr<'db>,
 ) -> Result<i32, LowerTypeError> {
-    match expr.expr(db) {
-        ExprKind::PrimaryExpr(PrimaryExpr::Literal(Elementary::InferInteger(int))) => {
-            int.as_i32(db).map_err(|e| {
-                LowerTypeError::UnsupportedType(format!(
-                    "Failed to parse integer literal as i32: {}",
-                    e
-                ))
-            })
-        }
-        ExprKind::PrimaryExpr(PrimaryExpr::Literal(Elementary::Int(int))) => {
-            int.as_i32(db).map_err(|e| {
-                LowerTypeError::UnsupportedType(format!(
-                    "Failed to parse Int literal as i32: {}",
-                    e
-                ))
-            })
-        }
-        ExprKind::PrimaryExpr(PrimaryExpr::Literal(Elementary::DInt(int))) => {
-            int.as_i32(db).map_err(|e| {
-                LowerTypeError::UnsupportedType(format!(
-                    "Failed to parse DInt literal as i32: {}",
-                    e
-                ))
-            })
-        }
-        _ => Err(LowerTypeError::UnsupportedType(
-            "Array bounds must be integer literals".to_string(),
-        )),
-    }
+    let value = expr.as_const_int(db).ok_or_else(|| {
+        LowerTypeError::UnsupportedType("expected a constant integer".to_string())
+    })?;
+    i32::try_from(value).map_err(|_| {
+        LowerTypeError::UnsupportedType(format!("constant {value} does not fit in 32 bits"))
+    })
 }
