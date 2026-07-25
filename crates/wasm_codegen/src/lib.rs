@@ -663,13 +663,87 @@ impl<'a> WasmGen<'a> {
         }
     }
 
-    /// Walk every user function's body and collect the set of WASM
-    /// instruction names that hit `BUILTIN_NAMES`. Returned as a sorted
-    /// `Vec` for deterministic graft order.
+    /// Name → wasm index for `emit_call`: user functions remapped past imports
+    /// and grafted builtins, plus the builtins themselves (expression lowering
+    /// calls `str_byte_cmp` by name).
+    fn build_call_indices(
+        &self,
+    ) -> FxHashMap<hir::hir_def::interned::identifier::Ident, u32> {
+        let mut map: FxHashMap<_, _> = self
+            .module
+            .function_indices
+            .iter()
+            .map(|(name, &mir_idx)| {
+                let wasm_idx = self.index_remap.get(&mir_idx).copied().unwrap_or(mir_idx);
+                (*name, wasm_idx)
+            })
+            .collect();
+        for (name, &idx) in &self.builtin_indices {
+            let ident = hir::hir_def::interned::identifier::Ident::new(
+                self.db,
+                compact_str::CompactString::from(name.as_str()),
+            );
+            map.entry(ident).or_insert(idx);
+        }
+        map
+    }
+
     fn collect_builtin_names(&self) -> Vec<String> {
+        use mir::expr::{MirExpr, MirPlace};
         use mir::stmt::MirStmt;
+        let db = self.db;
         let mut found = rustc_hash::FxHashSet::default();
-        fn walk(stmts: &[MirStmt], found: &mut rustc_hash::FxHashSet<String>) {
+
+        // Builtins are also called from expression position, so every
+        // expression is walked.
+        fn walk_place(
+            db: &dyn db::WorkspaceDataBase,
+            place: &MirPlace,
+            found: &mut rustc_hash::FxHashSet<String>,
+        ) {
+            match place {
+                MirPlace::Index { base, index, .. } => {
+                    walk_place(db, base, found);
+                    walk_expr(db, index, found);
+                }
+                MirPlace::Field { base, .. } | MirPlace::Deref { base, .. } => {
+                    walk_place(db, base, found)
+                }
+                MirPlace::Local(_) | MirPlace::ThisField { .. } | MirPlace::Global { .. } => {}
+            }
+        }
+        fn walk_expr(
+            db: &dyn db::WorkspaceDataBase,
+            expr: &MirExpr,
+            found: &mut rustc_hash::FxHashSet<String>,
+        ) {
+            match expr {
+                MirExpr::Call(call) => {
+                    let name = call.callee.text(db);
+                    if crate::builtins::lookup(name).is_some() {
+                        found.insert(name.to_string());
+                    }
+                    for arg in &call.args {
+                        walk_expr(db, &arg.value, found);
+                    }
+                }
+                MirExpr::BinOp { lhs, rhs, .. } => {
+                    walk_expr(db, lhs, found);
+                    walk_expr(db, rhs, found);
+                }
+                MirExpr::UnaryOp { expr, .. } | MirExpr::Cast { expr, .. } => {
+                    walk_expr(db, expr, found)
+                }
+                MirExpr::Load(place, _) | MirExpr::AddrOf(place) => walk_place(db, place, found),
+                MirExpr::CopyIntoScratch { src, .. } => walk_place(db, src, found),
+                MirExpr::Constant(_) | MirExpr::StringLiteral { .. } => {}
+            }
+        }
+        fn walk(
+            db: &dyn db::WorkspaceDataBase,
+            stmts: &[MirStmt],
+            found: &mut rustc_hash::FxHashSet<String>,
+        ) {
             for stmt in stmts {
                 match stmt {
                     MirStmt::WasmIntrinsic { instruction, .. } => {
@@ -677,39 +751,86 @@ impl<'a> WasmGen<'a> {
                             found.insert(instruction.to_string());
                         }
                     }
+                    MirStmt::Assign { target, value } => {
+                        walk_place(db, target, found);
+                        walk_expr(db, value, found);
+                    }
+                    MirStmt::Call(call) => {
+                        let name = call.callee.text(db);
+                        if crate::builtins::lookup(name).is_some() {
+                            found.insert(name.to_string());
+                        }
+                        for arg in &call.args {
+                            walk_expr(db, &arg.value, found);
+                        }
+                    }
+                    MirStmt::FbCall {
+                        instance,
+                        input_writes,
+                        output_reads,
+                        ..
+                    } => {
+                        walk_place(db, instance, found);
+                        for (_, value, _) in input_writes {
+                            walk_expr(db, value, found);
+                        }
+                        for (_, place, _) in output_reads {
+                            walk_place(db, place, found);
+                        }
+                    }
                     MirStmt::If {
+                        condition,
                         then_body,
                         else_ifs,
                         else_body,
-                        ..
                     } => {
-                        walk(then_body, found);
-                        for (_, body) in else_ifs {
-                            walk(body, found);
+                        walk_expr(db, condition, found);
+                        walk(db, then_body, found);
+                        for (cond, body) in else_ifs {
+                            walk_expr(db, cond, found);
+                            walk(db, body, found);
                         }
                         if let Some(b) = else_body {
-                            walk(b, found);
+                            walk(db, b, found);
                         }
                     }
                     MirStmt::Case {
-                        arms, else_body, ..
+                        selector,
+                        arms,
+                        else_body,
+                        ..
                     } => {
+                        walk_expr(db, selector, found);
                         for arm in arms {
-                            walk(&arm.body, found);
+                            walk(db, &arm.body, found);
                         }
                         if let Some(b) = else_body {
-                            walk(b, found);
+                            walk(db, b, found);
                         }
                     }
-                    MirStmt::For { body, .. }
-                    | MirStmt::While { body, .. }
-                    | MirStmt::Repeat { body, .. } => walk(body, found),
+                    MirStmt::For {
+                        start,
+                        end,
+                        step,
+                        body,
+                        ..
+                    } => {
+                        walk_expr(db, start, found);
+                        walk_expr(db, end, found);
+                        walk_expr(db, step, found);
+                        walk(db, body, found);
+                    }
+                    MirStmt::While { condition, body } | MirStmt::Repeat { condition, body } => {
+                        walk_expr(db, condition, found);
+                        walk(db, body, found);
+                    }
+                    MirStmt::Raise { message } => walk_expr(db, message, found),
                     _ => {}
                 }
             }
         }
         for func in &self.module.functions {
-            walk(&func.body, &mut found);
+            walk(db, &func.body, &mut found);
         }
 
         // Force-include `rk.str_assign` whenever any function has a STRING
@@ -926,15 +1047,7 @@ impl<'a> WasmGen<'a> {
         };
 
         // Build remapped function indices for call instructions
-        let remapped_fn_indices: FxHashMap<_, _> = self
-            .module
-            .function_indices
-            .iter()
-            .map(|(name, &mir_idx)| {
-                let wasm_idx = self.index_remap.get(&mir_idx).copied().unwrap_or(mir_idx);
-                (*name, wasm_idx)
-            })
-            .collect();
+        let remapped_fn_indices = self.build_call_indices();
 
         // The per-function snapshot context `emit_call` consults for nested
         // STRING-returning calls.
@@ -1084,15 +1197,7 @@ impl<'a> WasmGen<'a> {
 
         let mut wasm_func = wasm_encoder::Function::new(extra_locals);
 
-        let remapped_fn_indices: FxHashMap<_, _> = self
-            .module
-            .function_indices
-            .iter()
-            .map(|(name, &mir_idx)| {
-                let wasm_idx = self.index_remap.get(&mir_idx).copied().unwrap_or(mir_idx);
-                (*name, wasm_idx)
-            })
-            .collect();
+        let remapped_fn_indices = self.build_call_indices();
 
         // SNAPSHOT_CTX reuses the two scratch locals; snapshots and the catch
         // shuffle never run concurrently.

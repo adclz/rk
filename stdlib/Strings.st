@@ -470,6 +470,56 @@ NAMESPACE Std.Strings
 			s := MID('hello', 0, 2);
 			ASSERT(LEN(s) = 0, 'MID L=0 is empty');
 		END_FUNCTION
+
+		// --- STRING comparison operators: =, <>, and lexicographic ordering
+		// (byte-wise with length tiebreak). These replace the LEN+FIND idiom
+		// for content assertions. ---
+
+		{test}
+		FUNCTION test_string_equality_operators
+			VAR
+				s: STRING := 'START';
+			END_VAR
+			ASSERT(s = 'START', 'var = literal');
+			ASSERT('START' = s, 'literal = var');
+			ASSERT(s <> 'STOP', 'not-equal');
+			ASSERT_EQ(CONCAT('STA', 'RT'), 'START', 'ASSERT_EQ on a producer result');
+			ASSERT_NEQ(CONCAT('a', 'b'), 'ba', 'ASSERT_NEQ on unequal content');
+		END_FUNCTION
+
+		{test}
+		FUNCTION test_string_ordering_operators
+			ASSERT('abc' < 'abd', 'lexicographic less');
+			ASSERT('ab' < 'abc', 'shared prefix: shorter is smaller');
+			ASSERT('abd' > 'abc', 'greater');
+			ASSERT('abc' <= 'abc', 'le on equal');
+			ASSERT('abc' >= 'abc', 'ge on equal');
+			ASSERT(NOT ('abc' < 'abc'), 'not strictly less than itself');
+			ASSERT('' < 'a', 'empty sorts first');
+		END_FUNCTION
+
+		{test}
+		FUNCTION test_string_equality_after_mutation
+			VAR
+				s: STRING := 'x';
+				i: INT;
+			END_VAR
+			FOR i := 1 TO 3 DO
+				s := CONCAT(s, 'y');
+			END_FOR;
+			ASSERT_EQ(s, 'xyyy', 'accumulated content compares whole');
+		END_FUNCTION
+
+		// Both operands are producer calls — each needs its own scratch
+		// buffer. If they shared the one static return slot, the second call
+		// would clobber the first and every such comparison would degenerate
+		// to comparing a value with itself (silently always equal).
+		{test}
+		FUNCTION test_string_comparison_between_two_producers
+			ASSERT(CONCAT('ab', 'cd') = CONCAT('ab', 'cd'), 'equal producer results compare equal');
+			ASSERT(CONCAT('ab', 'cd') <> CONCAT('xy', 'zw'), 'different producer results must not be equal');
+			ASSERT(CONCAT('a', 'a') < CONCAT('a', 'b'), 'ordering holds across two producers');
+		END_FUNCTION
 	END_NAMESPACE
 
 END_NAMESPACE

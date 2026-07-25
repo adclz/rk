@@ -1,9 +1,8 @@
 use db::RootDatabase;
 use hir::hir_ty::index_graphs::{discover_all_tests, find_test};
-use insta::assert_snapshot;
 use rstest::rstest;
 
-use crate::tests::utils::{add_sources, test_diagnostics, with_db};
+use crate::tests::utils::{add_sources, with_db};
 
 #[rstest]
 fn discover_global_tests(mut with_db: RootDatabase) {

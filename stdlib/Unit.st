@@ -231,8 +231,17 @@ NAMESPACE Std.Unit
 		END_IF
 	END_FUNCTION
 
-	// NOTE: no STRING overload — codegen has no STRING comparison yet. Assert
-	// string equality via `ASSERT(a = b)` once that lands, or compare lengths.
+	FUNCTION ASSERT_EQ
+		VAR_INPUT
+			value: STRING;
+			target: STRING;
+			message: STRING := '';
+		END_VAR
+
+		IF value <> target THEN
+			__RAISE(CONCAT('assertion failed: ', message));
+		END_IF
+	END_FUNCTION
 
 	FUNCTION ASSERT_EQ
 		VAR_INPUT
@@ -455,7 +464,17 @@ NAMESPACE Std.Unit
 		END_IF
 	END_FUNCTION
 
-	// NOTE: no STRING overload — codegen has no STRING comparison yet.
+	FUNCTION ASSERT_NEQ
+		VAR_INPUT
+			value: STRING;
+			target: STRING;
+			message: STRING := '';
+		END_VAR
+
+		IF value = target THEN
+			__RAISE(CONCAT('assertion failed: ', message));
+		END_IF
+	END_FUNCTION
 
 	FUNCTION ASSERT_NEQ
 		VAR_INPUT

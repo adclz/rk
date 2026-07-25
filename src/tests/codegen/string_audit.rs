@@ -746,3 +746,69 @@ END_FUNCTION
         result
     );
 }
+
+// --- STRING comparison operators (=, <>, <, <=, >, >=) lower to the grafted
+// `str.byte_cmp` builtin applied against 0. Executed, not just validated. ---
+
+#[rstest]
+fn string_equality_executes(mut with_db: db::RootDatabase) {
+    let source = r#"
+        FUNCTION str_eq : BOOL
+        VAR_INPUT a : STRING; b : STRING; END_VAR
+            str_eq := a = b;
+        END_FUNCTION
+
+        FUNCTION check : INT
+        VAR s : STRING := 'START'; n : INT; END_VAR
+            IF s = 'START' THEN n := n + 1; END_IF;      // literal RHS
+            IF 'START' = s THEN n := n + 10; END_IF;     // literal LHS
+            IF s <> 'STOP' THEN n := n + 100; END_IF;    // not-equal
+            IF '' = '' THEN n := n + 1000; END_IF;       // empty = empty
+            check := n;
+        END_FUNCTION
+    "#;
+    let wasm = super::compile_to_wasm(&mut with_db, source);
+    let r: i32 = super::execute_wasm(&wasm, "check", ());
+    assert_eq!(r, 1111, "all four equality forms hold");
+}
+
+#[rstest]
+fn string_ordering_executes(mut with_db: db::RootDatabase) {
+    let source = r#"
+        FUNCTION check : DINT
+        VAR n : DINT; END_VAR
+            IF 'abc' < 'abd' THEN n := n + 1; END_IF;     // lexicographic
+            IF 'ab' < 'abc' THEN n := n + 10; END_IF;     // shared prefix: shorter is smaller
+            IF 'abd' > 'abc' THEN n := n + 100; END_IF;
+            IF 'abc' <= 'abc' THEN n := n + 1000; END_IF;
+            IF 'abc' >= 'abc' THEN n := n + 10000; END_IF;
+            IF NOT ('abc' < 'abc') THEN n := n + 100000; END_IF;
+            check := n;
+        END_FUNCTION
+    "#;
+    let wasm = super::compile_to_wasm(&mut with_db, source);
+    let r: i32 = super::execute_wasm(&wasm, "check", ());
+    assert_eq!(r, 111111, "IEC lexicographic ordering with length tiebreak");
+}
+
+#[rstest]
+fn string_comparison_of_producer_results_executes(mut with_db: db::RootDatabase) {
+    // Both operands are STRING-returning calls — the per-call-site snapshot
+    // must keep the first result alive while the second producer runs.
+    let source = r#"
+        FUNCTION tag : STRING
+        VAR_INPUT which : INT; END_VAR
+            IF which = 1 THEN tag := 'one'; ELSE tag := 'two'; END_IF;
+        END_FUNCTION
+
+        FUNCTION check : INT
+        VAR n : INT; END_VAR
+            IF tag(1) = tag(1) THEN n := n + 1; END_IF;
+            IF tag(1) <> tag(2) THEN n := n + 10; END_IF;
+            check := n;
+        END_FUNCTION
+    "#;
+    let wasm = super::compile_to_wasm(&mut with_db, source);
+    let r: i32 = super::execute_wasm(&wasm, "check", ());
+    assert_eq!(r, 11, "producer-vs-producer comparison uses snapshotted operands");
+}

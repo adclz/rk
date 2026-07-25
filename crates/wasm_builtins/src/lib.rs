@@ -413,6 +413,20 @@ pub extern "C" fn str_is_utf8(ptr: *const u8, len: u32) -> i32 {
     if core::str::from_utf8(bytes).is_ok() { 1 } else { 0 }
 }
 
+/// Lexicographic byte comparison of two STRINGs, `-1`/`0`/`1` like
+/// `memcmp` with length as the tiebreak; backs the IEC comparison
+/// operators on STRING.
+#[unsafe(no_mangle)]
+pub extern "C" fn str_byte_cmp(a_ptr: *const u8, a_len: u32, b_ptr: *const u8, b_len: u32) -> i32 {
+    let a = unsafe { ffi_slice(a_ptr, a_len) };
+    let b = unsafe { ffi_slice(b_ptr, b_len) };
+    match a.cmp(b) {
+        core::cmp::Ordering::Less => -1,
+        core::cmp::Ordering::Equal => 0,
+        core::cmp::Ordering::Greater => 1,
+    }
+}
+
 /// 1-indexed byte position of `needle` in `haystack`, `0` if absent, `1`
 /// for an empty needle. Byte-level.
 #[unsafe(no_mangle)]

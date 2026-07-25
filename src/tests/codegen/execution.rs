@@ -825,3 +825,28 @@ fn test_execute_subwidth_cast_normalizes(mut with_db: db::RootDatabase) {
     let r: i32 = super::execute_wasm(&wasm, "to_sint", (200i32,));
     assert_eq!(r, -56, "INT_TO_SINT(200) truncates to the 8-bit two's-complement -56");
 }
+
+/// Binary operators compute in the common WIDER type of both operands
+/// regardless of operand order (IEC 6.6.1.6). `INT * REAL` used to be typed
+/// INT (left-anchored), which rejected the expression outright; the reversed
+/// order computed correctly. Both orders must now produce the REAL result.
+#[rstest]
+fn test_execute_widened_arithmetic_is_commutative(mut with_db: db::RootDatabase) {
+    let source = r#"
+        FUNCTION int_times_real : REAL
+        VAR_INPUT i : INT; r : REAL; END_VAR
+            int_times_real := i * r;
+        END_FUNCTION
+
+        FUNCTION real_times_int : REAL
+        VAR_INPUT i : INT; r : REAL; END_VAR
+            real_times_int := r * i;
+        END_FUNCTION
+    "#;
+    let wasm = compile_to_wasm(&mut with_db, source);
+    // 3 * 0.5: INT-domain math would truncate to 0 (or 1); REAL math gives 1.5.
+    let a: f32 = super::execute_wasm(&wasm, "int_times_real", (3i32, 0.5f32));
+    assert_eq!(a, 1.5, "INT * REAL computes in REAL");
+    let b: f32 = super::execute_wasm(&wasm, "real_times_int", (3i32, 0.5f32));
+    assert_eq!(b, 1.5, "REAL * INT computes in REAL");
+}

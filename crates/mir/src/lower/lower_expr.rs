@@ -256,6 +256,23 @@ impl<'db> ExprLowerCtx<'db> {
         left: Expr<'db>,
         right: Expr<'db>,
     ) -> Result<MirExpr, LowerTypeError> {
+        // STRING operands have no scalar representation — comparison lowers
+        // to the grafted `str_byte_cmp` builtin (lexicographic, memcmp-style
+        // -1/0/1) and the operator is applied to its result against 0:
+        // `a < b`  →  `str_byte_cmp(a, b) < 0`. Detect BEFORE the scalar
+        // conversion below, which would otherwise abort the whole build.
+        let is_string = |e: Expr<'db>| {
+            matches!(
+                e.infer(self.db).normalize(self.db),
+                hir::hir_ty::ty::Type::Elementary(
+                    hir::hir_def::expressions::spec::ElementarySpec::String
+                )
+            )
+        };
+        if is_string(left) || is_string(right) {
+            return self.lower_string_comparison(op, left, right);
+        }
+
         // Determine common comparison type (widest of the two)
         let left_elem = self.expr_to_mir_elementary(left)?;
         let right_elem = self.expr_to_mir_elementary(right)?;
@@ -270,6 +287,44 @@ impl<'db> ExprLowerCtx<'db> {
             rhs: Box::new(right_mir),
             // Comparison executes at the common type
             ty: common,
+        })
+    }
+
+    /// Lower a STRING comparison as `str_byte_cmp(a, b) OP 0`; the builtin
+    /// takes two by-value STRING args.
+    fn lower_string_comparison(
+        &self,
+        op: MirBinOp,
+        left: Expr<'db>,
+        right: Expr<'db>,
+    ) -> Result<MirExpr, LowerTypeError> {
+        let callee = hir::hir_def::interned::identifier::Ident::new(
+            self.db,
+            compact_str::CompactString::from("str.byte_cmp"),
+        );
+        let cmp = MirExpr::Call(crate::expr::MirCall {
+            callee,
+            // Unused: `emit_call` resolves by name through `fn_indices`,
+            // where codegen registers the grafted builtin's index.
+            callee_index: u32::MAX,
+            args: vec![
+                crate::expr::MirCallArg {
+                    value: self.lower_expr(left)?,
+                    kind: crate::expr::MirArgKind::ByValue,
+                },
+                crate::expr::MirCallArg {
+                    value: self.lower_expr(right)?,
+                    kind: crate::expr::MirArgKind::ByValue,
+                },
+            ],
+            return_type: MirType::Elementary(MirElementary::DInt),
+            output_bindings: vec![],
+        });
+        Ok(MirExpr::BinOp {
+            op,
+            lhs: Box::new(cmp),
+            rhs: Box::new(MirExpr::Constant(MirConstant::I32(0))),
+            ty: MirElementary::DInt,
         })
     }
 
