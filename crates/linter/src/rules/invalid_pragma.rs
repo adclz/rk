@@ -40,8 +40,6 @@ pub fn check<'db>(
         _ => return,
     };
 
-    let has_test = pragmas.iter().any(|p| matches!(p, Pragma::Test(_)));
-
     for pragma in pragmas {
         let (invalid, reason) = match pragma {
             Pragma::Test(_) => match kind {
@@ -56,20 +54,6 @@ pub fn check<'db>(
                 ScopeKind::Program(_) => (true, "{once} is not valid on PROGRAM"),
                 _ => (false, ""),
             },
-            Pragma::Case(_, _) => {
-                if !has_test {
-                    (true, "{case} requires {test} on the same POU")
-                } else {
-                    match kind {
-                        ScopeKind::Pou(Pou::Function(_)) | ScopeKind::Program(_) => (false, ""),
-                        ScopeKind::Pou(Pou::FunctionBlock(_)) => {
-                            (true, "{case} is not valid on FUNCTION_BLOCK")
-                        }
-                        ScopeKind::MethodDecl(_) => (true, "{case} is not valid on METHOD"),
-                        _ => (false, ""),
-                    }
-                }
-            }
             Pragma::Warn(_, _) => (false, ""),
         };
 

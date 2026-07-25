@@ -166,19 +166,6 @@ pub trait HasPragmas<'db>: HirNodeInfo<'db> {
         })
     }
 
-    fn cases(
-        &self,
-        db: &'db dyn WorkspaceDataBase,
-    ) -> Vec<&'db Vec<hir_def::expressions::expression::ParamAssign<'db>>> {
-        self.get_pragmas(db)
-            .iter()
-            .filter_map(|p| match p {
-                hir_def::pous::pragma::Pragma::Case(_, c) => Some(c),
-                _ => None,
-            })
-            .collect()
-    }
-
     fn is_test(&self, db: &'db dyn WorkspaceDataBase) -> bool {
         self.test_pragma(db).is_some()
     }

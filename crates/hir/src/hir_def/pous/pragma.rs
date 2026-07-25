@@ -1,7 +1,6 @@
 use compact_str::CompactString;
 use db::WorkspaceDataBase;
 
-use crate::hir_def::expressions::expression::ParamAssign;
 use crate::hir_def::interned::identifier::SpanIdent;
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, salsa::Update)]
@@ -9,7 +8,6 @@ pub enum Pragma<'db> {
     Test(SpanIdent<'db>),
     Once(SpanIdent<'db>),
     Warn(SpanIdent<'db>, WarnPragma),
-    Case(SpanIdent<'db>, Vec<ParamAssign<'db>>),
 }
 
 impl<'db> Pragma<'db> {
@@ -19,7 +17,6 @@ impl<'db> Pragma<'db> {
             Pragma::Test(s) => s,
             Pragma::Once(s) => s,
             Pragma::Warn(s, _) => s,
-            Pragma::Case(s, _) => s,
         }
     }
 
@@ -28,7 +25,6 @@ impl<'db> Pragma<'db> {
             Pragma::Test(_) => "{test}",
             Pragma::Once(_) => "{once}",
             Pragma::Warn(_, _) => "{warn}",
-            Pragma::Case(_, _) => "{case}",
         }
     }
 }
@@ -59,14 +55,4 @@ pub fn warn_pragma<'a>(pragmas: &'a [Pragma<'_>]) -> Option<&'a WarnPragma> {
         Pragma::Warn(_, w) => Some(w),
         _ => None,
     })
-}
-
-pub fn cases<'a, 'db>(pragmas: &'a [Pragma<'db>]) -> Vec<&'a Vec<ParamAssign<'db>>> {
-    pragmas
-        .iter()
-        .filter_map(|p| match p {
-            Pragma::Case(_, c) => Some(c),
-            _ => None,
-        })
-        .collect()
 }

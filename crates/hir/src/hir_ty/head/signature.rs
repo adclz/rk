@@ -16,11 +16,10 @@ use crate::{
     hir_ty::{
         index_graphs::external_var_lookup,
         resolver::{
-            func_call::resolve_params,
             name::{NameResolution, resolve_name},
             visibility::check_test_visibility,
         },
-        ty::{CallableType, Type},
+        ty::Type,
     },
 };
 
@@ -130,7 +129,6 @@ impl<'db> Signature<'db> {
         self.infer_return_type(db);
         self.infer_access_decls(db);
         self.infer_config_resources(db);
-        self.infer_test_cases(db);
 
         self
     }
@@ -406,16 +404,4 @@ impl<'db> Signature<'db> {
         typ
     }
 
-    fn infer_test_cases(&mut self, db: &'db dyn WorkspaceDataBase) {
-        let scope = get_scope(db, self.scope);
-
-        let (pragmas, callable) = match scope.kind {
-            ScopeKind::Pou(Pou::Function(f)) => (f.pragmas(db), CallableType::Function(f)),
-            _ => return,
-        };
-
-        for case in crate::hir_def::pous::pragma::cases(pragmas) {
-            resolve_params(db, case, callable, &mut self.errors);
-        }
-    }
 }

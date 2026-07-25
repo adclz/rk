@@ -1,6 +1,4 @@
-use crate::builder::Parse;
 use crate::builder::semantic_index::SemanticIndexBuilder;
-use crate::hir_def::expressions::expression::{ParamAssign, ParamAssignKind};
 use crate::hir_def::interned::identifier::SpanIdent;
 use crate::hir_def::pous::pragma::{Pragma, WarnPragma, WarnPragmaLevel};
 use auto_lsp::core::ast::AstNode;
@@ -34,9 +32,10 @@ impl<'db> SemanticIndexBuilder<'db> {
                         result.push(Pragma::Warn(si, wp));
                     }
                 }
-                PragmaKind::CasePragma(case) => {
-                    result.push(Pragma::Case(si, self.parse_single_case(case)));
-                }
+                // {case(...)} is no longer a supported pragma. The grammar
+                // still emits the node until it is regenerated; ignore it so
+                // this match stays exhaustive over the AST union.
+                PragmaKind::CasePragma(_) => {}
             }
         }
 
@@ -57,29 +56,4 @@ impl<'db> SemanticIndexBuilder<'db> {
         Some(WarnPragma { level, message })
     }
 
-    fn parse_single_case(&mut self, case: &ast::generated::CasePragma) -> Vec<ParamAssign<'db>> {
-        let mut args = vec![];
-        for arg_id in case.args.iter() {
-            if let ast::generated::Comma_ParamAssignInput::ParamAssignInput(p) =
-                arg_id.cast(self.ast)
-            {
-                let kind = match p.param.as_ref() {
-                    Some(param) => {
-                        let param = SpanIdent::from_node(self.db, self, param.cast(self.ast));
-                        let value = p.value.cast(self.ast).parse(self);
-                        match (param, value) {
-                            (Ok(param), Ok(value)) => ParamAssignKind::FormalInput { param, value },
-                            _ => continue,
-                        }
-                    }
-                    None => match p.value.cast(self.ast).parse(self) {
-                        Ok(value) => ParamAssignKind::NonFormal { value },
-                        _ => continue,
-                    },
-                };
-                args.push(self.new_param(p.into(), self.current_scope, kind));
-            }
-        }
-        args
-    }
 }
