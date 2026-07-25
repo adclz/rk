@@ -525,10 +525,10 @@ fn lower_function_block_inner<'db>(
                     name: var.name(db),
                     ty,
                     init: None,
-                    kind: MirLocalKind::Var,
+                    // Only VAR_TEMP reaches here, marked Temp so codegen resets aggregate
+                    // temps on entry.
+                    kind: MirLocalKind::Temp,
                     storage,
-                    // Only VAR_TEMP reaches here (FB persistent state lives in
-                    // the instance struct behind `this`).
                     var_storage: MirVariableStorage::Automatic,
                 });
             }
@@ -777,7 +777,8 @@ fn lower_program_inner<'db>(
                 name: var.name(db),
                 ty,
                 init: None,
-                kind: MirLocalKind::Var,
+                // Guarded by `VariableKind::Temp` above.
+                kind: MirLocalKind::Temp,
                 storage,
                 var_storage: MirVariableStorage::Automatic,
             });

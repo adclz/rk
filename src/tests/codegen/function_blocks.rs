@@ -1126,3 +1126,88 @@ fn fb_string_input_output(mut with_db: db::RootDatabase) {
     let len = i32::from_le_bytes(r[0..4].try_into().unwrap()) as usize;
     assert_eq!(String::from_utf8_lossy(&r[4..4 + len]), "agg-str");
 }
+
+/// IEC 61131-3: `VAR_TEMP` is scratch, fresh at every invocation — never
+/// instance state.
+///
+/// Two bugs conspired here. `lower_fb_type` put *every* variable in the
+/// instance struct, including temps, so `root_place` resolved the name to a
+/// `ThisField` in persistent instance memory (the separately allocated body
+/// local sat unused); and aggregate temps, living at a fixed address, were
+/// never reset on entry. A read-before-write therefore saw the *previous*
+/// call's bytes.
+#[rstest]
+fn var_temp_is_fresh_on_every_invocation(mut with_db: db::RootDatabase) {
+    let source = r#"
+        FUNCTION_BLOCK Scratch
+            VAR_OUTPUT seen : INT; END_VAR
+            VAR_TEMP buf : ARRAY[0..3] OF INT; END_VAR
+            seen := buf[0];
+            buf[0] := 42;
+        END_FUNCTION_BLOCK
+
+        FUNCTION entry : INT
+        VAR fb : Scratch; END_VAR
+            fb();
+            IF fb.seen <> 0 THEN
+                entry := -1;
+                RETURN;
+            END_IF;
+            // Second call must NOT observe the 42 written by the first.
+            fb();
+            entry := fb.seen;
+        END_FUNCTION
+    "#;
+    let wasm = compile_to_wasm(&mut with_db, source);
+    let r: i32 = super::execute_wasm(&wasm, "entry", ());
+    assert_eq!(r, 0, "aggregate VAR_TEMP must be zeroed at each invocation");
+}
+
+/// The same guarantee for a scalar temp, which lives in a wasm local rather
+/// than linear memory — covering the other storage path.
+#[rstest]
+fn scalar_var_temp_is_fresh_on_every_invocation(mut with_db: db::RootDatabase) {
+    let source = r#"
+        FUNCTION_BLOCK ScalarScratch
+            VAR_OUTPUT seen : INT; END_VAR
+            VAR_TEMP n : INT; END_VAR
+            seen := n;
+            n := 42;
+        END_FUNCTION_BLOCK
+
+        FUNCTION entry : INT
+        VAR fb : ScalarScratch; END_VAR
+            fb();
+            fb();
+            entry := fb.seen;
+        END_FUNCTION
+    "#;
+    let wasm = compile_to_wasm(&mut with_db, source);
+    let r: i32 = super::execute_wasm(&wasm, "entry", ());
+    assert_eq!(r, 0, "scalar VAR_TEMP must not carry over between calls");
+}
+
+/// Guard the other half: real FB state (`VAR`) MUST persist across calls, so
+/// the temp fix cannot have over-reached into instance fields.
+#[rstest]
+fn fb_var_state_still_persists_across_calls(mut with_db: db::RootDatabase) {
+    let source = r#"
+        FUNCTION_BLOCK Counter
+            VAR_OUTPUT cv : INT; END_VAR
+            VAR acc : INT; END_VAR
+            acc := acc + 1;
+            cv := acc;
+        END_FUNCTION_BLOCK
+
+        FUNCTION entry : INT
+        VAR fb : Counter; END_VAR
+            fb();
+            fb();
+            fb();
+            entry := fb.cv;
+        END_FUNCTION
+    "#;
+    let wasm = compile_to_wasm(&mut with_db, source);
+    let r: i32 = super::execute_wasm(&wasm, "entry", ());
+    assert_eq!(r, 3, "FB VAR is instance state and must survive invocations");
+}

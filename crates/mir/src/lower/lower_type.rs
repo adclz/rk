@@ -325,6 +325,11 @@ pub fn lower_fb_type<'db>(
         if var.kind(db) == hir::hir_def::pous::variable::VariableKind::External {
             continue;
         }
+        // VAR_TEMP is a body local, fresh at every invocation, not instance
+        // state.
+        if var.kind(db) == hir::hir_def::pous::variable::VariableKind::Temp {
+            continue;
+        }
         let var_type = var.spec(db).infer(db);
         let mir_type = apply_sized_string(db, var.spec(db), lower_type(db, var_type)?);
         // A VAR_IN_OUT field holds the address of the caller's l-value: a
@@ -378,6 +383,11 @@ pub fn lower_program_type<'db>(
     for var in program.variables(db) {
         // VAR_EXTERNAL resolves to a global's address; not instance state.
         if var.kind(db) == hir::hir_def::pous::variable::VariableKind::External {
+            continue;
+        }
+        // VAR_TEMP is a body local, fresh at every invocation, not instance
+        // state.
+        if var.kind(db) == hir::hir_def::pous::variable::VariableKind::Temp {
             continue;
         }
         let mir_type =

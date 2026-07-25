@@ -1068,6 +1068,26 @@ impl<'a> WasmGen<'a> {
             SNAPSHOT_CTX.with(|cell| cell.replace(None))
         };
 
+        // IEC 61131-3: VAR_TEMP is fresh at every invocation. Scalar temps are
+        // wasm locals, which the engine zeroes per call — but an AGGREGATE temp
+        // (array/struct/string) lives at a fixed linear-memory address that is
+        // reused across calls, so without an explicit reset the previous
+        // invocation's bytes stay readable and a read-before-write sees the
+        // last scan's data. Zero them on entry, before the body (and before any
+        // initializer statements, which are lowered into the body and must
+        // therefore win).
+        for local in &func.locals {
+            if local.kind == mir::function::MirLocalKind::Temp
+                && let MirStorage::Memory { address, size, .. } = local.storage
+                && size > 0
+            {
+                wasm_func.instruction(&Instruction::I32Const(address as i32));
+                wasm_func.instruction(&Instruction::I32Const(0));
+                wasm_func.instruction(&Instruction::I32Const(size as i32));
+                wasm_func.instruction(&Instruction::MemoryFill(0));
+            }
+        }
+
         // Emit statements
         let lines = emit_stmts_with_return(
             &mut wasm_func,
