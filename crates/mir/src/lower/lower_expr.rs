@@ -138,8 +138,19 @@ impl<'db> ExprLowerCtx<'db> {
         lower_type(self.db, ty.normalize(self.db))
     }
 
-    /// Lower a HIR expression to a MIR expression.
+    /// Lower an expression, tagging a failure with the innermost failing
+    /// expression's location.
     pub fn lower_expr(&self, expr: Expr<'db>) -> Result<MirExpr, LowerTypeError> {
+        use hir::HirNodeInfo;
+        self.lower_expr_inner(expr).map_err(|e| {
+            e.with_location(
+                expr.get_scope_id(self.db).file(self.db),
+                expr.get_span(self.db),
+            )
+        })
+    }
+
+    fn lower_expr_inner(&self, expr: Expr<'db>) -> Result<MirExpr, LowerTypeError> {
         match expr.expr(self.db) {
             ExprKind::PrimaryExpr(primary) => self.lower_primary_expr(primary, expr),
 

@@ -33,8 +33,97 @@ use crate::{
     types::MirType,
 };
 
-/// Lower a FUNCTION to a MirFunction.
+/// Pin a codegen failure to a POU declaration, the fallback for
+/// declaration-level failures (an expression carries its own span).
+fn at_node<'db, T>(
+    db: &'db dyn WorkspaceDataBase,
+    node: impl hir::HirNodeInfo<'db>,
+    result: Result<T, LowerTypeError>,
+) -> Result<T, LowerTypeError> {
+    result.map_err(|e| e.with_location(node.get_scope_id(db).file(db), node.get_span(db)))
+}
+
 pub fn lower_function<'db>(
+    db: &'db dyn WorkspaceDataBase,
+    func: Function<'db>,
+    index: u32,
+    memory_layout: &mut MirMemoryLayout,
+    string_pool: Rc<RefCell<super::lower_expr::StringPool>>,
+    iface_subs: Option<
+        &FxHashMap<hir::hir_def::interned::identifier::Ident, hir::hir_def::pous::pou::Pou<'db>>,
+    >,
+    iface_call_rewrites: &super::mono_iface::IfaceCallRewrites<'db>,
+) -> Result<MirFunction, LowerTypeError> {
+    let r = lower_function_inner(
+        db,
+        func,
+        index,
+        memory_layout,
+        string_pool,
+        iface_subs,
+        iface_call_rewrites,
+    );
+    at_node(db, func, r)
+}
+
+pub fn lower_function_block<'db>(
+    db: &'db dyn WorkspaceDataBase,
+    fb: FunctionBlock<'db>,
+    start_index: u32,
+    memory_layout: &mut MirMemoryLayout,
+    string_pool: Rc<RefCell<super::lower_expr::StringPool>>,
+    iface_call_rewrites: &super::mono_iface::IfaceCallRewrites<'db>,
+) -> Result<Vec<MirFunction>, LowerTypeError> {
+    let r = lower_function_block_inner(
+        db,
+        fb,
+        start_index,
+        memory_layout,
+        string_pool,
+        iface_call_rewrites,
+    );
+    at_node(db, fb, r)
+}
+
+pub fn lower_class<'db>(
+    db: &'db dyn WorkspaceDataBase,
+    class: Class<'db>,
+    start_index: u32,
+    memory_layout: &mut MirMemoryLayout,
+    string_pool: Rc<RefCell<super::lower_expr::StringPool>>,
+    iface_call_rewrites: &super::mono_iface::IfaceCallRewrites<'db>,
+) -> Result<Vec<MirFunction>, LowerTypeError> {
+    let r = lower_class_inner(
+        db,
+        class,
+        start_index,
+        memory_layout,
+        string_pool,
+        iface_call_rewrites,
+    );
+    at_node(db, class, r)
+}
+
+pub fn lower_program<'db>(
+    db: &'db dyn WorkspaceDataBase,
+    program: ProgramDecl<'db>,
+    index: u32,
+    memory_layout: &mut MirMemoryLayout,
+    string_pool: Rc<RefCell<super::lower_expr::StringPool>>,
+    iface_call_rewrites: &super::mono_iface::IfaceCallRewrites<'db>,
+) -> Result<(MirFunction, MirType), LowerTypeError> {
+    let r = lower_program_inner(
+        db,
+        program,
+        index,
+        memory_layout,
+        string_pool,
+        iface_call_rewrites,
+    );
+    at_node(db, program, r)
+}
+
+fn lower_function_inner<'db>(
     db: &'db dyn WorkspaceDataBase,
     func: Function<'db>,
     index: u32,
@@ -254,7 +343,7 @@ pub fn lower_function<'db>(
 }
 
 /// Lower a FUNCTION_BLOCK to MirFunctions (one per method + instance type).
-pub fn lower_function_block<'db>(
+fn lower_function_block_inner<'db>(
     db: &'db dyn WorkspaceDataBase,
     fb: FunctionBlock<'db>,
     start_index: u32,
@@ -491,7 +580,7 @@ pub fn lower_function_block<'db>(
 }
 
 /// Lower a CLASS to MirFunctions (one per method + instance type).
-pub fn lower_class<'db>(
+fn lower_class_inner<'db>(
     db: &'db dyn WorkspaceDataBase,
     class: Class<'db>,
     start_index: u32,
@@ -645,7 +734,7 @@ pub fn lower_class<'db>(
 /// struct: a PROGRAM is compiled like a FUNCTION_BLOCK, with only
 /// `VAR_TEMP` body-local. Instances are allocated per program
 /// configuration in `lower_module`.
-pub fn lower_program<'db>(
+fn lower_program_inner<'db>(
     db: &'db dyn WorkspaceDataBase,
     program: ProgramDecl<'db>,
     index: u32,

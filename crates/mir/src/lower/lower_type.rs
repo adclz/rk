@@ -28,6 +28,42 @@ pub enum LowerTypeError {
 
     #[error("Type could not be resolved (Type::Never encountered)")]
     UnresolvedType,
+
+    /// An error carrying the source location it originated at, attached by
+    /// [`LowerTypeError::with_location`].
+    #[error("{inner}")]
+    Located {
+        inner: Box<LowerTypeError>,
+        file: auto_lsp::default::db::file::File,
+        span: auto_lsp::tree_sitter::Range,
+    },
+}
+
+impl LowerTypeError {
+    /// Attach a source location, keeping the innermost one already present.
+    pub fn with_location(
+        self,
+        file: auto_lsp::default::db::file::File,
+        span: auto_lsp::tree_sitter::Range,
+    ) -> Self {
+        match self {
+            // already located by a deeper frame — keep the precise one
+            located @ LowerTypeError::Located { .. } => located,
+            inner => LowerTypeError::Located {
+                inner: Box::new(inner),
+                file,
+                span,
+            },
+        }
+    }
+
+    /// The source location, if one was attached.
+    pub fn location(&self) -> Option<(auto_lsp::default::db::file::File, auto_lsp::tree_sitter::Range)> {
+        match self {
+            LowerTypeError::Located { file, span, .. } => Some((*file, *span)),
+            _ => None,
+        }
+    }
 }
 
 /// Convert a HIR `Type` to a `MirType`.

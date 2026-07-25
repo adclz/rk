@@ -19,6 +19,16 @@ use crate::{
     types::MirType,
 };
 
+/// Pin a codegen error to a POU declaration; the innermost location
+/// already attached wins.
+fn at_pou<'db, T>(
+    db: &'db dyn WorkspaceDataBase,
+    node: impl hir::HirNodeInfo<'db>,
+    result: Result<T, LowerTypeError>,
+) -> Result<T, LowerTypeError> {
+    result.map_err(|e| e.with_location(node.get_scope_id(db).file(db), node.get_span(db)))
+}
+
 /// Lower multiple HIR semantic indices (from multiple files) into a single MirModule.
 pub fn lower_modules<'db>(
     db: &'db dyn WorkspaceDataBase,
@@ -226,7 +236,7 @@ fn lower_module_from_pous<'db>(
                 );
 
                 // Instance type.
-                let fb_mir_type = super::lower_type::lower_fb_type(db, *fb)?;
+                let fb_mir_type = at_pou(db, *fb, super::lower_type::lower_fb_type(db, *fb))?;
                 if let MirType::Struct(ref struct_type) = fb_mir_type {
                     let inst_fields: Vec<MirInstanceField> = struct_type
                         .fields
@@ -272,7 +282,7 @@ fn lower_module_from_pous<'db>(
 
             Pou::Class(class) => {
                 // Build instance type
-                let class_type = lower_type(db, hir::hir_ty::ty::Type::Class(*class))?;
+                let class_type = at_pou(db, *class, lower_type(db, hir::hir_ty::ty::Type::Class(*class)))?;
                 if let MirType::Struct(ref struct_type) = class_type {
                     let inst_fields: Vec<MirInstanceField> = struct_type
                         .fields

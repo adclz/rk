@@ -7,6 +7,34 @@ use hir::hir_def::semantic_index::semantic_index;
 use crate::diagnostics::{DiagnosticReporter, collect_diagnostics};
 use crate::ui;
 
+/// Render a codegen failure the same way a type error is rendered — source
+/// excerpt, caret, file:line — when the error carries a location.
+///
+/// Lowering pins its errors to the offending expression (or, failing that, the
+/// POU declaration), so an unsupported construct points at the construct.
+/// Errors raised before any location is known still fall back to the bare
+/// message.
+fn render_codegen_error(
+    db: &RootDatabase,
+    workspace: &std::path::Path,
+    err: &mir::lower::lower_type::LowerTypeError,
+) -> Option<String> {
+    use auto_lsp::lsp_types::DiagnosticSeverity;
+
+    let (file, span) = err.location()?;
+    let range = hir::denormalize(db, file, &span)?;
+    let diagnostic = ide_diagnostic::diag()
+        .range(range)
+        .message(format!("{err}"))
+        .severity(DiagnosticSeverity::ERROR)
+        .source("codegen".to_string())
+        .call();
+
+    let mut buffer: Vec<u8> = Vec::new();
+    DiagnosticReporter::new(db, workspace).report_files(&[(file, vec![diagnostic])], &mut buffer);
+    Some(String::from_utf8_lossy(&buffer).into_owned())
+}
+
 /// Check diagnostics and lower HIR → MIR → core WASM. On success returns the
 /// core wasm + MIR; on failure returns the rendered diagnostics (also echoed to
 /// stderr) so callers like the debugger can forward them over the debugger transport.
@@ -48,8 +76,21 @@ pub fn build_core(
     let mir_module = match mir::lower::lower_module::lower_modules(db, &sem_indices) {
         Ok(m) => m,
         Err(e) => {
-            ui::error(format!("codegen: {e}"));
-            return Err(format!("codegen error: {e}"));
+            // Prefer the located rendering (source excerpt + caret); fall back
+            // to the bare message when the error carries no location.
+            return match render_codegen_error(db, workspace, &e) {
+                Some(report) => {
+                    let _ = std::io::stderr().write_all(report.as_bytes());
+                    ui::failure("compilation failed:", "1 error(s) found, cannot compile.");
+                    Err(format!(
+                        "{report}\ncompilation failed: 1 error(s) found, cannot compile.\n"
+                    ))
+                }
+                None => {
+                    ui::error(format!("codegen: {e}"));
+                    Err(format!("codegen error: {e}"))
+                }
+            };
         }
     };
 
@@ -82,8 +123,16 @@ pub fn build_core_quiet(
         .chain(db.get_std_lib_files().iter())
         .map(|file| semantic_index(db, *file))
         .collect();
-    let mir_module = mir::lower::lower_module::lower_modules(db, &sem_indices)
-        .map_err(|e| format!("codegen error: {e}"))?;
+    let mir_module =
+        mir::lower::lower_module::lower_modules(db, &sem_indices).map_err(|e| {
+            // Same located rendering as `build_core`, returned (never printed)
+            // so the TUI can show it after leaving the alternate screen.
+            render_codegen_error(db, workspace, &e)
+                .map(|report| {
+                    format!("{report}\ncompilation failed: 1 error(s) found, cannot compile.\n")
+                })
+                .unwrap_or_else(|| format!("codegen error: {e}"))
+        })?;
     let wasm_module = wasm_codegen::generate_wasm(db, &mir_module);
     Ok((wasm_module.finish(), mir_module))
 }
