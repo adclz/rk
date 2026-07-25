@@ -192,7 +192,7 @@ impl<'db> ExprLowerCtx<'db> {
                     ComparisonOperatorKind::Gt => MirBinOp::Gt,
                     ComparisonOperatorKind::Ge => MirBinOp::Ge,
                 };
-                self.lower_comparison(op, *left, *right)
+                self.lower_comparison(op, *left, *right, expr)
             }
 
             ExprKind::BooleanOperator {
@@ -266,6 +266,7 @@ impl<'db> ExprLowerCtx<'db> {
         op: MirBinOp,
         left: Expr<'db>,
         right: Expr<'db>,
+        expr: Expr<'db>,
     ) -> Result<MirExpr, LowerTypeError> {
         // STRING operands have no scalar representation — comparison lowers
         // to the grafted `str_byte_cmp` builtin (lexicographic, memcmp-style
@@ -284,10 +285,20 @@ impl<'db> ExprLowerCtx<'db> {
             return self.lower_string_comparison(op, left, right);
         }
 
-        // Determine common comparison type (widest of the two)
-        let left_elem = self.expr_to_mir_elementary(left)?;
-        let right_elem = self.expr_to_mir_elementary(right)?;
-        let common = wider_type(left_elem, right_elem);
+        // The comparison type is inference's decision (`comparison_operand_type`);
+        // `wider_type` remains only for enums and subranges, which HIR does not
+        // record.
+        let common = match hir::hir_ty::body::infer_body(self.db, expr.scope_id(self.db))
+            .comparison_operand_type
+            .get(&expr)
+        {
+            Some(ty) => self.type_to_mir_elementary(*ty)?,
+            None => {
+                let left_elem = self.expr_to_mir_elementary(left)?;
+                let right_elem = self.expr_to_mir_elementary(right)?;
+                wider_type(left_elem, right_elem)
+            }
+        };
 
         let left_mir = self.lower_expr_with_cast(left, common)?;
         let right_mir = self.lower_expr_with_cast(right, common)?;

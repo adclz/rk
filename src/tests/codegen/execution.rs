@@ -850,3 +850,33 @@ fn test_execute_widened_arithmetic_is_commutative(mut with_db: db::RootDatabase)
     let b: f32 = super::execute_wasm(&wasm, "real_times_int", (3i32, 0.5f32));
     assert_eq!(b, 1.5, "REAL * INT computes in REAL");
 }
+
+/// The type a comparison's operands are compared at is inference's decision:
+/// HIR records the join it computed with the IEC widening lattice, and codegen
+/// consumes it. MIR used to re-derive that join with its own ad-hoc rule
+/// (float wins, then 64-bit, then signed), which disagreed with the lattice —
+/// `BYTE` vs `WORD` yielded `UDInt` where HIR says `WORD` — so a comparison
+/// could execute at a different type than the one type-checking accepted.
+#[rstest]
+fn mixed_type_comparisons_use_the_inferred_join(mut with_db: db::RootDatabase) {
+    let source = r#"
+        FUNCTION test : INT
+        VAR
+            b : BYTE := 16#FF;
+            w : WORD := 16#00FF;
+            i : INT := -1;
+            d : DINT := -1;
+            r : REAL := 255.0;
+            score : INT;
+        END_VAR
+            IF b = w THEN score := score + 1; END_IF;      (* bit strings, differing widths *)
+            IF NOT (b < w) THEN score := score + 10; END_IF;
+            IF i = d THEN score := score + 100; END_IF;    (* signed, differing widths *)
+            IF r > i THEN score := score + 1000; END_IF;   (* int vs float *)
+            test := score;
+        END_FUNCTION
+    "#;
+    let wasm = compile_to_wasm(&mut with_db, source);
+    let result: i32 = super::execute_wasm(&wasm, "test", ());
+    assert_eq!(result, 1111, "every mixed-width comparison holds");
+}

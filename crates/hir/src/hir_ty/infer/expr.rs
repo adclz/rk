@@ -112,6 +112,23 @@ impl<'db> InferExprCtx<'db> {
                 self.resolve_expr(db, *left, inference_results);
                 self.resolve_expr(db, *right, inference_results);
 
+                // Record the type the OPERANDS are compared at — their join in
+                // the widening lattice, the same `ElementarySpec::wider` used
+                // for arithmetic result typing. The comparison itself is BOOL,
+                // so without this the operand type is lost and consumers
+                // (codegen picking the machine comparison and inserting operand
+                // casts) would have to re-derive it.
+                let lhs = inference_results.type_of_expr_with_adjustments(db, *left);
+                let rhs = inference_results.type_of_expr_with_adjustments(db, *right);
+                if let (Type::Elementary(l), Type::Elementary(r)) =
+                    (lhs.normalize(db), rhs.normalize(db))
+                    && let Some(common) = l.wider(r)
+                {
+                    inference_results
+                        .comparison_operand_type
+                        .insert(curr_expr, Type::Elementary(common));
+                }
+
                 // comparison operators always return BOOL
                 let ty = Type::new_bool();
                 inference_results.type_of_expr.insert(curr_expr, ty);

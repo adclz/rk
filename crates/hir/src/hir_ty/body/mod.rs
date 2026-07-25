@@ -212,6 +212,16 @@ pub struct BodyInferenceResult<'db> {
     // Mapping from expressions to their resolved types.
     pub type_of_expr: FxHashMap<Expr<'db>, Type<'db>>,
 
+    // For a comparison expression, the common type its OPERANDS are compared
+    // at — their join in the implicit-widening lattice.
+    //
+    // `type_of_expr` for a comparison is BOOL (its result), which loses the
+    // operand type that codegen needs in order to pick the machine comparison
+    // and to insert operand casts. Recording it here keeps that decision in
+    // inference, where the widening lattice lives, instead of leaving each
+    // consumer to re-derive it.
+    pub comparison_operand_type: FxHashMap<Expr<'db>, Type<'db>>,
+
     // Mapping from path expressions to their adjustment sequences.
     pub path_expr_adjustments: FxHashMap<PathExpr<'db>, Vec<Adjustment<'db>>>,
 
@@ -281,6 +291,7 @@ impl<'db> BodyInferenceResult<'db> {
             type_of_direct_variable: FxHashMap::default(),
             type_of_invocation: FxHashMap::default(),
             type_of_expr: FxHashMap::default(),
+            comparison_operand_type: FxHashMap::default(),
             type_of_path_expr: FxHashMap::default(),
             path_expr_adjustments: FxHashMap::default(),
             errors: Vec::new(),
