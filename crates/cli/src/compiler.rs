@@ -149,7 +149,7 @@ pub fn optimize_wasm(wasm_bytes: Vec<u8>, opt_level: Option<&str>, verbose: bool
         return wasm_bytes;
     };
 
-    let opts = match level {
+    let mut opts = match level {
         "0" => wasm_opt::OptimizationOptions::new_opt_level_0(),
         "1" => wasm_opt::OptimizationOptions::new_opt_level_1(),
         "2" => wasm_opt::OptimizationOptions::new_opt_level_2(),
@@ -164,6 +164,16 @@ pub fn optimize_wasm(wasm_bytes: Vec<u8>, opt_level: Option<&str>, verbose: bool
             return wasm_bytes;
         }
     };
+
+    // Enable the post-MVP proposals the codegen actually emits. Binaryen
+    // validates against its own feature set first, and with the MVP default it
+    // rejects the whole module — silently falling back to UNOPTIMIZED output.
+    // `bulk-memory` is required by the `memory.fill` that resets aggregate
+    // VAR_TEMP on entry; `sign-ext` by the sub-width normalization
+    // (`i32.extend8_s`/`extend16_s`); `exception-handling` by `__RAISE`.
+    opts.enable_feature(wasm_opt::Feature::BulkMemory)
+        .enable_feature(wasm_opt::Feature::SignExt)
+        .enable_feature(wasm_opt::Feature::ExceptionHandling);
 
     if verbose {
         ui::detail(format!("    Optimizing wasm-opt -O{level}"));
