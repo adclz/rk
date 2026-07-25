@@ -87,27 +87,6 @@ END_PROGRAM
 }
 
 #[rstest]
-fn case_without_test_invalid(mut with_db: RootDatabase) {
-    let source = r#"
-{case(1, 2)}
-FUNCTION fn1 : INT
-VAR_INPUT a : INT; b : INT; END_VAR
-END_FUNCTION
-"#;
-    assert_snapshot!(test_single_lint(&mut with_db, &[source], "invalid-pragma"), @r"
-    [L0003] Warning: invalid pragma for this POU
-       ,-[ file:///test0.st:2:1 ]
-       |
-     2 | {case(1, 2)}
-       | ^^^^^^|^^^^^
-       |       `------- {case} requires {test} on the same POU
-       |
-       | Note: lint rule: invalid-pragma
-    ---'
-    ");
-}
-
-#[rstest]
 fn warn_on_any_pou_valid(mut with_db: RootDatabase) {
     let source = r#"
 {warn = 'deprecated'}

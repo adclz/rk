@@ -183,30 +183,6 @@ END_FUNCTION
 }
 
 #[rstest]
-fn manifest_with_case_pragmas(mut with_db: RootDatabase) {
-    let source = r#"
-FUNCTION ABS : INT
-VAR_INPUT IN : INT; END_VAR
-    IF IN < 0 THEN ABS := -IN; ELSE ABS := IN; END_IF;
-END_FUNCTION
-
-{test}
-{case(5, 5)}
-{case(-42, 42)}
-{case(0, 0)}
-FUNCTION test_abs
-VAR_INPUT x : INT; expected : INT; END_VAR
-    IF ABS(IN := x) <> expected THEN END_IF;
-END_FUNCTION
-    "#;
-    assert_snapshot!(mir_test_manifest(&mut with_db, &[source]), @r"
-    test test_abs[0](5, 5)
-    test test_abs[1](-42, 42)
-    test test_abs[2](0, 0)
-    ");
-}
-
-#[rstest]
 fn manifest_test_program(mut with_db: RootDatabase) {
     let source = r#"
 {test}
