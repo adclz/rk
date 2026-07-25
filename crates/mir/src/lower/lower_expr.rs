@@ -910,13 +910,8 @@ impl<'db> ExprLowerCtx<'db> {
         let current = self.resolve_this_pou(scope).ok_or_else(|| {
             LowerTypeError::UnsupportedType("SUPER() outside a function block".to_string())
         })?;
-        // The base FB from `EXTENDS` (single inheritance -> one target).
-        let base = match current {
-            Pou::FunctionBlock(fb) => fb
-                .extends(self.db)
-                .and_then(|spec| spec.infer(self.db).normalize(self.db).as_pou(self.db)),
-            _ => None,
-        };
+        // The base as HIR resolved it (`base_pou`): MIR does not walk `EXTENDS`.
+        let base = hir::hir_ty::head::inheritance::base_pou(self.db, current);
         let base_pou = match base {
             Some(p @ Pou::FunctionBlock(_)) => p,
             _ => {

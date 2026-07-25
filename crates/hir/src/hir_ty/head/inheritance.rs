@@ -224,3 +224,87 @@ pub fn inherited_methods<'db>(
         duplicates,
     }
 }
+
+/// One instance member (a field of an FB/CLASS instance), paired with the POU
+/// that DECLARES it — which may be a base of the POU being queried.
+#[derive(Debug, Copy, Clone, PartialEq, Eq, Hash, salsa::Update)]
+pub struct InstanceMember<'db> {
+    /// The POU this member is declared on. For an inherited member this is a
+    /// base, not the queried POU.
+    pub owner: Pou<'db>,
+    pub var: VariableDecl<'db>,
+}
+
+/// Every instance member of a POU, in **layout order**: the base-most POU's
+/// members first (the whole `EXTENDS` chain, recursively), each level in
+/// declaration order.
+///
+/// This is the authoritative answer to "what state does an instance of this POU
+/// hold?", so consumers never walk `EXTENDS` themselves. MIR in particular must
+/// only compute offsets from this list: a derived instance has to be
+/// layout-compatible with its base, because an inherited method is compiled
+/// once against the base's offsets and then invoked with a derived instance
+/// pointer — which the base-first ordering guarantees.
+///
+/// Sections that are not instance state are excluded here, once, rather than in
+/// each consumer:
+/// - `VAR_EXTERNAL` references a global; it resolves to the global's address.
+/// - `VAR_TEMP` is per-invocation scratch and lives as a body local.
+#[salsa::tracked(returns(ref))]
+pub fn instance_members<'db>(
+    db: &'db dyn WorkspaceDataBase,
+    pou: Pou<'db>,
+) -> Vec<InstanceMember<'db>> {
+    let mut out = Vec::new();
+    let mut visited = Vec::new();
+    collect_instance_members(db, pou, &mut out, &mut visited);
+    out
+}
+
+fn collect_instance_members<'db>(
+    db: &'db dyn WorkspaceDataBase,
+    pou: Pou<'db>,
+    out: &mut Vec<InstanceMember<'db>>,
+    visited: &mut Vec<Pou<'db>>,
+) {
+    // Cyclic EXTENDS is reported separately (E05xx); stop here so resolution
+    // terminates regardless.
+    if visited.contains(&pou) {
+        return;
+    }
+    visited.push(pou);
+
+    if let Some(base) = base_pou(db, pou) {
+        collect_instance_members(db, base, out, visited);
+    }
+
+    let vars = match pou {
+        Pou::FunctionBlock(fb) => fb.variables(db),
+        Pou::Class(class) => class.variables(db),
+        _ => return,
+    };
+    for var in vars {
+        use crate::hir_def::pous::variable::VariableKind;
+        match var.kind(db) {
+            VariableKind::External | VariableKind::Temp => continue,
+            _ => {}
+        }
+        out.push(InstanceMember {
+            owner: pou,
+            var: *var,
+        });
+    }
+}
+
+/// The POU a FUNCTION_BLOCK or CLASS directly `EXTENDS`, if any.
+///
+/// The single place `EXTENDS` is followed for base resolution — used by
+/// [`instance_members`] and by consumers that need the base itself (`SUPER()`).
+pub fn base_pou<'db>(db: &'db dyn WorkspaceDataBase, pou: Pou<'db>) -> Option<Pou<'db>> {
+    let spec = match pou {
+        Pou::FunctionBlock(fb) => fb.extends(db)?,
+        Pou::Class(class) => class.extends(db)?,
+        _ => return None,
+    };
+    resolve_spec_to_pou(db, spec)
+}

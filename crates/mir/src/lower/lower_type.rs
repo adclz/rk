@@ -330,49 +330,31 @@ fn lower_subrange_type<'db>(
 /// Lower a FunctionBlock to a `MirType::Struct` named with its
 /// namespace-qualified identifier, which nested-FB instance fields
 /// resolve against.
-/// Append `fb`'s instance fields, inherited ones FIRST.
-///
-/// A derived FB must be layout-compatible with its base: an inherited method is
-/// compiled once against the BASE's offsets and then invoked with a derived
-/// instance pointer, so every base field has to sit at the same offset it has in
-/// the base type. Laying the base down first (recursively, so a whole EXTENDS
-/// chain stacks in declaration order) makes the derived layout a prefix of the
-/// base's. Previously only the FB's OWN variables were emitted, so a derived
-/// field landed at offset 0 and silently aliased the first inherited field.
-fn append_fb_fields<'db>(
+pub fn lower_fb_type<'db>(
     db: &'db dyn WorkspaceDataBase,
     fb: FunctionBlock<'db>,
-    fields: &mut Vec<MirStructField>,
-    offset: &mut u32,
-    max_align: &mut u32,
-    depth: usize,
-) -> Result<(), LowerTypeError> {
-    // Cyclic EXTENDS is rejected upstream (E05xx); this only stops codegen from
-    // hanging if a cycle ever slips through.
-    if depth > 64 {
-        return Err(LowerTypeError::UnsupportedType(
-            "EXTENDS chain too deep (cyclic inheritance?)".to_string(),
-        ));
-    }
-    if let Some(base) = fb
-        .extends(db)
-        .and_then(|spec| spec.infer(db).normalize(db).as_pou(db))
-        && let hir::hir_def::pous::pou::Pou::FunctionBlock(base_fb) = base
-    {
-        append_fb_fields(db, base_fb, fields, offset, max_align, depth + 1)?;
-    }
+) -> Result<MirType, LowerTypeError> {
+    lower_instance_struct(
+        db,
+        hir::hir_def::pous::pou::Pou::FunctionBlock(fb),
+        super::naming::qualified_pou_ident(db, Type::FunctionBlock(fb)),
+    )
+}
 
-    for var in fb.variables(db) {
-        // VAR_EXTERNAL references a global, not the FB's own state — it resolves
-        // to the global's address, so keep it out of the instance.
-        if var.kind(db) == hir::hir_def::pous::variable::VariableKind::External {
-            continue;
-        }
-        // VAR_TEMP is a body local, fresh at every invocation, not instance
-        // state.
-        if var.kind(db) == hir::hir_def::pous::variable::VariableKind::Temp {
-            continue;
-        }
+/// Lay out an FB/CLASS instance from HIR's [`instance_members`] (base-most
+/// first, so a derived instance is layout-compatible with its base); MIR
+/// only turns the list into offsets.
+fn lower_instance_struct<'db>(
+    db: &'db dyn WorkspaceDataBase,
+    pou: hir::hir_def::pous::pou::Pou<'db>,
+    name: Ident,
+) -> Result<MirType, LowerTypeError> {
+    let mut offset = 0u32;
+    let mut max_align = 1u32;
+    let mut fields = Vec::new();
+
+    for member in hir::hir_ty::head::inheritance::instance_members(db, pou) {
+        let var = member.var;
         let var_type = var.spec(db).infer(db);
         let mir_type = apply_sized_string(db, var.spec(db), lower_type(db, var_type)?);
         // A VAR_IN_OUT field holds the address of the caller's l-value: a
@@ -386,47 +368,29 @@ fn append_fb_fields<'db>(
         let field_align = mir_type.alignment();
         let field_size = mir_type.size_bytes();
 
-        *max_align = (*max_align).max(field_align);
-        *offset = align_to(*offset, field_align);
+        max_align = max_align.max(field_align);
+        offset = align_to(offset, field_align);
 
         fields.push(MirStructField {
             name: var.name(db),
             ty: mir_type,
-            offset: *offset,
+            offset,
             by_ref: is_inout,
         });
 
-        *offset += field_size;
+        offset += field_size;
     }
-    Ok(())
-}
-
-pub fn lower_fb_type<'db>(
-    db: &'db dyn WorkspaceDataBase,
-    fb: FunctionBlock<'db>,
-) -> Result<MirType, LowerTypeError> {
-    let mut offset = 0u32;
-    let mut max_align = 1u32;
-    let mut fields = Vec::new();
-
-    append_fb_fields(db, fb, &mut fields, &mut offset, &mut max_align, 0)?;
 
     offset = align_to(offset, max_align);
 
     Ok(MirType::Struct(MirStructType {
-        name: super::naming::qualified_pou_ident(db, Type::FunctionBlock(fb)),
+        name,
         fields,
         size: offset,
         align: max_align,
     }))
 }
 
-/// Lower a PROGRAM's variables into a struct type — its instance layout.
-///
-/// A PROGRAM is compiled like a FUNCTION_BLOCK (a struct of its variables plus a
-/// `this`-parameterized body), so its persistent state lives in an instance of
-/// this struct. Programs aren't generic, so there are no ANY_* substitutions to
-/// resolve — every field is a plain `lower_type` of the variable's spec.
 pub fn lower_program_type<'db>(
     db: &'db dyn WorkspaceDataBase,
     program: hir::hir_def::program::ProgramDecl<'db>,
@@ -478,54 +442,11 @@ pub fn lower_class_type<'db>(
     db: &'db dyn WorkspaceDataBase,
     class: Class<'db>,
 ) -> Result<MirType, LowerTypeError> {
-    let mut offset = 0u32;
-    let mut max_align = 1u32;
-    let mut fields = Vec::new();
-
-    // Inherited fields first, so a derived class stays layout-compatible with
-    // its base (see `append_fb_fields` for the full rationale). Recurses the
-    // whole EXTENDS chain.
-    if let Some(base) = class
-        .extends(db)
-        .and_then(|spec| spec.infer(db).normalize(db).as_pou(db))
-        && let hir::hir_def::pous::pou::Pou::Class(base_class) = base
-        && let MirType::Struct(base_struct) = lower_class_type(db, base_class)?
-    {
-        for f in base_struct.fields {
-            max_align = max_align.max(f.ty.alignment());
-            offset = offset.max(f.offset + f.ty.size_bytes());
-            fields.push(f);
-        }
-    }
-
-    for var in class.variables(db) {
-        let var_type = var.spec(db).infer(db);
-        let mir_type = apply_sized_string(db, var.spec(db), lower_type(db, var_type)?);
-        let field_align = mir_type.alignment();
-        let field_size = mir_type.size_bytes();
-
-        max_align = max_align.max(field_align);
-        offset = align_to(offset, field_align);
-
-        fields.push(MirStructField {
-            name: var.name(db),
-            ty: mir_type,
-            offset,
-            // A CLASS has no cyclic body and no VAR_IN_OUT fields to bind.
-            by_ref: false,
-        });
-
-        offset += field_size;
-    }
-
-    offset = align_to(offset, max_align);
-
-    Ok(MirType::Struct(MirStructType {
-        name: super::naming::qualified_pou_ident(db, hir::hir_ty::ty::Type::Class(class)),
-        fields,
-        size: offset,
-        align: max_align,
-    }))
+    lower_instance_struct(
+        db,
+        hir::hir_def::pous::pou::Pou::Class(class),
+        super::naming::qualified_pou_ident(db, Type::Class(class)),
+    )
 }
 
 fn extract_integer_literal<'db>(
