@@ -143,19 +143,18 @@ impl<'db> InferenceTable<'db> {
                 // already resolved
                 InferMode::Resolved { ty, expr } => {
                     // Promote to the wider of the two *only if* implicit
-                    // widening exists between them. Using raw byte size
-                    // misclassified cross-category pairs (e.g. BYTE + REAL
-                    // where REAL is "wider" in bytes but not in the IEC cast
-                    // table), which caused `ROR(BYTE#0, 0.8)` - an already
-                    // invalid call - to spuriously resolve the return to REAL
-                    // and produce a cascading assignment error.
-                    //
-                    // `elem.implicit_cast(ty_elem)` returns Some when ty_elem
-                    // widens to elem, i.e. elem is the larger type. Equal
-                    // types and fully incompatible pairs both return None,
-                    // meaning we keep the earlier resolution in place.
+                    // widening exists between them (`ElementarySpec::wider` —
+                    // the shared lattice join, also used for binary-operator
+                    // result typing). Using raw byte size misclassified
+                    // cross-category pairs (e.g. BYTE + REAL where REAL is
+                    // "wider" in bytes but not in the IEC cast table), which
+                    // caused `ROR(BYTE#0, 0.8)` - an already invalid call - to
+                    // spuriously resolve the return to REAL and produce a
+                    // cascading assignment error. Incompatible pairs keep the
+                    // earlier resolution in place.
                     if let Type::Elementary(ty_elem) = ty
-                        && elem.implicit_cast(*ty_elem).is_some()
+                        && ty_elem.wider(elem) == Some(elem)
+                        && *ty_elem != elem
                     {
                         self.current_mode = InferMode::Resolved {
                             ty: value,

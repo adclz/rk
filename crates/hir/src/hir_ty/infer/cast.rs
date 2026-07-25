@@ -7,6 +7,26 @@ pub struct ExplicitCast<'db> {
 }
 
 impl ElementarySpec {
+    /// The wider of two elementary types in the implicit-widening lattice:
+    /// `Some(self)`/`Some(other)` when one widens to the other (or they are
+    /// equal), `None` when they share no common type (e.g. `BOOL` vs `REAL`).
+    ///
+    /// The single definition of "which operand type wins" — used both by the
+    /// literal-inference table's promotion step and by binary-operator result
+    /// typing, so the two can never disagree.
+    pub fn wider(self, other: ElementarySpec) -> Option<ElementarySpec> {
+        if self == other {
+            Some(self)
+        } else if self.implicit_cast(other).is_some() {
+            // `other` widens up to `self`
+            Some(self)
+        } else if other.implicit_cast(self).is_some() {
+            Some(other)
+        } else {
+            None
+        }
+    }
+
     /// Implicit casts according to IEC 61131-3 standard
     ///
     /// See 6.6.1.6 Data type conversion

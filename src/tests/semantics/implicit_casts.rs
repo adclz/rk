@@ -329,3 +329,189 @@ END_FUNCTION_BLOCK"#
 
     insta::allow_duplicates! { assert_snapshot!(test_diagnostics(&mut with_db, &[&source]), @""); }
 }
+
+// --- binary operators widen commutatively (IEC 6.6.1.6): the result is the
+// common wider type of BOTH operands, independent of operand order. The old
+// left-anchored rule accepted `r * i` but rejected `i * r`. ---
+
+#[rstest]
+#[case("r * i")]
+#[case("i * r")]
+#[case("r + i")]
+#[case("i + r")]
+#[case("r - i")]
+#[case("i - r")]
+fn binary_operator_widening_is_commutative(mut with_db: RootDatabase, #[case] expr: &str) {
+    let source = format!(
+        r#"
+FUNCTION f : REAL
+VAR_INPUT i : INT; r : REAL; END_VAR
+VAR out : REAL; END_VAR
+    out := {expr};
+END_FUNCTION"#
+    );
+    insta::allow_duplicates! { assert_snapshot!(test_diagnostics(&mut with_db, &[&source]), @""); }
+}
+
+#[rstest]
+#[case("d + i")]
+#[case("i + d")]
+fn integer_widening_is_commutative(mut with_db: RootDatabase, #[case] expr: &str) {
+    // DINT + INT widens to DINT in both orders (and DINT does NOT implicitly
+    // fit REAL, so the target must be DINT).
+    let source = format!(
+        r#"
+FUNCTION f : DINT
+VAR_INPUT i : INT; d : DINT; END_VAR
+    f := {expr};
+END_FUNCTION"#
+    );
+    insta::allow_duplicates! { assert_snapshot!(test_diagnostics(&mut with_db, &[&source]), @""); }
+}
+
+#[rstest]
+#[case("i < r")]
+#[case("r < i")]
+#[case("i = d")]
+#[case("d = i")]
+fn comparison_widening_is_commutative(mut with_db: RootDatabase, #[case] expr: &str) {
+    let source = format!(
+        r#"
+FUNCTION f : BOOL
+VAR_INPUT i : INT; r : REAL; d : DINT; END_VAR
+    f := {expr};
+END_FUNCTION"#
+    );
+    insta::allow_duplicates! { assert_snapshot!(test_diagnostics(&mut with_db, &[&source]), @""); }
+}
+
+#[rstest]
+fn binary_operator_incompatible_types_still_rejected(mut with_db: RootDatabase) {
+    // No common widening between BOOL and REAL in either order.
+    let source = r#"
+FUNCTION f : REAL
+VAR_INPUT b : BOOL; r : REAL; END_VAR
+    f := b + r;
+END_FUNCTION"#;
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
+    [E0318] Error: type mismatch
+       ,-[ file:///test0.st:4:10 ]
+       |
+     3 | VAR_INPUT b : BOOL; r : REAL; END_VAR
+       |           |
+       |           `-- type is declared by variable 'b' here
+     4 |     f := b + r;
+       |          ^^|^^
+       |            `---- operator '+' cannot be applied to type 'BOOL'
+    ---'
+    [E0303] Error: type mismatch
+       ,-[ file:///test0.st:4:14 ]
+       |
+     3 | VAR_INPUT b : BOOL; r : REAL; END_VAR
+       |           |
+       |           `-- type is declared by variable 'b' here
+     4 |     f := b + r;
+       |              |
+       |              `-- can not add 'BOOL' with 'REAL'
+    ---'
+    ");
+}
+
+#[rstest]
+fn narrow_result_assignment_still_rejected(mut with_db: RootDatabase) {
+    // The widened result (REAL) must not silently narrow back into an INT
+    // target: the expression is fine, the assignment is not.
+    let source = r#"
+FUNCTION f : INT
+VAR_INPUT i : INT; r : REAL; END_VAR
+    f := i * r;
+END_FUNCTION"#;
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
+    [E0301] Error: type mismatch
+       ,-[ file:///test0.st:4:10 ]
+       |
+     2 | FUNCTION f : INT
+       |          |
+       |          `-- FUNCTION 'f' is defined here, with return type 'INT'
+       |
+     4 |     f := i * r;
+       |          ^^|^^
+       |            `---- expected 'INT', got 'REAL'
+       |            |
+       |            `---- consider explicitly casting with 'REAL_TO_INT(i * r)'
+       |
+       | Help: insert explicit cast 'REAL_TO_INT(i * r)'
+    ---'
+    ");
+}
+
+/// Binary operators are commutative for coercion: operands are compatible iff
+/// either widens to the other, and the result is their join in the widening
+/// lattice (`ElementarySpec::wider`). Previously the result type was taken from
+/// the LEFT operand unconditionally, so `REAL * INT` compiled while the
+/// equivalent `INT * REAL` was rejected — valid code failing on operand order.
+#[rstest]
+#[case("r * i")]
+#[case("i * r")]
+#[case("r + i")]
+#[case("i + r")]
+#[case("r - i")]
+#[case("i - r")]
+#[case("r / i")]
+#[case("i / r")]
+fn binary_operator_operand_order_is_symmetric(mut with_db: RootDatabase, #[case] expr: &str) {
+    let source = format!(
+        r#"
+FUNCTION fn1 : REAL
+VAR_INPUT i : INT; r : REAL; END_VAR
+    fn1 := {expr};
+END_FUNCTION
+"#
+    );
+    assert_snapshot!(test_diagnostics(&mut with_db, &[&source]), @"");
+}
+
+/// The same symmetry for comparisons, which yield BOOL regardless of operand
+/// widths.
+#[rstest]
+#[case("i < r")]
+#[case("r < i")]
+#[case("i = r")]
+#[case("r = i")]
+#[case("i >= d")]
+#[case("d >= i")]
+fn comparison_operand_order_is_symmetric(mut with_db: RootDatabase, #[case] expr: &str) {
+    let source = format!(
+        r#"
+FUNCTION fn1 : BOOL
+VAR_INPUT i : INT; r : REAL; d : DINT; END_VAR
+    fn1 := {expr};
+END_FUNCTION
+"#
+    );
+    assert_snapshot!(test_diagnostics(&mut with_db, &[&source]), @"");
+}
+
+/// Symmetry must not weaken checking: a pair with no common widening stays an
+/// error in BOTH orders.
+#[rstest]
+#[case("b + r")]
+#[case("r + b")]
+fn binary_operator_without_common_widening_is_rejected(
+    mut with_db: RootDatabase,
+    #[case] expr: &str,
+) {
+    let source = format!(
+        r#"
+FUNCTION fn1 : REAL
+VAR_INPUT b : BOOL; r : REAL; END_VAR
+    fn1 := {expr};
+END_FUNCTION
+"#
+    );
+    let out = test_diagnostics(&mut with_db, &[&source]);
+    assert!(
+        out.contains("[E03"),
+        "expected a type error for `{expr}`, got:\n{out}"
+    );
+}

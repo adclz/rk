@@ -56,7 +56,20 @@ impl<'db> InferExprCtx<'db> {
                         table.resolve_completly(db, self.resolver, inference_results);
                         table.get_final_type()
                     }
-                    _ => lhs,
+                    // Both concrete: the result is the two operands' join in the
+                    // implicit-widening lattice (`ElementarySpec::wider`, the
+                    // same join the inference table promotes with). Taking
+                    // `lhs` unconditionally made arithmetic order-dependent —
+                    // `REAL * INT` yielded REAL but `INT * REAL` yielded INT,
+                    // and the coercion check then rejected the latter. Pairs
+                    // with no common widening (e.g. `BOOL + REAL`) keep `lhs`
+                    // so the coercion check below reports them.
+                    _ => match (lhs.normalize(db), rhs.normalize(db)) {
+                        (Type::Elementary(l), Type::Elementary(r)) => {
+                            l.wider(r).map(Type::Elementary).unwrap_or(lhs)
+                        }
+                        _ => lhs,
+                    },
                 };
 
                 // When a function/method name is used in an operator expression,
@@ -515,13 +528,31 @@ impl<'db> InferExprCtx<'db> {
 
         table.resolve_completly(db, self.resolver, inference_results);
 
-        inference_results
-            .type_of_expr_with_adjustments(db, left)
-            .coerce_with_type(
+        let l = inference_results.type_of_expr_with_adjustments(db, left);
+        let r = inference_results.type_of_expr_with_adjustments(db, right);
+
+        // The two operands of a binary operator are commutative for coercion:
+        // they are compatible iff EITHER widens to the other (they share a
+        // common type in the widening lattice). Coercing only `right -> left`
+        // made `INT * REAL` an error while `REAL * INT` compiled. Try both
+        // directions; report the original (left-anchored) error if neither
+        // works, so genuine mismatches (e.g. BOOL * REAL) still fail.
+        match l.coerce_with_type(
+            db,
+            r,
+            inference_results.adjustments_of_expr(db, right),
+            self.resolver,
+        ) {
+            Ok(()) => Ok(()),
+            Err(err) => match r.coerce_with_type(
                 db,
-                inference_results.type_of_expr_with_adjustments(db, right),
-                inference_results.adjustments_of_expr(db, right),
+                l,
+                inference_results.adjustments_of_expr(db, left),
                 self.resolver,
-            )
+            ) {
+                Ok(()) => Ok(()),
+                Err(_) => Err(err),
+            },
+        }
     }
 }
