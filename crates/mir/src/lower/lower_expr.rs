@@ -630,16 +630,24 @@ impl<'db> ExprLowerCtx<'db> {
 
     /// Build the base `MirPlace` for a path root.
     ///
-    /// The member-vs-local **decision** is HIR's: MIR must not re-resolve names
-    /// against `this_struct`, because that name match ignores shadowing. A
-    /// method local that shares a name with an FB member shadows it in
-    /// IEC (and in HIR name resolution), so it must lower to a wasm
-    /// `Local`, not a `ThisField`. We ask HIR whether the root binds to a
-    /// variable declared in the enclosing *method's own scope*; if so it is a
-    /// genuine local. For every other case (real members, globals, unresolved
-    /// names during error recovery) we fall back to the historical
-    /// `this_struct` layout heuristic — `this_struct` is retained ONLY to
-    /// resolve a member's this-relative offset, never to decide membership.
+    /// The member-vs-local **decision** is HIR's, in two steps:
+    ///
+    /// 1. HIR is asked whether the root binds to a variable declared in the
+    ///    enclosing *method's own scope*. If so it is a genuine local, and it
+    ///    shadows any same-named member — a method local shadows an FB member in
+    ///    IEC and in HIR name resolution, so it must lower to a wasm
+    ///    `Local`, never a `ThisField`.
+    /// 2. Otherwise membership is decided by presence in `this_struct`, which is
+    ///    itself lowered from HIR's [`instance_members`] — the same resolved
+    ///    list that produced the layout. So this is a lookup in HIR's answer,
+    ///    not a second derivation of it; MIR never walks `EXTENDS`.
+    ///
+    /// The lookup is by NAME rather than by variable identity, which is sound
+    /// only because HIR rejects a derived POU redeclaring an inherited member
+    /// (E0521) — so within one instance a member name is unique. Carrying the
+    /// `VariableDecl` on `MirStructField` would make it identity-based and drop
+    /// that dependency.
+    ///
     fn root_place(
         &self,
         root: hir::hir_def::expressions::expression::PathExpr<'db>,
@@ -657,8 +665,9 @@ impl<'db> ExprLowerCtx<'db> {
             return MirPlace::Local(ident);
         }
 
-        // Otherwise: legacy heuristic. A name present in the FB/Class layout is
-        // a member (offset from `this_struct`); anything else is a local.
+        // Otherwise: a name present in the instance layout is a member (offset
+        // from `this_struct`); anything else is a local. The layout comes from
+        // HIR's `instance_members`, so this consults HIR's resolution.
         match this_struct.fields.iter().find(|f| f.name == ident) {
             Some(field) => {
                 let this_field = MirPlace::ThisField {
@@ -788,7 +797,7 @@ impl<'db> ExprLowerCtx<'db> {
                 let field_type = self
                     .lower_type_resolved(path_expr.infer(self.db))
                     .unwrap_or(MirType::Elementary(MirElementary::Int));
-                let field_offset = self.resolve_field_offset_from_mir(&this_type, field_name);
+                let field_offset = self.resolve_field_offset_from_mir(&this_type, field_name)?;
 
                 Ok(MirPlace::ThisField {
                     field_name,
@@ -806,7 +815,7 @@ impl<'db> ExprLowerCtx<'db> {
                     .lower_type_resolved(path_expr.infer(self.db))
                     .unwrap_or(MirType::Void);
                 let base_type = field_expr.path.infer(self.db);
-                let field_offset = self.resolve_field_offset(base_type, field_name);
+                let field_offset = self.resolve_field_offset(base_type, field_name)?;
 
                 Ok(MirPlace::Field {
                     base: Box::new(inner),
@@ -827,7 +836,7 @@ impl<'db> ExprLowerCtx<'db> {
                 let array_hir_type = index_expr.path.infer(self.db);
                 let dim = self.index_dimension(index_expr.path);
                 let (element_type, element_size, lower_bound) =
-                    self.resolve_array_dim_info(array_hir_type, dim);
+                    self.resolve_array_dim_info(array_hir_type, dim)?;
                 Ok(MirPlace::Index {
                     base: Box::new(inner),
                     index: Box::new(index),
@@ -948,19 +957,25 @@ impl<'db> ExprLowerCtx<'db> {
         })))
     }
 
+    /// Byte offset of `field_name` within an already-lowered `this` type.
+    /// A miss is an error, never offset 0: HIR resolved the access, so a miss
+    /// means MIR and HIR disagree.
     fn resolve_field_offset_from_mir(
         &self,
         this_type: &Option<MirType>,
         field_name: hir::hir_def::interned::identifier::Ident,
-    ) -> u32 {
+    ) -> Result<u32, LowerTypeError> {
         if let Some(MirType::Struct(s)) = this_type {
             for field in &s.fields {
                 if field.name == field_name {
-                    return field.offset;
+                    return Ok(field.offset);
                 }
             }
         }
-        0
+        Err(LowerTypeError::UnsupportedType(format!(
+            "field '{}' not found in the enclosing instance layout",
+            field_name.text(self.db)
+        )))
     }
 
     /// Recursively lower a path expression chain (field access, indexing, deref).
@@ -985,7 +1000,7 @@ impl<'db> ExprLowerCtx<'db> {
 
                 // Resolve field offset from the base (struct/FB) type
                 let base_hir_type = field_expr.path.infer(self.db);
-                let field_offset = self.resolve_field_offset(base_hir_type, field_name);
+                let field_offset = self.resolve_field_offset(base_hir_type, field_name)?;
 
                 Ok(MirPlace::Field {
                     base: Box::new(inner),
@@ -1009,7 +1024,7 @@ impl<'db> ExprLowerCtx<'db> {
                 let array_hir_type = index_expr.path.infer(self.db);
                 let dim = self.index_dimension(index_expr.path);
                 let (element_type, element_size, lower_bound) =
-                    self.resolve_array_dim_info(array_hir_type, dim);
+                    self.resolve_array_dim_info(array_hir_type, dim)?;
 
                 Ok(MirPlace::Index {
                     base: Box::new(inner),
@@ -1037,11 +1052,13 @@ impl<'db> ExprLowerCtx<'db> {
     }
 
     /// Resolve the byte offset of a field within a struct/FB type.
+    /// Byte offset of `field_name` within `base_type`. A miss is an ERROR — see
+    /// [`Self::resolve_field_offset_from_mir`].
     fn resolve_field_offset(
         &self,
         base_type: Type<'db>,
         field_name: hir::hir_def::interned::identifier::Ident,
-    ) -> u32 {
+    ) -> Result<u32, LowerTypeError> {
         let base_mir = self.lower_type_resolved(base_type).ok();
         // If the resolved type is an array, the field access is on the element type
         let effective_mir = match base_mir {
@@ -1051,11 +1068,14 @@ impl<'db> ExprLowerCtx<'db> {
         if let Some(MirType::Struct(s)) = &effective_mir {
             for field in &s.fields {
                 if field.name == field_name {
-                    return field.offset;
+                    return Ok(field.offset);
                 }
             }
         }
-        0
+        Err(LowerTypeError::UnsupportedType(format!(
+            "field '{}' not found in the base type's layout",
+            field_name.text(self.db)
+        )))
     }
 
     /// For a multi-dimensional array, each chained `Index` (`m[i][j]`) addresses
@@ -1072,7 +1092,11 @@ impl<'db> ExprLowerCtx<'db> {
 
     /// `(element_type, byte_stride, lower_bound)` for dimension `dim`,
     /// row-major: `stride = element_size × ∏(later sizes)`.
-    fn resolve_array_dim_info(&self, array_type: Type<'db>, dim: usize) -> (MirType, u32, i64) {
+    fn resolve_array_dim_info(
+        &self,
+        array_type: Type<'db>,
+        dim: usize,
+    ) -> Result<(MirType, u32, i64), LowerTypeError> {
         let mir = self.lower_type_resolved(array_type).ok();
         if let Some(MirType::Array(ref a)) = mir {
             let later: u32 = a
@@ -1084,9 +1108,12 @@ impl<'db> ExprLowerCtx<'db> {
                 .product();
             let stride = a.element_size * later;
             let lower_bound = a.dimensions.get(dim).map(|(l, _)| *l).unwrap_or(0);
-            return (*a.element_type.clone(), stride, lower_bound);
+            return Ok((*a.element_type.clone(), stride, lower_bound));
         }
-        (MirType::Void, 4, 0)
+        // HIR type-checked the index, so a non-array here is a real disagreement.
+        Err(LowerTypeError::UnsupportedType(
+            "indexed expression did not resolve to an array type".to_string(),
+        ))
     }
 
     /// For an instance-method call `receiver.method(...)`: the mangled callee,
