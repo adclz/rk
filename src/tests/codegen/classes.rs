@@ -163,3 +163,91 @@ fn test_st_class_interface_two_impls(mut with_db: db::RootDatabase) {
         "pick$One -> 1, pick$Ten -> 10, distinct class specializations"
     );
 }
+
+/// A derived FB must be layout-compatible with its base: inherited fields come
+/// FIRST, at the offsets they have in the base, so an inherited method —
+/// compiled once against the base's layout and then called with a derived
+/// instance pointer — reads the right slots.
+///
+/// MIR used to emit only the POU's OWN variables, so a derived field landed at
+/// offset 0 and silently aliased the first inherited field: writing `d`
+/// clobbered `b`. The pre-existing inheritance test missed it by only ever
+/// reading the base field.
+#[rstest]
+fn derived_fb_fields_do_not_alias_base_fields(mut with_db: db::RootDatabase) {
+    let source = r#"
+        FUNCTION_BLOCK Base
+        VAR b : INT; END_VAR
+            METHOD PUBLIC SetB : INT
+                b := 11;
+                SetB := 0;
+            END_METHOD
+            METHOD PUBLIC GetB : INT
+                GetB := b;
+            END_METHOD
+        END_FUNCTION_BLOCK
+
+        FUNCTION_BLOCK Derived EXTENDS Base
+        VAR d : INT; END_VAR
+            METHOD PUBLIC SetD : INT
+                d := 22;
+                SetD := 0;
+            END_METHOD
+            METHOD PUBLIC GetD : INT
+                GetD := d;
+            END_METHOD
+        END_FUNCTION_BLOCK
+
+        FUNCTION test : INT
+        VAR x : Derived; END_VAR
+            x.SetB();
+            x.SetD();          (* must not overwrite b *)
+            test := x.GetB() * 100 + x.GetD();
+        END_FUNCTION
+    "#;
+    let wasm = compile_to_wasm(&mut with_db, source);
+    let result: i32 = super::execute_wasm(&wasm, "test", ());
+    assert_eq!(
+        result, 1122,
+        "base b stays 11 and derived d is 22 (aliasing would give 2222)"
+    );
+}
+
+/// The same guarantee for CLASS inheritance, whose layout builder carried an
+/// explicit `TODO: Handle inheritance` and emitted no base fields at all.
+#[rstest]
+fn derived_class_fields_do_not_alias_base_fields(mut with_db: db::RootDatabase) {
+    let source = r#"
+        CLASS CBase
+        VAR cb : INT; END_VAR
+            METHOD PUBLIC SetCB : INT
+                cb := 11;
+                SetCB := 0;
+            END_METHOD
+            METHOD PUBLIC GetCB : INT
+                GetCB := cb;
+            END_METHOD
+        END_CLASS
+
+        CLASS CDerived EXTENDS CBase
+        VAR cd : INT; END_VAR
+            METHOD PUBLIC SetCD : INT
+                cd := 22;
+                SetCD := 0;
+            END_METHOD
+            METHOD PUBLIC GetCD : INT
+                GetCD := cd;
+            END_METHOD
+        END_CLASS
+
+        FUNCTION test : INT
+        VAR x : CDerived; END_VAR
+            x.SetCB();
+            x.SetCD();
+            test := x.GetCB() * 100 + x.GetCD();
+        END_FUNCTION
+    "#;
+    let wasm = compile_to_wasm(&mut with_db, source);
+    let result: i32 = super::execute_wasm(&wasm, "test", ());
+    assert_eq!(result, 1122, "class base field survives a derived write");
+}
