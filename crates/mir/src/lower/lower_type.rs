@@ -267,15 +267,34 @@ fn lower_enum_type<'db>(
     lower_enum_type_named(db, enum_type, None)
 }
 
+/// Each enumerator paired with its declared numeric value: an explicit
+/// `(Idle := 10, Run := 20)`, or continuing from the previous value from 0.
+/// The single source of enum numbering for both the type and its literals.
+pub fn enum_variant_values<'db>(
+    db: &'db dyn WorkspaceDataBase,
+    enum_type: hir::hir_def::expressions::spec::Enum<'db>,
+) -> Result<Vec<(hir::hir_def::expressions::spec::EnumVariant<'db>, i64)>, LowerTypeError> {
+    let mut out = Vec::new();
+    let mut next: i64 = 0;
+    for variant in enum_type.variants(db).iter() {
+        let value = match variant.value {
+            Some(expr) => extract_integer_literal(db, expr)? as i64,
+            None => next,
+        };
+        out.push((*variant, value));
+        next = value + 1;
+    }
+    Ok(out)
+}
+
 pub fn lower_enum_type_named<'db>(
     db: &'db dyn WorkspaceDataBase,
     enum_type: hir::hir_def::expressions::spec::Enum<'db>,
     name: Option<Ident>,
 ) -> Result<MirType, LowerTypeError> {
     let mut variants = Vec::new();
-    for (i, variant) in enum_type.variants(db).iter().enumerate() {
-        let variant_name = variant.name.ident.text(db).clone();
-        variants.push((variant_name, i as i64));
+    for (variant, value) in enum_variant_values(db, enum_type)? {
+        variants.push((variant.name.ident.text(db).clone(), value));
     }
 
     let enum_name = name.unwrap_or_else(|| Ident::new(db, CompactString::from("<anon_enum>")));

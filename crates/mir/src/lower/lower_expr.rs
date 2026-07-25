@@ -399,17 +399,17 @@ impl<'db> ExprLowerCtx<'db> {
                         enum_ty
                     )));
                 };
-                let ordinal = e
-                    .variants(self.db)
-                    .iter()
-                    .position(|v| v.name.ident == variant.ident)
+                let value = super::lower_type::enum_variant_values(self.db, e)?
+                    .into_iter()
+                    .find(|(v, _)| v.name.ident == variant.ident)
+                    .map(|(_, value)| value)
                     .ok_or_else(|| {
                         LowerTypeError::UnsupportedType(format!(
                             "Unknown enum variant '{}'",
                             variant.ident.text(self.db)
                         ))
                     })?;
-                Ok(MirExpr::Constant(MirConstant::I32(ordinal as i32)))
+                Ok(MirExpr::Constant(MirConstant::I32(value as i32)))
             }
 
             PrimaryExpr::RefValue { value } => match value {

@@ -164,3 +164,64 @@ fn enum_struct_field(mut with_db: db::RootDatabase) {
     let result: i32 = super::execute_wasm(&wasm, "test", ());
     assert_eq!(result, 7, "enum struct field round-trips");
 }
+
+/// IEC 61131-3: an enumerated type may assign explicit values to its
+/// enumerators (`(Idle := 10, Run := 20)`), and every later enumerator without
+/// one continues from the previous value. MIR used to number variants by
+/// position and ignore `EnumVariant.value` entirely, so the declared values
+/// were silently replaced by 0, 1, 2 — wrong for any CASE dispatch, INT
+/// comparison, or value transmitted to a device.
+#[rstest]
+fn explicit_enum_values_are_honored(mut with_db: db::RootDatabase) {
+    let source = r#"
+        TYPE Mode : (Idle := 10, Run := 20, Halt := 30); END_TYPE
+
+        FUNCTION code : DINT
+        VAR_INPUT m : Mode; END_VAR
+            CASE m OF
+                Mode#Idle: code := 1;
+                Mode#Run:  code := 2;
+                Mode#Halt: code := 3;
+            ELSE
+                code := -1;
+            END_CASE;
+        END_FUNCTION
+
+        FUNCTION test : DINT
+            test := code(m := Mode#Run) * 100 + code(m := Mode#Halt);
+        END_FUNCTION
+    "#;
+    let wasm = compile_to_wasm_checked(&mut with_db, source);
+    let result: i32 = super::execute_wasm(&wasm, "test", ());
+    assert_eq!(
+        result, 203,
+        "CASE must match on the declared values (Run -> 2, Halt -> 3), not positions"
+    );
+}
+
+/// Enumerators after an explicit value continue from it (`(A := 5, B, C)` is
+/// 5, 6, 7) — the IEC/C-style continuation rule.
+#[rstest]
+fn enum_values_continue_after_an_explicit_one(mut with_db: db::RootDatabase) {
+    let source = r#"
+        TYPE Step : (A := 5, B, C); END_TYPE
+
+        FUNCTION code : DINT
+        VAR_INPUT s : Step; END_VAR
+            CASE s OF
+                Step#A: code := 1;
+                Step#B: code := 2;
+                Step#C: code := 3;
+            ELSE
+                code := -1;
+            END_CASE;
+        END_FUNCTION
+
+        FUNCTION test : DINT
+            test := code(s := Step#B) * 10 + code(s := Step#C);
+        END_FUNCTION
+    "#;
+    let wasm = compile_to_wasm_checked(&mut with_db, source);
+    let result: i32 = super::execute_wasm(&wasm, "test", ());
+    assert_eq!(result, 23, "B and C continue from A's explicit 5 (6 and 7)");
+}
