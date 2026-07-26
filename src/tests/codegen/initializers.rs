@@ -410,3 +410,80 @@ fn retain_initializer_is_cold_start_only(mut with_db: db::RootDatabase) {
 
     std::fs::remove_file(&path).ok();
 }
+
+/// Regression: a PROGRAM field or VAR_GLOBAL whose type is not i32-shaped had
+/// its `__init` store emitted as `i32.store` regardless of the value's width,
+/// so the module failed wasm validation as a whole — reported against
+/// `__init`, with nothing pointing back at the initializer that caused it.
+/// `rk compile` still exited 0 and wrote the unloadable artifact out.
+///
+/// `place_type` (wasm_codegen/src/emit_stmt.rs) had no `MirPlace::Global` arm
+/// and fell through to an `Int` default; `Global` is the variant `__init`
+/// stores through, so *every* REAL/LREAL/LINT/LWORD/LTIME initializer on a
+/// program field or global was affected.
+#[rstest]
+fn wide_and_float_program_field_initializers_load(mut with_db: db::RootDatabase) {
+    let source = r#"
+        PROGRAM P
+        VAR RETAIN
+            ok : DINT;
+        END_VAR
+        VAR
+            r : REAL := 1.5;
+            d : LREAL := 2.25;
+            l : LINT := 5000000000;
+            w : LWORD := 16#1122334455667788;
+        END_VAR
+            IF r = 1.5 AND d = 2.25 AND l = 5000000000 AND w = 16#1122334455667788 THEN
+                ok := 1;
+            ELSE
+                ok := 0;
+            END_IF;
+        END_PROGRAM
+
+        CONFIGURATION Cfg
+            RESOURCE Res ON CPU
+                TASK T(INTERVAL := T#10ms, PRIORITY := 1);
+                PROGRAM P1 WITH T : P;
+            END_RESOURCE
+        END_CONFIGURATION
+    "#;
+    let (_mir, wasm) = compile_to_mir_and_wasm(&mut with_db, source);
+    // Loading is the assertion that used to fail: the module did not validate.
+    let mut plc = Plc::load(&wasm, Config::default()).expect("module must validate and load");
+    plc.run(1).expect("scan");
+    assert_eq!(read_first_i32(&plc), 1, "every wide initializer applied");
+}
+
+/// Same defect reached through a config-level `VAR_GLOBAL`, which is the other
+/// producer of `MirPlace::Global` stores in `__init`.
+#[rstest]
+fn wide_and_float_global_initializers_load(mut with_db: db::RootDatabase) {
+    let source = r#"
+        PROGRAM P
+        VAR RETAIN
+            ok : DINT;
+        END_VAR
+        VAR_EXTERNAL
+            gr : REAL;
+            gl : LINT;
+        END_VAR
+            IF gr = 3.5 AND gl = 9000000000 THEN ok := 1; ELSE ok := 0; END_IF;
+        END_PROGRAM
+
+        CONFIGURATION Cfg
+            VAR_GLOBAL
+                gr : REAL := 3.5;
+                gl : LINT := 9000000000;
+            END_VAR
+            RESOURCE Res ON CPU
+                TASK T(INTERVAL := T#10ms, PRIORITY := 1);
+                PROGRAM P1 WITH T : P;
+            END_RESOURCE
+        END_CONFIGURATION
+    "#;
+    let (_mir, wasm) = compile_to_mir_and_wasm(&mut with_db, source);
+    let mut plc = Plc::load(&wasm, Config::default()).expect("module must validate and load");
+    plc.run(1).expect("scan");
+    assert_eq!(read_first_i32(&plc), 1, "wide global initializers applied");
+}

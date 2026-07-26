@@ -1090,13 +1090,28 @@ fn emit_typed_mem_store(func: &mut wasm_encoder::Function, ty: &mir::types::MirT
     }
 }
 
+/// The type a store through `place` must use.
+///
+/// Every variant that knows its own type answers with it. `Global` is one of
+/// them and used to be missing: it fell through to the `Int` default, so a
+/// `REAL` global or PROGRAM field emitted `i32.store` under an `f32` value and
+/// the whole module failed wasm validation - reported against `__init`, with
+/// nothing pointing back at the initializer. `rk compile` still exited 0.
+///
+/// `Local` is the only variant with no type of its own; a scalar local is
+/// handled by the `LocalInfo` arms above and never reaches here, so the
+/// remaining case is an address-taken aggregate, for which the width is
+/// carried by the value rather than the place.
 fn place_type(place: &mir::expr::MirPlace) -> mir::types::MirType {
     match place {
         mir::expr::MirPlace::Field { field_type, .. } => field_type.clone(),
         mir::expr::MirPlace::Index { element_type, .. } => element_type.clone(),
         mir::expr::MirPlace::Deref { pointee_type, .. } => pointee_type.clone(),
         mir::expr::MirPlace::ThisField { field_type, .. } => field_type.clone(),
-        _ => mir::types::MirType::Elementary(mir::types::MirElementary::Int),
+        mir::expr::MirPlace::Global { ty, .. } => ty.clone(),
+        mir::expr::MirPlace::Local(_) => {
+            mir::types::MirType::Elementary(mir::types::MirElementary::Int)
+        }
     }
 }
 
