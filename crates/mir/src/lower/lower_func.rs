@@ -496,85 +496,83 @@ fn lower_function_block_inner<'db>(
         idx += 1;
     }
 
-    // Lower FB body as __body__ function
-    // All variables (input, output, var) are accessed through the 'this' pointer.
-    if !fb.statements(db).is_empty() {
-        let fb_type = super::lower_type::lower_fb_type(db, fb)?;
-        let body_params = vec![MirParam {
-            name: Ident::new(db, compact_str::CompactString::from("this")),
-            ty: MirType::Pointer(Box::new(fb_type.clone())),
-            kind: MirParamKind::This,
-        }];
+    // The FB body as `__body__`, every variable through `this`. Lowered even
+    // when empty: call sites emit `call FB$__body__` regardless.
+    let fb_type = super::lower_type::lower_fb_type(db, fb)?;
+    let body_params = vec![MirParam {
+        name: Ident::new(db, compact_str::CompactString::from("this")),
+        ty: MirType::Pointer(Box::new(fb_type.clone())),
+        kind: MirParamKind::This,
+    }];
 
-        let mut body_locals = Vec::new();
-        let mut next_local_idx: u32 = 1; // 0 is 'this'
+    let mut body_locals = Vec::new();
+    let mut next_local_idx: u32 = 1; // 0 is 'this'
 
-        let address_taken = collect_address_taken_vars(db, fb.statements(db));
+    let address_taken = collect_address_taken_vars(db, fb.statements(db));
 
-        for var in fb.variables(db) {
-            if var.kind(db) == VariableKind::Temp {
-                let ty = lower_var_type(db, *var)?;
-                let storage = allocate_local_storage(
-                    var.name(db),
-                    &ty,
-                    address_taken.contains(&var.name(db)),
-                    &mut next_local_idx,
-                    memory_layout,
-                );
-                body_locals.push(MirLocal {
-                    name: var.name(db),
-                    ty,
-                    init: None,
-                    // Only VAR_TEMP reaches here, marked Temp so codegen resets aggregate
-                    // temps on entry.
-                    kind: MirLocalKind::Temp,
-                    storage,
-                    var_storage: MirVariableStorage::Automatic,
-                });
-            }
+    for var in fb.variables(db) {
+        if var.kind(db) == VariableKind::Temp {
+            let ty = lower_var_type(db, *var)?;
+            let storage = allocate_local_storage(
+                var.name(db),
+                &ty,
+                address_taken.contains(&var.name(db)),
+                &mut next_local_idx,
+                memory_layout,
+            );
+            body_locals.push(MirLocal {
+                name: var.name(db),
+                ty,
+                init: None,
+                // Only VAR_TEMP reaches here, marked Temp so codegen resets aggregate
+                // temps on entry.
+                kind: MirLocalKind::Temp,
+                storage,
+                var_storage: MirVariableStorage::Automatic,
+            });
         }
-
-        // Body lowering with the `this` struct context.
-        let this_struct = match &fb_type {
-            MirType::Struct(s) => s.clone(),
-            _ => {
-                return Err(LowerTypeError::UnsupportedType(
-                    "FB type is not a struct".into(),
-                ));
-            }
-        };
-        let (body_stmts, call_scratch) = crate::lower::lower_stmt::lower_stmts_fb_body(
-            db,
-            fb.statements(db),
-            this_struct,
-            string_pool.clone(),
-            iface_call_rewrites,
-        )?;
-        append_call_scratch_locals(
-            call_scratch,
-            &mut body_locals,
-            &mut next_local_idx,
-            memory_layout,
-        );
-
-        let body_name = Ident::new(
-            db,
-            compact_str::CompactString::from(format!("{}$__body__", fb_qualified.text(db))),
-        );
-
-        functions.push(MirFunction {
-            name: body_name,
-            origin_name: fb.name(db),
-            index: idx,
-            params: body_params,
-            return_type: None,
-            locals: body_locals,
-            body: body_stmts,
-            linkage: MirLinkage::Export,
-            is_test: false,
-            export_name: None,
-        });
     }
+
+    // Body lowering with the `this` struct context.
+    let this_struct = match &fb_type {
+        MirType::Struct(s) => s.clone(),
+        _ => {
+            return Err(LowerTypeError::UnsupportedType(
+                "FB type is not a struct".into(),
+            ));
+        }
+    };
+    let (body_stmts, call_scratch) = crate::lower::lower_stmt::lower_stmts_fb_body(
+        db,
+        fb.statements(db),
+        this_struct,
+        string_pool.clone(),
+        iface_call_rewrites,
+    )?;
+    append_call_scratch_locals(
+        call_scratch,
+        &mut body_locals,
+        &mut next_local_idx,
+        memory_layout,
+    );
+
+    let body_name = Ident::new(
+        db,
+        compact_str::CompactString::from(format!("{}$__body__", fb_qualified.text(db))),
+    );
+
+    functions.push(MirFunction {
+        name: body_name,
+        origin_name: fb.name(db),
+        index: idx,
+        params: body_params,
+        return_type: None,
+        locals: body_locals,
+        body: body_stmts,
+        linkage: MirLinkage::Export,
+        is_test: false,
+        export_name: None,
+    });
 
     Ok(functions)
 }

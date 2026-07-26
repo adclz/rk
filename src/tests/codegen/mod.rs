@@ -13,6 +13,7 @@ mod debug_lines;
 mod debug_stacktrace;
 mod debug_symbols;
 mod e2e;
+mod empty_bodies;
 mod enums;
 mod exceptions_spike;
 mod execution;

@@ -289,8 +289,13 @@ fn emit_stmt(func: &mut wasm_encoder::Function, stmt: &MirStmt, ctx: &Ctx) {
                 emit_fb_field_write(func, base, *field_offset, value, ty, ctx);
             }
 
-            // 2. Call __body__(&instance)
-            let body_idx = ctx.fn_indices.get(body_func).copied().unwrap_or(0);
+            // 2. Call __body__(&instance); an unresolved body symbol is fatal, as
+            // in `emit_call`.
+            let body_idx = ctx
+                .fn_indices
+                .get(body_func)
+                .copied()
+                .unwrap_or_else(|| missing_body_fn(body_func, ctx));
             match base {
                 FbBase::Static(addr) => {
                     func.instruction(&Instruction::I32Const(addr as i32));
@@ -1093,4 +1098,31 @@ fn place_type(place: &mir::expr::MirPlace) -> mir::types::MirType {
         mir::expr::MirPlace::ThisField { field_type, .. } => field_type.clone(),
         _ => mir::types::MirType::Elementary(mir::types::MirElementary::Int),
     }
+}
+
+/// Panic with a breadcrumb when an `FbCall` names a body function that
+/// was never emitted.
+fn missing_body_fn(body_func: &hir::hir_def::interned::identifier::Ident, ctx: &Ctx) -> u32 {
+    crate::emit_expr::FN_NAMES_FOR_DIAGNOSTIC.with(|cell| {
+        let names = cell.borrow();
+        let missing = names
+            .get(body_func)
+            .cloned()
+            .unwrap_or_else(|| format!("{body_func:?}"));
+        let caller = crate::emit_expr::CURRENT_EMIT_FN
+            .with(|c| c.borrow().clone())
+            .unwrap_or_else(|| "<unknown>".to_string());
+        let mut available: Vec<&str> = ctx
+            .fn_indices
+            .keys()
+            .filter_map(|k| names.get(k).map(|s| s.as_str()))
+            .filter(|n: &&str| n.contains("$__body__"))
+            .collect();
+        available.sort();
+        panic!(
+            "internal compiler error: while emitting `{caller}`, a function-block \
+             invocation references unknown body function `{missing}` - it was not \
+             lowered.\nBody functions that do exist: {available:?}"
+        )
+    })
 }

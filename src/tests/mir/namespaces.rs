@@ -121,7 +121,9 @@ END_FUNCTION
 "#;
     assert_snapshot!(mir_exports(&mut with_db, &[source]), @r"
     export NsA.Counter#reset(*struct(NsA.Counter))
+    export NsA.Counter$__body__(*struct(NsA.Counter))
     export NsB.Counter#reset(*struct(NsB.Counter))
+    export NsB.Counter$__body__(*struct(NsB.Counter))
     export test()
     ");
 }
