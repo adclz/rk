@@ -24,6 +24,7 @@ mod globals;
 mod imports;
 mod initializers;
 mod inout;
+mod instance_initializers;
 mod mir_smoke;
 mod overloads;
 mod ref_to;

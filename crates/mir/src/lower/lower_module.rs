@@ -282,7 +282,11 @@ fn lower_module_from_pous<'db>(
 
             Pou::Class(class) => {
                 // Build instance type
-                let class_type = at_pou(db, *class, lower_type(db, hir::hir_ty::ty::Type::Class(*class)))?;
+                let class_type = at_pou(
+                    db,
+                    *class,
+                    lower_type(db, hir::hir_ty::ty::Type::Class(*class)),
+                )?;
                 if let MirType::Struct(ref struct_type) = class_type {
                     let inst_fields: Vec<MirInstanceField> = struct_type
                         .fields
@@ -1307,9 +1311,10 @@ fn collect_const_inits<'db>(
             }
         }
         for v in globals {
-            if let Some((addr, ty)) = global_table.get(&v.name(db))
-                && let Some(init) = v.init(db)
-            {
+            let Some((addr, ty)) = global_table.get(&v.name(db)) else {
+                continue;
+            };
+            if let Some(init) = v.init(db) {
                 super::lower_func::lower_resolved_init_into(
                     db,
                     *addr,
@@ -1317,6 +1322,18 @@ fn collect_const_inits<'db>(
                     init,
                     &mut stmts,
                     string_pool,
+                )?;
+            } else if let MirType::Struct(struct_ty) = ty
+                && let Some(pou) = super::lower_func::instance_pou(db, *v)
+            {
+                // A global FB instance is initialized from its type's members.
+                super::lower_func::lower_instance_member_inits(
+                    db,
+                    super::lower_func::InitTarget::Static { base: *addr },
+                    struct_ty,
+                    pou,
+                    string_pool,
+                    &mut stmts,
                 )?;
             }
         }
@@ -1338,15 +1355,30 @@ fn collect_const_inits<'db>(
                     else {
                         continue;
                     };
-                    let Some(init) = var.init(db) else { continue };
-                    super::lower_func::lower_resolved_init_into(
-                        db,
-                        inst.instance_addr + field.offset,
-                        &field.ty,
-                        init,
-                        &mut stmts,
-                        string_pool,
-                    )?;
+                    let addr = inst.instance_addr + field.offset;
+                    if let Some(init) = var.init(db) {
+                        super::lower_func::lower_resolved_init_into(
+                            db,
+                            addr,
+                            &field.ty,
+                            init,
+                            &mut stmts,
+                            string_pool,
+                        )?;
+                    } else if let MirType::Struct(struct_ty) = &field.ty
+                        && let Some(pou) = super::lower_func::instance_pou(db, *var)
+                    {
+                        // An FB instance held by a PROGRAM gets its type's
+                        // member initializers, same as one held by a FUNCTION.
+                        super::lower_func::lower_instance_member_inits(
+                            db,
+                            super::lower_func::InitTarget::Static { base: addr },
+                            struct_ty,
+                            pou,
+                            string_pool,
+                            &mut stmts,
+                        )?;
+                    }
                 }
             }
         }

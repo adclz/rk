@@ -275,13 +275,29 @@ fn lower_function_inner<'db>(
             VariableKind::Input | VariableKind::InOut | VariableKind::Output => continue,
             _ => {}
         }
+        let var_ty = lower_var_type(db, *var)?;
         if let Some(init_expr) = var.init(db) {
-            let var_ty = lower_var_type(db, *var)?;
             lower_var_init(
                 db,
                 var.name(db),
                 &var_ty,
                 init_expr,
+                &string_pool,
+                &mut init_stmts,
+            )?;
+        } else if let MirType::Struct(ref struct_ty) = var_ty
+            && let Some(pou) = instance_pou(db, *var)
+        {
+            // `VAR f : Flags;` has no initializer of its own — the values live
+            // on `Flags`'s members.
+            lower_instance_member_inits(
+                db,
+                InitTarget::Local {
+                    name: var.name(db),
+                    base: 0,
+                },
+                struct_ty,
+                pou,
                 &string_pool,
                 &mut init_stmts,
             )?;
@@ -1146,35 +1162,162 @@ fn lower_var_init<'db>(
     string_pool: &Rc<RefCell<super::lower_expr::StringPool>>,
     out: &mut Vec<MirStmt>,
 ) -> Result<(), LowerTypeError> {
+    lower_init_leaves(
+        db,
+        InitTarget::Local {
+            name: var_name,
+            base: 0,
+        },
+        var_ty,
+        init_expr,
+        string_pool,
+        out,
+    )
+}
+
+/// Where an instance's member initializers are written; the member walk
+/// itself is shared.
+#[derive(Clone, Copy)]
+pub(crate) enum InitTarget {
+    /// A statically allocated instance at an absolute address (PROGRAM
+    /// instances, config globals), baked into `__init`: only constant leaves
+    /// qualify.
+    Static { base: u32 },
+    /// A local instance, addressed as a field over the local's own base. These
+    /// are emitted into the owning function's prologue, where a non-constant
+    /// leaf is fine.
+    Local { name: Ident, base: u32 },
+}
+
+impl InitTarget {
+    fn offset_by(self, delta: u32) -> Self {
+        match self {
+            InitTarget::Static { base } => InitTarget::Static { base: base + delta },
+            InitTarget::Local { name, base } => InitTarget::Local {
+                name,
+                base: base + delta,
+            },
+        }
+    }
+}
+
+/// Lower one initializer's resolved leaves into `out` at `target`;
+/// `infer_initialization` already flattened and validated them.
+fn lower_init_leaves<'db>(
+    db: &'db dyn WorkspaceDataBase,
+    target: InitTarget,
+    ty: &crate::types::MirType,
+    init: hir::hir_def::expressions::expression::InitExpr<'db>,
+    string_pool: &Rc<RefCell<super::lower_expr::StringPool>>,
+    out: &mut Vec<MirStmt>,
+) -> Result<(), LowerTypeError> {
     use crate::expr::MirPlace;
     use hir::hir_ty::head::init_inference::infer_initialization;
 
-    let scope = init_expr.scope_id(db);
-    let inference = infer_initialization(db, scope);
-    let Some(leaves) = inference.init_expr_result.resolved.get(&init_expr) else {
-        return Ok(());
+    let inference = infer_initialization(db, init.scope_id(db));
+    let Some(leaves) = inference.init_expr_result.resolved.get(&init) else {
+        return Ok(()); // HIR produced no resolved leaves (non-flattenable init)
     };
     for leaf in leaves {
         let value = ExprLowerCtx::new(db, string_pool.clone()).lower_expr(leaf.value)?;
-        let target = if leaf.path.is_empty() {
-            MirPlace::Local(var_name)
+        let (offset, leaf_ty) = if leaf.path.is_empty() {
+            (0, ty.clone())
         } else {
-            let Some((offset, leaf_ty)) = walk_init_path(var_ty, &leaf.path) else {
+            let Some(found) = walk_init_path(ty, &leaf.path) else {
                 continue;
             };
-            // `field_name` is metadata only — addressing uses `field_offset` over
-            // the local's base address.
-            MirPlace::Field {
-                base: Box::new(MirPlace::Local(var_name)),
-                field_name: var_name,
-                field_offset: offset,
-                field_type: leaf_ty,
-            }
+            found
         };
-        out.push(MirStmt::Assign { target, value });
+        let place = match target.offset_by(offset) {
+            InitTarget::Static { base } => {
+                if !is_const_value(&value) {
+                    continue; // non-const init element — validated/diagnosed by the HIR
+                }
+                MirPlace::Global {
+                    address: base,
+                    ty: leaf_ty,
+                }
+            }
+            // Only a whole scalar local is addressed directly; anything at an
+            // offset lives in linear memory and is reached as a field.
+            InitTarget::Local { name, base } if base == 0 && leaf.path.is_empty() => {
+                MirPlace::Local(name)
+            }
+            InitTarget::Local { name, base } => MirPlace::Field {
+                base: Box::new(MirPlace::Local(name)),
+                // `field_name` is metadata only — addressing uses `field_offset`.
+                field_name: name,
+                field_offset: base,
+                field_type: leaf_ty,
+            },
+        };
+        out.push(MirStmt::Assign {
+            target: place,
+            value,
+        });
     }
     Ok(())
 }
+
+/// Walk a member-name path over the MIR layout, returning the byte offset from
+/// the instance base and the member's type.
+///
+/// The path itself comes from HIR ([`instance_initializers`]); this only maps
+/// it onto the emitted struct layout.
+///
+/// [`instance_initializers`]: hir::hir_ty::head::inheritance::instance_initializers
+fn walk_member_path(
+    root: &crate::types::MirStructType,
+    path: &[Ident],
+) -> Option<(u32, crate::types::MirType)> {
+    let mut offset = 0u32;
+    let mut cur: Option<crate::types::MirType> = None;
+    let mut cur_struct = root;
+    for name in path {
+        let field = cur_struct.fields.iter().find(|f| f.name == *name)?;
+        offset += field.offset;
+        cur = Some(field.ty.clone());
+        if let crate::types::MirType::Struct(inner) = &field.ty {
+            cur_struct = inner;
+        }
+    }
+    cur.map(|ty| (offset, ty))
+}
+
+/// Emit the member initializers of an instance-typed variable
+/// (`VAR f : Flags;`): the `:= 3` sits on the type's member declarations.
+/// Inheritance and composition are resolved by HIR's
+/// [`instance_initializers`]; MIR only turns each path into a byte offset.
+///
+/// [`instance_initializers`]: hir::hir_ty::head::inheritance::instance_initializers
+pub(crate) fn lower_instance_member_inits<'db>(
+    db: &'db dyn WorkspaceDataBase,
+    target: InitTarget,
+    struct_ty: &crate::types::MirStructType,
+    pou: hir::hir_def::pous::pou::Pou<'db>,
+    string_pool: &Rc<RefCell<super::lower_expr::StringPool>>,
+    out: &mut Vec<MirStmt>,
+) -> Result<(), LowerTypeError> {
+    use hir::hir_ty::head::inheritance::instance_initializers;
+
+    for entry in instance_initializers(db, pou) {
+        let Some((offset, member_ty)) = walk_member_path(struct_ty, &entry.path) else {
+            continue;
+        };
+        lower_init_leaves(
+            db,
+            target.offset_by(offset),
+            &member_ty,
+            entry.init,
+            string_pool,
+            out,
+        )?;
+    }
+    Ok(())
+}
+
+/// The FB or CLASS a variable is an instance of, if it is one.
+pub(crate) use hir::hir_ty::head::inheritance::instance_pou_of as instance_pou;
 
 /// Emit one `Assign { Global, value }` per resolved initializer leaf; MIR
 /// walks each leaf's path over the layout and never re-walks the
@@ -1187,32 +1330,7 @@ pub(crate) fn lower_resolved_init_into<'db>(
     out: &mut Vec<crate::stmt::MirStmt>,
     string_pool: &Rc<RefCell<super::lower_expr::StringPool>>,
 ) -> Result<(), LowerTypeError> {
-    use crate::expr::MirPlace;
-    use crate::stmt::MirStmt;
-    use hir::hir_ty::head::init_inference::infer_initialization;
-
-    let scope = init.scope_id(db);
-    let inference = infer_initialization(db, scope);
-    let Some(leaves) = inference.init_expr_result.resolved.get(&init) else {
-        return Ok(()); // HIR produced no resolved leaves (non-flattenable init)
-    };
-    for leaf in leaves {
-        let value = ExprLowerCtx::new(db, string_pool.clone()).lower_expr(leaf.value)?;
-        if !is_const_value(&value) {
-            continue; // non-const init element — validated/diagnosed by the HIR
-        }
-        let Some((offset, leaf_ty)) = walk_init_path(ty, &leaf.path) else {
-            continue;
-        };
-        out.push(MirStmt::Assign {
-            target: MirPlace::Global {
-                address: base + offset,
-                ty: leaf_ty,
-            },
-            value,
-        });
-    }
-    Ok(())
+    lower_init_leaves(db, InitTarget::Static { base }, ty, init, string_pool, out)
 }
 
 /// Walk a resolved leaf's path over the layout to its byte offset and
