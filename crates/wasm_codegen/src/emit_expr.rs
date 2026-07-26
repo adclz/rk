@@ -763,6 +763,20 @@ fn emit_binop(func: &mut wasm_encoder::Function, op: MirBinOp, ty: MirElementary
                 func.instruction(&Instruction::I32GeU);
             }
         },
+        MirBinOp::Shl => {
+            if is_64 {
+                func.instruction(&Instruction::I64Shl);
+            } else {
+                func.instruction(&Instruction::I32Shl);
+            }
+        }
+        MirBinOp::Shr => {
+            if is_64 {
+                func.instruction(&Instruction::I64ShrU);
+            } else {
+                func.instruction(&Instruction::I32ShrU);
+            }
+        }
         MirBinOp::Power => {
             // TODO: Power operator not yet supported
         }

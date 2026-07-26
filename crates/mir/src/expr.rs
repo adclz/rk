@@ -161,6 +161,10 @@ pub enum MirBinOp {
     And,
     Or,
     Xor,
+    /// Logical shift left, used to build partial (bit/byte/word) accesses.
+    Shl,
+    /// Logical (zero-filling) shift right — see [`MirBinOp::Shl`].
+    Shr,
     // Comparison (result is always Bool/i32)
     Eq,
     Ne,

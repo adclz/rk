@@ -125,6 +125,13 @@ fn lower_stmt<'db>(
             } else {
                 ctx.lower_expr(*target)?
             };
+            // `b.1 := x` names a slice of `b`; the store has to put back the
+            // whole of `b` with only those bits replaced.
+            let value = if var.multibits(ctx.db).is_some() {
+                ctx.lower_multibit_write(place.clone(), *var, var.infer(ctx.db), value)?
+            } else {
+                value
+            };
             Ok(Some(MirStmt::Assign {
                 target: place,
                 value,

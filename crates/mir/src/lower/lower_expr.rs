@@ -380,6 +380,10 @@ impl<'db> ExprLowerCtx<'db> {
 
             PrimaryExpr::VariableAccess(var_access) => {
                 let place = self.lower_variable_access(*var_access)?;
+                // `b.1` reads a slice of `b`, not `b` itself.
+                if var_access.multibits(self.db).is_some() {
+                    return self.lower_multibit_read(place, *var_access, parent_expr);
+                }
                 let ty = self
                     .lower_type_resolved(parent_expr.infer(self.db))
                     .unwrap_or(MirType::Void);
