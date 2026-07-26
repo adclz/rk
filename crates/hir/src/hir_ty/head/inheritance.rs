@@ -1,7 +1,7 @@
 use crate::{
     AstId, HasModifiers, HasName, HasVisibility, HirNodeInfo, Modifier, Visibility,
     hir_def::{
-        expressions::spec::{Spec, SpecKind},
+        expressions::{expression::InitExpr, spec::{Spec, SpecKind}},
         interned::identifier::Ident,
         pous::{class::MethodDecl, interface::MethodPrototype, pou::Pou, variable::VariableDecl},
         scope::ScopeId,
@@ -301,6 +301,95 @@ pub fn instance_members<'db>(
     let mut visited = Vec::new();
     collect_instance_members(db, pou, &mut out, &mut visited);
     out
+}
+
+/// One initializer that applies to a fresh instance of a POU.
+#[derive(Debug, Clone, PartialEq, Eq, Hash, salsa::Update)]
+pub struct InstanceInit<'db> {
+    /// Member names from the instance root down to the initialized member —
+    /// `["inner", "v"]` for an `Inner` instance's `v` held by an `Outer`. A
+    /// direct member is a single-element path.
+    pub path: Vec<Ident>,
+    /// The initializer expression, to be resolved through
+    /// [`infer_initialization`](crate::hir_ty::head::init_inference::infer_initialization).
+    pub init: InitExpr<'db>,
+}
+
+/// Every initializer that applies to a fresh instance of `pou`, flattened.
+///
+/// An FB or CLASS instance carries no initializer at its declaration site — the
+/// `:= 3` lives on the *type's* member declarations, one or more levels down.
+/// This resolves both relationships that stand between an instance and its
+/// initial state:
+///
+/// - **inheritance** — inherited members are included, via [`instance_members`];
+/// - **composition** — a member that is itself an instance contributes its own
+///   type's initializers, under a longer path.
+///
+/// Consumers therefore walk neither. A cyclic `EXTENDS` or a self-containing
+/// FB is reported separately (E05xx / E09xx recursion checks); the `visited`
+/// set here only guarantees this query terminates regardless.
+///
+/// Order is layout order — base-most POU first, then declaration order —
+/// matching [`instance_members`], so writes land in a predictable sequence.
+#[salsa::tracked(returns(ref))]
+pub fn instance_initializers<'db>(
+    db: &'db dyn WorkspaceDataBase,
+    pou: Pou<'db>,
+) -> Vec<InstanceInit<'db>> {
+    let mut out = Vec::new();
+    let mut visited = Vec::new();
+    collect_instance_initializers(db, pou, &mut Vec::new(), &mut out, &mut visited);
+    out
+}
+
+fn collect_instance_initializers<'db>(
+    db: &'db dyn WorkspaceDataBase,
+    pou: Pou<'db>,
+    prefix: &mut Vec<Ident>,
+    out: &mut Vec<InstanceInit<'db>>,
+    visited: &mut Vec<Pou<'db>>,
+) {
+    // `visited` is the current *path*, not a global seen-set: a type reached
+    // twice through different members must contribute twice (`a : Inner;
+    // b : Inner;` initializes both), while a type reached through itself is a
+    // cycle and stops here.
+    if visited.contains(&pou) {
+        return;
+    }
+    visited.push(pou);
+
+    for member in instance_members(db, pou) {
+        prefix.push(member.var.name(db));
+
+        if let Some(init) = member.var.init(db) {
+            out.push(InstanceInit {
+                path: prefix.clone(),
+                init,
+            });
+        } else if let Some(inner) = instance_pou_of(db, member.var) {
+            // A member that is itself an instance brings its own type's
+            // initializers along, under this member's path.
+            collect_instance_initializers(db, inner, prefix, out, visited);
+        }
+
+        prefix.pop();
+    }
+
+    visited.pop();
+}
+
+/// The FB or CLASS a variable is an instance of, if it is one.
+pub fn instance_pou_of<'db>(
+    db: &'db dyn WorkspaceDataBase,
+    var: VariableDecl<'db>,
+) -> Option<Pou<'db>> {
+    use crate::hir_ty::infer::Infer;
+    match var.spec(db).infer(db).normalize(db) {
+        crate::hir_ty::ty::Type::FunctionBlock(fb) => Some(Pou::FunctionBlock(fb)),
+        crate::hir_ty::ty::Type::Class(c) => Some(Pou::Class(c)),
+        _ => None,
+    }
 }
 
 fn collect_instance_members<'db>(

@@ -22,7 +22,7 @@ use crate::{
         body::{Adjustment, AdjustmentInfo, BodyInferenceResult, NullState},
         expr_store::{InitExprWalkStep, PathExprWalkStep},
         head::{
-            inheritance::{MethodRef, inherited_methods},
+            inheritance::{MethodRef, inherited_methods, instance_members},
             init_inference::InitExprInferenceResult,
         },
         infer::Infer,
@@ -149,10 +149,22 @@ impl<'db> Type<'db> {
                     } else if let Some(m) = def_map.declared_methods.get(name) {
                         FieldLookup::Method(*m)
                     } else if let Some(pou) = self.as_pou(db) {
-                        // Check inherited methods (from EXTENDS / IMPLEMENTS)
-                        match inherited_methods(db, pou).methods.get(name) {
-                            Some(inherited) => FieldLookup::Method(inherited.method),
-                            None => FieldLookup::NotFound,
+                        // Inherited state and behaviour both come from the
+                        // EXTENDS chain. `instance_members` is HIR's own
+                        // resolved member list — the same one the MIR layout is
+                        // built from — so an inherited field is reachable
+                        // through an instance (`derived.base_field`) exactly
+                        // where the layout says it lives.
+                        if let Some(member) = instance_members(db, pou)
+                            .iter()
+                            .find(|m| m.var.name(db) == *name)
+                        {
+                            FieldLookup::Variable(member.var)
+                        } else {
+                            match inherited_methods(db, pou).methods.get(name) {
+                                Some(inherited) => FieldLookup::Method(inherited.method),
+                                None => FieldLookup::NotFound,
+                            }
                         }
                     } else if let Type::MethodDecl(m) = self {
                         // Inside a method body, a bare name that isn't one of the
