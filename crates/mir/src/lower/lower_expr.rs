@@ -1575,16 +1575,15 @@ impl<'db> ExprLowerCtx<'db> {
     ) -> Result<Option<crate::stmt::MirStmt>, LowerTypeError> {
         let path = func_call.path(self.db);
 
-        // Get the instance variable path (the callee is a variable, not a type)
-        let instance_path = path
-            .expr(self.db)
-            .ok_or_else(|| LowerTypeError::UnsupportedType("FB call without name".to_string()))?;
-        let instance_ident = instance_path.ident(self.db).ident;
-
-        // Member-vs-local is HIR's decision (see `root_place`): a nested FB
-        // instance that is a 'this' member lowers to ThisField, but a same-named
-        // method local shadows it.
-        let instance = self.root_place(instance_path, instance_ident);
+        // The receiver is a whole path, not a name: `cells[i]()` runs element i
+        // and `h.a()` runs h's member a, through the same place pipeline as any
+        // access. A bare `THIS()` is still rejected here.
+        if path.expr(self.db).is_none() {
+            return Err(LowerTypeError::UnsupportedType(
+                "FB call without name".to_string(),
+            ));
+        }
+        let instance = self.lower_begin_path_to_place(path)?;
 
         // Get the FB struct type for field offsets (uses FB subs if available)
         let fb_mir_type = self.lower_type_resolved(hir::hir_ty::ty::Type::FunctionBlock(fb))?;
