@@ -806,7 +806,7 @@ fn emit_fb_field_read(
 ) {
     use mir::types::MirType;
     let scalar_copy = |func: &mut wasm_encoder::Function, elem_ty: &MirType| {
-        emit_addr_of(func, target, ctx.locals);
+        emit_addr_of(func, target, ctx.locals, ctx.fn_indices);
         push_fb_field_addr(func, base, field_offset);
         emit_typed_mem_load(func, elem_ty);
         emit_typed_mem_store(func, elem_ty);
@@ -826,7 +826,7 @@ fn emit_fb_field_read(
                 .get("rk.str_assign")
                 .copied()
                 .expect("rk.str_assign must be grafted for STRING FB outputs");
-            emit_addr_of(func, target, ctx.locals); // dest header addr
+            emit_addr_of(func, target, ctx.locals, ctx.fn_indices); // dest header addr
             emit_string_capacity(func, target, ctx.locals); // dest cap
             // src ptr = field header + 4
             push_fb_field_addr(func, base, field_offset);
@@ -843,7 +843,7 @@ fn emit_fb_field_read(
         }
         // Aggregates: bulk-copy the field's bytes into the target.
         MirType::Struct(_) | MirType::Array(_) => {
-            emit_addr_of(func, target, ctx.locals); // dst
+            emit_addr_of(func, target, ctx.locals, ctx.fn_indices); // dst
             push_fb_field_addr(func, base, field_offset); // src
             func.instruction(&Instruction::I32Const(ty.size_bytes() as i32)); // len
             func.instruction(&Instruction::MemoryCopy {
@@ -871,7 +871,7 @@ fn emit_string_assign(
         .get("rk.str_assign")
         .copied()
         .expect("rk.str_assign must be grafted for STRING assignment");
-    emit_addr_of(func, target, ctx.locals);
+    emit_addr_of(func, target, ctx.locals, ctx.fn_indices);
     emit_string_capacity(func, target, ctx.locals);
     emit_str_value(func, value, ctx.locals, ctx.fn_indices);
     func.instruction(&Instruction::Call(assign_idx));
@@ -938,7 +938,7 @@ fn emit_assignment(
             }
         }
         _ => {
-            emit_addr_of(func, target, ctx.locals);
+            emit_addr_of(func, target, ctx.locals, ctx.fn_indices);
             emit_expr(func, value, ctx.locals, ctx.fn_indices);
             let ty = place_type(target);
             emit_typed_mem_store(func, &ty);

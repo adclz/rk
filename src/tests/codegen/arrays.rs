@@ -301,3 +301,30 @@ fn typed_literal_array_bounds(mut with_db: db::RootDatabase) {
     let result: i32 = super::execute_wasm(&wasm, "test", ());
     assert_eq!(result, 16, "typed-literal bounds address correctly");
 }
+
+/// Regression: an array subscript containing a call used to ICE.
+///
+/// `emit_load` and `emit_addr_of` emitted the index expression with a freshly
+/// defaulted (empty) `fn_indices` map, so any call inside a subscript resolved
+/// against no functions at all and tripped the unknown-callee panic in
+/// `emit_call`. No function block or array-of-instance needed — a plain
+/// `a[idx()]` was enough.
+#[rstest]
+fn array_subscript_containing_a_call(mut with_db: db::RootDatabase) {
+    let source = r#"
+        FUNCTION idx : INT
+            idx := 1;
+        END_FUNCTION
+
+        FUNCTION run : INT
+        VAR
+            a : ARRAY[0..2] OF INT;
+        END_VAR
+            a[idx()] := 7;
+            run := a[idx()];
+        END_FUNCTION
+    "#;
+    let wasm = compile_to_wasm(&mut with_db, source);
+    let result: i32 = super::execute_wasm(&wasm, "run", ());
+    assert_eq!(result, 7, "the subscript's call resolves on both load and store");
+}

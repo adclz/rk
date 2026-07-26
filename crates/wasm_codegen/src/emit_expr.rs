@@ -93,7 +93,7 @@ pub(crate) fn emit_expr(
     match expr {
         MirExpr::Constant(c) => emit_constant(func, c),
 
-        MirExpr::Load(place, _ty) => emit_load(func, place, locals),
+        MirExpr::Load(place, _ty) => emit_load(func, place, locals, fn_indices),
 
         MirExpr::BinOp { op, lhs, rhs, ty } => {
             emit_expr(func, lhs, locals, fn_indices);
@@ -123,19 +123,19 @@ pub(crate) fn emit_expr(
 
         MirExpr::Call(call) => emit_call(func, call, locals, fn_indices),
 
-        MirExpr::AddrOf(place) => emit_addr_of(func, place, locals),
+        MirExpr::AddrOf(place) => emit_addr_of(func, place, locals, fn_indices),
 
         // Aggregate VAR_INPUT arg: copy into the scratch and yield its address.
         MirExpr::CopyIntoScratch { scratch, src, size } => {
             let dst = mir::expr::MirPlace::Local(*scratch);
-            emit_addr_of(func, &dst, locals); // dst
-            emit_addr_of(func, src, locals); // src
+            emit_addr_of(func, &dst, locals, fn_indices); // dst
+            emit_addr_of(func, src, locals, fn_indices); // src
             func.instruction(&Instruction::I32Const(*size as i32)); // len
             func.instruction(&Instruction::MemoryCopy {
                 src_mem: 0,
                 dst_mem: 0,
             });
-            emit_addr_of(func, &dst, locals); // the arg value
+            emit_addr_of(func, &dst, locals, fn_indices); // the arg value
         }
 
         MirExpr::StringLiteral { offset, len, .. } => {
@@ -198,6 +198,7 @@ pub(crate) fn emit_str_place_value(
     func: &mut wasm_encoder::Function,
     place: &MirPlace,
     locals: &FxHashMap<Ident, LocalInfo>,
+    fn_indices: &FxHashMap<Ident, u32>,
 ) {
     if let MirPlace::Local(id) = place
         && let Some(LocalInfo::StringParam {
@@ -210,10 +211,10 @@ pub(crate) fn emit_str_place_value(
         return;
     }
     // Owned inline buffer: ptr = header + 4, len = *header.
-    emit_addr_of(func, place, locals);
+    emit_addr_of(func, place, locals, fn_indices);
     func.instruction(&Instruction::I32Const(4));
     func.instruction(&Instruction::I32Add);
-    emit_addr_of(func, place, locals);
+    emit_addr_of(func, place, locals, fn_indices);
     func.instruction(&Instruction::I32Load(mem_arg(0, 2)));
 }
 
@@ -243,7 +244,7 @@ pub(crate) fn emit_str_value(
             func.instruction(&Instruction::I32Const(*offset as i32));
             func.instruction(&Instruction::I32Const(*len as i32));
         }
-        MirExpr::Load(place, _) => emit_str_place_value(func, place, locals),
+        MirExpr::Load(place, _) => emit_str_place_value(func, place, locals, fn_indices),
         _ => emit_expr(func, value, locals, fn_indices),
     }
 }
@@ -286,10 +287,11 @@ fn emit_load(
     func: &mut wasm_encoder::Function,
     place: &MirPlace,
     locals: &FxHashMap<Ident, LocalInfo>,
+    fn_indices: &FxHashMap<Ident, u32>,
 ) {
     // Strings are `(ptr, len)` operands, not scalar loads.
     if place_is_string(place, locals) {
-        emit_str_place_value(func, place, locals);
+        emit_str_place_value(func, place, locals, fn_indices);
         return;
     }
     match place {
@@ -338,7 +340,7 @@ fn emit_load(
             field_type,
             ..
         } => {
-            emit_addr_of(func, base, locals);
+            emit_addr_of(func, base, locals, fn_indices);
             if *field_offset > 0 {
                 func.instruction(&Instruction::I32Const(*field_offset as i32));
                 func.instruction(&Instruction::I32Add);
@@ -353,8 +355,8 @@ fn emit_load(
             element_type,
             lower_bound,
         } => {
-            emit_addr_of(func, base, locals);
-            emit_expr(func, index, locals, &FxHashMap::default());
+            emit_addr_of(func, base, locals, fn_indices);
+            emit_expr(func, index, locals, fn_indices);
             if *lower_bound != 0 {
                 func.instruction(&Instruction::I32Const(*lower_bound as i32));
                 func.instruction(&Instruction::I32Sub);
@@ -366,7 +368,7 @@ fn emit_load(
         }
 
         MirPlace::Deref { base, pointee_type } => {
-            emit_load(func, base, locals);
+            emit_load(func, base, locals, fn_indices);
             emit_typed_mem_load(func, pointee_type);
         }
 
@@ -396,6 +398,7 @@ pub(crate) fn emit_addr_of(
     func: &mut wasm_encoder::Function,
     place: &MirPlace,
     locals: &FxHashMap<Ident, LocalInfo>,
+    fn_indices: &FxHashMap<Ident, u32>,
 ) {
     match place {
         MirPlace::Local(ident) => {
@@ -429,7 +432,7 @@ pub(crate) fn emit_addr_of(
         MirPlace::Field {
             base, field_offset, ..
         } => {
-            emit_addr_of(func, base, locals);
+            emit_addr_of(func, base, locals, fn_indices);
             if *field_offset > 0 {
                 func.instruction(&Instruction::I32Const(*field_offset as i32));
                 func.instruction(&Instruction::I32Add);
@@ -442,8 +445,8 @@ pub(crate) fn emit_addr_of(
             lower_bound,
             ..
         } => {
-            emit_addr_of(func, base, locals);
-            emit_expr(func, index, locals, &FxHashMap::default());
+            emit_addr_of(func, base, locals, fn_indices);
+            emit_expr(func, index, locals, fn_indices);
             if *lower_bound != 0 {
                 func.instruction(&Instruction::I32Const(*lower_bound as i32));
                 func.instruction(&Instruction::I32Sub);
@@ -454,7 +457,7 @@ pub(crate) fn emit_addr_of(
         }
         MirPlace::Deref { base, .. } => {
             // Address of a deref is the pointer value itself
-            emit_load(func, base, locals);
+            emit_load(func, base, locals, fn_indices);
         }
         MirPlace::ThisField { field_offset, .. } => {
             func.instruction(&Instruction::LocalGet(0));
@@ -496,12 +499,12 @@ fn emit_call(
                 if let MirExpr::AddrOf(place) = &arg.value
                     && is_buffer_string(place, locals)
                 {
-                    emit_addr_of(func, place, locals);
+                    emit_addr_of(func, place, locals, fn_indices);
                     emit_string_capacity(func, place, locals);
                     continue;
                 }
                 if let MirExpr::AddrOf(place) = &arg.value {
-                    emit_addr_of(func, place, locals);
+                    emit_addr_of(func, place, locals, fn_indices);
                 } else {
                     emit_expr(func, &arg.value, locals, fn_indices);
                 }
