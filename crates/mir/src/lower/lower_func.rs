@@ -285,19 +285,18 @@ fn lower_function_inner<'db>(
                 &string_pool,
                 &mut init_stmts,
             )?;
-        } else if let MirType::Struct(ref struct_ty) = var_ty
-            && let Some(pou) = instance_pou(db, *var)
-        {
+        } else {
             // `VAR f : Flags;` has no initializer of its own — the values live
-            // on `Flags`'s members.
-            lower_instance_member_inits(
+            // on `Flags`'s members. Likewise `VAR cells : ARRAY[0..2] OF Cell;`,
+            // one set per element.
+            lower_declared_instance_inits(
                 db,
                 InitTarget::Local {
                     name: var.name(db),
                     base: 0,
                 },
-                struct_ty,
-                pou,
+                &var_ty,
+                var.spec(db).infer(db),
                 &string_pool,
                 &mut init_stmts,
             )?;
@@ -1259,29 +1258,38 @@ fn lower_init_leaves<'db>(
     Ok(())
 }
 
-/// Walk a member-name path over the MIR layout, returning the byte offset from
-/// the instance base and the member's type.
-///
-/// The path itself comes from HIR ([`instance_initializers`]); this only maps
-/// it onto the emitted struct layout.
+use hir::hir_ty::head::inheritance::InstanceInitStep;
+
+/// Map an initializer's member path (from [`instance_initializers`]) onto
+/// the layout, one `(byte offset, type)` per slot; an `AllElements` step
+/// fans out over an array.
 ///
 /// [`instance_initializers`]: hir::hir_ty::head::inheritance::instance_initializers
-fn walk_member_path(
-    root: &crate::types::MirStructType,
-    path: &[Ident],
-) -> Option<(u32, crate::types::MirType)> {
-    let mut offset = 0u32;
-    let mut cur: Option<crate::types::MirType> = None;
-    let mut cur_struct = root;
-    for name in path {
-        let field = cur_struct.fields.iter().find(|f| f.name == *name)?;
-        offset += field.offset;
-        cur = Some(field.ty.clone());
-        if let crate::types::MirType::Struct(inner) = &field.ty {
-            cur_struct = inner;
+fn member_path_slots(
+    ty: &crate::types::MirType,
+    path: &[InstanceInitStep],
+    base: u32,
+    out: &mut Vec<(u32, crate::types::MirType)>,
+) {
+    let Some((step, rest)) = path.split_first() else {
+        out.push((base, ty.clone()));
+        return;
+    };
+    match (step, ty) {
+        (InstanceInitStep::Field(name), crate::types::MirType::Struct(s)) => {
+            if let Some(field) = s.fields.iter().find(|f| f.name == *name) {
+                member_path_slots(&field.ty, rest, base + field.offset, out);
+            }
         }
+        (InstanceInitStep::AllElements, crate::types::MirType::Array(a)) => {
+            for i in 0..a.total_elements {
+                member_path_slots(&a.element_type, rest, base + i * a.element_size, out);
+            }
+        }
+        // HIR and the layout disagree about this member's shape; the caller
+        // reports the miss.
+        _ => {}
     }
-    cur.map(|ty| (offset, ty))
 }
 
 /// Emit the member initializers of an instance-typed variable
@@ -1300,24 +1308,63 @@ pub(crate) fn lower_instance_member_inits<'db>(
 ) -> Result<(), LowerTypeError> {
     use hir::hir_ty::head::inheritance::instance_initializers;
 
+    let root = crate::types::MirType::Struct(struct_ty.clone());
     for entry in instance_initializers(db, pou) {
-        let Some((offset, member_ty)) = walk_member_path(struct_ty, &entry.path) else {
-            continue;
-        };
-        lower_init_leaves(
-            db,
-            target.offset_by(offset),
-            &member_ty,
-            entry.init,
-            string_pool,
-            out,
-        )?;
+        let mut slots = Vec::new();
+        member_path_slots(&root, &entry.path, 0, &mut slots);
+        for (offset, member_ty) in slots {
+            lower_init_leaves(
+                db,
+                target.offset_by(offset),
+                &member_ty,
+                entry.init,
+                string_pool,
+                out,
+            )?;
+        }
     }
     Ok(())
 }
 
-/// The FB or CLASS a variable is an instance of, if it is one.
-pub(crate) use hir::hir_ty::head::inheritance::instance_pou_of as instance_pou;
+/// Emit the member initializers for a declared variable, descending
+/// through array layers: `ARRAY[0..2] OF Cell` initializes each element.
+pub(crate) fn lower_declared_instance_inits<'db>(
+    db: &'db dyn WorkspaceDataBase,
+    target: InitTarget,
+    mir_ty: &MirType,
+    hir_ty: hir::hir_ty::ty::Type<'db>,
+    string_pool: &Rc<RefCell<super::lower_expr::StringPool>>,
+    out: &mut Vec<MirStmt>,
+) -> Result<(), LowerTypeError> {
+    use hir::hir_ty::head::inheritance::pou_of_type;
+    match mir_ty {
+        MirType::Array(a) => {
+            let hir::hir_ty::ty::Type::Array(array) = hir_ty.normalize(db) else {
+                return Ok(());
+            };
+            let elem_hir = array.of_type(db).infer(db).normalize(db);
+            for i in 0..a.total_elements {
+                lower_declared_instance_inits(
+                    db,
+                    target.offset_by(i * a.element_size),
+                    &a.element_type,
+                    elem_hir,
+                    string_pool,
+                    out,
+                )?;
+            }
+            Ok(())
+        }
+        MirType::Struct(struct_ty) => match pou_of_type(db, hir_ty.normalize(db)) {
+            Some(pou) => {
+                lower_instance_member_inits(db, target, struct_ty, pou, string_pool, out)
+            }
+            None => Ok(()),
+        },
+        _ => Ok(()),
+    }
+}
+
 
 /// Emit one `Assign { Global, value }` per resolved initializer leaf; MIR
 /// walks each leaf's path over the layout and never re-walks the

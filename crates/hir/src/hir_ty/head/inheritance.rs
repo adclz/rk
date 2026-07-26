@@ -6,7 +6,7 @@ use crate::{
         pous::{class::MethodDecl, interface::MethodPrototype, pou::Pou, variable::VariableDecl},
         scope::ScopeId,
     },
-    hir_ty::resolver::name::resolve_namespace_access,
+    hir_ty::{infer::Infer, resolver::name::resolve_namespace_access, ty::Type},
 };
 use db::WorkspaceDataBase;
 use rustc_hash::FxHashMap;
@@ -303,13 +303,28 @@ pub fn instance_members<'db>(
     out
 }
 
+/// One step from an instance root toward an initialized member.
+#[derive(Debug, Clone, PartialEq, Eq, Hash, salsa::Update)]
+pub enum InstanceInitStep {
+    /// Descend into the named member.
+    Field(Ident),
+    /// Descend into EVERY element of an array-typed member.
+    ///
+    /// HIR states that the traversal happens; how many elements there are and
+    /// how far apart they sit are layout facts, so the consumer expands this.
+    /// Keeping it a marker rather than one entry per element also keeps this
+    /// query proportional to the number of members, not to the number of
+    /// elements — an `ARRAY[0..9999] OF Cell` is one step, not ten thousand.
+    AllElements,
+}
+
 /// One initializer that applies to a fresh instance of a POU.
 #[derive(Debug, Clone, PartialEq, Eq, Hash, salsa::Update)]
 pub struct InstanceInit<'db> {
-    /// Member names from the instance root down to the initialized member —
-    /// `["inner", "v"]` for an `Inner` instance's `v` held by an `Outer`. A
-    /// direct member is a single-element path.
-    pub path: Vec<Ident>,
+    /// The route from the instance root down to the initialized member —
+    /// `[Field(inner), Field(v)]` for an `Inner` instance's `v` held by an
+    /// `Outer`. A direct member is a single step.
+    pub path: Vec<InstanceInitStep>,
     /// The initializer expression, to be resolved through
     /// [`infer_initialization`](crate::hir_ty::head::init_inference::infer_initialization).
     pub init: InitExpr<'db>,
@@ -346,7 +361,7 @@ pub fn instance_initializers<'db>(
 fn collect_instance_initializers<'db>(
     db: &'db dyn WorkspaceDataBase,
     pou: Pou<'db>,
-    prefix: &mut Vec<Ident>,
+    prefix: &mut Vec<InstanceInitStep>,
     out: &mut Vec<InstanceInit<'db>>,
     visited: &mut Vec<Pou<'db>>,
 ) {
@@ -360,17 +375,32 @@ fn collect_instance_initializers<'db>(
     visited.push(pou);
 
     for member in instance_members(db, pou) {
-        prefix.push(member.var.name(db));
+        prefix.push(InstanceInitStep::Field(member.var.name(db)));
 
         if let Some(init) = member.var.init(db) {
+            // An explicit initializer covers the member whole, arrays included
+            // (`sa : ARRAY[0..1] OF Cell := [(v := 7), (v := 7)]`), so it is
+            // taken as written and not descended into.
             out.push(InstanceInit {
                 path: prefix.clone(),
                 init,
             });
-        } else if let Some(inner) = instance_pou_of(db, member.var) {
-            // A member that is itself an instance brings its own type's
-            // initializers along, under this member's path.
-            collect_instance_initializers(db, inner, prefix, out, visited);
+        } else {
+            // Otherwise peel any array layers: an array of instances carries
+            // its element type's initializers, once per element.
+            let mut ty = member.var.spec(db).infer(db).normalize(db);
+            let mut layers = 0;
+            while let Type::Array(array) = ty {
+                prefix.push(InstanceInitStep::AllElements);
+                layers += 1;
+                ty = array.of_type(db).infer(db).normalize(db);
+            }
+            if let Some(inner) = pou_of_type(db, ty) {
+                collect_instance_initializers(db, inner, prefix, out, visited);
+            }
+            for _ in 0..layers {
+                prefix.pop();
+            }
         }
 
         prefix.pop();
@@ -379,17 +409,28 @@ fn collect_instance_initializers<'db>(
     visited.pop();
 }
 
+/// The FB or CLASS `ty` is an instance of, if it is one.
+///
+/// Strictly the type itself — an `ARRAY OF Cell` is not a `Cell`, so this
+/// answers `None` for it. Callers that mean "an instance may be nested in
+/// here" peel the array layers first.
+pub fn pou_of_type<'db>(
+    db: &'db dyn WorkspaceDataBase,
+    ty: crate::hir_ty::ty::Type<'db>,
+) -> Option<Pou<'db>> {
+    match ty {
+        crate::hir_ty::ty::Type::FunctionBlock(fb) => Some(Pou::FunctionBlock(fb)),
+        crate::hir_ty::ty::Type::Class(c) => Some(Pou::Class(c)),
+        _ => None,
+    }
+}
+
 /// The FB or CLASS a variable is an instance of, if it is one.
 pub fn instance_pou_of<'db>(
     db: &'db dyn WorkspaceDataBase,
     var: VariableDecl<'db>,
 ) -> Option<Pou<'db>> {
-    use crate::hir_ty::infer::Infer;
-    match var.spec(db).infer(db).normalize(db) {
-        crate::hir_ty::ty::Type::FunctionBlock(fb) => Some(Pou::FunctionBlock(fb)),
-        crate::hir_ty::ty::Type::Class(c) => Some(Pou::Class(c)),
-        _ => None,
-    }
+    pou_of_type(db, var.spec(db).infer(db).normalize(db))
 }
 
 fn collect_instance_members<'db>(

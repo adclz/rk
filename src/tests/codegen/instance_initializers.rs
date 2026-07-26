@@ -367,3 +367,105 @@ fn three_level_nesting_is_initialized(mut with_db: db::RootDatabase) {
     let result: i32 = execute_wasm(&wasm, "run", ());
     assert_eq!(result, 123, "each level lands at its own offset");
 }
+
+/// An array of instances gets its element type's member initializers, once per
+/// element. `instance_initializers` has no `Cell` to report against the array
+/// member itself, so the walk descends through the array with an `AllElements`
+/// step and the layout expands it.
+#[rstest]
+fn array_of_instances_initializes_every_element(mut with_db: db::RootDatabase) {
+    let source = r#"
+        FUNCTION_BLOCK Cell
+        VAR
+            v : INT := 5;
+        END_VAR
+        END_FUNCTION_BLOCK
+
+        FUNCTION run : DINT
+        VAR
+            cells : ARRAY[0..2] OF Cell;
+        END_VAR
+            run := cells[0].v * 100 + cells[1].v * 10 + cells[2].v;
+        END_FUNCTION
+    "#;
+    let wasm = compile_to_wasm_checked(&mut with_db, source);
+    let result: i32 = execute_wasm(&wasm, "run", ());
+    assert_eq!(result, 555, "all three elements start at 5");
+}
+
+/// The same array held as a MEMBER of another FB — this is the path that goes
+/// through HIR's `AllElements` step rather than the declaration-site descent.
+#[rstest]
+fn array_member_of_an_instance_initializes_every_element(mut with_db: db::RootDatabase) {
+    let source = r#"
+        FUNCTION_BLOCK Cell
+        VAR
+            v : INT := 5;
+        END_VAR
+        END_FUNCTION_BLOCK
+
+        FUNCTION_BLOCK Bank
+        VAR
+            lead : INT := 9;
+            cells : ARRAY[0..2] OF Cell;
+        END_VAR
+        END_FUNCTION_BLOCK
+
+        FUNCTION run : DINT
+        VAR
+            b : Bank;
+        END_VAR
+            run := b.lead * 1000 + b.cells[0].v * 100 + b.cells[1].v * 10 + b.cells[2].v;
+        END_FUNCTION
+    "#;
+    let wasm = compile_to_wasm_checked(&mut with_db, source);
+    let result: i32 = execute_wasm(&wasm, "run", ());
+    assert_eq!(result, 9555, "lead 9, and every cell 5");
+}
+
+/// A non-zero lower bound must not shift the element addresses.
+#[rstest]
+fn array_of_instances_with_non_zero_lower_bound(mut with_db: db::RootDatabase) {
+    let source = r#"
+        FUNCTION_BLOCK Cell
+        VAR
+            v : INT := 7;
+        END_VAR
+        END_FUNCTION_BLOCK
+
+        FUNCTION run : DINT
+        VAR
+            cells : ARRAY[1..3] OF Cell;
+        END_VAR
+            run := cells[1].v * 100 + cells[2].v * 10 + cells[3].v;
+        END_FUNCTION
+    "#;
+    let wasm = compile_to_wasm_checked(&mut with_db, source);
+    let result: i32 = execute_wasm(&wasm, "run", ());
+    assert_eq!(result, 777);
+}
+
+/// Initialized elements and a call on one of them compose: the call must find
+/// the element already initialized, and tick only that one.
+#[rstest]
+fn initialized_array_elements_then_a_call(mut with_db: db::RootDatabase) {
+    let source = r#"
+        FUNCTION_BLOCK Cell
+        VAR
+            v : INT := 5;
+        END_VAR
+            v := v + 1;
+        END_FUNCTION_BLOCK
+
+        FUNCTION run : DINT
+        VAR
+            cells : ARRAY[0..2] OF Cell;
+        END_VAR
+            cells[1]();
+            run := cells[0].v * 100 + cells[1].v * 10 + cells[2].v;
+        END_FUNCTION
+    "#;
+    let wasm = compile_to_wasm_checked(&mut with_db, source);
+    let result: i32 = execute_wasm(&wasm, "run", ());
+    assert_eq!(result, 565, "element 1 went 5 -> 6; the others stayed 5");
+}

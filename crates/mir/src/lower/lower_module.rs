@@ -1323,15 +1323,14 @@ fn collect_const_inits<'db>(
                     &mut stmts,
                     string_pool,
                 )?;
-            } else if let MirType::Struct(struct_ty) = ty
-                && let Some(pou) = super::lower_func::instance_pou(db, *v)
-            {
-                // A global FB instance is initialized from its type's members.
-                super::lower_func::lower_instance_member_inits(
+            } else {
+                // A global FB instance is initialized from its type's members;
+                // an array of them, once per element.
+                super::lower_func::lower_declared_instance_inits(
                     db,
                     super::lower_func::InitTarget::Static { base: *addr },
-                    struct_ty,
-                    pou,
+                    ty,
+                    v.spec(db).infer(db),
                     string_pool,
                     &mut stmts,
                 )?;
@@ -1365,16 +1364,14 @@ fn collect_const_inits<'db>(
                             &mut stmts,
                             string_pool,
                         )?;
-                    } else if let MirType::Struct(struct_ty) = &field.ty
-                        && let Some(pou) = super::lower_func::instance_pou(db, *var)
-                    {
+                    } else {
                         // An FB instance held by a PROGRAM gets its type's
                         // member initializers, same as one held by a FUNCTION.
-                        super::lower_func::lower_instance_member_inits(
+                        super::lower_func::lower_declared_instance_inits(
                             db,
                             super::lower_func::InitTarget::Static { base: addr },
-                            struct_ty,
-                            pou,
+                            &field.ty,
+                            var.spec(db).infer(db),
                             string_pool,
                             &mut stmts,
                         )?;
