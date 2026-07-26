@@ -773,7 +773,7 @@ module.exports = grammar({
           field("ranges", $.ranges),
           "]",
           "OF",
-          useSpec(["simple", "ref"])($),
+          useSpec(["simple", "subrange", "ref"])($),
         ),
       ($) => seq(":=", "[", commaSep($.init_elem), "]"),
     ),
@@ -934,7 +934,7 @@ module.exports = grammar({
     // RETAIN
     var_decl_init: ($) =>
       useSpecInit(
-        ["simple", "ref", "array", "struct"],
+        ["simple", "subrange", "ref", "array", "struct"],
         [
           "simple",
           "array",
@@ -948,7 +948,7 @@ module.exports = grammar({
     // TEMP
     var_decl: ($) =>
       useSpecInit(
-        ["simple", "array", "struct"],
+        ["simple", "subrange", "array", "struct"],
         [
           "simple",
           "array",

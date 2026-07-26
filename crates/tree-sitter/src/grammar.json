@@ -2573,6 +2573,10 @@
               },
               {
                 "type": "SYMBOL",
+                "name": "subrange_type_spec"
+              },
+              {
+                "type": "SYMBOL",
                 "name": "ref_type_spec"
               }
             ]
@@ -3564,6 +3568,10 @@
               },
               {
                 "type": "SYMBOL",
+                "name": "subrange_type_spec"
+              },
+              {
+                "type": "SYMBOL",
                 "name": "ref_type_spec"
               },
               {
@@ -3624,6 +3632,10 @@
               {
                 "type": "SYMBOL",
                 "name": "simple_type_spec"
+              },
+              {
+                "type": "SYMBOL",
+                "name": "subrange_type_spec"
               },
               {
                 "type": "SYMBOL",

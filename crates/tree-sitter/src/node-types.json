@@ -1667,6 +1667,10 @@
           {
             "type": "simple_type_spec",
             "named": true
+          },
+          {
+            "type": "subrange_type_spec",
+            "named": true
           }
         ]
       }
@@ -6719,6 +6723,10 @@
           {
             "type": "struct_type_spec",
             "named": true
+          },
+          {
+            "type": "subrange_type_spec",
+            "named": true
           }
         ]
       }
@@ -6764,6 +6772,10 @@
           },
           {
             "type": "struct_type_spec",
+            "named": true
+          },
+          {
+            "type": "subrange_type_spec",
             "named": true
           }
         ]
