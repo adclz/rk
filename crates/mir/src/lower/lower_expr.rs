@@ -809,10 +809,8 @@ impl<'db> ExprLowerCtx<'db> {
                     return Ok(Self::wrap_inout_deref(field, this_field));
                 }
 
-                let field_type = self
-                    .lower_type_resolved(path_expr.infer(self.db))
-                    .unwrap_or(MirType::Elementary(MirElementary::Int));
-                let field_offset = self.resolve_field_offset_from_mir(&this_type, field_name)?;
+                let (field_offset, field_type) =
+                    self.field_slot_from_mir(&this_type, field_name)?;
 
                 Ok(MirPlace::ThisField {
                     field_name,
@@ -826,11 +824,8 @@ impl<'db> ExprLowerCtx<'db> {
                 let field_name = match &field_expr.var {
                     VarAccess::Simple(span_ident) => span_ident.ident,
                 };
-                let field_type = self
-                    .lower_type_resolved(path_expr.infer(self.db))
-                    .unwrap_or(MirType::Void);
                 let base_type = field_expr.path.infer(self.db);
-                let field_offset = self.resolve_field_offset(base_type, field_name)?;
+                let (field_offset, field_type) = self.field_slot(base_type, field_name)?;
 
                 Ok(MirPlace::Field {
                     base: Box::new(inner),
@@ -975,15 +970,15 @@ impl<'db> ExprLowerCtx<'db> {
     /// Byte offset of `field_name` within an already-lowered `this` type.
     /// A miss is an error, never offset 0: HIR resolved the access, so a miss
     /// means MIR and HIR disagree.
-    fn resolve_field_offset_from_mir(
+    fn field_slot_from_mir(
         &self,
         this_type: &Option<MirType>,
         field_name: hir::hir_def::interned::identifier::Ident,
-    ) -> Result<u32, LowerTypeError> {
+    ) -> Result<(u32, MirType), LowerTypeError> {
         if let Some(MirType::Struct(s)) = this_type {
             for field in &s.fields {
                 if field.name == field_name {
-                    return Ok(field.offset);
+                    return Ok((field.offset, field.ty.clone()));
                 }
             }
         }
@@ -1006,16 +1001,9 @@ impl<'db> ExprLowerCtx<'db> {
                     VarAccess::Simple(span_ident) => span_ident.ident,
                 };
 
-                // Resolve field type and offset from the base type
-                // The PathExpr for the field resolves to the field's type
-                let field_hir_type = path_expr.infer(self.db);
-                let field_type = self
-                    .lower_type_resolved(field_hir_type)
-                    .unwrap_or(MirType::Void);
-
-                // Resolve field offset from the base (struct/FB) type
+                // Offset and type come from the base type's layout in one lookup.
                 let base_hir_type = field_expr.path.infer(self.db);
-                let field_offset = self.resolve_field_offset(base_hir_type, field_name)?;
+                let (field_offset, field_type) = self.field_slot(base_hir_type, field_name)?;
 
                 Ok(MirPlace::Field {
                     base: Box::new(inner),
@@ -1066,14 +1054,14 @@ impl<'db> ExprLowerCtx<'db> {
         }
     }
 
-    /// Resolve the byte offset of a field within a struct/FB type.
-    /// Byte offset of `field_name` within `base_type`. A miss is an ERROR — see
-    /// [`Self::resolve_field_offset_from_mir`].
-    fn resolve_field_offset(
+    /// The byte offset and type of `field_name` within `base_type`, from one
+    /// layout lookup. The type must come from the layout: `Type::normalize`
+    /// collapses `STRING[n]`, and the layout kept the capacity.
+    fn field_slot(
         &self,
         base_type: Type<'db>,
         field_name: hir::hir_def::interned::identifier::Ident,
-    ) -> Result<u32, LowerTypeError> {
+    ) -> Result<(u32, MirType), LowerTypeError> {
         let base_mir = self.lower_type_resolved(base_type).ok();
         // If the resolved type is an array, the field access is on the element type
         let effective_mir = match base_mir {
@@ -1083,7 +1071,7 @@ impl<'db> ExprLowerCtx<'db> {
         if let Some(MirType::Struct(s)) = &effective_mir {
             for field in &s.fields {
                 if field.name == field_name {
-                    return Ok(field.offset);
+                    return Ok((field.offset, field.ty.clone()));
                 }
             }
         }
