@@ -3,7 +3,7 @@
 
 use hir::hir_def::interned::identifier::Ident;
 use mir::{
-    expr::{MirConstant, MirExpr},
+    expr::{MirConstant, MirExpr, MirPlace},
     stmt::{MirCasePattern, MirSourceLocation, MirStmt},
 };
 use rustc_hash::FxHashMap;
@@ -33,11 +33,14 @@ struct Ctx<'a> {
     /// `(within-body offset, source location)` at each `DebugTrap`, for the
     /// `debug-lines` table.
     lines: &'a std::cell::RefCell<Vec<(u32, MirSourceLocation)>>,
+    /// i32 scratch holding a runtime-computed `FbCall` receiver address (see
+    /// [`stmts_need_dynamic_fb_base`]).
+    fb_recv_tmp: Option<u32>,
 }
 
-/// Emit a list of MIR statements with return local context. Returns the
-/// `(within-body offset, source location)` records gathered from the body's
-/// `DebugTrap` markers, for the `debug-lines` table.
+/// Emit MIR statements with return context; returns the `DebugTrap`
+/// records for the `debug-lines` table.
+#[allow(clippy::too_many_arguments)]
 pub(crate) fn emit_stmts_with_return(
     func: &mut wasm_encoder::Function,
     stmts: &[MirStmt],
@@ -46,6 +49,7 @@ pub(crate) fn emit_stmts_with_return(
     builtin_indices: &FxHashMap<String, u32>,
     return_local: Option<u32>,
     rk_exception_tag_idx: Option<u32>,
+    fb_recv_tmp: Option<u32>,
 ) -> Vec<(u32, MirSourceLocation)> {
     let lines = std::cell::RefCell::new(Vec::new());
     {
@@ -56,6 +60,7 @@ pub(crate) fn emit_stmts_with_return(
             builtin_indices,
             rk_exception_tag_idx,
             lines: &lines,
+            fb_recv_tmp,
         };
         emit_stmts(func, stmts, &ctx);
     }
@@ -272,17 +277,10 @@ fn emit_stmt(func: &mut wasm_encoder::Function, stmt: &MirStmt, ctx: &Ctx) {
             input_writes,
             output_reads,
         } => {
-            // Resolve how to address the instance: a Local instance sits at a
-            // static linear-memory address; a nested FB (a member of `this`)
-            // is addressed dynamically off the this pointer (wasm local 0).
-            let base = match instance {
-                mir::expr::MirPlace::Local(ident) => match ctx.locals.get(ident) {
-                    Some(LocalInfo::Memory { address, .. }) => FbBase::Static(*address),
-                    _ => return,
-                },
-                mir::expr::MirPlace::ThisField { field_offset, .. } => FbBase::This(*field_offset),
-                _ => return,
-            };
+            // A memory local or a global folds to a constant address, a `this`
+            // member to `this + offset`; anything else is materialised into a
+            // scratch local.
+            let base = resolve_fb_base(func, instance, ctx);
 
             // 1. Write input values / inout addresses to the instance's fields
             for (field_offset, value, ty) in input_writes {
@@ -306,6 +304,9 @@ fn emit_stmt(func: &mut wasm_encoder::Function, stmt: &MirStmt, ctx: &Ctx) {
                         func.instruction(&Instruction::I32Const(offset as i32));
                         func.instruction(&Instruction::I32Add);
                     }
+                }
+                FbBase::Dynamic(local) => {
+                    func.instruction(&Instruction::LocalGet(local));
                 }
             }
             func.instruction(&Instruction::Call(body_idx));
@@ -711,12 +712,119 @@ fn emit_wasm_instruction(func: &mut wasm_encoder::Function, name: &str) {
     }
 }
 
-/// How an `FbCall`'s instance is addressed: a static linear-memory base for a
-/// Local instance, or `this + offset` for a nested FB member.
+/// How an `FbCall`'s instance is addressed: the first two fold at compile
+/// time; `Dynamic` holds an already-materialised runtime address in a
+/// scratch local, since the base is pushed several times per call.
 #[derive(Clone, Copy)]
 enum FbBase {
     Static(u32),
     This(u32),
+    Dynamic(u32),
+}
+
+/// Fold `place` to a compile-time instance base, or `None`. The single
+/// answer to "can this receiver fold?", shared with the scratch-local
+/// pre-pass.
+fn static_fb_base(place: &MirPlace, locals: &FxHashMap<Ident, LocalInfo>) -> Option<FbBase> {
+    match place {
+        MirPlace::Local(ident) => match locals.get(ident) {
+            Some(LocalInfo::Memory { address, .. }) => Some(FbBase::Static(*address)),
+            // A pointer parameter carries its address at runtime.
+            _ => None,
+        },
+        // A VAR_GLOBAL instance sits at a fixed address, like a memory local.
+        MirPlace::Global { address, .. } => Some(FbBase::Static(*address)),
+        MirPlace::ThisField { field_offset, .. } => Some(FbBase::This(*field_offset)),
+        MirPlace::Field {
+            base, field_offset, ..
+        } => match static_fb_base(base, locals)? {
+            FbBase::Static(a) => Some(FbBase::Static(a + field_offset)),
+            FbBase::This(o) => Some(FbBase::This(o + field_offset)),
+            FbBase::Dynamic(_) => None,
+        },
+        MirPlace::Index {
+            base,
+            index,
+            element_size,
+            lower_bound,
+            ..
+        } => {
+            // Only a literal subscript folds; anything else takes the dynamic
+            // path.
+            let MirExpr::Constant(MirConstant::I32(k)) = &**index else {
+                return None;
+            };
+            let delta = u32::try_from((*k as i64 - *lower_bound) * *element_size as i64).ok()?;
+            match static_fb_base(base, locals)? {
+                FbBase::Static(a) => Some(FbBase::Static(a + delta)),
+                FbBase::This(o) => Some(FbBase::This(o + delta)),
+                FbBase::Dynamic(_) => None,
+            }
+        }
+        // An instance reached through a pointer (a VAR_IN_OUT FB member).
+        MirPlace::Deref { .. } => None,
+    }
+}
+
+/// Whether any `FbCall` in `stmts` needs a runtime receiver address,
+/// asked through `static_fb_base`.
+pub(crate) fn stmts_need_dynamic_fb_base(
+    stmts: &[MirStmt],
+    locals: &FxHashMap<Ident, LocalInfo>,
+) -> bool {
+    stmts.iter().any(|s| stmt_needs_dynamic_fb_base(s, locals))
+}
+
+fn stmt_needs_dynamic_fb_base(stmt: &MirStmt, locals: &FxHashMap<Ident, LocalInfo>) -> bool {
+    let nested = |b: &[MirStmt]| stmts_need_dynamic_fb_base(b, locals);
+    match stmt {
+        MirStmt::FbCall { instance, .. } => static_fb_base(instance, locals).is_none(),
+        MirStmt::If {
+            then_body,
+            else_ifs,
+            else_body,
+            ..
+        } => {
+            nested(then_body)
+                || else_ifs.iter().any(|(_, b)| nested(b))
+                || else_body.as_deref().is_some_and(nested)
+        }
+        MirStmt::While { body, .. } | MirStmt::Repeat { body, .. } => nested(body),
+        MirStmt::For { body, .. } => nested(body),
+        MirStmt::Case {
+            arms, else_body, ..
+        } => arms.iter().any(|a| nested(&a.body)) || else_body.as_deref().is_some_and(nested),
+        _ => false,
+    }
+}
+
+/// Resolve the receiver's base, materialising a runtime address into the
+/// function's scratch local when it cannot be folded.
+fn resolve_fb_base(func: &mut wasm_encoder::Function, instance: &MirPlace, ctx: &Ctx) -> FbBase {
+    if let Some(base) = static_fb_base(instance, ctx.locals) {
+        return base;
+    }
+    let tmp = ctx
+        .fb_recv_tmp
+        .unwrap_or_else(|| missing_fb_scratch(instance, ctx));
+    emit_addr_of(func, instance, ctx.locals, ctx.fn_indices);
+    func.instruction(&Instruction::LocalSet(tmp));
+    FbBase::Dynamic(tmp)
+}
+
+/// A runtime receiver address with no scratch allocated: the pre-pass and
+/// the emitter disagree.
+fn missing_fb_scratch(instance: &MirPlace, ctx: &Ctx) -> u32 {
+    let caller = crate::emit_expr::CURRENT_EMIT_FN
+        .with(|c| c.borrow().clone())
+        .unwrap_or_else(|| "<unknown>".to_string());
+    let _ = ctx;
+    panic!(
+        "internal compiler error: while emitting `{caller}`, a function-block \
+         invocation needs a computed receiver address but no scratch local was \
+         allocated - `stmts_need_dynamic_fb_base` and `resolve_fb_base` disagree. \
+         Receiver: {instance:?}"
+    )
 }
 
 /// Push the linear-memory address of `base`'s field at `field_offset`.
@@ -729,6 +837,13 @@ fn push_fb_field_addr(func: &mut wasm_encoder::Function, base: FbBase, field_off
             func.instruction(&Instruction::LocalGet(0));
             func.instruction(&Instruction::I32Const((base_offset + field_offset) as i32));
             func.instruction(&Instruction::I32Add);
+        }
+        FbBase::Dynamic(local) => {
+            func.instruction(&Instruction::LocalGet(local));
+            if field_offset > 0 {
+                func.instruction(&Instruction::I32Const(field_offset as i32));
+                func.instruction(&Instruction::I32Add);
+            }
         }
     }
 }

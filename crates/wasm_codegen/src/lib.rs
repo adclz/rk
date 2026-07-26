@@ -1014,6 +1014,16 @@ impl<'a> WasmGen<'a> {
             None
         };
 
+        // One i32 scratch for a runtime-computed `FbCall` receiver address,
+        // appended after the existing locals.
+        let fb_recv_tmp = if crate::emit_stmt::stmts_need_dynamic_fb_base(&func.body, &local_map) {
+            let idx = (params.len() as u32) + extra_locals.iter().map(|(c, _)| *c).sum::<u32>();
+            extra_locals.push((1, ValType::I32));
+            Some(idx)
+        } else {
+            None
+        };
+
         // One scratch slot per nested STRING call, past the MIR static layout.
         let scratch_slots: Vec<u32> = (0..nested_str_count)
             .map(|_| self.alloc_scratch_slot())
@@ -1097,6 +1107,7 @@ impl<'a> WasmGen<'a> {
             &self.builtin_indices,
             return_local,
             self.rk_exception_tag_idx,
+            fb_recv_tmp,
         );
         if !lines.is_empty() {
             self.func_lines.insert(func.index, lines);
@@ -1208,6 +1219,16 @@ impl<'a> WasmGen<'a> {
         let ptr_tmp = scratch_base;
         let len_tmp = scratch_base + 1;
 
+        // Receiver scratch, as in `emit_function`; the wrapper takes no params,
+        // so `scratch_base` omits them.
+        let fb_recv_tmp = if crate::emit_stmt::stmts_need_dynamic_fb_base(&func.body, &local_map) {
+            let idx = extra_locals.iter().map(|(c, _)| *c).sum::<u32>();
+            extra_locals.push((1, ValType::I32));
+            Some(idx)
+        } else {
+            None
+        };
+
         // Per-call-site STRING snapshot slots for nested STRING-returning
         // calls inside the test body. Same as `emit_function`.
         let nested_str_count = count_nested_string_calls_stmts(&func.body);
@@ -1268,6 +1289,7 @@ impl<'a> WasmGen<'a> {
             &self.builtin_indices,
             None,
             self.rk_exception_tag_idx,
+            fb_recv_tmp,
         );
         if !lines.is_empty() {
             self.func_lines.insert(func.index, lines);
