@@ -1747,8 +1747,10 @@ impl<'db> ExprLowerCtx<'db> {
     }
 
     /// Get the MirElementary type of an expression.
+    /// The machine type an expression evaluates to, using the ADJUSTED type:
+    /// `arr[0]` is the element, not the array.
     fn expr_to_mir_elementary(&self, expr: Expr<'db>) -> Result<MirElementary, LowerTypeError> {
-        let ty = expr.infer(self.db);
+        let ty = expr.infer_adjusted(self.db);
         self.type_to_mir_elementary(ty)
     }
 
@@ -1768,16 +1770,19 @@ impl<'db> ExprLowerCtx<'db> {
                 self.type_to_mir_elementary(base)
             }
             Type::RefTo(_) | Type::Null => Ok(MirElementary::Int), // pointers are i32
-            Type::Void => Ok(MirElementary::Int),
-            // Array indexing: the HIR stores the array type in type_of_path_expr,
-            // but the actual expression type after indexing is the element type.
-            Type::Array(arr) => {
-                let elem_type = arr.of_type(self.db).infer(self.db);
-                self.type_to_mir_elementary(elem_type)
-            }
-            Type::Struct(_) | Type::StructElement(_) => {
-                Ok(MirElementary::Int) // fallback
-            }
+            Type::Void => Err(LowerTypeError::UnsupportedType(
+                "expression has no value (used where a single value is expected)".to_string(),
+            )),
+            // An aggregate has no scalar machine type; indexing yields the element
+            // through the adjustments.
+            Type::Array(_) => Err(LowerTypeError::UnsupportedType(
+                "an ARRAY has no scalar representation (used where a single value is expected)"
+                    .to_string(),
+            )),
+            Type::Struct(_) | Type::StructElement(_) => Err(LowerTypeError::UnsupportedType(
+                "a STRUCT has no scalar representation (used where a single value is expected)"
+                    .to_string(),
+            )),
             // Function/FunctionBlock used as return value - resolve via return type
             Type::Function(f) => {
                 if let Some(ret) = f.return_type(self.db) {
@@ -1790,10 +1795,10 @@ impl<'db> ExprLowerCtx<'db> {
                 // Already normalized by normalize() but just in case
                 self.type_to_mir_elementary(normalized)
             }
-            Type::Infer(_infer_ty) => {
-                // Deferred integer/float - default to i32/f32
-                Ok(MirElementary::Int)
-            }
+            // A literal inference never pinned down: a resolution gap, not a default.
+            Type::Infer(_) => Err(LowerTypeError::UnsupportedType(
+                "numeric literal type was never resolved".to_string(),
+            )),
             _ => Err(LowerTypeError::UnsupportedType(format!(
                 "Cannot get elementary type for: {:?}",
                 normalized

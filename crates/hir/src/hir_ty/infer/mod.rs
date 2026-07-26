@@ -91,3 +91,25 @@ impl<'db> Infer<'db> for Expr<'db> {
         }
     }
 }
+
+impl<'db> Expr<'db> {
+    /// The expression's type WITH its adjustments applied.
+    ///
+    /// Indexing, field access and dereference are recorded as adjustments over
+    /// a base type, so the plain [`Infer::infer`] type of `arr[0]` is the ARRAY,
+    /// not its element. Consumers that want the type an expression actually
+    /// *evaluates to* — codegen picking a machine type, overload resolution
+    /// classifying an argument — must use this, or they have to reconstruct the
+    /// adjustment themselves.
+    pub fn infer_adjusted(&self, db: &'db dyn WorkspaceDataBase) -> Type<'db> {
+        let head = infer_initialization(db, self.get_scope_id(db));
+        let from_head = head
+            .body_infer_result
+            .type_of_expr_with_adjustments(db, *self);
+        if from_head.is_never() {
+            infer_body(db, self.get_scope_id(db)).type_of_expr_with_adjustments(db, *self)
+        } else {
+            from_head
+        }
+    }
+}
