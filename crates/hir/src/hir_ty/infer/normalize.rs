@@ -29,7 +29,9 @@ impl<'db> Type<'db> {
     /// the variable; they do not restrict the arithmetic itself.
     pub fn peel_subrange(&self, db: &'db dyn WorkspaceDataBase) -> Type<'db> {
         match self.normalize(db) {
-            Type::SubRange(sub) => crate::hir_ty::infer::Infer::infer(&sub._type(db), db).normalize(db),
+            Type::SubRange(sub) => {
+                crate::hir_ty::infer::Infer::infer(&sub._type(db), db).normalize(db)
+            }
             other => other,
         }
     }
@@ -101,32 +103,64 @@ pub fn direct_variable_to_type<'db>(
 }
 
 // Table 17 – Partial access of ANY_BIT variables
+/// A partial (bit / byte / word) access resolved to the slice of the base
+/// value it names.
+///
+/// IEC 61131-3 §6.5.5: `v.%<size><n>` selects the `n`-th slice of `<size>`
+/// bits, so the slice's low bit sits at `n * width`. A bare `v.<n>` means
+/// `v.%X<n>`.
+///
+/// This is the single decoder for `%X/%B/%W/%D/%L`: the type of the access,
+/// its bounds check and its codegen all read the same answer from here.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct MultibitsSlice {
+    /// Bit position of the slice's low bit within the base value.
+    pub shift: usize,
+    /// Slice width in bits - 1, 8, 16, 32 or 64.
+    pub width: usize,
+    /// The type the slice reads back as.
+    pub spec: ElementarySpec,
+    /// `n` as written, for diagnostics.
+    pub index: usize,
+}
+
+/// Decode a `MultibitsPart` into the slice it names, or `None` when the
+/// offset is not a plain decimal integer or the size character is unknown
+/// (both already rejected upstream by the grammar).
+pub fn multibits_slice(
+    db: &dyn WorkspaceDataBase,
+    multibits: MultibitsPart,
+) -> Option<MultibitsSlice> {
+    let (offset, spec, width) = match multibits {
+        // A bare offset is a bit access.
+        MultibitsPart::Offset(offset) => (offset, ElementarySpec::Bool, 1),
+        MultibitsPart::AccessOffset { access, offset } => {
+            let (spec, width) = match access.text(db).chars().next()? {
+                'X' => (ElementarySpec::Bool, 1),
+                'B' => (ElementarySpec::Byte, 8),
+                'W' => (ElementarySpec::Word, 16),
+                'D' => (ElementarySpec::DWord, 32),
+                'L' => (ElementarySpec::LWord, 64),
+                _ => return None,
+            };
+            (offset, spec, width)
+        }
+    };
+    let index = offset.ident(db).text(db).parse::<usize>().ok()?;
+    Some(MultibitsSlice {
+        shift: index * width,
+        width,
+        spec,
+        index,
+    })
+}
+
 pub fn multibits_to_type<'db>(
     db: &'db dyn WorkspaceDataBase,
     multibits: MultibitsPart,
 ) -> Type<'db> {
-    match multibits {
-        // an offset just returns a BOOL
-        MultibitsPart::Offset(offset) => Type::new_bool(),
-        MultibitsPart::AccessOffset { access, offset } => {
-            let mut chars = access.text(db).chars();
-            match chars.next() {
-                // BIT
-                Some('X') => Type::new_bool(),
-                // BYTE
-                Some('B') => Type::Elementary(ElementarySpec::Byte),
-                // WORD
-                Some('W') => Type::Elementary(ElementarySpec::Word),
-                // DWORD
-                Some('D') => Type::Elementary(ElementarySpec::DWord),
-                // LWORD
-                Some('L') => Type::Elementary(ElementarySpec::LWord),
-                _ => {
-                    // No %X assumes Bool
-                    // although this might also be a parse error
-                    Type::new_bool()
-                }
-            }
-        }
-    }
+    // An undecodable access falls back to BOOL, the bare-offset reading.
+    multibits_slice(db, multibits)
+        .map(|slice| Type::Elementary(slice.spec))
+        .unwrap_or_else(Type::new_bool)
 }

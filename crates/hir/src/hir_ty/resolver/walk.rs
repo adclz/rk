@@ -9,7 +9,7 @@ use crate::{
     },
     hir_def::{
         expressions::{
-            expression::{BeginPathExpr, InitExpr, Integer, MultibitsPart, PathExpr, PathExprKind},
+            expression::{BeginPathExpr, InitExpr, MultibitsPart, PathExpr, PathExprKind},
             invocation::{Invocation, InvocationKind},
             spec::StructElement,
         },
@@ -58,23 +58,6 @@ enum FieldLookup<'db> {
     NotFound,
 }
 
-/// Parse an `Integer` offset to a `usize`, returning `None` if parsing fails.
-fn parse_offset(db: &dyn WorkspaceDataBase, offset: Integer) -> Option<usize> {
-    offset.ident(db).text(db).parse::<usize>().ok()
-}
-
-/// Size in bits for a multibit access prefix character (X, B, W, D, L).
-fn access_char_bits(ch: char) -> Option<usize> {
-    match ch {
-        'X' => Some(1),
-        'B' => Some(8),
-        'W' => Some(16),
-        'D' => Some(32),
-        'L' => Some(64),
-        _ => None,
-    }
-}
-
 /// Check that a multibit access offset is within the bounds of the variable's base type.
 fn check_multibits_bounds<'db>(
     db: &'db dyn WorkspaceDataBase,
@@ -88,40 +71,21 @@ fn check_multibits_bounds<'db>(
         return;
     };
 
-    let (access_bits, offset_val) = match multibits {
-        MultibitsPart::Offset(offset) => {
-            let Some(n) = parse_offset(db, offset) else {
-                return;
-            };
-            (1, n)
-        }
-        MultibitsPart::AccessOffset { access, offset } => {
-            let Some(n) = parse_offset(db, offset) else {
-                return;
-            };
-            let Some(ch) = access.text(db).chars().next() else {
-                return;
-            };
-            let Some(bits) = access_char_bits(ch) else {
-                return;
-            };
-            (bits, n)
-        }
+    let Some(slice) = crate::hir_ty::infer::normalize::multibits_slice(db, multibits) else {
+        return;
     };
+    let (access_bits, offset_val) = (slice.width, slice.index);
 
     // The access occupies `access_bits` starting at position `offset_val * access_bits`.
     // Valid when: (offset_val + 1) * access_bits <= base_bits
     if (offset_val + 1) * access_bits > base_bits {
-        let max_offset = if access_bits <= base_bits {
-            base_bits / access_bits - 1
-        } else {
-            0
-        };
+        let max_offset = (access_bits <= base_bits).then(|| base_bits / access_bits - 1);
         ctx.errors.push(
             ResolveError::MultibitsOutOfRange {
                 expr,
                 var,
                 offset: offset_val,
+                access_bits,
                 max_offset,
                 base_type,
             }

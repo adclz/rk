@@ -163,7 +163,12 @@ pub enum ResolveError<'db> {
         expr: PathExpr<'db>,
         var: VariableDecl<'db>,
         offset: usize,
-        max_offset: usize,
+        /// Width in bits of one slice - 1 for `%X`, 8 for `%B`, and so on.
+        access_bits: usize,
+        /// Largest offset the base type admits, or `None` when the base is too
+        /// narrow to hold even one slice (`%D` on a `WORD`) - there is no valid
+        /// offset then, so reporting a range would contradict itself.
+        max_offset: Option<usize>,
         base_type: Type<'db>,
     },
     /// An extern pragma references a variable that does not exist in scope.
@@ -788,16 +793,25 @@ impl<'db> ToIdeDiagnostic<'db> for ResolveError<'db> {
                 expr,
                 var,
                 offset,
+                access_bits,
                 max_offset,
                 base_type,
             } => {
-                let mut diag = diag()
-                    .message(format!(
+                let message = match max_offset {
+                    Some(max) => format!(
                         "offset {} is out of range for type '{}' (valid range: 0..{})",
                         offset,
                         base_type.type_name(db),
-                        max_offset,
-                    ))
+                        max,
+                    ),
+                    None => format!(
+                        "a {}-bit access does not fit in type '{}'",
+                        access_bits,
+                        base_type.type_name(db),
+                    ),
+                };
+                let mut diag = diag()
+                    .message(message)
                     .severity(DiagnosticSeverity::ERROR)
                     .desc(self)
                     .range(crate::denormalize(db, file, &expr.get_span(db)).unwrap_or_default())

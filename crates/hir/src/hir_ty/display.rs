@@ -16,7 +16,7 @@ use crate::{
         semantic_index::semantic_index,
     },
     hir_ty::{
-        infer::Infer,
+        infer::{Infer, normalize::multibits_to_type},
         ty::{CallableType, InferType, Type},
     },
 };
@@ -116,8 +116,15 @@ impl<'db> Type<'db> {
             Self::DataType(typ) => typ.get_name_ident(db).text(db).to_string(),
             Self::EnumVariant(v) => v.text(db).to_string(),
             Self::StructElement(st) => spec_type_name(db, st.spec(db)),
-            Self::Variable((var, _multibits)) => spec_type_name(db, var.spec(db)),
-            Self::DirectVariable((dv, _multibits)) => dv.adress(db).text(db).to_string(),
+            // A partial access (`b.0`, `d.%B1`) is named by the *slice*, not by
+            // the variable it slices - otherwise `b.0 := BYTE#3` reports
+            // "expected 'BYTE', got 'BYTE'" while correctly rejecting against BOOL.
+            Self::Variable((_, Some(multibits))) => multibits_to_type(db, *multibits).type_name(db),
+            Self::Variable((var, None)) => spec_type_name(db, var.spec(db)),
+            Self::DirectVariable((_, Some(multibits))) => {
+                multibits_to_type(db, *multibits).type_name(db)
+            }
+            Self::DirectVariable((dv, None)) => dv.adress(db).text(db).to_string(),
             Self::CallableType(typ) => match typ {
                 CallableType::Function(f) => f.get_name_ident(db).text(db).to_string(),
                 CallableType::FunctionBlock(fb) => fb.get_name_ident(db).text(db).to_string(),
