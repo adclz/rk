@@ -80,3 +80,32 @@ fn same_arity_typed_overloads(mut with_db: db::RootDatabase) {
     let result: i32 = super::execute_wasm(&wasm, "test", ());
     assert_eq!(result, 109, "conv(INT 5) = 10, conv(REAL 1.0) = 99");
 }
+
+/// The overload chosen for an indexed argument must be the one that actually
+/// runs — a resolution bug here is silent at the call site and only shows up in
+/// the value produced.
+#[rstest]
+fn indexed_argument_dispatches_to_the_right_overload(mut with_db: db::RootDatabase) {
+    let source = r#"
+        FUNCTION tag : DINT
+        VAR_INPUT v : INT; END_VAR
+            tag := 1;
+        END_FUNCTION
+
+        FUNCTION tag : DINT
+        VAR_INPUT v : DINT; END_VAR
+            tag := 2;
+        END_FUNCTION
+
+        FUNCTION test : DINT
+        VAR
+            ints  : ARRAY[0..1] OF INT;
+            dints : ARRAY[-1..1] OF DINT;
+        END_VAR
+            test := tag(ints[0]) * 10 + tag(dints[-1]);
+        END_FUNCTION
+    "#;
+    let wasm = compile_to_wasm(&mut with_db, source);
+    let result: i32 = super::execute_wasm(&wasm, "test", ());
+    assert_eq!(result, 12, "INT element -> overload 1, DINT element -> overload 2");
+}

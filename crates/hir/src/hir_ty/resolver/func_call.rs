@@ -202,7 +202,12 @@ fn call_input_arg_types<'db>(
         if !ctx.type_of_expr.contains_key(&value) {
             ictx.resolve_expr(db, value, ctx);
         }
-        types.push(ctx.get_type_of_expr(value));
+        // Adjusted, not raw: indexing and dereference are recorded as
+        // ADJUSTMENTS over the base type, so the raw type of `arr[0]` is the
+        // ARRAY, not its element. Overload resolution classifying that raw type
+        // matched no elementary parameter and silently picked an unrelated
+        // overload (`ASSERT_EQ(arr[0], 5)` selected the CHAR one).
+        types.push(ctx.type_of_expr_with_adjustments(db, value));
     }
     types
 }

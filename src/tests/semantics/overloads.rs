@@ -193,3 +193,36 @@ END_FUNCTION
     ----'
     ");
 }
+
+/// An argument whose type comes from an ADJUSTMENT — array indexing, struct
+/// field access, dereference — must be classified by its adjusted type.
+///
+/// HIR records `arr[0]` as the ARRAY type with the element type in the
+/// adjustment, so overload resolution reading the RAW type saw an array,
+/// matched no elementary parameter, and silently selected an unrelated
+/// overload: `ASSERT_EQ(arr[0], 5)` picked the CHAR one and failed with
+/// "expected 'CHAR', got 'INT'".
+#[rstest]
+fn overload_selected_from_adjusted_argument_type(mut with_db: RootDatabase) {
+    let source = r#"
+FUNCTION take : INT
+VAR_INPUT v : INT; END_VAR
+    take := 1;
+END_FUNCTION
+
+FUNCTION take : INT
+VAR_INPUT v : REAL; END_VAR
+    take := 2;
+END_FUNCTION
+
+FUNCTION caller : INT
+VAR
+    arr : ARRAY[0..3] OF INT;
+    reals : ARRAY[0..3] OF REAL;
+    s : STRUCT a : INT; b : REAL; END_STRUCT;
+END_VAR
+    caller := take(arr[0]) + take(reals[0]) + take(s.a) + take(s.b);
+END_FUNCTION
+"#;
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @"");
+}
