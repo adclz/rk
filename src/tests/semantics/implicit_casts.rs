@@ -495,23 +495,55 @@ END_FUNCTION
 /// Symmetry must not weaken checking: a pair with no common widening stays an
 /// error in BOTH orders.
 #[rstest]
-#[case("b + r")]
-#[case("r + b")]
-fn binary_operator_without_common_widening_is_rejected(
-    mut with_db: RootDatabase,
-    #[case] expr: &str,
-) {
-    let source = format!(
-        r#"
+fn bool_plus_real_is_rejected(mut with_db: RootDatabase) {
+    let source = r#"
 FUNCTION fn1 : REAL
 VAR_INPUT b : BOOL; r : REAL; END_VAR
-    fn1 := {expr};
+    fn1 := b + r;
 END_FUNCTION
-"#
-    );
-    let out = test_diagnostics(&mut with_db, &[&source]);
-    assert!(
-        out.contains("[E03"),
-        "expected a type error for `{expr}`, got:\n{out}"
-    );
+"#;
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
+    [E0318] Error: type mismatch
+       ,-[ file:///test0.st:4:12 ]
+       |
+     3 | VAR_INPUT b : BOOL; r : REAL; END_VAR
+       |           |
+       |           `-- type is declared by variable 'b' here
+     4 |     fn1 := b + r;
+       |            ^^|^^
+       |              `---- operator '+' cannot be applied to type 'BOOL'
+    ---'
+    [E0303] Error: type mismatch
+       ,-[ file:///test0.st:4:16 ]
+       |
+     3 | VAR_INPUT b : BOOL; r : REAL; END_VAR
+       |           |
+       |           `-- type is declared by variable 'b' here
+     4 |     fn1 := b + r;
+       |                |
+       |                `-- can not add 'BOOL' with 'REAL'
+    ---'
+    ");
+}
+
+#[rstest]
+fn real_plus_bool_is_rejected(mut with_db: RootDatabase) {
+    let source = r#"
+FUNCTION fn1 : REAL
+VAR_INPUT b : BOOL; r : REAL; END_VAR
+    fn1 := r + b;
+END_FUNCTION
+"#;
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
+    [E0303] Error: type mismatch
+       ,-[ file:///test0.st:4:16 ]
+       |
+     3 | VAR_INPUT b : BOOL; r : REAL; END_VAR
+       |                     |
+       |                     `-- type is declared by variable 'r' here
+     4 |     fn1 := r + b;
+       |                |
+       |                `-- can not add 'REAL' with 'BOOL'
+    ---'
+    ");
 }

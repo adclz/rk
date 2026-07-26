@@ -978,12 +978,15 @@ impl<'db> ParseSpecInit<'db> for ast::generated::VarDecl {
         &self,
         sema: &mut SemanticIndexBuilder<'db>,
     ) -> anyhow::Result<SpecInitResult<'db>, IdeDiagnostic> {
-        type Spec = ast::generated::ArrayTypeSpec_SimpleTypeSpec_StructTypeSpec;
+        type Spec = ast::generated::ArrayTypeSpec_SimpleTypeSpec_StructTypeSpec_SubrangeTypeSpec;
 
         let spec = match self.spec.cast(sema.ast) {
             Spec::ArrayTypeSpec(a) => a.to_spec(sema),
             Spec::SimpleTypeSpec(a) => a.to_spec(sema),
             Spec::StructTypeSpec(a) => a.to_spec(sema),
+            // `VAR x : INT (0..100); END_VAR` — a subrange declared inline
+            // rather than through a TYPE alias (IEC allows it).
+            Spec::SubrangeTypeSpec(a) => a.to_spec(sema),
         };
 
         type Init = ast::generated::ArrayTypeInit_SimpleTypeInit_StructTypeInit;
@@ -1023,13 +1026,16 @@ impl<'db> ParseSpecInit<'db> for ast::generated::VarDeclInit {
         &self,
         sema: &mut SemanticIndexBuilder<'db>,
     ) -> anyhow::Result<SpecInitResult<'db>, IdeDiagnostic> {
-        type Spec = ast::generated::ArrayTypeSpec_RefTypeSpec_SimpleTypeSpec_StructTypeSpec;
+        type Spec =
+            ast::generated::ArrayTypeSpec_RefTypeSpec_SimpleTypeSpec_StructTypeSpec_SubrangeTypeSpec;
 
         let spec = match self.spec.cast(sema.ast) {
             Spec::ArrayTypeSpec(a) => a.to_spec(sema),
             Spec::SimpleTypeSpec(a) => a.to_spec(sema),
             Spec::StructTypeSpec(a) => a.to_spec(sema),
             Spec::RefTypeSpec(target) => target.to_spec(sema),
+            // Inline subrange with an initializer: `VAR x : INT (0..100) := 50;`
+            Spec::SubrangeTypeSpec(a) => a.to_spec(sema),
         };
 
         type Init = ast::generated::ArrayTypeInit_SimpleTypeInit_StructTypeInit;

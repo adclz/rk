@@ -26,6 +26,41 @@ pub struct CoerceError<'db> {
 pub type CoerceResult<'db> = Result<(), CoerceError<'db>>;
 
 impl<'db> Type<'db> {
+    /// The bounds violation, if `rhs` is a constant that the subrange `self`
+    /// cannot hold.
+    ///
+    /// Assignability for a subrange is not decided by its base type alone: the
+    /// declared bounds narrow it further, and other toolchains reports `i := 5000` on
+    /// `INT (-4095..4095)` at compile time. Bounds are statically known, so a
+    /// constant can be settled here; a non-constant would need a runtime guard,
+    /// which IEC leaves optional (other toolchains exposes it separately as
+    /// `CheckRangeSigned`/`CheckRangeUnsigned`).
+    ///
+    /// Returns the error rather than reporting it, like [`Self::coerce_with_type`] —
+    /// the caller decides whether to surface it.
+    pub fn subrange_violation(
+        &self,
+        db: &'db dyn WorkspaceDataBase,
+        rhs: crate::hir_def::expressions::expression::Expr<'db>,
+    ) -> Option<crate::check::errors::e8_subrange::SubRangeError<'db>> {
+        let Type::SubRange(sub) = self.normalize(db) else {
+            return None;
+        };
+        let (lower, upper) = (
+            sub.lower(db).as_const_int(db)?,
+            sub.upper(db).as_const_int(db)?,
+        );
+        let value = rhs.as_const_int(db)?;
+        (value < lower || value > upper).then_some(
+            crate::check::errors::e8_subrange::SubRangeError::ValueOutOfRange {
+                expr: rhs,
+                value,
+                lower,
+                upper,
+            },
+        )
+    }
+
     pub fn supports_add(&self, _db: &'db dyn WorkspaceDataBase) -> bool {
         self.is_numeric() || self.is_time()
     }
@@ -184,6 +219,15 @@ impl<'db> Type<'db> {
                     .infer(db)
                     .coerce_with_type(db, *rhs, adjustments, resolver)
             }
+            // A subrange VALUE is assignable wherever its base type is: an
+            // `INT (0..100)` is an `INT`. Only the other direction narrows, and
+            // that is where the bounds are enforced (`subrange_violation`).
+            (lhs, Type::SubRange(sub)) => lhs.coerce_with_type(
+                db,
+                crate::hir_ty::infer::Infer::infer(&sub._type(db), db),
+                adjustments,
+                resolver,
+            ),
             (Type::Elementary(lhs), Type::Elementary(rhs)) => {
                 if lhs == *rhs {
                     return Ok(());

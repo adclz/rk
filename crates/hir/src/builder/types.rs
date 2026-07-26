@@ -340,11 +340,12 @@ impl<'db> ParseSpec<'db> for ast::generated::ArrayTypeSpec {
             ranges.push((lower, upper))
         }
 
+        type ElemSpec = ast::generated::RefTypeSpec_SimpleTypeSpec_SubrangeTypeSpec;
         let kind = match self.spec.cast(sema.ast) {
-            ast::generated::RefTypeSpec_SimpleTypeSpec::SimpleTypeSpec(simple) => {
-                simple.children.cast(sema.ast).to_spec(sema)
-            }
-            ast::generated::RefTypeSpec_SimpleTypeSpec::RefTypeSpec(ref_spec) => {
+            ElemSpec::SimpleTypeSpec(simple) => simple.children.cast(sema.ast).to_spec(sema),
+            // `ARRAY[..] OF INT (0..100)` — a subrange element type.
+            ElemSpec::SubrangeTypeSpec(sub) => sub.to_spec(sema),
+            ElemSpec::RefTypeSpec(ref_spec) => {
                 let mut target_type = ref_spec.children.cast(sema.ast).to_spec(sema)?;
                 for _ in ref_spec.ref_count.iter() {
                     target_type =

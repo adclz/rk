@@ -19,6 +19,21 @@ use crate::{
 */
 
 impl<'db> Type<'db> {
+    /// The base type behind a subrange; any other type is returned normalized.
+    ///
+    /// Operators act on the BASE type: `INT (0..100)` adds and compares like an
+    /// `INT`. A subrange is not `Type::Elementary`, so operator support
+    /// (`is_numeric`) and the widening lattice would otherwise reject it —
+    /// `a := a + 5` on a subrange variable failed with "operator '+' cannot be
+    /// applied". The declared bounds still constrain what may be ASSIGNED to
+    /// the variable; they do not restrict the arithmetic itself.
+    pub fn peel_subrange(&self, db: &'db dyn WorkspaceDataBase) -> Type<'db> {
+        match self.normalize(db) {
+            Type::SubRange(sub) => crate::hir_ty::infer::Infer::infer(&sub._type(db), db).normalize(db),
+            other => other,
+        }
+    }
+
     pub fn normalize(&self, db: &'db dyn WorkspaceDataBase) -> Type<'db> {
         match self {
             Type::DataType(dt) => {

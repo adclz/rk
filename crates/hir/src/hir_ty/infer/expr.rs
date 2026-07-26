@@ -42,6 +42,9 @@ impl<'db> InferExprCtx<'db> {
                 self.resolve_expr(db, *right, inference_results);
 
                 // Use adjusted types to account for array indexing, deref, etc.
+                // Kept UNPEELED so a diagnostic can still point at the operand's
+                // declaration; subranges are peeled only where the decision
+                // needs the base type.
                 let lhs = inference_results.type_of_expr_with_adjustments(db, *left);
                 let rhs = inference_results.type_of_expr_with_adjustments(db, *right);
 
@@ -64,7 +67,9 @@ impl<'db> InferExprCtx<'db> {
                     // and the coercion check then rejected the latter. Pairs
                     // with no common widening (e.g. `BOOL + REAL`) keep `lhs`
                     // so the coercion check below reports them.
-                    _ => match (lhs.normalize(db), rhs.normalize(db)) {
+                    // Subranges join through their base type (`INT (0..100)`
+                    // adds like an `INT`).
+                    _ => match (lhs.peel_subrange(db), rhs.peel_subrange(db)) {
                         (Type::Elementary(l), Type::Elementary(r)) => {
                             l.wider(r).map(Type::Elementary).unwrap_or(lhs)
                         }
@@ -74,9 +79,11 @@ impl<'db> InferExprCtx<'db> {
 
                 // When a function/method name is used in an operator expression,
                 // resolve to its return type for operator support checks.
+                // Operator support is decided on the base type: a subrange
+                // supports whatever its base supports.
                 let normalized_ty = match ty.with_return_type(db) {
-                    Some(ret) => ret.normalize(db),
-                    None => ty.normalize(db),
+                    Some(ret) => ret.peel_subrange(db),
+                    None => ty.peel_subrange(db),
                 };
                 let (supported, operator) = match curr_expr.expr(db) {
                     ExprKind::AddOperator { operator, .. } => {
@@ -118,8 +125,12 @@ impl<'db> InferExprCtx<'db> {
                 // so without this the operand type is lost and consumers
                 // (codegen picking the machine comparison and inserting operand
                 // casts) would have to re-derive it.
-                let lhs = inference_results.type_of_expr_with_adjustments(db, *left);
-                let rhs = inference_results.type_of_expr_with_adjustments(db, *right);
+                let lhs = inference_results
+                    .type_of_expr_with_adjustments(db, *left)
+                    .peel_subrange(db);
+                let rhs = inference_results
+                    .type_of_expr_with_adjustments(db, *right)
+                    .peel_subrange(db);
                 if let (Type::Elementary(l), Type::Elementary(r)) =
                     (lhs.normalize(db), rhs.normalize(db))
                     && let Some(common) = l.wider(r)
@@ -459,18 +470,31 @@ impl<'db> InferExprCtx<'db> {
     ) -> CoerceResult<'db> {
         let lhs = Type::new_var(db, var);
         let to = inference_results.type_of_expr[&rhs];
+        let errors_before = inference_results.errors.len();
 
         let mut table = InferenceTable::new();
         table.set_target_type(db, Some(lhs.into()), lhs);
         table.add_type(db, rhs, to, self.resolver);
         table.resolve_completly(db, self.resolver, inference_results);
 
-        lhs.coerce_with_type(
+        let result = lhs.coerce_with_type(
             db,
             inference_results.type_of_expr_with_adjustments(db, rhs),
             inference_results.adjustments_of_expr(db, rhs),
             self.resolver,
-        )
+        );
+        // Only when this assignment is otherwise clean. A value that already
+        // failed against the BASE type (`-1` for a UINT subrange) is reported
+        // there; adding "outside subrange" would be two errors for one mistake.
+        if result.is_ok()
+            && inference_results.errors.len() == errors_before
+            && let Some(err) = lhs.subrange_violation(db, rhs)
+        {
+            inference_results
+                .errors
+                .push(err.to_diagnostic(db, inference_results.scope.file(db)));
+        }
+        result
     }
 
     pub fn coerce_var_access_with_expr(
@@ -482,6 +506,7 @@ impl<'db> InferExprCtx<'db> {
     ) -> CoerceResult<'db> {
         let lhs = inference_results.type_of_variable_access_with_adjustments(db, var);
         let to = inference_results.type_of_expr[&rhs];
+        let errors_before = inference_results.errors.len();
 
         let mut table = InferenceTable::new();
         table.set_target_type(
@@ -498,12 +523,23 @@ impl<'db> InferExprCtx<'db> {
 
         let rhs_ = rhs.expr(db);
 
-        lhs.coerce_with_type(
+        let result = lhs.coerce_with_type(
             db,
             inference_results.type_of_expr_with_adjustments(db, rhs),
             inference_results.adjustments_of_expr(db, rhs),
             self.resolver,
-        )
+        );
+        // See `coerce_var_decl_with_expr`: bounds are only meaningful for an
+        // assignment that is otherwise clean.
+        if result.is_ok()
+            && inference_results.errors.len() == errors_before
+            && let Some(err) = lhs.subrange_violation(db, rhs)
+        {
+            inference_results
+                .errors
+                .push(err.to_diagnostic(db, inference_results.scope.file(db)));
+        }
+        result
     }
 
     pub fn coerce_type_with_expr(

@@ -49,8 +49,15 @@ fn non_constant_array_bound_is_rejected(mut with_db: RootDatabase) {
         END_FUNCTION
         "#;
 
-    let out = test_diagnostics(&mut with_db, &[source]);
-    assert!(out.contains("[E0601]"), "expected invalid lower bound, got:\n{out}");
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
+    [E0601] Error: invalid array bounds
+       ,-[ file:///test0.st:3:34 ]
+       |
+     3 |         VAR x : INT; arr : ARRAY[x..10] OF INT; END_VAR
+       |                                  |
+       |                                  `-- invalid lower bound value for ARRAY
+    ---'
+    ");
 }
 
 #[rstest]
@@ -64,8 +71,15 @@ fn upper_bound_below_lower_bound_is_rejected(mut with_db: RootDatabase) {
         END_TYPE
         "#;
 
-    let out = test_diagnostics(&mut with_db, &[source]);
-    assert!(out.contains("[E0603]"), "expected inferior upper bound, got:\n{out}");
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
+    [E0603] Error: invalid array bounds
+       ,-[ file:///test0.st:3:28 ]
+       |
+     3 |             List: ARRAY[0..-10] OF INT;
+       |                            ^|^
+       |                             `--- upper bound value must be greater than lower bound value
+    ---'
+    ");
 }
 
 #[rstest]

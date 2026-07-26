@@ -880,3 +880,46 @@ fn mixed_type_comparisons_use_the_inferred_join(mut with_db: db::RootDatabase) {
     let result: i32 = super::execute_wasm(&wasm, "test", ());
     assert_eq!(result, 1111, "every mixed-width comparison holds");
 }
+
+/// A subrange behaves as its base type at runtime — arithmetic, comparison and
+/// round-tripping through a function all operate on the underlying integer.
+#[rstest]
+fn subrange_behaves_as_its_base_type(mut with_db: db::RootDatabase) {
+    let source = r#"
+        TYPE Pct : INT (0..100); END_TYPE
+
+        FUNCTION scale : INT
+        VAR_INPUT p : Pct; END_VAR
+            scale := p * 2;
+        END_FUNCTION
+
+        FUNCTION test : INT
+        VAR
+            inline_sr : INT (0..100) := 30;
+            aliased   : Pct;
+        END_VAR
+            aliased := 20;
+            inline_sr := inline_sr + 5;        (* 35 *)
+            test := scale(p := aliased) + inline_sr;   (* 40 + 35 *)
+        END_FUNCTION
+    "#;
+    let wasm = compile_to_wasm(&mut with_db, source);
+    let result: i32 = super::execute_wasm(&wasm, "test", ());
+    assert_eq!(result, 75, "subrange arithmetic runs on the base type");
+}
+
+/// A negative subrange bound is legal and addresses correctly.
+#[rstest]
+fn subrange_with_negative_bounds(mut with_db: db::RootDatabase) {
+    let source = r#"
+        FUNCTION test : INT
+        VAR i : INT (-4095..4095); END_VAR
+            i := -4000;
+            i := i + 5;
+            test := i;
+        END_FUNCTION
+    "#;
+    let wasm = compile_to_wasm(&mut with_db, source);
+    let result: i32 = super::execute_wasm(&wasm, "test", ());
+    assert_eq!(result, -3995);
+}

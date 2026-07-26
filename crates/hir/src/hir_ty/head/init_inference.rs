@@ -325,6 +325,13 @@ impl<'db> InitExprInferenceResult<'db> {
                         place.current_init_typ,
                         CallSite::from_scoped(db, expr),
                     ));
+                } else if let Some(err) = expected.subrange_violation(db, *value) {
+                    // An initializer is an assignment too: `VAR p : INT (0..100)
+                    // := 200;` must be rejected like `p := 200`. Bounds are
+                    // checked in every phase that assigns a value, not only in
+                    // body inference.
+                    self.errors
+                        .push(err.to_diagnostic(db, self.scope.file(db)));
                 }
 
                 // Advance position and check bounds
