@@ -319,3 +319,47 @@ fn nearest_override_wins_along_the_chain(mut with_db: db::RootDatabase) {
     let result: i32 = super::execute_wasm(&wasm, "test", ());
     assert_eq!(result, 2, "B2's override wins over B1's declaration");
 }
+
+/// A FUNCTION_BLOCK may satisfy an interface with a method it INHERITS rather
+/// than one it declares itself — the ordinary
+/// `FB EXTENDS Base IMPLEMENTS Iface` shape.
+///
+/// `Run` arrived from two independent bases (the base's concrete method and the
+/// interface's prototype) and collided: it was reported as a duplicate AND, since
+/// the prototype won the map slot, as an unimplemented interface method. A
+/// prototype and a concrete method for one name are not a conflict — the
+/// concrete one implements the prototype.
+#[rstest]
+fn interface_satisfied_by_an_inherited_method(mut with_db: db::RootDatabase) {
+    let source = r#"
+        INTERFACE IRun
+            METHOD Run : INT END_METHOD
+        END_INTERFACE
+
+        FUNCTION_BLOCK BaseImpl
+        VAR n : INT; END_VAR
+            METHOD PUBLIC Run : INT
+                n := n + 3;
+                Run := n;
+            END_METHOD
+        END_FUNCTION_BLOCK
+
+        FUNCTION_BLOCK DerivedImpl EXTENDS BaseImpl IMPLEMENTS IRun
+        VAR extra : INT; END_VAR
+        END_FUNCTION_BLOCK
+
+        FUNCTION drive : INT
+        VAR_IN_OUT dev : IRun; END_VAR
+            drive := dev.Run();
+        END_FUNCTION
+
+        FUNCTION test : INT
+        VAR d : DerivedImpl; END_VAR
+            drive(dev := d);
+            test := drive(dev := d);   (* state persists: 3 then 6 *)
+        END_FUNCTION
+    "#;
+    let wasm = compile_to_wasm(&mut with_db, source);
+    let result: i32 = super::execute_wasm(&wasm, "test", ());
+    assert_eq!(result, 6, "the inherited method implements the interface");
+}

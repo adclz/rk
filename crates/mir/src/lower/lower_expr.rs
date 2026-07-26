@@ -1207,8 +1207,6 @@ impl<'db> ExprLowerCtx<'db> {
             // Phase B: a call through an interface param; the concrete implementer
             // is known via `iface_subs`.
             MethodRef::Prototype(proto) => {
-                use hir::HirNodeInfo;
-                use hir::hir_def::pous::pou::Pou;
                 let concrete = self
                     .iface_subs
                     .as_ref()
@@ -1220,32 +1218,13 @@ impl<'db> ExprLowerCtx<'db> {
                         )
                     })?;
                 let name = proto.get_name_ident(self.db);
-                // Prefer the implementer's OWN declared method; fall back to one
-                // it inherits from a base. `inherited_methods` on the implementer
-                // returns the interface prototype for this name, not the impl.
-                let concrete_scope = match concrete {
-                    Pou::FunctionBlock(fb) => fb.get_scope_id(self.db),
-                    Pou::Class(c) => c.get_scope_id(self.db),
-                    _ => {
-                        return Err(LowerTypeError::UnsupportedType(
-                            "interface implementer is not a function block or class".to_string(),
-                        ));
-                    }
-                };
-                let resolved = concrete_scope
-                    .def_map(self.db)
-                    .declared_methods
-                    .get(&name)
-                    .copied()
-                    .or_else(|| {
-                        hir::hir_ty::head::inheritance::inherited_methods(self.db, concrete)
-                            .methods
-                            .get(&name)
-                            .map(|im| im.method)
-                    });
-                match resolved {
-                    Some(MethodRef::Declared(d)) => d,
-                    _ => {
+                // Which method implements a prototype is HIR's conformance answer;
+                // devirtualizing to it is MIR's.
+                match hir::hir_ty::head::inheritance::implementing_method(
+                    self.db, concrete, name,
+                ) {
+                    Some(d) => d,
+                    None => {
                         return Err(LowerTypeError::UnsupportedType(format!(
                             "no concrete implementation of interface method '{}'",
                             name.text(self.db)

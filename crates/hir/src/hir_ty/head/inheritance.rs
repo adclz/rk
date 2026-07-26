@@ -242,8 +242,21 @@ pub fn inherited_methods<'db>(
     for base in direct_bases(db, pou) {
         let mut visited = vec![pou];
         for (name, m) in chain_methods(db, base, &mut visited) {
-            if let Some(dup) = methods.insert(name, m) {
-                duplicates.push((dup, m));
+            match methods.insert(name, m) {
+                None => {}
+                // A prototype and a concrete method for the same name are not a
+                // conflict: the concrete one IMPLEMENTS the prototype. This is
+                // the ordinary `FB EXTENDS Base IMPLEMENTS Iface` shape, where
+                // the inherited method satisfies the interface. Keep the
+                // implementation, so conformance sees the name as implemented
+                // rather than reporting it unimplemented.
+                Some(prev) if prev.method.is_prototype() != m.method.is_prototype() => {
+                    let concrete = if m.method.is_prototype() { prev } else { m };
+                    methods.insert(name, concrete);
+                }
+                // Two declarations of the same kind from INDEPENDENT bases —
+                // a genuine ambiguity.
+                Some(prev) => duplicates.push((prev, m)),
             }
         }
     }
@@ -336,4 +349,40 @@ pub fn base_pou<'db>(db: &'db dyn WorkspaceDataBase, pou: Pou<'db>) -> Option<Po
         _ => return None,
     };
     resolve_spec_to_pou(db, spec)
+}
+
+/// The concrete method an implementer provides for an inherited method NAME —
+/// in particular, for an interface prototype it declares via `IMPLEMENTS`.
+///
+/// Conformance already establishes this pairing: `check_methods` matches each
+/// inherited prototype against the implementer's declared method to verify the
+/// signature. That pairing was only used for diagnostics and then discarded, so
+/// consumers needing the implementation itself — devirtualizing an interface
+/// call to `Worker#Run` when monomorphizing — had to re-derive it.
+///
+/// A method the implementer declares itself wins; otherwise one it inherits
+/// from a base. Returns `None` when nothing concrete implements the name (an
+/// unimplemented prototype, which conformance reports separately).
+pub fn implementing_method<'db>(
+    db: &'db dyn WorkspaceDataBase,
+    implementer: Pou<'db>,
+    name: Ident,
+) -> Option<MethodDecl<'db>> {
+    let own = implementer
+        .get_scope_id(db)
+        .def_map(db)
+        .declared_methods
+        .get(&name)
+        .copied();
+    let resolved = own.or_else(|| {
+        inherited_methods(db, implementer)
+            .methods
+            .get(&name)
+            .map(|m| m.method)
+    })?;
+    match resolved {
+        // A prototype is a signature, not an implementation.
+        MethodRef::Declared(decl) => Some(decl),
+        MethodRef::Prototype(_) => None,
+    }
 }
