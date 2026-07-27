@@ -759,3 +759,55 @@ END_FUNCTION_BLOCK
     ---'
     ");
 }
+
+/// A RESOURCE shares the CONFIGURATION's scope, so its `VAR_GLOBAL`s must be
+/// checked exactly like the configuration's own: a bad initializer is a type
+/// error and a repeated name is a duplicate. Both were silently skipped, since
+/// the scope only ever enumerated the configuration's own variables.
+#[rstest]
+fn resource_global_bad_initializer_is_a_type_error(mut with_db: db::RootDatabase) {
+    let source = r#"
+        CONFIGURATION Cfg
+            RESOURCE Res ON CPU
+                VAR_GLOBAL
+                    bad : INT := 'oops';
+                END_VAR
+            END_RESOURCE
+        END_CONFIGURATION
+    "#;
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
+    [E0301] Error: type mismatch
+       ,-[ file:///test0.st:5:31 ]
+       |
+     5 |                     bad : INT := 'oops';
+       |                               ^^^^|^^^^
+       |                                   `------ expected 'INT', got 'STRING'
+    ---'
+    ");
+}
+
+#[rstest]
+fn duplicate_resource_globals_are_reported(mut with_db: db::RootDatabase) {
+    let source = r#"
+        CONFIGURATION Cfg
+            RESOURCE Res ON CPU
+                VAR_GLOBAL
+                    g : INT;
+                    g : INT;
+                END_VAR
+            END_RESOURCE
+        END_CONFIGURATION
+    "#;
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
+    [E0102] Error: duplicate definitions
+       ,-[ file:///test0.st:6:21 ]
+       |
+     5 |                     g : INT;
+       |                     |
+       |                     `-- variable 'g' is already defined here
+     6 |                     g : INT;
+       |                     |
+       |                     `-- duplicate variable 'g'
+    ---'
+    ");
+}

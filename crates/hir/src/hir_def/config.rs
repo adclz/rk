@@ -57,6 +57,33 @@ pub enum ConfigResource<'db> {
     Program(ProgConfig<'db>),
 }
 
+/// Every `VAR_GLOBAL` visible in a CONFIGURATION's scope: the configuration's
+/// own, followed by those declared inside each of its RESOURCE blocks.
+///
+/// A RESOURCE does not open a scope of its own — the builder gives its
+/// declarations the enclosing CONFIGURATION's scope — so anything that walks a
+/// config scope's variables has to see through to the resources. Asking
+/// `ConfigDecl::variables` alone silently omitted them, which meant init
+/// inference never visited a resource global's initializer and it read 0
+/// forever.
+///
+/// Note this is scope CONTENT, not scope RULES: two resources declaring the
+/// same name both appear here. Distinguishing them is the resolver's job.
+#[salsa::tracked(returns(ref))]
+pub fn config_scope_variables<'db>(
+    db: &'db dyn WorkspaceDataBase,
+    config: ConfigDecl<'db>,
+) -> Vec<VariableDecl<'db>> {
+    let mut out = config.variables(db).clone();
+    for resource in config.resources(db) {
+        if let ConfigResource::Resource(r) = resource {
+            out.extend(r.variables(db).iter().copied());
+        }
+    }
+    out
+}
+
+
 #[salsa::tracked(debug)]
 pub struct ResourceDecl<'db> {
     pub name: SpanIdent<'db>,
