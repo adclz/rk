@@ -181,9 +181,22 @@ pub fn optimize_wasm(wasm_bytes: Vec<u8>, opt_level: Option<&str>, verbose: bool
 
     let original_size = wasm_bytes.len();
 
-    // wasm-opt requires file paths - use temp files
-    let infile = std::env::temp_dir().join("rk_wasm_opt_in.wasm");
-    let outfile = std::env::temp_dir().join("rk_wasm_opt_out.wasm");
+    // wasm-opt works on files, so the module makes a round trip through disk.
+    //
+    // The scratch directory must be PRIVATE to this invocation. It used to be
+    // two fixed names in the shared temp dir, so two `rk compile` runs on one
+    // machine read and deleted each other's files: artifacts came back holding
+    // the other workspace's program, or truncated, or silently unoptimized -
+    // and the truncated ones were still reported as a successful compile.
+    let scratch = match tempfile::Builder::new().prefix("rk-wasm-opt-").tempdir() {
+        Ok(dir) => dir,
+        Err(e) => {
+            ui::warn(format!("failed to create temp dir: {e}"));
+            return wasm_bytes;
+        }
+    };
+    let infile = scratch.path().join("in.wasm");
+    let outfile = scratch.path().join("out.wasm");
 
     if let Err(e) = std::fs::write(&infile, &wasm_bytes) {
         ui::warn(format!("failed to write temp file: {e}"));
@@ -192,10 +205,27 @@ pub fn optimize_wasm(wasm_bytes: Vec<u8>, opt_level: Option<&str>, verbose: bool
 
     match opts.run(&infile, &outfile) {
         Ok(()) => {
-            let optimized = std::fs::read(&outfile).unwrap_or_else(|_| wasm_bytes.clone());
+            // Never ship what we cannot recognise as a wasm module: a partial
+            // or absent output degrades to the unoptimized bytes rather than
+            // being written out as the artifact.
+            let optimized = match std::fs::read(&outfile) {
+                Ok(bytes) if bytes.starts_with(b"\0asm") => bytes,
+                Ok(bytes) => {
+                    ui::warn(format!(
+                        "wasm-opt produced {} bytes that are not a wasm module; keeping the \
+                         unoptimized build",
+                        bytes.len()
+                    ));
+                    return wasm_bytes;
+                }
+                Err(e) => {
+                    ui::warn(format!(
+                        "could not read wasm-opt output ({e}); keeping the unoptimized build"
+                    ));
+                    return wasm_bytes;
+                }
+            };
             let optimized = preserve_retain_map(&wasm_bytes, optimized);
-            let _ = std::fs::remove_file(&infile);
-            let _ = std::fs::remove_file(&outfile);
 
             if verbose {
                 let savings = original_size as f64 - optimized.len() as f64;
@@ -210,8 +240,6 @@ pub fn optimize_wasm(wasm_bytes: Vec<u8>, opt_level: Option<&str>, verbose: bool
             optimized
         }
         Err(e) => {
-            let _ = std::fs::remove_file(&infile);
-            let _ = std::fs::remove_file(&outfile);
             ui::warn(format!("wasm-opt failed: {e}"));
             wasm_bytes
         }
@@ -271,6 +299,50 @@ fn write_leb128(out: &mut Vec<u8>, mut v: u64) {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// Two optimizations running at once must not read, overwrite or delete
+    /// each other's scratch files. Each module carries a distinctly sized
+    /// custom section, so a swap or a truncation shows as a wrong length.
+    #[test]
+    fn concurrent_optimizations_do_not_share_scratch_files() {
+        fn module_with_padding(pad: usize) -> Vec<u8> {
+            let mut module = vec![0x00, 0x61, 0x73, 0x6d, 0x01, 0x00, 0x00, 0x00];
+            let name = b"rk-test-pad";
+            let mut payload = Vec::new();
+            write_leb128(&mut payload, name.len() as u64);
+            payload.extend_from_slice(name);
+            payload.extend(std::iter::repeat_n(0xAB, pad));
+            module.push(0x00);
+            write_leb128(&mut module, payload.len() as u64);
+            module.extend_from_slice(&payload);
+            module
+        }
+
+        let inputs: Vec<Vec<u8>> = (0..8).map(|i| module_with_padding(64 + i * 32)).collect();
+        let handles: Vec<_> = inputs
+            .iter()
+            .cloned()
+            .map(|m| std::thread::spawn(move || optimize_wasm(m, Some("4"), false)))
+            .collect();
+        let results: Vec<Vec<u8>> = handles.into_iter().map(|h| h.join().unwrap()).collect();
+
+        for (i, out) in results.iter().enumerate() {
+            assert!(
+                out.starts_with(b"\0asm"),
+                "thread {i} produced {} bytes that are not a wasm module",
+                out.len()
+            );
+        }
+        // wasm-opt drops custom sections, so compare against the
+        // single-threaded answer for the same input.
+        for (i, input) in inputs.iter().enumerate() {
+            let expected = optimize_wasm(input.clone(), Some("4"), false);
+            assert_eq!(
+                results[i], expected,
+                "thread {i}'s result differs from the same input optimized alone"
+            );
+        }
+    }
 
     /// A minimal module carrying a retain-map section must still carry it
     /// after release optimization (wasm-opt strips custom sections; we
