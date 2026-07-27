@@ -4,7 +4,11 @@ use rustc_hash::FxHashMap;
 
 use crate::{
     HirNodeInfo,
-    check::errors::{ToIdeDiagnostic, e1_duplicates::DuplicateError, e2_resolve::ResolveError},
+    check::errors::{
+        ToIdeDiagnostic,
+        e1_duplicates::DuplicateError,
+        e2_resolve::{ResolveError, UnschedulableReason},
+    },
     hir_def::{
         config::{ConfigDecl, ConfigResource, ProgConfig, ResourceDecl, TaskConfig},
         expressions::spec::SpecKind,
@@ -30,6 +34,16 @@ pub struct ConfigInferenceResult<'db> {
     /// Maps each program instance name to the resolved PROGRAM declaration.
     pub prog_instance: FxHashMap<Ident, ProgramDecl<'db>>,
 
+    /// Scan period in nanoseconds for each TASK that can actually be scheduled.
+    /// A task missing from this map cannot run; consumers skip it without
+    /// needing to re-derive why.
+    pub task_interval_ns: FxHashMap<TaskConfig<'db>, u64>,
+
+    /// Why each unschedulable TASK cannot run. Held rather than reported on
+    /// sight: a task nothing is bound to harms nobody, so only the ones a
+    /// PROGRAM actually depends on become diagnostics.
+    pub unschedulable: FxHashMap<TaskConfig<'db>, UnschedulableReason>,
+
     pub errors: Vec<IdeDiagnostic>,
 }
 
@@ -40,6 +54,8 @@ pub fn infer_config_result<'db>(
     config: ConfigDecl<'db>,
 ) -> ConfigInferenceResult<'db> {
     let mut result = ConfigInferenceResult {
+        task_interval_ns: FxHashMap::default(),
+        unschedulable: FxHashMap::default(),
         task_of_prog: FxHashMap::default(),
         prog_instance: FxHashMap::default(),
         errors: Vec::new(),
@@ -117,6 +133,7 @@ fn infer_config<'db>(
     }
 
     // Phase 2: validate top-level PROGRAM references, resolve tasks, and build instance map.
+    resolve_task_intervals(db, &config_tasks, result);
     for res in config.resources(db).iter() {
         match res {
             ConfigResource::Program(p) => {
@@ -127,6 +144,7 @@ fn infer_config<'db>(
                 // Tasks visible inside a resource are scoped to that resource only.
                 let resource_tasks: FxHashMap<Ident, TaskConfig<'db>> =
                     r.tasks(db).iter().map(|t| (t.name(db).ident, *t)).collect();
+                resolve_task_intervals(db, &resource_tasks, result);
                 for p in r.programs(db).iter() {
                     validate_prog_config(db, p, &resource_tasks, result);
                     resolve_prog_instance(db, p, &mut result.prog_instance);
@@ -135,6 +153,9 @@ fn infer_config<'db>(
             ConfigResource::Task(_) => {}
         }
     }
+
+    // Phase 2b: a PROGRAM bound to a task that cannot run would never run.
+    report_unschedulable_bound_tasks(db, result);
 
     // Phase 3: validate VAR_CONFIG entries.
     validate_config_inst_inits(db, config, &result.prog_instance, &mut result.errors);
@@ -211,8 +232,8 @@ fn validate_prog_config<'db>(
     // Unknown program types are reported as E0210 (NoNamespaceItemFound) by infer_spec.
 
     // Resolve the WITH <task> reference if present.
-    if let Some(task_ref) = p.task(db) {
-        match known_tasks.get(&task_ref.ident) {
+    match p.task(db) {
+        Some(task_ref) => match known_tasks.get(&task_ref.ident) {
             Some(task) => {
                 result.task_of_prog.insert(*p, *task);
             }
@@ -222,8 +243,107 @@ fn validate_prog_config<'db>(
                         .to_diagnostic(db, p.get_scope_id(db).file(db)),
                 );
             }
+        },
+        // No WITH clause at all. The scheduler used to drop the instance in
+        // silence, so the program compiled and simply never ran.
+        None => {
+            result.errors.push(
+                ResolveError::ProgramWithoutTask {
+                    instance: p.name(db),
+                }
+                .to_diagnostic(db, p.get_scope_id(db).file(db)),
+            );
         }
     }
+}
+
+/// Report each unschedulable TASK that a PROGRAM is actually bound to.
+///
+/// Reported here rather than at the task's declaration so an unused TASK — one
+/// declared for later, or an event task nothing depends on yet — does not fail
+/// the build. What must never be silent is a PROGRAM that cannot run.
+fn report_unschedulable_bound_tasks<'db>(
+    db: &'db dyn WorkspaceDataBase,
+    result: &mut ConfigInferenceResult<'db>,
+) {
+    let mut reported: Vec<TaskConfig<'db>> = Vec::new();
+    let bound: Vec<TaskConfig<'db>> = result.task_of_prog.values().copied().collect();
+    for task in bound {
+        if reported.contains(&task) {
+            continue; // one message per task, however many programs bind to it
+        }
+        let Some(&reason) = result.unschedulable.get(&task) else {
+            continue;
+        };
+        reported.push(task);
+        result.errors.push(
+            ResolveError::UnschedulableTask {
+                task: task.name(db),
+                reason,
+            }
+            .to_diagnostic(db, task.get_scope_id(db).file(db)),
+        );
+    }
+}
+
+/// Resolve each TASK's scan period, recording the ones that cannot be honoured.
+///
+/// Only a cyclic task with a literal, non-zero INTERVAL is schedulable. Every
+/// other shape used to be dropped by a bare `continue` in MIR with no
+/// diagnostic anywhere: `rk check` reported nothing, `rk compile` succeeded,
+/// and the core came out with no schedule — which the runtime then rejected
+/// with an unrelated complaint about the program's body export.
+///
+/// Resolving it here rather than in MIR also means the answer is published
+/// once: the scheduler reads `task_interval_ns` instead of parsing intervals
+/// a second time.
+fn resolve_task_intervals<'db>(
+    db: &'db dyn WorkspaceDataBase,
+    tasks: &FxHashMap<Ident, TaskConfig<'db>>,
+    result: &mut ConfigInferenceResult<'db>,
+) {
+    for task in tasks.values() {
+        let reason = match (task.interval(db), task.single(db)) {
+            (Some(ds), _) => match interval_nanos(db, &ds) {
+                None => Some(UnschedulableReason::NonLiteralInterval),
+                Some(0) => Some(UnschedulableReason::ZeroInterval),
+                Some(ns) => {
+                    result.task_interval_ns.insert(*task, ns);
+                    None
+                }
+            },
+            (None, Some(_)) => Some(UnschedulableReason::EventDriven),
+            (None, None) => Some(UnschedulableReason::NoTrigger),
+        };
+        if let Some(reason) = reason {
+            result.unschedulable.insert(*task, reason);
+        }
+    }
+}
+
+/// A TASK's INTERVAL in nanoseconds, when it is a TIME literal.
+///
+/// The period is baked into the emitted schedule, so it has to be known at
+/// compile time — a CONSTANT global or a direct variable cannot provide it.
+fn interval_nanos<'db>(
+    db: &'db dyn WorkspaceDataBase,
+    ds: &crate::hir_def::config::DataSource<'db>,
+) -> Option<u64> {
+    use crate::hir_def::config::DataSource;
+    use crate::hir_def::expressions::expression::{Elementary, ExprKind, PrimaryExpr};
+
+    let DataSource::Constant(expr) = ds else {
+        return None;
+    };
+    let ExprKind::PrimaryExpr(PrimaryExpr::Literal(elem)) = expr.expr(db) else {
+        return None;
+    };
+    let dur = match elem {
+        Elementary::Time(id) => id.as_time(db).ok()?,
+        Elementary::LTime(id) => id.as_ltime(db).ok()?,
+        _ => return None,
+    };
+    u64::try_from(dur.whole_nanoseconds()).ok()
 }
 
 /// Validates VAR_CONFIG entries: resolves each path against program instances

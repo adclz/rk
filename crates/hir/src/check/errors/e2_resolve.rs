@@ -34,6 +34,38 @@ use crate::{
     },
 };
 
+/// Why a TASK cannot be scheduled. Only cyclic tasks with a literal, non-zero
+/// INTERVAL are; each other shape gets its own message rather than a shared
+/// "unsupported", because the fix differs in every case.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, salsa::Update)]
+pub enum UnschedulableReason {
+    /// `SINGLE := <event>` — event-driven tasks are not implemented.
+    EventDriven,
+    /// Neither SINGLE nor INTERVAL. Nothing triggers the task, so a program
+    /// bound to it never runs.
+    NoTrigger,
+    /// INTERVAL is not a TIME literal (a CONSTANT global, a direct variable,
+    /// an expression). The period must be known at compile time.
+    NonLiteralInterval,
+    /// INTERVAL is zero, which describes no cadence at all.
+    ZeroInterval,
+}
+
+impl UnschedulableReason {
+    fn message(self) -> &'static str {
+        match self {
+            Self::EventDriven => {
+                "event-driven tasks (SINGLE) are not supported yet; only cyclic tasks run"
+            }
+            Self::NoTrigger => "a TASK needs an INTERVAL to run its programs",
+            Self::NonLiteralInterval => {
+                "INTERVAL must be a TIME literal"
+            }
+            Self::ZeroInterval => "INTERVAL must be greater than zero",
+        }
+    }
+}
+
 #[derive(Clone, Debug, PartialEq, Eq, Hash, salsa::Update)]
 pub enum ResolveError<'db> {
     IncorrectNumberOfParameters {
@@ -112,6 +144,16 @@ pub enum ResolveError<'db> {
     /// The task name referenced in a `WITH <task>` clause does not exist in the config.
     UnknownTaskRef {
         task: SpanIdent<'db>,
+    },
+    /// A PROGRAM instance carries no `WITH <task>`, so nothing would ever run it.
+    ProgramWithoutTask {
+        instance: SpanIdent<'db>,
+    },
+    /// A TASK the scheduler cannot honour. `reason` says which rule it broke,
+    /// so the four causes do not collapse into one message.
+    UnschedulableTask {
+        task: SpanIdent<'db>,
+        reason: UnschedulableReason,
     },
     /// A VAR_EXTERNAL declaration references a name not present in any accessible VAR_GLOBAL.
     ExternalVarNotFound {
@@ -257,6 +299,8 @@ impl<'db> ErrorCode for ResolveError<'db> {
             Self::RetainInStatelessPou { .. } => "E0235",
             Self::InOutParameterBoundWithArrow { .. } => "E0236",
             Self::AmbiguousOverload { .. } => "E0237",
+            Self::ProgramWithoutTask { .. } => "E0238",
+            Self::UnschedulableTask { .. } => "E0239",
         }
     }
 
@@ -295,6 +339,8 @@ impl<'db> ErrorCode for ResolveError<'db> {
                 "VAR_IN_OUT parameter bound with output syntax"
             }
             Self::AmbiguousOverload { .. } => "ambiguous overloaded call",
+            Self::ProgramWithoutTask { .. } => "program instance never runs",
+            Self::UnschedulableTask { .. } => "task cannot be scheduled",
         }
     }
 }
@@ -650,6 +696,25 @@ impl<'db> ToIdeDiagnostic<'db> for ResolveError<'db> {
                 .message(format!(
                     "task '{}' not found in this configuration",
                     task.ident.text(db)
+                ))
+                .severity(DiagnosticSeverity::ERROR)
+                .desc(self)
+                .range(crate::denormalize(db, file, &task.get_span(db)).unwrap_or_default())
+                .call(),
+            Self::ProgramWithoutTask { instance } => diag()
+                .message(format!(
+                    "program instance '{}' has no WITH <task>, so it will never run",
+                    instance.ident.text(db)
+                ))
+                .severity(DiagnosticSeverity::ERROR)
+                .desc(self)
+                .range(crate::denormalize(db, file, &instance.get_span(db)).unwrap_or_default())
+                .call(),
+            Self::UnschedulableTask { task, reason } => diag()
+                .message(format!(
+                    "task '{}' cannot be scheduled: {}",
+                    task.ident.text(db),
+                    reason.message()
                 ))
                 .severity(DiagnosticSeverity::ERROR)
                 .desc(self)

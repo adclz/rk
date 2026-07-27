@@ -20,7 +20,7 @@ PROGRAM MyProg
 END_PROGRAM
 
 CONFIGURATION MyCfg
-    TASK t1(PRIORITY := 5);
+    TASK t1(INTERVAL := T#10ms, PRIORITY := 5);
     PROGRAM RETAIN inst1 WITH t1 : MyProg;
 END_CONFIGURATION
 "#;
@@ -36,7 +36,7 @@ END_PROGRAM
 
 CONFIGURATION MyCfg
     RESOURCE res1 ON CPU_TYPE
-        TASK t1(PRIORITY := 1);
+        TASK t1(INTERVAL := T#10ms, PRIORITY := 1);
         PROGRAM inst1 WITH t1 : MyProg;
     END_RESOURCE
 END_CONFIGURATION
@@ -52,7 +52,7 @@ CONFIGURATION MyCfg
     VAR_GLOBAL
         counter : INT;
     END_VAR
-    TASK t1(PRIORITY := 10);
+    TASK t1(INTERVAL := T#10ms, PRIORITY := 10);
 END_CONFIGURATION
 "#;
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @"");
@@ -63,12 +63,12 @@ END_CONFIGURATION
 fn duplicate_config_cross_file(mut with_db: RootDatabase) {
     let source1 = r#"
 CONFIGURATION MyCfg
-    TASK t1(PRIORITY := 1);
+    TASK t1(INTERVAL := T#10ms, PRIORITY := 1);
 END_CONFIGURATION
 "#;
     let source2 = r#"
 CONFIGURATION MyCfg
-    TASK t1(PRIORITY := 2);
+    TASK t1(INTERVAL := T#10ms, PRIORITY := 2);
 END_CONFIGURATION
 "#;
     add_sources(&mut with_db, &[source1, source2]);
@@ -89,7 +89,7 @@ END_CONFIGURATION
 fn config_index_lookup(mut with_db: RootDatabase) {
     let source = r#"
 CONFIGURATION MyCfg
-    TASK t1(PRIORITY := 5);
+    TASK t1(INTERVAL := T#10ms, PRIORITY := 5);
 END_CONFIGURATION
 "#;
     add_sources(&mut with_db, &[source]);
@@ -120,7 +120,7 @@ END_CONFIGURATION
 fn invalid_config_unknown_prog_type(mut with_db: RootDatabase) {
     let source = r#"
 CONFIGURATION MyCfg
-    TASK t1(PRIORITY := 1);
+    TASK t1(INTERVAL := T#10ms, PRIORITY := 1);
     PROGRAM inst1 WITH t1 : UnknownProg;
 END_CONFIGURATION
 "#;
@@ -167,7 +167,7 @@ CONFIGURATION MyCfg
         flag : BOOL;
         ratio : REAL;
     END_VAR
-    TASK t1(PRIORITY := 1);
+    TASK t1(INTERVAL := T#10ms, PRIORITY := 1);
 END_CONFIGURATION
 "#;
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @"");
@@ -181,7 +181,7 @@ CONFIGURATION MyCfg
     VAR_GLOBAL
         x : UnknownType;
     END_VAR
-    TASK t1(PRIORITY := 1);
+    TASK t1(INTERVAL := T#10ms, PRIORITY := 1);
 END_CONFIGURATION
 "#;
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
@@ -209,7 +209,7 @@ CONFIGURATION MyCfg
     VAR_GLOBAL
         counter : INT;
     END_VAR
-    TASK t1(PRIORITY := 1);
+    TASK t1(INTERVAL := T#10ms, PRIORITY := 1);
     PROGRAM RETAIN inst1 WITH t1 : MyProg;
 END_CONFIGURATION
 "#;
@@ -231,7 +231,7 @@ CONFIGURATION MyCfg
         VAR_GLOBAL
             flag : BOOL;
         END_VAR
-        TASK t1(PRIORITY := 1);
+        TASK t1(INTERVAL := T#10ms, PRIORITY := 1);
         PROGRAM inst1 WITH t1 : MyProg;
     END_RESOURCE
 END_CONFIGURATION
@@ -253,7 +253,7 @@ CONFIGURATION MyCfg
     VAR_GLOBAL
         counter : INT;
     END_VAR
-    TASK t1(PRIORITY := 1);
+    TASK t1(INTERVAL := T#10ms, PRIORITY := 1);
     PROGRAM RETAIN inst1 WITH t1 : MyProg;
 END_CONFIGURATION
 "#;
@@ -298,7 +298,7 @@ END_PROGRAM
 
 CONFIGURATION MyCfg
     RESOURCE res1 ON CPU_TYPE
-        TASK t1(PRIORITY := 1);
+        TASK t1(INTERVAL := T#10ms, PRIORITY := 1);
         PROGRAM inst1 WITH noSuchTask : MyProg;
     END_RESOURCE
 END_CONFIGURATION
@@ -421,7 +421,7 @@ PROGRAM MyProg
 END_PROGRAM
 
 CONFIGURATION MyCfg
-    TASK t1(PRIORITY := 1);
+    TASK t1(INTERVAL := T#10ms, PRIORITY := 1);
     PROGRAM inst1 WITH t1 : MyProg;
 
     VAR_CONFIG
@@ -449,7 +449,7 @@ PROGRAM MyProg
 END_PROGRAM
 
 CONFIGURATION MyCfg
-    TASK t1(PRIORITY := 1);
+    TASK t1(INTERVAL := T#10ms, PRIORITY := 1);
     PROGRAM inst1 WITH t1 : MyProg;
 
     VAR_CONFIG
@@ -471,7 +471,7 @@ PROGRAM MyProg
 END_PROGRAM
 
 CONFIGURATION MyCfg
-    TASK t1(PRIORITY := 1);
+    TASK t1(INTERVAL := T#10ms, PRIORITY := 1);
     PROGRAM inst1 WITH t1 : MyProg;
 
     VAR_CONFIG
@@ -501,7 +501,7 @@ PROGRAM MyProg
 END_PROGRAM
 
 CONFIGURATION MyCfg
-    TASK t1(PRIORITY := 1);
+    TASK t1(INTERVAL := T#10ms, PRIORITY := 1);
     PROGRAM inst1 WITH t1 : MyProg;
 
     VAR_CONFIG
@@ -531,7 +531,7 @@ PROGRAM MyProg
 END_PROGRAM
 
 CONFIGURATION MyCfg
-    TASK t1(PRIORITY := 1);
+    TASK t1(INTERVAL := T#10ms, PRIORITY := 1);
     PROGRAM inst1 WITH t1 : MyProg;
 
     VAR_CONFIG
@@ -561,7 +561,7 @@ PROGRAM MyProg
 END_PROGRAM
 
 CONFIGURATION MyCfg
-    TASK t1(PRIORITY := 1);
+    TASK t1(INTERVAL := T#10ms, PRIORITY := 1);
     PROGRAM inst1 WITH t1 : MyProg;
 
     VAR_CONFIG
@@ -598,7 +598,7 @@ END_PROGRAM
 
 CONFIGURATION MyCfg
     RESOURCE res1 ON CPU_TYPE
-        TASK t1(PRIORITY := 1);
+        TASK t1(INTERVAL := T#10ms, PRIORITY := 1);
         PROGRAM inst1 WITH t1 : MyProg;
     END_RESOURCE
 
@@ -618,7 +618,7 @@ PROGRAM MyProg
 END_PROGRAM
 
 CONFIGURATION MyCfg
-    TASK t1(PRIORITY := 5);
+    TASK t1(INTERVAL := T#10ms, PRIORITY := 5);
     PROGRAM inst1 WITH t1 : MyProg;
 END_CONFIGURATION
 "#;
@@ -651,7 +651,7 @@ PROGRAM MyProg
 END_PROGRAM
 
 CONFIGURATION MyCfg
-    TASK t1(PRIORITY := 5);
+    TASK t1(INTERVAL := T#10ms, PRIORITY := 5);
     PROGRAM inst1 WITH t1 : MyProg;
 END_CONFIGURATION
 "#;
@@ -681,7 +681,7 @@ PROGRAM MyProg
 END_PROGRAM
 
 CONFIGURATION MyCfg
-    TASK t1(PRIORITY := 5);
+    TASK t1(INTERVAL := T#10ms, PRIORITY := 5);
     PROGRAM inst1 WITH t1 : MyProg;
 END_CONFIGURATION
 "#;
@@ -711,7 +711,7 @@ END_PROGRAM
 
 CONFIGURATION MyCfg
     RESOURCE res1 ON CPU_TYPE
-        TASK t1(PRIORITY := 1);
+        TASK t1(INTERVAL := T#10ms, PRIORITY := 1);
         PROGRAM inst1 WITH t1 : MyProg;
     END_RESOURCE
 END_CONFIGURATION
@@ -810,4 +810,180 @@ fn duplicate_resource_globals_are_reported(mut with_db: db::RootDatabase) {
        |                     `-- duplicate variable 'g'
     ---'
     ");
+}
+
+/// A PROGRAM bound to a TASK the scheduler cannot honour must be rejected at
+/// check time, not compiled into a core with no schedule.
+///
+/// Each of these used to produce 0 errors and 0 warnings, compile
+/// successfully, and then fail at `rk sim` with an unrelated complaint about
+/// the program's body export — the program simply never ran and nothing said
+/// why. The scheduler dropped them with a bare `continue`.
+#[rstest]
+fn event_driven_task_is_rejected(mut with_db: db::RootDatabase) {
+    let source = r#"
+        PROGRAM P VAR n : DINT; END_VAR n := n + 1; END_PROGRAM
+        CONFIGURATION Cfg
+            RESOURCE R ON CPU
+                TASK T(SINGLE := go, PRIORITY := 1);
+                PROGRAM P1 WITH T : P;
+            END_RESOURCE
+        END_CONFIGURATION
+    "#;
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
+    [E0239] Error: task cannot be scheduled
+       ,-[ file:///test0.st:5:22 ]
+       |
+     5 |                 TASK T(SINGLE := go, PRIORITY := 1);
+       |                      |
+       |                      `-- task 'T' cannot be scheduled: event-driven tasks (SINGLE) are not supported yet; only cyclic tasks run
+    ---'
+    ");
+}
+
+#[rstest]
+fn zero_interval_task_is_rejected(mut with_db: db::RootDatabase) {
+    let source = r#"
+        PROGRAM P VAR n : DINT; END_VAR n := n + 1; END_PROGRAM
+        CONFIGURATION Cfg
+            RESOURCE R ON CPU
+                TASK T(INTERVAL := T#0ms, PRIORITY := 1);
+                PROGRAM P1 WITH T : P;
+            END_RESOURCE
+        END_CONFIGURATION
+    "#;
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
+    [E0239] Error: task cannot be scheduled
+       ,-[ file:///test0.st:5:22 ]
+       |
+     5 |                 TASK T(INTERVAL := T#0ms, PRIORITY := 1);
+       |                      |
+       |                      `-- task 'T' cannot be scheduled: INTERVAL must be greater than zero
+    ---'
+    ");
+}
+
+/// The period is baked into the emitted schedule, so it must be known at
+/// compile time — even a CONSTANT global cannot supply it.
+#[rstest]
+fn non_literal_interval_is_rejected(mut with_db: db::RootDatabase) {
+    let source = r#"
+        PROGRAM P VAR n : DINT; END_VAR n := n + 1; END_PROGRAM
+        CONFIGURATION Cfg
+            RESOURCE R ON CPU
+                TASK T(INTERVAL := someName, PRIORITY := 1);
+                PROGRAM P1 WITH T : P;
+            END_RESOURCE
+        END_CONFIGURATION
+    "#;
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
+    [E0239] Error: task cannot be scheduled
+       ,-[ file:///test0.st:5:22 ]
+       |
+     5 |                 TASK T(INTERVAL := someName, PRIORITY := 1);
+       |                      |
+       |                      `-- task 'T' cannot be scheduled: INTERVAL must be a TIME literal
+    ---'
+    ");
+}
+
+#[rstest]
+fn program_instance_without_a_task_is_rejected(mut with_db: db::RootDatabase) {
+    let source = r#"
+        PROGRAM P VAR n : DINT; END_VAR n := n + 1; END_PROGRAM
+        CONFIGURATION Cfg
+            RESOURCE R ON CPU
+                TASK T(INTERVAL := T#10ms, PRIORITY := 1);
+                PROGRAM P1 : P;
+            END_RESOURCE
+        END_CONFIGURATION
+    "#;
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
+    [E0238] Error: program instance never runs
+       ,-[ file:///test0.st:6:25 ]
+       |
+     6 |                 PROGRAM P1 : P;
+       |                         ^|
+       |                          `-- program instance 'P1' has no WITH <task>, so it will never run
+    ---'
+    ");
+}
+
+/// A TASK with neither SINGLE nor INTERVAL triggers nothing, so a PROGRAM
+/// bound to it never runs — the same silent outcome as the other unschedulable
+/// shapes, and reported the same way.
+#[rstest]
+fn trigger_less_task_is_rejected(mut with_db: db::RootDatabase) {
+    let source = r#"
+        PROGRAM P VAR n : DINT; END_VAR n := n + 1; END_PROGRAM
+        CONFIGURATION Cfg
+            RESOURCE R ON CPU
+                TASK T(PRIORITY := 1);
+                PROGRAM P1 WITH T : P;
+            END_RESOURCE
+        END_CONFIGURATION
+    "#;
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
+    [E0239] Error: task cannot be scheduled
+       ,-[ file:///test0.st:5:22 ]
+       |
+     5 |                 TASK T(PRIORITY := 1);
+       |                      |
+       |                      `-- task 'T' cannot be scheduled: a TASK needs an INTERVAL to run its programs
+    ---'
+    ");
+}
+
+/// ...but the same TASK with nothing bound to it stays clean. Most of this
+/// suite's LSP fixtures declare exactly this shape because it is the shortest
+/// thing that parses, and none of them care whether it could run.
+#[rstest]
+fn an_unused_trigger_less_task_is_accepted(mut with_db: db::RootDatabase) {
+    let source = r#"
+        PROGRAM P VAR n : DINT; END_VAR n := n + 1; END_PROGRAM
+        CONFIGURATION Cfg
+            RESOURCE R ON CPU
+                TASK Spare(PRIORITY := 9);
+                TASK Fast(INTERVAL := T#10ms, PRIORITY := 1);
+                PROGRAM P1 WITH Fast : P;
+            END_RESOURCE
+        END_CONFIGURATION
+    "#;
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"");
+}
+
+/// An unschedulable TASK that nothing is bound to is NOT an error: it costs
+/// nobody anything, and a workspace may declare tasks ahead of using them.
+/// What must never be silent is a PROGRAM that cannot run.
+#[rstest]
+fn an_unused_unschedulable_task_is_accepted(mut with_db: db::RootDatabase) {
+    let source = r#"
+        PROGRAM P VAR n : DINT; END_VAR n := n + 1; END_PROGRAM
+        CONFIGURATION Cfg
+            RESOURCE R ON CPU
+                TASK Later(SINGLE := go, PRIORITY := 9);
+                TASK Fast(INTERVAL := T#10ms, PRIORITY := 1);
+                PROGRAM P1 WITH Fast : P;
+            END_RESOURCE
+        END_CONFIGURATION
+    "#;
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"");
+}
+
+/// The ordinary shape stays clean — these checks reject what cannot run, not
+/// what merely looks unusual.
+#[rstest]
+fn a_schedulable_configuration_is_accepted(mut with_db: db::RootDatabase) {
+    let source = r#"
+        PROGRAM P VAR n : DINT; END_VAR n := n + 1; END_PROGRAM
+        CONFIGURATION Cfg
+            RESOURCE R ON CPU
+                TASK Fast(INTERVAL := T#10ms, PRIORITY := 1);
+                TASK Slow(INTERVAL := LTIME#1s, PRIORITY := 5);
+                PROGRAM P1 WITH Fast : P;
+                PROGRAM P2 WITH Slow : P;
+            END_RESOURCE
+        END_CONFIGURATION
+    "#;
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"");
 }

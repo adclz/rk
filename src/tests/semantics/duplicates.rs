@@ -486,18 +486,18 @@ END_CONFIGURATION
 fn duplicate_tasks_in_config(mut with_db: RootDatabase) {
     let source = r#"
 CONFIGURATION MyCfg
-    TASK t1(PRIORITY := 1);
-    TASK t1(PRIORITY := 2);
+    TASK t1(INTERVAL := T#10ms, PRIORITY := 1);
+    TASK t1(INTERVAL := T#10ms, PRIORITY := 2);
 END_CONFIGURATION
 "#;
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
     [E0114] Error: duplicate definitions
        ,-[ file:///test0.st:4:10 ]
        |
-     3 |     TASK t1(PRIORITY := 1);
+     3 |     TASK t1(INTERVAL := T#10ms, PRIORITY := 1);
        |          ^|
        |           `-- task 't1' is already defined here
-     4 |     TASK t1(PRIORITY := 2);
+     4 |     TASK t1(INTERVAL := T#10ms, PRIORITY := 2);
        |          ^|
        |           `-- duplicate task 't1'
     ---'
@@ -511,7 +511,7 @@ PROGRAM MyProg
 END_PROGRAM
 
 CONFIGURATION MyCfg
-    TASK t1(PRIORITY := 1);
+    TASK t1(INTERVAL := T#10ms, PRIORITY := 1);
     PROGRAM inst1 WITH t1 : MyProg;
     PROGRAM inst1 WITH t1 : MyProg;
 END_CONFIGURATION
@@ -538,11 +538,11 @@ END_PROGRAM
 
 CONFIGURATION MyCfg
     RESOURCE res1 ON CPU_TYPE
-        TASK t1(PRIORITY := 1);
+        TASK t1(INTERVAL := T#10ms, PRIORITY := 1);
         PROGRAM inst1 WITH t1 : MyProg;
     END_RESOURCE
     RESOURCE res1 ON CPU_TYPE
-        TASK t2(PRIORITY := 2);
+        TASK t2(INTERVAL := T#10ms, PRIORITY := 2);
         PROGRAM inst2 WITH t2 : MyProg;
     END_RESOURCE
 END_CONFIGURATION
@@ -567,8 +567,8 @@ fn duplicate_tasks_in_resource(mut with_db: RootDatabase) {
     let source = r#"
 CONFIGURATION MyCfg
     RESOURCE res1 ON CPU_TYPE
-        TASK t1(PRIORITY := 1);
-        TASK t1(PRIORITY := 2);
+        TASK t1(INTERVAL := T#10ms, PRIORITY := 1);
+        TASK t1(INTERVAL := T#10ms, PRIORITY := 2);
     END_RESOURCE
 END_CONFIGURATION
 "#;
@@ -576,10 +576,10 @@ END_CONFIGURATION
     [E0114] Error: duplicate definitions
        ,-[ file:///test0.st:5:14 ]
        |
-     4 |         TASK t1(PRIORITY := 1);
+     4 |         TASK t1(INTERVAL := T#10ms, PRIORITY := 1);
        |              ^|
        |               `-- task 't1' is already defined here
-     5 |         TASK t1(PRIORITY := 2);
+     5 |         TASK t1(INTERVAL := T#10ms, PRIORITY := 2);
        |              ^|
        |               `-- duplicate task 't1'
     ---'
@@ -594,7 +594,7 @@ END_PROGRAM
 
 CONFIGURATION MyCfg
     RESOURCE res1 ON CPU_TYPE
-        TASK t1(PRIORITY := 1);
+        TASK t1(INTERVAL := T#10ms, PRIORITY := 1);
         PROGRAM inst1 WITH t1 : MyProg;
         PROGRAM inst1 WITH t1 : MyProg;
     END_RESOURCE

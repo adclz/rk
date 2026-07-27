@@ -13,8 +13,7 @@ use db::WorkspaceDataBase;
 use hir::{
     Qualifier,
     hir_def::{
-        config::{ConfigDecl, ConfigResource, DataSource, TaskConfig},
-        expressions::expression::{Elementary, ExprKind, PrimaryExpr},
+        config::{ConfigDecl, ConfigResource, TaskConfig},
         interned::identifier::Ident,
         pous::variable::VariableKind,
         program::ProgramDecl,
@@ -175,10 +174,10 @@ pub fn lower_schedule<'db>(
     }
     let mut pending = Vec::new();
     for (task, programs) in grouped {
-        let Some(ds) = task.interval(db) else {
-            continue; // SINGLE/event tasks deferred.
-        };
-        let Some(interval_ns) = interval_nanos(db, &ds) else {
+        // HIR decided which tasks are schedulable and reported E0239 for the
+        // rest, so a task missing from this map has already been diagnosed —
+        // MIR neither re-parses the interval nor re-derives the reason.
+        let Some(&interval_ns) = inferred.task_interval_ns.get(&task) else {
             continue;
         };
         if interval_ns == 0 {
@@ -272,22 +271,6 @@ fn type_has_retain<'db>(
             && (v.qualifier(db).contains(Qualifier::RETAIN)
                 || type_has_retain(db, v.spec(db).infer(db), visited))
     })
-}
-
-/// Extract a duration in nanoseconds from a task's INTERVAL data source.
-fn interval_nanos<'db>(db: &'db dyn WorkspaceDataBase, ds: &DataSource<'db>) -> Option<u64> {
-    let DataSource::Constant(expr) = ds else {
-        return None;
-    };
-    let ExprKind::PrimaryExpr(PrimaryExpr::Literal(elem)) = expr.expr(db) else {
-        return None;
-    };
-    let dur = match elem {
-        Elementary::Time(id) => id.as_time(db).ok()?,
-        Elementary::LTime(id) => id.as_ltime(db).ok()?,
-        _ => return None,
-    };
-    u64::try_from(dur.whole_nanoseconds()).ok()
 }
 
 fn task_priority<'db>(db: &'db dyn WorkspaceDataBase, task: &TaskConfig<'db>) -> Option<u32> {
