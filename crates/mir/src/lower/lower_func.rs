@@ -928,10 +928,7 @@ pub(crate) fn lower_var_type<'db>(
     db: &'db dyn WorkspaceDataBase,
     var: VariableDecl<'db>,
 ) -> Result<MirType, LowerTypeError> {
-    let ty = var.spec(db).infer(db);
-    let mir = lower_type(db, ty)?;
-    // Honor a declared `STRING[N]` capacity (shared with field/global lowering).
-    Ok(super::lower_type::apply_sized_string(db, var.spec(db), mir))
+    super::lower_type::lower_spec(db, var.spec(db))
 }
 
 /// Collect identifiers of variables whose address is taken (via REF()).

@@ -65,8 +65,9 @@ impl LowerTypeError {
     }
 }
 
-/// Convert a HIR `Type` to a `MirType`.
-/// The type is normalized first to resolve aliases, variables, and callable return types.
+/// Convert an inferred HIR `Type` to a `MirType`. A `STRING` lowers at
+/// the default capacity, since an inferred type carries no declared
+/// length; use [`lower_spec`] when a spec is available.
 pub fn lower_type<'db>(
     db: &'db dyn WorkspaceDataBase,
     ty: Type<'db>,
@@ -146,11 +147,19 @@ pub fn elementary_spec_to_mir(spec: ElementarySpec) -> Result<MirElementary, Low
     })
 }
 
-/// Honor a declared `STRING[N]` capacity. `lower_type` always yields the default
-/// capacity because `Type::normalize` collapses the `[N]`; recover it from the
-/// variable/field's unnormalized `SizedString` spec. A no-op for non-STRING
-/// types, so it can be applied uniformly after lowering any field's type.
-pub(crate) fn apply_sized_string<'db>(
+/// Lower a DECLARATION to its MIR type: a variable, a struct element, an
+/// array's element type, a global. Prefer it over [`lower_type`], which
+/// takes an inferred `Type` and cannot know a declared `STRING[n]` length:
+/// `Type::normalize` collapses `STRING[n]` and plain `STRING`, since the
+/// length is a layout fact, not part of type identity.
+pub(crate) fn lower_spec<'db>(
+    db: &'db dyn WorkspaceDataBase,
+    spec: hir::hir_def::expressions::spec::Spec<'db>,
+) -> Result<MirType, LowerTypeError> {
+    Ok(apply_sized_string(db, spec, lower_type(db, spec.infer(db))?))
+}
+
+fn apply_sized_string<'db>(
     db: &'db dyn WorkspaceDataBase,
     spec: hir::hir_def::expressions::spec::Spec<'db>,
     mir: MirType,
@@ -216,8 +225,7 @@ pub fn lower_struct_type_named<'db>(
     let mut fields = Vec::new();
 
     for element in struct_type.elements(db) {
-        let field_type = element.spec(db).infer(db);
-        let mir_type = apply_sized_string(db, element.spec(db), lower_type(db, field_type)?);
+        let mir_type = lower_spec(db, element.spec(db))?;
         let field_align = mir_type.alignment();
         let field_size = mir_type.size_bytes();
 
@@ -252,11 +260,7 @@ fn lower_array_type<'db>(
     db: &'db dyn WorkspaceDataBase,
     array_type: Array<'db>,
 ) -> Result<MirType, LowerTypeError> {
-    let element_type_hir = array_type.of_type(db).infer(db);
-    // The element's declared `STRING[N]` lives on its spec, not on the type —
-    // without this an `ARRAY OF STRING[4]` laid out 84-byte elements and never
-    // truncated, exactly as a plain STRING would.
-    let element_type = apply_sized_string(db, array_type.of_type(db), lower_type(db, element_type_hir)?);
+    let element_type = lower_spec(db, array_type.of_type(db))?;
     let element_size = element_type.size_bytes();
     let element_align = element_type.alignment();
 
@@ -389,8 +393,7 @@ fn lower_instance_struct<'db>(
 
     for member in hir::hir_ty::head::inheritance::instance_members(db, pou) {
         let var = member.var;
-        let var_type = var.spec(db).infer(db);
-        let mir_type = apply_sized_string(db, var.spec(db), lower_type(db, var_type)?);
+        let mir_type = lower_spec(db, var.spec(db))?;
         // A VAR_IN_OUT field holds the address of the caller's l-value: a
         // pointer the body auto-derefs and the call site writes once.
         let is_inout = var.kind(db) == hir::hir_def::pous::variable::VariableKind::InOut;
@@ -443,8 +446,7 @@ pub fn lower_program_type<'db>(
         if var.kind(db) == hir::hir_def::pous::variable::VariableKind::Temp {
             continue;
         }
-        let mir_type =
-            apply_sized_string(db, var.spec(db), lower_type(db, var.spec(db).infer(db))?);
+        let mir_type = lower_spec(db, var.spec(db))?;
         let field_align = mir_type.alignment();
         let field_size = mir_type.size_bytes();
 

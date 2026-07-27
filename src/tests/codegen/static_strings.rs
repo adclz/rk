@@ -359,3 +359,50 @@ fn aliased_sized_string_truncates_at_the_declared_capacity(mut with_db: db::Root
     let result: i32 = super::execute_wasm(&wasm, "run", ());
     assert_eq!(result, 1, "an aliased STRING[4] holds 4 characters");
 }
+
+/// A declared `STRING[n]` keeps its length in EVERY container it can appear in.
+///
+/// The length is not part of type identity — `STRING[4] := STRING[80]` is legal
+/// and truncates, and two lengths must not read as different overloads — so it
+/// survives only on the spec, and every container has to lower through the
+/// spec-aware path. Three separate bugs came from one container forgetting:
+/// an `ARRAY OF STRING[4]` with 84-byte elements, a `TYPE` alias silently
+/// widened to 80, and a struct field overrunning its slot.
+///
+/// One test over all of them, so a container that regresses is visible next to
+/// the ones that do not.
+#[rstest]
+#[case::direct("s", "VAR s : STRING[4]; END_VAR")]
+#[case::alias("s", "VAR s : Small; END_VAR")]
+#[case::struct_field("r.f", "VAR r : Rec; END_VAR")]
+#[case::fb_member("h.s", "VAR h : Holder; END_VAR")]
+#[case::array_element("a[1]", "VAR a : ARRAY[0..1] OF STRING[4]; END_VAR")]
+#[case::array_of_alias("b[1]", "VAR b : ARRAY[0..1] OF Small; END_VAR")]
+#[case::struct_in_array("c[1].f", "VAR c : ARRAY[0..1] OF Rec; END_VAR")]
+fn a_sized_string_keeps_its_length_in_every_container(
+    mut with_db: db::RootDatabase,
+    #[case] target: &str,
+    #[case] decl: &str,
+) {
+    let source = format!(
+        r#"
+        TYPE Small : STRING[4]; END_TYPE
+        TYPE Rec : STRUCT f : STRING[4]; g : DINT; END_STRUCT; END_TYPE
+
+        FUNCTION_BLOCK Holder
+        VAR
+            s : STRING[4];
+        END_VAR
+        END_FUNCTION_BLOCK
+
+        FUNCTION run : DINT
+        {decl}
+            {target} := 'ABCDEFGHIJKLMNOP';
+            IF {target} = 'ABCD' THEN run := 1; ELSE run := 0; END_IF;
+        END_FUNCTION
+    "#
+    );
+    let wasm = super::compile_to_wasm(&mut with_db, &source);
+    let result: i32 = super::execute_wasm(&wasm, "run", ());
+    assert_eq!(result, 1, "`{target}` must hold exactly its declared 4 characters");
+}

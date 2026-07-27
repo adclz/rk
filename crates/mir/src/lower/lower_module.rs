@@ -1093,12 +1093,7 @@ fn add_global<'db>(
     memory_layout: &mut MirMemoryLayout,
     table: &mut GlobalTable<'db>,
 ) -> Result<(), LowerTypeError> {
-    use hir::hir_ty::infer::Infer;
-    let ty = super::lower_type::apply_sized_string(
-        db,
-        v.spec(db),
-        super::lower_type::lower_type(db, v.spec(db).infer(db))?,
-    );
+    let ty = super::lower_type::lower_spec(db, v.spec(db))?;
     let size = ty.size_bytes();
     let align = ty.alignment();
     let addr = memory_layout.allocate(
