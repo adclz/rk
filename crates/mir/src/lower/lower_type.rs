@@ -155,14 +155,46 @@ pub(crate) fn apply_sized_string<'db>(
     spec: hir::hir_def::expressions::spec::Spec<'db>,
     mir: MirType,
 ) -> MirType {
-    use hir::hir_def::expressions::spec::SpecKind;
-    if matches!(mir, MirType::String { .. })
-        && let SpecKind::SizedString(length_expr) = spec.kind(db)
-        && let Some(n) = length_expr.as_range(db)
-    {
-        return MirType::String { capacity: n as u32 };
+    if !matches!(mir, MirType::String { .. }) {
+        return mir;
     }
-    mir
+    match declared_string_capacity(db, spec, 0) {
+        Some(capacity) => MirType::String { capacity },
+        None => mir,
+    }
+}
+
+/// The `N` a spec declares for a STRING, seen through whatever names it.
+///
+/// `Type::normalize` collapses `STRING[N]` and plain `STRING` onto the same
+/// type, so the length only survives on the SPEC. It does not always survive on
+/// the spec at hand either: `s : Alias10` where `TYPE Alias10 : STRING[10]`
+/// carries a `Target`, and the `SizedString` sits on the data type's own spec
+/// one hop away. Following that hop is the difference between a 10-character
+/// string and an 80-character one.
+fn declared_string_capacity<'db>(
+    db: &'db dyn WorkspaceDataBase,
+    spec: hir::hir_def::expressions::spec::Spec<'db>,
+    depth: u32,
+) -> Option<u32> {
+    use hir::hir_def::expressions::spec::SpecKind;
+    // A cyclic alias is rejected by HIR (E09xx); stop regardless so lowering
+    // terminates on a body that was compiled anyway.
+    if depth > 16 {
+        return None;
+    }
+    match spec.kind(db) {
+        SpecKind::SizedString(length_expr) => length_expr.as_range(db).map(|n| n as u32),
+        SpecKind::Ref(inner) => declared_string_capacity(db, *inner, depth + 1),
+        // Named: ask the data type it resolves to for its own spec. Using the
+        // inferred type rather than re-resolving the name keeps the binding
+        // HIR's decision.
+        SpecKind::Target(_) => match spec.infer(db) {
+            Type::DataType(dt) => declared_string_capacity(db, dt.spec(db), depth + 1),
+            _ => None,
+        },
+        _ => None,
+    }
 }
 
 fn lower_struct_type<'db>(
@@ -221,7 +253,10 @@ fn lower_array_type<'db>(
     array_type: Array<'db>,
 ) -> Result<MirType, LowerTypeError> {
     let element_type_hir = array_type.of_type(db).infer(db);
-    let element_type = lower_type(db, element_type_hir)?;
+    // The element's declared `STRING[N]` lives on its spec, not on the type —
+    // without this an `ARRAY OF STRING[4]` laid out 84-byte elements and never
+    // truncated, exactly as a plain STRING would.
+    let element_type = apply_sized_string(db, array_type.of_type(db), lower_type(db, element_type_hir)?);
     let element_size = element_type.size_bytes();
     let element_align = element_type.alignment();
 

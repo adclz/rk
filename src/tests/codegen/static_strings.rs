@@ -311,3 +311,51 @@ fn string_global_shared(mut with_db: db::RootDatabase) {
     plc.run(2).expect("scans"); // Setter writes g, Mirror copies it into seen
     assert_eq!(read_retain_string(&plc), "shared");
 }
+
+/// Regression: `ARRAY[..] OF STRING[n]` used to lay out 4+80-byte elements and
+/// never truncate, because `lower_array_type` lowered the element through
+/// `lower_type` alone. `Type::normalize` collapses `STRING[n]` and plain
+/// `STRING` onto the same type, so the declared length only survives on the
+/// SPEC — and this was the one call site that did not consult it.
+///
+/// Asserted through TRUNCATION, not through a neighbouring guard: the wrong
+/// layout over-allocates (84 bytes per element instead of 8), so nothing is
+/// ever clobbered and a guard variable passes either way. What actually
+/// differs is how much of the source string the element keeps.
+#[rstest]
+fn array_of_sized_strings_truncates_at_the_declared_capacity(mut with_db: db::RootDatabase) {
+    let source = r#"
+        FUNCTION run : DINT
+        VAR
+            a : ARRAY[0..1] OF STRING[4];
+        END_VAR
+            a[0] := 'ABCDEFGHIJKLMNOP';
+            IF a[0] = 'ABCD' THEN run := 1; ELSE run := 0; END_IF;
+        END_FUNCTION
+    "#;
+    let wasm = super::compile_to_wasm(&mut with_db, source);
+    let result: i32 = super::execute_wasm(&wasm, "run", ());
+    assert_eq!(result, 1, "an element of ARRAY OF STRING[4] holds 4 characters");
+}
+
+/// A `STRING[n]` reached through a `TYPE` alias keeps its length. The alias
+/// carries a `Target` spec, so the `SizedString` sits on the data type's own
+/// spec one hop away; not following that hop silently gave every aliased
+/// string the 80-byte default.
+#[rstest]
+fn aliased_sized_string_truncates_at_the_declared_capacity(mut with_db: db::RootDatabase) {
+    let source = r#"
+        TYPE Small : STRING[4]; END_TYPE
+
+        FUNCTION run : DINT
+        VAR
+            s : Small;
+        END_VAR
+            s := 'ABCDEFGHIJKLMNOP';
+            IF s = 'ABCD' THEN run := 1; ELSE run := 0; END_IF;
+        END_FUNCTION
+    "#;
+    let wasm = super::compile_to_wasm(&mut with_db, source);
+    let result: i32 = super::execute_wasm(&wasm, "run", ());
+    assert_eq!(result, 1, "an aliased STRING[4] holds 4 characters");
+}
