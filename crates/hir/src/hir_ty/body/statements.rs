@@ -278,6 +278,24 @@ impl<'db> StmtsResolverCtx<'db> {
                     body,
                 } => {
                     resolver.resolve_variable_access(db, *control_variable, ctx);
+
+                    // IEC's grammar: `control_variable ::= identifier`. A
+                    // path (`r.i`), an index (`a[k]`), a deref or a bit access
+                    // is not a counter — other toolchains rejects them too. A bare name
+                    // resolving to an FB/PROGRAM member is fine: the rule is
+                    // about the syntax, not where the variable lives. Without
+                    // this check the shapes sailed through to MIR, which
+                    // rejected them with an unlocated "unsupported" error —
+                    // `rk check` said one thing and `rk compile` another.
+                    if !for_control_is_bare_identifier(db, *control_variable) {
+                        ctx.errors.push(
+                            crate::check::errors::e10_control_flow::ControlFlowError::ForControlNotAVariable {
+                                access: CallSite::from_scoped(db, control_variable),
+                            }
+                            .to_diagnostic(db, ctx.scope.file(db)),
+                        );
+                    }
+
                     let control_typ =
                         ctx.type_of_variable_access_with_adjustments(db, *control_variable);
 
@@ -561,4 +579,29 @@ impl<'db> StmtsResolverCtx<'db> {
         infer.resolve_expr(db, expr, ctx);
         infer.check_expr(db, expr, ctx);
     }
+}
+
+/// Whether a FOR control access is a single bare identifier — no path steps
+/// past the root, no indexing, no dereference, no partial (bit) access.
+fn for_control_is_bare_identifier<'db>(
+    db: &'db dyn WorkspaceDataBase,
+    access: crate::hir_def::expressions::expression::VariableAccess<'db>,
+) -> bool {
+    use crate::hir_def::expressions::expression::{PathExprKind, VariableAccessKind};
+
+    if access.multibits(db).is_some() {
+        return false;
+    }
+    let VariableAccessKind::Symbolic(begin) = access.kind(db) else {
+        // A directly represented variable (%MW0) is not an identifier.
+        return false;
+    };
+    // THIS.x etc. — an invocation prefix is already more than an identifier.
+    if begin.invocation(db).is_some() {
+        return false;
+    }
+    let Some(path) = begin.expr(db) else {
+        return false;
+    };
+    matches!(path.expr(db), PathExprKind::VarAccess(_))
 }

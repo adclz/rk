@@ -38,6 +38,14 @@ pub enum ControlFlowError<'db> {
     ExitOutsideLoop {
         stmt: Stmt<'db>,
     },
+    /// A FOR control variable that is not a bare identifier. IEC 61131-3's
+    /// grammar says `control_variable ::= identifier`, so `r.i`, `a[k]` and
+    /// `p^` cannot be counters — and other toolchains rejects them too. (A bare name
+    /// that RESOLVES to an FB/PROGRAM member is fine; the restriction is on
+    /// the syntax, not on where the variable lives.)
+    ForControlNotAVariable {
+        access: CallSite<'db>,
+    },
     DerefPossiblyNull {
         var: VariableDecl<'db>,
         expr: PathExpr<'db>,
@@ -58,6 +66,7 @@ impl<'db> ErrorCode for ControlFlowError<'db> {
             Self::ExitOutsideLoop { .. } => "E1002",
             Self::DerefPossiblyNull { .. } => "E1003",
             Self::AssignToConstant { .. } => "E1004",
+            Self::ForControlNotAVariable { .. } => "E1005",
         }
     }
 
@@ -123,6 +132,19 @@ impl<'db> ToIdeDiagnostic<'db> for ControlFlowError<'db> {
                 .severity(DiagnosticSeverity::ERROR)
                 .desc(self)
                 .call(),
+            Self::ForControlNotAVariable { access } => {
+                let mut diag = diag()
+                    .message("a FOR control variable must be a plain variable".to_string())
+                    .severity(DiagnosticSeverity::ERROR)
+                    .desc(self)
+                    .range(crate::denormalize(db, file, &access.get_span(db)).unwrap_or_default())
+                    .call();
+                diag.with_note(
+                    "count in a plain variable and assign it where it is needed inside the loop"
+                        .to_string(),
+                );
+                diag
+            }
             Self::ExitOutsideLoop { stmt } => diag()
                 .message("'EXIT' can only be used inside loops".to_string())
                 .range(crate::denormalize(db, file, &stmt.get_span(db)).unwrap_or_default())
