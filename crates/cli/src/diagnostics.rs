@@ -8,7 +8,6 @@
 use std::io::Write;
 use std::path::{Path, PathBuf};
 
-use auto_lsp::default::db::BaseDatabase;
 use auto_lsp::default::db::file::File;
 use auto_lsp::lsp_types::{DiagnosticSeverity, Url};
 use db::RootDatabase;
@@ -28,10 +27,11 @@ pub fn collect_diagnostics(
         .then(|| db::config_file::get_config(db).linter.clone())
         .flatten();
 
-    db.get_files()
+    // Ordered, so the diagnostics come out in the same sequence every run —
+    // rayon's collect preserves the input order, it just cannot invent one.
+    crate::file_order::ordered_files(db)
         .into_par_iter()
         .map_with(db.clone(), |db, file| {
-            let file = *file;
             let mut diagnostics = hir::check::diagnostics_for_file(db, file).as_ref().clone();
             if let Some(ref linter_config) = linter_config {
                 linter::lint_file(db, file, linter_config, &mut diagnostics);
@@ -69,10 +69,8 @@ impl<'db> DiagnosticReporter<'db> {
         per_file: &[(File, Vec<IdeDiagnostic>)],
         out: &mut dyn Write,
     ) -> (i32, i32) {
-        let caches: Vec<(&str, &str)> = self
-            .db
-            .get_files()
-            .iter()
+        let caches: Vec<(&str, &str)> = crate::file_order::ordered_files(self.db)
+            .into_iter()
             .map(|file| (file.url(self.db).as_str(), file.document(self.db).as_str()))
             .collect();
 

@@ -1,7 +1,6 @@
 use std::io::Write;
 
-use auto_lsp::default::db::BaseDatabase;
-use db::{RootDatabase, WorkspaceDataBase};
+use db::RootDatabase;
 use hir::hir_def::semantic_index::semantic_index;
 
 use crate::diagnostics::{DiagnosticReporter, collect_diagnostics};
@@ -66,11 +65,9 @@ pub fn build_core(
         return Err(text);
     }
 
-    let sem_indices: Vec<_> = db
-        .get_files()
-        .iter()
-        .chain(db.get_std_lib_files().iter())
-        .map(|file| semantic_index(db, *file))
+    let sem_indices: Vec<_> = crate::file_order::ordered_files_with_stdlib(db)
+        .into_iter()
+        .map(|file| semantic_index(db, file))
         .collect();
 
     let mir_module = match mir::lower::lower_module::lower_modules(db, &sem_indices) {
@@ -117,11 +114,9 @@ pub fn build_core_quiet(
         return Err(text);
     }
 
-    let sem_indices: Vec<_> = db
-        .get_files()
-        .iter()
-        .chain(db.get_std_lib_files().iter())
-        .map(|file| semantic_index(db, *file))
+    let sem_indices: Vec<_> = crate::file_order::ordered_files_with_stdlib(db)
+        .into_iter()
+        .map(|file| semantic_index(db, file))
         .collect();
     let mir_module =
         mir::lower::lower_module::lower_modules(db, &sem_indices).map_err(|e| {
@@ -321,8 +316,10 @@ mod tests {
         let inputs: Vec<Vec<u8>> = (0..8).map(|i| module_with_padding(64 + i * 32)).collect();
         let handles: Vec<_> = inputs
             .iter()
-            .cloned()
-            .map(|m| std::thread::spawn(move || optimize_wasm(m, Some("4"), false)))
+            .map(|m| {
+                let m = m.clone();
+                std::thread::spawn(move || optimize_wasm(m, Some("4"), false))
+            })
             .collect();
         let results: Vec<Vec<u8>> = handles.into_iter().map(|h| h.join().unwrap()).collect();
 
