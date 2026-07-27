@@ -6,14 +6,16 @@ pub fn run_test(
     workspace: &std::path::Path,
     no_stdlib: bool,
     filter: Option<&str>,
-    _opt_level: Option<&str>,
+    opt_level: Option<&str>,
     verbose: bool,
 ) -> CliResult<()> {
     let db = init_db(workspace, verbose, !no_stdlib).ok_or(CliError::Failed)?;
 
-    // Test profile: core module → component (no optimization).
+    // Tests default to the unoptimized core but honour `-O`, so an optimized
+    // build can be checked to compute the same answers.
     let (core_bytes, mir_module) =
         build_core(&db, workspace, verbose).map_err(|_| CliError::Failed)?;
+    let core_bytes = crate::compiler::optimize_wasm(core_bytes, opt_level, verbose);
     let component_bytes = wasm_codegen::component::wrap_in_component(&db, &core_bytes, &mir_module)
         .map_err(|e| CliError::msg(format!("component: {e}")))?;
 

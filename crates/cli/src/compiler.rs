@@ -138,51 +138,50 @@ pub fn debug_core_path(workspace: &std::path::Path) -> std::path::PathBuf {
     workspace.join("rk_build").join("debug").join("core.wasm")
 }
 
-/// Run wasm-opt on the WASM bytes if an optimization level is specified.
+/// The post-MVP proposals this compiler's output uses. wasm-opt validates
+/// against its own feature set and refuses a module using anything it
+/// was not told about: bulk-memory (`memory.fill`), sign-ext,
+/// exception-handling (`RAISE`), multivalue (STRING returns),
+/// nontrapping-float-to-int.
+const WASM_FEATURES: &[&str] = &[
+    "bulk-memory",
+    "sign-ext",
+    "exception-handling",
+    "multivalue",
+    "nontrapping-float-to-int",
+];
+
+/// Run the optimizer over `wasm_bytes`, or return them unchanged.
+///
+/// The optimizer is an external binary — see [`crate::wasm_opt`] for how it is
+/// found. A failure at any point keeps the unoptimized module, which is correct
+/// but larger; it is never a reason to fail the build.
 pub fn optimize_wasm(wasm_bytes: Vec<u8>, opt_level: Option<&str>, verbose: bool) -> Vec<u8> {
     let Some(level) = opt_level else {
         return wasm_bytes;
     };
-
-    let mut opts = match level {
-        "0" => wasm_opt::OptimizationOptions::new_opt_level_0(),
-        "1" => wasm_opt::OptimizationOptions::new_opt_level_1(),
-        "2" => wasm_opt::OptimizationOptions::new_opt_level_2(),
-        "3" => wasm_opt::OptimizationOptions::new_opt_level_3(),
-        "4" => wasm_opt::OptimizationOptions::new_opt_level_4(),
-        "s" => wasm_opt::OptimizationOptions::new_optimize_for_size(),
-        "z" => wasm_opt::OptimizationOptions::new_optimize_for_size_aggressively(),
-        _ => {
-            ui::warn(format!(
-                "unknown optimization level '{level}' (valid: 0-4, s, z)"
-            ));
-            return wasm_bytes;
-        }
+    if !matches!(level, "0" | "1" | "2" | "3" | "4" | "s" | "z") {
+        ui::warn(format!(
+            "unknown optimization level '{level}' (valid: 0-4, s, z)"
+        ));
+        return wasm_bytes;
+    }
+    let Some(wasm_opt) = crate::wasm_opt::find(verbose) else {
+        ui::warn("could not optimize: no wasm-opt available. The build is correct but NOT optimized.");
+        return wasm_bytes;
     };
-
-    // Enable the post-MVP proposals the codegen actually emits. Binaryen
-    // validates against its own feature set first, and with the MVP default it
-    // rejects the whole module — silently falling back to UNOPTIMIZED output.
-    // `bulk-memory` is required by the `memory.fill` that resets aggregate
-    // VAR_TEMP on entry; `sign-ext` by the sub-width normalization
-    // (`i32.extend8_s`/`extend16_s`); `exception-handling` by `__RAISE`.
-    opts.enable_feature(wasm_opt::Feature::BulkMemory)
-        .enable_feature(wasm_opt::Feature::SignExt)
-        .enable_feature(wasm_opt::Feature::ExceptionHandling);
 
     if verbose {
         ui::detail(format!("    Optimizing wasm-opt -O{level}"));
     }
-
     let original_size = wasm_bytes.len();
 
     // wasm-opt works on files, so the module makes a round trip through disk.
-    //
-    // The scratch directory must be PRIVATE to this invocation. It used to be
+    // The scratch directory must be PRIVATE to this invocation: it used to be
     // two fixed names in the shared temp dir, so two `rk compile` runs on one
-    // machine read and deleted each other's files: artifacts came back holding
-    // the other workspace's program, or truncated, or silently unoptimized -
-    // and the truncated ones were still reported as a successful compile.
+    // machine read and deleted each other's files — artifacts came back holding
+    // the other workspace's program, or truncated, and the truncated ones were
+    // still reported as a successful compile.
     let scratch = match tempfile::Builder::new().prefix("rk-wasm-opt-").tempdir() {
         Ok(dir) => dir,
         Err(e) => {
@@ -192,53 +191,70 @@ pub fn optimize_wasm(wasm_bytes: Vec<u8>, opt_level: Option<&str>, verbose: bool
     };
     let infile = scratch.path().join("in.wasm");
     let outfile = scratch.path().join("out.wasm");
-
     if let Err(e) = std::fs::write(&infile, &wasm_bytes) {
         ui::warn(format!("failed to write temp file: {e}"));
         return wasm_bytes;
     }
 
-    match opts.run(&infile, &outfile) {
-        Ok(()) => {
-            // Never ship what we cannot recognise as a wasm module: a partial
-            // or absent output degrades to the unoptimized bytes rather than
-            // being written out as the artifact.
-            let optimized = match std::fs::read(&outfile) {
-                Ok(bytes) if bytes.starts_with(b"\0asm") => bytes,
-                Ok(bytes) => {
-                    ui::warn(format!(
-                        "wasm-opt produced {} bytes that are not a wasm module; keeping the \
-                         unoptimized build",
-                        bytes.len()
-                    ));
-                    return wasm_bytes;
-                }
-                Err(e) => {
-                    ui::warn(format!(
-                        "could not read wasm-opt output ({e}); keeping the unoptimized build"
-                    ));
-                    return wasm_bytes;
-                }
-            };
-            let optimized = preserve_retain_map(&wasm_bytes, optimized);
-
-            if verbose {
-                let savings = original_size as f64 - optimized.len() as f64;
-                let pct = (savings / original_size as f64) * 100.0;
-                ui::detail(format!(
-                    "    Optimized {} → {} bytes ({:.1}% reduction)",
-                    original_size,
-                    optimized.len(),
-                    pct
-                ));
-            }
-            optimized
+    let mut cmd = std::process::Command::new(&wasm_opt);
+    for feature in WASM_FEATURES {
+        cmd.arg(format!("--enable-{feature}"));
+    }
+    cmd.arg(format!("-O{level}"))
+        .arg(&infile)
+        .arg("-o")
+        .arg(&outfile);
+    match cmd.output() {
+        Ok(out) if out.status.success() => {}
+        Ok(out) => {
+            // Binaryen's Flatten pass does not handle `try_table`, so `-O4`
+            // aborts; report what it said.
+            let stderr = String::from_utf8_lossy(&out.stderr);
+            ui::warn(format!(
+                "could not optimize: `wasm-opt -O{level}` failed: {}. The build is correct \
+                 but NOT optimized.",
+                stderr.lines().next().unwrap_or("no output").trim()
+            ));
+            return wasm_bytes;
         }
         Err(e) => {
-            ui::warn(format!("wasm-opt failed: {e}"));
-            wasm_bytes
+            ui::warn(format!("could not run {}: {e}", wasm_opt.display()));
+            return wasm_bytes;
         }
     }
+
+    // Never ship what is not recognisably a wasm module: a partial output
+    // degrades to the unoptimized bytes.
+    let optimized = match std::fs::read(&outfile) {
+        Ok(bytes) if bytes.starts_with(b"\0asm") => bytes,
+        Ok(bytes) => {
+            ui::warn(format!(
+                "the optimizer produced {} bytes that are not a wasm module; keeping the \
+                 unoptimized build",
+                bytes.len()
+            ));
+            return wasm_bytes;
+        }
+        Err(e) => {
+            ui::warn(format!(
+                "could not read the optimizer's output ({e}); keeping the unoptimized build"
+            ));
+            return wasm_bytes;
+        }
+    };
+    let optimized = preserve_retain_map(&wasm_bytes, optimized);
+
+    if verbose {
+        let savings = original_size as f64 - optimized.len() as f64;
+        let pct = (savings / original_size as f64) * 100.0;
+        ui::detail(format!(
+            "    Optimized {} → {} bytes ({:.1}% reduction)",
+            original_size,
+            optimized.len(),
+            pct
+        ));
+    }
+    optimized
 }
 
 /// The `retain-map` custom section is LOAD-BEARING (per-field RETAIN

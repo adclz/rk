@@ -35,5 +35,25 @@ jobs:
       - uses: Swatinem/rust-cache@v2
       - name: Build the rk CLI
         run: cargo build -p rk --release
+      # The bundled `wasm-opt` crate is pinned to Binaryen 116, which predates
+      # `try_table` — the instruction emitted for RAISE and the stdlib's
+      # assertions — so it cannot read any realistic module and `-O` degrades
+      # to an unoptimized build. Without this step the optimized run below
+      # would silently be a second unoptimized run.
+      - name: Install Binaryen (for wasm-opt)
+        run: |
+          curl -sSfL -o "$RUNNER_TEMP/binaryen.tar.gz" \
+            https://github.com/WebAssembly/binaryen/releases/download/version_131/binaryen-version_131-x86_64-linux.tar.gz
+          tar xzf "$RUNNER_TEMP/binaryen.tar.gz" -C "$RUNNER_TEMP"
+          echo "$RUNNER_TEMP/binaryen-version_131/bin" >> "$GITHUB_PATH"
+      - name: Check wasm-opt is the one we expect
+        run: wasm-opt --version
       - name: Compile and run the stdlib test suite
         run: cd stdlib && ../target/release/rk test
+      # Same suite against an OPTIMIZED build. Until `-O` could read these
+      # modules at all, optimized and unoptimized behaviour had never been
+      # compared; this is what keeps that answer current. `-O4` is excluded
+      # deliberately — Binaryen's Flatten pass still aborts on `try_table` as
+      # of 131, so it is an upstream limitation, not a stale pin.
+      - name: Run the stdlib test suite against an optimized build
+        run: cd stdlib && ../target/release/rk test -O z

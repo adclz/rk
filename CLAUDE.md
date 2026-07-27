@@ -40,6 +40,17 @@ cargo build --bin vscode-lsp-server
 # Run the CLI diagnostic checker
 cargo run --bin iec -- <workspace_path>
 
+# Optimized builds (`rk compile -O <level>`) need a wasm-opt from Binaryen 119+
+# on PATH; CI pins 131. The bundled `wasm-opt` CRATE is stuck at Binaryen 116
+# (last released March 2024) which predates `try_table` — the instruction
+# emitted for RAISE and the stdlib's assertions — so it cannot read any
+# realistic module and `-O` degrades to an unoptimized (still correct) build
+# with a warning.
+#
+# Use -O2/-O3/-Os/-Oz. `-O4` aborts on every Binaryen up to and including 131
+# ("unexpected expr type" in the Flatten pass, which does not handle
+# try_table) — an upstream limitation, not a stale version.
+
 # Fuzz testing
 cargo +nightly build --release --manifest-path crates/fuzz/Cargo.toml --bin fuzz_compiler
 cargo +nightly build --release --manifest-path crates/fuzz/Cargo.toml --bin fuzz_formatter
