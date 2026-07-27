@@ -37,6 +37,46 @@ use crate::{
 /// Why a TASK cannot be scheduled. Only cyclic tasks with a literal, non-zero
 /// INTERVAL are; each other shape gets its own message rather than a shared
 /// "unsupported", because the fix differs in every case.
+/// Which parsed-but-inert CONFIGURATION construct was found.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, salsa::Update)]
+pub enum UnsupportedConfigKind {
+    /// `PROGRAM P WITH T : Type (in := src)` — the connection list is read and
+    /// then discarded: no copy is emitted around the scan, and the names are
+    /// never resolved, so a typo passes silently.
+    ProgramConnection,
+    /// `PROGRAM P WITH T : Type (fb WITH other_task)` — associating a nested
+    /// FB with its own task.
+    FbTaskAssociation,
+    /// `VAR_CONFIG PA.x : INT := 42;` — resolved and type-checked against the
+    /// instance's field, then thrown away, so the field keeps its declared
+    /// value. The validation makes this one especially misleading.
+    InstanceInit,
+}
+
+impl UnsupportedConfigKind {
+    fn message(self) -> &'static str {
+        match self {
+            Self::ProgramConnection => {
+                "program connection lists are parsed but not wired up yet, so this has no effect"
+            }
+            Self::FbTaskAssociation => {
+                "associating a function block with its own task is not supported yet"
+            }
+            Self::InstanceInit => {
+                "VAR_CONFIG is checked but not applied yet, so this value never reaches the instance"
+            }
+        }
+    }
+
+    fn note(self) -> &'static str {
+        match self {
+            Self::ProgramConnection => "assign it in the program body instead",
+            Self::FbTaskAssociation => "run the function block from its enclosing program's task",
+            Self::InstanceInit => "set the value in the program's own VAR declaration instead",
+        }
+    }
+}
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, salsa::Update)]
 pub enum UnschedulableReason {
     /// `SINGLE := <event>` — event-driven tasks are not implemented.
@@ -163,6 +203,14 @@ pub enum ResolveError<'db> {
     /// A PROGRAM instance carries no `WITH <task>`, so nothing would ever run it.
     ProgramWithoutTask {
         instance: SpanIdent<'db>,
+    },
+    /// A configuration construct that is parsed but does nothing. Reported so a
+    /// user is not left believing state they wrote is being applied — the
+    /// silent version is worse than a rejection, because the compiler accepts
+    /// the input and then ignores it.
+    UnsupportedConfigElement {
+        expr: PathExpr<'db>,
+        kind: UnsupportedConfigKind,
     },
     /// A TASK the scheduler cannot honour. `reason` says which rule it broke,
     /// so the four causes do not collapse into one message.
@@ -315,6 +363,7 @@ impl<'db> ErrorCode for ResolveError<'db> {
             Self::InOutParameterBoundWithArrow { .. } => "E0236",
             Self::AmbiguousOverload { .. } => "E0237",
             Self::ProgramWithoutTask { .. } => "E0238",
+            Self::UnsupportedConfigElement { .. } => "E0240",
             Self::UnschedulableTask { .. } => "E0239",
         }
     }
@@ -355,6 +404,7 @@ impl<'db> ErrorCode for ResolveError<'db> {
             }
             Self::AmbiguousOverload { .. } => "ambiguous overloaded call",
             Self::ProgramWithoutTask { .. } => "program instance never runs",
+            Self::UnsupportedConfigElement { .. } => "unsupported configuration element",
             Self::UnschedulableTask { .. } => "task cannot be scheduled",
         }
     }
@@ -725,6 +775,16 @@ impl<'db> ToIdeDiagnostic<'db> for ResolveError<'db> {
                 .desc(self)
                 .range(crate::denormalize(db, file, &instance.get_span(db)).unwrap_or_default())
                 .call(),
+            Self::UnsupportedConfigElement { expr, kind } => {
+                let mut diag = diag()
+                    .message(kind.message().to_string())
+                    .severity(DiagnosticSeverity::ERROR)
+                    .desc(self)
+                    .range(crate::denormalize(db, file, &expr.get_span(db)).unwrap_or_default())
+                    .call();
+                diag.with_note(kind.note().to_string());
+                diag
+            }
             Self::UnschedulableTask { task, reason } => {
                 let mut diag = diag()
                     .message(format!(

@@ -7,7 +7,7 @@ use crate::{
     check::errors::{
         ToIdeDiagnostic,
         e1_duplicates::DuplicateError,
-        e2_resolve::{ResolveError, UnschedulableReason},
+        e2_resolve::{ResolveError, UnschedulableReason, UnsupportedConfigKind},
     },
     hir_def::{
         config::{ConfigDecl, ConfigResource, ProgConfig, ResourceDecl, TaskConfig},
@@ -138,6 +138,7 @@ fn infer_config<'db>(
         match res {
             ConfigResource::Program(p) => {
                 validate_prog_config(db, p, &config_tasks, result);
+                report_unsupported_conf_elements(db, p, result);
                 resolve_prog_instance(db, p, &mut result.prog_instance);
             }
             ConfigResource::Resource(r) => {
@@ -147,6 +148,7 @@ fn infer_config<'db>(
                 resolve_task_intervals(db, &resource_tasks, result);
                 for p in r.programs(db).iter() {
                     validate_prog_config(db, p, &resource_tasks, result);
+                    report_unsupported_conf_elements(db, p, result);
                     resolve_prog_instance(db, p, &mut result.prog_instance);
                 }
             }
@@ -254,6 +256,37 @@ fn validate_prog_config<'db>(
                 .to_diagnostic(db, p.get_scope_id(db).file(db)),
             );
         }
+    }
+}
+
+/// Report the parsed-but-inert elements of a `PROGRAM ... (...)` clause.
+///
+/// `ProgConfig::conf_elements` is written by the builder and read by nobody:
+/// both element kinds and all three data-source forms are parsed and then
+/// discarded. No name resolution, no type check, no copy emitted — so
+/// `(inp := src, outp => snk, ghost := nosuch)` compiled clean while doing
+/// nothing at all, unknown names included.
+fn report_unsupported_conf_elements<'db>(
+    db: &'db dyn WorkspaceDataBase,
+    p: &ProgConfig<'db>,
+    result: &mut ConfigInferenceResult<'db>,
+) {
+    use crate::hir_def::config::{ProgCnxn, ProgConfElement};
+
+    for element in p.conf_elements(db) {
+        let (expr, kind) = match element {
+            ProgConfElement::Connection(ProgCnxn::Source { path, .. })
+            | ProgConfElement::Connection(ProgCnxn::Sink { path, .. }) => {
+                (*path, UnsupportedConfigKind::ProgramConnection)
+            }
+            ProgConfElement::FbTask(fb) => {
+                (fb.path, UnsupportedConfigKind::FbTaskAssociation)
+            }
+        };
+        result.errors.push(
+            ResolveError::UnsupportedConfigElement { expr, kind }
+                .to_diagnostic(db, p.get_scope_id(db).file(db)),
+        );
     }
 }
 
@@ -398,6 +431,20 @@ fn validate_config_inst_inits<'db>(
 
     // Walk each VAR_CONFIG path and validate init expressions.
     for decl in config_inits {
+        // The validation below is real and useful — it catches an unknown
+        // instance, an unknown field, a type mismatch — but the value is then
+        // discarded: nothing writes it into the instance, so the field keeps
+        // whatever its own declaration gave it. Working diagnostics on a
+        // construct that does nothing is more misleading than a plain
+        // rejection, so say so.
+        errors.push(
+            ResolveError::UnsupportedConfigElement {
+                expr: decl.path,
+                kind: UnsupportedConfigKind::InstanceInit,
+            }
+            .to_diagnostic(db, config.get_scope_id(db).file(db)),
+        );
+
         let steps = decl.path.flatten(db);
 
         if steps.is_empty() {

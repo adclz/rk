@@ -412,7 +412,7 @@ END_PROGRAM
 
 /// A valid VAR_CONFIG overriding an INT variable in a program instance.
 #[rstest]
-fn valid_config_inst_init(mut with_db: RootDatabase) {
+fn config_inst_init_resolves_but_is_unapplied(mut with_db: RootDatabase) {
     let source = r#"
 PROGRAM MyProg
     VAR
@@ -429,12 +429,22 @@ CONFIGURATION MyCfg
     END_VAR
 END_CONFIGURATION
 "#;
-    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @"");
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
+    [E0240] Error: unsupported configuration element
+        ,-[ file:///test0.st:13:15 ]
+        |
+     13 |         inst1.x : INT := 42;
+        |               |
+        |               `-- VAR_CONFIG is checked but not applied yet, so this value never reaches the instance
+        |
+        | Note: set the value in the program's own VAR declaration instead
+    ----'
+    ");
 }
 
 /// A valid VAR_CONFIG overriding a variable inside a nested function block.
 #[rstest]
-fn valid_config_inst_init_nested_fb(mut with_db: RootDatabase) {
+fn config_inst_init_nested_fb_resolves_but_is_unapplied(mut with_db: RootDatabase) {
     let source = r#"
 FUNCTION_BLOCK InnerFB
     VAR
@@ -457,7 +467,17 @@ CONFIGURATION MyCfg
     END_VAR
 END_CONFIGURATION
 "#;
-    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @"");
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
+    [E0240] Error: unsupported configuration element
+        ,-[ file:///test0.st:19:19 ]
+        |
+     19 |         inst1.fb1.param : BOOL := TRUE;
+        |                   ^^|^^
+        |                     `---- VAR_CONFIG is checked but not applied yet, so this value never reaches the instance
+        |
+        | Note: set the value in the program's own VAR declaration instead
+    ----'
+    ");
 }
 
 /// VAR_CONFIG with an unknown program instance should report E0222.
@@ -480,6 +500,15 @@ CONFIGURATION MyCfg
 END_CONFIGURATION
 "#;
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
+    [E0240] Error: unsupported configuration element
+        ,-[ file:///test0.st:13:20 ]
+        |
+     13 |         noSuchInst.x : INT := 42;
+        |                    |
+        |                    `-- VAR_CONFIG is checked but not applied yet, so this value never reaches the instance
+        |
+        | Note: set the value in the program's own VAR declaration instead
+    ----'
     [E0222] Error: configuration error
         ,-[ file:///test0.st:13:9 ]
         |
@@ -510,6 +539,15 @@ CONFIGURATION MyCfg
 END_CONFIGURATION
 "#;
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
+    [E0240] Error: unsupported configuration element
+        ,-[ file:///test0.st:13:15 ]
+        |
+     13 |         inst1.nonexistent : INT := 42;
+        |               ^^^^^|^^^^^
+        |                    `------- VAR_CONFIG is checked but not applied yet, so this value never reaches the instance
+        |
+        | Note: set the value in the program's own VAR declaration instead
+    ----'
     [E0223] Error: configuration error
         ,-[ file:///test0.st:13:15 ]
         |
@@ -540,6 +578,15 @@ CONFIGURATION MyCfg
 END_CONFIGURATION
 "#;
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
+    [E0240] Error: unsupported configuration element
+        ,-[ file:///test0.st:13:15 ]
+        |
+     13 |         inst1.x : INT := 'hello';
+        |               |
+        |               `-- VAR_CONFIG is checked but not applied yet, so this value never reaches the instance
+        |
+        | Note: set the value in the program's own VAR declaration instead
+    ----'
     [E0301] Error: type mismatch
         ,-[ file:///test0.st:13:23 ]
         |
@@ -570,6 +617,15 @@ CONFIGURATION MyCfg
 END_CONFIGURATION
 "#;
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
+    [E0240] Error: unsupported configuration element
+        ,-[ file:///test0.st:13:17 ]
+        |
+     13 |         inst1.x.deeper : INT := 42;
+        |                 ^^^|^^
+        |                    `---- VAR_CONFIG is checked but not applied yet, so this value never reaches the instance
+        |
+        | Note: set the value in the program's own VAR declaration instead
+    ----'
     [E0223] Error: configuration error
         ,-[ file:///test0.st:13:17 ]
         |
@@ -582,7 +638,7 @@ END_CONFIGURATION
 
 /// VAR_CONFIG inside a RESOURCE block with a nested FB path.
 #[rstest]
-fn valid_config_inst_init_in_resource(mut with_db: RootDatabase) {
+fn config_inst_init_in_resource_resolves_but_is_unapplied(mut with_db: RootDatabase) {
     let source = r#"
 FUNCTION_BLOCK InnerFB
     VAR
@@ -607,7 +663,17 @@ CONFIGURATION MyCfg
     END_VAR
 END_CONFIGURATION
 "#;
-    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @"");
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
+    [E0240] Error: unsupported configuration element
+        ,-[ file:///test0.st:21:19 ]
+        |
+     21 |         inst1.fb1.value : REAL := 3.14;
+        |                   ^^|^^
+        |                     `---- VAR_CONFIG is checked but not applied yet, so this value never reaches the instance
+        |
+        | Note: set the value in the program's own VAR declaration instead
+    ----'
+    ");
 }
 
 /// Spec::infer() on a ProgConfig's prog_type should resolve to Type::Program.
@@ -1036,4 +1102,95 @@ fn a_schedulable_configuration_is_accepted(mut with_db: db::RootDatabase) {
         END_CONFIGURATION
     "#;
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"");
+}
+
+/// A `PROGRAM ... (...)` connection list is parsed and then discarded: no copy
+/// is emitted around the scan and the names are never resolved, so `ghost` and
+/// `nosuch` — neither of which exists — used to compile clean.
+#[rstest]
+fn program_connection_elements_are_reported(mut with_db: RootDatabase) {
+    let source = r#"
+        PROGRAM A
+        VAR_INPUT inp : INT; END_VAR
+        VAR_OUTPUT outp : INT; END_VAR
+            outp := inp * 2;
+        END_PROGRAM
+
+        CONFIGURATION Cfg
+            VAR_GLOBAL src : INT := 7; snk : INT; END_VAR
+            RESOURCE R ON CPU
+                TASK T(INTERVAL := T#10ms, PRIORITY := 1);
+                PROGRAM PA WITH T : A (inp := src, outp => snk, ghost := nosuch);
+            END_RESOURCE
+        END_CONFIGURATION
+    "#;
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
+    [E0240] Error: unsupported configuration element
+        ,-[ file:///test0.st:12:40 ]
+        |
+     12 |                 PROGRAM PA WITH T : A (inp := src, outp => snk, ghost := nosuch);
+        |                                        ^|^
+        |                                         `--- program connection lists are parsed but not wired up yet, so this has no effect
+        |
+        | Note: assign it in the program body instead
+    ----'
+    [E0240] Error: unsupported configuration element
+        ,-[ file:///test0.st:12:52 ]
+        |
+     12 |                 PROGRAM PA WITH T : A (inp := src, outp => snk, ghost := nosuch);
+        |                                                    ^^|^
+        |                                                      `--- program connection lists are parsed but not wired up yet, so this has no effect
+        |
+        | Note: assign it in the program body instead
+    ----'
+    [E0240] Error: unsupported configuration element
+        ,-[ file:///test0.st:12:65 ]
+        |
+     12 |                 PROGRAM PA WITH T : A (inp := src, outp => snk, ghost := nosuch);
+        |                                                                 ^^|^^
+        |                                                                   `---- program connection lists are parsed but not wired up yet, so this has no effect
+        |
+        | Note: assign it in the program body instead
+    ----'
+    ");
+}
+
+/// Two RESOURCEs each declaring `g` used to alias to ONE address — the earlier
+/// allocation was dead and the later one won for every body, silently. They are
+/// now rejected: this implementation flattens resources into one memory, so it
+/// cannot give them separate storage, and refusing beats aliasing.
+///
+/// Note this rejects something IEC permits, since resource globals are meant to
+/// be resource-scoped. That is a limitation of the flattened model, not a rule.
+#[rstest]
+fn same_named_globals_in_two_resources_are_rejected(mut with_db: RootDatabase) {
+    let source = r#"
+        PROGRAM P VAR_EXTERNAL g : INT; END_VAR VAR n : INT; END_VAR n := g; END_PROGRAM
+
+        CONFIGURATION Cfg
+            RESOURCE R1 ON CPU
+                VAR_GLOBAL g : INT := 10; END_VAR
+                TASK T1(INTERVAL := T#10ms, PRIORITY := 1);
+                PROGRAM A1 WITH T1 : P;
+            END_RESOURCE
+            RESOURCE R2 ON CPU
+                VAR_GLOBAL g : INT := 99; END_VAR
+                TASK T2(INTERVAL := T#10ms, PRIORITY := 2);
+                PROGRAM A2 WITH T2 : P;
+            END_RESOURCE
+        END_CONFIGURATION
+    "#;
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
+    [E0102] Error: duplicate definitions
+        ,-[ file:///test0.st:11:28 ]
+        |
+      6 |                 VAR_GLOBAL g : INT := 10; END_VAR
+        |                            |
+        |                            `-- variable 'g' is already defined here
+        |
+     11 |                 VAR_GLOBAL g : INT := 99; END_VAR
+        |                            |
+        |                            `-- duplicate variable 'g'
+    ----'
+    ");
 }
