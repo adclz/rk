@@ -4,6 +4,7 @@ use db::RootDatabase;
 use hir::{check::diagnostics_for_file, hir_def::semantic_index::semantic_index};
 
 // Test modules - only execution tests, no validation-only tests
+mod aggregate_returns;
 mod arrays;
 mod bit_access;
 mod classes;

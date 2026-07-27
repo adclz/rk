@@ -51,7 +51,7 @@ pub struct InitPlaceBuilder<'db> {
 }
 
 /// Result of looking up a field by name on a type.
-enum FieldLookup<'db> {
+pub(crate) enum FieldLookup<'db> {
     StructElement(StructElement<'db>),
     Variable(VariableDecl<'db>),
     Method(MethodRef<'db>),
@@ -135,7 +135,11 @@ impl<'db> Type<'db> {
     }
 
     /// Resolve a named field on this (concrete) type.
-    fn resolve_field(&self, db: &'db dyn WorkspaceDataBase, name: &Ident) -> FieldLookup<'db> {
+    pub(crate) fn resolve_field(
+        &self,
+        db: &'db dyn WorkspaceDataBase,
+        name: &Ident,
+    ) -> FieldLookup<'db> {
         match self {
             Type::Struct(st) => match st.struct_elements(db).get(name) {
                 Some(field) => FieldLookup::StructElement(*field),

@@ -17,11 +17,60 @@ use super::{
     },
 };
 
-/// Context for statement emission.
+/// The byte size of an aggregate-typed value, or `None` for a scalar (or a
+/// STRING, which has its own write path).
+fn aggregate_value_size(value: &MirExpr) -> Option<u32> {
+    let ty = match value {
+        MirExpr::Load(_, ty) => ty,
+        MirExpr::Call(call) => &call.return_type,
+        _ => return None,
+    };
+    match ty {
+        mir::types::MirType::Struct(_) | mir::types::MirType::Array(_) => Some(ty.size_bytes()),
+        _ => None,
+    }
+}
+
+/// How a function delivers its return value, resolved once per function
+/// from the return slot's storage; `Return` and the epilogue push exactly
+/// what the signature declares.
+#[derive(Clone, Copy)]
+pub(crate) enum ReturnValue {
+    /// Scalar in a wasm local: push it.
+    ScalarLocal(u32),
+    /// STRING in a static slot: push `(ptr, len)` per the canonical ABI —
+    /// buffer base at `addr + 4`, length loaded from `addr`.
+    StringMem(u32),
+    /// Aggregate in a static slot: push its address; the caller copies out
+    /// of it.
+    AggregateMem(u32),
+}
+
+/// Push a function's return value, matching its wasm signature.
+pub(crate) fn emit_return_value(func: &mut wasm_encoder::Function, ret: ReturnValue) {
+    match ret {
+        ReturnValue::ScalarLocal(idx) => {
+            func.instruction(&Instruction::LocalGet(idx));
+        }
+        ReturnValue::StringMem(addr) => {
+            func.instruction(&Instruction::I32Const(addr as i32 + 4));
+            func.instruction(&Instruction::I32Const(addr as i32));
+            func.instruction(&Instruction::I32Load(wasm_encoder::MemArg {
+                offset: 0,
+                align: 2,
+                memory_index: 0,
+            }));
+        }
+        ReturnValue::AggregateMem(addr) => {
+            func.instruction(&Instruction::I32Const(addr as i32));
+        }
+    }
+}
+
 struct Ctx<'a> {
     locals: &'a FxHashMap<Ident, LocalInfo>,
     fn_indices: &'a FxHashMap<Ident, u32>,
-    return_local: Option<u32>,
+    return_value: Option<ReturnValue>,
     /// Builtin instruction name (`f32.sin`) → wasm index of its grafted
     /// implementation.
     builtin_indices: &'a FxHashMap<String, u32>,
@@ -47,7 +96,7 @@ pub(crate) fn emit_stmts_with_return(
     locals: &FxHashMap<Ident, LocalInfo>,
     fn_indices: &FxHashMap<Ident, u32>,
     builtin_indices: &FxHashMap<String, u32>,
-    return_local: Option<u32>,
+    return_value: Option<ReturnValue>,
     rk_exception_tag_idx: Option<u32>,
     fb_recv_tmp: Option<u32>,
 ) -> Vec<(u32, MirSourceLocation)> {
@@ -56,7 +105,7 @@ pub(crate) fn emit_stmts_with_return(
         let ctx = Ctx {
             locals,
             fn_indices,
-            return_local,
+            return_value,
             builtin_indices,
             rk_exception_tag_idx,
             lines: &lines,
@@ -92,8 +141,8 @@ fn emit_stmt(func: &mut wasm_encoder::Function, stmt: &MirStmt, ctx: &Ctx) {
         }
 
         MirStmt::Return => {
-            if let Some(ret_idx) = ctx.return_local {
-                func.instruction(&Instruction::LocalGet(ret_idx));
+            if let Some(ret) = ctx.return_value {
+                emit_return_value(func, ret);
             }
             func.instruction(&Instruction::Return);
         }
@@ -1047,6 +1096,36 @@ fn emit_assignment(
     // Local match below.
     if is_buffer_string(target, ctx.locals) {
         emit_string_assign(func, target, value, ctx);
+        return;
+    }
+    // An aggregate assignment copies bytes, decided from the value's own
+    // MIR type.
+    if let Some(size) = aggregate_value_size(value) {
+        emit_addr_of(func, target, ctx.locals, ctx.fn_indices); // dst
+        match value {
+            MirExpr::Load(src, _) => {
+                emit_addr_of(func, src, ctx.locals, ctx.fn_indices); // src
+            }
+            // An aggregate-returning call pushes its static return slot's
+            // address.
+            MirExpr::Call(_) => {
+                emit_expr(func, value, ctx.locals, ctx.fn_indices);
+            }
+            other => {
+                let caller = crate::emit_expr::CURRENT_EMIT_FN
+                    .with(|c| c.borrow().clone())
+                    .unwrap_or_else(|| "<unknown>".to_string());
+                panic!(
+                    "internal compiler error: while emitting `{caller}`, an aggregate \
+                     assignment's value is neither a place nor a call: {other:?}"
+                );
+            }
+        }
+        func.instruction(&Instruction::I32Const(size as i32));
+        func.instruction(&Instruction::MemoryCopy {
+            src_mem: 0,
+            dst_mem: 0,
+        });
         return;
     }
     match target {

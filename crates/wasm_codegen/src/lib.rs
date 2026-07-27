@@ -1034,26 +1034,24 @@ impl<'a> WasmGen<'a> {
 
         // The return slot, by `origin_name`: methods store it under the bare
         // method name.
-        enum ReturnSlot {
-            Scalar(u32),
-            StringMem(u32),
-        }
-        let return_slot: Option<ReturnSlot> = if func.return_type.is_some() {
+        let return_value: Option<crate::emit_stmt::ReturnValue> = if func.return_type.is_some() {
+            use crate::emit_stmt::ReturnValue;
             local_map
                 .get(&func.origin_name)
                 .and_then(|info| match info {
-                    LocalInfo::Scalar { index, .. } => Some(ReturnSlot::Scalar(*index)),
+                    LocalInfo::Scalar { index, .. } => Some(ReturnValue::ScalarLocal(*index)),
                     LocalInfo::StringMemory { address, .. } => {
-                        Some(ReturnSlot::StringMem(*address))
+                        Some(ReturnValue::StringMem(*address))
+                    }
+                    // A memory-resident return slot that is not a STRING is an
+                    // aggregate; its address IS the return value.
+                    LocalInfo::Memory { address, .. } => {
+                        Some(ReturnValue::AggregateMem(*address))
                     }
                     _ => None,
                 })
         } else {
             None
-        };
-        let return_local = match &return_slot {
-            Some(ReturnSlot::Scalar(idx)) => Some(*idx),
-            _ => None,
         };
 
         // Build remapped function indices for call instructions
@@ -1105,7 +1103,7 @@ impl<'a> WasmGen<'a> {
             &local_map,
             &remapped_fn_indices,
             &self.builtin_indices,
-            return_local,
+            return_value,
             self.rk_exception_tag_idx,
             fb_recv_tmp,
         );
@@ -1116,25 +1114,10 @@ impl<'a> WasmGen<'a> {
         // Restore the prior context.
         SNAPSHOT_CTX.with(|cell| cell.replace(prev_ctx));
 
-        // Push return value at function end.
-        match return_slot {
-            Some(ReturnSlot::Scalar(ret_idx)) => {
-                wasm_func.instruction(&Instruction::LocalGet(ret_idx));
-            }
-            Some(ReturnSlot::StringMem(addr)) => {
-                // Multi-value return: push (ptr, len). Layout: 4-byte
-                // length at `addr`, embedded buffer starts at `addr + 4`.
-                // Push the buffer base as ptr (constant, no load) then
-                // load the length.
-                wasm_func.instruction(&Instruction::I32Const(addr as i32 + 4));
-                wasm_func.instruction(&Instruction::I32Const(addr as i32));
-                wasm_func.instruction(&Instruction::I32Load(wasm_encoder::MemArg {
-                    offset: 0,
-                    align: 2,
-                    memory_index: 0,
-                }));
-            }
-            None => {}
+        // Push return value at function end — the same shapes a mid-body
+        // RETURN pushes, from one implementation.
+        if let Some(ret) = return_value {
+            crate::emit_stmt::emit_return_value(&mut wasm_func, ret);
         }
 
         // End function
@@ -1671,6 +1654,9 @@ fn build_signature(
         // canonical ABI. The function body pushes the two i32s in that
         // order at the epilogue (see `emit_function`).
         Some(MirType::String { .. }) => vec![ValType::I32, ValType::I32],
+        // An aggregate returns the address of the callee's static return slot;
+        // the caller copies out of it.
+        Some(MirType::Struct(_)) | Some(MirType::Array(_)) => vec![ValType::I32],
         Some(ty) => mir_type_to_val_type(ty)
             .map(|vt| vec![vt])
             .unwrap_or_default(),

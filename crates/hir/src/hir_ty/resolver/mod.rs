@@ -227,6 +227,49 @@ impl<'db> Resolver<'db> {
         for (index, step) in steps.iter().enumerate() {
             let is_first_step = index == 0;
 
+            // Inside a Function/Method, the callable's OWN name refers to the
+            // return value. Detected BEFORE the walk, because the walk does
+            // not fail uniformly: a function's name is not a member and falls
+            // through to the fallback below, but a METHOD's name resolves via
+            // the implicit THIS to the method itself — and then `.x` dies on
+            // a MethodDecl ("'GetPt' has no field named 'x'").
+            if is_first_step
+                && let PathExprWalkStep::Field { ident, .. } = step
+                && let PathResolutionRoot::Value { base } = self.root
+                && let Some(ret_ty) = base.with_return_type(db)
+                && self_reference_name(db, base) == Some(ident.ident)
+                // A DECLARED variable of the same name shadows the implicit
+                // return-value name (pinned by the missing-return lint's
+                // shadowing test), so the name is only taken as the return
+                // value when the ordinary walk would not find a variable —
+                // or would find the enclosing method ITSELF, which is the
+                // method-body case this branch exists for.
+                && match current.resolve_field(db, &ident.ident) {
+                    walk::FieldLookup::NotFound => true,
+                    walk::FieldLookup::Method(m) => {
+                        matches!(base, Type::MethodDecl(m2) if m == m2)
+                    }
+                    _ => false,
+                }
+            {
+                if single_step {
+                    // The whole path IS the return value, typed as the
+                    // callable so assignment to it hits the return-slot
+                    // handling.
+                    ctx.type_of_path_expr.insert(step.get_expr(db), base);
+                    ctx.type_of_path_expr.insert(path_expr, base);
+                    return;
+                }
+                // Multi-step: the root is the return VALUE and the next steps
+                // walk its fields, so the root is recorded as the return type.
+                let normalized = ret_ty.normalize(db);
+                ctx.type_of_path_expr.insert(step.get_expr(db), normalized);
+                current = normalized;
+                place.current_typ = normalized;
+                place.current_path = step.get_expr(db);
+                continue;
+            }
+
             let step_multibits = if single_step { multibits } else { None };
 
             // Suppress errors on the first step: if it fails we may fall back to FQ resolution.
@@ -237,32 +280,6 @@ impl<'db> Resolver<'db> {
 
             if !resolved {
                 if is_first_step && matches!(self.root, PathResolutionRoot::Value { .. }) {
-                    // Inside a Function/Method, the POU name used as a path
-                    // refers to the return value. For single-step paths like
-                    // `OVERRIDE` this makes it usable as a value (e.g. passed
-                    // to ABS). For multi-step paths like `CEXP.re` we resolve
-                    // to the return type so subsequent steps walk its fields.
-                    if let PathExprWalkStep::Field { ident, .. } = step
-                        && let PathResolutionRoot::Value { base } = self.root
-                        && let Some(ret_ty) = base.with_return_type(db)
-                        && let Some(pou) = base.as_pou(db)
-                        && pou.get_name_ident(db) == ident.ident
-                    {
-                        ctx.type_of_path_expr.insert(step.get_expr(db), base);
-                        if single_step {
-                            // Single-step: resolve the whole path as the function type
-                            ctx.type_of_path_expr.insert(path_expr, base);
-                            return;
-                        } else {
-                            // Multi-step: continue walking with the return type
-                            let normalized = ret_ty.normalize(db);
-                            current = normalized;
-                            place.current_typ = normalized;
-                            place.current_path = step.get_expr(db);
-                            continue;
-                        }
-                    }
-
                     // Try full FQ resolution (for namespace-qualified paths).
                     if self.try_resolve_as_fq(db, path_expr, ctx) {
                         return;
@@ -359,5 +376,19 @@ impl<'db> Resolver<'db> {
                 last_adj.target = mb_type;
             }
         }
+    }
+}
+
+/// The name a callable's return value is addressed by from inside its own
+/// body — the callable's own name. `None` for anything that is not a callable
+/// with a return value.
+fn self_reference_name<'db>(
+    db: &'db dyn WorkspaceDataBase,
+    base: Type<'db>,
+) -> Option<crate::hir_def::interned::identifier::Ident> {
+    match base {
+        Type::Function(f) => Some(f.get_name_ident(db)),
+        Type::MethodDecl(m) => Some(m.get_name_ident(db)),
+        _ => None,
     }
 }

@@ -384,8 +384,10 @@ impl<'db> ExprLowerCtx<'db> {
                 if var_access.multibits(self.db).is_some() {
                     return self.lower_multibit_read(place, *var_access, parent_expr);
                 }
+                // The Load carries the ADJUSTED type: `arr[1]` produces the element,
+                // not the array.
                 let ty = self
-                    .lower_type_resolved(parent_expr.infer(self.db))
+                    .lower_type_resolved(parent_expr.infer_adjusted(self.db))
                     .unwrap_or(MirType::Void);
                 Ok(MirExpr::Load(place, ty))
             }
