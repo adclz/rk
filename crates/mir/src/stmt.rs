@@ -54,7 +54,9 @@ pub enum MirStmt {
 
     /// For loop.
     For {
-        control_var: Ident,
+        /// Where the counter lives: a wasm local or a `ThisField`; the loop reads
+        /// and writes it through this place.
+        control: crate::expr::MirPlace,
         control_type: MirElementary,
         start: MirExpr,
         end: MirExpr,

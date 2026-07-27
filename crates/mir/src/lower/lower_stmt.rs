@@ -227,15 +227,12 @@ fn lower_stmt<'db>(
             step,
             body,
         } => {
+            // Any PLACE can be a counter: a FUNCTION local, a PROGRAM/FB
+            // member (other toolchains accepts both). HIR has already rejected the
+            // shapes IEC's grammar forbids — `control_variable ::= identifier`
+            // — so a Field/Index/Deref place cannot reach here from valid
+            // source; the codegen addresses whatever arrives.
             let control_place = ctx.lower_variable_access(*control_variable)?;
-            let control_ident = match &control_place {
-                crate::expr::MirPlace::Local(ident) => *ident,
-                _ => {
-                    return Err(LowerTypeError::UnsupportedType(
-                        "FOR control variable must be a simple local".to_string(),
-                    ));
-                }
-            };
 
             // Determine the control variable type
             let control_type = control_variable.infer(ctx.db);
@@ -265,7 +262,7 @@ fn lower_stmt<'db>(
             let body = lower_stmts_inner(ctx, body)?;
 
             Ok(Some(MirStmt::For {
-                control_var: control_ident,
+                control: control_place,
                 control_type: control_elem,
                 start: start_mir,
                 end: end_mir,

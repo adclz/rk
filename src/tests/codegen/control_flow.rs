@@ -1,6 +1,6 @@
 //! Control flow execution tests - IF, CASE, FOR, WHILE, REPEAT.
 
-use crate::tests::codegen::{compile_to_wasm, with_db};
+use crate::tests::codegen::{compile_to_wasm, compile_to_wasm_checked, with_db};
 use rstest::*;
 
 #[rstest]
@@ -368,4 +368,62 @@ fn test_for_subwidth_counter_stays_in_domain(mut with_db: db::RootDatabase) {
     let wasm = compile_to_wasm(&mut with_db, source);
     let r: i32 = super::execute_wasm(&wasm, "usint_counter", ());
     assert_eq!(r, 255, "5 iterations and the counter exits in-domain at 255");
+}
+
+/// A FOR counter that is a PROGRAM member — ordinary other toolchains code. The counter
+/// lives in the instance struct, not a wasm local, so the loop must read and
+/// write it through its place. MIR used to reject the shape outright ("FOR
+/// control variable must be a simple local") after `rk check` had passed it,
+/// and the codegen's old arm would have silently DISCARDED the entire loop.
+#[rstest]
+fn for_counter_living_in_a_program_member(mut with_db: db::RootDatabase) {
+    let source = r#"
+        PROGRAM P
+        VAR RETAIN total : DINT; END_VAR
+        VAR i : INT; END_VAR
+            total := 0;
+            FOR i := 1 TO 5 DO
+                total := total + i;
+            END_FOR;
+            (* the counter is observable state: after the loop it sits at 6 *)
+            total := total * 100 + i;
+        END_PROGRAM
+
+        CONFIGURATION Cfg
+            RESOURCE Res ON CPU
+                TASK T(INTERVAL := T#10ms, PRIORITY := 1);
+                PROGRAM P1 WITH T : P;
+            END_RESOURCE
+        END_CONFIGURATION
+    "#;
+    let (_mir, wasm) = crate::tests::codegen::compile_to_mir_and_wasm(&mut with_db, source);
+    let mut plc = runtime::Plc::load(&wasm, runtime::Config::default()).expect("load");
+    plc.run(1).expect("scan");
+    let total = i32::from_le_bytes(plc.read_retain()[..4].try_into().unwrap());
+    assert_eq!(total, 1506, "sum 15, counter left at 6 after the loop");
+}
+
+/// The body reads the SAME member the loop counts in — a synthetic-local
+/// counter that only wrote back at the end would show the body stale values.
+#[rstest]
+fn the_body_observes_the_member_counter_each_iteration(mut with_db: db::RootDatabase) {
+    let source = r#"
+        FUNCTION_BLOCK Acc
+        VAR i : INT; END_VAR
+        VAR_OUTPUT digits : DINT; END_VAR
+            digits := 0;
+            FOR i := 1 TO 3 DO
+                digits := digits * 10 + i;
+            END_FOR;
+        END_FUNCTION_BLOCK
+
+        FUNCTION run : DINT
+        VAR a : Acc; END_VAR
+            a();
+            run := a.digits;
+        END_FUNCTION
+    "#;
+    let wasm = compile_to_wasm_checked(&mut with_db, source);
+    let result: i32 = super::execute_wasm(&wasm, "run", ());
+    assert_eq!(result, 123, "each iteration read the live counter: 1, 2, 3");
 }

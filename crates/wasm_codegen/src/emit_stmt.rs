@@ -172,21 +172,47 @@ fn emit_stmt(func: &mut wasm_encoder::Function, stmt: &MirStmt, ctx: &Ctx) {
         }
 
         MirStmt::For {
-            control_var,
+            control,
             control_type,
             start,
             end,
             step,
             body,
         } => {
-            let ctrl_idx = match ctx.locals.get(control_var) {
-                Some(LocalInfo::Scalar { index, .. }) => *index,
-                _ => return,
+            // The counter is read and written through its place: a wasm local or
+            // linear memory.
+            let ctrl_local = match control {
+                MirPlace::Local(ident) => match ctx.locals.get(ident) {
+                    Some(LocalInfo::Scalar { index, .. }) => Some(*index),
+                    _ => None,
+                },
+                _ => None,
             };
+            let ctrl_ty = mir::types::MirType::Elementary(*control_type);
+            // Load the counter onto the stack.
+            let ctrl_load =
+                |func: &mut wasm_encoder::Function, ctx: &Ctx| match ctrl_local {
+                    Some(idx) => {
+                        func.instruction(&Instruction::LocalGet(idx));
+                    }
+                    None => {
+                        emit_addr_of(func, control, ctx.locals, ctx.fn_indices);
+                        emit_typed_mem_load(func, &ctrl_ty);
+                    }
+                };
 
-            // Initialize
-            emit_expr(func, start, ctx.locals, ctx.fn_indices);
-            func.instruction(&Instruction::LocalSet(ctrl_idx));
+            // A memory-resident counter needs its address below the value.
+            match ctrl_local {
+                Some(idx) => {
+                    emit_expr(func, start, ctx.locals, ctx.fn_indices);
+                    func.instruction(&Instruction::LocalSet(idx));
+                }
+                None => {
+                    emit_addr_of(func, control, ctx.locals, ctx.fn_indices);
+                    emit_expr(func, start, ctx.locals, ctx.fn_indices);
+                    emit_typed_mem_store(func, &ctrl_ty);
+                }
+            }
 
             func.instruction(&Instruction::Block(BlockType::Empty));
             func.instruction(&Instruction::Loop(BlockType::Empty));
@@ -199,7 +225,7 @@ fn emit_stmt(func: &mut wasm_encoder::Function, stmt: &MirStmt, ctx: &Ctx) {
             let is_64 = control_type.is_64bit();
 
             // Check bound
-            func.instruction(&Instruction::LocalGet(ctrl_idx));
+            ctrl_load(func, ctx);
             emit_expr(func, end, ctx.locals, ctx.fn_indices);
             let cmp = match (is_64, control_type.is_signed(), descending) {
                 (false, true, false) => Instruction::I32GtS,
@@ -219,7 +245,17 @@ fn emit_stmt(func: &mut wasm_encoder::Function, stmt: &MirStmt, ctx: &Ctx) {
             // terminates (the counter wraps to 0 before the exit check),
             // matching a toolchain's documented behavior for an upper bound at
             // the type maximum.
-            func.instruction(&Instruction::LocalGet(ctrl_idx));
+            match ctrl_local {
+                Some(idx) => {
+                    func.instruction(&Instruction::LocalGet(idx));
+                }
+                None => {
+                    // Store needs (addr, value): address first, then the
+                    // incremented value computed from a fresh load.
+                    emit_addr_of(func, control, ctx.locals, ctx.fn_indices);
+                    ctrl_load(func, ctx);
+                }
+            }
             emit_expr(func, step, ctx.locals, ctx.fn_indices);
             if is_64 {
                 func.instruction(&Instruction::I64Add);
@@ -227,7 +263,14 @@ fn emit_stmt(func: &mut wasm_encoder::Function, stmt: &MirStmt, ctx: &Ctx) {
                 func.instruction(&Instruction::I32Add);
                 super::emit_expr::normalize_subwidth(func, *control_type);
             }
-            func.instruction(&Instruction::LocalSet(ctrl_idx));
+            match ctrl_local {
+                Some(idx) => {
+                    func.instruction(&Instruction::LocalSet(idx));
+                }
+                None => {
+                    emit_typed_mem_store(func, &ctrl_ty);
+                }
+            }
 
             func.instruction(&Instruction::Br(0));
             func.instruction(&Instruction::End); // loop
