@@ -481,6 +481,10 @@ fn lower_module_from_pous<'db>(
         module.schedule.as_ref(),
         &program_infos,
         &bands.retain_globals,
+        &global_table
+            .iter()
+            .map(|(name, (_, ty))| (*name, ty.clone()))
+            .collect(),
         bands.retain_base,
         bands.retain_size,
     );

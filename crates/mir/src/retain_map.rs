@@ -30,6 +30,7 @@ pub fn build_retain_map<'db>(
     schedule: Option<&MirSchedule>,
     program_infos: &FxHashMap<Ident, ProgramInfo<'db>>,
     retain_globals: &[RetainEntry],
+    global_types: &FxHashMap<Ident, MirType>,
     retain_base: u32,
     retain_size: u32,
 ) -> RetainMap {
@@ -41,6 +42,10 @@ pub fn build_retain_map<'db>(
             path: g.name.text(db).to_string(),
             addr: g.address,
             size: g.size,
+            type_key: global_types
+                .get(&g.name)
+                .map(|ty| type_key(db, ty))
+                .unwrap_or(0),
         });
     }
 
@@ -154,6 +159,7 @@ fn walk_value<'db>(
                     path: path.to_string(),
                     addr,
                     size: field.ty.size_bytes(),
+                    type_key: type_key(db, &field.ty),
                 });
                 return;
             }
@@ -166,6 +172,7 @@ fn walk_value<'db>(
                         path: path.to_string(),
                         addr,
                         size: field.ty.size_bytes(),
+                        type_key: type_key(db, &field.ty),
                     });
                 }
                 return;
@@ -198,6 +205,7 @@ fn walk_value<'db>(
                     path: path.to_string(),
                     addr,
                     size: field.ty.size_bytes(),
+                    type_key: type_key(db, &field.ty),
                 });
             }
         }
@@ -215,4 +223,79 @@ fn type_has_pointer_holes(ty: &MirType) -> bool {
         MirType::Array(a) => type_has_pointer_holes(&a.element_type),
         _ => false,
     }
+}
+
+/// A structural fingerprint of a type for the retain map's layout hash:
+/// `x : REAL` becoming `x : DINT` keeps the size but changes the key.
+/// Renaming a STRUCT does not invalidate a snapshot; reordering or
+/// retyping its fields does.
+pub(crate) fn type_key(db: &dyn WorkspaceDataBase, ty: &MirType) -> u32 {
+    const FNV_OFFSET: u32 = 0x811c9dc5;
+    const FNV_PRIME: u32 = 0x01000193;
+
+    fn eat(h: &mut u32, bytes: &[u8]) {
+        for &b in bytes {
+            *h ^= b as u32;
+            *h = h.wrapping_mul(FNV_PRIME);
+        }
+    }
+
+    fn walk(db: &dyn WorkspaceDataBase, h: &mut u32, ty: &MirType, depth: u32) {
+        // HIR rejects self-referential types; stop regardless.
+        if depth > 32 {
+            return;
+        }
+        match ty {
+            MirType::Elementary(e) => {
+                eat(h, b"E");
+                eat(h, &[*e as u8]);
+            }
+            MirType::String { capacity } => {
+                eat(h, b"S");
+                eat(h, &capacity.to_le_bytes());
+            }
+            MirType::Array(a) => {
+                eat(h, b"A");
+                eat(h, &a.total_elements.to_le_bytes());
+                for (lo, hi) in &a.dimensions {
+                    eat(h, &lo.to_le_bytes());
+                    eat(h, &hi.to_le_bytes());
+                }
+                walk(db, h, &a.element_type, depth + 1);
+            }
+            MirType::Struct(s) => {
+                eat(h, b"T");
+                for f in &s.fields {
+                    // Field names are part of the shape: the file is scattered back by path.
+                    eat(h, f.name.text(db).as_bytes());
+                    eat(h, &f.offset.to_le_bytes());
+                    walk(db, h, &f.ty, depth + 1);
+                }
+            }
+            MirType::Enum(e) => {
+                eat(h, b"N");
+                eat(h, &[e.storage as u8]);
+                // Variant VALUES, not names: renaming a variant does not change
+                // the bytes, but renumbering one does.
+                for (_, value) in &e.variants {
+                    eat(h, &value.to_le_bytes());
+                }
+            }
+            MirType::Subrange(sr) => {
+                eat(h, b"R");
+                eat(h, &[sr.base as u8]);
+                eat(h, &sr.lower.to_le_bytes());
+                eat(h, &sr.upper.to_le_bytes());
+            }
+            MirType::Pointer(inner) => {
+                eat(h, b"P");
+                walk(db, h, inner, depth + 1);
+            }
+            MirType::Void => eat(h, b"V"),
+        }
+    }
+
+    let mut h = FNV_OFFSET;
+    walk(db, &mut h, ty, 0);
+    h
 }

@@ -282,7 +282,7 @@ impl DebugLocals {
 pub const RETAIN_MAP_SECTION: &str = "retain-map";
 
 /// On-wire format version for [`RetainMap`].
-pub const RETAIN_MAP_VERSION: u16 = 1;
+pub const RETAIN_MAP_VERSION: u16 = 2;
 
 /// The retained byte ranges of a module, inside the retain band;
 /// everything in the band not covered is transient and keeps its
@@ -290,10 +290,9 @@ pub const RETAIN_MAP_VERSION: u16 = 1;
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct RetainMap {
     pub version: u16,
-    /// Layout identity: FNV-1a over the sorted `(path, size)` sequence.
-    /// Deliberately EXCLUDES addresses — the retain band may re-base between
-    /// builds without invalidating snapshots (restore scatter-writes to the
-    /// CURRENT addresses), and module bytes are not deterministic.
+    /// Layout identity: FNV-1a over the sorted `(path, size, type_key)`
+    /// sequence, excluding addresses so the band may re-base between builds.
+    /// `type_key` is included because size alone does not identify a value.
     pub layout_hash: u64,
     /// Retained ranges, sorted by `path` (deterministic; file payload order).
     pub ranges: Vec<RetainRange>,
@@ -309,6 +308,9 @@ pub struct RetainRange {
     pub addr: u32,
     /// Size in bytes.
     pub size: u32,
+    /// Structural identity of the retained value's type (see
+    /// [`RetainMap::layout_hash`]); the runtime only compares it.
+    pub type_key: u32,
 }
 
 impl RetainMap {
@@ -323,7 +325,7 @@ impl RetainMap {
         }
     }
 
-    /// FNV-1a over the sorted `(path, size)` sequence.
+    /// FNV-1a over the sorted `(path, size, type_key)` sequence.
     fn hash_layout(ranges: &[RetainRange]) -> u64 {
         const FNV_OFFSET: u64 = 0xcbf29ce484222325;
         const FNV_PRIME: u64 = 0x100000001b3;
@@ -338,6 +340,7 @@ impl RetainMap {
             eat(r.path.as_bytes());
             eat(&[0]); // separator
             eat(&r.size.to_le_bytes());
+            eat(&r.type_key.to_le_bytes());
         }
         h
     }
