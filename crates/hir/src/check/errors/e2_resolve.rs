@@ -44,8 +44,9 @@ pub enum UnschedulableReason {
     /// Neither SINGLE nor INTERVAL. Nothing triggers the task, so a program
     /// bound to it never runs.
     NoTrigger,
-    /// INTERVAL is not a TIME literal (a CONSTANT global, a direct variable,
-    /// an expression). The period must be known at compile time.
+    /// INTERVAL names something whose value is not fixed at compile time — a
+    /// non-CONSTANT global, a directly represented variable, an unknown name.
+    /// A CONSTANT global IS accepted; the period just has to be knowable.
     NonLiteralInterval,
     /// INTERVAL is zero, which describes no cadence at all.
     ZeroInterval,
@@ -59,9 +60,23 @@ impl UnschedulableReason {
             }
             Self::NoTrigger => "a TASK needs an INTERVAL to run its programs",
             Self::NonLiteralInterval => {
-                "INTERVAL must be a TIME literal"
+                "INTERVAL must be a TIME literal or a CONSTANT global holding one"
             }
             Self::ZeroInterval => "INTERVAL must be greater than zero",
+        }
+    }
+
+    /// The follow-up a user needs to actually fix it. The message says what is
+    /// wrong; this says what to write instead.
+    fn note(self) -> Option<&'static str> {
+        match self {
+            Self::EventDriven => Some("use a cyclic period, e.g. `INTERVAL := T#10ms`"),
+            Self::NoTrigger => Some("add `INTERVAL := T#10ms`"),
+            // The likeliest cause is a global that is simply not marked
+            // CONSTANT — the value looks fixed right there in the source, so
+            // without this the rejection reads as arbitrary.
+            Self::NonLiteralInterval => Some("declare the global `VAR_GLOBAL CONSTANT`"),
+            Self::ZeroInterval => None,
         }
     }
 }
@@ -710,16 +725,22 @@ impl<'db> ToIdeDiagnostic<'db> for ResolveError<'db> {
                 .desc(self)
                 .range(crate::denormalize(db, file, &instance.get_span(db)).unwrap_or_default())
                 .call(),
-            Self::UnschedulableTask { task, reason } => diag()
-                .message(format!(
-                    "task '{}' cannot be scheduled: {}",
-                    task.ident.text(db),
-                    reason.message()
-                ))
-                .severity(DiagnosticSeverity::ERROR)
-                .desc(self)
-                .range(crate::denormalize(db, file, &task.get_span(db)).unwrap_or_default())
-                .call(),
+            Self::UnschedulableTask { task, reason } => {
+                let mut diag = diag()
+                    .message(format!(
+                        "task '{}' cannot be scheduled: {}",
+                        task.ident.text(db),
+                        reason.message()
+                    ))
+                    .severity(DiagnosticSeverity::ERROR)
+                    .desc(self)
+                    .range(crate::denormalize(db, file, &task.get_span(db)).unwrap_or_default())
+                    .call();
+                if let Some(note) = reason.note() {
+                    diag.with_note(note.to_string());
+                }
+                diag
+            }
             Self::ExternalVarNotFound { var } => diag()
                 .message(format!(
                     "external variable '{}' not found in any accessible VAR_GLOBAL",

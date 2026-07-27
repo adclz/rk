@@ -837,6 +837,8 @@ fn event_driven_task_is_rejected(mut with_db: db::RootDatabase) {
      5 |                 TASK T(SINGLE := go, PRIORITY := 1);
        |                      |
        |                      `-- task 'T' cannot be scheduled: event-driven tasks (SINGLE) are not supported yet; only cyclic tasks run
+       |
+       | Note: use a cyclic period, e.g. `INTERVAL := T#10ms`
     ---'
     ");
 }
@@ -863,8 +865,7 @@ fn zero_interval_task_is_rejected(mut with_db: db::RootDatabase) {
     ");
 }
 
-/// The period is baked into the emitted schedule, so it must be known at
-/// compile time — even a CONSTANT global cannot supply it.
+/// A name that resolves to nothing cannot supply a period.
 #[rstest]
 fn non_literal_interval_is_rejected(mut with_db: db::RootDatabase) {
     let source = r#"
@@ -882,7 +883,54 @@ fn non_literal_interval_is_rejected(mut with_db: db::RootDatabase) {
        |
      5 |                 TASK T(INTERVAL := someName, PRIORITY := 1);
        |                      |
-       |                      `-- task 'T' cannot be scheduled: INTERVAL must be a TIME literal
+       |                      `-- task 'T' cannot be scheduled: INTERVAL must be a TIME literal or a CONSTANT global holding one
+       |
+       | Note: declare the global `VAR_GLOBAL CONSTANT`
+    ---'
+    ");
+}
+
+/// A CONSTANT global holding a TIME literal IS a compile-time period, and must
+/// be accepted — "known at compile time" is wider than "written as a literal",
+/// and rejecting it would state a language rule to cover a missing resolution.
+#[rstest]
+fn constant_global_interval_is_accepted(mut with_db: db::RootDatabase) {
+    let source = r#"
+        PROGRAM P VAR n : DINT; END_VAR n := n + 1; END_PROGRAM
+        CONFIGURATION Cfg
+            VAR_GLOBAL CONSTANT period : TIME := T#10ms; END_VAR
+            RESOURCE R ON CPU
+                TASK T(INTERVAL := period, PRIORITY := 1);
+                PROGRAM P1 WITH T : P;
+            END_RESOURCE
+        END_CONFIGURATION
+    "#;
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"");
+}
+
+/// ...but a global WITHOUT `CONSTANT` may be written while the PLC runs, and
+/// the emitted schedule cannot follow it.
+#[rstest]
+fn mutable_global_interval_is_rejected(mut with_db: db::RootDatabase) {
+    let source = r#"
+        PROGRAM P VAR n : DINT; END_VAR n := n + 1; END_PROGRAM
+        CONFIGURATION Cfg
+            VAR_GLOBAL period : TIME := T#10ms; END_VAR
+            RESOURCE R ON CPU
+                TASK T(INTERVAL := period, PRIORITY := 1);
+                PROGRAM P1 WITH T : P;
+            END_RESOURCE
+        END_CONFIGURATION
+    "#;
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
+    [E0239] Error: task cannot be scheduled
+       ,-[ file:///test0.st:6:22 ]
+       |
+     6 |                 TASK T(INTERVAL := period, PRIORITY := 1);
+       |                      |
+       |                      `-- task 'T' cannot be scheduled: INTERVAL must be a TIME literal or a CONSTANT global holding one
+       |
+       | Note: declare the global `VAR_GLOBAL CONSTANT`
     ---'
     ");
 }
@@ -930,6 +978,8 @@ fn trigger_less_task_is_rejected(mut with_db: db::RootDatabase) {
      5 |                 TASK T(PRIORITY := 1);
        |                      |
        |                      `-- task 'T' cannot be scheduled: a TASK needs an INTERVAL to run its programs
+       |
+       | Note: add `INTERVAL := T#10ms`
     ---'
     ");
 }

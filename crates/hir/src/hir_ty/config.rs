@@ -321,20 +321,57 @@ fn resolve_task_intervals<'db>(
     }
 }
 
-/// A TASK's INTERVAL in nanoseconds, when it is a TIME literal.
+/// A TASK's INTERVAL in nanoseconds.
 ///
-/// The period is baked into the emitted schedule, so it has to be known at
-/// compile time — a CONSTANT global or a direct variable cannot provide it.
+/// The period is baked into the emitted schedule, so it must be known at
+/// compile time — but "known at compile time" is wider than "written as a
+/// literal". A `VAR_GLOBAL CONSTANT period : TIME := T#10ms` is just as fixed
+/// as `T#10ms`, and rejecting it would be stating a language rule to cover a
+/// missing resolution. A directly represented variable (`%MW0`) is the only
+/// source that genuinely cannot supply one.
 fn interval_nanos<'db>(
     db: &'db dyn WorkspaceDataBase,
     ds: &crate::hir_def::config::DataSource<'db>,
 ) -> Option<u64> {
     use crate::hir_def::config::DataSource;
+
+    match ds {
+        DataSource::Constant(expr) => time_literal_nanos(db, *expr),
+        DataSource::Path(path) => {
+            let var = crate::hir_ty::index_graphs::external_var_lookup(db, path.ident(db).ident)?;
+            // Only a CONSTANT can be trusted: an ordinary VAR_GLOBAL may be
+            // written at runtime, and the schedule cannot follow it.
+            if !var.qualifier(db).contains(crate::Qualifier::CONSTANT) {
+                return None;
+            }
+            let init = var.init(db)?;
+            time_literal_nanos(db, constant_init_expr(db, init)?)
+        }
+        // `%MW0` and friends: a period read from process memory is not a
+        // compile-time fact at all.
+        DataSource::Direct(_) => None,
+    }
+}
+
+/// The single expression behind a scalar initializer, if it is one.
+fn constant_init_expr<'db>(
+    db: &'db dyn WorkspaceDataBase,
+    init: crate::hir_def::expressions::expression::InitExpr<'db>,
+) -> Option<crate::hir_def::expressions::expression::Expr<'db>> {
+    use crate::hir_def::expressions::expression::InitExprKind;
+    match init.kind(db) {
+        InitExprKind::ConstantExpr(expr) => Some(expr),
+        _ => None,
+    }
+}
+
+/// A TIME/LTIME literal expression in nanoseconds.
+fn time_literal_nanos<'db>(
+    db: &'db dyn WorkspaceDataBase,
+    expr: crate::hir_def::expressions::expression::Expr<'db>,
+) -> Option<u64> {
     use crate::hir_def::expressions::expression::{Elementary, ExprKind, PrimaryExpr};
 
-    let DataSource::Constant(expr) = ds else {
-        return None;
-    };
     let ExprKind::PrimaryExpr(PrimaryExpr::Literal(elem)) = expr.expr(db) else {
         return None;
     };
