@@ -1211,3 +1211,39 @@ fn fb_var_state_still_persists_across_calls(mut with_db: db::RootDatabase) {
     let r: i32 = super::execute_wasm(&wasm, "entry", ());
     assert_eq!(r, 3, "FB VAR is instance state and must survive invocations");
 }
+
+/// `THIS.` paths that end at an ELEMENT rather than a bare member — an array
+/// slot, a struct field, a field of a struct in an array — must lower and run.
+/// HIR's THIS-walk used to reject all of these outright ("no such field"),
+/// while MIR's `lower_this_path` sat ready to lower them; this proves the
+/// whole chain now, with a compound subscript for good measure.
+#[rstest]
+fn this_paths_ending_in_elements_run(mut with_db: db::RootDatabase) {
+    let source = r#"
+        TYPE Pt : STRUCT x : DINT; y : DINT; END_STRUCT; END_TYPE
+
+        FUNCTION_BLOCK Holder
+        VAR
+            a : ARRAY[0..5] OF DINT;
+            p : Pt;
+            pts : ARRAY[0..3] OF Pt;
+            n : DINT;
+            out : DINT;
+        END_VAR
+            n := 1;
+            THIS.a[n + 1] := 7;       (* a[2] *)
+            THIS.p.x := 80;
+            THIS.pts[n].y := 900;
+            out := THIS.a[n + 1] + THIS.p.x + THIS.pts[n].y;
+        END_FUNCTION_BLOCK
+
+        FUNCTION test : DINT
+        VAR h : Holder; END_VAR
+            h();
+            test := h.out;
+        END_FUNCTION
+    "#;
+    let wasm = compile_to_wasm(&mut with_db, source);
+    let result: i32 = super::execute_wasm(&wasm, "test", ());
+    assert_eq!(result, 987, "7 + 80 + 900 through THIS element paths");
+}

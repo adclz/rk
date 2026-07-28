@@ -288,16 +288,16 @@ impl<'db> Type<'db> {
                 ctx.type_of_path_expr
                     .insert(path_expr, Type::new_var_with_multibits(db, var, multibits));
             }
-            _ => {
-                ctx.errors.push(
-                    ResolveError::NoSuchFieldPathExpr {
-                        expr: path_expr,
-                        ident: *path_expr.ident(db),
-                        ty: place.current_typ,
-                    }
-                    .to_diagnostic(db, ctx.scope.file(db)),
-                );
-            }
+            // Anything else that survived the walk is a RESOLVED end that is
+            // not a bare FB variable: an indexed element (`THIS.a[n]`), a
+            // struct member (`THIS.p.x`). A failed step records nothing, so
+            // `current` defaults to `Never` and returns above — this arm is
+            // only reachable when every step resolved. Each step already
+            // recorded its type and adjustments, and the outermost step IS
+            // this path expr, so there is nothing left to record. (This arm
+            // used to be an error, which rejected every valid THIS path that
+            // did not end directly at an FB variable or method.)
+            _ => {}
         }
     }
 

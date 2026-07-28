@@ -741,3 +741,60 @@ END_FUNCTION
 "#;
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @"");
 }
+
+/// A THIS path may end anywhere a plain path may end — an indexed element,
+/// a struct member, a member of a struct in an array. The walk's tail used
+/// to accept only a bare FB variable or a method, so every one of these
+/// valid forms was rejected with "no such field" AFTER each step had
+/// resolved fine.
+#[rstest]
+fn valid_this_paths_ending_in_element_or_member(mut with_db: RootDatabase) {
+    let source = r#"
+        TYPE Pt : STRUCT x : DINT; y : DINT; END_STRUCT; END_TYPE
+
+        FUNCTION_BLOCK Outer
+        VAR
+            a : ARRAY[0..5] OF DINT;
+            p : Pt;
+            pts : ARRAY[0..3] OF Pt;
+            n : DINT;
+        END_VAR
+            THIS.a[n + 1] := 7;
+            THIS.p.x := 8;
+            THIS.pts[n].y := 9;
+            n := THIS.a[n];
+        END_FUNCTION_BLOCK
+        "#;
+
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @"");
+}
+
+/// The tail fix must not swallow real errors: a THIS path whose LAST step
+/// fails still reports it.
+#[rstest]
+fn invalid_this_path_bad_final_field(mut with_db: RootDatabase) {
+    let source = r#"
+        TYPE Pt : STRUCT x : DINT; END_STRUCT; END_TYPE
+
+        FUNCTION_BLOCK Outer
+        VAR
+            p : Pt;
+        END_VAR
+            THIS.p.zz := 8;
+        END_FUNCTION_BLOCK
+        "#;
+
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
+    [E0211] Error: no such field
+       ,-[ file:///test0.st:8:20 ]
+       |
+     2 |         TYPE Pt : STRUCT x : DINT; END_STRUCT; END_TYPE
+       |                   ^^^^^^^^^^^^^|^^^^^^^^^^^^^
+       |                                `--------------- type is defined by 'Pt' here
+       |
+     8 |             THIS.p.zz := 8;
+       |                    ^|
+       |                     `-- 'Pt' has no field named 'zz'
+    ---'
+    ");
+}
