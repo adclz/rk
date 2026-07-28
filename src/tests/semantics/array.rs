@@ -134,3 +134,129 @@ fn array_conformand_not_supported(mut with_db: RootDatabase) {
     ---'
     ");
 }
+
+/// A subscript is an ordinary expression — arithmetic, calls, nesting. These
+/// used to type as `Never` (the path walk never descended into them) and MIR
+/// refused to lower any compound subscript at all.
+#[rstest]
+fn valid_compound_subscript_expressions(mut with_db: RootDatabase) {
+    let source = r#"
+        FUNCTION idx : DINT
+            idx := 1;
+        END_FUNCTION
+
+        FUNCTION fn1 : DINT
+        VAR
+            a : ARRAY[0..9] OF DINT;
+            b : ARRAY[0..9] OF DINT;
+            n : DINT;
+            i : INT;
+        END_VAR
+            a[n + 1] := 1;
+            a[i * 2] := 2;
+            a[n + i] := 3;
+            a[idx()] := 4;
+            a[b[n]] := 5;
+            a[(n + 1) * 2] := 6;
+            fn1 := a[n - 1];
+        END_FUNCTION
+        "#;
+
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @"");
+}
+
+#[rstest]
+fn invalid_non_integer_subscript(mut with_db: RootDatabase) {
+    let source = r#"
+        FUNCTION fn1 : DINT
+        VAR
+            a : ARRAY[0..9] OF DINT;
+            r : REAL;
+        END_VAR
+            a[r] := 1;
+            a[TRUE] := 2;
+            a[1.5] := 3;
+            a['x'] := 4;
+        END_FUNCTION
+        "#;
+
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
+    [E0609] Error: invalid array access
+       ,-[ file:///test0.st:7:15 ]
+       |
+     7 |             a[r] := 1;
+       |               |
+       |               `-- array index must be an integer, found REAL
+    ---'
+    [E0609] Error: invalid array access
+       ,-[ file:///test0.st:8:15 ]
+       |
+     8 |             a[TRUE] := 2;
+       |               ^^|^
+       |                 `--- array index must be an integer, found BOOL
+    ---'
+    [E0309] Error: invalid literal
+       ,-[ file:///test0.st:9:15 ]
+       |
+     9 |             a[1.5] := 3;
+       |               ^|^
+       |                `--- cannot infer '<float>' to 'DINT': invalid DINT literal
+    ---'
+    [E0609] Error: invalid array access
+        ,-[ file:///test0.st:10:15 ]
+        |
+     10 |             a['x'] := 4;
+        |               ^|^
+        |                `--- array index must be an integer, found STRING
+    ----'
+    ");
+}
+
+/// A name that does not resolve inside a subscript must be reported — before
+/// subscripts were inferred at all, `a[zz + 1]` passed `check` silently and
+/// then failed in MIR lowering.
+#[rstest]
+fn invalid_unresolved_name_in_subscript(mut with_db: RootDatabase) {
+    let source = r#"
+        FUNCTION fn1 : DINT
+        VAR
+            a : ARRAY[0..9] OF DINT;
+        END_VAR
+            a[zz + 1] := 1;
+        END_FUNCTION
+        "#;
+
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r#"
+    [E0204] Error: no item found in scope
+       ,-[ file:///test0.st:6:15 ]
+       |
+     6 |             a[zz + 1] := 1;
+       |               ^|
+       |                `-- no item "zz" found in scope
+    ---'
+    "#);
+}
+
+/// Compound subscripts reach body inference through every path-resolution
+/// entry, not just plain variable targets: an FB-call target
+/// (`fbs[n + 1]()`) resolves through the call machinery, not the
+/// assignment-target walk, and must type its subscripts all the same.
+#[rstest]
+fn valid_compound_subscripts_on_call_paths(mut with_db: RootDatabase) {
+    let source = r#"
+        FUNCTION_BLOCK Inner
+        VAR_INPUT x : DINT; END_VAR
+        END_FUNCTION_BLOCK
+
+        FUNCTION_BLOCK Outer
+        VAR
+            fbs : ARRAY[0..3] OF Inner;
+            n : DINT;
+        END_VAR
+            fbs[n + 1](x := 2);
+            fbs[n * 2].x := 3;
+        END_FUNCTION_BLOCK
+        "#;
+
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @"");
+}

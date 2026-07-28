@@ -340,14 +340,12 @@ fn an_out_of_bounds_write_faults_instead_of_corrupting(mut with_db: db::RootData
         PROGRAM P
         VAR
             n : DINT;
-            j : DINT;
             a : ARRAY[0..2] OF DINT;
             guard : DINT := 777;
         END_VAR
             n := n + 1;
             IF n = 3 THEN
-                j := n + 1;   (* 4 is past the end *)
-                a[j] := 99;
+                a[n + 1] := 99;   (* 4 is past the end *)
             END_IF;
         END_PROGRAM
 

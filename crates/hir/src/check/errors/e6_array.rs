@@ -42,6 +42,10 @@ pub enum ArrayError<'db> {
         min: u64,
         max: u64,
     },
+    NonIntegerIndex {
+        expr: Expr<'db>,
+        ty: crate::hir_ty::ty::Type<'db>,
+    },
 }
 
 impl<'db> ErrorCode for ArrayError<'db> {
@@ -53,6 +57,7 @@ impl<'db> ErrorCode for ArrayError<'db> {
             Self::TooManyElements { .. } => "E0605",
             Self::InvalidIndex { .. } => "E0607",
             Self::IndexOutOfBounds { .. } => "E0608",
+            Self::NonIntegerIndex { .. } => "E0609",
         }
     }
 
@@ -63,7 +68,8 @@ impl<'db> ErrorCode for ArrayError<'db> {
             | Self::InferiorUpperBound { .. } => "invalid array bounds",
             Self::TooManyElements { .. }
             | Self::InvalidIndex { .. }
-            | Self::IndexOutOfBounds { .. } => "invalid array access",
+            | Self::IndexOutOfBounds { .. }
+            | Self::NonIntegerIndex { .. } => "invalid array access",
         }
     }
 }
@@ -153,6 +159,15 @@ impl<'db> ToIdeDiagnostic<'db> for ArrayError<'db> {
 
                 diag
             }
+            Self::NonIntegerIndex { expr, ty } => diag()
+                .message(format!(
+                    "array index must be an integer, found {}",
+                    ty.type_name(db)
+                ))
+                .severity(auto_lsp::lsp_types::DiagnosticSeverity::ERROR)
+                .desc(self)
+                .range(crate::denormalize(db, file, &expr.get_span(db)).unwrap_or_default())
+                .call(),
         }
     }
 }

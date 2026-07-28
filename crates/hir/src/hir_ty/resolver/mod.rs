@@ -8,10 +8,14 @@ pub mod walk;
 
 use crate::{
     CallSite, HasName, HirNodeInfo,
-    check::errors::{ToIdeDiagnostic, e2_resolve::ResolveError},
+    check::errors::{ToIdeDiagnostic, e2_resolve::ResolveError, e6_array::ArrayError},
     hir_def::{
-        expressions::expression::{
-            BeginPathExpr, MultibitsPart, PathExpr, VariableAccess, VariableAccessKind,
+        expressions::{
+            expression::{
+                BeginPathExpr, MultibitsPart, PathExpr, PathExprKind, VariableAccess,
+                VariableAccessKind,
+            },
+            spec::ElementarySpec,
         },
         interned::namespace::NamespaceAccess,
         pous::pou::Pou,
@@ -22,6 +26,7 @@ use crate::{
         body::BodyInferenceResult,
         expr_store::PathExprWalkStep,
         index_graphs::namespace_index,
+        infer::{expr::InferExprCtx, table::InferenceTable},
         resolver::{visibility::check_test_visibility, walk::PathPlaceBuilder},
         ty::Type,
     },
@@ -171,6 +176,9 @@ impl<'db> Resolver<'db> {
         match self.root {
             PathResolutionRoot::Value { base } => {
                 base.walk_begin_path_expr(db, path_expr, multibits, ctx);
+                if let Some(path) = path_expr.expr(db) {
+                    self.resolve_index_subscripts(db, path, ctx);
+                }
             }
             PathResolutionRoot::Namespace { .. } => {
                 // a begin path expr will always refer to a local variable in this context
@@ -187,10 +195,69 @@ impl<'db> Resolver<'db> {
     ) {
         match self.root {
             PathResolutionRoot::Value { base } => {
-                self.resolve_path_steps(base, db, path_expr, multibits, ctx)
+                self.resolve_path_steps(base, db, path_expr, multibits, ctx);
+                self.resolve_index_subscripts(db, path_expr, ctx);
             }
             PathResolutionRoot::Namespace { .. } => {
                 self.try_resolve_as_fq(db, path_expr, ctx);
+            }
+        }
+    }
+
+    /// Resolve the subscript expressions of every Index step in a path —
+    /// AFTER the step walk, following the walk-then-resolve split: the walk
+    /// (`walk.rs`) types the path's STEPS, and never descends into the
+    /// expressions inside them.
+    ///
+    /// Subscripts are ordinary expressions in their own right (`a[n + 1]`,
+    /// `a[idx()]`), and this is the only place body inference ever sees
+    /// them. Left untyped, MIR has no width for the index computation and
+    /// refuses to lower anything but a bare variable or literal. They
+    /// resolve from the SCOPE, not from the walked path: the `n` of `a[n]`
+    /// is a local lookup, not a field of `a`.
+    fn resolve_index_subscripts(
+        &self,
+        db: &'db dyn WorkspaceDataBase,
+        path_expr: PathExpr<'db>,
+        ctx: &mut BodyInferenceResult<'db>,
+    ) {
+        for step in path_expr.flatten(db) {
+            let PathExprWalkStep::Index { expr } = step else {
+                continue;
+            };
+            let PathExprKind::Index(index_expr) = expr.expr(db) else {
+                continue;
+            };
+            for sub in index_expr.index.iter() {
+                // A path expression can be resolved through more than one
+                // entry; the first pass already did the work.
+                if ctx.type_of_expr.contains_key(sub) {
+                    continue;
+                }
+                let mut infer = InferExprCtx::new(*self);
+                infer.resolve_expr(db, *sub, ctx);
+                infer.check_expr(db, *sub, ctx);
+
+                // An untyped literal is pinned to DINT, the width the index
+                // computation runs at.
+                let raw = ctx.type_of_expr_with_adjustments(db, *sub);
+                if raw.has_infer() {
+                    let mut table = InferenceTable::new();
+                    table.set_target_type(db, None, Type::Elementary(ElementarySpec::DInt));
+                    table.add_type(db, *sub, raw, *self);
+                    table.resolve_completly(db, *self, ctx);
+                }
+
+                // IEC subscripts are ANY_INT: signed or unsigned integers,
+                // subranges included (they index like their base). `Never`
+                // already carries its own diagnostic.
+                let ty = ctx.type_of_expr_with_adjustments(db, *sub).peel_subrange(db);
+                if !ty.is_never() && !ty.is_signed_integer() && !ty.is_unsigned_integer() {
+                    ctx.errors.push(
+                        ArrayError::NonIntegerIndex { expr: *sub, ty }
+                            .to_diagnostic(db, ctx.scope.file(db)),
+                    );
+                }
             }
         }
     }
