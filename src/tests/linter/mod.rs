@@ -17,6 +17,8 @@ mod empty_loop_body;
 mod empty_type;
 mod external_mutation;
 mod for_loop_step_sign;
+mod for_bound_at_type_limit;
+mod nonconstant_for_step;
 mod for_zero_step;
 mod global_without_external;
 mod identical_sub_expr;

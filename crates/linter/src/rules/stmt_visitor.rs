@@ -21,7 +21,8 @@ use ide_diagnostic::IdeDiagnostic;
 use super::{
     bool_comparison, collapsible_if, constant_condition, constant_loop_bounds, default_for_step,
     duplicate_case, empty_case_branch, empty_if_branch, empty_loop_body, external_mutation,
-    for_zero_step, identical_sub_expr, identity_operation, input_assignment, loop_var_modified,
+    for_bound_at_type_limit, for_zero_step, identical_sub_expr, identity_operation,
+    input_assignment, loop_var_modified, nonconstant_for_step,
     missing_input_param, missing_return, negated_comparison, negated_condition, redundant_not,
     run_lint, self_assignment, self_comparison, sub_self, uninitialized_output, unnecessary_else,
     unnecessary_parens, yoda_condition,
@@ -70,7 +71,9 @@ pub fn check<'db>(
         duplicate_case: config.is_enabled(duplicate_case::NAME),
         empty_case_branch: config.is_enabled(empty_case_branch::NAME),
         default_for_step: config.is_enabled(default_for_step::NAME),
+        for_bound_at_type_limit: config.is_enabled(for_bound_at_type_limit::NAME),
         for_zero_step: config.is_enabled(for_zero_step::NAME),
+        nonconstant_for_step: config.is_enabled(nonconstant_for_step::NAME),
         loop_var_modified: config.is_enabled(loop_var_modified::NAME),
         unnecessary_parens: config.is_enabled(unnecessary_parens::NAME),
         yoda_condition: config.is_enabled(yoda_condition::NAME),
@@ -139,7 +142,9 @@ struct VisitorCtx {
     duplicate_case: bool,
     empty_case_branch: bool,
     default_for_step: bool,
+    for_bound_at_type_limit: bool,
     for_zero_step: bool,
+    nonconstant_for_step: bool,
     loop_var_modified: bool,
     unnecessary_parens: bool,
     yoda_condition: bool,
@@ -170,7 +175,9 @@ impl VisitorCtx {
             || self.duplicate_case
             || self.empty_case_branch
             || self.default_for_step
+            || self.for_bound_at_type_limit
             || self.for_zero_step
+            || self.nonconstant_for_step
             || self.loop_var_modified
             || self.unnecessary_parens
             || self.yoda_condition
@@ -466,6 +473,18 @@ fn visit_statements<'db>(
                         constant_loop_bounds::check(db, start, end, d);
                     });
                 }
+                if ctx.for_bound_at_type_limit {
+                    run_lint(for_bound_at_type_limit::NAME, diagnostics, |d| {
+                        for_bound_at_type_limit::check_for(
+                            db,
+                            body,
+                            control_variable,
+                            end,
+                            step.as_ref(),
+                            d,
+                        );
+                    });
+                }
                 if ctx.empty_loop_body {
                     run_lint(empty_loop_body::NAME, diagnostics, |d| {
                         empty_loop_body::check_for(db, *stmt, loop_body, d)
@@ -481,6 +500,11 @@ fn visit_statements<'db>(
                     if ctx.default_for_step {
                         run_lint(default_for_step::NAME, diagnostics, |d| {
                             default_for_step::check_step(db, step, d)
+                        });
+                    }
+                    if ctx.nonconstant_for_step {
+                        run_lint(nonconstant_for_step::NAME, diagnostics, |d| {
+                            nonconstant_for_step::check_step(db, step, d)
                         });
                     }
                 }
