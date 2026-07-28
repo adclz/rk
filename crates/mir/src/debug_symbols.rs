@@ -52,13 +52,10 @@ pub fn sym_type_of(e: MirElementary) -> SymType {
 /// [`ArraySym`] and are resolved on demand.
 const MAX_ROOT_LEAVES: u32 = 1024;
 
-/// Recursively emit a [`Symbol`] for every elementary leaf reachable from a
-/// root variable at `addr` with type `ty`, naming each by its dotted/subscripted
-/// `path`. Structs add `.field` and their offset; arrays add `[i]`/`[i,j]` and
-/// `i * element_size`; enums/subranges emit one leaf of their underlying
-/// integer; STRING emits a leaf carrying its capacity. Pointers are not emitted
-/// (see module docs). The match is exhaustive so a new [`MirType`] forces a
-/// deliberate debug-symbols decision.
+/// Emit a [`Symbol`] for every elementary leaf reachable from a root
+/// variable at `addr` with type `ty`. Structs add `.field`, arrays `[i]`;
+/// enums and subranges emit their underlying integer; pointers are skipped.
+#[allow(clippy::too_many_arguments)]
 pub fn walk_type(
     db: &dyn WorkspaceDataBase,
     path: &str,

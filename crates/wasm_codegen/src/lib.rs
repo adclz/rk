@@ -436,6 +436,11 @@ struct WasmGen<'a> {
     /// Per-function scalar locals `(wasm index, name, elem)`, for the
     /// `debug-locals` section.
     func_locals: FxHashMap<u32, Vec<(u32, String, MirElementary)>>,
+    /// Per function: leaf symbols and array descriptors for its memory-resident
+    /// locals, whose addresses are static (IEC forbids recursion). Emitted
+    /// into `debug-locals` v2.
+    func_memory_locals:
+        FxHashMap<u32, (Vec<debug_format::Symbol>, Vec<debug_format::ArraySym>)>,
 }
 
 /// Size of the per-`{test}` canonical-ABI `result<unit, string>` area: an
@@ -529,6 +534,7 @@ impl<'a> WasmGen<'a> {
             test_result_floor,
             func_lines: FxHashMap::default(),
             func_locals: FxHashMap::default(),
+            func_memory_locals: FxHashMap::default(),
         }
     }
 
@@ -987,6 +993,30 @@ impl<'a> WasmGen<'a> {
         scalar_locals.sort_by_key(|(idx, _, _)| *idx);
         if !scalar_locals.is_empty() {
             self.func_locals.insert(func.index, scalar_locals);
+        }
+
+        // Memory-resident locals, leaf-walked like module symbols with
+        // frame-relative paths.
+        let mut mem_symbols = Vec::new();
+        let mut mem_arrays = Vec::new();
+        for local in &func.locals {
+            if let mir::function::MirStorage::Memory { address, .. } = local.storage {
+                mir::debug_symbols::collect_root(
+                    self.db,
+                    local.name.text(self.db).as_ref(),
+                    address,
+                    &local.ty,
+                    false,
+                    &mut mem_symbols,
+                    &mut mem_arrays,
+                );
+            }
+        }
+        if !mem_symbols.is_empty() || !mem_arrays.is_empty() {
+            mem_symbols.sort_by(|a, b| a.path.cmp(&b.path));
+            mem_arrays.sort_by(|a, b| a.path.cmp(&b.path));
+            self.func_memory_locals
+                .insert(func.index, (mem_symbols, mem_arrays));
         }
 
         // Extra (non-parameter) wasm locals. The scalar return slot is not
@@ -1558,23 +1588,41 @@ impl<'a> WasmGen<'a> {
         // `debug-locals`: per-function scalar-local labels (wasm local index →
         // IEC name/type), keyed by DefinedFuncIndex, so a debugger names the
         // values `FrameHandle::local(i)` returns.
-        let mut func_local_tables: Vec<debug_format::FuncLocals> = self
+        let all_indices: std::collections::BTreeSet<u32> = self
             .func_locals
-            .iter()
-            .filter_map(|(mir_idx, locals)| {
-                let widx = *self.index_remap.get(mir_idx)?;
-                let mut vars: Vec<debug_format::LocalVar> = locals
-                    .iter()
-                    .map(|(wasm_index, name, elem)| debug_format::LocalVar {
-                        wasm_index: *wasm_index,
-                        name: name.clone(),
-                        ty: mir::debug_symbols::sym_type_of(*elem),
+            .keys()
+            .chain(self.func_memory_locals.keys())
+            .copied()
+            .collect();
+        let mut func_local_tables: Vec<debug_format::FuncLocals> = all_indices
+            .into_iter()
+            .filter_map(|mir_idx| {
+                let widx = *self.index_remap.get(&mir_idx)?;
+                let mut vars: Vec<debug_format::LocalVar> = self
+                    .func_locals
+                    .get(&mir_idx)
+                    .map(|locals| {
+                        locals
+                            .iter()
+                            .map(|(wasm_index, name, elem)| debug_format::LocalVar {
+                                wasm_index: *wasm_index,
+                                name: name.clone(),
+                                ty: mir::debug_symbols::sym_type_of(*elem),
+                            })
+                            .collect()
                     })
-                    .collect();
+                    .unwrap_or_default();
                 vars.sort_by_key(|v| v.wasm_index);
+                let (memory, arrays) = self
+                    .func_memory_locals
+                    .get(&mir_idx)
+                    .cloned()
+                    .unwrap_or_default();
                 Some(debug_format::FuncLocals {
                     defined_index: widx - n_func_imports,
                     locals: vars,
+                    memory,
+                    arrays,
                 })
             })
             .collect();

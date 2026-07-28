@@ -509,3 +509,117 @@ fn multi_dimensional_paths_resolve_in_both_spellings(mut with_db: db::RootDataba
     assert_eq!(info.read_var(&plc, "P1.m[7,9]"), Some(VarValue::I16(79)));
     assert_eq!(info.read_var(&plc, "P1.m[0][9]"), None, "below the lower bound");
 }
+
+/// A frame's MEMORY-resident locals — aggregates, strings — must appear in
+/// `debug-locals` alongside its scalars. They lived nowhere before v2:
+/// stepping into a function, its arrays and structs were uninspectable, in
+/// either debug section. Their addresses are static (IEC forbids recursion,
+/// so a function's memory locals have fixed homes), which is what lets them
+/// reuse the module-symbol machinery scoped to the frame.
+#[rstest]
+fn a_frame_s_aggregate_locals_are_described(mut with_db: db::RootDatabase) {
+    let source = r#"
+        TYPE Rec : STRUCT x : INT; y : INT; END_STRUCT; END_TYPE
+
+        FUNCTION crunch : INT
+        VAR
+            r : Rec;
+            samples : ARRAY[0..9] OF INT;
+            msg : STRING[8];
+            big : ARRAY[0..4999] OF DINT;
+        END_VAR
+            r.x := 1;
+            crunch := r.x;
+        END_FUNCTION
+
+        FUNCTION_BLOCK Holder
+            METHOD PUBLIC weigh : INT
+            VAR tmp : Rec; END_VAR
+                tmp.y := 2;
+                weigh := tmp.y;
+            END_METHOD
+        END_FUNCTION_BLOCK
+
+        PROGRAM P
+        VAR n : INT; h : Holder; END_VAR
+            n := crunch() + h.weigh();
+        END_PROGRAM
+
+        CONFIGURATION Cfg
+            RESOURCE Res ON CPU
+                TASK T(INTERVAL := T#10ms, PRIORITY := 1);
+                PROGRAM P1 WITH T : P;
+            END_RESOURCE
+        END_CONFIGURATION
+    "#;
+    let (_mir, wasm) = compile_to_mir_and_wasm(&mut with_db, source);
+
+    let read_section = |name: &str| -> Vec<u8> {
+        for payload in wasmparser::Parser::new(0).parse_all(&wasm) {
+            if let Ok(wasmparser::Payload::CustomSection(reader)) = payload
+                && reader.name() == name
+            {
+                return reader.data().to_vec();
+            }
+        }
+        panic!("missing `{name}` section");
+    };
+    let funcs =
+        debug_format::DebugFunctions::from_msgpack(&read_section("debug-functions")).unwrap();
+    let locals = debug_format::DebugLocals::from_msgpack(&read_section("debug-locals")).unwrap();
+    let frame = |name: &str| -> &debug_format::FuncLocals {
+        let idx = funcs
+            .functions
+            .iter()
+            .find(|f| f.name == name)
+            .unwrap_or_else(|| panic!("no function named {name}"))
+            .defined_index;
+        locals
+            .functions
+            .iter()
+            .find(|f| f.defined_index == idx)
+            .unwrap_or_else(|| panic!("no locals table for {name}"))
+    };
+
+    // The FUNCTION's frame: struct leaves, array leaves, the STRING, and a
+    // descriptor for every array — including the big one, whose leaves are
+    // budget-bounded rather than enumerated or dropped.
+    let crunch = frame("crunch");
+    let by = |p: &str| crunch.memory.iter().find(|s| s.path == p);
+    let rx = by("r.x").expect("struct leaf r.x");
+    let ry = by("r.y").expect("struct leaf r.y");
+    // INT occupies a 4-byte slot in this layout (the i32-lane storage
+    // convention), so the second field sits at +4 — the assertion is that the
+    // offsets come from the REAL frame layout, not recomputed guesses.
+    assert_eq!(ry.address, rx.address + 4, "layout offsets are frame-real");
+    assert!(by("samples[0]").is_some(), "array leaf");
+    assert_eq!(
+        by("msg").expect("string leaf").ty,
+        SymType::String { capacity: 8 }
+    );
+    let big = crunch
+        .arrays
+        .iter()
+        .find(|a| a.path == "big")
+        .expect("descriptor for the 5000-element local");
+    assert_eq!(big.total_elements, 5000);
+    assert_eq!(big.elem_ty, Some(SymType::DInt));
+    let big_leaves = crunch
+        .memory
+        .iter()
+        .filter(|s| s.path.starts_with("big["))
+        .count();
+    assert!(
+        big_leaves <= 1024,
+        "the frame's leaf budget holds, got {big_leaves}"
+    );
+
+    // The METHOD's frame — a different lowering path — describes its struct
+    // local the same way.
+    let weigh = frame("Holder#weigh");
+    assert!(
+        weigh.memory.iter().any(|s| s.path == "tmp.y"),
+        "method-local struct leaf, got: {:?}",
+        weigh.memory.iter().map(|s| &s.path).collect::<Vec<_>>()
+    );
+}

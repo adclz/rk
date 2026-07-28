@@ -270,7 +270,7 @@ impl DebugLines {
 pub const DEBUG_LOCALS_SECTION: &str = "debug-locals";
 
 /// On-wire format version for [`DebugLocals`].
-pub const DEBUG_LOCALS_VERSION: u16 = 1;
+pub const DEBUG_LOCALS_VERSION: u16 = 2;
 
 /// Per-function scalar-local tables: wasm local slot → IEC name and type;
 /// memory-resident variables are reached via [`DebugSymbols`].
@@ -288,6 +288,15 @@ pub struct FuncLocals {
     pub defined_index: u32,
     /// Scalar locals, sorted ascending by `wasm_index`.
     pub locals: Vec<LocalVar>,
+    /// Memory-resident locals expanded to leaves like
+    /// [`DebugSymbols::symbols`], with frame-relative paths and absolute
+    /// static addresses (IEC forbids recursion).
+    #[serde(default)]
+    pub memory: Vec<Symbol>,
+    /// Array descriptors for the frame's memory locals — same on-demand
+    /// element resolution as [`DebugSymbols::arrays`].
+    #[serde(default)]
+    pub arrays: Vec<ArraySym>,
 }
 
 /// One scalar local: its wasm local slot index + IEC name and type.
