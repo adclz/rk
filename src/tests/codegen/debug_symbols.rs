@@ -623,3 +623,166 @@ fn a_frame_s_aggregate_locals_are_described(mut with_db: db::RootDatabase) {
         weigh.memory.iter().map(|s| &s.path).collect::<Vec<_>>()
     );
 }
+
+/// The v5 type table: an AGGREGATE array element far past the leaf budget is
+/// addressable member by member — `pts[1500].y`, `pts[1500].history[2]` —
+/// by indexing through the descriptor and walking the element's `TypeDesc`,
+/// exactly how a debugger resolves member paths from DWARF. Before v5 the
+/// descriptor said `elem_ty: None` and every un-enumerated element of an
+/// array of structs was unreachable — readable for the first budget's worth
+/// of leaves and silently invisible past that.
+#[rstest]
+fn aggregate_elements_resolve_through_the_type_table(mut with_db: db::RootDatabase) {
+    let source = r#"
+        TYPE Pt : STRUCT
+            x : DINT;
+            y : DINT;
+            history : ARRAY[0..3] OF DINT;
+        END_STRUCT; END_TYPE
+
+        PROGRAM P
+        VAR
+            pts : ARRAY[0..1999] OF Pt;
+            k : DINT;
+        END_VAR
+            FOR k := 0 TO 1999 DO
+                pts[k].x := k;
+                pts[k].y := k * 10;
+                pts[k].history[2] := k + 100000;
+            END_FOR;
+        END_PROGRAM
+
+        CONFIGURATION Cfg
+            RESOURCE Res ON CPU
+                TASK T(INTERVAL := T#10ms, PRIORITY := 1);
+                PROGRAM P1 WITH T : P;
+            END_RESOURCE
+        END_CONFIGURATION
+    "#;
+    let (_mir, wasm) = compile_to_mir_and_wasm(&mut with_db, source);
+    let table = read_debug_symbols(&wasm);
+
+    // The descriptor names the element's layout in the type table.
+    let arr = table
+        .arrays
+        .iter()
+        .find(|a| a.path == "P1.pts")
+        .expect("descriptor for the array of structs");
+    assert_eq!(arr.elem_ty, None, "an aggregate element has no scalar tag");
+    let elem_id = arr.elem_type.expect("v5: aggregate element carries a TypeId") as usize;
+    let debug_format::TypeDesc::Struct { name, size, fields } = &table.types[elem_id] else {
+        panic!("Pt should be described as a struct, got {:?}", table.types[elem_id]);
+    };
+    assert!(name.contains("Pt"), "type name is carried for display, got {name}");
+    assert_eq!(*size, 24, "x(4) + y(4) + history(4*4)");
+    assert_eq!(
+        fields.iter().map(|f| f.name.as_str()).collect::<Vec<_>>(),
+        vec!["x", "y", "history"]
+    );
+    // …and the nested array field references a further descriptor whose
+    // element is a scalar — the table is a graph, one hop per layer.
+    let hist = &fields[2];
+    let debug_format::TypeDesc::Array { dimensions, elem, .. } = &table.types[hist.ty as usize]
+    else {
+        panic!("history should be an Array desc");
+    };
+    assert_eq!(dimensions, &vec![(0, 3)]);
+    assert!(matches!(
+        table.types[*elem as usize],
+        debug_format::TypeDesc::Scalar(SymType::DInt)
+    ));
+
+    // 2000 elements × 6 leaves each ≫ budget: element 1500 was never
+    // enumerated. It reads and forces through the table.
+    let mut plc = Plc::load(&wasm, Config::default()).expect("load");
+    plc.run(1).expect("scan");
+    let info = DebugInfo::from_wasm(&wasm);
+    assert!(
+        info.symbol("P1.pts[1500].y").is_none(),
+        "the probe element must be past the leaf budget for this test to prove anything"
+    );
+    assert_eq!(info.read_var(&plc, "P1.pts[1500].y"), Some(VarValue::I32(15000)));
+    assert_eq!(
+        info.read_var(&plc, "P1.pts[1500].history[2]"),
+        Some(VarValue::I32(101500)),
+        "a nested array INSIDE an un-enumerated element resolves too"
+    );
+    info.write_var(&mut plc, "P1.pts[1500].x", VarValue::I32(-3))
+        .expect("forcing a member of an un-enumerated element");
+    assert_eq!(info.read_var(&plc, "P1.pts[1500].x"), Some(VarValue::I32(-3)));
+
+    // In-budget elements still read through the eager leaf table and agree.
+    assert_eq!(info.read_var(&plc, "P1.pts[0].y"), Some(VarValue::I32(0)));
+
+    // Refusals, not misreads:
+    assert_eq!(info.read_var(&plc, "P1.pts[2000].x"), None, "element OOB");
+    assert_eq!(info.read_var(&plc, "P1.pts[3].nope"), None, "unknown field");
+    assert_eq!(
+        info.read_var(&plc, "P1.pts[1500]"),
+        None,
+        "a whole struct is not a scalar value"
+    );
+    assert_eq!(
+        info.read_var(&plc, "P1.pts[3].history[4]"),
+        None,
+        "nested subscript OOB"
+    );
+    assert_eq!(
+        info.read_var(&plc, "P1.pts[3].x[0]"),
+        None,
+        "an accessor past a scalar leaf"
+    );
+}
+
+/// The frame-local half of the same fix: a FUNCTION-local array of structs
+/// gets `elem_type` into the module-level `DebugLocals::types` table.
+#[rstest]
+fn a_frame_s_aggregate_array_elements_carry_their_layout(mut with_db: db::RootDatabase) {
+    let source = r#"
+        TYPE Rec : STRUCT a : DINT; b : DINT; END_STRUCT; END_TYPE
+
+        FUNCTION crunch : DINT
+        VAR
+            recs : ARRAY[0..999] OF Rec;
+        END_VAR
+            recs[0].a := 1;
+            crunch := recs[0].a;
+        END_FUNCTION
+
+        PROGRAM P
+        VAR n : DINT; END_VAR
+            n := crunch();
+        END_PROGRAM
+
+        CONFIGURATION Cfg
+            RESOURCE Res ON CPU
+                TASK T(INTERVAL := T#10ms, PRIORITY := 1);
+                PROGRAM P1 WITH T : P;
+            END_RESOURCE
+        END_CONFIGURATION
+    "#;
+    let (_mir, wasm) = compile_to_mir_and_wasm(&mut with_db, source);
+    let read_section = |name: &str| -> Vec<u8> {
+        for payload in wasmparser::Parser::new(0).parse_all(&wasm) {
+            if let Ok(wasmparser::Payload::CustomSection(reader)) = payload
+                && reader.name() == name
+            {
+                return reader.data().to_vec();
+            }
+        }
+        panic!("missing `{name}` section");
+    };
+    let locals = debug_format::DebugLocals::from_msgpack(&read_section("debug-locals")).unwrap();
+    let arr = locals
+        .functions
+        .iter()
+        .flat_map(|f| &f.arrays)
+        .find(|a| a.path == "recs")
+        .expect("descriptor for the frame-local aggregate array");
+    assert_eq!(arr.elem_ty, None);
+    let id = arr.elem_type.expect("frame descriptors reference the shared table") as usize;
+    assert!(
+        matches!(&locals.types[id], debug_format::TypeDesc::Struct { fields, .. } if fields.len() == 2),
+        "DebugLocals carries the type table its frames reference"
+    );
+}

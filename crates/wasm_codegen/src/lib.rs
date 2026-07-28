@@ -441,6 +441,9 @@ struct WasmGen<'a> {
     /// into `debug-locals` v2.
     func_memory_locals:
         FxHashMap<u32, (Vec<debug_format::Symbol>, Vec<debug_format::ArraySym>)>,
+    /// Type table shared by every frame's array descriptors (aggregate
+    /// element layouts) — becomes `DebugLocals::types` (v3).
+    local_type_table: mir::debug_symbols::TypeTable,
 }
 
 /// Size of the per-`{test}` canonical-ABI `result<unit, string>` area: an
@@ -535,6 +538,7 @@ impl<'a> WasmGen<'a> {
             func_lines: FxHashMap::default(),
             func_locals: FxHashMap::default(),
             func_memory_locals: FxHashMap::default(),
+            local_type_table: mir::debug_symbols::TypeTable::new(),
         }
     }
 
@@ -1009,6 +1013,7 @@ impl<'a> WasmGen<'a> {
                     false,
                     &mut mem_symbols,
                     &mut mem_arrays,
+                    &mut self.local_type_table,
                 );
             }
         }
@@ -1630,6 +1635,7 @@ impl<'a> WasmGen<'a> {
         let debug_locals = debug_format::DebugLocals {
             version: debug_format::DEBUG_LOCALS_VERSION,
             functions: func_local_tables,
+            types: std::mem::take(&mut self.local_type_table).into_entries(),
         };
         module.section(&wasm_encoder::CustomSection {
             name: std::borrow::Cow::Borrowed(debug_format::DEBUG_LOCALS_SECTION),

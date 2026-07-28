@@ -447,6 +447,7 @@ fn lower_module_from_pous<'db>(
     // variables by name. Sorted by path for deterministic output.
     let mut symbols = Vec::new();
     let mut array_syms = Vec::new();
+    let mut type_table = crate::debug_symbols::TypeTable::new();
     if let Some(sched) = &module.schedule {
         for task in &sched.tasks {
             for inst in &task.programs {
@@ -463,6 +464,7 @@ fn lower_module_from_pous<'db>(
                             false, // program-instance field
                             &mut symbols,
                             &mut array_syms,
+                            &mut type_table,
                         );
                     }
                 }
@@ -478,6 +480,7 @@ fn lower_module_from_pous<'db>(
             true,
             &mut symbols,
             &mut array_syms,
+            &mut type_table,
         );
     }
     symbols.sort_by(|a, b| a.path.cmp(&b.path));
@@ -486,6 +489,7 @@ fn lower_module_from_pous<'db>(
         version: crate::debug_symbols::DEBUG_SYMBOLS_VERSION,
         symbols,
         arrays: array_syms,
+        types: type_table.into_entries(),
     };
 
     // The per-field retain map from the same final addresses.

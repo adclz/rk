@@ -72,6 +72,12 @@ pub fn lower_type<'db>(
     db: &'db dyn WorkspaceDataBase,
     ty: Type<'db>,
 ) -> Result<MirType, LowerTypeError> {
+    // Capture a wrapping `TYPE Pt : STRUCT` name before normalize peels it,
+    // so the struct carries "Pt" rather than "<anon_struct>". Display-only.
+    let type_name = match ty {
+        Type::DataType(dt) => Some(dt.name(db)),
+        _ => None,
+    };
     let ty = ty.normalize(db);
 
     match ty {
@@ -86,7 +92,7 @@ pub fn lower_type<'db>(
 
         Type::RefTo(_) => Ok(MirType::Pointer(Box::new(MirType::Void))),
 
-        Type::Struct(s) => lower_struct_type(db, s),
+        Type::Struct(s) => lower_struct_type_named(db, s, type_name),
 
         Type::Array(arr) => lower_array_type(db, arr),
 
@@ -204,13 +210,6 @@ fn declared_string_capacity<'db>(
         },
         _ => None,
     }
-}
-
-fn lower_struct_type<'db>(
-    db: &'db dyn WorkspaceDataBase,
-    struct_type: Struct<'db>,
-) -> Result<MirType, LowerTypeError> {
-    lower_struct_type_named(db, struct_type, None)
 }
 
 /// Lower a struct type, optionally with an explicit name

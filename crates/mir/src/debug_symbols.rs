@@ -10,12 +10,78 @@
 //! are not yet emitted as leaves.
 
 pub use debug_format::{
-    DEBUG_SYMBOLS_SECTION, DEBUG_SYMBOLS_VERSION, DebugSymbols, SymType, Symbol,
+    DEBUG_SYMBOLS_SECTION, DEBUG_SYMBOLS_VERSION, DebugSymbols, SymType, Symbol, TypeDesc,
 };
 
 use crate::types::{MirElementary, MirType};
 use db::WorkspaceDataBase;
 use hir::hir_def::interned::identifier::Ident;
+use rustc_hash::FxHashMap;
+
+/// Interner for the on-wire type table: one [`TypeDesc`] per distinct
+/// layout, referenced by index.
+#[derive(Default)]
+pub struct TypeTable {
+    entries: Vec<TypeDesc>,
+    /// Structural key (the entry's `Debug` rendering) → index.
+    index: FxHashMap<String, u32>,
+}
+
+impl TypeTable {
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    /// The finished table, ready for `DebugSymbols::types` / `DebugLocals::types`.
+    pub fn into_entries(self) -> Vec<TypeDesc> {
+        self.entries
+    }
+
+    /// Intern `ty`, returning its id. Children are interned first, so a
+    /// descriptor only ever references earlier entries.
+    pub fn intern(&mut self, db: &dyn WorkspaceDataBase, ty: &MirType) -> u32 {
+        let desc = match ty {
+            MirType::Elementary(_) | MirType::Enum(_) | MirType::Subrange(_) | MirType::String { .. } => {
+                // Exactly the scalar set `scalar_sym_ty` covers.
+                TypeDesc::Scalar(scalar_sym_ty(ty).expect("scalar arm covers scalar types"))
+            }
+            MirType::Struct(s) => {
+                let fields = s
+                    .fields
+                    .iter()
+                    .map(|f| debug_format::FieldDesc {
+                        name: f.name.text(db).to_string(),
+                        offset: f.offset,
+                        ty: self.intern(db, &f.ty),
+                    })
+                    .collect();
+                TypeDesc::Struct {
+                    name: s.name.text(db).to_string(),
+                    size: s.size,
+                    fields,
+                }
+            }
+            MirType::Array(a) => TypeDesc::Array {
+                dimensions: a.dimensions.clone(),
+                total_elements: a.total_elements,
+                elem_size: a.element_size,
+                elem: self.intern(db, &a.element_type),
+            },
+            // A pointer (REF_TO / by-ref VAR_IN_OUT slot) is locatable but not
+            // walkable — chasing it needs a live dereference.
+            MirType::Pointer(_) => TypeDesc::Opaque { size: 4 },
+            MirType::Void => TypeDesc::Opaque { size: 0 },
+        };
+        let key = format!("{desc:?}");
+        if let Some(&id) = self.index.get(&key) {
+            return id;
+        }
+        let id = self.entries.len() as u32;
+        self.entries.push(desc);
+        self.index.insert(key, id);
+        id
+    }
+}
 
 /// Map a resolved elementary type to its on-wire [`SymType`] tag.
 pub fn sym_type_of(e: MirElementary) -> SymType {
@@ -64,6 +130,7 @@ pub fn walk_type(
     global: bool,
     out: &mut Vec<Symbol>,
     arrays: &mut Vec<debug_format::ArraySym>,
+    types: &mut TypeTable,
     budget: &mut u32,
 ) {
     // The budget gates leaves; descriptors are always recorded.
@@ -106,7 +173,17 @@ pub fn walk_type(
         MirType::Struct(s) => {
             for f in &s.fields {
                 let child = format!("{path}.{}", f.name.text(db));
-                walk_type(db, &child, addr + f.offset, &f.ty, global, out, arrays, budget);
+                walk_type(
+                    db,
+                    &child,
+                    addr + f.offset,
+                    &f.ty,
+                    global,
+                    out,
+                    arrays,
+                    types,
+                    budget,
+                );
             }
         }
         // The descriptor is the durable record — DWARF's array_type, in
@@ -114,14 +191,20 @@ pub fn walk_type(
         // then expanded WHILE THE BUDGET LASTS as a convenience for the pushed
         // snapshot; flat row-major (`lower_func`: `offset += idx * element_size`).
         MirType::Array(a) => {
+            let elem_ty = scalar_sym_ty(&a.element_type);
             arrays.push(debug_format::ArraySym {
                 path: path.to_string(),
                 address: addr,
                 dimensions: a.dimensions.clone(),
                 total_elements: a.total_elements,
                 elem_size: a.element_size,
-                elem_ty: scalar_sym_ty(&a.element_type),
+                elem_ty,
                 global,
+                // An aggregate element gets its layout interned so members resolve
+                // on demand.
+                elem_type: elem_ty
+                    .is_none()
+                    .then(|| types.intern(db, &a.element_type)),
             });
             for k in 0..a.total_elements {
                 if *budget == 0 {
@@ -136,6 +219,7 @@ pub fn walk_type(
                     global,
                     out,
                     arrays,
+                    types,
                     budget,
                 );
             }
@@ -199,8 +283,8 @@ fn scalar_sym_ty(ty: &MirType) -> Option<SymType> {
     }
 }
 
-/// Emit symbols for one root variable named `root` whose storage starts at
-/// `base` and has type `ty` — the entry point [`walk_type`] recurses from.
+/// Emit symbols for one root variable `root` at `base` with type `ty`.
+#[allow(clippy::too_many_arguments)]
 pub fn collect_root(
     db: &dyn WorkspaceDataBase,
     root: &str,
@@ -209,9 +293,10 @@ pub fn collect_root(
     global: bool,
     out: &mut Vec<Symbol>,
     arrays: &mut Vec<debug_format::ArraySym>,
+    types: &mut TypeTable,
 ) {
     let mut budget = MAX_ROOT_LEAVES;
-    walk_type(db, root, base, ty, global, out, arrays, &mut budget);
+    walk_type(db, root, base, ty, global, out, arrays, types, &mut budget);
 }
 
 /// A leaf symbol's dotted path from a root segment and a field name.
