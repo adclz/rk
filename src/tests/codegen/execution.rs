@@ -923,3 +923,49 @@ fn subrange_with_negative_bounds(mut with_db: db::RootDatabase) {
     let result: i32 = super::execute_wasm(&wasm, "test", ());
     assert_eq!(result, -3995);
 }
+
+/// The rest of the sub-width invariant's surface: bitwise NOT, unary minus,
+/// subtraction underflow and multiplication overflow all stay inside the
+/// 8/16-bit domain. Verified fixed earlier (the wrap pins lived only in the
+/// STDLIB's own test suite, which `cargo nextest` never runs) — pinned here
+/// so a codegen regression fails in CI, not in a field diagnosis.
+#[rstest]
+fn test_execute_subwidth_not_neg_and_more_wraps(mut with_db: db::RootDatabase) {
+    let source = r#"
+        FUNCTION byte_not : BYTE
+        VAR_INPUT a : BYTE; END_VAR
+            byte_not := NOT a;
+        END_FUNCTION
+
+        FUNCTION word_not : WORD
+        VAR_INPUT a : WORD; END_VAR
+            word_not := NOT a;
+        END_FUNCTION
+
+        FUNCTION sint_neg : SINT
+        VAR_INPUT a : SINT; END_VAR
+            sint_neg := -a;
+        END_FUNCTION
+
+        FUNCTION usint_sub : USINT
+        VAR_INPUT a : USINT; b : USINT; END_VAR
+            usint_sub := a - b;
+        END_FUNCTION
+
+        FUNCTION usint_mul : USINT
+        VAR_INPUT a : USINT; b : USINT; END_VAR
+            usint_mul := a * b;
+        END_FUNCTION
+    "#;
+    let wasm = compile_to_wasm(&mut with_db, source);
+    let r: i32 = super::execute_wasm(&wasm, "byte_not", (0i32,));
+    assert_eq!(r, 0xFF, "NOT BYTE#0 is 0xFF, not the i32 lane's 0xFFFFFFFF");
+    let r: i32 = super::execute_wasm(&wasm, "word_not", (0x00FFi32,));
+    assert_eq!(r, 0xFF00, "NOT WORD#00FF stays 16-bit");
+    let r: i32 = super::execute_wasm(&wasm, "sint_neg", (-128i32,));
+    assert_eq!(r, -128, "-(SINT#-128) wraps to -128, the two's-complement edge");
+    let r: i32 = super::execute_wasm(&wasm, "usint_sub", (0i32, 1i32));
+    assert_eq!(r, 255, "USINT 0 - 1 wraps to 255");
+    let r: i32 = super::execute_wasm(&wasm, "usint_mul", (16i32, 16i32));
+    assert_eq!(r, 0, "USINT 16 * 16 wraps to 0");
+}
