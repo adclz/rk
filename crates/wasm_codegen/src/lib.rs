@@ -138,6 +138,32 @@ fn walk_expr_for_callees(
     }
 }
 
+/// Allocate the per-`For` end/step snapshot locals a body needs (IEC:
+/// evaluated once at entry), returning the index pairs in emitter order.
+/// Lane-typed.
+fn alloc_for_scratch(
+    body: &[MirStmt],
+    params_len: u32,
+    extra_locals: &mut Vec<(u32, ValType)>,
+) -> std::collections::VecDeque<(Option<u32>, Option<u32>)> {
+    let mut next = params_len + extra_locals.iter().map(|(c, _)| *c).sum::<u32>();
+    crate::emit_stmt::for_scratch_requests(body)
+        .into_iter()
+        .map(|req| {
+            let vt = if req.is_64 { ValType::I64 } else { ValType::I32 };
+            let mut take = |need: bool| {
+                need.then(|| {
+                    let idx = next;
+                    next += 1;
+                    extra_locals.push((1, vt));
+                    idx
+                })
+            };
+            (take(req.need_end), take(req.need_step))
+        })
+        .collect()
+}
+
 fn count_nested_string_calls_stmts(stmts: &[MirStmt]) -> u32 {
     let mut total = 0;
     for stmt in stmts {
@@ -1059,6 +1085,10 @@ impl<'a> WasmGen<'a> {
             None
         };
 
+        // Per-FOR scratch locals snapshotting each loop's end/step at entry
+        // (IEC: evaluated once). Appended last, so no existing index moves.
+        let for_scratch = alloc_for_scratch(&func.body, params.len() as u32, &mut extra_locals);
+
         // One scratch slot per nested STRING call, past the MIR static layout.
         let scratch_slots: Vec<u32> = (0..nested_str_count)
             .map(|_| self.alloc_scratch_slot())
@@ -1141,6 +1171,7 @@ impl<'a> WasmGen<'a> {
             return_value,
             self.rk_exception_tag_idx,
             fb_recv_tmp,
+            for_scratch,
         );
         if !lines.is_empty() {
             self.func_lines.insert(func.index, lines);
@@ -1247,6 +1278,10 @@ impl<'a> WasmGen<'a> {
             None
         };
 
+        // Per-FOR end/step snapshots, as in `emit_function`. The test
+        // wrapper takes no params, hence the 0.
+        let for_scratch = alloc_for_scratch(&func.body, 0, &mut extra_locals);
+
         // Per-call-site STRING snapshot slots for nested STRING-returning
         // calls inside the test body. Same as `emit_function`.
         let nested_str_count = count_nested_string_calls_stmts(&func.body);
@@ -1308,6 +1343,7 @@ impl<'a> WasmGen<'a> {
             None,
             self.rk_exception_tag_idx,
             fb_recv_tmp,
+            for_scratch,
         );
         if !lines.is_empty() {
             self.func_lines.insert(func.index, lines);

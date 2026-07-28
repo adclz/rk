@@ -427,3 +427,300 @@ fn the_body_observes_the_member_counter_each_iteration(mut with_db: db::RootData
     let result: i32 = super::execute_wasm(&wasm, "run", ());
     assert_eq!(result, 123, "each iteration read the live counter: 1, 2, 3");
 }
+
+/// IEC 61131-3: a FOR statement's end and step expressions are evaluated
+/// ONCE, at loop entry — the body mutating a variable used in the bound must
+/// not change the iteration count. The bound used to be re-emitted inside
+/// the loop's compare, so this ran TEN times; it is now snapshotted into a
+/// per-statement scratch local at entry.
+#[rstest]
+fn for_bound_is_fixed_at_entry(mut with_db: db::RootDatabase) {
+    let source = r#"
+        FUNCTION run : INT
+        VAR i : INT; n : INT; count : INT; END_VAR
+            n := 3;
+            FOR i := 1 TO n DO
+                n := 10;
+                count := count + 1;
+            END_FOR;
+            run := count;
+        END_FUNCTION
+    "#;
+    let wasm = compile_to_wasm(&mut with_db, source);
+    let r: i32 = super::execute_wasm(&wasm, "run", ());
+    assert_eq!(r, 3, "the bound is fixed at entry (IEC); re-evaluation would give 10");
+}
+
+/// Same question for a bound with a SIDE EFFECT: a function call in `TO`
+/// must run once, not once per iteration.
+#[rstest]
+fn for_bound_call_runs_once(mut with_db: db::RootDatabase) {
+    let source = r#"
+        FUNCTION_BLOCK Counter
+        VAR calls : INT; END_VAR
+            METHOD PUBLIC bound : INT
+                calls := calls + 1;
+                bound := 4;
+            END_METHOD
+        END_FUNCTION_BLOCK
+
+        FUNCTION run : INT
+        VAR i : INT; c : Counter; total : INT; END_VAR
+            FOR i := 1 TO c.bound() DO
+                total := total + 1;
+            END_FOR;
+            run := c.calls * 100 + total;
+        END_FUNCTION
+    "#;
+    let wasm = compile_to_wasm(&mut with_db, source);
+    let r: i32 = super::execute_wasm(&wasm, "run", ());
+    assert_eq!(r, 104, "bound() called once at entry, 4 iterations");
+}
+
+/// And the step: `BY s` with the body mutating `s`.
+#[rstest]
+fn for_step_is_fixed_at_entry(mut with_db: db::RootDatabase) {
+    let source = r#"
+        FUNCTION run : INT
+        VAR i : INT; s : INT; count : INT; END_VAR
+            s := 1;
+            FOR i := 1 TO 8 BY s DO
+                s := 100;
+                count := count + 1;
+            END_FOR;
+            run := count;
+        END_FUNCTION
+    "#;
+    let wasm = compile_to_wasm(&mut with_db, source);
+    let r: i32 = super::execute_wasm(&wasm, "run", ());
+    assert_eq!(r, 8, "step fixed at entry (IEC); re-evaluation stops after 2");
+}
+
+/// The snapshot locals are lane-typed: an LINT counter's non-constant bound
+/// lives in an i64 scratch, not a truncating i32 one.
+#[rstest]
+fn for_lint_bound_snapshot_keeps_its_width(mut with_db: db::RootDatabase) {
+    let source = r#"
+        FUNCTION run : LINT
+        VAR i : LINT; n : LINT; count : LINT; END_VAR
+            n := 3000000000;
+            FOR i := 2999999998 TO n DO
+                n := 0;
+                count := count + 1;
+            END_FOR;
+            run := count;
+        END_FUNCTION
+    "#;
+    let wasm = compile_to_wasm(&mut with_db, source);
+    let r: i64 = super::execute_wasm(&wasm, "run", ());
+    assert_eq!(r, 3, "an i64 bound beyond i32 range survives the snapshot");
+}
+
+/// Nested loops each own their snapshot: the inner loop's bound must not
+/// clobber the outer's — the reason the scratch is per-statement rather
+/// than one shared slot.
+///
+/// The expected count is 202, not 6: "once at entry" means once per
+/// EXECUTION of the FOR statement, and the inner statement executes three
+/// times. Its first entry snapshots `m = 2`; the body then sets `m := 100`,
+/// so entries two and three snapshot 100 — giving 2 + 100 + 100 inner
+/// iterations. The outer loop meanwhile runs EXACTLY three times, which is
+/// the clobber proof: with one shared scratch slot, the inner loop's
+/// snapshot would overwrite the outer bound and the outer loop would run
+/// 100 times.
+#[rstest]
+fn nested_for_bounds_do_not_clobber_each_other(mut with_db: db::RootDatabase) {
+    let source = r#"
+        FUNCTION run : INT
+        VAR i : INT; j : INT; n : INT; m : INT; count : INT; END_VAR
+            n := 3;
+            m := 2;
+            FOR i := 1 TO n DO
+                FOR j := 1 TO m DO
+                    n := 100;
+                    m := 100;
+                    count := count + 1;
+                END_FOR;
+            END_FOR;
+            run := count;
+        END_FUNCTION
+    "#;
+    let wasm = compile_to_wasm(&mut with_db, source);
+    let r: i32 = super::execute_wasm(&wasm, "run", ());
+    assert_eq!(r, 202, "outer fixed at 3; inner re-snapshots at each entry: 2 + 100 + 100");
+}
+
+/// EXIT under an IF must leave the LOOP, not the IF: the branch depth has
+/// to account for every label the IF structure opened.
+#[rstest]
+fn exit_under_if_leaves_the_while_loop(mut with_db: db::RootDatabase) {
+    let source = r#"
+        FUNCTION run : INT
+        VAR i : INT; count : INT; END_VAR
+            WHILE i < 10 DO
+                i := i + 1;
+                IF i = 3 THEN EXIT; END_IF;
+                count := count + 1;
+            END_WHILE;
+            run := i * 100 + count;
+        END_FUNCTION
+    "#;
+    let wasm = compile_to_wasm(&mut with_db, source);
+    let r: i32 = super::execute_wasm(&wasm, "run", ());
+    assert_eq!(r, 302, "exits at i = 3 with two iterations counted");
+}
+
+#[rstest]
+fn continue_under_if_skips_to_the_next_while_iteration(mut with_db: db::RootDatabase) {
+    let source = r#"
+        FUNCTION run : INT
+        VAR i : INT; count : INT; END_VAR
+            WHILE i < 5 DO
+                i := i + 1;
+                IF i = 2 THEN CONTINUE; END_IF;
+                count := count + 1;
+            END_WHILE;
+            run := count;
+        END_FUNCTION
+    "#;
+    let wasm = compile_to_wasm(&mut with_db, source);
+    let r: i32 = super::execute_wasm(&wasm, "run", ());
+    assert_eq!(r, 4, "iteration i = 2 skips the count");
+}
+
+#[rstest]
+fn continue_under_if_still_increments_the_for_counter(mut with_db: db::RootDatabase) {
+    let source = r#"
+        FUNCTION run : INT
+        VAR i : INT; count : INT; END_VAR
+            FOR i := 1 TO 5 DO
+                IF i = 3 THEN CONTINUE; END_IF;
+                count := count + 1;
+            END_FOR;
+            run := count;
+        END_FUNCTION
+    "#;
+    let wasm = compile_to_wasm(&mut with_db, source);
+    let r: i32 = super::execute_wasm(&wasm, "run", ());
+    assert_eq!(r, 4, "CONTINUE still increments the counter and re-checks the bound");
+}
+
+/// CONTINUE in a REPEAT must jump to the UNTIL check, not restart the body,
+/// and not simply fall out of the IF: the statement AFTER the IF is the
+/// distinguisher.
+#[rstest]
+fn continue_in_repeat_reaches_the_until_check(mut with_db: db::RootDatabase) {
+    let source = r#"
+        FUNCTION run : INT
+        VAR count : INT; sum : INT; END_VAR
+            REPEAT
+                count := count + 1;
+                IF count = 1 THEN CONTINUE; END_IF;
+                sum := sum + count;
+            UNTIL count >= 3 END_REPEAT;
+            run := sum;
+        END_FUNCTION
+    "#;
+    let wasm = compile_to_wasm(&mut with_db, source);
+    let r: i32 = super::execute_wasm(&wasm, "run", ());
+    assert_eq!(r, 5, "iteration 1 skips the sum: 2 + 3");
+}
+
+/// EXIT leaves only the INNERMOST loop.
+#[rstest]
+fn exit_leaves_only_the_inner_loop(mut with_db: db::RootDatabase) {
+    let source = r#"
+        FUNCTION run : INT
+        VAR i : INT; j : INT; count : INT; END_VAR
+            FOR i := 1 TO 3 DO
+                FOR j := 1 TO 10 DO
+                    IF j = 2 THEN EXIT; END_IF;
+                    count := count + 1;
+                END_FOR;
+            END_FOR;
+            run := count;
+        END_FUNCTION
+    "#;
+    let wasm = compile_to_wasm(&mut with_db, source);
+    let r: i32 = super::execute_wasm(&wasm, "run", ());
+    assert_eq!(r, 3, "each outer iteration counts once before the inner EXIT");
+}
+
+/// The branch depth must survive DEEP nesting: an EXIT under an ELSIF arm
+/// (two `if` labels), and one inside a CASE arm's IF (case block + arm if +
+/// inner if = three labels).
+#[rstest]
+fn exit_survives_elsif_and_case_nesting(mut with_db: db::RootDatabase) {
+    let source = r#"
+        FUNCTION run : INT
+        VAR i : INT; a : INT; b : INT; END_VAR
+            WHILE i < 10 DO
+                i := i + 1;
+                IF i = 99 THEN
+                    a := -1;
+                ELSIF i = 4 THEN
+                    EXIT;
+                END_IF;
+                a := a + 1;
+            END_WHILE;
+
+            WHILE b < 10 DO
+                b := b + 1;
+                CASE b OF
+                    3:
+                        IF TRUE THEN
+                            EXIT;
+                        END_IF;
+                END_CASE;
+            END_WHILE;
+            run := i * 1000 + a * 100 + b;
+        END_FUNCTION
+    "#;
+    let wasm = compile_to_wasm(&mut with_db, source);
+    let r: i32 = super::execute_wasm(&wasm, "run", ());
+    assert_eq!(r, 4303, "first loop exits at i = 4 with a = 3; second at b = 3");
+}
+
+/// EXIT in a REPEAT leaves it; the body still runs AT LEAST once even when
+/// the condition is true from the start.
+#[rstest]
+fn repeat_runs_at_least_once_and_exit_leaves_it(mut with_db: db::RootDatabase) {
+    let source = r#"
+        FUNCTION run : INT
+        VAR n : INT; count : INT; END_VAR
+            REPEAT
+                count := count + 1;
+            UNTIL TRUE END_REPEAT;
+
+            REPEAT
+                n := n + 1;
+                IF n = 2 THEN EXIT; END_IF;
+            UNTIL n >= 100 END_REPEAT;
+            run := count * 100 + n;
+        END_FUNCTION
+    "#;
+    let wasm = compile_to_wasm(&mut with_db, source);
+    let r: i32 = super::execute_wasm(&wasm, "run", ());
+    assert_eq!(r, 102, "one mandatory iteration; EXIT at n = 2");
+}
+
+/// CONTINUE inside a nested loop belongs to the INNER loop: the outer
+/// iteration count must not change.
+#[rstest]
+fn continue_targets_the_inner_loop(mut with_db: db::RootDatabase) {
+    let source = r#"
+        FUNCTION run : INT
+        VAR i : INT; j : INT; count : INT; END_VAR
+            FOR i := 1 TO 3 DO
+                FOR j := 1 TO 4 DO
+                    IF j = 2 THEN CONTINUE; END_IF;
+                    count := count + 1;
+                END_FOR;
+            END_FOR;
+            run := i * 100 + count;
+        END_FUNCTION
+    "#;
+    let wasm = compile_to_wasm(&mut with_db, source);
+    let r: i32 = super::execute_wasm(&wasm, "run", ());
+    assert_eq!(r, 409, "3 outer x 3 counted inner; the counter ends past the bound at 4");
+}

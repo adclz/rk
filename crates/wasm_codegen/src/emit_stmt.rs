@@ -85,6 +85,37 @@ struct Ctx<'a> {
     /// i32 scratch holding a runtime-computed `FbCall` receiver address (see
     /// [`stmts_need_dynamic_fb_base`]).
     fb_recv_tmp: Option<u32>,
+    /// Per-`For` scratch locals for the end bound and step, in
+    /// [`for_scratch_requests`] order; `None` means a constant emitted
+    /// inline. Per statement, since loops nest.
+    for_scratch: &'a std::cell::RefCell<std::collections::VecDeque<(Option<u32>, Option<u32>)>>,
+    /// Open wasm labels at the emission point: `br N` is relative, so
+    /// `EXIT`/`CONTINUE` need it to reach their loop from under enclosing
+    /// `IF`/`CASE` labels.
+    open_labels: &'a std::cell::Cell<u32>,
+    /// The innermost loops' branch targets; depth from a site with
+    /// `open_labels = O` to a target `L` is `O - L`.
+    loop_stack: &'a std::cell::RefCell<Vec<LoopTargets>>,
+}
+
+/// The two branch targets a loop offers the statements in its body.
+struct LoopTargets {
+    /// `open_labels` inside the loop's outermost (exit) block.
+    exit_open: u32,
+    /// `open_labels` inside the label whose END is "next iteration": the
+    /// loop header for `WHILE`, the block before the UNTIL check for
+    /// `REPEAT`, the block before the increment for `FOR`.
+    cont_open: u32,
+}
+
+/// Bracket a `block`/`loop`/`if` label: bump the open count when it starts.
+fn open_label(ctx: &Ctx) {
+    ctx.open_labels.set(ctx.open_labels.get() + 1);
+}
+
+/// ...and drop it at its `end`.
+fn close_label(ctx: &Ctx) {
+    ctx.open_labels.set(ctx.open_labels.get() - 1);
 }
 
 /// Emit MIR statements with return context; returns the `DebugTrap`
@@ -99,8 +130,12 @@ pub(crate) fn emit_stmts_with_return(
     return_value: Option<ReturnValue>,
     rk_exception_tag_idx: Option<u32>,
     fb_recv_tmp: Option<u32>,
+    for_scratch: std::collections::VecDeque<(Option<u32>, Option<u32>)>,
 ) -> Vec<(u32, MirSourceLocation)> {
     let lines = std::cell::RefCell::new(Vec::new());
+    let for_scratch = std::cell::RefCell::new(for_scratch);
+    let open_labels = std::cell::Cell::new(0);
+    let loop_stack = std::cell::RefCell::new(Vec::new());
     {
         let ctx = Ctx {
             locals,
@@ -110,6 +145,9 @@ pub(crate) fn emit_stmts_with_return(
             rk_exception_tag_idx,
             lines: &lines,
             fb_recv_tmp,
+            for_scratch: &for_scratch,
+            open_labels: &open_labels,
+            loop_stack: &loop_stack,
         };
         emit_stmts(func, stmts, &ctx);
     }
@@ -155,12 +193,14 @@ fn emit_stmt(func: &mut wasm_encoder::Function, stmt: &MirStmt, ctx: &Ctx) {
         } => {
             emit_expr(func, condition, ctx.locals, ctx.fn_indices);
             func.instruction(&Instruction::If(BlockType::Empty));
+            open_label(ctx);
             emit_stmts(func, then_body, ctx);
 
             for (cond, body) in else_ifs {
                 func.instruction(&Instruction::Else);
                 emit_expr(func, cond, ctx.locals, ctx.fn_indices);
                 func.instruction(&Instruction::If(BlockType::Empty));
+                open_label(ctx);
                 emit_stmts(func, body, ctx);
             }
 
@@ -170,8 +210,10 @@ fn emit_stmt(func: &mut wasm_encoder::Function, stmt: &MirStmt, ctx: &Ctx) {
             }
 
             func.instruction(&Instruction::End);
+            close_label(ctx);
             for _ in else_ifs {
                 func.instruction(&Instruction::End);
+                close_label(ctx);
             }
         }
 
@@ -181,6 +223,7 @@ fn emit_stmt(func: &mut wasm_encoder::Function, stmt: &MirStmt, ctx: &Ctx) {
             else_body,
         } => {
             func.instruction(&Instruction::Block(BlockType::Empty));
+            open_label(ctx);
 
             for arm in arms {
                 // Evaluate all patterns and OR them together
@@ -208,9 +251,11 @@ fn emit_stmt(func: &mut wasm_encoder::Function, stmt: &MirStmt, ctx: &Ctx) {
                 }
 
                 func.instruction(&Instruction::If(BlockType::Empty));
+                open_label(ctx);
                 emit_stmts(func, &arm.body, ctx);
                 func.instruction(&Instruction::Br(1)); // break out of outer block
                 func.instruction(&Instruction::End);
+                close_label(ctx);
             }
 
             if let Some(else_stmts) = else_body {
@@ -218,6 +263,7 @@ fn emit_stmt(func: &mut wasm_encoder::Function, stmt: &MirStmt, ctx: &Ctx) {
             }
 
             func.instruction(&Instruction::End); // outer block
+            close_label(ctx);
         }
 
         MirStmt::For {
@@ -263,8 +309,27 @@ fn emit_stmt(func: &mut wasm_encoder::Function, stmt: &MirStmt, ctx: &Ctx) {
                 }
             }
 
+            // IEC: the end and step are evaluated once, at loop entry; each
+            // non-constant one is snapshotted into this statement's scratch.
+            let (end_tmp, step_tmp) = ctx
+                .for_scratch
+                .borrow_mut()
+                .pop_front()
+                .unwrap_or_else(|| missing_for_scratch(ctx));
+            if let Some(idx) = end_tmp {
+                emit_expr(func, end, ctx.locals, ctx.fn_indices);
+                func.instruction(&Instruction::LocalSet(idx));
+            }
+            if let Some(idx) = step_tmp {
+                emit_expr(func, step, ctx.locals, ctx.fn_indices);
+                func.instruction(&Instruction::LocalSet(idx));
+            }
+
             func.instruction(&Instruction::Block(BlockType::Empty));
+            open_label(ctx);
+            let exit_open = ctx.open_labels.get();
             func.instruction(&Instruction::Loop(BlockType::Empty));
+            open_label(ctx);
 
             // A descending loop (constant negative BY) exits below the end bound;
             // non-constant steps default to ascending; unsigned counters are
@@ -275,7 +340,12 @@ fn emit_stmt(func: &mut wasm_encoder::Function, stmt: &MirStmt, ctx: &Ctx) {
 
             // Check bound
             ctrl_load(func, ctx);
-            emit_expr(func, end, ctx.locals, ctx.fn_indices);
+            match end_tmp {
+                Some(idx) => {
+                    func.instruction(&Instruction::LocalGet(idx));
+                }
+                None => emit_expr(func, end, ctx.locals, ctx.fn_indices),
+            }
             let cmp = match (is_64, control_type.is_signed(), descending) {
                 (false, true, false) => Instruction::I32GtS,
                 (false, true, true) => Instruction::I32LtS,
@@ -287,7 +357,17 @@ fn emit_stmt(func: &mut wasm_encoder::Function, stmt: &MirStmt, ctx: &Ctx) {
             func.instruction(&cmp);
             func.instruction(&Instruction::BrIf(1));
 
+            // A FOR's "next iteration" is the increment, not the header.
+            func.instruction(&Instruction::Block(BlockType::Empty));
+            open_label(ctx);
+            ctx.loop_stack.borrow_mut().push(LoopTargets {
+                exit_open,
+                cont_open: ctx.open_labels.get(),
+            });
             emit_stmts(func, body, ctx);
+            ctx.loop_stack.borrow_mut().pop();
+            func.instruction(&Instruction::End); // continue target: the increment
+            close_label(ctx);
 
             // Increment. Sub-width counters wrap at the IEC type width like
             // any other arithmetic — so `FOR i: USINT := 0 TO 255` never
@@ -305,7 +385,12 @@ fn emit_stmt(func: &mut wasm_encoder::Function, stmt: &MirStmt, ctx: &Ctx) {
                     ctrl_load(func, ctx);
                 }
             }
-            emit_expr(func, step, ctx.locals, ctx.fn_indices);
+            match step_tmp {
+                Some(idx) => {
+                    func.instruction(&Instruction::LocalGet(idx));
+                }
+                None => emit_expr(func, step, ctx.locals, ctx.fn_indices),
+            }
             if is_64 {
                 func.instruction(&Instruction::I64Add);
             } else {
@@ -323,38 +408,81 @@ fn emit_stmt(func: &mut wasm_encoder::Function, stmt: &MirStmt, ctx: &Ctx) {
 
             func.instruction(&Instruction::Br(0));
             func.instruction(&Instruction::End); // loop
+            close_label(ctx);
             func.instruction(&Instruction::End); // block
+            close_label(ctx);
         }
 
         MirStmt::While { condition, body } => {
             func.instruction(&Instruction::Block(BlockType::Empty));
+            open_label(ctx);
+            let exit_open = ctx.open_labels.get();
             func.instruction(&Instruction::Loop(BlockType::Empty));
+            open_label(ctx);
+            // A WHILE's "next iteration" is the loop header.
+            ctx.loop_stack.borrow_mut().push(LoopTargets {
+                exit_open,
+                cont_open: ctx.open_labels.get(),
+            });
             emit_expr(func, condition, ctx.locals, ctx.fn_indices);
             func.instruction(&Instruction::I32Eqz);
             func.instruction(&Instruction::BrIf(1));
             emit_stmts(func, body, ctx);
+            ctx.loop_stack.borrow_mut().pop();
             func.instruction(&Instruction::Br(0));
             func.instruction(&Instruction::End);
+            close_label(ctx);
             func.instruction(&Instruction::End);
+            close_label(ctx);
         }
 
         MirStmt::Repeat { condition, body } => {
             func.instruction(&Instruction::Block(BlockType::Empty));
+            open_label(ctx);
+            let exit_open = ctx.open_labels.get();
             func.instruction(&Instruction::Loop(BlockType::Empty));
+            open_label(ctx);
+            // A REPEAT's "next iteration" is the UNTIL check, not the body's
+            // start.
+            func.instruction(&Instruction::Block(BlockType::Empty));
+            open_label(ctx);
+            ctx.loop_stack.borrow_mut().push(LoopTargets {
+                exit_open,
+                cont_open: ctx.open_labels.get(),
+            });
             emit_stmts(func, body, ctx);
+            ctx.loop_stack.borrow_mut().pop();
+            func.instruction(&Instruction::End); // continue target: the check
+            close_label(ctx);
             emit_expr(func, condition, ctx.locals, ctx.fn_indices);
             func.instruction(&Instruction::BrIf(1));
             func.instruction(&Instruction::Br(0));
             func.instruction(&Instruction::End);
+            close_label(ctx);
             func.instruction(&Instruction::End);
+            close_label(ctx);
         }
 
         MirStmt::Exit => {
-            func.instruction(&Instruction::Br(1));
+            // Branch depth is relative: from under k IF/CASE labels, the loop's
+            // exit block is k labels further out.
+            let depth = {
+                let stack = ctx.loop_stack.borrow();
+                let t = stack.last().unwrap_or_else(|| missing_loop_targets("EXIT"));
+                ctx.open_labels.get() - t.exit_open
+            };
+            func.instruction(&Instruction::Br(depth));
         }
 
         MirStmt::Continue => {
-            func.instruction(&Instruction::Br(0));
+            let depth = {
+                let stack = ctx.loop_stack.borrow();
+                let t = stack
+                    .last()
+                    .unwrap_or_else(|| missing_loop_targets("CONTINUE"));
+                ctx.open_labels.get() - t.cont_open
+            };
+            func.instruction(&Instruction::Br(depth));
         }
 
         MirStmt::MemStore { offset, value } => {
@@ -888,6 +1016,99 @@ fn stmt_needs_dynamic_fb_base(stmt: &MirStmt, locals: &FxHashMap<Ident, LocalInf
         } => arms.iter().any(|a| nested(&a.body)) || else_body.as_deref().is_some_and(nested),
         _ => false,
     }
+}
+
+/// One `For` statement's scratch needs: which of its end/step expressions
+/// are snapshotted, at what lane width. In emitter order.
+pub(crate) struct ForScratchReq {
+    pub need_end: bool,
+    pub need_step: bool,
+    pub is_64: bool,
+}
+
+/// Every `For` statement's scratch needs, in emitter (pre-order) order; a
+/// constant end/step needs none.
+pub(crate) fn for_scratch_requests(stmts: &[MirStmt]) -> Vec<ForScratchReq> {
+    let mut out = Vec::new();
+    collect_for_scratch(stmts, &mut out);
+    out
+}
+
+fn collect_for_scratch(stmts: &[MirStmt], out: &mut Vec<ForScratchReq>) {
+    for stmt in stmts {
+        match stmt {
+            MirStmt::For {
+                control_type,
+                end,
+                step,
+                body,
+                ..
+            } => {
+                out.push(ForScratchReq {
+                    need_end: !matches!(end, MirExpr::Constant(_)),
+                    need_step: !matches!(&**step, MirExpr::Constant(_)),
+                    is_64: control_type.is_64bit(),
+                });
+                collect_for_scratch(body, out);
+            }
+            MirStmt::If {
+                then_body,
+                else_ifs,
+                else_body,
+                ..
+            } => {
+                collect_for_scratch(then_body, out);
+                for (_, b) in else_ifs {
+                    collect_for_scratch(b, out);
+                }
+                if let Some(b) = else_body {
+                    collect_for_scratch(b, out);
+                }
+            }
+            MirStmt::While { body, .. } | MirStmt::Repeat { body, .. } => {
+                collect_for_scratch(body, out);
+            }
+            MirStmt::Case {
+                arms, else_body, ..
+            } => {
+                for a in arms {
+                    collect_for_scratch(&a.body, out);
+                }
+                if let Some(b) = else_body {
+                    collect_for_scratch(b, out);
+                }
+            }
+            _ => {}
+        }
+    }
+}
+
+/// An `EXIT`/`CONTINUE` reached the emitter with no enclosing loop on the
+/// stack. HIR rejects both outside iteration statements (E1001/E1002), so
+/// MIR cannot legitimately carry one here.
+fn missing_loop_targets(what: &str) -> &'static LoopTargets {
+    let caller = crate::emit_expr::CURRENT_EMIT_FN
+        .with(|c| c.borrow().clone())
+        .unwrap_or_else(|| "<unknown>".to_string());
+    panic!(
+        "internal compiler error: while emitting `{caller}`, a {what} has no \
+         enclosing loop on the emitter's stack - HIR's E1001/E1002 checks \
+         should have rejected it"
+    )
+}
+
+/// A `For` with no scratch entry left: the plan walk and the emit walk
+/// disagree.
+fn missing_for_scratch(ctx: &Ctx) -> (Option<u32>, Option<u32>) {
+    let caller = crate::emit_expr::CURRENT_EMIT_FN
+        .with(|c| c.borrow().clone())
+        .unwrap_or_else(|| "<unknown>".to_string());
+    let _ = ctx;
+    panic!(
+        "internal compiler error: while emitting `{caller}`, a FOR statement \
+         has no scratch-local plan entry - `for_scratch_requests` and the \
+         emitter walked the body in different orders"
+    )
 }
 
 /// Resolve the receiver's base, materialising a runtime address into the
