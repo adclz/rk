@@ -47,9 +47,10 @@ pub fn sym_type_of(e: MirElementary) -> SymType {
     }
 }
 
-/// Max array elements enumerated as individual leaves, bounding symbol-table
-/// growth on large arrays. An array larger than this contributes no leaves.
-const MAX_ARRAY_LEAVES: u32 = 1024;
+/// Leaf budget per root variable: the most scalar leaves one root may
+/// expand into the table. Arrays past it stay described by their
+/// [`ArraySym`] and are resolved on demand.
+const MAX_ROOT_LEAVES: u32 = 1024;
 
 /// Recursively emit a [`Symbol`] for every elementary leaf reachable from a
 /// root variable at `addr` with type `ty`, naming each by its dotted/subscripted
@@ -65,46 +66,70 @@ pub fn walk_type(
     ty: &MirType,
     global: bool,
     out: &mut Vec<Symbol>,
+    arrays: &mut Vec<debug_format::ArraySym>,
+    budget: &mut u32,
 ) {
+    // The budget gates leaves; descriptors are always recorded.
+    if *budget == 0 && !matches!(ty, MirType::Array(_) | MirType::Struct(_)) {
+        return;
+    }
     match ty {
-        MirType::Elementary(e) => out.push(Symbol {
-            path: path.to_string(),
-            address: addr,
-            size: e.size_bytes(),
-            ty: sym_type_of(*e),
-            global,
-        }),
+        MirType::Elementary(e) => {
+            out.push(Symbol {
+                path: path.to_string(),
+                address: addr,
+                size: e.size_bytes(),
+                ty: sym_type_of(*e),
+                global,
+            });
+            *budget = budget.saturating_sub(1);
+        }
         // Enum / Subrange are stored as their underlying integer; emit one leaf
         // of that type. (Symbolic variant / bound display is a richer wire format.)
-        MirType::Enum(e) => out.push(Symbol {
-            path: path.to_string(),
-            address: addr,
-            size: e.storage.size_bytes(),
-            ty: sym_type_of(e.storage),
-            global,
-        }),
-        MirType::Subrange(s) => out.push(Symbol {
-            path: path.to_string(),
-            address: addr,
-            size: s.base.size_bytes(),
-            ty: sym_type_of(s.base),
-            global,
-        }),
+        MirType::Enum(e) => {
+            out.push(Symbol {
+                path: path.to_string(),
+                address: addr,
+                size: e.storage.size_bytes(),
+                ty: sym_type_of(e.storage),
+                global,
+            });
+            *budget = budget.saturating_sub(1);
+        }
+        MirType::Subrange(s) => {
+            out.push(Symbol {
+                path: path.to_string(),
+                address: addr,
+                size: s.base.size_bytes(),
+                ty: sym_type_of(s.base),
+                global,
+            });
+            *budget = budget.saturating_sub(1);
+        }
         MirType::Struct(s) => {
             for f in &s.fields {
                 let child = format!("{path}.{}", f.name.text(db));
-                walk_type(db, &child, addr + f.offset, &f.ty, global, out);
+                walk_type(db, &child, addr + f.offset, &f.ty, global, out, arrays, budget);
             }
         }
-        // Flat row-major elements (`lower_func`: `offset += idx * element_size`),
-        // each named by its IEC subscript(s); recurses, so an array of
-        // structs/arrays expands to scalar leaves. Capped to bound the table —
-        // note nested aggregates can still multiply below the cap.
+        // The descriptor is the durable record — DWARF's array_type, in
+        // msgpack: shape once, elements computed on demand. Eager leaves are
+        // then expanded WHILE THE BUDGET LASTS as a convenience for the pushed
+        // snapshot; flat row-major (`lower_func`: `offset += idx * element_size`).
         MirType::Array(a) => {
-            if a.total_elements > MAX_ARRAY_LEAVES {
-                return;
-            }
+            arrays.push(debug_format::ArraySym {
+                path: path.to_string(),
+                address: addr,
+                dimensions: a.dimensions.clone(),
+                total_elements: a.total_elements,
+                elem_size: a.element_size,
+                elem_ty: scalar_sym_ty(&a.element_type),
+                global,
+            });
             for k in 0..a.total_elements {
+                if *budget == 0 {
+                    break;
+                }
                 let child = array_index_path(path, k, &a.dimensions);
                 walk_type(
                     db,
@@ -113,20 +138,25 @@ pub fn walk_type(
                     &a.element_type,
                     global,
                     out,
+                    arrays,
+                    budget,
                 );
             }
         }
         // STRING → one leaf carrying capacity; the runtime reads the 4-byte len
         // prefix then that many UTF-8 bytes.
-        MirType::String { capacity } => out.push(Symbol {
-            path: path.to_string(),
-            address: addr,
-            size: 4 + *capacity,
-            ty: SymType::String {
-                capacity: *capacity,
-            },
-            global,
-        }),
+        MirType::String { capacity } => {
+            out.push(Symbol {
+                path: path.to_string(),
+                address: addr,
+                size: 4 + *capacity,
+                ty: SymType::String {
+                    capacity: *capacity,
+                },
+                global,
+            });
+            *budget = budget.saturating_sub(1);
+        }
         // Pointers are raw addresses; not emitted yet.
         MirType::Pointer(_) | MirType::Void => {}
     }
@@ -148,12 +178,28 @@ fn array_index_path(path: &str, flat: u32, dimensions: &[(i64, i64)]) -> String 
         subs[d] = lo + rem % size;
         rem /= size;
     }
+    // `a[1][2]`, the chained form the GRAMMAR accepts — `a[1,2]` is a syntax
+    // error in source, so a path rendered that way could never be typed back
+    // into a watch or pasted into ST.
     let joined = subs
         .iter()
         .map(|s| s.to_string())
         .collect::<Vec<_>>()
-        .join(",");
+        .join("][");
     format!("{path}[{joined}]")
+}
+
+/// The decode type of one scalar array element; `None` for aggregates.
+fn scalar_sym_ty(ty: &MirType) -> Option<SymType> {
+    match ty {
+        MirType::Elementary(e) => Some(sym_type_of(*e)),
+        MirType::Enum(e) => Some(sym_type_of(e.storage)),
+        MirType::Subrange(s) => Some(sym_type_of(s.base)),
+        MirType::String { capacity } => Some(SymType::String {
+            capacity: *capacity,
+        }),
+        _ => None,
+    }
 }
 
 /// Emit symbols for one root variable named `root` whose storage starts at
@@ -165,8 +211,10 @@ pub fn collect_root(
     ty: &MirType,
     global: bool,
     out: &mut Vec<Symbol>,
+    arrays: &mut Vec<debug_format::ArraySym>,
 ) {
-    walk_type(db, root, base, ty, global, out);
+    let mut budget = MAX_ROOT_LEAVES;
+    walk_type(db, root, base, ty, global, out, arrays, &mut budget);
 }
 
 /// A leaf symbol's dotted path from a root segment and a field name.

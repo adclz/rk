@@ -238,17 +238,17 @@ fn aggregate_symbols(mut with_db: db::RootDatabase) {
     assert!(by_path("Run.arr[0]").is_none(), "lower bound is 1, not 0");
     assert!(by_path("Run.arr[4]").is_none(), "upper bound is 3");
 
-    // 2-D array → row-major subscripts: [0,1] is the 2nd element (+4), [1,0] the
+    // 2-D array → row-major subscripts: [0][1] is the 2nd element (+4), [1][0] the
     // 3rd (+8) — the rightmost dimension varies fastest.
-    let g00 = by_path("Run.grid[0,0]").expect("grid[0,0]").address;
-    assert_eq!(by_path("Run.grid[0,1]").unwrap().address, g00 + 4);
-    assert_eq!(by_path("Run.grid[1,0]").unwrap().address, g00 + 8);
-    assert_eq!(by_path("Run.grid[1,1]").unwrap().address, g00 + 12);
+    let g00 = by_path("Run.grid[0][0]").expect("grid[0][0]").address;
+    assert_eq!(by_path("Run.grid[0][1]").unwrap().address, g00 + 4);
+    assert_eq!(by_path("Run.grid[1][0]").unwrap().address, g00 + 8);
+    assert_eq!(by_path("Run.grid[1][1]").unwrap().address, g00 + 12);
     for p in [
-        "Run.grid[0,0]",
-        "Run.grid[0,1]",
-        "Run.grid[1,0]",
-        "Run.grid[1,1]",
+        "Run.grid[0][0]",
+        "Run.grid[0][1]",
+        "Run.grid[1][0]",
+        "Run.grid[1][1]",
     ] {
         assert_eq!(by_path(p).unwrap().ty, SymType::DInt, "{p} type");
     }
@@ -356,4 +356,156 @@ fn read_all_snapshots_all_variables(mut with_db: db::RootDatabase) {
     assert_eq!(snap["Run.speed"], VarValue::I16(2));
     assert_eq!(snap["Run.flag"], VarValue::Bool(false));
     assert_eq!(snap["g_count"], VarValue::I32(0));
+}
+
+/// A large array must stay OBSERVABLE — the idiom every debug format uses:
+/// describe the shape once, compute elements on demand (DWARF's array_type,
+/// a toolchain's symbol configuration). The old table only knew eagerly-expanded
+/// leaves, so an array past the cap contributed NOTHING: invisible to the
+/// monitor and the debugger, with no marker saying so, and unforceable.
+#[rstest]
+fn a_large_array_is_described_and_addressable_not_invisible(mut with_db: db::RootDatabase) {
+    let source = r#"
+        PROGRAM P
+        VAR
+            big : ARRAY[0..4999] OF DINT;
+            k : DINT;
+        END_VAR
+            (* write recognizable values so on-demand reads are checkable *)
+            FOR k := 0 TO 4999 DO
+                big[k] := k * 2;
+            END_FOR;
+        END_PROGRAM
+
+        CONFIGURATION Cfg
+            RESOURCE Res ON CPU
+                TASK T(INTERVAL := T#10ms, PRIORITY := 1);
+                PROGRAM P1 WITH T : P;
+            END_RESOURCE
+        END_CONFIGURATION
+    "#;
+    let (_mir, wasm) = compile_to_mir_and_wasm(&mut with_db, source);
+    let table = read_debug_symbols(&wasm);
+
+    // The descriptor: one entry, whatever the element count.
+    let arr = table
+        .arrays
+        .iter()
+        .find(|a| a.path == "P1.big")
+        .expect("a 5000-element array must appear as a descriptor");
+    assert_eq!(arr.total_elements, 5000);
+    assert_eq!(arr.dimensions, vec![(0, 4999)]);
+    assert_eq!(arr.elem_size, 4);
+    assert_eq!(arr.elem_ty, Some(SymType::DInt));
+
+    // The leaf table is BUDGETED, not exploded and not empty: the first
+    // elements are eagerly readable for the snapshot stream…
+    let leaves = table
+        .symbols
+        .iter()
+        .filter(|s| s.path.starts_with("P1.big["))
+        .count();
+    assert!(leaves > 0, "the budget's worth of leaves is still expanded");
+    assert!(
+        leaves <= 1024,
+        "a 5000-element array must not enumerate 5000 leaves, got {leaves}"
+    );
+
+    // …and any element past the budget resolves ON DEMAND through the
+    // descriptor: readable and forceable, like adding `big[4321]` to a
+    // other toolchains watch list.
+    let mut plc = Plc::load(&wasm, Config::default()).expect("load");
+    plc.run(1).expect("scan");
+    let info = DebugInfo::from_wasm(&wasm);
+    assert_eq!(
+        info.read_var(&plc, "P1.big[4321]"),
+        Some(VarValue::I32(8642)),
+        "an element far past the leaf budget reads through the descriptor"
+    );
+    info.write_var(&mut plc, "P1.big[4321]", VarValue::I32(-7))
+        .expect("forcing an un-enumerated element");
+    assert_eq!(info.read_var(&plc, "P1.big[4321]"), Some(VarValue::I32(-7)));
+
+    // Out of bounds is refused, not computed into a neighbour.
+    assert_eq!(info.read_var(&plc, "P1.big[5000]"), None);
+    assert_eq!(info.read_var(&plc, "P1.big[-1]"), None);
+}
+
+/// The leaf budget counts LEAVES EMITTED, not array elements. The old cap
+/// counted elements, so 1000 ten-field structs sailed through at 10000 leaves
+/// while a 1025-element INT array contributed nothing.
+#[rstest]
+fn the_leaf_budget_bounds_leaves_not_elements(mut with_db: db::RootDatabase) {
+    let source = r#"
+        TYPE Ten : STRUCT
+            f0 : DINT; f1 : DINT; f2 : DINT; f3 : DINT; f4 : DINT;
+            f5 : DINT; f6 : DINT; f7 : DINT; f8 : DINT; f9 : DINT;
+        END_STRUCT; END_TYPE
+
+        PROGRAM P
+        VAR
+            wide : ARRAY[0..999] OF Ten;
+            n : DINT;
+        END_VAR
+            n := n + 1;
+        END_PROGRAM
+
+        CONFIGURATION Cfg
+            RESOURCE Res ON CPU
+                TASK T(INTERVAL := T#10ms, PRIORITY := 1);
+                PROGRAM P1 WITH T : P;
+            END_RESOURCE
+        END_CONFIGURATION
+    "#;
+    let (_mir, wasm) = compile_to_mir_and_wasm(&mut with_db, source);
+    let table = read_debug_symbols(&wasm);
+    let leaves = table
+        .symbols
+        .iter()
+        .filter(|s| s.path.starts_with("P1.wide["))
+        .count();
+    assert!(
+        leaves <= 1024,
+        "1000 structs x 10 fields must respect the leaf budget, got {leaves}"
+    );
+    // The descriptor is present; its element is an aggregate, so it carries
+    // no scalar decode type — that boundary needs a type table (a follow-up).
+    let arr = table
+        .arrays
+        .iter()
+        .find(|a| a.path == "P1.wide")
+        .expect("descriptor for the struct array");
+    assert_eq!(arr.elem_ty, None, "aggregate elements have no scalar decode");
+    assert_eq!(arr.elem_size, 40);
+}
+
+/// Multi-dimensional on-demand resolution uses the emitted `[i][j]` form —
+/// what the grammar accepts — and the legacy `[i,j]` spelling still resolves.
+#[rstest]
+fn multi_dimensional_paths_resolve_in_both_spellings(mut with_db: db::RootDatabase) {
+    let source = r#"
+        PROGRAM P
+        VAR
+            m : ARRAY[1..40, 1..40] OF INT;
+            k : INT;
+        END_VAR
+            m[7][9] := 79;
+        END_PROGRAM
+
+        CONFIGURATION Cfg
+            RESOURCE Res ON CPU
+                TASK T(INTERVAL := T#10ms, PRIORITY := 1);
+                PROGRAM P1 WITH T : P;
+            END_RESOURCE
+        END_CONFIGURATION
+    "#;
+    let (_mir, wasm) = compile_to_mir_and_wasm(&mut with_db, source);
+    let mut plc = Plc::load(&wasm, Config::default()).expect("load");
+    plc.run(1).expect("scan");
+    let info = DebugInfo::from_wasm(&wasm);
+    // 1600 elements > budget, so [7][9] is not an eager leaf — it resolves
+    // through the descriptor with per-dimension lower bounds honoured.
+    assert_eq!(info.read_var(&plc, "P1.m[7][9]"), Some(VarValue::I16(79)));
+    assert_eq!(info.read_var(&plc, "P1.m[7,9]"), Some(VarValue::I16(79)));
+    assert_eq!(info.read_var(&plc, "P1.m[0][9]"), None, "below the lower bound");
 }

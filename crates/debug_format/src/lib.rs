@@ -13,7 +13,7 @@ pub const DEBUG_SYMBOLS_SECTION: &str = "debug-symbols";
 
 /// On-wire format version. Bump on any breaking change to the layout below.
 /// v2 adds `SymType::String { capacity }`; v3 adds `Symbol.global`.
-pub const DEBUG_SYMBOLS_VERSION: u16 = 3;
+pub const DEBUG_SYMBOLS_VERSION: u16 = 4;
 
 /// The complete debug-symbol table for a module.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -21,6 +21,43 @@ pub struct DebugSymbols {
     pub version: u16,
     /// Every debuggable variable, sorted by `path`.
     pub symbols: Vec<Symbol>,
+    /// One descriptor per ARRAY-typed variable (any size), sorted by `path`.
+    ///
+    /// This is the layer every debug format has and ours lacked: DWARF's
+    /// `DW_TAG_array_type`, a toolchain's symbol configuration — the SHAPE is
+    /// described once and elements are computed on demand, instead of being
+    /// enumerated. `symbols` still carries eagerly-expanded leaves for small
+    /// arrays as a convenience for the pushed snapshot; past the leaf budget a
+    /// consumer resolves `a[i]` through the descriptor: bounds-check against
+    /// `dimensions`, row-major flatten, `address + flat * elem_size`. Before
+    /// this existed, an array past the cap contributed NOTHING — invisible to
+    /// the monitor and the debugger, with no marker saying so.
+    #[serde(default)]
+    pub arrays: Vec<ArraySym>,
+}
+
+/// The shape of one array-typed variable — enough to locate and decode any
+/// element without it having been enumerated.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct ArraySym {
+    /// Fully qualified dotted path of the array itself (e.g. `Main.samples`).
+    pub path: String,
+    /// Absolute address of element 0 in linear memory.
+    pub address: u32,
+    /// `(lower, upper)` bounds per dimension, declaration order; the rightmost
+    /// dimension varies fastest (row-major, matching the layout).
+    pub dimensions: Vec<(i64, i64)>,
+    /// Product of all dimension sizes.
+    pub total_elements: u32,
+    /// Byte stride between consecutive elements.
+    pub elem_size: u32,
+    /// How to decode ONE element, when the element is scalar (elementary, an
+    /// enum/subrange's underlying integer, or a STRING). `None` when the
+    /// element is itself an aggregate — locating THOSE members needs a type
+    /// table, which this format does not carry yet.
+    pub elem_ty: Option<SymType>,
+    /// `true` for a config/resource `VAR_GLOBAL`.
+    pub global: bool,
 }
 
 /// One debuggable variable: an elementary-typed leaf at a stable linear-memory
@@ -106,6 +143,7 @@ impl DebugSymbols {
         DebugSymbols {
             version: DEBUG_SYMBOLS_VERSION,
             symbols: Vec::new(),
+            arrays: Vec::new(),
         }
     }
 

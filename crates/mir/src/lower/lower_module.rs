@@ -446,6 +446,7 @@ fn lower_module_from_pous<'db>(
     // fields to build dotted paths). The runtime reads this to monitor
     // variables by name. Sorted by path for deterministic output.
     let mut symbols = Vec::new();
+    let mut array_syms = Vec::new();
     if let Some(sched) = &module.schedule {
         for task in &sched.tasks {
             for inst in &task.programs {
@@ -453,13 +454,15 @@ fn lower_module_from_pous<'db>(
                     for f in &info.struct_type.fields {
                         let path =
                             crate::debug_symbols::join_path(db, inst.inst_name.text(db), f.name);
-                        crate::debug_symbols::walk_type(
+                        // Per-field leaf budget, matching `collect_root`'s per-root budget.
+                        crate::debug_symbols::collect_root(
                             db,
                             &path,
                             inst.instance_addr + f.offset,
                             &f.ty,
                             false, // program-instance field
                             &mut symbols,
+                            &mut array_syms,
                         );
                     }
                 }
@@ -467,12 +470,22 @@ fn lower_module_from_pous<'db>(
         }
     }
     for (name, (addr, ty)) in &global_table {
-        crate::debug_symbols::collect_root(db, name.text(db), *addr, ty, true, &mut symbols);
+        crate::debug_symbols::collect_root(
+            db,
+            name.text(db),
+            *addr,
+            ty,
+            true,
+            &mut symbols,
+            &mut array_syms,
+        );
     }
     symbols.sort_by(|a, b| a.path.cmp(&b.path));
+    array_syms.sort_by(|a, b| a.path.cmp(&b.path));
     module.debug_symbols = crate::debug_symbols::DebugSymbols {
         version: crate::debug_symbols::DEBUG_SYMBOLS_VERSION,
         symbols,
+        arrays: array_syms,
     };
 
     // The per-field retain map from the same final addresses.
