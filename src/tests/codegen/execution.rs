@@ -969,3 +969,39 @@ fn test_execute_subwidth_not_neg_and_more_wraps(mut with_db: db::RootDatabase) {
     let r: i32 = super::execute_wasm(&wasm, "usint_mul", (16i32, 16i32));
     assert_eq!(r, 0, "USINT 16 * 16 wraps to 0");
 }
+
+/// An UNCAUGHT `__RAISE` faults the scan with its own message. The payload
+/// always travelled with the exception — `(ptr, len)` on the
+/// `$rk_exception` tag — but the scan reported only wasmtime's opaque
+/// "thrown Wasm exception" until it started reading the pending exception's
+/// fields. A plain trap (no pending exception) must pass through untouched.
+#[rstest]
+fn an_uncaught_raise_names_its_fault(mut with_db: db::RootDatabase) {
+    let source = r#"
+        PROGRAM P
+        VAR n : DINT; END_VAR
+            n := n + 1;
+            IF n = 2 THEN
+                __RAISE('motor overheated');
+            END_IF;
+        END_PROGRAM
+
+        CONFIGURATION Cfg
+            RESOURCE Res ON CPU
+                TASK T(INTERVAL := T#10ms, PRIORITY := 1);
+                PROGRAM P1 WITH T : P;
+            END_RESOURCE
+        END_CONFIGURATION
+    "#;
+    let (_mir, wasm) = crate::tests::codegen::compile_to_mir_and_wasm(&mut with_db, source);
+    let mut plc = runtime::Plc::load(&wasm, runtime::Config::default()).expect("load");
+    plc.scan().expect("first scan is fine");
+    let err = plc.scan().expect_err("second scan raises");
+    let msg = format!("{err:#}");
+    assert!(
+        msg.contains("uncaught IEC exception: motor overheated"),
+        "the fault carries the RAISE payload, got: {msg}"
+    );
+    // The scan after a fault runs normally again (n keeps counting past 2).
+    plc.scan().expect("the PLC is not wedged after a fault");
+}

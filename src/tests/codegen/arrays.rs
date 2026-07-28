@@ -333,7 +333,7 @@ fn array_subscript_containing_a_call(mut with_db: db::RootDatabase) {
 /// exception ("array index out of bounds") and the scan faults, instead of
 /// computing a neighbour's address. Before this check, `a[i]` with `i = 4` on
 /// an `ARRAY[0..2]` silently overwrote whatever came next — observed running
-/// corrupted for hundreds of scans. a toolchain's CheckBounds is the same idea.
+/// corrupted for hundreds of scans.
 #[rstest]
 fn an_out_of_bounds_write_faults_instead_of_corrupting(mut with_db: db::RootDatabase) {
     let source = r#"
@@ -360,14 +360,12 @@ fn an_out_of_bounds_write_faults_instead_of_corrupting(mut with_db: db::RootData
     let mut plc = runtime::Plc::load(&wasm, runtime::Config::default()).expect("load");
     plc.run(2).expect("in-bounds scans run fine");
     let err = plc.scan().expect_err("the third scan goes out of bounds");
-    // The check raises through `$rk_exception`, so the scan reports a thrown
-    // exception rather than a bare wasm trap. The PAYLOAD ("array index out of
-    // bounds") is not yet extracted from an UNCAUGHT exception by `Plc::scan` —
-    // that is the same unfinished plumbing an uncaught `RAISE 'msg'` hits, and
-    // fixing it there will improve this message for free.
+    // The check raises through `$rk_exception` with the message as its
+    // payload, and the scan extracts it — the fault names itself instead of
+    // reading "thrown Wasm exception".
     assert!(
-        format!("{err:#}").contains("thrown Wasm exception"),
-        "the fault is the raised bounds exception, got: {err:#}"
+        format!("{err:#}").contains("array index out of bounds"),
+        "the fault carries the bounds message, got: {err:#}"
     );
 }
 
