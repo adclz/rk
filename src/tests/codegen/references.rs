@@ -18,7 +18,7 @@ fn test_var_in_out_read(mut with_db: db::RootDatabase) {
     validate_wasm(&wasm_bytes).expect("WASM validation failed");
 
     // Use the module's own memory
-    let engine = wasmtime::Engine::default();
+    let engine = crate::tests::codegen::test_engine();
     let module = wasmtime::Module::new(&engine, &wasm_bytes).unwrap();
     let mut store = wasmtime::Store::new(&engine, ());
 
@@ -55,7 +55,7 @@ fn test_var_in_out_write(mut with_db: db::RootDatabase) {
     let wasm_bytes = compile_to_wasm(&mut with_db, source);
     validate_wasm(&wasm_bytes).expect("WASM validation failed");
 
-    let engine = wasmtime::Engine::default();
+    let engine = crate::tests::codegen::test_engine();
     let module = wasmtime::Module::new(&engine, &wasm_bytes).unwrap();
     let mut store = wasmtime::Store::new(&engine, ());
 
@@ -98,7 +98,7 @@ fn test_var_in_out_increment(mut with_db: db::RootDatabase) {
     let wasm_bytes = compile_to_wasm(&mut with_db, source);
     validate_wasm(&wasm_bytes).expect("WASM validation failed");
 
-    let engine = wasmtime::Engine::default();
+    let engine = crate::tests::codegen::test_engine();
     let module = wasmtime::Module::new(&engine, &wasm_bytes).unwrap();
     let mut store = wasmtime::Store::new(&engine, ());
 
@@ -141,7 +141,7 @@ fn test_var_in_out_real(mut with_db: db::RootDatabase) {
     let wasm_bytes = compile_to_wasm(&mut with_db, source);
     validate_wasm(&wasm_bytes).expect("WASM validation failed");
 
-    let engine = wasmtime::Engine::default();
+    let engine = crate::tests::codegen::test_engine();
     let module = wasmtime::Module::new(&engine, &wasm_bytes).unwrap();
     let mut store = wasmtime::Store::new(&engine, ());
 
@@ -187,7 +187,7 @@ fn test_var_in_out_with_var_input(mut with_db: db::RootDatabase) {
     let wasm_bytes = compile_to_wasm(&mut with_db, source);
     validate_wasm(&wasm_bytes).expect("WASM validation failed");
 
-    let engine = wasmtime::Engine::default();
+    let engine = crate::tests::codegen::test_engine();
     let module = wasmtime::Module::new(&engine, &wasm_bytes).unwrap();
     let mut store = wasmtime::Store::new(&engine, ());
 

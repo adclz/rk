@@ -19,7 +19,7 @@ fn test_array_write_and_read(mut with_db: db::RootDatabase) {
 
     let wasm_bytes = compile_to_wasm(&mut with_db, source);
 
-    let engine = wasmtime::Engine::default();
+    let engine = crate::tests::codegen::test_engine();
     let module = wasmtime::Module::new(&engine, &wasm_bytes).unwrap();
     let mut store = wasmtime::Store::new(&engine, ());
     let instance = super::instantiate_with_memory(&mut store, &module);
@@ -58,7 +58,7 @@ fn test_array_sum(mut with_db: db::RootDatabase) {
 
     let wasm_bytes = compile_to_wasm(&mut with_db, source);
 
-    let engine = wasmtime::Engine::default();
+    let engine = crate::tests::codegen::test_engine();
     let module = wasmtime::Module::new(&engine, &wasm_bytes).unwrap();
     let mut store = wasmtime::Store::new(&engine, ());
     let instance = super::instantiate_with_memory(&mut store, &module);
@@ -89,7 +89,7 @@ fn test_2d_array_access(mut with_db: db::RootDatabase) {
 
     let wasm_bytes = compile_to_wasm(&mut with_db, source);
 
-    let engine = wasmtime::Engine::default();
+    let engine = crate::tests::codegen::test_engine();
     let module = wasmtime::Module::new(&engine, &wasm_bytes).unwrap();
     let mut store = wasmtime::Store::new(&engine, ());
     let instance = super::instantiate_with_memory(&mut store, &module);
@@ -119,7 +119,7 @@ fn test_array_with_non_zero_base(mut with_db: db::RootDatabase) {
 
     let wasm_bytes = compile_to_wasm(&mut with_db, source);
 
-    let engine = wasmtime::Engine::default();
+    let engine = crate::tests::codegen::test_engine();
     let module = wasmtime::Module::new(&engine, &wasm_bytes).unwrap();
     let mut store = wasmtime::Store::new(&engine, ());
     let instance = super::instantiate_with_memory(&mut store, &module);
@@ -147,7 +147,7 @@ fn test_array_of_real(mut with_db: db::RootDatabase) {
     "#;
 
     let wasm_bytes = compile_to_wasm(&mut with_db, source);
-    let engine = wasmtime::Engine::default();
+    let engine = crate::tests::codegen::test_engine();
     let module = wasmtime::Module::new(&engine, &wasm_bytes).unwrap();
     let mut store = wasmtime::Store::new(&engine, ());
     let instance = super::instantiate_with_memory(&mut store, &module);
@@ -185,7 +185,7 @@ fn test_array_of_struct(mut with_db: db::RootDatabase) {
     "#;
 
     let wasm_bytes = compile_to_wasm(&mut with_db, source);
-    let engine = wasmtime::Engine::default();
+    let engine = crate::tests::codegen::test_engine();
     let module = wasmtime::Module::new(&engine, &wasm_bytes).unwrap();
     let mut store = wasmtime::Store::new(&engine, ());
     let instance = super::instantiate_with_memory(&mut store, &module);
@@ -218,7 +218,7 @@ fn test_array_passed_to_function(mut with_db: db::RootDatabase) {
     "#;
 
     let wasm_bytes = compile_to_wasm(&mut with_db, source);
-    let engine = wasmtime::Engine::default();
+    let engine = crate::tests::codegen::test_engine();
     let module = wasmtime::Module::new(&engine, &wasm_bytes).unwrap();
     let mut store = wasmtime::Store::new(&engine, ());
     let instance = super::instantiate_with_memory(&mut store, &module);
@@ -250,7 +250,7 @@ fn test_array_in_for_loop_with_computation(mut with_db: db::RootDatabase) {
     "#;
 
     let wasm_bytes = compile_to_wasm(&mut with_db, source);
-    let engine = wasmtime::Engine::default();
+    let engine = crate::tests::codegen::test_engine();
     let module = wasmtime::Module::new(&engine, &wasm_bytes).unwrap();
     let mut store = wasmtime::Store::new(&engine, ());
     let instance = super::instantiate_with_memory(&mut store, &module);
@@ -327,4 +327,125 @@ fn array_subscript_containing_a_call(mut with_db: db::RootDatabase) {
     let wasm = compile_to_wasm(&mut with_db, source);
     let result: i32 = super::execute_wasm(&wasm, "run", ());
     assert_eq!(result, 7, "the subscript's call resolves on both load and store");
+}
+
+/// An out-of-bounds subscript is DENIED at runtime: the access raises an IEC
+/// exception ("array index out of bounds") and the scan faults, instead of
+/// computing a neighbour's address. Before this check, `a[i]` with `i = 4` on
+/// an `ARRAY[0..2]` silently overwrote whatever came next — observed running
+/// corrupted for hundreds of scans. a toolchain's CheckBounds is the same idea.
+#[rstest]
+fn an_out_of_bounds_write_faults_instead_of_corrupting(mut with_db: db::RootDatabase) {
+    let source = r#"
+        PROGRAM P
+        VAR
+            n : DINT;
+            j : DINT;
+            a : ARRAY[0..2] OF DINT;
+            guard : DINT := 777;
+        END_VAR
+            n := n + 1;
+            IF n = 3 THEN
+                j := n + 1;   (* 4 is past the end *)
+                a[j] := 99;
+            END_IF;
+        END_PROGRAM
+
+        CONFIGURATION Cfg
+            RESOURCE Res ON CPU
+                TASK T(INTERVAL := T#10ms, PRIORITY := 1);
+                PROGRAM P1 WITH T : P;
+            END_RESOURCE
+        END_CONFIGURATION
+    "#;
+    let (_mir, wasm) = crate::tests::codegen::compile_to_mir_and_wasm(&mut with_db, source);
+    let mut plc = runtime::Plc::load(&wasm, runtime::Config::default()).expect("load");
+    plc.run(2).expect("in-bounds scans run fine");
+    let err = plc.scan().expect_err("the third scan goes out of bounds");
+    // The check raises through `$rk_exception`, so the scan reports a thrown
+    // exception rather than a bare wasm trap. The PAYLOAD ("array index out of
+    // bounds") is not yet extracted from an UNCAUGHT exception by `Plc::scan` —
+    // that is the same unfinished plumbing an uncaught `RAISE 'msg'` hits, and
+    // fixing it there will improve this message for free.
+    assert!(
+        format!("{err:#}").contains("thrown Wasm exception"),
+        "the fault is the raised bounds exception, got: {err:#}"
+    );
+}
+
+/// Reads are checked by the same wrap — garbage is also a wrong answer.
+#[rstest]
+fn an_out_of_bounds_read_faults_too(mut with_db: db::RootDatabase) {
+    let source = r#"
+        FUNCTION run : DINT
+        VAR
+            a : ARRAY[0..2] OF DINT;
+            i : DINT;
+        END_VAR
+            i := 5;
+            run := a[i];
+        END_FUNCTION
+    "#;
+    let wasm = compile_to_wasm(&mut with_db, source);
+    let engine = crate::tests::codegen::test_engine();
+    let module = wasmtime::Module::new(&engine, &wasm).unwrap();
+    let mut store = wasmtime::Store::new(&engine, ());
+    let instance = super::instantiate_with_memory(&mut store, &module);
+    let f = instance
+        .get_typed_func::<(), i32>(&mut store, "run")
+        .unwrap();
+    assert!(f.call(&mut store, ()).is_err(), "a[5] on [0..2] must fault");
+}
+
+/// Both boundary subscripts are IN bounds — the check must not be off by one,
+/// and lower bounds (including negative ones) are honoured per dimension.
+#[rstest]
+fn boundary_subscripts_do_not_fault(mut with_db: db::RootDatabase) {
+    let source = r#"
+        FUNCTION run : DINT
+        VAR
+            a : ARRAY[-2..2] OF DINT;
+            lo : DINT;
+            hi : DINT;
+        END_VAR
+            lo := -2;
+            hi := 2;
+            a[lo] := 10;
+            a[hi] := 32;
+            run := a[lo] * 100 + a[hi];
+        END_FUNCTION
+    "#;
+    let wasm = compile_to_wasm(&mut with_db, source);
+    let result: i32 = super::execute_wasm(&wasm, "run", ());
+    assert_eq!(result, 1032, "-2 and 2 are both legal on ARRAY[-2..2]");
+}
+
+/// Multi-dimensional bounds are PER DIMENSION: `m[1][9]` on
+/// `ARRAY[1..3, 1..3]` is out of bounds even though its flat offset lands
+/// inside the array's total byte range — a flat-only check would let it
+/// alias `m[3][?]`.
+#[rstest]
+fn per_dimension_bounds_not_flat_bounds(mut with_db: db::RootDatabase) {
+    let source = r#"
+        FUNCTION run : DINT
+        VAR
+            m : ARRAY[1..3, 1..3] OF DINT;
+            j : DINT;
+        END_VAR
+            j := 9;
+            run := m[1][j];
+        END_FUNCTION
+    "#;
+    let wasm = compile_to_wasm(&mut with_db, source);
+    let engine = crate::tests::codegen::test_engine();
+    let module = wasmtime::Module::new(&engine, &wasm).unwrap();
+    let mut store = wasmtime::Store::new(&engine, ());
+    let instance = super::instantiate_with_memory(&mut store, &module);
+    let f = instance
+        .get_typed_func::<(), i32>(&mut store, "run")
+        .unwrap();
+    assert!(
+        f.call(&mut store, ()).is_err(),
+        "dimension 2's bound is 3; 9 must fault even though 1*36 < sizeof(m)"
+    );
 }

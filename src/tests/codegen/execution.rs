@@ -18,7 +18,7 @@ fn test_execute_simple_arithmetic(mut with_db: db::RootDatabase) {
 
     let wasm_bytes = compile_to_wasm(&mut with_db, source);
 
-    let engine = Engine::default();
+    let engine = crate::tests::codegen::test_engine();
     let module = Module::new(&engine, &wasm_bytes).expect("Failed to create module");
     let mut store = Store::new(&engine, ());
     let instance = super::instantiate_with_memory(&mut store, &module);
@@ -79,7 +79,7 @@ fn test_execute_factorial(mut with_db: db::RootDatabase) {
 
     let wasm_bytes = compile_to_wasm(&mut with_db, source);
 
-    let engine = Engine::default();
+    let engine = crate::tests::codegen::test_engine();
     let module = Module::new(&engine, &wasm_bytes).expect("Failed to create module");
     let mut store = Store::new(&engine, ());
     let instance = super::instantiate_with_memory(&mut store, &module);
@@ -121,7 +121,7 @@ fn test_execute_chained_calls(mut with_db: db::RootDatabase) {
 
     let wasm_bytes = compile_to_wasm(&mut with_db, source);
 
-    let engine = Engine::default();
+    let engine = crate::tests::codegen::test_engine();
     let module = Module::new(&engine, &wasm_bytes).expect("Failed to create module");
     let mut store = Store::new(&engine, ());
     let instance = super::instantiate_with_memory(&mut store, &module);
@@ -153,7 +153,7 @@ fn test_execute_implicit_cast_int_to_real(mut with_db: db::RootDatabase) {
 
     let wasm_bytes = compile_to_wasm(&mut with_db, source);
 
-    let engine = Engine::default();
+    let engine = crate::tests::codegen::test_engine();
     let module = Module::new(&engine, &wasm_bytes).expect("Failed to create module");
     let mut store = Store::new(&engine, ());
     let instance = super::instantiate_with_memory(&mut store, &module);
@@ -185,7 +185,7 @@ fn test_execute_implicit_cast_in_arithmetic(mut with_db: db::RootDatabase) {
 
     let wasm_bytes = compile_to_wasm(&mut with_db, source);
 
-    let engine = Engine::default();
+    let engine = crate::tests::codegen::test_engine();
     let module = Module::new(&engine, &wasm_bytes).expect("Failed to create module");
     let mut store = Store::new(&engine, ());
     let instance = super::instantiate_with_memory(&mut store, &module);
@@ -215,7 +215,7 @@ fn test_default_int_param(mut with_db: db::RootDatabase) {
     "#;
 
     let wasm_bytes = compile_to_wasm(&mut with_db, source);
-    let engine = wasmtime::Engine::default();
+    let engine = crate::tests::codegen::test_engine();
     let module = wasmtime::Module::new(&engine, &wasm_bytes).unwrap();
     let mut store = wasmtime::Store::new(&engine, ());
     let instance = super::instantiate_with_memory(&mut store, &module);
@@ -243,7 +243,7 @@ fn test_default_param_override(mut with_db: db::RootDatabase) {
     "#;
 
     let wasm_bytes = compile_to_wasm(&mut with_db, source);
-    let engine = wasmtime::Engine::default();
+    let engine = crate::tests::codegen::test_engine();
     let module = wasmtime::Module::new(&engine, &wasm_bytes).unwrap();
     let mut store = wasmtime::Store::new(&engine, ());
     let instance = super::instantiate_with_memory(&mut store, &module);
@@ -371,7 +371,7 @@ END_FUNCTION
     "#;
 
     let wasm_bytes = compile_to_wasm(&mut with_db, source);
-    let engine = Engine::default();
+    let engine = crate::tests::codegen::test_engine();
     let module = Module::new(&engine, &wasm_bytes).unwrap();
     let mut store = Store::new(&engine, ());
     let instance = super::instantiate_with_memory(&mut store, &module);
@@ -408,7 +408,7 @@ END_FUNCTION
     "#;
 
     let wasm_bytes = compile_to_wasm(&mut with_db, source);
-    let engine = Engine::default();
+    let engine = crate::tests::codegen::test_engine();
     let module = Module::new(&engine, &wasm_bytes).unwrap();
     let mut store = Store::new(&engine, ());
     let instance = super::instantiate_with_memory(&mut store, &module);
@@ -457,7 +457,7 @@ END_FUNCTION
     "#;
 
     let wasm_bytes = compile_to_wasm(&mut with_db, source);
-    let engine = Engine::default();
+    let engine = crate::tests::codegen::test_engine();
     let module = Module::new(&engine, &wasm_bytes).unwrap();
     let mut store = Store::new(&engine, ());
     let instance = super::instantiate_with_memory(&mut store, &module);
@@ -500,7 +500,7 @@ END_FUNCTION
     "#;
 
     let wasm_bytes = compile_to_wasm(&mut with_db, source);
-    let engine = Engine::default();
+    let engine = crate::tests::codegen::test_engine();
     let module = Module::new(&engine, &wasm_bytes).unwrap();
     let mut store = Store::new(&engine, ());
     let instance = super::instantiate_with_memory(&mut store, &module);
@@ -582,7 +582,7 @@ END_FUNCTION
     "#;
 
     let wasm_bytes = compile_to_wasm(&mut with_db, source);
-    let engine = Engine::default();
+    let engine = crate::tests::codegen::test_engine();
     let module = Module::new(&engine, &wasm_bytes).unwrap();
     let mut store = Store::new(&engine, ());
     let instance = super::instantiate_with_memory(&mut store, &module);
@@ -723,7 +723,7 @@ fn test_execute_datetime_round_trip(mut with_db: db::RootDatabase) {
     "#;
 
     let wasm_bytes = compile_to_wasm(&mut with_db, source);
-    let engine = Engine::default();
+    let engine = crate::tests::codegen::test_engine();
     let module = Module::new(&engine, &wasm_bytes).expect("Failed to create module");
     let mut store = Store::new(&engine, ());
     let instance = super::instantiate_with_memory(&mut store, &module);

@@ -81,7 +81,7 @@ fn config_emits_task_entries_and_scheduler_globals(mut with_db: db::RootDatabase
 
     let (_mir, wasm) = compile_to_mir_and_wasm(&mut with_db, source);
 
-    let engine = wasmtime::Engine::default();
+    let engine = crate::tests::codegen::test_engine();
     let module = wasmtime::Module::new(&engine, &wasm).expect("valid module");
     let mut store = wasmtime::Store::new(&engine, ());
     let memory =

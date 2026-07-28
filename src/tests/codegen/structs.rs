@@ -25,7 +25,7 @@ fn test_struct_field_access(mut with_db: db::RootDatabase) {
 
     let wasm_bytes = compile_to_wasm(&mut with_db, source);
 
-    let engine = wasmtime::Engine::default();
+    let engine = crate::tests::codegen::test_engine();
     let module = wasmtime::Module::new(&engine, &wasm_bytes).unwrap();
     let mut store = wasmtime::Store::new(&engine, ());
     let instance = super::instantiate_with_memory(&mut store, &module);
@@ -60,7 +60,7 @@ fn test_struct_computation(mut with_db: db::RootDatabase) {
 
     let wasm_bytes = compile_to_wasm(&mut with_db, source);
 
-    let engine = wasmtime::Engine::default();
+    let engine = crate::tests::codegen::test_engine();
     let module = wasmtime::Module::new(&engine, &wasm_bytes).unwrap();
     let mut store = wasmtime::Store::new(&engine, ());
     let instance = super::instantiate_with_memory(&mut store, &module);
@@ -105,7 +105,7 @@ fn test_nested_struct(mut with_db: db::RootDatabase) {
 
     let wasm_bytes = compile_to_wasm(&mut with_db, source);
 
-    let engine = wasmtime::Engine::default();
+    let engine = crate::tests::codegen::test_engine();
     let module = wasmtime::Module::new(&engine, &wasm_bytes).unwrap();
     let mut store = wasmtime::Store::new(&engine, ());
     let instance = super::instantiate_with_memory(&mut store, &module);

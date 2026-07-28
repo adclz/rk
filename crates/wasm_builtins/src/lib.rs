@@ -58,6 +58,18 @@ pub extern "C" fn rk_raise_str(ptr: *const u8, len: u32) -> () {
     unsafe { __iec_raise(ptr, len) }
 }
 
+/// Bounds check for a runtime array subscript: raises when `index` leaves
+/// `[lower, lower + size)`, else returns it. The wrapping subtraction
+/// folds the below-lower case into one unsigned comparison.
+#[unsafe(no_mangle)]
+pub extern "C" fn rk_idx_check(index: i32, lower: i32, size: u32) -> i32 {
+    if (index.wrapping_sub(lower) as u32) >= size {
+        const MSG: &str = "array index out of bounds";
+        unsafe { __iec_raise(MSG.as_ptr(), MSG.len() as u32) }
+    }
+    index
+}
+
 #[unsafe(no_mangle)]
 pub extern "C" fn rk_div_i32_checked(numerator: i32, divisor: i32) -> i32 {
     numerator / divisor

@@ -847,8 +847,9 @@ impl<'db> ExprLowerCtx<'db> {
                 };
                 let array_hir_type = index_expr.path.infer(self.db);
                 let dim = self.index_dimension(index_expr.path);
-                let (element_type, element_size, lower_bound) =
+                let (element_type, element_size, lower_bound, dim_size) =
                     self.resolve_array_dim_info(array_hir_type, dim)?;
+                let index = self.checked_index(index, lower_bound, dim_size);
                 Ok(MirPlace::Index {
                     base: Box::new(inner),
                     index: Box::new(index),
@@ -1028,8 +1029,9 @@ impl<'db> ExprLowerCtx<'db> {
                 // Resolve element type from the array's base type
                 let array_hir_type = index_expr.path.infer(self.db);
                 let dim = self.index_dimension(index_expr.path);
-                let (element_type, element_size, lower_bound) =
+                let (element_type, element_size, lower_bound, dim_size) =
                     self.resolve_array_dim_info(array_hir_type, dim)?;
+                let index = self.checked_index(index, lower_bound, dim_size);
 
                 Ok(MirPlace::Index {
                     base: Box::new(inner),
@@ -1101,7 +1103,7 @@ impl<'db> ExprLowerCtx<'db> {
         &self,
         array_type: Type<'db>,
         dim: usize,
-    ) -> Result<(MirType, u32, i64), LowerTypeError> {
+    ) -> Result<(MirType, u32, i64, u32), LowerTypeError> {
         let mir = self.lower_type_resolved(array_type).ok();
         if let Some(MirType::Array(ref a)) = mir {
             let later: u32 = a
@@ -1112,13 +1114,65 @@ impl<'db> ExprLowerCtx<'db> {
                 .map(|(l, h)| (h - l + 1) as u32)
                 .product();
             let stride = a.element_size * later;
-            let lower_bound = a.dimensions.get(dim).map(|(l, _)| *l).unwrap_or(0);
-            return Ok((*a.element_type.clone(), stride, lower_bound));
+            let (lower_bound, dim_size) = a
+                .dimensions
+                .get(dim)
+                .map(|(l, h)| (*l, (h - l + 1).max(0) as u32))
+                .unwrap_or((0, 0));
+            return Ok((*a.element_type.clone(), stride, lower_bound, dim_size));
         }
         // HIR type-checked the index, so a non-array here is a real disagreement.
         Err(LowerTypeError::UnsupportedType(
             "indexed expression did not resolve to an array type".to_string(),
         ))
+    }
+
+    /// Wrap a runtime array subscript in `rk.idx_check`, which raises
+    /// "array index out of bounds" through the `$rk_exception` machinery when
+    /// the subscript leaves `[lower, lower + size)` - the scan faults with a
+    /// message instead of the access computing a NEIGHBOUR'S address, which is
+    /// what an unchecked `a[4]` on an `ARRAY[0..2]` used to do, silently, for
+    /// as long as the program ran.
+    ///
+    /// A compile-time in-bounds constant stays bare: the check would be dead
+    /// weight, and a literal subscript on a function-block receiver must stay
+    /// foldable (`static_fb_base` folds constant indices for dispatch). A
+    /// constant OUT of bounds is wrapped like a runtime value - HIR rejects
+    /// those it can see, so reaching one here means it slipped through, and
+    /// raising beats corrupting.
+    fn checked_index(&self, index: MirExpr, lower_bound: i64, dim_size: u32) -> MirExpr {
+        if let MirExpr::Constant(MirConstant::I32(k)) = &index {
+            let u = (*k as i64).wrapping_sub(lower_bound);
+            if u >= 0 && (u as u64) < dim_size as u64 {
+                return index;
+            }
+        }
+        let callee = hir::hir_def::interned::identifier::Ident::new(
+            self.db,
+            compact_str::CompactString::from("rk.idx_check"),
+        );
+        MirExpr::Call(crate::expr::MirCall {
+            callee,
+            // Unused: `emit_call` resolves by name through `fn_indices`,
+            // where codegen registers the grafted builtin's index.
+            callee_index: u32::MAX,
+            args: vec![
+                crate::expr::MirCallArg {
+                    value: index,
+                    kind: crate::expr::MirArgKind::ByValue,
+                },
+                crate::expr::MirCallArg {
+                    value: MirExpr::Constant(MirConstant::I32(lower_bound as i32)),
+                    kind: crate::expr::MirArgKind::ByValue,
+                },
+                crate::expr::MirCallArg {
+                    value: MirExpr::Constant(MirConstant::I32(dim_size as i32)),
+                    kind: crate::expr::MirArgKind::ByValue,
+                },
+            ],
+            return_type: MirType::Elementary(MirElementary::DInt),
+            output_bindings: vec![],
+        })
     }
 
     /// For an instance-method call `receiver.method(...)`: the mangled callee,

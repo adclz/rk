@@ -117,7 +117,7 @@ fn compile_to_wasm_impl(db: &mut RootDatabase, source: &str, check_diagnostics: 
 /// wasmparser for validation anymore. This returns an error if the WASM
 /// is invalid, or Ok(()) if it's valid.
 pub fn validate_wasm(wasm_bytes: &[u8]) -> Result<(), Box<dyn std::error::Error>> {
-    let engine = wasmtime::Engine::default();
+    let engine = test_engine();
     let _ = wasmtime::Module::new(&engine, wasm_bytes)?;
     Ok(())
 }
@@ -144,6 +144,16 @@ pub fn validate_wasm(wasm_bytes: &[u8]) -> Result<(), Box<dyn std::error::Error>
 ///
 /// Use in tests that build their own engine/store rather than going through
 /// `execute_wasm` / `execute_wasm_with_imports`.
+/// An engine configured the way the real runtime's is: exception handling on.
+/// Any module whose lowering pulled in `rk.idx_check` (every runtime array
+/// subscript), `RAISE`, or an assertion carries the `$rk_exception` tag, and
+/// wasmtime's DEFAULT config refuses to even parse it.
+pub fn test_engine() -> wasmtime::Engine {
+    let mut config = wasmtime::Config::new();
+    config.wasm_exceptions(true);
+    wasmtime::Engine::new(&config).expect("engine with exceptions")
+}
+
 pub fn instantiate_with_memory(
     store: &mut wasmtime::Store<()>,
     module: &wasmtime::Module,
@@ -177,7 +187,7 @@ where
     R: wasmtime::WasmResults,
     F: FnOnce(&mut wasmtime::Linker<()>),
 {
-    let engine = wasmtime::Engine::default();
+    let engine = test_engine();
     let module = wasmtime::Module::new(&engine, wasm_bytes).expect("Failed to create module");
     let mut store = wasmtime::Store::new(&engine, ());
     let mut linker = wasmtime::Linker::new(&engine);

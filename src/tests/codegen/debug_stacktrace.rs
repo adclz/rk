@@ -34,7 +34,7 @@ fn trap_yields_source_level_stack_trace(mut with_db: db::RootDatabase) {
     let dbg = DebugInfo::from_wasm(&wasm);
 
     // Run `caller(0)` → boom(0) → 100/0 → div-by-zero trap.
-    let engine = wasmtime::Engine::default();
+    let engine = crate::tests::codegen::test_engine();
     let module = wasmtime::Module::new(&engine, &wasm).expect("module");
     // `defined_index = func_index - imported funcs` (a frame's func_index is
     // module-level, including imports).

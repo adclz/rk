@@ -14,7 +14,7 @@ fn test_null_ref(mut with_db: db::RootDatabase) {
     let wasm_bytes = compile_to_wasm(&mut with_db, source);
     validate_wasm(&wasm_bytes).expect("WASM validation failed");
 
-    let engine = wasmtime::Engine::default();
+    let engine = crate::tests::codegen::test_engine();
     let module = wasmtime::Module::new(&engine, &wasm_bytes).unwrap();
     let mut store = wasmtime::Store::new(&engine, ());
 
@@ -47,7 +47,7 @@ fn test_ref_to_var_in_out(mut with_db: db::RootDatabase) {
     let wasm_bytes = compile_to_wasm(&mut with_db, source);
     validate_wasm(&wasm_bytes).expect("WASM validation failed");
 
-    let engine = wasmtime::Engine::default();
+    let engine = crate::tests::codegen::test_engine();
     let module = wasmtime::Module::new(&engine, &wasm_bytes).unwrap();
     let mut store = wasmtime::Store::new(&engine, ());
 
@@ -87,7 +87,7 @@ fn test_ref_to_assignment_var_in_out(mut with_db: db::RootDatabase) {
     let wasm_bytes = compile_to_wasm(&mut with_db, source);
     validate_wasm(&wasm_bytes).expect("WASM validation failed");
 
-    let engine = wasmtime::Engine::default();
+    let engine = crate::tests::codegen::test_engine();
     let module = wasmtime::Module::new(&engine, &wasm_bytes).unwrap();
     let mut store = wasmtime::Store::new(&engine, ());
 
@@ -130,7 +130,7 @@ fn test_ref_to_local_read(mut with_db: db::RootDatabase) {
     let wasm_bytes = compile_to_wasm(&mut with_db, source);
     validate_wasm(&wasm_bytes).expect("WASM validation failed");
 
-    let engine = wasmtime::Engine::default();
+    let engine = crate::tests::codegen::test_engine();
     let module = wasmtime::Module::new(&engine, &wasm_bytes).unwrap();
     let mut store = wasmtime::Store::new(&engine, ());
 
@@ -161,7 +161,7 @@ fn test_ref_to_local_write(mut with_db: db::RootDatabase) {
     let wasm_bytes = compile_to_wasm(&mut with_db, source);
     validate_wasm(&wasm_bytes).expect("WASM validation failed");
 
-    let engine = wasmtime::Engine::default();
+    let engine = crate::tests::codegen::test_engine();
     let module = wasmtime::Module::new(&engine, &wasm_bytes).unwrap();
     let mut store = wasmtime::Store::new(&engine, ());
 
@@ -194,7 +194,7 @@ fn test_multiple_deref(mut with_db: db::RootDatabase) {
     let wasm_bytes = compile_to_wasm(&mut with_db, source);
     validate_wasm(&wasm_bytes).expect("WASM validation failed");
 
-    let engine = wasmtime::Engine::default();
+    let engine = crate::tests::codegen::test_engine();
     let module = wasmtime::Module::new(&engine, &wasm_bytes).unwrap();
     let mut store = wasmtime::Store::new(&engine, ());
 

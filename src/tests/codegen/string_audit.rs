@@ -729,7 +729,7 @@ END_FUNCTION
     let mir_module = mir::lower::lower_module::lower_module(&with_db, sem_idx).unwrap();
     let bytes = wasm_codegen::generate_wasm(&with_db, &mir_module).finish();
 
-    let engine = Engine::default();
+    let engine = crate::tests::codegen::test_engine();
     let module = Module::new(&engine, &bytes).expect("wasm should validate");
     let mut store = Store::new(&engine, ());
     let instance = super::instantiate_with_memory(&mut store, &module);
