@@ -290,4 +290,25 @@ impl<'db> Expr<'db> {
     pub fn as_range(self, db: &'db dyn WorkspaceDataBase) -> Option<u64> {
         self.as_const_int(db).filter(|v| *v >= 0).map(|v| v as u64)
     }
+
+    /// [`Self::as_const_int`] extended over a unary sign and parentheses —
+    /// the shapes a written-out constant takes (`-1`, `+(2)`), which the bare
+    /// literal evaluator does not see. Named constants still yield `None`.
+    pub fn as_const_int_folded(self, db: &'db dyn WorkspaceDataBase) -> Option<i64> {
+        match self.expr(db) {
+            ExprKind::UnaryOperator { expr, operator } => match operator {
+                crate::hir_def::expressions::expression::UnaryOperatorKind::Minus => {
+                    expr.as_const_int_folded(db).and_then(i64::checked_neg)
+                }
+                crate::hir_def::expressions::expression::UnaryOperatorKind::Plus => {
+                    expr.as_const_int_folded(db)
+                }
+                _ => None,
+            },
+            ExprKind::PrimaryExpr(PrimaryExpr::ParenthesizedExpr { expr }) => {
+                expr.as_const_int_folded(db)
+            }
+            _ => self.as_const_int(db),
+        }
+    }
 }

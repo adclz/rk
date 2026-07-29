@@ -260,3 +260,87 @@ fn valid_compound_subscripts_on_call_paths(mut with_db: RootDatabase) {
 
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @"");
 }
+
+/// A CONSTANT subscript outside the declared bounds is provable at compile
+/// time — rejected here (E0608) instead of deferred to the runtime bounds
+/// check. Per dimension, negative bounds respected, both subscript
+/// spellings; boundary values stay silent.
+#[rstest]
+fn invalid_constant_subscript_out_of_bounds(mut with_db: RootDatabase) {
+    let source = r#"
+        FUNCTION fn1 : INT
+        VAR
+            a : ARRAY[0..2] OF INT;
+            n : ARRAY[-2..2] OF INT;
+            m : ARRAY[1..3, 1..3] OF INT;
+        END_VAR
+            a[5] := 1;
+            a[-1] := 2;
+            n[-3] := 3;
+            m[1][9] := 4;
+            m[9][1] := 5;
+        END_FUNCTION
+        "#;
+
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
+    [E0608] Error: invalid array access
+       ,-[ file:///test0.st:8:15 ]
+       |
+     8 |             a[5] := 1;
+       |               |
+       |               `-- index 5 is out of bounds (the dimension is declared 0..2)
+    ---'
+    [E0608] Error: invalid array access
+       ,-[ file:///test0.st:9:15 ]
+       |
+     9 |             a[-1] := 2;
+       |               ^|
+       |                `-- index -1 is out of bounds (the dimension is declared 0..2)
+    ---'
+    [E0608] Error: invalid array access
+        ,-[ file:///test0.st:10:15 ]
+        |
+     10 |             n[-3] := 3;
+        |               ^|
+        |                `-- index -3 is out of bounds (the dimension is declared -2..2)
+    ----'
+    [E0608] Error: invalid array access
+        ,-[ file:///test0.st:11:18 ]
+        |
+     11 |             m[1][9] := 4;
+        |                  |
+        |                  `-- index 9 is out of bounds (the dimension is declared 1..3)
+        |
+        | Note: this error occurred in array dimension 2
+    ----'
+    [E0608] Error: invalid array access
+        ,-[ file:///test0.st:12:15 ]
+        |
+     12 |             m[9][1] := 5;
+        |               |
+        |               `-- index 9 is out of bounds (the dimension is declared 1..3)
+    ----'
+    ");
+}
+
+/// In-bounds constants — including both boundaries and negative lower
+/// bounds — are silent, and a non-constant subscript is never judged here.
+#[rstest]
+fn valid_boundary_subscripts_are_silent(mut with_db: RootDatabase) {
+    let source = r#"
+        FUNCTION fn1 : INT
+        VAR
+            a : ARRAY[0..2] OF INT;
+            n : ARRAY[-2..2] OF INT;
+            i : INT;
+        END_VAR
+            a[0] := 1;
+            a[2] := 2;
+            n[-2] := 3;
+            n[2] := 4;
+            a[i] := 5;
+        END_FUNCTION
+        "#;
+
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"");
+}

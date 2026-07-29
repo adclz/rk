@@ -36,11 +36,11 @@ pub enum ArrayError<'db> {
         err: String,
     },
     IndexOutOfBounds {
-        size: SpanIdent<'db>,
+        expr: Expr<'db>,
         dimension: usize,
-        index: u64,
-        min: u64,
-        max: u64,
+        index: i64,
+        min: i64,
+        max: i64,
     },
     NonIntegerIndex {
         expr: Expr<'db>,
@@ -134,7 +134,7 @@ impl<'db> ToIdeDiagnostic<'db> for ArrayError<'db> {
                 .range(crate::denormalize(db, file, &size.get_span(db)).unwrap_or_default())
                 .call(),
             Self::IndexOutOfBounds {
-                size,
+                expr,
                 dimension,
                 index,
                 min,
@@ -142,12 +142,11 @@ impl<'db> ToIdeDiagnostic<'db> for ArrayError<'db> {
             } => {
                 let mut diag = diag()
                     .message(format!(
-                        "index '{}' is out of bounds (expected between {} and {})",
-                        index, min, max
+                        "index {index} is out of bounds (the dimension is declared {min}..{max})"
                     ))
                     .severity(auto_lsp::lsp_types::DiagnosticSeverity::ERROR)
                     .desc(self)
-                    .range(crate::denormalize(db, file, &size.get_span(db)).unwrap_or_default())
+                    .range(crate::denormalize(db, file, &expr.get_span(db)).unwrap_or_default())
                     .call();
 
                 if *dimension > 0_usize {
