@@ -61,10 +61,6 @@ pub enum TypeError<'db> {
         typ: Type<'db>,
         expr: Expr<'db>,
     },
-    Other {
-        message: String,
-        expr: Expr<'db>,
-    },
     InferLiteralError {
         expr: Expr<'db>,
         source: Option<InferSource<'db>>,
@@ -94,7 +90,6 @@ impl<'db> ErrorCode for TypeError<'db> {
             Self::InferLiteralError { .. } => "E0309",
             Self::NonVariadicFoldParameter { .. } => "E0317",
             Self::UnsupportedOperator { .. } => "E0318",
-            Self::Other { .. } => "E0350",
         }
     }
 
@@ -284,12 +279,6 @@ impl<'db> ToIdeDiagnostic<'db> for TypeError<'db> {
                 typ.with_location(db, &mut diag);
                 diag
             }
-            Self::Other { message, expr } => diag()
-                .message(message.clone())
-                .severity(DiagnosticSeverity::ERROR)
-                .desc(self)
-                .range(crate::denormalize(db, file, &expr.get_span(db)).unwrap_or_default())
-                .call(),
             Self::InferLiteralError {
                 err,
                 expr,

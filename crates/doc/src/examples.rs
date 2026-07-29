@@ -1263,6 +1263,132 @@ END_FUNCTION
             lint_rule: None,
         },
         ErrorExample {
+            code: "E0233",
+            category: "Resolution",
+            title: "Missing required parameter",
+            description: "A FUNCTION call must supply every VAR_INPUT (inputs have no defaults on FUNCTIONs). Name the missing parameter in the call.",
+            sources: &[r#"
+FUNCTION add2 : INT
+VAR_INPUT a : INT; b : INT; END_VAR
+    add2 := a + b;
+END_FUNCTION
+
+FUNCTION f1 : INT
+    f1 := add2(a := 1);
+END_FUNCTION
+"#],
+            lint_rule: None,
+        },
+        ErrorExample {
+            code: "E0234",
+            category: "Resolution",
+            title: "VAR_IN_OUT argument must be a variable",
+            description: "A VAR_IN_OUT parameter is passed by reference: the argument must be an assignable variable, not an expression or a literal.",
+            sources: &[r#"
+FUNCTION bump : INT
+VAR_IN_OUT io : INT; END_VAR
+    io := io + 1;
+    bump := io;
+END_FUNCTION
+
+FUNCTION f1 : INT
+    f1 := bump(io := 1 + 2);
+END_FUNCTION
+"#],
+            lint_rule: None,
+        },
+        ErrorExample {
+            code: "E0235",
+            category: "Resolution",
+            title: "RETAIN in a stateless POU",
+            description: "RETAIN and NON_RETAIN require instance storage. A FUNCTION or METHOD has none - its variables live for one call.",
+            sources: &[r#"
+FUNCTION f1 : INT
+VAR_OUTPUT RETAIN q : INT; END_VAR
+    f1 := 1;
+END_FUNCTION
+"#],
+            lint_rule: None,
+        },
+        ErrorExample {
+            code: "E0236",
+            category: "Resolution",
+            title: "VAR_IN_OUT bound with =>",
+            description: "The `=>` arrow binds outputs. A VAR_IN_OUT parameter is bound with `:=` - it flows both ways through one variable.",
+            sources: &[r#"
+FUNCTION bump : INT
+VAR_IN_OUT io : INT; END_VAR
+    bump := io;
+END_FUNCTION
+
+FUNCTION f1 : INT
+VAR y : INT; END_VAR
+    f1 := bump(io => y);
+END_FUNCTION
+"#],
+            lint_rule: None,
+        },
+        ErrorExample {
+            code: "E0238",
+            category: "Resolution",
+            title: "Program instance without a task",
+            description: "Every program instance in a RESOURCE must be attached to a TASK with `WITH` - an unattached instance would never be scheduled.",
+            sources: &[r#"
+PROGRAM P
+VAR n : INT; END_VAR
+    n := n + 1;
+END_PROGRAM
+
+CONFIGURATION Cfg
+    RESOURCE Res ON CPU
+        PROGRAM P1 : P;
+    END_RESOURCE
+END_CONFIGURATION
+"#],
+            lint_rule: None,
+        },
+        ErrorExample {
+            code: "E0239",
+            category: "Resolution",
+            title: "Unschedulable task",
+            description: "A TASK needs a cyclic INTERVAL to be scheduled. Event-driven forms (SINGLE) are not supported by the scan dispatcher.",
+            sources: &[r#"
+PROGRAM P
+VAR n : INT; END_VAR
+    n := n + 1;
+END_PROGRAM
+
+CONFIGURATION Cfg
+    RESOURCE Res ON CPU
+        TASK T(SINGLE := TRUE, PRIORITY := 1);
+        PROGRAM P1 WITH T : P;
+    END_RESOURCE
+END_CONFIGURATION
+"#],
+            lint_rule: None,
+        },
+        ErrorExample {
+            code: "E0240",
+            category: "Resolution",
+            title: "Unsupported configuration element",
+            description: "Program connections (`inp := %IW1`) and per-FB task associations inside a program configuration are not supported.",
+            sources: &[r#"
+PROGRAM P
+VAR_INPUT inp : INT; END_VAR
+VAR n : INT; END_VAR
+    n := inp;
+END_PROGRAM
+
+CONFIGURATION Cfg
+    RESOURCE Res ON CPU
+        TASK T(INTERVAL := T#10ms, PRIORITY := 1);
+        PROGRAM P1 WITH T : P (inp := %IW1);
+    END_RESOURCE
+END_CONFIGURATION
+"#],
+            lint_rule: None,
+        },
+        ErrorExample {
             code: "E0237",
             category: "Resolution",
             title: "Ambiguous overloaded call",
@@ -1823,38 +1949,6 @@ END_PROGRAM
 "#],
             lint_rule: None,
         },
-        ErrorExample {
-            code: "E0319",
-            category: "Type System",
-            title: "Assignment attempt requires REF_TO",
-            description: "The `?=` assignment attempt operator requires a `REF_TO` variable on the left-hand side.",
-            sources: &[r#"
-FUNCTION_BLOCK fb1
-VAR
-    x: INT;
-    y: INT;
-END_VAR
-    x ?= y;
-END_FUNCTION_BLOCK
-"#],
-            lint_rule: None,
-        },
-        ErrorExample {
-            code: "E0320",
-            category: "Type System",
-            title: "Assignment attempt invalid RHS",
-            description: "The right-hand side of `?=` must be a `REF_TO` or interface type.",
-            sources: &[r#"
-FUNCTION_BLOCK fb1
-VAR
-    x: REF_TO INT;
-    y: INT;
-END_VAR
-    x ?= y;
-END_FUNCTION_BLOCK
-"#],
-            lint_rule: None,
-        },
         // ── E04xx: Visibility ────────────────────────────────────────────
         ErrorExample {
             code: "E0401",
@@ -2335,6 +2429,37 @@ END_FUNCTION_BLOCK
 "#],
             lint_rule: None,
         },
+        ErrorExample {
+            code: "E0608",
+            category: "Arrays",
+            title: "Constant index out of bounds",
+            description: "A constant subscript outside the array's declared bounds is provable at compile time and rejected here, instead of faulting the scan at runtime. Checked per dimension.",
+            sources: &[r#"
+FUNCTION f1 : INT
+VAR
+    a : ARRAY[0..2] OF INT;
+END_VAR
+    a[5] := 1;
+END_FUNCTION
+"#],
+            lint_rule: None,
+        },
+        ErrorExample {
+            code: "E0609",
+            category: "Arrays",
+            title: "Array index must be an integer",
+            description: "A subscript must be of an integer type (ANY_INT; subranges index like their base type). A BOOL, REAL or STRING cannot address an element.",
+            sources: &[r#"
+FUNCTION f1 : INT
+VAR
+    a : ARRAY[0..2] OF INT;
+    r : REAL;
+END_VAR
+    a[r] := 1;
+END_FUNCTION
+"#],
+            lint_rule: None,
+        },
         // ── E07xx: Enums ─────────────────────────────────────────────────
         ErrorExample {
             code: "E0701",
@@ -2388,6 +2513,20 @@ END_FUNCTION_BLOCK
             sources: &[r#"
 TYPE s1 : REAL (0..100)
 END_TYPE
+"#],
+            lint_rule: None,
+        },
+        ErrorExample {
+            code: "E0802",
+            category: "Subranges",
+            title: "Value outside the subrange",
+            description: "A constant assigned to a subrange-typed variable must lie within the declared bounds.",
+            sources: &[r#"
+FUNCTION f1 : INT
+VAR x : INT (0..10); END_VAR
+    x := 99;
+    f1 := x;
+END_FUNCTION
 "#],
             lint_rule: None,
         },
@@ -2476,6 +2615,25 @@ VAR CONSTANT
 END_VAR
     x := 20;
 END_FUNCTION_BLOCK
+"#],
+            lint_rule: None,
+        },
+        ErrorExample {
+            code: "E1005",
+            category: "Control Flow",
+            title: "FOR control is not a variable",
+            description: "A FOR statement's control must be a bare variable name. A struct field, an array element, a dereference or a bit access cannot be a loop counter.",
+            sources: &[r#"
+TYPE Rec : STRUCT i : INT; END_STRUCT; END_TYPE
+
+FUNCTION f1 : INT
+VAR
+    r : Rec;
+END_VAR
+    FOR r.i := 0 TO 3 DO
+        f1 := f1 + 1;
+    END_FOR;
+END_FUNCTION
 "#],
             lint_rule: None,
         },
@@ -2621,21 +2779,6 @@ END_VAR
 END_FUNCTION
 "#],
             lint_rule: Some("negated-condition"),
-        },
-        ErrorExample {
-            code: "L0105",
-            category: "Linter Info",
-            title: "Uninitialized output",
-            description: "A `VAR_OUTPUT` variable is never assigned in the body. Callers may read an undefined value.",
-            sources: &[r#"
-FUNCTION compute : INT
-VAR_OUTPUT
-    status : INT;
-END_VAR
-    compute := 42;
-END_FUNCTION
-"#],
-            lint_rule: Some("uninitialized-output"),
         },
         ErrorExample {
             code: "L0106",
@@ -2970,6 +3113,21 @@ END_FUNCTION
 "#],
             lint_rule: Some("default-for-step"),
         },
+        ErrorExample {
+            code: "L0215",
+            category: "Linter Info",
+            title: "Explicit default FOR step",
+            description: "`BY 1` is the default step - writing it out adds nothing.",
+            sources: &[r#"
+FUNCTION test : INT
+VAR i : INT; END_VAR
+    FOR i := 0 TO 5 BY 1 DO
+        test := test + 1;
+    END_FOR;
+END_FUNCTION
+"#],
+            lint_rule: Some("default-for-step"),
+        },
         // ── L03xx: Linter Warning ─────────────────────────────────
         ErrorExample {
             code: "L0301",
@@ -3264,5 +3422,159 @@ END_FUNCTION_BLOCK
 "#],
             lint_rule: Some("method-shadows-member"),
         },
+        ErrorExample {
+            code: "L0319",
+            category: "Linter Warning",
+            title: "FOR loop never terminates",
+            description: "The end bound sits at the control type's own limit, so the counter wraps at the type width before the exit check can fail — the loop runs forever.",
+            sources: &[r#"
+FUNCTION test : INT
+VAR i : USINT; END_VAR
+    FOR i := 0 TO 255 DO
+        test := test + 1;
+    END_FOR;
+END_FUNCTION
+"#],
+            lint_rule: Some("for-bound-at-type-limit"),
+        },
+        ErrorExample {
+            code: "L0320",
+            category: "Linter Warning",
+            title: "Non-constant FOR step",
+            description: "The BY step is not a compile-time literal. The loop's direction is decided at compile time (ascending), so a negative value at runtime will not run the loop backwards.",
+            sources: &[r#"
+FUNCTION test : INT
+VAR i : INT; s : INT; END_VAR
+    s := 2;
+    FOR i := 1 TO 10 BY s DO
+        test := test + 1;
+    END_FOR;
+END_FUNCTION
+"#],
+            lint_rule: Some("nonconstant-for-step"),
+        },
+        ErrorExample {
+            code: "L0410",
+            category: "Linter Warning",
+            title: "Global accessed without VAR_EXTERNAL",
+            description: "A configuration VAR_GLOBAL is read directly by name. Strict IEC wants the program to import it explicitly with VAR_EXTERNAL.",
+            sources: &[r#"
+PROGRAM P
+VAR n : INT; END_VAR
+    n := gCount;
+END_PROGRAM
+
+CONFIGURATION Cfg
+    VAR_GLOBAL gCount : INT; END_VAR
+    RESOURCE Res ON CPU
+        TASK T(INTERVAL := T#10ms, PRIORITY := 1);
+        PROGRAM P1 WITH T : P;
+    END_RESOURCE
+END_CONFIGURATION
+"#],
+            lint_rule: Some("global-without-external"),
+        },
     ]
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::collections::BTreeSet;
+    use std::path::Path;
+
+    /// Codes that exist in the compiler but have no example here YET. This
+    /// list may only SHRINK: document a code, remove it from here. A new
+    /// code must ship with its example — adding to this list defeats the
+    /// guard, and the compile-time gap it papers over becomes the 35-ghost /
+    /// 27-missing drift the April 2026 docs accumulated.
+    const KNOWN_UNDOCUMENTED: &[&str] = &[
+        // Workspace-level: fires when the workspace has no config file, so no
+        // SOURCE example can trigger it in the doc harness.
+        "E0217",
+    ];
+
+    /// Every `"EXXXX"` / `"LXXXX"` string literal in a source tree — the
+    /// diagnostic codes a crate defines (each `code()` impl returns one).
+    fn codes_in(dir: &Path, out: &mut BTreeSet<String>) {
+        let mut stack = vec![dir.to_path_buf()];
+        while let Some(dir) = stack.pop() {
+            for entry in std::fs::read_dir(&dir).expect("read source dir") {
+                let path = entry.expect("dir entry").path();
+                if path.is_dir() {
+                    stack.push(path);
+                    continue;
+                }
+                if path.extension().is_none_or(|e| e != "rs") {
+                    continue;
+                }
+                let text = std::fs::read_to_string(&path).expect("read source");
+                let bytes = text.as_bytes();
+                for i in 0..bytes.len().saturating_sub(7) {
+                    if bytes[i] == b'"'
+                        && (bytes[i + 1] == b'E' || bytes[i + 1] == b'L')
+                        && bytes[i + 2..i + 6].iter().all(u8::is_ascii_digit)
+                        && bytes[i + 6] == b'"'
+                    {
+                        out.insert(text[i + 1..i + 6].to_string());
+                    }
+                }
+            }
+        }
+    }
+
+    /// The docs and the compiler must not drift: every example's code must
+    /// exist, and every defined code must have an example (or sit on the
+    /// explicit, shrink-only debt list). The generated April 2026 docs
+    /// carried 35 codes the compiler no longer (or never) had, and said
+    /// nothing about 27 real ones — invisible until someone counted by hand.
+    #[test]
+    fn every_diagnostic_code_is_documented_and_no_example_is_a_ghost() {
+        let root = Path::new(env!("CARGO_MANIFEST_DIR")).parent().expect("crates/");
+        let mut defined = BTreeSet::new();
+        codes_in(&root.join("hir").join("src"), &mut defined);
+        codes_in(&root.join("linter").join("src"), &mut defined);
+        assert!(
+            defined.len() > 100,
+            "the source scan found implausibly few codes ({}) — did the error \
+             definitions move out of crates/hir + crates/linter?",
+            defined.len()
+        );
+
+        // Per-type sub-entries (`E0309_BOOL`, `E0309_UINT_NEG`, …) document
+        // variants of one base code — normalize to the part before `_`.
+        let documented: BTreeSet<String> = all_examples()
+            .iter()
+            .map(|e| e.code.split('_').next().unwrap_or(e.code).to_string())
+            .collect();
+        let debt: BTreeSet<String> = KNOWN_UNDOCUMENTED.iter().map(|s| s.to_string()).collect();
+
+        let ghosts: Vec<_> = documented.difference(&defined).collect();
+        assert!(
+            ghosts.is_empty(),
+            "examples document codes the compiler does not define — delete them: {ghosts:?}"
+        );
+
+        let missing: Vec<_> = defined
+            .difference(&documented)
+            .filter(|c| !debt.contains(*c))
+            .collect();
+        assert!(
+            missing.is_empty(),
+            "codes defined without an example — add one to `all_examples()` \
+             (do NOT grow KNOWN_UNDOCUMENTED): {missing:?}"
+        );
+
+        let paid: Vec<_> = debt.intersection(&documented).collect();
+        assert!(
+            paid.is_empty(),
+            "these codes now have examples — remove them from KNOWN_UNDOCUMENTED: {paid:?}"
+        );
+        let stale_debt: Vec<_> = debt.difference(&defined).collect();
+        assert!(
+            stale_debt.is_empty(),
+            "these allowlisted codes no longer exist — remove them from \
+             KNOWN_UNDOCUMENTED: {stale_debt:?}"
+        );
+    }
 }
