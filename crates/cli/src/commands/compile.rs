@@ -1,6 +1,7 @@
 use std::path::PathBuf;
 
-use crate::compiler::{build_core, debug_core_path, optimize_wasm};
+use crate::cli::OutputFormat;
+use crate::compiler::{build_core_with_format, debug_core_path, optimize_wasm};
 use crate::error::{CliError, CliResult};
 use crate::ui;
 use crate::workspace::init_db;
@@ -12,6 +13,7 @@ pub struct CompileOptions<'a> {
     pub no_stdlib: bool,
     pub opt_level: Option<&'a str>,
     pub debug: bool,
+    pub format: OutputFormat,
 }
 
 pub fn run_compile(
@@ -39,8 +41,8 @@ fn compile_once(
 
     // `build_core` already echoed diagnostics to stderr; a build failure is a
     // silent non-zero exit.
-    let (core_bytes, mir_module) =
-        build_core(&db, workspace, verbose).map_err(|_| CliError::Failed)?;
+    let (core_bytes, mir_module) = build_core_with_format(&db, workspace, verbose, opts.format)
+        .map_err(|_| CliError::Failed)?;
 
     if opts.debug {
         // Debug profile: write the bare core (unoptimized, `debug-*` sections

@@ -17,6 +17,7 @@ fn render_codegen_error(
     db: &RootDatabase,
     workspace: &std::path::Path,
     err: &mir::lower::lower_type::LowerTypeError,
+    format: crate::cli::OutputFormat,
 ) -> Option<String> {
     use auto_lsp::lsp_types::DiagnosticSeverity;
 
@@ -30,7 +31,9 @@ fn render_codegen_error(
         .call();
 
     let mut buffer: Vec<u8> = Vec::new();
-    DiagnosticReporter::new(db, workspace).report_files(&[(file, vec![diagnostic])], &mut buffer);
+    DiagnosticReporter::new(db, workspace)
+        .with_format(format)
+        .report_files(&[(file, vec![diagnostic])], &mut buffer);
     Some(String::from_utf8_lossy(&buffer).into_owned())
 }
 
@@ -40,13 +43,24 @@ fn render_codegen_error(
 pub fn build_core(
     db: &RootDatabase,
     workspace: &std::path::Path,
+    verbose: bool,
+) -> Result<(Vec<u8>, mir::MirModule), String> {
+    build_core_with_format(db, workspace, verbose, crate::cli::OutputFormat::Full)
+}
+
+/// [`build_core`] with an explicit diagnostics format — `rk compile` passes the
+/// user's `--output-format`; the other callers (debug/sim/test) keep `full`.
+pub fn build_core_with_format(
+    db: &RootDatabase,
+    workspace: &std::path::Path,
     _verbose: bool,
+    format: crate::cli::OutputFormat,
 ) -> Result<(Vec<u8>, mir::MirModule), String> {
     // Report into a buffer so the text can be both echoed to stderr (CLI
     // commands) and returned to the caller (the debugger forwards it over the debugger
     // transport — stdout there is the transport, and stderr isn't shown in VSCode).
     let per_file = collect_diagnostics(db, false);
-    let reporter = DiagnosticReporter::new(db, workspace);
+    let reporter = DiagnosticReporter::new(db, workspace).with_format(format);
     let mut rendered: Vec<u8> = Vec::new();
     let (total_errors, _total_warnings) = reporter.report_files(&per_file, &mut rendered);
 
@@ -75,7 +89,7 @@ pub fn build_core(
         Err(e) => {
             // Prefer the located rendering (source excerpt + caret); fall back
             // to the bare message when the error carries no location.
-            return match render_codegen_error(db, workspace, &e) {
+            return match render_codegen_error(db, workspace, &e, format) {
                 Some(report) => {
                     let _ = std::io::stderr().write_all(report.as_bytes());
                     ui::failure("compilation failed:", "1 error(s) found, cannot compile.");
@@ -122,7 +136,7 @@ pub fn build_core_quiet(
         mir::lower::lower_module::lower_modules(db, &sem_indices).map_err(|e| {
             // Same located rendering as `build_core`, returned (never printed)
             // so the TUI can show it after leaving the alternate screen.
-            render_codegen_error(db, workspace, &e)
+            render_codegen_error(db, workspace, &e, crate::cli::OutputFormat::Full)
                 .map(|report| {
                     format!("{report}\ncompilation failed: 1 error(s) found, cannot compile.\n")
                 })
