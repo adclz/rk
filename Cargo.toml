@@ -86,7 +86,7 @@ clap = { version = "4.5.54" }
 yansi = { version = "1.0.1" }
 notify = "8.1.0"
 # benchmarks
-divan = "0.1"
+divan = { package = "codspeed-divan-compat", version = "*" }
 # backends
 wasm-encoder = { version = "0.244.0", features = ["component-model"] }
 wasmparser = "0.244.0"
