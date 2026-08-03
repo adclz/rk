@@ -88,9 +88,22 @@ pub fn lower_stmts_fb_body<'db>(
     stmts: &[Stmt<'db>],
     this_struct: crate::types::MirStructType,
     string_pool: std::rc::Rc<std::cell::RefCell<super::lower_expr::StringPool>>,
+    iface_subs: Option<
+        &rustc_hash::FxHashMap<
+            hir::hir_def::interned::identifier::Ident,
+            hir::hir_def::pous::pou::Pou<'db>,
+        >,
+    >,
     iface_call_rewrites: &super::mono_iface::IfaceCallRewrites<'db>,
 ) -> Result<(Vec<MirStmt>, super::lower_expr::CallScratch), LowerTypeError> {
     let mut ctx = ExprLowerCtx::with_this_struct(db, this_struct, string_pool);
+    // A specialized METHOD body carries its interface-param bindings, like
+    // a specialized function body.
+    if let Some(subs) = iface_subs
+        && !subs.is_empty()
+    {
+        ctx.iface_subs = Some(std::rc::Rc::new(subs.clone()));
+    }
     if !iface_call_rewrites.is_empty() {
         ctx.iface_call_rewrites = Some(std::rc::Rc::new(iface_call_rewrites.clone()));
     }

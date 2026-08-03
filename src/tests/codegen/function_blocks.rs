@@ -1247,3 +1247,177 @@ fn this_paths_ending_in_elements_run(mut with_db: db::RootDatabase) {
     let result: i32 = super::execute_wasm(&wasm, "test", ());
     assert_eq!(result, 987, "7 + 80 + 900 through THIS element paths");
 }
+
+/// A METHOD (not a FUNCTION) with an interface `VAR_INPUT` param, monomorphized
+/// per concrete implementer: `c.Use(dev := w)` specializes `Caller#Use` to
+/// `Caller#Use$Impl` and lowers its `dev.V()` to a direct `Impl#V`. This was the
+/// gap where HIR-clean source died in MIR lowering
+/// (`UnsupportedType("Interface(...)")`) — `mono_iface` was FUNCTION-only.
+#[rstest]
+fn test_st_method_with_interface_param(mut with_db: db::RootDatabase) {
+    let source = r#"
+        INTERFACE I
+            METHOD V : INT END_METHOD
+        END_INTERFACE
+        FUNCTION_BLOCK Impl IMPLEMENTS I
+            METHOD V : INT  V := 7; END_METHOD
+        END_FUNCTION_BLOCK
+        FUNCTION_BLOCK Caller
+            METHOD PUBLIC Use : INT
+                VAR_INPUT dev : I; END_VAR
+                Use := dev.V();
+            END_METHOD
+        END_FUNCTION_BLOCK
+        FUNCTION test : INT
+        VAR c : Caller; w : Impl; END_VAR
+            test := c.Use(dev := w);
+        END_FUNCTION
+    "#;
+    let wasm = compile_to_wasm(&mut with_db, source);
+    let result: i32 = super::execute_wasm(&wasm, "test", ());
+    assert_eq!(result, 7, "Caller#Use$Impl dispatches dev.V() to Impl#V");
+}
+
+/// Two distinct implementers through the SAME method call site produce two
+/// distinct method specializations (`Caller#Get$One`, `Caller#Get$Ten`) — no
+/// collapse, no runtime dispatch: 1 + 100*10 = 1001.
+#[rstest]
+fn test_st_method_interface_two_impls(mut with_db: db::RootDatabase) {
+    let source = r#"
+        INTERFACE I
+            METHOD V : INT END_METHOD
+        END_INTERFACE
+        FUNCTION_BLOCK One IMPLEMENTS I
+            METHOD V : INT  V := 1; END_METHOD
+        END_FUNCTION_BLOCK
+        FUNCTION_BLOCK Ten IMPLEMENTS I
+            METHOD V : INT  V := 10; END_METHOD
+        END_FUNCTION_BLOCK
+        FUNCTION_BLOCK Caller
+            METHOD PUBLIC Get : INT
+                VAR_INPUT dev : I; END_VAR
+                Get := dev.V();
+            END_METHOD
+        END_FUNCTION_BLOCK
+        FUNCTION test : INT
+        VAR c : Caller; a : One; b : Ten; END_VAR
+            test := c.Get(dev := a) + 100 * c.Get(dev := b);
+        END_FUNCTION
+    "#;
+    let wasm = compile_to_wasm(&mut with_db, source);
+    let result: i32 = super::execute_wasm(&wasm, "test", ());
+    assert_eq!(result, 1001, "Caller#Get$One -> 1, Caller#Get$Ten -> 10");
+}
+
+/// Reference semantics through a method's interface `VAR_IN_OUT` param: the
+/// method's `dev.Inc()` mutates the caller's instance, and the method can also
+/// read the shared state back. Two calls drive `w.c` to 2.
+#[rstest]
+fn test_st_method_interface_inout_mutates(mut with_db: db::RootDatabase) {
+    let source = r#"
+        INTERFACE I
+            METHOD Inc END_METHOD
+            METHOD Get : INT END_METHOD
+        END_INTERFACE
+        FUNCTION_BLOCK C IMPLEMENTS I
+            VAR c : INT; END_VAR
+            METHOD Inc  c := c + 1; END_METHOD
+            METHOD Get : INT  Get := c; END_METHOD
+        END_FUNCTION_BLOCK
+        FUNCTION_BLOCK Holder
+            METHOD PUBLIC Bump : INT
+                VAR_IN_OUT dev : I; END_VAR
+                dev.Inc();
+                Bump := dev.Get();
+            END_METHOD
+        END_FUNCTION_BLOCK
+        FUNCTION test : INT
+        VAR h : Holder; w : C; END_VAR
+            h.Bump(dev := w);
+            test := h.Bump(dev := w) + w.Get();
+        END_FUNCTION
+    "#;
+    let wasm = compile_to_wasm(&mut with_db, source);
+    let result: i32 = super::execute_wasm(&wasm, "test", ());
+    assert_eq!(result, 4, "shared instance: c 0->1->2; 2 + 2 = 4");
+}
+
+/// TRANSITIVE, method -> function: a specialized METHOD forwards its interface
+/// param onward to an interface-param FUNCTION (`leaf(dev := dev)`); the
+/// worklist must expand `Caller#Go$C` -> `leaf$C`. Two calls drive `w.c` to 2.
+#[rstest]
+fn test_st_method_interface_forwards_to_function(mut with_db: db::RootDatabase) {
+    let source = r#"
+        INTERFACE I
+            METHOD Inc END_METHOD
+            METHOD Get : INT END_METHOD
+        END_INTERFACE
+        FUNCTION_BLOCK C IMPLEMENTS I
+            VAR c : INT; END_VAR
+            METHOD Inc  c := c + 1; END_METHOD
+            METHOD Get : INT  Get := c; END_METHOD
+        END_FUNCTION_BLOCK
+        FUNCTION leaf : INT
+            VAR_IN_OUT dev : I; END_VAR
+            dev.Inc();
+            leaf := 0;
+        END_FUNCTION
+        FUNCTION_BLOCK Caller
+            METHOD PUBLIC Go : INT
+                VAR_IN_OUT dev : I; END_VAR
+                leaf(dev := dev);
+                Go := 0;
+            END_METHOD
+        END_FUNCTION_BLOCK
+        FUNCTION test : INT
+        VAR h : Caller; w : C; END_VAR
+            h.Go(dev := w);
+            h.Go(dev := w);
+            test := w.Get();
+        END_FUNCTION
+    "#;
+    let wasm = compile_to_wasm(&mut with_db, source);
+    let result: i32 = super::execute_wasm(&wasm, "test", ());
+    assert_eq!(result, 2, "Caller#Go$C -> leaf$C chain mutates the shared instance");
+}
+
+/// TRANSITIVE, function -> method: a specialized FUNCTION forwards its interface
+/// param into a METHOD call (`h.Bump(dev := dev)`); collection inside `mid$C`
+/// must bind the method's param through the active substitution and specialize
+/// `Holder#Bump$C`. Two calls drive `w.c` to 2.
+#[rstest]
+fn test_st_function_interface_forwards_to_method(mut with_db: db::RootDatabase) {
+    let source = r#"
+        INTERFACE I
+            METHOD Inc END_METHOD
+            METHOD Get : INT END_METHOD
+        END_INTERFACE
+        FUNCTION_BLOCK C IMPLEMENTS I
+            VAR c : INT; END_VAR
+            METHOD Inc  c := c + 1; END_METHOD
+            METHOD Get : INT  Get := c; END_METHOD
+        END_FUNCTION_BLOCK
+        FUNCTION_BLOCK Holder
+            METHOD PUBLIC Bump : INT
+                VAR_IN_OUT dev : I; END_VAR
+                dev.Inc();
+                Bump := 0;
+            END_METHOD
+        END_FUNCTION_BLOCK
+        FUNCTION mid : INT
+            VAR_IN_OUT dev : I; END_VAR
+            VAR h : Holder; END_VAR
+            h.Bump(dev := dev);
+            mid := 0;
+        END_FUNCTION
+        FUNCTION test : INT
+        VAR w : C; END_VAR
+            mid(dev := w);
+            mid(dev := w);
+            test := w.Get();
+        END_FUNCTION
+    "#;
+    let wasm = compile_to_wasm(&mut with_db, source);
+    let result: i32 = super::execute_wasm(&wasm, "test", ());
+    assert_eq!(result, 2, "mid$C -> Holder#Bump$C chain mutates the shared instance");
+}

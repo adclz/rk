@@ -1352,17 +1352,16 @@ impl<'db> ExprLowerCtx<'db> {
         // The namespace-qualified identifier the producer registered in
         // `function_indices`; the bare last segment for callees that do not
         // resolve.
-        let callee_name = if let Some((callee, _, _)) = &method_target {
-            *callee
-        } else if let Some(mangled) = self
+        let callee_name = if let Some(mangled) = self
             .iface_call_rewrites
             .as_ref()
             .and_then(|m| m.get(&func_call).copied())
         {
-            // Phase B: this call passes an interface arg to a function with an
-            // interface param — route it to the concrete specialization
-            // (`drive` -> `drive$Worker`).
+            // Phase B: an interface arg routes the call to the concrete
+            // specialization, overriding the generic method symbol.
             mangled
+        } else if let Some((callee, _, _)) = &method_target {
+            *callee
         } else {
             match path.infer(self.db) {
                 Type::Function(f) => crate::lower::naming::mir_function_symbol(self.db, f),

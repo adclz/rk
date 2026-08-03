@@ -363,3 +363,34 @@ fn interface_satisfied_by_an_inherited_method(mut with_db: db::RootDatabase) {
     let result: i32 = super::execute_wasm(&wasm, "test", ());
     assert_eq!(result, 6, "the inherited method implements the interface");
 }
+
+/// A CLASS method with an interface param monomorphizes exactly like an FB
+/// method: `c.Get(dev := a)` -> `Owner#Get$One` -> direct `One#V`. Two
+/// implementers stay distinct: 1 + 100*10 = 1001.
+#[rstest]
+fn test_st_class_method_with_interface_param(mut with_db: db::RootDatabase) {
+    let source = r#"
+        INTERFACE I
+            METHOD V : INT END_METHOD
+        END_INTERFACE
+        CLASS One IMPLEMENTS I
+            METHOD V : INT  V := 1; END_METHOD
+        END_CLASS
+        CLASS Ten IMPLEMENTS I
+            METHOD V : INT  V := 10; END_METHOD
+        END_CLASS
+        CLASS Owner
+            METHOD PUBLIC Get : INT
+                VAR_INPUT dev : I; END_VAR
+                Get := dev.V();
+            END_METHOD
+        END_CLASS
+        FUNCTION test : INT
+        VAR c : Owner; a : One; b : Ten; END_VAR
+            test := c.Get(dev := a) + 100 * c.Get(dev := b);
+        END_FUNCTION
+    "#;
+    let wasm = compile_to_wasm(&mut with_db, source);
+    let result: i32 = super::execute_wasm(&wasm, "test", ());
+    assert_eq!(result, 1001, "Owner#Get$One -> 1, Owner#Get$Ten -> 10");
+}

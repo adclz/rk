@@ -84,17 +84,28 @@ fn lower_module_from_pous<'db>(
     ));
     let mut next_fn_idx: u32 = 0;
 
-    // Phase B: interface-parameter monomorphization. Collect every function
-    // specialization needed by a call site (`drive$Worker`) plus the call-site →
-    // mangled-name rewrites, and group specializations by their source function.
+    // Phase B: interface-parameter monomorphization. Function specializations
+    // emit at module level, method specializations with their declaring
+    // owner's method set.
     let (iface_instances, iface_call_rewrites) =
         super::mono_iface::collect_iface_instantiations(db, all_pous, all_programs);
     let mut iface_by_func: FxHashMap<
         hir::hir_def::pous::function::Function<'db>,
         Vec<&super::mono_iface::IfaceInstance<'db>>,
     > = FxHashMap::default();
+    let mut iface_methods_by_owner: FxHashMap<
+        Pou<'db>,
+        Vec<&super::mono_iface::IfaceInstance<'db>>,
+    > = FxHashMap::default();
     for inst in &iface_instances {
-        iface_by_func.entry(inst.func).or_default().push(inst);
+        match inst.target {
+            super::mono_iface::IfaceTarget::Function(f) => {
+                iface_by_func.entry(f).or_default().push(inst);
+            }
+            super::mono_iface::IfaceTarget::Method { owner, .. } => {
+                iface_methods_by_owner.entry(owner).or_default().push(inst);
+            }
+        }
     }
 
     // Collect test entries for the manifest
@@ -272,6 +283,10 @@ fn lower_module_from_pous<'db>(
                     &mut memory_layout,
                     string_pool.clone(),
                     &iface_call_rewrites,
+                    iface_methods_by_owner
+                        .get(&Pou::FunctionBlock(*fb))
+                        .map(Vec::as_slice)
+                        .unwrap_or(&[]),
                 )?;
                 for mf in method_funcs {
                     function_indices.insert(mf.name, mf.index);
@@ -325,6 +340,10 @@ fn lower_module_from_pous<'db>(
                     &mut memory_layout,
                     string_pool.clone(),
                     &iface_call_rewrites,
+                    iface_methods_by_owner
+                        .get(&Pou::Class(*class))
+                        .map(Vec::as_slice)
+                        .unwrap_or(&[]),
                 )?;
                 for mf in method_funcs {
                     function_indices.insert(mf.name, mf.index);

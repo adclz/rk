@@ -73,6 +73,7 @@ pub fn lower_function_block<'db>(
     memory_layout: &mut MirMemoryLayout,
     string_pool: Rc<RefCell<super::lower_expr::StringPool>>,
     iface_call_rewrites: &super::mono_iface::IfaceCallRewrites<'db>,
+    iface_method_instances: &[&super::mono_iface::IfaceInstance<'db>],
 ) -> Result<Vec<MirFunction>, LowerTypeError> {
     let r = lower_function_block_inner(
         db,
@@ -81,6 +82,7 @@ pub fn lower_function_block<'db>(
         memory_layout,
         string_pool,
         iface_call_rewrites,
+        iface_method_instances,
     );
     at_node(db, fb, r)
 }
@@ -92,6 +94,7 @@ pub fn lower_class<'db>(
     memory_layout: &mut MirMemoryLayout,
     string_pool: Rc<RefCell<super::lower_expr::StringPool>>,
     iface_call_rewrites: &super::mono_iface::IfaceCallRewrites<'db>,
+    iface_method_instances: &[&super::mono_iface::IfaceInstance<'db>],
 ) -> Result<Vec<MirFunction>, LowerTypeError> {
     let r = lower_class_inner(
         db,
@@ -100,6 +103,7 @@ pub fn lower_class<'db>(
         memory_layout,
         string_pool,
         iface_call_rewrites,
+        iface_method_instances,
     );
     at_node(db, class, r)
 }
@@ -365,6 +369,7 @@ fn lower_function_block_inner<'db>(
     memory_layout: &mut MirMemoryLayout,
     string_pool: Rc<RefCell<super::lower_expr::StringPool>>,
     iface_call_rewrites: &super::mono_iface::IfaceCallRewrites<'db>,
+    iface_method_instances: &[&super::mono_iface::IfaceInstance<'db>],
 ) -> Result<Vec<MirFunction>, LowerTypeError> {
     let mut functions = Vec::new();
     let mut idx = start_index;
@@ -373,8 +378,38 @@ fn lower_function_block_inner<'db>(
     // symbol derive from it.
     let fb_qualified = super::naming::qualified_pou_ident(db, Type::FunctionBlock(fb));
 
+    // Each method is emitted once, except interface-param methods, emitted
+    // once per specialization (`Owner#Use$Worker`).
+    let method_jobs: Vec<(
+        hir::hir_def::pous::class::MethodDecl<'db>,
+        Option<&super::mono_iface::IfaceInstance<'db>>,
+    )> = fb
+        .methods(db)
+        .iter()
+        .flat_map(|method| -> Vec<_> {
+            if method
+                .variables(db)
+                .iter()
+                .any(|v| super::mono_iface::is_interface_param(db, v))
+            {
+                iface_method_instances
+                    .iter()
+                    .filter(|inst| {
+                        matches!(
+                            inst.target,
+                            super::mono_iface::IfaceTarget::Method { method: m, .. } if m == *method
+                        )
+                    })
+                    .map(|inst| (*method, Some(*inst)))
+                    .collect()
+            } else {
+                vec![(*method, None)]
+            }
+        })
+        .collect();
+
     // Lower each method as a separate function with 'this' parameter
-    for method in fb.methods(db) {
+    for (method, spec) in method_jobs {
         let mut params = Vec::new();
         let mut locals = Vec::new();
         let mut next_local_idx: u32 = 1; // 0 is 'this'
@@ -399,6 +434,22 @@ fn lower_function_block_inner<'db>(
 
         // Method parameters
         for var in method.variables(db) {
+            // In a specialized copy, an interface param becomes a pointer to the
+            // concrete implementer's instance struct — the same convention as a
+            // specialized function's interface param (see `lower_function_inner`).
+            if let Some(inst) = spec
+                && let Some(concrete) = inst.iface_subs.get(&var.name(db))
+            {
+                let ty = lower_type(db, Type::new_pou(db, *concrete))?;
+                let param = MirParam {
+                    name: var.name(db),
+                    ty: MirType::Pointer(Box::new(ty)),
+                    kind: MirParamKind::InOut,
+                };
+                next_local_idx += param_wasm_width(&param.ty, param.kind);
+                params.push(param);
+                continue;
+            }
             match var.kind(db) {
                 VariableKind::Input => {
                     let ty = input_param_type(lower_var_type(db, *var)?);
@@ -470,12 +521,19 @@ fn lower_function_block_inner<'db>(
             });
         }
 
+        // A specialization lowers its body with its own bindings and call
+        // rewrites.
+        let (body_subs, body_rewrites) = match spec {
+            Some(inst) => (Some(&inst.iface_subs), &inst.call_rewrites),
+            None => (None, iface_call_rewrites),
+        };
         let (body, call_scratch) = crate::lower::lower_stmt::lower_stmts_fb_body(
             db,
             method.stmts(db),
             this_struct,
             string_pool.clone(),
-            iface_call_rewrites,
+            body_subs,
+            body_rewrites,
         )?;
         append_call_scratch_locals(
             call_scratch,
@@ -484,17 +542,19 @@ fn lower_function_block_inner<'db>(
             memory_layout,
         );
 
-        // Method symbol: `<FB>#<method>`. The `#` separator is distinct from `.`
-        // (namespace) so the symbol is unambiguously parseable — e.g.
-        // `NsA.Counter#inc` is FB `NsA.Counter`, method `inc`.
-        let qualified_name = Ident::new(
-            db,
-            compact_str::CompactString::from(format!(
-                "{}#{}",
-                fb_qualified.text(db),
-                method.name(db).text(db)
-            )),
-        );
+        // Method symbol: `<FB>#<method>` (`NsA.Counter#inc`); a specialization
+        // uses its pre-mangled name.
+        let qualified_name = match spec {
+            Some(inst) => inst.mangled_name,
+            None => Ident::new(
+                db,
+                compact_str::CompactString::from(format!(
+                    "{}#{}",
+                    fb_qualified.text(db),
+                    method.name(db).text(db)
+                )),
+            ),
+        };
 
         functions.push(MirFunction {
             name: qualified_name,
@@ -562,6 +622,7 @@ fn lower_function_block_inner<'db>(
         fb.statements(db),
         this_struct,
         string_pool.clone(),
+        None,
         iface_call_rewrites,
     )?;
     append_call_scratch_locals(
@@ -600,11 +661,42 @@ fn lower_class_inner<'db>(
     memory_layout: &mut MirMemoryLayout,
     string_pool: Rc<RefCell<super::lower_expr::StringPool>>,
     iface_call_rewrites: &super::mono_iface::IfaceCallRewrites<'db>,
+    iface_method_instances: &[&super::mono_iface::IfaceInstance<'db>],
 ) -> Result<Vec<MirFunction>, LowerTypeError> {
     let mut functions = Vec::new();
     let mut idx = start_index;
 
-    for method in class.methods(db) {
+    // Interface-param methods are emitted once per specialization (see the
+    // FB-method site).
+    let method_jobs: Vec<(
+        hir::hir_def::pous::class::MethodDecl<'db>,
+        Option<&super::mono_iface::IfaceInstance<'db>>,
+    )> = class
+        .methods(db)
+        .iter()
+        .flat_map(|method| -> Vec<_> {
+            if method
+                .variables(db)
+                .iter()
+                .any(|v| super::mono_iface::is_interface_param(db, v))
+            {
+                iface_method_instances
+                    .iter()
+                    .filter(|inst| {
+                        matches!(
+                            inst.target,
+                            super::mono_iface::IfaceTarget::Method { method: m, .. } if m == *method
+                        )
+                    })
+                    .map(|inst| (*method, Some(*inst)))
+                    .collect()
+            } else {
+                vec![(*method, None)]
+            }
+        })
+        .collect();
+
+    for (method, spec) in method_jobs {
         let mut params = Vec::new();
         let mut locals = Vec::new();
         let mut next_local_idx: u32 = 1; // 0 is 'this'
@@ -629,6 +721,21 @@ fn lower_class_inner<'db>(
 
         // Method parameters
         for var in method.variables(db) {
+            // Specialized copy: interface param → pointer to the concrete
+            // implementer's struct (see the FB-method site).
+            if let Some(inst) = spec
+                && let Some(concrete) = inst.iface_subs.get(&var.name(db))
+            {
+                let ty = lower_type(db, Type::new_pou(db, *concrete))?;
+                let param = MirParam {
+                    name: var.name(db),
+                    ty: MirType::Pointer(Box::new(ty)),
+                    kind: MirParamKind::InOut,
+                };
+                next_local_idx += param_wasm_width(&param.ty, param.kind);
+                params.push(param);
+                continue;
+            }
             match var.kind(db) {
                 VariableKind::Input => {
                     let ty = input_param_type(lower_var_type(db, *var)?);
@@ -700,12 +807,19 @@ fn lower_class_inner<'db>(
             });
         }
 
+        // Specializations lower with their own bindings + rewrites (see the
+        // FB-method site).
+        let (body_subs, body_rewrites) = match spec {
+            Some(inst) => (Some(&inst.iface_subs), &inst.call_rewrites),
+            None => (None, iface_call_rewrites),
+        };
         let (body, call_scratch) = crate::lower::lower_stmt::lower_stmts_fb_body(
             db,
             method.stmts(db),
             this_struct,
             string_pool.clone(),
-            iface_call_rewrites,
+            body_subs,
+            body_rewrites,
         )?;
         append_call_scratch_locals(
             call_scratch,
@@ -716,14 +830,17 @@ fn lower_class_inner<'db>(
 
         // Method symbol: `<NsPath.>Class#Method` (see the FB-method site).
         let class_qualified = super::naming::qualified_pou_ident(db, Type::Class(class));
-        let qualified_name = Ident::new(
-            db,
-            compact_str::CompactString::from(format!(
-                "{}#{}",
-                class_qualified.text(db),
-                method.name(db).text(db)
-            )),
-        );
+        let qualified_name = match spec {
+            Some(inst) => inst.mangled_name,
+            None => Ident::new(
+                db,
+                compact_str::CompactString::from(format!(
+                    "{}#{}",
+                    class_qualified.text(db),
+                    method.name(db).text(db)
+                )),
+            ),
+        };
 
         functions.push(MirFunction {
             name: qualified_name,
@@ -803,6 +920,7 @@ fn lower_program_inner<'db>(
         program.statements(db),
         this_struct,
         string_pool.clone(),
+        None,
         iface_call_rewrites,
     )?;
     append_call_scratch_locals(

@@ -1,11 +1,7 @@
-//! Phase B: interface-parameter monomorphization.
-//!
-//! Design 1 guarantees an interface only ever appears as a direct `VAR_INPUT` /
-//! `VAR_IN_OUT` parameter, so at every call site passing an interface argument
-//! the concrete implementer is statically known. We specialize the callee
-//! FUNCTION per concrete binding (`drive` -> `drive$Worker`) and rewrite the
-//! call to it; inside the specialization `dev.Method()` lowers to a direct
-//! `Worker#Method` (see `lower_expr::resolve_method_call`).
+//! Phase B: interface-parameter monomorphization. An interface only appears
+//! as a direct `VAR_INPUT` / `VAR_IN_OUT` parameter, so at every call site
+//! the concrete implementer is statically known: the callee is specialized
+//! per binding (`drive$Worker`, `Caller#Use$Worker`) and the call rewritten.
 
 use db::WorkspaceDataBase;
 use rustc_hash::FxHashMap;
@@ -16,12 +12,14 @@ use hir::hir_def::expressions::expression::{
 use hir::hir_def::expressions::invocation::InvocationKind;
 use hir::hir_def::expressions::statement::{Stmt, StmtKind};
 use hir::hir_def::interned::identifier::Ident;
+use hir::hir_def::pous::class::MethodDecl;
 use hir::hir_def::pous::function::Function;
 use hir::hir_def::pous::pou::Pou;
 use hir::hir_def::pous::variable::{VariableDecl, VariableKind};
 use hir::hir_def::scope::{ScopeId, ScopeKind};
 use hir::hir_def::semantic_index::get_scope;
 use hir::hir_ty::body::infer_body;
+use hir::hir_ty::head::inheritance::MethodRef;
 use hir::hir_ty::infer::Infer;
 use hir::hir_ty::ty::{CallableType, Type};
 
@@ -38,10 +36,33 @@ type CanonicalKey = (Ident, Vec<(Ident, Ident)>);
 /// Specialization canonical key → mangled name.
 type CanonicalInstanceMap = FxHashMap<CanonicalKey, Ident>;
 
-/// One specialization of a function on the concrete implementers bound to its
-/// interface parameters (e.g. `drive` with `dev -> Worker` => `drive$Worker`).
+/// What gets specialized: a free FUNCTION or a METHOD; they differ only in
+/// where the copy is emitted and in the mangled-name base.
+#[derive(Clone, Copy)]
+pub enum IfaceTarget<'db> {
+    Function(Function<'db>),
+    Method {
+        /// The DECLARING owner (FB or Class) — for an inherited method this is
+        /// the base, matching the `Owner#method` symbol convention.
+        owner: Pou<'db>,
+        method: MethodDecl<'db>,
+    },
+}
+
+impl<'db> IfaceTarget<'db> {
+    /// The scope + statements of the target's body, for the worklist walk.
+    fn body(&self, db: &'db dyn WorkspaceDataBase) -> (ScopeId<'db>, &'db [Stmt<'db>]) {
+        match self {
+            IfaceTarget::Function(f) => (f.scope_id(db), f.statements(db)),
+            IfaceTarget::Method { method, .. } => (method.scope_id(db), method.stmts(db)),
+        }
+    }
+}
+
+/// One specialization of a function or method on the concrete implementers
+/// bound to its interface parameters.
 pub struct IfaceInstance<'db> {
-    pub func: Function<'db>,
+    pub target: IfaceTarget<'db>,
     /// interface param name -> concrete implementer POU
     pub iface_subs: FxHashMap<Ident, Pou<'db>>,
     pub mangled_name: Ident,
@@ -98,6 +119,10 @@ pub fn collect_iface_instantiations<'db>(
                     &mut global_rewrites,
                 );
                 for m in fb.methods(db) {
+                    // Same for interface-param methods.
+                    if m.variables(db).iter().any(is_iface_param(db)) {
+                        continue;
+                    }
                     process_body(
                         db,
                         m.scope_id(db),
@@ -111,6 +136,9 @@ pub fn collect_iface_instantiations<'db>(
             }
             Pou::Class(c) => {
                 for m in c.methods(db) {
+                    if m.variables(db).iter().any(is_iface_param(db)) {
+                        continue;
+                    }
                     process_body(
                         db,
                         m.scope_id(db),
@@ -143,13 +171,14 @@ pub fn collect_iface_instantiations<'db>(
     // for mutually forwarding functions.
     let mut i = 0;
     while i < instances.len() {
-        let func = instances[i].func;
+        let target = instances[i].target;
         let subs = instances[i].iface_subs.clone();
+        let (scope, stmts) = target.body(db);
         let mut inst_rewrites: FxHashMap<FuncCall<'db>, Ident> = FxHashMap::default();
         process_body(
             db,
-            func.scope_id(db),
-            func.statements(db),
+            scope,
+            stmts,
             &subs,
             &mut by_canonical,
             &mut instances,
@@ -339,16 +368,35 @@ fn process_call<'db>(
     instances: &mut Vec<IfaceInstance<'db>>,
     out_rewrites: &mut FxHashMap<FuncCall<'db>, Ident>,
 ) {
-    // The callee must be a plain function.
-    let func = match fc.path(db).infer(db) {
-        Type::Function(f) => f,
-        Type::CallableType(CallableType::Function(f)) => f,
+    // The callee: a function or an instance method. Interface-method
+    // prototypes are the receiver-dispatch side, not a specializable callee.
+    let target = match fc.path(db).infer(db) {
+        Type::Function(f) => IfaceTarget::Function(f),
+        Type::CallableType(CallableType::Function(f)) => IfaceTarget::Function(f),
+        Type::MethodDecl(MethodRef::Declared(md))
+        | Type::CallableType(CallableType::MethodDecl(MethodRef::Declared(md))) => {
+            // The declaring owner, the POU the `Owner#method` symbol is registered
+            // under.
+            let parent = match get_scope(db, md.scope_id(db)).parent {
+                Some(p) => p,
+                None => return,
+            };
+            match get_scope(db, parent).kind {
+                ScopeKind::Pou(owner @ (Pou::FunctionBlock(_) | Pou::Class(_))) => {
+                    IfaceTarget::Method { owner, method: md }
+                }
+                _ => return,
+            }
+        }
         _ => return,
     };
 
     // Does it take any interface parameter? (Design 1: only Input/InOut.)
-    let has_iface_param = func.variables(db).iter().any(is_iface_param(db));
-    if !has_iface_param {
+    let callee_vars: &[VariableDecl<'db>] = match &target {
+        IfaceTarget::Function(f) => f.variables(db),
+        IfaceTarget::Method { method, .. } => method.variables(db),
+    };
+    if !callee_vars.iter().any(is_iface_param(db)) {
         return;
     }
 
@@ -387,15 +435,29 @@ fn process_call<'db>(
         return;
     }
 
-    // Mangle: `drive` + `$<concrete>` per interface param, sorted by param name.
-    let func_q = qualified_pou_ident(db, Type::Function(func));
+    // The un-specialized callee's symbol, then `$<concrete>` per interface
+    // param, sorted by name.
+    let base = match &target {
+        IfaceTarget::Function(f) => qualified_pou_ident(db, Type::Function(*f)),
+        IfaceTarget::Method { owner, method } => {
+            let owner_q = qualified_pou_ident(db, Type::new_pou(db, *owner));
+            Ident::new(
+                db,
+                compact_str::CompactString::from(format!(
+                    "{}#{}",
+                    owner_q.text(db),
+                    method.name(db).text(db)
+                )),
+            )
+        }
+    };
     let mut sorted: Vec<(Ident, Pou<'db>)> = iface_subs.iter().map(|(k, v)| (*k, *v)).collect();
     sorted.sort_by(|a, b| a.0.text(db).cmp(b.0.text(db)));
     let key_concretes: Vec<(Ident, Ident)> = sorted
         .iter()
         .map(|(name, pou)| (*name, qualified_pou_ident(db, Type::new_pou(db, *pou))))
         .collect();
-    let key = (func_q, key_concretes.clone());
+    let key = (base, key_concretes.clone());
 
     let mangled = match by_canonical.get(&key) {
         Some(m) => *m,
@@ -404,10 +466,10 @@ fn process_call<'db>(
                 .iter()
                 .map(|(_, q)| q.text(db).as_str())
                 .collect();
-            let m = super::naming::mangle_generic_name(db, func_q, &parts);
+            let m = super::naming::mangle_generic_name(db, base, &parts);
             by_canonical.insert(key, m);
             instances.push(IfaceInstance {
-                func,
+                target,
                 iface_subs: iface_subs.clone(),
                 mangled_name: m,
                 // Filled when this instance is processed by the worklist.
