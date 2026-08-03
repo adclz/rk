@@ -41,24 +41,39 @@ pub fn collect_diagnostics(
         .collect()
 }
 
-/// Renders collected diagnostics with ariadne (color, 2-space tabs) and tallies
-/// error/warning counts, shortening paths to be workspace-relative.
+/// Renders collected diagnostics and tallies the counts, with
+/// workspace-relative paths. The format decides the wire shape: ariadne
+/// reports, one concise line per diagnostic, or one JSON object per line.
 pub struct DiagnosticReporter<'db> {
     db: &'db RootDatabase,
     workspace_path: PathBuf,
     config: ariadne::Config,
+    format: OutputFormat,
 }
+
+use crate::cli::OutputFormat;
 
 impl<'db> DiagnosticReporter<'db> {
     pub fn new(db: &'db RootDatabase, workspace: &Path) -> Self {
         let workspace_path =
             std::fs::canonicalize(workspace).unwrap_or_else(|_| workspace.to_path_buf());
-        let config = ariadne::Config::new().with_color(true).with_tab_width(2);
+        // Color follows the one process-wide decision made at startup
+        // (`ui::init_output`).
+        let config = ariadne::Config::new()
+            .with_color(yansi::is_enabled())
+            .with_tab_width(2);
         Self {
             db,
             workspace_path,
             config,
+            format: OutputFormat::Full,
         }
+    }
+
+    /// Select the output format (default: [`OutputFormat::Full`]).
+    pub fn with_format(mut self, format: OutputFormat) -> Self {
+        self.format = format;
+        self
     }
 
     /// Render every file's diagnostics to `out`, returning `(errors, warnings)`.
@@ -115,16 +130,7 @@ impl<'db> DiagnosticReporter<'db> {
         out: &mut dyn Write,
     ) -> (i32, i32) {
         let url_str = url.as_str();
-        let rel_path = url
-            .to_file_path()
-            .ok()
-            .and_then(|abs_path| {
-                abs_path
-                    .strip_prefix(&self.workspace_path)
-                    .ok()
-                    .map(|p| p.to_string_lossy().into_owned())
-            })
-            .unwrap_or_else(|| url_str.to_string());
+        let rel_path = self.rel_path(url);
 
         let (mut errors, mut warnings) = (0, 0);
         for diagnostic in diagnostics {
@@ -134,18 +140,239 @@ impl<'db> DiagnosticReporter<'db> {
                 _ => {}
             }
 
-            let report = diagnostic.create_report(self.db, url, content, Some(self.config), true);
-            let mut buffer = vec![];
-            report
-                .write(sources(caches.iter().copied()), &mut buffer)
-                .expect("failed to write report");
+            match self.format {
+                OutputFormat::Full => {
+                    let report =
+                        diagnostic.create_report(self.db, url, content, Some(self.config), true);
+                    let mut buffer = vec![];
+                    report
+                        .write(sources(caches.iter().copied()), &mut buffer)
+                        .expect("failed to write report");
 
-            let output = String::from_utf8_lossy(&buffer);
-            // Render to the caller's sink — stderr for CLI commands, or an
-            // in-memory buffer for `build_core` (which forwards the text over the
-            // debugger transport, since stdout is the debugger transport there).
-            let _ = write!(out, "{}", output.replace(url_str, &rel_path));
+                    let output = String::from_utf8_lossy(&buffer);
+                    // Render to the caller's sink — stderr for CLI commands, or an
+                    // in-memory buffer for `build_core` (which forwards the text over the
+                    // debugger transport, since stdout is the debugger transport there).
+                    let _ = write!(out, "{}", output.replace(url_str, &rel_path));
+                }
+                OutputFormat::Concise => self.render_concise(&rel_path, diagnostic, out),
+                OutputFormat::JsonLines => self.render_json_line(&rel_path, diagnostic, out),
+            }
         }
         (errors, warnings)
+    }
+
+    /// Workspace-relative path for `url` (falls back to the URL itself for
+    /// non-file or out-of-workspace sources).
+    fn rel_path(&self, url: &Url) -> String {
+        url.to_file_path()
+            .ok()
+            .and_then(|abs_path| {
+                abs_path
+                    .strip_prefix(&self.workspace_path)
+                    .ok()
+                    .map(|p| p.to_string_lossy().into_owned())
+            })
+            .unwrap_or_else(|| url.as_str().to_string())
+    }
+
+    /// One machine-stable line: `FILE:LINE:COL: severity[CODE]: message`
+    /// (1-based), the first quick-fix title appended as `: help: <title>`.
+    /// The message is last and colon-tolerant.
+    fn render_concise(&self, rel_path: &str, diagnostic: &IdeDiagnostic, out: &mut dyn Write) {
+        let d = &diagnostic.diagnostic;
+        let line = d.range.start.line + 1;
+        let col = d.range.start.character + 1;
+        let severity = severity_str(d.severity);
+        let code = code_str(d.code.as_ref());
+        let message = d.message.replace('\n', " ");
+
+        let _ = write!(out, "{rel_path}:{line}:{col}: {severity}");
+        if let Some(code) = code {
+            let _ = write!(out, "[{code}]");
+        }
+        let _ = write!(out, ": {message}");
+        if let Some(fix) = diagnostic.fixes().first() {
+            let _ = write!(out, ": help: {}", fix.title.replace('\n', " "));
+        }
+        let _ = writeln!(out);
+    }
+
+    /// One JSON object per line (NDJSON): positions 1-based, severities the same
+    /// strings as concise, `help` = quick-fix titles, `related` resolved to
+    /// workspace-relative file:line:col.
+    fn render_json_line(&self, rel_path: &str, diagnostic: &IdeDiagnostic, out: &mut dyn Write) {
+        let d = &diagnostic.diagnostic;
+        let related: Vec<JsonRelated> = diagnostic
+            .related()
+            .iter()
+            .map(|r| {
+                let range = r
+                    .file
+                    .document(self.db)
+                    .denormalize_range(&r.range)
+                    .unwrap_or_default();
+                JsonRelated {
+                    file: self.rel_path(&r.file.url(self.db)),
+                    line: range.start.line + 1,
+                    col: range.start.character + 1,
+                    message: r.message.clone(),
+                }
+            })
+            .collect();
+
+        let record = JsonDiagnostic {
+            file: rel_path,
+            line: d.range.start.line + 1,
+            col: d.range.start.character + 1,
+            end_line: d.range.end.line + 1,
+            end_col: d.range.end.character + 1,
+            severity: severity_str(d.severity),
+            code: code_str(d.code.as_ref()),
+            message: &d.message,
+            source: d.source.as_deref(),
+            notes: diagnostic.notes().iter().map(String::as_str).collect(),
+            help: diagnostic.fixes().iter().map(|f| f.title.as_str()).collect(),
+            related,
+        };
+        if let Ok(json) = serde_json::to_string(&record) {
+            let _ = writeln!(out, "{json}");
+        }
+    }
+}
+
+/// Severity as the stable lowercase token used by both machine formats.
+/// LSP leaves severity optional; an unset severity is an error by convention.
+fn severity_str(severity: Option<DiagnosticSeverity>) -> &'static str {
+    match severity {
+        Some(DiagnosticSeverity::WARNING) => "warning",
+        Some(DiagnosticSeverity::INFORMATION) => "info",
+        Some(DiagnosticSeverity::HINT) => "hint",
+        _ => "error",
+    }
+}
+
+/// The diagnostic code (`E0301`, `L0204`) as text, if any.
+fn code_str(code: Option<&auto_lsp::lsp_types::NumberOrString>) -> Option<String> {
+    match code {
+        Some(auto_lsp::lsp_types::NumberOrString::String(s)) => Some(s.clone()),
+        Some(auto_lsp::lsp_types::NumberOrString::Number(n)) => Some(n.to_string()),
+        None => None,
+    }
+}
+
+/// NDJSON record for [`OutputFormat::JsonLines`]. Field order is part of the
+/// wire shape; additions go at the END so line-oriented consumers keep working.
+#[derive(serde::Serialize)]
+struct JsonDiagnostic<'a> {
+    file: &'a str,
+    line: u32,
+    col: u32,
+    end_line: u32,
+    end_col: u32,
+    severity: &'static str,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    code: Option<String>,
+    message: &'a str,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    source: Option<&'a str>,
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    notes: Vec<&'a str>,
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    help: Vec<&'a str>,
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    related: Vec<JsonRelated>,
+}
+
+#[derive(serde::Serialize)]
+struct JsonRelated {
+    file: String,
+    line: u32,
+    col: u32,
+    message: String,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::cli::OutputFormat;
+    use crate::workspace::init_db;
+
+    const CONFIG_TOML: &str = "[project]\nname = \"Test\"\nversion = \"0.0\"\n";
+    // One E0301 (type mismatch) with a quick-fix and related info — exercises
+    // every field the machine formats carry.
+    const SRC: &str = "FUNCTION f : INT\nVAR x : INT; END_VAR\n    x := ULINT#5;\nEND_FUNCTION\n";
+
+    /// Render the fixture workspace's diagnostics in `format`.
+    fn render(format: OutputFormat) -> String {
+        let ws = tempfile::tempdir().expect("tempdir");
+        std::fs::write(ws.path().join("config.toml"), CONFIG_TOML).unwrap();
+        std::fs::write(ws.path().join("main.st"), SRC).unwrap();
+        let db = init_db(ws.path(), false, false).expect("init db");
+        let per_file = collect_diagnostics(&db, false);
+        let mut out = Vec::new();
+        let (errors, _) = DiagnosticReporter::new(&db, ws.path())
+            .with_format(format)
+            .report_files(&per_file, &mut out);
+        assert!(errors > 0, "fixture must produce at least one error");
+        String::from_utf8(out).unwrap()
+    }
+
+    /// `FILE:LINE:COL: severity[CODE]: message` — one line, digits where digits
+    /// belong, no ANSI ever (machine formats bypass the color pipeline).
+    #[test]
+    fn concise_is_one_regex_stable_line_per_diagnostic() {
+        let out = render(OutputFormat::Concise);
+        let lines: Vec<&str> = out.lines().collect();
+        assert_eq!(lines.len(), 1, "one diagnostic, one line: {out:?}");
+        let line = lines[0];
+
+        assert!(!line.contains('\x1b'), "no ANSI in concise output: {line:?}");
+        assert!(line.starts_with("main.st:"), "workspace-relative path: {line:?}");
+        let mut parts = line.splitn(4, ':');
+        let (_file, l, c, rest) = (
+            parts.next().unwrap(),
+            parts.next().unwrap(),
+            parts.next().unwrap(),
+            parts.next().unwrap(),
+        );
+        l.parse::<u32>().expect("line is a number");
+        c.parse::<u32>().expect("col is a number");
+        assert!(rest.starts_with(" error[E0301]: "), "severity[CODE]: {rest:?}");
+        assert!(line.contains(": help: "), "quick-fix title appended: {line:?}");
+    }
+
+    /// Every line parses as JSON with the stable field set; positions 1-based.
+    #[test]
+    fn json_lines_parse_with_stable_fields() {
+        let out = render(OutputFormat::JsonLines);
+        assert!(!out.contains('\x1b'), "no ANSI in json-lines output");
+        let lines: Vec<&str> = out.lines().collect();
+        assert_eq!(lines.len(), 1, "one diagnostic, one JSON line");
+
+        let v: serde_json::Value = serde_json::from_str(lines[0]).expect("valid JSON");
+        assert_eq!(v["file"], "main.st");
+        assert_eq!(v["severity"], "error");
+        assert_eq!(v["code"], "E0301");
+        assert_eq!(v["line"], 3, "1-based line of `x := ULINT#5`");
+        assert!(v["col"].as_u64().unwrap() >= 1, "1-based column");
+        assert!(
+            !v["message"].as_str().unwrap().is_empty(),
+            "message present"
+        );
+        assert!(
+            v["help"].as_array().is_some_and(|h| !h.is_empty()),
+            "quick-fix titles carried: {v}"
+        );
+    }
+
+    /// The full format still renders the ariadne report (source excerpt +
+    /// header) — the machine formats must not have replaced it.
+    #[test]
+    fn full_still_renders_ariadne_reports() {
+        let out = render(OutputFormat::Full);
+        assert!(out.contains("E0301"), "code in the header: {out}");
+        assert!(out.contains("main.st"), "workspace-relative path: {out}");
+        assert!(out.contains("ULINT#5"), "source excerpt shown");
     }
 }

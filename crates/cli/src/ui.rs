@@ -10,6 +10,19 @@ use std::fmt::Display;
 
 use yansi::Paint;
 
+/// Decide color for the whole process, once: on only when the format is
+/// `full`, `NO_COLOR` is unset (https://no-color.org) and stderr is a
+/// terminal. Every paint and every ariadne report follows this switch.
+pub fn init_output(format: crate::cli::OutputFormat) {
+    use std::io::IsTerminal;
+    let color = format == crate::cli::OutputFormat::Full
+        && std::env::var_os("NO_COLOR").is_none_or(|v| v.is_empty())
+        && std::io::stderr().is_terminal();
+    if !color {
+        yansi::disable();
+    }
+}
+
 /// `error: <msg>` on stderr.
 pub fn error(msg: impl Display) {
     eprintln!("{}{msg}", "error: ".bold().red());
