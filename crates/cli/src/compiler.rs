@@ -6,13 +6,13 @@ use hir::hir_def::semantic_index::semantic_index;
 use crate::diagnostics::{DiagnosticReporter, collect_diagnostics};
 use crate::ui;
 
-/// Render a codegen failure the same way a type error is rendered — source
-/// excerpt, caret, file:line — when the error carries a location.
-///
-/// Lowering pins its errors to the offending expression (or, failing that, the
-/// POU declaration), so an unsupported construct points at the construct.
-/// Errors raised before any location is known still fall back to the bare
-/// message.
+/// Where an internal compiler error should be reported.
+const ISSUES_URL: &str = "https://github.com/adclz/rk/issues";
+
+/// Render a MIR-lowering failure as an INTERNAL COMPILER ERROR:
+/// diagnostic-clean source must never fail to lower, so an error here is a
+/// compiler bug, not a user-code diagnostic. Rendered with the source
+/// excerpt when it carries a location.
 fn render_codegen_error(
     db: &RootDatabase,
     workspace: &std::path::Path,
@@ -23,12 +23,16 @@ fn render_codegen_error(
 
     let (file, span) = err.location()?;
     let range = hir::denormalize(db, file, &span)?;
-    let diagnostic = ide_diagnostic::diag()
+    let mut diagnostic = ide_diagnostic::diag()
         .range(range)
-        .message(format!("{err}"))
+        .message(format!("internal compiler error: {err}"))
         .severity(DiagnosticSeverity::ERROR)
         .source("codegen".to_string())
         .call();
+    diagnostic.with_note(format!(
+        "the workspace passed `rk check`; this is a compiler bug or an \
+         unimplemented construct — please report it at {ISSUES_URL}"
+    ));
 
     let mut buffer: Vec<u8> = Vec::new();
     DiagnosticReporter::new(db, workspace)
@@ -87,19 +91,20 @@ pub fn build_core_with_format(
     let mir_module = match mir::lower::lower_module::lower_modules(db, &sem_indices) {
         Ok(m) => m,
         Err(e) => {
-            // Prefer the located rendering (source excerpt + caret); fall back
-            // to the bare message when the error carries no location.
+            // An ICE, not a user error (see `render_codegen_error`).
             return match render_codegen_error(db, workspace, &e, format) {
                 Some(report) => {
                     let _ = std::io::stderr().write_all(report.as_bytes());
-                    ui::failure("compilation failed:", "1 error(s) found, cannot compile.");
-                    Err(format!(
-                        "{report}\ncompilation failed: 1 error(s) found, cannot compile.\n"
-                    ))
+                    ui::failure("internal compiler error:", "cannot compile.");
+                    Err(format!("{report}\ninternal compiler error: cannot compile.\n"))
                 }
                 None => {
-                    ui::error(format!("codegen: {e}"));
-                    Err(format!("codegen error: {e}"))
+                    ui::error(format!(
+                        "internal compiler error: {e} — please report it at {ISSUES_URL}"
+                    ));
+                    Err(format!(
+                        "internal compiler error: {e} — please report it at {ISSUES_URL}"
+                    ))
                 }
             };
         }
@@ -134,13 +139,12 @@ pub fn build_core_quiet(
         .collect();
     let mir_module =
         mir::lower::lower_module::lower_modules(db, &sem_indices).map_err(|e| {
-            // Same located rendering as `build_core`, returned (never printed)
-            // so the TUI can show it after leaving the alternate screen.
+            // Same ICE rendering as `build_core`, returned rather than printed.
             render_codegen_error(db, workspace, &e, crate::cli::OutputFormat::Full)
-                .map(|report| {
-                    format!("{report}\ncompilation failed: 1 error(s) found, cannot compile.\n")
+                .map(|report| format!("{report}\ninternal compiler error: cannot compile.\n"))
+                .unwrap_or_else(|| {
+                    format!("internal compiler error: {e} — please report it at {ISSUES_URL}")
                 })
-                .unwrap_or_else(|| format!("codegen error: {e}"))
         })?;
     let wasm_module = wasm_codegen::generate_wasm(db, &mir_module);
     Ok((wasm_module.finish(), mir_module))
@@ -324,6 +328,46 @@ fn write_leb128(out: &mut Vec<u8>, mut v: u64) {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::workspace::init_db;
+
+    /// A diagnostic-clean workspace whose lowering still fails must present
+    /// as an INTERNAL COMPILER ERROR, without a fabricated error count.
+    #[test]
+    fn hir_clean_lowering_failure_presents_as_ice() {
+        let ws = tempfile::tempdir().expect("tempdir");
+        std::fs::write(
+            ws.path().join("config.toml"),
+            "[project]\nname = \"T\"\nversion = \"0.0\"\n",
+        )
+        .unwrap();
+        std::fs::write(
+            ws.path().join("main.st"),
+            "PROGRAM Main\nVAR x : BOOL; END_VAR\n    x := %IX0.0;\nEND_PROGRAM\n\n\
+             CONFIGURATION Cfg\n    RESOURCE Res ON CPU\n        \
+             TASK T(INTERVAL := T#10ms, PRIORITY := 1);\n        \
+             PROGRAM Run WITH T : Main;\n    END_RESOURCE\nEND_CONFIGURATION\n",
+        )
+        .unwrap();
+        let db = init_db(ws.path(), false, false).expect("init db");
+
+        // Precondition: the workspace is diagnostic-clean (the ICE contract).
+        let per_file = crate::diagnostics::collect_diagnostics(&db, false);
+        assert!(
+            per_file.iter().all(|(_, d)| d.is_empty()),
+            "fixture must pass `rk check`"
+        );
+
+        let err = build_core(&db, ws.path(), false).expect_err("lowering must fail");
+        assert!(
+            err.contains("internal compiler error"),
+            "presented as an ICE: {err}"
+        );
+        assert!(err.contains(ISSUES_URL), "carries the report-it URL: {err}");
+        assert!(
+            !err.contains("error(s) found"),
+            "no fabricated diagnostic count: {err}"
+        );
+    }
 
     /// Two optimizations running at once must not read, overwrite or delete
     /// each other's scratch files. Each module carries a distinctly sized
