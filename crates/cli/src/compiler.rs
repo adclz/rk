@@ -62,7 +62,7 @@ pub fn build_core_with_format(
     let per_file = collect_diagnostics(db, false);
     let reporter = DiagnosticReporter::new(db, workspace).with_format(format);
     let mut rendered: Vec<u8> = Vec::new();
-    let (total_errors, _total_warnings) = reporter.report_files(&per_file, &mut rendered);
+    let total_errors = reporter.report_files(&per_file, &mut rendered).errors;
 
     // Echo to stderr for CLI usage; the debugger reads the returned string instead.
     let _ = std::io::stderr().write_all(&rendered);
@@ -119,7 +119,7 @@ pub fn build_core_quiet(
     let per_file = collect_diagnostics(db, false);
     let reporter = DiagnosticReporter::new(db, workspace);
     let mut rendered: Vec<u8> = Vec::new();
-    let (total_errors, _total_warnings) = reporter.report_files(&per_file, &mut rendered);
+    let total_errors = reporter.report_files(&per_file, &mut rendered).errors;
     if total_errors > 0 {
         let mut text = String::from_utf8_lossy(&rendered).into_owned();
         text.push_str(&format!(

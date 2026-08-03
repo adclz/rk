@@ -53,6 +53,40 @@ pub struct DiagnosticReporter<'db> {
 
 use crate::cli::OutputFormat;
 
+/// Per-severity tallies for one run; a missing severity counts as an error
+/// (the LSP convention), so commands can base their exit code on `errors`
+/// alone.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub struct DiagnosticCounts {
+    pub errors: i32,
+    pub warnings: i32,
+    pub infos: i32,
+    pub hints: i32,
+}
+
+impl DiagnosticCounts {
+    pub fn has_errors(&self) -> bool {
+        self.errors > 0
+    }
+
+    fn add(&mut self, severity: Option<DiagnosticSeverity>) {
+        match severity {
+            Some(DiagnosticSeverity::WARNING) => self.warnings += 1,
+            Some(DiagnosticSeverity::INFORMATION) => self.infos += 1,
+            Some(DiagnosticSeverity::HINT) => self.hints += 1,
+            // ERROR, or unset — an unset severity is an error by convention.
+            _ => self.errors += 1,
+        }
+    }
+
+    fn merge(&mut self, other: DiagnosticCounts) {
+        self.errors += other.errors;
+        self.warnings += other.warnings;
+        self.infos += other.infos;
+        self.hints += other.hints;
+    }
+}
+
 impl<'db> DiagnosticReporter<'db> {
     pub fn new(db: &'db RootDatabase, workspace: &Path) -> Self {
         let workspace_path =
@@ -76,46 +110,43 @@ impl<'db> DiagnosticReporter<'db> {
         self
     }
 
-    /// Render every file's diagnostics to `out`, returning `(errors, warnings)`.
-    /// The source cache spans all workspace files so cross-file related info
-    /// renders.
+    /// Render every file's diagnostics to `out`, returning the tallies; the
+    /// source cache spans all files so cross-file related info renders.
     pub fn report_files(
         &self,
         per_file: &[(File, Vec<IdeDiagnostic>)],
         out: &mut dyn Write,
-    ) -> (i32, i32) {
+    ) -> DiagnosticCounts {
         let caches: Vec<(&str, &str)> = crate::file_order::ordered_files(self.db)
             .into_iter()
             .map(|file| (file.url(self.db).as_str(), file.document(self.db).as_str()))
             .collect();
 
-        let (mut errors, mut warnings) = (0, 0);
+        let mut counts = DiagnosticCounts::default();
         for (file, diagnostics) in per_file {
             if diagnostics.is_empty() {
                 continue;
             }
-            let (e, w) = self.render(
+            counts.merge(self.render(
                 file.url(self.db),
                 &file.document(self.db).texter.text,
                 diagnostics,
                 &caches,
                 out,
-            );
-            errors += e;
-            warnings += w;
+            ));
         }
-        (errors, warnings)
+        counts
     }
 
     /// Render a single external source's diagnostics (e.g. config-file errors,
-    /// which aren't a workspace [`File`]), returning `(errors, warnings)`.
+    /// which aren't a workspace [`File`]), returning the per-severity tallies.
     pub fn report_external(
         &self,
         url: &Url,
         content: &str,
         diagnostics: &[IdeDiagnostic],
         out: &mut dyn Write,
-    ) -> (i32, i32) {
+    ) -> DiagnosticCounts {
         let caches = [(url.as_str(), content)];
         self.render(url, content, diagnostics, &caches, out)
     }
@@ -128,17 +159,13 @@ impl<'db> DiagnosticReporter<'db> {
         diagnostics: &[IdeDiagnostic],
         caches: &[(&str, &str)],
         out: &mut dyn Write,
-    ) -> (i32, i32) {
+    ) -> DiagnosticCounts {
         let url_str = url.as_str();
         let rel_path = self.rel_path(url);
 
-        let (mut errors, mut warnings) = (0, 0);
+        let mut counts = DiagnosticCounts::default();
         for diagnostic in diagnostics {
-            match diagnostic.diagnostic.severity {
-                Some(DiagnosticSeverity::ERROR) => errors += 1,
-                Some(DiagnosticSeverity::WARNING) => warnings += 1,
-                _ => {}
-            }
+            counts.add(diagnostic.diagnostic.severity);
 
             match self.format {
                 OutputFormat::Full => {
@@ -159,7 +186,7 @@ impl<'db> DiagnosticReporter<'db> {
                 OutputFormat::JsonLines => self.render_json_line(&rel_path, diagnostic, out),
             }
         }
-        (errors, warnings)
+        counts
     }
 
     /// Workspace-relative path for `url` (falls back to the URL itself for
@@ -311,10 +338,10 @@ mod tests {
         let db = init_db(ws.path(), false, false).expect("init db");
         let per_file = collect_diagnostics(&db, false);
         let mut out = Vec::new();
-        let (errors, _) = DiagnosticReporter::new(&db, ws.path())
+        let counts = DiagnosticReporter::new(&db, ws.path())
             .with_format(format)
             .report_files(&per_file, &mut out);
-        assert!(errors > 0, "fixture must produce at least one error");
+        assert!(counts.has_errors(), "fixture must produce at least one error");
         String::from_utf8(out).unwrap()
     }
 
@@ -363,6 +390,47 @@ mod tests {
         assert!(
             v["help"].as_array().is_some_and(|h| !h.is_empty()),
             "quick-fix titles carried: {v}"
+        );
+    }
+
+    /// The trap this guards: a workspace whose only findings are lints
+    /// (info/hint) must count ZERO errors — `rk check` bases its exit code on
+    /// `has_errors()`, so advice alone no longer exits 1. The advice still
+    /// renders (here in concise, as `info[...]`/`hint[...]` lines).
+    #[test]
+    fn advice_only_workspace_has_no_errors() {
+        let ws = tempfile::tempdir().expect("tempdir");
+        // NOTE: the linter only runs when config.toml HAS a `[linter]` section
+        // (`Config.linter` is an Option) — an empty section enables the default
+        // rule set.
+        std::fs::write(
+            ws.path().join("config.toml"),
+            format!("{CONFIG_TOML}\n[linter]\n"),
+        )
+        .unwrap();
+        // Valid code with an unused variable — a linter finding, not an error.
+        std::fs::write(
+            ws.path().join("main.st"),
+            "FUNCTION f : INT\nVAR unused : INT; END_VAR\n    f := 1;\nEND_FUNCTION\n",
+        )
+        .unwrap();
+        let db = init_db(ws.path(), false, false).expect("init db");
+        let per_file = collect_diagnostics(&db, true);
+        let mut out = Vec::new();
+        let counts = DiagnosticReporter::new(&db, ws.path())
+            .with_format(OutputFormat::Concise)
+            .report_files(&per_file, &mut out);
+
+        assert_eq!(counts.errors, 0, "no errors in an advice-only workspace");
+        assert!(
+            counts.infos + counts.hints > 0,
+            "the unused-variable lint fired: {counts:?}"
+        );
+        assert!(!counts.has_errors(), "advice alone must not fail the check");
+        let out = String::from_utf8(out).unwrap();
+        assert!(
+            out.lines().all(|l| l.contains(": info") || l.contains(": hint") || l.contains(": warning")),
+            "only advice lines rendered: {out:?}"
         );
     }
 
