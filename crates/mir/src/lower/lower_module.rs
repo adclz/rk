@@ -19,6 +19,42 @@ use crate::{
     types::MirType,
 };
 
+/// Workspace-relative file + 1-based line of a test FUNCTION's declaration,
+/// for the test manifest. Paths are stored RELATIVE so the artifact stays
+/// byte-reproducible across machines: workspace files strip the workspace
+/// root, stdlib files render as `<stdlib>/…`, and anything else falls back to
+/// the bare file name.
+fn test_location<'db>(
+    db: &'db dyn WorkspaceDataBase,
+    func: Function<'db>,
+) -> (String, u32) {
+    use db::workspace::Workspace;
+    use hir::{HasName, HirNodeInfo};
+
+    let file = func.get_scope_id(db).file(db);
+    let line = func.get_name_span(db).start_point.row as u32 + 1;
+
+    let Ok(path) = file.url(db).to_file_path() else {
+        return (String::new(), line);
+    };
+    let workspace = Workspace::try_get(db);
+    if let Some(root) = workspace.and_then(|w| w.workspace_folder(db).clone())
+        && let Ok(rel) = path.strip_prefix(&root)
+    {
+        return (rel.to_string_lossy().into_owned(), line);
+    }
+    if let Some(stdlib) = workspace.and_then(|w| w.stdlib_path(db).clone())
+        && let Ok(rel) = path.strip_prefix(&stdlib)
+    {
+        return (format!("<stdlib>/{}", rel.to_string_lossy()), line);
+    }
+    let name = path
+        .file_name()
+        .map(|n| n.to_string_lossy().into_owned())
+        .unwrap_or_default();
+    (name, line)
+}
+
 /// Pin a codegen error to a POU declaration; the innermost location
 /// already attached wins.
 fn at_pou<'db, T>(
@@ -167,9 +203,12 @@ fn lower_module_from_pous<'db>(
                                 .as_ref()
                                 .map(|s| s.to_string())
                                 .unwrap_or_else(|| mir_func.name.text(db).to_string());
+                            let (file, line) = test_location(db, *func);
                             test_entries.push(crate::test_manifest::TestEntry {
                                 path: export_name.clone(),
                                 export: export_name,
+                                file,
+                                line,
                             });
                         }
 
@@ -229,9 +268,12 @@ fn lower_module_from_pous<'db>(
                         .as_ref()
                         .map(|s| s.to_string())
                         .unwrap_or_else(|| mir_func.name.text(db).to_string());
+                    let (file, line) = test_location(db, *func);
                     test_entries.push(crate::test_manifest::TestEntry {
                         path: export_name.clone(),
                         export: export_name,
+                        file,
+                        line,
                     });
                 }
 

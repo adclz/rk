@@ -14,7 +14,8 @@ pub struct TestManifest {
     pub tests: Vec<TestEntry>,
 }
 
-/// A single test function entry.
+/// A single test function entry. MessagePack encodes positionally: new
+/// fields go at the tail.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct TestEntry {
     /// Fully qualified path (e.g., "Std.Math.Test.test_abs").
@@ -22,6 +23,12 @@ pub struct TestEntry {
 
     /// WASM export name for the test.
     pub export: String,
+
+    /// Workspace-relative source file declaring the test (empty if unknown).
+    pub file: String,
+
+    /// 1-based line of the test declaration (0 if unknown).
+    pub line: u32,
 }
 
 impl Default for TestManifest {
