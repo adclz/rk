@@ -11,7 +11,7 @@ pub fn run_test(
     verbose: bool,
     format: OutputFormat,
 ) -> CliResult<()> {
-    let db = init_db(workspace, verbose, !no_stdlib).ok_or(CliError::Failed)?;
+    let db = init_db(workspace, verbose, !no_stdlib, true).ok_or(CliError::Failed)?;
 
     // Tests default to the unoptimized core but honour `-O`, so an optimized
     // build can be checked to compute the same answers.

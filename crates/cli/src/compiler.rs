@@ -348,7 +348,7 @@ mod tests {
              PROGRAM Run WITH T : Main;\n    END_RESOURCE\nEND_CONFIGURATION\n",
         )
         .unwrap();
-        let db = init_db(ws.path(), false, false).expect("init db");
+        let db = init_db(ws.path(), false, false, true).expect("init db");
 
         // Precondition: the workspace is diagnostic-clean (the ICE contract).
         let per_file = crate::diagnostics::collect_diagnostics(&db, false);

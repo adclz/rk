@@ -7,18 +7,25 @@ use crate::diagnostics::DiagnosticReporter;
 use crate::ui;
 
 /// Load and parse a workspace into a fresh [`RootDatabase`]. Returns `None` (and
-/// reports why on stderr) if the workspace has no `config.toml`, the config is
-/// invalid, or it holds no `.st` files. All output goes to **stderr**: the debugger
-/// calls this while stdout is the debugger transport.
+/// reports why on stderr) if the config is invalid, the workspace holds no
+/// `.st` files, or — with `require_config` — it has no `config.toml`. All
+/// output goes to **stderr**: the debugger calls this while stdout is the debugger
+/// transport.
+///
+/// Without a config the whole stack falls back to defaults: bundled stdlib,
+/// default settings, and NO linter (lints need a `[linter]` section). `rk
+/// check` passes `require_config = false` so a bare directory of `.st` files
+/// is checkable; commands that produce artifacts keep requiring a project.
 pub fn init_db(
     workspace: &std::path::Path,
     verbose: bool,
     load_stdlib: bool,
+    require_config: bool,
 ) -> Option<RootDatabase> {
     let workspace_path =
         std::fs::canonicalize(workspace).unwrap_or_else(|_| workspace.to_path_buf());
 
-    if db::loader::resolve_config_file(workspace).is_none() {
+    if require_config && db::loader::resolve_config_file(workspace).is_none() {
         ui::error(format!(
             "no config.toml found in {}",
             workspace_path.display()

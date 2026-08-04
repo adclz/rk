@@ -32,15 +32,17 @@ pub mod errors;
 
 #[salsa::tracked(returns(ref))]
 pub fn diagnostics_for_file(db: &dyn WorkspaceDataBase, file: File) -> Arc<Vec<IdeDiagnostic>> {
+    let mut all_diagnostics = vec![];
+
+    // No config.toml: still analyze — defaults apply and the bundled stdlib
+    // resolves — but lead with a hint that this file is outside a project.
+    // (Analysis used to be skipped entirely here, which made a configless
+    // `rk check` return nothing but the hint.)
     if let Some(config) = Workspace::try_get(db)
         && config.config_file(db).is_none()
     {
-        return Arc::new(vec![
-            ResolveError::NoConfigFileFound { file }.to_diagnostic(db, file),
-        ]);
+        all_diagnostics.push(ResolveError::NoConfigFileFound { file }.to_diagnostic(db, file));
     }
-
-    let mut all_diagnostics = vec![];
 
     let lexer_errors: Vec<IdeDiagnostic> = get_ast::accumulated::<ParseErrorAccumulator>(db, file)
         .into_iter()

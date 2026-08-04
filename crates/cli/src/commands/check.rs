@@ -28,7 +28,12 @@ pub fn run_check(
 /// advice-only workspace prints its counts and exits 0 — previously it exited 1
 /// while claiming "0 error(s), 0 warning(s)", which sent agents chasing nothing.
 fn check_once(workspace: &std::path::Path, verbose: bool, format: OutputFormat) -> CliResult<()> {
-    let db = init_db(workspace, verbose, true).ok_or(CliError::Failed)?;
+    // A bare directory of .st files is checkable without a config.toml.
+    // Stderr stays a pure diagnostics stream.
+    if db::loader::resolve_config_file(workspace).is_none() {
+        ui::detail("no config.toml found — checking with defaults (linter disabled)");
+    }
+    let db = init_db(workspace, verbose, true, false).ok_or(CliError::Failed)?;
 
     let per_file = collect_diagnostics(&db, true);
     let reporter = DiagnosticReporter::new(&db, workspace).with_format(format);
