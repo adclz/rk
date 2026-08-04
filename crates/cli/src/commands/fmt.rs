@@ -4,10 +4,91 @@ use formatter::TOPIARY_LANG;
 use topiary_core::{Operation, formatter};
 use yansi::Paint;
 
+use crate::cli::OutputFormat;
 use crate::error::{CliError, CliResult};
 use crate::ui;
 
-pub fn run_fmt(workspace: &Path, check: bool, verbose: bool) -> CliResult<()> {
+/// NDJSON record for one file in [`OutputFormat::JsonLines`]. Field order is
+/// part of the wire shape; additions go at the END.
+#[derive(serde::Serialize)]
+struct FmtRecord<'a> {
+    r#type: &'static str,
+    file: &'a str,
+    status: &'static str,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    reason: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    line: Option<u32>,
+}
+
+/// Terminal NDJSON record: totals for the whole run.
+#[derive(serde::Serialize)]
+struct FmtSummary {
+    r#type: &'static str,
+    checked: usize,
+    changed: usize,
+    unchanged: usize,
+    errors: usize,
+}
+
+/// One per-file result line per format: the styled human line, a stable
+/// `<status>: <file>` line, or one [`FmtRecord`].
+fn emit_file(
+    format: OutputFormat,
+    status: &'static str,
+    rel: &str,
+    reason: Option<String>,
+    line: Option<u32>,
+) {
+    // `line` (1-based) is the FIRST line where formatting differs — only set
+    // for `unformatted`, where "where?" is actionable.
+    let loc = line.map(|l| format!(":{l}")).unwrap_or_default();
+    match format {
+        OutputFormat::Full => match status {
+            "unchanged" => println!("  {} {}", "unchanged".dim(), rel),
+            "unformatted" => println!("  {} {}{}", "unformatted".bold().yellow(), rel, loc),
+            "formatted" => println!("  {} {}", "formatted".bold().green(), rel),
+            _ => eprintln!(
+                "  {} {} — {}",
+                "error".bold().red(),
+                rel,
+                reason.unwrap_or_default()
+            ),
+        },
+        OutputFormat::Concise => match status {
+            "error" => eprintln!("error: {rel}: {}", reason.unwrap_or_default()),
+            _ => println!("{status}: {rel}{loc}"),
+        },
+        OutputFormat::JsonLines => {
+            let record = FmtRecord {
+                r#type: "fmt",
+                file: rel,
+                status,
+                reason,
+                line,
+            };
+            if let Ok(json) = serde_json::to_string(&record) {
+                println!("{json}");
+            }
+        }
+    }
+}
+
+/// 1-based line of the first difference between the source and its formatted
+/// output (the two are known to differ when this is called).
+fn first_diff_line(source: &str, output: &str) -> u32 {
+    let mut line = 1;
+    let mut a = source.lines();
+    let mut b = output.lines();
+    loop {
+        match (a.next(), b.next()) {
+            (Some(x), Some(y)) if x == y => line += 1,
+            _ => return line,
+        }
+    }
+}
+
+pub fn run_fmt(workspace: &Path, check: bool, verbose: bool, format: OutputFormat) -> CliResult<()> {
     let workspace = std::fs::canonicalize(workspace).map_err(CliError::msg)?;
 
     let st_files = collect_st_files(&workspace);
@@ -27,10 +108,11 @@ pub fn run_fmt(workspace: &Path, check: bool, verbose: bool) -> CliResult<()> {
     let mut errored = 0;
 
     for path in &st_files {
+        let rel = relative(path, &workspace);
         let source = match std::fs::read_to_string(path) {
             Ok(s) => s,
             Err(e) => {
-                report_file_error(path, &workspace, &e);
+                emit_file(format, "error", rel, Some(e.to_string()), None);
                 errored += 1;
                 continue;
             }
@@ -49,14 +131,14 @@ pub fn run_fmt(workspace: &Path, check: bool, verbose: bool) -> CliResult<()> {
 
         match result {
             Err(e) => {
-                report_file_error(path, &workspace, &e);
+                emit_file(format, "error", rel, Some(e.to_string()), None);
                 errored += 1;
             }
             Ok(()) => {
                 let output = match String::from_utf8(output) {
                     Ok(s) => s,
                     Err(e) => {
-                        report_file_error(path, &workspace, &e);
+                        emit_file(format, "error", rel, Some(e.to_string()), None);
                         errored += 1;
                         continue;
                     }
@@ -65,71 +147,61 @@ pub fn run_fmt(workspace: &Path, check: bool, verbose: bool) -> CliResult<()> {
                 if output == source {
                     unchanged += 1;
                     if verbose {
-                        println!("  {} {}", "unchanged".dim(), relative(path, &workspace));
+                        emit_file(format, "unchanged", rel, None, None);
                     }
                 } else if check {
                     formatted += 1;
-                    println!(
-                        "  {} {}",
-                        "unformatted".bold().yellow(),
-                        relative(path, &workspace)
-                    );
+                    emit_file(format, "unformatted", rel, None, Some(first_diff_line(&source, &output)));
                 } else if let Err(e) = std::fs::write(path, &output) {
-                    report_file_error(path, &workspace, &e);
+                    emit_file(format, "error", rel, Some(e.to_string()), None);
                     errored += 1;
                 } else {
                     formatted += 1;
-                    println!(
-                        "  {} {}",
-                        "formatted".bold().green(),
-                        relative(path, &workspace)
-                    );
+                    emit_file(format, "formatted", rel, None, None);
                 }
             }
         }
     }
 
-    println!();
-    if check {
-        ui::success(
-            "fmt check:",
-            format!(
-                "{} file(s) checked: {} unformatted, {} unchanged, {} error(s).",
-                st_files.len(),
-                formatted,
-                unchanged,
-                errored,
-            ),
-        );
-        if formatted > 0 || errored > 0 {
-            return Err(CliError::Failed);
+    if format == OutputFormat::JsonLines {
+        // Stdout is a pure NDJSON stream: the totals ride in the terminal
+        // summary record, not a prose line.
+        let record = FmtSummary {
+            r#type: "summary",
+            checked: st_files.len(),
+            changed: formatted,
+            unchanged,
+            errors: errored,
+        };
+        if let Ok(json) = serde_json::to_string(&record) {
+            println!("{json}");
         }
     } else {
+        println!();
+        let (label, verb) = if check {
+            ("fmt check:", "unformatted")
+        } else {
+            ("fmt complete:", "formatted")
+        };
         ui::success(
-            "fmt complete:",
+            label,
             format!(
-                "{} file(s) checked: {} formatted, {} unchanged, {} error(s).",
+                "{} file(s) checked: {} {}, {} unchanged, {} error(s).",
                 st_files.len(),
                 formatted,
+                verb,
                 unchanged,
                 errored,
             ),
         );
-        if errored > 0 {
-            return Err(CliError::Failed);
-        }
     }
-    Ok(())
-}
 
-/// A per-file `  error <path> — <reason>` line on stderr.
-fn report_file_error(path: &Path, base: &Path, err: &dyn std::fmt::Display) {
-    eprintln!(
-        "  {} {} — {}",
-        "error".bold().red(),
-        relative(path, base),
-        err
-    );
+    let failed = if check {
+        formatted > 0 || errored > 0
+    } else {
+        errored > 0
+    };
+    if failed { Err(CliError::Failed) } else { Ok(()) }
 }
 
 fn collect_st_files(dir: &Path) -> Vec<std::path::PathBuf> {

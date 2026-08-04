@@ -11,18 +11,56 @@ use wasmtime::{Config, Engine, Store};
 use wasmtime_wasi::{WasiCtx, WasiCtxBuilder, WasiView};
 use yansi::Paint;
 
+use crate::cli::OutputFormat;
 use crate::ui;
 
 type WasmResult<T> = wasmtime::Result<T>;
 
 struct TestResult {
     name: String,
+    /// Declaration site from the manifest (file may be empty, line 0 = unknown).
+    file: String,
+    line: u32,
     outcome: TestOutcome,
+}
+
+/// ` (file:line)` when the declaration site is known, empty otherwise.
+fn loc_suffix(file: &str, line: u32) -> String {
+    if file.is_empty() {
+        String::new()
+    } else {
+        format!(" ({file}:{line})")
+    }
 }
 
 enum TestOutcome {
     Pass,
     Fail(String),
+}
+
+/// NDJSON record for one test in [`OutputFormat::JsonLines`]. Field order is
+/// part of the wire shape; additions go at the END.
+#[derive(serde::Serialize)]
+struct TestRecord<'a> {
+    r#type: &'static str,
+    name: &'a str,
+    status: &'static str,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    reason: Option<&'a str>,
+    duration_us: u128,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    file: Option<&'a str>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    line: Option<u32>,
+}
+
+/// Terminal NDJSON record: totals for the whole run.
+#[derive(serde::Serialize)]
+struct TestSummary {
+    r#type: &'static str,
+    total: usize,
+    passed: usize,
+    failed: usize,
 }
 
 /// Host state with WASI context.
@@ -41,14 +79,11 @@ impl WasiView for HostState {
 }
 
 /// Discover tests from the `rk.test-manifest` custom section embedded in the
-/// component binary.
-fn discover_tests(component_bytes: &[u8]) -> Vec<(String, String)> {
+/// component binary. Entries carry the test's declaration site
+/// (workspace-relative `file` + 1-based `line`) alongside path/export.
+fn discover_tests(component_bytes: &[u8]) -> Vec<mir::test_manifest::TestEntry> {
     match read_manifest_section(component_bytes) {
-        Some(manifest) => manifest
-            .tests
-            .iter()
-            .map(|t| (t.path.clone(), t.export.clone()))
-            .collect(),
+        Some(manifest) => manifest.tests,
         None => {
             ui::error(format!(
                 "no test manifest found in component (missing `{}` custom section)",
@@ -101,7 +136,13 @@ fn fmt_duration(d: std::time::Duration) -> String {
 /// Run tests from a compiled WASM component.
 /// Reads the test manifest from the component's `rk.test-manifest` custom
 /// section — there is no sidecar file.
-pub fn run_tests(wasm_path: &std::path::Path, filter: Option<&str>) -> usize {
+///
+/// Output per format (results go to STDOUT): `full` keeps the human
+/// Running/PASS-FAIL/Failures/Summary block; `concise` prints one stable
+/// `PASS <name>` / `FAIL <name>: <reason>` line per test (no durations — they
+/// would defeat matching) and a final `summary:` line; `json-lines` prints one
+/// [`TestRecord`] per test and a terminal [`TestSummary`].
+pub fn run_tests(wasm_path: &std::path::Path, filter: Option<&str>, format: OutputFormat) -> usize {
     let mut config = Config::new();
     config.wasm_component_model(true);
     config.wasm_exceptions(true);
@@ -133,11 +174,23 @@ pub fn run_tests(wasm_path: &std::path::Path, filter: Option<&str>) -> usize {
 
     if let Some(f) = filter {
         let f_lower = f.to_lowercase();
-        tests.retain(|(path, _)| path.to_lowercase().contains(&f_lower));
+        tests.retain(|t| t.path.to_lowercase().contains(&f_lower));
     }
 
     if tests.is_empty() {
-        println!("No test functions found");
+        // Keep stdout pure NDJSON in json-lines mode — the empty run is
+        // expressed by the summary record. (Still exit non-zero: an empty test
+        // run is a failure, not a green build.)
+        if format == OutputFormat::JsonLines {
+            print_json(&TestSummary {
+                r#type: "summary",
+                total: 0,
+                passed: 0,
+                failed: 0,
+            });
+        } else {
+            println!("No test functions found");
+        }
         return 1;
     }
 
@@ -153,9 +206,12 @@ pub fn run_tests(wasm_path: &std::path::Path, filter: Option<&str>) -> usize {
     let mut results: Vec<TestResult> = Vec::with_capacity(total);
     let total_start = Instant::now();
 
-    println!("{}  {} test(s)", "    Running".dim(), total);
+    if format == OutputFormat::Full {
+        println!("{}  {} test(s)", "    Running".dim(), total);
+    }
 
-    for (display_name, export_name) in &tests {
+    for entry in &tests {
+        let (display_name, export_name) = (&entry.path, &entry.export);
         let mut store = Store::new(
             &engine,
             HostState {
@@ -242,27 +298,57 @@ pub fn run_tests(wasm_path: &std::path::Path, filter: Option<&str>) -> usize {
 
         let duration = start.elapsed();
 
-        match &outcome {
-            TestOutcome::Pass => {
-                println!(
-                    "        {} {} {}",
-                    "PASS".green(),
-                    format!("[{:>7}]", fmt_duration(duration)).dim(),
-                    display_name,
-                );
-            }
-            TestOutcome::Fail(_) => {
-                println!(
-                    "        {} {} {}",
-                    "FAIL".red(),
-                    format!("[{:>7}]", fmt_duration(duration)).dim(),
-                    display_name,
-                );
+        match format {
+            OutputFormat::Full => match &outcome {
+                TestOutcome::Pass => {
+                    println!(
+                        "        {} {} {}",
+                        "PASS".green(),
+                        format!("[{:>7}]", fmt_duration(duration)).dim(),
+                        display_name,
+                    );
+                }
+                TestOutcome::Fail(_) => {
+                    println!(
+                        "        {} {} {}",
+                        "FAIL".red(),
+                        format!("[{:>7}]", fmt_duration(duration)).dim(),
+                        display_name,
+                    );
+                }
+            },
+            // Reason inline, no durations/decoration — line-stable for agents.
+            OutputFormat::Concise => match &outcome {
+                TestOutcome::Pass => println!("PASS {display_name}"),
+                TestOutcome::Fail(reason) => {
+                    println!(
+                        "FAIL {display_name}{}: {}",
+                        loc_suffix(&entry.file, entry.line),
+                        reason.replace('\n', " ")
+                    )
+                }
+            },
+            OutputFormat::JsonLines => {
+                let (status, reason) = match &outcome {
+                    TestOutcome::Pass => ("pass", None),
+                    TestOutcome::Fail(reason) => ("fail", Some(reason.as_str())),
+                };
+                print_json(&TestRecord {
+                    r#type: "test",
+                    name: display_name,
+                    status,
+                    reason,
+                    duration_us: duration.as_micros(),
+                    file: (!entry.file.is_empty()).then_some(entry.file.as_str()),
+                    line: (entry.line > 0).then_some(entry.line),
+                });
             }
         }
 
         results.push(TestResult {
             name: display_name.clone(),
+            file: entry.file.clone(),
+            line: entry.line,
             outcome,
         });
     }
@@ -276,48 +362,78 @@ pub fn run_tests(wasm_path: &std::path::Path, filter: Option<&str>) -> usize {
         .iter()
         .filter(|r| matches!(r.outcome, TestOutcome::Fail(_)))
         .count();
-    let failures: Vec<_> = results
-        .iter()
-        .filter(|r| matches!(r.outcome, TestOutcome::Fail(_)))
-        .collect();
 
-    println!(
-        "{}",
-        "────────────────────────────────────────────────────────────".dim()
-    );
+    match format {
+        OutputFormat::Full => {
+            let failures: Vec<_> = results
+                .iter()
+                .filter(|r| matches!(r.outcome, TestOutcome::Fail(_)))
+                .collect();
 
-    if !failures.is_empty() {
-        println!("     {}:", "Failures".bold().red());
-        for f in &failures {
-            if let TestOutcome::Fail(reason) = &f.outcome {
-                println!("        {} {}: {}", "FAIL".red(), f.name, reason.bold());
+            println!(
+                "{}",
+                "────────────────────────────────────────────────────────────".dim()
+            );
+
+            if !failures.is_empty() {
+                println!("     {}:", "Failures".bold().red());
+                for f in &failures {
+                    if let TestOutcome::Fail(reason) = &f.outcome {
+                        println!(
+                            "        {} {}{}: {}",
+                            "FAIL".red(),
+                            f.name,
+                            loc_suffix(&f.file, f.line).dim(),
+                            reason.bold()
+                        );
+                    }
+                }
+                println!(
+                    "{}",
+                    "────────────────────────────────────────────────────────────".dim()
+                );
             }
+
+            let status = if failed == 0 {
+                format!("{} passed", passed).green().to_string()
+            } else {
+                format!("{} passed", passed).to_string()
+            };
+            let fail_status = if failed == 0 {
+                format!("{} failed", failed).green().to_string()
+            } else {
+                format!("{} failed", failed).red().to_string()
+            };
+
+            println!(
+                "    {} {} {} tests run: {}, {}",
+                "Summary".dim(),
+                format!("[{:>7}]", fmt_duration(total_elapsed)).dim(),
+                total,
+                status,
+                fail_status,
+            );
         }
-        println!(
-            "{}",
-            "────────────────────────────────────────────────────────────".dim()
-        );
+        // Failure reasons were already inline on the FAIL lines.
+        OutputFormat::Concise => {
+            println!("summary: {total} run, {passed} passed, {failed} failed");
+        }
+        OutputFormat::JsonLines => {
+            print_json(&TestSummary {
+                r#type: "summary",
+                total,
+                passed,
+                failed,
+            });
+        }
     }
 
-    let status = if failed == 0 {
-        format!("{} passed", passed).green().to_string()
-    } else {
-        format!("{} passed", passed).to_string()
-    };
-    let fail_status = if failed == 0 {
-        format!("{} failed", failed).green().to_string()
-    } else {
-        format!("{} failed", failed).red().to_string()
-    };
-
-    println!(
-        "    {} {} {} tests run: {}, {}",
-        "Summary".dim(),
-        format!("[{:>7}]", fmt_duration(total_elapsed)).dim(),
-        total,
-        status,
-        fail_status,
-    );
-
     failed
+}
+
+/// Print one NDJSON record to stdout.
+fn print_json<T: serde::Serialize>(record: &T) {
+    if let Ok(json) = serde_json::to_string(record) {
+        println!("{json}");
+    }
 }

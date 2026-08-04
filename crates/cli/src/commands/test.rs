@@ -1,4 +1,5 @@
-use crate::compiler::build_core;
+use crate::cli::OutputFormat;
+use crate::compiler::build_core_with_format;
 use crate::error::{CliError, CliResult};
 use crate::workspace::init_db;
 
@@ -8,13 +9,14 @@ pub fn run_test(
     filter: Option<&str>,
     opt_level: Option<&str>,
     verbose: bool,
+    format: OutputFormat,
 ) -> CliResult<()> {
     let db = init_db(workspace, verbose, !no_stdlib).ok_or(CliError::Failed)?;
 
     // Tests default to the unoptimized core but honour `-O`, so an optimized
     // build can be checked to compute the same answers.
     let (core_bytes, mir_module) =
-        build_core(&db, workspace, verbose).map_err(|_| CliError::Failed)?;
+        build_core_with_format(&db, workspace, verbose, format).map_err(|_| CliError::Failed)?;
     let core_bytes = crate::compiler::optimize_wasm(core_bytes, opt_level, verbose);
     let component_bytes = wasm_codegen::component::wrap_in_component(&db, &core_bytes, &mir_module)
         .map_err(|e| CliError::msg(format!("component: {e}")))?;
@@ -28,7 +30,7 @@ pub fn run_test(
     std::fs::write(&wasm_path, &component_bytes)
         .map_err(|e| CliError::msg(format!("writing test binary: {e}")))?;
 
-    let failures = crate::test_runner::run_tests(&wasm_path, filter);
+    let failures = crate::test_runner::run_tests(&wasm_path, filter, format);
     if failures > 0 {
         Err(CliError::Failed)
     } else {

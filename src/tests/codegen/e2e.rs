@@ -52,7 +52,7 @@ END_FUNCTION
     std::fs::write(&wasm_path, &component_bytes).unwrap();
 
     // The manifest is embedded in the component as a custom section — no sidecar.
-    let failures = rk::test_runner::run_tests(&wasm_path, None);
+    let failures = rk::test_runner::run_tests(&wasm_path, None, rk::cli::OutputFormat::Full);
     let _ = std::fs::remove_dir_all(&tmp);
     assert_eq!(failures, 0, "Expected all e2e tests to pass");
 }
@@ -89,7 +89,7 @@ END_FUNCTION
     std::fs::write(&wasm_path, &component_bytes).unwrap();
 
     // The manifest is embedded in the component as a custom section — no sidecar.
-    let failures = rk::test_runner::run_tests(&wasm_path, None);
+    let failures = rk::test_runner::run_tests(&wasm_path, None, rk::cli::OutputFormat::Full);
     let _ = std::fs::remove_dir_all(&tmp);
     assert_eq!(
         failures, 1,
