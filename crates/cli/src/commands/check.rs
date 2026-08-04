@@ -33,7 +33,7 @@ fn check_once(workspace: &std::path::Path, verbose: bool, format: OutputFormat) 
     if db::loader::resolve_config_file(workspace).is_none() {
         ui::detail("no config.toml found — checking with defaults (linter disabled)");
     }
-    let db = init_db(workspace, verbose, true, false).ok_or(CliError::Failed)?;
+    let db = init_db(workspace, verbose, false).ok_or(CliError::Failed)?;
 
     let per_file = collect_diagnostics(&db, true);
     let reporter = DiagnosticReporter::new(&db, workspace).with_format(format);

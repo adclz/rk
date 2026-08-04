@@ -83,7 +83,7 @@ pub fn build_core_with_format(
         return Err(text);
     }
 
-    let sem_indices: Vec<_> = crate::file_order::ordered_files_with_stdlib(db)
+    let sem_indices: Vec<_> = crate::file_order::ordered_files_with_libraries(db)
         .into_iter()
         .map(|file| semantic_index(db, file))
         .collect();
@@ -133,7 +133,7 @@ pub fn build_core_quiet(
         return Err(text);
     }
 
-    let sem_indices: Vec<_> = crate::file_order::ordered_files_with_stdlib(db)
+    let sem_indices: Vec<_> = crate::file_order::ordered_files_with_libraries(db)
         .into_iter()
         .map(|file| semantic_index(db, file))
         .collect();
@@ -348,7 +348,9 @@ mod tests {
              PROGRAM Run WITH T : Main;\n    END_RESOURCE\nEND_CONFIGURATION\n",
         )
         .unwrap();
-        let db = init_db(ws.path(), false, false, true).expect("init db");
+        // Tests must not inherit the developer's library environment.
+        unsafe { std::env::remove_var(db::loader::STDLIB_PATH_ENV) };
+        let db = init_db(ws.path(), false, true).expect("init db");
 
         // Precondition: the workspace is diagnostic-clean (the ICE contract).
         let per_file = crate::diagnostics::collect_diagnostics(&db, false);

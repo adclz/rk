@@ -10,7 +10,6 @@ use crate::workspace::init_db;
 /// common to all commands).
 pub struct CompileOptions<'a> {
     pub output: Option<&'a PathBuf>,
-    pub no_stdlib: bool,
     pub opt_level: Option<&'a str>,
     pub debug: bool,
     pub format: OutputFormat,
@@ -37,7 +36,7 @@ fn compile_once(
     opts: &CompileOptions<'_>,
     verbose: bool,
 ) -> CliResult<()> {
-    let db = init_db(workspace, verbose, !opts.no_stdlib, true).ok_or(CliError::Failed)?;
+    let db = init_db(workspace, verbose, true).ok_or(CliError::Failed)?;
 
     // `build_core` already echoed diagnostics to stderr; a build failure is a
     // silent non-zero exit.

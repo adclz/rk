@@ -13,8 +13,10 @@ pub struct Workspace {
     #[returns(as_ref)]
     pub workspace_folder: Option<PathBuf>,
 
+    /// Directory of the loaded library, if any — resolved from
+    /// `RK_STDLIB_PATH` only (see `loader::resolve_library_path`).
     #[returns(as_ref)]
-    pub stdlib_path: Option<PathBuf>,
+    pub library_path: Option<PathBuf>,
 
     #[returns(as_ref)]
     pub config_file: Option<PathBuf>,
@@ -46,10 +48,10 @@ impl Workspace {
         file_errors: &mut Vec<IdeDiagnostic>,
         notices: &mut Vec<ConfigurationNotice>,
     ) -> Self {
-        let (workspace_folder, stdlib_path, config_file) =
+        let (workspace_folder, library_path, config_file) =
             resolve_all(workspace_uri, &encoding, file_errors, notices);
 
-        Self::builder(workspace_folder, stdlib_path, config_file, encoding)
+        Self::builder(workspace_folder, library_path, config_file, encoding)
             .durability(Durability::HIGH)
             .new(db)
     }
@@ -61,11 +63,11 @@ impl Workspace {
         file_errors: &mut Vec<IdeDiagnostic>,
         notices: &mut Vec<ConfigurationNotice>,
     ) {
-        let (workspace_folder, stdlib_path, config_file) =
+        let (workspace_folder, library_path, config_file) =
             resolve_all(workspace_uri, &self.encoding(db), file_errors, notices);
 
         self.set_workspace_folder(db).to(workspace_folder);
-        self.set_stdlib_path(db).to(stdlib_path);
+        self.set_library_path(db).to(library_path);
         self.set_config_file(db).to(config_file);
     }
 }
@@ -102,17 +104,12 @@ fn resolve_all(
         None => None,
     };
 
-    // 3. Parse config file — extract user stdlib_path and disable_stdlib, report parse errors
-    let (user_stdlib_path, disable_stdlib) = match &config_file {
+    // 3. Parse config file — report parse errors. The config has no say in
+    //    library resolution (see step 4).
+    match &config_file {
         Some(path) => match std::fs::read_to_string(path) {
             Ok(source) => match crate::config_file::parse_config(&source) {
-                Ok(config) => (
-                    config
-                        .stdlib_path()
-                        .map(PathBuf::from)
-                        .filter(|p| p.exists()),
-                    config.disable_stdlib(),
-                ),
+                Ok(_config) => {}
                 Err(e) => {
                     if let Ok(_uri) = Url::from_file_path(path) {
                         // The config parser reports a byte span; convert it to an LSP range by
@@ -129,26 +126,31 @@ fn resolve_all(
                             ..Default::default()
                         }));
                     }
-                    (None, false)
                 }
             },
-            Err(_) => (None, false),
+            Err(_) => {}
         },
-        None => (None, false),
-    };
+        None => {}
+    }
 
-    // 4. Resolve stdlib: skip if disable_stdlib is set, otherwise user override > default
-    let stdlib_path = if disable_stdlib {
-        None
-    } else {
-        let path = user_stdlib_path.or_else(crate::loader::resolve_stdlib_path);
-        if path.is_none() {
-            notices.push(ConfigurationNotice::StdlibNotFound);
+    // 4. Resolve the library from RK_STDLIB_PATH — the only source. Not
+    // finding one is never fatal: the user can still write code, and uses of
+    // library names simply fail to resolve like any other unknown name.
+    use crate::loader::LibraryPathResolution;
+    let library_path = match crate::loader::resolve_library_path(workspace_folder.as_deref()) {
+        LibraryPathResolution::Found(dir) => Some(dir),
+        LibraryPathResolution::Disabled => None,
+        LibraryPathResolution::Unset => {
+            notices.push(ConfigurationNotice::LibraryNotConfigured);
+            None
         }
-        path
+        LibraryPathResolution::Invalid(value) => {
+            notices.push(ConfigurationNotice::LibraryPathInvalid { value });
+            None
+        }
     };
 
-    (workspace_folder, stdlib_path, config_file)
+    (workspace_folder, library_path, config_file)
 }
 
 /// Configuration-level issue with no specific file location.
@@ -157,7 +159,10 @@ fn resolve_all(
 pub enum ConfigurationNotice {
     InvalidWorkspaceUri { uri: Url },
     ConfigFileNotFound { path: PathBuf },
-    StdlibNotFound,
+    /// `RK_STDLIB_PATH` is not set anywhere.
+    LibraryNotConfigured,
+    /// `RK_STDLIB_PATH` is set to something that is not a readable directory.
+    LibraryPathInvalid { value: String },
 }
 
 impl Display for ConfigurationNotice {
@@ -173,8 +178,21 @@ impl Display for ConfigurationNotice {
                     path.display()
                 )
             }
-            ConfigurationNotice::StdlibNotFound => {
-                write!(f, "standard library not found")
+            ConfigurationNotice::LibraryNotConfigured => {
+                write!(
+                    f,
+                    "RK_STDLIB_PATH is not set — no standard library loaded, so \
+                     Std.* names will not resolve. Set it in the environment or \
+                     in a .env file at the workspace root; the empty string \
+                     silences this message."
+                )
+            }
+            ConfigurationNotice::LibraryPathInvalid { value } => {
+                write!(
+                    f,
+                    "RK_STDLIB_PATH points to '{value}', which is not a readable \
+                     directory — no standard library loaded"
+                )
             }
         }
     }

@@ -14,7 +14,7 @@ use crate::{
     },
     hir_ty::index_graphs::namespace_index,
     query_string::{
-        file::{file_symbol_index, std_lib_symbol_index},
+        file::{file_symbol_index, library_symbol_index},
         query::{Query, SymbolKind},
         variables::variable_symbol_index,
     },
@@ -139,7 +139,7 @@ impl<'db, F: Fn(&Pou<'db>, &'db dyn WorkspaceDataBase) -> bool> SymbolSearch<'db
             }
         }
 
-        // Phase 2: Search for POUs and/or namespaces in file+stdlib indexes
+        // Phase 2: Search for POUs and/or namespaces in file+library indexes
         if self.include_pous || self.include_namespaces {
             let local = self.scope.map(|s| discover_in_scope(db, s));
 
@@ -250,7 +250,7 @@ fn collect_scope_variables<'db>(
     all_variable_names
 }
 
-/// Search file+stdlib indexes for POUs and/or namespaces
+/// Search file+library indexes for POUs and/or namespaces
 #[allow(clippy::too_many_arguments)]
 fn search_file_indexes<'db>(
     db: &'db dyn WorkspaceDataBase,
@@ -263,13 +263,13 @@ fn search_file_indexes<'db>(
     include_namespaces: bool,
     search_result: &mut SearchResult<'db>,
 ) {
-    // Collect per-file symbol indexes for workspace files + single stdlib index
+    // Collect per-file symbol indexes for workspace files + single library index
     let mut indexes: Vec<_> = db
         .get_files()
         .iter()
         .map(|file| file_symbol_index(db, *file))
         .collect();
-    indexes.push(std_lib_symbol_index(db));
+    indexes.push(library_symbol_index(db));
 
     // Track POUs we've already added to avoid duplicates from the same namespace
     let mut seen_pous: FxHashSet<(Option<NamespacePath>, String)> = FxHashSet::default();

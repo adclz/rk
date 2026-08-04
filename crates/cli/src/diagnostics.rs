@@ -335,7 +335,9 @@ mod tests {
         let ws = tempfile::tempdir().expect("tempdir");
         std::fs::write(ws.path().join("config.toml"), CONFIG_TOML).unwrap();
         std::fs::write(ws.path().join("main.st"), SRC).unwrap();
-        let db = init_db(ws.path(), false, false, true).expect("init db");
+        // Tests must not inherit the developer's library environment.
+        unsafe { std::env::remove_var(db::loader::STDLIB_PATH_ENV) };
+        let db = init_db(ws.path(), false, true).expect("init db");
         let per_file = collect_diagnostics(&db, false);
         let mut out = Vec::new();
         let counts = DiagnosticReporter::new(&db, ws.path())
@@ -414,7 +416,9 @@ mod tests {
             "FUNCTION f : INT\nVAR unused : INT; END_VAR\n    f := 1;\nEND_FUNCTION\n",
         )
         .unwrap();
-        let db = init_db(ws.path(), false, false, true).expect("init db");
+        // Tests must not inherit the developer's library environment.
+        unsafe { std::env::remove_var(db::loader::STDLIB_PATH_ENV) };
+        let db = init_db(ws.path(), false, true).expect("init db");
         let per_file = collect_diagnostics(&db, true);
         let mut out = Vec::new();
         let counts = DiagnosticReporter::new(&db, ws.path())
@@ -445,11 +449,13 @@ mod tests {
         std::fs::write(ws.path().join("main.st"), SRC).unwrap();
 
         assert!(
-            init_db(ws.path(), false, false, true).is_none(),
+            init_db(ws.path(), false, true).is_none(),
             "require_config must still refuse"
         );
 
-        let db = init_db(ws.path(), false, false, false).expect("configless init");
+        // Tests must not inherit the developer's library environment.
+        unsafe { std::env::remove_var(db::loader::STDLIB_PATH_ENV) };
+        let db = init_db(ws.path(), false, false).expect("configless init");
         let per_file = collect_diagnostics(&db, true);
         let mut out = Vec::new();
         let counts = DiagnosticReporter::new(&db, ws.path())

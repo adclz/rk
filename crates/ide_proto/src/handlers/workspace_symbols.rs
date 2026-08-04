@@ -6,7 +6,7 @@ use hir::{
     HirNodeInfo,
     hir_def::pous::pou::Pou,
     query_string::{
-        file::{file_symbol_index, std_lib_symbol_index},
+        file::{file_symbol_index, library_symbol_index},
         query::{self, NamedSymbol, Query, SymbolIndex},
     },
 };
@@ -25,7 +25,7 @@ pub fn workspace_symbols(db: &dyn WorkspaceDataBase, query_str: &str) -> Vec<Wor
     for file in db.get_files().iter() {
         indices.push(file_symbol_index(db, *file));
     }
-    indices.push(std_lib_symbol_index(db));
+    indices.push(library_symbol_index(db));
 
     let mut results: Vec<WorkspaceSymbol> = Vec::new();
 

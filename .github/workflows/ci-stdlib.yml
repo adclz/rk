@@ -20,6 +20,8 @@ jobs:
     runs-on: ubuntu-latest
     env:
       CARGO_TERM_COLOR: always
+      # The workspace under test IS the stdlib - Empty = load no stdlib.
+      RK_STDLIB_PATH: ""
     steps:
       - name: Free disk space
         run: |

@@ -15,7 +15,7 @@ pub mod workspace;
 pub struct RootDatabase {
     storage: salsa::Storage<Self>,
     pub(crate) workspace_files: DashMap<Url, File>,
-    pub(crate) std_lib_files: DashMap<Url, File>,
+    pub(crate) library_files: DashMap<Url, File>,
 }
 
 impl RootDatabase {
@@ -45,12 +45,14 @@ impl BaseDatabase for RootDatabase {
 
 #[salsa::db]
 pub trait WorkspaceDataBase: Database + BaseDatabase {
-    fn get_std_lib_files(&self) -> &DashMap<Url, File>;
+    /// Files of loaded libraries: analyzed exactly like workspace code, but
+    /// not part of the workspace: no diagnostics, no LSP requests.
+    fn get_library_files(&self) -> &DashMap<Url, File>;
 }
 
 #[salsa::db]
 impl WorkspaceDataBase for RootDatabase {
-    fn get_std_lib_files(&self) -> &DashMap<Url, File> {
-        &self.std_lib_files
+    fn get_library_files(&self) -> &DashMap<Url, File> {
+        &self.library_files
     }
 }

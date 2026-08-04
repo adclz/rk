@@ -15,18 +15,6 @@ pub struct Config {
 }
 
 impl Config {
-    /// Convenience: get stdlib_path from settings.
-    pub fn stdlib_path(&self) -> Option<&str> {
-        self.settings.as_ref()?.stdlib_path.as_deref()
-    }
-
-    /// Convenience: check if stdlib is disabled.
-    pub fn disable_stdlib(&self) -> bool {
-        self.settings
-            .as_ref()
-            .is_some_and(|s| s.disable_stdlib.unwrap_or(false))
-    }
-
     /// Convenience: get output config from settings.
     pub fn output(&self) -> Option<&OutputConfig> {
         self.settings.as_ref()?.output.as_ref()
@@ -36,8 +24,6 @@ impl Config {
 #[derive(Default, Clone, Debug, PartialEq, Eq, Hash, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct SettingsConfig {
-    pub stdlib_path: Option<String>,
-    pub disable_stdlib: Option<bool>,
     pub output: Option<OutputConfig>,
     /// WASM optimization level: 0-4, "s" (size), "z" (aggressive size).
     /// Requires wasm-opt. Default: no optimization.
@@ -131,10 +117,6 @@ mod tests {
 name = "Lisa"
 version = "1"
 
-[settings]
-stdlib_path = "/custom/stdlib"
-disable_stdlib = false
-
 [settings.output]
 directory = "build"
 "#
@@ -145,13 +127,11 @@ directory = "build"
         let config: Config = parse_config(full_config()).unwrap();
         assert_eq!(config.project.name, "Lisa");
         assert_eq!(config.project.version, "1");
-        assert_eq!(config.stdlib_path(), Some("/custom/stdlib"));
-        assert!(!config.disable_stdlib());
         assert_eq!(config.output().unwrap().directory, "build");
     }
 
     #[test]
-    fn valid_without_stdlib_path() {
+    fn valid_with_output_only() {
         let config: Config = parse_config(
             r#"
 [project]
@@ -165,7 +145,6 @@ directory = "out"
         .unwrap();
         assert_eq!(config.project.name, "Test");
         assert_eq!(config.project.version, "2");
-        assert_eq!(config.stdlib_path(), None);
         assert_eq!(config.output().unwrap().directory, "out");
     }
 
@@ -181,23 +160,20 @@ version = "1"
         .unwrap();
         assert_eq!(config.project.name, "Test");
         assert!(config.output().is_none());
-        assert!(!config.disable_stdlib());
     }
 
+    /// Library acquisition moved out of the project config entirely — it is
+    /// selected by `RK_STDLIB_PATH` alone. Both former keys are rejected so a
+    /// stale config fails loudly instead of silently meaning something else.
     #[test]
-    fn disable_stdlib_enabled() {
-        let config: Config = parse_config(
-            r#"
-[project]
-name = "Test"
-version = "1"
-
-[settings]
-disable_stdlib = true
-"#,
-        )
-        .unwrap();
-        assert!(config.disable_stdlib());
+    fn removed_stdlib_keys_are_rejected() {
+        for key in ["disable_stdlib = true", "stdlib_path = \"/x\""] {
+            let err = parse_config(&format!(
+                "[project]\nname = \"T\"\nversion = \"1\"\n\n[settings]\n{key}\n"
+            ))
+            .unwrap_err();
+            assert!(err.message().contains("unknown field"), "{}", err.message());
+        }
     }
 
     #[test]
@@ -205,7 +181,7 @@ disable_stdlib = true
         let err = parse_config(
             r#"
 [settings]
-disable_stdlib = true
+opt_level = "2"
 "#,
         )
         .unwrap_err();

@@ -121,12 +121,12 @@ pub fn file_configs<'db>(db: &'db dyn WorkspaceDataBase, file: File) -> Arc<Vec<
 // Helpers
 // ---------------------------------------------------------------------------
 
-/// Helper to iterate over all workspace + stdlib files.
+/// Helper to iterate over all workspace + library files.
 fn all_files<'db>(db: &'db dyn WorkspaceDataBase) -> impl Iterator<Item = File> + 'db {
     db.get_files()
         .iter()
         .map(|e| *e)
-        .chain(db.get_std_lib_files().iter().map(|e| *e))
+        .chain(db.get_library_files().iter().map(|e| *e))
 }
 
 // ---------------------------------------------------------------------------

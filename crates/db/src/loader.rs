@@ -16,19 +16,71 @@ type ParseResult = Result<(Url, Arc<Document>), Box<dyn std::error::Error + Send
 
 // --- Path resolution ---
 
-/// Resolves the stdlib path.
+/// Environment variable naming the standard library's directory.
 ///
-/// In debug builds, looks for `stdlib/` relative to CWD (assumes repo root).
-/// In release builds, extracts embedded stdlib to `$HOME/.rk_std/` and returns that path.
-pub fn resolve_stdlib_path() -> Option<PathBuf> {
-    if cfg!(debug_assertions) {
-        let path = PathBuf::from("stdlib");
-        if path.exists() {
-            return std::fs::canonicalize(path).ok();
+/// The compiler has no notion of a standard library — only of a library
+/// directory, loaded alongside the workspace and analyzed like any other
+/// code. This variable is the only way a library is acquired; it is read
+/// from the process environment first, then from a `.env` file at the
+/// workspace root (process wins, the usual dotenv convention).
+pub const STDLIB_PATH_ENV: &str = "RK_STDLIB_PATH";
+
+/// What the library variable said.
+pub enum LibraryPathResolution {
+    /// Not set anywhere: no library loads, and it is worth telling the user
+    /// why `Std.*` names will not resolve.
+    Unset,
+    /// Set to the empty string: the explicit, silent "no library" — how the
+    /// standard library's own workspace avoids loading a second copy of
+    /// itself (see `stdlib/.env`).
+    Disabled,
+    /// Set to a directory that exists.
+    Found(PathBuf),
+    /// Set to something that is not a readable directory. Never silently
+    /// ignored: compiling against a library the user did not choose would be
+    /// worse than compiling against none.
+    Invalid(String),
+}
+
+/// Resolves the library directory from `RK_STDLIB_PATH`.
+pub fn resolve_library_path(workspace: Option<&Path>) -> LibraryPathResolution {
+    let value = std::env::var(STDLIB_PATH_ENV)
+        .ok()
+        .or_else(|| workspace.and_then(read_dotenv_var));
+    match value {
+        None => LibraryPathResolution::Unset,
+        Some(v) if v.is_empty() => LibraryPathResolution::Disabled,
+        Some(v) => match std::fs::canonicalize(&v) {
+            Ok(dir) if dir.is_dir() => LibraryPathResolution::Found(dir),
+            _ => LibraryPathResolution::Invalid(v),
+        },
+    }
+}
+
+/// Reads `RK_STDLIB_PATH` from `<workspace>/.env`, if present.
+///
+/// Deliberately minimal: `KEY=VALUE` lines, `#` comments, optional single or
+/// double quotes around the value. Only this one variable is looked up.
+fn read_dotenv_var(workspace: &Path) -> Option<String> {
+    let text = std::fs::read_to_string(workspace.join(".env")).ok()?;
+    for line in text.lines() {
+        let line = line.trim();
+        if line.starts_with('#') {
+            continue;
+        }
+        if let Some((key, value)) = line.split_once('=')
+            && key.trim() == STDLIB_PATH_ENV
+        {
+            let value = value.trim();
+            let value = value
+                .strip_prefix('"')
+                .and_then(|v| v.strip_suffix('"'))
+                .or_else(|| value.strip_prefix('\'').and_then(|v| v.strip_suffix('\'')))
+                .unwrap_or(value);
+            return Some(value.to_string());
         }
     }
-
-    crate::embedded_stdlib::ensure_stdlib_extracted()
+    None
 }
 
 /// Resolves the workspace config file (`config.toml` at the workspace root).
@@ -123,19 +175,17 @@ pub fn load_workspace(db: &mut RootDatabase, path: &Path) -> Vec<Result<File, St
         .collect()
 }
 
-/// Loads all stdlib `.st` files into the database with HIGH durability.
-///
-/// Reads the stdlib path from `Configuration`, discovers files recursively,
-/// and inserts them into `std_lib_files` (not workspace files).
-pub fn load_stdlib(db: &mut RootDatabase) {
+/// Loads all library `.st` files with HIGH durability: libraries rarely
+/// change, so salsa can skip re-validating queries that only touched them.
+pub fn load_libraries(db: &mut RootDatabase) {
     let Some(config) = Workspace::try_get(db) else {
         return;
     };
-    let Some(stdlib_path) = config.stdlib_path(db) else {
+    let Some(library_path) = config.library_path(db) else {
         return;
     };
 
-    let paths = find_st_files(stdlib_path);
+    let paths = find_st_files(library_path);
     let parsers = &*ast::RK_PARSER;
 
     let parsed: Vec<_> = paths
@@ -149,9 +199,9 @@ pub fn load_stdlib(db: &mut RootDatabase) {
                 let file = File::builder(url.clone(), parsers, document, None)
                     .durability(Durability::HIGH)
                     .new(db);
-                db.std_lib_files.insert(url, file);
+                db.library_files.insert(url, file);
             }
-            Err(e) => eprintln!("failed to load stdlib file: {}", e),
+            Err(e) => eprintln!("failed to load library file: {}", e),
         }
     }
 }

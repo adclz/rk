@@ -7,14 +7,14 @@ use crate::{
     query_string::query::{NamedSymbol, SymbolIndex, SymbolKind},
 };
 
-/// std lib symbol index containing all POUs from stdlib files
+/// Library symbol index containing all POUs from library files
 /// tracked because std lib files have high durability and are not expected to change often
 #[tracing::instrument(skip_all)]
 #[salsa::tracked(no_eq)]
-pub fn std_lib_symbol_index<'db>(db: &'db dyn WorkspaceDataBase) -> SymbolIndex<'db> {
+pub fn library_symbol_index<'db>(db: &'db dyn WorkspaceDataBase) -> SymbolIndex<'db> {
     let mut items = Vec::new();
 
-    for file in db.get_std_lib_files().iter() {
+    for file in db.get_library_files().iter() {
         let sema = semantic_index(db, *file);
 
         // Global POUs

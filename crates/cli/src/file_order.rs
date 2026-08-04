@@ -1,22 +1,7 @@
-//! One deterministic order over the workspace's files.
-//!
-//! The database stores files in `DashMap`s, which is right for concurrent
-//! access but gives no iteration order — and `DashMap` seeds a fresh
-//! `RandomState` per process, so the order differs on every run. That is
-//! invisible until the order reaches something ordered downstream, and it does:
-//! the sequence handed to `lower_modules` becomes `all_pous` push order, which
-//! becomes the wasm function index space. Six builds of the stdlib produced six
-//! distinct artifacts, differing in about 80% of their bytes while behaving
-//! identically.
-//!
-//! The fix is not to change how files are STORED — the maps stay exactly as
-//! they are, concurrency and all — but to impose an order where one is needed,
-//! at the point of iteration. Sorting a few hundred URLs once per build costs
-//! nothing next to codegen.
-//!
-//! Anything that feeds compilation, or that emits per-file output a human or a
-//! snapshot test will read, should take its files from here rather than
-//! iterating the maps directly.
+//! One deterministic order over the workspace's files. The database stores
+//! files in `DashMap`s, whose iteration order changes per process, and
+//! that order reaches the wasm function index space. Anything that feeds
+//! compilation or per-file output takes its files from here.
 
 use auto_lsp::default::db::{BaseDatabase, file::File};
 use db::{RootDatabase, WorkspaceDataBase};
@@ -32,14 +17,13 @@ pub fn ordered_files(db: &RootDatabase) -> Vec<File> {
     files
 }
 
-/// The workspace's files followed by the stdlib's, each group in URL order.
-///
-/// The two groups are kept apart rather than merged and sorted as one, so that
-/// adding a workspace file cannot renumber the stdlib's functions.
-pub fn ordered_files_with_stdlib(db: &RootDatabase) -> Vec<File> {
+/// The workspace's files followed by the libraries', each group in URL
+/// order, so adding a workspace file cannot renumber the libraries'
+/// functions.
+pub fn ordered_files_with_libraries(db: &RootDatabase) -> Vec<File> {
     let mut files = ordered_files(db);
     let mut std_files: Vec<File> = db
-        .get_std_lib_files()
+        .get_library_files()
         .iter()
         .map(|entry| *entry.value())
         .collect();
@@ -99,11 +83,11 @@ mod tests {
     /// one process. A genuinely unordered walk goes in `ALLOWED` with a note.
     #[test]
     fn nothing_else_iterates_the_file_maps() {
-        /// Sites permitted to touch the maps directly, relative to `src/`.
-        /// `file_order.rs` is the one that imposes the order.
-        const ALLOWED: &[&str] = &["file_order.rs"];
+        /// Sites permitted to touch the maps directly: `file_order.rs` imposes
+        /// the order; `workspace.rs` only asserts membership in tests.
+        const ALLOWED: &[&str] = &["file_order.rs", "workspace.rs"];
         // Split so this test does not match its own source.
-        let banned = ["get_files", "get_std_lib_files"].map(|n| format!("{n}()"));
+        let banned = ["get_files", "get_library_files"].map(|n| format!("{n}()"));
 
         let src = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("src");
         let mut offenders = Vec::new();

@@ -185,7 +185,7 @@ pub fn boot() -> Result<(), Box<dyn Error + Send + Sync>> {
     )?;
 
     refresh_configuration(&mut session, params.root_uri.clone())?;
-    db::loader::load_stdlib(&mut session.db);
+    db::loader::load_libraries(&mut session.db);
 
     // Load workspace files
     if let Some(folders) = params.workspace_folders {
@@ -249,7 +249,7 @@ fn on_notifications(
         .on_mut::<DidOpenTextDocument, _>(|s, p| {
             match p.text_document.uri.as_str().ends_with(".st") {
                 true => {
-                    if s.db.get_std_lib_files().contains_key(&p.text_document.uri) {
+                    if s.db.get_library_files().contains_key(&p.text_document.uri) {
                         return Ok(());
                     }
                     Ok(open_text_document(s, p, &RK_PARSER)?)
@@ -260,7 +260,7 @@ fn on_notifications(
         .on_mut::<DidChangeTextDocument, _>(|s, p| {
             match p.text_document.uri.as_str().ends_with(".st") {
                 true => {
-                    if s.db.get_std_lib_files().contains_key(&p.text_document.uri) {
+                    if s.db.get_library_files().contains_key(&p.text_document.uri) {
                         return Ok(());
                     }
                     Ok(change_text_document(s, p)?)
@@ -311,7 +311,7 @@ fn on_notifications(
 /// File-attached errors (e.g. config.toml parse errors) are pushed via
 /// `textDocument/publishDiagnostics`. An empty list is always sent so the
 /// client clears stale squiggles when errors are fixed. Errors without a
-/// file location (e.g. stdlib not found) are reported via `window/showMessage`.
+/// file location (e.g. no library configured) are reported via `window/showMessage`.
 fn refresh_configuration(
     session: &mut Session<RootDatabase>,
     workspace_uri: Option<Url>,

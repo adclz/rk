@@ -1,5 +1,11 @@
 //! Embeds the standard library `.st` files into the binary at compile time
-//! and extracts them to `$HOME/.rk_std/` on first use (or when the version changes).
+//! and extracts them to `$HOME/.rk_std/` — DISTRIBUTION ONLY.
+//!
+//! Nothing loads this implicitly: libraries are acquired exclusively through
+//! `RK_STDLIB_PATH` (see `loader::resolve_library_path`). This module only
+//! ships the sources so a future, hash-verified flow can materialize them and
+//! point the variable at the result; until that lands,
+//! `ensure_stdlib_extracted` has no caller.
 
 use std::fs;
 use std::path::PathBuf;

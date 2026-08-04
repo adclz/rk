@@ -19,11 +19,8 @@ use crate::{
     types::MirType,
 };
 
-/// Workspace-relative file + 1-based line of a test FUNCTION's declaration,
-/// for the test manifest. Paths are stored RELATIVE so the artifact stays
-/// byte-reproducible across machines: workspace files strip the workspace
-/// root, stdlib files render as `<stdlib>/…`, and anything else falls back to
-/// the bare file name.
+/// Workspace-relative file and 1-based line of a test FUNCTION, for the
+/// manifest; relative so the artifact is reproducible across machines.
 fn test_location<'db>(
     db: &'db dyn WorkspaceDataBase,
     func: Function<'db>,
@@ -43,10 +40,10 @@ fn test_location<'db>(
     {
         return (rel.to_string_lossy().into_owned(), line);
     }
-    if let Some(stdlib) = workspace.and_then(|w| w.stdlib_path(db).clone())
-        && let Ok(rel) = path.strip_prefix(&stdlib)
+    if let Some(lib) = workspace.and_then(|w| w.library_path(db).clone())
+        && let Ok(rel) = path.strip_prefix(&lib)
     {
-        return (format!("<stdlib>/{}", rel.to_string_lossy()), line);
+        return (format!("<lib>/{}", rel.to_string_lossy()), line);
     }
     let name = path
         .file_name()

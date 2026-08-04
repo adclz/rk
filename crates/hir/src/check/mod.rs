@@ -34,7 +34,7 @@ pub mod errors;
 pub fn diagnostics_for_file(db: &dyn WorkspaceDataBase, file: File) -> Arc<Vec<IdeDiagnostic>> {
     let mut all_diagnostics = vec![];
 
-    // No config.toml: still analyze — defaults apply and the bundled stdlib
+    // No config.toml: still analyze — defaults apply and the library
     // resolves — but lead with a hint that this file is outside a project.
     // (Analysis used to be skipped entirely here, which made a configless
     // `rk check` return nothing but the hint.)
