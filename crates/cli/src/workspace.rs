@@ -232,6 +232,41 @@ END_NAMESPACE
         );
     }
 
+    /// Only the workspace's tests enter the manifest: a library is compiled
+    /// like everything else, but its tests are not this workspace's to run.
+    #[test]
+    fn library_tests_stay_out_of_the_manifest() {
+        let lib = tempfile::tempdir().expect("lib tempdir");
+        let lib_root = std::fs::canonicalize(lib.path()).unwrap();
+        std::fs::write(
+            lib_root.join("s.st"),
+            "NAMESPACE Std.S\n{test}\nFUNCTION test_lib : BOOL\n    test_lib := TRUE;\nEND_FUNCTION\nEND_NAMESPACE\n",
+        )
+        .unwrap();
+        set_env(lib_root.as_os_str());
+
+        let (_ws, root) = write_workspace(&[(
+            "main.st",
+            "{test}\nFUNCTION test_mine : BOOL\n    test_mine := TRUE;\nEND_FUNCTION\n",
+        )]);
+        let (db, counts, out) = check(&root);
+        assert!(!counts.has_errors(), "precondition:\n{out}");
+
+        let sem_indices: Vec<_> = crate::file_order::ordered_files_with_libraries(&db)
+            .into_iter()
+            .map(|file| hir::hir_def::semantic_index::semantic_index(&db, file))
+            .collect();
+        let module = mir::lower::lower_module::lower_modules(&db, &sem_indices)
+            .expect("lowering must succeed");
+        let names: Vec<_> = module
+            .test_manifest
+            .tests
+            .iter()
+            .map(|t| t.path.as_str())
+            .collect();
+        assert_eq!(names, ["test_mine"], "only the workspace test runs");
+    }
+
     /// Reopening a library namespace overloads it like any other file would:
     /// the compiler makes no distinction between library and workspace
     /// declarations.

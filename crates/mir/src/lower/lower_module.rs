@@ -52,6 +52,17 @@ fn test_location<'db>(
     (name, line)
 }
 
+/// Whether a test FUNCTION belongs to the workspace — only those enter the
+/// test manifest. Library files are compiled like everything else, but their
+/// tests are not this workspace's to run; membership in the workspace field
+/// is the same rule the LSP uses to scope its requests.
+fn is_workspace_test<'db>(db: &'db dyn WorkspaceDataBase, func: Function<'db>) -> bool {
+    use auto_lsp::default::db::BaseDatabase;
+    use hir::HirNodeInfo;
+    let file = func.get_scope_id(db).file(db);
+    db.get_files().contains_key(file.url(db))
+}
+
 /// Pin a codegen error to a POU declaration; the innermost location
 /// already attached wins.
 fn at_pou<'db, T>(
@@ -194,7 +205,9 @@ fn lower_module_from_pous<'db>(
                     {
                         mir_func.export_name = Some(mir_func.name.text(db).to_string().into());
 
-                        if hir::hir_def::pous::pragma::is_test(db, func.pragmas(db)) {
+                        if hir::hir_def::pous::pragma::is_test(db, func.pragmas(db))
+                            && is_workspace_test(db, *func)
+                        {
                             let export_name = mir_func
                                 .export_name
                                 .as_ref()
@@ -259,7 +272,9 @@ fn lower_module_from_pous<'db>(
                 next_fn_idx += 1;
 
                 // Collect test entry if marked with {test}
-                if hir::hir_def::pous::pragma::is_test(db, func.pragmas(db)) {
+                if hir::hir_def::pous::pragma::is_test(db, func.pragmas(db))
+                    && is_workspace_test(db, *func)
+                {
                     let export_name = mir_func
                         .export_name
                         .as_ref()
