@@ -38,8 +38,12 @@ fn ambiguous_using_same_name(mut with_db: RootDatabase) {
     ");
 }
 
+/// Same-name FUNCTIONs reachable through ONE namespace path are an overload
+/// set, not an ambiguity — so the call resolves and only the genuine defect
+/// (identical signatures = duplicate definitions) is reported. Contrast with
+/// `ambiguous_using_same_name`, where the matches come from DIFFERENT paths.
 #[rstest]
-fn ambiguous_using_duplicate_in_same_namespace(mut with_db: RootDatabase) {
+fn duplicate_in_same_namespace_is_one_error_not_ambiguity(mut with_db: RootDatabase) {
     let source = r#"
         NAMESPACE ns
             FUNCTION SharedName : INT
@@ -70,27 +74,6 @@ fn ambiguous_using_duplicate_in_same_namespace(mut with_db: RootDatabase) {
        |                      ^^^^^|^^^^
        |                           `------ duplicate POU 'SharedName'
     ---'
-    [E0225] Error: multiple items in scope
-        ,-[ file:///test0.st:16:21 ]
-        |
-      3 |   ,->             FUNCTION SharedName : INT
-        :   :
-      5 |   |->             END_FUNCTION
-        |   |
-        |   `------------------------------ 'SharedName' declared here
-        |
-      9 | ,--->             FUNCTION SharedName : INT
-        : :
-     11 | |--->             END_FUNCTION
-        | |
-        | `-------------------------------- 'SharedName' declared here
-        |
-     16 |                   test := SharedName();
-        |                           ^^^^^|^^^^
-        |                                `------ multiple items named 'SharedName' available in scope
-        |
-        |       Note: 'SharedName' is declared multiple times in namespace 'ns'
-    ----'
     ");
 }
 

@@ -195,6 +195,20 @@ pub fn find_in_parent_pous<'db>(
             0 => continue,
             1 => return PouResolution::Found(matches[0].0, Some(matches[0].2)),
             _ => {
+                // Same-name FUNCTIONs reachable through ONE namespace path are
+                // an overload set, not an ambiguity — files reopening a
+                // namespace (a library's included) overload each other, and
+                // the call site picks by signature (`select_overload`).
+                // Identical signatures are E0101 duplicates, equally-viable
+                // calls E0237. Matches from DIFFERENT paths, or involving
+                // non-overloadable POUs, stay genuinely ambiguous.
+                let first_path = matches[0].1;
+                if matches
+                    .iter()
+                    .all(|(p, path, _)| *path == first_path && matches!(p, Pou::Function(_)))
+                {
+                    return PouResolution::Found(matches[0].0, Some(matches[0].2));
+                }
                 return PouResolution::Ambiguous(
                     matches.into_iter().map(|(p, ns, _)| (p, ns)).collect(),
                 );
