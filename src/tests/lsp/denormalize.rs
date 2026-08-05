@@ -111,7 +111,7 @@ fn denormalize_position_to_offset_round_trip(
     let lsp = denormalize(&with_db, file, &raw).unwrap();
     let offset = position_to_offset(&with_db, file, lsp.start).unwrap();
 
-    assert_eq!(offset, raw.start_byte as usize);
+    assert_eq!(offset, raw.start_byte);
 }
 
 /// A multi-byte char on an earlier line must not shift columns on later lines (line-local conversion).

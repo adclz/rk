@@ -35,13 +35,13 @@ fn test_location<'db>(
         return (String::new(), line);
     };
     let workspace = Workspace::try_get(db);
-    if let Some(root) = workspace.and_then(|w| w.workspace_folder(db).clone())
-        && let Ok(rel) = path.strip_prefix(&root)
+    if let Some(root) = workspace.and_then(|w| w.workspace_folder(db))
+        && let Ok(rel) = path.strip_prefix(root)
     {
         return (rel.to_string_lossy().into_owned(), line);
     }
-    if let Some(lib) = workspace.and_then(|w| w.library_path(db).clone())
-        && let Ok(rel) = path.strip_prefix(&lib)
+    if let Some(lib) = workspace.and_then(|w| w.library_path(db))
+        && let Ok(rel) = path.strip_prefix(lib)
     {
         return (format!("<lib>/{}", rel.to_string_lossy()), line);
     }
@@ -57,7 +57,6 @@ fn test_location<'db>(
 /// tests are not this workspace's to run; membership in the workspace field
 /// is the same rule the LSP uses to scope its requests.
 fn is_workspace_test<'db>(db: &'db dyn WorkspaceDataBase, func: Function<'db>) -> bool {
-    use auto_lsp::default::db::BaseDatabase;
     use hir::HirNodeInfo;
     let file = func.get_scope_id(db).file(db);
     db.get_files().contains_key(file.url(db))

@@ -106,31 +106,24 @@ fn resolve_all(
 
     // 3. Parse config file — report parse errors. The config has no say in
     //    library resolution (see step 4).
-    match &config_file {
-        Some(path) => match std::fs::read_to_string(path) {
-            Ok(source) => match crate::config_file::parse_config(&source) {
-                Ok(_config) => {}
-                Err(e) => {
-                    if let Ok(_uri) = Url::from_file_path(path) {
-                        // The config parser reports a byte span; convert it to an LSP range by
-                        // counting line breaks in the already-read `source`.
-                        let range = e
-                            .span()
-                            .map(|span| byte_range_to_lsp(&source, span))
-                            .unwrap_or_default();
-                        file_errors.push(IdeDiagnostic::new(Diagnostic {
-                            range,
-                            severity: Some(DiagnosticSeverity::ERROR),
-                            source: Some("rk-lsp".to_string()),
-                            message: e.message().to_string(),
-                            ..Default::default()
-                        }));
-                    }
-                }
-            },
-            Err(_) => {}
-        },
-        None => {}
+    if let Some(path) = &config_file
+        && let Ok(source) = std::fs::read_to_string(path)
+        && let Err(e) = crate::config_file::parse_config(&source)
+        && Url::from_file_path(path).is_ok()
+    {
+        // The config parser reports a byte span; convert it to an LSP range by
+        // counting line breaks in the already-read `source`.
+        let range = e
+            .span()
+            .map(|span| byte_range_to_lsp(&source, span))
+            .unwrap_or_default();
+        file_errors.push(IdeDiagnostic::new(Diagnostic {
+            range,
+            severity: Some(DiagnosticSeverity::ERROR),
+            source: Some("rk-lsp".to_string()),
+            message: e.message().to_string(),
+            ..Default::default()
+        }));
     }
 
     // 4. Resolve the library from RK_STDLIB_PATH — the only source. Not

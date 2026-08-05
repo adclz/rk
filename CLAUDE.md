@@ -6,7 +6,7 @@
 
 The architecture follows **CST → AST → HIR → Type Checking → IDE features**, similar to rust-analyzer.
 
-- **Language**: Rust (edition 2024, nightly toolchain)
+- **Language**: Rust (edition 2024, toolchain pinned by rust-toolchain.toml)
 - **License**: AGPL-3.0-only
 - **Author**: Clauzel Adrien
 
@@ -282,7 +282,7 @@ Server binary resolution:
 ## Important Notes
 
 - The `salsa` version MUST stay in sync with `auto-lsp`'s salsa version (currently 0.23.0)
-- Rust **nightly** toolchain is required (edition 2024)
+- The Rust toolchain is pinned by `rust-toolchain.toml` (stable; rustup applies it automatically). Only the fuzzers need nightly (`cargo +nightly`)
 - `crates/ast/src/generated.rs` is auto-generated — never edit it manually
 - Tree-sitter grammar changes require running `tree-sitter generate` before rebuilding
 - Insta snapshots use ASCII charset and no color for deterministic output across environments

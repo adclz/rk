@@ -1,6 +1,7 @@
 name: Clippy check
 on:
   push:
+    branches: [main]
     paths-ignore:
       - "**.md"
       - "**.js"
@@ -20,5 +21,10 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v6
+      # Installs the toolchain pinned by rust-toolchain.toml — the same one
+      # developers lint with locally.
+      - name: Install pinned toolchain
+        run: rustup toolchain install
+      - uses: Swatinem/rust-cache@v2
       - name: Run Clippy
         run: cargo clippy --all-targets --all-features

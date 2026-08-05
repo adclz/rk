@@ -1,6 +1,7 @@
 name: rust
 on:
   push:
+    branches: [main]
     paths-ignore:
       - "**.md"
       - "**.js"
