@@ -84,7 +84,7 @@ pub fn parse_config(content: &str) -> Result<Config, toml::de::Error> {
 }
 
 #[salsa::tracked(returns(ref))]
-pub fn get_config<'db>(db: &'db dyn WorkspaceDataBase) -> Config {
+pub fn get_config(db: &dyn WorkspaceDataBase) -> Config {
     let Some(config) = Workspace::try_get(db) else {
         return Config::default();
     };

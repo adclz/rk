@@ -584,8 +584,9 @@ fn lower_module_from_pous<'db>(
     // Done AFTER the retain relocation so instance addresses are final, and
     // after monomorphization so function indices continue its contiguous scheme.
     if let Some(sched) = module.schedule.clone() {
-        let mut idx = module.functions.len() as u32 + module.extern_functions.len() as u32;
+        let first_idx = module.functions.len() as u32 + module.extern_functions.len() as u32;
         for (i, task) in sched.tasks.iter().enumerate() {
+            let idx = first_idx + i as u32;
             let entry = hir::hir_def::interned::identifier::Ident::new(
                 db,
                 compact_str::CompactString::from(format!("__task_{i}")),
@@ -621,7 +622,6 @@ fn lower_module_from_pous<'db>(
                 export_name: Some(compact_str::CompactString::from(format!("__task_{i}"))),
             });
             module.function_indices.insert(entry, idx);
-            idx += 1;
         }
     }
 

@@ -579,12 +579,10 @@ fn visit_statements<'db>(
                     );
                 }
             }
-            StmtKind::FuncCall(call) => {
-                if ctx.missing_input_param {
-                    run_lint(missing_input_param::NAME, diagnostics, |d| {
-                        missing_input_param::check_func_call(db, body, *stmt, *call, d)
-                    });
-                }
+            StmtKind::FuncCall(call) if ctx.missing_input_param => {
+                run_lint(missing_input_param::NAME, diagnostics, |d| {
+                    missing_input_param::check_func_call(db, body, *stmt, *call, d)
+                });
             }
             _ => {}
         }

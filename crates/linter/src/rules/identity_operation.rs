@@ -41,10 +41,8 @@ pub fn check_node<'db>(
                     emit(db, expr, "1 *", diagnostics);
                 }
             }
-            MultOperatorKind::Div => {
-                if is_one(db, right) {
-                    emit(db, expr, "/ 1", diagnostics);
-                }
+            MultOperatorKind::Div if is_one(db, right) => {
+                emit(db, expr, "/ 1", diagnostics);
             }
             _ => {}
         },

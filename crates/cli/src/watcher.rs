@@ -157,13 +157,11 @@ impl Debouncer {
                         }
                         _ => {}
                     },
-                    notify::event::ModifyKind::Any => {
-                        if path.is_file() {
-                            self.events.push(ChangeEvent::Changed {
-                                path,
-                                kind: ChangedKind::Any,
-                            });
-                        }
+                    notify::event::ModifyKind::Any if path.is_file() => {
+                        self.events.push(ChangeEvent::Changed {
+                            path,
+                            kind: ChangedKind::Any,
+                        });
                     }
                     _ => {}
                 },

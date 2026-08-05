@@ -47,8 +47,8 @@ pub fn check<'db>(
                 );
             }
         }
-        SpecKind::Enum(e) => {
-            if e.variants(db).is_empty() {
+        SpecKind::Enum(e) if e.variants(db).is_empty() => {
+            {
                 let name = dt.get_name_ident(db).text(db);
                 diagnostics.push(
                     diag()

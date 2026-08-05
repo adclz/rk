@@ -62,7 +62,7 @@ pub fn fuzzy_type_fields<'db>(
             let scope = c.scope_id(db);
             let def_map = scope.def_map(db);
             let mut symbols = vec![];
-            for (_, v) in def_map.global_variables.iter() {
+            for v in def_map.global_variables.values() {
                 symbols.push(NamedSymbol {
                     name: v.name(db).text(db).to_string(),
                     namespace: None,
