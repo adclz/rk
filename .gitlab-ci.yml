@@ -1,9 +1,0 @@
-stages:
-  - test
-  - fuzz
-
-include:
-  - local: .gitlab/ci/nextest.yml
-  - local: .gitlab/ci/stdlib.yml
-  - local: .gitlab/ci/tree-sitter.yml
-  - local: .gitlab/ci/fuzz.yml

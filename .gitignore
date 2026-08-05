@@ -20,3 +20,7 @@ crates/fuzz/slow-*
 # produced spurious diffs whenever the nightly toolchain's codegen reordered
 # the wasm sections build.rs parses.
 crates/wasm_builtins_generated/src/generated.rs
+
+# IDE settings are personal, not project state
+.idea/
+*.iml
