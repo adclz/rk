@@ -21,7 +21,27 @@ mir = { workspace = true }
 wasm_codegen = { workspace = true }
 
 [[bench]]
+name = "parse"
+harness = false
+
+[[bench]]
 name = "hir"
+harness = false
+
+[[bench]]
+name = "incremental"
+harness = false
+
+[[bench]]
+name = "linter"
+harness = false
+
+[[bench]]
+name = "formatter"
+harness = false
+
+[[bench]]
+name = "codegen"
 harness = false
 
 [dev-dependencies]
