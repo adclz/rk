@@ -710,7 +710,7 @@ END_FUNCTION
 /// instead of 4 because `probe := 999` aliases the STRING param's len.
 #[rstest]
 fn regression_string_param_not_clobbered_by_return_write(mut with_db: db::RootDatabase) {
-    use wasmtime::{Engine, Module, Store};
+    use wasmtime::{Module, Store};
 
     // Write to `probe` (the return slot) BEFORE reading `s` again.
     // If `probe` aliases the wasm slot holding `s.len`, the second

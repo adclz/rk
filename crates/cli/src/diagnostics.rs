@@ -240,7 +240,7 @@ impl<'db> DiagnosticReporter<'db> {
                     .denormalize_range(&r.range)
                     .unwrap_or_default();
                 JsonRelated {
-                    file: self.rel_path(&r.file.url(self.db)),
+                    file: self.rel_path(r.file.url(self.db)),
                     line: range.start.line + 1,
                     col: range.start.character + 1,
                     message: r.message.clone(),

@@ -1,5 +1,4 @@
 use db::{RootDatabase, WorkspaceDataBase};
-use hir::hir_def::interned::identifier::Ident;
 use hir::hir_def::semantic_index::semantic_index;
 use mir::function::MirLinkage;
 

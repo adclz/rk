@@ -182,13 +182,6 @@ pub fn test_snapshot<'db>(
         .join("\n")
 }
 
-/// Like [`test_diagnostics`] but also runs the linter (all rules enabled),
-/// so lint warnings are included.
-pub fn test_lint_diagnostics<'db>(db: &'db mut RootDatabase, source: &'db [&'db str]) -> String {
-    let linter_config = db::config_file::LinterConfig::default();
-    test_lint_diagnostics_with_config(db, source, &linter_config)
-}
-
 /// Run only a single lint rule, ignoring all others.
 /// This prevents unrelated lints from polluting snapshots.
 pub fn test_single_lint<'db>(

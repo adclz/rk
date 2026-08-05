@@ -1,5 +1,4 @@
 use ast::generated::DataTypeDecl;
-use auto_lsp::core::ast::AstNode;
 use auto_lsp::default::db::BaseDatabase;
 use auto_lsp::default::db::tracked::get_ast;
 use db::RootDatabase;
