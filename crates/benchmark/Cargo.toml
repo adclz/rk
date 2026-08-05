@@ -8,7 +8,6 @@ publish = false
 
 [lib]
 bench = false
-test = false
 doctest = false
 
 [dependencies]
@@ -16,6 +15,10 @@ auto-lsp = { workspace = true }
 ast = { workspace = true }
 db = { workspace = true }
 hir = { workspace = true }
+linter = { workspace = true }
+formatter = { workspace = true }
+mir = { workspace = true }
+wasm_codegen = { workspace = true }
 
 [[bench]]
 name = "hir"

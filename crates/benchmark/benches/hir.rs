@@ -1,99 +1,73 @@
+//! Cold HIR pipeline benchmarks, one stage per benchmark.
+//!
+//! Each stage's prerequisites are primed in the (untimed) setup, so the
+//! timed region contains only the stage under measurement — a regression in
+//! signature inference shows up in `infer_signature`, not diluted inside a
+//! full-pipeline number. `check` is the end-to-end figure.
+
+use divan::Bencher;
 use rk_benchmark::{
-    CASES, TestCase, bench_infer_body, bench_infer_signature, bench_semantic_index,
-    collect_diagnostics, edit_file, setup_db,
+    bodies_all, check_all, expected_diagnostics, index_all, initializations_all, load_corpus,
+    setup_db, signatures_all,
 };
 
-fn cases() -> &'static [TestCase] {
-    CASES
-}
+const CORPORA: &[&str] = &["stdlib"];
 
-// ---------------------------------------------------------------------------
-// Cold (from-scratch) benchmarks
-// ---------------------------------------------------------------------------
-
-#[divan::bench(args = cases())]
-fn cold_diagnostics(bencher: divan::Bencher, case: &TestCase) {
+#[divan::bench(args = CORPORA, sample_count = 10, sample_size = 1)]
+fn semantic_index(bencher: Bencher, name: &str) {
+    let corpus = load_corpus(name);
     bencher
-        .with_inputs(|| setup_db(case.sources()))
-        .bench_local_refs(|(db, files)| {
-            for file in files {
-                collect_diagnostics(db, *file);
-            }
-        });
+        .with_inputs(|| setup_db(&corpus))
+        .bench_local_refs(|(db, files)| index_all(db, files));
 }
 
-#[divan::bench(args = cases())]
-fn cold_semantic_index(bencher: divan::Bencher, case: &TestCase) {
-    bencher
-        .with_inputs(|| setup_db(case.sources()))
-        .bench_local_refs(|(db, files)| {
-            for file in files {
-                bench_semantic_index(db, *file);
-            }
-        });
-}
-
-#[divan::bench(args = cases())]
-fn cold_infer_signature(bencher: divan::Bencher, case: &TestCase) {
-    bencher
-        .with_inputs(|| setup_db(case.sources()))
-        .bench_local_refs(|(db, files)| {
-            for file in files {
-                bench_infer_signature(db, *file);
-            }
-        });
-}
-
-#[divan::bench(args = cases())]
-fn cold_infer_body(bencher: divan::Bencher, case: &TestCase) {
-    bencher
-        .with_inputs(|| setup_db(case.sources()))
-        .bench_local_refs(|(db, files)| {
-            for file in files {
-                bench_infer_body(db, *file);
-            }
-        });
-}
-
-// ---------------------------------------------------------------------------
-// Incremental benchmarks — measure Salsa re-analysis after a body-only edit.
-//
-// Following Ruff's pattern: setup primes all caches via a full diagnostic
-// pass, then applies the edit. Only the re-analysis query is timed.
-// Because the edit is body-only, signature caches should be reused.
-// ---------------------------------------------------------------------------
-
-#[divan::bench(args = cases())]
-fn incremental_diagnostics(bencher: divan::Bencher, case: &TestCase) {
+#[divan::bench(args = CORPORA, sample_count = 10, sample_size = 1)]
+fn infer_signature(bencher: Bencher, name: &str) {
+    let corpus = load_corpus(name);
     bencher
         .with_inputs(|| {
-            let (mut db, files) = setup_db(case.sources());
-            // Prime every Salsa cache by running the full pipeline.
-            for f in &files {
-                collect_diagnostics(&db, *f);
-            }
-            // Apply the edit during setup so only re-analysis is timed.
-            edit_file(&mut db, files[0], case.edited_source());
+            let (db, files) = setup_db(&corpus);
+            index_all(&db, &files);
             (db, files)
         })
-        .bench_local_refs(|(db, files)| {
-            collect_diagnostics(db, files[0]);
-        });
+        .bench_local_refs(|(db, files)| signatures_all(db, files));
 }
 
-#[divan::bench(args = cases())]
-fn incremental_infer_body(bencher: divan::Bencher, case: &TestCase) {
+#[divan::bench(args = CORPORA, sample_count = 10, sample_size = 1)]
+fn infer_initialization(bencher: Bencher, name: &str) {
+    let corpus = load_corpus(name);
     bencher
         .with_inputs(|| {
-            let (mut db, files) = setup_db(case.sources());
-            for f in &files {
-                collect_diagnostics(&db, *f);
-            }
-            edit_file(&mut db, files[0], case.edited_source());
+            let (db, files) = setup_db(&corpus);
+            index_all(&db, &files);
+            signatures_all(&db, &files);
             (db, files)
         })
+        .bench_local_refs(|(db, files)| initializations_all(db, files));
+}
+
+#[divan::bench(args = CORPORA, sample_count = 10, sample_size = 1)]
+fn infer_body(bencher: Bencher, name: &str) {
+    let corpus = load_corpus(name);
+    bencher
+        .with_inputs(|| {
+            let (db, files) = setup_db(&corpus);
+            index_all(&db, &files);
+            signatures_all(&db, &files);
+            initializations_all(&db, &files);
+            (db, files)
+        })
+        .bench_local_refs(|(db, files)| bodies_all(db, files));
+}
+
+#[divan::bench(args = CORPORA, sample_count = 10, sample_size = 1)]
+fn check(bencher: Bencher, name: &str) {
+    let corpus = load_corpus(name);
+    let expected = expected_diagnostics(name);
+    bencher
+        .with_inputs(|| setup_db(&corpus))
         .bench_local_refs(|(db, files)| {
-            bench_infer_body(db, files[0]);
+            assert_eq!(check_all(db, files), expected);
         });
 }
 

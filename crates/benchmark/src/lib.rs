@@ -1,8 +1,13 @@
 //! Benchmark helpers for the IEC 61131-3 compiler.
 //!
-//! Provides [`TestCase`] definitions and database setup functions
-//! used by the divan benchmark harnesses in `benches/`.
+//! The fixture is a real corpus tracked in this repository: `stdlib/` (the
+//! standard library — 11 files, ~6.5k lines, checks clean and compiles to
+//! WASM). Every benchmark asserts its diagnostic count against the baselines
+//! below, so a benchmark can never silently drift into measuring an empty or
+//! error-flooded analysis. `cargo test -p rk-benchmark` verifies the
+//! baselines without running the benchmarks.
 
+use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
 use auto_lsp::{
@@ -15,239 +20,128 @@ use db::RootDatabase;
 use hir::{
     HirNodeInfo,
     check::diagnostics_for_file,
-    hir_def::{scope::ScopeId, semantic_index::semantic_index},
-    hir_ty::{body::infer_body, head::signature::infer_signature},
+    hir_def::{namespace::NamespaceDecl, scope::ScopeId, semantic_index::semantic_index},
+    hir_ty::{
+        body::infer_body,
+        head::{init_inference::infer_initialization, signature::infer_signature},
+    },
 };
 
 // ---------------------------------------------------------------------------
-// Test cases
+// Diagnostic baselines
+//
+// The expected number of HIR diagnostics (`diagnostics_for_file`) and lint
+// diagnostics per corpus. When a corpus source changes legitimately, update
+// the constant — the `corpus_baselines` test states the fresh value.
 // ---------------------------------------------------------------------------
 
-/// A named source fixture for benchmarking.
-pub struct TestCase {
-    name: &'static str,
-    /// Source files (one or more .st sources).
-    sources: &'static [&'static str],
-    /// An edited variant of the first source file for incremental benchmarks.
-    /// Typically a body-only change so that signatures remain cached.
-    edited_source: &'static str,
+pub const STDLIB_EXPECTED_DIAGNOSTICS: usize = 0;
+pub const STDLIB_EXPECTED_LINTS: usize = 290;
+
+// ---------------------------------------------------------------------------
+// Corpora
+// ---------------------------------------------------------------------------
+
+/// A named set of real source files loaded from the repository.
+pub struct Corpus {
+    pub name: &'static str,
+    /// (workspace-relative path, source text), sorted by path.
+    pub files: Vec<(String, String)>,
 }
 
-impl TestCase {
-    pub const fn new(
-        name: &'static str,
-        sources: &'static [&'static str],
-        edited_source: &'static str,
-    ) -> Self {
-        Self {
-            name,
-            sources,
-            edited_source,
-        }
-    }
-
-    pub fn sources(&self) -> &[&str] {
-        self.sources
-    }
-
-    pub fn edited_source(&self) -> &str {
-        self.edited_source
+impl Corpus {
+    pub fn total_lines(&self) -> usize {
+        self.files.iter().map(|(_, s)| s.lines().count()).sum()
     }
 }
 
-impl std::fmt::Display for TestCase {
+impl std::fmt::Display for Corpus {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.write_str(self.name)
     }
 }
 
-// ---------------------------------------------------------------------------
-// Starter fixtures — intentionally small; real samples added over time.
-// ---------------------------------------------------------------------------
+fn workspace_root() -> &'static Path {
+    // crates/benchmark → crates → workspace root
+    Path::new(env!("CARGO_MANIFEST_DIR"))
+        .parent()
+        .unwrap()
+        .parent()
+        .unwrap()
+}
 
-pub static CASES: &[TestCase] = &[
-    TestCase::new(
-        "minimal",
-        &[r#"
-FUNCTION add : INT
-VAR_INPUT
-    a : INT;
-    b : INT;
-END_VAR
-    add := a + b;
-END_FUNCTION
-"#],
-        // edited: body change only (add a local variable + assignment)
-        r#"
-FUNCTION add : INT
-VAR_INPUT
-    a : INT;
-    b : INT;
-END_VAR
-VAR
-    tmp : INT;
-END_VAR
-    tmp := a + b;
-    add := tmp;
-END_FUNCTION
-"#,
-    ),
-    TestCase::new(
-        "medium_fb",
-        &[r#"
-FUNCTION_BLOCK Motor
-VAR_INPUT
-    start : BOOL;
-    stop  : BOOL;
-    speed_ref : REAL;
-END_VAR
-VAR_OUTPUT
-    running : BOOL;
-    actual_speed : REAL;
-END_VAR
-VAR
-    ramp : REAL;
-    fault : BOOL;
-    timer_count : INT;
-    max_speed : REAL := 1500.0;
-    accel_rate : REAL := 10.0;
-END_VAR
-    IF stop THEN
-        running := FALSE;
-        ramp := 0.0;
-    ELSIF start AND NOT fault THEN
-        running := TRUE;
-        IF ramp < speed_ref THEN
-            ramp := ramp + accel_rate;
-            IF ramp > max_speed THEN
-                ramp := max_speed;
-            END_IF;
-        END_IF;
-    END_IF;
+fn collect_st_files(dir: &Path, out: &mut Vec<PathBuf>) {
+    for entry in std::fs::read_dir(dir).expect("corpus directory missing") {
+        let path = entry.unwrap().path();
+        if path.is_dir() {
+            collect_st_files(&path, out);
+        } else if path.extension().is_some_and(|e| e == "st") {
+            out.push(path);
+        }
+    }
+}
 
-    CASE timer_count OF
-        0: timer_count := 1;
-        1: timer_count := 2;
-        2: timer_count := 0;
-    END_CASE;
+fn load_dirs(name: &'static str, dirs: &[&str]) -> Corpus {
+    let root = workspace_root();
+    let mut paths = Vec::new();
+    for dir in dirs {
+        collect_st_files(&root.join(dir), &mut paths);
+    }
+    paths.sort();
+    let files = paths
+        .into_iter()
+        .map(|p| {
+            let rel = p.strip_prefix(root).unwrap().to_str().unwrap().to_string();
+            let source = std::fs::read_to_string(&p).unwrap();
+            (rel, source)
+        })
+        .collect();
+    Corpus { name, files }
+}
 
-    actual_speed := ramp;
-END_FUNCTION_BLOCK
-"#],
-        // edited: body change — add a line
-        r#"
-FUNCTION_BLOCK Motor
-VAR_INPUT
-    start : BOOL;
-    stop  : BOOL;
-    speed_ref : REAL;
-END_VAR
-VAR_OUTPUT
-    running : BOOL;
-    actual_speed : REAL;
-END_VAR
-VAR
-    ramp : REAL;
-    fault : BOOL;
-    timer_count : INT;
-    max_speed : REAL := 1500.0;
-    accel_rate : REAL := 10.0;
-END_VAR
-    IF stop THEN
-        running := FALSE;
-        ramp := 0.0;
-        fault := FALSE;
-    ELSIF start AND NOT fault THEN
-        running := TRUE;
-        IF ramp < speed_ref THEN
-            ramp := ramp + accel_rate;
-            IF ramp > max_speed THEN
-                ramp := max_speed;
-            END_IF;
-        END_IF;
-    END_IF;
+/// The standard library: 11 files, ~6.5k lines, checks clean.
+pub fn stdlib_corpus() -> Corpus {
+    load_dirs("stdlib", &["stdlib"])
+}
 
-    CASE timer_count OF
-        0: timer_count := 1;
-        1: timer_count := 2;
-        2: timer_count := 0;
-    END_CASE;
+pub fn load_corpus(name: &str) -> Corpus {
+    match name {
+        "stdlib" => stdlib_corpus(),
+        other => panic!("unknown corpus {other}"),
+    }
+}
 
-    actual_speed := ramp;
-END_FUNCTION_BLOCK
-"#,
-    ),
-    TestCase::new(
-        "multi_file",
-        &[
-            // File 0: function block
-            r#"
-FUNCTION_BLOCK Counter
-VAR_INPUT
-    reset : BOOL;
-    enable : BOOL;
-END_VAR
-VAR_OUTPUT
-    count : INT;
-END_VAR
-    IF reset THEN
-        count := 0;
-    ELSIF enable THEN
-        count := count + 1;
-    END_IF;
-END_FUNCTION_BLOCK
-"#,
-            // File 1: program that uses the FB
-            r#"
-PROGRAM Main
-VAR
-    cnt : Counter;
-    result : INT;
-    do_reset : BOOL;
-    do_enable : BOOL;
-END_VAR
-    cnt(reset := do_reset, enable := do_enable);
-    result := cnt.count;
-END_PROGRAM
-"#,
-        ],
-        // edited: body change in file 0
-        r#"
-FUNCTION_BLOCK Counter
-VAR_INPUT
-    reset : BOOL;
-    enable : BOOL;
-END_VAR
-VAR_OUTPUT
-    count : INT;
-END_VAR
-    IF reset THEN
-        count := 0;
-    ELSIF enable THEN
-        count := count + 2;
-    END_IF;
-END_FUNCTION_BLOCK
-"#,
-    ),
-];
+pub fn expected_diagnostics(corpus: &str) -> usize {
+    match corpus {
+        "stdlib" => STDLIB_EXPECTED_DIAGNOSTICS,
+        other => panic!("unknown corpus {other}"),
+    }
+}
+
+pub fn expected_lints(corpus: &str) -> usize {
+    match corpus {
+        "stdlib" => STDLIB_EXPECTED_LINTS,
+        other => panic!("unknown corpus {other}"),
+    }
+}
 
 // ---------------------------------------------------------------------------
-// Database setup helpers
+// Database setup
 // ---------------------------------------------------------------------------
 
-/// Create a fresh database, parse sources, and return the DB + file handles.
-pub fn setup_db(sources: &[&str]) -> (RootDatabase, Vec<File>) {
+/// Create a fresh database and parse every corpus file into it.
+pub fn setup_db(corpus: &Corpus) -> (RootDatabase, Vec<File>) {
     let mut db = RootDatabase::default();
-    let mut files = Vec::with_capacity(sources.len());
+    let mut files = Vec::with_capacity(corpus.files.len());
 
-    for (i, source) in sources.iter().enumerate() {
-        let url = Url::parse(&format!("file:///bench{i}.st")).unwrap();
+    for (rel, source) in &corpus.files {
+        let url = Url::parse(&format!("file:///{rel}")).unwrap();
 
         let file = File::from_string()
             .db(&db)
             .parsers(&ast::RK_PARSER)
             .url(&url)
-            .source(source.to_string())
+            .source(source.clone())
             .call()
             .unwrap();
 
@@ -260,9 +154,10 @@ pub fn setup_db(sources: &[&str]) -> (RootDatabase, Vec<File>) {
 
 /// Update the source of a file in-place via `set_document`.
 ///
-/// This preserves the Salsa `File` identity so that downstream query
-/// caches are properly *invalidated* rather than orphaned — enabling
-/// true incremental re-computation.
+/// This preserves the Salsa `File` identity so that downstream query caches
+/// are *invalidated* rather than orphaned — enabling true incremental
+/// re-computation. The reparse is intentionally part of this function: an
+/// editor pays it on every keystroke, so incremental benchmarks time it.
 pub fn edit_file(db: &mut RootDatabase, file: File, new_source: &str) {
     let parsers = file.parsers(db);
     let tree = parsers
@@ -274,13 +169,32 @@ pub fn edit_file(db: &mut RootDatabase, file: File, new_source: &str) {
     file.set_document(db).to(Arc::new(document));
 }
 
-/// Run full diagnostics for a file (triggers the entire HIR pipeline).
-pub fn collect_diagnostics(db: &dyn db::WorkspaceDataBase, file: File) -> usize {
-    diagnostics_for_file(db, file).len()
-}
+// ---------------------------------------------------------------------------
+// Pipeline stages
+//
+// Each helper runs exactly one stage for every file. Benchmarks isolate a
+// stage by priming all *earlier* stages in their (untimed) setup, so the
+// timed region contains only the stage under measurement plus whatever that
+// stage intrinsically demands (e.g. name resolution during inference).
+// ---------------------------------------------------------------------------
 
-/// Collect all POU scope IDs from a file's semantic index.
+/// Every POU scope in a file, including POUs nested in namespaces — the
+/// corpora are almost entirely NAMESPACE-wrapped, so forgetting recursion
+/// here would leave the stage benchmarks measuring an empty scope list.
 pub fn all_pou_scopes<'db>(db: &'db dyn db::WorkspaceDataBase, file: File) -> Vec<ScopeId<'db>> {
+    fn collect_ns<'db>(
+        db: &'db dyn db::WorkspaceDataBase,
+        ns: &'db NamespaceDecl<'db>,
+        scopes: &mut Vec<ScopeId<'db>>,
+    ) {
+        for pou in ns.pous(db).iter() {
+            scopes.push(pou.get_scope_id(db));
+        }
+        for child in ns.namespaces(db).iter() {
+            collect_ns(db, child, scopes);
+        }
+    }
+
     let sema = semantic_index(db, file);
     let mut scopes = Vec::new();
 
@@ -292,24 +206,209 @@ pub fn all_pou_scopes<'db>(db: &'db dyn db::WorkspaceDataBase, file: File) -> Ve
         scopes.push(program.get_scope_id(db));
     }
 
+    for ns in sema.namespaces.iter() {
+        collect_ns(db, ns, &mut scopes);
+    }
+
     scopes
 }
 
-/// Run `semantic_index` for a file.
-pub fn bench_semantic_index(db: &dyn db::WorkspaceDataBase, file: File) {
-    let _ = semantic_index(db, file);
-}
-
-/// Run `infer_signature` for all POU scopes in a file.
-pub fn bench_infer_signature(db: &dyn db::WorkspaceDataBase, file: File) {
-    for scope in all_pou_scopes(db, file) {
-        let _ = infer_signature(db, scope);
+pub fn index_all(db: &dyn db::WorkspaceDataBase, files: &[File]) {
+    for file in files {
+        let _ = semantic_index(db, *file);
     }
 }
 
-/// Run `infer_body` for all POU scopes in a file.
-pub fn bench_infer_body(db: &dyn db::WorkspaceDataBase, file: File) {
-    for scope in all_pou_scopes(db, file) {
-        let _ = infer_body(db, scope);
+pub fn signatures_all(db: &dyn db::WorkspaceDataBase, files: &[File]) {
+    for file in files {
+        for scope in all_pou_scopes(db, *file) {
+            let _ = infer_signature(db, scope);
+        }
+    }
+}
+
+pub fn initializations_all(db: &dyn db::WorkspaceDataBase, files: &[File]) {
+    for file in files {
+        for scope in all_pou_scopes(db, *file) {
+            let _ = infer_initialization(db, scope);
+        }
+    }
+}
+
+pub fn bodies_all(db: &dyn db::WorkspaceDataBase, files: &[File]) {
+    for file in files {
+        for scope in all_pou_scopes(db, *file) {
+            let _ = infer_body(db, scope);
+        }
+    }
+}
+
+/// Full HIR diagnostics for the whole workspace; returns the total count.
+pub fn check_all(db: &dyn db::WorkspaceDataBase, files: &[File]) -> usize {
+    files
+        .iter()
+        .map(|file| diagnostics_for_file(db, *file).len())
+        .sum()
+}
+
+/// A linter configuration with every rule enabled.
+pub fn all_rules_config() -> db::config_file::LinterConfig {
+    let rules = linter::rules::ALL_RULE_NAMES
+        .iter()
+        .map(|name| (name.to_string(), true))
+        .collect();
+    db::config_file::LinterConfig { rules: Some(rules) }
+}
+
+/// Run every lint rule over the whole workspace; returns the total count.
+pub fn lint_all(
+    db: &RootDatabase,
+    files: &[File],
+    config: &db::config_file::LinterConfig,
+) -> usize {
+    let mut total = 0;
+    for file in files {
+        let mut lints = Vec::new();
+        linter::lint_file(db, *file, config, &mut lints);
+        total += lints.len();
+    }
+    total
+}
+
+// ---------------------------------------------------------------------------
+// Incremental edit scenarios
+//
+// Each edit targets `stdlib/Edge.st`: `R_TRIG` is used from `Counters.st`,
+// so the workspace re-check after an edit exercises the cross-file
+// invalidation story — the thing incrementality exists for. Needles must
+// match exactly once, so corpus drift breaks the benchmark loudly instead
+// of quietly changing what it measures.
+// ---------------------------------------------------------------------------
+
+pub struct Edit {
+    pub name: &'static str,
+    /// Workspace-relative path of the file the edit applies to.
+    pub file: &'static str,
+    needle: &'static str,
+    replacement: &'static str,
+}
+
+impl Edit {
+    /// The edited full source text, and the corpus index of the edited file.
+    pub fn apply(&self, corpus: &Corpus) -> (usize, String) {
+        let idx = corpus
+            .files
+            .iter()
+            .position(|(rel, _)| rel == self.file)
+            .unwrap_or_else(|| panic!("{} not in corpus {}", self.file, corpus.name));
+        let source = &corpus.files[idx].1;
+        assert_eq!(
+            source.matches(self.needle).count(),
+            1,
+            "edit needle for `{}` must match exactly once in {}",
+            self.name,
+            self.file
+        );
+        (idx, source.replacen(self.needle, self.replacement, 1))
+    }
+}
+
+impl std::fmt::Display for Edit {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(self.name)
+    }
+}
+
+pub static EDITS: &[Edit] = &[
+    // A statement inside R_TRIG's body changes. Signatures are untouched, so
+    // dependent files must NOT re-infer — this is the cheap common case.
+    Edit {
+        name: "body_edit",
+        file: "stdlib/Edge.st",
+        needle: "Q := CLK AND NOT M;",
+        replacement: "Q := NOT M AND CLK;",
+    },
+    // A new POU appears in the namespace. The global name indexes rebuild
+    // and resolution re-validates — the expensive structural case.
+    Edit {
+        name: "add_pou",
+        file: "stdlib/Edge.st",
+        needle: "END_NAMESPACE\nEND_NAMESPACE",
+        replacement: "END_NAMESPACE\n\n\tFUNCTION_BLOCK BENCH_PROBE\n\t\tVAR_INPUT\n\t\t\tCLK: BOOL;\n\t\tEND_VAR\n\t\tVAR_OUTPUT\n\t\t\tQ: BOOL;\n\t\tEND_VAR\n\t\tQ := CLK;\n\tEND_FUNCTION_BLOCK\nEND_NAMESPACE",
+    },
+    // Only a comment changes: every span below it shifts but no semantics
+    // do. `semantic_index` is `no_eq`, so the edited file itself is always
+    // fully re-analyzed — this pins the per-edit floor (reparse + one file's
+    // re-analysis). `body_edit` sitting AT this floor is the proof that
+    // dependent files reuse their caches; `add_pou` sits above it.
+    Edit {
+        name: "comment_edit",
+        file: "stdlib/Edge.st",
+        needle: "# Standard Edge Detection Function Blocks",
+        replacement: "# Standard Edge Detection Function Blocks (edited)",
+    },
+];
+
+// ---------------------------------------------------------------------------
+// Baseline guard — runs under `cargo nextest`, not only when benchmarking.
+// ---------------------------------------------------------------------------
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn corpus_baselines() {
+        for name in ["stdlib"] {
+            let corpus = load_corpus(name);
+            let (db, files) = setup_db(&corpus);
+            assert_eq!(
+                check_all(&db, &files),
+                expected_diagnostics(name),
+                "HIR diagnostic baseline drifted for corpus `{name}` — update the constant"
+            );
+            assert_eq!(
+                lint_all(&db, &files, &all_rules_config()),
+                expected_lints(name),
+                "lint baseline drifted for corpus `{name}` — update the constant"
+            );
+            for file in &files {
+                formatter::format(&db, *file).expect("corpus file must format");
+            }
+            let scopes: usize = files.iter().map(|f| all_pou_scopes(&db, *f).len()).sum();
+            assert!(
+                scopes > 100,
+                "stage helpers see only {scopes} POU scopes in `{name}` — namespace recursion broken?"
+            );
+        }
+
+        // The codegen benchmarks require the stdlib to lower end-to-end.
+        let corpus = stdlib_corpus();
+        let (db, files) = setup_db(&corpus);
+        let indices: Vec<_> = files
+            .iter()
+            .map(|f| hir::hir_def::semantic_index::semantic_index(&db, *f))
+            .collect();
+        let module = mir::lower::lower_module::lower_modules(&db, &indices)
+            .expect("stdlib must lower to MIR");
+        let wasm = wasm_codegen::generate_wasm(&db, &module).finish();
+        assert!(!wasm.is_empty());
+    }
+
+    #[test]
+    fn edits_apply_and_preserve_diagnostics() {
+        let corpus = stdlib_corpus();
+        for edit in EDITS {
+            let (idx, edited) = edit.apply(&corpus);
+            let (mut db, files) = setup_db(&corpus);
+            assert_eq!(check_all(&db, &files), STDLIB_EXPECTED_DIAGNOSTICS);
+            edit_file(&mut db, files[idx], &edited);
+            assert_eq!(
+                check_all(&db, &files),
+                STDLIB_EXPECTED_DIAGNOSTICS,
+                "edit `{}` must not change the diagnostic count",
+                edit.name
+            );
+        }
     }
 }
