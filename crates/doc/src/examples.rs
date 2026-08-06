@@ -1384,6 +1384,24 @@ END_CONFIGURATION
             lint_rule: None,
         },
         ErrorExample {
+            code: "E0241",
+            category: "Scope",
+            title: "Unusable TASK priority",
+            description: "A TASK's `PRIORITY` must be a number the compiler can represent (a 32-bit unsigned integer), where 0 is the most urgent. An unusable value would otherwise reach the scheduler as \"no priority\" and quietly sort last.",
+            sources: &[r#"
+PROGRAM prog1
+END_PROGRAM
+
+CONFIGURATION cfg1
+    RESOURCE res1 ON CPU
+        TASK t1(INTERVAL := T#10ms, PRIORITY := 99999999999);
+        PROGRAM inst1 WITH t1 : prog1;
+    END_RESOURCE
+END_CONFIGURATION
+"#],
+            lint_rule: None,
+        },
+        ErrorExample {
             code: "E0240",
             category: "Resolution",
             title: "Unsupported configuration element",
