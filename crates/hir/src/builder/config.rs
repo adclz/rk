@@ -82,9 +82,21 @@ impl<'db> SemanticIndexBuilder<'db> {
 
         let mut resources: Vec<ResourceDecl<'db>> = vec![];
         for res_id in &config.resources {
-            let r = self.parse_resource_decl(res_id.cast(self.ast));
-            if let Some(r) = self.try_parse(r) {
-                resources.push(r);
+            use ast::generated::ERRTaskOrProgramOutsideResource_ResourceDecl as ConfigEntry;
+            match res_id.cast(self.ast) {
+                ConfigEntry::ResourceDecl(rd) => {
+                    let r = self.parse_resource_decl(rd);
+                    if let Some(r) = self.try_parse(r) {
+                        resources.push(r);
+                    }
+                }
+                // A TASK or PROGRAM written straight into the CONFIGURATION.
+                ConfigEntry::ERRTaskOrProgramOutsideResource(err) => {
+                    self.errors.push(
+                        SyntaxError::TaskOrProgramOutsideResource(err.get_range().to_owned())
+                            .to_diagnostic(self.db, self.file),
+                    );
+                }
             }
         }
 

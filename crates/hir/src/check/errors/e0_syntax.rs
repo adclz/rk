@@ -102,6 +102,8 @@ pub enum SyntaxError {
     VarLocatedNotAllowed(Range),
     VarExternalNotAllowed(Range),
     VarGlobalNotAllowed(Range),
+    /// A TASK or PROGRAM declared directly in a CONFIGURATION.
+    TaskOrProgramOutsideResource(Range),
     VarNotAllowed(Range),
     SingleAfterInterval(Range),
     IntervalAfterPriority(Range),
@@ -150,6 +152,7 @@ impl ErrorCode for SyntaxError {
             SyntaxError::VarLocatedNotAllowed(_) => "E0028",
             SyntaxError::VarExternalNotAllowed(_) => "E0029",
             SyntaxError::VarGlobalNotAllowed(_) => "E0030",
+            SyntaxError::TaskOrProgramOutsideResource(_) => "E0039",
             SyntaxError::VarNotAllowed(_) => "E0031",
             SyntaxError::SingleAfterInterval(_) => "E0032",
             SyntaxError::IntervalAfterPriority(_) => "E0033",
@@ -794,6 +797,19 @@ impl<'db> ToIdeDiagnostic<'db> for SyntaxError {
                     .call();
 
                 diag.with_note("VAR_GLOBAL can only be used inside CONFIGURATION".into());
+                diag
+            }
+            Self::TaskOrProgramOutsideResource(span) => {
+                let mut diag = diag()
+                    .message("TASK and PROGRAM must be declared inside a RESOURCE".into())
+                    .severity(DiagnosticSeverity::ERROR)
+                    .desc(self)
+                    .range(crate::denormalize(db, file, span).unwrap_or_default())
+                    .call();
+
+                diag.with_note(
+                    "wrap them in a RESOURCE <name> ON <cpu> ... END_RESOURCE block".into(),
+                );
                 diag
             }
             Self::VarNotAllowed(span) => {

@@ -1,3 +1,4 @@
+use auto_lsp::core::ast::AstNode;
 use ide_diagnostic::IdeDiagnostic;
 
 use crate::{
@@ -7,6 +8,7 @@ use crate::{
         semantic_index::SemanticIndexBuilder,
         variables::{ParseLocatedVar, ParseProgDecl},
     },
+    check::errors::{ToIdeDiagnostic, e0_syntax::SyntaxError},
     hir_def::{
         hir_node::HirNode,
         interned::identifier::Ident,
@@ -83,13 +85,20 @@ impl<'db> SemanticIndexBuilder<'db> {
         let mut prog_decls = vec![];
         let mut variables = vec![];
         let mut located_variables = vec![];
-        type ProgVariables = ast::generated::ExternalVarDecls_GlobalVarDecls_InOutDecls_InputDecls_LocPartlyVarDecl_LocVarDecls_NoRetainVarDecls_OutputDecls_ProgAccessDecls_RetainVarDecls_TempVarDecls_VarDecls;
+        type ProgVariables = ast::generated::ERRVarGlobalNotAllowed_ExternalVarDecls_InOutDecls_InputDecls_LocPartlyVarDecl_LocVarDecls_NoRetainVarDecls_OutputDecls_ProgAccessDecls_RetainVarDecls_TempVarDecls_VarDecls;
 
         for variable in program.declarations.iter() {
             match variable.cast(self.ast) {
                 ProgVariables::ProgAccessDecls(decls) => decls.parse(self, &mut prog_decls),
                 ProgVariables::LocVarDecls(decls) => decls.parse(self, &mut located_variables),
-                ProgVariables::GlobalVarDecls(decls) => decls.parse(self, &mut variables),
+                // Globals are application-scoped: they belong to a
+                // CONFIGURATION, not to a POU.
+                ProgVariables::ERRVarGlobalNotAllowed(err) => {
+                    self.errors.push(
+                        SyntaxError::VarGlobalNotAllowed(err.get_range().to_owned())
+                            .to_diagnostic(self.db, self.file),
+                    );
+                }
                 ProgVariables::InputDecls(decls) => decls.parse(self, &mut variables),
                 ProgVariables::OutputDecls(decls) => decls.parse(self, &mut variables),
                 ProgVariables::InOutDecls(decls) => decls.parse(self, &mut variables),
