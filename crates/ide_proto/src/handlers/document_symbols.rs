@@ -314,15 +314,7 @@ impl<'db> DocumentSymbolsHandler<'db> for ConfigDecl<'db> {
             .for_each(|var| var.document_symbols(db, &mut nested_builder));
 
         for res in self.resources(db) {
-            match res {
-                hir::hir_def::config::ConfigResource::Resource(r) => {
-                    r.document_symbols(db, &mut nested_builder)
-                }
-                hir::hir_def::config::ConfigResource::Program(p) => {
-                    p.document_symbols(db, &mut nested_builder)
-                }
-                _ => {}
-            }
+            res.document_symbols(db, &mut nested_builder);
         }
 
         let name = self.name(db).text(db).to_string();
@@ -353,10 +345,6 @@ impl<'db> DocumentSymbolsHandler<'db> for ResourceDecl<'db> {
         builder: &mut DocumentSymbolsBuilder,
     ) {
         let mut nested_builder = DocumentSymbolsBuilder::default();
-
-        self.variables(db)
-            .iter()
-            .for_each(|var| var.document_symbols(db, &mut nested_builder));
 
         self.programs(db)
             .iter()

@@ -12,7 +12,7 @@ use crate::{
     check::errors::{ToIdeDiagnostic, e0_syntax::SyntaxError},
     hir_def::{
         config::{
-            AccessDecl, AccessDirection, AccessPath, ConfigDecl, ConfigInstInit, ConfigResource,
+            AccessDecl, AccessDirection, AccessPath, ConfigDecl, ConfigInstInit,
             DataSink, DataSource, FbTask, ProgCnxn, ProgConfElement, ProgConfig, ResourceDecl,
             TaskConfig,
         },
@@ -80,31 +80,11 @@ impl<'db> SemanticIndexBuilder<'db> {
             }
         }
 
-        let mut resources: Vec<ConfigResource<'db>> = vec![];
+        let mut resources: Vec<ResourceDecl<'db>> = vec![];
         for res_id in &config.resources {
-            match res_id.cast(self.ast) {
-                ast::generated::ResourceDecl_SingleResourceDecl::ResourceDecl(rd) => {
-                    let r = self.parse_resource_decl(rd);
-                    if let Some(r) = self.try_parse(r) {
-                        resources.push(ConfigResource::Resource(r));
-                    }
-                }
-                ast::generated::ResourceDecl_SingleResourceDecl::SingleResourceDecl(srd) => {
-                    match srd.children.cast(self.ast) {
-                        ast::generated::ProgConfig_TaskConfig::TaskConfig(tc) => {
-                            let r = self.parse_task_config(tc);
-                            if let Some(t) = self.try_parse(r) {
-                                resources.push(ConfigResource::Task(t));
-                            }
-                        }
-                        ast::generated::ProgConfig_TaskConfig::ProgConfig(pc) => {
-                            let r = self.parse_prog_config(pc);
-                            if let Some(p) = self.try_parse(r) {
-                                resources.push(ConfigResource::Program(p));
-                            }
-                        }
-                    }
-                }
+            let r = self.parse_resource_decl(res_id.cast(self.ast));
+            if let Some(r) = self.try_parse(r) {
+                resources.push(r);
             }
         }
 
@@ -159,9 +139,14 @@ impl<'db> SemanticIndexBuilder<'db> {
         let resource_type_name =
             Ident::from_node(self.db, self.file, rd.resource_type_name.cast(self.ast))?;
 
-        let mut variables: Vec<VariableDecl<'db>> = vec![];
-        if let Some(global_vars) = &rd.global_variables {
-            global_vars.cast(self.ast).parse(self, &mut variables);
+        // A RESOURCE groups tasks and programs; it holds no variables. Globals
+        // live at the CONFIGURATION (application scope), so a VAR_GLOBAL here
+        // parses as an error node and is reported rather than bound.
+        if let Some(err) = &rd.global_variables {
+            self.errors.push(
+                SyntaxError::VarGlobalNotAllowed(err.cast(self.ast).get_range().to_owned())
+                    .to_diagnostic(self.db, self.file),
+            );
         }
 
         let mut tasks: Vec<TaskConfig<'db>> = vec![];
@@ -187,7 +172,6 @@ impl<'db> SemanticIndexBuilder<'db> {
             self.db,
             name,
             resource_type_name,
-            variables,
             tasks,
             programs,
             rd.into(),

@@ -70,7 +70,7 @@ use db::WorkspaceDataBase;
 use crate::{
     HasName,
     hir_def::{
-        config::{ConfigDecl, ConfigResource},
+        config::ConfigDecl,
         interned::{identifier::Ident, namespace::NamespacePath},
         namespace::NamespaceDecl,
         pous::{function::Function, pou::Pou, variable::VariableDecl},
@@ -254,15 +254,6 @@ pub fn external_var_lookup<'db>(
             for v in config.variables(db).iter() {
                 if v.get_name_ident(db) == var_name {
                     return Some(*v);
-                }
-            }
-            for res in config.resources(db).iter() {
-                if let ConfigResource::Resource(r) = res {
-                    for v in r.variables(db).iter() {
-                        if v.get_name_ident(db) == var_name {
-                            return Some(*v);
-                        }
-                    }
                 }
             }
         }

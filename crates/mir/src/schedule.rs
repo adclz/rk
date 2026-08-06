@@ -13,7 +13,7 @@ use db::WorkspaceDataBase;
 use hir::{
     Qualifier,
     hir_def::{
-        config::{ConfigDecl, ConfigResource, TaskConfig},
+        config::{ConfigDecl, TaskConfig},
         interned::identifier::Ident,
         pous::variable::VariableKind,
         program::ProgramDecl,
@@ -88,14 +88,10 @@ pub fn lower_schedule<'db>(
     let config = *configs.first()?;
     let inferred = infer_config_result(db, config);
 
-    // Every program instance — bare config-level + inside resources.
+    // Every program instance, across all resources.
     let mut prog_configs = Vec::new();
-    for res in config.resources(db) {
-        match res {
-            ConfigResource::Program(p) => prog_configs.push(*p),
-            ConfigResource::Resource(r) => prog_configs.extend(r.programs(db).iter().copied()),
-            ConfigResource::Task(_) => {}
-        }
+    for r in config.resources(db).iter() {
+        prog_configs.extend(r.programs(db).iter().copied());
     }
 
     // Allocate one instance per ProgConfig and group under its WITH-task,

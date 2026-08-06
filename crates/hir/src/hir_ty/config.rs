@@ -10,7 +10,7 @@ use crate::{
         e2_resolve::{ResolveError, UnschedulableReason, UnsupportedConfigKind},
     },
     hir_def::{
-        config::{ConfigDecl, ConfigResource, ProgConfig, ResourceDecl, TaskConfig},
+        config::{ConfigDecl, ProgConfig, ResourceDecl, TaskConfig},
         expressions::spec::SpecKind,
         interned::identifier::{Ident, SpanIdent},
         program::ProgramDecl,
@@ -86,73 +86,31 @@ fn infer_config<'db>(
     let errors = &mut result.errors;
 
     let mut seen_resources: FxHashMap<Ident, SpanIdent<'db>> = FxHashMap::default();
-    // Config-level task map (for validating top-level PROGRAM WITH references).
-    let mut config_tasks: FxHashMap<Ident, TaskConfig<'db>> = FxHashMap::default();
-    // Config-level program instance map.
-    let mut config_progs: FxHashMap<Ident, SpanIdent<'db>> = FxHashMap::default();
 
-    for res in config.resources(db).iter() {
-        match res {
-            ConfigResource::Task(t) => {
-                if let Some(first) = config_tasks.get(&t.name(db).ident) {
-                    errors.push(
-                        DuplicateError::Task {
-                            task1: t.name(db),
-                            task2: first.name(db),
-                        }
-                        .to_diagnostic(db, config.get_scope_id(db).file(db)),
-                    );
-                } else {
-                    config_tasks.insert(t.name(db).ident, *t);
+    for r in config.resources(db).iter() {
+        check_or_insert(&mut seen_resources, r.name(db), |first, second| {
+            errors.push(
+                DuplicateError::Resource {
+                    res1: second,
+                    res2: first,
                 }
-            }
-            ConfigResource::Program(p) => {
-                check_or_insert(&mut config_progs, p.name(db), |first, second| {
-                    errors.push(
-                        DuplicateError::ProgInstance {
-                            prog1: second,
-                            prog2: first,
-                        }
-                        .to_diagnostic(db, config.get_scope_id(db).file(db)),
-                    );
-                });
-            }
-            ConfigResource::Resource(r) => {
-                check_or_insert(&mut seen_resources, r.name(db), |first, second| {
-                    errors.push(
-                        DuplicateError::Resource {
-                            res1: second,
-                            res2: first,
-                        }
-                        .to_diagnostic(db, config.get_scope_id(db).file(db)),
-                    );
-                });
-                check_resource_duplicates(db, r, errors);
-            }
-        }
+                .to_diagnostic(db, config.get_scope_id(db).file(db)),
+            );
+        });
+        check_resource_duplicates(db, r, errors);
     }
 
-    // Phase 2: validate top-level PROGRAM references, resolve tasks, and build instance map.
-    resolve_task_intervals(db, &config_tasks, result);
-    for res in config.resources(db).iter() {
-        match res {
-            ConfigResource::Program(p) => {
-                validate_prog_config(db, p, &config_tasks, result);
-                report_unsupported_conf_elements(db, p, result);
-                resolve_prog_instance(db, p, &mut result.prog_instance);
-            }
-            ConfigResource::Resource(r) => {
-                // Tasks visible inside a resource are scoped to that resource only.
-                let resource_tasks: FxHashMap<Ident, TaskConfig<'db>> =
-                    r.tasks(db).iter().map(|t| (t.name(db).ident, *t)).collect();
-                resolve_task_intervals(db, &resource_tasks, result);
-                for p in r.programs(db).iter() {
-                    validate_prog_config(db, p, &resource_tasks, result);
-                    report_unsupported_conf_elements(db, p, result);
-                    resolve_prog_instance(db, p, &mut result.prog_instance);
-                }
-            }
-            ConfigResource::Task(_) => {}
+    // Phase 2: resolve each resource's tasks and validate the programs bound
+    // to them. Tasks and programs only exist inside a RESOURCE.
+    for r in config.resources(db).iter() {
+        // Tasks are scoped to the RESOURCE that declares them.
+        let resource_tasks: FxHashMap<Ident, TaskConfig<'db>> =
+            r.tasks(db).iter().map(|t| (t.name(db).ident, *t)).collect();
+        resolve_task_intervals(db, &resource_tasks, result);
+        for p in r.programs(db).iter() {
+            validate_prog_config(db, p, &resource_tasks, result);
+            report_unsupported_conf_elements(db, p, result);
+            resolve_prog_instance(db, p, &mut result.prog_instance);
         }
     }
 

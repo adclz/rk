@@ -1159,18 +1159,11 @@ fn build_global_table<'db>(
     configs: &[hir::hir_def::config::ConfigDecl<'db>],
     memory_layout: &mut MirMemoryLayout,
 ) -> Result<GlobalTable<'db>, LowerTypeError> {
-    use hir::hir_def::config::ConfigResource;
     let mut table = GlobalTable::default();
     for config in configs {
+        // Application scope: a RESOURCE declares no variables of its own.
         for v in config.variables(db) {
             add_global(db, v, memory_layout, &mut table)?;
-        }
-        for res in config.resources(db) {
-            if let ConfigResource::Resource(r) = res {
-                for v in r.variables(db) {
-                    add_global(db, v, memory_layout, &mut table)?;
-                }
-            }
         }
     }
     Ok(table)
@@ -1385,20 +1378,12 @@ fn collect_const_inits<'db>(
     >,
     string_pool: &std::rc::Rc<std::cell::RefCell<crate::lower::lower_expr::StringPool>>,
 ) -> Result<Vec<crate::stmt::MirStmt>, LowerTypeError> {
-    use hir::hir_def::config::ConfigResource;
 
     let mut stmts = Vec::new();
 
     // Config/resource VAR_GLOBALs.
     for config in configs {
-        let mut globals: Vec<&hir::hir_def::pous::variable::VariableDecl<'db>> =
-            config.variables(db).iter().collect();
-        for res in config.resources(db) {
-            if let ConfigResource::Resource(r) = res {
-                globals.extend(r.variables(db).iter());
-            }
-        }
-        for v in globals {
+        for v in config.variables(db) {
             let Some((addr, ty)) = global_table.get(&v.name(db)) else {
                 continue;
             };

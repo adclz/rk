@@ -91,9 +91,9 @@ impl<'db> ScopeId<'db> {
             ScopeKind::MethodDecl(m) => m.variables(db),
             ScopeKind::MethodProt(m) => m.variables(db),
             ScopeKind::Program(p) => p.variables(db),
-            // Includes each RESOURCE's own VAR_GLOBALs: a RESOURCE shares the
-            // configuration's scope, so they live here too.
-            ScopeKind::Config(c) => crate::hir_def::config::config_scope_variables(db, c),
+            // A RESOURCE holds no variables: VAR_GLOBAL is application-scoped,
+            // declared on the CONFIGURATION itself.
+            ScopeKind::Config(c) => c.variables(db),
             _ => None?,
         })
     }

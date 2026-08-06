@@ -6,7 +6,6 @@ use crate::{
     CallSite, HasName, HirNodeInfo,
     check::errors::{ToIdeDiagnostic, e2_resolve::ResolveError, e5_inheritance::InheritanceError},
     hir_def::{
-        config::ConfigResource,
         expressions::spec::{Spec, SpecKind},
         pous::{function::Function, interface::Interface, pou::Pou, variable::VariableKind},
         scope::{ScopeId, ScopeKind},
@@ -241,22 +240,9 @@ impl<'db> Signature<'db> {
             _ => return,
         };
 
-        for res in config.resources(db).iter() {
-            match res {
-                ConfigResource::Program(p) => {
-                    self.infer_spec(db, p.prog_type(db));
-                }
-                ConfigResource::Resource(r) => {
-                    // Resource variables share the config scope but aren't in
-                    // ScopeId::variables(), so infer their specs here.
-                    for v in r.variables(db).iter() {
-                        self.infer_spec(db, v.spec(db));
-                    }
-                    for p in r.programs(db).iter() {
-                        self.infer_spec(db, p.prog_type(db));
-                    }
-                }
-                ConfigResource::Task(_) => {}
+        for r in config.resources(db).iter() {
+            for p in r.programs(db).iter() {
+                self.infer_spec(db, p.prog_type(db));
             }
         }
     }
