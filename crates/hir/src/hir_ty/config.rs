@@ -22,6 +22,54 @@ use crate::{
     },
 };
 
+/// The resolved execution model of a CONFIGURATION.
+///
+/// Every RESOURCE, the tasks it declares that can actually run, and the
+/// program instances bound to each — with every value already resolved:
+/// intervals in nanoseconds, priorities as numbers, program types as
+/// declarations. Consumers walk this; they do not re-derive from it.
+///
+/// The maps beside it answer questions about a single node (what task is this
+/// program bound to?), which is what the IDE asks. This answers the whole
+/// question at once — what runs, in what order, under which resource — which
+/// is what lowering asks. Building it here is what keeps a RESOURCE from
+/// being flattened away by whoever needed a task list.
+#[derive(Debug, PartialEq, Eq, salsa::Update, Default)]
+pub struct ResolvedSchedule<'db> {
+    pub resources: Vec<ResolvedResource<'db>>,
+}
+
+#[derive(Debug, PartialEq, Eq, salsa::Update)]
+pub struct ResolvedResource<'db> {
+    pub decl: ResourceDecl<'db>,
+    pub name: Ident,
+    /// The `ON <type>` token: names the execution unit this group runs on.
+    pub cpu_type: Ident,
+    /// Runnable tasks, most urgent first (lowest PRIORITY number); tasks with
+    /// no PRIORITY sort last, ties keep declaration order.
+    pub tasks: Vec<ResolvedTask<'db>>,
+}
+
+#[derive(Debug, PartialEq, Eq, salsa::Update)]
+pub struct ResolvedTask<'db> {
+    pub decl: TaskConfig<'db>,
+    pub name: Ident,
+    /// Scan period in nanoseconds. A task that cannot run is absent from this
+    /// model entirely — see `unschedulable` for why.
+    pub interval_ns: u64,
+    pub priority: Option<u32>,
+    pub programs: Vec<ResolvedProgram<'db>>,
+}
+
+#[derive(Debug, PartialEq, Eq, salsa::Update)]
+pub struct ResolvedProgram<'db> {
+    pub decl: ProgConfig<'db>,
+    pub instance_name: Ident,
+    pub program: ProgramDecl<'db>,
+    /// Config-level RETAIN/NON_RETAIN qualifier, when written.
+    pub retain: Option<bool>,
+}
+
 /// Resolved references within a CONFIGURATION declaration.
 ///
 /// Built during `infer_config` and accessible via `infer_config_result` query.
@@ -33,6 +81,9 @@ pub struct ConfigInferenceResult<'db> {
 
     /// Maps each program instance name to the resolved PROGRAM declaration.
     pub prog_instance: FxHashMap<Ident, ProgramDecl<'db>>,
+
+    /// What actually runs — see [`ResolvedSchedule`].
+    pub schedule: ResolvedSchedule<'db>,
 
     /// Resolved PRIORITY per TASK. Absent when PRIORITY was omitted (E0035) or
     /// unusable (E0241) — either way consumers get a number or nothing
@@ -58,6 +109,7 @@ pub fn infer_config_result<'db>(
     config: ConfigDecl<'db>,
 ) -> ConfigInferenceResult<'db> {
     let mut result = ConfigInferenceResult {
+        schedule: ResolvedSchedule::default(),
         task_priority: FxHashMap::default(),
         task_interval_ns: FxHashMap::default(),
         unschedulable: FxHashMap::default(),
@@ -118,6 +170,11 @@ fn infer_config<'db>(
             resolve_prog_instance(db, p, &mut result.prog_instance);
         }
     }
+
+    // Phase 3: assemble what actually runs. Everything above resolved single
+    // nodes; this is the whole shape, so lowering never has to rebuild it (and
+    // never flattens a RESOURCE away doing so).
+    build_resolved_schedule(db, config, result);
 
     // Phase 2b: a PROGRAM bound to a task that cannot run would never run.
     report_unschedulable_bound_tasks(db, result);
@@ -293,6 +350,65 @@ fn report_unschedulable_bound_tasks<'db>(
 /// Resolving it here rather than in MIR also means the answer is published
 /// once: the scheduler reads `task_interval_ns` instead of parsing intervals
 /// a second time.
+/// Assembles [`ResolvedSchedule`] from the per-node resolutions above.
+///
+/// Order is meaning here: resources and programs keep declaration order, and
+/// tasks are sorted most-urgent-first so a consumer dispatching in slice order
+/// is correct by construction rather than by remembering to sort.
+fn build_resolved_schedule<'db>(
+    db: &'db dyn WorkspaceDataBase,
+    config: ConfigDecl<'db>,
+    result: &mut ConfigInferenceResult<'db>,
+) {
+    let mut resources = Vec::new();
+    for r in config.resources(db).iter() {
+        // Group instances under the task they are bound to, keeping the order
+        // they were declared in.
+        let mut tasks: Vec<ResolvedTask<'db>> = Vec::new();
+        for p in r.programs(db).iter() {
+            let Some(task) = result.task_of_prog.get(p).copied() else {
+                continue; // no resolvable WITH <task> — already diagnosed
+            };
+            let Some(program) = result.prog_instance.get(&p.name(db).ident).copied() else {
+                continue; // program type did not resolve — already diagnosed
+            };
+            // A task that cannot run contributes nothing to run.
+            let Some(&interval_ns) = result.task_interval_ns.get(&task) else {
+                continue;
+            };
+            let resolved = ResolvedProgram {
+                decl: *p,
+                instance_name: p.name(db).ident,
+                program,
+                retain: p.retain(db),
+            };
+            match tasks.iter_mut().find(|t| t.decl == task) {
+                Some(t) => t.programs.push(resolved),
+                None => tasks.push(ResolvedTask {
+                    decl: task,
+                    name: task.name(db).ident,
+                    interval_ns,
+                    priority: result.task_priority.get(&task).copied(),
+                    programs: vec![resolved],
+                }),
+            }
+        }
+        // Most urgent first; no PRIORITY sorts last; stable, so ties keep
+        // declaration order.
+        tasks.sort_by_key(|t| t.priority.unwrap_or(u32::MAX));
+
+        if !tasks.is_empty() {
+            resources.push(ResolvedResource {
+                decl: *r,
+                name: r.name(db).ident,
+                cpu_type: r.resource_type_name(db),
+                tasks,
+            });
+        }
+    }
+    result.schedule = ResolvedSchedule { resources };
+}
+
 fn resolve_task_intervals<'db>(
     db: &'db dyn WorkspaceDataBase,
     tasks: &FxHashMap<Ident, TaskConfig<'db>>,
