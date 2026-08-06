@@ -716,3 +716,103 @@ END_CONFIGURATION
             (bit_str_type_name
               (multibits_type_name
                 (byte_name)))))))))
+
+================================================================================
+VAR_CONFIG above and below a RESOURCE
+================================================================================
+
+CONFIGURATION cfg
+
+    VAR_CONFIG
+        STATION_1.P1.COUNT: INT:= 1;
+    END_VAR
+
+    RESOURCE STATION_1 ON PROCESSOR_TYPE_1
+        TASK T1(INTERVAL := T#10ms, PRIORITY := 1);
+        PROGRAM P1 WITH T1 : PROG;
+    END_RESOURCE
+
+    VAR_CONFIG
+        STATION_1.P1.TIME1: INT:= 2;
+    END_VAR
+
+END_CONFIGURATION
+
+--------------------------------------------------------------------------------
+
+(source_file
+  (config_decl
+    (identifier)
+    (config_init
+      (config_inst_init
+        (path_expression
+          (field_expression
+            (path_expression
+              (field_expression
+                (path_expression
+                  (var_access
+                    (field)))
+                (var_access
+                  (field))))
+            (var_access
+              (field))))
+        (loc_var_spec_init
+          (simple_type_spec
+            (numeric_type_name
+              (int_type_name
+                (sign_int_type_name
+                  (int_name)))))
+          (simple_type_init
+            (constant_expr
+              (constant
+                (numeric_literal
+                  (int_literal
+                    (signed_int
+                      (unsigned_int))))))))))
+    (resource_decl
+      (identifier)
+      (identifier)
+      (single_resource_decl
+        (task_config
+          (identifier)
+          (task_init
+            (data_source
+              (constant
+                (time_literal
+                  (duration
+                    (time
+                      (time_type_name)
+                      (time_value))))))
+            (unsigned_int))))
+      (single_resource_decl
+        (prog_config
+          (identifier)
+          (identifier)
+          (namespace_access
+            (identifier)))))
+    (config_init
+      (config_inst_init
+        (path_expression
+          (field_expression
+            (path_expression
+              (field_expression
+                (path_expression
+                  (var_access
+                    (field)))
+                (var_access
+                  (field))))
+            (var_access
+              (field))))
+        (loc_var_spec_init
+          (simple_type_spec
+            (numeric_type_name
+              (int_type_name
+                (sign_int_type_name
+                  (int_name)))))
+          (simple_type_init
+            (constant_expr
+              (constant
+                (numeric_literal
+                  (int_literal
+                    (signed_int
+                      (unsigned_int))))))))))))

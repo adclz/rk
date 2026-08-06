@@ -7053,64 +7053,50 @@
           }
         },
         {
-          "type": "FIELD",
-          "name": "global_variables",
+          "type": "REPEAT",
           "content": {
-            "type": "REPEAT",
-            "content": {
-              "type": "SYMBOL",
-              "name": "_config_variables"
-            }
-          }
-        },
-        {
-          "type": "FIELD",
-          "name": "resources",
-          "content": {
-            "type": "REPEAT",
-            "content": {
-              "type": "CHOICE",
-              "members": [
-                {
+            "type": "CHOICE",
+            "members": [
+              {
+                "type": "FIELD",
+                "name": "global_variables",
+                "content": {
                   "type": "SYMBOL",
-                  "name": "resource_decl"
-                },
-                {
-                  "type": "SYMBOL",
-                  "name": "ERR_task_or_program_outside_resource"
+                  "name": "_config_variables"
                 }
-              ]
-            }
-          }
-        },
-        {
-          "type": "FIELD",
-          "name": "access_decls",
-          "content": {
-            "type": "CHOICE",
-            "members": [
-              {
-                "type": "SYMBOL",
-                "name": "access_decls"
               },
               {
-                "type": "BLANK"
-              }
-            ]
-          }
-        },
-        {
-          "type": "FIELD",
-          "name": "config_init",
-          "content": {
-            "type": "CHOICE",
-            "members": [
-              {
-                "type": "SYMBOL",
-                "name": "config_init"
+                "type": "FIELD",
+                "name": "resources",
+                "content": {
+                  "type": "CHOICE",
+                  "members": [
+                    {
+                      "type": "SYMBOL",
+                      "name": "resource_decl"
+                    },
+                    {
+                      "type": "SYMBOL",
+                      "name": "ERR_task_or_program_outside_resource"
+                    }
+                  ]
+                }
               },
               {
-                "type": "BLANK"
+                "type": "FIELD",
+                "name": "access_decls",
+                "content": {
+                  "type": "SYMBOL",
+                  "name": "access_decls"
+                }
+              },
+              {
+                "type": "FIELD",
+                "name": "config_init",
+                "content": {
+                  "type": "SYMBOL",
+                  "name": "config_init"
+                }
               }
             ]
           }
@@ -7139,10 +7125,6 @@
         {
           "type": "SYMBOL",
           "name": "ERR_var_temp_not_allowed"
-        },
-        {
-          "type": "SYMBOL",
-          "name": "ERR_var_config_not_allowed"
         },
         {
           "type": "SYMBOL",

@@ -58,10 +58,6 @@
     "named": true,
     "subtypes": [
       {
-        "type": "ERR_var_config_not_allowed",
-        "named": true
-      },
-      {
         "type": "ERR_var_external_not_allowed",
         "named": true
       },
@@ -2179,7 +2175,7 @@
     "named": true,
     "fields": {
       "access_decls": {
-        "multiple": false,
+        "multiple": true,
         "required": false,
         "types": [
           {
@@ -2189,7 +2185,7 @@
         ]
       },
       "config_init": {
-        "multiple": false,
+        "multiple": true,
         "required": false,
         "types": [
           {

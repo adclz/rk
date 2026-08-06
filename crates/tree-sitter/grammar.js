@@ -1512,32 +1512,42 @@ module.exports = grammar({
 
     // Table 62 - Configuration and resource declaration
 
+    // A CONFIGURATION's sections may appear in ANY order and any number: it is
+    // a set of declarations, not a sequence. IEC's Table 49 fixes the order
+    // (globals, resources, VAR_ACCESS, VAR_CONFIG), which makes moving a
+    // VAR_CONFIG block above a RESOURCE a syntax error for no reason a reader
+    // would recognise — and same-named CONFIGURATION blocks merge anyway, so
+    // the order a declaration appears in already carries no meaning.
+    //
+    // Tasks and programs live in a RESOURCE, never directly in the
+    // CONFIGURATION: one way to express a thing, and the RESOURCE name is what
+    // deployment binds to an execution unit.
     config_decl: ($) =>
       seq(
         "CONFIGURATION",
         field("name", $.identifier),
-        field("global_variables", repeat($._config_variables)),
-        // Tasks and programs live in a RESOURCE, never directly in the
-        // CONFIGURATION: one way to express a thing, and the RESOURCE name is
-        // what deployment binds to an execution unit.
-        field(
-          "resources",
-          repeat(
-            choice($.resource_decl, $.ERR_task_or_program_outside_resource),
+        repeat(
+          choice(
+            field("global_variables", $._config_variables),
+            field(
+              "resources",
+              choice($.resource_decl, $.ERR_task_or_program_outside_resource),
+            ),
+            field("access_decls", $.access_decls),
+            field("config_init", $.config_init),
           ),
         ),
-        field("access_decls", optional($.access_decls)),
-        field("config_init", optional($.config_init)),
         "END_CONFIGURATION",
       ),
 
+    // VAR_CONFIG is NOT listed here: it is a legitimate section of the
+    // CONFIGURATION body (see `config_decl`), not a misplaced variable block.
     _config_variables: ($) =>
       choice(
         $.global_var_decls,
         $.ERR_var_not_allowed,
         $.ERR_var_in_out_not_allowed,
         $.ERR_var_temp_not_allowed,
-        $.ERR_var_config_not_allowed,
         $.ERR_var_located_not_allowed,
         $.ERR_var_external_not_allowed,
       ),

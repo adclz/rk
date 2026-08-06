@@ -898,17 +898,6 @@ END_CONFIGURATION
         |
         |     Note: VAR_TEMP can only be used inside FUNCTION, FUNCTION_BLOCK
     ----'
-    [E0027] Error: syntax
-        ,-[ file:///test0.st:15:3 ]
-        |
-     15 | ,->   VAR_CONFIG
-        : :
-     17 | |->   END_VAR
-        | |
-        | `--------------- VAR_CONFIG is not allowed in this context
-        |
-        |     Note: VAR_CONFIG can only be used inside CONFIGURATION
-    ----'
     [E0028] Error: syntax
         ,-[ file:///test0.st:19:3 ]
         |

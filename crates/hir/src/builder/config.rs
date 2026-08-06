@@ -59,12 +59,6 @@ impl<'db> SemanticIndexBuilder<'db> {
                             .to_diagnostic(self.db, self.file),
                     );
                 }
-                ConfigVariables::ERRVarConfigNotAllowed(err) => {
-                    self.errors.push(
-                        SyntaxError::VarConfigNotAllowed(err.get_range().to_owned())
-                            .to_diagnostic(self.db, self.file),
-                    );
-                }
                 ConfigVariables::ERRVarLocatedNotAllowed(err) => {
                     self.errors.push(
                         SyntaxError::VarLocatedNotAllowed(err.get_range().to_owned())
@@ -100,8 +94,10 @@ impl<'db> SemanticIndexBuilder<'db> {
             }
         }
 
+        // The sections may appear in any order and any number, so each kind is
+        // read as a list and flattened in declaration order.
         let mut access_decls: Vec<AccessDecl<'db>> = vec![];
-        if let Some(access_section) = &config.access_decls {
+        for access_section in &config.access_decls {
             for decl_id in &access_section.cast(self.ast).children {
                 let r = self.parse_access_decl(decl_id.cast(self.ast));
                 if let Some(d) = self.try_parse(r) {
@@ -111,7 +107,7 @@ impl<'db> SemanticIndexBuilder<'db> {
         }
 
         let mut config_init: Vec<ConfigInstInit<'db>> = vec![];
-        if let Some(init_section) = &config.config_init {
+        for init_section in &config.config_init {
             for inst_id in &init_section.cast(self.ast).children {
                 let r = self.parse_config_inst_init(inst_id.cast(self.ast));
                 if let Some(i) = self.try_parse(r) {

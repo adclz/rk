@@ -898,10 +898,6 @@ CONFIGURATION MyCfg
 
   END_VAR
 
-  VAR_CONFIG
-
-  END_VAR
-
   VAR_LOCATED
 
   END_VAR
@@ -922,8 +918,6 @@ END_CONFIGURATION
       (in_out_decls))
     (ERR_var_temp_not_allowed
       (temp_var_decls))
-    (ERR_var_config_not_allowed
-      (config_init))
     (ERR_var_located_not_allowed
       (loc_var_decls))
     (ERR_var_external_not_allowed
