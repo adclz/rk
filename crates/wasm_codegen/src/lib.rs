@@ -1453,53 +1453,6 @@ impl<'a> WasmGen<'a> {
             globals_size_idx,
         );
 
-        // Scheduler metadata for the CONFIGURATION's tasks (cooperative model
-        // B). The runtime reads these to drive the scan loop: it advances one
-        // `tick` every `__common_ticktime_ns`, and on each tick calls the
-        // exported `__task_<i>` entry whenever `tick % __task_<i>__period == 0`,
-        // iterating i in 0..__task_count (already priority-sorted by MIR).
-        if let Some(schedule) = &self.module.schedule {
-            let i32_global = |section: &mut wasm_encoder::GlobalSection, value: i32| {
-                let idx = section.len();
-                section.global(
-                    wasm_encoder::GlobalType {
-                        val_type: wasm_encoder::ValType::I32,
-                        mutable: false,
-                        shared: false,
-                    },
-                    &wasm_encoder::ConstExpr::i32_const(value),
-                );
-                idx
-            };
-            let count_idx = i32_global(&mut self.global_section, schedule.tasks.len() as i32);
-            self.export_section
-                .export("__task_count", wasm_encoder::ExportKind::Global, count_idx);
-
-            let ticktime_idx = self.global_section.len();
-            self.global_section.global(
-                wasm_encoder::GlobalType {
-                    val_type: wasm_encoder::ValType::I64,
-                    mutable: false,
-                    shared: false,
-                },
-                &wasm_encoder::ConstExpr::i64_const(schedule.common_ticktime_ns as i64),
-            );
-            self.export_section.export(
-                "__common_ticktime_ns",
-                wasm_encoder::ExportKind::Global,
-                ticktime_idx,
-            );
-
-            for (i, task) in schedule.tasks.iter().enumerate() {
-                let period_idx = i32_global(&mut self.global_section, task.period_ticks as i32);
-                self.export_section.export(
-                    &format!("__task_{i}__period"),
-                    wasm_encoder::ExportKind::Global,
-                    period_idx,
-                );
-            }
-        }
-
         let mut module = wasm_encoder::Module::new();
         module.section(&self.type_section);
         module.section(&self.import_section);
@@ -1692,6 +1645,15 @@ impl<'a> WasmGen<'a> {
             module.section(&wasm_encoder::CustomSection {
                 name: std::borrow::Cow::Borrowed(debug_format::RETAIN_MAP_SECTION),
                 data: std::borrow::Cow::Owned(self.module.retain_map.to_msgpack()),
+            });
+        }
+
+        // The schedule, load-bearing too: policy as data, so a task keeps its
+        // name, priority and RESOURCE.
+        if let Some(manifest) = &self.module.schedule_manifest {
+            module.section(&wasm_encoder::CustomSection {
+                name: std::borrow::Cow::Borrowed(debug_format::SCHEDULE_SECTION),
+                data: std::borrow::Cow::Owned(manifest.to_msgpack()),
             });
         }
 

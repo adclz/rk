@@ -79,6 +79,36 @@ pub struct MirSchedule {
     pub tasks: Vec<MirTask>,
 }
 
+impl MirSchedule {
+    /// The manifest the module carries: a serialization of what was decided,
+    /// built after any retain relocation.
+    pub fn to_manifest(&self, db: &dyn WorkspaceDataBase) -> debug_format::ScheduleManifest {
+        debug_format::ScheduleManifest {
+            version: debug_format::SCHEDULE_VERSION,
+            common_ticktime_ns: self.common_ticktime_ns,
+            tasks: self
+                .tasks
+                .iter()
+                .map(|t| debug_format::TaskEntry {
+                    name: t.name.text(db).to_string(),
+                    resource: t.resource.text(db).to_string(),
+                    period_ticks: t.period_ticks,
+                    priority: t.priority,
+                    programs: t
+                        .programs
+                        .iter()
+                        .map(|p| debug_format::ProgramEntry {
+                            instance: p.inst_name.text(db).to_string(),
+                            export: p.body_fn.text(db).to_string(),
+                            instance_addr: p.instance_addr,
+                        })
+                        .collect(),
+                })
+                .collect(),
+        }
+    }
+}
+
 /// Lower a module's CONFIGURATION (if any) into a schedule, allocating each
 /// program instance's state in `memory_layout` and registering its RETAIN
 /// fields. IEC allows exactly one configuration; we take the first. Returns

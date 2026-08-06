@@ -376,6 +376,70 @@ impl DebugLocals {
 }
 
 // ---------------------------------------------------------------------------
+// Schedule — what the runtime executes, and when
+// ---------------------------------------------------------------------------
+
+/// Custom wasm section carrying the [`ScheduleManifest`]. Load-bearing:
+/// release optimization must keep it.
+pub const SCHEDULE_SECTION: &str = "rk.schedule";
+
+/// On-wire format version for [`ScheduleManifest`].
+pub const SCHEDULE_VERSION: u16 = 1;
+
+/// What runs, and when: policy as data, so a task keeps its name,
+/// priority and RESOURCE. MessagePack encodes positionally: new fields go
+/// at the tail.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct ScheduleManifest {
+    pub version: u16,
+    /// The base tick: the greatest common divisor of every task interval, in
+    /// nanoseconds. Each task's period is a whole number of these.
+    pub common_ticktime_ns: u64,
+    /// Dispatch order — most urgent first. A consumer runs the due tasks in
+    /// slice order and is correct without re-sorting.
+    pub tasks: Vec<TaskEntry>,
+}
+
+/// One TASK: when it runs, and what it runs.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct TaskEntry {
+    pub name: String,
+    /// The RESOURCE that declares it — the group a deployment binds to an
+    /// execution unit.
+    pub resource: String,
+    /// Base ticks between runs: the task is due when `tick % period_ticks == 0`.
+    pub period_ticks: u32,
+    /// IEC priority, lower is more urgent. `None` when PRIORITY was omitted.
+    pub priority: Option<u32>,
+    /// Program instances, in declaration order.
+    pub programs: Vec<ProgramEntry>,
+}
+
+/// One PROGRAM instance bound to a task.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct ProgramEntry {
+    /// The instance name, as written in the configuration.
+    pub instance: String,
+    /// Exported function to call: the program type's body.
+    pub export: String,
+    /// Address of this instance's state, passed as the body's `this`; final,
+    /// written after any retain relocation.
+    pub instance_addr: u32,
+}
+
+impl ScheduleManifest {
+    /// Serialize to MessagePack bytes.
+    pub fn to_msgpack(&self) -> Vec<u8> {
+        rmp_serde::to_vec(self).expect("ScheduleManifest serialization should not fail")
+    }
+
+    /// Deserialize from MessagePack bytes.
+    pub fn from_msgpack(bytes: &[u8]) -> Result<Self, rmp_serde::decode::Error> {
+        rmp_serde::from_slice(bytes)
+    }
+}
+
+// ---------------------------------------------------------------------------
 // Retain map — per-field RETAIN persistence ranges
 // ---------------------------------------------------------------------------
 

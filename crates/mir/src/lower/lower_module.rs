@@ -471,6 +471,7 @@ fn lower_module_from_pous<'db>(
         globals_base: 0,
         globals_size: 0,
         schedule,
+        schedule_manifest: None,
         debug_symbols: crate::debug_symbols::DebugSymbols::new(),
         retain_map: debug_format::RetainMap::new(Vec::new()),
         source_files: Vec::new(),
@@ -580,52 +581,14 @@ fn lower_module_from_pous<'db>(
         bands.retain_size,
     );
 
-    // Phase 4.6: synthesize one entry function per scheduled task (cooperative
-    // model B — the runtime calls these). Each `__task_<i>` runs its task's
-    // program instances in order, calling `Type$__body__(this = instance_addr)`.
-    // Done AFTER the retain relocation so instance addresses are final, and
-    // after monomorphization so function indices continue its contiguous scheme.
-    if let Some(sched) = module.schedule.clone() {
-        let first_idx = module.functions.len() as u32 + module.extern_functions.len() as u32;
-        for (i, task) in sched.tasks.iter().enumerate() {
-            let idx = first_idx + i as u32;
-            let entry = hir::hir_def::interned::identifier::Ident::new(
-                db,
-                compact_str::CompactString::from(format!("__task_{i}")),
-            );
-            let body = task
-                .programs
-                .iter()
-                .map(|inst| {
-                    crate::stmt::MirStmt::Call(crate::expr::MirCall {
-                        callee: inst.body_fn,
-                        callee_index: 0, // resolved by name at codegen
-                        args: vec![crate::expr::MirCallArg {
-                            value: crate::expr::MirExpr::Constant(crate::expr::MirConstant::I32(
-                                inst.instance_addr as i32,
-                            )),
-                            kind: crate::expr::MirArgKind::ByValue,
-                        }],
-                        return_type: crate::types::MirType::Void,
-                        output_bindings: Vec::new(),
-                    })
-                })
-                .collect();
-            module.functions.push(crate::function::MirFunction {
-                name: entry,
-                origin_name: entry,
-                index: idx,
-                params: Vec::new(),
-                return_type: None,
-                locals: Vec::new(),
-                body,
-                linkage: crate::function::MirLinkage::Export,
-                is_test: false,
-                export_name: Some(compact_str::CompactString::from(format!("__task_{i}"))),
-            });
-            module.function_indices.insert(entry, idx);
-        }
-    }
+    // Phase 4.6: record what runs. The schedule travels as data in the
+    // `rk.schedule` section rather than as synthesized `__task_<i>` entry
+    // functions, so a task keeps its name, its priority and the RESOURCE that
+    // declares it — none of which survive being compiled into a call list.
+    //
+    // Built here, AFTER the retain relocation, so the instance addresses it
+    // records are the final ones.
+    module.schedule_manifest = module.schedule.as_ref().map(|s| s.to_manifest(db));
 
     // Rewrite `Local(name)` -> `Global` for every global a body referenced,
     // now that addresses are final.

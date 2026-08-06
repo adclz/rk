@@ -62,10 +62,13 @@ pub struct MirModule {
     pub globals_base: u32,
     pub globals_size: u32,
 
-    /// Resolved task schedule of the module's CONFIGURATION, or `None` when the
-    /// module has no configuration (e.g. a bare `{test}` program). Drives the
-    /// generated `__init`/per-task entries and the runtime's scan loop.
+    /// Resolved task schedule of the module's CONFIGURATION; `None` without one.
     pub schedule: Option<schedule::MirSchedule>,
+
+    /// The schedule as the module carries it: the `rk.schedule` custom
+    /// section. Built from [`MirModule::schedule`] once instance addresses are
+    /// final, and the only statement of what the runtime should run.
+    pub schedule_manifest: Option<debug_format::ScheduleManifest>,
 
     /// Debug-symbol table: every debuggable variable at its absolute address,
     /// emitted as the `debug-symbols` section.
