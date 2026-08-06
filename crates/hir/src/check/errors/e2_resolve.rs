@@ -200,6 +200,13 @@ pub enum ResolveError<'db> {
     UnknownTaskRef {
         task: SpanIdent<'db>,
     },
+    /// A TASK's PRIORITY is not a number this compiler can represent. Held as
+    /// source text until here, so an unusable value would otherwise reach the
+    /// scheduler as "no priority" and quietly sort last.
+    InvalidPriority {
+        task: SpanIdent<'db>,
+        value: Ident,
+    },
     /// A PROGRAM instance carries no `WITH <task>`, so nothing would ever run it.
     ProgramWithoutTask {
         instance: SpanIdent<'db>,
@@ -346,6 +353,7 @@ impl<'db> ErrorCode for ResolveError<'db> {
             Self::NoConfigFileFound { .. } => "E0217",
             Self::UnknownProgType { .. } => "E0218",
             Self::UnknownTaskRef { .. } => "E0219",
+            Self::InvalidPriority { .. } => "E0241",
             Self::ExternalVarNotFound { .. } => "E0220",
             Self::AccessDeclTypeMismatch { .. } => "E0221",
             Self::ConfigInstInitUnknownInstance { .. } => "E0222",
@@ -388,7 +396,9 @@ impl<'db> ErrorCode for ResolveError<'db> {
             | Self::MultipleVariadicVariables { .. }
             | Self::VariadicMixedWithOtherInputs { .. } => "invalid variadic declaration",
             Self::NoConfigFileFound { .. } => "configuration error",
-            Self::UnknownProgType { .. } | Self::UnknownTaskRef { .. } => "configuration error",
+            Self::UnknownProgType { .. }
+            | Self::UnknownTaskRef { .. }
+            | Self::InvalidPriority { .. } => "configuration error",
             Self::ExternalVarNotFound { .. } => "external variable not found",
             Self::AccessDeclTypeMismatch { .. } => "access declaration type mismatch",
             Self::ConfigInstInitUnknownInstance { .. }
@@ -766,6 +776,20 @@ impl<'db> ToIdeDiagnostic<'db> for ResolveError<'db> {
                 .desc(self)
                 .range(crate::denormalize(db, file, &task.get_span(db)).unwrap_or_default())
                 .call(),
+            Self::InvalidPriority { task, value } => {
+                let mut diag = diag()
+                    .message(format!(
+                        "task '{}' has an unusable PRIORITY '{}'",
+                        task.ident.text(db),
+                        value.text(db)
+                    ))
+                    .severity(DiagnosticSeverity::ERROR)
+                    .desc(self)
+                    .range(crate::denormalize(db, file, &task.get_span(db)).unwrap_or_default())
+                    .call();
+                diag.with_note("PRIORITY must fit in a 32-bit unsigned integer; 0 is the most urgent".into());
+                diag
+            }
             Self::ProgramWithoutTask { instance } => diag()
                 .message(format!(
                     "program instance '{}' has no WITH <task>, so it will never run",

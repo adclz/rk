@@ -34,6 +34,10 @@ pub struct ConfigInferenceResult<'db> {
     /// Maps each program instance name to the resolved PROGRAM declaration.
     pub prog_instance: FxHashMap<Ident, ProgramDecl<'db>>,
 
+    /// Resolved PRIORITY per TASK. Absent when PRIORITY was omitted (E0035) or
+    /// unusable (E0241) — either way consumers get a number or nothing
+    pub task_priority: FxHashMap<TaskConfig<'db>, u32>,
+
     /// Scan period in nanoseconds for each TASK that can actually be scheduled.
     /// A task missing from this map cannot run; consumers skip it without
     /// needing to re-derive why.
@@ -54,6 +58,7 @@ pub fn infer_config_result<'db>(
     config: ConfigDecl<'db>,
 ) -> ConfigInferenceResult<'db> {
     let mut result = ConfigInferenceResult {
+        task_priority: FxHashMap::default(),
         task_interval_ns: FxHashMap::default(),
         unschedulable: FxHashMap::default(),
         task_of_prog: FxHashMap::default(),
@@ -294,6 +299,24 @@ fn resolve_task_intervals<'db>(
     result: &mut ConfigInferenceResult<'db>,
 ) {
     for task in tasks.values() {
+        // PRIORITY is held as source text by the declaration; resolve it here
+        // so nothing downstream has to parse, and an unusable value is a
+        // diagnostic rather than a silent "no priority".
+        if let Some(text) = task.priority(db) {
+            match text.text(db).parse::<u32>() {
+                Ok(p) => {
+                    result.task_priority.insert(*task, p);
+                }
+                Err(_) => result.errors.push(
+                    ResolveError::InvalidPriority {
+                        task: task.name(db),
+                        value: text,
+                    }
+                    .to_diagnostic(db, task.get_scope_id(db).file(db)),
+                ),
+            }
+        }
+
         let reason = match (task.interval(db), task.single(db)) {
             (Some(ds), _) => match interval_nanos(db, &ds) {
                 None => Some(UnschedulableReason::NonLiteralInterval),

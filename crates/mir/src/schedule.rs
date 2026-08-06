@@ -182,7 +182,7 @@ pub fn lower_schedule<'db>(
         pending.push(Pending {
             name: task.name(db).ident,
             interval_ns,
-            priority: task_priority(db, &task),
+            priority: inferred.task_priority.get(&task).copied(),
             programs,
         });
     }
@@ -269,9 +269,6 @@ fn type_has_retain<'db>(
     })
 }
 
-fn task_priority<'db>(db: &'db dyn WorkspaceDataBase, task: &TaskConfig<'db>) -> Option<u32> {
-    task.priority(db)?.text(db).parse().ok()
-}
 
 fn gcd(a: u64, b: u64) -> u64 {
     if b == 0 { a } else { gcd(b, a % b) }
