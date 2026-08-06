@@ -103,7 +103,7 @@ pub fn check_single_configuration<'db>(
     config: ConfigDecl<'db>,
     errors: &mut Vec<IdeDiagnostic>,
 ) {
-    let all = crate::hir_ty::index_graphs::all_configs(db);
+    let all = crate::hir_ty::index_graphs::declared_configs(db);
     let names: rustc_hash::FxHashSet<_> = all.iter().map(|c| c.get_name_ident(db)).collect();
     if names.len() > 1 {
         // Carry the others so they can be reached from here: deciding which to

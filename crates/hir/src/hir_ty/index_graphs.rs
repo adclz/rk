@@ -228,12 +228,13 @@ pub fn program_index<'db>(db: &'db dyn WorkspaceDataBase, name: Ident) -> Option
     None
 }
 
-/// Every CONFIGURATION in the workspace.
+/// Every CONFIGURATION the workspace declares — for reporting that it
+/// declares more than one (E0242), not for choosing among them.
 ///
-/// A workspace declares one; this exists to notice when it declares more.
-/// Order is whatever the file maps yield, so it answers "how many" and "which
-/// ones" — never "which is first".
-pub fn all_configs<'db>(db: &'db dyn WorkspaceDataBase) -> Vec<ConfigDecl<'db>> {
+/// A workspace has one configuration; this is how the check sees that it has
+/// two, and where they are. Order is whatever the file maps yield, so it can
+/// answer "how many" and "which ones" and never "which one".
+pub fn declared_configs<'db>(db: &'db dyn WorkspaceDataBase) -> Vec<ConfigDecl<'db>> {
     let mut out = Vec::new();
     for file in all_files(db) {
         out.extend(file_configs(db, file).iter().copied());
