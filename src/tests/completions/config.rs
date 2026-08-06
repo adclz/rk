@@ -37,14 +37,17 @@ END_CONFIGURATION
         "missing VAR_GLOBAL: {labels:?}"
     );
     assert!(labels.contains(&"RESOURCE"), "missing RESOURCE: {labels:?}");
-    assert!(labels.contains(&"TASK"), "missing TASK: {labels:?}");
-    assert!(
-        labels.contains(&"PROGRAM (config)"),
-        "missing PROGRAM (config): {labels:?}"
-    );
     assert!(
         labels.contains(&"VAR_ACCESS"),
         "missing VAR_ACCESS: {labels:?}"
+    );
+
+    // Tasks and program instances live in a RESOURCE (E0039), so offering
+    // them here would insert code the compiler rejects.
+    assert!(!labels.contains(&"TASK"), "config should not offer TASK");
+    assert!(
+        !labels.contains(&"PROGRAM (config)"),
+        "config should not offer PROGRAM (config)"
     );
 
     // Should NOT have POU-level snippets
@@ -87,10 +90,6 @@ END_CONFIGURATION
 
     let labels: Vec<&str> = completions.iter().map(|c| c.label.as_str()).collect();
 
-    assert!(
-        labels.contains(&"VAR_GLOBAL"),
-        "missing VAR_GLOBAL: {labels:?}"
-    );
     assert!(labels.contains(&"TASK"), "missing TASK: {labels:?}");
     assert!(
         labels.contains(&"PROGRAM (config)"),
@@ -101,6 +100,11 @@ END_CONFIGURATION
     assert!(
         !labels.contains(&"RESOURCE"),
         "resource should not offer RESOURCE"
+    );
+    // A RESOURCE holds no variables: VAR_GLOBAL is CONFIGURATION-level (E0030).
+    assert!(
+        !labels.contains(&"VAR_GLOBAL"),
+        "resource should not offer VAR_GLOBAL"
     );
     // VAR_ACCESS only in CONFIGURATION, not RESOURCE
     assert!(
@@ -141,11 +145,6 @@ END_CONFIGURATION
 
     // Should still offer all config-level items
     assert!(labels.contains(&"RESOURCE"), "missing RESOURCE: {labels:?}");
-    assert!(labels.contains(&"TASK"), "missing TASK: {labels:?}");
-    assert!(
-        labels.contains(&"PROGRAM (config)"),
-        "missing PROGRAM (config): {labels:?}"
-    );
     assert!(
         labels.contains(&"VAR_ACCESS"),
         "missing VAR_ACCESS: {labels:?}"
