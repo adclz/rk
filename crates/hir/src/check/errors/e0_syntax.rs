@@ -793,7 +793,7 @@ impl<'db> ToIdeDiagnostic<'db> for SyntaxError {
                     .range(crate::denormalize(db, file, span).unwrap_or_default())
                     .call();
 
-                diag.with_note("VAR_GLOBAL can only be used inside PROGRAM, CONFIGURATION".into());
+                diag.with_note("VAR_GLOBAL can only be used inside CONFIGURATION".into());
                 diag
             }
             Self::VarNotAllowed(span) => {
