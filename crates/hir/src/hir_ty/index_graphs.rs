@@ -242,17 +242,23 @@ pub fn declared_configs<'db>(db: &'db dyn WorkspaceDataBase) -> Vec<ConfigDecl<'
     out
 }
 
-/// Finds a globally declared configuration by name across all files.
-#[tracing::instrument(skip(db))]
-pub fn config_index<'db>(db: &'db dyn WorkspaceDataBase, name: Ident) -> Option<ConfigDecl<'db>> {
+/// Every block of the named CONFIGURATION, across all files.
+///
+/// Same-named blocks are FRAGMENTS of one configuration — the GVL model: a
+/// file of VAR_GLOBALs here, the resources there. Order is whatever the file
+/// maps yield; callers that report or lower must order fragments themselves.
+#[tracing::instrument(level = "trace", skip(db), ret)]
+pub fn config_fragments<'db>(db: &'db dyn WorkspaceDataBase, name: Ident) -> Vec<ConfigDecl<'db>> {
+    let mut out = Vec::new();
     for file in all_files(db) {
-        for c in file_configs(db, file).iter() {
-            if c.get_name_ident(db) == name {
-                return Some(*c);
-            }
-        }
+        out.extend(
+            file_configs(db, file)
+                .iter()
+                .filter(|c| c.get_name_ident(db) == name)
+                .copied(),
+        );
     }
-    None
+    out
 }
 
 /// Looks up a VAR_GLOBAL by name across all configs/resources in the workspace.

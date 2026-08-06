@@ -6,7 +6,6 @@ use crate::{
     HasName, HirNodeInfo,
     check::errors::ToIdeDiagnostic,
     hir_def::{
-        config::ConfigDecl,
         expressions::{
             expression::{InitExpr, ParamAssign},
             spec::StructElement,
@@ -67,10 +66,6 @@ pub enum DuplicateError<'db> {
         prog1: ProgramDecl<'db>,
         prog2: ProgramDecl<'db>,
     },
-    Config {
-        config1: ConfigDecl<'db>,
-        config2: ConfigDecl<'db>,
-    },
     /// Duplicate TASK name within the same configuration or resource scope.
     Task {
         task1: SpanIdent<'db>,
@@ -102,7 +97,6 @@ impl ErrorCode for DuplicateError<'_> {
             Self::Using { .. } => "E0109",
             Self::InitExprField { .. } => "E0110",
             Self::Program { .. } => "E0111",
-            Self::Config { .. } => "E0113",
             Self::Task { .. } => "E0114",
             Self::ProgInstance { .. } => "E0115",
             Self::Resource { .. } => "E0116",
@@ -382,31 +376,6 @@ impl<'db> ToIdeDiagnostic<'db> for DuplicateError<'db> {
                     ),
                     prog2.get_scope_id(db).file(db),
                     prog2.get_name_span(db),
-                ));
-
-                diag
-            }
-            Self::Config { config1, config2 } => {
-                let mut diag = diag()
-                    .message(format!(
-                        "duplicate configuration '{}'",
-                        config1.get_name_ident(db).text(db)
-                    ))
-                    .severity(DiagnosticSeverity::ERROR)
-                    .desc(self)
-                    .range(
-                        crate::denormalize(db, file, &config1.get_name_span(db))
-                            .unwrap_or_default(),
-                    )
-                    .call();
-
-                diag.with_related(Related::new(
-                    format!(
-                        "configuration '{}' is already defined here",
-                        config2.get_name_ident(db).text(db)
-                    ),
-                    config2.get_scope_id(db).file(db),
-                    config2.get_name_span(db),
                 ));
 
                 diag

@@ -453,8 +453,12 @@ fn duplicate_prorams(mut with_db: RootDatabase) {
     ");
 }
 
+/// Same-named CONFIGURATION blocks are FRAGMENTS of one configuration and
+/// merge — the GVL model, so VAR_GLOBALs can be split across files. No
+/// duplicate error; what may not collide across fragments is policed
+/// individually (E0102 globals, E0116 resources).
 #[rstest]
-fn duplicate_configurations(mut with_db: RootDatabase) {
+fn same_named_configuration_fragments_merge(mut with_db: RootDatabase) {
     let source = r#"
 CONFIGURATION cfg
 
@@ -465,19 +469,7 @@ CONFIGURATION cfg
 END_CONFIGURATION
 "#;
 
-    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E0113] Error: duplicate definitions
-       ,-[ file:///test0.st:6:15 ]
-       |
-     2 | CONFIGURATION cfg
-       |               ^|^
-       |                `--- configuration 'cfg' is already defined here
-       |
-     6 | CONFIGURATION cfg
-       |               ^|^
-       |                `--- duplicate configuration 'cfg'
-    ---'
-    ");
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"");
 }
 
 // ── Configuration internal duplicates ─────────────────────────────────────

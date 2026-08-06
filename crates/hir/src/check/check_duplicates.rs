@@ -7,7 +7,7 @@ use crate::{
     hir_def::{config::ConfigDecl, namespace::NamespaceDecl, pous::pou::Pou, program::ProgramDecl},
     hir_ty::{
         head::signature::function_signature,
-        index_graphs::{config_index, namespace_pou_candidates, pou_candidates, program_index},
+        index_graphs::{namespace_pou_candidates, pou_candidates, program_index},
     },
 };
 
@@ -82,18 +82,16 @@ pub fn check_duplicate_programs<'db>(
     };
 }
 
-/// Check for duplicate CONFIGURATION names.
-/// A config is a duplicate if it differs from the one in the workspace index.
-/// A workspace declares one CONFIGURATION.
+/// A workspace declares one CONFIGURATION (E0242 otherwise).
 ///
 /// Not an arbitrary limit: a POU is a type, usable by any configuration, so
 /// with two of them "which globals are in scope in this POU" has no answer —
 /// the same reason a RESOURCE holds no variables. One workspace describes one
 /// PLC; a second PLC is a second workspace.
 ///
-/// Counts DISTINCT names, since two configurations sharing a name are a
-/// duplicate ([`check_duplicate_configs`]) and saying so twice describes one
-/// mistake as two.
+/// Counts DISTINCT names: same-named blocks are FRAGMENTS of the one
+/// configuration and merge ([`check_config_fragment_collisions`] polices what
+/// may not collide across them).
 ///
 /// Reported at every configuration rather than at "the extras": the file maps
 /// have no order, so there is no first, and picking one would make the message
@@ -122,25 +120,72 @@ pub fn check_single_configuration<'db>(
     }
 }
 
-pub fn check_duplicate_configs<'db>(
+/// Police what may not collide across the FRAGMENTS of one CONFIGURATION.
+///
+/// Same-named blocks merge (the GVL model: VAR_GLOBALs split across files),
+/// so a name declared by two fragments is one PLC declaring it twice:
+///
+/// * a VAR_GLOBAL in two fragments — two memory slots for one name, and
+///   resolution would pick one nondeterministically (E0102, as within a block);
+/// * a RESOURCE in two fragments — the name a deployment binds to, claimed
+///   twice (E0116, as within a block).
+///
+/// Reported at THIS fragment's declaration with the sibling's as related —
+/// symmetric, like E0242: every declaring fragment gets the error, because the
+/// file maps have no order and there is no "first" to privilege. The sibling
+/// shown is the deterministically smallest (file URL, then span), so the
+/// message reads the same on every run.
+pub fn check_config_fragment_collisions<'db>(
     db: &'db dyn WorkspaceDataBase,
     config: ConfigDecl<'db>,
     errors: &mut Vec<IdeDiagnostic>,
 ) {
-    let indexed = match config_index(db, config.get_name_ident(db)) {
-        Some(indexed) => indexed,
-        None => return,
-    };
-
-    if config != indexed {
-        errors.push(
-            DuplicateError::Config {
-                config1: config,
-                config2: indexed,
-            }
-            .to_diagnostic(db, config.get_scope_id(db).file(db)),
+    let mut siblings: Vec<_> =
+        crate::hir_ty::index_graphs::config_fragments(db, config.get_name_ident(db))
+            .into_iter()
+            .filter(|c| *c != config)
+            .collect();
+    if siblings.is_empty() {
+        return;
+    }
+    siblings.sort_by_key(|c| {
+        (
+            c.get_scope_id(db).file(db).url(db).to_string(),
+            c.get_name_span(db).start_byte,
         )
-    };
+    });
+
+    let file = config.get_scope_id(db).file(db);
+    for var in config.variables(db) {
+        if let Some(other) = siblings.iter().find_map(|sib| {
+            sib.variables(db)
+                .iter()
+                .find(|v| v.get_name_ident(db) == var.get_name_ident(db))
+        }) {
+            errors.push(
+                DuplicateError::Variable {
+                    var1: *var,
+                    var2: *other,
+                }
+                .to_diagnostic(db, file),
+            );
+        }
+    }
+    for res in config.resources(db) {
+        if let Some(other) = siblings.iter().find_map(|sib| {
+            sib.resources(db)
+                .iter()
+                .find(|r| r.name(db).ident == res.name(db).ident)
+        }) {
+            errors.push(
+                DuplicateError::Resource {
+                    res1: res.name(db),
+                    res2: other.name(db),
+                }
+                .to_diagnostic(db, file),
+            );
+        }
+    }
 }
 
 /// Check for duplicate POU names within a namespace. Same overload-aware rule as

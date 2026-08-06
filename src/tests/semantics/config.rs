@@ -1,9 +1,8 @@
 use auto_lsp::default::db::BaseDatabase;
 use db::RootDatabase;
-use hir::check::diagnostics_for_file;
 use hir::hir_def::semantic_index::semantic_index;
 use hir::hir_ty::config::infer_config_result;
-use hir::hir_ty::index_graphs::config_index;
+use hir::hir_ty::index_graphs::config_fragments;
 use hir::hir_ty::infer::Infer;
 use hir::hir_ty::ty::Type;
 use insta::assert_snapshot;
@@ -61,9 +60,11 @@ END_CONFIGURATION
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @"");
 }
 
-/// Duplicate CONFIGURATION names across files should be reported.
+/// The same RESOURCE name in two fragments of one CONFIGURATION: the name a
+/// deployment binds to, claimed twice. Reported symmetrically at each
+/// fragment, the sibling as related.
 #[rstest]
-fn duplicate_config_cross_file(mut with_db: RootDatabase) {
+fn duplicate_resource_across_fragments_is_rejected(mut with_db: RootDatabase) {
     let source1 = r#"
 CONFIGURATION MyCfg
     RESOURCE Res ON CPU
@@ -78,22 +79,117 @@ CONFIGURATION MyCfg
     END_RESOURCE
 END_CONFIGURATION
 "#;
-    add_sources(&mut with_db, &[source1, source2]);
-
-    let diagnostics: Vec<_> = with_db
-        .get_files()
-        .iter()
-        .map(|file| diagnostics_for_file(&with_db, *file))
-        .collect();
-
-    // One file will have the duplicate error; at least one diagnostic total.
-    let total: usize = diagnostics.iter().map(|d| d.len()).sum();
-    assert!(total > 0, "expected duplicate config diagnostic");
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source1, source2]), @r"
+    [E0116] Error: duplicate definitions
+       ,-[ file:///test0.st:3:14 ]
+       |
+     3 |     RESOURCE Res ON CPU
+       |              ^|^
+       |               `--- duplicate resource 'Res'
+       |
+       |-[ file:///test1.st:3:14 ]
+       |
+     3 |     RESOURCE Res ON CPU
+       |              ^|^
+       |               `--- resource 'Res' is already defined here
+    ---'
+    [E0116] Error: duplicate definitions
+       ,-[ file:///test1.st:3:14 ]
+       |
+     3 |     RESOURCE Res ON CPU
+       |              ^|^
+       |               `--- duplicate resource 'Res'
+       |
+       |-[ file:///test0.st:3:14 ]
+       |
+     3 |     RESOURCE Res ON CPU
+       |              ^|^
+       |               `--- resource 'Res' is already defined here
+    ---'
+    ");
 }
 
-/// config_index should find a configuration by name across the workspace.
+/// The same VAR_GLOBAL in two fragments: two memory slots for one name, and
+/// resolution would pick one nondeterministically. Reported symmetrically.
 #[rstest]
-fn config_index_lookup(mut with_db: RootDatabase) {
+fn duplicate_global_across_fragments_is_rejected(mut with_db: RootDatabase) {
+    let source1 = r#"
+CONFIGURATION MyCfg
+    VAR_GLOBAL
+        shared : INT;
+    END_VAR
+END_CONFIGURATION
+"#;
+    let source2 = r#"
+CONFIGURATION MyCfg
+    VAR_GLOBAL
+        shared : DINT;
+    END_VAR
+END_CONFIGURATION
+"#;
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source1, source2]), @r"
+    [E0102] Error: duplicate definitions
+       ,-[ file:///test0.st:4:9 ]
+       |
+     4 |         shared : INT;
+       |         ^^^|^^
+       |            `---- duplicate variable 'shared'
+       |
+       |-[ file:///test1.st:4:9 ]
+       |
+     4 |         shared : DINT;
+       |         ^^^|^^
+       |            `---- variable 'shared' is already defined here
+    ---'
+    [E0102] Error: duplicate definitions
+       ,-[ file:///test1.st:4:9 ]
+       |
+     4 |         shared : DINT;
+       |         ^^^|^^
+       |            `---- duplicate variable 'shared'
+       |
+       |-[ file:///test0.st:4:9 ]
+       |
+     4 |         shared : INT;
+       |         ^^^|^^
+       |            `---- variable 'shared' is already defined here
+    ---'
+    ");
+}
+
+/// The GVL use-case end to end: one fragment holds only VAR_GLOBALs, another
+/// holds the resources, and a POU reaches the global through VAR_EXTERNAL.
+#[rstest]
+fn fragments_split_globals_and_resources_merge(mut with_db: RootDatabase) {
+    let globals = r#"
+CONFIGURATION Plant
+    VAR_GLOBAL
+        line_speed : INT;
+    END_VAR
+END_CONFIGURATION
+"#;
+    let machine = r#"
+PROGRAM Conveyor
+VAR_EXTERNAL
+    line_speed : INT;
+END_VAR
+    line_speed := line_speed + 1;
+END_PROGRAM
+
+CONFIGURATION Plant
+    RESOURCE Main ON CPU
+        TASK Cyclic(INTERVAL := T#10ms, PRIORITY := 1);
+        PROGRAM P1 WITH Cyclic : Conveyor;
+    END_RESOURCE
+END_CONFIGURATION
+"#;
+    assert_snapshot!(test_diagnostics(&mut with_db, &[globals, machine]), @r"");
+}
+
+/// config_fragments should find a configuration's blocks by name across the
+/// workspace.
+#[rstest]
+fn config_fragments_lookup(mut with_db: RootDatabase) {
     let source = r#"
 CONFIGURATION MyCfg
     RESOURCE Res ON CPU
@@ -109,8 +205,8 @@ END_CONFIGURATION
     assert_eq!(sema.configs.len(), 1);
 
     let name = sema.configs[0].name(&with_db);
-    let found = config_index(&with_db, name);
-    assert!(found.is_some(), "config_index should find MyCfg by name");
+    let found = config_fragments(&with_db, name);
+    assert_eq!(found.len(), 1, "config_fragments should find MyCfg by name");
 }
 
 /// TASK with SINGLE and INTERVAL data sources.
