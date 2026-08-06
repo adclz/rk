@@ -985,11 +985,6 @@ CONFIGURATION MyCfg
         missing : INT;
         m: INT;
     END_VAR
-    
-    TASK t1(PRIORITY := 1);
-        PROGRAM RETAIN inst12 WITH t1  : MyProg;
-
-    TASK t10(PRIORITY := 1);
 
     RESOURCE res ON CPU1
 
@@ -1016,11 +1011,6 @@ END_CONFIGURATION
     		missing: INT;
     		m: INT;
     	END_VAR
-
-    	TASK t1(PRIORITY := 1);
-    	PROGRAM RETAIN inst12 WITH t1: MyProg;
-
-    	TASK t10(PRIORITY := 1);
     	RESOURCE res ON CPU1
 
     		TASK t2(PRIORITY := 1);

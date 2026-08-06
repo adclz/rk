@@ -157,7 +157,9 @@ END_CONFIGURATION
 pub fn task_config_completion_empty(mut with_db: RootDatabase) {
     let source = r#"
 CONFIGURATION MyConfig
-    TASK t1()
+    RESOURCE Res ON CPU
+        TASK t1()
+    END_RESOURCE
 END_CONFIGURATION
 "#;
 
@@ -187,7 +189,9 @@ END_CONFIGURATION
 pub fn task_config_completion_with_priority(mut with_db: RootDatabase) {
     let source = r#"
 CONFIGURATION MyConfig
-    TASK t1(PRIORITY := 5)
+    RESOURCE Res ON CPU
+        TASK t1(PRIORITY := 5)
+    END_RESOURCE
 END_CONFIGURATION
 "#;
 
@@ -220,7 +224,9 @@ END_CONFIGURATION
 pub fn task_config_completion_full(mut with_db: RootDatabase) {
     let source = r#"
 CONFIGURATION MyConfig
-    TASK t1(SINGLE := %IX0.0, INTERVAL := T#20ms, PRIORITY := 3)
+    RESOURCE Res ON CPU
+        TASK t1(SINGLE := %IX0.0, INTERVAL := T#20ms, PRIORITY := 3)
+    END_RESOURCE
 END_CONFIGURATION
 "#;
 

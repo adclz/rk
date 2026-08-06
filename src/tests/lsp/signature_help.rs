@@ -422,7 +422,9 @@ END_FUNCTION
 fn signature_help_task_config_at_start(mut with_db: RootDatabase) {
     let source = r#"
 CONFIGURATION MyCfg
-    TASK t1(PRIORITY := 5);
+    RESOURCE Res ON CPU
+        TASK t1(PRIORITY := 5);
+    END_RESOURCE
 END_CONFIGURATION
 "#;
 
@@ -487,7 +489,9 @@ END_CONFIGURATION
 fn signature_help_task_config_on_priority(mut with_db: RootDatabase) {
     let source = r#"
 CONFIGURATION MyCfg
-    TASK t1(PRIORITY := 5);
+    RESOURCE Res ON CPU
+        TASK t1(PRIORITY := 5);
+    END_RESOURCE
 END_CONFIGURATION
 "#;
 
@@ -506,7 +510,9 @@ END_CONFIGURATION
 fn signature_help_task_config_full(mut with_db: RootDatabase) {
     let source = r#"
 CONFIGURATION MyCfg
-    TASK t1(SINGLE := %IX0.0, INTERVAL := T#20ms, PRIORITY := 3);
+    RESOURCE Res ON CPU
+        TASK t1(SINGLE := %IX0.0, INTERVAL := T#20ms, PRIORITY := 3);
+    END_RESOURCE
 END_CONFIGURATION
 "#;
 
@@ -525,7 +531,9 @@ END_CONFIGURATION
 fn signature_help_task_config_before_paren(mut with_db: RootDatabase) {
     let source = r#"
 CONFIGURATION MyCfg
-    TASK t1(PRIORITY := 5);
+    RESOURCE Res ON CPU
+        TASK t1(PRIORITY := 5);
+    END_RESOURCE
 END_CONFIGURATION
 "#;
 

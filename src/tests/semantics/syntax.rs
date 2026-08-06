@@ -583,7 +583,7 @@ END_CLASS
         | |
         | `--------------- VAR_GLOBAL is not allowed in this context
         |
-        |     Note: VAR_GLOBAL can only be used inside PROGRAM, CONFIGURATION
+        |     Note: VAR_GLOBAL can only be used inside CONFIGURATION
     ----'
     ");
 }
@@ -653,7 +653,7 @@ END_FUNCTION_BLOCK
         | |
         | `--------------- VAR_GLOBAL is not allowed in this context
         |
-        |     Note: VAR_GLOBAL can only be used inside PROGRAM, CONFIGURATION
+        |     Note: VAR_GLOBAL can only be used inside CONFIGURATION
     ----'
     ");
 }
@@ -723,7 +723,7 @@ END_FUNCTION
         | |
         | `--------------- VAR_GLOBAL is not allowed in this context
         |
-        |     Note: VAR_GLOBAL can only be used inside PROGRAM, CONFIGURATION
+        |     Note: VAR_GLOBAL can only be used inside CONFIGURATION
     ----'
     ");
 }
@@ -818,7 +818,7 @@ END_INTERFACE
         | |
         | `----------------- VAR_GLOBAL is not allowed in this context
         |
-        |     Note: VAR_GLOBAL can only be used inside PROGRAM, CONFIGURATION
+        |     Note: VAR_GLOBAL can only be used inside CONFIGURATION
     ----'
     [E0025] Error: syntax
         ,-[ file:///test0.st:24:5 ]
@@ -1014,7 +1014,7 @@ END_CLASS
         | |
         | `----------------- VAR_GLOBAL is not allowed in this context
         |
-        |     Note: VAR_GLOBAL can only be used inside PROGRAM, CONFIGURATION
+        |     Note: VAR_GLOBAL can only be used inside CONFIGURATION
     ----'
     ");
 }
@@ -1023,16 +1023,18 @@ END_CLASS
 fn single_after_interval(mut with_db: RootDatabase) {
     let source = r#"
 CONFIGURATION MyCfg
-    TASK t1(INTERVAL := 1, SINGLE := 1, PRIORITY := 1);
+    RESOURCE Res ON CPU
+        TASK t1(INTERVAL := 1, SINGLE := 1, PRIORITY := 1);
+    END_RESOURCE
 END_CONFIGURATION"#;
 
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
     [E0032] Error: syntax
-       ,-[ file:///test0.st:3:28 ]
+       ,-[ file:///test0.st:4:32 ]
        |
-     3 |     TASK t1(INTERVAL := 1, SINGLE := 1, PRIORITY := 1);
-       |                            ^^^^^^|^^^^^
-       |                                  `------- SINGLE cannot be declared after INTERVAL
+     4 |         TASK t1(INTERVAL := 1, SINGLE := 1, PRIORITY := 1);
+       |                                ^^^^^^|^^^^^
+       |                                      `------- SINGLE cannot be declared after INTERVAL
     ---'
     ");
 }
@@ -1041,16 +1043,18 @@ END_CONFIGURATION"#;
 fn interval_after_priority(mut with_db: RootDatabase) {
     let source = r#"
 CONFIGURATION MyCfg
-    TASK t1(PRIORITY := 1, INTERVAL := 1);
+    RESOURCE Res ON CPU
+        TASK t1(PRIORITY := 1, INTERVAL := 1);
+    END_RESOURCE
 END_CONFIGURATION"#;
 
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
     [E0033] Error: syntax
-       ,-[ file:///test0.st:3:26 ]
+       ,-[ file:///test0.st:4:30 ]
        |
-     3 |     TASK t1(PRIORITY := 1, INTERVAL := 1);
-       |                          ^^^^^^^|^^^^^^^
-       |                                 `--------- INTERVAL cannot be declared after PRIORITY
+     4 |         TASK t1(PRIORITY := 1, INTERVAL := 1);
+       |                              ^^^^^^^|^^^^^^^
+       |                                     `--------- INTERVAL cannot be declared after PRIORITY
     ---'
     ");
 }
@@ -1059,16 +1063,18 @@ END_CONFIGURATION"#;
 fn single_after_priority(mut with_db: RootDatabase) {
     let source = r#"
 CONFIGURATION MyCfg
-    TASK t1(PRIORITY := 1, SINGLE := 1);
+    RESOURCE Res ON CPU
+        TASK t1(PRIORITY := 1, SINGLE := 1);
+    END_RESOURCE
 END_CONFIGURATION"#;
 
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
     [E0034] Error: syntax
-       ,-[ file:///test0.st:3:26 ]
+       ,-[ file:///test0.st:4:30 ]
        |
-     3 |     TASK t1(PRIORITY := 1, SINGLE := 1);
-       |                          ^^^^^^|^^^^^^
-       |                                `-------- SINGLE cannot be declared after PRIORITY
+     4 |         TASK t1(PRIORITY := 1, SINGLE := 1);
+       |                              ^^^^^^|^^^^^^
+       |                                    `-------- SINGLE cannot be declared after PRIORITY
     ---'
     ");
 }
@@ -1077,16 +1083,18 @@ END_CONFIGURATION"#;
 fn missing_priority(mut with_db: RootDatabase) {
     let source = r#"
 CONFIGURATION MyCfg
-    TASK t1()
+    RESOURCE Res ON CPU
+        TASK t1()
+    END_RESOURCE
 END_CONFIGURATION"#;
 
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
     [E0035] Error: syntax
-       ,-[ file:///test0.st:3:5 ]
+       ,-[ file:///test0.st:4:9 ]
        |
-     3 |     TASK t1()
-       |     ^^^^|^^^^
-       |         `------ PRIORITY is required in TASK configuration
+     4 |         TASK t1()
+       |         ^^^^|^^^^
+       |             `------ PRIORITY is required in TASK configuration
     ---'
     ");
 }

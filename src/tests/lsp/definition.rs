@@ -242,8 +242,10 @@ PROGRAM MyProg
 END_PROGRAM
 
 CONFIGURATION MyCfg
-    TASK t1(PRIORITY := 5);
-    PROGRAM inst1 WITH t1 : MyProg;
+    RESOURCE Res ON CPU
+        TASK t1(PRIORITY := 5);
+        PROGRAM inst1 WITH t1 : MyProg;
+    END_RESOURCE
 END_CONFIGURATION
 "#;
 
@@ -276,8 +278,10 @@ PROGRAM MyProg
 END_PROGRAM
 
 CONFIGURATION MyCfg
-    TASK t1(PRIORITY := 5);
-    PROGRAM inst1 WITH t1 : MyProg;
+    RESOURCE Res ON CPU
+        TASK t1(PRIORITY := 5);
+        PROGRAM inst1 WITH t1 : MyProg;
+    END_RESOURCE
 END_CONFIGURATION
 "#;
 
@@ -301,14 +305,16 @@ END_CONFIGURATION
     let task_offset = task_ref.get_span(&with_db).start_byte;
     let def = prog.definition(&with_db, task_offset).unwrap();
     // Should point to the task name "t1" in the TASK declaration (line 5)
-    assert_snapshot!(format_definition_response(&def), @"/test0.st:5:9-5:11");
+    assert_snapshot!(format_definition_response(&def), @"/test0.st:6:13-6:15");
 }
 
 #[rstest]
 pub fn definition_config_task_node(mut with_db: RootDatabase) {
     let source = r#"
 CONFIGURATION MyCfg
-    TASK t1(PRIORITY := 5);
+    RESOURCE Res ON CPU
+        TASK t1(PRIORITY := 5);
+    END_RESOURCE
 END_CONFIGURATION
 "#;
 
@@ -330,5 +336,5 @@ END_CONFIGURATION
     // Definition on the task name should go to itself
     let name_offset = task.name(&with_db).get_span(&with_db).start_byte;
     let def = task.definition(&with_db, name_offset).unwrap();
-    assert_snapshot!(format_definition_response(&def), @"/test0.st:2:9-2:11");
+    assert_snapshot!(format_definition_response(&def), @"/test0.st:3:13-3:15");
 }

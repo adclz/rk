@@ -1,7 +1,6 @@
 use auto_lsp::default::db::BaseDatabase;
 use db::RootDatabase;
 use hir::check::diagnostics_for_file;
-use hir::hir_def::config::ConfigResource;
 use hir::hir_def::semantic_index::semantic_index;
 use hir::hir_ty::config::infer_config_result;
 use hir::hir_ty::index_graphs::config_index;
@@ -20,8 +19,10 @@ PROGRAM MyProg
 END_PROGRAM
 
 CONFIGURATION MyCfg
-    TASK t1(INTERVAL := T#10ms, PRIORITY := 5);
-    PROGRAM RETAIN inst1 WITH t1 : MyProg;
+    RESOURCE Res ON CPU
+        TASK t1(INTERVAL := T#10ms, PRIORITY := 5);
+        PROGRAM RETAIN inst1 WITH t1 : MyProg;
+    END_RESOURCE
 END_CONFIGURATION
 "#;
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @"");
@@ -52,7 +53,9 @@ CONFIGURATION MyCfg
     VAR_GLOBAL
         counter : INT;
     END_VAR
-    TASK t1(INTERVAL := T#10ms, PRIORITY := 10);
+    RESOURCE Res ON CPU
+        TASK t1(INTERVAL := T#10ms, PRIORITY := 10);
+    END_RESOURCE
 END_CONFIGURATION
 "#;
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @"");
@@ -63,12 +66,16 @@ END_CONFIGURATION
 fn duplicate_config_cross_file(mut with_db: RootDatabase) {
     let source1 = r#"
 CONFIGURATION MyCfg
-    TASK t1(INTERVAL := T#10ms, PRIORITY := 1);
+    RESOURCE Res ON CPU
+        TASK t1(INTERVAL := T#10ms, PRIORITY := 1);
+    END_RESOURCE
 END_CONFIGURATION
 "#;
     let source2 = r#"
 CONFIGURATION MyCfg
-    TASK t1(INTERVAL := T#10ms, PRIORITY := 2);
+    RESOURCE Res ON CPU
+        TASK t1(INTERVAL := T#10ms, PRIORITY := 2);
+    END_RESOURCE
 END_CONFIGURATION
 "#;
     add_sources(&mut with_db, &[source1, source2]);
@@ -89,7 +96,9 @@ END_CONFIGURATION
 fn config_index_lookup(mut with_db: RootDatabase) {
     let source = r#"
 CONFIGURATION MyCfg
-    TASK t1(INTERVAL := T#10ms, PRIORITY := 5);
+    RESOURCE Res ON CPU
+        TASK t1(INTERVAL := T#10ms, PRIORITY := 5);
+    END_RESOURCE
 END_CONFIGURATION
 "#;
     add_sources(&mut with_db, &[source]);
@@ -109,7 +118,9 @@ END_CONFIGURATION
 fn valid_task_with_single_interval(mut with_db: RootDatabase) {
     let source = r#"
 CONFIGURATION MyCfg
-    TASK t1(SINGLE := %IX0.0, INTERVAL := T#20ms, PRIORITY := 3);
+    RESOURCE Res ON CPU
+        TASK t1(SINGLE := %IX0.0, INTERVAL := T#20ms, PRIORITY := 3);
+    END_RESOURCE
 END_CONFIGURATION
 "#;
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @"");
@@ -120,17 +131,19 @@ END_CONFIGURATION
 fn invalid_config_unknown_prog_type(mut with_db: RootDatabase) {
     let source = r#"
 CONFIGURATION MyCfg
-    TASK t1(INTERVAL := T#10ms, PRIORITY := 1);
-    PROGRAM inst1 WITH t1 : UnknownProg;
+    RESOURCE Res ON CPU
+        TASK t1(INTERVAL := T#10ms, PRIORITY := 1);
+        PROGRAM inst1 WITH t1 : UnknownProg;
+    END_RESOURCE
 END_CONFIGURATION
 "#;
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
     [E0210] Error: no namespace item found
-       ,-[ file:///test0.st:4:29 ]
+       ,-[ file:///test0.st:5:33 ]
        |
-     4 |     PROGRAM inst1 WITH t1 : UnknownProg;
-       |                             ^^^^^|^^^^^
-       |                                  `------- no item found for path 'UnknownProg'
+     5 |         PROGRAM inst1 WITH t1 : UnknownProg;
+       |                                 ^^^^^|^^^^^
+       |                                      `------- no item found for path 'UnknownProg'
     ---'
     ");
 }
@@ -143,16 +156,18 @@ PROGRAM MyProg
 END_PROGRAM
 
 CONFIGURATION MyCfg
-    PROGRAM inst1 WITH unknownTask : MyProg;
+    RESOURCE Res ON CPU
+        PROGRAM inst1 WITH unknownTask : MyProg;
+    END_RESOURCE
 END_CONFIGURATION
 "#;
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
     [E0219] Error: configuration error
-       ,-[ file:///test0.st:6:24 ]
+       ,-[ file:///test0.st:7:28 ]
        |
-     6 |     PROGRAM inst1 WITH unknownTask : MyProg;
-       |                        ^^^^^|^^^^^
-       |                             `------- task 'unknownTask' not found in this configuration
+     7 |         PROGRAM inst1 WITH unknownTask : MyProg;
+       |                            ^^^^^|^^^^^
+       |                                 `------- task 'unknownTask' not found in this configuration
     ---'
     ");
 }
@@ -167,7 +182,9 @@ CONFIGURATION MyCfg
         flag : BOOL;
         ratio : REAL;
     END_VAR
-    TASK t1(INTERVAL := T#10ms, PRIORITY := 1);
+    RESOURCE Res ON CPU
+        TASK t1(INTERVAL := T#10ms, PRIORITY := 1);
+    END_RESOURCE
 END_CONFIGURATION
 "#;
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @"");
@@ -181,7 +198,9 @@ CONFIGURATION MyCfg
     VAR_GLOBAL
         x : UnknownType;
     END_VAR
-    TASK t1(INTERVAL := T#10ms, PRIORITY := 1);
+    RESOURCE Res ON CPU
+        TASK t1(INTERVAL := T#10ms, PRIORITY := 1);
+    END_RESOURCE
 END_CONFIGURATION
 "#;
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
@@ -209,16 +228,20 @@ CONFIGURATION MyCfg
     VAR_GLOBAL
         counter : INT;
     END_VAR
-    TASK t1(INTERVAL := T#10ms, PRIORITY := 1);
-    PROGRAM RETAIN inst1 WITH t1 : MyProg;
+    RESOURCE Res ON CPU
+        TASK t1(INTERVAL := T#10ms, PRIORITY := 1);
+        PROGRAM RETAIN inst1 WITH t1 : MyProg;
+    END_RESOURCE
 END_CONFIGURATION
 "#;
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @"");
 }
 
-/// A PROGRAM with VAR_EXTERNAL referencing a VAR_GLOBAL from a RESOURCE block.
+/// A CONFIGURATION's VAR_GLOBAL reaches a PROGRAM instantiated inside a
+/// RESOURCE: globals are application-scoped, and a RESOURCE — being only a
+/// named group of tasks and programs — does not narrow what its programs see.
 #[rstest]
-fn valid_var_external_from_resource(mut with_db: RootDatabase) {
+fn config_global_reaches_a_program_inside_a_resource(mut with_db: RootDatabase) {
     let source = r#"
 PROGRAM MyProg
     VAR_EXTERNAL
@@ -227,10 +250,10 @@ PROGRAM MyProg
 END_PROGRAM
 
 CONFIGURATION MyCfg
+    VAR_GLOBAL
+        flag : BOOL;
+    END_VAR
     RESOURCE res1 ON CPU_TYPE
-        VAR_GLOBAL
-            flag : BOOL;
-        END_VAR
         TASK t1(INTERVAL := T#10ms, PRIORITY := 1);
         PROGRAM inst1 WITH t1 : MyProg;
     END_RESOURCE
@@ -253,8 +276,10 @@ CONFIGURATION MyCfg
     VAR_GLOBAL
         counter : INT;
     END_VAR
-    TASK t1(INTERVAL := T#10ms, PRIORITY := 1);
-    PROGRAM RETAIN inst1 WITH t1 : MyProg;
+    RESOURCE Res ON CPU
+        TASK t1(INTERVAL := T#10ms, PRIORITY := 1);
+        PROGRAM RETAIN inst1 WITH t1 : MyProg;
+    END_RESOURCE
 END_CONFIGURATION
 "#;
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
@@ -421,8 +446,10 @@ PROGRAM MyProg
 END_PROGRAM
 
 CONFIGURATION MyCfg
-    TASK t1(INTERVAL := T#10ms, PRIORITY := 1);
-    PROGRAM inst1 WITH t1 : MyProg;
+    RESOURCE Res ON CPU
+        TASK t1(INTERVAL := T#10ms, PRIORITY := 1);
+        PROGRAM inst1 WITH t1 : MyProg;
+    END_RESOURCE
 
     VAR_CONFIG
         inst1.x : INT := 42;
@@ -431,9 +458,9 @@ END_CONFIGURATION
 "#;
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
     [E0240] Error: unsupported configuration element
-        ,-[ file:///test0.st:13:15 ]
+        ,-[ file:///test0.st:15:15 ]
         |
-     13 |         inst1.x : INT := 42;
+     15 |         inst1.x : INT := 42;
         |               |
         |               `-- VAR_CONFIG is checked but not applied yet, so this value never reaches the instance
         |
@@ -459,8 +486,10 @@ PROGRAM MyProg
 END_PROGRAM
 
 CONFIGURATION MyCfg
-    TASK t1(INTERVAL := T#10ms, PRIORITY := 1);
-    PROGRAM inst1 WITH t1 : MyProg;
+    RESOURCE Res ON CPU
+        TASK t1(INTERVAL := T#10ms, PRIORITY := 1);
+        PROGRAM inst1 WITH t1 : MyProg;
+    END_RESOURCE
 
     VAR_CONFIG
         inst1.fb1.param : BOOL := TRUE;
@@ -469,9 +498,9 @@ END_CONFIGURATION
 "#;
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
     [E0240] Error: unsupported configuration element
-        ,-[ file:///test0.st:19:19 ]
+        ,-[ file:///test0.st:21:19 ]
         |
-     19 |         inst1.fb1.param : BOOL := TRUE;
+     21 |         inst1.fb1.param : BOOL := TRUE;
         |                   ^^|^^
         |                     `---- VAR_CONFIG is checked but not applied yet, so this value never reaches the instance
         |
@@ -491,8 +520,10 @@ PROGRAM MyProg
 END_PROGRAM
 
 CONFIGURATION MyCfg
-    TASK t1(INTERVAL := T#10ms, PRIORITY := 1);
-    PROGRAM inst1 WITH t1 : MyProg;
+    RESOURCE Res ON CPU
+        TASK t1(INTERVAL := T#10ms, PRIORITY := 1);
+        PROGRAM inst1 WITH t1 : MyProg;
+    END_RESOURCE
 
     VAR_CONFIG
         noSuchInst.x : INT := 42;
@@ -501,18 +532,18 @@ END_CONFIGURATION
 "#;
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
     [E0240] Error: unsupported configuration element
-        ,-[ file:///test0.st:13:20 ]
+        ,-[ file:///test0.st:15:20 ]
         |
-     13 |         noSuchInst.x : INT := 42;
+     15 |         noSuchInst.x : INT := 42;
         |                    |
         |                    `-- VAR_CONFIG is checked but not applied yet, so this value never reaches the instance
         |
         | Note: set the value in the program's own VAR declaration instead
     ----'
     [E0222] Error: configuration error
-        ,-[ file:///test0.st:13:9 ]
+        ,-[ file:///test0.st:15:9 ]
         |
-     13 |         noSuchInst.x : INT := 42;
+     15 |         noSuchInst.x : INT := 42;
         |         ^^^^^|^^^^
         |              `------ no program instance 'noSuchInst' found in this configuration
     ----'
@@ -530,8 +561,10 @@ PROGRAM MyProg
 END_PROGRAM
 
 CONFIGURATION MyCfg
-    TASK t1(INTERVAL := T#10ms, PRIORITY := 1);
-    PROGRAM inst1 WITH t1 : MyProg;
+    RESOURCE Res ON CPU
+        TASK t1(INTERVAL := T#10ms, PRIORITY := 1);
+        PROGRAM inst1 WITH t1 : MyProg;
+    END_RESOURCE
 
     VAR_CONFIG
         inst1.nonexistent : INT := 42;
@@ -540,18 +573,18 @@ END_CONFIGURATION
 "#;
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
     [E0240] Error: unsupported configuration element
-        ,-[ file:///test0.st:13:15 ]
+        ,-[ file:///test0.st:15:15 ]
         |
-     13 |         inst1.nonexistent : INT := 42;
+     15 |         inst1.nonexistent : INT := 42;
         |               ^^^^^|^^^^^
         |                    `------- VAR_CONFIG is checked but not applied yet, so this value never reaches the instance
         |
         | Note: set the value in the program's own VAR declaration instead
     ----'
     [E0223] Error: configuration error
-        ,-[ file:///test0.st:13:15 ]
+        ,-[ file:///test0.st:15:15 ]
         |
-     13 |         inst1.nonexistent : INT := 42;
+     15 |         inst1.nonexistent : INT := 42;
         |               ^^^^^|^^^^^
         |                    `------- 'MyProg' has no field named 'nonexistent'
     ----'
@@ -569,8 +602,10 @@ PROGRAM MyProg
 END_PROGRAM
 
 CONFIGURATION MyCfg
-    TASK t1(INTERVAL := T#10ms, PRIORITY := 1);
-    PROGRAM inst1 WITH t1 : MyProg;
+    RESOURCE Res ON CPU
+        TASK t1(INTERVAL := T#10ms, PRIORITY := 1);
+        PROGRAM inst1 WITH t1 : MyProg;
+    END_RESOURCE
 
     VAR_CONFIG
         inst1.x : INT := 'hello';
@@ -579,18 +614,18 @@ END_CONFIGURATION
 "#;
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
     [E0240] Error: unsupported configuration element
-        ,-[ file:///test0.st:13:15 ]
+        ,-[ file:///test0.st:15:15 ]
         |
-     13 |         inst1.x : INT := 'hello';
+     15 |         inst1.x : INT := 'hello';
         |               |
         |               `-- VAR_CONFIG is checked but not applied yet, so this value never reaches the instance
         |
         | Note: set the value in the program's own VAR declaration instead
     ----'
     [E0301] Error: type mismatch
-        ,-[ file:///test0.st:13:23 ]
+        ,-[ file:///test0.st:15:23 ]
         |
-     13 |         inst1.x : INT := 'hello';
+     15 |         inst1.x : INT := 'hello';
         |                       ^^^^^|^^^^
         |                            `------ expected 'INT', got 'STRING'
     ----'
@@ -608,8 +643,10 @@ PROGRAM MyProg
 END_PROGRAM
 
 CONFIGURATION MyCfg
-    TASK t1(INTERVAL := T#10ms, PRIORITY := 1);
-    PROGRAM inst1 WITH t1 : MyProg;
+    RESOURCE Res ON CPU
+        TASK t1(INTERVAL := T#10ms, PRIORITY := 1);
+        PROGRAM inst1 WITH t1 : MyProg;
+    END_RESOURCE
 
     VAR_CONFIG
         inst1.x.deeper : INT := 42;
@@ -618,18 +655,18 @@ END_CONFIGURATION
 "#;
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
     [E0240] Error: unsupported configuration element
-        ,-[ file:///test0.st:13:17 ]
+        ,-[ file:///test0.st:15:17 ]
         |
-     13 |         inst1.x.deeper : INT := 42;
+     15 |         inst1.x.deeper : INT := 42;
         |                 ^^^|^^
         |                    `---- VAR_CONFIG is checked but not applied yet, so this value never reaches the instance
         |
         | Note: set the value in the program's own VAR declaration instead
     ----'
     [E0223] Error: configuration error
-        ,-[ file:///test0.st:13:17 ]
+        ,-[ file:///test0.st:15:17 ]
         |
-     13 |         inst1.x.deeper : INT := 42;
+     15 |         inst1.x.deeper : INT := 42;
         |                 ^^^|^^
         |                    `---- 'INT' has no field named 'deeper'
     ----'
@@ -684,8 +721,10 @@ PROGRAM MyProg
 END_PROGRAM
 
 CONFIGURATION MyCfg
-    TASK t1(INTERVAL := T#10ms, PRIORITY := 5);
-    PROGRAM inst1 WITH t1 : MyProg;
+    RESOURCE Res ON CPU
+        TASK t1(INTERVAL := T#10ms, PRIORITY := 5);
+        PROGRAM inst1 WITH t1 : MyProg;
+    END_RESOURCE
 END_CONFIGURATION
 "#;
     add_sources(&mut with_db, &[source]);
@@ -696,8 +735,8 @@ END_CONFIGURATION
 
     // Find the ProgConfig's prog_type Spec and check it infers to Type::Program
     let mut found = false;
-    for res in config.resources(&with_db).iter() {
-        if let ConfigResource::Program(p) = res {
+    for r in config.resources(&with_db).iter() {
+        for p in r.programs(&with_db).iter() {
             let ty = p.prog_type(&with_db).infer(&with_db);
             assert!(
                 matches!(ty, Type::Program(_)),
@@ -717,8 +756,10 @@ PROGRAM MyProg
 END_PROGRAM
 
 CONFIGURATION MyCfg
-    TASK t1(INTERVAL := T#10ms, PRIORITY := 5);
-    PROGRAM inst1 WITH t1 : MyProg;
+    RESOURCE Res ON CPU
+        TASK t1(INTERVAL := T#10ms, PRIORITY := 5);
+        PROGRAM inst1 WITH t1 : MyProg;
+    END_RESOURCE
 END_CONFIGURATION
 "#;
     add_sources(&mut with_db, &[source]);
@@ -747,8 +788,10 @@ PROGRAM MyProg
 END_PROGRAM
 
 CONFIGURATION MyCfg
-    TASK t1(INTERVAL := T#10ms, PRIORITY := 5);
-    PROGRAM inst1 WITH t1 : MyProg;
+    RESOURCE Res ON CPU
+        TASK t1(INTERVAL := T#10ms, PRIORITY := 5);
+        PROGRAM inst1 WITH t1 : MyProg;
+    END_RESOURCE
 END_CONFIGURATION
 "#;
     add_sources(&mut with_db, &[source]);
@@ -826,54 +869,48 @@ END_FUNCTION_BLOCK
     ");
 }
 
-/// A RESOURCE shares the CONFIGURATION's scope, so its `VAR_GLOBAL`s must be
-/// checked exactly like the configuration's own: a bad initializer is a type
-/// error and a repeated name is a duplicate. Both were silently skipped, since
-/// the scope only ever enumerated the configuration's own variables.
+/// A CONFIGURATION's `VAR_GLOBAL`s are checked like any other declaration: a
+/// bad initializer is a type error.
 #[rstest]
-fn resource_global_bad_initializer_is_a_type_error(mut with_db: db::RootDatabase) {
+fn config_global_bad_initializer_is_a_type_error(mut with_db: db::RootDatabase) {
     let source = r#"
         CONFIGURATION Cfg
-            RESOURCE Res ON CPU
-                VAR_GLOBAL
-                    bad : INT := 'oops';
-                END_VAR
-            END_RESOURCE
+            VAR_GLOBAL
+                bad : INT := 'oops';
+            END_VAR
         END_CONFIGURATION
     "#;
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
     [E0301] Error: type mismatch
-       ,-[ file:///test0.st:5:31 ]
+       ,-[ file:///test0.st:4:27 ]
        |
-     5 |                     bad : INT := 'oops';
-       |                               ^^^^|^^^^
-       |                                   `------ expected 'INT', got 'STRING'
+     4 |                 bad : INT := 'oops';
+       |                           ^^^^|^^^^
+       |                               `------ expected 'INT', got 'STRING'
     ---'
     ");
 }
 
 #[rstest]
-fn duplicate_resource_globals_are_reported(mut with_db: db::RootDatabase) {
+fn duplicate_config_globals_are_reported(mut with_db: db::RootDatabase) {
     let source = r#"
         CONFIGURATION Cfg
-            RESOURCE Res ON CPU
-                VAR_GLOBAL
-                    g : INT;
-                    g : INT;
-                END_VAR
-            END_RESOURCE
+            VAR_GLOBAL
+                g : INT;
+                g : INT;
+            END_VAR
         END_CONFIGURATION
     "#;
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
     [E0102] Error: duplicate definitions
-       ,-[ file:///test0.st:6:21 ]
+       ,-[ file:///test0.st:5:17 ]
        |
-     5 |                     g : INT;
-       |                     |
-       |                     `-- variable 'g' is already defined here
-     6 |                     g : INT;
-       |                     |
-       |                     `-- duplicate variable 'g'
+     4 |                 g : INT;
+       |                 |
+       |                 `-- variable 'g' is already defined here
+     5 |                 g : INT;
+       |                 |
+       |                 `-- duplicate variable 'g'
     ---'
     ");
 }
@@ -1155,15 +1192,16 @@ fn program_connection_elements_are_reported(mut with_db: RootDatabase) {
     ");
 }
 
-/// Two RESOURCEs each declaring `g` used to alias to ONE address — the earlier
-/// allocation was dead and the later one won for every body, silently. They are
-/// now rejected: this implementation flattens resources into one memory, so it
-/// cannot give them separate storage, and refusing beats aliasing.
+/// `VAR_GLOBAL` is application-scoped: it belongs to the CONFIGURATION, never
+/// to a RESOURCE. A RESOURCE is a named group of tasks and programs and holds
+/// no variables of its own, so a `VAR_GLOBAL` inside one is rejected.
 ///
-/// Note this rejects something IEC permits, since resource globals are meant to
-/// be resource-scoped. That is a limitation of the flattened model, not a rule.
+/// This removes a whole class of ambiguity with it: two RESOURCEs declaring the
+/// same name can no longer exist, so nothing has to decide which one a POU's
+/// VAR_EXTERNAL binds to — a question the standard leaves open and which no
+/// implementation answers consistently.
 #[rstest]
-fn same_named_globals_in_two_resources_are_rejected(mut with_db: RootDatabase) {
+fn var_global_in_a_resource_is_rejected(mut with_db: RootDatabase) {
     let source = r#"
         PROGRAM P VAR_EXTERNAL g : INT; END_VAR VAR n : INT; END_VAR n := g; END_PROGRAM
 
@@ -1181,16 +1219,30 @@ fn same_named_globals_in_two_resources_are_rejected(mut with_db: RootDatabase) {
         END_CONFIGURATION
     "#;
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E0102] Error: duplicate definitions
-        ,-[ file:///test0.st:11:28 ]
-        |
-      6 |                 VAR_GLOBAL g : INT := 10; END_VAR
-        |                            |
-        |                            `-- variable 'g' is already defined here
+    [E0030] Error: syntax
+       ,-[ file:///test0.st:6:17 ]
+       |
+     6 |                 VAR_GLOBAL g : INT := 10; END_VAR
+       |                 ^^^^^^^^^^^^^^^^|^^^^^^^^^^^^^^^^
+       |                                 `------------------ VAR_GLOBAL is not allowed in this context
+       |
+       | Note: VAR_GLOBAL can only be used inside CONFIGURATION
+    ---'
+    [E0030] Error: syntax
+        ,-[ file:///test0.st:11:17 ]
         |
      11 |                 VAR_GLOBAL g : INT := 99; END_VAR
-        |                            |
-        |                            `-- duplicate variable 'g'
+        |                 ^^^^^^^^^^^^^^^^|^^^^^^^^^^^^^^^^
+        |                                 `------------------ VAR_GLOBAL is not allowed in this context
+        |
+        | Note: VAR_GLOBAL can only be used inside CONFIGURATION
     ----'
+    [E0220] Error: external variable not found
+       ,-[ file:///test0.st:2:32 ]
+       |
+     2 |         PROGRAM P VAR_EXTERNAL g : INT; END_VAR VAR n : INT; END_VAR n := g; END_PROGRAM
+       |                                ^^^|^^^
+       |                                   `----- external variable 'g' not found in any accessible VAR_GLOBAL
+    ---'
     ");
 }

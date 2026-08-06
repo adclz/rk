@@ -488,13 +488,11 @@ fn wide_and_float_global_initializers_load(mut with_db: db::RootDatabase) {
     assert_eq!(read_first_i32(&plc), 1, "wide global initializers applied");
 }
 
-/// A `VAR_GLOBAL` declared inside a RESOURCE gets an address and resolves for
-/// `VAR_EXTERNAL`, but its initializer was never applied: the RESOURCE shares
-/// the CONFIGURATION's scope, and that scope only ever enumerated the
-/// configuration's own variables, so init inference never visited the
-/// declaration at all.
+/// A CONFIGURATION's `VAR_GLOBAL` initializer runs before the first scan, and
+/// the value is visible through `VAR_EXTERNAL` to a PROGRAM instantiated inside
+/// a RESOURCE — globals are application-scoped, so the grouping is irrelevant.
 #[rstest]
-fn resource_scoped_global_initializer_applies(mut with_db: db::RootDatabase) {
+fn config_global_initializer_applies(mut with_db: db::RootDatabase) {
     let source = r#"
         PROGRAM P
         VAR RETAIN
@@ -507,10 +505,10 @@ fn resource_scoped_global_initializer_applies(mut with_db: db::RootDatabase) {
         END_PROGRAM
 
         CONFIGURATION Cfg
+            VAR_GLOBAL
+                g : DINT := 42;
+            END_VAR
             RESOURCE Res ON CPU
-                VAR_GLOBAL
-                    g : DINT := 42;
-                END_VAR
                 TASK T(INTERVAL := T#10ms, PRIORITY := 1);
                 PROGRAM P1 WITH T : P;
             END_RESOURCE
@@ -519,5 +517,5 @@ fn resource_scoped_global_initializer_applies(mut with_db: db::RootDatabase) {
     let (_mir, wasm) = compile_to_mir_and_wasm(&mut with_db, source);
     let mut plc = Plc::load(&wasm, Config::default()).expect("load");
     plc.run(1).expect("scan");
-    assert_eq!(read_first_i32(&plc), 42, "the resource global's initializer ran");
+    assert_eq!(read_first_i32(&plc), 42, "the config global's initializer ran");
 }

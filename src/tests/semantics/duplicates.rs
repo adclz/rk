@@ -486,20 +486,22 @@ END_CONFIGURATION
 fn duplicate_tasks_in_config(mut with_db: RootDatabase) {
     let source = r#"
 CONFIGURATION MyCfg
-    TASK t1(INTERVAL := T#10ms, PRIORITY := 1);
-    TASK t1(INTERVAL := T#10ms, PRIORITY := 2);
+    RESOURCE Res ON CPU
+        TASK t1(INTERVAL := T#10ms, PRIORITY := 1);
+        TASK t1(INTERVAL := T#10ms, PRIORITY := 2);
+    END_RESOURCE
 END_CONFIGURATION
 "#;
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
     [E0114] Error: duplicate definitions
-       ,-[ file:///test0.st:4:10 ]
+       ,-[ file:///test0.st:5:14 ]
        |
-     3 |     TASK t1(INTERVAL := T#10ms, PRIORITY := 1);
-       |          ^|
-       |           `-- task 't1' is already defined here
-     4 |     TASK t1(INTERVAL := T#10ms, PRIORITY := 2);
-       |          ^|
-       |           `-- duplicate task 't1'
+     4 |         TASK t1(INTERVAL := T#10ms, PRIORITY := 1);
+       |              ^|
+       |               `-- task 't1' is already defined here
+     5 |         TASK t1(INTERVAL := T#10ms, PRIORITY := 2);
+       |              ^|
+       |               `-- duplicate task 't1'
     ---'
     ");
 }
@@ -511,21 +513,23 @@ PROGRAM MyProg
 END_PROGRAM
 
 CONFIGURATION MyCfg
-    TASK t1(INTERVAL := T#10ms, PRIORITY := 1);
-    PROGRAM inst1 WITH t1 : MyProg;
-    PROGRAM inst1 WITH t1 : MyProg;
+    RESOURCE Res ON CPU
+        TASK t1(INTERVAL := T#10ms, PRIORITY := 1);
+        PROGRAM inst1 WITH t1 : MyProg;
+        PROGRAM inst1 WITH t1 : MyProg;
+    END_RESOURCE
 END_CONFIGURATION
 "#;
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
     [E0115] Error: duplicate definitions
-       ,-[ file:///test0.st:8:13 ]
+       ,-[ file:///test0.st:9:17 ]
        |
-     7 |     PROGRAM inst1 WITH t1 : MyProg;
-       |             ^^|^^
-       |               `---- program instance 'inst1' is already defined here
-     8 |     PROGRAM inst1 WITH t1 : MyProg;
-       |             ^^|^^
-       |               `---- duplicate program instance 'inst1'
+     8 |         PROGRAM inst1 WITH t1 : MyProg;
+       |                 ^^|^^
+       |                   `---- program instance 'inst1' is already defined here
+     9 |         PROGRAM inst1 WITH t1 : MyProg;
+       |                 ^^|^^
+       |                   `---- duplicate program instance 'inst1'
     ---'
     ");
 }

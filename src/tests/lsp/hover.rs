@@ -572,7 +572,9 @@ END_FUNCTION
 pub fn hover_config_task(mut with_db: RootDatabase) {
     let source = r#"
 CONFIGURATION MyCfg
-    TASK t1(PRIORITY := 5);
+    RESOURCE Res ON CPU
+        TASK t1(PRIORITY := 5);
+    END_RESOURCE
 END_CONFIGURATION
 "#;
 
@@ -593,8 +595,10 @@ PROGRAM MyProg
 END_PROGRAM
 
 CONFIGURATION MyCfg
-    TASK t1(PRIORITY := 5);
-    PROGRAM inst1 WITH t1 : MyProg;
+    RESOURCE Res ON CPU
+        TASK t1(PRIORITY := 5);
+        PROGRAM inst1 WITH t1 : MyProg;
+    END_RESOURCE
 END_CONFIGURATION
 "#;
 
@@ -615,8 +619,10 @@ PROGRAM MyProg
 END_PROGRAM
 
 CONFIGURATION MyCfg
-    TASK t1(PRIORITY := 5);
-    PROGRAM inst1 WITH t1 : MyProg;
+    RESOURCE Res ON CPU
+        TASK t1(PRIORITY := 5);
+        PROGRAM inst1 WITH t1 : MyProg;
+    END_RESOURCE
 END_CONFIGURATION
 "#;
 
@@ -652,8 +658,10 @@ PROGRAM MyProg
 END_PROGRAM
 
 CONFIGURATION MyCfg
-    TASK t1(PRIORITY := 5);
-    PROGRAM inst1 WITH t1 : MyProg;
+    RESOURCE Res ON CPU
+        TASK t1(PRIORITY := 5);
+        PROGRAM inst1 WITH t1 : MyProg;
+    END_RESOURCE
 END_CONFIGURATION
 "#;
 
