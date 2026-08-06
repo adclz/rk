@@ -3,6 +3,48 @@
 use crate::tests::codegen::{compile_to_mir_and_wasm, with_db};
 use rstest::*;
 
+/// Two RESOURCEs no longer collapse into one anonymous task list: each task
+/// carries the resource that declares it, which is what a deployment binds to
+/// an execution unit. Before this, `lower_schedule` flattened resources away
+/// on its first statement and nothing downstream could tell them apart.
+#[rstest]
+fn tasks_carry_the_resource_that_declares_them(mut with_db: db::RootDatabase) {
+    let source = r#"
+        PROGRAM ProgA VAR a : INT; END_VAR a := a + 1; END_PROGRAM
+        PROGRAM ProgB VAR b : INT; END_VAR b := b + 1; END_PROGRAM
+
+        CONFIGURATION Cfg
+            RESOURCE Core0 ON CPU
+                TASK Fast(INTERVAL := T#10ms, PRIORITY := 1);
+                PROGRAM PA WITH Fast : ProgA;
+            END_RESOURCE
+            RESOURCE Core1 ON CPU
+                TASK Slow(INTERVAL := T#20ms, PRIORITY := 2);
+                PROGRAM PB WITH Slow : ProgB;
+            END_RESOURCE
+        END_CONFIGURATION
+    "#;
+    let (mir, _wasm) = compile_to_mir_and_wasm(&mut with_db, source);
+    let sched = mir.schedule.as_ref().expect("a schedule");
+    let pairs: Vec<(String, String)> = sched
+        .tasks
+        .iter()
+        .map(|t| {
+            (
+                t.resource.text(&with_db).to_string(),
+                t.name.text(&with_db).to_string(),
+            )
+        })
+        .collect();
+    assert_eq!(
+        pairs,
+        vec![
+            ("Core0".to_string(), "Fast".to_string()),
+            ("Core1".to_string(), "Slow".to_string())
+        ]
+    );
+}
+
 /// A CONFIGURATION with two cyclic tasks at different rates lowers to a
 /// multi-rate schedule: base tick = GCD of intervals, per-task period in ticks,
 /// tasks sorted most-urgent-first.

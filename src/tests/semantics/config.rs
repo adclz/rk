@@ -1309,3 +1309,229 @@ fn var_global_in_a_resource_is_rejected(mut with_db: RootDatabase) {
     ---'
     ");
 }
+
+// ---------------------------------------------------------------------------
+// The resolved schedule
+//
+// `ConfigInferenceResult::schedule` is what lowering consumes: the whole
+// execution model, already resolved. These assert its CONTENT directly rather
+// than through a compiled artifact — a wrong shape here is a wrong PLC, and
+// the failure should name the shape, not a wasm symbol.
+// ---------------------------------------------------------------------------
+
+/// Renders the single CONFIGURATION's resolved schedule — what lowering
+/// consumes — as text, so a test states the whole execution model in the shape
+/// a reader can check against the source above it.
+fn resolved_schedule(db: &RootDatabase) -> String {
+    use std::fmt::Write;
+
+    /// Nanoseconds back in the units the source wrote them in.
+    fn duration(ns: u64) -> String {
+        for (unit, per) in [
+            ("s", 1_000_000_000u64),
+            ("ms", 1_000_000),
+            ("us", 1_000),
+        ] {
+            if ns.is_multiple_of(per) {
+                return format!("{}{unit}", ns / per);
+            }
+        }
+        format!("{ns}ns")
+    }
+
+    let file = *db.get_files().iter().last().unwrap();
+    let config = semantic_index(db, file).configs[0];
+    let schedule = &infer_config_result(db, config).schedule;
+
+    if schedule.resources.is_empty() {
+        return "(nothing runs)".to_string();
+    }
+
+    let mut out = String::new();
+    for r in &schedule.resources {
+        let _ = writeln!(
+            out,
+            "RESOURCE {} ON {}",
+            r.name.text(db),
+            r.cpu_type.text(db)
+        );
+        for t in &r.tasks {
+            let priority = match t.priority {
+                Some(p) => format!("priority {p}"),
+                None => "no priority".to_string(),
+            };
+            let _ = writeln!(
+                out,
+                "  TASK {} every {}, {priority}",
+                t.name.text(db),
+                duration(t.interval_ns)
+            );
+            for p in &t.programs {
+                let _ = writeln!(
+                    out,
+                    "    PROGRAM {} : {}",
+                    p.instance_name.text(db),
+                    p.program.name(db).text(db)
+                );
+            }
+        }
+    }
+    out
+}
+
+/// Every value lowering needs is resolved here: the resource and its `ON` type,
+/// the interval in nanoseconds, the priority as a number, and the instances
+/// bound to each task. Nothing downstream re-derives or re-parses any of it.
+#[rstest]
+fn resolved_schedule_carries_resources_tasks_and_instances(mut with_db: RootDatabase) {
+    let source = r#"
+PROGRAM P VAR n : INT; END_VAR n := n + 1; END_PROGRAM
+
+CONFIGURATION Cfg
+    RESOURCE Core0 ON CPU_A
+        TASK Fast(INTERVAL := T#10ms, PRIORITY := 1);
+        PROGRAM PA WITH Fast : P;
+        PROGRAM PB WITH Fast : P;
+    END_RESOURCE
+    RESOURCE Core1 ON CPU_B
+        TASK Slow(INTERVAL := T#1s, PRIORITY := 7);
+        PROGRAM PC WITH Slow : P;
+    END_RESOURCE
+END_CONFIGURATION
+"#;
+    add_sources(&mut with_db, &[source]);
+    assert_snapshot!(resolved_schedule(&with_db), @r"
+    RESOURCE Core0 ON CPU_A
+      TASK Fast every 10ms, priority 1
+        PROGRAM PA : P
+        PROGRAM PB : P
+    RESOURCE Core1 ON CPU_B
+      TASK Slow every 1s, priority 7
+        PROGRAM PC : P
+    ");
+}
+
+/// Tasks come out most-urgent-first, so a consumer dispatching in slice order
+/// is correct without remembering to sort. Declaration order is deliberately
+/// the reverse of priority order here.
+#[rstest]
+fn resolved_schedule_orders_tasks_by_priority(mut with_db: RootDatabase) {
+    let source = r#"
+PROGRAM P VAR n : INT; END_VAR n := n + 1; END_PROGRAM
+
+CONFIGURATION Cfg
+    RESOURCE R ON CPU
+        TASK Third(INTERVAL := T#10ms, PRIORITY := 9);
+        TASK First(INTERVAL := T#10ms, PRIORITY := 0);
+        TASK Second(INTERVAL := T#10ms, PRIORITY := 4);
+        PROGRAM P3 WITH Third : P;
+        PROGRAM P1 WITH First : P;
+        PROGRAM P2 WITH Second : P;
+    END_RESOURCE
+END_CONFIGURATION
+"#;
+    add_sources(&mut with_db, &[source]);
+    assert_snapshot!(resolved_schedule(&with_db), @r"
+    RESOURCE R ON CPU
+      TASK First every 10ms, priority 0
+        PROGRAM P1 : P
+      TASK Second every 10ms, priority 4
+        PROGRAM P2 : P
+      TASK Third every 10ms, priority 9
+        PROGRAM P3 : P
+    ");
+}
+
+/// A task nothing is bound to runs nothing, so it is absent from the model —
+/// and a program whose task cannot be scheduled takes its task with it. Both
+/// are reported elsewhere; the schedule only describes what runs.
+#[rstest]
+fn resolved_schedule_omits_what_cannot_run(mut with_db: RootDatabase) {
+    let source = r#"
+PROGRAM P VAR n : INT; END_VAR n := n + 1; END_PROGRAM
+
+CONFIGURATION Cfg
+    RESOURCE R ON CPU
+        TASK Bound(INTERVAL := T#10ms, PRIORITY := 1);
+        TASK Orphan(INTERVAL := T#10ms, PRIORITY := 2);
+        PROGRAM PA WITH Bound : P;
+    END_RESOURCE
+END_CONFIGURATION
+"#;
+    add_sources(&mut with_db, &[source]);
+    assert_snapshot!(resolved_schedule(&with_db), @r"
+    RESOURCE R ON CPU
+      TASK Bound every 10ms, priority 1
+        PROGRAM PA : P
+    ");
+}
+
+/// A RESOURCE whose tasks all fail to resolve contributes nothing rather than
+/// an empty group, so a consumer never has to skip blanks.
+#[rstest]
+fn resolved_schedule_drops_empty_resources(mut with_db: RootDatabase) {
+    let source = r#"
+PROGRAM P VAR n : INT; END_VAR n := n + 1; END_PROGRAM
+
+CONFIGURATION Cfg
+    RESOURCE Empty ON CPU
+        TASK T(INTERVAL := T#10ms, PRIORITY := 1);
+    END_RESOURCE
+    RESOURCE Real ON CPU
+        TASK U(INTERVAL := T#10ms, PRIORITY := 1);
+        PROGRAM PA WITH U : P;
+    END_RESOURCE
+END_CONFIGURATION
+"#;
+    add_sources(&mut with_db, &[source]);
+    assert_snapshot!(resolved_schedule(&with_db), @r"
+    RESOURCE Real ON CPU
+      TASK U every 10ms, priority 1
+        PROGRAM PA : P
+    ");
+}
+
+/// An INTERVAL need not be a literal: a CONSTANT global is just as fixed, and
+/// the schedule stores the resolved nanoseconds either way.
+#[rstest]
+fn resolved_schedule_resolves_a_constant_interval(mut with_db: RootDatabase) {
+    let source = r#"
+PROGRAM P VAR n : INT; END_VAR n := n + 1; END_PROGRAM
+
+CONFIGURATION Cfg
+    VAR_GLOBAL CONSTANT period : TIME := T#25ms; END_VAR
+    RESOURCE R ON CPU
+        TASK T(INTERVAL := period, PRIORITY := 1);
+        PROGRAM PA WITH T : P;
+    END_RESOURCE
+END_CONFIGURATION
+"#;
+    add_sources(&mut with_db, &[source]);
+    assert_snapshot!(resolved_schedule(&with_db), @r"
+    RESOURCE R ON CPU
+      TASK T every 25ms, priority 1
+        PROGRAM PA : P
+    ");
+}
+
+/// PRIORITY is optional in the grammar (its absence is E0035). The schedule
+/// still describes what runs, with no priority rather than a guessed one.
+#[rstest]
+fn resolved_schedule_tolerates_a_missing_priority(mut with_db: RootDatabase) {
+    let source = r#"
+PROGRAM P VAR n : INT; END_VAR n := n + 1; END_PROGRAM
+
+CONFIGURATION Cfg
+    RESOURCE R ON CPU
+        TASK T(INTERVAL := T#10ms);
+        PROGRAM PA WITH T : P;
+    END_RESOURCE
+END_CONFIGURATION
+"#;
+    add_sources(&mut with_db, &[source]);
+    assert_snapshot!(resolved_schedule(&with_db), @r"
+    RESOURCE R ON CPU
+      TASK T every 10ms, no priority
+        PROGRAM PA : P
+    ");
+}
