@@ -96,10 +96,12 @@ fn config_lowers_to_a_multi_rate_schedule(mut with_db: db::RootDatabase) {
     assert_eq!(slow.programs.len(), 1);
 }
 
-/// Codegen emits the scheduler metadata globals and one callable `__task_<i>`
-/// entry per task (cooperative model B).
+/// Codegen carries the schedule as the `rk.schedule` custom section — task
+/// names, resources, periods and priorities, and per-instance the export to
+/// call with its address — and emits none of the old scheduler machinery
+/// (`__task_<i>` entries, `__task_count`/`__common_ticktime_ns` globals).
 #[rstest]
-fn config_emits_task_entries_and_scheduler_globals(mut with_db: db::RootDatabase) {
+fn config_emits_the_schedule_manifest(mut with_db: db::RootDatabase) {
     let source = r#"
         PROGRAM ProgA
         VAR a : INT; END_VAR
@@ -121,51 +123,113 @@ fn config_emits_task_entries_and_scheduler_globals(mut with_db: db::RootDatabase
         END_CONFIGURATION
     "#;
 
-    let (_mir, wasm) = compile_to_mir_and_wasm(&mut with_db, source);
+    let (mir, wasm) = compile_to_mir_and_wasm(&mut with_db, source);
 
+    let mut manifest = None;
+    for payload in wasmparser::Parser::new(0).parse_all(&wasm) {
+        if let Ok(wasmparser::Payload::CustomSection(reader)) = payload
+            && reader.name() == debug_format::SCHEDULE_SECTION
+        {
+            manifest =
+                Some(debug_format::ScheduleManifest::from_msgpack(reader.data()).expect("decodes"));
+        }
+    }
+    let manifest = manifest.expect("module carries an `rk.schedule` section");
+
+    assert_eq!(manifest.version, debug_format::SCHEDULE_VERSION);
+    assert_eq!(manifest.common_ticktime_ns, 10_000_000, "GCD(10ms, 20ms)");
+
+    let shape: Vec<String> = manifest
+        .tasks
+        .iter()
+        .flat_map(|t| {
+            std::iter::once(format!(
+                "{}::{} every {} ticks, priority {:?}",
+                t.resource, t.name, t.period_ticks, t.priority
+            ))
+            .chain(
+                t.programs
+                    .iter()
+                    .map(|p| format!("  {} -> {}", p.instance, p.export)),
+            )
+        })
+        .collect();
+    assert_eq!(
+        shape,
+        [
+            "Res::Fast every 1 ticks, priority Some(1)",
+            "  PA -> ProgA$__body__",
+            "Res::Slow every 2 ticks, priority Some(2)",
+            "  PB -> ProgB$__body__",
+        ]
+    );
+
+    // The manifest's addresses are MIR's — the layout is owned by the module,
+    // the manifest only records it.
+    let mir_addrs: Vec<u32> = mir
+        .schedule
+        .as_ref()
+        .expect("schedule")
+        .tasks
+        .iter()
+        .flat_map(|t| t.programs.iter().map(|p| p.instance_addr))
+        .collect();
+    let manifest_addrs: Vec<u32> = manifest
+        .tasks
+        .iter()
+        .flat_map(|t| t.programs.iter().map(|p| p.instance_addr))
+        .collect();
+    assert_eq!(manifest_addrs, mir_addrs);
+
+    // The schedule-as-code machinery is gone: no synthesized entries, no
+    // metadata globals.
     let engine = crate::tests::codegen::test_engine();
     let module = wasmtime::Module::new(&engine, &wasm).expect("valid module");
-    let mut store = wasmtime::Store::new(&engine, ());
-    let memory =
-        wasmtime::Memory::new(&mut store, wasmtime::MemoryType::new(1, None)).expect("memory");
-    let mut linker = wasmtime::Linker::new(&engine);
-    linker
-        .define(&store, "env", "memory", memory)
-        .expect("define env.memory");
-    let instance = linker
-        .instantiate(&mut store, &module)
-        .expect("instantiate");
-
-    let read_i32 = |store: &mut wasmtime::Store<()>, name: &str| {
-        let g = instance.get_global(&mut *store, name).expect(name);
-        g.get(&mut *store).i32().expect("i32 global")
-    };
-    let read_i64 = |store: &mut wasmtime::Store<()>, name: &str| {
-        let g = instance.get_global(&mut *store, name).expect(name);
-        g.get(&mut *store).i64().expect("i64 global")
-    };
-
-    assert_eq!(read_i32(&mut store, "__task_count"), 2);
-    assert_eq!(read_i64(&mut store, "__common_ticktime_ns"), 10_000_000);
-    assert_eq!(
-        read_i32(&mut store, "__task_0__period"),
-        1,
-        "Fast = 10ms/10ms"
-    );
-    assert_eq!(
-        read_i32(&mut store, "__task_1__period"),
-        2,
-        "Slow = 20ms/10ms"
-    );
-
-    // Both task entries exist and run their programs without trapping.
-    for entry in ["__task_0", "__task_1"] {
-        instance
-            .get_typed_func::<(), ()>(&mut store, entry)
-            .unwrap_or_else(|_| panic!("entry {entry}"))
-            .call(&mut store, ())
-            .unwrap_or_else(|e| panic!("running {entry}: {e}"));
+    for export in module.exports() {
+        assert!(
+            !export.name().starts_with("__task"),
+            "stale scheduler export: {}",
+            export.name()
+        );
+        assert_ne!(export.name(), "__common_ticktime_ns");
     }
+}
+
+/// End-to-end: a module scheduling two RESOURCEs must be refused at load.
+/// Each RESOURCE is its own execution unit, so honouring both means
+/// concurrent tasks over shared globals — and this runtime scans on one
+/// thread. Interleaving them there would just be called concurrency.
+#[rstest]
+fn a_compiled_two_resource_module_is_refused_at_load(mut with_db: db::RootDatabase) {
+    use runtime::{Config, Plc};
+
+    let source = r#"
+        PROGRAM Prog
+        VAR n : INT; END_VAR
+            n := n + 1;
+        END_PROGRAM
+
+        CONFIGURATION Cfg
+            RESOURCE Core0 ON CPU
+                TASK Fast(INTERVAL := T#10ms, PRIORITY := 1);
+                PROGRAM PA WITH Fast : Prog;
+            END_RESOURCE
+            RESOURCE Core1 ON CPU
+                TASK Slow(INTERVAL := T#50ms, PRIORITY := 2);
+                PROGRAM PB WITH Slow : Prog;
+            END_RESOURCE
+        END_CONFIGURATION
+    "#;
+
+    let (_mir, wasm) = compile_to_mir_and_wasm(&mut with_db, source);
+    let Err(err) = Plc::load(&wasm, Config::default()) else {
+        panic!("a two-resource module must not load");
+    };
+    let err = format!("{err:#}");
+    assert!(
+        err.contains("Core0") && err.contains("Core1"),
+        "the refusal should name the resources, got: {err}"
+    );
 }
 
 /// End-to-end: a two-rate CONFIGURATION driven by the `runtime` scheduler runs

@@ -142,7 +142,7 @@ fn line_to_pc_round_trips(mut with_db: db::RootDatabase) {
     assert!(dbg.line_to_pc(0, 0).is_none());
 }
 
-/// With several functions plus a CONFIGURATION (so synthesized `__init`/`__task`
+/// With several functions plus a CONFIGURATION (so the synthesized `__init`
 /// and builtins share the module and the defined-index base is non-trivial),
 /// `debug-functions` and `debug-lines` must agree on each function's
 /// `DefinedFuncIndex`: the function whose body holds a statement is the one

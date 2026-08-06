@@ -654,10 +654,8 @@ fn lower_module_from_pous<'db>(
         rebase_string_offsets(&mut func.body, string_base);
     }
 
-    // Collect the distinct source files (in deterministic body order, including
-    // monomorphized copies) into the ordered table emitted as `DebugLines::files`;
-    // codegen resolves each statement's `file_url` to its index against it.
-    // Synthesized `__init`/`__task` carry no DebugTrap markers.
+    // The distinct source files, in body order, as `DebugLines::files`;
+    // codegen resolves each statement's `file_url` against it.
     {
         let mut seen: FxHashSet<CompactString> = FxHashSet::default();
         let mut source_files: Vec<String> = Vec::new();
