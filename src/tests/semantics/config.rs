@@ -1310,6 +1310,55 @@ fn var_global_in_a_resource_is_rejected(mut with_db: RootDatabase) {
     ");
 }
 
+/// A second CONFIGURATION used to be discarded silently — the artifact held
+/// part of what was written. It is rejected now, and not only for that: a POU
+/// is a type any configuration may use, so a second one leaves no answer to
+/// which globals are in scope inside a POU.
+#[rstest]
+fn more_than_one_configuration_is_rejected(mut with_db: RootDatabase) {
+    let source = r#"
+        PROGRAM P VAR n : INT; END_VAR n := n + 1; END_PROGRAM
+
+        CONFIGURATION First
+            RESOURCE R ON CPU
+                TASK T(INTERVAL := T#10ms, PRIORITY := 1);
+                PROGRAM A WITH T : P;
+            END_RESOURCE
+        END_CONFIGURATION
+
+        CONFIGURATION Second
+            RESOURCE R ON CPU
+                TASK T(INTERVAL := T#10ms, PRIORITY := 1);
+                PROGRAM B WITH T : P;
+            END_RESOURCE
+        END_CONFIGURATION
+    "#;
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
+    [E0242] Error: configuration error
+        ,-[ file:///test0.st:4:23 ]
+        |
+      4 |         CONFIGURATION First
+        |                       ^^|^^
+        |                         `---- a workspace can only have one CONFIGURATION; this one declares 2
+        |
+     11 |         CONFIGURATION Second
+        |                       ^^^|^^
+        |                          `---- 'Second' is declared here
+    ----'
+    [E0242] Error: configuration error
+        ,-[ file:///test0.st:11:23 ]
+        |
+      4 |         CONFIGURATION First
+        |                       ^^|^^
+        |                         `---- 'First' is declared here
+        |
+     11 |         CONFIGURATION Second
+        |                       ^^^|^^
+        |                          `---- a workspace can only have one CONFIGURATION; this one declares 2
+    ----'
+    ");
+}
+
 // ---------------------------------------------------------------------------
 // The resolved schedule
 //

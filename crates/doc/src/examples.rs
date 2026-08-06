@@ -1384,6 +1384,31 @@ END_CONFIGURATION
             lint_rule: None,
         },
         ErrorExample {
+            code: "E0242",
+            category: "Scope",
+            title: "More than one CONFIGURATION",
+            description: "A workspace declares one CONFIGURATION. A POU is a type any configuration may use, so with two of them there is no answer to which global variables are in scope inside a POU. Describe another PLC in its own workspace.",
+            sources: &[r#"
+PROGRAM prog1
+END_PROGRAM
+
+CONFIGURATION cfg1
+    RESOURCE res1 ON CPU
+        TASK t1(INTERVAL := T#10ms, PRIORITY := 1);
+        PROGRAM inst1 WITH t1 : prog1;
+    END_RESOURCE
+END_CONFIGURATION
+
+CONFIGURATION cfg2
+    RESOURCE res2 ON CPU
+        TASK t2(INTERVAL := T#10ms, PRIORITY := 1);
+        PROGRAM inst2 WITH t2 : prog1;
+    END_RESOURCE
+END_CONFIGURATION
+"#],
+            lint_rule: None,
+        },
+        ErrorExample {
             code: "E0241",
             category: "Scope",
             title: "Unusable TASK priority",
