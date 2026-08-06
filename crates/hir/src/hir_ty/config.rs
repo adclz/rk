@@ -419,7 +419,10 @@ fn resolve_task_intervals<'db>(
         // so nothing downstream has to parse, and an unusable value is a
         // diagnostic rather than a silent "no priority".
         if let Some(text) = task.priority(db) {
-            match text.text(db).parse::<u32>() {
+            // `1_0` is ten: IEC allows digit separators in integer literals, and
+            // the grammar's unsigned_int accepts them, so they must be stripped
+            // before parsing exactly as every other integer literal does.
+            match text.text(db).replace('_', "").parse::<u32>() {
                 Ok(p) => {
                     result.task_priority.insert(*task, p);
                 }
