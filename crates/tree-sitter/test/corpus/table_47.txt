@@ -489,7 +489,7 @@ END_PROGRAM
       (comment_text))))
 
 ================================================================================
-VAR_GLOBAL...END_VAR declaration within a PROGRAM
+VAR_GLOBAL...END_VAR declaration within a PROGRAM (rejected: globals are application-scoped)
 ================================================================================
 
 PROGRAM myPrg
@@ -501,18 +501,19 @@ END_PROGRAM
 (source_file
   (prog_decl
     (identifier)
-    (global_var_decls
-      (global_var_decl
-        (global_var_spec
-          (identifier))
-        (loc_var_spec_init
-          (simple_type_spec
-            (bit_str_type_name
-              (multibits_type_name
-                (byte_name)))))))))
+    (ERR_var_global_not_allowed
+      (global_var_decls
+        (global_var_decl
+          (global_var_spec
+            (identifier))
+          (loc_var_spec_init
+            (simple_type_spec
+              (bit_str_type_name
+                (multibits_type_name
+                  (byte_name))))))))))
 
 ================================================================================
-VAR_GLOBAL CONSTANT declarations within PROGRAM type declarations
+VAR_GLOBAL CONSTANT declarations within PROGRAM type declarations (rejected: globals are application-scoped)
 ================================================================================
 
 PROGRAM myPrg
@@ -524,15 +525,16 @@ END_PROGRAM
 (source_file
   (prog_decl
     (identifier)
-    (global_var_decls
-      (global_var_decl
-        (global_var_spec
-          (identifier))
-        (loc_var_spec_init
-          (simple_type_spec
-            (bit_str_type_name
-              (multibits_type_name
-                (byte_name)))))))))
+    (ERR_var_global_not_allowed
+      (global_var_decls
+        (global_var_decl
+          (global_var_spec
+            (identifier))
+          (loc_var_spec_init
+            (simple_type_spec
+              (bit_str_type_name
+                (multibits_type_name
+                  (byte_name))))))))))
 
 ================================================================================
 VAR_ACCESS...END_VAR declaration within a PROGRAM

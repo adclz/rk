@@ -1,5 +1,5 @@
 ================================================================================
-Configuration and resource declaration
+Configuration and resource declaration (rejected: RESOURCE holds no variables)
 ================================================================================
 
 CONFIGURATION cfg
@@ -29,18 +29,19 @@ END_CONFIGURATION
     (resource_decl
       (identifier)
       (identifier)
-      (global_var_decls
-        (global_var_decl
-          (global_var_spec
-            (identifier))
-          (loc_var_spec_init
-            (simple_type_spec
-              (bit_str_type_name
-                (multibits_type_name
-                  (byte_name))))))))))
+      (ERR_var_global_not_allowed
+        (global_var_decls
+          (global_var_decl
+            (global_var_spec
+              (identifier))
+            (loc_var_spec_init
+              (simple_type_spec
+                (bit_str_type_name
+                  (multibits_type_name
+                    (byte_name)))))))))))
 
 ================================================================================
-Periodic TASK - Non-periodic TASK
+Periodic TASK - Non-periodic TASK (rejected: RESOURCE holds no variables)
 ================================================================================
 
 CONFIGURATION cfg
@@ -61,15 +62,16 @@ END_CONFIGURATION
     (resource_decl
       (identifier)
       (identifier)
-      (global_var_decls
-        (global_var_decl
-          (global_var_spec
-            (identifier))
-          (loc_var_spec_init
-            (simple_type_spec
-              (bit_str_type_name
-                (multibits_type_name
-                  (byte_name)))))))
+      (ERR_var_global_not_allowed
+        (global_var_decls
+          (global_var_decl
+            (global_var_spec
+              (identifier))
+            (loc_var_spec_init
+              (simple_type_spec
+                (bit_str_type_name
+                  (multibits_type_name
+                    (byte_name))))))))
       (single_resource_decl
         (task_config
           (identifier)
@@ -96,7 +98,7 @@ END_CONFIGURATION
             (unsigned_int)))))))
 
 ================================================================================
-WITH for PROGRAM to TASK association
+WITH for PROGRAM to TASK association (rejected: PROGRAM belongs in a RESOURCE)
 ================================================================================
 
 CONFIGURATION cfg
@@ -113,51 +115,53 @@ END_CONFIGURATION
 (source_file
   (config_decl
     (identifier)
-    (single_resource_decl
-      (prog_config
-        (identifier)
-        (identifier)
-        (namespace_access
-          (identifier))
-        (prog_conf_elems
-          (prog_conf_elem
-            (prog_cnxn
-              (path_expression
-                (var_access
-                  (field)))
-              (prog_data_source
-                (direct_variable
-                  (adress_identifier)
-                  (offset
-                    (unsigned_int)
-                    (unsigned_int)))))))))
-    (single_resource_decl
-      (prog_config
-        (identifier)
-        (namespace_access
-          (identifier))
-        (prog_conf_elems
-          (prog_conf_elem
-            (fb_task
-              (path_expression
-                (deref_expression
-                  (path_expression
-                    (var_access
-                      (field)))
-                  (deref_sign)))
-              (identifier)))
-          (prog_conf_elem
-            (fb_task
-              (path_expression
-                (deref_expression
-                  (path_expression
-                    (var_access
-                      (field)))
-                  (deref_sign)))
-              (identifier))))))))
+    (ERR_task_or_program_outside_resource
+      (single_resource_decl
+        (prog_config
+          (identifier)
+          (identifier)
+          (namespace_access
+            (identifier))
+          (prog_conf_elems
+            (prog_conf_elem
+              (prog_cnxn
+                (path_expression
+                  (var_access
+                    (field)))
+                (prog_data_source
+                  (direct_variable
+                    (adress_identifier)
+                    (offset
+                      (unsigned_int)
+                      (unsigned_int))))))))))
+    (ERR_task_or_program_outside_resource
+      (single_resource_decl
+        (prog_config
+          (identifier)
+          (namespace_access
+            (identifier))
+          (prog_conf_elems
+            (prog_conf_elem
+              (fb_task
+                (path_expression
+                  (deref_expression
+                    (path_expression
+                      (var_access
+                        (field)))
+                    (deref_sign)))
+                (identifier)))
+            (prog_conf_elem
+              (fb_task
+                (path_expression
+                  (deref_expression
+                    (path_expression
+                      (var_access
+                        (field)))
+                    (deref_sign)))
+                (identifier)))))))))
 
 ================================================================================
-Directly represented variables in VAR_GLOBAL
+Directly represented variables in VAR_GLOBAL (rejected: RESOURCE holds no variables)
 ================================================================================
 
 CONFIGURATION cfg
@@ -180,31 +184,32 @@ END_CONFIGURATION
     (resource_decl
       (identifier)
       (identifier)
-      (global_var_decls
-        (global_var_decl
-          (global_var_spec
-            (identifier))
-          (loc_var_spec_init
-            (simple_type_spec
-              (bit_str_type_name
-                (bool_name)))))
-        (global_var_decl
-          (global_var_spec
-            (identifier)
-            (located_at
-              (direct_variable
-                (adress_identifier)
-                (offset
-                  (unsigned_int)))))
-          (loc_var_spec_init
-            (simple_type_spec
-              (numeric_type_name
-                (int_type_name
-                  (sign_int_type_name
-                    (int_name)))))))))))
+      (ERR_var_global_not_allowed
+        (global_var_decls
+          (global_var_decl
+            (global_var_spec
+              (identifier))
+            (loc_var_spec_init
+              (simple_type_spec
+                (bit_str_type_name
+                  (bool_name)))))
+          (global_var_decl
+            (global_var_spec
+              (identifier)
+              (located_at
+                (direct_variable
+                  (adress_identifier)
+                  (offset
+                    (unsigned_int)))))
+            (loc_var_spec_init
+              (simple_type_spec
+                (numeric_type_name
+                  (int_type_name
+                    (sign_int_type_name
+                      (int_name))))))))))))
 
 ================================================================================
-Connection of GLOBAL variables to PROGRAM inputs
+Connection of GLOBAL variables to PROGRAM inputs (rejected: RESOURCE holds no variables)
 ================================================================================
 
 CONFIGURATION cfg
@@ -233,28 +238,29 @@ END_CONFIGURATION
     (resource_decl
       (identifier)
       (identifier)
-      (global_var_decls
-        (global_var_decl
-          (global_var_spec
-            (identifier))
-          (loc_var_spec_init
-            (simple_type_spec
-              (bit_str_type_name
-                (bool_name)))))
-        (global_var_decl
-          (global_var_spec
-            (identifier)
-            (located_at
-              (direct_variable
-                (adress_identifier)
-                (offset
-                  (unsigned_int)))))
-          (loc_var_spec_init
-            (simple_type_spec
-              (numeric_type_name
-                (int_type_name
-                  (sign_int_type_name
-                    (int_name))))))))
+      (ERR_var_global_not_allowed
+        (global_var_decls
+          (global_var_decl
+            (global_var_spec
+              (identifier))
+            (loc_var_spec_init
+              (simple_type_spec
+                (bit_str_type_name
+                  (bool_name)))))
+          (global_var_decl
+            (global_var_spec
+              (identifier)
+              (located_at
+                (direct_variable
+                  (adress_identifier)
+                  (offset
+                    (unsigned_int)))))
+            (loc_var_spec_init
+              (simple_type_spec
+                (numeric_type_name
+                  (int_type_name
+                    (sign_int_type_name
+                      (int_name)))))))))
       (single_resource_decl
         (task_config
           (identifier)

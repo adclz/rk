@@ -976,24 +976,25 @@ END_CONFIGURATION
 (source_file
   (config_decl
     (identifier)
-    (single_resource_decl
-      (task_config
-        (identifier)
-        (task_init
-          (data_source
-            (constant
-              (numeric_literal
-                (int_literal
-                  (signed_int
-                    (unsigned_int))))))
-          (ERR_single_after_interval
+    (ERR_task_or_program_outside_resource
+      (single_resource_decl
+        (task_config
+          (identifier)
+          (task_init
             (data_source
               (constant
                 (numeric_literal
                   (int_literal
                     (signed_int
-                      (unsigned_int)))))))
-          (unsigned_int))))))
+                      (unsigned_int))))))
+            (ERR_single_after_interval
+              (data_source
+                (constant
+                  (numeric_literal
+                    (int_literal
+                      (signed_int
+                        (unsigned_int)))))))
+            (unsigned_int)))))))
 
 ================================================================================
 interval after priority
@@ -1008,18 +1009,19 @@ END_CONFIGURATION
 (source_file
   (config_decl
     (identifier)
-    (single_resource_decl
-      (task_config
-        (identifier)
-        (task_init
-          (unsigned_int)
-          (ERR_interval_after_priority
-            (data_source
-              (constant
-                (numeric_literal
-                  (int_literal
-                    (signed_int
-                      (unsigned_int))))))))))))
+    (ERR_task_or_program_outside_resource
+      (single_resource_decl
+        (task_config
+          (identifier)
+          (task_init
+            (unsigned_int)
+            (ERR_interval_after_priority
+              (data_source
+                (constant
+                  (numeric_literal
+                    (int_literal
+                      (signed_int
+                        (unsigned_int)))))))))))))
 
 ================================================================================
 single after priority
@@ -1034,15 +1036,16 @@ END_CONFIGURATION
 (source_file
   (config_decl
     (identifier)
-    (single_resource_decl
-      (task_config
-        (identifier)
-        (task_init
-          (unsigned_int)
-          (ERR_single_after_priorty
-            (data_source
-              (constant
-                (numeric_literal
-                  (int_literal
-                    (signed_int
-                      (unsigned_int))))))))))))
+    (ERR_task_or_program_outside_resource
+      (single_resource_decl
+        (task_config
+          (identifier)
+          (task_init
+            (unsigned_int)
+            (ERR_single_after_priorty
+              (data_source
+                (constant
+                  (numeric_literal
+                    (int_literal
+                      (signed_int
+                        (unsigned_int)))))))))))))
