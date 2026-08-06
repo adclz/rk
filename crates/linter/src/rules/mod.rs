@@ -22,6 +22,7 @@ pub mod dead_code;
 pub mod default_for_step;
 pub mod division_by_zero;
 pub mod duplicate_case;
+pub mod duplicate_configuration;
 pub mod duplicate_namespace;
 pub mod duplicate_var_section;
 pub mod effectless_statement;
@@ -75,6 +76,7 @@ pub const ALL_RULE_NAMES: &[&str] = &[
     default_for_step::NAME,
     division_by_zero::NAME,
     duplicate_case::NAME,
+    duplicate_configuration::NAME,
     duplicate_namespace::NAME,
     duplicate_var_section::NAME,
     effectless_statement::NAME,
@@ -131,6 +133,12 @@ pub fn lint_file(
     run_lint(duplicate_var_section::NAME, diagnostics, |d| {
         duplicate_var_section::check(db, file, config, d)
     });
+
+    if config.is_enabled(duplicate_configuration::NAME) {
+        run_lint(duplicate_configuration::NAME, diagnostics, |d| {
+            duplicate_configuration::check(db, file, d)
+        });
+    }
 
     if config.is_enabled(duplicate_namespace::NAME) {
         run_lint(duplicate_namespace::NAME, diagnostics, |d| {

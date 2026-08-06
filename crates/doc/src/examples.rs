@@ -2896,6 +2896,26 @@ END_NAMESPACE
             lint_rule: Some("duplicate-namespace"),
         },
         ErrorExample {
+            code: "L0112",
+            category: "Linter Info",
+            title: "Duplicate configuration",
+            description: "Same-named CONFIGURATION blocks merge, which is how VAR_GLOBALs are split across files. Two in ONE file separate nothing — merge them.",
+            sources: &[r#"
+CONFIGURATION Plant
+    VAR_GLOBAL
+        a : INT;
+    END_VAR
+END_CONFIGURATION
+
+CONFIGURATION Plant
+    VAR_GLOBAL
+        b : INT;
+    END_VAR
+END_CONFIGURATION
+"#],
+            lint_rule: Some("duplicate-configuration"),
+        },
+        ErrorExample {
             code: "L0110",
             category: "Linter Info",
             title: "Single-element array",
