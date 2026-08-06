@@ -7061,17 +7061,8 @@
           "content": {
             "type": "REPEAT",
             "content": {
-              "type": "CHOICE",
-              "members": [
-                {
-                  "type": "SYMBOL",
-                  "name": "single_resource_decl"
-                },
-                {
-                  "type": "SYMBOL",
-                  "name": "resource_decl"
-                }
-              ]
+              "type": "SYMBOL",
+              "name": "resource_decl"
             }
           }
         },
@@ -7181,7 +7172,7 @@
             "members": [
               {
                 "type": "SYMBOL",
-                "name": "global_var_decls"
+                "name": "ERR_var_global_not_allowed"
               },
               {
                 "type": "BLANK"

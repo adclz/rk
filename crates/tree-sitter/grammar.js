@@ -1514,10 +1514,10 @@ module.exports = grammar({
         "CONFIGURATION",
         field("name", $.identifier),
         field("global_variables", repeat($._config_variables)),
-        field(
-          "resources",
-          repeat(choice($.single_resource_decl, $.resource_decl)),
-        ),
+        // Tasks and programs live in a RESOURCE, never directly in the
+        // CONFIGURATION: one way to express a thing, and the RESOURCE name is
+        // what deployment binds to an execution unit.
+        field("resources", repeat($.resource_decl)),
         field("access_decls", optional($.access_decls)),
         field("config_init", optional($.config_init)),
         "END_CONFIGURATION",
@@ -1534,13 +1534,16 @@ module.exports = grammar({
         $.ERR_var_external_not_allowed,
       ),
 
+    // A RESOURCE is a named group of tasks and programs. It carries no scope
+    // of its own: VAR_GLOBAL belongs to the CONFIGURATION (application scope),
+    // so a VAR_GLOBAL here parses into an error node rather than a binding.
     resource_decl: ($) =>
       seq(
         "RESOURCE",
         field("name", $.identifier),
         "ON",
         field("resource_type_name", $.identifier),
-        field("global_variables", optional($.global_var_decls)),
+        field("global_variables", optional($.ERR_var_global_not_allowed)),
         field("resource", repeat($.single_resource_decl)),
         "END_RESOURCE",
       ),
