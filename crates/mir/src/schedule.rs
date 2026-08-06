@@ -109,24 +109,31 @@ impl MirSchedule {
     }
 }
 
-/// Lower a module's CONFIGURATION (if any) into a schedule, allocating each
+/// Lower the workspace's CONFIGURATION into a schedule, allocating each
 /// program instance's state in `memory_layout` and registering its RETAIN
-/// fields. IEC allows exactly one configuration; we take the first. Returns
-/// `None` when there is no configuration or it schedules no cyclic tasks.
+/// fields.
+///
+/// `config` is every FRAGMENT of that one configuration (E0242 rejects a
+/// second name), so resources declared in one file join those declared in
+/// another. Returns `None` when there is no configuration, or none of them
+/// schedules a cyclic task.
 pub fn lower_schedule<'db>(
     db: &'db dyn WorkspaceDataBase,
-    config: Option<ConfigDecl<'db>>,
+    config: &[ConfigDecl<'db>],
     memory_layout: &mut MirMemoryLayout,
     program_infos: &FxHashMap<Ident, ProgramInfo<'db>>,
 ) -> Option<MirSchedule> {
-    let config = config?;
-    let inferred = infer_config_result(db, config);
-
     // HIR resolved what runs; lowering gives each instance memory and
     // expresses periods against one tick counter.
     let mut pending: Vec<(Ident, &hir::hir_ty::config::ResolvedTask<'db>, Vec<MirProgInstance>)> =
         Vec::new();
-    for resource in &inferred.schedule.resources {
+    // Fragments contribute in file order; a RESOURCE cannot span two of them
+    // (E0116 rejects a repeated name), so each fragment's resolved schedule is
+    // complete on its own and they simply concatenate.
+    for resource in config
+        .iter()
+        .flat_map(|c| infer_config_result(db, *c).schedule.resources.iter())
+    {
         for task in &resource.tasks {
             let mut instances = Vec::new();
             for p in &task.programs {

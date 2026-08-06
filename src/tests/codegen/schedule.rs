@@ -195,6 +195,125 @@ fn config_emits_the_schedule_manifest(mut with_db: db::RootDatabase) {
     }
 }
 
+/// The GVL split lowers whole: VAR_GLOBALs in one file, the RESOURCE in
+/// another, and the artifact carries both. Lowering used to take the first
+/// CONFIGURATION block it found, so whichever file lost the race contributed
+/// nothing — an artifact missing either its globals or its schedule, with no
+/// diagnostic.
+#[rstest]
+fn fragments_in_separate_files_lower_together(mut with_db: db::RootDatabase) {
+    use auto_lsp::default::db::BaseDatabase;
+    use hir::hir_def::semantic_index::semantic_index;
+
+    let globals = r#"
+CONFIGURATION Plant
+    VAR_GLOBAL
+        line_speed : INT := 7;
+    END_VAR
+END_CONFIGURATION
+"#;
+    let machine = r#"
+PROGRAM Conveyor
+VAR_EXTERNAL
+    line_speed : INT;
+END_VAR
+    line_speed := line_speed + 1;
+END_PROGRAM
+
+CONFIGURATION Plant
+    RESOURCE Main ON CPU
+        TASK Cyclic(INTERVAL := T#10ms, PRIORITY := 1);
+        PROGRAM P1 WITH Cyclic : Conveyor;
+    END_RESOURCE
+END_CONFIGURATION
+"#;
+    crate::tests::utils::add_sources(&mut with_db, &[globals, machine]);
+    let files: Vec<_> = with_db.get_files().iter().map(|e| *e.value()).collect();
+    let indices: Vec<_> = files.iter().map(|f| semantic_index(&with_db, *f)).collect();
+    let module = mir::lower::lower_module::lower_modules(&with_db, &indices).expect("lowers");
+
+    // The globals fragment contributed its variable...
+    assert!(
+        module.globals_size > 0,
+        "the VAR_GLOBAL fragment contributed no memory"
+    );
+    // ...and the resources fragment contributed the schedule.
+    let schedule = module.schedule.as_ref().expect("a schedule");
+    assert_eq!(schedule.common_ticktime_ns, 10_000_000);
+    let tasks: Vec<_> = schedule
+        .tasks
+        .iter()
+        .map(|t| t.name.text(&with_db).to_string())
+        .collect();
+    assert_eq!(tasks, ["Cyclic"]);
+}
+
+/// Two fragments each contributing a RESOURCE: both reach the schedule, and
+/// the base tick is the GCD across BOTH fragments' intervals — the tick math
+/// spans the whole configuration, not whichever fragment was lowered first.
+#[rstest]
+fn both_fragments_contribute_to_one_schedule(mut with_db: db::RootDatabase) {
+    use auto_lsp::default::db::BaseDatabase;
+    use hir::hir_def::semantic_index::semantic_index;
+
+    let fast = r#"
+PROGRAM ProgA VAR a : INT; END_VAR a := a + 1; END_PROGRAM
+
+CONFIGURATION Plant
+    RESOURCE Fast ON CPU
+        TASK Quick(INTERVAL := T#10ms, PRIORITY := 1);
+        PROGRAM PA WITH Quick : ProgA;
+    END_RESOURCE
+END_CONFIGURATION
+"#;
+    let slow = r#"
+PROGRAM ProgB VAR b : INT; END_VAR b := b + 1; END_PROGRAM
+
+CONFIGURATION Plant
+    RESOURCE Slow ON CPU
+        TASK Lazy(INTERVAL := T#25ms, PRIORITY := 2);
+        PROGRAM PB WITH Lazy : ProgB;
+    END_RESOURCE
+END_CONFIGURATION
+"#;
+    crate::tests::utils::add_sources(&mut with_db, &[fast, slow]);
+    let files: Vec<_> = with_db.get_files().iter().map(|e| *e.value()).collect();
+    let indices: Vec<_> = files.iter().map(|f| semantic_index(&with_db, *f)).collect();
+    let module = mir::lower::lower_module::lower_modules(&with_db, &indices).expect("lowers");
+
+    let schedule = module.schedule.as_ref().expect("a schedule");
+    assert_eq!(
+        schedule.common_ticktime_ns, 5_000_000,
+        "GCD(10ms, 25ms) — a base tick neither fragment could compute alone"
+    );
+
+    let mut shape: Vec<String> = schedule
+        .tasks
+        .iter()
+        .map(|t| {
+            format!(
+                "{}::{} every {} ticks",
+                t.resource.text(&with_db),
+                t.name.text(&with_db),
+                t.period_ticks
+            )
+        })
+        .collect();
+    shape.sort();
+    assert_eq!(
+        shape,
+        ["Fast::Quick every 2 ticks", "Slow::Lazy every 5 ticks"]
+    );
+
+    // Both fragments' programs got instance memory.
+    let instances: Vec<String> = schedule
+        .tasks
+        .iter()
+        .flat_map(|t| t.programs.iter().map(|p| p.inst_name.text(&with_db).to_string()))
+        .collect();
+    assert_eq!(instances.len(), 2, "one instance per fragment: {instances:?}");
+}
+
 /// End-to-end: a module scheduling two RESOURCEs must be refused at load.
 /// Each RESOURCE is its own execution unit, so honouring both means
 /// concurrent tasks over shared globals — and this runtime scans on one

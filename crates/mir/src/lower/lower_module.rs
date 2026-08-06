@@ -81,18 +81,19 @@ pub fn lower_modules<'db>(
     let mut all_pous: Vec<(&Pou<'db>, Option<String>)> = Vec::new();
     let mut all_programs: Vec<(&hir::hir_def::program::ProgramDecl<'db>, Option<String>)> =
         Vec::new();
-    // A workspace declares one CONFIGURATION (E0242 rejects more), so this is
-    // the configuration, not a set to pick from.
-    let mut config: Option<hir::hir_def::config::ConfigDecl<'db>> = None;
+    // A workspace declares one CONFIGURATION (E0242 rejects more), so every
+    // block found is a FRAGMENT of that one — globals in one file, resources in
+    // another. They are lowered together, in the caller's file order.
+    let mut fragments: Vec<hir::hir_def::config::ConfigDecl<'db>> = Vec::new();
     for index in indices {
         all_pous.extend(index.global_pous.iter().map(|p| (p, None)));
         all_programs.extend(index.programs.iter().map(|p| (p, None)));
-        config = config.or_else(|| index.configs.first().copied());
+        fragments.extend(index.configs.iter().copied());
         for ns in index.namespaces.iter() {
             collect_namespace_pous(db, ns, &mut all_pous);
         }
     }
-    lower_module_from_pous(db, &all_pous, &all_programs, config)
+    lower_module_from_pous(db, &all_pous, &all_programs, &fragments)
 }
 
 /// Lower a complete HIR semantic index into a MirModule.
@@ -108,7 +109,7 @@ pub fn lower_module<'db>(
             .map(|p| (p, None))
             .collect::<Vec<_>>(),
         &index.programs.iter().map(|p| (p, None)).collect::<Vec<_>>(),
-        index.configs.first().copied(),
+        &index.configs.iter().copied().collect::<Vec<_>>(),
     )
 }
 
@@ -116,7 +117,8 @@ fn lower_module_from_pous<'db>(
     db: &'db dyn WorkspaceDataBase,
     all_pous: &[(&Pou<'db>, Option<String>)],
     all_programs: &[(&hir::hir_def::program::ProgramDecl<'db>, Option<String>)],
-    config: Option<hir::hir_def::config::ConfigDecl<'db>>,
+    // Every block of the workspace's one CONFIGURATION, in file order.
+    config: &[hir::hir_def::config::ConfigDecl<'db>],
 ) -> Result<MirModule, LowerTypeError> {
     let mut functions = Vec::new();
     let mut extern_functions = Vec::new();
@@ -1119,11 +1121,15 @@ type GlobalTable<'db> =
 /// storage for now — hardware mapping is not implemented.
 fn build_global_table<'db>(
     db: &'db dyn WorkspaceDataBase,
-    config: Option<hir::hir_def::config::ConfigDecl<'db>>,
+    config: &[hir::hir_def::config::ConfigDecl<'db>],
     memory_layout: &mut MirMemoryLayout,
 ) -> Result<GlobalTable<'db>, LowerTypeError> {
     let mut table = GlobalTable::default();
-    if let Some(config) = config {
+    // One table across every fragment: a global declared in the fragment that
+    // holds only VAR_GLOBALs is the same global the resources use. A name
+    // declared by two fragments is E0102, so allocating per fragment here
+    // cannot collide.
+    for config in config {
         // Application scope: a RESOURCE declares no variables of its own.
         for v in config.variables(db) {
             add_global(db, v, memory_layout, &mut table)?;
@@ -1332,7 +1338,7 @@ fn rewrite_globals_body(
 /// already-finalized global table and instance bases.
 fn collect_const_inits<'db>(
     db: &'db dyn WorkspaceDataBase,
-    config: Option<hir::hir_def::config::ConfigDecl<'db>>,
+    config: &[hir::hir_def::config::ConfigDecl<'db>],
     global_table: &GlobalTable<'db>,
     schedule: &Option<crate::schedule::MirSchedule>,
     program_infos: &FxHashMap<
@@ -1344,8 +1350,8 @@ fn collect_const_inits<'db>(
 
     let mut stmts = Vec::new();
 
-    // The configuration's VAR_GLOBALs.
-    if let Some(config) = config {
+    // Every fragment's VAR_GLOBALs.
+    for config in config {
         for v in config.variables(db) {
             let Some((addr, ty)) = global_table.get(&v.name(db)) else {
                 continue;
