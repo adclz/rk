@@ -89,6 +89,8 @@ pub fn lower_schedule<'db>(
     memory_layout: &mut MirMemoryLayout,
     program_infos: &FxHashMap<Ident, ProgramInfo<'db>>,
 ) -> Option<MirSchedule> {
+    // A workspace declares one CONFIGURATION (E0242 otherwise), so there is
+    // nothing to choose between.
     let config = *configs.first()?;
     let inferred = infer_config_result(db, config);
 

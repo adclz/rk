@@ -3,7 +3,7 @@ use ide_diagnostic::IdeDiagnostic;
 
 use crate::{
     HasName, HirNodeInfo,
-    check::errors::{ToIdeDiagnostic, e1_duplicates::DuplicateError},
+    check::errors::{ToIdeDiagnostic, e1_duplicates::DuplicateError, e2_resolve::ResolveError},
     hir_def::{config::ConfigDecl, namespace::NamespaceDecl, pous::pou::Pou, program::ProgramDecl},
     hir_ty::{
         head::signature::function_signature,
@@ -84,6 +84,44 @@ pub fn check_duplicate_programs<'db>(
 
 /// Check for duplicate CONFIGURATION names.
 /// A config is a duplicate if it differs from the one in the workspace index.
+/// A workspace declares one CONFIGURATION.
+///
+/// Not an arbitrary limit: a POU is a type, usable by any configuration, so
+/// with two of them "which globals are in scope in this POU" has no answer —
+/// the same reason a RESOURCE holds no variables. One workspace describes one
+/// PLC; a second PLC is a second workspace.
+///
+/// Counts DISTINCT names, since two configurations sharing a name are a
+/// duplicate ([`check_duplicate_configs`]) and saying so twice describes one
+/// mistake as two.
+///
+/// Reported at every configuration rather than at "the extras": the file maps
+/// have no order, so there is no first, and picking one would make the message
+/// depend on which file happened to be walked first.
+pub fn check_single_configuration<'db>(
+    db: &'db dyn WorkspaceDataBase,
+    config: ConfigDecl<'db>,
+    errors: &mut Vec<IdeDiagnostic>,
+) {
+    let all = crate::hir_ty::index_graphs::all_configs(db);
+    let names: rustc_hash::FxHashSet<_> = all.iter().map(|c| c.get_name_ident(db)).collect();
+    if names.len() > 1 {
+        // Carry the others so they can be reached from here: deciding which to
+        // keep means looking at all of them.
+        let mut others: Vec<_> = all
+            .iter()
+            .filter(|c| c.get_name_ident(db) != config.get_name_ident(db))
+            .copied()
+            .collect();
+        // The file maps have no order, so sort for a stable list.
+        others.sort_by_key(|c| c.get_name_ident(db).text(db).to_string());
+        errors.push(
+            ResolveError::MultipleConfigurations { config, others }
+                .to_diagnostic(db, config.get_scope_id(db).file(db)),
+        );
+    }
+}
+
 pub fn check_duplicate_configs<'db>(
     db: &'db dyn WorkspaceDataBase,
     config: ConfigDecl<'db>,

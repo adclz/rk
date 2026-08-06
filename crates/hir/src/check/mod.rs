@@ -11,6 +11,7 @@ use crate::{
     check::{
         check_duplicates::{
             check_duplicate_configs, check_duplicate_pous, check_duplicate_programs,
+            check_single_configuration,
         },
         check_recursion::TypeDependencyGraph,
         errors::{ToIdeDiagnostic, e0_syntax::SyntaxError, e2_resolve::ResolveError},
@@ -74,6 +75,7 @@ impl<'db> SemanticIndex<'db> {
         // Configurations — validate program type references and task references.
         self.configs.iter().for_each(|config| {
             check_duplicate_configs(db, *config, errors);
+            check_single_configuration(db, *config, errors);
             errors.extend(infer_config_result(db, *config).errors.iter().cloned());
             config.get_scope_id(db).check(db, errors);
         });

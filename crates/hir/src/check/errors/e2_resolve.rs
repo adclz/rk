@@ -10,6 +10,7 @@ use crate::{
     CallSite, HasName, HirNodeInfo,
     check::errors::ToIdeDiagnostic,
     hir_def::{
+        config::ConfigDecl,
         expressions::{
             expression::{Expr, FuncCall, InitExpr, PathExpr},
             spec::{Spec, SpecKind},
@@ -200,6 +201,14 @@ pub enum ResolveError<'db> {
     UnknownTaskRef {
         task: SpanIdent<'db>,
     },
+    /// The workspace declares more than one CONFIGURATION. One workspace
+    /// builds one PLC, and a POU is a type usable in any of them, so a second
+    /// configuration makes "which globals are in scope here" unanswerable.
+    MultipleConfigurations {
+        config: ConfigDecl<'db>,
+        /// Every OTHER configuration, so they can be reached from here.
+        others: Vec<ConfigDecl<'db>>,
+    },
     /// A TASK's PRIORITY is not a number this compiler can represent. Held as
     /// source text until here, so an unusable value would otherwise reach the
     /// scheduler as "no priority" and quietly sort last.
@@ -354,6 +363,7 @@ impl<'db> ErrorCode for ResolveError<'db> {
             Self::UnknownProgType { .. } => "E0218",
             Self::UnknownTaskRef { .. } => "E0219",
             Self::InvalidPriority { .. } => "E0241",
+            Self::MultipleConfigurations { .. } => "E0242",
             Self::ExternalVarNotFound { .. } => "E0220",
             Self::AccessDeclTypeMismatch { .. } => "E0221",
             Self::ConfigInstInitUnknownInstance { .. } => "E0222",
@@ -398,7 +408,8 @@ impl<'db> ErrorCode for ResolveError<'db> {
             Self::NoConfigFileFound { .. } => "configuration error",
             Self::UnknownProgType { .. }
             | Self::UnknownTaskRef { .. }
-            | Self::InvalidPriority { .. } => "configuration error",
+            | Self::InvalidPriority { .. }
+            | Self::MultipleConfigurations { .. } => "configuration error",
             Self::ExternalVarNotFound { .. } => "external variable not found",
             Self::AccessDeclTypeMismatch { .. } => "access declaration type mismatch",
             Self::ConfigInstInitUnknownInstance { .. }
@@ -776,6 +787,28 @@ impl<'db> ToIdeDiagnostic<'db> for ResolveError<'db> {
                 .desc(self)
                 .range(crate::denormalize(db, file, &task.get_span(db)).unwrap_or_default())
                 .call(),
+            Self::MultipleConfigurations { config, others } => {
+                let mut diag = diag()
+                    .message(format!(
+                        "a workspace can only have one CONFIGURATION; this one declares {}",
+                        others.len() + 1
+                    ))
+                    .severity(DiagnosticSeverity::ERROR)
+                    .desc(self)
+                    .range(
+                        crate::denormalize(db, file, &config.get_name_span(db)).unwrap_or_default(),
+                    )
+                    .call();
+
+                for other in others {
+                    diag.with_related(Related::new(
+                        format!("'{}' is declared here", other.name(db).text(db)),
+                        other.get_scope_id(db).file(db),
+                        other.get_name_span(db),
+                    ));
+                }
+                diag
+            }
             Self::InvalidPriority { task, value } => {
                 let mut diag = diag()
                     .message(format!(

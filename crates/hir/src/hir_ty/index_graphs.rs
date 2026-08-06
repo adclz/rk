@@ -228,6 +228,19 @@ pub fn program_index<'db>(db: &'db dyn WorkspaceDataBase, name: Ident) -> Option
     None
 }
 
+/// Every CONFIGURATION in the workspace.
+///
+/// A workspace declares one; this exists to notice when it declares more.
+/// Order is whatever the file maps yield, so it answers "how many" and "which
+/// ones" — never "which is first".
+pub fn all_configs<'db>(db: &'db dyn WorkspaceDataBase) -> Vec<ConfigDecl<'db>> {
+    let mut out = Vec::new();
+    for file in all_files(db) {
+        out.extend(file_configs(db, file).iter().copied());
+    }
+    out
+}
+
 /// Finds a globally declared configuration by name across all files.
 #[tracing::instrument(skip(db))]
 pub fn config_index<'db>(db: &'db dyn WorkspaceDataBase, name: Ident) -> Option<ConfigDecl<'db>> {
