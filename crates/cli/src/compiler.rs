@@ -260,7 +260,7 @@ pub fn optimize_wasm(wasm_bytes: Vec<u8>, opt_level: Option<&str>, verbose: bool
             return wasm_bytes;
         }
     };
-    let optimized = preserve_retain_map(&wasm_bytes, optimized);
+    let optimized = preserve_load_bearing_sections(&wasm_bytes, optimized);
 
     if verbose {
         let savings = original_size as f64 - optimized.len() as f64;
@@ -275,15 +275,34 @@ pub fn optimize_wasm(wasm_bytes: Vec<u8>, opt_level: Option<&str>, verbose: bool
     optimized
 }
 
-/// The `retain-map` custom section is LOAD-BEARING (per-field RETAIN
-/// persistence — without it the runtime degrades to legacy whole-band
-/// snapshots with wrong IEC cold-start semantics). wasm-opt strips custom
-/// sections, so re-attach it to the optimized module if it got dropped.
-fn preserve_retain_map(original: &[u8], optimized: Vec<u8>) -> Vec<u8> {
+/// wasm-opt strips custom sections, so re-attach the ones a module cannot run
+/// without.
+///
+/// Two are LOAD-BEARING, and neither is debug information despite sharing a
+/// crate with it:
+///
+/// * `retain-map` — per-field RETAIN persistence. Losing it degrades the
+///   runtime to legacy whole-band snapshots, the wrong IEC cold-start
+///   semantics for non-retained state.
+/// * `rk.schedule` — what runs, and when. Losing it leaves a module with
+///   code and no statement of what to execute, so it cannot be scanned.
+fn preserve_load_bearing_sections(original: &[u8], optimized: Vec<u8>) -> Vec<u8> {
+    let mut out = optimized;
+    for section in [
+        debug_format::RETAIN_MAP_SECTION,
+        debug_format::SCHEDULE_SECTION,
+    ] {
+        out = preserve_section(original, out, section);
+    }
+    out
+}
+
+/// Re-attach one custom section if `original` had it and optimization dropped it.
+fn preserve_section(original: &[u8], optimized: Vec<u8>, section: &str) -> Vec<u8> {
     let find = |bytes: &[u8]| -> Option<Vec<u8>> {
         for payload in wasmparser::Parser::new(0).parse_all(bytes) {
             if let Ok(wasmparser::Payload::CustomSection(r)) = payload
-                && r.name() == debug_format::RETAIN_MAP_SECTION
+                && r.name() == section
             {
                 return Some(r.data().to_vec());
             }
@@ -291,14 +310,14 @@ fn preserve_retain_map(original: &[u8], optimized: Vec<u8>) -> Vec<u8> {
         None
     };
     let Some(data) = find(original) else {
-        return optimized; // module has no retained state
+        return optimized; // the module never had one
     };
     if find(&optimized).is_some() {
         return optimized; // survived optimization
     }
     // Append the custom section: id 0x00, LEB128 payload size, then
     // LEB128 name length + name + data. Appending at the end is valid wasm.
-    let name = debug_format::RETAIN_MAP_SECTION.as_bytes();
+    let name = section.as_bytes();
     let mut payload = Vec::with_capacity(1 + name.len() + data.len());
     write_leb128(&mut payload, name.len() as u64);
     payload.extend_from_slice(name);
@@ -417,16 +436,47 @@ mod tests {
         }
     }
 
-    /// A minimal module carrying a retain-map section must still carry it
-    /// after release optimization (wasm-opt strips custom sections; we
-    /// re-attach).
+    /// A module's load-bearing sections must survive release optimization.
+    ///
+    /// This exercises `preserve_load_bearing_sections` DIRECTLY rather than
+    /// going through `optimize_wasm`: wasm-opt is an external binary, and when
+    /// it is absent — as on any machine that has not installed Binaryen —
+    /// optimization returns its input untouched, so a round-trip test passes
+    /// without the re-attachment ever running. It was vacuous that way for
+    /// `retain-map` before `rk.schedule` joined it.
     #[test]
-    fn retain_map_survives_wasm_opt() {
-        // Minimal valid module: magic + version, plus the retain-map custom
-        // section with dummy payload bytes.
+    fn load_bearing_sections_are_reattached_after_stripping() {
+        for section in [
+            debug_format::RETAIN_MAP_SECTION,
+            debug_format::SCHEDULE_SECTION,
+        ] {
+            let data = b"dummy-manifest-bytes";
+            let original = module_with_section(section, data);
+            // What wasm-opt hands back: the same module, custom sections gone.
+            let stripped = vec![0x00, 0x61, 0x73, 0x6d, 0x01, 0x00, 0x00, 0x00];
+
+            let restored = preserve_load_bearing_sections(&original, stripped);
+
+            let mut found = None;
+            for p in wasmparser::Parser::new(0).parse_all(&restored) {
+                if let Ok(wasmparser::Payload::CustomSection(r)) = p
+                    && r.name() == section
+                {
+                    found = Some(r.data().to_vec());
+                }
+            }
+            assert_eq!(
+                found.as_deref(),
+                Some(data.as_slice()),
+                "{section} must be re-attached after being stripped"
+            );
+        }
+    }
+
+    /// A minimal valid module carrying one custom section.
+    fn module_with_section(section: &str, data: &[u8]) -> Vec<u8> {
         let mut module = vec![0x00, 0x61, 0x73, 0x6d, 0x01, 0x00, 0x00, 0x00];
-        let name = debug_format::RETAIN_MAP_SECTION.as_bytes();
-        let data = b"dummy-manifest-bytes";
+        let name = section.as_bytes();
         let mut payload = Vec::new();
         write_leb128(&mut payload, name.len() as u64);
         payload.extend_from_slice(name);
@@ -434,21 +484,6 @@ mod tests {
         module.push(0x00);
         write_leb128(&mut module, payload.len() as u64);
         module.extend_from_slice(&payload);
-
-        let optimized = optimize_wasm(module, Some("s"), false);
-
-        let mut found = None;
-        for p in wasmparser::Parser::new(0).parse_all(&optimized) {
-            if let Ok(wasmparser::Payload::CustomSection(r)) = p
-                && r.name() == debug_format::RETAIN_MAP_SECTION
-            {
-                found = Some(r.data().to_vec());
-            }
-        }
-        assert_eq!(
-            found.as_deref(),
-            Some(data.as_slice()),
-            "retain-map section must survive optimization"
-        );
+        module
     }
 }
