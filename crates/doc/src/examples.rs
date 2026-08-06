@@ -3582,6 +3582,94 @@ mod tests {
         }
     }
 
+    /// Examples that do NOT currently produce the code they document.
+    ///
+    /// SHRINK-ONLY, like [`KNOWN_UNDOCUMENTED`]: fix an example, remove it
+    /// from here. Adding to this list defeats the guard.
+    ///
+    /// Two distinct debts are recorded here, neither belonging to the
+    /// configuration rework that added this guard:
+    ///
+    /// * `L0204`-`L0214` are shifted by one against the linter — the linter
+    ///   calls the empty-body rule L0206 while the example filed under L0205
+    ///   is the one that produces it, and so on up the range. Every entry in
+    ///   the run produces its successor. `rk explain` serves this, so each is
+    ///   a wrong answer to a user, not just a stale page.
+    /// * The rest (`E0009`, `E0010`, `E0018`, `E0226`, `E0306`, `E0510`,
+    ///   `E0511`, `E0702`, the two `E0309` string cases) are examples whose
+    ///   source stopped reaching its diagnostic as the checks around it moved.
+    ///
+    /// `E0032`-`E0035`, `E0114`, `E0115`, `E0218`, `E0219` and `E0223` ARE
+    /// from that rework: their sources declare a TASK or PROGRAM directly in a
+    /// CONFIGURATION, which now stops at E0039. Four of them (E0032-E0035) no
+    /// longer produce their diagnostic at all, because the builder reports
+    /// E0039 and drops the node rather than descending into it.
+    const KNOWN_STALE_EXAMPLES: &[&str] = &[
+        "E0009", "E0010", "E0018", "E0032", "E0033", "E0034", "E0035", "E0114", "E0115", "E0218",
+        "E0219", "E0223", "E0226", "E0306", "E0309_WSTRING_LEN", "E0309_WCHAR", "E0510", "E0511",
+        "E0702", "L0204", "L0205", "L0206", "L0207", "L0208", "L0209", "L0210", "L0211", "L0212",
+        "L0213", "L0214",
+    ];
+
+    /// An example must actually produce the diagnostic it documents.
+    ///
+    /// Checking only that a code is *mentioned* somewhere let twelve examples
+    /// rot silently when tasks and program instances moved inside a RESOURCE:
+    /// their sources now stop at E0039, and four of them (E0032-E0035) stopped
+    /// producing their own diagnostic altogether — the page still promised it.
+    /// `rk explain` serves this same data, so a rotten example is a wrong
+    /// answer to a user, not just a stale page.
+    #[test]
+    fn every_example_produces_the_diagnostic_it_documents() {
+        let mut wrong: Vec<String> = Vec::new();
+        let mut fixed: Vec<&str> = Vec::new();
+        for ex in all_examples() {
+            let known_stale = KNOWN_STALE_EXAMPLES.contains(&ex.code);
+            let mut db = db::RootDatabase::default();
+            let (output, _) = crate::render::compile_and_render(&mut db, ex.sources, ex.lint_rule);
+            // A key may carry a suffix to give one code several examples
+            // (`E0309_SINT`); the diagnostic it produces is the base code.
+            let code = ex.code.split('_').next().unwrap_or(ex.code);
+            if !output.contains(&format!("[{code}]")) {
+                let produced: std::collections::BTreeSet<&str> = output
+                    .match_indices('[')
+                    .filter_map(|(i, _)| output.get(i + 1..i + 6))
+                    .filter(|c| {
+                        let b = c.as_bytes();
+                        b.len() == 5
+                            && (b[0] == b'E' || b[0] == b'L')
+                            && b[1..].iter().all(u8::is_ascii_digit)
+                    })
+                    .collect();
+                if known_stale {
+                    continue;
+                }
+                wrong.push(format!(
+                    "  {} ({}): produced {}",
+                    ex.code,
+                    ex.title,
+                    if produced.is_empty() {
+                        "nothing".to_string()
+                    } else {
+                        produced.into_iter().collect::<Vec<_>>().join(", ")
+                    }
+                ));
+            } else if known_stale {
+                fixed.push(ex.code);
+            }
+        }
+        assert!(
+            wrong.is_empty(),
+            "these examples do not produce the diagnostic they document:\n{}",
+            wrong.join("\n")
+        );
+        assert!(
+            fixed.is_empty(),
+            "these examples produce their diagnostic now — remove them from \
+             KNOWN_STALE_EXAMPLES, the list only shrinks: {fixed:?}"
+        );
+    }
+
     /// The docs and the compiler must not drift: every example's code must
     /// exist, and every defined code must have an example (or sit on the
     /// explicit, shrink-only debt list). The generated April 2026 docs
