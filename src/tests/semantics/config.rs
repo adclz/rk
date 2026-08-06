@@ -1192,6 +1192,41 @@ fn program_connection_elements_are_reported(mut with_db: RootDatabase) {
     ");
 }
 
+/// Tasks and programs belong to a RESOURCE. Written straight into the
+/// CONFIGURATION they used to fail as stray tokens — one E0050 quoting the
+/// whole tokenized configuration — which said nothing about what to do.
+#[rstest]
+fn task_or_program_outside_a_resource_is_rejected(mut with_db: RootDatabase) {
+    let source = r#"
+        PROGRAM P VAR n : INT; END_VAR n := n + 1; END_PROGRAM
+
+        CONFIGURATION Cfg
+            TASK T(INTERVAL := T#10ms, PRIORITY := 1);
+            PROGRAM A WITH T : P;
+        END_CONFIGURATION
+    "#;
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
+    [E0039] Error: syntax
+       ,-[ file:///test0.st:5:13 ]
+       |
+     5 |             TASK T(INTERVAL := T#10ms, PRIORITY := 1);
+       |             ^^^^^^^^^^^^^^^^^^^^^|^^^^^^^^^^^^^^^^^^^^
+       |                                  `---------------------- TASK and PROGRAM must be declared inside a RESOURCE
+       |
+       | Note: wrap them in a RESOURCE <name> ON <cpu> ... END_RESOURCE block
+    ---'
+    [E0039] Error: syntax
+       ,-[ file:///test0.st:6:13 ]
+       |
+     6 |             PROGRAM A WITH T : P;
+       |             ^^^^^^^^^^|^^^^^^^^^^
+       |                       `------------ TASK and PROGRAM must be declared inside a RESOURCE
+       |
+       | Note: wrap them in a RESOURCE <name> ON <cpu> ... END_RESOURCE block
+    ---'
+    ");
+}
+
 /// `VAR_GLOBAL` is application-scoped: it belongs to the CONFIGURATION, never
 /// to a RESOURCE. A RESOURCE is a named group of tasks and programs and holds
 /// no variables of its own, so a `VAR_GLOBAL` inside one is rejected.
