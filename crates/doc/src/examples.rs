@@ -432,7 +432,7 @@ END_INTERFACE
             code: "E0030",
             category: "Syntax",
             title: "VAR_GLOBAL not allowed in this context",
-            description: "`VAR_GLOBAL` can only be used inside PROGRAM or CONFIGURATION.",
+            description: "`VAR_GLOBAL` can only be used inside a CONFIGURATION. Global data is application-scoped: a POU reaches it with `VAR_EXTERNAL`, and a RESOURCE holds no variables of its own.",
             sources: &[r#"
 FUNCTION_BLOCK fb1
     VAR_GLOBAL
@@ -542,6 +542,22 @@ FUNCTION_BLOCK fb1
     METHOD m1
     END_METHOD
 END_FUNCTION_BLOCK
+"#],
+            lint_rule: None,
+        },
+        ErrorExample {
+            code: "E0039",
+            category: "Syntax",
+            title: "TASK or PROGRAM outside a RESOURCE",
+            description: "A CONFIGURATION contains RESOURCE blocks; the tasks and the programs bound to them are declared inside one. Wrap them in `RESOURCE <name> ON <cpu> ... END_RESOURCE`.",
+            sources: &[r#"
+PROGRAM prog1
+END_PROGRAM
+
+CONFIGURATION cfg1
+    TASK t1(INTERVAL := T#10ms, PRIORITY := 1);
+    PROGRAM inst1 WITH t1 : prog1;
+END_CONFIGURATION
 "#],
             lint_rule: None,
         },
