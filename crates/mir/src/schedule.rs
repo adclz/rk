@@ -13,7 +13,7 @@ use db::WorkspaceDataBase;
 use hir::{
     Qualifier,
     hir_def::{
-        config::{ConfigDecl, TaskConfig},
+        config::ConfigDecl,
         interned::identifier::Ident,
         pous::variable::VariableKind,
         program::ProgramDecl,
@@ -56,6 +56,10 @@ pub struct MirProgInstance {
 /// One cyclic TASK and the program instances it runs each time it fires.
 #[derive(Debug, Clone)]
 pub struct MirTask {
+    /// The RESOURCE that declares this task: the group a deployment binds to
+    /// an execution unit.
+    pub resource: Ident,
+
     pub name: Ident,
     /// How often the task fires, as a count of base ticks
     /// (`interval / common_ticktime`). Always >= 1.
@@ -88,128 +92,96 @@ pub fn lower_schedule<'db>(
     let config = *configs.first()?;
     let inferred = infer_config_result(db, config);
 
-    // Every program instance, across all resources.
-    let mut prog_configs = Vec::new();
-    for r in config.resources(db).iter() {
-        prog_configs.extend(r.programs(db).iter().copied());
-    }
+    // HIR resolved what runs; lowering gives each instance memory and
+    // expresses periods against one tick counter.
+    let mut pending: Vec<(Ident, &hir::hir_ty::config::ResolvedTask<'db>, Vec<MirProgInstance>)> =
+        Vec::new();
+    for resource in &inferred.schedule.resources {
+        for task in &resource.tasks {
+            let mut instances = Vec::new();
+            for p in &task.programs {
+                let Some(info) = program_infos.get(&p.program.name(db)) else {
+                    continue;
+                };
 
-    // Allocate one instance per ProgConfig and group under its WITH-task,
-    // preserving declaration order.
-    let mut grouped: Vec<(TaskConfig<'db>, Vec<MirProgInstance>)> = Vec::new();
-    for p in &prog_configs {
-        let Some(task) = inferred.task_of_prog.get(p) else {
-            continue; // PROGRAM with no resolved WITH <task> — unscheduled.
-        };
-        let Some(prog_decl) = inferred.prog_instance.get(&p.name(db).ident) else {
-            continue; // program type didn't resolve (a diagnostic was emitted).
-        };
-        let Some(info) = program_infos.get(&prog_decl.name(db)) else {
-            continue;
-        };
+                // Allocate this instance's state, and register its RETAIN
+                // fields for the host-snapshottable band.
+                let base = memory_layout.allocate(
+                    p.instance_name,
+                    info.struct_type.size,
+                    info.struct_type.align,
+                    MirAllocKind::InstanceData,
+                );
+                // If the program has ANY RETAIN state, persist its whole
+                // instance. The body addresses fields via `this + offset`, so
+                // individual fields can't be relocated into the band out from
+                // under it — we relocate the whole instance instead (its base
+                // becomes a band address). The cost: a retain program's
+                // non-RETAIN fields are persisted too — a simplification vs.
+                // strict per-field RETAIN (a C-emitting compiler copies each retained field
+                // in/out).
+                //
+                // A config-level qualifier (`PROGRAM RETAIN p WITH t : Type` /
+                // `PROGRAM NON_RETAIN ...`, IEC program configuration)
+                // overrides the declaration-driven decision entirely: RETAIN
+                // persists the instance even without retained fields,
+                // NON_RETAIN suppresses persistence even with them. Otherwise a
+                // field is retained if it is RETAIN-qualified itself OR its
+                // type (an FB/class instance, possibly nested) declares
+                // `VAR RETAIN` state internally — other toolchains semantics:
+                // FB-internal RETAIN persists for every instance.
+                let has_retain = match p.retain {
+                    Some(config_qualifier) => config_qualifier,
+                    None => info
+                        .struct_type
+                        .fields
+                        .iter()
+                        .any(|f| is_retain_field(db, &info.decl, f.name)),
+                };
+                if has_retain {
+                    memory_layout.record_retain(
+                        p.instance_name,
+                        base,
+                        info.struct_type.size,
+                        info.struct_type.align,
+                    );
+                }
 
-        // Allocate this instance's state, and register its RETAIN fields for
-        // the host-snapshottable band.
-        let base = memory_layout.allocate(
-            p.name(db).ident,
-            info.struct_type.size,
-            info.struct_type.align,
-            MirAllocKind::InstanceData,
-        );
-        // If the program has ANY RETAIN state, persist its whole instance. The
-        // body addresses fields via `this + offset`, so individual fields can't
-        // be relocated into the band out from under it — we relocate the whole
-        // instance instead (its base becomes a band address). The cost: a retain
-        // program's non-RETAIN fields are persisted too — a simplification vs.
-        // strict per-field RETAIN (a C-emitting compiler copies each retained field in/out).
-        //
-        // A config-level qualifier (`PROGRAM RETAIN p WITH t : Type` /
-        // `PROGRAM NON_RETAIN ...`, IEC program configuration) overrides the
-        // declaration-driven decision entirely: RETAIN persists the instance
-        // even without retained fields, NON_RETAIN suppresses persistence even
-        // with them. Otherwise a field is retained if it is RETAIN-qualified
-        // itself OR its type (an FB/class instance, possibly nested) declares
-        // `VAR RETAIN` state internally — other toolchains semantics: FB-internal
-        // RETAIN persists for every instance.
-        let has_retain = match p.retain(db) {
-            Some(config_qualifier) => config_qualifier,
-            None => info
-                .struct_type
-                .fields
-                .iter()
-                .any(|f| is_retain_field(db, &info.decl, f.name)),
-        };
-        if has_retain {
-            memory_layout.record_retain(
-                p.name(db).ident,
-                base,
-                info.struct_type.size,
-                info.struct_type.align,
-            );
+                instances.push(MirProgInstance {
+                    inst_name: p.instance_name,
+                    prog_name: p.program.name(db),
+                    body_fn: info.body_fn,
+                    instance_addr: base,
+                    config_retain: p.retain,
+                });
+            }
+            if !instances.is_empty() {
+                pending.push((resource.name, task, instances));
+            }
         }
-
-        let instance = MirProgInstance {
-            inst_name: p.name(db).ident,
-            prog_name: prog_decl.name(db),
-            body_fn: info.body_fn,
-            instance_addr: base,
-            config_retain: p.retain(db),
-        };
-        match grouped.iter_mut().find(|(t, _)| *t == *task) {
-            Some((_, v)) => v.push(instance),
-            None => grouped.push((*task, vec![instance])),
-        }
-    }
-
-    // Resolve intervals (cyclic tasks only) and keep them for the GCD pass.
-    struct Pending {
-        name: Ident,
-        interval_ns: u64,
-        priority: Option<u32>,
-        programs: Vec<MirProgInstance>,
-    }
-    let mut pending = Vec::new();
-    for (task, programs) in grouped {
-        // HIR decided which tasks are schedulable and reported E0239 for the
-        // rest, so a task missing from this map has already been diagnosed —
-        // MIR neither re-parses the interval nor re-derives the reason.
-        let Some(&interval_ns) = inferred.task_interval_ns.get(&task) else {
-            continue;
-        };
-        if interval_ns == 0 {
-            continue;
-        }
-        pending.push(Pending {
-            name: task.name(db).ident,
-            interval_ns,
-            priority: inferred.task_priority.get(&task).copied(),
-            programs,
-        });
     }
 
     if pending.is_empty() {
         return None;
     }
 
-    // Base period = GCD of all task intervals.
-    let common = pending.iter().map(|p| p.interval_ns).reduce(gcd)?;
+    // One tick counter drives every task, so the base period is the GCD of the
+    // intervals and each task's period is its multiple of that.
+    let common = pending.iter().map(|(_, t, _)| t.interval_ns).reduce(gcd)?;
     if common == 0 {
         return None;
     }
 
-    let mut tasks: Vec<MirTask> = pending
+    let tasks: Vec<MirTask> = pending
         .into_iter()
-        .map(|p| MirTask {
-            name: p.name,
-            period_ticks: (p.interval_ns / common) as u32,
-            priority: p.priority,
-            programs: p.programs,
+        .map(|(resource, task, programs)| MirTask {
+            resource,
+            name: task.name,
+            period_ticks: (task.interval_ns / common) as u32,
+            priority: task.priority,
+            programs,
         })
         .collect();
-
-    // Deterministic dispatch order: most urgent first; no-priority tasks last;
-    // ties keep declaration order (stable sort).
-    tasks.sort_by_key(|t| t.priority.unwrap_or(u32::MAX));
 
     Some(MirSchedule {
         common_ticktime_ns: common,
