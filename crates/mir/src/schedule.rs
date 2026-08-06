@@ -85,13 +85,11 @@ pub struct MirSchedule {
 /// `None` when there is no configuration or it schedules no cyclic tasks.
 pub fn lower_schedule<'db>(
     db: &'db dyn WorkspaceDataBase,
-    configs: &[ConfigDecl<'db>],
+    config: Option<ConfigDecl<'db>>,
     memory_layout: &mut MirMemoryLayout,
     program_infos: &FxHashMap<Ident, ProgramInfo<'db>>,
 ) -> Option<MirSchedule> {
-    // A workspace declares one CONFIGURATION (E0242 otherwise), so there is
-    // nothing to choose between.
-    let config = *configs.first()?;
+    let config = config?;
     let inferred = infer_config_result(db, config);
 
     // HIR resolved what runs; lowering gives each instance memory and
