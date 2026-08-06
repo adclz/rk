@@ -752,20 +752,6 @@ END_PROGRAM
             lint_rule: None,
         },
         ErrorExample {
-            code: "E0113",
-            category: "Duplicates",
-            title: "Duplicate CONFIGURATION",
-            description: "Two CONFIGURATION declarations have the same name.",
-            sources: &[r#"
-CONFIGURATION c1
-END_CONFIGURATION
-
-CONFIGURATION c1
-END_CONFIGURATION
-"#],
-            lint_rule: None,
-        },
-        ErrorExample {
             code: "E0114",
             category: "Duplicates",
             title: "Duplicate TASK name",
