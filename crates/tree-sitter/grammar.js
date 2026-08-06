@@ -325,6 +325,9 @@ module.exports = grammar({
     ERR_var_located_not_allowed: ($) => prec(-1, $.loc_var_decls), // VAR_LOCATED
     ERR_var_external_not_allowed: ($) => prec(-1, $.external_var_decls), // VAR_EXTERNAL
     ERR_var_global_not_allowed: ($) => prec(-1, $.global_var_decls), // VAR_GLOBAL
+    // A TASK or PROGRAM written directly in a CONFIGURATION: parsed so the
+    // builder can say where it belongs, instead of failing as stray tokens.
+    ERR_task_or_program_outside_resource: ($) => prec(-1, $.single_resource_decl),
     ERR_var_not_allowed: ($) => prec(-1, $.var_decls), // VAR
 
     ERR_access_spec_in_method_prototype: ($) => prec(-1, $.access_spec),
@@ -1399,7 +1402,7 @@ module.exports = grammar({
               ...other_var_decls($),
               $.loc_var_decls,
               $.prog_access_decls,
-              $.global_var_decls,
+              $.ERR_var_global_not_allowed,
             ),
           ),
         ),
@@ -1517,7 +1520,12 @@ module.exports = grammar({
         // Tasks and programs live in a RESOURCE, never directly in the
         // CONFIGURATION: one way to express a thing, and the RESOURCE name is
         // what deployment binds to an execution unit.
-        field("resources", repeat($.resource_decl)),
+        field(
+          "resources",
+          repeat(
+            choice($.resource_decl, $.ERR_task_or_program_outside_resource),
+          ),
+        ),
         field("access_decls", optional($.access_decls)),
         field("config_init", optional($.config_init)),
         "END_CONFIGURATION",

@@ -423,6 +423,14 @@
         "name": "global_var_decls"
       }
     },
+    "ERR_task_or_program_outside_resource": {
+      "type": "PREC",
+      "value": -1,
+      "content": {
+        "type": "SYMBOL",
+        "name": "single_resource_decl"
+      }
+    },
     "ERR_var_not_allowed": {
       "type": "PREC",
       "value": -1,
@@ -6418,7 +6426,7 @@
                 },
                 {
                   "type": "SYMBOL",
-                  "name": "global_var_decls"
+                  "name": "ERR_var_global_not_allowed"
                 }
               ]
             }
@@ -7061,8 +7069,17 @@
           "content": {
             "type": "REPEAT",
             "content": {
-              "type": "SYMBOL",
-              "name": "resource_decl"
+              "type": "CHOICE",
+              "members": [
+                {
+                  "type": "SYMBOL",
+                  "name": "resource_decl"
+                },
+                {
+                  "type": "SYMBOL",
+                  "name": "ERR_task_or_program_outside_resource"
+                }
+              ]
             }
           }
         },
