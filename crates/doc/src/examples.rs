@@ -137,24 +137,32 @@ END_FUNCTION_BLOCK
         ErrorExample {
             code: "E0009",
             category: "Syntax",
-            title: "THIS not valid in this context",
-            description: "`THIS` can only be used inside a CLASS or FUNCTION_BLOCK that has methods.",
+            title: "THIS used as a path member",
+            description: "`THIS` may only start a path expression (`THIS.member`, `THIS^.member`). It is not a member name, so it cannot appear after a dot. Using `THIS` in a POU that has no instance — a FUNCTION — is reported as E0503 instead.",
             sources: &[r#"
-FUNCTION fn1 : INT
-    fn1 := THIS.x;
-END_FUNCTION
+FUNCTION_BLOCK fb1
+VAR
+    x : INT;
+END_VAR
+    x := x.THIS;
+END_FUNCTION_BLOCK
 "#],
             lint_rule: None,
         },
         ErrorExample {
             code: "E0010",
             category: "Syntax",
-            title: "SUPER not valid in this context",
-            description: "`SUPER` can only be used inside a CLASS or FUNCTION_BLOCK that EXTENDS another.",
+            title: "SUPER after a dot in a path",
+            description: "`SUPER` must be the first element of a path expression, as in `SUPER.m()`. It cannot appear as a member after a dot — `THIS.SUPER.m()` and `inst.SUPER.x` are rejected. (Using a correctly placed `SUPER` in a POU with no EXTENDS clause is E0513; using it in a POU that cannot extend at all, such as a FUNCTION, is E0502.)",
             sources: &[r#"
-FUNCTION fn1 : INT
-    fn1 := SUPER.x;
-END_FUNCTION
+FUNCTION_BLOCK base
+METHOD m
+END_METHOD
+END_FUNCTION_BLOCK
+
+FUNCTION_BLOCK derived EXTENDS base
+    THIS.SUPER.m();
+END_FUNCTION_BLOCK
 "#],
             lint_rule: None,
         },
@@ -266,10 +274,14 @@ END_FUNCTION_BLOCK
         ErrorExample {
             code: "E0018",
             category: "Syntax",
-            title: "Invalid POU keyword",
-            description: "An invalid keyword was used where a POU declaration (FUNCTION, FUNCTION_BLOCK, CLASS, etc.) was expected.",
+            title: "Comma-separated indices in array access",
+            description: "Array element access cannot use comma-separated indices (`a[i, j]`). The comma form is initializer-only syntax; element access must chain one subscript per dimension: `a[i][j]`.",
             sources: &[r#"
-HELLO world
+FUNCTION fn1 : INT
+VAR
+    a : ARRAY [0..1, 0..1] OF INT;
+END_VAR
+    fn1 := a[0, 1];
 END_FUNCTION
 "#],
             lint_rule: None,
@@ -463,7 +475,9 @@ END_CONFIGURATION
             description: "In a TASK configuration, SINGLE must be declared before INTERVAL.",
             sources: &[r#"
 CONFIGURATION config1
-    TASK task1(INTERVAL := T#20ms, SINGLE := var1, PRIORITY := 1);
+    RESOURCE res1 ON CPU
+        TASK task1(INTERVAL := T#20ms, SINGLE := var1, PRIORITY := 1);
+    END_RESOURCE
 END_CONFIGURATION
 "#],
             lint_rule: None,
@@ -475,7 +489,9 @@ END_CONFIGURATION
             description: "In a TASK configuration, INTERVAL must be declared before PRIORITY.",
             sources: &[r#"
 CONFIGURATION config1
-    TASK task1(PRIORITY := 1, INTERVAL := T#20ms);
+    RESOURCE res1 ON CPU
+        TASK task1(PRIORITY := 1, INTERVAL := T#20ms);
+    END_RESOURCE
 END_CONFIGURATION
 "#],
             lint_rule: None,
@@ -487,7 +503,9 @@ END_CONFIGURATION
             description: "In a TASK configuration, SINGLE must be declared before PRIORITY.",
             sources: &[r#"
 CONFIGURATION config1
-    TASK task1(PRIORITY := 1, SINGLE := var1);
+    RESOURCE res1 ON CPU
+        TASK task1(PRIORITY := 1, SINGLE := var1);
+    END_RESOURCE
 END_CONFIGURATION
 "#],
             lint_rule: None,
@@ -499,7 +517,9 @@ END_CONFIGURATION
             description: "PRIORITY is required in TASK configuration.",
             sources: &[r#"
 CONFIGURATION config1
-    TASK task1(INTERVAL := T#20ms);
+    RESOURCE res1 ON CPU
+        TASK task1(INTERVAL := T#20ms);
+    END_RESOURCE
 END_CONFIGURATION
 "#],
             lint_rule: None,
@@ -758,8 +778,10 @@ END_PROGRAM
             description: "Two TASKs in the same configuration have the same name.",
             sources: &[r#"
 CONFIGURATION config1
-    TASK task1(PRIORITY := 1);
-    TASK task1(PRIORITY := 2);
+    RESOURCE res1 ON CPU
+        TASK task1(PRIORITY := 1);
+        TASK task1(PRIORITY := 2);
+    END_RESOURCE
 END_CONFIGURATION
 "#],
             lint_rule: None,
@@ -774,9 +796,11 @@ PROGRAM prog1
 END_PROGRAM
 
 CONFIGURATION config1
-    TASK task1(PRIORITY := 1);
-    PROGRAM inst1 WITH task1 : prog1;
-    PROGRAM inst1 WITH task1 : prog1;
+    RESOURCE res1 ON CPU
+        TASK task1(PRIORITY := 1);
+        PROGRAM inst1 WITH task1 : prog1;
+        PROGRAM inst1 WITH task1 : prog1;
+    END_RESOURCE
 END_CONFIGURATION
 "#],
             lint_rule: None,
@@ -1020,19 +1044,6 @@ END_FUNCTION_BLOCK
             lint_rule: None,
         },
         ErrorExample {
-            code: "E0218",
-            category: "Resolution",
-            title: "Unknown program type in CONFIGURATION",
-            description: "The program type referenced in a CONFIGURATION entry does not exist.",
-            sources: &[r#"
-CONFIGURATION config1
-    TASK task1(PRIORITY := 1);
-    PROGRAM inst1 WITH task1 : unknown_prog;
-END_CONFIGURATION
-"#],
-            lint_rule: None,
-        },
-        ErrorExample {
             code: "E0219",
             category: "Resolution",
             title: "Unknown TASK reference",
@@ -1042,7 +1053,9 @@ PROGRAM prog1
 END_PROGRAM
 
 CONFIGURATION config1
-    PROGRAM inst1 WITH unknown_task : prog1;
+    RESOURCE res1 ON CPU
+        PROGRAM inst1 WITH unknown_task : prog1;
+    END_RESOURCE
 END_CONFIGURATION
 "#],
             lint_rule: None,
@@ -1124,8 +1137,10 @@ PROGRAM MyProg
 END_PROGRAM
 
 CONFIGURATION MyCfg
-    TASK t1(PRIORITY := 1);
-    PROGRAM inst1 WITH t1 : MyProg;
+    RESOURCE res1 ON CPU
+        TASK t1(PRIORITY := 1);
+        PROGRAM inst1 WITH t1 : MyProg;
+    END_RESOURCE
 
     VAR_CONFIG
         inst1.nonexistent : INT := 42;
@@ -1184,18 +1199,17 @@ END_FUNCTION
         ErrorExample {
             code: "E0226",
             category: "Resolution",
-            title: "Assignment of callable type",
-            description: "A callable type (function, function block type) cannot be assigned directly.",
+            title: "Assignment to a function block instance",
+            description: "A variable whose declared type is callable — a FUNCTION_BLOCK instance, or a name that resolves to a FUNCTION — cannot be the target of an assignment. Instances are called, not copied; pass one as a VAR_IN_OUT parameter, or assign its individual members.",
             sources: &[r#"
-FUNCTION fn1 : INT
-    fn1 := 0;
-END_FUNCTION
-
 FUNCTION_BLOCK fb1
+END_FUNCTION_BLOCK
+
+FUNCTION_BLOCK fb2
 VAR
-    x : INT;
+    inst : fb1;
 END_VAR
-    x := fn1;
+    inst := 0;
 END_FUNCTION_BLOCK
 "#],
             lint_rule: None,
@@ -1543,22 +1557,6 @@ END_FUNCTION_BLOCK
 "#],
             lint_rule: None,
         },
-        ErrorExample {
-            code: "E0306",
-            category: "Type System",
-            title: "Expected a boolean",
-            description: "A boolean expression is required (e.g. in IF, WHILE conditions).",
-            sources: &[r#"
-FUNCTION_BLOCK fb1
-VAR
-    x : INT;
-END_VAR
-    IF x THEN
-    END_IF;
-END_FUNCTION_BLOCK
-"#],
-            lint_rule: None,
-        },
         // E0309 — Invalid literal (many subtypes)
         ErrorExample {
             code: "E0309",
@@ -1837,12 +1835,12 @@ END_FUNCTION_BLOCK
         ErrorExample {
             code: "E0309_WSTRING_LEN",
             category: "Type System",
-            title: "WSTRING literal exceeds max length",
-            description: "A WSTRING literal exceeds the declared maximum length.",
+            title: "Double-quoted (legacy WSTRING) literal exceeds max length",
+            description: "WSTRING no longer exists: STRING is a single UTF-8 type, and the legacy double-quoted literal form now resolves to STRING. A double-quoted literal is therefore measured against the declared maximum length of the sized STRING it initializes, exactly as a single-quoted one is. The length compared is the literal's UTF-8 byte count.",
             sources: &[r#"
 FUNCTION_BLOCK fb1
 VAR
-    s: WSTRING[3] := "hello world";
+    s: STRING[2] := "hello";
 END_VAR
 END_FUNCTION_BLOCK
 "#],
@@ -1865,12 +1863,12 @@ END_FUNCTION_BLOCK
         ErrorExample {
             code: "E0309_WCHAR",
             category: "Type System",
-            title: "Invalid WCHAR literal length",
-            description: "A WCHAR literal must be exactly 1 character.",
+            title: "Invalid CHAR literal length (double-quoted form)",
+            description: "A CHAR literal must be exactly 1 character. The double-quoted form (historically WCHAR) resolves to CHAR and obeys the same rule.",
             sources: &[r#"
 FUNCTION_BLOCK fb1
 VAR
-    c: WCHAR := WCHAR#"ab";
+    c: CHAR := CHAR#"ab";
 END_VAR
 END_FUNCTION_BLOCK
 "#],
@@ -2201,37 +2199,6 @@ END_CLASS
             lint_rule: None,
         },
         ErrorExample {
-            code: "E0510",
-            category: "Inheritance",
-            title: "Unresolved THIS method",
-            description: "The method called on `THIS` does not exist in the current POU.",
-            sources: &[r#"
-FUNCTION_BLOCK fb1
-    METHOD decl
-    END_METHOD
-
-    THIS.decl1();
-END_FUNCTION_BLOCK
-"#],
-            lint_rule: None,
-        },
-        ErrorExample {
-            code: "E0511",
-            category: "Inheritance",
-            title: "Unresolved SUPER method",
-            description: "The method called on `SUPER` does not exist in the inherited methods.",
-            sources: &[r#"
-CLASS base
-    METHOD PUBLIC super_method END_METHOD
-END_CLASS
-
-FUNCTION_BLOCK fb1 EXTENDS base
-    SUPER.super_method1()
-END_FUNCTION_BLOCK
-"#],
-            lint_rule: None,
-        },
-        ErrorExample {
             code: "E0512",
             category: "Inheritance",
             title: "Method signature mismatch",
@@ -2521,14 +2488,12 @@ END_TYPE
             code: "E0702",
             category: "Enums",
             title: "Not an ENUM type",
-            description: "The `#` enum access syntax was used on a type that is not an ENUM.",
-            sources: &[r#"
-FUNCTION_BLOCK fb1
-VAR
-    x : INT;
-END_VAR
-    x := INT#Red;
-END_FUNCTION_BLOCK
+            description: "The `#` enum access syntax was used on a name that does not denote an ENUM — a non-ENUM type name, or a variable whose type is not an ENUM. Elementary type keywords (`INT#16`, `BOOL#TRUE`) are typed literals, a separate syntax that never reaches this check.",
+            sources: &[r#"TYPE MyInt : INT; END_TYPE
+
+FUNCTION fn1 : INT
+    fn1 := MyInt#Red;
+END_FUNCTION
 "#],
             lint_rule: None,
         },
@@ -3009,23 +2974,56 @@ END_FUNCTION
             code: "L0204",
             category: "Linter Hint",
             title: "Missing input parameter",
-            description: "A function or method call does not pass all required `VAR_INPUT` parameters.",
+            description: "A FUNCTION_BLOCK or PROGRAM call does not pass every declared `VAR_INPUT`. \
+                          This is not an error - the instance keeps the input's previous value - but \
+                          an unwired input is usually an oversight. A FUNCTION call that omits an \
+                          input is the hard error E0233 instead.",
             sources: &[r#"
-FUNCTION add : INT
+FUNCTION_BLOCK ramp
 VAR_INPUT
-    a : INT;
-    b : INT;
+    target : INT;
+    rate : INT;
 END_VAR
-END_FUNCTION
+VAR_OUTPUT
+    value : INT;
+END_VAR
+    value := target;
+END_FUNCTION_BLOCK
 
 FUNCTION_BLOCK caller
-    add(a := 1);
+VAR
+    r : ramp;
+END_VAR
+    r(target := 100);
 END_FUNCTION_BLOCK
 "#],
             lint_rule: Some("missing-input-param"),
         },
         ErrorExample {
             code: "L0205",
+            category: "Linter Info",
+            title: "Uninitialized output",
+            description: "A `VAR_OUTPUT` variable is never assigned in the body. The instance field \
+                          is zero-initialized, so this is permitted - but an output the body never \
+                          writes is usually an unfinished one.",
+            sources: &[r#"
+FUNCTION_BLOCK counter
+VAR_INPUT
+    step : INT;
+END_VAR
+VAR_OUTPUT
+    total : INT;
+END_VAR
+VAR
+    n : INT;
+END_VAR
+    n := n + step;
+END_FUNCTION_BLOCK
+"#],
+            lint_rule: Some("uninitialized-output"),
+        },
+        ErrorExample {
+            code: "L0206",
             category: "Linter Hint",
             title: "Empty body",
             description: "A function, function block, method, or program has an empty body.",
@@ -3036,7 +3034,7 @@ END_FUNCTION
             lint_rule: Some("empty-body"),
         },
         ErrorExample {
-            code: "L0206",
+            code: "L0207",
             category: "Linter Hint",
             title: "Empty CASE branch",
             description: "A CASE branch has no statements, which may indicate a missing implementation.",
@@ -3052,7 +3050,7 @@ END_FUNCTION
             lint_rule: Some("empty-case-branch"),
         },
         ErrorExample {
-            code: "L0207",
+            code: "L0208",
             category: "Linter Hint",
             title: "Unnecessary parentheses",
             description: "Parentheses around a simple variable or literal have no effect and can be removed.",
@@ -3065,7 +3063,7 @@ END_FUNCTION
             lint_rule: Some("unnecessary-parens"),
         },
         ErrorExample {
-            code: "L0208",
+            code: "L0209",
             category: "Linter Hint",
             title: "Yoda condition",
             description: "A literal value appears on the left side of a comparison. Swap operands for conventional order.",
@@ -3082,7 +3080,7 @@ END_FUNCTION
             lint_rule: Some("yoda-condition"),
         },
         ErrorExample {
-            code: "L0209",
+            code: "L0210",
             category: "Linter Hint",
             title: "Collapsible IF",
             description: "Two nested IF statements without ELSE branches can be collapsed into a single `IF a AND b THEN`.",
@@ -3102,7 +3100,7 @@ END_FUNCTION
             lint_rule: Some("collapsible-if"),
         },
         ErrorExample {
-            code: "L0210",
+            code: "L0211",
             category: "Linter Hint",
             title: "Empty IF branch",
             description: "An IF or ELSIF branch has no statements.",
@@ -3118,7 +3116,7 @@ END_FUNCTION
             lint_rule: Some("empty-if-branch"),
         },
         ErrorExample {
-            code: "L0211",
+            code: "L0212",
             category: "Linter Hint",
             title: "Effectless statement",
             description: "A statement has no side effects and does nothing.",
@@ -3134,7 +3132,7 @@ END_FUNCTION
             lint_rule: Some("effectless-statement"),
         },
         ErrorExample {
-            code: "L0212",
+            code: "L0213",
             category: "Linter Hint",
             title: "Empty loop body",
             description: "A FOR, WHILE, or REPEAT loop has no statements in its body.",
@@ -3150,7 +3148,7 @@ END_FUNCTION
             lint_rule: Some("empty-loop-body"),
         },
         ErrorExample {
-            code: "L0213",
+            code: "L0214",
             category: "Linter Hint",
             title: "Empty type declaration",
             description: "A STRUCT has no fields or an ENUM has no variants.",
@@ -3160,23 +3158,6 @@ END_STRUCT;
 END_TYPE
 "#],
             lint_rule: Some("empty-type"),
-        },
-        ErrorExample {
-            code: "L0214",
-            category: "Linter Hint",
-            title: "Redundant FOR loop step",
-            description: "A FOR loop step of 1 is the default and the `BY 1` clause can be omitted.",
-            sources: &[r#"
-FUNCTION test : INT
-VAR
-    i : INT;
-END_VAR
-    FOR i := 0 TO 10 BY 1 DO
-        test := i;
-    END_FOR;
-END_FUNCTION
-"#],
-            lint_rule: Some("default-for-step"),
         },
         ErrorExample {
             code: "L0215",
