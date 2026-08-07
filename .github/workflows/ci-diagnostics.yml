@@ -1,0 +1,44 @@
+name: diagnostics
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "crates/doc/**"
+      - "crates/hir/**"
+      - "crates/linter/**"
+      - "docs/static/diagnostics/**"
+      - ".github/workflows/ci-diagnostics.yml"
+  pull_request:
+    paths:
+      - "crates/doc/**"
+      - "crates/hir/**"
+      - "crates/linter/**"
+      - "docs/static/diagnostics/**"
+      - ".github/workflows/ci-diagnostics.yml"
+  workflow_dispatch:
+
+jobs:
+  reference:
+    runs-on: ubuntu-latest
+    env:
+      CARGO_TERM_COLOR: always
+    steps:
+      - uses: actions/checkout@v4
+      - uses: Swatinem/rust-cache@v2
+
+      # Fails when the reference disagrees with the compiler, naming every
+      # example at fault. Writes nothing in that case, so the committed
+      # artifact is never replaced by a bad one.
+      - name: The reference must agree with the compiler
+        run: cargo run -p doc -- docs/static/diagnostics
+
+      # The generated artifact is committed because `rk explain` includes it
+      # in the binary. If regenerating changed it, the committed copy was
+      # stale and every `rk explain` was serving it.
+      - name: The committed reference must be up to date
+        run: |
+          if ! git diff --exit-code -- docs/static/diagnostics; then
+            echo "::error::docs/static/diagnostics is out of date — run \`cargo run -p doc -- docs/static/diagnostics\` and commit the result"
+            exit 1
+          fi
