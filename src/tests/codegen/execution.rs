@@ -89,6 +89,35 @@ fn test_execute_integer_literal_in_float_context(mut with_db: db::RootDatabase) 
 }
 
 #[rstest]
+/// A subrange-typed FOR control variable executes: `Small : INT (0..10)`
+/// normalizes to INT everywhere the loop machinery looks. This was an ICE —
+/// "FOR control variable must be elementary" — because subranges survived
+/// normalization and the check saw `Type::SubRange`, not the base.
+#[rstest]
+fn test_execute_for_with_subrange_control_variable(mut with_db: db::RootDatabase) {
+    let source = r#"
+        TYPE
+            Small : INT (0..10);
+        END_TYPE
+
+        FUNCTION test : INT
+        VAR
+            i : Small;
+            acc : INT := 0;
+        END_VAR
+            FOR i := 1 TO 4 DO
+                acc := acc + i;
+            END_FOR
+            test := acc;
+        END_FUNCTION
+    "#;
+
+    let wasm_bytes = compile_to_wasm(&mut with_db, source);
+    let result: i32 = super::execute_wasm(&wasm_bytes, "test", ());
+    assert_eq!(result, 10, "1+2+3+4 over a subrange loop variable");
+}
+
+#[rstest]
 #[rstest]
 fn test_execute_factorial(mut with_db: db::RootDatabase) {
     let source = r#"

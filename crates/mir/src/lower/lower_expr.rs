@@ -1849,10 +1849,6 @@ impl<'db> ExprLowerCtx<'db> {
             // A variant literal (`Color#Green`) is a value of its enum, which
             // stores as DInt (see `lower_enum_type`).
             Type::EnumVariant(_) => Ok(MirElementary::DInt),
-            Type::SubRange(sr) => {
-                let base = sr._type(self.db).infer(self.db);
-                self.type_to_mir_elementary(base)
-            }
             Type::RefTo(_) | Type::Null => Ok(MirElementary::Int), // pointers are i32
             Type::Void => Err(LowerTypeError::UnsupportedType(
                 "expression has no value (used where a single value is expected)".to_string(),

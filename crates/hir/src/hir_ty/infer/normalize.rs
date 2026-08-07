@@ -1,14 +1,11 @@
 use db::WorkspaceDataBase;
 
 use crate::{
-    HirNodeInfo,
-    hir_def::{
+    HirNodeInfo, hir_def::{
         expressions::{expression::MultibitsPart, spec::ElementarySpec},
         pous::variable::DirectVariable,
-    },
-    hir_ty::{
-        head::signature::infer_signature,
-        ty::{CallableType, Type},
+    }, hir_ty::{
+        head::signature::infer_signature, infer::Infer, ty::{CallableType, Type},
     },
 };
 
@@ -19,44 +16,59 @@ use crate::{
 */
 
 impl<'db> Type<'db> {
-    /// The base type behind a subrange; any other type is returned normalized.
+    /// The declared subrange behind this type, resolving alias and variable
+    /// indirection but NOT peeling — the one consumer shape [`Self::normalize`]
+    /// no longer returns.
     ///
-    /// Operators act on the BASE type: `INT (0..100)` adds and compares like an
-    /// `INT`. A subrange is not `Type::Elementary`, so operator support
-    /// (`is_numeric`) and the widening lattice would otherwise reject it —
-    /// `a := a + 5` on a subrange variable failed with "operator '+' cannot be
-    /// applied". The declared bounds still constrain what may be ASSIGNED to
-    /// the variable; they do not restrict the arithmetic itself.
-    pub fn peel_subrange(&self, db: &'db dyn WorkspaceDataBase) -> Type<'db> {
-        match self.normalize(db) {
-            Type::SubRange(sub) => {
-                crate::hir_ty::infer::Infer::infer(&sub._type(db), db).normalize(db)
-            }
+    /// This is for the callers to whom the bounds ARE the point: the
+    /// assignment bounds check (`subrange_violation`) and MIR's type lowering,
+    /// which carries them into the debug type table.
+    pub fn as_subrange(
+        &self,
+        db: &'db dyn WorkspaceDataBase,
+    ) -> Option<crate::hir_def::expressions::spec::SubRange<'db>> {
+        match self.normalize_keep_subrange(db) {
+            Type::SubRange(sub) => Some(sub),
+            _ => None,
+        }
+    }
+
+    /// Normalize, resolving a subrange to its BASE type.
+    ///
+    /// Operators, coercion and lowering all act on the base: `INT (0..100)`
+    /// adds, compares and stores like an `INT`. Subranges used to survive
+    /// normalization, so every such decision needed its own `peel_subrange`
+    /// call — and each site that forgot one rejected or mis-lowered subrange
+    /// values. The declared bounds still constrain what may be ASSIGNED; the
+    /// consumers that need them go through [`Self::as_subrange`].
+    pub fn normalize(&self, db: &'db dyn WorkspaceDataBase) -> Type<'db> {
+        match self.normalize_keep_subrange(db) {
+            Type::SubRange(sub) => sub._type(db).infer(db).normalize(db),
             other => other,
         }
     }
 
-    pub fn normalize(&self, db: &'db dyn WorkspaceDataBase) -> Type<'db> {
+    fn normalize_keep_subrange(&self, db: &'db dyn WorkspaceDataBase) -> Type<'db> {
         match self {
             Type::DataType(dt) => {
-                infer_signature(db, dt.get_scope_id(db)).type_of_specs[&dt.spec(db)].normalize(db)
+                infer_signature(db, dt.get_scope_id(db)).type_of_specs[&dt.spec(db)].normalize_keep_subrange(db)
             }
             Type::Variable((var, multibits)) => {
                 if let Some(multibits) = multibits {
                     return multibits_to_type(db, *multibits);
                 }
-                infer_signature(db, var.get_scope_id(db)).type_of_specs[&var.spec(db)].normalize(db)
+                infer_signature(db, var.get_scope_id(db)).type_of_specs[&var.spec(db)].normalize_keep_subrange(db)
             }
             Type::CallableType(typ) => match typ {
                 CallableType::Function(f) => match f.return_type(db) {
                     Some(ret_ty) => {
-                        infer_signature(db, f.get_scope_id(db)).type_of_specs[ret_ty].normalize(db)
+                        infer_signature(db, f.get_scope_id(db)).type_of_specs[ret_ty].normalize_keep_subrange(db)
                     }
                     _ => Type::Void,
                 },
                 CallableType::MethodDecl(m) => match m.return_type(db) {
                     Some(ret_ty) => {
-                        infer_signature(db, m.get_scope_id(db)).type_of_specs[ret_ty].normalize(db)
+                        infer_signature(db, m.get_scope_id(db)).type_of_specs[ret_ty].normalize_keep_subrange(db)
                     }
                     _ => Type::Void,
                 },
@@ -70,7 +82,7 @@ impl<'db> Type<'db> {
             }
             Type::StructElement(element) => infer_signature(db, element.get_scope_id(db))
                 .type_of_specs[&element.spec(db)]
-                .normalize(db),
+                .normalize_keep_subrange(db),
             _ => *self,
         }
     }

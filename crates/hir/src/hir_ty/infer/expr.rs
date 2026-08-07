@@ -64,7 +64,7 @@ impl<'db> InferExprCtx<'db> {
                     // so the coercion check below reports them.
                     // Subranges join through their base type (`INT (0..100)`
                     // adds like an `INT`).
-                    _ => match (lhs.peel_subrange(db), rhs.peel_subrange(db)) {
+                    _ => match (lhs.normalize(db), rhs.normalize(db)) {
                         (Type::Elementary(l), Type::Elementary(r)) => {
                             l.wider(r).map(Type::Elementary).unwrap_or(lhs)
                         }
@@ -77,8 +77,8 @@ impl<'db> InferExprCtx<'db> {
                 // Operator support is decided on the base type: a subrange
                 // supports whatever its base supports.
                 let normalized_ty = match ty.with_return_type(db) {
-                    Some(ret) => ret.peel_subrange(db),
-                    None => ty.peel_subrange(db),
+                    Some(ret) => ret.normalize(db),
+                    None => ty.normalize(db),
                 };
                 let (supported, operator) = match curr_expr.expr(db) {
                     ExprKind::AddOperator { operator, .. } => {
@@ -105,7 +105,7 @@ impl<'db> InferExprCtx<'db> {
                         let base = if lhs.has_infer() {
                             normalized_ty
                         } else {
-                            lhs.peel_subrange(db)
+                            lhs.normalize(db)
                         };
                         (base.supports_power(db), "**")
                     }
@@ -143,10 +143,10 @@ impl<'db> InferExprCtx<'db> {
                 // casts) would have to re-derive it.
                 let lhs = inference_results
                     .type_of_expr_with_adjustments(db, *left)
-                    .peel_subrange(db);
+                    .normalize(db);
                 let rhs = inference_results
                     .type_of_expr_with_adjustments(db, *right)
-                    .peel_subrange(db);
+                    .normalize(db);
                 if let (Type::Elementary(l), Type::Elementary(r)) =
                     (lhs.normalize(db), rhs.normalize(db))
                     && let Some(common) = l.wider(r)

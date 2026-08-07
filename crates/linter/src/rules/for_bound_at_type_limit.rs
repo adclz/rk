@@ -46,7 +46,7 @@ pub fn check_for<'db>(
     // from the peeled elementary type — `TO 100` on `INT (0..100)` is fine.
     let ctrl = body
         .type_of_variable_access_with_adjustments(db, *control_variable)
-        .peel_subrange(db);
+        .normalize(db);
     let Type::Elementary(spec) = ctrl else {
         return;
     };

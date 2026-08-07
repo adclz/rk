@@ -78,6 +78,11 @@ pub fn lower_type<'db>(
         Type::DataType(dt) => Some(dt.name(db)),
         _ => None,
     };
+    // `normalize` resolves a subrange to its base, and the debug type table
+    // records the bounds: resolve the subrange first.
+    if let Some(sr) = ty.as_subrange(db) {
+        return lower_subrange_type(db, sr);
+    }
     let ty = ty.normalize(db);
 
     match ty {

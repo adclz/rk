@@ -251,7 +251,7 @@ impl<'db> Resolver<'db> {
                 // IEC subscripts are ANY_INT: signed or unsigned integers,
                 // subranges included (they index like their base). `Never`
                 // already carries its own diagnostic.
-                let ty = ctx.type_of_expr_with_adjustments(db, *sub).peel_subrange(db);
+                let ty = ctx.type_of_expr_with_adjustments(db, *sub).normalize(db);
                 if !ty.is_never() && !ty.is_signed_integer() && !ty.is_unsigned_integer() {
                     ctx.errors.push(
                         ArrayError::NonIntegerIndex { expr: *sub, ty }

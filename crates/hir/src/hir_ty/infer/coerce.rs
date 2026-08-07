@@ -43,9 +43,7 @@ impl<'db> Type<'db> {
         db: &'db dyn WorkspaceDataBase,
         rhs: crate::hir_def::expressions::expression::Expr<'db>,
     ) -> Option<crate::check::errors::e8_subrange::SubRangeError<'db>> {
-        let Type::SubRange(sub) = self.normalize(db) else {
-            return None;
-        };
+        let sub = self.as_subrange(db)?;
         let (lower, upper) = (
             sub.lower(db).as_const_int(db)?,
             sub.upper(db).as_const_int(db)?,
@@ -213,21 +211,10 @@ impl<'db> Type<'db> {
                     .infer(db)
                     .coerce_with_type(db, *rhs, adjustments, resolver)
             }
-            // check subrange base type equality
-            (Type::SubRange(sub), rhs) => {
-                sub._type(db)
-                    .infer(db)
-                    .coerce_with_type(db, *rhs, adjustments, resolver)
-            }
-            // A subrange VALUE is assignable wherever its base type is: an
-            // `INT (0..100)` is an `INT`. Only the other direction narrows, and
-            // that is where the bounds are enforced (`subrange_violation`).
-            (lhs, Type::SubRange(sub)) => lhs.coerce_with_type(
-                db,
-                crate::hir_ty::infer::Infer::infer(&sub._type(db), db),
-                adjustments,
-                resolver,
-            ),
+            // No SubRange arms: `normalize` resolves a subrange to its base, so
+            // both sides arrive here already peeled — an `INT (0..100)` and an
+            // `INT` meet as two INTs. Bounds are enforced by
+            // `subrange_violation`, which resolves the subrange itself.
             (Type::Elementary(lhs), Type::Elementary(rhs)) => {
                 if lhs == *rhs {
                     return Ok(());
