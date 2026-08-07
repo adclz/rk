@@ -62,6 +62,33 @@ fn test_execute_mixed_width_scalar_locals(mut with_db: db::RootDatabase) {
     assert_eq!(result, 43, "1 + (2 + 40) = 43 across i32 and i64 locals");
 }
 
+/// An integer literal in float context IS a float: inference resolves the 2
+/// in `3.0 + 2` to REAL, and every consumer — including the no-cast-needed
+/// check — believes it. `lower_literal` used to emit from the LEXEME instead,
+/// so a float op consumed an i32 and the module failed wasm validation, from
+/// a program `rk check` called clean. An execution test, not a check test,
+/// because the check was never the layer that broke.
+#[rstest]
+fn test_execute_integer_literal_in_float_context(mut with_db: db::RootDatabase) {
+    let source = r#"
+        FUNCTION test : REAL
+        VAR
+            x : REAL := 3.0;
+            r : REAL;
+        END_VAR
+            r := 3.0 + 2;
+            r := r + x * 2;
+            r := r - 1;
+            test := r / 2;
+        END_FUNCTION
+    "#;
+
+    let wasm_bytes = compile_to_wasm(&mut with_db, source);
+    let result: f32 = super::execute_wasm(&wasm_bytes, "test", ());
+    assert_eq!(result, 5.0, "((3.0+2) + 3.0*2 - 1) / 2 = 5.0");
+}
+
+#[rstest]
 #[rstest]
 fn test_execute_factorial(mut with_db: db::RootDatabase) {
     let source = r#"

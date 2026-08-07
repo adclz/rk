@@ -550,13 +550,35 @@ impl<'db> ExprLowerCtx<'db> {
                 Ok(MirExpr::Constant(MirConstant::F64(val)))
             }
 
-            // Infer types - resolve using parent expression type
+            // Infer types - resolve using parent expression type. The LEXEME
+            // says integer; the resolved TYPE says what the value is. They
+            // disagree exactly when an integer literal sits in float context
+            // (`3.0 + 2`, `x ** 2`): inference makes the 2 a REAL, and every
+            // consumer — including the no-cast-needed check in
+            // `lower_expr_with_cast` — believes it. Emitting from the lexeme
+            // produced an i32 a float op then consumed: invalid wasm from a
+            // program `rk check` called clean.
             Elementary::InferInteger(int) => {
                 let ty = parent_expr.infer(db);
-                match ty.normalize(db) {
-                    Type::Elementary(spec)
-                        if elementary_spec_to_mir(spec).is_ok_and(|e| e.is_64bit()) =>
-                    {
+                let resolved = match ty.normalize(db) {
+                    Type::Elementary(spec) => elementary_spec_to_mir(spec).ok(),
+                    _ => None,
+                };
+                match resolved {
+                    Some(e) if e.is_float() => {
+                        let val = int.as_i64(db).map_err(|e| {
+                            LowerTypeError::UnsupportedType(format!(
+                                "InferInteger float error: {}",
+                                e
+                            ))
+                        })?;
+                        Ok(MirExpr::Constant(if e.is_64bit() {
+                            MirConstant::F64(val as f64)
+                        } else {
+                            MirConstant::F32(val as f32)
+                        }))
+                    }
+                    Some(e) if e.is_64bit() => {
                         let val = int.as_i64(db).map_err(|e| {
                             LowerTypeError::UnsupportedType(format!(
                                 "InferInteger i64 error: {}",
