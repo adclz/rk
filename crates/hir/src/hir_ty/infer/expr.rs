@@ -1,16 +1,11 @@
 use db::WorkspaceDataBase;
 
 use crate::{
-    CallSite, HirNodeInfo,
-    check::errors::{ToIdeDiagnostic, e3_type::TypeError, e7_enum::EnumError},
-    hir_def::{
+    CallSite, HirNodeInfo, check::errors::{ToIdeDiagnostic, e3_type::TypeError, e7_enum::EnumError}, hir_def::{
         expressions::expression::{
-            Expr, ExprKind, FoldOperatorKind, PrimaryExpr, RefValue, UnaryOperatorKind,
-            VariableAccess,
-        },
-        pous::variable::VariableDecl,
-    },
-    hir_ty::{
+            Expr, ExprKind, FoldOperatorKind, MultOperatorKind, PrimaryExpr, RefValue, UnaryOperatorKind, VariableAccess,
+        }, pous::variable::VariableDecl,
+    }, hir_ty::{
         body::{Adjustment, BodyInferenceResult},
         infer::{Infer, coerce::CoerceResult, table::InferenceTable},
         resolver::{Resolver, func_call::resolve_func_call},
@@ -89,10 +84,31 @@ impl<'db> InferExprCtx<'db> {
                     ExprKind::AddOperator { operator, .. } => {
                         (normalized_ty.supports_add(db), operator.as_str())
                     }
-                    ExprKind::MultOperator { operator, .. } => {
-                        (normalized_ty.supports_mul(db), operator.as_str())
+                    ExprKind::MultOperator { operator, .. } => (
+                        match operator {
+                            // RHS part of a Modulo operation has to be an integer.
+                            MultOperatorKind::Mod => normalized_ty.supports_mod(db),
+                            _ => normalized_ty.supports_mul(db),
+                        },
+                        operator.as_str(),
+                    ),
+                    // IEC: `IN1 ** IN2` takes IN1 of ANY_REAL and IN2 of
+                    // ANY_NUM, so the BASE decides — not the join, which let an
+                    // INT base through whenever the exponent was real, and
+                    // there is no integer pow to lower that to.
+                    //
+                    // An unresolved literal base (`2.0 ** x`) has no type of
+                    // its own yet, so it is judged on the resolved type it
+                    // will take: `2 ** 3.0` is a real literal in this context,
+                    // while a declared `i : INT` is not.
+                    ExprKind::PowerOperator { .. } => {
+                        let base = if lhs.has_infer() {
+                            normalized_ty
+                        } else {
+                            lhs.peel_subrange(db)
+                        };
+                        (base.supports_power(db), "**")
                     }
-                    ExprKind::PowerOperator { .. } => (ty.supports_power(db), "**"),
                     ExprKind::BooleanOperator { operator, .. } => {
                         (normalized_ty.supports_bool_op(db), operator.as_str())
                     }
