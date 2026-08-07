@@ -208,9 +208,7 @@ impl<'db> ExprLowerCtx<'db> {
                 self.lower_binop(op, *left, *right, expr)
             }
 
-            ExprKind::PowerOperator { left, right } => {
-                self.lower_binop(MirBinOp::Power, *left, *right, expr)
-            }
+            ExprKind::PowerOperator { left, right } => self.lower_power(*left, *right, expr),
 
             ExprKind::UnaryOperator {
                 expr: inner,
@@ -258,6 +256,45 @@ impl<'db> ExprLowerCtx<'db> {
             rhs: Box::new(right_mir),
             ty: result_elem,
         })
+    }
+
+    /// Lower `a ** b`. WASM has no exponentiation instruction, so it lowers to
+    /// the grafted `libm` pow as a call, which codegen finds by name.
+    fn lower_power(
+        &self,
+        left: Expr<'db>,
+        right: Expr<'db>,
+        result_expr: Expr<'db>,
+    ) -> Result<MirExpr, LowerTypeError> {
+        let result_elem = self.expr_to_mir_elementary(result_expr)?;
+        // IEC types `**` as `ANY_REAL ** ANY_NUM`, so the result is real and
+        // both operands are cast to it — `2.0 ** 3` passes 3 as a float.
+        let callee = hir::hir_def::interned::identifier::Ident::new(
+            self.db,
+            compact_str::CompactString::from(if result_elem.is_64bit() {
+                "f64.pow"
+            } else {
+                "f32.pow"
+            }),
+        );
+        Ok(MirExpr::Call(crate::expr::MirCall {
+            callee,
+            // Unused: `emit_call` resolves by name through `fn_indices`,
+            // where codegen registers the grafted builtin's index.
+            callee_index: u32::MAX,
+            args: vec![
+                crate::expr::MirCallArg {
+                    value: self.lower_expr_with_cast(left, result_elem)?,
+                    kind: crate::expr::MirArgKind::ByValue,
+                },
+                crate::expr::MirCallArg {
+                    value: self.lower_expr_with_cast(right, result_elem)?,
+                    kind: crate::expr::MirArgKind::ByValue,
+                },
+            ],
+            return_type: crate::types::MirType::Elementary(result_elem),
+            output_bindings: Vec::new(),
+        }))
     }
 
     /// Lower a comparison operation. The common type is the wider of the two operand types.

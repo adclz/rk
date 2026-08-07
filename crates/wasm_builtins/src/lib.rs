@@ -144,6 +144,15 @@ pub extern "C" fn f64_atan2(y: f64, x: f64) -> f64 {
 }
 
 #[unsafe(no_mangle)]
+pub extern "C" fn f32_pow(x: f32, y: f32) -> f32 {
+    libm::powf(x, y)
+}
+#[unsafe(no_mangle)]
+pub extern "C" fn f64_pow(x: f64, y: f64) -> f64 {
+    libm::pow(x, y)
+}
+
+#[unsafe(no_mangle)]
 pub extern "C" fn f32_exp(x: f32) -> f32 {
     libm::expf(x)
 }
