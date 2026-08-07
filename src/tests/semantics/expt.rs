@@ -60,21 +60,12 @@ fn invalid_power_with_integer_base(mut with_db: RootDatabase) {
        |                  ^^^^|^^^
        |                      `----- operator '**' cannot be applied to type 'INT'
     ---'
-    [E0309] Error: invalid literal
-       ,-[ file:///test0.st:7:23 ]
-       |
-     7 |             r := i ** 3.0;
-       |                  |    ^|^
-       |                  `--------- 'INT' is expected due to this
-       |                        |
-       |                        `--- cannot infer '<float>' to 'INT': invalid INT literal
-    ---'
     ");
 }
 
-/// An integer LITERAL base is rejected too: the two literals unify to INT
-/// before the base rule is applied, so `2 ** 3.0` reports the exponent failing
-/// to be an INT as well. Write `2.0 ** 3.0`.
+/// An integer LITERAL base is rejected too: a bare `2` takes its default
+/// type, INT. Write `2.0 ** 3.0`. The exponent resolves in its own context,
+/// so nothing is said about it.
 #[rstest]
 fn invalid_power_with_integer_literal_base(mut with_db: RootDatabase) {
     let source = r#"
@@ -86,15 +77,6 @@ fn invalid_power_with_integer_literal_base(mut with_db: RootDatabase) {
         END_FUNCTION
     "#;
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E0309] Error: invalid literal
-       ,-[ file:///test0.st:6:23 ]
-       |
-     6 |             r := 2 ** 3.0;
-       |                  |    ^|^
-       |                  `--------- 'INT' is expected due to this
-       |                        |
-       |                        `--- cannot infer '<float>' to 'INT': invalid INT literal
-    ---'
     [E0318] Error: type mismatch
        ,-[ file:///test0.st:6:18 ]
        |

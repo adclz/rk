@@ -31,7 +31,6 @@ impl<'db> InferExprCtx<'db> {
         match curr_expr.expr(db) {
             ExprKind::AddOperator { left, right, .. }
             | ExprKind::MultOperator { left, right, .. }
-            | ExprKind::PowerOperator { left, right }
             | ExprKind::BooleanOperator { left, right, .. } => {
                 self.resolve_expr(db, *left, inference_results);
                 self.resolve_expr(db, *right, inference_results);
@@ -92,23 +91,6 @@ impl<'db> InferExprCtx<'db> {
                         },
                         operator.as_str(),
                     ),
-                    // IEC: `IN1 ** IN2` takes IN1 of ANY_REAL and IN2 of
-                    // ANY_NUM, so the BASE decides — not the join, which let an
-                    // INT base through whenever the exponent was real, and
-                    // there is no integer pow to lower that to.
-                    //
-                    // An unresolved literal base (`2.0 ** x`) has no type of
-                    // its own yet, so it is judged on the resolved type it
-                    // will take: `2 ** 3.0` is a real literal in this context,
-                    // while a declared `i : INT` is not.
-                    ExprKind::PowerOperator { .. } => {
-                        let base = if lhs.has_infer() {
-                            normalized_ty
-                        } else {
-                            lhs.normalize(db)
-                        };
-                        (base.supports_power(db), "**")
-                    }
                     ExprKind::BooleanOperator { operator, .. } => {
                         (normalized_ty.supports_bool_op(db), operator.as_str())
                     }
@@ -121,6 +103,53 @@ impl<'db> InferExprCtx<'db> {
                             call_site: curr_expr.as_call_site(db),
                             typ: ty,
                             operator,
+                        }
+                        .to_diagnostic(db, inference_results.scope.file(db)),
+                    );
+                    ty = Type::Never;
+                }
+
+                inference_results.type_of_expr.insert(curr_expr, ty);
+                ty
+            }
+            // `**` does not join its operands. IEC types it `IN1 : ANY_REAL`,
+            // `IN2 : ANY_NUM`, result = IN1's type — the exponent is
+            // independent, so the 2 in `x ** 2` is an integer and stays one
+            // (MIR casts it to the base at the call). Sharing the arithmetic
+            // arm unified them, which took the result from the join
+            // (`REAL ** LREAL` yielded LREAL) and asked the exponent to BE the
+            // base: `i ** 3.0` with `i : INT` reported "cannot infer <float>
+            // to INT" about a literal that never had to be an INT.
+            ExprKind::PowerOperator { left, right } => {
+                self.resolve_expr(db, *left, inference_results);
+                self.resolve_expr(db, *right, inference_results);
+
+                // Each operand resolves in ITS OWN context: a literal takes
+                // its default (`2.0` -> REAL, `2` -> INT) — nothing about one
+                // operand decides the other. So `2 ** 3.0` rejects the base
+                // as an INT, with no complaint about the exponent.
+                for operand in [left, right] {
+                    let ty = inference_results.type_of_expr_with_adjustments(db, *operand);
+                    if ty.has_infer() {
+                        let mut table = InferenceTable::new();
+                        table.add_type(db, *operand, ty, self.resolver);
+                        table.resolve_completly(db, self.resolver, inference_results);
+                    }
+                }
+                let lhs = inference_results.type_of_expr_with_adjustments(db, *left);
+
+                // The result is IN1's type.
+                let base = match lhs.with_return_type(db) {
+                    Some(ret) => ret.normalize(db),
+                    None => lhs.normalize(db),
+                };
+                let mut ty = lhs;
+                if !base.is_never() && !base.supports_power(db) {
+                    inference_results.errors.push(
+                        TypeError::UnsupportedOperator {
+                            call_site: curr_expr.as_call_site(db),
+                            typ: lhs,
+                            operator: "**",
                         }
                         .to_diagnostic(db, inference_results.scope.file(db)),
                     );
@@ -390,13 +419,22 @@ impl<'db> InferExprCtx<'db> {
                     ));
                 }
             }
-            ExprKind::PowerOperator { left, right } => {
-                if let Err(err) = self.coerce_expressions(db, *left, *right, inference_results) {
-                    inference_results.errors.push(err.into_non_powerable(
-                        db,
-                        inference_results.type_of_expr[left],
-                        CallSite::from_scoped(db, right),
-                    ));
+            ExprKind::PowerOperator { left: _, right } => {
+                // The exponent is not coerced to the base — IEC types it
+                // ANY_NUM, so it only has to be numeric. `x ** 'a'` is what
+                // this rejects.
+                let rhs = inference_results
+                    .type_of_expr_with_adjustments(db, *right)
+                    .normalize(db);
+                if !rhs.has_infer() && !rhs.is_never() && !rhs.is_numeric() {
+                    inference_results.errors.push(
+                        TypeError::UnsupportedOperator {
+                            call_site: CallSite::from_scoped(db, right),
+                            typ: rhs,
+                            operator: "**",
+                        }
+                        .to_diagnostic(db, inference_results.scope.file(db)),
+                    );
                 }
             }
             ExprKind::BooleanOperator {

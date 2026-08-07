@@ -36,6 +36,24 @@ fn power_with_integer_exponent(mut with_db: db::RootDatabase) {
     assert_eq!(result, 9.0);
 }
 
+/// A LITERAL integer exponent resolves in its own context (to INT) and is
+/// cast to the base at the call. This is the shape that ICEd — "numeric
+/// literal type was never resolved" — whenever nothing resolved the literal.
+#[rstest]
+fn power_with_literal_exponent(mut with_db: db::RootDatabase) {
+    let source = r#"
+        FUNCTION test : REAL
+        VAR
+            x : REAL := 3.0;
+        END_VAR
+            test := x ** 2;
+        END_FUNCTION
+    "#;
+    let wasm_bytes = compile_to_wasm(&mut with_db, source);
+    let result: f32 = super::execute_wasm(&wasm_bytes, "test", ());
+    assert_eq!(result, 9.0);
+}
+
 /// A fractional exponent is a root — this is why `**` is a float pow and an
 /// integer base is rejected.
 #[rstest]
