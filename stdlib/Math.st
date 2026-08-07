@@ -351,8 +351,71 @@ NAMESPACE Std.Math
 		{wasm IN 'atan2' (params IN IN2) (result ATAN2)}
 	END_FUNCTION
 
+	/*
+    ## EXPT - Exponentiation
+
+    Raises `IN` to the power of `IN2` — the function form of the `**`
+    operator; both lower to the same implementation. Per IEC 61131-3,
+    `IN` is ANY_REAL, `IN2` is ANY_NUM (an integer exponent widens
+    implicitly), and the result has `IN`'s type.
+
+    - **Overloads**: `REAL`, `LREAL`
+
+    ```iecst
+    result := EXPT(2.0, 3.0);   // 8.0
+    result := EXPT(9.0, 0.5);   // 3.0 (a fractional exponent is a root)
+    ```
+    */
+	FUNCTION EXPT: REAL
+		VAR_INPUT
+			IN: REAL
+			IN2: REAL
+		END_VAR
+		{wasm IN 'pow' (params IN IN2) (result EXPT)}
+	END_FUNCTION
+
+	FUNCTION EXPT: LREAL
+		VAR_INPUT
+			IN: LREAL
+			IN2: LREAL
+		END_VAR
+		{wasm IN 'pow' (params IN IN2) (result EXPT)}
+	END_FUNCTION
+
 	NAMESPACE Test
 		USING Std.Unit
+
+		// ----- EXPT ---------------------------------------------------
+		{test}
+		FUNCTION test_expt_real ASSERT(EXPT(2.0, 3.0) = 8.0);
+		END_FUNCTION
+
+		{test}
+		FUNCTION test_expt_fractional ASSERT(EXPT(9.0, 0.5) = 3.0);
+		END_FUNCTION
+
+		// The INT exponent goes through the LREAL overload: an LREAL IN1
+		// fits only one candidate, so the call is unambiguous. (With a REAL
+		// IN1 both overloads accept the widened INT and E0237 asks for a
+		// cast — overload scoring has no exact-match preference yet.)
+		{test}
+		FUNCTION test_expt_integer_exponent
+		VAR x: LREAL; n: INT; END_VAR
+			x := 2.0;
+			n := 10;
+			ASSERT(EXPT(x, n) = LREAL#1024.0);
+		END_FUNCTION
+
+		{test}
+		FUNCTION test_expt_lreal ASSERT(EXPT(LREAL#2.0, LREAL#10.0) = LREAL#1024.0);
+		END_FUNCTION
+
+		{test}
+		FUNCTION test_expt_matches_operator
+		VAR x: REAL; END_VAR
+			x := 3.0;
+			ASSERT(EXPT(x, 2.0) = x ** 2.0);
+		END_FUNCTION
 
 		// ----- ABS (per signed-numeric overloads) ---------------------
 		{test}
