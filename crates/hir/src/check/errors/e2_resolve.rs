@@ -193,10 +193,6 @@ pub enum ResolveError<'db> {
     NoConfigFileFound {
         file: File,
     },
-    /// The program type referenced in a PROGRAM configuration entry does not exist.
-    UnknownProgType {
-        prog_type: Spec<'db>,
-    },
     /// The task name referenced in a `WITH <task>` clause does not exist in the config.
     UnknownTaskRef {
         task: SpanIdent<'db>,
@@ -360,7 +356,6 @@ impl<'db> ErrorCode for ResolveError<'db> {
             Self::FunctionAsType { .. } => "E0215",
             Self::UsingNamespaceNotFound { .. } => "E0216",
             Self::NoConfigFileFound { .. } => "E0217",
-            Self::UnknownProgType { .. } => "E0218",
             Self::UnknownTaskRef { .. } => "E0219",
             Self::InvalidPriority { .. } => "E0241",
             Self::MultipleConfigurations { .. } => "E0242",
@@ -406,8 +401,7 @@ impl<'db> ErrorCode for ResolveError<'db> {
             | Self::MultipleVariadicVariables { .. }
             | Self::VariadicMixedWithOtherInputs { .. } => "invalid variadic declaration",
             Self::NoConfigFileFound { .. } => "configuration error",
-            Self::UnknownProgType { .. }
-            | Self::UnknownTaskRef { .. }
+            Self::UnknownTaskRef { .. }
             | Self::InvalidPriority { .. }
             | Self::MultipleConfigurations { .. } => "configuration error",
             Self::ExternalVarNotFound { .. } => "external variable not found",
@@ -762,21 +756,6 @@ impl<'db> ToIdeDiagnostic<'db> for ResolveError<'db> {
                 ));
 
                 diag
-            }
-            Self::UnknownProgType { prog_type } => {
-                let name = if let SpecKind::Target(target) = prog_type.kind(db) {
-                    target.path.to_string(db)
-                } else {
-                    String::new()
-                };
-                diag()
-                    .message(format!("program type '{name}' not found"))
-                    .severity(DiagnosticSeverity::ERROR)
-                    .desc(self)
-                    .range(
-                        crate::denormalize(db, file, &prog_type.get_span(db)).unwrap_or_default(),
-                    )
-                    .call()
             }
             Self::UnknownTaskRef { task } => diag()
                 .message(format!(

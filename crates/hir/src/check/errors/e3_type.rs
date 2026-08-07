@@ -57,10 +57,6 @@ pub enum TypeError<'db> {
         adjustment: Option<Adjustment<'db>>,
         expr: CallSite<'db>,
     },
-    NotABoolean {
-        typ: Type<'db>,
-        expr: Expr<'db>,
-    },
     InferLiteralError {
         expr: Expr<'db>,
         source: Option<InferSource<'db>>,
@@ -86,7 +82,6 @@ impl<'db> ErrorCode for TypeError<'db> {
             Self::NotAddable { .. } => "E0303",
             Self::NotMultiplicable { .. } => "E0304",
             Self::NotPowerable { .. } => "E0305",
-            Self::NotABoolean { .. } => "E0306",
             Self::InferLiteralError { .. } => "E0309",
             Self::NonVariadicFoldParameter { .. } => "E0317",
             Self::UnsupportedOperator { .. } => "E0318",
@@ -236,12 +231,6 @@ impl<'db> ToIdeDiagnostic<'db> for TypeError<'db> {
                 explicit_cast_suggestion(db, *lhs, *rhs, *expr, &mut diag);
                 diag
             }
-            Self::NotABoolean { typ, expr } => diag()
-                .message(format!("expected a boolean, got {}", typ.type_name(db)))
-                .severity(DiagnosticSeverity::ERROR)
-                .desc(self)
-                .range(crate::denormalize(db, file, &expr.get_span(db)).unwrap_or_default())
-                .call(),
             Self::NonVariadicFoldParameter { var, call_site } => {
                 let mut diag = diag()
                     .message(format!(

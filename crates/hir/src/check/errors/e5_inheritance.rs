@@ -7,8 +7,7 @@ use crate::{
     check::errors::ToIdeDiagnostic,
     hir_def::{
         expressions::{
-            expression::{PathExpr, VariableAccess},
-            invocation::Invocation,
+            expression::VariableAccess,
             spec::Spec,
         },
         pous::{
@@ -52,17 +51,6 @@ pub enum InheritanceError<'db> {
     UnimplementedInterfaceMethod {
         implementer: Pou<'db>,
         method: MethodRef<'db>,
-    },
-    // Invocations
-    UnresolvedThisMethod {
-        ctx: Pou<'db>,
-        path: PathExpr<'db>,
-        method: Invocation<'db>,
-    },
-    UnresolvedSuperMethod {
-        ctx: Option<Pou<'db>>,
-        path: PathExpr<'db>,
-        method: Invocation<'db>,
     },
     // Signatures
     SignatureParametersCountMismatch {
@@ -152,8 +140,6 @@ impl<'db> ErrorCode for InheritanceError<'db> {
             Self::EmptyOverride { .. } => "E0507",
             Self::AbstractClassHasNoAbstractMethods { .. } => "E0508",
             Self::UnimplementedInterfaceMethod { .. } => "E0509",
-            Self::UnresolvedThisMethod { .. } => "E0510",
-            Self::UnresolvedSuperMethod { .. } => "E0511",
             Self::SignatureParametersCountMismatch { .. } => "E0512",
             Self::SignatureTypeMismatch { .. } => "E0512",
             Self::SuperButNoExtends { .. } => "E0513",
@@ -183,9 +169,6 @@ impl<'db> ErrorCode for InheritanceError<'db> {
             | Self::AbstractClassHasNoAbstractMethods { .. }
             | Self::UnimplementedInterfaceMethod { .. }
             | Self::InheritedMemberShadowed { .. } => "inheritance violation",
-            Self::UnresolvedThisMethod { .. } | Self::UnresolvedSuperMethod { .. } => {
-                "unresolved method in inheritance context"
-            }
             Self::SignatureParametersCountMismatch { .. } | Self::SignatureTypeMismatch { .. } => {
                 "method signature mismatch"
             }
@@ -368,39 +351,6 @@ impl<'db> ToIdeDiagnostic<'db> for InheritanceError<'db> {
                     method.get_scope_id(db).file(db),
                     method.get_name_span(db),
                 ));
-                diag
-            }
-            Self::UnresolvedThisMethod { ctx, path, method } => diag()
-                .message(format!(
-                    "no method '{}' in declared methods of '{}'",
-                    path.ident(db).ident.text(db),
-                    ctx.get_name_ident(db).text(db)
-                ))
-                .severity(DiagnosticSeverity::ERROR)
-                .desc(self)
-                .range(crate::denormalize(db, file, &method.get_span(db)).unwrap_or_default())
-                .call(),
-            Self::UnresolvedSuperMethod { ctx, path, method } => {
-                let mut diag = diag()
-                    .message(format!(
-                        "no method '{}' in inherited methods",
-                        path.ident(db).ident.text(db),
-                    ))
-                    .severity(DiagnosticSeverity::ERROR)
-                    .desc(self)
-                    .range(crate::denormalize(db, file, &method.get_span(db)).unwrap_or_default())
-                    .call();
-
-                if let Some(caller) = ctx {
-                    diag.with_related(Related::new(
-                        format!(
-                            "methods are inherited from '{}' here",
-                            caller.get_name_ident(db).text(db)
-                        ),
-                        caller.get_scope_id(db).file(db),
-                        caller.get_name_span(db),
-                    ));
-                }
                 diag
             }
             Self::InterfaceOnlyAllowedAsParam { var, interface } => {
