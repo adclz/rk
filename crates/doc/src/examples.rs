@@ -1540,23 +1540,6 @@ END_FUNCTION_BLOCK
 "#],
             lint_rule: None,
         },
-        ErrorExample {
-            code: "E0305",
-            category: "Type System",
-            title: "Types not powerable",
-            description: "The two types cannot be used with the power operator (`**`).",
-            sources: &[r#"
-FUNCTION_BLOCK fb1
-VAR
-    x : INT;
-    y : STRING;
-    z : INT;
-END_VAR
-    z := x ** y;
-END_FUNCTION_BLOCK
-"#],
-            lint_rule: None,
-        },
         // E0309 — Invalid literal (many subtypes)
         ErrorExample {
             code: "E0309",

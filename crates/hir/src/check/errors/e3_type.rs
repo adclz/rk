@@ -50,13 +50,6 @@ pub enum TypeError<'db> {
         adjustment: Option<Adjustment<'db>>,
         expr: CallSite<'db>,
     },
-    NotPowerable {
-        base_target: Type<'db>,
-        lhs: Type<'db>,
-        rhs: Type<'db>,
-        adjustment: Option<Adjustment<'db>>,
-        expr: CallSite<'db>,
-    },
     InferLiteralError {
         expr: Expr<'db>,
         source: Option<InferSource<'db>>,
@@ -81,7 +74,6 @@ impl<'db> ErrorCode for TypeError<'db> {
             Self::NotComparable { .. } => "E0302",
             Self::NotAddable { .. } => "E0303",
             Self::NotMultiplicable { .. } => "E0304",
-            Self::NotPowerable { .. } => "E0305",
             Self::InferLiteralError { .. } => "E0309",
             Self::NonVariadicFoldParameter { .. } => "E0317",
             Self::UnsupportedOperator { .. } => "E0318",
@@ -197,28 +189,6 @@ impl<'db> ToIdeDiagnostic<'db> for TypeError<'db> {
                             MultOperatorKind::Div => "divide",
                             MultOperatorKind::Mod => "modulus",
                         },
-                        lhs.type_name(db),
-                        adjustment_to_string(db, *rhs, adjustment)
-                    ))
-                    .severity(DiagnosticSeverity::ERROR)
-                    .desc(self)
-                    .range(crate::denormalize(db, file, &expr.get_span(db)).unwrap_or_default())
-                    .call();
-
-                base_target.with_location(db, &mut diag);
-                explicit_cast_suggestion(db, *lhs, *rhs, *expr, &mut diag);
-                diag
-            }
-            Self::NotPowerable {
-                base_target,
-                lhs,
-                rhs,
-                adjustment,
-                expr,
-            } => {
-                let mut diag = diag()
-                    .message(format!(
-                        "can not power '{}' with '{}'",
                         lhs.type_name(db),
                         adjustment_to_string(db, *rhs, adjustment)
                     ))

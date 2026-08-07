@@ -459,19 +459,4 @@ impl<'db> CoerceError<'db> {
         .to_diagnostic(db, call_site.get_scope_id(db).file(db))
     }
 
-    pub fn into_non_powerable(
-        self,
-        db: &'db dyn WorkspaceDataBase,
-        base_target: Type<'db>,
-        call_site: CallSite<'db>,
-    ) -> IdeDiagnostic {
-        TypeError::NotPowerable {
-            base_target,
-            lhs: self.expected,
-            rhs: self.actual,
-            adjustment: self.adjustment,
-            expr: call_site,
-        }
-        .to_diagnostic(db, call_site.get_scope_id(db).file(db))
-    }
 }
