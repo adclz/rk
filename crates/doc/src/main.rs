@@ -1,5 +1,6 @@
 mod examples;
 mod render;
+mod verify;
 
 use std::collections::BTreeMap;
 use std::fs;
@@ -59,7 +60,8 @@ fn main() {
     let mut body = String::new();
     let mut json_entries: Vec<String> = Vec::new();
     let mut success_count = 0;
-    let mut fail_count = 0;
+    // What each example actually produced, for the alignment check below.
+    let mut produced: Vec<(&str, std::collections::BTreeSet<String>)> = Vec::new();
 
     for (category, entries) in &ordered_categories {
         let slug = category.to_lowercase().replace(' ', "-");
@@ -78,20 +80,7 @@ fn main() {
             let (ansi_output, diag_spans) =
                 render::compile_and_render(&mut db, ex.sources, ex.lint_rule);
 
-            if ansi_output.is_empty() {
-                eprintln!(" WARNING: no diagnostics produced!");
-                fail_count += 1;
-
-                body.push_str(&render::render_entry_html(
-                    ex.code,
-                    ex.title,
-                    ex.description,
-                    ex.sources,
-                    "<span class=\"no-output\">No compiler output - example may need updating.</span>",
-                    &[],
-                ));
-                continue;
-            }
+            produced.push((ex.code, verify::codes_in_output(&ansi_output)));
 
             let report_html = render::ansi_to_html_fragment(&ansi_output);
             body.push_str(&render::render_entry_html(
@@ -125,11 +114,32 @@ fn main() {
         }
     }
 
+    // The reference must agree with the compiler before it replaces the
+    // committed one — `rk explain` embeds the JSON, so publishing a wrong
+    // entry hands a user a wrong answer. Checked here rather than in a unit
+    // test so that generating the docs at all is what enforces it.
+    let problems = verify::problems(&examples, &produced);
+    if !problems.is_empty() {
+        eprintln!(
+            "\nThe diagnostics reference disagrees with the compiler in {} place(s); \
+             nothing was written.\n",
+            problems.len()
+        );
+        for problem in &problems {
+            eprintln!("  {problem}");
+        }
+        eprintln!(
+            "\nEach example must produce the diagnostic it documents, and every code the \
+             compiler\ndefines must have one. Fix the example (or the code), then re-run."
+        );
+        std::process::exit(1);
+    }
+
     // Build sidebar
     let sidebar = render::render_sidebar_html(&ordered_categories);
 
     // Assemble full page
-    let page = render::render_page(&sidebar, &body, TM_GRAMMAR, success_count, fail_count);
+    let page = render::render_page(&sidebar, &body, TM_GRAMMAR, success_count, 0);
 
     let output_file = out_dir.join("reference.html");
     fs::write(&output_file, &page).expect("failed to write reference.html");
@@ -139,7 +149,7 @@ fn main() {
     let json_content = format!("[\n{}\n]\n", json_entries.join(",\n"));
     fs::write(&json_file, &json_content).expect("failed to write diagnostics.json");
 
-    eprintln!("\nDone! {success_count} diagnostics documented, {fail_count} warnings.");
+    eprintln!("\nDone! {success_count} diagnostics documented, all aligned with the compiler.");
     eprintln!("Output: {}", output_file.display());
     eprintln!("API:    {}", json_file.display());
 }
