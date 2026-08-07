@@ -14,7 +14,7 @@ use rustc_hash::FxHashSet;
 
 pub const NAME: &str = "uninitialized-output";
 
-/// L0105: one or more VAR_OUTPUT variables are never assigned in the body.
+/// L0205: one or more VAR_OUTPUT variables are never assigned in the body.
 ///
 /// All uninitialized outputs for a given POU body are collapsed into a single
 /// diagnostic so the user gets one summary instead of N pointers. Per other toolchains

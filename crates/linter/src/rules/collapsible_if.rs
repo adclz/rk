@@ -11,7 +11,7 @@ use ide_diagnostic::{ErrorCode, IdeDiagnostic, Related, diag};
 
 pub const NAME: &str = "collapsible-if";
 
-/// L0209: nested IF without ELSE can be collapsed into `IF a AND b THEN`.
+/// L0210: nested IF without ELSE can be collapsed into `IF a AND b THEN`.
 struct CollapsibleIf;
 
 impl ErrorCode for CollapsibleIf {

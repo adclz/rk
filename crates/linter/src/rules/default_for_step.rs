@@ -8,7 +8,7 @@ use ide_diagnostic::{ErrorCode, IdeDiagnostic, diag};
 
 pub const NAME: &str = "default-for-step";
 
-/// L0214: FOR loop step of 1 is the default and can be omitted.
+/// L0215: FOR loop step of 1 is the default and can be omitted.
 struct DefaultForStep;
 
 impl ErrorCode for DefaultForStep {

@@ -8,7 +8,7 @@ use ide_diagnostic::{ErrorCode, IdeDiagnostic, diag};
 
 pub const NAME: &str = "empty-type";
 
-/// L0213: a STRUCT or ENUM type declaration has no members.
+/// L0214: a STRUCT or ENUM type declaration has no members.
 struct EmptyType;
 
 impl ErrorCode for EmptyType {

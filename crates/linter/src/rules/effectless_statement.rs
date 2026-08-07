@@ -5,7 +5,7 @@ use ide_diagnostic::{ErrorCode, IdeDiagnostic, diag};
 
 pub const NAME: &str = "effectless-statement";
 
-/// L0211: statement has no effect.
+/// L0212: statement has no effect.
 struct EffectlessStatement;
 
 impl ErrorCode for EffectlessStatement {

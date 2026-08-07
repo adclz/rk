@@ -5,7 +5,7 @@ use ide_diagnostic::{ErrorCode, IdeDiagnostic, diag};
 
 pub const NAME: &str = "empty-case-branch";
 
-/// L0206: CASE branch with no statements.
+/// L0207: CASE branch with no statements.
 struct EmptyCaseBranch;
 
 impl ErrorCode for EmptyCaseBranch {

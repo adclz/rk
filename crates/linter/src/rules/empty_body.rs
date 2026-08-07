@@ -12,7 +12,7 @@ use ide_diagnostic::{ErrorCode, IdeDiagnostic, diag};
 
 pub const NAME: &str = "empty-body";
 
-/// L0205: function or method has an empty body.
+/// L0206: function or method has an empty body.
 struct EmptyBody;
 
 impl ErrorCode for EmptyBody {

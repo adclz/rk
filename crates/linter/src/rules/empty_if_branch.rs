@@ -8,7 +8,7 @@ use ide_diagnostic::{ErrorCode, IdeDiagnostic, diag};
 
 pub const NAME: &str = "empty-if-branch";
 
-/// L0210: IF, ELSIF, or ELSE branch with no statements.
+/// L0211: IF, ELSIF, or ELSE branch with no statements.
 struct EmptyIfBranch;
 
 impl ErrorCode for EmptyIfBranch {
