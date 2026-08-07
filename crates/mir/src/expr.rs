@@ -141,7 +141,7 @@ pub enum MirPlace {
         field_type: MirType,
     },
 
-    /// A config/resource VAR_GLOBAL at a fixed linear-memory address. Bodies
+    /// A configuration VAR_GLOBAL at a fixed linear-memory address. Bodies
     /// lower a global reference as `Local(name)` (the address isn't known at
     /// body-lowering time); a post-pass in `lower_module` rewrites those whose
     /// name matches the module's global symbol table into this variant.

@@ -101,7 +101,7 @@ pub struct ArraySym {
     /// How to decode one scalar element; `None` when the element is an
     /// aggregate (see `elem_type`).
     pub elem_ty: Option<SymType>,
-    /// `true` for a config/resource `VAR_GLOBAL`.
+    /// `true` for a configuration `VAR_GLOBAL`.
     pub global: bool,
     /// The element's layout in the carrying table's `types` (v5), for
     /// aggregate elements; `None` for scalars or a pre-v5 producer. Last on
@@ -123,7 +123,7 @@ pub struct Symbol {
     pub size: u32,
     /// Elementary type — tells a consumer how to decode the bytes.
     pub ty: SymType,
-    /// `true` for a config/resource `VAR_GLOBAL`, `false` for a program-instance
+    /// `true` for a configuration `VAR_GLOBAL`, `false` for a program-instance
     /// field — lets a debugger group variables into Globals vs Locals.
     pub global: bool,
 }

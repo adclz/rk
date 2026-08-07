@@ -1,8 +1,8 @@
 //! The resolved scheduling model for a module's CONFIGURATION: which TASKs
 //! exist, how often each fires, and which PROGRAM *instances* each runs. Built
-//! from HIR (reusing `infer_config_result`'s resolved instance/task maps) and
-//! consumed by codegen (per-task entry points + scheduler globals) and by the
-//! runtime to drive the scan cycle.
+//! by walking HIR's `ResolvedSchedule` — the resources, their runnable tasks in
+//! dispatch order, and the instances bound to each — and carried to the runtime
+//! as the `rk.schedule` manifest.
 //!
 //! A PROGRAM is compiled like a FUNCTION_BLOCK (struct + `this`-body), so each
 //! program configuration `PROGRAM inst WITH task : Type` allocates its own

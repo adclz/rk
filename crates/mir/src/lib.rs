@@ -54,11 +54,9 @@ pub struct MirModule {
     pub retain_base: u32,
     pub retain_size: u32,
 
-    /// Start address + byte length of the contiguous GLOBALS band — every
-    /// config/resource `VAR_GLOBAL`, gathered so the host (HMI) can read/write
-    /// them as one region (mirrors the retain band). `globals_size == 0` when
-    /// there are no globals. RETAIN globals sit in the overlap with the retain
-    /// band, so they are both host-visible here and persisted there.
+    /// Start and byte length of the contiguous GLOBALS band: every configuration
+    /// `VAR_GLOBAL` as one host-visible region. RETAIN globals sit in its
+    /// overlap with the retain band.
     pub globals_base: u32,
     pub globals_size: u32,
 

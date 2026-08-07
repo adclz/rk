@@ -15,10 +15,8 @@ pub struct MirMemoryLayout {
     pub allocations: Vec<MirAllocation>,
     /// Addresses of `Retain` variables as allocated, before band relocation.
     pub retain_allocations: Vec<RetainEntry>,
-    /// Every config/resource VAR_GLOBAL, recorded as it is allocated, so they
-    /// can be gathered into one contiguous, host-visible band. `retain` globals
-    /// are also persisted: the band is laid out so they sit in the overlap of
-    /// the globals band and the retain band.
+    /// Every configuration VAR_GLOBAL as allocated, for the host-visible band;
+    /// `retain` globals sit in its overlap with the retain band.
     pub global_allocations: Vec<GlobalEntry>,
 }
 
@@ -43,7 +41,7 @@ pub struct RetainEntry {
     pub align: u32,
 }
 
-/// A config/resource VAR_GLOBAL, recorded as it is allocated. `retain` globals
+/// A configuration VAR_GLOBAL, recorded as it is allocated. `retain` globals
 /// are persisted and sit in the overlap of the globals and retain bands.
 #[derive(Debug, Clone, Copy)]
 pub struct GlobalEntry {
@@ -54,11 +52,9 @@ pub struct GlobalEntry {
     pub retain: bool,
 }
 
-/// Result of relocating globals + RETAIN variables into contiguous bands.
-/// The globals band `[globals_base, globals_size)` holds every config/resource
-/// VAR_GLOBAL (host-visible); the retain band `[retain_base, retain_size)` holds
-/// the retained set (host-snapshotted). Retain globals are the overlap of the
-/// two — laid out at the globals band's end / the retain band's start.
+/// The bands after relocation: `[globals_base, globals_size)` holds every
+/// VAR_GLOBAL, `[retain_base, retain_size)` the retained set; retain
+/// globals are the overlap.
 #[derive(Debug, Clone)]
 pub struct MemoryBands {
     pub globals_base: u32,
@@ -123,8 +119,7 @@ impl MirMemoryLayout {
         });
     }
 
-    /// Register an already-allocated config/resource VAR_GLOBAL so it can be
-    /// gathered into the contiguous host-visible band. Pure bookkeeping.
+    /// Register an allocated VAR_GLOBAL for the globals band; pure bookkeeping.
     pub fn record_global(
         &mut self,
         name: Ident,

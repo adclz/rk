@@ -1,13 +1,6 @@
-//! Builder for the debug-symbol table. The on-wire types live in the shared
-//! [`debug_format`] crate (so the runtime can read them without depending on the
-//! compiler); this module walks MIR to populate them.
-//!
-//! Scope: config/resource globals and program-instance fields, walked down to
-//! their elementary leaves — through nested structs (dotted paths) and arrays
-//! (`[i]` / `[i,j]` IEC subscripts). Enums and subranges emit a leaf of their
-//! underlying integer; STRING emits a leaf carrying its capacity (the runtime
-//! decodes the length prefix). Pointers (REF_TO / VAR_IN_OUT — a raw address)
-//! are not yet emitted as leaves.
+//! Builder for the debug-symbol table; the on-wire types live in [`debug_format`].
+//! Walks configuration globals and program-instance fields down to their
+//! elementary leaves. Pointers are not emitted.
 
 pub use debug_format::{
     DEBUG_SYMBOLS_SECTION, DEBUG_SYMBOLS_VERSION, DebugSymbols, SymType, Symbol, TypeDesc,

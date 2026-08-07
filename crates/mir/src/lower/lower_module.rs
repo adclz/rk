@@ -447,7 +447,7 @@ fn lower_module_from_pous<'db>(
     // Sort test entries by path for deterministic output
     test_entries.sort_by(|a, b| a.path.cmp(&b.path));
 
-    // Allocate storage for every config/resource VAR_GLOBAL. Bodies referenced
+    // Allocate storage for every configuration VAR_GLOBAL. Bodies referenced
     // these as `Local(name)`; a post-pass below rewrites them to `Global`.
     let mut global_table = build_global_table(db, config, &mut memory_layout)?;
 
@@ -517,11 +517,8 @@ fn lower_module_from_pous<'db>(
     module.globals_base = bands.globals_base;
     module.globals_size = bands.globals_size;
 
-    // Build the debug-symbol table now that every address is final (post band
-    // relocation): program-instance fields and config/resource globals, each
-    // walked down to its elementary leaves (recursing into nested FB/struct
-    // fields to build dotted paths). The runtime reads this to monitor
-    // variables by name. Sorted by path for deterministic output.
+    // The debug-symbol table, now that every address is final; sorted by
+    // path.
     let mut symbols = Vec::new();
     let mut array_syms = Vec::new();
     let mut type_table = crate::debug_symbols::TypeTable::new();
@@ -598,12 +595,9 @@ fn lower_module_from_pous<'db>(
         resolve_global_places(func, &global_table);
     }
 
-    // Generate `__init`: write each scalar constant initializer (config/resource
-    // VAR_GLOBALs + program instance fields) to its FINAL address exactly once.
-    // The runtime calls `__init` after instantiation and BEFORE restoring retain,
-    // so a RETAIN var's initializer is its cold-start value (overridden on warm
-    // start). Addresses are final here (post-relocation). Functions keep using
-    // the prepend pattern (stateless), so they're not included.
+    // `__init`: every scalar constant initializer at its final address. The
+    // runtime calls it before restoring retain, so a RETAIN var's
+    // initializer is its cold-start value.
     let init_stmts = collect_const_inits(
         db,
         config,
@@ -1115,10 +1109,9 @@ fn collect_source_files(
 type GlobalTable<'db> =
     FxHashMap<hir::hir_def::interned::identifier::Ident, (u32, crate::types::MirType)>;
 
-/// Allocate a linear-memory slot for every config/resource VAR_GLOBAL and build
-/// the symbol table (name -> (address, type)). RETAIN globals are recorded into
-/// the host-snapshottable band. Located (`AT %…`) globals are treated as plain
-/// storage for now — hardware mapping is not implemented.
+/// Allocate a slot for every configuration VAR_GLOBAL and build the
+/// symbol table; RETAIN globals go in the band. Located (`AT %…`)
+/// globals are plain storage for now.
 fn build_global_table<'db>(
     db: &'db dyn WorkspaceDataBase,
     config: &[hir::hir_def::config::ConfigDecl<'db>],
@@ -1332,10 +1325,8 @@ fn rewrite_globals_body(
     }
 }
 
-/// Collect `Assign { Global{addr}, <const> }` statements for every scalar
-/// constant initializer that must run once at startup: config/resource
-/// VAR_GLOBALs and program-instance fields. Addresses are taken from the
-/// already-finalized global table and instance bases.
+/// The `Assign { Global{addr}, <const> }` statements that run once at
+/// startup: configuration VAR_GLOBALs and program-instance fields.
 fn collect_const_inits<'db>(
     db: &'db dyn WorkspaceDataBase,
     config: &[hir::hir_def::config::ConfigDecl<'db>],

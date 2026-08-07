@@ -1432,10 +1432,8 @@ impl<'a> WasmGen<'a> {
             retain_size_idx,
         );
 
-        // The host-visible GLOBALS band: every config/resource VAR_GLOBAL,
-        // gathered contiguous so an HMI/host can read/write them as one region
-        // (same two-integer contract as retain). `globals_size == 0` means none.
-        // RETAIN globals overlap the retain band, so they appear in both.
+        // The host-visible GLOBALS band, same two-integer contract; RETAIN
+        // globals appear in both bands.
         let globals_base_idx = self.global_section.len();
         let (ty, init) = retain_global(self.module.globals_base);
         self.global_section.global(ty, &init);

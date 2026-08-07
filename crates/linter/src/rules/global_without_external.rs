@@ -5,7 +5,7 @@ use ide_diagnostic::{ErrorCode, IdeDiagnostic, Related, diag};
 
 pub const NAME: &str = "global-without-external";
 
-/// L0410: a config/resource VAR_GLOBAL is accessed directly by name without a
+/// L0410: a configuration VAR_GLOBAL is accessed directly by name without a
 /// matching VAR_EXTERNAL declaration in the POU.
 /// This is allowed, but strict IEC 61131-3 wants the global imported via
 /// VAR_EXTERNAL.

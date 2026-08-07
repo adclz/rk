@@ -352,7 +352,7 @@ impl<'db> Resolver<'db> {
                         return;
                     }
 
-                    // Direct access to a config/resource VAR_GLOBAL.
+                    // Direct access to a configuration VAR_GLOBAL.
                     // A declared VAR_EXTERNAL resolves above (it's a POU variable),
                     // so reaching here means the global was NOT imported via
                     // VAR_EXTERNAL. We resolve it anyway and record it so the linter
