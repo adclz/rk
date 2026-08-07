@@ -1662,8 +1662,29 @@ impl<'db> ExprLowerCtx<'db> {
                                 continue;
                             }
                         }
+                        // A by-value scalar is cast to the PARAM's lane. HIR
+                        // accepts an implicitly-widening argument
+                        // (`Double(n)` with `n : INT` into `IN : LREAL`), so
+                        // without the cast the callee's f64 param received an
+                        // i32 — invalid wasm from a program `rk check` called
+                        // clean. Non-scalar params (STRING, aggregates,
+                        // unresolved ANY_*) have no scalar lane to cast to and
+                        // keep the raw value.
+                        let value = match self
+                            .type_to_mir_elementary(var.spec(self.db).infer(self.db))
+                        {
+                            Ok(param_elem) => match self.expr_to_mir_elementary(value) {
+                                Ok(arg_elem) if arg_elem != param_elem => MirExpr::Cast {
+                                    expr: Box::new(lowered),
+                                    from: arg_elem,
+                                    to: param_elem,
+                                },
+                                _ => lowered,
+                            },
+                            Err(_) => lowered,
+                        };
                         args.push(MirCallArg {
-                            value: lowered,
+                            value,
                             kind: MirArgKind::ByValue,
                         });
                     }
@@ -1757,6 +1778,21 @@ impl<'db> ExprLowerCtx<'db> {
                             // nothing sensible to store.
                             _ => continue,
                         },
+                        // A scalar input is cast to the FIELD's lane — same
+                        // hole as the function-call path: HIR accepts an
+                        // implicitly-widening arg (`s(IN := n)` with `n : INT`
+                        // into `IN : LREAL`), and the f64 store received an
+                        // i32 otherwise.
+                        MirType::Elementary(field_elem) | MirType::Subrange(crate::types::MirSubrangeType { base: field_elem, .. }) => {
+                            match self.expr_to_mir_elementary(value) {
+                                Ok(arg_elem) if arg_elem != *field_elem => MirExpr::Cast {
+                                    expr: Box::new(expr),
+                                    from: arg_elem,
+                                    to: *field_elem,
+                                },
+                                _ => expr,
+                            }
+                        }
                         _ => expr,
                     };
                     input_writes.push((field.offset, expr, field.ty.clone()));
