@@ -29,7 +29,7 @@ pub fn resolve_func_call<'db>(
 ) {
     resolver.resolve_begin_path_expr(db, func_call.path(db), None, ctx);
 
-    // If a prior resolution (e.g. during generic inference) already marked this path
+    // If a prior resolution already marked this path
     // as CallableType, unwrap it back to the original function/fb/method type.
     // CallableType.normalize() returns the *return type*, which would cause
     // as_callable() to fail on re-entry.
@@ -97,8 +97,11 @@ pub fn resolve_func_call<'db>(
                 }
                 .to_diagnostic(db, ctx.scope.file(db)),
             );
-            // Keep the first-match so downstream param checking still runs.
-            callable
+            // If no overload could be selected, we register Type::Never
+            if let Some(expr) = func_call.path(db).expr(db) {
+                ctx.type_of_path_expr.insert(expr, Type::Never);
+            }
+            return;
         }
     };
 

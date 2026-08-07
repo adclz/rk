@@ -239,10 +239,16 @@ pub enum OverloadPick<'db> {
 /// that overloading exists.
 ///
 /// Ranking (never guesses): an argument matches a parameter *exactly* (same
-/// type / literal-of-default-type) or by *widening* (implicit cast). An overload
-/// that's exact on every argument is unique and wins. Otherwise a single viable
-/// overload is used; two or more viable ⇒ [`OverloadPick::Ambiguous`]; none ⇒
-/// keep the first-match so the ordinary param-mismatch error surfaces.
+/// type / literal-of-default-type) or by *widening* (implicit cast). An
+/// overload that's exact on every argument wins outright. Among the rest, a
+/// candidate that is at least as good on EVERY argument and strictly better on
+/// one DOMINATES — `(REAL, REAL)` beats `(LREAL, LREAL)` for `(REAL, INT)`
+/// arguments, since exact beats widened on the first and they tie on the
+/// second. Incomparable candidates — each better somewhere, as with
+/// `f(INT, REAL)` vs `f(REAL, INT)` on two widening arguments — stay
+/// [`OverloadPick::Ambiguous`]: dominance never picks by majority. None
+/// viable ⇒ keep the first-match so the ordinary param-mismatch error
+/// surfaces.
 pub fn select_overload<'db>(
     db: &'db dyn WorkspaceDataBase,
     callable: CallableType<'db>,
@@ -270,7 +276,7 @@ pub fn select_overload<'db>(
     }
 
     let mut exact: Option<Function<'db>> = None;
-    let mut viable: Vec<Function<'db>> = Vec::new();
+    let mut viable: Vec<(Function<'db>, Vec<ArgMatch>)> = Vec::new();
     for f in functions {
         let sig = function_signature(db, f);
         // Viable arg counts: at least the required params, at most all of them
@@ -278,23 +284,22 @@ pub fn select_overload<'db>(
         if arg_types.len() < function_required_arity(db, f) || arg_types.len() > sig.len() {
             continue;
         }
-        let mut all_exact = true;
+        let mut matches = Vec::with_capacity(arg_types.len());
         let mut ok = true;
         for (arg, param) in arg_types.iter().zip(sig.iter()) {
             match classify_arg(db, *arg, *param) {
-                ArgMatch::Exact => {}
-                ArgMatch::Widen => all_exact = false,
                 ArgMatch::No => {
                     ok = false;
                     break;
                 }
+                m => matches.push(m),
             }
         }
         if ok {
-            if all_exact {
+            if matches.iter().all(|m| matches!(m, ArgMatch::Exact)) {
                 exact = Some(f);
             }
-            viable.push(f);
+            viable.push((f, matches));
         }
     }
 
@@ -303,10 +308,26 @@ pub fn select_overload<'db>(
     if let Some(f) = exact {
         return OverloadPick::One(CallableType::Function(f));
     }
-    match viable.len() {
+
+    // Dominance: drop every candidate that another candidate beats — at least
+    // as good on every argument, strictly better on one. What survives is the
+    // set of candidates no one is uniformly better than; only a singleton is
+    // an answer, anything else is genuinely incomparable.
+    let dominated = |a: &[ArgMatch], b: &[ArgMatch]| -> bool {
+        // `b` dominates `a`
+        a.len() == b.len()
+            && a.iter().zip(b).all(|(x, y)| y.at_least(x))
+            && a.iter().zip(b).any(|(x, y)| y.better(x))
+    };
+    let undominated: Vec<&(Function<'db>, Vec<ArgMatch>)> = viable
+        .iter()
+        .filter(|(_, m)| !viable.iter().any(|(_, other)| dominated(m, other)))
+        .collect();
+
+    match undominated.len() {
         0 => OverloadPick::One(callable),
-        1 => OverloadPick::One(CallableType::Function(viable[0])),
-        _ => OverloadPick::Ambiguous(viable),
+        1 => OverloadPick::One(CallableType::Function(undominated[0].0)),
+        _ => OverloadPick::Ambiguous(undominated.into_iter().map(|(f, _)| *f).collect()),
     }
 }
 
@@ -314,6 +335,18 @@ enum ArgMatch {
     Exact,
     Widen,
     No,
+}
+
+impl ArgMatch {
+    /// `self` is at least as good a match as `other`.
+    fn at_least(&self, other: &ArgMatch) -> bool {
+        matches!(self, ArgMatch::Exact) || matches!(other, ArgMatch::Widen | ArgMatch::No)
+    }
+
+    /// `self` is strictly better than `other`.
+    fn better(&self, other: &ArgMatch) -> bool {
+        matches!(self, ArgMatch::Exact) && !matches!(other, ArgMatch::Exact)
+    }
 }
 
 /// Classify how argument type `arg` matches parameter type `param`.

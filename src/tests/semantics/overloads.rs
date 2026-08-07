@@ -226,3 +226,138 @@ END_FUNCTION
 "#;
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @"");
 }
+
+/// Dominance: an overload at least as good on every argument and strictly
+/// better on one wins. `(REAL, REAL)` beats `(LREAL, LREAL)` for a
+/// `(REAL, INT)` call — exact beats widened on the first argument, tie on the
+/// second. The result types differ (REAL vs LREAL), so the clean assignment
+/// to a REAL proves WHICH overload was picked, not merely that one was.
+#[rstest]
+fn dominant_overload_wins(mut with_db: RootDatabase) {
+    let source = r#"
+FUNCTION scale : REAL
+VAR_INPUT a : REAL; b : REAL; END_VAR
+    scale := a;
+END_FUNCTION
+
+FUNCTION scale : LREAL
+VAR_INPUT a : LREAL; b : LREAL; END_VAR
+    scale := a;
+END_FUNCTION
+
+FUNCTION caller : REAL
+VAR x : REAL; n : INT; END_VAR
+    caller := scale(x, n);
+END_FUNCTION
+"#;
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @"");
+}
+
+/// A literal argument counts as exact against its DEFAULT type: `2.0` is a
+/// REAL exactly and an LREAL only by widening, so `(REAL, REAL)` dominates
+/// even with an INT literal alongside.
+#[rstest]
+fn literal_defaults_drive_dominance(mut with_db: RootDatabase) {
+    let source = r#"
+FUNCTION scale : REAL
+VAR_INPUT a : REAL; b : REAL; END_VAR
+    scale := a;
+END_FUNCTION
+
+FUNCTION scale : LREAL
+VAR_INPUT a : LREAL; b : LREAL; END_VAR
+    scale := a;
+END_FUNCTION
+
+FUNCTION caller : REAL
+    caller := scale(2.0, 10);
+END_FUNCTION
+"#;
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @"");
+}
+
+/// Incomparable candidates stay ambiguous: each is better on a different
+/// argument, and dominance never picks by majority.
+#[rstest]
+fn incomparable_overloads_stay_ambiguous(mut with_db: RootDatabase) {
+    let source = r#"
+FUNCTION mix : INT
+VAR_INPUT a : INT; b : LREAL; END_VAR
+    mix := 1;
+END_FUNCTION
+
+FUNCTION mix : INT
+VAR_INPUT a : DINT; b : REAL; END_VAR
+    mix := 2;
+END_FUNCTION
+
+FUNCTION caller : INT
+VAR i : INT; r : REAL; END_VAR
+    caller := mix(i, r);
+END_FUNCTION
+"#;
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
+    [E0237] Error: ambiguous overloaded call
+        ,-[ file:///test0.st:14:15 ]
+        |
+      2 | ,---> FUNCTION mix : INT
+        : :
+      5 | |---> END_FUNCTION
+        | |
+        | `-------------------- candidate overload declared here
+        |
+      7 |   ,-> FUNCTION mix : INT
+        :   :
+     10 |   |-> END_FUNCTION
+        |   |
+        |   `------------------ candidate overload declared here
+        |
+     14 |           caller := mix(i, r);
+        |                     ^|^
+        |                      `--- call to 'mix' is ambiguous: 2 overloads accept these arguments: disambiguate with an explicit cast
+    ----'
+    ");
+}
+
+/// Two candidates widened everywhere tie exactly; nothing dominates, so the
+/// call is ambiguous and asks for a cast.
+#[rstest]
+fn equally_widened_overloads_stay_ambiguous(mut with_db: RootDatabase) {
+    let source = r#"
+FUNCTION up : DINT
+VAR_INPUT a : DINT; END_VAR
+    up := 1;
+END_FUNCTION
+
+FUNCTION up : LREAL
+VAR_INPUT a : LREAL; END_VAR
+    up := 2;
+END_FUNCTION
+
+FUNCTION caller : INT
+VAR s : SINT; END_VAR
+    caller := up(s);
+END_FUNCTION
+"#;
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
+    [E0237] Error: ambiguous overloaded call
+        ,-[ file:///test0.st:14:15 ]
+        |
+      2 |   ,-> FUNCTION up : DINT
+        :   :
+      5 |   |-> END_FUNCTION
+        |   |
+        |   `------------------ candidate overload declared here
+        |
+      7 | ,---> FUNCTION up : LREAL
+        : :
+     10 | |---> END_FUNCTION
+        | |
+        | `-------------------- candidate overload declared here
+        |
+     14 |           caller := up(s);
+        |                     ^|
+        |                      `-- call to 'up' is ambiguous: 2 overloads accept these arguments: disambiguate with an explicit cast
+    ----'
+    ");
+}

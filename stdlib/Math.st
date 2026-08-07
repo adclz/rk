@@ -394,16 +394,12 @@ NAMESPACE Std.Math
 		FUNCTION test_expt_fractional ASSERT(EXPT(9.0, 0.5) = 3.0);
 		END_FUNCTION
 
-		// The INT exponent goes through the LREAL overload: an LREAL IN1
-		// fits only one candidate, so the call is unambiguous. (With a REAL
-		// IN1 both overloads accept the widened INT and E0237 asks for a
-		// cast — overload scoring has no exact-match preference yet.)
 		{test}
 		FUNCTION test_expt_integer_exponent
-		VAR x: LREAL; n: INT; END_VAR
+		VAR x: REAL; n: INT; END_VAR
 			x := 2.0;
 			n := 10;
-			ASSERT(EXPT(x, n) = LREAL#1024.0);
+			ASSERT(EXPT(x, n) = 1024.0);
 		END_FUNCTION
 
 		{test}
