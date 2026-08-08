@@ -31,6 +31,7 @@ mod inout;
 mod instance_initializers;
 mod mir_smoke;
 mod overloads;
+mod profile_swap;
 mod ref_to;
 mod references;
 mod schedule;
