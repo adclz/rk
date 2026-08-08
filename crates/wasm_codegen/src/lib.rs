@@ -1710,9 +1710,7 @@ fn build_signature(
     }
 
     let results = match return_type {
-        // A STRING return flattens to (ptr, len) per the component-model
-        // canonical ABI. The function body pushes the two i32s in that
-        // order at the epilogue (see `emit_function`).
+        // A STRING return is (ptr, len), pushed in that order at the epilogue.
         Some(MirType::String { .. }) => vec![ValType::I32, ValType::I32],
         // An aggregate returns the address of the callee's static return slot;
         // the caller copies out of it.
