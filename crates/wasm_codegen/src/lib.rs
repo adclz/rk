@@ -2,7 +2,6 @@
 //!
 //! Uses the MIR pipeline: HIR → MIR → WASM (via `from_mir`).
 
-pub mod component;
 pub mod emit_expr;
 pub mod emit_stmt;
 pub mod mir_cast;
@@ -1652,6 +1651,17 @@ impl<'a> WasmGen<'a> {
             module.section(&wasm_encoder::CustomSection {
                 name: std::borrow::Cow::Borrowed(debug_format::SCHEDULE_SECTION),
                 data: std::borrow::Cow::Owned(manifest.to_msgpack()),
+            });
+        }
+
+        // The `{test}` functions this module carries. LOAD-BEARING for `rk
+        // test`: the runner reads it back to know what to call and what to
+        // name each result. Emitted here rather than by a wrapper, so the core
+        // module a test runs against is the one a plant runs.
+        if !self.module.test_manifest.tests.is_empty() {
+            module.section(&wasm_encoder::CustomSection {
+                name: std::borrow::Cow::Borrowed(debug_format::test_manifest::TEST_MANIFEST_SECTION),
+                data: std::borrow::Cow::Owned(self.module.test_manifest.to_msgpack()),
             });
         }
 

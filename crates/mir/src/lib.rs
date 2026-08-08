@@ -5,7 +5,8 @@ pub mod memory;
 pub mod retain_map;
 pub mod schedule;
 pub mod stmt;
-pub mod test_manifest;
+/// The `{test}` manifest lives in `debug_format`, the schema crate hosts read.
+pub use debug_format::test_manifest;
 pub mod types;
 
 pub mod lower;

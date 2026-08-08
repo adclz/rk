@@ -52,8 +52,8 @@ fn compile_once(
         return write_output(output, &core_bytes, "compiled debug core:");
     }
 
-    // Release profile: optimize core → wrap in component. CLI flag takes
-    // precedence over config.toml.
+    // Release profile: optimize the core module. CLI flag takes precedence
+    // over config.toml.
     let config = db::config_file::get_config(&db);
     let config_opt = config
         .settings
@@ -62,15 +62,13 @@ fn compile_once(
     let effective_opt = opts.opt_level.or(config_opt);
 
     let optimized = optimize_wasm(core_bytes, effective_opt, verbose);
-    let component_bytes = wasm_codegen::component::wrap_in_component(&db, &optimized, &mir_module)
-        .map_err(|e| CliError::msg(format!("component: {e}")))?;
 
     let default_output = workspace
         .join("rk_build")
         .join("release")
         .join("output.wasm");
     let output = opts.output.unwrap_or(&default_output);
-    write_output(output, &component_bytes, "compiled:")
+    write_output(output, &optimized, "compiled:")
 }
 
 /// Write `bytes` to `output` (creating parent dirs), reporting success on stdout.
