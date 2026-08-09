@@ -42,9 +42,13 @@ END_FUNCTION
         mir::lower::lower_module::lower_module(&with_db, sem_idx).expect("MIR lowering failed");
     let core_bytes = wasm_codegen::generate_wasm(&with_db, &mir_module).finish();
 
-    // The manifest is embedded in the component as a custom section — no sidecar.
-    let failures = rk::test_runner::run_tests(&core_bytes, None, rk::cli::OutputFormat::Full);
-    assert_eq!(failures, 0, "Expected all e2e tests to pass");
+    // The manifest is embedded in the module as a custom section — no sidecar.
+    let results = runtime::test::run(&core_bytes, None).expect("run tests");
+    assert_eq!(results.len(), 2);
+    assert!(
+        results.iter().all(|r| r.passed()),
+        "Expected all e2e tests to pass"
+    );
 }
 
 /// A `__RAISE` inside a `{test}` function propagates as a wasm exception
@@ -69,8 +73,8 @@ END_FUNCTION
         mir::lower::lower_module::lower_module(&with_db, sem_idx).expect("MIR lowering failed");
     let core_bytes = wasm_codegen::generate_wasm(&with_db, &mir_module).finish();
 
-    // The manifest is embedded in the component as a custom section — no sidecar.
-    let failures = rk::test_runner::run_tests(&core_bytes, None, rk::cli::OutputFormat::Full);
+    let results = runtime::test::run(&core_bytes, None).expect("run tests");
+    let failures = results.iter().filter(|r| !r.passed()).count();
     assert_eq!(
         failures, 1,
         "Expected exactly one failing test (`__RAISE` propagated as failure)"

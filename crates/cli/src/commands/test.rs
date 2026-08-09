@@ -19,15 +19,16 @@ pub fn run_test(
     let core_bytes = crate::compiler::optimize_wasm(core_bytes, opt_level, verbose);
     let _ = &mir_module;
 
-    // Keep the artifact on disk: it is what a failing run should be
-    // reproducible from, and what the runtime would be pointed at.
+    // The artifact on disk is what the runtime is handed — and what a failing
+    // run is reproducible from: `runtime --test rk_build/test/output.wasm`
+    // repeats it exactly, with no compiler in the picture.
     let build_dir = workspace.join("rk_build").join("test");
     std::fs::create_dir_all(&build_dir).ok();
     let wasm_path = build_dir.join("output.wasm");
     std::fs::write(&wasm_path, &core_bytes)
         .map_err(|e| CliError::msg(format!("writing test binary: {e}")))?;
 
-    let failures = crate::test_runner::run_tests(&core_bytes, filter, format);
+    let failures = crate::test_runner::run_tests(&wasm_path, filter, format);
     if failures > 0 {
         Err(CliError::Failed)
     } else {
