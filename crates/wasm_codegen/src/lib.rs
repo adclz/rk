@@ -380,10 +380,32 @@ fn count_nested_in_call(call: &MirCall) -> u32 {
     n
 }
 
+/// Which artifact this build is. One loader, two profiles: only the
+/// sections differ. Debug carries the stepping tier
+/// (`debug-functions`/`debug-lines`/`debug-locals`); Release omits it,
+/// since optimization re-encodes bodies and would orphan the line table.
+/// The monitoring tier and the load-bearing sections are in both.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum Profile {
+    #[default]
+    Debug,
+    Release,
+}
+
 /// Generate a WASM module from a fully-lowered MirModule.
 /// Needs the db to resolve Ident → string for export names.
 pub fn generate_wasm(db: &dyn WorkspaceDataBase, module: &MirModule) -> wasm_encoder::Module {
+    generate_wasm_profile(db, module, Profile::Debug)
+}
+
+/// As [`generate_wasm`], choosing which profile's sections to emit.
+pub fn generate_wasm_profile(
+    db: &dyn WorkspaceDataBase,
+    module: &MirModule,
+    profile: Profile,
+) -> wasm_encoder::Module {
     let mut wasm_gen = WasmGen::new(db, module);
+    wasm_gen.profile = profile;
     wasm_gen.emit_all();
     wasm_gen.finish()
 }
@@ -424,6 +446,8 @@ pub(crate) enum LocalInfo {
 struct WasmGen<'a> {
     db: &'a dyn WorkspaceDataBase,
     module: &'a MirModule,
+    /// Which sections ride along; never changes what the code does.
+    profile: Profile,
     type_section: wasm_encoder::TypeSection,
     import_section: wasm_encoder::ImportSection,
     fn_section: wasm_encoder::FunctionSection,
@@ -545,6 +569,7 @@ impl<'a> WasmGen<'a> {
         Self {
             db,
             module,
+            profile: Profile::Debug,
             type_section: Default::default(),
             import_section,
             fn_section: Default::default(),
@@ -1509,124 +1534,128 @@ impl<'a> WasmGen<'a> {
         name_section.functions(&fn_names);
         module.section(&name_section);
 
-        // `debug-functions`: DefinedFuncIndex → IEC name, keyed as `FrameHandle`
-        // reports it (imports excluded).
-        let mut func_entries: Vec<debug_format::FuncEntry> = self
-            .module
-            .functions
-            .iter()
-            .filter_map(|func| {
-                self.index_remap
-                    .get(&func.index)
-                    .map(|&widx| debug_format::FuncEntry {
+        // The stepping tier rides only in a Debug artifact: optimization
+        // re-encodes bodies and would orphan these tables.
+        if self.profile == Profile::Debug {
+            // `debug-functions`: DefinedFuncIndex → IEC name, keyed as `FrameHandle`
+            // reports it (imports excluded).
+            let mut func_entries: Vec<debug_format::FuncEntry> = self
+                .module
+                .functions
+                .iter()
+                .filter_map(|func| {
+                    self.index_remap
+                        .get(&func.index)
+                        .map(|&widx| debug_format::FuncEntry {
+                            defined_index: widx - n_func_imports,
+                            name: func.name.text(self.db).to_string(),
+                        })
+                })
+                .collect();
+            func_entries.sort_by_key(|e| e.defined_index);
+            let debug_functions = debug_format::DebugFunctions {
+                version: debug_format::DEBUG_FUNCTIONS_VERSION,
+                functions: func_entries,
+            };
+            module.section(&wasm_encoder::CustomSection {
+                name: std::borrow::Cow::Borrowed(debug_format::DEBUG_FUNCTIONS_SECTION),
+                data: std::borrow::Cow::Owned(debug_functions.to_msgpack()),
+            });
+
+            // `debug-lines`: per-function (within-body offset → source position) by
+            // DefinedFuncIndex, each statement's file resolved to its index in the
+            // module's file table.
+            let file_index: FxHashMap<&str, u32> = self
+                .module
+                .source_files
+                .iter()
+                .enumerate()
+                .map(|(i, f)| (f.as_str(), i as u32))
+                .collect();
+            let mut func_line_tables: Vec<debug_format::FuncLines> = self
+                .func_lines
+                .iter()
+                .filter_map(|(mir_idx, recs)| {
+                    let widx = *self.index_remap.get(mir_idx)?;
+                    let mut lines: Vec<debug_format::LineEntry> = recs
+                        .iter()
+                        .map(|(offset, loc)| debug_format::LineEntry {
+                            offset: *offset,
+                            file: file_index.get(loc.file_url.as_str()).copied().unwrap_or(0),
+                            line: loc.line,
+                            col: loc.column,
+                        })
+                        .collect();
+                    lines.sort_by_key(|e| e.offset);
+                    Some(debug_format::FuncLines {
                         defined_index: widx - n_func_imports,
-                        name: func.name.text(self.db).to_string(),
+                        lines,
                     })
-            })
-            .collect();
-        func_entries.sort_by_key(|e| e.defined_index);
-        let debug_functions = debug_format::DebugFunctions {
-            version: debug_format::DEBUG_FUNCTIONS_VERSION,
-            functions: func_entries,
-        };
-        module.section(&wasm_encoder::CustomSection {
-            name: std::borrow::Cow::Borrowed(debug_format::DEBUG_FUNCTIONS_SECTION),
-            data: std::borrow::Cow::Owned(debug_functions.to_msgpack()),
-        });
-
-        // `debug-lines`: per-function (within-body offset → source position) by
-        // DefinedFuncIndex, each statement's file resolved to its index in the
-        // module's file table.
-        let file_index: FxHashMap<&str, u32> = self
-            .module
-            .source_files
-            .iter()
-            .enumerate()
-            .map(|(i, f)| (f.as_str(), i as u32))
-            .collect();
-        let mut func_line_tables: Vec<debug_format::FuncLines> = self
-            .func_lines
-            .iter()
-            .filter_map(|(mir_idx, recs)| {
-                let widx = *self.index_remap.get(mir_idx)?;
-                let mut lines: Vec<debug_format::LineEntry> = recs
-                    .iter()
-                    .map(|(offset, loc)| debug_format::LineEntry {
-                        offset: *offset,
-                        file: file_index.get(loc.file_url.as_str()).copied().unwrap_or(0),
-                        line: loc.line,
-                        col: loc.column,
-                    })
-                    .collect();
-                lines.sort_by_key(|e| e.offset);
-                Some(debug_format::FuncLines {
-                    defined_index: widx - n_func_imports,
-                    lines,
                 })
-            })
-            .collect();
-        func_line_tables.sort_by_key(|f| f.defined_index);
-        let debug_lines = debug_format::DebugLines {
-            version: debug_format::DEBUG_LINES_VERSION,
-            files: self.module.source_files.clone(),
-            functions: func_line_tables,
-        };
-        module.section(&wasm_encoder::CustomSection {
-            name: std::borrow::Cow::Borrowed(debug_format::DEBUG_LINES_SECTION),
-            data: std::borrow::Cow::Owned(debug_lines.to_msgpack()),
-        });
+                .collect();
+            func_line_tables.sort_by_key(|f| f.defined_index);
+            let debug_lines = debug_format::DebugLines {
+                version: debug_format::DEBUG_LINES_VERSION,
+                files: self.module.source_files.clone(),
+                functions: func_line_tables,
+            };
+            module.section(&wasm_encoder::CustomSection {
+                name: std::borrow::Cow::Borrowed(debug_format::DEBUG_LINES_SECTION),
+                data: std::borrow::Cow::Owned(debug_lines.to_msgpack()),
+            });
 
-        // `debug-locals`: per-function scalar-local labels (wasm local index →
-        // IEC name/type), keyed by DefinedFuncIndex, so a debugger names the
-        // values `FrameHandle::local(i)` returns.
-        let all_indices: std::collections::BTreeSet<u32> = self
-            .func_locals
-            .keys()
-            .chain(self.func_memory_locals.keys())
-            .copied()
-            .collect();
-        let mut func_local_tables: Vec<debug_format::FuncLocals> = all_indices
-            .into_iter()
-            .filter_map(|mir_idx| {
-                let widx = *self.index_remap.get(&mir_idx)?;
-                let mut vars: Vec<debug_format::LocalVar> = self
-                    .func_locals
-                    .get(&mir_idx)
-                    .map(|locals| {
-                        locals
-                            .iter()
-                            .map(|(wasm_index, name, elem)| debug_format::LocalVar {
-                                wasm_index: *wasm_index,
-                                name: name.clone(),
-                                ty: mir::debug_symbols::sym_type_of(*elem),
-                            })
-                            .collect()
+            // `debug-locals`: per-function scalar-local labels (wasm local index →
+            // IEC name/type), keyed by DefinedFuncIndex, so a debugger names the
+            // values `FrameHandle::local(i)` returns.
+            let all_indices: std::collections::BTreeSet<u32> = self
+                .func_locals
+                .keys()
+                .chain(self.func_memory_locals.keys())
+                .copied()
+                .collect();
+            let mut func_local_tables: Vec<debug_format::FuncLocals> = all_indices
+                .into_iter()
+                .filter_map(|mir_idx| {
+                    let widx = *self.index_remap.get(&mir_idx)?;
+                    let mut vars: Vec<debug_format::LocalVar> = self
+                        .func_locals
+                        .get(&mir_idx)
+                        .map(|locals| {
+                            locals
+                                .iter()
+                                .map(|(wasm_index, name, elem)| debug_format::LocalVar {
+                                    wasm_index: *wasm_index,
+                                    name: name.clone(),
+                                    ty: mir::debug_symbols::sym_type_of(*elem),
+                                })
+                                .collect()
+                        })
+                        .unwrap_or_default();
+                    vars.sort_by_key(|v| v.wasm_index);
+                    let (memory, arrays) = self
+                        .func_memory_locals
+                        .get(&mir_idx)
+                        .cloned()
+                        .unwrap_or_default();
+                    Some(debug_format::FuncLocals {
+                        defined_index: widx - n_func_imports,
+                        locals: vars,
+                        memory,
+                        arrays,
                     })
-                    .unwrap_or_default();
-                vars.sort_by_key(|v| v.wasm_index);
-                let (memory, arrays) = self
-                    .func_memory_locals
-                    .get(&mir_idx)
-                    .cloned()
-                    .unwrap_or_default();
-                Some(debug_format::FuncLocals {
-                    defined_index: widx - n_func_imports,
-                    locals: vars,
-                    memory,
-                    arrays,
                 })
-            })
-            .collect();
-        func_local_tables.sort_by_key(|f| f.defined_index);
-        let debug_locals = debug_format::DebugLocals {
-            version: debug_format::DEBUG_LOCALS_VERSION,
-            functions: func_local_tables,
-            types: std::mem::take(&mut self.local_type_table).into_entries(),
-        };
-        module.section(&wasm_encoder::CustomSection {
-            name: std::borrow::Cow::Borrowed(debug_format::DEBUG_LOCALS_SECTION),
-            data: std::borrow::Cow::Owned(debug_locals.to_msgpack()),
-        });
+                .collect();
+            func_local_tables.sort_by_key(|f| f.defined_index);
+            let debug_locals = debug_format::DebugLocals {
+                version: debug_format::DEBUG_LOCALS_VERSION,
+                functions: func_local_tables,
+                types: std::mem::take(&mut self.local_type_table).into_entries(),
+            };
+            module.section(&wasm_encoder::CustomSection {
+                name: std::borrow::Cow::Borrowed(debug_format::DEBUG_LOCALS_SECTION),
+                data: std::borrow::Cow::Owned(debug_locals.to_msgpack()),
+            });
+        }
 
         // The debug-symbol table (`debug-symbols`), for by-name monitoring;
         // strippable.

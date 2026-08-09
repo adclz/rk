@@ -57,8 +57,20 @@ pub fn build_core(
 pub fn build_core_with_format(
     db: &RootDatabase,
     workspace: &std::path::Path,
+    verbose: bool,
+    format: crate::cli::OutputFormat,
+) -> Result<(Vec<u8>, mir::MirModule), String> {
+    build_core_profile(db, workspace, verbose, format, wasm_codegen::Profile::Debug)
+}
+
+/// [`build_core_with_format`] choosing the artifact profile, the one place
+/// the choice enters the build.
+pub fn build_core_profile(
+    db: &RootDatabase,
+    workspace: &std::path::Path,
     _verbose: bool,
     format: crate::cli::OutputFormat,
+    profile: wasm_codegen::Profile,
 ) -> Result<(Vec<u8>, mir::MirModule), String> {
     // Report into a buffer so the text can be both echoed to stderr (CLI
     // commands) and returned to the caller (the debugger forwards it over the debugger
@@ -110,7 +122,7 @@ pub fn build_core_with_format(
         }
     };
 
-    let wasm_module = wasm_codegen::generate_wasm(db, &mir_module);
+    let wasm_module = wasm_codegen::generate_wasm_profile(db, &mir_module, profile);
     Ok((wasm_module.finish(), mir_module))
 }
 
@@ -174,6 +186,47 @@ const WASM_FEATURES: &[&str] = &[
 /// The optimizer is an external binary — see [`crate::wasm_opt`] for how it is
 /// found. A failure at any point keeps the unoptimized module, which is correct
 /// but larger; it is never a reason to fail the build.
+/// Optimize for a RELEASE artifact: wasm-opt is mandatory and its failure is
+/// the build's failure.
+///
+/// The lenient [`optimize_wasm`] exists for `rk test -O`, where a missing
+/// optimizer degrades to a correct-but-unoptimized run with a warning. A
+/// release artifact is different: silently shipping the unoptimized build
+/// while calling it a release would make "release" a hope rather than a
+/// property. The check trusts the OUTPUT, not the exit status — Binaryen has
+/// aborted with status 0 before, so the only thing believed is a wasm module
+/// on disk.
+pub fn optimize_wasm_release(
+    wasm_bytes: Vec<u8>,
+    opt_level: &str,
+    verbose: bool,
+) -> Result<Vec<u8>, String> {
+    if !matches!(opt_level, "0" | "1" | "2" | "3" | "s" | "z") {
+        // -O4 is refused: Binaryen's Flatten pass aborts on `try_table` up to
+        // and including 131.
+        return Err(format!(
+            "invalid release optimization level '{opt_level}' (valid: 0-3, s, z)"
+        ));
+    }
+    let original = wasm_bytes.clone();
+    let optimized = optimize_wasm(wasm_bytes, Some(opt_level), verbose);
+    // The lenient path signals every failure the same way: by returning the
+    // input unchanged. For a release that signal becomes an error...
+    if optimized == original {
+        return Err(
+            "wasm-opt did not produce an optimized module — a release build requires it.
+                    Install Binaryen 119+ (CI pins 131) and ensure `wasm-opt` is on PATH."
+                .to_string(),
+        );
+    }
+    // ...and the output is verified as a module regardless of what the
+    // process claimed.
+    if !optimized.starts_with(b"\0asm") {
+        return Err("the optimizer's output is not a WebAssembly module".to_string());
+    }
+    Ok(optimized)
+}
+
 pub fn optimize_wasm(wasm_bytes: Vec<u8>, opt_level: Option<&str>, verbose: bool) -> Vec<u8> {
     let Some(level) = opt_level else {
         return wasm_bytes;
@@ -291,6 +344,11 @@ fn preserve_load_bearing_sections(original: &[u8], optimized: Vec<u8>) -> Vec<u8
     for section in [
         debug_format::RETAIN_MAP_SECTION,
         debug_format::SCHEDULE_SECTION,
+        // The monitoring tier survives optimization: symbols are addresses,
+        // which wasm-opt does not relayout.
+        mir::debug_symbols::DEBUG_SYMBOLS_SECTION,
+        // And an optimized test build still has to know what to call.
+        debug_format::test_manifest::TEST_MANIFEST_SECTION,
     ] {
         out = preserve_section(original, out, section);
     }

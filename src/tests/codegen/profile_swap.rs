@@ -202,3 +202,74 @@ fn globals_bounds(wasm: &[u8]) -> (Option<i64>, Option<i64>) {
     let size = read(&mut store, "globals_size");
     (base, size)
 }
+
+/// The two artifacts of Model B, from one source: Release omits exactly the
+/// stepping tier and keeps everything else byte-identical.
+///
+/// The absence IS the interface — a runtime detects which artifact it was
+/// handed by these sections' presence, so a release build that quietly kept
+/// its line table would make every "is this steppable?" answer a lie, and one
+/// that dropped the symbol table would break watching a plant.
+#[rstest]
+fn release_omits_the_stepping_tier_and_nothing_else(mut with_db: RootDatabase) {
+    use crate::tests::codegen::compile_to_mir_and_wasm;
+
+    let (mir, _wasm) = compile_to_mir_and_wasm(&mut with_db, SRC);
+    let debug = wasm_codegen::generate_wasm_profile(&with_db, &mir, wasm_codegen::Profile::Debug)
+        .finish();
+    let release =
+        wasm_codegen::generate_wasm_profile(&with_db, &mir, wasm_codegen::Profile::Release)
+            .finish();
+
+    let debug_sections = custom_sections(&debug);
+    let release_sections = custom_sections(&release);
+
+    // The stepping tier: present in Debug, absent in Release.
+    for stepping in [
+        debug_format::DEBUG_FUNCTIONS_SECTION,
+        debug_format::DEBUG_LINES_SECTION,
+        debug_format::DEBUG_LOCALS_SECTION,
+    ] {
+        assert!(
+            debug_sections.contains_key(stepping),
+            "the debug artifact carries `{stepping}`"
+        );
+        assert!(
+            !release_sections.contains_key(stepping),
+            "the release artifact must NOT carry `{stepping}`"
+        );
+    }
+
+    // Everything else — monitoring, retain, schedule, tests — is in both,
+    // byte-identical: the profiles differ in what rides along, never in what
+    // the module IS.
+    for (name, bytes) in &release_sections {
+        if name == "name" {
+            continue; // the wasm name section is tooling courtesy, not ours
+        }
+        assert_eq!(
+            debug_sections.get(name),
+            Some(bytes),
+            "section `{name}` must be byte-identical across profiles"
+        );
+    }
+    assert_eq!(
+        code_section(&debug),
+        code_section(&release),
+        "the CODE is the same in both profiles — a profile is not a compiler mode"
+    );
+
+    // The seam the runtime detects the artifact by: has_lines is the
+    // steppability answer Meta serves and the debug profile refuses on.
+    let debug_info = runtime::debug::DebugInfo::from_wasm(&debug);
+    let release_info = runtime::debug::DebugInfo::from_wasm(&release);
+    assert!(debug_info.has_lines(), "the debug artifact is steppable");
+    assert!(
+        !release_info.has_lines(),
+        "the release artifact reports itself unsteppable"
+    );
+    assert!(
+        !release_info.list_symbols().is_empty(),
+        "and still watchable: the symbol table is intact"
+    );
+}

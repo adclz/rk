@@ -1,7 +1,7 @@
 use std::path::PathBuf;
 
 use crate::cli::OutputFormat;
-use crate::compiler::{build_core_with_format, debug_core_path, optimize_wasm};
+use crate::compiler::{build_core_profile, debug_core_path, optimize_wasm_release};
 use crate::error::{CliError, CliResult};
 use crate::ui;
 use crate::workspace::init_db;
@@ -11,7 +11,7 @@ use crate::workspace::init_db;
 pub struct CompileOptions<'a> {
     pub output: Option<&'a PathBuf>,
     pub opt_level: Option<&'a str>,
-    pub debug: bool,
+    pub release: bool,
     pub format: OutputFormat,
 }
 
@@ -38,37 +38,46 @@ fn compile_once(
 ) -> CliResult<()> {
     let db = init_db(workspace, verbose, true).ok_or(CliError::Failed)?;
 
+    let profile = if opts.release {
+        wasm_codegen::Profile::Release
+    } else {
+        wasm_codegen::Profile::Debug
+    };
+
     // `build_core` already echoed diagnostics to stderr; a build failure is a
     // silent non-zero exit.
-    let (core_bytes, mir_module) = build_core_with_format(&db, workspace, verbose, opts.format)
-        .map_err(|_| CliError::Failed)?;
+    let (core_bytes, mir_module) =
+        build_core_profile(&db, workspace, verbose, opts.format, profile)
+            .map_err(|_| CliError::Failed)?;
+    let _ = &mir_module;
 
-    if opts.debug {
-        // Debug profile: write the bare core (unoptimized, `debug-*` sections
-        // intact) that the debugger loads. No optimize/component — optimization
-        // strips the debug sections and the DebugSession loads the core directly.
+    if !opts.release {
+        // The default: the debug artifact, all sections intact, unoptimized —
+        // what the debugger steps. Optimizing it would
+        // re-encode the code and orphan the line table, so it never is.
         let default_output = debug_core_path(workspace);
         let output = opts.output.unwrap_or(&default_output);
         return write_output(output, &core_bytes, "compiled debug core:");
     }
 
-    // Release profile: optimize the core module. CLI flag takes precedence
-    // over config.toml.
+    // Release: wasm-opt is mandatory and its failure is the build's. Level:
+    // flag, else config.toml, else -O2.
     let config = db::config_file::get_config(&db);
     let config_opt = config
         .settings
         .as_ref()
         .and_then(|s| s.opt_level.as_deref());
-    let effective_opt = opts.opt_level.or(config_opt);
+    let level = opts.opt_level.or(config_opt).unwrap_or("2");
 
-    let optimized = optimize_wasm(core_bytes, effective_opt, verbose);
+    let optimized =
+        optimize_wasm_release(core_bytes, level, verbose).map_err(CliError::msg)?;
 
     let default_output = workspace
         .join("rk_build")
         .join("release")
         .join("output.wasm");
     let output = opts.output.unwrap_or(&default_output);
-    write_output(output, &optimized, "compiled:")
+    write_output(output, &optimized, "compiled release:")
 }
 
 /// Write `bytes` to `output` (creating parent dirs), reporting success on stdout.
