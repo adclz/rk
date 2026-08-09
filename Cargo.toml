@@ -126,6 +126,7 @@ static_assertions = { workspace = true }
 rk = { path = "crates/cli" }
 tempfile = "3"
 debug_format = { workspace = true }
+serde = { workspace = true }
 wasmtime = "45.0.1"
 rand = "0.8"
 pollster = "0.4"
