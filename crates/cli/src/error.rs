@@ -8,6 +8,7 @@ use std::fmt::Display;
 pub type CliResult<T = ()> = Result<T, CliError>;
 
 /// A CLI command failure.
+#[derive(Debug)]
 pub enum CliError {
     /// A hard error: `main` prints `error: <msg>` and exits non-zero.
     Message(String),
