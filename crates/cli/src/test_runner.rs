@@ -16,7 +16,7 @@
 //! failure appears when it occurs rather than when the run ends.
 
 use std::io::BufRead;
-use std::path::{Path, PathBuf};
+use std::path::Path;
 use std::time::Duration;
 
 use wire::report::{ReportLine, Status, Summary, TestRecord};
@@ -44,32 +44,9 @@ fn fmt_duration(d: Duration) -> String {
     }
 }
 
-/// The the runtime that goes with *this* `rk`.
-///
-/// Beside the current executable first, and only then `PATH`. A toolchain must
-/// not run one version's tests under another version's runtime just because an
-/// older copy happens to come first in `PATH` — and during development the
-/// binary next to `rk` is the one that was just rebuilt.
-fn runtime_binary() -> PathBuf {
-    let exe = if cfg!(windows) {
-        "runtime.exe"
-    } else {
-        "runtime"
-    };
-    if let Ok(current) = std::env::current_exe()
-        && let Some(dir) = current.parent()
-    {
-        let sibling = dir.join(exe);
-        if sibling.is_file() {
-            return sibling;
-        }
-    }
-    PathBuf::from(exe)
-}
-
 /// Run a compiled module's tests and report them. Returns the failure count.
 pub fn run_tests(wasm_path: &Path, filter: Option<&str>, format: OutputFormat) -> usize {
-    let binary = runtime_binary();
+    let binary = crate::spawn::runtime_binary();
     let mut command = std::process::Command::new(&binary);
     command.arg("--test").arg(wasm_path);
     if let Some(filter) = filter {
@@ -82,12 +59,7 @@ pub fn run_tests(wasm_path: &Path, filter: Option<&str>, format: OutputFormat) -
         Err(e) => {
             // The runtime is a separate binary now, so its absence is a real
             // failure mode a user can hit — name it and say where we looked.
-            ui::error(format!(
-                "could not start `{}`: {e}\n       \
-                 Tests run in the runtime, which is a separate binary. Build it \
-                 with `cargo build --bin runtime`.",
-                binary.display()
-            ));
+            ui::error(crate::spawn::missing_hint(&binary, &e));
             return 1;
         }
     };
