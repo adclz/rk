@@ -10,7 +10,6 @@ use serde::{Deserialize, Serialize};
 
 /// Custom wasm section carrying the MessagePack-encoded [`DebugSymbols`].
 pub mod test_manifest;
-pub mod wire;
 
 pub const DEBUG_SYMBOLS_SECTION: &str = "debug-symbols";
 
