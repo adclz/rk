@@ -43,11 +43,15 @@ pub fn check<'db>(
     for pragma in pragmas {
         let (invalid, reason) = match pragma {
             Pragma::Test(_) => match kind {
-                ScopeKind::Pou(Pou::Function(_)) | ScopeKind::Program(_) => (false, ""),
+                ScopeKind::Pou(Pou::Function(_)) => (false, ""),
                 ScopeKind::Pou(Pou::FunctionBlock(_)) => {
                     (true, "{test} is not valid on FUNCTION_BLOCK")
                 }
                 ScopeKind::MethodDecl(_) => (true, "{test} is not valid on METHOD"),
+                ScopeKind::Program(_) => (
+                    true,
+                    "{test} is not valid on PROGRAM",
+                ),
                 _ => (false, ""),
             },
             Pragma::Once(_) => match kind {

@@ -56,6 +56,28 @@ END_CLASS
     ");
 }
 
+/// A PROGRAM is instance-based: it has no `()` entry, so it was never
+/// discovered as a test — the pragma was accepted and silently did nothing.
+#[rstest]
+fn test_on_program_invalid(mut with_db: RootDatabase) {
+    let source = r#"
+{test}
+PROGRAM my_test
+END_PROGRAM
+"#;
+    assert_snapshot!(test_single_lint(&mut with_db, &[source], "invalid-pragma"), @r"
+    [L0003] Warning: invalid pragma for this POU
+       ,-[ file:///test0.st:2:1 ]
+       |
+     2 | {test}
+       | ^^^|^^
+       |    `---- {test} is not valid on PROGRAM
+       |
+       | Note: lint rule: invalid-pragma
+    ---'
+    ");
+}
+
 #[rstest]
 fn once_on_function_valid(mut with_db: RootDatabase) {
     let source = r#"

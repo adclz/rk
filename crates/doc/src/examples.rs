@@ -2669,7 +2669,7 @@ END_FUNCTION
             code: "L0003",
             category: "Pragma",
             title: "Invalid pragma for POU",
-            description: "A pragma is used on a POU type where it is not valid. For example, `{test}` is only valid on FUNCTION and PROGRAM, not on FUNCTION_BLOCK or METHOD.",
+            description: "A pragma is used on a POU type where it is not valid. For example, `{test}` is only valid on FUNCTION — not on PROGRAM, FUNCTION_BLOCK or METHOD.",
             sources: &[r#"
 {test}
 FUNCTION_BLOCK MyFB

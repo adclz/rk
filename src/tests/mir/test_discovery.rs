@@ -191,8 +191,9 @@ VAR x : INT; END_VAR
     x := 42;
 END_PROGRAM
     "#;
-    // A PROGRAM is instance-based (no `()` entry), so `{test}` on a program is
-    // not discovered as a runnable test — `{test}` is function-only for now.
+    // A PROGRAM is instance-based (no `()` entry), so it is never discovered
+    // as a runnable test. The pragma is rejected by the `invalid-pragma` lint
+    // (L0003); this pins that it also produces no manifest entry.
     assert_snapshot!(mir_test_manifest(&mut with_db, &[source]), @"");
 }
 
