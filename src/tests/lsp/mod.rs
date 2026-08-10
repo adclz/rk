@@ -6,6 +6,7 @@ pub mod denormalize;
 pub mod document_links;
 pub mod document_symbols;
 pub mod formatter;
+pub mod formatter_preserves_meaning;
 pub mod formatter_stdlib;
 pub mod hover;
 pub mod implementations;

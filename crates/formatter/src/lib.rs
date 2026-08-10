@@ -43,6 +43,12 @@ static SURROUND_SPACES: &str = r##"
     "EXIT"
     "CONTINUE"
     "TASK" "CONSTANT" "RETAIN" "NON_RETAIN" "WITH" "ON"
+    ; Located variables (`x AT %QW28 : INT`), edge qualifiers
+    ; (`BOOL R_EDGE`) and VAR_ACCESS directions (`INT READ_ONLY`) all follow
+    ; another token. Without a space they GLUE onto it and the file stops
+    ; parsing — `BOOLR_EDGE` is not a type.
+    "AT" "R_EDGE" "F_EDGE"
+    (read_only) (read_write)
    
     ":=" "=" "=>" "<=" "<" ">=" ">" "<>" "+" "-" "*" "/" 
     "&" "AND" "OR" "XOR" "MOD" "NOT"
@@ -57,6 +63,12 @@ static SURROUND_SPACES: &str = r##"
 ["NOT" ":"] @append_space
 
 ; signed_int and signed_real_value: sign is part of the token, no formatting needed
+
+; A duration's sign is part of the literal too, but the grammar makes it a
+; separate anonymous "+"/"-" — the same tokens as binary plus/minus above.
+; Spacing it turns `T#-14ms` into `T# - 14ms`, which no longer type-checks.
+(time sign: ["+" "-"] @prepend_antispace @append_antispace)
+(ltime sign: ["+" "-"] @prepend_antispace @append_antispace)
 
 ; Enum value: no space around # (Color#Red, not Color # Red)
 (enum_value "#" @prepend_antispace @append_antispace)
@@ -168,9 +180,10 @@ static NEW_LINES: &str = r##"
 ; on the next declaration - no @append_hardline needed here.
 ("USING" (_) ";"? @append_hardline)
 
-(func_decl variables: (_) . body: (func_body) @prepend_hardline)
-(fb_decl variables: (_) . body: (fb_body) @prepend_hardline)
-(method_decl variables: (_) . body: (func_body) @prepend_hardline)
+(func_decl body: (func_body) @prepend_hardline)
+(fb_decl body: (fb_body) @prepend_hardline)
+(method_decl body: (func_body) @prepend_hardline)
+(prog_decl body: (fb_body) @prepend_hardline)
 
 [
     "TASK"
@@ -288,6 +301,7 @@ static INDENTATIONS: &str = r#"
     "VAR_EXTERNAL"
     "VAR_GLOBAL"
     "VAR_ACCESS"
+    "VAR_LOCATED"
     "STRUCT"
 
     "ELSE"

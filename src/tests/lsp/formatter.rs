@@ -415,7 +415,8 @@ END_FUNCTION
         .document(&with_db);
 
     assert_snapshot!(fmt(document), @r"
-    FUNCTION fn dfgdfg(a := 1, b := 2, c := 3)
+    FUNCTION fn
+    	dfgdfg(a := 1, b := 2, c := 3)
     END_FUNCTION
     ");
 }
@@ -882,8 +883,8 @@ END_PROGRAM
     assert_snapshot!(fmt(document), @r"
     PROGRAM myPrg
     	VAR_ACCESS
-    		ABLE: STATION_1.%IX1.1: BOOLREAD_ONLY;
-    		BAKER: STATION_1.P1.x2: UINTREAD_WRITE;
+    		ABLE: STATION_1.%IX1.1: BOOL READ_ONLY;
+    		BAKER: STATION_1.P1.x2: UINT READ_WRITE;
     	END_VAR
     END_PROGRAM
     ");
@@ -1068,7 +1069,8 @@ END_FUNCTION
         .document(&with_db);
 
     assert_snapshot!(fmt(document), @r"
-    FUNCTION fn1 x := 'Hello World';
+    FUNCTION fn1
+    	x := 'Hello World';
     END_FUNCTION
     ");
 }
@@ -1090,7 +1092,8 @@ END_FUNCTION
         .document(&with_db);
 
     assert_snapshot!(fmt(document), @r#"
-    FUNCTION fn1 x := "Hello World";
+    FUNCTION fn1
+    	x := "Hello World";
     END_FUNCTION
     "#);
 }
@@ -1137,7 +1140,8 @@ END_FUNCTION
         .document(&with_db);
 
     assert_snapshot!(fmt(document), @r"
-    FUNCTION fn1 x := '';
+    FUNCTION fn1
+    	x := '';
     END_FUNCTION
     ");
 }
@@ -1469,7 +1473,8 @@ END_PROGRAM
 
     assert_snapshot!(fmt(document), @r"
     {test}
-    PROGRAM my_test x := 1;
+    PROGRAM my_test
+    	x := 1;
     END_PROGRAM
     ");
 }
