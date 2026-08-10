@@ -169,6 +169,39 @@ END_FUNCTION
     );
 }
 
+/// The whole temporal-literal family, in one place.
+///
+/// Only `time`/`ltime` carry a separate sign token, which is why only they
+/// broke — but the rest are pinned alongside so a future spacing rule cannot
+/// quietly reach TOD/DATE/DT either. `T#+14ms` appears in NO corpus we have,
+/// so nothing but a hand-written case can cover it.
+#[rstest]
+fn every_temporal_literal_survives_formatting(#[allow(unused)] with_db: RootDatabase) {
+    assert_meaning_preserved(
+        "temporal literals",
+        r#"
+FUNCTION temporal : BOOL
+VAR
+    a : TIME := T#14ms;
+    b : TIME := T#-14ms;
+    c : TIME := T#+14ms;
+    d : TIME := TIME#1d2h3m4s5ms;
+    e : TIME := t#500us;
+    f : LTIME := LTIME#-3s;
+    g : LTIME := LT#3ns;
+    h : TIME_OF_DAY := TOD#15:36:55.36;
+    i : DATE := D#1984-06-25;
+    j : DATE_AND_TIME := DT#1984-06-25-15:36:55.36;
+    k : INT := INT#-30;
+    l : REAL := REAL#-1.5;
+END_VAR
+    a := T#-14ms;
+    temporal := TRUE;
+END_FUNCTION
+"#,
+    );
+}
+
 /// A POU with no VAR block at all — the shape whose body used to be joined
 /// onto the declaration line.
 #[rstest]
