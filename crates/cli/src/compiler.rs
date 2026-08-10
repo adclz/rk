@@ -162,10 +162,35 @@ pub fn build_core_quiet(
     Ok((wasm_module.finish(), mir_module))
 }
 
-/// Path of the debug **core** artifact: `rk compile --debug` writes it and
-/// the debugger loads it.
+/// Where a build of `workspace` lands, by PROFILE — the only axis there is.
+///
+/// There are two artifacts, not five. the debugger, the runtime and `rk test`
+/// all compile the same debug-profile core and differ only in which flag
+/// the runtime is then launched with, so they used to write three private
+/// copies of identical bytes under three names (`core.wasm`, `output.wasm`,
+/// `serving.wasm`) in directories named after commands rather than profiles —
+/// which left `rk_build/runtime/output.wasm` unable to say what profile it
+/// even was.
+///
+/// Every command WRITES this fresh before handing the path to a runtime;
+/// nothing reads it back expecting someone else to have filled it in. That
+/// distinction is the whole lesson of the stale-artifact bug: writing your own
+/// input is safe, trusting a file someone else may have written in June is not.
+pub fn artifact_path(
+    workspace: &std::path::Path,
+    profile: wasm_codegen::Profile,
+) -> std::path::PathBuf {
+    let dir = match profile {
+        wasm_codegen::Profile::Debug => "debug",
+        wasm_codegen::Profile::Release => "release",
+    };
+    workspace.join("rk_build").join(dir).join("core.wasm")
+}
+
+/// The debug artifact — what every command that hands a program to a runtime
+/// builds and passes along.
 pub fn debug_core_path(workspace: &std::path::Path) -> std::path::PathBuf {
-    workspace.join("rk_build").join("debug").join("core.wasm")
+    artifact_path(workspace, wasm_codegen::Profile::Debug)
 }
 
 /// The post-MVP proposals this compiler's output uses. wasm-opt validates

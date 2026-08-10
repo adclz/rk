@@ -20,11 +20,23 @@ pub fn run_test(
     let _ = &mir_module;
 
     // The artifact on disk is what the runtime is handed — and what a failing
-    // run is reproducible from: `runtime --test rk_build/test/output.wasm`
-    // repeats it exactly, with no compiler in the picture.
-    let build_dir = workspace.join("rk_build").join("test");
-    std::fs::create_dir_all(&build_dir).ok();
-    let wasm_path = build_dir.join("output.wasm");
+    // run is reproducible from: `runtime --test <that path>` repeats it
+    // exactly, with no compiler in the picture.
+    // `-O` makes this neither profile — an optimized build that still carries
+    // debug sections — so it keeps its own path rather than overwriting the
+    // debug artifact with something that is not one. That mongrel is a known
+    // defect in its own right (its line table no longer describes its code);
+    // giving it a separate file names it rather than hiding it.
+    let wasm_path = match opt_level {
+        None => crate::compiler::debug_core_path(workspace),
+        Some(level) => workspace
+            .join("rk_build")
+            .join(format!("test-O{level}"))
+            .join("core.wasm"),
+    };
+    if let Some(dir) = wasm_path.parent() {
+        std::fs::create_dir_all(dir).ok();
+    }
     std::fs::write(&wasm_path, &core_bytes)
         .map_err(|e| CliError::msg(format!("writing test binary: {e}")))?;
 

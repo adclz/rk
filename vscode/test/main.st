@@ -44,10 +44,6 @@ PROGRAM Main
 	belt(target := 1000, rate := 37);
 	parts := parts + 1; (* <- breakpoint here, then F10/F11 *)
 
-
-
-
-
 	scaled := scale(value := parts, factor := 3);
 	running := belt.at_top_changed;
 END_PROGRAM
@@ -57,3 +53,16 @@ CONFIGURATION Cfg
 		PROGRAM P1 WITH Cycle: Main;
 	END_RESOURCE
 END_CONFIGURATION
+
+
+NAMESPACE namespace.thing 
+{test}
+FUNCTION tets 
+	VAR 
+		test: INT := 0;
+	END_VAR
+
+
+	
+END_FUNCTION
+END_NAMESPACE

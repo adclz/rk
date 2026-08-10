@@ -174,9 +174,9 @@ impl Display for ConfigurationNotice {
             ConfigurationNotice::LibraryNotConfigured => {
                 write!(
                     f,
-                    "RK_STDLIB_PATH is not set — no standard library loaded, so \
-                     Std.* names will not resolve. Set it in the environment or \
-                     in a .env file at the workspace root; the empty string \
+                    "RK_STDLIB_PATH is not set.\nNo standard library loaded, so \
+                     Std.* names will not resolve.\nSet it in the environment or \
+                     in a .env file at the workspace root;\nAn empty string \
                      silences this message."
                 )
             }
@@ -184,7 +184,7 @@ impl Display for ConfigurationNotice {
                 write!(
                     f,
                     "RK_STDLIB_PATH points to '{value}', which is not a readable \
-                     directory — no standard library loaded"
+                     directory.\nNo standard library loaded"
                 )
             }
         }
