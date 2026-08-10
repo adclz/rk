@@ -310,9 +310,15 @@ static INDENTATIONS: &str = r#"
 
     "ELSE"
     "THEN"
-    "DO"
-    "REPEAT"
 ] @append_indent_start
+
+; Loops pair their opening keyword with their closing one IN ONE PATTERN, so
+; both fire or neither does. Listed separately, a half-typed `FOR i := 0 TO 10`
+; with no `DO` yet would close an indentation block it never opened, and the
+; whole file would fail to format — exactly when an editor formats on save.
+(for_stmt "DO" @append_indent_start "END_FOR" @prepend_indent_end)
+(while_stmt "DO" @append_indent_start "END_WHILE" @prepend_indent_end)
+(repeat_stmt "REPEAT" @append_indent_start "END_REPEAT" @prepend_indent_end)
 
 (prog_decl name: (identifier) @append_indent_start) ; using "PROGRAM" will break the indentation in CONFIGURATION and RESOURCE
 
@@ -338,9 +344,6 @@ static INDENTATIONS: &str = r#"
     "END_STRUCT"
 
     "END_IF"
-    "END_WHILE"
-    "END_FOR"
-    "END_REPEAT"
     "END_CASE"
 
     "ELSE"

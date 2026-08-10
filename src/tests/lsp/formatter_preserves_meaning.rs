@@ -221,6 +221,52 @@ END_PROGRAM
     );
 }
 
+/// A half-typed loop still formats.
+///
+/// `DO` is what opens the indentation block `END_FOR` closes, so listing the
+/// two independently meant a loop missing its `DO` — every loop, for the
+/// seconds you are typing it — closed a block that was never opened, and the
+/// WHOLE FILE failed to format. In an editor that formats on save, that is
+/// the moment it matters most.
+///
+/// Formatting an incomplete program is not expected to be pretty; it is
+/// expected to happen. These sources are deliberately invalid, so the check is
+/// just that meaning is preserved rather than the file being rejected.
+#[rstest]
+fn a_loop_being_typed_still_formats(#[allow(unused)] with_db: RootDatabase) {
+    // Only shapes the grammar RECOVERS from. A source it cannot parse at all
+    // (`WHILE a > 0` with no DO and no END_WHILE) is refused by `fmt` on
+    // purpose — that is a different thing from an indentation block that was
+    // closed without ever being opened.
+    for (label, src) in [
+        (
+            "FOR without DO",
+            "FUNCTION fn
+VAR i : INT; END_VAR
+    FOR i := 0 TO 10
+END_FUNCTION
+",
+        ),
+        (
+            "FOR with a bad control assignment",
+            "FUNCTION fn
+    FOR i = p TO smt END_FOR
+END_FUNCTION
+",
+        ),
+        (
+            "FOR with an arrow instead of an assignment",
+            "FUNCTION fn
+  VAR i : INT END_VAR
+  FOR i => 0 TO 10 END_FOR
+END_FUNCTION
+",
+        ),
+    ] {
+        assert_meaning_preserved(label, src);
+    }
+}
+
 /// A broad sweep, so the guard is not limited to the constructs that already
 /// bit us: one source exercising the declaration forms, the statement forms,
 /// the expression forms and the pragmas together.
