@@ -28,6 +28,8 @@ static SURROUND_SPACES: &str = r##"
     "VAR_EXTERNAL"
     "VAR_GLOBAL"
     "VAR_ACCESS"
+    "VAR_CONFIG"
+    "VAR_LOCATED"
     "END_VAR"
     "USING"
     "FINAL" "ABSTRACT" "OVERRIDE"
@@ -47,7 +49,7 @@ static SURROUND_SPACES: &str = r##"
     ; (`BOOL R_EDGE`) and VAR_ACCESS directions (`INT READ_ONLY`) all follow
     ; another token. Without a space they GLUE onto it and the file stops
     ; parsing — `BOOLR_EDGE` is not a type.
-    "AT" "R_EDGE" "F_EDGE"
+    "AT" "R_EDGE" "F_EDGE" (ERR_invalid_edge_qualifier)
     (read_only) (read_write)
    
     ":=" "=" "=>" "<=" "<" ">=" ">" "<>" "+" "-" "*" "/" 
@@ -121,6 +123,7 @@ static NEW_LINES: &str = r##"
     "VAR_EXTERNAL"
     "VAR_GLOBAL"
     "VAR_LOCATED"
+    "VAR_CONFIG"
 ] @prepend_hardline
 
 [
@@ -302,6 +305,7 @@ static INDENTATIONS: &str = r#"
     "VAR_GLOBAL"
     "VAR_ACCESS"
     "VAR_LOCATED"
+    "VAR_CONFIG"
     "STRUCT"
 
     "ELSE"
