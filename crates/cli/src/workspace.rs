@@ -111,7 +111,6 @@ pub fn init_db(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use auto_lsp::default::db::BaseDatabase;
     use db::WorkspaceDataBase;
     use db::loader::STDLIB_PATH_ENV;
 
