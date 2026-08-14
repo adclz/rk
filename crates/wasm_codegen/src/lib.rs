@@ -1055,12 +1055,11 @@ impl<'a> WasmGen<'a> {
         let mut mem_arrays = Vec::new();
         for local in &func.locals {
             if let mir::function::MirStorage::Memory { address, .. } = local.storage {
-                mir::debug_symbols::collect_root(
+                mir::debug_symbols::collect_frame_root(
                     self.db,
                     local.name.text(self.db).as_ref(),
                     address,
                     &local.ty,
-                    false,
                     &mut mem_symbols,
                     &mut mem_arrays,
                     &mut self.local_type_table,

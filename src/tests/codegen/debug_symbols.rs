@@ -225,32 +225,37 @@ fn aggregate_symbols(mut with_db: db::RootDatabase) {
 
     let by_path = |p: &str| parsed.symbols.iter().find(|s| s.path == p);
 
-    // 1-D array → one INT leaf per IEC subscript (lower bound 1), 4 bytes apart.
-    for p in ["Run.arr[1]", "Run.arr[2]", "Run.arr[3]"] {
-        assert_eq!(
-            by_path(p).unwrap_or_else(|| panic!("missing {p}")).ty,
-            SymType::Int
-        );
-    }
-    let a1 = by_path("Run.arr[1]").unwrap().address;
-    assert_eq!(by_path("Run.arr[2]").unwrap().address, a1 + 4);
-    assert_eq!(by_path("Run.arr[3]").unwrap().address, a1 + 8);
-    assert!(by_path("Run.arr[0]").is_none(), "lower bound is 1, not 0");
-    assert!(by_path("Run.arr[4]").is_none(), "upper bound is 3");
+    // Arrays contribute NO leaves — the descriptor is the whole record, and
+    // `locate` computes any element from it. 3 elements or 5000, the section
+    // costs the same.
+    assert!(
+        !parsed.symbols.iter().any(|s| s.path.contains('[')),
+        "no per-element leaves: {:?}",
+        parsed.symbols.iter().map(|s| &s.path).collect::<Vec<_>>()
+    );
+    let arr = parsed
+        .arrays
+        .iter()
+        .find(|a| a.path == "Run.arr")
+        .expect("the 1-D descriptor");
+    assert_eq!((arr.total_elements, arr.elem_size), (3, 4));
+    assert_eq!(arr.dimensions, vec![(1, 3)]);
 
-    // 2-D array → row-major subscripts: [0][1] is the 2nd element (+4), [1][0] the
-    // 3rd (+8) — the rightmost dimension varies fastest.
-    let g00 = by_path("Run.grid[0][0]").expect("grid[0][0]").address;
-    assert_eq!(by_path("Run.grid[0][1]").unwrap().address, g00 + 4);
-    assert_eq!(by_path("Run.grid[1][0]").unwrap().address, g00 + 8);
-    assert_eq!(by_path("Run.grid[1][1]").unwrap().address, g00 + 12);
-    for p in [
-        "Run.grid[0][0]",
-        "Run.grid[0][1]",
-        "Run.grid[1][0]",
-        "Run.grid[1][1]",
-    ] {
-        assert_eq!(by_path(p).unwrap().ty, SymType::DInt, "{p} type");
+    // ...and resolution honours IEC bounds, 4 bytes apart (lower bound 1).
+    let dbg = DebugInfo::from_wasm(&wasm);
+    let a1 = dbg.resolve("Run.arr[1]").expect("in range").address;
+    assert_eq!(dbg.resolve("Run.arr[2]").unwrap().address, a1 + 4);
+    assert_eq!(dbg.resolve("Run.arr[3]").unwrap().address, a1 + 8);
+    assert!(dbg.resolve("Run.arr[0]").is_none(), "lower bound is 1, not 0");
+    assert!(dbg.resolve("Run.arr[4]").is_none(), "upper bound is 3");
+
+    // 2-D: row-major, rightmost dimension varying fastest.
+    let g00 = dbg.resolve("Run.grid[0][0]").expect("grid[0][0]").address;
+    assert_eq!(dbg.resolve("Run.grid[0][1]").unwrap().address, g00 + 4);
+    assert_eq!(dbg.resolve("Run.grid[1][0]").unwrap().address, g00 + 8);
+    assert_eq!(dbg.resolve("Run.grid[1][1]").unwrap().address, g00 + 12);
+    for p in ["Run.grid[0][0]", "Run.grid[0][1]", "Run.grid[1][0]", "Run.grid[1][1]"] {
+        assert_eq!(dbg.resolve(p).unwrap().ty, SymType::DInt, "{p} type");
     }
 
     // Enum / subrange → one leaf of the underlying integer.
@@ -398,22 +403,17 @@ fn a_large_array_is_described_and_addressable_not_invisible(mut with_db: db::Roo
     assert_eq!(arr.elem_size, 4);
     assert_eq!(arr.elem_ty, Some(SymType::DInt));
 
-    // The leaf table is BUDGETED, not exploded and not empty: the first
-    // elements are eagerly readable for the snapshot stream…
+    // NO per-element leaves: the descriptor above is the entire record, so a
+    // 5000-element array costs the artifact one entry, not 5000 path strings.
     let leaves = table
         .symbols
         .iter()
         .filter(|s| s.path.starts_with("P1.big["))
         .count();
-    assert!(leaves > 0, "the budget's worth of leaves is still expanded");
-    assert!(
-        leaves <= 1024,
-        "a 5000-element array must not enumerate 5000 leaves, got {leaves}"
-    );
+    assert_eq!(leaves, 0, "elements are resolved on demand, never enumerated");
 
-    // …and any element past the budget resolves ON DEMAND through the
-    // descriptor: readable and forceable, like adding `big[4321]` to a
-    // other toolchains watch list.
+    // Any element resolves ON DEMAND through the descriptor: readable and
+    // forceable, like adding `big[4321]` to a watch list.
     let mut plc = Plc::load(&wasm, Config::default()).expect("load");
     plc.run(1).expect("scan");
     let info = DebugInfo::from_wasm(&wasm);
@@ -431,11 +431,11 @@ fn a_large_array_is_described_and_addressable_not_invisible(mut with_db: db::Roo
     assert_eq!(info.read_var(&plc, "P1.big[-1]"), None);
 }
 
-/// The leaf budget counts LEAVES EMITTED, not array elements. The old cap
-/// counted elements, so 1000 ten-field structs sailed through at 10000 leaves
-/// while a 1025-element INT array contributed nothing.
+/// An array of aggregates contributes no leaves either — 1000 ten-field
+/// structs used to enumerate 10000 paths; now the descriptor plus the interned
+/// struct layout is the whole record.
 #[rstest]
-fn the_leaf_budget_bounds_leaves_not_elements(mut with_db: db::RootDatabase) {
+fn an_aggregate_array_is_one_descriptor_not_ten_thousand_leaves(mut with_db: db::RootDatabase) {
     let source = r#"
         TYPE Ten : STRUCT
             f0 : DINT; f1 : DINT; f2 : DINT; f3 : DINT; f4 : DINT;
@@ -464,10 +464,7 @@ fn the_leaf_budget_bounds_leaves_not_elements(mut with_db: db::RootDatabase) {
         .iter()
         .filter(|s| s.path.starts_with("P1.wide["))
         .count();
-    assert!(
-        leaves <= 1024,
-        "1000 structs x 10 fields must respect the leaf budget, got {leaves}"
-    );
+    assert_eq!(leaves, 0, "no per-element leaves for aggregate arrays either");
     // The descriptor is present; its element is an aggregate, so it carries
     // no scalar decode type — that boundary needs a type table (a follow-up).
     let arr = table
@@ -784,5 +781,51 @@ fn a_frame_s_aggregate_array_elements_carry_their_layout(mut with_db: db::RootDa
     assert!(
         matches!(&locals.types[id], debug_format::TypeDesc::Struct { fields, .. } if fields.len() == 2),
         "DebugLocals carries the type table its frames reference"
+    );
+}
+
+/// The artifact cost of an array is its DESCRIPTOR, not its length.
+///
+/// An `ARRAY[0..4999] OF DINT` used to spend ~22 KB — 98% of the module — on
+/// element path strings. The whole point of the descriptor is that 5000
+/// addresses one multiplication apart need describing once.
+#[rstest]
+fn an_arrays_symbol_cost_does_not_grow_with_its_length(mut with_db: db::RootDatabase) {
+    let section_size = |db: &mut db::RootDatabase, decl: &str| {
+        let src = format!(
+            r#"
+PROGRAM Main
+VAR {decl} n : DINT; END_VAR
+    n := n + 1;
+END_PROGRAM
+CONFIGURATION Cfg
+    RESOURCE Res ON CPU
+        TASK T(INTERVAL := T#10ms, PRIORITY := 1);
+        PROGRAM P1 WITH T : Main;
+    END_RESOURCE
+END_CONFIGURATION
+"#
+        );
+        let (_mir, wasm) = compile_to_mir_and_wasm(db, &src);
+        wasmparser::Parser::new(0)
+            .parse_all(&wasm)
+            .flatten()
+            .find_map(|p| match p {
+                wasmparser::Payload::CustomSection(c) if c.name() == "debug-symbols" => {
+                    Some(c.data().len())
+                }
+                _ => None,
+            })
+            .expect("the debug build carries symbols")
+    };
+
+    let ten = section_size(&mut with_db, "a : ARRAY[0..9] OF DINT;");
+    let five_thousand = section_size(&mut with_db, "a : ARRAY[0..4999] OF DINT;");
+    // Not byte-identical (msgpack spends a couple more bytes writing `4999`
+    // than `9`), but within a fixed slack — never per-element.
+    assert!(
+        five_thousand <= ten + 8,
+        "5000 elements must not cost more than 10 plus integer-width slack: \
+         {ten} vs {five_thousand}"
     );
 }

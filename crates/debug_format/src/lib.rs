@@ -86,6 +86,28 @@ pub enum TypeDesc {
     },
 }
 
+/// An array element's IEC-subscripted path from its flat row-major index,
+/// chained (`a[1][2]`); owned here so emitter and consumers agree.
+pub fn element_path(path: &str, flat: u32, dimensions: &[(i64, i64)]) -> String {
+    if dimensions.is_empty() {
+        return format!("{path}[{flat}]");
+    }
+    let mut subs = vec![0i64; dimensions.len()];
+    let mut rem = i64::from(flat);
+    for d in (0..dimensions.len()).rev() {
+        let (lo, hi) = dimensions[d];
+        let size = (hi - lo + 1).max(1);
+        subs[d] = lo + rem % size;
+        rem /= size;
+    }
+    let joined = subs
+        .iter()
+        .map(|s| s.to_string())
+        .collect::<Vec<_>>()
+        .join("][");
+    format!("{path}[{joined}]")
+}
+
 /// One struct field: name, byte offset from the struct's base, type.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct FieldDesc {

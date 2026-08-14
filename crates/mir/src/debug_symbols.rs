@@ -144,6 +144,7 @@ pub fn walk_type(
     arrays: &mut Vec<debug_format::ArraySym>,
     types: &mut TypeTable,
     budget: &mut u32,
+    arrays_eager: bool,
 ) {
     // The budget gates leaves; descriptors are always recorded.
     if *budget == 0 && !matches!(ty, MirType::Array(_) | MirType::Struct(_)) {
@@ -199,13 +200,13 @@ pub fn walk_type(
                     arrays,
                     types,
                     budget,
+                    arrays_eager,
                 );
             }
         }
-        // The descriptor is the durable record — DWARF's array_type, in
-        // msgpack: shape once, elements computed on demand. Eager leaves are
-        // then expanded WHILE THE BUDGET LASTS as a convenience for the pushed
-        // snapshot; flat row-major (`lower_func`: `offset += idx * element_size`).
+        // The descriptor is the durable record: shape once, elements resolved on
+        // demand by `locate`. Frame locals stay eager (`arrays_eager`): their
+        // paths are frame-relative and only alive while the stop is.
         MirType::Array(a) => {
             let elem_ty = scalar_sym_ty(&a.element_type);
             arrays.push(debug_format::ArraySym {
@@ -222,22 +223,25 @@ pub fn walk_type(
                     .is_none()
                     .then(|| types.intern(db, &a.element_type)),
             });
-            for k in 0..a.total_elements {
-                if *budget == 0 {
-                    break;
+            if arrays_eager {
+                for k in 0..a.total_elements {
+                    if *budget == 0 {
+                        break;
+                    }
+                    let child = debug_format::element_path(path, k, &a.dimensions);
+                    walk_type(
+                        db,
+                        &child,
+                        addr + k * a.element_size,
+                        &a.element_type,
+                        global,
+                        out,
+                        arrays,
+                        types,
+                        budget,
+                        arrays_eager,
+                    );
                 }
-                let child = array_index_path(path, k, &a.dimensions);
-                walk_type(
-                    db,
-                    &child,
-                    addr + k * a.element_size,
-                    &a.element_type,
-                    global,
-                    out,
-                    arrays,
-                    types,
-                    budget,
-                );
             }
         }
         // STRING → one leaf carrying capacity; the runtime reads the 4-byte len
@@ -258,33 +262,6 @@ pub fn walk_type(
         // Pointers are raw addresses; not emitted yet.
         MirType::Pointer(_) | MirType::Void => {}
     }
-}
-
-/// Build an array element's IEC-subscripted path from the flat row-major index
-/// `flat` and the array's `dimensions` (`(lower, upper)` per dim). IEC subscript
-/// of a dimension = `lower + index`; the rightmost dimension varies fastest, so
-/// e.g. flat 0 of `ARRAY[1..2, 1..3]` is `[1,1]`, flat 3 is `[2,1]`.
-fn array_index_path(path: &str, flat: u32, dimensions: &[(i64, i64)]) -> String {
-    if dimensions.is_empty() {
-        return format!("{path}[{flat}]");
-    }
-    let mut subs = vec![0i64; dimensions.len()];
-    let mut rem = flat as i64;
-    for d in (0..dimensions.len()).rev() {
-        let (lo, hi) = dimensions[d];
-        let size = (hi - lo + 1).max(1);
-        subs[d] = lo + rem % size;
-        rem /= size;
-    }
-    // `a[1][2]`, the chained form the GRAMMAR accepts — `a[1,2]` is a syntax
-    // error in source, so a path rendered that way could never be typed back
-    // into a watch or pasted into ST.
-    let joined = subs
-        .iter()
-        .map(|s| s.to_string())
-        .collect::<Vec<_>>()
-        .join("][");
-    format!("{path}[{joined}]")
 }
 
 /// The decode type of one scalar array element; `None` for aggregates.
@@ -313,7 +290,22 @@ pub fn collect_root(
     types: &mut TypeTable,
 ) {
     let mut budget = MAX_ROOT_LEAVES;
-    walk_type(db, root, base, ty, global, out, arrays, types, &mut budget);
+    walk_type(db, root, base, ty, global, out, arrays, types, &mut budget, false);
+}
+
+/// As [`collect_root`], but with eager array elements — for FRAME locals,
+/// whose relative paths the on-demand read cannot address.
+pub fn collect_frame_root(
+    db: &dyn WorkspaceDataBase,
+    root: &str,
+    base: u32,
+    ty: &MirType,
+    out: &mut Vec<Symbol>,
+    arrays: &mut Vec<debug_format::ArraySym>,
+    types: &mut TypeTable,
+) {
+    let mut budget = MAX_ROOT_LEAVES;
+    walk_type(db, root, base, ty, false, out, arrays, types, &mut budget, true);
 }
 
 /// A leaf symbol's dotted path from a root segment and a field name.
