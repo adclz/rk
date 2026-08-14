@@ -101,7 +101,7 @@ pub fn lower_type<'db>(
 
         Type::Array(arr) => lower_array_type(db, arr),
 
-        Type::Enum(e) => lower_enum_type(db, e),
+        Type::Enum(e) => lower_enum_type_named(db, e, type_name),
 
         Type::SubRange(sr) => lower_subrange_type(db, sr),
 
@@ -302,12 +302,6 @@ fn lower_array_type<'db>(
     }))
 }
 
-fn lower_enum_type<'db>(
-    db: &'db dyn WorkspaceDataBase,
-    enum_type: hir::hir_def::expressions::spec::Enum<'db>,
-) -> Result<MirType, LowerTypeError> {
-    lower_enum_type_named(db, enum_type, None)
-}
 
 /// Each enumerator paired with its declared numeric value: an explicit
 /// `(Idle := 10, Run := 20)`, or continuing from the previous value from 0.

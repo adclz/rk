@@ -30,6 +30,20 @@ impl TypeTable {
         self.entries
     }
 
+    /// Intern an enumeration's variant table, returning its id.
+    pub fn intern_enum(&mut self, db: &dyn WorkspaceDataBase, e: &crate::types::MirEnumType) -> u32 {
+        let desc = TypeDesc::Enum {
+            name: e.name.text(db).to_string(),
+            storage: sym_type_of(e.storage),
+            variants: e
+                .variants
+                .iter()
+                .map(|(name, value)| (name.to_string(), *value))
+                .collect(),
+        };
+        self.push(desc)
+    }
+
     /// Intern `ty`, returning its id. Children are interned first, so a
     /// descriptor only ever references earlier entries.
     pub fn intern(&mut self, db: &dyn WorkspaceDataBase, ty: &MirType) -> u32 {
@@ -65,6 +79,11 @@ impl TypeTable {
             MirType::Pointer(_) => TypeDesc::Opaque { size: 4 },
             MirType::Void => TypeDesc::Opaque { size: 0 },
         };
+        self.push(desc)
+    }
+
+    /// Deduplicate by structural identity.
+    fn push(&mut self, desc: TypeDesc) -> u32 {
         let key = format!("{desc:?}");
         if let Some(&id) = self.index.get(&key) {
             return id;
@@ -138,11 +157,12 @@ pub fn walk_type(
                 size: e.size_bytes(),
                 ty: sym_type_of(*e),
                 global,
+                named_type: None,
             });
             *budget = budget.saturating_sub(1);
         }
-        // Enum / Subrange are stored as their underlying integer; emit one leaf
-        // of that type. (Symbolic variant / bound display is a richer wire format.)
+        // An enum leaf references its variant table so a debugger can name
+        // the value.
         MirType::Enum(e) => {
             out.push(Symbol {
                 path: path.to_string(),
@@ -150,9 +170,11 @@ pub fn walk_type(
                 size: e.storage.size_bytes(),
                 ty: sym_type_of(e.storage),
                 global,
+                named_type: Some(types.intern_enum(db, e)),
             });
             *budget = budget.saturating_sub(1);
         }
+        // A subrange is its base type; the bounds are display-only.
         MirType::Subrange(s) => {
             out.push(Symbol {
                 path: path.to_string(),
@@ -160,6 +182,7 @@ pub fn walk_type(
                 size: s.base.size_bytes(),
                 ty: sym_type_of(s.base),
                 global,
+                named_type: None,
             });
             *budget = budget.saturating_sub(1);
         }
@@ -228,6 +251,7 @@ pub fn walk_type(
                     capacity: *capacity,
                 },
                 global,
+                named_type: None,
             });
             *budget = budget.saturating_sub(1);
         }

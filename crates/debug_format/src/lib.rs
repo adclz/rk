@@ -16,7 +16,7 @@ pub const DEBUG_SYMBOLS_SECTION: &str = "debug-symbols";
 /// On-wire format version; bump on any breaking change. A new field goes
 /// at the TAIL of its struct: `rmp_serde` encodes positionally, so
 /// `#[serde(default)]` only backfills a field missing from the end.
-pub const DEBUG_SYMBOLS_VERSION: u16 = 5;
+pub const DEBUG_SYMBOLS_VERSION: u16 = 6;
 
 /// The complete debug-symbol table for a module.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -75,6 +75,15 @@ pub enum TypeDesc {
     /// Present but not walkable: a pointer. Locating through one needs a live
     /// dereference.
     Opaque { size: u32 },
+    /// An IEC enumeration: stored as `storage`, displayed as a variant name.
+    /// Last on purpose (variant index encoding).
+    Enum {
+        /// The IEC type name (`TrafficLight`).
+        name: String,
+        storage: SymType,
+        /// Variants in declaration order, with their integer values.
+        variants: Vec<(String, i64)>,
+    },
 }
 
 /// One struct field: name, byte offset from the struct's base, type.
@@ -128,6 +137,10 @@ pub struct Symbol {
     /// `true` for a configuration `VAR_GLOBAL`, `false` for a program-instance
     /// field — lets a debugger group variables into Globals vs Locals.
     pub global: bool,
+    /// The declared type when it has a name the value cannot carry (an
+    /// enumeration). Last on purpose.
+    #[serde(default)]
+    pub named_type: Option<TypeId>,
 }
 
 /// Elementary type tag. Mirrors the compiler's elementary types but stands on
@@ -608,7 +621,17 @@ mod tests {
     /// artifact outlives the toolchain. This constructs a real v4 payload
     /// from mirror structs, since a v5→v5 round-trip proves nothing.
     #[test]
-    fn a_v4_payload_still_decodes_as_v5() {
+    fn a_v4_payload_still_decodes_today() {
+        /// A v4 `Symbol`: no `named_type`. Mirrored rather than reused, so
+        /// this really encodes what a v4 producer wrote.
+        #[derive(Serialize)]
+        struct SymbolV4 {
+            path: String,
+            address: u32,
+            size: u32,
+            ty: SymType,
+            global: bool,
+        }
         #[derive(Serialize)]
         struct ArraySymV4 {
             path: String,
@@ -622,13 +645,13 @@ mod tests {
         #[derive(Serialize)]
         struct DebugSymbolsV4 {
             version: u16,
-            symbols: Vec<Symbol>,
+            symbols: Vec<SymbolV4>,
             arrays: Vec<ArraySymV4>,
         }
 
         let v4 = DebugSymbolsV4 {
             version: 4,
-            symbols: vec![Symbol {
+            symbols: vec![SymbolV4 {
                 path: "P.n".into(),
                 address: 32,
                 size: 4,
