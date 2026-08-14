@@ -166,6 +166,37 @@ pub enum SymType {
 }
 
 impl SymType {
+    /// The IEC 61131-3 type name, as declared.
+    pub fn rk_name(self) -> &'static str {
+        match self {
+            SymType::Bool => "BOOL",
+            SymType::SInt => "SINT",
+            SymType::Int => "INT",
+            SymType::DInt => "DINT",
+            SymType::LInt => "LINT",
+            SymType::USInt => "USINT",
+            SymType::UInt => "UINT",
+            SymType::UDInt => "UDINT",
+            SymType::ULInt => "ULINT",
+            SymType::Byte => "BYTE",
+            SymType::Word => "WORD",
+            SymType::DWord => "DWORD",
+            SymType::LWord => "LWORD",
+            SymType::Real => "REAL",
+            SymType::LReal => "LREAL",
+            SymType::Char => "CHAR",
+            SymType::Time => "TIME",
+            SymType::LTime => "LTIME",
+            SymType::Date => "DATE",
+            SymType::LDate => "LDATE",
+            SymType::Tod => "TIME_OF_DAY",
+            SymType::LTod => "LTIME_OF_DAY",
+            SymType::DateAndTime => "DATE_AND_TIME",
+            SymType::LDateTime => "LDATE_AND_TIME",
+            SymType::String { .. } => "STRING",
+        }
+    }
+
     /// In-memory slot size in bytes. Every elementary value occupies a 4- or
     /// 8-byte slot in linear memory.
     pub fn size_bytes(self) -> u32 {
