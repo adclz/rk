@@ -31,7 +31,7 @@ fn render_codegen_error(
         .call();
     diagnostic.with_note(format!(
         "the workspace passed `rk check`; this is a compiler bug or an \
-         unimplemented construct — please report it at {ISSUES_URL}"
+         unimplemented construct; please report it at {ISSUES_URL}"
     ));
 
     let mut buffer: Vec<u8> = Vec::new();
@@ -112,10 +112,10 @@ pub fn build_core_profile(
                 }
                 None => {
                     ui::error(format!(
-                        "internal compiler error: {e} — please report it at {ISSUES_URL}"
+                        "internal compiler error: {e}; please report it at {ISSUES_URL}"
                     ));
                     Err(format!(
-                        "internal compiler error: {e} — please report it at {ISSUES_URL}"
+                        "internal compiler error: {e}; please report it at {ISSUES_URL}"
                     ))
                 }
             };
@@ -155,7 +155,7 @@ pub fn build_core_quiet(
             render_codegen_error(db, workspace, &e, crate::cli::OutputFormat::Full)
                 .map(|report| format!("{report}\ninternal compiler error: cannot compile.\n"))
                 .unwrap_or_else(|| {
-                    format!("internal compiler error: {e} — please report it at {ISSUES_URL}")
+                    format!("internal compiler error: {e}; please report it at {ISSUES_URL}")
                 })
         })?;
     let wasm_module = wasm_codegen::generate_wasm(db, &mir_module);
@@ -239,7 +239,7 @@ pub fn optimize_wasm_release(
     // input unchanged. For a release that signal becomes an error...
     if optimized == original {
         return Err(
-            "wasm-opt did not produce an optimized module — a release build requires it.
+            "wasm-opt did not produce an optimized module; a release build requires it.
                     Install Binaryen 119+ (CI pins 131) and ensure `wasm-opt` is on PATH."
                 .to_string(),
         );

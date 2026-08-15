@@ -49,7 +49,7 @@ fn emit_file(
             "unformatted" => println!("  {} {}{}", "unformatted".bold().yellow(), rel, loc),
             "formatted" => println!("  {} {}", "formatted".bold().green(), rel),
             _ => eprintln!(
-                "  {} {} — {}",
+                "  {} {}: {}",
                 "error".bold().red(),
                 rel,
                 reason.unwrap_or_default()

@@ -30,7 +30,7 @@ pub fn run_explain(code: &str) -> CliResult<()> {
     let needle = code.trim().to_ascii_uppercase();
     let Some(entry) = entries.into_iter().find(|e| e.code == needle) else {
         return Err(CliError::Message(format!(
-            "unknown diagnostic code '{}' — codes look like E0301 or L0002",
+            "unknown diagnostic code '{}'; codes look like E0301 or L0002",
             code.trim()
         )));
     };
