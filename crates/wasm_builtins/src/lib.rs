@@ -264,7 +264,7 @@ fn rk_str_emit(out_addr: u32, out_cap: u32, src: &[u8]) {
 /// Decimal-format a `u64` into `buf` right-aligned; `buf` must hold 20
 /// bytes.
 #[inline]
-fn fmt_u64<'a>(mut value: u64, buf: &'a mut [u8]) -> &'a [u8] {
+fn fmt_u64(mut value: u64, buf: &mut [u8]) -> &[u8] {
     let mut pos = buf.len();
     if value == 0 {
         pos -= 1;
@@ -282,7 +282,7 @@ fn fmt_u64<'a>(mut value: u64, buf: &'a mut [u8]) -> &'a [u8] {
 /// Decimal-format an `i64` into `buf` right-aligned; `i64::MIN` via the
 /// unsigned magnitude.
 #[inline]
-fn fmt_i64<'a>(value: i64, buf: &'a mut [u8]) -> &'a [u8] {
+fn fmt_i64(value: i64, buf: &mut [u8]) -> &[u8] {
     if value >= 0 {
         return fmt_u64(value as u64, buf);
     }
@@ -344,7 +344,7 @@ pub extern "C" fn rk_str_from_u64(value: u64, out_addr: u32, out_cap: u32) {
 /// as `"1.500000"`. This is a deliberate trade-off: a trim adds branches
 /// and the round-trip with `STRING_TO_LREAL` (when we add it) doesn't
 /// care about trailing zeros.
-fn fmt_f64<'a>(value: f64, buf: &'a mut [u8]) -> &'a [u8] {
+fn fmt_f64(value: f64, buf: &mut [u8]) -> &[u8] {
     if value.is_nan() {
         buf[..3].copy_from_slice(b"NaN");
         return &buf[..3];

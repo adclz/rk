@@ -30,7 +30,8 @@ pub(crate) struct GraftPlan {
     /// Number of builtin functions appended (after imports, before user fns).
     /// Includes the synthesized `__iec_raise` helper when one is emitted.
     pub n_funcs: u32,
-    /// Number of new types appended for builtin signatures.
+    /// Number of new types appended; a record of what the graft did.
+    #[allow(dead_code)]
     pub n_types: u32,
     /// Builtin name (e.g. `f32.sin`) → output WASM function index.
     pub name_to_wasm_idx: FxHashMap<String, u32>,

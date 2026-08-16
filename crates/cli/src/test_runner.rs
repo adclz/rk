@@ -195,6 +195,37 @@ fn read_report(
     (summary, failures)
 }
 
+fn report_one(r: &TestRecord, format: OutputFormat) {
+    let name = &r.name;
+    match format {
+        OutputFormat::Full => {
+            let tag = if r.passed() {
+                "PASS".green().to_string()
+            } else {
+                "FAIL".red().to_string()
+            };
+            println!(
+                "        {} {} {}",
+                tag,
+                format!("[{:>7}]", fmt_duration(Duration::from_micros(r.duration_us))).dim(),
+                name,
+            );
+        }
+        // Reason inline, no durations/decoration — line-stable for agents.
+        OutputFormat::Concise => match &r.reason {
+            None => println!("PASS {name}"),
+            Some(reason) => println!(
+                "FAIL {name}{}: {}",
+                loc_suffix(r),
+                reason.replace('\n', " ")
+            ),
+        },
+        // Already the wire's own shape: forward it unchanged, so what a program
+        // parses here is exactly what the runtime said.
+        OutputFormat::JsonLines => print_json(&ReportLine::Test(r.clone())),
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -258,33 +289,4 @@ mod tests {
     }
 }
 
-fn report_one(r: &TestRecord, format: OutputFormat) {
-    let name = &r.name;
-    match format {
-        OutputFormat::Full => {
-            let tag = if r.passed() {
-                "PASS".green().to_string()
-            } else {
-                "FAIL".red().to_string()
-            };
-            println!(
-                "        {} {} {}",
-                tag,
-                format!("[{:>7}]", fmt_duration(Duration::from_micros(r.duration_us))).dim(),
-                name,
-            );
-        }
-        // Reason inline, no durations/decoration — line-stable for agents.
-        OutputFormat::Concise => match &r.reason {
-            None => println!("PASS {name}"),
-            Some(reason) => println!(
-                "FAIL {name}{}: {}",
-                loc_suffix(r),
-                reason.replace('\n', " ")
-            ),
-        },
-        // Already the wire's own shape: forward it unchanged, so what a program
-        // parses here is exactly what the runtime said.
-        OutputFormat::JsonLines => print_json(&ReportLine::Test(r.clone())),
-    }
-}
+
