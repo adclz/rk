@@ -382,6 +382,7 @@ fn retain_initializer_is_cold_start_only(mut with_db: db::RootDatabase) {
             Config {
                 entry: None,
                 retain_path: Some(path.clone()),
+                program_path: None,
             },
         )
         .expect("load (cold)");
@@ -398,6 +399,7 @@ fn retain_initializer_is_cold_start_only(mut with_db: db::RootDatabase) {
             Config {
                 entry: None,
                 retain_path: Some(path.clone()),
+                program_path: None,
             },
         )
         .expect("load (warm)");

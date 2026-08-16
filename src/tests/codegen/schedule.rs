@@ -400,6 +400,7 @@ fn scheduler_runs_tasks_at_their_rates_and_persists(mut with_db: db::RootDatabas
             Config {
                 entry: None,
                 retain_path: Some(path.clone()),
+                program_path: None,
             },
         )
         .expect("load (boot 1)");
@@ -417,6 +418,7 @@ fn scheduler_runs_tasks_at_their_rates_and_persists(mut with_db: db::RootDatabas
             Config {
                 entry: None,
                 retain_path: Some(path.clone()),
+                program_path: None,
             },
         )
         .expect("load (boot 2)");
