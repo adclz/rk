@@ -91,7 +91,16 @@ fn load_dirs(name: &'static str, dirs: &[&str]) -> Corpus {
     let files = paths
         .into_iter()
         .map(|p| {
-            let rel = p.strip_prefix(root).unwrap().to_str().unwrap().to_string();
+            // `/`-separated: the key is matched against `Edit::file`
+            // constants written in source, so it cannot carry the host's
+            // separator.
+            let rel = p
+                .strip_prefix(root)
+                .unwrap()
+                .components()
+                .map(|c| c.as_os_str().to_string_lossy())
+                .collect::<Vec<_>>()
+                .join("/");
             let source = std::fs::read_to_string(&p).unwrap();
             (rel, source)
         })

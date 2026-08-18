@@ -1,4 +1,6 @@
-Cargo.lock
+# The root Cargo.lock is TRACKED for CI
+# Only the excluded crate's generated lock stays ignored
+/crates/wasm_builtins/Cargo.lock
 /target
 crates/wasm_builtins/target
 

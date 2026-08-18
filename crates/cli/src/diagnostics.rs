@@ -64,6 +64,15 @@ pub struct DiagnosticCounts {
     pub hints: i32,
 }
 
+/// A relative path rendered with `/` on every platform, since it is
+/// printed, compared and snapshotted.
+pub(crate) fn slash_path(p: &std::path::Path) -> String {
+    p.components()
+        .map(|c| c.as_os_str().to_string_lossy())
+        .collect::<Vec<_>>()
+        .join("/")
+}
+
 impl DiagnosticCounts {
     pub fn has_errors(&self) -> bool {
         self.errors > 0
@@ -189,8 +198,9 @@ impl<'db> DiagnosticReporter<'db> {
         counts
     }
 
-    /// Workspace-relative path for `url` (falls back to the URL itself for
-    /// non-file or out-of-workspace sources).
+    /// Workspace-relative path for `url` (the URL itself for other sources),
+    /// always `/`-separated: this string is an identifier on the wire, keyed
+    /// on by editors, CI annotations and snapshots.
     fn rel_path(&self, url: &Url) -> String {
         url.to_file_path()
             .ok()
@@ -198,7 +208,7 @@ impl<'db> DiagnosticReporter<'db> {
                 abs_path
                     .strip_prefix(&self.workspace_path)
                     .ok()
-                    .map(|p| p.to_string_lossy().into_owned())
+                    .map(slash_path)
             })
             .unwrap_or_else(|| url.as_str().to_string())
     }
