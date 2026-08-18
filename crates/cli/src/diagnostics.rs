@@ -98,8 +98,15 @@ impl DiagnosticCounts {
 
 impl<'db> DiagnosticReporter<'db> {
     pub fn new(db: &'db RootDatabase, workspace: &Path) -> Self {
-        let workspace_path =
+        let canonical =
             std::fs::canonicalize(workspace).unwrap_or_else(|_| workspace.to_path_buf());
+        // On Windows, canonicalize returns a verbatim path (`\\?\C:\...`);
+        // diagnostics' paths arrive through a Url round-trip that drops it, so
+        // this path takes the same round-trip.
+        let workspace_path = Url::from_file_path(&canonical)
+            .ok()
+            .and_then(|u| u.to_file_path().ok())
+            .unwrap_or(canonical);
         // Color follows the one process-wide decision made at startup
         // (`ui::init_output`).
         let config = ariadne::Config::new()

@@ -101,7 +101,10 @@ fn load_dirs(name: &'static str, dirs: &[&str]) -> Corpus {
                 .map(|c| c.as_os_str().to_string_lossy())
                 .collect::<Vec<_>>()
                 .join("/");
-            let source = std::fs::read_to_string(&p).unwrap();
+            // A Windows checkout smudges the corpus to CRLF, and the edit
+            // needles are `\n`-joined; the measurement must not depend on
+            // what git did to the working tree.
+            let source = std::fs::read_to_string(&p).unwrap().replace("\r\n", "\n");
             (rel, source)
         })
         .collect();
