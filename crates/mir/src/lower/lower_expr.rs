@@ -1266,30 +1266,7 @@ impl<'db> ExprLowerCtx<'db> {
         if let Some(kind) = path.invocation(self.db).map(|i| i.kind(self.db)) {
             match kind {
                 InvocationKind::This | InvocationKind::Super => {
-                    let method_decl = match method {
-                        MethodRef::Declared(md) => md,
-                        MethodRef::Prototype(_) => {
-                            return Err(LowerTypeError::UnsupportedType(
-                                "THIS/SUPER method call unexpectedly resolved to an \
-                                 interface prototype"
-                                    .to_string(),
-                            ));
-                        }
-                    };
-                    let callee = self.method_callee_symbol(method_decl)?;
-                    let receiver = MirPlace::ThisField {
-                        field_name: hir::hir_def::interned::identifier::Ident::new(
-                            self.db,
-                            compact_str::CompactString::from("THIS"),
-                        ),
-                        field_offset: 0,
-                        field_type: MirType::Elementary(MirElementary::Int),
-                    };
-                    let ret = method
-                        .return_type(self.db)
-                        .map(|spec| spec.infer(self.db))
-                        .unwrap_or(Type::Void);
-                    return Ok(Some((callee, receiver, ret)));
+                    return Ok(Some(self.this_receiver_call(method, "THIS/SUPER")?));
                 }
                 // `SUPER()` is a base-body call lowered in `lower_super_body_call`; it
                 // never reaches here.
@@ -1297,9 +1274,13 @@ impl<'db> ExprLowerCtx<'db> {
             }
         }
 
-        // `receiver.method` is a Field whose `.path` is the receiver instance.
+        // `receiver.method` is a Field whose `.path` is the receiver; a bare
+        // `Helper()` is a sibling call with an implicit THIS receiver.
         let field = match path.expr(self.db).map(|pe| pe.expr(self.db)) {
             Some(PathExprKind::Field(fe)) => fe,
+            Some(PathExprKind::VarAccess(_)) => {
+                return Ok(Some(self.this_receiver_call(method, "bare")?));
+            }
             _ => {
                 return Err(LowerTypeError::UnsupportedType(
                     "unsupported method-call form (expected `instance.method(...)`)".to_string(),
@@ -1636,11 +1617,18 @@ impl<'db> ExprLowerCtx<'db> {
                         if fills_defaults && is_aggregate {
                             let var_ty = crate::lower::lower_func::lower_var_type(self.db, *var)?;
                             if matches!(var_ty, MirType::Struct(_) | MirType::Array(_)) {
-                                let MirExpr::Load(src, _) = lowered else {
-                                    return Err(LowerTypeError::UnsupportedType(
-                                        "aggregate VAR_INPUT argument must be a variable"
-                                            .to_string(),
-                                    ));
+                                let src = match lowered {
+                                    MirExpr::Load(src, _) => MirExpr::AddrOf(src),
+                                    // An aggregate-returning call already yields its
+                                    // source address.
+                                    call @ MirExpr::Call(_) => call,
+                                    _ => {
+                                        return Err(LowerTypeError::UnsupportedType(
+                                            "aggregate VAR_INPUT argument must be a \
+                                             variable or a call result"
+                                                .to_string(),
+                                        ));
+                                    }
                                 };
                                 let name = hir::hir_def::interned::identifier::Ident::new(
                                     self.db,
@@ -1654,7 +1642,7 @@ impl<'db> ExprLowerCtx<'db> {
                                 args.push(MirCallArg {
                                     value: MirExpr::CopyIntoScratch {
                                         scratch: name,
-                                        src,
+                                        src: Box::new(src),
                                         size,
                                     },
                                     kind: MirArgKind::ByValue,
@@ -1774,9 +1762,16 @@ impl<'db> ExprLowerCtx<'db> {
                     let expr = match &field.ty {
                         MirType::Struct(_) | MirType::Array(_) => match expr {
                             MirExpr::Load(place, _) => MirExpr::AddrOf(place),
-                            // No address to copy from (not an l-value) —
-                            // nothing sensible to store.
-                            _ => continue,
+                            // An aggregate-returning call yields the source address itself.
+                            call @ MirExpr::Call(_) => call,
+                            // Not an l-value, not a call: no address to copy from.
+                            _ => {
+                                return Err(LowerTypeError::UnsupportedType(
+                                    "aggregate VAR_INPUT argument must be a variable \
+                                     or a call result"
+                                        .to_string(),
+                                ));
+                            }
                         },
                         // A scalar input is cast to the FIELD's lane — same
                         // hole as the function-call path: HIR accepts an
@@ -1823,6 +1818,45 @@ impl<'db> ExprLowerCtx<'db> {
             input_writes,
             output_reads,
         }))
+    }
+
+    /// The callee, receiver and return type of a method call whose receiver is
+    /// the current instance: `THIS.m()`, `SUPER.m()`, or a bare sibling `m()`.
+    fn this_receiver_call(
+        &self,
+        method: hir::hir_ty::head::inheritance::MethodRef<'db>,
+        form: &str,
+    ) -> Result<
+        (
+            hir::hir_def::interned::identifier::Ident,
+            MirPlace,
+            Type<'db>,
+        ),
+        LowerTypeError,
+    > {
+        use hir::hir_ty::head::inheritance::MethodRef;
+        let method_decl = match method {
+            MethodRef::Declared(md) => md,
+            MethodRef::Prototype(_) => {
+                return Err(LowerTypeError::UnsupportedType(format!(
+                    "{form} method call unexpectedly resolved to an interface prototype"
+                )));
+            }
+        };
+        let callee = self.method_callee_symbol(method_decl)?;
+        let receiver = MirPlace::ThisField {
+            field_name: hir::hir_def::interned::identifier::Ident::new(
+                self.db,
+                compact_str::CompactString::from("THIS"),
+            ),
+            field_offset: 0,
+            field_type: MirType::Elementary(MirElementary::Int),
+        };
+        let ret = method
+            .return_type(self.db)
+            .map(|spec| spec.infer(self.db))
+            .unwrap_or(Type::Void);
+        Ok((callee, receiver, ret))
     }
 
     fn find_root_var_ident(

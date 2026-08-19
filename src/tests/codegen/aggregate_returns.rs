@@ -268,3 +268,94 @@ fn class_method_returning_a_struct(mut with_db: db::RootDatabase) {
     let result: i32 = execute_wasm(&wasm, "run", ());
     assert_eq!(result, 709);
 }
+
+/// A call result passed STRAIGHT to an aggregate `VAR_INPUT` — no temp
+/// variable. The arg-copy machinery snapshots from the address the call
+/// yields, exactly as it snapshots from a variable's address; this used to be
+/// refused with "aggregate VAR_INPUT argument must be a variable".
+///
+/// Two args from the SAME callee are the load-bearing case: both calls write
+/// one static return slot, so only the per-arg scratch copy keeps the first
+/// snapshot alive while the second call overwrites the slot.
+#[rstest]
+fn call_result_passed_directly_to_aggregate_input(mut with_db: db::RootDatabase) {
+    let source = r#"
+        TYPE Point : STRUCT x : INT; y : INT; END_STRUCT; END_TYPE
+
+        FUNCTION MakePt : Point
+        VAR_INPUT a : INT; b : INT; END_VAR
+            MakePt.x := a;
+            MakePt.y := b;
+        END_FUNCTION
+
+        FUNCTION Sum2 : INT
+        VAR_INPUT p : Point; q : Point; END_VAR
+            Sum2 := p.x + p.y + q.x + q.y;
+        END_FUNCTION
+
+        FUNCTION run : INT
+            run := Sum2(p := MakePt(a := 1, b := 2), q := MakePt(a := 10, b := 20));
+        END_FUNCTION
+    "#;
+    let wasm = compile_to_wasm_checked(&mut with_db, source);
+    let result: i32 = execute_wasm(&wasm, "run", ());
+    assert_eq!(result, 33, "each arg is its own snapshot of the shared return slot");
+}
+
+/// The FB twin: a call result as an aggregate FB input. This arm used to
+/// `continue` — the input write was SILENTLY DROPPED and the field kept its
+/// old value, with `rk check` clean.
+#[rstest]
+fn call_result_passed_to_fb_aggregate_input(mut with_db: db::RootDatabase) {
+    let source = r#"
+        TYPE Point : STRUCT x : INT; y : INT; END_STRUCT; END_TYPE
+
+        FUNCTION MakePt : Point
+        VAR_INPUT a : INT; b : INT; END_VAR
+            MakePt.x := a;
+            MakePt.y := b;
+        END_FUNCTION
+
+        FUNCTION_BLOCK Holder
+        VAR_INPUT s : Point; END_VAR
+        VAR total : INT; END_VAR
+            total := s.x + s.y;
+        END_FUNCTION_BLOCK
+
+        FUNCTION run : INT
+        VAR h : Holder; END_VAR
+            h(s := MakePt(a := 5, b := 6));
+            run := h.total;
+        END_FUNCTION
+    "#;
+    let wasm = compile_to_wasm_checked(&mut with_db, source);
+    let result: i32 = execute_wasm(&wasm, "run", ());
+    assert_eq!(result, 11, "the call result reaches the FB input");
+}
+
+/// Arrays ride the same arm as structs.
+#[rstest]
+fn array_call_result_passed_directly_to_aggregate_input(mut with_db: db::RootDatabase) {
+    let source = r#"
+        TYPE Arr3 : ARRAY[0..2] OF INT; END_TYPE
+
+        FUNCTION MakeArr : Arr3
+        VAR_INPUT seed : INT; END_VAR
+            MakeArr[0] := seed;
+            MakeArr[1] := seed + 1;
+            MakeArr[2] := seed + 2;
+        END_FUNCTION
+
+        FUNCTION SumArr : INT
+        VAR_INPUT a : Arr3; END_VAR
+            SumArr := a[0] + a[1] + a[2];
+        END_FUNCTION
+
+        FUNCTION run : INT
+            run := SumArr(a := MakeArr(seed := 4));
+        END_FUNCTION
+    "#;
+    let wasm = compile_to_wasm_checked(&mut with_db, source);
+    let result: i32 = execute_wasm(&wasm, "run", ());
+    assert_eq!(result, 15);
+}

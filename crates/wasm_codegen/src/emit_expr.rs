@@ -129,7 +129,7 @@ pub(crate) fn emit_expr(
         MirExpr::CopyIntoScratch { scratch, src, size } => {
             let dst = mir::expr::MirPlace::Local(*scratch);
             emit_addr_of(func, &dst, locals, fn_indices); // dst
-            emit_addr_of(func, src, locals, fn_indices); // src
+            emit_expr(func, src, locals, fn_indices); // src address
             func.instruction(&Instruction::I32Const(*size as i32)); // len
             func.instruction(&Instruction::MemoryCopy {
                 src_mem: 0,

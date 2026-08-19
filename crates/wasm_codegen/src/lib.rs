@@ -795,7 +795,9 @@ impl<'a> WasmGen<'a> {
                     walk_expr(db, expr, found)
                 }
                 MirExpr::Load(place, _) | MirExpr::AddrOf(place) => walk_place(db, place, found),
-                MirExpr::CopyIntoScratch { src, .. } => walk_place(db, src, found),
+                // `src` may be an aggregate-returning Call, whose args can
+                // reach builtins — recurse rather than walk a place.
+                MirExpr::CopyIntoScratch { src, .. } => walk_expr(db, src, found),
                 MirExpr::Constant(_) | MirExpr::StringLiteral { .. } => {}
             }
         }

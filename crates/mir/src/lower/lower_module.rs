@@ -1207,9 +1207,9 @@ fn rewrite_globals_expr(
             rewrite_globals_place(place, globals, locals);
         }
         MirExpr::CopyIntoScratch { src, .. } => {
-            // The scratch is always a true local; only the source place may
+            // The scratch is always a true local; only the source expression may
             // name a global.
-            rewrite_globals_place(src, globals, locals);
+            rewrite_globals_expr(src, globals, locals);
         }
         MirExpr::BinOp { lhs, rhs, .. } => {
             rewrite_globals_expr(lhs, globals, locals);

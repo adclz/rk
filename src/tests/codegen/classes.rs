@@ -287,6 +287,47 @@ fn method_inherited_from_a_grandparent(mut with_db: db::RootDatabase) {
     assert_eq!(result, 10, "grandparent method runs against the derived instance");
 }
 
+/// A method calls a sibling with no receiver — `Helper()`, not
+/// `THIS.Helper()`. HIR resolves the bare name against the enclosing POU
+/// (walking `EXTENDS`), and lowering gives it the implicit THIS receiver;
+/// this used to be the one call form MIR refused to lower. State proves the
+/// receiver: both calls advance the SAME instance.
+#[rstest]
+fn a_bare_sibling_method_call_receives_this(mut with_db: db::RootDatabase) {
+    let source = r#"
+        FUNCTION_BLOCK FB
+        VAR n : INT; END_VAR
+            METHOD PUBLIC Helper : INT
+                n := n + 3;
+                Helper := n;
+            END_METHOD
+            METHOD PUBLIC Caller : INT
+                Caller := Helper() + Helper();
+            END_METHOD
+        END_FUNCTION_BLOCK
+
+        FUNCTION_BLOCK Base EXTENDS FB
+        END_FUNCTION_BLOCK
+
+        FUNCTION_BLOCK Derived EXTENDS Base
+            METHOD PUBLIC UsesInherited : INT
+                UsesInherited := Helper();
+            END_METHOD
+        END_FUNCTION_BLOCK
+
+        FUNCTION test : INT
+        VAR f : FB; d : Derived; END_VAR
+            (* 3 + 6: both bare calls advance the same instance. *)
+            test := f.Caller();
+            (* the bare name resolves two EXTENDS hops up: 3 *)
+            test := test + d.UsesInherited();
+        END_FUNCTION
+    "#;
+    let wasm = compile_to_wasm(&mut with_db, source);
+    let result: i32 = super::execute_wasm(&wasm, "test", ());
+    assert_eq!(result, 12, "9 from the sibling pair, 3 from the inherited bare call");
+}
+
 /// Redeclaring a method further down the chain is an OVERRIDE, not a conflict:
 /// the nearest declaration wins and no duplicate diagnostic is produced.
 #[rstest]
