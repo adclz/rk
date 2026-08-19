@@ -244,38 +244,42 @@ fn is_retain_field<'db>(
     })
 }
 
-/// Does this type (an FB/class instance, or an array of them) declare RETAIN
-/// state anywhere in its nesting? `visited` guards against type cycles;
-/// NON_RETAIN members prune their subtree (see `is_retain_field`).
+/// Does this type declare RETAIN state anywhere in its nesting? Members
+/// come from [`instance_members`], the flattened `EXTENDS` view, so
+/// inherited retain state counts; NON_RETAIN members prune their subtree.
 fn type_has_retain<'db>(
     db: &'db dyn WorkspaceDataBase,
     ty: Type<'db>,
     visited: &mut FxHashSet<Ident>,
 ) -> bool {
-    let vars = match ty.normalize(db) {
+    let pou = match ty.normalize(db) {
         Type::FunctionBlock(fb) => {
             if !visited.insert(fb.name(db)) {
                 return false;
             }
-            fb.variables(db)
+            hir::hir_def::pous::pou::Pou::FunctionBlock(fb)
         }
         Type::Class(class) => {
             if !visited.insert(class.name(db)) {
                 return false;
             }
-            class.variables(db)
+            hir::hir_def::pous::pou::Pou::Class(class)
         }
         Type::Array(arr) => {
             return type_has_retain(db, arr.of_type(db).infer(db), visited);
         }
         _ => return false,
     };
-    vars.iter().any(|v| {
-        v.kind(db) != VariableKind::Temp
-            && !v.qualifier(db).contains(Qualifier::NON_RETAIN)
-            && (v.qualifier(db).contains(Qualifier::RETAIN)
-                || type_has_retain(db, v.spec(db).infer(db), visited))
-    })
+    // `instance_members` already excludes VAR_TEMP and VAR_EXTERNAL — the
+    // sections that are not instance state.
+    hir::hir_ty::head::inheritance::instance_members(db, pou)
+        .iter()
+        .any(|m| {
+            let v = m.var;
+            !v.qualifier(db).contains(Qualifier::NON_RETAIN)
+                && (v.qualifier(db).contains(Qualifier::RETAIN)
+                    || type_has_retain(db, v.spec(db).infer(db), visited))
+        })
 }
 
 
