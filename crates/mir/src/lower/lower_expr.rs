@@ -539,17 +539,18 @@ impl<'db> ExprLowerCtx<'db> {
                 Ok(MirExpr::Constant(MirConstant::I64(val as i64)))
             }
 
-            // Floats
+            // Floats — through the same HIR accessors the checker validated
+            // with. A raw `text.parse()` here rejected `1_000.5`: IEC allows
+            // underscores, HIR strips them, and the divergence was an ICE on
+            // code `rk check` called clean.
             Elementary::Real(ident) => {
-                let text = ident.text(db);
-                let val: f32 = text.parse().map_err(|e| {
+                let val = ident.as_f32(db).map_err(|e| {
                     LowerTypeError::UnsupportedType(format!("Real parse error: {}", e))
                 })?;
                 Ok(MirExpr::Constant(MirConstant::F32(val)))
             }
             Elementary::LReal(ident) => {
-                let text = ident.text(db);
-                let val: f64 = text.parse().map_err(|e| {
+                let val = ident.as_f64(db).map_err(|e| {
                     LowerTypeError::UnsupportedType(format!("LReal parse error: {}", e))
                 })?;
                 Ok(MirExpr::Constant(MirConstant::F64(val)))
@@ -604,17 +605,16 @@ impl<'db> ExprLowerCtx<'db> {
                 }
             }
             Elementary::InferFloat(ident) => {
-                let text = ident.text(db);
                 let ty = parent_expr.infer(db);
                 match ty.normalize(db) {
                     Type::Elementary(ElementarySpec::LReal) => {
-                        let val: f64 = text.parse().map_err(|e| {
+                        let val = ident.as_f64(db).map_err(|e| {
                             LowerTypeError::UnsupportedType(format!("InferFloat f64 error: {}", e))
                         })?;
                         Ok(MirExpr::Constant(MirConstant::F64(val)))
                     }
                     _ => {
-                        let val: f32 = text.parse().map_err(|e| {
+                        let val = ident.as_f32(db).map_err(|e| {
                             LowerTypeError::UnsupportedType(format!("InferFloat f32 error: {}", e))
                         })?;
                         Ok(MirExpr::Constant(MirConstant::F32(val)))

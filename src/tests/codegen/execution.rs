@@ -1061,3 +1061,26 @@ fn an_uncaught_raise_names_its_fault(mut with_db: db::RootDatabase) {
     // The scan after a fault runs normally again (n keeps counting past 2).
     plc.scan().expect("the PLC is not wedged after a fault");
 }
+
+/// Float literals lower through the same HIR accessors the checker validated
+/// them with. A raw `text.parse()` in MIR rejected `1_000.5` — IEC allows
+/// underscores in literals, HIR strips them — so valid code ICE'd at
+/// compile. Covers the typed (REAL#), untyped-inferred, and LREAL forms.
+#[rstest]
+fn float_literals_with_underscores_execute(mut with_db: db::RootDatabase) {
+    let source = r#"
+        FUNCTION test : DINT
+        VAR r : REAL; l : LREAL; ok : DINT; END_VAR
+            r := 1_000.5;
+            l := 2_500_000.25;
+            IF r = 1000.5 THEN ok := ok + 1; END_IF;
+            IF l = LREAL#2500000.25 THEN ok := ok + 10; END_IF;
+            r := REAL#1_5.5;
+            IF r = 15.5 THEN ok := ok + 100; END_IF;
+            test := ok;
+        END_FUNCTION
+    "#;
+    let wasm = compile_to_wasm(&mut with_db, source);
+    let result: i32 = super::execute_wasm(&wasm, "test", ());
+    assert_eq!(result, 111, "all three literal forms parse to the same values");
+}
