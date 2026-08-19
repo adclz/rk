@@ -314,13 +314,30 @@ pub fn enum_variant_values<'db>(
     let mut next: i64 = 0;
     for variant in enum_type.variants(db).iter() {
         let value = match variant.value {
-            Some(expr) => extract_integer_literal(db, expr)? as i64,
+            Some(expr) => extract_integer_literal(db, expr)?,
             None => next,
         };
         out.push((*variant, value));
         next = value + 1;
     }
     Ok(out)
+}
+
+/// The storage lane of an enum: its declared base type, DInt by default.
+/// Every consumer derives the lane from this.
+pub fn enum_storage<'db>(
+    db: &'db dyn WorkspaceDataBase,
+    enum_type: hir::hir_def::expressions::spec::Enum<'db>,
+) -> Result<MirElementary, LowerTypeError> {
+    let Some(spec) = enum_type.typ(db) else {
+        return Ok(MirElementary::DInt);
+    };
+    match spec.infer(db).normalize(db) {
+        Type::Elementary(es) => elementary_spec_to_mir(es),
+        other => Err(LowerTypeError::UnsupportedType(format!(
+            "enum base must be an elementary integer type, got {other:?}"
+        ))),
+    }
 }
 
 pub fn lower_enum_type_named<'db>(
@@ -335,11 +352,10 @@ pub fn lower_enum_type_named<'db>(
 
     let enum_name = name.unwrap_or_else(|| Ident::new(db, CompactString::from("<anon_enum>")));
 
-    // Enums are stored as DInt by default
     Ok(MirType::Enum(MirEnumType {
         name: enum_name,
         variants,
-        storage: MirElementary::DInt,
+        storage: enum_storage(db, enum_type)?,
     }))
 }
 
@@ -357,8 +373,8 @@ fn lower_subrange_type<'db>(
         }
     };
 
-    let lower = extract_integer_literal(db, subrange.lower(db))? as i64;
-    let upper = extract_integer_literal(db, subrange.upper(db))? as i64;
+    let lower = extract_integer_literal(db, subrange.lower(db))?;
+    let upper = extract_integer_literal(db, subrange.upper(db))?;
 
     Ok(MirType::Subrange(MirSubrangeType { base, lower, upper }))
 }
@@ -490,14 +506,14 @@ pub fn lower_class_type<'db>(
 /// had its own literal matcher, which accepted a different set than the checker
 /// did, so validation and lowering could disagree about what counts as a
 /// constant.
+/// The i64 carries every base an enum or subrange may declare — the old i32
+/// clamp refused legal `LInt`/`LWORD` variant values and subrange bounds
+/// (both `MirSubrangeType` bounds and enum values are stored as i64).
 fn extract_integer_literal<'db>(
     db: &'db dyn WorkspaceDataBase,
     expr: hir::hir_def::expressions::expression::Expr<'db>,
-) -> Result<i32, LowerTypeError> {
-    let value = expr.as_const_int(db).ok_or_else(|| {
+) -> Result<i64, LowerTypeError> {
+    expr.as_const_int(db).ok_or_else(|| {
         LowerTypeError::UnsupportedType("expected a constant integer".to_string())
-    })?;
-    i32::try_from(value).map_err(|_| {
-        LowerTypeError::UnsupportedType(format!("constant {value} does not fit in 32 bits"))
     })
 }

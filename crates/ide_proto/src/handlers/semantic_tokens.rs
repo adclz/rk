@@ -312,7 +312,7 @@ pub(crate) fn semantic_tokens_for_type<'db>(
                 0,
             );
         }
-        Type::EnumVariant(_) => {
+        Type::EnumVariant(..) => {
             builder.push(
                 range,
                 SUPPORTED_TYPES

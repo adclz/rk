@@ -36,7 +36,7 @@ pub enum Type<'db> {
     Array(Array<'db>),
     ArrayConformand(Spec<'db>),
     Enum(Enum<'db>),
-    EnumVariant(Ident),
+    EnumVariant(DataType<'db>, Ident),
     SubRange(SubRange<'db>),
     // Pous
     Function(Function<'db>),

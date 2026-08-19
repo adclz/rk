@@ -225,6 +225,9 @@ fn emit_stmt(func: &mut wasm_encoder::Function, stmt: &MirStmt, ctx: &Ctx) {
             func.instruction(&Instruction::Block(BlockType::Empty));
             open_label(ctx);
 
+            // The comparison lane follows the pattern constant: a 64-bit selector
+            // arrives with I64 constants.
+            let wide = |c: &mir::expr::MirConstant| matches!(c, mir::expr::MirConstant::I64(_));
             for arm in arms {
                 // Evaluate all patterns and OR them together
                 for (i, pattern) in arm.patterns.iter().enumerate() {
@@ -232,15 +235,28 @@ fn emit_stmt(func: &mut wasm_encoder::Function, stmt: &MirStmt, ctx: &Ctx) {
                         MirCasePattern::Value(val) => {
                             emit_expr(func, selector, ctx.locals, ctx.fn_indices);
                             emit_constant_expr(func, val);
-                            func.instruction(&Instruction::I32Eq);
+                            func.instruction(&(if wide(val) {
+                                Instruction::I64Eq
+                            } else {
+                                Instruction::I32Eq
+                            }));
                         }
                         MirCasePattern::Range { lower, upper } => {
+                            let w = wide(lower) || wide(upper);
                             emit_expr(func, selector, ctx.locals, ctx.fn_indices);
                             emit_constant_expr(func, lower);
-                            func.instruction(&Instruction::I32GeS);
+                            func.instruction(&(if w {
+                                Instruction::I64GeS
+                            } else {
+                                Instruction::I32GeS
+                            }));
                             emit_expr(func, selector, ctx.locals, ctx.fn_indices);
                             emit_constant_expr(func, upper);
-                            func.instruction(&Instruction::I32LeS);
+                            func.instruction(&(if w {
+                                Instruction::I64LeS
+                            } else {
+                                Instruction::I32LeS
+                            }));
                             func.instruction(&Instruction::I32And);
                         }
                     }
@@ -1501,6 +1517,19 @@ fn emit_mem_store(func: &mut wasm_encoder::Function, size: u32, align: u32) {
 }
 
 fn emit_typed_mem_store(func: &mut wasm_encoder::Function, ty: &mir::types::MirType) {
+    // An enum stores at its declared storage lane, a subrange at its base.
+    let resolved;
+    let ty = match ty {
+        mir::types::MirType::Enum(e) => {
+            resolved = mir::types::MirType::Elementary(e.storage);
+            &resolved
+        }
+        mir::types::MirType::Subrange(s) => {
+            resolved = mir::types::MirType::Elementary(s.base);
+            &resolved
+        }
+        other => other,
+    };
     let align_log2 = ty.alignment().trailing_zeros();
     match ty {
         mir::types::MirType::Elementary(e) if e.is_float() && e.is_64bit() => {

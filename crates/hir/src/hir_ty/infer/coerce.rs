@@ -143,8 +143,20 @@ impl<'db> Type<'db> {
         }
 
         match (lhs, &to) {
-            // variant is already solved by the resolver
-            (Type::Enum(e1), Type::EnumVariant(e2)) => Ok(()),
+            // A variant belongs to exactly one enum, and the type says which
+            // TYPE it was written through: normalize peels that down to the
+            // enum spec, so an alias's variant still matches its base enum,
+            // while a foreign enum's variant is a mismatch, not a pass.
+            (Type::Enum(e1), Type::EnumVariant(dt, _)) => {
+                match Type::DataType(*dt).normalize(db) {
+                    Type::Enum(e2) if e1.eq(&e2) => Ok(()),
+                    _ => Err(CoerceError {
+                        expected: *self,
+                        actual: to,
+                        adjustment: None,
+                    }),
+                }
+            }
             (Type::Enum(e1), Type::Enum(e2)) => {
                 if e1.eq(e2) {
                     Ok(())

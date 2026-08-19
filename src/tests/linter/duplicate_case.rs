@@ -177,25 +177,6 @@ END_FUNCTION
     ");
 }
 
-// should have no errors since STATE and STATE2 are not the same enums
-#[rstest]
-fn mixed_enum_duplicate(mut with_db: RootDatabase) {
-    let source = r#"
-TYPE STATE: INT(A, B, C) END_TYPE
-TYPE STATE2: INT(A, B, C) END_TYPE
-
-FUNCTION test : INT
-VAR x : STATE; END_VAR
-    CASE x OF
-        STATE#A: test := 10;
-        STATE#B: test := 20;
-        STATE2#A: test := 20;
-    END_CASE;
-END_FUNCTION
-"#;
-    assert_snapshot!(test_single_lint(&mut with_db, &[source], "duplicate-case"), @"");
-}
-
 #[rstest]
 fn overlapping_ranges(mut with_db: RootDatabase) {
     let source = r#"

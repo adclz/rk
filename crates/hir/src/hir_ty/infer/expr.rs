@@ -306,12 +306,19 @@ impl<'db> InferExprCtx<'db> {
 
                 let find_enm = inference_result.type_of_begin_expr_with_adjustments(db, *name);
 
-                // normalizing here is necessary, but the type itself should be stored as is
+                // The path names a TYPE; the variant type keeps THAT (name
+                // and all), while normalize digs out the enum spec to check
+                // the variant against. A path that reaches an enum any other
+                // way than through a DataType has no name to carry and falls
+                // back to the enum type itself, which coerces identically.
                 match find_enm.normalize(db) {
                     Type::Enum(enm) => enm
                         .enum_variants(db)
                         .get(variant)
-                        .map(|v| Type::EnumVariant(*v.name))
+                        .map(|v| match find_enm {
+                            Type::DataType(dt) => Type::EnumVariant(dt, *v.name),
+                            _ => find_enm,
+                        })
                         .unwrap_or_else(|| {
                             // variant not found
                             inference_result.errors.push(

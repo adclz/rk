@@ -1901,7 +1901,9 @@ pub(crate) fn build_local_map(
 pub(crate) fn mir_type_to_val_type(ty: &MirType) -> Option<ValType> {
     match ty {
         MirType::Elementary(e) => Some(mir_elementary_to_val_type(*e)),
-        MirType::Enum(_) | MirType::Subrange(_) => Some(ValType::I32),
+        // An enum's lane is its declared storage, a subrange's its base.
+        MirType::Enum(e) => Some(mir_elementary_to_val_type(e.storage)),
+        MirType::Subrange(s) => Some(mir_elementary_to_val_type(s.base)),
         MirType::Pointer(_) => Some(ValType::I32),
         _ => None, // Memory-resident types don't have a single ValType
     }

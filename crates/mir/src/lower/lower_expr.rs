@@ -462,7 +462,13 @@ impl<'db> ExprLowerCtx<'db> {
                             variant.ident.text(self.db)
                         ))
                     })?;
-                Ok(MirExpr::Constant(MirConstant::I32(value as i32)))
+                // The constant's lane is the enum's declared storage (an LINT-based
+                // enum is i64).
+                let storage = super::lower_type::enum_storage(self.db, e)?;
+                Ok(MirExpr::Constant(match storage.size_bytes() {
+                    8 => MirConstant::I64(value),
+                    _ => MirConstant::I32(value as i32),
+                }))
             }
 
             PrimaryExpr::RefValue { value } => match value {
@@ -1912,13 +1918,13 @@ impl<'db> ExprLowerCtx<'db> {
         let normalized = ty.normalize(self.db);
         match normalized {
             Type::Elementary(spec) => elementary_spec_to_mir(spec),
-            Type::Enum(_) => {
-                // Enums compare as their storage type
-                Ok(MirElementary::DInt)
+            Type::Enum(e) => {
+                // Enums compare at their declared storage lane.
+                super::lower_type::enum_storage(self.db, e)
             }
-            // A variant literal (`Color#Green`) is a value of its enum, which
-            // stores as DInt (see `lower_enum_type`).
-            Type::EnumVariant(_) => Ok(MirElementary::DInt),
+            // A variant literal is a value of its enum, at the enum's declared
+            // storage.
+            Type::EnumVariant(dt, _) => self.type_to_mir_elementary(Type::DataType(dt)),
             Type::RefTo(_) | Type::Null => Ok(MirElementary::Int), // pointers are i32
             Type::Void => Err(LowerTypeError::UnsupportedType(
                 "expression has no value (used where a single value is expected)".to_string(),

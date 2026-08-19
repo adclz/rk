@@ -91,7 +91,7 @@ impl<'db> Type<'db> {
             Self::Struct(s) => "STRUCT",
             Self::StructElement(_) => "STRUCT_ELEMENT",
             Self::Enum(e) => "ENUM",
-            Self::EnumVariant(_) => "ENUM_VARIANT",
+            Self::EnumVariant(..) => "ENUM_VARIANT",
             Self::CallableType(_) => "CALLABLE",
             Self::RefTo(_) => "REF_TO",
             Self::Null => "NULL",
@@ -114,7 +114,13 @@ impl<'db> Type<'db> {
             Self::Class(c) => c.get_name_ident(db).text(db).to_string(),
             Self::Interface(i) => i.get_name_ident(db).text(db).to_string(),
             Self::DataType(typ) => typ.get_name_ident(db).text(db).to_string(),
-            Self::EnumVariant(v) => v.text(db).to_string(),
+            // `Mode#Run`, the form the user writes — a bare `Run` reads as a
+            // variable name in a message like "can't compare 'Mode' with
+            // 'Run'". The type carries the DataType the path named, so the
+            // name is at hand.
+            Self::EnumVariant(dt, v) => {
+                format!("{}#{}", dt.get_name_ident(db).text(db), v.text(db))
+            }
             Self::StructElement(st) => spec_type_name(db, st.spec(db)),
             // A partial access (`b.0`, `d.%B1`) is named by the *slice*, not by
             // the variable it slices - otherwise `b.0 := BYTE#3` reports

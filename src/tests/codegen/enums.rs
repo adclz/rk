@@ -225,3 +225,72 @@ fn enum_values_continue_after_an_explicit_one(mut with_db: db::RootDatabase) {
     let result: i32 = super::execute_wasm(&wasm, "test", ());
     assert_eq!(result, 23, "B and C continue from A's explicit 5 (6 and 7)");
 }
+
+/// The declared base is the storage: a SINT-based enum is ONE byte of
+/// instance state, an LINT-based one is eight, and a variant value above
+/// 2^31 survives. All three were wrong under the hardcoded DInt storage:
+/// 4x-wide layout, truncated values, and an i32 literal lane meeting an
+/// i64 load. The retain band is the observable: real layout, real bytes.
+#[rstest]
+fn typed_enum_storage_follows_the_declared_base(mut with_db: db::RootDatabase) {
+    let source = r#"
+        TYPE Small : SINT (Lo, Hi); END_TYPE
+        TYPE Wide : LINT (Zero, Big := 16#1_0000_0000); END_TYPE
+
+        PROGRAM P
+        VAR RETAIN s : Small; w : Wide; END_VAR
+            s := Small#Hi;
+            w := Wide#Big;
+        END_PROGRAM
+
+        CONFIGURATION Cfg
+            RESOURCE Res ON CPU
+                TASK T(INTERVAL := T#10ms, PRIORITY := 1);
+                PROGRAM P1 WITH T : P;
+            END_RESOURCE
+        END_CONFIGURATION
+    "#;
+    let (mir, wasm) = super::compile_to_mir_and_wasm(&mut with_db, source);
+    // s: 1 byte at 0, w: 8 bytes aligned up to offset 8 — 16 in all. The
+    // hardcoded-DInt world packed both as 4-byte fields into 8.
+    assert_eq!(mir.retain_size, 16, "storage widths must follow the bases");
+
+    let mut plc = runtime::Plc::load(&wasm, runtime::Config::default()).expect("load");
+    plc.run(1).expect("scan");
+    let band = plc.read_retain();
+    assert_eq!(band[0] as i8, 1, "Small#Hi is one SINT byte");
+    assert_eq!(
+        i64::from_le_bytes(band[8..16].try_into().unwrap()),
+        0x1_0000_0000,
+        "Wide#Big keeps its 33-bit value"
+    );
+}
+
+/// Comparisons and CASE run at the declared lane — a wide enum's equality
+/// is an i64 compare fed by an i64 literal, not a truncated i32 one.
+#[rstest]
+fn wide_enum_compares_and_matches_at_its_lane(mut with_db: db::RootDatabase) {
+    let source = r#"
+        TYPE Wide : LINT (Zero, Big := 16#1_0000_0000, Bigger); END_TYPE
+
+        FUNCTION pick : DINT
+        VAR_INPUT w : Wide; END_VAR
+            CASE w OF
+                Wide#Big:    pick := 1;
+                Wide#Bigger: pick := 2;
+            ELSE
+                pick := 0;
+            END_CASE;
+        END_FUNCTION
+
+        FUNCTION test : DINT
+        VAR w : Wide; ok : DINT; END_VAR
+            w := Wide#Bigger;
+            IF w = Wide#Bigger THEN ok := 100; END_IF;
+            test := ok + pick(w := Wide#Big) * 10 + pick(w := w);
+        END_FUNCTION
+    "#;
+    let wasm = compile_to_wasm_checked(&mut with_db, source);
+    let result: i32 = super::execute_wasm(&wasm, "test", ());
+    assert_eq!(result, 112, "equality 100 + Big 10 + Bigger 2");
+}

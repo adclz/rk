@@ -100,3 +100,69 @@ fn unknown_enum_variant(mut with_db: RootDatabase) {
     ----'
     ");
 }
+
+/// A variant belongs to exactly one enum, and `Type::EnumVariant` carries
+/// which — a foreign enum's variant is a type mismatch, not a value that
+/// happens to share a name. (The coercion used to accept ANY variant into
+/// ANY enum.)
+#[rstest]
+fn invalid_foreign_enum_variant(mut with_db: RootDatabase) {
+    let source = r#"
+        TYPE Mode  : (Stop, Run); END_TYPE
+        TYPE Color : (Red, Green); END_TYPE
+
+        FUNCTION f : INT
+        VAR m : Mode; END_VAR
+            m := Color#Red;
+        END_FUNCTION
+        "#;
+
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
+    [E0301] Error: type mismatch
+       ,-[ file:///test0.st:7:18 ]
+       |
+     2 |         TYPE Mode  : (Stop, Run); END_TYPE
+       |                      ^^^^^|^^^^^
+       |                           `------- type is defined by 'Mode' here
+       |
+     7 |             m := Color#Red;
+       |                  ^^^^|^^^^
+       |                      `------ expected 'Mode', got 'Color#Red'
+    ---'
+    ");
+}
+
+/// The CASE-label form of the same rule: a foreign enum's variant label is
+/// refused where the label is checked against the selector, before any
+/// duplicate-label question can arise. (This fixture used to live in the
+/// duplicate-case LINTER tests, asserting the label merely was not a
+/// duplicate — the coercion accepted any variant into any enum back then.)
+#[rstest]
+fn invalid_foreign_enum_variant_case_label(mut with_db: RootDatabase) {
+    let source = r#"
+        TYPE STATE: INT(A, B, C) END_TYPE
+        TYPE STATE2: INT(A, B, C) END_TYPE
+
+        FUNCTION test : INT
+        VAR x : STATE; END_VAR
+            CASE x OF
+                STATE#A: test := 10;
+                STATE2#A: test := 20;
+            END_CASE;
+        END_FUNCTION
+        "#;
+
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
+    [E0302] Error: type mismatch
+       ,-[ file:///test0.st:9:17 ]
+       |
+     2 |         TYPE STATE: INT(A, B, C) END_TYPE
+       |                     ^^^^^^|^^^^^
+       |                           `------- type is defined by 'STATE' here
+       |
+     9 |                 STATE2#A: test := 20;
+       |                 ^^^^|^^^
+       |                     `----- can't compare 'STATE' with 'STATE2#A'
+    ---'
+    ");
+}

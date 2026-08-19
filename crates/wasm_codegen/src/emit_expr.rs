@@ -863,6 +863,19 @@ fn emit_unaryop(func: &mut wasm_encoder::Function, op: MirUnaryOp, ty: MirElemen
 
 /// Emit a memory load instruction based on type.
 pub(crate) fn emit_typed_mem_load(func: &mut wasm_encoder::Function, ty: &MirType) {
+    // An enum loads at its declared storage lane, a subrange at its base.
+    let resolved;
+    let ty = match ty {
+        MirType::Enum(e) => {
+            resolved = MirType::Elementary(e.storage);
+            &resolved
+        }
+        MirType::Subrange(s) => {
+            resolved = MirType::Elementary(s.base);
+            &resolved
+        }
+        other => other,
+    };
     let align_log2 = ty.alignment().trailing_zeros();
     match ty {
         MirType::Elementary(e) if e.is_float() && e.is_64bit() => {
