@@ -406,3 +406,30 @@ fn a_sized_string_keeps_its_length_in_every_container(
     let result: i32 = super::execute_wasm(&wasm, "run", ());
     assert_eq!(result, 1, "`{target}` must hold exactly its declared 4 characters");
 }
+
+/// Escape sequences decode to the bytes they DENOTE, not the source text.
+/// MIR used to intern the raw literal bytes while HIR validated the decoded
+/// form, so `'A$0AB'` was checked as 3 characters and executed as 5 — and a
+/// program's strings silently carried `$`-signs into production. One decoder
+/// (`parse_single_byte_string`) now serves both.
+#[rstest]
+fn string_escapes_decode_to_denoted_bytes(mut with_db: db::RootDatabase) {
+    let source = r#"
+        PROGRAM P
+        VAR RETAIN s : STRING; END_VAR
+            (* $41='A', $$ = one dollar, $N = LF, $T = tab, $'= quote *)
+            s := '$41$$$N$T$'';
+        END_PROGRAM
+
+        CONFIGURATION Cfg
+            RESOURCE Res ON CPU
+                TASK T(INTERVAL := T#10ms, PRIORITY := 1);
+                PROGRAM P1 WITH T : P;
+            END_RESOURCE
+        END_CONFIGURATION
+    "#;
+    let (_mir, wasm) = compile_to_mir_and_wasm(&mut with_db, source);
+    let mut plc = Plc::load(&wasm, Config::default()).expect("load");
+    plc.run(1).expect("scan");
+    assert_eq!(read_retain_string(&plc), "A$\n\t'");
+}

@@ -752,6 +752,16 @@ impl Integer {
     }
 }
 
+/// Decode a single-byte character string literal to the bytes it denotes.
+///
+/// `$` opens an escape (IEC 61131-3 table 6): the named forms `$$`, `$'`,
+/// `$L`/`$N` (line feed), `$P` (form feed), `$R` (carriage return), `$T`
+/// (tab), each case-insensitive, and `$XX` for an arbitrary byte in hex.
+///
+/// This is the ONE decoder: `Elementary::check` validates through it, and MIR
+/// lowers literals through it, so what a program is checked against and what
+/// it executes cannot disagree. They did — MIR pooled the raw source bytes, so
+/// `'A$0AB'` was checked as 3 characters and ran as 5.
 pub fn parse_single_byte_string(s: &str) -> Result<Vec<u8>, InferLiteralError> {
     let inner = &s[1..s.len() - 1];
     let mut result = Vec::new();
@@ -759,15 +769,30 @@ pub fn parse_single_byte_string(s: &str) -> Result<Vec<u8>, InferLiteralError> {
 
     while let Some(c) = chars.next() {
         if c == '$' {
-            let h1 = chars
+            let e = chars
                 .next()
                 .ok_or(InferLiteralError::Incomplete_STRING_XX_Escape)?;
+            let named = match e {
+                '$' => Some(b'$'),
+                '\'' => Some(b'\''),
+                '"' => Some(b'"'),
+                'L' | 'l' | 'N' | 'n' => Some(0x0A),
+                'P' | 'p' => Some(0x0C),
+                'R' | 'r' => Some(0x0D),
+                'T' | 't' => Some(0x09),
+                _ => None,
+            };
+            if let Some(byte) = named {
+                result.push(byte);
+                continue;
+            }
+            // Otherwise the two characters are a hex byte.
             let h2 = chars
                 .next()
                 .ok_or(InferLiteralError::Incomplete_STRING_XX_Escape)?;
-            let hex = format!("{h1}{h2}");
+            let hex = format!("{e}{h2}");
             let byte = u8::from_str_radix(&hex, 16)
-                .map_err(|_| InferLiteralError::Incomplete_STRING_XX_Escape)?;
+                .map_err(|_| InferLiteralError::Invalid_STRING_Hex_Escape)?;
             result.push(byte);
         } else {
             // Regular single-byte character

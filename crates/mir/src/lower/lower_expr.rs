@@ -80,10 +80,9 @@ impl StringPool {
         }
     }
 
-    /// Intern a string literal. Returns (id, offset, len).
-    /// Deduplicates identical strings.
-    pub fn intern(&mut self, text: &str) -> (u32, u32, u32) {
-        let bytes = text.as_bytes();
+    /// Intern a literal's decoded bytes (a `$FF` escape is a byte no `&str` can
+    /// carry). Returns (id, offset, len).
+    pub fn intern(&mut self, bytes: &[u8]) -> (u32, u32, u32) {
         // Check for existing identical string
         for (i, (offset, existing)) in self.entries.iter().enumerate() {
             if existing == bytes {
@@ -617,24 +616,25 @@ impl<'db> ExprLowerCtx<'db> {
                 }
             }
 
-            // String literal — intern UTF-8 bytes in the string pool and
-            // emit a `(offset, len)` reference.
+            // Decode escapes through the HIR helper the checker used, then intern
+            // the bytes.
             Elementary::String(ident) => {
-                let raw = ident.text(self.db).to_string();
-                let text = raw.trim_matches('\'').trim_matches('"');
-                let (id, offset, len) = self.string_pool.borrow_mut().intern(text);
+                let bytes = ident.as_single_string(self.db).map_err(|e| {
+                    LowerTypeError::UnsupportedType(format!("Invalid STRING literal: {e:?}"))
+                })?;
+                let (id, offset, len) = self.string_pool.borrow_mut().intern(&bytes);
                 Ok(MirExpr::StringLiteral { id, offset, len })
             }
 
-            // Char literal (`CHAR#'X'`) — decode the single character to its
-            // UTF-32 code point and emit an `i32` constant. CHAR variables
-            // are scalar i32 (UTF-32) at the WASM ABI; to feed a CHAR into
-            // a STRING-shaped slot, the user calls `Std.Convert.CHAR_TO_STRING`
-            // explicitly.
+            // Char literal (`CHAR#'X'`) — the same decoder; `check` already
+            // held it to exactly one byte. CHAR variables are scalar i32
+            // (UTF-32) at the WASM ABI; to feed a CHAR into a STRING-shaped
+            // slot, the user calls `Std.Convert.CHAR_TO_STRING` explicitly.
             Elementary::Char(ident) => {
-                let raw = ident.text(self.db).to_string();
-                let text = raw.trim_matches('\'').trim_matches('"');
-                let codepoint = text.chars().next().map(|c| c as u32).unwrap_or(0);
+                let bytes = ident.as_single_string(self.db).map_err(|e| {
+                    LowerTypeError::UnsupportedType(format!("Invalid CHAR literal: {e:?}"))
+                })?;
+                let codepoint = bytes.first().copied().unwrap_or(0) as u32;
                 Ok(MirExpr::Constant(MirConstant::I32(codepoint as i32)))
             }
 
