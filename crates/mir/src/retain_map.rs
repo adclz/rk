@@ -33,7 +33,7 @@ pub fn build_retain_map<'db>(
     global_types: &FxHashMap<Ident, MirType>,
     retain_base: u32,
     retain_size: u32,
-) -> RetainMap {
+) -> Result<RetainMap, crate::lower::lower_type::LowerTypeError> {
     let mut ranges = Vec::new();
 
     // Retained VAR_GLOBALs are already per-variable — one range each.
@@ -56,8 +56,16 @@ pub fn build_retain_map<'db>(
                 if retain_size == 0 || !band.contains(&inst.instance_addr) {
                     continue; // not banded — nothing persists
                 }
+                // `lower_schedule` refused the miss, so this firing means the invariant
+                // broke.
                 let Some(info) = program_infos.get(&inst.prog_name) else {
-                    continue;
+                    return Err(crate::lower::lower_type::LowerTypeError::UnsupportedType(
+                        format!(
+                            "scheduled instance '{}' names program '{}' with no lowered info",
+                            inst.inst_name.text(db),
+                            inst.prog_name.text(db)
+                        ),
+                    ));
                 };
                 walk_members(
                     db,
@@ -72,7 +80,7 @@ pub fn build_retain_map<'db>(
         }
     }
 
-    RetainMap::new(ranges)
+    Ok(RetainMap::new(ranges))
 }
 
 /// Walk one FB/class/program struct level: pair each MIR field with its HIR

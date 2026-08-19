@@ -429,15 +429,33 @@ fn lower_module_from_pous<'db>(
             &iface_call_rewrites,
         )?;
         let body_fn = mir_func.name;
-        if let crate::types::MirType::Struct(struct_type) = &prog_type {
-            program_infos.insert(
+        let crate::types::MirType::Struct(struct_type) = &prog_type else {
+            // A program that lowered but never registered would be absent from
+            // every schedule.
+            return Err(LowerTypeError::UnsupportedType(format!(
+                "PROGRAM '{}' lowered to a non-struct instance type",
+                program.name(db).text(db)
+            )));
+        };
+        // Two PROGRAMs with one name reaching lowering would LAST-WIN in this
+        // map, binding every task configured with the name to whichever body
+        // lowered later. E0101 refuses duplicates at check; lowering refuses
+        // them too rather than trusting that it ran.
+        if program_infos
+            .insert(
                 program.name(db),
                 crate::schedule::ProgramInfo {
                     body_fn,
                     struct_type: struct_type.clone(),
                     decl: **program,
                 },
-            );
+            )
+            .is_some()
+        {
+            return Err(LowerTypeError::UnsupportedType(format!(
+                "two PROGRAMs named '{}' reached lowering",
+                program.name(db).text(db)
+            )));
         }
         function_indices.insert(body_fn, next_fn_idx);
         next_fn_idx += 1;
@@ -454,7 +472,7 @@ fn lower_module_from_pous<'db>(
     // Build the CONFIGURATION's schedule: allocate one instance per program
     // configuration (recording its RETAIN fields) and resolve task periods.
     let schedule =
-        crate::schedule::lower_schedule(db, config, &mut memory_layout, &program_infos);
+        crate::schedule::lower_schedule(db, config, &mut memory_layout, &program_infos)?;
 
     let mut module = MirModule {
         functions,
@@ -525,22 +543,28 @@ fn lower_module_from_pous<'db>(
     if let Some(sched) = &module.schedule {
         for task in &sched.tasks {
             for inst in &task.programs {
-                if let Some(info) = program_infos.get(&inst.prog_name) {
-                    for f in &info.struct_type.fields {
-                        let path =
-                            crate::debug_symbols::join_path(db, inst.inst_name.text(db), f.name);
-                        // Per-field leaf budget, matching `collect_root`'s per-root budget.
-                        crate::debug_symbols::collect_root(
-                            db,
-                            &path,
-                            inst.instance_addr + f.offset,
-                            &f.ty,
-                            false, // program-instance field
-                            &mut symbols,
-                            &mut array_syms,
-                            &mut type_table,
-                        );
-                    }
+                // `lower_schedule` refused any instance without a lowered program.
+                let Some(info) = program_infos.get(&inst.prog_name) else {
+                    return Err(LowerTypeError::UnsupportedType(format!(
+                        "scheduled instance '{}' names program '{}' with no lowered info",
+                        inst.inst_name.text(db),
+                        inst.prog_name.text(db)
+                    )));
+                };
+                for f in &info.struct_type.fields {
+                    let path =
+                        crate::debug_symbols::join_path(db, inst.inst_name.text(db), f.name);
+                    // Per-field leaf budget, matching `collect_root`'s per-root budget.
+                    crate::debug_symbols::collect_root(
+                        db,
+                        &path,
+                        inst.instance_addr + f.offset,
+                        &f.ty,
+                        false, // program-instance field
+                        &mut symbols,
+                        &mut array_syms,
+                        &mut type_table,
+                    );
                 }
             }
         }
@@ -578,7 +602,7 @@ fn lower_module_from_pous<'db>(
             .collect(),
         bands.retain_base,
         bands.retain_size,
-    );
+    )?;
 
     // Phase 4.6: record what runs. The schedule travels as data in the
     // `rk.schedule` section rather than as synthesized `__task_<i>` entry
@@ -1375,8 +1399,13 @@ fn collect_const_inits<'db>(
     if let Some(sched) = schedule {
         for task in &sched.tasks {
             for inst in &task.programs {
+                // Same invariant as the schedule and debug-symbol walks.
                 let Some(info) = program_infos.get(&inst.prog_name) else {
-                    continue;
+                    return Err(LowerTypeError::UnsupportedType(format!(
+                        "scheduled instance '{}' names program '{}' with no lowered info",
+                        inst.inst_name.text(db),
+                        inst.prog_name.text(db)
+                    )));
                 };
                 for field in &info.struct_type.fields {
                     let Some(var) = info

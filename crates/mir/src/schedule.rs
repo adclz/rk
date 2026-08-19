@@ -122,7 +122,7 @@ pub fn lower_schedule<'db>(
     config: &[ConfigDecl<'db>],
     memory_layout: &mut MirMemoryLayout,
     program_infos: &FxHashMap<Ident, ProgramInfo<'db>>,
-) -> Option<MirSchedule> {
+) -> Result<Option<MirSchedule>, crate::lower::lower_type::LowerTypeError> {
     // HIR resolved what runs; lowering gives each instance memory and
     // expresses periods against one tick counter.
     let mut pending: Vec<(Ident, &hir::hir_ty::config::ResolvedTask<'db>, Vec<MirProgInstance>)> =
@@ -137,8 +137,15 @@ pub fn lower_schedule<'db>(
         for task in &resource.tasks {
             let mut instances = Vec::new();
             for p in &task.programs {
+                // HIR bound this instance to a program lowering registered; a miss is
+                // the two disagreeing.
                 let Some(info) = program_infos.get(&p.program.name(db)) else {
-                    continue;
+                    return Err(crate::lower::lower_type::LowerTypeError::UnsupportedType(
+                        format!(
+                            "configured program '{}' has no lowered body",
+                            p.program.name(db).text(db)
+                        ),
+                    ));
                 };
 
                 // Allocate this instance's state, and register its RETAIN
@@ -199,14 +206,16 @@ pub fn lower_schedule<'db>(
     }
 
     if pending.is_empty() {
-        return None;
+        return Ok(None);
     }
 
     // One tick counter drives every task, so the base period is the GCD of the
     // intervals and each task's period is its multiple of that.
-    let common = pending.iter().map(|(_, t, _)| t.interval_ns).reduce(gcd)?;
+    let Some(common) = pending.iter().map(|(_, t, _)| t.interval_ns).reduce(gcd) else {
+        return Ok(None);
+    };
     if common == 0 {
-        return None;
+        return Ok(None);
     }
 
     let tasks: Vec<MirTask> = pending
@@ -220,10 +229,10 @@ pub fn lower_schedule<'db>(
         })
         .collect();
 
-    Some(MirSchedule {
+    Ok(Some(MirSchedule {
         common_ticktime_ns: common,
         tasks,
-    })
+    }))
 }
 
 /// Whether a program field is persistent: `RETAIN` itself, or an FB/class
