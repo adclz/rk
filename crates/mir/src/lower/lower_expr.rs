@@ -1538,19 +1538,22 @@ impl<'db> ExprLowerCtx<'db> {
         );
 
         // Wrap a lowered value as ByRef when the target param is
-        // `VAR_IN_OUT` / `VAR_OUTPUT`. Falls back to ByValue when the value
-        // isn't a simple Load (we still need to lower function-style
-        // expressions where we have no place to take an address of -
-        // the type checker rejects those before they get here).
-        let to_byref = |mir: MirExpr| match mir {
-            MirExpr::Load(place, _) => MirCallArg {
-                value: MirExpr::AddrOf(place),
-                kind: MirArgKind::ByRef,
-            },
-            other => MirCallArg {
-                value: other,
-                kind: MirArgKind::ByValue,
-            },
+        // `VAR_IN_OUT` / `VAR_OUTPUT`. Only a Load has an address to take;
+        // E0234 refuses everything else upstream, partial accesses included.
+        // The old fallback passed the VALUE where the callee expects a
+        // POINTER — the callee then dereferenced a bit as an address and
+        // wrote to memory near 0, from code `rk check` called clean.
+        let to_byref = |mir: MirExpr| -> Result<MirCallArg, LowerTypeError> {
+            match mir {
+                MirExpr::Load(place, _) => Ok(MirCallArg {
+                    value: MirExpr::AddrOf(place),
+                    kind: MirArgKind::ByRef,
+                }),
+                other => Err(LowerTypeError::UnsupportedType(format!(
+                    "a by-reference argument needs an address; this one lowered \
+                     to {other:?}"
+                ))),
+            }
         };
 
         for var in callable.def_map(self.db).local_variables.values() {
@@ -1610,7 +1613,7 @@ impl<'db> ExprLowerCtx<'db> {
                     | ParamAssignKind::FormalInput { value, .. } => {
                         let lowered = self.lower_expr(value)?;
                         if by_ref {
-                            args.push(to_byref(lowered));
+                            args.push(to_byref(lowered)?);
                             continue;
                         }
                         // Aggregate VAR_INPUT: copy into a scratch and pass its address (the
@@ -1743,8 +1746,13 @@ impl<'db> ExprLowerCtx<'db> {
             match param.kind(self.db) {
                 ParamAssignKind::FormalInput { value, .. }
                 | ParamAssignKind::NonFormal { value } => {
+                    // HIR matched the param to a declared variable, so the field must exist
+                    // in the layout; a miss is HIR and MIR disagreeing.
                     let Some(field) = struct_type.fields.iter().find(|f| f.name == var_name) else {
-                        continue;
+                        return Err(LowerTypeError::UnsupportedType(format!(
+                            "input '{}' has no field in the emitted FB layout",
+                            var_name.text(self.db)
+                        )));
                     };
                     // VAR_IN_OUT is by-reference: the instance field is
                     // a pointer. Store the address of the caller's l-value ONCE
@@ -1752,13 +1760,25 @@ impl<'db> ExprLowerCtx<'db> {
                     // there is no value copy-in and (unlike a C-emitting compiler) no copy-out.
                     if field.by_ref {
                         // Must be an l-value (`Load(place, _)`) to take its
-                        // address — E0234 rejects everything else upstream.
-                        if let MirExpr::Load(place, _) = self.lower_expr(value)? {
-                            input_writes.push((
-                                field.offset,
-                                MirExpr::AddrOf(place),
-                                field.ty.clone(),
-                            ));
+                        // address — E0234 rejects everything else upstream,
+                        // including partial accesses (`b.%X1`), which lower to
+                        // a shifted read. Anything else here used to be
+                        // silently SKIPPED: the pointer field kept its stale
+                        // value and the body wrote through it.
+                        match self.lower_expr(value)? {
+                            MirExpr::Load(place, _) => {
+                                input_writes.push((
+                                    field.offset,
+                                    MirExpr::AddrOf(place),
+                                    field.ty.clone(),
+                                ));
+                            }
+                            other => {
+                                return Err(LowerTypeError::UnsupportedType(format!(
+                                    "a VAR_IN_OUT argument needs an address; this one \
+                                     lowered to {other:?}"
+                                )));
+                            }
                         }
                         continue;
                     }
@@ -1799,10 +1819,15 @@ impl<'db> ExprLowerCtx<'db> {
                     input_writes.push((field.offset, expr, field.ty.clone()));
                 }
                 ParamAssignKind::FormalOutput { variable, .. } => {
-                    if let Some(field) = struct_type.fields.iter().find(|f| f.name == var_name) {
-                        let place = self.lower_variable_access(variable)?;
-                        output_reads.push((field.offset, place, field.ty.clone()));
-                    }
+                    // Same contract as inputs: a layout miss is a divergence.
+                    let Some(field) = struct_type.fields.iter().find(|f| f.name == var_name) else {
+                        return Err(LowerTypeError::UnsupportedType(format!(
+                            "output '{}' has no field in the emitted FB layout",
+                            var_name.text(self.db)
+                        )));
+                    };
+                    let place = self.lower_variable_access(variable)?;
+                    output_reads.push((field.offset, place, field.ty.clone()));
                 }
             }
         }

@@ -8,6 +8,7 @@ use crate::check::errors::e10_control_flow::ControlFlowError;
 use crate::hir_def::expressions::expression::{Expr, ExprKind, ParamAssign, PrimaryExpr};
 use crate::hir_def::interned::identifier::Ident;
 use crate::hir_def::pous::variable::VariableDecl;
+use crate::hir_ty::infer::Infer;
 use crate::hir_ty::resolver::name::{OverloadPick, select_overload};
 use crate::{
     CallSite, HirNodeInfo,
@@ -245,6 +246,12 @@ fn is_param_required<'db>(
 /// array-element access) — it binds the callee to the caller's storage by
 /// reference, so a literal, arithmetic expression, or call result has no
 /// address to bind. Constants are caught separately (AssignToConstant).
+///
+/// A partial access (`b.%X1`, `d.3`) is a VariableAccess SYNTACTICALLY but
+/// names a slice of a variable, and a slice has no address either. The
+/// syntax check alone waved it through, and the argument then reached the
+/// callee as a bit VALUE standing where a pointer belongs — writes through
+/// it corrupted memory at address 0 or 1, from code `rk check` called clean.
 fn check_in_out_lvalue<'db>(
     db: &'db dyn WorkspaceDataBase,
     callable: CallableType<'db>,
@@ -252,11 +259,20 @@ fn check_in_out_lvalue<'db>(
     value: Expr<'db>,
     ctx: &mut BodyInferenceResult<'db>,
 ) {
+    // The RAW recorded type, not the adjusted view: adjustments apply the
+    // slice and would answer BOOL for `b.%X1`, hiding exactly the marker
+    // this check needs. (And never `Expr::infer` here — this runs INSIDE
+    // `infer_body`, and the query would cycle into itself.)
+    let is_partial_access = matches!(
+        ctx.get_type_of_expr(value),
+        Type::Variable((_, Some(_))) | Type::DirectVariable((_, Some(_)))
+    );
     if var.is_in_out(db)
-        && !matches!(
-            value.expr(db),
-            ExprKind::PrimaryExpr(PrimaryExpr::VariableAccess(_))
-        )
+        && (is_partial_access
+            || !matches!(
+                value.expr(db),
+                ExprKind::PrimaryExpr(PrimaryExpr::VariableAccess(_))
+            ))
     {
         ctx.errors.push(
             ResolveError::InOutParameterRequiresLValue {

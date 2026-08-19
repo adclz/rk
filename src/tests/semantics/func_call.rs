@@ -906,3 +906,57 @@ END_FUNCTION_BLOCK"#;
     ----'
     ");
 }
+
+/// A partial access (`b.%X1`) is a VariableAccess syntactically but names a
+/// SLICE of a variable — a slice has no address, and VAR_IN_OUT is an
+/// address. This used to pass the checker; the argument then reached the
+/// callee as a bit VALUE standing where a pointer belongs, and the callee's
+/// writes corrupted memory near address zero.
+#[rstest]
+fn invalid_in_out_partial_access(mut with_db: RootDatabase) {
+    let source = r#"
+FUNCTION SetIt : INT
+VAR_IN_OUT io : BOOL; END_VAR
+    io := TRUE;
+END_FUNCTION
+
+FUNCTION_BLOCK FBSet
+VAR_IN_OUT io : BOOL; END_VAR
+    io := TRUE;
+END_FUNCTION_BLOCK
+
+FUNCTION test : INT
+VAR b : BYTE; f : FBSet; END_VAR
+    SetIt(io := b.%X1);
+    f(io := b.%X1);
+END_FUNCTION"#;
+
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
+    [E0234] Error: VAR_IN_OUT argument must be a variable
+        ,-[ file:///test0.st:14:17 ]
+        |
+      3 | VAR_IN_OUT io : BOOL; END_VAR
+        |            ^^^^|^^^^
+        |                `------ parameter 'io' declared here
+        |
+     14 |     SetIt(io := b.%X1);
+        |                 ^^|^^
+        |                   `---- VAR_IN_OUT parameter 'io' of 'SetIt' requires a variable, not a value
+        |
+        | Note: VAR_IN_OUT binds the callee to the caller's storage by reference; a literal, expression, or call result has no address to bind
+    ----'
+    [E0234] Error: VAR_IN_OUT argument must be a variable
+        ,-[ file:///test0.st:15:13 ]
+        |
+      8 | VAR_IN_OUT io : BOOL; END_VAR
+        |            ^^^^|^^^^
+        |                `------ parameter 'io' declared here
+        |
+     15 |     f(io := b.%X1);
+        |             ^^|^^
+        |               `---- VAR_IN_OUT parameter 'io' of 'FBSet' requires a variable, not a value
+        |
+        | Note: VAR_IN_OUT binds the callee to the caller's storage by reference; a literal, expression, or call result has no address to bind
+    ----'
+    ");
+}

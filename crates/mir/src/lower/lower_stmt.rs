@@ -169,7 +169,10 @@ fn lower_stmt<'db>(
                 let call_expr = ctx.lower_func_call(*func_call, None)?;
                 match call_expr {
                     crate::expr::MirExpr::Call(call) => Ok(Some(MirStmt::Call(call))),
-                    _ => Ok(None),
+                    // A call statement that lowered to anything else must not vanish.
+                    other => Err(LowerTypeError::UnsupportedType(format!(
+                        "a call statement lowered to a non-call expression: {other:?}"
+                    ))),
                 }
             }
         }
