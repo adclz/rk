@@ -588,38 +588,6 @@
             }
           },
           {
-            "type": "FIELD",
-            "name": "params",
-            "content": {
-              "type": "CHOICE",
-              "members": [
-                {
-                  "type": "SYMBOL",
-                  "name": "extern_param_list"
-                },
-                {
-                  "type": "BLANK"
-                }
-              ]
-            }
-          },
-          {
-            "type": "FIELD",
-            "name": "result",
-            "content": {
-              "type": "CHOICE",
-              "members": [
-                {
-                  "type": "SYMBOL",
-                  "name": "extern_result"
-                },
-                {
-                  "type": "BLANK"
-                }
-              ]
-            }
-          },
-          {
             "type": "STRING",
             "value": "}"
           }
@@ -882,6 +850,10 @@
         {
           "type": "SYMBOL",
           "name": "warn_pragma"
+        },
+        {
+          "type": "SYMBOL",
+          "name": "extern_pragma"
         }
       ]
     },
@@ -8978,10 +8950,6 @@
         {
           "type": "SYMBOL",
           "name": "raise_stmt"
-        },
-        {
-          "type": "SYMBOL",
-          "name": "extern_pragma"
         },
         {
           "type": "SYMBOL",

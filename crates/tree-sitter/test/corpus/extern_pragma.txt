@@ -1,151 +1,80 @@
 ================================================================================
-Extern pragma in function body
+Extern pragma above a function
 ================================================================================
 
+{extern 'math' 'abs'}
 FUNCTION test : INT
 VAR_INPUT x : INT; END_VAR
-    {extern 'math' 'abs'}
 END_FUNCTION
 
 --------------------------------------------------------------------------------
 
 (source_file
   (func_decl
-    name: (identifier)
-    return_type: (numeric_type_name
+    (pou_pragma
+      (extern_pragma
+        (pragma_string)
+        (pragma_string)))
+    (identifier)
+    (numeric_type_name
       (int_type_name
         (sign_int_type_name
           (int_name))))
-    variables: (input_decls
+    (input_decls
       (input_var
-        variables: (variable_list
+        (variable_list
           (identifier))
-        type: (var_decl_init
-          spec: (simple_type_spec
+        (var_decl_init
+          (simple_type_spec
             (numeric_type_name
               (int_type_name
                 (sign_int_type_name
-                  (int_name))))))))
-    body: (func_body
-      (stmt_list
-        (extern_pragma
-          module: (pragma_string)
-          name: (pragma_string))))))
+                  (int_name))))))))))
 
 ================================================================================
-Extern pragma with param and result variables
+Extern pragma with outputs and return type
 ================================================================================
 
-FUNCTION delay : INT
-VAR_INPUT ms : INT; END_VAR
-    {extern 'rt' 'delay' (params ms) (result delay)}
+{extern 'wasi:clocks/monotonic-clock@0.2.6' 'now'}
+FUNCTION MONOTONIC_LTIME : LTIME
 END_FUNCTION
 
 --------------------------------------------------------------------------------
 
 (source_file
   (func_decl
-    name: (identifier)
-    return_type: (numeric_type_name
-      (int_type_name
-        (sign_int_type_name
-          (int_name))))
-    variables: (input_decls
-      (input_var
-        variables: (variable_list
-          (identifier))
-        type: (var_decl_init
-          spec: (simple_type_spec
-            (numeric_type_name
-              (int_type_name
-                (sign_int_type_name
-                  (int_name))))))))
-    body: (func_body
-      (stmt_list
-        (extern_pragma
-          module: (pragma_string)
-          name: (pragma_string)
-          params: (extern_param_list
-            var: (identifier))
-          result: (extern_result
-            var: (identifier)))))))
+    (pou_pragma
+      (extern_pragma
+        (pragma_string)
+        (pragma_string)))
+    (identifier)
+    (l_time_type_name)))
 
 ================================================================================
-Extern pragma with multiple params
+Extern pragma above a function block (parsed; refused in HIR)
 ================================================================================
 
-FUNCTION add : INT
-VAR_INPUT a : INT; b : INT; END_VAR
-    {extern 'math' 'add' (params a b) (result add)}
-END_FUNCTION
+{extern 'host' 'nope'}
+FUNCTION_BLOCK FB
+VAR_INPUT x : INT; END_VAR
+END_FUNCTION_BLOCK
 
 --------------------------------------------------------------------------------
 
 (source_file
-  (func_decl
-    name: (identifier)
-    return_type: (numeric_type_name
-      (int_type_name
-        (sign_int_type_name
-          (int_name))))
-    variables: (input_decls
-      (input_var
-        variables: (variable_list
+  (fb_decl
+    (pou_pragma
+      (extern_pragma
+        (pragma_string)
+        (pragma_string)))
+    (identifier)
+    (fb_input_decls
+      (fb_input_var
+        (variable_list
           (identifier))
-        type: (var_decl_init
-          spec: (simple_type_spec
+        (var_decl_init
+          (simple_type_spec
             (numeric_type_name
               (int_type_name
                 (sign_int_type_name
-                  (int_name)))))))
-      (input_var
-        variables: (variable_list
-          (identifier))
-        type: (var_decl_init
-          spec: (simple_type_spec
-            (numeric_type_name
-              (int_type_name
-                (sign_int_type_name
-                  (int_name))))))))
-    body: (func_body
-      (stmt_list
-        (extern_pragma
-          module: (pragma_string)
-          name: (pragma_string)
-          params: (extern_param_list
-            var: (identifier)
-            var: (identifier))
-          result: (extern_result
-            var: (identifier)))))))
-
-================================================================================
-Extern pragma minimal (no params, no result)
-================================================================================
-
-FUNCTION SQRT : REAL
-VAR_INPUT IN : REAL; END_VAR
-    {extern 'math' 'sqrt'}
-END_FUNCTION
-
---------------------------------------------------------------------------------
-
-(source_file
-  (func_decl
-    name: (identifier)
-    return_type: (numeric_type_name
-      (real_type_name
-        (real_name)))
-    variables: (input_decls
-      (input_var
-        variables: (variable_list
-          (identifier))
-        type: (var_decl_init
-          spec: (simple_type_spec
-            (numeric_type_name
-              (real_type_name
-                (real_name)))))))
-    body: (func_body
-      (stmt_list
-        (extern_pragma
-          module: (pragma_string)
-          name: (pragma_string))))))
+                  (int_name))))))))))

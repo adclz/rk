@@ -532,10 +532,6 @@
         "named": true
       },
       {
-        "type": "extern_pragma",
-        "named": true
-      },
-      {
         "type": "for_stmt",
         "named": true
       },
@@ -2700,26 +2696,6 @@
         "types": [
           {
             "type": "pragma_string",
-            "named": true
-          }
-        ]
-      },
-      "params": {
-        "multiple": false,
-        "required": false,
-        "types": [
-          {
-            "type": "extern_param_list",
-            "named": true
-          }
-        ]
-      },
-      "result": {
-        "multiple": false,
-        "required": false,
-        "types": [
-          {
-            "type": "extern_result",
             "named": true
           }
         ]
@@ -4991,6 +4967,10 @@
       "multiple": false,
       "required": true,
       "types": [
+        {
+          "type": "extern_pragma",
+          "named": true
+        },
         {
           "type": "once_pragma",
           "named": true

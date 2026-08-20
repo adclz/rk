@@ -348,16 +348,18 @@ module.exports = grammar({
 
     pragma: ($) => seq("{", repeat(choice(/[^*]/, /\*[^)]/)), "}"),
 
-    // Extern pragma - declares a WASM import binding
-    // {extern 'module' 'name'}                                    - non-generic
+    // Extern pragma - declares the annotated FUNCTION as a WASM import.
+    // {extern 'module' 'name'}
+    // Sits ABOVE the FUNCTION like {test}. The import's signature IS the
+    // declaration - VAR_INPUT -> params, scalar VAR_OUTPUT -> results, the
+    // return type as the LAST result - so there is nothing else to state,
+    // and nothing that can disagree with it.
     extern_pragma: ($) =>
       prec(1, seq(
         "{",
         "extern",
         field("module", $.pragma_string),
         field("name", $.pragma_string),
-        field("params", optional($.extern_param_list)),
-        field("result", optional($.extern_result)),
         "}",
       )),
 
@@ -408,12 +410,14 @@ module.exports = grammar({
     once_pragma: (_) => prec(1, token(seq("{", "once", "}"))),
 
     // Unified POU pragma list - validated during HIR building
-    // Covers: {test}, {once}, {warn = '...'}, {info = '...'}
+    // Covers: {test}, {once}, {warn = '...'}, {info = '...'},
+    // {extern 'module' 'name'}
     pou_pragma: ($) =>
       choice(
         $.test_pragma,
         $.once_pragma,
         $.warn_pragma,
+        $.extern_pragma,
       ),
 
     // Table 5 - Numeric literal
@@ -1888,7 +1892,6 @@ module.exports = grammar({
         "CONTINUE",
         // Throws a wasm-level exception with a STRING payload
         $.raise_stmt,
-        $.extern_pragma,
         $.wasm_pragma,
         $.ERR_method_decl_in_body
       ),
