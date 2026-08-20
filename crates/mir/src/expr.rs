@@ -74,6 +74,23 @@ pub struct MirCall {
     pub return_type: MirType,
     /// After the call, copy each callee `VAR_OUTPUT` to the caller's place.
     pub output_bindings: Vec<MirOutputBinding>,
+    /// Extern-import results: scalar `VAR_OUTPUT`s come back on the stack, in
+    /// declaration order, the return value last; each pops into a scratch and
+    /// is stored to its bound place (`None` = discarded). Empty for other calls.
+    pub extern_results: Vec<ExternResultBind>,
+    /// Holds the return value while the outputs above pop; set only when the
+    /// callee is extern with BOTH outputs and a return type.
+    pub extern_ret_scratch: Option<Ident>,
+}
+
+/// One extern result: where it pops, and where it goes.
+#[derive(Debug, Clone)]
+pub struct ExternResultBind {
+    /// The scalar scratch local the result pops into (`$extret$N`).
+    pub scratch: Ident,
+    /// The `o => dest` place, or `None` when the output was not bound.
+    pub dest: Option<MirPlace>,
+    pub ty: MirType,
 }
 
 /// A post-call copy from a callee's VAR_OUTPUT memory slot to a caller's variable.

@@ -1,7 +1,6 @@
 use db::WorkspaceDataBase;
 use hir::{
     hir_def::{
-        expressions::statement::StmtKind,
         interned::identifier::Ident,
         pous::{
             class::Class,
@@ -335,16 +334,14 @@ fn lower_function_inner<'db>(
     }
     let body = body;
 
-    // Determine linkage - check if there's an extern pragma
-    let is_extern = func
-        .statements(db)
-        .iter()
-        .any(|s| matches!(s.stmt(db), StmtKind::ExternPragma(_)));
-
-    let linkage = if is_extern {
-        MirLinkage::Internal // extern functions are imports, handled separately
-    } else {
-        MirLinkage::Export
+    // Determine linkage from the SAME authority phase 1 used: the pragma.
+    let linkage = {
+        use hir::HasPragmas;
+        if func.extern_pragma(db).is_some() {
+            MirLinkage::Internal // extern functions are imports, handled separately
+        } else {
+            MirLinkage::Export
+        }
     };
 
     Ok(MirFunction {
@@ -1004,16 +1001,21 @@ pub(crate) fn append_call_scratch_locals(
     next_local_idx: &mut u32,
     memory_layout: &mut MirMemoryLayout,
 ) {
-    for (name, ty) in scratch {
-        let storage = allocate_local_storage(name, &ty, true, next_local_idx, memory_layout);
-        locals.push(MirLocal {
-            name,
-            ty,
-            init: None,
-            kind: MirLocalKind::Temp,
-            storage,
-            var_storage: MirVariableStorage::Automatic,
-        });
+    // Aggregate snapshots are memory-forced (their address is taken); extern
+    // result scratches are plain wasm locals (they only ever LocalSet/Get).
+    for (force_memory, list) in [(true, scratch.memory), (false, scratch.scalar)] {
+        for (name, ty) in list {
+            let storage =
+                allocate_local_storage(name, &ty, force_memory, next_local_idx, memory_layout);
+            locals.push(MirLocal {
+                name,
+                ty,
+                init: None,
+                kind: MirLocalKind::Temp,
+                storage,
+                var_storage: MirVariableStorage::Automatic,
+            });
+        }
     }
 }
 

@@ -57,8 +57,15 @@ pub struct ExprLowerCtx<'db> {
     pub call_scratch: std::rc::Rc<std::cell::RefCell<CallScratch>>,
 }
 
-/// Scratch locals synthesized for call args: `(name, type)`.
-pub type CallScratch = Vec<(hir::hir_def::interned::identifier::Ident, MirType)>;
+/// Scratch locals synthesized while lowering calls: `(name, type)`.
+#[derive(Debug, Default, Clone)]
+pub struct CallScratch {
+    /// Memory-forced aggregate snapshots (`$argcopy$`, `$discard$`).
+    pub memory: Vec<(hir::hir_def::interned::identifier::Ident, MirType)>,
+    /// Scalar wasm-local scratches for extern result destructuring
+    /// (`$extret$`, `$extretval$`).
+    pub scalar: Vec<(hir::hir_def::interned::identifier::Ident, MirType)>,
+}
 
 /// String literal pool: unique strings and their offsets in the data section.
 #[derive(Debug, Default)]
@@ -293,6 +300,8 @@ impl<'db> ExprLowerCtx<'db> {
             ],
             return_type: crate::types::MirType::Elementary(result_elem),
             output_bindings: Vec::new(),
+            extern_results: Vec::new(),
+            extern_ret_scratch: None,
         }))
     }
 
@@ -377,6 +386,8 @@ impl<'db> ExprLowerCtx<'db> {
             ],
             return_type: MirType::Elementary(MirElementary::DInt),
             output_bindings: vec![],
+            extern_results: Vec::new(),
+            extern_ret_scratch: None,
         });
         Ok(MirExpr::BinOp {
             op,
@@ -1032,6 +1043,8 @@ impl<'db> ExprLowerCtx<'db> {
             args: vec![this_arg],
             return_type: MirType::Void,
             output_bindings: Vec::new(),
+            extern_results: Vec::new(),
+            extern_ret_scratch: None,
         })))
     }
 
@@ -1237,6 +1250,8 @@ impl<'db> ExprLowerCtx<'db> {
             ],
             return_type: MirType::Elementary(MirElementary::DInt),
             output_bindings: vec![],
+            extern_results: Vec::new(),
+            extern_ret_scratch: None,
         })
     }
 
@@ -1438,8 +1453,9 @@ impl<'db> ExprLowerCtx<'db> {
             _ => None,
         };
 
+        let mut extern_results = Vec::new();
         if let Some(callable) = callable {
-            self.build_call_args(func_call, callable, &mut args)?;
+            self.build_call_args(func_call, callable, &mut args, &mut extern_results)?;
         } else {
             // Unresolved callee: no signature to order against, so call-site order.
             for param in call_params {
@@ -1486,12 +1502,35 @@ impl<'db> ExprLowerCtx<'db> {
             ty => self.lower_type_resolved(ty).unwrap_or(MirType::Void),
         };
 
+        // With outputs popping after the call, a declared return value needs
+        // somewhere to wait: it is LAST on the stack, so it pops FIRST.
+        let extern_ret_scratch = if !extern_results.is_empty()
+            && mir_return_type != MirType::Void
+        {
+            let name = hir::hir_def::interned::identifier::Ident::new(
+                self.db,
+                compact_str::CompactString::from(format!(
+                    "$extretval${}",
+                    self.call_scratch.borrow().scalar.len()
+                )),
+            );
+            self.call_scratch
+                .borrow_mut()
+                .scalar
+                .push((name, mir_return_type.clone()));
+            Some(name)
+        } else {
+            None
+        };
+
         Ok(MirExpr::Call(MirCall {
             callee: callee_name,
             callee_index: 0, // resolved during module lowering
             args,
             return_type: mir_return_type,
             output_bindings,
+            extern_results,
+            extern_ret_scratch,
         }))
     }
 
@@ -1511,8 +1550,19 @@ impl<'db> ExprLowerCtx<'db> {
         func_call: hir::hir_def::expressions::expression::FuncCall<'db>,
         callable: hir::hir_ty::ty::CallableType<'db>,
         args: &mut Vec<MirCallArg>,
+        extern_results: &mut Vec<crate::expr::ExternResultBind>,
     ) -> Result<(), LowerTypeError> {
         use hir::hir_def::pous::variable::VariableKind;
+
+        // An extern callee returns its scalar VAR_OUTPUTs on the STACK (in
+        // declaration order, before the return value): outputs push no args
+        // at all and instead record where each result pops to. E0243 refuses
+        // everything an import cannot carry before lowering runs.
+        let is_extern = matches!(
+            callable,
+            hir::hir_ty::ty::CallableType::Function(f)
+                if { use hir::HasPragmas; f.extern_pragma(self.db).is_some() }
+        );
 
         let path = func_call.path(self.db);
         let body = hir::hir_ty::body::infer_body(self.db, path.scope_id(self.db));
@@ -1583,6 +1633,17 @@ impl<'db> ExprLowerCtx<'db> {
                                 });
                             }
                         }
+                        VariableKind::Output if is_extern => {
+                            // A discarded extern output still pops off the stack: a scratch, no
+                            // destination.
+                            let ty = crate::lower::lower_func::lower_var_type(self.db, *var)?;
+                            let scratch = self.extern_result_scratch(ty.clone());
+                            extern_results.push(crate::expr::ExternResultBind {
+                                scratch,
+                                dest: None,
+                                ty,
+                            });
+                        }
                         VariableKind::Output => {
                             // A discarded VAR_OUTPUT still needs a pointer param: point
                             // it at a throwaway memory-forced scratch (a STRING scratch
@@ -1592,10 +1653,10 @@ impl<'db> ExprLowerCtx<'db> {
                                 self.db,
                                 compact_str::CompactString::from(format!(
                                     "$discard${}",
-                                    self.call_scratch.borrow().len()
+                                    self.call_scratch.borrow().memory.len()
                                 )),
                             );
-                            self.call_scratch.borrow_mut().push((name, ty));
+                            self.call_scratch.borrow_mut().memory.push((name, ty));
                             args.push(MirCallArg {
                                 value: MirExpr::AddrOf(MirPlace::Local(name)),
                                 kind: MirArgKind::ByRef,
@@ -1643,11 +1704,11 @@ impl<'db> ExprLowerCtx<'db> {
                                     self.db,
                                     compact_str::CompactString::from(format!(
                                         "$argcopy${}",
-                                        self.call_scratch.borrow().len()
+                                        self.call_scratch.borrow().memory.len()
                                     )),
                                 );
                                 let size = var_ty.size_bytes();
-                                self.call_scratch.borrow_mut().push((name, var_ty));
+                                self.call_scratch.borrow_mut().memory.push((name, var_ty));
                                 args.push(MirCallArg {
                                     value: MirExpr::CopyIntoScratch {
                                         scratch: name,
@@ -1687,15 +1748,41 @@ impl<'db> ExprLowerCtx<'db> {
                     }
                     ParamAssignKind::FormalOutput { variable, .. } => {
                         let place = self.lower_variable_access(variable)?;
-                        args.push(MirCallArg {
-                            value: MirExpr::AddrOf(place),
-                            kind: MirArgKind::ByRef,
-                        });
+                        if is_extern {
+                            // The result pops off the stack into a scratch,
+                            // then stores to the bound place — no pointer arg.
+                            let ty = crate::lower::lower_func::lower_var_type(self.db, *var)?;
+                            let scratch = self.extern_result_scratch(ty.clone());
+                            extern_results.push(crate::expr::ExternResultBind {
+                                scratch,
+                                dest: Some(place),
+                                ty,
+                            });
+                        } else {
+                            args.push(MirCallArg {
+                                value: MirExpr::AddrOf(place),
+                                kind: MirArgKind::ByRef,
+                            });
+                        }
                     }
                 }
             }
         }
         Ok(())
+    }
+
+    /// A scalar wasm-local scratch for one extern result (`$extret$N`),
+    /// registered on the calling function by the lowering caller.
+    fn extern_result_scratch(&self, ty: MirType) -> hir::hir_def::interned::identifier::Ident {
+        let name = hir::hir_def::interned::identifier::Ident::new(
+            self.db,
+            compact_str::CompactString::from(format!(
+                "$extret${}",
+                self.call_scratch.borrow().scalar.len()
+            )),
+        );
+        self.call_scratch.borrow_mut().scalar.push((name, ty));
+        name
     }
 
     /// Lower an FB invocation statement: write the inputs into the instance,

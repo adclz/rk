@@ -161,14 +161,12 @@ fn lower_module_from_pous<'db>(
     // Phase 1: Process imports first (extern functions get lower indices)
     for (pou, _ns_prefix) in all_pous.iter() {
         if let Pou::Function(func) = pou {
-            let extern_decl = find_extern_decl(db, *func);
-            if extern_decl.is_none() {
+            use hir::HasPragmas;
+            let Some((_, extern_decl)) = func.extern_pragma(db) else {
                 continue;
-            }
-            let extern_decl = extern_decl.unwrap();
+            };
 
-            // Lower non-ANY extern function to MirExternFunction
-            let mir_ext = lower_extern_function(db, *func, &extern_decl, next_fn_idx)?;
+            let mir_ext = lower_extern_function(db, *func, extern_decl, next_fn_idx)?;
             function_indices.insert(mir_ext.name, next_fn_idx);
             next_fn_idx += 1;
             extern_functions.push(mir_ext);
@@ -185,13 +183,12 @@ fn lower_module_from_pous<'db>(
                     continue;
                 }
 
-                // Check if extern (already handled in phase 1)
-                let is_extern = func
-                    .statements(db)
-                    .iter()
-                    .any(|s| matches!(s.stmt(db), StmtKind::ExternPragma(_)));
-                if is_extern {
-                    continue;
+                // Externs were handled in phase 1.
+                {
+                    use hir::HasPragmas;
+                    if func.extern_pragma(db).is_some() {
+                        continue;
+                    }
                 }
 
                 // Check if wasm intrinsic - lower as inline function
@@ -704,14 +701,21 @@ fn collect_namespace_pous<'db>(
     }
 }
 
-/// Lower a non-ANY extern function to MirExternFunction.
+/// Lower an `{extern}` FUNCTION to a MirExternFunction.
+///
+/// The import's signature IS the declaration: `VAR_INPUT` are the params
+/// (copies; aggregates as a pointer to the call-entry snapshot), scalar
+/// `VAR_OUTPUT` are the results in declaration order, and the return type,
+/// when declared, is the LAST result. `VAR_IN_OUT` and aggregate outputs are
+/// refused by HIR (E0243) before lowering runs.
 fn lower_extern_function<'db>(
     db: &'db dyn WorkspaceDataBase,
     func: Function<'db>,
-    extern_decl: &hir::hir_def::extern_decl::ExternDecl<'db>,
+    extern_decl: &hir::hir_def::pous::pragma::ExternPragma,
     index: u32,
 ) -> Result<MirExternFunction, LowerTypeError> {
     let mut params = Vec::new();
+    let mut out_results = Vec::new();
     for var in func.variables(db) {
         match var.kind(db) {
             VariableKind::Input => {
@@ -722,13 +726,9 @@ fn lower_extern_function<'db>(
                     kind: MirParamKind::Input,
                 });
             }
-            VariableKind::InOut => {
+            VariableKind::Output => {
                 let ty = lower_type(db, var.spec(db).infer(db))?;
-                params.push(MirParam {
-                    name: var.name(db),
-                    ty: MirType::Pointer(Box::new(ty)),
-                    kind: MirParamKind::InOut,
-                });
+                out_results.push((var.name(db), ty));
             }
             _ => {}
         }
@@ -745,6 +745,7 @@ fn lower_extern_function<'db>(
         module: extern_decl.module.clone(),
         import_name: extern_decl.name.clone(),
         params,
+        out_results,
         return_type,
     })
 }
@@ -979,20 +980,6 @@ pub fn lower_wasm_intrinsic<'db>(
         linkage: MirLinkage::Export,
         is_test: false,
         export_name: None,
-    })
-}
-
-/// Find extern pragma in a function's statements.
-fn find_extern_decl<'db>(
-    db: &'db dyn WorkspaceDataBase,
-    func: Function<'db>,
-) -> Option<hir::hir_def::extern_decl::ExternDecl<'db>> {
-    func.statements(db).iter().find_map(|stmt| {
-        if let StmtKind::ExternPragma(decl) = stmt.stmt(db) {
-            Some(decl.clone())
-        } else {
-            None
-        }
     })
 }
 

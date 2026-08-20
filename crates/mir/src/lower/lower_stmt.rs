@@ -314,7 +314,6 @@ fn lower_stmt<'db>(
             Ok(Some(MirStmt::Raise { message: mir_msg }))
         }
 
-        StmtKind::ExternPragma(_) => Ok(None), // No MIR equivalent
         StmtKind::WasmPragma(_) => Ok(None),   // Handled at function level, not statement level
 
         StmtKind::EmptyPathExpression(begin_path) => {

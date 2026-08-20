@@ -52,7 +52,20 @@ pub struct MirExternFunction {
     /// Import field name.
     pub import_name: CompactString,
     pub params: Vec<MirParam>,
+    /// Scalar `VAR_OUTPUT` results, in declaration order; the wasm results
+    /// are these followed by `return_type` last.
+    pub out_results: Vec<(Ident, MirType)>,
     pub return_type: Option<MirType>,
+}
+
+impl MirExternFunction {
+    /// The wasm results in wire order: outputs, then the return type last.
+    pub fn results(&self) -> impl Iterator<Item = &MirType> {
+        self.out_results
+            .iter()
+            .map(|(_, ty)| ty)
+            .chain(self.return_type.iter())
+    }
 }
 
 #[derive(Debug, Clone)]
