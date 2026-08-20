@@ -98,7 +98,7 @@ fn check_case_label_constant<'db>(
         }
         _ => {}
     }
-    match const_eval_label(db, label, ctx) {
+    match crate::hir_ty::infer::const_eval::const_int(db, label, ctx) {
         Some(value) => {
             ctx.case_label_value
                 .insert(label, CaseLabelValue::Int(value));
@@ -110,88 +110,6 @@ fn check_case_label_constant<'db>(
             }
             .to_diagnostic(db, ctx.scope.file(db)),
         ),
-    }
-}
-
-/// The compile-time integer value of `expr`, or `None` if it has none.
-///
-/// Overflow yields `None` rather than a wrapped value: a label that cannot be
-/// represented is not a label the compiler knows.
-fn const_eval_label<'db>(
-    db: &'db dyn WorkspaceDataBase,
-    expr: Expr<'db>,
-    ctx: &BodyInferenceResult<'db>,
-) -> Option<i64> {
-    use crate::hir_def::expressions::expression::{AddOperatorKind, MultOperatorKind};
-
-    // Literals, a leading sign and parentheses — the shapes a written-out
-    // constant takes.
-    if let Some(v) = expr.as_const_int_folded(db) {
-        return Some(v);
-    }
-
-    match expr.expr(db) {
-        // A CONSTANT's initializer is as fixed as a literal. Only CONSTANT:
-        // an ordinary variable may be written before the CASE runs.
-        ExprKind::PrimaryExpr(PrimaryExpr::VariableAccess(va)) => {
-            // The binding HIR resolved for this access — `type_of_expr` is
-            // not populated for a bare variable access, whose type lives in
-            // the variable-access table.
-            // NOT normalized: normalize peels the `Variable` wrapper down to
-            // the underlying type, and the binding is exactly what is needed.
-            let Type::Variable((decl, None)) =
-                ctx.type_of_variable_access_with_adjustments(db, *va)
-            else {
-                return None;
-            };
-            if !decl.qualifier(db).contains(crate::Qualifier::CONSTANT) {
-                return None;
-            }
-            // A VAR_EXTERNAL names a global; the value lives on the global's
-            // own declaration, so follow the link the same way a TASK period
-            // does (`interval_nanos`).
-            let decl = if decl.is_external(db) {
-                crate::hir_ty::index_graphs::external_var_lookup(db, decl.name(db))?
-            } else {
-                decl
-            };
-            match decl.init(db)?.kind(db) {
-                crate::hir_def::expressions::expression::InitExprKind::ConstantExpr(init) => {
-                    const_eval_label(db, init, ctx)
-                }
-                _ => None,
-            }
-        }
-        ExprKind::AddOperator {
-            left,
-            operator,
-            right,
-        } => {
-            let (l, r) = (
-                const_eval_label(db, *left, ctx)?,
-                const_eval_label(db, *right, ctx)?,
-            );
-            match operator {
-                AddOperatorKind::Plus => l.checked_add(r),
-                AddOperatorKind::Minus => l.checked_sub(r),
-            }
-        }
-        ExprKind::MultOperator {
-            left,
-            operator,
-            right,
-        } => {
-            let (l, r) = (
-                const_eval_label(db, *left, ctx)?,
-                const_eval_label(db, *right, ctx)?,
-            );
-            match operator {
-                MultOperatorKind::Mul => l.checked_mul(r),
-                MultOperatorKind::Div => l.checked_div(r),
-                MultOperatorKind::Mod => l.checked_rem(r),
-            }
-        }
-        _ => None,
     }
 }
 

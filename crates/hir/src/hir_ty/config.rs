@@ -471,14 +471,13 @@ fn interval_nanos<'db>(
     match ds {
         DataSource::Constant(expr) => time_literal_nanos(db, *expr),
         DataSource::Path(path) => {
-            let var = crate::hir_ty::index_graphs::external_var_lookup(db, path.ident(db).ident)?;
             // Only a CONSTANT can be trusted: an ordinary VAR_GLOBAL may be
-            // written at runtime, and the schedule cannot follow it.
-            if !var.qualifier(db).contains(crate::Qualifier::CONSTANT) {
-                return None;
-            }
-            let init = var.init(db)?;
-            time_literal_nanos(db, constant_init_expr(db, init)?)
+            // written at runtime, and the schedule cannot follow it. Which
+            // declaration is fixed, and where its value lives, is the same
+            // question a CASE label asks — so it is asked in one place.
+            let var = crate::hir_ty::index_graphs::external_var_lookup(db, path.ident(db).ident)?;
+            let init = crate::hir_ty::infer::const_eval::constant_init(db, var)?;
+            time_literal_nanos(db, init)
         }
         // `%MW0` and friends: a period read from process memory is not a
         // compile-time fact at all.
@@ -486,17 +485,6 @@ fn interval_nanos<'db>(
     }
 }
 
-/// The single expression behind a scalar initializer, if it is one.
-fn constant_init_expr<'db>(
-    db: &'db dyn WorkspaceDataBase,
-    init: crate::hir_def::expressions::expression::InitExpr<'db>,
-) -> Option<crate::hir_def::expressions::expression::Expr<'db>> {
-    use crate::hir_def::expressions::expression::InitExprKind;
-    match init.kind(db) {
-        InitExprKind::ConstantExpr(expr) => Some(expr),
-        _ => None,
-    }
-}
 
 /// A TIME/LTIME literal expression in nanoseconds.
 fn time_literal_nanos<'db>(
