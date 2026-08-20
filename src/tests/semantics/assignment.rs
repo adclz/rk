@@ -57,17 +57,6 @@ END_FUNCTION_BLOCK"#;
        |     ^|^
        |      `--- cannot use direct type 'fb2' here
     ---'
-    [E0301] Error: type mismatch
-       ,-[ file:///test0.st:8:12 ]
-       |
-     2 | FUNCTION_BLOCK fb2
-       |                ^|^
-       |                 `--- FUNCTION_BLOCK 'fb2' is defined here
-       |
-     8 |     fb2 := ULINT#5;
-       |            ^^^|^^^
-       |               `----- expected 'fb2', got 'ULINT'
-    ---'
     ");
 }
 
@@ -144,21 +133,6 @@ END_FUNCTION_BLOCK"#;
        |     ^|
        |      `-- cannot use direct type 'T1' here
     ---'
-    [E0301] Error: type mismatch
-       ,-[ file:///test0.st:8:11 ]
-       |
-     3 |     T1 : INT;
-       |          ^|^
-       |           `--- type is defined by 'T1' here
-       |
-     8 |     T1 := ULINT#5;
-       |           ^^^|^^^
-       |              `----- expected 'T1', got 'ULINT'
-       |              |
-       |              `----- consider explicitly casting with 'ULINT_TO_INT(ULINT#5)'
-       |
-       | Help: insert explicit cast 'ULINT_TO_INT(ULINT#5)'
-    ---'
     ");
 }
 
@@ -185,17 +159,6 @@ END_FUNCTION_BLOCK"#;
      11 |     d_fb2 := ULINT#5;
         |     ^^|^^
         |       `---- 'fb2' is a callable type and can not be assigned
-    ----'
-    [E0301] Error: type mismatch
-        ,-[ file:///test0.st:11:14 ]
-        |
-      2 | FUNCTION_BLOCK fb2
-        |                ^|^
-        |                 `--- FUNCTION_BLOCK 'fb2' is defined here
-        |
-     11 |     d_fb2 := ULINT#5;
-        |              ^^^|^^^
-        |                 `----- expected 'fb2', got 'ULINT'
     ----'
     ");
 }

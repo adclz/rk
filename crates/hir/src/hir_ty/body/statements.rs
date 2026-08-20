@@ -182,7 +182,8 @@ impl<'db> StmtsResolverCtx<'db> {
                         );
                     }
 
-                    base_typ.check_assignable(db, CallSite::from_scoped(db, var), ctx);
+                    let assignable =
+                        base_typ.check_assignable(db, CallSite::from_scoped(db, var), ctx);
 
                     // Design 1: an interface parameter is a fixed binding to the
                     // concrete type the caller supplied; reassigning it would
@@ -204,7 +205,9 @@ impl<'db> StmtsResolverCtx<'db> {
 
                     self.infer_and_check_expr(db, &mut infer, *target, ctx);
 
-                    if let Err(err) = infer.coerce_var_access_with_expr(db, *var, *target, ctx) {
+                    if assignable
+                        && let Err(err) = infer.coerce_var_access_with_expr(db, *var, *target, ctx)
+                    {
                         ctx.errors.push(err.into_non_assignable(
                             db,
                             base_typ,

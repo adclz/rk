@@ -364,18 +364,25 @@ impl<'db> Type<'db> {
         false
     }
 
+    /// Whether this target can be assigned to, reporting why if it cannot.
+    ///
+    /// A `false` return means a diagnostic was already emitted, so the caller
+    /// must not go on to type-check the assignment: the target being illegal
+    /// says nothing about the value, and checking anyway reported a second,
+    /// worse error — `expected 'Worker', got 'Worker'` on top of the real one.
     pub fn check_assignable(
         &self,
         db: &'db dyn WorkspaceDataBase,
         call_site: CallSite<'db>,
         ctx: &mut BodyInferenceResult<'db>,
-    ) {
+    ) -> bool {
         if self.is_never() {
-            return;
+            return true;
         }
 
         match self {
             Type::Variable((variable, multibits)) => {
+                let mut assignable = true;
                 // a variable of callable type cannot be assigned to
                 if let Some(callable_typ) = variable.spec(db).infer(db).as_callable(db) {
                     ctx.errors.push(
@@ -385,6 +392,7 @@ impl<'db> Type<'db> {
                         }
                         .to_diagnostic(db, ctx.scope.file(db)),
                     );
+                    assignable = false;
                 }
                 // a CONSTANT variable cannot be assigned to
                 if variable.qualifier(db).contains(crate::Qualifier::CONSTANT) {
@@ -392,12 +400,12 @@ impl<'db> Type<'db> {
                         ControlFlowError::AssignToConstant { access: call_site }
                             .to_diagnostic(db, ctx.scope.file(db)),
                     );
+                    assignable = false;
                 }
+                assignable
             }
-            Type::StructElement(element) => (),
-            _ => {
-                self.check_not_direct_type(db, call_site, ctx);
-            }
+            Type::StructElement(_) => true,
+            _ => self.check_not_direct_type(db, call_site, ctx),
         }
     }
 }
