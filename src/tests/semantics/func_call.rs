@@ -244,17 +244,13 @@ END_FUNCTION_BLOCK"#;
     [E0301] Error: type mismatch
         ,-[ file:///test0.st:21:19 ]
         |
-     15 |         variable1: BOOL;
-        |         ^^^^|^^^^
-        |             `------ type is declared by variable 'variable1' here
+      9 |     param3: INT;
+        |     ^^^|^^
+        |        `---- type is declared by variable 'param3' here
         |
      21 |         param3 => variable1
         |                   ^^^^|^^^^
         |                       `------ expected 'INT', got 'BOOL'
-        |                       |
-        |                       `------ consider explicitly casting with 'BOOL_TO_INT(variable1)'
-        |
-        | Help: insert explicit cast 'BOOL_TO_INT(variable1)'
     ----'
     ");
 }
@@ -958,5 +954,56 @@ END_FUNCTION"#;
         |
         | Note: VAR_IN_OUT binds the callee to the caller's storage by reference; a literal, expression, or call result has no address to bind
     ----'
+    ");
+}
+
+// `o => d` writes the output INTO d, so the conversion runs in that direction:
+// a wider destination takes a narrower output. This was refused, while the
+// reverse — an output too wide for its destination — was accepted and stored
+// the output's full width into the smaller destination.
+#[rstest]
+fn valid_output_binding_widens(mut with_db: RootDatabase) {
+    let source = r#"
+        FUNCTION_BLOCK Src
+        VAR_OUTPUT o : INT; END_VAR
+            o := 7;
+        END_FUNCTION_BLOCK
+        FUNCTION test : DINT
+        VAR s : Src; d : DINT; END_VAR
+            s(o => d);
+            test := d;
+        END_FUNCTION
+    "#;
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"");
+}
+
+// An output too wide for its destination is refused. The snapshot also pins
+// the ABSENCE of a cast suggestion: `=>` names a destination rather than an
+// expression, so there is nowhere to write one.
+#[rstest]
+fn invalid_output_binding_narrows(mut with_db: RootDatabase) {
+    let source = r#"
+        FUNCTION_BLOCK Src
+        VAR_OUTPUT o : DINT; END_VAR
+            o := 70000;
+        END_FUNCTION_BLOCK
+        FUNCTION test : DINT
+        VAR s : Src; d : INT; END_VAR
+            s(o => d);
+            test := d;
+        END_FUNCTION
+    "#;
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
+    [E0301] Error: type mismatch
+       ,-[ file:///test0.st:8:20 ]
+       |
+     3 |         VAR_OUTPUT o : DINT; END_VAR
+       |                    |
+       |                    `-- type is declared by variable 'o' here
+       |
+     8 |             s(o => d);
+       |                    |
+       |                    `-- expected 'DINT', got 'INT'
+    ---'
     ");
 }

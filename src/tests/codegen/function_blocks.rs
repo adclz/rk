@@ -1563,3 +1563,23 @@ fn test_specialized_methods_share_the_owner_instance(mut with_db: db::RootDataba
         "both specializations advanced the SAME Holder (calls=2), each reaching its own implementer"
     );
 }
+
+/// A narrower output landing in a wider destination is sign-extended, not
+/// copied raw: `o : INT := -7 => d : DINT` reads -7, not 65529.
+#[rstest]
+fn test_output_binding_widens_with_sign(mut with_db: db::RootDatabase) {
+    let source = r#"
+        FUNCTION_BLOCK Src
+        VAR_OUTPUT o : INT; END_VAR
+            o := -7;
+        END_FUNCTION_BLOCK
+        FUNCTION test : DINT
+        VAR s : Src; d : DINT; END_VAR
+            s(o => d);
+            test := d;
+        END_FUNCTION
+    "#;
+    let wasm = compile_to_wasm(&mut with_db, source);
+    let result: i32 = super::execute_wasm(&wasm, "test", ());
+    assert_eq!(result, -7, "the INT output sign-extends into the DINT destination");
+}

@@ -367,15 +367,27 @@ fn apply_param_coercion<'db>(
                 );
             }
 
-            rhs_typ.check_assignable(db, call_site, ctx);
-
-            lhs_typ
-                .coerce_with_type(db, rhs_typ, None, resolver)
-                .map_err(|err| {
-                    ctx.errors
-                        .push(err.into_non_assignable(db, rhs_typ, call_site))
-                })
-                .ok();
+            // `o => d` writes the output INTO d, so d is the target. Checked
+            // the other way, every widening binding was refused and every
+            // narrowing one accepted. Reported around the OUTPUT though: the
+            // caret is on `d`, so the type named is the one `d` had to hold.
+            if rhs_typ.check_assignable(db, call_site, ctx)
+                && rhs_typ
+                    .coerce_with_type(db, lhs_typ, None, resolver)
+                    .is_err()
+            {
+                ctx.errors.push(
+                    TypeError::NotAssignable {
+                        base_target: lhs_typ,
+                        lhs: lhs_typ,
+                        rhs: rhs_typ,
+                        adjustment: None,
+                        expr: call_site,
+                        suggest_cast: false,
+                    }
+                    .to_diagnostic(db, ctx.scope.file(db)),
+                );
+            }
 
             ctx.variable_of_param.insert(param, var);
         }
@@ -401,6 +413,7 @@ fn coerce_with_var_target<'db>(
         let base_target = Type::new_var(db, var);
         ctx.errors.push(
             TypeError::NotAssignable {
+                suggest_cast: true,
                 base_target,
                 lhs: e.expected,
                 rhs: e.actual,

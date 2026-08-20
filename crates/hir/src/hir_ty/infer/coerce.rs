@@ -434,6 +434,7 @@ impl<'db> CoerceError<'db> {
             rhs: self.actual,
             adjustment: self.adjustment,
             expr: call_site,
+            suggest_cast: true,
         }
         .to_diagnostic(db, call_site.get_scope_id(db).file(db))
     }

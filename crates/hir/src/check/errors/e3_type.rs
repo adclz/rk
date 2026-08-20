@@ -26,6 +26,9 @@ pub enum TypeError<'db> {
         rhs: Type<'db>,
         adjustment: Option<Adjustment<'db>>,
         expr: CallSite<'db>,
+        /// Whether a cast could be written where the value sits. False for
+        /// an output binding: `o => d` names a destination, not an expression.
+        suggest_cast: bool,
     },
     NotComparable {
         base_target: Type<'db>,
@@ -101,6 +104,7 @@ impl<'db> ToIdeDiagnostic<'db> for TypeError<'db> {
                 rhs: value,
                 adjustment,
                 expr,
+                suggest_cast,
             } => {
                 let message = if target.is_void() {
                     format!(
@@ -122,7 +126,9 @@ impl<'db> ToIdeDiagnostic<'db> for TypeError<'db> {
                     .call();
 
                 base_target.with_location(db, &mut diag);
-                explicit_cast_suggestion(db, *target, *value, *expr, &mut diag);
+                if *suggest_cast {
+                    explicit_cast_suggestion(db, *target, *value, *expr, &mut diag);
+                }
                 diag
             }
             Self::NotComparable {
