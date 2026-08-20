@@ -2624,6 +2624,21 @@ END_FUNCTION_BLOCK
             lint_rule: None,
         },
         ErrorExample {
+            code: "E1006",
+            category: "Control flow",
+            title: "CASE label is not a constant",
+            description: "A CASE label selects a branch at compile time, so its value cannot depend on anything computed while the program runs. IEC's `Case_List_Elem` is a subrange or a `Constant_Expr` — any expression that evaluates to a constant before the program runs — so a literal, a string, an enum value, a named CONSTANT and arithmetic over those are all labels; an ordinary variable is not. A label the compiler could not evaluate used to pass `rk check` and then abort `rk compile` with an internal compiler error.",
+            sources: &[r#"
+FUNCTION_BLOCK fb1
+VAR x : INT; y : INT; LIMIT : INT := 100; END_VAR
+    CASE x OF
+        LIMIT: y := 1;
+    END_CASE;
+END_FUNCTION_BLOCK
+"#],
+            lint_rule: None,
+        },
+        ErrorExample {
             code: "E1005",
             category: "Control Flow",
             title: "FOR control is not a variable",

@@ -113,7 +113,20 @@ VAR x : INT; END_VAR
     END_CASE;
 END_FUNCTION
 "#;
-    assert_snapshot!(test_single_lint(&mut with_db, &[source], "duplicate-case"), @"");
+    assert_snapshot!(test_single_lint(&mut with_db, &[source], "duplicate-case"), @r"
+    [L0306] Warning: duplicate CASE selector
+       ,-[ file:///test0.st:6:9 ]
+       |
+     5 |         INT#1: test := 10;
+       |         ^^|^^
+       |           `---- CASE selector is already defined here
+     6 |         1: test := 20;
+       |         |
+       |         `-- CASE selector '1' is duplicated, second branch is unreachable
+       |
+       | Note: lint rule: duplicate-case
+    ---'
+    ");
 }
 
 #[rstest]
@@ -270,4 +283,38 @@ VAR x : INT; END_VAR
 END_FUNCTION
 "#;
     assert_snapshot!(test_single_lint(&mut with_db, &[source], "duplicate-case"), @r"");
+}
+
+/// Two string labels that DENOTE the same value are one label, however they
+/// are written: the typed form, and an escape against the byte it decodes to.
+/// The lint keys on the value HIR evaluated, so both domains — integers and
+/// strings — collide by meaning rather than by spelling.
+#[rstest]
+fn string_labels_collide_by_value(mut with_db: RootDatabase) {
+    let source = r#"
+FUNCTION test : INT
+VAR s : STRING; y : INT; END_VAR
+    CASE s OF
+        'A': y := 1;
+        '$41': y := 2;
+    ELSE
+        y := 0;
+    END_CASE;
+    test := y;
+END_FUNCTION
+"#;
+    assert_snapshot!(test_single_lint(&mut with_db, &[source], "duplicate-case"), @r"
+    [L0306] Warning: duplicate CASE selector
+       ,-[ file:///test0.st:6:9 ]
+       |
+     5 |         'A': y := 1;
+       |         ^|^
+       |          `--- CASE selector is already defined here
+     6 |         '$41': y := 2;
+       |         ^^|^^
+       |           `---- CASE selector ''$41'' is duplicated, second branch is unreachable
+       |
+       | Note: lint rule: duplicate-case
+    ---'
+    ");
 }

@@ -189,6 +189,8 @@ impl<'db> NullState<'db> {
 ///
 /// 2. There should be no [`Type::Infer`] types in the mappings. All types should be fully resolved,
 ///    those that can't be resolved will be represented as [`Type::Never`].
+
+
 #[derive(Debug, PartialEq, Eq, salsa::Update)]
 pub struct BodyInferenceResult<'db> {
     // Scope where this InferenceResult was emitted
@@ -221,6 +223,17 @@ pub struct BodyInferenceResult<'db> {
     // inference, where the widening lattice lives, instead of leaving each
     // consumer to re-derive it.
     pub comparison_operand_type: FxHashMap<Expr<'db>, Type<'db>>,
+
+    // The value of each CASE label, evaluated here.
+    //
+    // IEC's `Case_List_Elem : Subrange | Constant_Expr`, and a constant
+    // expression is any expression that evaluates at compile time — a named
+    // CONSTANT and arithmetic over constants included. Checking is therefore
+    // the same act as evaluating, so the value is recorded rather than left
+    // for the consumer to work out again: lowering reads THIS instead of
+    // lowering the label and inspecting what came out, which is how a label
+    // it could not fold became an internal compiler error.
+    pub case_label_value: FxHashMap<Expr<'db>, CaseLabelValue>,
 
     // Mapping from path expressions to their adjustment sequences.
     pub path_expr_adjustments: FxHashMap<PathExpr<'db>, Vec<Adjustment<'db>>>,
@@ -292,6 +305,7 @@ impl<'db> BodyInferenceResult<'db> {
             type_of_invocation: FxHashMap::default(),
             type_of_expr: FxHashMap::default(),
             comparison_operand_type: FxHashMap::default(),
+            case_label_value: FxHashMap::default(),
             type_of_path_expr: FxHashMap::default(),
             path_expr_adjustments: FxHashMap::default(),
             errors: Vec::new(),
@@ -589,4 +603,17 @@ impl<'db> AdjustmentInfo<'db> for [Adjustment<'db>] {
             .take_while(|adj| matches!(adj.kind, Adjust::Index) && adj.target.eq(array_type))
             .count()
     }
+}
+
+/// A CASE label's compile-time value, in the domain it belongs to.
+///
+/// Labels come in two: integers (literals, CONSTANTs, arithmetic, and enum
+/// ordinals) and strings. Keeping them in ONE map with the domain explicit is
+/// what lets every consumer — lowering, the duplicate lint — ask the same
+/// question and get an answer it cannot misread as the other kind.
+#[derive(Debug, Clone, PartialEq, Eq, Hash, salsa::Update)]
+pub enum CaseLabelValue {
+    Int(i64),
+    /// The decoded bytes, so `STRING#'a'` and `'a'` are one label.
+    Str(Vec<u8>),
 }

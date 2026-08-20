@@ -2,6 +2,7 @@ use auto_lsp::default::db::file::File;
 use auto_lsp::lsp_types::{DiagnosticSeverity, DiagnosticTag};
 use auto_lsp::tree_sitter;
 use db::WorkspaceDataBase;
+use hir::hir_ty::body::CaseLabelValue;
 use hir::{
     HirNodeInfo,
     hir_def::expressions::{
@@ -38,6 +39,7 @@ struct SeenRange {
 /// Check a single CASE statement's selectors for duplicates and overlaps.
 pub fn check_case<'db>(
     db: &'db dyn WorkspaceDataBase,
+    body: &hir::hir_ty::body::BodyInferenceResult<'db>,
     cases: &[(
         Vec<CaseKind<'db>>,
         Vec<hir::hir_def::expressions::statement::Stmt<'db>>,
@@ -51,7 +53,26 @@ pub fn check_case<'db>(
         for selector in selectors {
             match selector {
                 CaseKind::Expression(expr) => {
-                    let key = expr.as_call_site(db).to_string(db).to_string();
+                    // Key on the value HIR evaluated, so labels that are
+                    // written differently but ARE the same value collide:
+                    // `7`, a CONSTANT `K = 7` and `3+4` are one label. The
+                    // source text is the fallback for the labels that have no
+                    // integer value — enum variants and strings.
+                    let written = expr.as_call_site(db).to_string(db).to_string();
+                    // Key on the value, show the SOURCE TEXT. Two labels that
+                    // are written differently but hold the same value are one
+                    // label, and the second branch is unreachable — but the
+                    // message must name what the user wrote.
+                    // Both value domains key the same map: two labels collide
+                    // when they denote the same thing, whether that is an
+                    // integer (`1` and `INT#1`) or a string (`'a'` and
+                    // `STRING#'a'`). A label with no recorded value — an enum
+                    // variant — falls back to what was written.
+                    let key = match body.case_label_value.get(expr) {
+                        Some(CaseLabelValue::Int(v)) => format!("#{v}"),
+                        Some(CaseLabelValue::Str(bytes)) => format!("${bytes:?}"),
+                        None => written.clone(),
+                    };
 
                     // Check exact duplicate
                     if let Some(first) = seen_exprs.insert(key.clone(), *selector) {
@@ -61,7 +82,7 @@ pub fn check_case<'db>(
                             expr.get_span(db),
                             expr.get_scope_id(db).file(db),
                             &format!(
-                                "CASE selector '{key}' is duplicated, second branch is unreachable"
+                                "CASE selector '{written}' is duplicated, second branch is unreachable"
                             ),
                             diagnostics,
                         );
@@ -69,12 +90,12 @@ pub fn check_case<'db>(
                     }
 
                     // Check if this integer value falls inside an existing range
-                    if let Some(val) = eval_integer(db, expr) {
+                    if let Some(val) = eval_label(body, db, expr) {
                         for prev in &seen_ranges {
                             if val >= prev.lo && val <= prev.hi {
                                 let mut d = diag()
                                     .message(format!(
-                                        "CASE selector '{key}' is already covered by range '{}..{}'",
+                                        "CASE selector '{written}' is already covered by range '{}..{}'",
                                         prev.lo, prev.hi
                                     ))
                                     .desc(&DuplicateCase)
@@ -94,7 +115,7 @@ pub fn check_case<'db>(
                     }
                 }
                 CaseKind::Subrange { lower, upper } => {
-                    if let (Some(lo), Some(hi)) = (eval_integer(db, lower), eval_integer(db, upper))
+                    if let (Some(lo), Some(hi)) = (eval_label(body, db, lower), eval_label(body, db, upper))
                     {
                         let span = lower.get_span(db);
                         let file = lower.get_scope_id(db).file(db);
@@ -143,10 +164,13 @@ pub fn check_case<'db>(
                         }
 
                         // Check if any existing expression value falls in this new range
-                        for (key, prev_selector) in &seen_exprs {
-                            let val = match prev_selector {
-                                CaseKind::Expression(e) => eval_integer(db, e),
-                                _ => None,
+                        for prev_selector in seen_exprs.values() {
+                            let (val, prev_written) = match prev_selector {
+                                CaseKind::Expression(e) => (
+                                    eval_label(body, db, e),
+                                    e.as_call_site(db).to_string(db).to_string(),
+                                ),
+                                _ => (None, String::new()),
                             };
                             if let Some(val) = val
                                 && val >= lo
@@ -162,7 +186,7 @@ pub fn check_case<'db>(
                                 };
                                 let mut d = diag()
                                         .message(format!(
-                                            "CASE range '{lo}..{hi}' covers already defined selector '{key}'"
+                                            "CASE range '{lo}..{hi}' covers already defined selector '{prev_written}'"
                                         ))
                                         .desc(&DuplicateCase)
                                         .range(hir::denormalize(db, file, &span).unwrap_or_default())
@@ -216,6 +240,24 @@ fn emit(
         related_range,
     ));
     diagnostics.push(d);
+}
+
+/// A label's value, as HIR evaluated it (`case_label_value`) — the same
+/// answer the compiler branches on, so an overlap the lint reports is a real
+/// one. The local literal walk stays only as the fallback for a label HIR did
+/// not record.
+fn eval_label<'db>(
+    body: &hir::hir_ty::body::BodyInferenceResult<'db>,
+    db: &'db dyn WorkspaceDataBase,
+    expr: &Expr<'db>,
+) -> Option<u64> {
+    match body.case_label_value.get(expr) {
+        // Only integers order, so only integers enter the interval scan; a
+        // string label has no place on a number line and never reaches it.
+        Some(CaseLabelValue::Int(v)) => u64::try_from(*v).ok(),
+        Some(CaseLabelValue::Str(_)) => None,
+        None => eval_integer(db, expr),
+    }
 }
 
 fn eval_integer<'db>(db: &'db dyn WorkspaceDataBase, expr: &Expr<'db>) -> Option<u64> {

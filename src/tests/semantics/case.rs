@@ -102,7 +102,7 @@ END_FUNCTION_BLOCK"#;
 }
 
 #[rstest]
-fn valid_case_string_condition(mut with_db: RootDatabase) {
+fn valid_case_string_label(mut with_db: RootDatabase) {
     let source = r#"
 FUNCTION_BLOCK fb1
     VAR
@@ -118,8 +118,10 @@ FUNCTION_BLOCK fb1
 
 END_FUNCTION_BLOCK"#;
 
-    // NOTE: IEC 61131-3 only allows ordinal types for CASE conditions,
-    // but we don't validate this yet — STRING passes without error.
+    // A string literal is a constant expression, so it is a legal label —
+    // and it compares by content, like `=` on STRINGs. (See
+    // codegen::control_flow::case_string_labels_compare_by_content for the
+    // execution side; this only pins that it checks clean.)
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @"");
 }
 
@@ -141,6 +143,20 @@ FUNCTION_BLOCK fb1
 END_FUNCTION_BLOCK"#;
 
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
+    [E1006] Error: control flow violation
+       ,-[ file:///test0.st:9:9 ]
+       |
+     9 |         'a'..'z': y := 10;
+       |         ^|^
+       |          `--- a CASE range bound must be an integer constant
+    ---'
+    [E1006] Error: control flow violation
+       ,-[ file:///test0.st:9:14 ]
+       |
+     9 |         'a'..'z': y := 10;
+       |              ^|^
+       |               `--- a CASE range bound must be an integer constant
+    ---'
     [E0302] Error: type mismatch
        ,-[ file:///test0.st:9:9 ]
        |
@@ -248,8 +264,12 @@ END_FUNCTION_BLOCK"#;
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"");
 }
 
+/// A CASE label picks a branch at compile time, so a VARIABLE cannot be one —
+/// IEC's `Case_List_Element` is a signed integer, a subrange, or an enum
+/// value. This used to check clean and then abort `rk compile` with an
+/// internal compiler error.
 #[rstest]
-fn valid_case_with_variable_label(mut with_db: RootDatabase) {
+fn invalid_case_with_variable_label(mut with_db: RootDatabase) {
     let source = r#"
 FUNCTION_BLOCK fb1
     VAR
@@ -266,7 +286,15 @@ FUNCTION_BLOCK fb1
 
 END_FUNCTION_BLOCK"#;
 
-    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"");
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
+    [E1006] Error: control flow violation
+        ,-[ file:///test0.st:10:9 ]
+        |
+     10 |         LIMIT: y := 1;
+        |         ^^|^^
+        |           `---- a CASE label must evaluate to a constant at compile time
+    ----'
+    ");
 }
 
 #[rstest]
@@ -298,5 +326,44 @@ END_FUNCTION_BLOCK"#;
         |              ^^^|^^^
         |                 `----- expected 'INT', got 'STRING'
     ----'
+    ");
+}
+
+/// A range is an ordering, so its bounds have to be orderable numbers. A
+/// string can be a label on its own but not the end of a range: `'a'..'z'`
+/// denotes a lexicographic set the compiler has no representation for, and it
+/// used to check clean and then abort `rk compile`.
+#[rstest]
+fn invalid_case_string_range_bounds(mut with_db: RootDatabase) {
+    let source = r#"
+FUNCTION_BLOCK fb1
+    VAR
+        s : STRING;
+        y : INT;
+    END_VAR
+
+    CASE s OF
+        'a'..'z': y := 1;
+    ELSE
+        y := 0;
+    END_CASE;
+
+END_FUNCTION_BLOCK"#;
+
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
+    [E1006] Error: control flow violation
+       ,-[ file:///test0.st:9:9 ]
+       |
+     9 |         'a'..'z': y := 1;
+       |         ^|^
+       |          `--- a CASE range bound must be an integer constant
+    ---'
+    [E1006] Error: control flow violation
+       ,-[ file:///test0.st:9:14 ]
+       |
+     9 |         'a'..'z': y := 1;
+       |              ^|^
+       |               `--- a CASE range bound must be an integer constant
+    ---'
     ");
 }

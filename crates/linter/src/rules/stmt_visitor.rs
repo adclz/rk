@@ -544,7 +544,7 @@ fn visit_statements<'db>(
                 check_expr_lints(db, body, ctx, condition, diagnostics);
                 if ctx.duplicate_case {
                     run_lint(duplicate_case::NAME, diagnostics, |d| {
-                        duplicate_case::check_case(db, cases, d)
+                        duplicate_case::check_case(db, body, cases, d)
                     });
                 }
                 if ctx.empty_case_branch {

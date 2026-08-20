@@ -46,6 +46,15 @@ pub enum ControlFlowError<'db> {
     ForControlNotAVariable {
         access: CallSite<'db>,
     },
+    /// A case label must evaluate to a constant value at compile time.
+    CaseLabelNotConstant {
+        label: CallSite<'db>,
+        /// Whether the label is a RANGE BOUND. A single label may be a
+        /// string or an enum variant; a bound may not, because a range is an
+        /// ordering and those do not order — so the two need different
+        /// wording for what is otherwise the same rule.
+        as_range_bound: bool,
+    },
     DerefPossiblyNull {
         var: VariableDecl<'db>,
         expr: PathExpr<'db>,
@@ -67,6 +76,7 @@ impl<'db> ErrorCode for ControlFlowError<'db> {
             Self::DerefPossiblyNull { .. } => "E1003",
             Self::AssignToConstant { .. } => "E1004",
             Self::ForControlNotAVariable { .. } => "E1005",
+            Self::CaseLabelNotConstant { .. } => "E1006",
         }
     }
 
@@ -131,6 +141,22 @@ impl<'db> ToIdeDiagnostic<'db> for ControlFlowError<'db> {
                 .range(crate::denormalize(db, file, &stmt.get_span(db)).unwrap_or_default())
                 .severity(DiagnosticSeverity::ERROR)
                 .desc(self)
+                .call(),
+            Self::CaseLabelNotConstant {
+                label,
+                as_range_bound,
+            } => diag()
+                .message(
+                    if *as_range_bound {
+                        "a CASE range bound must be an integer constant"
+                    } else {
+                        "a CASE label must evaluate to a constant at compile time"
+                    }
+                    .to_string(),
+                )
+                .severity(DiagnosticSeverity::ERROR)
+                .desc(self)
+                .range(crate::denormalize(db, file, &label.get_span(db)).unwrap_or_default())
                 .call(),
             Self::ForControlNotAVariable { access } => {
                 let mut diag = diag()

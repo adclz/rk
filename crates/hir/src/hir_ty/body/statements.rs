@@ -16,7 +16,7 @@ use crate::{
         semantic_index::get_scope,
     },
     hir_ty::{
-        body::{Adjust, BodyInferenceResult, NullState},
+        body::{Adjust, BodyInferenceResult, CaseLabelValue, NullState},
         infer::{Infer, expr::InferExprCtx},
         resolver::{Resolver, func_call::resolve_func_call},
         ty::Type,
@@ -49,6 +49,148 @@ fn try_extract_integer(db: &dyn WorkspaceDataBase, expr: Expr<'_>) -> Option<i64
             UnaryOperatorKind::Plus => try_extract_integer(db, *inner),
             _ => None,
         },
+        _ => None,
+    }
+}
+
+
+/// Evaluate a CASE label, recording its value and refusing it if it has none
+/// (E1006).
+///
+/// IEC: `Case_List_Elem : Subrange | Constant_Expr`, where a constant
+/// expression is any expression that evaluates to a constant AT COMPILE TIME.
+/// That is a semantic rule, not a shape one, so this evaluates rather than
+/// pattern-matches: literals and signs, a named CONSTANT's initializer, and
+/// arithmetic over those. "Known at compile time" is wider than "written as a
+/// literal" — the same principle `interval_nanos` states for a TASK period.
+///
+/// The value is RECORDED, because checking a label and evaluating it are the
+/// same act. Lowering reads it instead of lowering the label and inspecting
+/// the result, which is how a label MIR could not fold became an internal
+/// compiler error on source that checked clean.
+fn check_case_label_constant<'db>(
+    db: &'db dyn WorkspaceDataBase,
+    label: Expr<'db>,
+    // Whether a non-integer constant is acceptable here. A single label may
+    // be a string or an enum variant; a SUBRANGE bound may not — `'a'..'z'`
+    // denotes a lexicographic set the compiler has no representation for, and
+    // ordering is the whole point of a range.
+    allow_non_integer: bool,
+    ctx: &mut BodyInferenceResult<'db>,
+) {
+    // An enum label's value is its variant's ordinal, which lowering reads
+    // from the variant table; there is nothing to record here.
+    match ctx.get_type_of_expr(label).normalize(db) {
+        Type::Enum(_) | Type::EnumVariant(..) if allow_non_integer => return,
+        Type::Elementary(ElementarySpec::String) if allow_non_integer => {
+            // A string LITERAL is constant; a STRING variable is not. Record
+            // the DECODED bytes, so `STRING#'a'` and `'a'` are one label and
+            // an escape is compared by what it denotes.
+            if let ExprKind::PrimaryExpr(PrimaryExpr::Literal(
+                Elementary::String(ident) | Elementary::Char(ident),
+            )) = label.expr(db)
+                && let Ok(bytes) = ident.as_single_string(db)
+            {
+                ctx.case_label_value
+                    .insert(label, CaseLabelValue::Str(bytes));
+                return;
+            }
+        }
+        _ => {}
+    }
+    match const_eval_label(db, label, ctx) {
+        Some(value) => {
+            ctx.case_label_value
+                .insert(label, CaseLabelValue::Int(value));
+        }
+        None => ctx.errors.push(
+            ControlFlowError::CaseLabelNotConstant {
+                label: CallSite::from_scoped(db, &label),
+                as_range_bound: !allow_non_integer,
+            }
+            .to_diagnostic(db, ctx.scope.file(db)),
+        ),
+    }
+}
+
+/// The compile-time integer value of `expr`, or `None` if it has none.
+///
+/// Overflow yields `None` rather than a wrapped value: a label that cannot be
+/// represented is not a label the compiler knows.
+fn const_eval_label<'db>(
+    db: &'db dyn WorkspaceDataBase,
+    expr: Expr<'db>,
+    ctx: &BodyInferenceResult<'db>,
+) -> Option<i64> {
+    use crate::hir_def::expressions::expression::{AddOperatorKind, MultOperatorKind};
+
+    // Literals, a leading sign and parentheses — the shapes a written-out
+    // constant takes.
+    if let Some(v) = expr.as_const_int_folded(db) {
+        return Some(v);
+    }
+
+    match expr.expr(db) {
+        // A CONSTANT's initializer is as fixed as a literal. Only CONSTANT:
+        // an ordinary variable may be written before the CASE runs.
+        ExprKind::PrimaryExpr(PrimaryExpr::VariableAccess(va)) => {
+            // The binding HIR resolved for this access — `type_of_expr` is
+            // not populated for a bare variable access, whose type lives in
+            // the variable-access table.
+            // NOT normalized: normalize peels the `Variable` wrapper down to
+            // the underlying type, and the binding is exactly what is needed.
+            let Type::Variable((decl, None)) =
+                ctx.type_of_variable_access_with_adjustments(db, *va)
+            else {
+                return None;
+            };
+            if !decl.qualifier(db).contains(crate::Qualifier::CONSTANT) {
+                return None;
+            }
+            // A VAR_EXTERNAL names a global; the value lives on the global's
+            // own declaration, so follow the link the same way a TASK period
+            // does (`interval_nanos`).
+            let decl = if decl.is_external(db) {
+                crate::hir_ty::index_graphs::external_var_lookup(db, decl.name(db))?
+            } else {
+                decl
+            };
+            match decl.init(db)?.kind(db) {
+                crate::hir_def::expressions::expression::InitExprKind::ConstantExpr(init) => {
+                    const_eval_label(db, init, ctx)
+                }
+                _ => None,
+            }
+        }
+        ExprKind::AddOperator {
+            left,
+            operator,
+            right,
+        } => {
+            let (l, r) = (
+                const_eval_label(db, *left, ctx)?,
+                const_eval_label(db, *right, ctx)?,
+            );
+            match operator {
+                AddOperatorKind::Plus => l.checked_add(r),
+                AddOperatorKind::Minus => l.checked_sub(r),
+            }
+        }
+        ExprKind::MultOperator {
+            left,
+            operator,
+            right,
+        } => {
+            let (l, r) = (
+                const_eval_label(db, *left, ctx)?,
+                const_eval_label(db, *right, ctx)?,
+            );
+            match operator {
+                MultOperatorKind::Mul => l.checked_mul(r),
+                MultOperatorKind::Div => l.checked_div(r),
+                MultOperatorKind::Mod => l.checked_rem(r),
+            }
+        }
         _ => None,
     }
 }
@@ -412,6 +554,7 @@ impl<'db> StmtsResolverCtx<'db> {
                             match case {
                                 CaseKind::Expression(expr) => {
                                     self.infer_and_check_expr(db, &mut infer, *expr, ctx);
+                                    check_case_label_constant(db, *expr, true, ctx);
 
                                     if let Err(err) =
                                         infer.coerce_type_with_expr(db, condition_typ, *expr, ctx)
@@ -426,6 +569,8 @@ impl<'db> StmtsResolverCtx<'db> {
                                 CaseKind::Subrange { lower, upper } => {
                                     self.infer_and_check_expr(db, &mut infer, *lower, ctx);
                                     self.infer_and_check_expr(db, &mut infer, *upper, ctx);
+                                    check_case_label_constant(db, *lower, false, ctx);
+                                    check_case_label_constant(db, *upper, false, ctx);
 
                                     if let Err(err) =
                                         infer.coerce_type_with_expr(db, condition_typ, *lower, ctx)
