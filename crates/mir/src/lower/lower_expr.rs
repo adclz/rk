@@ -726,60 +726,41 @@ impl<'db> ExprLowerCtx<'db> {
         }
     }
 
-    /// Build the base `MirPlace` for a path root.
+    /// The base `MirPlace` for a path root. Local, member or global is
+    /// [`VariableDecl::storage_class`]'s answer; MIR only looks up where a
+    /// member sits in the layout it built.
     ///
-    /// The member-vs-local **decision** is HIR's, in two steps:
-    ///
-    /// 1. HIR is asked whether the root binds to a variable declared in the
-    ///    enclosing *method's own scope*. If so it is a genuine local, and it
-    ///    shadows any same-named member — a method local shadows an FB member in
-    ///    IEC and in HIR name resolution, so it must lower to a wasm
-    ///    `Local`, never a `ThisField`.
-    /// 2. Otherwise membership is decided by presence in `this_struct`, which is
-    ///    itself lowered from HIR's [`instance_members`] — the same resolved
-    ///    list that produced the layout. So this is a lookup in HIR's answer,
-    ///    not a second derivation of it; MIR never walks `EXTENDS`.
-    ///
-    /// The lookup is by NAME rather than by variable identity, which is sound
-    /// only because HIR rejects a derived POU redeclaring an inherited member
-    /// (E0521) — so within one instance a member name is unique. Carrying the
-    /// `VariableDecl` on `MirStructField` would make it identity-based and drop
-    /// that dependency.
-    ///
+    /// [`VariableDecl::storage_class`]: hir::hir_def::pous::variable::VariableDecl::storage_class
     fn root_place(
         &self,
         root: hir::hir_def::expressions::expression::PathExpr<'db>,
         ident: hir::hir_def::interned::identifier::Ident,
     ) -> MirPlace {
-        // A VAR_GLOBAL, or the VAR_EXTERNAL naming one: HIR's binding says so
-        // outright, in every body shape. The address is not known until the
-        // layout is final, so it is filled later — but WHAT this is, is
-        // decided here.
-        if let Some(decl) = self.root_binding(root, ident)
-            && (decl.is_global(self.db) || decl.is_external(self.db))
+        use hir::hir_def::pous::variable::StorageClass;
+
+        match self
+            .root_binding(root, ident)
+            .map(|decl| decl.storage_class(self.db))
         {
-            return MirPlace::Global {
-                name: Some(ident),
-                address: 0,
-                ty: MirType::Void,
-            };
+            // The address is filled in once the layout is final.
+            Some(StorageClass::Global) => {
+                return MirPlace::Global {
+                    name: Some(ident),
+                    address: 0,
+                    ty: MirType::Void,
+                };
+            }
+            // A local shadows any same-named member, in IEC and in HIR name
+            // resolution alike.
+            Some(StorageClass::Local) => return MirPlace::Local(ident),
+            Some(StorageClass::InstanceMember) | None => {}
         }
 
-        // No `this` pointer (e.g. a free function body): nothing can be a
-        // member, so the root is always a local. Also skips the HIR query.
+        // No `this` pointer: the root is a local.
         let Some(this_struct) = self.this_struct.as_ref() else {
             return MirPlace::Local(ident);
         };
 
-        // HIR says this root is one of the method's own locals/params/return →
-        // it shadows any same-named member.
-        if self.root_is_method_local(root, ident) {
-            return MirPlace::Local(ident);
-        }
-
-        // Otherwise: a name present in the instance layout is a member (offset
-        // from `this_struct`); anything else is a local. The layout comes from
-        // HIR's `instance_members`, so this consults HIR's resolution.
         match this_struct.fields.iter().find(|f| f.name == ident) {
             Some(field) => {
                 let this_field = MirPlace::ThisField {
@@ -806,17 +787,15 @@ impl<'db> ExprLowerCtx<'db> {
         }
     }
 
-    /// Did HIR resolve the root of `path` to a variable declared in the current
-    /// method/prototype scope (a genuine local/param/return), as opposed to an
-    /// FB/Class member, a global, or an unresolved name? Drives `root_place`.
     /// The declaration this path's root name binds to.
     ///
-    /// Two HIR answers, because neither covers every path on its own: the
-    /// body's typed expressions resolve a bare name that no local declares
-    /// (direct access to a configuration global), while the scope's def map
-    /// answers for a root that is not a path expression at all — the receiver
-    /// of `g()` roots in an `Invocation`, which `type_of_path_expr` has no key
-    /// for.
+    /// Two HIR answers, because neither covers every path on its own. The
+    /// body's typed expressions cover a name the enclosing POU does not
+    /// declare — direct access to a configuration global — but they are keyed
+    /// per expression SHAPE, and the receiver of `g()` roots in an
+    /// `Invocation`, which `type_of_path_expr` has no key for. The scope's own
+    /// declarations answer that one. (`def_map.global_variables` is every
+    /// variable the POU declares, not just the global ones.)
     fn root_binding(
         &self,
         path: hir::hir_def::expressions::expression::PathExpr<'db>,
@@ -832,29 +811,7 @@ impl<'db> ExprLowerCtx<'db> {
         {
             return Some(*var);
         }
-        let def_map = scope.def_map(self.db);
-        def_map
-            .local_variables
-            .get(&ident)
-            .or_else(|| def_map.global_variables.get(&ident))
-            .copied()
-    }
-
-    fn root_is_method_local(
-        &self,
-        path: hir::hir_def::expressions::expression::PathExpr<'db>,
-        ident: hir::hir_def::interned::identifier::Ident,
-    ) -> bool {
-        use hir::HirNodeInfo;
-        use hir::hir_def::{scope::ScopeKind, semantic_index::get_scope};
-
-        self.root_binding(path, ident)
-            .is_some_and(|var| {
-                matches!(
-                    get_scope(self.db, var.get_scope_id(self.db)).kind,
-                    ScopeKind::MethodDecl(_) | ScopeKind::MethodProt(_)
-                )
-            })
+        scope.def_map(self.db).global_variables.get(&ident).copied()
     }
 
     /// Lower a BeginPathExpr to a MirPlace, handling nested field/index/deref chains.

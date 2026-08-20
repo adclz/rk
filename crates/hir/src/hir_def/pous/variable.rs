@@ -1,5 +1,6 @@
 use db::WorkspaceDataBase;
 
+use crate::hir_def::{pous::pou::Pou, scope::ScopeKind, semantic_index::get_scope};
 use crate::{
     AstId, HasName, HasQualifiers, HirNodeInfo, Qualifier,
     hir_def::{
@@ -34,7 +35,7 @@ pub struct VariableDecl<'db> {
 
     #[tracked]
     pub init: Option<InitExpr<'db>>,
-    
+
     #[tracked]
     pub location: Option<DirectVariable<'db>>,
 
@@ -97,6 +98,33 @@ impl<'db> VariableDecl<'db> {
         matches!(self.kind(db), VariableKind::Global)
     }
 
+    /// Where this declaration's storage lives.
+    ///
+    /// The one definition of the rule: [`instance_members`] filters on it, and
+    /// so does the code generator when it decides whether a resolved name is a
+    /// wasm local, a field of the enclosing instance, or a fixed address. They
+    /// disagreeing is how a VAR_TEMP once persisted across scans.
+    ///
+    /// [`instance_members`]: crate::hir_ty::head::inheritance::instance_members
+    pub fn storage_class(&self, db: &'db dyn WorkspaceDataBase) -> StorageClass {
+        // VAR_EXTERNAL holds no storage of its own; it names a configuration
+        // VAR_GLOBAL, which is where the value actually lives.
+        if self.is_external(db) || self.is_global(db) {
+            return StorageClass::Global;
+        }
+        // VAR_TEMP is scratch for one call, not instance state, even when the
+        // POU that declares it has an instance.
+        if self.is_temp(db) {
+            return StorageClass::Local;
+        }
+        match get_scope(db, self.get_scope_id(db)).kind {
+            ScopeKind::Pou(Pou::FunctionBlock(_) | Pou::Class(_)) | ScopeKind::Program(_) => {
+                StorageClass::InstanceMember
+            }
+            _ => StorageClass::Local,
+        }
+    }
+
     pub fn is_access(&self, db: &'db dyn WorkspaceDataBase) -> bool {
         matches!(self.kind(db), VariableKind::Access)
     }
@@ -119,6 +147,19 @@ impl<'db> VariableDecl<'db> {
 // VAR_ACCESS Access path declaration
 // VAR_TEMP Temporary storage for variables in function blocks, methods and programs
 // VAR_CONFIG Instance-specific initialization and location assignment.
+
+/// Where a declaration's storage lives — see
+/// [`VariableDecl::storage_class`].
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum StorageClass {
+    /// A local of the function being emitted: a FUNCTION's or METHOD's own
+    /// variables, and VAR_TEMP anywhere.
+    Local,
+    /// A field of the enclosing FUNCTION_BLOCK, CLASS or PROGRAM instance.
+    InstanceMember,
+    /// A configuration VAR_GLOBAL, or the VAR_EXTERNAL naming one.
+    Global,
+}
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, salsa::Update)]
 pub enum VariableKind {

@@ -456,10 +456,9 @@ fn collect_instance_members<'db>(
         _ => return,
     };
     for var in vars {
-        use crate::hir_def::pous::variable::VariableKind;
-        match var.kind(db) {
-            VariableKind::External | VariableKind::Temp => continue,
-            _ => {}
+        use crate::hir_def::pous::variable::StorageClass;
+        if var.storage_class(db) != StorageClass::InstanceMember {
+            continue;
         }
         out.push(InstanceMember {
             owner: pou,
@@ -483,16 +482,6 @@ pub fn base_pou<'db>(db: &'db dyn WorkspaceDataBase, pou: Pou<'db>) -> Option<Po
 
 /// The concrete method an implementer provides for an inherited method NAME —
 /// in particular, for an interface prototype it declares via `IMPLEMENTS`.
-///
-/// Conformance already establishes this pairing: `check_methods` matches each
-/// inherited prototype against the implementer's declared method to verify the
-/// signature. That pairing was only used for diagnostics and then discarded, so
-/// consumers needing the implementation itself — devirtualizing an interface
-/// call to `Worker#Run` when monomorphizing — had to re-derive it.
-///
-/// A method the implementer declares itself wins; otherwise one it inherits
-/// from a base. Returns `None` when nothing concrete implements the name (an
-/// unimplemented prototype, which conformance reports separately).
 pub fn implementing_method<'db>(
     db: &'db dyn WorkspaceDataBase,
     implementer: Pou<'db>,
