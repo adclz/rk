@@ -341,10 +341,14 @@ pub enum ResolveError<'db> {
         anchor: SpanIdent<'db>,
         pou_kind: &'static str,
     },
-    /// A direct variable (`%IX0.0`) read or written in a body. The address
-    /// is TYPED here — `X/B/W/D/L` names the width — but nothing maps it to
-    /// an I/O image, so it cannot be lowered
-    DirectVariableUnsupported { access: CallSite<'db> },
+    /// A direct variable used anywhere: read or written in a body, or named
+    /// by a declaration's `AT` clause. The address is TYPED — `X/B/W/D/L`
+    /// names the width — but nothing maps it to an I/O image
+    DirectVariableUnsupported {
+        site: CallSite<'db>,
+        /// The address AS WRITTEN
+        address: compact_str::CompactString,
+    },
     /// One or more required call-site parameters (VAR_INPUT on FUNCTION/METHOD
     /// without a scalar default, or VAR_IN_OUT on any callable) were not
     /// supplied. All missing params for a single call site are collapsed into
@@ -1093,17 +1097,15 @@ impl<'db> ToIdeDiagnostic<'db> for ResolveError<'db> {
                 );
                 diag
             }
-            Self::DirectVariableUnsupported { access } => {
+            Self::DirectVariableUnsupported { site, address } => {
                 let mut diag = diag()
                     .message(format!(
                         "'{}' cannot be read or written: there is no I/O mapping",
-                        access.to_string(db)
+                        address
                     ))
                     .severity(DiagnosticSeverity::ERROR)
                     .desc(self)
-                    .range(
-                        crate::denormalize(db, file, &access.get_span(db)).unwrap_or_default(),
-                    )
+                    .range(crate::denormalize(db, file, &site.get_span(db)).unwrap_or_default())
                     .call();
                 diag.with_note(
                     "the address is understood and X/B/W/D/L names the width, but nothing \

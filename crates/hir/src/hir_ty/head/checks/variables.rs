@@ -93,6 +93,22 @@ impl<'db> InitInference<'db> {
                     .to_diagnostic(db, self.scope.file(db)),
                 );
             }
+            // A declared location gets the SAME answer as a direct access:
+            // the hardware is not implemented, so binding a variable to an
+            // address cannot be honoured. Silently dropping the `AT` clause
+            // handed the user an ordinary variable that never sees its input.
+            //
+            // TODO: lift this when an I/O band lands — `var.location` already
+            // carries what a mapping would bind.
+            if let Some(dv) = var.location(db) {
+                self.errors.push(
+                    ResolveError::DirectVariableUnsupported {
+                        site: var.as_call_site(db),
+                        address: compact_str::CompactString::from(dv.to_address(db)),
+                    }
+                    .to_diagnostic(db, self.scope.file(db)),
+                );
+            }
             if extern_fn.is_some() {
                 use crate::hir_def::pous::variable::VariableKind;
                 let forbidden = match var.kind(db) {

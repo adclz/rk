@@ -868,6 +868,22 @@ impl<'db> ParseVarSection<'db> for ast::generated::GlobalVarDecls {
         for child in self.children.iter() {
             match child.cast(sema.ast).Type.cast(sema.ast) {
                 GlobalVarKind::NamespaceAccess(var_decl) => {
+                    // `name AT %IX0.0` — the grammar admits the AT clause
+                    // only alongside a single name, so one location at most.
+                    let location = child
+                        .cast(sema.ast)
+                        .spec
+                        .cast(sema.ast)
+                        .children
+                        .as_ref()
+                        .and_then(|la| {
+                            let r = la
+                                .cast(sema.ast)
+                                .children
+                                .cast(sema.ast)
+                                .to_direct_variable(sema);
+                            sema.try_parse(r)
+                        });
                     for variable in child.cast(sema.ast).spec.cast(sema.ast).name.iter() {
                         let r = Ident::from_node(sema.db, sema.file, variable.cast(sema.ast));
                         let Some(name) = sema.try_parse(r) else {
@@ -877,7 +893,7 @@ impl<'db> ParseVarSection<'db> for ast::generated::GlobalVarDecls {
                         let Some(result) = sema.try_parse(r) else {
                             continue;
                         };
-                        section.push(sema.new_variable(
+                        section.push(sema.new_variable_at(
                             name,
                             variable.cast(sema.ast).into(),
                             VariableKind::Global,
@@ -885,6 +901,7 @@ impl<'db> ParseVarSection<'db> for ast::generated::GlobalVarDecls {
                             false,
                             result.spec,
                             result.init,
+                            location,
                             child.cast(sema.ast).into(),
                             sema.current_scope,
                         ))
@@ -899,6 +916,22 @@ impl<'db> ParseVarSection<'db> for ast::generated::GlobalVarDecls {
                 // declared name, each carrying its own name span, as every
                 // other section does.
                 GlobalVarKind::LocVarSpecInit(var_decl) => {
+                    // `name AT %IX0.0` — the grammar admits the AT clause
+                    // only alongside a single name, so one location at most.
+                    let location = child
+                        .cast(sema.ast)
+                        .spec
+                        .cast(sema.ast)
+                        .children
+                        .as_ref()
+                        .and_then(|la| {
+                            let r = la
+                                .cast(sema.ast)
+                                .children
+                                .cast(sema.ast)
+                                .to_direct_variable(sema);
+                            sema.try_parse(r)
+                        });
                     for variable in child.cast(sema.ast).spec.cast(sema.ast).name.iter() {
                         let r = Ident::from_node(sema.db, sema.file, variable.cast(sema.ast));
                         let Some(name) = sema.try_parse(r) else {
@@ -908,7 +941,7 @@ impl<'db> ParseVarSection<'db> for ast::generated::GlobalVarDecls {
                         let Some(result) = sema.try_parse(r) else {
                             continue;
                         };
-                        section.push(sema.new_variable(
+                        section.push(sema.new_variable_at(
                             name,
                             variable.cast(sema.ast).into(),
                             VariableKind::Global,
@@ -916,6 +949,7 @@ impl<'db> ParseVarSection<'db> for ast::generated::GlobalVarDecls {
                             false,
                             result.spec,
                             result.init,
+                            location,
                             child.cast(sema.ast).into(),
                             sema.current_scope,
                         ))

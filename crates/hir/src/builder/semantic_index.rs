@@ -123,8 +123,32 @@ impl<'db> SemanticIndexBuilder<'db> {
         id: crate::AstId,
         scope_id: crate::hir_def::scope::ScopeId<'db>,
     ) -> crate::hir_def::pous::variable::VariableDecl<'db> {
+        self.new_variable_at(
+            name, name_id, kind, qualifier, variadic, spec, init, None, id, scope_id,
+        )
+    }
+
+    /// As [`new_variable`](Self::new_variable), for a declaration that names a
+    /// hardware address (`sensor AT %IX0.0 : BOOL`). Sections that can carry
+    /// an `AT` clause must use this: passing the location through
+    /// `new_variable` would drop it, and a located variable silently becoming
+    /// an ordinary one is the bug this exists to prevent.
+    #[allow(clippy::too_many_arguments)]
+    pub fn new_variable_at(
+        &mut self,
+        name: crate::hir_def::interned::identifier::Ident,
+        name_id: crate::AstId,
+        kind: crate::hir_def::pous::variable::VariableKind,
+        qualifier: crate::Qualifier,
+        variadic: bool,
+        spec: crate::hir_def::expressions::spec::Spec<'db>,
+        init: Option<crate::hir_def::expressions::expression::InitExpr<'db>>,
+        location: Option<crate::hir_def::pous::variable::DirectVariable<'db>>,
+        id: crate::AstId,
+        scope_id: crate::hir_def::scope::ScopeId<'db>,
+    ) -> crate::hir_def::pous::variable::VariableDecl<'db> {
         let var = crate::hir_def::pous::variable::VariableDecl::new(
-            self.db, name, name_id, kind, qualifier, variadic, spec, init, id, scope_id,
+            self.db, name, name_id, kind, qualifier, variadic, spec, init, location, id, scope_id,
         );
         self.register_node(id, HirNode::VariableDecl(var));
         var

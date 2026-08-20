@@ -34,6 +34,9 @@ pub struct VariableDecl<'db> {
 
     #[tracked]
     pub init: Option<InitExpr<'db>>,
+    
+    #[tracked]
+    pub location: Option<DirectVariable<'db>>,
 
     #[tracked]
     #[no_eq]
@@ -135,6 +138,29 @@ pub struct DirectVariable<'db> {
     pub adress: Ident,
     pub partly: bool,
     pub offset: Vec<Integer>,
+}
+
+impl<'db> DirectVariable<'db> {
+    /// The address as written: `%IX0.0`, `%IW4`, `%I*`.
+    ///
+    /// Neither half names the location on its own — `adress` holds the
+    /// prefix and width letters (`IX`) while the numeric parts live in
+    /// `offset` — so this is the single renderer for both.
+    pub fn to_address(self, db: &'db dyn WorkspaceDataBase) -> String {
+        let mut out = String::from("%");
+        out.push_str(self.adress(db).text(db));
+        if self.partly(db) {
+            out.push('*');
+            return out;
+        }
+        for (i, part) in self.offset(db).iter().enumerate() {
+            if i > 0 {
+                out.push('.');
+            }
+            out.push_str(part.ident(db).text(db));
+        }
+        out
+    }
 }
 
 #[salsa::tracked(debug)]

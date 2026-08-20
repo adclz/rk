@@ -162,11 +162,17 @@ impl<'db> Resolver<'db> {
                 // But nothing maps it to a process image, so refuse it HERE —
                 // MIR's refusal reaches the user as an internal compiler
                 // error, from code `rk check` called clean.
+                //
+                // TODO: drop the refusal once an I/O band exists; the typing
+                // above is already what a real mapping would need.
                 ctx.type_of_direct_variable
                     .insert(dv, Type::DirectVariable((dv, var_access.multibits(db))));
                 ctx.errors.push(
                     ResolveError::DirectVariableUnsupported {
-                        access: CallSite::from_scoped(db, &var_access),
+                        site: CallSite::from_scoped(db, &var_access),
+                        // The access text, which includes any partial
+                        // selection (`%IX0.0` = address `%IX0` + bit `.0`).
+                        address: CallSite::from_scoped(db, &var_access).to_string(db),
                     }
                     .to_diagnostic(db, ctx.scope.file(db)),
                 );
