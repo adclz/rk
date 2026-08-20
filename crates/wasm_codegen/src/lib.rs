@@ -968,7 +968,21 @@ impl<'a> WasmGen<'a> {
     }
 
     fn emit_import(&mut self, ext_fn: &MirExternFunction) {
-        let (params, results) = build_signature(&ext_fn.params, &ext_fn.return_type);
+        // Params from the declaration; results are the scalar VAR_OUTPUTs then
+        // the return type last.
+        let (params, _) = build_signature(&ext_fn.params, &None);
+        let results: Vec<ValType> = ext_fn
+            .results()
+            .map(|ty| {
+                mir_type_to_val_type(ty).unwrap_or_else(|| {
+                    panic!(
+                        "internal compiler error: extern result of `{}` is not scalar \
+                         (E0243 admits scalars only): {ty:?}",
+                        ext_fn.name.text(self.db)
+                    )
+                })
+            })
+            .collect();
 
         let type_idx = self.next_type_idx;
         self.type_section

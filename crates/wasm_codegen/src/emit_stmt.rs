@@ -1516,6 +1516,14 @@ fn emit_mem_store(func: &mut wasm_encoder::Function, size: u32, align: u32) {
     }
 }
 
+/// Public wrapper for `emit_call`'s extern-result stores.
+pub(crate) fn emit_typed_mem_store_pub(
+    func: &mut wasm_encoder::Function,
+    ty: &mir::types::MirType,
+) {
+    emit_typed_mem_store(func, ty);
+}
+
 fn emit_typed_mem_store(func: &mut wasm_encoder::Function, ty: &mir::types::MirType) {
     // An enum stores at its declared storage lane, a subrange at its base.
     let resolved;

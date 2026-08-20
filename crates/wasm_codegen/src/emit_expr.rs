@@ -553,6 +553,46 @@ fn emit_call(
     });
 
     func.instruction(&Instruction::Call(idx));
+
+    // Extern results pop in reverse wire order: the return value first (into
+    // its scratch), then each output into its scratch, then the stores; the
+    // return value ends on top.
+    if !call.extern_results.is_empty() {
+        let local_idx = |name: &Ident| -> u32 {
+            match locals.get(name) {
+                Some(LocalInfo::Scalar { index, .. }) => *index,
+                other => panic!(
+                    "internal compiler error: extern result scratch is not a scalar \
+                     local: {other:?}"
+                ),
+            }
+        };
+        if let Some(ret) = &call.extern_ret_scratch {
+            func.instruction(&Instruction::LocalSet(local_idx(ret)));
+        }
+        for bind in call.extern_results.iter().rev() {
+            func.instruction(&Instruction::LocalSet(local_idx(&bind.scratch)));
+        }
+        for bind in &call.extern_results {
+            let Some(dest) = &bind.dest else { continue };
+            match dest {
+                mir::expr::MirPlace::Local(name)
+                    if matches!(locals.get(name), Some(LocalInfo::Scalar { .. })) =>
+                {
+                    func.instruction(&Instruction::LocalGet(local_idx(&bind.scratch)));
+                    func.instruction(&Instruction::LocalSet(local_idx(name)));
+                }
+                _ => {
+                    emit_addr_of(func, dest, locals, fn_indices);
+                    func.instruction(&Instruction::LocalGet(local_idx(&bind.scratch)));
+                    crate::emit_stmt::emit_typed_mem_store_pub(func, &bind.ty);
+                }
+            }
+        }
+        if let Some(ret) = &call.extern_ret_scratch {
+            func.instruction(&Instruction::LocalGet(local_idx(ret)));
+        }
+    }
 }
 
 fn emit_binop(func: &mut wasm_encoder::Function, op: MirBinOp, ty: MirElementary) {
