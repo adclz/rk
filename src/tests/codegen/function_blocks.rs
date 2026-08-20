@@ -1422,6 +1422,43 @@ fn test_st_function_interface_forwards_to_method(mut with_db: db::RootDatabase) 
     assert_eq!(result, 2, "mid$C -> Holder#Bump$C chain mutates the shared instance");
 }
 
+/// An FB passes ITSELF to a collaborator taking an interface parameter:
+/// `drive(dev := THIS)` inside `Worker#Go`. `THIS` types as the FB, which is
+/// what a bare type NAME types as too, so the check that refuses a type used as
+/// a value used to refuse this — a self-reference is a value, and the coercion
+/// at the call site is what decides it fits.
+///
+/// Each `Go` specializes `drive` to `drive$Worker` and reaches `Worker#Run` on
+/// the SAME instance, so `n` advances across both calls: 1 then 2.
+#[rstest]
+fn test_fb_passes_this_to_interface_param(mut with_db: db::RootDatabase) {
+    let source = r#"
+        INTERFACE IWork
+            METHOD Run : INT END_METHOD
+        END_INTERFACE
+        FUNCTION drive : INT
+            VAR_IN_OUT dev : IWork; END_VAR
+            drive := dev.Run();
+        END_FUNCTION
+        FUNCTION_BLOCK Worker IMPLEMENTS IWork
+        VAR n : INT; END_VAR
+            METHOD Run : INT
+                n := n + 1;
+                Run := n;
+            END_METHOD
+            METHOD Go : INT
+                Go := drive(dev := THIS);
+            END_METHOD
+        END_FUNCTION_BLOCK
+        FUNCTION test : INT
+        VAR w : Worker; END_VAR
+            test := w.Go() * 10 + w.Go();
+        END_FUNCTION
+    "#;
+    let wasm = compile_to_wasm(&mut with_db, source);
+    let result: i32 = super::execute_wasm(&wasm, "test", ());
+    assert_eq!(result, 12, "THIS reaches drive$Worker -> Worker#Run on the same instance");
+}
 
 /// An FB instance passed to a VAR_IN_OUT of its own type is handed over BY
 /// REFERENCE, not copied: the callee's write lands on the caller's instance.

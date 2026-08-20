@@ -406,3 +406,91 @@ END_FUNCTION
     ---'
     ");
 }
+
+// `THIS` is a VALUE — the instance a body runs on — so it may be passed where
+// an interface parameter expects an implementer. It types as the FB itself,
+// the same type a bare NAME types as, so it reaches the ordinary coercion and
+// is accepted or refused there rather than by the type-used-as-a-value check.
+#[rstest]
+fn valid_this_as_interface_argument(mut with_db: RootDatabase) {
+    let source = r#"
+        INTERFACE IWork
+            METHOD Run : INT END_METHOD
+        END_INTERFACE
+        FUNCTION drive : INT
+            VAR_IN_OUT dev : IWork; END_VAR
+            drive := dev.Run();
+        END_FUNCTION
+        FUNCTION_BLOCK Worker IMPLEMENTS IWork
+            METHOD Run : INT  Run := 1; END_METHOD
+            METHOD Go : INT   Go := drive(dev := THIS); END_METHOD
+        END_FUNCTION_BLOCK
+    "#;
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"");
+}
+
+// An FB that does NOT implement the interface is still refused — the coercion
+// decides, so the diagnostic is a mismatch rather than a misuse of a type.
+#[rstest]
+fn invalid_this_as_interface_argument_not_implemented(mut with_db: RootDatabase) {
+    let source = r#"
+        INTERFACE IWork
+            METHOD Run : INT END_METHOD
+        END_INTERFACE
+        FUNCTION drive : INT
+            VAR_IN_OUT dev : IWork; END_VAR
+            drive := dev.Run();
+        END_FUNCTION
+        FUNCTION_BLOCK Idle
+            METHOD Go : INT  Go := drive(dev := THIS); END_METHOD
+        END_FUNCTION_BLOCK
+    "#;
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
+    [E0301] Error: type mismatch
+        ,-[ file:///test0.st:10:49 ]
+        |
+      2 |         INTERFACE IWork
+        |                   ^^|^^
+        |                     `---- INTERFACE 'IWork' is defined here
+        |
+     10 |             METHOD Go : INT  Go := drive(dev := THIS); END_METHOD
+        |                                                 ^^|^
+        |                                                   `--- expected 'IWork', got 'Idle'
+    ----'
+    ");
+}
+
+// `THIS` is not assignable: an instance cannot be rebound to another, which
+// would copy one instance's state over another's. The check on the assignment
+// TARGET says so, and now says it alone — it used to be followed by a type
+// mismatch reading "expected 'Worker', got 'Worker'".
+#[rstest]
+fn invalid_this_assigned_to_variable(mut with_db: RootDatabase) {
+    let source = r#"
+        FUNCTION_BLOCK Worker
+        VAR other : Worker; END_VAR
+            METHOD Go
+                other := THIS;
+            END_METHOD
+        END_FUNCTION_BLOCK
+    "#;
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
+    [E0901] Error: recursion detected
+       ,-[ file:///test0.st:2:24 ]
+       |
+     2 |         FUNCTION_BLOCK Worker
+       |                        ^^^|^^
+       |                           `---- type 'Worker' is recursive (contains itself)
+     3 |         VAR other : Worker; END_VAR
+       |                     ^^^|^^
+       |                        `---- 'Worker' references itself here
+    ---'
+    [E0226] Error: semantic violation
+       ,-[ file:///test0.st:5:17 ]
+       |
+     5 |                 other := THIS;
+       |                 ^^|^^
+       |                   `---- 'Worker' is a callable type and can not be assigned
+    ---'
+    ");
+}

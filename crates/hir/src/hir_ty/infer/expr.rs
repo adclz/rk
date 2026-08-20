@@ -292,7 +292,16 @@ impl<'db> InferExprCtx<'db> {
                     .resolve_variable_access(db, *v, inference_result);
 
                 let ty = inference_result.get_type_of_variable_access(db, *v);
-                ty.check_not_direct_type(db, CallSite::from_scoped(db, v), inference_result);
+                // `THIS` types as the FB/Class itself, which is also what a
+                // bare type NAME types as — so the guard below cannot tell a
+                // self-reference from `Worker` written where a value belongs.
+                // A self-reference IS a value; whether it fits wherever it was
+                // written is for the coercion at that site to say, which is
+                // what accepts `f(dev := THIS)` for an interface parameter and
+                // still refuses it everywhere no arm accepts an FB.
+                if !v.is_bare_this(db) {
+                    ty.check_not_direct_type(db, CallSite::from_scoped(db, v), inference_result);
+                }
                 ty
             }
             PrimaryExpr::FuncCall(call) => {

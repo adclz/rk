@@ -470,6 +470,18 @@ pub enum VariableAccessKind<'db> {
     Symbolic(BeginPathExpr<'db>),
 }
 
+impl<'db> VariableAccess<'db> {
+    /// Is this a bare `THIS`, with no field or index after it?
+    pub fn is_bare_this(&self, db: &'db dyn WorkspaceDataBase) -> bool {
+        let VariableAccessKind::Symbolic(begin) = self.kind(db) else {
+            return false;
+        };
+        begin.expr(db).is_none()
+            && begin.invocation(db).map(|i| i.kind(db))
+                == Some(crate::hir_def::expressions::invocation::InvocationKind::This)
+    }
+}
+
 impl<'db> HirNodeInfo<'db> for VariableAccess<'db> {
     fn get_id(&self, db: &'db dyn WorkspaceDataBase) -> AstId {
         self.id(db)
