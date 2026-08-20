@@ -102,6 +102,7 @@ pub fn collect_iface_instantiations<'db>(
                     db,
                     f.scope_id(db),
                     f.statements(db),
+                    None,
                     &no_subs,
                     &mut by_canonical,
                     &mut instances,
@@ -113,6 +114,7 @@ pub fn collect_iface_instantiations<'db>(
                     db,
                     fb.scope_id(db),
                     fb.statements(db),
+                    Some(**pou),
                     &no_subs,
                     &mut by_canonical,
                     &mut instances,
@@ -127,6 +129,7 @@ pub fn collect_iface_instantiations<'db>(
                         db,
                         m.scope_id(db),
                         m.stmts(db),
+                        Some(**pou),
                         &no_subs,
                         &mut by_canonical,
                         &mut instances,
@@ -143,6 +146,7 @@ pub fn collect_iface_instantiations<'db>(
                         db,
                         m.scope_id(db),
                         m.stmts(db),
+                        Some(**pou),
                         &no_subs,
                         &mut by_canonical,
                         &mut instances,
@@ -160,6 +164,7 @@ pub fn collect_iface_instantiations<'db>(
             db,
             program.scope_id(db),
             program.statements(db),
+            None,
             &no_subs,
             &mut by_canonical,
             &mut instances,
@@ -174,11 +179,16 @@ pub fn collect_iface_instantiations<'db>(
         let target = instances[i].target;
         let subs = instances[i].iface_subs.clone();
         let (scope, stmts) = target.body(db);
+        let self_pou = match target {
+            IfaceTarget::Method { owner, .. } => Some(owner),
+            IfaceTarget::Function(_) => None,
+        };
         let mut inst_rewrites: FxHashMap<FuncCall<'db>, Ident> = FxHashMap::default();
         process_body(
             db,
             scope,
             stmts,
+            self_pou,
             &subs,
             &mut by_canonical,
             &mut instances,
@@ -193,30 +203,19 @@ pub fn collect_iface_instantiations<'db>(
 
 /// Collect and process every call in one body under the active
 /// substitution `subs`; rewrites are written to `out_rewrites`.
+#[allow(clippy::too_many_arguments)]
 fn process_body<'db>(
     db: &'db dyn WorkspaceDataBase,
     scope: ScopeId<'db>,
     stmts: &[Stmt<'db>],
+    // The POU whose instance `THIS` refers to in this body, supplied by the
+    // caller.
+    self_pou: Option<Pou<'db>>,
     subs: &FxHashMap<Ident, Pou<'db>>,
     by_canonical: &mut CanonicalInstanceMap,
     instances: &mut Vec<IfaceInstance<'db>>,
     out_rewrites: &mut FxHashMap<FuncCall<'db>, Ident>,
 ) {
-    // The POU whose instance `THIS` refers to in this body: the FB/Class itself
-    // for its own body, or the owner for a method body. Used to resolve a `THIS`
-    // interface argument (`f(dev := THIS)`) to its concrete type.
-    let self_pou = match get_scope(db, scope).kind {
-        ScopeKind::Pou(pou) if matches!(pou, Pou::FunctionBlock(_) | Pou::Class(_)) => Some(pou),
-        _ => get_scope(db, scope)
-            .parent
-            .and_then(|p| match get_scope(db, p).kind {
-                ScopeKind::Pou(pou) if matches!(pou, Pou::FunctionBlock(_) | Pou::Class(_)) => {
-                    Some(pou)
-                }
-                _ => None,
-            }),
-    };
-
     let body = infer_body(db, scope);
     let mut calls = Vec::new();
     collect_calls(db, stmts, &mut calls);
