@@ -874,10 +874,9 @@ impl<'db> ExprLowerCtx<'db> {
                     VarAccess::Simple(span_ident) => span_ident.ident,
                 };
 
-                // Resolve field offset from the this pointer's type
-                // The THIS type is resolved from the method's parent FB/Class
-                let scope_id = path_expr.scope_id(self.db);
-                let this_type = self.resolve_this_type(scope_id);
+                // The layout of the instance this body runs on, as the lowering caller
+                // supplied it (the inheritor's, for a copied inherited method).
+                let this_type = self.this_struct.clone().map(MirType::Struct);
 
                 // The resolved this-struct field carries the pointer type and `by_ref`
                 // flag; the inferred type is the error-recovery fallback.
@@ -952,51 +951,6 @@ impl<'db> ExprLowerCtx<'db> {
         }
     }
 
-    /// Resolve the THIS type from the scope (walks up to find the method's parent FB/Class).
-    fn resolve_this_type(&self, scope_id: hir::hir_def::scope::ScopeId<'db>) -> Option<MirType> {
-        use hir::hir_def::{scope::ScopeKind, semantic_index::get_scope};
-
-        // Walk up the scope chain to find the parent POU (FB or Class)
-        let mut current = Some(scope_id);
-        while let Some(sid) = current {
-            let scope = get_scope(self.db, sid);
-            match scope.kind {
-                ScopeKind::Pou(hir::hir_def::pous::pou::Pou::FunctionBlock(fb)) => {
-                    return self.lower_type_resolved(Type::FunctionBlock(fb)).ok();
-                }
-                ScopeKind::Pou(hir::hir_def::pous::pou::Pou::Class(class)) => {
-                    return self.lower_type_resolved(Type::Class(class)).ok();
-                }
-                _ => {
-                    current = scope.parent;
-                }
-            }
-        }
-        None
-    }
-
-    /// Like [`resolve_this_type`](Self::resolve_this_type) but returns the
-    /// enclosing POU itself (the FB/Class whose instance `THIS` refers to),
-    /// walking up from a method scope to its owner. Used to resolve `SUPER()`'s
-    /// base from the current FB's `EXTENDS`.
-    fn resolve_this_pou(
-        &self,
-        scope_id: hir::hir_def::scope::ScopeId<'db>,
-    ) -> Option<hir::hir_def::pous::pou::Pou<'db>> {
-        use hir::hir_def::pous::pou::Pou;
-        use hir::hir_def::{scope::ScopeKind, semantic_index::get_scope};
-
-        let mut current = Some(scope_id);
-        while let Some(sid) = current {
-            let scope = get_scope(self.db, sid);
-            match scope.kind {
-                ScopeKind::Pou(pou @ (Pou::FunctionBlock(_) | Pou::Class(_))) => return Some(pou),
-                _ => current = scope.parent,
-            }
-        }
-        None
-    }
-
     /// Lower `SUPER()` — a call to the immediate base FB's cyclic body on the
     /// current `this`. FBs are single-inheritance (`EXTENDS` at most one base),
     /// so there is exactly one target: `Base$__body__(this)`. HIR already
@@ -1005,12 +959,14 @@ impl<'db> ExprLowerCtx<'db> {
     /// (`AddrOf(ThisField{0})` = `LocalGet(0)`).
     pub fn lower_super_body_call(
         &self,
-        begin_path: hir::hir_def::expressions::expression::BeginPathExpr<'db>,
+        // The base is the POU's own EXTENDS; the receiver is the current
+        // instance.
+        _begin_path: hir::hir_def::expressions::expression::BeginPathExpr<'db>,
     ) -> Result<Option<crate::stmt::MirStmt>, LowerTypeError> {
         use hir::hir_def::pous::pou::Pou;
 
-        let scope = begin_path.scope_id(self.db);
-        let current = self.resolve_this_pou(scope).ok_or_else(|| {
+        // The POU this body belongs to, as the lowering caller named it.
+        let current = self.this_pou.ok_or_else(|| {
             LowerTypeError::UnsupportedType("SUPER() outside a function block".to_string())
         })?;
         // The base as HIR resolved it (`base_pou`): MIR does not walk `EXTENDS`.
