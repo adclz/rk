@@ -124,10 +124,15 @@ fn lower_stmt<'db>(
     match stmt.stmt(ctx.db) {
         StmtKind::Assignment { var, target } => {
             let place = ctx.lower_variable_access(*var)?;
-            // Get target variable type for implicit cast insertion. Resolve
-            // through `Type::Function` / `Type::MethodDecl` so assigning to
-            // the function-name return slot uses the declared return type.
-            let var_type = resolve_for_cast(ctx.db, var.infer(ctx.db));
+            // The conversion lane is inference's decision (`coercion_target`); the
+            // fallback covers what HIR does not record.
+            let var_type = match hir::hir_ty::body::infer_body(ctx.db, target.scope_id(ctx.db))
+                .coercion_target
+                .get(target)
+            {
+                Some(ty) => *ty,
+                None => resolve_for_cast(ctx.db, var.infer(ctx.db)),
+            };
             let target_type = resolve_for_cast(ctx.db, target.infer(ctx.db));
             let value = if needs_cast(ctx.db, target_type, var_type) {
                 // Insert cast from expression type to variable type

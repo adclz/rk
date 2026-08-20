@@ -224,6 +224,14 @@ pub struct BodyInferenceResult<'db> {
     // consumer to re-derive it.
     pub comparison_operand_type: FxHashMap<Expr<'db>, Type<'db>>,
 
+    /// The type a value is converted to by the site that consumes it — an
+    /// assignment target, a parameter, an FB input. Inference decides this
+    /// when it checks the coercion; recording it keeps a consumer that has to
+    /// emit the conversion from deciding a second time, which is how an
+    /// assignment and a call argument came to disagree about the same pair of
+    /// types.
+    pub coercion_target: FxHashMap<Expr<'db>, Type<'db>>,
+
     // The value of each CASE label, evaluated here.
     //
     // IEC's `Case_List_Elem : Subrange | Constant_Expr`, and a constant
@@ -305,6 +313,7 @@ impl<'db> BodyInferenceResult<'db> {
             type_of_invocation: FxHashMap::default(),
             type_of_expr: FxHashMap::default(),
             comparison_operand_type: FxHashMap::default(),
+            coercion_target: FxHashMap::default(),
             case_label_value: FxHashMap::default(),
             type_of_path_expr: FxHashMap::default(),
             path_expr_adjustments: FxHashMap::default(),

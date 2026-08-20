@@ -564,6 +564,9 @@ impl<'db> InferExprCtx<'db> {
                 .errors
                 .push(err.to_diagnostic(db, inference_results.scope.file(db)));
         }
+        if result.is_ok() {
+            record_coercion_target(db, lhs, rhs, inference_results);
+        }
         result
     }
 
@@ -608,6 +611,9 @@ impl<'db> InferExprCtx<'db> {
             inference_results
                 .errors
                 .push(err.to_diagnostic(db, inference_results.scope.file(db)));
+        }
+        if result.is_ok() {
+            record_coercion_target(db, lhs, rhs, inference_results);
         }
         result
     }
@@ -677,5 +683,29 @@ impl<'db> InferExprCtx<'db> {
                 Err(_) => Err(err),
             },
         }
+    }
+}
+
+/// Record the type `rhs` is converted to, for a coercion that was accepted.
+///
+/// Only elementary lanes: a conversion between machine widths is the one a
+/// consumer has to emit, and it is the one that was being decided twice.
+fn record_coercion_target<'db>(
+    db: &'db dyn WorkspaceDataBase,
+    target: Type<'db>,
+    rhs: Expr<'db>,
+    inference_results: &mut BodyInferenceResult<'db>,
+) {
+    let target = target.normalize(db);
+    // Assigning to a function's own NAME targets its return slot, so the type
+    // being converted to is the declared return type.
+    let target = match target {
+        Type::Function(_) | Type::MethodDecl(_) => target
+            .with_return_type(db)
+            .map_or(target, |rt| rt.normalize(db)),
+        _ => target,
+    };
+    if let Type::Elementary(_) = target {
+        inference_results.coercion_target.insert(rhs, target);
     }
 }

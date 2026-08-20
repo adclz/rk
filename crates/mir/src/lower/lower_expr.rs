@@ -1712,9 +1712,9 @@ impl<'db> ExprLowerCtx<'db> {
                         // clean. Non-scalar params (STRING, aggregates,
                         // unresolved ANY_*) have no scalar lane to cast to and
                         // keep the raw value.
-                        let value = match self
-                            .type_to_mir_elementary(var.spec(self.db).infer(self.db))
-                        {
+                        let value = match self.coercion_lane(value, || {
+                            var.spec(self.db).infer(self.db)
+                        }) {
                             Ok(param_elem) => match self.expr_to_mir_elementary(value) {
                                 Ok(arg_elem) if arg_elem != param_elem => MirExpr::Cast {
                                     expr: Box::new(lowered),
@@ -1870,17 +1870,15 @@ impl<'db> ExprLowerCtx<'db> {
                                 ));
                             }
                         },
-                        // A scalar input is cast to the FIELD's lane — same
-                        // hole as the function-call path: HIR accepts an
-                        // implicitly-widening arg (`s(IN := n)` with `n : INT`
-                        // into `IN : LREAL`), and the f64 store received an
-                        // i32 otherwise.
+                        // A scalar input converts to the lane inference accepted, falling back
+                        // to the field's own lane.
                         MirType::Elementary(field_elem) | MirType::Subrange(crate::types::MirSubrangeType { base: field_elem, .. }) => {
+                            let lane = self.recorded_lane(value).unwrap_or(*field_elem);
                             match self.expr_to_mir_elementary(value) {
-                                Ok(arg_elem) if arg_elem != *field_elem => MirExpr::Cast {
+                                Ok(arg_elem) if arg_elem != lane => MirExpr::Cast {
                                     expr: Box::new(expr),
                                     from: arg_elem,
-                                    to: *field_elem,
+                                    to: lane,
                                 },
                                 _ => expr,
                             }
@@ -2054,6 +2052,29 @@ impl<'db> ExprLowerCtx<'db> {
     /// Get the MirElementary type of an expression.
     /// The machine type an expression evaluates to, using the ADJUSTED type:
     /// `arr[0]` is the element, not the array.
+    /// The lane inference accepted for this value where it is consumed, when
+    /// it recorded one.
+    fn recorded_lane(&self, expr: Expr<'db>) -> Option<MirElementary> {
+        hir::hir_ty::body::infer_body(self.db, expr.scope_id(self.db))
+            .coercion_target
+            .get(&expr)
+            .copied()
+            .and_then(|ty| self.type_to_mir_elementary(ty).ok())
+    }
+
+    /// [`Self::recorded_lane`], falling back to a declared type for the shapes
+    /// HIR does not record.
+    fn coercion_lane(
+        &self,
+        expr: Expr<'db>,
+        fallback: impl FnOnce() -> Type<'db>,
+    ) -> Result<MirElementary, LowerTypeError> {
+        match self.recorded_lane(expr) {
+            Some(lane) => Ok(lane),
+            None => self.type_to_mir_elementary(fallback()),
+        }
+    }
+
     fn expr_to_mir_elementary(&self, expr: Expr<'db>) -> Result<MirElementary, LowerTypeError> {
         let ty = expr.infer_adjusted(self.db);
         self.type_to_mir_elementary(ty)
