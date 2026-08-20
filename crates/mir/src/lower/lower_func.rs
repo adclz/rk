@@ -42,6 +42,35 @@ fn at_node<'db, T>(
     result.map_err(|e| e.with_location(node.get_scope_id(db).file(db), node.get_span(db)))
 }
 
+/// Every method an instance of `pou` responds to: its own, plus the
+/// inherited ones it does not override. An inherited method is emitted as
+/// a copy on each inheritor, so `THIS.m()` inside it resolves against the
+/// inheritor. Which override wins is HIR's answer (`inherited_methods`).
+/// Sorted by name for a reproducible artifact.
+fn emittable_methods<'db>(
+    db: &'db dyn WorkspaceDataBase,
+    pou: hir::hir_def::pous::pou::Pou<'db>,
+    own: &[hir::hir_def::pous::class::MethodDecl<'db>],
+) -> Vec<hir::hir_def::pous::class::MethodDecl<'db>> {
+    use hir::hir_ty::head::inheritance::MethodRef;
+
+    let own_names: FxHashSet<Ident> = own.iter().map(|m| m.name(db)).collect();
+    let mut inherited: Vec<_> = hir::hir_ty::head::inheritance::inherited_methods(db, pou)
+        .methods
+        .iter()
+        .filter(|(name, _)| !own_names.contains(*name))
+        .filter_map(|(_, im)| match im.method {
+            MethodRef::Declared(d) => Some(d),
+            MethodRef::Prototype(_) => None,
+        })
+        .collect();
+    inherited.sort_by_key(|m| m.name(db).text(db).to_string());
+
+    let mut out = own.to_vec();
+    out.extend(inherited);
+    out
+}
+
 pub fn lower_function<'db>(
     db: &'db dyn WorkspaceDataBase,
     func: Function<'db>,
@@ -380,8 +409,7 @@ fn lower_function_block_inner<'db>(
     let method_jobs: Vec<(
         hir::hir_def::pous::class::MethodDecl<'db>,
         Option<&super::mono_iface::IfaceInstance<'db>>,
-    )> = fb
-        .methods(db)
+    )> = emittable_methods(db, hir::hir_def::pous::pou::Pou::FunctionBlock(fb), fb.methods(db))
         .iter()
         .flat_map(|method| -> Vec<_> {
             if method
@@ -528,6 +556,7 @@ fn lower_function_block_inner<'db>(
             db,
             method.stmts(db),
             this_struct,
+            Some(hir::hir_def::pous::pou::Pou::FunctionBlock(fb)),
             string_pool.clone(),
             body_subs,
             body_rewrites,
@@ -618,6 +647,7 @@ fn lower_function_block_inner<'db>(
         db,
         fb.statements(db),
         this_struct,
+        Some(hir::hir_def::pous::pou::Pou::FunctionBlock(fb)),
         string_pool.clone(),
         None,
         iface_call_rewrites,
@@ -668,8 +698,7 @@ fn lower_class_inner<'db>(
     let method_jobs: Vec<(
         hir::hir_def::pous::class::MethodDecl<'db>,
         Option<&super::mono_iface::IfaceInstance<'db>>,
-    )> = class
-        .methods(db)
+    )> = emittable_methods(db, hir::hir_def::pous::pou::Pou::Class(class), class.methods(db))
         .iter()
         .flat_map(|method| -> Vec<_> {
             if method
@@ -814,6 +843,7 @@ fn lower_class_inner<'db>(
             db,
             method.stmts(db),
             this_struct,
+            Some(hir::hir_def::pous::pou::Pou::Class(class)),
             string_pool.clone(),
             body_subs,
             body_rewrites,
@@ -916,6 +946,7 @@ fn lower_program_inner<'db>(
         db,
         program.statements(db),
         this_struct,
+        None,
         string_pool.clone(),
         None,
         iface_call_rewrites,

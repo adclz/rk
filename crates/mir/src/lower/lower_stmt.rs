@@ -87,6 +87,9 @@ pub fn lower_stmts_fb_body<'db>(
     db: &'db dyn WorkspaceDataBase,
     stmts: &[Stmt<'db>],
     this_struct: crate::types::MirStructType,
+    // The POU this body belongs to: the inheritor for a copied inherited
+    // method.
+    this_pou: Option<hir::hir_def::pous::pou::Pou<'db>>,
     string_pool: std::rc::Rc<std::cell::RefCell<super::lower_expr::StringPool>>,
     iface_subs: Option<
         &rustc_hash::FxHashMap<
@@ -97,6 +100,7 @@ pub fn lower_stmts_fb_body<'db>(
     iface_call_rewrites: &super::mono_iface::IfaceCallRewrites<'db>,
 ) -> Result<(Vec<MirStmt>, super::lower_expr::CallScratch), LowerTypeError> {
     let mut ctx = ExprLowerCtx::with_this_struct(db, this_struct, string_pool);
+    ctx.this_pou = this_pou;
     // A specialized METHOD body carries its interface-param bindings, like
     // a specialized function body.
     if let Some(subs) = iface_subs

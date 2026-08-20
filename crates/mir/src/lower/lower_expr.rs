@@ -55,6 +55,9 @@ pub struct ExprLowerCtx<'db> {
     /// `VAR_OUTPUT`, `$argcopy$N` for an aggregate `VAR_INPUT` snapshot. Drained
     /// into the function's locals by the lowering caller (see `build_call_args`).
     pub call_scratch: std::rc::Rc<std::cell::RefCell<CallScratch>>,
+    /// The POU this body is emitted for, which for an inherited method is the
+    /// inheritor: `THIS.m()` inside it must reach the inheritor's `m`.
+    pub this_pou: Option<hir::hir_def::pous::pou::Pou<'db>>,
 }
 
 /// Scratch locals synthesized while lowering calls: `(name, type)`.
@@ -121,6 +124,7 @@ impl<'db> ExprLowerCtx<'db> {
             iface_subs: None,
             iface_call_rewrites: None,
             call_scratch: Default::default(),
+            this_pou: None,
         }
     }
 
@@ -136,6 +140,7 @@ impl<'db> ExprLowerCtx<'db> {
             iface_subs: None,
             iface_call_rewrites: None,
             call_scratch: Default::default(),
+            this_pou: None,
         }
     }
 
@@ -1286,8 +1291,11 @@ impl<'db> ExprLowerCtx<'db> {
         // is the current `this` pointer.
         if let Some(kind) = path.invocation(self.db).map(|i| i.kind(self.db)) {
             match kind {
-                InvocationKind::This | InvocationKind::Super => {
-                    return Ok(Some(self.this_receiver_call(method, "THIS/SUPER")?));
+                InvocationKind::This => {
+                    return Ok(Some(self.this_receiver_call(method, "THIS", true)?));
+                }
+                InvocationKind::Super => {
+                    return Ok(Some(self.this_receiver_call(method, "SUPER", false)?));
                 }
                 // `SUPER()` is a base-body call lowered in `lower_super_body_call`; it
                 // never reaches here.
@@ -1300,7 +1308,7 @@ impl<'db> ExprLowerCtx<'db> {
         let field = match path.expr(self.db).map(|pe| pe.expr(self.db)) {
             Some(PathExprKind::Field(fe)) => fe,
             Some(PathExprKind::VarAccess(_)) => {
-                return Ok(Some(self.this_receiver_call(method, "bare")?));
+                return Ok(Some(self.this_receiver_call(method, "bare", true)?));
             }
             _ => {
                 return Err(LowerTypeError::UnsupportedType(
@@ -1343,7 +1351,20 @@ impl<'db> ExprLowerCtx<'db> {
             }
         };
 
-        let callee = self.method_callee_symbol(method_decl)?;
+        // `inst.m()` targets the method set of the receiver's static type, so
+        // a `Derived` receiver reaches `Derived#m`.
+        let callee = match receiver_path.infer(self.db).normalize(self.db) {
+            Type::FunctionBlock(fb) => self.method_symbol(
+                hir::hir_def::pous::pou::Pou::FunctionBlock(fb),
+                method_decl.name(self.db),
+            ),
+            Type::Class(c) => self.method_symbol(
+                hir::hir_def::pous::pou::Pou::Class(c),
+                method_decl.name(self.db),
+            ),
+            // Not an instance type: fall back to where the method was declared.
+            _ => self.method_callee_symbol(method_decl)?,
+        };
 
         let receiver = self.lower_receiver_place(receiver_path)?;
         let ret = method
@@ -1377,16 +1398,26 @@ impl<'db> ExprLowerCtx<'db> {
             }
         };
 
+        Ok(self.method_symbol(owner_pou, method_decl.name(self.db)))
+    }
+
+    /// `<Owner>#<method>`, where the owner is the POU the body is emitted
+    /// for (the inheritor, for an inherited method).
+    fn method_symbol(
+        &self,
+        owner: hir::hir_def::pous::pou::Pou<'db>,
+        name: hir::hir_def::interned::identifier::Ident,
+    ) -> hir::hir_def::interned::identifier::Ident {
         let owner_mangled =
-            crate::lower::naming::qualified_pou_ident(self.db, Type::new_pou(self.db, owner_pou));
-        Ok(hir::hir_def::interned::identifier::Ident::new(
+            crate::lower::naming::qualified_pou_ident(self.db, Type::new_pou(self.db, owner));
+        hir::hir_def::interned::identifier::Ident::new(
             self.db,
             compact_str::CompactString::from(format!(
                 "{}#{}",
                 owner_mangled.text(self.db),
-                method_decl.name(self.db).text(self.db)
+                name.text(self.db)
             )),
-        ))
+        )
     }
 
     /// Lower a receiver path (`a`, `a.b`, `arr[i]`) to the place of the FB
@@ -1944,6 +1975,7 @@ impl<'db> ExprLowerCtx<'db> {
         &self,
         method: hir::hir_ty::head::inheritance::MethodRef<'db>,
         form: &str,
+        virtual_dispatch: bool,
     ) -> Result<
         (
             hir::hir_def::interned::identifier::Ident,
@@ -1961,7 +1993,12 @@ impl<'db> ExprLowerCtx<'db> {
                 )));
             }
         };
-        let callee = self.method_callee_symbol(method_decl)?;
+        // `THIS.m()` and bare `m()` dispatch against the POU this body is emitted
+        // for; `SUPER.m()` is static (IEC 9b/10b) and keeps the base.
+        let callee = match (virtual_dispatch, self.this_pou) {
+            (true, Some(owner)) => self.method_symbol(owner, method_decl.name(self.db)),
+            _ => self.method_callee_symbol(method_decl)?,
+        };
         let receiver = MirPlace::ThisField {
             field_name: hir::hir_def::interned::identifier::Ident::new(
                 self.db,

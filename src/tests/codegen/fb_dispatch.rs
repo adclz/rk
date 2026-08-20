@@ -214,3 +214,86 @@ fn call_on_a_global_instance(mut with_db: db::RootDatabase) {
     let seen = i32::from_le_bytes(plc.read_retain()[..4].try_into().unwrap());
     assert_eq!(seen, 3, "the global instance ticked once per scan");
 }
+
+/// An inherited method body dispatches `THIS` against the INSTANCE's type, so
+/// a derived override wins.
+///
+/// Each POU emits its own copy of every method it responds to, inherited ones
+/// included, and a `THIS.m()` inside a copy resolves against the POU it was
+/// emitted for. Emitting one body per DECLARING POU instead froze those calls
+/// to the base: `Base#Template` called `Base#Hook` forever, so a derived
+/// override was silently unreachable and the template-method pattern
+/// miscompiled with a clean `rk check`.
+#[rstest]
+fn inherited_body_dispatches_this_against_the_instance(mut with_db: db::RootDatabase) {
+    let source = r#"
+        FUNCTION_BLOCK Base
+            METHOD PUBLIC Hook : DINT
+                Hook := 1;
+            END_METHOD
+            METHOD PUBLIC Sibling : DINT
+                Sibling := 1;
+            END_METHOD
+            METHOD PUBLIC Template : DINT
+                (* THIS.m() and a bare sibling call are both virtual *)
+                Template := THIS.Hook() * 10 + Sibling();
+            END_METHOD
+        END_FUNCTION_BLOCK
+
+        FUNCTION_BLOCK Mid EXTENDS Base
+            METHOD PUBLIC OVERRIDE Hook : DINT
+                Hook := 2;
+            END_METHOD
+        END_FUNCTION_BLOCK
+
+        FUNCTION_BLOCK Leaf EXTENDS Mid
+            METHOD PUBLIC OVERRIDE Sibling : DINT
+                Sibling := 7;
+            END_METHOD
+        END_FUNCTION_BLOCK
+
+        FUNCTION run : DINT
+        VAR b : Base; m : Mid; l : Leaf; END_VAR
+            (* base 11, one override 21, two levels 27 (Hook from Mid,
+               Sibling from Leaf) *)
+            run := b.Template() * 10000 + m.Template() * 100 + l.Template();
+        END_FUNCTION
+    "#;
+    let wasm = compile_to_wasm_checked(&mut with_db, source);
+    let result: i32 = execute_wasm(&wasm, "run", ());
+    assert_eq!(result, 112127, "each instance runs its own override set");
+}
+
+/// `SUPER.m()` is explicitly static (IEC 9b/10b): it names the base's method
+/// even when the instance overrides it, and even from a further inheritor.
+#[rstest]
+fn super_stays_static_under_the_new_dispatch(mut with_db: db::RootDatabase) {
+    let source = r#"
+        FUNCTION_BLOCK Base
+            METHOD PUBLIC Hook : INT
+                Hook := 1;
+            END_METHOD
+        END_FUNCTION_BLOCK
+
+        FUNCTION_BLOCK Mid EXTENDS Base
+            METHOD PUBLIC OVERRIDE Hook : INT
+                Hook := 2;
+            END_METHOD
+            METHOD PUBLIC ViaSuper : INT
+                ViaSuper := SUPER.Hook();
+            END_METHOD
+        END_FUNCTION_BLOCK
+
+        FUNCTION_BLOCK Leaf EXTENDS Mid
+        END_FUNCTION_BLOCK
+
+        FUNCTION run : INT
+        VAR m : Mid; l : Leaf; END_VAR
+            (* SUPER reaches Base#Hook from both, while THIS would give 2 *)
+            run := m.ViaSuper() * 10 + l.ViaSuper();
+        END_FUNCTION
+    "#;
+    let wasm = compile_to_wasm_checked(&mut with_db, source);
+    let result: i32 = execute_wasm(&wasm, "run", ());
+    assert_eq!(result, 11, "SUPER is not virtual");
+}
