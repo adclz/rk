@@ -19,6 +19,15 @@ FUNCTION_BLOCK fb1
 END_FUNCTION_BLOCK"#;
 
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
+    [E0245] Error: direct variable access is not supported
+       ,-[ file:///test0.st:7:13 ]
+       |
+     7 |     test := %IX0.0
+       |             ^^^|^^
+       |                `---- '%IX0.0' cannot be read or written: there is no I/O mapping
+       |
+       | Note: the address is understood and X/B/W/D/L names the width, but nothing connects it to a process image yet
+    ---'
     [E0301] Error: type mismatch
        ,-[ file:///test0.st:7:13 ]
        |
@@ -47,6 +56,15 @@ FUNCTION_BLOCK fb1
 END_FUNCTION_BLOCK"#;
 
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
+    [E0245] Error: direct variable access is not supported
+       ,-[ file:///test0.st:7:13 ]
+       |
+     7 |     test := %IB0.0
+       |             ^^^|^^
+       |                `---- '%IB0.0' cannot be read or written: there is no I/O mapping
+       |
+       | Note: the address is understood and X/B/W/D/L names the width, but nothing connects it to a process image yet
+    ---'
     [E0301] Error: type mismatch
        ,-[ file:///test0.st:7:13 ]
        |
@@ -75,6 +93,15 @@ FUNCTION_BLOCK fb1
 END_FUNCTION_BLOCK"#;
 
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
+    [E0245] Error: direct variable access is not supported
+       ,-[ file:///test0.st:7:13 ]
+       |
+     7 |     test := %IW0
+       |             ^^|^
+       |               `--- '%IW0' cannot be read or written: there is no I/O mapping
+       |
+       | Note: the address is understood and X/B/W/D/L names the width, but nothing connects it to a process image yet
+    ---'
     [E0301] Error: type mismatch
        ,-[ file:///test0.st:7:13 ]
        |
@@ -103,6 +130,15 @@ FUNCTION_BLOCK fb1
 END_FUNCTION_BLOCK"#;
 
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
+    [E0245] Error: direct variable access is not supported
+       ,-[ file:///test0.st:7:13 ]
+       |
+     7 |     test := %ID0
+       |             ^^|^
+       |               `--- '%ID0' cannot be read or written: there is no I/O mapping
+       |
+       | Note: the address is understood and X/B/W/D/L names the width, but nothing connects it to a process image yet
+    ---'
     [E0301] Error: type mismatch
        ,-[ file:///test0.st:7:13 ]
        |
@@ -135,6 +171,15 @@ FUNCTION_BLOCK fb1
 END_FUNCTION_BLOCK"#;
 
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
+    [E0245] Error: direct variable access is not supported
+       ,-[ file:///test0.st:7:13 ]
+       |
+     7 |     test := %IL0
+       |             ^^|^
+       |               `--- '%IL0' cannot be read or written: there is no I/O mapping
+       |
+       | Note: the address is understood and X/B/W/D/L names the width, but nothing connects it to a process image yet
+    ---'
     [E0301] Error: type mismatch
        ,-[ file:///test0.st:7:13 ]
        |
@@ -449,4 +494,54 @@ FUNCTION_BLOCK fb1
 END_FUNCTION_BLOCK"#;
 
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @"");
+}
+
+/// A direct variable is TYPED (the width letter decides it) but nothing maps
+/// it to a process image, so it cannot be lowered. It is refused at check —
+/// this used to pass `rk check` with zero errors and then kill `rk compile`
+/// with an internal compiler error telling the user to file an issue.
+#[rstest]
+fn unsupported_in_a_body(mut with_db: RootDatabase) {
+    let source = r#"
+FUNCTION_BLOCK fb1
+    VAR
+        test: BOOL;
+    END_VAR
+
+    test := %IX0.0;
+
+END_FUNCTION_BLOCK"#;
+
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
+    [E0245] Error: direct variable access is not supported
+       ,-[ file:///test0.st:7:13 ]
+       |
+     7 |     test := %IX0.0;
+       |             ^^^|^^
+       |                `---- '%IX0.0' cannot be read or written: there is no I/O mapping
+       |
+       | Note: the address is understood and X/B/W/D/L names the width, but nothing connects it to a process image yet
+    ---'
+    ");
+}
+
+/// Writing one is refused the same way as reading one.
+#[rstest]
+fn unsupported_as_an_assignment_target(mut with_db: RootDatabase) {
+    let source = r#"
+FUNCTION_BLOCK fb1
+    %QX0.1 := TRUE;
+END_FUNCTION_BLOCK"#;
+
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
+    [E0245] Error: direct variable access is not supported
+       ,-[ file:///test0.st:3:5 ]
+       |
+     3 |     %QX0.1 := TRUE;
+       |     ^^^|^^
+       |        `---- '%QX0.1' cannot be read or written: there is no I/O mapping
+       |
+       | Note: the address is understood and X/B/W/D/L names the width, but nothing connects it to a process image yet
+    ---'
+    ");
 }

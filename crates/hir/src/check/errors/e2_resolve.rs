@@ -341,6 +341,10 @@ pub enum ResolveError<'db> {
         anchor: SpanIdent<'db>,
         pou_kind: &'static str,
     },
+    /// A direct variable (`%IX0.0`) read or written in a body. The address
+    /// is TYPED here — `X/B/W/D/L` names the width — but nothing maps it to
+    /// an I/O image, so it cannot be lowered
+    DirectVariableUnsupported { access: CallSite<'db> },
     /// One or more required call-site parameters (VAR_INPUT on FUNCTION/METHOD
     /// without a scalar default, or VAR_IN_OUT on any callable) were not
     /// supplied. All missing params for a single call site are collapsed into
@@ -419,6 +423,7 @@ impl<'db> ErrorCode for ResolveError<'db> {
             Self::MultibitsOutOfRange { .. } => "E0229",
             Self::ExternForbiddenSection { .. } | Self::ExternWithBody { .. } => "E0243",
             Self::ExternOutsideFunction { .. } => "E0244",
+            Self::DirectVariableUnsupported { .. } => "E0245",
             Self::MissingRequiredParameter { .. } => "E0233",
             Self::InOutParameterRequiresLValue { .. } => "E0234",
             Self::RetainInStatelessPou { .. } => "E0235",
@@ -463,6 +468,7 @@ impl<'db> ErrorCode for ResolveError<'db> {
                 "not representable on an extern FUNCTION"
             }
             Self::ExternOutsideFunction { .. } => "extern pragma outside a FUNCTION",
+            Self::DirectVariableUnsupported { .. } => "direct variable access is not supported",
             Self::MissingRequiredParameter { .. } => "missing required parameter",
             Self::InOutParameterRequiresLValue { .. } => "VAR_IN_OUT argument must be a variable",
             Self::RetainInStatelessPou { .. } => "invalid retentive qualifier",
@@ -1083,6 +1089,25 @@ impl<'db> ToIdeDiagnostic<'db> for ResolveError<'db> {
                     .call();
                 diag.with_note(
                     "FUNCTIONs marked with {extern} act as external calls, they can not have a body"
+                        .to_string(),
+                );
+                diag
+            }
+            Self::DirectVariableUnsupported { access } => {
+                let mut diag = diag()
+                    .message(format!(
+                        "'{}' cannot be read or written: there is no I/O mapping",
+                        access.to_string(db)
+                    ))
+                    .severity(DiagnosticSeverity::ERROR)
+                    .desc(self)
+                    .range(
+                        crate::denormalize(db, file, &access.get_span(db)).unwrap_or_default(),
+                    )
+                    .call();
+                diag.with_note(
+                    "the address is understood and X/B/W/D/L names the width, but nothing \
+                     connects it to a process image yet"
                         .to_string(),
                 );
                 diag

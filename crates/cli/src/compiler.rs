@@ -435,7 +435,15 @@ mod tests {
     /// A diagnostic-clean workspace whose lowering still fails must present
     /// as an INTERNAL COMPILER ERROR, without a fabricated error count.
     #[test]
-    fn hir_clean_lowering_failure_presents_as_ice() {
+    fn a_lowering_failure_presents_as_an_ice_not_a_user_diagnostic() {
+        // The contract: diagnostic-clean source must never fail to lower, so
+        // anything reaching `render_codegen_error` is a COMPILER bug and must
+        // say so — never a user-code diagnostic with an invented error count.
+        //
+        // The failure is injected rather than provoked through a workspace:
+        // every construct that used to pass `rk check` and die in lowering has
+        // since been given its HIR refusal (the last was `%IX0.0`, now E0245),
+        // and a test that needs a live bug to exist dies with the next fix.
         let ws = tempfile::tempdir().expect("tempdir");
         std::fs::write(
             ws.path().join("config.toml"),
@@ -444,32 +452,43 @@ mod tests {
         .unwrap();
         std::fs::write(
             ws.path().join("main.st"),
-            "PROGRAM Main\nVAR x : BOOL; END_VAR\n    x := %IX0.0;\nEND_PROGRAM\n\n\
-             CONFIGURATION Cfg\n    RESOURCE Res ON CPU\n        \
-             TASK T(INTERVAL := T#10ms, PRIORITY := 1);\n        \
-             PROGRAM Run WITH T : Main;\n    END_RESOURCE\nEND_CONFIGURATION\n",
+            "FUNCTION f : INT\nVAR x : INT; END_VAR\n    f := x;\nEND_FUNCTION\n",
         )
         .unwrap();
         // Tests must not inherit the developer's library environment.
         unsafe { std::env::remove_var(db::loader::STDLIB_PATH_ENV) };
         let db = init_db(ws.path(), false, true).expect("init db");
 
-        // Precondition: the workspace is diagnostic-clean (the ICE contract).
-        let per_file = crate::diagnostics::collect_diagnostics(&db, false);
-        assert!(
-            per_file.iter().all(|(_, d)| d.is_empty()),
-            "fixture must pass `rk check`"
-        );
+        // A located error, as lowering produces: the report must carry the
+        // source excerpt and caret, not just a bare string.
+        let (file, _) = crate::diagnostics::collect_diagnostics(&db, false)
+            .into_iter()
+            .next()
+            .expect("one file");
+        let span = auto_lsp::tree_sitter::Range {
+            start_byte: 17,
+            end_byte: 18,
+            start_point: auto_lsp::tree_sitter::Point { row: 2, column: 9 },
+            end_point: auto_lsp::tree_sitter::Point { row: 2, column: 10 },
+        };
+        let err = mir::lower::lower_type::LowerTypeError::UnsupportedType(
+            "synthetic lowering failure".to_string(),
+        )
+        .with_location(file, span);
 
-        let err = build_core(&db, ws.path(), false).expect_err("lowering must fail");
+        let report = render_codegen_error(&db, ws.path(), &err, crate::cli::OutputFormat::Full)
+            .expect("a located error renders");
         assert!(
-            err.contains("internal compiler error"),
-            "presented as an ICE: {err}"
+            report.contains("internal compiler error"),
+            "named as an ICE: {report}"
         );
-        assert!(err.contains(ISSUES_URL), "carries the report-it URL: {err}");
         assert!(
-            !err.contains("error(s) found"),
-            "no fabricated diagnostic count: {err}"
+            report.contains(ISSUES_URL),
+            "tells the user where to report it: {report}"
+        );
+        assert!(
+            report.contains("passed `rk check`"),
+            "states the violated contract: {report}"
         );
     }
 

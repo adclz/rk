@@ -157,8 +157,19 @@ impl<'db> Resolver<'db> {
     ) {
         match var_access.kind(db) {
             VariableAccessKind::Direct(dv) => {
+                // The address still gets its type (the width letter decides
+                // it), so a mismatched assignment is reported as a mismatch.
+                // But nothing maps it to a process image, so refuse it HERE —
+                // MIR's refusal reaches the user as an internal compiler
+                // error, from code `rk check` called clean.
                 ctx.type_of_direct_variable
                     .insert(dv, Type::DirectVariable((dv, var_access.multibits(db))));
+                ctx.errors.push(
+                    ResolveError::DirectVariableUnsupported {
+                        access: CallSite::from_scoped(db, &var_access),
+                    }
+                    .to_diagnostic(db, ctx.scope.file(db)),
+                );
             }
             VariableAccessKind::Symbolic(s) => {
                 self.resolve_begin_path_expr(db, s, var_access.multibits(db), ctx);

@@ -1384,6 +1384,19 @@ END_FUNCTION
             lint_rule: None,
         },
         ErrorExample {
+            code: "E0245",
+            category: "Scope",
+            title: "Direct variable access is not supported",
+            description: "A directly represented variable (`%IX0.0`, `%QW4`) names a location in a process image. The address is understood — the width letter `X`/`B`/`W`/`D`/`L` gives it its type — but nothing connects it to real I/O yet, so it cannot be compiled. It is refused here rather than in codegen, where it would surface as an internal compiler error on source that `rk check` called clean.",
+            sources: &[r#"
+FUNCTION_BLOCK fb1
+VAR test : BOOL; END_VAR
+    test := %IX0.0;
+END_FUNCTION_BLOCK
+"#],
+            lint_rule: None,
+        },
+        ErrorExample {
             code: "E0244",
             category: "Scope",
             title: "Extern pragma outside a FUNCTION",
