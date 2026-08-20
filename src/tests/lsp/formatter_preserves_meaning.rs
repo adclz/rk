@@ -101,13 +101,13 @@ fn assert_meaning_preserved(label: &str, source: &str) {
 #[rstest]
 fn located_variables_survive_formatting(#[allow(unused)] with_db: RootDatabase) {
     assert_meaning_preserved(
-        "VAR_LOCATED",
+        "located variable",
         r#"
 PROGRAM pgm
 VAR
     MYBIT : BOOL;
 END_VAR
-VAR_LOCATED
+VAR
     VALVE_POS AT %QW28 : INT;
 END_VAR
     MYBIT := TRUE;

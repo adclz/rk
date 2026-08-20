@@ -29,7 +29,6 @@ static FOLD: &str = r#"
 
   (retain_var_decls)
   (no_retain_var_decls)
-  (loc_var_decls)
   (global_var_decls)
 ] @fold
 
