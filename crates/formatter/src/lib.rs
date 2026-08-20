@@ -80,8 +80,6 @@ static SURROUND_SPACES: &str = r##"
 (extern_pragma "extern" @append_space)
 (extern_pragma module: (pragma_string) @append_space)
 (extern_pragma name: (pragma_string) @append_space)
-(extern_pragma params: (extern_param_list) @prepend_space)
-(extern_pragma result: (extern_result) @prepend_space)
 (extern_pragma "}" @prepend_antispace)
 
 ; Wasm pragma: normalize spacing between children

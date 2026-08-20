@@ -1407,9 +1407,9 @@ END_FUNCTION_BLOCK
 pub fn extern_pragma_formatting(mut with_db: RootDatabase) {
     // Bad formatting: missing spaces
     let source = r#"
+{extern'math''abs'}
 FUNCTION test : INT
 VAR_INPUT IN : INT; END_VAR
-    {extern'math''abs'(params IN)(result test)}
 END_FUNCTION
 "#;
 
@@ -1422,11 +1422,11 @@ END_FUNCTION
         .document(&with_db);
 
     assert_snapshot!(fmt(document), @r"
+    {extern 'math' 'abs'}
     FUNCTION test: INT
     	VAR_INPUT
     		IN: INT;
     	END_VAR
-    	{extern 'math' 'abs' (params IN) (result test)}
     END_FUNCTION
     ");
 }
