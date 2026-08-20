@@ -59,12 +59,6 @@ impl<'db> SemanticIndexBuilder<'db> {
                             .to_diagnostic(self.db, self.file),
                     );
                 }
-                ConfigVariables::ERRVarLocatedNotAllowed(err) => {
-                    self.errors.push(
-                        SyntaxError::VarLocatedNotAllowed(err.get_range().to_owned())
-                            .to_diagnostic(self.db, self.file),
-                    );
-                }
                 ConfigVariables::ERRVarExternalNotAllowed(err) => {
                     self.errors.push(
                         SyntaxError::VarExternalNotAllowed(err.get_range().to_owned())

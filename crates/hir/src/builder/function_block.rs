@@ -158,12 +158,6 @@ impl<'db> SemanticIndexBuilder<'db> {
                             .to_diagnostic(self.db, self.file),
                     );
                 }
-                FbVariables::ERRVarLocatedNotAllowed(err) => {
-                    self.errors.push(
-                        SyntaxError::VarLocatedNotAllowed(err.get_range().to_owned())
-                            .to_diagnostic(self.db, self.file),
-                    );
-                }
                 FbVariables::ERRVarGlobalNotAllowed(err) => {
                     self.errors.push(
                         SyntaxError::VarGlobalNotAllowed(err.get_range().to_owned())

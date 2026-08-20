@@ -6,13 +6,13 @@ use crate::{
     builder::{
         Parse, ParseVarSection,
         semantic_index::SemanticIndexBuilder,
-        variables::{ParseLocatedVar, ParseProgDecl},
+        variables::ParseProgDecl,
     },
     check::errors::{ToIdeDiagnostic, e0_syntax::SyntaxError},
     hir_def::{
         hir_node::HirNode,
         interned::identifier::Ident,
-        pous::variable::{LocatedVariable, VariableDecl},
+        pous::variable::VariableDecl,
         program::{ProgAccessDecl, ProgramDecl},
         scope::ScopeKind,
     },
@@ -27,7 +27,7 @@ impl<'db> SemanticIndexBuilder<'db> {
         let previous_scope = self.current_scope;
         self.current_scope = scope_id;
 
-        let (prog_access_decls, variables, located_vars) = self.parse_prog_variables(program);
+        let (prog_access_decls, variables) = self.parse_prog_variables(program);
 
         let name = Ident::from_node(self.db, self.file, program.name.cast(self.ast))?;
 
@@ -54,7 +54,6 @@ impl<'db> SemanticIndexBuilder<'db> {
             program.name.cast(self.ast).into(),
             prog_access_decls,
             variables,
-            located_vars,
             statements,
             program.into(),
             scope_id,
@@ -77,20 +76,14 @@ impl<'db> SemanticIndexBuilder<'db> {
     fn parse_prog_variables(
         &mut self,
         program: &ast::generated::ProgDecl,
-    ) -> (
-        Vec<ProgAccessDecl<'db>>,
-        Vec<VariableDecl<'db>>,
-        Vec<LocatedVariable<'db>>,
-    ) {
+    ) -> (Vec<ProgAccessDecl<'db>>, Vec<VariableDecl<'db>>) {
         let mut prog_decls = vec![];
         let mut variables = vec![];
-        let mut located_variables = vec![];
-        type ProgVariables = ast::generated::ERRVarGlobalNotAllowed_ExternalVarDecls_InOutDecls_InputDecls_LocPartlyVarDecl_LocVarDecls_NoRetainVarDecls_OutputDecls_ProgAccessDecls_RetainVarDecls_TempVarDecls_VarDecls;
+        type ProgVariables = ast::generated::ERRVarGlobalNotAllowed_ExternalVarDecls_InOutDecls_InputDecls_LocPartlyVarDecl_NoRetainVarDecls_OutputDecls_ProgAccessDecls_RetainVarDecls_TempVarDecls_VarDecls;
 
         for variable in program.declarations.iter() {
             match variable.cast(self.ast) {
                 ProgVariables::ProgAccessDecls(decls) => decls.parse(self, &mut prog_decls),
-                ProgVariables::LocVarDecls(decls) => decls.parse(self, &mut located_variables),
                 // Globals are application-scoped: they belong to a
                 // CONFIGURATION, not to a POU.
                 ProgVariables::ERRVarGlobalNotAllowed(err) => {
@@ -117,6 +110,6 @@ impl<'db> SemanticIndexBuilder<'db> {
             }
         }
 
-        (prog_decls, variables, located_variables)
+        (prog_decls, variables)
     }
 }

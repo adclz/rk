@@ -592,48 +592,63 @@ impl<'db> ParseVarSection<'db> for ast::generated::ExternalVarDecls {
     }
 }
 
-pub trait ParseLocatedVar<'db> {
-    fn parse(&self, sema: &mut SemanticIndexBuilder<'db>, section: &mut Vec<LocatedVariable<'db>>);
-}
+/// Build the `VariableDecl` for one `name AT %IX0.0 : BOOL;` declaration.
+///
+/// The address is kept on the variable (`VariableDecl::location`) rather than
+/// dropped, so the binding survives into HIR. IEC allows the name to be
+/// omitted for a direct-access-only declaration; there is nothing to call it
+/// then, so the address stands in as the name. Either way it is refused
+/// (E0245) until an I/O band exists.
+fn push_located_var<'db>(
+    sema: &mut SemanticIndexBuilder<'db>,
+    section: &mut Vec<VariableDecl<'db>>,
+    qualifier: Qualifier,
+    loc_var_decl: &ast::generated::LocVarDecl,
+) {
+    let r = loc_var_decl
+        .located_at
+        .cast(sema.ast)
+        .children
+        .cast(sema.ast)
+        .to_direct_variable(sema);
+    let Some(location) = sema.try_parse(r) else {
+        return;
+    };
 
-impl<'db> ParseLocatedVar<'db> for ast::generated::LocVarDecls {
-    fn parse(&self, sema: &mut SemanticIndexBuilder<'db>, section: &mut Vec<LocatedVariable<'db>>) {
-        for variable in self.children.iter() {
-            let variable = variable.cast(sema.ast);
-            let var_name = if let Some(name) = &variable.variable_name {
-                let r = Ident::from_node(sema.db, sema.file, name.cast(sema.ast));
-                let Some(name) = sema.try_parse(r) else {
-                    continue;
-                };
-                Some(name)
-            } else {
-                None
-            };
-
-            let r = variable
-                .located_at
-                .cast(sema.ast)
-                .children
-                .cast(sema.ast)
-                .to_direct_variable(sema);
-            let Some(located_at) = sema.try_parse(r) else {
-                continue;
-            };
-
-            let r = variable.spec_init.cast(sema.ast).to_spec_init(sema);
-            let Some(spec_init) = sema.try_parse(r) else {
-                continue;
-            };
-
-            section.push(LocatedVariable::new(
-                sema.db,
-                var_name,
-                located_at,
-                spec_init.spec,
-                spec_init.init,
-            ));
+    let (name, name_node): (Ident, AstId) = match loc_var_decl.variable_name.as_ref() {
+        Some(n) => {
+            let r = Ident::from_node(sema.db, sema.file, n.cast(sema.ast));
+            match sema.try_parse(r) {
+                Some(name) => (name, n.cast(sema.ast).into()),
+                None => return,
+            }
         }
-    }
+        None => (
+            Ident::new(
+                sema.db,
+                compact_str::CompactString::from(location.to_address(sema.db)),
+            ),
+            loc_var_decl.located_at.cast(sema.ast).into(),
+        ),
+    };
+
+    let r = loc_var_decl.spec_init.cast(sema.ast).to_spec_init(sema);
+    let Some(result) = sema.try_parse(r) else {
+        return;
+    };
+
+    section.push(sema.new_variable_at(
+        name,
+        name_node,
+        VariableKind::Var,
+        qualifier,
+        false,
+        result.spec,
+        result.init,
+        Some(location),
+        loc_var_decl.into(),
+        sema.current_scope,
+    ));
 }
 
 impl<'db> ParseVarSection<'db> for ast::generated::VarDecls {
@@ -645,7 +660,7 @@ impl<'db> ParseVarSection<'db> for ast::generated::VarDecls {
         };
         for child in self.children.iter() {
             match child.cast(sema.ast) {
-                ast::generated::ERRVariableWithNoSpec_VarDeclInitList::ERRVariableWithNoSpec(
+                ast::generated::ERRVariableWithNoSpec_LocVarDecl_VarDeclInitList::ERRVariableWithNoSpec(
                     child,
                 ) => {
                     sema.errors.push(
@@ -654,7 +669,7 @@ impl<'db> ParseVarSection<'db> for ast::generated::VarDecls {
                     );
                     continue;
                 }
-                ast::generated::ERRVariableWithNoSpec_VarDeclInitList::VarDeclInitList(
+                ast::generated::ERRVariableWithNoSpec_LocVarDecl_VarDeclInitList::VarDeclInitList(
                     var_decl,
                 ) => {
                     for variable in var_decl.variables.cast(sema.ast).children.iter() {
@@ -679,6 +694,13 @@ impl<'db> ParseVarSection<'db> for ast::generated::VarDecls {
                         ));
                     }
                 }
+                // `name AT %IX0.0 : BOOL;` — IEC declares located variables in
+                // a plain VAR block (Loc_Var_Decls), so they arrive beside
+                // ordinary ones and become ordinary VariableDecls that carry
+                // their address.
+                ast::generated::ERRVariableWithNoSpec_LocVarDecl_VarDeclInitList::LocVarDecl(
+                    loc_var_decl,
+                ) => push_located_var(sema, section, qualifier, loc_var_decl),
             }
         }
     }
@@ -688,7 +710,7 @@ impl<'db> ParseVarSection<'db> for ast::generated::RetainVarDecls {
     fn parse(&self, sema: &mut SemanticIndexBuilder<'db>, section: &mut Vec<VariableDecl<'db>>) {
         for child in self.children.iter() {
             match child.cast(sema.ast) {
-                ast::generated::ERRVariableWithNoSpec_VarDeclInitList::ERRVariableWithNoSpec(
+                ast::generated::ERRVariableWithNoSpec_LocVarDecl_VarDeclInitList::ERRVariableWithNoSpec(
                     child,
                 ) => {
                     sema.errors.push(
@@ -697,7 +719,7 @@ impl<'db> ParseVarSection<'db> for ast::generated::RetainVarDecls {
                     );
                     continue;
                 }
-                ast::generated::ERRVariableWithNoSpec_VarDeclInitList::VarDeclInitList(
+                ast::generated::ERRVariableWithNoSpec_LocVarDecl_VarDeclInitList::VarDeclInitList(
                     var_decl,
                 ) => {
                     for variable in var_decl.variables.cast(sema.ast).children.iter() {
@@ -722,6 +744,13 @@ impl<'db> ParseVarSection<'db> for ast::generated::RetainVarDecls {
                         ));
                     }
                 }
+                // `name AT %IX0.0 : BOOL;` — IEC declares located variables in
+                // a plain VAR block (Loc_Var_Decls), so they arrive beside
+                // ordinary ones and become ordinary VariableDecls that carry
+                // their address.
+                ast::generated::ERRVariableWithNoSpec_LocVarDecl_VarDeclInitList::LocVarDecl(
+                    loc_var_decl,
+                ) => push_located_var(sema, section, Qualifier::RETAIN, loc_var_decl),
             }
         }
     }
@@ -731,7 +760,7 @@ impl<'db> ParseVarSection<'db> for ast::generated::NoRetainVarDecls {
     fn parse(&self, sema: &mut SemanticIndexBuilder<'db>, section: &mut Vec<VariableDecl<'db>>) {
         for child in self.children.iter() {
             match child.cast(sema.ast) {
-                ast::generated::ERRVariableWithNoSpec_VarDeclInitList::ERRVariableWithNoSpec(
+                ast::generated::ERRVariableWithNoSpec_LocVarDecl_VarDeclInitList::ERRVariableWithNoSpec(
                     err,
                 ) => {
                     sema.errors.push(
@@ -740,7 +769,7 @@ impl<'db> ParseVarSection<'db> for ast::generated::NoRetainVarDecls {
                     );
                     continue;
                 }
-                ast::generated::ERRVariableWithNoSpec_VarDeclInitList::VarDeclInitList(
+                ast::generated::ERRVariableWithNoSpec_LocVarDecl_VarDeclInitList::VarDeclInitList(
                     var_decl,
                 ) => {
                     for variable in var_decl.variables.cast(sema.ast).children.iter() {
@@ -765,6 +794,13 @@ impl<'db> ParseVarSection<'db> for ast::generated::NoRetainVarDecls {
                         ));
                     }
                 }
+                // `name AT %IX0.0 : BOOL;` — IEC declares located variables in
+                // a plain VAR block (Loc_Var_Decls), so they arrive beside
+                // ordinary ones and become ordinary VariableDecls that carry
+                // their address.
+                ast::generated::ERRVariableWithNoSpec_LocVarDecl_VarDeclInitList::LocVarDecl(
+                    loc_var_decl,
+                ) => push_located_var(sema, section, Qualifier::NON_RETAIN, loc_var_decl),
             }
         }
     }

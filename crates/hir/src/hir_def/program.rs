@@ -11,7 +11,7 @@ use crate::{
         interned::identifier::Ident,
         pous::{
             pragma::Pragma,
-            variable::{DirectVariable, LocatedVariable, VariableDecl},
+            variable::{DirectVariable, VariableDecl},
         },
         scope::ScopeId,
         semantic_index::semantic_index,
@@ -53,7 +53,6 @@ pub struct ProgramDecl<'db> {
 
     #[tracked]
     #[returns(ref)]
-    pub located_variables: Vec<LocatedVariable<'db>>,
 
     #[tracked]
     #[no_eq]

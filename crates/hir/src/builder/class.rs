@@ -77,12 +77,6 @@ impl<'db> SemanticIndexBuilder<'db> {
                             .to_diagnostic(self.db, self.file),
                     );
                 }
-                ClassVariables::ERRVarLocatedNotAllowed(err) => {
-                    self.errors.push(
-                        SyntaxError::VarLocatedNotAllowed(err.get_range().to_owned())
-                            .to_diagnostic(self.db, self.file),
-                    );
-                }
                 ClassVariables::ERRVarExternalNotAllowed(err) => {
                     self.errors.push(
                         SyntaxError::VarExternalNotAllowed(err.get_range().to_owned())
@@ -229,12 +223,6 @@ impl<'db> SemanticIndexBuilder<'db> {
                 ast::generated::MethodDeclVariables::ERRVarGlobalNotAllowed(err) => {
                     self.errors.push(
                         SyntaxError::VarGlobalNotAllowed(err.get_range().to_owned())
-                            .to_diagnostic(self.db, self.file),
-                    );
-                }
-                ast::generated::MethodDeclVariables::ERRVarLocatedNotAllowed(err) => {
-                    self.errors.push(
-                        SyntaxError::VarLocatedNotAllowed(err.get_range().to_owned())
                             .to_diagnostic(self.db, self.file),
                     );
                 }
