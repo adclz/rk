@@ -868,54 +868,58 @@ impl<'db> ParseVarSection<'db> for ast::generated::GlobalVarDecls {
         for child in self.children.iter() {
             match child.cast(sema.ast).Type.cast(sema.ast) {
                 GlobalVarKind::NamespaceAccess(var_decl) => {
-                    let r = Ident::from_node(
-                        sema.db,
-                        sema.file,
-                        child.cast(sema.ast).spec.cast(sema.ast),
-                    );
-                    let Some(name) = sema.try_parse(r) else {
-                        continue;
-                    };
-                    let r = var_decl.to_spec_init(sema);
-                    let Some(result) = sema.try_parse(r) else {
-                        continue;
-                    };
-                    section.push(sema.new_variable(
-                        name,
-                        child.cast(sema.ast).spec.cast(sema.ast).into(),
-                        VariableKind::Global,
-                        qualifier,
-                        false,
-                        result.spec,
-                        result.init,
-                        child.cast(sema.ast).into(),
-                        sema.current_scope,
-                    ))
+                    for variable in child.cast(sema.ast).spec.cast(sema.ast).name.iter() {
+                        let r = Ident::from_node(sema.db, sema.file, variable.cast(sema.ast));
+                        let Some(name) = sema.try_parse(r) else {
+                            continue;
+                        };
+                        let r = var_decl.to_spec_init(sema);
+                        let Some(result) = sema.try_parse(r) else {
+                            continue;
+                        };
+                        section.push(sema.new_variable(
+                            name,
+                            variable.cast(sema.ast).into(),
+                            VariableKind::Global,
+                            qualifier,
+                            false,
+                            result.spec,
+                            result.init,
+                            child.cast(sema.ast).into(),
+                            sema.current_scope,
+                        ))
+                    }
                 }
+                // A global spec is a NAME LIST (`ga, gb : INT;`) or a single
+                // located name (`sensor AT %IX0.0 : BOOL;`) — never one bare
+                // identifier. Naming the variable after the whole spec node
+                // took its TEXT, so the declaration produced one global
+                // called "ga, gb" (or "sensor AT %IX0.0") that no reference
+                // and no VAR_EXTERNAL could ever resolve. One variable per
+                // declared name, each carrying its own name span, as every
+                // other section does.
                 GlobalVarKind::LocVarSpecInit(var_decl) => {
-                    let r = Ident::from_node(
-                        sema.db,
-                        sema.file,
-                        child.cast(sema.ast).spec.cast(sema.ast),
-                    );
-                    let Some(name) = sema.try_parse(r) else {
-                        continue;
-                    };
-                    let r = var_decl.to_spec_init(sema);
-                    let Some(result) = sema.try_parse(r) else {
-                        continue;
-                    };
-                    section.push(sema.new_variable(
-                        name,
-                        child.cast(sema.ast).spec.cast(sema.ast).into(),
-                        VariableKind::Global,
-                        qualifier,
-                        false,
-                        result.spec,
-                        result.init,
-                        child.cast(sema.ast).into(),
-                        sema.current_scope,
-                    ))
+                    for variable in child.cast(sema.ast).spec.cast(sema.ast).name.iter() {
+                        let r = Ident::from_node(sema.db, sema.file, variable.cast(sema.ast));
+                        let Some(name) = sema.try_parse(r) else {
+                            continue;
+                        };
+                        let r = var_decl.to_spec_init(sema);
+                        let Some(result) = sema.try_parse(r) else {
+                            continue;
+                        };
+                        section.push(sema.new_variable(
+                            name,
+                            variable.cast(sema.ast).into(),
+                            VariableKind::Global,
+                            qualifier,
+                            false,
+                            result.spec,
+                            result.init,
+                            child.cast(sema.ast).into(),
+                            sema.current_scope,
+                        ))
+                    }
                 }
             }
         }

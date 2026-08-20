@@ -521,3 +521,37 @@ fn config_global_initializer_applies(mut with_db: db::RootDatabase) {
     plc.run(1).expect("scan");
     assert_eq!(read_first_i32(&plc), 42, "the config global's initializer ran");
 }
+
+/// Every name in a global list is its own storage, and the shared
+/// initializer reaches all of them. Before the builder split the list, the
+/// declaration produced ONE global named after the whole spec text.
+#[rstest]
+fn a_global_name_list_gives_each_name_its_own_slot(mut with_db: db::RootDatabase) {
+    let source = r#"
+        PROGRAM P
+        VAR_EXTERNAL
+            ga : DINT;
+            gb : DINT;
+        END_VAR
+        VAR RETAIN seen : DINT; END_VAR
+            ga := ga + 1;
+            seen := ga * 100 + gb;
+        END_PROGRAM
+
+        CONFIGURATION Cfg
+            VAR_GLOBAL
+                ga, gb : DINT := 5;
+            END_VAR
+            RESOURCE Res ON CPU
+                TASK T(INTERVAL := T#10ms, PRIORITY := 1);
+                PROGRAM P1 WITH T : P;
+            END_RESOURCE
+        END_CONFIGURATION
+    "#;
+    let (_mir, wasm) = compile_to_mir_and_wasm(&mut with_db, source);
+    let mut plc = Plc::load(&wasm, Config::default()).expect("load");
+    plc.run(1).expect("scan");
+    // Both start at 5; ga is bumped to 6 and gb is untouched, so the two
+    // names cannot be aliasing one slot.
+    assert_eq!(read_first_i32(&plc), 605, "ga=6 and gb=5 are separate storage");
+}

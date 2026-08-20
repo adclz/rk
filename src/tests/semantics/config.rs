@@ -1680,3 +1680,47 @@ END_CONFIGURATION
         PROGRAM PA : P
     ");
 }
+
+/// A global spec is a NAME LIST or a single located name — never one bare
+/// identifier
+#[rstest]
+fn a_global_name_list_declares_every_name(mut with_db: RootDatabase) {
+    let source = r#"
+PROGRAM P
+VAR_EXTERNAL ga : INT; gb : INT; gsolo : INT; END_VAR
+    ga := 1; gb := 2; gsolo := 3;
+END_PROGRAM
+
+CONFIGURATION Cfg
+VAR_GLOBAL ga, gb : INT := 5; gsolo : INT; END_VAR
+    RESOURCE R ON CPU
+        TASK T(INTERVAL := T#10ms, PRIORITY := 1);
+        PROGRAM P1 WITH T : P;
+    END_RESOURCE
+END_CONFIGURATION
+"#;
+    assert_snapshot!(crate::tests::utils::test_diagnostics(&mut with_db, &[source]), @r"");
+}
+
+/// A located global is reachable by its own name; the `AT` clause is not
+/// part of it. (The location itself is still unmapped — see E0245 — but the
+/// NAME must resolve.)
+#[rstest]
+fn a_located_global_is_named_by_its_identifier(mut with_db: RootDatabase) {
+    let source = r#"
+PROGRAM P
+VAR_EXTERNAL sensor : BOOL; END_VAR
+VAR t : BOOL; END_VAR
+    t := sensor;
+END_PROGRAM
+
+CONFIGURATION Cfg
+VAR_GLOBAL sensor AT %IX0.0 : BOOL; END_VAR
+    RESOURCE R ON CPU
+        TASK T(INTERVAL := T#10ms, PRIORITY := 1);
+        PROGRAM P1 WITH T : P;
+    END_RESOURCE
+END_CONFIGURATION
+"#;
+    assert_snapshot!(crate::tests::utils::test_diagnostics(&mut with_db, &[source]), @r"");
+}
