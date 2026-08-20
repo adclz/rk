@@ -155,11 +155,14 @@ pub enum MirPlace {
         field_type: MirType,
     },
 
-    /// A configuration VAR_GLOBAL at a fixed linear-memory address. Bodies
-    /// lower a global reference as `Local(name)` (the address isn't known at
-    /// body-lowering time); a post-pass in `lower_module` rewrites those whose
-    /// name matches the module's global symbol table into this variant.
-    Global { address: u32, ty: MirType },
+    /// A configuration VAR_GLOBAL, or the `VAR_EXTERNAL` naming one.
+    Global {
+        /// Set when the body referenced this global by name: `address` and `ty`
+        /// are placeholders `lower_module` fills once the layout is final.
+        name: Option<Ident>,
+        address: u32,
+        ty: MirType,
+    },
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

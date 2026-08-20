@@ -1381,6 +1381,7 @@ fn lower_init_leaves<'db>(
                     continue; // non-const init element — validated/diagnosed by the HIR
                 }
                 MirPlace::Global {
+                    name: None,
                     address: base,
                     ty: leaf_ty,
                 }
