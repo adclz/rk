@@ -285,6 +285,17 @@ impl<'db> Type<'db> {
                     adjustment: None,
                 }),
             },
+            // An instance passed where its own POU is expected. VAR_IN_OUT binds
+            // by reference, so this hands over the instance rather than copying
+            // it — the way to share one. Assigning an instance is a different
+            // question and stays refused, by the check on the assignment TARGET
+            // (E0226), not here.
+            (Type::FunctionBlock(expected), Type::FunctionBlock(actual))
+                if expected == *actual =>
+            {
+                Ok(())
+            }
+            (Type::Class(expected), Type::Class(actual)) if expected == *actual => Ok(()),
             // Interface coercion: class/FB that implements the interface, or sub-interface
             (Type::Interface(target_itf), Type::Class(cls)) => {
                 if pou_implements_interface(db, Pou::Class(*cls), target_itf) {

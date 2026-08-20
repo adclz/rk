@@ -1421,3 +1421,65 @@ fn test_st_function_interface_forwards_to_method(mut with_db: db::RootDatabase) 
     let result: i32 = super::execute_wasm(&wasm, "test", ());
     assert_eq!(result, 2, "mid$C -> Holder#Bump$C chain mutates the shared instance");
 }
+
+
+/// An FB instance passed to a VAR_IN_OUT of its own type is handed over BY
+/// REFERENCE, not copied: the callee's write lands on the caller's instance.
+/// This is the way to share an instance, and it did not compile — the coercion
+/// had no arm for a POU reaching its own type, so it read as a mismatch
+/// between 'Worker' and 'Worker'.
+#[rstest]
+fn test_fb_instance_passed_by_reference(mut with_db: db::RootDatabase) {
+    let source = r#"
+        FUNCTION_BLOCK Worker
+        VAR n : INT; END_VAR
+            METHOD Bump : INT
+                n := n + 1;
+                Bump := n;
+            END_METHOD
+        END_FUNCTION_BLOCK
+        FUNCTION drive : INT
+            VAR_IN_OUT dev : Worker; END_VAR
+            drive := dev.Bump();
+        END_FUNCTION
+        FUNCTION test : INT
+        VAR w : Worker; END_VAR
+            drive(dev := w);
+            drive(dev := w);
+            test := w.n;
+        END_FUNCTION
+    "#;
+    let wasm = compile_to_wasm(&mut with_db, source);
+    let result: i32 = super::execute_wasm(&wasm, "test", ());
+    assert_eq!(result, 2, "both calls mutated the CALLER's instance, so no copy was made");
+}
+
+/// Two distinct instances passed to the same VAR_IN_OUT stay distinct: each
+/// call reaches the instance it was handed, so the parameter is a binding and
+/// not shared state.
+#[rstest]
+fn test_fb_instances_stay_distinct_through_a_param(mut with_db: db::RootDatabase) {
+    let source = r#"
+        FUNCTION_BLOCK Worker
+        VAR n : INT; END_VAR
+            METHOD Bump : INT
+                n := n + 1;
+                Bump := n;
+            END_METHOD
+        END_FUNCTION_BLOCK
+        FUNCTION drive : INT
+            VAR_IN_OUT dev : Worker; END_VAR
+            drive := dev.Bump();
+        END_FUNCTION
+        FUNCTION test : INT
+        VAR a : Worker; b : Worker; END_VAR
+            drive(dev := a);
+            drive(dev := a);
+            drive(dev := b);
+            test := a.n * 10 + b.n;
+        END_FUNCTION
+    "#;
+    let wasm = compile_to_wasm(&mut with_db, source);
+    let result: i32 = super::execute_wasm(&wasm, "test", ());
+    assert_eq!(result, 21, "a advanced twice, b once");
+}
