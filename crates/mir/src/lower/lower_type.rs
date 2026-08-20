@@ -274,7 +274,7 @@ fn lower_array_type<'db>(
     for (start_expr, end_expr) in array_type.subranges(db) {
         let start = extract_integer_literal(db, start_expr)?;
         let end = extract_integer_literal(db, end_expr)?;
-        dimensions.push((start as i64, end as i64));
+        dimensions.push((start, end));
 
         let dim_size = (end - start + 1).max(0) as u32;
         total_elements = total_elements.checked_mul(dim_size).ok_or_else(|| {

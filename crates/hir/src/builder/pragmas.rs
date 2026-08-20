@@ -49,8 +49,8 @@ impl<'db> SemanticIndexBuilder<'db> {
     ) -> Option<crate::hir_def::pous::pragma::ExternPragma> {
         let doc = self.file.document(self.db).as_bytes();
         let strip = |t: &str| compact_str::CompactString::from(&t[1..t.len() - 1]);
-        let module = strip(&ext.module.cast(self.ast).get_text(doc).ok()?);
-        let name = strip(&ext.name.cast(self.ast).get_text(doc).ok()?);
+        let module = strip(ext.module.cast(self.ast).get_text(doc).ok()?);
+        let name = strip(ext.name.cast(self.ast).get_text(doc).ok()?);
         Some(crate::hir_def::pous::pragma::ExternPragma { module, name })
     }
 

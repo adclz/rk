@@ -1,9 +1,9 @@
 use db::WorkspaceDataBase;
 
 use crate::{
-    CallSite, HasName, HirNodeInfo,
+    CallSite, HirNodeInfo,
     check::errors::{
-        ToIdeDiagnostic, e2_resolve::ResolveError, e5_inheritance::InheritanceError,
+        ToIdeDiagnostic, e5_inheritance::InheritanceError,
         e10_control_flow::ControlFlowError,
     },
     hir_def::{

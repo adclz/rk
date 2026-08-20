@@ -226,11 +226,13 @@ fn enum_values_continue_after_an_explicit_one(mut with_db: db::RootDatabase) {
     assert_eq!(result, 23, "B and C continue from A's explicit 5 (6 and 7)");
 }
 
-/// The declared base is the storage: a SINT-based enum is ONE byte of
-/// instance state, an LINT-based one is eight, and a variant value above
-/// 2^31 survives. All three were wrong under the hardcoded DInt storage:
-/// 4x-wide layout, truncated values, and an i32 literal lane meeting an
-/// i64 load. The retain band is the observable: real layout, real bytes.
+/// The declared base is the storage lane: an LINT-based enum is an 8-byte
+/// field carrying values above 2^31, where the hardcoded DInt storage
+/// truncated them and fed an i32 literal lane to an i64 load. (A SINT base
+/// still occupies a 4-byte slot — every type of 32 bits or less does, by
+/// this compiler's slot layout — so the lane, not the slot, is what the
+/// base changes there.) The retain band is the observable: real layout,
+/// real bytes.
 #[rstest]
 fn typed_enum_storage_follows_the_declared_base(mut with_db: db::RootDatabase) {
     let source = r#"
