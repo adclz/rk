@@ -504,9 +504,6 @@ CLASS cl
 
   END_VAR
 
-  VAR_LOCATED
-
-  END_VAR
 
   VAR_EXTERNAL
 
@@ -563,23 +560,12 @@ END_CLASS
         |
         |     Note: VAR_CONFIG can only be used inside CONFIGURATION
     ----'
-    [E0028] Error: syntax
-        ,-[ file:///test0.st:19:3 ]
-        |
-     19 | ,->   VAR_LOCATED
-        : :
-     21 | |->   END_VAR
-        | |
-        | `--------------- VAR_LOCATED is not allowed in this context
-        |
-        |     Note: VAR_LOCATED can only be used inside PROGRAM
-    ----'
     [E0030] Error: syntax
-        ,-[ file:///test0.st:27:3 ]
+        ,-[ file:///test0.st:24:3 ]
         |
-     27 | ,->   VAR_GLOBAL
+     24 | ,->   VAR_GLOBAL
         : :
-     29 | |->   END_VAR
+     26 | |->   END_VAR
         | |
         | `--------------- VAR_GLOBAL is not allowed in this context
         |
@@ -600,9 +586,6 @@ FUNCTION_BLOCK db
 
   END_VAR
 
-  VAR_LOCATED
-
-  END_VAR
 
   VAR_GLOBAL
 
@@ -633,23 +616,12 @@ END_FUNCTION_BLOCK
        |
        |     Note: VAR_CONFIG can only be used inside CONFIGURATION
     ---'
-    [E0028] Error: syntax
-        ,-[ file:///test0.st:11:3 ]
-        |
-     11 | ,->   VAR_LOCATED
-        : :
-     13 | |->   END_VAR
-        | |
-        | `--------------- VAR_LOCATED is not allowed in this context
-        |
-        |     Note: VAR_LOCATED can only be used inside PROGRAM
-    ----'
     [E0030] Error: syntax
-        ,-[ file:///test0.st:15:3 ]
+        ,-[ file:///test0.st:12:3 ]
         |
-     15 | ,->   VAR_GLOBAL
+     12 | ,->   VAR_GLOBAL
         : :
-     17 | |->   END_VAR
+     14 | |->   END_VAR
         | |
         | `--------------- VAR_GLOBAL is not allowed in this context
         |
@@ -670,9 +642,6 @@ FUNCTION fn
 
   END_VAR
 
-  VAR_LOCATED
-
-  END_VAR
 
   VAR_GLOBAL
 
@@ -703,23 +672,12 @@ END_FUNCTION
        |
        |     Note: VAR_CONFIG can only be used inside CONFIGURATION
     ---'
-    [E0028] Error: syntax
-        ,-[ file:///test0.st:11:3 ]
-        |
-     11 | ,->   VAR_LOCATED
-        : :
-     13 | |->   END_VAR
-        | |
-        | `--------------- VAR_LOCATED is not allowed in this context
-        |
-        |     Note: VAR_LOCATED can only be used inside PROGRAM
-    ----'
     [E0030] Error: syntax
-        ,-[ file:///test0.st:15:3 ]
+        ,-[ file:///test0.st:12:3 ]
         |
-     15 | ,->   VAR_GLOBAL
+     12 | ,->   VAR_GLOBAL
         : :
-     17 | |->   END_VAR
+     14 | |->   END_VAR
         | |
         | `--------------- VAR_GLOBAL is not allowed in this context
         |
@@ -741,9 +699,6 @@ INTERFACE in
 
     END_VAR
 
-    VAR_LOCATED
-
-    END_VAR
 
     VAR_EXTERNAL
 
@@ -787,45 +742,34 @@ END_INTERFACE
         |
         |     Note: VAR_CONFIG can only be used inside CONFIGURATION
     ----'
-    [E0028] Error: syntax
-        ,-[ file:///test0.st:12:5 ]
-        |
-     12 | ,->     VAR_LOCATED
-        : :
-     14 | |->     END_VAR
-        | |
-        | `----------------- VAR_LOCATED is not allowed in this context
-        |
-        |     Note: VAR_LOCATED can only be used inside PROGRAM
-    ----'
     [E0029] Error: syntax
-        ,-[ file:///test0.st:16:5 ]
+        ,-[ file:///test0.st:13:5 ]
         |
-     16 | ,->     VAR_EXTERNAL
+     13 | ,->     VAR_EXTERNAL
         : :
-     18 | |->     END_VAR
+     15 | |->     END_VAR
         | |
         | `----------------- VAR_EXTERNAL is not allowed in this context
         |
         |     Note: VAR_EXTERNAL can only be used inside PROGRAM, FUNCTION_BLOCK, FUNCTION
     ----'
     [E0030] Error: syntax
-        ,-[ file:///test0.st:20:5 ]
+        ,-[ file:///test0.st:17:5 ]
         |
-     20 | ,->     VAR_GLOBAL
+     17 | ,->     VAR_GLOBAL
         : :
-     22 | |->     END_VAR
+     19 | |->     END_VAR
         | |
         | `----------------- VAR_GLOBAL is not allowed in this context
         |
         |     Note: VAR_GLOBAL can only be used inside CONFIGURATION
     ----'
     [E0025] Error: syntax
-        ,-[ file:///test0.st:24:5 ]
+        ,-[ file:///test0.st:21:5 ]
         |
-     24 | ,->     VAR_TEMP
+     21 | ,->     VAR_TEMP
         : :
-     26 | |->     END_VAR
+     23 | |->     END_VAR
         | |
         | `----------------- VAR_TEMP is not allowed in this context
         |
@@ -854,9 +798,6 @@ CONFIGURATION MyCfg
 
   END_VAR
 
-  VAR_LOCATED
-
-  END_VAR
 
   VAR_EXTERNAL
 
@@ -898,23 +839,12 @@ END_CONFIGURATION
         |
         |     Note: VAR_TEMP can only be used inside FUNCTION, FUNCTION_BLOCK
     ----'
-    [E0028] Error: syntax
-        ,-[ file:///test0.st:19:3 ]
-        |
-     19 | ,->   VAR_LOCATED
-        : :
-     21 | |->   END_VAR
-        | |
-        | `--------------- VAR_LOCATED is not allowed in this context
-        |
-        |     Note: VAR_LOCATED can only be used inside PROGRAM
-    ----'
     [E0029] Error: syntax
-        ,-[ file:///test0.st:23:3 ]
+        ,-[ file:///test0.st:20:3 ]
         |
-     23 | ,->   VAR_EXTERNAL
+     20 | ,->   VAR_EXTERNAL
         : :
-     25 | |->   END_VAR
+     22 | |->   END_VAR
         | |
         | `--------------- VAR_EXTERNAL is not allowed in this context
         |
@@ -937,9 +867,6 @@ CLASS cl
 
     END_VAR
 
-    VAR_LOCATED
-
-    END_VAR
 
     VAR_EXTERNAL
 
@@ -983,23 +910,12 @@ END_CLASS
         |
         |     Note: VAR_CONFIG can only be used inside CONFIGURATION
     ----'
-    [E0028] Error: syntax
-        ,-[ file:///test0.st:13:5 ]
-        |
-     13 | ,->     VAR_LOCATED
-        : :
-     15 | |->     END_VAR
-        | |
-        | `----------------- VAR_LOCATED is not allowed in this context
-        |
-        |     Note: VAR_LOCATED can only be used inside PROGRAM
-    ----'
     [E0030] Error: syntax
-        ,-[ file:///test0.st:21:5 ]
+        ,-[ file:///test0.st:18:5 ]
         |
-     21 | ,->     VAR_GLOBAL
+     18 | ,->     VAR_GLOBAL
         : :
-     23 | |->     END_VAR
+     20 | |->     END_VAR
         | |
         | `----------------- VAR_GLOBAL is not allowed in this context
         |

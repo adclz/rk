@@ -99,7 +99,6 @@ pub enum SyntaxError {
     VarTempNotAllowed(Range),
     VarAccessNotAllowed(Range),
     VarConfigNotAllowed(Range),
-    VarLocatedNotAllowed(Range),
     VarExternalNotAllowed(Range),
     VarGlobalNotAllowed(Range),
     /// A TASK or PROGRAM declared directly in a CONFIGURATION.
@@ -149,7 +148,6 @@ impl ErrorCode for SyntaxError {
             SyntaxError::VarTempNotAllowed(_) => "E0025",
             SyntaxError::VarAccessNotAllowed(_) => "E0026",
             SyntaxError::VarConfigNotAllowed(_) => "E0027",
-            SyntaxError::VarLocatedNotAllowed(_) => "E0028",
             SyntaxError::VarExternalNotAllowed(_) => "E0029",
             SyntaxError::VarGlobalNotAllowed(_) => "E0030",
             SyntaxError::TaskOrProgramOutsideResource(_) => "E0039",
@@ -762,17 +760,6 @@ impl<'db> ToIdeDiagnostic<'db> for SyntaxError {
                     .call();
 
                 diag.with_note("VAR_CONFIG can only be used inside CONFIGURATION".into());
-                diag
-            }
-            Self::VarLocatedNotAllowed(span) => {
-                let mut diag = diag()
-                    .message("VAR_LOCATED is not allowed in this context".into())
-                    .severity(DiagnosticSeverity::ERROR)
-                    .desc(self)
-                    .range(crate::denormalize(db, file, span).unwrap_or_default())
-                    .call();
-
-                diag.with_note("VAR_LOCATED can only be used inside PROGRAM".into());
                 diag
             }
             Self::VarExternalNotAllowed(span) => {

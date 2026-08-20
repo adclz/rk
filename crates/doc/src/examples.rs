@@ -411,20 +411,6 @@ END_FUNCTION_BLOCK
             lint_rule: None,
         },
         ErrorExample {
-            code: "E0028",
-            category: "Syntax",
-            title: "VAR_LOCATED not allowed in this context",
-            description: "`VAR_LOCATED` can only be used inside PROGRAM.",
-            sources: &[r#"
-FUNCTION_BLOCK fb1
-    VAR_LOCATED
-
-    END_VAR
-END_FUNCTION_BLOCK
-"#],
-            lint_rule: None,
-        },
-        ErrorExample {
             code: "E0029",
             category: "Syntax",
             title: "VAR_EXTERNAL not allowed in this context",
