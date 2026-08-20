@@ -212,9 +212,9 @@ fn extern_pragma_param_counts_as_used(mut with_db: RootDatabase) {
     // `IN` is referenced only by the {extern} pragma - that should
     // count as a use, not a dead variable.
     let source = r#"
+        {extern 'math' 'abs'}
         FUNCTION abs : REAL
         VAR_INPUT IN : REAL; END_VAR
-            {extern 'math' 'abs' (params IN) (result abs)}
         END_FUNCTION
     "#;
     assert_snapshot!(test_single_lint(&mut with_db, &[source], "unused-variable"), @"");

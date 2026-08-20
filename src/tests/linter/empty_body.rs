@@ -79,12 +79,24 @@ END_FUNCTION
 #[rstest]
 fn extern_function_no_warning(mut with_db: RootDatabase) {
     let source = r#"
+{extern 'mod' 'fn'}
 FUNCTION fn1 : INT
 VAR_INPUT _x : INT; END_VAR
-    {extern 'mod' 'fn' (params _x) (result fn1)}
 END_FUNCTION
 "#;
-    assert_snapshot!(test_single_lint(&mut with_db, &[source], "empty-body"), @"");
+    assert_snapshot!(test_single_lint(&mut with_db, &[source], "empty-body"), @r"
+    [L0206] Hint: empty body
+       ,-[ file:///test0.st:2:1 ]
+       |
+     2 | ,-> {extern 'mod' 'fn'}
+       : :
+     5 | |-> END_FUNCTION
+       | |
+       | `------------------ FUNCTION 'fn1' has an empty body
+       | |
+       | |   Note: lint rule: empty-body
+    ---'
+    ");
 }
 
 #[rstest]

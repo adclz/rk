@@ -59,6 +59,9 @@ pub fn check<'db>(
                 _ => (false, ""),
             },
             Pragma::Warn(_, _) => (false, ""),
+            // Position legality for {extern} is a compiler ERROR (E0244),
+            // not lint advice — a misplaced import must not merely warn.
+            Pragma::Extern(_, _) => (false, ""),
         };
 
         if invalid {

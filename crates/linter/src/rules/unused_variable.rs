@@ -34,6 +34,18 @@ pub fn check<'db>(
 ) {
     let def_map = scope.def_map(db);
 
+    // An extern FUNCTION's declared variables ARE its import interface:
+    // every input is a param and every output a result, used by definition.
+    {
+        use hir::HasPragmas;
+        use hir::hir_def::{pous::pou::Pou, scope::ScopeKind, semantic_index::get_scope};
+        if let ScopeKind::Pou(Pou::Function(f)) = get_scope(db, scope).kind
+            && f.extern_pragma(db).is_some()
+        {
+            return;
+        }
+    }
+
     // Collect variables used in the body itself
     let mut all_used = body.variables_used.clone();
 
