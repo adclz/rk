@@ -79,6 +79,13 @@ fn walk_stmts_for_callees(
             } => {
                 walk_expr_for_callees(selector, db, names);
                 for arm in arms {
+                    // A STRING label's test is a call (`str.byte_cmp`), so patterns
+                    // are scanned too.
+                    for pattern in &arm.patterns {
+                        if let mir::stmt::MirCasePattern::Test(test) = pattern {
+                            walk_expr_for_callees(test, db, names);
+                        }
+                    }
                     walk_stmts_for_callees(&arm.body, db, names);
                 }
                 if let Some(eb) = else_body {
@@ -864,6 +871,13 @@ impl<'a> WasmGen<'a> {
                     } => {
                         walk_expr(db, selector, found);
                         for arm in arms {
+                            // A STRING label's test is a `str.byte_cmp` call;
+                            // the graft only pulls in builtins this scan sees.
+                            for pattern in &arm.patterns {
+                                if let mir::stmt::MirCasePattern::Test(test) = pattern {
+                                    walk_expr(db, test, found);
+                                }
+                            }
                             walk(db, &arm.body, found);
                         }
                         if let Some(b) = else_body {

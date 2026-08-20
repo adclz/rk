@@ -2029,22 +2029,65 @@ impl<'db> ExprLowerCtx<'db> {
     }
 
     /// Lower a CaseKind to a MirCasePattern.
-    pub fn lower_case_kind(&self, case: &CaseKind<'db>) -> Result<MirCasePattern, LowerTypeError> {
+    pub fn lower_case_kind(
+        &self,
+        case: &CaseKind<'db>,
+        selector: Expr<'db>,
+    ) -> Result<MirCasePattern, LowerTypeError> {
         match case {
-            CaseKind::Expression(expr) => {
-                let mir_expr = self.lower_expr(*expr)?;
-                let constant = expr_to_constant(&mir_expr)?;
-                Ok(MirCasePattern::Value(constant))
+            // A STRING label compares with `str.byte_cmp`, carried as the arm's own
+            // test.
+            CaseKind::Expression(expr)
+                if matches!(
+                    self.expr_type(*expr),
+                    Type::Elementary(hir::hir_def::expressions::spec::ElementarySpec::String)
+                ) =>
+            {
+                Ok(MirCasePattern::Test(self.lower_string_comparison(
+                    MirBinOp::Eq,
+                    selector,
+                    *expr,
+                )?))
             }
-            CaseKind::Subrange { lower, upper } => {
-                let lower_mir = self.lower_expr(*lower)?;
-                let upper_mir = self.lower_expr(*upper)?;
-                Ok(MirCasePattern::Range {
-                    lower: expr_to_constant(&lower_mir)?,
-                    upper: expr_to_constant(&upper_mir)?,
-                })
-            }
+            CaseKind::Expression(expr) => Ok(MirCasePattern::Value(self.case_label_constant(*expr)?)),
+            CaseKind::Subrange { lower, upper } => Ok(MirCasePattern::Range {
+                lower: self.case_label_constant(*lower)?,
+                upper: self.case_label_constant(*upper)?,
+            }),
         }
+    }
+
+    /// The normalized type of an expression, for label classification.
+    fn expr_type(&self, expr: Expr<'db>) -> Type<'db> {
+        expr.infer(self.db).normalize(self.db)
+    }
+
+    /// One CASE label's value, as HIR evaluated it.
+    ///
+    /// HIR checks a label by EVALUATING it (`case_label_value`), so the answer
+    /// already exists and E1006 has refused anything without one. Lowering the
+    /// label and inspecting whether a constant fell out re-derived that with a
+    /// narrower evaluator, and disagreed: `K:` for a CONSTANT `K` checked clean
+    /// and aborted here. An enum label is the exception — its value is its
+    /// variant's ordinal, which `lower_expr` reads from the same table the
+    /// enum's type does.
+    fn case_label_constant(
+        &self,
+        label: hir::hir_def::expressions::expression::Expr<'db>,
+    ) -> Result<MirConstant, LowerTypeError> {
+        let body = hir::hir_ty::body::infer_body(self.db, label.scope_id(self.db));
+        // Only the integer domain becomes a scalar constant; a string label
+        // lowers to its own test.
+        if let Some(hir::hir_ty::body::CaseLabelValue::Int(value)) =
+            body.case_label_value.get(&label)
+        {
+            return Ok(match self.expr_to_mir_elementary(label) {
+                Ok(elem) if elem.size_bytes() == 8 => MirConstant::I64(*value),
+                _ => MirConstant::I32(*value as i32),
+            });
+        }
+        // No recorded value: an enum label.
+        expr_to_constant(&self.lower_expr(label)?)
     }
 
     /// Public accessor for type_to_mir_elementary (used by lower_stmt).

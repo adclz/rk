@@ -1028,9 +1028,19 @@ fn rebase_string_offsets(stmts: &mut [crate::stmt::MirStmt], base: u32) {
                 rebase_string_offsets(body, base);
             }
             MirStmt::Case {
-                arms, else_body, ..
+                selector,
+                arms,
+                else_body,
             } => {
+                // The selector and a STRING label's test both hold pooled string
+                // references.
+                rebase_expr(selector, base);
                 for arm in arms {
+                    for pattern in &mut arm.patterns {
+                        if let crate::stmt::MirCasePattern::Test(test) = pattern {
+                            rebase_expr(test, base);
+                        }
+                    }
                     rebase_string_offsets(&mut arm.body, base);
                 }
                 if let Some(else_body) = else_body {

@@ -223,7 +223,7 @@ fn lower_stmt<'db>(
             for (case_kinds, body) in cases {
                 let mut patterns = Vec::new();
                 for ck in case_kinds {
-                    patterns.push(ctx.lower_case_kind(ck)?);
+                    patterns.push(ctx.lower_case_kind(ck, *condition)?);
                 }
                 let body = lower_stmts_inner(ctx, body)?;
                 arms.push(crate::stmt::MirCaseArm { patterns, body });

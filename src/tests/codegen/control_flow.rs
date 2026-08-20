@@ -724,3 +724,137 @@ fn continue_targets_the_inner_loop(mut with_db: db::RootDatabase) {
     let r: i32 = super::execute_wasm(&wasm, "run", ());
     assert_eq!(r, 409, "3 outer x 3 counted inner; the counter ends past the bound at 4");
 }
+
+/// CASE labels of every kind actually SELECT the right branch, and each
+/// label's value is the one HIR evaluated.
+///
+/// IEC's `Case_List_Elem : Subrange | Constant_Expr`, and a constant
+/// expression is anything that evaluates at compile time — so a named
+/// CONSTANT and arithmetic over constants are labels too. Each of these used
+/// to pass `rk check` and then abort `rk compile`, because MIR decided
+/// constness by lowering the label and seeing whether a literal fell out.
+#[rstest]
+fn case_integer_labels_of_every_constant_form(mut with_db: db::RootDatabase) {
+    let source = r#"
+        FUNCTION pick : DINT
+        VAR_INPUT x : DINT; END_VAR
+        VAR_EXTERNAL CONSTANT K : DINT; END_VAR
+            CASE x OF
+                -1:      pick := 100;
+                2..4:    pick := 200;
+                K:       pick := 300;
+                K + 2:   pick := 400;
+                DINT#20: pick := 500;
+            ELSE
+                pick := 0;
+            END_CASE;
+        END_FUNCTION
+
+        FUNCTION run : DINT
+            (* K = 7, so K+2 = 9 *)
+            run := pick(x := -1) + pick(x := 3) + pick(x := 7)
+                 + pick(x := 9) + pick(x := 20) + pick(x := 99);
+        END_FUNCTION
+
+        CONFIGURATION Cfg
+        VAR_GLOBAL CONSTANT K : DINT := 7; END_VAR
+            RESOURCE Res ON CPU
+                TASK T(INTERVAL := T#10ms, PRIORITY := 1);
+                PROGRAM P WITH T : Dummy;
+            END_RESOURCE
+        END_CONFIGURATION
+
+        PROGRAM Dummy
+        END_PROGRAM
+    "#;
+    let wasm = compile_to_wasm_checked(&mut with_db, source);
+    let result: i32 = super::execute_wasm(&wasm, "run", ());
+    assert_eq!(
+        result, 1500,
+        "literal, subrange, CONSTANT, constant arithmetic and typed literal each match"
+    );
+}
+
+/// An enum label matches on the variant's declared value, not its position.
+#[rstest]
+fn case_enum_labels_select_by_declared_value(mut with_db: db::RootDatabase) {
+    let source = r#"
+        TYPE Mode : (Stop := 5, Run, Halt := 9); END_TYPE
+
+        FUNCTION pick : DINT
+        VAR_INPUT m : Mode; END_VAR
+            CASE m OF
+                Mode#Stop: pick := 1;
+                Mode#Run:  pick := 20;
+                Mode#Halt: pick := 300;
+            ELSE
+                pick := 0;
+            END_CASE;
+        END_FUNCTION
+
+        FUNCTION run : DINT
+            run := pick(m := Mode#Stop) + pick(m := Mode#Run) + pick(m := Mode#Halt);
+        END_FUNCTION
+    "#;
+    let wasm = compile_to_wasm_checked(&mut with_db, source);
+    let result: i32 = super::execute_wasm(&wasm, "run", ());
+    assert_eq!(result, 321, "Stop=5, Run=6, Halt=9 each reach their own arm");
+}
+
+/// A STRING label compares as a STRING — the same byte comparison `=` uses.
+/// There is no scalar to compare against, so the arm carries its own test;
+/// before that existed the label had no MIR representation and aborted
+/// lowering on source that checked clean.
+#[rstest]
+fn case_string_labels_compare_by_content(mut with_db: db::RootDatabase) {
+    let source = r#"
+        FUNCTION classify : DINT
+        VAR_INPUT s : STRING; END_VAR
+            CASE s OF
+                'start': classify := 1;
+                'stop':  classify := 20;
+                'halt':  classify := 300;
+            ELSE
+                classify := 4000;
+            END_CASE;
+        END_FUNCTION
+
+        FUNCTION run : DINT
+            run := classify(s := 'start') + classify(s := 'stop')
+                 + classify(s := 'halt') + classify(s := 'other')
+                 + classify(s := '');
+        END_FUNCTION
+    "#;
+    let wasm = compile_to_wasm_checked(&mut with_db, source);
+    let result: i32 = super::execute_wasm(&wasm, "run", ());
+    assert_eq!(
+        result, 8321,
+        "each string matches its own arm; a non-match and the empty string fall through"
+    );
+}
+
+/// Several labels on one arm, mixing forms, and a subrange that must not
+/// swallow neighbouring values.
+#[rstest]
+fn case_multiple_labels_per_arm(mut with_db: db::RootDatabase) {
+    let source = r#"
+        FUNCTION pick : DINT
+        VAR_INPUT x : DINT; END_VAR
+            CASE x OF
+                1, 3, 10..12: pick := 7;
+                2:            pick := 9;
+            ELSE
+                pick := 0;
+            END_CASE;
+        END_FUNCTION
+
+        FUNCTION run : DINT
+            run := pick(x := 1) * 1000000 + pick(x := 2) * 100000
+                 + pick(x := 3) * 10000 + pick(x := 10) * 1000
+                 + pick(x := 12) * 100 + pick(x := 13) * 10 + pick(x := 0);
+        END_FUNCTION
+    "#;
+    let wasm = compile_to_wasm_checked(&mut with_db, source);
+    let result: i32 = super::execute_wasm(&wasm, "run", ());
+    assert_eq!(result, 7977700, "1,3 and 10..12 share an arm; 2 is its own; 13 and 0 fall through");
+}

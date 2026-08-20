@@ -232,6 +232,11 @@ fn emit_stmt(func: &mut wasm_encoder::Function, stmt: &MirStmt, ctx: &Ctx) {
                 // Evaluate all patterns and OR them together
                 for (i, pattern) in arm.patterns.iter().enumerate() {
                     match pattern {
+                        // A label carrying its own test (a STRING compare) already
+                        // yields the arm's bool.
+                        MirCasePattern::Test(test) => {
+                            emit_expr(func, test, ctx.locals, ctx.fn_indices);
+                        }
                         MirCasePattern::Value(val) => {
                             emit_expr(func, selector, ctx.locals, ctx.fn_indices);
                             emit_constant_expr(func, val);

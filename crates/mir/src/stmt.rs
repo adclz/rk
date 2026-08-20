@@ -125,6 +125,9 @@ pub enum MirCasePattern {
         lower: MirConstant,
         upper: MirConstant,
     },
+    /// A label whose test is an expression deciding the arm on its own: a
+    /// STRING label, whose test is the `str.byte_cmp` an `=` lowers to.
+    Test(MirExpr),
 }
 
 #[derive(Debug, Clone)]
