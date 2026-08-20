@@ -9,7 +9,7 @@ impl<'db> SemanticIndexBuilder<'db> {
         &mut self,
         pragmas: &[auto_lsp::core::ast::AstNodeId<ast::generated::PouPragma>],
     ) -> Vec<Pragma<'db>> {
-        use ast::generated::OncePragma_TestPragma_WarnPragma as PragmaKind;
+        use ast::generated::ExternPragma_OncePragma_TestPragma_WarnPragma as PragmaKind;
 
         let mut result = Vec::new();
 
@@ -32,10 +32,26 @@ impl<'db> SemanticIndexBuilder<'db> {
                         result.push(Pragma::Warn(si, wp));
                     }
                 }
+                PragmaKind::ExternPragma(ext) => {
+                    if let Some(ep) = self.parse_extern_pragma(ext) {
+                        result.push(Pragma::Extern(si, ep));
+                    }
+                }
             }
         }
 
         result
+    }
+
+    fn parse_extern_pragma(
+        &self,
+        ext: &ast::generated::ExternPragma,
+    ) -> Option<crate::hir_def::pous::pragma::ExternPragma> {
+        let doc = self.file.document(self.db).as_bytes();
+        let strip = |t: &str| compact_str::CompactString::from(&t[1..t.len() - 1]);
+        let module = strip(&ext.module.cast(self.ast).get_text(doc).ok()?);
+        let name = strip(&ext.name.cast(self.ast).get_text(doc).ok()?);
+        Some(crate::hir_def::pous::pragma::ExternPragma { module, name })
     }
 
     fn parse_warn_pragma(&self, warn: &ast::generated::WarnPragma) -> Option<WarnPragma> {

@@ -5,7 +5,6 @@ use crate::{
     AstId, HirNodeInfo,
     hir_def::{
         expressions::expression::{BeginPathExpr, Expr, FuncCall, VariableAccess},
-        extern_decl::ExternDecl,
         scope::ScopeId,
     },
 };
@@ -72,7 +71,6 @@ pub enum StmtKind<'db> {
     Raise {
         message: Expr<'db>,
     },
-    ExternPragma(ExternDecl<'db>),
     WasmPragma(WasmDecl<'db>),
 }
 

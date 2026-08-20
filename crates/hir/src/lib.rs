@@ -22,7 +22,12 @@ pub fn denormalize(
     file.borrow().document(db).denormalize_range(range).ok()
 }
 
-use crate::hir_def::{interned::identifier::Ident, scope::ScopeId, semantic_index::semantic_index};
+use crate::hir_def::{
+    interned::identifier::{Ident, SpanIdent},
+    pous::pragma::{ExternPragma, Pragma},
+    scope::ScopeId,
+    semantic_index::semantic_index,
+};
 
 pub mod builder;
 pub mod check;
@@ -172,6 +177,22 @@ pub trait HasPragmas<'db>: HirNodeInfo<'db> {
 
     fn is_once(&self, db: &'db dyn WorkspaceDataBase) -> bool {
         self.once_pragma(db).is_some()
+    }
+
+    /// `{extern 'module' 'name'}` - this POU is a WASM import. Only legal on
+    /// a FUNCTION (checked in `check_variables`); the accessor exists on the
+    /// trait so both the check and MIR read the SAME fact.
+    fn extern_pragma(
+        &self,
+        db: &'db dyn WorkspaceDataBase,
+    ) -> Option<(
+        &'db SpanIdent<'db>,
+        &'db ExternPragma,
+    )> {
+        self.get_pragmas(db).iter().find_map(|p| match p {
+            Pragma::Extern(s, e) => Some((s, e)),
+            _ => None,
+        })
     }
 }
 

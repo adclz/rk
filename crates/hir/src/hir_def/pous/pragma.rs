@@ -8,6 +8,7 @@ pub enum Pragma<'db> {
     Test(SpanIdent<'db>),
     Once(SpanIdent<'db>),
     Warn(SpanIdent<'db>, WarnPragma),
+    Extern(SpanIdent<'db>, ExternPragma),
 }
 
 impl<'db> Pragma<'db> {
@@ -17,6 +18,7 @@ impl<'db> Pragma<'db> {
             Pragma::Test(s) => s,
             Pragma::Once(s) => s,
             Pragma::Warn(s, _) => s,
+            Pragma::Extern(s, _) => s,
         }
     }
 
@@ -25,8 +27,24 @@ impl<'db> Pragma<'db> {
             Pragma::Test(_) => "{test}",
             Pragma::Once(_) => "{once}",
             Pragma::Warn(_, _) => "{warn}",
+            Pragma::Extern(_, _) => "{extern}",
         }
     }
+}
+
+/// `{extern 'module' 'name'}` above a FUNCTION: the FUNCTION is a WASM
+/// import. The pragma carries only what the declaration cannot know — the
+/// import's module and name. The signature IS the declaration: `VAR_INPUT`
+/// become the params (copies; aggregates as a pointer to the call-entry
+/// snapshot), scalar `VAR_OUTPUT` become the results in declaration order,
+/// and the return type, when declared, is the LAST result. Nothing is
+/// restated, so nothing can disagree.
+#[derive(Debug, Clone, PartialEq, Eq, Hash, salsa::Update)]
+pub struct ExternPragma {
+    /// The WASM import module (e.g. "wasi:clocks/monotonic-clock@0.2.6").
+    pub module: CompactString,
+    /// The WASM import name (e.g. "now").
+    pub name: CompactString,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, salsa::Update)]
@@ -53,6 +71,15 @@ pub fn is_once(_db: &dyn WorkspaceDataBase, pragmas: &[Pragma<'_>]) -> bool {
 pub fn warn_pragma<'a>(pragmas: &'a [Pragma<'_>]) -> Option<&'a WarnPragma> {
     pragmas.iter().find_map(|p| match p {
         Pragma::Warn(_, w) => Some(w),
+        _ => None,
+    })
+}
+
+pub fn extern_pragma<'a, 'db>(
+    pragmas: &'a [Pragma<'db>],
+) -> Option<(&'a SpanIdent<'db>, &'a ExternPragma)> {
+    pragmas.iter().find_map(|p| match p {
+        Pragma::Extern(s, e) => Some((s, e)),
         _ => None,
     })
 }
