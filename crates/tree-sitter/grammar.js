@@ -136,7 +136,6 @@ const RESERVED_NAMES = [
   "VAR_TEMP",
   "VAR_EXTERNAL",
   "VAR_GLOBAL",
-  "VAR_LOCATED",
   "RETAIN",
   "NON_RETAIN",
   "IF",
@@ -322,7 +321,6 @@ module.exports = grammar({
     ERR_var_temp_not_allowed: ($) => prec(-1, $.temp_var_decls), // VAR_TEMP
     ERR_var_access_not_allowed: ($) => prec(-1, $.prog_access_decls), // VAR_ACCESS
     ERR_var_config_not_allowed: ($) => prec(-1, $.config_init), // VAR_CONFIG
-    ERR_var_located_not_allowed: ($) => prec(-1, $.loc_var_decls), // VAR_LOCATED
     ERR_var_external_not_allowed: ($) => prec(-1, $.external_var_decls), // VAR_EXTERNAL
     ERR_var_global_not_allowed: ($) => prec(-1, $.global_var_decls), // VAR_GLOBAL
     // A TASK or PROGRAM written directly in a CONFIGURATION: parsed so the
@@ -1012,7 +1010,11 @@ module.exports = grammar({
         field("access", optional($.access_spec)),
         repeat(
           seq(
-            choice($.var_decl_init_list, $.ERR_variable_with_no_spec),
+            choice(
+              $.var_decl_init_list,
+              $.loc_var_decl,
+              $.ERR_variable_with_no_spec,
+            ),
             optional(";"),
           ),
         ),
@@ -1027,7 +1029,11 @@ module.exports = grammar({
         field("access", optional($.access_spec)),
         repeat(
           seq(
-            choice($.var_decl_init_list, $.ERR_variable_with_no_spec),
+            choice(
+              $.var_decl_init_list,
+              $.loc_var_decl,
+              $.ERR_variable_with_no_spec,
+            ),
             optional(";"),
           ),
         ),
@@ -1037,18 +1043,6 @@ module.exports = grammar({
 
     var_decl_init_list: ($) =>
       seq(field("variables", $.variable_list), field("type", $.var_decl_init)),
-
-    loc_var_decls: ($) =>
-      seq(
-        "VAR_LOCATED",
-        field(
-          "constant_or_retain",
-          optional(choice("CONSTANT", "RETAIN", "NON_RETAIN")),
-        ),
-        repeat(seq($.loc_var_decl, optional(";"))),
-        "END_VAR",
-        optional(";"),
-      ),
 
     loc_var_decl: ($) =>
       seq(
@@ -1173,7 +1167,6 @@ module.exports = grammar({
         $.temp_var_decls,
         $.ERR_var_access_not_allowed,
         $.ERR_var_config_not_allowed,
-        $.ERR_var_located_not_allowed,
         $.ERR_var_external_not_allowed,
         $.ERR_var_global_not_allowed
       ),
@@ -1212,7 +1205,6 @@ module.exports = grammar({
         ...other_var_decls($),
         $.ERR_var_access_not_allowed,
         $.ERR_var_config_not_allowed,
-        $.ERR_var_located_not_allowed,
         $.ERR_var_global_not_allowed,
       ),
 
@@ -1268,7 +1260,11 @@ module.exports = grammar({
         field("spec", optional($.access_spec)),
         repeat(
           seq(
-            choice($.var_decl_init_list, $.ERR_variable_with_no_spec),
+            choice(
+              $.var_decl_init_list,
+              $.loc_var_decl,
+              $.ERR_variable_with_no_spec,
+            ),
             optional(";"),
           ),
         ),
@@ -1304,7 +1300,6 @@ module.exports = grammar({
         $.temp_var_decls,
         $.ERR_var_access_not_allowed,
         $.ERR_var_config_not_allowed,
-        $.ERR_var_located_not_allowed,
         $.ERR_var_external_not_allowed,
         $.ERR_var_global_not_allowed,
       ),
@@ -1335,7 +1330,6 @@ module.exports = grammar({
         $.ERR_var_temp_not_allowed,
         $.ERR_var_access_not_allowed,
         $.ERR_var_config_not_allowed,
-        $.ERR_var_located_not_allowed,
         $.ERR_var_external_not_allowed,
         $.ERR_var_global_not_allowed
       ),
@@ -1365,7 +1359,6 @@ module.exports = grammar({
       choice(...io_var_decls($),
         $.ERR_var_access_not_allowed,
         $.ERR_var_config_not_allowed,
-        $.ERR_var_located_not_allowed,
         $.ERR_var_external_not_allowed,
         $.ERR_var_global_not_allowed,
         // temp and in_out are not allowed too
@@ -1404,7 +1397,6 @@ module.exports = grammar({
               ...func_var_decls($),
               $.temp_var_decls,
               ...other_var_decls($),
-              $.loc_var_decls,
               $.prog_access_decls,
               $.ERR_var_global_not_allowed,
             ),
@@ -1552,7 +1544,6 @@ module.exports = grammar({
         $.ERR_var_not_allowed,
         $.ERR_var_in_out_not_allowed,
         $.ERR_var_temp_not_allowed,
-        $.ERR_var_located_not_allowed,
         $.ERR_var_external_not_allowed,
       ),
 

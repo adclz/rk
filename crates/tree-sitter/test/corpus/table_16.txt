@@ -3,7 +3,7 @@ Location
 ================================================================================
 
 PROGRAM prg
-   VAR_LOCATED
+   VAR
       head AT %IW215: INT;
       head AT %QB7: INT;
       head AT %MD48: INT;
@@ -13,56 +13,56 @@ END_PROGRAM
 
 --------------------------------------------------------------------------------
 
-    (source_file
-      (prog_decl
+(source_file
+  (prog_decl
+    (identifier)
+    (var_decls
+      (loc_var_decl
         (identifier)
-        (loc_var_decls
-          (loc_var_decl
-            (identifier)
-            (located_at
-              (direct_variable
-                (adress_identifier)
-                (offset
-                  (unsigned_int))))
-            (loc_var_spec_init
-              (simple_type_spec
-                (numeric_type_name
-                  (int_type_name
-                    (sign_int_type_name
-                      (int_name)))))))
-          (loc_var_decl
-            (identifier)
-            (located_at
-              (direct_variable
-                (adress_identifier)
-                (offset
-                  (unsigned_int))))
-            (loc_var_spec_init
-              (simple_type_spec
-                (numeric_type_name
-                  (int_type_name
-                    (sign_int_type_name
-                      (int_name)))))))
-          (loc_var_decl
-            (identifier)
-            (located_at
-              (direct_variable
-                (adress_identifier)
-                (offset
-                  (unsigned_int))))
-            (loc_var_spec_init
-              (simple_type_spec
-                (numeric_type_name
-                  (int_type_name
-                    (sign_int_type_name
-                      (int_name))))))))))
+        (located_at
+          (direct_variable
+            (adress_identifier)
+            (offset
+              (unsigned_int))))
+        (loc_var_spec_init
+          (simple_type_spec
+            (numeric_type_name
+              (int_type_name
+                (sign_int_type_name
+                  (int_name)))))))
+      (loc_var_decl
+        (identifier)
+        (located_at
+          (direct_variable
+            (adress_identifier)
+            (offset
+              (unsigned_int))))
+        (loc_var_spec_init
+          (simple_type_spec
+            (numeric_type_name
+              (int_type_name
+                (sign_int_type_name
+                  (int_name)))))))
+      (loc_var_decl
+        (identifier)
+        (located_at
+          (direct_variable
+            (adress_identifier)
+            (offset
+              (unsigned_int))))
+        (loc_var_spec_init
+          (simple_type_spec
+            (numeric_type_name
+              (int_type_name
+                (sign_int_type_name
+                  (int_name))))))))))
 
 ================================================================================
 Size
 ================================================================================
 
 PROGRAM prg
-   VAR_LOCATED
+   VAR
       head AT %IX1: INT;
       head AT %I1: INT;
       head AT %IB2: INT;
@@ -76,95 +76,95 @@ END_PROGRAM
 
 --------------------------------------------------------------------------------
 
-    (source_file
-      (prog_decl
+(source_file
+  (prog_decl
+    (identifier)
+    (var_decls
+      (loc_var_decl
         (identifier)
-        (loc_var_decls
-          (loc_var_decl
-            (identifier)
-            (located_at
-              (direct_variable
-                (adress_identifier)
-                (offset
-                  (unsigned_int))))
-            (loc_var_spec_init
-              (simple_type_spec
-                (numeric_type_name
-                  (int_type_name
-                    (sign_int_type_name
-                      (int_name)))))))
-          (loc_var_decl
-            (identifier)
-            (located_at
-              (direct_variable
-                (adress_identifier)
-                (offset
-                  (unsigned_int))))
-            (loc_var_spec_init
-              (simple_type_spec
-                (numeric_type_name
-                  (int_type_name
-                    (sign_int_type_name
-                      (int_name)))))))
-          (loc_var_decl
-            (identifier)
-            (located_at
-              (direct_variable
-                (adress_identifier)
-                (offset
-                  (unsigned_int))))
-            (loc_var_spec_init
-              (simple_type_spec
-                (numeric_type_name
-                  (int_type_name
-                    (sign_int_type_name
-                      (int_name)))))))
-          (loc_var_decl
-            (identifier)
-            (located_at
-              (direct_variable
-                (adress_identifier)
-                (offset
-                  (unsigned_int))))
-            (loc_var_spec_init
-              (simple_type_spec
-                (numeric_type_name
-                  (int_type_name
-                    (sign_int_type_name
-                      (int_name)))))))
-          (loc_var_decl
-            (identifier)
-            (located_at
-              (direct_variable
-                (adress_identifier)
-                (offset
-                  (unsigned_int))))
-            (loc_var_spec_init
-              (simple_type_spec
-                (numeric_type_name
-                  (int_type_name
-                    (sign_int_type_name
-                      (int_name)))))))
-          (loc_var_decl
-            (identifier)
-            (located_at
-              (direct_variable
-                (adress_identifier)
-                (offset
-                  (unsigned_int))))
-            (loc_var_spec_init
-              (simple_type_spec
-                (numeric_type_name
-                  (int_type_name
-                    (sign_int_type_name
-                      (int_name))))))))))
+        (located_at
+          (direct_variable
+            (adress_identifier)
+            (offset
+              (unsigned_int))))
+        (loc_var_spec_init
+          (simple_type_spec
+            (numeric_type_name
+              (int_type_name
+                (sign_int_type_name
+                  (int_name)))))))
+      (loc_var_decl
+        (identifier)
+        (located_at
+          (direct_variable
+            (adress_identifier)
+            (offset
+              (unsigned_int))))
+        (loc_var_spec_init
+          (simple_type_spec
+            (numeric_type_name
+              (int_type_name
+                (sign_int_type_name
+                  (int_name)))))))
+      (loc_var_decl
+        (identifier)
+        (located_at
+          (direct_variable
+            (adress_identifier)
+            (offset
+              (unsigned_int))))
+        (loc_var_spec_init
+          (simple_type_spec
+            (numeric_type_name
+              (int_type_name
+                (sign_int_type_name
+                  (int_name)))))))
+      (loc_var_decl
+        (identifier)
+        (located_at
+          (direct_variable
+            (adress_identifier)
+            (offset
+              (unsigned_int))))
+        (loc_var_spec_init
+          (simple_type_spec
+            (numeric_type_name
+              (int_type_name
+                (sign_int_type_name
+                  (int_name)))))))
+      (loc_var_decl
+        (identifier)
+        (located_at
+          (direct_variable
+            (adress_identifier)
+            (offset
+              (unsigned_int))))
+        (loc_var_spec_init
+          (simple_type_spec
+            (numeric_type_name
+              (int_type_name
+                (sign_int_type_name
+                  (int_name)))))))
+      (loc_var_decl
+        (identifier)
+        (located_at
+          (direct_variable
+            (adress_identifier)
+            (offset
+              (unsigned_int))))
+        (loc_var_spec_init
+          (simple_type_spec
+            (numeric_type_name
+              (int_type_name
+                (sign_int_type_name
+                  (int_name))))))))))
 
 ================================================================================
 Adressing
 ================================================================================
 
 PROGRAM prg
-   VAR_LOCATED
+   VAR
       head AT %IB0: INT;
       head AT %QX7.5: INT;
       head AT %MW1.7.9: INT;
@@ -175,49 +175,49 @@ END_PROGRAM
 
 --------------------------------------------------------------------------------
 
-    (source_file
-      (prog_decl
+(source_file
+  (prog_decl
+    (identifier)
+    (var_decls
+      (loc_var_decl
         (identifier)
-        (loc_var_decls
-          (loc_var_decl
-            (identifier)
-            (located_at
-              (direct_variable
-                (adress_identifier)
-                (offset
-                  (unsigned_int))))
-            (loc_var_spec_init
-              (simple_type_spec
-                (numeric_type_name
-                  (int_type_name
-                    (sign_int_type_name
-                      (int_name)))))))
-          (loc_var_decl
-            (identifier)
-            (located_at
-              (direct_variable
-                (adress_identifier)
-                (offset
-                  (unsigned_int)
-                  (unsigned_int))))
-            (loc_var_spec_init
-              (simple_type_spec
-                (numeric_type_name
-                  (int_type_name
-                    (sign_int_type_name
-                      (int_name)))))))
-          (loc_var_decl
-            (identifier)
-            (located_at
-              (direct_variable
-                (adress_identifier)
-                (offset
-                  (unsigned_int)
-                  (unsigned_int)
-                  (unsigned_int))))
-            (loc_var_spec_init
-              (simple_type_spec
-                (numeric_type_name
-                  (int_type_name
-                    (sign_int_type_name
-                      (int_name))))))))))
+        (located_at
+          (direct_variable
+            (adress_identifier)
+            (offset
+              (unsigned_int))))
+        (loc_var_spec_init
+          (simple_type_spec
+            (numeric_type_name
+              (int_type_name
+                (sign_int_type_name
+                  (int_name)))))))
+      (loc_var_decl
+        (identifier)
+        (located_at
+          (direct_variable
+            (adress_identifier)
+            (offset
+              (unsigned_int)
+              (unsigned_int))))
+        (loc_var_spec_init
+          (simple_type_spec
+            (numeric_type_name
+              (int_type_name
+                (sign_int_type_name
+                  (int_name)))))))
+      (loc_var_decl
+        (identifier)
+        (located_at
+          (direct_variable
+            (adress_identifier)
+            (offset
+              (unsigned_int)
+              (unsigned_int)
+              (unsigned_int))))
+        (loc_var_spec_init
+          (simple_type_spec
+            (numeric_type_name
+              (int_type_name
+                (sign_int_type_name
+                  (int_name))))))))))

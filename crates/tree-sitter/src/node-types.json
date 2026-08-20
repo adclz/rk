@@ -24,10 +24,6 @@
         "named": true
       },
       {
-        "type": "ERR_var_located_not_allowed",
-        "named": true
-      },
-      {
         "type": "ERR_var_temp_not_allowed",
         "named": true
       },
@@ -63,10 +59,6 @@
       },
       {
         "type": "ERR_var_in_out_not_allowed",
-        "named": true
-      },
-      {
-        "type": "ERR_var_located_not_allowed",
         "named": true
       },
       {
@@ -218,10 +210,6 @@
         "named": true
       },
       {
-        "type": "ERR_var_located_not_allowed",
-        "named": true
-      },
-      {
         "type": "external_var_decls",
         "named": true
       },
@@ -277,10 +265,6 @@
       },
       {
         "type": "ERR_var_global_not_allowed",
-        "named": true
-      },
-      {
-        "type": "ERR_var_located_not_allowed",
         "named": true
       },
       {
@@ -380,10 +364,6 @@
         "named": true
       },
       {
-        "type": "ERR_var_located_not_allowed",
-        "named": true
-      },
-      {
         "type": "external_var_decls",
         "named": true
       },
@@ -431,10 +411,6 @@
       },
       {
         "type": "ERR_var_in_out_not_allowed",
-        "named": true
-      },
-      {
-        "type": "ERR_var_located_not_allowed",
         "named": true
       },
       {
@@ -1109,21 +1085,6 @@
       "types": [
         {
           "type": "in_out_decls",
-          "named": true
-        }
-      ]
-    }
-  },
-  {
-    "type": "ERR_var_located_not_allowed",
-    "named": true,
-    "fields": {},
-    "children": {
-      "multiple": false,
-      "required": true,
-      "types": [
-        {
-          "type": "loc_var_decls",
           "named": true
         }
       ]
@@ -4038,40 +3999,6 @@
     }
   },
   {
-    "type": "loc_var_decls",
-    "named": true,
-    "fields": {
-      "constant_or_retain": {
-        "multiple": false,
-        "required": false,
-        "types": [
-          {
-            "type": "CONSTANT",
-            "named": false
-          },
-          {
-            "type": "NON_RETAIN",
-            "named": false
-          },
-          {
-            "type": "RETAIN",
-            "named": false
-          }
-        ]
-      }
-    },
-    "children": {
-      "multiple": true,
-      "required": false,
-      "types": [
-        {
-          "type": "loc_var_decl",
-          "named": true
-        }
-      ]
-    }
-  },
-  {
     "type": "loc_var_spec_init",
     "named": true,
     "fields": {
@@ -4631,6 +4558,10 @@
       "types": [
         {
           "type": "ERR_variable_with_no_spec",
+          "named": true
+        },
+        {
+          "type": "loc_var_decl",
           "named": true
         },
         {
@@ -5272,10 +5203,6 @@
             "named": true
           },
           {
-            "type": "loc_var_decls",
-            "named": true
-          },
-          {
             "type": "no_retain_var_decls",
             "named": true
           },
@@ -5585,6 +5512,10 @@
       "types": [
         {
           "type": "ERR_variable_with_no_spec",
+          "named": true
+        },
+        {
+          "type": "loc_var_decl",
           "named": true
         },
         {
@@ -6833,6 +6764,10 @@
           "named": true
         },
         {
+          "type": "loc_var_decl",
+          "named": true
+        },
+        {
           "type": "var_decl_init_list",
           "named": true
         }
@@ -7651,10 +7586,6 @@
   },
   {
     "type": "VAR_IN_OUT",
-    "named": false
-  },
-  {
-    "type": "VAR_LOCATED",
     "named": false
   },
   {

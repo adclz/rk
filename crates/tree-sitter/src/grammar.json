@@ -399,14 +399,6 @@
         "name": "config_init"
       }
     },
-    "ERR_var_located_not_allowed": {
-      "type": "PREC",
-      "value": -1,
-      "content": {
-        "type": "SYMBOL",
-        "name": "loc_var_decls"
-      }
-    },
     "ERR_var_external_not_allowed": {
       "type": "PREC",
       "value": -1,
@@ -4000,6 +3992,10 @@
                   },
                   {
                     "type": "SYMBOL",
+                    "name": "loc_var_decl"
+                  },
+                  {
+                    "type": "SYMBOL",
                     "name": "ERR_variable_with_no_spec"
                   }
                 ]
@@ -4082,6 +4078,10 @@
                   },
                   {
                     "type": "SYMBOL",
+                    "name": "loc_var_decl"
+                  },
+                  {
+                    "type": "SYMBOL",
                     "name": "ERR_variable_with_no_spec"
                   }
                 ]
@@ -4137,84 +4137,6 @@
             "type": "SYMBOL",
             "name": "var_decl_init"
           }
-        }
-      ]
-    },
-    "loc_var_decls": {
-      "type": "SEQ",
-      "members": [
-        {
-          "type": "STRING",
-          "value": "VAR_LOCATED"
-        },
-        {
-          "type": "FIELD",
-          "name": "constant_or_retain",
-          "content": {
-            "type": "CHOICE",
-            "members": [
-              {
-                "type": "CHOICE",
-                "members": [
-                  {
-                    "type": "STRING",
-                    "value": "CONSTANT"
-                  },
-                  {
-                    "type": "STRING",
-                    "value": "RETAIN"
-                  },
-                  {
-                    "type": "STRING",
-                    "value": "NON_RETAIN"
-                  }
-                ]
-              },
-              {
-                "type": "BLANK"
-              }
-            ]
-          }
-        },
-        {
-          "type": "REPEAT",
-          "content": {
-            "type": "SEQ",
-            "members": [
-              {
-                "type": "SYMBOL",
-                "name": "loc_var_decl"
-              },
-              {
-                "type": "CHOICE",
-                "members": [
-                  {
-                    "type": "STRING",
-                    "value": ";"
-                  },
-                  {
-                    "type": "BLANK"
-                  }
-                ]
-              }
-            ]
-          }
-        },
-        {
-          "type": "STRING",
-          "value": "END_VAR"
-        },
-        {
-          "type": "CHOICE",
-          "members": [
-            {
-              "type": "STRING",
-              "value": ";"
-            },
-            {
-              "type": "BLANK"
-            }
-          ]
         }
       ]
     },
@@ -4966,10 +4888,6 @@
         },
         {
           "type": "SYMBOL",
-          "name": "ERR_var_located_not_allowed"
-        },
-        {
-          "type": "SYMBOL",
           "name": "ERR_var_external_not_allowed"
         },
         {
@@ -5251,10 +5169,6 @@
         {
           "type": "SYMBOL",
           "name": "ERR_var_config_not_allowed"
-        },
-        {
-          "type": "SYMBOL",
-          "name": "ERR_var_located_not_allowed"
         },
         {
           "type": "SYMBOL",
@@ -5541,6 +5455,10 @@
                   },
                   {
                     "type": "SYMBOL",
+                    "name": "loc_var_decl"
+                  },
+                  {
+                    "type": "SYMBOL",
                     "name": "ERR_variable_with_no_spec"
                   }
                 ]
@@ -5777,10 +5695,6 @@
         },
         {
           "type": "SYMBOL",
-          "name": "ERR_var_located_not_allowed"
-        },
-        {
-          "type": "SYMBOL",
           "name": "ERR_var_external_not_allowed"
         },
         {
@@ -6013,10 +5927,6 @@
         },
         {
           "type": "SYMBOL",
-          "name": "ERR_var_located_not_allowed"
-        },
-        {
-          "type": "SYMBOL",
           "name": "ERR_var_external_not_allowed"
         },
         {
@@ -6202,10 +6112,6 @@
         },
         {
           "type": "SYMBOL",
-          "name": "ERR_var_located_not_allowed"
-        },
-        {
-          "type": "SYMBOL",
           "name": "ERR_var_external_not_allowed"
         },
         {
@@ -6387,10 +6293,6 @@
                 {
                   "type": "SYMBOL",
                   "name": "loc_partly_var_decl"
-                },
-                {
-                  "type": "SYMBOL",
-                  "name": "loc_var_decls"
                 },
                 {
                   "type": "SYMBOL",
@@ -7097,10 +6999,6 @@
         {
           "type": "SYMBOL",
           "name": "ERR_var_temp_not_allowed"
-        },
-        {
-          "type": "SYMBOL",
-          "name": "ERR_var_located_not_allowed"
         },
         {
           "type": "SYMBOL",
@@ -10241,10 +10139,6 @@
       {
         "type": "STRING",
         "value": "VAR_GLOBAL"
-      },
-      {
-        "type": "STRING",
-        "value": "VAR_LOCATED"
       },
       {
         "type": "STRING",

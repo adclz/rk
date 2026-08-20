@@ -664,9 +664,6 @@ CLASS cl
 
   END_VAR
 
-  VAR_LOCATED
-
-  END_VAR
 
   VAR_EXTERNAL
 
@@ -690,8 +687,6 @@ END_CLASS
       (prog_access_decls))
     (ERR_var_config_not_allowed
       (config_init))
-    (ERR_var_located_not_allowed
-      (loc_var_decls))
     (external_var_decls)
     (ERR_var_global_not_allowed
       (global_var_decls))))
@@ -709,9 +704,6 @@ FUNCTION_BLOCK db
 
   END_VAR
 
-  VAR_LOCATED
-
-  END_VAR
 
   VAR_GLOBAL
 
@@ -727,8 +719,6 @@ END_FUNCTION_BLOCK
       (prog_access_decls))
     (ERR_var_config_not_allowed
       (config_init))
-    (ERR_var_located_not_allowed
-      (loc_var_decls))
     (ERR_var_global_not_allowed
       (global_var_decls))))
 
@@ -745,9 +735,6 @@ FUNCTION fn
 
   END_VAR
 
-  VAR_LOCATED
-
-  END_VAR
 
   VAR_GLOBAL
 
@@ -763,8 +750,6 @@ END_FUNCTION
       (prog_access_decls))
     (ERR_var_config_not_allowed
       (config_init))
-    (ERR_var_located_not_allowed
-      (loc_var_decls))
     (ERR_var_global_not_allowed
       (global_var_decls))))
 
@@ -782,9 +767,6 @@ INTERFACE in
 
     END_VAR
 
-    VAR_LOCATED
-
-    END_VAR
 
     VAR_EXTERNAL
 
@@ -815,8 +797,6 @@ END_INTERFACE
         (prog_access_decls))
       (ERR_var_config_not_allowed
         (config_init))
-      (ERR_var_located_not_allowed
-        (loc_var_decls))
       (ERR_var_external_not_allowed
         (external_var_decls))
       (ERR_var_global_not_allowed
@@ -840,9 +820,6 @@ CLASS cl
 
     END_VAR
 
-    VAR_LOCATED
-
-    END_VAR
 
     VAR_EXTERNAL
 
@@ -873,8 +850,6 @@ END_CLASS
         (prog_access_decls))
       (ERR_var_config_not_allowed
         (config_init))
-      (ERR_var_located_not_allowed
-        (loc_var_decls))
       (external_var_decls)
       (ERR_var_global_not_allowed
         (global_var_decls))
@@ -898,9 +873,6 @@ CONFIGURATION MyCfg
 
   END_VAR
 
-  VAR_LOCATED
-
-  END_VAR
 
   VAR_EXTERNAL
 
@@ -918,8 +890,6 @@ END_CONFIGURATION
       (in_out_decls))
     (ERR_var_temp_not_allowed
       (temp_var_decls))
-    (ERR_var_located_not_allowed
-      (loc_var_decls))
     (ERR_var_external_not_allowed
       (external_var_decls))))
 

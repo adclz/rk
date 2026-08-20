@@ -9,7 +9,7 @@ VAR
   OKAY: STRING[10];
 END_VAR
 
-VAR_LOCATED
+VAR
   VALVE_POS AT %QW28: INT;
 END_VAR
 
@@ -36,7 +36,7 @@ END_PROGRAM
             (string_type_name
               (string_name
                 (unsigned_int)))))))
-    (loc_var_decls
+    (var_decls
       (loc_var_decl
         (identifier)
         (located_at
@@ -61,7 +61,7 @@ PROGRAM m
 		TBT: ARRAY [1..2, 1..3] OF INT := [9,8,3(10),6];
 	END_VAR
 	
-    VAR_LOCATED
+    VAR
 		OUTARY AT %QW6: ARRAY[0..9] OF
 		INT := [10(1)];
 	END_VAR
@@ -222,7 +222,7 @@ END_PROGRAM
                     (int_literal
                       (signed_int
                         (unsigned_int)))))))))))
-    (loc_var_decls
+    (var_decls
       (loc_var_decl
         (identifier)
         (located_at
