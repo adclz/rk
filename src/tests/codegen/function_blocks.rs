@@ -1520,3 +1520,46 @@ fn test_fb_instances_stay_distinct_through_a_param(mut with_db: db::RootDatabase
     let result: i32 = super::execute_wasm(&wasm, "test", ());
     assert_eq!(result, 21, "a advanced twice, b once");
 }
+
+/// Specializing a METHOD duplicates the CODE, not the enclosing instance's
+/// STATE. One `Holder` has its `Bump` called with a `C` and then with a `D`, so
+/// two specialized bodies (`Holder#Bump$C`, `Holder#Bump$D`) run against the
+/// same instance: `calls` must reach 2, not 1 each. Each also reaches its own
+/// implementer, which one implementer per test cannot distinguish from
+/// resolving to the only candidate that fits.
+#[rstest]
+fn test_specialized_methods_share_the_owner_instance(mut with_db: db::RootDatabase) {
+    let source = r#"
+        INTERFACE I
+            METHOD Inc END_METHOD
+        END_INTERFACE
+        FUNCTION_BLOCK C IMPLEMENTS I
+            VAR c : INT; END_VAR
+            METHOD Inc  c := c + 1; END_METHOD
+        END_FUNCTION_BLOCK
+        FUNCTION_BLOCK D IMPLEMENTS I
+            VAR d : INT; END_VAR
+            METHOD Inc  d := d + 2; END_METHOD
+        END_FUNCTION_BLOCK
+        FUNCTION_BLOCK Holder
+        VAR calls : INT; END_VAR
+            METHOD PUBLIC Bump
+                VAR_IN_OUT dev : I; END_VAR
+                calls := calls + 1;
+                dev.Inc();
+            END_METHOD
+        END_FUNCTION_BLOCK
+        FUNCTION test : INT
+        VAR h : Holder; x : C; y : D; END_VAR
+            h.Bump(dev := x);
+            h.Bump(dev := y);
+            test := h.calls * 100 + x.c * 10 + y.d;
+        END_FUNCTION
+    "#;
+    let wasm = compile_to_wasm(&mut with_db, source);
+    let result: i32 = super::execute_wasm(&wasm, "test", ());
+    assert_eq!(
+        result, 212,
+        "both specializations advanced the SAME Holder (calls=2), each reaching its own implementer"
+    );
+}
