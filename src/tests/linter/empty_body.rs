@@ -84,19 +84,7 @@ FUNCTION fn1 : INT
 VAR_INPUT _x : INT; END_VAR
 END_FUNCTION
 "#;
-    assert_snapshot!(test_single_lint(&mut with_db, &[source], "empty-body"), @r"
-    [L0206] Hint: empty body
-       ,-[ file:///test0.st:2:1 ]
-       |
-     2 | ,-> {extern 'mod' 'fn'}
-       : :
-     5 | |-> END_FUNCTION
-       | |
-       | `------------------ FUNCTION 'fn1' has an empty body
-       | |
-       | |   Note: lint rule: empty-body
-    ---'
-    ");
+    assert_snapshot!(test_single_lint(&mut with_db, &[source], "empty-body"), @r"");
 }
 
 #[rstest]

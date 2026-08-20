@@ -9,6 +9,7 @@ use hir::{
     },
 };
 use ide_diagnostic::{ErrorCode, IdeDiagnostic, diag};
+use hir::HasPragmas;
 
 pub const NAME: &str = "empty-body";
 
@@ -33,12 +34,21 @@ pub fn check<'db>(
     let scope_data = get_scope(db, scope);
 
     let (statements, name, kind_str, span) = match &scope_data.kind {
-        ScopeKind::Pou(Pou::Function(f)) => (
-            f.statements(db),
-            f.name(db).text(db),
-            "FUNCTION",
-            f.get_span(db),
-        ),
+        ScopeKind::Pou(Pou::Function(f)) => {
+            // An extern FUNCTION's body is empty BY DEFINITION — the WASM
+            // import runs in its place (E0243 refuses statements outright).
+            {
+                if f.extern_pragma(db).is_some() {
+                    return;
+                }
+            }
+            (
+                f.statements(db),
+                f.name(db).text(db),
+                "FUNCTION",
+                f.get_span(db),
+            )
+        }
         ScopeKind::Pou(Pou::FunctionBlock(fb)) => (
             fb.statements(db),
             fb.name(db).text(db),
