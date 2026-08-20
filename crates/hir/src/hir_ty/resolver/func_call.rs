@@ -8,7 +8,6 @@ use crate::check::errors::e10_control_flow::ControlFlowError;
 use crate::hir_def::expressions::expression::{Expr, ExprKind, ParamAssign, PrimaryExpr};
 use crate::hir_def::interned::identifier::Ident;
 use crate::hir_def::pous::variable::VariableDecl;
-use crate::hir_ty::infer::Infer;
 use crate::hir_ty::resolver::name::{OverloadPick, select_overload};
 use crate::{
     CallSite, HirNodeInfo,

@@ -7,75 +7,130 @@ use crate::tests::utils::{test_diagnostics, with_db};
 #[rstest]
 fn valid_extern_pragma_minimal(mut with_db: RootDatabase) {
     let source = r#"
+{extern 'math' 'abs'}
 FUNCTION test : INT
 VAR_INPUT x : INT; END_VAR
-    {extern 'math' 'abs'}
 END_FUNCTION"#;
 
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"");
 }
 
+/// The full interface: inputs become params, scalar outputs become results
+/// (declaration order), the return type is the last result. Nothing is
+/// restated in the pragma, so nothing can disagree with the declaration.
 #[rstest]
-fn valid_extern_pragma_with_params_and_result(mut with_db: RootDatabase) {
+fn valid_extern_pragma_with_outputs_and_return(mut with_db: RootDatabase) {
     let source = r#"
-FUNCTION SQRT : REAL
-VAR_INPUT IN : REAL; END_VAR
-    {extern 'math' 'sqrt' (params IN) (result SQRT)}
+{extern 'rt' 'sample'}
+FUNCTION sample : INT
+VAR_INPUT channel : INT; END_VAR
+VAR_OUTPUT value : REAL; status : INT; END_VAR
 END_FUNCTION"#;
 
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"");
 }
 
+/// VAR_IN_OUT would hand the host a pointer into caller storage with a
+/// mutation contract; an extern's interface is copies only.
 #[rstest]
-fn valid_extern_pragma_multiple_params(mut with_db: RootDatabase) {
+fn invalid_extern_in_out(mut with_db: RootDatabase) {
     let source = r#"
-FUNCTION add : INT
-VAR_INPUT a : INT; b : INT; END_VAR
-    {extern 'math' 'add' (params a b) (result add)}
-END_FUNCTION"#;
-
-    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"");
-}
-
-#[rstest]
-fn invalid_extern_pragma_unknown_param(mut with_db: RootDatabase) {
-    let source = r#"
-FUNCTION test : INT
-VAR_INPUT x : INT; END_VAR
-    {extern 'math' 'abs' (params unknown_var) (result test)}
+{extern 'host' 'fill'}
+FUNCTION fill : INT
+VAR_IN_OUT buf : INT; END_VAR
 END_FUNCTION"#;
 
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E0230] Error: extern variable not found
-       ,-[ file:///test0.st:4:34 ]
+    [E0243] Error: not representable on an extern FUNCTION
+       ,-[ file:///test0.st:4:12 ]
        |
-     4 |     {extern 'math' 'abs' (params unknown_var) (result test)}
-       |                                  ^^^^^|^^^^^
-       |                                       `------- no variable 'unknown_var' found in scope for extern pragma
+     4 | VAR_IN_OUT buf : INT; END_VAR
+       |            ^^^^|^^^^
+       |                `------ VAR_IN_OUT 'buf' cannot cross a WASM import: an extern takes copies, not references
+       |
+       | Note: an extern FUNCTION receives VAR_INPUT copies and returns scalar VAR_OUTPUT results (the return value last)
     ---'
     ");
 }
 
+/// A struct/array/STRING output has no WASM result type to ride.
 #[rstest]
-fn invalid_extern_pragma_unknown_result(mut with_db: RootDatabase) {
+fn invalid_extern_aggregate_output(mut with_db: RootDatabase) {
     let source = r#"
-FUNCTION test : INT
-VAR_INPUT x : INT; END_VAR
-    {extern 'math' 'abs' (params x) (result bad_name)}
+TYPE Pt : STRUCT x : INT; y : INT; END_STRUCT; END_TYPE
+
+{extern 'host' 'point'}
+FUNCTION point : INT
+VAR_OUTPUT p : Pt; s : STRING; END_VAR
 END_FUNCTION"#;
 
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E0230] Error: extern variable not found
-       ,-[ file:///test0.st:4:45 ]
+    [E0243] Error: not representable on an extern FUNCTION
+       ,-[ file:///test0.st:6:12 ]
        |
-     4 |     {extern 'math' 'abs' (params x) (result bad_name)}
-       |                                             ^^^^|^^^
-       |                                                 `----- no variable 'bad_name' found in scope for extern pragma
+     6 | VAR_OUTPUT p : Pt; s : STRING; END_VAR
+       |            ^^^|^^
+       |               `---- VAR_OUTPUT 'p' cannot be a WASM result: only scalar outputs cross an import
+       |
+       | Note: return scalars, or split the aggregate into scalar outputs
+    ---'
+    [E0243] Error: not representable on an extern FUNCTION
+       ,-[ file:///test0.st:6:20 ]
+       |
+     6 | VAR_OUTPUT p : Pt; s : STRING; END_VAR
+       |                    ^^^^^|^^^^
+       |                         `------ VAR_OUTPUT 's' cannot be a WASM result: only scalar outputs cross an import
+       |
+       | Note: return scalars, or split the aggregate into scalar outputs
     ---'
     ");
 }
 
-// --- Test pragma visibility ---
+/// The import IS the body: statements on an extern FUNCTION are refused.
+#[rstest]
+fn invalid_extern_with_body(mut with_db: RootDatabase) {
+    let source = r#"
+{extern 'math' 'abs'}
+FUNCTION test : INT
+VAR_INPUT x : INT; END_VAR
+    test := x;
+END_FUNCTION"#;
+
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
+    [E0243] Error: not representable on an extern FUNCTION
+       ,-[ file:///test0.st:5:5 ]
+       |
+     5 |     test := x;
+       |     ^^^^|^^^^
+       |         `------ an extern FUNCTION has no statements
+       |
+       | Note: FUNCTIONs marked with {extern} act as external calls, they can not have a body
+    ---'
+    ");
+}
+
+/// Only a FUNCTION lowers to an import; anywhere else the pragma used to be
+/// silently ignored, leaving the body it stood on empty.
+#[rstest]
+fn invalid_extern_outside_function(mut with_db: RootDatabase) {
+    let source = r#"
+{extern 'host' 'nope'}
+FUNCTION_BLOCK Modbus
+VAR_INPUT n : INT; END_VAR
+END_FUNCTION_BLOCK"#;
+
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
+    [E0244] Error: extern pragma outside a FUNCTION
+       ,-[ file:///test0.st:2:1 ]
+       |
+     2 | {extern 'host' 'nope'}
+       | ^^^^^^^^^^^|^^^^^^^^^^
+       |            `------------ an {extern} pragma cannot be placed on a FUNCTION_BLOCK
+       |
+       | Note: {extern} pragmas can ony be used with FUNCTION
+    ---'
+    ");
+}
 
 #[rstest]
 fn valid_test_pragma_referencing_normal_pou(mut with_db: RootDatabase) {

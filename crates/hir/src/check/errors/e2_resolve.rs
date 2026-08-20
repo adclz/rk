@@ -122,6 +122,45 @@ impl UnschedulableReason {
     }
 }
 
+/// Which declaration section an `{extern}` FUNCTION cannot carry, and why.
+/// One code (E0243), one message shape each — the fix differs per case.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, salsa::Update)]
+pub enum ExternForbiddenKind {
+    /// `VAR_IN_OUT` hands the host a pointer into caller storage with a
+    /// mutation contract; an extern's interface is copies only.
+    InOut,
+    /// A struct/array/STRING `VAR_OUTPUT` has no WASM result type to ride.
+    AggregateOutput,
+}
+
+impl ExternForbiddenKind {
+    fn section(self) -> &'static str {
+        match self {
+            Self::InOut => "VAR_IN_OUT",
+            Self::AggregateOutput => "VAR_OUTPUT",
+        }
+    }
+
+    fn message(self) -> &'static str {
+        match self {
+            Self::InOut => "cannot cross a WASM import: an extern takes copies, not references",
+            Self::AggregateOutput => {
+                "cannot be a WASM result: only scalar outputs cross an import"
+            }
+        }
+    }
+
+    fn note(self) -> &'static str {
+        match self {
+            Self::InOut => {
+                "an extern FUNCTION receives VAR_INPUT copies and returns scalar \
+                 VAR_OUTPUT results (the return value last)"
+            }
+            Self::AggregateOutput => "return scalars, or split the aggregate into scalar outputs",
+        }
+    }
+}
+
 #[derive(Clone, Debug, PartialEq, Eq, Hash, salsa::Update)]
 pub enum ResolveError<'db> {
     IncorrectNumberOfParameters {
@@ -288,10 +327,19 @@ pub enum ResolveError<'db> {
         max_offset: Option<usize>,
         base_type: Type<'db>,
     },
-    /// An extern pragma references a variable that does not exist in scope.
-    ExternVariableNotFound {
-        ident: SpanIdent<'db>,
-        scope: ScopeId<'db>,
+    /// What an `{extern}` FUNCTION declared that a WASM import cannot carry.
+    /// The import's interface is copies in (`VAR_INPUT`) and scalar results
+    /// out (`VAR_OUTPUT` in declaration order, the return type last).
+    ExternForbiddenSection {
+        var: VariableDecl<'db>,
+        kind: ExternForbiddenKind,
+    },
+    /// An `{extern}` FUNCTION with statements — the import IS the body.
+    ExternWithBody { site: CallSite<'db> },
+    /// `{extern}` on something other than a FUNCTION.
+    ExternOutsideFunction {
+        anchor: SpanIdent<'db>,
+        pou_kind: &'static str,
     },
     /// One or more required call-site parameters (VAR_INPUT on FUNCTION/METHOD
     /// without a scalar default, or VAR_IN_OUT on any callable) were not
@@ -369,7 +417,8 @@ impl<'db> ErrorCode for ResolveError<'db> {
             Self::MultipleVariadicVariables { .. } => "E0227",
             Self::VariadicMixedWithOtherInputs { .. } => "E0228",
             Self::MultibitsOutOfRange { .. } => "E0229",
-            Self::ExternVariableNotFound { .. } => "E0230",
+            Self::ExternForbiddenSection { .. } | Self::ExternWithBody { .. } => "E0243",
+            Self::ExternOutsideFunction { .. } => "E0244",
             Self::MissingRequiredParameter { .. } => "E0233",
             Self::InOutParameterRequiresLValue { .. } => "E0234",
             Self::RetainInStatelessPou { .. } => "E0235",
@@ -410,7 +459,10 @@ impl<'db> ErrorCode for ResolveError<'db> {
             | Self::ConfigInstInitFieldNotFound { .. } => "configuration error",
             Self::MultipleItemsInScope { .. } => "multiple items in scope",
             Self::MultibitsOutOfRange { .. } => "multibit access out of range",
-            Self::ExternVariableNotFound { .. } => "extern variable not found",
+            Self::ExternForbiddenSection { .. } | Self::ExternWithBody { .. } => {
+                "not representable on an extern FUNCTION"
+            }
+            Self::ExternOutsideFunction { .. } => "extern pragma outside a FUNCTION",
             Self::MissingRequiredParameter { .. } => "missing required parameter",
             Self::InOutParameterRequiresLValue { .. } => "VAR_IN_OUT argument must be a variable",
             Self::RetainInStatelessPou { .. } => "invalid retentive qualifier",
@@ -1007,28 +1059,45 @@ impl<'db> ToIdeDiagnostic<'db> for ResolveError<'db> {
 
                 diag
             }
-            Self::ExternVariableNotFound { ident, scope } => {
-                let name = ident.text(db);
-
+            Self::ExternForbiddenSection { var, kind } => {
                 let mut diag = diag()
                     .message(format!(
-                        "no variable '{}' found in scope for extern pragma",
-                        name,
+                        "{} '{}' {}",
+                        kind.section(),
+                        var.name(db).text(db),
+                        kind.message(),
                     ))
                     .severity(DiagnosticSeverity::ERROR)
                     .desc(self)
-                    .range(crate::denormalize(db, file, &ident.get_span(db)).unwrap_or_default())
+                    .range(crate::denormalize(db, file, &var.get_span(db)).unwrap_or_default())
                     .call();
-
-                // Search for similar names to suggest
-                let mut query = Query::new(name.to_string());
-                query.fuzzy();
-                let results = SymbolSearch::new(|_, _| true)
-                    .with_scope(*scope)
-                    .with_query(query)
-                    .search(db);
-                list_candidates(db, name, &mut diag, &results, Some(*scope));
-
+                diag.with_note(kind.note().to_string());
+                diag
+            }
+            Self::ExternWithBody { site } => {
+                let mut diag = diag()
+                    .message("an extern FUNCTION has no statements".to_string())
+                    .severity(DiagnosticSeverity::ERROR)
+                    .desc(self)
+                    .range(crate::denormalize(db, file, &site.get_span(db)).unwrap_or_default())
+                    .call();
+                diag.with_note(
+                    "FUNCTIONs marked with {extern} act as external calls, they can not have a body"
+                        .to_string(),
+                );
+                diag
+            }
+            Self::ExternOutsideFunction { anchor, pou_kind } => {
+                let mut diag = diag()
+                    .message(format!("an {{extern}} pragma cannot be placed on a {pou_kind}"))
+                    .severity(DiagnosticSeverity::ERROR)
+                    .desc(self)
+                    .range(crate::denormalize(db, file, &anchor.get_span(db)).unwrap_or_default())
+                    .call();
+                diag.with_note(
+                    "{extern} pragmas can ony be used with FUNCTION"
+                        .to_string(),
+                );
                 diag
             }
             Self::MultipleItemsInScope {

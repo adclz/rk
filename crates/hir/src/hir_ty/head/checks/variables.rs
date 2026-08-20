@@ -2,7 +2,7 @@ use db::WorkspaceDataBase;
 use rustc_hash::FxHashMap;
 
 use crate::{
-    HasName,
+    HasName, HirNodeInfo,
     check::errors::{
         ToIdeDiagnostic,
         e1_duplicates::DuplicateError,
@@ -28,13 +28,53 @@ impl<'db> InitInference<'db> {
 
         // RETAIN/NON_RETAIN require instance storage: meaningless on a
         // stateless POU (FUNCTION/METHOD), in ANY of its sections (E0235).
+        use crate::HasPragmas;
+        use crate::check::errors::e2_resolve::ExternForbiddenKind;
         use crate::hir_def::{pous::pou::Pou, scope::ScopeKind, semantic_index::get_scope};
-        let stateless_pou = match get_scope(db, self.scope).kind {
+        let scope_kind = get_scope(db, self.scope).kind;
+        let stateless_pou = match scope_kind {
             ScopeKind::Pou(Pou::Function(_)) => Some("FUNCTION"),
             ScopeKind::MethodDecl(_) => Some("METHOD"),
             ScopeKind::MethodProt(_) => Some("METHOD prototype"),
             _ => None,
         };
+
+        // `{extern}` legality. The pragma position is shared by every
+        // pragma-carrying POU, so the FUNCTION-only rule is enforced here;
+        // and an extern FUNCTION's interface is copies in, scalar results
+        // out, with the import standing in for the body — so VAR_IN_OUT,
+        // aggregate outputs and statements are each refused where they are
+        // declared. (E0243/E0244.)
+        let extern_fn = match scope_kind {
+            ScopeKind::Pou(Pou::Function(f)) => {
+                f.extern_pragma(db).map(|(span, _)| (f, span))
+            }
+            ScopeKind::Pou(Pou::FunctionBlock(fb)) => {
+                self.refuse_extern_on(db, fb.extern_pragma(db), "FUNCTION_BLOCK");
+                None
+            }
+            // CLASS/INTERFACE take no pragmas in the grammar — `{extern}`
+            // there is a parse error before it can reach this check.
+            ScopeKind::Program(p) => {
+                self.refuse_extern_on(db, p.extern_pragma(db), "PROGRAM");
+                None
+            }
+            ScopeKind::MethodDecl(m) => {
+                self.refuse_extern_on(db, m.extern_pragma(db), "METHOD");
+                None
+            }
+            _ => None,
+        };
+        if let Some((f, _span)) = extern_fn
+            && let Some(first) = f.statements(db).first()
+        {
+            self.errors.push(
+                ResolveError::ExternWithBody {
+                    site: first.as_call_site(db),
+                }
+                .to_diagnostic(db, self.scope.file(db)),
+            );
+        }
 
         let mut seen = FxHashMap::default();
         let mut first_variadic: Option<VariableDecl<'db>> = None;
@@ -52,6 +92,24 @@ impl<'db> InitInference<'db> {
                     }
                     .to_diagnostic(db, self.scope.file(db)),
                 );
+            }
+            if extern_fn.is_some() {
+                use crate::hir_def::pous::variable::VariableKind;
+                let forbidden = match var.kind(db) {
+                    VariableKind::InOut => Some(ExternForbiddenKind::InOut),
+                    VariableKind::Output
+                        if !extern_scalar(db, var.spec(db).infer(db)) =>
+                    {
+                        Some(ExternForbiddenKind::AggregateOutput)
+                    }
+                    _ => None,
+                };
+                if let Some(kind) = forbidden {
+                    self.errors.push(
+                        ResolveError::ExternForbiddenSection { var: *var, kind }
+                            .to_diagnostic(db, self.scope.file(db)),
+                    );
+                }
             }
             match seen.get(&var.get_name_ident(db)) {
                 Some(prev) => {
@@ -183,5 +241,41 @@ impl<'db> InitInference<'db> {
                 .to_diagnostic(db, self.scope.file(db)),
             );
         }
+    }
+}
+
+impl<'db> InitInference<'db> {
+    /// Push E0244 when `pragma` is present: `{extern}` on a POU kind that
+    /// cannot be an import.
+    fn refuse_extern_on(
+        &mut self,
+        db: &'db dyn WorkspaceDataBase,
+        pragma: Option<(
+            &'db crate::hir_def::interned::identifier::SpanIdent<'db>,
+            &'db crate::hir_def::pous::pragma::ExternPragma,
+        )>,
+        pou_kind: &'static str,
+    ) {
+        if let Some((anchor, _)) = pragma {
+            self.errors.push(
+                ResolveError::ExternOutsideFunction {
+                    anchor: *anchor,
+                    pou_kind,
+                }
+                .to_diagnostic(db, self.scope.file(db)),
+            );
+        }
+    }
+}
+
+/// Can this type ride a WASM result? Scalars only: every elementary except
+/// STRING (memory-resident), plus enums and subranges, which store at a
+/// scalar lane. Aggregates have no result type to ride.
+fn extern_scalar<'db>(db: &'db dyn WorkspaceDataBase, ty: Type<'db>) -> bool {
+    use crate::hir_def::expressions::spec::ElementarySpec;
+    match ty.normalize(db) {
+        Type::Elementary(es) => es != ElementarySpec::String,
+        Type::Enum(_) | Type::SubRange(_) => true,
+        _ => false,
     }
 }

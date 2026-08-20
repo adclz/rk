@@ -486,61 +486,6 @@ impl<'db> StmtsResolverCtx<'db> {
                     break;
                 }
 
-                StmtKind::ExternPragma(extern_decl) => {
-                    let def_map = self.scope.def_map(db);
-                    let scope_kind = crate::hir_def::semantic_index::get_scope(db, self.scope).kind;
-
-                    let lookup_var = |ident: &crate::hir_def::interned::identifier::Ident| {
-                        def_map
-                            .local_variables
-                            .get(ident)
-                            .or_else(|| def_map.global_variables.get(ident))
-                            .copied()
-                    };
-
-                    // Check if the name is the enclosing POU's own name (return variable)
-                    let is_pou_name =
-                        |ident: &crate::hir_def::interned::identifier::Ident| match scope_kind {
-                            crate::hir_def::scope::ScopeKind::Pou(pou) => {
-                                pou.get_name_ident(db) == *ident
-                            }
-                            crate::hir_def::scope::ScopeKind::MethodDecl(m) => m.name(db) == *ident,
-                            _ => false,
-                        };
-
-                    // Check that each param variable exists in scope; mark
-                    // resolved ones as used so the unused-variable lint
-                    // doesn't fire on them.
-                    for param in &extern_decl.params {
-                        if let Some(var) = lookup_var(&param.ident) {
-                            ctx.variables_used.insert(var);
-                        } else if !is_pou_name(&param.ident) {
-                            ctx.errors.push(
-                                ResolveError::ExternVariableNotFound {
-                                    ident: *param,
-                                    scope: self.scope,
-                                }
-                                .to_diagnostic(db, ctx.scope.file(db)),
-                            );
-                        }
-                    }
-
-                    // Result: same treatment. (POU-name results don't
-                    // map to a VariableDecl, so nothing to mark.)
-                    if let Some(result) = &extern_decl.result {
-                        if let Some(var) = lookup_var(&result.ident) {
-                            ctx.variables_used.insert(var);
-                        } else if !is_pou_name(&result.ident) {
-                            ctx.errors.push(
-                                ResolveError::ExternVariableNotFound {
-                                    ident: *result,
-                                    scope: self.scope,
-                                }
-                                .to_diagnostic(db, ctx.scope.file(db)),
-                            );
-                        }
-                    }
-                }
                 StmtKind::WasmPragma(wasm_decl) => {
                     // Wasm intrinsic doesn't need type inference, but we
                     // still need to mark referenced variables as used so
