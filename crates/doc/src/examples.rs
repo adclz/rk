@@ -1266,19 +1266,6 @@ END_FUNCTION_BLOCK
             lint_rule: None,
         },
         ErrorExample {
-            code: "E0230",
-            category: "Resolution",
-            title: "Extern variable not found",
-            description: "An `{extern}` pragma references a variable that does not exist in the current scope.",
-            sources: &[r#"
-FUNCTION test : INT
-VAR_INPUT x : INT; END_VAR
-    {extern 'math' 'abs' (params unknown_var) (result test)}
-END_FUNCTION
-"#],
-            lint_rule: None,
-        },
-        ErrorExample {
             code: "E0233",
             category: "Resolution",
             title: "Missing required parameter",
@@ -1380,6 +1367,32 @@ CONFIGURATION Cfg
         PROGRAM P1 WITH T : P;
     END_RESOURCE
 END_CONFIGURATION
+"#],
+            lint_rule: None,
+        },
+        ErrorExample {
+            code: "E0243",
+            category: "Scope",
+            title: "Not representable on an extern FUNCTION",
+            description: "An `{extern}` FUNCTION is a WASM import, and its interface is exactly its declaration: `VAR_INPUT` become the params (copies; aggregates as a pointer to a call-entry snapshot), scalar `VAR_OUTPUT` become the results in declaration order, and the return type is the last result. Three things cannot cross that boundary: `VAR_IN_OUT` (a pointer into caller storage with a mutation contract; an extern takes copies), an aggregate or STRING output (no WASM result type to ride), and statements (the import IS the body).",
+            sources: &[r#"
+{extern 'host' 'fill'}
+FUNCTION fill : INT
+VAR_IN_OUT buf : INT; END_VAR
+END_FUNCTION
+"#],
+            lint_rule: None,
+        },
+        ErrorExample {
+            code: "E0244",
+            category: "Scope",
+            title: "Extern pragma outside a FUNCTION",
+            description: "Only a FUNCTION lowers to a WASM import. On a FUNCTION_BLOCK, PROGRAM or METHOD the pragma used to be silently ignored, leaving the body it stood on empty and the import never declared. Wrap the import in a FUNCTION and call it from the block.",
+            sources: &[r#"
+{extern 'host' 'fb-extern'}
+FUNCTION_BLOCK Modbus
+VAR_INPUT n : INT; END_VAR
+END_FUNCTION_BLOCK
 "#],
             lint_rule: None,
         },
