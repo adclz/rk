@@ -673,9 +673,9 @@ VAR CU_T: R_TRIG; END_VAR
     Q := (CV >= PV);
 END_FUNCTION_BLOCK
 
+{extern 'assert' 'fail'}
 FUNCTION __ASSERT_FAIL
 VAR_INPUT message: STRING; END_VAR
-    {extern 'assert' 'fail' (params message)}
 END_FUNCTION
 
 FUNCTION ASSERT

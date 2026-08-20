@@ -194,9 +194,9 @@ fn a_string_reaches_a_host_import_intact(mut with_db: db::RootDatabase) {
     use std::sync::{Arc, Mutex};
 
     let source = r#"
+{extern 'host' 'capture-msg'}
 FUNCTION capture_msg
 VAR_INPUT msg : STRING; END_VAR
-    {extern 'host' 'capture-msg' (params msg)}
 END_FUNCTION
 
 FUNCTION send : INT

@@ -19,7 +19,8 @@ NAMESPACE Std.Timers
 
     [See WASI documentation](https://github.com/WebAssembly/WASI/blob/main/proposals/clocks/README.md)
     */
-	FUNCTION PRIVATE MONOTONIC_LTIME: LTIME {extern 'wasi:clocks/monotonic-clock@0.2.6' 'now' (result MONOTONIC_LTIME)}
+	{extern 'wasi:clocks/monotonic-clock@0.2.6' 'now'}
+	FUNCTION PRIVATE MONOTONIC_LTIME: LTIME
 	END_FUNCTION
 
 	FUNCTION PLC_TIME: TIME
