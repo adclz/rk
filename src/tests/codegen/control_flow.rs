@@ -858,3 +858,23 @@ fn case_multiple_labels_per_arm(mut with_db: db::RootDatabase) {
     let result: i32 = super::execute_wasm(&wasm, "run", ());
     assert_eq!(result, 7977700, "1,3 and 10..12 share an arm; 2 is its own; 13 and 0 fall through");
 }
+
+/// The control variable's value AFTER normal completion is implementation-
+/// dependent in IEC; ours is the first value past the bound - the one that
+/// failed the loop test (4 ascending, 0 descending BY -1).
+#[rstest]
+fn for_control_var_after_completion(mut with_db: db::RootDatabase) {
+    let source = r#"
+        FUNCTION test : INT
+        VAR i : INT; j : INT; END_VAR
+            FOR i := 1 TO 3 DO
+            END_FOR;
+            FOR j := 10 TO 1 BY -1 DO
+            END_FOR;
+            test := i * 10 + j;
+        END_FUNCTION
+    "#;
+    let wasm = compile_to_wasm(&mut with_db, source);
+    let r: i32 = super::execute_wasm(&wasm, "test", ());
+    assert_eq!(r, 40, "i = 4 (past 3), j = 0 (past 1)");
+}

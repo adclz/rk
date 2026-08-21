@@ -1084,3 +1084,51 @@ fn float_literals_with_underscores_execute(mut with_db: db::RootDatabase) {
     let result: i32 = super::execute_wasm(&wasm, "test", ());
     assert_eq!(result, 111, "all three literal forms parse to the same values");
 }
+
+/// Binary operands evaluate LEFT-TO-RIGHT — a declared choice, since IEC
+/// leaves operand order to the implementation. Each call bumps the shared
+/// counter through VAR_IN_OUT, so the order is observable: 1 then 2 gives
+/// 12; right-to-left would give 21.
+#[rstest]
+fn test_operands_evaluate_left_to_right(mut with_db: db::RootDatabase) {
+    let source = r#"
+        FUNCTION bump : INT
+        VAR_IN_OUT c : INT; END_VAR
+            c := c + 1;
+            bump := c;
+        END_FUNCTION
+        FUNCTION test : INT
+        VAR n : INT; END_VAR
+            test := bump(c := n) * 10 + bump(c := n);
+        END_FUNCTION
+    "#;
+    let wasm = compile_to_wasm(&mut with_db, source);
+    let result: i32 = super::execute_wasm(&wasm, "test", ());
+    assert_eq!(result, 12, "left operand first: 1*10 + 2");
+}
+
+/// Named arguments evaluate in the callee's DECLARATION order, not the order
+/// they are written at the call site - the same order they are passed in.
+/// `a` is declared first, so its expression runs first even written second:
+/// a = 1, b = 2 gives 12; written-order evaluation would give 21.
+#[rstest]
+fn test_args_evaluate_in_declaration_order(mut with_db: db::RootDatabase) {
+    let source = r#"
+        FUNCTION bump : INT
+        VAR_IN_OUT c : INT; END_VAR
+            c := c + 1;
+            bump := c;
+        END_FUNCTION
+        FUNCTION f : INT
+        VAR_INPUT a : INT; b : INT; END_VAR
+            f := a * 10 + b;
+        END_FUNCTION
+        FUNCTION test : INT
+        VAR n : INT; END_VAR
+            test := f(b := bump(c := n), a := bump(c := n));
+        END_FUNCTION
+    "#;
+    let wasm = compile_to_wasm(&mut with_db, source);
+    let r: i32 = super::execute_wasm(&wasm, "test", ());
+    assert_eq!(r, 12, "a evaluated first: declaration order, not written order");
+}
