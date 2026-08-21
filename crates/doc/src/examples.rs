@@ -2509,6 +2509,19 @@ END_FUNCTION_BLOCK
 "#],
             lint_rule: None,
         },
+        ErrorExample {
+            code: "E0704",
+            category: "Enums",
+            title: "ENUM variant value is not a constant",
+            description: "A declared variant value fixes the variant's ordinal, so it must evaluate to a constant at compile time. A literal, a named CONSTANT and arithmetic over those all fold; a call or an ordinary variable does not.",
+            sources: &[r#"
+FUNCTION f1 : INT
+END_FUNCTION
+
+TYPE Mode : (Idle := f1(), Run) END_TYPE
+"#],
+            lint_rule: None,
+        },
         // ── E08xx: Subranges ─────────────────────────────────────────────
         ErrorExample {
             code: "E0801",
@@ -2531,6 +2544,21 @@ FUNCTION f1 : INT
 VAR x : INT (0..10); END_VAR
     x := 99;
     f1 := x;
+END_FUNCTION
+"#],
+            lint_rule: None,
+        },
+        ErrorExample {
+            code: "E0803",
+            category: "Subranges",
+            title: "Subrange bound is not a constant",
+            description: "A subrange's bounds are part of the type, so each must evaluate to a constant at compile time. A named CONSTANT and folding arithmetic are fine; an ordinary variable is not.",
+            sources: &[r#"
+FUNCTION f1 : INT
+VAR
+    n : INT;
+    x : INT (0..n);
+END_VAR
 END_FUNCTION
 "#],
             lint_rule: None,
@@ -2635,6 +2663,21 @@ VAR x : INT; y : INT; LIMIT : INT := 100; END_VAR
         LIMIT: y := 1;
     END_CASE;
 END_FUNCTION_BLOCK
+"#],
+            lint_rule: None,
+        },
+        ErrorExample {
+            code: "E1007",
+            category: "Control flow",
+            title: "FOR step is not a nonzero constant",
+            description: "The step's sign picks the loop's direction when the code is compiled, so the step must evaluate to a constant at compile time — and to a nonzero one, since a step of zero never advances the counter. A CONSTANT variable or folding arithmetic works; an ordinary variable does not.",
+            sources: &[r#"
+FUNCTION f1 : INT
+VAR i : INT; n : INT; END_VAR
+    n := -1;
+    FOR i := 5 TO 1 BY n DO
+    END_FOR;
+END_FUNCTION
 "#],
             lint_rule: None,
         },
@@ -3280,21 +3323,6 @@ END_FUNCTION
             lint_rule: Some("duplicate-case"),
         },
         ErrorExample {
-            code: "L0307",
-            category: "Linter Warning",
-            title: "FOR loop with zero step",
-            description: "A FOR loop with a step of 0 will never terminate.",
-            sources: &[r#"
-FUNCTION test : INT
-VAR i : INT; END_VAR
-    FOR i := 0 TO 10 BY 0 DO
-        test := i;
-    END_FOR;
-END_FUNCTION
-"#],
-            lint_rule: Some("for-zero-step"),
-        },
-        ErrorExample {
             code: "L0308",
             category: "Linter Warning",
             title: "Loop variable modified",
@@ -3477,37 +3505,6 @@ END_VAR
 END_FUNCTION_BLOCK
 "#],
             lint_rule: Some("method-shadows-member"),
-        },
-        ErrorExample {
-            code: "L0319",
-            category: "Linter Warning",
-            title: "FOR loop never terminates",
-            description: "The end bound sits at the control type's own limit, so the counter wraps at the type width before the exit check can fail — the loop runs forever.",
-            sources: &[r#"
-FUNCTION test : INT
-VAR i : USINT; END_VAR
-    FOR i := 0 TO 255 DO
-        test := test + 1;
-    END_FOR;
-END_FUNCTION
-"#],
-            lint_rule: Some("for-bound-at-type-limit"),
-        },
-        ErrorExample {
-            code: "L0320",
-            category: "Linter Warning",
-            title: "Non-constant FOR step",
-            description: "The BY step is not a compile-time literal. The loop's direction is decided at compile time (ascending), so a negative value at runtime will not run the loop backwards.",
-            sources: &[r#"
-FUNCTION test : INT
-VAR i : INT; s : INT; END_VAR
-    s := 2;
-    FOR i := 1 TO 10 BY s DO
-        test := test + 1;
-    END_FOR;
-END_FUNCTION
-"#],
-            lint_rule: Some("nonconstant-for-step"),
         },
         ErrorExample {
             code: "L0410",
