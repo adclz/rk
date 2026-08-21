@@ -878,3 +878,109 @@ fn for_control_var_after_completion(mut with_db: db::RootDatabase) {
     let r: i32 = super::execute_wasm(&wasm, "test", ());
     assert_eq!(r, 40, "i = 4 (past 3), j = 0 (past 1)");
 }
+
+/// A bound at the type's maximum terminates: the increment past 127 would
+/// wrap a SINT, so the loop exits with the counter AT the bound instead of
+/// past it: 8 iterations, then i = 127 adds 100. (The EXIT belt turns a
+/// regression into a wrong count rather than a hung suite.)
+#[rstest]
+fn for_to_type_max_terminates(mut with_db: db::RootDatabase) {
+    let source = r#"
+        FUNCTION test : INT
+        VAR i : SINT; c : INT; END_VAR
+            FOR i := 120 TO 127 DO
+                c := c + 1;
+                IF c > 300 THEN EXIT; END_IF;
+            END_FOR;
+            IF i = 127 THEN
+                c := c + 100;
+            END_IF;
+            test := c;
+        END_FUNCTION
+    "#;
+    let wasm = compile_to_wasm(&mut with_db, source);
+    let r: i32 = super::execute_wasm(&wasm, "test", ());
+    assert_eq!(r, 108, "8 iterations, counter left AT the bound");
+}
+
+/// The full range of an unsigned type: 0 TO 255 over USINT runs 256 times.
+#[rstest]
+fn for_full_unsigned_range_terminates(mut with_db: db::RootDatabase) {
+    let source = r#"
+        FUNCTION test : INT
+        VAR i : USINT; c : INT; END_VAR
+            FOR i := 0 TO 255 DO
+                c := c + 1;
+                IF c > 300 THEN EXIT; END_IF;
+            END_FOR;
+            test := c;
+        END_FUNCTION
+    "#;
+    let wasm = compile_to_wasm(&mut with_db, source);
+    let r: i32 = super::execute_wasm(&wasm, "test", ());
+    assert_eq!(r, 256, "every USINT value visited once");
+}
+
+/// A step that never lands ON the bound: 120, 124, then 124 + 4 would wrap.
+/// The headroom check catches the overshoot an equality check cannot. The
+/// counter's exit value is the last value VISITED (124) - "left at the
+/// bound" in the sibling tests is the special case where the bound is hit.
+#[rstest]
+fn for_step_overshooting_type_max_terminates(mut with_db: db::RootDatabase) {
+    let source = r#"
+        FUNCTION test : INT
+        VAR i : SINT; c : INT; END_VAR
+            FOR i := 120 TO 126 BY 4 DO
+                c := c + 1;
+                IF c > 300 THEN EXIT; END_IF;
+            END_FOR;
+            IF i = 124 THEN
+                c := c + 100;
+            END_IF;
+            test := c;
+        END_FUNCTION
+    "#;
+    let wasm = compile_to_wasm(&mut with_db, source);
+    let r: i32 = super::execute_wasm(&wasm, "test", ());
+    assert_eq!(r, 102, "120 and 124 visited; the counter stays at 124");
+}
+
+/// Descending to the type's minimum: past -128 would wrap to 127.
+#[rstest]
+fn for_to_type_min_terminates(mut with_db: db::RootDatabase) {
+    let source = r#"
+        FUNCTION test : INT
+        VAR i : SINT; c : INT; END_VAR
+            FOR i := -120 TO -128 BY -1 DO
+                c := c + 1;
+                IF c > 300 THEN EXIT; END_IF;
+            END_FOR;
+            IF i = -128 THEN
+                c := c + 100;
+            END_IF;
+            test := c;
+        END_FUNCTION
+    "#;
+    let wasm = compile_to_wasm(&mut with_db, source);
+    let r: i32 = super::execute_wasm(&wasm, "test", ());
+    assert_eq!(r, 109, "9 iterations, counter left AT the bound");
+}
+
+/// The 64-bit lane: a bound at LINT's maximum.
+#[rstest]
+fn for_to_lint_max_terminates(mut with_db: db::RootDatabase) {
+    let source = r#"
+        FUNCTION test : INT
+        VAR i : LINT; c : INT; END_VAR
+            FOR i := LINT#9223372036854775805 TO LINT#9223372036854775807 DO
+                c := c + 1;
+                IF c > 300 THEN EXIT; END_IF;
+            END_FOR;
+            test := c;
+        END_FUNCTION
+    "#;
+    let wasm = compile_to_wasm(&mut with_db, source);
+    let r: i32 = super::execute_wasm(&wasm, "test", ());
+    assert_eq!(r, 3, "the last three LINT values");
+}
+

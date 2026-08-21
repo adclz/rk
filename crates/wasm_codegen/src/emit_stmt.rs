@@ -390,11 +390,67 @@ fn emit_stmt(func: &mut wasm_encoder::Function, stmt: &MirStmt, ctx: &Ctx) {
             func.instruction(&Instruction::End); // continue target: the increment
             close_label(ctx);
 
-            // Increment. Sub-width counters wrap at the IEC type width like
-            // any other arithmetic — so `FOR i: USINT := 0 TO 255` never
-            // terminates (the counter wraps to 0 before the exit check),
-            // matching a toolchain's documented behavior for an upper bound at
-            // the type maximum.
+            // A bound at the type's maximum must terminate the loop, not wrap: exit
+            // before incrementing when the headroom to the type's edge is smaller
+            // than the step. Wrapping lane subtraction read unsigned is the exact
+            // headroom.
+            let bits = u64::from(control_type.rk_bits());
+            let (ty_max, ty_min): (i64, i64) = match (control_type.is_signed(), bits) {
+                (true, 64) => (i64::MAX, i64::MIN),
+                (true, _) => ((1i64 << (bits - 1)) - 1, -(1i64 << (bits - 1))),
+                (false, 64) => (-1, 0), // u64::MAX's lane pattern
+                (false, _) => ((1i64 << bits) - 1, 0),
+            };
+            if descending {
+                ctrl_load(func, ctx);
+                if is_64 {
+                    func.instruction(&Instruction::I64Const(ty_min));
+                } else {
+                    func.instruction(&Instruction::I32Const(ty_min as i32));
+                }
+            } else {
+                if is_64 {
+                    func.instruction(&Instruction::I64Const(ty_max));
+                } else {
+                    func.instruction(&Instruction::I32Const(ty_max as i32));
+                }
+                ctrl_load(func, ctx);
+            }
+            func.instruction(if is_64 {
+                &Instruction::I64Sub
+            } else {
+                &Instruction::I32Sub
+            });
+            // The step's magnitude: wrapping negation read unsigned is exact
+            // even for the lane minimum.
+            if descending {
+                if is_64 {
+                    func.instruction(&Instruction::I64Const(0));
+                } else {
+                    func.instruction(&Instruction::I32Const(0));
+                }
+            }
+            match step_tmp {
+                Some(idx) => {
+                    func.instruction(&Instruction::LocalGet(idx));
+                }
+                None => emit_expr(func, step, ctx.locals, ctx.fn_indices),
+            }
+            if descending {
+                func.instruction(if is_64 {
+                    &Instruction::I64Sub
+                } else {
+                    &Instruction::I32Sub
+                });
+            }
+            func.instruction(if is_64 {
+                &Instruction::I64LtU
+            } else {
+                &Instruction::I32LtU
+            });
+            func.instruction(&Instruction::BrIf(1));
+
+            // Increment; sub-width counters wrap like any other arithmetic.
             match ctrl_local {
                 Some(idx) => {
                     func.instruction(&Instruction::LocalGet(idx));
