@@ -144,3 +144,31 @@ fn equal_bounds_no_warning(mut with_db: RootDatabase) {
     "#;
     assert_snapshot!(test_single_lint(&mut with_db, &[source], "for-loop-step-sign"), @r"");
 }
+
+// The bounds fold through const_int, so CONSTANT bounds are seen too - a
+// literal-only match let this descending loop pass unflagged.
+#[rstest]
+fn constant_bounds_are_folded(mut with_db: RootDatabase) {
+    let source = r#"
+        FUNCTION test : INT
+        VAR CONSTANT LO : INT := 1; HI : INT := 10; END_VAR
+        VAR i : INT; END_VAR
+            FOR i := HI TO LO DO
+                test := i;
+            END_FOR;
+        END_FUNCTION
+    "#;
+    assert_snapshot!(test_single_lint(&mut with_db, &[source], "for-loop-step-sign"), @r"
+    [L0302] Warning: FOR loop step sign mismatch
+       ,-[ file:///test0.st:5:13 ]
+       |
+     5 | ,->             FOR i := HI TO LO DO
+       : :
+     7 | |->             END_FOR;
+       | |
+       | `-------------------------- FOR loop step direction mismatches bounds direction
+       |
+       |     Note: lint rule: for-loop-step-sign
+    ---'
+    ");
+}

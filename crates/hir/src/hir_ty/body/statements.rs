@@ -8,7 +8,7 @@ use crate::{
     },
     hir_def::{
         expressions::{
-            expression::{Elementary, Expr, ExprKind, PrimaryExpr, UnaryOperatorKind},
+            expression::{Elementary, Expr, ExprKind, PrimaryExpr},
             spec::ElementarySpec,
             statement::{CaseKind, Stmt, StmtKind},
         },
@@ -36,24 +36,6 @@ pub struct StmtsResolverCtx<'db> {
 
 /// Try to extract a constant integer value from a literal expression.
 /// Handles plain literals and unary minus on literals.
-fn try_extract_integer(db: &dyn WorkspaceDataBase, expr: Expr<'_>) -> Option<i64> {
-    match expr.expr(db) {
-        ExprKind::PrimaryExpr(PrimaryExpr::Literal(Elementary::InferInteger(v))) => {
-            v.as_i64(db).ok()
-        }
-        ExprKind::UnaryOperator {
-            expr: inner,
-            operator,
-        } => match operator {
-            UnaryOperatorKind::Minus => try_extract_integer(db, *inner).map(|v| -v),
-            UnaryOperatorKind::Plus => try_extract_integer(db, *inner),
-            _ => None,
-        },
-        _ => None,
-    }
-}
-
-
 /// Evaluate a CASE label, recording its value and refusing it if it has none
 /// (E1006).
 ///
@@ -455,14 +437,16 @@ impl<'db> StmtsResolverCtx<'db> {
                         }
                     }
 
-                    // Check for mismatched step sign (only with literal values)
+                    // Check for mismatched step sign. `const_int`, not a
+                    // literal match: a CONSTANT bound or a folding expression
+                    // walks the wrong way just as surely.
                     if let (Some(start_val), Some(end_val)) = (
-                        try_extract_integer(db, *start),
-                        try_extract_integer(db, *end),
+                        crate::hir_ty::infer::const_eval::const_int(db, *start, ctx),
+                        crate::hir_ty::infer::const_eval::const_int(db, *end, ctx),
                     ) {
                         let step_val = step
                             .as_ref()
-                            .and_then(|s| try_extract_integer(db, *s))
+                            .and_then(|s| ctx.for_step_value.get(s).copied())
                             .unwrap_or(1);
                         let ascending = end_val > start_val;
                         if (ascending && step_val < 0)
