@@ -27,6 +27,11 @@ pub fn resolve_func_call<'db>(
     func_call: FuncCall<'db>,
     ctx: &mut BodyInferenceResult<'db>,
 ) {
+    // Re-entry happens (see the CallableType unwrap below), so record once.
+    if !ctx.calls.contains(&func_call) {
+        ctx.calls.push(func_call);
+    }
+
     resolver.resolve_begin_path_expr(db, func_call.path(db), None, ctx);
 
     // If a prior resolution already marked this path

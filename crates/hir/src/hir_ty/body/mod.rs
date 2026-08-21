@@ -234,6 +234,11 @@ pub struct BodyInferenceResult<'db> {
     /// ascending ran a `BY n` loop with `n = -1` zero times.
     pub for_step_value: FxHashMap<Expr<'db>, i64>,
 
+    /// Every call resolution visited, in resolution order. A consumer that
+    /// needs "all calls in this body" reads this instead of re-walking the
+    /// statement tree for the shapes a call can hide in.
+    pub calls: Vec<FuncCall<'db>>,
+
     /// The type a value is converted to by the site that consumes it — an
     /// assignment target, a parameter, an FB input. Inference decides this
     /// when it checks the coercion; recording it keeps a consumer that has to
@@ -325,6 +330,7 @@ impl<'db> BodyInferenceResult<'db> {
             type_of_expr: FxHashMap::default(),
             comparison_operand_type: FxHashMap::default(),
             for_step_value: FxHashMap::default(),
+            calls: Vec::new(),
             coercion_target: FxHashMap::default(),
             case_label_value: FxHashMap::default(),
             type_of_path_expr: FxHashMap::default(),

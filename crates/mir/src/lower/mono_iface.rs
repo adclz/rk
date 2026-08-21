@@ -10,7 +10,6 @@ use hir::hir_def::expressions::expression::{
     Expr, ExprKind, FuncCall, ParamAssignKind, PrimaryExpr, VariableAccessKind,
 };
 use hir::hir_def::expressions::invocation::InvocationKind;
-use hir::hir_def::expressions::statement::{Stmt, StmtKind};
 use hir::hir_def::interned::identifier::Ident;
 use hir::hir_def::pous::class::MethodDecl;
 use hir::hir_def::pous::function::Function;
@@ -50,11 +49,11 @@ pub enum IfaceTarget<'db> {
 }
 
 impl<'db> IfaceTarget<'db> {
-    /// The scope + statements of the target's body, for the worklist walk.
-    fn body(&self, db: &'db dyn WorkspaceDataBase) -> (ScopeId<'db>, &'db [Stmt<'db>]) {
+    /// The scope of the target's body, for the worklist walk.
+    fn scope(&self, db: &'db dyn WorkspaceDataBase) -> ScopeId<'db> {
         match self {
-            IfaceTarget::Function(f) => (f.scope_id(db), f.statements(db)),
-            IfaceTarget::Method { method, .. } => (method.scope_id(db), method.stmts(db)),
+            IfaceTarget::Function(f) => f.scope_id(db),
+            IfaceTarget::Method { method, .. } => method.scope_id(db),
         }
     }
 }
@@ -101,7 +100,6 @@ pub fn collect_iface_instantiations<'db>(
                 process_body(
                     db,
                     f.scope_id(db),
-                    f.statements(db),
                     None,
                     &no_subs,
                     &mut by_canonical,
@@ -113,7 +111,6 @@ pub fn collect_iface_instantiations<'db>(
                 process_body(
                     db,
                     fb.scope_id(db),
-                    fb.statements(db),
                     Some(**pou),
                     &no_subs,
                     &mut by_canonical,
@@ -128,7 +125,6 @@ pub fn collect_iface_instantiations<'db>(
                     process_body(
                         db,
                         m.scope_id(db),
-                        m.stmts(db),
                         Some(**pou),
                         &no_subs,
                         &mut by_canonical,
@@ -145,7 +141,6 @@ pub fn collect_iface_instantiations<'db>(
                     process_body(
                         db,
                         m.scope_id(db),
-                        m.stmts(db),
                         Some(**pou),
                         &no_subs,
                         &mut by_canonical,
@@ -163,7 +158,6 @@ pub fn collect_iface_instantiations<'db>(
         process_body(
             db,
             program.scope_id(db),
-            program.statements(db),
             None,
             &no_subs,
             &mut by_canonical,
@@ -178,7 +172,7 @@ pub fn collect_iface_instantiations<'db>(
     while i < instances.len() {
         let target = instances[i].target;
         let subs = instances[i].iface_subs.clone();
-        let (scope, stmts) = target.body(db);
+        let scope = target.scope(db);
         let self_pou = match target {
             IfaceTarget::Method { owner, .. } => Some(owner),
             IfaceTarget::Function(_) => None,
@@ -187,7 +181,6 @@ pub fn collect_iface_instantiations<'db>(
         process_body(
             db,
             scope,
-            stmts,
             self_pou,
             &subs,
             &mut by_canonical,
@@ -207,7 +200,6 @@ pub fn collect_iface_instantiations<'db>(
 fn process_body<'db>(
     db: &'db dyn WorkspaceDataBase,
     scope: ScopeId<'db>,
-    stmts: &[Stmt<'db>],
     // The POU whose instance `THIS` refers to in this body, supplied by the
     // caller.
     self_pou: Option<Pou<'db>>,
@@ -217,9 +209,8 @@ fn process_body<'db>(
     out_rewrites: &mut FxHashMap<FuncCall<'db>, Ident>,
 ) {
     let body = infer_body(db, scope);
-    let mut calls = Vec::new();
-    collect_calls(db, stmts, &mut calls);
-    for fc in calls {
+    // Every call resolution recorded, instead of a second walk over the tree.
+    for fc in body.calls.clone() {
         process_call(
             db,
             fc,
@@ -244,117 +235,8 @@ fn is_this_arg<'db>(db: &'db dyn WorkspaceDataBase, arg: Expr<'db>) -> bool {
     false
 }
 
-/// Recursively collect every `FuncCall` node in a statement list, including bare
-/// statement-context calls (`bump(dev := w);`) and calls nested in control flow.
-fn collect_calls<'db>(
-    db: &'db dyn WorkspaceDataBase,
-    stmts: &[Stmt<'db>],
-    out: &mut Vec<FuncCall<'db>>,
-) {
-    for stmt in stmts {
-        match stmt.stmt(db) {
-            StmtKind::FuncCall(fc) => {
-                out.push(*fc);
-                collect_calls_in_args(db, *fc, out);
-            }
-            StmtKind::Assignment { target, .. } => collect_calls_expr(db, *target, out),
-            StmtKind::If {
-                condition,
-                then,
-                else_if,
-                else_,
-            } => {
-                collect_calls_expr(db, *condition, out);
-                if let Some(s) = then {
-                    collect_calls(db, s, out);
-                }
-                for (c, b) in else_if {
-                    collect_calls_expr(db, *c, out);
-                    collect_calls(db, b, out);
-                }
-                if let Some(s) = else_ {
-                    collect_calls(db, s, out);
-                }
-            }
-            StmtKind::Case {
-                condition,
-                cases,
-                else_,
-            } => {
-                collect_calls_expr(db, *condition, out);
-                for (_, b) in cases {
-                    collect_calls(db, b, out);
-                }
-                if let Some(s) = else_ {
-                    collect_calls(db, s, out);
-                }
-            }
-            StmtKind::For {
-                start,
-                end,
-                step,
-                body,
-                ..
-            } => {
-                collect_calls_expr(db, *start, out);
-                collect_calls_expr(db, *end, out);
-                if let Some(s) = step {
-                    collect_calls_expr(db, *s, out);
-                }
-                collect_calls(db, body, out);
-            }
-            StmtKind::While { condition, body } | StmtKind::Repeat { condition, body } => {
-                collect_calls_expr(db, *condition, out);
-                collect_calls(db, body, out);
-            }
-            StmtKind::Raise { message } => collect_calls_expr(db, *message, out),
-            _ => {}
-        }
-    }
-}
 
-/// Recursively collect `FuncCall` nodes reachable from an expression.
-fn collect_calls_expr<'db>(
-    db: &'db dyn WorkspaceDataBase,
-    expr: Expr<'db>,
-    out: &mut Vec<FuncCall<'db>>,
-) {
-    match expr.expr(db) {
-        ExprKind::PrimaryExpr(PrimaryExpr::FuncCall(fc)) => {
-            out.push(*fc);
-            collect_calls_in_args(db, *fc, out);
-        }
-        ExprKind::PrimaryExpr(PrimaryExpr::ParenthesizedExpr { expr: inner }) => {
-            collect_calls_expr(db, *inner, out)
-        }
-        ExprKind::AddOperator { left, right, .. }
-        | ExprKind::MultOperator { left, right, .. }
-        | ExprKind::ComparisonOperator { left, right, .. }
-        | ExprKind::BooleanOperator { left, right, .. }
-        | ExprKind::PowerOperator { left, right } => {
-            collect_calls_expr(db, *left, out);
-            collect_calls_expr(db, *right, out);
-        }
-        ExprKind::UnaryOperator { expr: inner, .. } => collect_calls_expr(db, *inner, out),
-        _ => {}
-    }
-}
 
-/// Calls can appear as call arguments (`f(x := g())`); recurse into them.
-fn collect_calls_in_args<'db>(
-    db: &'db dyn WorkspaceDataBase,
-    fc: FuncCall<'db>,
-    out: &mut Vec<FuncCall<'db>>,
-) {
-    for pa in fc.params(db) {
-        match pa.kind(db) {
-            ParamAssignKind::NonFormal { value } | ParamAssignKind::FormalInput { value, .. } => {
-                collect_calls_expr(db, value, out);
-            }
-            ParamAssignKind::FormalOutput { .. } => {}
-        }
-    }
-}
 
 #[allow(clippy::too_many_arguments)]
 fn process_call<'db>(
