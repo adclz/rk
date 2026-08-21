@@ -511,33 +511,6 @@ impl<'db> Type<'db> {
                 .map(|adjs| adjs.array_dimensions(self))
                 .unwrap_or(0);
 
-            // A CONSTANT subscript outside its dimension's declared bounds is
-            // provable right here — reject it at compile time instead of
-            // deferring to the runtime bounds check (which would fault the
-            // scan for a mistake the source spells out). Non-constant
-            // subscripts stay a runtime matter; declared bounds that do not
-            // fold were already rejected at the declaration (E0601/E0602).
-            if report_errors
-                && let PathExprKind::Index(index_expr) = expr.expr(db)
-                && let Some(sub) = index_expr.index.get(i)
-                && let Some(val) = sub.as_const_int_folded(db)
-                && let Some((lo, hi)) = arr.subranges(db).get(curr_dimension).and_then(|(l, u)| {
-                    Some((l.as_const_int_folded(db)?, u.as_const_int_folded(db)?))
-                })
-                && (val < lo || val > hi)
-            {
-                ctx.errors.push(
-                    crate::check::errors::e6_array::ArrayError::IndexOutOfBounds {
-                        expr: *sub,
-                        dimension: curr_dimension,
-                        index: val,
-                        min: lo,
-                        max: hi,
-                    }
-                    .to_diagnostic(db, ctx.scope.file(db)),
-                );
-            }
-
             let dimensions = arr.subranges(db).len() - 1;
             let array_type = match curr_dimension.cmp(&dimensions) {
                 Ordering::Less if arr.subranges(db).len() > 1 => *self,

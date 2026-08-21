@@ -206,3 +206,27 @@ END_FUNCTION_BLOCK"#;
 
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @"");
 }
+
+// STRING[K] with a CONSTANT length is refused by the GRAMMAR - the sized
+// length only accepts a literal. Pinned as the current wall: widening it is
+// a grammar change, and until then no non-literal length can reach the
+// capacity fold (which would otherwise silently default to 80).
+#[rstest]
+fn sized_string_constant_length_is_a_syntax_error(mut with_db: RootDatabase) {
+    let source = r#"
+        FUNCTION fn1 : INT
+        VAR CONSTANT K : INT := 4; END_VAR
+        VAR s : STRING[K]; END_VAR
+            s := 'toolong';
+        END_FUNCTION
+    "#;
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
+    [E0050] Error: syntax
+       ,-[ file:///test0.st:4:23 ]
+       |
+     4 |         VAR s : STRING[K]; END_VAR
+       |                       ^|^
+       |                        `--- Unexpected token(s): '[ K ]'
+    ---'
+    ");
+}

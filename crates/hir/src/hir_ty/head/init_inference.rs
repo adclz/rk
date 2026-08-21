@@ -218,7 +218,7 @@ impl<'db> InitExprInferenceResult<'db> {
                                 );
                                 ctx.pop_dimension();
                                 ctx.advance(1);
-                                self.check_bounds(db, *expr, ctx, ctx.current_pos());
+                                self.check_bounds(db, *expr, body_ctx, ctx, ctx.current_pos());
                             }
                         } else {
                             // Single-dimensional, innermost dimension, or SizedIndex children.
@@ -245,7 +245,7 @@ impl<'db> InitExprInferenceResult<'db> {
 
                 // Check bounds before advancing
                 let end_pos = ctx.current_pos() + repeat_count;
-                self.check_bounds(db, *expr, ctx, end_pos);
+                self.check_bounds(db, *expr, body_ctx, ctx, end_pos);
                 ctx.advance(repeat_count);
 
                 // Process nested values at next dimension
@@ -325,7 +325,7 @@ impl<'db> InitExprInferenceResult<'db> {
                         place.current_init_typ,
                         CallSite::from_scoped(db, expr),
                     ));
-                } else if let Some(err) = expected.subrange_violation(db, *value) {
+                } else if let Some(err) = expected.subrange_violation(db, *value, body_ctx) {
                     // An initializer is an assignment too: `VAR p : INT (0..100)
                     // := 200;` must be rejected like `p := 200`. Bounds are
                     // checked in every phase that assigns a value, not only in
@@ -336,24 +336,30 @@ impl<'db> InitExprInferenceResult<'db> {
 
                 // Advance position and check bounds
                 ctx.advance(1);
-                self.check_bounds(db, *expr, ctx, ctx.current_pos());
+                self.check_bounds(db, *expr, body_ctx, ctx, ctx.current_pos());
             }
         }
     }
 
     fn get_array_bounds(
         db: &'db dyn WorkspaceDataBase,
+        body: &crate::hir_ty::body::BodyInferenceResult<'db>,
         array_root: Option<Type<'db>>,
         dimension: usize,
-    ) -> Option<(u64, u64, usize)> {
+    ) -> Option<(i64, i64, usize)> {
         let arr_ty = array_root?;
         if let Type::Array(array) = arr_ty.normalize(db) {
             let subranges = array.subranges(db);
             if dimension < subranges.len() {
                 let current_range = &subranges[dimension];
-                let lower = current_range.0.as_range(db)?;
-                let upper = current_range.1.as_range(db)?;
-                return Some((lower, upper, (upper - lower + 1) as usize));
+                // Folded against the LIVE result (this runs inside init
+                // inference), through the same evaluator as the E0601/E0602
+                // check. `as_range` bailed on a CONSTANT bound — and on a
+                // NEGATIVE literal one, so `ARRAY[-2..2]` never had its
+                // initializer length checked.
+                let lower = crate::hir_ty::infer::const_eval::const_int(db, current_range.0, body)?;
+                let upper = crate::hir_ty::infer::const_eval::const_int(db, current_range.1, body)?;
+                return Some((lower, upper, (upper - lower + 1).max(0) as usize));
             }
         }
         None
@@ -363,6 +369,7 @@ impl<'db> InitExprInferenceResult<'db> {
         &mut self,
         db: &'db dyn WorkspaceDataBase,
         expr: InitExpr<'db>,
+        body: &crate::hir_ty::body::BodyInferenceResult<'db>,
         ctx: &mut InitContext<'db>,
         end_position: usize,
     ) {
@@ -371,7 +378,8 @@ impl<'db> InitExprInferenceResult<'db> {
         }
 
         let dim = ctx.current_dim();
-        if let Some((_lower, _upper, array_size)) = Self::get_array_bounds(db, ctx.array_root, dim)
+        if let Some((_lower, _upper, array_size)) =
+            Self::get_array_bounds(db, body, ctx.array_root, dim)
             && end_position > array_size
         {
             ctx.set_overflow_reported();

@@ -558,7 +558,7 @@ impl<'db> InferExprCtx<'db> {
         // there; adding "outside subrange" would be two errors for one mistake.
         if result.is_ok()
             && inference_results.errors.len() == errors_before
-            && let Some(err) = lhs.subrange_violation(db, rhs)
+            && let Some(err) = lhs.subrange_violation(db, rhs, inference_results)
         {
             inference_results
                 .errors
@@ -606,7 +606,7 @@ impl<'db> InferExprCtx<'db> {
         // assignment that is otherwise clean.
         if result.is_ok()
             && inference_results.errors.len() == errors_before
-            && let Some(err) = lhs.subrange_violation(db, rhs)
+            && let Some(err) = lhs.subrange_violation(db, rhs, inference_results)
         {
             inference_results
                 .errors

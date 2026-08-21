@@ -344,3 +344,103 @@ fn valid_boundary_subscripts_are_silent(mut with_db: RootDatabase) {
 
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"");
 }
+
+// Bounds are constant EXPRESSIONS, not literals: a CONSTANT variable and
+// folding arithmetic are legal for arrays and subranges alike.
+#[rstest]
+fn valid_constant_and_folding_bounds(mut with_db: RootDatabase) {
+    let source = r#"
+        FUNCTION fn1 : INT
+        VAR CONSTANT K : INT := 3; END_VAR
+        VAR
+            a : ARRAY[0..K] OF INT;
+            b : ARRAY[0..2 + 2] OF INT;
+            x : INT (0..K);
+            y : INT (0..2 + 2);
+        END_VAR
+            a[0] := 1;
+            fn1 := b[0] + x + y;
+        END_FUNCTION
+    "#;
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"");
+}
+
+#[rstest]
+fn invalid_array_bound_not_constant(mut with_db: RootDatabase) {
+    let source = r#"
+        FUNCTION fn1 : INT
+        VAR n : INT; a : ARRAY[0..n] OF INT; END_VAR
+        END_FUNCTION
+    "#;
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
+    [E0602] Error: invalid array bounds
+       ,-[ file:///test0.st:3:35 ]
+       |
+     3 |         VAR n : INT; a : ARRAY[0..n] OF INT; END_VAR
+       |                                   |
+       |                                   `-- invalid upper bound value for ARRAY
+    ---'
+    ");
+}
+
+// The initializer-length check reads the FOLDED bounds, so a CONSTANT-bounded
+// array still rejects an oversized initializer.
+#[rstest]
+fn invalid_too_many_elements_with_constant_bound(mut with_db: RootDatabase) {
+    let source = r#"
+        FUNCTION fn1 : INT
+        VAR CONSTANT K : INT := 2; END_VAR
+        VAR a : ARRAY[0..K] OF INT := [1, 2, 3, 4]; END_VAR
+        END_FUNCTION
+    "#;
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
+    [E0605] Error: invalid array access
+       ,-[ file:///test0.st:4:49 ]
+       |
+     4 |         VAR a : ARRAY[0..K] OF INT := [1, 2, 3, 4]; END_VAR
+       |                                                 |
+       |                                                 `-- too many elements in array initializer (expected at most 3)
+    ---'
+    ");
+}
+
+// The compile-time subscript check folds both sides: a CONSTANT subscript
+// against a CONSTANT bound is still caught before the runtime guard.
+#[rstest]
+fn invalid_constant_subscript_out_of_constant_bound(mut with_db: RootDatabase) {
+    let source = r#"
+        FUNCTION fn1 : INT
+        VAR CONSTANT K : INT := 2; END_VAR
+        VAR a : ARRAY[0..K] OF INT; END_VAR
+            fn1 := a[K + 1];
+        END_FUNCTION
+    "#;
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
+    [E0608] Error: invalid array access
+       ,-[ file:///test0.st:5:22 ]
+       |
+     5 |             fn1 := a[K + 1];
+       |                      ^^|^^
+       |                        `---- index 3 is out of bounds (the dimension is declared 0..2)
+    ---'
+    ");
+}
+
+// Two separately declared ARRAY[-1..1] types are the same type. `as_range`
+// refused every negative bound, so these were never mutually assignable.
+#[rstest]
+fn valid_negative_bounds_are_assignable(mut with_db: RootDatabase) {
+    let source = r#"
+        FUNCTION consume : INT
+        VAR_INPUT a : ARRAY[-1..1] OF INT; END_VAR
+            consume := a[-1] + a[1];
+        END_FUNCTION
+        FUNCTION test : INT
+        VAR b : ARRAY[-1..1] OF INT; END_VAR
+            b[-1] := 1;
+            b[1] := 2;
+            test := consume(a := b);
+        END_FUNCTION
+    "#;
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"");
+}

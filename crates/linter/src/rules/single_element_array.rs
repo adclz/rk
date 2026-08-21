@@ -25,9 +25,10 @@ pub fn check_spec<'db>(
     diagnostics: &mut Vec<IdeDiagnostic>,
 ) {
     if let SpecKind::Array(array) = spec {
-        for (dim_idx, (lower, upper)) in array.subranges(db).iter().enumerate() {
-            let lo: Option<u64> = lower.as_range(db);
-            let hi: Option<u64> = upper.as_range(db);
+        let dims = hir::hir_ty::infer::const_eval::array_dimensions(db, *array);
+        for (dim_idx, ((lower, _upper), (lo, hi))) in
+            array.subranges(db).iter().zip(dims).enumerate()
+        {
             if let (Some(lo), Some(hi)) = (lo, hi)
                 && lo == hi
             {

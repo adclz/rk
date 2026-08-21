@@ -325,3 +325,44 @@ END_PROGRAM
 "#;
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @"");
 }
+
+#[rstest]
+fn invalid_subrange_bound_not_constant(mut with_db: RootDatabase) {
+    let source = r#"
+        FUNCTION fn1 : INT
+        VAR n : INT; x : INT (0..n); END_VAR
+        END_FUNCTION
+    "#;
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
+    [E0803] Error: invalid subrange bound
+       ,-[ file:///test0.st:3:34 ]
+       |
+     3 |         VAR n : INT; x : INT (0..n); END_VAR
+       |                                  |
+       |                                  `-- a subrange bound must evaluate to a constant at compile time
+    ---'
+    ");
+}
+
+// E0802 reads the FOLDED bounds, so a CONSTANT-bounded subrange still
+// rejects an out-of-range initializer.
+#[rstest]
+fn invalid_value_outside_constant_bounds(mut with_db: RootDatabase) {
+    let source = r#"
+        FUNCTION fn1 : INT
+        VAR CONSTANT K : INT := 5; END_VAR
+        VAR x : INT (0..K) := 9; END_VAR
+        END_FUNCTION
+    "#;
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
+    [E0802] Error: value outside subrange
+       ,-[ file:///test0.st:4:31 ]
+       |
+     4 |         VAR x : INT (0..K) := 9; END_VAR
+       |                               |
+       |                               `-- value 9 is outside the subrange 0..5
+       |
+       | Note: the declared range only admits values from 0 to 5
+    ---'
+    ");
+}

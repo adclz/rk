@@ -91,3 +91,21 @@ fn test_mir_case(mut with_db: db::RootDatabase) {
     let result: i32 = execute_wasm(&wasm_bytes, "classify", 2i32);
     assert_eq!(result, 20);
 }
+
+/// A subrange bounded by a CONSTANT compiles and runs: the bounds fold
+/// through the same evaluator as CASE labels and FOR steps. This shape used
+/// to pass `rk check` and abort MIR with "expected a constant integer".
+#[rstest]
+fn subrange_constant_bound_runs(mut with_db: db::RootDatabase) {
+    let source = r#"
+        FUNCTION test : INT
+        VAR CONSTANT K : INT := 5; END_VAR
+        VAR x : INT (0..K); END_VAR
+            x := 3;
+            test := x;
+        END_FUNCTION
+    "#;
+    let wasm = crate::tests::codegen::compile_to_wasm_checked(&mut with_db, source);
+    let r: i32 = super::execute_wasm(&wasm, "test", ());
+    assert_eq!(r, 3, "the CONSTANT-bounded subrange lowered and executed");
+}

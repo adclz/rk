@@ -245,7 +245,23 @@ impl<'db> Resolver<'db> {
             let PathExprKind::Index(index_expr) = expr.expr(db) else {
                 continue;
             };
-            for sub in index_expr.index.iter() {
+            // The array this bracket indexes, for the compile-time bounds
+            // check below. From the INNER path's recorded type — the walk
+            // typed the steps; subscripts are ours. Chained brackets
+            // (`a[1][0]`) consume dimensions across steps, and the walk
+            // recorded that consumption as Index adjustments.
+            let indexed_array = ctx
+                .type_of_path_expr
+                .get(&index_expr.path)
+                .map(|t| t.normalize(db));
+            let base_dim = match (ctx.adjustments_of_path_expr(index_expr.path), &indexed_array) {
+                (Some(adjs), Some(arr_ty)) => {
+                    use crate::hir_ty::body::AdjustmentInfo;
+                    adjs.array_dimensions(arr_ty)
+                }
+                _ => 0,
+            };
+            for (i, sub) in index_expr.index.iter().enumerate() {
                 // A path expression can be resolved through more than one
                 // entry; the first pass already did the work.
                 if ctx.type_of_expr.contains_key(sub) {
@@ -273,6 +289,32 @@ impl<'db> Resolver<'db> {
                     ctx.errors.push(
                         ArrayError::NonIntegerIndex { expr: *sub, ty }
                             .to_diagnostic(db, ctx.scope.file(db)),
+                    );
+                }
+
+                // A CONSTANT subscript outside its dimension's declared
+                // bounds is provable right here — reject it instead of
+                // deferring to the runtime guard. AFTER the subscript
+                // resolved, so a named CONSTANT folds too; the walk-side
+                // check ran first and could fold only literals.
+                if let Some(Type::Array(arr)) = indexed_array
+                    && let Some(val) =
+                        crate::hir_ty::infer::const_eval::const_int(db, *sub, ctx)
+                    && let Some((lo, hi)) = {
+                        let dims = crate::hir_ty::infer::const_eval::array_dimensions(db, arr);
+                        dims.get(base_dim + i).and_then(|(l, u)| Some(((*l)?, (*u)?)))
+                    }
+                    && (val < lo || val > hi)
+                {
+                    ctx.errors.push(
+                        ArrayError::IndexOutOfBounds {
+                            expr: *sub,
+                            dimension: base_dim + i,
+                            index: val,
+                            min: lo,
+                            max: hi,
+                        }
+                        .to_diagnostic(db, ctx.scope.file(db)),
                     );
                 }
             }

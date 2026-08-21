@@ -140,21 +140,18 @@ impl<'db> Type<'db> {
             Self::Enum(_) => "ENUM".into(),
             Self::Array(array) => {
                 let elem_type = array.of_type(db).infer(db).type_name(db);
-                let dimensions: Vec<String> = array
-                    .subranges(db)
-                    .iter()
-                    .map(|(lower, upper)| {
-                        let lower = lower
-                            .as_range(db)
-                            .map(|n| n.to_string())
-                            .unwrap_or_default();
-                        let upper = upper
-                            .as_range(db)
-                            .map(|n| n.to_string())
-                            .unwrap_or_default();
-                        format!("{lower}..{upper}")
-                    })
-                    .collect();
+                // Folded values, so a CONSTANT bound shows its number — and a
+                // negative one shows at all (`as_range` dropped it, rendering
+                // `ARRAY [-1..5]` as `ARRAY [..5]`).
+                let dimensions: Vec<String> =
+                    crate::hir_ty::infer::const_eval::array_dimensions(db, *array)
+                        .iter()
+                        .map(|(lower, upper)| {
+                            let lower = lower.map(|n| n.to_string()).unwrap_or_default();
+                            let upper = upper.map(|n| n.to_string()).unwrap_or_default();
+                            format!("{lower}..{upper}")
+                        })
+                        .collect();
                 format!("ARRAY [{}] OF {}", dimensions.join(", "), elem_type)
             }
             Self::ArrayConformand(spec) => {
@@ -163,16 +160,10 @@ impl<'db> Type<'db> {
             }
             Self::SubRange(subrange) => {
                 let base_type = subrange._type(db).infer(db).type_name(db);
-                let lower = subrange
-                    .lower(db)
-                    .as_range(db)
-                    .map(|n| n.to_string())
-                    .unwrap_or_default();
-                let upper = subrange
-                    .upper(db)
-                    .as_range(db)
-                    .map(|n| n.to_string())
-                    .unwrap_or_default();
+                let (lower, upper) =
+                    crate::hir_ty::infer::const_eval::subrange_bounds(db, *subrange);
+                let lower = lower.map(|n| n.to_string()).unwrap_or_default();
+                let upper = upper.map(|n| n.to_string()).unwrap_or_default();
                 format!("{base_type} ({lower}..{upper})")
             }
             Self::RefTo(spec) => format!("REF_TO {}", spec.infer(db).type_name(db)),

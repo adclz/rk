@@ -42,12 +42,18 @@ impl<'db> Type<'db> {
         &self,
         db: &'db dyn WorkspaceDataBase,
         rhs: crate::hir_def::expressions::expression::Expr<'db>,
+        live: &crate::hir_ty::body::BodyInferenceResult<'db>,
     ) -> Option<crate::check::errors::e8_subrange::SubRangeError<'db>> {
         let sub = self.as_subrange(db)?;
-        let (lower, upper) = (
-            sub.lower(db).as_const_int(db)?,
-            sub.upper(db).as_const_int(db)?,
-        );
+        // The DECLARED bounds fold through the spec evaluator — literal-only
+        // folding silently skipped this check for a CONSTANT-bounded
+        // subrange. Scope-guarded: this runs from init inference too, where
+        // calling the init query back would cycle.
+        let fold = |e| crate::hir_ty::infer::const_eval::spec_bound_with(db, e, live);
+        let (lower, upper) = match (fold(sub.lower(db)), fold(sub.upper(db))) {
+            (Some(lower), Some(upper)) => (lower, upper),
+            _ => return None,
+        };
         let value = rhs.as_const_int(db)?;
         (value < lower || value > upper).then_some(
             crate::check::errors::e8_subrange::SubRangeError::ValueOutOfRange {
@@ -198,10 +204,14 @@ impl<'db> Type<'db> {
                         adjustment: None,
                     });
                 }
-                for (r1, r2) in s1.iter().zip(s2.iter()) {
-                    let bounds_match = r1.0.as_range(db) == r2.0.as_range(db)
-                        && r1.1.as_range(db) == r2.1.as_range(db)
-                        && r1.0.as_range(db).is_some();
+                // Folded, not literal-matched: a CONSTANT bound must compare
+                // by its VALUE, and `as_range` also refused every NEGATIVE
+                // bound — two separately declared `ARRAY[-1..1]` types were
+                // never mutually assignable.
+                let d1 = crate::hir_ty::infer::const_eval::array_dimensions(db, a1);
+                let d2 = crate::hir_ty::infer::const_eval::array_dimensions(db, *a2);
+                for (r1, r2) in d1.iter().zip(d2.iter()) {
+                    let bounds_match = r1.0 == r2.0 && r1.1 == r2.1 && r1.0.is_some();
                     if !bounds_match {
                         return Err(CoerceError {
                             expected: *self,

@@ -238,9 +238,15 @@ fn lower_array_type<'db>(
     let mut dimensions = Vec::new();
     let mut total_elements = 1u32;
 
-    for (start_expr, end_expr) in array_type.subranges(db) {
-        let start = extract_integer_literal(db, start_expr)?;
-        let end = extract_integer_literal(db, end_expr)?;
+    // The dimensions inference folded; a bound that does not fold is
+    // E0601/E0602 at the declaration, so `None` cannot arrive from checked
+    // code.
+    for (start, end) in hir::hir_ty::infer::const_eval::array_dimensions(db, array_type) {
+        let (Some(start), Some(end)) = (start, end) else {
+            return Err(LowerTypeError::UnsupportedType(
+                "array bound was not folded to a constant".to_string(),
+            ));
+        };
         dimensions.push((start, end));
 
         let dim_size = (end - start + 1).max(0) as u32;
@@ -341,8 +347,14 @@ fn lower_subrange_type<'db>(
         }
     };
 
-    let lower = extract_integer_literal(db, subrange.lower(db))?;
-    let upper = extract_integer_literal(db, subrange.upper(db))?;
+    // The bounds inference folded; a bound that does not fold is E0803 at
+    // the declaration.
+    let (Some(lower), Some(upper)) = hir::hir_ty::infer::const_eval::subrange_bounds(db, subrange)
+    else {
+        return Err(LowerTypeError::UnsupportedType(
+            "subrange bound was not folded to a constant".to_string(),
+        ));
+    };
 
     Ok(MirType::Subrange(MirSubrangeType { base, lower, upper }))
 }
@@ -467,21 +479,3 @@ pub fn lower_class_type<'db>(
     )
 }
 
-/// Fold a compile-time integer (array/subrange bound, enum value).
-///
-/// Delegates to HIR's [`Expr::as_const_int`] — the one const-integer evaluator,
-/// also used by the checks that validate these same expressions. MIR previously
-/// had its own literal matcher, which accepted a different set than the checker
-/// did, so validation and lowering could disagree about what counts as a
-/// constant.
-/// The i64 carries every base an enum or subrange may declare — the old i32
-/// clamp refused legal `LInt`/`LWORD` variant values and subrange bounds
-/// (both `MirSubrangeType` bounds and enum values are stored as i64).
-fn extract_integer_literal<'db>(
-    db: &'db dyn WorkspaceDataBase,
-    expr: hir::hir_def::expressions::expression::Expr<'db>,
-) -> Result<i64, LowerTypeError> {
-    expr.as_const_int(db).ok_or_else(|| {
-        LowerTypeError::UnsupportedType("expected a constant integer".to_string())
-    })
-}

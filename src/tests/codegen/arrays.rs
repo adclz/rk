@@ -1,6 +1,6 @@
 //! Array execution tests - actually running WASM to verify array operations.
 
-use crate::tests::codegen::{compile_to_wasm, with_db};
+use crate::tests::codegen::{compile_to_wasm, compile_to_wasm_checked, with_db};
 use rstest::*;
 
 #[rstest]
@@ -444,4 +444,27 @@ fn per_dimension_bounds_not_flat_bounds(mut with_db: db::RootDatabase) {
         f.call(&mut store, ()).is_err(),
         "dimension 2's bound is 3; 9 must fault even though 1*36 < sizeof(m)"
     );
+}
+
+/// An array dimensioned by a CONSTANT compiles and runs — the OSCAT idiom.
+/// `ARRAY[0..K]` was refused at the declaration (E0602) when the bound was
+/// anything but a bare literal.
+#[rstest]
+fn constant_bounded_array_runs(mut with_db: db::RootDatabase) {
+    let source = r#"
+        FUNCTION test : INT
+        VAR CONSTANT K : INT := 3; END_VAR
+        VAR a : ARRAY[0..K] OF INT; i : INT; s : INT; END_VAR
+            FOR i := 0 TO K DO
+                a[i] := i * 10;
+            END_FOR;
+            FOR i := 0 TO K DO
+                s := s + a[i];
+            END_FOR;
+            test := s;
+        END_FUNCTION
+    "#;
+    let wasm = compile_to_wasm_checked(&mut with_db, source);
+    let r: i32 = super::execute_wasm(&wasm, "test", ());
+    assert_eq!(r, 60, "four elements, 0 + 10 + 20 + 30");
 }

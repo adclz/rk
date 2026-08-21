@@ -20,6 +20,8 @@ pub enum SubRangeError<'db> {
         lower: i64,
         upper: i64,
     },
+    /// A subrange bound must evaluate to a constant at compile time.
+    BoundNotConstant { value: Expr<'db> },
 }
 
 impl<'db> ErrorCode for SubRangeError<'db> {
@@ -27,6 +29,7 @@ impl<'db> ErrorCode for SubRangeError<'db> {
         match self {
             Self::InvalidSubrangeType { .. } => "E0801",
             Self::ValueOutOfRange { .. } => "E0802",
+            Self::BoundNotConstant { .. } => "E0803",
         }
     }
 
@@ -34,6 +37,7 @@ impl<'db> ErrorCode for SubRangeError<'db> {
         match self {
             Self::InvalidSubrangeType { .. } => "invalid subrange type",
             Self::ValueOutOfRange { .. } => "value outside subrange",
+            Self::BoundNotConstant { .. } => "invalid subrange bound",
         }
     }
 }
@@ -57,6 +61,14 @@ impl<'db> ToIdeDiagnostic<'db> for SubRangeError<'db> {
 
                 diag
             }
+            SubRangeError::BoundNotConstant { value } => diag()
+                .message(
+                    "a subrange bound must evaluate to a constant at compile time".to_string(),
+                )
+                .severity(DiagnosticSeverity::ERROR)
+                .desc(self)
+                .range(crate::denormalize(db, file, &value.get_span(db)).unwrap_or_default())
+                .call(),
             SubRangeError::ValueOutOfRange {
                 expr,
                 value,
