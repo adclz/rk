@@ -90,9 +90,7 @@ impl<'db> InitInference<'db> {
         // to is read from this evaluation, so a value only the runtime knows
         // has no ordinal to give. AFTER the loop above — folding needs the
         // resolutions it recorded.
-        for (variant, ordinal) in
-            crate::hir_ty::infer::const_eval::enum_ordinals_with(db, enm, &self.body_infer_result)
-        {
+        for (variant, ordinal) in crate::hir_ty::infer::const_eval::enum_ordinals(db, enm) {
             if ordinal.is_none()
                 && let Some(value) = variant.value
             {

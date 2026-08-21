@@ -61,9 +61,7 @@ impl<'db> InitInference<'db> {
         // Both bounds must fold: the range a subrange guards is part of the
         // TYPE, so a bound only the runtime knows leaves the type unknowable.
         for bound in [min, max] {
-            if crate::hir_ty::infer::const_eval::const_int(db, bound, &self.body_infer_result)
-                .is_none()
-            {
+            if crate::hir_ty::infer::const_eval::spec_bound(db, bound).is_none() {
                 self.errors.push(
                     SubRangeError::BoundNotConstant { value: bound }
                         .to_diagnostic(db, self.scope.file(db)),

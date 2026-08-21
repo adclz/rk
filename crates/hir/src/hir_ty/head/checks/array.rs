@@ -21,15 +21,11 @@ impl<'db> InitInference<'db> {
             infer.resolve_expr(db, upper, &mut self.body_infer_result);
             infer.check_expr(db, upper, &mut self.body_infer_result);
 
-            // The evaluator, not a literal match: a CONSTANT bound or a
-            // folding expression is a legal array dimension.
-            let fold = |e: crate::hir_def::expressions::expression::Expr<'db>| {
-                crate::hir_ty::infer::const_eval::const_int(
-                    db,
-                    e,
-                    &self.body_infer_result,
-                )
-            };
+            // The SPEC evaluator, not a literal match: a CONSTANT bound or a
+            // folding expression is a legal array dimension. The same fold
+            // every consumer reads, so what the check accepts and what
+            // lowering gets cannot disagree.
+            let fold = |e| crate::hir_ty::infer::const_eval::spec_bound(db, e);
             match (fold(lower), fold(upper)) {
                 (Some(lower_range), Some(upper_range)) => {
                     if lower_range > upper_range {

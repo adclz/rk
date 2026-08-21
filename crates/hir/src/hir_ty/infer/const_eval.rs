@@ -110,15 +110,88 @@ pub fn const_int<'db>(
 /// array or subrange bound. These are typed by INIT inference, not body
 /// inference, so looking in `infer_body` alone found no binding and a
 /// CONSTANT-referencing bound failed to fold after the check accepted it.
-fn const_int_in_spec<'db>(db: &'db dyn WorkspaceDataBase, expr: Expr<'db>) -> Option<i64> {
-    use crate::HirNodeInfo;
-    use crate::hir_ty::head::init_inference::infer_initialization;
+/// [`const_int`] for a SPEC-context expression — an enum variant value, an
+/// array or subrange bound. Query-free: names resolve through the scope
+/// chain's declaration maps alone, so this is callable from anywhere — a
+/// diagnostic message rendered inside `infer_initialization` included.
+pub fn spec_bound<'db>(db: &'db dyn WorkspaceDataBase, expr: Expr<'db>) -> Option<i64> {
+    const_int_in_spec(db, expr)
+}
 
-    // Init inference ONLY, no body fallback: body inference is a caller of
-    // these folds (subscript bounds, subrange violations, coercion), so a
-    // fallback into `infer_body` from here would be a salsa cycle.
-    let scope = expr.get_scope_id(db);
-    const_int(db, expr, &infer_initialization(db, scope).body_infer_result)
+fn const_int_in_spec<'db>(db: &'db dyn WorkspaceDataBase, expr: Expr<'db>) -> Option<i64> {
+    // Literals, a leading sign and parentheses.
+    if let Some(v) = expr.as_const_int_folded(db) {
+        return Some(v);
+    }
+
+    match expr.expr(db) {
+        ExprKind::PrimaryExpr(PrimaryExpr::VariableAccess(va)) => {
+            let decl = spec_name_binding(db, *va)?;
+            const_int_in_spec(db, constant_init(db, decl)?)
+        }
+        ExprKind::AddOperator {
+            left,
+            operator,
+            right,
+        } => {
+            let (l, r) = (const_int_in_spec(db, *left)?, const_int_in_spec(db, *right)?);
+            match operator {
+                AddOperatorKind::Plus => l.checked_add(r),
+                AddOperatorKind::Minus => l.checked_sub(r),
+            }
+        }
+        ExprKind::MultOperator {
+            left,
+            operator,
+            right,
+        } => {
+            let (l, r) = (const_int_in_spec(db, *left)?, const_int_in_spec(db, *right)?);
+            match operator {
+                MultOperatorKind::Mul => l.checked_mul(r),
+                MultOperatorKind::Div => l.checked_div(r),
+                MultOperatorKind::Mod => l.checked_rem(r),
+            }
+        }
+        _ => None,
+    }
+}
+
+/// The declaration a bare name in a SPEC bound refers to, resolved through
+/// the scope chain's declaration maps alone — no inference query, so this is
+/// callable from anywhere, a diagnostic message being rendered inside
+/// `infer_initialization` included. A namespaced or otherwise non-bare name
+/// yields `None` and the bound is refused as non-constant.
+fn spec_name_binding<'db>(
+    db: &'db dyn WorkspaceDataBase,
+    va: crate::hir_def::expressions::expression::VariableAccess<'db>,
+) -> Option<crate::hir_def::pous::variable::VariableDecl<'db>> {
+    use crate::HirNodeInfo;
+    use crate::hir_def::expressions::expression::{PathExprKind, VarAccess, VariableAccessKind};
+    use crate::hir_def::semantic_index::get_scope;
+
+    if va.multibits(db).is_some() {
+        return None;
+    }
+    let VariableAccessKind::Symbolic(begin) = va.kind(db) else {
+        return None;
+    };
+    if begin.invocation(db).is_some() {
+        return None;
+    }
+    let path = begin.expr(db)?;
+    let PathExprKind::VarAccess(VarAccess::Simple(span_ident)) = path.expr(db) else {
+        return None;
+    };
+    let ident = span_ident.ident;
+
+    let mut scope = Some(va.get_scope_id(db));
+    while let Some(sc) = scope {
+        if let Some(decl) = sc.def_map(db).global_variables.get(&ident) {
+            return Some(*decl);
+        }
+        scope = get_scope(db, sc).parent;
+    }
+    None
 }
 
 /// Each variant of an enum with its ordinal: the declared value where one is
@@ -130,17 +203,6 @@ pub fn enum_ordinals<'db>(
     enm: crate::hir_def::expressions::spec::Enum<'db>,
 ) -> Vec<(crate::hir_def::expressions::spec::EnumVariant<'db>, Option<i64>)> {
     enum_ordinals_by(db, enm, |e| const_int_in_spec(db, e))
-}
-
-/// [`enum_ordinals`] for the declaration check itself, which runs INSIDE
-/// `infer_initialization` and must fold against its live result — calling the
-/// query back from within it is a salsa cycle.
-pub fn enum_ordinals_with<'db>(
-    db: &'db dyn WorkspaceDataBase,
-    enm: crate::hir_def::expressions::spec::Enum<'db>,
-    body: &BodyInferenceResult<'db>,
-) -> Vec<(crate::hir_def::expressions::spec::EnumVariant<'db>, Option<i64>)> {
-    enum_ordinals_by(db, enm, |e| const_int(db, e, body))
 }
 
 fn enum_ordinals_by<'db>(
@@ -161,25 +223,6 @@ fn enum_ordinals_by<'db>(
         out.push((*variant, value));
     }
     out
-}
-
-/// Fold a spec bound from WITHIN an inference pass, without cycling.
-///
-/// The live result answers for a bound declared in the same scope (the spec
-/// checks resolved it there); a bound from ANOTHER scope — a named subrange
-/// type declared elsewhere — goes through that scope's init query, which
-/// cannot be the one currently computing.
-pub fn spec_bound_with<'db>(
-    db: &'db dyn WorkspaceDataBase,
-    expr: Expr<'db>,
-    live: &BodyInferenceResult<'db>,
-) -> Option<i64> {
-    use crate::HirNodeInfo;
-    const_int(db, expr, live).or_else(|| {
-        (expr.get_scope_id(db) != live.scope)
-            .then(|| const_int_in_spec(db, expr))
-            .flatten()
-    })
 }
 
 /// A subrange's bounds, folded. `None` marks a bound that does not fold —

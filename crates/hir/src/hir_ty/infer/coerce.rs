@@ -42,15 +42,12 @@ impl<'db> Type<'db> {
         &self,
         db: &'db dyn WorkspaceDataBase,
         rhs: crate::hir_def::expressions::expression::Expr<'db>,
-        live: &crate::hir_ty::body::BodyInferenceResult<'db>,
     ) -> Option<crate::check::errors::e8_subrange::SubRangeError<'db>> {
         let sub = self.as_subrange(db)?;
         // The DECLARED bounds fold through the spec evaluator — literal-only
         // folding silently skipped this check for a CONSTANT-bounded
-        // subrange. Scope-guarded: this runs from init inference too, where
-        // calling the init query back would cycle.
-        let fold = |e| crate::hir_ty::infer::const_eval::spec_bound_with(db, e, live);
-        let (lower, upper) = match (fold(sub.lower(db)), fold(sub.upper(db))) {
+        // subrange.
+        let (lower, upper) = match crate::hir_ty::infer::const_eval::subrange_bounds(db, sub) {
             (Some(lower), Some(upper)) => (lower, upper),
             _ => return None,
         };
