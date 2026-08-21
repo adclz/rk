@@ -380,14 +380,13 @@ fn classify_arg<'db>(db: &'db dyn WorkspaceDataBase, arg: Type<'db>, param: Type
     ArgMatch::No
 }
 
-/// The namespace path a function is declared in, or `None` for a top-level
-/// (global) declaration. Mirrors the namespace walk in `qualified_pou_ident`,
-/// so an overload set is gathered from the same scope the name resolved in.
-fn function_namespace_path<'db>(
+/// The namespace path enclosing `scope_id`, or `None` at top level. The one
+/// climb: overload gathering, symbol naming and display all ask this, and
+/// each had its own copy of the walk.
+pub fn enclosing_namespace_path<'db>(
     db: &'db dyn WorkspaceDataBase,
-    f: Function<'db>,
+    scope_id: crate::hir_def::scope::ScopeId<'db>,
 ) -> Option<NamespacePath> {
-    let scope_id = f.scope_id(db);
     if scope_id.is_global(db) {
         return None;
     }
@@ -397,6 +396,13 @@ fn function_namespace_path<'db>(
         }
     }
     None
+}
+
+fn function_namespace_path<'db>(
+    db: &'db dyn WorkspaceDataBase,
+    f: Function<'db>,
+) -> Option<NamespacePath> {
+    enclosing_namespace_path(db, f.scope_id(db))
 }
 
 /// Returns true if the given scope (or any of its ancestors) is a config scope.

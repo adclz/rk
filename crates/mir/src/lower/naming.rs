@@ -4,7 +4,6 @@
 use compact_str::CompactString;
 use db::WorkspaceDataBase;
 use hir::hir_def::interned::identifier::Ident;
-use hir::hir_def::interned::namespace::NamespacePath;
 use hir::hir_def::pous::{function::Function, pou::Pou};
 use hir::hir_ty::head::signature::function_signature;
 use hir::hir_ty::index_graphs::{namespace_pou_candidates, pou_candidates};
@@ -62,7 +61,7 @@ fn type_mangle<'db>(db: &'db dyn WorkspaceDataBase, ty: &Type<'db>) -> String {
 /// scope (i.e. `f` is part of an overload set).
 fn function_is_overloaded<'db>(db: &'db dyn WorkspaceDataBase, f: Function<'db>) -> bool {
     let name = f.name(db);
-    let candidates = match function_namespace_path(db, f) {
+    let candidates = match hir::hir_ty::resolver::name::enclosing_namespace_path(db, f.scope_id(db)) {
         Some(path) => namespace_pou_candidates(db, path, name),
         None => pou_candidates(db, name),
     };
@@ -73,26 +72,7 @@ fn function_is_overloaded<'db>(db: &'db dyn WorkspaceDataBase, f: Function<'db>)
         > 1
 }
 
-/// The namespace path a function is declared in, or `None` for a top-level
-/// (global) declaration — mirrors the namespace walk in [`qualified_pou_ident`].
-fn function_namespace_path<'db>(
-    db: &'db dyn WorkspaceDataBase,
-    f: Function<'db>,
-) -> Option<NamespacePath> {
-    use hir::hir_def::scope::ScopeKind;
-    use hir::hir_def::semantic_index::semantic_index;
 
-    let scope_id = f.scope_id(db);
-    if scope_id.is_global(db) {
-        return None;
-    }
-    for scope in semantic_index(db, scope_id.file(db)).scope_iterator(db, scope_id) {
-        if let ScopeKind::Namespace(ns) = scope.kind {
-            return Some(*ns.path(db));
-        }
-    }
-    None
-}
 
 /// The namespace-qualified name of a POU (bare for a top-level one): the
 /// canonical MIR identifier, so `NsA.foo` and `NsB.foo` stay distinct.
@@ -101,8 +81,6 @@ pub fn qualified_pou_ident<'db>(
     ty: hir::hir_ty::ty::Type<'db>,
 ) -> Ident {
     use hir::HirNodeInfo;
-    use hir::hir_def::scope::ScopeKind;
-    use hir::hir_def::semantic_index::semantic_index;
 
     let (scope_id, bare) = match ty {
         hir::hir_ty::ty::Type::Function(f) => (f.get_scope_id(db), f.name(db)),
@@ -114,19 +92,11 @@ pub fn qualified_pou_ident<'db>(
         _ => return Ident::new(db, CompactString::from("")),
     };
 
-    if scope_id.is_global(db) {
-        return bare;
+    match hir::hir_ty::resolver::name::enclosing_namespace_path(db, scope_id) {
+        Some(path) => Ident::new(
+            db,
+            CompactString::from(format!("{}.{}", path.to_string(db), bare.text(db))),
+        ),
+        None => bare,
     }
-
-    let sema = semantic_index(db, scope_id.file(db));
-    for scope in sema.scope_iterator(db, scope_id) {
-        if let ScopeKind::Namespace(ns) = scope.kind {
-            let ns_str = ns.path(db).to_string(db);
-            return Ident::new(
-                db,
-                CompactString::from(format!("{}.{}", ns_str, bare.text(db))),
-            );
-        }
-    }
-    bare
 }
