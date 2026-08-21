@@ -477,23 +477,25 @@ fn for_bound_call_runs_once(mut with_db: db::RootDatabase) {
     assert_eq!(r, 104, "bound() called once at entry, 4 iterations");
 }
 
-/// And the step: `BY s` with the body mutating `s`.
+/// A CONSTANT variable as the step: the folded value drives the DIRECTION.
+/// Lowered as a Load its sign was invisible, so `BY K` with `K = -1` read as
+/// ascending and ran zero times. (A plain variable step is E1007 now.)
 #[rstest]
-fn for_step_is_fixed_at_entry(mut with_db: db::RootDatabase) {
+fn for_descending_by_constant_variable(mut with_db: db::RootDatabase) {
     let source = r#"
         FUNCTION run : INT
-        VAR i : INT; s : INT; count : INT; END_VAR
-            s := 1;
-            FOR i := 1 TO 8 BY s DO
-                s := 100;
+        VAR CONSTANT K : INT := -1; END_VAR
+        VAR i : INT; count : INT; END_VAR
+            FOR i := 5 TO 1 BY K DO
                 count := count + 1;
+                IF count > 300 THEN EXIT; END_IF;
             END_FOR;
             run := count;
         END_FUNCTION
     "#;
     let wasm = compile_to_wasm(&mut with_db, source);
     let r: i32 = super::execute_wasm(&wasm, "run", ());
-    assert_eq!(r, 8, "step fixed at entry (IEC); re-evaluation stops after 2");
+    assert_eq!(r, 5, "K's folded sign makes the loop descend");
 }
 
 /// The snapshot locals are lane-typed: an LINT counter's non-constant bound
@@ -984,3 +986,21 @@ fn for_to_lint_max_terminates(mut with_db: db::RootDatabase) {
     assert_eq!(r, 3, "the last three LINT values");
 }
 
+/// A folded step expression drives the loop: `BY 1 + 1` records 2, so
+/// 1 TO 5 visits 1, 3, 5.
+#[rstest]
+fn for_step_folding_expression_runs(mut with_db: db::RootDatabase) {
+    let source = r#"
+        FUNCTION test : INT
+        VAR i : INT; c : INT; END_VAR
+            FOR i := 1 TO 5 BY 1 + 1 DO
+                c := c + 1;
+                IF c > 300 THEN EXIT; END_IF;
+            END_FOR;
+            test := c;
+        END_FUNCTION
+    "#;
+    let wasm = compile_to_wasm(&mut with_db, source);
+    let r: i32 = super::execute_wasm(&wasm, "test", ());
+    assert_eq!(r, 3, "1, 3, 5");
+}

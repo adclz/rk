@@ -403,6 +403,56 @@ impl<'db> StmtsResolverCtx<'db> {
                                 CallSite::from_scoped(db, step),
                             ));
                         }
+
+                        // The step's SIGN picks the exit comparison at compile
+                        // time, so the step must fold — and to a nonzero
+                        // value, since BY 0 never advances the counter.
+                        match crate::hir_ty::infer::const_eval::const_int(db, *step, ctx) {
+                            Some(0) => ctx.errors.push(
+                                crate::check::errors::e10_control_flow::ControlFlowError::ForStepInvalid {
+                                    step: CallSite::from_scoped(db, step),
+                                    zero: true,
+                                    decl: None,
+                                }
+                                .to_diagnostic(db, ctx.scope.file(db)),
+                            ),
+                            Some(v) => {
+                                ctx.for_step_value.insert(*step, v);
+                            }
+                            None => {
+                                // Point the fix at the declaration only when
+                                // the step IS a bare non-CONSTANT variable:
+                                // qualifying it CONSTANT is then the fix. For
+                                // `arr[j]` or `f()` no declaration change makes
+                                // the step fold, so no advice is offered.
+                                let decl = match step.expr(db) {
+                                    ExprKind::PrimaryExpr(PrimaryExpr::VariableAccess(va))
+                                        if for_control_is_bare_identifier(db, *va) =>
+                                    {
+                                        match ctx.type_of_variable_access_with_adjustments(db, *va)
+                                        {
+                                            Type::Variable((var, None))
+                                                if !var
+                                                    .qualifier(db)
+                                                    .contains(crate::Qualifier::CONSTANT) =>
+                                            {
+                                                Some(var)
+                                            }
+                                            _ => None,
+                                        }
+                                    }
+                                    _ => None,
+                                };
+                                ctx.errors.push(
+                                    crate::check::errors::e10_control_flow::ControlFlowError::ForStepInvalid {
+                                        step: CallSite::from_scoped(db, step),
+                                        zero: false,
+                                        decl,
+                                    }
+                                    .to_diagnostic(db, ctx.scope.file(db)),
+                                )
+                            }
+                        }
                     }
 
                     // Check for mismatched step sign (only with literal values)

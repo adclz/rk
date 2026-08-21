@@ -104,6 +104,17 @@ END_FUNCTION_BLOCK"#;
        |
        | Help: insert explicit cast 'BOOL_TO_INT(O)'
     ---'
+    [E1007] Error: control flow violation
+       ,-[ file:///test0.st:8:25 ]
+       |
+     5 |         O: BOOL;
+       |         ^^^|^^^
+       |            `----- declaring 'O' CONSTANT would let the step fold
+       |
+     8 |     FOR I := 0 TO 10 BY O DO
+       |                         |
+       |                         `-- a FOR step must evaluate to a constant at compile time
+    ---'
     ");
 }
 
@@ -228,4 +239,187 @@ fn an_fb_member_can_be_a_for_control_variable(mut with_db: RootDatabase) {
         END_FUNCTION_BLOCK
     "#;
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"");
+}
+
+// The step's sign picks the loop's exit comparison at compile time, so a
+// step that does not fold is refused rather than silently read as ascending
+// (a `BY n` loop with `n = -1` ran zero times). A CONSTANT folds and passes.
+#[rstest]
+fn invalid_for_step_not_constant(mut with_db: RootDatabase) {
+    let source = r#"
+        FUNCTION fn1 : INT
+        VAR i : INT; n : INT; END_VAR
+            n := -1;
+            FOR i := 5 TO 1 BY n DO
+            END_FOR;
+        END_FUNCTION
+    "#;
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
+    [E1007] Error: control flow violation
+       ,-[ file:///test0.st:5:32 ]
+       |
+     3 |         VAR i : INT; n : INT; END_VAR
+       |                      ^^^|^^^
+       |                         `----- declaring 'n' CONSTANT would let the step fold
+       |
+     5 |             FOR i := 5 TO 1 BY n DO
+       |                                |
+       |                                `-- a FOR step must evaluate to a constant at compile time
+    ---'
+    ");
+}
+
+#[rstest]
+fn invalid_for_step_zero(mut with_db: RootDatabase) {
+    let source = r#"
+        FUNCTION fn1 : INT
+        VAR i : INT; END_VAR
+            FOR i := 1 TO 3 BY 0 DO
+            END_FOR;
+        END_FUNCTION
+    "#;
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
+    [E1007] Error: control flow violation
+       ,-[ file:///test0.st:4:32 ]
+       |
+     4 |             FOR i := 1 TO 3 BY 0 DO
+       |                                |
+       |                                `-- a FOR step of zero never advances the loop
+    ---'
+    ");
+}
+
+#[rstest]
+fn valid_for_step_constant_variable(mut with_db: RootDatabase) {
+    let source = r#"
+        FUNCTION fn1 : INT
+        VAR CONSTANT K : INT := -1; END_VAR
+        VAR i : INT; END_VAR
+            FOR i := 5 TO 1 BY K DO
+            END_FOR;
+        END_FUNCTION
+    "#;
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"");
+}
+
+// No advice for a step whose non-constness is structural: no declaration
+// change makes an indexed access fold.
+#[rstest]
+fn invalid_for_step_indexed_gets_no_advice(mut with_db: RootDatabase) {
+    let source = r#"
+        FUNCTION fn1 : INT
+        VAR i : INT; j : INT; arr : ARRAY[0..3] OF INT; END_VAR
+            FOR i := 5 TO 1 BY arr[j] DO
+            END_FOR;
+        END_FUNCTION
+    "#;
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
+    [E1007] Error: control flow violation
+       ,-[ file:///test0.st:4:32 ]
+       |
+     4 |             FOR i := 5 TO 1 BY arr[j] DO
+       |                                ^^^|^^
+       |                                   `---- a FOR step must evaluate to a constant at compile time
+    ---'
+    ");
+}
+
+// The zero check runs on the FOLDED value, not the written shape.
+#[rstest]
+fn invalid_for_step_folds_to_zero(mut with_db: RootDatabase) {
+    let source = r#"
+        FUNCTION fn1 : INT
+        VAR i : INT; END_VAR
+            FOR i := 1 TO 3 BY 2 - 2 DO
+            END_FOR;
+        END_FUNCTION
+    "#;
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
+    [E1007] Error: control flow violation
+       ,-[ file:///test0.st:4:32 ]
+       |
+     4 |             FOR i := 1 TO 3 BY 2 - 2 DO
+       |                                ^^|^^
+       |                                  `---- a FOR step of zero never advances the loop
+    ---'
+    ");
+}
+
+#[rstest]
+fn invalid_for_step_constant_folds_to_zero(mut with_db: RootDatabase) {
+    let source = r#"
+        FUNCTION fn1 : INT
+        VAR CONSTANT K : INT := 0; END_VAR
+        VAR i : INT; END_VAR
+            FOR i := 1 TO 3 BY K DO
+            END_FOR;
+        END_FUNCTION
+    "#;
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
+    [E1007] Error: control flow violation
+       ,-[ file:///test0.st:5:32 ]
+       |
+     5 |             FOR i := 1 TO 3 BY K DO
+       |                                |
+       |                                `-- a FOR step of zero never advances the loop
+    ---'
+    ");
+}
+
+// A VAR_EXTERNAL CONSTANT folds through the configuration global it names -
+// a different resolution path than a local VAR CONSTANT.
+#[rstest]
+fn valid_for_step_external_constant(mut with_db: RootDatabase) {
+    let source = r#"
+        FUNCTION_BLOCK fb1
+        VAR_EXTERNAL CONSTANT K : INT; END_VAR
+        VAR i : INT; END_VAR
+            FOR i := 5 TO 1 BY K DO
+            END_FOR;
+        END_FUNCTION_BLOCK
+
+        CONFIGURATION Cfg
+        VAR_GLOBAL CONSTANT K : INT := -1; END_VAR
+            RESOURCE Res ON CPU
+            END_RESOURCE
+        END_CONFIGURATION
+    "#;
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"");
+}
+
+// The remaining shape in the family: a folding expression that is nonzero
+// and valid. Folding the step must not itself break the ascending path.
+#[rstest]
+fn valid_for_step_folding_expression(mut with_db: RootDatabase) {
+    let source = r#"
+        FUNCTION fn1 : INT
+        VAR i : INT; END_VAR
+            FOR i := 1 TO 5 BY 1 + 1 DO
+            END_FOR;
+        END_FUNCTION
+    "#;
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"");
+}
+
+// A non-constant leaf poisons the whole expression: n + 1 does not fold.
+// No advice label - the step is not a bare variable, and the discriminator
+// stays conservative rather than analyzing which leaf failed to fold.
+#[rstest]
+fn invalid_for_step_nonconstant_operand(mut with_db: RootDatabase) {
+    let source = r#"
+        FUNCTION fn1 : INT
+        VAR i : INT; n : INT; END_VAR
+            FOR i := 1 TO 5 BY n + 1 DO
+            END_FOR;
+        END_FUNCTION
+    "#;
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
+    [E1007] Error: control flow violation
+       ,-[ file:///test0.st:4:32 ]
+       |
+     4 |             FOR i := 1 TO 5 BY n + 1 DO
+       |                                ^^|^^
+       |                                  `---- a FOR step must evaluate to a constant at compile time
+    ---'
+    ");
 }

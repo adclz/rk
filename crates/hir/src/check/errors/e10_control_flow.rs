@@ -55,6 +55,16 @@ pub enum ControlFlowError<'db> {
         /// wording for what is otherwise the same rule.
         as_range_bound: bool,
     },
+    /// A FOR step whose value the compiler cannot fix at compile time, or a
+    /// zero one. The sign decides the loop's exit comparison, so both are
+    /// loops whose direction is unknowable.
+    ForStepInvalid {
+        step: CallSite<'db>,
+        zero: bool,
+        /// The variable the step names, when it names exactly one - the
+        /// declaration to point at with the fix (qualify it CONSTANT).
+        decl: Option<VariableDecl<'db>>,
+    },
     DerefPossiblyNull {
         var: VariableDecl<'db>,
         expr: PathExpr<'db>,
@@ -77,6 +87,7 @@ impl<'db> ErrorCode for ControlFlowError<'db> {
             Self::AssignToConstant { .. } => "E1004",
             Self::ForControlNotAVariable { .. } => "E1005",
             Self::CaseLabelNotConstant { .. } => "E1006",
+            Self::ForStepInvalid { .. } => "E1007",
         }
     }
 
@@ -158,6 +169,33 @@ impl<'db> ToIdeDiagnostic<'db> for ControlFlowError<'db> {
                 .desc(self)
                 .range(crate::denormalize(db, file, &label.get_span(db)).unwrap_or_default())
                 .call(),
+            Self::ForStepInvalid { step, zero, decl } => {
+                let mut diag = diag()
+                    .message(
+                        if *zero {
+                            "a FOR step of zero never advances the loop"
+                        } else {
+                            "a FOR step must evaluate to a constant at compile time"
+                        }
+                        .to_string(),
+                    )
+                    .severity(DiagnosticSeverity::ERROR)
+                    .desc(self)
+                    .range(crate::denormalize(db, file, &step.get_span(db)).unwrap_or_default())
+                    .call();
+                if let Some(var) = decl {
+                    let site = var.as_call_site(db);
+                    diag.with_related(Related::new(
+                        format!(
+                            "declaring '{}' CONSTANT would let the step fold",
+                            var.get_name_ident(db).text(db)
+                        ),
+                        site.scope.file(db),
+                        site.get_span(db),
+                    ));
+                }
+                diag
+            }
             Self::ForControlNotAVariable { access } => {
                 let mut diag = diag()
                     .message("a FOR control variable must be a plain variable".to_string())

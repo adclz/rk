@@ -272,8 +272,28 @@ fn lower_stmt<'db>(
 
             let start_mir = ctx.lower_expr(*start)?;
             let end_mir = ctx.lower_expr(*end)?;
+            // The step is the VALUE inference folded and recorded (E1007
+            // refused anything that does not fold), emitted as a constant at
+            // the counter's width — its sign is what picks the exit
+            // comparison. Lowering the expression instead left a CONSTANT
+            // variable as a Load, whose sign codegen could not see.
             let step_mir = match step {
-                Some(s) => ctx.lower_expr(*s)?,
+                Some(s) => {
+                    let v = hir::hir_ty::body::infer_body(ctx.db, s.scope_id(ctx.db))
+                        .for_step_value
+                        .get(s)
+                        .copied()
+                        .ok_or_else(|| {
+                            LowerTypeError::UnsupportedType(
+                                "FOR step was not folded to a constant".to_string(),
+                            )
+                        })?;
+                    if control_elem.is_64bit() {
+                        crate::expr::MirExpr::Constant(MirConstant::I64(v))
+                    } else {
+                        crate::expr::MirExpr::Constant(MirConstant::I32(v as i32))
+                    }
+                }
                 None => {
                     // Default step is 1
                     if control_elem.is_64bit() {

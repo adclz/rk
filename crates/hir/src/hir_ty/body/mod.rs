@@ -228,6 +228,12 @@ pub struct BodyInferenceResult<'db> {
     // consumer to re-derive it.
     pub comparison_operand_type: FxHashMap<Expr<'db>, Type<'db>>,
 
+    /// The folded value of each FOR step expression the check accepted. The
+    /// step's SIGN picks the loop's exit comparison at compile time, so a
+    /// step that does not fold is refused (E1007) — silently treating it as
+    /// ascending ran a `BY n` loop with `n = -1` zero times.
+    pub for_step_value: FxHashMap<Expr<'db>, i64>,
+
     /// The type a value is converted to by the site that consumes it — an
     /// assignment target, a parameter, an FB input. Inference decides this
     /// when it checks the coercion; recording it keeps a consumer that has to
@@ -318,6 +324,7 @@ impl<'db> BodyInferenceResult<'db> {
             type_of_invocation: FxHashMap::default(),
             type_of_expr: FxHashMap::default(),
             comparison_operand_type: FxHashMap::default(),
+            for_step_value: FxHashMap::default(),
             coercion_target: FxHashMap::default(),
             case_label_value: FxHashMap::default(),
             type_of_path_expr: FxHashMap::default(),

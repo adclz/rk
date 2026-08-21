@@ -32,9 +32,7 @@ pub mod empty_if_branch;
 pub mod empty_loop_body;
 pub mod empty_type;
 pub mod external_mutation;
-pub mod for_bound_at_type_limit;
 pub mod for_loop_step_sign;
-pub mod for_zero_step;
 pub mod global_without_external;
 pub mod identical_sub_expr;
 pub mod identity_operation;
@@ -43,7 +41,6 @@ pub mod invalid_pragma;
 pub mod loop_var_modified;
 pub mod method_shadows_member;
 pub mod missing_input_param;
-pub mod nonconstant_for_step;
 pub mod missing_return;
 pub mod negated_comparison;
 pub mod negated_condition;
@@ -86,10 +83,7 @@ pub const ALL_RULE_NAMES: &[&str] = &[
     empty_if_branch::NAME,
     empty_loop_body::NAME,
     empty_type::NAME,
-    for_bound_at_type_limit::NAME,
     for_loop_step_sign::NAME,
-    for_zero_step::NAME,
-    nonconstant_for_step::NAME,
     global_without_external::NAME,
     identical_sub_expr::NAME,
     identity_operation::NAME,
