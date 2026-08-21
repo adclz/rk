@@ -188,48 +188,9 @@ fn lower_function_inner<'db>(
     // flatten to two i32s, not one, and getting this wrong silently
     // aliases the param's second slot with later Var locals.
     for var in func.variables(db) {
-        // Phase B: an interface VAR_IN_OUT param is specialized to a pointer to
-        // the concrete implementer's instance struct — the same calling
-        // convention as a normal InOut FB pointer, so the arg (`&aWorker`)
-        // becomes `dev`, and `dev.Method()`'s `this` falls out for free.
-        if let Some(concrete) = iface_subs.and_then(|m| m.get(&var.name(db))) {
-            let ty = lower_type(db, hir::hir_ty::ty::Type::new_pou(db, *concrete))?;
-            let param = MirParam {
-                name: var.name(db),
-                ty: MirType::Pointer(Box::new(ty)),
-                kind: MirParamKind::InOut,
-            };
+        if let Some(param) = param_for_var(db, var, iface_subs)? {
             next_local_idx += param_wasm_width(&param.ty, param.kind);
             params.push(param);
-            continue;
-        }
-        match var.kind(db) {
-            VariableKind::Input => {
-                let ty = input_param_type(lower_var_type(db, *var)?);
-                let param = MirParam {
-                    name: var.name(db),
-                    ty: ty.clone(),
-                    kind: MirParamKind::Input,
-                };
-                next_local_idx += param_wasm_width(&param.ty, param.kind);
-                params.push(param);
-            }
-            VariableKind::InOut | VariableKind::Output => {
-                let ty = lower_var_type(db, *var)?;
-                let kind = if var.kind(db) == VariableKind::InOut {
-                    MirParamKind::InOut
-                } else {
-                    MirParamKind::Output
-                };
-                let param = MirParam {
-                    name: var.name(db),
-                    ty: MirType::Pointer(Box::new(ty)),
-                    kind,
-                };
-                next_local_idx += param_wasm_width(&param.ty, param.kind);
-                params.push(param);
-            }
-            _ => {}
         }
     }
 
@@ -459,44 +420,10 @@ fn lower_function_block_inner<'db>(
 
         // Method parameters
         for var in method.variables(db) {
-            // In a specialized copy, an interface param becomes a pointer to the
-            // concrete implementer's instance struct — the same convention as a
-            // specialized function's interface param (see `lower_function_inner`).
-            if let Some(inst) = spec
-                && let Some(concrete) = inst.iface_subs.get(&var.name(db))
-            {
-                let ty = lower_type(db, Type::new_pou(db, *concrete))?;
-                let param = MirParam {
-                    name: var.name(db),
-                    ty: MirType::Pointer(Box::new(ty)),
-                    kind: MirParamKind::InOut,
-                };
+            if let Some(param) = param_for_var(db, var, spec.map(|i| &i.iface_subs))? {
                 next_local_idx += param_wasm_width(&param.ty, param.kind);
                 params.push(param);
-                continue;
-            }
-            match var.kind(db) {
-                VariableKind::Input => {
-                    let ty = input_param_type(lower_var_type(db, *var)?);
-                    let param = MirParam {
-                        name: var.name(db),
-                        ty,
-                        kind: MirParamKind::Input,
-                    };
-                    next_local_idx += param_wasm_width(&param.ty, param.kind);
-                    params.push(param);
-                }
-                VariableKind::InOut => {
-                    let ty = lower_var_type(db, *var)?;
-                    let param = MirParam {
-                        name: var.name(db),
-                        ty: MirType::Pointer(Box::new(ty)),
-                        kind: MirParamKind::InOut,
-                    };
-                    next_local_idx += param_wasm_width(&param.ty, param.kind);
-                    params.push(param);
-                }
-                _ => {
+            } else {
                     let ty = lower_var_type(db, *var)?;
                     let storage = allocate_local_storage(
                         var.name(db),
@@ -514,7 +441,6 @@ fn lower_function_block_inner<'db>(
                         // FB/class method local — stateless per call.
                         var_storage: MirVariableStorage::Automatic,
                     });
-                }
             }
         }
 
@@ -691,7 +617,6 @@ fn lower_class_inner<'db>(
     iface_method_instances: &[&super::mono_iface::IfaceInstance<'db>],
 ) -> Result<Vec<MirFunction>, LowerTypeError> {
     let mut functions = Vec::new();
-    let mut idx = start_index;
 
     // Interface-param methods are emitted once per specialization (see the
     // FB-method site).
@@ -722,7 +647,7 @@ fn lower_class_inner<'db>(
         })
         .collect();
 
-    for (method, spec) in method_jobs {
+    for (idx, (method, spec)) in (start_index..).zip(method_jobs) {
         let mut params = Vec::new();
         let mut locals = Vec::new();
         let mut next_local_idx: u32 = 1; // 0 is 'this'
@@ -747,43 +672,10 @@ fn lower_class_inner<'db>(
 
         // Method parameters
         for var in method.variables(db) {
-            // Specialized copy: interface param → pointer to the concrete
-            // implementer's struct (see the FB-method site).
-            if let Some(inst) = spec
-                && let Some(concrete) = inst.iface_subs.get(&var.name(db))
-            {
-                let ty = lower_type(db, Type::new_pou(db, *concrete))?;
-                let param = MirParam {
-                    name: var.name(db),
-                    ty: MirType::Pointer(Box::new(ty)),
-                    kind: MirParamKind::InOut,
-                };
+            if let Some(param) = param_for_var(db, var, spec.map(|i| &i.iface_subs))? {
                 next_local_idx += param_wasm_width(&param.ty, param.kind);
                 params.push(param);
-                continue;
-            }
-            match var.kind(db) {
-                VariableKind::Input => {
-                    let ty = input_param_type(lower_var_type(db, *var)?);
-                    let param = MirParam {
-                        name: var.name(db),
-                        ty,
-                        kind: MirParamKind::Input,
-                    };
-                    next_local_idx += param_wasm_width(&param.ty, param.kind);
-                    params.push(param);
-                }
-                VariableKind::InOut => {
-                    let ty = lower_var_type(db, *var)?;
-                    let param = MirParam {
-                        name: var.name(db),
-                        ty: MirType::Pointer(Box::new(ty)),
-                        kind: MirParamKind::InOut,
-                    };
-                    next_local_idx += param_wasm_width(&param.ty, param.kind);
-                    params.push(param);
-                }
-                _ => {
+            } else {
                     let ty = lower_var_type(db, *var)?;
                     let storage = allocate_local_storage(
                         var.name(db),
@@ -801,7 +693,6 @@ fn lower_class_inner<'db>(
                         // FB/class method local — stateless per call.
                         var_storage: MirVariableStorage::Automatic,
                     });
-                }
             }
         }
 
@@ -881,7 +772,6 @@ fn lower_class_inner<'db>(
             is_test: false,
             export_name: None,
         });
-        idx += 1;
     }
 
     Ok(functions)
@@ -976,6 +866,51 @@ fn lower_program_inner<'db>(
         export_name: None,
     };
     Ok((func, prog_type))
+}
+
+/// The wasm-level parameter a declared variable becomes, or `None` when it is
+/// not part of the calling convention (a plain local, temp, ...).
+///
+/// The ONE encoding of the convention — free functions, FB methods and class
+/// methods all build their signatures from it. Input passes by value,
+/// `VAR_IN_OUT`/`VAR_OUTPUT` by pointer, and a specialized interface param
+/// becomes a pointer to the concrete implementer's instance. Three copies of
+/// this match had drifted: the method ones dropped `VAR_OUTPUT` into the
+/// local arm while the call site passed a pointer for it — one value too many
+/// on the wasm stack, from code `rk check` called clean.
+fn param_for_var<'db>(
+    db: &'db dyn WorkspaceDataBase,
+    var: &hir::hir_def::pous::variable::VariableDecl<'db>,
+    iface_subs: Option<
+        &FxHashMap<hir::hir_def::interned::identifier::Ident, hir::hir_def::pous::pou::Pou<'db>>,
+    >,
+) -> Result<Option<MirParam>, LowerTypeError> {
+    if let Some(concrete) = iface_subs.and_then(|m| m.get(&var.name(db))) {
+        let ty = lower_type(db, hir::hir_ty::ty::Type::new_pou(db, *concrete))?;
+        return Ok(Some(MirParam {
+            name: var.name(db),
+            ty: MirType::Pointer(Box::new(ty)),
+            kind: MirParamKind::InOut,
+        }));
+    }
+
+    Ok(match var.kind(db) {
+        VariableKind::Input => Some(MirParam {
+            name: var.name(db),
+            ty: input_param_type(lower_var_type(db, *var)?),
+            kind: MirParamKind::Input,
+        }),
+        VariableKind::InOut | VariableKind::Output => Some(MirParam {
+            name: var.name(db),
+            ty: MirType::Pointer(Box::new(lower_var_type(db, *var)?)),
+            kind: if var.kind(db) == VariableKind::InOut {
+                MirParamKind::InOut
+            } else {
+                MirParamKind::Output
+            },
+        }),
+        _ => None,
+    })
 }
 
 /// Number of wasm i32 locals a parameter consumes in the signature; must

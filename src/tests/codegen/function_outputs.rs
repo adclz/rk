@@ -287,3 +287,126 @@ fn discarded_array_output(mut with_db: db::RootDatabase) {
     let result: i32 = super::execute_wasm(&wasm, "test", ());
     assert_eq!(result, 8, "discarded array output: call works, returns 8");
 }
+
+/// A METHOD's `VAR_OUTPUT` rides the same convention as a FUNCTION's: a
+/// pointer param the callee writes through. The method signature blocks had
+/// drifted from the function one and made the output a plain local — the
+/// call still pushed a pointer for it, one value too many on the wasm stack,
+/// so the whole module failed validation.
+#[rstest]
+fn bound_method_output(mut with_db: db::RootDatabase) {
+    let source = r#"
+        FUNCTION_BLOCK Worker
+            METHOD PUBLIC Split : INT
+            VAR_OUTPUT rem : INT; END_VAR
+                rem := 3;
+                Split := 10;
+            END_METHOD
+        END_FUNCTION_BLOCK
+        FUNCTION test : INT
+        VAR w : Worker; q : INT; r : INT; END_VAR
+            q := w.Split(rem => r);
+            test := q * 100 + r;
+        END_FUNCTION
+    "#;
+    let wasm = compile_to_wasm_checked(&mut with_db, source);
+    let result: i32 = super::execute_wasm(&wasm, "test", ());
+    assert_eq!(result, 1003, "return 10, rem 3, both through the call");
+}
+
+/// The same method with its output DISCARDED: the signature still has the
+/// pointer param, so the call feeds it a scratch.
+#[rstest]
+fn discarded_method_output(mut with_db: db::RootDatabase) {
+    let source = r#"
+        FUNCTION_BLOCK Worker
+            METHOD PUBLIC Split : INT
+            VAR_OUTPUT rem : INT; END_VAR
+                rem := 3;
+                Split := 10;
+            END_METHOD
+        END_FUNCTION_BLOCK
+        FUNCTION test : INT
+        VAR w : Worker; END_VAR
+            test := w.Split();
+        END_FUNCTION
+    "#;
+    let wasm = compile_to_wasm_checked(&mut with_db, source);
+    let result: i32 = super::execute_wasm(&wasm, "test", ());
+    assert_eq!(result, 10, "the discarded output landed in a scratch");
+}
+
+/// Each call site's discarded-output scratch is its own: the callee reads its
+/// output before writing (0 + 1 both times), so a shared scratch would give
+/// 12. The FIRST execution of a site reads 0; what a later execution of the
+/// SAME site reads is deliberately not pinned here.
+#[rstest]
+fn discarded_scratch_is_per_call_site(mut with_db: db::RootDatabase) {
+    let source = r#"
+        FUNCTION g : INT
+        VAR_OUTPUT o : INT; END_VAR
+            o := o + 1;
+            g := o;
+        END_FUNCTION
+        FUNCTION test : INT
+            test := g() * 10 + g();
+        END_FUNCTION
+    "#;
+    let wasm = compile_to_wasm_checked(&mut with_db, source);
+    let result: i32 = super::execute_wasm(&wasm, "test", ());
+    assert_eq!(result, 11, "two sites, two scratches, both initially zero");
+}
+
+/// The `cap` half of a STRING output's (addr, cap) pair is what bounds the
+/// callee's write: the callee has no idea the caller's buffer is 4 wide.
+/// A 10-byte value lands as its first 4 bytes, len clamped to match.
+#[rstest]
+fn bound_string_output_truncates_to_capacity(mut with_db: db::RootDatabase) {
+    use runtime::{Config, Plc};
+    let source = r#"
+        FUNCTION name_it : INT
+        VAR_OUTPUT label : STRING; END_VAR
+            label := 'fn-out-str';
+            name_it := 0;
+        END_FUNCTION
+        PROGRAM P
+        VAR RETAIN r : STRING[4]; END_VAR
+            name_it(label => r);
+        END_PROGRAM
+        CONFIGURATION Cfg
+            RESOURCE Res ON CPU
+                TASK T(INTERVAL := T#10ms, PRIORITY := 1);
+                PROGRAM P1 WITH T : P;
+            END_RESOURCE
+        END_CONFIGURATION
+    "#;
+    let (_mir, wasm) = crate::tests::codegen::compile_to_mir_and_wasm(&mut with_db, source);
+    let mut plc = Plc::load(&wasm, Config::default()).expect("load");
+    plc.run(1).expect("scan");
+    let r = plc.read_retain();
+    let len = i32::from_le_bytes(r[0..4].try_into().unwrap()) as usize;
+    assert_eq!(len, 4, "len clamped to the caller's capacity");
+    assert_eq!(&r[4..8], b"fn-o", "the write stopped at the boundary");
+}
+
+/// A discarded-output call nested inside another call's argument: two live
+/// scratches at once. The callee reads its output before writing, so if the
+/// inner call's scratch aliased the outer's, the outer would read 5 and
+/// return 10.
+#[rstest]
+fn discarded_output_nested_call(mut with_db: db::RootDatabase) {
+    let source = r#"
+        FUNCTION g : INT
+        VAR_INPUT a : INT; END_VAR
+        VAR_OUTPUT o : INT; END_VAR
+            o := o + a;
+            g := o;
+        END_FUNCTION
+        FUNCTION test : INT
+            test := g(a := g(a := 5));
+        END_FUNCTION
+    "#;
+    let wasm = compile_to_wasm_checked(&mut with_db, source);
+    let result: i32 = super::execute_wasm(&wasm, "test", ());
+    assert_eq!(result, 5, "each nested call kept its own scratch");
+}
