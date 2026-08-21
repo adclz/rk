@@ -277,17 +277,18 @@ pub fn enum_variant_values<'db>(
     db: &'db dyn WorkspaceDataBase,
     enum_type: hir::hir_def::expressions::spec::Enum<'db>,
 ) -> Result<Vec<(hir::hir_def::expressions::spec::EnumVariant<'db>, i64)>, LowerTypeError> {
-    let mut out = Vec::new();
-    let mut next: i64 = 0;
-    for variant in enum_type.variants(db).iter() {
-        let value = match variant.value {
-            Some(expr) => extract_integer_literal(db, expr)?,
-            None => next,
-        };
-        out.push((*variant, value));
-        next = value + 1;
-    }
-    Ok(out)
+    // The ordinals inference evaluated; a declared value that does not fold
+    // is E0704 at the declaration, so `None` cannot arrive from checked code.
+    hir::hir_ty::infer::const_eval::enum_ordinals(db, enum_type)
+        .into_iter()
+        .map(|(variant, value)| {
+            value.map(|v| (variant, v)).ok_or_else(|| {
+                LowerTypeError::UnsupportedType(
+                    "enum variant value was not folded to a constant".to_string(),
+                )
+            })
+        })
+        .collect()
 }
 
 /// The storage lane of an enum: its declared base type, DInt by default.

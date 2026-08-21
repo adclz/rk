@@ -17,6 +17,20 @@ use crate::{
 
 impl<'db> InitInference<'db> {
     pub(crate) fn check_enum(&mut self, db: &'db dyn WorkspaceDataBase, enm: Enum<'db>) {
+        // Every declared value must fold: the ordinal an enum literal lowers
+        // to is read from this evaluation, so a value only the runtime knows
+        // has no ordinal to give.
+        for (variant, ordinal) in crate::hir_ty::infer::const_eval::enum_ordinals(db, enm) {
+            if ordinal.is_none()
+                && let Some(value) = variant.value
+            {
+                self.body_infer_result.errors.push(
+                    crate::check::errors::e7_enum::EnumError::EnumValueNotConstant { value }
+                        .to_diagnostic(db, self.body_infer_result.scope.file(db)),
+                );
+            }
+        }
+
         if let Some(spec) = enm.typ(db) {
             let typ = spec.infer(db);
 

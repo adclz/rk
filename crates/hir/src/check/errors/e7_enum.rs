@@ -7,7 +7,7 @@ use crate::{
     check::errors::ToIdeDiagnostic,
     hir_def::{
         expressions::{
-            expression::BeginPathExpr,
+            expression::{BeginPathExpr, Expr},
             spec::{Enum, Spec},
         },
         interned::identifier::SpanIdent,
@@ -30,6 +30,9 @@ pub enum EnumError<'db> {
         enum_: Enum<'db>,
         variant_name: SpanIdent<'db>,
     },
+    EnumValueNotConstant {
+        value: Expr<'db>,
+    },
 }
 
 impl<'db> ErrorCode for EnumError<'db> {
@@ -38,12 +41,14 @@ impl<'db> ErrorCode for EnumError<'db> {
             Self::InvalidEnumType { .. } => "E0701",
             Self::NotAnEnum { .. } => "E0702",
             Self::EnumVariantNotFound { .. } => "E0703",
+            Self::EnumValueNotConstant { .. } => "E0704",
         }
     }
 
     fn description(&self) -> &'static str {
         match self {
             Self::InvalidEnumType { .. } => "invalid enum type",
+            Self::EnumValueNotConstant { .. } => "invalid enum value",
             _ => "invalid enum access",
         }
     }
@@ -72,6 +77,15 @@ impl<'db> ToIdeDiagnostic<'db> for EnumError<'db> {
                 .message(format!("'{}' is not an ENUM type", item.type_name(db)))
                 .range(crate::denormalize(db, file, &expr.get_span(db)).unwrap_or_default())
                 .desc(self)
+                .call(),
+            Self::EnumValueNotConstant { value } => diag()
+                .message(
+                    "an enum variant value must evaluate to a constant at compile time"
+                        .to_string(),
+                )
+                .severity(DiagnosticSeverity::ERROR)
+                .desc(self)
+                .range(crate::denormalize(db, file, &value.get_span(db)).unwrap_or_default())
                 .call(),
             Self::EnumVariantNotFound {
                 enum_,

@@ -296,3 +296,23 @@ fn wide_enum_compares_and_matches_at_its_lane(mut with_db: db::RootDatabase) {
     let result: i32 = super::execute_wasm(&wasm, "test", ());
     assert_eq!(result, 112, "equality 100 + Big 10 + Bigger 2");
 }
+
+/// A folding variant value drives the ordinals: Idle := 1 + 1 is 2, Run
+/// follows at 3. This shape used to abort lowering after a clean check.
+#[rstest]
+fn enum_value_folding_expression_runs(mut with_db: db::RootDatabase) {
+    let source = r#"
+        TYPE Mode : (Idle := 1 + 1, Run) END_TYPE
+        FUNCTION test : DINT
+        VAR m : Mode; END_VAR
+            m := Mode#Run;
+            test := 0;
+            IF m = Mode#Run THEN
+                test := 3;
+            END_IF;
+        END_FUNCTION
+    "#;
+    let wasm = compile_to_wasm_checked(&mut with_db, source);
+    let r: i32 = super::execute_wasm(&wasm, "test", ());
+    assert_eq!(r, 3, "Run's ordinal follows the folded 2");
+}

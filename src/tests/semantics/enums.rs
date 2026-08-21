@@ -166,3 +166,37 @@ fn invalid_foreign_enum_variant_case_label(mut with_db: RootDatabase) {
     ---'
     ");
 }
+
+// A declared variant value folds through the same evaluator as CASE labels
+// and FOR steps: `1 + 1` is a constant. It used to pass the check and abort
+// MIR, which only read bare literals.
+#[rstest]
+fn valid_enum_value_folding_expression(mut with_db: RootDatabase) {
+    let source = r#"
+        TYPE Mode : (Idle := 1 + 1, Run) END_TYPE
+        FUNCTION fn1 : INT
+        VAR m : Mode; END_VAR
+            m := Mode#Run;
+        END_FUNCTION
+    "#;
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"");
+}
+
+#[rstest]
+fn invalid_enum_value_not_constant(mut with_db: RootDatabase) {
+    let source = r#"
+        FUNCTION fn1 : INT
+        VAR x : INT; END_VAR
+        END_FUNCTION
+        TYPE Mode : (Idle := fn1(), Run) END_TYPE
+    "#;
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
+    [E0704] Error: invalid enum value
+       ,-[ file:///test0.st:5:30 ]
+       |
+     5 |         TYPE Mode : (Idle := fn1(), Run) END_TYPE
+       |                              ^^|^^
+       |                                `---- an enum variant value must evaluate to a constant at compile time
+    ---'
+    ");
+}

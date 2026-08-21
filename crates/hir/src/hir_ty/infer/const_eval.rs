@@ -28,6 +28,8 @@ use crate::{
     },
     hir_ty::{body::BodyInferenceResult, ty::Type},
 };
+use crate::HirNodeInfo;
+use crate::hir_ty::body::infer_body;
 
 /// The expression a `CONSTANT` declaration is fixed to, if it is one.
 ///
@@ -104,4 +106,28 @@ pub fn const_int<'db>(
         }
         _ => None,
     }
+}
+
+/// Each variant of an enum with its ordinal: the declared value where one is
+/// written, the previous ordinal plus one where not. `None` marks a declared
+/// value that does not fold — the declaration check refuses it (E0704), so a
+/// consumer reading ordinals afterwards may treat `None` as unreachable.
+pub fn enum_ordinals<'db>(
+    db: &'db dyn WorkspaceDataBase,
+    enm: crate::hir_def::expressions::spec::Enum<'db>,
+) -> Vec<(crate::hir_def::expressions::spec::EnumVariant<'db>, Option<i64>)> {
+
+    let mut out = Vec::new();
+    let mut next: i64 = 0;
+    for variant in enm.variants(db).iter() {
+        let value = match variant.value {
+            Some(expr) => const_int(db, expr, infer_body(db, expr.get_scope_id(db))),
+            None => Some(next),
+        };
+        if let Some(v) = value {
+            next = v.wrapping_add(1);
+        }
+        out.push((*variant, value));
+    }
+    out
 }
