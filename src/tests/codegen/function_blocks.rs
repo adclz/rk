@@ -1,6 +1,6 @@
 //! Function Block execution tests.
 
-use crate::tests::codegen::{compile_to_wasm, with_db};
+use crate::tests::codegen::{compile_to_wasm, compile_to_wasm_checked, with_db};
 use rstest::*;
 
 #[rstest]
@@ -1582,4 +1582,32 @@ fn test_output_binding_widens_with_sign(mut with_db: db::RootDatabase) {
     let wasm = compile_to_wasm(&mut with_db, source);
     let result: i32 = super::execute_wasm(&wasm, "test", ());
     assert_eq!(result, -7, "the INT output sign-extends into the DINT destination");
+}
+
+/// FB inputs evaluate in DECLARATION order too — the FUNCTION twin is
+/// test_args_evaluate_in_declaration_order. The FB path used to iterate the
+/// call-site assigns, so written order decided when each input expression
+/// ran.
+#[rstest]
+fn test_fb_inputs_evaluate_in_declaration_order(mut with_db: db::RootDatabase) {
+    let source = r#"
+        FUNCTION bump : INT
+        VAR_IN_OUT c : INT; END_VAR
+            c := c + 1;
+            bump := c;
+        END_FUNCTION
+        FUNCTION_BLOCK F
+        VAR_INPUT a : INT; b : INT; END_VAR
+        VAR_OUTPUT o : INT; END_VAR
+            o := a * 10 + b;
+        END_FUNCTION_BLOCK
+        FUNCTION test : INT
+        VAR f : F; n : INT; r : INT; END_VAR
+            f(b := bump(c := n), a := bump(c := n), o => r);
+            test := r;
+        END_FUNCTION
+    "#;
+    let wasm = compile_to_wasm_checked(&mut with_db, source);
+    let result: i32 = super::execute_wasm(&wasm, "test", ());
+    assert_eq!(result, 12, "a's expression ran first: a = 1, b = 2");
 }

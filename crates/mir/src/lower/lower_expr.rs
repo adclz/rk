@@ -3,8 +3,8 @@ use hir::{
     hir_def::expressions::{
         expression::{
             AddOperatorKind, BooleanOperatorKind, ComparisonOperatorKind, Elementary, Expr,
-            ExprKind, MultOperatorKind, ParamAssignKind, PathExprKind, PrimaryExpr,
-            RefValue, UnaryOperatorKind, VarAccess, VariableAccess, VariableAccessKind,
+            ExprKind, MultOperatorKind, ParamAssignKind, PathExprKind, PrimaryExpr, RefValue,
+            UnaryOperatorKind, VarAccess, VariableAccess, VariableAccessKind,
         },
         invocation::InvocationKind,
         spec::ElementarySpec,
@@ -1290,9 +1290,7 @@ impl<'db> ExprLowerCtx<'db> {
                 let name = proto.get_name_ident(self.db);
                 // Which method implements a prototype is HIR's conformance answer;
                 // devirtualizing to it is MIR's.
-                match hir::hir_ty::head::inheritance::implementing_method(
-                    self.db, concrete, name,
-                ) {
+                match hir::hir_ty::head::inheritance::implementing_method(self.db, concrete, name) {
                     Some(d) => d,
                     None => {
                         return Err(LowerTypeError::UnsupportedType(format!(
@@ -1488,9 +1486,7 @@ impl<'db> ExprLowerCtx<'db> {
 
         // With outputs popping after the call, a declared return value needs
         // somewhere to wait: it is LAST on the stack, so it pops FIRST.
-        let extern_ret_scratch = if !extern_results.is_empty()
-            && mir_return_type != MirType::Void
-        {
+        let extern_ret_scratch = if !extern_results.is_empty() && mir_return_type != MirType::Void {
             let name = hir::hir_def::interned::identifier::Ident::new(
                 self.db,
                 compact_str::CompactString::from(format!(
@@ -1548,20 +1544,18 @@ impl<'db> ExprLowerCtx<'db> {
                 if { use hir::HasPragmas; f.extern_pragma(self.db).is_some() }
         );
 
+        // The plan resolution assembled: declared parameters in order, each with
+        // its binding. Only the ABI decisions are MIR's.
         let path = func_call.path(self.db);
-        let body = hir::hir_ty::body::infer_body(self.db, path.scope_id(self.db));
-
-        // Declared param → the call-site assigns bound to it, in call order
-        // (a variadic param collects several).
-        let mut assigns_of_var: rustc_hash::FxHashMap<
-            hir::hir_def::pous::variable::VariableDecl<'db>,
-            Vec<hir::hir_def::expressions::expression::ParamAssign<'db>>,
-        > = rustc_hash::FxHashMap::default();
-        for pa in func_call.params(self.db) {
-            if let Some(var) = body.variable_of_param.get(pa) {
-                assigns_of_var.entry(*var).or_default().push(*pa);
-            }
-        }
+        let record = hir::hir_ty::body::infer_body(self.db, path.scope_id(self.db))
+            .resolved_calls
+            .get(&func_call)
+            .cloned()
+            .ok_or_else(|| {
+                LowerTypeError::UnsupportedType(
+                    "call was lowered without a resolved plan".to_string(),
+                )
+            })?;
 
         // Only FUNCTION/METHOD calls synthesize args for omitted params; an FB
         // call leaves the instance field untouched.
@@ -1590,7 +1584,7 @@ impl<'db> ExprLowerCtx<'db> {
             }
         };
 
-        for var in callable.def_map(self.db).local_variables.values() {
+        for (var, binding) in &record.params {
             // An interface value is a reference, so an interface-typed param passes
             // the address whatever its kind.
             let by_ref = matches!(
@@ -1598,76 +1592,10 @@ impl<'db> ExprLowerCtx<'db> {
                 VariableKind::InOut | VariableKind::Output
             ) || crate::lower::mono_iface::is_interface_param(self.db, var);
 
-            let Some(assigns) = assigns_of_var.get(var) else {
-                // Omitted at the call site. Zero variadic args is valid; an
-                // omitted FB input has instance storage; FUNCTION/METHOD
-                // inputs fall back to their constant default (E0233 rejects
-                // the rest); a discarded FUNCTION/METHOD output still needs a
-                // pointer arg — synthesized below. Aggregate defaults stay
-                // unsupported.
-                if fills_defaults && !var.variadic(self.db) {
-                    match var.kind(self.db) {
-                        VariableKind::Input => {
-                            // What an omitted input receives was decided by
-                            // inference when it allowed the omission, and
-                            // recorded per call. Absent here means HIR
-                            // required the argument — skipping instead would
-                            // shift every positional argument after it.
-                            let expr = body
-                                .omitted_param_defaults
-                                .get(&func_call)
-                                .and_then(|d| d.iter().find(|(v, _)| v == var))
-                                .map(|(_, e)| *e)
-                                .ok_or_else(|| {
-                                    LowerTypeError::UnsupportedType(format!(
-                                        "input '{}' was omitted but has no recorded default",
-                                        var.name(self.db).text(self.db)
-                                    ))
-                                })?;
-                            args.push(MirCallArg {
-                                value: self.lower_expr(expr)?,
-                                kind: MirArgKind::ByValue,
-                            });
-                        }
-                        VariableKind::Output if is_extern => {
-                            // A discarded extern output still pops off the stack: a scratch, no
-                            // destination.
-                            let ty = crate::lower::lower_func::lower_var_type(self.db, *var)?;
-                            let scratch = self.extern_result_scratch(ty.clone());
-                            extern_results.push(crate::expr::ExternResultBind {
-                                scratch,
-                                dest: None,
-                                ty,
-                            });
-                        }
-                        VariableKind::Output => {
-                            // A discarded VAR_OUTPUT still needs a pointer param: point
-                            // it at a throwaway memory-forced scratch (a STRING scratch
-                            // gets a real buffer).
-                            let ty = crate::lower::lower_func::lower_var_type(self.db, *var)?;
-                            let name = hir::hir_def::interned::identifier::Ident::new(
-                                self.db,
-                                compact_str::CompactString::from(format!(
-                                    "$discard${}",
-                                    self.call_scratch.borrow().memory.len()
-                                )),
-                            );
-                            self.call_scratch.borrow_mut().memory.push((name, ty));
-                            args.push(MirCallArg {
-                                value: MirExpr::AddrOf(MirPlace::Local(name)),
-                                kind: MirArgKind::ByRef,
-                            });
-                        }
-                        _ => {}
-                    }
-                }
-                continue;
-            };
-
-            for pa in assigns {
-                match pa.kind(self.db) {
-                    ParamAssignKind::NonFormal { value }
-                    | ParamAssignKind::FormalInput { value, .. } => {
+            match binding {
+                hir::hir_ty::body::ParamBinding::Values(values) => {
+                    for value in values {
+                        let value = *value;
                         let lowered = self.lower_expr(value)?;
                         if by_ref {
                             args.push(to_byref(lowered)?);
@@ -1724,42 +1652,97 @@ impl<'db> ExprLowerCtx<'db> {
                         // clean. Non-scalar params (STRING, aggregates,
                         // unresolved ANY_*) have no scalar lane to cast to and
                         // keep the raw value.
-                        let value = match self.coercion_lane(value, || {
-                            var.spec(self.db).infer(self.db)
-                        }) {
-                            Ok(param_elem) => match self.expr_to_mir_elementary(value) {
-                                Ok(arg_elem) if arg_elem != param_elem => MirExpr::Cast {
-                                    expr: Box::new(lowered),
-                                    from: arg_elem,
-                                    to: param_elem,
+                        let value =
+                            match self.coercion_lane(value, || var.spec(self.db).infer(self.db)) {
+                                Ok(param_elem) => match self.expr_to_mir_elementary(value) {
+                                    Ok(arg_elem) if arg_elem != param_elem => MirExpr::Cast {
+                                        expr: Box::new(lowered),
+                                        from: arg_elem,
+                                        to: param_elem,
+                                    },
+                                    _ => lowered,
                                 },
-                                _ => lowered,
-                            },
-                            Err(_) => lowered,
-                        };
+                                Err(_) => lowered,
+                            };
                         args.push(MirCallArg {
                             value,
                             kind: MirArgKind::ByValue,
                         });
                     }
-                    ParamAssignKind::FormalOutput { variable, .. } => {
-                        let place = self.lower_variable_access(variable)?;
-                        if is_extern {
-                            // The result pops off the stack into a scratch,
-                            // then stores to the bound place — no pointer arg.
+                }
+                hir::hir_ty::body::ParamBinding::Output(variable) => {
+                    let place = self.lower_variable_access(*variable)?;
+                    if is_extern {
+                        // The result pops off the stack into a scratch,
+                        // then stores to the bound place — no pointer arg.
+                        let ty = crate::lower::lower_func::lower_var_type(self.db, *var)?;
+                        let scratch = self.extern_result_scratch(ty.clone());
+                        extern_results.push(crate::expr::ExternResultBind {
+                            scratch,
+                            dest: Some(place),
+                            ty,
+                        });
+                    } else {
+                        args.push(MirCallArg {
+                            value: MirExpr::AddrOf(place),
+                            kind: MirArgKind::ByRef,
+                        });
+                    }
+                }
+                hir::hir_ty::body::ParamBinding::Default(expr) => {
+                    if fills_defaults {
+                        args.push(MirCallArg {
+                            value: self.lower_expr(*expr)?,
+                            kind: MirArgKind::ByValue,
+                        });
+                    }
+                }
+                hir::hir_ty::body::ParamBinding::Omitted => {
+                    // Zero variadic args is valid; an omitted FB input has
+                    // instance storage; a discarded FUNCTION/METHOD output
+                    // still needs a pointer arg — synthesized here.
+                    if !fills_defaults || var.variadic(self.db) {
+                        continue;
+                    }
+                    match var.kind(self.db) {
+                        VariableKind::Output if is_extern => {
+                            // A discarded extern output still pops off the stack: a scratch, no
+                            // destination.
                             let ty = crate::lower::lower_func::lower_var_type(self.db, *var)?;
                             let scratch = self.extern_result_scratch(ty.clone());
                             extern_results.push(crate::expr::ExternResultBind {
                                 scratch,
-                                dest: Some(place),
+                                dest: None,
                                 ty,
                             });
-                        } else {
+                        }
+                        VariableKind::Output => {
+                            // A discarded VAR_OUTPUT still needs a pointer param: point
+                            // it at a throwaway memory-forced scratch (a STRING scratch
+                            // gets a real buffer).
+                            let ty = crate::lower::lower_func::lower_var_type(self.db, *var)?;
+                            let name = hir::hir_def::interned::identifier::Ident::new(
+                                self.db,
+                                compact_str::CompactString::from(format!(
+                                    "$discard${}",
+                                    self.call_scratch.borrow().memory.len()
+                                )),
+                            );
+                            self.call_scratch.borrow_mut().memory.push((name, ty));
                             args.push(MirCallArg {
-                                value: MirExpr::AddrOf(place),
+                                value: MirExpr::AddrOf(MirPlace::Local(name)),
                                 kind: MirArgKind::ByRef,
                             });
                         }
+                        VariableKind::Input => {
+                            // A required input with nothing bound: HIR reported it; do not shift
+                            // the arguments after it.
+                            return Err(LowerTypeError::UnsupportedType(format!(
+                                "input '{}' was omitted with nothing to pass",
+                                var.name(self.db).text(self.db)
+                            )));
+                        }
+                        _ => {}
                     }
                 }
             }
@@ -1811,95 +1794,106 @@ impl<'db> ExprLowerCtx<'db> {
             }
         };
 
-        // Build input writes from the call arguments. Each call-site param is
-        // matched to its declared variable through HIR's `variable_of_param` —
-        // the authoritative matching, which handles positional args mixed with
-        // named ones (a positional arg binds to the first input not claimed by
-        // name, regardless of call order).
+        // Input writes and output reads from the plan resolution assembled, in
+        // declaration order (the pinned evaluation order).
         let mut input_writes = Vec::new();
         let mut output_reads = Vec::new();
 
-        let body = hir::hir_ty::body::infer_body(self.db, path.scope_id(self.db));
+        let record = hir::hir_ty::body::infer_body(self.db, path.scope_id(self.db))
+            .resolved_calls
+            .get(&func_call)
+            .cloned()
+            .ok_or_else(|| {
+                LowerTypeError::UnsupportedType(
+                    "FB call was lowered without a resolved plan".to_string(),
+                )
+            })?;
 
-        for param in func_call.params(self.db) {
-            let Some(var) = body.variable_of_param.get(param) else {
-                continue; // unmatched param - error already reported by HIR
-            };
+        for (var, binding) in &record.params {
             let var_name = var.name(self.db);
-            match param.kind(self.db) {
-                ParamAssignKind::FormalInput { value, .. }
-                | ParamAssignKind::NonFormal { value } => {
-                    // HIR matched the param to a declared variable, so the field must exist
-                    // in the layout; a miss is HIR and MIR disagreeing.
-                    let Some(field) = struct_type.fields.iter().find(|f| f.name == var_name) else {
-                        return Err(LowerTypeError::UnsupportedType(format!(
-                            "input '{}' has no field in the emitted FB layout",
-                            var_name.text(self.db)
-                        )));
-                    };
-                    // VAR_IN_OUT is by-reference: the instance field is
-                    // a pointer. Store the address of the caller's l-value ONCE
-                    // before the body — the body reads/writes through it, so
-                    // there is no value copy-in and (unlike a C-emitting compiler) no copy-out.
-                    if field.by_ref {
-                        // Must be an l-value (`Load(place, _)`) to take its
-                        // address — E0234 rejects everything else upstream,
-                        // including partial accesses (`b.%X1`), which lower to
-                        // a shifted read. Anything else here used to be
-                        // silently SKIPPED: the pointer field kept its stale
-                        // value and the body wrote through it.
-                        match self.lower_expr(value)? {
-                            MirExpr::Load(place, _) => {
-                                input_writes.push((
-                                    field.offset,
-                                    MirExpr::AddrOf(place),
-                                    field.ty.clone(),
-                                ));
-                            }
-                            other => {
-                                return Err(LowerTypeError::UnsupportedType(format!(
-                                    "a VAR_IN_OUT argument needs an address; this one \
+            match binding {
+                hir::hir_ty::body::ParamBinding::Default(_)
+                | hir::hir_ty::body::ParamBinding::Omitted => {}
+                hir::hir_ty::body::ParamBinding::Values(values) => {
+                    for value in values {
+                        let value = *value;
+                        // HIR matched the param to a declared variable, so the field must exist
+                        // in the layout; a miss is HIR and MIR disagreeing.
+                        let Some(field) = struct_type.fields.iter().find(|f| f.name == var_name)
+                        else {
+                            return Err(LowerTypeError::UnsupportedType(format!(
+                                "input '{}' has no field in the emitted FB layout",
+                                var_name.text(self.db)
+                            )));
+                        };
+                        // VAR_IN_OUT is by-reference: the instance field is
+                        // a pointer. Store the address of the caller's l-value ONCE
+                        // before the body — the body reads/writes through it, so
+                        // there is no value copy-in and (unlike a C-emitting compiler) no copy-out.
+                        if field.by_ref {
+                            // Must be an l-value (`Load(place, _)`) to take its
+                            // address — E0234 rejects everything else upstream,
+                            // including partial accesses (`b.%X1`), which lower to
+                            // a shifted read. Anything else here used to be
+                            // silently SKIPPED: the pointer field kept its stale
+                            // value and the body wrote through it.
+                            match self.lower_expr(value)? {
+                                MirExpr::Load(place, _) => {
+                                    input_writes.push((
+                                        field.offset,
+                                        MirExpr::AddrOf(place),
+                                        field.ty.clone(),
+                                    ));
+                                }
+                                other => {
+                                    return Err(LowerTypeError::UnsupportedType(format!(
+                                        "a VAR_IN_OUT argument needs an address; this one \
                                      lowered to {other:?}"
-                                )));
+                                    )));
+                                }
                             }
+                            continue;
                         }
-                        continue;
-                    }
-                    // Plain VAR_INPUT: scalars and STRINGs carry the value, aggregates carry
-                    // the source address for a `memory.copy`.
-                    let expr = self.lower_expr(value)?;
-                    let expr = match &field.ty {
-                        MirType::Struct(_) | MirType::Array(_) => match expr {
-                            MirExpr::Load(place, _) => MirExpr::AddrOf(place),
-                            // An aggregate-returning call yields the source address itself.
-                            call @ MirExpr::Call(_) => call,
-                            // Not an l-value, not a call: no address to copy from.
-                            _ => {
-                                return Err(LowerTypeError::UnsupportedType(
-                                    "aggregate VAR_INPUT argument must be a variable \
+                        // Plain VAR_INPUT: scalars and STRINGs carry the value, aggregates carry
+                        // the source address for a `memory.copy`.
+                        let expr = self.lower_expr(value)?;
+                        let expr = match &field.ty {
+                            MirType::Struct(_) | MirType::Array(_) => match expr {
+                                MirExpr::Load(place, _) => MirExpr::AddrOf(place),
+                                // An aggregate-returning call yields the source address itself.
+                                call @ MirExpr::Call(_) => call,
+                                // Not an l-value, not a call: no address to copy from.
+                                _ => {
+                                    return Err(LowerTypeError::UnsupportedType(
+                                        "aggregate VAR_INPUT argument must be a variable \
                                      or a call result"
-                                        .to_string(),
-                                ));
+                                            .to_string(),
+                                    ));
+                                }
+                            },
+                            // A scalar input converts to the lane inference accepted, falling back
+                            // to the field's own lane.
+                            MirType::Elementary(field_elem)
+                            | MirType::Subrange(crate::types::MirSubrangeType {
+                                base: field_elem,
+                                ..
+                            }) => {
+                                let lane = self.recorded_lane(value).unwrap_or(*field_elem);
+                                match self.expr_to_mir_elementary(value) {
+                                    Ok(arg_elem) if arg_elem != lane => MirExpr::Cast {
+                                        expr: Box::new(expr),
+                                        from: arg_elem,
+                                        to: lane,
+                                    },
+                                    _ => expr,
+                                }
                             }
-                        },
-                        // A scalar input converts to the lane inference accepted, falling back
-                        // to the field's own lane.
-                        MirType::Elementary(field_elem) | MirType::Subrange(crate::types::MirSubrangeType { base: field_elem, .. }) => {
-                            let lane = self.recorded_lane(value).unwrap_or(*field_elem);
-                            match self.expr_to_mir_elementary(value) {
-                                Ok(arg_elem) if arg_elem != lane => MirExpr::Cast {
-                                    expr: Box::new(expr),
-                                    from: arg_elem,
-                                    to: lane,
-                                },
-                                _ => expr,
-                            }
-                        }
-                        _ => expr,
-                    };
-                    input_writes.push((field.offset, expr, field.ty.clone()));
+                            _ => expr,
+                        };
+                        input_writes.push((field.offset, expr, field.ty.clone()));
+                    }
                 }
-                ParamAssignKind::FormalOutput { variable, .. } => {
+                hir::hir_ty::body::ParamBinding::Output(variable) => {
                     // Same contract as inputs: a layout miss is a divergence.
                     let Some(field) = struct_type.fields.iter().find(|f| f.name == var_name) else {
                         return Err(LowerTypeError::UnsupportedType(format!(
@@ -1907,7 +1901,7 @@ impl<'db> ExprLowerCtx<'db> {
                             var_name.text(self.db)
                         )));
                     };
-                    let place = self.lower_variable_access(variable)?;
+                    let place = self.lower_variable_access(*variable)?;
                     output_reads.push((field.offset, place, field.ty.clone()));
                 }
             }
@@ -2012,7 +2006,9 @@ impl<'db> ExprLowerCtx<'db> {
                     *expr,
                 )?))
             }
-            CaseKind::Expression(expr) => Ok(MirCasePattern::Value(self.case_label_constant(*expr)?)),
+            CaseKind::Expression(expr) => {
+                Ok(MirCasePattern::Value(self.case_label_constant(*expr)?))
+            }
             CaseKind::Subrange { lower, upper } => Ok(MirCasePattern::Range {
                 lower: self.case_label_constant(*lower)?,
                 upper: self.case_label_constant(*upper)?,

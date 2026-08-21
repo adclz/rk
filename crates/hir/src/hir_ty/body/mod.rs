@@ -199,9 +199,12 @@ pub struct BodyInferenceResult<'db> {
     // Mapping from parameter assignments to variables
     pub variable_of_param: FxHashMap<ParamAssign<'db>, VariableDecl<'db>>,
 
-    /// Per call, the defaulted inputs the site omitted, in declaration order,
-    /// each with the expression the callee receives for it
-    pub omitted_param_defaults: FxHashMap<FuncCall<'db>, Vec<(VariableDecl<'db>, Expr<'db>)>>,
+    /// The assembled plan for each call: the resolved callee and, per
+    /// declared parameter IN DECLARATION ORDER, what the call binds to it.
+    /// A consumer that assembles the call again from the raw assigns
+    /// re-decides matching, ordering and defaults — a mismatch is a
+    /// positional-argument shift in the emitted call.
+    pub resolved_calls: FxHashMap<FuncCall<'db>, ResolvedCall<'db>>,
 
     // For variadic parameters, stores the 1-based position index
     pub variadic_position: FxHashMap<ParamAssign<'db>, usize>,
@@ -323,7 +326,7 @@ impl<'db> BodyInferenceResult<'db> {
         Self {
             scope,
             variable_of_param: FxHashMap::default(),
-            omitted_param_defaults: FxHashMap::default(),
+            resolved_calls: FxHashMap::default(),
             variadic_position: FxHashMap::default(),
             type_of_direct_variable: FxHashMap::default(),
             type_of_invocation: FxHashMap::default(),
@@ -630,6 +633,32 @@ impl<'db> AdjustmentInfo<'db> for [Adjustment<'db>] {
             .take_while(|adj| matches!(adj.kind, Adjust::Index) && adj.target.eq(array_type))
             .count()
     }
+}
+
+/// The plan resolution assembled for one call — see
+/// [`BodyInferenceResult::resolved_calls`].
+#[derive(Debug, Clone, PartialEq, Eq, salsa::Update)]
+pub struct ResolvedCall<'db> {
+    pub callable: crate::hir_ty::ty::CallableType<'db>,
+    /// One entry per declared parameter (inputs, outputs, inouts), in the
+    /// callee's declaration order.
+    pub params: Vec<(VariableDecl<'db>, ParamBinding<'db>)>,
+}
+
+/// What a call site binds to one declared parameter.
+#[derive(Debug, Clone, PartialEq, Eq, salsa::Update)]
+pub enum ParamBinding<'db> {
+    /// Input value(s) the site supplied (`:=` or positional). A variadic
+    /// parameter collects several, in call order; anything else has one.
+    Values(Vec<Expr<'db>>),
+    /// `param => dest`.
+    Output(VariableAccess<'db>),
+    /// An omitted input, with the constant default that makes the omission
+    /// legal (FUNCTION/METHOD only).
+    Default(Expr<'db>),
+    /// Nothing bound: an FB input keeps its instance storage, a discarded
+    /// output receives whatever the ABI decides.
+    Omitted,
 }
 
 /// A CASE label's compile-time value, in the domain it belongs to.

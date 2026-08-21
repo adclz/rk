@@ -162,30 +162,64 @@ pub fn resolve_func_call<'db>(
         })
         .collect();
 
+    // What each call-site assign bound, grouped by declared parameter and
+    // kept in call order (a variadic collects several).
+    let mut bound: FxHashMap<VariableDecl<'db>, crate::hir_ty::body::ParamBinding<'db>> =
+        FxHashMap::default();
+    for m in &matches {
+        let (pa, var) = match m {
+            ParamMatch::Matched(pa, var) | ParamMatch::Variadic(pa, var, _) => (pa, var),
+            ParamMatch::Error => continue,
+        };
+        match pa.kind(db) {
+            ParamAssignKind::NonFormal { value } | ParamAssignKind::FormalInput { value, .. } => {
+                if let crate::hir_ty::body::ParamBinding::Values(vs) = bound
+                    .entry(*var)
+                    .or_insert_with(|| crate::hir_ty::body::ParamBinding::Values(Vec::new()))
+                {
+                    vs.push(value);
+                }
+            }
+            ParamAssignKind::FormalOutput { variable, .. } => {
+                bound.insert(*var, crate::hir_ty::body::ParamBinding::Output(variable));
+            }
+        }
+    }
+
     let mut missing: Vec<VariableDecl<'db>> = Vec::new();
+    let mut params: Vec<(VariableDecl<'db>, crate::hir_ty::body::ParamBinding<'db>)> = Vec::new();
     for (var_name, var) in &callable.def_map(db).local_variables {
+        if let Some(binding) = bound.remove(var) {
+            params.push((*var, binding));
+            continue;
+        }
         if matched_idents.contains(var_name) {
+            // Matched but not bound above: an erroneous duplicate — already
+            // reported; nothing coherent to record.
+            params.push((*var, crate::hir_ty::body::ParamBinding::Omitted));
             continue;
         }
-        if var.variadic(db) {
+        if !var.variadic(db) && is_param_required(db, callable, *var) {
             // Variadic params accept zero or more values — empty is valid.
-            continue;
-        }
-        if is_param_required(db, callable, *var) {
             missing.push(*var);
+            params.push((*var, crate::hir_ty::body::ParamBinding::Omitted));
         } else if var.is_input(db)
             && !matches!(callable, CallableType::FunctionBlock(_))
             && let Some(expr) = input_default(db, *var)
         {
-            // The omission is legal BECAUSE of this default, so record what
-            // the callee receives here, where that is decided. An omitted FB
-            // input keeps its instance storage instead.
-            ctx.omitted_param_defaults
-                .entry(func_call)
-                .or_default()
-                .push((*var, expr));
+            // The omission is legal BECAUSE of this default, so what the
+            // callee receives is recorded here, where that is decided. An
+            // omitted FB input keeps its instance storage instead.
+            params.push((*var, crate::hir_ty::body::ParamBinding::Default(expr)));
+        } else {
+            params.push((*var, crate::hir_ty::body::ParamBinding::Omitted));
         }
     }
+    ctx.resolved_calls.insert(
+        func_call,
+        crate::hir_ty::body::ResolvedCall { callable, params },
+    );
+
     if !missing.is_empty() {
         ctx.errors.push(
             ResolveError::MissingRequiredParameter {
