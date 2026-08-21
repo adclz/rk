@@ -3,7 +3,7 @@ use hir::{
     hir_def::expressions::{
         expression::{
             AddOperatorKind, BooleanOperatorKind, ComparisonOperatorKind, Elementary, Expr,
-            ExprKind, InitExprKind, MultOperatorKind, ParamAssignKind, PathExprKind, PrimaryExpr,
+            ExprKind, MultOperatorKind, ParamAssignKind, PathExprKind, PrimaryExpr,
             RefValue, UnaryOperatorKind, VarAccess, VariableAccess, VariableAccessKind,
         },
         invocation::InvocationKind,
@@ -1608,14 +1608,26 @@ impl<'db> ExprLowerCtx<'db> {
                 if fills_defaults && !var.variadic(self.db) {
                     match var.kind(self.db) {
                         VariableKind::Input => {
-                            if let Some(init) = var.init(self.db)
-                                && let InitExprKind::ConstantExpr(expr) = init.kind(self.db)
-                            {
-                                args.push(MirCallArg {
-                                    value: self.lower_expr(expr)?,
-                                    kind: MirArgKind::ByValue,
-                                });
-                            }
+                            // What an omitted input receives was decided by
+                            // inference when it allowed the omission, and
+                            // recorded per call. Absent here means HIR
+                            // required the argument — skipping instead would
+                            // shift every positional argument after it.
+                            let expr = body
+                                .omitted_param_defaults
+                                .get(&func_call)
+                                .and_then(|d| d.iter().find(|(v, _)| v == var))
+                                .map(|(_, e)| *e)
+                                .ok_or_else(|| {
+                                    LowerTypeError::UnsupportedType(format!(
+                                        "input '{}' was omitted but has no recorded default",
+                                        var.name(self.db).text(self.db)
+                                    ))
+                                })?;
+                            args.push(MirCallArg {
+                                value: self.lower_expr(expr)?,
+                                kind: MirArgKind::ByValue,
+                            });
                         }
                         VariableKind::Output if is_extern => {
                             // A discarded extern output still pops off the stack: a scratch, no

@@ -7,8 +7,8 @@ use crate::{
     hir_def::{
         expressions::{
             expression::{
-                BeginPathExpr, Expr, ExprKind, InitExprKind, ParamAssign, PathExpr, PrimaryExpr,
-                RefValue, VariableAccess, VariableAccessKind,
+                BeginPathExpr, Expr, ExprKind, FuncCall, InitExprKind, ParamAssign, PathExpr,
+                PrimaryExpr, RefValue, VariableAccess, VariableAccessKind,
             },
             invocation::Invocation,
             statement::Stmt,
@@ -199,6 +199,10 @@ pub struct BodyInferenceResult<'db> {
     // Mapping from parameter assignments to variables
     pub variable_of_param: FxHashMap<ParamAssign<'db>, VariableDecl<'db>>,
 
+    /// Per call, the defaulted inputs the site omitted, in declaration order,
+    /// each with the expression the callee receives for it
+    pub omitted_param_defaults: FxHashMap<FuncCall<'db>, Vec<(VariableDecl<'db>, Expr<'db>)>>,
+
     // For variadic parameters, stores the 1-based position index
     pub variadic_position: FxHashMap<ParamAssign<'db>, usize>,
 
@@ -308,6 +312,7 @@ impl<'db> BodyInferenceResult<'db> {
         Self {
             scope,
             variable_of_param: FxHashMap::default(),
+            omitted_param_defaults: FxHashMap::default(),
             variadic_position: FxHashMap::default(),
             type_of_direct_variable: FxHashMap::default(),
             type_of_invocation: FxHashMap::default(),

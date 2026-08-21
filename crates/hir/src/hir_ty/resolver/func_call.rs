@@ -168,6 +168,17 @@ pub fn resolve_func_call<'db>(
         }
         if is_param_required(db, callable, *var) {
             missing.push(*var);
+        } else if var.is_input(db)
+            && !matches!(callable, CallableType::FunctionBlock(_))
+            && let Some(expr) = input_default(db, *var)
+        {
+            // The omission is legal BECAUSE of this default, so record what
+            // the callee receives here, where that is decided. An omitted FB
+            // input keeps its instance storage instead.
+            ctx.omitted_param_defaults
+                .entry(func_call)
+                .or_default()
+                .push((*var, expr));
         }
     }
     if !missing.is_empty() {
@@ -215,6 +226,22 @@ fn call_input_arg_types<'db>(
     types
 }
 
+/// The expression a call site passes for `var` when it omits it: the input's
+/// compile-time-constant default. `None` makes the input required
+/// ([`is_param_required`]); `Some` is recorded per omitting call in
+/// [`BodyInferenceResult::omitted_param_defaults`].
+///
+/// [`BodyInferenceResult::omitted_param_defaults`]: crate::hir_ty::body::BodyInferenceResult::omitted_param_defaults
+fn input_default<'db>(
+    db: &'db dyn WorkspaceDataBase,
+    var: VariableDecl<'db>,
+) -> Option<crate::hir_def::expressions::expression::Expr<'db>> {
+    match var.init(db)?.kind(db) {
+        crate::hir_def::expressions::expression::InitExprKind::ConstantExpr(expr) => Some(expr),
+        _ => None,
+    }
+}
+
 /// Returns `true` if `var` must be supplied as an argument at every call site
 /// of `callable`.
 fn is_param_required<'db>(
@@ -230,14 +257,11 @@ fn is_param_required<'db>(
         return false;
     }
     match callable {
+        // An omitted FB input keeps its instance storage.
         CallableType::FunctionBlock(_) => false,
-        CallableType::Function(_) | CallableType::MethodDecl(_) => match var.init(db) {
-            Some(init) => !matches!(
-                init.kind(db),
-                crate::hir_def::expressions::expression::InitExprKind::ConstantExpr(_)
-            ),
-            None => true,
-        },
+        CallableType::Function(_) | CallableType::MethodDecl(_) => {
+            input_default(db, var).is_none()
+        }
     }
 }
 
