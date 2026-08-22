@@ -41,6 +41,27 @@ pub fn collect_diagnostics(
         .collect()
 }
 
+/// The ERRORS of the library files, and only the errors: the editor hides
+/// library diagnostics on purpose, but the build cannot, since a broken
+/// library lowers into an invalid module with no message naming the
+/// cause.
+pub fn collect_library_errors(db: &RootDatabase) -> Vec<(File, Vec<IdeDiagnostic>)> {
+    crate::file_order::ordered_library_files(db)
+        .into_par_iter()
+        .map_with(db.clone(), |db, file| {
+            let errors: Vec<IdeDiagnostic> = hir::check::diagnostics_for_file(db, file)
+                .iter()
+                .filter(|d| {
+                    matches!(d.diagnostic.severity, Some(DiagnosticSeverity::ERROR) | None)
+                })
+                .cloned()
+                .collect();
+            (file, errors)
+        })
+        .filter(|(_, errors)| !errors.is_empty())
+        .collect()
+}
+
 /// Renders collected diagnostics and tallies the counts, with
 /// workspace-relative paths. The format decides the wire shape: ariadne
 /// reports, one concise line per diagnostic, or one JSON object per line.

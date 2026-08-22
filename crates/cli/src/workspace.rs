@@ -187,6 +187,56 @@ END_NAMESPACE
         assert!(!counts.has_errors(), "library names must resolve:\n{out}");
     }
 
+    /// A broken library refuses to BUILD, visibly. The editor surface hides
+    /// library diagnostics on purpose; the compiler must not, or the library's
+    /// errors surface as an invalid wasm module with no message naming them.
+    /// `rk check` stays workspace-only either way.
+    #[test]
+    fn library_errors_gate_compilation() {
+        let lib = tempfile::tempdir().expect("lib tempdir");
+        let lib_root = std::fs::canonicalize(lib.path()).unwrap();
+        std::fs::write(
+            lib_root.join("s.st"),
+            "NAMESPACE Std.S
+FUNCTION broken : INT
+    broken := 'not an int';
+END_FUNCTION
+END_NAMESPACE
+",
+        )
+        .unwrap();
+        set_env(lib_root.as_os_str());
+
+        let (_ws, root) = write_workspace(&[(
+            "main.st",
+            "FUNCTION main : INT
+    main := 1;
+END_FUNCTION
+",
+        )]);
+        let (db, counts, _out) = check(&root);
+        assert!(!counts.has_errors(), "the check surface stays workspace-only");
+
+        let err = crate::compiler::build_core_profile(
+            &db,
+            &root,
+            false,
+            crate::cli::OutputFormat::Full,
+            wasm_codegen::Profile::Debug,
+        )
+        .expect_err("a broken library must refuse to compile");
+        assert!(
+            err.contains("library files"),
+            "the refusal names the library as the cause:
+{err}"
+        );
+        assert!(
+            err.contains("E0301"),
+            "and carries the library's own diagnostics:
+{err}"
+        );
+    }
+
     /// The empty value is the explicit, silent "no library", how the standard
     /// library's own workspace avoids loading a second copy of itself.
     #[test]

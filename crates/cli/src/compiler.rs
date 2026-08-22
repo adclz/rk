@@ -95,6 +95,25 @@ pub fn build_core_profile(
         return Err(text);
     }
 
+    // A library that does not check does not compile either: a broken
+    // library lowers into an invalid module with no message naming the
+    // cause.
+    let lib_files = crate::diagnostics::collect_library_errors(db);
+    if !lib_files.is_empty() {
+        let mut lib_rendered: Vec<u8> = Vec::new();
+        let lib_errors = reporter.report_files(&lib_files, &mut lib_rendered).errors;
+        let _ = std::io::stderr().write_all(&lib_rendered);
+        ui::failure(
+            "compilation failed:",
+            format!("{lib_errors} error(s) in library files, cannot compile."),
+        );
+        let mut text = String::from_utf8_lossy(&lib_rendered).into_owned();
+        text.push_str(&format!(
+            "\ncompilation failed: {lib_errors} error(s) in library files, cannot compile.\n"
+        ));
+        return Err(text);
+    }
+
     let sem_indices: Vec<_> = crate::file_order::ordered_files_with_libraries(db)
         .into_iter()
         .map(|file| semantic_index(db, file))
@@ -141,6 +160,18 @@ pub fn build_core_quiet(
         let mut text = String::from_utf8_lossy(&rendered).into_owned();
         text.push_str(&format!(
             "\ncompilation failed: {total_errors} error(s) found, cannot compile.\n"
+        ));
+        return Err(text);
+    }
+
+    // Same library gate as `build_core_profile`.
+    let lib_files = crate::diagnostics::collect_library_errors(db);
+    if !lib_files.is_empty() {
+        let mut lib_rendered: Vec<u8> = Vec::new();
+        let lib_errors = reporter.report_files(&lib_files, &mut lib_rendered).errors;
+        let mut text = String::from_utf8_lossy(&lib_rendered).into_owned();
+        text.push_str(&format!(
+            "\ncompilation failed: {lib_errors} error(s) in library files, cannot compile.\n"
         ));
         return Err(text);
     }

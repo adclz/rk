@@ -6,11 +6,18 @@
 use auto_lsp::default::db::{BaseDatabase, file::File};
 use db::{RootDatabase, WorkspaceDataBase};
 
-/// The workspace's files in URL order.
-///
-/// Stable for a given set of files. Adding, removing or renaming a file
-/// reorders what follows it — making the index space stable across renames is a
-/// separate and much larger question, and is not what this solves.
+/// The LIBRARY files in URL order, the ones the editor surface stays
+/// silent about.
+pub fn ordered_library_files(db: &RootDatabase) -> Vec<File> {
+    let mut files: Vec<File> = db
+        .get_library_files()
+        .iter()
+        .map(|entry| *entry.value())
+        .collect();
+    sort_by_url(db, &mut files);
+    files
+}
+
 pub fn ordered_files(db: &RootDatabase) -> Vec<File> {
     let mut files: Vec<File> = db.get_files().iter().map(|entry| *entry.value()).collect();
     sort_by_url(db, &mut files);
