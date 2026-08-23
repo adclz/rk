@@ -38,6 +38,7 @@ mod schedule;
 mod static_strings;
 mod string_audit;
 mod structs;
+mod traps;
 mod unary_ops;
 
 pub use crate::tests::utils::with_db;

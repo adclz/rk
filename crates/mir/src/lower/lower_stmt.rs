@@ -115,7 +115,23 @@ pub fn lower_stmts_fb_body<'db>(
     Ok((stmts, ctx.call_scratch.take()))
 }
 
-/// Lower a single HIR statement to a MIR statement.
+/// The subrange a store through `place` must respect, when the place
+/// carries the slot's type (an element, a field, a VAR_IN_OUT write); a
+/// plain local's declared type answers instead.
+fn place_subrange(place: &crate::expr::MirPlace) -> Option<crate::types::MirSubrangeType> {
+    use crate::expr::MirPlace;
+    let ty = match place {
+        MirPlace::Index { element_type, .. } => element_type,
+        MirPlace::Field { field_type, .. } => field_type,
+        MirPlace::Deref { pointee_type, .. } => pointee_type,
+        _ => return None,
+    };
+    match ty {
+        crate::types::MirType::Subrange(sub) => Some(sub.clone()),
+        _ => None,
+    }
+}
+
 /// Returns None for statements that have no MIR equivalent (e.g., ExternPragma).
 fn lower_stmt<'db>(
     ctx: &ExprLowerCtx<'db>,
@@ -146,6 +162,12 @@ fn lower_stmt<'db>(
                 }
             } else {
                 ctx.lower_expr(*target)?
+            };
+            // A subrange target checks the value at the door; the place knows the
+            // slot's type where the access is an adjustment.
+            let value = match place_subrange(&place) {
+                Some(sub) => ctx.checked_range_mir(value, &sub),
+                None => ctx.checked_range(value, var.infer(ctx.db)),
             };
             // `b.1 := x` names a slice of `b`; the store has to put back the
             // whole of `b` with only those bits replaced.

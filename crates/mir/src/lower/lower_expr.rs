@@ -1213,6 +1213,101 @@ impl<'db> ExprLowerCtx<'db> {
         })
     }
 
+    /// Wrap `value` in the subrange range-check builtin when `ty` declares
+    /// one. The compile-time half is E0802, which rejects the constants it
+    /// can see; this is the runtime half, so `s := v` faults with a message
+    /// instead of storing a value the type forbids.
+    ///
+    /// A non-subrange type passes through untouched, so every store site can
+    /// call this unconditionally. A bound that did not fold (refused at the
+    /// declaration, E0803) skips the check under the Never contract.
+    pub(crate) fn checked_range(&self, value: MirExpr, ty: Type<'db>) -> MirExpr {
+        let Some(sub) = ty.as_subrange(self.db) else {
+            return value;
+        };
+        let (Some(lower), Some(upper)) =
+            hir::hir_ty::infer::const_eval::subrange_bounds(self.db, sub)
+        else {
+            return value;
+        };
+        let Ok(base) = self.type_to_mir_elementary_pub(ty) else {
+            return value;
+        };
+        self.checked_range_mir(
+            value,
+            &crate::types::MirSubrangeType { base, lower, upper },
+        )
+    }
+
+    /// [`Self::checked_range`] with the subrange already lowered, for the
+    /// sites that hold a `MirType`. A constant out of range is wrapped like
+    /// a runtime value.
+    pub(crate) fn checked_range_mir(
+        &self,
+        value: MirExpr,
+        sub: &crate::types::MirSubrangeType,
+    ) -> MirExpr {
+        let base = sub.base;
+        if base.is_float() {
+            return value;
+        }
+        let in_range = |k: i64| {
+            if base.is_signed() {
+                k >= sub.lower && k <= sub.upper
+            } else {
+                // Unsigned bases compare as bit patterns: a UDINT bound like
+                // 4_000_000_000 is negative as an i64-held i32 constant.
+                (k as u64) >= (sub.lower as u64) && (k as u64) <= (sub.upper as u64)
+            }
+        };
+        match &value {
+            MirExpr::Constant(MirConstant::I32(k)) if in_range(*k as i64) => return value,
+            MirExpr::Constant(MirConstant::I64(k)) if in_range(*k) => return value,
+            _ => {}
+        }
+        let name = match (base.is_64bit(), base.is_signed()) {
+            (false, true) => "rk.range_check_i32",
+            (false, false) => "rk.range_check_u32",
+            (true, true) => "rk.range_check_i64",
+            (true, false) => "rk.range_check_u64",
+        };
+        let bound = |b: i64| {
+            if base.is_64bit() {
+                MirExpr::Constant(MirConstant::I64(b))
+            } else {
+                MirExpr::Constant(MirConstant::I32(b as i32))
+            }
+        };
+        let callee = hir::hir_def::interned::identifier::Ident::new(
+            self.db,
+            compact_str::CompactString::from(name),
+        );
+        MirExpr::Call(crate::expr::MirCall {
+            callee,
+            // Unused: `emit_call` resolves by name through `fn_indices`,
+            // where codegen registers the grafted builtin's index.
+            callee_index: u32::MAX,
+            args: vec![
+                crate::expr::MirCallArg {
+                    value,
+                    kind: crate::expr::MirArgKind::ByValue,
+                },
+                crate::expr::MirCallArg {
+                    value: bound(sub.lower),
+                    kind: crate::expr::MirArgKind::ByValue,
+                },
+                crate::expr::MirCallArg {
+                    value: bound(sub.upper),
+                    kind: crate::expr::MirArgKind::ByValue,
+                },
+            ],
+            return_type: MirType::Elementary(base),
+            output_bindings: vec![],
+            extern_results: Vec::new(),
+            extern_ret_scratch: None,
+        })
+    }
+
     /// For an instance-method call `receiver.method(...)`: the mangled callee,
     /// the receiver place (its address is the `this` pointer) and the return
     /// type. `None` for ordinary calls.
@@ -1664,6 +1759,8 @@ impl<'db> ExprLowerCtx<'db> {
                                 },
                                 Err(_) => lowered,
                             };
+                        // A subrange param checks its argument at the door.
+                        let value = self.checked_range(value, var.spec(self.db).infer(self.db));
                         args.push(MirCallArg {
                             value,
                             kind: MirArgKind::ByValue,
@@ -1888,6 +1985,11 @@ impl<'db> ExprLowerCtx<'db> {
                                     _ => expr,
                                 }
                             }
+                            _ => expr,
+                        };
+                        // A subrange field checks its input at the door.
+                        let expr = match &field.ty {
+                            MirType::Subrange(sub) => self.checked_range_mir(expr, sub),
                             _ => expr,
                         };
                         input_writes.push((field.offset, expr, field.ty.clone()));
