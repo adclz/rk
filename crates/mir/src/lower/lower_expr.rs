@@ -1405,6 +1405,11 @@ impl<'db> ExprLowerCtx<'db> {
             mangled
         } else if let Some((callee, _, _)) = &method_target {
             *callee
+        } else if let Some(hir::hir_ty::ty::CallableType::Function(f)) =
+            self.resolved_call_of(func_call).map(|r| r.callable)
+        {
+            // The overload resolution picked.
+            crate::lower::naming::mir_function_symbol(self.db, f)
         } else {
             match path.infer(self.db) {
                 Type::Function(f) => crate::lower::naming::mir_function_symbol(self.db, f),
@@ -1546,16 +1551,11 @@ impl<'db> ExprLowerCtx<'db> {
 
         // The plan resolution assembled: declared parameters in order, each with
         // its binding. Only the ABI decisions are MIR's.
-        let path = func_call.path(self.db);
-        let record = hir::hir_ty::body::infer_body(self.db, path.scope_id(self.db))
-            .resolved_calls
-            .get(&func_call)
-            .cloned()
-            .ok_or_else(|| {
-                LowerTypeError::UnsupportedType(
-                    "call was lowered without a resolved plan".to_string(),
-                )
-            })?;
+        let record = self.resolved_call_of(func_call).ok_or_else(|| {
+            LowerTypeError::UnsupportedType(
+                "call was lowered without a resolved plan".to_string(),
+            )
+        })?;
 
         // Only FUNCTION/METHOD calls synthesize args for omitted params; an FB
         // call leaves the instance field untouched.
@@ -2060,6 +2060,25 @@ impl<'db> ExprLowerCtx<'db> {
     /// Get the MirElementary type of an expression.
     /// The machine type an expression evaluates to, using the ADJUSTED type:
     /// `arr[0]` is the element, not the array.
+    /// The plan resolution assembled for this call: from body inference, or
+    /// from init inference for a call in an initializer.
+    fn resolved_call_of(
+        &self,
+        func_call: hir::hir_def::expressions::expression::FuncCall<'db>,
+    ) -> Option<hir::hir_ty::body::ResolvedCall<'db>> {
+        let scope = func_call.path(self.db).scope_id(self.db);
+        hir::hir_ty::body::infer_body(self.db, scope)
+            .resolved_calls
+            .get(&func_call)
+            .or_else(|| {
+                hir::hir_ty::head::init_inference::infer_initialization(self.db, scope)
+                    .body_infer_result
+                    .resolved_calls
+                    .get(&func_call)
+            })
+            .cloned()
+    }
+
     /// The lane inference accepted for this value where it is consumed, when
     /// it recorded one.
     fn recorded_lane(&self, expr: Expr<'db>) -> Option<MirElementary> {

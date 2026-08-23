@@ -109,3 +109,27 @@ fn indexed_argument_dispatches_to_the_right_overload(mut with_db: db::RootDataba
     let result: i32 = super::execute_wasm(&wasm, "test", ());
     assert_eq!(result, 12, "INT element -> overload 1, DINT element -> overload 2");
 }
+
+/// An overloaded call in an INITIALIZER: its resolution lives in init
+/// inference, which the callee-symbol lookup never consulted — the call
+/// lowered under its BARE name and died in codegen as an unknown function.
+#[rstest]
+fn overloaded_call_in_initializer_runs(mut with_db: db::RootDatabase) {
+    let source = r#"
+        FUNCTION add : INT
+        VAR_INPUT a : INT; END_VAR
+            add := a + 1;
+        END_FUNCTION
+        FUNCTION add : INT
+        VAR_INPUT a : INT; b : INT; END_VAR
+            add := a + b;
+        END_FUNCTION
+        FUNCTION test : INT
+        VAR x : INT := add(1, 2); END_VAR
+            test := x;
+        END_FUNCTION
+    "#;
+    let wasm = compile_to_wasm(&mut with_db, source);
+    let r: i32 = super::execute_wasm(&wasm, "test", ());
+    assert_eq!(r, 3, "the initializer called the resolved 2-arg overload");
+}
