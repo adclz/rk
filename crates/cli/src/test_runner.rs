@@ -45,12 +45,24 @@ fn fmt_duration(d: Duration) -> String {
 }
 
 /// Run a compiled module's tests and report them. Returns the failure count.
-pub fn run_tests(wasm_path: &Path, filter: Option<&str>, format: OutputFormat) -> usize {
+pub fn run_tests(
+    wasm_path: &Path,
+    filter: Option<&str>,
+    timeout: Option<std::time::Duration>,
+    format: OutputFormat,
+) -> usize {
     let binary = crate::spawn::runtime_binary();
     let mut command = std::process::Command::new(&binary);
     command.arg("--test").arg(wasm_path);
     if let Some(filter) = filter {
         command.arg("--filter").arg(filter);
+    }
+    // The hang is in the CHILD, so the deadline has to travel with the work:
+    // a timeout enforced here could only stop reading, not stop the test.
+    if let Some(timeout) = timeout {
+        command
+            .arg("--watchdog")
+            .arg(timeout.as_millis().to_string());
     }
     command.stdout(std::process::Stdio::piped());
 

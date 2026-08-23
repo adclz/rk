@@ -7,9 +7,11 @@ pub fn run_test(
     workspace: &std::path::Path,
     filter: Option<&str>,
     opt_level: Option<&str>,
+    timeout: Option<&str>,
     verbose: bool,
     format: OutputFormat,
 ) -> CliResult<()> {
+    let timeout = timeout.map(crate::duration::parse).transpose()?;
     let db = init_db(workspace, verbose, true).ok_or(CliError::Failed)?;
 
     // Tests default to the unoptimized core but honour `-O`, so an optimized
@@ -40,7 +42,7 @@ pub fn run_test(
     std::fs::write(&wasm_path, &core_bytes)
         .map_err(|e| CliError::msg(format!("writing test binary: {e}")))?;
 
-    let failures = crate::test_runner::run_tests(&wasm_path, filter, format);
+    let failures = crate::test_runner::run_tests(&wasm_path, filter, timeout, format);
     if failures > 0 {
         Err(CliError::Failed)
     } else {
