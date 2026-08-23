@@ -347,3 +347,434 @@ END_FUNCTION
     ----'
     ");
 }
+
+// -- RETURN-directed overloads: same params, different returns ---------------
+
+// The pair is legal (E0101 compares params AND return), and the consuming
+// site's type picks: each assignment resolves its own overload.
+#[rstest]
+fn valid_return_overloads_pick_by_target(mut with_db: RootDatabase) {
+    let source = r#"
+        FUNCTION G : TIME
+            G := T#1ms;
+        END_FUNCTION
+        FUNCTION G : LTIME
+            G := LTIME#2ms;
+        END_FUNCTION
+        FUNCTION fn1 : INT
+        VAR t : TIME; lt : LTIME; END_VAR
+            t := G();
+            lt := G();
+        END_FUNCTION
+    "#;
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"");
+}
+
+// An initializer's declared type directs the pick too.
+#[rstest]
+fn valid_return_overload_in_initializer(mut with_db: RootDatabase) {
+    let source = r#"
+        FUNCTION G : TIME
+            G := T#1ms;
+        END_FUNCTION
+        FUNCTION G : LTIME
+            G := LTIME#2ms;
+        END_FUNCTION
+        FUNCTION fn1 : INT
+        VAR t : TIME := G(); END_VAR
+        END_FUNCTION
+    "#;
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"");
+}
+
+// Assigning to the function's own name targets its return slot.
+#[rstest]
+fn valid_return_overload_into_return_slot(mut with_db: RootDatabase) {
+    let source = r#"
+        FUNCTION G : TIME
+            G := T#1ms;
+        END_FUNCTION
+        FUNCTION G : LTIME
+            G := LTIME#2ms;
+        END_FUNCTION
+        FUNCTION fn1 : TIME
+            fn1 := G();
+        END_FUNCTION
+    "#;
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"");
+}
+
+// A site with no expected type cannot pick: an operator operand is consumed
+// by the OPERATOR, not the assignment. Bind the call first, or cast.
+#[rstest]
+fn invalid_return_overload_without_context(mut with_db: RootDatabase) {
+    let source = r#"
+        FUNCTION G : TIME
+            G := T#1ms;
+        END_FUNCTION
+        FUNCTION G : LTIME
+            G := LTIME#2ms;
+        END_FUNCTION
+        FUNCTION fn1 : INT
+        VAR t : TIME; END_VAR
+            t := G() + T#1ms;
+        END_FUNCTION
+    "#;
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
+    [E0237] Error: ambiguous overloaded call
+        ,-[ file:///test0.st:10:18 ]
+        |
+      2 |   ,->         FUNCTION G : TIME
+        :   :
+      4 |   |->         END_FUNCTION
+        |   |
+        |   `-------------------------- candidate overload declared here
+      5 | ,--->         FUNCTION G : LTIME
+        : :
+      7 | |--->         END_FUNCTION
+        | |
+        | `---------------------------- candidate overload declared here
+        |
+     10 |                   t := G() + T#1ms;
+        |                        |
+        |                        `-- call to 'G' is ambiguous: 2 overloads accept these arguments: disambiguate with an explicit cast
+    ----'
+    ");
+}
+
+// A zero-argument call over fully-defaulted DISTINCT-param overloads used to
+// pick the last candidate silently (the all-exact slot is vacuously true for
+// the empty argument tuple); it is ambiguous and says so now.
+#[rstest]
+fn invalid_zero_arg_defaulted_overloads_ambiguous(mut with_db: RootDatabase) {
+    let source = r#"
+        FUNCTION H : INT
+        VAR_INPUT a : INT := 1; END_VAR
+            H := 1;
+        END_FUNCTION
+        FUNCTION H : INT
+        VAR_INPUT b : REAL := 1.0; END_VAR
+            H := 2;
+        END_FUNCTION
+        FUNCTION fn1 : INT
+            fn1 := H();
+        END_FUNCTION
+    "#;
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
+    [E0237] Error: ambiguous overloaded call
+        ,-[ file:///test0.st:11:20 ]
+        |
+      2 |   ,->         FUNCTION H : INT
+        :   :
+      5 |   |->         END_FUNCTION
+        |   |
+        |   `-------------------------- candidate overload declared here
+      6 | ,--->         FUNCTION H : INT
+        : :
+      9 | |--->         END_FUNCTION
+        | |
+        | `---------------------------- candidate overload declared here
+        |
+     11 |                   fn1 := H();
+        |                          |
+        |                          `-- call to 'H' is ambiguous: 2 overloads accept these arguments: disambiguate with an explicit cast
+    ----'
+    ");
+}
+
+// The WHILE-condition shape: one ambiguous call, ONE diagnostic.
+#[rstest]
+fn invalid_return_overload_in_while_condition(mut with_db: RootDatabase) {
+    let source = r#"
+        FUNCTION G : TIME
+            G := T#1ms;
+        END_FUNCTION
+        FUNCTION G : LTIME
+            G := LTIME#2ms;
+        END_FUNCTION
+        FUNCTION fn1 : INT
+        VAR t : TIME; END_VAR
+            WHILE G() - t < T#60ms DO
+            END_WHILE;
+        END_FUNCTION
+    "#;
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
+    [E0237] Error: ambiguous overloaded call
+        ,-[ file:///test0.st:10:19 ]
+        |
+      2 |   ,->         FUNCTION G : TIME
+        :   :
+      4 |   |->         END_FUNCTION
+        |   |
+        |   `-------------------------- candidate overload declared here
+      5 | ,--->         FUNCTION G : LTIME
+        : :
+      7 | |--->         END_FUNCTION
+        | |
+        | `---------------------------- candidate overload declared here
+        |
+     10 |                   WHILE G() - t < T#60ms DO
+        |                         |
+        |                         `-- call to 'G' is ambiguous: 2 overloads accept these arguments: disambiguate with an explicit cast
+    ----'
+    ");
+}
+
+// A discarded statement call has no target: ambiguous, named candidates.
+#[rstest]
+fn invalid_return_overload_as_statement(mut with_db: RootDatabase) {
+    let source = r#"
+        FUNCTION G : TIME
+            G := T#1ms;
+        END_FUNCTION
+        FUNCTION G : LTIME
+            G := LTIME#2ms;
+        END_FUNCTION
+        FUNCTION fn1 : INT
+            G();
+        END_FUNCTION
+    "#;
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
+    [E0237] Error: ambiguous overloaded call
+       ,-[ file:///test0.st:9:13 ]
+       |
+     2 |   ,->         FUNCTION G : TIME
+       :   :
+     4 |   |->         END_FUNCTION
+       |   |
+       |   `-------------------------- candidate overload declared here
+     5 | ,--->         FUNCTION G : LTIME
+       : :
+     7 | |--->         END_FUNCTION
+       | |
+       | `---------------------------- candidate overload declared here
+       |
+     9 |                   G();
+       |                   |
+       |                   `-- call to 'G' is ambiguous: 2 overloads accept these arguments: disambiguate with an explicit cast
+    ---'
+    ");
+}
+
+// An argument of an overloaded call: the inner pick would need the outer's
+// choice and vice versa. The inner call errors rather than guessing.
+#[rstest]
+fn invalid_return_overload_as_overloaded_argument(mut with_db: RootDatabase) {
+    let source = r#"
+        FUNCTION G : TIME
+            G := T#1ms;
+        END_FUNCTION
+        FUNCTION G : LTIME
+            G := LTIME#2ms;
+        END_FUNCTION
+        FUNCTION f : INT
+        VAR_INPUT x : TIME; END_VAR
+            f := 1;
+        END_FUNCTION
+        FUNCTION f : INT
+        VAR_INPUT x : LTIME; END_VAR
+            f := 2;
+        END_FUNCTION
+        FUNCTION fn1 : INT
+            fn1 := f(x := G());
+        END_FUNCTION
+    "#;
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
+    [E0237] Error: ambiguous overloaded call
+        ,-[ file:///test0.st:17:27 ]
+        |
+      2 |   ,->         FUNCTION G : TIME
+        :   :
+      4 |   |->         END_FUNCTION
+        |   |
+        |   `-------------------------- candidate overload declared here
+      5 | ,--->         FUNCTION G : LTIME
+        : :
+      7 | |--->         END_FUNCTION
+        | |
+        | `---------------------------- candidate overload declared here
+        |
+     17 |                   fn1 := f(x := G());
+        |                                 |
+        |                                 `-- call to 'G' is ambiguous: 2 overloads accept these arguments: disambiguate with an explicit cast
+    ----'
+    ");
+}
+
+// A call supplying every declared parameter beats a candidate padded out with
+// defaults: `add(10)` is add/1, not an ambiguity with add/2's default.
+#[rstest]
+fn valid_full_arity_beats_defaulted(mut with_db: RootDatabase) {
+    let source = r#"
+        FUNCTION add : INT
+        VAR_INPUT a : INT; END_VAR
+            add := a + 1;
+        END_FUNCTION
+        FUNCTION add : INT
+        VAR_INPUT a : INT; b : INT := 5; END_VAR
+            add := a + b;
+        END_FUNCTION
+        FUNCTION fn1 : INT
+            fn1 := add(10);
+        END_FUNCTION
+    "#;
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"");
+}
+
+// Two candidates each padding ONE default: neither is the no-padding
+// candidate, so the arity preference has nothing to prefer — ambiguous by
+// the same rule as the zero-argument set, never first-match.
+#[rstest]
+fn invalid_equal_default_padding_stays_ambiguous(mut with_db: RootDatabase) {
+    let source = r#"
+        FUNCTION add : INT
+        VAR_INPUT a : INT; b : INT := 1; END_VAR
+            add := 1;
+        END_FUNCTION
+        FUNCTION add : INT
+        VAR_INPUT a : INT; c : REAL := 1.0; END_VAR
+            add := 2;
+        END_FUNCTION
+        FUNCTION fn1 : INT
+            fn1 := add(10);
+        END_FUNCTION
+    "#;
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
+    [E0237] Error: ambiguous overloaded call
+        ,-[ file:///test0.st:11:20 ]
+        |
+      2 |   ,->         FUNCTION add : INT
+        :   :
+      5 |   |->         END_FUNCTION
+        |   |
+        |   `-------------------------- candidate overload declared here
+      6 | ,--->         FUNCTION add : INT
+        : :
+      9 | |--->         END_FUNCTION
+        | |
+        | `---------------------------- candidate overload declared here
+        |
+     11 |                   fn1 := add(10);
+        |                          ^|^
+        |                           `--- call to 'add' is ambiguous: 2 overloads accept these arguments: disambiguate with an explicit cast
+    ----'
+    ");
+}
+
+// A literal with NO exact candidate: `5` is INT by default, so REAL and
+// LREAL are both promotions and neither dominates — E0237, the same answer
+// a variable gets. A literal's default type is a compiler notion; this pins
+// that it does not grow special promotion rules of its own.
+#[rstest]
+fn invalid_literal_with_only_promoted_candidates(mut with_db: RootDatabase) {
+    let source = r#"
+        FUNCTION conv : INT
+        VAR_INPUT a : REAL; END_VAR
+            conv := 1;
+        END_FUNCTION
+        FUNCTION conv : INT
+        VAR_INPUT a : LREAL; END_VAR
+            conv := 2;
+        END_FUNCTION
+        FUNCTION fn1 : INT
+            fn1 := conv(5);
+        END_FUNCTION
+    "#;
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
+    [E0237] Error: ambiguous overloaded call
+        ,-[ file:///test0.st:11:20 ]
+        |
+      2 |   ,->         FUNCTION conv : INT
+        :   :
+      5 |   |->         END_FUNCTION
+        |   |
+        |   `-------------------------- candidate overload declared here
+      6 | ,--->         FUNCTION conv : INT
+        : :
+      9 | |--->         END_FUNCTION
+        | |
+        | `---------------------------- candidate overload declared here
+        |
+     11 |                   fn1 := conv(5);
+        |                          ^^|^
+        |                            `--- call to 'conv' is ambiguous: 2 overloads accept these arguments: disambiguate with an explicit cast
+    ----'
+    ");
+}
+
+// THREE candidates where one dominates the other two, which are incomparable
+// with EACH OTHER: the undominated set is a full filter, not a pairwise
+// reduction, so the dominator wins regardless of declaration order. The
+// (INT, INT) candidate is exact on both arguments; the mixed pair each widen
+// one argument and would deadlock a reduction that met them first.
+#[rstest]
+fn valid_dominator_beats_incomparable_pair(mut with_db: RootDatabase) {
+    let source = r#"
+        FUNCTION mix : INT
+        VAR_INPUT a : DINT; b : INT; END_VAR
+            mix := 1;
+        END_FUNCTION
+        FUNCTION mix : INT
+        VAR_INPUT a : INT; b : DINT; END_VAR
+            mix := 2;
+        END_FUNCTION
+        FUNCTION mix : INT
+        VAR_INPUT a : INT; b : INT; END_VAR
+            mix := 3;
+        END_FUNCTION
+        FUNCTION fn1 : INT
+        VAR i : INT; j : INT; END_VAR
+            fn1 := mix(i, j);
+        END_FUNCTION
+    "#;
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"");
+}
+
+// THREE-way incomparable: each candidate is better on a different argument.
+// The diagnostic counts and names all three.
+#[rstest]
+fn invalid_three_way_incomparable_names_all(mut with_db: RootDatabase) {
+    let source = r#"
+        FUNCTION mix : INT
+        VAR_INPUT a : INT; b : LREAL; c : LREAL; END_VAR
+            mix := 1;
+        END_FUNCTION
+        FUNCTION mix : INT
+        VAR_INPUT a : LREAL; b : INT; c : LREAL; END_VAR
+            mix := 2;
+        END_FUNCTION
+        FUNCTION mix : INT
+        VAR_INPUT a : LREAL; b : LREAL; c : INT; END_VAR
+            mix := 3;
+        END_FUNCTION
+        FUNCTION fn1 : INT
+        VAR i : INT; j : INT; k : INT; END_VAR
+            fn1 := mix(i, j, k);
+        END_FUNCTION
+    "#;
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
+    [E0237] Error: ambiguous overloaded call
+        ,-[ file:///test0.st:16:20 ]
+        |
+      2 | ,----->         FUNCTION mix : INT
+        : :
+      5 | |----->         END_FUNCTION
+        | |
+        | `------------------------------ candidate overload declared here
+      6 |   ,--->         FUNCTION mix : INT
+        :   :
+      9 |   |--->         END_FUNCTION
+        |   |
+        |   `---------------------------- candidate overload declared here
+     10 |     ,->         FUNCTION mix : INT
+        :     :
+     13 |     |->         END_FUNCTION
+        |     |
+        |     `-------------------------- candidate overload declared here
+        |
+     16 |                     fn1 := mix(i, j, k);
+        |                            ^|^
+        |                             `--- call to 'mix' is ambiguous: 3 overloads accept these arguments: disambiguate with an explicit cast
+    ----'
+    ");
+}
