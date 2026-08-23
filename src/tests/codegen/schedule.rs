@@ -398,9 +398,9 @@ fn scheduler_runs_tasks_at_their_rates_and_persists(mut with_db: db::RootDatabas
         let mut plc = Plc::load(
             &wasm,
             Config {
-                entry: None,
                 retain_path: Some(path.clone()),
                 program_path: None,
+                ..Config::default()
             },
         )
         .expect("load (boot 1)");
@@ -416,9 +416,9 @@ fn scheduler_runs_tasks_at_their_rates_and_persists(mut with_db: db::RootDatabas
         let mut plc = Plc::load(
             &wasm,
             Config {
-                entry: None,
                 retain_path: Some(path.clone()),
                 program_path: None,
+                ..Config::default()
             },
         )
         .expect("load (boot 2)");

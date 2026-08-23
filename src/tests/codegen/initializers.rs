@@ -380,9 +380,9 @@ fn retain_initializer_is_cold_start_only(mut with_db: db::RootDatabase) {
         let mut plc = Plc::load(
             &wasm,
             Config {
-                entry: None,
                 retain_path: Some(path.clone()),
                 program_path: None,
+                ..Config::default()
             },
         )
         .expect("load (cold)");
@@ -397,9 +397,9 @@ fn retain_initializer_is_cold_start_only(mut with_db: db::RootDatabase) {
         let plc = Plc::load(
             &wasm,
             Config {
-                entry: None,
                 retain_path: Some(path.clone()),
                 program_path: None,
+                ..Config::default()
             },
         )
         .expect("load (warm)");
