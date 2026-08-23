@@ -843,3 +843,33 @@ END_FUNCTION_BLOCK
         "in1"
     );
 }
+
+// A diagnostic inside a NESTED namespace is reported once. The global pass
+// iterates the file's FLAT namespace index (nested included, for name
+// resolution) while the recursion also descends through parents - so every
+// nested namespace was checked twice and each of its diagnostics doubled.
+#[rstest]
+fn nested_namespace_diagnostics_report_once(mut with_db: RootDatabase) {
+    let source = r#"
+        NAMESPACE Outer.Mid
+            NAMESPACE Inner
+                FUNCTION fn1 : INT
+                VAR t : TIME; END_VAR
+                    t := 'not a time';
+                END_FUNCTION
+            END_NAMESPACE
+        END_NAMESPACE
+    "#;
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
+    [E0301] Error: type mismatch
+       ,-[ file:///test0.st:6:26 ]
+       |
+     5 |                 VAR t : TIME; END_VAR
+       |                     |
+       |                     `-- type is declared by variable 't' here
+     6 |                     t := 'not a time';
+       |                          ^^^^^^|^^^^^
+       |                                `------- expected 'TIME', got 'STRING'
+    ---'
+    ");
+}

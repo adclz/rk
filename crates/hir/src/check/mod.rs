@@ -105,10 +105,31 @@ impl<'db> ScopeId<'db> {
         // so we need to treat them separately by calling check again on their scopes
 
         if let Some(namespaces) = self.namespaces(db) {
-            namespaces.iter().for_each(|ns| {
-                check_duplicate_namespaces(db, *ns, errors);
-                ns.scope_id(db).check(db, errors);
-            });
+            namespaces
+                .iter()
+                .filter(|ns| {
+                    // The GLOBAL scope's list is the file's FLAT namespace
+                    // index (nested ones included — name resolution wants
+                    // them all); the recursion below reaches the nested ones
+                    // through their parents. Checking the flat list whole
+                    // visited every nested namespace twice, and every
+                    // diagnostic in one came out doubled.
+                    if !self.is_global(db) {
+                        return true;
+                    }
+                    use crate::hir_def::scope::ScopeKind;
+                    use crate::hir_def::semantic_index::get_scope;
+                    match get_scope(db, ns.scope_id(db)).parent {
+                        Some(parent) => {
+                            matches!(get_scope(db, parent).kind, ScopeKind::Global)
+                        }
+                        None => true,
+                    }
+                })
+                .for_each(|ns| {
+                    check_duplicate_namespaces(db, *ns, errors);
+                    ns.scope_id(db).check(db, errors);
+                });
         }
 
         if let Some(pous) = self.pous(db) {
