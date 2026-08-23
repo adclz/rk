@@ -162,10 +162,44 @@ pub fn instantiate_with_memory(
     store: &mut wasmtime::Store<()>,
     module: &wasmtime::Module,
 ) -> wasmtime::Instance {
+    instantiate_returning_memory(store, module).0
+}
+
+/// As [`instantiate_with_memory`], keeping the memory handle — a fault test
+/// needs it to read the `$rk_exception` payload out of linear memory.
+pub fn instantiate_returning_memory(
+    store: &mut wasmtime::Store<()>,
+    module: &wasmtime::Module,
+) -> (wasmtime::Instance, wasmtime::Memory) {
     let memory =
         wasmtime::Memory::new(&mut *store, wasmtime::MemoryType::new(1, None)).expect("memory");
-    wasmtime::Instance::new(store, module, &[memory.into()])
-        .expect("Failed to instantiate with memory")
+    let instance = wasmtime::Instance::new(store, module, &[memory.into()])
+        .expect("Failed to instantiate with memory");
+    (instance, memory)
+}
+
+/// What a failed call says to whoever reads the fault: the `$rk_exception`
+/// payload when one is pending (the same decode the runtime does, so a test
+/// asserts the message a user would see), else the trap's own words. Asserting
+/// only `is_err()` lets a named fault silently degrade into "thrown Wasm
+/// exception".
+pub fn fault_message(
+    store: &mut wasmtime::Store<()>,
+    memory: wasmtime::Memory,
+    err: wasmtime::Error,
+) -> String {
+    let Some(exn) = store.take_pending_exception() else {
+        return format!("{err:?}");
+    };
+    let (Ok(wasmtime::Val::I32(ptr)), Ok(wasmtime::Val::I32(len))) =
+        (exn.field(&mut *store, 0), exn.field(&mut *store, 1))
+    else {
+        return format!("{err:?}");
+    };
+    let data = memory.data(&*store);
+    data.get(ptr as u32 as usize..(ptr as u32 as usize).saturating_add(len as u32 as usize))
+        .map(|b| String::from_utf8_lossy(b).into_owned())
+        .unwrap_or_else(|| "<exception payload out of bounds>".to_string())
 }
 
 pub fn execute_wasm<P, R>(wasm_bytes: &[u8], func_name: &str, params: P) -> R

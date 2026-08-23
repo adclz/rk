@@ -386,11 +386,19 @@ fn an_out_of_bounds_read_faults_too(mut with_db: db::RootDatabase) {
     let engine = crate::tests::codegen::test_engine();
     let module = wasmtime::Module::new(&engine, &wasm).unwrap();
     let mut store = wasmtime::Store::new(&engine, ());
-    let instance = super::instantiate_with_memory(&mut store, &module);
+    let (instance, memory) = super::instantiate_returning_memory(&mut store, &module);
     let f = instance
         .get_typed_func::<(), i32>(&mut store, "run")
         .unwrap();
-    assert!(f.call(&mut store, ()).is_err(), "a[5] on [0..2] must fault");
+    let err = f.call(&mut store, ()).expect_err("a[5] on [0..2] must fault");
+    // A named fault, not a raw trap: if reads ever faulted through a
+    // different path, `is_err()` alone would pass while the user got
+    // "thrown Wasm exception".
+    let msg = super::fault_message(&mut store, memory, err);
+    assert!(
+        msg.contains("array index out of bounds"),
+        "the read fault names the check: {msg}"
+    );
 }
 
 /// Both boundary subscripts are IN bounds — the check must not be off by one,
@@ -436,13 +444,17 @@ fn per_dimension_bounds_not_flat_bounds(mut with_db: db::RootDatabase) {
     let engine = crate::tests::codegen::test_engine();
     let module = wasmtime::Module::new(&engine, &wasm).unwrap();
     let mut store = wasmtime::Store::new(&engine, ());
-    let instance = super::instantiate_with_memory(&mut store, &module);
+    let (instance, memory) = super::instantiate_returning_memory(&mut store, &module);
     let f = instance
         .get_typed_func::<(), i32>(&mut store, "run")
         .unwrap();
+    let err = f
+        .call(&mut store, ())
+        .expect_err("dimension 2's bound is 3; 9 must fault even though 1*36 < sizeof(m)");
+    let msg = super::fault_message(&mut store, memory, err);
     assert!(
-        f.call(&mut store, ()).is_err(),
-        "dimension 2's bound is 3; 9 must fault even though 1*36 < sizeof(m)"
+        msg.contains("array index out of bounds"),
+        "the per-dimension fault names the check: {msg}"
     );
 }
 
@@ -467,4 +479,51 @@ fn constant_bounded_array_runs(mut with_db: db::RootDatabase) {
     let wasm = compile_to_wasm_checked(&mut with_db, source);
     let r: i32 = super::execute_wasm(&wasm, "test", ());
     assert_eq!(r, 60, "four elements, 0 + 10 + 20 + 30");
+}
+
+/// An array dimensioned by a VAR_EXTERNAL CONSTANT — the third resolution
+/// path for a bound after literals and local constants, and the library
+/// idiom: an array sized by a configuration global. The bound must FOLD
+/// through the extern at the declaration, and the runtime bounds check must
+/// enforce the folded value.
+#[rstest]
+fn extern_constant_bound_folds_and_is_enforced(mut with_db: db::RootDatabase) {
+    let source = r#"
+        PROGRAM P
+        VAR_EXTERNAL CONSTANT
+            K : INT;
+        END_VAR
+        VAR
+            a : ARRAY[0..K] OF DINT;
+            n : DINT;
+            i : INT;
+        END_VAR
+            n := n + 1;
+            IF n = 1 THEN
+                FOR i := 0 TO K DO
+                    a[i] := 7;   (* every declared slot is writable *)
+                END_FOR;
+            ELSE
+                a[K + 1] := 9;   (* one past the folded bound *)
+            END_IF;
+        END_PROGRAM
+
+        CONFIGURATION Cfg
+            VAR_GLOBAL CONSTANT
+                K : INT := 2;
+            END_VAR
+            RESOURCE Res ON CPU
+                TASK T(INTERVAL := T#10ms, PRIORITY := 1);
+                PROGRAM P1 WITH T : P;
+            END_RESOURCE
+        END_CONFIGURATION
+    "#;
+    let (_mir, wasm) = crate::tests::codegen::compile_to_mir_and_wasm(&mut with_db, source);
+    let mut plc = runtime::Plc::load(&wasm, runtime::Config::default()).expect("load");
+    plc.run(1).expect("a[0..K] are all writable");
+    let err = plc.scan().expect_err("a[K + 1] is past the folded bound");
+    assert!(
+        format!("{err:#}").contains("array index out of bounds"),
+        "the extern-folded bound is the one enforced: {err:#}"
+    );
 }

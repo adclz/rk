@@ -7,19 +7,20 @@ use crate::tests::codegen::{compile_to_wasm, with_db};
 use rstest::*;
 
 /// Run `run : DINT`, expect the call itself to fail, and return the fault
-/// text so a test can pin WHICH check spoke. A subrange fault and a division
-/// trap must stay distinguishable, or the diagnostic value collapses.
+/// text a user would see — the decoded `$rk_exception` payload, or the
+/// trap's own words. A subrange fault and a division trap must stay
+/// distinguishable, or the diagnostic value collapses.
 fn expect_fault(with_db: &mut db::RootDatabase, source: &str, why: &str) -> String {
     let wasm = compile_to_wasm(with_db, source);
     let engine = crate::tests::codegen::test_engine();
     let module = wasmtime::Module::new(&engine, &wasm).unwrap();
     let mut store = wasmtime::Store::new(&engine, ());
-    let instance = super::instantiate_with_memory(&mut store, &module);
+    let (instance, memory) = super::instantiate_returning_memory(&mut store, &module);
     let f = instance
         .get_typed_func::<(), i32>(&mut store, "run")
         .unwrap();
     let err = f.call(&mut store, ()).expect_err(why);
-    format!("{err:?}")
+    super::fault_message(&mut store, memory, err)
 }
 
 /// An out-of-range value entering a subrange variable is DENIED at runtime:
@@ -141,10 +142,11 @@ fn a_subrange_array_element_is_checked(mut with_db: db::RootDatabase) {
             run := a[1];
         END_FUNCTION
     "#;
-    // The message is pinned on the Plc path above — a bare wasmtime call
-    // only sees "thrown Wasm exception"; the payload needs the runtime's
-    // pending-exception decode.
-    expect_fault(&mut with_db, source, "99 into an element of INT (0..10)");
+    let msg = expect_fault(&mut with_db, source, "99 into an element of INT (0..10)");
+    assert!(
+        msg.contains("value out of subrange bounds"),
+        "a range fault names the check: {msg}"
+    );
 }
 
 /// A subrange STRUCT FIELD checks its store like a plain variable.
@@ -281,6 +283,62 @@ fn an_unsigned_subrange_still_faults_out_of_range(mut with_db: db::RootDatabase)
         END_FUNCTION
     "#;
     expect_fault(&mut with_db, source, "4.1e9 leaves UDINT (0..4e9)");
+}
+
+/// The two checks COMPOSE on one store: `a[i] := n` with `i` a runtime
+/// variable routes the address through `rk.idx_check` and the value through
+/// `rk.range_check_*`. In-bounds index + out-of-range value must still fault
+/// on the VALUE — the constant-index test alone would let the variable-index
+/// address path skip the subrange wrap unnoticed.
+#[rstest]
+fn a_variable_index_store_still_checks_the_subrange(mut with_db: db::RootDatabase) {
+    let source = r#"
+        TYPE Small : INT (0..10); END_TYPE
+
+        FUNCTION run : DINT
+        VAR
+            a : ARRAY[0..2] OF Small;
+            i : INT;
+            n : INT;
+        END_VAR
+            i := 1;
+            n := 99;
+            a[i] := n;
+            run := a[i];
+        END_FUNCTION
+    "#;
+    let msg = expect_fault(&mut with_db, source, "99 through a checked index");
+    assert!(
+        msg.contains("value out of subrange bounds"),
+        "the VALUE check fires, not the (satisfied) index check: {msg}"
+    );
+}
+
+/// Both violated at once: out-of-bounds index AND out-of-range value. ONE of
+/// them must fault — pinned (not promised) to the index, since the address
+/// is computed before the value converts.
+#[rstest]
+fn both_checks_violated_faults_on_one(mut with_db: db::RootDatabase) {
+    let source = r#"
+        TYPE Small : INT (0..10); END_TYPE
+
+        FUNCTION run : DINT
+        VAR
+            a : ARRAY[0..2] OF Small;
+            i : INT;
+            n : INT;
+        END_VAR
+            i := 7;
+            n := 99;
+            a[i] := n;
+            run := 0;
+        END_FUNCTION
+    "#;
+    let msg = expect_fault(&mut with_db, source, "both violations must not cancel out");
+    assert!(
+        msg.contains("array index out of bounds"),
+        "the INDEX check speaks first: {msg}"
+    );
 }
 
 /// Integer division by zero is the VM's own trap — no check of ours, but the
