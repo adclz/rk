@@ -30,6 +30,7 @@ mod initializers;
 mod inout;
 mod instance_initializers;
 mod mir_smoke;
+mod namespaces;
 mod overloads;
 mod profile_swap;
 mod ref_to;

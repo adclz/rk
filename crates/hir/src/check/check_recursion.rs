@@ -33,26 +33,16 @@ impl<'db> TypeDependencyGraph<'db> {
             edges.entry(pou).or_insert_with(FxHashSet::default);
         }
 
-        Self::namespace_edges(db, &mut edges, &semantic_index.namespaces);
+        for &ns in namespaces {
+            for &pou in ns.pous(db).iter() {
+                edges.entry(pou).or_default();
+            }
+        }
 
         Self {
             db,
             edges,
             callsites,
-        }
-    }
-
-    fn namespace_edges(
-        db: &'db dyn WorkspaceDataBase,
-        edges: &mut FxHashMap<Pou<'db>, FxHashSet<Pou<'db>>>,
-        namespaces: &[NamespaceDecl<'db>],
-    ) {
-        for &ns in namespaces {
-            Self::namespace_edges(db, edges, ns.namespaces(db));
-
-            for &pou in ns.pous(db).iter() {
-                edges.entry(pou).or_default();
-            }
         }
     }
 

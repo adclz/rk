@@ -89,8 +89,13 @@ pub fn lower_modules<'db>(
         all_pous.extend(index.global_pous.iter().map(|p| (p, None)));
         all_programs.extend(index.programs.iter().map(|p| (p, None)));
         fragments.extend(index.configs.iter().copied());
+        // The index's namespace list is flat, so each namespace's POUs are
+        // collected exactly once.
         for ns in index.namespaces.iter() {
-            collect_namespace_pous(db, ns, &mut all_pous);
+            let ns_prefix = ns.path(db).to_string(db);
+            for pou in ns.pous(db).iter() {
+                all_pous.push((pou, Some(ns_prefix.clone())));
+            }
         }
     }
     lower_module_from_pous(db, &all_pous, &all_programs, &fragments)
@@ -101,13 +106,18 @@ pub fn lower_module<'db>(
     db: &'db dyn WorkspaceDataBase,
     index: &SemanticIndex<'db>,
 ) -> Result<MirModule, LowerTypeError> {
+    // Namespaced POUs included, as the multi-index path collects them.
+    let mut all_pous: Vec<(&Pou<'db>, Option<String>)> =
+        index.global_pous.iter().map(|p| (p, None)).collect();
+    for ns in index.namespaces.iter() {
+        let ns_prefix = ns.path(db).to_string(db);
+        for pou in ns.pous(db).iter() {
+            all_pous.push((pou, Some(ns_prefix.clone())));
+        }
+    }
     lower_module_from_pous(
         db,
-        &index
-            .global_pous
-            .iter()
-            .map(|p| (p, None))
-            .collect::<Vec<_>>(),
+        &all_pous,
         &index.programs.iter().map(|p| (p, None)).collect::<Vec<_>>(),
         &index.configs.iter().copied().collect::<Vec<_>>(),
     )
@@ -683,22 +693,6 @@ fn lower_module_from_pous<'db>(
     }
 
     Ok(module)
-}
-
-/// Recursively collect all POUs from a namespace and its children.
-/// Each item is paired with its dot-separated namespace path prefix.
-fn collect_namespace_pous<'db>(
-    db: &'db dyn WorkspaceDataBase,
-    ns: &hir::hir_def::namespace::NamespaceDecl<'db>,
-    pous: &mut Vec<(&'db Pou<'db>, Option<String>)>,
-) {
-    let ns_prefix = ns.path(db).to_string(db);
-    for pou in ns.pous(db).iter() {
-        pous.push((pou, Some(ns_prefix.clone())));
-    }
-    for child_ns in ns.namespaces(db).iter() {
-        collect_namespace_pous(db, child_ns, pous);
-    }
 }
 
 /// Lower an `{extern}` FUNCTION to a MirExternFunction.

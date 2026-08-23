@@ -325,36 +325,26 @@ pub fn discover_all_tests<'db>(db: &'db dyn WorkspaceDataBase) -> Vec<TestItem<'
             }
         }
 
-        // Namespaced test functions
+        // Namespaced test functions. The namespace list is FLAT (nested
+        // included), so each namespace contributes its own tests exactly
+        // once; recursing into children here discovered every nested test
+        // twice.
         for ns in file_namespaces(db, file).iter() {
-            discover_tests_in_namespace(db, *ns, &mut tests);
+            let ns_prefix = ns.path(db).to_string(db);
+            for pou in ns.pous(db).iter() {
+                if let Pou::Function(f) = pou
+                    && crate::hir_def::pous::pragma::is_test(db, f.pragmas(db))
+                {
+                    tests.push(TestItem::Function(
+                        *f,
+                        format!("{}.{}", ns_prefix, f.name(db).text(db)),
+                    ));
+                }
+            }
         }
     }
 
     tests
-}
-
-fn discover_tests_in_namespace<'db>(
-    db: &'db dyn WorkspaceDataBase,
-    ns: NamespaceDecl<'db>,
-    tests: &mut Vec<TestItem<'db>>,
-) {
-    let ns_prefix = ns.path(db).to_string(db);
-
-    for pou in ns.pous(db).iter() {
-        if let Pou::Function(f) = pou
-            && crate::hir_def::pous::pragma::is_test(db, f.pragmas(db))
-        {
-            tests.push(TestItem::Function(
-                *f,
-                format!("{}.{}", ns_prefix, f.name(db).text(db)),
-            ));
-        }
-    }
-
-    for child_ns in ns.namespaces(db).iter() {
-        discover_tests_in_namespace(db, *child_ns, tests);
-    }
 }
 
 /// Find a specific test by its qualified name (e.g. `"Std.Math.test_sqrt"` or `"test_abs"`).
