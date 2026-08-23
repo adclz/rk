@@ -292,7 +292,27 @@ fn lower_stmt<'db>(
                 }
             };
 
+            // A subrange counter is checked at the initial store and at the body's
+            // top: the range may overshoot the subrange, the observed values may
+            // not. `FOR i := 0 TO 12 BY 7` on a (0..10) counter is legal.
+            let control_sub = control_type
+                .as_subrange(ctx.db)
+                .and_then(|sr| {
+                    match hir::hir_ty::infer::const_eval::subrange_bounds(ctx.db, sr) {
+                        (Some(lower), Some(upper)) => Some(crate::types::MirSubrangeType {
+                            base: control_elem,
+                            lower,
+                            upper,
+                        }),
+                        _ => None,
+                    }
+                });
+
             let start_mir = ctx.lower_expr(*start)?;
+            let start_mir = match &control_sub {
+                Some(sub) => ctx.checked_range_mir(start_mir, sub),
+                None => start_mir,
+            };
             let end_mir = ctx.lower_expr(*end)?;
             // The step is the VALUE inference folded and recorded (E1007
             // refused anything that does not fold), emitted as a constant at
@@ -326,7 +346,22 @@ fn lower_stmt<'db>(
                 }
             };
 
-            let body = lower_stmts_inner(ctx, body)?;
+            let mut body = lower_stmts_inner(ctx, body)?;
+            if let Some(sub) = &control_sub {
+                body.insert(
+                    0,
+                    MirStmt::Assign {
+                        target: control_place.clone(),
+                        value: ctx.checked_range_mir(
+                            crate::expr::MirExpr::Load(
+                                control_place.clone(),
+                                crate::types::MirType::Elementary(control_elem),
+                            ),
+                            sub,
+                        ),
+                    },
+                );
+            }
 
             Ok(Some(MirStmt::For {
                 control: control_place,

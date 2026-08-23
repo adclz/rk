@@ -341,6 +341,98 @@ fn both_checks_violated_faults_on_one(mut with_db: db::RootDatabase) {
     );
 }
 
+/// A subrange COUNTER is still a subrange. The initial store is checked
+/// even when the body never runs — a zero-iteration loop still stores it.
+#[rstest]
+fn a_for_init_outside_the_subrange_faults(mut with_db: db::RootDatabase) {
+    let source = r#"
+        TYPE Small : INT (0..10); END_TYPE
+
+        FUNCTION run : DINT
+        VAR
+            i : Small;
+        END_VAR
+            FOR i := 99 TO 0 DO
+                run := run + 1;
+            END_FOR;
+            run := 0;
+        END_FUNCTION
+    "#;
+    let msg = expect_fault(&mut with_db, source, "99 stored into the counter before any test");
+    assert!(
+        msg.contains("value out of subrange bounds"),
+        "the init store names the check: {msg}"
+    );
+}
+
+/// An ITERATE the body observes is checked: stepping 0,7,14 on a (0..10)
+/// counter faults when 14 arrives, not before.
+#[rstest]
+fn a_for_iterate_leaving_the_subrange_faults(mut with_db: db::RootDatabase) {
+    let source = r#"
+        TYPE Small : INT (0..10); END_TYPE
+
+        FUNCTION run : DINT
+        VAR
+            i : Small;
+        END_VAR
+            FOR i := 0 TO 20 BY 7 DO
+                run := run + i;
+            END_FOR;
+        END_FUNCTION
+    "#;
+    let msg = expect_fault(&mut with_db, source, "the third iterate is 14");
+    assert!(
+        msg.contains("value out of subrange bounds"),
+        "the iterate names the check: {msg}"
+    );
+}
+
+/// The DECLARED choice: the RANGE may overshoot the subrange as long as the
+/// observed values do not. Stepping 0,7 on `TO 12` never reaches 14 — the
+/// loop is legal and completes; faulting it would reject a correct program
+/// on a bound it never touches.
+#[rstest]
+fn a_for_range_may_overshoot_when_the_values_do_not(mut with_db: db::RootDatabase) {
+    let source = r#"
+        TYPE Small : INT (0..10); END_TYPE
+
+        FUNCTION run : DINT
+        VAR
+            i : Small;
+        END_VAR
+            run := 0;
+            FOR i := 0 TO 12 BY 7 DO
+                run := run + i;
+            END_FOR;
+        END_FUNCTION
+    "#;
+    let wasm = compile_to_wasm(&mut with_db, source);
+    let result: i32 = super::execute_wasm(&wasm, "run", ());
+    assert_eq!(result, 7, "iterates 0 and 7 run; 14 is never observed");
+}
+
+/// The full declared range walks its own subrange to the boundary.
+#[rstest]
+fn a_for_over_the_whole_subrange_is_clean(mut with_db: db::RootDatabase) {
+    let source = r#"
+        TYPE Small : INT (0..10); END_TYPE
+
+        FUNCTION run : DINT
+        VAR
+            i : Small;
+        END_VAR
+            run := 0;
+            FOR i := 0 TO 10 DO
+                run := run + i;
+            END_FOR;
+        END_FUNCTION
+    "#;
+    let wasm = compile_to_wasm(&mut with_db, source);
+    let result: i32 = super::execute_wasm(&wasm, "run", ());
+    assert_eq!(result, 55, "0..=10 sums to 55 without a fault");
+}
+
 /// Integer division by zero is the VM's own trap — no check of ours, but the
 /// contract (a fault, not a wrong answer) is the same and deserves a pin.
 #[rstest]
