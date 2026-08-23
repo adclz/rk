@@ -28,6 +28,23 @@ impl<'db> InferExprCtx<'db> {
         curr_expr: Expr<'db>,
         inference_results: &mut BodyInferenceResult<'db>,
     ) -> Type<'db> {
+        self.resolve_expr_expecting(db, curr_expr, inference_results, None)
+    }
+
+    /// [`Self::resolve_expr`] with the type the site EXPECTS the value to
+    /// have, when the site knows it before the walk — an assignment resolves
+    /// its target first, so the target's type can direct a RETURN-overloaded
+    /// call on the right-hand side. The expectation reaches only a call the
+    /// site directly consumes (through parentheses); an operand of an
+    /// operator is consumed by the OPERATOR, whose result type is not the
+    /// site's to promise.
+    pub fn resolve_expr_expecting(
+        &mut self,
+        db: &'db dyn WorkspaceDataBase,
+        curr_expr: Expr<'db>,
+        inference_results: &mut BodyInferenceResult<'db>,
+        expected: Option<Type<'db>>,
+    ) -> Type<'db> {
         match curr_expr.expr(db) {
             ExprKind::AddOperator { left, right, .. }
             | ExprKind::MultOperator { left, right, .. }
@@ -210,7 +227,7 @@ impl<'db> InferExprCtx<'db> {
                         .to_diagnostic(db, inference_results.scope.file(db)),
                     );
                 }
-                let primary = self.infer_primary(db, primary, inference_results);
+                let primary = self.infer_primary(db, primary, inference_results, expected);
                 inference_results.type_of_expr.insert(curr_expr, primary);
                 inference_results.type_of_expr[&curr_expr]
             }
@@ -284,6 +301,7 @@ impl<'db> InferExprCtx<'db> {
         db: &'db dyn WorkspaceDataBase,
         to: &PrimaryExpr<'db>,
         inference_result: &mut BodyInferenceResult<'db>,
+        expected: Option<Type<'db>>,
     ) -> Type<'db> {
         match to {
             PrimaryExpr::Literal(prim) => (*prim).into(),
@@ -305,7 +323,7 @@ impl<'db> InferExprCtx<'db> {
                 ty
             }
             PrimaryExpr::FuncCall(call) => {
-                resolve_func_call(db, self.resolver, *call, inference_result);
+                resolve_func_call(db, self.resolver, *call, inference_result, expected);
                 let ty = inference_result.get_type_of_begin_path_expr(db, call.path(db));
                 ty.normalize(db)
             }
@@ -371,7 +389,7 @@ impl<'db> InferExprCtx<'db> {
                 RefValue::Null => Type::Null,
             },
             PrimaryExpr::ParenthesizedExpr { expr } => {
-                self.resolve_expr(db, *expr, inference_result);
+                self.resolve_expr_expecting(db, *expr, inference_result, expected);
                 inference_result.type_of_expr[expr]
             }
         }

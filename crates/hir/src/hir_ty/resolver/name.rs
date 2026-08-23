@@ -275,7 +275,7 @@ pub fn overload_discriminant<'db>(
 ///
 /// Ordinary name resolution binds a bare function name to the *first* same-name
 /// FUNCTION in scope. When that name is an overload set, this re-selects by
-/// matching the call's argument types against each overload's signature
+/// matching the call's argument types against each overload's params
 /// ([`function_signature`]). The selection lives here — in the POU-finding
 /// module — so call resolution only supplies the arg types and stays unaware
 /// that overloading exists.
@@ -295,6 +295,11 @@ pub fn select_overload<'db>(
     db: &'db dyn WorkspaceDataBase,
     callable: CallableType<'db>,
     arg_types: &[Type<'db>],
+    // The type the call's VALUE lands in, when the consuming site knows it —
+    // an assignment's target, an initializer's declared type. What a
+    // RETURN-directed overload set (same params, different returns) is
+    // picked by; `None` leaves such a set ambiguous (E0237).
+    expected: Option<Type<'db>>,
 ) -> OverloadPick<'db> {
     let CallableType::Function(first) = callable else {
         return OverloadPick::One(callable);
@@ -332,7 +337,7 @@ pub fn select_overload<'db>(
         return OverloadPick::One(callable);
     }
 
-    let mut exact: Option<Function<'db>> = None;
+    let mut exact: Vec<Function<'db>> = Vec::new();
     let mut viable: Vec<(Function<'db>, Vec<ArgMatch>)> = Vec::new();
     for f in functions {
         let sig = function_signature(db, f);
@@ -354,16 +359,21 @@ pub fn select_overload<'db>(
         }
         if ok {
             if matches.iter().all(|m| matches!(m, ArgMatch::Exact)) {
-                exact = Some(f);
+                exact.push(f);
             }
             viable.push((f, matches));
         }
     }
 
-    // An all-exact match is unique — two distinct signatures can't both exactly
-    // equal the same argument tuple — so it always wins.
-    if let Some(f) = exact {
-        return OverloadPick::One(CallableType::Function(f));
+    // An all-exact match wins when it is UNIQUE. Two distinct signatures
+    // cannot both exactly equal a non-empty argument tuple, but the EMPTY
+    // tuple is all-exact against every fully-defaulted candidate — this used
+    // to be a single `Option` slot each candidate overwrote, so the last one
+    // in discovery order silently won a zero-arg call.
+    match exact.len() {
+        1 => return OverloadPick::One(CallableType::Function(exact[0])),
+        0 => {}
+        _ => return pick_by_arity_then_return(db, exact, arg_types.len(), expected),
     }
 
     // Dominance: drop every candidate that another candidate beats — at least
@@ -384,8 +394,69 @@ pub fn select_overload<'db>(
     match undominated.len() {
         0 => OverloadPick::One(callable),
         1 => OverloadPick::One(CallableType::Function(undominated[0].0)),
-        _ => OverloadPick::Ambiguous(undominated.into_iter().map(|(f, _)| *f).collect()),
+        _ => pick_by_arity_then_return(
+            db,
+            undominated.into_iter().map(|(f, _)| *f).collect(),
+            arg_types.len(),
+            expected,
+        ),
     }
+}
+
+/// Break a tie by ARITY, then by RETURN. The whole preference rule, in one
+/// place:
+///
+/// a candidate requiring NO defaults dominates one that pads with them —
+/// `add(10)` picks `add(a)` over `add(a, b := 5)`; among candidates that all
+/// pad, nothing breaks the tie (two one-default candidates stay ambiguous,
+/// like the zero-argument set). What arity cannot settle, the RETURN type
+/// does, when the consuming site expects exactly one candidate's return.
+/// What neither settles is E0237, never a silent pick.
+fn pick_by_arity_then_return<'db>(
+    db: &'db dyn WorkspaceDataBase,
+    tie: Vec<Function<'db>>,
+    arg_count: usize,
+    expected: Option<Type<'db>>,
+) -> OverloadPick<'db> {
+    let full_arity: Vec<Function<'db>> = tie
+        .iter()
+        .filter(|f| function_signature(db, **f).params.len() == arg_count)
+        .copied()
+        .collect();
+    match full_arity.len() {
+        1 => OverloadPick::One(CallableType::Function(full_arity[0])),
+        0 => pick_by_return(db, tie, expected),
+        _ => pick_by_return(db, full_arity, expected),
+    }
+}
+
+/// Break a tie among argument-equivalent candidates by RETURN type: the one
+/// whose return equals what the site expects, when exactly one does.
+fn pick_by_return<'db>(
+    db: &'db dyn WorkspaceDataBase,
+    tie: Vec<Function<'db>>,
+    expected: Option<Type<'db>>,
+) -> OverloadPick<'db> {
+    if let Some(expected) = expected {
+        // Assigning to a function's own NAME targets its return slot — the
+        // same peel `set_target_type` and the coercion record apply.
+        let expected = match expected {
+            Type::Function(_) | Type::MethodDecl(_) => expected
+                .with_return_type(db)
+                .unwrap_or(expected),
+            other => other,
+        };
+        let expected = expected.normalize(db);
+        let by_return: Vec<Function<'db>> = tie
+            .iter()
+            .filter(|f| function_signature(db, **f).ret.is_some_and(|r| r == expected))
+            .copied()
+            .collect();
+        if by_return.len() == 1 {
+            return OverloadPick::One(CallableType::Function(by_return[0]));
+        }
+    }
+    OverloadPick::Ambiguous(tie)
 }
 
 enum ArgMatch {

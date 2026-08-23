@@ -26,6 +26,9 @@ pub fn resolve_func_call<'db>(
     resolver: Resolver<'db>,
     func_call: FuncCall<'db>,
     ctx: &mut BodyInferenceResult<'db>,
+    // The type the call's value lands in when the consuming site knows it —
+    // what a RETURN-directed overload set is picked by (`select_overload`).
+    expected: Option<Type<'db>>,
 ) {
     // Re-entry happens (see the CallableType unwrap below), so record once.
     if !ctx.calls.contains(&func_call) {
@@ -87,7 +90,7 @@ pub fn resolve_func_call<'db>(
     // in the resolver (`select_overload`); this call stays overload-unaware —
     // it just supplies the arg types and handles an ambiguous result.
     let arg_types = call_input_arg_types(db, resolver, func_call, ctx);
-    let callable = match select_overload(db, callable, &arg_types) {
+    let callable = match select_overload(db, callable, &arg_types, expected) {
         OverloadPick::One(c) => c,
         OverloadPick::Ambiguous(candidates) => {
             let name = match candidates.first() {

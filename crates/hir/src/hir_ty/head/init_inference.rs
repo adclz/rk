@@ -316,7 +316,9 @@ impl<'db> InitExprInferenceResult<'db> {
             InitExprWalkStep::ConstantExpr { expr, value } => {
                 // Type check the constant expression
                 let mut infer_ctx = InferExprCtx::new(Resolver::for_scope(db, self.scope));
-                infer_ctx.resolve_expr(db, *value, body_ctx);
+                // The declared type directs the initializer, so a
+                // RETURN-overloaded call initializes by the declaration.
+                infer_ctx.resolve_expr_expecting(db, *value, body_ctx, Some(expected));
                 infer_ctx.check_expr(db, *value, body_ctx);
 
                 if let Err(err) = infer_ctx.coerce_type_with_expr(db, expected, *value, body_ctx) {

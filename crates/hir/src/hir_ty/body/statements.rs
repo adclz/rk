@@ -185,7 +185,11 @@ impl<'db> StmtsResolverCtx<'db> {
                         );
                     }
 
-                    self.infer_and_check_expr(db, &mut infer, *target, ctx);
+                    // The target's type was resolved above, so it can DIRECT
+                    // the right-hand side: a RETURN-overloaded call picks the
+                    // overload whose return the target expects.
+                    infer.resolve_expr_expecting(db, *target, ctx, Some(base_typ));
+                    infer.check_expr(db, *target, ctx);
 
                     if assignable
                         && let Err(err) = infer.coerce_var_access_with_expr(db, *var, *target, ctx)
@@ -460,7 +464,7 @@ impl<'db> StmtsResolverCtx<'db> {
                 }
 
                 StmtKind::FuncCall(call) => {
-                    resolve_func_call(db, resolver, *call, ctx);
+                    resolve_func_call(db, resolver, *call, ctx, None);
 
                     let typ = ctx.type_of_begin_expr_with_adjustments(db, call.path(db));
 
