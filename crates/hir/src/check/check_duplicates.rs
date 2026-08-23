@@ -14,12 +14,14 @@ use crate::{
 /// Whether two same-named POUs collide (a real duplicate) rather than form a
 /// legal FUNCTION overload set.
 ///
-/// FUNCTIONs may share a name as long as they differ by their overload
-/// signature — the ordered list of parameter types (see [`function_signature`]).
-/// Equal signatures are a duplicate; any difference is a legal overload. Every
-/// other combination — two same-named FBs/classes/interfaces/data-types, or a
-/// FUNCTION colliding with a non-FUNCTION — is always a duplicate, since only
-/// FUNCTIONs participate in overloading.
+/// FUNCTIONs may share a name as long as they differ by signature — params or
+/// return (see [`function_signature`]). Equal signatures are a duplicate; any
+/// difference is a legal overload (a same-params/different-return set is
+/// RETURN-directed: the consuming site's expected type picks, and a site with
+/// no expected type is E0237, not a pick). Every other combination — two
+/// same-named FBs/classes/interfaces/data-types, or a FUNCTION colliding with
+/// a non-FUNCTION — is always a duplicate, since only FUNCTIONs participate
+/// in overloading.
 fn pous_collide<'db>(db: &'db dyn WorkspaceDataBase, a: Pou<'db>, b: Pou<'db>) -> bool {
     match (a, b) {
         (Pou::Function(fa), Pou::Function(fb)) => {

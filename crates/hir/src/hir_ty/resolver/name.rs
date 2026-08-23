@@ -260,13 +260,12 @@ pub fn overload_discriminant<'db>(
     if siblings.len() <= 1 {
         return None;
     }
-    let mut discriminant = function_signature(db, f);
+    let sig = function_signature(db, f);
     let params_tied = siblings
         .iter()
-        .any(|other| *other != f && function_signature(db, *other) == discriminant);
-    if params_tied
-        && let Some(ret) = crate::hir_ty::head::signature::function_return_type(db, f)
-    {
+        .any(|other| *other != f && function_signature(db, *other).params == sig.params);
+    let mut discriminant = sig.params;
+    if params_tied && let Some(ret) = sig.ret {
         discriminant.push(ret);
     }
     Some(discriminant)
@@ -306,13 +305,28 @@ pub fn select_overload<'db>(
         Some(path) => namespace_pou_candidates(db, path, name),
         None => pou_candidates(db, name),
     };
-    let functions: Vec<Function<'db>> = candidates
+    let mut functions: Vec<Function<'db>> = candidates
         .into_iter()
         .filter_map(|p| match p {
             Pou::Function(f) => Some(f),
             _ => None,
         })
         .collect();
+    // A TRUE duplicate (same params, same return) is E0101 at the
+    // declaration; the call resolves against the surviving first as if the
+    // twin did not exist — one error, not ambiguity noise on every call.
+    {
+        let mut seen: Vec<crate::hir_ty::head::signature::FunctionSignature<'db>> = Vec::new();
+        functions.retain(|f| {
+            let key = function_signature(db, *f);
+            if seen.contains(&key) {
+                false
+            } else {
+                seen.push(key);
+                true
+            }
+        });
+    }
     if functions.len() <= 1 {
         // Not an overload set — nothing to pick.
         return OverloadPick::One(callable);
@@ -324,12 +338,12 @@ pub fn select_overload<'db>(
         let sig = function_signature(db, f);
         // Viable arg counts: at least the required params, at most all of them
         // (trailing defaulted params may be omitted).
-        if arg_types.len() < function_required_arity(db, f) || arg_types.len() > sig.len() {
+        if arg_types.len() < function_required_arity(db, f) || arg_types.len() > sig.params.len() {
             continue;
         }
         let mut matches = Vec::with_capacity(arg_types.len());
         let mut ok = true;
-        for (arg, param) in arg_types.iter().zip(sig.iter()) {
+        for (arg, param) in arg_types.iter().zip(sig.params.iter()) {
             match classify_arg(db, *arg, *param) {
                 ArgMatch::No => {
                     ok = false;

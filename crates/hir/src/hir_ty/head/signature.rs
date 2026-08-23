@@ -28,23 +28,38 @@ pub fn infer_signature<'db>(db: &'db dyn WorkspaceDataBase, scope: ScopeId<'db>)
     Signature::new(scope).infer_signature(db)
 }
 
-/// The overload signature of a FUNCTION — the ordered types of the parameters a
-/// caller supplies positionally: `VAR_INPUT` and `VAR_IN_OUT` (pure `VAR_OUTPUT`
-/// `=>` bindings don't participate in selection, so they're excluded).
-///
-/// This is what distinguishes two same-named FUNCTIONs: equal signatures are a
-/// duplicate, differing ones are overloads. It reads the already-inferred head
-/// types (`infer_signature`) rather than re-resolving, so it is a pure consumer
-/// of head inference.
+/// The signature of a FUNCTION — what identifies a declaration among
+/// same-named ones. Equal signatures are a duplicate (E0101); a difference
+/// anywhere, params or return, makes a legal overload.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct FunctionSignature<'db> {
+    /// The ordered types of the parameters a caller supplies positionally:
+    /// `VAR_INPUT` and `VAR_IN_OUT` (pure `VAR_OUTPUT` `=>` bindings don't
+    /// participate in selection, so they're excluded). What argument matching
+    /// selects an overload by.
+    pub params: Vec<Type<'db>>,
+    /// The normalized return type, `None` for a void FUNCTION. What a
+    /// RETURN-directed overload set (same params) is picked by.
+    pub ret: Option<Type<'db>>,
+}
+
+/// The [`FunctionSignature`] of `f`. It reads the already-inferred head types
+/// (`infer_signature`) rather than re-resolving, so it is a pure consumer of
+/// head inference.
 ///
 /// CYCLE HAZARD: never call this from within `infer_signature` (or anything it
 /// transitively runs). Gathering another function's signature while a signature
 /// is being built re-enters the head query and salsa-cycles. Only out-of-head
 /// consumers — the duplicate check, overload resolution, MIR symbol mangling —
 /// may call it.
-pub fn function_signature<'db>(db: &'db dyn WorkspaceDataBase, f: Function<'db>) -> Vec<Type<'db>> {
+pub fn function_signature<'db>(
+    db: &'db dyn WorkspaceDataBase,
+    f: Function<'db>,
+) -> FunctionSignature<'db> {
+    use crate::hir_ty::infer::Infer;
     let sig = infer_signature(db, f.scope_id(db));
-    f.variables(db)
+    let params = f
+        .variables(db)
         .iter()
         .filter(|v| matches!(v.kind(db), VariableKind::Input | VariableKind::InOut))
         .map(|v| {
@@ -54,25 +69,16 @@ pub fn function_signature<'db>(db: &'db dyn WorkspaceDataBase, f: Function<'db>)
                 .unwrap_or(Type::Never)
                 .normalize(db)
         })
-        .collect()
-}
-
-/// The normalized return type of a FUNCTION, `None` for a void one. What a
-/// RETURN-directed overload set is picked by, and what makes two same-param
-/// functions distinct declarations rather than duplicates.
-pub fn function_return_type<'db>(
-    db: &'db dyn WorkspaceDataBase,
-    f: Function<'db>,
-) -> Option<Type<'db>> {
-    use crate::hir_ty::infer::Infer;
-    f.return_type(db).map(|spec| spec.infer(db).normalize(db))
+        .collect();
+    let ret = f.return_type(db).map(|spec| spec.infer(db).normalize(db));
+    FunctionSignature { params, ret }
 }
 
 /// The minimum number of positional arguments a call to `f` must supply: the
 /// count of VAR_INPUT/VAR_IN_OUT params that are *required* — VAR_IN_OUT, or
 /// VAR_INPUT with no constant default. Trailing params with a constant default
 /// may be omitted. A call is viable for this overload iff
-/// `required <= arg_count <= signature.len()`.
+/// `required <= arg_count <= params.len()`.
 pub fn function_required_arity<'db>(db: &'db dyn WorkspaceDataBase, f: Function<'db>) -> usize {
     use crate::hir_def::expressions::expression::InitExprKind;
     f.variables(db)
