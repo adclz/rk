@@ -329,21 +329,27 @@ fn a_bare_sibling_method_call_receives_this(mut with_db: db::RootDatabase) {
 }
 
 /// Redeclaring a method further down the chain is an OVERRIDE, not a conflict:
-/// the nearest declaration wins and no duplicate diagnostic is produced.
+/// the nearest declaration wins, no duplicate diagnostic is produced — and
+/// the override runs against the DERIVED layout while still reaching the
+/// inherited field at its base offset. A constant return proved selection
+/// only; the state proves the override reads `v` where B1 put it.
 #[rstest]
 fn nearest_override_wins_along_the_chain(mut with_db: db::RootDatabase) {
     let source = r#"
         FUNCTION_BLOCK B1
         VAR v : INT; END_VAR
             METHOD PUBLIC Pick : INT
-                Pick := 1;
+                v := v + 1;
+                Pick := v;
             END_METHOD
         END_FUNCTION_BLOCK
 
         FUNCTION_BLOCK B2 EXTENDS B1
         VAR w : INT; END_VAR
             METHOD PUBLIC OVERRIDE Pick : INT
-                Pick := 2;
+                v := v + 10;   (* inherited field, base offset *)
+                w := w + 2;    (* own field, derived offset *)
+                Pick := v * 100 + w;
             END_METHOD
         END_FUNCTION_BLOCK
 
@@ -353,12 +359,43 @@ fn nearest_override_wins_along_the_chain(mut with_db: db::RootDatabase) {
 
         FUNCTION test : INT
         VAR x : B3; END_VAR
+            x.Pick();
             test := x.Pick();
         END_FUNCTION
     "#;
     let wasm = compile_to_wasm(&mut with_db, source);
     let result: i32 = super::execute_wasm(&wasm, "test", ());
-    assert_eq!(result, 2, "B2's override wins over B1's declaration");
+    assert_eq!(result, 2004, "the override advances v (10,20) and w (2,4): 20*100+4");
+}
+
+/// An override calling the method it overrides: `SUPER.Pick()` must SKIP the
+/// nearest declaration and take the next one up — a third resolution path
+/// beside plain inheritance and override selection, and explicitly static.
+#[rstest]
+fn super_reaches_the_overridden_method(mut with_db: db::RootDatabase) {
+    let source = r#"
+        FUNCTION_BLOCK S1
+        VAR v : INT; END_VAR
+            METHOD PUBLIC Pick : INT
+                v := v + 1;
+                Pick := v;
+            END_METHOD
+        END_FUNCTION_BLOCK
+
+        FUNCTION_BLOCK S2 EXTENDS S1
+            METHOD PUBLIC OVERRIDE Pick : INT
+                Pick := SUPER.Pick() * 100 + 5;
+            END_METHOD
+        END_FUNCTION_BLOCK
+
+        FUNCTION test : INT
+        VAR x : S2; END_VAR
+            test := x.Pick();
+        END_FUNCTION
+    "#;
+    let wasm = compile_to_wasm(&mut with_db, source);
+    let result: i32 = super::execute_wasm(&wasm, "test", ());
+    assert_eq!(result, 105, "SUPER runs S1's body (v -> 1), the override adds 5");
 }
 
 /// A FUNCTION_BLOCK may satisfy an interface with a method it INHERITS rather
@@ -484,4 +521,80 @@ fn a_self_method_call_output_binding_lands(mut with_db: db::RootDatabase) {
     let wasm = compile_to_wasm(&mut with_db, source);
     let result: i32 = super::execute_wasm(&wasm, "run", ());
     assert_eq!(result, 102, "bare and THIS. forms both land the output: 1*100 + 2");
+}
+
+/// THREE declarations of one name in the resolution set: the interface
+/// PROTOTYPE, the base's concrete method, and a derived OVERRIDE. The
+/// recorded collision bug had two of these fighting; this is the neighbouring
+/// shape. Compiled CHECKED, so any duplicate or unimplemented-method
+/// diagnostic fails the test; the override must win the interface dispatch.
+#[rstest]
+fn interface_prototype_base_method_and_override_coexist(mut with_db: db::RootDatabase) {
+    let source = r#"
+        INTERFACE IRun
+            METHOD Run : INT END_METHOD
+        END_INTERFACE
+
+        FUNCTION_BLOCK BaseImpl
+        VAR n : INT; END_VAR
+            METHOD PUBLIC Run : INT
+                n := n + 3;
+                Run := n;
+            END_METHOD
+        END_FUNCTION_BLOCK
+
+        FUNCTION_BLOCK DerivedImpl EXTENDS BaseImpl IMPLEMENTS IRun
+            METHOD PUBLIC OVERRIDE Run : INT
+                n := n + 7;
+                Run := n;
+            END_METHOD
+        END_FUNCTION_BLOCK
+
+        FUNCTION drive : INT
+        VAR_IN_OUT dev : IRun; END_VAR
+            drive := dev.Run();
+        END_FUNCTION
+
+        FUNCTION test : INT
+        VAR d : DerivedImpl; END_VAR
+            drive(dev := d);
+            test := drive(dev := d);   (* override state: 7 then 14 *)
+        END_FUNCTION
+    "#;
+    let wasm = crate::tests::codegen::compile_to_wasm_checked(&mut with_db, source);
+    let result: i32 = super::execute_wasm(&wasm, "test", ());
+    assert_eq!(result, 14, "the override implements the interface, not the base");
+}
+
+/// A BARE call to an INHERITED method with an OUTPUT BINDING: the name walks
+/// EXTENDS to the base, and &v must survive the inherited-receiver path — the
+/// two fixes (bare-sibling dispatch, address-taken method locals) composed.
+#[rstest]
+fn a_bare_inherited_call_output_binding_lands(mut with_db: db::RootDatabase) {
+    let source = r#"
+        FUNCTION_BLOCK OBBase
+        VAR state : INT; END_VAR
+            METHOD PUBLIC Tick
+                VAR_OUTPUT cnt : INT; END_VAR
+                state := state + 1;
+                cnt := state;
+            END_METHOD
+        END_FUNCTION_BLOCK
+
+        FUNCTION_BLOCK OBDerived EXTENDS OBBase
+            METHOD PUBLIC Grab : INT
+                VAR v : INT; END_VAR
+                Tick(cnt => v);
+                Grab := v;
+            END_METHOD
+        END_FUNCTION_BLOCK
+
+        FUNCTION run : DINT
+        VAR d : OBDerived; END_VAR
+            run := d.Grab() * 100 + d.Grab();
+        END_FUNCTION
+    "#;
+    let wasm = compile_to_wasm(&mut with_db, source);
+    let result: i32 = super::execute_wasm(&wasm, "run", ());
+    assert_eq!(result, 102, "the inherited bare call lands 1 then 2 through &v");
 }
