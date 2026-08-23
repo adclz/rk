@@ -1391,6 +1391,66 @@ END_CONFIGURATION
             lint_rule: None,
         },
         ErrorExample {
+            code: "E0247",
+            category: "Resolution",
+            title: "More than one RESOURCE",
+            description: "A deployment drives one RESOURCE: each resource is its own execution unit, and the runtime scans on one thread. A second resource used to compile at exit 0 and be refused at deploy; it is refused here instead, where it can be fixed. This is a limit of the current runtime, not of the language; it lifts when multi-resource deployment lands.",
+            sources: &[r#"
+PROGRAM P
+VAR
+    n : INT;
+END_VAR
+    n := n + 1;
+END_PROGRAM
+
+CONFIGURATION Cfg
+    RESOURCE Core0 ON CPU
+        TASK T1(INTERVAL := T#10ms, PRIORITY := 1);
+        PROGRAM A1 WITH T1 : P;
+    END_RESOURCE
+    RESOURCE Core1 ON CPU
+        TASK T2(INTERVAL := T#20ms, PRIORITY := 2);
+        PROGRAM A2 WITH T2 : P;
+    END_RESOURCE
+END_CONFIGURATION
+"#],
+            lint_rule: None,
+        },
+        ErrorExample {
+            code: "E0248",
+            category: "Resolution",
+            title: "Unknown wasm instruction",
+            description: "A {wasm} pragma names the instruction its body stands for, and the name must be one the emitter has an arm for. An unknown name used to fall through to an unreachable trap (or, on the single-input conversion shape, to a silent identity) at exit 0.",
+            sources: &[r#"
+FUNCTION BOGUS : INT
+VAR_INPUT
+    a : INT;
+    b : INT;
+END_VAR
+    {wasm 'not.a.real.instruction' (params a b) (result BOGUS)}
+END_FUNCTION
+"#],
+            lint_rule: None,
+        },
+        ErrorExample {
+            code: "E0249",
+            category: "Resolution",
+            title: "Wasm pragma outside a FUNCTION",
+            description: "Only FUNCTION bodies are scanned for a {wasm} intrinsic; anywhere else the pragma was silently dropped and the surrounding body compiled as if it were not there.",
+            sources: &[r#"
+FUNCTION_BLOCK FB
+VAR_INPUT
+    a : INT;
+END_VAR
+VAR_OUTPUT
+    o : INT;
+END_VAR
+    {wasm 'i32.shl' (params a a) (result o)}
+END_FUNCTION_BLOCK
+"#],
+            lint_rule: None,
+        },
+        ErrorExample {
             code: "E0244",
             category: "Scope",
             title: "Extern pragma outside a FUNCTION",
