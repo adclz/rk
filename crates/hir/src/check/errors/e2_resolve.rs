@@ -272,6 +272,15 @@ pub enum ResolveError<'db> {
     ExternalVarNotFound {
         var: VariableDecl<'db>,
     },
+    /// A VAR_EXTERNAL aliases its VAR_GLOBAL's storage by name, so the two
+    /// declarations must agree about the type, subrange included. A `REAL`
+    /// external over an `INT` global stores the wrong lane; a plain `INT`
+    /// external over an `INT (0..10)` global goes around the range check.
+    ExternalVarTypeMismatch {
+        var: VariableDecl<'db>,
+        external: Type<'db>,
+        global: Type<'db>,
+    },
     /// A VAR_ACCESS declaration's type does not match the referenced variable's actual type.
     AccessDeclTypeMismatch {
         var_origin: VariableDecl<'db>,
@@ -414,6 +423,7 @@ impl<'db> ErrorCode for ResolveError<'db> {
             Self::InvalidPriority { .. } => "E0241",
             Self::MultipleConfigurations { .. } => "E0242",
             Self::ExternalVarNotFound { .. } => "E0220",
+            Self::ExternalVarTypeMismatch { .. } => "E0246",
             Self::AccessDeclTypeMismatch { .. } => "E0221",
             Self::ConfigInstInitUnknownInstance { .. } => "E0222",
             Self::ConfigInstInitFieldNotFound { .. } => "E0223",
@@ -460,6 +470,7 @@ impl<'db> ErrorCode for ResolveError<'db> {
             | Self::InvalidPriority { .. }
             | Self::MultipleConfigurations { .. } => "configuration error",
             Self::ExternalVarNotFound { .. } => "external variable not found",
+            Self::ExternalVarTypeMismatch { .. } => "external variable type mismatch",
             Self::AccessDeclTypeMismatch { .. } => "access declaration type mismatch",
             Self::ConfigInstInitUnknownInstance { .. }
             | Self::ConfigInstInitFieldNotFound { .. } => "configuration error",
@@ -907,6 +918,21 @@ impl<'db> ToIdeDiagnostic<'db> for ResolveError<'db> {
                 .message(format!(
                     "external variable '{}' not found in any accessible VAR_GLOBAL",
                     var.name(db).text(db)
+                ))
+                .severity(DiagnosticSeverity::ERROR)
+                .desc(self)
+                .range(crate::denormalize(db, file, &var.get_span(db)).unwrap_or_default())
+                .call(),
+            Self::ExternalVarTypeMismatch {
+                var,
+                external,
+                global,
+            } => diag()
+                .message(format!(
+                    "'{}' is declared '{}' here but its VAR_GLOBAL is '{}': an external must repeat the global's type exactly",
+                    var.name(db).text(db),
+                    crate::check::errors::e8_subrange::with_bounds(db, *external),
+                    crate::check::errors::e8_subrange::with_bounds(db, *global),
                 ))
                 .severity(DiagnosticSeverity::ERROR)
                 .desc(self)

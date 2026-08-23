@@ -1365,6 +1365,32 @@ END_FUNCTION_BLOCK
             lint_rule: None,
         },
         ErrorExample {
+            code: "E0246",
+            category: "Resolution",
+            title: "External variable type mismatch",
+            description: "A VAR_EXTERNAL aliases its VAR_GLOBAL's storage by name, so the external must repeat the global's type exactly, subrange included. A plain INT external over an INT (0..10) global would store around the range check.",
+            sources: &[r#"
+TYPE Small : INT (0..10); END_TYPE
+
+PROGRAM MyProg
+    VAR_EXTERNAL
+        g : INT;
+    END_VAR
+END_PROGRAM
+
+CONFIGURATION MyCfg
+    VAR_GLOBAL
+        g : Small;
+    END_VAR
+    RESOURCE Res ON CPU
+        TASK t1(INTERVAL := T#10ms, PRIORITY := 1);
+        PROGRAM inst1 WITH t1 : MyProg;
+    END_RESOURCE
+END_CONFIGURATION
+"#],
+            lint_rule: None,
+        },
+        ErrorExample {
             code: "E0244",
             category: "Scope",
             title: "Extern pragma outside a FUNCTION",
@@ -2541,6 +2567,30 @@ VAR
     n : INT;
     x : INT (0..n);
 END_VAR
+END_FUNCTION
+"#],
+            lint_rule: None,
+        },
+        ErrorExample {
+            code: "E0804",
+            category: "Subranges",
+            title: "Subrange mismatch across a reference",
+            description: "A VAR_IN_OUT argument or an output destination binds the callee to the caller's storage by reference, so both ends must agree about the subrange. A callee writing through a plain INT would otherwise go around the range check of the caller's INT (0..10).",
+            sources: &[r#"
+TYPE Small : INT (0..10); END_TYPE
+
+FUNCTION scribble
+VAR_IN_OUT
+    x : INT;
+END_VAR
+    x := 0;
+END_FUNCTION
+
+FUNCTION f1 : INT
+VAR
+    s : Small;
+END_VAR
+    scribble(x := s);
 END_FUNCTION
 "#],
             lint_rule: None,

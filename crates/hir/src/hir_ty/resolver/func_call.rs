@@ -371,6 +371,49 @@ fn check_in_out_lvalue<'db>(
     }
 }
 
+/// E0804: the two ends of a by-reference binding must agree about the
+/// subrange. A VAR_IN_OUT aliases the caller's storage for reads AND writes,
+/// so any disagreement lets one side escape the other's bounds: an INT param
+/// scribbling 99 into the caller's `INT (0..10)` goes around the range check
+/// entirely. An `=>` output flows callee to caller only, so only a subrange
+/// DESTINATION constrains; a checked subrange output landing in a plain
+/// variable is already in range.
+///
+/// Bases that differ are the coercion machinery's complaint, not this one's.
+fn check_by_ref_subrange<'db>(
+    db: &'db dyn WorkspaceDataBase,
+    var: VariableDecl<'db>,
+    value_ty: Type<'db>,
+    span: auto_lsp::tree_sitter::Range,
+    output_binding: bool,
+    ctx: &mut BodyInferenceResult<'db>,
+) {
+    let param_ty = Type::new_var(db, var);
+    if param_ty.normalize(db) != value_ty.normalize(db) {
+        return;
+    }
+    let bounds = |t: Type<'db>| {
+        t.as_subrange(db)
+            .map(|s| crate::hir_ty::infer::const_eval::subrange_bounds(db, s))
+    };
+    let agree = match (bounds(param_ty), bounds(value_ty)) {
+        (None, None) => true,
+        (Some(p), Some(a)) => p == a,
+        (Some(_), None) => output_binding,
+        (None, Some(_)) => false,
+    };
+    if !agree {
+        ctx.errors.push(
+            crate::check::errors::e8_subrange::SubRangeError::ByRefSubrangeMismatch {
+                span,
+                param: param_ty,
+                arg: value_ty,
+            }
+            .to_diagnostic(db, ctx.scope.file(db)),
+        );
+    }
+}
+
 fn apply_param_coercion<'db>(
     db: &'db dyn WorkspaceDataBase,
     resolver: Resolver<'db>,
@@ -393,6 +436,13 @@ fn apply_param_coercion<'db>(
             }
 
             check_in_out_lvalue(db, callable, var, value, ctx);
+
+            if var.is_in_out(db)
+                && let ExprKind::PrimaryExpr(PrimaryExpr::VariableAccess(va)) = value.expr(db)
+            {
+                let arg_ty = ctx.type_of_variable_access_with_adjustments(db, *va);
+                check_by_ref_subrange(db, var, arg_ty, va.get_span(db), false, ctx);
+            }
 
             if var.is_output(db) {
                 ctx.errors.push(
@@ -421,6 +471,13 @@ fn apply_param_coercion<'db>(
 
             check_in_out_lvalue(db, callable, var, value, ctx);
 
+            if var.is_in_out(db)
+                && let ExprKind::PrimaryExpr(PrimaryExpr::VariableAccess(va)) = value.expr(db)
+            {
+                let arg_ty = ctx.type_of_variable_access_with_adjustments(db, *va);
+                check_by_ref_subrange(db, var, arg_ty, va.get_span(db), false, ctx);
+            }
+
             ctx.variable_of_param.insert(param, var);
         }
         ParamAssignKind::FormalOutput {
@@ -446,6 +503,10 @@ fn apply_param_coercion<'db>(
             resolver.resolve_variable_access(db, variable, ctx);
             let call_site = CallSite::from_scoped(db, &variable);
             let rhs_typ = ctx.type_of_variable_access_with_adjustments(db, variable);
+
+            if !var.is_in_out(db) {
+                check_by_ref_subrange(db, var, rhs_typ, variable.get_span(db), true, ctx);
+            }
 
             if (var.is_in_out(db) || var.is_output(db)) && ctx.is_constant_access(db, variable) {
                 ctx.errors.push(

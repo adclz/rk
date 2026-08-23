@@ -247,6 +247,9 @@ impl<'db> Signature<'db> {
                             .to_diagnostic(db, self.scope.file(db)),
                     );
                 }
+                // The TYPE comparison against the found global lives in the
+                // check layer (`check_externals`): resolving the global's
+                // spec can re-enter signature inference, which cycles here.
             }
         }
     }

@@ -366,3 +366,202 @@ fn invalid_value_outside_constant_bounds(mut with_db: RootDatabase) {
     ---'
     ");
 }
+
+// E0804: the two ends of a by-reference binding must agree about the
+// subrange, or the callee's writes go around the range check entirely.
+
+#[rstest]
+fn invalid_subrange_bound_to_plain_inout(mut with_db: RootDatabase) {
+    let source = r#"
+        TYPE Small : INT (0..10); END_TYPE
+        FUNCTION scribble
+        VAR_IN_OUT x : INT; END_VAR
+            x := 0;
+        END_FUNCTION
+        FUNCTION fn1 : INT
+        VAR s : Small; END_VAR
+            scribble(x := s);
+        END_FUNCTION
+    "#;
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
+    [E0804] Error: subrange mismatch across a reference
+       ,-[ file:///test0.st:9:27 ]
+       |
+     9 |             scribble(x := s);
+       |                           |
+       |                           `-- 'Small (0..10)' binds by reference to 'INT': the subrange must match exactly
+    ---'
+    ");
+}
+
+#[rstest]
+fn invalid_plain_bound_to_subrange_inout(mut with_db: RootDatabase) {
+    let source = r#"
+        TYPE Small : INT (0..10); END_TYPE
+        FUNCTION scribble
+        VAR_IN_OUT x : Small; END_VAR
+            x := 0;
+        END_FUNCTION
+        FUNCTION fn1 : INT
+        VAR n : INT; END_VAR
+            scribble(x := n);
+        END_FUNCTION
+    "#;
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
+    [E0804] Error: subrange mismatch across a reference
+       ,-[ file:///test0.st:9:27 ]
+       |
+     9 |             scribble(x := n);
+       |                           |
+       |                           `-- 'INT' binds by reference to 'Small (0..10)': the subrange must match exactly
+    ---'
+    ");
+}
+
+#[rstest]
+fn invalid_plain_output_into_subrange(mut with_db: RootDatabase) {
+    let source = r#"
+        TYPE Small : INT (0..10); END_TYPE
+        FUNCTION emitfn
+        VAR_OUTPUT o : INT; END_VAR
+            o := 0;
+        END_FUNCTION
+        FUNCTION fn1 : INT
+        VAR s : Small; END_VAR
+            emitfn(o => s);
+        END_FUNCTION
+    "#;
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
+    [E0804] Error: subrange mismatch across a reference
+       ,-[ file:///test0.st:9:25 ]
+       |
+     9 |             emitfn(o => s);
+       |                         |
+       |                         `-- 'Small (0..10)' binds by reference to 'INT': the subrange must match exactly
+    ---'
+    ");
+}
+
+// The safe direction stays legal: a checked subrange output landing in a
+// plain variable is already in range, and matching subranges alias nothing
+// they do not both enforce.
+#[rstest]
+fn valid_subrange_output_into_plain_and_matching_inout(mut with_db: RootDatabase) {
+    let source = r#"
+        TYPE Small : INT (0..10); END_TYPE
+        FUNCTION emitfn
+        VAR_OUTPUT o : Small; END_VAR
+            o := 5;
+        END_FUNCTION
+        FUNCTION scribble
+        VAR_IN_OUT x : Small; END_VAR
+            x := 3;
+        END_FUNCTION
+        FUNCTION fn1 : INT
+        VAR n : INT; s : Small; END_VAR
+            emitfn(o => n);
+            scribble(x := s);
+        END_FUNCTION
+    "#;
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"");
+}
+
+// Two SUBRANGES with different bounds is where "must match exactly" does the
+// work its wording implies: same base, both constrained, neither survives.
+// The message spells both constraint sets so similarly-named types stay
+// tellable apart.
+#[rstest]
+fn invalid_mismatched_subrange_inout(mut with_db: RootDatabase) {
+    let source = r#"
+        TYPE Small : INT (0..10); END_TYPE
+        TYPE Wider : INT (0..20); END_TYPE
+        FUNCTION scribble
+        VAR_IN_OUT x : Wider; END_VAR
+            x := 0;
+        END_FUNCTION
+        FUNCTION fn1 : INT
+        VAR s : Small; END_VAR
+            scribble(x := s);
+        END_FUNCTION
+    "#;
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
+    [E0804] Error: subrange mismatch across a reference
+        ,-[ file:///test0.st:10:27 ]
+        |
+     10 |             scribble(x := s);
+        |                           |
+        |                           `-- 'Small (0..10)' binds by reference to 'Wider (0..20)': the subrange must match exactly
+    ----'
+    ");
+}
+
+// The check reads the ADJUSTED type: `r.f` and `a[1]` are a Rec and an ARRAY
+// raw, and reading them raw would wave the binding through (bases differ, so
+// the check would defer to coercion and accept).
+#[rstest]
+fn invalid_subrange_field_bound_to_plain_inout(mut with_db: RootDatabase) {
+    let source = r#"
+        TYPE Small : INT (0..10); END_TYPE
+        TYPE Rec : STRUCT f : Small; END_STRUCT END_TYPE
+        FUNCTION scribble
+        VAR_IN_OUT x : INT; END_VAR
+            x := 0;
+        END_FUNCTION
+        FUNCTION fn1 : INT
+        VAR r : Rec; END_VAR
+            scribble(x := r.f);
+        END_FUNCTION
+    "#;
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
+    [E0804] Error: subrange mismatch across a reference
+        ,-[ file:///test0.st:10:27 ]
+        |
+     10 |             scribble(x := r.f);
+        |                           ^|^
+        |                            `--- 'Small (0..10)' binds by reference to 'INT': the subrange must match exactly
+    ----'
+    ");
+}
+
+#[rstest]
+fn invalid_subrange_element_bound_to_plain_inout(mut with_db: RootDatabase) {
+    let source = r#"
+        TYPE Small : INT (0..10); END_TYPE
+        FUNCTION scribble
+        VAR_IN_OUT x : INT; END_VAR
+            x := 0;
+        END_FUNCTION
+        FUNCTION fn1 : INT
+        VAR a : ARRAY[0..2] OF Small; END_VAR
+            scribble(x := a[1]);
+        END_FUNCTION
+    "#;
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
+    [E0804] Error: subrange mismatch across a reference
+       ,-[ file:///test0.st:9:27 ]
+       |
+     9 |             scribble(x := a[1]);
+       |                           ^^|^
+       |                             `--- 'Small (0..10)' binds by reference to 'INT': the subrange must match exactly
+    ---'
+    ");
+}
+
+// And no false reject: a nested Small binds fine to a Small param.
+#[rstest]
+fn valid_nested_subrange_matching_inout(mut with_db: RootDatabase) {
+    let source = r#"
+        TYPE Small : INT (0..10); END_TYPE
+        TYPE Rec : STRUCT f : Small; END_STRUCT END_TYPE
+        FUNCTION scribble
+        VAR_IN_OUT x : Small; END_VAR
+            x := 3;
+        END_FUNCTION
+        FUNCTION fn1 : INT
+        VAR r : Rec; a : ARRAY[0..2] OF Small; END_VAR
+            scribble(x := r.f);
+            scribble(x := a[1]);
+        END_FUNCTION
+    "#;
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"");
+}

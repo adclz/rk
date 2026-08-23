@@ -5,6 +5,7 @@ pub mod assignment;
 pub mod bit_access;
 pub mod case;
 pub mod config;
+pub mod var_external;
 pub mod direct_variables;
 pub mod duplicates;
 pub mod enums;

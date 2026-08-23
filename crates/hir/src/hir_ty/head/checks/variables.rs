@@ -93,6 +93,31 @@ impl<'db> InitInference<'db> {
                     .to_diagnostic(db, self.scope.file(db)),
                 );
             }
+            // A VAR_EXTERNAL aliases its VAR_GLOBAL's storage by NAME, so
+            // the two declarations must agree about the TYPE, any type
+            // (E0246). Cycle-safe here where a named global type resolves
+            // freely; inside signature inference the same resolution
+            // re-enters `infer_signature`. Absence is E0220, the signature's.
+            if var.kind(db) == crate::hir_def::pous::variable::VariableKind::External
+                && let Some(global) =
+                    crate::hir_ty::index_graphs::external_var_lookup(db, var.get_name_ident(db))
+            {
+                let ext_ty = Type::resolve_spec(db, var.spec(db));
+                let glob_ty = Type::resolve_spec(db, global.spec(db));
+                if !ext_ty.is_never()
+                    && !glob_ty.is_never()
+                    && !same_storage_type(db, ext_ty, glob_ty)
+                {
+                    self.errors.push(
+                        ResolveError::ExternalVarTypeMismatch {
+                            var: *var,
+                            external: ext_ty,
+                            global: glob_ty,
+                        }
+                        .to_diagnostic(db, self.scope.file(db)),
+                    );
+                }
+            }
             // A declared location gets the SAME answer as a direct access:
             // the hardware is not implemented, so binding a variable to an
             // address cannot be honoured. Silently dropping the `AT` clause
@@ -293,5 +318,31 @@ fn extern_scalar<'db>(db: &'db dyn WorkspaceDataBase, ty: Type<'db>) -> bool {
         Type::Elementary(es) => es != ElementarySpec::String,
         Type::Enum(_) | Type::SubRange(_) => true,
         _ => false,
+    }
+}
+
+/// Whether two declarations name the SAME storage type, structurally where
+/// the declarations are spelled inline: two `ARRAY[0..2] OF INT` specs are
+/// distinct nodes but the same type. Subranges compare by base and bounds;
+/// named types (structs, enums, FBs) by the declaration they resolve to.
+fn same_storage_type<'db>(db: &'db dyn WorkspaceDataBase, a: Type<'db>, b: Type<'db>) -> bool {
+    let bounds = |t: Type<'db>| {
+        t.as_subrange(db)
+            .map(|s| crate::hir_ty::infer::const_eval::subrange_bounds(db, s))
+    };
+    if bounds(a) != bounds(b) {
+        return false;
+    }
+    match (a.normalize(db), b.normalize(db)) {
+        (Type::Array(x), Type::Array(y)) => {
+            crate::hir_ty::infer::const_eval::array_dimensions(db, x)
+                == crate::hir_ty::infer::const_eval::array_dimensions(db, y)
+                && same_storage_type(
+                    db,
+                    Type::resolve_spec(db, x.of_type(db)),
+                    Type::resolve_spec(db, y.of_type(db)),
+                )
+        }
+        (x, y) => x == y,
     }
 }
