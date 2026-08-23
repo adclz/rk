@@ -3,9 +3,12 @@
 
 All timers share a common interface:
 - `IN`: BOOL trigger input
-- `PT`: TIME preset duration
+- `PT`: preset duration
 - `Q`: BOOL output
-- `ET`: TIME elapsed time
+- `ET`: elapsed time
+
+The standard names (`TP`, `TON`, `TOF`) work in `TIME`; the `_LTIME`
+variants carry the same behavior at `LTIME` precision.
 */
 NAMESPACE Std.Timers
 	USING Std.Convert;
@@ -87,6 +90,49 @@ NAMESPACE Std.Timers
 		PREV_IN := IN;
 	END_FUNCTION_BLOCK
 
+	TYPE TP: TP_TIME END_TYPE
+
+	/*
+    ## TP_LTIME - Pulse Timer (LTIME)
+
+    [TP_TIME](#tp_time) at `LTIME` precision.
+    */
+	FUNCTION_BLOCK TP_LTIME
+		VAR_INPUT
+			IN: BOOL;
+			PT: LTIME;
+		END_VAR
+		VAR_OUTPUT
+			Q: BOOL := FALSE;
+			ET: LTIME
+		END_VAR
+		VAR
+			STATE: SINT := 0;
+			PREV_IN: BOOL := FALSE;
+			CURRENT_TIME, START_TIME: LTIME;
+		END_VAR
+
+		CURRENT_TIME := PLC_LTIME();
+		IF ((STATE = 0) AND NOT (PREV_IN) AND IN) THEN
+			STATE := 1;
+			Q := TRUE;
+			START_TIME := CURRENT_TIME;
+		ELSIF (STATE = 1) THEN
+			IF ((START_TIME + PT) <= CURRENT_TIME) THEN
+				STATE := 2;
+				Q := FALSE;
+				ET := PT;
+			ELSE
+				ET := CURRENT_TIME - START_TIME;
+			END_IF;
+		END_IF;
+		IF ((STATE = 2) AND NOT (IN)) THEN
+			ET := LTIME#0s;
+			STATE := 0;
+		END_IF;
+		PREV_IN := IN;
+	END_FUNCTION_BLOCK
+
 	/*
     ## TON_TIME - On-Delay Timer
 
@@ -146,6 +192,51 @@ NAMESPACE Std.Timers
 		PREV_IN := IN;
 	END_FUNCTION_BLOCK
 
+	TYPE TON: TON_TIME END_TYPE
+
+	/*
+    ## TON_LTIME - On-Delay Timer (LTIME)
+
+    [TON_TIME](#ton_time) at `LTIME` precision.
+    */
+	FUNCTION_BLOCK TON_LTIME
+		VAR_INPUT
+			IN: BOOL;
+			PT: LTIME;
+		END_VAR
+		VAR_OUTPUT
+			Q: BOOL := FALSE;
+			ET: LTIME;
+		END_VAR
+		VAR
+			STATE: SINT := 0;
+			PREV_IN: BOOL := FALSE;
+			CURRENT_TIME, START_TIME: LTIME;
+		END_VAR
+
+		CURRENT_TIME := PLC_LTIME();
+		IF ((STATE = 0) AND NOT (PREV_IN) AND IN) THEN
+			STATE := 1;
+			Q := FALSE;
+			START_TIME := CURRENT_TIME;
+		ELSE
+			IF (NOT (IN)) THEN
+				ET := LTIME#0s;
+				Q := FALSE;
+				STATE := 0;
+			ELSIF (STATE = 1) THEN
+				IF ((START_TIME + PT) <= CURRENT_TIME) THEN
+					STATE := 2;
+					Q := TRUE;
+					ET := PT;
+				ELSE
+					ET := CURRENT_TIME - START_TIME;
+				END_IF;
+			END_IF;
+		END_IF;
+		PREV_IN := IN;
+	END_FUNCTION_BLOCK
+
 	/*
     ## TOF_TIME - Off-Delay Timer
 
@@ -187,6 +278,49 @@ NAMESPACE Std.Timers
 		ELSE
 			IF (IN) THEN
 				ET := T#0s;
+				STATE := 0;
+			ELSIF (STATE = 1) THEN
+				IF ((START_TIME + PT) <= CURRENT_TIME) THEN
+					STATE := 2;
+					ET := PT;
+				ELSE
+					ET := CURRENT_TIME - START_TIME;
+				END_IF;
+			END_IF;
+		END_IF;
+		Q := IN OR (STATE = 1);
+		PREV_IN := IN;
+	END_FUNCTION_BLOCK
+
+	TYPE TOF: TOF_TIME END_TYPE
+
+	/*
+    ## TOF_LTIME - Off-Delay Timer (LTIME)
+
+    [TOF_TIME](#tof_time) at `LTIME` precision.
+    */
+	FUNCTION_BLOCK TOF_LTIME
+		VAR_INPUT
+			IN: BOOL;
+			PT: LTIME;
+		END_VAR
+		VAR_OUTPUT
+			Q: BOOL := FALSE;
+			ET: LTIME;
+		END_VAR
+		VAR
+			STATE: SINT := 0;
+			PREV_IN: BOOL := FALSE;
+			CURRENT_TIME, START_TIME: LTIME;
+		END_VAR
+
+		CURRENT_TIME := PLC_LTIME();
+		IF ((STATE = 0) AND PREV_IN AND NOT (IN)) THEN
+			STATE := 1;
+			START_TIME := CURRENT_TIME;
+		ELSE
+			IF (IN) THEN
+				ET := LTIME#0s;
 				STATE := 0;
 			ELSIF (STATE = 1) THEN
 				IF ((START_TIME + PT) <= CURRENT_TIME) THEN
@@ -418,6 +552,69 @@ NAMESPACE Std.Timers
 			ASSERT(NOT tp.Q, 'TP PT=0: pulse over on the next call');
 		END_FUNCTION
 
+		// -- the LTIME variants run the same machine on the ns clock --
+
+		{test}
+		FUNCTION test_ton_ltime_expires
+			VAR
+				timer: TON_LTIME;
+			END_VAR
+			timer(IN := TRUE, PT := LTIME#1ms);
+			WHILE NOT timer.Q DO
+				timer(IN := TRUE, PT := LTIME#1ms);
+			END_WHILE;
+			ASSERT(timer.ET = LTIME#1ms, 'TON_LTIME ET is exactly PT after expiry');
+		END_FUNCTION
+
+		{test}
+		FUNCTION test_tof_ltime_expires
+			VAR
+				timer: TOF_LTIME;
+			END_VAR
+			timer(IN := TRUE, PT := LTIME#1ms);
+			ASSERT(timer.Q, 'TOF_LTIME Q should be TRUE while IN is TRUE');
+			timer(IN := FALSE, PT := LTIME#1ms);
+			WHILE timer.Q DO
+				timer(IN := FALSE, PT := LTIME#1ms);
+			END_WHILE;
+			ASSERT(timer.ET = LTIME#1ms, 'TOF_LTIME ET clamps at PT after expiry');
+		END_FUNCTION
+
+		{test}
+		FUNCTION test_tp_ltime_pulse
+			VAR
+				timer: TP_LTIME;
+			END_VAR
+			timer(IN := TRUE, PT := LTIME#1ms);
+			ASSERT(timer.Q, 'TP_LTIME Q should be TRUE on rising edge');
+			WHILE timer.Q DO
+				timer(IN := TRUE, PT := LTIME#1ms);
+			END_WHILE;
+			ASSERT(timer.ET = LTIME#1ms, 'TP_LTIME ET clamps at PT when the pulse ends');
+		END_FUNCTION
+
+		// -- the standard names are aliases; instances declared through
+		// them must build, call, and expose the outputs --
+
+		{test}
+		FUNCTION test_standard_names_are_usable
+			VAR
+				pulse: TP;
+				on_delay: TON;
+				off_delay: TOF;
+			END_VAR
+			pulse(IN := TRUE, PT := T#100ms);
+			ASSERT(pulse.Q, 'a TP-typed instance pulses on the rising edge');
+			on_delay(IN := TRUE, PT := T#1ms);
+			WHILE NOT on_delay.Q DO
+				on_delay(IN := TRUE, PT := T#1ms);
+			END_WHILE;
+			ASSERT(on_delay.ET = T#1ms, 'a TON-typed instance expires at PT');
+			off_delay(IN := TRUE, PT := T#100ms);
+			off_delay(IN := FALSE, PT := T#100ms);
+			ASSERT(off_delay.Q, 'a TOF-typed instance holds Q through the off-delay');
+		END_FUNCTION
+
 		// --- the clock itself ---
 
 		{test}
@@ -428,6 +625,16 @@ NAMESPACE Std.Timers
 			t1 := PLC_TIME();
 			t2 := PLC_TIME();
 			ASSERT(t2 >= t1, 'PLC_TIME must be monotonic');
+		END_FUNCTION
+
+		{test}
+		FUNCTION test_plc_ltime_monotonic
+			VAR
+				t1, t2: LTIME;
+			END_VAR
+			t1 := PLC_LTIME();
+			t2 := PLC_LTIME();
+			ASSERT(t2 >= t1, 'PLC_LTIME must be monotonic');
 		END_FUNCTION
 	END_NAMESPACE
 END_NAMESPACE
