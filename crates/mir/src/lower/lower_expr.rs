@@ -2057,9 +2057,6 @@ impl<'db> ExprLowerCtx<'db> {
         self.type_to_mir_elementary(ty)
     }
 
-    /// Get the MirElementary type of an expression.
-    /// The machine type an expression evaluates to, using the ADJUSTED type:
-    /// `arr[0]` is the element, not the array.
     /// The plan resolution assembled for this call: from body inference, or
     /// from init inference for a call in an initializer.
     fn resolved_call_of(
@@ -2102,6 +2099,8 @@ impl<'db> ExprLowerCtx<'db> {
         }
     }
 
+    /// The machine type an expression evaluates to, using the ADJUSTED type:
+    /// `arr[0]` is the element, not the array.
     fn expr_to_mir_elementary(&self, expr: Expr<'db>) -> Result<MirElementary, LowerTypeError> {
         let ty = expr.infer_adjusted(self.db);
         self.type_to_mir_elementary(ty)
