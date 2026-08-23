@@ -229,6 +229,49 @@ pub enum OverloadPick<'db> {
     Ambiguous(Vec<Function<'db>>),
 }
 
+/// The types that DISCRIMINATE this function's symbol among its overloads:
+/// its parameter signature, plus its return type when a same-name sibling
+/// ties on parameters (a RETURN-directed set — params alone would give two
+/// functions one symbol). `None` when the name is not overloaded at all.
+///
+/// This is resolution's knowledge — which declarations share a name and how
+/// they differ — exposed so the code generator renders symbols without
+/// re-deriving candidate sets itself.
+///
+/// A plain function, not a salsa query: cross-file lookups stay unmemoized so
+/// their dependencies flow to the per-file extraction queries (see the header
+/// of `index_graphs.rs`).
+pub fn overload_discriminant<'db>(
+    db: &'db dyn WorkspaceDataBase,
+    f: Function<'db>,
+) -> Option<Vec<Type<'db>>> {
+    let name = f.name(db);
+    let candidates = match function_namespace_path(db, f) {
+        Some(path) => namespace_pou_candidates(db, path, name),
+        None => pou_candidates(db, name),
+    };
+    let siblings: Vec<Function<'db>> = candidates
+        .into_iter()
+        .filter_map(|p| match p {
+            Pou::Function(other) => Some(other),
+            _ => None,
+        })
+        .collect();
+    if siblings.len() <= 1 {
+        return None;
+    }
+    let mut discriminant = function_signature(db, f);
+    let params_tied = siblings
+        .iter()
+        .any(|other| *other != f && function_signature(db, *other) == discriminant);
+    if params_tied
+        && let Some(ret) = crate::hir_ty::head::signature::function_return_type(db, f)
+    {
+        discriminant.push(ret);
+    }
+    Some(discriminant)
+}
+
 /// Select the FUNCTION overload whose signature matches `arg_types`.
 ///
 /// Ordinary name resolution binds a bare function name to the *first* same-name

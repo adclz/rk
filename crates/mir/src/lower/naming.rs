@@ -4,9 +4,7 @@
 use compact_str::CompactString;
 use db::WorkspaceDataBase;
 use hir::hir_def::interned::identifier::Ident;
-use hir::hir_def::pous::{function::Function, pou::Pou};
-use hir::hir_ty::head::signature::function_signature;
-use hir::hir_ty::index_graphs::{namespace_pou_candidates, pou_candidates};
+use hir::hir_def::pous::function::Function;
 use hir::hir_ty::ty::Type;
 
 /// `base$Part1$Part2…` from sorted concrete part names, or `base` when
@@ -28,15 +26,14 @@ pub fn mangle_generic_name(db: &dyn WorkspaceDataBase, base: Ident, parts: &[&st
 /// and call compute it the same way.
 pub fn mir_function_symbol<'db>(db: &'db dyn WorkspaceDataBase, f: Function<'db>) -> Ident {
     let base = qualified_pou_ident(db, Type::Function(f));
-    if function_is_overloaded(db, f) {
-        let parts: Vec<String> = function_signature(db, f)
-            .iter()
-            .map(|t| type_mangle(db, t))
-            .collect();
-        let refs: Vec<&str> = parts.iter().map(|s| s.as_str()).collect();
-        mangle_generic_name(db, base, &refs)
-    } else {
-        base
+    // What discriminates the symbol is resolution's decision.
+    match hir::hir_ty::resolver::name::overload_discriminant(db, f) {
+        Some(types) => {
+            let parts: Vec<String> = types.iter().map(|t| type_mangle(db, t)).collect();
+            let refs: Vec<&str> = parts.iter().map(|s| s.as_str()).collect();
+            mangle_generic_name(db, base, &refs)
+        }
+        None => base,
     }
 }
 
@@ -57,20 +54,6 @@ fn type_mangle<'db>(db: &'db dyn WorkspaceDataBase, ty: &Type<'db>) -> String {
     }
 }
 
-/// Whether `f`'s name is shared by more than one FUNCTION in its declaring
-/// scope (i.e. `f` is part of an overload set).
-fn function_is_overloaded<'db>(db: &'db dyn WorkspaceDataBase, f: Function<'db>) -> bool {
-    let name = f.name(db);
-    let candidates = match hir::hir_ty::resolver::name::enclosing_namespace_path(db, f.scope_id(db)) {
-        Some(path) => namespace_pou_candidates(db, path, name),
-        None => pou_candidates(db, name),
-    };
-    candidates
-        .iter()
-        .filter(|p| matches!(p, Pou::Function(_)))
-        .count()
-        > 1
-}
 
 
 

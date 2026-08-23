@@ -57,6 +57,17 @@ pub fn function_signature<'db>(db: &'db dyn WorkspaceDataBase, f: Function<'db>)
         .collect()
 }
 
+/// The normalized return type of a FUNCTION, `None` for a void one. What a
+/// RETURN-directed overload set is picked by, and what makes two same-param
+/// functions distinct declarations rather than duplicates.
+pub fn function_return_type<'db>(
+    db: &'db dyn WorkspaceDataBase,
+    f: Function<'db>,
+) -> Option<Type<'db>> {
+    use crate::hir_ty::infer::Infer;
+    f.return_type(db).map(|spec| spec.infer(db).normalize(db))
+}
+
 /// The minimum number of positional arguments a call to `f` must supply: the
 /// count of VAR_INPUT/VAR_IN_OUT params that are *required* — VAR_IN_OUT, or
 /// VAR_INPUT with no constant default. Trailing params with a constant default
