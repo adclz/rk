@@ -1002,9 +1002,11 @@ fn emit_wasm_instruction(func: &mut wasm_encoder::Function, name: &str) {
         "f64.abs" => {
             func.instruction(&Instruction::F64Abs);
         }
-        _ => {
-            // Unknown instruction - emit unreachable as a trap
-            func.instruction(&Instruction::Unreachable);
+        other => {
+            // E0248 refuses unknown names at check; reaching one here means
+            // the check and the emitter disagree, and a loud death beats a
+            // valid module carrying code the program never asked for.
+            panic!("unknown wasm instruction `{other}` survived the check");
         }
     }
 }

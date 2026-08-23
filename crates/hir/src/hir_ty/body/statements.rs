@@ -591,6 +591,44 @@ impl<'db> StmtsResolverCtx<'db> {
                 }
 
                 StmtKind::WasmPragma(wasm_decl) => {
+                    // Only FUNCTION bodies are scanned for a wasm intrinsic;
+                    // anywhere else the pragma was silently dropped and the
+                    // body compiled as if it were not there.
+                    {
+                        use crate::hir_def::scope::ScopeKind;
+                        use crate::hir_def::semantic_index::get_scope;
+                        let in_function = matches!(
+                            get_scope(db, self.scope).kind,
+                            ScopeKind::Pou(crate::hir_def::pous::pou::Pou::Function(_))
+                        );
+                        if !in_function {
+                            ctx.errors.push(
+                                crate::check::errors::e2_resolve::ResolveError::WasmPragmaOutsideFunction {
+                                    span: wasm_decl.instruction_span,
+                                }
+                                .to_diagnostic(db, ctx.scope.file(db)),
+                            );
+                        } else {
+                            // An unknown name used to fall through to
+                            // `unreachable`, or to a silent identity on the
+                            // conversion shape.
+                            let name = wasm_decl.instruction.as_str();
+                            let ok = if wasm_decl.type_ref.is_some() {
+                                crate::check::wasm_instructions::known_with_type_basis(name)
+                            } else {
+                                crate::check::wasm_instructions::known(name)
+                            };
+                            if !ok {
+                                ctx.errors.push(
+                                    crate::check::errors::e2_resolve::ResolveError::UnknownWasmInstruction {
+                                        name: wasm_decl.instruction.clone(),
+                                        span: wasm_decl.instruction_span,
+                                    }
+                                    .to_diagnostic(db, ctx.scope.file(db)),
+                                );
+                            }
+                        }
+                    }
                     // Wasm intrinsic doesn't need type inference, but we
                     // still need to mark referenced variables as used so
                     // the unused-variable lint doesn't flag them.

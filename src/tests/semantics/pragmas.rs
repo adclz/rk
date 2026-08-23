@@ -203,3 +203,99 @@ END_FUNCTION"#;
     // so no E0404 emitted here - just verifying no crash.
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"");
 }
+
+// E0248/E0249: a {wasm} pragma is validated where it is written. An unknown
+// name used to fall through to `unreachable` (or, on the conversion shape,
+// to a silent identity), and a pragma outside a FUNCTION was silently
+// dropped — all at exit 0.
+
+#[rstest]
+fn invalid_unknown_wasm_instruction(mut with_db: RootDatabase) {
+    let source = r#"
+        FUNCTION BOGUS : INT
+        VAR_INPUT a : INT; b : INT; END_VAR
+            {wasm 'not.a.real.instruction' (params a b) (result BOGUS)}
+        END_FUNCTION
+    "#;
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
+    [E0248] Error: invalid wasm pragma
+       ,-[ file:///test0.st:4:19 ]
+       |
+     4 |             {wasm 'not.a.real.instruction' (params a b) (result BOGUS)}
+       |                   ^^^^^^^^^^^^|^^^^^^^^^^^
+       |                               `------------- 'not.a.real.instruction' is not a wasm instruction this compiler emits
+    ---'
+    ");
+}
+
+#[rstest]
+fn invalid_unknown_wasm_instruction_with_type_basis(mut with_db: RootDatabase) {
+    let source = r#"
+        FUNCTION BOGUS : INT
+        VAR_INPUT a : INT; END_VAR
+            {wasm a 'zorble' (params a) (result BOGUS)}
+        END_FUNCTION
+    "#;
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
+    [E0248] Error: invalid wasm pragma
+       ,-[ file:///test0.st:4:21 ]
+       |
+     4 |             {wasm a 'zorble' (params a) (result BOGUS)}
+       |                     ^^^^|^^^
+       |                         `----- 'zorble' is not a wasm instruction this compiler emits
+    ---'
+    ");
+}
+
+#[rstest]
+fn invalid_wasm_pragma_outside_function(mut with_db: RootDatabase) {
+    let source = r#"
+        FUNCTION_BLOCK FB
+        VAR_INPUT a : INT; END_VAR
+        VAR_OUTPUT o : INT; END_VAR
+            {wasm 'i32.shl' (params a a) (result o)}
+        END_FUNCTION_BLOCK
+    "#;
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
+    [E0249] Error: invalid wasm pragma
+       ,-[ file:///test0.st:5:19 ]
+       |
+     5 |             {wasm 'i32.shl' (params a a) (result o)}
+       |                   ^^^^|^^^^
+       |                       `------ a {wasm} body is only available on a FUNCTION; here the pragma would be silently dropped
+    ---'
+    ");
+}
+
+// The four families stay clean: a native name, a builtin, a bare op that
+// prefixes on its type basis, and the conversion pseudo-names.
+#[rstest]
+fn valid_wasm_instruction_names(mut with_db: RootDatabase) {
+    let source = r#"
+        FUNCTION SHIFT : DINT
+        VAR_INPUT a : DINT; n : DINT; END_VAR
+            {wasm 'i32.shl' (params a n) (result SHIFT)}
+        END_FUNCTION
+
+        FUNCTION SINE : LREAL
+        VAR_INPUT x : LREAL; END_VAR
+            {wasm 'f64.sin' (params x) (result SINE)}
+        END_FUNCTION
+
+        FUNCTION SINB : LREAL
+        VAR_INPUT x : LREAL; END_VAR
+            {wasm x 'sin' (params x) (result SINB)}
+        END_FUNCTION
+
+        FUNCTION WIDEN : LINT
+        VAR_INPUT x : DINT; END_VAR
+            {wasm 'cast' (params x) (result WIDEN)}
+        END_FUNCTION
+
+        FUNCTION SAME : DINT
+        VAR_INPUT x : DINT; END_VAR
+            {wasm 'nop' (params x) (result SAME)}
+        END_FUNCTION
+    "#;
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"");
+}

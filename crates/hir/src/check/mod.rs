@@ -30,6 +30,7 @@ use crate::{
 
 pub mod check_duplicates;
 pub mod check_recursion;
+pub mod wasm_instructions;
 pub mod errors;
 
 #[salsa::tracked(returns(ref))]

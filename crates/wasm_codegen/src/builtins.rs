@@ -136,3 +136,31 @@ mod tests {
         );
     }
 }
+
+
+#[cfg(test)]
+mod parity {
+    /// Every grafted builtin must be a name `rk check` accepts — otherwise a
+    /// working pragma draws E0248.
+    #[test]
+    fn every_builtin_name_is_known_to_the_check() {
+        for name in wasm_builtins_generated::BUILTIN_NAMES.keys() {
+            assert!(
+                hir::check::wasm_instructions::known(name),
+                "builtin `{name}` is emittable but the check refuses it"
+            );
+        }
+    }
+
+    /// And the check's builtin list must not invent names — a name the check
+    /// accepts that nothing emits would fall to the emitter's unknown arm.
+    #[test]
+    fn every_checked_builtin_really_exists() {
+        for name in hir::check::wasm_instructions::BUILTINS {
+            assert!(
+                wasm_builtins_generated::BUILTIN_NAMES.contains_key(name),
+                "the check lists `{name}` but no builtin exports it"
+            );
+        }
+    }
+}

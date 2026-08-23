@@ -15,6 +15,9 @@ pub struct WasmDecl<'db> {
     pub type_ref: Option<SpanIdent<'db>>,
     /// The WASM instruction name (e.g., "shl" or "f32.convert_i32_s")
     pub instruction: CompactString,
+    /// Where the instruction string sits, so an unknown name is underlined
+    /// at the name rather than at the whole statement.
+    pub instruction_span: auto_lsp::tree_sitter::Range,
     /// Parameter variable references
     pub params: Vec<SpanIdent<'db>>,
     /// Result variable reference

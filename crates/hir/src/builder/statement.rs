@@ -353,6 +353,7 @@ impl<'db> Parse<'db> for ast::generated::Stmt {
                         .to_diagnostic(sema.db, sema.file)
                     })?;
                 let instruction = CompactString::from(&instr_text[1..instr_text.len() - 1]);
+                let instruction_span = pragma.instruction.cast(sema.ast).get_range().to_owned();
 
                 let params = pragma.params.as_ref().map_or(Ok(vec![]), |p| {
                     p.cast(sema.ast)
@@ -375,6 +376,7 @@ impl<'db> Parse<'db> for ast::generated::Stmt {
                     StmtKind::WasmPragma(crate::hir_def::extern_decl::WasmDecl {
                         type_ref,
                         instruction,
+                        instruction_span,
                         params,
                         result,
                     }),

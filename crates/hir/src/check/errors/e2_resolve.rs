@@ -255,6 +255,18 @@ pub enum ResolveError<'db> {
         names: Vec<compact_str::CompactString>,
         span: tree_sitter::Range,
     },
+    /// A `{wasm}` pragma names an instruction the emitter has no arm for.
+    /// The name used to fall through to `unreachable` (or, on the conversion
+    /// shape, to a silent identity): a valid module carrying code the
+    /// program never asked for, from a compile that exited 0.
+    UnknownWasmInstruction {
+        name: compact_str::CompactString,
+        span: tree_sitter::Range,
+    },
+    /// A `{wasm}` pragma outside a FUNCTION body. Only FUNCTION bodies are
+    /// scanned for one; anywhere else the statement was silently dropped and
+    /// the surrounding body compiled as if it were not there.
+    WasmPragmaOutsideFunction { span: tree_sitter::Range },
     /// A TASK's PRIORITY is not a number this compiler can represent. Held as
     /// source text until here, so an unusable value would otherwise reach the
     /// scheduler as "no priority" and quietly sort last.
@@ -435,6 +447,8 @@ impl<'db> ErrorCode for ResolveError<'db> {
             Self::InvalidPriority { .. } => "E0241",
             Self::MultipleConfigurations { .. } => "E0242",
             Self::MultipleResources { .. } => "E0247",
+            Self::UnknownWasmInstruction { .. } => "E0248",
+            Self::WasmPragmaOutsideFunction { .. } => "E0249",
             Self::ExternalVarNotFound { .. } => "E0220",
             Self::ExternalVarTypeMismatch { .. } => "E0246",
             Self::AccessDeclTypeMismatch { .. } => "E0221",
@@ -483,6 +497,9 @@ impl<'db> ErrorCode for ResolveError<'db> {
             | Self::InvalidPriority { .. }
             | Self::MultipleConfigurations { .. }
             | Self::MultipleResources { .. } => "configuration error",
+            Self::UnknownWasmInstruction { .. } | Self::WasmPragmaOutsideFunction { .. } => {
+                "invalid wasm pragma"
+            }
             Self::ExternalVarNotFound { .. } => "external variable not found",
             Self::ExternalVarTypeMismatch { .. } => "external variable type mismatch",
             Self::AccessDeclTypeMismatch { .. } => "access declaration type mismatch",
@@ -856,6 +873,23 @@ impl<'db> ToIdeDiagnostic<'db> for ResolveError<'db> {
                 .severity(DiagnosticSeverity::ERROR)
                 .desc(self)
                 .range(crate::denormalize(db, file, &task.get_span(db)).unwrap_or_default())
+                .call(),
+            Self::UnknownWasmInstruction { name, span } => diag()
+                .message(format!(
+                    "'{name}' is not a wasm instruction this compiler emits"
+                ))
+                .severity(DiagnosticSeverity::ERROR)
+                .desc(self)
+                .range(crate::denormalize(db, file, span).unwrap_or_default())
+                .call(),
+            Self::WasmPragmaOutsideFunction { span } => diag()
+                .message(
+                    "a {wasm} body is only available on a FUNCTION; here the pragma would be silently dropped"
+                        .to_string(),
+                )
+                .severity(DiagnosticSeverity::ERROR)
+                .desc(self)
+                .range(crate::denormalize(db, file, span).unwrap_or_default())
                 .call(),
             Self::MultipleResources {
                 config,
