@@ -243,6 +243,18 @@ pub enum ResolveError<'db> {
         /// Every OTHER configuration, so they can be reached from here.
         others: Vec<ConfigDecl<'db>>,
     },
+    /// The configuration declares more than one RESOURCE. A resource is its
+    /// own execution unit and a runtime drives one, so a second resource
+    /// compiled into the module was refused at DEPLOY, from a compile that
+    /// exited 0; refusing here is the same rule, said where it can be fixed.
+    /// TEMPORARY: lifts when multi-resource deployment lands (one runtime
+    /// instance per RESOURCE).
+    MultipleResources {
+        config: ConfigDecl<'db>,
+        /// Every resource name across the configuration's fragments, sorted.
+        names: Vec<compact_str::CompactString>,
+        span: tree_sitter::Range,
+    },
     /// A TASK's PRIORITY is not a number this compiler can represent. Held as
     /// source text until here, so an unusable value would otherwise reach the
     /// scheduler as "no priority" and quietly sort last.
@@ -422,6 +434,7 @@ impl<'db> ErrorCode for ResolveError<'db> {
             Self::UnknownTaskRef { .. } => "E0219",
             Self::InvalidPriority { .. } => "E0241",
             Self::MultipleConfigurations { .. } => "E0242",
+            Self::MultipleResources { .. } => "E0247",
             Self::ExternalVarNotFound { .. } => "E0220",
             Self::ExternalVarTypeMismatch { .. } => "E0246",
             Self::AccessDeclTypeMismatch { .. } => "E0221",
@@ -468,7 +481,8 @@ impl<'db> ErrorCode for ResolveError<'db> {
             Self::NoConfigFileFound { .. } => "configuration error",
             Self::UnknownTaskRef { .. }
             | Self::InvalidPriority { .. }
-            | Self::MultipleConfigurations { .. } => "configuration error",
+            | Self::MultipleConfigurations { .. }
+            | Self::MultipleResources { .. } => "configuration error",
             Self::ExternalVarNotFound { .. } => "external variable not found",
             Self::ExternalVarTypeMismatch { .. } => "external variable type mismatch",
             Self::AccessDeclTypeMismatch { .. } => "access declaration type mismatch",
@@ -843,6 +857,27 @@ impl<'db> ToIdeDiagnostic<'db> for ResolveError<'db> {
                 .desc(self)
                 .range(crate::denormalize(db, file, &task.get_span(db)).unwrap_or_default())
                 .call(),
+            Self::MultipleResources {
+                config,
+                names,
+                span,
+            } => {
+                let list = names
+                    .iter()
+                    .map(|n| n.as_str())
+                    .collect::<Vec<_>>()
+                    .join(", ");
+                let _ = config;
+                diag()
+                    .message(format!(
+                        "a deployment drives one RESOURCE; this configuration declares {} ({list}); deploy one RESOURCE per runtime",
+                        names.len(),
+                    ))
+                    .severity(DiagnosticSeverity::ERROR)
+                    .desc(self)
+                    .range(crate::denormalize(db, file, span).unwrap_or_default())
+                    .call()
+            }
             Self::MultipleConfigurations { config, others } => {
                 let mut diag = diag()
                     .message(format!(

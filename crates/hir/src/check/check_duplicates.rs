@@ -122,6 +122,52 @@ pub fn check_single_configuration<'db>(
     }
 }
 
+/// A deployment drives one RESOURCE (each is its own execution unit, and the
+/// runtime scans on one thread), so a second resource compiled into the
+/// module was refused at DEPLOY, from a compile that exited 0. Refused here
+/// instead, where it can be fixed.
+///
+/// TEMPORARY, by design: this mirrors the runtime's single-resource rule
+/// (`runtime/src/lib.rs`, `read_schedule_manifest`) and goes away with it.
+/// The planned shape is one runtime instance per RESOURCE, so the successor
+/// of this check is per-resource slicing at deploy, not an error.
+///
+/// Counts DISTINCT resource names across the configuration's FRAGMENTS —
+/// same-named blocks merge, so the resources may be split across files.
+/// Reported at every fragment that declares a resource, symmetrically, like
+/// E0242: the file maps have no order, so there is no first to privilege.
+pub fn check_single_resource<'db>(
+    db: &'db dyn WorkspaceDataBase,
+    config: ConfigDecl<'db>,
+    errors: &mut Vec<IdeDiagnostic>,
+) {
+    let fragments = crate::hir_ty::index_graphs::config_fragments(db, config.get_name_ident(db));
+    let mut names: Vec<compact_str::CompactString> = fragments
+        .iter()
+        .flat_map(|c| c.resources(db).iter())
+        .map(|r| r.name(db).ident.text(db).clone())
+        .collect();
+    names.sort();
+    names.dedup();
+    if names.len() <= 1 {
+        return;
+    }
+    // The caret goes on THIS fragment's first resource; a fragment declaring
+    // none (a globals-only file) has nothing to point at and stays silent.
+    let Some(first) = config.resources(db).iter().next() else {
+        return;
+    };
+    let span = first.name(db).get_span(db);
+    errors.push(
+        ResolveError::MultipleResources {
+            config,
+            names,
+            span,
+        }
+        .to_diagnostic(db, config.get_scope_id(db).file(db)),
+    );
+}
+
 /// Police what may not collide across the FRAGMENTS of one CONFIGURATION.
 ///
 /// Same-named blocks merge (the GVL model: VAR_GLOBALs split across files),

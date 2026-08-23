@@ -1328,6 +1328,13 @@ fn var_global_in_a_resource_is_rejected(mut with_db: RootDatabase) {
        |                                ^^^|^^^
        |                                   `----- external variable 'g' not found in any accessible VAR_GLOBAL
     ---'
+    [E0247] Error: configuration error
+       ,-[ file:///test0.st:5:22 ]
+       |
+     5 |             RESOURCE R1 ON CPU
+       |                      ^|
+       |                       `-- a deployment drives one RESOURCE; this configuration declares 2 (R1, R2); deploy one RESOURCE per runtime
+    ---'
     ");
 }
 
@@ -1661,7 +1668,89 @@ END_CONFIGURATION
     ");
 }
 
-// E0246: a VAR_EXTERNAL aliases its VAR_GLOBAL's storage by name, so the two
-// declarations must agree about the type. This is the last route by which a
-// subrange variable could receive stores that skip its range check: a plain
-// INT external over an INT (0..10) global writes straight past it.
+// E0247: a deployment drives one RESOURCE, so a second one is refused where
+// it can be fixed instead of at deploy, where the same rule used to surface
+// after a compile that exited 0.
+
+#[rstest]
+fn a_second_resource_is_rejected_at_check(mut with_db: RootDatabase) {
+    let source = r#"
+PROGRAM P VAR n : INT; END_VAR n := n + 1; END_PROGRAM
+
+CONFIGURATION Cfg
+    RESOURCE Core0 ON CPU
+        TASK T1(INTERVAL := T#10ms, PRIORITY := 1);
+        PROGRAM A1 WITH T1 : P;
+    END_RESOURCE
+    RESOURCE Core1 ON CPU
+        TASK T2(INTERVAL := T#20ms, PRIORITY := 2);
+        PROGRAM A2 WITH T2 : P;
+    END_RESOURCE
+END_CONFIGURATION
+"#;
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
+    [E0247] Error: configuration error
+       ,-[ file:///test0.st:5:14 ]
+       |
+     5 |     RESOURCE Core0 ON CPU
+       |              ^^|^^
+       |                `---- a deployment drives one RESOURCE; this configuration declares 2 (Core0, Core1); deploy one RESOURCE per runtime
+    ---'
+    ");
+}
+
+#[rstest]
+fn resources_split_across_fragments_are_counted_together(mut with_db: RootDatabase) {
+    let source1 = r#"
+PROGRAM P VAR n : INT; END_VAR n := n + 1; END_PROGRAM
+
+CONFIGURATION Cfg
+    RESOURCE Core0 ON CPU
+        TASK T1(INTERVAL := T#10ms, PRIORITY := 1);
+        PROGRAM A1 WITH T1 : P;
+    END_RESOURCE
+END_CONFIGURATION
+"#;
+    let source2 = r#"
+CONFIGURATION Cfg
+    RESOURCE Core1 ON CPU
+        TASK T2(INTERVAL := T#20ms, PRIORITY := 2);
+        PROGRAM A2 WITH T2 : P;
+    END_RESOURCE
+END_CONFIGURATION
+"#;
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source1, source2]), @r"
+    [E0247] Error: configuration error
+       ,-[ file:///test0.st:5:14 ]
+       |
+     5 |     RESOURCE Core0 ON CPU
+       |              ^^|^^
+       |                `---- a deployment drives one RESOURCE; this configuration declares 2 (Core0, Core1); deploy one RESOURCE per runtime
+    ---'
+    [E0247] Error: configuration error
+       ,-[ file:///test1.st:3:14 ]
+       |
+     3 |     RESOURCE Core1 ON CPU
+       |              ^^|^^
+       |                `---- a deployment drives one RESOURCE; this configuration declares 2 (Core0, Core1); deploy one RESOURCE per runtime
+    ---'
+    ");
+}
+
+// One RESOURCE with several TASKS is the supported shape and stays clean.
+#[rstest]
+fn one_resource_many_tasks_is_clean(mut with_db: RootDatabase) {
+    let source = r#"
+PROGRAM P VAR n : INT; END_VAR n := n + 1; END_PROGRAM
+
+CONFIGURATION Cfg
+    RESOURCE Res ON CPU
+        TASK Fast(INTERVAL := T#10ms, PRIORITY := 1);
+        TASK Slow(INTERVAL := T#50ms, PRIORITY := 2);
+        PROGRAM A1 WITH Fast : P;
+        PROGRAM A2 WITH Slow : P;
+    END_RESOURCE
+END_CONFIGURATION
+"#;
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"");
+}
