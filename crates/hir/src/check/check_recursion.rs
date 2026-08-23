@@ -33,7 +33,9 @@ impl<'db> TypeDependencyGraph<'db> {
             edges.entry(pou).or_insert_with(FxHashSet::default);
         }
 
-        for &ns in namespaces {
+        // The namespace list is FLAT (nested included), so each namespace
+        // seeds its own POUs exactly once — no recursion into children.
+        for ns in semantic_index.namespaces.iter() {
             for &pou in ns.pous(db).iter() {
                 edges.entry(pou).or_default();
             }

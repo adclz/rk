@@ -435,3 +435,53 @@ fn test_st_class_method_with_interface_param(mut with_db: db::RootDatabase) {
     let result: i32 = super::execute_wasm(&wasm, "test", ());
     assert_eq!(result, 1001, "Owner#Get$One -> 1, Owner#Get$Ten -> 10");
 }
+
+/// A SELF method call with an OUTPUT BINDING: `Tick(cnt => v)` inside a
+/// sibling method passes &v, so the method-local v must live in memory — a
+/// wasm local has no address, and the AddrOf silently emitted nothing: an
+/// invalid module from a compile that exited 0. Called from OUTSIDE it
+/// always worked; the two must agree.
+#[rstest]
+fn a_self_method_call_output_binding_lands(mut with_db: db::RootDatabase) {
+    let source = r#"
+        FUNCTION_BLOCK OutBind
+            VAR
+                state : INT;
+            END_VAR
+
+            METHOD PUBLIC Tick
+                VAR_OUTPUT
+                    cnt : INT;
+                END_VAR
+                state := state + 1;
+                cnt := state;
+            END_METHOD
+
+            METHOD PUBLIC Caller : INT
+                VAR
+                    v : INT;
+                END_VAR
+                Tick(cnt => v);
+                Caller := v;
+            END_METHOD
+
+            METHOD PUBLIC ThisCaller : INT
+                VAR
+                    v : INT;
+                END_VAR
+                THIS.Tick(cnt => v);
+                ThisCaller := v;
+            END_METHOD
+        END_FUNCTION_BLOCK
+
+        FUNCTION run : DINT
+            VAR
+                f : OutBind;
+            END_VAR
+            run := f.Caller() * 100 + f.ThisCaller();
+        END_FUNCTION
+    "#;
+    let wasm = compile_to_wasm(&mut with_db, source);
+    let result: i32 = super::execute_wasm(&wasm, "run", ());
+    assert_eq!(result, 102, "bare and THIS. forms both land the output: 1*100 + 2");
+}

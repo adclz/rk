@@ -399,6 +399,9 @@ fn lower_function_block_inner<'db>(
         let mut params = Vec::new();
         let mut locals = Vec::new();
         let mut next_local_idx: u32 = 1; // 0 is 'this'
+        // A method local whose address is taken must live in memory. Same scan
+        // as the other bodies.
+        let address_taken = collect_address_taken_vars(db, method.stmts(db));
 
         // 'this' pointer parameter — the FB's instance struct.
         let fb_type = super::lower_type::lower_fb_type(db, fb)?;
@@ -428,7 +431,7 @@ fn lower_function_block_inner<'db>(
                     let storage = allocate_local_storage(
                         var.name(db),
                         &ty,
-                        false,
+                        address_taken.contains(&var.name(db)),
                         &mut next_local_idx,
                         memory_layout,
                     );
@@ -670,6 +673,9 @@ fn lower_class_inner<'db>(
             kind: MirParamKind::This,
         });
 
+        // Same address-taken rule as the FB method loop above.
+        let address_taken = collect_address_taken_vars(db, method.stmts(db));
+
         // Method parameters
         for var in method.variables(db) {
             if let Some(param) = param_for_var(db, var, spec.map(|i| &i.iface_subs))? {
@@ -680,7 +686,7 @@ fn lower_class_inner<'db>(
                     let storage = allocate_local_storage(
                         var.name(db),
                         &ty,
-                        false,
+                        address_taken.contains(&var.name(db)),
                         &mut next_local_idx,
                         memory_layout,
                     );
