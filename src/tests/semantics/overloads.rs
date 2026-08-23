@@ -175,21 +175,7 @@ END_FUNCTION
         |
      14 |     test := foo(x, x, x);   // no 3-arg overload
         |             ^|^
-        |              `--- 'foo' expects 1 parameter, but got 3
-    ----'
-    [E0206] Error: function call parameter mismatch
-        ,-[ file:///test0.st:14:20 ]
-        |
-     14 |     test := foo(x, x, x);   // no 3-arg overload
-        |                    |
-        |                    `-- no parameter at index '1'
-    ----'
-    [E0206] Error: function call parameter mismatch
-        ,-[ file:///test0.st:14:23 ]
-        |
-     14 |     test := foo(x, x, x);   // no 3-arg overload
-        |                       |
-        |                       `-- no parameter at index '2'
+        |              `--- no overload of 'foo' takes 3 parameters
     ----'
     ");
 }

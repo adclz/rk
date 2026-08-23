@@ -164,6 +164,10 @@ impl ExternForbiddenKind {
 #[derive(Clone, Debug, PartialEq, Eq, Hash, salsa::Update)]
 pub enum ResolveError<'db> {
     IncorrectNumberOfParameters {
+        /// How many same-name FUNCTION overloads exist. Above one, naming a
+        /// single arity misstates the situation: the true claim is that NO
+        /// overload takes this count.
+        overloads: usize,
         expected: usize,
         actual: usize,
         func_call: FuncCall<'db>,
@@ -495,21 +499,34 @@ impl<'db> ToIdeDiagnostic<'db> for ResolveError<'db> {
     ) -> IdeDiagnostic {
         match self {
             Self::IncorrectNumberOfParameters {
+                overloads,
                 expected,
                 actual,
                 func_call,
                 callable,
             } => diag()
-                .message(format!(
-                    "'{}' expects {} parameter{}, but got {}",
-                    callable.get_name_ident(db).text(db),
-                    expected,
-                    match expected {
-                        1 => "",
-                        _ => "s",
-                    },
-                    actual
-                ))
+                .message(if *overloads > 1 {
+                    format!(
+                        "no overload of '{}' takes {} parameter{}",
+                        callable.get_name_ident(db).text(db),
+                        actual,
+                        match actual {
+                            1 => "",
+                            _ => "s",
+                        },
+                    )
+                } else {
+                    format!(
+                        "'{}' expects {} parameter{}, but got {}",
+                        callable.get_name_ident(db).text(db),
+                        expected,
+                        match expected {
+                            1 => "",
+                            _ => "s",
+                        },
+                        actual
+                    )
+                })
                 .severity(DiagnosticSeverity::ERROR)
                 .desc(self)
                 .range(

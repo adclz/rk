@@ -298,13 +298,6 @@ END_FUNCTION_BLOCK"#;
         |     ^|
         |      `-- 'fn' expects 2 parameters, but got 3
     ----'
-    [E0206] Error: function call parameter mismatch
-        ,-[ file:///test0.st:11:13 ]
-        |
-     11 |     fn(0, 1.5, 5);
-        |                |
-        |                `-- no parameter at index '2'
-    ----'
     ");
 }
 

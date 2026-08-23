@@ -127,9 +127,31 @@ pub fn resolve_func_call<'db>(
         .values()
         .any(|v| v.variadic(db));
 
-    if !has_variadic && len > callable.var_len_params(db) {
+    let arity_error = !has_variadic && len > callable.var_len_params(db);
+    if arity_error {
         ctx.errors.push(
             ResolveError::IncorrectNumberOfParameters {
+                overloads: match callable {
+                    CallableType::Function(f) => {
+                        use crate::hir_ty::index_graphs::{
+                            namespace_pou_candidates, pou_candidates,
+                        };
+                        let name = f.name(db);
+                        let candidates = match
+                            crate::hir_ty::resolver::name::enclosing_namespace_path(
+                                db,
+                                f.scope_id(db),
+                            ) {
+                            Some(path) => namespace_pou_candidates(db, path, name),
+                            None => pou_candidates(db, name),
+                        };
+                        candidates
+                            .iter()
+                            .filter(|p| matches!(p, crate::hir_def::pous::pou::Pou::Function(_)))
+                            .count()
+                    }
+                    _ => 1,
+                },
                 expected: callable.var_len_params(db),
                 actual: len,
                 func_call,
@@ -139,8 +161,20 @@ pub fn resolve_func_call<'db>(
         );
     }
 
-    // Resolve parameter matching (shared with {case} pragma validation)
-    let matches = resolve_params(db, func_call.params(db), callable, &mut ctx.errors);
+    // Resolve parameter matching (shared with {case} pragma validation).
+    // With the count already reported wrong, "no parameter at index N" per
+    // extra argument is the same fact again, not new information.
+    let mut param_errors: Vec<ide_diagnostic::IdeDiagnostic> = Vec::new();
+    let matches = resolve_params(db, func_call.params(db), callable, &mut param_errors);
+    if arity_error {
+        param_errors.retain(|d| {
+            !matches!(
+                &d.diagnostic.code,
+                Some(auto_lsp::lsp_types::NumberOrString::String(c)) if c == "E0206"
+            )
+        });
+    }
+    ctx.errors.append(&mut param_errors);
 
     // Apply coercion and body-level checks on matched parameters
     for m in &matches {
