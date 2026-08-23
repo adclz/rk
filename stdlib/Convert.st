@@ -1300,6 +1300,31 @@ NAMESPACE Std.Convert
 
 	/* ## Tests */
 
+
+	/*
+    ## TRUNC - Truncation toward zero
+
+    The integer part of a real value, discarding the fraction:
+    `TRUNC(3.7)` is 3 and `TRUNC(-3.7)` is -3. A `REAL` truncates to
+    `DINT`, an `LREAL` to `LINT` - the same conversions `REAL_TO_DINT`
+    and `LREAL_TO_LINT` perform.
+    */
+	FUNCTION TRUNC: DINT
+		VAR_INPUT
+			IN: REAL;
+		END_VAR
+
+		TRUNC := REAL_TO_DINT(IN);
+	END_FUNCTION
+
+	FUNCTION TRUNC: LINT
+		VAR_INPUT
+			IN: LREAL;
+		END_VAR
+
+		TRUNC := LREAL_TO_LINT(IN);
+	END_FUNCTION
+
 	NAMESPACE Test
 		USING Std.Unit
 		USING Std.Strings
@@ -1690,6 +1715,21 @@ NAMESPACE Std.Convert
 		FUNCTION test_ltime_to_time_scales
 			ASSERT(LTIME_TO_TIME(LTIME#1s) = T#1s, 'LTIME ns scale to TIME ms');
 			ASSERT(LTIME_TO_TIME(LTIME#1500ms) = T#1500ms, 'sub-second precision survives');
+		END_FUNCTION
+
+		// -- TRUNC ----------------------------------------------------
+
+		{test}
+		FUNCTION test_trunc_real_toward_zero
+			ASSERT_EQ(TRUNC(3.7), DINT#3);
+			ASSERT_EQ(TRUNC(-3.7), DINT#-3);
+			ASSERT_EQ(TRUNC(0.9), DINT#0);
+		END_FUNCTION
+
+		{test}
+		FUNCTION test_trunc_lreal_toward_zero
+			ASSERT_EQ(TRUNC(LREAL#3.7), LINT#3);
+			ASSERT_EQ(TRUNC(LREAL#-3.7), LINT#-3);
 		END_FUNCTION
 	END_NAMESPACE
 END_NAMESPACE

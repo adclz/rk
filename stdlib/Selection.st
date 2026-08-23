@@ -481,6 +481,750 @@ NAMESPACE Std.Selection
 		END_IF;
 	END_FUNCTION
 
+
+	/*
+    ## MIN / MAX - Extremum of two values
+
+    The smaller (`MIN`) or larger (`MAX`) of two inputs. One overload per
+    comparable type; nest calls for more than two values:
+    `MIN(a, MIN(b, c))`.
+
+    ```iecst
+    slowest := MAX(t_pump, t_valve);
+    clamped := MIN(demand, capacity);
+    ```
+    */
+	FUNCTION MIN: SINT
+		VAR_INPUT
+			IN1: SINT;
+			IN2: SINT;
+		END_VAR
+
+		IF IN1 <= IN2 THEN
+			MIN := IN1;
+		ELSE
+			MIN := IN2;
+		END_IF;
+	END_FUNCTION
+
+	FUNCTION MIN: INT
+		VAR_INPUT
+			IN1: INT;
+			IN2: INT;
+		END_VAR
+
+		IF IN1 <= IN2 THEN
+			MIN := IN1;
+		ELSE
+			MIN := IN2;
+		END_IF;
+	END_FUNCTION
+
+	FUNCTION MIN: DINT
+		VAR_INPUT
+			IN1: DINT;
+			IN2: DINT;
+		END_VAR
+
+		IF IN1 <= IN2 THEN
+			MIN := IN1;
+		ELSE
+			MIN := IN2;
+		END_IF;
+	END_FUNCTION
+
+	FUNCTION MIN: LINT
+		VAR_INPUT
+			IN1: LINT;
+			IN2: LINT;
+		END_VAR
+
+		IF IN1 <= IN2 THEN
+			MIN := IN1;
+		ELSE
+			MIN := IN2;
+		END_IF;
+	END_FUNCTION
+
+	FUNCTION MIN: USINT
+		VAR_INPUT
+			IN1: USINT;
+			IN2: USINT;
+		END_VAR
+
+		IF IN1 <= IN2 THEN
+			MIN := IN1;
+		ELSE
+			MIN := IN2;
+		END_IF;
+	END_FUNCTION
+
+	FUNCTION MIN: UINT
+		VAR_INPUT
+			IN1: UINT;
+			IN2: UINT;
+		END_VAR
+
+		IF IN1 <= IN2 THEN
+			MIN := IN1;
+		ELSE
+			MIN := IN2;
+		END_IF;
+	END_FUNCTION
+
+	FUNCTION MIN: UDINT
+		VAR_INPUT
+			IN1: UDINT;
+			IN2: UDINT;
+		END_VAR
+
+		IF IN1 <= IN2 THEN
+			MIN := IN1;
+		ELSE
+			MIN := IN2;
+		END_IF;
+	END_FUNCTION
+
+	FUNCTION MIN: ULINT
+		VAR_INPUT
+			IN1: ULINT;
+			IN2: ULINT;
+		END_VAR
+
+		IF IN1 <= IN2 THEN
+			MIN := IN1;
+		ELSE
+			MIN := IN2;
+		END_IF;
+	END_FUNCTION
+
+	FUNCTION MIN: REAL
+		VAR_INPUT
+			IN1: REAL;
+			IN2: REAL;
+		END_VAR
+
+		IF IN1 <= IN2 THEN
+			MIN := IN1;
+		ELSE
+			MIN := IN2;
+		END_IF;
+	END_FUNCTION
+
+	FUNCTION MIN: LREAL
+		VAR_INPUT
+			IN1: LREAL;
+			IN2: LREAL;
+		END_VAR
+
+		IF IN1 <= IN2 THEN
+			MIN := IN1;
+		ELSE
+			MIN := IN2;
+		END_IF;
+	END_FUNCTION
+
+	FUNCTION MIN: TIME
+		VAR_INPUT
+			IN1: TIME;
+			IN2: TIME;
+		END_VAR
+
+		IF IN1 <= IN2 THEN
+			MIN := IN1;
+		ELSE
+			MIN := IN2;
+		END_IF;
+	END_FUNCTION
+
+	FUNCTION MIN: LTIME
+		VAR_INPUT
+			IN1: LTIME;
+			IN2: LTIME;
+		END_VAR
+
+		IF IN1 <= IN2 THEN
+			MIN := IN1;
+		ELSE
+			MIN := IN2;
+		END_IF;
+	END_FUNCTION
+
+	FUNCTION MAX: SINT
+		VAR_INPUT
+			IN1: SINT;
+			IN2: SINT;
+		END_VAR
+
+		IF IN1 >= IN2 THEN
+			MAX := IN1;
+		ELSE
+			MAX := IN2;
+		END_IF;
+	END_FUNCTION
+
+	FUNCTION MAX: INT
+		VAR_INPUT
+			IN1: INT;
+			IN2: INT;
+		END_VAR
+
+		IF IN1 >= IN2 THEN
+			MAX := IN1;
+		ELSE
+			MAX := IN2;
+		END_IF;
+	END_FUNCTION
+
+	FUNCTION MAX: DINT
+		VAR_INPUT
+			IN1: DINT;
+			IN2: DINT;
+		END_VAR
+
+		IF IN1 >= IN2 THEN
+			MAX := IN1;
+		ELSE
+			MAX := IN2;
+		END_IF;
+	END_FUNCTION
+
+	FUNCTION MAX: LINT
+		VAR_INPUT
+			IN1: LINT;
+			IN2: LINT;
+		END_VAR
+
+		IF IN1 >= IN2 THEN
+			MAX := IN1;
+		ELSE
+			MAX := IN2;
+		END_IF;
+	END_FUNCTION
+
+	FUNCTION MAX: USINT
+		VAR_INPUT
+			IN1: USINT;
+			IN2: USINT;
+		END_VAR
+
+		IF IN1 >= IN2 THEN
+			MAX := IN1;
+		ELSE
+			MAX := IN2;
+		END_IF;
+	END_FUNCTION
+
+	FUNCTION MAX: UINT
+		VAR_INPUT
+			IN1: UINT;
+			IN2: UINT;
+		END_VAR
+
+		IF IN1 >= IN2 THEN
+			MAX := IN1;
+		ELSE
+			MAX := IN2;
+		END_IF;
+	END_FUNCTION
+
+	FUNCTION MAX: UDINT
+		VAR_INPUT
+			IN1: UDINT;
+			IN2: UDINT;
+		END_VAR
+
+		IF IN1 >= IN2 THEN
+			MAX := IN1;
+		ELSE
+			MAX := IN2;
+		END_IF;
+	END_FUNCTION
+
+	FUNCTION MAX: ULINT
+		VAR_INPUT
+			IN1: ULINT;
+			IN2: ULINT;
+		END_VAR
+
+		IF IN1 >= IN2 THEN
+			MAX := IN1;
+		ELSE
+			MAX := IN2;
+		END_IF;
+	END_FUNCTION
+
+	FUNCTION MAX: REAL
+		VAR_INPUT
+			IN1: REAL;
+			IN2: REAL;
+		END_VAR
+
+		IF IN1 >= IN2 THEN
+			MAX := IN1;
+		ELSE
+			MAX := IN2;
+		END_IF;
+	END_FUNCTION
+
+	FUNCTION MAX: LREAL
+		VAR_INPUT
+			IN1: LREAL;
+			IN2: LREAL;
+		END_VAR
+
+		IF IN1 >= IN2 THEN
+			MAX := IN1;
+		ELSE
+			MAX := IN2;
+		END_IF;
+	END_FUNCTION
+
+	FUNCTION MAX: TIME
+		VAR_INPUT
+			IN1: TIME;
+			IN2: TIME;
+		END_VAR
+
+		IF IN1 >= IN2 THEN
+			MAX := IN1;
+		ELSE
+			MAX := IN2;
+		END_IF;
+	END_FUNCTION
+
+	FUNCTION MAX: LTIME
+		VAR_INPUT
+			IN1: LTIME;
+			IN2: LTIME;
+		END_VAR
+
+		IF IN1 >= IN2 THEN
+			MAX := IN1;
+		ELSE
+			MAX := IN2;
+		END_IF;
+	END_FUNCTION
+
+	/*
+    ## MUX - Multiplexer
+
+    Selects input `K` among the supplied inputs (`K` counts from 0).
+    Overloads take 2, 3 or 4 inputs; `K` outside the range is CLAMPED to
+    the first or last input.
+
+    ```iecst
+    speed := MUX(mode, slow, medium, fast); // mode: 0, 1 or 2
+    ```
+    */
+	FUNCTION MUX: BOOL
+		VAR_INPUT
+			K: INT;
+			IN0: BOOL;
+			IN1: BOOL;
+		END_VAR
+
+		IF K <= 0 THEN
+			MUX := IN0;
+		ELSE
+			MUX := IN1;
+		END_IF;
+	END_FUNCTION
+
+	FUNCTION MUX: BOOL
+		VAR_INPUT
+			K: INT;
+			IN0: BOOL;
+			IN1: BOOL;
+			IN2: BOOL;
+		END_VAR
+
+		IF K <= 0 THEN
+			MUX := IN0;
+		ELSIF K = 1 THEN
+			MUX := IN1;
+		ELSE
+			MUX := IN2;
+		END_IF;
+	END_FUNCTION
+
+	FUNCTION MUX: BOOL
+		VAR_INPUT
+			K: INT;
+			IN0: BOOL;
+			IN1: BOOL;
+			IN2: BOOL;
+			IN3: BOOL;
+		END_VAR
+
+		IF K <= 0 THEN
+			MUX := IN0;
+		ELSIF K = 1 THEN
+			MUX := IN1;
+		ELSIF K = 2 THEN
+			MUX := IN2;
+		ELSE
+			MUX := IN3;
+		END_IF;
+	END_FUNCTION
+
+	FUNCTION MUX: INT
+		VAR_INPUT
+			K: INT;
+			IN0: INT;
+			IN1: INT;
+		END_VAR
+
+		IF K <= 0 THEN
+			MUX := IN0;
+		ELSE
+			MUX := IN1;
+		END_IF;
+	END_FUNCTION
+
+	FUNCTION MUX: INT
+		VAR_INPUT
+			K: INT;
+			IN0: INT;
+			IN1: INT;
+			IN2: INT;
+		END_VAR
+
+		IF K <= 0 THEN
+			MUX := IN0;
+		ELSIF K = 1 THEN
+			MUX := IN1;
+		ELSE
+			MUX := IN2;
+		END_IF;
+	END_FUNCTION
+
+	FUNCTION MUX: INT
+		VAR_INPUT
+			K: INT;
+			IN0: INT;
+			IN1: INT;
+			IN2: INT;
+			IN3: INT;
+		END_VAR
+
+		IF K <= 0 THEN
+			MUX := IN0;
+		ELSIF K = 1 THEN
+			MUX := IN1;
+		ELSIF K = 2 THEN
+			MUX := IN2;
+		ELSE
+			MUX := IN3;
+		END_IF;
+	END_FUNCTION
+
+	FUNCTION MUX: DINT
+		VAR_INPUT
+			K: INT;
+			IN0: DINT;
+			IN1: DINT;
+		END_VAR
+
+		IF K <= 0 THEN
+			MUX := IN0;
+		ELSE
+			MUX := IN1;
+		END_IF;
+	END_FUNCTION
+
+	FUNCTION MUX: DINT
+		VAR_INPUT
+			K: INT;
+			IN0: DINT;
+			IN1: DINT;
+			IN2: DINT;
+		END_VAR
+
+		IF K <= 0 THEN
+			MUX := IN0;
+		ELSIF K = 1 THEN
+			MUX := IN1;
+		ELSE
+			MUX := IN2;
+		END_IF;
+	END_FUNCTION
+
+	FUNCTION MUX: DINT
+		VAR_INPUT
+			K: INT;
+			IN0: DINT;
+			IN1: DINT;
+			IN2: DINT;
+			IN3: DINT;
+		END_VAR
+
+		IF K <= 0 THEN
+			MUX := IN0;
+		ELSIF K = 1 THEN
+			MUX := IN1;
+		ELSIF K = 2 THEN
+			MUX := IN2;
+		ELSE
+			MUX := IN3;
+		END_IF;
+	END_FUNCTION
+
+	FUNCTION MUX: LINT
+		VAR_INPUT
+			K: INT;
+			IN0: LINT;
+			IN1: LINT;
+		END_VAR
+
+		IF K <= 0 THEN
+			MUX := IN0;
+		ELSE
+			MUX := IN1;
+		END_IF;
+	END_FUNCTION
+
+	FUNCTION MUX: LINT
+		VAR_INPUT
+			K: INT;
+			IN0: LINT;
+			IN1: LINT;
+			IN2: LINT;
+		END_VAR
+
+		IF K <= 0 THEN
+			MUX := IN0;
+		ELSIF K = 1 THEN
+			MUX := IN1;
+		ELSE
+			MUX := IN2;
+		END_IF;
+	END_FUNCTION
+
+	FUNCTION MUX: LINT
+		VAR_INPUT
+			K: INT;
+			IN0: LINT;
+			IN1: LINT;
+			IN2: LINT;
+			IN3: LINT;
+		END_VAR
+
+		IF K <= 0 THEN
+			MUX := IN0;
+		ELSIF K = 1 THEN
+			MUX := IN1;
+		ELSIF K = 2 THEN
+			MUX := IN2;
+		ELSE
+			MUX := IN3;
+		END_IF;
+	END_FUNCTION
+
+	FUNCTION MUX: REAL
+		VAR_INPUT
+			K: INT;
+			IN0: REAL;
+			IN1: REAL;
+		END_VAR
+
+		IF K <= 0 THEN
+			MUX := IN0;
+		ELSE
+			MUX := IN1;
+		END_IF;
+	END_FUNCTION
+
+	FUNCTION MUX: REAL
+		VAR_INPUT
+			K: INT;
+			IN0: REAL;
+			IN1: REAL;
+			IN2: REAL;
+		END_VAR
+
+		IF K <= 0 THEN
+			MUX := IN0;
+		ELSIF K = 1 THEN
+			MUX := IN1;
+		ELSE
+			MUX := IN2;
+		END_IF;
+	END_FUNCTION
+
+	FUNCTION MUX: REAL
+		VAR_INPUT
+			K: INT;
+			IN0: REAL;
+			IN1: REAL;
+			IN2: REAL;
+			IN3: REAL;
+		END_VAR
+
+		IF K <= 0 THEN
+			MUX := IN0;
+		ELSIF K = 1 THEN
+			MUX := IN1;
+		ELSIF K = 2 THEN
+			MUX := IN2;
+		ELSE
+			MUX := IN3;
+		END_IF;
+	END_FUNCTION
+
+	FUNCTION MUX: LREAL
+		VAR_INPUT
+			K: INT;
+			IN0: LREAL;
+			IN1: LREAL;
+		END_VAR
+
+		IF K <= 0 THEN
+			MUX := IN0;
+		ELSE
+			MUX := IN1;
+		END_IF;
+	END_FUNCTION
+
+	FUNCTION MUX: LREAL
+		VAR_INPUT
+			K: INT;
+			IN0: LREAL;
+			IN1: LREAL;
+			IN2: LREAL;
+		END_VAR
+
+		IF K <= 0 THEN
+			MUX := IN0;
+		ELSIF K = 1 THEN
+			MUX := IN1;
+		ELSE
+			MUX := IN2;
+		END_IF;
+	END_FUNCTION
+
+	FUNCTION MUX: LREAL
+		VAR_INPUT
+			K: INT;
+			IN0: LREAL;
+			IN1: LREAL;
+			IN2: LREAL;
+			IN3: LREAL;
+		END_VAR
+
+		IF K <= 0 THEN
+			MUX := IN0;
+		ELSIF K = 1 THEN
+			MUX := IN1;
+		ELSIF K = 2 THEN
+			MUX := IN2;
+		ELSE
+			MUX := IN3;
+		END_IF;
+	END_FUNCTION
+
+	FUNCTION MUX: TIME
+		VAR_INPUT
+			K: INT;
+			IN0: TIME;
+			IN1: TIME;
+		END_VAR
+
+		IF K <= 0 THEN
+			MUX := IN0;
+		ELSE
+			MUX := IN1;
+		END_IF;
+	END_FUNCTION
+
+	FUNCTION MUX: TIME
+		VAR_INPUT
+			K: INT;
+			IN0: TIME;
+			IN1: TIME;
+			IN2: TIME;
+		END_VAR
+
+		IF K <= 0 THEN
+			MUX := IN0;
+		ELSIF K = 1 THEN
+			MUX := IN1;
+		ELSE
+			MUX := IN2;
+		END_IF;
+	END_FUNCTION
+
+	FUNCTION MUX: TIME
+		VAR_INPUT
+			K: INT;
+			IN0: TIME;
+			IN1: TIME;
+			IN2: TIME;
+			IN3: TIME;
+		END_VAR
+
+		IF K <= 0 THEN
+			MUX := IN0;
+		ELSIF K = 1 THEN
+			MUX := IN1;
+		ELSIF K = 2 THEN
+			MUX := IN2;
+		ELSE
+			MUX := IN3;
+		END_IF;
+	END_FUNCTION
+
+	FUNCTION MUX: STRING
+		VAR_INPUT
+			K: INT;
+			IN0: STRING;
+			IN1: STRING;
+		END_VAR
+
+		IF K <= 0 THEN
+			MUX := IN0;
+		ELSE
+			MUX := IN1;
+		END_IF;
+	END_FUNCTION
+
+	FUNCTION MUX: STRING
+		VAR_INPUT
+			K: INT;
+			IN0: STRING;
+			IN1: STRING;
+			IN2: STRING;
+		END_VAR
+
+		IF K <= 0 THEN
+			MUX := IN0;
+		ELSIF K = 1 THEN
+			MUX := IN1;
+		ELSE
+			MUX := IN2;
+		END_IF;
+	END_FUNCTION
+
+	FUNCTION MUX: STRING
+		VAR_INPUT
+			K: INT;
+			IN0: STRING;
+			IN1: STRING;
+			IN2: STRING;
+			IN3: STRING;
+		END_VAR
+
+		IF K <= 0 THEN
+			MUX := IN0;
+		ELSIF K = 1 THEN
+			MUX := IN1;
+		ELSIF K = 2 THEN
+			MUX := IN2;
+		ELSE
+			MUX := IN3;
+		END_IF;
+	END_FUNCTION
+
 	NAMESPACE Test
 		USING Std.Unit
 		USING Std.Selection
@@ -606,6 +1350,60 @@ NAMESPACE Std.Selection
 		FUNCTION test_sel_bool
 			ASSERT_EQ(SEL(TRUE, FALSE, TRUE), TRUE, 'SEL BOOL both branches distinct');
 			ASSERT_EQ(SEL(FALSE, FALSE, TRUE), FALSE, 'SEL BOOL G=FALSE');
+		END_FUNCTION
+
+		// -- MIN / MAX ------------------------------------------------
+
+		{test}
+		FUNCTION test_min_max_int
+			ASSERT_EQ(MIN(3, 5), 3);
+			ASSERT_EQ(MAX(3, 5), 5);
+			ASSERT_EQ(MIN(-2, 2), -2);
+			ASSERT_EQ(MAX(-2, 2), 2);
+		END_FUNCTION
+
+		{test}
+		FUNCTION test_min_max_real
+			ASSERT_EQ(MIN(1.5, 2.5), 1.5);
+			ASSERT_EQ(MAX(1.5, 2.5), 2.5);
+		END_FUNCTION
+
+		{test}
+		FUNCTION test_min_max_time
+			ASSERT_EQ(MIN(T#1s, T#2s), T#1s);
+			ASSERT_EQ(MAX(T#1s, T#2s), T#2s);
+		END_FUNCTION
+
+		{test}
+		FUNCTION test_min_max_nest
+			ASSERT_EQ(MIN(7, MIN(9, 4)), 4);
+			ASSERT_EQ(MAX(7, MAX(9, 4)), 9);
+		END_FUNCTION
+
+		// -- MUX ------------------------------------------------------
+
+		{test}
+		FUNCTION test_mux_selects
+			ASSERT_EQ(MUX(0, 10, 20), 10);
+			ASSERT_EQ(MUX(1, 10, 20), 20);
+			ASSERT_EQ(MUX(1, 10, 20, 30), 20);
+			ASSERT_EQ(MUX(2, 10, 20, 30), 30);
+			ASSERT_EQ(MUX(3, 10, 20, 30, 40), 40);
+		END_FUNCTION
+
+		{test}
+		FUNCTION test_mux_clamps
+			ASSERT_EQ(MUX(-1, 10, 20, 30), 10);
+			ASSERT_EQ(MUX(9, 10, 20, 30), 30);
+		END_FUNCTION
+
+		{test}
+		FUNCTION test_mux_string
+			VAR
+				s: STRING;
+			END_VAR
+			s := MUX(1, 'low', 'high');
+			ASSERT_EQ(s, 'high');
 		END_FUNCTION
 	END_NAMESPACE
 END_NAMESPACE

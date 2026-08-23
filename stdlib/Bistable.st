@@ -58,6 +58,49 @@ NAMESPACE Std.Bistable
 		END_VAR Q1 := (NOT R1) AND (S OR Q1);
 	END_FUNCTION_BLOCK
 
+
+	/*
+    ## SEMA - Semaphore
+
+    A claim/release semaphore over a shared resource.
+
+    - `CLAIM` = **TRUE** takes the semaphore
+    - `RELEASE` = **TRUE** frees it
+    - `BUSY` reports whether it was already taken when this call CLAIMed,
+      and stays FALSE once released
+    - If both are TRUE, **claim wins**
+
+    ```iecst
+    VAR
+        sem: SEMA;
+    END_VAR
+
+    sem(CLAIM := want_it, RELEASE := done_with_it);
+    IF NOT sem.BUSY THEN
+        // the resource is ours
+    END_IF;
+    ```
+    */
+	FUNCTION_BLOCK SEMA
+		VAR_INPUT
+			CLAIM, RELEASE: BOOL;
+		END_VAR
+		VAR_OUTPUT
+			BUSY: BOOL;
+		END_VAR
+		VAR
+			X: BOOL;
+		END_VAR
+
+		BUSY := X;
+		IF CLAIM THEN
+			X := TRUE;
+		ELSIF RELEASE THEN
+			BUSY := FALSE;
+			X := FALSE;
+		END_IF;
+	END_FUNCTION_BLOCK
+
 	NAMESPACE Test
 		USING Std.Unit
 		USING Std.Bits
@@ -172,6 +215,49 @@ NAMESPACE Std.Bistable
 			latch(TRUE, FALSE);
 			latch(FALSE, FALSE);
 			ASSERT(latch.Q1, 'set-reset-set-idle ends set');
+		END_FUNCTION
+
+		// -- SEMA -----------------------------------------------------
+
+		{test}
+		FUNCTION test_sema_first_claim_not_busy
+			VAR
+				sem: SEMA;
+			END_VAR
+			sem(CLAIM := TRUE, RELEASE := FALSE);
+			ASSERT(NOT sem.BUSY, 'first claimant sees the semaphore free');
+		END_FUNCTION
+
+		{test}
+		FUNCTION test_sema_second_claim_busy
+			VAR
+				sem: SEMA;
+			END_VAR
+			sem(CLAIM := TRUE, RELEASE := FALSE);
+			sem(CLAIM := TRUE, RELEASE := FALSE);
+			ASSERT(sem.BUSY, 'a taken semaphore reports BUSY');
+		END_FUNCTION
+
+		{test}
+		FUNCTION test_sema_release_frees
+			VAR
+				sem: SEMA;
+			END_VAR
+			sem(CLAIM := TRUE, RELEASE := FALSE);
+			sem(CLAIM := FALSE, RELEASE := TRUE);
+			ASSERT(NOT sem.BUSY, 'released semaphore is not BUSY');
+			sem(CLAIM := TRUE, RELEASE := FALSE);
+			ASSERT(NOT sem.BUSY, 'and can be claimed again');
+		END_FUNCTION
+
+		{test}
+		FUNCTION test_sema_claim_wins
+			VAR
+				sem: SEMA;
+			END_VAR
+			sem(CLAIM := TRUE, RELEASE := TRUE);
+			sem(CLAIM := TRUE, RELEASE := FALSE);
+			ASSERT(sem.BUSY, 'simultaneous claim and release: claim wins');
 		END_FUNCTION
 	END_NAMESPACE
 END_NAMESPACE

@@ -414,6 +414,269 @@ NAMESPACE Std.Counters
 		QD := (CV <= 0);
 	END_FUNCTION_BLOCK
 
+
+	/*
+    ## Standard names and unsigned variants
+
+    The standard's own base names count with an `INT` value: `CTU`, `CTD`
+    and `CTUD` below are the `INT`-typed counters under their plain names.
+    The reference set also carries `UDINT` and `ULINT` variants.
+    */
+	FUNCTION_BLOCK CTU
+		VAR_INPUT
+			CU: BOOL;
+			R: BOOL;
+			PV: INT;
+		END_VAR
+		VAR_OUTPUT
+			Q: BOOL;
+			CV: INT;
+		END_VAR
+		VAR
+			CU_T: R_TRIG;
+		END_VAR
+
+		CU_T(CU);
+		IF R THEN
+			CV := 0;
+		ELSIF CU_T.Q AND (CV < PV) THEN
+			CV := CV + 1;
+		END_IF;
+		Q := (CV >= PV);
+	END_FUNCTION_BLOCK
+
+	FUNCTION_BLOCK CTD
+		VAR_INPUT
+			CD: BOOL;
+			LD: BOOL;
+			PV: INT;
+		END_VAR
+		VAR_OUTPUT
+			Q: BOOL;
+			CV: INT;
+		END_VAR
+		VAR
+			CD_T: R_TRIG;
+		END_VAR
+
+		CD_T(CD);
+		IF LD THEN
+			CV := PV;
+		ELSIF CD_T.Q AND (CV > 0) THEN
+			CV := CV - 1;
+		END_IF;
+		Q := (CV <= 0);
+	END_FUNCTION_BLOCK
+
+	FUNCTION_BLOCK CTUD
+		VAR_INPUT
+			CU: BOOL;
+			CD: BOOL;
+			R: BOOL;
+			LD: BOOL;
+			PV: INT;
+		END_VAR
+		VAR_OUTPUT
+			QU: BOOL;
+			QD: BOOL;
+			CV: INT;
+		END_VAR
+		VAR
+			CD_T: R_TRIG;
+			CU_T: R_TRIG;
+		END_VAR
+
+		CD_T(CD);
+		CU_T(CU);
+		IF R THEN
+			CV := 0;
+		ELSIF LD THEN
+			CV := PV;
+		ELSE
+			IF NOT (CU_T.Q AND CD_T.Q) THEN
+				IF CU_T.Q AND (CV < PV) THEN
+					CV := CV + 1;
+				ELSIF CD_T.Q AND (CV > 0) THEN
+					CV := CV - 1;
+				END_IF;
+			END_IF;
+		END_IF;
+		QU := (CV >= PV);
+		QD := (CV <= 0);
+	END_FUNCTION_BLOCK
+
+	// Count Up with `UDINT` count value
+	FUNCTION_BLOCK CTU_UDINT
+		VAR_INPUT
+			CU: BOOL;
+			R: BOOL;
+			PV: UDINT;
+		END_VAR
+		VAR_OUTPUT
+			Q: BOOL;
+			CV: UDINT;
+		END_VAR
+		VAR
+			CU_T: R_TRIG;
+		END_VAR
+
+		CU_T(CU);
+		IF R THEN
+			CV := 0;
+		ELSIF CU_T.Q AND (CV < PV) THEN
+			CV := CV + 1;
+		END_IF;
+		Q := (CV >= PV);
+	END_FUNCTION_BLOCK
+
+	// Count Up with `ULINT` count value
+	FUNCTION_BLOCK CTU_ULINT
+		VAR_INPUT
+			CU: BOOL;
+			R: BOOL;
+			PV: ULINT;
+		END_VAR
+		VAR_OUTPUT
+			Q: BOOL;
+			CV: ULINT;
+		END_VAR
+		VAR
+			CU_T: R_TRIG;
+		END_VAR
+
+		CU_T(CU);
+		IF R THEN
+			CV := 0;
+		ELSIF CU_T.Q AND (CV < PV) THEN
+			CV := CV + 1;
+		END_IF;
+		Q := (CV >= PV);
+	END_FUNCTION_BLOCK
+
+	// Count Down with `UDINT` count value
+	FUNCTION_BLOCK CTD_UDINT
+		VAR_INPUT
+			CD: BOOL;
+			LD: BOOL;
+			PV: UDINT;
+		END_VAR
+		VAR_OUTPUT
+			Q: BOOL;
+			CV: UDINT;
+		END_VAR
+		VAR
+			CD_T: R_TRIG;
+		END_VAR
+
+		CD_T(CD);
+		IF LD THEN
+			CV := PV;
+		ELSIF CD_T.Q AND (CV > 0) THEN
+			CV := CV - 1;
+		END_IF;
+		Q := (CV <= 0);
+	END_FUNCTION_BLOCK
+
+	// Count Down with `ULINT` count value
+	FUNCTION_BLOCK CTD_ULINT
+		VAR_INPUT
+			CD: BOOL;
+			LD: BOOL;
+			PV: ULINT;
+		END_VAR
+		VAR_OUTPUT
+			Q: BOOL;
+			CV: ULINT;
+		END_VAR
+		VAR
+			CD_T: R_TRIG;
+		END_VAR
+
+		CD_T(CD);
+		IF LD THEN
+			CV := PV;
+		ELSIF CD_T.Q AND (CV > 0) THEN
+			CV := CV - 1;
+		END_IF;
+		Q := (CV <= 0);
+	END_FUNCTION_BLOCK
+
+	// Count Up/Down with `UDINT` count value
+	FUNCTION_BLOCK CTUD_UDINT
+		VAR_INPUT
+			CU: BOOL;
+			CD: BOOL;
+			R: BOOL;
+			LD: BOOL;
+			PV: UDINT;
+		END_VAR
+		VAR_OUTPUT
+			QU: BOOL;
+			QD: BOOL;
+			CV: UDINT;
+		END_VAR
+		VAR
+			CD_T: R_TRIG;
+			CU_T: R_TRIG;
+		END_VAR
+
+		CD_T(CD);
+		CU_T(CU);
+		IF R THEN
+			CV := 0;
+		ELSIF LD THEN
+			CV := PV;
+		ELSE
+			IF NOT (CU_T.Q AND CD_T.Q) THEN
+				IF CU_T.Q AND (CV < PV) THEN
+					CV := CV + 1;
+				ELSIF CD_T.Q AND (CV > 0) THEN
+					CV := CV - 1;
+				END_IF;
+			END_IF;
+		END_IF;
+		QU := (CV >= PV);
+		QD := (CV <= 0);
+	END_FUNCTION_BLOCK
+
+	// Count Up/Down with `ULINT` count value
+	FUNCTION_BLOCK CTUD_ULINT
+		VAR_INPUT
+			CU: BOOL;
+			CD: BOOL;
+			R: BOOL;
+			LD: BOOL;
+			PV: ULINT;
+		END_VAR
+		VAR_OUTPUT
+			QU: BOOL;
+			QD: BOOL;
+			CV: ULINT;
+		END_VAR
+		VAR
+			CD_T: R_TRIG;
+			CU_T: R_TRIG;
+		END_VAR
+
+		CD_T(CD);
+		CU_T(CU);
+		IF R THEN
+			CV := 0;
+		ELSIF LD THEN
+			CV := PV;
+		ELSE
+			IF NOT (CU_T.Q AND CD_T.Q) THEN
+				IF CU_T.Q AND (CV < PV) THEN
+					CV := CV + 1;
+				ELSIF CD_T.Q AND (CV > 0) THEN
+					CV := CV - 1;
+				END_IF;
+			END_IF;
+		END_IF;
+		QU := (CV >= PV);
+		QD := (CV <= 0);
+	END_FUNCTION_BLOCK
+
 	NAMESPACE Test
 		USING Std.Unit;
 		USING Std.Edge;
@@ -705,6 +968,68 @@ NAMESPACE Std.Counters
 			ASSERT(counter.CV = LINT#1, 'LINT CTUD counts up');
 			counter(CU := FALSE, CD := TRUE, R := FALSE, LD := FALSE, PV := LINT#3);
 			ASSERT(counter.CV = LINT#0, 'LINT CTUD counts down');
+		END_FUNCTION
+
+		// -- standard base names ------------------------------------
+
+		{test}
+		FUNCTION test_plain_ctu_counts_to_pv
+			VAR
+				c: CTU;
+			END_VAR
+			c(CU := TRUE, R := FALSE, PV := 2);
+			c(CU := FALSE, R := FALSE, PV := 2);
+			c(CU := TRUE, R := FALSE, PV := 2);
+			ASSERT_EQ(c.CV, 2);
+			ASSERT(c.Q, 'CTU Q at PV');
+		END_FUNCTION
+
+		{test}
+		FUNCTION test_plain_ctd_counts_down
+			VAR
+				c: CTD;
+			END_VAR
+			c(CD := FALSE, LD := TRUE, PV := 2);
+			ASSERT_EQ(c.CV, 2);
+			c(CD := TRUE, LD := FALSE, PV := 2);
+			c(CD := FALSE, LD := FALSE, PV := 2);
+			c(CD := TRUE, LD := FALSE, PV := 2);
+			ASSERT_EQ(c.CV, 0);
+			ASSERT(c.Q, 'CTD Q at zero');
+		END_FUNCTION
+
+		{test}
+		FUNCTION test_plain_ctud_both_directions
+			VAR
+				c: CTUD;
+			END_VAR
+			c(CU := TRUE, CD := FALSE, R := FALSE, LD := FALSE, PV := 3);
+			c(CU := FALSE, CD := FALSE, R := FALSE, LD := FALSE, PV := 3);
+			c(CU := TRUE, CD := FALSE, R := FALSE, LD := FALSE, PV := 3);
+			ASSERT_EQ(c.CV, 2);
+			c(CU := FALSE, CD := TRUE, R := FALSE, LD := FALSE, PV := 3);
+			ASSERT_EQ(c.CV, 1);
+			ASSERT(NOT c.QU);
+			ASSERT(NOT c.QD);
+		END_FUNCTION
+
+		{test}
+		FUNCTION test_ctu_udint_counts
+			VAR
+				c: CTU_UDINT;
+			END_VAR
+			c(CU := TRUE, R := FALSE, PV := 1);
+			ASSERT(c.Q, 'unsigned counter reaches PV');
+		END_FUNCTION
+
+		{test}
+		FUNCTION test_ctd_ulint_loads_and_counts
+			VAR
+				c: CTD_ULINT;
+			END_VAR
+			c(CD := FALSE, LD := TRUE, PV := 1);
+			c(CD := TRUE, LD := FALSE, PV := 1);
+			ASSERT(c.Q, 'unsigned down-counter reaches zero');
 		END_FUNCTION
 	END_NAMESPACE
 END_NAMESPACE
