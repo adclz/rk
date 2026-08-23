@@ -227,6 +227,24 @@ impl<'db> Signature<'db> {
                             }
                             .to_diagnostic(db, self.scope.file(db)),
                         );
+                    } else if let Some(pou_kind) = match get_scope(db, self.scope).kind {
+                        // An input on a POU with instance state is STORED
+                        // across calls, so it is not a parameter in the
+                        // params-only design; this shape used to pass
+                        // `rk check` and ICE in `rk compile`.
+                        ScopeKind::Pou(Pou::FunctionBlock(_)) => Some("FUNCTION_BLOCK"),
+                        ScopeKind::Pou(Pou::Class(_)) => Some("CLASS"),
+                        ScopeKind::Program(_) => Some("PROGRAM"),
+                        _ => None,
+                    } {
+                        self.errors.push(
+                            InheritanceError::InterfaceParamOnStatefulPou {
+                                var: *var,
+                                interface,
+                                pou_kind,
+                            }
+                            .to_diagnostic(db, self.scope.file(db)),
+                        );
                     }
                 } else {
                     self.errors.push(

@@ -76,6 +76,16 @@ pub enum InheritanceError<'db> {
         var: VariableDecl<'db>,
         interface: Interface<'db>,
     },
+    /// An interface `VAR_INPUT` / `VAR_IN_OUT` on a POU with instance state.
+    /// An FB or PROGRAM input lives in the instance across calls, which makes
+    /// it a STORED interface; parameters specialize per call, so they exist
+    /// on FUNCTION and METHOD only. This used to pass `rk check` and ICE in
+    /// `rk compile`.
+    InterfaceParamOnStatefulPou {
+        var: VariableDecl<'db>,
+        interface: Interface<'db>,
+        pou_kind: &'static str,
+    },
     /// An interface used as a function/method return type. Interfaces are only
     /// allowed as VAR_INPUT / VAR_IN_OUT parameters (Design 1) — a return would
     /// flow the concrete type callee→caller, which can't be monomorphized.
@@ -144,6 +154,7 @@ impl<'db> ErrorCode for InheritanceError<'db> {
             Self::SignatureTypeMismatch { .. } => "E0512",
             Self::SuperButNoExtends { .. } => "E0513",
             Self::InterfaceOnlyAllowedAsParam { .. } => "E0514",
+            Self::InterfaceParamOnStatefulPou { .. } => "E0514",
             Self::InterfaceNotAllowedInReturn { .. } => "E0515",
             Self::InterfaceNotAllowedNested { .. } => "E0516",
             Self::InterfaceParamNotAssignable { .. } => "E0517",
@@ -173,6 +184,7 @@ impl<'db> ErrorCode for InheritanceError<'db> {
                 "method signature mismatch"
             }
             Self::InterfaceOnlyAllowedAsParam { .. }
+            | Self::InterfaceParamOnStatefulPou { .. }
             | Self::InterfaceNotAllowedInReturn { .. }
             | Self::InterfaceNotAllowedNested { .. } => "interface type not allowed here",
             Self::InterfaceParamNotAssignable { .. } => "interface parameter is not assignable",
@@ -352,6 +364,25 @@ impl<'db> ToIdeDiagnostic<'db> for InheritanceError<'db> {
                     method.get_name_span(db),
                 ));
                 diag
+            }
+            Self::InterfaceParamOnStatefulPou {
+                var,
+                interface,
+                pou_kind,
+            } => {
+                let section = match var.kind(db) {
+                    VariableKind::InOut => "VAR_IN_OUT",
+                    _ => "VAR_INPUT",
+                };
+                diag()
+                    .message(format!(
+                        "interface '{}' cannot be a {pou_kind} {section}: the instance would store it across calls; interface parameters exist on FUNCTION and METHOD only",
+                        interface.get_name_ident(db).text(db)
+                    ))
+                    .severity(DiagnosticSeverity::ERROR)
+                    .desc(self)
+                    .range(crate::denormalize(db, file, &var.get_span(db)).unwrap_or_default())
+                    .call()
             }
             Self::InterfaceOnlyAllowedAsParam { var, interface } => {
                 let section = match var.kind(db) {

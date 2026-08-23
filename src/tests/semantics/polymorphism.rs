@@ -319,8 +319,12 @@ END_FUNCTION
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"");
 }
 
+// An FB or PROGRAM input lives in the instance across calls, which makes an
+// interface there STORED state; parameters specialize per call, so they
+// exist on FUNCTION and METHOD only. These shapes used to pass `rk check`
+// and ICE in `rk compile` with "Unsupported type: Interface".
 #[rstest]
-fn interface_inout_param_allowed(mut with_db: RootDatabase) {
+fn interface_inout_on_fb_is_refused(mut with_db: RootDatabase) {
     let source = r#"
 INTERFACE ITF1
     METHOD DoWork END_METHOD
@@ -330,6 +334,82 @@ FUNCTION_BLOCK Runner
     VAR_IN_OUT
         dev: ITF1;
     END_VAR
+END_FUNCTION_BLOCK
+    "#;
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
+    [E0514] Error: interface type not allowed here
+       ,-[ file:///test0.st:8:9 ]
+       |
+     8 |         dev: ITF1;
+       |         ^^^^|^^^^
+       |             `------ interface 'ITF1' cannot be a FUNCTION_BLOCK VAR_IN_OUT: the instance would store it across calls; interface parameters exist on FUNCTION and METHOD only
+    ---'
+    ");
+}
+
+#[rstest]
+fn interface_input_on_fb_is_refused(mut with_db: RootDatabase) {
+    let source = r#"
+INTERFACE ITF1
+    METHOD DoWork END_METHOD
+END_INTERFACE
+
+FUNCTION_BLOCK Runner
+    VAR_INPUT
+        dev: ITF1;
+    END_VAR
+END_FUNCTION_BLOCK
+    "#;
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
+    [E0514] Error: interface type not allowed here
+       ,-[ file:///test0.st:8:9 ]
+       |
+     8 |         dev: ITF1;
+       |         ^^^^|^^^^
+       |             `------ interface 'ITF1' cannot be a FUNCTION_BLOCK VAR_INPUT: the instance would store it across calls; interface parameters exist on FUNCTION and METHOD only
+    ---'
+    ");
+}
+
+#[rstest]
+fn interface_input_on_program_is_refused(mut with_db: RootDatabase) {
+    let source = r#"
+INTERFACE ITF1
+    METHOD DoWork END_METHOD
+END_INTERFACE
+
+PROGRAM P
+    VAR_INPUT
+        dev: ITF1;
+    END_VAR
+END_PROGRAM
+    "#;
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
+    [E0514] Error: interface type not allowed here
+       ,-[ file:///test0.st:8:9 ]
+       |
+     8 |         dev: ITF1;
+       |         ^^^^|^^^^
+       |             `------ interface 'ITF1' cannot be a PROGRAM VAR_INPUT: the instance would store it across calls; interface parameters exist on FUNCTION and METHOD only
+    ---'
+    ");
+}
+
+// The transient forms stay legal: a METHOD's interface params specialize per
+// call even though the method lives on an FB.
+#[rstest]
+fn interface_param_on_fb_method_stays_allowed(mut with_db: RootDatabase) {
+    let source = r#"
+INTERFACE ITF1
+    METHOD DoWork END_METHOD
+END_INTERFACE
+
+FUNCTION_BLOCK Runner
+    METHOD PUBLIC Use : INT
+        VAR_INPUT dev: ITF1; END_VAR
+        VAR_IN_OUT alt: ITF1; END_VAR
+        Use := 0;
+    END_METHOD
 END_FUNCTION_BLOCK
     "#;
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"");
