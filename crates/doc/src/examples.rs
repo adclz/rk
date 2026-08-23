@@ -844,24 +844,6 @@ END_FUNCTION_BLOCK
             lint_rule: None,
         },
         ErrorExample {
-            code: "E0206",
-            category: "Resolution",
-            title: "Unknown non-formal parameter",
-            description: "A positional parameter in a function call exceeds the expected parameter count.",
-            sources: &[r#"
-FUNCTION fn1
-    VAR_INPUT
-        param1: INT;
-    END_VAR
-END_FUNCTION
-
-FUNCTION_BLOCK fb1
-    fn1(0, 1);
-END_FUNCTION_BLOCK
-"#],
-            lint_rule: None,
-        },
-        ErrorExample {
             code: "E0207",
             category: "Resolution",
             title: "Output parameter used as input",

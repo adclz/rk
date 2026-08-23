@@ -127,8 +127,7 @@ pub fn resolve_func_call<'db>(
         .values()
         .any(|v| v.variadic(db));
 
-    let arity_error = !has_variadic && len > callable.var_len_params(db);
-    if arity_error {
+    if !has_variadic && len > callable.var_len_params(db) {
         ctx.errors.push(
             ResolveError::IncorrectNumberOfParameters {
                 overloads: match callable {
@@ -161,20 +160,8 @@ pub fn resolve_func_call<'db>(
         );
     }
 
-    // Resolve parameter matching (shared with {case} pragma validation).
-    // With the count already reported wrong, "no parameter at index N" per
-    // extra argument is the same fact again, not new information.
-    let mut param_errors: Vec<ide_diagnostic::IdeDiagnostic> = Vec::new();
-    let matches = resolve_params(db, func_call.params(db), callable, &mut param_errors);
-    if arity_error {
-        param_errors.retain(|d| {
-            !matches!(
-                &d.diagnostic.code,
-                Some(auto_lsp::lsp_types::NumberOrString::String(c)) if c == "E0206"
-            )
-        });
-    }
-    ctx.errors.append(&mut param_errors);
+    // Resolve parameter matching
+    let matches = resolve_params(db, func_call.params(db), callable, &mut ctx.errors);
 
     // Apply coercion and body-level checks on matched parameters
     for m in &matches {
@@ -611,14 +598,9 @@ pub fn resolve_params<'db>(
                         formal_idx += 1;
                     }
                 } else {
-                    errors.push(
-                        ResolveError::UnknownNonFormalParameter {
-                            func: callable,
-                            expr: value,
-                            param: formal_idx,
-                        }
-                        .to_diagnostic(db, callable.get_scope_id(db).file(db)),
-                    );
+                    // Past the last parameter: the arg count already exceeds
+                    // the callable's, which the caller reported as E0205 —
+                    // a per-argument error here would restate it.
                     results.push(ParamMatch::Error);
                     formal_idx += 1;
                 }

@@ -173,11 +173,6 @@ pub enum ResolveError<'db> {
         func_call: FuncCall<'db>,
         callable: CallableType<'db>,
     },
-    UnknownNonFormalParameter {
-        func: CallableType<'db>,
-        expr: Expr<'db>,
-        param: usize,
-    },
     OutputParameterUsedAsInput {
         func: CallableType<'db>,
         var: VariableDecl<'db>,
@@ -402,7 +397,6 @@ impl<'db> ErrorCode for ResolveError<'db> {
         match self {
             Self::NoItemInScope { .. } => "E0204",
             Self::IncorrectNumberOfParameters { .. } => "E0205",
-            Self::UnknownNonFormalParameter { .. } => "E0206",
             Self::OutputParameterUsedAsInput { .. } => "E0207",
             Self::UnknownInputParameter { .. } => "E0208",
             Self::UnknownOutputParameter { .. } => "E0209",
@@ -449,7 +443,6 @@ impl<'db> ErrorCode for ResolveError<'db> {
             Self::NoNamespaceItemFound { .. } => "no namespace item found",
             Self::UsingNamespaceNotFound { .. } => "namespace not found",
             Self::IncorrectNumberOfParameters { .. }
-            | Self::UnknownNonFormalParameter { .. }
             | Self::OutputParameterUsedAsInput { .. }
             | Self::UnknownInputParameter { .. }
             | Self::UnknownOutputParameter { .. } => "function call parameter mismatch",
@@ -562,12 +555,6 @@ impl<'db> ToIdeDiagnostic<'db> for ResolveError<'db> {
                 }
                 diag
             }
-            Self::UnknownNonFormalParameter { func, expr, param } => diag()
-                .message(format!("no parameter at index '{}'", param))
-                .range(crate::denormalize(db, file, &expr.get_span(db)).unwrap_or_default())
-                .severity(DiagnosticSeverity::ERROR)
-                .desc(self)
-                .call(),
             Self::UnknownInputParameter { func, param } => {
                 let mut diag = diag()
                     .message(format!("unknown input parameter '{}'", param.text(db)))
