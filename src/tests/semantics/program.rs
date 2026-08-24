@@ -8,7 +8,7 @@ use crate::tests::utils::with_db;
 #[rstest]
 fn assign_mismatch_type(mut with_db: RootDatabase) {
     let source = r#"
-PROGRAM program
+PROGRAM prog
     VAR
         test: INT;
     END_VAR

@@ -63,7 +63,7 @@ END_FUNCTION_BLOCK
 Function blocks with multiple implements
 ================================================================================
 
-FUNCTION_BLOCK fn IMPLEMENTS access.something.great, in_scope, access.something.else
+FUNCTION_BLOCK fn IMPLEMENTS access.something.great, in_scope, access.something.other
 
 END_FUNCTION_BLOCK
 

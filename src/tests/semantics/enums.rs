@@ -36,10 +36,10 @@ fn access_enum_variant_on_non_enum_type(mut with_db: RootDatabase) {
         FUNCTION fn
             VAR 
                 test: List
-                type: BOOL;
+                typ: BOOL;
             END_VAR
 
-            test := type#A
+            test := typ#A
         END_FUNCTION
         "#;
 
@@ -47,9 +47,9 @@ fn access_enum_variant_on_non_enum_type(mut with_db: RootDatabase) {
     [E0702] Error: invalid enum access
         ,-[ file:///test0.st:12:21 ]
         |
-     12 |             test := type#A
-        |                     ^^|^
-        |                       `--- 'BOOL' is not an ENUM type
+     12 |             test := typ#A
+        |                     ^|^
+        |                      `--- 'BOOL' is not an ENUM type
     ----'
     ");
 }

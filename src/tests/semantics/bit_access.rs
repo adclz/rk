@@ -17,13 +17,13 @@ fn valid_slice_sizes(mut with_db: db::RootDatabase) {
         VAR
             l : LWORD;
             bit : BOOL;
-            by : BYTE;
+            bt : BYTE;
             w : WORD;
             d : DWORD;
         END_VAR
             bit := l.0;
             bit := l.%X63;
-            by := l.%B7;
+            bt := l.%B7;
             w := l.%W3;
             d := l.%D1;
         END_FUNCTION

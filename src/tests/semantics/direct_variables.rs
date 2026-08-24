@@ -200,16 +200,16 @@ fn valid_multibits(mut with_db: RootDatabase) {
 FUNCTION_BLOCK fb1
     VAR
         Bo: BOOL;
-        By: BYTE;
+        Byv: BYTE;
         Wo: WORD;
-        Do: DWORD;
+        Dwv: DWORD;
         Lo: LWORD;
     END_VAR
 
-    Bo:= By.%X0; // bit 0 of By
-    Bo:= By.7; // bit 7 of By; %X is the default and may be omitted.
+    Bo:= Byv.%X0; // bit 0 of Byv
+    Bo:= Byv.7; // bit 7 of Byv; %X is the default and may be omitted.
     Bo:= Lo.63 // bit 63 of Lo;
-    By:= Wo.%B1; // byte 1 of Wo;
+    Byv:= Wo.%B1; // byte 1 of Wo;
 
 END_FUNCTION_BLOCK"#;
 
@@ -221,37 +221,37 @@ fn mismatch_multibits_bool(mut with_db: RootDatabase) {
     let source = r#"
 FUNCTION_BLOCK fb1
     VAR
-        By: REAL;
+        Byv: REAL;
         Wo: WORD;
     END_VAR
 
-    By:= Wo.%X0; // bit 0 of Wo (invalid because we expect a REAL)
-    By:= Wo.%1; // bit 1 of Wo (same but with omitted %X)
+    Byv:= Wo.%X0; // bit 0 of Wo (invalid because we expect a REAL)
+    Byv:= Wo.%1; // bit 1 of Wo (same but with omitted %X)
 
 END_FUNCTION_BLOCK"#;
 
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
     [E0301] Error: type mismatch
-       ,-[ file:///test0.st:8:10 ]
+       ,-[ file:///test0.st:8:11 ]
        |
-     4 |         By: REAL;
-       |         ^|
-       |          `-- type is declared by variable 'By' here
+     4 |         Byv: REAL;
+       |         ^|^
+       |          `--- type is declared by variable 'Byv' here
        |
-     8 |     By:= Wo.%X0; // bit 0 of Wo (invalid because we expect a REAL)
-       |          ^^^|^^
-       |             `---- expected 'REAL', got 'BOOL'
+     8 |     Byv:= Wo.%X0; // bit 0 of Wo (invalid because we expect a REAL)
+       |           ^^^|^^
+       |              `---- expected 'REAL', got 'BOOL'
     ---'
     [E0301] Error: type mismatch
-       ,-[ file:///test0.st:9:10 ]
+       ,-[ file:///test0.st:9:11 ]
        |
-     4 |         By: REAL;
-       |         ^|
-       |          `-- type is declared by variable 'By' here
+     4 |         Byv: REAL;
+       |         ^|^
+       |          `--- type is declared by variable 'Byv' here
        |
-     9 |     By:= Wo.%1; // bit 1 of Wo (same but with omitted %X)
-       |          ^^|^^
-       |            `---- expected 'REAL', got 'BOOL'
+     9 |     Byv:= Wo.%1; // bit 1 of Wo (same but with omitted %X)
+       |           ^^|^^
+       |             `---- expected 'REAL', got 'BOOL'
     ---'
     ");
 }
@@ -261,25 +261,25 @@ fn mismatch_multibits_byte(mut with_db: RootDatabase) {
     let source = r#"
 FUNCTION_BLOCK fb1
     VAR
-        By: REAL;
+        Byv: REAL;
         Wo: WORD;
     END_VAR
 
-    By:= Wo.%B0; // byte 0 of Wo (invalid because we expect a REAL)
+    Byv:= Wo.%B0; // byte 0 of Wo (invalid because we expect a REAL)
 
 END_FUNCTION_BLOCK"#;
 
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
     [E0301] Error: type mismatch
-       ,-[ file:///test0.st:8:10 ]
+       ,-[ file:///test0.st:8:11 ]
        |
-     4 |         By: REAL;
-       |         ^|
-       |          `-- type is declared by variable 'By' here
+     4 |         Byv: REAL;
+       |         ^|^
+       |          `--- type is declared by variable 'Byv' here
        |
-     8 |     By:= Wo.%B0; // byte 0 of Wo (invalid because we expect a REAL)
-       |          ^^^|^^
-       |             `---- expected 'REAL', got 'BYTE'
+     8 |     Byv:= Wo.%B0; // byte 0 of Wo (invalid because we expect a REAL)
+       |           ^^^|^^
+       |              `---- expected 'REAL', got 'BYTE'
     ---'
     ");
 }
@@ -289,25 +289,25 @@ fn mismatch_multibits_word(mut with_db: RootDatabase) {
     let source = r#"
 FUNCTION_BLOCK fb1
     VAR
-        By: REAL;
-        Do: DWORD;
+        Byv: REAL;
+        Dwv: DWORD;
     END_VAR
 
-    By:= Do.%W0; // word 0 of Do (invalid because we expect a REAL)
+    Byv:= Dwv.%W0; // word 0 of Dwv (invalid because we expect a REAL)
 
 END_FUNCTION_BLOCK"#;
 
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
     [E0301] Error: type mismatch
-       ,-[ file:///test0.st:8:10 ]
+       ,-[ file:///test0.st:8:11 ]
        |
-     4 |         By: REAL;
-       |         ^|
-       |          `-- type is declared by variable 'By' here
+     4 |         Byv: REAL;
+       |         ^|^
+       |          `--- type is declared by variable 'Byv' here
        |
-     8 |     By:= Do.%W0; // word 0 of Do (invalid because we expect a REAL)
-       |          ^^^|^^
-       |             `---- expected 'REAL', got 'WORD'
+     8 |     Byv:= Dwv.%W0; // word 0 of Dwv (invalid because we expect a REAL)
+       |           ^^^|^^^
+       |              `----- expected 'REAL', got 'WORD'
     ---'
     ");
 }
@@ -317,27 +317,27 @@ fn mismatch_multibits_d_word(mut with_db: RootDatabase) {
     let source = r#"
 FUNCTION_BLOCK fb1
     VAR
-        By: REAL;
+        Byv: REAL;
         Lo: LWORD;
     END_VAR
 
-    By:= Lo.%D0; // dword 0 of Lo (invalid because we expect a REAL)
+    Byv:= Lo.%D0; // dword 0 of Lo (invalid because we expect a REAL)
 
 END_FUNCTION_BLOCK"#;
 
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
     [E0301] Error: type mismatch
-       ,-[ file:///test0.st:8:10 ]
+       ,-[ file:///test0.st:8:11 ]
        |
-     4 |         By: REAL;
-       |         ^|
-       |          `-- type is declared by variable 'By' here
+     4 |         Byv: REAL;
+       |         ^|^
+       |          `--- type is declared by variable 'Byv' here
        |
-     8 |     By:= Lo.%D0; // dword 0 of Lo (invalid because we expect a REAL)
-       |          ^^^|^^
-       |             `---- expected 'REAL', got 'DWORD'
-       |             |
-       |             `---- consider explicitly casting with 'DWORD_TO_REAL(Lo.%D0)'
+     8 |     Byv:= Lo.%D0; // dword 0 of Lo (invalid because we expect a REAL)
+       |           ^^^|^^
+       |              `---- expected 'REAL', got 'DWORD'
+       |              |
+       |              `---- consider explicitly casting with 'DWORD_TO_REAL(Lo.%D0)'
        |
        | Help: insert explicit cast 'DWORD_TO_REAL(Lo.%D0)'
     ---'
@@ -349,25 +349,25 @@ fn mismatch_multibits_l_word(mut with_db: RootDatabase) {
     let source = r#"
 FUNCTION_BLOCK fb1
     VAR
-        By: REAL;
+        Byv: REAL;
         Lo: LWORD;
     END_VAR
 
-    By:= Lo.%L0; // lword 0 of Lo (invalid because we expect a REAL)
+    Byv:= Lo.%L0; // lword 0 of Lo (invalid because we expect a REAL)
 
 END_FUNCTION_BLOCK"#;
 
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
     [E0301] Error: type mismatch
-       ,-[ file:///test0.st:8:10 ]
+       ,-[ file:///test0.st:8:11 ]
        |
-     4 |         By: REAL;
-       |         ^|
-       |          `-- type is declared by variable 'By' here
+     4 |         Byv: REAL;
+       |         ^|^
+       |          `--- type is declared by variable 'Byv' here
        |
-     8 |     By:= Lo.%L0; // lword 0 of Lo (invalid because we expect a REAL)
-       |          ^^^|^^
-       |             `---- expected 'REAL', got 'LWORD'
+     8 |     Byv:= Lo.%L0; // lword 0 of Lo (invalid because we expect a REAL)
+       |           ^^^|^^
+       |              `---- expected 'REAL', got 'LWORD'
     ---'
     ");
 }

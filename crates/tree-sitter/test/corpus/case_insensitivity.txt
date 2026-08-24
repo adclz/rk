@@ -1,0 +1,113 @@
+================================================================================
+Keywords in lowercase
+================================================================================
+
+function fn : int
+var
+	x : int;
+end_var
+	if x > 0 then
+		fn := 1;
+	end_if;
+end_function
+
+--------------------------------------------------------------------------------
+
+(source_file
+  (func_decl
+    name: (identifier)
+    return_type: (numeric_type_name
+      (int_type_name
+        (sign_int_type_name
+          (int_name))))
+    variables: (var_decls
+      (var_decl_init_list
+        variables: (variable_list
+          (identifier))
+        type: (var_decl_init
+          spec: (simple_type_spec
+            (numeric_type_name
+              (int_type_name
+                (sign_int_type_name
+                  (int_name))))))))
+    body: (func_body
+      (stmt_list
+        (if_stmt
+          if_cond: (comparison_operator
+            (ord_operator
+              left: (variable_access
+                variable: (variable
+                  (begin_path_expression
+                    (path_expression
+                      (var_access
+                        (field))))))
+              right: (constant
+                (numeric_literal
+                  (int_literal
+                    int: (signed_int
+                      (unsigned_int)))))))
+          if_body: (stmt_list
+            (assign
+              variable: (variable_access
+                variable: (variable
+                  (begin_path_expression
+                    (path_expression
+                      (var_access
+                        (field))))))
+              target: (assignment
+                (constant
+                  (numeric_literal
+                    (int_literal
+                      int: (signed_int
+                        (unsigned_int)))))))))))))
+
+================================================================================
+Keywords in mixed case
+================================================================================
+
+Function fn : Int
+	If TRUE Then
+		fn := 1;
+	End_If;
+End_Function
+
+--------------------------------------------------------------------------------
+
+(source_file
+  (func_decl
+    name: (identifier)
+    return_type: (numeric_type_name
+      (int_type_name
+        (sign_int_type_name
+          (int_name))))
+    body: (func_body
+      (stmt_list
+        (if_stmt
+          if_cond: (constant
+            (bool_literal
+              (bool_literal_with_string)))
+          if_body: (stmt_list
+            (assign
+              variable: (variable_access
+                variable: (variable
+                  (begin_path_expression
+                    (path_expression
+                      (var_access
+                        (field))))))
+              target: (assignment
+                (constant
+                  (numeric_literal
+                    (int_literal
+                      int: (signed_int
+                        (unsigned_int)))))))))))))
+
+================================================================================
+A lowercase keyword is still a reserved word
+:error
+================================================================================
+
+CLASS class END_CLASS
+
+--------------------------------------------------------------------------------
+
+

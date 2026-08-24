@@ -185,7 +185,7 @@ FUNCTION_BLOCK fb1
         test: INT;
     END_VAR
 
-    METHOD method 
+    METHOD doWork 
     
     END_METHOD
 
@@ -207,7 +207,7 @@ END_FUNCTION_BLOCK
 
     assert_eq!(completions.len(), 2);
     assert!(format!("{completions:?}").contains("test"));
-    assert!(format!("{completions:?}").contains("method()"));
+    assert!(format!("{completions:?}").contains("doWork()"));
 }
 
 /// Typing `my_var := 0.` should NOT trigger field completions.

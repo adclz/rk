@@ -279,7 +279,7 @@ fn super_without_extends_clause_on_fb(mut with_db: RootDatabase) {
 #[rstest]
 fn super_without_extends_clause_on_class(mut with_db: RootDatabase) {
     let source = r#"
-        CLASS class
+        CLASS cls
            METHOD doSomething
                 SUPER.something
            END_METHOD
@@ -291,7 +291,7 @@ fn super_without_extends_clause_on_class(mut with_db: RootDatabase) {
        |
      4 |                 SUPER.something
        |                 ^^|^^
-       |                   `---- 'SUPER' used but no EXTENDS clause found on 'class'
+       |                   `---- 'SUPER' used but no EXTENDS clause found on 'cls'
     ---'
     ");
 }

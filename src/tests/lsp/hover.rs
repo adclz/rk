@@ -241,7 +241,7 @@ END_NAMESPACE
 #[rstest]
 pub fn hover_array_type_decl(mut with_db: RootDatabase) {
     let source = r#"
-TYPE Array: ARRAY[1..10] OF INT; END_TYPE
+TYPE Arr10: ARRAY[1..10] OF INT; END_TYPE
 "#;
 
     assert_snapshot!(collect_hovers(&mut with_db, source, |db, node| {
@@ -249,7 +249,7 @@ TYPE Array: ARRAY[1..10] OF INT; END_TYPE
         hover_markup(ty.hover(db, ty.get_name_span(db).start_byte)?.contents)
     }), @r"
     ```iecst
-    TYPE Array: ARRAY [1..10] OF INT
+    TYPE Arr10: ARRAY [1..10] OF INT
     ```
     ");
 }
@@ -309,9 +309,9 @@ END_TYPE
 pub fn hover_type_specs(mut with_db: RootDatabase) {
     let source = r#"
 TYPE
-    Array: ARRAY[1..10] OF INT;
+    Arr10: ARRAY[1..10] OF INT;
     ASubrange: INT (0..6);
-    Alias: Array;
+    Alias: Arr10;
 END_TYPE
 "#;
 
@@ -335,7 +335,7 @@ END_TYPE
     INT
     ```
     ```iecst
-    TYPE Array: ARRAY [1..10] OF INT
+    TYPE Arr10: ARRAY [1..10] OF INT
     ```
     ");
 }
