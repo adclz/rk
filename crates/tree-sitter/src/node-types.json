@@ -1979,6 +1979,11 @@
     }
   },
   {
+    "type": "char_name",
+    "named": true,
+    "fields": {}
+  },
+  {
     "type": "char_str",
     "named": true,
     "fields": {},
@@ -7213,6 +7218,10 @@
     "named": false
   },
   {
+    "type": "CHAR",
+    "named": false
+  },
+  {
     "type": "CLASS",
     "named": false
   },
@@ -7634,10 +7643,6 @@
   },
   {
     "type": "byte_name",
-    "named": true
-  },
-  {
-    "type": "char_name",
     "named": true
   },
   {
