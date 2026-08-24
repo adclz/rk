@@ -1,7 +1,7 @@
 //! Tests for constant variable initializers: program statics, globals, and the
 //! cold-vs-warm-start interaction with RETAIN. Run once at load via `__init`.
 
-use crate::tests::codegen::{compile_to_mir_and_wasm, with_db};
+use crate::tests::codegen::{compile_to_mir_and_wasm, compile_to_wasm, with_db};
 use rstest::*;
 use runtime::{Config, Plc};
 
@@ -554,4 +554,67 @@ fn a_global_name_list_gives_each_name_its_own_slot(mut with_db: db::RootDatabase
     // Both start at 5; ga is bumped to 6 and gb is untouched, so the two
     // names cannot be aliasing one slot.
     assert_eq!(read_first_i32(&plc), 605, "ga=6 and gb=5 are separate storage");
+}
+
+/// The standard's repetition initializer: `8(-4095)` fills eight slots.
+#[rstest]
+fn repetition_initializer_fills_its_count(mut with_db: db::RootDatabase) {
+    let source = r#"
+        FUNCTION run : DINT
+        VAR
+            a : ARRAY[1..16] OF INT := [8(-4095), 8(4095)];
+        END_VAR
+            (* accumulate in the DINT lane: INT arithmetic wraps at 16 bits,
+               by the pinned sub-width invariant *)
+            run := a[8];
+            run := run * 10000 + a[9];
+        END_FUNCTION
+    "#;
+    let wasm = compile_to_wasm(&mut with_db, source);
+    let result: i32 = super::execute_wasm(&wasm, "run", ());
+    assert_eq!(
+        result,
+        -4095 * 10000 + 4095,
+        "slot 8 ends the first group, slot 9 begins the second"
+    );
+}
+
+/// A repetition factor applies to a GROUP: `[2(1, 2, 3)]` is the sequence
+/// 1, 2, 3, 1, 2, 3 — the standard's own example.
+#[rstest]
+fn repetition_initializer_repeats_a_group(mut with_db: db::RootDatabase) {
+    let source = r#"
+        FUNCTION run : DINT
+        VAR
+            a : ARRAY[0..5] OF INT := [2(1, 2, 3)];
+        END_VAR
+            run := a[0];
+            run := run * 10 + a[1];
+            run := run * 10 + a[2];
+            run := run * 10 + a[3];
+            run := run * 10 + a[4];
+            run := run * 10 + a[5];
+        END_FUNCTION
+    "#;
+    let wasm = compile_to_wasm(&mut with_db, source);
+    let result: i32 = super::execute_wasm(&wasm, "run", ());
+    assert_eq!(result, 123123, "1,2,3,1,2,3 read back positionally");
+}
+
+/// During initialization the RIGHTMOST subscript varies most rapidly: a
+/// [0..1, 0..2] array filled from [1..6] puts 1,2,3 in row 0 and 4,5,6 in
+/// row 1.
+#[rstest]
+fn multi_dim_initialization_fills_rightmost_fastest(mut with_db: db::RootDatabase) {
+    let source = r#"
+        FUNCTION run : DINT
+        VAR
+            m : ARRAY[0..1, 0..2] OF INT := [1, 2, 3, 4, 5, 6];
+        END_VAR
+            run := m[0, 2] * 100 + m[1, 0] * 10 + m[1, 2];
+        END_FUNCTION
+    "#;
+    let wasm = compile_to_wasm(&mut with_db, source);
+    let result: i32 = super::execute_wasm(&wasm, "run", ());
+    assert_eq!(result, 346, "m[0,2]=3, m[1,0]=4, m[1,2]=6: row-major fill");
 }

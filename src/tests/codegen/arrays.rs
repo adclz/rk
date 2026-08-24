@@ -527,3 +527,75 @@ fn extern_constant_bound_folds_and_is_enforced(mut with_db: db::RootDatabase) {
         "the extern-folded bound is the one enforced: {err:#}"
     );
 }
+
+/// `m[i, j]` is the standard's multi-dimensional access; `m[i][j]` is the
+/// nested-array form. Both are accepted on a comma-declared array and must
+/// address the SAME cell — the comma group lowers to one place per
+/// dimension, exactly like the chain.
+#[rstest]
+fn comma_and_chained_subscripts_address_the_same_cell(mut with_db: db::RootDatabase) {
+    let source = r#"
+        FUNCTION run : DINT
+        VAR
+            m : ARRAY[1..3, 1..3] OF DINT;
+        END_VAR
+            m[2, 3] := 42;
+            run := m[2][3] * 100 + m[2, 3];
+        END_FUNCTION
+    "#;
+    let wasm = compile_to_wasm(&mut with_db, source);
+    let result: i32 = super::execute_wasm(&wasm, "run", ());
+    assert_eq!(result, 4242, "one write, both spellings read the same cell");
+}
+
+/// The per-dimension bounds check holds through the comma form: `m[1, 9]` on
+/// `ARRAY[1..3, 1..3]` is out of bounds even though its flat offset lands
+/// inside the array's allocation.
+#[rstest]
+fn per_dimension_bounds_hold_through_the_comma_form(mut with_db: db::RootDatabase) {
+    let source = r#"
+        FUNCTION run : DINT
+        VAR
+            m : ARRAY[1..3, 1..3] OF DINT;
+            j : DINT;
+        END_VAR
+            j := 9;
+            run := m[1, j];
+        END_FUNCTION
+    "#;
+    let wasm = compile_to_wasm(&mut with_db, source);
+    let engine = crate::tests::codegen::test_engine();
+    let module = wasmtime::Module::new(&engine, &wasm).unwrap();
+    let mut store = wasmtime::Store::new(&engine, ());
+    let (instance, memory) = super::instantiate_returning_memory(&mut store, &module);
+    let f = instance
+        .get_typed_func::<(), i32>(&mut store, "run")
+        .unwrap();
+    let err = f
+        .call(&mut store, ())
+        .expect_err("dimension 2's bound is 3; 9 must fault through the comma form too");
+    let msg = super::fault_message(&mut store, memory, err);
+    assert!(
+        msg.contains("array index out of bounds"),
+        "the comma-form fault names the check: {msg}"
+    );
+}
+
+/// A chain AFTER a comma group: the later subscript must consume the NEXT
+/// dimension, not restart at zero — the dimension count follows indices, not
+/// nodes.
+#[rstest]
+fn a_chain_after_a_comma_group_consumes_the_next_dimension(mut with_db: db::RootDatabase) {
+    let source = r#"
+        FUNCTION run : DINT
+        VAR
+            c : ARRAY[0..1, 0..1, 0..1] OF DINT;
+        END_VAR
+            c[1, 1][1] := 7;
+            run := c[1][1][1] * 10 + c[1, 1, 1];
+        END_FUNCTION
+    "#;
+    let wasm = compile_to_wasm(&mut with_db, source);
+    let result: i32 = super::execute_wasm(&wasm, "run", ());
+    assert_eq!(result, 77, "all three spellings hit the same corner cell");
+}

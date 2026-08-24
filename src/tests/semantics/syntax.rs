@@ -1067,10 +1067,11 @@ END_FUNCTION_BLOCK
 }
 
 #[rstest]
-fn comma_index_access_rejected(mut with_db: RootDatabase) {
-    // `m[i, j]` (comma) is initializer-only syntax; element access must chain
-    // (`m[i][j]`). The grammar's `index_value` is shared `commaSep1`, so the HIR
-    // builder rejects more-than-one index with a clear, actionable message.
+fn comma_index_access_is_the_standard_form(mut with_db: RootDatabase) {
+    // `m[i, j]` is the standard's multi-dimensional access; each index
+    // consumes one dimension, exactly like the chained `m[i][j]`. Both are
+    // accepted and lower identically. (E0018, which rejected the comma form,
+    // is retired.)
     let source = r#"
         TYPE Matrix : ARRAY[0..1, 0..2] OF INT; END_TYPE
         FUNCTION test : INT
@@ -1078,13 +1079,28 @@ fn comma_index_access_rejected(mut with_db: RootDatabase) {
             test := m[0, 0];
         END_FUNCTION
         "#;
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"");
+}
+
+#[rstest]
+fn comma_subscript_constant_bounds_check_names_its_dimension(mut with_db: RootDatabase) {
+    // The compile-time bounds check walks comma subscripts per dimension:
+    // 9 violates dimension 2's [1..3], and the diagnostic says which.
+    let source = r#"
+        FUNCTION test : INT
+        VAR m : ARRAY[1..3, 1..3] OF INT; END_VAR
+            test := m[1, 9];
+        END_FUNCTION
+        "#;
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E0018] Error: syntax
-       ,-[ file:///test0.st:5:21 ]
+    [E0608] Error: invalid array access
+       ,-[ file:///test0.st:4:26 ]
        |
-     5 |             test := m[0, 0];
-       |                     ^^^|^^^
-       |                        `----- comma-separated indices are not allowed in array access; use chained subscripts, e.g. `a[i][j]`
+     4 |             test := m[1, 9];
+       |                          |
+       |                          `-- index 9 is out of bounds (the dimension is declared 1..3)
+       |
+       | Note: this error occurred in array dimension 2
     ---'
     ");
 }
