@@ -272,21 +272,6 @@ END_FUNCTION_BLOCK
             lint_rule: None,
         },
         ErrorExample {
-            code: "E0018",
-            category: "Syntax",
-            title: "Comma-separated indices in array access",
-            description: "Array element access cannot use comma-separated indices (`a[i, j]`). The comma form is initializer-only syntax; element access must chain one subscript per dimension: `a[i][j]`.",
-            sources: &[r#"
-FUNCTION fn1 : INT
-VAR
-    a : ARRAY [0..1, 0..1] OF INT;
-END_VAR
-    fn1 := a[0, 1];
-END_FUNCTION
-"#],
-            lint_rule: None,
-        },
-        ErrorExample {
             code: "E0019",
             category: "Syntax",
             title: "Missing node (syntax error)",

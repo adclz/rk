@@ -760,16 +760,6 @@ impl<'db> Parse<'db> for ast::generated::IndexExpression {
 
         // The grammar's `index_value` is a `commaSep1`, so `a[i, j]` parses in an
         // access context — but the comma form is initializer-only syntax. Element
-        // access must chain (`a[i][j]`, one index per subscript), which produces
-        // nested `IndexExpr`s each with a single index. So more than one index
-        // here is exactly the illegal comma-access form; reject it with a clear
-        // message rather than letting it resolve as a silent multi-dim read.
-        if index.len() > 1 {
-            sema.errors.push(
-                SyntaxError::CommaIndexAccess(self.get_range().to_owned())
-                    .to_diagnostic(sema.db, sema.file),
-            );
-        }
 
         Ok(IndexExpr { path, index })
     }

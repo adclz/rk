@@ -56,10 +56,6 @@ pub enum SyntaxError {
     UnexpectedThis(Range),
     UnexpectedSuper(Range),
     AssignToFunctionCall(Range),
-    /// Comma-separated indices `a[i, j]` used in an access context. The comma
-    /// form is valid only in array initializers; element access must chain:
-    /// `a[i][j]`.
-    CommaIndexAccess(Range),
     EmptyRightHandSide(Range),
     MissingDotInAssignment {
         file: File,
@@ -132,7 +128,6 @@ impl ErrorCode for SyntaxError {
             SyntaxError::UnexpectedThis(_) => "E0009",
             SyntaxError::UnexpectedSuper(_) => "E0010",
             SyntaxError::AssignToFunctionCall(_) => "E0011",
-            SyntaxError::CommaIndexAccess(_) => "E0018",
             SyntaxError::EmptyRightHandSide(_) => "E0012",
             SyntaxError::MissingDotInAssignment { .. } => "E0013",
             SyntaxError::MissingEqualInAssignment { .. } => "E0014",
@@ -402,16 +397,6 @@ impl<'db> ToIdeDiagnostic<'db> for SyntaxError {
                 .call(),
             Self::AssignToFunctionCall(span) => diag()
                 .message("assignment to function call is not allowed".into())
-                .severity(DiagnosticSeverity::ERROR)
-                .desc(self)
-                .range(crate::denormalize(db, file, span).unwrap_or_default())
-                .call(),
-            Self::CommaIndexAccess(span) => diag()
-                .message(
-                    "comma-separated indices are not allowed in array access; \
-                     use chained subscripts, e.g. `a[i][j]`"
-                        .into(),
-                )
                 .severity(DiagnosticSeverity::ERROR)
                 .desc(self)
                 .range(crate::denormalize(db, file, span).unwrap_or_default())

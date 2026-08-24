@@ -915,25 +915,7 @@ impl<'db> ExprLowerCtx<'db> {
             }
             PathExprKind::Index(index_expr) => {
                 let inner = self.lower_this_path(index_expr.path)?;
-                let index = if let Some(first) = index_expr.index.first() {
-                    self.lower_expr(*first)?
-                } else {
-                    return Err(LowerTypeError::UnsupportedType(
-                        "Array index without expression".to_string(),
-                    ));
-                };
-                let array_hir_type = index_expr.path.infer(self.db);
-                let dim = self.index_dimension(index_expr.path);
-                let (element_type, element_size, lower_bound, dim_size) =
-                    self.resolve_array_dim_info(array_hir_type, dim)?;
-                let index = self.checked_index(index, lower_bound, dim_size);
-                Ok(MirPlace::Index {
-                    base: Box::new(inner),
-                    index: Box::new(index),
-                    element_size,
-                    element_type,
-                    lower_bound,
-                })
+                self.lower_index_places(inner, &index_expr)
             }
             PathExprKind::Deref(deref_expr) => {
                 let inner = self.lower_this_path(deref_expr.path)?;
@@ -1054,28 +1036,7 @@ impl<'db> ExprLowerCtx<'db> {
 
             PathExprKind::Index(index_expr) => {
                 let inner = self.lower_path_expr_chain(base, index_expr.path)?;
-                let index = if let Some(first) = index_expr.index.first() {
-                    self.lower_expr(*first)?
-                } else {
-                    return Err(LowerTypeError::UnsupportedType(
-                        "Array index without expression".to_string(),
-                    ));
-                };
-
-                // Resolve element type from the array's base type
-                let array_hir_type = index_expr.path.infer(self.db);
-                let dim = self.index_dimension(index_expr.path);
-                let (element_type, element_size, lower_bound, dim_size) =
-                    self.resolve_array_dim_info(array_hir_type, dim)?;
-                let index = self.checked_index(index, lower_bound, dim_size);
-
-                Ok(MirPlace::Index {
-                    base: Box::new(inner),
-                    index: Box::new(index),
-                    element_size,
-                    element_type,
-                    lower_bound,
-                })
+                self.lower_index_places(inner, &index_expr)
             }
 
             PathExprKind::Deref(deref_expr) => {
@@ -1126,9 +1087,42 @@ impl<'db> ExprLowerCtx<'db> {
     /// 1, etc. The dimension is the number of `Index` nodes below this one in the
     /// path chain. (`path` is the inner path of the current index, so counting
     /// from there yields this index's own dimension.)
+
+    /// Fold every subscript of one Index node into nested places: index `k`
+    /// consumes dimension `base_dim + k`, exactly as a chained `a[i][j]`
+    /// does across nodes — one bounds check and one stride per dimension.
+    fn lower_index_places(
+        &self,
+        mut place: MirPlace,
+        index_expr: &hir::hir_def::expressions::expression::IndexExpr<'db>,
+    ) -> Result<MirPlace, LowerTypeError> {
+        if index_expr.index.is_empty() {
+            return Err(LowerTypeError::UnsupportedType(
+                "Array index without expression".to_string(),
+            ));
+        }
+        let array_hir_type = index_expr.path.infer(self.db);
+        let base_dim = self.index_dimension(index_expr.path);
+        for (k, sub) in index_expr.index.iter().enumerate() {
+            let index = self.lower_expr(*sub)?;
+            let (element_type, element_size, lower_bound, dim_size) =
+                self.resolve_array_dim_info(array_hir_type, base_dim + k)?;
+            let index = self.checked_index(index, lower_bound, dim_size);
+            place = MirPlace::Index {
+                base: Box::new(place),
+                index: Box::new(index),
+                element_size,
+                element_type,
+                lower_bound,
+            };
+        }
+        Ok(place)
+    }
+
     fn index_dimension(&self, path: hir::hir_def::expressions::expression::PathExpr<'db>) -> usize {
         match path.expr(self.db) {
-            PathExprKind::Index(inner) => 1 + self.index_dimension(inner.path),
+            // A comma group (`a[i, j]`) consumes one dimension per subscript.
+            PathExprKind::Index(inner) => inner.index.len() + self.index_dimension(inner.path),
             _ => 0,
         }
     }
