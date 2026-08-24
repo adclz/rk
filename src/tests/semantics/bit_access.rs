@@ -248,3 +248,163 @@ fn slice_on_a_function_block_member(mut with_db: db::RootDatabase) {
     "#;
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"");
 }
+
+/// A size character naming no slice is refused HERE, so lowering never sees it.
+///
+/// The grammar cannot catch it: `adress_identifier` is shared with direct
+/// variables, whose addresses run to `IX`, `QW`, `MD`, so it admits any
+/// letters. Without this check the access typed as BOOL — the fallback for an
+/// undecodable slice — `rk check` passed, and `rk compile` then failed with an
+/// internal compiler error on a program the front end had just accepted.
+#[rstest]
+fn unknown_slice_size_is_refused(mut with_db: db::RootDatabase) {
+    let source = r#"
+        FUNCTION f : INT
+        VAR
+            w : WORD;
+            y : BYTE;
+        END_VAR
+            y := w.%Z1;
+            f := 1;
+        END_FUNCTION
+    "#;
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
+    [E0250] Error: unknown multibit access size
+       ,-[ file:///test0.st:7:18 ]
+       |
+     7 |             y := w.%Z1;
+       |                  |
+       |                  `-- '%Z' names no access size (expected X, B, W, D or L)
+    ---'
+    ");
+}
+
+/// The size character is a keyword, so it is read in either case.
+///
+/// `%b1` is `%B1`: a BYTE, which is why assigning it to a BOOL is the error
+/// below rather than silence. Lower case used to decode as no slice at all.
+#[rstest]
+fn slice_size_is_case_insensitive(mut with_db: db::RootDatabase) {
+    let source = r#"
+        FUNCTION f : INT
+        VAR
+            w : WORD;
+            b : BOOL;
+            y : BYTE;
+        END_VAR
+            y := w.%b1;
+            b := w.%b1;
+            f := 1;
+        END_FUNCTION
+    "#;
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
+    [E0301] Error: type mismatch
+       ,-[ file:///test0.st:9:18 ]
+       |
+     5 |             b : BOOL;
+       |             |
+       |             `-- type is declared by variable 'b' here
+       |
+     9 |             b := w.%b1;
+       |                  ^^|^^
+       |                    `---- expected 'BOOL', got 'BYTE'
+    ---'
+    ");
+}
+
+/// The offset is measured against what the slice APPLIES to: the element of
+/// `arr[k]`, the field of `s.fld` — not the array or the struct.
+///
+/// The multibit of a multi-step path is deferred until after the walk, and
+/// the bounds check only ran on single-step paths, so nothing measured these
+/// at all. They reached lowering, which does read the element's width, and
+/// died there with an internal compiler error.
+#[rstest]
+fn offset_is_bounded_by_the_element_it_slices(mut with_db: db::RootDatabase) {
+    let source = r#"
+        TYPE S : STRUCT
+            fld : WORD;
+        END_STRUCT; END_TYPE
+
+        FUNCTION f : BOOL
+        VAR
+            arr : ARRAY[0..3] OF BYTE;
+            s : S;
+            k : INT := 1;
+        END_VAR
+            f := arr[k].9;
+            f := s.fld.16;
+        END_FUNCTION
+    "#;
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
+    [E0229] Error: multibit access out of range
+        ,-[ file:///test0.st:12:18 ]
+        |
+     12 |             f := arr[k].9;
+        |                  ^|^
+        |                   `--- offset 9 is out of range for type 'BYTE' (valid range: 0..7)
+    ----'
+    [E0229] Error: multibit access out of range
+        ,-[ file:///test0.st:13:20 ]
+        |
+     13 |             f := s.fld.16;
+        |                    ^|^
+        |                     `--- offset 16 is out of range for type 'WORD' (valid range: 0..15)
+    ----'
+    ");
+}
+
+/// A slice wider than the element it sits on, reached through a subscript.
+#[rstest]
+fn sized_slice_wider_than_the_element(mut with_db: db::RootDatabase) {
+    let source = r#"
+        FUNCTION f : INT
+        VAR
+            arr : ARRAY[0..3] OF BYTE;
+            k : INT := 1;
+            w : WORD;
+        END_VAR
+            w := arr[k].%W1;
+            f := 1;
+        END_FUNCTION
+    "#;
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
+    [E0229] Error: multibit access out of range
+       ,-[ file:///test0.st:8:18 ]
+       |
+     8 |             w := arr[k].%W1;
+       |                  ^|^
+       |                   `--- a 16-bit access does not fit in type 'BYTE'
+    ---'
+    ");
+}
+
+/// The offset must be a literal: there is no runtime-computed slice.
+///
+/// Both spellings LOOK valid, so both are pinned. `b.i` reads as a field
+/// access and is refused as one; `b.%Xi` does not parse at all.
+#[rstest]
+fn a_variable_offset_is_not_a_slice(mut with_db: db::RootDatabase) {
+    let source = r#"
+        FUNCTION f : BOOL
+        VAR
+            b : BYTE;
+            i : INT := 3;
+        END_VAR
+            f := b.i;
+        END_FUNCTION
+    "#;
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
+    [E0211] Error: no such field
+       ,-[ file:///test0.st:7:20 ]
+       |
+     4 |             b : BYTE;
+       |             |
+       |             `-- type is declared by variable 'b' here
+       |
+     7 |             f := b.i;
+       |                    |
+       |                    `-- 'BYTE' has no field named 'i'
+    ---'
+    ");
+}

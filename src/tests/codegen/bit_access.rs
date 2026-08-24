@@ -93,6 +93,39 @@ fn read_byte_of_dword(mut with_db: db::RootDatabase, #[case] access: &str, #[cas
     assert_eq!(result, expected, "{access} on 16#11223344");
 }
 
+/// The size character is a keyword, so it names the same slice in either case.
+///
+/// Lower case used to decode as no slice AT ALL: `multibits_slice` matched only
+/// upper case, the type fell back to BOOL, `rk check` passed — and lowering
+/// then died with an internal compiler error on a program the front end had
+/// just accepted. The expected values here are the ones the upper-case cases
+/// above already pin, so the two spellings are held to one answer.
+#[rstest]
+#[case("d.%x2", "BOOL", 1)]
+#[case("d.%b1", "BYTE", 0x33)]
+#[case("d.%w1", "WORD", 0x1122)]
+#[case("d.%d0", "DWORD", 0x11223344)]
+fn size_character_reads_the_same_slice_in_either_case(
+    mut with_db: db::RootDatabase,
+    #[case] access: &str,
+    #[case] returns: &str,
+    #[case] expected: i32,
+) {
+    let source = format!(
+        r#"
+        FUNCTION get : {returns}
+        VAR
+            d : DWORD := 16#11223344;
+        END_VAR
+            get := {access};
+        END_FUNCTION
+    "#
+    );
+    let wasm = compile_to_wasm_checked(&mut with_db, &source);
+    let result: i32 = execute_wasm(&wasm, "get", ());
+    assert_eq!(result, expected, "{access} on 16#11223344");
+}
+
 /// `%Wn` shifts by `n * 16` and masks 16 bits.
 #[rstest]
 #[case("d.%W0", 0x3344)]
@@ -338,4 +371,109 @@ fn bit_access_on_fb_member(mut with_db: db::RootDatabase) {
         result, 0b0000_0011,
         "2#1010, bit 0 set and bit 3 cleared, bit 1 untouched"
     );
+}
+
+/// A slice of an ARRAY ELEMENT, read and written.
+///
+/// The base of such a slice is the ELEMENT, and nothing carried that width to
+/// lowering: HIR handed over the type the slice PRODUCES, so `arr[k].7`
+/// measured bit 8 against the 1 bit of a BOOL and lowering refused a program
+/// `check` had passed. Offset 0 was the one case that worked, which is why a
+/// test reading `arr[k].0` would have proved nothing.
+#[rstest]
+fn slice_of_an_array_element(mut with_db: db::RootDatabase) {
+    let source = r#"
+        FUNCTION get : BYTE
+        VAR
+            arr : ARRAY[0..3] OF BYTE := [16#11, 16#80, 16#33, 16#44];
+            k : INT := 1;
+        END_VAR
+            IF arr[k].7 THEN
+                arr[k].0 := TRUE;
+            END_IF;
+            get := arr[k];
+        END_FUNCTION
+    "#;
+    let wasm = compile_to_wasm_checked(&mut with_db, source);
+    let result: i32 = execute_wasm(&wasm, "get", ());
+    assert_eq!(result, 0x81, "bit 7 of 16#80 is set, so bit 0 is written");
+}
+
+/// A slice of a STRUCT FIELD, read and written — the same lost base width as
+/// the array case above, reached through a field instead of a subscript.
+#[rstest]
+fn slice_of_a_struct_field(mut with_db: db::RootDatabase) {
+    let source = r#"
+        TYPE S : STRUCT
+            fld : WORD;
+        END_STRUCT; END_TYPE
+
+        FUNCTION get : WORD
+        VAR
+            s : S;
+        END_VAR
+            s.fld := 16#1234;
+            s.fld.15 := TRUE;
+            get := s.fld;
+        END_FUNCTION
+    "#;
+    let wasm = compile_to_wasm_checked(&mut with_db, source);
+    let result: i32 = execute_wasm(&wasm, "get", ());
+    assert_eq!(result, 0x9234, "bit 15 set on 16#1234");
+}
+
+/// A sized slice of a struct field reads the field's width, not the slice's.
+#[rstest]
+fn sized_slice_of_a_struct_field(mut with_db: db::RootDatabase) {
+    let source = r#"
+        TYPE S : STRUCT
+            fld : WORD;
+        END_STRUCT; END_TYPE
+
+        FUNCTION get : BYTE
+        VAR
+            s : S;
+        END_VAR
+            s.fld := 16#1234;
+            get := s.fld.%B1;
+        END_FUNCTION
+    "#;
+    let wasm = compile_to_wasm_checked(&mut with_db, source);
+    let result: i32 = execute_wasm(&wasm, "get", ());
+    assert_eq!(result, 0x12, "byte 1 of 16#1234");
+}
+
+/// Exact byte and word values of an LWORD's slices.
+///
+/// `read_high_slices_of_lword` compares against zero so that one body shape
+/// covers both the BOOL of `%X` and the BYTE of `%B` — but every byte of
+/// `16#1122334455667788` is non-zero, so a shift off by a whole byte still
+/// satisfies it. Its `%X` cases carry the precision for the bit half; these
+/// carry it for the sized half, where the value itself is the assertion.
+#[rstest]
+#[case("l.%B0", "BYTE", 0x88)]
+#[case("l.%B3", "BYTE", 0x55)]
+#[case("l.%B4", "BYTE", 0x44)]
+#[case("l.%B7", "BYTE", 0x11)]
+#[case("l.%W0", "WORD", 0x7788)]
+#[case("l.%W3", "WORD", 0x1122)]
+fn sized_slices_of_an_lword_are_exact(
+    mut with_db: db::RootDatabase,
+    #[case] access: &str,
+    #[case] returns: &str,
+    #[case] expected: i32,
+) {
+    let source = format!(
+        r#"
+        FUNCTION get : {returns}
+        VAR
+            l : LWORD := 16#1122334455667788;
+        END_VAR
+            get := {access};
+        END_FUNCTION
+    "#
+    );
+    let wasm = compile_to_wasm_checked(&mut with_db, &source);
+    let result: i32 = execute_wasm(&wasm, "get", ());
+    assert_eq!(result, expected, "{access} on 16#1122334455667788");
 }
