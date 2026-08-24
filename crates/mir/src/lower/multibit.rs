@@ -36,6 +36,23 @@ struct Sliced {
     elem: MirElementary,
 }
 
+/// The elementary type a lowered place holds, when the place records it:
+/// a slice reached through a field or an index arrives with its HIR type
+/// collapsed to the slice's, and the place keeps the base width.
+fn place_elementary(place: &MirPlace) -> Option<MirElementary> {
+    match place {
+        MirPlace::Field {
+            field_type: MirType::Elementary(e),
+            ..
+        }
+        | MirPlace::Index {
+            element_type: MirType::Elementary(e),
+            ..
+        } => Some(*e),
+        _ => None,
+    }
+}
+
 /// All-ones mask for the low `bits` bits, as an `i64` bit pattern.
 fn low_mask(bits: u32) -> i64 {
     if bits >= 64 {
@@ -68,6 +85,7 @@ impl<'db> ExprLowerCtx<'db> {
     /// unnormalized type, which still carries the base width.
     fn resolve_slice(
         &self,
+        place: &MirPlace,
         var_access: VariableAccess<'db>,
         hir_ty: Type<'db>,
     ) -> Result<Sliced, LowerTypeError> {
@@ -83,17 +101,23 @@ impl<'db> ExprLowerCtx<'db> {
         };
 
         // The base type comes from the declaration HIR bound the access to.
-        let base_ty = match hir_ty {
-            Type::Variable((var, _)) => var.spec(self.db).infer(self.db),
+        let base = match hir_ty {
+            Type::Variable((var, _)) => {
+                self.type_to_mir_elementary_pub(var.spec(self.db).infer(self.db))?
+            }
             Type::DirectVariable(_) => {
                 return Err(LowerTypeError::UnsupportedType(
                     "partial access on a directly represented variable is not supported"
                         .to_string(),
                 ));
             }
-            other => other,
+            // Through a field or an index HIR hands over the slice's own type, so
+            // the width comes from the place.
+            other => match place_elementary(place) {
+                Some(base) => base,
+                None => self.type_to_mir_elementary_pub(other)?,
+            },
         };
-        let base = self.type_to_mir_elementary_pub(base_ty)?;
 
         // HIR reports an out-of-range offset (E0229) but lowering can still be
         // asked to run on a rejected body; refuse rather than emit a shift
@@ -121,7 +145,7 @@ impl<'db> ExprLowerCtx<'db> {
         parent_expr: Expr<'db>,
     ) -> Result<MirExpr, LowerTypeError> {
         let Sliced { base, shift, elem } =
-            self.resolve_slice(var_access, parent_expr.infer(self.db))?;
+            self.resolve_slice(&place, var_access, parent_expr.infer(self.db))?;
 
         let mut value = MirExpr::Load(place, MirType::Elementary(base));
         if shift > 0 {
@@ -162,7 +186,7 @@ impl<'db> ExprLowerCtx<'db> {
         hir_ty: Type<'db>,
         value: MirExpr,
     ) -> Result<MirExpr, LowerTypeError> {
-        let Sliced { base, shift, elem } = self.resolve_slice(var_access, hir_ty)?;
+        let Sliced { base, shift, elem } = self.resolve_slice(&place, var_access, hir_ty)?;
 
         // Widen the incoming slice value to the base's wasm width so the mask
         // and shift below operate on one operand type.

@@ -94,19 +94,9 @@ pub fn direct_variable_to_type<'db>(
     dv: DirectVariable,
     multibits: Option<MultibitsPart>,
 ) -> Type<'db> {
-    let chars = dv.adress(db).text(db).chars();
-    // XBWDL
-    match dv.adress(db).text(db).chars().nth(1) {
-        // BIT
-        Some('X') => Type::new_bool(),
-        // BYTE
-        Some('B') => Type::Elementary(ElementarySpec::Byte),
-        // WORD
-        Some('W') => Type::Elementary(ElementarySpec::Word),
-        // DWORD
-        Some('D') => Type::Elementary(ElementarySpec::DWord),
-        // LWORD
-        Some('L') => Type::Elementary(ElementarySpec::LWord),
+    // `%IX1.0`: the location prefix, then the size character.
+    match dv.adress(db).text(db).chars().nth(1).and_then(access_size) {
+        Some((spec, _)) => Type::Elementary(spec),
         _ => {
             /* err: invalid location type */
             Type::Never
@@ -136,9 +126,27 @@ pub struct MultibitsSlice {
     pub index: usize,
 }
 
+/// The slice a size character names, in either case, or `None` if it names
+/// none. The one place the valid set is written down: the check that refuses
+/// an unknown character reads it from here rather than repeating it.
+pub fn access_size(c: char) -> Option<(ElementarySpec, usize)> {
+    match c.to_ascii_uppercase() {
+        'X' => Some((ElementarySpec::Bool, 1)),
+        'B' => Some((ElementarySpec::Byte, 8)),
+        'W' => Some((ElementarySpec::Word, 16)),
+        'D' => Some((ElementarySpec::DWord, 32)),
+        'L' => Some((ElementarySpec::LWord, 64)),
+        _ => None,
+    }
+}
+
 /// Decode a `MultibitsPart` into the slice it names, or `None` when the
-/// offset is not a plain decimal integer or the size character is unknown
-/// (both already rejected upstream by the grammar).
+/// offset is not a plain decimal integer or the size character is unknown.
+///
+/// The size character is matched in either case, as every other keyword is.
+/// The grammar cannot narrow it for us: `adress_identifier` is shared with
+/// direct variables, where the address runs to `IX`, `QW`, `MD` and the rest,
+/// so anything it accepts arrives here to be decoded.
 pub fn multibits_slice(
     db: &dyn WorkspaceDataBase,
     multibits: MultibitsPart,
@@ -147,14 +155,7 @@ pub fn multibits_slice(
         // A bare offset is a bit access.
         MultibitsPart::Offset(offset) => (offset, ElementarySpec::Bool, 1),
         MultibitsPart::AccessOffset { access, offset } => {
-            let (spec, width) = match access.text(db).chars().next()? {
-                'X' => (ElementarySpec::Bool, 1),
-                'B' => (ElementarySpec::Byte, 8),
-                'W' => (ElementarySpec::Word, 16),
-                'D' => (ElementarySpec::DWord, 32),
-                'L' => (ElementarySpec::LWord, 64),
-                _ => return None,
-            };
+            let (spec, width) = access_size(access.text(db).chars().next()?)?;
             (offset, spec, width)
         }
     };

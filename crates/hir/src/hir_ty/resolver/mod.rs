@@ -492,6 +492,12 @@ impl<'db> Resolver<'db> {
             && let Some(last_step) = steps.last()
         {
             let last_expr = last_step.get_expr(db);
+            // `current` is what the walk landed on — the ELEMENT of `arr[k]`,
+            // the FIELD of `s.fld` — which is what the slice applies to, and
+            // so what its offset has to fit inside.
+            crate::hir_ty::resolver::walk::check_multibits_bounds(
+                db, last_expr, current, None, mb, ctx,
+            );
             let mb_type = crate::hir_ty::infer::normalize::multibits_to_type(db, mb);
             // Update type_of_path_expr and also replace the last adjustment
             // target (e.g. array index target) with the multibit type.

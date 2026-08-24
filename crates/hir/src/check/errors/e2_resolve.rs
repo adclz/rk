@@ -349,7 +349,9 @@ pub enum ResolveError<'db> {
     /// Multibit access offset exceeds the size of the base type.
     MultibitsOutOfRange {
         expr: PathExpr<'db>,
-        var: VariableDecl<'db>,
+        /// The declaration to point at, when the base IS one. A slice of a
+        /// struct field or an array element has no declaration of its own.
+        var: Option<VariableDecl<'db>>,
         offset: usize,
         /// Width in bits of one slice - 1 for `%X`, 8 for `%B`, and so on.
         access_bits: usize,
@@ -358,6 +360,16 @@ pub enum ResolveError<'db> {
         /// offset then, so reporting a range would contradict itself.
         max_offset: Option<usize>,
         base_type: Type<'db>,
+    },
+    /// A partial access whose size character names no slice: `w.%Z1`. The
+    /// grammar cannot catch it, because `adress_identifier` is shared with
+    /// direct variables and so admits any letters. Refusing it here is what
+    /// keeps it out of lowering, which has no reading for it and used to fail
+    /// with an internal compiler error on a program `check` had accepted.
+    UnknownMultibitsAccess {
+        expr: PathExpr<'db>,
+        /// The size character AS WRITTEN.
+        access: compact_str::CompactString,
     },
     /// What an `{extern}` FUNCTION declared that a WASM import cannot carry.
     /// The import's interface is copies in (`VAR_INPUT`) and scalar results
@@ -460,6 +472,7 @@ impl<'db> ErrorCode for ResolveError<'db> {
             Self::MultipleVariadicVariables { .. } => "E0227",
             Self::VariadicMixedWithOtherInputs { .. } => "E0228",
             Self::MultibitsOutOfRange { .. } => "E0229",
+            Self::UnknownMultibitsAccess { .. } => "E0250",
             Self::ExternForbiddenSection { .. } | Self::ExternWithBody { .. } => "E0243",
             Self::ExternOutsideFunction { .. } => "E0244",
             Self::DirectVariableUnsupported { .. } => "E0245",
@@ -507,6 +520,7 @@ impl<'db> ErrorCode for ResolveError<'db> {
             | Self::ConfigInstInitFieldNotFound { .. } => "configuration error",
             Self::MultipleItemsInScope { .. } => "multiple items in scope",
             Self::MultibitsOutOfRange { .. } => "multibit access out of range",
+            Self::UnknownMultibitsAccess { .. } => "unknown multibit access size",
             Self::ExternForbiddenSection { .. } | Self::ExternWithBody { .. } => {
                 "not representable on an extern FUNCTION"
             }
@@ -1160,14 +1174,24 @@ impl<'db> ToIdeDiagnostic<'db> for ResolveError<'db> {
                     .range(crate::denormalize(db, file, &expr.get_span(db)).unwrap_or_default())
                     .call();
 
-                diag.with_related(Related::new(
-                    format!("'{}' is declared here", var.name(db).text(db)),
-                    var.scope_id(db).file(db),
-                    var.get_span(db),
-                ));
+                if let Some(var) = var {
+                    diag.with_related(Related::new(
+                        format!("'{}' is declared here", var.name(db).text(db)),
+                        var.scope_id(db).file(db),
+                        var.get_span(db),
+                    ));
+                }
 
                 diag
             }
+            Self::UnknownMultibitsAccess { expr, access } => diag()
+                .message(format!(
+                    "'%{access}' names no access size (expected X, B, W, D or L)"
+                ))
+                .severity(DiagnosticSeverity::ERROR)
+                .desc(self)
+                .range(crate::denormalize(db, file, &expr.get_span(db)).unwrap_or_default())
+                .call(),
             Self::ExternForbiddenSection { var, kind } => {
                 let mut diag = diag()
                     .message(format!(

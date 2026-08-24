@@ -1418,6 +1418,23 @@ END_FUNCTION
             lint_rule: None,
         },
         ErrorExample {
+            code: "E0250",
+            category: "Resolution",
+            title: "Unknown multibit access size",
+            description: "A partial access names its width with `X`, `B`, `W`, `D` or `L`, in either case. The grammar cannot reject any other letter, because it parses this position with the same rule as a direct variable's address, where `IX`, `QW` and `MD` are all legal. An unrecognized size used to decode as no slice at all: the access typed as BOOL, `rk check` called it clean, and lowering then failed with an internal compiler error.",
+            sources: &[r#"
+FUNCTION fn1 : INT
+VAR
+    w : WORD;
+    y : BYTE;
+END_VAR
+    y := w.%Z1;
+    fn1 := 1;
+END_FUNCTION
+"#],
+            lint_rule: None,
+        },
+        ErrorExample {
             code: "E0249",
             category: "Resolution",
             title: "Wasm pragma outside a FUNCTION",

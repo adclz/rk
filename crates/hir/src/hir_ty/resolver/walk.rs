@@ -58,20 +58,42 @@ pub(crate) enum FieldLookup<'db> {
     NotFound,
 }
 
-/// Check that a multibit access offset is within the bounds of the variable's base type.
-fn check_multibits_bounds<'db>(
+/// Check that a multibit access offset is within the bounds of the base it
+/// slices.
+///
+/// `base_type` is the type the slice actually applies to, which is NOT always
+/// a declaration's: `arr[k].7` slices the ELEMENT and `s.fld.15` the FIELD.
+/// Measuring those against the array or the struct let every out-of-range
+/// offset through, and lowering — which does read the element's width — then
+/// failed with an internal compiler error on a body `check` had passed.
+pub(crate) fn check_multibits_bounds<'db>(
     db: &'db dyn WorkspaceDataBase,
     expr: PathExpr<'db>,
-    var: VariableDecl<'db>,
+    base_type: Type<'db>,
+    var: Option<VariableDecl<'db>>,
     multibits: MultibitsPart,
     ctx: &mut BodyInferenceResult<'db>,
 ) {
-    let base_type = var.spec(db).infer(db).normalize(db);
+    let base_type = base_type.normalize(db);
     let Size::Size(base_bits) = base_type.get_size() else {
         return;
     };
 
     let Some(slice) = crate::hir_ty::infer::normalize::multibits_slice(db, multibits) else {
+        // A size character naming no slice reaches lowering as a BOOL that
+        // lowering cannot emit, so it is refused here instead.
+        if let MultibitsPart::AccessOffset { access, .. } = multibits
+            && let Some(c) = access.text(db).chars().next()
+            && crate::hir_ty::infer::normalize::access_size(c).is_none()
+        {
+            ctx.errors.push(
+                ResolveError::UnknownMultibitsAccess {
+                    expr,
+                    access: access.text(db).clone(),
+                }
+                .to_diagnostic(db, ctx.scope.file(db)),
+            );
+        }
         return;
     };
     let (access_bits, offset_val) = (slice.width, slice.index);
@@ -389,7 +411,8 @@ impl<'db> Type<'db> {
             }
             FieldLookup::Variable(var) => {
                 if let Some(mb) = multibits {
-                    check_multibits_bounds(db, expr, var, mb, ctx);
+                    let base = var.spec(db).infer(db);
+                    check_multibits_bounds(db, expr, base, Some(var), mb, ctx);
                 }
                 let ty = Type::new_var_with_multibits(db, var, multibits);
                 ctx.type_of_path_expr.insert(expr, ty);
