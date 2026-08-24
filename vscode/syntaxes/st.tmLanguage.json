@@ -75,7 +75,7 @@
         },
         {
           "name": "storage.type.class.st",
-          "match": "\\s*\\b(PROGRAM|FUNCTION_BLOCK|FUNCTION|TYPE)\\b\\s*(PRIVATE|PUBLIC|PROTECTED)?\\s*\\b([a-zA-Z_0-9]*)\\b",
+          "match": "(?i)\\s*\\b(PROGRAM|FUNCTION_BLOCK|FUNCTION|TYPE)\\b\\s*(PRIVATE|PUBLIC|PROTECTED)?\\s*\\b([a-zA-Z_0-9]*)\\b",
           "captures": {
             "2": {
               "name": "storage.modifier.st"
@@ -87,7 +87,7 @@
         },
         {
           "name": "storage.type.namespace.st",
-          "match": "\\s*\\b(NAMESPACE)\\b\\s*([a-zA-Z_0-9\\.]+)\\b",
+          "match": "(?i)\\s*\\b(NAMESPACE)\\b\\s*([a-zA-Z_0-9\\.]+)\\b",
           "captures": {
             "2": {
               "name": "entity.name.type.namespace"
@@ -96,7 +96,7 @@
         },
         {
           "name": "storage.type.class.st",
-          "match": "\\s*\\b(CLASS)\\b\\s*([a-zA-Z_0-9]*)\\b",
+          "match": "(?i)\\s*\\b(CLASS)\\b\\s*([a-zA-Z_0-9]*)\\b",
           "captures": {
             "2": {
               "name": "entity.name.type.class"
@@ -105,7 +105,7 @@
         },
         {
           "name": "storage.type.interface.st",
-          "match": "\\s*\\b(INTERFACE)\\b\\s*([a-zA-Z_0-9]*)\\b",
+          "match": "(?i)\\s*\\b(INTERFACE)\\b\\s*([a-zA-Z_0-9]*)\\b",
           "captures": {
             "2": {
               "name": "entity.name.type.interface"
@@ -114,7 +114,7 @@
         },
         {
           "name": "storage.type.class.st",
-          "match": "\\s*\\b(EXTENDS|IMPLEMENTS)\\b\\s*\\b([a-zA-Z_0-9]*)\\b",
+          "match": "(?i)\\s*\\b(EXTENDS|IMPLEMENTS)\\b\\s*\\b([a-zA-Z_0-9]*)\\b",
           "captures": {
             "2": {
               "name": "entity.name.function.st"
@@ -147,7 +147,7 @@
         },
         {
           "name": "constant.numeric.integer.st",
-          "match": "\\b(?:H)[0-9ABCDEF]+\\b"
+          "match": "(?i)\\b(?:H)[0-9ABCDEF]+\\b"
         },
         {
           "name": "constant.numeric.integer.st",
@@ -155,19 +155,19 @@
         },
         {
           "name": "constant.numeric.integer.st",
-          "match": "\\b(BYTE|(?:D|L)?WORD|U?(?:S|D|L)?INT)#(2|8)#[0-9\\_]+\\b"
+          "match": "(?i)\\b(BYTE|(?:D|L)?WORD|U?(?:S|D|L)?INT)#(2|8)#[0-9\\_]+\\b"
         },
         {
           "name": "constant.numeric.integer.st",
-          "match": "\\b(BYTE|(?:D|L)?WORD|U?(?:S|D|L)?INT)#16#[a-fA-F0-9\\_]+\\b"
+          "match": "(?i)\\b(BYTE|(?:D|L)?WORD|U?(?:S|D|L)?INT)#16#[a-fA-F0-9\\_]+\\b"
         },
         {
           "name": "constant.numeric.integer.st",
-          "match": "\\b(BYTE|(?:D|L)?WORD|U?(?:S|D|L)?INT)#-?[0-9\\_]+\\b"
+          "match": "(?i)\\b(BYTE|(?:D|L)?WORD|U?(?:S|D|L)?INT)#-?[0-9\\_]+\\b"
         },
         {
           "name": "constant.numeric.float.st",
-          "match": "\\b(L?REAL)#-?\\d*\\.\\d+([eE][\\-+]?\\d+)?\\b"
+          "match": "(?i)\\b(L?REAL)#-?\\d*\\.\\d+([eE][\\-+]?\\d+)?\\b"
         }
       ]
     },
@@ -175,19 +175,19 @@
       "patterns": [
         {
           "name": "keyword.control.conditional.st",
-          "match": "\\b(?:END_)?(?:IF|CASE|OF|ELSE|ELSIF|THEN|OR(_ELSE)?|AND(_THEN)?|NOT|XOR|NOR|__TRY|__CATCH|__FINALLY|__ENDTRY)\\b"
+          "match": "(?i)\\b(?:END_)?(?:IF|CASE|OF|ELSE|ELSIF|THEN|OR(_ELSE)?|AND(_THEN)?|NOT|XOR|NOR|__TRY|__CATCH|__FINALLY|__ENDTRY)\\b"
         },
         {
           "name": "keyword.control.loop.st",
-          "match": "\\b(?:END_)?(?:WHILE|FOR|REPEAT|DO|TO|BY)\\b"
+          "match": "(?i)\\b(?:END_)?(?:WHILE|FOR|REPEAT|DO|TO|BY)\\b"
         },
         {
           "name": "keyword.control.flow.st",
-          "match": "\\b(?:RETURN|EXIT|CONTINUE|GOTO|JMP|BEGIN|COUNTER|GOTO)\\b"
+          "match": "(?i)\\b(?:RETURN|EXIT|CONTINUE|GOTO|JMP|BEGIN|COUNTER|GOTO)\\b"
         },
         {
           "name": "keyword.control.st",
-          "match": "\\b(END_)?(TASK|WITH|ON|USING|USES|FROM|UNTIL)\\b"
+          "match": "(?i)\\b(END_)?(TASK|WITH|ON|USING|USES|FROM|UNTIL)\\b"
         }
       ]
     },
@@ -203,7 +203,7 @@
         },
         {
           "name": "keyword.operator.content.st",
-          "match": "\\^|MOVE"
+          "match": "(?i)\\^|MOVE"
         },
         {
           "name": "keyword.operator.comparison.st",
@@ -211,7 +211,7 @@
         },
         {
           "name": "keyword.operator.arithmetic.st",
-          "match": "(?:\\+|\\-|\\/|\\*|MOD)"
+          "match": "(?i)(?:\\+|\\-|\\/|\\*|MOD)"
         }
       ]
     },
@@ -219,10 +219,10 @@
       "patterns": [
         {
           "name": "support.function.st",
-          "match": "\\b[A-Za-z_]*(_TO_|TO_|FROM_|TRUNC_)[A-Za-z_]+(?=\\()"
+          "match": "(?i)\\b[A-Za-z_]*(_TO_|TO_|FROM_|TRUNC_)[A-Za-z_]+(?=\\()"
         },
         {
-          "begin": "([a-zA-Z_0-9]+)(\\()",
+          "begin": "(?i)([a-zA-Z_0-9]+)(\\()",
           "beginCaptures": {
             "1": {
               "name": "entity.name.function.st"
@@ -266,13 +266,13 @@
       "patterns": [
         {
           "comment": "Rule for OF in var declaration",
-          "begin": "\\b(?:VAR(?:_(?:INPUT|OUTPUT|IN_OUT|TEMP|GLOBAL|ACCESS|EXTERNAL|INST|STAT))?|STRUCT|UNION)\\b",
+          "begin": "(?i)\\b(?:VAR(?:_(?:INPUT|OUTPUT|IN_OUT|TEMP|GLOBAL|ACCESS|EXTERNAL|INST|STAT))?|STRUCT|UNION)\\b",
           "beginCaptures": {
             "0": {
               "name": "entity.name.type.st"
             }
           },
-          "end": "\\b(?:END_(?:VAR|STRUCT|UNION))\\b",
+          "end": "(?i)\\b(?:END_(?:VAR|STRUCT|UNION))\\b",
           "endCaptures": {
             "0": {
               "name": "entity.name.type.st"
@@ -280,7 +280,7 @@
           },
           "patterns": [
             {
-              "match": "\\b(OF)\\b",
+              "match": "(?i)\\b(OF)\\b",
               "name": "support.type.primitives.st"
             },
             {
@@ -298,13 +298,13 @@
         },
         {
           "comment": "Rule for GET SET PROPERTIES",
-          "begin": "\\b(?:PROPERTY|PROPERTY_GET|PROPERTY_SET)\\b",
+          "begin": "(?i)\\b(?:PROPERTY|PROPERTY_GET|PROPERTY_SET)\\b",
           "beginCaptures": {
             "0": {
               "name": "storage.type.class.st"
             }
           },
-          "end": "\\b(?:END_PROPERTY)\\b",
+          "end": "(?i)\\b(?:END_PROPERTY)\\b",
           "endCaptures": {
             "0": {
               "name": "storage.type.class.st"
@@ -312,7 +312,7 @@
           },
           "patterns": [
             {
-              "match": "\\b(END_)?(GET|SET)\\b",
+              "match": "(?i)\\b(END_)?(GET|SET)\\b",
               "captures": {
                 "0": {
                   "name": "entity.name.type.st"
@@ -329,11 +329,11 @@
         },
         {
           "name": "keyword.other.storage.st",
-          "match": "\\b(POINTER TO|POINTER|REF(ERENCE)?|REF_TO|OVERLAP|USING|FROM)\\b"
+          "match": "(?i)\\b(POINTER TO|POINTER|REF(ERENCE)?|REF_TO|OVERLAP|USING|FROM)\\b"
         },
         {
           "name": "storage.type.class.st",
-          "match": "\\b(END_)?(PROGRAM|CLASS|CONFIGURATION|PRIORITY|SINGLE|INTERVAL|TCP|RESOURCE|CHANNEL|LIBRARY|FOLDER|BINARIES|INCLUDES|SOURCES|ACTION|STEP|INITIAL_STEP|TRANSITION|TYPE|FUNCTION|FUNCTION_BLOCK|NAMESPACE|IMPLEMENTATION|INTERFACE|METHOD|CONST|ORGANIZATION_BLOCK|DATA_BLOCK|LABEL)\\b"
+          "match": "(?i)\\b(END_)?(PROGRAM|CLASS|CONFIGURATION|PRIORITY|SINGLE|INTERVAL|TCP|RESOURCE|CHANNEL|LIBRARY|FOLDER|BINARIES|INCLUDES|SOURCES|ACTION|STEP|INITIAL_STEP|TRANSITION|TYPE|FUNCTION|FUNCTION_BLOCK|NAMESPACE|IMPLEMENTATION|INTERFACE|METHOD|CONST|ORGANIZATION_BLOCK|DATA_BLOCK|LABEL)\\b"
         },
         {
           "name": "punctuation.terminator.statement.st",
@@ -341,15 +341,15 @@
         },
         {
           "name": "storage.modifier.st",
-          "match": "\\b(?:ABSTRACT|CONSTANT|RETAIN|PERSISTENT|PUBLIC|PRIVATE|PROTECTED|INTERNAL|FINAL|OVERRIDE)\\b"
+          "match": "(?i)\\b(?:ABSTRACT|CONSTANT|RETAIN|PERSISTENT|PUBLIC|PRIVATE|PROTECTED|INTERNAL|FINAL|OVERRIDE)\\b"
         },
         {
           "name": "constant.language.st",
-          "match": "\\b(TRUE|FALSE|NULL|VOID|NIL)\\b"
+          "match": "(?i)\\b(TRUE|FALSE|NULL|VOID|NIL)\\b"
         },
         {
           "name": "support.type.primitives.st",
-          "match": "\\b(AT|BOOL|BYTE|(?:D|L)?WORD|U?(?:S|D|L)?INT|L?REAL|L?TIME(?:_OF_DAY)?|L?TOD|L?DT|L?DATE(?:_AND_TIME)?|w?STRING|ARRAY|ANY)\\b"
+          "match": "(?i)\\b(AT|BOOL|BYTE|(?:D|L)?WORD|U?(?:S|D|L)?INT|L?REAL|L?TIME(?:_OF_DAY)?|L?TOD|L?DT|L?DATE(?:_AND_TIME)?|w?STRING|ARRAY|ANY)\\b"
         },
         {
           "match": "(?<=\\.)[A-Za-z_](?:[0-9A-Za-z_])*\\b",
@@ -358,14 +358,14 @@
         },
         {
           "name": "support.type.primitives.st",
-          "match": "\\b(ANY_)?(DERIVED|ELEMENTARY|MAGNITUDE|NUM|REAL|INT|UNSIGNED|SIGNED|DURATION|BIT|CHARS|STRING|CHAR|USTRING|UCHAR|DATE)\\b"
+          "match": "(?i)\\b(ANY_)?(DERIVED|ELEMENTARY|MAGNITUDE|NUM|REAL|INT|UNSIGNED|SIGNED|DURATION|BIT|CHARS|STRING|CHAR|USTRING|UCHAR|DATE)\\b"
         },
         {
-          "match": "\\b(EXTENDS|IMPLEMENTS)\\b",
+          "match": "(?i)\\b(EXTENDS|IMPLEMENTS)\\b",
           "name": "entity.other.inherited-class.st"
         },
         {
-          "match": "\\b(?:THIS|SUPER)\\b",
+          "match": "(?i)\\b(?:THIS|SUPER)\\b",
           "name": "variable.language.st"
         },
         {
@@ -382,7 +382,7 @@
       "patterns": [
         {
           "name": "variable.other.constant",
-          "match": "\\b(?:L?T|L?DT|L?TOD|L?D)#[0-9\\:\\-\\_shmydSMHDY]+\\b"
+          "match": "(?i)\\b(?:L?T|L?DT|L?TOD|L?D)#[0-9\\:\\-\\_shmydSMHDY]+\\b"
         },
         {
           "name": "variable.other.constant",
@@ -406,7 +406,7 @@
       "patterns": [
         {
           "name": "meta.expression.st",
-          "begin": "[^a-zA-Z_0-9]+\\((?!\\*)",
+          "begin": "(?i)[^a-zA-Z_0-9]+\\((?!\\*)",
           "beginCaptures": {
             "0": {
               "name": "punctuation.parenthesis.begin.st"
@@ -550,7 +550,7 @@
               "include": "#comment_st"
             },
             {
-              "match": "(@[a-zA-Z_]*)\\s*(:=)\\s+([\"\\']{1}[^\"\\']*[\"\\']{1})",
+              "match": "(?i)(@[a-zA-Z_]*)\\s*(:=)\\s+([\"\\']{1}[^\"\\']*[\"\\']{1})",
               "captures": {
                 "1": {
                   "name": "variable.parameter.st"
@@ -636,7 +636,7 @@
         },
         {
           "name": "string.quoted.double.st",
-          "begin": "\\b(W?STRING)#(\")",
+          "begin": "(?i)\\b(W?STRING)#(\")",
           "beginCaptures": {
             "2": {
               "name": "punctuation.double.begin.st"
@@ -656,7 +656,7 @@
         },
         {
           "name": "string.quoted.single.st",
-          "begin": "\\b(W?STRING)#(')",
+          "begin": "(?i)\\b(W?STRING)#(')",
           "beginCaptures": {
             "2": {
               "name": "punctuation.single.begin.st"
