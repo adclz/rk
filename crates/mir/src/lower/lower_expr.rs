@@ -1082,15 +1082,9 @@ impl<'db> ExprLowerCtx<'db> {
         )))
     }
 
-    /// For a multi-dimensional array, each chained `Index` (`m[i][j]`) addresses
-    /// one dimension: the innermost `m[i]` is dimension 0, `m[i][j]` is dimension
-    /// 1, etc. The dimension is the number of `Index` nodes below this one in the
-    /// path chain. (`path` is the inner path of the current index, so counting
-    /// from there yields this index's own dimension.)
-
-    /// Fold every subscript of one Index node into nested places: index `k`
-    /// consumes dimension `base_dim + k`, exactly as a chained `a[i][j]`
-    /// does across nodes — one bounds check and one stride per dimension.
+    /// Each chained `Index` addresses one dimension: `m[i]` is dimension 0,
+    /// `m[i][j]` dimension 1. Every subscript of one node folds into nested
+    /// places, one bounds check and one stride per dimension.
     fn lower_index_places(
         &self,
         mut place: MirPlace,
