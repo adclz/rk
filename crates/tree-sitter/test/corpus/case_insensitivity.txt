@@ -111,3 +111,153 @@ CLASS class END_CLASS
 --------------------------------------------------------------------------------
 
 
+
+================================================================================
+Temporal type names and typed-literal prefixes in any case
+================================================================================
+
+FUNCTION f : INT
+VAR
+	a : dt := dt#2024-01-01-12:00:00;
+	b : Time := Time#1s;
+	c : time_of_day := Tod#12:00:00;
+	d : bool := bool#1;
+	e : LDATE_AND_TIME := ldt#2024-01-01-12:00:00;
+END_VAR
+	f := 1;
+END_FUNCTION
+
+--------------------------------------------------------------------------------
+
+(source_file
+  (func_decl
+    (identifier)
+    (numeric_type_name
+      (int_type_name
+        (sign_int_type_name
+          (int_name))))
+    (var_decls
+      (var_decl_init_list
+        (variable_list
+          (identifier))
+        (var_decl_init
+          (simple_type_spec
+            (dt_type_name))
+          (simple_type_init
+            (constant_expr
+              (constant
+                (time_literal
+                  (date_and_time
+                    (short_date_and_time
+                      (date_and_time_type_name)
+                      (date_and_daytime)))))))))
+      (var_decl_init_list
+        (variable_list
+          (identifier))
+        (var_decl_init
+          (simple_type_spec
+            (time_type_name))
+          (simple_type_init
+            (constant_expr
+              (constant
+                (time_literal
+                  (duration
+                    (time
+                      (time_type_name)
+                      (time_value)))))))))
+      (var_decl_init_list
+        (variable_list
+          (identifier))
+        (var_decl_init
+          (simple_type_spec
+            (tod_type_name))
+          (simple_type_init
+            (constant_expr
+              (constant
+                (time_literal
+                  (time_of_day
+                    (tod
+                      (tod_type_name)
+                      (daytime)))))))))
+      (var_decl_init_list
+        (variable_list
+          (identifier))
+        (var_decl_init
+          (simple_type_spec
+            (bit_str_type_name
+              (bool_name)))
+          (simple_type_init
+            (constant_expr
+              (constant
+                (bool_literal
+                  (bool_literal_with_numeric)))))))
+      (var_decl_init_list
+        (variable_list
+          (identifier))
+        (var_decl_init
+          (simple_type_spec
+            (l_dt_type_name))
+          (simple_type_init
+            (constant_expr
+              (constant
+                (time_literal
+                  (date_and_time
+                    (long_date_and_time
+                      (l_date_and_time_type_name)
+                      (date_and_daytime))))))))))
+    (func_body
+      (stmt_list
+        (assign
+          (variable_access
+            (variable
+              (begin_path_expression
+                (path_expression
+                  (var_access
+                    (field))))))
+          (assignment
+            (constant
+              (numeric_literal
+                (int_literal
+                  (signed_int
+                    (unsigned_int)))))))))))
+
+================================================================================
+String escape sequences in either case
+================================================================================
+
+FUNCTION f : INT
+VAR s : STRING; END_VAR
+	s := 'a$nb$Nc$td$Te$$f$27g';
+END_FUNCTION
+
+--------------------------------------------------------------------------------
+
+(source_file
+  (func_decl
+    (identifier)
+    (numeric_type_name
+      (int_type_name
+        (sign_int_type_name
+          (int_name))))
+    (var_decls
+      (var_decl_init_list
+        (variable_list
+          (identifier))
+        (var_decl_init
+          (simple_type_spec
+            (string_type_name
+              (string_name))))))
+    (func_body
+      (stmt_list
+        (assign
+          (variable_access
+            (variable
+              (begin_path_expression
+                (path_expression
+                  (var_access
+                    (field))))))
+          (assignment
+            (constant
+              (char_literal
+                (char_str
+                  (s_byte_char_str))))))))))

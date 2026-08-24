@@ -1273,7 +1273,19 @@
           "type": "CHOICE",
           "members": [
             {
-              "type": "STRING",
+              "type": "ALIAS",
+              "content": {
+                "type": "TOKEN",
+                "content": {
+                  "type": "PREC",
+                  "value": 0,
+                  "content": {
+                    "type": "PATTERN",
+                    "value": "[bB][oO][oO][lL]#"
+                  }
+                }
+              },
+              "named": false,
               "value": "BOOL#"
             },
             {
@@ -1328,7 +1340,19 @@
       "type": "SEQ",
       "members": [
         {
-          "type": "STRING",
+          "type": "ALIAS",
+          "content": {
+            "type": "TOKEN",
+            "content": {
+              "type": "PREC",
+              "value": 0,
+              "content": {
+                "type": "PATTERN",
+                "value": "[bB][oO][oO][lL]#"
+              }
+            }
+          },
+          "named": false,
           "value": "BOOL#"
         },
         {
@@ -1475,23 +1499,83 @@
           "value": "$$"
         },
         {
-          "type": "STRING",
+          "type": "ALIAS",
+          "content": {
+            "type": "TOKEN",
+            "content": {
+              "type": "PREC",
+              "value": 0,
+              "content": {
+                "type": "PATTERN",
+                "value": "\\$[lL]"
+              }
+            }
+          },
+          "named": false,
           "value": "$L"
         },
         {
-          "type": "STRING",
+          "type": "ALIAS",
+          "content": {
+            "type": "TOKEN",
+            "content": {
+              "type": "PREC",
+              "value": 0,
+              "content": {
+                "type": "PATTERN",
+                "value": "\\$[nN]"
+              }
+            }
+          },
+          "named": false,
           "value": "$N"
         },
         {
-          "type": "STRING",
+          "type": "ALIAS",
+          "content": {
+            "type": "TOKEN",
+            "content": {
+              "type": "PREC",
+              "value": 0,
+              "content": {
+                "type": "PATTERN",
+                "value": "\\$[pP]"
+              }
+            }
+          },
+          "named": false,
           "value": "$P"
         },
         {
-          "type": "STRING",
+          "type": "ALIAS",
+          "content": {
+            "type": "TOKEN",
+            "content": {
+              "type": "PREC",
+              "value": 0,
+              "content": {
+                "type": "PATTERN",
+                "value": "\\$[rR]"
+              }
+            }
+          },
+          "named": false,
           "value": "$R"
         },
         {
-          "type": "STRING",
+          "type": "ALIAS",
+          "content": {
+            "type": "TOKEN",
+            "content": {
+              "type": "PREC",
+              "value": 0,
+              "content": {
+                "type": "PATTERN",
+                "value": "\\$[tT]"
+              }
+            }
+          },
+          "named": false,
           "value": "$T"
         },
         {
@@ -1539,23 +1623,83 @@
           "value": "$$"
         },
         {
-          "type": "STRING",
+          "type": "ALIAS",
+          "content": {
+            "type": "TOKEN",
+            "content": {
+              "type": "PREC",
+              "value": 0,
+              "content": {
+                "type": "PATTERN",
+                "value": "\\$[lL]"
+              }
+            }
+          },
+          "named": false,
           "value": "$L"
         },
         {
-          "type": "STRING",
+          "type": "ALIAS",
+          "content": {
+            "type": "TOKEN",
+            "content": {
+              "type": "PREC",
+              "value": 0,
+              "content": {
+                "type": "PATTERN",
+                "value": "\\$[nN]"
+              }
+            }
+          },
+          "named": false,
           "value": "$N"
         },
         {
-          "type": "STRING",
+          "type": "ALIAS",
+          "content": {
+            "type": "TOKEN",
+            "content": {
+              "type": "PREC",
+              "value": 0,
+              "content": {
+                "type": "PATTERN",
+                "value": "\\$[pP]"
+              }
+            }
+          },
+          "named": false,
           "value": "$P"
         },
         {
-          "type": "STRING",
+          "type": "ALIAS",
+          "content": {
+            "type": "TOKEN",
+            "content": {
+              "type": "PREC",
+              "value": 0,
+              "content": {
+                "type": "PATTERN",
+                "value": "\\$[rR]"
+              }
+            }
+          },
+          "named": false,
           "value": "$R"
         },
         {
-          "type": "STRING",
+          "type": "ALIAS",
+          "content": {
+            "type": "TOKEN",
+            "content": {
+              "type": "PREC",
+              "value": 0,
+              "content": {
+                "type": "PATTERN",
+                "value": "\\$[tT]"
+              }
+            }
+          },
+          "named": false,
           "value": "$T"
         },
         {
@@ -1617,7 +1761,7 @@
           "type": "ALIAS",
           "content": {
             "type": "PATTERN",
-            "value": "(TIME|T|time|t)#"
+            "value": "([tT][iI][mM][eE]|[tT])#"
           },
           "named": true,
           "value": "time_type_name"
@@ -1664,7 +1808,7 @@
           "type": "ALIAS",
           "content": {
             "type": "PATTERN",
-            "value": "(LTIME|LT|ltime|lt)#"
+            "value": "([lL][tT][iI][mM][eE]|[lL][tT])#"
           },
           "named": true,
           "value": "l_time_type_name"
@@ -1753,7 +1897,7 @@
           "type": "ALIAS",
           "content": {
             "type": "PATTERN",
-            "value": "(TOD|TIME_OF_DAY|tod)#"
+            "value": "([tT][iI][mM][eE]_[oO][fF]_[dD][aA][yY]|[tT][oO][dD])#"
           },
           "named": true,
           "value": "tod_type_name"
@@ -1775,7 +1919,7 @@
           "type": "ALIAS",
           "content": {
             "type": "PATTERN",
-            "value": "(LTOD|LTIME_OF_DAY|ltod)#"
+            "value": "([lL][tT][iI][mM][eE]_[oO][fF]_[dD][aA][yY]|[lL][tT][oO][dD])#"
           },
           "named": true,
           "value": "ltod_type_name"
@@ -1814,7 +1958,7 @@
           "type": "ALIAS",
           "content": {
             "type": "PATTERN",
-            "value": "(DATE|D|date|d)#"
+            "value": "([dD][aA][tT][eE]|[dD])#"
           },
           "named": true,
           "value": "date_type_name"
@@ -1836,7 +1980,7 @@
           "type": "ALIAS",
           "content": {
             "type": "PATTERN",
-            "value": "(LDATE|LD|ldate|ld)#"
+            "value": "([lL][dD][aA][tT][eE]|[lL][dD])#"
           },
           "named": true,
           "value": "date_type_name"
@@ -1875,7 +2019,7 @@
           "type": "ALIAS",
           "content": {
             "type": "PATTERN",
-            "value": "(DATE_AND_TIME|DT)#"
+            "value": "([dD][aA][tT][eE]_[aA][nN][dD]_[tT][iI][mM][eE]|[dD][tT])#"
           },
           "named": true,
           "value": "date_and_time_type_name"
@@ -1897,7 +2041,7 @@
           "type": "ALIAS",
           "content": {
             "type": "PATTERN",
-            "value": "(LDATE_AND_TIME|LDT)#"
+            "value": "([lL][dD][aA][tT][eE]_[aA][nN][dD]_[tT][iI][mM][eE]|[lL][dD][tT])#"
           },
           "named": true,
           "value": "l_date_and_time_type_name"
@@ -1927,11 +2071,11 @@
     },
     "date_and_time_type_name": {
       "type": "PATTERN",
-      "value": "DATE_AND_TIME|DT"
+      "value": "[dD][aA][tT][eE]_[aA][nN][dD]_[tT][iI][mM][eE]|[dD][tT]"
     },
     "l_date_and_time_type_name": {
       "type": "PATTERN",
-      "value": "LDATE_AND_TIME|LDT"
+      "value": "[lL][dD][aA][tT][eE]_[aA][nN][dD]_[tT][iI][mM][eE]|[lL][dD][tT]"
     },
     "date_and_daytime": {
       "type": "PATTERN",
@@ -2324,11 +2468,11 @@
     },
     "time_type_name": {
       "type": "PATTERN",
-      "value": "TIME|time"
+      "value": "[tT][iI][mM][eE]"
     },
     "l_time_type_name": {
       "type": "PATTERN",
-      "value": "LTIME|ltime"
+      "value": "[lL][tT][iI][mM][eE]"
     },
     "any_date_type_name": {
       "type": "CHOICE",
@@ -2345,11 +2489,11 @@
     },
     "date_type_name": {
       "type": "PATTERN",
-      "value": "DATE|date"
+      "value": "[dD][aA][tT][eE]"
     },
     "l_date_type_name": {
       "type": "PATTERN",
-      "value": "LDATE|ldate"
+      "value": "[lL][dD][aA][tT][eE]"
     },
     "any_tod_type_name": {
       "type": "CHOICE",
@@ -2366,11 +2510,11 @@
     },
     "tod_type_name": {
       "type": "PATTERN",
-      "value": "TOD|TIME_OF_DAY|tod"
+      "value": "[tT][iI][mM][eE]_[oO][fF]_[dD][aA][yY]|[tT][oO][dD]"
     },
     "ltod_type_name": {
       "type": "PATTERN",
-      "value": "LTOD|LTIME_OF_DAY|ltod"
+      "value": "[lL][tT][iI][mM][eE]_[oO][fF]_[dD][aA][yY]|[lL][tT][oO][dD]"
     },
     "any_dt_type_name": {
       "type": "CHOICE",
@@ -2387,11 +2531,11 @@
     },
     "dt_type_name": {
       "type": "PATTERN",
-      "value": "DATE_AND_TIME|DT"
+      "value": "[dD][aA][tT][eE]_[aA][nN][dD]_[tT][iI][mM][eE]|[dD][tT]"
     },
     "l_dt_type_name": {
       "type": "PATTERN",
-      "value": "LDATE_AND_TIME|LDT"
+      "value": "[lL][dD][aA][tT][eE]_[aA][nN][dD]_[tT][iI][mM][eE]|[lL][dD][tT]"
     },
     "bit_str_type_name": {
       "type": "CHOICE",

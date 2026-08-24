@@ -42,6 +42,10 @@ function toCaseInsensitive(a) {
   var ca = a.charCodeAt(0);
   if (ca>=97 && ca<=122) return `[${a}${a.toUpperCase()}]`;
   if (ca>=65 && ca<= 90) return `[${a.toLowerCase()}${a}]`;
+  // Anything else goes into a regex verbatim, so a character that MEANS
+  // something there has to be escaped first: `$N` is a string escape, not an
+  // end-of-line assertion followed by an N.
+  if ("$^.*+?()[]{}|/\\".includes(a)) return `\\${a}`;
   return a;
 }
 
@@ -53,6 +57,18 @@ function caseInsensitive (keyword) {
   )
 }
 
+
+/// A case-insensitive alternation of spellings, LONGEST FIRST so the regex
+/// cannot settle for a prefix (`DT` must not win against `DATE_AND_TIME`).
+function ciChoice(...words) {
+  return new RegExp(words.map((w) => caseInsensitive(w).source).join("|"));
+}
+
+/// The `#`-terminated prefix of a typed literal: `ciPrefix("TIME", "T")`
+/// accepts `TIME#`, `time#`, `Time#`, `T#` and `t#`.
+function ciPrefix(...words) {
+  return new RegExp(`(${words.map((w) => caseInsensitive(w).source).join("|")})#`);
+}
 
 /// A case-insensitive keyword token, aliased back to its upper-case spelling.
 ///
@@ -524,9 +540,9 @@ module.exports = grammar({
       choice($.bool_literal_with_string, $.bool_literal_with_numeric),
 
     bool_literal_with_string: ($) =>
-      seq(optional("BOOL#"), field("value", choice(kw("TRUE"), kw("FALSE")))),
+      seq(optional(kw("BOOL#")), field("value", choice(kw("TRUE"), kw("FALSE")))),
     bool_literal_with_numeric: ($) =>
-      seq("BOOL#", field("value", choice("0", "1"))),
+      seq(kw("BOOL#"), field("value", choice("0", "1"))),
 
     // Table 6 - Character String literals
     // Table 7 - Two-character combinations in character strings
@@ -550,11 +566,11 @@ module.exports = grammar({
         token("$'"),
         token('"'),
         "$$",
-        "$L",
-        "$N",
-        "$P",
-        "$R",
-        "$T",
+        kw("$L"),
+        kw("$N"),
+        kw("$P"),
+        kw("$R"),
+        kw("$T"),
         seq("$", $._hex_digit, $._hex_digit),
       ),
 
@@ -564,11 +580,11 @@ module.exports = grammar({
         token("'"),
         token('$"'),
         "$$",
-        "$L",
-        "$N",
-        "$P",
-        "$R",
-        "$T",
+        kw("$L"),
+        kw("$N"),
+        kw("$P"),
+        kw("$R"),
+        kw("$T"),
         seq("$", repeat1($._hex_digit)),
       ),
 
@@ -582,14 +598,14 @@ module.exports = grammar({
 
     time: ($) =>
       seq(
-        alias(/(TIME|T|time|t)#/, $.time_type_name),
+        alias(ciPrefix("TIME", "T"), $.time_type_name),
         field("sign", optional(choice("+", "-"))),
         field("value", $.time_value),
       ),
 
     ltime: ($) =>
       seq(
-        alias(/(LTIME|LT|ltime|lt)#/, $.l_time_type_name),
+        alias(ciPrefix("LTIME", "LT"), $.l_time_type_name),
         field("sign", optional(choice("+", "-"))),
         field("value", $.time_value),
       ),
@@ -603,13 +619,13 @@ module.exports = grammar({
 
     tod: ($) =>
       seq(
-        alias(/(TOD|TIME_OF_DAY|tod)#/, $.tod_type_name),
+        alias(ciPrefix("TIME_OF_DAY", "TOD"), $.tod_type_name),
         field("value", $.daytime),
       ),
 
     ltod: ($) =>
       seq(
-        alias(/(LTOD|LTIME_OF_DAY|ltod)#/, $.ltod_type_name),
+        alias(ciPrefix("LTIME_OF_DAY", "LTOD"), $.ltod_type_name),
         field("value", $.daytime),
       ),
 
@@ -619,13 +635,13 @@ module.exports = grammar({
 
     short_date: ($) =>
       seq(
-        alias(/(DATE|D|date|d)#/, $.date_type_name),
+        alias(ciPrefix("DATE", "D"), $.date_type_name),
         field("value", $.date_literal),
       ),
 
     long_date: ($) =>
       seq(
-        alias(/(LDATE|LD|ldate|ld)#/, $.date_type_name),
+        alias(ciPrefix("LDATE", "LD"), $.date_type_name),
         field("value", $.date_literal),
       ),
 
@@ -635,21 +651,21 @@ module.exports = grammar({
 
     short_date_and_time: ($) =>
       seq(
-        alias(/(DATE_AND_TIME|DT)#/, $.date_and_time_type_name),
+        alias(ciPrefix("DATE_AND_TIME", "DT"), $.date_and_time_type_name),
         field("value", $.date_and_daytime),
       ),
 
     long_date_and_time: ($) =>
       seq(
-        alias(/(LDATE_AND_TIME|LDT)#/, $.l_date_and_time_type_name),
+        alias(ciPrefix("LDATE_AND_TIME", "LDT"), $.l_date_and_time_type_name),
         field("value", $.date_and_daytime),
       ),
 
     any_date_and_time_type_name: ($) =>
       choice($.date_and_time_type_name, $.l_date_and_time_type_name),
 
-    date_and_time_type_name: ($) => /DATE_AND_TIME|DT/,
-    l_date_and_time_type_name: ($) => /LDATE_AND_TIME|LDT/,
+    date_and_time_type_name: ($) => ciChoice("DATE_AND_TIME", "DT"),
+    l_date_and_time_type_name: ($) => ciChoice("LDATE_AND_TIME", "LDT"),
 
     date_and_daytime: ($) => /[0-9dhmsDHMS_.:-]+/,
 
@@ -699,23 +715,23 @@ module.exports = grammar({
 
     any_time_type_name: ($) => choice($.time_type_name, $.l_time_type_name),
 
-    time_type_name: ($) => /TIME|time/,
-    l_time_type_name: ($) => /LTIME|ltime/,
+    time_type_name: ($) => ciChoice("TIME"),
+    l_time_type_name: ($) => ciChoice("LTIME"),
 
     any_date_type_name: ($) => choice($.date_type_name, $.l_date_type_name),
 
-    date_type_name: ($) => /DATE|date/,
-    l_date_type_name: ($) => /LDATE|ldate/,
+    date_type_name: ($) => ciChoice("DATE"),
+    l_date_type_name: ($) => ciChoice("LDATE"),
 
     any_tod_type_name: ($) => choice($.tod_type_name, $.ltod_type_name),
 
-    tod_type_name: ($) => /TOD|TIME_OF_DAY|tod/,
-    ltod_type_name: ($) => /LTOD|LTIME_OF_DAY|ltod/,
+    tod_type_name: ($) => ciChoice("TIME_OF_DAY", "TOD"),
+    ltod_type_name: ($) => ciChoice("LTIME_OF_DAY", "LTOD"),
 
     any_dt_type_name: ($) => choice($.dt_type_name, $.l_dt_type_name),
 
-    dt_type_name: ($) => /DATE_AND_TIME|DT/,
-    l_dt_type_name: ($) => /LDATE_AND_TIME|LDT/,
+    dt_type_name: ($) => ciChoice("DATE_AND_TIME", "DT"),
+    l_dt_type_name: ($) => ciChoice("LDATE_AND_TIME", "LDT"),
 
     bit_str_type_name: ($) =>
       choice(alias(kw("BOOL"), $.bool_name), $.multibits_type_name),
