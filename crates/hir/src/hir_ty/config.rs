@@ -12,7 +12,7 @@ use crate::{
     hir_def::{
         config::{ConfigDecl, ProgConfig, ResourceDecl, TaskConfig},
         expressions::spec::SpecKind,
-        interned::identifier::{FoldedIdent, Ident, SpanIdent},
+        interned::identifier::{CaselessIdent, Ident, SpanIdent},
         program::ProgramDecl,
     },
     hir_ty::{
@@ -80,7 +80,7 @@ pub struct ConfigInferenceResult<'db> {
     pub task_of_prog: FxHashMap<ProgConfig<'db>, TaskConfig<'db>>,
 
     /// Maps each program instance name to the resolved PROGRAM declaration.
-    pub prog_instance: FxHashMap<FoldedIdent, ProgramDecl<'db>>,
+    pub prog_instance: FxHashMap<CaselessIdent, ProgramDecl<'db>>,
 
     /// What actually runs — see [`ResolvedSchedule`].
     pub schedule: ResolvedSchedule<'db>,
@@ -142,7 +142,7 @@ fn infer_config<'db>(
 ) {
     let errors = &mut result.errors;
 
-    let mut seen_resources: FxHashMap<FoldedIdent, SpanIdent<'db>> = FxHashMap::default();
+    let mut seen_resources: FxHashMap<CaselessIdent, SpanIdent<'db>> = FxHashMap::default();
 
     for r in config.resources(db).iter() {
         check_or_insert(db, &mut seen_resources, r.name(db), |first, second| {
@@ -161,10 +161,10 @@ fn infer_config<'db>(
     // to them. Tasks and programs only exist inside a RESOURCE.
     for r in config.resources(db).iter() {
         // Tasks are scoped to the RESOURCE that declares them.
-        let resource_tasks: FxHashMap<FoldedIdent, TaskConfig<'db>> = r
+        let resource_tasks: FxHashMap<CaselessIdent, TaskConfig<'db>> = r
             .tasks(db)
             .iter()
-            .map(|t| (t.name(db).ident.fold(db), *t))
+            .map(|t| (t.name(db).ident.caseless(db), *t))
             .collect();
         resolve_task_intervals(db, &resource_tasks, result);
         for p in r.programs(db).iter() {
@@ -192,7 +192,7 @@ fn check_resource_duplicates<'db>(
     r: &ResourceDecl<'db>,
     errors: &mut Vec<IdeDiagnostic>,
 ) {
-    let mut seen_tasks: FxHashMap<FoldedIdent, SpanIdent<'db>> = FxHashMap::default();
+    let mut seen_tasks: FxHashMap<CaselessIdent, SpanIdent<'db>> = FxHashMap::default();
     for t in r.tasks(db).iter() {
         check_or_insert(db, &mut seen_tasks, t.name(db), |first, second| {
             errors.push(
@@ -205,7 +205,7 @@ fn check_resource_duplicates<'db>(
         });
     }
 
-    let mut seen_progs: FxHashMap<FoldedIdent, SpanIdent<'db>> = FxHashMap::default();
+    let mut seen_progs: FxHashMap<CaselessIdent, SpanIdent<'db>> = FxHashMap::default();
     for p in r.programs(db).iter() {
         check_or_insert(db, &mut seen_progs, p.name(db), |first, second| {
             errors.push(
@@ -223,11 +223,11 @@ fn check_resource_duplicates<'db>(
 /// where `first` is the previously-seen entry and `second` is the new duplicate.
 fn check_or_insert<'db>(
     db: &'db dyn WorkspaceDataBase,
-    seen: &mut FxHashMap<FoldedIdent, SpanIdent<'db>>,
+    seen: &mut FxHashMap<CaselessIdent, SpanIdent<'db>>,
     name: SpanIdent<'db>,
     mut on_duplicate: impl FnMut(SpanIdent<'db>, SpanIdent<'db>),
 ) {
-    let key = name.ident.fold(db);
+    let key = name.ident.caseless(db);
     if let Some(first) = seen.get(&key) {
         on_duplicate(*first, name);
     } else {
@@ -239,20 +239,20 @@ fn check_or_insert<'db>(
 fn resolve_prog_instance<'db>(
     db: &'db dyn WorkspaceDataBase,
     p: &ProgConfig<'db>,
-    instances: &mut FxHashMap<FoldedIdent, ProgramDecl<'db>>,
+    instances: &mut FxHashMap<CaselessIdent, ProgramDecl<'db>>,
 ) {
     if let SpecKind::Target(target) = p.prog_type(db).kind(db)
         && target.path.namespace.is_none()
         && let Some(prog) = program_index(db, target.path.target.ident)
     {
-        instances.insert(p.name(db).ident.fold(db), prog);
+        instances.insert(p.name(db).ident.caseless(db), prog);
     }
 }
 
 fn validate_prog_config<'db>(
     db: &'db dyn WorkspaceDataBase,
     p: &ProgConfig<'db>,
-    known_tasks: &FxHashMap<FoldedIdent, TaskConfig<'db>>,
+    known_tasks: &FxHashMap<CaselessIdent, TaskConfig<'db>>,
     result: &mut ConfigInferenceResult<'db>,
 ) {
     // Program type resolution is now handled by infer_config_resources in signature inference.
@@ -260,7 +260,7 @@ fn validate_prog_config<'db>(
 
     // Resolve the WITH <task> reference if present.
     match p.task(db) {
-        Some(task_ref) => match known_tasks.get(&task_ref.ident.fold(db)) {
+        Some(task_ref) => match known_tasks.get(&task_ref.ident.caseless(db)) {
             Some(task) => {
                 result.task_of_prog.insert(*p, *task);
             }
@@ -374,7 +374,7 @@ fn build_resolved_schedule<'db>(
             let Some(task) = result.task_of_prog.get(p).copied() else {
                 continue; // no resolvable WITH <task> — already diagnosed
             };
-            let Some(program) = result.prog_instance.get(&p.name(db).ident.fold(db)).copied() else {
+            let Some(program) = result.prog_instance.get(&p.name(db).ident.caseless(db)).copied() else {
                 continue; // program type did not resolve — already diagnosed
             };
             // A task that cannot run contributes nothing to run.
@@ -416,7 +416,7 @@ fn build_resolved_schedule<'db>(
 
 fn resolve_task_intervals<'db>(
     db: &'db dyn WorkspaceDataBase,
-    tasks: &FxHashMap<FoldedIdent, TaskConfig<'db>>,
+    tasks: &FxHashMap<CaselessIdent, TaskConfig<'db>>,
     result: &mut ConfigInferenceResult<'db>,
 ) {
     for task in tasks.values() {
@@ -514,7 +514,7 @@ fn time_literal_nanos<'db>(
 fn validate_config_inst_inits<'db>(
     db: &'db dyn WorkspaceDataBase,
     config: ConfigDecl<'db>,
-    instances: &FxHashMap<FoldedIdent, ProgramDecl<'db>>,
+    instances: &FxHashMap<CaselessIdent, ProgramDecl<'db>>,
     errors: &mut Vec<IdeDiagnostic>,
 ) {
     let config_inits = config.config_init(db);
@@ -550,7 +550,7 @@ fn validate_config_inst_inits<'db>(
             _ => continue,
         };
 
-        let prog = match instances.get(&first_ident.ident.fold(db)) {
+        let prog = match instances.get(&first_ident.ident.caseless(db)) {
             Some(prog) => *prog,
             None => {
                 errors.push(
@@ -592,7 +592,7 @@ fn validate_config_inst_inits<'db>(
             };
 
             let def_map = scope.def_map(db);
-            match def_map.global_variables.get(&field_ident.ident.fold(db)) {
+            match def_map.global_variables.get(&field_ident.ident.caseless(db)) {
                 Some(var) => {
                     current_type = var.spec(db).infer(db);
                 }

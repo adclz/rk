@@ -363,7 +363,7 @@ impl<'db> Resolver<'db> {
                 && let PathExprWalkStep::Field { ident, .. } = step
                 && let PathResolutionRoot::Value { base } = self.root
                 && let Some(ret_ty) = base.with_return_type(db)
-                && self_reference_name(db, base).map(|n| n.fold(db)) == Some(ident.ident.fold(db))
+                && self_reference_name(db, base).map(|n| n.caseless(db)) == Some(ident.ident.caseless(db))
                 // A DECLARED variable of the same name shadows the implicit
                 // return-value name (pinned by the missing-return lint's
                 // shadowing test), so the name is only taken as the return

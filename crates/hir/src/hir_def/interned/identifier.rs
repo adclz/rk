@@ -94,43 +94,44 @@ pub struct Ident {
     pub text: CompactString,
 }
 
-/// An identifier reduced to the form names are COMPARED in.
+/// An identifier as it is MATCHED, with case out of the way.
 ///
 /// IEC 61131-3 §6.1.2: case is not significant in identifiers, so `Motor` and
-/// `motor` are one name. The fold lives in the KEY rather than in the
-/// comparison: every lookup map is keyed by this, so resolution stays a single
-/// interned-id compare instead of a string walk.
+/// `motor` are one name. Unicode calls this caseless matching (§3.13), and
+/// this is its result — the form two names are the same name IN.
 ///
-/// It is a distinct TYPE on purpose. A map keyed by `FoldedIdent` cannot be
-/// queried with an `Ident`, so every lookup site has to fold and the compiler
-/// says which ones — the alternative is a discipline nobody can enforce, where
-/// the site you forget stays case-sensitive and answers wrongly in silence.
+/// It lives in the KEY, not in the comparison: every lookup map is keyed by
+/// this, so resolution stays a single interned-id compare rather than a string
+/// walk. And it is a distinct TYPE on purpose — a map keyed by `CaselessIdent`
+/// cannot be opened with an `Ident`, so the compiler names every lookup that
+/// has to convert. The sites it cannot reach are bare `==` between two
+/// `Ident`s, which no type can catch.
 ///
-/// The spelling the author wrote is NOT this: it stays on the `Ident`, which
+/// It is not the spelling the author wrote. That stays on the [`Ident`], which
 /// is what diagnostics, hover, completion and the wasm export names read.
 #[derive(Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord, Debug, salsa::Update)]
-pub struct FoldedIdent(Ident);
+pub struct CaselessIdent(Ident);
 
 #[salsa::tracked]
 impl Ident {
-    /// This identifier as names are compared.
+    /// This identifier with case out of the way — its [`CaselessIdent`].
     ///
     /// `to_lowercase`, not `to_ascii_lowercase`: identifiers are Unicode here
     /// (the grammar admits `XID_Start`/`XID_Continue`), so an ASCII fold would
     /// leave `MÄX` and `mäx` as two names.
     #[salsa::tracked]
-    pub fn fold(self, db: &dyn WorkspaceDataBase) -> FoldedIdent {
+    pub fn caseless(self, db: &dyn WorkspaceDataBase) -> CaselessIdent {
         let text = self.text(db);
         // The overwhelmingly common case is already folded, and interning the
         // same bytes back is cheaper than allocating a copy of them.
         if text.chars().all(|c| !c.is_uppercase()) {
-            return FoldedIdent(self);
+            return CaselessIdent(self);
         }
-        FoldedIdent(Ident::new(db, text.to_lowercase()))
+        CaselessIdent(Ident::new(db, text.to_lowercase()))
     }
 }
 
-impl FoldedIdent {
+impl CaselessIdent {
     /// The folded text itself, for the byte-oriented indexes (`fst`) that
     /// cannot hold an interned id.
     pub fn text(self, db: &dyn WorkspaceDataBase) -> &CompactString {

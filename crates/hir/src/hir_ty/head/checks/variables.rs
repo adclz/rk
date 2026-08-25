@@ -83,10 +83,10 @@ impl<'db> InitInference<'db> {
         // — which is invalid wasm at exit 0, not a subtle bug.
         let return_value_name = match scope_kind {
             ScopeKind::Pou(Pou::Function(f)) => {
-                f.return_type(db).is_some().then(|| (f.get_name_ident(db).fold(db), "FUNCTION"))
+                f.return_type(db).is_some().then(|| (f.get_name_ident(db).caseless(db), "FUNCTION"))
             }
             ScopeKind::MethodDecl(m) => {
-                m.return_type(db).is_some().then(|| (m.get_name_ident(db).fold(db), "METHOD"))
+                m.return_type(db).is_some().then(|| (m.get_name_ident(db).caseless(db), "METHOD"))
             }
             _ => None,
         };
@@ -170,7 +170,7 @@ impl<'db> InitInference<'db> {
             // Folded: `Count` and `count` are one identifier, so declaring
             // both is declaring the same variable twice.
             if let Some((ret_name, pou_kind)) = return_value_name
-                && var.get_name_ident(db).fold(db) == ret_name
+                && var.get_name_ident(db).caseless(db) == ret_name
             {
                 self.errors.push(
                     DuplicateError::VariableIsReturnValue {
@@ -180,7 +180,7 @@ impl<'db> InitInference<'db> {
                     .to_diagnostic(db, self.scope.file(db)),
                 );
             }
-            match seen.get(&var.get_name_ident(db).fold(db)) {
+            match seen.get(&var.get_name_ident(db).caseless(db)) {
                 Some(prev) => {
                     self.errors.push(
                         DuplicateError::Variable {
@@ -191,7 +191,7 @@ impl<'db> InitInference<'db> {
                     );
                 }
                 None => {
-                    seen.insert(var.get_name_ident(db).fold(db), *var);
+                    seen.insert(var.get_name_ident(db).caseless(db), *var);
                 }
             }
 

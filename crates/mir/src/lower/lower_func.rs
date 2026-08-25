@@ -1,7 +1,7 @@
 use db::WorkspaceDataBase;
 use hir::{
     hir_def::{
-        interned::identifier::{FoldedIdent, Ident},
+        interned::identifier::{CaselessIdent, Ident},
         pous::{
             class::Class,
             function::Function,
@@ -54,7 +54,7 @@ fn emittable_methods<'db>(
 ) -> Vec<hir::hir_def::pous::class::MethodDecl<'db>> {
     use hir::hir_ty::head::inheritance::MethodRef;
 
-    let own_names: FxHashSet<FoldedIdent> = own.iter().map(|m| m.name(db).fold(db)).collect();
+    let own_names: FxHashSet<CaselessIdent> = own.iter().map(|m| m.name(db).caseless(db)).collect();
     let mut inherited: Vec<_> = hir::hir_ty::head::inheritance::inherited_methods(db, pou)
         .methods
         .iter()
@@ -239,7 +239,7 @@ fn lower_function_inner<'db>(
         let storage = allocate_local_storage(
             var.name(db),
             &ty,
-            address_taken.contains(&var.name(db).fold(db)),
+            address_taken.contains(&var.name(db).caseless(db)),
             &mut next_local_idx,
             memory_layout,
         );
@@ -431,7 +431,7 @@ fn lower_function_block_inner<'db>(
                     let storage = allocate_local_storage(
                         var.name(db),
                         &ty,
-                        address_taken.contains(&var.name(db).fold(db)),
+                        address_taken.contains(&var.name(db).caseless(db)),
                         &mut next_local_idx,
                         memory_layout,
                     );
@@ -546,7 +546,7 @@ fn lower_function_block_inner<'db>(
             let storage = allocate_local_storage(
                 var.name(db),
                 &ty,
-                address_taken.contains(&var.name(db).fold(db)),
+                address_taken.contains(&var.name(db).caseless(db)),
                 &mut next_local_idx,
                 memory_layout,
             );
@@ -686,7 +686,7 @@ fn lower_class_inner<'db>(
                     let storage = allocate_local_storage(
                         var.name(db),
                         &ty,
-                        address_taken.contains(&var.name(db).fold(db)),
+                        address_taken.contains(&var.name(db).caseless(db)),
                         &mut next_local_idx,
                         memory_layout,
                     );
@@ -822,7 +822,7 @@ fn lower_program_inner<'db>(
             let storage = allocate_local_storage(
                 var.name(db),
                 &ty,
-                address_taken.contains(&var.name(db).fold(db)),
+                address_taken.contains(&var.name(db).caseless(db)),
                 &mut next_local_idx,
                 memory_layout,
             );
@@ -1028,7 +1028,7 @@ pub(crate) fn lower_var_type<'db>(
 fn collect_address_taken_vars<'db>(
     db: &'db dyn WorkspaceDataBase,
     stmts: &[hir::hir_def::expressions::statement::Stmt<'db>],
-) -> FxHashSet<FoldedIdent> {
+) -> FxHashSet<CaselessIdent> {
     use hir::hir_def::expressions::expression::{ExprKind, PrimaryExpr, RefValue};
 
     let mut result = FxHashSet::default();
@@ -1036,7 +1036,7 @@ fn collect_address_taken_vars<'db>(
     fn walk_expr<'db>(
         db: &'db dyn WorkspaceDataBase,
         expr: hir::hir_def::expressions::expression::Expr<'db>,
-        result: &mut FxHashSet<FoldedIdent>,
+        result: &mut FxHashSet<CaselessIdent>,
     ) {
         match expr.expr(db) {
             ExprKind::PrimaryExpr(PrimaryExpr::RefValue {
@@ -1046,7 +1046,7 @@ fn collect_address_taken_vars<'db>(
                 if let Some(path_expr) = begin_path.expr(db) {
                     // Probed with the declared name: `REF(myvar)` must mark `MyVar`.
                     let ident = path_expr.ident(db).ident;
-                    result.insert(ident.fold(db));
+                    result.insert(ident.caseless(db));
                 }
             }
             ExprKind::PrimaryExpr(PrimaryExpr::VariableAccess(_)) => {}
@@ -1069,7 +1069,7 @@ fn collect_address_taken_vars<'db>(
                             // OUT => x takes the address of x
                             if let hir::hir_def::expressions::expression::VariableAccessKind::Symbolic(begin_path) = &variable.kind(db)
                                 && let Some(path_expr) = begin_path.expr(db) {
-                                    result.insert(path_expr.ident(db).ident.fold(db));
+                                    result.insert(path_expr.ident(db).ident.caseless(db));
                                 }
                         }
                     }
@@ -1099,7 +1099,7 @@ fn collect_address_taken_vars<'db>(
     fn walk_stmts<'db>(
         db: &'db dyn WorkspaceDataBase,
         stmts: &[hir::hir_def::expressions::statement::Stmt<'db>],
-        result: &mut FxHashSet<FoldedIdent>,
+        result: &mut FxHashSet<CaselessIdent>,
     ) {
         use hir::hir_def::expressions::statement::StmtKind;
         for stmt in stmts {
@@ -1115,7 +1115,7 @@ fn collect_address_taken_vars<'db>(
     fn walk_stmt_exprs<'db>(
         db: &'db dyn WorkspaceDataBase,
         stmt: hir::hir_def::expressions::statement::Stmt<'db>,
-        result: &mut FxHashSet<FoldedIdent>,
+        result: &mut FxHashSet<CaselessIdent>,
     ) {
         use hir::hir_def::expressions::statement::StmtKind;
         match stmt.stmt(db) {
@@ -1185,7 +1185,7 @@ fn collect_address_taken_vars<'db>(
                         hir::hir_def::expressions::expression::ParamAssignKind::FormalOutput { variable, .. } => {
                             if let hir::hir_def::expressions::expression::VariableAccessKind::Symbolic(begin_path) = &variable.kind(db)
                                 && let Some(path_expr) = begin_path.expr(db) {
-                                    result.insert(path_expr.ident(db).ident.fold(db));
+                                    result.insert(path_expr.ident(db).ident.caseless(db));
                                 }
                         }
                     }
@@ -1207,7 +1207,7 @@ fn collect_address_taken_vars<'db>(
 fn mark_inout_call_args<'db>(
     db: &'db dyn WorkspaceDataBase,
     fc: hir::hir_def::expressions::expression::FuncCall<'db>,
-    result: &mut FxHashSet<FoldedIdent>,
+    result: &mut FxHashSet<CaselessIdent>,
 ) {
     use hir::hir_def::expressions::expression::{
         ExprKind, ParamAssignKind, PrimaryExpr, VariableAccessKind,
@@ -1232,7 +1232,7 @@ fn mark_inout_call_args<'db>(
             && let VariableAccessKind::Symbolic(begin_path) = va.kind(db)
             && let Some(path_expr) = begin_path.expr(db)
         {
-            result.insert(path_expr.ident(db).ident.fold(db));
+            result.insert(path_expr.ident(db).ident.caseless(db));
         }
     }
 }

@@ -87,7 +87,7 @@ fn init_method_member_shadows<'db>(
     };
     for mvar in method.variables(db) {
         let name = mvar.get_name_ident(db);
-        if let Some(member) = members.iter().find(|m| m.get_name_ident(db).fold(db) == name.fold(db)) {
+        if let Some(member) = members.iter().find(|m| m.get_name_ident(db).caseless(db) == name.caseless(db)) {
             result.method_shadowed_members.insert(*mvar, *member);
         }
     }

@@ -873,7 +873,7 @@ pub fn lower_wasm_intrinsic<'db>(
             let elem = func
                 .variables(db)
                 .iter()
-                .find(|v| v.name(db).fold(db) == basis.ident.fold(db))
+                .find(|v| v.name(db).caseless(db) == basis.ident.caseless(db))
                 .and_then(|v| match lower_type(db, v.spec(db).infer(db)).ok()? {
                     MirType::Elementary(e) => Some(e),
                     _ => None,
@@ -1413,7 +1413,7 @@ fn collect_const_inits<'db>(
                         .decl
                         .variables(db)
                         .iter()
-                        .find(|v| v.name(db).fold(db) == field.name.fold(db))
+                        .find(|v| v.name(db).caseless(db) == field.name.caseless(db))
                     else {
                         continue;
                     };

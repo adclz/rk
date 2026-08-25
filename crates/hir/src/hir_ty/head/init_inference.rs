@@ -7,7 +7,7 @@ use crate::{
     check::errors::{ToIdeDiagnostic, e1_duplicates::DuplicateError, e6_array::ArrayError},
     hir_def::{
         expressions::expression::{Expr, InitExpr, InitExprKind},
-        interned::identifier::{FoldedIdent, Ident},
+        interned::identifier::{CaselessIdent, Ident},
         pous::pou::Pou,
         scope::{ScopeId, ScopeKind},
         semantic_index::get_scope,
@@ -294,7 +294,7 @@ impl<'db> InitExprInferenceResult<'db> {
                     .unwrap_or_default()
                     .normalize(db);
 
-                if let Some(prev) = ctx.seen_fields.insert(name.ident.fold(db), *expr) {
+                if let Some(prev) = ctx.seen_fields.insert(name.ident.caseless(db), *expr) {
                     self.errors.push(
                         DuplicateError::InitExprField {
                             name: name.ident,
@@ -405,7 +405,7 @@ struct InitContext<'db> {
     /// Whether overflow has been reported per dimension
     overflow_reported: Vec<bool>,
     /// Seen fields in current struct (for duplicate detection)
-    seen_fields: FxHashMap<FoldedIdent, InitExpr<'db>>,
+    seen_fields: FxHashMap<CaselessIdent, InitExpr<'db>>,
 }
 
 impl<'db> InitContext<'db> {
@@ -497,7 +497,7 @@ fn resolve_leaves<'db>(
                     let declared = match struct_ty {
                         Some(Type::Struct(st)) => st
                             .struct_elements(db)
-                            .get(&name.ident.fold(db))
+                            .get(&name.ident.caseless(db))
                             .map(|field| field.name(db)),
                         _ => None,
                     };

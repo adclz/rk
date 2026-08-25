@@ -104,13 +104,13 @@ pub fn check_single_configuration<'db>(
     errors: &mut Vec<IdeDiagnostic>,
 ) {
     let all = crate::hir_ty::index_graphs::declared_configs(db);
-    let names: rustc_hash::FxHashSet<_> = all.iter().map(|c| c.get_name_ident(db).fold(db)).collect();
+    let names: rustc_hash::FxHashSet<_> = all.iter().map(|c| c.get_name_ident(db).caseless(db)).collect();
     if names.len() > 1 {
         // Carry the others so they can be reached from here: deciding which to
         // keep means looking at all of them.
         let mut others: Vec<_> = all
             .iter()
-            .filter(|c| c.get_name_ident(db).fold(db) != config.get_name_ident(db).fold(db))
+            .filter(|c| c.get_name_ident(db).caseless(db) != config.get_name_ident(db).caseless(db))
             .copied()
             .collect();
         // The file maps have no order, so sort for a stable list.
@@ -149,7 +149,7 @@ pub fn check_single_resource<'db>(
     let mut names: Vec<compact_str::CompactString> = fragments
         .iter()
         .flat_map(|c| c.resources(db).iter())
-        .filter(|r| seen_folded.insert(r.name(db).ident.fold(db)))
+        .filter(|r| seen_folded.insert(r.name(db).ident.caseless(db)))
         .map(|r| r.name(db).ident.text(db).clone())
         .collect();
     names.sort();
@@ -212,7 +212,7 @@ pub fn check_config_fragment_collisions<'db>(
         if let Some(other) = siblings.iter().find_map(|sib| {
             sib.variables(db)
                 .iter()
-                .find(|v| v.get_name_ident(db).fold(db) == var.get_name_ident(db).fold(db))
+                .find(|v| v.get_name_ident(db).caseless(db) == var.get_name_ident(db).caseless(db))
         }) {
             errors.push(
                 DuplicateError::Variable {
@@ -227,7 +227,7 @@ pub fn check_config_fragment_collisions<'db>(
         if let Some(other) = siblings.iter().find_map(|sib| {
             sib.resources(db)
                 .iter()
-                .find(|r| r.name(db).ident.fold(db) == res.name(db).ident.fold(db))
+                .find(|r| r.name(db).ident.caseless(db) == res.name(db).ident.caseless(db))
         }) {
             errors.push(
                 DuplicateError::Resource {

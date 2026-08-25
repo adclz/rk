@@ -6,7 +6,7 @@ use rustc_hash::{FxHashMap, FxHashSet};
 use crate::{
     HasName,
     hir_def::{
-        interned::{identifier::FoldedIdent, namespace::NamespacePath},
+        interned::{identifier::CaselessIdent, namespace::NamespacePath},
         namespace::NamespaceDecl,
         pous::{pou::Pou, variable::VariableDecl},
         scope::{ScopeId, ScopeKind},
@@ -279,7 +279,7 @@ fn search_file_indexes<'db>(
             SymbolKind::Pou(pou) if include_pous => {
                 // Skip if already defined locally in this scope
                 if let Some(local) = local
-                    && local.pous.contains_key(&pou.get_name_ident(db).fold(db))
+                    && local.pous.contains_key(&pou.get_name_ident(db).caseless(db))
                 {
                     return ControlFlow::Continue::<()>(());
                 }
@@ -330,7 +330,7 @@ fn search_file_indexes<'db>(
 #[derive(Default)]
 pub struct LocalSearchResult<'db> {
     pub seen_namespaces: FxHashSet<NamespacePath>,
-    pub pous: FxHashMap<FoldedIdent, Pou<'db>>,
+    pub pous: FxHashMap<CaselessIdent, Pou<'db>>,
 }
 
 // Iterate through the local scopes and collect local POUs and seen namespaces

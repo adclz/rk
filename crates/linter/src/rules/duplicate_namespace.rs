@@ -34,7 +34,7 @@ pub fn check<'db>(
     > = FxHashMap::default();
 
     for ns in sema.namespaces.iter() {
-        seen.entry(ns.path(db).fold(db)).or_default().push(*ns);
+        seen.entry(ns.path(db).caseless(db)).or_default().push(*ns);
     }
 
     for decls in seen.values() {

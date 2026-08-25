@@ -36,7 +36,7 @@ pub fn check<'db>(
 
     let mut seen: FxHashMap<_, Vec<ConfigDecl<'db>>> = FxHashMap::default();
     for config in sema.configs.iter() {
-        seen.entry(config.get_name_ident(db).fold(db))
+        seen.entry(config.get_name_ident(db).caseless(db))
             .or_default()
             .push(*config);
     }

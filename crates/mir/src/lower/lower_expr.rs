@@ -472,7 +472,7 @@ impl<'db> ExprLowerCtx<'db> {
                     .into_iter()
                     // The variant arrives as written and HIR's resolved one is folded:
                     // reconcile the spellings here.
-                    .find(|(v, _)| v.name.ident.fold(self.db) == variant.ident.fold(self.db))
+                    .find(|(v, _)| v.name.ident.caseless(self.db) == variant.ident.caseless(self.db))
                     .map(|(_, value)| value)
                     .ok_or_else(|| {
                         LowerTypeError::UnsupportedType(format!(
@@ -785,7 +785,7 @@ impl<'db> ExprLowerCtx<'db> {
         match this_struct
             .fields
             .iter()
-            .find(|f| f.name.fold(self.db) == ident.fold(self.db))
+            .find(|f| f.name.caseless(self.db) == ident.caseless(self.db))
         {
             Some(field) => {
                 let this_field = MirPlace::ThisField {
@@ -838,7 +838,7 @@ impl<'db> ExprLowerCtx<'db> {
         }
         scope.def_map(self.db)
             .global_variables
-            .get(&ident.fold(self.db))
+            .get(&ident.caseless(self.db))
             .copied()
     }
 
@@ -909,7 +909,7 @@ impl<'db> ExprLowerCtx<'db> {
                     && let Some(field) = s
                         .fields
                         .iter()
-                        .find(|f| f.name.fold(self.db) == field_name.fold(self.db))
+                        .find(|f| f.name.caseless(self.db) == field_name.caseless(self.db))
                 {
                     let this_field = MirPlace::ThisField {
                         field_name,
@@ -1029,7 +1029,7 @@ impl<'db> ExprLowerCtx<'db> {
     ) -> Result<(u32, MirType), LowerTypeError> {
         if let Some(MirType::Struct(s)) = this_type {
             for field in &s.fields {
-                if field.name.fold(self.db) == field_name.fold(self.db) {
+                if field.name.caseless(self.db) == field_name.caseless(self.db) {
                     return Ok((field.offset, field.ty.clone()));
                 }
             }
@@ -1104,7 +1104,7 @@ impl<'db> ExprLowerCtx<'db> {
         // on both sides.
         if let Some(MirType::Struct(s)) = &effective_mir {
             for field in &s.fields {
-                if field.name.fold(self.db) == field_name.fold(self.db) {
+                if field.name.caseless(self.db) == field_name.caseless(self.db) {
                     return Ok((field.offset, field.ty.clone()));
                 }
             }

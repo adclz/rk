@@ -87,10 +87,10 @@ pub fn resolve_name<'db>(
     // 1. Self-reference: a POU or method referencing its own name takes priority
     //    over parent scope lookups (which may return a different duplicate).
     match get_scope(db, scope).kind {
-        ScopeKind::MethodDecl(method) if name.fold(db) == method.name(db).fold(db) => {
+        ScopeKind::MethodDecl(method) if name.caseless(db) == method.name(db).caseless(db) => {
             return NameResolution::MethodSelf(method);
         }
-        ScopeKind::Pou(pou) if name.fold(db) == pou.get_name_ident(db).fold(db) => {
+        ScopeKind::Pou(pou) if name.caseless(db) == pou.get_name_ident(db).caseless(db) => {
             if let Pou::Function(f) = pou {
                 return NameResolution::Pou(pou, None);
             }
@@ -146,7 +146,7 @@ pub fn pou_names_res<'db>(
     scope: ScopeId<'db>,
 ) -> PouResolution<'db> {
     // Checks for POUs declared in the current scope
-    if let Some(pou) = scope.def_map(db).local_pous.get(&name.fold(db)) {
+    if let Some(pou) = scope.def_map(db).local_pous.get(&name.caseless(db)) {
         return PouResolution::Found(*pou, None);
     }
 
@@ -171,7 +171,7 @@ pub fn find_in_parent_pous<'db>(
         // Namespace siblings take priority over USING — no ambiguity
         if let ScopeKind::Namespace(ns) = scope.kind {
             for ns in namespace_index(db, *ns.path(db)).iter() {
-                if let Some(p) = ns.scope_id(db).def_map(db).local_pous.get(&name.fold(db)) {
+                if let Some(p) = ns.scope_id(db).def_map(db).local_pous.get(&name.caseless(db)) {
                     return PouResolution::Found(*p, None);
                 }
             }
@@ -182,7 +182,7 @@ pub fn find_in_parent_pous<'db>(
         for using in &scope.usings {
             let ns_path: NamespacePath = *using.path(db);
             for ns in namespace_index(db, ns_path).iter() {
-                if let Some(pou) = ns.scope_id(db).def_map(db).local_pous.get(&name.fold(db)) {
+                if let Some(pou) = ns.scope_id(db).def_map(db).local_pous.get(&name.caseless(db)) {
                     // Deduplicate by POU identity (shared namespaces across files)
                     if !matches.iter().any(|(p, _, _)| p == pou) {
                         matches.push((*pou, ns_path, *using));
@@ -206,7 +206,7 @@ pub fn find_in_parent_pous<'db>(
                 if matches
                     .iter()
                     .all(|(p, path, _)| {
-                        path.fold(db) == first_path.fold(db) && matches!(p, Pou::Function(_))
+                        path.caseless(db) == first_path.caseless(db) && matches!(p, Pou::Function(_))
                     })
                 {
                     return PouResolution::Found(matches[0].0, Some(matches[0].2));

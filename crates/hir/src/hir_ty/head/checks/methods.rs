@@ -150,13 +150,13 @@ impl<'db> InitInference<'db> {
                     }
                     if let Pou::FunctionBlock(base_fb) = base {
                         for v in base_fb.variables(db) {
-                            inherited.entry(v.get_name_ident(db).fold(db)).or_insert(*v);
+                            inherited.entry(v.get_name_ident(db).caseless(db)).or_insert(*v);
                         }
                     }
                     current = extends_pou(db, base);
                 }
                 for v in own {
-                    if let Some(base_decl) = inherited.get(&v.get_name_ident(db).fold(db)) {
+                    if let Some(base_decl) = inherited.get(&v.get_name_ident(db).caseless(db)) {
                         self.errors.push(
                             InheritanceError::InheritedMemberShadowed {
                                 derived: *v,
@@ -174,7 +174,7 @@ impl<'db> InitInference<'db> {
         if let Some(methods) = self.scope.method_declarations(db) {
             let mut seen = FxHashMap::default();
             for method in methods.iter() {
-                match seen.get(&method.name(db).fold(db)) {
+                match seen.get(&method.name(db).caseless(db)) {
                     Some(prev) => {
                         self.errors.push(
                             DuplicateError::MethodDecl {
@@ -185,7 +185,7 @@ impl<'db> InitInference<'db> {
                         );
                     }
                     None => {
-                        seen.insert(method.name(db).fold(db), *method);
+                        seen.insert(method.name(db).caseless(db), *method);
                     }
                 }
             }
@@ -194,7 +194,7 @@ impl<'db> InitInference<'db> {
         if let Some(prototypes) = self.scope.method_prototypes(db) {
             let mut seen_prots = FxHashMap::default();
             for method in prototypes.iter() {
-                match seen_prots.get(&method.name(db).fold(db)) {
+                match seen_prots.get(&method.name(db).caseless(db)) {
                     Some(prev) => self.errors.push(
                         DuplicateError::MethodProt {
                             method1: *method,
@@ -203,7 +203,7 @@ impl<'db> InitInference<'db> {
                         .to_diagnostic(db, self.scope.file(db)),
                     ),
                     None => {
-                        seen_prots.insert(method.name(db).fold(db), *method);
+                        seen_prots.insert(method.name(db).caseless(db), *method);
                     }
                 }
             }

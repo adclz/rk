@@ -163,16 +163,16 @@ impl<'db> Type<'db> {
         name: &Ident,
     ) -> FieldLookup<'db> {
         match self {
-            Type::Struct(st) => match st.struct_elements(db).get(&name.fold(db)) {
+            Type::Struct(st) => match st.struct_elements(db).get(&name.caseless(db)) {
                 Some(field) => FieldLookup::StructElement(*field),
                 None => FieldLookup::NotFound,
             },
             _ => {
                 if let Some(scope) = self.as_walkable_scope(db) {
                     let def_map = scope.def_map(db);
-                    if let Some(var) = def_map.global_variables.get(&name.fold(db)) {
+                    if let Some(var) = def_map.global_variables.get(&name.caseless(db)) {
                         FieldLookup::Variable(*var)
-                    } else if let Some(m) = def_map.declared_methods.get(&name.fold(db)) {
+                    } else if let Some(m) = def_map.declared_methods.get(&name.caseless(db)) {
                         FieldLookup::Method(*m)
                     } else if let Some(pou) = self.as_pou(db) {
                         // Inherited state and behaviour both come from the
@@ -183,11 +183,11 @@ impl<'db> Type<'db> {
                         // where the layout says it lives.
                         if let Some(member) = instance_members(db, pou)
                             .iter()
-                            .find(|m| m.var.name(db).fold(db) == name.fold(db))
+                            .find(|m| m.var.name(db).caseless(db) == name.caseless(db))
                         {
                             FieldLookup::Variable(member.var)
                         } else {
-                            match inherited_methods(db, pou).methods.get(&name.fold(db)) {
+                            match inherited_methods(db, pou).methods.get(&name.caseless(db)) {
                                 Some(inherited) => FieldLookup::Method(inherited.method),
                                 None => FieldLookup::NotFound,
                             }
@@ -335,7 +335,7 @@ impl<'db> Type<'db> {
         let steps = path_expr.flatten(db);
 
         if let Some(PathExprWalkStep::Field { ident, expr }) = steps.first() {
-            if let Some(method) = inherited.methods.get(&ident.ident.fold(db)) {
+            if let Some(method) = inherited.methods.get(&ident.ident.caseless(db)) {
                 check_visibility(db, &ident.as_call_site(db), method.method, &mut ctx.errors);
                 ctx.type_of_path_expr
                     .insert(*expr, Type::MethodDecl(method.method));
