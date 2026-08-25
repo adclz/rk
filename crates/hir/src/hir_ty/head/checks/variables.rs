@@ -76,6 +76,21 @@ impl<'db> InitInference<'db> {
             );
         }
 
+        // Inside a FUNCTION or a value-returning METHOD the callable's own
+        // name is the return value, so a variable declared with it (in any
+        // case) is a second declaration: the body binds to the local, at the
+        // local's type, while the signature still promises the return type's
+        // — which is invalid wasm at exit 0, not a subtle bug.
+        let return_value_name = match scope_kind {
+            ScopeKind::Pou(Pou::Function(f)) => {
+                f.return_type(db).is_some().then(|| (f.get_name_ident(db).fold(db), "FUNCTION"))
+            }
+            ScopeKind::MethodDecl(m) => {
+                m.return_type(db).is_some().then(|| (m.get_name_ident(db).fold(db), "METHOD"))
+            }
+            _ => None,
+        };
+
         let mut seen = FxHashMap::default();
         let mut first_variadic: Option<VariableDecl<'db>> = None;
 
@@ -152,7 +167,20 @@ impl<'db> InitInference<'db> {
                     );
                 }
             }
-            match seen.get(&var.get_name_ident(db)) {
+            // Folded: `Count` and `count` are one identifier, so declaring
+            // both is declaring the same variable twice.
+            if let Some((ret_name, pou_kind)) = return_value_name
+                && var.get_name_ident(db).fold(db) == ret_name
+            {
+                self.errors.push(
+                    DuplicateError::VariableIsReturnValue {
+                        var: *var,
+                        pou_kind,
+                    }
+                    .to_diagnostic(db, self.scope.file(db)),
+                );
+            }
+            match seen.get(&var.get_name_ident(db).fold(db)) {
                 Some(prev) => {
                     self.errors.push(
                         DuplicateError::Variable {
@@ -163,7 +191,7 @@ impl<'db> InitInference<'db> {
                     );
                 }
                 None => {
-                    seen.insert(var.get_name_ident(db), *var);
+                    seen.insert(var.get_name_ident(db).fold(db), *var);
                 }
             }
 

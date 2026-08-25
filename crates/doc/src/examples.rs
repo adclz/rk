@@ -758,6 +758,21 @@ END_CONFIGURATION
             lint_rule: None,
         },
         ErrorExample {
+            code: "E0117",
+            category: "Duplicates",
+            title: "Variable is the return value",
+            description: "Inside a FUNCTION or a value-returning METHOD, the callable's own name is its return value, so a variable declared with that name (in any case: identifiers are not case sensitive) is a second declaration of it. The body would bind to the local, at the local's type, while the signature still promises the return type's.",
+            sources: &[r#"
+FUNCTION fn1 : INT
+VAR
+    fn1 : LINT;
+END_VAR
+    fn1 := 1;
+END_FUNCTION
+"#],
+            lint_rule: None,
+        },
+        ErrorExample {
             code: "E0115",
             category: "Duplicates",
             title: "Duplicate PROGRAM instance name",

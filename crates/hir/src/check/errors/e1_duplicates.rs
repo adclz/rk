@@ -28,6 +28,14 @@ pub enum DuplicateError<'db> {
         var1: VariableDecl<'db>,
         var2: VariableDecl<'db>,
     },
+    /// A variable named like the enclosing callable. Inside a FUNCTION or
+    /// METHOD that name IS the return value, so the local is a second
+    /// declaration of it — one the body then binds to, at the local's type,
+    /// while the signature still promises the return type's.
+    VariableIsReturnValue {
+        var: VariableDecl<'db>,
+        pou_kind: &'static str,
+    },
     StructField {
         field1: StructElement<'db>,
         field2: StructElement<'db>,
@@ -88,6 +96,7 @@ impl ErrorCode for DuplicateError<'_> {
         match self {
             Self::Pou { .. } => "E0101",
             Self::Variable { .. } => "E0102",
+            Self::VariableIsReturnValue { .. } => "E0117",
             Self::StructField { .. } => "E0103",
             Self::EnumVariant { .. } => "E0104",
             Self::MethodDecl { .. } => "E0105",
@@ -139,6 +148,15 @@ impl<'db> ToIdeDiagnostic<'db> for DuplicateError<'db> {
 
                 diag
             }
+            Self::VariableIsReturnValue { var, pou_kind } => diag()
+                .message(format!(
+                    "variable '{}' is the {pou_kind}'s return value",
+                    var.get_name_ident(db).text(db)
+                ))
+                .severity(DiagnosticSeverity::ERROR)
+                .desc(self)
+                .range(crate::denormalize(db, file, &var.get_name_span(db)).unwrap_or_default())
+                .call(),
             Self::Variable { var1, var2 } => {
                 let mut diag = diag()
                     .message(format!(
