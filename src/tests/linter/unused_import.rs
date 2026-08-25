@@ -76,6 +76,24 @@ END_FUNCTION
 "#,
     ];
     assert_snapshot!(test_single_lint(&mut with_db, sources, "unused-import"), @r"
+    [E0225] Error: multiple items in scope
+       ,-[ file:///test1.st:5:13 ]
+       |
+     5 |     test := helper();
+       |             ^^^|^^
+       |                `---- multiple items named 'helper' available in scope
+       |
+       | Note: qualify the name to resolve the ambiguity: Tools.helper or Utils.helper
+    ---'
+    [L0201] Hint: unused import
+       ,-[ file:///test1.st:3:11 ]
+       |
+     3 |     USING Tools;
+       |           ^^|^^
+       |             `---- unused import 'Tools'
+       |
+       | Note: lint rule: unused-import
+    ---'
     [L0201] Hint: unused import
        ,-[ file:///test1.st:4:11 ]
        |

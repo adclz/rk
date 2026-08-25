@@ -723,7 +723,19 @@ END_VAR
     POLYNOM_INT := X - xy[i][0];
 END_FUNCTION
 "#;
-    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @"");
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
+    [E0102] Error: duplicate definitions
+        ,-[ file:///test0.st:10:5 ]
+        |
+      4 |     X : REAL;
+        |     |
+        |     `-- variable 'X' is already defined here
+        |
+     10 |     x : REAL;
+        |     |
+        |     `-- duplicate variable 'x'
+    ----'
+    ");
 }
 
 /// Hex literals assigned to a function return value should infer to the return type.

@@ -184,3 +184,53 @@ END_CLASS"#;
 
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"");
 }
+
+/// A variable named like the enclosing callable IS its return value, in any
+/// case — declaring it is declaring the return value a second time.
+///
+/// This was only a WARNING (L0315) before, and the body then bound to the
+/// local at the local's type while the signature promised the return type's:
+/// `FUNCTION Wide : INT` with `Wide : LINT` emitted invalid wasm at exit 0.
+/// A procedural METHOD has no return value, so its name stays free.
+#[rstest]
+fn variable_named_like_its_callable_is_the_return_value(mut with_db: RootDatabase) {
+    let source = r#"
+        FUNCTION fn1 : INT
+        VAR
+            fn1 : LINT;
+        END_VAR
+            fn1 := 1;
+        END_FUNCTION
+    "#;
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
+    [E0117] Error: duplicate definitions
+       ,-[ file:///test0.st:4:13 ]
+       |
+     4 |             fn1 : LINT;
+       |             ^|^
+       |              `--- variable 'fn1' is the FUNCTION's return value
+    ---'
+    ");
+}
+
+/// The folded form collides identically: `wide` is `Wide`.
+#[rstest]
+fn folded_variable_collides_with_the_return_value(mut with_db: RootDatabase) {
+    let source = r#"
+        FUNCTION Wide : INT
+        VAR
+            wide : LINT;
+        END_VAR
+            Wide := 1;
+        END_FUNCTION
+    "#;
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
+    [E0117] Error: duplicate definitions
+       ,-[ file:///test0.st:4:13 ]
+       |
+     4 |             wide : LINT;
+       |             ^^|^
+       |               `--- variable 'wide' is the FUNCTION's return value
+    ---'
+    ");
+}

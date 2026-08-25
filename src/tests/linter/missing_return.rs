@@ -102,6 +102,13 @@ END_VAR
 END_FUNCTION
 "#;
     assert_snapshot!(test_single_lint(&mut with_db, &[source], "missing-return"), @r"
+    [E0117] Error: duplicate definitions
+       ,-[ file:///test0.st:4:5 ]
+       |
+     4 |     MyFn : INT;
+       |     ^^|^
+       |       `--- variable 'MyFn' is the FUNCTION's return value
+    ---'
     [L0316] Warning: missing return assignment
        ,-[ file:///test0.st:2:10 ]
        |
