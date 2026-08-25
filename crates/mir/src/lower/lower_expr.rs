@@ -470,7 +470,9 @@ impl<'db> ExprLowerCtx<'db> {
                 };
                 let value = super::lower_type::enum_variant_values(self.db, e)?
                     .into_iter()
-                    .find(|(v, _)| v.name.ident == variant.ident)
+                    // The variant arrives as written and HIR's resolved one is folded:
+                    // reconcile the spellings here.
+                    .find(|(v, _)| v.name.ident.fold(self.db) == variant.ident.fold(self.db))
                     .map(|(_, value)| value)
                     .ok_or_else(|| {
                         LowerTypeError::UnsupportedType(format!(
@@ -738,22 +740,41 @@ impl<'db> ExprLowerCtx<'db> {
     ) -> MirPlace {
         use hir::hir_def::pous::variable::StorageClass;
 
-        match self
-            .root_binding(root, ident)
-            .map(|decl| decl.storage_class(self.db))
-        {
-            // The address is filled in once the layout is final.
-            Some(StorageClass::Global) => {
-                return MirPlace::Global {
-                    name: Some(ident),
-                    address: 0,
-                    ty: MirType::Void,
-                };
+        // The place carries the name as declared: every downstream table is
+        // keyed by declarations.
+        if let Some(decl) = self.root_binding(root, ident) {
+            let declared = decl.name(self.db);
+            match decl.storage_class(self.db) {
+                // The address is filled in once the layout is final.
+                StorageClass::Global => {
+                    return MirPlace::Global {
+                        name: Some(declared),
+                        address: 0,
+                        ty: MirType::Void,
+                    };
+                }
+                // A local shadows a same-named member, as in HIR name resolution.
+                StorageClass::Local => return MirPlace::Local(declared),
+                StorageClass::InstanceMember => {}
             }
-            // A local shadows any same-named member, in IEC and in HIR name
-            // resolution alike.
-            Some(StorageClass::Local) => return MirPlace::Local(ident),
-            Some(StorageClass::InstanceMember) | None => {}
+        } else if let Some(root_expr) = root.flatten(self.db).first().map(|s| s.get_expr(self.db))
+            && let Some(ty) =
+                hir::hir_ty::body::infer_body(self.db, root.scope_id(self.db))
+                    .type_of_path_expr
+                    .get(&root_expr)
+        {
+            // The callable's own name is its return slot, held under the declared
+            // name.
+            use hir::HasName;
+            match ty {
+                Type::Function(f) => {
+                    return MirPlace::Local(f.name(self.db));
+                }
+                Type::MethodDecl(m) => {
+                    return MirPlace::Local(m.get_name_ident(self.db));
+                }
+                _ => {}
+            }
         }
 
         // No `this` pointer: the root is a local.
@@ -761,7 +782,11 @@ impl<'db> ExprLowerCtx<'db> {
             return MirPlace::Local(ident);
         };
 
-        match this_struct.fields.iter().find(|f| f.name == ident) {
+        match this_struct
+            .fields
+            .iter()
+            .find(|f| f.name.fold(self.db) == ident.fold(self.db))
+        {
             Some(field) => {
                 let this_field = MirPlace::ThisField {
                     field_name: ident,
@@ -881,7 +906,10 @@ impl<'db> ExprLowerCtx<'db> {
                 // The resolved this-struct field carries the pointer type and `by_ref`
                 // flag; the inferred type is the error-recovery fallback.
                 if let Some(MirType::Struct(s)) = &this_type
-                    && let Some(field) = s.fields.iter().find(|f| f.name == field_name)
+                    && let Some(field) = s
+                        .fields
+                        .iter()
+                        .find(|f| f.name.fold(self.db) == field_name.fold(self.db))
                 {
                     let this_field = MirPlace::ThisField {
                         field_name,
@@ -1001,7 +1029,7 @@ impl<'db> ExprLowerCtx<'db> {
     ) -> Result<(u32, MirType), LowerTypeError> {
         if let Some(MirType::Struct(s)) = this_type {
             for field in &s.fields {
-                if field.name == field_name {
+                if field.name.fold(self.db) == field_name.fold(self.db) {
                     return Ok((field.offset, field.ty.clone()));
                 }
             }
@@ -1072,9 +1100,11 @@ impl<'db> ExprLowerCtx<'db> {
             Some(MirType::Array(a)) => Some(*a.element_type),
             other => other,
         };
+        // The name arrives as written; the layout holds it as declared. Folded
+        // on both sides.
         if let Some(MirType::Struct(s)) = &effective_mir {
             for field in &s.fields {
-                if field.name == field_name {
+                if field.name.fold(self.db) == field_name.fold(self.db) {
                     return Ok((field.offset, field.ty.clone()));
                 }
             }

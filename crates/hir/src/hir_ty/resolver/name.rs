@@ -87,10 +87,10 @@ pub fn resolve_name<'db>(
     // 1. Self-reference: a POU or method referencing its own name takes priority
     //    over parent scope lookups (which may return a different duplicate).
     match get_scope(db, scope).kind {
-        ScopeKind::MethodDecl(method) if name == method.name(db) => {
+        ScopeKind::MethodDecl(method) if name.fold(db) == method.name(db).fold(db) => {
             return NameResolution::MethodSelf(method);
         }
-        ScopeKind::Pou(pou) if name == pou.get_name_ident(db) => {
+        ScopeKind::Pou(pou) if name.fold(db) == pou.get_name_ident(db).fold(db) => {
             if let Pou::Function(f) = pou {
                 return NameResolution::Pou(pou, None);
             }

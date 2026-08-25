@@ -1,6 +1,6 @@
 //! WASM execution tests (actually running the generated code).
 
-use crate::tests::codegen::{compile_to_wasm, with_db};
+use crate::tests::codegen::{compile_to_wasm, compile_to_wasm_checked, execute_wasm, with_db};
 use rstest::*;
 use wasmtime::{Engine, Module, Store};
 
@@ -1131,4 +1131,55 @@ fn test_args_evaluate_in_declaration_order(mut with_db: db::RootDatabase) {
     let wasm = compile_to_wasm(&mut with_db, source);
     let r: i32 = super::execute_wasm(&wasm, "test", ());
     assert_eq!(r, 12, "a evaluated first: declaration order, not written order");
+}
+
+/// The return value answers to its callable's name in any case: `compute :=`
+/// inside `FUNCTION Compute` assigns the RETURN VALUE, and the value lands.
+#[rstest]
+fn return_value_assigned_in_another_case(mut with_db: db::RootDatabase) {
+    let source = r#"
+        FUNCTION Compute : INT
+            compute := 42;
+        END_FUNCTION
+
+        FUNCTION get : INT
+            get := Compute();
+        END_FUNCTION
+    "#;
+    let wasm = compile_to_wasm_checked(&mut with_db, source);
+    let result: i32 = execute_wasm(&wasm, "get", ());
+    assert_eq!(result, 42, "the folded self-reference is the return value");
+}
+
+/// Member and struct-field paths spelled in another case reach the same
+/// storage, read and written — `pt.x` inside the FB is `Pt.X`.
+#[rstest]
+fn member_paths_fold_end_to_end(mut with_db: db::RootDatabase) {
+    let source = r#"
+        TYPE Point : STRUCT
+            X : INT;
+            Y : INT;
+        END_STRUCT; END_TYPE
+
+        FUNCTION_BLOCK Holder
+        VAR
+            Pt : Point;
+        END_VAR
+        VAR_OUTPUT
+            O : INT;
+        END_VAR
+            pt.x := 30;
+            PT.y := 12;
+            o := pt.X + Pt.y;
+        END_FUNCTION_BLOCK
+
+        FUNCTION get : INT
+        VAR h : Holder; END_VAR
+            h();
+            get := h.o;
+        END_FUNCTION
+    "#;
+    let wasm = compile_to_wasm_checked(&mut with_db, source);
+    let result: i32 = execute_wasm(&wasm, "get", ());
+    assert_eq!(result, 42, "every spelling reached the same field");
 }
