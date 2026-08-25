@@ -2055,6 +2055,22 @@ END_FUNCTION
             lint_rule: None,
         },
         ErrorExample {
+            code: "E0319",
+            category: "Type",
+            title: "STRING length is not constant",
+            description: "A `STRING[n]` length is part of the TYPE — it decides how many bytes the variable occupies — so it must be known at compile time. It may name a CONSTANT, exactly as an array bound may; what it may not do is depend on something only the runtime knows. Defaulting to 80 instead would size the storage wrongly and say nothing about it.",
+            sources: &[r#"
+FUNCTION fn1 : INT
+VAR
+    n : INT;
+    s : STRING[n];
+END_VAR
+    fn1 := 1;
+END_FUNCTION
+"#],
+            lint_rule: None,
+        },
+        ErrorExample {
             code: "E0318",
             category: "Type System",
             title: "Unsupported operator for type",

@@ -14,8 +14,7 @@ use crate::{
     hir_def::{
         expressions::{
             expression::{
-                Elementary, ExprKind, InitExpr, InitExprKind, Integer, IntegerKind, MultibitsPart,
-                PrimaryExpr,
+                InitExpr, InitExprKind, Integer, IntegerKind, MultibitsPart,
             },
             spec::{ElementarySpec, Enum, EnumVariant, Spec, SpecKind, Struct, SubRange},
         },
@@ -187,18 +186,14 @@ impl<'db> ParseSpec<'db> for ast::generated::ElemTypeName {
             AstSpec::StringTypeName(string_type_name) => {
                 match string_type_name.children.cast(sema.ast) {
                     ast::generated::CharName_StringName::StringName(string_name) => {
-                        match &string_name.children {
-                            Some(unsigned_int) => {
-                                let unsigned_int = unsigned_int.cast(sema.ast);
-                                let ident = Ident::from_node(sema.db, sema.file, unsigned_int)?;
-                                let integer = Integer::new(sema.db, ident, IntegerKind::Signed);
-                                let length_expr = sema.new_expr(
-                                    ExprKind::PrimaryExpr(PrimaryExpr::Literal(
-                                        Elementary::InferInteger(integer),
-                                    )),
-                                    unsigned_int.into(),
-                                    sema.current_scope,
-                                );
+                        match &string_name.length {
+                            // The length is a constant EXPRESSION now, so it is
+                            // parsed as one: `STRING[80]` and `STRING[SIZE]`
+                            // arrive here the same way, and whether it FOLDS is
+                            // decided by the check, not by the parser.
+                            Some(length) => {
+                                let length = length.cast(sema.ast);
+                                let length_expr = length.children.cast(sema.ast).parse(sema)?;
                                 sema.new_spec(
                                     SpecKind::SizedString(length_expr),
                                     self.into(),

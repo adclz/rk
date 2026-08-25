@@ -207,12 +207,15 @@ END_FUNCTION_BLOCK"#;
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @"");
 }
 
-// STRING[K] with a CONSTANT length is refused by the GRAMMAR - the sized
-// length only accepts a literal. Pinned as the current wall: widening it is
-// a grammar change, and until then no non-literal length can reach the
-// capacity fold (which would otherwise silently default to 80).
+/// A `STRING[K]` whose length names a CONSTANT: legal, and measured at K.
+///
+/// The length is a constant EXPRESSION, as an array bound is — the grammar
+/// used to accept only a literal and refused this as a syntax error. The
+/// capacity has to FOLD, not merely parse: `declared_string_capacity` answering
+/// None is read as "unsized" and lowered at the default 80, so a literal is
+/// checked against 4 here, not against 80.
 #[rstest]
-fn sized_string_constant_length_is_a_syntax_error(mut with_db: RootDatabase) {
+fn sized_string_length_may_name_a_constant(mut with_db: RootDatabase) {
     let source = r#"
         FUNCTION fn1 : INT
         VAR CONSTANT K : INT := 4; END_VAR
@@ -221,12 +224,36 @@ fn sized_string_constant_length_is_a_syntax_error(mut with_db: RootDatabase) {
         END_FUNCTION
     "#;
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E0050] Error: syntax
-       ,-[ file:///test0.st:4:23 ]
+    [E0309] Error: invalid literal
+       ,-[ file:///test0.st:5:18 ]
        |
-     4 |         VAR s : STRING[K]; END_VAR
-       |                       ^|^
-       |                        `--- Unexpected token(s): '[ K ]'
+     5 |             s := 'toolong';
+       |                  ^^^^|^^^^
+       |                      `------ cannot infer '<string>' to 'STRING': STRING literal exceeds maximum length of 4, got 7
+    ---'
+    ");
+}
+
+/// A length the compiler cannot work out is refused, not defaulted.
+///
+/// It is part of the type: it decides how many bytes the variable occupies.
+/// Silently taking 80 would size the storage wrongly and say nothing.
+#[rstest]
+fn sized_string_length_must_fold(mut with_db: RootDatabase) {
+    let source = r#"
+        FUNCTION fn1 : INT
+        VAR n : INT; END_VAR
+        VAR s : STRING[n]; END_VAR
+            fn1 := 1;
+        END_FUNCTION
+    "#;
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
+    [E0319] Error: length is not constant
+       ,-[ file:///test0.st:4:24 ]
+       |
+     4 |         VAR s : STRING[n]; END_VAR
+       |                        |
+       |                        `-- a STRING length must be known at compile time
     ---'
     ");
 }
@@ -266,6 +293,36 @@ fn assigned_literal_must_fit_the_destination(mut with_db: RootDatabase) {
        |                                                                                             `------------------------------------------------------------------------- cannot infer '<string>' to 'STRING': STRING literal exceeds maximum length of 80, got 141
     ---'
     ");
+}
+
+/// A capacity is enforced where it CAN be, and only there.
+///
+/// The compiler knows a LITERAL's length, so an over-long one is refused —
+/// every capacity test in this file has a literal on the right for that
+/// reason. It does not know a VARIABLE's, so `s5 := s100` says nothing here
+/// and the store truncates to the destination instead, which
+/// `codegen::string_audit::a_variable_wider_than_its_destination_truncates`
+/// pins.
+///
+/// That is a declared split, not an oversight: refusing `s5 := s100` outright
+/// would reject code whose value fits at runtime, and checking it at runtime
+/// would cost a length compare on every string assignment. What must not
+/// happen is the third thing — a length the compiler COULD have known going
+/// unchecked, which is what the assignment door was doing before E0309
+/// reached it.
+#[rstest]
+fn a_variable_source_is_not_length_checked(mut with_db: RootDatabase) {
+    let source = r#"
+        FUNCTION f : INT
+        VAR
+            wide : STRING[100];
+            narrow : STRING[5];
+        END_VAR
+            narrow := wide;
+            f := 1;
+        END_FUNCTION
+    "#;
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"");
 }
 
 /// Filling the destination exactly is not an overflow.

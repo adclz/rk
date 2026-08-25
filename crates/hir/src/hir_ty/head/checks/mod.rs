@@ -1,3 +1,4 @@
+use crate::check::errors::ToIdeDiagnostic;
 use db::WorkspaceDataBase;
 
 use crate::{
@@ -27,6 +28,22 @@ impl<'db> InitInference<'db> {
             }
             SpecKind::Struct(strukt) => {
                 self.check_struct(db, *strukt);
+            }
+            // The length is part of the type — it decides how many bytes the
+            // variable takes — so one the compiler cannot work out leaves the
+            // layout unknowable. Refused here rather than defaulted to 80,
+            // which would size the storage wrongly and say nothing.
+            SpecKind::SizedString(length)
+                if crate::hir_ty::infer::const_eval::spec_bound(db, *length).is_none() =>
+            {
+                {
+                    self.errors.push(
+                        crate::check::errors::e3_type::TypeError::StringLengthNotConstant {
+                            length: *length,
+                        }
+                        .to_diagnostic(db, self.scope.file(db)),
+                    );
+                }
             }
             _ => {}
         }

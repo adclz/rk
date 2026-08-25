@@ -35,7 +35,12 @@ END_PROGRAM
           (simple_type_spec
             (string_type_name
               (string_name
-                (unsigned_int)))))))
+                (constant_expr
+                  (constant
+                    (numeric_literal
+                      (int_literal
+                        (signed_int
+                          (unsigned_int))))))))))))
     (var_decls
       (loc_var_decl
         (identifier)

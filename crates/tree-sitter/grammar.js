@@ -710,7 +710,11 @@ module.exports = grammar({
 
     string_type_name: ($) => choice($.string_name, $.char_name),
 
-    string_name: ($) => seq(kw("STRING"), optional(seq("[", $.unsigned_int, "]"))),
+    // The length is a constant EXPRESSION, not just a literal: `STRING[SIZE]`
+    // for a CONSTANT is as legal as `STRING[80]`, exactly as an array bound is.
+    // Whether it FOLDS is the checker's business (E0812), not the parser's.
+    string_name: ($) =>
+      seq(kw("STRING"), optional(seq("[", field("length", $.constant_expr), "]"))),
     char_name: ($) => kw("CHAR"),
 
     any_time_type_name: ($) => choice($.time_type_name, $.l_time_type_name),

@@ -830,3 +830,38 @@ END_FUNCTION
     let result: i32 = execute_wasm(&wasm, "get", ());
     assert_eq!(result, 5);
 }
+
+/// The capacity rule, both sides of it, in one place.
+///
+/// A length is enforced where it CAN be: a literal is measured at check
+/// (E0309, `semantics::literals::strings`), because the compiler knows both
+/// the capacity and the length. A variable is not — `s5 := s100` says nothing,
+/// because the length is only known while running — so the store truncates to
+/// the destination's capacity instead.
+///
+/// That split is deliberate, and this pins the runtime half of it: the write
+/// keeps the first `capacity` bytes and the string stays well-formed, rather
+/// than overrunning the slot or being refused. The compile-time half is a
+/// snapshot in another file; this is the sentence that says they are one rule.
+#[rstest]
+fn a_variable_wider_than_its_destination_truncates(mut with_db: db::RootDatabase) {
+    let source = full_source(
+        r#"
+FUNCTION get : UDINT
+VAR
+    wide : STRING[20];
+    narrow : STRING[5];
+END_VAR
+    wide := 'twenty characters!!';
+    narrow := wide;
+    get := len_of(narrow);
+END_FUNCTION
+"#,
+    );
+    let wasm = compile_to_wasm_checked(&mut with_db, &source);
+    let result: i32 = execute_wasm(&wasm, "get", ());
+    assert_eq!(
+        result, 5,
+        "the assignment kept the destination's capacity, and said nothing at check"
+    );
+}

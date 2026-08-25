@@ -20,6 +20,13 @@ use crate::{
 
 #[derive(Clone, Debug, PartialEq, Eq, Hash, salsa::Update)]
 pub enum TypeError<'db> {
+    /// A `STRING[n]` whose length the compiler cannot work out. The length is
+    /// part of the TYPE — it decides how many bytes the variable occupies — so
+    /// one only the runtime knows leaves the layout unknowable, and silently
+    /// taking the default 80 would size the storage wrongly with nothing said.
+    StringLengthNotConstant {
+        length: Expr<'db>,
+    },
     NotAssignable {
         base_target: Type<'db>,
         lhs: Type<'db>,
@@ -80,12 +87,14 @@ impl<'db> ErrorCode for TypeError<'db> {
             Self::InferLiteralError { .. } => "E0309",
             Self::NonVariadicFoldParameter { .. } => "E0317",
             Self::UnsupportedOperator { .. } => "E0318",
+            Self::StringLengthNotConstant { .. } => "E0319",
         }
     }
 
     fn description(&self) -> &'static str {
         match self {
             Self::InferLiteralError { .. } => "invalid literal",
+            Self::StringLengthNotConstant { .. } => "length is not constant",
             _ => "type mismatch",
         }
     }
@@ -98,6 +107,12 @@ impl<'db> ToIdeDiagnostic<'db> for TypeError<'db> {
         file: auto_lsp::default::db::file::File,
     ) -> IdeDiagnostic {
         match self {
+            Self::StringLengthNotConstant { length } => diag()
+                .message("a STRING length must be known at compile time".to_string())
+                .severity(DiagnosticSeverity::ERROR)
+                .desc(self)
+                .range(crate::denormalize(db, file, &length.get_span(db)).unwrap_or_default())
+                .call(),
             Self::NotAssignable {
                 base_target,
                 lhs: target,

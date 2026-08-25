@@ -2421,8 +2421,12 @@
                   "value": "["
                 },
                 {
-                  "type": "SYMBOL",
-                  "name": "unsigned_int"
+                  "type": "FIELD",
+                  "name": "length",
+                  "content": {
+                    "type": "SYMBOL",
+                    "name": "constant_expr"
+                  }
                 },
                 {
                   "type": "STRING",

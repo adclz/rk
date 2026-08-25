@@ -206,7 +206,15 @@ fn declared_string_capacity_inner<'db>(
         return None;
     }
     match spec.kind(db) {
-        SpecKind::SizedString(length_expr) => length_expr.as_range(db).map(|n| n as u32),
+        // `spec_bound`, not `as_range`: the length may name a CONSTANT
+        // (`STRING[SIZE]`), and a literal-only fold would answer None there —
+        // which the caller reads as "unsized" and lowers at the default 80,
+        // a wrong layout with nothing said. A length that truly does not fold
+        // is refused by the check (E0812), so None here means the program was
+        // already rejected.
+        SpecKind::SizedString(length_expr) => {
+            crate::hir_ty::infer::const_eval::spec_bound(db, *length_expr).map(|n| n as u32)
+        }
         SpecKind::Ref(inner) => declared_string_capacity_inner(db, *inner, depth + 1),
         // Named: ask the data type it resolves to for its own spec. Using the
         // inferred type rather than re-resolving the name keeps the binding

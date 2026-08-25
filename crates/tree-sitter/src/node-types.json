@@ -5838,16 +5838,17 @@
   {
     "type": "string_name",
     "named": true,
-    "fields": {},
-    "children": {
-      "multiple": false,
-      "required": false,
-      "types": [
-        {
-          "type": "unsigned_int",
-          "named": true
-        }
-      ]
+    "fields": {
+      "length": {
+        "multiple": false,
+        "required": false,
+        "types": [
+          {
+            "type": "constant_expr",
+            "named": true
+          }
+        ]
+      }
     }
   },
   {
