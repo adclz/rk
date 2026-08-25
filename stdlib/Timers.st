@@ -539,17 +539,17 @@ NAMESPACE Std.Timers
 		{test}
 		FUNCTION test_pt_zero_pins_current_behavior
 			VAR
-				ton: TON_TIME;
-				tp: TP_TIME;
+				ton_timer: TON_TIME;
+				tp_timer: TP_TIME;
 			END_VAR
-			ton(IN := TRUE, PT := T#0s);
-			ASSERT(NOT ton.Q, 'TON PT=0: edge call does not evaluate the deadline yet');
-			ton(IN := TRUE, PT := T#0s);
-			ASSERT(ton.Q, 'TON PT=0: fires on the next call');
-			tp(IN := TRUE, PT := T#0s);
-			ASSERT(tp.Q, 'TP PT=0: pulse starts on the edge call');
-			tp(IN := TRUE, PT := T#0s);
-			ASSERT(NOT tp.Q, 'TP PT=0: pulse over on the next call');
+			ton_timer(IN := TRUE, PT := T#0s);
+			ASSERT(NOT ton_timer.Q, 'TON PT=0: edge call does not evaluate the deadline yet');
+			ton_timer(IN := TRUE, PT := T#0s);
+			ASSERT(ton_timer.Q, 'TON PT=0: fires on the next call');
+			tp_timer(IN := TRUE, PT := T#0s);
+			ASSERT(tp_timer.Q, 'TP PT=0: pulse starts on the edge call');
+			tp_timer(IN := TRUE, PT := T#0s);
+			ASSERT(NOT tp_timer.Q, 'TP PT=0: pulse over on the next call');
 		END_FUNCTION
 
 		// -- the LTIME variants run the same machine on the ns clock --

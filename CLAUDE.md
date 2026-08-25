@@ -266,7 +266,7 @@ Server binary resolution:
 | Dependency     | Purpose                                                                                      |
 | -------------- | -------------------------------------------------------------------------------------------- |
 | `auto-lsp`     | LSP framework, Salsa integration, file management (custom fork at github.com/adclz/auto-lsp) |
-| `salsa`        | Incremental computation framework (v0.23.0, must stay in sync with auto-lsp)                 |
+| `salsa`        | Incremental computation framework (v0.26, must stay in sync with auto-lsp)                 |
 | `tree-sitter`  | Parser generator, used via the grammar in `crates/tree-sitter/`                              |
 | `topiary-core` | Tree-sitter-based code formatter engine                                                      |
 | `ariadne`      | Pretty diagnostic report rendering (used in tests and CLI)                                   |
@@ -281,7 +281,7 @@ Server binary resolution:
 
 ## Important Notes
 
-- The `salsa` version MUST stay in sync with `auto-lsp`'s salsa version (currently 0.23.0)
+- The `salsa` version MUST stay in sync with `auto-lsp`'s salsa version (currently 0.26)
 - The Rust toolchain is pinned by `rust-toolchain.toml` (stable; rustup applies it automatically). Only the fuzzers need nightly (`cargo +nightly`)
 - `crates/ast/src/generated.rs` is auto-generated — never edit it manually
 - Tree-sitter grammar changes require running `tree-sitter generate` before rebuilding
