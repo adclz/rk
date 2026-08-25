@@ -636,8 +636,8 @@ impl<'db> StmtsResolverCtx<'db> {
                     let mut mark = |ident: &crate::hir_def::interned::identifier::Ident| {
                         if let Some(var) = def_map
                             .local_variables
-                            .get(ident)
-                            .or_else(|| def_map.global_variables.get(ident))
+                            .get(&ident.fold(db))
+                            .or_else(|| def_map.global_variables.get(&ident.fold(db)))
                         {
                             ctx.variables_used.insert(*var);
                         }

@@ -237,7 +237,7 @@ impl<'db> InferExprCtx<'db> {
                 // Look up the variadic parameter in the current scope
                 let scope = curr_expr.scope_id(db);
                 let def_map = scope.def_map(db);
-                let ty = match def_map.local_variables.get(param) {
+                let ty = match def_map.local_variables.get(&param.fold(db)) {
                     Some(var) => {
                         if !var.variadic(db) {
                             inference_results.errors.push(
@@ -341,7 +341,7 @@ impl<'db> InferExprCtx<'db> {
                 match find_enm.normalize(db) {
                     Type::Enum(enm) => enm
                         .enum_variants(db)
-                        .get(variant)
+                        .get(&variant.fold(db))
                         .map(|v| match find_enm {
                             Type::DataType(dt) => Type::EnumVariant(dt, *v.name),
                             _ => find_enm,

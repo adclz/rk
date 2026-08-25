@@ -298,7 +298,7 @@ impl<'db> Signature<'db> {
 
             // Look up the referenced variable in the program's scope
             let var_name = decl.variable.ident(db).ident;
-            match def_map.global_variables.get(&var_name) {
+            match def_map.global_variables.get(&var_name.fold(db)) {
                 Some(var) => {
                     // Variable found - compare declared spec type with actual variable type
                     let var_ty = self

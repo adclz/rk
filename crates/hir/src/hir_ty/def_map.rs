@@ -6,7 +6,7 @@ use crate::{
     CallSite, HasName,
     hir_def::{
         expressions::spec::{Enum, EnumVariant, SpecKind, Struct, StructElement},
-        interned::identifier::Ident,
+        interned::identifier::FoldedIdent,
         pous::{
             pou::Pou,
             variable::{VariableDecl, VariableKind},
@@ -20,17 +20,21 @@ use crate::{
 pub type FxIndexMap<K, V> = IndexMap<K, V, rustc_hash::FxBuildHasher>;
 
 #[derive(Debug, Clone, PartialEq, Eq, salsa::Update)]
+///
+/// Every map is keyed by [`FoldedIdent`], because case is not significant in
+/// IEC identifiers. The key type is what enforces it: an `Ident` will not open
+/// these maps, so a lookup that forgot to fold does not compile.
 pub struct LocalDefMap<'db> {
     /// Local POUs accessible in this scope
-    pub local_pous: FxHashMap<Ident, Pou<'db>>,
+    pub local_pous: FxHashMap<FoldedIdent, Pou<'db>>,
     /// Local variables accessible in this scope (VARIABLES with Input, Output, InOut specifiers)
     ///
     /// We use [`IndexMap`] here to preserve the order of declaration
-    pub local_variables: FxIndexMap<Ident, VariableDecl<'db>>,
+    pub local_variables: FxIndexMap<FoldedIdent, VariableDecl<'db>>,
     /// Global variables accessible in this scope (all VARIABLES)
-    pub global_variables: FxHashMap<Ident, VariableDecl<'db>>,
+    pub global_variables: FxHashMap<FoldedIdent, VariableDecl<'db>>,
     /// Methods declared in this scope (for CLASSes, INTERFACEs, FUNCTION BLOCKs)
-    pub declared_methods: FxHashMap<Ident, MethodRef<'db>>,
+    pub declared_methods: FxHashMap<FoldedIdent, MethodRef<'db>>,
 }
 
 #[salsa::tracked]
@@ -45,12 +49,12 @@ impl<'db> ScopeId<'db> {
         }
     }
 
-    fn local_pous(&self, db: &'db dyn WorkspaceDataBase) -> FxHashMap<Ident, Pou<'db>> {
+    fn local_pous(&self, db: &'db dyn WorkspaceDataBase) -> FxHashMap<FoldedIdent, Pou<'db>> {
         match get_scope(db, *self).kind {
             ScopeKind::Namespace(ns) => {
                 let mut result = FxHashMap::default();
                 ns.pous(db).iter().for_each(|pou| {
-                    result.insert(pou.get_name_ident(db), *pou);
+                    result.insert(pou.get_name_ident(db).fold(db), *pou);
                 });
                 result
             }
@@ -74,7 +78,7 @@ impl<'db> ScopeId<'db> {
     fn local_variables(
         &self,
         db: &'db dyn WorkspaceDataBase,
-    ) -> FxIndexMap<Ident, VariableDecl<'db>> {
+    ) -> FxIndexMap<FoldedIdent, VariableDecl<'db>> {
         match get_scope(db, *self).kind {
             ScopeKind::Global | ScopeKind::Namespace(_) | ScopeKind::Program(_) => {
                 IndexMap::default()
@@ -94,7 +98,7 @@ impl<'db> ScopeId<'db> {
     fn global_variables(
         &self,
         db: &'db dyn WorkspaceDataBase,
-    ) -> FxHashMap<Ident, VariableDecl<'db>> {
+    ) -> FxHashMap<FoldedIdent, VariableDecl<'db>> {
         match get_scope(db, *self).kind {
             ScopeKind::Pou(pou) => match pou {
                 Pou::Function(f) => global_variables(db, f.variables(db)),
@@ -110,7 +114,7 @@ impl<'db> ScopeId<'db> {
         }
     }
 
-    fn declared_methods(&self, db: &'db dyn WorkspaceDataBase) -> FxHashMap<Ident, MethodRef<'db>> {
+    fn declared_methods(&self, db: &'db dyn WorkspaceDataBase) -> FxHashMap<FoldedIdent, MethodRef<'db>> {
         match get_scope(db, *self).kind {
             ScopeKind::Global
             | ScopeKind::Namespace(_)
@@ -120,17 +124,17 @@ impl<'db> ScopeId<'db> {
                 Pou::Class(class) => class
                     .methods(db)
                     .iter()
-                    .map(|m| (m.get_name_ident(db), m.into()))
+                    .map(|m| (m.get_name_ident(db).fold(db), m.into()))
                     .collect(),
                 Pou::Interface(interface) => interface
                     .methods(db)
                     .iter()
-                    .map(|m| (m.get_name_ident(db), m.into()))
+                    .map(|m| (m.get_name_ident(db).fold(db), m.into()))
                     .collect(),
                 Pou::FunctionBlock(fb) => fb
                     .methods(db)
                     .iter()
-                    .map(|m| (m.get_name_ident(db), m.into()))
+                    .map(|m| (m.get_name_ident(db).fold(db), m.into()))
                     .collect(),
                 _ => Default::default(),
             },
@@ -204,10 +208,10 @@ impl<'db> Struct<'db> {
     pub fn struct_elements(
         self,
         db: &'db dyn WorkspaceDataBase,
-    ) -> FxHashMap<Ident, StructElement<'db>> {
+    ) -> FxHashMap<FoldedIdent, StructElement<'db>> {
         self.elements(db)
             .iter()
-            .map(|element| (element.get_name_ident(db), *element))
+            .map(|element| (element.get_name_ident(db).fold(db), *element))
             .collect()
     }
 }
@@ -218,10 +222,10 @@ impl<'db> Enum<'db> {
     pub fn enum_variants(
         self,
         db: &'db dyn WorkspaceDataBase,
-    ) -> FxHashMap<Ident, EnumVariant<'db>> {
+    ) -> FxHashMap<FoldedIdent, EnumVariant<'db>> {
         self.variants(db)
             .iter()
-            .map(|element| (*element.name, *element))
+            .map(|element| (element.name.fold(db), *element))
             .collect()
     }
 }
@@ -229,10 +233,10 @@ impl<'db> Enum<'db> {
 fn global_variables<'db>(
     db: &'db dyn WorkspaceDataBase,
     vars: &[VariableDecl<'db>],
-) -> FxHashMap<Ident, VariableDecl<'db>> {
+) -> FxHashMap<FoldedIdent, VariableDecl<'db>> {
     let mut variables = FxHashMap::default();
     for v in vars {
-        variables.insert(v.get_name_ident(db), *v);
+        variables.insert(v.get_name_ident(db).fold(db), *v);
     }
     variables
 }
@@ -240,18 +244,18 @@ fn global_variables<'db>(
 fn local_variables<'db>(
     db: &'db dyn WorkspaceDataBase,
     vars: &[VariableDecl<'db>],
-) -> FxIndexMap<Ident, VariableDecl<'db>> {
+) -> FxIndexMap<FoldedIdent, VariableDecl<'db>> {
     let mut variables = IndexMap::default();
     for v in vars {
         match v.kind(db) {
             VariableKind::Input => {
-                variables.insert(v.get_name_ident(db), *v);
+                variables.insert(v.get_name_ident(db).fold(db), *v);
             }
             VariableKind::Output => {
-                variables.insert(v.get_name_ident(db), *v);
+                variables.insert(v.get_name_ident(db).fold(db), *v);
             }
             VariableKind::InOut => {
-                variables.insert(v.get_name_ident(db), *v);
+                variables.insert(v.get_name_ident(db).fold(db), *v);
             }
             _ => continue,
         };

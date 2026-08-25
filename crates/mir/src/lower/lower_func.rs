@@ -1,7 +1,7 @@
 use db::WorkspaceDataBase;
 use hir::{
     hir_def::{
-        interned::identifier::Ident,
+        interned::identifier::{FoldedIdent, Ident},
         pous::{
             class::Class,
             function::Function,
@@ -54,7 +54,7 @@ fn emittable_methods<'db>(
 ) -> Vec<hir::hir_def::pous::class::MethodDecl<'db>> {
     use hir::hir_ty::head::inheritance::MethodRef;
 
-    let own_names: FxHashSet<Ident> = own.iter().map(|m| m.name(db)).collect();
+    let own_names: FxHashSet<FoldedIdent> = own.iter().map(|m| m.name(db).fold(db)).collect();
     let mut inherited: Vec<_> = hir::hir_ty::head::inheritance::inherited_methods(db, pou)
         .methods
         .iter()

@@ -94,6 +94,56 @@ pub struct Ident {
     pub text: CompactString,
 }
 
+/// An identifier reduced to the form names are COMPARED in.
+///
+/// IEC 61131-3 §6.1.2: case is not significant in identifiers, so `Motor` and
+/// `motor` are one name. The fold lives in the KEY rather than in the
+/// comparison: every lookup map is keyed by this, so resolution stays a single
+/// interned-id compare instead of a string walk.
+///
+/// It is a distinct TYPE on purpose. A map keyed by `FoldedIdent` cannot be
+/// queried with an `Ident`, so every lookup site has to fold and the compiler
+/// says which ones — the alternative is a discipline nobody can enforce, where
+/// the site you forget stays case-sensitive and answers wrongly in silence.
+///
+/// The spelling the author wrote is NOT this: it stays on the `Ident`, which
+/// is what diagnostics, hover, completion and the wasm export names read.
+#[derive(Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord, Debug, salsa::Update)]
+pub struct FoldedIdent(Ident);
+
+#[salsa::tracked]
+impl Ident {
+    /// This identifier as names are compared.
+    ///
+    /// `to_lowercase`, not `to_ascii_lowercase`: identifiers are Unicode here
+    /// (the grammar admits `XID_Start`/`XID_Continue`), so an ASCII fold would
+    /// leave `MÄX` and `mäx` as two names.
+    #[salsa::tracked]
+    pub fn fold(self, db: &dyn WorkspaceDataBase) -> FoldedIdent {
+        let text = self.text(db);
+        // The overwhelmingly common case is already folded, and interning the
+        // same bytes back is cheaper than allocating a copy of them.
+        if text.chars().all(|c| !c.is_uppercase()) {
+            return FoldedIdent(self);
+        }
+        FoldedIdent(Ident::new(db, text.to_lowercase()))
+    }
+}
+
+impl FoldedIdent {
+    /// The folded text itself, for the byte-oriented indexes (`fst`) that
+    /// cannot hold an interned id.
+    pub fn text(self, db: &dyn WorkspaceDataBase) -> &CompactString {
+        self.0.text(db)
+    }
+
+    /// The folded spelling as a plain [`Ident`], for composite interned keys
+    /// (namespace paths) whose element type has to stay `Ident`.
+    pub fn as_ident(self) -> Ident {
+        self.0
+    }
+}
+
 impl Ident {
     pub fn from_node(
         db: &dyn WorkspaceDataBase,

@@ -142,7 +142,7 @@ pub fn namespace_index<'db>(
     let mut result = vec![];
     for file in all_files(db) {
         for ns in file_namespaces(db, file).iter() {
-            if *ns.path(db) == path {
+            if ns.path(db).fold(db) == path.fold(db) {
                 result.push(*ns);
             }
         }
@@ -158,7 +158,7 @@ pub fn namespace_pou_index<'db>(
     name: Ident,
 ) -> Option<Pou<'db>> {
     for ns in namespace_index(db, path) {
-        if let Some(pou) = ns.scope_id(db).def_map(db).local_pous.get(&name) {
+        if let Some(pou) = ns.scope_id(db).def_map(db).local_pous.get(&name.fold(db)) {
             return Some(*pou);
         }
     }
@@ -170,7 +170,7 @@ pub fn namespace_pou_index<'db>(
 pub fn pou_index<'db>(db: &'db dyn WorkspaceDataBase, name: Ident) -> Option<Pou<'db>> {
     for file in all_files(db) {
         for p in file_global_pous(db, file).iter() {
-            if p.get_name_ident(db) == name {
+            if p.get_name_ident(db).fold(db) == name.fold(db) {
                 return Some(*p);
             }
         }
@@ -188,7 +188,7 @@ pub fn pou_candidates<'db>(db: &'db dyn WorkspaceDataBase, name: Ident) -> Vec<P
     let mut result = Vec::new();
     for file in all_files(db) {
         for p in file_global_pous(db, file).iter() {
-            if p.get_name_ident(db) == name {
+            if p.get_name_ident(db).fold(db) == name.fold(db) {
                 result.push(*p);
             }
         }
@@ -207,7 +207,7 @@ pub fn namespace_pou_candidates<'db>(
     let mut result = Vec::new();
     for ns in namespace_index(db, path) {
         for p in ns.pous(db).iter() {
-            if p.get_name_ident(db) == name {
+            if p.get_name_ident(db).fold(db) == name.fold(db) {
                 result.push(*p);
             }
         }
@@ -220,7 +220,7 @@ pub fn namespace_pou_candidates<'db>(
 pub fn program_index<'db>(db: &'db dyn WorkspaceDataBase, name: Ident) -> Option<ProgramDecl<'db>> {
     for file in all_files(db) {
         for p in file_programs(db, file).iter() {
-            if p.get_name_ident(db) == name {
+            if p.get_name_ident(db).fold(db) == name.fold(db) {
                 return Some(*p);
             }
         }
@@ -254,7 +254,7 @@ pub fn config_fragments<'db>(db: &'db dyn WorkspaceDataBase, name: Ident) -> Vec
         out.extend(
             file_configs(db, file)
                 .iter()
-                .filter(|c| c.get_name_ident(db) == name)
+                .filter(|c| c.get_name_ident(db).fold(db) == name.fold(db))
                 .copied(),
         );
     }
@@ -272,7 +272,7 @@ pub fn external_var_lookup<'db>(
     for file in all_files(db) {
         for config in file_configs(db, file).iter() {
             for v in config.variables(db).iter() {
-                if v.get_name_ident(db) == var_name {
+                if v.get_name_ident(db).fold(db) == var_name.fold(db) {
                     return Some(*v);
                 }
             }

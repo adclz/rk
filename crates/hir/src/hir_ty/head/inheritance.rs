@@ -2,7 +2,7 @@ use crate::{
     AstId, HasModifiers, HasName, HasVisibility, HirNodeInfo, Modifier, Visibility,
     hir_def::{
         expressions::{expression::InitExpr, spec::{Spec, SpecKind}},
-        interned::identifier::Ident,
+        interned::identifier::{FoldedIdent, Ident},
         pous::{class::MethodDecl, interface::MethodPrototype, pou::Pou, variable::VariableDecl},
         scope::ScopeId,
     },
@@ -131,7 +131,7 @@ impl<'db> From<&MethodDecl<'db>> for MethodRef<'db> {
 
 #[derive(Default, Debug, Clone, PartialEq, Eq, salsa::Update)]
 pub struct InheritedMethodSet<'db> {
-    pub methods: FxHashMap<Ident, InheritedMethod<'db>>,
+    pub methods: FxHashMap<FoldedIdent, InheritedMethod<'db>>,
 
     pub duplicates: Vec<(InheritedMethod<'db>, InheritedMethod<'db>)>,
 }
@@ -206,7 +206,7 @@ fn chain_methods<'db>(
     db: &'db dyn WorkspaceDataBase,
     pou: Pou<'db>,
     visited: &mut Vec<Pou<'db>>,
-) -> FxHashMap<Ident, InheritedMethod<'db>> {
+) -> FxHashMap<FoldedIdent, InheritedMethod<'db>> {
     let mut out = FxHashMap::default();
     // Cyclic inheritance is reported separately (E05xx); stop so this
     // terminates regardless.
@@ -236,7 +236,7 @@ pub fn inherited_methods<'db>(
     db: &'db dyn WorkspaceDataBase,
     pou: Pou<'db>,
 ) -> InheritedMethodSet<'db> {
-    let mut methods: FxHashMap<Ident, InheritedMethod<'db>> = FxHashMap::default();
+    let mut methods: FxHashMap<FoldedIdent, InheritedMethod<'db>> = FxHashMap::default();
     let mut duplicates = vec![];
 
     for base in direct_bases(db, pou) {
@@ -491,12 +491,12 @@ pub fn implementing_method<'db>(
         .get_scope_id(db)
         .def_map(db)
         .declared_methods
-        .get(&name)
+        .get(&name.fold(db))
         .copied();
     let resolved = own.or_else(|| {
         inherited_methods(db, implementer)
             .methods
-            .get(&name)
+            .get(&name.fold(db))
             .map(|m| m.method)
     })?;
     match resolved {

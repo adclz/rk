@@ -811,7 +811,10 @@ impl<'db> ExprLowerCtx<'db> {
         {
             return Some(*var);
         }
-        scope.def_map(self.db).global_variables.get(&ident).copied()
+        scope.def_map(self.db)
+            .global_variables
+            .get(&ident.fold(self.db))
+            .copied()
     }
 
     /// Lower a BeginPathExpr to a MirPlace, handling nested field/index/deref chains.

@@ -186,7 +186,7 @@ fn spec_name_binding<'db>(
 
     let mut scope = Some(va.get_scope_id(db));
     while let Some(sc) = scope {
-        if let Some(decl) = sc.def_map(db).global_variables.get(&ident) {
+        if let Some(decl) = sc.def_map(db).global_variables.get(&ident.fold(db)) {
             return Some(*decl);
         }
         scope = get_scope(db, sc).parent;

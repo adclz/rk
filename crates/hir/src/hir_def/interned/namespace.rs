@@ -169,6 +169,20 @@ pub struct NamespacePath {
     pub fragments: Vec<Ident>,
 }
 
+#[salsa::tracked]
+impl NamespacePath {
+    /// The path as names are compared: every fragment folded, per §6.1.2.
+    /// Memoized so path equality stays a single interned-id compare.
+    #[salsa::tracked]
+    pub fn fold(self, db: &dyn WorkspaceDataBase) -> NamespacePath {
+        let fragments = self.fragments(db);
+        if fragments.iter().all(|f| f.fold(db).as_ident() == *f) {
+            return self;
+        }
+        NamespacePath::new(db, fragments.iter().map(|f| f.fold(db).as_ident()).collect::<Vec<_>>())
+    }
+}
+
 impl NamespacePath {
     pub fn to_string(&self, db: &dyn WorkspaceDataBase) -> String {
         self.fragments(db)

@@ -243,7 +243,7 @@ fn find_namespace_references<'db>(
         let sema = semantic_index(db, *file);
         let _ = sema.walk_hir(db, &mut |node: HirNode<'db>| {
             if let HirNode::Using(u) = &node
-                && u.path(db).path == path
+                && u.path(db).path.fold(db) == path.fold(db)
             {
                 locations.push(ReferenceLocation {
                     file: u.scope_id(db).file(db),

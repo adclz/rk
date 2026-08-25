@@ -6,7 +6,7 @@ use crate::check::errors::e1_duplicates::DuplicateError;
 use crate::check::errors::e3_type::TypeError;
 use crate::check::errors::e10_control_flow::ControlFlowError;
 use crate::hir_def::expressions::expression::{Expr, ExprKind, ParamAssign, PrimaryExpr};
-use crate::hir_def::interned::identifier::Ident;
+use crate::hir_def::interned::identifier::{FoldedIdent, Ident};
 use crate::hir_def::pous::variable::VariableDecl;
 use crate::hir_ty::resolver::name::{OverloadPick, select_overload};
 use crate::{
@@ -178,10 +178,12 @@ pub fn resolve_func_call<'db>(
     }
 
     // Flag any expected param that is required-at-call-site but not supplied.
-    let matched_idents: FxHashSet<Ident> = matches
+    let matched_idents: FxHashSet<FoldedIdent> = matches
         .iter()
         .filter_map(|m| match m {
-            ParamMatch::Matched(_, var) | ParamMatch::Variadic(_, var, _) => Some(var.name(db)),
+            ParamMatch::Matched(_, var) | ParamMatch::Variadic(_, var, _) => {
+                Some(var.name(db).fold(db))
+            }
             ParamMatch::Error => None,
         })
         .collect();
@@ -609,8 +611,8 @@ pub fn resolve_params<'db>(
     let named_params: FxHashSet<_> = params
         .iter()
         .filter_map(|p| match p.kind(db) {
-            ParamAssignKind::FormalInput { param, .. } => Some(param.ident),
-            ParamAssignKind::FormalOutput { param, .. } => Some(param.ident),
+            ParamAssignKind::FormalInput { param, .. } => Some(param.ident.fold(db)),
+            ParamAssignKind::FormalOutput { param, .. } => Some(param.ident.fold(db)),
             _ => None,
         })
         .collect();
@@ -680,7 +682,7 @@ pub fn resolve_params<'db>(
                     continue;
                 }
 
-                if let Some(var) = callable.def_map(db).local_variables.get(&param.ident) {
+                if let Some(var) = callable.def_map(db).local_variables.get(&param.ident.fold(db)) {
                     results.push(ParamMatch::Matched(*parameter, *var));
                 } else {
                     errors.push(
@@ -707,7 +709,7 @@ pub fn resolve_params<'db>(
                     continue;
                 }
 
-                if let Some(var) = callable.def_map(db).local_variables.get(&param.ident) {
+                if let Some(var) = callable.def_map(db).local_variables.get(&param.ident.fold(db)) {
                     results.push(ParamMatch::Matched(*parameter, *var));
                 } else {
                     errors.push(

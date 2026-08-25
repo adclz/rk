@@ -587,7 +587,7 @@ fn validate_config_inst_inits<'db>(
             };
 
             let def_map = scope.def_map(db);
-            match def_map.global_variables.get(&field_ident.ident) {
+            match def_map.global_variables.get(&field_ident.ident.fold(db)) {
                 Some(var) => {
                     current_type = var.spec(db).infer(db);
                 }
