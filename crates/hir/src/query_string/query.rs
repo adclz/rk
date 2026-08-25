@@ -201,9 +201,14 @@ impl<'db> SymbolIndex<'db> {
         db: &'db dyn WorkspaceDataBase,
         mut symbols: Box<[NamedSymbol<'db>]>,
     ) -> SymbolIndex<'db> {
+        // Folded the same way the needle is (`Query::new`), and the same way
+        // name resolution folds: an ASCII fold here left the KEY as `mÄx`
+        // while the needle became `mäx`, so a symbol could not be found by
+        // typing its own name in lower case. The comparator has to agree with
+        // the key below, since `fst` demands sorted insertion.
         fn cmp(lhs: &NamedSymbol, rhs: &NamedSymbol) -> Ordering {
-            let lhs_chars = lhs.name.as_str().chars().map(|c| c.to_ascii_lowercase());
-            let rhs_chars = rhs.name.as_str().chars().map(|c| c.to_ascii_lowercase());
+            let lhs_chars = lhs.name.as_str().chars().flat_map(|c| c.to_lowercase());
+            let rhs_chars = rhs.name.as_str().chars().flat_map(|c| c.to_lowercase());
             lhs_chars.cmp(rhs_chars)
         }
 
@@ -224,7 +229,7 @@ impl<'db> SymbolIndex<'db> {
             let end = idx + 1;
             last_batch_start = end;
 
-            let key = symbols[start].name.as_str().to_ascii_lowercase();
+            let key = symbols[start].name.as_str().to_lowercase();
             let value = SymbolIndex::range_to_map_value(start, end);
 
             builder.insert(key, value).unwrap();

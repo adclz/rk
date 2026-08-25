@@ -55,10 +55,9 @@ impl<'db> ReferencesHandler<'db> for HirNode<'db> {
         for file in db.get_files().iter() {
             // Text pre-filter: skip files that don't contain the symbol name
             let source = file.document(db).as_str();
-            if !source
-                .to_ascii_lowercase()
-                .contains(&name.to_ascii_lowercase())
-            {
+            // Unicode, matching the fold resolution uses: an ASCII fold here
+            // would skip a file whose only mention of `MÄX` is spelled `mäx`.
+            if !source.to_lowercase().contains(&name.to_lowercase()) {
                 continue;
             }
 
@@ -211,7 +210,7 @@ fn find_references_in_file<'db>(
             // false positives from path fragments that resolve to the
             // same type through adjustments (deref, field chains, etc.)
             if let Some(ident) = node_reference_ident(db, &node)
-                && !ident.eq_ignore_ascii_case(target_name)
+                && ident.to_lowercase() != target_name.to_lowercase()
             {
                 return ControlFlow::Continue(());
             }
