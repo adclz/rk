@@ -1,3 +1,4 @@
+pub mod caseless;
 pub mod cli;
 pub mod codegen;
 pub mod completions;

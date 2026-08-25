@@ -618,30 +618,3 @@ fn multi_dim_initialization_fills_rightmost_fastest(mut with_db: db::RootDatabas
     let result: i32 = super::execute_wasm(&wasm, "run", ());
     assert_eq!(result, 346, "m[0,2]=3, m[1,0]=4, m[1,2]=6: row-major fill");
 }
-
-/// A struct initializer naming its field in a different case still lands.
-///
-/// The initializer's path steps carry the spelling as WRITTEN, and MIR walks
-/// them against the field names as DECLARED (`lower_func::walk_init_path`).
-/// If those two are compared without folding, the step matches nothing, the
-/// value is silently dropped, and the field reads back as zero on a program
-/// that compiled at exit 0.
-#[rstest]
-fn struct_initializer_field_name_folds(mut with_db: db::RootDatabase) {
-    let source = r#"
-        TYPE S : STRUCT
-            Fld : INT;
-            Other : INT;
-        END_STRUCT; END_TYPE
-
-        FUNCTION get : INT
-        VAR
-            s : S := (fld := 7, OTHER := 5);
-        END_VAR
-            get := s.Fld * 10 + s.Other;
-        END_FUNCTION
-    "#;
-    let wasm = compile_to_wasm_checked(&mut with_db, source);
-    let result: i32 = execute_wasm(&wasm, "get", ());
-    assert_eq!(result, 75, "both initializers landed despite the spelling");
-}

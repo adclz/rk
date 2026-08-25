@@ -279,39 +279,6 @@ fn unknown_slice_size_is_refused(mut with_db: db::RootDatabase) {
     ");
 }
 
-/// The size character is a keyword, so it is read in either case.
-///
-/// `%b1` is `%B1`: a BYTE, which is why assigning it to a BOOL is the error
-/// below rather than silence. Lower case used to decode as no slice at all.
-#[rstest]
-fn slice_size_is_case_insensitive(mut with_db: db::RootDatabase) {
-    let source = r#"
-        FUNCTION f : INT
-        VAR
-            w : WORD;
-            b : BOOL;
-            y : BYTE;
-        END_VAR
-            y := w.%b1;
-            b := w.%b1;
-            f := 1;
-        END_FUNCTION
-    "#;
-    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E0301] Error: type mismatch
-       ,-[ file:///test0.st:9:18 ]
-       |
-     5 |             b : BOOL;
-       |             |
-       |             `-- type is declared by variable 'b' here
-       |
-     9 |             b := w.%b1;
-       |                  ^^|^^
-       |                    `---- expected 'BOOL', got 'BYTE'
-    ---'
-    ");
-}
-
 /// The offset is measured against what the slice APPLIES to: the element of
 /// `arr[k]`, the field of `s.fld` — not the array or the struct.
 ///

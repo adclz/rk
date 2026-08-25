@@ -316,30 +316,3 @@ fn enum_value_folding_expression_runs(mut with_db: db::RootDatabase) {
     let r: i32 = super::execute_wasm(&wasm, "test", ());
     assert_eq!(r, 3, "Run's ordinal follows the folded 2");
 }
-
-/// An enum variant written in another case denotes the same variant, and must
-/// carry the same VALUE into lowering.
-///
-/// MIR matches the written variant against the declared ones; if the two are
-/// compared without agreeing on case, the lookup misses and the initializer is
-/// refused (or worse, silently takes another variant's value).
-#[rstest]
-fn enum_variant_case_reaches_the_same_value(mut with_db: db::RootDatabase) {
-    let source = r#"
-        TYPE Color : (RED, GREEN, BLUE); END_TYPE
-
-        FUNCTION get : INT
-        VAR
-            c : Color := color#green;
-        END_VAR
-            IF c = Color#GREEN THEN
-                get := 42;
-            ELSE
-                get := 0;
-            END_IF;
-        END_FUNCTION
-    "#;
-    let wasm = compile_to_wasm_checked(&mut with_db, source);
-    let result: i32 = execute_wasm(&wasm, "get", ());
-    assert_eq!(result, 42, "color#green IS Color#GREEN");
-}

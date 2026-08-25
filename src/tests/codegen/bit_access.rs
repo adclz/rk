@@ -93,39 +93,6 @@ fn read_byte_of_dword(mut with_db: db::RootDatabase, #[case] access: &str, #[cas
     assert_eq!(result, expected, "{access} on 16#11223344");
 }
 
-/// The size character is a keyword, so it names the same slice in either case.
-///
-/// Lower case used to decode as no slice AT ALL: `multibits_slice` matched only
-/// upper case, the type fell back to BOOL, `rk check` passed — and lowering
-/// then died with an internal compiler error on a program the front end had
-/// just accepted. The expected values here are the ones the upper-case cases
-/// above already pin, so the two spellings are held to one answer.
-#[rstest]
-#[case("d.%x2", "BOOL", 1)]
-#[case("d.%b1", "BYTE", 0x33)]
-#[case("d.%w1", "WORD", 0x1122)]
-#[case("d.%d0", "DWORD", 0x11223344)]
-fn size_character_reads_the_same_slice_in_either_case(
-    mut with_db: db::RootDatabase,
-    #[case] access: &str,
-    #[case] returns: &str,
-    #[case] expected: i32,
-) {
-    let source = format!(
-        r#"
-        FUNCTION get : {returns}
-        VAR
-            d : DWORD := 16#11223344;
-        END_VAR
-            get := {access};
-        END_FUNCTION
-    "#
-    );
-    let wasm = compile_to_wasm_checked(&mut with_db, &source);
-    let result: i32 = execute_wasm(&wasm, "get", ());
-    assert_eq!(result, expected, "{access} on 16#11223344");
-}
-
 /// `%Wn` shifts by `n * 16` and masks 16 bits.
 #[rstest]
 #[case("d.%W0", 0x3344)]

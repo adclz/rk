@@ -212,25 +212,3 @@ fn variable_named_like_its_callable_is_the_return_value(mut with_db: RootDatabas
     ---'
     ");
 }
-
-/// The folded form collides identically: `wide` is `Wide`.
-#[rstest]
-fn folded_variable_collides_with_the_return_value(mut with_db: RootDatabase) {
-    let source = r#"
-        FUNCTION Wide : INT
-        VAR
-            wide : LINT;
-        END_VAR
-            Wide := 1;
-        END_FUNCTION
-    "#;
-    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E0117] Error: duplicate definitions
-       ,-[ file:///test0.st:4:13 ]
-       |
-     4 |             wide : LINT;
-       |             ^^|^
-       |               `--- variable 'wide' is the FUNCTION's return value
-    ---'
-    ");
-}
