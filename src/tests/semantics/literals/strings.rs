@@ -230,3 +230,55 @@ fn sized_string_constant_length_is_a_syntax_error(mut with_db: RootDatabase) {
     ---'
     ");
 }
+
+/// A literal wider than its destination is refused at the ASSIGNMENT door,
+/// as the initializer door always has.
+///
+/// The store runs at the destination's capacity — 80 unless the spec says
+/// otherwise — so an over-long literal was silently cut there: a 149-byte
+/// literal read back as its first 80 bytes, from a compile that said nothing.
+#[rstest]
+fn assigned_literal_must_fit_the_destination(mut with_db: RootDatabase) {
+    let source = r#"
+        FUNCTION f : INT
+        VAR
+            sized : STRING[5];
+            plain : STRING;
+        END_VAR
+            sized := 'far too long for five';
+            plain := 'this literal is well beyond eighty characters long, which is the silent default capacity a plain STRING declaration gets when nothing is said';
+            f := 1;
+        END_FUNCTION
+    "#;
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
+    [E0309] Error: invalid literal
+       ,-[ file:///test0.st:7:22 ]
+       |
+     7 |             sized := 'far too long for five';
+       |                      ^^^^^^^^^^^|^^^^^^^^^^^
+       |                                 `------------- cannot infer '<string>' to 'STRING': STRING literal exceeds maximum length of 5, got 21
+    ---'
+    [E0309] Error: invalid literal
+       ,-[ file:///test0.st:8:22 ]
+       |
+     8 |             plain := 'this literal is well beyond eighty characters long, which is the silent default capacity a plain STRING declaration gets when nothing is said';
+       |                      ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^|^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+       |                                                                                             `------------------------------------------------------------------------- cannot infer '<string>' to 'STRING': STRING literal exceeds maximum length of 80, got 141
+    ---'
+    ");
+}
+
+/// Filling the destination exactly is not an overflow.
+#[rstest]
+fn assigned_literal_at_exact_capacity_is_fine(mut with_db: RootDatabase) {
+    let source = r#"
+        FUNCTION f : INT
+        VAR
+            s : STRING[5];
+        END_VAR
+            s := 'five!';
+            f := 1;
+        END_FUNCTION
+    "#;
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"");
+}

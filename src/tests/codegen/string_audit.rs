@@ -80,7 +80,7 @@
 
 use rstest::rstest;
 
-use super::{add_source, with_db};
+use super::{add_source, compile_to_wasm_checked, execute_wasm, with_db};
 
 /// Compile a source string to core wasm and validate it. Returns Ok on
 /// successful validation. On failure, dumps the wasm to a per-test
@@ -811,4 +811,22 @@ fn string_comparison_of_producer_results_executes(mut with_db: db::RootDatabase)
     let wasm = super::compile_to_wasm(&mut with_db, source);
     let r: i32 = super::execute_wasm(&wasm, "check", ());
     assert_eq!(r, 11, "producer-vs-producer comparison uses snapshotted operands");
+}
+
+/// A literal that exactly FILLS the destination still passes: the check is
+/// about overflow, not about discouraging full strings.
+#[rstest]
+fn literal_exactly_at_capacity_is_fine(mut with_db: db::RootDatabase) {
+    let source = full_source(
+        r#"
+FUNCTION get : UDINT
+VAR s : STRING[5]; END_VAR
+    s := 'five!';
+    get := len_of(s);
+END_FUNCTION
+"#,
+    );
+    let wasm = compile_to_wasm_checked(&mut with_db, &source);
+    let result: i32 = execute_wasm(&wasm, "get", ());
+    assert_eq!(result, 5);
 }

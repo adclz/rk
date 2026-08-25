@@ -201,6 +201,15 @@ impl<'db> StmtsResolverCtx<'db> {
                         ));
                     }
 
+                    // A string literal must FIT the destination. The store
+                    // runs at the destination's capacity — 80 unless the spec
+                    // says otherwise — so an over-long literal was silently
+                    // cut there: a 149-byte literal read back as its first 80
+                    // bytes, from a compile that said nothing. The
+                    // initializer door has always refused this; the
+                    // assignment door now matches it.
+                    check_string_literal_fits(db, base_typ, *target, ctx);
+
                     // Update null state for REF_TO variables
                     if let Type::Variable((var_decl, _)) = base_typ
                         && ctx.ref_null_state.contains_key(&var_decl)
@@ -691,4 +700,64 @@ fn for_control_is_bare_identifier<'db>(
         return false;
     };
     matches!(path.expr(db), PathExprKind::VarAccess(_))
+}
+
+/// Refuse a string literal wider than the destination it is assigned to.
+///
+/// The capacity comes from the destination's SPEC ([`declared_string_capacity`]
+/// follows alias hops), falling back to the default every plain `STRING`
+/// stores at. Only literal right-hand sides are measured: a runtime string is
+/// clamped by the runtime's copy, which cannot be seen from here.
+///
+/// [`declared_string_capacity`]: crate::hir_ty::infer::normalize::declared_string_capacity
+fn check_string_literal_fits<'db>(
+    db: &'db dyn WorkspaceDataBase,
+    base_typ: Type<'db>,
+    target: Expr<'db>,
+    ctx: &mut BodyInferenceResult<'db>,
+) {
+    use crate::hir_def::expressions::expression::{ExprKind, PrimaryExpr};
+    use crate::check::errors::e3_type::InferLiteralError;
+
+    let spec = match base_typ {
+        Type::Variable((var, None)) => var.spec(db),
+        Type::StructElement(el) => el.spec(db),
+        _ => return,
+    };
+    if !matches!(
+        spec.infer(db).normalize(db),
+        Type::Elementary(crate::hir_def::expressions::spec::ElementarySpec::String)
+    ) {
+        return;
+    }
+    let capacity = crate::hir_ty::infer::normalize::declared_string_capacity(db, spec)
+        .map(u64::from)
+        .unwrap_or(80);
+
+    let ExprKind::PrimaryExpr(PrimaryExpr::Literal(
+        crate::hir_def::expressions::expression::Elementary::String(lit),
+    )) = target.expr(db)
+    else {
+        return;
+    };
+    let Ok(bytes) = lit.as_single_string(db) else {
+        return;
+    };
+    if bytes.len() as u64 > capacity {
+        let err = InferLiteralError::Invalid_STRING_Length {
+            max: capacity,
+            got: bytes.len(),
+        };
+        ctx.errors.push(
+            crate::check::errors::e3_type::TypeError::InferLiteralError {
+                expr: target,
+                source: None,
+                target: Type::Elementary(
+                    crate::hir_def::expressions::spec::ElementarySpec::String,
+                ),
+                err,
+            }
+            .to_diagnostic(db, ctx.scope.file(db)),
+        );
+    }
 }
