@@ -36,16 +36,17 @@ pub fn check<'db>(
 
     let mut seen: FxHashMap<_, Vec<ConfigDecl<'db>>> = FxHashMap::default();
     for config in sema.configs.iter() {
-        seen.entry(config.get_name_ident(db))
+        seen.entry(config.get_name_ident(db).fold(db))
             .or_default()
             .push(*config);
     }
 
-    for (name, decls) in &seen {
+    for decls in seen.values() {
         if decls.len() < 2 {
             continue;
         }
-        let name = name.text(db);
+        // Grouped folded, named as the first declaration spelled it.
+        let name = decls[0].get_name_ident(db).text(db);
 
         // Report the reopenings, pointing back at the first.
         for config in &decls[1..] {

@@ -20,8 +20,10 @@ impl<'db> InitInference<'db> {
         for using in usings.iter() {
             let mut hasher = FxBuildHasher.build_hasher();
 
+            // Folded: `USING Tools` and `USING tools` name one namespace, so
+            // importing both is importing it twice.
             using.path(db).fragments(db).iter().for_each(|f| {
-                f.hash(&mut hasher);
+                f.fold(db).hash(&mut hasher);
             });
 
             let frag_hash = hasher.finish();

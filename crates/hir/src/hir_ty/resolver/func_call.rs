@@ -6,7 +6,7 @@ use crate::check::errors::e1_duplicates::DuplicateError;
 use crate::check::errors::e3_type::TypeError;
 use crate::check::errors::e10_control_flow::ControlFlowError;
 use crate::hir_def::expressions::expression::{Expr, ExprKind, ParamAssign, PrimaryExpr};
-use crate::hir_def::interned::identifier::{FoldedIdent, Ident};
+use crate::hir_def::interned::identifier::FoldedIdent;
 use crate::hir_def::pous::variable::VariableDecl;
 use crate::hir_ty::resolver::name::{OverloadPick, select_overload};
 use crate::{
@@ -597,7 +597,7 @@ pub fn resolve_params<'db>(
     errors: &mut Vec<IdeDiagnostic>,
 ) -> Vec<ParamMatch<'db>> {
     let mut results = vec![];
-    let mut seen: FxHashMap<Ident, ParamAssign<'db>> = FxHashMap::default();
+    let mut seen: FxHashMap<FoldedIdent, ParamAssign<'db>> = FxHashMap::default();
     let mut formal_idx = 0;
     let mut variadic_count = 0;
 
@@ -669,7 +669,7 @@ pub fn resolve_params<'db>(
                 }
             }
             ParamAssignKind::FormalInput { param, .. } => {
-                if let Some(prev) = seen.insert(param.ident, *parameter) {
+                if let Some(prev) = seen.insert(param.ident.fold(db), *parameter) {
                     errors.push(
                         DuplicateError::Parameter {
                             param_1: prev,
@@ -696,7 +696,7 @@ pub fn resolve_params<'db>(
                 }
             }
             ParamAssignKind::FormalOutput { param, .. } => {
-                if let Some(prev) = seen.insert(param.ident, *parameter) {
+                if let Some(prev) = seen.insert(param.ident.fold(db), *parameter) {
                     errors.push(
                         DuplicateError::Parameter {
                             param_1: prev,

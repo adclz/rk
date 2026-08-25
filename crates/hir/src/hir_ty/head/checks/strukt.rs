@@ -13,7 +13,7 @@ impl<'db> InitInference<'db> {
         let mut seen = FxHashMap::default();
 
         for field in &strukt.elements(db) {
-            match seen.get(&field.get_name_ident(db)) {
+            match seen.get(&field.get_name_ident(db).fold(db)) {
                 Some(prev) => {
                     self.errors.push(
                         DuplicateError::StructField {
@@ -24,7 +24,7 @@ impl<'db> InitInference<'db> {
                     );
                 }
                 None => {
-                    seen.insert(field.get_name_ident(db), *field);
+                    seen.insert(field.get_name_ident(db).fold(db), *field);
                 }
             }
 

@@ -96,7 +96,7 @@ fn check_variables<'db>(
     diagnostics: &mut Vec<IdeDiagnostic>,
 ) {
     for var in variables {
-        if var.name(db).text(db) == pou_name {
+        if var.name(db).text(db).to_lowercase() == pou_name.to_lowercase() {
             let mut d = diag()
                 .message(format!(
                     "variable '{pou_name}' has the same name as its declaring {pou_kind}"

@@ -609,3 +609,99 @@ END_CONFIGURATION
     ---'
     ");
 }
+
+/// Names differing only in case are ONE name (6.1.2), so every duplicate
+/// detector folds — not just resolution. A detector that compares raw
+/// spellings while resolution folds lets both declarations survive the check
+/// and then collapse onto one folded map entry: a silently dropped
+/// declaration, which is how `v.a := 1` once bound to `A : STRING`.
+#[rstest]
+fn duplicates_are_detected_in_any_case(mut with_db: RootDatabase) {
+    let source = r#"
+        TYPE
+            S : STRUCT
+                fld : INT;
+                FLD : STRING;
+            END_STRUCT;
+            E : (Red, RED);
+        END_TYPE
+
+        FUNCTION_BLOCK FB
+        METHOD PUBLIC Run : INT
+            Run := 1;
+        END_METHOD
+        METHOD PUBLIC run : INT
+            run := 2;
+        END_METHOD
+        END_FUNCTION_BLOCK
+    "#;
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
+    [E0103] Error: duplicate definitions
+       ,-[ file:///test0.st:5:17 ]
+       |
+     4 |                 fld : INT;
+       |                 ^|^
+       |                  `--- field 'fld' is already defined here
+     5 |                 FLD : STRING;
+       |                 ^|^
+       |                  `--- duplicate field 'FLD'
+    ---'
+    [E0104] Error: duplicate definitions
+       ,-[ file:///test0.st:7:18 ]
+       |
+     7 |             E : (Red, RED);
+       |                  ^|^  ^|^
+       |                   `-------- duplicate enum variant 'Red'
+       |                        |
+       |                        `--- enum variant 'RED' is already defined here
+    ---'
+    [E0105] Error: duplicate definitions
+        ,-[ file:///test0.st:14:23 ]
+        |
+     11 |         METHOD PUBLIC Run : INT
+        |                       ^|^
+        |                        `--- method 'Run' is already defined here
+        |
+     14 |         METHOD PUBLIC run : INT
+        |                       ^|^
+        |                        `--- duplicate method 'run'
+    ----'
+    [E0228] Error: semantic violation
+        ,-[ file:///test0.st:12:13 ]
+        |
+     12 |             Run := 1;
+        |             ^|^
+        |              `--- cannot use direct type 'run' here
+    ----'
+    ");
+}
+
+/// A USING repeated in another case imports the same namespace twice.
+#[rstest]
+fn using_duplicates_fold(mut with_db: RootDatabase) {
+    let source = r#"
+        NAMESPACE Tools
+        FUNCTION H : INT
+            H := 1;
+        END_FUNCTION
+        END_NAMESPACE
+
+        FUNCTION f : INT
+            USING Tools;
+            USING tools;
+            f := H();
+        END_FUNCTION
+    "#;
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
+    [E0109] Error: duplicate definitions
+        ,-[ file:///test0.st:10:19 ]
+        |
+      9 |             USING Tools;
+        |                   ^^|^^
+        |                     `---- namespace 'Tools' is already imported here
+     10 |             USING tools;
+        |                   ^^|^^
+        |                     `---- duplicate `USING` for namespace 'tools'
+    ----'
+    ");
+}

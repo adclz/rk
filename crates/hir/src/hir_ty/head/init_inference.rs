@@ -7,7 +7,7 @@ use crate::{
     check::errors::{ToIdeDiagnostic, e1_duplicates::DuplicateError, e6_array::ArrayError},
     hir_def::{
         expressions::expression::{Expr, InitExpr, InitExprKind},
-        interned::identifier::Ident,
+        interned::identifier::{FoldedIdent, Ident},
         pous::pou::Pou,
         scope::{ScopeId, ScopeKind},
         semantic_index::get_scope,
@@ -145,7 +145,7 @@ impl<'db> InitExprInferenceResult<'db> {
         // initializer into row-major (path, value) leaves for MIR to consume.
         // Validation lives in the walk above; this never re-validates.
         let mut leaves = Vec::new();
-        resolve_leaves(db, expr, &mut Vec::new(), &mut leaves);
+        resolve_leaves(db, expr, &self.type_of_init_expr, &mut Vec::new(), &mut leaves);
         if !leaves.is_empty() {
             self.resolved.insert(expr, leaves);
         }
@@ -294,7 +294,7 @@ impl<'db> InitExprInferenceResult<'db> {
                     .unwrap_or_default()
                     .normalize(db);
 
-                if let Some(prev) = ctx.seen_fields.insert(name.ident, *expr) {
+                if let Some(prev) = ctx.seen_fields.insert(name.ident.fold(db), *expr) {
                     self.errors.push(
                         DuplicateError::InitExprField {
                             name: name.ident,
@@ -405,7 +405,7 @@ struct InitContext<'db> {
     /// Whether overflow has been reported per dimension
     overflow_reported: Vec<bool>,
     /// Seen fields in current struct (for duplicate detection)
-    seen_fields: FxHashMap<Ident, InitExpr<'db>>,
+    seen_fields: FxHashMap<FoldedIdent, InitExpr<'db>>,
 }
 
 impl<'db> InitContext<'db> {
@@ -474,6 +474,7 @@ impl<'db> InitContext<'db> {
 fn resolve_leaves<'db>(
     db: &'db dyn WorkspaceDataBase,
     init: InitExpr<'db>,
+    types: &FxHashMap<InitExpr<'db>, Type<'db>>,
     path: &mut Vec<InitPathStep>,
     out: &mut Vec<ResolvedInit<'db>>,
 ) {
@@ -485,10 +486,23 @@ fn resolve_leaves<'db>(
             });
         }
         InitExprKind::StructInit { values } => {
+            // The step carries the name as DECLARED, not as written. A
+            // field may be initialized in any case (`(fld := 7)` for `Fld`),
+            // and MIR matches these against the declared field names — so
+            // resolving here is what keeps the two from diverging, rather
+            // than teaching MIR to fold a name HIR has already resolved.
+            let struct_ty = types.get(&init).copied().map(|t| t.normalize(db));
             for v in &values {
                 if let InitExprKind::StructElement { name, value } = v.kind(db) {
-                    path.push(InitPathStep::Field(name.ident));
-                    resolve_leaves(db, *value, path, out);
+                    let declared = match struct_ty {
+                        Some(Type::Struct(st)) => st
+                            .struct_elements(db)
+                            .get(&name.ident.fold(db))
+                            .map(|field| field.name(db)),
+                        _ => None,
+                    };
+                    path.push(InitPathStep::Field(declared.unwrap_or(name.ident)));
+                    resolve_leaves(db, *value, types, path, out);
                     path.pop();
                 }
             }
@@ -497,7 +511,7 @@ fn resolve_leaves<'db>(
             // A fresh row-major flat index for each array (nested/sub-arrays
             // restart at 0 — MIR offsets each by its own element_size).
             let mut flat = 0u32;
-            resolve_array_into(db, init, path, &mut flat, out);
+            resolve_array_into(db, init, types, path, &mut flat, out);
         }
         // StructElement / ArrayIndexedElement only ever appear nested above.
         _ => {}
@@ -508,13 +522,14 @@ fn resolve_leaves<'db>(
 fn resolve_array_into<'db>(
     db: &'db dyn WorkspaceDataBase,
     bracket: InitExpr<'db>,
+    types: &FxHashMap<InitExpr<'db>, Type<'db>>,
     path: &mut Vec<InitPathStep>,
     flat: &mut u32,
     out: &mut Vec<ResolvedInit<'db>>,
 ) {
     if let InitExprKind::ArrayInit { values } = bracket.kind(db) {
         for child in &values {
-            array_element(db, *child, path, flat, out);
+            array_element(db, *child, types, path, flat, out);
         }
     }
 }
@@ -525,24 +540,25 @@ fn resolve_array_into<'db>(
 fn array_element<'db>(
     db: &'db dyn WorkspaceDataBase,
     elem: InitExpr<'db>,
+    types: &FxHashMap<InitExpr<'db>, Type<'db>>,
     path: &mut Vec<InitPathStep>,
     flat: &mut u32,
     out: &mut Vec<ResolvedInit<'db>>,
 ) {
     match elem.kind(db) {
-        InitExprKind::ArrayInit { .. } => resolve_array_into(db, elem, path, flat, out),
+        InitExprKind::ArrayInit { .. } => resolve_array_into(db, elem, types, path, flat, out),
         InitExprKind::ArrayIndexedElement { size, values } => {
             let n = size.as_u64(db).unwrap_or(0);
             for _ in 0..n {
                 for v in &values {
-                    array_element(db, *v, path, flat, out);
+                    array_element(db, *v, types, path, flat, out);
                 }
             }
         }
         _ => {
             path.push(InitPathStep::ArrayElem(*flat));
             *flat += 1;
-            resolve_leaves(db, elem, path, out);
+            resolve_leaves(db, elem, types, path, out);
             path.pop();
         }
     }

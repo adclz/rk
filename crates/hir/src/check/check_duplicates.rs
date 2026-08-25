@@ -104,13 +104,13 @@ pub fn check_single_configuration<'db>(
     errors: &mut Vec<IdeDiagnostic>,
 ) {
     let all = crate::hir_ty::index_graphs::declared_configs(db);
-    let names: rustc_hash::FxHashSet<_> = all.iter().map(|c| c.get_name_ident(db)).collect();
+    let names: rustc_hash::FxHashSet<_> = all.iter().map(|c| c.get_name_ident(db).fold(db)).collect();
     if names.len() > 1 {
         // Carry the others so they can be reached from here: deciding which to
         // keep means looking at all of them.
         let mut others: Vec<_> = all
             .iter()
-            .filter(|c| c.get_name_ident(db) != config.get_name_ident(db))
+            .filter(|c| c.get_name_ident(db).fold(db) != config.get_name_ident(db).fold(db))
             .copied()
             .collect();
         // The file maps have no order, so sort for a stable list.
@@ -142,13 +142,17 @@ pub fn check_single_resource<'db>(
     errors: &mut Vec<IdeDiagnostic>,
 ) {
     let fragments = crate::hir_ty::index_graphs::config_fragments(db, config.get_name_ident(db));
+    // Deduplicated on the FOLDED name, since `Core0` and `core0` are one
+    // resource — but listed as WRITTEN, which is what the reader has to go
+    // and find.
+    let mut seen_folded = rustc_hash::FxHashSet::default();
     let mut names: Vec<compact_str::CompactString> = fragments
         .iter()
         .flat_map(|c| c.resources(db).iter())
+        .filter(|r| seen_folded.insert(r.name(db).ident.fold(db)))
         .map(|r| r.name(db).ident.text(db).clone())
         .collect();
     names.sort();
-    names.dedup();
     if names.len() <= 1 {
         return;
     }
@@ -208,7 +212,7 @@ pub fn check_config_fragment_collisions<'db>(
         if let Some(other) = siblings.iter().find_map(|sib| {
             sib.variables(db)
                 .iter()
-                .find(|v| v.get_name_ident(db) == var.get_name_ident(db))
+                .find(|v| v.get_name_ident(db).fold(db) == var.get_name_ident(db).fold(db))
         }) {
             errors.push(
                 DuplicateError::Variable {
@@ -223,7 +227,7 @@ pub fn check_config_fragment_collisions<'db>(
         if let Some(other) = siblings.iter().find_map(|sib| {
             sib.resources(db)
                 .iter()
-                .find(|r| r.name(db).ident == res.name(db).ident)
+                .find(|r| r.name(db).ident.fold(db) == res.name(db).ident.fold(db))
         }) {
             errors.push(
                 DuplicateError::Resource {
