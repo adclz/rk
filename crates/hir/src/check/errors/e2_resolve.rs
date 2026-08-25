@@ -1263,16 +1263,22 @@ impl<'db> ToIdeDiagnostic<'db> for ResolveError<'db> {
                     *counts.entry(*ns).or_insert(0usize) += 1;
                 }
 
-                let duplicated: Vec<_> = counts
+                // Sorted, because `counts` is a hash map: without this the
+                // notes, the related labels and the suggestion below each come
+                // out in whatever order the map happened to hold, so the same
+                // source reports differently from one build to the next.
+                let mut duplicated: Vec<_> = counts
                     .iter()
                     .filter(|(_, count)| **count > 1)
                     .map(|(ns, _)| ns)
                     .collect();
-                let distinct: Vec<_> = counts
+                duplicated.sort_by_key(|ns| ns.to_string(db));
+                let mut distinct: Vec<_> = counts
                     .iter()
                     .filter(|(_, count)| **count == 1)
                     .map(|(ns, _)| ns.to_string(db))
                     .collect();
+                distinct.sort();
 
                 let mut diag = diag()
                     .message(format!(
@@ -1291,14 +1297,23 @@ impl<'db> ToIdeDiagnostic<'db> for ResolveError<'db> {
                         ns.to_string(db),
                     ));
 
-                    for (pou, pou_ns) in candidates {
-                        if pou_ns == *ns {
-                            diag.with_related(Related::new(
-                                format!("'{}' declared here", name),
-                                pou.get_scope_id(db).file(db),
-                                pou.get_span(db),
-                            ));
-                        }
+                    // Same reason, one level down: the declarations inside a
+                    // namespace are pointed at in source order, not discovery
+                    // order.
+                    let mut in_ns: Vec<_> =
+                        candidates.iter().filter(|(_, pou_ns)| pou_ns == *ns).collect();
+                    in_ns.sort_by_key(|(pou, _)| {
+                        (
+                            pou.get_scope_id(db).file(db).url(db).to_string(),
+                            pou.get_span(db).start_byte,
+                        )
+                    });
+                    for (pou, _) in in_ns {
+                        diag.with_related(Related::new(
+                            format!("'{}' declared here", name),
+                            pou.get_scope_id(db).file(db),
+                            pou.get_span(db),
+                        ));
                     }
                 }
 
@@ -1307,6 +1322,7 @@ impl<'db> ToIdeDiagnostic<'db> for ResolveError<'db> {
                         .iter()
                         .map(|ns| format!("{}.{}", ns, name))
                         .collect();
+
                     diag.with_note(format!(
                         "qualify the name to resolve the ambiguity: {}",
                         qualified.join(" or "),
