@@ -595,6 +595,36 @@ impl<'db> InferExprCtx<'db> {
         rhs: Expr<'db>,
         inference_results: &mut BodyInferenceResult<'db>,
     ) -> CoerceResult<'db> {
+        self.coerce_var_access_impl(db, var, rhs, inference_results, true)
+    }
+
+    /// As [`Self::coerce_var_access_with_expr`], without the subrange bounds
+    /// check: for an expression COMPARED with the variable rather than stored
+    /// into it.
+    ///
+    /// A FOR limit and step bound the iteration; they are not values the
+    /// counter takes. `FOR i := 0 TO 12 BY 7` over `INT (0..10)` observes 0 and
+    /// 7 and never 14, which is the rule the runtime check implements — so
+    /// refusing it here would reject a correct program on a number it does not
+    /// reach. The initial value is stored, and keeps its check.
+    pub fn coerce_var_access_compared_with_expr(
+        &self,
+        db: &'db dyn WorkspaceDataBase,
+        var: VariableAccess<'db>,
+        rhs: Expr<'db>,
+        inference_results: &mut BodyInferenceResult<'db>,
+    ) -> CoerceResult<'db> {
+        self.coerce_var_access_impl(db, var, rhs, inference_results, false)
+    }
+
+    fn coerce_var_access_impl(
+        &self,
+        db: &'db dyn WorkspaceDataBase,
+        var: VariableAccess<'db>,
+        rhs: Expr<'db>,
+        inference_results: &mut BodyInferenceResult<'db>,
+        check_bounds: bool,
+    ) -> CoerceResult<'db> {
         let lhs = inference_results.type_of_variable_access_with_adjustments(db, var);
         let to = inference_results.type_of_expr[&rhs];
         let errors_before = inference_results.errors.len();
@@ -622,7 +652,8 @@ impl<'db> InferExprCtx<'db> {
         );
         // See `coerce_var_decl_with_expr`: bounds are only meaningful for an
         // assignment that is otherwise clean.
-        if result.is_ok()
+        if check_bounds
+            && result.is_ok()
             && inference_results.errors.len() == errors_before
             && let Some(err) = lhs.subrange_violation(db, rhs)
         {

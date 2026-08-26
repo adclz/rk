@@ -377,7 +377,7 @@ impl<'db> StmtsResolverCtx<'db> {
                     }
 
                     if let Err(err) =
-                        infer.coerce_var_access_with_expr(db, *control_variable, *end, ctx)
+                        infer.coerce_var_access_compared_with_expr(db, *control_variable, *end, ctx)
                     {
                         ctx.errors.push(err.into_non_comparable(
                             db,
@@ -389,9 +389,12 @@ impl<'db> StmtsResolverCtx<'db> {
                     if let Some(step) = step {
                         self.infer_and_check_expr(db, &mut infer, *step, ctx);
 
-                        if let Err(err) =
-                            infer.coerce_var_access_with_expr(db, *control_variable, *step, ctx)
-                        {
+                        if let Err(err) = infer.coerce_var_access_compared_with_expr(
+                            db,
+                            *control_variable,
+                            *step,
+                            ctx,
+                        ) {
                             ctx.errors.push(err.into_non_comparable(
                                 db,
                                 ctx.get_type_of_variable_access(db, *control_variable),
