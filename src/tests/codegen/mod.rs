@@ -1,5 +1,6 @@
 //! Test helpers and modules for WASM codegen.
 
+use auto_lsp::default::db::file::File;
 use db::RootDatabase;
 use hir::{check::diagnostics_for_file, hir_def::semantic_index::semantic_index};
 
@@ -46,27 +47,20 @@ pub use crate::tests::utils::with_db;
 
 pub use crate::tests::utils::add_source;
 
-/// Helper function to compile IEC source code to WASM bytes.
+/// Compile IEC source to WASM bytes, refusing a source the compiler rejects.
 ///
-/// This function:
-/// 1. Adds the source to the database
-/// 2. Runs semantic indexing
-/// 3. Finds all functions and generates WASM code
-/// 4. Returns the compiled WASM module as bytes
+/// A codegen test asserts what a program DOES, which is only a question about
+/// programs the compiler accepts. Lowering an already-rejected source measures
+/// the behaviour of code no user can run, and pins it — which is how a test
+/// came to assert that an over-long string literal truncates, that a variable
+/// named like its own FUNCTION emits a module, and that `[1,2,3,4,5,6]` was
+/// too many for a 2x3. To compile one on purpose, name the diagnostics with
+/// [`compile_to_wasm_expecting`].
 ///
 /// Note: WASM validation is not performed here - use wasmtime's Module::new()
 /// or wasmparser::validate() on the returned bytes to validate.
-///
-/// Use `compile_to_wasm_checked` to also validate for diagnostics before compiling.
 pub fn compile_to_wasm(db: &mut RootDatabase, source: &str) -> Vec<u8> {
-    compile_to_wasm_impl(db, source, false)
-}
-
-/// Same as `compile_to_wasm` but panics if the source has any diagnostics.
-///
-/// Use this when you want to ensure the source is error-free before compiling.
-pub fn compile_to_wasm_checked(db: &mut RootDatabase, source: &str) -> Vec<u8> {
-    compile_to_wasm_impl(db, source, true)
+    compile_to_wasm_impl(db, source, Expectation::Clean)
 }
 
 /// Lower IEC source to MIR and WASM in a single pass, returning both. Use this
@@ -74,39 +68,92 @@ pub fn compile_to_wasm_checked(db: &mut RootDatabase, source: &str) -> Vec<u8> {
 /// a variable's storage) and run the emitted module against it. Lowering only
 /// once avoids registering the same source twice (which would duplicate POUs).
 pub fn compile_to_mir_and_wasm(db: &mut RootDatabase, source: &str) -> (mir::MirModule, Vec<u8>) {
+    compile_to_mir_and_wasm_impl(db, source, Expectation::Clean)
+}
+
+/// [`compile_to_mir_and_wasm`] for a source the compiler rejects: `codes` must
+/// match the diagnostics exactly, so the reason the source is invalid stays
+/// pinned — a test that silently starts failing for a second reason is not
+/// testing what it says.
+pub fn compile_to_mir_and_wasm_expecting(
+    db: &mut RootDatabase,
+    source: &str,
+    codes: &[&str],
+) -> (mir::MirModule, Vec<u8>) {
+    compile_to_mir_and_wasm_impl(db, source, Expectation::Exactly(codes))
+}
+
+fn compile_to_mir_and_wasm_impl(
+    db: &mut RootDatabase,
+    source: &str,
+    expectation: Expectation,
+) -> (mir::MirModule, Vec<u8>) {
     let file = add_source(db, source);
     let sem_idx = semantic_index(db, file);
+    check_diagnostics(db, file, expectation);
     let mir_module =
         mir::lower::lower_module::lower_module(db, sem_idx).expect("MIR lowering failed");
     let wasm = wasm_codegen::generate_wasm(db, &mir_module).finish();
     (mir_module, wasm)
 }
 
-fn compile_to_wasm_impl(db: &mut RootDatabase, source: &str, check_diagnostics: bool) -> Vec<u8> {
+#[derive(Clone, Copy)]
+enum Expectation<'a> {
+    /// The compiler must accept the source.
+    Clean,
+    /// The compiler must reject it with exactly these codes, in order.
+    Exactly(&'a [&'a str]),
+}
+
+fn diagnostic_codes(db: &RootDatabase, file: File) -> Vec<String> {
+    diagnostics_for_file(db, file)
+        .iter()
+        .map(|diag| match &diag.diagnostic.code {
+            Some(auto_lsp::lsp_types::NumberOrString::String(code)) => code.clone(),
+            Some(auto_lsp::lsp_types::NumberOrString::Number(code)) => code.to_string(),
+            None => "?".to_string(),
+        })
+        .collect()
+}
+
+fn check_diagnostics(db: &RootDatabase, file: File, expectation: Expectation) {
+    let diagnostics = diagnostics_for_file(db, file);
+    let found = diagnostic_codes(db, file);
+    if let Expectation::Exactly(expected) = expectation
+        && found == expected
+    {
+        return;
+    }
+    if matches!(expectation, Expectation::Clean) && diagnostics.is_empty() {
+        return;
+    }
+
+    let mut message = match expectation {
+        Expectation::Clean => format!(
+            "Source has {} diagnostic(s), cannot compile:\n",
+            diagnostics.len()
+        ),
+        Expectation::Exactly(expected) => {
+            format!("Source was expected to report {expected:?}, but reports:\n")
+        }
+    };
+    for (diag, code) in diagnostics.iter().zip(&found).take(10) {
+        message.push_str(&format!("  [{code}] {}\n", diag.diagnostic.message));
+    }
+    if diagnostics.len() > 10 {
+        message.push_str(&format!(
+            "  ... and {} more diagnostics\n",
+            diagnostics.len() - 10
+        ));
+    }
+    panic!("{}", message);
+}
+
+fn compile_to_wasm_impl(db: &mut RootDatabase, source: &str, expectation: Expectation) -> Vec<u8> {
     let file = add_source(db, source);
     let sem_idx = semantic_index(db, file);
 
-    // Optionally check for diagnostics before compiling
-    if check_diagnostics {
-        let diagnostics = diagnostics_for_file(db, file);
-        if !diagnostics.is_empty() {
-            let mut error_msg = format!(
-                "Source has {} diagnostic(s), cannot compile:\n",
-                diagnostics.len()
-            );
-            for diag in diagnostics.iter().take(10) {
-                let inner = &diag.diagnostic;
-                error_msg.push_str(&format!("  [{:?}] {}\n", inner.severity, inner.message));
-            }
-            if diagnostics.len() > 10 {
-                error_msg.push_str(&format!(
-                    "  ... and {} more diagnostics\n",
-                    diagnostics.len() - 10
-                ));
-            }
-            panic!("{}", error_msg);
-        }
-    }
+    check_diagnostics(db, file, expectation);
 
     // MIR pipeline: HIR → MIR → WASM
     let mir_module =

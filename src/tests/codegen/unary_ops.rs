@@ -2,7 +2,7 @@
 //! (Regression: 64-bit integer negation emitted `value; i64.const 0; i64.sub`
 //! = `value - 0` — a silent no-op.)
 
-use crate::tests::codegen::{compile_to_wasm_checked, with_db};
+use crate::tests::codegen::{compile_to_wasm, with_db};
 use rstest::*;
 
 /// The bug: `-x` on a 64-bit integer must actually negate.
@@ -14,7 +14,7 @@ fn neg_lint(mut with_db: db::RootDatabase) {
             test := -x;
         END_FUNCTION
     "#;
-    let wasm = compile_to_wasm_checked(&mut with_db, source);
+    let wasm = compile_to_wasm(&mut with_db, source);
     let result: i64 = super::execute_wasm(&wasm, "test", ());
     assert_eq!(result, -5, "LINT negation: -(5)");
 }
@@ -28,7 +28,7 @@ fn neg_lint_expr(mut with_db: db::RootDatabase) {
             test := -(a + b);
         END_FUNCTION
     "#;
-    let wasm = compile_to_wasm_checked(&mut with_db, source);
+    let wasm = compile_to_wasm(&mut with_db, source);
     let result: i64 = super::execute_wasm(&wasm, "test", ());
     assert_eq!(result, -42, "-(40 + 2)");
 }
@@ -42,7 +42,7 @@ fn neg_dint(mut with_db: db::RootDatabase) {
             test := -b;
         END_FUNCTION
     "#;
-    let wasm = compile_to_wasm_checked(&mut with_db, source);
+    let wasm = compile_to_wasm(&mut with_db, source);
     let result: i32 = super::execute_wasm(&wasm, "test", ());
     assert_eq!(result, -100000, "-(100000)");
 }
@@ -56,7 +56,7 @@ fn neg_real(mut with_db: db::RootDatabase) {
             test := -r;
         END_FUNCTION
     "#;
-    let wasm = compile_to_wasm_checked(&mut with_db, source);
+    let wasm = compile_to_wasm(&mut with_db, source);
     let result: f32 = super::execute_wasm(&wasm, "test", ());
     assert_eq!(result, -2.5, "-(2.5)");
 }
@@ -70,7 +70,7 @@ fn neg_lreal(mut with_db: db::RootDatabase) {
             test := -l;
         END_FUNCTION
     "#;
-    let wasm = compile_to_wasm_checked(&mut with_db, source);
+    let wasm = compile_to_wasm(&mut with_db, source);
     let result: f64 = super::execute_wasm(&wasm, "test", ());
     assert_eq!(result, -10.25, "-(10.25)");
 }
@@ -84,7 +84,7 @@ fn neg_double(mut with_db: db::RootDatabase) {
             test := -(-x);
         END_FUNCTION
     "#;
-    let wasm = compile_to_wasm_checked(&mut with_db, source);
+    let wasm = compile_to_wasm(&mut with_db, source);
     let result: i64 = super::execute_wasm(&wasm, "test", ());
     assert_eq!(result, 9, "-(-9)");
 }
@@ -102,7 +102,7 @@ fn not_bool(mut with_db: db::RootDatabase) {
             END_IF;
         END_FUNCTION
     "#;
-    let wasm = compile_to_wasm_checked(&mut with_db, source);
+    let wasm = compile_to_wasm(&mut with_db, source);
     let result: i32 = super::execute_wasm(&wasm, "test", ());
     assert_eq!(result, 1, "NOT FALSE = TRUE");
 }
@@ -116,7 +116,7 @@ fn not_lword(mut with_db: db::RootDatabase) {
             test := NOT w;
         END_FUNCTION
     "#;
-    let wasm = compile_to_wasm_checked(&mut with_db, source);
+    let wasm = compile_to_wasm(&mut with_db, source);
     let result: i64 = super::execute_wasm(&wasm, "test", ());
     assert_eq!(result, !0xF0F0u64 as i64, "bitwise complement");
 }
@@ -135,7 +135,7 @@ fn not_byte_compare(mut with_db: db::RootDatabase) {
             END_IF;
         END_FUNCTION
     "#;
-    let wasm = compile_to_wasm_checked(&mut with_db, source);
+    let wasm = compile_to_wasm(&mut with_db, source);
     let result: i32 = super::execute_wasm(&wasm, "test", ());
     assert_eq!(result, 1, "NOT 16#0F = 16#F0 for BYTE");
 }
@@ -151,7 +151,7 @@ fn word_and_not(mut with_db: db::RootDatabase) {
             test := a AND NOT b;
         END_FUNCTION
     "#;
-    let wasm = compile_to_wasm_checked(&mut with_db, source);
+    let wasm = compile_to_wasm(&mut with_db, source);
     let result: i32 = super::execute_wasm(&wasm, "test", ());
     assert_eq!(result, 0x00F0, "16#00FF AND NOT 16#0F0F = 16#00F0");
 }
@@ -165,7 +165,7 @@ fn lword_bitwise_ops(mut with_db: db::RootDatabase) {
             test := (a AND b) OR (a XOR b);
         END_FUNCTION
     "#;
-    let wasm = compile_to_wasm_checked(&mut with_db, source);
+    let wasm = compile_to_wasm(&mut with_db, source);
     let result: i64 = super::execute_wasm(&wasm, "test", ());
     let a = 0xFF00FF00FF00FF00u64;
     let b = 0x0FF00FF00FF00FF0u64;
@@ -185,7 +185,7 @@ fn byte_or_xor_not(mut with_db: db::RootDatabase) {
             END_IF;
         END_FUNCTION
     "#;
-    let wasm = compile_to_wasm_checked(&mut with_db, source);
+    let wasm = compile_to_wasm(&mut with_db, source);
     let result: i32 = super::execute_wasm(&wasm, "test", ());
     assert_eq!(result, 1, "OR NOT / XOR NOT byte compositions");
 }

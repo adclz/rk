@@ -80,7 +80,7 @@
 
 use rstest::rstest;
 
-use super::{add_source, compile_to_wasm_checked, execute_wasm, with_db};
+use super::{add_source, compile_to_wasm, execute_wasm, with_db};
 
 /// Compile a source string to core wasm and validate it. Returns Ok on
 /// successful validation. On failure, dumps the wasm to a per-test
@@ -826,7 +826,7 @@ VAR s : STRING[5]; END_VAR
 END_FUNCTION
 "#,
     );
-    let wasm = compile_to_wasm_checked(&mut with_db, &source);
+    let wasm = compile_to_wasm(&mut with_db, &source);
     let result: i32 = execute_wasm(&wasm, "get", ());
     assert_eq!(result, 5);
 }
@@ -858,7 +858,7 @@ END_VAR
 END_FUNCTION
 "#,
     );
-    let wasm = compile_to_wasm_checked(&mut with_db, &source);
+    let wasm = compile_to_wasm(&mut with_db, &source);
     let result: i32 = execute_wasm(&wasm, "get", ());
     assert_eq!(
         result, 5,

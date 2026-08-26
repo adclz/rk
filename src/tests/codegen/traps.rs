@@ -108,6 +108,10 @@ fn a_value_below_the_lower_bound_faults(mut with_db: db::RootDatabase) {
 /// is 4294967295, which the check refuses as ABOVE the upper bound. Either
 /// way it faults, which is the contract; which comparison caught it is an
 /// implementation detail.
+///
+/// The value arrives already unsigned because it cannot arrive any other way:
+/// `w := n` for a DINT `n` is E0301, so no signed value reaches an unsigned
+/// subrange in the first place.
 #[rstest]
 fn a_negative_bit_pattern_faults_on_the_unsigned_lane(mut with_db: db::RootDatabase) {
     let source = r#"
@@ -116,14 +120,18 @@ fn a_negative_bit_pattern_faults_on_the_unsigned_lane(mut with_db: db::RootDatab
         FUNCTION run : DINT
         VAR
             w : Wide;
-            n : DINT;
+            n : UDINT;
         END_VAR
-            n := -1;
+            n := 4294967295;   (* -1's bit pattern, read unsigned *)
             w := n;
             run := 1;
         END_FUNCTION
     "#;
-    expect_fault(&mut with_db, source, "-1 reads as 4294967295 on the UDINT lane");
+    expect_fault(
+        &mut with_db,
+        source,
+        "4294967295 is above the upper bound of UDINT (0..4000000000)",
+    );
 }
 
 /// A subrange ARRAY ELEMENT checks its store like a plain variable.
@@ -351,8 +359,10 @@ fn a_for_init_outside_the_subrange_faults(mut with_db: db::RootDatabase) {
         FUNCTION run : DINT
         VAR
             i : Small;
+            from : INT;
         END_VAR
-            FOR i := 99 TO 0 DO
+            from := 99;   (* through a variable: a literal here is E0802 *)
+            FOR i := from TO 0 DO
                 run := run + 1;
             END_FOR;
             run := 0;

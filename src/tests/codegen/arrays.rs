@@ -1,6 +1,6 @@
 //! Array execution tests - actually running WASM to verify array operations.
 
-use crate::tests::codegen::{compile_to_wasm, compile_to_wasm_checked, with_db};
+use crate::tests::codegen::{compile_to_wasm, with_db};
 use rstest::*;
 
 #[rstest]
@@ -476,7 +476,7 @@ fn constant_bounded_array_runs(mut with_db: db::RootDatabase) {
             test := s;
         END_FUNCTION
     "#;
-    let wasm = compile_to_wasm_checked(&mut with_db, source);
+    let wasm = compile_to_wasm(&mut with_db, source);
     let r: i32 = super::execute_wasm(&wasm, "test", ());
     assert_eq!(r, 60, "four elements, 0 + 10 + 20 + 30");
 }
@@ -504,7 +504,9 @@ fn extern_constant_bound_folds_and_is_enforced(mut with_db: db::RootDatabase) {
                     a[i] := 7;   (* every declared slot is writable *)
                 END_FOR;
             ELSE
-                a[K + 1] := 9;   (* one past the folded bound *)
+                i := K + 1;      (* through a variable, so the bound is the
+                                    RUNTIME check's, not the static one's *)
+                a[i] := 9;
             END_IF;
         END_PROGRAM
 

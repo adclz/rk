@@ -2,7 +2,7 @@ use db::{RootDatabase, WorkspaceDataBase};
 use hir::hir_def::semantic_index::semantic_index;
 use mir::function::MirLinkage;
 
-use crate::tests::utils::add_sources;
+use crate::tests::utils::{add_sources, assert_workspace_is_clean};
 
 fn fmt_ty(t: &mir::types::MirType, db: &dyn WorkspaceDataBase) -> String {
     match t {
@@ -18,6 +18,8 @@ fn fmt_ty(t: &mir::types::MirType, db: &dyn WorkspaceDataBase) -> String {
 pub fn mir_exports(db: &mut RootDatabase, sources: &[&str]) -> String {
     use auto_lsp::default::db::BaseDatabase;
     add_sources(db, sources);
+
+    assert_workspace_is_clean(db);
 
     let files: Vec<_> = db.get_files().iter().map(|e| *e.value()).collect();
     let sem_indices: Vec<_> = files.iter().map(|file| semantic_index(db, *file)).collect();
@@ -76,6 +78,8 @@ pub fn mir_exports(db: &mut RootDatabase, sources: &[&str]) -> String {
 pub fn mir_test_manifest(db: &mut RootDatabase, sources: &[&str]) -> String {
     use auto_lsp::default::db::BaseDatabase;
     add_sources(db, sources);
+
+    assert_workspace_is_clean(db);
 
     let files: Vec<_> = db.get_files().iter().map(|e| *e.value()).collect();
     let sem_indices: Vec<_> = files.iter().map(|file| semantic_index(db, *file)).collect();

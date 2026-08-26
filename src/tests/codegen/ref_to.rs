@@ -5,8 +5,12 @@ use rstest::*;
 
 #[rstest]
 fn test_null_ref(mut with_db: db::RootDatabase) {
+    // A return type is a type NAME, so a REF_TO return is spelled through a
+    // declared one: `FUNCTION f : REF_TO INT` is not a return-type production.
     let source = r#"
-        FUNCTION test_null : REF_TO INT
+        TYPE PInt : REF_TO INT; END_TYPE
+
+        FUNCTION test_null : PInt
             test_null := NULL;
         END_FUNCTION
     "#;

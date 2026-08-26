@@ -1,7 +1,7 @@
 //! FUNCTION overloads lower to distinct WASM symbols (via the signature
 //! discriminant) and each call routes to the right one.
 
-use crate::tests::codegen::{compile_to_wasm, compile_to_wasm_checked, with_db};
+use crate::tests::codegen::{compile_to_wasm, with_db};
 use rstest::*;
 
 // Two `add` overloads (1-arg adds one, 2-arg sums) coexist as distinct wasm
@@ -134,7 +134,7 @@ fn return_overloads_route_by_target(mut with_db: db::RootDatabase) {
             {wasm 'nop' (params IN) (result INT_TO_DINT)}
         END_FUNCTION
     "#;
-    let wasm = compile_to_wasm_checked(&mut with_db, source);
+    let wasm = compile_to_wasm(&mut with_db, source);
     let r: i32 = super::execute_wasm(&wasm, "test", ());
     assert_eq!(r, 4241, "each target got its own overload: 4200 + 41");
 }
@@ -157,7 +157,7 @@ fn untyped_literal_prefers_exact_int(mut with_db: db::RootDatabase) {
             test := conv(5);
         END_FUNCTION
     "#;
-    let wasm = compile_to_wasm_checked(&mut with_db, source);
+    let wasm = compile_to_wasm(&mut with_db, source);
     let r: i32 = super::execute_wasm(&wasm, "test", ());
     assert_eq!(r, 10, "5 is INT by exact match, not REAL by promotion");
 }
@@ -178,7 +178,7 @@ fn full_arity_beats_defaulted_at_runtime(mut with_db: db::RootDatabase) {
             test := add(10);
         END_FUNCTION
     "#;
-    let wasm = compile_to_wasm_checked(&mut with_db, source);
+    let wasm = compile_to_wasm(&mut with_db, source);
     let r: i32 = super::execute_wasm(&wasm, "test", ());
     assert_eq!(r, 11, "add/1 wins over add/2 padded with its default");
 }
@@ -200,7 +200,7 @@ fn return_overload_in_initializer_runs(mut with_db: db::RootDatabase) {
             test := d;
         END_FUNCTION
     "#;
-    let wasm = compile_to_wasm_checked(&mut with_db, source);
+    let wasm = compile_to_wasm(&mut with_db, source);
     let r: i32 = super::execute_wasm(&wasm, "test", ());
     assert_eq!(r, 4200, "the initializer called the DINT overload");
 }
@@ -219,7 +219,7 @@ fn return_overload_in_return_slot_runs(mut with_db: db::RootDatabase) {
             test := G();
         END_FUNCTION
     "#;
-    let wasm = compile_to_wasm_checked(&mut with_db, source);
+    let wasm = compile_to_wasm(&mut with_db, source);
     let r: i32 = super::execute_wasm(&wasm, "test", ());
     assert_eq!(r, 4200, "the return slot picked and ran the DINT overload");
 }

@@ -1,6 +1,6 @@
 //! Control flow execution tests - IF, CASE, FOR, WHILE, REPEAT.
 
-use crate::tests::codegen::{compile_to_wasm, compile_to_wasm_checked, with_db};
+use crate::tests::codegen::{compile_to_wasm, with_db};
 use rstest::*;
 
 #[rstest]
@@ -423,7 +423,7 @@ fn the_body_observes_the_member_counter_each_iteration(mut with_db: db::RootData
             run := a.digits;
         END_FUNCTION
     "#;
-    let wasm = compile_to_wasm_checked(&mut with_db, source);
+    let wasm = compile_to_wasm(&mut with_db, source);
     let result: i32 = super::execute_wasm(&wasm, "run", ());
     assert_eq!(result, 123, "each iteration read the live counter: 1, 2, 3");
 }
@@ -769,7 +769,7 @@ fn case_integer_labels_of_every_constant_form(mut with_db: db::RootDatabase) {
         PROGRAM Dummy
         END_PROGRAM
     "#;
-    let wasm = compile_to_wasm_checked(&mut with_db, source);
+    let wasm = compile_to_wasm(&mut with_db, source);
     let result: i32 = super::execute_wasm(&wasm, "run", ());
     assert_eq!(
         result, 1500,
@@ -798,7 +798,7 @@ fn case_enum_labels_select_by_declared_value(mut with_db: db::RootDatabase) {
             run := pick(m := Mode#Stop) + pick(m := Mode#Run) + pick(m := Mode#Halt);
         END_FUNCTION
     "#;
-    let wasm = compile_to_wasm_checked(&mut with_db, source);
+    let wasm = compile_to_wasm(&mut with_db, source);
     let result: i32 = super::execute_wasm(&wasm, "run", ());
     assert_eq!(result, 321, "Stop=5, Run=6, Halt=9 each reach their own arm");
 }
@@ -827,7 +827,7 @@ fn case_string_labels_compare_by_content(mut with_db: db::RootDatabase) {
                  + classify(s := '');
         END_FUNCTION
     "#;
-    let wasm = compile_to_wasm_checked(&mut with_db, source);
+    let wasm = compile_to_wasm(&mut with_db, source);
     let result: i32 = super::execute_wasm(&wasm, "run", ());
     assert_eq!(
         result, 8321,
@@ -856,7 +856,7 @@ fn case_multiple_labels_per_arm(mut with_db: db::RootDatabase) {
                  + pick(x := 12) * 100 + pick(x := 13) * 10 + pick(x := 0);
         END_FUNCTION
     "#;
-    let wasm = compile_to_wasm_checked(&mut with_db, source);
+    let wasm = compile_to_wasm(&mut with_db, source);
     let result: i32 = super::execute_wasm(&wasm, "run", ());
     assert_eq!(result, 7977700, "1,3 and 10..12 share an arm; 2 is its own; 13 and 0 fall through");
 }

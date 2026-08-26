@@ -9,7 +9,7 @@
 //! `ARRAY[0..n] OF TON` with one timer per axis is the canonical shape this
 //! broke: every axis shared element 0's timer.
 
-use crate::tests::codegen::{compile_to_wasm_checked, execute_wasm, with_db};
+use crate::tests::codegen::{compile_to_wasm, execute_wasm, with_db};
 use rstest::*;
 
 const CELL: &str = r#"
@@ -44,7 +44,7 @@ fn constant_subscript_calls_that_element(
         END_FUNCTION
     "#
     );
-    let wasm = compile_to_wasm_checked(&mut with_db, &source);
+    let wasm = compile_to_wasm(&mut with_db, &source);
     let result: i32 = execute_wasm(&wasm, "run", ());
     assert_eq!(result, e0 * 10000 + e1 * 100 + e2, "cells[{which}]() ran the wrong element");
 }
@@ -67,7 +67,7 @@ fn runtime_subscript_calls_each_element(mut with_db: db::RootDatabase) {
         END_FUNCTION
     "#
     );
-    let wasm = compile_to_wasm_checked(&mut with_db, &source);
+    let wasm = compile_to_wasm(&mut with_db, &source);
     let result: i32 = execute_wasm(&wasm, "run", ());
     assert_eq!(result, 10101, "each element ticked exactly once");
 }
@@ -86,7 +86,7 @@ fn non_zero_lower_bound_subscript(mut with_db: db::RootDatabase) {
         END_FUNCTION
     "#
     );
-    let wasm = compile_to_wasm_checked(&mut with_db, &source);
+    let wasm = compile_to_wasm(&mut with_db, &source);
     let result: i32 = execute_wasm(&wasm, "run", ());
     assert_eq!(result, 1, "cells[3] is the LAST element, not the first");
 }
@@ -114,7 +114,7 @@ fn call_on_a_function_block_member(mut with_db: db::RootDatabase) {
         END_FUNCTION
     "#
     );
-    let wasm = compile_to_wasm_checked(&mut with_db, &source);
+    let wasm = compile_to_wasm(&mut with_db, &source);
     let result: i32 = execute_wasm(&wasm, "run", ());
     assert_eq!(result, 201, "a ticked twice, b once — and they are distinct");
 }
@@ -147,7 +147,7 @@ fn call_on_a_nested_member_and_member_array(mut with_db: db::RootDatabase) {
         END_FUNCTION
     "#
     );
-    let wasm = compile_to_wasm_checked(&mut with_db, &source);
+    let wasm = compile_to_wasm(&mut with_db, &source);
     let result: i32 = execute_wasm(&wasm, "run", ());
     assert_eq!(result, 10001, "leaf and row[1] ticked; row[0] untouched");
 }
@@ -175,7 +175,7 @@ fn inputs_and_outputs_follow_the_subscript(mut with_db: db::RootDatabase) {
             run := s[0].out * 10000 + s[1].out * 100 + s[2].out;
         END_FUNCTION
     "#;
-    let wasm = compile_to_wasm_checked(&mut with_db, source);
+    let wasm = compile_to_wasm(&mut with_db, source);
     let result: i32 = execute_wasm(&wasm, "run", ());
     assert_eq!(result, 42, "the input and the output both landed on element 2");
 }
@@ -259,7 +259,7 @@ fn inherited_body_dispatches_this_against_the_instance(mut with_db: db::RootData
             run := b.Template() * 10000 + m.Template() * 100 + l.Template();
         END_FUNCTION
     "#;
-    let wasm = compile_to_wasm_checked(&mut with_db, source);
+    let wasm = compile_to_wasm(&mut with_db, source);
     let result: i32 = execute_wasm(&wasm, "run", ());
     assert_eq!(result, 112127, "each instance runs its own override set");
 }
@@ -293,7 +293,7 @@ fn super_stays_static_under_the_new_dispatch(mut with_db: db::RootDatabase) {
             run := m.ViaSuper() * 10 + l.ViaSuper();
         END_FUNCTION
     "#;
-    let wasm = compile_to_wasm_checked(&mut with_db, source);
+    let wasm = compile_to_wasm(&mut with_db, source);
     let result: i32 = execute_wasm(&wasm, "run", ());
     assert_eq!(result, 11, "SUPER is not virtual");
 }

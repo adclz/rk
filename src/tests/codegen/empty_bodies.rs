@@ -1,4 +1,4 @@
-use crate::tests::codegen::{compile_to_wasm_checked, execute_wasm, with_db};
+use crate::tests::codegen::{compile_to_wasm, execute_wasm, with_db};
 use rstest::*;
 
 /// A function with a return type and no body returns the return slot's
@@ -9,7 +9,7 @@ fn empty_function_with_return_type(mut with_db: db::RootDatabase) {
         FUNCTION f : INT
         END_FUNCTION
     "#;
-    let wasm = compile_to_wasm_checked(&mut with_db, source);
+    let wasm = compile_to_wasm(&mut with_db, source);
     let result: i32 = execute_wasm(&wasm, "f", ());
     assert_eq!(result, 0);
 }
@@ -24,7 +24,7 @@ fn empty_function_without_return_type(mut with_db: db::RootDatabase) {
         END_VAR
         END_FUNCTION
     "#;
-    let wasm = compile_to_wasm_checked(&mut with_db, source);
+    let wasm = compile_to_wasm(&mut with_db, source);
     let _: () = execute_wasm(&wasm, "f", 1);
 }
 
@@ -43,7 +43,7 @@ fn function_body_of_only_comments(mut with_db: db::RootDatabase) {
             // still nothing
         END_FUNCTION
     "#;
-    let wasm = compile_to_wasm_checked(&mut with_db, source);
+    let wasm = compile_to_wasm(&mut with_db, source);
     let result: i32 = execute_wasm(&wasm, "f", ());
     assert_eq!(result, 0);
 }
@@ -66,7 +66,7 @@ fn empty_function_block(mut with_db: db::RootDatabase) {
             run := s.x;
         END_FUNCTION
     "#;
-    let wasm = compile_to_wasm_checked(&mut with_db, source);
+    let wasm = compile_to_wasm(&mut with_db, source);
     let result: i32 = execute_wasm(&wasm, "run", ());
     assert_eq!(result, 0);
 }
@@ -86,7 +86,7 @@ fn empty_function_block_without_variables(mut with_db: db::RootDatabase) {
             run := 1;
         END_FUNCTION
     "#;
-    let wasm = compile_to_wasm_checked(&mut with_db, source);
+    let wasm = compile_to_wasm(&mut with_db, source);
     let result: i32 = execute_wasm(&wasm, "run", ());
     assert_eq!(result, 1);
 }
@@ -116,7 +116,7 @@ fn empty_method_on_a_class(mut with_db: db::RootDatabase) {
             run := c.get();
         END_FUNCTION
     "#;
-    let wasm = compile_to_wasm_checked(&mut with_db, source);
+    let wasm = compile_to_wasm(&mut with_db, source);
     let result: i32 = execute_wasm(&wasm, "run", ());
     assert_eq!(result, 7);
 }
@@ -137,7 +137,7 @@ fn empty_method_with_return_type(mut with_db: db::RootDatabase) {
             run := f.get();
         END_FUNCTION
     "#;
-    let wasm = compile_to_wasm_checked(&mut with_db, source);
+    let wasm = compile_to_wasm(&mut with_db, source);
     let result: i32 = execute_wasm(&wasm, "run", ());
     assert_eq!(result, 0);
 }
@@ -159,7 +159,7 @@ fn empty_class(mut with_db: db::RootDatabase) {
             run := 5;
         END_FUNCTION
     "#;
-    let wasm = compile_to_wasm_checked(&mut with_db, source);
+    let wasm = compile_to_wasm(&mut with_db, source);
     let result: i32 = execute_wasm(&wasm, "run", ());
     assert_eq!(result, 5);
 }

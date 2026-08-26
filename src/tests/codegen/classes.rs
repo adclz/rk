@@ -561,7 +561,7 @@ fn interface_prototype_base_method_and_override_coexist(mut with_db: db::RootDat
             test := drive(dev := d);   (* override state: 7 then 14 *)
         END_FUNCTION
     "#;
-    let wasm = crate::tests::codegen::compile_to_wasm_checked(&mut with_db, source);
+    let wasm = crate::tests::codegen::compile_to_wasm(&mut with_db, source);
     let result: i32 = super::execute_wasm(&wasm, "test", ());
     assert_eq!(result, 14, "the override implements the interface, not the base");
 }

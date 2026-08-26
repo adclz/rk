@@ -7,7 +7,7 @@
 //! bits. Every test here therefore checks a value that only comes out right if
 //! the shift and the mask are both applied.
 
-use crate::tests::codegen::{compile_to_wasm_checked, execute_wasm, with_db};
+use crate::tests::codegen::{compile_to_wasm, execute_wasm, with_db};
 use rstest::*;
 
 /// `2#0000_0101` — bits 0 and 2 set, so a correct read alternates
@@ -29,7 +29,7 @@ fn read_bit_of_byte(mut with_db: db::RootDatabase, #[case] access: &str, #[case]
         END_FUNCTION
     "#
     );
-    let wasm = compile_to_wasm_checked(&mut with_db, &source);
+    let wasm = compile_to_wasm(&mut with_db, &source);
     let result: i32 = execute_wasm(&wasm, "get", ());
     assert_eq!(result, expected, "{access} on 2#0000_0101");
 }
@@ -45,7 +45,7 @@ fn read_bit_with_explicit_x(mut with_db: db::RootDatabase) {
             get := w.%X15;
         END_FUNCTION
     "#;
-    let wasm = compile_to_wasm_checked(&mut with_db, source);
+    let wasm = compile_to_wasm(&mut with_db, source);
     let result: i32 = execute_wasm(&wasm, "get", ());
     assert_eq!(result, 1, "bit 15 of 16#8000 is set");
 }
@@ -66,7 +66,7 @@ fn read_bit_is_zero_or_one_not_truthiness(mut with_db: db::RootDatabase) {
             IF b.3 THEN count_low_nibble := count_low_nibble + 1; END_IF;
         END_FUNCTION
     "#;
-    let wasm = compile_to_wasm_checked(&mut with_db, source);
+    let wasm = compile_to_wasm(&mut with_db, source);
     let result: i32 = execute_wasm(&wasm, "count_low_nibble", ());
     assert_eq!(result, 0, "no low-nibble bit of 16#F0 is set");
 }
@@ -88,7 +88,7 @@ fn read_byte_of_dword(mut with_db: db::RootDatabase, #[case] access: &str, #[cas
         END_FUNCTION
     "#
     );
-    let wasm = compile_to_wasm_checked(&mut with_db, &source);
+    let wasm = compile_to_wasm(&mut with_db, &source);
     let result: i32 = execute_wasm(&wasm, "get", ());
     assert_eq!(result, expected, "{access} on 16#11223344");
 }
@@ -108,7 +108,7 @@ fn read_word_of_dword(mut with_db: db::RootDatabase, #[case] access: &str, #[cas
         END_FUNCTION
     "#
     );
-    let wasm = compile_to_wasm_checked(&mut with_db, &source);
+    let wasm = compile_to_wasm(&mut with_db, &source);
     let result: i32 = execute_wasm(&wasm, "get", ());
     assert_eq!(result, expected, "{access} on 16#11223344");
 }
@@ -130,7 +130,7 @@ fn read_dword_of_lword(mut with_db: db::RootDatabase, #[case] access: &str, #[ca
         END_FUNCTION
     "#
     );
-    let wasm = compile_to_wasm_checked(&mut with_db, &source);
+    let wasm = compile_to_wasm(&mut with_db, &source);
     let result: i32 = execute_wasm(&wasm, "get", ());
     assert_eq!(result, expected, "{access} on 16#1122334455667788");
 }
@@ -161,7 +161,7 @@ fn read_high_slices_of_lword(
     // Compared against 0 rather than returned directly so one body shape covers
     // both the BOOL of `%X` and the BYTE of `%B`; the cases below therefore
     // assert "slice is non-zero", which still fails if the shift is wrong.
-    let wasm = compile_to_wasm_checked(&mut with_db, &source);
+    let wasm = compile_to_wasm(&mut with_db, &source);
     let result: i32 = execute_wasm(&wasm, "get", ());
     assert_eq!(result, expected, "{access} on 16#1122334455667788");
 }
@@ -180,7 +180,7 @@ fn write_bit_preserves_other_bits(mut with_db: db::RootDatabase) {
             set := b;
         END_FUNCTION
     "#;
-    let wasm = compile_to_wasm_checked(&mut with_db, source);
+    let wasm = compile_to_wasm(&mut with_db, source);
     let result: i32 = execute_wasm(&wasm, "set", ());
     assert_eq!(result, 0xF1, "setting bit 0 of 16#F0 gives 16#F1");
 }
@@ -197,7 +197,7 @@ fn write_bit_false_clears_only_that_bit(mut with_db: db::RootDatabase) {
             clear := b;
         END_FUNCTION
     "#;
-    let wasm = compile_to_wasm_checked(&mut with_db, source);
+    let wasm = compile_to_wasm(&mut with_db, source);
     let result: i32 = execute_wasm(&wasm, "clear", ());
     assert_eq!(result, 0xF7, "clearing bit 3 of 16#FF gives 16#F7");
 }
@@ -216,7 +216,7 @@ fn write_several_bits_accumulates(mut with_db: db::RootDatabase) {
             build := b;
         END_FUNCTION
     "#;
-    let wasm = compile_to_wasm_checked(&mut with_db, source);
+    let wasm = compile_to_wasm(&mut with_db, source);
     let result: i32 = execute_wasm(&wasm, "build", ());
     assert_eq!(result, 0b0010_0101, "bits 0, 2 and 5 set");
 }
@@ -233,7 +233,7 @@ fn write_byte_slice_of_dword(mut with_db: db::RootDatabase) {
             patch := d;
         END_FUNCTION
     "#;
-    let wasm = compile_to_wasm_checked(&mut with_db, source);
+    let wasm = compile_to_wasm(&mut with_db, source);
     let result: i32 = execute_wasm(&wasm, "patch", ());
     assert_eq!(
         result, 0x11AA3344u32 as i32,
@@ -257,7 +257,7 @@ fn write_bit_keeps_subwidth_lane_clean(mut with_db: db::RootDatabase) {
             widen := d;
         END_FUNCTION
     "#;
-    let wasm = compile_to_wasm_checked(&mut with_db, source);
+    let wasm = compile_to_wasm(&mut with_db, source);
     let result: i32 = execute_wasm(&wasm, "widen", ());
     assert_eq!(result, 0x8F, "no bits above bit 7 survive in a BYTE");
 }
@@ -276,7 +276,7 @@ fn write_high_bit_of_lword(mut with_db: db::RootDatabase) {
             set := l;
         END_FUNCTION
     "#;
-    let wasm = compile_to_wasm_checked(&mut with_db, source);
+    let wasm = compile_to_wasm(&mut with_db, source);
     let result: i64 = execute_wasm(&wasm, "set", ());
     assert_eq!(result, 0x8000_0000_0000_00FFu64 as i64);
 }
@@ -299,7 +299,7 @@ fn read_back_after_write_on_runtime_value(mut with_db: db::RootDatabase) {
             roundtrip := b.4;
         END_FUNCTION
     "#;
-    let wasm = compile_to_wasm_checked(&mut with_db, source);
+    let wasm = compile_to_wasm(&mut with_db, source);
     let set: i32 = execute_wasm(&wasm, "roundtrip", 0x01);
     assert_eq!(set, 1, "bit 0 of 16#01 is set, so bit 4 becomes set");
 
@@ -332,7 +332,7 @@ fn bit_access_on_fb_member(mut with_db: db::RootDatabase) {
             run := f.bits;
         END_FUNCTION
     "#;
-    let wasm = compile_to_wasm_checked(&mut with_db, source);
+    let wasm = compile_to_wasm(&mut with_db, source);
     let result: i32 = execute_wasm(&wasm, "run", ());
     assert_eq!(
         result, 0b0000_0011,
@@ -361,7 +361,7 @@ fn slice_of_an_array_element(mut with_db: db::RootDatabase) {
             get := arr[k];
         END_FUNCTION
     "#;
-    let wasm = compile_to_wasm_checked(&mut with_db, source);
+    let wasm = compile_to_wasm(&mut with_db, source);
     let result: i32 = execute_wasm(&wasm, "get", ());
     assert_eq!(result, 0x81, "bit 7 of 16#80 is set, so bit 0 is written");
 }
@@ -384,7 +384,7 @@ fn slice_of_a_struct_field(mut with_db: db::RootDatabase) {
             get := s.fld;
         END_FUNCTION
     "#;
-    let wasm = compile_to_wasm_checked(&mut with_db, source);
+    let wasm = compile_to_wasm(&mut with_db, source);
     let result: i32 = execute_wasm(&wasm, "get", ());
     assert_eq!(result, 0x9234, "bit 15 set on 16#1234");
 }
@@ -405,7 +405,7 @@ fn sized_slice_of_a_struct_field(mut with_db: db::RootDatabase) {
             get := s.fld.%B1;
         END_FUNCTION
     "#;
-    let wasm = compile_to_wasm_checked(&mut with_db, source);
+    let wasm = compile_to_wasm(&mut with_db, source);
     let result: i32 = execute_wasm(&wasm, "get", ());
     assert_eq!(result, 0x12, "byte 1 of 16#1234");
 }
@@ -440,7 +440,7 @@ fn sized_slices_of_an_lword_are_exact(
         END_FUNCTION
     "#
     );
-    let wasm = compile_to_wasm_checked(&mut with_db, &source);
+    let wasm = compile_to_wasm(&mut with_db, &source);
     let result: i32 = execute_wasm(&wasm, "get", ());
     assert_eq!(result, expected, "{access} on 16#1122334455667788");
 }

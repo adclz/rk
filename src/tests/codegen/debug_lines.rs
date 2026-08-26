@@ -226,6 +226,7 @@ fn breakpoints_resolve_per_file(mut with_db: db::RootDatabase) {
     "#;
     let file_a = add_source(&mut with_db, src_a);
     let file_b = add_source(&mut with_db, src_b);
+    crate::tests::utils::assert_workspace_is_clean(&with_db);
     let idx_a = semantic_index(&with_db, file_a);
     let idx_b = semantic_index(&with_db, file_b);
     let module = mir::lower::lower_module::lower_modules(&with_db, &[idx_a, idx_b])

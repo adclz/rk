@@ -1,6 +1,6 @@
 //! Function Block execution tests.
 
-use crate::tests::codegen::{compile_to_wasm, compile_to_wasm_checked, with_db};
+use crate::tests::codegen::{compile_to_wasm, with_db};
 use rstest::*;
 
 #[rstest]
@@ -1033,7 +1033,7 @@ fn fb_array_input(mut with_db: db::RootDatabase) {
             test := inst.sum;
         END_FUNCTION
     "#;
-    let wasm = super::compile_to_wasm_checked(&mut with_db, source);
+    let wasm = super::compile_to_wasm(&mut with_db, source);
     let result: i32 = super::execute_wasm(&wasm, "test", ());
     assert_eq!(result, 17, "array input copied into the instance: 3+4+10");
 }
@@ -1060,7 +1060,7 @@ fn fb_struct_input(mut with_db: db::RootDatabase) {
             test := inst.total;
         END_FUNCTION
     "#;
-    let wasm = super::compile_to_wasm_checked(&mut with_db, source);
+    let wasm = super::compile_to_wasm(&mut with_db, source);
     let result: i32 = super::execute_wasm(&wasm, "test", ());
     assert_eq!(result, 7, "struct input copied into the instance: 3+4");
 }
@@ -1085,7 +1085,7 @@ fn fb_struct_output_binding(mut with_db: db::RootDatabase) {
             test := got.x + got.y;
         END_FUNCTION
     "#;
-    let wasm = super::compile_to_wasm_checked(&mut with_db, source);
+    let wasm = super::compile_to_wasm(&mut with_db, source);
     let result: i32 = super::execute_wasm(&wasm, "test", ());
     assert_eq!(result, 15, "struct output copied back: 5 + 10");
 }
@@ -1607,7 +1607,7 @@ fn test_fb_inputs_evaluate_in_declaration_order(mut with_db: db::RootDatabase) {
             test := r;
         END_FUNCTION
     "#;
-    let wasm = compile_to_wasm_checked(&mut with_db, source);
+    let wasm = compile_to_wasm(&mut with_db, source);
     let result: i32 = super::execute_wasm(&wasm, "test", ());
     assert_eq!(result, 12, "a's expression ran first: a = 1, b = 2");
 }

@@ -26,7 +26,7 @@
 //!   reads source text, so it is immune by construction; nothing says so in
 //!   the formatter, which is why it is said here.
 
-use crate::tests::codegen::{compile_to_mir_and_wasm, compile_to_wasm_checked, execute_wasm};
+use crate::tests::codegen::{compile_to_mir_and_wasm, compile_to_wasm, execute_wasm};
 use crate::tests::lsp::formatter::fmt;
 use crate::tests::utils::add_sources;
 use auto_lsp::default::db::BaseDatabase;
@@ -375,7 +375,7 @@ fn size_character_reads_the_same_slice_in_either_case(
         END_FUNCTION
     "#
     );
-    let wasm = compile_to_wasm_checked(&mut with_db, &source);
+    let wasm = compile_to_wasm(&mut with_db, &source);
     let result: i32 = execute_wasm(&wasm, "get", ());
     assert_eq!(result, expected, "{access} on 16#11223344");
 }
@@ -402,7 +402,7 @@ fn enum_variant_case_reaches_the_same_value(mut with_db: db::RootDatabase) {
             END_IF;
         END_FUNCTION
     "#;
-    let wasm = compile_to_wasm_checked(&mut with_db, source);
+    let wasm = compile_to_wasm(&mut with_db, source);
     let result: i32 = execute_wasm(&wasm, "get", ());
     assert_eq!(result, 42, "color#green IS Color#GREEN");
 }
@@ -429,7 +429,7 @@ fn struct_initializer_field_name_folds(mut with_db: db::RootDatabase) {
             get := s.Fld * 10 + s.Other;
         END_FUNCTION
     "#;
-    let wasm = compile_to_wasm_checked(&mut with_db, source);
+    let wasm = compile_to_wasm(&mut with_db, source);
     let result: i32 = execute_wasm(&wasm, "get", ());
     assert_eq!(result, 75, "both initializers landed despite the spelling");
 }
@@ -447,7 +447,7 @@ fn return_value_assigned_in_another_case(mut with_db: db::RootDatabase) {
             get := Compute();
         END_FUNCTION
     "#;
-    let wasm = compile_to_wasm_checked(&mut with_db, source);
+    let wasm = compile_to_wasm(&mut with_db, source);
     let result: i32 = execute_wasm(&wasm, "get", ());
     assert_eq!(result, 42, "the folded self-reference is the return value");
 }
@@ -480,7 +480,7 @@ fn member_paths_fold_end_to_end(mut with_db: db::RootDatabase) {
             get := h.o;
         END_FUNCTION
     "#;
-    let wasm = compile_to_wasm_checked(&mut with_db, source);
+    let wasm = compile_to_wasm(&mut with_db, source);
     let result: i32 = execute_wasm(&wasm, "get", ());
     assert_eq!(result, 42, "every spelling reached the same field");
 }

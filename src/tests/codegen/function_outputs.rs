@@ -3,7 +3,7 @@
 //! rules; the callee's pointer param is satisfied by a synthesized scratch
 //! local in the caller, see `build_call_args`).
 
-use crate::tests::codegen::{compile_to_wasm_checked, with_db};
+use crate::tests::codegen::{compile_to_wasm, with_db};
 use rstest::*;
 
 /// Bound output `o => x`: the callee writes through a live pointer to `x`.
@@ -24,7 +24,7 @@ fn bound_output_live_pointer(mut with_db: db::RootDatabase) {
             test := x;
         END_FUNCTION
     "#;
-    let wasm = compile_to_wasm_checked(&mut with_db, source);
+    let wasm = compile_to_wasm(&mut with_db, source);
     let result: i32 = super::execute_wasm(&wasm, "test", ());
     assert_eq!(result, 42, "output aliases the caller's x: 41 + 1");
 }
@@ -47,7 +47,7 @@ fn discarded_output(mut with_db: db::RootDatabase) {
             test := fn(a := 5);
         END_FUNCTION
     "#;
-    let wasm = compile_to_wasm_checked(&mut with_db, source);
+    let wasm = compile_to_wasm(&mut with_db, source);
     let result: i32 = super::execute_wasm(&wasm, "test", ());
     assert_eq!(result, 6, "discarded output: call still works, returns a+1");
 }
@@ -71,7 +71,7 @@ fn partially_discarded_outputs(mut with_db: db::RootDatabase) {
             test := t;
         END_FUNCTION
     "#;
-    let wasm = compile_to_wasm_checked(&mut with_db, source);
+    let wasm = compile_to_wasm(&mut with_db, source);
     let result: i32 = super::execute_wasm(&wasm, "test", ());
     assert_eq!(result, 15, "dbl discarded, tri bound: 5*3");
 }
@@ -92,7 +92,7 @@ fn discarded_outputs_two_calls(mut with_db: db::RootDatabase) {
             test := fn(a := 1) + fn(a := 10);
         END_FUNCTION
     "#;
-    let wasm = compile_to_wasm_checked(&mut with_db, source);
+    let wasm = compile_to_wasm(&mut with_db, source);
     let result: i32 = super::execute_wasm(&wasm, "test", ());
     assert_eq!(result, 13, "2 + 11");
 }
@@ -120,7 +120,7 @@ fn discarded_output_from_fb_body(mut with_db: db::RootDatabase) {
             test := c.res;
         END_FUNCTION
     "#;
-    let wasm = compile_to_wasm_checked(&mut with_db, source);
+    let wasm = compile_to_wasm(&mut with_db, source);
     let result: i32 = super::execute_wasm(&wasm, "test", ());
     assert_eq!(result, 21, "discarded output inside an FB body: 20+1");
 }
@@ -142,7 +142,7 @@ fn discarded_string_output(mut with_db: db::RootDatabase) {
             test := tag(a := 21);
         END_FUNCTION
     "#;
-    let wasm = compile_to_wasm_checked(&mut with_db, source);
+    let wasm = compile_to_wasm(&mut with_db, source);
     let result: i32 = super::execute_wasm(&wasm, "test", ());
     assert_eq!(
         result, 42,
@@ -171,7 +171,7 @@ fn bound_struct_output(mut with_db: db::RootDatabase) {
             test := got.x + got.y;
         END_FUNCTION
     "#;
-    let wasm = compile_to_wasm_checked(&mut with_db, source);
+    let wasm = compile_to_wasm(&mut with_db, source);
     let result: i32 = super::execute_wasm(&wasm, "test", ());
     assert_eq!(
         result, 15,
@@ -198,7 +198,7 @@ fn bound_array_output(mut with_db: db::RootDatabase) {
             test := a[0] + a[1];
         END_FUNCTION
     "#;
-    let wasm = compile_to_wasm_checked(&mut with_db, source);
+    let wasm = compile_to_wasm(&mut with_db, source);
     let result: i32 = super::execute_wasm(&wasm, "test", ());
     assert_eq!(
         result, 33,
@@ -259,7 +259,7 @@ fn discarded_struct_output(mut with_db: db::RootDatabase) {
             test := mk(seed := 9);
         END_FUNCTION
     "#;
-    let wasm = compile_to_wasm_checked(&mut with_db, source);
+    let wasm = compile_to_wasm(&mut with_db, source);
     let result: i32 = super::execute_wasm(&wasm, "test", ());
     assert_eq!(
         result, 10,
@@ -283,7 +283,7 @@ fn discarded_array_output(mut with_db: db::RootDatabase) {
             test := fill(seed := 4);
         END_FUNCTION
     "#;
-    let wasm = compile_to_wasm_checked(&mut with_db, source);
+    let wasm = compile_to_wasm(&mut with_db, source);
     let result: i32 = super::execute_wasm(&wasm, "test", ());
     assert_eq!(result, 8, "discarded array output: call works, returns 8");
 }
@@ -309,7 +309,7 @@ fn bound_method_output(mut with_db: db::RootDatabase) {
             test := q * 100 + r;
         END_FUNCTION
     "#;
-    let wasm = compile_to_wasm_checked(&mut with_db, source);
+    let wasm = compile_to_wasm(&mut with_db, source);
     let result: i32 = super::execute_wasm(&wasm, "test", ());
     assert_eq!(result, 1003, "return 10, rem 3, both through the call");
 }
@@ -331,7 +331,7 @@ fn discarded_method_output(mut with_db: db::RootDatabase) {
             test := w.Split();
         END_FUNCTION
     "#;
-    let wasm = compile_to_wasm_checked(&mut with_db, source);
+    let wasm = compile_to_wasm(&mut with_db, source);
     let result: i32 = super::execute_wasm(&wasm, "test", ());
     assert_eq!(result, 10, "the discarded output landed in a scratch");
 }
@@ -352,7 +352,7 @@ fn discarded_scratch_is_per_call_site(mut with_db: db::RootDatabase) {
             test := g() * 10 + g();
         END_FUNCTION
     "#;
-    let wasm = compile_to_wasm_checked(&mut with_db, source);
+    let wasm = compile_to_wasm(&mut with_db, source);
     let result: i32 = super::execute_wasm(&wasm, "test", ());
     assert_eq!(result, 11, "two sites, two scratches, both initially zero");
 }
@@ -406,7 +406,7 @@ fn discarded_output_nested_call(mut with_db: db::RootDatabase) {
             test := g(a := g(a := 5));
         END_FUNCTION
     "#;
-    let wasm = compile_to_wasm_checked(&mut with_db, source);
+    let wasm = compile_to_wasm(&mut with_db, source);
     let result: i32 = super::execute_wasm(&wasm, "test", ());
     assert_eq!(result, 5, "each nested call kept its own scratch");
 }

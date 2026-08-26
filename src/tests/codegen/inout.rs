@@ -3,7 +3,7 @@
 //! body), aliasing, aggregates, nesting/passthrough, STRING, and the E0234
 //! l-value requirement.
 
-use crate::tests::codegen::{compile_to_mir_and_wasm, compile_to_wasm_checked, with_db};
+use crate::tests::codegen::{compile_to_mir_and_wasm, compile_to_wasm, with_db};
 use rstest::*;
 use runtime::{Config, Plc};
 
@@ -31,7 +31,7 @@ fn fb_inout_basic(mut with_db: db::RootDatabase) {
             test := x;
         END_FUNCTION
     "#;
-    let wasm = compile_to_wasm_checked(&mut with_db, source);
+    let wasm = compile_to_wasm(&mut with_db, source);
     let result: i32 = super::execute_wasm(&wasm, "test", ());
     assert_eq!(result, 42, "FB inout by-ref: x becomes 42");
 }
@@ -53,7 +53,7 @@ fn fb_inout_positional(mut with_db: db::RootDatabase) {
             test := x;
         END_FUNCTION
     "#;
-    let wasm = compile_to_wasm_checked(&mut with_db, source);
+    let wasm = compile_to_wasm(&mut with_db, source);
     let result: i32 = super::execute_wasm(&wasm, "test", ());
     assert_eq!(result, 84, "positional inout round-trips: 21->42->84");
 }
@@ -78,7 +78,7 @@ fn fb_inout_field_target(mut with_db: db::RootDatabase) {
             test := p.n + p.other;
         END_FUNCTION
     "#;
-    let wasm = compile_to_wasm_checked(&mut with_db, source);
+    let wasm = compile_to_wasm(&mut with_db, source);
     let result: i32 = super::execute_wasm(&wasm, "test", ());
     assert_eq!(result, 47, "writes p.n=42, leaves p.other=5 -> 47");
 }
@@ -106,7 +106,7 @@ fn fb_inout_aliasing(mut with_db: db::RootDatabase) {
             test := fb.seen;
         END_FUNCTION
     "#;
-    let wasm = compile_to_wasm_checked(&mut with_db, source);
+    let wasm = compile_to_wasm(&mut with_db, source);
     let result: i32 = super::execute_wasm(&wasm, "test", ());
     assert_eq!(
         result, 100,
@@ -137,7 +137,7 @@ fn fb_inout_aggregate(mut with_db: db::RootDatabase) {
             test := p.x + p.y;
         END_FUNCTION
     "#;
-    let wasm = compile_to_wasm_checked(&mut with_db, source);
+    let wasm = compile_to_wasm(&mut with_db, source);
     let result: i32 = super::execute_wasm(&wasm, "test", ());
     assert_eq!(result, 33, "struct inout by-ref: (1+10) + (2+20) = 33");
 }
@@ -168,7 +168,7 @@ fn fb_inout_nested(mut with_db: db::RootDatabase) {
             test := o.res;
         END_FUNCTION
     "#;
-    let wasm = compile_to_wasm_checked(&mut with_db, source);
+    let wasm = compile_to_wasm(&mut with_db, source);
     let result: i32 = super::execute_wasm(&wasm, "test", ());
     assert_eq!(result, 42, "nested FB inout on an outer member: 21 -> 42");
 }
@@ -198,7 +198,7 @@ fn fb_inout_passthrough(mut with_db: db::RootDatabase) {
             test := x;
         END_FUNCTION
     "#;
-    let wasm = compile_to_wasm_checked(&mut with_db, source);
+    let wasm = compile_to_wasm(&mut with_db, source);
     let result: i32 = super::execute_wasm(&wasm, "test", ());
     assert_eq!(result, 42, "forwarded inout mutates the original variable");
 }
@@ -296,7 +296,7 @@ fn fn_inout_scalar_local(mut with_db: db::RootDatabase) {
             test := x;
         END_FUNCTION
     "#;
-    let wasm = compile_to_wasm_checked(&mut with_db, source);
+    let wasm = compile_to_wasm(&mut with_db, source);
     let result: i32 = super::execute_wasm(&wasm, "test", ());
     assert_eq!(result, 12, "two inout calls increment x: 10 -> 12");
 }
@@ -323,7 +323,7 @@ fn fn_inout_struct(mut with_db: db::RootDatabase) {
             test := p.x + p.y;
         END_FUNCTION
     "#;
-    let wasm = compile_to_wasm_checked(&mut with_db, source);
+    let wasm = compile_to_wasm(&mut with_db, source);
     let result: i32 = super::execute_wasm(&wasm, "test", ());
     assert_eq!(result, 33, "struct inout on a FUNCTION: (1+10) + (2+20)");
 }
@@ -347,7 +347,7 @@ fn fn_inout_array(mut with_db: db::RootDatabase) {
             test := a[0] + a[1];
         END_FUNCTION
     "#;
-    let wasm = compile_to_wasm_checked(&mut with_db, source);
+    let wasm = compile_to_wasm(&mut with_db, source);
     let result: i32 = super::execute_wasm(&wasm, "test", ());
     assert_eq!(result, 14, "array inout on a FUNCTION: 6 + 8");
 }
@@ -408,7 +408,7 @@ fn fb_inout_method_this_access(mut with_db: db::RootDatabase) {
             test := x;
         END_FUNCTION
     "#;
-    let wasm = compile_to_wasm_checked(&mut with_db, source);
+    let wasm = compile_to_wasm(&mut with_db, source);
     let result: i32 = super::execute_wasm(&wasm, "test", ());
     assert_eq!(result, 17, "body +1, method bare +1 and THIS +10: 5 -> 17");
 }
@@ -434,7 +434,7 @@ fn fb_ref_to_member_not_auto_dereffed(mut with_db: db::RootDatabase) {
             test := a * 1000 + b;
         END_FUNCTION
     "#;
-    let wasm = compile_to_wasm_checked(&mut with_db, source);
+    let wasm = compile_to_wasm(&mut with_db, source);
     let result: i32 = super::execute_wasm(&wasm, "test", ());
     assert_eq!(
         result, 2102,

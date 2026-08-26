@@ -37,6 +37,7 @@ END_FUNCTION
     "#;
 
     let file = super::add_source(&mut with_db, source);
+    crate::tests::utils::assert_workspace_is_clean(&with_db);
     let sem_idx = hir::hir_def::semantic_index::semantic_index(&with_db, file);
     let mir_module =
         mir::lower::lower_module::lower_module(&with_db, sem_idx).expect("MIR lowering failed");
@@ -68,6 +69,7 @@ END_FUNCTION
     "#;
 
     let file = super::add_source(&mut with_db, source);
+    crate::tests::utils::assert_workspace_is_clean(&with_db);
     let sem_idx = hir::hir_def::semantic_index::semantic_index(&with_db, file);
     let mir_module =
         mir::lower::lower_module::lower_module(&with_db, sem_idx).expect("MIR lowering failed");
@@ -98,6 +100,7 @@ END_FUNCTION
     "#;
 
     let file = super::add_source(&mut with_db, source);
+    crate::tests::utils::assert_workspace_is_clean(&with_db);
     let sem_idx = hir::hir_def::semantic_index::semantic_index(&with_db, file);
     let mir_module =
         mir::lower::lower_module::lower_module(&with_db, sem_idx).expect("MIR lowering failed");
@@ -147,6 +150,7 @@ END_FUNCTION
     "#;
 
     let file = super::add_source(&mut with_db, source);
+    crate::tests::utils::assert_workspace_is_clean(&with_db);
     let sem_idx = hir::hir_def::semantic_index::semantic_index(&with_db, file);
     let mir_module =
         mir::lower::lower_module::lower_module(&with_db, sem_idx).expect("MIR lowering failed");
@@ -206,6 +210,7 @@ END_FUNCTION
     "#;
 
     let file = super::add_source(&mut with_db, source);
+    crate::tests::utils::assert_workspace_is_clean(&with_db);
     let sem_idx = hir::hir_def::semantic_index::semantic_index(&with_db, file);
     let mir_module =
         mir::lower::lower_module::lower_module(&with_db, sem_idx).expect("MIR lowering failed");
@@ -252,6 +257,7 @@ END_FUNCTION
     "#;
 
     let file = super::add_source(&mut with_db, source);
+    crate::tests::utils::assert_workspace_is_clean(&with_db);
     let sem_idx = hir::hir_def::semantic_index::semantic_index(&with_db, file);
     let mir_module =
         mir::lower::lower_module::lower_module(&with_db, sem_idx).expect("MIR lowering failed");

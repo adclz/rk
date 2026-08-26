@@ -790,8 +790,11 @@ fn a_frame_s_aggregate_array_elements_carry_their_layout(mut with_db: db::RootDa
 /// element path strings. The whole point of the descriptor is that 5000
 /// addresses one multiplication apart need describing once.
 #[rstest]
-fn an_arrays_symbol_cost_does_not_grow_with_its_length(mut with_db: db::RootDatabase) {
-    let section_size = |db: &mut db::RootDatabase, decl: &str| {
+fn an_arrays_symbol_cost_does_not_grow_with_its_length() {
+    // A fresh database per measurement: both sources declare `Main`/`Res`, so
+    // registering them side by side would be a duplicate, not two programs.
+    let section_size = |decl: &str| {
+        let db = &mut db::RootDatabase::default();
         let src = format!(
             r#"
 PROGRAM Main
@@ -819,8 +822,8 @@ END_CONFIGURATION
             .expect("the debug build carries symbols")
     };
 
-    let ten = section_size(&mut with_db, "a : ARRAY[0..9] OF DINT;");
-    let five_thousand = section_size(&mut with_db, "a : ARRAY[0..4999] OF DINT;");
+    let ten = section_size("a : ARRAY[0..9] OF DINT;");
+    let five_thousand = section_size("a : ARRAY[0..4999] OF DINT;");
     // Not byte-identical (msgpack spends a couple more bytes writing `4999`
     // than `9`), but within a fixed slack — never per-element.
     assert!(

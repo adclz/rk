@@ -42,6 +42,32 @@ pub fn no_color_and_ascii() -> Config {
         .with_char_set(CharSet::Ascii)
 }
 
+/// Panic unless EVERY registered file is diagnostic-free.
+///
+/// For the tests that lower several files at once and so cannot go through
+/// `codegen`'s single-source helpers. Lowering a source the compiler rejects
+/// measures code no user can run — see `compile_to_wasm`.
+pub fn assert_workspace_is_clean(db: &RootDatabase) {
+    use auto_lsp::default::db::BaseDatabase;
+    let mut reported = Vec::new();
+    for file in db.get_files().iter().map(|f| *f) {
+        for diag in hir::check::diagnostics_for_file(db, file).iter() {
+            let code = match &diag.diagnostic.code {
+                Some(auto_lsp::lsp_types::NumberOrString::String(code)) => code.clone(),
+                Some(auto_lsp::lsp_types::NumberOrString::Number(code)) => code.to_string(),
+                None => "?".to_string(),
+            };
+            reported.push(format!("  [{code}] {}", diag.diagnostic.message));
+        }
+    }
+    assert!(
+        reported.is_empty(),
+        "the workspace has {} diagnostic(s), cannot compile:\n{}",
+        reported.len(),
+        reported.join("\n")
+    );
+}
+
 /// Single-source variant of [`add_sources`]: registers one file under a
 /// RANDOM url (so repeated calls in one db never collide) and returns the
 /// `File` for direct queries like `diagnostics_for_file`.
