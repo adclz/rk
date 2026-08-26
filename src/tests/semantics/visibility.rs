@@ -5,6 +5,49 @@ use rstest::rstest;
 use crate::tests::utils::test_diagnostics;
 use crate::tests::utils::with_db;
 
+/// An item that names no specifier is PUBLIC — the one place `rk` departs from
+/// the standard's tables, which make PROTECTED the default. Pinned from the
+/// outside, where the two answers differ: this call is legal only under PUBLIC.
+/// Its counterpart is `access_protected_method_in_non_derived_pou`, the same
+/// call with the specifier written out.
+#[rstest]
+fn valid_access_method_without_a_specifier(mut with_db: RootDatabase) {
+    let source = r#"
+    FUNCTION_BLOCK Counter
+        VAR c : INT; END_VAR
+        METHOD Inc : INT
+            c := c + 1;
+            Inc := c;
+        END_METHOD
+    END_FUNCTION_BLOCK
+
+    FUNCTION caller : INT
+        VAR a : Counter; END_VAR
+        caller := a.Inc();
+    END_FUNCTION
+    "#;
+
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @"");
+}
+
+/// Same for a variable: table 11d also defaults to PROTECTED, and we also
+/// don't, so an FB's member is readable from outside without an annotation.
+#[rstest]
+fn valid_access_variable_without_a_specifier(mut with_db: RootDatabase) {
+    let source = r#"
+    FUNCTION_BLOCK Counter
+        VAR c : INT; END_VAR
+    END_FUNCTION_BLOCK
+
+    FUNCTION caller : INT
+        VAR a : Counter; END_VAR
+        caller := a.c;
+    END_FUNCTION
+    "#;
+
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @"");
+}
+
 #[rstest]
 fn valid_access_private_method(mut with_db: RootDatabase) {
     let source = r#"

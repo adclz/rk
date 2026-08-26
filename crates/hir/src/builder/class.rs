@@ -279,7 +279,9 @@ impl<'db> SemanticIndexBuilder<'db> {
                     Visibility::INTERNAL
                 }
             },
-            None => Visibility::PROTECTED,
+            // A method that writes no specifier is PUBLIC — see the tables in
+            // `hir_ty::resolver::visibility`, which this departs from.
+            None => Visibility::PUBLIC,
         };
 
         let pragmas = self.parse_pou_pragmas(&method.pragmas);

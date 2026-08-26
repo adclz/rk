@@ -18,6 +18,13 @@ Variable access specifiers
 namespace.
 11d PROTECTED specifier The variable may only be accessed from inside the defining POU
 and its derivations (default).
+
+Both tables make PROTECTED the default. We do not: an item that names no
+specifier is PUBLIC here. A hiding default costs an annotation on every method
+that is meant to be called, and `inst.Method()` from outside the POU — what
+essentially all OOP ST is written as — would otherwise be an error by default.
+The specifiers themselves mean exactly what the tables say; only the unwritten
+case differs.
 */
 
 use db::WorkspaceDataBase;
@@ -56,8 +63,9 @@ pub fn check_visibility<'db>(
     };
     let target_visibility = target.get_visibility(db);
 
-    // PUBLIC methods can be called from anywhere
-    if target_visibility.contains(Visibility::PUBLIC) {
+    // PUBLIC items are reachable from anywhere, and so is one that names no
+    // specifier — the departure from the tables above, stated there.
+    if target_visibility.contains(Visibility::PUBLIC) || target_visibility.is_empty() {
         return;
     }
 
@@ -94,8 +102,8 @@ pub fn check_visibility<'db>(
         return;
     }
 
-    // Check PROTECTED visibility (default) - callable from same POU or derived POUs
-    if (target_visibility.contains(Visibility::PROTECTED) || target_visibility.is_empty())
+    // Check PROTECTED visibility - callable from same POU or derived POUs
+    if target_visibility.contains(Visibility::PROTECTED)
         && !is_derived_pou(db, calling_scope, target_scope)
     {
         errors.push(
