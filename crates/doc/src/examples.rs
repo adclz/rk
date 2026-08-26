@@ -1234,6 +1234,25 @@ END_FUNCTION_BLOCK
             lint_rule: None,
         },
         ErrorExample {
+            code: "E0230",
+            category: "Resolution",
+            title: "Variadic call without arguments",
+            description: "A variadic parameter must receive at least one argument. A fold such as `...args+` has no value over an empty pack, so an empty call has nothing to compute.",
+            sources: &[r#"
+FUNCTION sum_all : INT
+    VAR_INPUT
+        args: INT...
+    END_VAR
+    sum_all := ...args+
+END_FUNCTION
+
+FUNCTION fn1 : INT
+    fn1 := sum_all()
+END_FUNCTION
+"#],
+            lint_rule: None,
+        },
+        ErrorExample {
             code: "E0233",
             category: "Resolution",
             title: "Missing required parameter",

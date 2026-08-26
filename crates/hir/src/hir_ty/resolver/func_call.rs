@@ -225,8 +225,23 @@ pub fn resolve_func_call<'db>(
             params.push((*var, crate::hir_ty::body::ParamBinding::Omitted));
             continue;
         }
-        if !var.variadic(db) && is_param_required(db, callable, *var) {
-            // Variadic params accept zero or more values — empty is valid.
+        if var.variadic(db) {
+            // Nothing bound to the pack: every value it could have collected
+            // would have appeared in `bound` above. A fold over an empty pack
+            // has no value, so this is refused here rather than reaching MIR
+            // with an arity it cannot lower.
+            ctx.errors.push(
+                ResolveError::EmptyVariadicCall {
+                    func: callable,
+                    var: *var,
+                    func_call,
+                }
+                .to_diagnostic(db, ctx.scope.file(db)),
+            );
+            params.push((*var, crate::hir_ty::body::ParamBinding::Omitted));
+            continue;
+        }
+        if is_param_required(db, callable, *var) {
             missing.push(*var);
             params.push((*var, crate::hir_ty::body::ParamBinding::Omitted));
         } else if var.is_input(db)

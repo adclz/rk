@@ -340,6 +340,14 @@ pub enum ResolveError<'db> {
         variadic_var: VariableDecl<'db>,
         other_var: VariableDecl<'db>,
     },
+    /// A call bound nothing to a variadic parameter. A fold over an empty pack
+    /// has no value, so an empty pack has no lowering — the callee is refused
+    /// here rather than left to fail in MIR.
+    EmptyVariadicCall {
+        func: CallableType<'db>,
+        var: VariableDecl<'db>,
+        func_call: FuncCall<'db>,
+    },
     /// Two or more items with the same name are available in scope.
     MultipleItemsInScope {
         name: Ident,
@@ -472,6 +480,7 @@ impl<'db> ErrorCode for ResolveError<'db> {
             Self::MultipleVariadicVariables { .. } => "E0227",
             Self::VariadicMixedWithOtherInputs { .. } => "E0228",
             Self::MultibitsOutOfRange { .. } => "E0229",
+            Self::EmptyVariadicCall { .. } => "E0230",
             Self::UnknownMultibitsAccess { .. } => "E0250",
             Self::ExternForbiddenSection { .. } | Self::ExternWithBody { .. } => "E0243",
             Self::ExternOutsideFunction { .. } => "E0244",
@@ -505,6 +514,7 @@ impl<'db> ErrorCode for ResolveError<'db> {
             Self::VariadicNotInInput { .. }
             | Self::MultipleVariadicVariables { .. }
             | Self::VariadicMixedWithOtherInputs { .. } => "invalid variadic declaration",
+            Self::EmptyVariadicCall { .. } => "variadic call without arguments",
             Self::NoConfigFileFound { .. } => "configuration error",
             Self::UnknownTaskRef { .. }
             | Self::InvalidPriority { .. }
@@ -1328,6 +1338,36 @@ impl<'db> ToIdeDiagnostic<'db> for ResolveError<'db> {
                         qualified.join(" or "),
                     ));
                 }
+
+                diag
+            }
+            Self::EmptyVariadicCall {
+                func,
+                var,
+                func_call,
+            } => {
+                let mut diag = diag()
+                    .message(format!(
+                        "call to '{}' must pass at least one argument to variadic parameter '{}'",
+                        func.get_name_ident(db).text(db),
+                        var.name(db).text(db),
+                    ))
+                    .severity(DiagnosticSeverity::ERROR)
+                    .desc(self)
+                    .range(
+                        crate::denormalize(db, file, &func_call.path(db).get_span(db))
+                            .unwrap_or_default(),
+                    )
+                    .call();
+
+                diag.with_related(Related::new(
+                    format!(
+                        "variadic parameter '{}' declared here",
+                        var.name(db).text(db)
+                    ),
+                    var.scope_id(db).file(db),
+                    var.get_span(db),
+                ));
 
                 diag
             }

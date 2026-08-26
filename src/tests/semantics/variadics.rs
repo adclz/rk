@@ -360,3 +360,88 @@ END_FUNCTION
     ---'
     ");
 }
+
+/// A variadic pack must collect at least one argument: `...args+` has no value
+/// over an empty pack, so an empty call has nothing to fold. Refused in HIR so
+/// MIR never receives an arity it cannot lower.
+#[rstest]
+fn invalid_variadic_fn_call_with_no_arguments(mut with_db: RootDatabase) {
+    let source = r#"
+FUNCTION sum_all : INT
+    VAR_INPUT
+        args: INT...
+    END_VAR
+    sum_all := ...args+
+END_FUNCTION
+
+FUNCTION fn1 : INT
+    fn1 := sum_all()
+END_FUNCTION
+"#;
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
+    [E0230] Error: variadic call without arguments
+        ,-[ file:///test0.st:10:12 ]
+        |
+      4 |         args: INT...
+        |         ^^^^^^|^^^^^
+        |               `------- variadic parameter 'args' declared here
+        |
+     10 |     fn1 := sum_all()
+        |            ^^^|^^^
+        |               `----- call to 'sum_all' must pass at least one argument to variadic parameter 'args'
+    ----'
+    ");
+}
+
+/// One argument is enough — the fold of a single element is that element.
+#[rstest]
+fn valid_variadic_fn_call_with_one_argument(mut with_db: RootDatabase) {
+    let source = r#"
+FUNCTION sum_all : INT
+    VAR_INPUT
+        args: INT...
+    END_VAR
+    sum_all := ...args+
+END_FUNCTION
+
+FUNCTION fn1 : INT
+    fn1 := sum_all(1)
+END_FUNCTION
+"#;
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"");
+}
+
+/// The same rule on a METHOD, the other POU kind that may declare a variadic.
+#[rstest]
+fn invalid_variadic_method_call_with_no_arguments(mut with_db: RootDatabase) {
+    let source = r#"
+FUNCTION_BLOCK fb1
+    METHOD PUBLIC sum_all : INT
+    VAR_INPUT
+        args: INT...
+    END_VAR
+        sum_all := ...args+
+    END_METHOD
+END_FUNCTION_BLOCK
+
+FUNCTION fn1 : INT
+VAR
+    f: fb1;
+END_VAR
+    fn1 := f.sum_all()
+END_FUNCTION
+"#;
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
+    [E0230] Error: variadic call without arguments
+        ,-[ file:///test0.st:15:12 ]
+        |
+      5 |         args: INT...
+        |         ^^^^^^|^^^^^
+        |               `------- variadic parameter 'args' declared here
+        |
+     15 |     fn1 := f.sum_all()
+        |            ^^^^|^^^^
+        |                `------ call to 'sum_all' must pass at least one argument to variadic parameter 'args'
+    ----'
+    ");
+}
