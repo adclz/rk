@@ -339,3 +339,65 @@ fn assigned_literal_at_exact_capacity_is_fine(mut with_db: RootDatabase) {
     "#;
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"");
 }
+
+/// An ARRAY ELEMENT is a destination like any other. A subscripted target still
+/// resolves to the array VARIABLE, so the capacity has to be read from the
+/// element spec — reading the array's own spec found no string and measured
+/// nothing, and `a[1] := <over-long>` was cut silently while the same literal
+/// into a plain `STRING[4]` was refused.
+#[rstest]
+fn assigned_literal_must_fit_an_array_element(mut with_db: RootDatabase) {
+    let source = r#"
+        FUNCTION f : INT
+        VAR
+            a : ARRAY[0..1] OF STRING[4];
+        END_VAR
+            a[1] := 'ABCDEFGHIJKLMNOP';
+            f := 1;
+        END_FUNCTION
+    "#;
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
+    [E0309] Error: invalid literal
+       ,-[ file:///test0.st:6:21 ]
+       |
+     6 |             a[1] := 'ABCDEFGHIJKLMNOP';
+       |                     ^^^^^^^^^|^^^^^^^^
+       |                              `---------- cannot infer '<string>' to 'STRING': STRING literal exceeds maximum length of 4, got 16
+    ---'
+    ");
+}
+
+/// The same through an alias, and through two dimensions — the walk to the
+/// element descends every array hop, not just the first.
+#[rstest]
+fn assigned_literal_must_fit_a_nested_array_element(mut with_db: RootDatabase) {
+    let source = r#"
+        TYPE Small : STRING[4]; END_TYPE
+
+        FUNCTION f : INT
+        VAR
+            a : ARRAY[0..1] OF Small;
+            b : ARRAY[0..1, 0..1] OF STRING[4];
+        END_VAR
+            a[1] := 'ABCDEFGHIJKLMNOP';
+            b[1, 1] := 'ABCDEFGHIJKLMNOP';
+            f := 1;
+        END_FUNCTION
+    "#;
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
+    [E0309] Error: invalid literal
+       ,-[ file:///test0.st:9:21 ]
+       |
+     9 |             a[1] := 'ABCDEFGHIJKLMNOP';
+       |                     ^^^^^^^^^|^^^^^^^^
+       |                              `---------- cannot infer '<string>' to 'STRING': STRING literal exceeds maximum length of 4, got 16
+    ---'
+    [E0309] Error: invalid literal
+        ,-[ file:///test0.st:10:24 ]
+        |
+     10 |             b[1, 1] := 'ABCDEFGHIJKLMNOP';
+        |                        ^^^^^^^^^|^^^^^^^^
+        |                                 `---------- cannot infer '<string>' to 'STRING': STRING literal exceeds maximum length of 4, got 16
+    ----'
+    ");
+}

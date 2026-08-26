@@ -722,11 +722,23 @@ fn check_string_literal_fits<'db>(
     use crate::hir_def::expressions::expression::{ExprKind, PrimaryExpr};
     use crate::check::errors::e3_type::InferLiteralError;
 
-    let spec = match base_typ {
+    let mut spec = match base_typ {
         Type::Variable((var, None)) => var.spec(db),
         Type::StructElement(el) => el.spec(db),
         _ => return,
     };
+    // A subscripted destination still resolves to the ARRAY variable, so the
+    // element is where the capacity lives: `a[1] := <literal>` for an
+    // `ARRAY OF STRING[4]` measured nothing and cut the value at 4 silently,
+    // while the same literal into a plain `STRING[4]` was refused.
+    let mut depth = 0;
+    while let Type::Array(array) = spec.infer(db).normalize(db) {
+        spec = array.of_type(db);
+        depth += 1;
+        if depth > 16 {
+            return;
+        }
+    }
     if !matches!(
         spec.infer(db).normalize(db),
         Type::Elementary(crate::hir_def::expressions::spec::ElementarySpec::String)
