@@ -146,7 +146,32 @@ pub fn resolve_invocation<'db>(
                 },
             }
         }
-        _ => unreachable!("An invocation will always be in a POU scope"),
+        _ => match invocation.kind(db) {
+            InvocationKind::Super => {
+                ctx.errors.push(
+                    InheritanceError::SuperOnIncompatiblePou {
+                        call_site: CallSite::new(scope, invocation.keyword_id(db)),
+                    }
+                    .to_diagnostic(db, ctx.scope.file(db)),
+                );
+            }
+            InvocationKind::SuperBody => {
+                ctx.errors.push(
+                    InheritanceError::SuperBodyOnIncompatiblePou {
+                        call_site: CallSite::new(scope, invocation.keyword_id(db)),
+                    }
+                    .to_diagnostic(db, ctx.scope.file(db)),
+                );
+            }
+            InvocationKind::This => {
+                ctx.errors.push(
+                    InheritanceError::ThisOnIncompatiblePou {
+                        call_site: CallSite::new(scope, invocation.keyword_id(db)),
+                    }
+                    .to_diagnostic(db, ctx.scope.file(db)),
+                );
+            }
+        },
     }
     None
 }

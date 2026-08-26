@@ -146,6 +146,60 @@ END_FUNCTION
     ");
 }
 
+#[rstest]
+fn this_keyword_in_program(mut with_db: RootDatabase) {
+    let source = r#"
+PROGRAM prgrm
+    THIS.something()
+END_PROGRAM
+    "#;
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
+    [E0503] Error: invalid use of SUPER or THIS
+       ,-[ file:///test0.st:3:5 ]
+       |
+     3 |     THIS.something()
+       |     ^^|^
+       |       `--- 'THIS' is not valid in this context
+    ---'
+    ");
+}
+
+#[rstest]
+fn super_keyword_in_program(mut with_db: RootDatabase) {
+    let source = r#"
+PROGRAM prgrm
+    SUPER.something()
+END_PROGRAM
+    "#;
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
+    [E0502] Error: invalid use of SUPER or THIS
+       ,-[ file:///test0.st:3:5 ]
+       |
+     3 |     SUPER.something()
+       |     ^^|^^
+       |       `---- 'SUPER' is not valid in this context
+    ---'
+    ");
+}
+
+#[rstest]
+fn super_body_keyword_in_program(mut with_db: RootDatabase) {
+    let source = r#"
+PROGRAM prgrm
+    SUPER()
+END_PROGRAM
+    "#;
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
+    [E0501] Error: invalid use of SUPER or THIS
+       ,-[ file:///test0.st:3:5 ]
+       |
+     3 |     SUPER()
+       |     ^^|^^
+       |       `---- 'SUPER()' is not valid in this context
+    ---'
+    ");
+}
+
 // The logic for checking invocations is the same as function calls.
 // So we just test if parameters are passed correctly.
 
