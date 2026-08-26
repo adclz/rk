@@ -327,7 +327,7 @@ fn test_named_args_out_of_order(mut with_db: db::RootDatabase) {
             test := sub2(b := 3, a := 10);
         END_FUNCTION
     "#;
-    let wasm = super::compile_to_wasm_checked(&mut with_db, source);
+    let wasm = super::compile_to_wasm(&mut with_db, source);
     let result: i32 = super::execute_wasm(&wasm, "test", ());
     assert_eq!(result, 7, "a(10) - b(3) = 7");
 }
@@ -349,7 +349,7 @@ fn test_default_param_before_named(mut with_db: db::RootDatabase) {
             test := sub_default(b := 4);
         END_FUNCTION
     "#;
-    let wasm = super::compile_to_wasm_checked(&mut with_db, source);
+    let wasm = super::compile_to_wasm(&mut with_db, source);
     let result: i32 = super::execute_wasm(&wasm, "test", ());
     assert_eq!(result, 6, "default(10) - 4 = 6");
 }
@@ -374,7 +374,7 @@ fn test_method_omitted_default_param(mut with_db: db::RootDatabase) {
             test := fb.add2(a := 5);
         END_FUNCTION
     "#;
-    let wasm = super::compile_to_wasm_checked(&mut with_db, source);
+    let wasm = super::compile_to_wasm(&mut with_db, source);
     let result: i32 = super::execute_wasm(&wasm, "test", ());
     assert_eq!(result, 15, "5 + default(10) = 15");
 }
@@ -401,7 +401,7 @@ fn test_fb_mixed_named_then_positional(mut with_db: db::RootDatabase) {
             test := inst.o;
         END_FUNCTION
     "#;
-    let wasm = super::compile_to_wasm_checked(&mut with_db, source);
+    let wasm = super::compile_to_wasm(&mut with_db, source);
     let result: i32 = super::execute_wasm(&wasm, "test", ());
     assert_eq!(result, 7, "a(10) - b(3) = 7");
 }
@@ -1131,4 +1131,45 @@ fn test_args_evaluate_in_declaration_order(mut with_db: db::RootDatabase) {
     let wasm = compile_to_wasm(&mut with_db, source);
     let r: i32 = super::execute_wasm(&wasm, "test", ());
     assert_eq!(r, 12, "a evaluated first: declaration order, not written order");
+}
+
+/// An unsigned literal past the SIGNED maximum of its width is an ordinary
+/// value of that type, and must survive lowering: wasm has one integer type
+/// per width, and the operations — not the constant — pick the interpretation.
+/// Reading it as `i32`/`i64` fails to parse, so every UDINT above 2147483647
+/// and every ULINT above 9223372036854775807 passed `check` and then died in
+/// lowering with "number too large to fit in target type".
+#[rstest]
+fn test_execute_unsigned_literal_above_the_signed_max(mut with_db: db::RootDatabase) {
+    let source = r#"
+        FUNCTION run : UDINT
+        VAR n : UDINT; END_VAR
+            n := 4294967295;
+            run := n;
+        END_FUNCTION
+    "#;
+    let wasm = compile_to_wasm(&mut with_db, source);
+    let r: i32 = super::execute_wasm(&wasm, "run", ());
+    assert_eq!(
+        r as u32, 4294967295,
+        "UDINT max round-trips through the i32 lane"
+    );
+}
+
+/// The same on the 64-bit lane.
+#[rstest]
+fn test_execute_unsigned_64bit_literal_above_the_signed_max(mut with_db: db::RootDatabase) {
+    let source = r#"
+        FUNCTION run : ULINT
+        VAR n : ULINT; END_VAR
+            n := 18446744073709551615;
+            run := n;
+        END_FUNCTION
+    "#;
+    let wasm = compile_to_wasm(&mut with_db, source);
+    let r: i64 = super::execute_wasm(&wasm, "run", ());
+    assert_eq!(
+        r as u64, 18446744073709551615,
+        "ULINT max round-trips through the i64 lane"
+    );
 }

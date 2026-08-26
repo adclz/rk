@@ -602,22 +602,40 @@ impl<'db> ExprLowerCtx<'db> {
                             MirConstant::F32(val as f32)
                         }))
                     }
+                    // On an unsigned lane the literal is read unsigned and kept as the
+                    // same bits.
                     Some(e) if e.is_64bit() => {
-                        let val = int.as_i64(db).map_err(|e| {
-                            LowerTypeError::UnsupportedType(format!(
-                                "InferInteger i64 error: {}",
-                                e
-                            ))
-                        })?;
+                        let val = match e.is_signed() {
+                            true => int.as_i64(db).map_err(|e| {
+                                LowerTypeError::UnsupportedType(format!(
+                                    "InferInteger i64 error: {}",
+                                    e
+                                ))
+                            })?,
+                            false => int.as_u64(db).map_err(|e| {
+                                LowerTypeError::UnsupportedType(format!(
+                                    "InferInteger u64 error: {}",
+                                    e
+                                ))
+                            })? as i64,
+                        };
                         Ok(MirExpr::Constant(MirConstant::I64(val)))
                     }
                     _ => {
-                        let val = int.as_i32(db).map_err(|e| {
-                            LowerTypeError::UnsupportedType(format!(
-                                "InferInteger i32 error: {}",
-                                e
-                            ))
-                        })?;
+                        let val = match resolved {
+                            Some(e) if !e.is_signed() => int.as_u32(db).map_err(|e| {
+                                LowerTypeError::UnsupportedType(format!(
+                                    "InferInteger u32 error: {}",
+                                    e
+                                ))
+                            })? as i32,
+                            _ => int.as_i32(db).map_err(|e| {
+                                LowerTypeError::UnsupportedType(format!(
+                                    "InferInteger i32 error: {}",
+                                    e
+                                ))
+                            })?,
+                        };
                         Ok(MirExpr::Constant(MirConstant::I32(val)))
                     }
                 }
@@ -836,7 +854,8 @@ impl<'db> ExprLowerCtx<'db> {
         {
             return Some(*var);
         }
-        scope.def_map(self.db)
+        scope
+            .def_map(self.db)
             .global_variables
             .get(&ident.caseless(self.db))
             .copied()
@@ -1254,10 +1273,7 @@ impl<'db> ExprLowerCtx<'db> {
         let Ok(base) = self.type_to_mir_elementary_pub(ty) else {
             return value;
         };
-        self.checked_range_mir(
-            value,
-            &crate::types::MirSubrangeType { base, lower, upper },
-        )
+        self.checked_range_mir(value, &crate::types::MirSubrangeType { base, lower, upper })
     }
 
     /// [`Self::checked_range`] with the subrange already lowered, for the
@@ -1668,9 +1684,7 @@ impl<'db> ExprLowerCtx<'db> {
         // The plan resolution assembled: declared parameters in order, each with
         // its binding. Only the ABI decisions are MIR's.
         let record = self.resolved_call_of(func_call).ok_or_else(|| {
-            LowerTypeError::UnsupportedType(
-                "call was lowered without a resolved plan".to_string(),
-            )
+            LowerTypeError::UnsupportedType("call was lowered without a resolved plan".to_string())
         })?;
 
         // Only FUNCTION/METHOD calls synthesize args for omitted params; an FB
