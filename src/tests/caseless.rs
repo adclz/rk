@@ -173,10 +173,10 @@ fn no_stale_exemptions() {
         .filter_map(|f| std::fs::read_to_string(f).ok())
         .collect();
 
-    let stale: Vec<&str> = ALLOWED
+    let stale: Vec<String> = ALLOWED
         .iter()
         .filter(|a| !all.iter().any(|text| text.lines().any(|l| l.trim() == a.line)))
-        .map(|a| a.line)
+        .map(|a| format!("{}\n      exempt because: {}", a.line, a.why))
         .collect();
 
     assert!(

@@ -4,7 +4,7 @@
 //! (Regression: `EnumValue` lowering was a stub emitting 0 for EVERY variant,
 //! and `Type::EnumVariant` had no elementary mapping.)
 
-use crate::tests::codegen::{compile_to_wasm_checked, execute_wasm, with_db};
+use crate::tests::codegen::{compile_to_wasm_checked, with_db};
 use rstest::*;
 
 /// Enum VAR_INPUT written at the FB call site, compared against a literal in
