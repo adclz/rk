@@ -202,11 +202,31 @@ impl<'db> InitExprInferenceResult<'db> {
                         let has_inner_brackets = values.iter().any(step_contains_bracket);
 
                         if has_inner_brackets && num_dims > 1 && ctx.current_dim() < num_dims - 1 {
-                            // Multi-dimensional bracket init: each inner bracket is one
-                            // slot in the current dimension and opens the next dimension.
-                            // Push/pop per child so each starts with a fresh position.
+                            // Multi-dimensional bracket init: each inner bracket
+                            // opens the next dimension and covers a whole
+                            // sub-array, so it spends every cell below this one.
+                            // Push/pop per child so each starts fresh.
+                            let sub_array =
+                                Self::cells_from(db, ctx.array_root, ctx.current_dim() + 1)
+                                    .unwrap_or(1);
                             for child in values.iter() {
                                 let mut child_place = *place;
+                                // A repetition sits at THIS dimension — it is
+                                // `2([1,2,3])`, two rows, not a row. It counts
+                                // and descends on its own; opening a dimension
+                                // around it would measure its rows against the
+                                // width of one.
+                                if matches!(child, InitExprWalkStep::SizedIndex { .. }) {
+                                    self.resolve_step(
+                                        db,
+                                        expected,
+                                        &mut child_place,
+                                        body_ctx,
+                                        ctx,
+                                        child,
+                                    );
+                                    continue;
+                                }
                                 ctx.push_dimension();
                                 self.resolve_step(
                                     db,
@@ -217,7 +237,7 @@ impl<'db> InitExprInferenceResult<'db> {
                                     child,
                                 );
                                 ctx.pop_dimension();
-                                ctx.advance(1);
+                                ctx.advance(sub_array);
                                 self.check_bounds(db, *expr, ctx, ctx.current_pos());
                             }
                         } else {
@@ -243,10 +263,15 @@ impl<'db> InitExprInferenceResult<'db> {
                     1
                 }) as usize;
 
+                // A repetition spends what it repeats, not one slot per count:
+                // `[5(7(1))]` is 35 values, and `ARRAY[1..2, 3..4] :=
+                // [2(10), 2(20)]` is the short form of four.
+                let cells = repeat_count * init_cells(db, values).max(1);
+
                 // Check bounds before advancing
-                let end_pos = ctx.current_pos() + repeat_count;
+                let end_pos = ctx.current_pos() + cells;
                 self.check_bounds(db, *expr, ctx, end_pos);
-                ctx.advance(repeat_count);
+                ctx.advance(cells);
 
                 // Process nested values at next dimension
                 ctx.push_dimension();
@@ -332,8 +357,7 @@ impl<'db> InitExprInferenceResult<'db> {
                     // := 200;` must be rejected like `p := 200`. Bounds are
                     // checked in every phase that assigns a value, not only in
                     // body inference.
-                    self.errors
-                        .push(err.to_diagnostic(db, self.scope.file(db)));
+                    self.errors.push(err.to_diagnostic(db, self.scope.file(db)));
                 }
 
                 // Advance position and check bounds
@@ -343,28 +367,33 @@ impl<'db> InitExprInferenceResult<'db> {
         }
     }
 
-    fn get_array_bounds(
+    /// Cells reachable from `dimension` downwards — the product of that
+    /// dimension and every one below it.
+    ///
+    /// An initializer's bracket nesting need not match the array's rank:
+    /// `[1, 2, 3, 4, 5, 6]` and `[[1, 2, 3], [4, 5, 6]]` both fill
+    /// `ARRAY[0..1, 0..2]` row-major, and `[2(10), 2(20)]` is the short form
+    /// of four values whatever shape holds them. So everything is measured in
+    /// CELLS from the current depth down, never in slots of one dimension —
+    /// the flat form has six cells to fill, not the first dimension's two.
+    ///
+    /// Bounds are folded against the LIVE result (this runs inside init
+    /// inference), through the same evaluator as the E0601/E0602 check.
+    /// `as_range` bailed on a CONSTANT bound — and on a NEGATIVE literal one,
+    /// so `ARRAY[-2..2]` never had its initializer length checked at all.
+    fn cells_from(
         db: &'db dyn WorkspaceDataBase,
         array_root: Option<Type<'db>>,
         dimension: usize,
-    ) -> Option<(i64, i64, usize)> {
-        let arr_ty = array_root?;
-        if let Type::Array(array) = arr_ty.normalize(db) {
-            let subranges = array.subranges(db);
-            if dimension < subranges.len() {
-                let current_range = &subranges[dimension];
-                // Folded against the LIVE result (this runs inside init
-                // inference), through the same evaluator as the E0601/E0602
-                // check. `as_range` bailed on a CONSTANT bound — and on a
-                // NEGATIVE literal one, so `ARRAY[-2..2]` never had its
-                // initializer length checked.
-                let dims = crate::hir_ty::infer::const_eval::array_dimensions(db, array);
-                let (lower, upper) = dims.get(dimension).copied()?;
-                let (lower, upper) = (lower?, upper?);
-                return Some((lower, upper, (upper - lower + 1).max(0) as usize));
-            }
-        }
-        None
+    ) -> Option<usize> {
+        let Type::Array(array) = array_root?.normalize(db) else {
+            return None;
+        };
+        let dims = crate::hir_ty::infer::const_eval::array_dimensions(db, array);
+        let rest = dims.get(dimension..).filter(|rest| !rest.is_empty())?;
+        rest.iter()
+            .map(|(lower, upper)| Some(((*upper)? - (*lower)? + 1).max(0) as usize))
+            .try_fold(1usize, |acc, len| Some(acc * len?))
     }
 
     fn check_bounds(
@@ -379,8 +408,7 @@ impl<'db> InitExprInferenceResult<'db> {
         }
 
         let dim = ctx.current_dim();
-        if let Some((_lower, _upper, array_size)) =
-            Self::get_array_bounds(db, ctx.array_root, dim)
+        if let Some(array_size) = Self::cells_from(db, ctx.array_root, dim)
             && end_position > array_size
         {
             ctx.set_overflow_reported();
@@ -394,6 +422,21 @@ impl<'db> InitExprInferenceResult<'db> {
             );
         }
     }
+}
+
+/// How many cells a written-out list of initializer elements fills, following
+/// repetitions and brackets down. `[5(7(1))]` is 35, not 5.
+fn init_cells(db: &dyn WorkspaceDataBase, values: &[InitExprWalkStep]) -> usize {
+    values
+        .iter()
+        .map(|step| match step {
+            InitExprWalkStep::SizedIndex { size, values, .. } => {
+                size.as_u64(db).unwrap_or(1) as usize * init_cells(db, values).max(1)
+            }
+            InitExprWalkStep::ArrayInit { values, .. } => init_cells(db, values).max(1),
+            _ => 1,
+        })
+        .sum()
 }
 
 /// Mutable context for tracking position during array init traversal
@@ -446,8 +489,13 @@ impl<'db> InitContext<'db> {
         self.overflow_reported[dim] = true;
     }
 
+    /// Any depth, not just the current one. An over-long innermost repetition
+    /// overflows every level that contains it, and the outermost check runs
+    /// first — so `[2(3(5(1)))]` into a 2x3x4 reports its total once instead of
+    /// once per dimension. Cleared per array by [`Self::reset_for_new_array`],
+    /// so two over-filled fields of one struct still report separately.
     fn is_overflow_reported(&self) -> bool {
-        self.overflow_reported[self.current_dim()]
+        self.overflow_reported.iter().any(|reported| *reported)
     }
 
     /// Reset position for entering a new array (e.g., struct field with array type)

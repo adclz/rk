@@ -95,13 +95,11 @@ fn multi_dimensional_array_initializer_out_of_bounds(mut with_db: RootDatabase) 
 
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
     [E0605] Error: invalid array access
-       ,-[ file:///test0.st:8:37 ]
+       ,-[ file:///test0.st:8:35 ]
        |
      8 |                 Base : Engine := [3(10(10))];
-       |                                     ^^^|^^
-       |                                        `---- too many elements in array initializer (expected at most 7)
-       |
-       | Note: this error occurred in array dimension 2
+       |                                   ^^^^|^^^^
+       |                                       `------ too many elements in array initializer (expected at most 28)
     ---'
     ");
 }
@@ -212,7 +210,7 @@ fn multi_dimensional_first_dim_overflow(mut with_db: RootDatabase) {
        |
      8 |                 Base : Engine := [5(7(1))];
        |                                   ^^^|^^^
-       |                                      `----- too many elements in array initializer (expected at most 4)
+       |                                      `----- too many elements in array initializer (expected at most 28)
     ---'
     ");
 }
@@ -239,16 +237,7 @@ fn multi_dimensional_both_dims_overflow(mut with_db: RootDatabase) {
        |
      8 |                 Base : Engine := [5(10(1))];
        |                                   ^^^^|^^^
-       |                                       `----- too many elements in array initializer (expected at most 4)
-    ---'
-    [E0605] Error: invalid array access
-       ,-[ file:///test0.st:8:37 ]
-       |
-     8 |                 Base : Engine := [5(10(1))];
-       |                                     ^^|^^
-       |                                       `---- too many elements in array initializer (expected at most 7)
-       |
-       | Note: this error occurred in array dimension 2
+       |                                       `----- too many elements in array initializer (expected at most 28)
     ---'
     ");
 }
@@ -271,13 +260,11 @@ fn three_dimensional_array(mut with_db: RootDatabase) {
 
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
     [E0605] Error: invalid array access
-       ,-[ file:///test0.st:8:37 ]
+       ,-[ file:///test0.st:8:33 ]
        |
      8 |                 Data : Cube := [2(3(5(1)))];
-       |                                     ^^|^
-       |                                       `--- too many elements in array initializer (expected at most 4)
-       |
-       | Note: this error occurred in array dimension 3
+       |                                 ^^^^^|^^^^
+       |                                      `------ too many elements in array initializer (expected at most 24)
     ---'
     ");
 }
@@ -460,7 +447,7 @@ fn multi_dim_bracket_init_overflow(mut with_db: RootDatabase) {
        |
      8 |                 Data : Matrix := [[1, 2, 3], [4, 5, 6], [7, 8, 9]];
        |                               ^^^^^^^^^^^^^^^^^^|^^^^^^^^^^^^^^^^^
-       |                                                 `------------------- too many elements in array initializer (expected at most 2)
+       |                                                 `------------------- too many elements in array initializer (expected at most 6)
     ---'
     ");
 }
@@ -511,31 +498,60 @@ fn non_zero_based_array_overflow(mut with_db: RootDatabase) {
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Init-expr edge cases, against the IEC semantics this codebase implements:
-// brackets are NESTING levels (one `[` per dimension / array-typed field),
-// partial init is allowed (only a MAX check, no per-row minimum), and `x(y)`
-// fills x*y positions. These assert what INFERENCE does (diagnostic or none).
+// an initializer fills CELLS in row-major order and its bracket nesting need
+// not match the array's rank, partial init is allowed (only a MAX check, no
+// per-row minimum), and `x(y)` fills x*y positions. These assert what
+// INFERENCE does (diagnostic or none).
 // ─────────────────────────────────────────────────────────────────────────────
 
-/// CORRECT: a flat list for a multi-dim array is "too many" at the OUTER bracket
-/// level. `ARRAY[1..2,1..3]` holds 2 rows at the top level, so a flat
-/// `[1,2,3,4,5,6]` presents 6 there → E0605. Each row needs its own bracket.
+/// A flat list fills a multi-dimensional array row-major — `ARRAY[1..2,1..3]`
+/// takes six values, and does not require a bracket per row. The count is
+/// against the whole array, so a seventh value is E0605; the fill ORDER is
+/// pinned by execution in `codegen::initializers`.
 #[rstest]
-fn flat_list_for_multidim_is_too_many(mut with_db: RootDatabase) {
+fn flat_list_fills_a_multidim_array(mut with_db: RootDatabase) {
     let source = r#"
         TYPE Matrix : ARRAY[1..2, 1..3] OF INT; END_TYPE
         FUNCTION Test
             VAR Data : Matrix := [1, 2, 3, 4, 5, 6]; END_VAR
         END_FUNCTION
         "#;
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @"");
+}
+
+/// The same list one value too long. What bounds it is the array's cell count,
+/// not the first dimension's width — the number to report is 6, not 2.
+#[rstest]
+fn flat_list_past_the_last_cell_is_too_many(mut with_db: RootDatabase) {
+    let source = r#"
+        TYPE Matrix : ARRAY[1..2, 1..3] OF INT; END_TYPE
+        FUNCTION Test
+            VAR Data : Matrix := [1, 2, 3, 4, 5, 6, 7]; END_VAR
+        END_FUNCTION
+        "#;
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
     [E0605] Error: invalid array access
-       ,-[ file:///test0.st:4:41 ]
+       ,-[ file:///test0.st:4:53 ]
        |
-     4 |             VAR Data : Matrix := [1, 2, 3, 4, 5, 6]; END_VAR
-       |                                         |
-       |                                         `-- too many elements in array initializer (expected at most 2)
+     4 |             VAR Data : Matrix := [1, 2, 3, 4, 5, 6, 7]; END_VAR
+       |                                                     |
+       |                                                     `-- too many elements in array initializer (expected at most 6)
     ---'
     ");
+}
+
+/// A repetition spends what it repeats: `[2(10), 2(20)]` is the short form of
+/// `[10, 10, 20, 20]`, which fills a 2x2 exactly. Counting the repetitions
+/// themselves against the first dimension would make this two too many.
+#[rstest]
+fn repetitions_fill_cells_not_slots(mut with_db: RootDatabase) {
+    let source = r#"
+        TYPE Cards : ARRAY[1..2, 3..4] OF INT; END_TYPE
+        FUNCTION Test
+            VAR Deck : Cards := [2(10), 2(20)]; END_VAR
+        END_FUNCTION
+        "#;
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @"");
 }
 
 /// CORRECT: partial init is allowed — no per-row MINIMUM check, only a max. A
