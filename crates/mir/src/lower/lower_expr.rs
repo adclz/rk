@@ -51,6 +51,9 @@ pub struct ExprLowerCtx<'db> {
             >,
         >,
     >,
+    /// Phase C: inside an arity specialization, the pack's name and the
+    /// parameters it expanded to.
+    pub variadic_expansion: Option<std::rc::Rc<VariadicExpansion>>,
     /// Scratch locals synthesized at call sites: `$discard$N` for a discarded
     /// `VAR_OUTPUT`, `$argcopy$N` for an aggregate `VAR_INPUT` snapshot. Drained
     /// into the function's locals by the lowering caller (see `build_call_args`).
@@ -123,6 +126,7 @@ impl<'db> ExprLowerCtx<'db> {
             string_pool,
             iface_subs: None,
             iface_call_rewrites: None,
+            variadic_expansion: None,
             call_scratch: Default::default(),
             this_pou: None,
         }
@@ -139,6 +143,7 @@ impl<'db> ExprLowerCtx<'db> {
             string_pool,
             iface_subs: None,
             iface_call_rewrites: None,
+            variadic_expansion: None,
             call_scratch: Default::default(),
             this_pou: None,
         }
@@ -242,10 +247,149 @@ impl<'db> ExprLowerCtx<'db> {
                 })
             }
 
-            ExprKind::FoldExpr { .. } => Err(LowerTypeError::UnsupportedType(
-                "FoldExpr should be inlined during monomorphization".to_string(),
-            )),
+            ExprKind::FoldExpr {
+                param, operator, ..
+            } => self.lower_fold_expr(*param, *operator),
         }
+    }
+
+    /// Lower `...pack<op>` inside an arity specialization.
+    ///
+    /// The pack has already expanded to N ordinary parameters, so the fold is
+    /// an unrolled chain over them. Which chain depends on the operator, and
+    /// HIR has already decided that by typing the expression: a comparison fold
+    /// is BOOL, everything else is the element type.
+    ///
+    /// * arithmetic / bitwise — a left fold: `((p0 op p1) op p2) …`
+    /// * comparison — the conjunction of adjacent pairs:
+    ///   `(p0 op p1) AND (p1 op p2) …`, so `...args=` means "all equal".
+    ///   Left-folding these would compare a BOOL against the next element.
+    ///
+    /// A single argument folds to itself (and to TRUE for a comparison, which
+    /// has no pair to test). An empty pack never reaches here — E0230 refuses
+    /// it at the call site, which is what makes this total.
+    fn lower_fold_expr(
+        &self,
+        param: hir::hir_def::interned::identifier::Ident,
+        operator: hir::hir_def::expressions::expression::FoldOperatorKind,
+    ) -> Result<MirExpr, LowerTypeError> {
+        use hir::hir_def::expressions::expression::FoldOperatorKind as F;
+
+        let expansion = self.variadic_expansion.as_ref().ok_or_else(|| {
+            LowerTypeError::UnsupportedType(
+                "a fold expression outside an arity specialization".to_string(),
+            )
+        })?;
+        if expansion.pack != param {
+            return Err(LowerTypeError::UnsupportedType(format!(
+                "fold over '{}' but the pack in scope is '{}'",
+                param.text(self.db),
+                expansion.pack.text(self.db)
+            )));
+        }
+
+        let elem = expansion.elem;
+        let load = |name: &hir::hir_def::interned::identifier::Ident| {
+            MirExpr::Load(
+                MirPlace::Local(*name),
+                crate::types::MirType::Elementary(elem),
+            )
+        };
+
+        // `**` has no wasm instruction: `MirBinOp::Power` is a no-op in codegen,
+        // so it lowers to the same grafted `libm` call an ordinary `a ** b` uses.
+        let pow = |lhs: MirExpr, rhs: MirExpr| {
+            MirExpr::Call(crate::expr::MirCall {
+                callee: hir::hir_def::interned::identifier::Ident::new(
+                    self.db,
+                    compact_str::CompactString::from(if elem.is_64bit() {
+                        "f64.pow"
+                    } else {
+                        "f32.pow"
+                    }),
+                ),
+                callee_index: u32::MAX,
+                args: vec![
+                    crate::expr::MirCallArg {
+                        value: lhs,
+                        kind: crate::expr::MirArgKind::ByValue,
+                    },
+                    crate::expr::MirCallArg {
+                        value: rhs,
+                        kind: crate::expr::MirArgKind::ByValue,
+                    },
+                ],
+                return_type: crate::types::MirType::Elementary(elem),
+                output_bindings: Vec::new(),
+                extern_results: Vec::new(),
+                extern_ret_scratch: None,
+            })
+        };
+
+        let cmp = |op: MirBinOp, l: &_, r: &_| MirExpr::BinOp {
+            op,
+            lhs: Box::new(load(l)),
+            rhs: Box::new(load(r)),
+            // A comparison executes at the operands' type and yields BOOL.
+            ty: elem,
+        };
+
+        let binop = match operator {
+            F::Plus => Some(MirBinOp::Add),
+            F::Minus => Some(MirBinOp::Sub),
+            F::Mul => Some(MirBinOp::Mul),
+            F::Div => Some(MirBinOp::Div),
+            F::Mod => Some(MirBinOp::Mod),
+            F::And => Some(MirBinOp::And),
+            F::Or => Some(MirBinOp::Or),
+            F::Xor => Some(MirBinOp::Xor),
+            F::Power | F::Eq | F::Ne | F::Lt | F::Gt | F::Le | F::Ge => None,
+        };
+
+        if let Some(op) = binop {
+            let mut acc = load(&expansion.params[0]);
+            for name in &expansion.params[1..] {
+                acc = MirExpr::BinOp {
+                    op,
+                    lhs: Box::new(acc),
+                    rhs: Box::new(load(name)),
+                    ty: elem,
+                };
+            }
+            return Ok(acc);
+        }
+
+        if matches!(operator, F::Power) {
+            let mut acc = load(&expansion.params[0]);
+            for name in &expansion.params[1..] {
+                acc = pow(acc, load(name));
+            }
+            return Ok(acc);
+        }
+
+        let op = match operator {
+            F::Eq => MirBinOp::Eq,
+            F::Ne => MirBinOp::Ne,
+            F::Lt => MirBinOp::Lt,
+            F::Gt => MirBinOp::Gt,
+            F::Le => MirBinOp::Le,
+            F::Ge => MirBinOp::Ge,
+            _ => unreachable!("arithmetic and power folds returned above"),
+        };
+        // One argument has no adjacent pair; "all of nothing" is TRUE.
+        if expansion.params.len() == 1 {
+            return Ok(MirExpr::Constant(crate::expr::MirConstant::Bool(true)));
+        }
+        let mut acc = cmp(op, &expansion.params[0], &expansion.params[1]);
+        for pair in expansion.params.windows(2).skip(1) {
+            acc = MirExpr::BinOp {
+                op: MirBinOp::And,
+                lhs: Box::new(acc),
+                rhs: Box::new(cmp(op, &pair[0], &pair[1])),
+                ty: MirElementary::Bool,
+            };
+        }
+        Ok(acc)
     }
 
     /// Lower a binary operation, inserting explicit casts where needed.
@@ -1557,6 +1701,17 @@ impl<'db> ExprLowerCtx<'db> {
             }
         };
 
+        // Phase C: a variadic callee is emitted once per arity; the suffix is
+        // applied last so an overloaded variadic reaches `MIN$INT$3`.
+        let callee_name = match self.variadic_arity_of(func_call) {
+            Some(arity) => crate::lower::naming::mangle_generic_name(
+                self.db,
+                callee_name,
+                &[&arity.to_string()],
+            ),
+            None => callee_name,
+        };
+
         let mut args = Vec::new();
         let output_bindings = Vec::new();
 
@@ -2194,6 +2349,26 @@ impl<'db> ExprLowerCtx<'db> {
         self.type_to_mir_elementary(ty)
     }
 
+    /// The arity a call bound to its callee's variadic pack, read from the
+    /// same resolution the arguments are lowered from.
+    fn variadic_arity_of(
+        &self,
+        func_call: hir::hir_def::expressions::expression::FuncCall<'db>,
+    ) -> Option<usize> {
+        self.resolved_call_of(func_call)?
+            .params
+            .iter()
+            .find_map(|(var, binding)| {
+                if !var.variadic(self.db) {
+                    return None;
+                }
+                match binding {
+                    hir::hir_ty::body::ParamBinding::Values(vs) => Some(vs.len()),
+                    _ => None,
+                }
+            })
+    }
+
     /// The plan resolution assembled for this call: from body inference, or
     /// from init inference for a call in an initializer.
     fn resolved_call_of(
@@ -2330,4 +2505,12 @@ fn wider_type(a: MirElementary, b: MirElementary) -> MirElementary {
     }
 
     MirElementary::UDInt
+}
+
+/// Phase C: how a variadic pack expanded inside one arity specialization:
+/// the pack's name, the parameters it became, their element type.
+pub struct VariadicExpansion {
+    pub pack: hir::hir_def::interned::identifier::Ident,
+    pub params: Vec<hir::hir_def::interned::identifier::Ident>,
+    pub elem: MirElementary,
 }

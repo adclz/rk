@@ -71,6 +71,7 @@ fn emittable_methods<'db>(
     out
 }
 
+#[allow(clippy::too_many_arguments)]
 pub fn lower_function<'db>(
     db: &'db dyn WorkspaceDataBase,
     func: Function<'db>,
@@ -81,6 +82,9 @@ pub fn lower_function<'db>(
         &FxHashMap<hir::hir_def::interned::identifier::Ident, hir::hir_def::pous::pou::Pou<'db>>,
     >,
     iface_call_rewrites: &super::mono_iface::IfaceCallRewrites<'db>,
+    // Phase C: `Some(n)` when this is the arity specialization `f$n` of a
+    // variadic function; `None` for every ordinary function.
+    variadic_arity: Option<usize>,
 ) -> Result<MirFunction, LowerTypeError> {
     let r = lower_function_inner(
         db,
@@ -90,6 +94,7 @@ pub fn lower_function<'db>(
         string_pool,
         iface_subs,
         iface_call_rewrites,
+        variadic_arity,
     );
     at_node(db, func, r)
 }
@@ -155,6 +160,7 @@ pub fn lower_program<'db>(
     at_node(db, program, r)
 }
 
+#[allow(clippy::too_many_arguments)]
 fn lower_function_inner<'db>(
     db: &'db dyn WorkspaceDataBase,
     func: Function<'db>,
@@ -172,6 +178,8 @@ fn lower_function_inner<'db>(
         hir::hir_def::expressions::expression::FuncCall<'db>,
         hir::hir_def::interned::identifier::Ident,
     >,
+    // Phase C: the argument count this copy is specialized for.
+    variadic_arity: Option<usize>,
 ) -> Result<MirFunction, LowerTypeError> {
     let mut params = Vec::new();
     let mut locals = Vec::new();
@@ -180,14 +188,46 @@ fn lower_function_inner<'db>(
     // Collect address-taken variables for storage decisions
     let address_taken = collect_address_taken_vars(db, func.statements(db));
 
-    // 1. Build parameters (Input, InOut, Output)
-    // VAR_OUTPUT is passed as a pointer at the WASM level - the function writes through it.
-    //
-    // `next_local_idx` advances by the number of wasm-local slots each
-    // param actually consumes (see `param_wasm_width`) — STRING params
-    // flatten to two i32s, not one, and getting this wrong silently
-    // aliases the param's second slot with later Var locals.
+    // 1. Parameters (Input, InOut, Output). VAR_OUTPUT is a pointer at the
+    // wasm level. `next_local_idx` advances by the slots each param consumes
+    // (`param_wasm_width`): a STRING flattens to two i32s. Phase C: the pack
+    // becomes `arity` by-value parameters `pack$0..pack$n-1`.
+    let mut variadic_expansion: Option<Rc<super::lower_expr::VariadicExpansion>> = None;
     for var in func.variables(db) {
+        if let Some(arity) = variadic_arity
+            && var.variadic(db)
+        {
+            let elem_ty = lower_var_type(db, *var)?;
+            let elem = match &elem_ty {
+                MirType::Elementary(e) => *e,
+                other => {
+                    return Err(LowerTypeError::UnsupportedType(format!(
+                        "a variadic parameter must be elementary, got {other:?}"
+                    )));
+                }
+            };
+            let mut names = Vec::with_capacity(arity);
+            for i in 0..arity {
+                let name = hir::hir_def::interned::identifier::Ident::new(
+                    db,
+                    compact_str::CompactString::from(format!("{}${i}", var.name(db).text(db))),
+                );
+                names.push(name);
+                let param = MirParam {
+                    name,
+                    ty: input_param_type(elem_ty.clone()),
+                    kind: MirParamKind::Input,
+                };
+                next_local_idx += param_wasm_width(&param.ty, param.kind);
+                params.push(param);
+            }
+            variadic_expansion = Some(Rc::new(super::lower_expr::VariadicExpansion {
+                pack: var.name(db),
+                params: names,
+                elem,
+            }));
+            continue;
+        }
         if let Some(param) = param_for_var(db, var, iface_subs)? {
             next_local_idx += param_wasm_width(&param.ty, param.kind);
             params.push(param);
@@ -298,8 +338,9 @@ fn lower_function_inner<'db>(
 
     // 5. Body statements. Interface specialization threads `iface_subs` and
     // `iface_call_rewrites` into the body.
-    let needs_full_ctx =
-        iface_subs.is_some_and(|m| !m.is_empty()) || !iface_call_rewrites.is_empty();
+    let needs_full_ctx = iface_subs.is_some_and(|m| !m.is_empty())
+        || !iface_call_rewrites.is_empty()
+        || variadic_expansion.is_some();
     let (mut body, call_scratch) = if !needs_full_ctx {
         lower_stmts(db, func.statements(db), string_pool.clone())?
     } else {
@@ -309,6 +350,7 @@ fn lower_function_inner<'db>(
             iface_subs,
             iface_call_rewrites,
             string_pool.clone(),
+            variadic_expansion.clone(),
         )?
     };
     append_call_scratch_locals(

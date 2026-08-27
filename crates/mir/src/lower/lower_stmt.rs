@@ -52,6 +52,7 @@ pub fn lower_stmts<'db>(
         None,
         &super::mono_iface::IfaceCallRewrites::default(),
         string_pool,
+        None,
     )
 }
 
@@ -68,8 +69,11 @@ pub fn lower_stmts_with_ctx<'db>(
     >,
     iface_call_rewrites: &super::mono_iface::IfaceCallRewrites<'db>,
     string_pool: std::rc::Rc<std::cell::RefCell<super::lower_expr::StringPool>>,
+    // Phase C: inside an arity specialization, how this body's pack expanded.
+    variadic_expansion: Option<std::rc::Rc<super::lower_expr::VariadicExpansion>>,
 ) -> Result<(Vec<MirStmt>, super::lower_expr::CallScratch), LowerTypeError> {
     let mut ctx = ExprLowerCtx::new(db, string_pool);
+    ctx.variadic_expansion = variadic_expansion;
     if let Some(is) = iface_subs
         && !is.is_empty()
     {

@@ -146,6 +146,18 @@ fn lower_module_from_pous<'db>(
     // owner's method set.
     let (iface_instances, iface_call_rewrites) =
         super::mono_iface::collect_iface_instantiations(db, all_pous, all_programs);
+
+    // Phase C: one specialization per (variadic function, argument count)
+    // called; call sites re-read the resolution in `variadic_arity_of`.
+    let (arity_instances, _arity_call_rewrites) =
+        super::mono_arity::collect_arity_instantiations(db, all_pous, all_programs);
+    let mut arity_by_func: FxHashMap<
+        hir::hir_def::pous::function::Function<'db>,
+        Vec<&super::mono_arity::ArityInstance<'db>>,
+    > = FxHashMap::default();
+    for inst in &arity_instances {
+        arity_by_func.entry(inst.func).or_default().push(inst);
+    }
     let mut iface_by_func: FxHashMap<
         hir::hir_def::pous::function::Function<'db>,
         Vec<&super::mono_iface::IfaceInstance<'db>>,
@@ -256,6 +268,29 @@ fn lower_module_from_pous<'db>(
                             Some(&inst.iface_subs),
                             // A specialization's body uses its own rewrites.
                             &inst.call_rewrites,
+                            None,
+                        )?;
+                        mir_func.name = inst.mangled_name;
+                        function_indices.insert(mir_func.name, next_fn_idx);
+                        next_fn_idx += 1;
+                        functions.push(mir_func);
+                    }
+                    continue;
+                }
+
+                // Phase C: a variadic function is emitted once per arity called
+                // (`sum_all$3`); an uncalled one emits nothing.
+                if super::mono_arity::variadic_param(db, *func).is_some() {
+                    for inst in arity_by_func.get(func).into_iter().flatten() {
+                        let mut mir_func = lower_function(
+                            db,
+                            *func,
+                            next_fn_idx,
+                            &mut memory_layout,
+                            string_pool.clone(),
+                            None,
+                            &iface_call_rewrites,
+                            Some(inst.arity),
                         )?;
                         mir_func.name = inst.mangled_name;
                         function_indices.insert(mir_func.name, next_fn_idx);
@@ -275,6 +310,7 @@ fn lower_module_from_pous<'db>(
                     string_pool.clone(),
                     None,
                     &iface_call_rewrites,
+                    None,
                 )?;
                 // Export under the qualified MIR symbol, so overloads do not collide.
                 mir_func.export_name = Some(mir_func.name.text(db).to_string().into());
