@@ -1227,18 +1227,15 @@ impl<'db> ToIdeDiagnostic<'db> for ResolveError<'db> {
                 diag.with_note(kind.note().to_string());
                 diag
             }
-            Self::ExternNonScalarReturn { func, ret } => {
-                let diag = diag()
-                    .message(format!(
-                        "the return type of '{}' can only be a scalar",
-                        func.get_name_ident(db).text(db),
-                    ))
-                    .severity(DiagnosticSeverity::ERROR)
-                    .desc(self)
-                    .range(crate::denormalize(db, file, &ret.get_span(db)).unwrap_or_default())
-                    .call();
-                diag
-            }
+            Self::ExternNonScalarReturn { func, ret } => diag()
+                .message(format!(
+                    "the return type of '{}' can only be a scalar",
+                    func.get_name_ident(db).text(db),
+                ))
+                .severity(DiagnosticSeverity::ERROR)
+                .desc(self)
+                .range(crate::denormalize(db, file, &ret.get_span(db)).unwrap_or_default())
+                .call(),
             Self::ExternWithBody { site } => {
                 let mut diag = diag()
                     .message("an extern FUNCTION has no statements".to_string())
