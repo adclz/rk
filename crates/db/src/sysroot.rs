@@ -103,6 +103,13 @@ pub fn probe() -> Option<(LibraryOrigin, PathBuf)> {
         .clone()
 }
 
+/// [`probed_paths`] for the running executable.
+pub fn probed() -> Vec<PathBuf> {
+    std::env::current_exe()
+        .map(|exe| probed_paths(&exe))
+        .unwrap_or_default()
+}
+
 /// Every directory [`probe_from`] would look in, in order, for the
 /// diagnostic when nothing was found.
 pub fn probed_paths(exe: &Path) -> Vec<PathBuf> {

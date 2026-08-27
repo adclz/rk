@@ -122,6 +122,11 @@ mod tests {
     fn unset_env() {
         unsafe { std::env::remove_var(STDLIB_PATH_ENV) };
     }
+    /// The explicit "no library", distinct from [`unset_env`]: an unset
+    /// variable falls through to the probe.
+    fn disable_env() {
+        unsafe { std::env::set_var(STDLIB_PATH_ENV, "") };
+    }
 
     /// A library namespace used by the tests below.
     const LIB_NS: &str = "NAMESPACE Std.S
@@ -156,11 +161,28 @@ END_NAMESPACE
         (db, counts, String::from_utf8(out).unwrap())
     }
 
-    /// Unset variable: no library loads, and that is not fatal — code that
-    /// never touches a library is entirely unaffected.
+    /// Unset variable: the library is found beside the executable, which for
+    /// this test binary is the checkout's own `stdlib/`.
     #[test]
-    fn unset_variable_loads_no_library_and_is_not_fatal() {
+    fn unset_variable_finds_the_library_beside_the_executable() {
         unset_env();
+        let (_ws, root) = write_workspace(&[(
+            "main.st",
+            "FUNCTION f : INT\n    f := 1;\nEND_FUNCTION\n",
+        )]);
+        let (db, counts, out) = check(&root);
+        assert!(
+            !db.get_library_files().is_empty(),
+            "the probe must reach the checkout's stdlib"
+        );
+        assert!(!counts.has_errors(), "the library must compile clean:\n{out}");
+    }
+
+    /// The explicit "no library" still loads none, and that is not fatal —
+    /// code that never touches a library is entirely unaffected.
+    #[test]
+    fn disabled_variable_loads_no_library_and_is_not_fatal() {
+        disable_env();
         let (_ws, root) = write_workspace(&[(
             "main.st",
             "FUNCTION f : INT\n    f := 1;\nEND_FUNCTION\n",

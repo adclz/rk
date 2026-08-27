@@ -487,7 +487,7 @@ mod tests {
         )
         .unwrap();
         // Tests must not inherit the developer's library environment.
-        unsafe { std::env::remove_var(db::loader::STDLIB_PATH_ENV) };
+        unsafe { std::env::set_var(db::loader::STDLIB_PATH_ENV, "") };
         let db = init_db(ws.path(), false, true).expect("init db");
 
         // A located error, as lowering produces: the report must carry the

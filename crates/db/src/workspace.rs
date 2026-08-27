@@ -13,8 +13,9 @@ pub struct Workspace {
     #[returns(as_ref)]
     pub workspace_folder: Option<PathBuf>,
 
-    /// Directory of the loaded library, if any — resolved from
-    /// `RK_STDLIB_PATH` only (see `loader::resolve_library_path`).
+    /// Directory of the loaded library, if any — named through
+    /// `RK_STDLIB_PATH`, else found beside the executable
+    /// (see `loader::resolve_library_path`).
     #[returns(as_ref)]
     pub library_path: Option<PathBuf>,
 
@@ -126,15 +127,16 @@ fn resolve_all(
         }));
     }
 
-    // 4. Resolve the library from RK_STDLIB_PATH — the only source. Not
-    // finding one is never fatal: the user can still write code, and uses of
-    // library names simply fail to resolve like any other unknown name.
+    // 4. Resolve the library: named through RK_STDLIB_PATH, else found
+    // beside the executable. Not finding one is never fatal: the user can
+    // still write code, and uses of library names simply fail to resolve like
+    // any other unknown name.
     use crate::loader::LibraryPathResolution;
     let library_path = match crate::loader::resolve_library_path(workspace_folder.as_deref()) {
-        LibraryPathResolution::Found(dir) => Some(dir),
+        LibraryPathResolution::Found { dir, .. } => Some(dir),
         LibraryPathResolution::Disabled => None,
-        LibraryPathResolution::Unset => {
-            notices.push(ConfigurationNotice::LibraryNotConfigured);
+        LibraryPathResolution::NotFound { probed } => {
+            notices.push(ConfigurationNotice::LibraryNotFound { probed });
             None
         }
         LibraryPathResolution::Invalid(value) => {
@@ -152,8 +154,8 @@ fn resolve_all(
 pub enum ConfigurationNotice {
     InvalidWorkspaceUri { uri: Url },
     ConfigFileNotFound { path: PathBuf },
-    /// `RK_STDLIB_PATH` is not set anywhere.
-    LibraryNotConfigured,
+    /// Nothing named a library and none was found beside the executable.
+    LibraryNotFound { probed: Vec<PathBuf> },
     /// `RK_STDLIB_PATH` is set to something that is not a readable directory.
     LibraryPathInvalid { value: String },
 }
@@ -171,13 +173,21 @@ impl Display for ConfigurationNotice {
                     path.display()
                 )
             }
-            ConfigurationNotice::LibraryNotConfigured => {
+            ConfigurationNotice::LibraryNotFound { probed } => {
+                writeln!(
+                    f,
+                    "No standard library found, so Std.* names will not resolve."
+                )?;
+                if !probed.is_empty() {
+                    writeln!(f, "Looked beside the executable in:")?;
+                    for path in probed {
+                        writeln!(f, "  {}", path.display())?;
+                    }
+                }
                 write!(
                     f,
-                    "RK_STDLIB_PATH is not set.\nNo standard library loaded, so \
-                     Std.* names will not resolve.\nSet it in the environment or \
-                     in a .env file at the workspace root;\nAn empty string \
-                     silences this message."
+                    "Set RK_STDLIB_PATH in the environment or in a .env file at \
+                     the workspace root; an empty string silences this message."
                 )
             }
             ConfigurationNotice::LibraryPathInvalid { value } => {

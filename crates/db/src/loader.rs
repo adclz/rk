@@ -10,50 +10,83 @@ use auto_lsp::{
 use rayon::prelude::*;
 
 use crate::RootDatabase;
+use crate::sysroot::LibraryOrigin;
 use crate::workspace::Workspace;
 
 type ParseResult = Result<(Url, Arc<Document>), Box<dyn std::error::Error + Send + Sync>>;
 
 // --- Path resolution ---
 
-/// Environment variable naming the standard library's directory.
-///
-/// The compiler has no notion of a standard library — only of a library
-/// directory, loaded alongside the workspace and analyzed like any other
-/// code. This variable is the only way a library is acquired; it is read
-/// from the process environment first, then from a `.env` file at the
-/// workspace root (process wins, the usual dotenv convention).
+/// Environment variable naming the library directory; when nothing names
+/// one, the library is found beside the executable (see
+/// [`crate::sysroot`]).
 pub const STDLIB_PATH_ENV: &str = "RK_STDLIB_PATH";
 
-/// What the library variable said.
+/// Where the library came from, or why there is none.
 pub enum LibraryPathResolution {
-    /// Not set anywhere: no library loads, and it is worth telling the user
-    /// why `Std.*` names will not resolve.
-    Unset,
-    /// Set to the empty string: the explicit, silent "no library" — how the
-    /// standard library's own workspace avoids loading a second copy of
-    /// itself (see `stdlib/.env`).
+    /// Nothing named a library and the probe found none; the probed paths
+    /// travel with the answer.
+    NotFound { probed: Vec<PathBuf> },
+    /// The explicit, silent "no library". Either asked for — `RK_STDLIB_PATH`
+    /// set to the empty string — or because the workspace IS the library, and
+    /// loading it beside itself would duplicate every declaration.
     Disabled,
-    /// Set to a directory that exists.
-    Found(PathBuf),
-    /// Set to something that is not a readable directory. Never silently
-    /// ignored: compiling against a library the user did not choose would be
-    /// worse than compiling against none.
+    /// A directory that exists, and where it came from.
+    Found {
+        dir: PathBuf,
+        origin: LibraryOrigin,
+    },
+    /// Named as something that is not a readable directory; never silently
+    /// ignored.
     Invalid(String),
 }
 
-/// Resolves the library directory from `RK_STDLIB_PATH`.
+/// Resolves the library directory.
+///
+/// In order: `RK_STDLIB_PATH` in the environment, the same variable in a
+/// `.env` at the workspace root, then the probe beside the executable. A
+/// named path wins outright — including when it names nothing, which is the
+/// veto that keeps the probe from overriding a deliberate choice.
 pub fn resolve_library_path(workspace: Option<&Path>) -> LibraryPathResolution {
-    let value = std::env::var(STDLIB_PATH_ENV)
+    let named = std::env::var(STDLIB_PATH_ENV)
         .ok()
-        .or_else(|| workspace.and_then(read_dotenv_var));
-    match value {
-        None => LibraryPathResolution::Unset,
-        Some(v) if v.is_empty() => LibraryPathResolution::Disabled,
-        Some(v) => match std::fs::canonicalize(&v) {
-            Ok(dir) if dir.is_dir() => LibraryPathResolution::Found(dir),
-            _ => LibraryPathResolution::Invalid(v),
+        .map(|value| (LibraryOrigin::Env, value))
+        .or_else(|| {
+            workspace
+                .and_then(read_dotenv_var)
+                .map(|value| (LibraryOrigin::Dotenv, value))
+        });
+
+    if let Some((origin, value)) = named {
+        if value.is_empty() {
+            return LibraryPathResolution::Disabled;
+        }
+        return match std::fs::canonicalize(&value) {
+            Ok(dir) if dir.is_dir() => LibraryPathResolution::Found { dir, origin },
+            _ => LibraryPathResolution::Invalid(value),
+        };
+    }
+
+    match crate::sysroot::probe() {
+        // A workspace that IS the library loads no library, whatever `.env`
+        // says.
+        Some((_, dir)) if is_the_workspace(&dir, workspace) => LibraryPathResolution::Disabled,
+        Some((origin, dir)) => LibraryPathResolution::Found { dir, origin },
+        None => LibraryPathResolution::NotFound {
+            probed: crate::sysroot::probed(),
         },
+    }
+}
+
+/// Whether a resolved library directory is the workspace being compiled,
+/// compared canonically.
+fn is_the_workspace(library: &Path, workspace: Option<&Path>) -> bool {
+    let Some(workspace) = workspace else {
+        return false;
+    };
+    match (library.canonicalize(), workspace.canonicalize()) {
+        (Ok(library), Ok(workspace)) => library == workspace,
+        _ => library == workspace,
     }
 }
 
@@ -85,7 +118,7 @@ fn read_dotenv_var(workspace: &Path) -> Option<String> {
 
 /// Resolves the workspace config file (`config.toml` at the workspace root).
 pub fn resolve_config_file(workspace: &Path) -> Option<PathBuf> {
-    let path = workspace.join("config.toml");
+    let path = workspace.join(crate::sysroot::CONFIG_FILE);
     if path.exists() {
         std::fs::canonicalize(path).ok()
     } else {

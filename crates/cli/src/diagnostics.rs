@@ -374,7 +374,7 @@ mod tests {
         std::fs::write(ws.path().join("config.toml"), CONFIG_TOML).unwrap();
         std::fs::write(ws.path().join("main.st"), SRC).unwrap();
         // Tests must not inherit the developer's library environment.
-        unsafe { std::env::remove_var(db::loader::STDLIB_PATH_ENV) };
+        unsafe { std::env::set_var(db::loader::STDLIB_PATH_ENV, "") };
         let db = init_db(ws.path(), false, true).expect("init db");
         let per_file = collect_diagnostics(&db, false);
         let mut out = Vec::new();
@@ -455,7 +455,7 @@ mod tests {
         )
         .unwrap();
         // Tests must not inherit the developer's library environment.
-        unsafe { std::env::remove_var(db::loader::STDLIB_PATH_ENV) };
+        unsafe { std::env::set_var(db::loader::STDLIB_PATH_ENV, "") };
         let db = init_db(ws.path(), false, true).expect("init db");
         let per_file = collect_diagnostics(&db, true);
         let mut out = Vec::new();
@@ -492,7 +492,7 @@ mod tests {
         );
 
         // Tests must not inherit the developer's library environment.
-        unsafe { std::env::remove_var(db::loader::STDLIB_PATH_ENV) };
+        unsafe { std::env::set_var(db::loader::STDLIB_PATH_ENV, "") };
         let db = init_db(ws.path(), false, false).expect("configless init");
         let per_file = collect_diagnostics(&db, true);
         let mut out = Vec::new();
