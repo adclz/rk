@@ -235,3 +235,19 @@ fn wasm_pragma_params_count_as_used(mut with_db: RootDatabase) {
     "#;
     assert_snapshot!(test_single_lint(&mut with_db, &[source], "unused-variable"), @"");
 }
+
+/// A fold is the only way to consume a variadic pack, so `...args+` has to
+/// count as a use — otherwise every variadic function ever written reports its
+/// own parameter as unused.
+#[rstest]
+fn variadic_pack_consumed_by_a_fold_is_used(mut with_db: RootDatabase) {
+    let source = r#"
+        FUNCTION sum_all : INT
+        VAR_INPUT
+            args : INT...;
+        END_VAR
+            sum_all := ...args+;
+        END_FUNCTION
+    "#;
+    assert_snapshot!(test_single_lint(&mut with_db, &[source], "unused-variable"), @r"");
+}

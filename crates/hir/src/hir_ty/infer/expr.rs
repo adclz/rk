@@ -239,6 +239,9 @@ impl<'db> InferExprCtx<'db> {
                 let def_map = scope.def_map(db);
                 let ty = match def_map.local_variables.get(&param.caseless(db)) {
                     Some(var) => {
+                        // A fold is the ONLY way to consume a pack, so without
+                        // this every variadic parameter reads as unused (L0101).
+                        inference_results.variables_used.insert(*var);
                         if !var.variadic(db) {
                             inference_results.errors.push(
                                 TypeError::NonVariadicFoldParameter {
