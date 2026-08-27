@@ -26,3 +26,4 @@ crates/wasm_builtins_generated/src/generated.rs
 # IDE settings are personal, not project state
 .idea/
 *.iml
+dist/
