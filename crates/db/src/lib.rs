@@ -6,7 +6,6 @@ use dashmap::DashMap;
 use salsa::{Database, Event};
 
 pub mod config_file;
-pub mod embedded_stdlib;
 pub mod loader;
 pub mod sysroot;
 pub mod workspace;
