@@ -249,9 +249,14 @@ Located in `vscode/`:
 - `server/` — Rust LSP server binary (built with cargo)
 - `syntaxes/st.tmLanguage.json` — TextMate grammar for syntax highlighting
 
-Server binary resolution:
-- Debug: uses `target/debug/vscode-lsp-server`
-- Release: uses cross-compiled binaries from `target/{x86_64-pc-windows-gnu,x86_64-unknown-linux-gnu}/release/`
+Server binary resolution: always `<extension>/server/bin/vscode-lsp-server`
+(`.exe` on Windows). There is no debug/release branch in the extension — the
+F5 build task copies the debug binary to that path, and packaging copies the
+release one.
+
+Standard library resolution: the server finds it relative to its own path, so
+a packaged extension ships `server/lib/rk/std/` and a development run picks up
+the checkout's `stdlib/`. `rk env` prints the resolved path and its origin.
 
 ## CI Workflows
 

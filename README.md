@@ -50,7 +50,10 @@ code --install-extension iec-st-linux-x64-1.0.0.vsix
 
 ### Development
 
-For debug builds, the extension looks for `target/debug/vscode-lsp-server`. Launch via the VSCode debug configuration:
+The extension always runs `vscode/server/bin/vscode-lsp-server`; the F5 build
+task copies the debug binary there. From that path the server finds the
+checkout's own `stdlib/`, so a development run needs no library set up.
+Launch via the VSCode debug configuration:
 
 ```bash
 cargo build --bin vscode-lsp-server

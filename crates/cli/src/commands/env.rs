@@ -13,10 +13,31 @@ use db::loader::{LibraryPathResolution, resolve_library_path};
 
 use crate::error::CliResult;
 
-pub fn run_env(workspace: &Path) -> CliResult<()> {
+pub fn run_env(workspace: &Path, keys: &[String]) -> CliResult<()> {
     let (rows, probed) = describe(workspace);
-    for (key, value) in rows {
-        println!("{key:<12}{value}");
+
+    // Named keys print the value alone, the way `go env GOROOT` does.
+    if !keys.is_empty() {
+        for key in keys {
+            let Some(row) = rows.iter().find(|row| row.key == key) else {
+                return Err(crate::error::CliError::Message(format!(
+                    "unknown key '{key}'; known keys: {}",
+                    rows.iter().map(|r| r.key).collect::<Vec<_>>().join(", ")
+                )));
+            };
+            println!("{}", row.value);
+        }
+        return Ok(());
+    }
+
+    for row in &rows {
+        let value = match (row.value.is_empty(), &row.note) {
+            (true, Some(note)) => format!("none ({note})"),
+            (true, None) => "none".to_string(),
+            (false, Some(note)) => format!("{} ({note})", row.value),
+            (false, None) => row.value.clone(),
+        };
+        println!("{:<12}{value}", row.key);
     }
     for path in probed {
         crate::ui::detail(format!("    looked in {}", path.display()));
@@ -24,57 +45,74 @@ pub fn run_env(workspace: &Path) -> CliResult<()> {
     Ok(())
 }
 
+/// One line of the table: a machine-usable `value` (empty when there is none)
+/// and the `note` that explains it to a human.
+struct Row {
+    key: &'static str,
+    value: String,
+    note: Option<String>,
+}
+
+fn row(key: &'static str, value: String) -> Row {
+    Row {
+        key,
+        value,
+        note: None,
+    }
+}
+
+fn noted(key: &'static str, value: String, note: impl Into<String>) -> Row {
+    Row {
+        key,
+        value,
+        note: Some(note.into()),
+    }
+}
+
 /// The rows, and the paths to list when no library was found; separated
 /// from printing so the resolution can be asserted.
-fn describe(workspace: &Path) -> (Vec<(&'static str, String)>, Vec<std::path::PathBuf>) {
+fn describe(workspace: &Path) -> (Vec<Row>, Vec<std::path::PathBuf>) {
     let mut rows = vec![
-        (
-            "workspace",
-            display_or(workspace.canonicalize().ok().as_deref()),
-        ),
-        (
+        row("workspace", display_or(workspace.canonicalize().ok().as_deref())),
+        row(
             "config",
             display_or(db::loader::resolve_config_file(workspace).as_deref()),
         ),
-        (
-            "executable",
-            display_or(std::env::current_exe().ok().as_deref()),
-        ),
+        row("executable", display_or(std::env::current_exe().ok().as_deref())),
     ];
 
     let runtime = crate::spawn::runtime_binary();
-    rows.push((
-        "runtime",
-        match runtime.is_file() {
-            true => runtime.display().to_string(),
-            // Not an error here: only a command that needs to RUN something
-            // can say whether this matters.
-            false => format!(
-                "{} (not beside the executable; from PATH)",
-                runtime.display()
-            ),
-        },
-    ));
+    rows.push(match runtime.is_file() {
+        true => row("runtime", runtime.display().to_string()),
+        // Not an error here: only a command that needs to RUN something can
+        // say whether this matters.
+        false => noted(
+            "runtime",
+            runtime.display().to_string(),
+            "not beside the executable; from PATH",
+        ),
+    });
 
-    rows.push(("home", display_or(crate::home::rk_home().ok().as_deref())));
+    rows.push(row("home", display_or(crate::home::rk_home().ok().as_deref())));
 
     // The library last: it is the one with a story, and the probed paths that
     // follow it would otherwise split the table in two.
     let mut probed = Vec::new();
-    let library = match resolve_library_path(Some(workspace)) {
+    rows.push(match resolve_library_path(Some(workspace)) {
         LibraryPathResolution::Found { dir, origin } => {
-            format!("{} ({})", dir.display(), origin.as_str())
+            noted("stdlib", dir.display().to_string(), origin.as_str())
         }
-        LibraryPathResolution::Disabled => "none (disabled)".to_string(),
-        LibraryPathResolution::Invalid(value) => {
-            format!("none ('{value}' is not a directory)")
-        }
+        LibraryPathResolution::Disabled => noted("stdlib", String::new(), "disabled"),
+        LibraryPathResolution::Invalid(value) => noted(
+            "stdlib",
+            String::new(),
+            format!("'{value}' is not a directory"),
+        ),
         LibraryPathResolution::NotFound { probed: paths } => {
             probed = paths;
-            "none (not found)".to_string()
+            noted("stdlib", String::new(), "not found")
         }
-    };
-    rows.push(("stdlib", library));
+    });
 
     (rows, probed)
 }
@@ -88,8 +126,8 @@ fn display_or(path: Option<&Path>) -> String {
 mod tests {
     use super::*;
 
-    fn value<'a>(rows: &'a [(&str, String)], key: &str) -> &'a str {
-        &rows.iter().find(|(k, _)| *k == key).expect(key).1
+    fn find<'a>(rows: &'a [Row], key: &str) -> &'a Row {
+        rows.iter().find(|row| row.key == key).expect(key)
     }
 
     /// The origin: two installs resolve differently, and nothing else says
@@ -101,9 +139,15 @@ mod tests {
         let ws = tempfile::tempdir().expect("workspace");
         let (rows, probed) = describe(ws.path());
 
-        let stdlib = value(&rows, "stdlib");
-        assert!(stdlib.ends_with("(dev-tree)"), "origin is named: {stdlib}");
-        assert!(stdlib.contains("stdlib"), "the checkout's library: {stdlib}");
+        let stdlib = find(&rows, "stdlib");
+        assert_eq!(stdlib.note.as_deref(), Some("dev-tree"), "origin is named");
+        assert!(
+            stdlib.value.ends_with("stdlib"),
+            "the checkout's library: {}",
+            stdlib.value
+        );
+        // The value is the path alone.
+        assert!(!stdlib.value.contains('('), "no annotation in the value");
         assert!(probed.is_empty(), "nothing to list when one was found");
     }
 
@@ -115,7 +159,9 @@ mod tests {
         let ws = tempfile::tempdir().expect("workspace");
         let (rows, probed) = describe(ws.path());
 
-        assert_eq!(value(&rows, "stdlib"), "none (disabled)");
+        let stdlib = find(&rows, "stdlib");
+        assert!(stdlib.value.is_empty(), "no path when there is no library");
+        assert_eq!(stdlib.note.as_deref(), Some("disabled"));
         assert!(probed.is_empty());
     }
 
@@ -125,7 +171,7 @@ mod tests {
     fn every_row_is_always_present() {
         let ws = tempfile::tempdir().expect("workspace");
         let (rows, _) = describe(ws.path());
-        let keys: Vec<&str> = rows.iter().map(|(k, _)| *k).collect();
+        let keys: Vec<&str> = rows.iter().map(|row| row.key).collect();
         assert_eq!(
             keys,
             vec!["workspace", "config", "executable", "runtime", "home", "stdlib"]
