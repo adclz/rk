@@ -386,6 +386,14 @@ pub enum ResolveError<'db> {
         var: VariableDecl<'db>,
         kind: ExternForbiddenKind,
     },
+    /// An `{extern}` FUNCTION returning something no WASM result can carry.
+    /// The return type is the import's LAST result, so the same scalar rule
+    /// that governs `VAR_OUTPUT` governs it — and it is the one place a
+    /// STRING or a STRUCT can still be written.
+    ExternNonScalarReturn {
+        func: Function<'db>,
+        ret: Spec<'db>,
+    },
     /// An `{extern}` FUNCTION with statements — the import IS the body.
     ExternWithBody { site: CallSite<'db> },
     /// `{extern}` on something other than a FUNCTION.
@@ -482,7 +490,9 @@ impl<'db> ErrorCode for ResolveError<'db> {
             Self::MultibitsOutOfRange { .. } => "E0229",
             Self::EmptyVariadicCall { .. } => "E0230",
             Self::UnknownMultibitsAccess { .. } => "E0250",
-            Self::ExternForbiddenSection { .. } | Self::ExternWithBody { .. } => "E0243",
+            Self::ExternForbiddenSection { .. }
+            | Self::ExternNonScalarReturn { .. }
+            | Self::ExternWithBody { .. } => "E0243",
             Self::ExternOutsideFunction { .. } => "E0244",
             Self::DirectVariableUnsupported { .. } => "E0245",
             Self::MissingRequiredParameter { .. } => "E0233",
@@ -531,9 +541,9 @@ impl<'db> ErrorCode for ResolveError<'db> {
             Self::MultipleItemsInScope { .. } => "multiple items in scope",
             Self::MultibitsOutOfRange { .. } => "multibit access out of range",
             Self::UnknownMultibitsAccess { .. } => "unknown multibit access size",
-            Self::ExternForbiddenSection { .. } | Self::ExternWithBody { .. } => {
-                "not representable on an extern FUNCTION"
-            }
+            Self::ExternForbiddenSection { .. }
+            | Self::ExternNonScalarReturn { .. }
+            | Self::ExternWithBody { .. } => "not representable on an extern FUNCTION",
             Self::ExternOutsideFunction { .. } => "extern pragma outside a FUNCTION",
             Self::DirectVariableUnsupported { .. } => "direct variable access is not supported",
             Self::MissingRequiredParameter { .. } => "missing required parameter",
@@ -1215,6 +1225,18 @@ impl<'db> ToIdeDiagnostic<'db> for ResolveError<'db> {
                     .range(crate::denormalize(db, file, &var.get_span(db)).unwrap_or_default())
                     .call();
                 diag.with_note(kind.note().to_string());
+                diag
+            }
+            Self::ExternNonScalarReturn { func, ret } => {
+                let diag = diag()
+                    .message(format!(
+                        "the return type of '{}' can only be a scalar",
+                        func.get_name_ident(db).text(db),
+                    ))
+                    .severity(DiagnosticSeverity::ERROR)
+                    .desc(self)
+                    .range(crate::denormalize(db, file, &ret.get_span(db)).unwrap_or_default())
+                    .call();
                 diag
             }
             Self::ExternWithBody { site } => {

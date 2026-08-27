@@ -299,3 +299,37 @@ fn valid_wasm_instruction_names(mut with_db: RootDatabase) {
     "#;
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"");
 }
+
+/// The return type is the import's LAST result, so the scalar rule that
+/// governs VAR_OUTPUT governs it too. It is also the one place an aggregate
+/// could still be written: checking only the sections let a STRING return
+/// through to an assertion in codegen.
+#[rstest]
+fn invalid_extern_aggregate_return(mut with_db: RootDatabase) {
+    let source = r#"
+{extern 'host' 'greet'}
+FUNCTION Greet : STRING
+VAR_INPUT who : INT; END_VAR
+END_FUNCTION"#;
+
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
+    [E0243] Error: not representable on an extern FUNCTION
+       ,-[ file:///test0.st:3:18 ]
+       |
+     3 | FUNCTION Greet : STRING
+       |                  ^^^|^^
+       |                     `---- the return type of 'Greet' can only be a scalar
+    ---'
+    ");
+}
+
+/// A scalar return is the ordinary case and stays legal.
+#[rstest]
+fn valid_extern_scalar_return(mut with_db: RootDatabase) {
+    let source = r#"
+{extern 'host' 'now'}
+FUNCTION Now : LWORD
+END_FUNCTION"#;
+
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"");
+}

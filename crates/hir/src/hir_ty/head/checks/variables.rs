@@ -75,6 +75,19 @@ impl<'db> InitInference<'db> {
                 .to_diagnostic(db, self.scope.file(db)),
             );
         }
+        // The return type is the import's LAST result, so it answers to the
+        // same scalar rule as VAR_OUTPUT. Checking only the sections left the
+        // one aggregate an extern can still name — a STRING or STRUCT return —
+        // to be caught by an assertion in codegen instead.
+        if let Some((f, _span)) = extern_fn
+            && let Some(ret) = f.return_type(db)
+            && !extern_scalar(db, ret.infer(db))
+        {
+            self.errors.push(
+                ResolveError::ExternNonScalarReturn { func: f, ret: *ret }
+                    .to_diagnostic(db, self.scope.file(db)),
+            );
+        }
 
         // Inside a FUNCTION or a value-returning METHOD the callable's own
         // name is the return value, so a variable declared with it (in any
