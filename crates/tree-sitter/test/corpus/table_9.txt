@@ -396,3 +396,174 @@ END_FUNCTION
                   (long_date_and_time
                     (l_date_and_time_type_name)
                     (date_and_daytime)))))))))))
+
+================================================================================
+Date and time values lex liberally - the HIR validates formats, not the grammar
+================================================================================
+
+FUNCTION fn
+
+a := TOD#garbage
+a := D#garbage
+a := DT#garbage
+a := LDT#2026-13-99-99:99:99
+
+END_FUNCTION
+
+--------------------------------------------------------------------------------
+
+(source_file
+  (func_decl
+    (identifier)
+    (func_body
+      (stmt_list
+        (assign
+          (variable_access
+            (variable
+              (begin_path_expression
+                (path_expression
+                  (var_access
+                    (field))))))
+          (assignment
+            (constant
+              (time_literal
+                (time_of_day
+                  (tod
+                    (tod_type_name)
+                    (daytime)))))))
+        (assign
+          (variable_access
+            (variable
+              (begin_path_expression
+                (path_expression
+                  (var_access
+                    (field))))))
+          (assignment
+            (constant
+              (time_literal
+                (date
+                  (short_date
+                    (date_type_name)
+                    (date_literal)))))))
+        (assign
+          (variable_access
+            (variable
+              (begin_path_expression
+                (path_expression
+                  (var_access
+                    (field))))))
+          (assignment
+            (constant
+              (time_literal
+                (date_and_time
+                  (short_date_and_time
+                    (date_and_time_type_name)
+                    (date_and_daytime)))))))
+        (assign
+          (variable_access
+            (variable
+              (begin_path_expression
+                (path_expression
+                  (var_access
+                    (field))))))
+          (assignment
+            (constant
+              (time_literal
+                (date_and_time
+                  (long_date_and_time
+                    (l_date_and_time_type_name)
+                    (date_and_daytime)))))))))))
+
+================================================================================
+A TOD in a CASE label keeps the label colon
+================================================================================
+
+FUNCTION fn
+VAR x : TOD; END_VAR
+
+CASE x OF
+  TOD#12:00:00: x := TOD#00:00:00;
+  DT#2026-01-01-00:00:00..DT#2026-12-31-23:59:59: x := TOD#01:00:00;
+END_CASE
+
+END_FUNCTION
+
+--------------------------------------------------------------------------------
+
+(source_file
+  (func_decl
+    (identifier)
+    (var_decls
+      (var_decl_init_list
+        (variable_list
+          (identifier))
+        (var_decl_init
+          (simple_type_spec
+            (tod_type_name)))))
+    (func_body
+      (stmt_list
+        (case_stmt
+          (variable_access
+            (variable
+              (begin_path_expression
+                (path_expression
+                  (var_access
+                    (field))))))
+          (case_selection
+            (case_list
+              (case_list_elem
+                (constant_expr
+                  (constant
+                    (time_literal
+                      (time_of_day
+                        (tod
+                          (tod_type_name)
+                          (daytime))))))))
+            (stmt_list
+              (assign
+                (variable_access
+                  (variable
+                    (begin_path_expression
+                      (path_expression
+                        (var_access
+                          (field))))))
+                (assignment
+                  (constant
+                    (time_literal
+                      (time_of_day
+                        (tod
+                          (tod_type_name)
+                          (daytime)))))))))
+          (case_selection
+            (case_list
+              (case_list_elem
+                (subrange
+                  (constant_expr
+                    (constant
+                      (time_literal
+                        (date_and_time
+                          (short_date_and_time
+                            (date_and_time_type_name)
+                            (date_and_daytime))))))
+                  (constant_expr
+                    (constant
+                      (time_literal
+                        (date_and_time
+                          (short_date_and_time
+                            (date_and_time_type_name)
+                            (date_and_daytime)))))))))
+            (stmt_list
+              (assign
+                (variable_access
+                  (variable
+                    (begin_path_expression
+                      (path_expression
+                        (var_access
+                          (field))))))
+                (assignment
+                  (constant
+                    (time_literal
+                      (time_of_day
+                        (tod
+                          (tod_type_name)
+                          (daytime))))))))))))))

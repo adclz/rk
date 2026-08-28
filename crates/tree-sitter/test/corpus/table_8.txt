@@ -335,3 +335,163 @@ END_FUNCTION
                   (ltime
                     (l_time_type_name)
                     (time_value)))))))))))
+
+================================================================================
+Duration values lex liberally - the HIR validates units, not the grammar
+================================================================================
+
+FUNCTION fn
+
+a := T#292y
+a := T#5
+a := T#1h30
+a := LT#2years
+a := T#garbage
+
+END_FUNCTION
+
+--------------------------------------------------------------------------------
+
+(source_file
+  (func_decl
+    (identifier)
+    (func_body
+      (stmt_list
+        (assign
+          (variable_access
+            (variable
+              (begin_path_expression
+                (path_expression
+                  (var_access
+                    (field))))))
+          (assignment
+            (constant
+              (time_literal
+                (duration
+                  (time
+                    (time_type_name)
+                    (time_value)))))))
+        (assign
+          (variable_access
+            (variable
+              (begin_path_expression
+                (path_expression
+                  (var_access
+                    (field))))))
+          (assignment
+            (constant
+              (time_literal
+                (duration
+                  (time
+                    (time_type_name)
+                    (time_value)))))))
+        (assign
+          (variable_access
+            (variable
+              (begin_path_expression
+                (path_expression
+                  (var_access
+                    (field))))))
+          (assignment
+            (constant
+              (time_literal
+                (duration
+                  (time
+                    (time_type_name)
+                    (time_value)))))))
+        (assign
+          (variable_access
+            (variable
+              (begin_path_expression
+                (path_expression
+                  (var_access
+                    (field))))))
+          (assignment
+            (constant
+              (time_literal
+                (duration
+                  (ltime
+                    (l_time_type_name)
+                    (time_value)))))))
+        (assign
+          (variable_access
+            (variable
+              (begin_path_expression
+                (path_expression
+                  (var_access
+                    (field))))))
+          (assignment
+            (constant
+              (time_literal
+                (duration
+                  (time
+                    (time_type_name)
+                    (time_value)))))))))))
+
+================================================================================
+A duration in a subrange stops at the range dots
+================================================================================
+
+FUNCTION fn
+VAR x : TIME; END_VAR
+
+CASE x OF
+  T#1s..T#2s: x := T#0s;
+END_CASE
+
+END_FUNCTION
+
+--------------------------------------------------------------------------------
+
+(source_file
+  (func_decl
+    (identifier)
+    (var_decls
+      (var_decl_init_list
+        (variable_list
+          (identifier))
+        (var_decl_init
+          (simple_type_spec
+            (time_type_name)))))
+    (func_body
+      (stmt_list
+        (case_stmt
+          (variable_access
+            (variable
+              (begin_path_expression
+                (path_expression
+                  (var_access
+                    (field))))))
+          (case_selection
+            (case_list
+              (case_list_elem
+                (subrange
+                  (constant_expr
+                    (constant
+                      (time_literal
+                        (duration
+                          (time
+                            (time_type_name)
+                            (time_value))))))
+                  (constant_expr
+                    (constant
+                      (time_literal
+                        (duration
+                          (time
+                            (time_type_name)
+                            (time_value)))))))))
+            (stmt_list
+              (assign
+                (variable_access
+                  (variable
+                    (begin_path_expression
+                      (path_expression
+                        (var_access
+                          (field))))))
+                (assignment
+                  (constant
+                    (time_literal
+                      (duration
+                        (time
+                          (time_type_name)
+                          (time_value))))))))))))))

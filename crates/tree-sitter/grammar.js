@@ -610,7 +610,7 @@ module.exports = grammar({
         field("value", $.time_value),
       ),
 
-    time_value: ($) => /([0-9._]+(d|h|ms|us|ns|m|s))+/,
+    time_value: ($) => /[0-9a-zA-Z_]+(\.[0-9][0-9a-zA-Z_]*)*/,
 
     fix_point: ($) =>
       seq(field("real", $.unsigned_int), ".", field("frac", $.unsigned_int)),
@@ -629,7 +629,7 @@ module.exports = grammar({
         field("value", $.daytime),
       ),
 
-    daytime: ($) => /[0-9a-zA-Z_.:]+/,
+    daytime: ($) => /[0-9a-zA-Z_]+([.:][0-9][0-9a-zA-Z_]*)*/,
 
     date: ($) => choice($.short_date, $.long_date),
 
@@ -645,7 +645,7 @@ module.exports = grammar({
         field("value", $.date_literal),
       ),
 
-    date_literal: ($) => /[0-9a-zA-Z_.:-]+/,
+    date_literal: ($) => /[0-9a-zA-Z_]+([.:-][0-9][0-9a-zA-Z_]*)*/,
 
     date_and_time: ($) => choice($.short_date_and_time, $.long_date_and_time),
 
@@ -667,7 +667,10 @@ module.exports = grammar({
     date_and_time_type_name: ($) => ciChoice("DATE_AND_TIME", "DT"),
     l_date_and_time_type_name: ($) => ciChoice("LDATE_AND_TIME", "LDT"),
 
-    date_and_daytime: ($) => /[0-9dhmsDHMS_.:-]+/,
+    // Was /[0-9dhmsDHMS_.:-]+/ — the dhms subset meant `DT#garbage` could not
+    // lex at all and shredded into an identifier (a bogus E0204). Any letter
+    // is a value now; the HIR answers with its date-format diagnostic.
+    date_and_daytime: ($) => /[0-9a-zA-Z_]+([.:-][0-9][0-9a-zA-Z_]*)*/,
 
     // Table 10 - Elementary data types
 

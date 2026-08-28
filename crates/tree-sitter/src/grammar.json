@@ -1850,7 +1850,7 @@
     },
     "time_value": {
       "type": "PATTERN",
-      "value": "([0-9._]+(d|h|ms|us|ns|m|s))+"
+      "value": "[0-9a-zA-Z_]+(\\.[0-9][0-9a-zA-Z_]*)*"
     },
     "fix_point": {
       "type": "SEQ",
@@ -1936,7 +1936,7 @@
     },
     "daytime": {
       "type": "PATTERN",
-      "value": "[0-9a-zA-Z_.:]+"
+      "value": "[0-9a-zA-Z_]+([.:][0-9][0-9a-zA-Z_]*)*"
     },
     "date": {
       "type": "CHOICE",
@@ -1997,7 +1997,7 @@
     },
     "date_literal": {
       "type": "PATTERN",
-      "value": "[0-9a-zA-Z_.:-]+"
+      "value": "[0-9a-zA-Z_]+([.:-][0-9][0-9a-zA-Z_]*)*"
     },
     "date_and_time": {
       "type": "CHOICE",
@@ -2079,7 +2079,7 @@
     },
     "date_and_daytime": {
       "type": "PATTERN",
-      "value": "[0-9dhmsDHMS_.:-]+"
+      "value": "[0-9a-zA-Z_]+([.:-][0-9][0-9a-zA-Z_]*)*"
     },
     "data_type_access": {
       "type": "CHOICE",

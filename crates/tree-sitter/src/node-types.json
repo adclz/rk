@@ -2361,6 +2361,11 @@
     }
   },
   {
+    "type": "date_and_daytime",
+    "named": true,
+    "fields": {}
+  },
+  {
     "type": "date_and_time",
     "named": true,
     "fields": {},
@@ -2378,6 +2383,11 @@
         }
       ]
     }
+  },
+  {
+    "type": "date_literal",
+    "named": true,
+    "fields": {}
   },
   {
     "type": "deref_expression",
@@ -7647,15 +7657,7 @@
     "named": true
   },
   {
-    "type": "date_and_daytime",
-    "named": true
-  },
-  {
     "type": "date_and_time_type_name",
-    "named": true
-  },
-  {
-    "type": "date_literal",
     "named": true
   },
   {
