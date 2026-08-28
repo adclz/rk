@@ -244,6 +244,16 @@ impl MirElementary {
         matches!(
             self,
             MirElementary::SInt | MirElementary::Int | MirElementary::DInt | MirElementary::LInt
+            // Every date/time encoding is a signed integer (pre-epoch values are
+            // representable), so their comparisons are signed.
+            | MirElementary::Time
+            | MirElementary::LTime
+            | MirElementary::Date
+            | MirElementary::LDate
+            | MirElementary::Tod
+            | MirElementary::LTod
+            | MirElementary::DateAndTime
+            | MirElementary::LDateTime
         )
     }
 }
