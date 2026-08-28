@@ -266,6 +266,23 @@ fn stmts_assign_static_string(stmts: &[MirStmt]) -> bool {
 fn stmt_assigns_static_string(stmt: &MirStmt) -> bool {
     match stmt {
         MirStmt::Assign { target, .. } => place_is_static_string(target),
+        // An FB call's STRING input writes and output reads both route through
+        // `rk.str_assign` (emit_fb_call), so they arm the graft like any other
+        // static-string assignment. Without this, a caller writing a literal
+        // into a STRING input — with no other string activity in the module —
+        // compiled to the `.expect` in emit_stmt instead of a module.
+        MirStmt::FbCall {
+            input_writes,
+            output_reads,
+            ..
+        } => {
+            input_writes
+                .iter()
+                .any(|(_, _, ty)| matches!(ty, MirType::String { .. }))
+                || output_reads
+                    .iter()
+                    .any(|(_, _, ty)| matches!(ty, MirType::String { .. }))
+        }
         MirStmt::If {
             then_body,
             else_ifs,

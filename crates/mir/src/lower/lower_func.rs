@@ -1371,8 +1371,23 @@ fn lower_init_leaves<'db>(
                 }
             }
             // Only a whole scalar local is addressed directly; anything at an
-            // offset lives in linear memory and is reached as a field.
-            InitTarget::Local { name, base } if base == 0 && leaf.path.is_empty() => {
+            // offset lives in linear memory and is reached as a field. A STRING
+            // or aggregate leaf takes the Field arm even at offset 0: the
+            // targets here are memory-resident instance structs, and a bare
+            // `Local` hides the leaf's type from codegen — a STRING default on
+            // an instance's first field emitted a scalar store that wrote the
+            // LENGTH over the literal's pool bytes and left an operand on the
+            // stack (invalid wasm).
+            InitTarget::Local { name, base }
+                if base == 0
+                    && leaf.path.is_empty()
+                    && !matches!(
+                        leaf_ty,
+                        crate::types::MirType::String { .. }
+                            | crate::types::MirType::Struct(_)
+                            | crate::types::MirType::Array(_)
+                    ) =>
+            {
                 MirPlace::Local(name)
             }
             InitTarget::Local { name, base } => MirPlace::Field {
