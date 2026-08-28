@@ -41,6 +41,19 @@
 //! nested STRING-returning call; `IP -> REF` is grammatically allowed but its
 //! behaviour is not strictly defined, skipped.
 //!
+//! Two footnotes on the matrix. The `=IP` column mutates a `VAR_INPUT`,
+//! which IEC forbids inside the POU — RULED (2026-08-28): legal, warned by
+//! L0303 `input-assignment`, the other toolchains stance. The semantics that make the
+//! deviation safe are pinned executed below: a FUNCTION input write mutates
+//! the callee's copy (a STRING one REBINDS the view, never writing through),
+//! and an FB input write lands in instance storage. If the language ever
+//! rejects the construct instead, five cells flip together. And a matrix
+//! cell only proves the module VALIDATES — a slot-aliasing or snapshot bug
+//! validates fine (i32 == i32) and returns the wrong value, which is how
+//! `regression_string_param_not_clobbered_by_return_write` was born. The
+//! NEST cells, where the snapshot dance is the whole point, are therefore
+//! also EXECUTED (`*_nest_executes`).
+//!
 //! A combination that regresses to invalid wasm gets `#[ignore = "BROKEN: ..."]`
 //! until fixed; none currently. Two audit-era holes are fixed and pinned below
 //! as `regression_*`: an empty-body FUNCTION whose call sites emitted index 0,
@@ -584,6 +597,178 @@ END_FUNCTION
 }
 
 // =============================================================================
+// The =IP ruling, executed: legal but warned (L0303), and safe BECAUSE of these
+// =============================================================================
+
+/// Writing a VAR_INPUT STRING rebinds the callee's (ptr, len) view — it never
+/// writes through to the caller's buffer. This is what makes the =IP column a
+/// safe deviation: a regression to write-through would mutate the caller's
+/// string (or the literal pool) while still validating.
+#[rstest]
+fn ip_assign_rebinds_the_view_not_the_callers_buffer(mut with_db: db::RootDatabase) {
+    let source = full_source(
+        r#"
+FUNCTION mutinp : STRING
+VAR_INPUT s : STRING; END_VAR
+    s := 'XX';
+    mutinp := s;
+END_FUNCTION
+
+FUNCTION check : INT
+VAR a : STRING; b : STRING; END_VAR
+    a := 'orig';
+    b := mutinp(a);
+    IF b = 'XX' AND a = 'orig' THEN check := 1; ELSE check := 0; END_IF;
+END_FUNCTION
+"#,
+    );
+    let wasm = compile_to_wasm(&mut with_db, &source);
+    let r: i32 = execute_wasm(&wasm, "check", ());
+    assert_eq!(r, 1, "the callee sees 'XX'; the caller's 'orig' is untouched");
+}
+
+/// The literal-source half of the same ruling: `mutinp('orig')` hands the
+/// callee a view INTO THE POOL, and the pool deduplicates (`StringPool::
+/// intern`), so a write-through would poison every `'orig'` in the module —
+/// there is no second variable to observe it through. The observable is the
+/// literal itself: copy it out BEFORE the write, then compare. Two rounds so
+/// the second re-reads the slot the first would have corrupted.
+#[rstest]
+fn ip_write_does_not_corrupt_the_literal_pool(mut with_db: db::RootDatabase) {
+    let source = full_source(
+        r#"
+FUNCTION grab : STRING
+VAR_INPUT s : STRING; END_VAR
+    grab := s;
+    s := 'XX';
+END_FUNCTION
+
+FUNCTION check : INT
+VAR i : INT; ok : INT; s : STRING; END_VAR
+    ok := 0;
+    FOR i := 1 TO 2 DO
+        s := grab('orig');
+        IF s = 'orig' THEN ok := ok + 1; END_IF;
+    END_FOR;
+    check := ok;
+END_FUNCTION
+"#,
+    );
+    let wasm = compile_to_wasm(&mut with_db, &source);
+    let r: i32 = execute_wasm(&wasm, "check", ());
+    assert_eq!(r, 2, "'orig' survives being handed to a callee that writes its input");
+}
+
+/// The FB half of the ruling, where the semantics genuinely differ from a
+/// FUNCTION: the body writing its own STRING input lands in INSTANCE storage
+/// (ThisField, not a rebound view), so a call that omits the input sees the
+/// previous call's write. In a FUNCTION the same two statements would yield
+/// 'a!' twice; only instance storage accumulates.
+///
+/// The accumulation pins more than the write landing: an omitted input
+/// RETAINS its prior value (no reset to a default or to empty), and the
+/// field's BYTES survive the call boundary — call 2's concat reads the
+/// buffer call 1 wrote before writing it, so 'a!!' is unreachable if either
+/// property breaks. The scalar variant is pinned in `function_blocks.rs`;
+/// this is the STRING path, where survival is a memory question too.
+#[rstest]
+fn fb_body_write_to_its_string_input_persists(mut with_db: db::RootDatabase) {
+    let source = full_source(
+        r#"
+FUNCTION_BLOCK Acc
+VAR_INPUT s : STRING[16]; END_VAR
+VAR_OUTPUT got : STRING[16]; END_VAR
+    s := str_concat(s, '!');
+    got := s;
+END_FUNCTION_BLOCK
+
+FUNCTION check : INT
+VAR f : Acc; ok : INT := 0; END_VAR
+    f(s := 'a');
+    IF f.got = 'a!' THEN ok := ok + 1; END_IF;
+    f();
+    IF f.got = 'a!!' THEN ok := ok + 10; END_IF;
+    check := ok;
+END_FUNCTION
+"#,
+    );
+    let wasm = compile_to_wasm(&mut with_db, &source);
+    let r: i32 = execute_wasm(&wasm, "check", ());
+    assert_eq!(r, 11, "the omitted input keeps the body's own previous write");
+}
+
+// =============================================================================
+// NEST cells, executed: validation cannot see a snapshot bug
+// =============================================================================
+
+/// `RT -> NEST`, executed. Two DIFFERENT producers share one return slot, so
+/// if the snapshot dance fails to copy the first result before the second
+/// producer runs, the concat yields 'twotwo' — and the module still validates.
+#[rstest]
+fn rt_nest_executes(mut with_db: db::RootDatabase) {
+    let source = full_source(
+        r#"
+FUNCTION tag : STRING
+VAR_INPUT which : INT; END_VAR
+    IF which = 1 THEN tag := 'one'; ELSE tag := 'two'; END_IF;
+END_FUNCTION
+
+FUNCTION check : INT
+VAR s : STRING; END_VAR
+    s := str_concat(tag(1), tag(2));
+    IF s = 'onetwo' THEN check := 1; ELSE check := 0; END_IF;
+END_FUNCTION
+"#,
+    );
+    let wasm = compile_to_wasm(&mut with_db, &source);
+    let r: i32 = execute_wasm(&wasm, "check", ());
+    assert_eq!(r, 1, "the first producer's result survives the second");
+}
+
+/// `MM -> NEST`, executed: the local source feeds the inner call and is then
+/// re-read as the outer call's first operand.
+#[rstest]
+fn mm_nest_executes(mut with_db: db::RootDatabase) {
+    let source = full_source(
+        r#"
+FUNCTION check : INT
+VAR a : STRING; b : STRING; END_VAR
+    a := 'left';
+    b := str_concat(a, str_concat(a, '!'));
+    IF b = 'leftleft!' THEN check := 1; ELSE check := 0; END_IF;
+END_FUNCTION
+"#,
+    );
+    let wasm = compile_to_wasm(&mut with_db, &source);
+    let r: i32 = execute_wasm(&wasm, "check", ());
+    assert_eq!(r, 1, "'left' concatenated around the nested result");
+}
+
+/// `IP -> NEST`, executed: the input param is both the inner call's source and
+/// the outer call's second operand, so a clobbered (ptr, len) pair shows up in
+/// the value even though the module validates.
+#[rstest]
+fn ip_nest_executes(mut with_db: db::RootDatabase) {
+    let source = full_source(
+        r#"
+FUNCTION weave : STRING
+VAR_INPUT inp : STRING; END_VAR
+    weave := str_concat(str_concat(inp, '!'), inp);
+END_FUNCTION
+
+FUNCTION check : INT
+VAR s : STRING; END_VAR
+    s := weave('in');
+    IF s = 'in!in' THEN check := 1; ELSE check := 0; END_IF;
+END_FUNCTION
+"#,
+    );
+    let wasm = compile_to_wasm(&mut with_db, &source);
+    let r: i32 = execute_wasm(&wasm, "check", ());
+    assert_eq!(r, 1, "the param survives feeding the inner call");
+}
+
+// =============================================================================
 // Side-cases revealed by writing the audit
 // =============================================================================
 
@@ -976,9 +1161,14 @@ fn struct_with_string_initializer(mut with_db: db::RootDatabase) {
 
     let plc = Plc::load(&wasm, Config::default()).expect("load");
     let r = plc.read_retain();
-    // p.name (STRING) at offset 0; p.age (INT) at offset 4+80 = 84.
+    // p.name (STRING) at offset 0; p.age (INT) right after the string slot,
+    // whose size is the 4-byte length header plus the default capacity.
+    let age_at = (4 + mir::types::DEFAULT_STRING_CAPACITY) as usize;
     assert_eq!(read_retain_string(&plc), "bob");
-    assert_eq!(i32::from_le_bytes(r[84..88].try_into().unwrap()), 30);
+    assert_eq!(
+        i32::from_le_bytes(r[age_at..age_at + 4].try_into().unwrap()),
+        30
+    );
 }
 
 /// Assigning a STRING-returning call's result into an instance field

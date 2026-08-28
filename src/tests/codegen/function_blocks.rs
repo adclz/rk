@@ -1611,3 +1611,31 @@ fn test_fb_inputs_evaluate_in_declaration_order(mut with_db: db::RootDatabase) {
     let result: i32 = super::execute_wasm(&wasm, "test", ());
     assert_eq!(result, 12, "a's expression ran first: a = 1, b = 2");
 }
+
+/// Writing a VAR_INPUT inside the FB body is legal (warned by L0303) and the
+/// write lands in INSTANCE storage: a later call that omits the input keeps
+/// the written value instead of resetting it. The other toolchains semantics the
+/// ruling rests on — a supplied input overwrites, an omitted one persists.
+#[rstest]
+fn written_input_persists_when_the_next_call_omits_it(mut with_db: db::RootDatabase) {
+    let source = r#"
+        FUNCTION_BLOCK F
+        VAR_INPUT x : INT; END_VAR
+        VAR_OUTPUT o : INT; END_VAR
+            x := x + 1;
+            o := x;
+        END_FUNCTION_BLOCK
+
+        FUNCTION test : INT
+        VAR f : F; ok : INT := 0; END_VAR
+            f(x := 10);
+            IF f.o = 11 THEN ok := ok + 1; END_IF;
+            f();
+            IF f.o = 12 THEN ok := ok + 10; END_IF;
+            test := ok;
+        END_FUNCTION
+    "#;
+    let wasm = compile_to_wasm(&mut with_db, source);
+    let result: i32 = super::execute_wasm(&wasm, "test", ());
+    assert_eq!(result, 11, "supplied input overwrites; omitted input persists");
+}
