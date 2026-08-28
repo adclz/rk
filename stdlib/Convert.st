@@ -10,6 +10,7 @@ Each function follows the naming convention `<SOURCE>_TO_<TARGET>`.
 All conversions use {wasm} intrinsics - zero overhead, single instruction.
 */
 NAMESPACE Std.Convert
+	USING Std.Strings
 
 	/* ## LREAL (f64) Conversions */
 
@@ -1325,6 +1326,367 @@ NAMESPACE Std.Convert
 		TRUNC := LREAL_TO_LINT(IN);
 	END_FUNCTION
 
+
+	/* ## Date/time widenings, as named functions (the implicit casts' twins) */
+
+	FUNCTION TIME_TO_LTIME: LTIME
+		VAR_INPUT IN: TIME; END_VAR
+		{wasm 'cast' (params IN) (result TIME_TO_LTIME)}
+	END_FUNCTION
+
+	FUNCTION TOD_TO_LTOD: LTIME_OF_DAY
+		VAR_INPUT IN: TIME_OF_DAY; END_VAR
+		{wasm 'cast' (params IN) (result TOD_TO_LTOD)}
+	END_FUNCTION
+
+	FUNCTION DATE_TO_LDATE: LDATE
+		VAR_INPUT IN: DATE; END_VAR
+		{wasm 'cast' (params IN) (result DATE_TO_LDATE)}
+	END_FUNCTION
+
+	FUNCTION DT_TO_LDT: LDATE_AND_TIME
+		VAR_INPUT IN: DATE_AND_TIME; END_VAR
+		{wasm 'cast' (params IN) (result DT_TO_LDT)}
+	END_FUNCTION
+
+	/* ## Date/time to number and back.
+
+	Each exposes the documented encoding as a plain number: TIME/TOD in ms,
+	DATE in days since 1970-01-01, DT in seconds since 1970-01-01, and the
+	L-variants in ns (LDATE in days). Same-lane reinterpretations, zero cost.
+	Until the date/time arithmetic functions exist, this is the sanctioned
+	workaround: convert, compute in the encoding, convert back. */
+
+	FUNCTION TIME_TO_DINT: DINT
+		VAR_INPUT IN: TIME; END_VAR
+		{wasm 'cast' (params IN) (result TIME_TO_DINT)}
+	END_FUNCTION
+
+	FUNCTION DINT_TO_TIME: TIME
+		VAR_INPUT IN: DINT; END_VAR
+		{wasm 'cast' (params IN) (result DINT_TO_TIME)}
+	END_FUNCTION
+
+	FUNCTION LTIME_TO_LINT: LINT
+		VAR_INPUT IN: LTIME; END_VAR
+		{wasm 'cast' (params IN) (result LTIME_TO_LINT)}
+	END_FUNCTION
+
+	FUNCTION LINT_TO_LTIME: LTIME
+		VAR_INPUT IN: LINT; END_VAR
+		{wasm 'cast' (params IN) (result LINT_TO_LTIME)}
+	END_FUNCTION
+
+	FUNCTION DATE_TO_DINT: DINT
+		VAR_INPUT IN: DATE; END_VAR
+		{wasm 'cast' (params IN) (result DATE_TO_DINT)}
+	END_FUNCTION
+
+	FUNCTION DINT_TO_DATE: DATE
+		VAR_INPUT IN: DINT; END_VAR
+		{wasm 'cast' (params IN) (result DINT_TO_DATE)}
+	END_FUNCTION
+
+	FUNCTION LDATE_TO_LINT: LINT
+		VAR_INPUT IN: LDATE; END_VAR
+		{wasm 'cast' (params IN) (result LDATE_TO_LINT)}
+	END_FUNCTION
+
+	FUNCTION LINT_TO_LDATE: LDATE
+		VAR_INPUT IN: LINT; END_VAR
+		{wasm 'cast' (params IN) (result LINT_TO_LDATE)}
+	END_FUNCTION
+
+	FUNCTION TOD_TO_DINT: DINT
+		VAR_INPUT IN: TIME_OF_DAY; END_VAR
+		{wasm 'cast' (params IN) (result TOD_TO_DINT)}
+	END_FUNCTION
+
+	FUNCTION DINT_TO_TOD: TIME_OF_DAY
+		VAR_INPUT IN: DINT; END_VAR
+		{wasm 'cast' (params IN) (result DINT_TO_TOD)}
+	END_FUNCTION
+
+	FUNCTION LTOD_TO_LINT: LINT
+		VAR_INPUT IN: LTIME_OF_DAY; END_VAR
+		{wasm 'cast' (params IN) (result LTOD_TO_LINT)}
+	END_FUNCTION
+
+	FUNCTION LINT_TO_LTOD: LTIME_OF_DAY
+		VAR_INPUT IN: LINT; END_VAR
+		{wasm 'cast' (params IN) (result LINT_TO_LTOD)}
+	END_FUNCTION
+
+	FUNCTION DT_TO_DINT: DINT
+		VAR_INPUT IN: DATE_AND_TIME; END_VAR
+		{wasm 'cast' (params IN) (result DT_TO_DINT)}
+	END_FUNCTION
+
+	FUNCTION DINT_TO_DT: DATE_AND_TIME
+		VAR_INPUT IN: DINT; END_VAR
+		{wasm 'cast' (params IN) (result DINT_TO_DT)}
+	END_FUNCTION
+
+	FUNCTION LDT_TO_LINT: LINT
+		VAR_INPUT IN: LDATE_AND_TIME; END_VAR
+		{wasm 'cast' (params IN) (result LDT_TO_LINT)}
+	END_FUNCTION
+
+	FUNCTION LINT_TO_LDT: LDATE_AND_TIME
+		VAR_INPUT IN: LINT; END_VAR
+		{wasm 'cast' (params IN) (result LINT_TO_LDT)}
+	END_FUNCTION
+
+	/* ## Date/time to STRING, in IEC literal form.
+
+	Every result parses back as a literal of the same type and value, so the
+	canonical spelling may differ from how the value was written (T#90s prints
+	as 'T#1m30s'). A negative TOD only arises from a pre-epoch decomposition
+	(a domain escape, see the compiler's emit_datetime_cast); it prints with a
+	leading '-', which no TOD literal accepts, so the escape stays visible. */
+
+	FUNCTION PRIVATE PAD_MIN: STRING
+		VAR_INPUT n: LINT; width: UDINT; END_VAR
+		VAR s: STRING; END_VAR
+		s := LINT_TO_STRING(IN := n);
+		WHILE LEN(IN := s) < width DO
+			s := CONCAT(A := '0', B := s);
+		END_WHILE
+		PAD_MIN := s;
+	END_FUNCTION
+
+	/* days since 1970-01-01 to 'YYYY-MM-DD' (proleptic Gregorian, era-based
+	civil algorithm; the explicit era adjustment makes truncating division
+	behave as floor, so pre-epoch days are exact) */
+	FUNCTION PRIVATE CIVIL_YMD: STRING
+		VAR_INPUT days: LINT; END_VAR
+		VAR z, era, doe, yoe, y, doy, mp, dd, mm: LINT; s: STRING; END_VAR
+		z := days + LINT#719468;
+		IF z >= LINT#0 THEN
+			era := z / LINT#146097;
+		ELSE
+			era := (z - LINT#146096) / LINT#146097;
+		END_IF
+		doe := z - era * LINT#146097;
+		yoe := (doe - doe / LINT#1460 + doe / LINT#36524 - doe / LINT#146096) / LINT#365;
+		y := yoe + era * LINT#400;
+		doy := doe - (LINT#365 * yoe + yoe / LINT#4 - yoe / LINT#100);
+		mp := (LINT#5 * doy + LINT#2) / LINT#153;
+		dd := doy - (LINT#153 * mp + LINT#2) / LINT#5 + LINT#1;
+		IF mp < LINT#10 THEN
+			mm := mp + LINT#3;
+		ELSE
+			mm := mp - LINT#9;
+		END_IF
+		IF mm <= LINT#2 THEN
+			y := y + LINT#1;
+		END_IF
+		IF y < LINT#0 THEN
+			s := CONCAT(A := '-', B := PAD_MIN(n := -y, width := UDINT#4));
+		ELSE
+			s := PAD_MIN(n := y, width := UDINT#4);
+		END_IF
+		s := CONCAT(A := s, B := '-');
+		s := CONCAT(A := s, B := PAD_MIN(n := mm, width := UDINT#2));
+		s := CONCAT(A := s, B := '-');
+		CIVIL_YMD := CONCAT(A := s, B := PAD_MIN(n := dd, width := UDINT#2));
+	END_FUNCTION
+
+	/* 'HH:MM:SS' from seconds-of-day */
+	FUNCTION PRIVATE HMS: STRING
+		VAR_INPUT sod: LINT; END_VAR
+		VAR s: STRING; END_VAR
+		s := PAD_MIN(n := sod / LINT#3600, width := UDINT#2);
+		s := CONCAT(A := s, B := ':');
+		s := CONCAT(A := s, B := PAD_MIN(n := (sod / LINT#60) MOD LINT#60, width := UDINT#2));
+		s := CONCAT(A := s, B := ':');
+		HMS := CONCAT(A := s, B := PAD_MIN(n := sod MOD LINT#60, width := UDINT#2));
+	END_FUNCTION
+
+	FUNCTION TIME_TO_STRING: STRING
+		VAR_INPUT IN: TIME; END_VAR
+		VAR t, d, h, m, sec, ms: LINT; s: STRING; any: BOOL; END_VAR
+		s := 'T#';
+		t := TIME_TO_DINT(IN := IN);
+		IF t < LINT#0 THEN
+			s := CONCAT(A := s, B := '-');
+			t := -t;
+		END_IF
+		d := t / LINT#86400000;
+		t := t MOD LINT#86400000;
+		h := t / LINT#3600000;
+		t := t MOD LINT#3600000;
+		m := t / LINT#60000;
+		t := t MOD LINT#60000;
+		sec := t / LINT#1000;
+		ms := t MOD LINT#1000;
+		IF d > LINT#0 THEN
+			s := CONCAT(A := s, B := CONCAT(A := LINT_TO_STRING(IN := d), B := 'd'));
+			any := TRUE;
+		END_IF
+		IF h > LINT#0 THEN
+			s := CONCAT(A := s, B := CONCAT(A := LINT_TO_STRING(IN := h), B := 'h'));
+			any := TRUE;
+		END_IF
+		IF m > LINT#0 THEN
+			s := CONCAT(A := s, B := CONCAT(A := LINT_TO_STRING(IN := m), B := 'm'));
+			any := TRUE;
+		END_IF
+		IF sec > LINT#0 THEN
+			s := CONCAT(A := s, B := CONCAT(A := LINT_TO_STRING(IN := sec), B := 's'));
+			any := TRUE;
+		END_IF
+		IF ms > LINT#0 THEN
+			s := CONCAT(A := s, B := CONCAT(A := LINT_TO_STRING(IN := ms), B := 'ms'));
+			any := TRUE;
+		END_IF
+		IF NOT any THEN
+			s := CONCAT(A := s, B := '0s');
+		END_IF
+		TIME_TO_STRING := s;
+	END_FUNCTION
+
+	FUNCTION LTIME_TO_STRING: STRING
+		VAR_INPUT IN: LTIME; END_VAR
+		VAR t, d, h, m, sec, ms, us, ns: LINT; s: STRING; any: BOOL; END_VAR
+		t := LTIME_TO_LINT(IN := IN);
+		IF (t < LINT#0) AND (-t < LINT#0) THEN
+			(* i64 minimum: negation wraps, spell it directly *)
+			LTIME_TO_STRING := 'LT#-106751d23h47m16s854ms775us808ns';
+			RETURN;
+		END_IF
+		s := 'LT#';
+		IF t < LINT#0 THEN
+			s := CONCAT(A := s, B := '-');
+			t := -t;
+		END_IF
+		d := t / LINT#86400000000000;
+		t := t MOD LINT#86400000000000;
+		h := t / LINT#3600000000000;
+		t := t MOD LINT#3600000000000;
+		m := t / LINT#60000000000;
+		t := t MOD LINT#60000000000;
+		sec := t / LINT#1000000000;
+		t := t MOD LINT#1000000000;
+		ms := t / LINT#1000000;
+		t := t MOD LINT#1000000;
+		us := t / LINT#1000;
+		ns := t MOD LINT#1000;
+		IF d > LINT#0 THEN
+			s := CONCAT(A := s, B := CONCAT(A := LINT_TO_STRING(IN := d), B := 'd'));
+			any := TRUE;
+		END_IF
+		IF h > LINT#0 THEN
+			s := CONCAT(A := s, B := CONCAT(A := LINT_TO_STRING(IN := h), B := 'h'));
+			any := TRUE;
+		END_IF
+		IF m > LINT#0 THEN
+			s := CONCAT(A := s, B := CONCAT(A := LINT_TO_STRING(IN := m), B := 'm'));
+			any := TRUE;
+		END_IF
+		IF sec > LINT#0 THEN
+			s := CONCAT(A := s, B := CONCAT(A := LINT_TO_STRING(IN := sec), B := 's'));
+			any := TRUE;
+		END_IF
+		IF ms > LINT#0 THEN
+			s := CONCAT(A := s, B := CONCAT(A := LINT_TO_STRING(IN := ms), B := 'ms'));
+			any := TRUE;
+		END_IF
+		IF us > LINT#0 THEN
+			s := CONCAT(A := s, B := CONCAT(A := LINT_TO_STRING(IN := us), B := 'us'));
+			any := TRUE;
+		END_IF
+		IF ns > LINT#0 THEN
+			s := CONCAT(A := s, B := CONCAT(A := LINT_TO_STRING(IN := ns), B := 'ns'));
+			any := TRUE;
+		END_IF
+		IF NOT any THEN
+			s := CONCAT(A := s, B := '0s');
+		END_IF
+		LTIME_TO_STRING := s;
+	END_FUNCTION
+
+	FUNCTION DATE_TO_STRING: STRING
+		VAR_INPUT IN: DATE; END_VAR
+		DATE_TO_STRING := CONCAT(A := 'D#', B := CIVIL_YMD(days := DATE_TO_DINT(IN := IN)));
+	END_FUNCTION
+
+	FUNCTION LDATE_TO_STRING: STRING
+		VAR_INPUT IN: LDATE; END_VAR
+		LDATE_TO_STRING := CONCAT(A := 'LD#', B := CIVIL_YMD(days := LDATE_TO_LINT(IN := IN)));
+	END_FUNCTION
+
+	FUNCTION TOD_TO_STRING: STRING
+		VAR_INPUT IN: TIME_OF_DAY; END_VAR
+		VAR t, ms: LINT; s: STRING; END_VAR
+		s := 'TOD#';
+		t := TOD_TO_DINT(IN := IN);
+		IF t < LINT#0 THEN
+			s := CONCAT(A := s, B := '-');
+			t := -t;
+		END_IF
+		ms := t MOD LINT#1000;
+		s := CONCAT(A := s, B := HMS(sod := t / LINT#1000));
+		IF ms > LINT#0 THEN
+			s := CONCAT(A := s, B := CONCAT(A := '.', B := PAD_MIN(n := ms, width := UDINT#3)));
+		END_IF
+		TOD_TO_STRING := s;
+	END_FUNCTION
+
+	FUNCTION LTOD_TO_STRING: STRING
+		VAR_INPUT IN: LTIME_OF_DAY; END_VAR
+		VAR t, ns: LINT; s: STRING; END_VAR
+		s := 'LTOD#';
+		t := LTOD_TO_LINT(IN := IN);
+		IF t < LINT#0 THEN
+			s := CONCAT(A := s, B := '-');
+			t := -t;
+		END_IF
+		ns := t MOD LINT#1000000000;
+		s := CONCAT(A := s, B := HMS(sod := t / LINT#1000000000));
+		IF ns > LINT#0 THEN
+			s := CONCAT(A := s, B := CONCAT(A := '.', B := PAD_MIN(n := ns, width := UDINT#9)));
+		END_IF
+		LTOD_TO_STRING := s;
+	END_FUNCTION
+
+	FUNCTION DT_TO_STRING: STRING
+		VAR_INPUT IN: DATE_AND_TIME; END_VAR
+		VAR t, days, sod: LINT; s: STRING; END_VAR
+		t := DT_TO_DINT(IN := IN);
+		(* floor split, exact pre-epoch, unlike the truncating cast intrinsic *)
+		days := t / LINT#86400;
+		sod := t - days * LINT#86400;
+		IF sod < LINT#0 THEN
+			days := days - LINT#1;
+			sod := sod + LINT#86400;
+		END_IF
+		s := CONCAT(A := 'DT#', B := CIVIL_YMD(days := days));
+		s := CONCAT(A := s, B := '-');
+		DT_TO_STRING := CONCAT(A := s, B := HMS(sod := sod));
+	END_FUNCTION
+
+	FUNCTION LDT_TO_STRING: STRING
+		VAR_INPUT IN: LDATE_AND_TIME; END_VAR
+		VAR t, days, nsod, ns: LINT; s: STRING; END_VAR
+		t := LDT_TO_LINT(IN := IN);
+		days := t / LINT#86400000000000;
+		nsod := t - days * LINT#86400000000000;
+		IF nsod < LINT#0 THEN
+			days := days - LINT#1;
+			nsod := nsod + LINT#86400000000000;
+		END_IF
+		ns := nsod MOD LINT#1000000000;
+		s := CONCAT(A := 'LDT#', B := CIVIL_YMD(days := days));
+		s := CONCAT(A := s, B := '-');
+		s := CONCAT(A := s, B := HMS(sod := nsod / LINT#1000000000));
+		IF ns > LINT#0 THEN
+			s := CONCAT(A := s, B := CONCAT(A := '.', B := PAD_MIN(n := ns, width := UDINT#9)));
+		END_IF
+		LDT_TO_STRING := s;
+	END_FUNCTION
+
+
 	NAMESPACE Test
 		USING Std.Unit
 		USING Std.Strings
@@ -1731,5 +2093,68 @@ NAMESPACE Std.Convert
 			ASSERT_EQ(TRUNC(LREAL#3.7), LINT#3);
 			ASSERT_EQ(TRUNC(LREAL#-3.7), LINT#-3);
 		END_FUNCTION
+
+		{test}
+		FUNCTION test_time_numeric_round_trip
+			ASSERT_EQ(value := TIME_TO_DINT(IN := T#1s500ms), target := DINT#1500);
+			ASSERT_EQ(value := DINT_TO_TIME(IN := DINT#1500), target := T#1s500ms);
+			ASSERT_EQ(value := LTIME_TO_LINT(IN := LT#1s), target := LINT#1000000000);
+			ASSERT_EQ(value := TOD_TO_DINT(IN := TOD#00:00:01.5), target := DINT#1500);
+			ASSERT_EQ(value := DT_TO_DINT(IN := DT#1970-01-01-00:01:00), target := DINT#60);
+			ASSERT_EQ(value := LDT_TO_LINT(IN := LDT#1970-01-01-00:00:01), target := LINT#1000000000);
+			ASSERT(value := DINT_TO_DATE(IN := DINT#1) = D#1970-01-02);
+		END_FUNCTION
+
+		{test}
+		FUNCTION test_datetime_widening_functions
+			ASSERT_EQ(value := TIME_TO_LTIME(IN := T#5ms), target := LT#5ms);
+			ASSERT(value := TOD_TO_LTOD(IN := TOD#00:00:01.5) = LTOD#00:00:01.5);
+			ASSERT(value := DATE_TO_LDATE(IN := D#1969-12-31) = LD#1969-12-31);
+			ASSERT(value := DT_TO_LDT(IN := DT#2038-01-19-03:14:07) = LDT#2038-01-19-03:14:07);
+		END_FUNCTION
+
+		{test}
+		FUNCTION test_time_to_string
+			ASSERT_EQ(value := TIME_TO_STRING(IN := T#0s), target := 'T#0s');
+			ASSERT_EQ(value := TIME_TO_STRING(IN := T#1s500ms), target := 'T#1s500ms');
+			ASSERT_EQ(value := TIME_TO_STRING(IN := T#1d2h3m4s5ms), target := 'T#1d2h3m4s5ms');
+			ASSERT_EQ(value := TIME_TO_STRING(IN := T#-5s), target := 'T#-5s');
+			ASSERT_EQ(value := TIME_TO_STRING(IN := T#90s), target := 'T#1m30s');
+		END_FUNCTION
+
+		{test}
+		FUNCTION test_ltime_to_string
+			ASSERT_EQ(value := LTIME_TO_STRING(IN := LT#0s), target := 'LT#0s');
+			ASSERT_EQ(value := LTIME_TO_STRING(IN := LT#500us), target := 'LT#500us');
+			ASSERT_EQ(value := LTIME_TO_STRING(IN := LT#5d14h12m18s3ms500us), target := 'LT#5d14h12m18s3ms500us');
+			ASSERT_EQ(value := LTIME_TO_STRING(IN := LT#-42ns), target := 'LT#-42ns');
+		END_FUNCTION
+
+		{test}
+		FUNCTION test_date_to_string
+			ASSERT_EQ(value := DATE_TO_STRING(IN := D#1970-01-01), target := 'D#1970-01-01');
+			ASSERT_EQ(value := DATE_TO_STRING(IN := D#2026-08-28), target := 'D#2026-08-28');
+			ASSERT_EQ(value := DATE_TO_STRING(IN := D#2024-02-29), target := 'D#2024-02-29');
+			ASSERT_EQ(value := DATE_TO_STRING(IN := D#1969-12-31), target := 'D#1969-12-31');
+			ASSERT_EQ(value := LDATE_TO_STRING(IN := LD#2024-02-29), target := 'LD#2024-02-29');
+		END_FUNCTION
+
+		{test}
+		FUNCTION test_tod_to_string
+			ASSERT_EQ(value := TOD_TO_STRING(IN := TOD#00:00:00), target := 'TOD#00:00:00');
+			ASSERT_EQ(value := TOD_TO_STRING(IN := TOD#12:30:45.123), target := 'TOD#12:30:45.123');
+			ASSERT_EQ(value := TOD_TO_STRING(IN := TOD#23:59:59), target := 'TOD#23:59:59');
+			ASSERT_EQ(value := LTOD_TO_STRING(IN := LTOD#12:30:45.123456789), target := 'LTOD#12:30:45.123456789');
+		END_FUNCTION
+
+		{test}
+		FUNCTION test_dt_to_string
+			ASSERT_EQ(value := DT_TO_STRING(IN := DT#1970-01-01-00:00:00), target := 'DT#1970-01-01-00:00:00');
+			ASSERT_EQ(value := DT_TO_STRING(IN := DT#2026-08-28-12:30:45), target := 'DT#2026-08-28-12:30:45');
+			(* floor split: exact pre-epoch, where the cast intrinsic is off by one *)
+			ASSERT_EQ(value := DT_TO_STRING(IN := DT#1969-12-31-23:59:59), target := 'DT#1969-12-31-23:59:59');
+			ASSERT_EQ(value := LDT_TO_STRING(IN := LDT#2026-08-28-12:30:45.5), target := 'LDT#2026-08-28-12:30:45.500000000');
+		END_FUNCTION
+
 	END_NAMESPACE
 END_NAMESPACE

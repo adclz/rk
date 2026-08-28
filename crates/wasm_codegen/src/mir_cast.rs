@@ -201,9 +201,11 @@ pub(crate) fn append_subwidth_normalization(
 /// behavior, owed coherent handling by every consumer forever: the widening
 /// and comparison arms are pinned for it today
 /// (`escaped_tod_widens_sign_extended`), the debug plane happens to be safe
-/// because it shows the raw integer, and every future formatter
-/// (TOD_TO_STRING, pretty watch rendering) inherits the obligation on
-/// arrival. Options 1 and 2 retire the obligation and the two escape pins
+/// because it shows the raw integer, the stdlib's TOD_TO_STRING handles it
+/// deliberately (a leading '-', which no TOD literal accepts, so the escape
+/// stays visible), and every future formatter (pretty watch rendering)
+/// inherits the obligation on arrival. Options 1 and 2 retire the
+/// obligation, the two escape pins, and TOD_TO_STRING's special case
 /// with it. Whoever picks, update this comment and the pinning tests in the
 /// same change.
 fn emit_datetime_cast(from: MirElementary, to: MirElementary) -> Option<Vec<Instruction<'static>>> {
