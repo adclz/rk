@@ -27,3 +27,6 @@ crates/wasm_builtins_generated/src/generated.rs
 .idea/
 *.iml
 dist/
+rk-*.tar.gz
+rk-*.zip
+rk-*.sha256
