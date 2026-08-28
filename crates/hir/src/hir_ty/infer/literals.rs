@@ -380,6 +380,16 @@ impl Ident {
     //   DT    > i32  seconds since 1970-01-01-00:00:00 (2038 problem)
     //   LDT   > i64  ns since 1970-01-01-00:00:00      (~292 year range)
     //
+    // Zone policy, stated once: every calendar type is zone-NAIVE. A literal
+    // carries no timezone and is mapped to its epoch value AS UTC
+    // (`assume_utc` below) with POSIX seconds: no leap seconds, no DST.
+    // Any future wall-clock host import must deliver UTC, or a stored DT
+    // compared against it is silently off by the local offset.
+    //
+    // The 2038 cutoff on DT is a declared limitation of the i32 encoding,
+    // not an oversight: the compiler refuses the out-of-range literal and
+    // names the bounds. LDT is the escape hatch.
+    //
     // The narrow (i32) forms can overflow on extreme inputs. When they do,
     // we surface `DurationOverflow` so the user gets a typed E0309 with a
     // hint to use the L-prefixed variant.
@@ -410,7 +420,7 @@ impl Ident {
     pub fn as_date_days_i32(self, db: &dyn WorkspaceDataBase) -> Result<i32, InferLiteralError> {
         let date = self
             .as_date(db)
-            .map_err(|e| InferLiteralError::Invalid_DATE_Format(e.to_string()))?;
+            .map_err(|e| InferLiteralError::Invalid_DATE_Format(calendar_format_error(self.text(db), e, '-', "D#1984-06-25")))?;
         Ok(date.to_julian_day() - UNIX_EPOCH_JULIAN_DAY)
     }
 
@@ -419,7 +429,7 @@ impl Ident {
     pub fn as_ldate_days_i64(self, db: &dyn WorkspaceDataBase) -> Result<i64, InferLiteralError> {
         let date = self
             .as_long_date(db)
-            .map_err(|e| InferLiteralError::Invalid_LDATE_Format(e.to_string()))?;
+            .map_err(|e| InferLiteralError::Invalid_LDATE_Format(calendar_format_error(self.text(db), e, '-', "LD#1984-06-25")))?;
         Ok((date.to_julian_day() - UNIX_EPOCH_JULIAN_DAY) as i64)
     }
 
@@ -430,7 +440,7 @@ impl Ident {
     pub fn as_tod_ms_i32(self, db: &dyn WorkspaceDataBase) -> Result<i32, InferLiteralError> {
         let t = self
             .as_tod(db)
-            .map_err(|e| InferLiteralError::Invalid_TOD_Format(e.to_string()))?;
+            .map_err(|e| InferLiteralError::Invalid_TOD_Format(calendar_format_error(self.text(db), e, ':', "TOD#15:36:55.123")))?;
         let (h, m, s, ns) = t.as_hms_nano();
         let ms = (h as i64 * 3600 + m as i64 * 60 + s as i64) * 1000 + (ns as i64 / 1_000_000);
         Ok(ms as i32)
@@ -441,7 +451,7 @@ impl Ident {
     pub fn as_ltod_ns_i64(self, db: &dyn WorkspaceDataBase) -> Result<i64, InferLiteralError> {
         let t = self
             .as_long_tod(db)
-            .map_err(|e| InferLiteralError::Invalid_LTOD_Format(e.to_string()))?;
+            .map_err(|e| InferLiteralError::Invalid_LTOD_Format(calendar_format_error(self.text(db), e, ':', "LTOD#15:36:55.123456789")))?;
         let (h, m, s, ns) = t.as_hms_nano();
         Ok((h as i64 * 3600 + m as i64 * 60 + s as i64) * 1_000_000_000 + ns as i64)
     }
@@ -453,7 +463,7 @@ impl Ident {
     pub fn as_dt_secs_i32(self, db: &dyn WorkspaceDataBase) -> Result<i32, InferLiteralError> {
         let dt = self
             .as_date_time(db)
-            .map_err(|e| InferLiteralError::Invalid_DT_Format(e.to_string()))?;
+            .map_err(|e| InferLiteralError::Invalid_DT_Format(calendar_format_error(self.text(db), e, '-', "DT#1984-06-25-15:36:55")))?;
         check_i32_range(
             dt.assume_utc().unix_timestamp() as i128,
             "DT",
@@ -467,7 +477,7 @@ impl Ident {
     pub fn as_ldt_ns_i64(self, db: &dyn WorkspaceDataBase) -> Result<i64, InferLiteralError> {
         let dt = self
             .as_long_date_time(db)
-            .map_err(|e| InferLiteralError::Invalid_LDT_Format(e.to_string()))?;
+            .map_err(|e| InferLiteralError::Invalid_LDT_Format(calendar_format_error(self.text(db), e, '-', "LDT#1984-06-25-15:36:55.123456789")))?;
         check_i64_range(
             dt.assume_utc().unix_timestamp_nanos(),
             "LDT",
@@ -805,6 +815,29 @@ pub fn parse_single_byte_string(s: &str) -> Result<Vec<u8>, InferLiteralError> {
     Ok(result)
 }
 
+/// The message for a date/time literal the `time` crate refused.
+///
+/// The crate names the component it stopped on, which is right for
+/// `DT#1984-13-25-...` (the month is genuinely bad) and misleading for
+/// `DT#garbage` (there are no components; "the 'year' could not be parsed"
+/// points at something the user never wrote). No separator at all means no
+/// component structure, so show the expected shape instead.
+fn calendar_format_error(
+    self_text: &str,
+    err: impl ToString,
+    separator: char,
+    example: &'static str,
+) -> String {
+    let value = self_text
+        .split_once('#')
+        .map_or(self_text, |(_, v)| v);
+    if value.contains(separator) {
+        err.to_string()
+    } else {
+        format!("expected the form {example}")
+    }
+}
+
 fn parse_duration_components(s: &str, kind: &'static str) -> Result<Duration, InferLiteralError> {
     // Remove underscores (allowed in literals per IEC 61131-3)
     let cleaned = s.replace('_', "");
@@ -851,7 +884,10 @@ fn parse_duration_components(s: &str, kind: &'static str) -> Result<Duration, In
                 "US" => mul(1_000)?,
                 "NS" => value,
                 _ => {
-                    return Err(InferLiteralError::Invalid_TIME_Unit(unit.to_string()));
+                    return Err(InferLiteralError::Invalid_TIME_Unit(format!(
+                        "'{}' is not a valid duration unit: use d, h, m, s, ms, us or ns",
+                        unit.to_lowercase()
+                    )));
                 }
             }
         };
@@ -909,7 +945,9 @@ fn parse_next_component<'a>(
     }
 
     if unit_end == 0 {
-        return Err(InferLiteralError::Invalid_TIME_Unit(kind.to_string()));
+        return Err(InferLiteralError::Invalid_TIME_Unit(format!(
+            "a {kind} component is missing its unit: use d, h, m, s, ms, us or ns"
+        )));
     }
 
     let unit = &remainder[..unit_end];
@@ -929,7 +967,12 @@ fn parse_next_component<'a>(
             "MS" => float_val * 1_000_000.0,
             "US" => float_val * 1_000.0,
             "NS" => float_val,
-            _ => return Err(InferLiteralError::Invalid_TIME_Unit(unit.to_string())),
+            _ => {
+                return Err(InferLiteralError::Invalid_TIME_Unit(format!(
+                    "'{}' is not a valid duration unit: use d, h, m, s, ms, us or ns",
+                    unit.to_lowercase()
+                )));
+            }
         };
 
         nanos as i64

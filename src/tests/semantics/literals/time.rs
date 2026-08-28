@@ -313,3 +313,84 @@ END_FUNCTION_BLOCK"#;
     ---'
     ");
 }
+
+// A bad unit used to shred into an identifier at the CST (`y` reported as
+// E0204 "no item found in scope" plus a syntax error). The value now lexes
+// liberally and the HIR names the unit.
+#[rstest]
+fn invalid_duration_unit_diagnostic(mut with_db: RootDatabase) {
+    let source = r#"
+FUNCTION_BLOCK fb1
+    VAR
+        x : TIME := T#2y;
+    END_VAR
+END_FUNCTION_BLOCK"#;
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
+    [E0309] Error: invalid literal
+       ,-[ file:///test0.st:4:21 ]
+       |
+     4 |         x : TIME := T#2y;
+       |                     ^^|^
+       |                       `--- cannot infer 'TIME literal' to 'TIME': 'y' is not a valid duration unit: use d, h, m, s, ms, us or ns
+    ---'
+    ");
+}
+
+#[rstest]
+fn invalid_ltime_unit_diagnostic(mut with_db: RootDatabase) {
+    let source = r#"
+FUNCTION_BLOCK fb1
+    VAR
+        x : LTIME := LT#292y;
+    END_VAR
+END_FUNCTION_BLOCK"#;
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
+    [E0309] Error: invalid literal
+       ,-[ file:///test0.st:4:22 ]
+       |
+     4 |         x : LTIME := LT#292y;
+       |                      ^^^|^^^
+       |                         `----- cannot infer 'LTIME literal' to 'LTIME': 'y' is not a valid duration unit: use d, h, m, s, ms, us or ns
+    ---'
+    ");
+}
+
+// A number with no unit at all used to be a syntax error; it is a literal
+// diagnostic now, symmetric with the bad-unit case.
+#[rstest]
+fn duration_missing_unit_diagnostic(mut with_db: RootDatabase) {
+    let source = r#"
+FUNCTION_BLOCK fb1
+    VAR
+        x : TIME := T#5;
+    END_VAR
+END_FUNCTION_BLOCK"#;
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
+    [E0309] Error: invalid literal
+       ,-[ file:///test0.st:4:21 ]
+       |
+     4 |         x : TIME := T#5;
+       |                     ^|^
+       |                      `--- cannot infer 'TIME literal' to 'TIME': a TIME component is missing its unit: use d, h, m, s, ms, us or ns
+    ---'
+    ");
+}
+
+#[rstest]
+fn duration_trailing_component_missing_unit_diagnostic(mut with_db: RootDatabase) {
+    let source = r#"
+FUNCTION_BLOCK fb1
+    VAR
+        x : TIME := T#1h30;
+    END_VAR
+END_FUNCTION_BLOCK"#;
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
+    [E0309] Error: invalid literal
+       ,-[ file:///test0.st:4:21 ]
+       |
+     4 |         x : TIME := T#1h30;
+       |                     ^^^|^^
+       |                        `---- cannot infer 'TIME literal' to 'TIME': a TIME component is missing its unit: use d, h, m, s, ms, us or ns
+    ---'
+    ");
+}

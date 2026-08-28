@@ -158,7 +158,7 @@ END_FUNCTION_BLOCK"#;
        |
      4 |         x : DATE_AND_TIME := DT#1800-01-01-00:00:00;
        |                              ^^^^^^^^^^^|^^^^^^^^^^
-       |                                         `------------ cannot infer 'DATE_AND_TIME literal' to 'DT': DT value is below the supported minimum
+       |                                         `------------ cannot infer 'DT literal' to 'DT': DT value is below the supported minimum
        |
        | Note: valid range for DT: DT#1901-12-13-20:45:52 to DT#2038-01-19-03:14:07
     ---'
@@ -179,7 +179,7 @@ END_FUNCTION_BLOCK"#;
        |
      4 |         x : DATE_AND_TIME := DT#3000-01-01-00:00:00;
        |                              ^^^^^^^^^^^|^^^^^^^^^^
-       |                                         `------------ cannot infer 'DATE_AND_TIME literal' to 'DT': DT value exceeds the supported maximum
+       |                                         `------------ cannot infer 'DT literal' to 'DT': DT value exceeds the supported maximum
        |
        | Note: valid range for DT: DT#1901-12-13-20:45:52 to DT#2038-01-19-03:14:07
     ---'
@@ -210,7 +210,7 @@ END_FUNCTION_BLOCK"#;
        |
      4 |         x : LDATE_AND_TIME := LDT#3000-01-01-00:00:00;
        |                               ^^^^^^^^^^^|^^^^^^^^^^^
-       |                                          `------------- cannot infer 'LDATE_AND_TIME literal' to 'LDT': LDT value exceeds the supported maximum
+       |                                          `------------- cannot infer 'LDT literal' to 'LDT': LDT value exceeds the supported maximum
        |
        | Note: valid range for LDT: LDT#1677-09-21-00:12:43.145224192 to LDT#2262-04-11-23:47:16.854775807
     ---'
@@ -231,9 +231,28 @@ END_FUNCTION_BLOCK"#;
        |
      4 |         x : LDATE_AND_TIME := LDT#1500-01-01-00:00:00;
        |                               ^^^^^^^^^^^|^^^^^^^^^^^
-       |                                          `------------- cannot infer 'LDATE_AND_TIME literal' to 'LDT': LDT value is below the supported minimum
+       |                                          `------------- cannot infer 'LDT literal' to 'LDT': LDT value is below the supported minimum
        |
        | Note: valid range for LDT: LDT#1677-09-21-00:12:43.145224192 to LDT#2262-04-11-23:47:16.854775807
+    ---'
+    ");
+}
+
+#[rstest]
+fn dt_garbage_is_a_literal_diagnostic(mut with_db: RootDatabase) {
+    let source = r#"
+FUNCTION_BLOCK fb1
+    VAR
+        x : DATE_AND_TIME := DT#garbage;
+    END_VAR
+END_FUNCTION_BLOCK"#;
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
+    [E0309] Error: invalid literal
+       ,-[ file:///test0.st:4:30 ]
+       |
+     4 |         x : DATE_AND_TIME := DT#garbage;
+       |                              ^^^^^|^^^^
+       |                                   `------ cannot infer 'DT literal' to 'DT': expected the form DT#1984-06-25-15:36:55
     ---'
     ");
 }
