@@ -19,6 +19,7 @@ mod empty_bodies;
 mod enums;
 mod exceptions_spike;
 mod execution;
+mod time_literals;
 mod expt;
 mod fb_dispatch;
 mod function_blocks;
