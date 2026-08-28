@@ -25,7 +25,7 @@ impl<'db> Elementary {
             Elementary::LDate(dt) => dt.as_ldate_days_i64(db).map(|_| ()),
             Elementary::TimeOfDay(tod) => tod.as_tod_ms_i32(db).map(|_| ()),
             Elementary::LTod(ltod) => ltod.as_ltod_ns_i64(db).map(|_| ()),
-            Elementary::DateAndTime(dt) => dt.as_dt_secs_i32(db).map(|_| ()),
+            Elementary::DateAndTime(dt) => dt.as_dt_secs_i64(db).map(|_| ()),
             Elementary::LDateTime(ldt) => ldt.as_ldt_ns_i64(db).map(|_| ()),
             Elementary::Time(t) => t.as_time_ms_i32(db).map(|_| ()),
             Elementary::LTime(lt) => lt.as_ltime_ns_i64(db).map(|_| ()),
@@ -377,7 +377,8 @@ impl Ident {
     //   LDATE > i64  days since 1970-01-01
     //   TOD   > i32  ms since 00:00:00
     //   LTOD  > i64  ns since 00:00:00
-    //   DT    > i32  seconds since 1970-01-01-00:00:00 (2038 problem)
+    //   DT    > i64  seconds since 1970-01-01-00:00:00, bounded to LDT's
+    //                 span so DT -> LDT stays lossless (no 2038 problem)
     //   LDT   > i64  ns since 1970-01-01-00:00:00      (~292 year range)
     //
     // Zone policy, stated once: every calendar type is zone-NAIVE. A literal
@@ -385,10 +386,6 @@ impl Ident {
     // (`assume_utc` below) with POSIX seconds: no leap seconds, no DST.
     // Any future wall-clock host import must deliver UTC, or a stored DT
     // compared against it is silently off by the local offset.
-    //
-    // The 2038 cutoff on DT is a declared limitation of the i32 encoding,
-    // not an oversight: the compiler refuses the out-of-range literal and
-    // names the bounds. LDT is the escape hatch.
     //
     // The narrow (i32) forms can overflow on extreme inputs. When they do,
     // we surface `DurationOverflow` so the user gets a typed E0309 with a
@@ -456,20 +453,32 @@ impl Ident {
         Ok((h as i64 * 3600 + m as i64 * 60 + s as i64) * 1_000_000_000 + ns as i64)
     }
 
-    /// DT literal as `i32` seconds since the Unix epoch. Errors with
-    /// `DurationOutOfRange` outside the i32-second range
-    /// (≈ 1901-12-13 to 2038-01-19).
+    /// DT literal as `i64` seconds since the Unix epoch, bounded to LDT's
+    /// span (`DT_MIN_SECS..=DT_MAX_SECS`) so the implicit DT -> LDT widening
+    /// can never overflow. Errors with `DurationOutOfRange` outside it.
     #[salsa::tracked]
-    pub fn as_dt_secs_i32(self, db: &dyn WorkspaceDataBase) -> Result<i32, InferLiteralError> {
+    pub fn as_dt_secs_i64(self, db: &dyn WorkspaceDataBase) -> Result<i64, InferLiteralError> {
         let dt = self
             .as_date_time(db)
             .map_err(|e| InferLiteralError::Invalid_DT_Format(calendar_format_error(self.text(db), e, '-', "DT#1984-06-25-15:36:55")))?;
-        check_i32_range(
-            dt.assume_utc().unix_timestamp() as i128,
-            "DT",
-            DT_MIN,
-            DT_MAX,
-        )
+        let ts = dt.assume_utc().unix_timestamp();
+        if ts > DT_MAX_SECS {
+            return Err(InferLiteralError::DurationOutOfRange {
+                type_name: "DT",
+                min: DT_MIN,
+                max: DT_MAX,
+                above_max: true,
+            });
+        }
+        if ts < DT_MIN_SECS {
+            return Err(InferLiteralError::DurationOutOfRange {
+                type_name: "DT",
+                min: DT_MIN,
+                max: DT_MAX,
+                above_max: false,
+            });
+        }
+        Ok(ts)
     }
 
     /// LDT literal as `i64` nanoseconds since the Unix epoch.
@@ -504,8 +513,8 @@ const LTIME_MAX: &str = "LT#106751d23h47m16s854ms775us807ns";
 // the wide encoding after unit conversion. The strings render the numeric
 // bounds below; the containment assertions under them are what keep the
 // coupling true when any encoding moves.
-const DT_MIN: &str = "DT#1901-12-13-20:45:52";
-const DT_MAX: &str = "DT#2038-01-19-03:14:07";
+const DT_MIN: &str = "DT#1677-09-21-00:12:44";
+const DT_MAX: &str = "DT#2262-04-11-23:47:16";
 const LDT_MIN: &str = "LDT#1677-09-21-00:12:43.145224192";
 const LDT_MAX: &str = "LDT#2262-04-11-23:47:16.854775807";
 
@@ -529,8 +538,12 @@ const TOD_MIN_MS: i64 = 0;
 const TOD_MAX_MS: i64 = 86_400_000 - 1;
 const DATE_MIN_DAYS: i64 = i32::MIN as i64;
 const DATE_MAX_DAYS: i64 = i32::MAX as i64;
-const DT_MIN_SECS: i64 = i32::MIN as i64;
-const DT_MAX_SECS: i64 = i32::MAX as i64;
+// DERIVED from LDT, not from a lane: the widest whole seconds whose ns
+// value still fits i64, so every DT widens losslessly. Threaded into the
+// literal check in `as_dt_secs_i64` (the day the invariant comment above
+// promised).
+const DT_MIN_SECS: i64 = i64::MIN / 1_000_000_000; // -9_223_372_036 = 1677-09-21-00:12:44
+const DT_MAX_SECS: i64 = i64::MAX / 1_000_000_000; //  9_223_372_036 = 2262-04-11-23:47:16
 
 /// Both ends of a narrow range, scaled by the unit factor of its implicit
 /// widening, stay inside the wide type's i64 lane.

@@ -1142,6 +1142,16 @@ impl<'a> WasmGen<'a> {
         // (IEC: evaluated once). Appended last, so no existing index moves.
         let for_scratch = alloc_for_scratch(&func.body, params.len() as u32, &mut extra_locals);
 
+        // One i64 scratch for the calendar floor-division casts, which need
+        // their dividend twice.
+        let datetime_floor_tmp = if crate::mir_cast::body_needs_datetime_floor_tmp(&func.body) {
+            let idx = (params.len() as u32) + extra_locals.iter().map(|(c, _)| *c).sum::<u32>();
+            extra_locals.push((1, ValType::I64));
+            Some(idx)
+        } else {
+            None
+        };
+
         // One scratch slot per nested STRING call, past the MIR static layout.
         let scratch_slots: Vec<u32> = (0..nested_str_count)
             .map(|_| self.alloc_scratch_slot())
@@ -1193,6 +1203,8 @@ impl<'a> WasmGen<'a> {
         } else {
             SNAPSHOT_CTX.with(|cell| cell.replace(None))
         };
+        let prev_floor_tmp =
+            crate::mir_cast::DATETIME_FLOOR_TMP.with(|cell| cell.replace(datetime_floor_tmp));
 
         // IEC 61131-3: VAR_TEMP is fresh at every invocation. Scalar temps are
         // wasm locals, which the engine zeroes per call — but an AGGREGATE temp
@@ -1232,6 +1244,7 @@ impl<'a> WasmGen<'a> {
 
         // Restore the prior context.
         SNAPSHOT_CTX.with(|cell| cell.replace(prev_ctx));
+        crate::mir_cast::DATETIME_FLOOR_TMP.with(|cell| cell.replace(prev_floor_tmp));
 
         // Push return value at function end — the same shapes a mid-body
         // RETURN pushes, from one implementation.
@@ -1335,6 +1348,15 @@ impl<'a> WasmGen<'a> {
         // wrapper takes no params, hence the 0.
         let for_scratch = alloc_for_scratch(&func.body, 0, &mut extra_locals);
 
+        // Calendar floor-division scratch, as in `emit_function` (no params).
+        let datetime_floor_tmp = if crate::mir_cast::body_needs_datetime_floor_tmp(&func.body) {
+            let idx = extra_locals.iter().map(|(c, _)| *c).sum::<u32>();
+            extra_locals.push((1, ValType::I64));
+            Some(idx)
+        } else {
+            None
+        };
+
         // Per-call-site STRING snapshot slots for nested STRING-returning
         // calls inside the test body. Same as `emit_function`.
         let nested_str_count = count_nested_string_calls_stmts(&func.body);
@@ -1364,6 +1386,8 @@ impl<'a> WasmGen<'a> {
         } else {
             SNAPSHOT_CTX.with(|cell| cell.replace(None))
         };
+        let prev_floor_tmp =
+            crate::mir_cast::DATETIME_FLOOR_TMP.with(|cell| cell.replace(datetime_floor_tmp));
 
         let tag_idx = self.rk_exception_tag_idx.expect(
             "rk_exception_tag_idx must be set whenever any function (including tests) is emitted: \
@@ -1403,6 +1427,7 @@ impl<'a> WasmGen<'a> {
         }
 
         SNAPSHOT_CTX.with(|cell| cell.replace(prev_ctx));
+        crate::mir_cast::DATETIME_FLOOR_TMP.with(|cell| cell.replace(prev_floor_tmp));
 
         // end try_table — only reached on the success (no-throw) path.
         wasm_func.instruction(&Instruction::End);

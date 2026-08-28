@@ -124,12 +124,12 @@ END_FUNCTION_BLOCK"#;
     ");
 }
 
-// ── Integer encoding (DT → i32 secs, LDT → i64 ns since 1970-01-01) ──
+// ── Integer encoding (DT → i64 secs, LDT → i64 ns since 1970-01-01) ──
 //
-// `DT` (i32 seconds) covers ≈ 1901-12-13 to 2038-01-19.
-// `LDT` (i64 ns) covers ≈ 1677-09-21 to 2262-04-11.
-// Out-of-range literals on either type surface as E0309 with the
-// supported bounds shown as IEC literals.
+// `DT` (i64 seconds) is bounded to LDT's span, ≈ 1677-09-21 to 2262-04-11,
+// so the implicit DT → LDT widening can never overflow (the containment
+// assertion in hir's literals.rs). Out-of-range literals on either type
+// surface as E0309 with the supported bounds shown as IEC literals.
 
 use crate::tests::semantics::literals::parse_literal;
 
@@ -139,51 +139,69 @@ use crate::tests::semantics::literals::parse_literal;
 #[case("DT#1970-01-01-00:01:00", 60)]
 #[case("DT#1970-01-02-00:00:00", 86_400)]
 #[case("DT#2000-01-01-00:00:00", 946_684_800)]
-fn dt_secs_i32(mut with_db: RootDatabase, #[case] literal: &str, #[case] expected: i32) {
+#[case("DT#2100-01-01-00:00:00", 4_102_444_800)] // past 2038: representable only since i64
+fn dt_secs_i64(mut with_db: RootDatabase, #[case] literal: &str, #[case] expected: i64) {
     let id = parse_literal(&mut with_db, "DATE_AND_TIME", literal);
-    assert_eq!(id.as_dt_secs_i32(&with_db).unwrap(), expected);
+    assert_eq!(id.as_dt_secs_i64(&with_db).unwrap(), expected);
 }
 
 #[rstest]
-fn dt_underflow_before_1901_diagnostic(mut with_db: RootDatabase) {
+fn dt_underflow_before_1677_diagnostic(mut with_db: RootDatabase) {
     let source = r#"
 FUNCTION_BLOCK fb1
     VAR
-        x : DATE_AND_TIME := DT#1800-01-01-00:00:00;
+        x : DATE_AND_TIME := DT#1500-01-01-00:00:00;
     END_VAR
 END_FUNCTION_BLOCK"#;
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
     [E0309] Error: invalid literal
        ,-[ file:///test0.st:4:30 ]
        |
-     4 |         x : DATE_AND_TIME := DT#1800-01-01-00:00:00;
+     4 |         x : DATE_AND_TIME := DT#1500-01-01-00:00:00;
        |                              ^^^^^^^^^^^|^^^^^^^^^^
        |                                         `------------ cannot infer 'DT literal' to 'DT': DT value is below the supported minimum
        |
-       | Note: valid range for DT: DT#1901-12-13-20:45:52 to DT#2038-01-19-03:14:07
+       | Note: valid range for DT: DT#1677-09-21-00:12:44 to DT#2262-04-11-23:47:16
     ---'
     ");
 }
 
 #[rstest]
-fn dt_overflow_after_2038_diagnostic(mut with_db: RootDatabase) {
+fn dt_overflow_after_2262_diagnostic(mut with_db: RootDatabase) {
     let source = r#"
 FUNCTION_BLOCK fb1
     VAR
-        x : DATE_AND_TIME := DT#3000-01-01-00:00:00;
+        x : DATE_AND_TIME := DT#2500-01-01-00:00:00;
     END_VAR
 END_FUNCTION_BLOCK"#;
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
     [E0309] Error: invalid literal
        ,-[ file:///test0.st:4:30 ]
        |
-     4 |         x : DATE_AND_TIME := DT#3000-01-01-00:00:00;
+     4 |         x : DATE_AND_TIME := DT#2500-01-01-00:00:00;
        |                              ^^^^^^^^^^^|^^^^^^^^^^
        |                                         `------------ cannot infer 'DT literal' to 'DT': DT value exceeds the supported maximum
        |
-       | Note: valid range for DT: DT#1901-12-13-20:45:52 to DT#2038-01-19-03:14:07
+       | Note: valid range for DT: DT#1677-09-21-00:12:44 to DT#2262-04-11-23:47:16
     ---'
     ");
+}
+
+/// The old i32 encoding refused these; bounded-i64 accepts them. The 2038
+/// cutoff is gone (the ceiling is LDT's 2262 now).
+#[rstest]
+#[case("DT#1800-01-01-00:00:00")]
+#[case("DT#2200-01-01-00:00:00")]
+fn dt_wide_range_is_valid(mut with_db: RootDatabase, #[case] value: &str) {
+    let source = format!(
+        r#"
+FUNCTION_BLOCK fb1
+    VAR
+        x : DATE_AND_TIME := {value};
+    END_VAR
+END_FUNCTION_BLOCK"#
+    );
+    insta::allow_duplicates! { assert_snapshot!(test_diagnostics(&mut with_db, &[&source]), @""); }
 }
 
 #[rstest]

@@ -1,8 +1,140 @@
 //! Emit WASM cast instructions from MIR Cast expressions.
 //! Pure mechanical mapping — no type inference needed.
 
+use mir::expr::{MirCall, MirExpr};
+use mir::stmt::MirStmt;
 use mir::types::MirElementary;
 use wasm_encoder::Instruction;
+
+thread_local! {
+    /// i64 scratch for the calendar floor-division sequences, which need the
+    /// dividend twice; set per function when `body_needs_datetime_floor_tmp`
+    /// says so.
+    pub(crate) static DATETIME_FLOOR_TMP: std::cell::Cell<Option<u32>> =
+        const { std::cell::Cell::new(None) };
+}
+
+/// The cast pairs that need the i64 floor scratch; the allocation scan and
+/// the arms below must agree.
+fn needs_floor_tmp(from: MirElementary, to: MirElementary) -> bool {
+    use MirElementary::*;
+    matches!(
+        (from, to),
+        (DateAndTime, Date | LDate) | (LDateTime, Date | LDate | DateAndTime)
+    )
+}
+
+pub(crate) fn body_needs_datetime_floor_tmp(stmts: &[MirStmt]) -> bool {
+    stmts.iter().any(floor_tmp_in_stmt)
+}
+
+fn floor_tmp_in_stmt(stmt: &MirStmt) -> bool {
+    match stmt {
+        MirStmt::Assign { value, .. } => floor_tmp_in_expr(value),
+        MirStmt::If {
+            condition,
+            then_body,
+            else_ifs,
+            else_body,
+        } => {
+            floor_tmp_in_expr(condition)
+                || body_needs_datetime_floor_tmp(then_body)
+                || else_ifs
+                    .iter()
+                    .any(|(c, b)| floor_tmp_in_expr(c) || body_needs_datetime_floor_tmp(b))
+                || else_body
+                    .as_ref()
+                    .is_some_and(|b| body_needs_datetime_floor_tmp(b))
+        }
+        MirStmt::Case {
+            selector,
+            arms,
+            else_body,
+        } => {
+            floor_tmp_in_expr(selector)
+                || arms.iter().any(|a| body_needs_datetime_floor_tmp(&a.body))
+                || else_body
+                    .as_ref()
+                    .is_some_and(|b| body_needs_datetime_floor_tmp(b))
+        }
+        MirStmt::For {
+            start,
+            end,
+            step,
+            body,
+            ..
+        } => {
+            floor_tmp_in_expr(start)
+                || floor_tmp_in_expr(end)
+                || floor_tmp_in_expr(step)
+                || body_needs_datetime_floor_tmp(body)
+        }
+        MirStmt::While { condition, body } | MirStmt::Repeat { condition, body } => {
+            floor_tmp_in_expr(condition) || body_needs_datetime_floor_tmp(body)
+        }
+        MirStmt::Call(call) => floor_tmp_in_call(call),
+        MirStmt::FbCall { input_writes, .. } => {
+            input_writes.iter().any(|(_, v, _)| floor_tmp_in_expr(v))
+        }
+        MirStmt::Raise { message } => floor_tmp_in_expr(message),
+        MirStmt::Return
+        | MirStmt::MemStore { .. }
+        | MirStmt::WasmIntrinsic { .. }
+        | MirStmt::Exit
+        | MirStmt::Continue
+        | MirStmt::DebugTrap { .. } => false,
+    }
+}
+
+fn floor_tmp_in_expr(expr: &MirExpr) -> bool {
+    match expr {
+        MirExpr::Cast { expr, from, to } => {
+            needs_floor_tmp(*from, *to) || floor_tmp_in_expr(expr)
+        }
+        MirExpr::Call(call) => floor_tmp_in_call(call),
+        MirExpr::BinOp { lhs, rhs, .. } => floor_tmp_in_expr(lhs) || floor_tmp_in_expr(rhs),
+        MirExpr::UnaryOp { expr, .. } => floor_tmp_in_expr(expr),
+        _ => false,
+    }
+}
+
+fn floor_tmp_in_call(call: &MirCall) -> bool {
+    call.args.iter().any(|a| floor_tmp_in_expr(&a.value))
+}
+
+/// Floor division of the i64 on the stack by `n`: `q - (r < 0)`, total
+/// over the whole i64 range.
+fn floordiv_i64(n: i64) -> Vec<Instruction<'static>> {
+    let tmp = DATETIME_FLOOR_TMP.with(|c| c.get()).expect(
+        "calendar floor division needs the i64 scratch local:          body_needs_datetime_floor_tmp and needs_floor_tmp disagree",
+    );
+    vec![
+        Instruction::LocalSet(tmp),
+        Instruction::LocalGet(tmp),
+        Instruction::I64Const(n),
+        Instruction::I64DivS,
+        Instruction::LocalGet(tmp),
+        Instruction::I64Const(n),
+        Instruction::I64RemS,
+        Instruction::I64Const(0),
+        Instruction::I64LtS,
+        Instruction::I64ExtendI32U,
+        Instruction::I64Sub,
+    ]
+}
+
+/// Floor modulo of the i64 on the stack by `n`: `((x rem n) + n) rem n`,
+/// pure stack, result in `[0, n)` for any x.
+fn floormod_i64(n: i64) -> Vec<Instruction<'static>> {
+    vec![
+        Instruction::I64Const(n),
+        Instruction::I64RemS,
+        Instruction::I64Const(n),
+        Instruction::I64Add,
+        Instruction::I64Const(n),
+        Instruction::I64RemS,
+    ]
+}
 
 /// Emit cast instructions for `MirExpr::Cast { from, to }`.
 /// Returns the instructions to append.
@@ -159,61 +291,18 @@ pub(crate) fn append_subwidth_normalization(
 }
 
 /// Date / time conversions, matching the integer encodings documented in
-/// `stdlib/Convert.st`:
-///
-/// ```text
-/// TIME = i32 ms,           LTIME = i64 ns
-/// DATE = i32 days-1970,    LDATE = i64 days-1970
-/// TOD  = i32 ms-of-day,    LTOD  = i64 ns-of-day
-/// DT   = i32 secs-1970,    LDT   = i64 ns-1970
-/// ```
-///
-/// Returns `Some` only when both `from` and `to` are date/time variants.
-///
-/// Division uses WASM signed truncation, which is exact post-epoch and wrong
-/// pre-epoch in two DIFFERENT ways that must not be conflated:
-///
-/// * The DATE half is off by one day for negative timestamps with a nonzero
-///   remainder — a bounded, statable inaccuracy, accepted because IEC
-///   controllers typically operate on post-epoch dates.
-/// * The TOD half `rem`s to a NEGATIVE ms-of-day — a value outside TOD's
-///   declared domain (`TOD_MIN_MS..=TOD_MAX_MS` in hir's literals.rs), which
-///   then participates in comparisons as though it were in-domain (it sorts
-///   below `TOD#00:00:00` — coherently out of domain, what a reader would
-///   predict of a negative value; before date/time comparisons were made
-///   signed it sorted ABOVE `TOD#23:59:59` and silently won any max — the
-///   signed fix downgraded this escape from catastrophic to predictable,
-///   not to correct). The original acceptance does not cover
-///   this; it is a domain escape, not an off-by-one, and it is pinned by
-///   `dt_pre_epoch_tod_escapes_its_domain` in codegen's time_literals tests.
-///
-/// The standing ruling options, so a revision is deliberate — and they are
-/// not equally priced: (1) floor division, both effects gone (the planned
-/// i64-seconds pass touches exactly these arms; note the LDT arms need a
-/// scratch local — the add-a-bias trick does not cover the outer decades of
-/// the i64 ns range); (2) keep truncated dates but clamp the TOD into its
-/// domain — which trades a detectable wrong answer for an undetectable one:
-/// a clamped `TOD#00:00:00` from a pre-epoch DT is indistinguishable from a
-/// legitimate midnight, the opposite of this compiler's refuse-or-fault
-/// direction (E0804 is the closest analogue: a value crossing a boundary its
-/// check cannot police is refused, not approximated); (3) keep both — which
-/// makes negative TODs part of the type's REAL
-/// behavior, owed coherent handling by every consumer forever: the widening
-/// and comparison arms are pinned for it today
-/// (`escaped_tod_widens_sign_extended`), the debug plane happens to be safe
-/// because it shows the raw integer, the stdlib's TOD_TO_STRING handles it
-/// deliberately (a leading '-', which no TOD literal accepts, so the escape
-/// stays visible), and every future formatter (pretty watch rendering)
-/// inherits the obligation on arrival. Options 1 and 2 retire the
-/// obligation, the two escape pins, and TOD_TO_STRING's special case
-/// with it. Whoever picks, update this comment and the pinning tests in the
-/// same change.
+/// `stdlib/Convert.st`: TIME i32 ms, LTIME i64 ns, DATE i32 days, LDATE
+/// i64 days, TOD i32 ms-of-day, LTOD i64 ns-of-day, DT i64 secs, LDT i64
+/// ns. `Some` only when both `from` and `to` are date/time variants.
+/// Calendar decompositions floor (`floordiv_i64`/`floormod_i64`), so a
+/// pre-epoch timestamp yields the right DATE and an in-domain TOD; the one
+/// truncation is LTIME -> TIME, a duration narrowing toward zero.
 fn emit_datetime_cast(from: MirElementary, to: MirElementary) -> Option<Vec<Instruction<'static>>> {
     use MirElementary::*;
     // The unit scales come from hir, the same constants its containment
     // assertions use.
     use hir::hir_ty::infer::literals::{NS_PER_MS, NS_PER_S};
-    const SECS_PER_DAY: i32 = 86_400;
+    const SECS_PER_DAY: i64 = 86_400;
     const NS_PER_DAY: i64 = 86_400 * NS_PER_S;
 
     let instrs: Vec<Instruction<'static>> = match (from, to) {
@@ -230,53 +319,52 @@ fn emit_datetime_cast(from: MirElementary, to: MirElementary) -> Option<Vec<Inst
         ],
         (Date, LDate) => vec![Instruction::I64ExtendI32S],
         (LDate, Date) => vec![Instruction::I32WrapI64],
+        // DT (i64 secs) <-> LDT (i64 ns): a pure scale; hir bounds DT to LDT's
+        // span.
         (DateAndTime, LDateTime) => vec![
-            Instruction::I64ExtendI32S,
             Instruction::I64Const(NS_PER_S),
             Instruction::I64Mul,
         ],
-        (LDateTime, DateAndTime) => vec![
-            Instruction::I64Const(NS_PER_S),
-            Instruction::I64DivS,
-            Instruction::I32WrapI64,
-        ],
+        (LDateTime, DateAndTime) => floordiv_i64(NS_PER_S),
 
-        // DT (i32 secs since epoch) decompositions
-        (DateAndTime, Date) => vec![Instruction::I32Const(SECS_PER_DAY), Instruction::I32DivS],
-        (DateAndTime, LDate) => vec![
-            Instruction::I32Const(SECS_PER_DAY),
-            Instruction::I32DivS,
-            Instruction::I64ExtendI32S,
-        ],
-        (DateAndTime, Tod) => vec![
-            Instruction::I32Const(SECS_PER_DAY),
-            Instruction::I32RemS,
-            Instruction::I32Const(1_000),
-            Instruction::I32Mul,
-        ],
-        (DateAndTime, LTod) => vec![
-            Instruction::I32Const(SECS_PER_DAY),
-            Instruction::I32RemS,
-            Instruction::I64ExtendI32S,
-            Instruction::I64Const(NS_PER_S),
-            Instruction::I64Mul,
-        ],
+        // DT (i64 secs since epoch) decompositions
+        (DateAndTime, Date) => {
+            let mut v = floordiv_i64(SECS_PER_DAY);
+            v.push(Instruction::I32WrapI64);
+            v
+        }
+        (DateAndTime, LDate) => floordiv_i64(SECS_PER_DAY),
+        (DateAndTime, Tod) => {
+            let mut v = floormod_i64(SECS_PER_DAY);
+            v.push(Instruction::I64Const(1_000));
+            v.push(Instruction::I64Mul);
+            v.push(Instruction::I32WrapI64);
+            v
+        }
+        (DateAndTime, LTod) => {
+            let mut v = floormod_i64(SECS_PER_DAY);
+            v.push(Instruction::I64Const(NS_PER_S));
+            v.push(Instruction::I64Mul);
+            v
+        }
 
         // LDT (i64 ns since epoch) decompositions
-        (LDateTime, Date) => vec![
-            Instruction::I64Const(NS_PER_DAY),
-            Instruction::I64DivS,
-            Instruction::I32WrapI64,
-        ],
-        (LDateTime, LDate) => vec![Instruction::I64Const(NS_PER_DAY), Instruction::I64DivS],
-        (LDateTime, Tod) => vec![
-            Instruction::I64Const(NS_PER_DAY),
-            Instruction::I64RemS,
-            Instruction::I64Const(NS_PER_MS),
-            Instruction::I64DivS,
-            Instruction::I32WrapI64,
-        ],
-        (LDateTime, LTod) => vec![Instruction::I64Const(NS_PER_DAY), Instruction::I64RemS],
+        (LDateTime, Date) => {
+            let mut v = floordiv_i64(NS_PER_DAY);
+            v.push(Instruction::I32WrapI64);
+            v
+        }
+        (LDateTime, LDate) => floordiv_i64(NS_PER_DAY),
+        (LDateTime, Tod) => {
+            // floor-mod to ns-of-day (non-negative), then plain division to
+            // ms is exact-enough truncation on a non-negative value.
+            let mut v = floormod_i64(NS_PER_DAY);
+            v.push(Instruction::I64Const(NS_PER_MS));
+            v.push(Instruction::I64DivS);
+            v.push(Instruction::I32WrapI64);
+            v
+        }
+        (LDateTime, LTod) => floormod_i64(NS_PER_DAY),
 
         _ => return None,
     };

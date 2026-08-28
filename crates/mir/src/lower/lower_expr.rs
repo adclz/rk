@@ -863,10 +863,10 @@ impl<'db> ExprLowerCtx<'db> {
                 Ok(MirExpr::Constant(MirConstant::I64(val)))
             }
             Elementary::DateAndTime(ident) => {
-                let val = ident.as_dt_secs_i32(self.db).map_err(|e| {
+                let val = ident.as_dt_secs_i64(self.db).map_err(|e| {
                     LowerTypeError::UnsupportedType(format!("Invalid DT literal: {e:?}"))
                 })?;
-                Ok(MirExpr::Constant(MirConstant::I32(val)))
+                Ok(MirExpr::Constant(MirConstant::I64(val)))
             }
             Elementary::LDateTime(ident) => {
                 let val = ident.as_ldt_ns_i64(self.db).map_err(|e| {

@@ -1417,14 +1417,14 @@ NAMESPACE Std.Convert
 		{wasm 'cast' (params IN) (result LINT_TO_LTOD)}
 	END_FUNCTION
 
-	FUNCTION DT_TO_DINT: DINT
+	FUNCTION DT_TO_LINT: LINT
 		VAR_INPUT IN: DATE_AND_TIME; END_VAR
-		{wasm 'cast' (params IN) (result DT_TO_DINT)}
+		{wasm 'cast' (params IN) (result DT_TO_LINT)}
 	END_FUNCTION
 
-	FUNCTION DINT_TO_DT: DATE_AND_TIME
-		VAR_INPUT IN: DINT; END_VAR
-		{wasm 'cast' (params IN) (result DINT_TO_DT)}
+	FUNCTION LINT_TO_DT: DATE_AND_TIME
+		VAR_INPUT IN: LINT; END_VAR
+		{wasm 'cast' (params IN) (result LINT_TO_DT)}
 	END_FUNCTION
 
 	FUNCTION LDT_TO_LINT: LINT
@@ -1653,8 +1653,8 @@ NAMESPACE Std.Convert
 	FUNCTION DT_TO_STRING: STRING
 		VAR_INPUT IN: DATE_AND_TIME; END_VAR
 		VAR t, days, sod: LINT; s: STRING; END_VAR
-		t := DT_TO_DINT(IN := IN);
-		(* floor split, exact pre-epoch, unlike the truncating cast intrinsic *)
+		t := DT_TO_LINT(IN := IN);
+		(* floor split, exact pre-epoch, matching the cast intrinsics *)
 		days := t / LINT#86400;
 		sod := t - days * LINT#86400;
 		IF sod < LINT#0 THEN
@@ -2100,9 +2100,10 @@ NAMESPACE Std.Convert
 			ASSERT_EQ(value := DINT_TO_TIME(IN := DINT#1500), target := T#1s500ms);
 			ASSERT_EQ(value := LTIME_TO_LINT(IN := LT#1s), target := LINT#1000000000);
 			ASSERT_EQ(value := TOD_TO_DINT(IN := TOD#00:00:01.5), target := DINT#1500);
-			ASSERT_EQ(value := DT_TO_DINT(IN := DT#1970-01-01-00:01:00), target := DINT#60);
+			ASSERT_EQ(value := DT_TO_LINT(IN := DT#1970-01-01-00:01:00), target := LINT#60);
 			ASSERT_EQ(value := LDT_TO_LINT(IN := LDT#1970-01-01-00:00:01), target := LINT#1000000000);
 			ASSERT(value := DINT_TO_DATE(IN := DINT#1) = D#1970-01-02);
+			ASSERT(value := LINT_TO_DT(IN := LINT#60) = DT#1970-01-01-00:01:00);
 		END_FUNCTION
 
 		{test}
