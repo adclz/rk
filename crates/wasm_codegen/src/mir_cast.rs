@@ -169,15 +169,50 @@ pub(crate) fn append_subwidth_normalization(
 /// ```
 ///
 /// Returns `Some` only when both `from` and `to` are date/time variants.
-/// Division uses WASM signed truncation: results are off by one for negative
-/// timestamps (pre-1970) when the remainder is non-zero — accepted because
-/// IEC controllers typically operate on post-epoch dates.
+///
+/// Division uses WASM signed truncation, which is exact post-epoch and wrong
+/// pre-epoch in two DIFFERENT ways that must not be conflated:
+///
+/// * The DATE half is off by one day for negative timestamps with a nonzero
+///   remainder — a bounded, statable inaccuracy, accepted because IEC
+///   controllers typically operate on post-epoch dates.
+/// * The TOD half `rem`s to a NEGATIVE ms-of-day — a value outside TOD's
+///   declared domain (`TOD_MIN_MS..=TOD_MAX_MS` in hir's literals.rs), which
+///   then participates in comparisons as though it were in-domain (it sorts
+///   below `TOD#00:00:00` — coherently out of domain, what a reader would
+///   predict of a negative value; before date/time comparisons were made
+///   signed it sorted ABOVE `TOD#23:59:59` and silently won any max — the
+///   signed fix downgraded this escape from catastrophic to predictable,
+///   not to correct). The original acceptance does not cover
+///   this; it is a domain escape, not an off-by-one, and it is pinned by
+///   `dt_pre_epoch_tod_escapes_its_domain` in codegen's time_literals tests.
+///
+/// The standing ruling options, so a revision is deliberate — and they are
+/// not equally priced: (1) floor division, both effects gone (the planned
+/// i64-seconds pass touches exactly these arms; note the LDT arms need a
+/// scratch local — the add-a-bias trick does not cover the outer decades of
+/// the i64 ns range); (2) keep truncated dates but clamp the TOD into its
+/// domain — which trades a detectable wrong answer for an undetectable one:
+/// a clamped `TOD#00:00:00` from a pre-epoch DT is indistinguishable from a
+/// legitimate midnight, the opposite of this compiler's refuse-or-fault
+/// direction (E0804 is the closest analogue: a value crossing a boundary its
+/// check cannot police is refused, not approximated); (3) keep both — which
+/// makes negative TODs part of the type's REAL
+/// behavior, owed coherent handling by every consumer forever: the widening
+/// and comparison arms are pinned for it today
+/// (`escaped_tod_widens_sign_extended`), the debug plane happens to be safe
+/// because it shows the raw integer, and every future formatter
+/// (TOD_TO_STRING, pretty watch rendering) inherits the obligation on
+/// arrival. Options 1 and 2 retire the obligation and the two escape pins
+/// with it. Whoever picks, update this comment and the pinning tests in the
+/// same change.
 fn emit_datetime_cast(from: MirElementary, to: MirElementary) -> Option<Vec<Instruction<'static>>> {
     use MirElementary::*;
-    const NS_PER_MS: i64 = 1_000_000;
-    const NS_PER_S: i64 = 1_000_000_000;
+    // The unit scales come from hir, the same constants its containment
+    // assertions use.
+    use hir::hir_ty::infer::literals::{NS_PER_MS, NS_PER_S};
     const SECS_PER_DAY: i32 = 86_400;
-    const NS_PER_DAY: i64 = 86_400_000_000_000;
+    const NS_PER_DAY: i64 = 86_400 * NS_PER_S;
 
     let instrs: Vec<Instruction<'static>> = match (from, to) {
         // Same-pair precision conversions

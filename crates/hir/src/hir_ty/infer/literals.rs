@@ -498,10 +498,67 @@ const TIME_MIN: &str = "T#-24d20h31m23s648ms";
 const TIME_MAX: &str = "T#24d20h31m23s647ms";
 const LTIME_MIN: &str = "LT#-106751d23h47m16s854ms775us808ns";
 const LTIME_MAX: &str = "LT#106751d23h47m16s854ms775us807ns";
+// These pairs look like independent facts and are NOT: each narrow type
+// widens IMPLICITLY into its L-partner (TIME -> LTIME, TOD -> LTOD,
+// DATE -> LDATE, DT -> LDT), so every representable narrow value must fit
+// the wide encoding after unit conversion. The strings render the numeric
+// bounds below; the containment assertions under them are what keep the
+// coupling true when any encoding moves.
 const DT_MIN: &str = "DT#1901-12-13-20:45:52";
 const DT_MAX: &str = "DT#2038-01-19-03:14:07";
 const LDT_MIN: &str = "LDT#1677-09-21-00:12:43.145224192";
 const LDT_MAX: &str = "LDT#2262-04-11-23:47:16.854775807";
+
+// The unit scale between each narrow encoding and its L-partner. These are
+// THE canonical facts: the cast emitter (wasm_codegen's mir_cast) imports
+// them for the widening/narrowing arms, and the containment assertions below
+// use them as factors — so a re-scaled encoding moves the emitted code and
+// the assertion together, or not at all.
+pub const NS_PER_MS: i64 = 1_000_000;
+pub const NS_PER_S: i64 = 1_000_000_000;
+
+// The declared ranges, numerically, in each type's own unit. Today every
+// narrow bound IS its lane bound and the literal checks enforce the lane
+// directly; the day a bound diverges from its lane (a wider DT, a clamped
+// TIME), move the constant, thread it into the range check, and the
+// assertions below hold or break the build. They compare DECLARED bounds,
+// not lane widths, precisely so they survive re-encodings.
+const TIME_MIN_MS: i64 = i32::MIN as i64;
+const TIME_MAX_MS: i64 = i32::MAX as i64;
+const TOD_MIN_MS: i64 = 0;
+const TOD_MAX_MS: i64 = 86_400_000 - 1;
+const DATE_MIN_DAYS: i64 = i32::MIN as i64;
+const DATE_MAX_DAYS: i64 = i32::MAX as i64;
+const DT_MIN_SECS: i64 = i32::MIN as i64;
+const DT_MAX_SECS: i64 = i32::MAX as i64;
+
+/// Both ends of a narrow range, scaled by the unit factor of its implicit
+/// widening, stay inside the wide type's i64 lane.
+const fn widens_losslessly(narrow_min: i64, narrow_max: i64, factor: i64) -> bool {
+    (narrow_min as i128) * (factor as i128) >= (i64::MIN as i128)
+        && (narrow_max as i128) * (factor as i128) <= (i64::MAX as i128)
+}
+
+const _: () = assert!(
+    widens_losslessly(DT_MIN_SECS, DT_MAX_SECS, NS_PER_S),
+    "every DT must be representable as an LDT: DT -> LDT is implicit"
+);
+const _: () = assert!(
+    widens_losslessly(TIME_MIN_MS, TIME_MAX_MS, NS_PER_MS),
+    "every TIME must be representable as an LTIME: TIME -> LTIME is implicit"
+);
+const _: () = assert!(
+    widens_losslessly(TOD_MIN_MS, TOD_MAX_MS, NS_PER_MS),
+    "every TOD must be representable as an LTOD: TOD -> LTOD is implicit"
+);
+// Factor 1 because LDATE keeps DATE's unit (days, extend-only cast arm) —
+// the one family with no rescale. Trivially contained today; the assertion
+// exists so this edge is already armed if either side ever changes unit or
+// gains bounds of its own.
+const _: () = assert!(
+    widens_losslessly(DATE_MIN_DAYS, DATE_MAX_DAYS, 1),
+    "every DATE must be representable as an LDATE: DATE -> LDATE is implicit"
+);
 
 /// Re-tag the inner `DurationOverflow` (raised when component
 /// accumulation overflows `i64` ns) as the typed `DurationOutOfRange`
