@@ -1,13 +1,9 @@
-//! # STRING-passing audit
+//! STRING codegen, end to end: the passing MATRIX (every `{source} x
+//! {operation}` combination, validated with `wasmparser`) and the STORAGE
+//! semantics (instance fields, globals, defaults, FB call I/O — compiled AND
+//! executed, so the values are pinned, not just the encoding).
 //!
-//! Exercises every combination of `{STRING source}` × `{operation on it}`
-//! that the codegen has to handle, with the smallest IEC snippet that
-//! triggers each, validating the emitted core wasm with
-//! `wasmparser::Validator`. Tests that compile to valid wasm = working
-//! path. Tests marked `#[ignore = "BROKEN: ..."]` = recorded holes for
-//! the upcoming surgical refactor to address.
-//!
-//! ## Source types (where a STRING value comes from)
+//! ## Matrix: source kinds (where a STRING value comes from)
 //!
 //! | Tag  | LocalInfo / shape                                 | Notes |
 //! |------|---------------------------------------------------|-------|
@@ -17,70 +13,51 @@
 //! | `MM` | `LocalInfo::StringMemory { address, capacity }`   | `VAR s : STRING` or function return slot |
 //! | `RT` | call returning `STRING`                           | (ptr, len) left on stack by the callee |
 //!
-//! ## Operations (what we do with it)
+//! Owned strings that are NOT function-locals — instance fields, globals,
+//! array elements — address uniformly through `emit_addr_of` and are covered
+//! by the executed-semantics half below rather than extra matrix rows.
+//!
+//! ## Matrix: operations
 //!
 //! | Tag      | Site                                                  |
 //! |----------|--------------------------------------------------------|
 //! | `=MM`    | assign INTO a memory-resident STRING (local or return) |
 //! | `=IP`    | assign INTO a `VAR_INPUT STRING` param (in-place mutation) |
 //! | `=IO`    | assign INTO a `VAR_IN_OUT STRING` param                |
-//! | `→VAL`   | pass as `VAR_INPUT STRING` arg                         |
-//! | `→REF`   | pass as `VAR_IN_OUT STRING` arg                        |
-//! | `→RAISE` | use as `__RAISE` payload                               |
-//! | `→NEST`  | pass as a STRING arg where the source is itself a STRING-returning call (triggers snapshot dance) |
+//! | `->VAL`  | pass as `VAR_INPUT STRING` arg                         |
+//! | `->REF`  | pass as `VAR_IN_OUT STRING` arg                        |
+//! | `->RAISE`| use as `__RAISE` payload                               |
+//! | `->NEST` | pass as a STRING arg where the source is itself a STRING-returning call (triggers snapshot dance) |
 //!
-//! ## Matrix
+//! |        | `=MM` | `=IP` | `=IO` | `->VAL` | `->REF` | `->RAISE` | `->NEST` |
+//! |--------|-------|-------|-------|---------|---------|-----------|----------|
+//! | `L`    |   x   |   x   |   x   |    x    |    .    |     x     |    .     |
+//! | `IP`   |   x   |   x   |   x   |    x    |    .    |     x     |    x     |
+//! | `IO`   |   x   |   x   |   x   |    x    |    x    |     x     |    .     |
+//! | `MM`   |   x   |   x   |   x   |    x    |    x    |     x     |    x     |
+//! | `RT`   |   x   |   x   |   x   |    x    |    .    |     x     |    x     |
 //!
-//! Each row is a source kind, each column an operation. Cell value:
-//! - ✓  = test exists in this file and validates (compile + wasm-validate)
-//! - ·  = combination is meaningless / impossible
+//! `.` cells: `L/RT -> REF` and `IO -> NEST` need an lvalue; `L -> NEST` has no
+//! nested STRING-returning call; `IP -> REF` is grammatically allowed but its
+//! behaviour is not strictly defined, skipped.
 //!
-//! |        | `=MM` | `=IP` | `=IO` | `→VAL` | `→REF` | `→RAISE` | `→NEST` |
-//! |--------|-------|-------|-------|--------|--------|----------|---------|
-//! | `L`    |   ✓   |   ✓   |   ✓   |   ✓    |   ·    |    ✓     |   ·     |
-//! | `IP`   |   ✓   |   ✓   |   ✓   |   ✓    |   ·    |    ✓     |   ✓     |
-//! | `IO`   |   ✓   |   ✓   |   ✓   |   ✓    |   ✓    |    ✓     |   ·     |
-//! | `MM`   |   ✓   |   ✓   |   ✓   |   ✓    |   ✓    |    ✓     |   ✓     |
-//! | `RT`   |   ✓   |   ✓   |   ✓   |   ✓    |   ·    |    ✓     |   ✓     |
-//!
-//! `·` cells:
-//! - `L → REF`, `RT → REF`, `IO → NEST`: VAR_IN_OUT requires an lvalue;
-//!   literals, call-results, and another VAR_IN_OUT passed to a
-//!   STRING-returning callsite are all non-lvalue in practice.
-//! - `L → NEST`: a literal as the inner-call arg doesn't trigger the
-//!   snapshot dance (no nested *STRING-returning* call).
-//! - `IP → REF`: VAR_INPUT as VAR_IN_OUT source — currently allowed by
-//!   grammar via implicit conversion; behaviour isn't strictly defined,
-//!   skipped here.
-//!
-//! ## Surgical-refactor punch list (from the audit)
-//!
-//! Both surface as `#[ignore]` tests below with `BROKEN:` messages:
-//!
-//! 1. **`known_bug_call_to_empty_body_fn`** — `lower_module` skips
-//!    functions whose body is empty, but call sites to the dropped
-//!    function still emit `call` with index `0` (the `unwrap_or`
-//!    fallback in `emit_call`). Produces invalid wasm whenever a
-//!    user writes an empty `FUNCTION foo … END_FUNCTION` and calls it.
-//!    *Fix:* either lower empty-body fns as no-op stubs, or have HIR
-//!    reject them as "no observable behaviour".
-//!
-//! 2. **`known_bug_string_param_clobbered_by_scalar_var`** — every MIR
-//!    lowering path bumps `next_local_idx` by 1 per param, but STRING
-//!    params flatten to *two* wasm i32 slots. The function-return slot
-//!    and subsequent scalar Vars get MIR `local_index` values that
-//!    correspond to wasm locals **already used** by the STRING param's
-//!    `(ptr, len)`. The wasm validates (i32==i32) but the function
-//!    silently mutates the input param's slots. Test: a function that
-//!    writes its return slot then re-reads the STRING returns the
-//!    *written* value instead of the original `len`.
-//!    *Fix:* count wasm-slots, not logical params, in `next_local_idx`
-//!    bookkeeping across `lower_func.rs`, `lower_module.rs`, and
-//!    `monomorphize.rs` (this is the surgical-refactor target).
+//! A combination that regresses to invalid wasm gets `#[ignore = "BROKEN: ..."]`
+//! until fixed; none currently. Two audit-era holes are fixed and pinned below
+//! as `regression_*`: an empty-body FUNCTION whose call sites emitted index 0,
+//! and STRING params consuming two wasm slots while local indexing counted one.
+//! Also fixed and pinned here (2026-08-28): a STRING default on an instance's
+//! first field emitted a scalar store over the literal pool (invalid wasm), and
+//! an FB call writing a STRING input never armed the `rk.str_assign` graft.
 
 use rstest::rstest;
+use runtime::{Config, Plc};
 
-use super::{add_source, compile_to_wasm, execute_wasm, with_db};
+use super::{add_source, compile_to_mir_and_wasm, compile_to_wasm, execute_wasm, with_db};
+
+// =========================================================================
+// The matrix: compile + validate
+// =========================================================================
+
 
 /// Compile a source string to core wasm and validate it. Returns Ok on
 /// successful validation. On failure, dumps the wasm to a per-test
@@ -864,4 +841,525 @@ END_FUNCTION
         result, 5,
         "the assignment kept the destination's capacity, and said nothing at check"
     );
+}
+
+// =========================================================================
+// Storage semantics: instance fields, globals, defaults, FB call I/O —
+// compiled and executed
+// =========================================================================
+
+/// Decode the string at the start of the retain band: `[len:i32]` + bytes.
+fn read_retain_string(plc: &Plc) -> String {
+    let r = plc.read_retain();
+    let len = i32::from_le_bytes(r[0..4].try_into().unwrap()) as usize;
+    String::from_utf8_lossy(&r[4..4 + len]).to_string()
+}
+
+/// Assigning a literal to a STRING instance field, then reading it back.
+#[rstest]
+fn string_field_assign_literal(mut with_db: db::RootDatabase) {
+    let source = r#"
+        PROGRAM P
+        VAR RETAIN s : STRING; END_VAR
+            s := 'hello';
+        END_PROGRAM
+
+        CONFIGURATION Cfg
+            RESOURCE Res ON CPU
+                TASK T(INTERVAL := T#10ms, PRIORITY := 1);
+                PROGRAM P1 WITH T : P;
+            END_RESOURCE
+        END_CONFIGURATION
+    "#;
+    let (_mir, wasm) = compile_to_mir_and_wasm(&mut with_db, source);
+
+    let mut plc = Plc::load(&wasm, Config::default()).expect("load");
+    plc.run(1).expect("scan");
+    assert_eq!(read_retain_string(&plc), "hello");
+}
+
+/// Copying one STRING instance field into another (`dst := src`).
+#[rstest]
+fn string_field_to_field_copy(mut with_db: db::RootDatabase) {
+    let source = r#"
+        PROGRAM P
+        VAR RETAIN dst : STRING; END_VAR
+        VAR src : STRING; END_VAR
+            src := 'world';
+            dst := src;
+        END_PROGRAM
+
+        CONFIGURATION Cfg
+            RESOURCE Res ON CPU
+                TASK T(INTERVAL := T#10ms, PRIORITY := 1);
+                PROGRAM P1 WITH T : P;
+            END_RESOURCE
+        END_CONFIGURATION
+    "#;
+    let (_mir, wasm) = compile_to_mir_and_wasm(&mut with_db, source);
+
+    let mut plc = Plc::load(&wasm, Config::default()).expect("load");
+    plc.run(1).expect("scan");
+    assert_eq!(read_retain_string(&plc), "world");
+}
+
+/// A STRING instance-field initializer is applied at load (`__init`), before
+/// any scan.
+#[rstest]
+fn string_field_initializer(mut with_db: db::RootDatabase) {
+    let source = r#"
+        PROGRAM P
+        VAR RETAIN s : STRING := 'init!'; END_VAR
+            ; // no-op body; the initializer is what we check
+        END_PROGRAM
+
+        CONFIGURATION Cfg
+            RESOURCE Res ON CPU
+                TASK T(INTERVAL := T#10ms, PRIORITY := 1);
+                PROGRAM P1 WITH T : P;
+            END_RESOURCE
+        END_CONFIGURATION
+    "#;
+    let (_mir, wasm) = compile_to_mir_and_wasm(&mut with_db, source);
+
+    let plc = Plc::load(&wasm, Config::default()).expect("load");
+    assert_eq!(
+        read_retain_string(&plc),
+        "init!",
+        "initializer applied at load"
+    );
+}
+
+/// A STRING VAR_GLOBAL initializer is applied at load and visible to programs.
+#[rstest]
+fn string_global_initializer(mut with_db: db::RootDatabase) {
+    let source = r#"
+        PROGRAM Mirror
+        VAR RETAIN seen : STRING; END_VAR
+            seen := g;
+        END_PROGRAM
+
+        CONFIGURATION Cfg
+        VAR_GLOBAL g : STRING := 'globinit'; END_VAR
+            RESOURCE Res ON CPU
+                TASK T(INTERVAL := T#10ms, PRIORITY := 1);
+                PROGRAM P WITH T : Mirror;
+            END_RESOURCE
+        END_CONFIGURATION
+    "#;
+    let (_mir, wasm) = compile_to_mir_and_wasm(&mut with_db, source);
+
+    let mut plc = Plc::load(&wasm, Config::default()).expect("load");
+    plc.run(1).expect("scan");
+    assert_eq!(read_retain_string(&plc), "globinit");
+}
+
+/// A struct initializer with a STRING field (aggregate + string init together).
+#[rstest]
+fn struct_with_string_initializer(mut with_db: db::RootDatabase) {
+    let source = r#"
+        TYPE Person : STRUCT name : STRING; age : INT; END_STRUCT; END_TYPE
+
+        PROGRAM P
+        VAR RETAIN p : Person := (name := 'bob', age := 30); END_VAR
+            ;
+        END_PROGRAM
+
+        CONFIGURATION Cfg
+            RESOURCE Res ON CPU
+                TASK T(INTERVAL := T#10ms, PRIORITY := 1);
+                PROGRAM P1 WITH T : P;
+            END_RESOURCE
+        END_CONFIGURATION
+    "#;
+    let (_mir, wasm) = compile_to_mir_and_wasm(&mut with_db, source);
+
+    let plc = Plc::load(&wasm, Config::default()).expect("load");
+    let r = plc.read_retain();
+    // p.name (STRING) at offset 0; p.age (INT) at offset 4+80 = 84.
+    assert_eq!(read_retain_string(&plc), "bob");
+    assert_eq!(i32::from_le_bytes(r[84..88].try_into().unwrap()), 30);
+}
+
+/// Assigning a STRING-returning call's result into an instance field
+/// (producer result → field via rk.str_assign).
+#[rstest]
+fn string_call_result_into_field(mut with_db: db::RootDatabase) {
+    let source = r#"
+        FUNCTION echo : STRING
+        VAR_INPUT x : STRING; END_VAR
+            echo := x;
+        END_FUNCTION
+
+        PROGRAM P
+        VAR RETAIN s : STRING; END_VAR
+            s := echo('hi there');
+        END_PROGRAM
+
+        CONFIGURATION Cfg
+            RESOURCE Res ON CPU
+                TASK T(INTERVAL := T#10ms, PRIORITY := 1);
+                PROGRAM P1 WITH T : P;
+            END_RESOURCE
+        END_CONFIGURATION
+    "#;
+    let (_mir, wasm) = compile_to_mir_and_wasm(&mut with_db, source);
+
+    let mut plc = Plc::load(&wasm, Config::default()).expect("load");
+    plc.run(1).expect("scan");
+    assert_eq!(read_retain_string(&plc), "hi there");
+}
+
+/// Passing a STRING instance field as a by-value VAR_INPUT argument.
+#[rstest]
+fn string_field_as_argument(mut with_db: db::RootDatabase) {
+    let source = r#"
+        FUNCTION echo : STRING
+        VAR_INPUT x : STRING; END_VAR
+            echo := x;
+        END_FUNCTION
+
+        PROGRAM P
+        VAR RETAIN out : STRING; END_VAR
+        VAR src : STRING; END_VAR
+            src := 'fieldarg';
+            out := echo(src);
+        END_PROGRAM
+
+        CONFIGURATION Cfg
+            RESOURCE Res ON CPU
+                TASK T(INTERVAL := T#10ms, PRIORITY := 1);
+                PROGRAM P1 WITH T : P;
+            END_RESOURCE
+        END_CONFIGURATION
+    "#;
+    let (_mir, wasm) = compile_to_mir_and_wasm(&mut with_db, source);
+
+    let mut plc = Plc::load(&wasm, Config::default()).expect("load");
+    plc.run(1).expect("scan");
+    assert_eq!(read_retain_string(&plc), "fieldarg");
+}
+
+/// Passing a STRING instance field as a `VAR_IN_OUT` argument (by reference):
+/// the callee mutates the field in place. Exercises the (header_addr, cap)
+/// flattening for a field place — previously only `StringMemory` locals worked.
+#[rstest]
+fn string_field_as_var_in_out(mut with_db: db::RootDatabase) {
+    let source = r#"
+        FUNCTION set_hi
+        VAR_IN_OUT s : STRING; END_VAR
+            s := 'hi-inout';
+        END_FUNCTION
+
+        PROGRAM P
+        VAR RETAIN s : STRING; END_VAR
+            set_hi(s);
+        END_PROGRAM
+
+        CONFIGURATION Cfg
+            RESOURCE Res ON CPU
+                TASK T(INTERVAL := T#10ms, PRIORITY := 1);
+                PROGRAM P1 WITH T : P;
+            END_RESOURCE
+        END_CONFIGURATION
+    "#;
+    let (_mir, wasm) = compile_to_mir_and_wasm(&mut with_db, source);
+
+    let mut plc = Plc::load(&wasm, Config::default()).expect("load");
+    plc.run(1).expect("scan");
+    assert_eq!(read_retain_string(&plc), "hi-inout");
+}
+
+/// A declared `STRING[N]` capacity is honored for an instance FIELD: assigning a
+/// longer string clamps to N (with the old bug, fields defaulted to capacity 80
+/// and would store the whole string).
+#[rstest]
+fn sized_string_field_clamps_to_capacity(mut with_db: db::RootDatabase) {
+    let source = r#"
+        PROGRAM P
+        VAR RETAIN s : STRING[3]; END_VAR
+        VAR src : STRING[8]; END_VAR
+            src := 'hello';
+            s := src;   (* from a variable: an over-long literal is E0309 *)
+        END_PROGRAM
+
+        CONFIGURATION Cfg
+            RESOURCE Res ON CPU
+                TASK T(INTERVAL := T#10ms, PRIORITY := 1);
+                PROGRAM P1 WITH T : P;
+            END_RESOURCE
+        END_CONFIGURATION
+    "#;
+    let (_mir, wasm) = compile_to_mir_and_wasm(&mut with_db, source);
+
+    let mut plc = Plc::load(&wasm, Config::default()).expect("load");
+    plc.run(1).expect("scan");
+    assert_eq!(read_retain_string(&plc), "hel", "STRING[3] clamps 'hello'");
+}
+
+/// `STRING[N]` capacity is honored for a VAR_GLOBAL too.
+#[rstest]
+fn sized_string_global_clamps_to_capacity(mut with_db: db::RootDatabase) {
+    let source = r#"
+        PROGRAM P
+        VAR RETAIN seen : STRING[10]; END_VAR
+        VAR src : STRING[8]; END_VAR
+            src := 'abcdef';
+            g := src;   (* from a variable: an over-long literal is E0309 *)
+            seen := g;
+        END_PROGRAM
+
+        CONFIGURATION Cfg
+        VAR_GLOBAL g : STRING[4]; END_VAR
+            RESOURCE Res ON CPU
+                TASK T(INTERVAL := T#10ms, PRIORITY := 1);
+                PROGRAM P1 WITH T : P;
+            END_RESOURCE
+        END_CONFIGURATION
+    "#;
+    let (_mir, wasm) = compile_to_mir_and_wasm(&mut with_db, source);
+
+    let mut plc = Plc::load(&wasm, Config::default()).expect("load");
+    plc.run(1).expect("scan");
+    assert_eq!(
+        read_retain_string(&plc),
+        "abcd",
+        "STRING[4] global clamps 'abcdef'"
+    );
+}
+
+/// A STRING VAR_GLOBAL written by one program and read by another.
+#[rstest]
+fn string_global_shared(mut with_db: db::RootDatabase) {
+    let source = r#"
+        PROGRAM Setter
+            g := 'shared';
+        END_PROGRAM
+
+        PROGRAM Mirror
+        VAR RETAIN seen : STRING; END_VAR
+            seen := g;
+        END_PROGRAM
+
+        CONFIGURATION Cfg
+        VAR_GLOBAL g : STRING; END_VAR
+            RESOURCE Res ON CPU
+                TASK T(INTERVAL := T#10ms, PRIORITY := 1);
+                PROGRAM P1 WITH T : Setter;
+                PROGRAM P2 WITH T : Mirror;
+            END_RESOURCE
+        END_CONFIGURATION
+    "#;
+    let (_mir, wasm) = compile_to_mir_and_wasm(&mut with_db, source);
+
+    let mut plc = Plc::load(&wasm, Config::default()).expect("load");
+    plc.run(2).expect("scans"); // Setter writes g, Mirror copies it into seen
+    assert_eq!(read_retain_string(&plc), "shared");
+}
+
+/// Regression: `ARRAY[..] OF STRING[n]` used to lay out 4+80-byte elements and
+/// never truncate, because `lower_array_type` lowered the element through
+/// `lower_type` alone. `Type::normalize` collapses `STRING[n]` and plain
+/// `STRING` onto the same type, so the declared length only survives on the
+/// SPEC — and this was the one call site that did not consult it.
+///
+/// Asserted through TRUNCATION, not through a neighbouring guard: the wrong
+/// layout over-allocates (84 bytes per element instead of 8), so nothing is
+/// ever clobbered and a guard variable passes either way. What actually
+/// differs is how much of the source string the element keeps.
+#[rstest]
+fn array_of_sized_strings_truncates_at_the_declared_capacity(mut with_db: db::RootDatabase) {
+    let source = r#"
+        FUNCTION run : DINT
+        VAR
+            a : ARRAY[0..1] OF STRING[4];
+            src : STRING[16];
+        END_VAR
+            src := 'ABCDEFGHIJKLMNOP';
+            a[0] := src;   (* from a variable: an over-long literal is E0309 *)
+            IF a[0] = 'ABCD' THEN run := 1; ELSE run := 0; END_IF;
+        END_FUNCTION
+    "#;
+    let wasm = super::compile_to_wasm(&mut with_db, source);
+    let result: i32 = super::execute_wasm(&wasm, "run", ());
+    assert_eq!(result, 1, "an element of ARRAY OF STRING[4] holds 4 characters");
+}
+
+/// A `STRING[n]` reached through a `TYPE` alias keeps its length. The alias
+/// carries a `Target` spec, so the `SizedString` sits on the data type's own
+/// spec one hop away; not following that hop silently gave every aliased
+/// string the 80-byte default.
+#[rstest]
+fn aliased_sized_string_truncates_at_the_declared_capacity(mut with_db: db::RootDatabase) {
+    let source = r#"
+        TYPE Small : STRING[4]; END_TYPE
+
+        FUNCTION run : DINT
+        VAR
+            s : Small;
+            src : STRING[16];
+        END_VAR
+            src := 'ABCDEFGHIJKLMNOP';
+            s := src;   (* from a variable: an over-long literal is E0309 *)
+            IF s = 'ABCD' THEN run := 1; ELSE run := 0; END_IF;
+        END_FUNCTION
+    "#;
+    let wasm = super::compile_to_wasm(&mut with_db, source);
+    let result: i32 = super::execute_wasm(&wasm, "run", ());
+    assert_eq!(result, 1, "an aliased STRING[4] holds 4 characters");
+}
+
+/// A declared `STRING[n]` keeps its length in EVERY container it can appear in.
+///
+/// The length is not part of type identity — `STRING[4] := STRING[80]` is legal
+/// and truncates, and two lengths must not read as different overloads — so it
+/// survives only on the spec, and every container has to lower through the
+/// spec-aware path. Three separate bugs came from one container forgetting:
+/// an `ARRAY OF STRING[4]` with 84-byte elements, a `TYPE` alias silently
+/// widened to 80, and a struct field overrunning its slot.
+///
+/// One test over all of them, so a container that regresses is visible next to
+/// the ones that do not.
+#[rstest]
+#[case::direct("s", "VAR s : STRING[4]; END_VAR")]
+#[case::alias("s", "VAR s : Small; END_VAR")]
+#[case::struct_field("r.f", "VAR r : Rec; END_VAR")]
+#[case::fb_member("h.s", "VAR h : Holder; END_VAR")]
+#[case::array_element("a[1]", "VAR a : ARRAY[0..1] OF STRING[4]; END_VAR")]
+#[case::array_of_alias("b[1]", "VAR b : ARRAY[0..1] OF Small; END_VAR")]
+#[case::struct_in_array("c[1].f", "VAR c : ARRAY[0..1] OF Rec; END_VAR")]
+fn a_sized_string_keeps_its_length_in_every_container(
+    mut with_db: db::RootDatabase,
+    #[case] target: &str,
+    #[case] decl: &str,
+) {
+    let source = format!(
+        r#"
+        TYPE Small : STRING[4]; END_TYPE
+        TYPE Rec : STRUCT f : STRING[4]; g : DINT; END_STRUCT; END_TYPE
+
+        FUNCTION_BLOCK Holder
+        VAR
+            s : STRING[4];
+        END_VAR
+        END_FUNCTION_BLOCK
+
+        FUNCTION run : DINT
+        {decl}
+        VAR src : STRING[16]; END_VAR
+            (* From a VARIABLE: an over-long LITERAL is refused at the
+               assignment (E0309), and truncating is what a variable does. *)
+            src := 'ABCDEFGHIJKLMNOP';
+            {target} := src;
+            IF {target} = 'ABCD' THEN run := 1; ELSE run := 0; END_IF;
+        END_FUNCTION
+    "#
+    );
+    let wasm = super::compile_to_wasm(&mut with_db, &source);
+    let result: i32 = super::execute_wasm(&wasm, "run", ());
+    assert_eq!(result, 1, "`{target}` must hold exactly its declared 4 characters");
+}
+
+/// Escape sequences decode to the bytes they DENOTE, not the source text.
+/// MIR used to intern the raw literal bytes while HIR validated the decoded
+/// form, so `'A$0AB'` was checked as 3 characters and executed as 5 — and a
+/// program's strings silently carried `$`-signs into production. One decoder
+/// (`parse_single_byte_string`) now serves both.
+#[rstest]
+fn string_escapes_decode_to_denoted_bytes(mut with_db: db::RootDatabase) {
+    let source = r#"
+        PROGRAM P
+        VAR RETAIN s : STRING; END_VAR
+            (* $41='A', $$ = one dollar, $N = LF, $T = tab, $'= quote *)
+            s := '$41$$$N$T$'';
+        END_PROGRAM
+
+        CONFIGURATION Cfg
+            RESOURCE Res ON CPU
+                TASK T(INTERVAL := T#10ms, PRIORITY := 1);
+                PROGRAM P1 WITH T : P;
+            END_RESOURCE
+        END_CONFIGURATION
+    "#;
+    let (_mir, wasm) = compile_to_mir_and_wasm(&mut with_db, source);
+    let mut plc = Plc::load(&wasm, Config::default()).expect("load");
+    plc.run(1).expect("scan");
+    assert_eq!(read_retain_string(&plc), "A$\n\t'");
+}
+
+/// A caller writing a literal into an FB's STRING input, with NO other string
+/// activity in the module. The graft trigger walked Assign targets but not
+/// FbCall input_writes/output_reads, so `rk.str_assign` was never grafted and
+/// codegen died on its `.expect` — the exact shape of a Modbus-style
+/// `client(host := '10.0.0.7')`.
+#[rstest]
+fn fb_string_input_written_at_the_call(mut with_db: db::RootDatabase) {
+    let source = r#"
+        FUNCTION_BLOCK Echo
+        VAR_INPUT host : STRING[16]; END_VAR
+        VAR_OUTPUT got : STRING[16]; END_VAR
+            got := host;
+        END_FUNCTION_BLOCK
+
+        FUNCTION test : INT
+        VAR e : Echo; ok : INT := 0; END_VAR
+            e(host := '10.0.0.7');
+            IF e.got = '10.0.0.7' THEN ok := 1; END_IF;
+            test := ok;
+        END_FUNCTION
+    "#;
+    let wasm = compile_to_wasm(&mut with_db, source);
+    let result: i32 = super::execute_wasm(&wasm, "test", ());
+    assert_eq!(result, 1, "the literal written at the call reaches the field");
+}
+
+/// A STRING default on an instance's FIRST field. `lower_init_leaves`'s
+/// offset-0 shortcut addressed the whole struct local, hiding the leaf's
+/// STRING type from codegen: the scalar path stored the LENGTH over the
+/// literal's own pool bytes and left an operand on the stack — invalid wasm,
+/// and a silently corrupted string pool.
+#[rstest]
+fn fb_string_default_on_first_field(mut with_db: db::RootDatabase) {
+    let source = r#"
+        FUNCTION_BLOCK Cfg
+        VAR_INPUT host : STRING[16] := '192.168.0.1'; END_VAR
+        VAR_OUTPUT got : STRING[16]; END_VAR
+            got := host;
+        END_FUNCTION_BLOCK
+
+        FUNCTION test : INT
+        VAR c : Cfg; ok : INT := 0; END_VAR
+            c();
+            IF c.got = '192.168.0.1' THEN ok := 1; END_IF;
+            test := ok;
+        END_FUNCTION
+    "#;
+    let wasm = compile_to_wasm(&mut with_db, source);
+    let result: i32 = super::execute_wasm(&wasm, "test", ());
+    assert_eq!(result, 1, "the default survives in the instance AND the pool");
+}
+
+/// The Modbus shape end to end: a default the first instance keeps and the
+/// second overrides, in one module, so the pool literal is shared and must
+/// stay intact after both inits.
+#[rstest]
+fn fb_string_default_and_override_coexist(mut with_db: db::RootDatabase) {
+    let source = r#"
+        FUNCTION_BLOCK Cfg
+        VAR_INPUT host : STRING[16] := '192.168.0.1'; END_VAR
+        VAR_OUTPUT got : STRING[16]; END_VAR
+            got := host;
+        END_FUNCTION_BLOCK
+
+        FUNCTION test : INT
+        VAR a : Cfg; b : Cfg; ok : INT := 0; END_VAR
+            a();
+            b(host := '10.0.0.7');
+            IF a.got = '192.168.0.1' AND b.got = '10.0.0.7' THEN ok := 1; END_IF;
+            test := ok;
+        END_FUNCTION
+    "#;
+    let wasm = compile_to_wasm(&mut with_db, source);
+    let result: i32 = super::execute_wasm(&wasm, "test", ());
+    assert_eq!(result, 1, "default and override are independent instances");
 }
