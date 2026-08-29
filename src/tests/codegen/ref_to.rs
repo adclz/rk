@@ -211,3 +211,55 @@ fn test_multiple_deref(mut with_db: db::RootDatabase) {
     let result = func.call(&mut store, ()).unwrap();
     assert_eq!(result, 5, "Should dereference twice to get original value");
 }
+
+#[rstest]
+fn test_ref_arg_through_local(mut with_db: db::RootDatabase) {
+    let source = r#"
+        FUNCTION peek : WORD
+        VAR_INPUT
+            p : REF_TO WORD;
+        END_VAR
+            peek := p^;
+        END_FUNCTION
+
+        FUNCTION test_main : WORD
+        VAR
+            regs : ARRAY[0..8000] OF WORD;
+            q : REF_TO WORD;
+        END_VAR
+            regs[7000] := WORD#16#BEEF;
+            q := REF(regs[7000]);
+            test_main := peek(p := q);
+        END_FUNCTION
+    "#;
+
+    let wasm_bytes = compile_to_wasm(&mut with_db, source);
+    validate_wasm(&wasm_bytes).expect("WASM validation failed");
+    let result: i32 = crate::tests::codegen::execute_wasm(&wasm_bytes, "test_main", ());
+    assert_eq!(result, 0xBEEF);
+}
+
+#[rstest]
+fn test_inline_ref_arg_past_32k(mut with_db: db::RootDatabase) {
+    let source = r#"
+        FUNCTION peek : WORD
+        VAR_INPUT
+            p : REF_TO WORD;
+        END_VAR
+            peek := p^;
+        END_FUNCTION
+
+        FUNCTION test_main : WORD
+        VAR
+            regs : ARRAY[0..8000] OF WORD;
+        END_VAR
+            regs[7000] := WORD#16#BEEF;
+            test_main := peek(p := REF(regs[7000]));
+        END_FUNCTION
+    "#;
+
+    let wasm_bytes = compile_to_wasm(&mut with_db, source);
+    validate_wasm(&wasm_bytes).expect("WASM validation failed");
+    let result: i32 = crate::tests::codegen::execute_wasm(&wasm_bytes, "test_main", ());
+    assert_eq!(result, 0xBEEF);
+}

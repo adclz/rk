@@ -1894,16 +1894,26 @@ pub(crate) fn build_local_map(
                     }
                     // Aggregate VAR_INPUT: a pointer to the caller's call-entry
                     // snapshot, dereferenced like an InOut param.
-                    MirType::Pointer(inner) => {
-                        let pointee_elem = match inner.as_ref() {
-                            MirType::Elementary(e) => Some(*e),
-                            _ => None,
-                        };
+                    MirType::Pointer(inner)
+                        if matches!(inner.as_ref(), MirType::Struct(_) | MirType::Array(_)) =>
+                    {
                         map.insert(
                             param.name,
                             LocalInfo::Pointer {
                                 index: param_idx,
-                                pointee_elem,
+                                pointee_elem: None,
+                            },
+                        );
+                        param_idx += 1;
+                    }
+                    // A REF_TO VAR_INPUT is a value param: only a written `^`
+                    // dereferences it.
+                    MirType::Pointer(_) => {
+                        map.insert(
+                            param.name,
+                            LocalInfo::Scalar {
+                                index: param_idx,
+                                elem: MirElementary::DInt,
                             },
                         );
                         param_idx += 1;

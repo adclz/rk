@@ -2429,7 +2429,8 @@ impl<'db> ExprLowerCtx<'db> {
             // A variant literal is a value of its enum, at the enum's declared
             // storage.
             Type::EnumVariant(dt, _) => self.type_to_mir_elementary(Type::DataType(dt)),
-            Type::RefTo(_) | Type::Null => Ok(MirElementary::Int), // pointers are i32
+            // Pointers are 32-bit.
+            Type::RefTo(_) | Type::Null => Ok(MirElementary::DInt),
             Type::Void => Err(LowerTypeError::UnsupportedType(
                 "expression has no value (used where a single value is expected)".to_string(),
             )),
