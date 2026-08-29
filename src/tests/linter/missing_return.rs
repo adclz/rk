@@ -120,3 +120,19 @@ END_FUNCTION
     ---'
     ");
 }
+
+/// An `{extern}` FUNCTION never assigns its return value in the body — the
+/// import's result IS the return, and E0243 refuses a body anyway. The rule
+/// exempts it like `empty-body` and `unused-variable` already do.
+#[rstest]
+fn extern_function_is_exempt(mut with_db: RootDatabase) {
+    let source = r#"
+        {extern 'acme:io@1' 'poll'}
+        FUNCTION MB_POLL : DINT
+        VAR_INPUT
+            id : DINT;
+        END_VAR
+        END_FUNCTION
+    "#;
+    assert_snapshot!(test_single_lint(&mut with_db, &[source], "missing-return"), @r"");
+}

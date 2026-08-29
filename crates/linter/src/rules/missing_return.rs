@@ -71,6 +71,15 @@ pub fn check_result<'db>(
             if f.return_type(db).is_none() {
                 return;
             }
+            // An extern FUNCTION's return value IS the import's result; its
+            // body is empty by contract (E0243 refuses statements), so
+            // "never assigns" is the normal state, not an omission.
+            {
+                use hir::HasPragmas;
+                if f.extern_pragma(db).is_some() {
+                    return;
+                }
+            }
             (f.name(db).text(db), "FUNCTION", f.get_name_span(db))
         }
         ScopeKind::MethodDecl(m) => {
