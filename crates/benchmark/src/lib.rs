@@ -36,7 +36,7 @@ use hir::{
 // ---------------------------------------------------------------------------
 
 pub const STDLIB_EXPECTED_DIAGNOSTICS: usize = 0;
-pub const STDLIB_EXPECTED_LINTS: usize = 414;
+pub const STDLIB_EXPECTED_LINTS: usize = 490;
 
 // ---------------------------------------------------------------------------
 // Corpora
@@ -111,7 +111,7 @@ fn load_dirs(name: &'static str, dirs: &[&str]) -> Corpus {
     Corpus { name, files }
 }
 
-/// The standard library: 11 files, ~6.5k lines, checks clean.
+/// The standard library: 13 files, ~9.5k lines, checks clean.
 pub fn stdlib_corpus() -> Corpus {
     load_dirs("stdlib", &["stdlib"])
 }
@@ -424,4 +424,5 @@ mod tests {
         }
     }
 }
+
 
