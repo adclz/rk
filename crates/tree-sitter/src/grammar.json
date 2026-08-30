@@ -548,11 +548,15 @@
       }
     },
     "ERR_method_decl_in_body": {
-      "type": "PREC",
+      "type": "PREC_DYNAMIC",
       "value": -1,
       "content": {
-        "type": "SYMBOL",
-        "name": "method_decl"
+        "type": "PREC",
+        "value": -1,
+        "content": {
+          "type": "SYMBOL",
+          "name": "method_decl"
+        }
       }
     },
     "line_comment": {
@@ -888,6 +892,38 @@
         }
       ]
     },
+    "allow_pragma": {
+      "type": "PREC",
+      "value": 1,
+      "content": {
+        "type": "SEQ",
+        "members": [
+          {
+            "type": "STRING",
+            "value": "{"
+          },
+          {
+            "type": "STRING",
+            "value": "allow"
+          },
+          {
+            "type": "REPEAT1",
+            "content": {
+              "type": "FIELD",
+              "name": "rule",
+              "content": {
+                "type": "SYMBOL",
+                "name": "pragma_string"
+              }
+            }
+          },
+          {
+            "type": "STRING",
+            "value": "}"
+          }
+        ]
+      }
+    },
     "test_pragma": {
       "type": "PREC",
       "value": 1,
@@ -954,6 +990,10 @@
         {
           "type": "SYMBOL",
           "name": "extern_pragma"
+        },
+        {
+          "type": "SYMBOL",
+          "name": "allow_pragma"
         }
       ]
     },
@@ -10983,6 +11023,10 @@
         },
         {
           "type": "SYMBOL",
+          "name": "allow_pragma"
+        },
+        {
+          "type": "SYMBOL",
           "name": "ERR_method_decl_in_body"
         }
       ]
@@ -12392,6 +12436,10 @@
     ],
     [
       "func_call",
+      "_stmt"
+    ],
+    [
+      "pou_pragma",
       "_stmt"
     ],
     [

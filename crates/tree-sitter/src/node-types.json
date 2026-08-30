@@ -496,6 +496,10 @@
         "named": false
       },
       {
+        "type": "allow_pragma",
+        "named": true
+      },
+      {
         "type": "assign",
         "named": true
       },
@@ -1450,6 +1454,22 @@
         "types": [
           {
             "type": "_expression",
+            "named": true
+          }
+        ]
+      }
+    }
+  },
+  {
+    "type": "allow_pragma",
+    "named": true,
+    "fields": {
+      "rule": {
+        "multiple": true,
+        "required": true,
+        "types": [
+          {
+            "type": "pragma_string",
             "named": true
           }
         ]
@@ -4914,6 +4934,10 @@
       "required": true,
       "types": [
         {
+          "type": "allow_pragma",
+          "named": true
+        },
+        {
           "type": "extern_pragma",
           "named": true
         },
@@ -7643,6 +7667,10 @@
   {
     "type": "adress_identifier",
     "named": true
+  },
+  {
+    "type": "allow",
+    "named": false
   },
   {
     "type": "binary_int",

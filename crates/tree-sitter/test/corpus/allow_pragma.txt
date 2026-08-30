@@ -1,0 +1,140 @@
+================================================================================
+Allow pragma above a function block
+================================================================================
+
+{allow 'input-assignment' 'self-assignment'}
+FUNCTION_BLOCK fb
+VAR_INPUT x : INT; END_VAR
+x := x;
+END_FUNCTION_BLOCK
+
+--------------------------------------------------------------------------------
+
+(source_file
+  (fb_decl
+    (pou_pragma
+      (allow_pragma
+        (pragma_string)
+        (pragma_string)))
+    (identifier)
+    (fb_input_decls
+      (fb_input_var
+        (variable_list
+          (identifier))
+        (var_decl_init
+          (simple_type_spec
+            (numeric_type_name
+              (int_type_name
+                (sign_int_type_name
+                  (int_name))))))))
+    (fb_body
+      (stmt_list
+        (assign
+          (variable_access
+            (variable
+              (begin_path_expression
+                (path_expression
+                  (var_access
+                    (field))))))
+          (assignment
+            (variable_access
+              (variable
+                (begin_path_expression
+                  (path_expression
+                    (var_access
+                      (field))))))))))))
+
+================================================================================
+Allow pragma as a statement
+================================================================================
+
+FUNCTION_BLOCK fb
+VAR_INPUT x : INT; END_VAR
+{allow 'input-assignment'}
+x := 1;
+END_FUNCTION_BLOCK
+
+--------------------------------------------------------------------------------
+
+(source_file
+  (fb_decl
+    (identifier)
+    (fb_input_decls
+      (fb_input_var
+        (variable_list
+          (identifier))
+        (var_decl_init
+          (simple_type_spec
+            (numeric_type_name
+              (int_type_name
+                (sign_int_type_name
+                  (int_name))))))))
+    (fb_body
+      (stmt_list
+        (allow_pragma
+          (pragma_string))
+        (assign
+          (variable_access
+            (variable
+              (begin_path_expression
+                (path_expression
+                  (var_access
+                    (field))))))
+          (assignment
+            (constant
+              (numeric_literal
+                (int_literal
+                  (signed_int
+                    (unsigned_int)))))))))))
+
+================================================================================
+Allow pragma before a method
+================================================================================
+
+FUNCTION_BLOCK fb
+VAR_INPUT x : INT; END_VAR
+{allow 'dead-code'}
+METHOD m : INT
+m := 2;
+END_METHOD
+END_FUNCTION_BLOCK
+
+--------------------------------------------------------------------------------
+
+(source_file
+  (fb_decl
+    (identifier)
+    (fb_input_decls
+      (fb_input_var
+        (variable_list
+          (identifier))
+        (var_decl_init
+          (simple_type_spec
+            (numeric_type_name
+              (int_type_name
+                (sign_int_type_name
+                  (int_name))))))))
+    (method_decl
+      (pou_pragma
+        (allow_pragma
+          (pragma_string)))
+      (identifier)
+      (numeric_type_name
+        (int_type_name
+          (sign_int_type_name
+            (int_name))))
+      (func_body
+        (stmt_list
+          (assign
+            (variable_access
+              (variable
+                (begin_path_expression
+                  (path_expression
+                    (var_access
+                      (field))))))
+            (assignment
+              (constant
+                (numeric_literal
+                  (int_literal
+                    (signed_int
+                      (unsigned_int))))))))))))

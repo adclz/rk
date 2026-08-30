@@ -280,6 +280,9 @@ module.exports = grammar({
     [$.any_invocation_kind],
     [$.variable, $.func_call],
     [$.func_call, $._stmt],
+    // {allow} is a statement AND a POU pragma; before a METHOD only what
+    // follows decides which parse survives.
+    [$.pou_pragma, $._stmt],
     [$.case_selection],
     [$.case_body],
   ],
@@ -378,7 +381,10 @@ module.exports = grammar({
 
     ERR_access_spec_in_method_prototype: ($) => prec(-1, $.access_spec),
 
-    ERR_method_decl_in_body: ($) => prec(-1, $.method_decl),
+    // prec.dynamic: when a GLR fork leaves both a clean parse and this
+    // error-recovery one alive ({allow} above a METHOD does exactly that),
+    // the recovery parse must lose.
+    ERR_method_decl_in_body: ($) => prec.dynamic(-1, prec(-1, $.method_decl)),
 
     // Table 3 - Comments
 
@@ -447,6 +453,17 @@ module.exports = grammar({
         alias("info", $.info),
       ),
 
+    // Allow pragma - silences the named lint rules at this site.
+    // {allow 'rule-name' ...} — several names in one pragma are legal.
+    // As a statement it covers the NEXT statement; above a POU, the whole POU.
+    allow_pragma: ($) =>
+      prec(1, seq(
+        "{",
+        "allow",
+        repeat1(field("rule", $.pragma_string)),
+        "}",
+      )),
+
     // Test pragma - marks a POU as a test entry point
     // {test}
     test_pragma: (_) => prec(1, token(seq("{", "test", "}"))),
@@ -464,6 +481,7 @@ module.exports = grammar({
         $.once_pragma,
         $.warn_pragma,
         $.extern_pragma,
+        $.allow_pragma,
       ),
 
     // Table 5 - Numeric literal
@@ -1939,6 +1957,7 @@ module.exports = grammar({
         // Throws a wasm-level exception with a STRING payload
         $.raise_stmt,
         $.wasm_pragma,
+        $.allow_pragma,
         $.ERR_method_decl_in_body
       ),
 
