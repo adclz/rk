@@ -99,6 +99,15 @@ static SURROUND_SPACES: &str = r##"
 (extern_result ")" @prepend_antispace)
 (pragma_string) @leaf
 
+; Allow pragma: normalize spacing between children
+; In pou_pragma position (above a POU or METHOD) it gets its own line —
+; without this it glues onto the preceding END_VAR.
+(pou_pragma (allow_pragma) @prepend_hardline)
+(allow_pragma "{" @append_antispace)
+(allow_pragma "allow" @append_space)
+(allow_pragma rule: (pragma_string) @append_space)
+(allow_pragma "}" @prepend_antispace)
+
 ; Test pragma: on its own line before the POU keyword
 (test_pragma) @leaf @append_hardline
 "##;
@@ -193,6 +202,7 @@ static NEW_LINES: &str = r##"
     (super_body_invocation)
     (extern_pragma)
     (wasm_pragma)
+    (allow_pragma)
     "RETURN"
     (if_stmt)
     (case_stmt)
@@ -390,6 +400,7 @@ static ALLOW_BLANK_LINE: &str = r#"
     (line_comment) (c_style_comment) (pascal_style_comment)
     (namespace_elements)
     (test_pragma)
+    (allow_pragma)
 ] @allow_blank_line_before
 
 (stmt_list . (_) @allow_blank_line_before)
