@@ -21,10 +21,7 @@ use crate::{
 
 /// Workspace-relative file and 1-based line of a test FUNCTION, for the
 /// manifest; relative so the artifact is reproducible across machines.
-fn test_location<'db>(
-    db: &'db dyn WorkspaceDataBase,
-    func: Function<'db>,
-) -> (String, u32) {
+fn test_location<'db>(db: &'db dyn WorkspaceDataBase, func: Function<'db>) -> (String, u32) {
     use db::workspace::Workspace;
     use hir::{HasName, HirNodeInfo};
 
@@ -514,8 +511,7 @@ fn lower_module_from_pous<'db>(
 
     // Build the CONFIGURATION's schedule: allocate one instance per program
     // configuration (recording its RETAIN fields) and resolve task periods.
-    let schedule =
-        crate::schedule::lower_schedule(db, config, &mut memory_layout, &program_infos)?;
+    let schedule = crate::schedule::lower_schedule(db, config, &mut memory_layout, &program_infos)?;
 
     let mut module = MirModule {
         functions,
@@ -595,8 +591,7 @@ fn lower_module_from_pous<'db>(
                     )));
                 };
                 for f in &info.struct_type.fields {
-                    let path =
-                        crate::debug_symbols::join_path(db, inst.inst_name.text(db), f.name);
+                    let path = crate::debug_symbols::join_path(db, inst.inst_name.text(db), f.name);
                     // Per-field leaf budget, matching `collect_root`'s per-root budget.
                     crate::debug_symbols::collect_root(
                         db,
@@ -1236,15 +1231,13 @@ fn rewrite_globals_place(
             name: Some(name),
             address,
             ty,
-        } => {
-            match globals.get(name) {
-                Some((addr, global_ty)) => {
-                    *address = *addr;
-                    *ty = global_ty.clone();
-                }
-                None => missing.push(*name),
+        } => match globals.get(name) {
+            Some((addr, global_ty)) => {
+                *address = *addr;
+                *ty = global_ty.clone();
             }
-        }
+            None => missing.push(*name),
+        },
         MirPlace::Local(_) => {}
         MirPlace::Field { base, .. } | MirPlace::Deref { base, .. } => {
             rewrite_globals_place(base, globals, missing);
@@ -1399,7 +1392,6 @@ fn collect_const_inits<'db>(
     >,
     string_pool: &std::rc::Rc<std::cell::RefCell<crate::lower::lower_expr::StringPool>>,
 ) -> Result<Vec<crate::stmt::MirStmt>, LowerTypeError> {
-
     let mut stmts = Vec::new();
 
     // Every fragment's VAR_GLOBALs.
@@ -1408,6 +1400,15 @@ fn collect_const_inits<'db>(
             let Some((addr, ty)) = global_table.get(&v.name(db)) else {
                 continue;
             };
+            // TYPE defaults first; a declaration init overlays by store order.
+            super::lower_func::lower_type_default_inits(
+                db,
+                super::lower_func::InitTarget::Static { base: *addr },
+                ty,
+                v.spec(db).infer(db),
+                string_pool,
+                &mut stmts,
+            )?;
             if let Some(init) = v.init(db) {
                 super::lower_func::lower_resolved_init_into(
                     db,
@@ -1454,6 +1455,15 @@ fn collect_const_inits<'db>(
                         continue;
                     };
                     let addr = inst.instance_addr + field.offset;
+                    // TYPE defaults first, same overlay rule as everywhere.
+                    super::lower_func::lower_type_default_inits(
+                        db,
+                        super::lower_func::InitTarget::Static { base: addr },
+                        &field.ty,
+                        var.spec(db).infer(db),
+                        string_pool,
+                        &mut stmts,
+                    )?;
                     if let Some(init) = var.init(db) {
                         super::lower_func::lower_resolved_init_into(
                             db,

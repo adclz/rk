@@ -309,6 +309,21 @@ fn lower_function_inner<'db>(
             _ => {}
         }
         let var_ty = lower_var_type(db, *var)?;
+        // The TYPE's defaults come first regardless of a declaration init:
+        // `p : Pt := (y := 9)` keeps the type's `x := 3`, because the
+        // declaration's stores land after and only where it names.
+        lower_type_default_inits(
+            db,
+            InitTarget::Local {
+                name: var.name(db),
+                base: 0,
+                whole: matches!(var_ty, crate::types::MirType::Elementary(_)),
+            },
+            &var_ty,
+            var.spec(db).infer(db),
+            &string_pool,
+            &mut init_stmts,
+        )?;
         if let Some(init_expr) = var.init(db) {
             lower_var_init(
                 db,
@@ -1540,6 +1555,36 @@ pub(crate) fn lower_declared_instance_inits<'db>(
         },
         _ => Ok(()),
     }
+}
+
+/// Emit the initializers a variable's TYPE contributes (an alias's `:= 5`,
+/// STRUCT field defaults) before the declaration's own; HIR's
+/// [`type_default_inits`] decides what applies.
+///
+/// [`type_default_inits`]: hir::hir_ty::head::inheritance::type_default_inits
+pub(crate) fn lower_type_default_inits<'db>(
+    db: &'db dyn WorkspaceDataBase,
+    target: InitTarget,
+    mir_ty: &crate::types::MirType,
+    hir_ty: hir::hir_ty::ty::Type<'db>,
+    string_pool: &Rc<RefCell<super::lower_expr::StringPool>>,
+    out: &mut Vec<MirStmt>,
+) -> Result<(), LowerTypeError> {
+    for entry in hir::hir_ty::head::inheritance::type_default_inits(db, hir_ty) {
+        let mut slots = Vec::new();
+        member_path_slots(mir_ty, &entry.path, 0, &mut slots);
+        for (offset, slot_ty) in slots {
+            lower_init_leaves(
+                db,
+                target.offset_by(offset),
+                &slot_ty,
+                entry.init,
+                string_pool,
+                out,
+            )?;
+        }
+    }
+    Ok(())
 }
 
 /// Emit one `Assign { Global, value }` per resolved initializer leaf; MIR

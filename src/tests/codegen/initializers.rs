@@ -822,11 +822,12 @@ fn retain_array_restores_the_whole_band(mut with_db: db::RootDatabase) {
 // non-`is_const_value` leaf, and nothing in HIR refuses it first.
 //
 // These tests assert TODAY's wrong behavior on purpose, so the fix cannot
-// land without flipping them into real assertions. The fix has two halves:
-// FOLD constant references (the `:= k` case is textbook-legal ST), and REFUSE
-// genuinely non-constant leaves with a diagnostic — plus a ruling for FB
-// member defaults, which are per-instantiation-site (a `:= SomeGlobal`
-// default WORKS as a function local and zeroes as a PROGRAM field).
+// land without flipping them into real assertions. The RULING is decided
+// (once-per-type): TYPE defaults, FB/CLASS member defaults and static-host
+// initializers must be constant-foldable — CONSTANT references FOLD, and
+// anything site-dependent (`:= SomeGlobal`) is REFUSED with a diagnostic,
+// making the per-host divergence inexpressible. Plain FUNCTION locals keep
+// runtime-evaluated inits; they are not type members.
 // ---------------------------------------------------------------------------
 
 #[rstest]
@@ -857,7 +858,12 @@ fn known_bug_global_init_from_global_is_silently_dropped(mut with_db: db::RootDa
     // WRONG on purpose: `b := a` should either yield 5 (declaration-ordered
     // stores) or be refused at check. When this assertion fails, the bug is
     // fixed — replace it with the decided behavior.
-    assert_eq!(b, 0, "known bug: the initializer is silently dropped");
+    assert_eq!(
+        b, 0,
+        "b is no longer zero — the silent drop is fixed: make this a real \
+         assertion (b == 5 if stores are declaration-ordered, or delete the \
+         test if `:= a` is now refused at check)"
+    );
 }
 
 #[rstest]
@@ -887,6 +893,170 @@ fn known_bug_global_init_from_constant_is_silently_dropped(mut with_db: db::Root
     // constant references fold. See project_static_init_dropped.
     assert_eq!(
         v, 0,
-        "known bug: the CONSTANT reference is silently dropped"
+        "g is no longer zero — CONSTANT references now fold: assert v == 7 \
+         and retire this pin"
+    );
+}
+
+// ---------------------------------------------------------------------------
+// TYPE-level defaults: `TYPE ... END_TYPE` initial values — alias `:= 5`
+// ---------------------------------------------------------------------------
+
+const TYPE_DEFAULTS: &str = r#"
+    TYPE AliasInt : INT := 5; END_TYPE
+    TYPE ChainInt : AliasInt; END_TYPE
+    TYPE Pt : STRUCT x : INT := 3; y : INT := 4; END_STRUCT; END_TYPE
+    TYPE Box : STRUCT origin : Pt; label : INT := 7; END_STRUCT; END_TYPE
+    TYPE Row : ARRAY[0..1] OF Pt; END_TYPE
+"#;
+
+#[rstest]
+fn type_defaults_apply_to_function_locals(mut with_db: db::RootDatabase) {
+    let source = format!(
+        r#"{TYPE_DEFAULTS}
+        FUNCTION run : DINT
+        VAR
+            v : AliasInt;
+            c : ChainInt;
+            p : Pt;
+            b : Box;
+            r : Row;
+        END_VAR
+            (* accumulate in the DINT lane: INT wraps at 16 bits by the
+               pinned sub-width invariant, and 55343 does not fit *)
+            run := v;
+            run := run * 10 + c;
+            run := run * 10 + p.x;
+            run := run * 10 + b.origin.y;
+            run := run * 10 + r[1].x;
+        END_FUNCTION
+    "#
+    );
+    let wasm = compile_to_wasm(&mut with_db, &source);
+    let v: i32 = crate::tests::codegen::execute_wasm(&wasm, "run", ());
+    assert_eq!(v, 55343, "alias, chain, struct, nested, array-of-struct");
+}
+
+#[rstest]
+fn a_partial_declaration_init_overlays_the_type_defaults(mut with_db: db::RootDatabase) {
+    let source = format!(
+        r#"{TYPE_DEFAULTS}
+        FUNCTION run : INT
+        VAR p : Pt := (y := 9); END_VAR
+            run := p.x * 100 + p.y;
+        END_FUNCTION
+    "#
+    );
+    let wasm = compile_to_wasm(&mut with_db, &source);
+    let v: i32 = crate::tests::codegen::execute_wasm(&wasm, "run", ());
+    assert_eq!(v, 309, "x keeps the TYPE's 3, y takes the declaration's 9");
+}
+
+#[rstest]
+fn type_defaults_apply_to_fb_members(mut with_db: db::RootDatabase) {
+    let source = format!(
+        r#"{TYPE_DEFAULTS}
+        FUNCTION_BLOCK holder
+        VAR p : Pt; END_VAR
+        END_FUNCTION_BLOCK
+
+        FUNCTION run : INT
+        VAR h : holder; END_VAR
+            h();
+            run := h.p.x * 100 + h.p.y;
+        END_FUNCTION
+    "#
+    );
+    let wasm = compile_to_wasm(&mut with_db, &source);
+    let v: i32 = crate::tests::codegen::execute_wasm(&wasm, "run", ());
+    assert_eq!(v, 304, "an FB member of a defaulted struct type");
+}
+
+#[rstest]
+fn type_defaults_apply_to_the_static_hosts(mut with_db: db::RootDatabase) {
+    let source = format!(
+        r#"{TYPE_DEFAULTS}
+        PROGRAM P
+        VAR RETAIN seen : INT; END_VAR
+        VAR p : Pt; END_VAR
+        VAR_EXTERNAL g : Pt; END_VAR
+            seen := p.x * 1000 + p.y * 100 + g.x * 10 + g.y;
+        END_PROGRAM
+
+        CONFIGURATION Cfg
+        VAR_GLOBAL g : Pt; END_VAR
+            RESOURCE Res ON CPU
+                TASK T(INTERVAL := T#10ms, PRIORITY := 1);
+                PROGRAM P1 WITH T : P;
+            END_RESOURCE
+        END_CONFIGURATION
+    "#
+    );
+    let (_mir, wasm) = compile_to_mir_and_wasm(&mut with_db, &source);
+    let mut plc = Plc::load(&wasm, Config::default()).expect("load");
+    plc.run(1).expect("scan");
+    assert_eq!(
+        read_first_i32(&plc),
+        3434,
+        "TYPE defaults in a PROGRAM field AND a config global"
+    );
+}
+
+/// Constant ARITHMETIC in a type default folds and applies — the control for
+/// the known-bug pair below.
+#[rstest]
+fn type_default_with_const_arithmetic_applies(mut with_db: db::RootDatabase) {
+    let source = r#"
+        TYPE ArithInt : INT := 2 + 3; END_TYPE
+        FUNCTION run : INT
+        VAR v : ArithInt; END_VAR
+            run := v;
+        END_FUNCTION
+    "#;
+    let wasm = compile_to_wasm(&mut with_db, source);
+    let v: i32 = crate::tests::codegen::execute_wasm(&wasm, "run", ());
+    assert_eq!(v, 5);
+}
+
+/// KNOWN BUG, fifth surface of project_static_init_dropped: a type default
+/// referencing a CONSTANT checks clean and reads ZERO — at BOTH hosts,
+/// through two different silent mechanisms. Statics: the `is_const_value`
+/// gate skips the leaf. Locals: the leaf's name does not resolve from the
+/// host's scope, and codegen's variable-not-in-local-map arm quietly pushes
+/// a constant 0 (that arm cannot be hardened to a panic until constant
+/// folding lands, because this path reaches it).
+#[rstest]
+fn known_bug_type_default_constant_ref_is_zero_at_both_hosts(mut with_db: db::RootDatabase) {
+    let source = r#"
+        TYPE AliasK : INT := K; END_TYPE
+
+        FUNCTION local_host : INT
+        VAR v : AliasK; END_VAR
+            local_host := v;
+        END_FUNCTION
+
+        PROGRAM P
+        VAR RETAIN seen : INT; END_VAR
+        VAR s : AliasK; END_VAR
+            seen := s * 10 + local_host();
+        END_PROGRAM
+
+        CONFIGURATION Cfg
+        VAR_GLOBAL CONSTANT K : INT := 7; END_VAR
+            RESOURCE Res ON CPU
+                TASK T(INTERVAL := T#10ms, PRIORITY := 1);
+                PROGRAM P1 WITH T : P;
+            END_RESOURCE
+        END_CONFIGURATION
+    "#;
+    let (_mir, wasm) = compile_to_mir_and_wasm(&mut with_db, source);
+    let mut plc = Plc::load(&wasm, Config::default()).expect("load");
+    plc.run(1).expect("scan");
+    assert_eq!(
+        read_first_i32(&plc),
+        0,
+        "no longer zero — constant references now fold somewhere: 77 = both \
+         hosts fixed (assert 77 and retire this pin), 70 = static host only, \
+         7 = local host only"
     );
 }

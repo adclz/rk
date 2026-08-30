@@ -1,7 +1,10 @@
 use crate::{
     AstId, HasModifiers, HasName, HasVisibility, HirNodeInfo, Modifier, Visibility,
     hir_def::{
-        expressions::{expression::InitExpr, spec::{Spec, SpecKind}},
+        expressions::{
+            expression::InitExpr,
+            spec::{Spec, SpecKind},
+        },
         interned::identifier::{CaselessIdent, Ident},
         pous::{class::MethodDecl, interface::MethodPrototype, pou::Pou, variable::VariableDecl},
         scope::ScopeId,
@@ -377,6 +380,16 @@ fn collect_instance_initializers<'db>(
     for member in instance_members(db, pou) {
         prefix.push(InstanceInitStep::Field(member.var.name(db)));
 
+        // The member TYPE's own defaults come first either way: an explicit
+        // member init overlays them by store order, and a partial one
+        // (`p : Pt := (y := 9)`) keeps the type's other fields.
+        collect_type_defaults(
+            db,
+            member.var.spec(db).infer(db),
+            prefix,
+            out,
+            &mut Vec::new(),
+        );
         if let Some(init) = member.var.init(db) {
             // An explicit initializer covers the member whole, arrays included
             // (`sa : ARRAY[0..1] OF Cell := [(v := 7), (v := 7)]`), so it is
@@ -503,5 +516,74 @@ pub fn implementing_method<'db>(
         // A prototype is a signature, not an implementation.
         MethodRef::Declared(decl) => Some(decl),
         MethodRef::Prototype(_) => None,
+    }
+}
+
+/// Every initializer a TYPE contributes to a fresh value of it, flattened:
+/// an alias's own `:= 5`, a STRUCT's field defaults, an array type's
+/// `:= [1, 2, 3]` — and their compositions, `ARRAY OF Pt` included.
+///
+/// The declaration-site initializer is NOT here; it is emitted AFTER these by
+/// every consumer, so an explicit `(y := 9)` overlays the type's `x := 3,
+/// y := 4` by store order rather than by path arithmetic.
+pub fn type_default_inits<'db>(
+    db: &'db dyn WorkspaceDataBase,
+    ty: crate::hir_ty::ty::Type<'db>,
+) -> Vec<InstanceInit<'db>> {
+    let mut out = Vec::new();
+    collect_type_defaults(db, ty, &mut Vec::new(), &mut out, &mut Vec::new());
+    out
+}
+
+fn collect_type_defaults<'db>(
+    db: &'db dyn WorkspaceDataBase,
+    ty: crate::hir_ty::ty::Type<'db>,
+    prefix: &mut Vec<InstanceInitStep>,
+    out: &mut Vec<InstanceInit<'db>>,
+    visited: &mut Vec<crate::hir_def::pous::data_type::DataType<'db>>,
+) {
+    use crate::hir_ty::ty::Type;
+    match ty {
+        Type::DataType(dt) => {
+            // Same path-guard as the instance walk: recursion checks refuse a
+            // cyclic TYPE, this only keeps erroneous input from hanging.
+            if visited.contains(&dt) {
+                return;
+            }
+            visited.push(dt);
+            if let Some(init) = dt.init(db) {
+                // A type-level init covers the value whole, like an explicit
+                // member init: taken as written, not descended.
+                out.push(InstanceInit {
+                    path: prefix.clone(),
+                    init,
+                });
+            } else {
+                collect_type_defaults(db, dt.spec(db).infer(db), prefix, out, visited);
+            }
+            visited.pop();
+        }
+        Type::Struct(s) => {
+            for element in &s.elements(db) {
+                prefix.push(InstanceInitStep::Field(element.name(db)));
+                // The element type's own defaults first, the element's
+                // explicit default after — later stores win, so a partial
+                // struct-typed default overlays instead of erasing.
+                collect_type_defaults(db, element.spec(db).infer(db), prefix, out, visited);
+                if let Some(init) = element.init(db) {
+                    out.push(InstanceInit {
+                        path: prefix.clone(),
+                        init,
+                    });
+                }
+                prefix.pop();
+            }
+        }
+        Type::Array(array) => {
+            prefix.push(InstanceInitStep::AllElements);
+            collect_type_defaults(db, array.of_type(db).infer(db), prefix, out, visited);
+            prefix.pop();
+        }
+        _ => {}
     }
 }
