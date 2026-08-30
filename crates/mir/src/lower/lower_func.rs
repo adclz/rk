@@ -327,6 +327,8 @@ fn lower_function_inner<'db>(
                 InitTarget::Local {
                     name: var.name(db),
                     base: 0,
+                    // members are reached THROUGH the local, never as it
+                    whole: false,
                 },
                 &var_ty,
                 var.spec(db).infer(db),
@@ -412,29 +414,33 @@ fn lower_function_block_inner<'db>(
     let method_jobs: Vec<(
         hir::hir_def::pous::class::MethodDecl<'db>,
         Option<&super::mono_iface::IfaceInstance<'db>>,
-    )> = emittable_methods(db, hir::hir_def::pous::pou::Pou::FunctionBlock(fb), fb.methods(db))
-        .iter()
-        .flat_map(|method| -> Vec<_> {
-            if method
-                .variables(db)
+    )> = emittable_methods(
+        db,
+        hir::hir_def::pous::pou::Pou::FunctionBlock(fb),
+        fb.methods(db),
+    )
+    .iter()
+    .flat_map(|method| -> Vec<_> {
+        if method
+            .variables(db)
+            .iter()
+            .any(|v| super::mono_iface::is_interface_param(db, v))
+        {
+            iface_method_instances
                 .iter()
-                .any(|v| super::mono_iface::is_interface_param(db, v))
-            {
-                iface_method_instances
-                    .iter()
-                    .filter(|inst| {
-                        matches!(
-                            inst.target,
-                            super::mono_iface::IfaceTarget::Method { method: m, .. } if m == *method
-                        )
-                    })
-                    .map(|inst| (*method, Some(*inst)))
-                    .collect()
-            } else {
-                vec![(*method, None)]
-            }
-        })
-        .collect();
+                .filter(|inst| {
+                    matches!(
+                        inst.target,
+                        super::mono_iface::IfaceTarget::Method { method: m, .. } if m == *method
+                    )
+                })
+                .map(|inst| (*method, Some(*inst)))
+                .collect()
+        } else {
+            vec![(*method, None)]
+        }
+    })
+    .collect();
 
     // Lower each method as a separate function with 'this' parameter
     for (method, spec) in method_jobs {
@@ -469,23 +475,23 @@ fn lower_function_block_inner<'db>(
                 next_local_idx += param_wasm_width(&param.ty, param.kind);
                 params.push(param);
             } else {
-                    let ty = lower_var_type(db, *var)?;
-                    let storage = allocate_local_storage(
-                        var.name(db),
-                        &ty,
-                        address_taken.contains(&var.name(db).caseless(db)),
-                        &mut next_local_idx,
-                        memory_layout,
-                    );
-                    locals.push(MirLocal {
-                        name: var.name(db),
-                        ty,
-                        init: None,
-                        kind: MirLocalKind::Var,
-                        storage,
-                        // FB/class method local — stateless per call.
-                        var_storage: MirVariableStorage::Automatic,
-                    });
+                let ty = lower_var_type(db, *var)?;
+                let storage = allocate_local_storage(
+                    var.name(db),
+                    &ty,
+                    address_taken.contains(&var.name(db).caseless(db)),
+                    &mut next_local_idx,
+                    memory_layout,
+                );
+                locals.push(MirLocal {
+                    name: var.name(db),
+                    ty,
+                    init: None,
+                    kind: MirLocalKind::Var,
+                    storage,
+                    // FB/class method local — stateless per call.
+                    var_storage: MirVariableStorage::Automatic,
+                });
             }
         }
 
@@ -668,29 +674,33 @@ fn lower_class_inner<'db>(
     let method_jobs: Vec<(
         hir::hir_def::pous::class::MethodDecl<'db>,
         Option<&super::mono_iface::IfaceInstance<'db>>,
-    )> = emittable_methods(db, hir::hir_def::pous::pou::Pou::Class(class), class.methods(db))
-        .iter()
-        .flat_map(|method| -> Vec<_> {
-            if method
-                .variables(db)
+    )> = emittable_methods(
+        db,
+        hir::hir_def::pous::pou::Pou::Class(class),
+        class.methods(db),
+    )
+    .iter()
+    .flat_map(|method| -> Vec<_> {
+        if method
+            .variables(db)
+            .iter()
+            .any(|v| super::mono_iface::is_interface_param(db, v))
+        {
+            iface_method_instances
                 .iter()
-                .any(|v| super::mono_iface::is_interface_param(db, v))
-            {
-                iface_method_instances
-                    .iter()
-                    .filter(|inst| {
-                        matches!(
-                            inst.target,
-                            super::mono_iface::IfaceTarget::Method { method: m, .. } if m == *method
-                        )
-                    })
-                    .map(|inst| (*method, Some(*inst)))
-                    .collect()
-            } else {
-                vec![(*method, None)]
-            }
-        })
-        .collect();
+                .filter(|inst| {
+                    matches!(
+                        inst.target,
+                        super::mono_iface::IfaceTarget::Method { method: m, .. } if m == *method
+                    )
+                })
+                .map(|inst| (*method, Some(*inst)))
+                .collect()
+        } else {
+            vec![(*method, None)]
+        }
+    })
+    .collect();
 
     for (idx, (method, spec)) in (start_index..).zip(method_jobs) {
         let mut params = Vec::new();
@@ -724,23 +734,23 @@ fn lower_class_inner<'db>(
                 next_local_idx += param_wasm_width(&param.ty, param.kind);
                 params.push(param);
             } else {
-                    let ty = lower_var_type(db, *var)?;
-                    let storage = allocate_local_storage(
-                        var.name(db),
-                        &ty,
-                        address_taken.contains(&var.name(db).caseless(db)),
-                        &mut next_local_idx,
-                        memory_layout,
-                    );
-                    locals.push(MirLocal {
-                        name: var.name(db),
-                        ty,
-                        init: None,
-                        kind: MirLocalKind::Var,
-                        storage,
-                        // FB/class method local — stateless per call.
-                        var_storage: MirVariableStorage::Automatic,
-                    });
+                let ty = lower_var_type(db, *var)?;
+                let storage = allocate_local_storage(
+                    var.name(db),
+                    &ty,
+                    address_taken.contains(&var.name(db).caseless(db)),
+                    &mut next_local_idx,
+                    memory_layout,
+                );
+                locals.push(MirLocal {
+                    name: var.name(db),
+                    ty,
+                    init: None,
+                    kind: MirLocalKind::Var,
+                    storage,
+                    // FB/class method local — stateless per call.
+                    var_storage: MirVariableStorage::Automatic,
+                });
             }
         }
 
@@ -1298,6 +1308,7 @@ fn lower_var_init<'db>(
         InitTarget::Local {
             name: var_name,
             base: 0,
+            whole: true,
         },
         var_ty,
         init_expr,
@@ -1314,19 +1325,20 @@ pub(crate) enum InitTarget {
     /// instances, config globals), baked into `__init`: only constant leaves
     /// qualify.
     Static { base: u32 },
-    /// A local instance, addressed as a field over the local's own base. These
-    /// are emitted into the owning function's prologue, where a non-constant
-    /// leaf is fine.
-    Local { name: Ident, base: u32 },
+    /// A local instance, addressed over the local's own base, emitted into
+    /// the owning function's prologue. `whole` says the target is the named
+    /// local itself.
+    Local { name: Ident, base: u32, whole: bool },
 }
 
 impl InitTarget {
     fn offset_by(self, delta: u32) -> Self {
         match self {
             InitTarget::Static { base } => InitTarget::Static { base: base + delta },
-            InitTarget::Local { name, base } => InitTarget::Local {
+            InitTarget::Local { name, base, whole } => InitTarget::Local {
                 name,
                 base: base + delta,
+                whole,
             },
         }
     }
@@ -1350,7 +1362,8 @@ fn lower_init_leaves<'db>(
         return Ok(()); // HIR produced no resolved leaves (non-flattenable init)
     };
     for leaf in leaves {
-        let value = ExprLowerCtx::new(db, string_pool.clone()).lower_expr(leaf.value)?;
+        let ctx = ExprLowerCtx::new(db, string_pool.clone());
+        let mut value = ctx.lower_expr(leaf.value)?;
         let (offset, leaf_ty) = if leaf.path.is_empty() {
             (0, ty.clone())
         } else {
@@ -1359,10 +1372,32 @@ fn lower_init_leaves<'db>(
             };
             found
         };
+        // The DECLARED type wins. HIR accepts an implicitly-widening
+        // initializer (`r : REAL := 1 + 1`), so without this cast the value
+        // keeps the expression's lane: invalid wasm for a local or a global,
+        // and for a memory-resident field an i32 stored into a REAL slot —
+        // integer BITS read back as 2.8e-45, from code `rk check` called
+        // clean. `is_const_value` sees through Cast, so static targets keep
+        // their initializers.
+        if let crate::types::MirType::Elementary(to) = &leaf_ty
+            && let Ok(from) = ctx.expr_to_mir_elementary(leaf.value)
+            && from != *to
+        {
+            value = crate::expr::MirExpr::Cast {
+                expr: Box::new(value),
+                from,
+                to: *to,
+            };
+        }
         let place = match target.offset_by(offset) {
             InitTarget::Static { base } => {
                 if !is_const_value(&value) {
-                    continue; // non-const init element — validated/diagnosed by the HIR
+                    // KNOWN BUG: nothing validates this — HIR checks clean and
+                    // the initializer is silently DROPPED (the slot stays 0),
+                    // even for a CONSTANT reference, which is legal ST. Pinned
+                    // by known_bug_global_init_* in codegen/initializers.rs;
+                    // the fix is fold-constants + refuse-the-rest.
+                    continue;
                 }
                 MirPlace::Global {
                     name: None,
@@ -1370,16 +1405,12 @@ fn lower_init_leaves<'db>(
                     ty: leaf_ty,
                 }
             }
-            // Only a whole scalar local is addressed directly; anything at an
-            // offset lives in linear memory and is reached as a field. A STRING
-            // or aggregate leaf takes the Field arm even at offset 0: the
-            // targets here are memory-resident instance structs, and a bare
-            // `Local` hides the leaf's type from codegen — a STRING default on
-            // an instance's first field emitted a scalar store that wrote the
-            // LENGTH over the literal's pool bytes and left an operand on the
-            // stack (invalid wasm).
-            InitTarget::Local { name, base }
-                if base == 0
+            // Only a local that is the whole scalar-shaped target is addressed
+            // directly; everything else takes the Field arm, since a bare `Local`
+            // hides the leaf's type from codegen.
+            InitTarget::Local { name, base, whole }
+                if whole
+                    && base == 0
                     && leaf.path.is_empty()
                     && !matches!(
                         leaf_ty,
@@ -1390,7 +1421,7 @@ fn lower_init_leaves<'db>(
             {
                 MirPlace::Local(name)
             }
-            InitTarget::Local { name, base } => MirPlace::Field {
+            InitTarget::Local { name, base, .. } => MirPlace::Field {
                 base: Box::new(MirPlace::Local(name)),
                 // `field_name` is metadata only — addressing uses `field_offset`.
                 field_name: name,
@@ -1504,15 +1535,12 @@ pub(crate) fn lower_declared_instance_inits<'db>(
             Ok(())
         }
         MirType::Struct(struct_ty) => match pou_of_type(db, hir_ty.normalize(db)) {
-            Some(pou) => {
-                lower_instance_member_inits(db, target, struct_ty, pou, string_pool, out)
-            }
+            Some(pou) => lower_instance_member_inits(db, target, struct_ty, pou, string_pool, out),
             None => Ok(()),
         },
         _ => Ok(()),
     }
 }
-
 
 /// Emit one `Assign { Global, value }` per resolved initializer leaf; MIR
 /// walks each leaf's path over the layout and never re-walks the

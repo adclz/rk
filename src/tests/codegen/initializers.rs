@@ -151,10 +151,13 @@ fn nested_multidim_array_initializer(mut with_db: db::RootDatabase) {
     );
 }
 
-/// Multi-dimensional element ACCESS via chained brackets `m[i][j]` (the valid IEC
-/// syntax — the comma form `m[i,j]` is initializer-only). Each chained `Index`
-/// addresses one dimension; the positional checksum pins every cell row-major.
-/// (`DINT` because the weights overflow 16-bit `INT`.)
+/// Multi-dimensional element ACCESS via chained brackets `m[i][j]`. Both forms
+/// are accepted since the conformance arc: `m[i, j]` is the standard's own
+/// spelling (one subscript list — see
+/// `multi_dim_initialization_fills_rightmost_fastest`), and the chained form
+/// pins that each `Index` addresses one dimension. The positional checksum
+/// pins every cell row-major. (`DINT` because the weights overflow 16-bit
+/// `INT`.)
 #[rstest]
 fn multidim_element_access(mut with_db: db::RootDatabase) {
     let source = r#"
@@ -519,7 +522,11 @@ fn config_global_initializer_applies(mut with_db: db::RootDatabase) {
     let (_mir, wasm) = compile_to_mir_and_wasm(&mut with_db, source);
     let mut plc = Plc::load(&wasm, Config::default()).expect("load");
     plc.run(1).expect("scan");
-    assert_eq!(read_first_i32(&plc), 42, "the config global's initializer ran");
+    assert_eq!(
+        read_first_i32(&plc),
+        42,
+        "the config global's initializer ran"
+    );
 }
 
 /// Every name in a global list is its own storage, and the shared
@@ -553,7 +560,11 @@ fn a_global_name_list_gives_each_name_its_own_slot(mut with_db: db::RootDatabase
     plc.run(1).expect("scan");
     // Both start at 5; ga is bumped to 6 and gb is untouched, so the two
     // names cannot be aliasing one slot.
-    assert_eq!(read_first_i32(&plc), 605, "ga=6 and gb=5 are separate storage");
+    assert_eq!(
+        read_first_i32(&plc),
+        605,
+        "ga=6 and gb=5 are separate storage"
+    );
 }
 
 /// The standard's repetition initializer: `8(-4095)` fills eight slots.
@@ -617,4 +628,265 @@ fn multi_dim_initialization_fills_rightmost_fastest(mut with_db: db::RootDatabas
     let wasm = compile_to_wasm(&mut with_db, source);
     let result: i32 = super::execute_wasm(&wasm, "run", ());
     assert_eq!(result, 346, "m[0,2]=3, m[1,0]=4, m[1,2]=6: row-major fill");
+}
+
+// ---------------------------------------------------------------------------
+// Implicitly-WIDENING initializers: the declared type wins over the
+// expression's. `r : REAL := 1 + 1` is INT arithmetic HIR accepts by
+// widening; lowering it at the expression's lane made invalid wasm for
+// locals and globals, and for memory-resident fields stored integer BITS
+// into the REAL slot (2 read back as 2.8e-45) — all at exit 0.
+// ---------------------------------------------------------------------------
+
+/// Every widening pair on a FUNCTION local, pinned by VALUE.
+#[rstest]
+fn widening_local_initializers_carry_the_value(mut with_db: db::RootDatabase) {
+    let source = r#"
+        FUNCTION fr : REAL
+        VAR r : REAL := 1 + 1; END_VAR
+            fr := r;
+        END_FUNCTION
+
+        FUNCTION fl : LREAL
+        VAR r : LREAL := 1 + 1; END_VAR
+            fl := r;
+        END_FUNCTION
+
+        FUNCTION fi : LINT
+        VAR r : LINT := 1 + 1; END_VAR
+            fi := r;
+        END_FUNCTION
+    "#;
+    let wasm = compile_to_wasm(&mut with_db, source);
+    let r: f32 = crate::tests::codegen::execute_wasm(&wasm, "fr", ());
+    assert_eq!(r, 2.0);
+    let l: f64 = crate::tests::codegen::execute_wasm(&wasm, "fl", ());
+    assert_eq!(l, 2.0);
+    let i: i64 = crate::tests::codegen::execute_wasm(&wasm, "fi", ());
+    assert_eq!(i, 2);
+}
+
+/// The memory-store half of the same bug: an FB member default and a
+/// VAR_INPUT default, read back through the instance.
+#[rstest]
+fn widening_member_initializers_carry_the_value(mut with_db: db::RootDatabase) {
+    let source = r#"
+        FUNCTION_BLOCK fb
+        VAR_INPUT gain : REAL := 1 + 1; END_VAR
+        VAR bias : REAL := 2 + 3; END_VAR
+        END_FUNCTION_BLOCK
+
+        FUNCTION use : REAL
+        VAR i : fb; END_VAR
+            i();
+            use := i.gain + i.bias;
+        END_FUNCTION
+    "#;
+    let wasm = compile_to_wasm(&mut with_db, source);
+    let v: f32 = crate::tests::codegen::execute_wasm(&wasm, "use", ());
+    assert_eq!(v, 7.0, "2.0 + 5.0, not integer bits reinterpreted");
+}
+
+/// The OTHER trigger of the member-init bug, no widening involved: a plain
+/// literal on an FB's or CLASS's first REAL member, instantiated as a
+/// FUNCTION local. The old `Local` shortcut addressed the leaf as the
+/// INSTANCE local, whose memory info stores i32 — `f32.const` under
+/// `i32.store`, invalid wasm at exit 0. Only the `whole` flag fixes this
+/// one; the declared-lane cast never fires (from == to).
+#[rstest]
+fn literal_member_initializer_on_a_local_instance(mut with_db: db::RootDatabase) {
+    let source = r#"
+        FUNCTION_BLOCK fb
+        VAR r : REAL := 2.5; END_VAR
+        END_FUNCTION_BLOCK
+
+        CLASS c
+        VAR r : REAL := 1.25; END_VAR
+            METHOD get : REAL
+                get := r;
+            END_METHOD
+        END_CLASS
+
+        FUNCTION use : REAL
+        VAR
+            i : fb;
+            o : c;
+        END_VAR
+            i();
+            use := i.r + o.get();
+        END_FUNCTION
+    "#;
+    let wasm = compile_to_wasm(&mut with_db, source);
+    let v: f32 = crate::tests::codegen::execute_wasm(&wasm, "use", ());
+    assert_eq!(v, 3.75, "2.5 + 1.25 through both instance kinds");
+}
+
+/// The static half: a config global's widening initializer, applied by
+/// `__init` at load.
+#[rstest]
+fn widening_global_initializer_carries_the_value(mut with_db: db::RootDatabase) {
+    let source = r#"
+        PROGRAM P
+        VAR_EXTERNAL g : REAL; END_VAR
+            g := g;
+        END_PROGRAM
+
+        CONFIGURATION Cfg
+        VAR_GLOBAL g : REAL := 1 + 1; END_VAR
+            RESOURCE Res ON CPU
+                TASK T(INTERVAL := T#10ms, PRIORITY := 1);
+                PROGRAM P1 WITH T : P;
+            END_RESOURCE
+        END_CONFIGURATION
+    "#;
+    let (_mir, wasm) = compile_to_mir_and_wasm(&mut with_db, source);
+    let plc = Plc::load(&wasm, Config::default()).expect("load");
+    let g = f32::from_le_bytes(plc.read_globals()[..4].try_into().unwrap());
+    assert_eq!(g, 2.0);
+}
+
+/// Cold/warm across a MULTI-WORD retain band: `__init` fills a RETAIN array,
+/// a scan mutates several elements, and the warm restore must bring back the
+/// WHOLE band — a restore that only rewrote the first word passes the scalar
+/// cold/warm test above but fails the far element here.
+#[rstest]
+fn retain_array_restores_the_whole_band(mut with_db: db::RootDatabase) {
+    let source = r#"
+        PROGRAM P
+        VAR RETAIN a : ARRAY[0..3] OF DINT := [10, 20, 30, 40]; END_VAR
+            a[0] := a[0] + 1;
+            a[3] := a[3] + 1;
+        END_PROGRAM
+
+        CONFIGURATION Cfg
+            RESOURCE Res ON CPU
+                TASK T(INTERVAL := T#10ms, PRIORITY := 1);
+                PROGRAM P1 WITH T : P;
+            END_RESOURCE
+        END_CONFIGURATION
+    "#;
+    let (_mir, wasm) = compile_to_mir_and_wasm(&mut with_db, source);
+    let path = temp_path("retain_array");
+
+    let read4 = |plc: &Plc| -> Vec<i32> {
+        let r = plc.read_retain();
+        (0..4)
+            .map(|i| i32::from_le_bytes(r[i * 4..i * 4 + 4].try_into().unwrap()))
+            .collect()
+    };
+
+    // Cold: init fills the band, two scans bump the ends twice.
+    {
+        let mut plc = Plc::load(
+            &wasm,
+            Config {
+                retain_path: Some(path.clone()),
+                program_path: None,
+                ..Config::default()
+            },
+        )
+        .expect("load (cold)");
+        assert_eq!(read4(&plc), vec![10, 20, 30, 40], "initializer fills all");
+        plc.run(2).expect("scans");
+        assert_eq!(read4(&plc), vec![12, 20, 30, 42]);
+        plc.snapshot_retain().expect("snapshot");
+    }
+
+    // Warm: __init re-fills [10,20,30,40], then restore must overwrite ALL of
+    // it — first word AND last.
+    {
+        let plc = Plc::load(
+            &wasm,
+            Config {
+                retain_path: Some(path.clone()),
+                program_path: None,
+                ..Config::default()
+            },
+        )
+        .expect("load (warm)");
+        assert_eq!(
+            read4(&plc),
+            vec![12, 20, 30, 42],
+            "the whole band restored, not just the first word"
+        );
+    }
+
+    std::fs::remove_file(&path).ok();
+}
+
+// ---------------------------------------------------------------------------
+// KNOWN BUG, pinned until the fold-vs-refuse decision: a STATIC initializer
+// (config global, PROGRAM field) that references ANY variable — another
+// global, or even a CONSTANT — checks clean and is silently DROPPED by
+// `__init`: the slot stays 0. `lower_init_leaves`'s Static arm skips every
+// non-`is_const_value` leaf, and nothing in HIR refuses it first.
+//
+// These tests assert TODAY's wrong behavior on purpose, so the fix cannot
+// land without flipping them into real assertions. The fix has two halves:
+// FOLD constant references (the `:= k` case is textbook-legal ST), and REFUSE
+// genuinely non-constant leaves with a diagnostic — plus a ruling for FB
+// member defaults, which are per-instantiation-site (a `:= SomeGlobal`
+// default WORKS as a function local and zeroes as a PROGRAM field).
+// ---------------------------------------------------------------------------
+
+#[rstest]
+fn known_bug_global_init_from_global_is_silently_dropped(mut with_db: db::RootDatabase) {
+    let source = r#"
+        PROGRAM P
+        VAR_EXTERNAL a : DINT; b : DINT; END_VAR
+            a := a + 0;
+        END_PROGRAM
+
+        CONFIGURATION Cfg
+        VAR_GLOBAL
+            a : DINT := 5;
+            b : DINT := a;
+        END_VAR
+            RESOURCE Res ON CPU
+                TASK T(INTERVAL := T#10ms, PRIORITY := 1);
+                PROGRAM P1 WITH T : P;
+            END_RESOURCE
+        END_CONFIGURATION
+    "#;
+    let (_mir, wasm) = compile_to_mir_and_wasm(&mut with_db, source);
+    let plc = Plc::load(&wasm, Config::default()).expect("load");
+    let g = plc.read_globals();
+    let a = i32::from_le_bytes(g[..4].try_into().unwrap());
+    let b = i32::from_le_bytes(g[4..8].try_into().unwrap());
+    assert_eq!(a, 5);
+    // WRONG on purpose: `b := a` should either yield 5 (declaration-ordered
+    // stores) or be refused at check. When this assertion fails, the bug is
+    // fixed — replace it with the decided behavior.
+    assert_eq!(b, 0, "known bug: the initializer is silently dropped");
+}
+
+#[rstest]
+fn known_bug_global_init_from_constant_is_silently_dropped(mut with_db: db::RootDatabase) {
+    let source = r#"
+        PROGRAM P
+        VAR_EXTERNAL g : DINT; END_VAR
+            g := g + 0;
+        END_PROGRAM
+
+        CONFIGURATION Cfg
+        VAR_GLOBAL CONSTANT k : DINT := 7; END_VAR
+        VAR_GLOBAL g : DINT := k; END_VAR
+            RESOURCE Res ON CPU
+                TASK T(INTERVAL := T#10ms, PRIORITY := 1);
+                PROGRAM P1 WITH T : P;
+            END_RESOURCE
+        END_CONFIGURATION
+    "#;
+    let (_mir, wasm) = compile_to_mir_and_wasm(&mut with_db, source);
+    let plc = Plc::load(&wasm, Config::default()).expect("load");
+    let g = plc.read_globals();
+    let k = i32::from_le_bytes(g[..4].try_into().unwrap());
+    let v = i32::from_le_bytes(g[4..8].try_into().unwrap());
+    assert_eq!(k, 7);
+    // WRONG on purpose — `:= k` is textbook ST and must become 7 once
+    // constant references fold. See project_static_init_dropped.
+    assert_eq!(
+        v, 0,
+        "known bug: the CONSTANT reference is silently dropped"
+    );
 }

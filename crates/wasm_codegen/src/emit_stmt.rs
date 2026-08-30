@@ -1667,8 +1667,9 @@ fn place_type(place: &mir::expr::MirPlace) -> mir::types::MirType {
         mir::expr::MirPlace::Deref { pointee_type, .. } => pointee_type.clone(),
         mir::expr::MirPlace::ThisField { field_type, .. } => field_type.clone(),
         mir::expr::MirPlace::Global { ty, .. } => ty.clone(),
-        mir::expr::MirPlace::Local(_) => {
-            mir::types::MirType::Elementary(mir::types::MirElementary::Int)
+        // Structurally unreachable: `emit_assignment` handles Local first.
+        mir::expr::MirPlace::Local(ident) => {
+            panic!("place_type asked for a bare Local ('{ident:?}'): it carries no type")
         }
     }
 }

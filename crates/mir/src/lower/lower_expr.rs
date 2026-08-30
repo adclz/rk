@@ -616,7 +616,9 @@ impl<'db> ExprLowerCtx<'db> {
                     .into_iter()
                     // The variant arrives as written and HIR's resolved one is folded:
                     // reconcile the spellings here.
-                    .find(|(v, _)| v.name.ident.caseless(self.db) == variant.ident.caseless(self.db))
+                    .find(|(v, _)| {
+                        v.name.ident.caseless(self.db) == variant.ident.caseless(self.db)
+                    })
                     .map(|(_, value)| value)
                     .ok_or_else(|| {
                         LowerTypeError::UnsupportedType(format!(
@@ -920,10 +922,9 @@ impl<'db> ExprLowerCtx<'db> {
                 StorageClass::InstanceMember => {}
             }
         } else if let Some(root_expr) = root.flatten(self.db).first().map(|s| s.get_expr(self.db))
-            && let Some(ty) =
-                hir::hir_ty::body::infer_body(self.db, root.scope_id(self.db))
-                    .type_of_path_expr
-                    .get(&root_expr)
+            && let Some(ty) = hir::hir_ty::body::infer_body(self.db, root.scope_id(self.db))
+                .type_of_path_expr
+                .get(&root_expr)
         {
             // The callable's own name is its return slot, held under the declared
             // name.
@@ -2413,7 +2414,10 @@ impl<'db> ExprLowerCtx<'db> {
 
     /// The machine type an expression evaluates to, using the ADJUSTED type:
     /// `arr[0]` is the element, not the array.
-    fn expr_to_mir_elementary(&self, expr: Expr<'db>) -> Result<MirElementary, LowerTypeError> {
+    pub(crate) fn expr_to_mir_elementary(
+        &self,
+        expr: Expr<'db>,
+    ) -> Result<MirElementary, LowerTypeError> {
         let ty = expr.infer_adjusted(self.db);
         self.type_to_mir_elementary(ty)
     }
