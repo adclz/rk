@@ -59,6 +59,9 @@ pub fn check<'db>(
             // Position legality for {extern} is a compiler ERROR (E0244),
             // not lint advice — a misplaced import must not merely warn.
             Pragma::Extern(_, _) => (false, ""),
+            // {allow} is valid on every POU kind; its NAMES are what gets
+            // checked, by the unknown-allow rule.
+            Pragma::Allow(_, _) => (false, ""),
         };
 
         if invalid {

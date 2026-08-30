@@ -13,6 +13,7 @@ tree-sitter-rk = { workspace = true }
 db = { workspace = true }
 ast = { workspace = true }
 hir = { workspace = true }
+compact_str = { workspace = true }
 ide_proto = { workspace = true }
 ide_diagnostic = { workspace = true }
 rustc-hash = { workspace = true }

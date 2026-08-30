@@ -16,6 +16,7 @@ use hir::{
 };
 use ide_diagnostic::IdeDiagnostic;
 
+pub mod allow;
 pub mod bool_comparison;
 pub mod case_without_else;
 pub mod collapsible_if;
@@ -70,6 +71,7 @@ pub mod yoda_condition;
 /// warning severity — style (hints) and declaration notes (info) stay opt-in,
 /// so a workspace that has said nothing about linting is not buried in taste.
 pub const RECOMMENDED_RULE_NAMES: &[&str] = &[
+    allow::NAME,
     warn_pragma::NAME,
     invalid_pragma::NAME,
     dead_code::NAME,
@@ -107,6 +109,7 @@ pub fn is_enabled(config: &LinterConfig, name: &str) -> bool {
 
 /// All lint rule names, for building configs that enable/disable specific rules.
 pub const ALL_RULE_NAMES: &[&str] = &[
+    allow::NAME,
     bool_comparison::NAME,
     case_without_else::NAME,
     collapsible_if::NAME,
@@ -157,9 +160,6 @@ pub const ALL_RULE_NAMES: &[&str] = &[
 ];
 
 /// Run all lint rules on a file, appending warnings to `diagnostics`.
-///
-/// The caller (LSP, CLI) is responsible for checking the config and deciding
-/// whether to call this at all (i.e. whether a `[linter]` section exists).
 pub fn lint_file(
     db: &dyn WorkspaceDataBase,
     file: File,
@@ -249,6 +249,7 @@ pub fn lint_file(
 }
 
 /// Recursively collect scopes and usings from namespace declarations and their POUs.
+#[allow(clippy::too_many_arguments)]
 fn collect_namespace_scopes<'db>(
     db: &'db dyn WorkspaceDataBase,
     config: &LinterConfig,
@@ -287,7 +288,21 @@ fn collect_namespace_scopes<'db>(
     }
 }
 
+/// `config` with the given rules forced off — a POU-level `{allow}` folded in.
+fn with_disabled(config: &LinterConfig, names: &[compact_str::CompactString]) -> LinterConfig {
+    let mut effective = config.clone();
+    let rules = effective.rules.get_or_insert_with(Default::default);
+    for name in names {
+        rules.insert(name.to_string(), false);
+    }
+    effective
+}
+
 /// Run a lint check and tag each new diagnostic with a note showing the rule name.
+///
+/// Newborns inside an active statement-level `{allow}` region naming this rule
+/// are dropped here — at birth, with the rule name in hand — rather than by a
+/// later pass over the finished diagnostics.
 pub(crate) fn run_lint(
     name: &str,
     diagnostics: &mut Vec<IdeDiagnostic>,
@@ -295,12 +310,19 @@ pub(crate) fn run_lint(
 ) {
     let before = diagnostics.len();
     f(diagnostics);
-    for d in &mut diagnostics[before..] {
+    let mut kept = Vec::new();
+    for mut d in diagnostics.split_off(before) {
+        if allow::silenced(name, &d.diagnostic.range) {
+            continue;
+        }
         d.with_note(format!("lint rule: {}", name));
+        kept.push(d);
     }
+    diagnostics.extend(kept);
 }
 
 /// Run all scope-level lint rules against a single scope.
+#[allow(clippy::too_many_arguments)]
 fn lint_scope<'db>(
     db: &'db dyn WorkspaceDataBase,
     config: &LinterConfig,
@@ -308,6 +330,26 @@ fn lint_scope<'db>(
     body_scopes: &mut Vec<ScopeId<'db>>,
     diagnostics: &mut Vec<IdeDiagnostic>,
 ) {
+    // A POU-level {allow} IS configuration, scoped to this POU: fold it into
+    // an effective config so a silenced rule is never executed at all.
+    let report_unknown = is_enabled(config, allow::NAME);
+    let suppressed = allow::scope_allows(db, scope, report_unknown, diagnostics);
+    let effective;
+    let config = if suppressed.is_empty() {
+        config
+    } else {
+        effective = with_disabled(config, &suppressed);
+        &effective
+    };
+    // Statement-level {allow} cannot skip a rule (it covers a slice of the
+    // body, not the scope), so its regions apply where a diagnostic is born:
+    // run_lint consults them while this guard lives.
+    let _regions = allow::install_regions(allow::statement_regions(
+        db,
+        scope,
+        report_unknown,
+        diagnostics,
+    ));
     let has_body = matches!(
         get_scope(db, scope).kind,
         ScopeKind::Pou(Pou::Function(_))
@@ -477,6 +519,6 @@ mod select_tests {
                 "{name} is not a known rule name"
             );
         }
-        assert_eq!(RECOMMENDED_RULE_NAMES.len(), 20);
+        assert_eq!(RECOMMENDED_RULE_NAMES.len(), 21);
     }
 }

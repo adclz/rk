@@ -406,6 +406,9 @@ fn lower_stmt<'db>(
 
         StmtKind::WasmPragma(_) => Ok(None),   // Handled at function level, not statement level
 
+        // Linter-only marker: no code.
+        StmtKind::AllowPragma(_) => Ok(None),
+
         StmtKind::EmptyPathExpression(begin_path) => {
             // `SUPER()` — call the immediate base FB's cyclic body on the current
             // `this`. It parses as a bare begin-path statement (the `()` belongs to
