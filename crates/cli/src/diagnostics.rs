@@ -23,9 +23,14 @@ pub fn collect_diagnostics(
     db: &RootDatabase,
     with_linter: bool,
 ) -> Vec<(File, Vec<IdeDiagnostic>)> {
-    let linter_config = with_linter
-        .then(|| db::config_file::get_config(db).linter.clone())
-        .flatten();
+    // A workspace that never mentions the linter still gets the recommended
+    // rules; `[linter]` tunes the set.
+    let linter_config = with_linter.then(|| {
+        db::config_file::get_config(db)
+            .linter
+            .clone()
+            .unwrap_or_default()
+    });
 
     // Ordered, so the diagnostics come out in the same sequence every run —
     // rayon's collect preserves the input order, it just cannot invent one.
@@ -52,7 +57,10 @@ pub fn collect_library_errors(db: &RootDatabase) -> Vec<(File, Vec<IdeDiagnostic
             let errors: Vec<IdeDiagnostic> = hir::check::diagnostics_for_file(db, file)
                 .iter()
                 .filter(|d| {
-                    matches!(d.diagnostic.severity, Some(DiagnosticSeverity::ERROR) | None)
+                    matches!(
+                        d.diagnostic.severity,
+                        Some(DiagnosticSeverity::ERROR) | None
+                    )
                 })
                 .cloned()
                 .collect();
@@ -297,7 +305,11 @@ impl<'db> DiagnosticReporter<'db> {
             message: &d.message,
             source: d.source.as_deref(),
             notes: diagnostic.notes().iter().map(String::as_str).collect(),
-            help: diagnostic.fixes().iter().map(|f| f.title.as_str()).collect(),
+            help: diagnostic
+                .fixes()
+                .iter()
+                .map(|f| f.title.as_str())
+                .collect(),
             related,
         };
         if let Ok(json) = serde_json::to_string(&record) {
@@ -381,7 +393,10 @@ mod tests {
         let counts = DiagnosticReporter::new(&db, ws.path())
             .with_format(format)
             .report_files(&per_file, &mut out);
-        assert!(counts.has_errors(), "fixture must produce at least one error");
+        assert!(
+            counts.has_errors(),
+            "fixture must produce at least one error"
+        );
         String::from_utf8(out).unwrap()
     }
 
@@ -394,8 +409,14 @@ mod tests {
         assert_eq!(lines.len(), 1, "one diagnostic, one line: {out:?}");
         let line = lines[0];
 
-        assert!(!line.contains('\x1b'), "no ANSI in concise output: {line:?}");
-        assert!(line.starts_with("main.st:"), "workspace-relative path: {line:?}");
+        assert!(
+            !line.contains('\x1b'),
+            "no ANSI in concise output: {line:?}"
+        );
+        assert!(
+            line.starts_with("main.st:"),
+            "workspace-relative path: {line:?}"
+        );
         let mut parts = line.splitn(4, ':');
         let (_file, l, c, rest) = (
             parts.next().unwrap(),
@@ -405,8 +426,14 @@ mod tests {
         );
         l.parse::<u32>().expect("line is a number");
         c.parse::<u32>().expect("col is a number");
-        assert!(rest.starts_with(" error[E0301]: "), "severity[CODE]: {rest:?}");
-        assert!(line.contains(": help: "), "quick-fix title appended: {line:?}");
+        assert!(
+            rest.starts_with(" error[E0301]: "),
+            "severity[CODE]: {rest:?}"
+        );
+        assert!(
+            line.contains(": help: "),
+            "quick-fix title appended: {line:?}"
+        );
     }
 
     /// Every line parses as JSON with the stable field set; positions 1-based.
@@ -440,12 +467,11 @@ mod tests {
     #[test]
     fn advice_only_workspace_has_no_errors() {
         let ws = tempfile::tempdir().expect("tempdir");
-        // NOTE: the linter only runs when config.toml HAS a `[linter]` section
-        // (`Config.linter` is an Option) — an empty section enables the default
-        // rule set.
+        // `select = "all"` is load-bearing: `unused-variable` is info
+        // severity, outside the recommended baseline.
         std::fs::write(
             ws.path().join("config.toml"),
-            format!("{CONFIG_TOML}\n[linter]\n"),
+            format!("{CONFIG_TOML}\n[linter]\nselect = \"all\"\n"),
         )
         .unwrap();
         // Valid code with an unused variable — a linter finding, not an error.
@@ -471,7 +497,8 @@ mod tests {
         assert!(!counts.has_errors(), "advice alone must not fail the check");
         let out = String::from_utf8(out).unwrap();
         assert!(
-            out.lines().all(|l| l.contains(": info") || l.contains(": hint") || l.contains(": warning")),
+            out.lines()
+                .all(|l| l.contains(": info") || l.contains(": hint") || l.contains(": warning")),
             "only advice lines rendered: {out:?}"
         );
     }
@@ -500,11 +527,17 @@ mod tests {
             .with_format(OutputFormat::Concise)
             .report_files(&per_file, &mut out);
 
-        assert_eq!(counts.errors, 1, "the real E0301 is still found: {counts:?}");
+        assert_eq!(
+            counts.errors, 1,
+            "the real E0301 is still found: {counts:?}"
+        );
         assert!(counts.hints >= 1, "the E0217 hint rides along: {counts:?}");
         let out = String::from_utf8(out).unwrap();
         assert!(out.contains("E0301"), "type error reported: {out}");
-        assert!(out.contains("E0217"), "outside-a-project hint reported: {out}");
+        assert!(
+            out.contains("E0217"),
+            "outside-a-project hint reported: {out}"
+        );
     }
 
     /// The full format still renders the ariadne report (source excerpt +

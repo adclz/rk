@@ -46,14 +46,31 @@ pub struct OutputConfig {
 #[derive(Default, Clone, Debug, PartialEq, Eq, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct LinterConfig {
-    /// Per-rule toggles keyed by rule name.
-    /// Rules not listed default to enabled.
-    /// Example: `{ unused-variable = false }` disables that lint.
+    /// Which rules run before `rules` is consulted; absent means
+    /// [`Select::Recommended`].
+    pub select: Option<Select>,
+    /// Per-rule overrides keyed by rule name, applied on top of `select`.
+    /// Example: `{ unused-variable = false }` disables that lint, and
+    /// `{ yoda-condition = true }` opts one in that `select` left out.
     pub rules: Option<BTreeMap<String, bool>>,
+}
+
+/// The baseline set of rules, before per-rule overrides.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default, serde::Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum Select {
+    /// Every rule the linter has.
+    All,
+    /// The rules that report probable bugs rather than style — the default.
+    #[default]
+    Recommended,
+    /// No rule runs unless `rules` names it explicitly.
+    None,
 }
 
 impl Hash for LinterConfig {
     fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
+        self.select.hash(state);
         match &self.rules {
             None => 0u8.hash(state),
             Some(rules) => {
@@ -69,11 +86,13 @@ impl Hash for LinterConfig {
 }
 
 impl LinterConfig {
-    pub fn is_enabled(&self, name: &str) -> bool {
-        match &self.rules {
-            None => true,
-            Some(rules) => rules.get(name).copied().unwrap_or(true),
-        }
+    /// The explicit override for `name`, if the workspace stated one.
+    pub fn rule_override(&self, name: &str) -> Option<bool> {
+        self.rules.as_ref()?.get(name).copied()
+    }
+
+    pub fn select(&self) -> Select {
+        self.select.unwrap_or_default()
     }
 }
 
@@ -277,10 +296,12 @@ shadowing-variable = true
         )
         .unwrap();
         let linter = config.linter.unwrap();
-        assert!(!linter.is_enabled("unused-variable"));
-        assert!(linter.is_enabled("shadowing-variable"));
-        // Unlisted rules default to enabled
-        assert!(linter.is_enabled("duplicate-var-section"));
+        assert_eq!(linter.rule_override("unused-variable"), Some(false));
+        assert_eq!(linter.rule_override("shadowing-variable"), Some(true));
+        // An unlisted rule states nothing here; `select` decides it, and only
+        // the linter crate knows which rules that covers.
+        assert_eq!(linter.rule_override("duplicate-var-section"), None);
+        assert_eq!(linter.select(), Select::Recommended);
     }
 
     #[test]
@@ -296,8 +317,9 @@ version = "1"
         )
         .unwrap();
         let linter = config.linter.unwrap();
-        // All rules enabled by default
-        assert!(linter.is_enabled("unused-variable"));
+        // A bare section tunes nothing: the baseline stays the default.
+        assert_eq!(linter.select(), Select::Recommended);
+        assert_eq!(linter.rule_override("unused-variable"), None);
     }
 
     #[test]
@@ -310,7 +332,38 @@ version = "1"
 "#,
         )
         .unwrap();
+        // Absent means "not tuned", NOT "off": `collect_diagnostics` reads
+        // this as the default config so the recommended rules still run.
         assert!(config.linter.is_none());
+        assert_eq!(
+            config.linter.unwrap_or_default().select(),
+            Select::Recommended
+        );
+    }
+
+    #[test]
+    fn select_is_parsed_kebab_case() {
+        for (text, want) in [
+            ("all", Select::All),
+            ("recommended", Select::Recommended),
+            ("none", Select::None),
+        ] {
+            let config: Config = parse_config(&format!(
+                "[project]\nname = \"T\"\nversion = \"1\"\n[linter]\nselect = \"{text}\"\n"
+            ))
+            .unwrap();
+            assert_eq!(config.linter.unwrap().select(), want);
+        }
+    }
+
+    #[test]
+    fn an_unknown_select_is_refused() {
+        // A typo must not silently fall back to a baseline nobody asked for.
+        let err = parse_config(
+            "[project]\nname = \"T\"\nversion = \"1\"\n[linter]\nselect = \"bogus\"\n",
+        )
+        .unwrap_err();
+        assert!(err.to_string().contains("unknown variant"), "{err}");
     }
 
     #[test]

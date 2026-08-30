@@ -62,7 +62,7 @@ pub fn check(
     config: &LinterConfig,
     diagnostics: &mut Vec<IdeDiagnostic>,
 ) {
-    if !config.is_enabled(NAME) {
+    if !crate::rules::is_enabled(config, NAME) {
         return;
     }
 

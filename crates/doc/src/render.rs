@@ -122,7 +122,10 @@ pub fn compile_and_render(
         for name in linter::ALL_RULE_NAMES {
             rules.insert(name.to_string(), *name == rule);
         }
-        db::config_file::LinterConfig { rules: Some(rules) }
+        db::config_file::LinterConfig {
+            select: Some(db::config_file::Select::All),
+            rules: Some(rules),
+        }
     });
 
     for (file_idx, file) in files.iter().enumerate() {

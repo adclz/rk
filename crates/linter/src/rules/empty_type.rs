@@ -48,24 +48,18 @@ pub fn check<'db>(
             }
         }
         SpecKind::Enum(e) if e.variants(db).is_empty() => {
-            {
-                let name = dt.get_name_ident(db).text(db);
-                diagnostics.push(
-                    diag()
-                        .message(format!("ENUM '{name}' has no variants"))
-                        .desc(&EmptyType)
-                        .range(
-                            hir::denormalize(
-                                db,
-                                dt.get_scope_id(db).file(db),
-                                &dt.get_name_span(db),
-                            )
+            let name = dt.get_name_ident(db).text(db);
+            diagnostics.push(
+                diag()
+                    .message(format!("ENUM '{name}' has no variants"))
+                    .desc(&EmptyType)
+                    .range(
+                        hir::denormalize(db, dt.get_scope_id(db).file(db), &dt.get_name_span(db))
                             .unwrap_or_default(),
-                        )
-                        .severity(DiagnosticSeverity::HINT)
-                        .call(),
-                );
-            }
+                    )
+                    .severity(DiagnosticSeverity::HINT)
+                    .call(),
+            );
         }
         _ => {}
     }

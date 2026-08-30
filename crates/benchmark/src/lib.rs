@@ -269,7 +269,10 @@ pub fn all_rules_config() -> db::config_file::LinterConfig {
         .iter()
         .map(|name| (name.to_string(), true))
         .collect();
-    db::config_file::LinterConfig { rules: Some(rules) }
+    db::config_file::LinterConfig {
+        select: Some(db::config_file::Select::All),
+        rules: Some(rules),
+    }
 }
 
 /// Run every lint rule over the whole workspace; returns the total count.
@@ -424,5 +427,3 @@ mod tests {
         }
     }
 }
-
-

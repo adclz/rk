@@ -48,10 +48,7 @@ pub fn check<'db>(
                     (true, "{test} is not valid on FUNCTION_BLOCK")
                 }
                 ScopeKind::MethodDecl(_) => (true, "{test} is not valid on METHOD"),
-                ScopeKind::Program(_) => (
-                    true,
-                    "{test} is not valid on PROGRAM",
-                ),
+                ScopeKind::Program(_) => (true, "{test} is not valid on PROGRAM"),
                 _ => (false, ""),
             },
             Pragma::Once(_) => match kind {

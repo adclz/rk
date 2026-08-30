@@ -115,7 +115,8 @@ pub fn check_case<'db>(
                     }
                 }
                 CaseKind::Subrange { lower, upper } => {
-                    if let (Some(lo), Some(hi)) = (eval_label(body, db, lower), eval_label(body, db, upper))
+                    if let (Some(lo), Some(hi)) =
+                        (eval_label(body, db, lower), eval_label(body, db, upper))
                     {
                         let span = lower.get_span(db);
                         let file = lower.get_scope_id(db).file(db);

@@ -31,7 +31,7 @@ fn check_once(workspace: &std::path::Path, verbose: bool, format: OutputFormat) 
     // A bare directory of .st files is checkable without a config.toml.
     // Stderr stays a pure diagnostics stream.
     if db::loader::resolve_config_file(workspace).is_none() {
-        ui::detail("no config.toml found; checking with defaults (linter disabled)");
+        ui::detail("no config.toml found; checking with defaults");
     }
     let db = init_db(workspace, verbose, false).ok_or(CliError::Failed)?;
 

@@ -1,5 +1,8 @@
 use auto_lsp::default::db::file::File;
-use db::{WorkspaceDataBase, config_file::LinterConfig};
+use db::{
+    WorkspaceDataBase,
+    config_file::{LinterConfig, Select},
+};
 use hir::{
     HirNodeInfo,
     hir_def::{
@@ -61,6 +64,46 @@ pub mod unused_return_type;
 pub mod unused_variable;
 pub mod warn_pragma;
 pub mod yoda_condition;
+
+/// The rules `Select::Recommended` turns on: the ones that report a probable
+/// BUG rather than a matter of taste. They are exactly the rules that emit at
+/// warning severity — style (hints) and declaration notes (info) stay opt-in,
+/// so a workspace that has said nothing about linting is not buried in taste.
+pub const RECOMMENDED_RULE_NAMES: &[&str] = &[
+    warn_pragma::NAME,
+    invalid_pragma::NAME,
+    dead_code::NAME,
+    for_loop_step_sign::NAME,
+    input_assignment::NAME,
+    constant_condition::NAME,
+    division_by_zero::NAME,
+    duplicate_case::NAME,
+    loop_var_modified::NAME,
+    self_assignment::NAME,
+    self_comparison::NAME,
+    identical_sub_expr::NAME,
+    identity_operation::NAME,
+    sub_self::NAME,
+    constant_loop_bounds::NAME,
+    self_shadowing::NAME,
+    missing_return::NAME,
+    external_mutation::NAME,
+    method_shadows_member::NAME,
+    global_without_external::NAME,
+];
+
+/// Whether `name` runs under `config`: an explicit entry in `[linter.rules]`
+/// wins, otherwise the `select` baseline decides.
+pub fn is_enabled(config: &LinterConfig, name: &str) -> bool {
+    if let Some(explicit) = config.rule_override(name) {
+        return explicit;
+    }
+    match config.select() {
+        Select::All => true,
+        Select::Recommended => RECOMMENDED_RULE_NAMES.contains(&name),
+        Select::None => false,
+    }
+}
 
 /// All lint rule names, for building configs that enable/disable specific rules.
 pub const ALL_RULE_NAMES: &[&str] = &[
@@ -128,13 +171,13 @@ pub fn lint_file(
         duplicate_var_section::check(db, file, config, d)
     });
 
-    if config.is_enabled(duplicate_configuration::NAME) {
+    if is_enabled(config, duplicate_configuration::NAME) {
         run_lint(duplicate_configuration::NAME, diagnostics, |d| {
             duplicate_configuration::check(db, file, d)
         });
     }
 
-    if config.is_enabled(duplicate_namespace::NAME) {
+    if is_enabled(config, duplicate_namespace::NAME) {
         run_lint(duplicate_namespace::NAME, diagnostics, |d| {
             duplicate_namespace::check(db, file, d)
         });
@@ -169,7 +212,7 @@ pub fn lint_file(
         }
 
         // DataType-level lints
-        if config.is_enabled(empty_type::NAME)
+        if is_enabled(config, empty_type::NAME)
             && let Pou::DataType(dt) = pou
         {
             run_lint(empty_type::NAME, diagnostics, |d| {
@@ -198,7 +241,7 @@ pub fn lint_file(
     }
 
     // File-level lint: unused imports (needs all scopes collected)
-    if config.is_enabled(unused_import::NAME) {
+    if is_enabled(config, unused_import::NAME) {
         run_lint(unused_import::NAME, diagnostics, |d| {
             unused_import::check(db, &all_scopes, &body_scopes, &all_usings, d)
         });
@@ -278,22 +321,22 @@ fn lint_scope<'db>(
 
     body_scopes.push(scope);
 
-    if config.is_enabled(empty_body::NAME) {
+    if is_enabled(config, empty_body::NAME) {
         run_lint(empty_body::NAME, diagnostics, |d| {
             empty_body::check(db, scope, d)
         });
     }
-    if config.is_enabled(invalid_pragma::NAME) {
+    if is_enabled(config, invalid_pragma::NAME) {
         run_lint(invalid_pragma::NAME, diagnostics, |d| {
             invalid_pragma::check(db, scope, d)
         });
     }
-    if config.is_enabled(self_shadowing::NAME) {
+    if is_enabled(config, self_shadowing::NAME) {
         run_lint(self_shadowing::NAME, diagnostics, |d| {
             self_shadowing::check(db, scope, d)
         });
     }
-    if config.is_enabled(single_element_array::NAME) {
+    if is_enabled(config, single_element_array::NAME) {
         let variables: &[hir::hir_def::pous::variable::VariableDecl] =
             match get_scope(db, scope).kind {
                 ScopeKind::Pou(Pou::Function(f)) => f.variables(db),
@@ -312,52 +355,52 @@ fn lint_scope<'db>(
 
     let body = infer_body(db, scope);
 
-    if config.is_enabled(unused_variable::NAME) {
+    if is_enabled(config, unused_variable::NAME) {
         run_lint(unused_variable::NAME, diagnostics, |d| {
             unused_variable::check(db, scope, body, d)
         });
     }
-    if config.is_enabled(shadowing_variable::NAME) {
+    if is_enabled(config, shadowing_variable::NAME) {
         run_lint(shadowing_variable::NAME, diagnostics, |d| {
             shadowing_variable::check(db, body, d)
         });
     }
-    if config.is_enabled(method_shadows_member::NAME) {
+    if is_enabled(config, method_shadows_member::NAME) {
         run_lint(method_shadows_member::NAME, diagnostics, |d| {
             method_shadows_member::check(db, body, d)
         });
     }
-    if config.is_enabled(global_without_external::NAME) {
+    if is_enabled(config, global_without_external::NAME) {
         run_lint(global_without_external::NAME, diagnostics, |d| {
             global_without_external::check(db, body, d)
         });
     }
-    if config.is_enabled(unused_return_type::NAME) {
+    if is_enabled(config, unused_return_type::NAME) {
         run_lint(unused_return_type::NAME, diagnostics, |d| {
             unused_return_type::check(db, body, d)
         });
     }
-    if config.is_enabled(effectless_statement::NAME) {
+    if is_enabled(config, effectless_statement::NAME) {
         run_lint(effectless_statement::NAME, diagnostics, |d| {
             effectless_statement::check(db, body, d)
         });
     }
-    if config.is_enabled(case_without_else::NAME) {
+    if is_enabled(config, case_without_else::NAME) {
         run_lint(case_without_else::NAME, diagnostics, |d| {
             case_without_else::check(db, body, d)
         });
     }
-    if config.is_enabled(division_by_zero::NAME) {
+    if is_enabled(config, division_by_zero::NAME) {
         run_lint(division_by_zero::NAME, diagnostics, |d| {
             division_by_zero::check(db, scope, d)
         });
     }
-    if config.is_enabled(dead_code::NAME) {
+    if is_enabled(config, dead_code::NAME) {
         run_lint(dead_code::NAME, diagnostics, |d| {
             dead_code::check(db, body, d)
         });
     }
-    if config.is_enabled(for_loop_step_sign::NAME) {
+    if is_enabled(config, for_loop_step_sign::NAME) {
         run_lint(for_loop_step_sign::NAME, diagnostics, |d| {
             for_loop_step_sign::check(db, body, d)
         });
@@ -365,14 +408,75 @@ fn lint_scope<'db>(
     // Statement-walking lints: single pass over the statement tree
     stmt_visitor::check(db, config, scope, body, diagnostics);
 
-    if config.is_enabled(warn_pragma::NAME) {
+    if is_enabled(config, warn_pragma::NAME) {
         run_lint(warn_pragma::NAME, diagnostics, |d| {
             warn_pragma::check(db, body, d)
         });
     }
-    if config.is_enabled(once_violation::NAME) {
+    if is_enabled(config, once_violation::NAME) {
         run_lint(once_violation::NAME, diagnostics, |d| {
             once_violation::check(db, body, d)
         });
+    }
+}
+
+#[cfg(test)]
+mod select_tests {
+    use super::*;
+    use std::collections::BTreeMap;
+
+    fn config(select: Option<Select>, rules: &[(&str, bool)]) -> LinterConfig {
+        LinterConfig {
+            select,
+            rules: (!rules.is_empty()).then(|| {
+                rules
+                    .iter()
+                    .map(|(n, v)| ((*n).to_string(), *v))
+                    .collect::<BTreeMap<_, _>>()
+            }),
+        }
+    }
+
+    #[test]
+    fn the_default_is_recommended_not_silence() {
+        // The whole point of the change: a config that says nothing still lints.
+        let c = LinterConfig::default();
+        assert!(is_enabled(&c, self_assignment::NAME));
+        assert!(!is_enabled(&c, yoda_condition::NAME));
+    }
+
+    #[test]
+    fn select_picks_the_baseline() {
+        let all = config(Some(Select::All), &[]);
+        let none = config(Some(Select::None), &[]);
+        assert!(is_enabled(&all, yoda_condition::NAME));
+        assert!(!is_enabled(&none, self_assignment::NAME));
+        for name in ALL_RULE_NAMES {
+            assert!(is_enabled(&all, name), "{name} must run under `all`");
+            assert!(!is_enabled(&none, name), "{name} must not run under `none`");
+        }
+    }
+
+    #[test]
+    fn an_explicit_rule_beats_the_baseline_both_ways() {
+        let opt_in = config(Some(Select::None), &[(yoda_condition::NAME, true)]);
+        assert!(is_enabled(&opt_in, yoda_condition::NAME));
+        assert!(!is_enabled(&opt_in, self_assignment::NAME));
+
+        let opt_out = config(None, &[(self_assignment::NAME, false)]);
+        assert!(!is_enabled(&opt_out, self_assignment::NAME));
+        assert!(is_enabled(&opt_out, dead_code::NAME));
+    }
+
+    #[test]
+    fn every_recommended_rule_is_a_real_rule() {
+        // A typo here would silently drop a rule from the default set.
+        for name in RECOMMENDED_RULE_NAMES {
+            assert!(
+                ALL_RULE_NAMES.contains(name),
+                "{name} is not a known rule name"
+            );
+        }
+        assert_eq!(RECOMMENDED_RULE_NAMES.len(), 20);
     }
 }

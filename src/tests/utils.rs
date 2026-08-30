@@ -219,7 +219,10 @@ pub fn test_single_lint<'db>(
     for name in linter::rules::ALL_RULE_NAMES {
         rules.insert(name.to_string(), *name == rule_name);
     }
-    let linter_config = db::config_file::LinterConfig { rules: Some(rules) };
+    let linter_config = db::config_file::LinterConfig {
+        select: Some(db::config_file::Select::All),
+        rules: Some(rules),
+    };
     test_lint_diagnostics_with_config(db, source, &linter_config)
 }
 

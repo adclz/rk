@@ -1,5 +1,6 @@
 use auto_lsp::lsp_types::DiagnosticSeverity;
 use db::WorkspaceDataBase;
+use hir::HasPragmas;
 use hir::{
     HirNodeInfo,
     hir_def::{
@@ -9,7 +10,6 @@ use hir::{
     },
 };
 use ide_diagnostic::{ErrorCode, IdeDiagnostic, diag};
-use hir::HasPragmas;
 
 pub const NAME: &str = "empty-body";
 
