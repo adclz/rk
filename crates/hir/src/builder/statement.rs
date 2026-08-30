@@ -384,6 +384,15 @@ impl<'db> Parse<'db> for ast::generated::Stmt {
                     sema.current_scope,
                 ))
             }
+            StmtType::AllowPragma(pragma) => {
+                let decl = sema.parse_allow_pragma(pragma);
+                Ok(Stmt::new(
+                    sema.db,
+                    StmtKind::AllowPragma(decl),
+                    pragma.into(),
+                    sema.current_scope,
+                ))
+            }
             StmtType::ERRMethodDeclInBody(err) => {
                 Err(SyntaxError::MethodDeclInBody(err.get_range().to_owned())
                     .to_diagnostic(sema.db, sema.file))

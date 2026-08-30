@@ -602,6 +602,10 @@ impl<'db> StmtsResolverCtx<'db> {
                     break;
                 }
 
+                // Nothing to infer: the pragma only marks the next statement
+                // for the linter.
+                StmtKind::AllowPragma(_) => {}
+
                 StmtKind::WasmPragma(wasm_decl) => {
                     // Only FUNCTION bodies are scanned for a wasm intrinsic;
                     // anywhere else the pragma was silently dropped and the

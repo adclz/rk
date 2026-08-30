@@ -9,6 +9,7 @@ pub enum Pragma<'db> {
     Once(SpanIdent<'db>),
     Warn(SpanIdent<'db>, WarnPragma),
     Extern(SpanIdent<'db>, ExternPragma),
+    Allow(SpanIdent<'db>, AllowPragma),
 }
 
 impl<'db> Pragma<'db> {
@@ -19,6 +20,7 @@ impl<'db> Pragma<'db> {
             Pragma::Once(s) => s,
             Pragma::Warn(s, _) => s,
             Pragma::Extern(s, _) => s,
+            Pragma::Allow(s, _) => s,
         }
     }
 
@@ -28,6 +30,7 @@ impl<'db> Pragma<'db> {
             Pragma::Once(_) => "{once}",
             Pragma::Warn(_, _) => "{warn}",
             Pragma::Extern(_, _) => "{extern}",
+            Pragma::Allow(_, _) => "{allow}",
         }
     }
 }
@@ -82,4 +85,13 @@ pub fn extern_pragma<'a, 'db>(
         Pragma::Extern(s, e) => Some((s, e)),
         _ => None,
     })
+}
+
+/// `{allow 'rule-name' ...}`: silences the named lint rules at this site. As
+/// a statement it covers the NEXT statement; above a POU, the whole POU. The
+/// names are `[linter.rules]` names, and each keeps its span so an unknown
+/// one is underlined at the name.
+#[derive(Debug, Clone, PartialEq, Eq, Hash, salsa::Update)]
+pub struct AllowPragma {
+    pub rules: Vec<(CompactString, auto_lsp::tree_sitter::Range)>,
 }

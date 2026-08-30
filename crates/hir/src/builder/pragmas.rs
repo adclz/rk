@@ -9,7 +9,7 @@ impl<'db> SemanticIndexBuilder<'db> {
         &mut self,
         pragmas: &[auto_lsp::core::ast::AstNodeId<ast::generated::PouPragma>],
     ) -> Vec<Pragma<'db>> {
-        use ast::generated::ExternPragma_OncePragma_TestPragma_WarnPragma as PragmaKind;
+        use ast::generated::AllowPragma_ExternPragma_OncePragma_TestPragma_WarnPragma as PragmaKind;
 
         let mut result = Vec::new();
 
@@ -37,6 +37,9 @@ impl<'db> SemanticIndexBuilder<'db> {
                         result.push(Pragma::Extern(si, ep));
                     }
                 }
+                PragmaKind::AllowPragma(allow) => {
+                    result.push(Pragma::Allow(si, self.parse_allow_pragma(allow)));
+                }
             }
         }
 
@@ -54,6 +57,26 @@ impl<'db> SemanticIndexBuilder<'db> {
         Some(crate::hir_def::pous::pragma::ExternPragma { module, name })
     }
 
+    pub(crate) fn parse_allow_pragma(
+        &self,
+        allow: &ast::generated::AllowPragma,
+    ) -> crate::hir_def::pous::pragma::AllowPragma {
+        let doc = self.file.document(self.db).as_bytes();
+        let rules = allow
+            .rule
+            .iter()
+            .filter_map(|r| {
+                let node = r.cast(self.ast);
+                let text = node.get_text(doc).ok()?;
+                Some((
+                    compact_str::CompactString::from(&text[1..text.len() - 1]),
+                    node.get_range().to_owned(),
+                ))
+            })
+            .collect();
+        crate::hir_def::pous::pragma::AllowPragma { rules }
+    }
+
     fn parse_warn_pragma(&self, warn: &ast::generated::WarnPragma) -> Option<WarnPragma> {
         let doc = self.file.document(self.db).as_bytes();
 
@@ -67,5 +90,4 @@ impl<'db> SemanticIndexBuilder<'db> {
 
         Some(WarnPragma { level, message })
     }
-
 }

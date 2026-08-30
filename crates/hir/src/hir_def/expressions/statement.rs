@@ -1,6 +1,7 @@
 use db::WorkspaceDataBase;
 
 use crate::hir_def::extern_decl::WasmDecl;
+use crate::hir_def::pous::pragma::AllowPragma;
 use crate::{
     AstId, HirNodeInfo,
     hir_def::{
@@ -72,6 +73,7 @@ pub enum StmtKind<'db> {
         message: Expr<'db>,
     },
     WasmPragma(WasmDecl<'db>),
+    AllowPragma(AllowPragma),
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, salsa::Update)]
