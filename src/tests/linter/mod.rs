@@ -1,3 +1,4 @@
+mod allow;
 mod bool_comparison;
 mod case_without_else;
 mod collapsible_if;

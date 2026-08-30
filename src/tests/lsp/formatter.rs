@@ -1619,3 +1619,44 @@ END_FUNCTION
     END_FUNCTION
     ");
 }
+
+#[rstest]
+pub fn allow_pragma_survives_formatting(mut with_db: RootDatabase) {
+    // Both positions: above the POU, above a METHOD, and as a statement —
+    // the formatter must keep each on its own line and not touch the names.
+    let source = r#"
+{allow 'input-assignment'   'self-assignment'}
+FUNCTION_BLOCK rebinder
+VAR_INPUT x: INT; END_VAR
+{allow 'dead-code'}
+METHOD poke: INT
+{allow   'unused-variable'}
+poke := 1;
+END_METHOD
+x := x;
+END_FUNCTION_BLOCK
+"#;
+
+    add_sources(&mut with_db, &[source]);
+    let document = with_db
+        .get_files()
+        .iter()
+        .last()
+        .unwrap()
+        .document(&with_db);
+
+    assert_snapshot!(fmt(document), @r"
+    {allow 'input-assignment' 'self-assignment'}
+    FUNCTION_BLOCK rebinder
+    	VAR_INPUT
+    		x: INT;
+    	END_VAR
+    	{allow 'dead-code'}
+    	METHOD poke: INT
+    		{allow 'unused-variable'}
+    		poke := 1;
+    	END_METHOD
+    	x := x;
+    END_FUNCTION_BLOCK
+    ");
+}
