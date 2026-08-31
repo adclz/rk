@@ -1378,7 +1378,6 @@ fn lower_init_leaves<'db>(
     };
     for leaf in leaves {
         let ctx = ExprLowerCtx::new(db, string_pool.clone());
-        let mut value = ctx.lower_expr(leaf.value)?;
         let (offset, leaf_ty) = if leaf.path.is_empty() {
             (0, ty.clone())
         } else {
@@ -1387,14 +1386,43 @@ fn lower_init_leaves<'db>(
             };
             found
         };
+        // Fold once per type, in the acceptance order of `init_leaf_is_constant`:
+        // integer arithmetic over literals and CONSTANTs, then a pure CONSTANT
+        // chain. Folded values ride an I64/F64 constant under a Cast to the lane.
+        use hir::hir_ty::infer::const_eval;
+        let mut value = if let Some(v) = const_eval::spec_bound(db, leaf.value) {
+            let folded = crate::expr::MirExpr::Constant(crate::expr::MirConstant::I64(v));
+            // Every integer-shaped MirType has a scalar lane; subranges and enums
+            // store as their base.
+            let to = match &leaf_ty {
+                crate::types::MirType::Elementary(e) => Some(*e),
+                crate::types::MirType::Subrange(sub) => Some(sub.base),
+                crate::types::MirType::Enum(en) => Some(en.storage),
+                _ => None,
+            };
+            match to {
+                Some(to) => crate::expr::MirExpr::Cast {
+                    expr: Box::new(folded),
+                    from: crate::types::MirElementary::LInt,
+                    to,
+                },
+                None => folded,
+            }
+        } else if let Some(end) = const_eval::resolve_constant_ref(db, leaf.value) {
+            ctx.lower_expr(end)?
+        } else {
+            ctx.lower_expr(leaf.value)?
+        };
         // The DECLARED type wins. HIR accepts an implicitly-widening
         // initializer (`r : REAL := 1 + 1`), so without this cast the value
         // keeps the expression's lane: invalid wasm for a local or a global,
         // and for a memory-resident field an i32 stored into a REAL slot —
         // integer BITS read back as 2.8e-45, from code `rk check` called
         // clean. `is_const_value` sees through Cast, so static targets keep
-        // their initializers.
-        if let crate::types::MirType::Elementary(to) = &leaf_ty
+        // their initializers. (The folded-int arm above already wears its
+        // cast; wrapping again would be harmless but noisy.)
+        if !matches!(value, crate::expr::MirExpr::Cast { .. })
+            && let crate::types::MirType::Elementary(to) = &leaf_ty
             && let Ok(from) = ctx.expr_to_mir_elementary(leaf.value)
             && from != *to
         {
@@ -1407,12 +1435,22 @@ fn lower_init_leaves<'db>(
         let place = match target.offset_by(offset) {
             InitTarget::Static { base } => {
                 if !is_const_value(&value) {
-                    // KNOWN BUG: nothing validates this — HIR checks clean and
-                    // the initializer is silently DROPPED (the slot stays 0),
-                    // even for a CONSTANT reference, which is legal ST. Pinned
-                    // by known_bug_global_init_* in codegen/initializers.rs;
-                    // the fix is fold-constants + refuse-the-rest.
-                    continue;
+                    // E0320 refuses every non-constant static leaf and the
+                    // fold above turns CONSTANT references into constants, so
+                    // nothing legitimate reaches this arm any more. Reaching
+                    // it means check and lowering disagree — the silent
+                    // `continue` it replaces DROPPED the initializer, a slot
+                    // reading zero from source the check called clean.
+                    // (REF defaults are the known exception: an address is
+                    // not a constant, and their static half predates all of
+                    // this — skip them without a word until that arc.)
+                    if matches!(leaf_ty, crate::types::MirType::Pointer(_)) {
+                        continue;
+                    }
+                    return Err(LowerTypeError::UnsupportedType(format!(
+                        "a static initializer leaf survived E0320 without \
+                         being constant: {value:?}"
+                    )));
                 }
                 MirPlace::Global {
                     name: None,

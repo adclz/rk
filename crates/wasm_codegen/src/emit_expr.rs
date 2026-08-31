@@ -329,8 +329,11 @@ fn emit_load(
                     }
                 }
             } else {
-                // Variable not in local map - push 0 as fallback
-                func.instruction(&Instruction::I32Const(0));
+                // A name with no local is a lowering bug, not a zero: this
+                // arm silently manufactured 0 for a TYPE default's CONSTANT
+                // reference before folding existed. E0320 + the fold closed
+                // that path; anything still arriving here must be loud.
+                panic!("emit_load: no local named {ident:?} in this function")
             }
         }
 
