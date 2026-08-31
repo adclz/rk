@@ -815,59 +815,19 @@ fn retain_array_restores_the_whole_band(mut with_db: db::RootDatabase) {
 }
 
 // ---------------------------------------------------------------------------
-// KNOWN BUG, pinned until the fold-vs-refuse decision: a STATIC initializer
-// (config global, PROGRAM field) that references ANY variable — another
-// global, or even a CONSTANT — checks clean and is silently DROPPED by
-// `__init`: the slot stays 0. `lower_init_leaves`'s Static arm skips every
-// non-`is_const_value` leaf, and nothing in HIR refuses it first.
-//
-// These tests assert TODAY's wrong behavior on purpose, so the fix cannot
-// land without flipping them into real assertions. The RULING is decided
-// (once-per-type): TYPE defaults, FB/CLASS member defaults and static-host
-// initializers must be constant-foldable — CONSTANT references FOLD, and
-// anything site-dependent (`:= SomeGlobal`) is REFUSED with a diagnostic,
-// making the per-host divergence inexpressible. Plain FUNCTION locals keep
-// runtime-evaluated inits; they are not type members.
+// Once-per-type initializers (user-ruled): TYPE defaults, FB/CLASS member
+// defaults and static-host initializers must be constant. CONSTANT
+// references FOLD (`:= k` becomes its value); anything site-dependent
+// (`:= SomeGlobal`) is REFUSED with E0320 — the per-host divergence is
+// inexpressible rather than fixed. Plain FUNCTION locals keep
+// runtime-evaluated inits; they are not type members. These used to be the
+// known_bug_* pins asserting silent zeros.
 // ---------------------------------------------------------------------------
 
+/// `:= a` (a non-CONSTANT global) is refused: E0320 lives in the semantics
+/// suite (`semantics::initializers`); here only the positive halves remain.
 #[rstest]
-fn known_bug_global_init_from_global_is_silently_dropped(mut with_db: db::RootDatabase) {
-    let source = r#"
-        PROGRAM P
-        VAR_EXTERNAL a : DINT; b : DINT; END_VAR
-            a := a + 0;
-        END_PROGRAM
-
-        CONFIGURATION Cfg
-        VAR_GLOBAL
-            a : DINT := 5;
-            b : DINT := a;
-        END_VAR
-            RESOURCE Res ON CPU
-                TASK T(INTERVAL := T#10ms, PRIORITY := 1);
-                PROGRAM P1 WITH T : P;
-            END_RESOURCE
-        END_CONFIGURATION
-    "#;
-    let (_mir, wasm) = compile_to_mir_and_wasm(&mut with_db, source);
-    let plc = Plc::load(&wasm, Config::default()).expect("load");
-    let g = plc.read_globals();
-    let a = i32::from_le_bytes(g[..4].try_into().unwrap());
-    let b = i32::from_le_bytes(g[4..8].try_into().unwrap());
-    assert_eq!(a, 5);
-    // WRONG on purpose: `b := a` should either yield 5 (declaration-ordered
-    // stores) or be refused at check. When this assertion fails, the bug is
-    // fixed — replace it with the decided behavior.
-    assert_eq!(
-        b, 0,
-        "b is no longer zero — the silent drop is fixed: make this a real \
-         assertion (b == 5 if stores are declaration-ordered, or delete the \
-         test if `:= a` is now refused at check)"
-    );
-}
-
-#[rstest]
-fn known_bug_global_init_from_constant_is_silently_dropped(mut with_db: db::RootDatabase) {
+fn global_init_from_constant_folds(mut with_db: db::RootDatabase) {
     let source = r#"
         PROGRAM P
         VAR_EXTERNAL g : DINT; END_VAR
@@ -889,13 +849,7 @@ fn known_bug_global_init_from_constant_is_silently_dropped(mut with_db: db::Root
     let k = i32::from_le_bytes(g[..4].try_into().unwrap());
     let v = i32::from_le_bytes(g[4..8].try_into().unwrap());
     assert_eq!(k, 7);
-    // WRONG on purpose — `:= k` is textbook ST and must become 7 once
-    // constant references fold. See project_static_init_dropped.
-    assert_eq!(
-        v, 0,
-        "g is no longer zero — CONSTANT references now fold: assert v == 7 \
-         and retire this pin"
-    );
+    assert_eq!(v, 7, "the CONSTANT reference folded into __init");
 }
 
 // ---------------------------------------------------------------------------
@@ -1018,31 +972,28 @@ fn type_default_with_const_arithmetic_applies(mut with_db: db::RootDatabase) {
     assert_eq!(v, 5);
 }
 
-/// KNOWN BUG, fifth surface of project_static_init_dropped: a type default
-/// referencing a CONSTANT checks clean and reads ZERO — at BOTH hosts,
-/// through two different silent mechanisms. Statics: the `is_const_value`
-/// gate skips the leaf. Locals: the leaf's name does not resolve from the
-/// host's scope, and codegen's variable-not-in-local-map arm quietly pushes
-/// a constant 0 (that arm cannot be hardened to a panic until constant
-/// folding lands, because this path reaches it).
+/// A TYPE default referencing a config CONSTANT is REFUSED (E0320): a TYPE
+/// has no view into a CONFIGURATION's scope, so the reference cannot fold
+/// once-per-type. (It used to read silent zeros at both hosts.) The refusal
+/// itself is pinned in `semantics::initializers`; this pins that the
+/// FOLDABLE spelling works end to end.
 #[rstest]
-fn known_bug_type_default_constant_ref_is_zero_at_both_hosts(mut with_db: db::RootDatabase) {
+fn type_default_constant_arith_reaches_both_hosts(mut with_db: db::RootDatabase) {
     let source = r#"
-        TYPE AliasK : INT := K; END_TYPE
+        TYPE AliasV : INT := 3 + 4; END_TYPE
 
         FUNCTION local_host : INT
-        VAR v : AliasK; END_VAR
+        VAR v : AliasV; END_VAR
             local_host := v;
         END_FUNCTION
 
         PROGRAM P
         VAR RETAIN seen : INT; END_VAR
-        VAR s : AliasK; END_VAR
+        VAR s : AliasV; END_VAR
             seen := s * 10 + local_host();
         END_PROGRAM
 
         CONFIGURATION Cfg
-        VAR_GLOBAL CONSTANT K : INT := 7; END_VAR
             RESOURCE Res ON CPU
                 TASK T(INTERVAL := T#10ms, PRIORITY := 1);
                 PROGRAM P1 WITH T : P;
@@ -1054,9 +1005,7 @@ fn known_bug_type_default_constant_ref_is_zero_at_both_hosts(mut with_db: db::Ro
     plc.run(1).expect("scan");
     assert_eq!(
         read_first_i32(&plc),
-        0,
-        "no longer zero — constant references now fold somewhere: 77 = both \
-         hosts fixed (assert 77 and retire this pin), 70 = static host only, \
-         7 = local host only"
+        77,
+        "7 at the static host, 7 at the local host"
     );
 }

@@ -1,3 +1,4 @@
+pub mod initializers;
 pub mod ambiguous_scopes;
 pub mod array;
 pub mod array_init_multi_dim;
