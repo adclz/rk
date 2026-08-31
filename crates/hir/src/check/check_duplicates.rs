@@ -31,28 +31,57 @@ fn pous_collide<'db>(db: &'db dyn WorkspaceDataBase, a: Pou<'db>, b: Pou<'db>) -
     }
 }
 
+/// Whether `file` was loaded as a library rather than workspace source.
+fn is_library_file(db: &dyn WorkspaceDataBase, file: auto_lsp::default::db::file::File) -> bool {
+    db.get_library_files().iter().any(|e| *e.value() == file)
+}
+
 /// Check for duplicate global POU names.
 ///
 /// `pou` is a duplicate when an EARLIER same-name candidate collides with it
-/// (see [`pous_collide`]). The first occurrence in discovery order is the
-/// canonical one and is never flagged; a later colliding declaration is.
+/// (see [`pous_collide`]) — the first occurrence in discovery order is the
+/// canonical one — OR when any LIBRARY declaration collides. Candidates walk
+/// workspace files first, so without the second half a workspace declaration
+/// shadowing a library POU was "canonical" and the collision landed on the
+/// library file, where diagnostics are never reported: the duplicate checked
+/// CLEAN. Origins never flag the other way — a workspace typo must not
+/// manufacture errors inside the library.
 pub fn check_duplicate_pous<'db>(
     db: &'db dyn WorkspaceDataBase,
     pou: Pou<'db>,
     errors: &mut Vec<IdeDiagnostic>,
 ) {
+    let own_file = pou.get_scope_id(db).file(db);
+    let own_is_library = is_library_file(db, own_file);
+    let mut canonical = false;
     for other in pou_candidates(db, pou.get_name_ident(db)) {
-        // Reached `pou` itself before any collision → it is the canonical decl.
         if other == pou {
-            return;
+            canonical = true;
+            continue;
         }
-        if pous_collide(db, pou, other) {
+        let other_is_library = is_library_file(db, other.get_scope_id(db).file(db));
+        if own_is_library != other_is_library {
+            // Cross-origin: only the WORKSPACE side reports, and it reports
+            // whether the library declaration came before or after it.
+            if !own_is_library && pous_collide(db, pou, other) {
+                errors.push(
+                    DuplicateError::Pou {
+                        pou1: pou,
+                        pou2: other,
+                    }
+                    .to_diagnostic(db, own_file),
+                );
+                return;
+            }
+            continue;
+        }
+        if !canonical && pous_collide(db, pou, other) {
             errors.push(
                 DuplicateError::Pou {
                     pou1: pou,
                     pou2: other,
                 }
-                .to_diagnostic(db, pou.get_scope_id(db).file(db)),
+                .to_diagnostic(db, own_file),
             );
             return;
         }
@@ -104,7 +133,10 @@ pub fn check_single_configuration<'db>(
     errors: &mut Vec<IdeDiagnostic>,
 ) {
     let all = crate::hir_ty::index_graphs::declared_configs(db);
-    let names: rustc_hash::FxHashSet<_> = all.iter().map(|c| c.get_name_ident(db).caseless(db)).collect();
+    let names: rustc_hash::FxHashSet<_> = all
+        .iter()
+        .map(|c| c.get_name_ident(db).caseless(db))
+        .collect();
     if names.len() > 1 {
         // Carry the others so they can be reached from here: deciding which to
         // keep means looking at all of them.
@@ -248,17 +280,37 @@ pub fn check_duplicate_namespaces<'db>(
     errors: &mut Vec<IdeDiagnostic>,
 ) {
     for pou in namespace.pous(db).iter() {
+        let own_file = pou.get_scope_id(db).file(db);
+        let own_is_library = is_library_file(db, own_file);
+        let mut canonical = false;
         for other in namespace_pou_candidates(db, *namespace.path(db), pou.get_name_ident(db)) {
             if other == *pou {
-                break;
+                canonical = true;
+                continue;
             }
-            if pous_collide(db, *pou, other) {
+            let other_is_library = is_library_file(db, other.get_scope_id(db).file(db));
+            if own_is_library != other_is_library {
+                // Same cross-origin rule as the global check: the workspace
+                // side reports, position in discovery order notwithstanding.
+                if !own_is_library && pous_collide(db, *pou, other) {
+                    errors.push(
+                        DuplicateError::Pou {
+                            pou1: *pou,
+                            pou2: other,
+                        }
+                        .to_diagnostic(db, own_file),
+                    );
+                    break;
+                }
+                continue;
+            }
+            if !canonical && pous_collide(db, *pou, other) {
                 errors.push(
                     DuplicateError::Pou {
                         pou1: *pou,
                         pou2: other,
                     }
-                    .to_diagnostic(db, pou.get_scope_id(db).file(db)),
+                    .to_diagnostic(db, own_file),
                 );
                 break;
             }

@@ -19,6 +19,12 @@ pub struct RootDatabase {
 }
 
 impl RootDatabase {
+    /// Register `file` as a LIBRARY file: analyzed like workspace code,
+    /// without diagnostics.
+    pub fn insert_library_file(&mut self, url: Url, file: File) {
+        self.library_files.insert(url, file);
+    }
+
     pub fn new(logs: Option<Box<dyn Fn(Event) + Send + Sync>>) -> Self {
         Self {
             storage: salsa::Storage::new(logs),

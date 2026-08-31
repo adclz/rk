@@ -162,7 +162,9 @@ impl<'db> DiagnosticReporter<'db> {
         per_file: &[(File, Vec<IdeDiagnostic>)],
         out: &mut dyn Write,
     ) -> DiagnosticCounts {
-        let caches: Vec<(&str, &str)> = crate::file_order::ordered_files(self.db)
+        // Library sources ride along: a workspace diagnostic may point its
+        // related span into a library.
+        let caches: Vec<(&str, &str)> = crate::file_order::ordered_files_with_libraries(self.db)
             .into_iter()
             .map(|file| (file.url(self.db).as_str(), file.document(self.db).as_str()))
             .collect();
