@@ -50,11 +50,50 @@ fn a_nested_test_is_discovered_once(mut with_db: db::RootDatabase) {
     "#;
     let wasm = compile_to_wasm(&mut with_db, source);
     let tests = runtime::test::discover(&wasm);
-    let hits: Vec<_> = tests.iter().filter(|t| t.path.contains("test_nested")).collect();
+    let hits: Vec<_> = tests
+        .iter()
+        .filter(|t| t.path.contains("test_nested"))
+        .collect();
     assert_eq!(
         hits.len(),
         1,
         "one declaration, one discovery: {:?}",
         tests.iter().map(|t| &t.path).collect::<Vec<_>>()
+    );
+}
+
+/// The precedence ruling, pinned by VALUE: a file-scope declaration SHADOWS
+/// a USING import (before the fix the import silently won — `USING
+/// Std.Timers` hijacked a workspace TON), and the qualified path still
+/// reaches the import.
+#[rstest]
+fn a_file_scope_declaration_shadows_a_using_import(mut with_db: db::RootDatabase) {
+    let source = r#"
+        NAMESPACE N
+            FUNCTION_BLOCK X
+                VAR_OUTPUT Q : INT; END_VAR
+                Q := 1;
+            END_FUNCTION_BLOCK
+        END_NAMESPACE
+
+        FUNCTION_BLOCK X
+            VAR_OUTPUT Q : INT; END_VAR
+            Q := 2;
+        END_FUNCTION_BLOCK
+
+        USING N;
+
+        FUNCTION f : INT
+            VAR a : X; b : N.X; END_VAR
+            a();
+            b();
+            f := a.Q * 10 + b.Q;
+        END_FUNCTION
+    "#;
+    let wasm = compile_to_wasm(&mut with_db, source);
+    let v: i32 = crate::tests::codegen::execute_wasm(&wasm, "f", ());
+    assert_eq!(
+        v, 21,
+        "unqualified = file scope (2), qualified = import (1)"
     );
 }

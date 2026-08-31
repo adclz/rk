@@ -1,3 +1,4 @@
+pub mod shadowing;
 pub mod initializers;
 pub mod ambiguous_scopes;
 pub mod array;

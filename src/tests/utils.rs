@@ -116,9 +116,43 @@ where
         )
 }
 
+/// Register `sources` as LIBRARY files: analyzed, resolvable, but never
+/// reported on — the same standing the loaded stdlib has.
+pub fn add_library_sources(db: &mut RootDatabase, sources: &[&str]) {
+    for (i, source) in sources.iter().enumerate() {
+        let url = Url::parse(&format!("file:///lib{i}.st")).unwrap();
+        let file = File::from_string()
+            .db(db)
+            .parsers(&ast::RK_PARSER)
+            .url(&url)
+            .source(source.to_string())
+            .call()
+            .unwrap();
+        db.insert_library_file(url, file);
+    }
+}
+
+/// [`test_diagnostics`] with a library side: `libs` load as library files,
+/// `source` as the workspace. Only workspace diagnostics are rendered, but
+/// their related spans may point into the library sources.
+pub fn test_diagnostics_with_library<'db>(
+    db: &'db mut RootDatabase,
+    libs: &[&str],
+    source: &'db [&'db str],
+) -> String {
+    add_library_sources(db, libs);
+    test_diagnostics(db, source)
+}
+
 pub fn test_diagnostics<'db>(db: &'db mut RootDatabase, source: &'db [&'db str]) -> String {
     add_sources(db, source);
     let mut cache = vec![];
+    let mut library_files = db
+        .get_library_files()
+        .iter()
+        .map(|e| *e.value())
+        .collect::<Vec<_>>();
+    library_files.sort_by_key(|file| file.url(db).to_string());
 
     // we need to sort the files by their URL
     let mut files = db.get_files().iter().map(|file| *file).collect::<Vec<_>>();
@@ -134,6 +168,7 @@ pub fn test_diagnostics<'db>(db: &'db mut RootDatabase, source: &'db [&'db str])
 
     let file_sources = files
         .iter()
+        .chain(library_files.iter())
         .map(|file| (file.url(db).as_str(), file.document(db).as_str()))
         .collect::<Vec<_>>();
 
@@ -167,6 +202,12 @@ pub fn test_snapshot<'db>(
 ) -> String {
     add_sources(db, source);
     let mut cache = vec![];
+    let mut library_files = db
+        .get_library_files()
+        .iter()
+        .map(|e| *e.value())
+        .collect::<Vec<_>>();
+    library_files.sort_by_key(|file| file.url(db).to_string());
 
     // we need to sort the files by their URL
     let mut files = db.get_files().iter().map(|file| *file).collect::<Vec<_>>();
@@ -182,6 +223,7 @@ pub fn test_snapshot<'db>(
 
     let file_sources = files
         .iter()
+        .chain(library_files.iter())
         .map(|file| (file.url(db).as_str(), file.document(db).as_str()))
         .collect::<Vec<_>>();
 
@@ -233,6 +275,12 @@ fn test_lint_diagnostics_with_config<'db>(
 ) -> String {
     add_sources(db, source);
     let mut cache = vec![];
+    let mut library_files = db
+        .get_library_files()
+        .iter()
+        .map(|e| *e.value())
+        .collect::<Vec<_>>();
+    library_files.sort_by_key(|file| file.url(db).to_string());
 
     let mut files = db.get_files().iter().map(|file| *file).collect::<Vec<_>>();
     files.sort_by_key(|file| {
@@ -246,6 +294,7 @@ fn test_lint_diagnostics_with_config<'db>(
 
     let file_sources = files
         .iter()
+        .chain(library_files.iter())
         .map(|file| (file.url(db).as_str(), file.document(db).as_str()))
         .collect::<Vec<_>>();
 
