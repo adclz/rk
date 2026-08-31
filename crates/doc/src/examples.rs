@@ -2074,6 +2074,35 @@ END_FUNCTION
             lint_rule: None,
         },
         ErrorExample {
+            code: "E0320",
+            category: "Type",
+            title: "Initial value is not constant",
+            description: "A TYPE default, an FB/CLASS member default, and a static initializer (a PROGRAM field, a config VAR_GLOBAL) are part of a declaration, fixed before the program runs — so the value must be a constant. A CONSTANT reference folds; a reference to an ordinary variable has no one value to fold to. FUNCTION locals are exempt: they re-initialize on every call and may compute their value.",
+            sources: &[r#"
+FUNCTION_BLOCK fb
+VAR
+    m : DINT := some_global;
+END_VAR
+END_FUNCTION_BLOCK
+
+CONFIGURATION Cfg
+VAR_GLOBAL
+    some_global : DINT := 5;
+END_VAR
+    RESOURCE Res ON CPU
+        TASK T(INTERVAL := T#10ms, PRIORITY := 1);
+        PROGRAM P1 WITH T : Dummy;
+    END_RESOURCE
+END_CONFIGURATION
+
+PROGRAM Dummy
+VAR t : INT; END_VAR
+    t := 0;
+END_PROGRAM
+"#],
+            lint_rule: None,
+        },
+        ErrorExample {
             code: "E0319",
             category: "Type",
             title: "STRING length is not constant",
@@ -2910,6 +2939,20 @@ VAR x : INT; y : INT; END_VAR
 END_FUNCTION
 "#],
             lint_rule: Some("once-violation"),
+        },
+        ErrorExample {
+            code: "L0005",
+            category: "Pragma",
+            title: "Unknown rule name in {allow}",
+            description: "An `{allow 'rule-name'}` pragma names a lint rule that does not exist, so it silences nothing. Rule names are the `[linter.rules]` names, e.g. `input-assignment`.",
+            sources: &[r#"
+FUNCTION_BLOCK fb
+VAR_INPUT x : INT; END_VAR
+    {allow 'input-asignment'}
+    x := 1;
+END_FUNCTION_BLOCK
+"#],
+            lint_rule: Some("unknown-allow"),
         },
         // ── L01xx: Linter Info ────────────────────────────────────
         ErrorExample {
