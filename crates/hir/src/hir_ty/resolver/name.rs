@@ -171,10 +171,27 @@ pub fn find_in_parent_pous<'db>(
         // Namespace siblings take priority over USING — no ambiguity
         if let ScopeKind::Namespace(ns) = scope.kind {
             for ns in namespace_index(db, *ns.path(db)).iter() {
-                if let Some(p) = ns.scope_id(db).def_map(db).local_pous.get(&name.caseless(db)) {
+                if let Some(p) = ns
+                    .scope_id(db)
+                    .def_map(db)
+                    .local_pous
+                    .get(&name.caseless(db))
+                {
                     return PouResolution::Found(*p, None);
                 }
             }
+        }
+
+        // The global namespace outranks its USINGs the same way: a top-level
+        // declaration (this file's or any other's) shadows an import — the
+        // rule every USING-like construct converges on. Before this arm the
+        // walk fell through to the USING matches and `pou_index` was only
+        // the post-walk fallback, so `USING Std.Timers` silently WON over
+        // the workspace's own top-level TON.
+        if matches!(scope.kind, ScopeKind::Global)
+            && let Some(pou) = pou_index(db, name)
+        {
+            return PouResolution::Found(pou, None);
         }
 
         // Collect ALL USING matches at this scope level
@@ -182,7 +199,12 @@ pub fn find_in_parent_pous<'db>(
         for using in &scope.usings {
             let ns_path: NamespacePath = *using.path(db);
             for ns in namespace_index(db, ns_path).iter() {
-                if let Some(pou) = ns.scope_id(db).def_map(db).local_pous.get(&name.caseless(db)) {
+                if let Some(pou) = ns
+                    .scope_id(db)
+                    .def_map(db)
+                    .local_pous
+                    .get(&name.caseless(db))
+                {
                     // Deduplicate by POU identity (shared namespaces across files)
                     if !matches.iter().any(|(p, _, _)| p == pou) {
                         matches.push((*pou, ns_path, *using));
@@ -203,12 +225,9 @@ pub fn find_in_parent_pous<'db>(
                 // calls E0237. Matches from DIFFERENT paths, or involving
                 // non-overloadable POUs, stay genuinely ambiguous.
                 let first_path = matches[0].1;
-                if matches
-                    .iter()
-                    .all(|(p, path, _)| {
-                        path.caseless(db) == first_path.caseless(db) && matches!(p, Pou::Function(_))
-                    })
-                {
+                if matches.iter().all(|(p, path, _)| {
+                    path.caseless(db) == first_path.caseless(db) && matches!(p, Pou::Function(_))
+                }) {
                     return PouResolution::Found(matches[0].0, Some(matches[0].2));
                 }
                 return PouResolution::Ambiguous(
@@ -443,15 +462,19 @@ fn pick_by_return<'db>(
         // Assigning to a function's own NAME targets its return slot — the
         // same peel `set_target_type` and the coercion record apply.
         let expected = match expected {
-            Type::Function(_) | Type::MethodDecl(_) => expected
-                .with_return_type(db)
-                .unwrap_or(expected),
+            Type::Function(_) | Type::MethodDecl(_) => {
+                expected.with_return_type(db).unwrap_or(expected)
+            }
             other => other,
         };
         let expected = expected.normalize(db);
         let by_return: Vec<Function<'db>> = tie
             .iter()
-            .filter(|f| function_signature(db, **f).ret.is_some_and(|r| r == expected))
+            .filter(|f| {
+                function_signature(db, **f)
+                    .ret
+                    .is_some_and(|r| r == expected)
+            })
             .copied()
             .collect();
         if by_return.len() == 1 {
