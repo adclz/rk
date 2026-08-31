@@ -7,8 +7,8 @@ use crate::{
     check::errors::{ToIdeDiagnostic, e1_duplicates::DuplicateError, e6_array::ArrayError},
     hir_def::{
         expressions::expression::{Expr, InitExpr, InitExprKind},
-        interned::identifier::{CaselessIdent, Ident},
         pous::pou::Pou,
+        interned::identifier::{CaselessIdent, Ident},
         scope::{ScopeId, ScopeKind},
         semantic_index::get_scope,
     },
@@ -71,6 +71,35 @@ impl<'db> InitInference<'db> {
         self.check_variables(db);
         self.check_usings(db);
         self.check_methods(db);
+
+        // Once-per-type initializers must be constant (user-ruled): a TYPE
+        // default, an FB/CLASS member default, and anything static — a
+        // PROGRAM field, a config global — is part of a declaration, not a
+        // computation. FUNCTIONs and METHODs re-initialize per call and are
+        // exempt. The acceptance test is `init_leaf_is_constant`, the SAME
+        // one MIR folds by, so nothing accepted here fails to lower.
+        let enforce = matches!(
+            get_scope(db, self.scope).kind,
+            ScopeKind::Pou(Pou::DataType(_))
+                | ScopeKind::Pou(Pou::FunctionBlock(_))
+                | ScopeKind::Pou(Pou::Class(_))
+                | ScopeKind::Program(_)
+                | ScopeKind::Config(_)
+        );
+        if enforce {
+            for leaves in self.init_expr_result.resolved.values() {
+                for leaf in leaves {
+                    if !crate::hir_ty::infer::const_eval::init_leaf_is_constant(db, leaf.value) {
+                        self.errors.push(
+                            crate::check::errors::e3_type::TypeError::InitNotConstant {
+                                value: leaf.value,
+                            }
+                            .to_diagnostic(db, self.scope.file(db)),
+                        );
+                    }
+                }
+            }
+        }
 
         for error in &self.init_expr_result.errors {
             self.errors.push(error.clone());
@@ -145,7 +174,13 @@ impl<'db> InitExprInferenceResult<'db> {
         // initializer into row-major (path, value) leaves for MIR to consume.
         // Validation lives in the walk above; this never re-validates.
         let mut leaves = Vec::new();
-        resolve_leaves(db, expr, &self.type_of_init_expr, &mut Vec::new(), &mut leaves);
+        resolve_leaves(
+            db,
+            expr,
+            &self.type_of_init_expr,
+            &mut Vec::new(),
+            &mut leaves,
+        );
         if !leaves.is_empty() {
             self.resolved.insert(expr, leaves);
         }

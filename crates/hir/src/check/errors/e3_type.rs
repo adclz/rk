@@ -4,6 +4,9 @@ use auto_lsp::lsp_types::{CodeAction, DiagnosticSeverity, WorkspaceEdit};
 use db::WorkspaceDataBase;
 use ide_diagnostic::{ErrorCode, IdeDiagnostic, Related, diag};
 
+use crate::hir_def::expressions::expression::{ExprKind, PrimaryExpr};
+use crate::hir_def::{pous::pou::Pou, scope::ScopeKind, semantic_index::get_scope};
+use crate::hir_ty::infer::const_eval;
 use crate::{
     CallSite, HasName, HirNodeInfo,
     check::errors::ToIdeDiagnostic,
@@ -24,9 +27,12 @@ pub enum TypeError<'db> {
     /// part of the TYPE — it decides how many bytes the variable occupies — so
     /// one only the runtime knows leaves the layout unknowable, and silently
     /// taking the default 80 would size the storage wrongly with nothing said.
-    StringLengthNotConstant {
-        length: Expr<'db>,
-    },
+    StringLengthNotConstant { length: Expr<'db> },
+    /// A once-per-type initializer (a TYPE default, an FB/CLASS member
+    /// default, a static PROGRAM field or config global) referenced something
+    /// with no compile-time value. Before this code the leaf was silently
+    /// DROPPED: the slot read zero from source the check called clean.
+    InitNotConstant { value: Expr<'db> },
     NotAssignable {
         base_target: Type<'db>,
         lhs: Type<'db>,
@@ -88,6 +94,7 @@ impl<'db> ErrorCode for TypeError<'db> {
             Self::NonVariadicFoldParameter { .. } => "E0317",
             Self::UnsupportedOperator { .. } => "E0318",
             Self::StringLengthNotConstant { .. } => "E0319",
+            Self::InitNotConstant { .. } => "E0320",
         }
     }
 
@@ -95,6 +102,7 @@ impl<'db> ErrorCode for TypeError<'db> {
         match self {
             Self::InferLiteralError { .. } => "invalid literal",
             Self::StringLengthNotConstant { .. } => "length is not constant",
+            Self::InitNotConstant { .. } => "initial value is not constant",
             _ => "type mismatch",
         }
     }
@@ -113,6 +121,83 @@ impl<'db> ToIdeDiagnostic<'db> for TypeError<'db> {
                 .desc(self)
                 .range(crate::denormalize(db, file, &length.get_span(db)).unwrap_or_default())
                 .call(),
+            Self::InitNotConstant { value } => {
+                let mut d = diag()
+                    .message(
+                        "this initial value must be a constant: it is fixed before the program runs"
+                            .to_string(),
+                    )
+                    .severity(DiagnosticSeverity::ERROR)
+                    .desc(self)
+                    .range(crate::denormalize(db, file, &value.get_span(db)).unwrap_or_default())
+                    .call();
+                // Say WHY when the refused thing is a bare name — especially
+                // when it IS a constant, just not one this scope can fold.
+
+                if let ExprKind::PrimaryExpr(PrimaryExpr::VariableAccess(va)) = value.expr(db) {
+                    use crate::Qualifier;
+                    match const_eval::spec_name_binding(db, *va) {
+                        Some(decl) if decl.qualifier(db).contains(Qualifier::CONSTANT) => {
+                            // Three reasons a CONSTANT still refuses, told apart
+                            // so the advice is not a catch-all.
+                            if decl.init(db).is_none() {
+                                d.with_note(format!(
+                                    "'{}' is CONSTANT but declares no initial value, \
+                                     so there is nothing to fold",
+                                    decl.name(db).text(db)
+                                ));
+                            } else {
+                                d.with_note(format!(
+                                    "'{}' is CONSTANT, but its own value does not fold \
+                                     (a reference cycle, or a non-constant initializer)",
+                                    decl.name(db).text(db)
+                                ));
+                            }
+                        }
+                        Some(decl) => {
+                            d.with_note(format!(
+                                "'{}' is an ordinary variable; declare it CONSTANT \
+                                 if its value never changes",
+                                decl.name(db).text(db)
+                            ));
+                        }
+                        None => {
+                            if let Some(ident) = const_eval::bare_access_name(db, *va)
+                                && let Some(global) =
+                                    crate::hir_ty::index_graphs::external_var_lookup(db, ident)
+                            {
+                                if !global.qualifier(db).contains(Qualifier::CONSTANT) {
+                                    d.with_note(format!(
+                                        "'{}' is an ordinary variable; declare it CONSTANT \
+                                         if its value never changes",
+                                        ident.text(db)
+                                    ));
+                                    return d;
+                                }
+                                let in_type = matches!(
+                                    get_scope(db, value.get_scope_id(db)).kind,
+                                    ScopeKind::Pou(Pou::DataType(_))
+                                );
+                                if in_type {
+                                    d.with_note(format!(
+                                        "'{}' IS a CONSTANT, but a TYPE declaration cannot \
+                                         see it: a TYPE default folds only literals, \
+                                         arithmetic, and constants in its own scope",
+                                        ident.text(db)
+                                    ));
+                                } else {
+                                    d.with_note(format!(
+                                        "'{}' IS a CONSTANT: declare it in this POU as \
+                                         `VAR_EXTERNAL CONSTANT` and the reference folds",
+                                        ident.text(db)
+                                    ));
+                                }
+                            }
+                        }
+                    }
+                }
+                d
+            }
             Self::NotAssignable {
                 base_target,
                 lhs: target,
@@ -445,7 +530,10 @@ impl std::fmt::Display for InferLiteralError {
                 return write!(f, "CHAR literal must be exactly 1 character, got {len}");
             }
             InferLiteralError::Invalid_STRING_Length { max, got } => {
-                return write!(f, "STRING literal exceeds maximum length of {max}, got {got}");
+                return write!(
+                    f,
+                    "STRING literal exceeds maximum length of {max}, got {got}"
+                );
             }
 
             InferLiteralError::ExpectedNumber => "expected number",
