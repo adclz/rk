@@ -150,7 +150,9 @@ impl<'db> InitInference<'db> {
                     }
                     if let Pou::FunctionBlock(base_fb) = base {
                         for v in base_fb.variables(db) {
-                            inherited.entry(v.get_name_ident(db).caseless(db)).or_insert(*v);
+                            inherited
+                                .entry(v.get_name_ident(db).caseless(db))
+                                .or_insert(*v);
                         }
                     }
                     current = extends_pou(db, base);
@@ -228,6 +230,24 @@ fn check_signature<'db>(
                 expected: sig1.len(),
                 m2,
                 got: sig2.len(),
+            }
+            .to_diagnostic(db, m1.get_scope_id(db).file(db)),
+        );
+    }
+
+    // The RETURN is part of the signature too: comparing only the parameter
+    // list let `METHOD M : INT` be implemented as `M : REAL` — invalid wasm
+    // at exit 0 through the monomorphized call, and silently wrong values
+    // for a same-lane divergence like INT vs DINT.
+    let ret1 = m1.return_type(db).map(|s| s.infer(db).normalize(db));
+    let ret2 = m2.return_type(db).map(|s| s.infer(db).normalize(db));
+    if ret1 != ret2 {
+        errors.push(
+            InheritanceError::SignatureReturnMismatch {
+                expected: ret1,
+                got: ret2,
+                method: m2,
+                base: m1,
             }
             .to_diagnostic(db, m1.get_scope_id(db).file(db)),
         );

@@ -410,3 +410,121 @@ fn interface_param_method_call_is_valid(mut with_db: RootDatabase) {
 
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"");
 }
+
+// The RETURN half of E0512: comparing only parameters let a prototype's
+// return diverge from its implementation — invalid wasm for a lane change
+// (INT vs REAL), silently wrong values for a same-lane one (INT vs DINT).
+
+#[rstest]
+fn interface_return_type_mismatch_is_refused(mut with_db: RootDatabase) {
+    let source = r#"
+INTERFACE Ifc
+    METHOD M : INT
+    END_METHOD
+END_INTERFACE
+
+FUNCTION_BLOCK fb IMPLEMENTS Ifc
+    METHOD M : REAL
+        M := 1.5;
+    END_METHOD
+END_FUNCTION_BLOCK
+"#;
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
+    [E0512] Error: method signature mismatch
+       ,-[ file:///test0.st:8:16 ]
+       |
+     3 |     METHOD M : INT
+       |                ^|^
+       |                 `--- base method 'M' declares its return type here
+       |
+     8 |     METHOD M : REAL
+       |                ^^|^
+       |                  `--- method 'M' has an incompatible return type: expected 'INT', got 'REAL'
+       |
+       | Note: the return type must match the base method's
+    ---'
+    ");
+}
+
+#[rstest]
+fn interface_return_type_same_lane_divergence_is_refused(mut with_db: RootDatabase) {
+    // INT and DINT share the i32 lane, so this one compiled to VALID wasm
+    // and returned out-of-domain values instead of failing to load.
+    let source = r#"
+INTERFACE Ifc
+    METHOD M : INT
+    END_METHOD
+END_INTERFACE
+
+FUNCTION_BLOCK fb IMPLEMENTS Ifc
+    METHOD M : DINT
+        M := 1;
+    END_METHOD
+END_FUNCTION_BLOCK
+"#;
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
+    [E0512] Error: method signature mismatch
+       ,-[ file:///test0.st:8:16 ]
+       |
+     3 |     METHOD M : INT
+       |                ^|^
+       |                 `--- base method 'M' declares its return type here
+       |
+     8 |     METHOD M : DINT
+       |                ^^|^
+       |                  `--- method 'M' has an incompatible return type: expected 'INT', got 'DINT'
+       |
+       | Note: the return type must match the base method's
+    ---'
+    ");
+}
+
+#[rstest]
+fn override_return_type_mismatch_is_refused(mut with_db: RootDatabase) {
+    // The same rule through EXTENDS: an OVERRIDE may not change the return.
+    let source = r#"
+FUNCTION_BLOCK base
+    METHOD M : INT
+        M := 1;
+    END_METHOD
+END_FUNCTION_BLOCK
+
+FUNCTION_BLOCK derived EXTENDS base
+    METHOD OVERRIDE M : REAL
+        M := 1.5;
+    END_METHOD
+END_FUNCTION_BLOCK
+"#;
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
+    [E0512] Error: method signature mismatch
+       ,-[ file:///test0.st:9:25 ]
+       |
+     3 |     METHOD M : INT
+       |                ^|^
+       |                 `--- base method 'M' declares its return type here
+       |
+     9 |     METHOD OVERRIDE M : REAL
+       |                         ^^|^
+       |                           `--- method 'M' has an incompatible return type: expected 'INT', got 'REAL'
+       |
+       | Note: the return type must match the base method's
+    ---'
+    ");
+}
+
+#[rstest]
+fn matching_return_types_stay_clean(mut with_db: RootDatabase) {
+    let source = r#"
+INTERFACE Ifc
+    METHOD M : INT
+    END_METHOD
+END_INTERFACE
+
+FUNCTION_BLOCK fb IMPLEMENTS Ifc
+    METHOD M : INT
+        M := 1;
+    END_METHOD
+END_FUNCTION_BLOCK
+"#;
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"");
+}

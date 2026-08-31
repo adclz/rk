@@ -6,10 +6,7 @@ use crate::{
     CallSite, HasName, HirNodeInfo,
     check::errors::ToIdeDiagnostic,
     hir_def::{
-        expressions::{
-            expression::VariableAccess,
-            spec::Spec,
-        },
+        expressions::{expression::VariableAccess, spec::Spec},
         pous::{
             interface::Interface,
             pou::Pou,
@@ -63,6 +60,16 @@ pub enum InheritanceError<'db> {
         expected: Type<'db>,
         got: Type<'db>,
         method: MethodRef<'db>,
+    },
+    /// The RETURN is part of the signature too. Unchecked, an INT prototype
+    /// implemented as REAL produced a wasm signature the monomorphized call
+    /// site disagreed with — invalid wasm at exit 0 — and a same-lane
+    /// divergence (INT vs DINT) was silently wrong instead.
+    SignatureReturnMismatch {
+        expected: Option<Type<'db>>,
+        got: Option<Type<'db>>,
+        method: MethodRef<'db>,
+        base: MethodRef<'db>,
     },
     SuperButNoExtends {
         pou: Pou<'db>,
@@ -152,6 +159,7 @@ impl<'db> ErrorCode for InheritanceError<'db> {
             Self::UnimplementedInterfaceMethod { .. } => "E0509",
             Self::SignatureParametersCountMismatch { .. } => "E0512",
             Self::SignatureTypeMismatch { .. } => "E0512",
+            Self::SignatureReturnMismatch { .. } => "E0512",
             Self::SuperButNoExtends { .. } => "E0513",
             Self::InterfaceOnlyAllowedAsParam { .. } => "E0514",
             Self::InterfaceParamOnStatefulPou { .. } => "E0514",
@@ -180,9 +188,9 @@ impl<'db> ErrorCode for InheritanceError<'db> {
             | Self::AbstractClassHasNoAbstractMethods { .. }
             | Self::UnimplementedInterfaceMethod { .. }
             | Self::InheritedMemberShadowed { .. } => "inheritance violation",
-            Self::SignatureParametersCountMismatch { .. } | Self::SignatureTypeMismatch { .. } => {
-                "method signature mismatch"
-            }
+            Self::SignatureParametersCountMismatch { .. }
+            | Self::SignatureTypeMismatch { .. }
+            | Self::SignatureReturnMismatch { .. } => "method signature mismatch",
             Self::InterfaceOnlyAllowedAsParam { .. }
             | Self::InterfaceParamOnStatefulPou { .. }
             | Self::InterfaceNotAllowedInReturn { .. }
@@ -534,6 +542,42 @@ impl<'db> ToIdeDiagnostic<'db> for InheritanceError<'db> {
 
                 diag.with_note("parameter types must match those of the base method".into());
 
+                diag
+            }
+            Self::SignatureReturnMismatch {
+                expected,
+                got,
+                method,
+                base,
+            } => {
+                let name = |t: &Option<Type<'db>>| match t {
+                    Some(t) => t.type_name(db),
+                    None => "none".into(),
+                };
+                let ret_span = |m: &MethodRef<'db>| match m.return_type(db) {
+                    Some(spec) => spec.get_span(db),
+                    None => m.get_name_span(db),
+                };
+                let mut diag = diag()
+                    .message(format!(
+                        "method '{}' has an incompatible return type: expected '{}', got '{}'",
+                        method.get_name_ident(db).text(db),
+                        name(expected),
+                        name(got),
+                    ))
+                    .severity(DiagnosticSeverity::ERROR)
+                    .desc(self)
+                    .range(crate::denormalize(db, file, &ret_span(method)).unwrap_or_default())
+                    .call();
+                diag.with_related(Related::new(
+                    format!(
+                        "base method '{}' declares its return type here",
+                        base.get_name_ident(db).text(db),
+                    ),
+                    base.get_scope_id(db).file(db),
+                    ret_span(base),
+                ));
+                diag.with_note("the return type must match the base method's".into());
                 diag
             }
             Self::SuperButNoExtends { call_site, pou } => diag()
