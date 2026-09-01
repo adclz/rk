@@ -780,3 +780,172 @@ END_FUNCTION
 
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"");
 }
+
+// Compound conditions and loop guards. `AND` proves both halves when it
+// HOLDS and nothing when it fails; `OR` is the mirror, which is what makes
+// the multi-condition early return work.
+
+#[rstest]
+fn and_compound_guard_narrows_both(mut with_db: RootDatabase) {
+    let source = r#"
+FUNCTION fn1 : INT
+    VAR
+        ptr: REF_TO INT := NULL;
+        other: REF_TO INT := NULL;
+    END_VAR
+
+    IF ptr <> NULL AND other <> NULL THEN
+        fn1 := ptr^ + other^;
+    END_IF;
+END_FUNCTION
+    "#;
+
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"");
+}
+
+#[rstest]
+fn and_compound_leaves_an_unguarded_reference_reported(mut with_db: RootDatabase) {
+    let source = r#"
+FUNCTION fn1 : INT
+    VAR
+        flag: BOOL;
+        ptr: REF_TO INT := NULL;
+        other: REF_TO INT := NULL;
+    END_VAR
+
+    IF other <> NULL AND flag THEN
+        fn1 := ptr^;
+    END_IF;
+END_FUNCTION
+    "#;
+
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
+    [E1003] Error: possibly null dereference
+        ,-[ file:///test0.st:10:16 ]
+        |
+      5 |         ptr: REF_TO INT := NULL;
+        |                         ^^^|^^^
+        |                            `----- 'ptr' set to NULL here
+        |
+     10 |         fn1 := ptr^;
+        |                ^|^
+        |                 `--- dereference of reference 'ptr' which is null
+    ----'
+    ");
+}
+
+#[rstest]
+fn or_guard_proves_nothing_when_it_holds(mut with_db: RootDatabase) {
+    // Either half may be what made it true, so neither reference is narrowed.
+    let source = r#"
+FUNCTION fn1 : INT
+    VAR
+        ptr: REF_TO INT := NULL;
+        other: REF_TO INT := NULL;
+    END_VAR
+
+    IF ptr <> NULL OR other <> NULL THEN
+        fn1 := ptr^;
+    END_IF;
+END_FUNCTION
+    "#;
+
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
+    [E1003] Error: possibly null dereference
+       ,-[ file:///test0.st:9:16 ]
+       |
+     4 |         ptr: REF_TO INT := NULL;
+       |                         ^^^|^^^
+       |                            `----- 'ptr' set to NULL here
+       |
+     9 |         fn1 := ptr^;
+       |                ^|^
+       |                 `--- dereference of reference 'ptr' which is null
+    ---'
+    ");
+}
+
+#[rstest]
+fn or_guard_narrows_what_follows_an_early_return(mut with_db: RootDatabase) {
+    // Falling past the IF means EVERY half was false, so `p = NULL` was false.
+    let source = r#"
+FUNCTION fn1 : INT
+    VAR
+        limit: INT;
+        ptr: REF_TO INT := NULL;
+    END_VAR
+
+    IF ptr = NULL OR limit = 0 THEN
+        RETURN;
+    END_IF;
+
+    fn1 := ptr^;
+END_FUNCTION
+    "#;
+
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"");
+}
+
+#[rstest]
+fn negated_guard_narrows(mut with_db: RootDatabase) {
+    let source = r#"
+FUNCTION fn1 : INT
+    VAR
+        ptr: REF_TO INT := NULL;
+    END_VAR
+
+    IF NOT (ptr = NULL) THEN
+        fn1 := ptr^;
+    END_IF;
+END_FUNCTION
+    "#;
+
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"");
+}
+
+#[rstest]
+fn while_guard_narrows_the_body(mut with_db: RootDatabase) {
+    let source = r#"
+FUNCTION fn1 : INT
+    VAR
+        ptr: REF_TO INT := NULL;
+    END_VAR
+
+    WHILE ptr <> NULL DO
+        fn1 := ptr^;
+    END_WHILE;
+END_FUNCTION
+    "#;
+
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"");
+}
+
+#[rstest]
+fn repeat_condition_does_not_narrow_its_body(mut with_db: RootDatabase) {
+    // REPEAT tests AFTER the body, so the first pass runs unguarded.
+    let source = r#"
+FUNCTION fn1 : INT
+    VAR
+        ptr: REF_TO INT := NULL;
+    END_VAR
+
+    REPEAT
+        fn1 := ptr^;
+    UNTIL ptr <> NULL END_REPEAT;
+END_FUNCTION
+    "#;
+
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
+    [E1003] Error: possibly null dereference
+       ,-[ file:///test0.st:8:16 ]
+       |
+     4 |         ptr: REF_TO INT := NULL;
+       |                         ^^^|^^^
+       |                            `----- 'ptr' set to NULL here
+       |
+     8 |         fn1 := ptr^;
+       |                ^|^
+       |                 `--- dereference of reference 'ptr' which is null
+    ---'
+    ");
+}

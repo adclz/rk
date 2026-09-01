@@ -9,7 +9,8 @@ use crate::{
     hir_def::{
         expressions::{
             expression::{
-                ComparisonOperatorKind, Elementary, Expr, ExprKind, PrimaryExpr, RefValue,
+                BooleanOperatorKind, ComparisonOperatorKind, Elementary, Expr, ExprKind,
+                PrimaryExpr, RefValue, UnaryOperatorKind,
             },
             spec::ElementarySpec,
             statement::{CaseKind, Stmt, StmtKind},
@@ -99,48 +100,110 @@ fn check_case_label_constant<'db>(
 }
 
 
-/// A guard of the form `p = NULL` or `p <> NULL`, in either operand order.
+/// What a condition proves about references, per outcome.
 ///
-/// Returns the reference it tests and whether the reference is NULL when the
-/// condition holds. Without this the analysis was assignment-only: the one
-/// idiomatic way to write a safe dereference, `IF p <> NULL THEN p^`, was
-/// refused, and no pragma could silence it because E1003 is a compiler error.
-fn null_guard<'db>(
+/// Each entry says "in this branch, that reference IS / IS NOT null".
+/// `AND` proves both halves when it HOLDS and nothing when it fails; `OR` is
+/// the mirror. Keeping the two directions apart is what lets a compound
+/// condition narrow the branch it actually establishes.
+#[derive(Default)]
+struct NullGuards<'db> {
+    when_true: Vec<(VariableDecl<'db>, bool)>,
+    when_false: Vec<(VariableDecl<'db>, bool)>,
+}
+
+impl<'db> NullGuards<'db> {
+    fn swapped(self) -> Self {
+        NullGuards {
+            when_true: self.when_false,
+            when_false: self.when_true,
+        }
+    }
+}
+
+/// Read a condition as null guards: `p = NULL` / `p <> NULL` in either operand
+/// order, and the `AND` / `OR` / `NOT` combinations of those.
+///
+/// Without this the analysis was assignment-only, so the one idiomatic way to
+/// write a safe dereference — `IF p <> NULL THEN p^` — was refused, and no
+/// pragma could silence it because E1003 is a compiler error.
+fn null_guards<'db>(
     db: &'db dyn WorkspaceDataBase,
     condition: Expr<'db>,
     ctx: &BodyInferenceResult<'db>,
-) -> Option<(VariableDecl<'db>, bool)> {
-    let ExprKind::ComparisonOperator {
-        left,
-        operator,
-        right,
-    } = condition.expr(db)
-    else {
-        return None;
-    };
-    let null_when_true = match operator {
-        ComparisonOperatorKind::Eq => true,
-        ComparisonOperatorKind::Ne => false,
-        _ => return None,
-    };
-    let is_null = |e: &Expr<'db>| {
-        matches!(
-            e.expr(db),
-            ExprKind::PrimaryExpr(PrimaryExpr::RefValue {
-                value: RefValue::Null
-            })
-        )
-    };
-    let var_of = |e: &Expr<'db>| match ctx.get_type_of_expr(*e) {
-        Type::Variable((v, _)) => Some(v),
-        _ => None,
-    };
-    if is_null(right) {
-        var_of(left).map(|v| (v, null_when_true))
-    } else if is_null(left) {
-        var_of(right).map(|v| (v, null_when_true))
-    } else {
-        None
+) -> NullGuards<'db> {
+    match condition.expr(db) {
+        ExprKind::ComparisonOperator {
+            left,
+            operator,
+            right,
+        } => {
+            let null_when_true = match operator {
+                ComparisonOperatorKind::Eq => true,
+                ComparisonOperatorKind::Ne => false,
+                _ => return NullGuards::default(),
+            };
+            let is_null = |e: &Expr<'db>| {
+                matches!(
+                    e.expr(db),
+                    ExprKind::PrimaryExpr(PrimaryExpr::RefValue {
+                        value: RefValue::Null
+                    })
+                )
+            };
+            let var_of = |e: &Expr<'db>| match ctx.get_type_of_expr(*e) {
+                Type::Variable((v, _)) => Some(v),
+                _ => None,
+            };
+            let var = if is_null(right) {
+                var_of(left)
+            } else if is_null(left) {
+                var_of(right)
+            } else {
+                None
+            };
+            match var {
+                Some(v) => NullGuards {
+                    when_true: vec![(v, null_when_true)],
+                    when_false: vec![(v, !null_when_true)],
+                },
+                None => NullGuards::default(),
+            }
+        }
+        ExprKind::BooleanOperator {
+            left,
+            operator,
+            right,
+        } => {
+            let mut l = null_guards(db, *left, ctx);
+            let mut r = null_guards(db, *right, ctx);
+            match operator {
+                // Both halves hold when the AND does; a failure names neither.
+                BooleanOperatorKind::And => {
+                    l.when_true.append(&mut r.when_true);
+                    NullGuards {
+                        when_true: l.when_true,
+                        when_false: Vec::new(),
+                    }
+                }
+                BooleanOperatorKind::Or => {
+                    l.when_false.append(&mut r.when_false);
+                    NullGuards {
+                        when_true: Vec::new(),
+                        when_false: l.when_false,
+                    }
+                }
+                _ => NullGuards::default(),
+            }
+        }
+        ExprKind::UnaryOperator { expr, operator } => match operator {
+            UnaryOperatorKind::Not => null_guards(db, *expr, ctx).swapped(),
+            _ => NullGuards::default(),
+        },
+        ExprKind::PrimaryExpr(PrimaryExpr::ParenthesizedExpr { expr }) => {
+            null_guards(db, *expr, ctx)
+        }
+        _ => NullGuards::default(),
     }
 }
 
@@ -151,14 +214,12 @@ fn null_guard<'db>(
 /// dereference under it must still be reported.
 fn apply_guard<'db>(
     states: &mut rustc_hash::FxHashMap<VariableDecl<'db>, NullState<'db>>,
-    guard: Option<(VariableDecl<'db>, bool)>,
-    condition_holds: bool,
+    narrowings: &[(VariableDecl<'db>, bool)],
 ) {
-    if let Some((var, null_when_true)) = guard
-        && null_when_true != condition_holds
-        && states.contains_key(&var)
-    {
-        states.insert(var, NullState::NonNull);
+    for (var, is_null) in narrowings {
+        if !*is_null && states.contains_key(var) {
+            states.insert(*var, NullState::NonNull);
+        }
     }
 }
 
@@ -348,13 +409,13 @@ impl<'db> StmtsResolverCtx<'db> {
                     // check branches
 
                     // THEN
-                    let guard = null_guard(db, *condition, ctx);
-                    apply_guard(&mut ctx.ref_null_state, guard, true);
+                    let guard = null_guards(db, *condition, ctx);
+                    apply_guard(&mut ctx.ref_null_state, &guard.when_true);
                     if let Some(then) = then {
                         self.check_statements(db, resolver, then, nested_scope, ctx);
                     }
                     let then_state = ctx.ref_null_state.clone();
-                    apply_guard(&mut fallthrough, guard, false);
+                    apply_guard(&mut fallthrough, &guard.when_false);
 
                     // Collect branch states for joining
                     let mut branch_states = vec![];
@@ -379,13 +440,13 @@ impl<'db> StmtsResolverCtx<'db> {
                             ));
                         }
 
-                        let guard = null_guard(db, *condition, ctx);
-                        apply_guard(&mut ctx.ref_null_state, guard, true);
+                        let guard = null_guards(db, *condition, ctx);
+                        apply_guard(&mut ctx.ref_null_state, &guard.when_true);
                         self.check_statements(db, resolver, stmts, nested_scope, ctx);
                         if falls_through(db, stmts) {
                             branch_states.push(ctx.ref_null_state.clone());
                         }
-                        apply_guard(&mut fallthrough, guard, false);
+                        apply_guard(&mut fallthrough, &guard.when_false);
                     }
 
                     // ELSE
@@ -418,7 +479,7 @@ impl<'db> StmtsResolverCtx<'db> {
                     ctx.ref_null_state = joined;
                 }
 
-                StmtKind::While { condition, body } | StmtKind::Repeat { condition, body } => {
+                StmtKind::While { condition, body } => {
                     self.infer_and_check_expr(db, &mut infer, *condition, ctx);
 
                     if let Err(err) =
@@ -431,6 +492,28 @@ impl<'db> StmtsResolverCtx<'db> {
                         ));
                     }
 
+                    // The body runs only where the condition held, so
+                    // `WHILE p <> NULL DO p^` is as guarded as the IF form.
+                    let guard = null_guards(db, *condition, ctx);
+                    apply_guard(&mut ctx.ref_null_state, &guard.when_true);
+                    self.check_statements(db, resolver, body, NestedScope::Loop, ctx);
+                }
+
+                StmtKind::Repeat { condition, body } => {
+                    self.infer_and_check_expr(db, &mut infer, *condition, ctx);
+
+                    if let Err(err) =
+                        infer.coerce_type_with_expr(db, Type::new_bool(), *condition, ctx)
+                    {
+                        ctx.errors.push(err.into_non_assignable(
+                            db,
+                            Type::new_bool(),
+                            CallSite::from_scoped(db, condition),
+                        ));
+                    }
+
+                    // REPEAT tests AFTER the body, so the condition proves
+                    // nothing about the first pass — no narrowing here.
                     self.check_statements(db, resolver, body, NestedScope::Loop, ctx);
                 }
 
