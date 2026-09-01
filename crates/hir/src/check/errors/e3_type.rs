@@ -402,7 +402,7 @@ fn adjustment_to_string(
     match adj {
         Some(adj) => match adj.kind {
             Adjust::Ref => {
-                format!("REF TO {}", adj.target.type_name(db))
+                format!("REF_TO {}", adj.target.type_name(db))
             }
             Adjust::Deref => {
                 format!("DEREF {}", adj.target.type_name(db))

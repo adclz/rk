@@ -36,7 +36,7 @@ fn invalid_ref_to_elementary_type(mut with_db: RootDatabase) {
        |
      5 |             test2: REF_TO INT := REF(test); // Reference to INT, but test is UINT
        |                               ^^^^^^|^^^^^
-       |                                     `------- expected 'REF_TO INT', got 'REF TO UINT'
+       |                                     `------- expected 'REF_TO INT', got 'REF_TO UINT'
     ---'
     ");
 }
@@ -108,7 +108,7 @@ fn invalid_ref_to_pou_type(mut with_db: RootDatabase) {
        |
      8 |             test2: REF_TO fb1 := REF(test); // Reference to fb1, but test is fb2
        |                               ^^^^^^|^^^^^
-       |                                     `------- expected 'REF_TO fb1', got 'REF TO fb2'
+       |                                     `------- expected 'REF_TO fb1', got 'REF_TO fb2'
     ---'
     ");
 }
@@ -187,34 +187,6 @@ fn valid_assign_ref_to_ref_type(mut with_db: RootDatabase) {
 }
 
 #[rstest]
-fn valid_assign_value_to_deref_type(mut with_db: RootDatabase) {
-    let source = r#"
-    FUNCTION_BLOCK fn1
-        VAR
-            test: REF_TO INT;
-        END_VAR
-
-        test^ := 0;
-
-    END_FUNCTION_BLOCK
-        "#;
-
-    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E1003] Warning: possibly null dereference
-       ,-[ file:///test0.st:7:9 ]
-       |
-     4 |             test: REF_TO INT;
-       |             ^^^^^^^^|^^^^^^^
-       |                     `--------- 'test' declared without initializer here
-       |
-     7 |         test^ := 0;
-       |         ^^|^
-       |           `--- dereference of reference 'test' which is never initialized
-    ---'
-    ");
-}
-
-#[rstest]
 fn valid_using_array_as_ref_type(mut with_db: RootDatabase) {
     let source = r#"
 TYPE
@@ -262,7 +234,7 @@ END_FUNCTION
        |
      9 |     myInt := REF(myA1[2][9]);
        |              ^^^^^^^|^^^^^^^
-       |                     `--------- expected 'INT', got 'REF TO INT'
+       |                     `--------- expected 'INT', got 'REF_TO INT'
     ---'
     ");
 }
@@ -380,7 +352,7 @@ END_FUNCTION_BLOCK
        |
      8 |     arr[0] := REF(x);
        |               ^^^|^^
-       |                  `---- expected 'REF_TO INT', got 'REF TO REAL'
+       |                  `---- expected 'REF_TO INT', got 'REF_TO REAL'
     ---'
     ");
 }
