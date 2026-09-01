@@ -2316,6 +2316,36 @@ END_CLASS
             lint_rule: None,
         },
         ErrorExample {
+            code: "E0510",
+            category: "Inheritance",
+            title: "ABSTRACT method in a concrete POU",
+            description: "A CLASS or FUNCTION_BLOCK declaring an ABSTRACT method must itself be ABSTRACT.",
+            sources: &[r#"
+CLASS Base
+    METHOD PUBLIC ABSTRACT myMethod : INT  END_METHOD
+END_CLASS
+"#],
+            lint_rule: None,
+        },
+        ErrorExample {
+            code: "E0511",
+            category: "Inheritance",
+            title: "Instantiation of an ABSTRACT type",
+            description: "An ABSTRACT CLASS or FUNCTION_BLOCK has no implementation of its own, so it cannot be instantiated. Declare a variable of a derived type instead.",
+            sources: &[r#"
+CLASS ABSTRACT Base
+    METHOD PUBLIC ABSTRACT myMethod : INT  END_METHOD
+END_CLASS
+
+PROGRAM Main
+VAR
+    b : Base;
+END_VAR
+END_PROGRAM
+"#],
+            lint_rule: None,
+        },
+        ErrorExample {
             code: "E0509",
             category: "Inheritance",
             title: "Unimplemented interface method",

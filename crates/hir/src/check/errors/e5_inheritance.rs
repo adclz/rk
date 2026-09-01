@@ -42,6 +42,19 @@ pub enum InheritanceError<'db> {
     EmptyOverride {
         base_method: MethodRef<'db>,
     },
+    /// IEC 61131-3 6.6.7: a POU declaring an ABSTRACT method shall itself be
+    /// ABSTRACT. Unenforced, the method had no body, no derived POU was
+    /// obliged to give it one, and calling it returned 0.
+    AbstractMethodInConcretePou {
+        pou: Pou<'db>,
+        method: MethodRef<'db>,
+    },
+    /// An ABSTRACT type describes what derived POUs must provide; it has no
+    /// implementation of its own, so it cannot be instantiated.
+    InstantiatedAbstractPou {
+        var: VariableDecl<'db>,
+        pou: Pou<'db>,
+    },
     UnimplementedInterfaceMethod {
         implementer: Pou<'db>,
         method: MethodRef<'db>,
@@ -155,6 +168,8 @@ impl<'db> ErrorCode for InheritanceError<'db> {
             Self::MissingOverride { .. } => "E0505",
             Self::MissingAbstractMethod { .. } => "E0506",
             Self::EmptyOverride { .. } => "E0507",
+            Self::AbstractMethodInConcretePou { .. } => "E0510",
+            Self::InstantiatedAbstractPou { .. } => "E0511",
             Self::UnimplementedInterfaceMethod { .. } => "E0509",
             Self::SignatureParametersCountMismatch { .. } => "E0512",
             Self::SignatureTypeMismatch { .. } => "E0512",
@@ -184,6 +199,8 @@ impl<'db> ErrorCode for InheritanceError<'db> {
             Self::OverrideFinalMethod { .. } | Self::MissingOverride { .. } => "override violation",
             Self::MissingAbstractMethod { .. }
             | Self::EmptyOverride { .. }
+            | Self::AbstractMethodInConcretePou { .. }
+            | Self::InstantiatedAbstractPou { .. }
             | Self::UnimplementedInterfaceMethod { .. }
             | Self::InheritedMemberShadowed { .. } => "inheritance violation",
             Self::SignatureParametersCountMismatch { .. }
@@ -324,6 +341,64 @@ impl<'db> ToIdeDiagnostic<'db> for InheritanceError<'db> {
 
                 diag.with_note("OVERRIDE is only valid when the method is inherited".into());
 
+                diag
+            }
+            Self::AbstractMethodInConcretePou { pou, method } => {
+                let kind = match pou {
+                    Pou::Class(_) => "CLASS",
+                    _ => "FUNCTION_BLOCK",
+                };
+                let mut diag = diag()
+                    .message(format!(
+                        "{kind} '{}' declares an ABSTRACT method, so it must be ABSTRACT itself",
+                        pou.get_name_ident(db).text(db)
+                    ))
+                    .severity(DiagnosticSeverity::ERROR)
+                    .desc(self)
+                    .range(
+                        crate::denormalize(db, file, &pou.get_name_span(db)).unwrap_or_default(),
+                    )
+                    .call();
+                diag.with_related(Related::new(
+                    format!(
+                        "ABSTRACT method '{}' is declared here",
+                        method.get_name_ident(db).text(db),
+                    ),
+                    method.get_scope_id(db).file(db),
+                    method.get_name_span(db),
+                ));
+                diag.with_note(
+                    "an ABSTRACT method has no body, so every POU declaring one is incomplete"
+                        .into(),
+                );
+                diag
+            }
+            Self::InstantiatedAbstractPou { var, pou } => {
+                let kind = match pou {
+                    Pou::Class(_) => "CLASS",
+                    _ => "FUNCTION_BLOCK",
+                };
+                let mut diag = diag()
+                    .message(format!(
+                        "cannot instantiate ABSTRACT {kind} '{}'",
+                        pou.get_name_ident(db).text(db)
+                    ))
+                    .severity(DiagnosticSeverity::ERROR)
+                    .desc(self)
+                    .range(
+                        crate::denormalize(db, file, &var.spec(db).get_span(db))
+                            .unwrap_or_default(),
+                    )
+                    .call();
+                diag.with_related(Related::new(
+                    format!(
+                        "{kind} '{}' is declared ABSTRACT here",
+                        pou.get_name_ident(db).text(db),
+                    ),
+                    pou.get_scope_id(db).file(db),
+                    pou.get_name_span(db),
+                ));
+                diag.with_note("declare a variable of a derived type that implements it".into());
                 diag
             }
             Self::UnimplementedInterfaceMethod {

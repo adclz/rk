@@ -28,6 +28,25 @@ impl<'db> InitInference<'db> {
         let declared_methods = &implementer.get_scope_id(db).def_map(db).declared_methods;
         let inherited_methods = inherited_methods(db, implementer);
 
+        // IEC 6.6.7: an ABSTRACT method makes its POU incomplete, so the POU
+        // must say so. Unenforced, the method had no body, nothing obliged a
+        // derived POU to supply one, and calling it returned 0.
+        if matches!(implementer, Pou::Class(_) | Pou::FunctionBlock(_))
+            && !implementer.modifier(db).contains(Modifier::ABSTRACT)
+        {
+            for method in declared_methods.values() {
+                if method.modifier(db).contains(Modifier::ABSTRACT) {
+                    self.errors.push(
+                        InheritanceError::AbstractMethodInConcretePou {
+                            pou: implementer,
+                            method: *method,
+                        }
+                        .to_diagnostic(db, self.scope.file(db)),
+                    );
+                }
+            }
+        }
+
         // check dups in inherited methods
         for (m1, m2) in &inherited_methods.duplicates {
             self.errors.push(
@@ -93,7 +112,13 @@ impl<'db> InitInference<'db> {
                     );
                 }
 
-                if let Modifier::ABSTRACT = inherited_method.modifier(db) {
+                // An ABSTRACT POU is allowed to leave inherited ABSTRACT
+                // methods unimplemented — passing the obligation down is what
+                // an abstract intermediate class is FOR. Only a concrete POU
+                // owes an implementation.
+                if let Modifier::ABSTRACT = inherited_method.modifier(db)
+                    && !implementer.modifier(db).contains(Modifier::ABSTRACT)
+                {
                     self.errors.push(
                         InheritanceError::MissingAbstractMethod {
                             implementer,

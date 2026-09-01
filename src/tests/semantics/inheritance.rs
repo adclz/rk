@@ -66,7 +66,7 @@ fn override_final_method(mut with_db: RootDatabase) {
 #[rstest]
 fn missing_abstract_method(mut with_db: RootDatabase) {
     let source = r#"
-        CLASS Base
+        CLASS ABSTRACT Base
             METHOD ABSTRACT Tick : INT END_METHOD
         END_CLASS
 
@@ -632,6 +632,135 @@ FUNCTION_BLOCK DerE EXTENDS BaseE
     VAR_EXTERNAL g : INT; END_VAR
     g := 1;
 END_FUNCTION_BLOCK
+"#;
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"");
+}
+
+// ABSTRACT means "incomplete, extend me". Unenforced, none of it held: a
+// concrete POU could declare a bodyless method, an ABSTRACT type could be
+// instantiated, and calling the method returned 0 from a clean check.
+
+#[rstest]
+fn abstract_method_in_a_concrete_class_is_refused(mut with_db: RootDatabase) {
+    let source = r#"
+CLASS C
+    METHOD ABSTRACT m : INT END_METHOD
+END_CLASS
+"#;
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
+    [E0510] Error: inheritance violation
+       ,-[ file:///test0.st:2:7 ]
+       |
+     2 | CLASS C
+       |       |
+       |       `-- CLASS 'C' declares an ABSTRACT method, so it must be ABSTRACT itself
+     3 |     METHOD ABSTRACT m : INT END_METHOD
+       |                     |
+       |                     `-- ABSTRACT method 'm' is declared here
+       |
+       | Note: an ABSTRACT method has no body, so every POU declaring one is incomplete
+    ---'
+    ");
+}
+
+#[rstest]
+fn abstract_method_in_a_concrete_function_block_is_refused(mut with_db: RootDatabase) {
+    let source = r#"
+FUNCTION_BLOCK F
+    METHOD ABSTRACT m : INT END_METHOD
+END_FUNCTION_BLOCK
+"#;
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
+    [E0510] Error: inheritance violation
+       ,-[ file:///test0.st:2:16 ]
+       |
+     2 | FUNCTION_BLOCK F
+       |                |
+       |                `-- FUNCTION_BLOCK 'F' declares an ABSTRACT method, so it must be ABSTRACT itself
+     3 |     METHOD ABSTRACT m : INT END_METHOD
+       |                     |
+       |                     `-- ABSTRACT method 'm' is declared here
+       |
+       | Note: an ABSTRACT method has no body, so every POU declaring one is incomplete
+    ---'
+    ");
+}
+
+#[rstest]
+fn instantiating_an_abstract_class_is_refused(mut with_db: RootDatabase) {
+    let source = r#"
+CLASS ABSTRACT B
+    METHOD ABSTRACT m : INT END_METHOD
+END_CLASS
+
+PROGRAM P
+VAR b : B; END_VAR
+END_PROGRAM
+"#;
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
+    [E0511] Error: inheritance violation
+       ,-[ file:///test0.st:7:9 ]
+       |
+     2 | CLASS ABSTRACT B
+       |                |
+       |                `-- CLASS 'B' is declared ABSTRACT here
+       |
+     7 | VAR b : B; END_VAR
+       |         |
+       |         `-- cannot instantiate ABSTRACT CLASS 'B'
+       |
+       | Note: declare a variable of a derived type that implements it
+    ---'
+    ");
+}
+
+#[rstest]
+fn an_abstract_derived_pou_may_leave_methods_unimplemented(mut with_db: RootDatabase) {
+    // Passing the obligation down is what an abstract intermediate is FOR;
+    // E0506 used to refuse it, which made abstract hierarchies unusable.
+    let source = r#"
+CLASS ABSTRACT B
+    METHOD ABSTRACT m : INT END_METHOD
+END_CLASS
+
+CLASS ABSTRACT D EXTENDS B
+END_CLASS
+"#;
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"");
+}
+
+#[rstest]
+fn a_reference_to_an_abstract_type_is_allowed(mut with_db: RootDatabase) {
+    // A reference names some derived instance; it is not an instance.
+    let source = r#"
+CLASS ABSTRACT B
+    METHOD ABSTRACT m : INT END_METHOD
+END_CLASS
+
+TYPE PB : REF_TO B; END_TYPE
+
+PROGRAM P
+VAR p : PB; END_VAR
+END_PROGRAM
+"#;
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"");
+}
+
+#[rstest]
+fn a_concrete_derived_class_is_instantiable(mut with_db: RootDatabase) {
+    let source = r#"
+CLASS ABSTRACT B
+    METHOD ABSTRACT m : INT END_METHOD
+END_CLASS
+
+CLASS D EXTENDS B
+    METHOD m : INT m := 1; END_METHOD
+END_CLASS
+
+PROGRAM P
+VAR d : D; x : INT; END_VAR
+    x := d.m();
+END_PROGRAM
 "#;
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"");
 }

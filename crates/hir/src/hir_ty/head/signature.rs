@@ -212,6 +212,33 @@ impl<'db> Signature<'db> {
         for var in variables {
             let _ = self.infer_spec(db, var.spec(db));
 
+            // An ABSTRACT type has no implementation of its own, so a
+            // variable of it is an instance that cannot answer its own
+            // methods. A REF_TO one is fine — that is a reference to some
+            // derived instance, not an instance.
+            if let Type::FunctionBlock(fb) = Type::resolve_spec(db, var.spec(db))
+                && fb.modifier(db).contains(crate::Modifier::ABSTRACT)
+            {
+                self.errors.push(
+                    InheritanceError::InstantiatedAbstractPou {
+                        var: *var,
+                        pou: Pou::FunctionBlock(fb),
+                    }
+                    .to_diagnostic(db, self.scope.file(db)),
+                );
+            }
+            if let Type::Class(cl) = Type::resolve_spec(db, var.spec(db))
+                && cl.modifier(db).contains(crate::Modifier::ABSTRACT)
+            {
+                self.errors.push(
+                    InheritanceError::InstantiatedAbstractPou {
+                        var: *var,
+                        pou: Pou::Class(cl),
+                    }
+                    .to_diagnostic(db, self.scope.file(db)),
+                );
+            }
+
             // Design 1 (params-only): a DIRECT interface is allowed only as a
             // VAR_INPUT / VAR_IN_OUT parameter (it monomorphizes to a concrete
             // type); elsewhere it is E0514. A NESTED interface (array element,
