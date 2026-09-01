@@ -19,7 +19,7 @@ use crate::{
         semantic_index::get_scope,
     },
     hir_ty::{
-        body::{Adjustment, AdjustmentInfo, BodyInferenceResult, NullState},
+        body::{Adjust, Adjustment, AdjustmentInfo, BodyInferenceResult, NullState},
         expr_store::{InitExprWalkStep, PathExprWalkStep},
         head::{
             inheritance::{MethodRef, inherited_methods, instance_members},
@@ -462,9 +462,18 @@ impl<'db> Type<'db> {
                         None
                     }
                 });
-            if let Some(var) = maybe_var {
+            // Only the FIRST deref of a chain is reachable: `ptr^^` cannot
+            // reach its outer deref if the inner one is null. The walk keeps
+            // `current_path` on the variable through the whole chain, so
+            // without this every `^` re-found the variable and repeated the
+            // identical diagnostic.
+            let chain_continues = ctx
+                .path_expr_adjustments
+                .get(&place.current_path)
+                .is_some_and(|adjs| adjs.iter().any(|a| matches!(a.kind, Adjust::Deref)));
+            if let Some(var) = maybe_var.filter(|_| !chain_continues) {
                 let state = ctx.ref_null_state.get(&var).copied();
-                if let Some(state @ (NullState::Null(_) | NullState::Uninitialized(_))) = state {
+                if let Some(state @ (NullState::Null(..) | NullState::Uninitialized(..))) = state {
                     ctx.errors.push(
                         ControlFlowError::DerefPossiblyNull { var, expr, state }
                             .to_diagnostic(db, ctx.scope.file(db)),

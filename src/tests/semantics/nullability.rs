@@ -146,13 +146,19 @@ END_FUNCTION_BLOCK
 
 #[rstest]
 fn no_null_tracking_for_var_in_out(mut with_db: RootDatabase) {
+    // The reference reaches VAR_IN_OUT through a named type: the inline
+    // `ptr : REF_TO INT` spelling does not parse in a VAR_IN_OUT section.
     let source = r#"
+TYPE
+    PtrT : REF_TO INT;
+END_TYPE
+
 FUNCTION fn1 : INT
     VAR_IN_OUT
-        x: INT;
+        ptr : PtrT;
     END_VAR
 
-    fn1 := x;
+    fn1 := ptr^;
 END_FUNCTION
     "#;
 
@@ -353,17 +359,6 @@ END_FUNCTION_BLOCK
     "#;
 
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E1003] Error: possibly null dereference
-       ,-[ file:///test0.st:8:15 ]
-       |
-     4 |         ptr: REF_TO REF_TO INT;
-       |         ^^^^^^^^^^^|^^^^^^^^^^
-       |                    `------------ 'ptr' declared without initializer here
-       |
-     8 |     result := ptr^^;
-       |               ^|^
-       |                `--- dereference of reference 'ptr' which is never initialized
-    ---'
     [E1003] Error: possibly null dereference
        ,-[ file:///test0.st:8:15 ]
        |
