@@ -42,35 +42,6 @@ fn invalid_ref_to_elementary_type(mut with_db: RootDatabase) {
 }
 
 #[rstest]
-fn valid_deref_int(mut with_db: RootDatabase) {
-    let source = r#"
-FUNCTION_BLOCK fn1
-	VAR
-		test: REF_TO INT;
-	END_VAR
-
-	test^ := 0;
-
-END_FUNCTION_BLOCK
-
-        "#;
-
-    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E1003] Warning: possibly null dereference
-       ,-[ file:///test0.st:7:2 ]
-       |
-     4 |        test: REF_TO INT;
-       |        ^^^^^^^^|^^^^^^^
-       |                `--------- 'test' declared without initializer here
-       |
-     7 |     test^ := 0;
-       |     ^^|^
-       |       `--- dereference of reference 'test' which is never initialized
-    ---'
-    ");
-}
-
-#[rstest]
 fn valid_ref_to_pou_type(mut with_db: RootDatabase) {
     let source = r#"
     FUNCTION_BLOCK fb1 END_FUNCTION_BLOCK

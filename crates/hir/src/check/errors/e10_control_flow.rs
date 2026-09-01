@@ -238,7 +238,7 @@ impl<'db> ToIdeDiagnostic<'db> for ControlFlowError<'db> {
                 };
                 let mut diag = diag()
                     .message(message)
-                    .severity(DiagnosticSeverity::WARNING)
+                    .severity(DiagnosticSeverity::ERROR)
                     .desc(self)
                     .range(crate::denormalize(db, file, &expr.get_span(db)).unwrap_or_default())
                     .call();

@@ -19,7 +19,7 @@ END_FUNCTION_BLOCK
     "#;
 
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E1003] Warning: possibly null dereference
+    [E1003] Error: possibly null dereference
        ,-[ file:///test0.st:8:15 ]
        |
      4 |         ptr: REF_TO INT;
@@ -50,7 +50,7 @@ END_FUNCTION_BLOCK
     "#;
 
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E1003] Warning: possibly null dereference
+    [E1003] Error: possibly null dereference
         ,-[ file:///test0.st:11:15 ]
         |
      10 |     ptr := NULL;
@@ -112,7 +112,7 @@ END_FUNCTION_BLOCK
     "#;
 
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E1003] Warning: possibly null dereference
+    [E1003] Error: possibly null dereference
        ,-[ file:///test0.st:8:15 ]
        |
      4 |         ptr: REF_TO INT := NULL;
@@ -177,7 +177,7 @@ END_FUNCTION_BLOCK
     "#;
 
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E1003] Warning: possibly null dereference
+    [E1003] Error: possibly null dereference
         ,-[ file:///test0.st:11:15 ]
         |
       6 |         ptr_2: REF_TO INT;
@@ -207,7 +207,7 @@ END_FUNCTION_BLOCK
     "#;
 
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E1003] Warning: possibly null dereference
+    [E1003] Error: possibly null dereference
         ,-[ file:///test0.st:10:15 ]
         |
       5 |         ptr_2: REF_TO INT := NULL;
@@ -276,7 +276,7 @@ END_FUNCTION_BLOCK
     "#;
 
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E1003] Warning: possibly null dereference
+    [E1003] Error: possibly null dereference
         ,-[ file:///test0.st:10:15 ]
         |
       9 |     ptr := NULL;
@@ -325,7 +325,7 @@ END_FUNCTION_BLOCK
 
     // Only ptr2 should warn, ptr1 is initialized
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E1003] Warning: possibly null dereference
+    [E1003] Error: possibly null dereference
         ,-[ file:///test0.st:12:16 ]
         |
       6 |         ptr2: REF_TO INT;
@@ -353,7 +353,7 @@ END_FUNCTION_BLOCK
     "#;
 
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E1003] Warning: possibly null dereference
+    [E1003] Error: possibly null dereference
        ,-[ file:///test0.st:8:15 ]
        |
      4 |         ptr: REF_TO REF_TO INT;
@@ -364,7 +364,7 @@ END_FUNCTION_BLOCK
        |               ^|^
        |                `--- dereference of reference 'ptr' which is never initialized
     ---'
-    [E1003] Warning: possibly null dereference
+    [E1003] Error: possibly null dereference
        ,-[ file:///test0.st:8:15 ]
        |
      4 |         ptr: REF_TO REF_TO INT;
@@ -391,7 +391,7 @@ END_FUNCTION
     "#;
 
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E1003] Warning: possibly null dereference
+    [E1003] Error: possibly null dereference
        ,-[ file:///test0.st:7:12 ]
        |
      4 |         ptr: REF_TO INT;
@@ -419,7 +419,7 @@ END_PROGRAM
     "#;
 
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E1003] Warning: possibly null dereference
+    [E1003] Error: possibly null dereference
        ,-[ file:///test0.st:8:15 ]
        |
      4 |         ptr: REF_TO INT;
@@ -500,7 +500,7 @@ END_FUNCTION_BLOCK
     "#;
 
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E1003] Warning: possibly null dereference
+    [E1003] Error: possibly null dereference
         ,-[ file:///test0.st:16:15 ]
         |
      13 |         ptr := NULL;
@@ -535,7 +535,7 @@ END_FUNCTION_BLOCK
 
     // Without ELSE, ptr might still be uninitialized
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E1003] Warning: possibly null dereference
+    [E1003] Error: possibly null dereference
         ,-[ file:///test0.st:14:15 ]
         |
       5 |         ptr: REF_TO INT;
@@ -604,7 +604,7 @@ END_FUNCTION_BLOCK
 
     // No ELSE, so ptr might still be uninitialized
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E1003] Warning: possibly null dereference
+    [E1003] Error: possibly null dereference
         ,-[ file:///test0.st:18:15 ]
         |
       6 |         ptr: REF_TO INT;
