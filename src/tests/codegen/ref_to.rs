@@ -489,3 +489,77 @@ fn test_deref_struct_write_is_visible_to_the_caller(mut with_db: db::RootDatabas
     let result: i32 = super::execute_wasm(&wasm, "test", ());
     assert_eq!(result, 72, "s.a became 7 in the caller's own storage; s.b untouched");
 }
+
+// A `REF()` in a DECLARATION initializer marks its target address-taken just
+// as the statement form does. Scanning only statements left a FUNCTION's
+// scalar in a wasm local, which has no address: `emit_addr_of` pushed nothing
+// and the module was invalid, from a compile that exited 0. Only FUNCTION
+// scalars could reach it — every other local is already memory-resident.
+
+#[rstest]
+fn test_ref_initializer_to_scalar_local(mut with_db: db::RootDatabase) {
+    let source = r#"
+        FUNCTION test : INT
+        VAR
+            x : INT := 7;
+            q : REF_TO INT := REF(x);
+        END_VAR
+            q^ := q^ + 35;
+            test := x;
+        END_FUNCTION
+    "#;
+    let wasm = super::compile_to_wasm(&mut with_db, source);
+    super::validate_wasm(&wasm).expect("WASM validation failed");
+    let result: i32 = super::execute_wasm(&wasm, "test", ());
+    assert_eq!(result, 42, "the write through q must land in x itself");
+}
+
+#[rstest]
+fn known_bug_method_local_initializers_are_dropped(mut with_db: db::RootDatabase) {
+    // A METHOD's locals never get the initializer pass that FUNCTION, FB and
+    // PROGRAM locals get (lower_func.rs step 4), so `x : INT := 42` silently
+    // starts at 0. That is why the reference form cannot be pinned here: a
+    // `q : REF_TO INT := REF(x)` in a method leaves q null, and dereferencing
+    // it now faults.
+    let source = r#"
+        FUNCTION_BLOCK holder
+            METHOD get : INT
+            VAR x : INT := 42; END_VAR
+                get := x;
+            END_METHOD
+        END_FUNCTION_BLOCK
+
+        FUNCTION test : INT
+        VAR h : holder; END_VAR
+            test := h.get();
+        END_FUNCTION
+    "#;
+    let wasm = super::compile_to_wasm(&mut with_db, source);
+    let result: i32 = super::execute_wasm(&wasm, "test", ());
+    assert_eq!(
+        result, 0,
+        "method local initializers now run: expect 42, and this pin should \
+         become a real assertion of 42 (plus the REF_TO form alongside it)"
+    );
+}
+
+#[rstest]
+fn test_ref_initializer_nested_in_a_struct_initializer(mut with_db: db::RootDatabase) {
+    // The scan descends into aggregate initializers, so a REF() nested inside
+    // one marks its target too.
+    let source = r#"
+        TYPE Holder : STRUCT p : REF_TO INT; END_STRUCT; END_TYPE
+
+        FUNCTION test : INT
+        VAR
+            x : INT := 42;
+            h : Holder := (p := REF(x));
+        END_VAR
+            test := h.p^;
+        END_FUNCTION
+    "#;
+    let wasm = super::compile_to_wasm(&mut with_db, source);
+    super::validate_wasm(&wasm).expect("WASM validation failed");
+    let result: i32 = super::execute_wasm(&wasm, "test", ());
+    assert_eq!(result, 42);
+}

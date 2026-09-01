@@ -186,7 +186,8 @@ fn lower_function_inner<'db>(
     let mut next_local_idx: u32 = 0;
 
     // Collect address-taken variables for storage decisions
-    let address_taken = collect_address_taken_vars(db, func.statements(db));
+    let mut address_taken = collect_address_taken_vars(db, func.statements(db));
+    address_taken.extend(collect_address_taken_in_inits(db, func.variables(db)));
 
     // 1. Parameters (Input, InOut, Output). VAR_OUTPUT is a pointer at the
     // wasm level. `next_local_idx` advances by the slots each param consumes
@@ -464,7 +465,8 @@ fn lower_function_block_inner<'db>(
         let mut next_local_idx: u32 = 1; // 0 is 'this'
         // A method local whose address is taken must live in memory. Same scan
         // as the other bodies.
-        let address_taken = collect_address_taken_vars(db, method.stmts(db));
+        let mut address_taken = collect_address_taken_vars(db, method.stmts(db));
+        address_taken.extend(collect_address_taken_in_inits(db, method.variables(db)));
 
         // 'this' pointer parameter — the FB's instance struct.
         let fb_type = super::lower_type::lower_fb_type(db, fb)?;
@@ -601,7 +603,8 @@ fn lower_function_block_inner<'db>(
     let mut body_locals = Vec::new();
     let mut next_local_idx: u32 = 1; // 0 is 'this'
 
-    let address_taken = collect_address_taken_vars(db, fb.statements(db));
+    let mut address_taken = collect_address_taken_vars(db, fb.statements(db));
+    address_taken.extend(collect_address_taken_in_inits(db, fb.variables(db)));
 
     for var in fb.variables(db) {
         if var.kind(db) == VariableKind::Temp {
@@ -741,7 +744,8 @@ fn lower_class_inner<'db>(
         });
 
         // Same address-taken rule as the FB method loop above.
-        let address_taken = collect_address_taken_vars(db, method.stmts(db));
+        let mut address_taken = collect_address_taken_vars(db, method.stmts(db));
+        address_taken.extend(collect_address_taken_in_inits(db, method.variables(db)));
 
         // Method parameters
         for var in method.variables(db) {
@@ -882,7 +886,8 @@ fn lower_program_inner<'db>(
     // fields accessed through `this`.
     let mut locals = Vec::new();
     let mut next_local_idx: u32 = 1; // 0 is 'this'
-    let address_taken = collect_address_taken_vars(db, program.statements(db));
+    let mut address_taken = collect_address_taken_vars(db, program.statements(db));
+    address_taken.extend(collect_address_taken_in_inits(db, program.variables(db)));
     for var in program.variables(db) {
         if var.kind(db) == VariableKind::Temp {
             let ty = lower_var_type(db, *var)?;
@@ -1088,6 +1093,52 @@ pub(crate) fn lower_var_type<'db>(
     var: VariableDecl<'db>,
 ) -> Result<MirType, LowerTypeError> {
     super::lower_type::lower_spec(db, var.spec(db))
+}
+
+/// The variables a declaration initializer takes the address of:
+/// `q : REF_TO INT := REF(x)` marks `x` like the statement `q := REF(x)`
+/// does.
+fn collect_address_taken_in_inits<'db>(
+    db: &'db dyn WorkspaceDataBase,
+    vars: &[hir::hir_def::pous::variable::VariableDecl<'db>],
+) -> FxHashSet<CaselessIdent> {
+    use hir::hir_def::expressions::expression::{
+        ExprKind, InitExprKind, PrimaryExpr, RefValue,
+    };
+
+    fn walk_init<'db>(
+        db: &'db dyn WorkspaceDataBase,
+        init: &hir::hir_def::expressions::expression::InitExpr<'db>,
+        result: &mut FxHashSet<CaselessIdent>,
+    ) {
+        match init.kind(db) {
+            InitExprKind::ConstantExpr(expr) => {
+                if let ExprKind::PrimaryExpr(PrimaryExpr::RefValue {
+                    value: RefValue::Address(begin_path),
+                }) = expr.expr(db)
+                    && let Some(path_expr) = begin_path.expr(db)
+                {
+                    result.insert(path_expr.ident(db).ident.caseless(db));
+                }
+            }
+            InitExprKind::ArrayInit { values }
+            | InitExprKind::ArrayIndexedElement { values, .. }
+            | InitExprKind::StructInit { values } => {
+                for v in values {
+                    walk_init(db, &v, result);
+                }
+            }
+            InitExprKind::StructElement { value, .. } => walk_init(db, &value, result),
+        }
+    }
+
+    let mut result = FxHashSet::default();
+    for var in vars {
+        if let Some(init) = var.init(db) {
+            walk_init(db, &init, &mut result);
+        }
+    }
+    result
 }
 
 /// Collect identifiers of variables whose address is taken (via REF()).

@@ -434,8 +434,12 @@ pub(crate) fn emit_addr_of(
                         func.instruction(&Instruction::LocalGet(*index));
                     }
                     LocalInfo::Scalar { .. } => {
-                        // Address of a scalar - shouldn't happen if MIR is correct
-                        // (address-taken scalars are in memory)
+                        // A scalar in a wasm local has no address: the address-taken
+                        // scan missed a `REF()`. Fail here.
+                        panic!(
+                            "emit_addr_of: {ident:?} is a wasm local, so it has no address; \
+                             the address-taken scan missed a REF() naming it"
+                        );
                     }
                     LocalInfo::StringParam { .. } => {
                         // String params are on the stack, not addressable
