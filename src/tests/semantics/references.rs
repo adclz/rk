@@ -470,3 +470,30 @@ END_FUNCTION_BLOCK
 
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @"");
 }
+
+#[rstest]
+fn returning_a_reference_of_the_wrong_target_type(mut with_db: RootDatabase) {
+    // The return slot still type-checks: only the mismatch is refused, and the
+    // message names the declared return type rather than the slot.
+    let source = r#"
+TYPE PInt : REF_TO INT; END_TYPE
+
+FUNCTION borrow : PInt
+VAR r : REAL; END_VAR
+    borrow := REF(r);
+END_FUNCTION
+"#;
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
+    [E0301] Error: type mismatch
+       ,-[ file:///test0.st:6:15 ]
+       |
+     4 | FUNCTION borrow : PInt
+       |          ^^^|^^
+       |             `---- FUNCTION 'borrow' is defined here, with return type 'PInt'
+       |
+     6 |     borrow := REF(r);
+       |               ^^^|^^
+       |                  `---- expected 'PInt', got 'REF_TO REAL'
+    ---'
+    ");
+}

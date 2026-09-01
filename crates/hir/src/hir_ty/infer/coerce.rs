@@ -124,24 +124,34 @@ impl<'db> Type<'db> {
         if let Some(adjs) = adjustments
             && let Some(typ) = adjs.as_reference()
         {
-            if let Type::RefTo(spec) = lhs {
-                return match spec.infer(db).coerce_with_type(db, to, None, resolver) {
-                    Ok(()) => Ok(()),
-                    Err(_) => match spec.infer(db).eq(&to) {
-                        true => Ok(()),
-                        false => Err(CoerceError {
-                            expected: *self,
-                            actual: to,
-                            adjustment: adjs.iter().last().cloned(),
-                        }),
-                    },
-                };
-            } else {
-                return Err(CoerceError {
-                    expected: *self,
-                    actual: to,
-                    adjustment: adjs.iter().last().cloned(),
-                });
+            match lhs {
+                Type::RefTo(spec) => {
+                    return match spec.infer(db).coerce_with_type(db, to, None, resolver) {
+                        Ok(()) => Ok(()),
+                        Err(_) => match spec.infer(db).eq(&to) {
+                            true => Ok(()),
+                            false => Err(CoerceError {
+                                expected: *self,
+                                actual: to,
+                                adjustment: adjs.iter().last().cloned(),
+                            }),
+                        },
+                    };
+                }
+                // A function or method NAME on the left is its return slot,
+                // which `normalize` leaves alone. Falling through lets the
+                // arms below forward to the declared return type, carrying
+                // these adjustments — without it `f := REF(x)` was refused
+                // for every reference-returning POU, naming the SLOT where
+                // the message wanted a type ("expected 'mk'").
+                Type::Function(_) | Type::MethodDecl(_) => {}
+                _ => {
+                    return Err(CoerceError {
+                        expected: *self,
+                        actual: to,
+                        adjustment: adjs.iter().last().cloned(),
+                    });
+                }
             }
         }
 

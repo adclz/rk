@@ -628,3 +628,101 @@ fn test_ref_initializer_nested_in_a_struct_initializer(mut with_db: db::RootData
     let result: i32 = super::execute_wasm(&wasm, "test", ());
     assert_eq!(result, 42);
 }
+
+// --- References as a return type ---
+//
+// A function or method NAME on the left of an assignment is its return slot,
+// which `normalize` leaves as `Type::Function`/`Type::MethodDecl`. The
+// reference-coercion branch demanded a literal `RefTo` there and refused
+// everything else, so `f := REF(x)` could not be written for ANY
+// reference-returning POU — and the message named the slot where it wanted a
+// type ("expected 'mk'").
+
+#[rstest]
+fn test_function_returns_a_reference(mut with_db: db::RootDatabase) {
+    let source = r#"
+        TYPE PInt : REF_TO INT; END_TYPE
+
+        FUNCTION borrow : PInt
+        VAR_IN_OUT t : INT; END_VAR
+            borrow := REF(t);
+        END_FUNCTION
+
+        FUNCTION test : INT
+        VAR
+            x : INT := 7;
+            p : PInt;
+        END_VAR
+            p := borrow(t := x);
+            p^ := p^ + 35;
+            test := x;
+        END_FUNCTION
+    "#;
+    let wasm = super::compile_to_wasm(&mut with_db, source);
+    super::validate_wasm(&wasm).expect("WASM validation failed");
+    let result: i32 = super::execute_wasm(&wasm, "test", ());
+    assert_eq!(result, 42, "the returned reference addresses the caller's x");
+}
+
+#[rstest]
+fn test_method_returns_a_reference_to_instance_state(mut with_db: db::RootDatabase) {
+    // The reference outlives the call, so writing through it must reach the
+    // instance's own storage, not a copy that died with the frame.
+    let source = r#"
+        TYPE PInt : REF_TO INT; END_TYPE
+
+        FUNCTION_BLOCK counter
+        VAR total : INT := 10; END_VAR
+            METHOD PUBLIC slot : PInt
+                slot := REF(total);
+            END_METHOD
+            METHOD PUBLIC read : INT
+                read := total;
+            END_METHOD
+        END_FUNCTION_BLOCK
+
+        FUNCTION test : INT
+        VAR
+            c : counter;
+            p : PInt;
+        END_VAR
+            p := c.slot();
+            p^ := p^ + 32;
+            test := c.read();
+        END_FUNCTION
+    "#;
+    let wasm = super::compile_to_wasm(&mut with_db, source);
+    super::validate_wasm(&wasm).expect("WASM validation failed");
+    let result: i32 = super::execute_wasm(&wasm, "test", ());
+    assert_eq!(result, 42, "the write through the returned reference reached c.total");
+}
+
+#[rstest]
+fn test_function_returns_a_reference_to_an_aggregate(mut with_db: db::RootDatabase) {
+    let source = r#"
+        TYPE
+            S : STRUCT a : INT; b : INT; END_STRUCT;
+            PS : REF_TO S;
+        END_TYPE
+
+        FUNCTION borrow : PS
+        VAR_IN_OUT t : S; END_VAR
+            borrow := REF(t);
+        END_FUNCTION
+
+        FUNCTION test : INT
+        VAR
+            s : S;
+            p : PS;
+        END_VAR
+            s.a := 40;
+            s.b := 2;
+            p := borrow(t := s);
+            test := p^.a + p^.b;
+        END_FUNCTION
+    "#;
+    let wasm = super::compile_to_wasm(&mut with_db, source);
+    super::validate_wasm(&wasm).expect("WASM validation failed");
+    let result: i32 = super::execute_wasm(&wasm, "test", ());
+    assert_eq!(result, 42);
+}
