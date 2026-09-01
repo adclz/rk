@@ -84,6 +84,7 @@ pub struct StringPool {
     pub base_offset: u32,
 }
 
+
 impl StringPool {
     pub fn new(base_offset: u32) -> Self {
         Self {
@@ -152,6 +153,24 @@ impl<'db> ExprLowerCtx<'db> {
     /// Lower a HIR type to its MIR form (normalizing aliases/variables first).
     pub fn lower_type_resolved(&self, ty: Type<'db>) -> Result<MirType, LowerTypeError> {
         lower_type(self.db, ty.normalize(self.db))
+    }
+
+    /// The type a path step actually addresses, looking through `REF_TO`.
+    ///
+    /// HIR records a `^` as an ADJUSTMENT, so `infer` on `q^` still answers
+    /// the REFERENCE, and `lower_type` deliberately answers `Pointer(Void)`
+    /// for it — resolving a pointee there would not terminate on a type that
+    /// holds a reference to itself. So the pointee is resolved HERE, where the
+    /// use site knows it wants the layout of what the reference addresses.
+    /// Without it every aggregate access through a dereference — `q^.x`,
+    /// `r^[1]`, `f^.o` — hit "unsupported type" from code `rk check` called
+    /// clean, which is what made REF_TO scalar-only in practice.
+    fn lower_pointee(&self, ty: Type<'db>) -> Result<MirType, LowerTypeError> {
+        let mut ty = ty.normalize(self.db);
+        while let Type::RefTo(spec) = ty {
+            ty = spec.infer(self.db).normalize(self.db);
+        }
+        lower_type(self.db, ty)
     }
 
     /// Lower an expression, tagging a failure with the innermost failing
@@ -1258,7 +1277,7 @@ impl<'db> ExprLowerCtx<'db> {
         base_type: Type<'db>,
         field_name: hir::hir_def::interned::identifier::Ident,
     ) -> Result<(u32, MirType), LowerTypeError> {
-        let base_mir = self.lower_type_resolved(base_type).ok();
+        let base_mir = self.lower_pointee(base_type).ok();
         // If the resolved type is an array, the field access is on the element type
         let effective_mir = match base_mir {
             Some(MirType::Array(a)) => Some(*a.element_type),
@@ -1325,7 +1344,7 @@ impl<'db> ExprLowerCtx<'db> {
         array_type: Type<'db>,
         dim: usize,
     ) -> Result<(MirType, u32, i64, u32), LowerTypeError> {
-        let mir = self.lower_type_resolved(array_type).ok();
+        let mir = self.lower_pointee(array_type).ok();
         if let Some(MirType::Array(ref a)) = mir {
             let later: u32 = a
                 .dimensions

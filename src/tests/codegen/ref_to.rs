@@ -263,3 +263,223 @@ fn test_inline_ref_arg_past_32k(mut with_db: db::RootDatabase) {
     let result: i32 = crate::tests::codegen::execute_wasm(&wasm_bytes, "test_main", ());
     assert_eq!(result, 0xBEEF);
 }
+
+// --- Aggregates reached through a dereference ---
+//
+// `lower_type` answers `Pointer(Void)` for a REF_TO, because resolving the
+// pointee there would not terminate on a type holding a reference to itself.
+// The layout sites read that Void and reported "unsupported type", so every
+// aggregate access through a `^` was an internal compiler error from code
+// `rk check` called clean. These pin the VALUES, not just that it compiles.
+
+#[rstest]
+fn test_deref_struct_field_round_trips(mut with_db: db::RootDatabase) {
+    let source = r#"
+        TYPE S : STRUCT a : INT; b : INT; END_STRUCT; END_TYPE
+
+        FUNCTION test : INT
+        VAR
+            s : S;
+            q : REF_TO S := REF(s);
+        END_VAR
+            q^.a := 11;
+            q^.b := 31;
+            test := q^.a + s.b;
+        END_FUNCTION
+    "#;
+    let wasm = super::compile_to_wasm(&mut with_db, source);
+    let result: i32 = super::execute_wasm(&wasm, "test", ());
+    assert_eq!(result, 42, "writes through q^ must land in s's own fields");
+}
+
+#[rstest]
+fn test_deref_struct_field_addresses_the_right_slot(mut with_db: db::RootDatabase) {
+    // A wrong field offset still compiles and still returns a number, so the
+    // second field is read back through the struct to catch an off-by-one slot.
+    let source = r#"
+        TYPE S : STRUCT a : INT; b : INT; c : INT; END_STRUCT; END_TYPE
+
+        FUNCTION test : INT
+        VAR
+            s : S;
+            q : REF_TO S := REF(s);
+        END_VAR
+            s.a := 1;
+            s.b := 2;
+            s.c := 3;
+            q^.b := 7;
+            test := s.a * 100 + s.b * 10 + s.c;
+        END_FUNCTION
+    "#;
+    let wasm = super::compile_to_wasm(&mut with_db, source);
+    let result: i32 = super::execute_wasm(&wasm, "test", ());
+    assert_eq!(result, 173, "only b changes: a=1, b=7, c=3");
+}
+
+#[rstest]
+fn test_deref_array_element_round_trips(mut with_db: db::RootDatabase) {
+    let source = r#"
+        FUNCTION test : INT
+        VAR
+            a : ARRAY[0..3] OF INT;
+            r : REF_TO ARRAY[0..3] OF INT := REF(a);
+        END_VAR
+            r^[1] := 40;
+            r^[2] := 2;
+            test := a[1] + r^[2];
+        END_FUNCTION
+    "#;
+    let wasm = super::compile_to_wasm(&mut with_db, source);
+    let result: i32 = super::execute_wasm(&wasm, "test", ());
+    assert_eq!(result, 42, "element writes through r^ must land at the right stride");
+}
+
+#[rstest]
+fn test_deref_fb_output_reads_through_the_reference(mut with_db: db::RootDatabase) {
+    let source = r#"
+        FUNCTION_BLOCK counter
+        VAR_INPUT step : INT; END_VAR
+        VAR_OUTPUT total : INT; END_VAR
+            total := total + step;
+        END_FUNCTION_BLOCK
+
+        FUNCTION test : INT
+        VAR
+            c : counter;
+            f : REF_TO counter := REF(c);
+        END_VAR
+            c(step := 20);
+            c(step := 22);
+            test := f^.total;
+        END_FUNCTION
+    "#;
+    let wasm = super::compile_to_wasm(&mut with_db, source);
+    let result: i32 = super::execute_wasm(&wasm, "test", ());
+    assert_eq!(result, 42, "f^ addresses c's own instance state");
+}
+
+#[rstest]
+fn test_deref_self_referential_struct(mut with_db: db::RootDatabase) {
+    // The pointee is resolved one level at the use site, so a type that holds
+    // a reference to itself lowers without recursing forever.
+    let source = r#"
+        TYPE Node : STRUCT value : INT; next : REF_TO Node; END_STRUCT; END_TYPE
+
+        FUNCTION test : INT
+        VAR
+            head : Node;
+            p : REF_TO Node := REF(head);
+        END_VAR
+            p^.value := 42;
+            test := head.value;
+        END_FUNCTION
+    "#;
+    let wasm = super::compile_to_wasm(&mut with_db, source);
+    let result: i32 = super::execute_wasm(&wasm, "test", ());
+    assert_eq!(result, 42);
+}
+
+// A reference that ARRIVES AS A PARAMETER takes a different address path: the
+// callee reads a wasm local holding a passed pointer, rather than computing an
+// address in its own frame. And every test above reads back through a local in
+// the frame that owns the storage, so a `q^` addressing a COPY would still
+// pass. These observe the write from the OTHER side of a call.
+
+#[rstest]
+fn test_deref_struct_field_through_parameter_reference(mut with_db: db::RootDatabase) {
+    let source = r#"
+        TYPE S : STRUCT a : INT; b : INT; END_STRUCT; END_TYPE
+
+        FUNCTION bump : INT
+        VAR_INPUT
+            p : REF_TO S;
+        END_VAR
+            p^.a := p^.a + 1;
+            bump := p^.b;
+        END_FUNCTION
+
+        FUNCTION test : INT
+        VAR
+            s : S;
+            got : INT;
+        END_VAR
+            s.a := 10;
+            s.b := 5;
+            got := bump(p := REF(s));
+            test := got * 100 + s.a;
+        END_FUNCTION
+    "#;
+    let wasm = super::compile_to_wasm(&mut with_db, source);
+    let result: i32 = super::execute_wasm(&wasm, "test", ());
+    assert_eq!(
+        result, 511,
+        "callee read b=5 through the parameter, and its write to a reached the CALLER's s (11)"
+    );
+}
+
+#[rstest]
+fn test_deref_array_element_through_parameter_reference(mut with_db: db::RootDatabase) {
+    let source = r#"
+        TYPE A4 : ARRAY[0..3] OF INT; END_TYPE
+
+        FUNCTION fill : INT
+        VAR_INPUT
+            p : REF_TO A4;
+        END_VAR
+            p^[2] := 40;
+            fill := p^[0];
+        END_FUNCTION
+
+        FUNCTION test : INT
+        VAR
+            a : A4;
+            got : INT;
+        END_VAR
+            a[0] := 2;
+            got := fill(p := REF(a));
+            test := a[2] + got;
+        END_FUNCTION
+    "#;
+    let wasm = super::compile_to_wasm(&mut with_db, source);
+    let result: i32 = super::execute_wasm(&wasm, "test", ());
+    assert_eq!(
+        result, 42,
+        "the element write reached the CALLER's a[2] (40), and a[0] read back as 2"
+    );
+}
+
+#[rstest]
+fn test_deref_struct_write_is_visible_to_the_caller(mut with_db: db::RootDatabase) {
+    // The aggregate counterpart of test_ref_to_assignment_var_in_out: take a
+    // reference to a VAR_IN_OUT struct and write a field through it, then read
+    // the caller's own instance. A write into a copy leaves s.a at 1.
+    let source = r#"
+        TYPE S : STRUCT a : INT; b : INT; END_STRUCT; END_TYPE
+
+        FUNCTION mutate : INT
+        VAR_IN_OUT
+            target : S;
+        END_VAR
+        VAR
+            q : REF_TO S;
+        END_VAR
+            q := REF(target);
+            q^.a := 7;
+            mutate := 0;
+        END_FUNCTION
+
+        FUNCTION test : INT
+        VAR
+            s : S;
+            ignored : INT;
+        END_VAR
+            s.a := 1;
+            s.b := 2;
+            ignored := mutate(target := s);
+            test := s.a * 10 + s.b;
+        END_FUNCTION
+    "#;
+    let wasm = super::compile_to_wasm(&mut with_db, source);
+    let result: i32 = super::execute_wasm(&wasm, "test", ());
+    assert_eq!(result, 72, "s.a became 7 in the caller's own storage; s.b untouched");
+}
