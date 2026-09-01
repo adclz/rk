@@ -122,6 +122,7 @@ pub const BUILTINS: &[&str] = &[
     "rk.range_check_i64",
     "rk.range_check_u64",
     "rk.idx_check",
+    "rk.null_check",
     "rk.raise_str",
     "rk.str_assign",
     "rk.str_from_char",

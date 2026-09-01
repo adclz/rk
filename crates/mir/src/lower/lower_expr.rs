@@ -989,6 +989,7 @@ impl<'db> ExprLowerCtx<'db> {
             (true, MirType::Pointer(pointee)) => MirPlace::Deref {
                 base: Box::new(place),
                 pointee_type: (**pointee).clone(),
+                checked: false,
             },
             _ => place,
         }
@@ -1139,6 +1140,7 @@ impl<'db> ExprLowerCtx<'db> {
                 Ok(MirPlace::Deref {
                     base: Box::new(inner),
                     pointee_type,
+                    checked: true,
                 })
             }
         }
@@ -1262,6 +1264,7 @@ impl<'db> ExprLowerCtx<'db> {
                 Ok(MirPlace::Deref {
                     base: Box::new(inner),
                     pointee_type,
+                    checked: true,
                 })
             }
 

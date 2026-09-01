@@ -481,3 +481,100 @@ fn integer_modulo_by_zero_faults(mut with_db: db::RootDatabase) {
     "#;
     expect_fault(&mut with_db, source, "10 MOD 0 must fault");
 }
+
+/// A null dereference FAULTS instead of accessing address 0.
+///
+/// Unchecked, this was not a fault at all: a read answered 0 and a write
+/// silently succeeded. E1003 is the compile-time counterpart, and it does not
+/// track a reference arriving as a parameter — which is how a null reaches a
+/// callee in the first place.
+#[rstest]
+fn a_null_dereference_faults(mut with_db: db::RootDatabase) {
+    let source = r#"
+        FUNCTION peek : INT
+        VAR_INPUT p : REF_TO INT; END_VAR
+            peek := p^;
+        END_FUNCTION
+
+        FUNCTION run : DINT
+        VAR n : REF_TO INT := NULL; END_VAR
+            run := peek(p := n);
+        END_FUNCTION
+    "#;
+    let msg = expect_fault(&mut with_db, source, "a null read must fault");
+    assert!(
+        msg.contains("dereference of a null reference"),
+        "unexpected fault message: {msg}"
+    );
+}
+
+/// The write direction too: silently succeeding is what let a null with an
+/// offset (`p^[i]`, `p^.field`) reach past the reserved floor and corrupt
+/// live IEC variables.
+#[rstest]
+fn a_null_dereference_write_faults(mut with_db: db::RootDatabase) {
+    let source = r#"
+        FUNCTION poke : INT
+        VAR_INPUT p : REF_TO INT; END_VAR
+            p^ := 1;
+            poke := 0;
+        END_FUNCTION
+
+        FUNCTION run : DINT
+        VAR n : REF_TO INT := NULL; END_VAR
+            run := poke(p := n);
+        END_FUNCTION
+    "#;
+    let msg = expect_fault(&mut with_db, source, "a null write must fault");
+    assert!(
+        msg.contains("dereference of a null reference"),
+        "unexpected fault message: {msg}"
+    );
+}
+
+/// An aggregate access through a null base faults at the dereference, before
+/// the offset is added. `rk.idx_check` cannot catch this: it validates the
+/// INDEX against the declared bounds and never sees the base, so an in-bounds
+/// subscript on a null base used to compute a wild address and write to it.
+#[rstest]
+fn a_null_base_with_an_in_bounds_index_faults(mut with_db: db::RootDatabase) {
+    let source = r#"
+        TYPE Buf : ARRAY[0..99] OF INT; END_TYPE
+
+        FUNCTION poke : INT
+        VAR_INPUT p : REF_TO Buf; END_VAR
+            p^[50] := 1;
+            poke := 0;
+        END_FUNCTION
+
+        FUNCTION run : DINT
+        VAR n : REF_TO Buf; END_VAR
+            run := poke(p := n);
+        END_FUNCTION
+    "#;
+    let msg = expect_fault(&mut with_db, source, "a null base must fault");
+    assert!(
+        msg.contains("dereference of a null reference"),
+        "unexpected fault message: {msg}"
+    );
+}
+
+/// A non-null dereference is untouched by the check.
+#[rstest]
+fn a_valid_dereference_does_not_fault(mut with_db: db::RootDatabase) {
+    let source = r#"
+        FUNCTION peek : INT
+        VAR_INPUT p : REF_TO INT; END_VAR
+            peek := p^;
+        END_FUNCTION
+
+        FUNCTION run : DINT
+        VAR x : INT := 7; q : REF_TO INT; END_VAR
+            q := REF(x);
+            run := peek(p := q);
+        END_FUNCTION
+    "#;
+    let wasm = compile_to_wasm(&mut with_db, source);
+    let result: i32 = crate::tests::codegen::execute_wasm(&wasm, "run", ());
+    assert_eq!(result, 7);
+}

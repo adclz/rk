@@ -146,6 +146,10 @@ pub enum MirPlace {
     Deref {
         base: Box<MirPlace>,
         pointee_type: MirType,
+        /// Whether the pointer needs a runtime null check: true for a dereference
+        /// the user wrote, false for the transparent `VAR_IN_OUT` dereference,
+        /// which always addresses real storage.
+        checked: bool,
     },
 
     /// Instance variable access through 'this' pointer (for methods).

@@ -47,6 +47,19 @@ thread_local! {
     /// The function whose body is being emitted, for the `emit_call` panic.
     pub(crate) static CURRENT_EMIT_FN: RefCell<Option<String>> =
         const { RefCell::new(None) };
+
+    /// Index of the `rk.null_check` builtin for the module being emitted,
+    /// or `None` when nothing dereferences. Set by `WasmGen` once the graft
+    /// indices are known; read at every checked `Deref`.
+    pub(crate) static NULL_CHECK_IDX: RefCell<Option<u32>> =
+        const { RefCell::new(None) };
+}
+
+/// Fault the pointer on the stack if it is null, leaving it in place.
+fn emit_null_check(func: &mut wasm_encoder::Function) {
+    if let Some(idx) = NULL_CHECK_IDX.with(|c| *c.borrow()) {
+        func.instruction(&Instruction::Call(idx));
+    }
 }
 
 /// Emit the snapshot dance for a STRING-returning call result currently on
@@ -370,8 +383,15 @@ fn emit_load(
             emit_typed_mem_load(func, element_type);
         }
 
-        MirPlace::Deref { base, pointee_type } => {
+        MirPlace::Deref {
+            base,
+            pointee_type,
+            checked,
+        } => {
             emit_load(func, base, locals, fn_indices);
+            if *checked {
+                emit_null_check(func);
+            }
             emit_typed_mem_load(func, pointee_type);
         }
 
@@ -458,9 +478,12 @@ pub(crate) fn emit_addr_of(
             func.instruction(&Instruction::I32Mul);
             func.instruction(&Instruction::I32Add);
         }
-        MirPlace::Deref { base, .. } => {
+        MirPlace::Deref { base, checked, .. } => {
             // Address of a deref is the pointer value itself
             emit_load(func, base, locals, fn_indices);
+            if *checked {
+                emit_null_check(func);
+            }
         }
         MirPlace::ThisField { field_offset, .. } => {
             func.instruction(&Instruction::LocalGet(0));

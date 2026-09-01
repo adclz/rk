@@ -57,18 +57,22 @@ fn test_ref_to_var_in_out(mut with_db: db::RootDatabase) {
 
     let instance = super::instantiate_with_memory(&mut store, &module);
 
-    // Get memory and set value at address 0
+    // Address 0 is NULL, which a dereference now faults on, so the caller's
+    // storage sits at a real address — as it does in a compiled program,
+    // where IEC allocation starts above the reserved floor.
+    const CALLER_SLOT: i32 = 16_384;
     let memory = instance
         .get_memory(&mut store, "memory")
         .expect("Failed to get memory");
-    memory.write(&mut store, 0, &42i32.to_le_bytes()).unwrap();
+    memory
+        .write(&mut store, CALLER_SLOT as usize, &42i32.to_le_bytes())
+        .unwrap();
 
-    // Call function with pointer to address 0
     let func = instance
         .get_typed_func::<i32, i32>(&mut store, "get_ptr_value")
         .unwrap();
 
-    let result = func.call(&mut store, 0).unwrap();
+    let result = func.call(&mut store, CALLER_SLOT).unwrap();
     assert_eq!(result, 42, "Should read value through REF_TO pointer");
 }
 
@@ -97,22 +101,24 @@ fn test_ref_to_assignment_var_in_out(mut with_db: db::RootDatabase) {
 
     let instance = super::instantiate_with_memory(&mut store, &module);
 
-    // Get memory and initialize
+    // Address 0 is NULL — see test_ref_to_var_in_out.
+    const CALLER_SLOT: i32 = 16_384;
     let memory = instance
         .get_memory(&mut store, "memory")
         .expect("Failed to get memory");
-    memory.write(&mut store, 0, &0i32.to_le_bytes()).unwrap();
+    memory
+        .write(&mut store, CALLER_SLOT as usize, &0i32.to_le_bytes())
+        .unwrap();
 
-    // Call function
     let func = instance
         .get_typed_func::<i32, i32>(&mut store, "set_ptr_value")
         .unwrap();
 
-    func.call(&mut store, 0).unwrap();
+    func.call(&mut store, CALLER_SLOT).unwrap();
 
     // Read back the modified value
     let mut buffer = [0u8; 4];
-    memory.read(&store, 0, &mut buffer).unwrap();
+    memory.read(&store, CALLER_SLOT as usize, &mut buffer).unwrap();
     let value = i32::from_le_bytes(buffer);
 
     assert_eq!(value, 99, "Should write through REF_TO pointer");

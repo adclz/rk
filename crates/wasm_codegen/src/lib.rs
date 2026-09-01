@@ -566,6 +566,9 @@ pub(crate) fn core_memory_pages(module: &MirModule) -> u64 {
     }
 }
 
+/// Name of the builtin that faults a null dereference.
+pub(crate) const NULL_CHECK: &str = "rk.null_check";
+
 impl<'a> WasmGen<'a> {
     fn new(db: &'a dyn WorkspaceDataBase, module: &'a MirModule) -> Self {
         // Memory is imported from `env`, first in the import section, so a host
@@ -772,6 +775,19 @@ impl<'a> WasmGen<'a> {
         map
     }
 
+    /// Hand the emit layer the null-check builtin's index, or `None`.
+    fn publish_null_check_index(
+        &self,
+        fn_indices: &rustc_hash::FxHashMap<hir::hir_def::interned::identifier::Ident, u32>,
+    ) {
+        let ident = hir::hir_def::interned::identifier::Ident::new(
+            self.db,
+            compact_str::CompactString::from(NULL_CHECK),
+        );
+        let idx = fn_indices.get(&ident).copied();
+        crate::emit_expr::NULL_CHECK_IDX.with(|cell| *cell.borrow_mut() = idx);
+    }
+
     fn collect_builtin_names(&self) -> Vec<String> {
         use mir::expr::{MirExpr, MirPlace};
         use mir::stmt::MirStmt;
@@ -790,9 +806,15 @@ impl<'a> WasmGen<'a> {
                     walk_place(db, base, found);
                     walk_expr(db, index, found);
                 }
-                MirPlace::Field { base, .. } | MirPlace::Deref { base, .. } => {
+                MirPlace::Deref { base, checked, .. } => {
+                    // A user-written `^` is null-checked, so the builtin has
+                    // to be grafted even though no MirExpr::Call names it.
+                    if *checked && crate::builtins::lookup(NULL_CHECK).is_some() {
+                        found.insert(NULL_CHECK.to_string());
+                    }
                     walk_place(db, base, found)
                 }
+                MirPlace::Field { base, .. } => walk_place(db, base, found),
                 MirPlace::Local(_) | MirPlace::ThisField { .. } | MirPlace::Global { .. } => {}
             }
         }
@@ -1201,6 +1223,7 @@ impl<'a> WasmGen<'a> {
 
         // Build remapped function indices for call instructions
         let remapped_fn_indices = self.build_call_indices();
+        self.publish_null_check_index(&remapped_fn_indices);
 
         // The per-function snapshot context `emit_call` consults for nested
         // STRING-returning calls.
@@ -1384,6 +1407,7 @@ impl<'a> WasmGen<'a> {
         let mut wasm_func = wasm_encoder::Function::new(extra_locals);
 
         let remapped_fn_indices = self.build_call_indices();
+        self.publish_null_check_index(&remapped_fn_indices);
 
         // SNAPSHOT_CTX reuses the two scratch locals; snapshots and the catch
         // shuffle never run concurrently.

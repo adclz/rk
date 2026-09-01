@@ -76,6 +76,25 @@ pub extern "C" fn rk_idx_check(index: i32, lower: i32, size: u32) -> i32 {
     index
 }
 
+/// Null check for a RUNTIME dereference: raises an IEC exception when the
+/// pointer is 0, else returns it unchanged.
+///
+/// Lowering wraps the pointer of every user-written `^`. Unchecked, a null
+/// dereference was not a fault at all: a read answered 0 and a write silently
+/// succeeded, and since `p^[i]` and `p^.field` address `0 + offset`, a large
+/// enough offset reached past the reserved floor and corrupted live IEC
+/// variables from a scan that reported nothing. `rk.idx_check` did not help
+/// there — it validates the INDEX against the declared bounds and never sees
+/// the base.
+#[unsafe(no_mangle)]
+pub extern "C" fn rk_null_check(ptr: i32) -> i32 {
+    if ptr == 0 {
+        const MSG: &str = "dereference of a null reference";
+        unsafe { __iec_raise(MSG.as_ptr(), MSG.len() as u32) }
+    }
+    ptr
+}
+
 /// Range check for a RUNTIME value entering a subrange-typed slot: raises an
 /// IEC exception when `value` leaves `[lower, upper]`, else returns it
 /// unchanged. The compile-time counterpart is E0802, which catches the
