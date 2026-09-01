@@ -764,3 +764,87 @@ END_PROGRAM
 "#;
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"");
 }
+
+#[rstest]
+fn extending_a_final_class_is_refused(mut with_db: RootDatabase) {
+    // The method-level FINAL rule was enforced (E0504) while the type-level
+    // one was not, so FINAL on a CLASS header meant nothing.
+    let source = r#"
+CLASS FINAL B
+    METHOD PUBLIC m : INT m := 1; END_METHOD
+END_CLASS
+
+CLASS D EXTENDS B
+END_CLASS
+"#;
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
+    [E0522] Error: inheritance violation
+       ,-[ file:///test0.st:6:17 ]
+       |
+     2 | CLASS FINAL B
+       |             |
+       |             `-- CLASS 'B' is declared FINAL here
+       |
+     6 | CLASS D EXTENDS B
+       |                 |
+       |                 `-- 'D' cannot extend FINAL CLASS 'B'
+       |
+       | Note: FINAL declares a type complete: it may be used, but not extended
+    ---'
+    ");
+}
+
+#[rstest]
+fn extending_a_final_function_block_is_refused(mut with_db: RootDatabase) {
+    let source = r#"
+FUNCTION_BLOCK FINAL B
+END_FUNCTION_BLOCK
+
+FUNCTION_BLOCK D EXTENDS B
+END_FUNCTION_BLOCK
+"#;
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
+    [E0522] Error: inheritance violation
+       ,-[ file:///test0.st:5:26 ]
+       |
+     2 | FUNCTION_BLOCK FINAL B
+       |                      |
+       |                      `-- FUNCTION_BLOCK 'B' is declared FINAL here
+       |
+     5 | FUNCTION_BLOCK D EXTENDS B
+       |                          |
+       |                          `-- 'D' cannot extend FINAL FUNCTION_BLOCK 'B'
+       |
+       | Note: FINAL declares a type complete: it may be used, but not extended
+    ---'
+    ");
+}
+
+#[rstest]
+fn a_final_class_is_still_usable(mut with_db: RootDatabase) {
+    // FINAL closes the type to EXTENSION, not to use.
+    let source = r#"
+CLASS FINAL B
+    METHOD PUBLIC m : INT m := 1; END_METHOD
+END_CLASS
+
+PROGRAM P
+VAR b : B; x : INT; END_VAR
+    x := b.m();
+END_PROGRAM
+"#;
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"");
+}
+
+#[rstest]
+fn a_final_derived_class_may_extend_an_open_base(mut with_db: RootDatabase) {
+    let source = r#"
+CLASS B
+    METHOD PUBLIC m : INT m := 1; END_METHOD
+END_CLASS
+
+CLASS FINAL D EXTENDS B
+END_CLASS
+"#;
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"");
+}

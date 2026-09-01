@@ -28,6 +28,26 @@ impl<'db> InitInference<'db> {
         let declared_methods = &implementer.get_scope_id(db).def_map(db).declared_methods;
         let inherited_methods = inherited_methods(db, implementer);
 
+        // FINAL closes a type to extension. The method-level rule was
+        // enforced (E0504) while this one was not, so FINAL on a CLASS or
+        // FUNCTION_BLOCK header meant nothing at all.
+        if let Some(extends) = match implementer {
+            Pou::FunctionBlock(fb) => fb.extends(db),
+            Pou::Class(cl) => cl.extends(db),
+            _ => None,
+        } && let Some(base) = crate::hir_ty::head::inheritance::base_pou(db, implementer)
+            && base.modifier(db).contains(Modifier::FINAL)
+        {
+            self.errors.push(
+                InheritanceError::ExtendsFinalPou {
+                    derived: implementer,
+                    base,
+                    extends: crate::CallSite::from_scoped(db, extends),
+                }
+                .to_diagnostic(db, self.scope.file(db)),
+            );
+        }
+
         // IEC 6.6.7: an ABSTRACT method makes its POU incomplete, so the POU
         // must say so. Unenforced, the method had no body, nothing obliged a
         // derived POU to supply one, and calling it returned 0.

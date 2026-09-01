@@ -2346,6 +2346,21 @@ END_PROGRAM
             lint_rule: None,
         },
         ErrorExample {
+            code: "E0522",
+            category: "Inheritance",
+            title: "Extending a FINAL type",
+            description: "A CLASS or FUNCTION_BLOCK declared FINAL is complete and closed: it may be used, but not extended.",
+            sources: &[r#"
+CLASS FINAL Base
+    METHOD PUBLIC myMethod : INT  myMethod := 1; END_METHOD
+END_CLASS
+
+CLASS Derived EXTENDS Base
+END_CLASS
+"#],
+            lint_rule: None,
+        },
+        ErrorExample {
             code: "E0509",
             category: "Inheritance",
             title: "Unimplemented interface method",

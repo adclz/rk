@@ -55,6 +55,14 @@ pub enum InheritanceError<'db> {
         var: VariableDecl<'db>,
         pou: Pou<'db>,
     },
+    /// FINAL says the type is complete and closed. The method-level rule was
+    /// enforced (E0504) while the type-level one was not, so `FINAL` on a
+    /// CLASS or FUNCTION_BLOCK header meant nothing.
+    ExtendsFinalPou {
+        derived: Pou<'db>,
+        base: Pou<'db>,
+        extends: CallSite<'db>,
+    },
     UnimplementedInterfaceMethod {
         implementer: Pou<'db>,
         method: MethodRef<'db>,
@@ -170,6 +178,7 @@ impl<'db> ErrorCode for InheritanceError<'db> {
             Self::EmptyOverride { .. } => "E0507",
             Self::AbstractMethodInConcretePou { .. } => "E0510",
             Self::InstantiatedAbstractPou { .. } => "E0511",
+            Self::ExtendsFinalPou { .. } => "E0522",
             Self::UnimplementedInterfaceMethod { .. } => "E0509",
             Self::SignatureParametersCountMismatch { .. } => "E0512",
             Self::SignatureTypeMismatch { .. } => "E0512",
@@ -201,6 +210,7 @@ impl<'db> ErrorCode for InheritanceError<'db> {
             | Self::EmptyOverride { .. }
             | Self::AbstractMethodInConcretePou { .. }
             | Self::InstantiatedAbstractPou { .. }
+            | Self::ExtendsFinalPou { .. }
             | Self::UnimplementedInterfaceMethod { .. }
             | Self::InheritedMemberShadowed { .. } => "inheritance violation",
             Self::SignatureParametersCountMismatch { .. }
@@ -341,6 +351,36 @@ impl<'db> ToIdeDiagnostic<'db> for InheritanceError<'db> {
 
                 diag.with_note("OVERRIDE is only valid when the method is inherited".into());
 
+                diag
+            }
+            Self::ExtendsFinalPou {
+                derived,
+                base,
+                extends,
+            } => {
+                let kind = match base {
+                    Pou::Class(_) => "CLASS",
+                    _ => "FUNCTION_BLOCK",
+                };
+                let mut diag = diag()
+                    .message(format!(
+                        "'{}' cannot extend FINAL {kind} '{}'",
+                        derived.get_name_ident(db).text(db),
+                        base.get_name_ident(db).text(db),
+                    ))
+                    .severity(DiagnosticSeverity::ERROR)
+                    .desc(self)
+                    .range(crate::denormalize(db, file, &extends.get_span(db)).unwrap_or_default())
+                    .call();
+                diag.with_related(Related::new(
+                    format!(
+                        "{kind} '{}' is declared FINAL here",
+                        base.get_name_ident(db).text(db),
+                    ),
+                    base.get_scope_id(db).file(db),
+                    base.get_name_span(db),
+                ));
+                diag.with_note("FINAL declares a type complete: it may be used, but not extended".into());
                 diag
             }
             Self::AbstractMethodInConcretePou { pou, method } => {
