@@ -633,7 +633,7 @@ impl<'db> ToIdeDiagnostic<'db> for InheritanceError<'db> {
                 let name = derived.get_name_ident(db).text(db);
                 let mut diag = diag()
                     .message(format!(
-                        "variable '{name}' is already declared in a base function block"
+                        "variable '{name}' is already declared in a base POU"
                     ))
                     .range(
                         crate::denormalize(db, file, &derived.get_name_span(db))
@@ -648,7 +648,7 @@ impl<'db> ToIdeDiagnostic<'db> for InheritanceError<'db> {
                     base.get_name_span(db),
                 ));
                 diag.with_note(
-                    "variable names in a base and derived function block must be unique".into(),
+                    "variable names in a base and derived POU must be unique".into(),
                 );
                 diag
             }

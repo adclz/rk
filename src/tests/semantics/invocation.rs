@@ -430,9 +430,9 @@ END_FUNCTION_BLOCK
        |
      6 | VAR c : INT; END_VAR
        |     |
-       |     `-- variable 'c' is already declared in a base function block
+       |     `-- variable 'c' is already declared in a base POU
        |
-       | Note: variable names in a base and derived function block must be unique
+       | Note: variable names in a base and derived POU must be unique
     ---'
     ");
 }

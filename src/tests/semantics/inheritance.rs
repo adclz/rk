@@ -528,3 +528,55 @@ END_FUNCTION_BLOCK
 "#;
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"");
 }
+
+#[rstest]
+fn class_member_shadowing_is_refused(mut with_db: RootDatabase) {
+    // The check was FB-gated at both ends: two CLASSes declaring `x` shared
+    // one slot silently — SetB() changed what GetA() returned — and with
+    // different types the module was invalid wasm at exit 0.
+    let source = r#"
+CLASS A
+    VAR x : INT; END_VAR
+END_CLASS
+
+CLASS B EXTENDS A
+    VAR x : REAL; END_VAR
+END_CLASS
+"#;
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
+    [E0521] Error: inheritance violation
+       ,-[ file:///test0.st:7:9 ]
+       |
+     3 |     VAR x : INT; END_VAR
+       |         |
+       |         `-- inherited variable 'x' is declared here
+       |
+     7 |     VAR x : REAL; END_VAR
+       |         |
+       |         `-- variable 'x' is already declared in a base POU
+       |
+       | Note: variable names in a base and derived POU must be unique
+    ---'
+    ");
+}
+
+#[rstest]
+fn redeclared_var_external_is_not_shadowing(mut with_db: RootDatabase) {
+    // Two VAR_EXTERNALs name the same global; neither owns storage, and
+    // redeclaring is the only way the derived body reaches the global.
+    let source = r#"
+CONFIGURATION Cfg
+    VAR_GLOBAL g : INT; END_VAR
+END_CONFIGURATION
+
+FUNCTION_BLOCK BaseE
+    VAR_EXTERNAL g : INT; END_VAR
+END_FUNCTION_BLOCK
+
+FUNCTION_BLOCK DerE EXTENDS BaseE
+    VAR_EXTERNAL g : INT; END_VAR
+    g := 1;
+END_FUNCTION_BLOCK
+"#;
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"");
+}

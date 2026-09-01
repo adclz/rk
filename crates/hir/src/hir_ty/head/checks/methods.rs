@@ -137,8 +137,15 @@ impl<'db> InitInference<'db> {
         // otherwise operate on two distinct, same-named slots).
         // `def_map.local_variables` is params-only; Rule 3 covers ALL variables
         // (esp. `VAR` members), so read them from the FB directly.
-        if let Pou::FunctionBlock(fb) = implementer {
-            let own = fb.variables(db);
+        // FB or CLASS alike — the check was FB-gated at BOTH ends, so two
+        // CLASSes declaring the same member shared one slot silently (and
+        // with different types, emitted invalid wasm at exit 0).
+        let member_vars = |pou: Pou<'db>| match pou {
+            Pou::FunctionBlock(fb) => Some(fb.variables(db)),
+            Pou::Class(cl) => Some(cl.variables(db)),
+            _ => None,
+        };
+        if let Some(own) = member_vars(implementer) {
             if !own.is_empty() {
                 // Nearest inherited declaration per name, walking up the chain.
                 let mut inherited = FxHashMap::default();
@@ -148,8 +155,8 @@ impl<'db> InitInference<'db> {
                     if !visited.insert(base) {
                         break; // guard against EXTENDS cycles (reported elsewhere)
                     }
-                    if let Pou::FunctionBlock(base_fb) = base {
-                        for v in base_fb.variables(db) {
+                    if let Some(base_vars) = member_vars(base) {
+                        for v in base_vars {
                             inherited
                                 .entry(v.get_name_ident(db).caseless(db))
                                 .or_insert(*v);
@@ -159,6 +166,12 @@ impl<'db> InitInference<'db> {
                 }
                 for v in own {
                     if let Some(base_decl) = inherited.get(&v.get_name_ident(db).caseless(db)) {
+                        // Two VAR_EXTERNALs name the same global; neither owns
+                        // storage, so nothing is shadowed — and redeclaring is
+                        // the only way the derived body reaches the global.
+                        if v.is_external(db) && base_decl.is_external(db) {
+                            continue;
+                        }
                         self.errors.push(
                             InheritanceError::InheritedMemberShadowed {
                                 derived: *v,
