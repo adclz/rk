@@ -8,10 +8,13 @@ use crate::{
     },
     hir_def::{
         expressions::{
-            expression::{Elementary, Expr, ExprKind, PrimaryExpr},
+            expression::{
+                ComparisonOperatorKind, Elementary, Expr, ExprKind, PrimaryExpr, RefValue,
+            },
             spec::ElementarySpec,
             statement::{CaseKind, Stmt, StmtKind},
         },
+        pous::variable::VariableDecl,
         scope::{ScopeId, ScopeKind},
         semantic_index::get_scope,
     },
@@ -93,6 +96,82 @@ fn check_case_label_constant<'db>(
             .to_diagnostic(db, ctx.scope.file(db)),
         ),
     }
+}
+
+
+/// A guard of the form `p = NULL` or `p <> NULL`, in either operand order.
+///
+/// Returns the reference it tests and whether the reference is NULL when the
+/// condition holds. Without this the analysis was assignment-only: the one
+/// idiomatic way to write a safe dereference, `IF p <> NULL THEN p^`, was
+/// refused, and no pragma could silence it because E1003 is a compiler error.
+fn null_guard<'db>(
+    db: &'db dyn WorkspaceDataBase,
+    condition: Expr<'db>,
+    ctx: &BodyInferenceResult<'db>,
+) -> Option<(VariableDecl<'db>, bool)> {
+    let ExprKind::ComparisonOperator {
+        left,
+        operator,
+        right,
+    } = condition.expr(db)
+    else {
+        return None;
+    };
+    let null_when_true = match operator {
+        ComparisonOperatorKind::Eq => true,
+        ComparisonOperatorKind::Ne => false,
+        _ => return None,
+    };
+    let is_null = |e: &Expr<'db>| {
+        matches!(
+            e.expr(db),
+            ExprKind::PrimaryExpr(PrimaryExpr::RefValue {
+                value: RefValue::Null
+            })
+        )
+    };
+    let var_of = |e: &Expr<'db>| match ctx.get_type_of_expr(*e) {
+        Type::Variable((v, _)) => Some(v),
+        _ => None,
+    };
+    if is_null(right) {
+        var_of(left).map(|v| (v, null_when_true))
+    } else if is_null(left) {
+        var_of(right).map(|v| (v, null_when_true))
+    } else {
+        None
+    }
+}
+
+/// Apply a guard to the state a branch is entered with.
+///
+/// Only the non-null direction narrows: when a condition PROVES the reference
+/// null, the nullable state already on record is the accurate one, and a
+/// dereference under it must still be reported.
+fn apply_guard<'db>(
+    states: &mut rustc_hash::FxHashMap<VariableDecl<'db>, NullState<'db>>,
+    guard: Option<(VariableDecl<'db>, bool)>,
+    condition_holds: bool,
+) {
+    if let Some((var, null_when_true)) = guard
+        && null_when_true != condition_holds
+        && states.contains_key(&var)
+    {
+        states.insert(var, NullState::NonNull);
+    }
+}
+
+/// Whether a branch runs off its end into the code after the IF.
+///
+/// A branch that returns cannot reach the statements that follow, so its state
+/// must not join into theirs: `IF p = NULL THEN RETURN; END_IF;` leaves only
+/// the non-null path alive.
+fn falls_through<'db>(db: &'db dyn WorkspaceDataBase, stmts: &[Stmt<'db>]) -> bool {
+    !matches!(
+        stmts.last().map(|s| s.stmt(db)),
+        Some(StmtKind::Return | StmtKind::Exit | StmtKind::Continue)
+    )
 }
 
 impl<'db> StmtsResolverCtx<'db> {
@@ -258,24 +337,35 @@ impl<'db> StmtsResolverCtx<'db> {
                         ));
                     }
 
-                    // Snapshot null state before branches
+                    // Snapshot null state before branches. `fallthrough` is
+                    // the state reaching the next branch: every condition
+                    // tested so far was false, which is itself information
+                    // about a reference (`p = NULL` being false proves it is
+                    // not).
                     let pre_if_state = ctx.ref_null_state.clone();
+                    let mut fallthrough = pre_if_state.clone();
 
                     // check branches
 
                     // THEN
+                    let guard = null_guard(db, *condition, ctx);
+                    apply_guard(&mut ctx.ref_null_state, guard, true);
                     if let Some(then) = then {
                         self.check_statements(db, resolver, then, nested_scope, ctx);
                     }
                     let then_state = ctx.ref_null_state.clone();
+                    apply_guard(&mut fallthrough, guard, false);
 
                     // Collect branch states for joining
-                    let mut branch_states = vec![then_state];
+                    let mut branch_states = vec![];
+                    if then.as_deref().is_none_or(|s| falls_through(db, s)) {
+                        branch_states.push(then_state);
+                    }
 
                     // ELSE IFs
                     for (condition, stmts) in else_if {
-                        // Reset to pre-IF state for each branch
-                        ctx.ref_null_state = pre_if_state.clone();
+                        // Reached only when every earlier condition was false
+                        ctx.ref_null_state = fallthrough.clone();
 
                         self.infer_and_check_expr(db, &mut infer, *condition, ctx);
 
@@ -289,17 +379,30 @@ impl<'db> StmtsResolverCtx<'db> {
                             ));
                         }
 
+                        let guard = null_guard(db, *condition, ctx);
+                        apply_guard(&mut ctx.ref_null_state, guard, true);
                         self.check_statements(db, resolver, stmts, nested_scope, ctx);
-                        branch_states.push(ctx.ref_null_state.clone());
+                        if falls_through(db, stmts) {
+                            branch_states.push(ctx.ref_null_state.clone());
+                        }
+                        apply_guard(&mut fallthrough, guard, false);
                     }
 
                     // ELSE
                     if let Some(else_) = else_ {
-                        ctx.ref_null_state = pre_if_state.clone();
+                        ctx.ref_null_state = fallthrough.clone();
                         self.check_statements(db, resolver, else_, nested_scope, ctx);
-                        branch_states.push(ctx.ref_null_state.clone());
+                        if falls_through(db, else_) {
+                            branch_states.push(ctx.ref_null_state.clone());
+                        }
                     } else {
-                        // No ELSE means the pre-IF state is a possible path
+                        // No ELSE: falling past the IF is a possible path
+                        branch_states.push(fallthrough);
+                    }
+
+                    // Every branch returned: nothing reaches the code below,
+                    // so keep the state the IF was entered with.
+                    if branch_states.is_empty() {
                         branch_states.push(pre_if_state);
                     }
 

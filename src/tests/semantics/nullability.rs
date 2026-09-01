@@ -612,3 +612,171 @@ END_FUNCTION_BLOCK
     ----'
     ");
 }
+
+// --- Guard narrowing ---
+//
+// The analysis was assignment-only: the idiomatic safe dereference was
+// refused, and since E1003 is a compiler error no pragma could silence it.
+// The only way out was to pass the reference as a VAR_INPUT, where tracking
+// does not run at all — an escape hatch that made the code less checked.
+
+#[rstest]
+fn guarded_deref_is_accepted(mut with_db: RootDatabase) {
+    let source = r#"
+FUNCTION fn1 : INT
+    VAR
+        x: INT := 1;
+        ptr: REF_TO INT := NULL;
+    END_VAR
+
+    IF ptr <> NULL THEN
+        fn1 := ptr^;
+    END_IF;
+END_FUNCTION
+    "#;
+
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"");
+}
+
+#[rstest]
+fn guarded_deref_accepts_reversed_operands(mut with_db: RootDatabase) {
+    let source = r#"
+FUNCTION fn1 : INT
+    VAR
+        x: INT := 1;
+        ptr: REF_TO INT := NULL;
+    END_VAR
+
+    IF NULL <> ptr THEN
+        fn1 := ptr^;
+    END_IF;
+END_FUNCTION
+    "#;
+
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"");
+}
+
+#[rstest]
+fn early_return_guard_is_accepted(mut with_db: RootDatabase) {
+    // The returning branch cannot reach the dereference, so its state must
+    // not join into the state that does.
+    let source = r#"
+FUNCTION fn1 : INT
+    VAR
+        x: INT := 1;
+        ptr: REF_TO INT := NULL;
+    END_VAR
+
+    IF ptr = NULL THEN
+        RETURN;
+    END_IF;
+
+    fn1 := ptr^;
+END_FUNCTION
+    "#;
+
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"");
+}
+
+#[rstest]
+fn assign_if_null_guard_is_accepted(mut with_db: RootDatabase) {
+    // Non-null on both paths: the THEN branch assigns, and reaching the code
+    // below without taking it means the condition was false.
+    let source = r#"
+FUNCTION fn1 : INT
+    VAR
+        x: INT := 1;
+        ptr: REF_TO INT := NULL;
+    END_VAR
+
+    IF ptr = NULL THEN
+        ptr := REF(x);
+    END_IF;
+
+    fn1 := ptr^;
+END_FUNCTION
+    "#;
+
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"");
+}
+
+#[rstest]
+fn deref_inside_the_null_branch_still_reported(mut with_db: RootDatabase) {
+    // The guard proves the reference IS null here, so the dereference is
+    // certainly wrong — narrowing must not silence this direction.
+    let source = r#"
+FUNCTION fn1 : INT
+    VAR
+        ptr: REF_TO INT := NULL;
+    END_VAR
+
+    IF ptr = NULL THEN
+        fn1 := ptr^;
+    END_IF;
+END_FUNCTION
+    "#;
+
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
+    [E1003] Error: possibly null dereference
+       ,-[ file:///test0.st:8:16 ]
+       |
+     4 |         ptr: REF_TO INT := NULL;
+       |                         ^^^|^^^
+       |                            `----- 'ptr' set to NULL here
+       |
+     8 |         fn1 := ptr^;
+       |                ^|^
+       |                 `--- dereference of reference 'ptr' which is null
+    ---'
+    ");
+}
+
+#[rstest]
+fn guard_on_another_reference_does_not_narrow(mut with_db: RootDatabase) {
+    let source = r#"
+FUNCTION fn1 : INT
+    VAR
+        ptr: REF_TO INT := NULL;
+        other: REF_TO INT := NULL;
+    END_VAR
+
+    IF other <> NULL THEN
+        fn1 := ptr^;
+    END_IF;
+END_FUNCTION
+    "#;
+
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
+    [E1003] Error: possibly null dereference
+       ,-[ file:///test0.st:9:16 ]
+       |
+     4 |         ptr: REF_TO INT := NULL;
+       |                         ^^^|^^^
+       |                            `----- 'ptr' set to NULL here
+       |
+     9 |         fn1 := ptr^;
+       |                ^|^
+       |                 `--- dereference of reference 'ptr' which is null
+    ---'
+    ");
+}
+
+#[rstest]
+fn elsif_guard_narrows_its_own_branch(mut with_db: RootDatabase) {
+    let source = r#"
+FUNCTION fn1 : INT
+    VAR
+        flag: BOOL;
+        ptr: REF_TO INT := NULL;
+    END_VAR
+
+    IF flag THEN
+        fn1 := 0;
+    ELSIF ptr <> NULL THEN
+        fn1 := ptr^;
+    END_IF;
+END_FUNCTION
+    "#;
+
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"");
+}
