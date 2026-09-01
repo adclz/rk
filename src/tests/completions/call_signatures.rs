@@ -153,3 +153,51 @@ END_FUNCTION
     let item = builder.build_variable(&with_db, var);
     assert_snapshot!(item.insert_text.unwrap(), @"inst()");
 }
+
+// The snippet offers the flattened EXTENDS view — the resolver requires the
+// inherited VAR_IN_OUT (E0233), so the inserted call must include it.
+#[rstest]
+pub fn call_signature_for_derived_fb_includes_inherited_params(mut with_db: RootDatabase) {
+    let source = r#"
+FUNCTION_BLOCK base_io
+    VAR_IN_OUT
+        io: INT;
+    END_VAR
+    VAR_INPUT
+        inp: INT;
+    END_VAR
+END_FUNCTION_BLOCK
+
+FUNCTION_BLOCK derived_io EXTENDS base_io
+    VAR_INPUT
+        own: INT;
+    END_VAR
+END_FUNCTION_BLOCK
+
+FUNCTION caller
+    VAR
+        inst : derived_io;
+    END_VAR
+END_FUNCTION
+"#;
+
+    add_sources(&mut with_db, &[source]);
+    let pou = find_pou_with_name(
+        &with_db,
+        *with_db.get_files().iter().last().unwrap(),
+        "caller",
+    )
+    .unwrap();
+
+    let builder = CompletionBuilder::default().with_mode(QueryMode::Body);
+    let var = pou
+        .get_scope_id(&with_db)
+        .def_map(&with_db)
+        .global_variables
+        .values()
+        .next()
+        .unwrap();
+
+    let item = builder.build_variable(&with_db, var);
+    assert_snapshot!(item.insert_text.unwrap(), @"inst(io := ${1:io}, inp := ${2:inp}, own := ${3:own})");
+}

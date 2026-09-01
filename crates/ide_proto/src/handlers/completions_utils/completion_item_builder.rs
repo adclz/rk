@@ -19,7 +19,7 @@ use hir::{
         semantic_index::get_scope,
     },
     hir_ty::{
-        head::{inheritance::MethodRef, signature::infer_signature},
+        head::{inheritance::{MethodRef, instance_members}, signature::infer_signature},
         ty::Type,
     },
     query_string::query::Query,
@@ -288,7 +288,16 @@ pub fn build_call_signature<'db>(
     name: &impl Display,
     scope: ScopeId<'db>,
 ) -> String {
-    let variables = &scope.def_map(db).local_variables;
+    // For an FB scope, snippet the flattened EXTENDS view — the resolver
+    // requires an inherited VAR_IN_OUT (E0233), so the snippet must offer it.
+    let variables: Vec<VariableDecl<'db>> = match get_scope(db, scope).kind {
+        ScopeKind::Pou(pou @ Pou::FunctionBlock(_)) => instance_members(db, pou)
+            .iter()
+            .filter(|m| m.var.is_input(db) || m.var.is_output(db) || m.var.is_in_out(db))
+            .map(|m| m.var)
+            .collect(),
+        _ => scope.def_map(db).local_variables.values().copied().collect(),
+    };
     let is_multiline = variables.len() >= 5;
     let (sep, tab, join_sep) = if is_multiline {
         ("\n", "\t", ",\n")
@@ -299,7 +308,7 @@ pub fn build_call_signature<'db>(
     let params: Vec<String> = variables
         .iter()
         .enumerate()
-        .filter_map(|(i, (_, v))| {
+        .filter_map(|(i, v)| {
             let placeholder_num = i + 1;
             let var_name = v.name(db).text(db);
 

@@ -165,3 +165,42 @@ END_FUNCTION_BLOCK
     ----'
     ");
 }
+
+#[rstest]
+fn derived_fb_missing_inherited_input(mut with_db: RootDatabase) {
+    // The lintable input set is the flattened EXTENDS view: an unwired
+    // inherited VAR_INPUT reports exactly like an own one.
+    let source = r#"
+FUNCTION_BLOCK base_adder
+    VAR_INPUT
+        a : INT;
+    END_VAR
+END_FUNCTION_BLOCK
+
+FUNCTION_BLOCK derived_adder EXTENDS base_adder
+    VAR_INPUT
+        b : INT;
+    END_VAR
+END_FUNCTION_BLOCK
+
+FUNCTION_BLOCK caller
+    VAR inst : derived_adder; END_VAR
+    inst(b := 1);
+END_FUNCTION_BLOCK
+"#;
+    assert_snapshot!(test_single_lint(&mut with_db, &[source], "missing-input-param"), @r"
+    [L0204] Hint: missing input parameter
+        ,-[ file:///test0.st:16:5 ]
+        |
+      4 |         a : INT;
+        |         ^^^|^^^
+        |            `----- 'a' declared here
+        |
+     16 |     inst(b := 1);
+        |     ^^^^^^|^^^^^
+        |           `------- call to 'derived_adder' is missing 1 input parameter: 'a'
+        |
+        | Note: lint rule: missing-input-param
+    ----'
+    ");
+}

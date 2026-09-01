@@ -546,3 +546,93 @@ END_CONFIGURATION
 
     assert!(help.is_none());
 }
+
+// Signature help renders the flattened EXTENDS view for a derived FB call —
+// the same list the resolver binds, inherited VAR_IN_OUT included.
+#[rstest]
+fn signature_help_derived_fb_shows_inherited_params(mut with_db: RootDatabase) {
+    let source = r#"FUNCTION_BLOCK base_io
+VAR_IN_OUT
+    io : INT;
+END_VAR
+VAR_INPUT
+    inp : INT;
+END_VAR
+END_FUNCTION_BLOCK
+
+FUNCTION_BLOCK derived_io EXTENDS base_io
+VAR_INPUT
+    own : INT;
+END_VAR
+END_FUNCTION_BLOCK
+
+FUNCTION caller
+VAR
+    d : derived_io;
+    x : INT;
+END_VAR
+    d(io := x, inp := 1, own := 2);
+END_FUNCTION
+"#;
+
+    add_sources(&mut with_db, &[source]);
+    let file = *with_db.get_files().iter().last().unwrap();
+
+    // Cursor in the third argument: active_parameter must index into the
+    // flattened list, not past a 1-entry own-only one.
+    let offset = source.find("own := 2").unwrap();
+    let help = find_signature_help(&with_db, file, offset);
+
+    assert_debug_snapshot!(help, @r#"
+    Some(
+        SignatureHelp {
+            signatures: [
+                SignatureInformation {
+                    label: "derived_io(io := INT, inp := INT, own := INT)",
+                    documentation: None,
+                    parameters: Some(
+                        [
+                            ParameterInformation {
+                                label: LabelOffsets(
+                                    [
+                                        11,
+                                        20,
+                                    ],
+                                ),
+                                documentation: None,
+                            },
+                            ParameterInformation {
+                                label: LabelOffsets(
+                                    [
+                                        22,
+                                        32,
+                                    ],
+                                ),
+                                documentation: None,
+                            },
+                            ParameterInformation {
+                                label: LabelOffsets(
+                                    [
+                                        34,
+                                        44,
+                                    ],
+                                ),
+                                documentation: None,
+                            },
+                        ],
+                    ),
+                    active_parameter: Some(
+                        2,
+                    ),
+                },
+            ],
+            active_signature: Some(
+                0,
+            ),
+            active_parameter: Some(
+                2,
+            ),
+        },
+    )
+    "#);
+}

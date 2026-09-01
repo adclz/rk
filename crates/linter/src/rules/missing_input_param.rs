@@ -52,11 +52,10 @@ pub fn check_func_call<'db>(
         return;
     }
 
-    let has_variadic = callable
-        .def_map(db)
-        .local_variables
-        .values()
-        .any(|v| v.variadic(db));
+    // The flattened EXTENDS view: inherited VAR_INPUTs are wirable (and thus
+    // lintable) at a derived FB's call site, exactly as the resolver binds them.
+    let formals = hir::hir_ty::resolver::func_call::call_site_params(db, callable);
+    let has_variadic = formals.values().any(|v| v.variadic(db));
     if has_variadic {
         return;
     }
@@ -67,9 +66,7 @@ pub fn check_func_call<'db>(
         .filter_map(|param| body.variable_of_param.get(param).copied())
         .collect();
 
-    let missing: Vec<_> = callable
-        .def_map(db)
-        .local_variables
+    let missing: Vec<_> = formals
         .values()
         .filter(|var| var.kind(db) == VariableKind::Input && !matched_vars.contains(var))
         .copied()

@@ -92,6 +92,30 @@ fn find_task_signature_help(
 }
 
 /// Find signature help for a function call enclosing the given offset.
+fn param_info<'db>(
+    db: &'db dyn WorkspaceDataBase,
+    var: &hir::hir_def::pous::variable::VariableDecl<'db>,
+    signature: &hir::hir_ty::head::signature::Signature<'db>,
+) -> Option<(String, &'static str, String)> {
+    let kind = var.kind(db);
+    match kind {
+        VariableKind::Input | VariableKind::Output | VariableKind::InOut => {
+            let name = var.name(db).text(db).to_string();
+            let kind_str = match kind {
+                VariableKind::Output => " =>",
+                _ => " :=",
+            };
+            let type_name = signature
+                .type_of_specs
+                .get(&var.spec(db))
+                .map(|t| t.type_name(db))
+                .unwrap_or_default();
+            Some((name, kind_str, type_name))
+        }
+        _ => None,
+    }
+}
+
 fn find_func_call_signature_help(
     db: &dyn WorkspaceDataBase,
     file: File,
@@ -104,31 +128,29 @@ fn find_func_call_signature_help(
     let scope = callable.get_scope_id(db);
     let signature = infer_signature(db, scope);
 
-    // Collect parameter info (Input, Output, InOut only)
-    let params: Vec<(String, &str, String)> = scope
-        .def_map(db)
-        .local_variables
-        .iter()
-        .filter_map(|(_, var)| {
-            let kind = var.kind(db);
-            match kind {
-                VariableKind::Input | VariableKind::Output | VariableKind::InOut => {
-                    let name = var.name(db).text(db).to_string();
-                    let kind_str = match kind {
-                        VariableKind::Output => " =>",
-                        _ => " :=",
-                    };
-                    let type_name = signature
-                        .type_of_specs
-                        .get(&var.spec(db))
-                        .map(|t| t.type_name(db))
-                        .unwrap_or_default();
-                    Some((name, kind_str, type_name))
-                }
-                _ => None,
-            }
-        })
-        .collect();
+    // Collect parameter info (Input, Output, InOut only). For an FB the list
+    // is the flattened EXTENDS view, matching what the call site binds; an
+    // inherited member's type lives in its OWNER's signature, not this one.
+    let params: Vec<(String, &str, String)> = match callable {
+        hir::hir_ty::ty::CallableType::FunctionBlock(fb) => {
+            hir::hir_ty::head::inheritance::instance_members(
+                db,
+                hir::hir_def::pous::pou::Pou::FunctionBlock(fb),
+            )
+            .iter()
+            .filter_map(|m| {
+                let owner_sig = infer_signature(db, m.owner.get_scope_id(db));
+                param_info(db, &m.var, owner_sig)
+            })
+            .collect()
+        }
+        _ => scope
+            .def_map(db)
+            .local_variables
+            .iter()
+            .filter_map(|(_, var)| param_info(db, var, signature))
+            .collect(),
+    };
 
     // Build return type suffix
     let return_suffix = scope
