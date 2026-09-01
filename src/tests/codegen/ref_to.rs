@@ -515,12 +515,10 @@ fn test_ref_initializer_to_scalar_local(mut with_db: db::RootDatabase) {
 }
 
 #[rstest]
-fn known_bug_method_local_initializers_are_dropped(mut with_db: db::RootDatabase) {
-    // A METHOD's locals never get the initializer pass that FUNCTION, FB and
-    // PROGRAM locals get (lower_func.rs step 4), so `x : INT := 42` silently
-    // starts at 0. That is why the reference form cannot be pinned here: a
-    // `q : REF_TO INT := REF(x)` in a method leaves q null, and dereferencing
-    // it now faults.
+fn test_method_local_initializers_run(mut with_db: db::RootDatabase) {
+    // A method's locals are per-call, and their declared values are stores at
+    // method entry. The two METHOD paths had no initializer step at all, so
+    // `x : INT := 42` silently started at 0.
     let source = r#"
         FUNCTION_BLOCK holder
             METHOD get : INT
@@ -536,11 +534,78 @@ fn known_bug_method_local_initializers_are_dropped(mut with_db: db::RootDatabase
     "#;
     let wasm = super::compile_to_wasm(&mut with_db, source);
     let result: i32 = super::execute_wasm(&wasm, "test", ());
-    assert_eq!(
-        result, 0,
-        "method local initializers now run: expect 42, and this pin should \
-         become a real assertion of 42 (plus the REF_TO form alongside it)"
-    );
+    assert_eq!(result, 42);
+}
+
+#[rstest]
+fn test_class_method_local_initializers_run(mut with_db: db::RootDatabase) {
+    let source = r#"
+        CLASS holder
+            METHOD PUBLIC get : INT
+            VAR x : INT := 42; END_VAR
+                get := x;
+            END_METHOD
+        END_CLASS
+
+        FUNCTION test : INT
+        VAR h : holder; END_VAR
+            test := h.get();
+        END_FUNCTION
+    "#;
+    let wasm = super::compile_to_wasm(&mut with_db, source);
+    let result: i32 = super::execute_wasm(&wasm, "test", ());
+    assert_eq!(result, 42);
+}
+
+#[rstest]
+fn test_method_local_initializers_run_every_call(mut with_db: db::RootDatabase) {
+    // Per-call, not once: a method local that is modified must start again
+    // from its declared value on the next call, unlike instance state.
+    let source = r#"
+        FUNCTION_BLOCK holder
+            METHOD bump : INT
+            VAR x : INT := 10; END_VAR
+                x := x + 1;
+                bump := x;
+            END_METHOD
+        END_FUNCTION_BLOCK
+
+        FUNCTION test : INT
+        VAR h : holder; first : INT; second : INT; END_VAR
+            first := h.bump();
+            second := h.bump();
+            test := first * 100 + second;
+        END_FUNCTION
+    "#;
+    let wasm = super::compile_to_wasm(&mut with_db, source);
+    let result: i32 = super::execute_wasm(&wasm, "test", ());
+    assert_eq!(result, 1111, "both calls start from 10, so both return 11");
+}
+
+#[rstest]
+fn test_ref_initializer_in_a_method(mut with_db: db::RootDatabase) {
+    // The reference form, now that a method's initializers run at all: the
+    // REF() marks x address-taken and q holds x's address.
+    let source = r#"
+        FUNCTION_BLOCK holder
+            METHOD get : INT
+            VAR
+                x : INT := 42;
+                q : REF_TO INT := REF(x);
+            END_VAR
+                get := q^;
+            END_METHOD
+        END_FUNCTION_BLOCK
+
+        FUNCTION test : INT
+        VAR h : holder; END_VAR
+            test := h.get();
+        END_FUNCTION
+    "#;
+    let wasm = super::compile_to_wasm(&mut with_db, source);
+    super::validate_wasm(&wasm).expect("WASM validation failed");
+    let result: i32 = super::execute_wasm(&wasm, "test", ());
+    assert_eq!(result, 42);
 }
 
 #[rstest]

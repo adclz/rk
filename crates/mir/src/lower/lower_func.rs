@@ -303,56 +303,7 @@ fn lower_function_inner<'db>(
     }
 
     // 4. Generate initializer statements for variables with init expressions
-    let mut init_stmts = Vec::new();
-    for var in func.variables(db) {
-        match var.kind(db) {
-            VariableKind::Input | VariableKind::InOut | VariableKind::Output => continue,
-            _ => {}
-        }
-        let var_ty = lower_var_type(db, *var)?;
-        // The TYPE's defaults come first regardless of a declaration init:
-        // `p : Pt := (y := 9)` keeps the type's `x := 3`, because the
-        // declaration's stores land after and only where it names.
-        lower_type_default_inits(
-            db,
-            InitTarget::Local {
-                name: var.name(db),
-                base: 0,
-                whole: matches!(var_ty, crate::types::MirType::Elementary(_)),
-            },
-            &var_ty,
-            var.spec(db).infer(db),
-            &string_pool,
-            &mut init_stmts,
-        )?;
-        if let Some(init_expr) = var.init(db) {
-            lower_var_init(
-                db,
-                var.name(db),
-                &var_ty,
-                init_expr,
-                &string_pool,
-                &mut init_stmts,
-            )?;
-        } else {
-            // `VAR f : Flags;` has no initializer of its own — the values live
-            // on `Flags`'s members. Likewise `VAR cells : ARRAY[0..2] OF Cell;`,
-            // one set per element.
-            lower_declared_instance_inits(
-                db,
-                InitTarget::Local {
-                    name: var.name(db),
-                    base: 0,
-                    // members are reached THROUGH the local, never as it
-                    whole: false,
-                },
-                &var_ty,
-                var.spec(db).infer(db),
-                &string_pool,
-                &mut init_stmts,
-            )?;
-        }
-    }
+    let mut init_stmts = lower_local_init_stmts(db, func.variables(db), &string_pool)?;
 
     // 5. Body statements. Interface specialization threads `iface_subs` and
     // `iface_call_rewrites` into the body.
@@ -546,7 +497,7 @@ fn lower_function_block_inner<'db>(
             Some(inst) => (Some(&inst.iface_subs), &inst.call_rewrites),
             None => (None, iface_call_rewrites),
         };
-        let (body, call_scratch) = crate::lower::lower_stmt::lower_stmts_fb_body(
+        let (mut body, call_scratch) = crate::lower::lower_stmt::lower_stmts_fb_body(
             db,
             method.stmts(db),
             this_struct,
@@ -561,6 +512,15 @@ fn lower_function_block_inner<'db>(
             &mut next_local_idx,
             memory_layout,
         );
+
+        // A method's locals are per call: their declared values are stores at
+        // entry.
+        let mut init_stmts = lower_local_init_stmts(db, method.variables(db), &string_pool)?;
+        if !init_stmts.is_empty() {
+            init_stmts.append(&mut body);
+            body = init_stmts;
+        }
+        let body = body;
 
         // Method symbol: `<FB>#<method>` (`NsA.Counter#inc`); a specialization
         // uses its pre-mangled name.
@@ -807,7 +767,7 @@ fn lower_class_inner<'db>(
             Some(inst) => (Some(&inst.iface_subs), &inst.call_rewrites),
             None => (None, iface_call_rewrites),
         };
-        let (body, call_scratch) = crate::lower::lower_stmt::lower_stmts_fb_body(
+        let (mut body, call_scratch) = crate::lower::lower_stmt::lower_stmts_fb_body(
             db,
             method.stmts(db),
             this_struct,
@@ -822,6 +782,15 @@ fn lower_class_inner<'db>(
             &mut next_local_idx,
             memory_layout,
         );
+
+        // A method's locals are per call: their declared values are stores at
+        // entry.
+        let mut init_stmts = lower_local_init_stmts(db, method.variables(db), &string_pool)?;
+        if !init_stmts.is_empty() {
+            init_stmts.append(&mut body);
+            body = init_stmts;
+        }
+        let body = body;
 
         // Method symbol: `<NsPath.>Class#Method` (see the FB-method site).
         let class_qualified = super::naming::qualified_pou_ident(db, Type::Class(class));
@@ -1355,12 +1324,61 @@ fn mark_inout_call_args<'db>(
     }
 }
 
-/// Lower a FUNCTION-local variable initializer to prepended assignment(s). A
-/// FUNCTION is stateless, so its locals are re-initialized on every call — these
-/// statements run at the top of the body. Consumes the HIR's authoritative
-/// resolved leaves (the same source as the stateful `__init` path), so aggregate
-/// inits (arrays, structs, multi-dim, repetition) lower correctly instead of
-/// being dropped. Each leaf targets the local at its path offset.
+/// The statements that give a POU's own locals their declared starting
+/// values: the type's defaults first, then the declaration's own
+/// initializer or, failing that, the initializers its members declare.
+fn lower_local_init_stmts<'db>(
+    db: &'db dyn WorkspaceDataBase,
+    vars: &[hir::hir_def::pous::variable::VariableDecl<'db>],
+    string_pool: &Rc<RefCell<super::lower_expr::StringPool>>,
+) -> Result<Vec<MirStmt>, LowerTypeError> {
+    let mut init_stmts = Vec::new();
+    for var in vars {
+        match var.kind(db) {
+            VariableKind::Input | VariableKind::InOut | VariableKind::Output => continue,
+            _ => {}
+        }
+        let var_ty = lower_var_type(db, *var)?;
+        lower_type_default_inits(
+            db,
+            InitTarget::Local {
+                name: var.name(db),
+                base: 0,
+                whole: matches!(var_ty, crate::types::MirType::Elementary(_)),
+            },
+            &var_ty,
+            var.spec(db).infer(db),
+            string_pool,
+            &mut init_stmts,
+        )?;
+        if let Some(init_expr) = var.init(db) {
+            lower_var_init(
+                db,
+                var.name(db),
+                &var_ty,
+                init_expr,
+                string_pool,
+                &mut init_stmts,
+            )?;
+        } else {
+            lower_declared_instance_inits(
+                db,
+                InitTarget::Local {
+                    name: var.name(db),
+                    base: 0,
+                    // members are reached THROUGH the local, never as it
+                    whole: false,
+                },
+                &var_ty,
+                var.spec(db).infer(db),
+                string_pool,
+                &mut init_stmts,
+            )?;
+        }
+    }
+    Ok(init_stmts)
+}
+
 fn lower_var_init<'db>(
     db: &'db dyn WorkspaceDataBase,
     var_name: Ident,
