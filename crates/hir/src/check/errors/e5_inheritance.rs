@@ -42,9 +42,6 @@ pub enum InheritanceError<'db> {
     EmptyOverride {
         base_method: MethodRef<'db>,
     },
-    AbstractClassHasNoAbstractMethods {
-        class: Pou<'db>,
-    },
     UnimplementedInterfaceMethod {
         implementer: Pou<'db>,
         method: MethodRef<'db>,
@@ -158,7 +155,6 @@ impl<'db> ErrorCode for InheritanceError<'db> {
             Self::MissingOverride { .. } => "E0505",
             Self::MissingAbstractMethod { .. } => "E0506",
             Self::EmptyOverride { .. } => "E0507",
-            Self::AbstractClassHasNoAbstractMethods { .. } => "E0508",
             Self::UnimplementedInterfaceMethod { .. } => "E0509",
             Self::SignatureParametersCountMismatch { .. } => "E0512",
             Self::SignatureTypeMismatch { .. } => "E0512",
@@ -188,7 +184,6 @@ impl<'db> ErrorCode for InheritanceError<'db> {
             Self::OverrideFinalMethod { .. } | Self::MissingOverride { .. } => "override violation",
             Self::MissingAbstractMethod { .. }
             | Self::EmptyOverride { .. }
-            | Self::AbstractClassHasNoAbstractMethods { .. }
             | Self::UnimplementedInterfaceMethod { .. }
             | Self::InheritedMemberShadowed { .. } => "inheritance violation",
             Self::SignatureParametersCountMismatch { .. }
@@ -328,23 +323,6 @@ impl<'db> ToIdeDiagnostic<'db> for InheritanceError<'db> {
                     .call();
 
                 diag.with_note("OVERRIDE is only valid when the method is inherited".into());
-
-                diag
-            }
-            Self::AbstractClassHasNoAbstractMethods { class } => {
-                let mut diag = diag()
-                    .message(format!(
-                        "ABSTRACT class '{}' has no abstract methods",
-                        class.get_name_ident(db).text(db)
-                    ))
-                    .severity(DiagnosticSeverity::ERROR)
-                    .desc(self)
-                    .range(
-                        crate::denormalize(db, file, &class.get_name_span(db)).unwrap_or_default(),
-                    )
-                    .call();
-
-                diag.with_note("abstract classes must have at least one abstract method".into());
 
                 diag
             }

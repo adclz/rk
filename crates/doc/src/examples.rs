@@ -2316,18 +2316,6 @@ END_CLASS
             lint_rule: None,
         },
         ErrorExample {
-            code: "E0508",
-            category: "Inheritance",
-            title: "ABSTRACT class has no abstract methods",
-            description: "A class marked as ABSTRACT must have at least one abstract method.",
-            sources: &[r#"
-CLASS ABSTRACT Base
-    METHOD PUBLIC myMethod : INT  END_METHOD
-END_CLASS
-"#],
-            lint_rule: None,
-        },
-        ErrorExample {
             code: "E0509",
             category: "Inheritance",
             title: "Unimplemented interface method",

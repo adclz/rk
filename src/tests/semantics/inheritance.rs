@@ -112,24 +112,17 @@ fn empty_override(mut with_db: RootDatabase) {
 }
 
 #[rstest]
-fn abstract_class_has_no_abstract_methods(mut with_db: RootDatabase) {
+fn abstract_class_without_abstract_methods_is_valid(mut with_db: RootDatabase) {
+    // Not an IEC rule: ABSTRACT only forbids instantiation, so a concrete-only
+    // ABSTRACT class is the ordinary extend-only base type. E0508 refused it
+    // and was retired.
     let source = r#"
         CLASS ABSTRACT Base
             METHOD Tick : INT END_METHOD
             METHOD Tick2 : INT END_METHOD
         END_CLASS"#;
 
-    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E0508] Error: inheritance violation
-       ,-[ file:///test0.st:2:24 ]
-       |
-     2 |         CLASS ABSTRACT Base
-       |                        ^^|^
-       |                          `--- ABSTRACT class 'Base' has no abstract methods
-       |
-       | Note: abstract classes must have at least one abstract method
-    ---'
-    ");
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"");
 }
 
 #[rstest]

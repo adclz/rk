@@ -28,20 +28,6 @@ impl<'db> InitInference<'db> {
         let declared_methods = &implementer.get_scope_id(db).def_map(db).declared_methods;
         let inherited_methods = inherited_methods(db, implementer);
 
-        if let Pou::Class(cl) = implementer {
-            // If the class is abstract, it must have at least one abstract method
-            if cl.modifier(db).contains(Modifier::ABSTRACT)
-                && !declared_methods
-                    .iter()
-                    .any(|(_, m)| m.modifier(db).contains(Modifier::ABSTRACT))
-            {
-                self.errors.push(
-                    InheritanceError::AbstractClassHasNoAbstractMethods { class: implementer }
-                        .to_diagnostic(db, self.scope.file(db)),
-                );
-            };
-        };
-
         // check dups in inherited methods
         for (m1, m2) in &inherited_methods.duplicates {
             self.errors.push(
