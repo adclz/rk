@@ -7,10 +7,14 @@ use crate::{
     check::errors::{
         ToIdeDiagnostic, e1_duplicates::DuplicateError, e5_inheritance::InheritanceError,
     },
-    hir_def::{pous::pou::Pou, scope::ScopeKind, semantic_index::get_scope},
+    hir_def::{
+        pous::{pou::Pou, variable::VariableDecl},
+        scope::ScopeKind,
+        semantic_index::get_scope,
+    },
     hir_ty::{
         head::{
-            inheritance::{MethodRef, inherited_methods},
+            inheritance::{MethodRef, inherited_methods, instance_members},
             init_inference::InitInference,
         },
         infer::Infer,
@@ -170,49 +174,36 @@ impl<'db> InitInference<'db> {
         // otherwise operate on two distinct, same-named slots).
         // `def_map.local_variables` is params-only; Rule 3 covers ALL variables
         // (esp. `VAR` members), so read them from the FB directly.
-        // FB or CLASS alike — the check was FB-gated at BOTH ends, so two
-        // CLASSes declaring the same member shared one slot silently (and
-        // with different types, emitted invalid wasm at exit 0).
-        let member_vars = |pou: Pou<'db>| match pou {
-            Pou::FunctionBlock(fb) => Some(fb.variables(db)),
-            Pou::Class(cl) => Some(cl.variables(db)),
-            _ => None,
+        // FB or CLASS alike. `instance_members` is the flattened view
+        // (base-most first), so the nearest inherited declaration per name
+        // is the LAST entry a base owns; no chain walk here.
+        let own: &[VariableDecl<'db>] = match implementer {
+            Pou::FunctionBlock(fb) => fb.variables(db),
+            Pou::Class(cl) => cl.variables(db),
+            _ => &[],
         };
-        if let Some(own) = member_vars(implementer) {
-            if !own.is_empty() {
-                // Nearest inherited declaration per name, walking up the chain.
-                let mut inherited = FxHashMap::default();
-                let mut visited = rustc_hash::FxHashSet::default();
-                let mut current = extends_pou(db, implementer);
-                while let Some(base) = current {
-                    if !visited.insert(base) {
-                        break; // guard against EXTENDS cycles (reported elsewhere)
-                    }
-                    if let Some(base_vars) = member_vars(base) {
-                        for v in base_vars {
-                            inherited
-                                .entry(v.get_name_ident(db).caseless(db))
-                                .or_insert(*v);
-                        }
-                    }
-                    current = extends_pou(db, base);
+        if !own.is_empty() {
+            let mut inherited: FxHashMap<_, VariableDecl<'db>> = FxHashMap::default();
+            for m in instance_members(db, implementer) {
+                if m.owner != implementer {
+                    inherited.insert(m.var.get_name_ident(db).caseless(db), m.var);
                 }
-                for v in own {
-                    if let Some(base_decl) = inherited.get(&v.get_name_ident(db).caseless(db)) {
-                        // Two VAR_EXTERNALs name the same global; neither owns
-                        // storage, so nothing is shadowed — and redeclaring is
-                        // the only way the derived body reaches the global.
-                        if v.is_external(db) && base_decl.is_external(db) {
-                            continue;
-                        }
-                        self.errors.push(
-                            InheritanceError::InheritedMemberShadowed {
-                                derived: *v,
-                                base: *base_decl,
-                            }
-                            .to_diagnostic(db, self.scope.file(db)),
-                        );
+            }
+            for v in own {
+                if let Some(base_decl) = inherited.get(&v.get_name_ident(db).caseless(db)) {
+                    // Two VAR_EXTERNALs name the same global; neither owns
+                    // storage, so nothing is shadowed — and redeclaring is
+                    // the only way the derived body reaches the global.
+                    if v.is_external(db) && base_decl.is_external(db) {
+                        continue;
                     }
+                    self.errors.push(
+                        InheritanceError::InheritedMemberShadowed {
+                            derived: *v,
+                            base: *base_decl,
+                        }
+                        .to_diagnostic(db, self.scope.file(db)),
+                    );
                 }
             }
         }
@@ -320,14 +311,4 @@ fn check_signature<'db>(
             )
         }
     }
-}
-
-/// The immediate base POU an FB or Class extends, if any (single inheritance).
-fn extends_pou<'db>(db: &'db dyn WorkspaceDataBase, pou: Pou<'db>) -> Option<Pou<'db>> {
-    let spec = match pou {
-        Pou::FunctionBlock(fb) => fb.extends(db)?,
-        Pou::Class(cl) => cl.extends(db)?,
-        _ => return None,
-    };
-    spec.infer(db).normalize(db).as_pou(db)
 }
