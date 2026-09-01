@@ -1359,7 +1359,7 @@ END_CONFIGURATION
         },
         ErrorExample {
             code: "E0243",
-            category: "Scope",
+            category: "Resolution",
             title: "Not representable on an extern FUNCTION",
             description: "An `{extern}` FUNCTION is a WASM import, and its interface is exactly its declaration: `VAR_INPUT` become the params (copies; aggregates as a pointer to a call-entry snapshot), scalar `VAR_OUTPUT` become the results in declaration order, and the return type is the last result. Three things cannot cross that boundary: `VAR_IN_OUT` (a pointer into caller storage with a mutation contract; an extern takes copies), an aggregate or STRING output (no WASM result type to ride), and statements (the import IS the body).",
             sources: &[r#"
@@ -1372,7 +1372,7 @@ END_FUNCTION
         },
         ErrorExample {
             code: "E0245",
-            category: "Scope",
+            category: "Resolution",
             title: "Direct variable access is not supported",
             description: "A directly represented variable (`%IX0.0`, `%QW4`) names a location in a process image. The address is understood — the width letter `X`/`B`/`W`/`D`/`L` gives it its type — but nothing connects it to real I/O yet, so it cannot be compiled. It is refused here rather than in codegen, where it would surface as an internal compiler error on source that `rk check` called clean.",
             sources: &[r#"
@@ -1453,7 +1453,7 @@ END_FUNCTION
         },
         ErrorExample {
             code: "E0251",
-            category: "Scope",
+            category: "Resolution",
             title: "Reference outlives its storage",
             description: "A FUNCTION or METHOD returned a reference to its own per-call storage. That storage is reused by the next invocation, so the reference reads whatever that call leaves behind. Return a reference to instance state, or to storage the caller owns (a VAR_IN_OUT).",
             sources: &[r#"
@@ -1505,7 +1505,7 @@ END_FUNCTION_BLOCK
         },
         ErrorExample {
             code: "E0244",
-            category: "Scope",
+            category: "Resolution",
             title: "Extern pragma outside a FUNCTION",
             description: "Only a FUNCTION lowers to a WASM import. On a FUNCTION_BLOCK, PROGRAM or METHOD the pragma used to be silently ignored, leaving the body it stood on empty and the import never declared. Wrap the import in a FUNCTION and call it from the block.",
             sources: &[r#"
@@ -1518,7 +1518,7 @@ END_FUNCTION_BLOCK
         },
         ErrorExample {
             code: "E0242",
-            category: "Scope",
+            category: "Resolution",
             title: "More than one CONFIGURATION",
             description: "A workspace declares one CONFIGURATION. A POU is a type any configuration may use, so with two of them there is no answer to which global variables are in scope inside a POU. Describe another PLC in its own workspace.",
             sources: &[r#"
@@ -1543,7 +1543,7 @@ END_CONFIGURATION
         },
         ErrorExample {
             code: "E0241",
-            category: "Scope",
+            category: "Resolution",
             title: "Unusable TASK priority",
             description: "A TASK's `PRIORITY` must be a number the compiler can represent (a 32-bit unsigned integer), where 0 is the most urgent. An unusable value would otherwise reach the scheduler as \"no priority\" and quietly sort last.",
             sources: &[r#"
@@ -2092,7 +2092,7 @@ END_FUNCTION
         },
         ErrorExample {
             code: "E0320",
-            category: "Type",
+            category: "Type System",
             title: "Initial value is not constant",
             description: "A TYPE default, an FB/CLASS member default, and a static initializer (a PROGRAM field, a config VAR_GLOBAL) are part of a declaration, fixed before the program runs — so the value must be a constant. A CONSTANT reference folds; a reference to an ordinary variable has no one value to fold to. FUNCTION locals are exempt: they re-initialize on every call and may compute their value.",
             sources: &[r#"
@@ -2121,7 +2121,7 @@ END_PROGRAM
         },
         ErrorExample {
             code: "E0319",
-            category: "Type",
+            category: "Type System",
             title: "STRING length is not constant",
             description: "A `STRING[n]` length is part of the TYPE — it decides how many bytes the variable occupies — so it must be known at compile time. It may name a CONSTANT, exactly as an array bound may; what it may not do is depend on something only the runtime knows. Defaulting to 80 instead would size the storage wrongly and say nothing about it.",
             sources: &[r#"
@@ -2876,7 +2876,7 @@ END_FUNCTION_BLOCK
         },
         ErrorExample {
             code: "E1006",
-            category: "Control flow",
+            category: "Control Flow",
             title: "CASE label is not a constant",
             description: "A CASE label selects a branch at compile time, so its value cannot depend on anything computed while the program runs. IEC's `Case_List_Elem` is a subrange or a `Constant_Expr` — any expression that evaluates to a constant before the program runs — so a literal, a string, an enum value, a named CONSTANT and arithmetic over those are all labels; an ordinary variable is not. A label the compiler could not evaluate used to pass `rk check` and then abort `rk compile` with an internal compiler error.",
             sources: &[r#"
@@ -2891,7 +2891,7 @@ END_FUNCTION_BLOCK
         },
         ErrorExample {
             code: "E1007",
-            category: "Control flow",
+            category: "Control Flow",
             title: "FOR step is not a nonzero constant",
             description: "The step's sign picks the loop's direction when the code is compiled, so the step must evaluate to a constant at compile time — and to a nonzero one, since a step of zero never advances the counter. A CONSTANT variable or folding arithmetic works; an ordinary variable does not.",
             sources: &[r#"
