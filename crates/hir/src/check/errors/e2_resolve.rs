@@ -163,6 +163,14 @@ impl ExternForbiddenKind {
 
 #[derive(Clone, Debug, PartialEq, Eq, Hash, salsa::Update)]
 pub enum ResolveError<'db> {
+    /// A reference to the POU's own per-call storage, handed back to the
+    /// caller. The storage is reused by the next invocation, so the reference
+    /// silently reads whatever that call leaves behind — it does not fault,
+    /// which is what makes it worth refusing at compile time.
+    ReturnsReferenceToLocal {
+        var: VariableDecl<'db>,
+        site: CallSite<'db>,
+    },
     IncorrectNumberOfParameters {
         /// How many same-name FUNCTION overloads exist. Above one, naming a
         /// single arity misstates the situation: the true claim is that NO
@@ -490,6 +498,7 @@ impl<'db> ErrorCode for ResolveError<'db> {
             Self::MultibitsOutOfRange { .. } => "E0229",
             Self::EmptyVariadicCall { .. } => "E0230",
             Self::UnknownMultibitsAccess { .. } => "E0250",
+            Self::ReturnsReferenceToLocal { .. } => "E0251",
             Self::ExternForbiddenSection { .. }
             | Self::ExternNonScalarReturn { .. }
             | Self::ExternWithBody { .. } => "E0243",
@@ -509,6 +518,7 @@ impl<'db> ErrorCode for ResolveError<'db> {
     fn description(&self) -> &'static str {
         match self {
             Self::NoItemInScope { .. } => "no item found in scope",
+            Self::ReturnsReferenceToLocal { .. } => "reference outlives its storage",
             Self::NoNamespaceItemFound { .. } => "no namespace item found",
             Self::UsingNamespaceNotFound { .. } => "namespace not found",
             Self::IncorrectNumberOfParameters { .. }
@@ -567,6 +577,30 @@ impl<'db> ToIdeDiagnostic<'db> for ResolveError<'db> {
         file: auto_lsp::default::db::file::File,
     ) -> IdeDiagnostic {
         match self {
+            Self::ReturnsReferenceToLocal { var, site } => {
+                let mut diag = diag()
+                    .message(format!(
+                        "reference to '{}' outlives the call that owns it",
+                        var.name(db).text(db)
+                    ))
+                    .severity(DiagnosticSeverity::ERROR)
+                    .desc(self)
+                    .range(crate::denormalize(db, file, &site.get_span(db)).unwrap_or_default())
+                    .call();
+                diag.with_related(Related::new(
+                    format!(
+                        "'{}' is per-call storage, declared here",
+                        var.name(db).text(db),
+                    ),
+                    var.get_scope_id(db).file(db),
+                    var.get_span(db),
+                ));
+                diag.with_note(
+                    "return a reference to instance state, or to storage the caller owns (a VAR_IN_OUT)"
+                        .into(),
+                );
+                diag
+            }
             Self::IncorrectNumberOfParameters {
                 overloads,
                 expected,

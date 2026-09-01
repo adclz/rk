@@ -495,5 +495,105 @@ END_FUNCTION
        |               ^^^|^^
        |                  `---- expected 'PInt', got 'REF_TO REAL'
     ---'
+    [E0251] Error: reference outlives its storage
+       ,-[ file:///test0.st:6:15 ]
+       |
+     5 | VAR r : REAL; END_VAR
+       |     ^^^^|^^^
+       |         `----- 'r' is per-call storage, declared here
+     6 |     borrow := REF(r);
+       |               ^^^|^^
+       |                  `---- reference to 'r' outlives the call that owns it
+       |
+       | Note: return a reference to instance state, or to storage the caller owns (a VAR_IN_OUT)
+    ---'
     ");
+}
+
+// A reference to the POU's own per-call storage, handed back to the caller.
+// It does not fault: an address-taken local sits at a fixed address, so the
+// reference quietly reads whatever the NEXT call leaves in that slot — which
+// is exactly why it is worth refusing at compile time.
+
+#[rstest]
+fn returning_a_reference_to_a_local_is_refused(mut with_db: RootDatabase) {
+    let source = r#"
+TYPE PInt : REF_TO INT; END_TYPE
+
+FUNCTION borrow : PInt
+VAR local : INT := 1; END_VAR
+    borrow := REF(local);
+END_FUNCTION
+"#;
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
+    [E0251] Error: reference outlives its storage
+       ,-[ file:///test0.st:6:15 ]
+       |
+     5 | VAR local : INT := 1; END_VAR
+       |     ^^^^^^^^|^^^^^^^
+       |             `--------- 'local' is per-call storage, declared here
+     6 |     borrow := REF(local);
+       |               ^^^^^|^^^^
+       |                    `------ reference to 'local' outlives the call that owns it
+       |
+       | Note: return a reference to instance state, or to storage the caller owns (a VAR_IN_OUT)
+    ---'
+    ");
+}
+
+#[rstest]
+fn returning_a_reference_to_a_method_local_is_refused(mut with_db: RootDatabase) {
+    let source = r#"
+TYPE PInt : REF_TO INT; END_TYPE
+
+FUNCTION_BLOCK holder
+    METHOD PUBLIC slot : PInt
+    VAR local : INT; END_VAR
+        slot := REF(local);
+    END_METHOD
+END_FUNCTION_BLOCK
+"#;
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
+    [E0251] Error: reference outlives its storage
+       ,-[ file:///test0.st:7:17 ]
+       |
+     6 |     VAR local : INT; END_VAR
+       |         ^^^^^|^^^^^
+       |              `------- 'local' is per-call storage, declared here
+     7 |         slot := REF(local);
+       |                 ^^^^^|^^^^
+       |                      `------ reference to 'local' outlives the call that owns it
+       |
+       | Note: return a reference to instance state, or to storage the caller owns (a VAR_IN_OUT)
+    ---'
+    ");
+}
+
+#[rstest]
+fn returning_a_reference_to_caller_storage_is_allowed(mut with_db: RootDatabase) {
+    // A VAR_IN_OUT names the caller's storage, which outlives the call.
+    let source = r#"
+TYPE PInt : REF_TO INT; END_TYPE
+
+FUNCTION borrow : PInt
+VAR_IN_OUT t : INT; END_VAR
+    borrow := REF(t);
+END_FUNCTION
+"#;
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"");
+}
+
+#[rstest]
+fn returning_a_reference_to_instance_state_is_allowed(mut with_db: RootDatabase) {
+    let source = r#"
+TYPE PInt : REF_TO INT; END_TYPE
+
+FUNCTION_BLOCK holder
+VAR total : INT; END_VAR
+    METHOD PUBLIC slot : PInt
+        slot := REF(total);
+    END_METHOD
+END_FUNCTION_BLOCK
+"#;
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"");
 }

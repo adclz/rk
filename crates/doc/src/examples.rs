@@ -1452,6 +1452,23 @@ END_FUNCTION
             lint_rule: None,
         },
         ErrorExample {
+            code: "E0251",
+            category: "Scope",
+            title: "Reference outlives its storage",
+            description: "A FUNCTION or METHOD returned a reference to its own per-call storage. That storage is reused by the next invocation, so the reference reads whatever that call leaves behind. Return a reference to instance state, or to storage the caller owns (a VAR_IN_OUT).",
+            sources: &[r#"
+TYPE PInt : REF_TO INT; END_TYPE
+
+FUNCTION borrow : PInt
+VAR
+    local : INT := 1;
+END_VAR
+    borrow := REF(local);
+END_FUNCTION
+"#],
+            lint_rule: None,
+        },
+        ErrorExample {
             code: "E0250",
             category: "Resolution",
             title: "Unknown multibit access size",

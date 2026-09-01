@@ -15,7 +15,7 @@ use crate::{
             spec::ElementarySpec,
             statement::{CaseKind, Stmt, StmtKind},
         },
-        pous::variable::VariableDecl,
+        pous::variable::{VariableDecl, VariableKind},
         scope::{ScopeId, ScopeKind},
         semantic_index::get_scope,
     },
@@ -349,6 +349,32 @@ impl<'db> StmtsResolverCtx<'db> {
                     // initializer door has always refused this; the
                     // assignment door now matches it.
                     check_string_literal_fits(db, base_typ, *target, ctx);
+
+                    // A reference to this call's own storage, handed back to
+                    // the caller. It does not fault: an address-taken local
+                    // sits at a fixed address, so the reference quietly reads
+                    // whatever the NEXT call leaves in that slot.
+                    if matches!(base_typ, Type::Function(_) | Type::MethodDecl(_))
+                        && let ExprKind::PrimaryExpr(PrimaryExpr::RefValue {
+                            value: RefValue::Address(path),
+                        }) = target.expr(db)
+                        && let Some(path_expr) = path.expr(db)
+                        && let Type::Variable((referenced, _)) =
+                            ctx.get_type_of_path_expr(db, path_expr)
+                        && referenced.get_scope_id(db) == ctx.scope
+                        && matches!(
+                            referenced.kind(db),
+                            VariableKind::Var | VariableKind::Temp | VariableKind::Input
+                        )
+                    {
+                        ctx.errors.push(
+                            crate::check::errors::e2_resolve::ResolveError::ReturnsReferenceToLocal {
+                                var: referenced,
+                                site: CallSite::from_scoped(db, target),
+                            }
+                            .to_diagnostic(db, ctx.scope.file(db)),
+                        );
+                    }
 
                     // Update null state for REF_TO variables
                     if let Type::Variable((var_decl, _)) = base_typ
