@@ -597,3 +597,260 @@ END_FUNCTION_BLOCK
 "#;
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"");
 }
+
+// Reference binding is INVARIANT: the pointee must be exactly the declared
+// type. Before, the value-coercion table was consulted for the pointee, so
+// every implicitly-widenable pair checked clean and typed the load wrong —
+// invalid wasm at exit 0 for REAL/LREAL, a 2-byte slot read as 4 for DINT.
+
+#[rstest]
+fn a_reference_does_not_widen_its_pointee(mut with_db: RootDatabase) {
+    let source = r#"
+FUNCTION f : REAL
+    VAR x : INT; p : REF_TO REAL; q : REF_TO INT; r : REF_TO REAL := REF(x); END_VAR
+    p := REF(x);
+    q := REF(x);
+    p := q;
+    f := p^;
+END_FUNCTION
+"#;
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
+    [E0301] Error: type mismatch
+       ,-[ file:///test0.st:3:67 ]
+       |
+     3 |     VAR x : INT; p : REF_TO REAL; q : REF_TO INT; r : REF_TO REAL := REF(x); END_VAR
+       |                                                                   ^^^^|^^^^
+       |                                                                       `------ expected 'REF_TO REAL', got 'REF_TO INT'
+    ---'
+    [E0301] Error: type mismatch
+       ,-[ file:///test0.st:4:10 ]
+       |
+     3 |     VAR x : INT; p : REF_TO REAL; q : REF_TO INT; r : REF_TO REAL := REF(x); END_VAR
+       |                  |
+       |                  `-- type is declared by variable 'p' here
+     4 |     p := REF(x);
+       |          ^^^|^^
+       |             `---- expected 'REF_TO REAL', got 'REF_TO INT'
+    ---'
+    [E0301] Error: type mismatch
+       ,-[ file:///test0.st:6:10 ]
+       |
+     3 |     VAR x : INT; p : REF_TO REAL; q : REF_TO INT; r : REF_TO REAL := REF(x); END_VAR
+       |                  |
+       |                  `-- type is declared by variable 'p' here
+       |
+     6 |     p := q;
+       |          |
+       |          `-- expected 'REF_TO REAL', got 'REF_TO INT'
+    ---'
+    ");
+}
+
+#[rstest]
+fn a_reference_parameter_does_not_widen_its_pointee(mut with_db: RootDatabase) {
+    let source = r#"
+FUNCTION g : REAL
+    VAR_INPUT p : REF_TO REAL; END_VAR
+    g := p^;
+END_FUNCTION
+
+FUNCTION_BLOCK fb
+    VAR_INPUT p : REF_TO REAL; END_VAR
+END_FUNCTION_BLOCK
+
+FUNCTION t : REAL
+    VAR x : INT; i : fb; END_VAR
+    i(p := REF(x));
+    t := g(p := REF(x));
+END_FUNCTION
+"#;
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
+    [E0301] Error: type mismatch
+        ,-[ file:///test0.st:13:12 ]
+        |
+      8 |     VAR_INPUT p : REF_TO REAL; END_VAR
+        |               |
+        |               `-- type is declared by variable 'p' here
+        |
+     13 |     i(p := REF(x));
+        |            ^^^|^^
+        |               `---- expected 'REF_TO REAL', got 'REF_TO INT'
+    ----'
+    [E0301] Error: type mismatch
+        ,-[ file:///test0.st:14:17 ]
+        |
+      3 |     VAR_INPUT p : REF_TO REAL; END_VAR
+        |               |
+        |               `-- type is declared by variable 'p' here
+        |
+     14 |     t := g(p := REF(x));
+        |                 ^^^|^^
+        |                    `---- expected 'REF_TO REAL', got 'REF_TO INT'
+    ----'
+    ");
+}
+
+#[rstest]
+fn a_reference_binds_the_same_type_by_shape(mut with_db: RootDatabase) {
+    // Invariance is structural, not identity: an alias, a same-shape array
+    // and a same struct are the same type even as distinct specs.
+    let source = r#"
+TYPE MyInt : INT; END_TYPE
+TYPE Pt : STRUCT x : INT; END_STRUCT; END_TYPE
+
+FUNCTION f : INT
+    VAR
+        m : MyInt; a : ARRAY[0..2] OF INT; s : Pt; x : INT;
+        pi : REF_TO INT; pm : REF_TO MyInt; pa : REF_TO ARRAY[0..2] OF INT; ps : REF_TO Pt;
+        pp : REF_TO REF_TO INT;
+    END_VAR
+    pi := REF(m);
+    pm := REF(x);
+    pa := REF(a);
+    ps := REF(s);
+    pp := REF(pi);
+    pi := NULL;
+    f := pp^^;
+END_FUNCTION
+"#;
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"");
+}
+
+#[rstest]
+fn a_var_in_out_does_not_widen_the_callers_slot(mut with_db: RootDatabase) {
+    // A VAR_IN_OUT aliases the caller's storage; a REAL parameter over an INT
+    // variable wrote four bytes over two and read garbage back (executed:
+    // x was not 4 after `io := io + 1.0`). Interface-typed parameters are
+    // exempt — pinned by the two tests that follow.
+    let source = r#"
+FUNCTION g : REAL
+    VAR_IN_OUT io : REAL; END_VAR
+    g := io;
+END_FUNCTION
+
+FUNCTION_BLOCK fb
+    VAR_IN_OUT io : DINT; END_VAR
+END_FUNCTION_BLOCK
+
+FUNCTION t : REAL
+    VAR x : INT; i : fb; r : REAL; END_VAR
+    t := g(io := x);
+    t := g(x);
+    i(io := x);
+    t := g(io := r);
+END_FUNCTION
+"#;
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
+    [E0301] Error: type mismatch
+        ,-[ file:///test0.st:13:18 ]
+        |
+      3 |     VAR_IN_OUT io : REAL; END_VAR
+        |                ^|
+        |                 `-- type is declared by variable 'io' here
+        |
+     13 |     t := g(io := x);
+        |                  |
+        |                  `-- expected 'REAL', got 'INT'
+    ----'
+    [E0301] Error: type mismatch
+        ,-[ file:///test0.st:14:12 ]
+        |
+      3 |     VAR_IN_OUT io : REAL; END_VAR
+        |                ^|
+        |                 `-- type is declared by variable 'io' here
+        |
+     14 |     t := g(x);
+        |            |
+        |            `-- expected 'REAL', got 'INT'
+    ----'
+    [E0301] Error: type mismatch
+        ,-[ file:///test0.st:15:13 ]
+        |
+      8 |     VAR_IN_OUT io : DINT; END_VAR
+        |                ^|
+        |                 `-- type is declared by variable 'io' here
+        |
+     15 |     i(io := x);
+        |             |
+        |             `-- expected 'DINT', got 'INT'
+    ----'
+    ");
+}
+
+#[rstest]
+fn an_interface_parameter_takes_any_implementer_by_reference(mut with_db: RootDatabase) {
+    // The invariance rule must not reach interface-typed parameters: binding
+    // an implementer is dispatch, not a reinterpretation of the caller's
+    // slot. Named and positional, VAR_IN_OUT and VAR_INPUT.
+    let source = r#"
+INTERFACE I
+    METHOD M : INT
+    END_METHOD
+END_INTERFACE
+
+CLASS C IMPLEMENTS I
+    METHOD M : INT
+        M := 1;
+    END_METHOD
+END_CLASS
+
+FUNCTION by_in_out : INT
+    VAR_IN_OUT i : I; END_VAR
+    by_in_out := i.M();
+END_FUNCTION
+
+FUNCTION by_input : INT
+    VAR_INPUT i : I; END_VAR
+    by_input := i.M();
+END_FUNCTION
+
+FUNCTION t : INT
+    VAR c : C; END_VAR
+    t := by_in_out(i := c);
+    t := by_in_out(c);
+    t := by_input(i := c);
+    t := by_input(c);
+END_FUNCTION
+"#;
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"");
+}
+
+#[rstest]
+fn an_interface_parameter_still_requires_implements(mut with_db: RootDatabase) {
+    // The exemption skips invariance, not the IMPLEMENTS check.
+    let source = r#"
+INTERFACE I
+    METHOD M : INT
+    END_METHOD
+END_INTERFACE
+
+CLASS NotC
+    METHOD M : INT
+        M := 1;
+    END_METHOD
+END_CLASS
+
+FUNCTION by_in_out : INT
+    VAR_IN_OUT i : I; END_VAR
+    by_in_out := i.M();
+END_FUNCTION
+
+FUNCTION t : INT
+    VAR n : NotC; END_VAR
+    t := by_in_out(i := n);
+END_FUNCTION
+"#;
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
+    [E0301] Error: type mismatch
+        ,-[ file:///test0.st:20:25 ]
+        |
+      2 | INTERFACE I
+        |           |
+        |           `-- INTERFACE 'I' is defined here
+        |
+     20 |     t := by_in_out(i := n);
+        |                         |
+        |                         `-- expected 'I', got 'NotC'
+    ----'
+    ");
+}

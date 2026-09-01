@@ -125,17 +125,18 @@ impl<'db> Type<'db> {
             && let Some(typ) = adjs.as_reference()
         {
             match lhs {
+                // Reference binding is INVARIANT: the pointee must be the
+                // declared type exactly. The value table has no say here —
+                // widening a REF(int) into a REF_TO REAL reads a 2-byte slot
+                // as 4 and typed the load wrong (invalid wasm at exit 0).
                 Type::RefTo(spec) => {
-                    return match spec.infer(db).coerce_with_type(db, to, None, resolver) {
-                        Ok(()) => Ok(()),
-                        Err(_) => match spec.infer(db).eq(&to) {
-                            true => Ok(()),
-                            false => Err(CoerceError {
-                                expected: *self,
-                                actual: to,
-                                adjustment: adjs.iter().last().cloned(),
-                            }),
-                        },
+                    return match same_type(db, spec.infer(db).normalize(db), to) {
+                        true => Ok(()),
+                        false => Err(CoerceError {
+                            expected: *self,
+                            actual: to,
+                            adjustment: adjs.iter().last().cloned(),
+                        }),
                     };
                 }
                 // A function or method NAME on the left is its return slot,
@@ -259,9 +260,16 @@ impl<'db> Type<'db> {
                 }
             }
             (Type::RefTo(_), Type::Null) => Ok(()),
+            // Same invariance for a reference bound from a reference.
             (Type::RefTo(lhs), Type::RefTo(rhs)) => {
-                lhs.infer(db)
-                    .coerce_with_type(db, rhs.infer(db), None, resolver)
+                match same_type(db, lhs.infer(db).normalize(db), rhs.infer(db).normalize(db)) {
+                    true => Ok(()),
+                    false => Err(CoerceError {
+                        expected: *self,
+                        actual: to,
+                        adjustment: None,
+                    }),
+                }
             }
             // Function/Method used as a value — coerce through the return type.
             // LHS (target is the function return variable)
@@ -507,5 +515,35 @@ impl<'db> CoerceError<'db> {
         }
         .to_diagnostic(db, call_site.get_scope_id(db).file(db))
     }
+}
 
+/// Structural "is exactly this type" for reference pointees, on NORMALIZED
+/// types. Identity for nominal types (structs, enums, POUs); shape for
+/// arrays and references, whose specs are distinct salsa values even when
+/// spelled identically. Never consults the value-coercion table.
+pub(crate) fn same_type<'db>(db: &'db dyn WorkspaceDataBase, a: Type<'db>, b: Type<'db>) -> bool {
+    match (a, b) {
+        (Type::Elementary(x), Type::Elementary(y)) => x == y,
+        (Type::RefTo(x), Type::RefTo(y)) => {
+            same_type(db, x.infer(db).normalize(db), y.infer(db).normalize(db))
+        }
+        (Type::Array(x), Type::Array(y)) => {
+            if x.eq(&y) {
+                return true;
+            }
+            let dx = crate::hir_ty::infer::const_eval::array_dimensions(db, x);
+            let dy = crate::hir_ty::infer::const_eval::array_dimensions(db, y);
+            dx.len() == dy.len()
+                && dx
+                    .iter()
+                    .zip(dy.iter())
+                    .all(|(r1, r2)| r1.0.is_some() && r1.0 == r2.0 && r1.1 == r2.1)
+                && same_type(
+                    db,
+                    x.of_type(db).infer(db).normalize(db),
+                    y.of_type(db).infer(db).normalize(db),
+                )
+        }
+        _ => a.eq(&b),
+    }
 }

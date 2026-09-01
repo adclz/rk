@@ -388,6 +388,43 @@ fn check_in_out_lvalue<'db>(
     }
 }
 
+/// A VAR_IN_OUT aliases the caller's storage, so its two ends must be the
+/// SAME type: the value table's widening (an INT into a REAL) would have the
+/// callee read and write four bytes over the caller's two. Only reported
+/// where the value coercion passed, so a plain mismatch keeps its one E0301.
+fn check_by_ref_invariance<'db>(
+    db: &'db dyn WorkspaceDataBase,
+    resolver: Resolver<'db>,
+    var: VariableDecl<'db>,
+    arg_ty: Type<'db>,
+    value: Expr<'db>,
+    ctx: &mut BodyInferenceResult<'db>,
+) {
+    let param_ty = Type::new_var(db, var);
+    // An interface-typed parameter takes any implementer: that is dispatch,
+    // not a reinterpretation of the caller's slot, and IMPLEMENTS is checked
+    // by the coercion itself.
+    if matches!(param_ty.normalize(db), Type::Interface(_))
+        || crate::hir_ty::infer::coerce::same_type(db, param_ty.normalize(db), arg_ty.normalize(db))
+        || param_ty
+            .coerce_with_type(db, arg_ty, None, resolver)
+            .is_err()
+    {
+        return;
+    }
+    ctx.errors.push(
+        TypeError::NotAssignable {
+            suggest_cast: false,
+            base_target: param_ty,
+            lhs: param_ty,
+            rhs: arg_ty,
+            adjustment: None,
+            expr: CallSite::from_scoped(db, &value),
+        }
+        .to_diagnostic(db, ctx.scope.file(db)),
+    );
+}
+
 /// E0804: the two ends of a by-reference binding must agree about the
 /// subrange. A VAR_IN_OUT aliases the caller's storage for reads AND writes,
 /// so any disagreement lets one side escape the other's bounds: an INT param
@@ -458,6 +495,7 @@ fn apply_param_coercion<'db>(
                 && let ExprKind::PrimaryExpr(PrimaryExpr::VariableAccess(va)) = value.expr(db)
             {
                 let arg_ty = ctx.type_of_variable_access_with_adjustments(db, *va);
+                check_by_ref_invariance(db, resolver, var, arg_ty, value, ctx);
                 check_by_ref_subrange(db, var, arg_ty, va.get_span(db), false, ctx);
             }
 
@@ -492,6 +530,7 @@ fn apply_param_coercion<'db>(
                 && let ExprKind::PrimaryExpr(PrimaryExpr::VariableAccess(va)) = value.expr(db)
             {
                 let arg_ty = ctx.type_of_variable_access_with_adjustments(db, *va);
+                check_by_ref_invariance(db, resolver, var, arg_ty, value, ctx);
                 check_by_ref_subrange(db, var, arg_ty, va.get_span(db), false, ctx);
             }
 
