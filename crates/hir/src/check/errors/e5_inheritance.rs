@@ -48,6 +48,7 @@ pub enum InheritanceError<'db> {
     UnimplementedInterfaceMethod {
         implementer: Pou<'db>,
         method: MethodRef<'db>,
+        declared_by: Pou<'db>,
     },
     // Signatures
     SignatureParametersCountMismatch {
@@ -60,6 +61,8 @@ pub enum InheritanceError<'db> {
         expected: Type<'db>,
         got: Type<'db>,
         method: MethodRef<'db>,
+        base_param: VariableDecl<'db>,
+        param: VariableDecl<'db>,
     },
     /// The RETURN is part of the signature too. Unchecked, an INT prototype
     /// implemented as REAL produced a wasm signature the monomorphized call
@@ -348,6 +351,7 @@ impl<'db> ToIdeDiagnostic<'db> for InheritanceError<'db> {
             Self::UnimplementedInterfaceMethod {
                 implementer,
                 method,
+                declared_by,
             } => {
                 let mut diag = diag()
                     .message(format!(
@@ -366,7 +370,7 @@ impl<'db> ToIdeDiagnostic<'db> for InheritanceError<'db> {
                     format!(
                         "method '{}' is declared by interface '{}' here",
                         method.get_name_ident(db).text(db),
-                        implementer.get_name_ident(db).text(db),
+                        declared_by.get_name_ident(db).text(db),
                     ),
                     method.get_scope_id(db).file(db),
                     method.get_name_span(db),
@@ -525,10 +529,13 @@ impl<'db> ToIdeDiagnostic<'db> for InheritanceError<'db> {
                 expected,
                 got,
                 method,
+                base_param,
+                param,
             } => {
                 let mut diag = diag()
                     .message(format!(
-                        "method '{}' has incompatible parameter types: expected '{}', got '{}'",
+                        "parameter '{}' of method '{}' has an incompatible type: expected '{}', got '{}'",
+                        param.name(db).text(db),
                         method.get_name_ident(db).text(db),
                         expected.type_name(db),
                         got.type_name(db),
@@ -536,12 +543,20 @@ impl<'db> ToIdeDiagnostic<'db> for InheritanceError<'db> {
                     .severity(DiagnosticSeverity::ERROR)
                     .desc(self)
                     .range(
-                        crate::denormalize(db, file, &method.get_name_span(db)).unwrap_or_default(),
+                        crate::denormalize(db, file, &param.spec(db).get_span(db))
+                            .unwrap_or_default(),
                     )
                     .call();
-
+                diag.with_related(Related::new(
+                    format!(
+                        "the base method declares '{}' as '{}' here",
+                        base_param.name(db).text(db),
+                        expected.type_name(db),
+                    ),
+                    base_param.get_scope_id(db).file(db),
+                    base_param.spec(db).get_span(db),
+                ));
                 diag.with_note("parameter types must match those of the base method".into());
-
                 diag
             }
             Self::SignatureReturnMismatch {
@@ -617,7 +632,7 @@ impl<'db> ToIdeDiagnostic<'db> for InheritanceError<'db> {
                     .desc(self)
                     .call();
                 diag.with_related(Related::new(
-                    "'SUPER()' is already called here".to_string(),
+                    "the first 'SUPER()' is here".to_string(),
                     file,
                     first.get_span(db),
                 ));

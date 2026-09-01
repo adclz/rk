@@ -149,7 +149,7 @@ fn interface_methods_not_implemented(mut with_db: RootDatabase) {
        |
      3 |             METHOD DAYTIME END_METHOD
        |                    ^^^|^^^
-       |                       `----- method 'DAYTIME' is declared by interface 'Mid' here
+       |                       `----- method 'DAYTIME' is declared by interface 'ROOM1' here
        |
      6 |         CLASS Mid IMPLEMENTS ROOM1
        |               ^|^
@@ -247,11 +247,15 @@ fn method_signature_type_mismatch(mut with_db: RootDatabase) {
 
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
     [E0512] Error: method signature mismatch
-        ,-[ file:///test0.st:12:29 ]
+        ,-[ file:///test0.st:15:29 ]
         |
-     12 |             METHOD OVERRIDE DAYTIME
-        |                             ^^^|^^^
-        |                                `----- method 'DAYTIME' has incompatible parameter types: expected 'INT', got 'REAL'
+      6 |                     value2: INT;
+        |                             ^|^
+        |                              `--- the base method declares 'value2' as 'INT' here
+        |
+     15 |                     value2: REAL; // should be INT
+        |                             ^^|^
+        |                               `--- parameter 'value2' of method 'DAYTIME' has an incompatible type: expected 'INT', got 'REAL'
         |
         | Note: parameter types must match those of the base method
     ----'

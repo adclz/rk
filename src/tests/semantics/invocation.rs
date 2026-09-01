@@ -360,7 +360,7 @@ END_FUNCTION_BLOCK
        |
      5 |     SUPER();
        |     ^^^|^^^
-       |        `----- 'SUPER()' is already called here
+       |        `----- the first 'SUPER()' is here
      6 |     SUPER();
        |     ^^^|^^^
        |        `----- 'SUPER()' may only be called once in a function block body
@@ -395,7 +395,9 @@ END_FUNCTION_BLOCK
 #[rstest]
 fn super_body_valid(mut with_db: RootDatabase) {
     // Valid: exactly one SUPER(), in the FB body (not a loop, not a method),
-    // in an FB that extends a base. No diagnostics. An IF (not a loop) is fine.
+    // in an FB that extends a base. No diagnostics. An IF (not a loop) is fine:
+    // "shall occur once" is read TEXTUALLY, so a conditionally skipped SUPER()
+    // is accepted even though the base body may then not run that scan.
     let source = r#"
 FUNCTION_BLOCK base
 END_FUNCTION_BLOCK

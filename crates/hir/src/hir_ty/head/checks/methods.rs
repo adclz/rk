@@ -55,6 +55,7 @@ impl<'db> InitInference<'db> {
 
         // look at the inherited methods first
         for (inherited_name, inherited_method) in inherited_methods.methods.iter() {
+            let declared_by = inherited_method.source;
             let inherited_method = inherited_method.method;
             // method is inherited from a base interface/class
             if let Some(declared_method) = declared_methods.get(inherited_name) {
@@ -100,6 +101,7 @@ impl<'db> InitInference<'db> {
                         InheritanceError::UnimplementedInterfaceMethod {
                             implementer,
                             method: inherited_method,
+                            declared_by,
                         }
                         .to_diagnostic(db, self.scope.file(db)),
                     );
@@ -280,6 +282,8 @@ fn check_signature<'db>(
                     expected: var1_typ,
                     got: var2_typ,
                     method: m2,
+                    base_param: *var1,
+                    param: *var2,
                 }
                 .to_diagnostic(db, m1.get_scope_id(db).file(db)),
             )
