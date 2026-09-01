@@ -8,11 +8,14 @@ use crate::check::errors::e10_control_flow::ControlFlowError;
 use crate::hir_def::expressions::expression::{Expr, ExprKind, ParamAssign, PrimaryExpr};
 use crate::hir_def::interned::identifier::CaselessIdent;
 use crate::hir_def::pous::variable::VariableDecl;
+use crate::hir_ty::def_map::FxIndexMap;
+use crate::hir_ty::head::inheritance::instance_members;
 use crate::hir_ty::resolver::name::{OverloadPick, select_overload};
 use crate::{
     CallSite, HirNodeInfo,
     check::errors::{ToIdeDiagnostic, e2_resolve::ResolveError},
     hir_def::expressions::expression::{FuncCall, ParamAssignKind},
+    hir_def::pous::pou::Pou,
     hir_ty::{
         body::BodyInferenceResult,
         infer::expr::InferExprCtx,
@@ -121,13 +124,10 @@ pub fn resolve_func_call<'db>(
     }
 
     let len = func_call.params(db).len();
-    let has_variadic = callable
-        .def_map(db)
-        .local_variables
-        .values()
-        .any(|v| v.variadic(db));
+    let formals = call_site_params(db, callable);
+    let has_variadic = formals.values().any(|v| v.variadic(db));
 
-    if !has_variadic && len > callable.var_len_params(db) {
+    if !has_variadic && len > formals.len() {
         ctx.errors.push(
             ResolveError::IncorrectNumberOfParameters {
                 overloads: match callable {
@@ -151,7 +151,7 @@ pub fn resolve_func_call<'db>(
                     }
                     _ => 1,
                 },
-                expected: callable.var_len_params(db),
+                expected: formals.len(),
                 actual: len,
                 func_call,
                 callable,
@@ -161,7 +161,7 @@ pub fn resolve_func_call<'db>(
     }
 
     // Resolve parameter matching
-    let matches = resolve_params(db, func_call.params(db), callable, &mut ctx.errors);
+    let matches = resolve_params(db, func_call.params(db), callable, &formals, &mut ctx.errors);
 
     // Apply coercion and body-level checks on matched parameters
     for m in &matches {
@@ -214,7 +214,7 @@ pub fn resolve_func_call<'db>(
 
     let mut missing: Vec<VariableDecl<'db>> = Vec::new();
     let mut params: Vec<(VariableDecl<'db>, crate::hir_ty::body::ParamBinding<'db>)> = Vec::new();
-    for (var_name, var) in &callable.def_map(db).local_variables {
+    for (var_name, var) in &formals {
         if let Some(binding) = bound.remove(var) {
             params.push((*var, binding));
             continue;
@@ -600,15 +600,39 @@ pub enum ParamMatch<'db> {
     Error,
 }
 
+/// Every parameter bindable at a call site of `callable`, by caseless name,
+/// in binding order.
+///
+/// For an FB this is the flattened `EXTENDS` view — [`instance_members`]
+/// filtered to Input/Output/InOut, base parameters first — because a call
+/// site binds inherited parameters too. Reading only the scope's own
+/// `def_map` left them unknown here: naming one was E0208, and omitting an
+/// inherited VAR_IN_OUT went unreported. Transient on purpose: the chain
+/// walk is already memoized in `instance_members`, so this is a re-keying,
+/// not a query.
+pub fn call_site_params<'db>(
+    db: &'db dyn WorkspaceDataBase,
+    callable: CallableType<'db>,
+) -> FxIndexMap<CaselessIdent, VariableDecl<'db>> {
+    match callable {
+        CallableType::FunctionBlock(fb) => instance_members(db, Pou::FunctionBlock(fb))
+            .iter()
+            .filter(|m| m.var.is_input(db) || m.var.is_output(db) || m.var.is_in_out(db))
+            .map(|m| (m.var.name(db).caseless(db), m.var))
+            .collect(),
+        _ => callable.def_map(db).local_variables.clone(),
+    }
+}
+
 /// Resolve a list of parameters against a callable's signature.
 ///
-/// Shared matching logic used by both function calls and {case} pragmas.
 /// Handles positional/named param resolution, variadic parameters, duplicate
 /// detection, and emits errors for unknown params.
 pub fn resolve_params<'db>(
     db: &'db dyn WorkspaceDataBase,
     params: &[ParamAssign<'db>],
     callable: CallableType<'db>,
+    formals: &FxIndexMap<CaselessIdent, VariableDecl<'db>>,
     errors: &mut Vec<IdeDiagnostic>,
 ) -> Vec<ParamMatch<'db>> {
     let mut results = vec![];
@@ -616,11 +640,7 @@ pub fn resolve_params<'db>(
     let mut formal_idx = 0;
     let mut variadic_count = 0;
 
-    let has_variadic = callable
-        .def_map(db)
-        .local_variables
-        .values()
-        .any(|v| v.variadic(db));
+    let has_variadic = formals.values().any(|v| v.variadic(db));
 
     // Pre-collect named parameter idents so positional args skip them
     let named_params: FxHashSet<_> = params
@@ -636,9 +656,8 @@ pub fn resolve_params<'db>(
         match parameter.kind(db) {
             ParamAssignKind::NonFormal { value } => {
                 // Skip parameters already filled by named arguments
-                let def_map = callable.def_map(db);
-                while formal_idx < def_map.local_variables.len() {
-                    if let Some((name, _)) = def_map.local_variables.get_index(formal_idx)
+                while formal_idx < formals.len() {
+                    if let Some((name, _)) = formals.get_index(formal_idx)
                         && named_params.contains(name)
                     {
                         formal_idx += 1;
@@ -647,21 +666,12 @@ pub fn resolve_params<'db>(
                     break;
                 }
 
-                let var = callable
-                    .def_map(db)
-                    .local_variables
-                    .values()
-                    .nth(formal_idx);
+                let var = formals.values().nth(formal_idx);
 
                 // If past the last param, check if a variadic param exists
                 let var = var.or_else(|| {
                     if has_variadic {
-                        callable
-                            .def_map(db)
-                            .local_variables
-                            .values()
-                            .rev()
-                            .find(|v| v.variadic(db))
+                        formals.values().rev().find(|v| v.variadic(db))
                     } else {
                         None
                     }
@@ -697,7 +707,7 @@ pub fn resolve_params<'db>(
                     continue;
                 }
 
-                if let Some(var) = callable.def_map(db).local_variables.get(&param.ident.caseless(db)) {
+                if let Some(var) = formals.get(&param.ident.caseless(db)) {
                     results.push(ParamMatch::Matched(*parameter, *var));
                 } else {
                     errors.push(
@@ -724,7 +734,7 @@ pub fn resolve_params<'db>(
                     continue;
                 }
 
-                if let Some(var) = callable.def_map(db).local_variables.get(&param.ident.caseless(db)) {
+                if let Some(var) = formals.get(&param.ident.caseless(db)) {
                     results.push(ParamMatch::Matched(*parameter, *var));
                 } else {
                     errors.push(

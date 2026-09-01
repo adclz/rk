@@ -561,6 +561,64 @@ END_CLASS
 }
 
 #[rstest]
+fn inherited_parameters_bind_at_call_sites(mut with_db: RootDatabase) {
+    // The call-site parameter list is the flattened EXTENDS view: naming an
+    // inherited input or in_out is legal (this was E0205 + E0208).
+    let source = r#"
+FUNCTION_BLOCK BaseIO
+    VAR_IN_OUT io : INT; END_VAR
+    VAR_INPUT inp : INT; END_VAR
+    io := io + inp;
+END_FUNCTION_BLOCK
+
+FUNCTION_BLOCK DerivedIO EXTENDS BaseIO
+    VAR_INPUT own : INT; END_VAR
+END_FUNCTION_BLOCK
+
+PROGRAM P
+    VAR d : DerivedIO; x : INT; END_VAR
+    d(io := x, inp := 1, own := 2);
+END_PROGRAM
+"#;
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"");
+}
+
+#[rstest]
+fn omitted_inherited_var_in_out_is_reported(mut with_db: RootDatabase) {
+    // An inherited VAR_IN_OUT is as required as an own one; omitting it used
+    // to pass silently and the base body's writes vanished.
+    let source = r#"
+FUNCTION_BLOCK BaseIO
+    VAR_IN_OUT io : INT; END_VAR
+END_FUNCTION_BLOCK
+
+FUNCTION_BLOCK DerivedIO EXTENDS BaseIO
+    VAR_INPUT own : INT; END_VAR
+END_FUNCTION_BLOCK
+
+PROGRAM P
+    VAR d : DerivedIO; END_VAR
+    d(own := 2);
+END_PROGRAM
+"#;
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
+    [E0233] Error: missing required parameter
+        ,-[ file:///test0.st:12:5 ]
+        |
+      3 |     VAR_IN_OUT io : INT; END_VAR
+        |                ^^^^|^^^
+        |                    `----- parameter 'io' declared here
+        |
+     12 |     d(own := 2);
+        |     |
+        |     `-- call to 'DerivedIO' is missing 1 required parameter: 'io'
+        |
+        | Note: VAR_IN_OUT parameters bind to caller-side l-values and must always be supplied
+    ----'
+    ");
+}
+
+#[rstest]
 fn redeclared_var_external_is_not_shadowing(mut with_db: RootDatabase) {
     // Two VAR_EXTERNALs name the same global; neither owns storage, and
     // redeclaring is the only way the derived body reaches the global.

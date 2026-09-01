@@ -137,10 +137,6 @@ impl<'db> CallableType<'db> {
         }
     }
 
-    pub fn var_len_params(&self, db: &'db dyn WorkspaceDataBase) -> usize {
-        self.def_map(db).local_variables.len()
-    }
-
     pub fn inner_callable(&self) -> Type<'db> {
         match self {
             CallableType::Function(f) => Type::Function(*f),

@@ -598,3 +598,31 @@ fn a_bare_inherited_call_output_binding_lands(mut with_db: db::RootDatabase) {
     let result: i32 = super::execute_wasm(&wasm, "run", ());
     assert_eq!(result, 102, "the inherited bare call lands 1 then 2 through &v");
 }
+
+/// A derived FB call binds inherited parameters — the base's VAR_IN_OUT and
+/// VAR_INPUT — alongside its own, and writes through the inherited VAR_IN_OUT
+/// reach the caller's variable.
+#[rstest]
+fn test_inherited_parameters_bind_and_flow(mut with_db: db::RootDatabase) {
+    let source = r#"
+        FUNCTION_BLOCK BaseIO
+        VAR_IN_OUT io : INT; END_VAR
+        VAR_INPUT inp : INT; END_VAR
+        END_FUNCTION_BLOCK
+
+        FUNCTION_BLOCK DerivedIO EXTENDS BaseIO
+        VAR_INPUT own : INT; END_VAR
+            io := io + inp + own;
+        END_FUNCTION_BLOCK
+
+        FUNCTION test : INT
+        VAR d : DerivedIO; x : INT; END_VAR
+            x := 5;
+            d(io := x, inp := 10, own := 2);
+            test := x;
+        END_FUNCTION
+    "#;
+    let wasm = super::compile_to_wasm(&mut with_db, source);
+    let result: i32 = super::execute_wasm(&wasm, "test", ());
+    assert_eq!(result, 17, "5 + 10 + 2 through the inherited in_out");
+}
