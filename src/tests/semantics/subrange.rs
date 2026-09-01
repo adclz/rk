@@ -565,3 +565,112 @@ fn valid_nested_subrange_matching_inout(mut with_db: RootDatabase) {
     "#;
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"");
 }
+
+// E0804 through REF(): a reference is a by-reference binding like a
+// VAR_IN_OUT, so its pointee and the referenced variable must agree about the
+// subrange. Before, `REF_TO INT := REF(s)` with `s : INT (0..10)` checked
+// clean and `p^ := 500` went around the range check entirely.
+
+#[rstest]
+fn a_reference_must_match_the_subrange_of_its_target(mut with_db: RootDatabase) {
+    let source = r#"
+TYPE Small : INT (0..10); END_TYPE
+
+FUNCTION g : INT
+    VAR_INPUT p : REF_TO INT; END_VAR
+    g := p^;
+END_FUNCTION
+
+FUNCTION f : INT
+    VAR
+        s : INT (0..10); n : Small; x : INT;
+        p : REF_TO INT := REF(s);
+        q : REF_TO Small;
+    END_VAR
+    p := REF(s);
+    f := g(p := REF(s)) + g(REF(n));
+    q := REF(n);
+    p := q;
+    q := REF(x);
+END_FUNCTION
+"#;
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
+    [E0804] Error: subrange mismatch across a reference
+        ,-[ file:///test0.st:12:27 ]
+        |
+     12 |         p : REF_TO INT := REF(s);
+        |                           ^^^|^^
+        |                              `---- 'INT (0..10)' binds by reference to 'INT': the subrange must match exactly
+    ----'
+    [E0804] Error: subrange mismatch across a reference
+        ,-[ file:///test0.st:15:10 ]
+        |
+     15 |     p := REF(s);
+        |          ^^^|^^
+        |             `---- 'INT (0..10)' binds by reference to 'INT': the subrange must match exactly
+    ----'
+    [E0804] Error: subrange mismatch across a reference
+        ,-[ file:///test0.st:16:17 ]
+        |
+     16 |     f := g(p := REF(s)) + g(REF(n));
+        |                 ^^^|^^
+        |                    `---- 'INT (0..10)' binds by reference to 'INT': the subrange must match exactly
+    ----'
+    [E0804] Error: subrange mismatch across a reference
+        ,-[ file:///test0.st:16:29 ]
+        |
+     16 |     f := g(p := REF(s)) + g(REF(n));
+        |                             ^^^|^^
+        |                                `---- 'Small (0..10)' binds by reference to 'INT': the subrange must match exactly
+    ----'
+    [E0804] Error: subrange mismatch across a reference
+        ,-[ file:///test0.st:18:10 ]
+        |
+     18 |     p := q;
+        |          |
+        |          `-- 'Small (0..10)' binds by reference to 'INT': the subrange must match exactly
+    ----'
+    [E0804] Error: subrange mismatch across a reference
+        ,-[ file:///test0.st:19:10 ]
+        |
+     19 |     q := REF(x);
+        |          ^^^|^^
+        |             `---- 'INT' binds by reference to 'Small (0..10)': the subrange must match exactly
+    ----'
+    ");
+}
+
+#[rstest]
+fn a_reference_with_equal_bounds_or_a_differing_base_is_not_e0804(mut with_db: RootDatabase) {
+    // Equal bounds agree whatever the spelling; a differing BASE is E0301's
+    // complaint alone, never stacked with E0804.
+    let source = r#"
+TYPE Small : INT (0..10); END_TYPE
+
+FUNCTION f : REAL
+    VAR
+        s : INT (0..10); n : Small; x : INT;
+        q : REF_TO Small; p : REF_TO INT; r : REF_TO REAL;
+    END_VAR
+    q := REF(n);
+    q := REF(s);
+    p := REF(x);
+    p := NULL;
+    r := REF(s);
+    f := r^;
+END_FUNCTION
+"#;
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
+    [E0301] Error: type mismatch
+        ,-[ file:///test0.st:13:10 ]
+        |
+      7 |         q : REF_TO Small; p : REF_TO INT; r : REF_TO REAL;
+        |                                           |
+        |                                           `-- type is declared by variable 'r' here
+        |
+     13 |     r := REF(s);
+        |          ^^^|^^
+        |             `---- expected 'REF_TO REAL', got 'REF_TO INT (0..10)'
+    ----'
+    ");
+}

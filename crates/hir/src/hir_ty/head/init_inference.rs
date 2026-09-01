@@ -394,6 +394,9 @@ impl<'db> InitExprInferenceResult<'db> {
                     // body inference.
                     self.errors.push(err.to_diagnostic(db, self.scope.file(db)));
                 }
+                if let Some(err) = body_ctx.ref_subrange_mismatch(db, expected, *value) {
+                    self.errors.push(err.to_diagnostic(db, self.scope.file(db)));
+                }
 
                 // Advance position and check bounds
                 ctx.advance(1);

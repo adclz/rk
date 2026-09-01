@@ -369,6 +369,56 @@ impl<'db> BodyInferenceResult<'db> {
         }
     }
 
+    /// E0804 for a reference bound from `REF(x)` or from another reference:
+    /// the pointee and the referenced variable must agree about the
+    /// subrange, exactly as a VAR_IN_OUT must with its argument. `REF_TO
+    /// INT := REF(s)` with `s : INT (0..10)` let `p^ := 500` go around the
+    /// range check entirely. A differing BASE is E0301's complaint, not this.
+    pub(crate) fn ref_subrange_mismatch(
+        &self,
+        db: &'db dyn WorkspaceDataBase,
+        target: Type<'db>,
+        value: Expr<'db>,
+    ) -> Option<crate::check::errors::e8_subrange::SubRangeError<'db>> {
+        use crate::HirNodeInfo;
+        use crate::hir_def::expressions::expression::{ExprKind, PrimaryExpr, RefValue};
+        let Type::RefTo(spec) = target.normalize(db) else {
+            return None;
+        };
+        let pointee = spec.infer(db);
+        let value_ty = self.type_of_expr.get(&value).copied()?;
+        // `REF(x)` records x's own type; a reference-typed value points at
+        // its pointee.
+        let referenced = match value.expr(db) {
+            ExprKind::PrimaryExpr(PrimaryExpr::RefValue {
+                value: RefValue::Address(_),
+            }) => value_ty,
+            _ => match value_ty.normalize(db) {
+                Type::RefTo(s) => s.infer(db),
+                _ => return None,
+            },
+        };
+        if pointee.normalize(db) != referenced.normalize(db) {
+            return None;
+        }
+        let bounds = |t: Type<'db>| {
+            t.as_subrange(db)
+                .map(|s| crate::hir_ty::infer::const_eval::subrange_bounds(db, s))
+        };
+        let agree = match (bounds(pointee), bounds(referenced)) {
+            (None, None) => true,
+            (Some(p), Some(a)) => p == a,
+            _ => false,
+        };
+        (!agree).then(|| {
+            crate::check::errors::e8_subrange::SubRangeError::ByRefSubrangeMismatch {
+                span: value.get_span(db),
+                param: pointee,
+                arg: referenced,
+            }
+        })
+    }
+
     pub(super) fn get_type_of_expr(&self, expr: Expr<'db>) -> Type<'db> {
         self.type_of_expr.get(&expr).copied().unwrap_or_default()
     }

@@ -490,6 +490,9 @@ fn apply_param_coercion<'db>(
             }
 
             check_in_out_lvalue(db, callable, var, value, ctx);
+            if let Some(err) = ctx.ref_subrange_mismatch(db, Type::new_var(db, var), value) {
+                ctx.errors.push(err.to_diagnostic(db, ctx.scope.file(db)));
+            }
 
             if var.is_in_out(db)
                 && let ExprKind::PrimaryExpr(PrimaryExpr::VariableAccess(va)) = value.expr(db)
@@ -525,6 +528,9 @@ fn apply_param_coercion<'db>(
             }
 
             check_in_out_lvalue(db, callable, var, value, ctx);
+            if let Some(err) = ctx.ref_subrange_mismatch(db, Type::new_var(db, var), value) {
+                ctx.errors.push(err.to_diagnostic(db, ctx.scope.file(db)));
+            }
 
             if var.is_in_out(db)
                 && let ExprKind::PrimaryExpr(PrimaryExpr::VariableAccess(va)) = value.expr(db)

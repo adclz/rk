@@ -349,6 +349,9 @@ impl<'db> StmtsResolverCtx<'db> {
                     // initializer door has always refused this; the
                     // assignment door now matches it.
                     check_string_literal_fits(db, base_typ, *target, ctx);
+                    if let Some(err) = ctx.ref_subrange_mismatch(db, base_typ, *target) {
+                        ctx.errors.push(err.to_diagnostic(db, ctx.scope.file(db)));
+                    }
 
                     // A reference to this call's own storage, handed back to
                     // the caller. It does not fault: an address-taken local

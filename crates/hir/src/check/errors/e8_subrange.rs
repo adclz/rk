@@ -122,7 +122,10 @@ pub(crate) fn with_bounds<'db>(db: &'db dyn WorkspaceDataBase, ty: Type<'db>) ->
         Some(sub) => {
             let (lower, upper) = crate::hir_ty::infer::const_eval::subrange_bounds(db, sub);
             match (lower, upper) {
-                (Some(l), Some(u)) => format!("{name} ({l}..{u})"),
+                // An anonymous `INT (0..10)` already names its bounds.
+                (Some(l), Some(u)) if !name.ends_with(&format!("({l}..{u})")) => {
+                    format!("{name} ({l}..{u})")
+                }
                 _ => name.to_string(),
             }
         }
