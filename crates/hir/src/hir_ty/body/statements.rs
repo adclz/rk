@@ -222,7 +222,10 @@ impl<'db> StmtsResolverCtx<'db> {
                         if !has_deref {
                             let rhs_type = ctx.get_type_of_expr(*target);
                             let new_state = if matches!(rhs_type, Type::Null) {
-                                NullState::Null(stmt.as_call_site(db))
+                                NullState::Null(crate::hir_ty::body::NullOrigin {
+                                    site: stmt.as_call_site(db),
+                                    var: var_decl,
+                                })
                             } else if let Type::Variable((rhs_var, _)) = rhs_type {
                                 // Propagate null state from RHS variable
                                 ctx.ref_null_state

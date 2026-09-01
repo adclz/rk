@@ -223,17 +223,26 @@ impl<'db> ToIdeDiagnostic<'db> for ControlFlowError<'db> {
                 .call(),
             Self::DerefPossiblyNull { var, expr, state } => {
                 let name = var.get_name_ident(db).text(db);
+                // The related span may belong to ANOTHER variable: a state
+                // propagates through `ptr := ptr_2`, so name whichever
+                // variable the span actually declares or assigns.
                 let (message, related_msg, site) = match state {
-                    NullState::Uninitialized(site) => (
-                        format!("dereference of reference '{name}' which is never initialized"),
-                        format!("'{name}' declared without initializer here"),
-                        site,
-                    ),
-                    NullState::Null(site) => (
-                        format!("dereference of reference '{name}' which is null"),
-                        format!("'{name}' set to NULL here"),
-                        site,
-                    ),
+                    NullState::Uninitialized(origin) => {
+                        let from = origin.var.get_name_ident(db).text(db);
+                        (
+                            format!("dereference of reference '{name}' which is never initialized"),
+                            format!("'{from}' declared without initializer here"),
+                            &origin.site,
+                        )
+                    }
+                    NullState::Null(origin) => {
+                        let from = origin.var.get_name_ident(db).text(db);
+                        (
+                            format!("dereference of reference '{name}' which is null"),
+                            format!("'{from}' set to NULL here"),
+                            &origin.site,
+                        )
+                    }
                     _ => unreachable!(),
                 };
                 let mut diag = diag()

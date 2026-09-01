@@ -119,16 +119,21 @@ fn init_ref_null_states<'db>(
 
         // Check if this variable is REF_TO
         if matches!(var.spec(db).infer(db), Type::RefTo(_)) {
-            let var_site = var.as_call_site(db);
             let state = match var.init(db) {
                 Some(init) => {
                     if is_null_init(db, &init.kind(db)) {
-                        NullState::Null(init.as_call_site(db))
+                        NullState::Null(NullOrigin {
+                            site: init.as_call_site(db),
+                            var: *var,
+                        })
                     } else {
                         NullState::NonNull
                     }
                 }
-                None => NullState::Uninitialized(var_site),
+                None => NullState::Uninitialized(NullOrigin {
+                    site: var.as_call_site(db),
+                    var: *var,
+                }),
             };
             result.ref_null_state.insert(*var, state);
         }
@@ -150,18 +155,28 @@ fn is_null_init<'db>(db: &'db dyn WorkspaceDataBase, init: &InitExprKind<'db>) -
     }
 }
 
-/// Nullability state for REF_TO variables, tracked during linear statement flow.
+/// Where a nullable state came from: the source location, and the variable
+/// that location declares or assigns.
 ///
-/// The [`CallSite`] carried by `Uninitialized` and `Null` points to
-/// the source location that caused the state (declaration site or NULL assignment).
+/// Both travel together because a state PROPAGATES (`ptr := ptr_2` copies
+/// ptr_2's state to ptr), so the site may belong to a different variable than
+/// the one being dereferenced. Carrying only the site named the dereferenced
+/// variable against another variable's span.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, salsa::Update)]
+pub struct NullOrigin<'db> {
+    pub site: CallSite<'db>,
+    pub var: VariableDecl<'db>,
+}
+
+/// Nullability state for REF_TO variables, tracked during linear statement flow.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, salsa::Update)]
 pub enum NullState<'db> {
     /// Variable was never assigned (default for REF_TO without initializer).
-    /// CallSite points to the variable declaration.
-    Uninitialized(CallSite<'db>),
+    /// The origin points to the variable declaration.
+    Uninitialized(NullOrigin<'db>),
     /// Variable was explicitly assigned NULL.
-    /// CallSite points to the NULL assignment or NULL initializer.
-    Null(CallSite<'db>),
+    /// The origin points to the NULL assignment or NULL initializer.
+    Null(NullOrigin<'db>),
     /// Variable was assigned a non-null value.
     NonNull,
 }
@@ -174,8 +189,8 @@ impl<'db> NullState<'db> {
             // Both agree → keep
             (NullState::NonNull, NullState::NonNull) => NullState::NonNull,
             // Any nullable state wins
-            (s @ NullState::Null(_), _) | (_, s @ NullState::Null(_)) => s,
-            (s @ NullState::Uninitialized(_), _) | (_, s @ NullState::Uninitialized(_)) => s,
+            (s @ NullState::Null(..), _) | (_, s @ NullState::Null(..)) => s,
+            (s @ NullState::Uninitialized(..), _) | (_, s @ NullState::Uninitialized(..)) => s,
         }
     }
 }

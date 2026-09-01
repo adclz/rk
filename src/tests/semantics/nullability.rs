@@ -182,7 +182,7 @@ END_FUNCTION_BLOCK
         |
       6 |         ptr_2: REF_TO INT;
         |         ^^^^^^^^|^^^^^^^^
-        |                 `---------- 'ptr' declared without initializer here
+        |                 `---------- 'ptr_2' declared without initializer here
         |
      11 |     result := ptr^;
         |               ^|^
@@ -212,7 +212,7 @@ END_FUNCTION_BLOCK
         |
       5 |         ptr_2: REF_TO INT := NULL;
         |                           ^^^|^^^
-        |                              `----- 'ptr' set to NULL here
+        |                              `----- 'ptr_2' set to NULL here
         |
      10 |     result := ptr^;
         |               ^|^
