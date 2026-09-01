@@ -3797,10 +3797,6 @@
           }
         },
         {
-          "type": "STRING",
-          "value": ":"
-        },
-        {
           "type": "SYMBOL",
           "name": "ref_spec_init"
         }
@@ -3843,6 +3839,10 @@
     "ref_spec": {
       "type": "SEQ",
       "members": [
+        {
+          "type": "STRING",
+          "value": ":"
+        },
         {
           "type": "ALIAS",
           "content": {

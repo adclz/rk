@@ -943,13 +943,17 @@ module.exports = grammar({
       ($) => seq(":=", $.ref_value),
     ),
 
-    ref_type_decl: ($) =>
-      seq(field("name", $.identifier), ":", $.ref_spec_init),
+    ref_type_decl: ($) => seq(field("name", $.identifier), $.ref_spec_init),
 
     ref_spec_init: ($) =>
       prec.left(seq($.ref_spec, optional(seq(":=", $.ref_value)))),
 
-    ref_spec: ($) => seq(kw("REF_TO"), choice($.data_type_access, $.array_type_spec)),
+    // The ':' is part of the spec, as it is for `var_decl` (through
+    // `useSpecInit`). Without it here, `_temp_var_kind` wanted
+    // `p REF_TO INT` and rejected the real spelling at the colon, so a
+    // VAR_TEMP reference was unwritable.
+    ref_spec: ($) =>
+      seq(":", kw("REF_TO"), choice($.data_type_access, $.array_type_spec)),
 
     ref_value: ($) => choice($.ref_addr, alias(kw("NULL"), $.null)),
 

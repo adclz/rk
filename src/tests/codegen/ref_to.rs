@@ -726,3 +726,35 @@ fn test_function_returns_a_reference_to_an_aggregate(mut with_db: db::RootDataba
     let result: i32 = super::execute_wasm(&wasm, "test", ());
     assert_eq!(result, 42);
 }
+
+#[rstest]
+fn test_var_temp_reference(mut with_db: db::RootDatabase) {
+    // `p : REF_TO INT` in a VAR_TEMP section: the shared `ref_spec` rule
+    // carried no colon of its own, so the parser wanted `p REF_TO INT` and
+    // rejected the real spelling. Behind that, the spec builder returned the
+    // TARGET rather than a reference to it, which typed p as a plain INT.
+    let source = r#"
+        FUNCTION_BLOCK holder
+        VAR
+            value : INT := 7;
+            seen : INT;
+        END_VAR
+        VAR_TEMP
+            scratch : REF_TO INT;
+        END_VAR
+            scratch := REF(value);
+            scratch^ := scratch^ + 35;
+            seen := value;
+        END_FUNCTION_BLOCK
+
+        FUNCTION test : INT
+        VAR h : holder; END_VAR
+            h();
+            test := h.seen;
+        END_FUNCTION
+    "#;
+    let wasm = super::compile_to_wasm(&mut with_db, source);
+    super::validate_wasm(&wasm).expect("WASM validation failed");
+    let result: i32 = super::execute_wasm(&wasm, "test", ());
+    assert_eq!(result, 42, "the temp reference addresses the instance member");
+}

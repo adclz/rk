@@ -143,3 +143,25 @@ END_FUNCTION
                       (int_literal
                         (signed_int
                           (unsigned_int))))))))))))
+================================================================================
+VAR_TEMP reference declaration
+================================================================================
+
+FUNCTION_BLOCK fb
+    VAR_TEMP p: REF_TO INT; END_VAR
+END_FUNCTION_BLOCK
+
+--------------------------------------------------------------------------------
+
+(source_file
+  (fb_decl
+    name: (identifier)
+    variables: (temp_var_decls
+      (temp_var
+        variables: (variable_list
+          (identifier))
+        type: (ref_spec
+          (numeric_type_name
+            (int_type_name
+              (sign_int_type_name
+                (int_name)))))))))

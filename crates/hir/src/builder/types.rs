@@ -652,8 +652,14 @@ impl<'db> ParseSpecInit<'db> for ast::generated::RefSpec {
         &self,
         sema: &mut SemanticIndexBuilder<'db>,
     ) -> anyhow::Result<SpecInitResult<'db>, IdeDiagnostic> {
+        // The spec IS the reference, so wrap the target — returning the
+        // target bare typed `p : REF_TO INT` as a plain INT, which then
+        // refused its own `REF()` and its own `^`. Latent until the rule
+        // became reachable: it is the VAR_TEMP spelling, and that did not
+        // parse.
+        let target = self.children.cast(sema.ast).to_spec(sema)?;
         Ok(SpecInitResult {
-            spec: self.children.cast(sema.ast).to_spec(sema)?,
+            spec: sema.new_spec(SpecKind::Ref(target), self.into(), sema.current_scope),
             init: None,
         })
     }
