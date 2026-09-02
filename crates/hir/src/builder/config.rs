@@ -4,7 +4,6 @@ use auto_lsp::core::ast::AstNode;
 use ide_diagnostic::IdeDiagnostic;
 
 use crate::{
-    Visibility,
     builder::{
         Parse, ParseSpec, ParseVarSection, expression::ParseDirectVariable,
         semantic_index::SemanticIndexBuilder,
@@ -126,9 +125,8 @@ impl<'db> SemanticIndexBuilder<'db> {
             ScopeKind::Config(config_decl),
             vec![],
             scope_id,
-            Visibility::empty(),
             previous_scope,
-        );
+);
 
         Ok(config_decl)
     }

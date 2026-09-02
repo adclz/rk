@@ -1,4 +1,3 @@
-use crate::Visibility;
 use crate::builder::semantic_index::SemanticIndexBuilder;
 use crate::builder::{ParseSpec, ParseVarSection};
 use crate::check::errors::ToIdeDiagnostic;
@@ -66,9 +65,8 @@ impl<'db> SemanticIndexBuilder<'db> {
             ScopeKind::Pou(result),
             usings,
             scope_id,
-            Visibility::empty(),
             previous_scope,
-        );
+);
 
         Ok(result)
     }
@@ -166,9 +164,8 @@ impl<'db> SemanticIndexBuilder<'db> {
             ScopeKind::MethodProt(result),
             vec![],
             scope_id,
-            Visibility::empty(),
             previous_scope,
-        );
+);
 
         Ok(result)
     }

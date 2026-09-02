@@ -2,7 +2,6 @@ use auto_lsp::anyhow;
 use auto_lsp::core::ast::AstNode;
 
 use super::semantic_index::SemanticIndexBuilder;
-use crate::Visibility;
 use crate::check::errors::ToIdeDiagnostic;
 use crate::check::errors::e0_syntax::SyntaxError;
 use crate::hir_def::hir_node::HirNode;
@@ -94,12 +93,8 @@ impl<'db> SemanticIndexBuilder<'db> {
             ScopeKind::Namespace(result),
             usings,
             scope_id,
-            match nested.internal {
-                Some(_) => Visibility::INTERNAL,
-                None => Visibility::PUBLIC,
-            },
             previous_scope,
-        );
+);
 
         // Then insert it into the map with its ID
         self.namespaces.push(result);

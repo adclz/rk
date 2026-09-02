@@ -9,7 +9,7 @@ use crate::hir_def::pous::function_block::FunctionBlock;
 use crate::hir_def::pous::pou::Pou;
 use crate::hir_def::pous::variable::VariableDecl;
 use crate::hir_def::scope::ScopeKind;
-use crate::{Modifier, Visibility};
+use crate::Modifier;
 use ast::generated::{FbDecl, FbVariables};
 use auto_lsp::anyhow;
 use auto_lsp::core::ast::AstNode;
@@ -132,9 +132,8 @@ impl<'db> SemanticIndexBuilder<'db> {
             ScopeKind::Pou(result),
             usings,
             scope_id,
-            Visibility::empty(),
             previous_scope,
-        );
+);
 
         Ok(result)
     }

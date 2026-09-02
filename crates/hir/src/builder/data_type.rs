@@ -1,4 +1,3 @@
-use crate::Visibility;
 use crate::{
     builder::{Parse, ParseSpec, semantic_index::SemanticIndexBuilder},
     hir_def::{
@@ -60,9 +59,8 @@ impl<'db> SemanticIndexBuilder<'db> {
             ScopeKind::Pou(result),
             vec![],
             scope_id,
-            Visibility::empty(),
             previous_scope,
-        );
+);
 
         Ok(result)
     }

@@ -17,7 +17,7 @@ use crate::hir_def::program::ProgramDecl;
 use crate::hir_def::scope::{Scope, ScopeId, ScopeKind};
 use crate::hir_def::semantic_index::{NodeKey, SemanticIndex};
 use crate::hir_def::using::Using;
-use crate::{AstId, HirNodeInfo, Visibility};
+use crate::{AstId, HirNodeInfo};
 
 pub struct SemanticIndexBuilder<'db> {
     pub(crate) source: &'db ast::generated::SourceFile,
@@ -273,10 +273,9 @@ impl<'db> SemanticIndexBuilder<'db> {
         kind: ScopeKind<'db>,
         usings: Vec<Using<'db>>,
         scope_id: ScopeId<'db>,
-        visibility: Visibility,
         parent: ScopeId<'db>,
     ) {
-        let scope = Scope::new(self.file, kind, usings, scope_id, visibility, Some(parent));
+        let scope = Scope::new(self.file, kind, usings, scope_id, Some(parent));
         self.scope_keys
             .insert(scope_id.scope(self.db), Arc::new(scope));
     }
@@ -369,9 +368,8 @@ impl<'db> SemanticIndexBuilder<'db> {
             ScopeKind::Global,
             usings,
             self.current_scope,
-            Visibility::PUBLIC,
             None,
-        );
+);
 
         self.scope_keys
             .insert(global_scope.scope(self.db), Arc::new(scope));

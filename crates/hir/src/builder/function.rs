@@ -88,9 +88,8 @@ impl<'db> SemanticIndexBuilder<'db> {
             ScopeKind::Pou(result),
             usings,
             scope_id,
-            visibility,
             previous_scope,
-        );
+);
 
         Ok(result)
     }

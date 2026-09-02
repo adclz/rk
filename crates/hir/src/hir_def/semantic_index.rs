@@ -87,9 +87,8 @@ impl<'db> SemanticIndex<'db> {
             crate::hir_def::scope::ScopeKind::Global,
             vec![],
             global_scope,
-            crate::Visibility::PUBLIC,
             None,
-        );
+);
         scopes.insert(global_scope.scope(db), Arc::new(scope));
 
         SemanticIndex {

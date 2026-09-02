@@ -1,7 +1,6 @@
 use auto_lsp::default::db::file::File;
 use db::WorkspaceDataBase;
 
-use crate::Visibility;
 use crate::hir_def::config::ConfigDecl;
 use crate::hir_def::expressions::spec::Spec;
 use crate::hir_def::pous::interface::MethodPrototype;
@@ -119,7 +118,6 @@ impl<'db> Scope<'db> {
         kind: ScopeKind<'db>,
         usings: Vec<Using<'db>>,
         id: ScopeId<'db>,
-        visibility: Visibility,
         parent: Option<ScopeId<'db>>,
     ) -> Self {
         Self {

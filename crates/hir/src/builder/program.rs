@@ -2,7 +2,6 @@ use auto_lsp::core::ast::AstNode;
 use ide_diagnostic::IdeDiagnostic;
 
 use crate::{
-    Visibility,
     builder::{
         Parse, ParseVarSection,
         semantic_index::SemanticIndexBuilder,
@@ -64,9 +63,8 @@ impl<'db> SemanticIndexBuilder<'db> {
             ScopeKind::Program(result),
             vec![],
             scope_id,
-            Visibility::empty(),
             previous_scope,
-        );
+);
 
         Ok(result)
     }

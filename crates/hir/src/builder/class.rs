@@ -154,9 +154,8 @@ impl<'db> SemanticIndexBuilder<'db> {
             ScopeKind::Pou(result),
             usings,
             scope_id,
-            Visibility::empty(),
             previous_scope,
-        );
+);
 
         Ok(result)
     }
@@ -309,9 +308,8 @@ impl<'db> SemanticIndexBuilder<'db> {
             ScopeKind::MethodDecl(result),
             vec![],
             scope_id,
-            result.visibility(self.db),
             parent_scope,
-        );
+);
 
         Some(result)
     }
