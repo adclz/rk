@@ -228,12 +228,22 @@ impl<'db> Type<'db> {
                         });
                     }
                 }
-                a1.of_type(db).infer(db).coerce_with_type(
+                // The element type must be the SAME, not merely coercible: an
+                // array copy moves bytes, it does not convert them, so an
+                // `ARRAY OF INT` into an `ARRAY OF REAL` checked clean and
+                // read back garbage (b[1] was not 2.0).
+                match same_type(
                     db,
-                    a2.of_type(db).infer(db),
-                    None,
-                    resolver,
-                )
+                    a1.of_type(db).infer(db).normalize(db),
+                    a2.of_type(db).infer(db).normalize(db),
+                ) {
+                    true => Ok(()),
+                    false => Err(CoerceError {
+                        expected: *self,
+                        actual: to,
+                        adjustment: None,
+                    }),
+                }
             }
             // check array spec equality
             (Type::Array(a1), rhs) => {

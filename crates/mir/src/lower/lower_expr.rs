@@ -481,14 +481,12 @@ impl<'db> ExprLowerCtx<'db> {
         right: Expr<'db>,
         expr: Expr<'db>,
     ) -> Result<MirExpr, LowerTypeError> {
-        // STRING operands have no scalar representation — comparison lowers
-        // to the grafted `str_byte_cmp` builtin (lexicographic, memcmp-style
-        // -1/0/1) and the operator is applied to its result against 0:
-        // `a < b`  →  `str_byte_cmp(a, b) < 0`. Detect BEFORE the scalar
-        // conversion below, which would otherwise abort the whole build.
+        // STRING operands have no scalar representation: the comparison lowers to
+        // `str_byte_cmp(a, b) OP 0`. Detected on the ADJUSTED type, before the
+        // scalar conversion below.
         let is_string = |e: Expr<'db>| {
             matches!(
-                e.infer(self.db).normalize(self.db),
+                e.infer_adjusted(self.db).normalize(self.db),
                 hir::hir_ty::ty::Type::Elementary(
                     hir::hir_def::expressions::spec::ElementarySpec::String
                 )

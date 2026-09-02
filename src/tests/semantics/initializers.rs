@@ -259,3 +259,110 @@ END_PROGRAM
 "#;
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"");
 }
+
+// An array copy moves bytes, so the element type must be the SAME: an
+// `ARRAY OF INT` into an `ARRAY OF REAL` used to check clean at every door and
+// read back garbage (b[1] was not 2.0). Literals still convert one by one.
+
+#[rstest]
+fn an_array_does_not_widen_its_elements(mut with_db: RootDatabase) {
+    let source = r#"
+TYPE Row : ARRAY[0..2] OF INT; END_TYPE
+TYPE RowD : ARRAY[0..2] OF DINT; END_TYPE
+
+FUNCTION g : REAL
+    VAR_INPUT arr : ARRAY[0..2] OF REAL; END_VAR
+    g := arr[1];
+END_FUNCTION
+
+FUNCTION f : REAL
+    VAR
+        a : ARRAY[0..2] OF INT := [1, 2, 3];
+        b : ARRAY[0..2] OF REAL := a;
+        s : ARRAY[0..2] OF SINT;
+        n : ARRAY[0..1] OF Row; d : ARRAY[0..1] OF RowD;
+    END_VAR
+    b := a;
+    a := s;
+    d := n;
+    f := g(arr := a);
+END_FUNCTION
+"#;
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
+    [E0301] Error: type mismatch
+        ,-[ file:///test0.st:13:33 ]
+        |
+     13 |         b : ARRAY[0..2] OF REAL := a;
+        |                                 ^^|^
+        |                                   `--- expected 'ARRAY [0..2] OF REAL', got 'ARRAY [0..2] OF INT'
+    ----'
+    [E0301] Error: type mismatch
+        ,-[ file:///test0.st:17:10 ]
+        |
+     13 |         b : ARRAY[0..2] OF REAL := a;
+        |         |
+        |         `-- type is declared by variable 'b' here
+        |
+     17 |     b := a;
+        |          |
+        |          `-- expected 'ARRAY [0..2] OF REAL', got 'ARRAY [0..2] OF INT'
+    ----'
+    [E0301] Error: type mismatch
+        ,-[ file:///test0.st:18:10 ]
+        |
+     12 |         a : ARRAY[0..2] OF INT := [1, 2, 3];
+        |         |
+        |         `-- type is declared by variable 'a' here
+        |
+     18 |     a := s;
+        |          |
+        |          `-- expected 'ARRAY [0..2] OF INT', got 'ARRAY [0..2] OF SINT'
+    ----'
+    [E0301] Error: type mismatch
+        ,-[ file:///test0.st:19:10 ]
+        |
+     15 |         n : ARRAY[0..1] OF Row; d : ARRAY[0..1] OF RowD;
+        |                                 |
+        |                                 `-- type is declared by variable 'd' here
+        |
+     19 |     d := n;
+        |          |
+        |          `-- expected 'ARRAY [0..1] OF RowD', got 'ARRAY [0..1] OF Row'
+    ----'
+    [E0301] Error: type mismatch
+        ,-[ file:///test0.st:20:19 ]
+        |
+      6 |     VAR_INPUT arr : ARRAY[0..2] OF REAL; END_VAR
+        |               ^|^
+        |                `--- type is declared by variable 'arr' here
+        |
+     20 |     f := g(arr := a);
+        |                   |
+        |                   `-- expected 'ARRAY [0..2] OF REAL', got 'ARRAY [0..2] OF INT'
+    ----'
+    ");
+}
+
+#[rstest]
+fn an_array_initializer_converts_literals_and_a_same_type_copy_is_accepted(
+    mut with_db: RootDatabase,
+) {
+    let source = r#"
+TYPE A3 : ARRAY[0..2] OF INT; END_TYPE
+
+FUNCTION f : REAL
+    VAR
+        r : ARRAY[0..2] OF REAL := [1, 2, 3];
+        a : A3 := [1, 2, 3];
+        b : ARRAY[0..2] OF INT := a;
+        c : A3;
+        i : INT := 1;
+    END_VAR
+    b := a;
+    c := b;
+    r[0] := a[i];
+    f := r[0] + r[1];
+END_FUNCTION
+"#;
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"");
+}

@@ -153,7 +153,9 @@ fn lower_stmt<'db>(
                 Some(ty) => *ty,
                 None => resolve_for_cast(ctx.db, var.infer(ctx.db)),
             };
-            let target_type = resolve_for_cast(ctx.db, target.infer(ctx.db));
+            // ADJUSTED: `a[i]` infers as the array, but the value read is the
+            // element.
+            let target_type = resolve_for_cast(ctx.db, target.infer_adjusted(ctx.db));
             let value = if needs_cast(ctx.db, target_type, var_type) {
                 // Insert cast from expression type to variable type
                 let from = ctx.type_to_mir_elementary_pub(target_type)?;

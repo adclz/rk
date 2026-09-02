@@ -1009,3 +1009,110 @@ fn type_default_constant_arith_reaches_both_hosts(mut with_db: db::RootDatabase)
         "7 at the static host, 7 at the local host"
     );
 }
+
+// Arrays: an initializer converts each LITERAL to the element type, a copy
+// between two arrays moves bytes and so is only allowed between the SAME
+// element type (the refusal is `an_array_does_not_widen_its_elements` in
+// semantics::initializers — five E0301, one per door), and a value READ
+// out of an element widens like any scalar. The last one was a MIR bug:
+// the assignment typed its source by the bare path — the ARRAY — so the
+// cast was skipped and `r := a[i]` stored an i32 where the f32 was expected.
+
+/// Literal elements widen into REAL / LREAL / LINT arrays, pinned by VALUE.
+#[rstest]
+fn array_initializer_widens_each_literal(mut with_db: db::RootDatabase) {
+    let source = r#"
+        FUNCTION fr : REAL
+        VAR a : ARRAY[0..2] OF REAL := [1, 2, 3]; END_VAR
+            fr := a[1];
+        END_FUNCTION
+
+        FUNCTION fl : LREAL
+        VAR a : ARRAY[0..2] OF LREAL := [1, 2, 3]; END_VAR
+            fl := a[2];
+        END_FUNCTION
+
+        FUNCTION fi : LINT
+        VAR a : ARRAY[0..2] OF LINT := [1, 2, 3]; END_VAR
+            fi := a[0];
+        END_FUNCTION
+    "#;
+    let wasm = compile_to_wasm(&mut with_db, source);
+    let r: f32 = crate::tests::codegen::execute_wasm(&wasm, "fr", ());
+    assert_eq!(r, 2.0);
+    let l: f64 = crate::tests::codegen::execute_wasm(&wasm, "fl", ());
+    assert_eq!(l, 3.0);
+    let i: i64 = crate::tests::codegen::execute_wasm(&wasm, "fi", ());
+    assert_eq!(i, 1);
+}
+
+/// A same-element-type copy through two spellings of the array type.
+#[rstest]
+fn array_copy_between_same_element_types(mut with_db: db::RootDatabase) {
+    let source = r#"
+        TYPE A3 : ARRAY[0..2] OF INT; END_TYPE
+
+        FUNCTION f : INT
+        VAR a : A3 := [1, 2, 3]; b : ARRAY[0..2] OF INT; c : A3; END_VAR
+            b := a;
+            c := b;
+            a[2] := 0;
+            f := c[2] * 10 + b[2];
+        END_FUNCTION
+    "#;
+    let wasm = compile_to_wasm(&mut with_db, source);
+    let result: i32 = crate::tests::codegen::execute_wasm(&wasm, "f", ());
+    assert_eq!(result, 33, "both copies hold 3 after the source element was cleared");
+}
+
+/// An element READ widens into a wider scalar or element: REAL, LREAL, and
+/// back into a REAL element by a loop. Invalid wasm before the fix.
+#[rstest]
+fn array_element_reads_widen(mut with_db: db::RootDatabase) {
+    let source = r#"
+        FUNCTION fr : REAL
+        VAR a : ARRAY[0..2] OF INT := [1, 2, 3]; i : INT := 1; END_VAR
+            fr := a[i];
+        END_FUNCTION
+
+        FUNCTION fl : LREAL
+        VAR a : ARRAY[0..2] OF INT := [1, 2, 3]; END_VAR
+            fl := a[2];
+        END_FUNCTION
+
+        FUNCTION fe : REAL
+        VAR a : ARRAY[0..2] OF INT := [1, 2, 3]; b : ARRAY[0..2] OF REAL; i : INT; END_VAR
+            FOR i := 0 TO 2 DO
+                b[i] := a[i];
+            END_FOR;
+            b[0] := a[2];
+            fe := b[0] * 100.0 + b[1] * 10.0 + b[2];
+        END_FUNCTION
+    "#;
+    let wasm = compile_to_wasm(&mut with_db, source);
+    let r: f32 = crate::tests::codegen::execute_wasm(&wasm, "fr", ());
+    assert_eq!(r, 2.0);
+    let l: f64 = crate::tests::codegen::execute_wasm(&wasm, "fl", ());
+    assert_eq!(l, 3.0);
+    let e: f32 = crate::tests::codegen::execute_wasm(&wasm, "fe", ());
+    assert_eq!(e, 323.0, "b = [3, 2, 3] after the loop and the overwrite");
+}
+
+/// A STRING element compares as a string. The comparison typed its operand
+/// by the bare path — the ARRAY — and sent the element down the scalar
+/// path (ICE: "STRING has no scalar MIR representation").
+#[rstest]
+fn string_array_elements_compare_as_strings(mut with_db: db::RootDatabase) {
+    let source = r#"
+        FUNCTION f : INT
+        VAR s : ARRAY[0..1] OF STRING := ['ab', 'cd']; END_VAR
+            f := 0;
+            IF s[1] = 'cd' THEN f := f + 1; END_IF;
+            IF s[0] < s[1] THEN f := f + 10; END_IF;
+            IF s[0] = s[1] THEN f := f + 100; END_IF;
+        END_FUNCTION
+    "#;
+    let wasm = compile_to_wasm(&mut with_db, source);
+    let result: i32 = crate::tests::codegen::execute_wasm(&wasm, "f", ());
+    assert_eq!(result, 11, "literal match and ordering hold; distinct elements are not equal");
+}
