@@ -298,6 +298,30 @@ fn check_signature<'db>(
         debug_assert!(var2.scope_id(db) == m2.get_scope_id(db));
         debug_assert!(var1.scope_id(db) != var2.scope_id(db));
 
+        // One complaint per position: a different NAME means the type is
+        // being compared against the wrong counterpart, so stop there.
+        if var1.get_name_ident(db).caseless(db) != var2.get_name_ident(db).caseless(db) {
+            errors.push(
+                InheritanceError::SignatureNameMismatch {
+                    method: m2,
+                    base_param: *var1,
+                    param: *var2,
+                }
+                .to_diagnostic(db, m1.get_scope_id(db).file(db)),
+            );
+            continue;
+        }
+        if var1.kind(db) != var2.kind(db) {
+            errors.push(
+                InheritanceError::SignatureSectionMismatch {
+                    method: m2,
+                    base_param: *var1,
+                    param: *var2,
+                }
+                .to_diagnostic(db, m1.get_scope_id(db).file(db)),
+            );
+            continue;
+        }
         if !var1_typ.normalize(db).eq(&var2_typ.normalize(db)) {
             errors.push(
                 InheritanceError::SignatureTypeMismatch {

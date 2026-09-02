@@ -2395,8 +2395,8 @@ END_CLASS
         ErrorExample {
             code: "E0512",
             category: "Inheritance",
-            title: "Method signature mismatch",
-            description: "A method override has a different number of parameters or different parameter types than the base method.",
+            title: "Method parameter count mismatch",
+            description: "A method implementing an interface prototype or overriding a base method declares a different number of parameters. Parameters are matched by position; their names (E0525), sections (E0526) and types (E0523) and the return type (E0524) are checked one by one.",
             sources: &[r#"
 CLASS Base
     METHOD PUBLIC myMethod : INT
@@ -2407,6 +2407,88 @@ END_CLASS
 CLASS Derived EXTENDS Base
     METHOD PUBLIC OVERRIDE myMethod : INT
         VAR_INPUT a : INT; b : INT; END_VAR
+    END_METHOD
+END_CLASS
+"#],
+            lint_rule: None,
+        },
+        ErrorExample {
+            code: "E0523",
+            category: "Inheritance",
+            title: "Method parameter type mismatch",
+            description: "A parameter of a method implementing an interface prototype or overriding a base method has a different type than the parameter at the same position in the base. Widening does not apply: a call through the base signature passes the base's type.",
+            sources: &[r#"
+INTERFACE I
+    METHOD M : INT
+        VAR_INPUT a : INT; END_VAR
+    END_METHOD
+END_INTERFACE
+
+CLASS C IMPLEMENTS I
+    METHOD M : INT
+        VAR_INPUT a : REAL; END_VAR
+        M := 0;
+    END_METHOD
+END_CLASS
+"#],
+            lint_rule: None,
+        },
+        ErrorExample {
+            code: "E0524",
+            category: "Inheritance",
+            title: "Method return type mismatch",
+            description: "A method implementing an interface prototype or overriding a base method declares a different return type, or a return type where the base has none. A caller through the base signature reads the base's type.",
+            sources: &[r#"
+INTERFACE I
+    METHOD M : INT
+    END_METHOD
+END_INTERFACE
+
+CLASS C IMPLEMENTS I
+    METHOD M : REAL
+        M := 0.0;
+    END_METHOD
+END_CLASS
+"#],
+            lint_rule: None,
+        },
+        ErrorExample {
+            code: "E0525",
+            category: "Inheritance",
+            title: "Method parameter name mismatch",
+            description: "A parameter of a method implementing an interface prototype or overriding a base method has a different name than the parameter at the same position in the base. Parameters are matched by position, and a caller binding a name through the base signature must reach the same parameter in the implementation.",
+            sources: &[r#"
+INTERFACE I
+    METHOD M : INT
+        VAR_INPUT a : INT; END_VAR
+    END_METHOD
+END_INTERFACE
+
+CLASS C IMPLEMENTS I
+    METHOD M : INT
+        VAR_INPUT b : INT; END_VAR
+        M := b;
+    END_METHOD
+END_CLASS
+"#],
+            lint_rule: None,
+        },
+        ErrorExample {
+            code: "E0526",
+            category: "Inheritance",
+            title: "Method parameter section mismatch",
+            description: "A parameter of a method implementing an interface prototype or overriding a base method is declared in a different section (VAR_INPUT, VAR_OUTPUT, VAR_IN_OUT) than in the base. The section decides how the argument is passed: a VAR_INPUT prototype implemented as VAR_IN_OUT is called by value through the interface and by address in the implementation.",
+            sources: &[r#"
+INTERFACE I
+    METHOD M : INT
+        VAR_INPUT a : INT; END_VAR
+    END_METHOD
+END_INTERFACE
+
+CLASS C IMPLEMENTS I
+    METHOD M : INT
+        VAR_IN_OUT a : INT; END_VAR
+        M := a;
     END_METHOD
 END_CLASS
 "#],

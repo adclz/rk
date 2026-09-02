@@ -170,7 +170,7 @@ fn method_signature_count_mismatch_in_implementer(mut with_db: RootDatabase) {
         "#;
 
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E0512] Error: method signature mismatch
+    [E0512] Error: method parameter count mismatch
         ,-[ file:///test0.st:11:29 ]
         |
       3 |             METHOD DAYTIME
@@ -202,7 +202,7 @@ fn method_signature_count_mismatch_in_base(mut with_db: RootDatabase) {
         "#;
 
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E0512] Error: method signature mismatch
+    [E0512] Error: method parameter count mismatch
        ,-[ file:///test0.st:8:29 ]
        |
      3 |             METHOD DAYTIME
@@ -239,7 +239,7 @@ fn method_signature_type_mismatch(mut with_db: RootDatabase) {
         "#;
 
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E0512] Error: method signature mismatch
+    [E0523] Error: method parameter type mismatch
         ,-[ file:///test0.st:15:29 ]
         |
       6 |                     value2: INT;
@@ -427,7 +427,7 @@ FUNCTION_BLOCK fb IMPLEMENTS Ifc
 END_FUNCTION_BLOCK
 "#;
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E0512] Error: method signature mismatch
+    [E0524] Error: method return type mismatch
        ,-[ file:///test0.st:8:16 ]
        |
      3 |     METHOD M : INT
@@ -460,7 +460,7 @@ FUNCTION_BLOCK fb IMPLEMENTS Ifc
 END_FUNCTION_BLOCK
 "#;
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E0512] Error: method signature mismatch
+    [E0524] Error: method return type mismatch
        ,-[ file:///test0.st:8:16 ]
        |
      3 |     METHOD M : INT
@@ -493,7 +493,7 @@ FUNCTION_BLOCK derived EXTENDS base
 END_FUNCTION_BLOCK
 "#;
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E0512] Error: method signature mismatch
+    [E0524] Error: method return type mismatch
        ,-[ file:///test0.st:9:25 ]
        |
      3 |     METHOD M : INT
@@ -847,4 +847,150 @@ CLASS FINAL D EXTENDS B
 END_CLASS
 "#;
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"");
+}
+
+// A signature is matched by POSITION, and at each position the NAME and the
+// SECTION are part of it, not only the type: an interface's `VAR_INPUT a`
+// implemented as `VAR_IN_OUT a` was called by value through the interface and
+// by address in the implementation — executed, the call returned a wrong
+// value with no diagnostic. One complaint per position: a different name
+// stops the comparison there, since the type would be checked against the
+// wrong counterpart.
+
+#[rstest]
+fn interface_parameter_section_mismatch_is_refused(mut with_db: RootDatabase) {
+    let source = r#"
+INTERFACE I
+    METHOD M : INT
+        VAR_INPUT a : INT; END_VAR
+    END_METHOD
+END_INTERFACE
+
+CLASS C IMPLEMENTS I
+    METHOD M : INT
+        VAR_IN_OUT a : INT; END_VAR
+        M := a;
+    END_METHOD
+END_CLASS
+"#;
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
+    [E0526] Error: method parameter section mismatch
+        ,-[ file:///test0.st:10:20 ]
+        |
+      4 |         VAR_INPUT a : INT; END_VAR
+        |                   |
+        |                   `-- the base method declares 'a' as VAR_INPUT here
+        |
+     10 |         VAR_IN_OUT a : INT; END_VAR
+        |                    |
+        |                    `-- parameter 'a' of method 'M' is VAR_IN_OUT here but VAR_INPUT in the base method
+    ----'
+    ");
+}
+
+#[rstest]
+fn interface_parameter_name_mismatch_is_refused(mut with_db: RootDatabase) {
+    let source = r#"
+INTERFACE I
+    METHOD M : INT
+        VAR_INPUT a : INT; END_VAR
+    END_METHOD
+END_INTERFACE
+
+CLASS C IMPLEMENTS I
+    METHOD M : INT
+        VAR_INPUT b : INT; END_VAR
+        M := b;
+    END_METHOD
+END_CLASS
+"#;
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
+    [E0525] Error: method parameter name mismatch
+        ,-[ file:///test0.st:10:19 ]
+        |
+      4 |         VAR_INPUT a : INT; END_VAR
+        |                   |
+        |                   `-- the base method declares 'a' at this position
+        |
+     10 |         VAR_INPUT b : INT; END_VAR
+        |                   |
+        |                   `-- parameter 'b' of method 'M' is named 'a' in the base method
+    ----'
+    ");
+}
+
+#[rstest]
+fn override_parameter_section_mismatch_is_refused(mut with_db: RootDatabase) {
+    let source = r#"
+CLASS B
+    METHOD M : INT
+        VAR_INPUT a : INT; END_VAR
+        M := a;
+    END_METHOD
+END_CLASS
+
+CLASS D EXTENDS B
+    METHOD OVERRIDE M : INT
+        VAR_OUTPUT a : INT; END_VAR
+        M := 0;
+    END_METHOD
+END_CLASS
+"#;
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
+    [E0526] Error: method parameter section mismatch
+        ,-[ file:///test0.st:11:20 ]
+        |
+      4 |         VAR_INPUT a : INT; END_VAR
+        |                   |
+        |                   `-- the base method declares 'a' as VAR_INPUT here
+        |
+     11 |         VAR_OUTPUT a : INT; END_VAR
+        |                    |
+        |                    `-- parameter 'a' of method 'M' is VAR_OUTPUT here but VAR_INPUT in the base method
+    ----'
+    ");
+}
+
+#[rstest]
+fn swapped_parameters_report_names_not_types(mut with_db: RootDatabase) {
+    // `b : REAL, a : INT` against `a : INT, b : REAL`: two name mismatches,
+    // and NOT two type mismatches on top of them.
+    let source = r#"
+INTERFACE I
+    METHOD M : INT
+        VAR_INPUT a : INT; b : REAL; END_VAR
+    END_METHOD
+END_INTERFACE
+
+CLASS C IMPLEMENTS I
+    METHOD M : INT
+        VAR_INPUT b : REAL; a : INT; END_VAR
+        M := a;
+    END_METHOD
+END_CLASS
+"#;
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
+    [E0525] Error: method parameter name mismatch
+        ,-[ file:///test0.st:10:19 ]
+        |
+      4 |         VAR_INPUT a : INT; b : REAL; END_VAR
+        |                   |
+        |                   `-- the base method declares 'a' at this position
+        |
+     10 |         VAR_INPUT b : REAL; a : INT; END_VAR
+        |                   |
+        |                   `-- parameter 'b' of method 'M' is named 'a' in the base method
+    ----'
+    [E0525] Error: method parameter name mismatch
+        ,-[ file:///test0.st:10:29 ]
+        |
+      4 |         VAR_INPUT a : INT; b : REAL; END_VAR
+        |                            |
+        |                            `-- the base method declares 'b' at this position
+        |
+     10 |         VAR_INPUT b : REAL; a : INT; END_VAR
+        |                             |
+        |                             `-- parameter 'a' of method 'M' is named 'b' in the base method
+    ----'
+    ");
 }

@@ -82,6 +82,23 @@ pub enum InheritanceError<'db> {
         base_param: VariableDecl<'db>,
         param: VariableDecl<'db>,
     },
+    /// Parameters match by POSITION, and the name at each position is part
+    /// of the signature: a caller binding `a := 5` through the prototype
+    /// must reach the implementation's `a`.
+    SignatureNameMismatch {
+        method: MethodRef<'db>,
+        base_param: VariableDecl<'db>,
+        param: VariableDecl<'db>,
+    },
+    /// The SECTION is part of the signature too: a `VAR_INPUT` prototype
+    /// implemented as `VAR_IN_OUT` is called by value through the interface
+    /// and by address in the implementation — executed, the call returned a
+    /// wrong value with no diagnostic.
+    SignatureSectionMismatch {
+        method: MethodRef<'db>,
+        base_param: VariableDecl<'db>,
+        param: VariableDecl<'db>,
+    },
     /// The RETURN is part of the signature too. Unchecked, an INT prototype
     /// implemented as REAL produced a wasm signature the monomorphized call
     /// site disagreed with — invalid wasm at exit 0 — and a same-lane
@@ -181,8 +198,10 @@ impl<'db> ErrorCode for InheritanceError<'db> {
             Self::ExtendsFinalPou { .. } => "E0522",
             Self::UnimplementedInterfaceMethod { .. } => "E0509",
             Self::SignatureParametersCountMismatch { .. } => "E0512",
-            Self::SignatureTypeMismatch { .. } => "E0512",
-            Self::SignatureReturnMismatch { .. } => "E0512",
+            Self::SignatureTypeMismatch { .. } => "E0523",
+            Self::SignatureReturnMismatch { .. } => "E0524",
+            Self::SignatureNameMismatch { .. } => "E0525",
+            Self::SignatureSectionMismatch { .. } => "E0526",
             Self::SuperButNoExtends { .. } => "E0513",
             Self::InterfaceOnlyAllowedAsParam { .. } => "E0514",
             Self::InterfaceParamOnStatefulPou { .. } => "E0514",
@@ -213,9 +232,11 @@ impl<'db> ErrorCode for InheritanceError<'db> {
             | Self::ExtendsFinalPou { .. }
             | Self::UnimplementedInterfaceMethod { .. }
             | Self::InheritedMemberShadowed { .. } => "inheritance violation",
-            Self::SignatureParametersCountMismatch { .. }
-            | Self::SignatureTypeMismatch { .. }
-            | Self::SignatureReturnMismatch { .. } => "method signature mismatch",
+            Self::SignatureParametersCountMismatch { .. } => "method parameter count mismatch",
+            Self::SignatureTypeMismatch { .. } => "method parameter type mismatch",
+            Self::SignatureReturnMismatch { .. } => "method return type mismatch",
+            Self::SignatureNameMismatch { .. } => "method parameter name mismatch",
+            Self::SignatureSectionMismatch { .. } => "method parameter section mismatch",
             Self::InterfaceOnlyAllowedAsParam { .. }
             | Self::InterfaceParamOnStatefulPou { .. }
             | Self::InterfaceNotAllowedInReturn { .. }
@@ -688,6 +709,66 @@ impl<'db> ToIdeDiagnostic<'db> for InheritanceError<'db> {
                 diag.with_note("the return type must match the base method's".into());
                 diag
             }
+            Self::SignatureNameMismatch {
+                method,
+                base_param,
+                param,
+            } => {
+                let mut diag = diag()
+                    .message(format!(
+                        "parameter '{}' of method '{}' is named '{}' in the base method",
+                        param.name(db).text(db),
+                        method.get_name_ident(db).text(db),
+                        base_param.name(db).text(db),
+                    ))
+                    .severity(DiagnosticSeverity::ERROR)
+                    .desc(self)
+                    .range(
+                        crate::denormalize(db, file, &param.get_name_span(db))
+                            .unwrap_or_default(),
+                    )
+                    .call();
+                diag.with_related(Related::new(
+                    format!(
+                        "the base method declares '{}' at this position",
+                        base_param.name(db).text(db),
+                    ),
+                    base_param.get_scope_id(db).file(db),
+                    base_param.get_name_span(db),
+                ));
+                diag
+            }
+            Self::SignatureSectionMismatch {
+                method,
+                base_param,
+                param,
+            } => {
+                let mut diag = diag()
+                    .message(format!(
+                        "parameter '{}' of method '{}' is {} here but {} in the base method",
+                        param.name(db).text(db),
+                        method.get_name_ident(db).text(db),
+                        section_keyword(param.kind(db)),
+                        section_keyword(base_param.kind(db)),
+                    ))
+                    .severity(DiagnosticSeverity::ERROR)
+                    .desc(self)
+                    .range(
+                        crate::denormalize(db, file, &param.get_name_span(db))
+                            .unwrap_or_default(),
+                    )
+                    .call();
+                diag.with_related(Related::new(
+                    format!(
+                        "the base method declares '{}' as {} here",
+                        base_param.name(db).text(db),
+                        section_keyword(base_param.kind(db)),
+                    ),
+                    base_param.get_scope_id(db).file(db),
+                    base_param.get_name_span(db),
+                ));
+                diag
+            }
             Self::SuperButNoExtends { call_site, pou } => diag()
                 .message(format!(
                     "'SUPER' used but no EXTENDS clause found on '{}'",
@@ -761,5 +842,20 @@ impl<'db> ToIdeDiagnostic<'db> for InheritanceError<'db> {
                 diag
             }
         }
+    }
+}
+
+/// The declaring keyword of a variable section, for messages.
+fn section_keyword(kind: VariableKind) -> &'static str {
+    match kind {
+        VariableKind::Var => "VAR",
+        VariableKind::Input => "VAR_INPUT",
+        VariableKind::Output => "VAR_OUTPUT",
+        VariableKind::InOut => "VAR_IN_OUT",
+        VariableKind::External => "VAR_EXTERNAL",
+        VariableKind::Global => "VAR_GLOBAL",
+        VariableKind::Access => "VAR_ACCESS",
+        VariableKind::Temp => "VAR_TEMP",
+        VariableKind::Config => "VAR_CONFIG",
     }
 }
