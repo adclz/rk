@@ -28,6 +28,12 @@ cargo test --package rk-tests --lib -- tests::semantics::array::valid_array --ex
 # Review insta snapshots after test changes
 cargo insta review
 
+# Build the website (skills + diagnostics reference) into site/dist; also
+# refreshes crates/doc/diagnostics.json, which `rk explain` embeds. Refuses
+# to write when an example disagrees with the compiler. Release: the skills
+# gate loads the stdlib once per example.
+cargo run --release -p doc -- site/dist
+
 # Build the tree-sitter grammar (run from crates/tree-sitter/)
 tree-sitter generate
 
@@ -88,6 +94,7 @@ cli (binary) — standalone diagnostic checker
 | `formatter`               | `crates/formatter`      | Code formatter using Topiary (tree-sitter-based, declarative query rules).                                              |
 | `memory_usage`            | `crates/memory_usage`   | Utility for heap memory measurement.                                                                                    |
 | `cli`                     | `crates/cli`            | Standalone CLI linter/checker binary for .st files.                                                                     |
+| `doc`                     | `crates/doc`            | Site generator: renders `skills/` and the diagnostics reference, verifying every example against the compiler.         |
 | `fuzz`                    | `crates/fuzz`           | Fuzz testing targets for the compiler and formatter.                                                                    |
 | `vscode-lsp-server`       | `vscode/server`         | VSCode extension LSP server binary (thin wrapper over `server` crate).                                                  |
 

@@ -69,13 +69,26 @@ Standalone diagnostic checker for .st files:
 cargo run --bin iec -- <workspace_path>
 ```
 
-## Documentation Generator
+## Website
 
-Generates a single-page HTML diagnostic reference with all compiler errors and linter warnings:
+The site is the `skills/` directory rendered, plus the diagnostics reference,
+built by one Rust binary that refuses to publish an example the compiler
+disagrees with:
 
 ```bash
-cargo run --package doc --bin generate-docs
-# Output: crates/doc/out/index.html
+cargo run --release -p doc -- site/dist
+# Output: site/dist (static), and crates/doc/diagnostics.json refreshed —
+# `rk explain` embeds that file, so commit it when it changes.
+```
+
+Every `iecst` fence in a skill is checked; `crates/doc/src/skills.rs` lists
+the fence markers (`fragment`, `decl`, `continues`, `syntax`, `sketch`,
+`expect=`). `site/` holds the Cloudflare Worker that serves `site/dist`,
+answers `Accept: text/markdown`, and hosts the read-only MCP server at `/mcp`:
+
+```bash
+cd site && npm ci && npm run check     # type-check + wrangler dry run
+npm run dev                            # http://localhost:8788
 ```
 
 ## Tree-Sitter Grammar

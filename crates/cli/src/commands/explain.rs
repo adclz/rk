@@ -2,15 +2,14 @@
 //!
 //! Meant for agents: the code, its title, and the explanation text, nothing
 //! more — humans have the documentation site. The text comes from the same
-//! committed reference the site serves
-//! (`docs/static/diagnostics/diagnostics.json`, generated from
-//! `crates/doc/src/examples.rs`), embedded at build time.
+//! committed reference the site serves (`crates/doc/diagnostics.json`,
+//! generated from `crates/doc/src/examples.rs`), embedded at build time.
 
 use serde::Deserialize;
 
 use crate::error::{CliError, CliResult};
 
-const REFERENCE: &str = include_str!("../../../../docs/static/diagnostics/diagnostics.json");
+const REFERENCE: &str = include_str!("../../../doc/diagnostics.json");
 
 /// Unknown fields (the sources) are ignored: an agent already has its own
 /// failing source. The category names the subsystem and marks `L*` as

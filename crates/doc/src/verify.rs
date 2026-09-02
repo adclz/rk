@@ -1,6 +1,6 @@
 //! The generator refuses to emit a reference that disagrees with the compiler.
 //!
-//! `docs/static/diagnostics/diagnostics.json` is not only the documentation
+//! `crates/doc/diagnostics.json` is not only the documentation
 //! site's data — `rk explain` embeds it at build time, so a wrong entry is a
 //! wrong answer given to a user, not merely a stale page. Every check here
 //! therefore runs before anything is written: a failing run leaves the
@@ -36,7 +36,10 @@ fn code_defining_crates() -> Vec<PathBuf> {
     let crates = Path::new(env!("CARGO_MANIFEST_DIR"))
         .parent()
         .expect("crates/ is the parent of crates/doc");
-    vec![crates.join("hir").join("src"), crates.join("linter").join("src")]
+    vec![
+        crates.join("hir").join("src"),
+        crates.join("linter").join("src"),
+    ]
 }
 
 /// Every `"EXXXX"` / `"LXXXX"` string literal in a source tree — the
@@ -122,7 +125,10 @@ pub fn problems(examples: &[ErrorExample], produced: &[(&str, BTreeSet<String>)]
             "{ghost}: documented, but the compiler defines no such code — delete the example"
         ));
     }
-    for missing in defined.difference(&documented).filter(|c| !debt.contains(*c)) {
+    for missing in defined
+        .difference(&documented)
+        .filter(|c| !debt.contains(*c))
+    {
         problems.push(format!(
             "{missing}: defined by the compiler with no example — add one to `all_examples()` \
              (do NOT grow KNOWN_UNDOCUMENTED)"
