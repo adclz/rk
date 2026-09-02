@@ -1,0 +1,21 @@
+{
+  "name": "rk-site",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "cargo run --release -p doc -- site/dist",
+    "dev": "wrangler dev",
+    "check": "tsc --noEmit && wrangler deploy --dry-run",
+    "deploy": "wrangler deploy"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/server": "^2.0.0",
+    "agents": "^0.20.0",
+    "zod": "^4.0.0"
+  },
+  "devDependencies": {
+    "@cloudflare/workers-types": "^4",
+    "typescript": "^5.6.0",
+    "wrangler": "^4.0.0"
+  }
+}
