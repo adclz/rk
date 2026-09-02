@@ -476,33 +476,33 @@ fn invalid_access_internal_namespace_from_outside(mut with_db: RootDatabase) {
         |
      10 |             NAMESPACE INTERNAL Deep
         |                                ^^|^
-        |                                  `--- declared INTERNAL here
+        |                                  `--- namespace is declared INTERNAL here
         |
      17 |             outside_mid := Mid.Deep.f();
         |                                     |
-        |                                     `-- can not access INTERNAL namespace 'Lib.Mid.Deep'
+        |                                     `-- can not access 'Lib.Mid.Deep' from INTERNAL namespace
     ----'
     [E0407] Error: access control violation
         ,-[ file:///test0.st:23:21 ]
         |
       3 |         NAMESPACE INTERNAL Impl
         |                            ^^|^
-        |                              `--- declared INTERNAL here
+        |                              `--- namespace is declared INTERNAL here
         |
      23 |             VAR x : Lib.Impl.T; END_VAR
         |                     ^^^^^|^^^^
-        |                          `------ can not access INTERNAL namespace 'Lib.Impl'
+        |                          `------ can not access 'Lib.Impl' from INTERNAL namespace
     ----'
     [E0407] Error: access control violation
         ,-[ file:///test0.st:24:29 ]
         |
       3 |         NAMESPACE INTERNAL Impl
         |                            ^^|^
-        |                              `--- declared INTERNAL here
+        |                              `--- namespace is declared INTERNAL here
         |
      24 |             use := Lib.Impl.hidden() + x;
         |                             ^^^|^^
-        |                                `---- can not access INTERNAL namespace 'Lib.Impl'
+        |                                `---- can not access 'Lib.Impl' from INTERNAL namespace
     ----'
     ");
 }
@@ -530,11 +530,11 @@ fn invalid_using_of_an_internal_namespace(mut with_db: RootDatabase) {
         |
       3 |         NAMESPACE INTERNAL Impl
         |                            ^^|^
-        |                              `--- declared INTERNAL here
+        |                              `--- namespace is declared INTERNAL here
         |
      10 |     USING Lib.Impl;
         |           ^^^^|^^^
-        |               `----- can not access INTERNAL namespace 'Lib.Impl'
+        |               `----- can not access 'Lib.Impl' from INTERNAL namespace
     ----'
     ");
 }
@@ -563,13 +563,13 @@ fn invalid_access_library_internal_namespace_from_workspace(mut with_db: RootDat
        |
      3 |         use := LibPriv.hidden();
        |                        ^^^|^^
-       |                           `---- can not access INTERNAL namespace 'LibPriv'
+       |                           `---- can not access 'LibPriv' from INTERNAL namespace
        |
        |-[ file:///lib0.st:2:24 ]
        |
      2 |     NAMESPACE INTERNAL LibPriv
        |                        ^^^|^^^
-       |                           `----- declared INTERNAL here
+       |                           `----- namespace is declared INTERNAL here
     ---'
     ");
 }

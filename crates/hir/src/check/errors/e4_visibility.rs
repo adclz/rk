@@ -113,7 +113,7 @@ impl<'db> ToIdeDiagnostic<'db> for VisibilityError<'db> {
             } => {
                 let mut diag = diag()
                     .message(format!(
-                        "can not access INTERNAL namespace '{}'",
+                        "can not access '{}' from INTERNAL namespace",
                         namespace.path(db).to_string(db)
                     ))
                     .severity(DiagnosticSeverity::ERROR)
@@ -123,7 +123,7 @@ impl<'db> ToIdeDiagnostic<'db> for VisibilityError<'db> {
                     )
                     .call();
                 diag.with_related(ide_diagnostic::Related::new(
-                    "declared INTERNAL here".to_string(),
+                    "namespace is declared INTERNAL here".to_string(),
                     namespace.scope_id(db).file(db),
                     CallSite::new(namespace.scope_id(db), namespace.name_id(db)).get_span(db),
                 ));
