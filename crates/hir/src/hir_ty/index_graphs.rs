@@ -314,14 +314,12 @@ pub fn external_var_lookup<'db>(
 #[derive(Debug, Clone)]
 pub enum TestItem<'db> {
     Function(Function<'db>, String),
-    Program(ProgramDecl<'db>, String),
 }
 
 impl<'db> TestItem<'db> {
     pub fn qualified_name(&self) -> &str {
         match self {
             TestItem::Function(_, name) => name,
-            TestItem::Program(_, name) => name,
         }
     }
 }
@@ -343,12 +341,6 @@ pub fn discover_all_tests<'db>(db: &'db dyn WorkspaceDataBase) -> Vec<TestItem<'
             }
         }
 
-        // Global test programs
-        for prog in file_programs(db, file).iter() {
-            if crate::hir_def::pous::pragma::is_test(db, prog.pragmas(db)) {
-                tests.push(TestItem::Program(*prog, prog.name(db).text(db).to_string()));
-            }
-        }
 
         // Namespaced test functions. The namespace list is FLAT (nested
         // included), so each namespace contributes its own tests exactly
@@ -382,17 +374,13 @@ pub fn find_test<'db>(
     let parts: Vec<&str> = qualified_name.split('.').collect();
 
     if parts.len() == 1 {
-        // Global scope: check functions then programs
+        // Global scope: a test is a FUNCTION (E0252 refuses the pragma
+        // anywhere else).
         let name = Ident::from_slice(db, parts[0]);
         if let Some(Pou::Function(f)) = pou_index(db, name)
             && crate::hir_def::pous::pragma::is_test(db, f.pragmas(db))
         {
             return Some(TestItem::Function(f, qualified_name.to_string()));
-        }
-        if let Some(prog) = program_index(db, name)
-            && crate::hir_def::pous::pragma::is_test(db, prog.pragmas(db))
-        {
-            return Some(TestItem::Program(prog, qualified_name.to_string()));
         }
         None
     } else {

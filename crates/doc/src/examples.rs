@@ -1469,6 +1469,18 @@ END_FUNCTION
             lint_rule: None,
         },
         ErrorExample {
+            code: "E0252",
+            category: "Resolution",
+            title: "Test pragma outside a FUNCTION",
+            description: "A {test} pragma is valid only on a FUNCTION, like {extern}: a test is a () entry the runner calls, and a FUNCTION_BLOCK, PROGRAM or METHOD has no such entry. A POU that exists only for tests is hidden with FUNCTION PRIVATE, not marked as a test.",
+            sources: &[r#"
+{test}
+PROGRAM my_test
+END_PROGRAM
+"#],
+            lint_rule: None,
+        },
+        ErrorExample {
             code: "E0250",
             category: "Resolution",
             title: "Unknown multibit access size",
@@ -3096,11 +3108,11 @@ END_FUNCTION
             code: "L0003",
             category: "Pragma",
             title: "Invalid pragma for POU",
-            description: "A pragma is used on a POU type where it is not valid. For example, `{test}` is only valid on FUNCTION — not on PROGRAM, FUNCTION_BLOCK or METHOD.",
+            description: "A pragma that has no meaning on this POU kind: {once} on a PROGRAM. Placement of {test} and {extern} is a compiler error instead (E0252, E0244).",
             sources: &[r#"
-{test}
-FUNCTION_BLOCK MyFB
-END_FUNCTION_BLOCK
+{once}
+PROGRAM main
+END_PROGRAM
 "#],
             lint_rule: Some("invalid-pragma"),
         },

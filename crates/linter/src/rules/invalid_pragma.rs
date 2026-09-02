@@ -42,15 +42,10 @@ pub fn check<'db>(
 
     for pragma in pragmas {
         let (invalid, reason) = match pragma {
-            Pragma::Test(_) => match kind {
-                ScopeKind::Pou(Pou::Function(_)) => (false, ""),
-                ScopeKind::Pou(Pou::FunctionBlock(_)) => {
-                    (true, "{test} is not valid on FUNCTION_BLOCK")
-                }
-                ScopeKind::MethodDecl(_) => (true, "{test} is not valid on METHOD"),
-                ScopeKind::Program(_) => (true, "{test} is not valid on PROGRAM"),
-                _ => (false, ""),
-            },
+            // Position legality for {test} is a compiler ERROR (E0252), like
+            // {extern}'s: a test on a POU the runner cannot call must not
+            // merely warn.
+            Pragma::Test(_) => (false, ""),
             Pragma::Once(_) => match kind {
                 ScopeKind::Program(_) => (true, "{once} is not valid on PROGRAM"),
                 _ => (false, ""),

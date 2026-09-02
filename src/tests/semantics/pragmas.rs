@@ -188,22 +188,6 @@ END_FUNCTION"#;
     ");
 }
 
-#[rstest]
-fn invalid_non_test_referencing_test_program(mut with_db: RootDatabase) {
-    let source = r#"
-{test}
-PROGRAM test_prog
-END_PROGRAM
-
-FUNCTION normal : INT
-VAR x : INT; END_VAR
-END_FUNCTION"#;
-
-    // Programs are not visible to functions anyway (only config scopes),
-    // so no E0404 emitted here - just verifying no crash.
-    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"");
-}
-
 // E0248/E0249: a {wasm} pragma is validated where it is written. An unknown
 // name used to fall through to `unreachable` (or, on the conversion shape,
 // to a silent identity), and a pragma outside a FUNCTION was silently
@@ -333,3 +317,55 @@ END_FUNCTION"#;
 
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"");
 }
+
+/// `{test}` is FUNCTION-only, like `{extern}`: the runner calls a `()` entry,
+/// which no other POU kind has. A helper that only tests use is hidden with
+/// `FUNCTION PRIVATE`, not marked as a test.
+#[rstest]
+fn invalid_test_pragma_outside_a_function(mut with_db: RootDatabase) {
+    let source = r#"
+{test}
+FUNCTION_BLOCK fb
+END_FUNCTION_BLOCK
+
+{test}
+PROGRAM prog
+END_PROGRAM
+
+CLASS C
+    {test}
+    METHOD m : INT
+        m := 1;
+    END_METHOD
+END_CLASS
+
+{test}
+FUNCTION t : INT
+    t := 1;
+END_FUNCTION
+"#;
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
+    [E0252] Error: test pragma outside a FUNCTION
+       ,-[ file:///test0.st:2:1 ]
+       |
+     2 | {test}
+       | ^^^|^^
+       |    `---- a {test} pragma cannot be placed on a FUNCTION_BLOCK
+    ---'
+    [E0252] Error: test pragma outside a FUNCTION
+        ,-[ file:///test0.st:11:5 ]
+        |
+     11 |     {test}
+        |     ^^^|^^
+        |        `---- a {test} pragma cannot be placed on a METHOD
+    ----'
+    [E0252] Error: test pragma outside a FUNCTION
+       ,-[ file:///test0.st:6:1 ]
+       |
+     6 | {test}
+       | ^^^|^^
+       |    `---- a {test} pragma cannot be placed on a PROGRAM
+    ---'
+    ");
+}
+

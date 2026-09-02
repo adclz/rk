@@ -409,6 +409,13 @@ pub enum ResolveError<'db> {
         anchor: SpanIdent<'db>,
         pou_kind: &'static str,
     },
+    /// `{test}` on something other than a FUNCTION. A test is a `()` entry the
+    /// runner calls; an FB, PROGRAM or METHOD has no such entry, and a helper
+    /// that only tests use is hidden with PRIVATE, not marked as a test.
+    TestOutsideFunction {
+        anchor: SpanIdent<'db>,
+        pou_kind: &'static str,
+    },
     /// A direct variable used anywhere: read or written in a body, or named
     /// by a declaration's `AT` clause. The address is TYPED — `X/B/W/D/L`
     /// names the width — but nothing maps it to an I/O image
@@ -503,6 +510,7 @@ impl<'db> ErrorCode for ResolveError<'db> {
             | Self::ExternNonScalarReturn { .. }
             | Self::ExternWithBody { .. } => "E0243",
             Self::ExternOutsideFunction { .. } => "E0244",
+            Self::TestOutsideFunction { .. } => "E0252",
             Self::DirectVariableUnsupported { .. } => "E0245",
             Self::MissingRequiredParameter { .. } => "E0233",
             Self::InOutParameterRequiresLValue { .. } => "E0234",
@@ -555,6 +563,7 @@ impl<'db> ErrorCode for ResolveError<'db> {
             | Self::ExternNonScalarReturn { .. }
             | Self::ExternWithBody { .. } => "not representable on an extern FUNCTION",
             Self::ExternOutsideFunction { .. } => "extern pragma outside a FUNCTION",
+            Self::TestOutsideFunction { .. } => "test pragma outside a FUNCTION",
             Self::DirectVariableUnsupported { .. } => "direct variable access is not supported",
             Self::MissingRequiredParameter { .. } => "missing required parameter",
             Self::InOutParameterRequiresLValue { .. } => "VAR_IN_OUT argument must be a variable",
@@ -1310,6 +1319,12 @@ impl<'db> ToIdeDiagnostic<'db> for ResolveError<'db> {
                 );
                 diag
             }
+            Self::TestOutsideFunction { anchor, pou_kind } => diag()
+                .message(format!("a {{test}} pragma cannot be placed on a {pou_kind}"))
+                .severity(DiagnosticSeverity::ERROR)
+                .desc(self)
+                .range(crate::denormalize(db, file, &anchor.get_span(db)).unwrap_or_default())
+                .call(),
             Self::ExternOutsideFunction { anchor, pou_kind } => {
                 let mut diag = diag()
                     .message(format!("an {{extern}} pragma cannot be placed on a {pou_kind}"))

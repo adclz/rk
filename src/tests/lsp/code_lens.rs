@@ -32,7 +32,6 @@ END_FUNCTION
 FUNCTION test_one : INT
 END_FUNCTION
 
-{test}
 PROGRAM test_two
 END_PROGRAM
 
@@ -43,7 +42,7 @@ END_PROGRAM
     add_sources(&mut with_db, &[source]);
     let lenses = collect_code_lenses(&with_db);
 
-    assert_eq!(lenses.len(), 2);
+    assert_eq!(lenses.len(), 1, "a PROGRAM is never a test (E0252), so only the FUNCTION gets a lens");
 
     let names: Vec<_> = lenses
         .iter()
@@ -56,5 +55,5 @@ END_PROGRAM
         .collect();
 
     assert!(names.contains(&"test_one".to_string()));
-    assert!(names.contains(&"test_two".to_string()));
+    assert!(!names.contains(&"test_two".to_string()));
 }

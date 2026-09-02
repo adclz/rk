@@ -120,20 +120,6 @@ END_NAMESPACE
     ");
 }
 
-#[rstest]
-fn test_pragma_on_program(mut with_db: RootDatabase) {
-    let source = r#"
-{test}
-PROGRAM test_something
-VAR x : INT; END_VAR
-    x := 42;
-END_PROGRAM
-    "#;
-    // A PROGRAM lowers to a `this`-parameterized body (FB-instance model), so it
-    // exports `<Prog>$__body__(this)` rather than a bare `()` entry.
-    assert_snapshot!(mir_exports(&mut with_db, &[source]), @"export test_something$__body__(*struct(test_something))");
-}
-
 // --- Test manifest tests ---
 
 #[rstest]
@@ -179,21 +165,6 @@ FUNCTION not_a_test : INT
 END_FUNCTION
     "#;
     // No {test} pragmas — manifest should be empty
-    assert_snapshot!(mir_test_manifest(&mut with_db, &[source]), @"");
-}
-
-#[rstest]
-fn manifest_test_program(mut with_db: RootDatabase) {
-    let source = r#"
-{test}
-PROGRAM test_something
-VAR x : INT; END_VAR
-    x := 42;
-END_PROGRAM
-    "#;
-    // A PROGRAM is instance-based (no `()` entry), so it is never discovered
-    // as a runnable test. The pragma is rejected by the `invalid-pragma` lint
-    // (L0003); this pins that it also produces no manifest entry.
     assert_snapshot!(mir_test_manifest(&mut with_db, &[source]), @"");
 }
 

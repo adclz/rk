@@ -1,6 +1,9 @@
 use db::WorkspaceDataBase;
 use rustc_hash::FxHashMap;
 
+use crate::HasPragmas;
+use crate::check::errors::e2_resolve::ExternForbiddenKind;
+use crate::hir_def::{pous::pou::Pou, scope::ScopeKind, semantic_index::get_scope};
 use crate::{
     HasName, HirNodeInfo,
     check::errors::{
@@ -28,9 +31,6 @@ impl<'db> InitInference<'db> {
 
         // RETAIN/NON_RETAIN require instance storage: meaningless on a
         // stateless POU (FUNCTION/METHOD), in ANY of its sections (E0235).
-        use crate::HasPragmas;
-        use crate::check::errors::e2_resolve::ExternForbiddenKind;
-        use crate::hir_def::{pous::pou::Pou, scope::ScopeKind, semantic_index::get_scope};
         let scope_kind = get_scope(db, self.scope).kind;
         let stateless_pou = match scope_kind {
             ScopeKind::Pou(Pou::Function(_)) => Some("FUNCTION"),
@@ -46,21 +46,22 @@ impl<'db> InitInference<'db> {
         // aggregate outputs and statements are each refused where they are
         // declared. (E0243/E0244.)
         let extern_fn = match scope_kind {
-            ScopeKind::Pou(Pou::Function(f)) => {
-                f.extern_pragma(db).map(|(span, _)| (f, span))
-            }
+            ScopeKind::Pou(Pou::Function(f)) => f.extern_pragma(db).map(|(span, _)| (f, span)),
             ScopeKind::Pou(Pou::FunctionBlock(fb)) => {
                 self.refuse_extern_on(db, fb.extern_pragma(db), "FUNCTION_BLOCK");
+                self.refuse_test_on(db, fb.test_pragma(db), "FUNCTION_BLOCK");
                 None
             }
             // CLASS/INTERFACE take no pragmas in the grammar — `{extern}`
             // there is a parse error before it can reach this check.
             ScopeKind::Program(p) => {
                 self.refuse_extern_on(db, p.extern_pragma(db), "PROGRAM");
+                self.refuse_test_on(db, p.test_pragma(db), "PROGRAM");
                 None
             }
             ScopeKind::MethodDecl(m) => {
                 self.refuse_extern_on(db, m.extern_pragma(db), "METHOD");
+                self.refuse_test_on(db, m.test_pragma(db), "METHOD");
                 None
             }
             _ => None,
@@ -95,12 +96,14 @@ impl<'db> InitInference<'db> {
         // local's type, while the signature still promises the return type's
         // — which is invalid wasm at exit 0, not a subtle bug.
         let return_value_name = match scope_kind {
-            ScopeKind::Pou(Pou::Function(f)) => {
-                f.return_type(db).is_some().then(|| (f.get_name_ident(db).caseless(db), "FUNCTION"))
-            }
-            ScopeKind::MethodDecl(m) => {
-                m.return_type(db).is_some().then(|| (m.get_name_ident(db).caseless(db), "METHOD"))
-            }
+            ScopeKind::Pou(Pou::Function(f)) => f
+                .return_type(db)
+                .is_some()
+                .then(|| (f.get_name_ident(db).caseless(db), "FUNCTION")),
+            ScopeKind::MethodDecl(m) => m
+                .return_type(db)
+                .is_some()
+                .then(|| (m.get_name_ident(db).caseless(db), "METHOD")),
             _ => None,
         };
 
@@ -166,9 +169,7 @@ impl<'db> InitInference<'db> {
                 use crate::hir_def::pous::variable::VariableKind;
                 let forbidden = match var.kind(db) {
                     VariableKind::InOut => Some(ExternForbiddenKind::InOut),
-                    VariableKind::Output
-                        if !extern_scalar(db, var.spec(db).infer(db)) =>
-                    {
+                    VariableKind::Output if !extern_scalar(db, var.spec(db).infer(db)) => {
                         Some(ExternForbiddenKind::AggregateOutput)
                     }
                     _ => None,
@@ -329,6 +330,25 @@ impl<'db> InitInference<'db> {
 impl<'db> InitInference<'db> {
     /// Push E0244 when `pragma` is present: `{extern}` on a POU kind that
     /// cannot be an import.
+    /// `{test}` is FUNCTION-only, like `{extern}` (E0252): the runner calls
+    /// a `()` entry, which no other POU kind has.
+    fn refuse_test_on(
+        &mut self,
+        db: &'db dyn WorkspaceDataBase,
+        pragma: Option<&'db crate::hir_def::interned::identifier::SpanIdent<'db>>,
+        pou_kind: &'static str,
+    ) {
+        if let Some(anchor) = pragma {
+            self.errors.push(
+                ResolveError::TestOutsideFunction {
+                    anchor: *anchor,
+                    pou_kind,
+                }
+                .to_diagnostic(db, self.scope.file(db)),
+            );
+        }
+    }
+
     fn refuse_extern_on(
         &mut self,
         db: &'db dyn WorkspaceDataBase,

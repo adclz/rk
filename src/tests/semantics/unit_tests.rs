@@ -14,7 +14,6 @@ END_FUNCTION
 FUNCTION test_one : INT
 END_FUNCTION
 
-{test}
 PROGRAM test_two
 END_PROGRAM
 
@@ -29,9 +28,9 @@ END_PROGRAM
         .iter()
         .map(|t| t.qualified_name().to_string())
         .collect();
-    assert_eq!(names.len(), 2);
+    assert_eq!(names.len(), 1, "a PROGRAM is never a test (E0252)");
     assert!(names.contains(&"test_one".to_string()));
-    assert!(names.contains(&"test_two".to_string()));
+    assert!(!names.contains(&"test_two".to_string()));
 }
 
 #[rstest]
