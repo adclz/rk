@@ -609,8 +609,8 @@ fn emit_stmt(func: &mut wasm_encoder::Function, stmt: &MirStmt, ctx: &Ctx) {
             func.instruction(&Instruction::Call(body_idx));
 
             // 3. Read output values from the instance's fields
-            for (field_offset, target, ty) in output_reads {
-                emit_fb_field_read(func, base, *field_offset, target, ty, ctx);
+            for (field_offset, target, ty, target_lane) in output_reads {
+                emit_fb_field_read(func, base, *field_offset, target, ty, *target_lane, ctx);
             }
         }
 
@@ -1309,14 +1309,25 @@ fn emit_fb_field_read(
     field_offset: u32,
     target: &mir::expr::MirPlace,
     ty: &mir::types::MirType,
+    target_lane: Option<mir::types::MirElementary>,
     ctx: &Ctx,
 ) {
     use mir::types::MirType;
+    // A wider destination converts between the load and the store; the
+    // store then takes the DESTINATION's shape.
     let scalar_copy = |func: &mut wasm_encoder::Function, elem_ty: &MirType| {
         emit_addr_of(func, target, ctx.locals, ctx.fn_indices);
         push_fb_field_addr(func, base, field_offset);
         emit_typed_mem_load(func, elem_ty);
-        emit_typed_mem_store(func, elem_ty);
+        match (elem_ty, target_lane) {
+            (MirType::Elementary(from), Some(to)) if *from != to => {
+                for instr in crate::mir_cast::emit_cast_instructions(*from, to) {
+                    func.instruction(&instr);
+                }
+                emit_typed_mem_store(func, &MirType::Elementary(to));
+            }
+            _ => emit_typed_mem_store(func, elem_ty),
+        }
     };
     match ty {
         MirType::Elementary(_) => scalar_copy(func, ty),
@@ -1580,6 +1591,10 @@ fn emit_mem_store(func: &mut wasm_encoder::Function, size: u32, align: u32) {
 }
 
 /// Public wrapper for `emit_call`'s extern-result stores.
+pub(crate) fn emit_typed_mem_load_pub(func: &mut wasm_encoder::Function, ty: &mir::types::MirType) {
+    emit_typed_mem_load(func, ty);
+}
+
 pub(crate) fn emit_typed_mem_store_pub(
     func: &mut wasm_encoder::Function,
     ty: &mir::types::MirType,

@@ -1584,6 +1584,34 @@ fn test_output_binding_widens_with_sign(mut with_db: db::RootDatabase) {
     assert_eq!(result, -7, "the INT output sign-extends into the DINT destination");
 }
 
+/// A `=>` destination in ANOTHER lane converts in the copy. The copy used
+/// to load and store at the FIELD's shape whatever the destination was, so
+/// a REAL output wrote four bytes over an LREAL slot: same-lane widenings
+/// (the test above) were right, every cross-lane one read back garbage.
+#[rstest]
+fn test_output_binding_converts_across_lanes(mut with_db: db::RootDatabase) {
+    let source = r#"
+        FUNCTION_BLOCK Src
+        VAR_OUTPUT r : REAL := 2.5; i : INT := -3; d : DINT := -1; END_VAR
+        END_FUNCTION_BLOCK
+        FUNCTION floats : LREAL
+        VAR s : Src; l1 : LREAL; l2 : LREAL; END_VAR
+            s(r => l1, i => l2);
+            floats := l1 * 1000.0 + l2 * 10.0;
+        END_FUNCTION
+        FUNCTION ints : LINT
+        VAR s : Src; big : LINT; keep : DINT := 16#7FFF0000; END_VAR
+            s(d => big, i => keep);
+            ints := big * 1000000000 + keep;
+        END_FUNCTION
+    "#;
+    let wasm = compile_to_wasm(&mut with_db, source);
+    let f: f64 = super::execute_wasm(&wasm, "floats", ());
+    assert_eq!(f, 2470.0, "2.5 into LREAL (2500) and -3 into LREAL (-30)");
+    let i: i64 = super::execute_wasm(&wasm, "ints", ());
+    assert_eq!(i, -1_000_000_003, "-1 into LINT, -3 over a preset DINT slot (no stale bytes)");
+}
+
 /// FB inputs evaluate in DECLARATION order too — the FUNCTION twin is
 /// test_args_evaluate_in_declaration_order. The FB path used to iterate the
 /// call-site assigns, so written order decided when each input expression

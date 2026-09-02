@@ -281,7 +281,7 @@ fn stmt_assigns_static_string(stmt: &MirStmt) -> bool {
                 .any(|(_, _, ty)| matches!(ty, MirType::String { .. }))
                 || output_reads
                     .iter()
-                    .any(|(_, _, ty)| matches!(ty, MirType::String { .. }))
+                    .any(|(_, _, ty, _)| matches!(ty, MirType::String { .. }))
         }
         MirStmt::If {
             then_body,
@@ -882,7 +882,7 @@ impl<'a> WasmGen<'a> {
                         for (_, value, _) in input_writes {
                             walk_expr(db, value, found);
                         }
-                        for (_, place, _) in output_reads {
+                        for (_, place, _, _) in output_reads {
                             walk_place(db, place, found);
                         }
                     }

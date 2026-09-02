@@ -1276,6 +1276,14 @@ fn rewrite_globals_expr(
             for arg in &mut call.args {
                 rewrite_globals_expr(&mut arg.value, globals, missing);
             }
+            for bind in &mut call.output_bindings {
+                rewrite_globals_place(&mut bind.target, globals, missing);
+            }
+            for bind in &mut call.extern_results {
+                if let Some(dest) = &mut bind.dest {
+                    rewrite_globals_place(dest, globals, missing);
+                }
+            }
         }
         MirExpr::Constant(_) | MirExpr::StringLiteral { .. } => {}
     }
@@ -1310,7 +1318,7 @@ fn rewrite_globals_stmt(
             for (_, value, _) in input_writes {
                 rewrite_globals_expr(value, globals, missing);
             }
-            for (_, target, _) in output_reads {
+            for (_, target, _, _) in output_reads {
                 rewrite_globals_place(target, globals, missing);
             }
         }

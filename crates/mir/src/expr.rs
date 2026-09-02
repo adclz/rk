@@ -91,17 +91,23 @@ pub struct ExternResultBind {
     /// The `o => dest` place, or `None` when the output was not bound.
     pub dest: Option<MirPlace>,
     pub ty: MirType,
+    /// `Some` when the destination is a WIDER scalar than the result: the
+    /// store converts to it instead of writing the result's bytes raw.
+    pub target_lane: Option<MirElementary>,
 }
 
-/// A post-call copy from a callee's VAR_OUTPUT memory slot to a caller's variable.
+/// A post-call copy of a callee `VAR_OUTPUT` received in a scratch because
+/// the `=>` destination is wider than the output: the caller converts.
 #[derive(Debug, Clone)]
 pub struct MirOutputBinding {
-    /// Name of the output variable in the callee (for debug/lookup).
-    pub output_name: Ident,
-    /// The caller's target place to write to.
+    /// The scalar scratch local the callee wrote (passed by address).
+    pub scratch: Ident,
+    /// The `o => dest` place.
     pub target: MirPlace,
-    /// Type of the output value.
-    pub ty: MirType,
+    /// The output's lane (what the scratch holds).
+    pub from: MirElementary,
+    /// The destination's lane (what the store takes).
+    pub to: MirElementary,
 }
 
 #[derive(Debug, Clone)]

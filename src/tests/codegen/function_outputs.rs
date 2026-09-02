@@ -410,3 +410,71 @@ fn discarded_output_nested_call(mut with_db: db::RootDatabase) {
     let result: i32 = super::execute_wasm(&wasm, "test", ());
     assert_eq!(result, 5, "each nested call kept its own scratch");
 }
+
+/// A `=>` destination in ANOTHER lane: the callee writes its OWN lane through
+/// the pointer it is given, so the caller receives the output in a memory
+/// scratch and converts it afterwards. Before, the callee's four REAL bytes
+/// landed over the first half of the LREAL — check-clean, wrong value.
+#[rstest]
+fn bound_output_converts_across_lanes(mut with_db: db::RootDatabase) {
+    let source = r#"
+        FUNCTION g : INT
+        VAR_OUTPUT r : REAL; d : DINT; END_VAR
+            r := 2.5;
+            d := -1;
+            g := 1;
+        END_FUNCTION
+
+        FUNCTION floats : LREAL
+        VAR l : LREAL; big : LINT; END_VAR
+            g(r => l, d => big);
+            floats := l * 10.0;
+        END_FUNCTION
+
+        FUNCTION ints : LINT
+        VAR l : LREAL; big : LINT; k : INT; END_VAR
+            k := g(r => l, d => big);
+            ints := big * 10 + k;
+        END_FUNCTION
+    "#;
+    let wasm = compile_to_wasm(&mut with_db, source);
+    let f: f64 = super::execute_wasm(&wasm, "floats", ());
+    assert_eq!(f, 25.0, "2.5 into an LREAL");
+    let i: i64 = super::execute_wasm(&wasm, "ints", ());
+    assert_eq!(i, -9, "-1 into a LINT (-10) plus the return value 1, with the value still on the stack under the copies");
+}
+
+/// The converted copy reaches MEMORY destinations too — an array element, a
+/// struct field — and a METHOD output takes the same path.
+#[rstest]
+fn bound_output_converts_into_memory_places_and_from_methods(mut with_db: db::RootDatabase) {
+    let source = r#"
+        TYPE Pt : STRUCT l : LREAL; END_STRUCT; END_TYPE
+
+        FUNCTION g : INT
+        VAR_OUTPUT r : REAL; END_VAR
+            r := 2.5;
+            g := 0;
+        END_FUNCTION
+
+        CLASS C
+            METHOD PUBLIC m : INT
+            VAR_OUTPUT r : REAL; END_VAR
+                r := 1.5;
+                m := 0;
+            END_METHOD
+        END_CLASS
+
+        FUNCTION test : LREAL
+        VAR arr : ARRAY[0..1] OF LREAL; s : Pt; c : C; l : LREAL; k : INT; END_VAR
+            k := g(r => arr[1]);
+            k := g(r => s.l);
+            k := c.m(r => l);
+            test := arr[1] * 100.0 + s.l * 10.0 + l;
+        END_FUNCTION
+    "#;
+    let wasm = compile_to_wasm(&mut with_db, source);
+    let result: f64 = super::execute_wasm(&wasm, "test", ());
+    assert_eq!(result, 276.5, "250 + 25 + 1.5");
+}
+

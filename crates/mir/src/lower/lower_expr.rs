@@ -1734,7 +1734,7 @@ impl<'db> ExprLowerCtx<'db> {
         };
 
         let mut args = Vec::new();
-        let output_bindings = Vec::new();
+        let mut output_bindings = Vec::new();
 
         let call_params = func_call.params(self.db);
 
@@ -1750,7 +1750,8 @@ impl<'db> ExprLowerCtx<'db> {
 
         let mut extern_results = Vec::new();
         if let Some(callable) = callable {
-            self.build_call_args(func_call, callable, &mut args, &mut extern_results)?;
+            self.build_call_args(func_call, callable, &mut args, &mut extern_results,
+                &mut output_bindings)?;
         } else {
             // Unresolved callee: no signature to order against, so call-site order.
             for param in call_params {
@@ -1844,6 +1845,7 @@ impl<'db> ExprLowerCtx<'db> {
         callable: hir::hir_ty::ty::CallableType<'db>,
         args: &mut Vec<MirCallArg>,
         extern_results: &mut Vec<crate::expr::ExternResultBind>,
+        output_bindings: &mut Vec<crate::expr::MirOutputBinding>,
     ) -> Result<(), LowerTypeError> {
         use hir::hir_def::pous::variable::VariableKind;
 
@@ -1980,15 +1982,53 @@ impl<'db> ExprLowerCtx<'db> {
                 }
                 hir::hir_ty::body::ParamBinding::Output(variable) => {
                     let place = self.lower_variable_access(*variable)?;
+                    let ty = crate::lower::lower_func::lower_var_type(self.db, *var)?;
+                    // A WIDER scalar destination converts after the call: the
+                    // callee writes its own lane wherever it is pointed.
+                    let out_lane = match &ty {
+                        MirType::Elementary(e) => Some(*e),
+                        MirType::Enum(e) => Some(e.storage),
+                        MirType::Subrange(s) => Some(s.base),
+                        _ => None,
+                    };
+                    let target_lane = out_lane.and_then(|from| {
+                        let dest =
+                            hir::hir_ty::body::infer_body(self.db, variable.scope_id(self.db))
+                                .type_of_variable_access_with_adjustments(self.db, *variable);
+                        match self.type_to_mir_elementary(dest) {
+                            Ok(to) if to != from => Some(to),
+                            _ => None,
+                        }
+                    });
                     if is_extern {
                         // The result pops off the stack into a scratch,
                         // then stores to the bound place — no pointer arg.
-                        let ty = crate::lower::lower_func::lower_var_type(self.db, *var)?;
                         let scratch = self.extern_result_scratch(ty.clone());
                         extern_results.push(crate::expr::ExternResultBind {
                             scratch,
                             dest: Some(place),
                             ty,
+                            target_lane,
+                        });
+                    } else if let (Some(from), Some(to)) = (out_lane, target_lane) {
+                        // A memory scratch: the callee needs an address to write through.
+                        let scratch = hir::hir_def::interned::identifier::Ident::new(
+                            self.db,
+                            compact_str::CompactString::from(format!(
+                                "$outcopy${}",
+                                self.call_scratch.borrow().memory.len()
+                            )),
+                        );
+                        self.call_scratch.borrow_mut().memory.push((scratch, ty));
+                        args.push(MirCallArg {
+                            value: MirExpr::AddrOf(MirPlace::Local(scratch)),
+                            kind: MirArgKind::ByRef,
+                        });
+                        output_bindings.push(crate::expr::MirOutputBinding {
+                            scratch,
+                            target: place,
+                            from,
+                            to,
                         });
                     } else {
                         args.push(MirCallArg {
@@ -2022,6 +2062,7 @@ impl<'db> ExprLowerCtx<'db> {
                                 scratch,
                                 dest: None,
                                 ty,
+                                target_lane: None,
                             });
                         }
                         VariableKind::Output => {
@@ -2215,7 +2256,23 @@ impl<'db> ExprLowerCtx<'db> {
                         )));
                     };
                     let place = self.lower_variable_access(*variable)?;
-                    output_reads.push((field.offset, place, field.ty.clone()));
+                    // A wider scalar destination converts in the copy.
+                    let field_lane = match &field.ty {
+                        MirType::Elementary(e) => Some(*e),
+                        MirType::Enum(e) => Some(e.storage),
+                        MirType::Subrange(s) => Some(s.base),
+                        _ => None,
+                    };
+                    let target_lane = field_lane.and_then(|from| {
+                        let dest =
+                            hir::hir_ty::body::infer_body(self.db, variable.scope_id(self.db))
+                                .type_of_variable_access_with_adjustments(self.db, *variable);
+                        match self.type_to_mir_elementary(dest) {
+                            Ok(to) if to != from => Some(to),
+                            _ => None,
+                        }
+                    });
+                    output_reads.push((field.offset, place, field.ty.clone(), target_lane));
                 }
             }
         }

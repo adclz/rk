@@ -28,9 +28,10 @@ pub enum MirStmt {
         /// `rk.str_assign` (value pushes `(ptr, len)`); Struct/Array bulk-copy
         /// via `memory.copy` (value is an `AddrOf` of the source aggregate).
         input_writes: Vec<(u32, MirExpr, MirType)>,
-        /// Output reads: (field_offset, target_place, field_type). Same
-        /// type-driven shapes as `input_writes`, copying field → target.
-        output_reads: Vec<(u32, MirPlace, MirType)>,
+        /// Output reads `(offset, target place, field type, target lane)`, the
+        /// same shapes copying field → target; `target_lane` is `Some` when the
+        /// `=>` destination is wider than the field.
+        output_reads: Vec<(u32, MirPlace, MirType, Option<MirElementary>)>,
     },
 
     /// Return from function.
