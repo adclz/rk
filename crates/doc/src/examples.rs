@@ -2233,6 +2233,38 @@ END_FUNCTION_BLOCK
         },
         // ── E05xx: Inheritance ───────────────────────────────────────────
         ErrorExample {
+            code: "E0405",
+            category: "Visibility",
+            title: "Private function called from outside its namespace",
+            description: "A FUNCTION declared PRIVATE is callable only from its own namespace, nested namespaces included, on its own side of the library line. An extension: the standard gives a FUNCTION no access specifier.",
+            sources: &[r#"
+NAMESPACE Lib
+    FUNCTION PRIVATE helper : INT
+        helper := 1;
+    END_FUNCTION
+END_NAMESPACE
+
+NAMESPACE App
+    FUNCTION use : INT
+        use := Lib.helper();
+    END_FUNCTION
+END_NAMESPACE
+"#],
+            lint_rule: None,
+        },
+        ErrorExample {
+            code: "E0406",
+            category: "Visibility",
+            title: "Specifier not applicable to a FUNCTION",
+            description: "Only PRIVATE applies to a FUNCTION (PUBLIC spells the default); PROTECTED and INTERNAL do not.",
+            sources: &[r#"
+FUNCTION PROTECTED f : INT
+    f := 1;
+END_FUNCTION
+"#],
+            lint_rule: None,
+        },
+        ErrorExample {
             code: "E0501",
             category: "Inheritance",
             title: "SUPER() body not valid here",

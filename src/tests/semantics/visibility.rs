@@ -232,3 +232,173 @@ END_FUNCTION_BLOCK
     ----'
     ");
 }
+
+// `FUNCTION PRIVATE` — our extension; the standard gives a FUNCTION no
+// specifier at all. A private function is callable from its own namespace,
+// nested namespaces included, on its own side of the library line. The
+// stdlib's extern shims are written this way, and used to be public: the
+// builder dropped the specifier at lowering.
+
+#[rstest]
+fn valid_call_private_function_from_its_namespace(mut with_db: RootDatabase) {
+    // Same namespace, a nested one, and the same namespace reopened in a
+    // second workspace file; PUBLIC written out is the default made explicit.
+    let lib = r#"
+    NAMESPACE Lib
+        FUNCTION PRIVATE helper : INT
+            helper := 1;
+        END_FUNCTION
+        FUNCTION PUBLIC api : INT
+            api := helper();
+        END_FUNCTION
+        NAMESPACE Test
+            FUNCTION t : INT
+                t := Lib.helper();
+            END_FUNCTION
+        END_NAMESPACE
+    END_NAMESPACE
+    "#;
+    let reopened = r#"
+    NAMESPACE Lib
+        FUNCTION more : INT
+            more := helper() + api();
+        END_FUNCTION
+    END_NAMESPACE
+    "#;
+    assert_snapshot!(test_diagnostics(&mut with_db, &[lib, reopened]), @r"");
+}
+
+#[rstest]
+fn valid_call_private_function_declared_at_global_scope(mut with_db: RootDatabase) {
+    // The global namespace holds every other one, so a PRIVATE at global
+    // scope restricts nothing within the same origin.
+    let source = r#"
+    FUNCTION PRIVATE helper : INT
+        helper := 1;
+    END_FUNCTION
+    NAMESPACE App
+        FUNCTION use : INT
+            use := helper();
+        END_FUNCTION
+    END_NAMESPACE
+    "#;
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"");
+}
+
+#[rstest]
+fn invalid_call_private_function_from_another_namespace(mut with_db: RootDatabase) {
+    let source = r#"
+    NAMESPACE Lib
+        FUNCTION PRIVATE helper : INT
+            helper := 1;
+        END_FUNCTION
+    END_NAMESPACE
+
+    NAMESPACE App
+        FUNCTION use : INT
+            use := Lib.helper();
+        END_FUNCTION
+    END_NAMESPACE
+
+    USING Lib;
+    FUNCTION use_global : INT
+        use_global := helper();
+    END_FUNCTION
+    "#;
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
+    [E0405] Error: access control violation
+        ,-[ file:///test0.st:10:20 ]
+        |
+      3 | ,->         FUNCTION PRIVATE helper : INT
+        : :
+      5 | |->         END_FUNCTION
+        | |
+        | `-------------------------- declared PRIVATE here
+        |
+     10 |                 use := Lib.helper();
+        |                        ^^^^^|^^^^
+        |                             `------ can not call PRIVATE function 'Lib.helper'
+    ----'
+    [E0405] Error: access control violation
+        ,-[ file:///test0.st:16:23 ]
+        |
+      3 | ,->         FUNCTION PRIVATE helper : INT
+        : :
+      5 | |->         END_FUNCTION
+        | |
+        | `-------------------------- declared PRIVATE here
+        |
+     16 |             use_global := helper();
+        |                           ^^^|^^
+        |                              `---- can not call PRIVATE function 'helper'
+    ----'
+    ");
+}
+
+#[rstest]
+fn invalid_call_library_private_function_by_reopening_its_namespace(mut with_db: RootDatabase) {
+    // Namespaces reopen from any file; the origin half of the rule is what
+    // keeps a library's helpers out of workspace code that reopens the
+    // library's namespace.
+    let lib = r#"
+    NAMESPACE Lib
+        FUNCTION PRIVATE helper : INT
+            helper := 1;
+        END_FUNCTION
+    END_NAMESPACE
+    "#;
+    let workspace = r#"
+    NAMESPACE Lib
+        FUNCTION sneak : INT
+            sneak := helper();
+        END_FUNCTION
+    END_NAMESPACE
+    "#;
+    let rendered =
+        crate::tests::utils::test_diagnostics_with_library(&mut with_db, &[lib], &[workspace]);
+    assert_snapshot!(rendered, @r"
+    [E0405] Error: access control violation
+       ,-[ file:///test0.st:4:22 ]
+       |
+     4 |             sneak := helper();
+       |                      ^^^|^^
+       |                         `---- can not call PRIVATE function 'helper'
+       |
+       |-[ file:///lib0.st:3:9 ]
+       |
+     3 | ,->         FUNCTION PRIVATE helper : INT
+       : :
+     5 | |->         END_FUNCTION
+       | |
+       | `-------------------------- declared PRIVATE here
+    ---'
+    ");
+}
+
+#[rstest]
+fn invalid_protected_or_internal_on_a_function(mut with_db: RootDatabase) {
+    let source = r#"
+    FUNCTION PROTECTED f : INT
+        f := 1;
+    END_FUNCTION
+    FUNCTION INTERNAL g : INT
+        g := 1;
+    END_FUNCTION
+    "#;
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
+    [E0406] Error: access control violation
+       ,-[ file:///test0.st:2:14 ]
+       |
+     2 |     FUNCTION PROTECTED f : INT
+       |              ^^^^|^^^^
+       |                  `------ 'PROTECTED' does not apply to a FUNCTION: only PRIVATE does
+    ---'
+    [E0406] Error: access control violation
+       ,-[ file:///test0.st:5:14 ]
+       |
+     5 |     FUNCTION INTERNAL g : INT
+       |              ^^^^|^^^
+       |                  `----- 'INTERNAL' does not apply to a FUNCTION: only PRIVATE does
+    ---'
+    ");
+}

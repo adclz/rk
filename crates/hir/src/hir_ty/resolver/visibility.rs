@@ -116,6 +116,51 @@ pub fn check_visibility<'db>(
     }
 }
 
+/// E0405: a `FUNCTION PRIVATE` is reachable from its own namespace — nested
+/// namespaces included — on its own side of the library line. Namespaces
+/// reopen from any file, so the namespace alone is a convention; the origin
+/// half is what keeps a library's helpers out of workspace code that
+/// reopens the library's namespace. Our extension: the standard gives a
+/// FUNCTION no specifier at all.
+pub fn check_function_visibility<'db>(
+    db: &'db dyn WorkspaceDataBase,
+    call_site: &CallSite<'db>,
+    func: crate::hir_def::pous::function::Function<'db>,
+    errors: &mut Vec<IdeDiagnostic>,
+) {
+    if !func.visibility(db).contains(Visibility::PRIVATE) {
+        return;
+    }
+    let calling_scope = call_site.get_scope_id(db);
+    let target_scope = func.get_scope_id(db);
+    let target_ns = crate::hir_ty::resolver::name::enclosing_namespace_path(db, target_scope);
+    let inside = match (
+        &target_ns,
+        crate::hir_ty::resolver::name::enclosing_namespace_path(db, calling_scope),
+    ) {
+        // Declared at global scope: the root holds everything.
+        (None, _) => true,
+        (Some(target), Some(caller)) => caller
+            .caseless(db)
+            .fragments(db)
+            .starts_with(target.caseless(db).fragments(db)),
+        (Some(_), None) => false,
+    };
+    let is_library =
+        |scope: ScopeId<'db>| crate::check::check_duplicates::is_library_file(db, scope.file(db));
+    let cross_origin = is_library(calling_scope) != is_library(target_scope);
+    if inside && !cross_origin {
+        return;
+    }
+    errors.push(
+        VisibilityError::PrivateFunction {
+            call_site: *call_site,
+            target: func.as_call_site(db),
+        }
+        .to_diagnostic(db, calling_scope.file(db)),
+    );
+}
+
 /// Check that non-test code does not reference {test}-annotated items.
 ///
 /// Test items can reference anything, but non-test items cannot reference test items.

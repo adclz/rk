@@ -123,6 +123,15 @@ pub fn resolve_func_call<'db>(
             .insert(expr, Type::CallableType(callable));
     }
 
+    if let CallableType::Function(f) = callable {
+        crate::hir_ty::resolver::visibility::check_function_visibility(
+            db,
+            &CallSite::from_scoped(db, &func_call.path(db)),
+            f,
+            &mut ctx.errors,
+        );
+    }
+
     let len = func_call.params(db).len();
     let formals = call_site_params(db, callable);
     let has_variadic = formals.values().any(|v| v.variadic(db));

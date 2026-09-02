@@ -50,6 +50,25 @@ impl<'db> SemanticIndexBuilder<'db> {
 
         let pragmas = self.parse_pou_pragmas(&func.pragmas);
 
+        // The specifier is recorded as written; which ones a FUNCTION may
+        // carry is a head check (E0406), and a call checks PRIVATE (E0405).
+        let visibility = match &func.spec {
+            Some(spec) => match spec.cast(self.ast).children.cast(self.ast) {
+                ast::generated::Internal_Private_Protected_Public::Private(_) => {
+                    Visibility::PRIVATE
+                }
+                ast::generated::Internal_Private_Protected_Public::Protected(_) => {
+                    Visibility::PROTECTED
+                }
+                ast::generated::Internal_Private_Protected_Public::Public(_) => Visibility::PUBLIC,
+                ast::generated::Internal_Private_Protected_Public::Internal(_) => {
+                    Visibility::INTERNAL
+                }
+            },
+            None => Visibility::empty(),
+        };
+        let spec_id = func.spec.as_ref().map(|spec| spec.cast(self.ast).into());
+
         let result = Pou::Function(Function::new(
             self.db,
             name,
@@ -58,6 +77,8 @@ impl<'db> SemanticIndexBuilder<'db> {
             variables,
             statements,
             return_type,
+            visibility,
+            spec_id,
             func.into(),
             scope_id,
         ));
@@ -67,7 +88,7 @@ impl<'db> SemanticIndexBuilder<'db> {
             ScopeKind::Pou(result),
             usings,
             scope_id,
-            Visibility::empty(),
+            visibility,
             previous_scope,
         );
 

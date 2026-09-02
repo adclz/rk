@@ -3,7 +3,9 @@ use db::WorkspaceDataBase;
 use ide_diagnostic::{ErrorCode, IdeDiagnostic, diag};
 
 use crate::{
-    CallSite, HirNodeInfo, check::errors::ToIdeDiagnostic,
+    CallSite,
+    HirNodeInfo,
+    check::errors::ToIdeDiagnostic,
     hir_ty::resolver::visibility::SameNamespaceResult,
 };
 
@@ -24,6 +26,19 @@ pub enum VisibilityError<'db> {
     },
     /// Attempting to reference a {test}-annotated POU from non-test code.
     TestOnly { call_site: CallSite<'db> },
+    /// A `FUNCTION PRIVATE` called from outside its scope; the declaration
+    /// is the related span.
+    PrivateFunction {
+        call_site: CallSite<'db>,
+        target: CallSite<'db>,
+    },
+    /// PROTECTED or INTERNAL written on a FUNCTION header: neither has a
+    /// meaning there (no class, and a namespace-wide meaning would only
+    /// duplicate PRIVATE).
+    SpecifierNotOnFunction {
+        site: CallSite<'db>,
+        keyword: &'static str,
+    },
 }
 
 impl ErrorCode for VisibilityError<'_> {
@@ -33,6 +48,8 @@ impl ErrorCode for VisibilityError<'_> {
             Self::Internal { .. } => "E0402",
             Self::Protected { .. } => "E0403",
             Self::TestOnly { .. } => "E0404",
+            Self::PrivateFunction { .. } => "E0405",
+            Self::SpecifierNotOnFunction { .. } => "E0406",
         }
     }
 
@@ -67,6 +84,33 @@ impl<'db> ToIdeDiagnostic<'db> for VisibilityError<'db> {
 
                 diag
             }
+            VisibilityError::PrivateFunction { call_site, target } => {
+                let mut diag = diag()
+                    .message(format!(
+                        "can not call PRIVATE function '{}'",
+                        call_site.to_string(db)
+                    ))
+                    .severity(DiagnosticSeverity::ERROR)
+                    .desc(self)
+                    .range(
+                        crate::denormalize(db, file, &call_site.get_span(db)).unwrap_or_default(),
+                    )
+                    .call();
+                diag.with_related(ide_diagnostic::Related::new(
+                    "declared PRIVATE here".to_string(),
+                    target.get_scope_id(db).file(db),
+                    target.get_span(db),
+                ));
+                diag
+            }
+            VisibilityError::SpecifierNotOnFunction { site, keyword } => diag()
+                .message(format!(
+                    "'{keyword}' does not apply to a FUNCTION: only PRIVATE does"
+                ))
+                .severity(DiagnosticSeverity::ERROR)
+                .desc(self)
+                .range(crate::denormalize(db, file, &site.get_span(db)).unwrap_or_default())
+                .call(),
             VisibilityError::Internal {
                 call_site,
                 result,

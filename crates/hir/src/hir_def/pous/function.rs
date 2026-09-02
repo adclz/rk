@@ -1,6 +1,7 @@
 use db::WorkspaceDataBase;
 
 use crate::{
+    Visibility,
     AstId, HasName, HasPragmas, HirNodeInfo,
     hir_def::{
         expressions::{spec::Spec, statement::Stmt},
@@ -34,6 +35,17 @@ pub struct Function<'db> {
     #[tracked]
     #[returns(as_ref)]
     pub return_type: Option<Spec<'db>>,
+
+    /// `FUNCTION PRIVATE f`: reachable only from its own namespace (nested
+    /// ones included) on its own side of the library line. Empty when the
+    /// header writes no specifier.
+    #[tracked]
+    pub visibility: Visibility,
+
+    /// The specifier's node, so a misplaced one is reported at the keyword.
+    #[tracked]
+    #[no_eq]
+    pub spec_id: Option<AstId>,
 
     #[tracked]
     #[no_eq]
