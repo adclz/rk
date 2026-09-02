@@ -1,0 +1,53 @@
+# The website: skills rendered by the generator, served by a Cloudflare
+# Worker. Deploys from GitHub on every push to main.
+#
+# Secrets: CLOUDFLARE_API_TOKEN (Workers Scripts: Edit), CLOUDFLARE_ACCOUNT_ID.
+# Variable: SITE_URL, the public origin, which the generator bakes into
+# llms.txt, the sitemap and the install line.
+name: site
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "skills/**"
+      - "crates/**"
+      - "stdlib/**"
+      - "site/**"
+      - ".github/workflows/site.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: site
+  cancel-in-progress: true
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Setup rust toolchain and cache
+        uses: moonrepo/setup-rust@v0
+        with:
+          cache-target: release
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: site/package-lock.json
+      # Refuses to write when a diagnostics example or a skill's example
+      # disagrees with the compiler, so a broken page never reaches the site.
+      - name: Build the site
+        run: cargo run --release -p doc -- site/dist --base-url "${{ vars.SITE_URL }}"
+      - name: Type-check and bundle the Worker
+        working-directory: site
+        run: npm ci && npm run check
+      - name: Deploy
+        working-directory: site
+        run: npx wrangler deploy
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
