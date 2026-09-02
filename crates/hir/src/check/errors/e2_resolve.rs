@@ -779,6 +779,11 @@ impl<'db> ToIdeDiagnostic<'db> for ResolveError<'db> {
 
                         let ns_kw = NamespacePath::from((db, &path.path.target.ident));
 
+                        let ns_kw = crate::hir_ty::index_graphs::absolute_namespace_path(
+                            db,
+                            path.scope_id,
+                            ns_kw,
+                        );
                         if !namespace_index(db, ns_kw).is_empty() {
                             diag.with_note(format!(
                                 r#"namespace named '{}' exists but it cannot be used as an item, you can either:
@@ -797,6 +802,11 @@ impl<'db> ToIdeDiagnostic<'db> for ResolveError<'db> {
                         full_fragments.push(path.path.target.ident);
                         let full_path = NamespacePath::new(db, full_fragments);
 
+                        let full_path = crate::hir_ty::index_graphs::absolute_namespace_path(
+                            db,
+                            path.scope_id,
+                            full_path,
+                        );
                         if !namespace_index(db, full_path).is_empty() {
                             diag.with_note(format!(
                                 r#"namespace named '{}' exists but it cannot be used as an item, you can either:

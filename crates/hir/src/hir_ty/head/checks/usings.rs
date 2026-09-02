@@ -40,7 +40,13 @@ impl<'db> InitInference<'db> {
                 })
                 .or_insert(*using);
 
-            if namespace_index(db, using.path(db).path).is_empty() {
+            let path = crate::hir_ty::index_graphs::absolute_namespace_path(
+                db,
+                self.scope,
+                using.path(db).path,
+            );
+            let decls = namespace_index(db, path);
+            if decls.is_empty() {
                 self.errors.push(
                     ResolveError::UsingNamespaceNotFound {
                         path: using.path(db).path,
@@ -48,6 +54,25 @@ impl<'db> InitInference<'db> {
                     }
                     .to_diagnostic(db, self.scope.file(db)),
                 )
+            }
+            // USING an INTERNAL namespace from outside its enclosing one: the
+            // whole import is refused, not each imported name later.
+            for ns in decls {
+                if ns.internal(db)
+                    && let Some(violated) =
+                        crate::hir_ty::resolver::visibility::internal_namespace_violated(
+                            db, self.scope, ns,
+                        )
+                {
+                    self.errors.push(
+                        crate::check::errors::e4_visibility::VisibilityError::InternalNamespace {
+                            call_site: CallSite::from_scoped(db, using),
+                            namespace: violated,
+                        }
+                        .to_diagnostic(db, self.scope.file(db)),
+                    );
+                    break;
+                }
             }
         }
     }

@@ -402,3 +402,174 @@ fn invalid_protected_or_internal_on_a_function(mut with_db: RootDatabase) {
     ---'
     ");
 }
+
+// `NAMESPACE INTERNAL` — the standard's module-level privacy: reachable only
+// from inside the enclosing namespace, nested ones included, on its own side
+// of the library line (the FUNCTION PRIVATE boundary). Checked on the target's
+// namespace chain, so a qualified, relative, or USING-imported access meets one
+// rule; a USING of one is refused at the USING and the uses behind it stand
+// down. The keyword used to parse and restrict nothing.
+
+#[rstest]
+fn valid_access_internal_namespace_from_its_enclosing_namespace(mut with_db: RootDatabase) {
+    let source = r#"
+    NAMESPACE Lib
+        NAMESPACE INTERNAL Impl
+            FUNCTION hidden : INT
+                hidden := 1;
+            END_FUNCTION
+        END_NAMESPACE
+        FUNCTION api : INT
+            api := Impl.hidden() + Lib.Impl.hidden();
+        END_FUNCTION
+        NAMESPACE Other
+            FUNCTION sibling : INT
+                sibling := Impl.hidden();
+            END_FUNCTION
+        END_NAMESPACE
+    END_NAMESPACE
+
+    NAMESPACE INTERNAL Priv
+        FUNCTION hidden : INT
+            hidden := 1;
+        END_FUNCTION
+    END_NAMESPACE
+    FUNCTION top_level_internal_is_this_origin : INT
+        top_level_internal_is_this_origin := Priv.hidden();
+    END_FUNCTION
+    "#;
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"");
+}
+
+#[rstest]
+fn invalid_access_internal_namespace_from_outside(mut with_db: RootDatabase) {
+    let source = r#"
+    NAMESPACE Lib
+        NAMESPACE INTERNAL Impl
+            FUNCTION hidden : INT
+                hidden := 1;
+            END_FUNCTION
+            TYPE T : INT; END_TYPE
+        END_NAMESPACE
+        NAMESPACE Mid
+            NAMESPACE INTERNAL Deep
+                FUNCTION f : INT
+                    f := 1;
+                END_FUNCTION
+            END_NAMESPACE
+        END_NAMESPACE
+        FUNCTION outside_mid : INT
+            outside_mid := Mid.Deep.f();
+        END_FUNCTION
+    END_NAMESPACE
+
+    NAMESPACE App
+        FUNCTION use : INT
+            VAR x : Lib.Impl.T; END_VAR
+            use := Lib.Impl.hidden() + x;
+        END_FUNCTION
+    END_NAMESPACE
+    "#;
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
+    [E0407] Error: access control violation
+        ,-[ file:///test0.st:17:37 ]
+        |
+     10 |             NAMESPACE INTERNAL Deep
+        |                                ^^|^
+        |                                  `--- declared INTERNAL here
+        |
+     17 |             outside_mid := Mid.Deep.f();
+        |                                     |
+        |                                     `-- can not access INTERNAL namespace 'Lib.Mid.Deep'
+    ----'
+    [E0407] Error: access control violation
+        ,-[ file:///test0.st:23:21 ]
+        |
+      3 |         NAMESPACE INTERNAL Impl
+        |                            ^^|^
+        |                              `--- declared INTERNAL here
+        |
+     23 |             VAR x : Lib.Impl.T; END_VAR
+        |                     ^^^^^|^^^^
+        |                          `------ can not access INTERNAL namespace 'Lib.Impl'
+    ----'
+    [E0407] Error: access control violation
+        ,-[ file:///test0.st:24:29 ]
+        |
+      3 |         NAMESPACE INTERNAL Impl
+        |                            ^^|^
+        |                              `--- declared INTERNAL here
+        |
+     24 |             use := Lib.Impl.hidden() + x;
+        |                             ^^^|^^
+        |                                `---- can not access INTERNAL namespace 'Lib.Impl'
+    ----'
+    ");
+}
+
+#[rstest]
+fn invalid_using_of_an_internal_namespace(mut with_db: RootDatabase) {
+    // One report, at the USING; the call through it does not repeat it.
+    let source = r#"
+    NAMESPACE Lib
+        NAMESPACE INTERNAL Impl
+            FUNCTION hidden : INT
+                hidden := 1;
+            END_FUNCTION
+        END_NAMESPACE
+    END_NAMESPACE
+
+    USING Lib.Impl;
+    FUNCTION use : INT
+        use := hidden();
+    END_FUNCTION
+    "#;
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
+    [E0407] Error: access control violation
+        ,-[ file:///test0.st:10:11 ]
+        |
+      3 |         NAMESPACE INTERNAL Impl
+        |                            ^^|^
+        |                              `--- declared INTERNAL here
+        |
+     10 |     USING Lib.Impl;
+        |           ^^^^|^^^
+        |               `----- can not access INTERNAL namespace 'Lib.Impl'
+    ----'
+    ");
+}
+
+#[rstest]
+fn invalid_access_library_internal_namespace_from_workspace(mut with_db: RootDatabase) {
+    // A top-level INTERNAL namespace is reachable across its own origin only:
+    // "this library only".
+    let lib = r#"
+    NAMESPACE INTERNAL LibPriv
+        FUNCTION hidden : INT
+            hidden := 1;
+        END_FUNCTION
+    END_NAMESPACE
+    "#;
+    let workspace = r#"
+    FUNCTION use : INT
+        use := LibPriv.hidden();
+    END_FUNCTION
+    "#;
+    let rendered =
+        crate::tests::utils::test_diagnostics_with_library(&mut with_db, &[lib], &[workspace]);
+    assert_snapshot!(rendered, @r"
+    [E0407] Error: access control violation
+       ,-[ file:///test0.st:3:24 ]
+       |
+     3 |         use := LibPriv.hidden();
+       |                        ^^^|^^
+       |                           `---- can not access INTERNAL namespace 'LibPriv'
+       |
+       |-[ file:///lib0.st:2:24 ]
+       |
+     2 |     NAMESPACE INTERNAL LibPriv
+       |                        ^^^|^^^
+       |                           `----- declared INTERNAL here
+    ---'
+    ");
+}

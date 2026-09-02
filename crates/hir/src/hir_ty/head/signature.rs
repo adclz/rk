@@ -16,7 +16,7 @@ use crate::{
         index_graphs::external_var_lookup,
         resolver::{
             name::{NameResolution, resolve_name},
-            visibility::check_test_visibility,
+            visibility::{check_namespace_visibility, check_test_visibility},
         },
         ty::Type,
     },
@@ -367,13 +367,23 @@ impl<'db> Signature<'db> {
             let call_site = CallSite::new(spec.scope_id(db), spec.id(db));
             match resolve_name(db, &target.path, spec.scope_id(db)) {
                 NameResolution::Pou(pou, using) => {
-                    if let Some(using) = using {
-                        self.usings_used.insert(using);
-                    }
                     check_test_visibility(db, &call_site, pou.get_scope_id(db), &mut self.errors);
+                    // Reached through a USING: the import itself was refused.
+                    match using {
+                        Some(using) => {
+                            self.usings_used.insert(using);
+                        }
+                        None => check_namespace_visibility(
+                            db,
+                            &call_site,
+                            pou.get_scope_id(db),
+                            &mut self.errors,
+                        ),
+                    }
                 }
                 NameResolution::Program(prog) => {
                     check_test_visibility(db, &call_site, prog.scope_id(db), &mut self.errors);
+                    check_namespace_visibility(db, &call_site, prog.scope_id(db), &mut self.errors);
                 }
                 _ => {}
             }

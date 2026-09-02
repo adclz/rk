@@ -126,7 +126,13 @@ pub(crate) fn resolve_namespace_access<'db>(
         // Namespace-qualified: look up directly in the namespace's local_pous.
         // No ambiguity is possible here — the user specified which namespace.
         Some(path) => {
-            for ns in namespace_index(db, **path).iter() {
+            // Relative to where it was written, then absolute.
+            let path = crate::hir_ty::index_graphs::absolute_namespace_path(
+                db,
+                target.scope_id,
+                **path,
+            );
+            for ns in namespace_index(db, path).iter() {
                 if let PouResolution::Found(pou, using) =
                     pou_names_res(db, target.ident, ns.scope_id(db))
                 {
@@ -197,7 +203,11 @@ pub fn find_in_parent_pous<'db>(
         // Collect ALL USING matches at this scope level
         let mut matches: Vec<(Pou<'db>, NamespacePath, Using<'db>)> = vec![];
         for using in &scope.usings {
-            let ns_path: NamespacePath = *using.path(db);
+            let ns_path: NamespacePath = crate::hir_ty::index_graphs::absolute_namespace_path(
+                db,
+                scope.id,
+                *using.path(db),
+            );
             for ns in namespace_index(db, ns_path).iter() {
                 if let Some(pou) = ns
                     .scope_id(db)

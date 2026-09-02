@@ -27,7 +27,10 @@ use crate::{
         expr_store::PathExprWalkStep,
         index_graphs::namespace_index,
         infer::{expr::InferExprCtx, table::InferenceTable},
-        resolver::{visibility::check_test_visibility, walk::PathPlaceBuilder},
+        resolver::{
+            visibility::{check_namespace_visibility, check_test_visibility},
+            walk::PathPlaceBuilder,
+        },
         ty::Type,
     },
 };
@@ -95,11 +98,20 @@ impl<'db> Resolver<'db> {
                 true
             }
             name::NameResolution::Pou(pou, using) => {
-                if let Some(using) = using {
-                    ctx.usings_used.insert(using);
-                }
                 let call_site = CallSite::new(path_expr.scope_id(db), path_expr.get_id(db));
                 check_test_visibility(db, &call_site, pou.get_scope_id(db), &mut ctx.errors);
+                // Reached through a USING: the import itself was refused.
+                match using {
+                    Some(using) => {
+                        ctx.usings_used.insert(using);
+                    }
+                    None => check_namespace_visibility(
+                        db,
+                        &call_site,
+                        pou.get_scope_id(db),
+                        &mut ctx.errors,
+                    ),
+                }
                 ctx.type_of_path_expr
                     .insert(path_expr, Type::new_pou(db, pou));
                 true
@@ -107,6 +119,7 @@ impl<'db> Resolver<'db> {
             name::NameResolution::Program(prog) => {
                 let call_site = CallSite::new(path_expr.scope_id(db), path_expr.get_id(db));
                 check_test_visibility(db, &call_site, prog.scope_id(db), &mut ctx.errors);
+                check_namespace_visibility(db, &call_site, prog.scope_id(db), &mut ctx.errors);
                 ctx.type_of_path_expr.insert(path_expr, Type::Program(prog));
                 true
             }
@@ -127,7 +140,15 @@ impl<'db> Resolver<'db> {
                 // is not a real namespace (e.g. it's a TYPE name), point the error at
                 // the first step rather than the last — the root cause is the prefix.
                 let error_expr = if let Some(ns_path) = &access.namespace
-                    && namespace_index(db, **ns_path).is_empty()
+                    && namespace_index(
+                        db,
+                        crate::hir_ty::index_graphs::absolute_namespace_path(
+                            db,
+                            path_expr.scope_id(db),
+                            **ns_path,
+                        ),
+                    )
+                    .is_empty()
                 {
                     path_expr
                         .flatten(db)

@@ -12,6 +12,11 @@ pub struct NamespaceDecl<'db> {
     #[returns(ref)]
     pub path: NamespacePath,
 
+    /// `NAMESPACE INTERNAL`: reachable only from inside the enclosing
+    /// namespace (nested ones included) on its own side of the library line.
+    #[tracked]
+    pub internal: bool,
+
     #[tracked]
     #[returns(ref)]
     pub pous: Vec<Pou<'db>>,

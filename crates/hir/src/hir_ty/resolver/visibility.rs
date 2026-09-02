@@ -161,6 +161,60 @@ pub fn check_function_visibility<'db>(
     );
 }
 
+/// E0407: `NAMESPACE INTERNAL N` is reachable only from inside the namespace
+/// that encloses it — nested namespaces included — on its own side of the
+/// library line (the same boundary as `FUNCTION PRIVATE`). Checked on the
+/// TARGET's namespace chain, so a qualified, relative, or USING-imported
+/// access all meet one rule. At top level the enclosing namespace is the
+/// root, so INTERNAL there means "this library only".
+pub fn check_namespace_visibility<'db>(
+    db: &'db dyn WorkspaceDataBase,
+    call_site: &CallSite<'db>,
+    target_scope_id: ScopeId<'db>,
+    errors: &mut Vec<IdeDiagnostic>,
+) {
+    let calling_scope = call_site.get_scope_id(db);
+    let sema = semantic_index(db, target_scope_id.file(db));
+    for scope_info in sema.scope_iterator(db, target_scope_id) {
+        let ScopeKind::Namespace(ns) = scope_info.kind else {
+            continue;
+        };
+        if !ns.internal(db) {
+            continue;
+        }
+        if let Some(violated) = internal_namespace_violated(db, calling_scope, ns) {
+            errors.push(
+                VisibilityError::InternalNamespace {
+                    call_site: *call_site,
+                    namespace: violated,
+                }
+                .to_diagnostic(db, calling_scope.file(db)),
+            );
+            return;
+        }
+    }
+}
+
+/// `Some(ns)` when `calling_scope` may not enter the INTERNAL namespace `ns`:
+/// it is outside the enclosing namespace, or on the other side of the
+/// library line.
+pub fn internal_namespace_violated<'db>(
+    db: &'db dyn WorkspaceDataBase,
+    calling_scope: ScopeId<'db>,
+    ns: NamespaceDecl<'db>,
+) -> Option<NamespaceDecl<'db>> {
+    let fragments = ns.path(db).caseless(db).fragments(db).clone();
+    let enclosing = &fragments[..fragments.len().saturating_sub(1)];
+    let inside = match crate::hir_ty::resolver::name::enclosing_namespace_path(db, calling_scope) {
+        Some(caller) => caller.caseless(db).fragments(db).starts_with(enclosing),
+        None => enclosing.is_empty(),
+    };
+    let is_library =
+        |scope: ScopeId<'db>| crate::check::check_duplicates::is_library_file(db, scope.file(db));
+    let cross_origin = is_library(calling_scope) != is_library(ns.scope_id(db));
+    (!inside || cross_origin).then_some(ns)
+}
+
 /// Check that non-test code does not reference {test}-annotated items.
 ///
 /// Test items can reference anything, but non-test items cannot reference test items.

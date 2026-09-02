@@ -97,3 +97,41 @@ fn a_file_scope_declaration_shadows_a_using_import(mut with_db: db::RootDatabase
         "unqualified = file scope (2), qualified = import (1)"
     );
 }
+
+/// A relative namespace path binds to the NEAREST enclosing match: `Impl`
+/// inside `Lib` (at any depth) is `Lib.Impl`; at global scope it is the
+/// top-level `Impl`. Pinned by value, since both candidates resolve.
+#[rstest]
+fn a_relative_namespace_path_binds_to_the_nearest_match(mut with_db: db::RootDatabase) {
+    let source = r#"
+        NAMESPACE Impl
+            FUNCTION hidden : INT
+                hidden := 2;
+            END_FUNCTION
+        END_NAMESPACE
+        NAMESPACE Lib
+            NAMESPACE Impl
+                FUNCTION hidden : INT
+                    hidden := 1;
+                END_FUNCTION
+            END_NAMESPACE
+            FUNCTION api : INT
+                api := Impl.hidden();
+            END_FUNCTION
+            NAMESPACE Deep.Er
+                FUNCTION api2 : INT
+                    api2 := Impl.hidden() * 10;
+                END_FUNCTION
+            END_NAMESPACE
+        END_NAMESPACE
+        FUNCTION top : INT
+            top := Impl.hidden();
+        END_FUNCTION
+        FUNCTION test : INT
+            test := Lib.api() * 100 + Lib.Deep.Er.api2() + top();
+        END_FUNCTION
+    "#;
+    let wasm = compile_to_wasm(&mut with_db, source);
+    let result: i32 = super::execute_wasm(&wasm, "test", ());
+    assert_eq!(result, 112, "1 (Lib.Impl) * 100 + 10 (still Lib.Impl two levels down) + 2 (top-level Impl)");
+}

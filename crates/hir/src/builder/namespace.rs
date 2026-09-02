@@ -81,6 +81,7 @@ impl<'db> SemanticIndexBuilder<'db> {
         let result = NamespaceDecl::new(
             self.db,
             *path,
+            nested.internal.is_some(),
             pous.clone(),
             namespaces,
             nested.into(),

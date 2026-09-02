@@ -3,10 +3,7 @@ use db::WorkspaceDataBase;
 use ide_diagnostic::{ErrorCode, IdeDiagnostic, diag};
 
 use crate::{
-    CallSite,
-    HirNodeInfo,
-    check::errors::ToIdeDiagnostic,
-    hir_ty::resolver::visibility::SameNamespaceResult,
+    CallSite, HirNodeInfo, check::errors::ToIdeDiagnostic, hir_def::namespace::NamespaceDecl, hir_ty::resolver::visibility::SameNamespaceResult,
 };
 
 #[derive(Debug, Clone, PartialEq, Eq, salsa::Update)]
@@ -39,6 +36,12 @@ pub enum VisibilityError<'db> {
         site: CallSite<'db>,
         keyword: &'static str,
     },
+    /// An item reached through a `NAMESPACE INTERNAL` from outside its
+    /// enclosing namespace, or a USING of one.
+    InternalNamespace {
+        call_site: CallSite<'db>,
+        namespace: NamespaceDecl<'db>,
+    },
 }
 
 impl ErrorCode for VisibilityError<'_> {
@@ -50,6 +53,7 @@ impl ErrorCode for VisibilityError<'_> {
             Self::TestOnly { .. } => "E0404",
             Self::PrivateFunction { .. } => "E0405",
             Self::SpecifierNotOnFunction { .. } => "E0406",
+            Self::InternalNamespace { .. } => "E0407",
         }
     }
 
@@ -100,6 +104,28 @@ impl<'db> ToIdeDiagnostic<'db> for VisibilityError<'db> {
                     "declared PRIVATE here".to_string(),
                     target.get_scope_id(db).file(db),
                     target.get_span(db),
+                ));
+                diag
+            }
+            VisibilityError::InternalNamespace {
+                call_site,
+                namespace,
+            } => {
+                let mut diag = diag()
+                    .message(format!(
+                        "can not access INTERNAL namespace '{}'",
+                        namespace.path(db).to_string(db)
+                    ))
+                    .severity(DiagnosticSeverity::ERROR)
+                    .desc(self)
+                    .range(
+                        crate::denormalize(db, file, &call_site.get_span(db)).unwrap_or_default(),
+                    )
+                    .call();
+                diag.with_related(ide_diagnostic::Related::new(
+                    "declared INTERNAL here".to_string(),
+                    namespace.scope_id(db).file(db),
+                    CallSite::new(namespace.scope_id(db), namespace.name_id(db)).get_span(db),
                 ));
                 diag
             }

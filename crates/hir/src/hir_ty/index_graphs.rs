@@ -150,6 +150,31 @@ pub fn namespace_index<'db>(
     result
 }
 
+/// A written namespace path, made absolute from where it was written: the
+/// enclosing namespaces are tried innermost first (`Impl` inside `NAMESPACE
+/// Lib` means `Lib.Impl`), then the path as written. The first spelling any
+/// declaration answers to wins; a path nobody declares comes back as
+/// written, so the caller's "not found" report names what the user typed.
+pub fn absolute_namespace_path<'db>(
+    db: &'db dyn WorkspaceDataBase,
+    scope: crate::hir_def::scope::ScopeId<'db>,
+    written: NamespacePath,
+) -> NamespacePath {
+    let mut enclosing = crate::hir_ty::resolver::name::enclosing_namespace_path(db, scope)
+        .map(|p| p.fragments(db).clone())
+        .unwrap_or_default();
+    while !enclosing.is_empty() {
+        let mut candidate = enclosing.clone();
+        candidate.extend(written.fragments(db).iter().copied());
+        let candidate = NamespacePath::new(db, candidate);
+        if !namespace_index(db, candidate).is_empty() {
+            return candidate;
+        }
+        enclosing.pop();
+    }
+    written
+}
+
 /// Returns the canonical POU for a given name within a namespace path.
 #[tracing::instrument(skip(db))]
 pub fn namespace_pou_index<'db>(

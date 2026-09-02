@@ -2265,6 +2265,26 @@ END_FUNCTION
             lint_rule: None,
         },
         ErrorExample {
+            code: "E0407",
+            category: "Visibility",
+            title: "Internal namespace accessed from outside",
+            description: "A NAMESPACE INTERNAL is reachable only from inside the namespace that encloses it, nested namespaces included, on its own side of the library line. A USING of one is refused at the USING. At the top level the enclosing namespace is the root, so INTERNAL there means this library only.",
+            sources: &[r#"
+NAMESPACE Lib
+    NAMESPACE INTERNAL Impl
+        FUNCTION hidden : INT
+            hidden := 1;
+        END_FUNCTION
+    END_NAMESPACE
+END_NAMESPACE
+
+FUNCTION use : INT
+    use := Lib.Impl.hidden();
+END_FUNCTION
+"#],
+            lint_rule: None,
+        },
+        ErrorExample {
             code: "E0501",
             category: "Inheritance",
             title: "SUPER() body not valid here",
