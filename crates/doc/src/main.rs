@@ -21,7 +21,8 @@ use std::path::{Path, PathBuf};
 
 use db::RootDatabase;
 
-use crate::highlight::{StHighlighter, escape};
+use crate::highlight::{Mark, StHighlighter, escape, mark_html};
+use crate::render::DiagSpan;
 use crate::site::{DiagCategory, Page, one_line, strip_ansi, write};
 
 struct DiagEntry {
@@ -32,6 +33,7 @@ struct DiagEntry {
     sources: &'static [&'static str],
     report_html: String,
     report_text: String,
+    spans: Vec<DiagSpan>,
 }
 
 fn json_escape(s: &str) -> String {
@@ -69,7 +71,7 @@ fn main() {
     for ex in &examples {
         eprint!("  {}...", ex.code);
         let mut db = RootDatabase::default();
-        let ansi = render::compile_and_render(&mut db, ex.sources, ex.lint_rule);
+        let (ansi, spans) = render::compile_and_render(&mut db, ex.sources, ex.lint_rule);
         produced.push((ex.code, verify::codes_in_output(&ansi)));
         entries.push(DiagEntry {
             code: ex.code,
@@ -79,6 +81,7 @@ fn main() {
             sources: ex.sources,
             report_html: render::ansi_to_html_fragment(&ansi),
             report_text: strip_ansi(&ansi),
+            spans,
         });
         eprintln!(" ok");
     }
@@ -173,110 +176,107 @@ fn main() {
     fs::write(crate_dir.join("diagnostics.json"), &json).unwrap();
     write(&out_dir, "diagnostics.json", &json);
 
-    // Diagnostics index.
+    // The reference: one page for humans, with a sidebar, a search box and
+    // the compiler's own markers on every example; a Markdown twin per
+    // category and per code for agents.
     {
+        let mut side = String::from(
+            "<nav class=\"side\" aria-label=\"Diagnostics\">\n<input id=\"search\" type=\"search\" placeholder=\"E0301, duplicate, … (/)\" autocomplete=\"off\">\n",
+        );
         let mut body = String::new();
-        body.push_str("<h1>Diagnostics</h1>\n<p class=\"lede\">Every code the compiler and the linter can report, each with an example that produces it. The generator runs every example before publishing, so a page here never disagrees with the binary.</p>\n");
-        body.push_str("<p>The same data as <a href=\"/diagnostics.json\">JSON</a>, which <code>rk explain &lt;code&gt;</code> embeds.</p>\n");
-        body.push_str("<div class=\"tablewrap\"><table><thead><tr><th>Category</th><th>Codes</th><th>Markdown</th></tr></thead><tbody>\n");
-        for c in &categories {
-            body.push_str(&format!(
-                "<tr><td><a href=\"/diagnostics/{s}/\">{n}</a></td><td>{k}</td><td><a href=\"/diagnostics/{s}.md\">{s}.md</a></td></tr>\n",
-                s = c.slug, n = escape(&c.name), k = c.count
-            ));
-        }
-        body.push_str("</tbody></table></div>\n");
-        let mut md = String::from(
+        let mut index_md = String::from(
             "# Diagnostics\n\nEvery code the compiler and the linter can report, each with a compiler-verified example.\n\n",
         );
         for c in &categories {
-            md.push_str(&format!(
+            side.push_str(&format!(
+                "<details open data-cat=\"{s}\"><summary>{n}</summary>\n",
+                s = c.slug,
+                n = escape(&c.name)
+            ));
+            body.push_str(&format!(
+                "<h1 class=\"category-heading\" id=\"cat-{s}\" data-cat=\"{s}\">{n}</h1>\n",
+                s = c.slug,
+                n = escape(&c.name)
+            ));
+            let mut md = format!("# Diagnostics: {}\n\n", c.name);
+            for e in &by_category[c.name.as_str()] {
+                side.push_str(&format!(
+                    "<a href=\"#{code}\" data-code=\"{code}\">{code}</a>\n",
+                    code = e.code
+                ));
+                let text = format!("{} {} {}", e.code, e.title, e.description).to_lowercase();
+                body.push_str(&format!(
+                    "<section class=\"entry\" id=\"{code}\" data-cat=\"{cat}\" data-text=\"{text}\">\n<h2><a href=\"#{code}\">{code}</a> {title}</h2>\n<p class=\"description\">{desc}</p>\n",
+                    code = e.code, cat = c.slug, text = escape(&text), title = escape(e.title), desc = escape(e.description)
+                ));
+                let mut entry_md = format!("## {} {}\n\n{}\n\n", e.code, e.title, e.description);
+                for (i, s) in e.sources.iter().enumerate() {
+                    let s = s.trim_matches('\n');
+                    let marks: Vec<Mark> = e
+                        .spans
+                        .iter()
+                        .filter(|d| d.source_idx == i && d.start < s.len())
+                        .map(|d| Mark {
+                            start: d.start,
+                            end: d.end.min(s.len()),
+                            class: d.severity.to_string(),
+                            title: escape(&d.message),
+                            popup: popup_html(d),
+                        })
+                        .collect();
+                    body.push_str(&format!(
+                        "<div class=\"codewrap\"><pre><code class=\"language-iecst\">{}\n</code></pre></div>\n",
+                        mark_html(&highlighter.html(s), &marks)
+                    ));
+                    entry_md.push_str(&format!("```iecst\n{s}\n```\n\n"));
+                }
+                body.push_str(&format!(
+                    "<h3>Compiler output</h3>\n<pre class=\"output\">{}</pre>\n</section>\n",
+                    e.report_html
+                ));
+                entry_md.push_str(&format!(
+                    "Compiler output:\n\n```\n{}```\n\n",
+                    e.report_text
+                ));
+                let (_, rest) = entry_md.split_once("\n\n").unwrap();
+                write(
+                    &out_dir,
+                    &format!("diagnostics/{}.md", e.code),
+                    &format!("# {} {}\n\n{}", e.code, e.title, rest),
+                );
+                md.push_str(&entry_md);
+            }
+            side.push_str("</details>\n");
+            write(&out_dir, &format!("diagnostics/{}.md", c.slug), &md);
+            index_md.push_str(&format!(
                 "- [{}]({}/diagnostics/{}.md): {} codes\n",
                 c.name, base_url, c.slug, c.count
             ));
         }
-        write(&out_dir, "diagnostics/index.md", &md);
+        side.push_str("</nav>\n");
+        let page = format!(
+            "<h1>Diagnostics</h1>\n<p class=\"lede\">Every code the compiler and the linter can report, each with the example that produces it and the compiler's own output. Hover a marked range for the message. The generator runs every example before publishing, so this page never disagrees with the binary.</p>\n<p>The same data as <a href=\"/diagnostics.json\">JSON</a>, which <code>rk explain &lt;code&gt;</code> embeds.</p>\n<div class=\"ref\">\n{side}<div>\n{body}</div>\n</div>\n<a id=\"top\" href=\"#\">top</a>\n"
+        );
+        write(&out_dir, "diagnostics/index.md", &index_md);
         write(
             &out_dir,
             "diagnostics/index.html",
-            &site::shell(
+            &site::shell_with(
                 &Page {
                     title: "Diagnostics",
                     description: "Every diagnostic code rk reports, with compiler-verified examples.",
                     path: "/diagnostics/",
                     md: Some("/diagnostics/index.md"),
                     eyebrow: "reference",
-                    body: &body,
+                    body: &page,
+                    wide: true,
                 },
                 &base_url,
+                site::REFERENCE_JS,
             ),
         );
         sitemap.push("/diagnostics/".into());
         twins.push(("/diagnostics/".into(), "/diagnostics/index.md".into()));
-    }
-
-    // One page per category, anchors per code, a Markdown twin per category
-    // and per code.
-    for c in &categories {
-        let mut body = format!("<h1>{}</h1>\n", escape(&c.name));
-        let mut md = format!("# Diagnostics: {}\n\n", c.name);
-        for e in &by_category[c.name.as_str()] {
-            body.push_str(&format!(
-                "<section class=\"entry\" id=\"{code}\">\n<h2><a href=\"#{code}\">{code}</a> {title}</h2>\n<p class=\"description\">{desc}</p>\n",
-                code = e.code, title = escape(e.title), desc = escape(e.description)
-            ));
-            let mut entry_md = format!("## {} {}\n\n{}\n\n", e.code, e.title, e.description);
-            for s in e.sources {
-                let s = s.trim_matches('\n');
-                body.push_str(&format!(
-                    "<pre><code class=\"language-iecst\">{}\n</code></pre>\n",
-                    highlighter.html(s)
-                ));
-                entry_md.push_str(&format!("```iecst\n{s}\n```\n\n"));
-            }
-            body.push_str(&format!(
-                "<h3>Compiler output</h3>\n<pre class=\"output\">{}</pre>\n</section>\n",
-                e.report_html
-            ));
-            entry_md.push_str(&format!(
-                "Compiler output:\n\n```\n{}```\n\n",
-                e.report_text
-            ));
-            write(
-                &out_dir,
-                &format!("diagnostics/{}.md", e.code),
-                &format!(
-                    "# {} {}\n\n{}",
-                    e.code,
-                    e.title,
-                    &entry_md[entry_md.find("\n\n").unwrap() + 2..]
-                ),
-            );
-            md.push_str(&entry_md);
-        }
-        let html_path = format!("/diagnostics/{}/", c.slug);
-        let md_path = format!("/diagnostics/{}.md", c.slug);
-        write(&out_dir, &md_path, &md);
-        write(
-            &out_dir,
-            &format!("diagnostics/{}/index.html", c.slug),
-            &site::shell(
-                &Page {
-                    title: &format!("{} diagnostics", c.name),
-                    description: &format!(
-                        "The {} diagnostics rk reports, with compiler-verified examples.",
-                        c.name.to_lowercase()
-                    ),
-                    path: &html_path,
-                    md: Some(&md_path),
-                    eyebrow: "diagnostics",
-                    body: &body,
-                },
-                &base_url,
-            ),
-        );
-        sitemap.push(html_path.clone());
-        twins.push((html_path, md_path));
     }
 
     // Skills: raw files copied byte-identical, a rendered page beside each.
@@ -320,6 +320,7 @@ fn main() {
                     md: Some(&md_path),
                     eyebrow: &format!("skill · {}", skill.group()),
                     body: &body,
+                    wide: false,
                 },
                 &base_url,
             ),
@@ -352,6 +353,7 @@ fn main() {
                         md: Some(&md_path),
                         eyebrow: "reference",
                         body: &body,
+                        wide: false,
                     },
                     &base_url,
                 ),
@@ -405,6 +407,7 @@ fn main() {
                     md: Some("/skills/index.md"),
                     eyebrow: "documentation",
                     body: &body,
+                    wide: false,
                 },
                 &base_url,
             ),
@@ -421,7 +424,7 @@ fn main() {
 <p class="lede"><strong>rk</strong> compiles IEC 61131-3 Structured Text to WebAssembly. One binary checks, tests, formats and compiles a workspace, and deploys the result to a controller. The documentation is a set of <a href="https://agentskills.io">Agent Skills</a>: an agent loads the one its task needs, and the compiler has run every example on this site before it was published.</p>
 <h2>Install the skills</h2>
 <pre><code>{install}</code></pre>
-<p>Works with any agent that reads the Agent Skills format. One skill: <code>npx skills add {base_url}/skills/programming-st/SKILL.md</code>. Every skill is also a plain file at <code>/skills/&lt;name&gt;/SKILL.md</code>.</p>
+<p>Works with any agent that reads the Agent Skills format. One skill: <code>npx skills add {base_url}/skills/programming-st/SKILL.md</code>. Every skill is also a plain file at <code>/skills/&lt;name&gt;/SKILL.md</code>. New here? <a href="/skills/getting-started/">getting-started</a> is the first one to read.</p>
 {list}
 <h2>Diagnostics</h2>
 <p>{codes} codes, one page per <a href="/diagnostics/">category</a>, each entry with the example that produces it and the compiler's own output. The same data as <a href="/diagnostics.json">JSON</a>, which <code>rk explain</code> embeds.</p>
@@ -431,6 +434,7 @@ fn main() {
 <li><a href="/llms.txt">/llms.txt</a> indexes everything; <a href="/llms-full.txt">/llms-full.txt</a> is every skill in one file, with its token count in the header.</li>
 <li><a href="/mcp">/mcp</a> is a read-only MCP server: <code>explain_diagnostic</code>, <code>search_diagnostics</code>, <code>list_skills</code>, <code>read_skill</code>. No authentication.</li>
 <li><a href="/robots.txt">robots.txt</a> allows every agent and states <code>Content-Signal: search=yes, ai-input=yes, ai-train=yes</code>.</li>
+<li>Discovery files under <a href="/.well-known/api-catalog">/.well-known/</a>: the API catalog (RFC 9727), the <a href="/.well-known/mcp/server-card.json">MCP server card</a>, and the <a href="/.well-known/agent-skills/index.json">agent-skills index</a> with a digest per skill.</li>
 <li>Nothing here needs JavaScript to read.</li>
 </ul>
 "#,
@@ -462,6 +466,7 @@ fn main() {
                     md: Some("/index.md"),
                     eyebrow: "structured text · webassembly",
                     body: &body,
+                    wide: false,
                 },
                 &base_url,
             ),
@@ -484,6 +489,19 @@ fn main() {
         &site::sitemap_xml(&base_url, &sitemap),
     );
     write(&out_dir, "_headers", &site::headers_file(&twins));
+    write(
+        &out_dir,
+        ".well-known/agent-skills/index.json",
+        &site::agent_skills_index(&skills),
+    );
+    let card = site::mcp_server_card(&base_url);
+    write(&out_dir, ".well-known/mcp/server-card.json", &card);
+    write(&out_dir, ".well-known/mcp.json", &card);
+    write(
+        &out_dir,
+        ".well-known/api-catalog",
+        &site::api_catalog(&base_url),
+    );
 
     // The archive `npx skills add <url>` installs from.
     {
@@ -506,9 +524,40 @@ fn main() {
     );
 }
 
+/// What the old reference showed on hover: the message, the code and its
+/// category, then notes, related locations and fixes.
+fn popup_html(d: &DiagSpan) -> String {
+    let mut h = escape(&d.message);
+    if let Some(code) = &d.code {
+        h.push_str(&format!(
+            " <span class=\"source\">rk(<span class=\"code\">{}</span>)",
+            escape(code)
+        ));
+        if let Some(desc) = &d.code_desc {
+            h.push_str(&format!(" - {}", escape(desc)));
+        }
+        h.push_str("</span>");
+    }
+    for n in &d.notes {
+        h.push_str(&format!("<span class=\"note\">Note: {}</span>", escape(n)));
+    }
+    for (msg, idx, line, col) in &d.related {
+        h.push_str(&format!("<span class=\"related\"><span class=\"loc\">example{idx}.st({line}, {col}):</span> {}</span>", escape(msg)));
+    }
+    for f in &d.fixes {
+        h.push_str(&format!("<span class=\"fix\">Help: {}</span>", escape(f)));
+    }
+    h
+}
+
 fn skill_list_html(skills: &[skills::Skill]) -> String {
     let mut body = String::new();
     for (group, heading, blurb) in [
+        (
+            "getting",
+            "Start here",
+            "Install <code>rk</code>, make a workspace, run the loop once.",
+        ),
         ("cli", "Toolchain", "One skill per <code>rk</code> command."),
         (
             "programming",

@@ -15,6 +15,8 @@ interface Env {
 }
 
 const CONTENT_SIGNAL = "search=yes, ai-input=yes, ai-train=yes";
+// RFC 9727: every response points at the catalog of machine endpoints.
+const API_CATALOG_LINK = '</.well-known/api-catalog>; rel="api-catalog"';
 
 /** The Markdown twin of an HTML page, by the site's naming convention. */
 function markdownTwin(pathname: string): string | null {
@@ -173,6 +175,7 @@ export default {
       const response = await handler(request, env, ctx);
       const headers = new Headers(response.headers);
       headers.set("Content-Signal", CONTENT_SIGNAL);
+      headers.append("Link", API_CATALOG_LINK);
       return new Response(response.body, { status: response.status, headers });
     }
 
@@ -193,6 +196,7 @@ export default {
         if (html.ok) {
           headers.set("x-original-tokens", String(tokens(await html.text())));
         }
+        headers.append("Link", API_CATALOG_LINK);
         return new Response(body, { status: 200, headers });
       }
     }
@@ -200,6 +204,9 @@ export default {
     const response = await env.ASSETS.fetch(request);
     const headers = new Headers(response.headers);
     headers.set("Content-Signal", CONTENT_SIGNAL);
+    if (url.pathname === "/.well-known/api-catalog") {
+      headers.set("Content-Type", "application/linkset+json");
+    }
     if (twin) {
       // `_headers` may already have set these on an asset response.
       headers.set("Link", `<${twin}>; rel="alternate"; type="text/markdown"`);
@@ -211,6 +218,9 @@ export default {
       headers.set("Content-Type", "text/markdown; charset=utf-8");
     } else if (url.pathname.endsWith(".txt")) {
       headers.set("Content-Type", "text/plain; charset=utf-8");
+    }
+    if (!(headers.get("Link") ?? "").includes('rel="api-catalog"')) {
+      headers.append("Link", API_CATALOG_LINK);
     }
     return new Response(response.body, { status: response.status, headers });
   },

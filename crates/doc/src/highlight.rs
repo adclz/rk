@@ -63,27 +63,37 @@ impl StHighlighter {
             return escape(source);
         };
         let mut out = String::with_capacity(source.len() * 2);
-        let mut open = 0usize;
+        // A literal nests captures with the same class (a `numeric_literal`
+        // around an `int_literal`); the inner one adds nothing, so it is
+        // recorded as `None` and never written.
+        let mut open: Vec<Option<usize>> = Vec::new();
         for event in events {
             match event {
                 Ok(HighlightEvent::Source { start, end }) => {
                     out.push_str(&escape(&source[start..end]));
                 }
                 Ok(HighlightEvent::HighlightStart(h)) => {
+                    if open.last().copied().flatten() == Some(h.0) {
+                        open.push(None);
+                        continue;
+                    }
                     out.push_str("<span class=\"");
                     out.push_str(&self.classes[h.0]);
                     out.push_str("\">");
-                    open += 1;
+                    open.push(Some(h.0));
                 }
                 Ok(HighlightEvent::HighlightEnd) => {
-                    out.push_str("</span>");
-                    open -= 1;
+                    if open.pop().flatten().is_some() {
+                        out.push_str("</span>");
+                    }
                 }
                 Err(_) => return escape(source),
             }
         }
-        for _ in 0..open {
-            out.push_str("</span>");
+        for h in open.iter().rev() {
+            if h.is_some() {
+                out.push_str("</span>");
+            }
         }
         out
     }
@@ -99,6 +109,108 @@ pub fn escape(s: &str) -> String {
             '"' => out.push_str("&quot;"),
             _ => out.push(ch),
         }
+    }
+    out
+}
+
+/// A range of the source to mark, with what to say about it.
+pub struct Mark {
+    /// Byte offsets into the source the HTML was rendered from.
+    pub start: usize,
+    pub end: usize,
+    /// `error`, `warning` or `info`.
+    pub class: String,
+    /// The message alone, escaped, for the `title` attribute.
+    pub title: String,
+    /// The popup's HTML, already escaped.
+    pub popup: String,
+}
+
+/// Wrap ranges of highlighted HTML in `<mark>` elements without breaking the
+/// highlight spans: at every boundary the open spans are closed, the marks
+/// adjusted, and the spans reopened. `html` must come from [`StHighlighter::html`]
+/// or [`escape`], whose only tags are `<span class="…">`/`</span>` and whose
+/// only entities are `&amp;`, `&lt;`, `&gt;`, `&quot;`.
+pub fn mark_html(html: &str, marks: &[Mark]) -> String {
+    if marks.is_empty() {
+        return html.to_string();
+    }
+    let mut boundaries: Vec<usize> = marks.iter().flat_map(|m| [m.start, m.end]).collect();
+    boundaries.sort_unstable();
+    boundaries.dedup();
+
+    let open_marks = |at: usize| -> Vec<usize> {
+        marks
+            .iter()
+            .enumerate()
+            .filter(|(_, m)| m.start <= at && at < m.end)
+            .map(|(i, _)| i)
+            .collect()
+    };
+
+    let mut out = String::with_capacity(html.len() * 2);
+    let mut spans: Vec<&str> = Vec::new(); // open `<span …>` tags, outermost first
+    let mut active: Vec<usize> = Vec::new(); // open marks, outermost first
+    let mut offset = 0usize; // text offset in the source
+    let mut next_boundary = 0usize;
+    let mut rest = html;
+
+    let sync = |out: &mut String, spans: &Vec<&str>, active: &mut Vec<usize>, offset: usize| {
+        let wanted = open_marks(offset);
+        if *active == wanted {
+            return;
+        }
+        for _ in spans {
+            out.push_str("</span>");
+        }
+        for _ in active.iter() {
+            out.push_str("</mark>");
+        }
+        for &i in &wanted {
+            let m = &marks[i];
+            out.push_str(&format!(
+                "<mark class=\"diag {}\" title=\"{}\"><span class=\"diag-popup\">{}</span>",
+                m.class, m.title, m.popup
+            ));
+        }
+        for tag in spans {
+            out.push_str(tag);
+        }
+        *active = wanted;
+    };
+
+    while !rest.is_empty() {
+        if next_boundary < boundaries.len() && boundaries[next_boundary] == offset {
+            next_boundary += 1;
+            sync(&mut out, &spans, &mut active, offset);
+        }
+        if let Some(tag_end) = rest.strip_prefix('<').map(|r| r.find('>').unwrap()) {
+            let tag = &rest[..tag_end + 2];
+            if tag == "</span>" {
+                spans.pop();
+            } else {
+                spans.push(tag);
+            }
+            out.push_str(tag);
+            rest = &rest[tag_end + 2..];
+            continue;
+        }
+        let (piece, consumed) = if rest.starts_with('&') {
+            let semi = rest.find(';').unwrap();
+            (&rest[..semi + 1], 1)
+        } else {
+            let ch = rest.chars().next().unwrap();
+            (&rest[..ch.len_utf8()], ch.len_utf8())
+        };
+        out.push_str(piece);
+        offset += consumed;
+        rest = &rest[piece.len()..];
+    }
+    // Close whatever a mark left open at the very end, then append the
+    // popups: they sit after the code so they never disturb the columns.
+    sync(&mut out, &spans, &mut active, offset);
+    for _ in &active {
+        out.push_str("</mark>");
     }
     out
 }

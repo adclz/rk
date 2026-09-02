@@ -4,6 +4,8 @@
 
 use std::path::Path;
 
+use sha2::{Digest, Sha256};
+
 use crate::highlight::escape;
 use crate::markdown::estimate_tokens;
 use crate::skills::Skill;
@@ -19,6 +21,8 @@ pub struct Page<'a> {
     pub md: Option<&'a str>,
     pub eyebrow: &'a str,
     pub body: &'a str,
+    /// The reference page: a sidebar beside the content, more room.
+    pub wide: bool,
 }
 
 pub const CSS: &str = r#"
@@ -99,9 +103,100 @@ footer a { color: var(--muted); }
 .hl-comment { color: var(--hl-comment); font-style: italic; }
 .hl-attribute { color: var(--hl-attr); }
 .hl-function, .hl-function-method, .hl-function-call { color: var(--hl-fn); }
+
+/* The reference: sidebar, search, inline markers */
+main.wide { max-width: 1180px; }
+.ref { display: grid; grid-template-columns: 240px minmax(0, 1fr); gap: 3rem; align-items: start; }
+@media (max-width: 860px) { .ref { grid-template-columns: 1fr; } .ref nav.side { position: static; max-height: none; } }
+nav.side { position: sticky; top: 1rem; max-height: calc(100vh - 2rem); overflow-y: auto; font-family: var(--mono); font-size: 0.78rem; scrollbar-width: thin; }
+nav.side input { width: 100%; font: inherit; padding: 0.4rem 0.55rem; border: 1px solid var(--rule); border-radius: 4px; background: var(--paper); color: var(--ink); margin-bottom: 0.9rem; }
+nav.side input:focus-visible { outline: 2px solid var(--link); outline-offset: 1px; }
+nav.side details { margin: 0 0 0.35rem; }
+nav.side summary { cursor: pointer; text-transform: uppercase; letter-spacing: 0.06em; font-size: 0.7rem; color: var(--muted); padding: 0.25rem 0; list-style: none; }
+nav.side summary::-webkit-details-marker { display: none; }
+nav.side summary::before { content: "▸ "; display: inline-block; width: 1em; }
+nav.side details[open] summary::before { content: "▾ "; }
+nav.side a { display: block; color: var(--ink); text-decoration: none; padding: 0.12rem 0 0.12rem 1em; border-left: 2px solid transparent; }
+nav.side a:hover { text-decoration: underline; }
+nav.side a.active { border-left-color: var(--link); color: var(--link); }
+nav.side .hidden, .ref .hidden { display: none; }
+.category-heading { font-family: var(--serif); font-weight: 500; font-size: 1.5rem; margin: 3rem 0 0.5rem; padding-bottom: 0.35rem; border-bottom: 1px solid var(--rule); }
+.category-heading:first-child { margin-top: 0; }
+.ref .entry { margin: 2.25rem 0; }
+.ref pre { overflow: visible; }
+.ref .codewrap { overflow-x: auto; }
+mark.diag { background: none; color: inherit; position: relative; text-decoration: underline wavy var(--red); text-decoration-skip-ink: none; text-underline-offset: 3px; }
+mark.diag.warning { text-decoration-color: var(--yellow); }
+mark.diag.info { text-decoration-color: var(--blue); }
+.diag-popup { display: none; position: absolute; left: 0; top: 1.6em; z-index: 2; min-width: 22rem; max-width: 40rem; white-space: pre-wrap; font-family: var(--mono); font-size: 0.78rem; line-height: 1.45; color: var(--ink); background: var(--paper); border: 1px solid var(--rule); border-radius: 4px; padding: 0.6rem 0.75rem; box-shadow: 0 6px 24px rgba(0,0,0,0.12); text-decoration: none; }
+mark.diag:hover .diag-popup { display: block; }
+.diag-popup .source { color: var(--muted); }
+.diag-popup .code { color: var(--link); }
+.diag-popup .note, .diag-popup .related, .diag-popup .fix { display: block; margin-top: 0.4rem; }
+.diag-popup .loc { color: var(--link); }
+#top { position: fixed; right: 1.25rem; bottom: 1.25rem; font-family: var(--mono); font-size: 0.75rem; padding: 0.35rem 0.6rem; border: 1px solid var(--rule); border-radius: 4px; background: var(--paper); color: var(--muted); text-decoration: none; opacity: 0; transition: opacity 0.15s; }
+#top.visible { opacity: 1; }
+"#;
+
+/// The reference page's behaviour: search that filters the sidebar and the
+/// entries, `/` to focus it, the active entry tracked on scroll, back to top.
+/// Without it the page is still complete: every entry visible, every
+/// category open.
+pub const REFERENCE_JS: &str = r#"
+const search = document.getElementById('search');
+const links = [...document.querySelectorAll('nav.side a[data-code]')];
+const entries = [...document.querySelectorAll('section.entry')];
+const groups = [...document.querySelectorAll('nav.side details')];
+const headings = [...document.querySelectorAll('.category-heading')];
+
+search.addEventListener('input', () => {
+  const q = search.value.trim().toLowerCase();
+  const shown = new Set();
+  for (const e of entries) {
+    const hit = !q || e.dataset.text.includes(q);
+    e.classList.toggle('hidden', !hit);
+    if (hit) shown.add(e.dataset.cat);
+  }
+  for (const a of links) a.classList.toggle('hidden', q && !document.getElementById(a.dataset.code)?.matches(':not(.hidden)'));
+  for (const g of groups) { const on = !q || shown.has(g.dataset.cat); g.classList.toggle('hidden', !on); if (q && on) g.open = true; }
+  for (const h of headings) h.classList.toggle('hidden', q && !shown.has(h.dataset.cat));
+});
+document.addEventListener('keydown', e => {
+  if (e.key === '/' && document.activeElement !== search) { e.preventDefault(); search.focus(); }
+});
+
+let active = null;
+const byCode = Object.fromEntries(links.map(a => [a.dataset.code, a]));
+const seen = new IntersectionObserver(items => {
+  for (const it of items) {
+    if (!it.isIntersecting) continue;
+    const a = byCode[it.target.id];
+    if (!a) continue;
+    active?.classList.remove('active');
+    a.classList.add('active');
+    active = a;
+    if (!search.value) { for (const g of groups) g.open = g.contains(a); }
+    a.scrollIntoView({ block: 'nearest' });
+  }
+}, { rootMargin: '-10% 0px -70% 0px' });
+entries.forEach(e => seen.observe(e));
+
+const top = document.getElementById('top');
+addEventListener('scroll', () => top.classList.toggle('visible', scrollY > 400), { passive: true });
 "#;
 
 pub fn shell(page: &Page, base_url: &str) -> String {
+    shell_with(page, base_url, "")
+}
+
+/// [`shell`] with a script appended before `</main>`; the reference page's.
+pub fn shell_with(page: &Page, base_url: &str, script: &str) -> String {
+    let script = if script.is_empty() {
+        String::new()
+    } else {
+        format!("<script>{script}</script>\n")
+    };
+    let wide = if page.wide { " class=\"wide\"" } else { "" };
     let alternate = page
         .md
         .map(|md| format!("\n  <link rel=\"alternate\" type=\"text/markdown\" href=\"{md}\">"))
@@ -126,7 +221,7 @@ pub fn shell(page: &Page, base_url: &str) -> String {
   <style>{css}</style>
 </head>
 <body>
-<main>
+<main{wide}>
 <nav class="top">
   <a class="brand" href="/">{site}</a>
   <a href="/skills/">skills</a>
@@ -137,12 +232,11 @@ pub fn shell(page: &Page, base_url: &str) -> String {
 <p class="eyebrow">{eyebrow}</p>
 {body}
 <footer>
-  <span>AGPL-3.0-only</span>
   {md_link}
   <a href="/diagnostics.json">diagnostics.json</a>
   <a href="/skills.tar.gz">skills.tar.gz</a>
 </footer>
-</main>
+{script}</main>
 </body>
 </html>
 "#,
@@ -166,9 +260,10 @@ pub struct DiagCategory {
 pub fn llms_txt(base: &str, skills: &[Skill], categories: &[DiagCategory]) -> String {
     let mut s = String::new();
     s.push_str("# rk\n\n");
-    s.push_str("> rk is a compiler and toolchain for IEC 61131-3 Structured Text: it checks, tests, formats, and compiles ST to WebAssembly, and deploys it to a controller. The documentation is a set of Agent Skills whose examples the compiler verifies before publishing.\n\n");
+    s.push_str("> rk is an agent-first platform for industrial automation: a compiler from IEC 61131-3 Structured Text to WebAssembly, a runtime, deployment to controllers, a debugger, Modbus and MQTT, all driven from one CLI. The documentation is a set of Agent Skills whose examples the compiler verifies before publishing.\n\n");
     s.push_str("Every HTML page on this site has a Markdown twin at the URL linked here, and answers `Accept: text/markdown` with it.\n\n");
     for (group, heading) in [
+        ("getting", "Start here"),
         ("cli", "Toolchain skills"),
         ("programming", "Language skills"),
         ("tool", "Tool skills"),
@@ -265,7 +360,7 @@ pub fn sitemap_xml(base: &str, paths: &[String]) -> String {
 /// responses it generates, since `_headers` never applies to those.
 pub fn headers_file(md_twins: &[(String, String)]) -> String {
     let mut s = String::from(
-        "/*\n  Content-Signal: search=yes, ai-input=yes, ai-train=yes\n  X-Content-Type-Options: nosniff\n\n/*.md\n  Content-Type: text/markdown; charset=utf-8\n\n/*.txt\n  Content-Type: text/plain; charset=utf-8\n\n",
+        "/*\n  Content-Signal: search=yes, ai-input=yes, ai-train=yes\n  X-Content-Type-Options: nosniff\n  Link: </.well-known/api-catalog>; rel=\"api-catalog\"\n\n/*.md\n  Content-Type: text/markdown; charset=utf-8\n\n/*.txt\n  Content-Type: text/plain; charset=utf-8\n\n/.well-known/api-catalog\n  Content-Type: application/linkset+json\n\n",
     );
     for (html_path, md_path) in md_twins {
         s.push_str(&format!(
@@ -306,4 +401,97 @@ pub fn write(out: &Path, rel: &str, content: &str) {
         std::fs::create_dir_all(parent).unwrap();
     }
     std::fs::write(&path, content).unwrap_or_else(|e| panic!("write {}: {e}", path.display()));
+}
+
+// ── Well-known discovery files ───────────────────────────────────────────
+//
+// The paths Cloudflare's Agent Readiness scanner looks for, in the shapes
+// its own site publishes. Each is a plain JSON file the generator derives
+// from what the site already knows.
+
+/// `/.well-known/agent-skills/index.json`: every skill with a digest of its
+/// SKILL.md, so a client can verify what it fetched.
+pub fn agent_skills_index(skills: &[Skill]) -> String {
+    let items: Vec<String> = skills
+        .iter()
+        .map(|k| {
+            let digest = Sha256::digest(k.text.as_bytes());
+            format!(
+                "    {{\"name\": \"{}\", \"type\": \"skill-md\", \"description\": \"{}\", \"url\": \"/skills/{}/SKILL.md\", \"digest\": \"sha256:{:x}\"}}",
+                json_escape(&k.name),
+                json_escape(&one_line(&k.description)),
+                k.name,
+                digest
+            )
+        })
+        .collect();
+    format!(
+        "{{\n  \"$schema\": \"https://schemas.agentskills.io/discovery/0.2.0/schema.json\",\n  \"skills\": [\n{}\n  ]\n}}\n",
+        items.join(",\n")
+    )
+}
+
+/// `/.well-known/mcp/server-card.json`: where the MCP server is and what it
+/// speaks. Carries both the fields the scanner reads (`serverInfo`, `url`,
+/// `transport`) and the SEP-2127 ones (`remotes`, protocol versions).
+pub fn mcp_server_card(base: &str) -> String {
+    format!(
+        r#"{{
+  "name": "{name}",
+  "serverInfo": {{ "name": "rk", "version": "1.0.0" }},
+  "title": "rk",
+  "description": "Read-only tools over the rk documentation: explain a diagnostic code, search the diagnostics, list and read the Agent Skills. No authentication.",
+  "version": "1.0.0",
+  "url": "{base}/mcp",
+  "transport": {{ "type": "streamable-http" }},
+  "capabilities": {{ "tools": true }},
+  "supportedProtocolVersions": ["2026-07-28", "2025-11-25", "2025-06-18"],
+  "remotes": [{{ "transport": "streamable-http", "url": "{base}/mcp" }}],
+  "websiteUrl": "{base}/",
+  "authentication": {{ "type": "none" }}
+}}
+"#,
+        name = reverse_dns(base),
+    )
+}
+
+/// `/.well-known/api-catalog` (RFC 9727): a linkset naming the machine
+/// endpoints and the documents that describe them.
+pub fn api_catalog(base: &str) -> String {
+    format!(
+        r#"{{
+  "linkset": [
+    {{
+      "anchor": "{base}/mcp",
+      "service-desc": [{{ "href": "{base}/.well-known/mcp/server-card.json", "type": "application/json" }}],
+      "service-doc": [{{ "href": "{base}/llms.txt", "type": "text/markdown" }}],
+      "status": [{{ "href": "{base}/mcp" }}]
+    }},
+    {{
+      "anchor": "{base}/diagnostics.json",
+      "service-desc": [{{ "href": "{base}/diagnostics.json", "type": "application/json" }}],
+      "service-doc": [{{ "href": "{base}/diagnostics/index.md", "type": "text/markdown" }}]
+    }},
+    {{
+      "anchor": "{base}/skills.tar.gz",
+      "service-desc": [{{ "href": "{base}/.well-known/agent-skills/index.json", "type": "application/json" }}],
+      "service-doc": [{{ "href": "{base}/skills/index.md", "type": "text/markdown" }}]
+    }}
+  ]
+}}
+"#
+    )
+}
+
+/// `rk.example` becomes `example.rk`, the namespace an MCP card carries.
+fn reverse_dns(base: &str) -> String {
+    let host = base.split("://").nth(1).unwrap_or(base);
+    let host = host.split([':', '/']).next().unwrap_or(host);
+    let mut parts: Vec<&str> = host.split('.').collect();
+    parts.reverse();
+    format!("{}/docs", parts.join("."))
+}
+
+fn json_escape(s: &str) -> String {
+    s.replace('\\', "\\\\").replace('"', "\\\"")
 }

@@ -49,11 +49,6 @@
 (ltod_type_name) @type.builtin
 (l_dt_type_name) @type.builtin
 (multibits_type_name) @type.builtin
-(bool_name) @type.builtin
-(char_name) @type.builtin
-(int_name) @type.builtin
-(real_name) @type.builtin
-(string_name) @type.builtin
 
 (line_comment) @comment
 (c_style_comment) @comment
@@ -63,19 +58,10 @@
 (int_literal) @number
 (real_literal) @number
 (numeric_literal) @number
-(signed_int) @number
-(unsigned_int) @number
-(binary_int) @number
-(octal_int) @number
-(hex_int) @number
 (time_literal) @number
 (date_literal) @number
-(duration) @number
 (bool_literal) @constant.builtin
 (char_literal) @string
-(char_str) @string
-(s_byte_char_str) @string
-(d_byte_char_str) @string
 
 (func_decl name: (identifier) @function)
 (fb_decl name: (identifier) @function)

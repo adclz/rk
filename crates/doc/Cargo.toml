@@ -26,3 +26,4 @@ tree-sitter-rk = { version = "0.1.0", path = "../tree-sitter" }
 serde_json.workspace = true
 flate2 = "1.1.10"
 tar = "0.4.46"
+sha2 = "0.10"
