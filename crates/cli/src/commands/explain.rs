@@ -26,7 +26,7 @@ pub fn run_explain(code: &str) -> CliResult<()> {
     let entries: Vec<Entry> = serde_json::from_str(REFERENCE)
         .map_err(|e| CliError::Message(format!("malformed diagnostics reference: {e}")))?;
 
-    let needle = code.trim().to_ascii_uppercase();
+    let needle = normalize_code(code);
     let Some(entry) = entries.into_iter().find(|e| e.code == needle) else {
         return Err(CliError::Message(format!(
             "unknown diagnostic code '{}'; codes look like E0301 or L0002",
@@ -40,9 +40,29 @@ pub fn run_explain(code: &str) -> CliResult<()> {
     Ok(())
 }
 
+/// The code as the reference spells it, from any way a user pastes it
+/// (`[E0301]` included).
+fn normalize_code(code: &str) -> String {
+    let code = code.trim();
+    let code = code
+        .strip_prefix('[')
+        .and_then(|c| c.strip_suffix(']'))
+        .unwrap_or(code);
+    code.trim().to_ascii_uppercase()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// Whatever a report prints, a user can paste back.
+    #[test]
+    fn a_code_resolves_however_it_was_pasted() {
+        for spelled in ["E0301", "e0301", " E0301 ", "[E0301]", "[ e0301 ]"] {
+            assert_eq!(normalize_code(spelled), "E0301", "{spelled:?}");
+        }
+        assert_eq!(normalize_code("[E0301"), "[E0301", "an unmatched bracket is left alone");
+    }
 
     /// The embedded artifact must parse and cover the codes explain promises.
     #[test]
