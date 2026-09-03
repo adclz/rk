@@ -192,18 +192,20 @@ pub fn load_workspace(db: &mut RootDatabase, path: &Path) -> Vec<Result<File, St
 
     let parsed: Vec<_> = paths
         .into_par_iter()
-        .map(|p| read_and_parse(&p, parsers))
+        .map(|p| (read_and_parse(&p, parsers), p))
         .collect();
 
     parsed
         .into_iter()
-        .map(|result| match result {
+        .map(|(result, path)| match result {
             Ok((url, document)) => {
                 let file = File::builder(url.clone(), parsers, document, None).new(db);
                 db.workspace_files.insert(url, file);
                 Ok(file)
             }
-            Err(e) => Err(e.to_string()),
+            // The path travels with the error: a workspace of many files
+            // cannot otherwise tell which one it could not read.
+            Err(e) => Err(format!("{}: {e}", path.display())),
         })
         .collect()
 }

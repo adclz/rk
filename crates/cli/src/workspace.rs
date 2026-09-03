@@ -94,6 +94,9 @@ pub fn init_db(
         return None;
     }
 
+    // A file that cannot be read is not a file with no diagnostics: the
+    // command fails, naming the file.
+    let mut unreadable = false;
     for result in &results {
         match result {
             Ok(file) => {
@@ -101,8 +104,14 @@ pub fn init_db(
                     eprintln!("  loaded {}", file.url(&db));
                 }
             }
-            Err(e) => ui::error(format!("failed to load: {e}")),
+            Err(e) => {
+                ui::error(format!("failed to load {e}"));
+                unreadable = true;
+            }
         }
+    }
+    if unreadable {
+        return None;
     }
 
     Some(db)
@@ -159,6 +168,57 @@ END_NAMESPACE
             .with_format(crate::cli::OutputFormat::Concise)
             .report_files(&per_file, &mut out);
         (db, counts, String::from_utf8(out).unwrap())
+    }
+
+    /// A file the loader cannot decode fails the whole command.
+    #[test]
+    fn an_unreadable_file_fails_the_load() {
+        disable_env();
+        let (_ws, root) = write_workspace(&[(
+            "good.st",
+            "FUNCTION f : INT\n    f := 1;\nEND_FUNCTION\n",
+        )]);
+        // One byte that is not UTF-8, inside a comment; the rest is fine.
+        std::fs::write(
+            root.join("bad.st"),
+            b"FUNCTION g : INT\n    g := 2; (* caf\xe9 *)\nEND_FUNCTION\n",
+        )
+        .unwrap();
+        assert!(
+            init_db(&root, false, true).is_none(),
+            "an unreadable file must fail the load, not vanish from it"
+        );
+    }
+
+    /// The failure names the file: a workspace of many files cannot otherwise
+    /// tell which one it could not read.
+    #[test]
+    fn a_load_failure_names_the_file() {
+        let (_ws, root) = write_workspace(&[]);
+        std::fs::write(root.join("bad.st"), b"FUNCTION g : INT (* \xff *)\nEND_FUNCTION\n")
+            .unwrap();
+        let mut db = RootDatabase::default();
+        let results = db::loader::load_workspace(&mut db, &root);
+        let err = results
+            .iter()
+            .find_map(|r| r.as_ref().err())
+            .expect("the undecodable file is reported");
+        assert!(
+            err.contains("bad.st"),
+            "the error must carry the path, got: {err}"
+        );
+    }
+
+    /// The control: the same file with the byte removed loads and checks.
+    #[test]
+    fn the_same_file_loads_once_it_is_readable() {
+        disable_env();
+        let (_ws, root) = write_workspace(&[(
+            "bad.st",
+            "FUNCTION g : INT\n    g := 2; (* cafe *)\nEND_FUNCTION\n",
+        )]);
+        let (_db, counts, out) = check(&root);
+        assert!(!counts.has_errors(), "clean once readable:\n{out}");
     }
 
     /// Unset variable: the library is found beside the executable, which for
