@@ -1660,3 +1660,26 @@ END_FUNCTION_BLOCK
     END_FUNCTION_BLOCK
     ");
 }
+
+/// The gate every caller shares. Topiary refused ERROR nodes but formatted a
+/// file whose only defect was a MISSING node, which is what `check` reports
+/// as E0019; both are refused now, and the message says where.
+#[rstest]
+#[case::missing_node(
+    "FUNCTION f : INT\nVAR acc : INT; END_VAR\n    f := acc + INT#some_call(1, 2, 3);\nEND_FUNCTION\n",
+    "line 3"
+)]
+#[case::error_node("FUNCTION f : INT\n    f := ;;; @@ 1\nEND_FUNCTION\n", "line 2")]
+fn an_unparseable_source_is_refused(#[case] source: &str, #[case] where_: &str) {
+    let err = formatter::format_source(source).expect_err("must refuse");
+    let msg = err.to_string();
+    assert!(msg.starts_with("syntax error at "), "{msg}");
+    assert!(msg.contains(where_), "names the line: {msg}");
+}
+
+#[rstest]
+fn a_parseable_source_is_formatted() {
+    let out = formatter::format_source("FUNCTION g : INT  g := 2; END_FUNCTION\n").unwrap();
+    assert!(out.contains("END_FUNCTION"));
+    assert_ne!(out, "FUNCTION g : INT  g := 2; END_FUNCTION\n", "reflowed");
+}

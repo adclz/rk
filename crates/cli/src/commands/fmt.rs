@@ -1,7 +1,5 @@
 use std::path::Path;
 
-use formatter::TOPIARY_LANG;
-use topiary_core::{Operation, formatter};
 use yansi::Paint;
 
 use crate::cli::OutputFormat;
@@ -118,32 +116,14 @@ pub fn run_fmt(workspace: &Path, check: bool, verbose: bool, format: OutputForma
             }
         };
 
-        let mut output = Vec::new();
-        let result = formatter(
-            &mut source.as_bytes(),
-            &mut output,
-            &TOPIARY_LANG,
-            Operation::Format {
-                skip_idempotence: true,
-                tolerate_parsing_errors: false,
-            },
-        );
-
-        match result {
+        // The formatter crate owns the refusal of unparseable input, so the
+        // CLI and the language server cannot drift on what is left untouched.
+        match formatter::format_source(&source) {
             Err(e) => {
                 emit_file(format, "error", rel, Some(e.to_string()), None);
                 errored += 1;
             }
-            Ok(()) => {
-                let output = match String::from_utf8(output) {
-                    Ok(s) => s,
-                    Err(e) => {
-                        emit_file(format, "error", rel, Some(e.to_string()), None);
-                        errored += 1;
-                        continue;
-                    }
-                };
-
+            Ok(output) => {
                 if output == source {
                     unchanged += 1;
                     if verbose {
@@ -230,4 +210,40 @@ fn relative<'a>(path: &'a Path, base: &Path) -> &'a str {
         .unwrap_or(path)
         .to_str()
         .unwrap_or("?")
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn workspace_with(name: &str, source: &str) -> (tempfile::TempDir, std::path::PathBuf) {
+        let ws = tempfile::tempdir().unwrap();
+        let root = ws.path().to_path_buf();
+        std::fs::write(root.join("config.toml"), "[project]\nname = \"T\"\nversion = \"0.0\"\n").unwrap();
+        std::fs::write(root.join(name), source).unwrap();
+        (ws, root)
+    }
+
+    /// A MISSING-node syntax error (E0019) used to be formatted anyway: exit 0,
+    /// "1 formatted", and every POU after the gap indented one level deeper.
+    /// This is the shape an editor's format-on-save produces mid-edit.
+    #[test]
+    fn a_file_with_a_missing_node_is_left_untouched_and_counted_as_an_error() {
+        let source = "FUNCTION f : INT\nVAR acc : INT; END_VAR\n    f := acc + INT#some_call(1, 2, 3);\nEND_FUNCTION\n\nFUNCTION g : INT  g := 2; END_FUNCTION\n";
+        let (_ws, root) = workspace_with("main.st", source);
+        let result = run_fmt(&root, false, false, OutputFormat::Concise);
+        assert!(result.is_err(), "a syntax error must fail the run");
+        let after = std::fs::read_to_string(root.join("main.st")).unwrap();
+        assert_eq!(after, source, "the file must be byte-identical");
+    }
+
+    /// The control: a clean file is still formatted and the run succeeds.
+    #[test]
+    fn a_clean_file_is_still_formatted() {
+        let source = "FUNCTION g : INT  g := 2; END_FUNCTION\n";
+        let (_ws, root) = workspace_with("main.st", source);
+        assert!(run_fmt(&root, false, false, OutputFormat::Concise).is_ok());
+        let after = std::fs::read_to_string(root.join("main.st")).unwrap();
+        assert_ne!(after, source, "the one-line function is reflowed");
+    }
 }

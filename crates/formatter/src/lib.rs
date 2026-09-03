@@ -491,13 +491,27 @@ pub static TOPIARY_LANG: LazyLock<Language> = LazyLock::new(|| Language {
     indent: Some("\t".into()),
 });
 
-pub fn format(db: &impl WorkspaceDataBase, file: File) -> anyhow::Result<Option<Vec<TextEdit>>> {
-    let document = file.document(db);
+/// Format one source text, refusing anything the grammar could not parse.
+///
+/// The one gate for every caller. Topiary's own refusal trips on ERROR nodes
+/// but not on MISSING ones (a token the parser inserted to recover), and it
+/// formatted such a file: one indent level cascaded over every POU after the
+/// gap, on a save that check had already rejected with E0019. `has_error`
+/// covers both kinds.
+pub fn format_source(source: &str) -> anyhow::Result<String> {
+    let mut parser = auto_lsp::tree_sitter::Parser::new();
+    parser.set_language(&tree_sitter_rk::LANGUAGE.into())?;
+    let tree = parser
+        .parse(source, None)
+        .ok_or_else(|| anyhow::anyhow!("could not parse document"))?;
+    if tree.root_node().has_error() {
+        let (line, column, what) = first_syntax_error(tree.root_node());
+        anyhow::bail!("syntax error at line {line}, column {column}: {what}; nothing was written");
+    }
 
     let mut output = vec![];
-
     formatter(
-        &mut document.texter.text.as_bytes(),
+        &mut source.as_bytes(),
         &mut output,
         &TOPIARY_LANG,
         Operation::Format {
@@ -506,8 +520,38 @@ pub fn format(db: &impl WorkspaceDataBase, file: File) -> anyhow::Result<Option<
         },
     )
     .map_err(|e| anyhow::anyhow!("could not format document: {}", e))?;
+    Ok(String::from_utf8(output)?)
+}
 
-    let output = String::from_utf8(output)?;
+/// The first ERROR or MISSING node, as a 1-based line, column, and what it is.
+fn first_syntax_error(node: auto_lsp::tree_sitter::Node<'_>) -> (usize, usize, String) {
+    if node.is_missing() {
+        let p = node.start_position();
+        // An anonymous node's kind is the literal token (`)`, `;`); a named
+        // one's is a grammar rule, which is not a word for the user.
+        let what = match node.is_named() {
+            true => "a token is missing".to_string(),
+            false => format!("missing '{}'", node.kind()),
+        };
+        return (p.row + 1, p.column + 1, what);
+    }
+    if node.is_error() {
+        let p = node.start_position();
+        return (p.row + 1, p.column + 1, "unexpected input".to_string());
+    }
+    let mut cursor = node.walk();
+    for child in node.children(&mut cursor) {
+        if child.has_error() {
+            return first_syntax_error(child);
+        }
+    }
+    let p = node.start_position();
+    (p.row + 1, p.column + 1, "unexpected input".to_string())
+}
+
+pub fn format(db: &impl WorkspaceDataBase, file: File) -> anyhow::Result<Option<Vec<TextEdit>>> {
+    let document = file.document(db);
+    let output = format_source(&document.texter.text)?;
 
     Ok(Some(vec![TextEdit::new(
         auto_lsp::lsp_types::Range {
