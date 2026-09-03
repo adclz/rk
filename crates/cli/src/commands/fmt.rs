@@ -219,7 +219,7 @@ fn collect_st_files_recursive(dir: &Path, files: &mut Vec<std::path::PathBuf>) {
         let path = entry.path();
         if path.is_dir() {
             collect_st_files_recursive(&path, files);
-        } else if path.extension().is_some_and(|ext| ext == "st") {
+        } else if db::loader::is_st_file(&path) {
             files.push(path);
         }
     }

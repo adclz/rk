@@ -211,7 +211,7 @@ fn is_relevant_path(path: &Path) -> bool {
     if path.components().any(|c| c.as_os_str() == "rk_build") {
         return false;
     }
-    path.extension().is_some_and(|ext| ext == "st")
+    db::loader::is_st_file(path)
         || path.file_name().is_some_and(|name| name == "config.toml")
 }
 

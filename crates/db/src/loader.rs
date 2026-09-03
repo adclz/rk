@@ -128,6 +128,13 @@ pub fn resolve_config_file(workspace: &Path) -> Option<PathBuf> {
 
 // --- File discovery ---
 
+/// Whether `path` names a Structured Text source: extension `st` in any
+/// case (`MAIN.ST` is the usual Windows spelling).
+pub fn is_st_file(path: &Path) -> bool {
+    path.extension()
+        .is_some_and(|ext| ext.eq_ignore_ascii_case("st"))
+}
+
 /// Recursively discovers all `.st` files under `path`.
 pub fn find_st_files(path: &Path) -> Vec<PathBuf> {
     let mut files = Vec::new();
@@ -137,7 +144,7 @@ pub fn find_st_files(path: &Path) -> Vec<PathBuf> {
     if let Ok(entries) = std::fs::read_dir(path) {
         for entry in entries.flatten() {
             let entry_path = entry.path();
-            if entry_path.is_file() && entry_path.extension().map(|e| e == "st").unwrap_or(false) {
+            if entry_path.is_file() && is_st_file(&entry_path) {
                 files.push(entry_path);
             } else if entry_path.is_dir() {
                 files.extend(find_st_files(&entry_path));
@@ -238,5 +245,31 @@ pub fn load_libraries(db: &mut RootDatabase) {
             }
             Err(e) => eprintln!("failed to load library file: {}", e),
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn the_extension_matches_in_any_case() {
+        for name in ["main.st", "MAIN.ST", "Main.St", "dir.d/x.sT"] {
+            assert!(is_st_file(Path::new(name)), "{name}");
+        }
+        for name in ["main.stx", "main.txt", "main", "st", "main.st.bak"] {
+            assert!(!is_st_file(Path::new(name)), "{name}");
+        }
+    }
+
+    /// Discovery matches the extension case-insensitively.
+    #[test]
+    fn discovery_finds_an_uppercase_extension() {
+        let dir = tempfile::tempdir().unwrap();
+        std::fs::write(dir.path().join("MAIN.ST"), "FUNCTION f : INT END_FUNCTION").unwrap();
+        std::fs::write(dir.path().join("notes.txt"), "not a source").unwrap();
+        let found = find_st_files(dir.path());
+        assert_eq!(found.len(), 1, "{found:?}");
+        assert!(found[0].ends_with("MAIN.ST"));
     }
 }

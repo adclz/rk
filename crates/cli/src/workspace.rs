@@ -170,6 +170,20 @@ END_NAMESPACE
         (db, counts, String::from_utf8(out).unwrap())
     }
 
+    /// `MAIN.ST` is a source file: discovery matches the extension
+    /// case-insensitively.
+    #[test]
+    fn an_uppercase_extension_is_a_source_file() {
+        disable_env();
+        let (_ws, root) = write_workspace(&[(
+            "MAIN.ST",
+            "FUNCTION f : INT\n    f := not_declared;\nEND_FUNCTION\n",
+        )]);
+        let (_db, counts, out) = check(&root);
+        assert!(counts.has_errors(), "the file was checked and its error reported:\n{out}");
+        assert!(out.contains("not_declared"), "{out}");
+    }
+
     /// A file the loader cannot decode fails the whole command.
     #[test]
     fn an_unreadable_file_fails_the_load() {

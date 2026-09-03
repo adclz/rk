@@ -282,8 +282,7 @@ fn on_notifications(
             } else {
                 changed_watched_files(s, p, |url| {
                     let path = url.to_file_path().ok()?;
-                    let ext = path.extension()?.to_str()?;
-                    (ext == "st").then(|| &*RK_PARSER)
+                    db::loader::is_st_file(&path).then(|| &*RK_PARSER)
                 })?;
             }
 

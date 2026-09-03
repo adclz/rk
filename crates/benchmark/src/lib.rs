@@ -75,7 +75,7 @@ fn collect_st_files(dir: &Path, out: &mut Vec<PathBuf>) {
         let path = entry.unwrap().path();
         if path.is_dir() {
             collect_st_files(&path, out);
-        } else if path.extension().is_some_and(|e| e == "st") {
+        } else if db::loader::is_st_file(&path) {
             out.push(path);
         }
     }
