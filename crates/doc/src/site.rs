@@ -123,13 +123,13 @@ nav.side .hidden, .ref .hidden { display: none; }
 .category-heading { font-family: var(--serif); font-weight: 500; font-size: 1.5rem; margin: 3rem 0 0.5rem; padding-bottom: 0.35rem; border-bottom: 1px solid var(--rule); }
 .category-heading:first-child { margin-top: 0; }
 .ref .entry { margin: 2.25rem 0; }
-.ref pre { overflow: visible; }
-.ref .codewrap { overflow-x: auto; }
-mark.diag { background: none; color: inherit; position: relative; text-decoration: underline wavy var(--red); text-decoration-skip-ink: none; text-underline-offset: 3px; }
+mark.diag { background: none; color: inherit; text-decoration: underline wavy var(--red); text-decoration-skip-ink: none; text-underline-offset: 3px; }
 mark.diag.warning { text-decoration-color: var(--yellow); }
 mark.diag.info { text-decoration-color: var(--blue); }
-.diag-popup { display: none; position: absolute; left: 0; top: 1.6em; z-index: 2; min-width: 22rem; max-width: 40rem; white-space: pre-wrap; font-family: var(--mono); font-size: 0.78rem; line-height: 1.45; color: var(--ink); background: var(--paper); border: 1px solid var(--rule); border-radius: 4px; padding: 0.6rem 0.75rem; box-shadow: 0 6px 24px rgba(0,0,0,0.12); text-decoration: none; }
-mark.diag:hover .diag-popup { display: block; }
+/* Placed by the script from the mark's rectangle, fixed to the viewport, so
+   the example's scroll box neither clips it nor scrolls to fit it. */
+.diag-popup { display: none; position: fixed; z-index: 10; min-width: 22rem; max-width: min(40rem, calc(100vw - 2rem)); white-space: pre-wrap; font-family: var(--mono); font-size: 0.78rem; line-height: 1.45; color: var(--ink); background: var(--paper); border: 1px solid var(--rule); border-radius: 4px; padding: 0.6rem 0.75rem; box-shadow: 0 6px 24px rgba(0,0,0,0.18); text-decoration: none; }
+.diag-popup.open { display: block; }
 .diag-popup .source { color: var(--muted); }
 .diag-popup .code { color: var(--link); }
 .diag-popup .note, .diag-popup .related, .diag-popup .fix { display: block; margin-top: 0.4rem; }
@@ -143,6 +143,7 @@ mark.diag:hover .diag-popup { display: block; }
 /// Without it the page is still complete: every entry visible, every
 /// category open.
 pub const REFERENCE_JS: &str = r#"
+(() => {
 const search = document.getElementById('search');
 const links = [...document.querySelectorAll('nav.side a[data-code]')];
 const entries = [...document.querySelectorAll('section.entry')];
@@ -165,6 +166,8 @@ document.addEventListener('keydown', e => {
   if (e.key === '/' && document.activeElement !== search) { e.preventDefault(); search.focus(); }
 });
 
+// Collapsed until the reader is on a section; the section they are in opens.
+for (const g of groups) g.open = false;
 let active = null;
 const byCode = Object.fromEntries(links.map(a => [a.dataset.code, a]));
 const seen = new IntersectionObserver(items => {
@@ -181,8 +184,24 @@ const seen = new IntersectionObserver(items => {
 }, { rootMargin: '-10% 0px -70% 0px' });
 entries.forEach(e => seen.observe(e));
 
-const top = document.getElementById('top');
-addEventListener('scroll', () => top.classList.toggle('visible', scrollY > 400), { passive: true });
+for (const m of document.querySelectorAll('mark.diag')) {
+  const pop = m.querySelector('.diag-popup');
+  if (!pop) continue;
+  m.removeAttribute('title');
+  m.addEventListener('mouseenter', () => {
+    const r = m.getBoundingClientRect();
+    pop.classList.add('open');
+    const w = pop.offsetWidth, h = pop.offsetHeight;
+    pop.style.left = Math.max(8, Math.min(r.left, innerWidth - w - 8)) + 'px';
+    pop.style.top = (r.bottom + h + 8 <= innerHeight ? r.bottom + 4 : r.top - h - 4) + 'px';
+  });
+  m.addEventListener('mouseleave', () => pop.classList.remove('open'));
+}
+addEventListener('scroll', () => { for (const p of document.querySelectorAll('.diag-popup.open')) p.classList.remove('open'); }, { passive: true });
+
+const topButton = document.getElementById('top');
+addEventListener('scroll', () => topButton.classList.toggle('visible', scrollY > 400), { passive: true });
+})();
 "#;
 
 pub fn shell(page: &Page, base_url: &str) -> String {
