@@ -6,6 +6,24 @@ use db::workspace::Workspace;
 use crate::diagnostics::DiagnosticReporter;
 use crate::ui;
 
+/// Refuse a `--workspace` that names nothing before any command looks
+/// inside: one guard, one message, for all of them.
+pub fn require_workspace_dir(path: &std::path::Path) -> crate::error::CliResult<()> {
+    if !path.exists() {
+        return Err(crate::error::CliError::msg(format!(
+            "workspace path does not exist: {}",
+            path.display()
+        )));
+    }
+    if !path.is_dir() {
+        return Err(crate::error::CliError::msg(format!(
+            "workspace path is not a directory: {}",
+            path.display()
+        )));
+    }
+    Ok(())
+}
+
 /// Load and parse a workspace into a fresh [`RootDatabase`]. Returns `None` (and
 /// reports why on stderr) if the config is invalid, the workspace holds no
 /// `.st` files, or — with `require_config` — it has no `config.toml`. All
@@ -182,6 +200,26 @@ END_NAMESPACE
         let (_db, counts, out) = check(&root);
         assert!(counts.has_errors(), "the file was checked and its error reported:\n{out}");
         assert!(out.contains("not_declared"), "{out}");
+    }
+
+    #[test]
+    fn a_workspace_path_must_be_an_existing_directory() {
+        let ws = tempfile::tempdir().unwrap();
+        assert!(require_workspace_dir(ws.path()).is_ok());
+
+        let text = |r: crate::error::CliResult<()>| match r {
+            Err(crate::error::CliError::Message(m)) => m,
+            other => panic!("expected a message, got {other:?}"),
+        };
+        let missing = ws.path().join("definitely").join("not").join("here");
+        let err = text(require_workspace_dir(&missing));
+        assert!(err.contains("does not exist"), "{err}");
+        assert!(err.contains("not/here"), "names the path: {err}");
+
+        let file = ws.path().join("main.st");
+        std::fs::write(&file, "").unwrap();
+        let err = text(require_workspace_dir(&file));
+        assert!(err.contains("not a directory"), "{err}");
     }
 
     /// A file the loader cannot decode fails the whole command.
