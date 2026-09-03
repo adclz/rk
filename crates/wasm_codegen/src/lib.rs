@@ -1246,16 +1246,11 @@ impl<'a> WasmGen<'a> {
         let prev_floor_tmp =
             crate::mir_cast::DATETIME_FLOOR_TMP.with(|cell| cell.replace(datetime_floor_tmp));
 
-        // IEC 61131-3: VAR_TEMP is fresh at every invocation. Scalar temps are
-        // wasm locals, which the engine zeroes per call — but an AGGREGATE temp
-        // (array/struct/string) lives at a fixed linear-memory address that is
-        // reused across calls, so without an explicit reset the previous
-        // invocation's bytes stay readable and a read-before-write sees the
-        // last scan's data. Zero them on entry, before the body (and before any
-        // initializer statements, which are lowered into the body and must
-        // therefore win).
+        // Automatic storage is fresh at every invocation: wasm locals are zeroed
+        // by the engine, but an aggregate at a fixed address must be reset
+        // before the body, so initializers lowered into it win.
         for local in &func.locals {
-            if local.kind == mir::function::MirLocalKind::Temp
+            if local.var_storage == mir::function::MirVariableStorage::Automatic
                 && let MirStorage::Memory { address, size, .. } = local.storage
                 && size > 0
             {

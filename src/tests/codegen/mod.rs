@@ -30,6 +30,7 @@ mod modulo;
 mod imports;
 mod initializers;
 mod inout;
+mod locals;
 mod instance_initializers;
 mod mir_smoke;
 mod namespaces;
