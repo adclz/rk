@@ -343,8 +343,12 @@ impl<'db> InitExprInferenceResult<'db> {
                 ctx.positions = saved_positions;
                 ctx.overflow_reported = saved_overflow;
 
-                // Struct counts as 1 element in parent array
+                // A struct is one element of the enclosing array, and that
+                // count is checked HERE. It used to be caught by accident: a
+                // scalar field leaked into the enclosing count and fired the
+                // error with the caret on its own literal.
                 ctx.advance(1);
+                self.check_bounds(db, *expr, ctx, ctx.current_pos());
             }
             InitExprWalkStep::Field { expr, value, name } => {
                 expected.walk_init_expr(db, step, place, self);
@@ -366,13 +370,21 @@ impl<'db> InitExprInferenceResult<'db> {
                     );
                 }
 
-                // If field is an array, reset context for it
-                let value_is_array = matches!(field_type.normalize(db), Type::Array(_));
-                if value_is_array {
-                    ctx.reset_for_new_array(Some(field_type));
-                }
+                // Each field walks in its own array context, restored after.
+                // Resetting only for an ARRAY field left a scalar written
+                // after one counting as that array's next element: `n := 1`
+                // behind `v := [4, 5, 6]` was one too many for `v`.
+                let saved_root = ctx.array_root;
+                let saved_positions = ctx.positions.clone();
+                let saved_overflow = ctx.overflow_reported.clone();
+                let own_array = matches!(field_type.normalize(db), Type::Array(_)).then_some(field_type);
+                ctx.reset_for_new_array(own_array);
 
                 self.resolve_step(db, field_type, place, body_ctx, ctx, value);
+
+                ctx.array_root = saved_root;
+                ctx.positions = saved_positions;
+                ctx.overflow_reported = saved_overflow;
             }
             InitExprWalkStep::ConstantExpr { expr, value } => {
                 // Type check the constant expression

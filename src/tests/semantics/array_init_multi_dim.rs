@@ -269,6 +269,27 @@ fn three_dimensional_array(mut with_db: RootDatabase) {
     ");
 }
 
+/// A field written after an array field is not that array's next element.
+/// The walk reset its array context only for an array-typed field, so every
+/// scalar that followed one was counted against it: `n := 1` behind
+/// `v := [4, 5, 6]` was refused as a fourth value, and the rule came out as
+/// "array elements plus following fields must fit the array". Three
+/// elements then two fields is the strongest shape; the other order is the
+/// control that always worked.
+#[rstest]
+fn a_field_after_an_array_field_is_not_an_extra_element(mut with_db: RootDatabase) {
+    let source = r#"
+        TYPE Rec : STRUCT v : ARRAY[0..2] OF INT; n : INT; m : INT; END_STRUCT; END_TYPE
+        FUNCTION Test
+            VAR
+                full  : Rec := (v := [4, 5, 6], n := 1, m := 2);
+                first : Rec := (n := 1, v := [4, 5, 6], m := 2);
+            END_VAR
+        END_FUNCTION
+        "#;
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"");
+}
+
 #[rstest]
 fn array_in_struct_overflow(mut with_db: RootDatabase) {
     // Array inside struct with overflow
@@ -320,11 +341,11 @@ fn array_of_struct_overflow(mut with_db: RootDatabase) {
 
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
     [E0605] Error: invalid array access
-        ,-[ file:///test0.st:11:80 ]
+        ,-[ file:///test0.st:11:70 ]
         |
      11 |                 Base : EngineArray := [(Power := 10), (Power := 20), (Power := 30)];
-        |                                                                                ^|
-        |                                                                                 `-- too many elements in array initializer (expected at most 2)
+        |                                                                      ^^^^^^|^^^^^^
+        |                                                                            `-------- too many elements in array initializer (expected at most 2)
     ----'
     ");
 }
@@ -581,6 +602,21 @@ fn sized_index_of_bracket_row_accepted(mut with_db: RootDatabase) {
         END_FUNCTION
         "#;
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @"");
+}
+
+/// Whether a child is a row is decided from ALL its siblings (`any` bracket
+/// among them), so a repetition beside a plain row is the shape that would
+/// expose that decision misfiring: `2([1,2,3])` is two rows, `[4,5,6]` one
+/// more, nine cells into a 3x3 with no E0213 and no E0605.
+#[rstest]
+fn a_repetition_beside_a_bracket_row(mut with_db: RootDatabase) {
+    let source = r#"
+        TYPE Grid : ARRAY[1..3, 1..3] OF INT; END_TYPE
+        FUNCTION Test
+            VAR Data : Grid := [2([1, 2, 3]), [4, 5, 6]]; END_VAR
+        END_FUNCTION
+        "#;
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"");
 }
 
 /// The nested multi-dim form `[[1,2,3],[4,5,6]]` is the valid IEC spelling
