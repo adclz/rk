@@ -63,7 +63,7 @@ pub struct MirTask {
     pub name: Ident,
     /// How often the task fires, as a count of base ticks
     /// (`interval / common_ticktime`). Always >= 1.
-    pub period_ticks: u32,
+    pub period_ticks: u64,
     /// IEC priority (lower number = more urgent). `None` when PRIORITY is omitted.
     pub priority: Option<u32>,
     /// Program instances this task runs, in declaration order.
@@ -223,7 +223,8 @@ pub fn lower_schedule<'db>(
         .map(|(resource, task, programs)| MirTask {
             resource,
             name: task.name,
-            period_ticks: (task.interval_ns / common) as u32,
+            // As wide as the interval itself: a period never needs narrowing.
+            period_ticks: task.interval_ns / common,
             priority: task.priority,
             programs,
         })

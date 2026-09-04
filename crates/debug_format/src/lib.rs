@@ -476,7 +476,7 @@ pub struct TaskEntry {
     /// execution unit.
     pub resource: String,
     /// Base ticks between runs: the task is due when `tick % period_ticks == 0`.
-    pub period_ticks: u32,
+    pub period_ticks: u64,
     /// IEC priority, lower is more urgent. `None` when PRIORITY was omitted.
     pub priority: Option<u32>,
     /// Program instances, in declaration order.

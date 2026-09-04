@@ -435,6 +435,52 @@ fn scheduler_runs_tasks_at_their_rates_and_persists(mut with_db: db::RootDatabas
     std::fs::remove_file(&path).ok();
 }
 
+/// A period is as wide as the INTERVAL it comes from. The manifest carried it
+/// as 32 bits while the tick counter is 64: a period past 2^32 base ticks
+/// wrapped, and one landing on exactly 2^32 became 0, which the runtime read
+/// as "every tick". This task, declared every 49 days beside a 1ms one, ran
+/// every millisecond, from a program `check` called clean.
+#[rstest]
+fn a_period_past_32_bits_is_carried_whole(mut with_db: db::RootDatabase) {
+    use runtime::{Config, Plc};
+
+    let source = r#"
+        PROGRAM ProgA
+        VAR RETAIN a : INT; END_VAR
+            a := a + 1;
+        END_PROGRAM
+
+        PROGRAM ProgB
+        VAR RETAIN b : INT; END_VAR
+            b := b + 1;
+        END_PROGRAM
+
+        CONFIGURATION Cfg
+            RESOURCE Res ON CPU
+                TASK Fast(INTERVAL := T#1ms, PRIORITY := 1);
+                TASK Rare(INTERVAL := T#49d17h2m47s296ms, PRIORITY := 2);
+                PROGRAM PA WITH Fast : ProgA;
+                PROGRAM PB WITH Rare : ProgB;
+            END_RESOURCE
+        END_CONFIGURATION
+    "#;
+    let (mir, wasm) = compile_to_mir_and_wasm(&mut with_db, source);
+
+    let schedule = mir.schedule.as_ref().expect("schedule");
+    let rare = &schedule.tasks[1];
+    assert_eq!(rare.name.text(&with_db).as_str(), "Rare");
+    assert_eq!(rare.period_ticks, 1 << 32, "49d17h2m47s296ms is exactly 2^32 ticks of 1ms");
+
+    // Retain band holds [a, b] (declaration order), 4 bytes each. Eight ticks:
+    // Fast fires on every one, Rare on tick 0 and not again for 49 days.
+    let mut plc = Plc::load(&wasm, Config::default()).expect("load");
+    plc.run(8).expect("scans");
+    let r = plc.read_retain();
+    let a = i32::from_le_bytes(r[0..4].try_into().unwrap());
+    let b = i32::from_le_bytes(r[4..8].try_into().unwrap());
+    assert_eq!((a, b), (8, 1), "(8, 8) means the period wrapped to every tick");
+}
+
 /// The point of the instance model: two instances of the SAME program type have
 /// independent state. `P1` (fast) and `P2` (slow) share the `Counter` type but
 /// run at different rates, so their retained counters diverge.
