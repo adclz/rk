@@ -126,6 +126,7 @@ static_assertions = { workspace = true }
 rk = { path = "crates/cli" }
 tempfile = "3"
 wat = "1"
+anyhow = "1"
 # purpose: it drags in axum/hyper/clap, which have no business in a PLC.
 debug_format = { workspace = true }
 serde = { workspace = true }
