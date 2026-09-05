@@ -545,7 +545,22 @@ fn validate_config_inst_inits<'db>(
         }
 
         // First step: look up program instance.
-        let first_ident = match &steps[0] {
+        // The standard writes the path RESOURCE.PROGRAM.VARIABLE; a leading
+        // segment naming one of this configuration's resources is skipped.
+        // Only the two-segment form resolved, and the standard's own form
+        // was answered with "no program instance".
+        let names_a_resource = |ident: &SpanIdent<'db>| {
+            let name = ident.ident.caseless(db);
+            config
+                .resources(db)
+                .iter()
+                .any(|r| r.name(db).ident.caseless(db) == name)
+        };
+        let instance_at = match &steps[0] {
+            PathExprWalkStep::Field { ident, .. } if names_a_resource(ident) && steps.len() > 1 => 1,
+            _ => 0,
+        };
+        let first_ident = match &steps[instance_at] {
             PathExprWalkStep::Field { ident, .. } => *ident,
             _ => continue,
         };
@@ -567,7 +582,7 @@ fn validate_config_inst_inits<'db>(
         let mut current_type = Type::Program(prog);
 
         let mut resolved = true;
-        for step in &steps[1..] {
+        for step in &steps[instance_at + 1..] {
             let field_ident = match step {
                 PathExprWalkStep::Field { ident, .. } => *ident,
                 _ => {
@@ -611,10 +626,13 @@ fn validate_config_inst_inits<'db>(
         }
 
         // Step C: validate init expression against the resolved type.
-        if resolved && steps.len() > 1 {
+        if resolved
+            && steps.len() > instance_at + 1
+            && let Some(init) = decl.init
+        {
             let mut init_result = InitExprInferenceResult::new(config.scope_id(db));
             let mut body_ctx = BodyInferenceResult::new(config.scope_id(db));
-            init_result.resolve_init_expr(db, decl.init, &mut body_ctx, current_type);
+            init_result.resolve_init_expr(db, init, &mut body_ctx, current_type);
             errors.extend(init_result.errors);
             errors.extend(body_ctx.errors);
         }

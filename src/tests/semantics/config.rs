@@ -490,6 +490,121 @@ END_CONFIGURATION
     ");
 }
 
+/// A location-only entry is the standard's own form (`STATION_2.P4.FB1.C2 AT
+/// %QB25: BYTE;`), in our corpus. It was refused with a SYNTAX code before the
+/// E0240 that says VAR_CONFIG is not applied: a misleading error on valid
+/// syntax. Now only E0240, as for any other entry.
+#[rstest]
+fn config_inst_init_location_only_is_unsupported_not_a_syntax_error(mut with_db: RootDatabase) {
+    let source = r#"
+PROGRAM MyProg
+    VAR
+        x : BYTE;
+    END_VAR
+END_PROGRAM
+
+CONFIGURATION MyCfg
+    RESOURCE Res ON CPU
+        TASK t1(INTERVAL := T#10ms, PRIORITY := 1);
+        PROGRAM inst1 WITH t1 : MyProg;
+    END_RESOURCE
+
+    VAR_CONFIG
+        inst1.x AT %QB25 : BYTE;
+    END_VAR
+END_CONFIGURATION
+"#;
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
+    [E0240] Error: unsupported configuration element
+        ,-[ file:///test0.st:15:15 ]
+        |
+     15 |         inst1.x AT %QB25 : BYTE;
+        |               |
+        |               `-- VAR_CONFIG is checked but not applied yet, so this value never reaches the instance
+        |
+        | Note: set the value in the program's own VAR declaration instead
+    ----'
+    ");
+}
+
+/// The standard writes the path RESOURCE.PROGRAM.VARIABLE (Table 62,
+/// `STATION_1.P1.COUNT`). Only the two-segment form resolved; the standard's
+/// own form was answered with "no program instance 'STATION_1'".
+#[rstest]
+fn config_inst_init_resource_qualified_path_resolves(mut with_db: RootDatabase) {
+    let source = r#"
+PROGRAM MyProg
+    VAR
+        x : INT;
+    END_VAR
+END_PROGRAM
+
+CONFIGURATION MyCfg
+    RESOURCE Res ON CPU
+        TASK t1(INTERVAL := T#10ms, PRIORITY := 1);
+        PROGRAM inst1 WITH t1 : MyProg;
+    END_RESOURCE
+
+    VAR_CONFIG
+        Res.inst1.x : INT := 42;
+    END_VAR
+END_CONFIGURATION
+"#;
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
+    [E0240] Error: unsupported configuration element
+        ,-[ file:///test0.st:15:19 ]
+        |
+     15 |         Res.inst1.x : INT := 42;
+        |                   |
+        |                   `-- VAR_CONFIG is checked but not applied yet, so this value never reaches the instance
+        |
+        | Note: set the value in the program's own VAR declaration instead
+    ----'
+    ");
+}
+
+/// A leading segment that names neither a resource nor an instance is still
+/// the instance error it always was.
+#[rstest]
+fn config_inst_init_unknown_leading_segment_is_reported(mut with_db: RootDatabase) {
+    let source = r#"
+PROGRAM MyProg
+    VAR
+        x : INT;
+    END_VAR
+END_PROGRAM
+
+CONFIGURATION MyCfg
+    RESOURCE Res ON CPU
+        TASK t1(INTERVAL := T#10ms, PRIORITY := 1);
+        PROGRAM inst1 WITH t1 : MyProg;
+    END_RESOURCE
+
+    VAR_CONFIG
+        Nope.inst1.x : INT := 42;
+    END_VAR
+END_CONFIGURATION
+"#;
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
+    [E0240] Error: unsupported configuration element
+        ,-[ file:///test0.st:15:20 ]
+        |
+     15 |         Nope.inst1.x : INT := 42;
+        |                    |
+        |                    `-- VAR_CONFIG is checked but not applied yet, so this value never reaches the instance
+        |
+        | Note: set the value in the program's own VAR declaration instead
+    ----'
+    [E0222] Error: configuration error
+        ,-[ file:///test0.st:15:9 ]
+        |
+     15 |         Nope.inst1.x : INT := 42;
+        |         ^^|^
+        |           `--- no program instance 'Nope' found in this configuration
+    ----'
+    ");
+}
+
 /// A valid VAR_CONFIG overriding a variable inside a nested function block.
 #[rstest]
 fn config_inst_init_nested_fb_resolves_but_is_unapplied(mut with_db: RootDatabase) {

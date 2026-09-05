@@ -229,7 +229,9 @@ pub struct ConfigInstInit<'db> {
     /// Optional AT address (located variable).
     pub located_at: Option<DirectVariable<'db>>,
 
-    pub init: InitExpr<'db>,
+    /// Absent for a location-only entry (`AT %QB25 : BYTE;`), the standard's
+    /// own form; an entry has a location, a value, or both.
+    pub init: Option<InitExpr<'db>>,
 }
 
 impl<'db> HirNodeInfo<'db> for ConfigDecl<'db> {

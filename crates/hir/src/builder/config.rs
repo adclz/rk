@@ -471,20 +471,23 @@ impl<'db> SemanticIndexBuilder<'db> {
         // Grammar normally guarantees an init expression on a config
         // inst declaration; partial/recovered parses may still leave
         // us short, so surface that as a syntax error (E0019).
-        let init = init_expr.ok_or_else(|| {
-            crate::check::errors::e0_syntax::SyntaxError::MissingNode {
+        // A location-only entry was refused here with a syntax code, before
+        // the E0240 that says VAR_CONFIG is not applied; only an entry with
+        // neither a location nor a value is malformed.
+        if located_at.is_none() && init_expr.is_none() {
+            return Err(crate::check::errors::e0_syntax::SyntaxError::MissingNode {
                 file: self.file,
                 span: inst.get_range().to_owned(),
-                err: "config inst missing init expression".into(),
+                err: "a VAR_CONFIG entry needs a location (AT) or an initial value".into(),
                 grammar_name: "config_inst_init",
             }
-            .to_diagnostic(self.db, self.file)
-        })?;
+            .to_diagnostic(self.db, self.file));
+        }
 
         Ok(crate::hir_def::config::ConfigInstInit {
             path,
             located_at,
-            init,
+            init: init_expr,
         })
     }
 }
