@@ -5,7 +5,7 @@ use hir::{
     hir_def::expressions::expression::{
         ComparisonOperatorKind, Expr, ExprKind, PrimaryExpr, VariableAccessKind,
     },
-    hir_ty::{body::BodyInferenceResult, ty::Type},
+    hir_ty::{body::BodyInferenceResult, infer::Infer, ty::Type},
 };
 use ide_diagnostic::{ErrorCode, IdeDiagnostic, diag};
 
@@ -74,6 +74,12 @@ fn same_variable<'db>(
     let rhs_var = resolve_variable(db, body, right)?;
 
     if lhs_var != rhs_var {
+        return None;
+    }
+    // A float against itself is how IEEE spells "is this a NaN, or infinite":
+    // `x <> x` holds for NaN and `x - x` is NaN for NaN and infinity. Calling
+    // that always-false sent a NaN check away as a mistake.
+    if lhs_var.spec(db).infer(db).is_float() {
         return None;
     }
 

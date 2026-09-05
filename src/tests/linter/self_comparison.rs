@@ -147,3 +147,31 @@ END_FUNCTION
 "#;
     assert_snapshot!(test_single_lint(&mut with_db, &[source], "self-comparison"), @r"");
 }
+
+/// A float compared to itself is the IEEE test for NaN: `x <> x` holds only
+/// then. The rule called it always FALSE, sending a NaN check away as a
+/// mistake; an integer against itself is still one.
+#[rstest]
+fn a_float_against_itself_is_a_nan_test(mut with_db: RootDatabase) {
+    let source = r#"
+        FUNCTION f : BOOL
+        VAR
+            x : REAL;
+            n : INT;
+        END_VAR
+            f := x <> x;
+            f := n <> n;
+        END_FUNCTION
+    "#;
+    assert_snapshot!(test_single_lint(&mut with_db, &[source], "self-comparison"), @r"
+    [L0310] Warning: self-comparison
+       ,-[ file:///test0.st:8:18 ]
+       |
+     8 |             f := n <> n;
+       |                  ^^^|^^
+       |                     `---- 'n' is compared to itself with '<>', result is always FALSE
+       |
+       | Note: lint rule: self-comparison
+    ---'
+    ");
+}
