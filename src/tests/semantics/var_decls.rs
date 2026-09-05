@@ -164,10 +164,9 @@ END_FUNCTION"#;
     [E0050] Error: syntax
        ,-[ file:///test0.st:3:9 ]
        |
-     3 | ,->     VAR RETAIN
-     4 | |->         c: INT;
-       | |
-       | `--------------------- Unexpected token(s): 'RETAIN : INT ;'
+     3 |     VAR RETAIN
+       |         ^^^|^^
+       |            `---- Unexpected token(s): 'RETAIN'
     ---'
     ");
 }

@@ -1553,3 +1553,27 @@ fn fb_string_default_and_override_coexist(mut with_db: db::RootDatabase) {
     let result: i32 = super::execute_wasm(&wasm, "test", ());
     assert_eq!(result, 1, "default and override are independent instances");
 }
+
+/// Comment markers inside a literal are characters. The literal was a
+/// sequence of tokens, so the lexer could take a comment extra between the
+/// quote and the text: `'a(*b'` opened a comment that swallowed the file.
+/// The value survives whole.
+#[rstest]
+fn comment_markers_inside_a_literal_are_characters(mut with_db: db::RootDatabase) {
+    let src = r#"
+FUNCTION run : INT
+VAR s : STRING; END_VAR
+    s := 'a(*b*)c//d/*e';
+    IF s = 'a(*b*)c//d/*e' THEN
+        run := 1;
+    END_IF;
+    s := 'https://example.com/a?b=1';
+    IF s = 'https://example.com/a?b=1' THEN
+        run := run + 1;
+    END_IF;
+END_FUNCTION
+"#;
+    let wasm = compile_to_wasm(&mut with_db, src);
+    let r: i32 = execute_wasm(&wasm, "run", ());
+    assert_eq!(r, 2, "the literal holds every marker as a character, a URL included");
+}

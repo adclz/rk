@@ -401,3 +401,23 @@ fn assigned_literal_must_fit_a_nested_array_element(mut with_db: RootDatabase) {
     ----'
     ");
 }
+
+/// Comment markers inside a literal are characters, not comments. The
+/// literal was a sequence of tokens, so the lexer could take a comment extra
+/// between the quote and the text: `'a(*b'` opened a comment that swallowed
+/// the rest of the file, with a "no item a" and two missing tokens to show
+/// for it.
+#[rstest]
+fn valid_comment_markers_inside_a_string_literal(mut with_db: RootDatabase) {
+    let source = r#"
+        FUNCTION fn1 : STRING
+        VAR
+            s : STRING := 'a(*b*)c//d/*e';
+            w : STRING := "x(*y*)z//w/*v";
+            url : STRING := 'https://example.com/a?b=1&c=2#top';
+        END_VAR
+            fn1 := s;
+        END_FUNCTION
+    "#;
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @"");
+}

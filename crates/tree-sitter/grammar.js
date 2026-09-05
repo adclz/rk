@@ -574,36 +574,44 @@ module.exports = grammar({
     char_str: ($) =>
       choice(prec(-1, $.hex_int), $.s_byte_char_str, $.d_byte_char_str),
 
-    s_byte_char_str: ($) => seq("'", repeat($._s_byte_char_value), "'"),
-
-    d_byte_char_str: ($) => seq('"', repeat($._d_byte_char_value), '"'),
-
-    _s_byte_char_value: ($) =>
-      choice(
-        /[^'\n\r$]/,
-        token("$'"),
-        token('"'),
-        "$$",
-        kw("$L"),
-        kw("$N"),
-        kw("$P"),
-        kw("$R"),
-        kw("$T"),
-        seq("$", $._hex_digit, $._hex_digit),
+    // One token each: as sequences, an extra could stand between the quote
+    // and the characters, and `(*` inside a literal opened a comment that
+    // swallowed the file. The escapes of Table 7 are inlined for the same
+    // reason; a token holds no rule references.
+    s_byte_char_str: (_) =>
+      token(
+        seq(
+          "'",
+          repeat(
+            choice(
+              /[^'\n\r$]/,
+              "$'",
+              '"',
+              "$$",
+              /\$[LNPRTlnprt]/,
+              /\$[0-9A-Fa-f]{2}/,
+            ),
+          ),
+          "'",
+        ),
       ),
 
-    _d_byte_char_value: ($) =>
-      choice(
-        /[^"\n\r$]/,
-        token("'"),
-        token('$"'),
-        "$$",
-        kw("$L"),
-        kw("$N"),
-        kw("$P"),
-        kw("$R"),
-        kw("$T"),
-        seq("$", repeat1($._hex_digit)),
+    d_byte_char_str: (_) =>
+      token(
+        seq(
+          '"',
+          repeat(
+            choice(
+              /[^"\n\r$]/,
+              "'",
+              '$"',
+              "$$",
+              /\$[LNPRTlnprt]/,
+              /\$[0-9A-Fa-f]+/,
+            ),
+          ),
+          '"',
+        ),
       ),
 
     // Table 8 - Duration literals
