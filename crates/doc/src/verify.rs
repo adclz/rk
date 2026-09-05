@@ -20,10 +20,11 @@ use std::path::{Path, PathBuf};
 
 use crate::examples::ErrorExample;
 
-/// Codes that exist in the compiler but have no example YET. This list may
-/// only SHRINK: document a code, remove it from here. A new code must ship
-/// with its example — adding to this list defeats the guard, and the gap it
-/// papers over becomes the 35-ghost / 27-missing drift the April 2026 docs
+/// Codes that exist in the compiler but have no runnable example: they are
+/// described in `all_examples()` with no sources. This list may only SHRINK:
+/// give a code an example, remove it from here. A new code must ship with its
+/// example — adding to this list defeats the guard, and the gap it papers
+/// over becomes the 35-ghost / 27-missing drift the April 2026 docs
 /// accumulated.
 pub const KNOWN_UNDOCUMENTED: &[&str] = &[
     // Workspace-level: fires when the workspace has no config file, so no
@@ -118,6 +119,14 @@ pub fn problems(examples: &[ErrorExample], produced: &[(&str, BTreeSet<String>)]
         .iter()
         .map(|e| base_code(e.code).to_string())
         .collect();
+    // Documented with a runnable example. A code that fires at the workspace
+    // level is described without one, and stays on the allowlist: `rk explain`
+    // used to deny such a code exists.
+    let exemplified: BTreeSet<String> = examples
+        .iter()
+        .filter(|e| !e.sources.is_empty())
+        .map(|e| base_code(e.code).to_string())
+        .collect();
     let debt: BTreeSet<String> = KNOWN_UNDOCUMENTED.iter().map(|s| s.to_string()).collect();
 
     for ghost in documented.difference(&defined) {
@@ -134,7 +143,7 @@ pub fn problems(examples: &[ErrorExample], produced: &[(&str, BTreeSet<String>)]
              (do NOT grow KNOWN_UNDOCUMENTED)"
         ));
     }
-    for paid in debt.intersection(&documented) {
+    for paid in debt.intersection(&exemplified) {
         problems.push(format!(
             "{paid}: now has an example — remove it from KNOWN_UNDOCUMENTED"
         ));

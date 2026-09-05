@@ -70,6 +70,23 @@ fn main() {
     eprintln!("Diagnostics");
     for ex in &examples {
         eprint!("  {}...", ex.code);
+        // Described without a runnable example: about the workspace, not a
+        // file. Listed all the same, so `rk explain` has an answer.
+        if ex.sources.is_empty() {
+            let text = "No source example: this diagnostic is about the workspace, not a file.";
+            entries.push(DiagEntry {
+                code: ex.code,
+                category: ex.category,
+                title: ex.title,
+                description: ex.description,
+                sources: ex.sources,
+                report_html: format!("<p>{text}</p>"),
+                report_text: text.to_string(),
+                spans: Vec::new(),
+            });
+            eprintln!(" described, no example");
+            continue;
+        }
         let mut db = RootDatabase::default();
         let (ansi, spans) = render::compile_and_render(&mut db, ex.sources, ex.lint_rule);
         produced.push((ex.code, verify::codes_in_output(&ansi)));

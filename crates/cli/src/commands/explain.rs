@@ -57,6 +57,15 @@ mod tests {
 
     /// Whatever a report prints, a user can paste back.
     #[test]
+    /// A code that fires at the workspace level has no source example, and
+    /// used to be denied: "unknown diagnostic code". It is the first code an
+    /// agent meets, on any directory without a config.toml.
+    #[test]
+    fn a_code_described_without_an_example_still_explains() {
+        assert!(run_explain("E0217").is_ok());
+    }
+
+    #[test]
     fn a_code_resolves_however_it_was_pasted() {
         for spelled in ["E0301", "e0301", " E0301 ", "[E0301]", "[ e0301 ]"] {
             assert_eq!(normalize_code(spelled), "E0301", "{spelled:?}");

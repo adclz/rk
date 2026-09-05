@@ -1481,6 +1481,14 @@ END_PROGRAM
             lint_rule: None,
         },
         ErrorExample {
+            code: "E0217",
+            category: "Resolution",
+            title: "No project configuration",
+            description: "The workspace holds no config.toml, so nothing marks it as a project: its files are still checked, as loose sources, but no library is loaded and nothing can be compiled or deployed. Create a config.toml with a [project] table (name and version), or point --workspace at the directory that has one. This is about the workspace rather than a file, so no source example can show it.",
+            sources: &[],
+            lint_rule: None,
+        },
+        ErrorExample {
             code: "E0250",
             category: "Resolution",
             title: "Unknown multibit access size",
