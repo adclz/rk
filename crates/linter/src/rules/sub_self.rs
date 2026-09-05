@@ -5,7 +5,7 @@ use hir::{
     hir_def::expressions::expression::{
         AddOperatorKind, Expr, ExprKind, PrimaryExpr, VariableAccessKind,
     },
-    hir_ty::{body::BodyInferenceResult, ty::Type},
+    hir_ty::{body::BodyInferenceResult, infer::Infer, ty::Type},
 };
 use ide_diagnostic::{ErrorCode, IdeDiagnostic, diag};
 
@@ -62,6 +62,12 @@ fn same_variable<'db>(
     let lv = resolve_var(db, body, left)?;
     let rv = resolve_var(db, body, right)?;
     if lv != rv {
+        return None;
+    }
+    // A float minus itself is NaN for a NaN or an infinity: that difference
+    // is a finiteness test, not always 0, and calling it one sent the check
+    // away as a mistake.
+    if lv.spec(db).infer(db).is_float() {
         return None;
     }
     Some(lv.name(db).text(db).to_string())
