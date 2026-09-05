@@ -94,22 +94,11 @@ pub struct MirLocal {
     pub ty: MirType,
     /// Optional initializer expression.
     pub init: Option<MirExpr>,
-    pub kind: MirLocalKind,
     /// Pre-computed storage decision — *where* the value physically lives.
     pub storage: MirStorage,
-    /// Storage *duration* — *how long* the value lives and who can see it.
-    /// Orthogonal to `storage` (which is wasm-local vs memory placement).
-    /// Drives the runtime's init / scan-reset / retain-snapshot / global
-    /// handling. Today this is pure metadata: codegen does not yet consume
-    /// it, so introducing it changes no emitted code.
+    /// Storage duration: how long the value lives and who can see it.
+    /// Orthogonal to `storage` (wasm local vs memory).
     pub var_storage: MirVariableStorage,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum MirLocalKind {
-    Var,
-    Temp,
-    Output,
 }
 
 /// Storage duration of a variable, as the runtime sees it: `Automatic` is

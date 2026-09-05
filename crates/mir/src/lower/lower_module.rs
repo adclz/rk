@@ -870,7 +870,6 @@ pub fn lower_wasm_intrinsic<'db>(
             name: func.name(db),
             ty: ret_ty.clone(),
             init: None,
-            kind: crate::function::MirLocalKind::Var,
             storage,
             // Synthetic return slot for a stateless intrinsic/extern shim.
             var_storage: crate::function::MirVariableStorage::Automatic,

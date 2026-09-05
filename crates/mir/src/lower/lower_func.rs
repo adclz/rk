@@ -19,7 +19,7 @@ use std::rc::Rc;
 
 use crate::{
     function::{
-        MirFunction, MirLinkage, MirLocal, MirLocalKind, MirParam, MirParamKind, MirStorage,
+        MirFunction, MirLinkage, MirLocal, MirParam, MirParamKind, MirStorage,
         MirVariableStorage,
     },
     lower::{
@@ -258,7 +258,6 @@ fn lower_function_inner<'db>(
             name: func.name(db),
             ty: ret_ty.clone(),
             init: None,
-            kind: MirLocalKind::Var,
             storage,
             // Synthetic return slot in a stateless FUNCTION.
             var_storage: MirVariableStorage::Automatic,
@@ -285,17 +284,10 @@ fn lower_function_inner<'db>(
             memory_layout,
         );
 
-        let kind = match var.kind(db) {
-            VariableKind::Output => MirLocalKind::Output,
-            VariableKind::Temp => MirLocalKind::Temp,
-            _ => MirLocalKind::Var,
-        };
-
         locals.push(MirLocal {
             name: var.name(db),
             ty,
             init: None, // TODO: lower initializers
-            kind,
             storage,
             // FUNCTION locals are stateless — automatic regardless of section.
             var_storage: MirVariableStorage::Automatic,
@@ -455,7 +447,6 @@ fn lower_function_block_inner<'db>(
                     name: var.name(db),
                     ty,
                     init: None,
-                    kind: MirLocalKind::Var,
                     storage,
                     // FB/class method local — stateless per call.
                     var_storage: MirVariableStorage::Automatic,
@@ -484,7 +475,6 @@ fn lower_function_block_inner<'db>(
                 name: method.name(db),
                 ty: ret_ty.clone(),
                 init: None,
-                kind: MirLocalKind::Var,
                 storage,
                 // Synthetic method return slot — stateless per call.
                 var_storage: MirVariableStorage::Automatic,
@@ -582,7 +572,6 @@ fn lower_function_block_inner<'db>(
                 init: None,
                 // Only VAR_TEMP reaches here, marked Temp so codegen resets aggregate
                 // temps on entry.
-                kind: MirLocalKind::Temp,
                 storage,
                 var_storage: MirVariableStorage::Automatic,
             });
@@ -725,7 +714,6 @@ fn lower_class_inner<'db>(
                     name: var.name(db),
                     ty,
                     init: None,
-                    kind: MirLocalKind::Var,
                     storage,
                     // FB/class method local — stateless per call.
                     var_storage: MirVariableStorage::Automatic,
@@ -754,7 +742,6 @@ fn lower_class_inner<'db>(
                 name: method.name(db),
                 ty: ret_ty.clone(),
                 init: None,
-                kind: MirLocalKind::Var,
                 storage,
                 // Synthetic method return slot — stateless per call.
                 var_storage: MirVariableStorage::Automatic,
@@ -872,7 +859,6 @@ fn lower_program_inner<'db>(
                 ty,
                 init: None,
                 // Guarded by `VariableKind::Temp` above.
-                kind: MirLocalKind::Temp,
                 storage,
                 var_storage: MirVariableStorage::Automatic,
             });
@@ -1024,7 +1010,6 @@ pub(crate) fn append_call_scratch_locals(
                 name,
                 ty,
                 init: None,
-                kind: MirLocalKind::Temp,
                 storage,
                 var_storage: MirVariableStorage::Automatic,
             });
