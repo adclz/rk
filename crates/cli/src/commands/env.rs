@@ -11,10 +11,21 @@ use std::path::Path;
 
 use db::loader::{LibraryPathResolution, resolve_library_path};
 
+use crate::cli::OutputFormat;
 use crate::error::CliResult;
 
-pub fn run_env(workspace: &Path, keys: &[String]) -> CliResult<()> {
+pub fn run_env(workspace: &Path, keys: &[String], format: OutputFormat) -> CliResult<()> {
     let (rows, probed) = describe(workspace);
+
+    if keys.is_empty() && format == OutputFormat::JsonLines {
+        for row in &rows {
+            println!("{}", env_record(row));
+        }
+        for path in probed {
+            crate::ui::detail(format!("looked in {}", path.display()));
+        }
+        return Ok(());
+    }
 
     // Named keys print the value alone, the way `go env GOROOT` does.
     if !keys.is_empty() {
@@ -25,7 +36,10 @@ pub fn run_env(workspace: &Path, keys: &[String]) -> CliResult<()> {
                     rows.iter().map(|r| r.key).collect::<Vec<_>>().join(", ")
                 )));
             };
-            println!("{}", row.value);
+            match format {
+                OutputFormat::JsonLines => println!("{}", env_record(row)),
+                _ => println!("{}", row.value),
+            }
         }
         return Ok(());
     }
@@ -120,6 +134,12 @@ fn describe(workspace: &Path) -> (Vec<Row>, Vec<std::path::PathBuf>) {
 fn display_or(path: Option<&Path>) -> String {
     path.map(|p| p.display().to_string())
         .unwrap_or_else(|| "none".to_string())
+}
+
+/// One `rk env` row as a `json-lines` record.
+fn env_record(row: &Row) -> String {
+    serde_json::json!({ "type": "env", "key": row.key, "value": row.value, "note": row.note })
+        .to_string()
 }
 
 #[cfg(test)]

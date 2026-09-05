@@ -7,6 +7,7 @@
 
 use serde::Deserialize;
 
+use crate::cli::OutputFormat;
 use crate::error::{CliError, CliResult};
 
 const REFERENCE: &str = include_str!("../../../doc/diagnostics.json");
@@ -22,7 +23,7 @@ struct Entry {
     description: String,
 }
 
-pub fn run_explain(code: &str) -> CliResult<()> {
+pub fn run_explain(code: &str, format: OutputFormat) -> CliResult<()> {
     let entries: Vec<Entry> = serde_json::from_str(REFERENCE)
         .map_err(|e| CliError::Message(format!("malformed diagnostics reference: {e}")))?;
 
@@ -34,6 +35,19 @@ pub fn run_explain(code: &str) -> CliResult<()> {
         )));
     };
 
+    if format == OutputFormat::JsonLines {
+        println!(
+            "{}",
+            serde_json::json!({
+                "type": "explain",
+                "code": entry.code,
+                "category": entry.category,
+                "title": entry.title,
+                "description": entry.description,
+            })
+        );
+        return Ok(());
+    }
     println!("{}: {} ({})", entry.code, entry.title, entry.category);
     println!();
     println!("{}", entry.description);
@@ -55,14 +69,11 @@ fn normalize_code(code: &str) -> String {
 mod tests {
     use super::*;
 
-    /// Whatever a report prints, a user can paste back.
-    #[test]
-    /// A code that fires at the workspace level has no source example, and
-    /// used to be denied: "unknown diagnostic code". It is the first code an
-    /// agent meets, on any directory without a config.toml.
+    /// Whatever a report prints, a user can paste back, a workspace-level
+    /// code (no source example) included.
     #[test]
     fn a_code_described_without_an_example_still_explains() {
-        assert!(run_explain("E0217").is_ok());
+        assert!(run_explain("E0217", OutputFormat::Full).is_ok());
     }
 
     #[test]
