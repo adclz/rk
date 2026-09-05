@@ -136,3 +136,18 @@ fn extern_function_is_exempt(mut with_db: RootDatabase) {
     "#;
     assert_snapshot!(test_single_lint(&mut with_db, &[source], "missing-return"), @r"");
 }
+
+/// A `{wasm}` FUNCTION's body is the pragma, whose `(result NAME)` is the
+/// assignment. Every intrinsic in the standard library was flagged.
+#[rstest]
+fn wasm_function_is_exempt(mut with_db: RootDatabase) {
+    let source = r#"
+        FUNCTION ROOT : REAL
+        VAR_INPUT
+            IN : REAL;
+        END_VAR
+            {wasm 'f32.sqrt' (params IN) (result ROOT)}
+        END_FUNCTION
+    "#;
+    assert_snapshot!(test_single_lint(&mut with_db, &[source], "missing-return"), @r"");
+}

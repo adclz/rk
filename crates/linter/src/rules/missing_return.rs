@@ -3,7 +3,7 @@ use db::WorkspaceDataBase;
 use hir::{
     HasName, HirNodeInfo,
     hir_def::{
-        expressions::expression::VariableAccessKind,
+        expressions::{expression::VariableAccessKind, statement::StmtKind},
         pous::pou::Pou,
         scope::{ScopeId, ScopeKind},
         semantic_index::get_scope,
@@ -79,6 +79,14 @@ pub fn check_result<'db>(
                 if f.extern_pragma(db).is_some() {
                     return;
                 }
+            }
+            // A {wasm} FUNCTION's body is the pragma, whose `(result NAME)` is
+            // the assignment: every intrinsic in the library was flagged.
+            if f.statements(db)
+                .iter()
+                .any(|s| matches!(s.stmt(db), StmtKind::WasmPragma(_)))
+            {
+                return;
             }
             (f.name(db).text(db), "FUNCTION", f.get_name_span(db))
         }
