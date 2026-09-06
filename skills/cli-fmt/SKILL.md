@@ -13,3 +13,5 @@ Note that compilation errors are not considered syntax errors.
 `--check` Checks and lists if some files needs formatting without writing anything.
 
 `--workspace <WORKSPACE>` Sets the workspace path to format, by default .
+
+`--output-format <OUTPUT_FORMAT>` Possible values are full, concise, json-lines.

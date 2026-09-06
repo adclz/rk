@@ -47,7 +47,7 @@ __RAISE('message');   // throws to the host; there is no in-language catch
 
 `EXIT` outside a loop is E1002 and `CONTINUE` outside a loop is E1001. A `FOR` step must fold to a non-zero compile-time constant (E1007); a `VAR CONSTANT` or a constant expression is fine, a plain variable is not. After a normal `FOR` completion the control variable holds the first value past the bound, EXCEPT when the bound is the control type's maximum, where it wraps instead: do not use it to detect completion.
 
-Comments: `// to end of line`, `/* … */`, `(* … *)`.
+Comments: `// to end of line`, `/* … */`, `(* … *)`. A comment opener inside a string literal is text: `'(*'` and `'//'` are two-character strings.
 
 ## Calling
 

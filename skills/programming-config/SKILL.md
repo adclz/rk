@@ -134,7 +134,7 @@ These are accepted by the grammar and then do nothing. Each of the first three r
 
 `PROGRAM PA WITH T : A (fb WITH other_task)` Associating a nested function block with its own task. Run it from the enclosing program's task.
 
-`VAR_CONFIG PA.x : INT := 42; END_VAR` Resolved and type-checked against the instance's field, then discarded; the field keeps its declared value. Set it in the program's own `VAR` section.
+`VAR_CONFIG PA.x : INT := 42; END_VAR` Resolved and type-checked against the instance's field, then discarded; the field keeps its declared value. Set it in the program's own `VAR` section. The resource-qualified path (`Res.PA.x`) and a location-only entry (`Res.PA.y AT %QB25 : BYTE;`) are accepted the same way.
 
 `VAR_ACCESS acc : g : INT READ_WRITE; END_VAR` at configuration level parses and is stored, but nothing reads it and no diagnostic is emitted. Do not rely on it.
 

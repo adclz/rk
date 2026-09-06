@@ -140,13 +140,13 @@ L0205 collapses every unassigned output of one body into a single diagnostic lis
 | L0306 | `duplicate-case` | warning | a CASE selector or range already covered by an earlier branch, including overlapping ranges |
 | L0308 | `loop-var-modified` | warning | an assignment to a FOR control variable inside the loop body |
 | L0309 | `self-assignment` | warning | `x := x` |
-| L0310 | `self-comparison` | warning | `x = x`, `x <> x`, `x > x` and the rest, whose result is constant |
+| L0310 | `self-comparison` | warning | `x = x`, `x <> x`, `x > x` and the rest, whose result is constant; not on a REAL or LREAL, where `x <> x` is the NaN test |
 | L0311 | `identical-sub-expr` | warning | `a AND a`, `a OR a`, `a XOR a` |
 | L0312 | `identity-operation` | warning | `* 1`, `1 *`, `/ 1`, `+ 0`, `0 +`, `- 0` |
-| L0313 | `sub-self` | warning | `x - x`, always 0 |
+| L0313 | `sub-self` | warning | `x - x` on an integer, always 0; on a float it is the finiteness test and is not reported |
 | L0314 | `constant-loop-bounds` | warning | a FOR loop whose start and end are the same value, so the body runs exactly once |
 | L0315 | `self-shadowing` | warning | a variable with the same name as the POU or method it is declared in |
-| L0316 | `missing-return` | warning | a FUNCTION or METHOD with a return type that never assigns the return value |
+| L0316 | `missing-return` | warning | a FUNCTION or METHOD with a return type that never assigns the return value; a `{wasm}` statement whose `(result)` is the FUNCTION counts |
 | L0317 | `external-mutation` | warning | writing a field of a function block or class instance from outside it, `inst.x := 42` |
 | L0318 | `method-shadows-member` | warning | a method local or parameter with the same name as a member of its FUNCTION_BLOCK or CLASS |
 
