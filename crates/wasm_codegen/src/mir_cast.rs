@@ -212,35 +212,35 @@ pub(crate) fn emit_cast_instructions(
             }
         }
 
-        // Float → Integer
+        // Float → integer is saturating, as the library's conversions are.
         (true, false) => {
             if !from.is_64bit() && !to.is_64bit() {
                 // f32 → i32
                 if to.is_signed() {
-                    instrs.push(Instruction::I32TruncF32S);
+                    instrs.push(Instruction::I32TruncSatF32S);
                 } else {
-                    instrs.push(Instruction::I32TruncF32U);
+                    instrs.push(Instruction::I32TruncSatF32U);
                 }
             } else if !from.is_64bit() && to.is_64bit() {
                 // f32 → i64
                 if to.is_signed() {
-                    instrs.push(Instruction::I64TruncF32S);
+                    instrs.push(Instruction::I64TruncSatF32S);
                 } else {
-                    instrs.push(Instruction::I64TruncF32U);
+                    instrs.push(Instruction::I64TruncSatF32U);
                 }
             } else if from.is_64bit() && !to.is_64bit() {
                 // f64 → i32
                 if to.is_signed() {
-                    instrs.push(Instruction::I32TruncF64S);
+                    instrs.push(Instruction::I32TruncSatF64S);
                 } else {
-                    instrs.push(Instruction::I32TruncF64U);
+                    instrs.push(Instruction::I32TruncSatF64U);
                 }
             } else {
                 // f64 → i64
                 if to.is_signed() {
-                    instrs.push(Instruction::I64TruncF64S);
+                    instrs.push(Instruction::I64TruncSatF64S);
                 } else {
-                    instrs.push(Instruction::I64TruncF64U);
+                    instrs.push(Instruction::I64TruncSatF64U);
                 }
             }
         }

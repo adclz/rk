@@ -69,6 +69,8 @@ pub const NATIVE: &[&str] = &[
     "f64.sqrt",
     "f32.abs",
     "f64.abs",
+    "f32.nearest",
+    "f64.nearest",
     // synthesized (no single native op, emitted as a short sequence)
     "i32.abs",
     "i64.abs",

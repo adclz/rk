@@ -1002,6 +1002,48 @@ fn emit_wasm_instruction(func: &mut wasm_encoder::Function, name: &str) {
         "f64.abs" => {
             func.instruction(&Instruction::F64Abs);
         }
+        "i32.trunc_f32_u" => {
+            func.instruction(&Instruction::I32TruncF32U);
+        }
+        "i64.trunc_f32_u" => {
+            func.instruction(&Instruction::I64TruncF32U);
+        }
+        "i32.trunc_f64_u" => {
+            func.instruction(&Instruction::I32TruncF64U);
+        }
+        "i64.trunc_f64_u" => {
+            func.instruction(&Instruction::I64TruncF64U);
+        }
+        "i32.trunc_sat_f32_s" => {
+            func.instruction(&Instruction::I32TruncSatF32S);
+        }
+        "i32.trunc_sat_f32_u" => {
+            func.instruction(&Instruction::I32TruncSatF32U);
+        }
+        "i64.trunc_sat_f32_s" => {
+            func.instruction(&Instruction::I64TruncSatF32S);
+        }
+        "i64.trunc_sat_f32_u" => {
+            func.instruction(&Instruction::I64TruncSatF32U);
+        }
+        "i32.trunc_sat_f64_s" => {
+            func.instruction(&Instruction::I32TruncSatF64S);
+        }
+        "i32.trunc_sat_f64_u" => {
+            func.instruction(&Instruction::I32TruncSatF64U);
+        }
+        "i64.trunc_sat_f64_s" => {
+            func.instruction(&Instruction::I64TruncSatF64S);
+        }
+        "i64.trunc_sat_f64_u" => {
+            func.instruction(&Instruction::I64TruncSatF64U);
+        }
+        "f32.nearest" => {
+            func.instruction(&Instruction::F32Nearest);
+        }
+        "f64.nearest" => {
+            func.instruction(&Instruction::F64Nearest);
+        }
         other => {
             // E0248 refuses unknown names at check; reaching one here means
             // the check and the emitter disagree, and a loud death beats a
