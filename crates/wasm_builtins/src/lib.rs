@@ -263,84 +263,92 @@ pub extern "C" fn rk_str_from_u64(value: u64, out_addr: u32, out_cap: u32) {
     rk_str_emit(out_addr, out_cap, bytes);
 }
 
-/// Manually format an `f64` as `[-]<int>.<frac6>` with 6 fractional
-/// digits — avoids `core::fmt`'s trait-object dispatch (which compiles
-/// to `call_indirect` against a function table the graft doesn't carry).
-/// Special cases: `NaN` → `"NaN"`, ±∞ → `"Inf"` / `"-Inf"`.
-///
-/// Trailing zeros in the fractional part are *not* trimmed — `1.5` shows
-/// as `"1.500000"`. This is a deliberate trade-off: a trim adds branches
-/// and the round-trip with `STRING_TO_LREAL` (when we add it) doesn't
-/// care about trailing zeros.
+/// Format a float as the shortest text that reads back to the same value
+/// (Ryu), spelled as a REAL literal: `1.5`, `100.0`, `1.0E16`; `NaN`,
+/// `Inf` and `-Inf` as such.
 fn fmt_f64(value: f64, buf: &mut [u8]) -> &[u8] {
-    if value.is_nan() {
-        buf[..3].copy_from_slice(b"NaN");
-        return &buf[..3];
+    if let Some(n) = fmt_nan_inf(
+        value.is_nan(),
+        value.is_infinite(),
+        value.is_sign_negative(),
+        buf,
+    ) {
+        return &buf[..n];
     }
-    let neg = value.is_sign_negative();
-    if value.is_infinite() {
-        if neg {
-            buf[..4].copy_from_slice(b"-Inf");
-            return &buf[..4];
-        } else {
-            buf[..3].copy_from_slice(b"Inf");
-            return &buf[..3];
-        }
-    }
-    // Magnitude. `libm::fabs` handles negatives without floating-point
-    // ops on signs.
-    let mag = libm::fabs(value);
-    let int_part = libm::floor(mag);
-    let frac = mag - int_part;
-    let int_u = int_part as u64;
-    // Six fractional digits: `1_000_000` chosen because `f64` has
-    // ~15-17 decimal digits of precision; keeping 6 frac digits is
-    // a useful default and fits with a 6-digit u64 slot.
-    let frac_u = libm::floor(frac * 1_000_000.0 + 0.5) as u64;
-    // Carry a frac rollover (e.g. 0.9999996) into the int part.
-    let (int_u, frac_u) = if frac_u >= 1_000_000 {
-        (int_u + 1, frac_u - 1_000_000)
-    } else {
-        (int_u, frac_u)
-    };
-
-    // Build the textual form: [-]<int>.<6-digit frac>.
-    // Stage int digits then frac digits in two scratch slots; final
-    // assembly into `buf` happens below.
-    let mut int_scratch = [0u8; 20];
-    let int_digits = fmt_u64(int_u, &mut int_scratch);
-
-    let total_len = (if neg { 1 } else { 0 }) + int_digits.len() + 1 + 6;
-    let mut pos = 0;
-    if neg {
-        buf[pos] = b'-';
-        pos += 1;
-    }
-    buf[pos..pos + int_digits.len()].copy_from_slice(int_digits);
-    pos += int_digits.len();
-    buf[pos] = b'.';
-    pos += 1;
-    // Frac with leading zeros, six digits.
-    let mut f = frac_u;
-    let frac_start = pos;
-    pos += 6;
-    for i in 0..6 {
-        buf[pos - 1 - i] = b'0' + (f % 10) as u8;
-        f /= 10;
-    }
-    let _ = frac_start; // kept for clarity
-    &buf[..total_len]
+    let mut ryu = ryu::Buffer::new();
+    literal_form(ryu.format_finite(value).as_bytes(), buf)
 }
 
-/// `REAL → STRING`. Six fractional digits, e.g. `1.5_f32 → "1.500000"`.
+/// As [`fmt_f64`], for a REAL: formatted as the f32 it is, so its own
+/// shortest text and not its widening's.
+fn fmt_f32(value: f32, buf: &mut [u8]) -> &[u8] {
+    if let Some(n) = fmt_nan_inf(
+        value.is_nan(),
+        value.is_infinite(),
+        value.is_sign_negative(),
+        buf,
+    ) {
+        return &buf[..n];
+    }
+    let mut ryu = ryu::Buffer::new();
+    literal_form(ryu.format_finite(value).as_bytes(), buf)
+}
+
+/// `NaN`, `Inf`, `-Inf`: the length written, or `None` for a finite value.
+fn fmt_nan_inf(nan: bool, inf: bool, neg: bool, buf: &mut [u8]) -> Option<usize> {
+    let text: &[u8] = if nan {
+        b"NaN"
+    } else if inf && neg {
+        b"-Inf"
+    } else if inf {
+        b"Inf"
+    } else {
+        return None;
+    };
+    buf[..text.len()].copy_from_slice(text);
+    Some(text.len())
+}
+
+/// Ryu's `1e16` is not a REAL literal; `1.0E16` is. Every result carries a
+/// decimal point and an upper-case exponent, so it parses back as written.
+fn literal_form<'a>(text: &[u8], buf: &'a mut [u8]) -> &'a [u8] {
+    let mut n = 0;
+    let mut seen_dot = false;
+    for &b in text {
+        match b {
+            b'.' => {
+                seen_dot = true;
+                buf[n] = b;
+                n += 1;
+            }
+            b'e' => {
+                if !seen_dot {
+                    buf[n] = b'.';
+                    buf[n + 1] = b'0';
+                    n += 2;
+                }
+                buf[n] = b'E';
+                n += 1;
+            }
+            _ => {
+                buf[n] = b;
+                n += 1;
+            }
+        }
+    }
+    &buf[..n]
+}
+
+/// `REAL → STRING`: the shortest text that reads back to the same REAL,
+/// e.g. `1.5_f32 → "1.5"`, `50.1_f32 → "50.1"`.
 #[unsafe(no_mangle)]
 pub extern "C" fn rk_str_from_f32(value: f32, out_addr: u32, out_cap: u32) {
     let mut buf = [0u8; 32];
-    let bytes = fmt_f64(value as f64, &mut buf);
+    let bytes = fmt_f32(value, &mut buf);
     rk_str_emit(out_addr, out_cap, bytes);
 }
 
-/// `LREAL → STRING`. Six fractional digits.
+/// `LREAL → STRING`: the shortest text that reads back to the same LREAL.
 #[unsafe(no_mangle)]
 pub extern "C" fn rk_str_from_f64(value: f64, out_addr: u32, out_cap: u32) {
     let mut buf = [0u8; 32];

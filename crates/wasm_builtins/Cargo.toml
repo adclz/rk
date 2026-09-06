@@ -14,6 +14,7 @@ crate-type = ["cdylib"]
 
 [dependencies]
 libm = "0.2"
+ryu = { version = "1", features = ["small"] }
 
 [profile.release]
 opt-level = "z"

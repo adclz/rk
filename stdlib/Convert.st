@@ -1348,7 +1348,14 @@ NAMESPACE Std.Convert
 
 	   Each function formats its input as decimal text (or `"TRUE"`/`"FALSE"`
 	   for BOOL) into a fresh STRING return slot. Truncation is silent if
-	   the result exceeds the default STRING capacity. */
+	   the result exceeds the default STRING capacity.
+
+	   REAL_TO_STRING and LREAL_TO_STRING print the shortest text that reads
+	   back to the same value, spelled as a REAL literal: '1.5', '50.1',
+	   '100.0', '1.0E20', '2.5E-9'. A REAL is formatted as the REAL it is, so
+	   50.1 is '50.1' and not its f64 widening '50.099998'; an LREAL shows
+	   every digit its value has, so 0.1 + 0.2 is '0.30000000000000004'.
+	   'NaN', 'Inf' and '-Inf' spell the values no literal can. */
 
 	FUNCTION BOOL_TO_STRING: STRING
 		VAR_INPUT IN: BOOL; END_VAR
@@ -2154,30 +2161,70 @@ NAMESPACE Std.Convert
 		FUNCTION test_real_to_string_basic
 			VAR s: STRING; END_VAR
 			s := REAL_TO_STRING(1.5);
-			// "1.500000" — 8 bytes
-			ASSERT(LEN(s) = 8);
-			ASSERT(FIND(s, '1.500000') = 1);
+			ASSERT(s = '1.5');
 		END_FUNCTION
 
 		{test}
 		FUNCTION test_real_to_string_negative
 			VAR s: STRING; END_VAR
 			s := REAL_TO_STRING(-3.25);
-			ASSERT(FIND(s, '-3.250000') = 1);
+			ASSERT(s = '-3.25');
 		END_FUNCTION
 
 		{test}
 		FUNCTION test_real_to_string_zero
 			VAR s: STRING; END_VAR
 			s := REAL_TO_STRING(0.0);
-			ASSERT(FIND(s, '0.000000') = 1);
+			ASSERT(s = '0.0');
 		END_FUNCTION
 
 		{test}
 		FUNCTION test_lreal_to_string_basic
 			VAR s: STRING; END_VAR
 			s := LREAL_TO_STRING(2.5);
-			ASSERT(FIND(s, '2.500000') = 1);
+			ASSERT(s = '2.5');
+		END_FUNCTION
+
+		{test}
+		FUNCTION test_real_to_string_is_the_shortest_round_trip
+			ASSERT(REAL_TO_STRING(50.1) = '50.1', 'a REAL is formatted as a REAL, not as its f64 widening');
+			ASSERT(REAL_TO_STRING(100.0) = '100.0' AND REAL_TO_STRING(3.14159) = '3.14159');
+			ASSERT(LREAL_TO_STRING(123456789012.345) = '123456789012.345');
+			ASSERT(LREAL_TO_STRING(1.0E15) = '1000000000000000.0');
+		END_FUNCTION
+
+		{test}
+		FUNCTION test_real_to_string_exponent_form_is_a_literal
+			ASSERT(REAL_TO_STRING(1.0E20) = '1.0E20' AND LREAL_TO_STRING(1.0E16) = '1.0E16');
+			ASSERT(REAL_TO_STRING(1.0E-7) = '1.0E-7' AND LREAL_TO_STRING(-2.5E-9) = '-2.5E-9');
+			ASSERT(LREAL_TO_STRING(1.0E-5) = '0.00001');
+		END_FUNCTION
+
+		{test}
+		FUNCTION test_lreal_to_string_shows_the_value_it_has
+			VAR
+				a: LREAL := 0.1;
+				b: LREAL := 0.2;
+			END_VAR
+			ASSERT(LREAL_TO_STRING(a + b) = '0.30000000000000004');
+		END_FUNCTION
+
+		{test}
+		FUNCTION test_real_to_string_non_finite
+			VAR
+				z: REAL := 0.0;
+			END_VAR
+			ASSERT(REAL_TO_STRING(z / z) = 'NaN');
+			ASSERT(REAL_TO_STRING(1.0 / z) = 'Inf' AND REAL_TO_STRING(-1.0 / z) = '-Inf');
+		END_FUNCTION
+
+		{test}
+		FUNCTION test_lreal_to_string_non_finite
+			VAR
+				z: LREAL := 0.0;
+			END_VAR
+			ASSERT(LREAL_TO_STRING(z / z) = 'NaN');
+			ASSERT(LREAL_TO_STRING(1.0 / z) = 'Inf' AND LREAL_TO_STRING(-1.0 / z) = '-Inf');
 		END_FUNCTION
 
 		// Composition with string ops — convert and concatenate.

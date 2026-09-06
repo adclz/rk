@@ -62,6 +62,8 @@ All of them are zone-naive: no timezone, no DST, no leap seconds. A `DT` literal
 
 Conversions, `TO_STRING` formatting, timers and the full policy live in `programming-time`.
 
+`REAL_TO_STRING` and `LREAL_TO_STRING` print the shortest text that reads back to the same value, spelled as a REAL literal: `'1.5'`, `'50.1'`, `'100.0'`, `'1.0E20'`, `'2.5E-9'`. A REAL is formatted as the REAL it is, so `50.1` is `'50.1'` and not its f64 widening; an LREAL shows every digit it holds, so `0.1 + 0.2` is `'0.30000000000000004'`. `'NaN'`, `'Inf'` and `'-Inf'` spell the values no literal can.
+
 ## Type declarations
 
 Everything below lives inside a `TYPE … END_TYPE` block.
