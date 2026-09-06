@@ -962,28 +962,9 @@ pub fn param_wasm_width(ty: &MirType, kind: MirParamKind) -> u32 {
     }
 }
 
-/// Allocate storage for a variable, picking a wasm-local (only for a
-/// scalar that may be kept in a register) or a linear-memory address
-/// (everything else, including STRING and any composite type).
-///
-/// `force_memory` makes a scalar live in linear memory even though its
-/// type would otherwise fit a wasm local. Two situations require it:
-/// - the scalar is **address-taken** (`REF(x)`), so it needs an address;
-/// - the scalar is **persistent** (a PROGRAM/FB-instance `VAR`,
-///   `var_storage != Automatic`): wasm locals are reset on every call, so
-///   anything that must survive across scan cycles cannot be a local. Only
-///   `Automatic` storage (function locals, `VAR_TEMP`) may use a wasm local.
-///
-/// The shared form of what used to be open-coded in every MIR
-/// lowering path — `lower_function`, `lower_function_block`,
-/// `lower_wasm_intrinsic`, and the various branches in `monomorphize`.
-/// Each had its own variant; three of them got the type-based
-/// decision wrong for STRING returns at some point in the past, which
-/// is why this lives in one place now.
-/// Aggregate (struct/array) `VAR_INPUT`s are received as a POINTER to the
-/// caller's call-entry snapshot (the caller copies the arg into a scratch
-/// local and passes its address — `MirExpr::CopyIntoScratch` — mirroring the
-/// FB input copy-in). Everything else stays a value param.
+/// Aggregate `VAR_INPUT`s are received as a pointer to the caller's
+/// call-entry snapshot (`MirExpr::CopyIntoScratch`); everything else is a
+/// value param.
 pub(crate) fn input_param_type(ty: MirType) -> MirType {
     match ty {
         MirType::Struct(_) | MirType::Array(_) => MirType::Pointer(Box::new(ty)),

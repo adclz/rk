@@ -44,6 +44,7 @@ mod structs;
 mod traps;
 mod unary_ops;
 mod variadics;
+mod wasm_pragma;
 
 pub use crate::tests::utils::with_db;
 

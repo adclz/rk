@@ -10,7 +10,7 @@ Only the pragmas below are recognised. Anything else in braces is a syntax error
 
 `{extern 'module' 'name'}` declares the `FUNCTION` as a WASM import — see below.
 
-`{wasm [type_ref] 'instruction' (params a b) (result r)}` emits a raw WASM instruction in place of a body. `type_ref` names a variable whose type picks the instruction's numeric prefix.
+`{wasm [type_ref] 'instruction' (params a b) (result r)}` is a statement: it emits one WASM instruction on the operands it names and stores the value in `r`, a parameter, a local or the FUNCTION's return (E0253 otherwise). A body may hold several, in order, with ordinary statements between them. `type_ref` names a variable whose type picks the instruction's numeric prefix.
 
 ```iecst
 USING Std.Unit;
@@ -36,6 +36,13 @@ FUNCTION MyShl: WORD
 		N: INT;
 	END_VAR
 	{wasm IN 'shl' (params IN N) (result MyShl)}
+END_FUNCTION
+
+FUNCTION Round: DINT
+	VAR_INPUT IN: REAL; END_VAR
+	VAR r: REAL; END_VAR
+	{wasm 'f32.nearest' (params IN) (result r)}
+	{wasm 'i32.trunc_sat_f32_s' (params r) (result Round)}
 END_FUNCTION
 ```
 

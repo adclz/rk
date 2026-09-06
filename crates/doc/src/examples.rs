@@ -1524,6 +1524,21 @@ END_FUNCTION_BLOCK
             lint_rule: None,
         },
         ErrorExample {
+            code: "E0253",
+            category: "Resolution",
+            title: "Wasm operand not declared",
+            description: "A {wasm} statement runs its instruction on the operands it names and writes the one its (result) names, so each must be a parameter, a local or the return of the FUNCTION. An unknown name used to be ignored: the FUNCTION's own parameter list was lowered instead and the pragma's operands were decoration.",
+            sources: &[r#"
+FUNCTION Root : REAL
+VAR_INPUT
+    a : REAL;
+END_VAR
+    {wasm 'f32.sqrt' (params b) (result Root)}
+END_FUNCTION
+"#],
+            lint_rule: None,
+        },
+        ErrorExample {
             code: "E0244",
             category: "Resolution",
             title: "Extern pragma outside a FUNCTION",

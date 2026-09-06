@@ -825,65 +825,80 @@ impl<'db> StmtsResolverCtx<'db> {
                 StmtKind::AllowPragma(_) => {}
 
                 StmtKind::WasmPragma(wasm_decl) => {
-                    // Only FUNCTION bodies are scanned for a wasm intrinsic;
-                    // anywhere else the pragma was silently dropped and the
-                    // body compiled as if it were not there.
-                    {
-                        use crate::hir_def::scope::ScopeKind;
-                        use crate::hir_def::semantic_index::get_scope;
-                        let in_function = matches!(
-                            get_scope(db, self.scope).kind,
-                            ScopeKind::Pou(crate::hir_def::pous::pou::Pou::Function(_))
+                    use crate::hir_def::interned::identifier::SpanIdent;
+                    use crate::hir_def::pous::pou::Pou;
+                    use crate::hir_def::scope::ScopeKind;
+                    use crate::hir_def::semantic_index::get_scope;
+                    // Only FUNCTION bodies lower a wasm pragma; anywhere else
+                    // it was silently dropped and the body compiled as if it
+                    // were not there.
+                    let function = match get_scope(db, self.scope).kind {
+                        ScopeKind::Pou(Pou::Function(f)) => Some(f),
+                        _ => None,
+                    };
+                    if function.is_none() {
+                        ctx.errors.push(
+                            crate::check::errors::e2_resolve::ResolveError::WasmPragmaOutsideFunction {
+                                span: wasm_decl.instruction_span,
+                            }
+                            .to_diagnostic(db, ctx.scope.file(db)),
                         );
-                        if !in_function {
+                    } else {
+                        // An unknown name used to fall through to
+                        // `unreachable`, or to a silent identity on the
+                        // conversion shape.
+                        let name = wasm_decl.instruction.as_str();
+                        let ok = if wasm_decl.type_ref.is_some() {
+                            crate::check::wasm_instructions::known_with_type_basis(name)
+                        } else {
+                            crate::check::wasm_instructions::known(name)
+                        };
+                        if !ok {
                             ctx.errors.push(
-                                crate::check::errors::e2_resolve::ResolveError::WasmPragmaOutsideFunction {
+                                crate::check::errors::e2_resolve::ResolveError::UnknownWasmInstruction {
+                                    name: wasm_decl.instruction.clone(),
                                     span: wasm_decl.instruction_span,
                                 }
                                 .to_diagnostic(db, ctx.scope.file(db)),
                             );
-                        } else {
-                            // An unknown name used to fall through to
-                            // `unreachable`, or to a silent identity on the
-                            // conversion shape.
-                            let name = wasm_decl.instruction.as_str();
-                            let ok = if wasm_decl.type_ref.is_some() {
-                                crate::check::wasm_instructions::known_with_type_basis(name)
-                            } else {
-                                crate::check::wasm_instructions::known(name)
-                            };
-                            if !ok {
-                                ctx.errors.push(
-                                    crate::check::errors::e2_resolve::ResolveError::UnknownWasmInstruction {
-                                        name: wasm_decl.instruction.clone(),
-                                        span: wasm_decl.instruction_span,
-                                    }
-                                    .to_diagnostic(db, ctx.scope.file(db)),
-                                );
-                            }
                         }
                     }
-                    // Wasm intrinsic doesn't need type inference, but we
-                    // still need to mark referenced variables as used so
-                    // the unused-variable lint doesn't flag them.
+                    // Every operand is a declared variable (marked used, so
+                    // the unused-variable lint stays quiet) or the return.
+                    // The lowering reads and writes exactly these names; an
+                    // unknown one used to be ignored while the FUNCTION's own
+                    // parameter list was lowered instead.
                     let def_map = self.scope.def_map(db);
-                    let mut mark = |ident: &crate::hir_def::interned::identifier::Ident| {
+                    let mut operand = |ident: &SpanIdent<'db>| {
+                        let key = ident.ident.caseless(db);
                         if let Some(var) = def_map
                             .local_variables
-                            .get(&ident.caseless(db))
-                            .or_else(|| def_map.global_variables.get(&ident.caseless(db)))
+                            .get(&key)
+                            .or_else(|| def_map.global_variables.get(&key))
                         {
                             ctx.variables_used.insert(*var);
+                            return;
                         }
+                        let Some(f) = function else { return };
+                        if f.name(db).caseless(db) == key && f.return_type(db).is_some() {
+                            return;
+                        }
+                        ctx.errors.push(
+                            crate::check::errors::e2_resolve::ResolveError::UnknownWasmOperand {
+                                name: ident.ident.text(db).clone(),
+                                span: ident.get_span(db),
+                            }
+                            .to_diagnostic(db, ctx.scope.file(db)),
+                        );
                     };
                     if let Some(t) = &wasm_decl.type_ref {
-                        mark(&t.ident);
+                        operand(t);
                     }
                     for p in &wasm_decl.params {
-                        mark(&p.ident);
+                        operand(p);
                     }
                     if let Some(r) = &wasm_decl.result {
-                        mark(&r.ident);
+                        operand(r);
                     }
                 }
             }

@@ -406,7 +406,7 @@ fn lower_stmt<'db>(
             Ok(Some(MirStmt::Raise { message: mir_msg }))
         }
 
-        StmtKind::WasmPragma(_) => Ok(None),   // Handled at function level, not statement level
+        StmtKind::WasmPragma(decl) => super::lower_wasm::lower_wasm_pragma(ctx, stmt, decl),
 
         // Linter-only marker: no code.
         StmtKind::AllowPragma(_) => Ok(None),

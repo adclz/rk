@@ -231,6 +231,61 @@ fn invalid_unknown_wasm_instruction_with_type_basis(mut with_db: RootDatabase) {
     ");
 }
 
+// E0253: a pragma's operands are the names it gives, resolved against the
+// FUNCTION. An unknown one used to be ignored while the FUNCTION's own
+// parameter list was lowered instead.
+
+#[rstest]
+fn invalid_wasm_operand_not_declared(mut with_db: RootDatabase) {
+    let source = r#"
+        FUNCTION Root : REAL
+        VAR_INPUT a : REAL; END_VAR
+            {wasm 'f32.sqrt' (params b) (result Root)}
+        END_FUNCTION
+    "#;
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
+    [E0253] Error: invalid wasm pragma
+       ,-[ file:///test0.st:4:38 ]
+       |
+     4 |             {wasm 'f32.sqrt' (params b) (result Root)}
+       |                                      |
+       |                                      `-- 'b' is not a parameter, a local or the return of this FUNCTION
+    ---'
+    ");
+}
+
+#[rstest]
+fn invalid_wasm_result_on_a_function_without_a_return(mut with_db: RootDatabase) {
+    let source = r#"
+        FUNCTION Root
+        VAR_INPUT a : REAL; END_VAR
+            {wasm 'f32.sqrt' (params a) (result Root)}
+        END_FUNCTION
+    "#;
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
+    [E0253] Error: invalid wasm pragma
+       ,-[ file:///test0.st:4:49 ]
+       |
+     4 |             {wasm 'f32.sqrt' (params a) (result Root)}
+       |                                                 ^^|^
+       |                                                   `--- 'Root' is not a parameter, a local or the return of this FUNCTION
+    ---'
+    ");
+}
+
+#[rstest]
+fn valid_wasm_pragmas_write_locals_in_any_case(mut with_db: RootDatabase) {
+    let source = r#"
+        FUNCTION round_sat : DINT
+        VAR_INPUT IN : REAL; END_VAR
+        VAR r : REAL; END_VAR
+            {wasm 'f32.nearest' (params in) (result R)}
+            {wasm 'i32.trunc_sat_f32_s' (params r) (result ROUND_SAT)}
+        END_FUNCTION
+    "#;
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @"");
+}
+
 #[rstest]
 fn invalid_wasm_pragma_outside_function(mut with_db: RootDatabase) {
     let source = r#"

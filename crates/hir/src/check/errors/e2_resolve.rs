@@ -275,6 +275,13 @@ pub enum ResolveError<'db> {
     /// scanned for one; anywhere else the statement was silently dropped and
     /// the surrounding body compiled as if it were not there.
     WasmPragmaOutsideFunction { span: tree_sitter::Range },
+    /// A `{wasm}` operand that is not a parameter, a local or the return of
+    /// the FUNCTION. The lowering runs the instruction on exactly the names
+    /// the pragma gives, so an unknown one has no slot to read or write.
+    UnknownWasmOperand {
+        name: compact_str::CompactString,
+        span: tree_sitter::Range,
+    },
     /// A TASK's PRIORITY is not a number this compiler can represent. Held as
     /// source text until here, so an unusable value would otherwise reach the
     /// scheduler as "no priority" and quietly sort last.
@@ -492,6 +499,7 @@ impl<'db> ErrorCode for ResolveError<'db> {
             Self::MultipleResources { .. } => "E0247",
             Self::UnknownWasmInstruction { .. } => "E0248",
             Self::WasmPragmaOutsideFunction { .. } => "E0249",
+            Self::UnknownWasmOperand { .. } => "E0253",
             Self::ExternalVarNotFound { .. } => "E0220",
             Self::ExternalVarTypeMismatch { .. } => "E0246",
             Self::AccessDeclTypeMismatch { .. } => "E0221",
@@ -548,9 +556,9 @@ impl<'db> ErrorCode for ResolveError<'db> {
             | Self::InvalidPriority { .. }
             | Self::MultipleConfigurations { .. }
             | Self::MultipleResources { .. } => "configuration error",
-            Self::UnknownWasmInstruction { .. } | Self::WasmPragmaOutsideFunction { .. } => {
-                "invalid wasm pragma"
-            }
+            Self::UnknownWasmInstruction { .. }
+            | Self::WasmPragmaOutsideFunction { .. }
+            | Self::UnknownWasmOperand { .. } => "invalid wasm pragma",
             Self::ExternalVarNotFound { .. } => "external variable not found",
             Self::ExternalVarTypeMismatch { .. } => "external variable type mismatch",
             Self::AccessDeclTypeMismatch { .. } => "access declaration type mismatch",
@@ -974,6 +982,14 @@ impl<'db> ToIdeDiagnostic<'db> for ResolveError<'db> {
                     "a {wasm} body is only available on a FUNCTION; here the pragma would be silently dropped"
                         .to_string(),
                 )
+                .severity(DiagnosticSeverity::ERROR)
+                .desc(self)
+                .range(crate::denormalize(db, file, span).unwrap_or_default())
+                .call(),
+            Self::UnknownWasmOperand { name, span } => diag()
+                .message(format!(
+                    "'{name}' is not a parameter, a local or the return of this FUNCTION"
+                ))
                 .severity(DiagnosticSeverity::ERROR)
                 .desc(self)
                 .range(crate::denormalize(db, file, span).unwrap_or_default())
