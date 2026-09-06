@@ -10,7 +10,7 @@ Only the pragmas below are recognised. Anything else in braces is a syntax error
 
 `{extern 'module' 'name'}` declares the `FUNCTION` as a WASM import — see below.
 
-`{wasm [type_ref] 'instruction' (params a b) (result r)}` is a statement: it emits one WASM instruction on the operands it names and stores the value in `r`, a parameter, a local or the FUNCTION's return (E0253 otherwise). A body may hold several, in order, with ordinary statements between them. `type_ref` names a variable whose type picks the instruction's numeric prefix. An instruction the compiler does not emit is E0248; a pragma outside a FUNCTION is E0249.
+`{wasm [type_ref] 'instruction' (params a b) (result r)}` is a statement: it emits one WASM instruction on the operands it names and stores the value in `r`, a parameter, a local or the FUNCTION's return (E0253 otherwise). A body may hold several, in order, with ordinary statements between them. `type_ref` names a variable whose type picks the instruction's numeric prefix. An instruction the compiler does not emit is E0248; a pragma outside a FUNCTION is E0249; operands that do not fit the instruction's signature, lane for lane, are E0255, checked before anything reaches the module validator.
 
 ```iecst
 USING Std.Unit;

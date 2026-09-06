@@ -286,6 +286,147 @@ fn valid_wasm_pragmas_write_locals_in_any_case(mut with_db: RootDatabase) {
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @"");
 }
 
+// E0255: a pragma's operands must fit its instruction, lane for lane. The
+// module validator used to be the first to say so, at load, from a compile
+// that exited 0.
+
+#[rstest]
+fn invalid_wasm_operand_in_the_wrong_lane(mut with_db: RootDatabase) {
+    let source = r#"
+        FUNCTION NEAREST : DINT
+        VAR_INPUT IN : DINT; END_VAR
+            {wasm 'f32.nearest' (params IN) (result NEAREST)}
+        END_FUNCTION
+    "#;
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
+    [E0255] Error: invalid wasm pragma
+       ,-[ file:///test0.st:4:19 ]
+       |
+     4 |             {wasm 'f32.nearest' (params IN) (result NEAREST)}
+       |                   ^^^^^^|^^^^^^
+       |                         `-------- 'f32.nearest' takes (f32) -> f32; this pragma gives it (IN: DINT (i32)) -> NEAREST: DINT (i32)
+    ---'
+    ");
+}
+
+#[rstest]
+fn invalid_wasm_operand_count(mut with_db: RootDatabase) {
+    let source = r#"
+        FUNCTION ROOT : REAL
+        VAR_INPUT a : REAL; b : REAL; END_VAR
+            {wasm 'f32.sqrt' (params a b) (result ROOT)}
+        END_FUNCTION
+    "#;
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
+    [E0255] Error: invalid wasm pragma
+       ,-[ file:///test0.st:4:19 ]
+       |
+     4 |             {wasm 'f32.sqrt' (params a b) (result ROOT)}
+       |                   ^^^^^|^^^^
+       |                        `------ 'f32.sqrt' takes (f32) -> f32; this pragma gives it (a: REAL (f32), b: REAL (f32)) -> ROOT: REAL (f32)
+    ---'
+    ");
+}
+
+/// A conversion's written instruction must be the one its lanes name, even
+/// though the cast road picks the op by the types: the text is what a
+/// reader trusts.
+#[rstest]
+fn invalid_wasm_result_in_the_wrong_lane(mut with_db: RootDatabase) {
+    let source = r#"
+        FUNCTION TRUNCATE : REAL
+        VAR_INPUT IN : REAL; END_VAR
+            {wasm 'i32.trunc_sat_f32_s' (params IN) (result TRUNCATE)}
+        END_FUNCTION
+    "#;
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
+    [E0255] Error: invalid wasm pragma
+       ,-[ file:///test0.st:4:19 ]
+       |
+     4 |             {wasm 'i32.trunc_sat_f32_s' (params IN) (result TRUNCATE)}
+       |                   ^^^^^^^^^^|^^^^^^^^^^
+       |                             `------------ 'i32.trunc_sat_f32_s' takes (f32) -> i32; this pragma gives it (IN: REAL (f32)) -> TRUNCATE: REAL (f32)
+    ---'
+    ");
+}
+
+#[rstest]
+fn invalid_wasm_string_operand_on_a_numeric_instruction(mut with_db: RootDatabase) {
+    let source = r#"
+        FUNCTION LENGTH : DINT
+        VAR_INPUT s : STRING; END_VAR
+            {wasm 'str.byte_len' (params s) (result LENGTH)}
+        END_FUNCTION
+
+        FUNCTION ROOT : REAL
+        VAR_INPUT s : STRING; END_VAR
+            {wasm 'f32.sqrt' (params s) (result ROOT)}
+        END_FUNCTION
+    "#;
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
+    [E0255] Error: invalid wasm pragma
+       ,-[ file:///test0.st:9:19 ]
+       |
+     9 |             {wasm 'f32.sqrt' (params s) (result ROOT)}
+       |                   ^^^^^|^^^^
+       |                        `------ 'f32.sqrt' takes (f32) -> f32; this pragma gives it (s: STRING (i32, i32)) -> ROOT: REAL (f32)
+    ---'
+    ");
+}
+
+/// A type basis resolves to a lane the instruction may not exist for.
+#[rstest]
+fn invalid_wasm_type_basis_without_a_form(mut with_db: RootDatabase) {
+    let source = r#"
+        FUNCTION SHIFT : BOOL
+        VAR_INPUT IN : BOOL; N : INT; END_VAR
+            {wasm IN 'shl' (params IN N) (result SHIFT)}
+        END_FUNCTION
+    "#;
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
+    [E0248] Error: invalid wasm pragma
+       ,-[ file:///test0.st:4:22 ]
+       |
+     4 |             {wasm IN 'shl' (params IN N) (result SHIFT)}
+       |                      ^^|^^
+       |                        `---- 'rk.shl1' is not a wasm instruction this compiler emits
+    ---'
+    ");
+}
+
+/// The shapes the library relies on all fit: a STRING producer, a STRING
+/// consumer, a 64-bit rotate with an INT count, a widening with a basis.
+#[rstest]
+fn valid_wasm_signatures(mut with_db: RootDatabase) {
+    let source = r#"
+        FUNCTION JOIN : STRING
+        VAR_INPUT a : STRING; b : STRING; END_VAR
+            {wasm 'str.concat' (params a b) (result JOIN)}
+        END_FUNCTION
+
+        FUNCTION LENGTH : UDINT
+        VAR_INPUT s : STRING; END_VAR
+            {wasm 'str.byte_len' (params s) (result LENGTH)}
+        END_FUNCTION
+
+        FUNCTION ROTATE : LWORD
+        VAR_INPUT IN : LWORD; N : INT; END_VAR
+            {wasm IN 'rotl' (params IN N) (result ROTATE)}
+        END_FUNCTION
+
+        FUNCTION WIDEN : LREAL
+        VAR_INPUT IN : REAL; END_VAR
+            {wasm 'f64.promote_f32' (params IN) (result WIDEN)}
+        END_FUNCTION
+
+        FUNCTION ROOT : LREAL
+        VAR_INPUT IN : LREAL; END_VAR
+            {wasm IN 'sqrt' (params IN) (result ROOT)}
+        END_FUNCTION
+    "#;
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @"");
+}
+
 #[rstest]
 fn invalid_wasm_pragma_outside_function(mut with_db: RootDatabase) {
     let source = r#"

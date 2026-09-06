@@ -1262,7 +1262,8 @@ NAMESPACE Std.Convert
 		VAR_INPUT
 			IN: LDATE_AND_TIME;
 		END_VAR
-		{wasm 'i32.wrap_i64' (params IN) (result LDT_TO_DT)}
+		(* both lanes are i64, nanoseconds to seconds: the types decide *)
+		{wasm 'cast' (params IN) (result LDT_TO_DT)}
 	END_FUNCTION
 
 	/* ## Date / time-of-day decompositions

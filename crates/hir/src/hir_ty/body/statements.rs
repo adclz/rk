@@ -825,7 +825,8 @@ impl<'db> StmtsResolverCtx<'db> {
                 StmtKind::AllowPragma(_) => {}
 
                 StmtKind::WasmPragma(wasm_decl) => {
-                    use crate::hir_def::interned::identifier::SpanIdent;
+                    use crate::check::wasm_instructions as wasm;
+                    use crate::hir_def::interned::identifier::{Ident, SpanIdent};
                     use crate::hir_def::pous::pou::Pou;
                     use crate::hir_def::scope::ScopeKind;
                     use crate::hir_def::semantic_index::get_scope;
@@ -836,6 +837,7 @@ impl<'db> StmtsResolverCtx<'db> {
                         ScopeKind::Pou(Pou::Function(f)) => Some(f),
                         _ => None,
                     };
+                    let mut instruction_known = false;
                     if function.is_none() {
                         ctx.errors.push(
                             crate::check::errors::e2_resolve::ResolveError::WasmPragmaOutsideFunction {
@@ -848,12 +850,12 @@ impl<'db> StmtsResolverCtx<'db> {
                         // `unreachable`, or to a silent identity on the
                         // conversion shape.
                         let name = wasm_decl.instruction.as_str();
-                        let ok = if wasm_decl.type_ref.is_some() {
-                            crate::check::wasm_instructions::known_with_type_basis(name)
+                        instruction_known = if wasm_decl.type_ref.is_some() {
+                            wasm::known_with_type_basis(name)
                         } else {
-                            crate::check::wasm_instructions::known(name)
+                            wasm::known(name)
                         };
-                        if !ok {
+                        if !instruction_known {
                             ctx.errors.push(
                                 crate::check::errors::e2_resolve::ResolveError::UnknownWasmInstruction {
                                     name: wasm_decl.instruction.clone(),
@@ -864,12 +866,14 @@ impl<'db> StmtsResolverCtx<'db> {
                         }
                     }
                     // Every operand is a declared variable (marked used, so
-                    // the unused-variable lint stays quiet) or the return.
+                    // the unused-variable lint stays quiet) or the return,
+                    // and carries its type to the signature check below.
                     // The lowering reads and writes exactly these names; an
                     // unknown one used to be ignored while the FUNCTION's own
                     // parameter list was lowered instead.
                     let def_map = self.scope.def_map(db);
-                    let mut operand = |ident: &SpanIdent<'db>| {
+                    let mut all_known = true;
+                    let mut operand = |ident: &SpanIdent<'db>| -> Option<(Ident, Type<'db>)> {
                         let key = ident.ident.caseless(db);
                         if let Some(var) = def_map
                             .local_variables
@@ -877,12 +881,18 @@ impl<'db> StmtsResolverCtx<'db> {
                             .or_else(|| def_map.global_variables.get(&key))
                         {
                             ctx.variables_used.insert(*var);
-                            return;
+                            return Some((var.name(db), var.spec(db).infer(db)));
                         }
-                        let Some(f) = function else { return };
-                        if f.name(db).caseless(db) == key && f.return_type(db).is_some() {
-                            return;
+                        let Some(f) = function else {
+                            all_known = false;
+                            return None;
+                        };
+                        if f.name(db).caseless(db) == key
+                            && let Some(ret) = f.return_type(db)
+                        {
+                            return Some((f.name(db), ret.infer(db)));
                         }
+                        all_known = false;
                         ctx.errors.push(
                             crate::check::errors::e2_resolve::ResolveError::UnknownWasmOperand {
                                 name: ident.ident.text(db).clone(),
@@ -890,15 +900,54 @@ impl<'db> StmtsResolverCtx<'db> {
                             }
                             .to_diagnostic(db, ctx.scope.file(db)),
                         );
+                        None
                     };
-                    if let Some(t) = &wasm_decl.type_ref {
-                        operand(t);
-                    }
+                    let basis = match &wasm_decl.type_ref {
+                        Some(t) => operand(t),
+                        None => None,
+                    };
+                    let mut params: Vec<(Ident, Type<'db>)> = Vec::new();
                     for p in &wasm_decl.params {
-                        operand(p);
+                        if let Some(typed) = operand(p) {
+                            params.push(typed);
+                        }
                     }
-                    if let Some(r) = &wasm_decl.result {
-                        operand(r);
+                    let result = match &wasm_decl.result {
+                        Some(r) => operand(r),
+                        None => None,
+                    };
+                    // The operands against the instruction: lanes, count and
+                    // result. The module validator used to be the first to
+                    // say so, at load.
+                    if function.is_some()
+                        && instruction_known
+                        && all_known
+                        && let Some(refusal) = wasm::check_signature(
+                            db,
+                            wasm_decl.instruction.as_str(),
+                            basis,
+                            &params,
+                            result,
+                        )
+                    {
+                        use crate::check::errors::e2_resolve::ResolveError;
+                        let error = match refusal {
+                            wasm::Refusal::Mismatch {
+                                instruction,
+                                expected,
+                                actual,
+                            } => ResolveError::WasmSignatureMismatch {
+                                instruction,
+                                expected,
+                                actual,
+                                span: wasm_decl.instruction_span,
+                            },
+                            wasm::Refusal::Unknown(name) => ResolveError::UnknownWasmInstruction {
+                                name,
+                                span: wasm_decl.instruction_span,
+                            },
+                        };
+                        ctx.errors.push(error.to_diagnostic(db, ctx.scope.file(db)));
                     }
                 }
             }

@@ -1524,6 +1524,21 @@ END_FUNCTION_BLOCK
             lint_rule: None,
         },
         ErrorExample {
+            code: "E0255",
+            category: "Resolution",
+            title: "Wasm pragma operands do not fit the instruction",
+            description: "Every operand of a {wasm} pragma pushes its wasm lane (i32, i64, f32 or f64; a STRING its pointer and length pair) and the instruction has a fixed signature. A mismatch used to reach the module validator at load, from a compile that exited 0. The message states what the instruction takes and what the pragma gives it.",
+            sources: &[r#"
+FUNCTION Nearest : DINT
+VAR_INPUT
+    IN : DINT;
+END_VAR
+    {wasm 'f32.nearest' (params IN) (result Nearest)}
+END_FUNCTION
+"#],
+            lint_rule: None,
+        },
+        ErrorExample {
             code: "E0254",
             category: "Resolution",
             title: "No overload accepts the arguments",

@@ -14,7 +14,7 @@ use super::lower_func::lower_var_type;
 use super::lower_type::{LowerTypeError, lower_type};
 use crate::expr::{MirExpr, MirPlace};
 use crate::stmt::MirStmt;
-use crate::types::MirType;
+use crate::types::{MirElementary, MirType};
 
 pub(crate) fn lower_wasm_pragma<'db>(
     ctx: &ExprLowerCtx<'db>,
@@ -65,53 +65,17 @@ pub(crate) fn lower_wasm_pragma<'db>(
         _ => None,
     };
 
-    // `{wasm IN 'op'}`: the type basis prefixes the raw op with the wasm
-    // value type of the named variable (IN:REAL -> f32.sqrt, IN:BYTE ->
-    // i32.shl).
+    // `{wasm IN 'op'}`: the basis variable's lane and width name the
+    // instruction, by the same function the check resolved it with.
     let instruction: CompactString = match &decl.type_ref {
-        Some(basis) => {
-            let elem = elem_of(&operand(basis.ident)?.1);
-            match elem {
-                // Shifts/rotates get IEC-width semantics (`rk.shl8`,
-                // `rk.rotl16`, …), not raw wasm ops: a raw op works at the
-                // i32/i64 lane width, so on sub-width types shifted-out bits
-                // leak past the type width and rotates wrap at bit 31/63
-                // instead of the type's MSB; wasm also masks the count mod
-                // lane width, so shift-by-32 on a DWORD would be a no-op
-                // instead of 0. emit_stmt.rs lowers each pseudo-op to a
-                // mask/guard sequence. 32/64-bit rotates keep the native op:
-                // count mod lane width == count mod type width there.
-                Some(e)
-                    if matches!(decl.instruction.as_str(), "shl" | "shr_u" | "rotl" | "rotr")
-                        && !e.is_float() =>
-                {
-                    let bits = e.rk_bits();
-                    match (decl.instruction.as_str(), bits) {
-                        ("shl", b) => CompactString::from(format!("rk.shl{}", b)),
-                        ("shr_u", b) => CompactString::from(format!("rk.shr{}", b)),
-                        ("rotl", b) if b <= 16 => CompactString::from(format!("rk.rotl{}", b)),
-                        ("rotr", b) if b <= 16 => CompactString::from(format!("rk.rotr{}", b)),
-                        // Full-width rotates are correct natively.
-                        ("rotl", 64) => CompactString::from("i64.rotl"),
-                        ("rotl", _) => CompactString::from("i32.rotl"),
-                        ("rotr", 64) => CompactString::from("i64.rotr"),
-                        ("rotr", _) => CompactString::from("i32.rotr"),
-                        _ => unreachable!(),
-                    }
-                }
-                Some(e) => {
-                    let prefix = if e.is_float() {
-                        if e.is_64bit() { "f64" } else { "f32" }
-                    } else if e.is_64bit() {
-                        "i64"
-                    } else {
-                        "i32"
-                    };
-                    CompactString::from(format!("{}.{}", prefix, decl.instruction))
-                }
-                None => decl.instruction.clone(),
-            }
-        }
+        Some(basis) => match elem_of(&operand(basis.ident)?.1) {
+            Some(e) => hir::check::wasm_instructions::resolve_type_basis(
+                &decl.instruction,
+                lane_of(e),
+                e.rk_bits(),
+            ),
+            None => decl.instruction.clone(),
+        },
         None => decl.instruction.clone(),
     };
 
@@ -174,4 +138,68 @@ pub(crate) fn lower_wasm_pragma<'db>(
         params,
         result,
     }))
+}
+
+/// The wasm lane of a MIR scalar.
+fn lane_of(e: MirElementary) -> hir::check::wasm_instructions::Lane {
+    use hir::check::wasm_instructions::Lane;
+    match (e.is_float(), e.is_64bit()) {
+        (true, true) => Lane::F64,
+        (true, false) => Lane::F32,
+        (false, true) => Lane::I64,
+        (false, false) => Lane::I32,
+    }
+}
+
+/// The check derives lanes and IEC widths from `ElementarySpec`, the MIR
+/// from `MirElementary`: pinned equal here for every scalar.
+#[cfg(test)]
+mod lane_parity {
+    use hir::check::wasm_instructions::{Lane, rk_bits_of, lane_of};
+    use hir::hir_def::expressions::spec::ElementarySpec;
+
+    #[test]
+    fn every_scalar_agrees_on_lane_and_width() {
+        use ElementarySpec::*;
+        for spec in [
+            Bool,
+            REDGEBool,
+            FEDGEBool,
+            Byte,
+            Word,
+            DWord,
+            LWord,
+            SInt,
+            USInt,
+            UInt,
+            Int,
+            DInt,
+            UDInt,
+            LInt,
+            ULInt,
+            Real,
+            LReal,
+            Char,
+            Date,
+            LDate,
+            DateAndTime,
+            LDateTime,
+            Time,
+            LTime,
+            Tod,
+            LTod,
+        ] {
+            let mir = crate::lower::lower_type::elementary_spec_to_mir(spec)
+                .unwrap_or_else(|e| panic!("{spec:?} has no MIR scalar: {e:?}"));
+            let lane = lane_of(spec).unwrap_or_else(|| panic!("{spec:?} has no lane"));
+            let expected = match (mir.is_float(), mir.is_64bit()) {
+                (true, true) => Lane::F64,
+                (true, false) => Lane::F32,
+                (false, true) => Lane::I64,
+                (false, false) => Lane::I32,
+            };
+            assert_eq!(lane, expected, "{spec:?}: lane");
+            assert_eq!(rk_bits_of(spec), mir.rk_bits(), "{spec:?}: IEC width");
+        }
+    }
 }

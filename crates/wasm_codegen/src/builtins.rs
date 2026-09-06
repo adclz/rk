@@ -156,11 +156,36 @@ mod parity {
     /// accepts that nothing emits would fall to the emitter's unknown arm.
     #[test]
     fn every_checked_builtin_really_exists() {
-        for name in hir::check::wasm_instructions::BUILTINS {
+        for (name, _, _) in hir::check::wasm_instructions::BUILTINS {
             assert!(
                 wasm_builtins_generated::BUILTIN_NAMES.contains_key(name),
                 "the check lists `{name}` but no builtin exports it"
             );
+        }
+    }
+
+    /// The signature the check holds for each builtin is the one the bundle
+    /// was compiled with: a pragma the check passes is one the module
+    /// validator passes.
+    #[test]
+    fn every_checked_builtin_signature_is_the_bundles() {
+        use hir::check::wasm_instructions::Lane;
+        use wasm_encoder::ValType;
+        let lane = |v: &ValType| match v {
+            ValType::I32 => Lane::I32,
+            ValType::I64 => Lane::I64,
+            ValType::F32 => Lane::F32,
+            ValType::F64 => Lane::F64,
+            other => panic!("a builtin signature carries {other:?}"),
+        };
+        for (name, params, results) in hir::check::wasm_instructions::BUILTINS {
+            let idx = wasm_builtins_generated::BUILTIN_NAMES[name] as usize;
+            let sig = &wasm_builtins_generated::BUILTIN_SIGS
+                [wasm_builtins_generated::BUILTIN_FUNCS[idx].sig_idx as usize];
+            let bundle_params: Vec<Lane> = sig.params.iter().map(lane).collect();
+            let bundle_results: Vec<Lane> = sig.results.iter().map(lane).collect();
+            assert_eq!(&bundle_params[..], *params, "`{name}`: parameters");
+            assert_eq!(&bundle_results[..], *results, "`{name}`: results");
         }
     }
 }

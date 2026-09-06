@@ -282,6 +282,15 @@ pub enum ResolveError<'db> {
         name: compact_str::CompactString,
         span: tree_sitter::Range,
     },
+    /// A `{wasm}` pragma whose operands do not fit its instruction: the
+    /// wrong lanes, count, or result. The module validator used to be the
+    /// first to say so, at load, from a compile that exited 0.
+    WasmSignatureMismatch {
+        instruction: compact_str::CompactString,
+        expected: String,
+        actual: String,
+        span: tree_sitter::Range,
+    },
     /// A TASK's PRIORITY is not a number this compiler can represent. Held as
     /// source text until here, so an unusable value would otherwise reach the
     /// scheduler as "no priority" and quietly sort last.
@@ -510,6 +519,7 @@ impl<'db> ErrorCode for ResolveError<'db> {
             Self::UnknownWasmInstruction { .. } => "E0248",
             Self::WasmPragmaOutsideFunction { .. } => "E0249",
             Self::UnknownWasmOperand { .. } => "E0253",
+            Self::WasmSignatureMismatch { .. } => "E0255",
             Self::ExternalVarNotFound { .. } => "E0220",
             Self::ExternalVarTypeMismatch { .. } => "E0246",
             Self::AccessDeclTypeMismatch { .. } => "E0221",
@@ -569,7 +579,8 @@ impl<'db> ErrorCode for ResolveError<'db> {
             | Self::MultipleResources { .. } => "configuration error",
             Self::UnknownWasmInstruction { .. }
             | Self::WasmPragmaOutsideFunction { .. }
-            | Self::UnknownWasmOperand { .. } => "invalid wasm pragma",
+            | Self::UnknownWasmOperand { .. }
+            | Self::WasmSignatureMismatch { .. } => "invalid wasm pragma",
             Self::ExternalVarNotFound { .. } => "external variable not found",
             Self::ExternalVarTypeMismatch { .. } => "external variable type mismatch",
             Self::AccessDeclTypeMismatch { .. } => "access declaration type mismatch",
@@ -1038,6 +1049,19 @@ impl<'db> ToIdeDiagnostic<'db> for ResolveError<'db> {
             Self::UnknownWasmOperand { name, span } => diag()
                 .message(format!(
                     "'{name}' is not a parameter, a local or the return of this FUNCTION"
+                ))
+                .severity(DiagnosticSeverity::ERROR)
+                .desc(self)
+                .range(crate::denormalize(db, file, span).unwrap_or_default())
+                .call(),
+            Self::WasmSignatureMismatch {
+                instruction,
+                expected,
+                actual,
+                span,
+            } => diag()
+                .message(format!(
+                    "'{instruction}' takes {expected}; this pragma gives it {actual}"
                 ))
                 .severity(DiagnosticSeverity::ERROR)
                 .desc(self)
