@@ -43,7 +43,8 @@ From `Std.Unit`, so `USING Std.Unit;` is required:
 `ASSERT_EQ`/`ASSERT_NEQ` are overload sets covering every elementary type,
 STRING and CHAR included; the two arguments must land on ONE overload, so
 compare like with like (an `INT` against a `DINT` is fine — it widens — but
-prefer typed literals: `INT#1`, not `1`).
+prefer typed literals: `INT#1`, not `1`). A call no overload accepts is
+E0254, which lists what each overload takes.
 
 `message` defaults to empty, and the failure report names the file and line,
 so a message is only worth writing when the line alone will not say WHICH
