@@ -126,6 +126,107 @@ NAMESPACE Std.Strings
 
 	/* ## Tests */
 
+	/* ## Character-aware functions
+
+	   `LEN`, `FIND`, `LEFT`, `RIGHT`, `MID`, `INSERT`, `DELETE` and `REPLACE`
+	   count bytes, and a byte position can fall inside a multi-byte
+	   character. The `CHAR_` twins count characters: one well-formed UTF-8
+	   sequence is a character, and a stray byte that is not part of one is a
+	   character on its own, worth its Latin-1 code point like `CHAR#'$E9'`.
+	   Positions are 1-based in characters. On ASCII text both families
+	   agree; the byte family is the faster one. */
+
+	/* ## CHAR_COUNT — number of characters in IN. `CHAR_COUNT('café')` is 4
+	   where `LEN('café')` is 5. */
+	FUNCTION CHAR_COUNT: UDINT
+		VAR_INPUT
+			IN: STRING;
+		END_VAR
+		{wasm 'str.char_count' (params IN) (result CHAR_COUNT)}
+	END_FUNCTION
+
+	/* ## CHAR_AT — the character at 1-indexed position P, as a CHAR.
+	   `CHAR#'$00'` when P is 0 or past the end. */
+	FUNCTION CHAR_AT: CHAR
+		VAR_INPUT
+			IN: STRING;
+			P: UDINT;
+		END_VAR
+		{wasm 'str.char_at' (params IN P) (result CHAR_AT)}
+	END_FUNCTION
+
+	/* ## CHAR_FIND — 1-indexed character position of NEEDLE in HAYSTACK.
+	   0 when not found, 1 for an empty NEEDLE, as FIND. */
+	FUNCTION CHAR_FIND: UDINT
+		VAR_INPUT
+			HAYSTACK: STRING;
+			NEEDLE: STRING;
+		END_VAR
+		{wasm 'str.char_find' (params HAYSTACK NEEDLE) (result CHAR_FIND)}
+	END_FUNCTION
+
+	/* ## CHAR_LEFT — first N characters of S */
+	FUNCTION CHAR_LEFT: STRING
+		VAR_INPUT
+			S: STRING;
+			N: UDINT;
+		END_VAR
+		{wasm 'str.char_left' (params S N) (result CHAR_LEFT)}
+	END_FUNCTION
+
+	/* ## CHAR_RIGHT — last N characters of S */
+	FUNCTION CHAR_RIGHT: STRING
+		VAR_INPUT
+			S: STRING;
+			N: UDINT;
+		END_VAR
+		{wasm 'str.char_right' (params S N) (result CHAR_RIGHT)}
+	END_FUNCTION
+
+	/* ## CHAR_MID — N characters starting at 1-indexed character position P.
+	   Empty when P is 0 or past the end. */
+	FUNCTION CHAR_MID: STRING
+		VAR_INPUT
+			S: STRING;
+			N: UDINT;
+			P: UDINT;
+		END_VAR
+		{wasm 'str.char_mid' (params S N P) (result CHAR_MID)}
+	END_FUNCTION
+
+	/* ## CHAR_INSERT — insert INS into S after character position P (0 = front) */
+	FUNCTION CHAR_INSERT: STRING
+		VAR_INPUT
+			S: STRING;
+			INS: STRING;
+			P: UDINT;
+		END_VAR
+		{wasm 'str.char_insert' (params S INS P) (result CHAR_INSERT)}
+	END_FUNCTION
+
+	/* ## CHAR_DELETE — remove N characters starting at character position P.
+	   S unchanged when P is 0 or past the end. */
+	FUNCTION CHAR_DELETE: STRING
+		VAR_INPUT
+			S: STRING;
+			N: UDINT;
+			P: UDINT;
+		END_VAR
+		{wasm 'str.char_delete' (params S N P) (result CHAR_DELETE)}
+	END_FUNCTION
+
+	/* ## CHAR_REPLACE — replace N characters at character position P with INS.
+	   S unchanged when P is 0 or past the end. */
+	FUNCTION CHAR_REPLACE: STRING
+		VAR_INPUT
+			S: STRING;
+			INS: STRING;
+			N: UDINT;
+			P: UDINT;
+		END_VAR
+		{wasm 'str.char_replace' (params S INS N P) (result CHAR_REPLACE)}
+	END_FUNCTION
+
 	NAMESPACE Test
 		USING Std.Unit
 		USING Std.Convert
@@ -526,6 +627,69 @@ NAMESPACE Std.Strings
 			ASSERT(CONCAT('ab', 'cd') = CONCAT('ab', 'cd'), 'equal producer results compare equal');
 			ASSERT(CONCAT('ab', 'cd') <> CONCAT('xy', 'zw'), 'different producer results must not be equal');
 			ASSERT(CONCAT('a', 'a') < CONCAT('a', 'b'), 'ordering holds across two producers');
+		END_FUNCTION
+
+		// ----- Character-aware twins --------------------------------------
+		{test}
+		FUNCTION test_char_count_agrees_with_len_on_ascii
+			ASSERT(CHAR_COUNT('hello') = 5 AND CHAR_COUNT('') = 0);
+			ASSERT(CHAR_COUNT('hello') = LEN('hello'));
+		END_FUNCTION
+
+		{test}
+		FUNCTION test_char_count_counts_characters_not_bytes
+			ASSERT(CHAR_COUNT('café') = 4 AND LEN('café') = 5);
+			ASSERT(CHAR_COUNT('日本語') = 3 AND LEN('日本語') = 9);
+			ASSERT(CHAR_COUNT('$E9$E9') = 2, 'a stray byte is one character');
+		END_FUNCTION
+
+		{test}
+		FUNCTION test_char_at_returns_the_character
+			ASSERT(CHAR_AT('café', 4) = CHAR#'é' AND CHAR_AT('café', 1) = CHAR#'c');
+			ASSERT(CHAR_AT('日本語', 2) = CHAR#'本');
+			ASSERT(CHAR_AT('$E9', 1) = CHAR#'é', 'a stray byte reads as its Latin-1 character');
+			ASSERT(CHAR_AT('abc', 0) = CHAR#'$00' AND CHAR_AT('abc', 4) = CHAR#'$00');
+		END_FUNCTION
+
+		{test}
+		FUNCTION test_char_find_counts_characters
+			ASSERT(CHAR_FIND('日本語', '語') = 3 AND FIND('日本語', '語') = 7);
+			ASSERT(CHAR_FIND('café!', '!') = 5);
+			ASSERT(CHAR_FIND('abc', 'x') = 0 AND CHAR_FIND('abc', '') = 1);
+		END_FUNCTION
+
+		{test}
+		FUNCTION test_char_left_and_right_never_split_a_character
+			ASSERT(CHAR_LEFT('café', 4) = 'café' AND CHAR_LEFT('café', 3) = 'caf');
+			ASSERT(CHAR_RIGHT('café', 1) = 'é' AND CHAR_RIGHT('日本語', 2) = '本語');
+			ASSERT(CHAR_LEFT('café', 10) = 'café' AND CHAR_RIGHT('café', 0) = '');
+		END_FUNCTION
+
+		{test}
+		FUNCTION test_char_mid_counts_characters
+			ASSERT(CHAR_MID('日本語', 1, 2) = '本' AND CHAR_MID('café', 2, 3) = 'fé');
+			ASSERT(CHAR_MID('café', 10, 4) = 'é', 'N past the end is clamped');
+			ASSERT(CHAR_MID('café', 1, 0) = '' AND CHAR_MID('café', 1, 5) = '');
+		END_FUNCTION
+
+		{test}
+		FUNCTION test_char_insert_delete_replace_count_characters
+			ASSERT(CHAR_INSERT('caf', 'é', 3) = 'café' AND CHAR_INSERT('日語', '本', 1) = '日本語');
+			ASSERT(CHAR_INSERT('abc', 'X', 0) = 'Xabc');
+			ASSERT(CHAR_DELETE('café', 1, 4) = 'caf' AND CHAR_DELETE('日本語', 1, 2) = '日語');
+			ASSERT(CHAR_DELETE('café', 1, 0) = 'café' AND CHAR_DELETE('café', 1, 5) = 'café');
+			ASSERT(CHAR_REPLACE('café', 'e', 1, 4) = 'cafe' AND CHAR_REPLACE('日本語', 'X', 2, 1) = 'X語');
+			ASSERT(CHAR_REPLACE('café', 'X', 1, 0) = 'café');
+		END_FUNCTION
+
+		// A character position past the end maps to a byte position past the
+		// end and the byte functions decide: just past and far past must agree.
+		{test}
+		FUNCTION test_char_positions_past_the_end_agree
+			ASSERT(CHAR_MID('café', 2, 5) = CHAR_MID('café', 2, 99) AND CHAR_MID('café', 2, 99) = '');
+			ASSERT(CHAR_DELETE('café', 2, 5) = CHAR_DELETE('café', 2, 99) AND CHAR_DELETE('café', 2, 99) = 'café');
+			ASSERT(CHAR_REPLACE('café', 'X', 2, 5) = CHAR_REPLACE('café', 'X', 2, 99) AND CHAR_REPLACE('café', 'X', 2, 99) = 'café');
+			ASSERT(CHAR_INSERT('café', 'X', 5) = CHAR_INSERT('café', 'X', 99) AND CHAR_INSERT('café', 'X', 99) = 'caféX');
 		END_FUNCTION
 	END_NAMESPACE
 

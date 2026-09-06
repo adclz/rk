@@ -630,3 +630,201 @@ pub extern "C" fn str_byte_replace(
     }
 }
 
+// ---------------------------------------------------------------------------
+// Character-aware string functions: a character is one well-formed UTF-8
+// sequence, and a stray byte is a character on its own worth its Latin-1
+// code point. Positions are 1-based in characters; the producers map
+// them to byte offsets and delegate to the byte functions.
+// ---------------------------------------------------------------------------
+
+/// Byte width of the character starting at `at`: its UTF-8 sequence when
+/// well-formed, else one byte.
+#[inline]
+fn char_width(s: &[u8], at: usize) -> usize {
+    let want = match s[at] {
+        0x00..=0x7F => 1,
+        0xC2..=0xDF => 2,
+        0xE0..=0xEF => 3,
+        0xF0..=0xF4 => 4,
+        // An orphaned continuation byte or an impossible lead byte is a
+        // stray byte: one character.
+        _ => return 1,
+    };
+    if at + want <= s.len() && core::str::from_utf8(&s[at..at + want]).is_ok() {
+        want
+    } else {
+        1
+    }
+}
+
+/// The byte offset `n` characters past `from`, clamped to the end.
+fn advance(s: &[u8], mut from: usize, n: u32) -> usize {
+    let mut left = n;
+    while left > 0 && from < s.len() {
+        from += char_width(s, from);
+        left -= 1;
+    }
+    from
+}
+
+/// The number of characters in `s`.
+fn count_chars(s: &[u8]) -> u32 {
+    let mut n = 0u32;
+    let mut at = 0usize;
+    while at < s.len() {
+        at += char_width(s, at);
+        n += 1;
+    }
+    n
+}
+
+/// The code point of the character starting at `at`.
+fn char_at(s: &[u8], at: usize) -> u32 {
+    let width = char_width(s, at);
+    if width > 1
+        && let Ok(text) = core::str::from_utf8(&s[at..at + width])
+        && let Some(c) = text.chars().next()
+    {
+        return u32::from(c);
+    }
+    u32::from(s[at])
+}
+
+/// `n` characters at 1-based position `p`, as the byte `(n, p)` the byte
+/// functions take; 0 stays 0, past the end maps past the end.
+fn byte_span(s: &[u8], n: u32, p: u32) -> (u32, u32) {
+    if p == 0 {
+        return (0, 0);
+    }
+    let start = advance(s, 0, p - 1);
+    if start >= s.len() {
+        return (0, (s.len() as u32).saturating_add(1));
+    }
+    let end = advance(s, start, n);
+    ((end - start) as u32, start as u32 + 1)
+}
+
+/// `CHAR_COUNT(s)`: the number of characters.
+#[unsafe(no_mangle)]
+pub extern "C" fn str_char_count(ptr: *const u8, len: u32) -> u32 {
+    count_chars(unsafe { ffi_slice(ptr, len) })
+}
+
+/// `CHAR_AT(s, p)`: the character at 1-based position `p`, or 0 when `p`
+/// is 0 or past the end.
+#[unsafe(no_mangle)]
+pub extern "C" fn str_char_at(ptr: *const u8, len: u32, p: u32) -> u32 {
+    if p == 0 {
+        return 0;
+    }
+    let s = unsafe { ffi_slice(ptr, len) };
+    let at = advance(s, 0, p - 1);
+    if at >= s.len() { 0 } else { char_at(s, at) }
+}
+
+/// `CHAR_FIND(haystack, needle)`: the 1-based character position of the
+/// first match, 0 when absent, 1 for an empty needle.
+#[unsafe(no_mangle)]
+pub extern "C" fn str_char_find(
+    haystack_ptr: *const u8,
+    haystack_len: u32,
+    needle_ptr: *const u8,
+    needle_len: u32,
+) -> u32 {
+    let at = str_byte_find(haystack_ptr, haystack_len, needle_ptr, needle_len);
+    if at == 0 || needle_len == 0 {
+        return at;
+    }
+    let haystack = unsafe { ffi_slice(haystack_ptr, haystack_len) };
+    count_chars(&haystack[..(at - 1) as usize]) + 1
+}
+
+/// `CHAR_LEFT(s, n)`: the first `n` characters.
+#[unsafe(no_mangle)]
+pub extern "C" fn str_char_left(s_ptr: *const u8, s_len: u32, n: u32, out_addr: u32, out_cap: u32) {
+    let s = unsafe { ffi_slice(s_ptr, s_len) };
+    let end = advance(s, 0, n) as u32;
+    str_byte_left(s_ptr, s_len, end, out_addr, out_cap);
+}
+
+/// `CHAR_RIGHT(s, n)`: the last `n` characters.
+#[unsafe(no_mangle)]
+pub extern "C" fn str_char_right(
+    s_ptr: *const u8,
+    s_len: u32,
+    n: u32,
+    out_addr: u32,
+    out_cap: u32,
+) {
+    let s = unsafe { ffi_slice(s_ptr, s_len) };
+    let skip = count_chars(s).saturating_sub(n);
+    let start = advance(s, 0, skip) as u32;
+    str_byte_right(s_ptr, s_len, s_len.saturating_sub(start), out_addr, out_cap);
+}
+
+/// `CHAR_MID(s, n, p)`: `n` characters from 1-based position `p`; empty
+/// when `p` is 0 or past the end.
+#[unsafe(no_mangle)]
+pub extern "C" fn str_char_mid(
+    s_ptr: *const u8,
+    s_len: u32,
+    n: u32,
+    p: u32,
+    out_addr: u32,
+    out_cap: u32,
+) {
+    let s = unsafe { ffi_slice(s_ptr, s_len) };
+    let (n, p) = byte_span(s, n, p);
+    str_byte_mid(s_ptr, s_len, n, p, out_addr, out_cap);
+}
+
+/// `CHAR_INSERT(s, ins, p)`: `ins` after the first `p` characters of `s`
+/// (0 = at the front).
+#[unsafe(no_mangle)]
+pub extern "C" fn str_char_insert(
+    s_ptr: *const u8,
+    s_len: u32,
+    ins_ptr: *const u8,
+    ins_len: u32,
+    p: u32,
+    out_addr: u32,
+    out_cap: u32,
+) {
+    let s = unsafe { ffi_slice(s_ptr, s_len) };
+    let split = advance(s, 0, p) as u32;
+    str_byte_insert(s_ptr, s_len, ins_ptr, ins_len, split, out_addr, out_cap);
+}
+
+/// `CHAR_DELETE(s, n, p)`: remove `n` characters from 1-based position `p`;
+/// `s` unchanged when `p` is 0 or past the end.
+#[unsafe(no_mangle)]
+pub extern "C" fn str_char_delete(
+    s_ptr: *const u8,
+    s_len: u32,
+    n: u32,
+    p: u32,
+    out_addr: u32,
+    out_cap: u32,
+) {
+    let s = unsafe { ffi_slice(s_ptr, s_len) };
+    let (n, p) = byte_span(s, n, p);
+    str_byte_delete(s_ptr, s_len, n, p, out_addr, out_cap);
+}
+
+/// `CHAR_REPLACE(s, ins, n, p)`: `ins` in place of `n` characters at 1-based
+/// position `p`; `s` unchanged when `p` is 0 or past the end.
+#[unsafe(no_mangle)]
+pub extern "C" fn str_char_replace(
+    s_ptr: *const u8,
+    s_len: u32,
+    ins_ptr: *const u8,
+    ins_len: u32,
+    n: u32,
+    p: u32,
+    out_addr: u32,
+    out_cap: u32,
+) {
+    let s = unsafe { ffi_slice(s_ptr, s_len) };
+    let (n, p) = byte_span(s, n, p);
+    str_byte_replace(s_ptr, s_len, ins_ptr, ins_len, n, p, out_addr, out_cap);
+}
