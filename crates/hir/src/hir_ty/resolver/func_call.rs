@@ -114,6 +114,25 @@ pub fn resolve_func_call<'db>(
             }
             return;
         }
+        OverloadPick::None(candidates) => {
+            let name = match candidates.first() {
+                Some(f) => f.name(db),
+                None => return,
+            };
+            ctx.errors.push(
+                ResolveError::NoMatchingOverload {
+                    func_call,
+                    name,
+                    arg_types: arg_types.clone(),
+                    candidates,
+                }
+                .to_diagnostic(db, ctx.scope.file(db)),
+            );
+            if let Some(expr) = func_call.path(db).expr(db) {
+                ctx.type_of_path_expr.insert(expr, Type::Never);
+            }
+            return;
+        }
     };
 
     // func call requires the type to be a [`CallableType`] otherwise the coercion layer will

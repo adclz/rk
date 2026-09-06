@@ -473,6 +473,16 @@ pub enum ResolveError<'db> {
         name: Ident,
         candidates: Vec<Function<'db>>,
     },
+    /// No overload of the set accepts the call's argument types. The first
+    /// overload used to stand in and report ITS parameter mismatch, so the
+    /// message named a type nobody wrote: "expected 'CHAR', got 'DATE'" for
+    /// a date assertion.
+    NoMatchingOverload {
+        func_call: FuncCall<'db>,
+        name: Ident,
+        arg_types: Vec<Type<'db>>,
+        candidates: Vec<Function<'db>>,
+    },
 }
 
 impl<'db> ErrorCode for ResolveError<'db> {
@@ -525,6 +535,7 @@ impl<'db> ErrorCode for ResolveError<'db> {
             Self::RetainInStatelessPou { .. } => "E0235",
             Self::InOutParameterBoundWithArrow { .. } => "E0236",
             Self::AmbiguousOverload { .. } => "E0237",
+            Self::NoMatchingOverload { .. } => "E0254",
             Self::ProgramWithoutTask { .. } => "E0238",
             Self::UnsupportedConfigElement { .. } => "E0240",
             Self::UnschedulableTask { .. } => "E0239",
@@ -580,6 +591,7 @@ impl<'db> ErrorCode for ResolveError<'db> {
                 "VAR_IN_OUT parameter bound with output syntax"
             }
             Self::AmbiguousOverload { .. } => "ambiguous overloaded call",
+            Self::NoMatchingOverload { .. } => "no matching overload",
             Self::ProgramWithoutTask { .. } => "program instance never runs",
             Self::UnsupportedConfigElement { .. } => "unsupported configuration element",
             Self::UnschedulableTask { .. } => "task cannot be scheduled",
@@ -676,6 +688,43 @@ impl<'db> ToIdeDiagnostic<'db> for ResolveError<'db> {
                 for c in candidates {
                     diag.with_related(Related::new(
                         "candidate overload declared here".to_string(),
+                        c.get_scope_id(db).file(db),
+                        c.get_span(db),
+                    ));
+                }
+                diag
+            }
+            Self::NoMatchingOverload {
+                func_call,
+                name,
+                arg_types,
+                candidates,
+            } => {
+                let names = |types: &[Type<'db>]| {
+                    types
+                        .iter()
+                        .map(|t| t.type_name(db))
+                        .collect::<Vec<_>>()
+                        .join(", ")
+                };
+                let mut diag = diag()
+                    .message(format!(
+                        "no overload of '{}' accepts ({})",
+                        name.text(db),
+                        names(arg_types)
+                    ))
+                    .severity(DiagnosticSeverity::ERROR)
+                    .desc(self)
+                    .range(
+                        crate::denormalize(db, file, &func_call.path(db).get_span(db))
+                            .unwrap_or_default(),
+                    )
+                    .call();
+
+                for c in candidates {
+                    let params = crate::hir_ty::head::signature::function_signature(db, *c).params;
+                    diag.with_related(Related::new(
+                        format!("overload accepting ({})", names(&params)),
                         c.get_scope_id(db).file(db),
                         c.get_span(db),
                     ));

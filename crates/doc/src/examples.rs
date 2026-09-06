@@ -1524,6 +1524,32 @@ END_FUNCTION_BLOCK
             lint_rule: None,
         },
         ErrorExample {
+            code: "E0254",
+            category: "Resolution",
+            title: "No overload accepts the arguments",
+            description: "The call names an overloaded FUNCTION and none of its overloads accepts the argument types. The first overload used to stand in and report its own parameter mismatch, so the message named a type nobody wrote, such as expected 'CHAR', got 'DATE' for a date assertion. Each overload and what it accepts is listed.",
+            sources: &[r#"
+FUNCTION take : INT
+VAR_INPUT
+    v : INT;
+END_VAR
+    take := v;
+END_FUNCTION
+
+FUNCTION take : INT
+VAR_INPUT
+    v : REAL;
+END_VAR
+    take := 2;
+END_FUNCTION
+
+FUNCTION caller : INT
+    caller := take('text');
+END_FUNCTION
+"#],
+            lint_rule: None,
+        },
+        ErrorExample {
             code: "E0253",
             category: "Resolution",
             title: "Wasm operand not declared",

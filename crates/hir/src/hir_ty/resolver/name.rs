@@ -258,6 +258,9 @@ pub enum OverloadPick<'db> {
     /// Several overloads are equally viable for the given argument types; the
     /// caller must disambiguate with an explicit cast.
     Ambiguous(Vec<Function<'db>>),
+    /// An overload set in which no overload accepts the argument types, though
+    /// at least one takes the argument count: the whole set, for the error.
+    None(Vec<Function<'db>>),
 }
 
 /// The types that DISCRIMINATE this function's symbol among its overloads:
@@ -320,8 +323,11 @@ pub fn overload_discriminant<'db>(
 /// second. Incomparable candidates — each better somewhere, as with
 /// `f(INT, REAL)` vs `f(REAL, INT)` on two widening arguments — stay
 /// [`OverloadPick::Ambiguous`]: dominance never picks by majority. None
-/// viable ⇒ keep the first-match so the ordinary param-mismatch error
-/// surfaces.
+/// viable ⇒ [`OverloadPick::None`] when some candidate took the argument
+/// count, since the TYPES are what failed; the first-match used to stand in
+/// and report its own parameter mismatch, naming a type nobody wrote. When
+/// no candidate takes the count either, the first-match stays so the arity
+/// error surfaces.
 pub fn select_overload<'db>(
     db: &'db dyn WorkspaceDataBase,
     callable: CallableType<'db>,
@@ -370,6 +376,8 @@ pub fn select_overload<'db>(
 
     let mut exact: Vec<Function<'db>> = Vec::new();
     let mut viable: Vec<(Function<'db>, Vec<ArgMatch>)> = Vec::new();
+    let mut takes_the_count = false;
+    let set = functions.clone();
     for f in functions {
         let sig = function_signature(db, f);
         // Viable arg counts: at least the required params, at most all of them
@@ -377,6 +385,7 @@ pub fn select_overload<'db>(
         if arg_types.len() < function_required_arity(db, f) || arg_types.len() > sig.params.len() {
             continue;
         }
+        takes_the_count = true;
         let mut matches = Vec::with_capacity(arg_types.len());
         let mut ok = true;
         for (arg, param) in arg_types.iter().zip(sig.params.iter()) {
@@ -422,7 +431,12 @@ pub fn select_overload<'db>(
         .filter(|(_, m)| !viable.iter().any(|(_, other)| dominated(m, other)))
         .collect();
 
+    // An argument that already failed to type (`Type::Never`) has been
+    // reported where it failed; naming it `{unknown}` in a second error
+    // would be the cascade the contract forbids.
+    let all_typed = !arg_types.iter().any(|t| t.is_never());
     match undominated.len() {
+        0 if takes_the_count && all_typed => OverloadPick::None(set),
         0 => OverloadPick::One(callable),
         1 => OverloadPick::One(CallableType::Function(undominated[0].0)),
         _ => pick_by_arity_then_return(

@@ -180,6 +180,94 @@ END_FUNCTION
     ");
 }
 
+/// An argument TYPE no overload accepts is E0254, naming what was passed and
+/// what each overload takes. The first overload used to stand in and report
+/// its own parameter mismatch: "expected 'CHAR', got 'DATE'" for a date
+/// assertion, a type nobody wrote.
+#[rstest]
+fn no_matching_type_names_the_overloads(mut with_db: RootDatabase) {
+    let source = r#"
+FUNCTION take : INT
+VAR_INPUT v : INT; END_VAR
+    take := v;
+END_FUNCTION
+
+FUNCTION take : INT
+VAR_INPUT v : REAL; END_VAR
+    take := 2;
+END_FUNCTION
+
+FUNCTION caller : INT
+    caller := take('text');
+END_FUNCTION
+"#;
+
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
+    [E0254] Error: no matching overload
+        ,-[ file:///test0.st:13:15 ]
+        |
+      2 |   ,-> FUNCTION take : INT
+        :   :
+      5 |   |-> END_FUNCTION
+        |   |
+        |   `------------------ overload accepting (INT)
+        |
+      7 | ,---> FUNCTION take : INT
+        : :
+     10 | |---> END_FUNCTION
+        | |
+        | `-------------------- overload accepting (REAL)
+        |
+     13 |           caller := take('text');
+        |                     ^^|^
+        |                       `--- no overload of 'take' accepts (STRING)
+    ----'
+    ");
+}
+
+/// A set where only some overloads take the argument count: the types are
+/// what failed, so it is E0254 listing every overload, not the arity error.
+#[rstest]
+fn no_matching_type_in_a_mixed_arity_set(mut with_db: RootDatabase) {
+    let source = r#"
+FUNCTION take : INT
+VAR_INPUT v : INT; END_VAR
+    take := v;
+END_FUNCTION
+
+FUNCTION take : INT
+VAR_INPUT a : INT; b : INT; END_VAR
+    take := a + b;
+END_FUNCTION
+
+FUNCTION caller : INT
+    caller := take(TRUE);
+END_FUNCTION
+"#;
+
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
+    [E0254] Error: no matching overload
+        ,-[ file:///test0.st:13:15 ]
+        |
+      2 |   ,-> FUNCTION take : INT
+        :   :
+      5 |   |-> END_FUNCTION
+        |   |
+        |   `------------------ overload accepting (INT)
+        |
+      7 | ,---> FUNCTION take : INT
+        : :
+     10 | |---> END_FUNCTION
+        | |
+        | `-------------------- overload accepting (INT, INT)
+        |
+     13 |           caller := take(TRUE);
+        |                     ^^|^
+        |                       `--- no overload of 'take' accepts (BOOL)
+    ----'
+    ");
+}
+
 /// An argument whose type comes from an ADJUSTMENT — array indexing, struct
 /// field access, dereference — must be classified by its adjusted type.
 ///
