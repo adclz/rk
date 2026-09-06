@@ -832,3 +832,31 @@ END_CONFIGURATION
          {ten} vs {five_thousand}"
     );
 }
+
+/// A non-ASCII literal reaches the debugger as the text it was written as:
+/// the literal is stored as UTF-8 bytes and read back as UTF-8. Transcoded
+/// to Latin-1 it read back with a replacement character.
+#[rstest]
+fn runtime_reads_a_non_ascii_literal_as_written(mut with_db: db::RootDatabase) {
+    let source = r#"
+        PROGRAM Main
+        VAR
+            label : STRING[8] := 'café';
+        END_VAR
+        END_PROGRAM
+
+        CONFIGURATION Cfg
+            RESOURCE Res ON CPU
+                TASK T(INTERVAL := T#10ms, PRIORITY := 1);
+                PROGRAM Run WITH T : Main;
+            END_RESOURCE
+        END_CONFIGURATION
+    "#;
+    let (_mir, wasm) = compile_to_mir_and_wasm(&mut with_db, source);
+    let plc = Plc::load(&wasm, Config::default()).expect("load PLC");
+    let dbg = DebugInfo::from_wasm(&wasm);
+    assert_eq!(
+        dbg.read_var(&plc, "Run.label"),
+        Some(VarValue::String("café".into()))
+    );
+}

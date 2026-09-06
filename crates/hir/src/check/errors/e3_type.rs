@@ -491,7 +491,6 @@ pub enum InferLiteralError {
 
     Incomplete_STRING_XX_Escape,
     Invalid_STRING_Hex_Escape,
-    Invalid_STRING_CHAR(String),
 }
 
 impl std::fmt::Display for InferLiteralError {
@@ -566,7 +565,6 @@ impl std::fmt::Display for InferLiteralError {
                 "incomplete STRING XX escape sequence"
             }
             InferLiteralError::Invalid_STRING_Hex_Escape => "invalid STRING hex escape sequence",
-            InferLiteralError::Invalid_STRING_CHAR(st) => return f.write_str(st),
         };
         f.write_str(msg)
     }

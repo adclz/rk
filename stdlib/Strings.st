@@ -141,6 +141,13 @@ NAMESPACE Std.Strings
 		END_FUNCTION
 
 		{test}
+		FUNCTION test_len_counts_utf8_bytes
+			ASSERT(LEN('café') = 5 AND LEN('€') = 3 AND LEN('中文') = 6);
+			ASSERT(IS_UTF8('café') AND IS_UTF8('中文'));
+			ASSERT(LEN('$E9') = 1 AND NOT IS_UTF8('$E9'));
+		END_FUNCTION
+
+		{test}
 		FUNCTION test_is_utf8_ascii
 			ASSERT(IS_UTF8('hello'));
 		END_FUNCTION

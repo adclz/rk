@@ -832,11 +832,16 @@ impl Integer {
     }
 }
 
-/// Decode a single-byte character string literal to the bytes it denotes.
+/// Decode a STRING literal to the bytes it denotes.
+///
+/// A character is its UTF-8 bytes, as everything downstream assumes: the
+/// runtime, the debugger and the network paths read STRING storage as
+/// UTF-8, and `LEN` counts bytes. Transcoding to Latin-1 here gave `'café'`
+/// four bytes the debugger could not decode and refused `'€'` outright.
 ///
 /// `$` opens an escape (IEC 61131-3 table 6): the named forms `$$`, `$'`,
 /// `$L`/`$N` (line feed), `$P` (form feed), `$R` (carriage return), `$T`
-/// (tab), each case-insensitive, and `$XX` for an arbitrary byte in hex.
+/// (tab), each case-insensitive, and `$XX` for one arbitrary byte in hex.
 ///
 /// This is the ONE decoder: `Elementary::check` validates through it, and MIR
 /// lowers literals through it, so what a program is checked against and what
@@ -875,11 +880,8 @@ pub fn parse_single_byte_string(s: &str) -> Result<Vec<u8>, InferLiteralError> {
                 .map_err(|_| InferLiteralError::Invalid_STRING_Hex_Escape)?;
             result.push(byte);
         } else {
-            // Regular single-byte character
-            if (c as u32) > 0xFF {
-                return Err(InferLiteralError::Invalid_STRING_CHAR(c.to_string()));
-            }
-            result.push(c as u8);
+            let mut buf = [0u8; 4];
+            result.extend_from_slice(c.encode_utf8(&mut buf).as_bytes());
         }
     }
     Ok(result)

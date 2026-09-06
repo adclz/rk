@@ -421,3 +421,41 @@ fn valid_comment_markers_inside_a_string_literal(mut with_db: RootDatabase) {
     "#;
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @"");
 }
+
+/// A literal's characters are their UTF-8 bytes, so the capacity check
+/// counts bytes: `'café'` fits a STRING[5] and not a STRING[4], and `'€'`
+/// is three. Transcoding to Latin-1 used to make `'café'` four bytes the
+/// runtime could not decode and refuse `'€'` outright.
+#[rstest]
+fn valid_string_literal_is_utf8_bytes(mut with_db: RootDatabase) {
+    let source = r#"
+        FUNCTION fn1
+        VAR
+            s : STRING := 'café €';
+            t : STRING[5] := 'café';
+            e : STRING[3] := '€';
+        END_VAR
+        END_FUNCTION
+    "#;
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @"");
+}
+
+#[rstest]
+fn invalid_string_literal_capacity_counts_bytes(mut with_db: RootDatabase) {
+    let source = r#"
+        FUNCTION fn1
+        VAR
+            t : STRING[4] := 'café';
+        END_VAR
+        END_FUNCTION
+    "#;
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
+    [E0309] Error: invalid literal
+       ,-[ file:///test0.st:4:30 ]
+       |
+     4 |             t : STRING[4] := 'café';
+       |                              ^^^|^^
+       |                                 `---- cannot infer '<string>' to 'STRING': STRING literal exceeds maximum length of 4, got 5
+    ---'
+    ");
+}

@@ -33,7 +33,9 @@ s: STRING := 'hello';       // single quotes
 c: CHAR := CHAR#'A';        // a bare 'A' is a STRING, not a CHAR
 ```
 
-Inside a single-quoted string, `$` escapes: `$$`, `$'`, `$L`, `$N`, `$P`, `$R`, `$T`, and `$41` for a hex byte. Double-quoted strings are also accepted and produce a `STRING`.
+Inside a single-quoted string, `$` escapes: `$$`, `$'`, `$L`, `$N`, `$P`, `$R`, `$T`, and `$41` for one hex byte. Double-quoted strings are also accepted and produce a `STRING`.
+
+A literal's characters are their UTF-8 bytes, which is how the runtime, the debugger and the network read a `STRING`: `'café'` is 5 bytes, `LEN` counts bytes, and a `STRING[4]` refuses it (E0309).
 
 A string literal longer than the destination's declared capacity is refused at compile time (E0309), not truncated.
 
