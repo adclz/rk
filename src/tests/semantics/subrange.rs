@@ -674,3 +674,25 @@ END_FUNCTION
     ----'
     ");
 }
+
+/// A TYPE's own default is checked against its subrange like a variable's:
+/// 200 is not a Pct.
+#[rstest]
+fn invalid_subrange_type_default_out_of_bounds(mut with_db: RootDatabase) {
+    let source = r#"
+        TYPE
+            Pct : INT (0..100) := 200;
+        END_TYPE
+    "#;
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
+    [E0802] Error: value outside subrange
+       ,-[ file:///test0.st:3:35 ]
+       |
+     3 |             Pct : INT (0..100) := 200;
+       |                                   ^|^
+       |                                    `--- value 200 is outside the subrange 0..100
+       |
+       | Note: the declared range only admits values from 0 to 100
+    ---'
+    ");
+}

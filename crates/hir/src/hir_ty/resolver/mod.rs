@@ -219,7 +219,33 @@ impl<'db> Resolver<'db> {
                 }
             }
             PathResolutionRoot::Namespace { .. } => {
-                // a begin path expr will always refer to a local variable in this context
+                // No value to walk from: a TYPE's or a CONFIGURATION's own
+                // initializer. A name here is a POU, the type of an enum
+                // value (`TYPE Color : (Red, Green) := Color#Green`), which
+                // nothing typed before, so every such default was E0702 on
+                // '{unknown}'. A local name is left to the once-per-type
+                // rule, which refuses it as not constant.
+                if path_expr.invocation(db).is_none()
+                    && let Some(path) = path_expr.expr(db)
+                    && let Some((access, _)) = path.to_namespace_access(db)
+                    && let name::NameResolution::Pou(pou, using) =
+                        name::resolve_name(db, access, path.get_scope_id(db))
+                {
+                    let call_site = CallSite::new(path.scope_id(db), path.get_id(db));
+                    check_test_visibility(db, &call_site, pou.get_scope_id(db), &mut ctx.errors);
+                    match using {
+                        Some(using) => {
+                            ctx.usings_used.insert(using);
+                        }
+                        None => check_namespace_visibility(
+                            db,
+                            &call_site,
+                            pou.get_scope_id(db),
+                            &mut ctx.errors,
+                        ),
+                    }
+                    ctx.type_of_path_expr.insert(path, Type::new_pou(db, pou));
+                }
             }
         };
     }

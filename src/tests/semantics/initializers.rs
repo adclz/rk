@@ -366,3 +366,27 @@ END_FUNCTION
 "#;
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"");
 }
+
+/// A struct alias's override names a field the struct does not have: a
+/// diagnostic, not a silently dropped store.
+#[rstest]
+fn invalid_struct_alias_default_names_an_unknown_field(mut with_db: RootDatabase) {
+    let source = r#"
+        TYPE
+            Point : STRUCT
+                x : INT := 3;
+                y : INT := 5;
+            END_STRUCT;
+            Origin : Point := (z := 7);
+        END_TYPE
+    "#;
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
+    [E0211] Error: no such field
+       ,-[ file:///test0.st:7:32 ]
+       |
+     7 |             Origin : Point := (z := 7);
+       |                                ^^^|^^
+       |                                   `---- 'Point' has no field named 'z'
+    ---'
+    ");
+}

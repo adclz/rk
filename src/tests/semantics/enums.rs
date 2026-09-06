@@ -200,3 +200,63 @@ fn invalid_enum_value_not_constant(mut with_db: RootDatabase) {
     ---'
     ");
 }
+
+/// A TYPE's enum default is written qualified, like every enum value, and
+/// the type may name itself: nothing typed a begin path in a TYPE-scoped
+/// initializer before, so `Color#Green` here, and even `Shade : Color :=
+/// Color#Green` in a second type, was E0702 on '{unknown}'.
+#[rstest]
+fn valid_enum_type_default_is_qualified(mut with_db: RootDatabase) {
+    let source = r#"
+        TYPE
+            Color : (Red, Green, Blue) := Color#Green;
+            Shade : Color := Color#Blue;
+        END_TYPE
+    "#;
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @"");
+}
+
+/// The bare spelling stays refused in that position too: the once-per-type
+/// rule sees a name it cannot fold.
+#[rstest]
+fn invalid_enum_type_default_bare_variant(mut with_db: RootDatabase) {
+    let source = r#"
+        TYPE
+            Color : (Red, Green, Blue) := Green;
+        END_TYPE
+    "#;
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
+    [E0320] Error: initial value is not constant
+       ,-[ file:///test0.st:3:43 ]
+       |
+     3 |             Color : (Red, Green, Blue) := Green;
+       |                                           ^^|^^
+       |                                             `---- this initial value must be a constant: it is fixed before the program runs
+    ---'
+    ");
+}
+
+/// An enum alias defaulting to another enum's variant is a type error.
+#[rstest]
+fn invalid_enum_type_default_of_another_enum(mut with_db: RootDatabase) {
+    let source = r#"
+        TYPE
+            Color : (Red, Green, Blue);
+            Other : (Red, Black);
+            Shade : Color := Other#Red;
+        END_TYPE
+    "#;
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
+    [E0301] Error: type mismatch
+       ,-[ file:///test0.st:5:27 ]
+       |
+     3 |             Color : (Red, Green, Blue);
+       |                     ^^^^^^^^^|^^^^^^^^
+       |                              `---------- type is defined by 'Color' here
+       |
+     5 |             Shade : Color := Other#Red;
+       |                           ^^^^^^|^^^^^
+       |                                 `------- expected 'Color', got 'Other#Red'
+    ---'
+    ");
+}

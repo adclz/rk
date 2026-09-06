@@ -71,6 +71,7 @@ Everything below lives inside a `TYPE … END_TYPE` block.
 ```iecst
 TYPE
 	Color: (Red, Green, Blue);            // enum
+	Mode: (Run, Stop) := Mode#Stop;       // enum with a default, written qualified
 	Coded: INT(Off := 0, On := 10);       // enum with a base type and explicit values
 	Level: INT(0..100);                   // subrange
 	Point: STRUCT

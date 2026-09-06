@@ -888,3 +888,42 @@ fn runtime_reads_a_char_as_its_code_point(mut with_db: db::RootDatabase) {
         .expect("force a char");
     assert_eq!(dbg.read_var(&plc, "Run.c"), Some(VarValue::U32(0xE9)));
 }
+
+/// An aliased type's default reaches a memory-resident host, the static
+/// store path and not the wasm-local one: a RETAIN field of a PROGRAM and a
+/// struct member of an aliased type both start at their type's default.
+#[rstest]
+fn a_type_default_reaches_a_program_field(mut with_db: db::RootDatabase) {
+    let source = r#"
+        TYPE
+            Pct : INT (0..100) := 50;
+            Point : STRUCT
+                x : INT := 3;
+                n : Pct;
+            END_STRUCT;
+            Origin : Point := (x := 7);
+        END_TYPE
+
+        PROGRAM Main
+        VAR RETAIN
+            c : Pct;
+        END_VAR
+        VAR
+            o : Origin;
+        END_VAR
+        END_PROGRAM
+
+        CONFIGURATION Cfg
+            RESOURCE Res ON CPU
+                TASK T(INTERVAL := T#10ms, PRIORITY := 1);
+                PROGRAM Run WITH T : Main;
+            END_RESOURCE
+        END_CONFIGURATION
+    "#;
+    let (_mir, wasm) = compile_to_mir_and_wasm(&mut with_db, source);
+    let plc = Plc::load(&wasm, Config::default()).expect("load PLC");
+    let dbg = DebugInfo::from_wasm(&wasm);
+    assert_eq!(dbg.read_var(&plc, "Run.c"), Some(VarValue::I16(50)));
+    assert_eq!(dbg.read_var(&plc, "Run.o.x"), Some(VarValue::I16(7)));
+    assert_eq!(dbg.read_var(&plc, "Run.o.n"), Some(VarValue::I16(50)));
+}

@@ -551,15 +551,16 @@ fn collect_type_defaults<'db>(
                 return;
             }
             visited.push(dt);
+            // What the type is made of first, its own init after: later
+            // stores win, so `TYPE Origin : Point := (x := 7)` keeps Point's
+            // `y := 1.5`. Taking the alias's init alone erased every member
+            // it did not name.
+            collect_type_defaults(db, dt.spec(db).infer(db), prefix, out, visited);
             if let Some(init) = dt.init(db) {
-                // A type-level init covers the value whole, like an explicit
-                // member init: taken as written, not descended.
                 out.push(InstanceInit {
                     path: prefix.clone(),
                     init,
                 });
-            } else {
-                collect_type_defaults(db, dt.spec(db).infer(db), prefix, out, visited);
             }
             visited.pop();
         }

@@ -1116,3 +1116,152 @@ fn string_array_elements_compare_as_strings(mut with_db: db::RootDatabase) {
     let result: i32 = crate::tests::codegen::execute_wasm(&wasm, "f", ());
     assert_eq!(result, 11, "literal match and ordering hold; distinct elements are not equal");
 }
+
+/// A named struct type with its own partial default overlays the base
+/// type's member defaults; it used to replace them, so `TYPE Origin : Point
+/// := (x := 7)` started `y` at 0 instead of Point's 1.5.
+#[rstest]
+fn a_struct_alias_default_keeps_the_base_member_defaults(mut with_db: db::RootDatabase) {
+    let source = r#"
+TYPE Point : STRUCT
+    x : INT := 3;
+    y : REAL := 1.5;
+END_STRUCT; END_TYPE
+TYPE Origin : Point := (x := 7); END_TYPE
+
+FUNCTION run_x : INT
+VAR o : Origin; END_VAR
+    run_x := o.x;
+END_FUNCTION
+
+FUNCTION run_y : REAL
+VAR o : Origin; END_VAR
+    run_y := o.y;
+END_FUNCTION
+"#;
+    let wasm = compile_to_wasm(&mut with_db, source);
+    let x: i32 = crate::tests::codegen::execute_wasm(&wasm, "run_x", ());
+    let y: f32 = crate::tests::codegen::execute_wasm(&wasm, "run_y", ());
+    assert_eq!(
+        (x, y),
+        (7, 1.5),
+        "the alias overrides x and keeps Point's y"
+    );
+}
+
+/// A scalar alias with a type default, subrange here, is a whole wasm local
+/// like an elementary one. Addressed as a member it made codegen take the
+/// address of a wasm local: an internal compiler error from a program
+/// `rk check` called clean.
+#[rstest]
+fn a_subrange_alias_default_initializes_a_local(mut with_db: db::RootDatabase) {
+    let source = r#"
+TYPE Pct : INT (0..100) := 50; END_TYPE
+
+FUNCTION run : INT
+VAR c : Pct; END_VAR
+    run := c;
+END_FUNCTION
+"#;
+    let wasm = compile_to_wasm(&mut with_db, source);
+    let r: i32 = crate::tests::codegen::execute_wasm(&wasm, "run", ());
+    assert_eq!(r, 50);
+}
+
+/// A TYPE's enum default reaches its variables: the local's slot starts at
+/// the variant's ordinal, and an enum alias with its own default overrides
+/// the base type's.
+#[rstest]
+fn an_enum_type_default_initializes_a_local(mut with_db: db::RootDatabase) {
+    let source = r#"
+TYPE
+    Color : (Red, Green, Blue) := Color#Green;
+    Shade : Color := Color#Blue;
+END_TYPE
+
+FUNCTION run : INT
+VAR
+    c : Color;
+    s : Shade;
+END_VAR
+    run := 0;
+    IF c = Color#Green THEN
+        run := run + 1;
+    END_IF;
+    IF s = Color#Blue THEN
+        run := run + 10;
+    END_IF;
+END_FUNCTION
+"#;
+    let wasm = compile_to_wasm(&mut with_db, source);
+    let r: i32 = crate::tests::codegen::execute_wasm(&wasm, "run", ());
+    assert_eq!(r, 11, "c is Green (1) and s is Blue (10)");
+}
+
+/// A chain of aliases takes the NEAREST default: the middle one is silent
+/// and C still gets B's 2, D overrides to 3. A resolver that stopped at the
+/// first default it met, or at the base, would diverge here.
+#[rstest]
+fn an_alias_chain_takes_the_nearest_default(mut with_db: db::RootDatabase) {
+    let source = r#"
+TYPE
+    A : INT := 1;
+    B : A := 2;
+    C : B;
+    D : C := 3;
+END_TYPE
+
+FUNCTION run : INT
+VAR
+    c : C;
+    d : D;
+END_VAR
+    run := c * 100 + d;
+END_FUNCTION
+"#;
+    let wasm = compile_to_wasm(&mut with_db, source);
+    let r: i32 = crate::tests::codegen::execute_wasm(&wasm, "run", ());
+    assert_eq!(r, 203, "c is B's 2, d is its own 3");
+}
+
+/// Two fields of an aliased struct with an override inside one type: the
+/// overlay applies per field, at each field's offset, not only at offset 0.
+#[rstest]
+fn an_aliased_struct_default_applies_to_every_field_of_that_type(mut with_db: db::RootDatabase) {
+    let source = r#"
+TYPE Point : STRUCT
+    x : INT := 3;
+    y : INT := 5;
+END_STRUCT; END_TYPE
+TYPE Origin : Point := (x := 7); END_TYPE
+TYPE Line : STRUCT
+    a : Origin;
+    b : Origin;
+END_STRUCT; END_TYPE
+
+FUNCTION run : INT
+VAR l : Line; END_VAR
+    run := l.a.x * 1000 + l.a.y * 100 + l.b.x * 10 + l.b.y;
+END_FUNCTION
+"#;
+    let wasm = compile_to_wasm(&mut with_db, source);
+    let r: i32 = crate::tests::codegen::execute_wasm(&wasm, "run", ());
+    assert_eq!(r, 7575, "a = (7, 5) and b = (7, 5)");
+}
+
+/// An array of an aliased type with a default: every element gets it, not
+/// only the first.
+#[rstest]
+fn an_array_of_an_aliased_type_defaults_every_element(mut with_db: db::RootDatabase) {
+    let source = r#"
+TYPE Pct : INT (0..100) := 50; END_TYPE
+
+FUNCTION run : INT
+VAR a : ARRAY[0..2] OF Pct; END_VAR
+    run := a[0] + a[1] + a[2];
+END_FUNCTION
+"#;
+    let wasm = compile_to_wasm(&mut with_db, source);
+    let r: i32 = crate::tests::codegen::execute_wasm(&wasm, "run", ());
+    assert_eq!(r, 150, "three elements of 50");
+}

@@ -1310,7 +1310,15 @@ fn lower_local_init_stmts<'db>(
             InitTarget::Local {
                 name: var.name(db),
                 base: 0,
-                whole: matches!(var_ty, crate::types::MirType::Elementary(_)),
+                // Every scalar-shaped local is the whole target, subrange and enum
+                // aliases included.
+                whole: matches!(
+                    var_ty,
+                    crate::types::MirType::Elementary(_)
+                        | crate::types::MirType::Subrange(_)
+                        | crate::types::MirType::Enum(_)
+                        | crate::types::MirType::Pointer(_)
+                ),
             },
             &var_ty,
             var.spec(db).infer(db),
