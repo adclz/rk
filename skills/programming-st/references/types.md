@@ -37,6 +37,8 @@ Inside a single-quoted string, `$` escapes: `$$`, `$'`, `$L`, `$N`, `$P`, `$R`, 
 
 A literal's characters are their UTF-8 bytes, which is how the runtime, the debugger and the network read a `STRING`: `'café'` is 5 bytes, `LEN` counts bytes, and a `STRING[4]` refuses it (E0309).
 
+A `CHAR` is one character of any script, stored as its code point in a 32-bit slot: `CHAR#'é'` and `CHAR#'中'` are fine, `CHAR#'ab'` is refused. It does not widen to `STRING` by itself; `CHAR_TO_STRING` writes its UTF-8 bytes, `CHAR_TO_BYTE` keeps its low byte and `BYTE_TO_CHAR` reads one.
+
 A string literal longer than the destination's declared capacity is refused at compile time (E0309), not truncated.
 
 ## Date and time encodings

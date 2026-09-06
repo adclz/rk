@@ -1313,11 +1313,21 @@ NAMESPACE Std.Convert
 		{wasm 'cast' (params IN) (result LDT_TO_LTOD)}
 	END_FUNCTION
 
-	/* ## CHAR conversions */
+	/* ## CHAR conversions
+	   A CHAR is one character, its code point in an i32. BYTE_TO_CHAR reads
+	   a byte as the Latin-1 character it is; CHAR_TO_BYTE keeps the low byte,
+	   which is the whole character for the Latin-1 range and a truncation
+	   past it. */
 
 	FUNCTION BYTE_TO_CHAR: CHAR
 		VAR_INPUT IN: BYTE; END_VAR
 		{wasm 'nop' (params IN) (result BYTE_TO_CHAR)}
+	END_FUNCTION
+
+	{info = 'narrowing conversion, possible loss of value'}
+	FUNCTION CHAR_TO_BYTE: BYTE
+		VAR_INPUT IN: CHAR; END_VAR
+		{wasm 'cast' (params IN) (result CHAR_TO_BYTE)}
 	END_FUNCTION
 
 	/* ## CHAR_TO_STRING — encode a CHAR (UTF-32 code point) as a STRING.
@@ -1927,6 +1937,18 @@ NAMESPACE Std.Convert
 			nan := z / z;
 			ASSERT(LREAL_TO_INT(nan) = 0 AND LREAL_TO_SINT(nan) = 0 AND LREAL_TO_UINT(nan) = 0 AND LREAL_TO_USINT(nan) = 0);
 			ASSERT(LREAL_TO_UDINT(nan) = 0 AND LREAL_TO_ULINT(nan) = 0 AND REAL_TO_ULINT(LREAL_TO_REAL(nan)) = 0);
+		END_FUNCTION
+
+		{test}
+		FUNCTION test_char_literal_is_a_code_point
+			ASSERT(CHAR_TO_STRING(CHAR#'A') = 'A' AND CHAR_TO_STRING(CHAR#'é') = 'é' AND CHAR_TO_STRING(CHAR#'中') = '中');
+			ASSERT(CHAR_TO_STRING(CHAR#'$E9') = 'é' AND CHAR#'$E9' = CHAR#'é');
+		END_FUNCTION
+
+		{test}
+		FUNCTION test_char_and_byte_meet_on_the_latin1_range
+			ASSERT(BYTE_TO_CHAR(BYTE#16#E9) = CHAR#'é' AND CHAR_TO_BYTE(CHAR#'é') = BYTE#16#E9);
+			ASSERT(CHAR_TO_BYTE(CHAR#'中') = BYTE#16#2D);
 		END_FUNCTION
 
 		{test}

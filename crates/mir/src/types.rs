@@ -206,12 +206,11 @@ impl MirElementary {
     pub fn rk_bits(self) -> u32 {
         match self {
             MirElementary::Bool => 1,
-            MirElementary::SInt
-            | MirElementary::USInt
-            | MirElementary::Byte
-            | MirElementary::Char => 8,
+            MirElementary::SInt | MirElementary::USInt | MirElementary::Byte => 8,
             MirElementary::Int | MirElementary::UInt | MirElementary::Word => 16,
-            MirElementary::DInt
+            // A CHAR is a code point, up to U+10FFFF: the whole lane.
+            MirElementary::Char
+            | MirElementary::DInt
             | MirElementary::UDInt
             | MirElementary::DWord
             | MirElementary::Real

@@ -250,6 +250,8 @@ SFC (`INITIAL_STEP` / `STEP` / `TRANSITION` / `ACTION`), ladder and FBD bodies p
 
 Direct variables (`%IX0.0`, `%QW4`, `AT %IX0.0`) are refused with E0245: the address is understood but nothing maps it to real I/O yet.
 
+A `CHAR` does not widen to `STRING` implicitly, although IEC lists that conversion: `s := c` is E0301, which names `CHAR_TO_STRING(c)`. The widening is an encoding, and the compiler asks for the call.
+
 ## Gotchas
 
 Names are case-insensitive: `VAR i, I: INT;` is a duplicate (E0102), and a variable `p` shadows a type named `P`.

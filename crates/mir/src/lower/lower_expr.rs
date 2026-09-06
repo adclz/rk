@@ -831,15 +831,17 @@ impl<'db> ExprLowerCtx<'db> {
                 Ok(MirExpr::StringLiteral { id, offset, len })
             }
 
-            // Char literal (`CHAR#'X'`) — the same decoder; `check` already
-            // held it to exactly one byte. CHAR variables are scalar i32
-            // (UTF-32) at the WASM ABI; to feed a CHAR into a STRING-shaped
-            // slot, the user calls `Std.Convert.CHAR_TO_STRING` explicitly.
+            // A CHAR is its code point (i32, UTF-32 at the ABI).
             Elementary::Char(ident) => {
                 let bytes = ident.as_single_string(self.db).map_err(|e| {
                     LowerTypeError::UnsupportedType(format!("Invalid CHAR literal: {e:?}"))
                 })?;
-                let codepoint = bytes.first().copied().unwrap_or(0) as u32;
+                let codepoint = hir::hir_ty::infer::literals::char_literal_code_point(&bytes)
+                    .map_err(|n| {
+                        LowerTypeError::UnsupportedType(format!(
+                            "a CHAR literal is one character, this one is {n}"
+                        ))
+                    })?;
                 Ok(MirExpr::Constant(MirConstant::I32(codepoint as i32)))
             }
 

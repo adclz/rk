@@ -133,11 +133,9 @@ impl ElementarySpec {
                 LTod => LTod,
                 _ => None?,
             },
-            // CHAR STRING
-            Char => match self {
-                String => String,
-                _ => None?,
-            },
+            // A CHAR does not widen to STRING: the widening is an encoding,
+            // `Std.Convert.CHAR_TO_STRING`, and the cast machinery has no
+            // STRING lane. Allowed here, it checked clean and died in MIR.
             _ => None?,
         })
     }
@@ -231,9 +229,13 @@ impl ElementarySpec {
             ),
             Byte => match self {
                 LInt | DInt | Int | SInt | ULInt | UDInt | UInt | USInt => true,
-                Char => true, // char is the size of a byte
+                Char => true, // BYTE_TO_CHAR: a byte is its Latin-1 character
                 _ => false,
             },
+            // CHAR_TO_STRING encodes, CHAR_TO_BYTE keeps the low byte. Listed
+            // so E0301 names them: IEC widens CHAR to STRING implicitly, and
+            // this compiler asks for the call instead.
+            Char => matches!(self, String | Byte),
             Bool | REDGEBool | FEDGEBool => matches!(
                 self,
                 LInt | DInt | Int | SInt | ULInt | UDInt | UInt | USInt

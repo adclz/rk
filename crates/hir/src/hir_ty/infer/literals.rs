@@ -32,10 +32,9 @@ impl<'db> Elementary {
             Elementary::String(s) => s.as_single_string(db).map(|_| ()),
             Elementary::Char(s) => {
                 let bytes = s.as_single_string(db)?;
-                if bytes.len() != 1 {
-                    return Err(InferLiteralError::Invalid_CHAR_Length(bytes.len()));
-                }
-                Ok(())
+                char_literal_code_point(&bytes)
+                    .map(|_| ())
+                    .map_err(InferLiteralError::Invalid_CHAR_Length)
             }
             _ => Ok(()),
         }
@@ -885,6 +884,31 @@ pub fn parse_single_byte_string(s: &str) -> Result<Vec<u8>, InferLiteralError> {
         }
     }
     Ok(result)
+}
+
+/// The code point a CHAR literal denotes, from its decoded bytes: one byte
+/// is its own code point (the Latin-1 range, so `$E9` is `é`), otherwise
+/// the bytes must be the UTF-8 form of exactly one character. `Err` carries
+/// how many characters were found instead.
+///
+/// The check and the MIR lowering both come here. The check used to demand
+/// one byte and the lowering took the first byte: two readings that agreed
+/// only for the one case the check let through, and `'é'` would have run
+/// as `'Ã'` had the check been loosened alone.
+pub fn char_literal_code_point(bytes: &[u8]) -> Result<u32, usize> {
+    if let [b] = bytes {
+        return Ok(u32::from(*b));
+    }
+    match std::str::from_utf8(bytes) {
+        Ok(text) => {
+            let mut chars = text.chars();
+            match (chars.next(), chars.next()) {
+                (Some(c), None) => Ok(u32::from(c)),
+                _ => Err(text.chars().count()),
+            }
+        }
+        Err(_) => Err(bytes.len()),
+    }
 }
 
 /// The message for a date/time literal the `time` crate refused.

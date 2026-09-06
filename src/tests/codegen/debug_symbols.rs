@@ -860,3 +860,31 @@ fn runtime_reads_a_non_ascii_literal_as_written(mut with_db: db::RootDatabase) {
         Some(VarValue::String("café".into()))
     );
 }
+
+/// A CHAR is its code point, and the debugger sees the whole of it: read
+/// as U32, written as U32. It used to be truncated to a byte on the way
+/// out, so anything past U+00FF read back wrong.
+#[rstest]
+fn runtime_reads_a_char_as_its_code_point(mut with_db: db::RootDatabase) {
+    let source = r#"
+        PROGRAM Main
+        VAR
+            c : CHAR := CHAR#'中';
+        END_VAR
+        END_PROGRAM
+
+        CONFIGURATION Cfg
+            RESOURCE Res ON CPU
+                TASK T(INTERVAL := T#10ms, PRIORITY := 1);
+                PROGRAM Run WITH T : Main;
+            END_RESOURCE
+        END_CONFIGURATION
+    "#;
+    let (_mir, wasm) = compile_to_mir_and_wasm(&mut with_db, source);
+    let mut plc = Plc::load(&wasm, Config::default()).expect("load PLC");
+    let dbg = DebugInfo::from_wasm(&wasm);
+    assert_eq!(dbg.read_var(&plc, "Run.c"), Some(VarValue::U32(0x4E2D)));
+    dbg.write_var(&mut plc, "Run.c", VarValue::U32(u32::from('é')))
+        .expect("force a char");
+    assert_eq!(dbg.read_var(&plc, "Run.c"), Some(VarValue::U32(0xE9)));
+}

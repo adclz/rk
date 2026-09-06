@@ -531,7 +531,7 @@ impl std::fmt::Display for InferLiteralError {
             InferLiteralError::Invalid_STRING_Length { max, got } => {
                 return write!(
                     f,
-                    "STRING literal exceeds maximum length of {max}, got {got}"
+                    "STRING literal exceeds the capacity of {max} bytes, got {got}"
                 );
             }
 
@@ -581,12 +581,18 @@ fn explicit_cast_suggestion(
         (expected.normalize(db), actual.normalize(db))
         && lhs.explicit_cast(rhs)
     {
+        // An initializer's site is the whole `:= value`, and the suggestion
+        // wraps the value alone.
+        let site = actual_site.to_string(db);
+        let value = site
+            .strip_prefix(":=")
+            .map_or(site.as_str(), str::trim_start);
         diag.with_related(Related::new(
             format!(
                 "consider explicitly casting with '{}_TO_{}({})'",
                 rhs.type_name(),
                 lhs.type_name(),
-                actual_site.to_string(db)
+                value
             ),
             actual_site.get_scope_id(db).file(db),
             actual_site.get_span(db),
@@ -597,7 +603,7 @@ fn explicit_cast_suggestion(
                 "insert explicit cast '{}_TO_{}({})'",
                 rhs.type_name(),
                 lhs.type_name(),
-                actual_site.to_string(db)
+                value
             ),
             edit: Some(WorkspaceEdit::new(HashMap::new())),
             is_preferred: Some(true),

@@ -189,9 +189,9 @@ END_FUNCTION_BLOCK"#;
        |                     ^^^^^|^^^^^
        |                          `------- expected 'TIME', got 'LTIME'
        |                          |
-       |                          `------- consider explicitly casting with 'LTIME_TO_TIME(:= LTIME#5s)'
+       |                          `------- consider explicitly casting with 'LTIME_TO_TIME(LTIME#5s)'
        |
-       | Help: insert explicit cast 'LTIME_TO_TIME(:= LTIME#5s)'
+       | Help: insert explicit cast 'LTIME_TO_TIME(LTIME#5s)'
     ---'
     ");
 }

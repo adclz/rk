@@ -36,7 +36,7 @@ use hir::{
 // ---------------------------------------------------------------------------
 
 pub const STDLIB_EXPECTED_DIAGNOSTICS: usize = 0;
-pub const STDLIB_EXPECTED_LINTS: usize = 340;
+pub const STDLIB_EXPECTED_LINTS: usize = 344;
 
 // ---------------------------------------------------------------------------
 // Corpora

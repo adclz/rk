@@ -98,9 +98,9 @@ END_FUNCTION_BLOCK"#;
        |                     ^^^^^^^^^|^^^^^^^^^
        |                              `----------- expected 'DATE', got 'LDATE'
        |                              |
-       |                              `----------- consider explicitly casting with 'LDATE_TO_DATE(:= LDATE#2012-02-29)'
+       |                              `----------- consider explicitly casting with 'LDATE_TO_DATE(LDATE#2012-02-29)'
        |
-       | Help: insert explicit cast 'LDATE_TO_DATE(:= LDATE#2012-02-29)'
+       | Help: insert explicit cast 'LDATE_TO_DATE(LDATE#2012-02-29)'
     ---'
     ");
 }

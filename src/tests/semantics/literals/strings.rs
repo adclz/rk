@@ -49,12 +49,46 @@ END_FUNCTION_BLOCK"#;
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @"");
 }
 
+/// A CHAR does not widen to STRING: the widening is an encoding, and the
+/// cast machinery has no STRING lane. Accepted, this checked clean and
+/// died in MIR ("STRING has no scalar MIR representation"), as a literal
+/// initializer, a literal assignment and a variable assignment alike.
 #[rstest]
-fn valid_char_to_string_implicit(mut with_db: RootDatabase) {
+fn invalid_char_to_string_needs_the_conversion(mut with_db: RootDatabase) {
     let source = r#"
 FUNCTION_BLOCK fb1
     VAR
         s : STRING := CHAR#'x';
+    END_VAR
+END_FUNCTION_BLOCK"#;
+
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
+    [E0301] Error: type mismatch
+       ,-[ file:///test0.st:4:20 ]
+       |
+     4 |         s : STRING := CHAR#'x';
+       |                    ^^^^^|^^^^^
+       |                         `------- expected 'STRING', got 'CHAR'
+       |                         |
+       |                         `------- consider explicitly casting with 'CHAR_TO_STRING(CHAR#'x')'
+       |
+       | Help: insert explicit cast 'CHAR_TO_STRING(CHAR#'x')'
+    ---'
+    ");
+}
+
+/// A CHAR literal is one character of any script, worth its code point:
+/// one byte is the Latin-1 range, anything else must be the UTF-8 form of
+/// exactly one character.
+#[rstest]
+fn valid_char_literal_is_one_character(mut with_db: RootDatabase) {
+    let source = r#"
+FUNCTION_BLOCK fb1
+    VAR
+        a : CHAR := CHAR#'A';
+        e : CHAR := CHAR#'é';
+        z : CHAR := CHAR#'中';
+        b : CHAR := CHAR#'$E9';
     END_VAR
 END_FUNCTION_BLOCK"#;
 
@@ -178,7 +212,7 @@ END_FUNCTION_BLOCK"#;
        |
      4 |         s : STRING[2] := 'hello';
        |                          ^^^|^^^
-       |                             `----- cannot infer '<string>' to 'STRING': STRING literal exceeds maximum length of 2, got 5
+       |                             `----- cannot infer '<string>' to 'STRING': STRING literal exceeds the capacity of 2 bytes, got 5
     ---'
     ");
 }
@@ -229,7 +263,7 @@ fn sized_string_length_may_name_a_constant(mut with_db: RootDatabase) {
        |
      5 |             s := 'toolong';
        |                  ^^^^|^^^^
-       |                      `------ cannot infer '<string>' to 'STRING': STRING literal exceeds maximum length of 4, got 7
+       |                      `------ cannot infer '<string>' to 'STRING': STRING literal exceeds the capacity of 4 bytes, got 7
     ---'
     ");
 }
@@ -283,14 +317,14 @@ fn assigned_literal_must_fit_the_destination(mut with_db: RootDatabase) {
        |
      7 |             sized := 'far too long for five';
        |                      ^^^^^^^^^^^|^^^^^^^^^^^
-       |                                 `------------- cannot infer '<string>' to 'STRING': STRING literal exceeds maximum length of 5, got 21
+       |                                 `------------- cannot infer '<string>' to 'STRING': STRING literal exceeds the capacity of 5 bytes, got 21
     ---'
     [E0309] Error: invalid literal
        ,-[ file:///test0.st:8:22 ]
        |
      8 |             plain := 'this literal is well beyond eighty characters long, which is the silent default capacity a plain STRING declaration gets when nothing is said';
        |                      ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^|^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-       |                                                                                             `------------------------------------------------------------------------- cannot infer '<string>' to 'STRING': STRING literal exceeds maximum length of 80, got 141
+       |                                                                                             `------------------------------------------------------------------------- cannot infer '<string>' to 'STRING': STRING literal exceeds the capacity of 80 bytes, got 141
     ---'
     ");
 }
@@ -362,7 +396,7 @@ fn assigned_literal_must_fit_an_array_element(mut with_db: RootDatabase) {
        |
      6 |             a[1] := 'ABCDEFGHIJKLMNOP';
        |                     ^^^^^^^^^|^^^^^^^^
-       |                              `---------- cannot infer '<string>' to 'STRING': STRING literal exceeds maximum length of 4, got 16
+       |                              `---------- cannot infer '<string>' to 'STRING': STRING literal exceeds the capacity of 4 bytes, got 16
     ---'
     ");
 }
@@ -390,14 +424,14 @@ fn assigned_literal_must_fit_a_nested_array_element(mut with_db: RootDatabase) {
        |
      9 |             a[1] := 'ABCDEFGHIJKLMNOP';
        |                     ^^^^^^^^^|^^^^^^^^
-       |                              `---------- cannot infer '<string>' to 'STRING': STRING literal exceeds maximum length of 4, got 16
+       |                              `---------- cannot infer '<string>' to 'STRING': STRING literal exceeds the capacity of 4 bytes, got 16
     ---'
     [E0309] Error: invalid literal
         ,-[ file:///test0.st:10:24 ]
         |
      10 |             b[1, 1] := 'ABCDEFGHIJKLMNOP';
         |                        ^^^^^^^^^|^^^^^^^^
-        |                                 `---------- cannot infer '<string>' to 'STRING': STRING literal exceeds maximum length of 4, got 16
+        |                                 `---------- cannot infer '<string>' to 'STRING': STRING literal exceeds the capacity of 4 bytes, got 16
     ----'
     ");
 }
@@ -455,7 +489,7 @@ fn invalid_string_literal_capacity_counts_bytes(mut with_db: RootDatabase) {
        |
      4 |             t : STRING[4] := 'café';
        |                              ^^^|^^
-       |                                 `---- cannot infer '<string>' to 'STRING': STRING literal exceeds maximum length of 4, got 5
+       |                                 `---- cannot infer '<string>' to 'STRING': STRING literal exceeds the capacity of 4 bytes, got 5
     ---'
     ");
 }
