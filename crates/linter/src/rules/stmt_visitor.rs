@@ -552,6 +552,13 @@ fn visit_statements<'db>(
                     missing_input_param::check_func_call(db, body, *stmt, *call, d)
                 });
             }
+            StmtKind::WasmPragma(decl)
+                if ctx.missing_return
+                    && !*return_assigned
+                    && missing_return::check_pragma(db, decl, scope) =>
+            {
+                *return_assigned = true;
+            }
             _ => {}
         }
     }

@@ -140,7 +140,7 @@ fn extern_function_is_exempt(mut with_db: RootDatabase) {
 /// A `{wasm}` FUNCTION's body is the pragma, whose `(result NAME)` is the
 /// assignment. Every intrinsic in the standard library was flagged.
 #[rstest]
-fn wasm_function_is_exempt(mut with_db: RootDatabase) {
+fn a_pragma_into_the_return_is_the_assignment(mut with_db: RootDatabase) {
     let source = r#"
         FUNCTION ROOT : REAL
         VAR_INPUT
@@ -150,4 +150,33 @@ fn wasm_function_is_exempt(mut with_db: RootDatabase) {
         END_FUNCTION
     "#;
     assert_snapshot!(test_single_lint(&mut with_db, &[source], "missing-return"), @r"");
+}
+
+/// The pragma's `(result NAME)` is the assignment only when NAME is the
+/// FUNCTION: one that writes a local and never the return is still missing
+/// it.
+#[rstest]
+fn a_pragma_into_a_local_does_not_assign_the_return(mut with_db: RootDatabase) {
+    let source = r#"
+        FUNCTION ROOT : REAL
+        VAR_INPUT
+            IN : REAL;
+        END_VAR
+        VAR
+            r : REAL;
+        END_VAR
+            {wasm 'f32.sqrt' (params IN) (result r)}
+        END_FUNCTION
+    "#;
+    assert_snapshot!(test_single_lint(&mut with_db, &[source], "missing-return"), @r"
+    [L0316] Warning: missing return assignment
+       ,-[ file:///test0.st:2:18 ]
+       |
+     2 |         FUNCTION ROOT : REAL
+       |                  ^^|^
+       |                    `--- FUNCTION 'ROOT' has a return type but never assigns a return value
+       |
+       | Note: lint rule: missing-return
+    ---'
+    ");
 }

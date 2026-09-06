@@ -3,7 +3,7 @@ use db::WorkspaceDataBase;
 use hir::{
     HasName, HirNodeInfo,
     hir_def::{
-        expressions::{expression::VariableAccessKind, statement::StmtKind},
+        expressions::expression::VariableAccessKind,
         pous::pou::Pou,
         scope::{ScopeId, ScopeKind},
         semantic_index::get_scope,
@@ -53,6 +53,21 @@ pub fn check_assignment<'db>(
     }
 }
 
+/// A `{wasm}` statement assigns the return when its `(result NAME)` is the
+/// FUNCTION's own name.
+pub fn check_pragma<'db>(
+    db: &'db dyn WorkspaceDataBase,
+    decl: &hir::hir_def::extern_decl::WasmDecl<'db>,
+    scope: ScopeId<'db>,
+) -> bool {
+    let ScopeKind::Pou(Pou::Function(f)) = get_scope(db, scope).kind else {
+        return false;
+    };
+    decl.result
+        .as_ref()
+        .is_some_and(|r| r.ident.caseless(db) == f.name(db).caseless(db))
+}
+
 /// Post-walk check: if no return assignment was found, emit the diagnostic.
 pub fn check_result<'db>(
     db: &'db dyn WorkspaceDataBase,
@@ -79,14 +94,6 @@ pub fn check_result<'db>(
                 if f.extern_pragma(db).is_some() {
                     return;
                 }
-            }
-            // A {wasm} FUNCTION's body is the pragma, whose `(result NAME)` is
-            // the assignment: every intrinsic in the library was flagged.
-            if f.statements(db)
-                .iter()
-                .any(|s| matches!(s.stmt(db), StmtKind::WasmPragma(_)))
-            {
-                return;
             }
             (f.name(db).text(db), "FUNCTION", f.get_name_span(db))
         }
