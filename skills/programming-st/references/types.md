@@ -10,6 +10,8 @@ There is no `WSTRING`. A bare `STRING` has a capacity of 80 bytes.
 
 Widening within the same family is implicit (`INT` → `DINT`, `INT` → `REAL`). Everything else — narrowing, signed/unsigned, integer/bit-string, real → integer — needs an explicit `Std.Convert` call, and E0301 names the one to use: `INT_TO_SINT(i)`, `REAL_TO_INT(r)`, `INT_TO_WORD(i)`.
 
+Real → integer rounds to nearest, ties to even (`REAL_TO_INT(2.5)` is `2`, `REAL_TO_INT(3.5)` is `4`); `TRUNC` drops the fraction instead. A value outside the target's range saturates to the nearest bound and NaN converts to `0`; `Std.Math` has `IS_NAN` and `NOT_OK` (NaN or infinite) to test a value before converting it.
+
 ## Literals
 
 ```iecst decl

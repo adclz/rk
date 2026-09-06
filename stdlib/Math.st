@@ -382,10 +382,68 @@ NAMESPACE Std.Math
 		{wasm IN 'pow' (params IN IN2) (result EXPT)}
 	END_FUNCTION
 
+	/*
+	## IS_NAN, NOT_OK - Invalid floating-point values
+	A REAL or LREAL that is not a number, or not finite. NaN comes from 0.0/0.0,
+	from the square root of a negative, and above all from a bit pattern read
+	off a fieldbus or an analog channel; it propagates through arithmetic and
+	converts to 0. Test for it explicitly where it matters.
+	- **IS_NAN**: not a number.
+	- **NOT_OK**: not a number or infinite (the S7 name).
+	```iecst
+	IF NOT_OK(measured) THEN
+	    alarm := TRUE;
+	END_IF;
+	```
+	*/
+	FUNCTION IS_NAN: BOOL
+		VAR_INPUT
+			IN: REAL;
+		END_VAR
+		IS_NAN := IN <> IN;
+	END_FUNCTION
+
+	FUNCTION IS_NAN: BOOL
+		VAR_INPUT
+			IN: LREAL;
+		END_VAR
+		IS_NAN := IN <> IN;
+	END_FUNCTION
+
+	FUNCTION NOT_OK: BOOL
+		VAR_INPUT
+			IN: REAL;
+		END_VAR
+		NOT_OK := (IN - IN) <> 0.0;
+	END_FUNCTION
+
+	FUNCTION NOT_OK: BOOL
+		VAR_INPUT
+			IN: LREAL;
+		END_VAR
+		NOT_OK := (IN - IN) <> LREAL#0.0;
+	END_FUNCTION
+
 	NAMESPACE Test
 		USING Std.Unit
 
 		// ----- EXPT ---------------------------------------------------
+		{test}
+		FUNCTION test_is_nan
+			VAR
+				z: REAL := 0.0;
+			END_VAR
+			ASSERT(IS_NAN(z / z) AND NOT IS_NAN(1.5) AND NOT IS_NAN(1.0 / z));
+		END_FUNCTION
+
+		{test}
+		FUNCTION test_not_ok_is_nan_or_infinite
+			VAR
+				z: REAL := 0.0;
+			END_VAR
+			ASSERT(NOT_OK(z / z) AND NOT_OK(1.0 / z) AND NOT_OK(-1.0 / z) AND NOT NOT_OK(3.0));
+		END_FUNCTION
+
 		{test}
 		FUNCTION test_expt_real ASSERT(EXPT(2.0, 3.0) = 8.0);
 		END_FUNCTION

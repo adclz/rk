@@ -7,7 +7,8 @@ These functions handle conversions that are **not** covered by implicit casting,
 typically narrowing conversions where precision or range may be lost.
 
 Each function follows the naming convention `<SOURCE>_TO_<TARGET>`.
-All conversions use {wasm} intrinsics - zero overhead, single instruction.
+Most are one {wasm} instruction. The float-to-integer ones are two, round
+to nearest and then convert with saturation, as described at their section.
 */
 NAMESPACE Std.Convert
 	USING Std.Strings
@@ -22,12 +23,27 @@ NAMESPACE Std.Convert
 		{wasm 'f32.demote_f64' (params IN) (result LREAL_TO_REAL)}
 	END_FUNCTION
 
+	/*
+	## Rounding and saturation
+	A float becomes an integer the way IEC 61131-3 says: rounded to the nearest
+	integer, halfway cases to the even neighbour (2.5 gives 2, 3.5 gives 4).
+	A value past the target's range saturates to its nearest bound; NaN becomes
+	0. `TRUNC` alone truncates toward zero. Nothing here can stop the scan:
+	the raw wasm truncation trapped on NaN and past 2^31, and its narrowing
+	wrapped 40000.0 to -25536. Two instructions each: `nearest` picks the
+	integer, `trunc_sat` moves it into the integer lane; the sub-width targets
+	clamp between the two, since wasm only saturates at 32 and 64 bits.
+	*/
 	{info = 'narrowing conversion, possible loss of value'}
 	FUNCTION LREAL_TO_LINT: LINT
 		VAR_INPUT
 			IN: LREAL;
 		END_VAR
-		{wasm 'i64.trunc_f64_s' (params IN) (result LREAL_TO_LINT)}
+		VAR
+			r: LREAL;
+		END_VAR
+		{wasm 'f64.nearest' (params IN) (result r)}
+		{wasm 'i64.trunc_sat_f64_s' (params r) (result LREAL_TO_LINT)}
 	END_FUNCTION
 
 	{info = 'narrowing conversion, possible loss of value'}
@@ -35,7 +51,11 @@ NAMESPACE Std.Convert
 		VAR_INPUT
 			IN: LREAL;
 		END_VAR
-		{wasm 'i32.trunc_f64_s' (params IN) (result LREAL_TO_DINT)}
+		VAR
+			r: LREAL;
+		END_VAR
+		{wasm 'f64.nearest' (params IN) (result r)}
+		{wasm 'i32.trunc_sat_f64_s' (params r) (result LREAL_TO_DINT)}
 	END_FUNCTION
 
 	{info = 'narrowing conversion, possible loss of value'}
@@ -43,7 +63,17 @@ NAMESPACE Std.Convert
 		VAR_INPUT
 			IN: LREAL;
 		END_VAR
-		{wasm 'i32.trunc_f64_s' (params IN) (result LREAL_TO_INT)}
+		VAR
+			r: LREAL;
+		END_VAR
+		{wasm 'f64.nearest' (params IN) (result r)}
+		IF r >= 32767.0 THEN
+			LREAL_TO_INT := INT#32767;
+		ELSIF r <= -32768.0 THEN
+			LREAL_TO_INT := INT#-32768;
+		ELSE
+			{wasm 'i32.trunc_sat_f64_s' (params r) (result LREAL_TO_INT)}
+		END_IF;
 	END_FUNCTION
 
 	{info = 'narrowing conversion, possible loss of value'}
@@ -51,7 +81,17 @@ NAMESPACE Std.Convert
 		VAR_INPUT
 			IN: LREAL;
 		END_VAR
-		{wasm 'i32.trunc_f64_s' (params IN) (result LREAL_TO_SINT)}
+		VAR
+			r: LREAL;
+		END_VAR
+		{wasm 'f64.nearest' (params IN) (result r)}
+		IF r >= 127.0 THEN
+			LREAL_TO_SINT := SINT#127;
+		ELSIF r <= -128.0 THEN
+			LREAL_TO_SINT := SINT#-128;
+		ELSE
+			{wasm 'i32.trunc_sat_f64_s' (params r) (result LREAL_TO_SINT)}
+		END_IF;
 	END_FUNCTION
 
 	{info = 'narrowing conversion, possible loss of value'}
@@ -59,7 +99,11 @@ NAMESPACE Std.Convert
 		VAR_INPUT
 			IN: LREAL;
 		END_VAR
-		{wasm 'i64.trunc_f64_u' (params IN) (result LREAL_TO_ULINT)}
+		VAR
+			r: LREAL;
+		END_VAR
+		{wasm 'f64.nearest' (params IN) (result r)}
+		{wasm 'i64.trunc_sat_f64_u' (params r) (result LREAL_TO_ULINT)}
 	END_FUNCTION
 
 	{info = 'narrowing conversion, possible loss of value'}
@@ -67,7 +111,11 @@ NAMESPACE Std.Convert
 		VAR_INPUT
 			IN: LREAL;
 		END_VAR
-		{wasm 'i32.trunc_f64_u' (params IN) (result LREAL_TO_UDINT)}
+		VAR
+			r: LREAL;
+		END_VAR
+		{wasm 'f64.nearest' (params IN) (result r)}
+		{wasm 'i32.trunc_sat_f64_u' (params r) (result LREAL_TO_UDINT)}
 	END_FUNCTION
 
 	{info = 'narrowing conversion, possible loss of value'}
@@ -75,7 +123,15 @@ NAMESPACE Std.Convert
 		VAR_INPUT
 			IN: LREAL;
 		END_VAR
-		{wasm 'i32.trunc_f64_u' (params IN) (result LREAL_TO_UINT)}
+		VAR
+			r: LREAL;
+		END_VAR
+		{wasm 'f64.nearest' (params IN) (result r)}
+		IF r >= 65535.0 THEN
+			LREAL_TO_UINT := UINT#65535;
+		ELSE
+			{wasm 'i32.trunc_sat_f64_u' (params r) (result LREAL_TO_UINT)}
+		END_IF;
 	END_FUNCTION
 
 	{info = 'narrowing conversion, possible loss of value'}
@@ -83,7 +139,15 @@ NAMESPACE Std.Convert
 		VAR_INPUT
 			IN: LREAL;
 		END_VAR
-		{wasm 'i32.trunc_f64_u' (params IN) (result LREAL_TO_USINT)}
+		VAR
+			r: LREAL;
+		END_VAR
+		{wasm 'f64.nearest' (params IN) (result r)}
+		IF r >= 255.0 THEN
+			LREAL_TO_USINT := USINT#255;
+		ELSE
+			{wasm 'i32.trunc_sat_f64_u' (params r) (result LREAL_TO_USINT)}
+		END_IF;
 	END_FUNCTION
 
 	{info = 'narrowing conversion, possible loss of value'}
@@ -101,7 +165,11 @@ NAMESPACE Std.Convert
 		VAR_INPUT
 			IN: REAL;
 		END_VAR
-		{wasm 'i64.trunc_f32_s' (params IN) (result REAL_TO_LINT)}
+		VAR
+			r: REAL;
+		END_VAR
+		{wasm 'f32.nearest' (params IN) (result r)}
+		{wasm 'i64.trunc_sat_f32_s' (params r) (result REAL_TO_LINT)}
 	END_FUNCTION
 
 	{info = 'narrowing conversion, possible loss of value'}
@@ -109,7 +177,11 @@ NAMESPACE Std.Convert
 		VAR_INPUT
 			IN: REAL;
 		END_VAR
-		{wasm 'i32.trunc_f32_s' (params IN) (result REAL_TO_DINT)}
+		VAR
+			r: REAL;
+		END_VAR
+		{wasm 'f32.nearest' (params IN) (result r)}
+		{wasm 'i32.trunc_sat_f32_s' (params r) (result REAL_TO_DINT)}
 	END_FUNCTION
 
 	{info = 'narrowing conversion, possible loss of value'}
@@ -117,7 +189,17 @@ NAMESPACE Std.Convert
 		VAR_INPUT
 			IN: REAL;
 		END_VAR
-		{wasm 'i32.trunc_f32_s' (params IN) (result REAL_TO_INT)}
+		VAR
+			r: REAL;
+		END_VAR
+		{wasm 'f32.nearest' (params IN) (result r)}
+		IF r >= 32767.0 THEN
+			REAL_TO_INT := INT#32767;
+		ELSIF r <= -32768.0 THEN
+			REAL_TO_INT := INT#-32768;
+		ELSE
+			{wasm 'i32.trunc_sat_f32_s' (params r) (result REAL_TO_INT)}
+		END_IF;
 	END_FUNCTION
 
 	{info = 'narrowing conversion, possible loss of value'}
@@ -125,7 +207,17 @@ NAMESPACE Std.Convert
 		VAR_INPUT
 			IN: REAL;
 		END_VAR
-		{wasm 'i32.trunc_f32_s' (params IN) (result REAL_TO_SINT)}
+		VAR
+			r: REAL;
+		END_VAR
+		{wasm 'f32.nearest' (params IN) (result r)}
+		IF r >= 127.0 THEN
+			REAL_TO_SINT := SINT#127;
+		ELSIF r <= -128.0 THEN
+			REAL_TO_SINT := SINT#-128;
+		ELSE
+			{wasm 'i32.trunc_sat_f32_s' (params r) (result REAL_TO_SINT)}
+		END_IF;
 	END_FUNCTION
 
 	{info = 'narrowing conversion, possible loss of value'}
@@ -133,7 +225,11 @@ NAMESPACE Std.Convert
 		VAR_INPUT
 			IN: REAL;
 		END_VAR
-		{wasm 'i64.trunc_f32_u' (params IN) (result REAL_TO_ULINT)}
+		VAR
+			r: REAL;
+		END_VAR
+		{wasm 'f32.nearest' (params IN) (result r)}
+		{wasm 'i64.trunc_sat_f32_u' (params r) (result REAL_TO_ULINT)}
 	END_FUNCTION
 
 	{info = 'narrowing conversion, possible loss of value'}
@@ -141,7 +237,11 @@ NAMESPACE Std.Convert
 		VAR_INPUT
 			IN: REAL;
 		END_VAR
-		{wasm 'i32.trunc_f32_u' (params IN) (result REAL_TO_UDINT)}
+		VAR
+			r: REAL;
+		END_VAR
+		{wasm 'f32.nearest' (params IN) (result r)}
+		{wasm 'i32.trunc_sat_f32_u' (params r) (result REAL_TO_UDINT)}
 	END_FUNCTION
 
 	{info = 'narrowing conversion, possible loss of value'}
@@ -149,7 +249,15 @@ NAMESPACE Std.Convert
 		VAR_INPUT
 			IN: REAL;
 		END_VAR
-		{wasm 'i32.trunc_f32_u' (params IN) (result REAL_TO_UINT)}
+		VAR
+			r: REAL;
+		END_VAR
+		{wasm 'f32.nearest' (params IN) (result r)}
+		IF r >= 65535.0 THEN
+			REAL_TO_UINT := UINT#65535;
+		ELSE
+			{wasm 'i32.trunc_sat_f32_u' (params r) (result REAL_TO_UINT)}
+		END_IF;
 	END_FUNCTION
 
 	{info = 'narrowing conversion, possible loss of value'}
@@ -157,7 +265,15 @@ NAMESPACE Std.Convert
 		VAR_INPUT
 			IN: REAL;
 		END_VAR
-		{wasm 'i32.trunc_f32_u' (params IN) (result REAL_TO_USINT)}
+		VAR
+			r: REAL;
+		END_VAR
+		{wasm 'f32.nearest' (params IN) (result r)}
+		IF r >= 255.0 THEN
+			REAL_TO_USINT := USINT#255;
+		ELSE
+			{wasm 'i32.trunc_sat_f32_u' (params r) (result REAL_TO_USINT)}
+		END_IF;
 	END_FUNCTION
 
 	{info = 'narrowing conversion, possible loss of value'}
@@ -1315,7 +1431,7 @@ NAMESPACE Std.Convert
 			IN: REAL;
 		END_VAR
 
-		TRUNC := REAL_TO_DINT(IN);
+		{wasm 'i32.trunc_sat_f32_s' (params IN) (result TRUNC)}
 	END_FUNCTION
 
 	FUNCTION TRUNC: LINT
@@ -1323,7 +1439,7 @@ NAMESPACE Std.Convert
 			IN: LREAL;
 		END_VAR
 
-		TRUNC := LREAL_TO_LINT(IN);
+		{wasm 'i64.trunc_sat_f64_s' (params IN) (result TRUNC)}
 	END_FUNCTION
 
 
@@ -1698,7 +1814,45 @@ NAMESPACE Std.Convert
 				r: INT;
 			END_VAR
 			r := REAL_TO_INT(3.7);
-			ASSERT(r = 3);
+			ASSERT(r = 4);
+		END_FUNCTION
+
+		{test}
+		FUNCTION test_real_to_int_halfway_to_even
+			ASSERT(REAL_TO_INT(2.5) = 2 AND REAL_TO_INT(3.5) = 4 AND REAL_TO_INT(-2.5) = -2 AND REAL_TO_INT(0.5) = 0);
+		END_FUNCTION
+
+		{test}
+		FUNCTION test_real_to_int_saturates
+			ASSERT(REAL_TO_INT(40000.0) = 32767 AND REAL_TO_INT(-40000.0) = INT#-32768);
+			ASSERT(REAL_TO_SINT(300.0) = 127 AND REAL_TO_SINT(-300.0) = SINT#-128);
+		END_FUNCTION
+
+		{test}
+		FUNCTION test_real_to_dint_saturates
+			ASSERT(REAL_TO_DINT(1.0E10) = 2147483647 AND REAL_TO_DINT(-1.0E10) = DINT#-2147483647 - DINT#1);
+		END_FUNCTION
+
+		{test}
+		FUNCTION test_real_to_unsigned_clamps_at_zero_and_at_the_top
+			ASSERT(REAL_TO_UINT(-5.0) = 0 AND REAL_TO_UINT(70000.0) = 65535 AND REAL_TO_USINT(300.0) = 255);
+			ASSERT(REAL_TO_UDINT(-1.0) = 0 AND REAL_TO_UDINT(1.0E10) = 4294967295);
+		END_FUNCTION
+
+		{test}
+		FUNCTION test_real_nan_converts_to_zero
+			VAR
+				z: REAL := 0.0;
+				nan: REAL;
+			END_VAR
+			nan := z / z;
+			ASSERT(REAL_TO_INT(nan) = 0 AND REAL_TO_DINT(nan) = 0 AND REAL_TO_LINT(nan) = 0 AND REAL_TO_UDINT(nan) = 0);
+		END_FUNCTION
+
+		{test}
+		FUNCTION test_trunc_is_toward_zero
+			ASSERT(TRUNC(3.7) = 3 AND TRUNC(-3.7) = -3 AND TRUNC(2.5) = 2);
+			ASSERT(TRUNC(LREAL#3.7) = 3 AND TRUNC(LREAL#-2.5) = -2);
 		END_FUNCTION
 
 		{test}
@@ -1707,7 +1861,7 @@ NAMESPACE Std.Convert
 				r: INT;
 			END_VAR
 			r := REAL_TO_INT(-3.7);
-			ASSERT(r = -3);
+			ASSERT(r = -4);
 		END_FUNCTION
 
 		{test}
@@ -1716,7 +1870,7 @@ NAMESPACE Std.Convert
 				r: DINT;
 			END_VAR
 			r := LREAL_TO_DINT(42.9);
-			ASSERT(r = 42);
+			ASSERT(r = 43);
 		END_FUNCTION
 
 		{test}
@@ -1748,6 +1902,33 @@ NAMESPACE Std.Convert
 		END_FUNCTION
 
 		// Float precision change
+		{test}
+		FUNCTION test_lreal_to_int_rounds_and_saturates
+			ASSERT(LREAL_TO_INT(3.5) = 4 AND LREAL_TO_INT(2.5) = 2 AND LREAL_TO_INT(-2.5) = -2);
+			ASSERT(LREAL_TO_INT(40000.0) = 32767 AND LREAL_TO_INT(-40000.0) = INT#-32768);
+			ASSERT(LREAL_TO_SINT(127.5) = 127 AND LREAL_TO_SINT(-128.5) = SINT#-128 AND LREAL_TO_SINT(300.0) = 127);
+		END_FUNCTION
+
+		{test}
+		FUNCTION test_lreal_to_unsigned_clamps_at_zero_and_at_the_top
+			ASSERT(LREAL_TO_UINT(2.5) = 2 AND LREAL_TO_UINT(65535.0) = 65535 AND LREAL_TO_UINT(70000.0) = 65535 AND LREAL_TO_UINT(-5.0) = 0);
+			ASSERT(LREAL_TO_USINT(3.5) = 4 AND LREAL_TO_USINT(300.0) = 255 AND LREAL_TO_USINT(-1.0) = 0);
+			ASSERT(LREAL_TO_UDINT(1.0E10) = 4294967295 AND LREAL_TO_UDINT(-1.0) = 0);
+			ASSERT(LREAL_TO_ULINT(1.0E20) = ULINT#18446744073709551615 AND LREAL_TO_ULINT(-1.0) = 0);
+			ASSERT(REAL_TO_ULINT(1.0E20) = ULINT#18446744073709551615 AND REAL_TO_ULINT(-1.0) = 0 AND REAL_TO_ULINT(2.5) = 2 AND REAL_TO_ULINT(3.5) = 4);
+		END_FUNCTION
+
+		{test}
+		FUNCTION test_lreal_nan_converts_to_zero
+			VAR
+				z: LREAL := 0.0;
+				nan: LREAL;
+			END_VAR
+			nan := z / z;
+			ASSERT(LREAL_TO_INT(nan) = 0 AND LREAL_TO_SINT(nan) = 0 AND LREAL_TO_UINT(nan) = 0 AND LREAL_TO_USINT(nan) = 0);
+			ASSERT(LREAL_TO_UDINT(nan) = 0 AND LREAL_TO_ULINT(nan) = 0 AND REAL_TO_ULINT(LREAL_TO_REAL(nan)) = 0);
+		END_FUNCTION
+
 		{test}
 		FUNCTION test_lreal_to_real
 			VAR
@@ -1851,10 +2032,10 @@ NAMESPACE Std.Convert
 				b: INT;
 				c: REAL;
 			END_VAR
-			a := 42.7;
+			a := 42.7; // rounds to 43, then back to 43.0
 			b := REAL_TO_INT(a);
 			c := DINT_TO_REAL(b);
-			ASSERT(c = 42.0);
+			ASSERT(c = 43.0);
 		END_FUNCTION
 
 		// ----- Scalar → STRING ------------------------------------------------------------------------------
@@ -2048,14 +2229,13 @@ NAMESPACE Std.Convert
 			ASSERT_EQ(LWORD_TO_LREAL(LWORD#16#3FF8_0000_0000_0000), LREAL#1.5, 'and back');
 		END_FUNCTION
 
-		// --- float -> int truncation semantics at the edges ---
+		// --- float -> int at the edges: saturation, never a wrap ---
 
 		{test}
-		FUNCTION test_real_to_int_overflow_wraps
-			(* pins current behavior: trunc to i32 then 16-bit truncation
-			   (40000 = 16#9C40, sign bit set) — consistent with the
-			   narrowing rule rather than saturation *)
-			ASSERT_EQ(REAL_TO_INT(REAL#40000.0), INT#-25536, 'out-of-range REAL wraps like an int narrowing');
+		FUNCTION test_real_to_int_overflow_saturates
+			(* 40000.0 used to truncate to i32 and then wrap to -25536 in the
+			   16-bit narrowing; a magnitude past the target saturates now *)
+			ASSERT_EQ(REAL_TO_INT(REAL#40000.0), INT#32767, 'out-of-range REAL saturates to the bound');
 		END_FUNCTION
 
 		{test}
