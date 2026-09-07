@@ -23,11 +23,19 @@ pub enum SearchMode {
     Fuzzy,
     /// Import map entry should match the query string by prefix.
     Prefix,
+    /// Import map entry should be a typo away from the query string: rustc's
+    /// budget, one edit per three characters and at least one, capped so the
+    /// automaton stays small. For a recovery note, where a result is a
+    /// suggestion; completion and symbol search keep [`Fuzzy`](Self::Fuzzy),
+    /// as rust-analyzer does.
+    Similar,
 }
 
 impl SearchMode {
     pub fn check(self, query: &str, case_sensitive: bool, candidate: &str) -> bool {
         match self {
+            // The automaton is the check: only matches within budget reach here.
+            SearchMode::Similar => true,
             SearchMode::Exact if case_sensitive => candidate == query,
             SearchMode::Exact => candidate.eq_ignore_ascii_case(query),
             SearchMode::Prefix => {
@@ -95,6 +103,10 @@ impl Query {
         self.mode = SearchMode::Prefix;
     }
 
+    pub fn similar(&mut self) {
+        self.mode = SearchMode::Similar;
+    }
+
     pub fn case_sensitive(&mut self) {
         self.case_sensitive = true;
     }
@@ -130,6 +142,29 @@ impl Query {
                     op = op.add(index.map.search(&automaton));
                 }
                 self.search_maps(db, indices, op.union(), cb)
+            }
+            SearchMode::Similar => {
+                let budget = (self.lowercased.chars().count().max(3) / 3).min(3) as u32;
+                // A machine too large to build is refused, not grown; then
+                // only the name itself is offered.
+                // The union borrows its automaton, so each is built beside it.
+                match fst::automaton::Levenshtein::new(&self.lowercased, budget) {
+                    Ok(automaton) => {
+                        let mut op = fst::map::OpBuilder::new();
+                        for index in indices.iter() {
+                            op = op.add(index.map.search(&automaton));
+                        }
+                        self.search_maps(db, indices, op.union(), cb)
+                    }
+                    Err(_) => {
+                        let automaton = fst::automaton::Str::new(&self.lowercased);
+                        let mut op = fst::map::OpBuilder::new();
+                        for index in indices.iter() {
+                            op = op.add(index.map.search(&automaton));
+                        }
+                        self.search_maps(db, indices, op.union(), cb)
+                    }
+                }
             }
         }
     }

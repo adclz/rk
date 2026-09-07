@@ -326,6 +326,9 @@ END_FUNCTION
      14 |         test.powerr := 0.2;
         |              ^^^|^^
         |                 `---- 'Engine' has no field named 'powerr'
+        |
+        |     Note: 'Engine' has field with similar name:
+        |           - power
     ----'
     ");
 }

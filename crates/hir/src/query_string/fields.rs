@@ -93,7 +93,7 @@ pub fn fuzzy_suggest_from_index<'db>(
 ) {
     let mut candidates = vec![];
     let mut fast_query = Query::new(query.to_string());
-    fast_query.fuzzy();
+    fast_query.similar();
 
     fast_query.search(db, index, |symbol| {
         candidates.push(symbol.clone());

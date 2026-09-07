@@ -68,9 +68,8 @@ fn fuzzy_pou_local_variables(mut with_db: RootDatabase) {
        |             ^^^|^^
        |                `---- no item "engine" found in scope
        |
-       | Note: 'fb1' has items with similar name:
+       | Note: 'fb1' has item with similar name:
        |       - engine2
-       |       - no_engine
     ---'
     "#);
 }
@@ -179,10 +178,43 @@ END_FUNCTION
        |     |
        |     `-- no item "f" found in scope
        |
-       | Note: items with similar name available in scope:
+       | Note: an item with similar name available in scope:
        |       - fn
-       |       - fn2
     ---'
+    "#);
+}
+
+/// A note offers what looks like the name, not every name that contains its
+/// letters in order: `fa` used to summon `test_bool_to_int_false` and four
+/// more like it, which is a search result, not a suggestion.
+#[rstest]
+fn a_short_name_does_not_summon_every_name_containing_its_letters(mut with_db: RootDatabase) {
+    let source = r#"
+NAMESPACE Std.Unit.Test
+    FUNCTION test_bool_to_int_false
+    END_FUNCTION
+    FUNCTION test_char_find_counts_characters
+    END_FUNCTION
+    FUNCTION fab
+    END_FUNCTION
+END_NAMESPACE
+
+FUNCTION_BLOCK fb1
+    fa();
+END_FUNCTION_BLOCK
+"#;
+
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r#"
+    [E0204] Error: no item found in scope
+        ,-[ file:///test0.st:12:5 ]
+        |
+     12 |     fa();
+        |     ^|
+        |      `-- no item "fa" found in scope
+        |
+        | Note: an item with a similar name is available, but needs to be imported:
+        |       - 'fab' via USING Std.Unit.Test
+    ----'
     "#);
 }
 

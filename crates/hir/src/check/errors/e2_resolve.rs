@@ -800,7 +800,7 @@ impl<'db> ToIdeDiagnostic<'db> for ResolveError<'db> {
                     .call();
 
                 let mut query = Query::new(expr.ident(db).text(db).to_string());
-                query.fuzzy();
+                query.similar();
                 let items = SymbolSearch::new(|pou, db| {
                     match pou {
                         Pou::Function(_) => true,

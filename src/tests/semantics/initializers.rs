@@ -387,6 +387,10 @@ fn invalid_struct_alias_default_names_an_unknown_field(mut with_db: RootDatabase
      7 |             Origin : Point := (z := 7);
        |                                ^^^|^^
        |                                   `---- 'Point' has no field named 'z'
+       |
+       | Note: 'Point' has fields with similar name:
+       |       - x
+       |       - y
     ---'
     ");
 }
