@@ -10,7 +10,15 @@ static VAR_DECLS: &str = r#"
 
 [
     (var_decls)
+    (retain_var_decls)
+    (no_retain_var_decls)
+    (loc_partly_var_decl)
+    (global_var_decls)
 ] @var_decls
+
+[
+    (external_var_decls)
+] @external_decls
 
 [
     (input_decls)
@@ -50,6 +58,7 @@ bitflags::bitflags! {
         const IN_OUTS = 1 << 2;
         const TEMPS = 1 << 3;
         const VARS = 1 << 4;
+        const EXTERNALS = 1 << 5;
     }
 }
 
@@ -85,6 +94,7 @@ pub struct HeadResult {
     pub in_outs: Option<tree_sitter::Range>,
     pub temps: Option<tree_sitter::Range>,
     pub vars: Option<tree_sitter::Range>,
+    pub externals: Option<tree_sitter::Range>,
 }
 
 impl HeadResult {
@@ -108,6 +118,9 @@ impl HeadResult {
         }
         if self.vars.is_some() {
             result |= VarSection::VARS;
+        }
+        if self.externals.is_some() {
+            result |= VarSection::EXTERNALS;
         }
         result
     }
@@ -134,14 +147,16 @@ impl HeadResult {
         let mut in_outs = None;
         let mut temps = None;
         let mut vars = None;
+        let mut externals = None;
         let mut inside_var_section = VarSection::empty();
         let mut method_ranges: Vec<tree_sitter::Range> = Vec::new();
         let mut body = None;
 
         while let Some((m, capture_index)) = captures.next() {
             let capture = m.captures[*capture_index];
-            let is_inside =
-                offset >= capture.node.start_byte() && offset <= capture.node.end_byte();
+            // The end byte is one past `END_VAR`, which is already outside the
+            // section: a cursor there is between the section and what follows.
+            let is_inside = offset >= capture.node.start_byte() && offset < capture.node.end_byte();
 
             match FOLD_QUERY.capture_names()[capture.index as usize] {
                 "input_decls" => {
@@ -174,6 +189,12 @@ impl HeadResult {
                     }
                     vars = Some(capture.node.range());
                 }
+                "external_decls" => {
+                    if is_inside {
+                        inside_var_section |= VarSection::EXTERNALS;
+                    }
+                    externals = Some(capture.node.range());
+                }
                 "method" => {
                     method_ranges.push(capture.node.range());
                 }
@@ -187,7 +208,7 @@ impl HeadResult {
         let inside_head = Self::determine_head_location(
             offset,
             &inside_var_section,
-            &[inputs, outputs, in_outs, temps, vars],
+            &[inputs, outputs, in_outs, temps, vars, externals],
             &method_ranges,
             body,
             source,
@@ -199,6 +220,7 @@ impl HeadResult {
             in_outs,
             temps,
             vars,
+            externals,
             inside_var_section,
             head_location: inside_head,
         }

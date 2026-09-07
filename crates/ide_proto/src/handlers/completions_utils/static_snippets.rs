@@ -298,13 +298,15 @@ pub fn array() -> CompletionItem {
     }
 }
 
-/// What a VAR section takes: the elementary types, the compound forms, and
-/// `AT` for a located variable.
-pub fn var_section_items() -> Vec<CompletionItem> {
+/// What a VAR section takes: the elementary types and the compound forms,
+/// plus `AT` in the sections that map a variable to an address.
+pub fn var_section_items(takes_a_location: bool) -> Vec<CompletionItem> {
     let mut items = elem_type_names();
     items.push(struct_());
     items.push(array());
-    items.push(at());
+    if takes_a_location {
+        items.push(at());
+    }
     items
 }
 

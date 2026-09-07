@@ -16,7 +16,7 @@ use hir::{
         hir_node::HirNode,
         interned::namespace::NamespacePath,
         namespace::NamespaceDecl,
-        pous::pou::Pou,
+        pous::{pou::Pou, variable::VariableKind},
         program::ProgramDecl,
         scope::{Scope, ScopeKind},
         semantic_index::{NodeKey, get_scope, semantic_index},
@@ -35,7 +35,11 @@ use crate::{
     comment_index::comment_index,
     handlers::{
         CompletionHandler, CompletionRequest,
-        completions_utils::{CompletionCtx, QueryMode, pou_context::HeadLocation, static_snippets},
+        completions_utils::{
+            CompletionCtx, QueryMode,
+            pou_context::{HeadLocation, HeadResult, VarSection},
+            static_snippets,
+        },
     },
     walk::completion_descendant_at,
 };
@@ -261,7 +265,9 @@ impl<'db> CompletionHandler<'db> for Pou<'db> {
         // it a VAR section offered nothing. A section takes types, not
         // statements, so this is the whole answer.
         if head_result.is_inside_var_section() {
-            ctx.items.extend(static_snippets::var_section_items());
+            let takes_a_location = head_result.inside_var_section.contains(VarSection::VARS);
+            ctx.items
+                .extend(static_snippets::var_section_items(takes_a_location));
             return Some(ctx.take_items());
         }
 
@@ -310,7 +316,9 @@ impl<'db> CompletionHandler<'db> for MethodRef<'db> {
         // it a VAR section offered nothing. A section takes types, not
         // statements, so this is the whole answer.
         if head_result.is_inside_var_section() {
-            ctx.items.extend(static_snippets::var_section_items());
+            let takes_a_location = head_result.inside_var_section.contains(VarSection::VARS);
+            ctx.items
+                .extend(static_snippets::var_section_items(takes_a_location));
             return Some(ctx.take_items());
         }
 
@@ -358,7 +366,9 @@ impl<'db> CompletionHandler<'db> for ProgramDecl<'db> {
         // it a VAR section offered nothing. A section takes types, not
         // statements, so this is the whole answer.
         if head_result.is_inside_var_section() {
-            ctx.items.extend(static_snippets::var_section_items());
+            let takes_a_location = head_result.inside_var_section.contains(VarSection::VARS);
+            ctx.items
+                .extend(static_snippets::var_section_items(takes_a_location));
             return Some(ctx.take_items());
         }
 
@@ -454,9 +464,13 @@ impl<'db> CompletionHandler<'db> for hir::hir_def::pous::variable::VariableDecl<
         // A cursor inside a variable declaration reached no handler at all:
         // the dispatch had no arm for one, so a VAR section offered nothing —
         // no types after the colon, and no `AT` after the name.
+        // Only a plain VAR or a VAR_GLOBAL maps a variable to an address; the
+        // interface sections and VAR_TEMP take no `AT`.
+        let takes_a_location = matches!(self.kind(db), VariableKind::Var | VariableKind::Global);
         let mut ctx = CompletionCtx::new(req.offset, QueryMode::Head);
         ctx.scope_completion(self.get_scope_id(db), &req.query, db);
-        ctx.items.extend(static_snippets::var_section_items());
+        ctx.items
+            .extend(static_snippets::var_section_items(takes_a_location));
         Some(ctx.take_items())
     }
 }
@@ -632,6 +646,19 @@ impl<'db> CompletionHandler<'db> for ConfigDecl<'db> {
         // Don't trigger on the name
         if self.get_name_span(db).end_byte >= req.offset {
             return None;
+        }
+
+        // A global being typed has no node of its own yet, so the
+        // CONFIGURATION is the target for its own VAR_GLOBAL section.
+        let doc = self.get_scope_id(db).file(db).document(db);
+        let head = HeadResult::query_var_decls(
+            doc.tree.root_node(),
+            &doc.texter.text,
+            self.get_span(db),
+            req.offset,
+        );
+        if head.is_inside_var_section() {
+            return Some(static_snippets::var_section_items(true));
         }
 
         // A CONFIGURATION holds globals and RESOURCEs; tasks and program

@@ -453,3 +453,164 @@ fn complete_at(db: &mut RootDatabase, marked: &str) -> Vec<String> {
         .map(|item| item.label)
         .collect()
 }
+
+/// `AT` maps a variable to an address, which only a plain VAR section and a
+/// VAR_GLOBAL take. The interface sections, VAR_TEMP and VAR_EXTERNAL refuse
+/// one, and every section still offers the types.
+#[rstest]
+#[case::var(
+    r#"
+FUNCTION_BLOCK fb
+VAR
+    |
+END_VAR
+END_FUNCTION_BLOCK
+"#,
+    true
+)]
+#[case::var_retain(
+    r#"
+FUNCTION_BLOCK fb
+VAR RETAIN
+    |
+END_VAR
+END_FUNCTION_BLOCK
+"#,
+    true
+)]
+#[case::var_non_retain(
+    r#"
+FUNCTION_BLOCK fb
+VAR NON_RETAIN
+    |
+END_VAR
+END_FUNCTION_BLOCK
+"#,
+    true
+)]
+#[case::var_constant(
+    r#"
+FUNCTION_BLOCK fb
+VAR CONSTANT
+    |
+END_VAR
+END_FUNCTION_BLOCK
+"#,
+    true
+)]
+#[case::program_var(
+    r#"
+PROGRAM prog
+VAR
+    |
+END_VAR
+END_PROGRAM
+"#,
+    true
+)]
+#[case::var_global(
+    r#"
+CONFIGURATION conf
+VAR_GLOBAL
+    |
+END_VAR
+END_CONFIGURATION
+"#,
+    true
+)]
+#[case::var_input(
+    r#"
+FUNCTION_BLOCK fb
+VAR_INPUT
+    |
+END_VAR
+END_FUNCTION_BLOCK
+"#,
+    false
+)]
+#[case::var_output(
+    r#"
+FUNCTION_BLOCK fb
+VAR_OUTPUT
+    |
+END_VAR
+END_FUNCTION_BLOCK
+"#,
+    false
+)]
+#[case::var_in_out(
+    r#"
+FUNCTION_BLOCK fb
+VAR_IN_OUT
+    |
+END_VAR
+END_FUNCTION_BLOCK
+"#,
+    false
+)]
+#[case::var_temp(
+    r#"
+FUNCTION_BLOCK fb
+VAR_TEMP
+    |
+END_VAR
+END_FUNCTION_BLOCK
+"#,
+    false
+)]
+#[case::var_external(
+    r#"
+FUNCTION_BLOCK fb
+VAR_EXTERNAL
+    |
+END_VAR
+END_FUNCTION_BLOCK
+"#,
+    false
+)]
+#[case::method_var_input(
+    r#"
+FUNCTION_BLOCK fb
+METHOD m
+VAR_INPUT
+    |
+END_VAR
+END_METHOD
+END_FUNCTION_BLOCK
+"#,
+    false
+)]
+pub fn at_only_where_a_location_is_written(
+    mut with_db: RootDatabase,
+    #[case] marked: &str,
+    #[case] takes_a_location: bool,
+) {
+    let labels = complete_at(&mut with_db, marked);
+
+    assert!(labels.iter().any(|l| l == "INT"), "no types in {labels:?}");
+    assert_eq!(
+        labels.iter().any(|l| l == "AT"),
+        takes_a_location,
+        "AT in {labels:?}"
+    );
+}
+
+/// The byte just past `END_VAR` closes the section: the cursor there belongs
+/// to whatever follows, not to the declarations.
+#[rstest]
+pub fn end_var_closes_the_section(mut with_db: RootDatabase) {
+    let marked = r#"
+FUNCTION_BLOCK fb
+VAR
+    x : INT;
+END_VAR|
+END_FUNCTION_BLOCK
+"#;
+    let labels = complete_at(&mut with_db, marked);
+
+    assert!(!labels.iter().any(|l| l == "AT"), "AT past END_VAR");
+    assert!(
+        labels.iter().any(|l| l == "VAR_INPUT"),
+        "no section keywords in {labels:?}"
+    );
+}
