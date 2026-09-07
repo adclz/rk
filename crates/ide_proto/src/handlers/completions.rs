@@ -154,6 +154,15 @@ impl<'db> CompletionHandler<'db> for HirNode<'db> {
                     PathExprKind::Deref(d) => {
                         Some(d.path.completion(db, &child_req).unwrap_or_default())
                     }
+                    // A bare name with the cursor ON it is being TYPED: offer
+                    // what is in scope, not the members of whatever the
+                    // half-written name happens to resolve to. `f` on an
+                    // `f : Engine` offered `oil`, which is not in scope there.
+                    // Past the name (`f.`) the path is a receiver, and its
+                    // members are exactly what is wanted.
+                    PathExprKind::VarAccess(_) if !req.is_last_before => Some(
+                        body_scope_completion(db, p.get_scope_id(db), &req.query, req.offset),
+                    ),
                     PathExprKind::VarAccess(_) => p.completion(db, &child_req),
                 }
             }
@@ -765,4 +774,24 @@ pub(crate) fn resolve_namespace_prefix<'db>(
             .next()
             .is_some()
     })
+}
+
+/// What a body offers while a NAME is being typed: the items in scope, the
+/// statement snippets and the elementary types. The same tail the path
+/// handlers fall through to, reachable from the dispatch as well.
+fn body_scope_completion<'db>(
+    db: &'db dyn WorkspaceDataBase,
+    scope_id: hir::hir_def::scope::ScopeId<'db>,
+    query: &str,
+    offset: usize,
+) -> Vec<CompletionItem> {
+    let mut ctx = CompletionCtx::new(offset, QueryMode::Body);
+    let scope = get_scope(db, scope_id);
+    if is_in_body(scope, &mut ctx, db) {
+        ctx.scope_completion(scope_id, query, db);
+        ctx.items.extend(static_snippets::all_stmts());
+        ctx.items.extend(static_snippets::elem_type_names_init());
+        maybe_add_self_return(db, scope, &mut ctx.items);
+    }
+    ctx.take_items()
 }

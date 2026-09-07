@@ -29,14 +29,20 @@ END_FUNCTION_BLOCK
 "#;
 
     add_sources(&mut with_db, &[source]);
-    let path_expr =
-        descendant_at(&with_db, *with_db.get_files().iter().last().unwrap(), 162).unwrap();
+    // Resolved the way the server resolves it: the flags decide whether the
+    // cursor is ON a name or past it, onto a receiver.
+    let file = *with_db.get_files().iter().last().unwrap();
+    // Right after the dot: a receiver, so its members are what is wanted.
+    // The offset used to fall INSIDE `my_var`, where the answer is the scope.
+    let offset = source.rfind("my_var.").expect("the probe") + "my_var.".len();
+    let (path_expr, node_key, is_last_before) =
+        completion_descendant_at(&with_db, file, offset).unwrap();
     let req = CompletionRequest {
-        offset: 162,
-        trigger_character: None,
+        offset,
+        trigger_character: Some(".".into()),
         query: "".into(),
-        node_index_pos: None,
-        is_last_before: false,
+        node_index_pos: Some(node_key),
+        is_last_before,
     };
     let completions = path_expr.completion(&with_db, &req).unwrap();
 
@@ -126,14 +132,20 @@ END_FUNCTION_BLOCK
 "#;
 
     add_sources(&mut with_db, &[source]);
-    let path_expr =
-        descendant_at(&with_db, *with_db.get_files().iter().last().unwrap(), 191).unwrap();
+    // Resolved the way the server resolves it: the flags decide whether the
+    // cursor is ON a name or past it, onto a receiver.
+    let file = *with_db.get_files().iter().last().unwrap();
+    // Right after the dot: a receiver, so its members are what is wanted.
+    // The offset used to fall INSIDE `my_var`, where the answer is the scope.
+    let offset = source.rfind("my_var.").expect("the probe") + "my_var.".len();
+    let (path_expr, node_key, is_last_before) =
+        completion_descendant_at(&with_db, file, offset).unwrap();
     let req = CompletionRequest {
-        offset: 191,
-        trigger_character: None,
+        offset,
+        trigger_character: Some(".".into()),
         query: "".into(),
-        node_index_pos: None,
-        is_last_before: false,
+        node_index_pos: Some(node_key),
+        is_last_before,
     };
     let completions = path_expr.completion(&with_db, &req).unwrap();
 
@@ -353,4 +365,55 @@ END_NAMESPACE
             "`{probe}` must complete `{expected}`, got {labels:?}"
         );
     }
+}
+
+/// A NAME being typed completes the scope; only a receiver completes members.
+///
+/// `f` on an `f : Engine` used to offer `oil`, because the handler asked what
+/// the half-written name resolved to and listed ITS members. The cursor sits
+/// on the name there, and past it after a dot, which is what tells the two
+/// apart.
+#[rstest]
+fn a_name_being_typed_completes_the_scope_not_its_members(mut with_db: RootDatabase) {
+    let source = r#"TYPE Engine : STRUCT
+    oil : REAL;
+    fuel : INT;
+END_STRUCT
+END_TYPE
+
+FUNCTION_BLOCK fb
+VAR
+    f : Engine;
+END_VAR
+    f
+END_FUNCTION_BLOCK
+"#;
+    add_sources(&mut with_db, &[source]);
+    let file = *with_db.get_files().iter().last().unwrap();
+    let offset = source.find("    f\n").expect("the probe line") + "    f".len();
+
+    let (node, node_key, is_last_before) =
+        completion_descendant_at(&with_db, file, offset).expect("a node at the name");
+    let req = CompletionRequest {
+        offset,
+        trigger_character: None,
+        query: "f".into(),
+        node_index_pos: Some(node_key),
+        is_last_before,
+    };
+    let labels: Vec<_> = node
+        .completion(&with_db, &req)
+        .unwrap_or_default()
+        .into_iter()
+        .map(|c| c.label)
+        .collect();
+
+    assert!(
+        !labels.iter().any(|l| l == "oil" || l == "fuel"),
+        "the fields of `f` are not in scope where `f` is being typed: {labels:?}"
+    );
+    assert!(
+        labels.iter().any(|l| l == "f"),
+        "the variable itself is: {labels:?}"
+    );
 }
