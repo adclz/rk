@@ -298,6 +298,29 @@ pub fn array() -> CompletionItem {
     }
 }
 
+/// What a VAR section takes: the elementary types, the compound forms, and
+/// `AT` for a located variable.
+pub fn var_section_items() -> Vec<CompletionItem> {
+    let mut items = elem_type_names();
+    items.push(struct_());
+    items.push(array());
+    items.push(at());
+    items
+}
+
+/// `AT %IX0.0` — the address a located variable is mapped to. The prefix
+/// says the band (input, output, memory) and the letter the width.
+#[inline]
+pub fn at() -> CompletionItem {
+    CompletionItem {
+        label: "AT".into(),
+        kind: Some(lsp_types::CompletionItemKind::KEYWORD),
+        insert_text_format: Some(lsp_types::InsertTextFormat::SNIPPET),
+        insert_text: Some("AT %${1|I,Q,M|}${2|X,B,W,D,L|}${3:0}".into()),
+        ..Default::default()
+    }
+}
+
 /// The access specifier a FUNCTION or a METHOD takes between its keyword and
 /// its name. A half-typed one parses as the name, so these are offered for as
 /// long as no specifier is written yet.

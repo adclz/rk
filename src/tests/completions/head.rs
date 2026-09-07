@@ -320,6 +320,82 @@ fn struct_and_array_snippets_exist() {
     assert!(array_item.insert_text.unwrap().contains("OF"));
 }
 
+/// The cursor sits in a VAR section, where the declaration being typed has no
+/// node of its own yet. Every POU kind must still offer what a section takes.
+#[rstest]
+#[case::function(
+    r#"
+FUNCTION fn : INT
+VAR
+    |
+END_VAR
+END_FUNCTION
+"#
+)]
+#[case::function_block(
+    r#"
+FUNCTION_BLOCK fb
+VAR
+    |
+END_VAR
+END_FUNCTION_BLOCK
+"#
+)]
+#[case::program(
+    r#"
+PROGRAM prog
+VAR
+    |
+END_VAR
+END_PROGRAM
+"#
+)]
+#[case::method(
+    r#"
+FUNCTION_BLOCK fb
+METHOD m
+VAR
+    |
+END_VAR
+END_METHOD
+END_FUNCTION_BLOCK
+"#
+)]
+#[case::after_the_colon(
+    r#"
+FUNCTION_BLOCK fb
+VAR
+    x : |
+END_VAR
+END_FUNCTION_BLOCK
+"#
+)]
+#[case::after_the_name(
+    r#"
+FUNCTION_BLOCK fb
+VAR
+    x |
+END_VAR
+END_FUNCTION_BLOCK
+"#
+)]
+pub fn var_section_items(mut with_db: RootDatabase, #[case] marked: &str) {
+    let labels = complete_at(&mut with_db, marked);
+
+    for expected in ["INT", "STRING", "STRUCT", "ARRAY", "AT"] {
+        assert!(
+            labels.iter().any(|l| l == expected),
+            "no {expected} in {labels:?}"
+        );
+    }
+    for unwanted in ["USING", "IF", "FOR"] {
+        assert!(
+            !labels.iter().any(|l| l == unwanted),
+            "{unwanted} inside a VAR section"
+        );
+    }
+}
+
 /// An access specifier is written between the POU keyword and the name, where
 /// a half-typed one parses as the name itself.
 #[rstest]

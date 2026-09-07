@@ -313,7 +313,7 @@ END_CLASS
 "#
 )]
 pub fn a_trailing_dot_completes_the_receiver_in_every_body(
-    mut with_db: RootDatabase,
+    with_db: RootDatabase,
     #[case] body: &str,
 ) {
     const HEAD: &str = r#"TYPE Engine : STRUCT

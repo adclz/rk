@@ -176,6 +176,7 @@ impl<'db> CompletionHandler<'db> for HirNode<'db> {
             ),
             HirNode::Using(u) => u.completion(db, req),
             HirNode::Namespace(ns) => ns.completion(db, req),
+            HirNode::VariableDecl(v) => v.completion(db, req),
             HirNode::PouDecl(pou) => pou.completion(db, req),
             HirNode::Program(p) => p.completion(db, req),
             HirNode::Config(c) => c.completion(db, req),
@@ -255,6 +256,15 @@ impl<'db> CompletionHandler<'db> for Pou<'db> {
         let mut ctx = CompletionCtx::new(req.offset, QueryMode::Body);
         let head_result = ctx.located_pou_completion(*self, db);
 
+        // A declaration being typed has no node of its own yet, so the POU is
+        // the target here and this is the only place that can answer: without
+        // it a VAR section offered nothing. A section takes types, not
+        // statements, so this is the whole answer.
+        if head_result.is_inside_var_section() {
+            ctx.items.extend(static_snippets::var_section_items());
+            return Some(ctx.take_items());
+        }
+
         if matches!(
             head_result.head_location,
             HeadLocation::BeforeVars | HeadLocation::InBodyAfterVars
@@ -295,6 +305,15 @@ impl<'db> CompletionHandler<'db> for MethodRef<'db> {
         let mut ctx = CompletionCtx::new(req.offset, QueryMode::Body);
         let head_result = ctx.located_method_completion(*self, db);
 
+        // A declaration being typed has no node of its own yet, so the POU is
+        // the target here and this is the only place that can answer: without
+        // it a VAR section offered nothing. A section takes types, not
+        // statements, so this is the whole answer.
+        if head_result.is_inside_var_section() {
+            ctx.items.extend(static_snippets::var_section_items());
+            return Some(ctx.take_items());
+        }
+
         if matches!(
             head_result.head_location,
             HeadLocation::BeforeVars | HeadLocation::InBodyAfterVars
@@ -333,6 +352,15 @@ impl<'db> CompletionHandler<'db> for ProgramDecl<'db> {
 
         let mut ctx = CompletionCtx::new(req.offset, QueryMode::Body);
         let head_result = ctx.located_program_completion(*self, db);
+
+        // A declaration being typed has no node of its own yet, so the POU is
+        // the target here and this is the only place that can answer: without
+        // it a VAR section offered nothing. A section takes types, not
+        // statements, so this is the whole answer.
+        if head_result.is_inside_var_section() {
+            ctx.items.extend(static_snippets::var_section_items());
+            return Some(ctx.take_items());
+        }
 
         if matches!(
             head_result.head_location,
@@ -413,6 +441,22 @@ impl<'db> CompletionHandler<'db> for Spec<'db> {
         ctx.items.extend(static_snippets::elem_type_names());
         ctx.items.push(static_snippets::struct_());
         ctx.items.push(static_snippets::array());
+        Some(ctx.take_items())
+    }
+}
+
+impl<'db> CompletionHandler<'db> for hir::hir_def::pous::variable::VariableDecl<'db> {
+    fn completion(
+        &'db self,
+        db: &'db dyn WorkspaceDataBase,
+        req: &CompletionRequest,
+    ) -> Option<Vec<CompletionItem>> {
+        // A cursor inside a variable declaration reached no handler at all:
+        // the dispatch had no arm for one, so a VAR section offered nothing —
+        // no types after the colon, and no `AT` after the name.
+        let mut ctx = CompletionCtx::new(req.offset, QueryMode::Head);
+        ctx.scope_completion(self.get_scope_id(db), &req.query, db);
+        ctx.items.extend(static_snippets::var_section_items());
         Some(ctx.take_items())
     }
 }
