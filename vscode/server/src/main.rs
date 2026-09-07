@@ -21,12 +21,10 @@ use server::boot;
 use tracing_subscriber::{fmt, prelude::*, EnvFilter};
 
 fn main() -> Result<(), Box<dyn Error + Sync + Send>> {
-    // Initialize tracing based on build type and environment
-    let default_log_level = if cfg!(debug_assertions) {
-        "info"
-    } else {
-        "warn"
-    };
+    // Quiet unless asked: `RUST_LOG=debug` shows per-file work, `trace` every
+    // lookup. A debug build used to default to `info`, and the instrumented
+    // lookups recorded a span per call, which was most of a slow startup.
+    let default_log_level = "warn";
 
     let env_filter =
         EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new(default_log_level));

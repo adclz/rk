@@ -294,7 +294,7 @@ impl<'db> SemanticIndexBuilder<'db> {
     }
 
     // Fix me: This function should not panic, but handle errors gracefully.
-    #[tracing::instrument(skip_all, name = "build HIR")]
+    #[tracing::instrument(level = "debug", skip_all, name = "build HIR")]
     pub fn build(mut self) -> SemanticIndex<'db> {
         let mut usings = vec![];
         let global_scope = ScopeId::global(self.db, self.file);

@@ -19,7 +19,7 @@ static COMMENT_QUERY: LazyLock<tree_sitter::Query> = LazyLock::new(|| {
     .unwrap()
 });
 
-#[tracing::instrument(skip_all, name = "query_comment_index")]
+#[tracing::instrument(level = "debug", skip_all, name = "query_comment_index")]
 #[salsa::tracked(returns(ref))]
 pub fn comment_index(db: &dyn BaseDatabase, file: File) -> CommentIndex {
     let mut map = FxHashMap::default();

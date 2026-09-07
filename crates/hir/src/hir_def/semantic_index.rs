@@ -21,7 +21,7 @@ use crate::hir_def::scope::{Scope, ScopeId};
 use index::{IndexVec, newtype_index};
 
 /// Returns the semantic index of a given file
-#[tracing::instrument(skip_all, name = "query_semantic_index")]
+#[tracing::instrument(level = "debug", skip_all, name = "query_semantic_index")]
 #[salsa::tracked(returns(ref), no_eq)]
 pub fn semantic_index<'db>(db: &'db dyn WorkspaceDataBase, file: File) -> SemanticIndex<'db> {
     let ast = info_span!("build AST").in_scope(|| get_ast(db, file));

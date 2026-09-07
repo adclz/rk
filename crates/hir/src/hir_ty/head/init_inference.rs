@@ -21,7 +21,7 @@ use crate::{
     },
 };
 
-#[tracing::instrument(skip(db))]
+#[tracing::instrument(level = "trace", skip(db))]
 #[salsa::tracked(returns(ref))]
 pub fn infer_initialization<'db>(
     db: &'db dyn WorkspaceDataBase,

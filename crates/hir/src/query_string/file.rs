@@ -9,7 +9,7 @@ use crate::{
 
 /// Library symbol index containing all POUs from library files
 /// tracked because std lib files have high durability and are not expected to change often
-#[tracing::instrument(skip_all)]
+#[tracing::instrument(level = "debug", skip_all)]
 #[salsa::tracked(no_eq)]
 pub fn library_symbol_index<'db>(db: &'db dyn WorkspaceDataBase) -> SymbolIndex<'db> {
     let mut items = Vec::new();
@@ -48,7 +48,7 @@ pub fn library_symbol_index<'db>(db: &'db dyn WorkspaceDataBase) -> SymbolIndex<
 }
 
 // Construct a symbol index for all POUs in the given file
-#[tracing::instrument(skip_all)]
+#[tracing::instrument(level = "debug", skip_all)]
 #[salsa::tracked(no_eq)]
 pub fn file_symbol_index<'db>(db: &'db dyn WorkspaceDataBase, file: File) -> SymbolIndex<'db> {
     let sema = semantic_index(db, file);

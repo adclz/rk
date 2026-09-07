@@ -202,7 +202,7 @@ pub fn namespace_path_candidates<'db>(
 }
 
 /// Returns the canonical POU for a given name within a namespace path.
-#[tracing::instrument(skip(db))]
+#[tracing::instrument(level = "trace", skip(db))]
 pub fn namespace_pou_index<'db>(
     db: &'db dyn WorkspaceDataBase,
     path: NamespacePath,
@@ -217,7 +217,7 @@ pub fn namespace_pou_index<'db>(
 }
 
 /// Finds a globally declared POU by name across all files.
-#[tracing::instrument(skip(db))]
+#[tracing::instrument(level = "trace", skip(db))]
 pub fn pou_index<'db>(db: &'db dyn WorkspaceDataBase, name: Ident) -> Option<Pou<'db>> {
     for file in all_files(db) {
         for p in file_global_pous(db, file).iter() {
@@ -234,7 +234,7 @@ pub fn pou_index<'db>(db: &'db dyn WorkspaceDataBase, name: Ident) -> Option<Pou
 /// all same-name POUs so overload-aware callers (call resolution, the duplicate
 /// check) can pick among FUNCTION overloads by signature. A non-overloaded name
 /// yields a single-element vec.
-#[tracing::instrument(skip(db))]
+#[tracing::instrument(level = "trace", skip(db))]
 pub fn pou_candidates<'db>(db: &'db dyn WorkspaceDataBase, name: Ident) -> Vec<Pou<'db>> {
     let mut result = Vec::new();
     for file in all_files(db) {
@@ -249,7 +249,7 @@ pub fn pou_candidates<'db>(db: &'db dyn WorkspaceDataBase, name: Ident) -> Vec<P
 
 /// Namespace-scoped counterpart of [`pou_candidates`]: every POU with the given
 /// name declared directly in the namespace `path` (across files that reopen it).
-#[tracing::instrument(skip(db))]
+#[tracing::instrument(level = "trace", skip(db))]
 pub fn namespace_pou_candidates<'db>(
     db: &'db dyn WorkspaceDataBase,
     path: NamespacePath,
@@ -267,7 +267,7 @@ pub fn namespace_pou_candidates<'db>(
 }
 
 /// Finds a globally declared program by name across all files.
-#[tracing::instrument(skip(db))]
+#[tracing::instrument(level = "trace", skip(db))]
 pub fn program_index<'db>(db: &'db dyn WorkspaceDataBase, name: Ident) -> Option<ProgramDecl<'db>> {
     for file in all_files(db) {
         for p in file_programs(db, file).iter() {

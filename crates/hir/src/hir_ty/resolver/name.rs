@@ -115,7 +115,7 @@ pub fn resolve_name<'db>(
 }
 
 /// Resolve a namespace access to a POU declaration.
-#[tracing::instrument(skip_all)]
+#[tracing::instrument(level = "trace", skip_all)]
 pub(crate) fn resolve_namespace_access<'db>(
     db: &'db dyn WorkspaceDataBase,
     access: &NamespaceAccess<'db>,
@@ -166,7 +166,7 @@ pub fn pou_names_res<'db>(
     }
 }
 
-#[tracing::instrument(skip_all)]
+#[tracing::instrument(level = "trace", skip_all)]
 pub fn find_in_parent_pous<'db>(
     db: &'db dyn WorkspaceDataBase,
     name: Ident,

@@ -31,7 +31,7 @@ use crate::{
 
 pub mod statements;
 
-#[tracing::instrument(skip(db))]
+#[tracing::instrument(level = "trace", skip(db))]
 #[salsa::tracked(returns(ref))]
 pub fn infer_body<'db>(
     db: &'db dyn WorkspaceDataBase,
