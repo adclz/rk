@@ -81,8 +81,10 @@ pub fn complete(
                 return vec![];
             }
 
-            // No target node — show general completions (namespaces, POU snippets, etc.)
-            return vec![
+            // No target node — show general completions (namespaces, POU snippets,
+            // and the pragmas that annotate the declaration below).
+            let mut items = static_snippets::pou_pragmas();
+            items.extend([
                 static_snippets::namespace(),
                 static_snippets::using(),
                 static_snippets::function(),
@@ -92,7 +94,8 @@ pub fn complete(
                 static_snippets::interface(),
                 static_snippets::type_(),
                 static_snippets::configuration(),
-            ];
+            ]);
+            return items;
         }
     };
 
@@ -216,7 +219,8 @@ impl<'db> CompletionHandler<'db> for NamespaceDecl<'db> {
             return None;
         }
 
-        Some(vec![
+        let mut items = static_snippets::pou_pragmas();
+        items.extend([
             static_snippets::namespace(),
             static_snippets::using(),
             static_snippets::function(),
@@ -224,7 +228,8 @@ impl<'db> CompletionHandler<'db> for NamespaceDecl<'db> {
             static_snippets::class(),
             static_snippets::interface(),
             static_snippets::type_(),
-        ])
+        ]);
+        Some(items)
     }
 }
 
@@ -278,7 +283,23 @@ impl<'db> CompletionHandler<'db> for Pou<'db> {
             ctx.items.push(static_snippets::using());
         }
 
+        // An INTERFACE holds method prototypes and nothing else. Its location
+        // reads as a body only because it has neither variables nor one of
+        // its own, which used to put IF and FOR where they cannot go.
+        if matches!(self, Pou::Interface(_)) {
+            ctx.items.extend(static_snippets::member_pragmas());
+            return Some(ctx.take_items());
+        }
+
+        // A METHOD can follow here, and a pragma annotates it.
+        if !head_result.head_location.is_in_body()
+            && matches!(self, Pou::Class(_) | Pou::FunctionBlock(_))
+        {
+            ctx.items.extend(static_snippets::member_pragmas());
+        }
+
         if head_result.head_location.is_in_body() {
+            ctx.items.extend(static_snippets::stmt_pragmas());
             ctx.scope_completion(self.get_scope_id(db), &req.query, db);
             ctx.items.extend(static_snippets::all_stmts());
 
@@ -330,6 +351,7 @@ impl<'db> CompletionHandler<'db> for MethodRef<'db> {
         }
 
         if head_result.head_location.is_in_body() {
+            ctx.items.extend(static_snippets::stmt_pragmas());
             ctx.scope_completion(self.get_scope_id(db), &req.query, db);
             ctx.items.extend(static_snippets::all_stmts());
 
@@ -380,6 +402,7 @@ impl<'db> CompletionHandler<'db> for ProgramDecl<'db> {
         }
 
         if head_result.head_location.is_in_body() {
+            ctx.items.extend(static_snippets::stmt_pragmas());
             ctx.scope_completion(self.scope_id(db), &req.query, db);
             ctx.items.extend(static_snippets::all_stmts());
         }

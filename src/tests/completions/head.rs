@@ -614,3 +614,114 @@ END_FUNCTION_BLOCK
         "no section keywords in {labels:?}"
     );
 }
+
+/// A pragma annotates the declaration below it or stands where a statement
+/// stands, and each position takes only the pragmas that are legal there.
+#[rstest]
+#[case::file_level(
+    r#"
+|
+FUNCTION fn : INT
+END_FUNCTION
+"#,
+    &["{test}", "{extern}", "{once}", "{warn}", "{info}", "{allow}"]
+)]
+#[case::in_a_namespace(
+    r#"
+NAMESPACE ns
+|
+FUNCTION fn : INT
+END_FUNCTION
+END_NAMESPACE
+"#,
+    &["{test}", "{extern}", "{once}", "{warn}", "{info}", "{allow}"]
+)]
+#[case::above_a_method(
+    r#"
+FUNCTION_BLOCK fb
+|
+METHOD m
+END_METHOD
+END_FUNCTION_BLOCK
+"#,
+    &["{once}", "{warn}", "{info}", "{allow}"]
+)]
+#[case::in_an_interface(
+    r#"
+INTERFACE i
+|
+END_INTERFACE
+"#,
+    &["{once}", "{warn}", "{info}", "{allow}"]
+)]
+#[case::in_a_body(
+    r#"
+FUNCTION_BLOCK fb
+VAR
+    x : INT;
+END_VAR
+    |
+END_FUNCTION_BLOCK
+"#,
+    &["{wasm}", "{allow}"]
+)]
+#[case::in_a_method_body(
+    r#"
+FUNCTION_BLOCK fb
+METHOD m
+VAR
+    x : INT;
+END_VAR
+    |
+END_METHOD
+END_FUNCTION_BLOCK
+"#,
+    &["{wasm}", "{allow}"]
+)]
+#[case::in_a_function_head(
+    r#"
+FUNCTION fn : INT
+|
+VAR
+    x : INT;
+END_VAR
+END_FUNCTION
+"#,
+    &[]
+)]
+#[case::in_a_var_section(
+    r#"
+FUNCTION_BLOCK fb
+VAR
+    |
+END_VAR
+END_FUNCTION_BLOCK
+"#,
+    &[]
+)]
+pub fn pragma_items(mut with_db: RootDatabase, #[case] marked: &str, #[case] expected: &[&str]) {
+    let labels = complete_at(&mut with_db, marked);
+    let pragmas: Vec<&str> = labels
+        .iter()
+        .filter(|l| l.starts_with('{'))
+        .map(String::as_str)
+        .collect();
+
+    assert_eq!(pragmas, expected);
+}
+
+/// An INTERFACE holds method prototypes, so its statement snippets were
+/// offering IF and FOR where neither can go.
+#[rstest]
+pub fn an_interface_takes_no_statements(mut with_db: RootDatabase) {
+    let marked = r#"
+INTERFACE i
+|
+END_INTERFACE
+"#;
+    let labels = complete_at(&mut with_db, marked);
+
+    for stmt in ["IF", "FOR", "WHILE", "REPEAT"] {
+        assert!(!labels.iter().any(|l| l == stmt), "{stmt} in an INTERFACE");
+    }
+}

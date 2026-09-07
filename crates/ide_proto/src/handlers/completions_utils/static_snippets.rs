@@ -323,6 +323,51 @@ pub fn at() -> CompletionItem {
     }
 }
 
+/// The pragmas that annotate a declaration, where a FUNCTION is one of the
+/// declarations that can follow.
+pub fn pou_pragmas() -> Vec<CompletionItem> {
+    let mut items = vec![
+        pragma("test", "{test}"),
+        pragma("extern", "{extern '${1:module}' '${2:name}'}"),
+    ];
+    items.extend(member_pragmas());
+    items
+}
+
+/// The pragmas a METHOD takes. `{test}` and `{extern}` are FUNCTION-only
+/// (E0252, E0244), so a POU body's members never take them.
+pub fn member_pragmas() -> Vec<CompletionItem> {
+    vec![
+        pragma("once", "{once}"),
+        pragma("warn", "{warn = '${1:message}'}"),
+        pragma("info", "{info = '${1:message}'}"),
+        pragma("allow", "{allow '${1:rule}'}"),
+    ]
+}
+
+/// The pragmas that stand where a statement stands.
+pub fn stmt_pragmas() -> Vec<CompletionItem> {
+    vec![
+        pragma("wasm", "{wasm '${1:i32.add}'}"),
+        pragma("allow", "{allow '${1:rule}'}"),
+    ]
+}
+
+/// A pragma writes its own braces: `{` auto-closes in the editor, so an
+/// insert text that started after one would double the closing brace.
+/// Filtering is on the bare word, which is what the user types.
+#[inline]
+fn pragma(name: &str, insert_text: &str) -> CompletionItem {
+    CompletionItem {
+        label: format!("{{{name}}}"),
+        filter_text: Some(name.into()),
+        kind: Some(lsp_types::CompletionItemKind::KEYWORD),
+        insert_text_format: Some(lsp_types::InsertTextFormat::SNIPPET),
+        insert_text: Some(insert_text.into()),
+        ..Default::default()
+    }
+}
+
 /// The access specifier a FUNCTION or a METHOD takes between its keyword and
 /// its name. A half-typed one parses as the name, so these are offered for as
 /// long as no specifier is written yet.
