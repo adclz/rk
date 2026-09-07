@@ -233,6 +233,15 @@ pub struct BodyInferenceResult<'db> {
     // Mapping from path expressions to their resolved types.
     pub type_of_path_expr: FxHashMap<PathExpr<'db>, Type<'db>>,
 
+    /// The declaration each path step resolved to, for the steps that name a
+    /// variable. Kept beside the type because the type does not survive: a
+    /// callee path is re-typed as its `CallableType` once the call resolves,
+    /// so `motor()` ends up typed as the block it invokes. Consumers that
+    /// need the DECLARATION — the instance a call runs on, the identity
+    /// rename and references work from — read it here instead of resolving
+    /// the name a second time.
+    pub variable_of_path_expr: FxHashMap<PathExpr<'db>, VariableDecl<'db>>,
+
     // Mapping from expressions to their resolved types.
     pub type_of_expr: FxHashMap<Expr<'db>, Type<'db>>,
 
@@ -352,6 +361,7 @@ impl<'db> BodyInferenceResult<'db> {
             coercion_target: FxHashMap::default(),
             case_label_value: FxHashMap::default(),
             type_of_path_expr: FxHashMap::default(),
+            variable_of_path_expr: FxHashMap::default(),
             path_expr_adjustments: FxHashMap::default(),
             errors: Vec::new(),
             variables_used: FxHashSet::default(),
@@ -618,6 +628,11 @@ impl<'db> BodyInferenceResult<'db> {
 
     pub fn variable_for_param(&self, param: ParamAssign<'db>) -> Option<VariableDecl<'db>> {
         self.variable_of_param.get(&param).copied()
+    }
+
+    /// The declaration this path step names, when it names a variable.
+    pub fn variable_for_path_expr(&self, expr: PathExpr<'db>) -> Option<VariableDecl<'db>> {
+        self.variable_of_path_expr.get(&expr).copied()
     }
 }
 

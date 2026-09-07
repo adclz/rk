@@ -416,6 +416,7 @@ impl<'db> Type<'db> {
                 }
                 let ty = Type::new_var_with_multibits(db, var, multibits);
                 ctx.type_of_path_expr.insert(expr, ty);
+                ctx.variable_of_path_expr.insert(expr, var);
                 ctx.variables_used.insert(var);
                 place.current_typ = ty;
                 place.current_path = expr;

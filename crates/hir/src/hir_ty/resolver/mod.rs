@@ -472,6 +472,7 @@ impl<'db> Resolver<'db> {
                         ctx.errors.pop();
                         let ty = Type::new_var_with_multibits(db, global, step_multibits);
                         ctx.type_of_path_expr.insert(step.get_expr(db), ty);
+                        ctx.variable_of_path_expr.insert(step.get_expr(db), global);
                         ctx.variables_used.insert(global);
                         ctx.globals_without_external
                             .push((step.get_expr(db), global));

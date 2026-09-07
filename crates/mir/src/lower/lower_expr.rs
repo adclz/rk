@@ -925,7 +925,7 @@ impl<'db> ExprLowerCtx<'db> {
 
         // The place carries the name as declared: every downstream table is
         // keyed by declarations.
-        if let Some(decl) = self.root_binding(root, ident) {
+        if let Some(decl) = self.root_binding(root) {
             let declared = decl.name(self.db);
             match decl.storage_class(self.db) {
                 // The address is filled in once the layout is final.
@@ -995,35 +995,18 @@ impl<'db> ExprLowerCtx<'db> {
         }
     }
 
-    /// The declaration this path's root name binds to.
-    ///
-    /// Two HIR answers, because neither covers every path on its own. The
-    /// body's typed expressions cover a name the enclosing POU does not
-    /// declare — direct access to a configuration global — but they are keyed
-    /// per expression SHAPE, and the receiver of `g()` roots in an
-    /// `Invocation`, which `type_of_path_expr` has no key for. The scope's own
-    /// declarations answer that one. (`def_map.global_variables` is every
-    /// variable the POU declares, not just the global ones.)
+    /// The declaration this path's root binds to, as HIR resolved it while
+    /// walking the path, which holds even where the step's type was replaced
+    /// afterwards (a callee path re-typed as its `CallableType`).
     fn root_binding(
         &self,
         path: hir::hir_def::expressions::expression::PathExpr<'db>,
-        ident: hir::hir_def::interned::identifier::Ident,
     ) -> Option<hir::hir_def::pous::variable::VariableDecl<'db>> {
         use hir::hir_ty::body::infer_body;
 
-        let scope = path.scope_id(self.db);
         // `flatten()[0]` is the innermost root step.
-        if let Some(root_expr) = path.flatten(self.db).first().map(|s| s.get_expr(self.db))
-            && let Some(Type::Variable((var, _))) =
-                infer_body(self.db, scope).type_of_path_expr.get(&root_expr)
-        {
-            return Some(*var);
-        }
-        scope
-            .def_map(self.db)
-            .global_variables
-            .get(&ident.caseless(self.db))
-            .copied()
+        let root_expr = path.flatten(self.db).first().map(|s| s.get_expr(self.db))?;
+        infer_body(self.db, path.scope_id(self.db)).variable_for_path_expr(root_expr)
     }
 
     /// Lower a BeginPathExpr to a MirPlace, handling nested field/index/deref chains.
