@@ -113,8 +113,13 @@ impl<'db> CompletionHandler<'db> for HirNode<'db> {
             HirNode::InitExpr(i) => i.completion(db, &req.with_query(i.to_string(db).to_owned())),
             HirNode::PathExpr(p) => {
                 // For is_last_before with trailing dot, try namespace completion
-                // before delegating to parent (Field delegation loses namespace context)
+                // before delegating to parent (Field delegation loses namespace context).
+                // A path that already names a VALUE is not a namespace, however its
+                // name reads: a variable shadows a namespace here as it does for name
+                // resolution, and `s.` on a `s : Engine` used to list the children of
+                // `Std` because the name is a prefix of it.
                 if req.is_last_before
+                    && p.infer(db).is_never()
                     && let Some(written) = try_build_namespace_path(db, p)
                     && let Some(ns_path) = resolve_namespace_prefix(db, p.get_scope_id(db), written)
                 {
@@ -129,8 +134,10 @@ impl<'db> CompletionHandler<'db> for HirNode<'db> {
                 match p.expr(db) {
                     PathExprKind::Field(f) => {
                         // Check if the parent path is a namespace before delegating.
-                        // e.g. `System.M|` → parent is `System` → show namespace children
-                        if let Some(written) = try_build_namespace_path(db, &f.path)
+                        // e.g. `System.M|` → parent is `System` → show namespace children.
+                        // A parent that names a value is a receiver, not a namespace.
+                        if f.path.infer(db).is_never()
+                            && let Some(written) = try_build_namespace_path(db, &f.path)
                             && let Some(parent_ns) =
                                 resolve_namespace_prefix(db, p.get_scope_id(db), written)
                         {

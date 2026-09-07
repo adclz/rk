@@ -248,3 +248,109 @@ END_FUNCTION_BLOCK
         );
     }
 }
+
+/// A trailing dot completes what the receiver holds, in EVERY kind of body,
+/// and a variable whose name reads like a namespace is still a variable.
+///
+/// `s.` on a `s : Engine` used to list the children of `Std`, because the
+/// completion asked "is this a namespace prefix?" before asking what the path
+/// resolves to, and `s` is a prefix of `Std`. Name resolution has always let a
+/// variable shadow a namespace; this is that rule, in the IDE. `Std` is
+/// declared in the fixture for exactly that reason.
+#[rstest]
+#[case::function(
+    r#"FUNCTION fn
+VAR
+    s : Engine;
+    mot : Motor;
+END_VAR
+    {probe}
+END_FUNCTION
+"#
+)]
+#[case::function_block(
+    r#"FUNCTION_BLOCK fb
+VAR
+    s : Engine;
+    mot : Motor;
+END_VAR
+    {probe}
+END_FUNCTION_BLOCK
+"#
+)]
+#[case::program(
+    r#"PROGRAM Main
+VAR
+    s : Engine;
+    mot : Motor;
+END_VAR
+    {probe}
+END_PROGRAM
+"#
+)]
+#[case::method(
+    r#"CLASS C
+    METHOD M
+    VAR
+        s : Engine;
+        mot : Motor;
+    END_VAR
+        {probe}
+    END_METHOD
+END_CLASS
+"#
+)]
+pub fn a_trailing_dot_completes_the_receiver_in_every_body(
+    mut with_db: RootDatabase,
+    #[case] body: &str,
+) {
+    const HEAD: &str = r#"TYPE Engine : STRUCT
+    oil : REAL;
+END_STRUCT
+END_TYPE
+
+FUNCTION_BLOCK Motor
+VAR_INPUT
+    rpm : INT;
+END_VAR
+END_FUNCTION_BLOCK
+
+NAMESPACE Std
+    NAMESPACE Maths
+        FUNCTION SQRT : REAL
+        END_FUNCTION
+    END_NAMESPACE
+END_NAMESPACE
+
+"#;
+
+    for (probe, expected) in [("s.", "oil"), ("mot.", "rpm"), ("Std.", "Maths")] {
+        let source = format!("{HEAD}{}", body.replace("{probe}", probe));
+        let mut db = with_db.clone();
+        add_sources(&mut db, &[&source]);
+        let file = *db.get_files().iter().last().unwrap();
+
+        // The cursor sits right after the dot.
+        let line = source
+            .lines()
+            .find(|l| l.trim() == probe)
+            .expect("the probe line");
+        let offset = source.find(line).expect("the probe line") + line.len();
+
+        let (node, node_key, is_last_before) =
+            completion_descendant_at(&db, file, offset).expect("a node at the dot");
+        let req = CompletionRequest {
+            offset,
+            trigger_character: Some(".".into()),
+            query: "".into(),
+            node_index_pos: Some(node_key),
+            is_last_before,
+        };
+        let completions = node.completion(&db, &req).unwrap_or_default();
+        let labels: Vec<_> = completions.iter().map(|c| c.label.as_str()).collect();
+        assert!(
+            labels.contains(&expected),
+            "`{probe}` must complete `{expected}`, got {labels:?}"
+        );
+    }
+}
