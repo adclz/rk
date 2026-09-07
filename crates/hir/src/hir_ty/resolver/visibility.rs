@@ -281,9 +281,14 @@ pub fn internal_namespace_violated<'db>(
     (!inside || cross_origin).then_some(ns)
 }
 
-/// Check that non-test code does not reference {test}-annotated items.
+/// Check that no code references a `{test}`-annotated item.
 ///
-/// Test items can reference anything, but non-test items cannot reference test items.
+/// A test is the runner's entry point, not a callable: it is emitted with the
+/// runner's own signature, which is not the one it declares. Calling it from
+/// IEC code produced a module that failed to load ("values remaining on stack"
+/// where the test returns nothing), or, where the test declared a return type,
+/// silently handed back the runner's pass/fail code instead of the value. A
+/// test may reference anything; nothing may reference a test.
 pub fn check_test_visibility<'db>(
     db: &'db dyn WorkspaceDataBase,
     call_site: &CallSite<'db>,
@@ -292,10 +297,6 @@ pub fn check_test_visibility<'db>(
 ) {
     let target_scope = get_scope(db, target_scope_id);
     if !target_scope.is_test(db) {
-        return;
-    }
-    let caller_scope = get_scope(db, call_site.scope);
-    if caller_scope.is_test(db) {
         return;
     }
     errors.push(

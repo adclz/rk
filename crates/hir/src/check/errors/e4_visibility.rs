@@ -21,7 +21,8 @@ pub enum VisibilityError<'db> {
         call_site: CallSite<'db>,
         target: CallSite<'db>,
     },
-    /// Attempting to reference a {test}-annotated POU from non-test code.
+    /// Attempting to reference a {test}-annotated POU. The runner calls it;
+    /// code cannot, because it is emitted with the runner's signature.
     TestOnly { call_site: CallSite<'db> },
     /// A `FUNCTION PRIVATE` called from outside its scope; the declaration
     /// is the related span.
@@ -209,7 +210,8 @@ impl<'db> ToIdeDiagnostic<'db> for VisibilityError<'db> {
                     .call();
 
                 diag.with_note(
-                    "items marked with {test} can only be referenced from other {test} items"
+                    "a {test} FUNCTION is the test runner's entry point, not a callable; \
+                     for code shared between tests, write a FUNCTION without the pragma"
                         .into(),
                 );
 

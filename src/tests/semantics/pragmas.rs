@@ -147,8 +147,12 @@ END_FUNCTION"#;
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"");
 }
 
+/// A test cannot call another test either. The runner is the only caller: a
+/// `{test}` FUNCTION is emitted with the runner's signature, not the one it
+/// declares, so a call produced a module that failed to load, or handed back
+/// the runner's pass/fail code in place of the declared value.
 #[rstest]
-fn valid_test_pragma_referencing_test_pou(mut with_db: RootDatabase) {
+fn invalid_test_pragma_referencing_test_pou(mut with_db: RootDatabase) {
     let source = r#"
 {test}
 FUNCTION test_helper : INT
@@ -160,7 +164,17 @@ VAR x : INT; END_VAR
     x := test_helper();
 END_FUNCTION"#;
 
-    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"");
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
+    [E0404] Error: access control violation
+       ,-[ file:///test0.st:9:10 ]
+       |
+     9 |     x := test_helper();
+       |          ^^^^^|^^^^^
+       |               `------- can not access test item 'test_helper'
+       |
+       | Note: a {test} FUNCTION is the test runner's entry point, not a callable; for code shared between tests, write a FUNCTION without the pragma
+    ---'
+    ");
 }
 
 #[rstest]
@@ -183,7 +197,7 @@ END_FUNCTION"#;
        |          ^^^^|^^^^
        |              `------ can not access test item 'test_only'
        |
-       | Note: items marked with {test} can only be referenced from other {test} items
+       | Note: a {test} FUNCTION is the test runner's entry point, not a callable; for code shared between tests, write a FUNCTION without the pragma
     ---'
     ");
 }
