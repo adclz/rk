@@ -182,8 +182,19 @@ fn download(dest: &Path) -> Result<(), String> {
     std::fs::rename(&unpacked, dest).map_err(|e| format!("installing into {}: {e}", dest.display()))
 }
 
+/// Fetched under the platform's trust store.
 fn get(url: &str) -> Result<Vec<u8>, String> {
-    let mut body = ureq::get(url)
+    use ureq::tls::{RootCerts, TlsConfig};
+    let agent = ureq::Agent::config_builder()
+        .tls_config(
+            TlsConfig::builder()
+                .root_certs(RootCerts::PlatformVerifier)
+                .build(),
+        )
+        .build()
+        .new_agent();
+    let mut body = agent
+        .get(url)
         .call()
         .map_err(|e| format!("fetching {url}: {e}"))?
         .into_body();

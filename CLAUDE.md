@@ -299,3 +299,4 @@ the checkout's `stdlib/`. `rk env` prints the resolved path and its origin.
 - Tree-sitter grammar changes require running `tree-sitter generate` before rebuilding
 - Insta snapshots use ASCII charset and no color for deterministic output across environments
 - The `auto-lsp` dependency is pinned to a specific git revision — update both `auto-lsp` and `auto-lsp-codegen` together
+- `crates/webpki-roots` is a deliberate EMPTY stand-in patched over the registry crate (`[patch.crates-io]` in the root Cargo.toml): the wire trusts the workspace CA alone, never a public one. Do not "fix" it by restoring the bundled list; the wasm-opt download verifies through the platform's store instead
