@@ -8,7 +8,7 @@ use hir::{
         hir_node::HirNode, interned::namespace::NamespacePath, semantic_index::semantic_index,
     },
     hir_ty::{
-        index_graphs::namespace_index,
+        index_graphs::{absolute_namespace_path, namespace_index},
         infer::Infer,
         ty::{CallableType, Type},
     },
@@ -40,7 +40,7 @@ impl<'db> ReferencesHandler<'db> for HirNode<'db> {
         // Namespace references: declarations via namespace_index + USING statements via walk
         let ns_path = match self {
             HirNode::Namespace(ns) => Some(*ns.path(db)),
-            HirNode::Using(u) => Some(u.path(db).path),
+            HirNode::Using(u) => Some(absolute_namespace_path(db, u.scope_id(db), u.path(db).path)),
             _ => None,
         };
         if let Some(path) = ns_path {
@@ -241,8 +241,10 @@ fn find_namespace_references<'db>(
     for file in db.get_files().iter() {
         let sema = semantic_index(db, *file);
         let _ = sema.walk_hir(db, &mut |node: HirNode<'db>| {
+            // A USING's path is relative to where it is written.
             if let HirNode::Using(u) = &node
-                && u.path(db).path.caseless(db) == path.caseless(db)
+                && absolute_namespace_path(db, u.scope_id(db), u.path(db).path).caseless(db)
+                    == path.caseless(db)
             {
                 locations.push(ReferenceLocation {
                     file: u.scope_id(db).file(db),

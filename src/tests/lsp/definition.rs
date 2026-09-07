@@ -338,3 +338,98 @@ END_CONFIGURATION
     let def = task.definition(&with_db, name_offset).unwrap();
     assert_snapshot!(format_definition_response(&def), @"/test0.st:3:13-3:15");
 }
+
+/// A namespace path written RELATIVE to the enclosing namespace resolves the
+/// way the checker resolves it: `Impl` inside `NAMESPACE Lib` is `Lib.Impl`.
+/// The IDE used to look the written path up as if it were absolute, so
+/// go-to-definition on `Impl` here found nothing while the call compiled.
+#[rstest]
+pub fn definition_relative_namespace_path_in_body(mut with_db: RootDatabase) {
+    let source = r#"
+NAMESPACE Lib
+    NAMESPACE Impl
+        FUNCTION hidden : INT
+            hidden := 1;
+        END_FUNCTION
+    END_NAMESPACE
+
+    FUNCTION api : INT
+        api := Impl.hidden();
+    END_FUNCTION
+END_NAMESPACE
+"#;
+
+    add_sources(&mut with_db, &[source]);
+    let sema = semantic_index(&with_db, *with_db.get_files().iter().last().unwrap());
+
+    let mut path_exprs = vec![];
+    let _ = sema.walk_hir(&with_db, &mut |node| {
+        if let HirNode::PathExpr(p) = node {
+            path_exprs.push(p);
+        }
+        ControlFlow::Continue(())
+    });
+
+    let impl_offset = source.find("Impl.hidden()").unwrap();
+    let impl_path = path_exprs
+        .iter()
+        .find(|p| {
+            let span = p.get_span(&with_db);
+            impl_offset >= span.start_byte && impl_offset <= span.end_byte
+        })
+        .expect("a PathExpr at Impl");
+
+    let def = impl_path
+        .definition(&with_db, impl_offset)
+        .expect("Impl resolves to NAMESPACE Lib.Impl from inside Lib");
+    assert_snapshot!(format_definition_response(&def), @"/test0.st:2:14-2:18");
+}
+
+/// The same relative rule in a type spec and in a USING: both are written
+/// inside `Lib`, so `Impl` in each means `Lib.Impl`.
+#[rstest]
+pub fn definition_relative_namespace_path_in_spec_and_using(mut with_db: RootDatabase) {
+    let source = r#"
+NAMESPACE Lib
+    USING Impl;
+    NAMESPACE Impl
+        TYPE T : INT; END_TYPE
+    END_NAMESPACE
+    FUNCTION api : INT
+        VAR x : Impl.T; END_VAR
+    END_FUNCTION
+END_NAMESPACE
+"#;
+
+    add_sources(&mut with_db, &[source]);
+    let sema = semantic_index(&with_db, *with_db.get_files().iter().last().unwrap());
+
+    let spec_offset = source.find("Impl.T").unwrap();
+    let mut using = None;
+    let mut spec = None;
+    let _ = sema.walk_hir(&with_db, &mut |node| {
+        match node {
+            HirNode::Using(u) => using = Some(u),
+            HirNode::Spec(s) => {
+                let span = s.get_span(&with_db);
+                if spec_offset >= span.start_byte && spec_offset <= span.end_byte {
+                    spec = Some(s);
+                }
+            }
+            _ => {}
+        }
+        ControlFlow::Continue(())
+    });
+
+    let def = using
+        .expect("the USING")
+        .definition(&with_db, 0)
+        .expect("USING Impl inside Lib names Lib.Impl");
+    assert_snapshot!(format_definition_response(&def), @"/test0.st:3:14-3:18");
+
+    let def = spec
+        .expect("the spec at Impl.T")
+        .definition(&with_db, spec_offset)
+        .expect("Impl in the spec names Lib.Impl");
+    assert_snapshot!(format_definition_response(&def), @"/test0.st:3:14-3:18");
+}

@@ -674,3 +674,41 @@ END_FUNCTION
         "expected 'Convert' (sub-namespace) in completions: {completions:?}"
     );
 }
+
+/// Completing after a RELATIVE namespace path lists what the resolved
+/// namespace holds: `Impl.` inside `NAMESPACE Lib` completes `Lib.Impl`.
+#[rstest]
+pub fn relative_namespace_pou_completion(mut with_db: RootDatabase) {
+    let source = r#"
+NAMESPACE Lib
+    NAMESPACE Impl
+        FUNCTION hidden : INT
+            hidden := 1;
+        END_FUNCTION
+    END_NAMESPACE
+    FUNCTION api : INT
+        api := Impl.
+    END_FUNCTION
+END_NAMESPACE
+"#;
+
+    add_sources(&mut with_db, &[source]);
+    let file = with_db
+        .get_file(&Url::parse("file:///test0.st").unwrap())
+        .unwrap();
+    let offset = source.find("Impl.").unwrap() + "Impl.".len();
+    let (node, node_key, is_last_before) =
+        completion_descendant_at(&with_db, file, offset).unwrap();
+    let req = CompletionRequest {
+        offset,
+        trigger_character: Some(".".into()),
+        query: "".into(),
+        node_index_pos: Some(node_key),
+        is_last_before,
+    };
+    let completions = node.completion(&with_db, &req).unwrap();
+    assert!(
+        format!("{completions:?}").contains("hidden"),
+        "expected 'hidden' from Lib.Impl: {completions:?}"
+    );
+}

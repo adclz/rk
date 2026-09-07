@@ -18,7 +18,7 @@ use hir::{
     },
     hir_ty::{
         config::infer_config_result,
-        index_graphs::namespace_index,
+        index_graphs::{absolute_namespace_path, namespace_index},
         infer::Infer,
         ty::{CallableType, Type},
     },
@@ -26,7 +26,7 @@ use hir::{
 
 use crate::handlers::{
     DefinitionHandler,
-    completions::{is_namespace_prefix, try_build_namespace_path},
+    completions::{resolve_namespace_prefix, try_build_namespace_path},
 };
 
 impl<'db> DefinitionHandler<'db> for HirNode<'db> {
@@ -71,7 +71,11 @@ impl<'db> DefinitionHandler<'db> for Using<'db> {
         db: &'db dyn WorkspaceDataBase,
         _offset: usize,
     ) -> Option<GotoDefinitionResponse> {
-        namespace_definitions(db, self.path(db).path)
+        // A USING inside a namespace may name a sibling by its relative path.
+        namespace_definitions(
+            db,
+            absolute_namespace_path(db, self.scope_id(db), self.path(db).path),
+        )
     }
 }
 
@@ -126,8 +130,11 @@ impl<'db> DefinitionHandler<'db> for Spec<'db> {
                 accumulated.push(*fragment);
 
                 if offset >= span.start_byte && offset <= span.end_byte {
-                    let ns_path = NamespacePath::new(db, accumulated);
-                    return namespace_definitions(db, ns_path);
+                    let written = NamespacePath::new(db, accumulated);
+                    return namespace_definitions(
+                        db,
+                        absolute_namespace_path(db, self.scope_id(db), written),
+                    );
                 }
             }
         }
@@ -164,8 +171,8 @@ impl<'db> DefinitionHandler<'db> for PathExpr<'db> {
     ) -> Option<GotoDefinitionResponse> {
         let ty = self.infer(db);
         if ty.is_never()
-            && let Some(ns_path) = try_build_namespace_path(db, self)
-            && is_namespace_prefix(db, ns_path)
+            && let Some(written) = try_build_namespace_path(db, self)
+            && let Some(ns_path) = resolve_namespace_prefix(db, self.get_scope_id(db), written)
         {
             return namespace_definitions(db, ns_path);
         }

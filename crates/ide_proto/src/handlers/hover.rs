@@ -36,7 +36,7 @@ use hir::{
 use crate::{
     handlers::{
         HoverHandler,
-        completions::{is_namespace_prefix, try_build_namespace_path},
+        completions::{resolve_namespace_prefix, try_build_namespace_path},
     },
     hir_node::{HasComment, MaybeHirNode, get_param_start_pos},
 };
@@ -326,8 +326,8 @@ impl<'db> HoverHandler<'db> for PathExpr<'db> {
         let ty = self.infer(db);
         if ty.is_never() {
             // Check if this PathExpr is part of a namespace path (e.g. "System" in System.Math.Sin)
-            if let Some(ns_path) = try_build_namespace_path(db, self)
-                && is_namespace_prefix(db, ns_path)
+            if let Some(written) = try_build_namespace_path(db, self)
+                && let Some(ns_path) = resolve_namespace_prefix(db, self.get_scope_id(db), written)
             {
                 return Some(Hover {
                     contents: HoverContents::Scalar(MarkedString::from_markdown(format!(

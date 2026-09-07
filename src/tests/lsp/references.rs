@@ -450,3 +450,38 @@ END_FUNCTION
     ---'
     ");
 }
+
+/// A USING written relative to its namespace is a reference to the
+/// namespace it resolves to.
+#[rstest]
+fn relative_using_is_a_namespace_reference(mut with_db: RootDatabase) {
+    let source = r#"
+NAMESPACE Lib
+    USING Impl;
+    NAMESPACE Impl
+        FUNCTION hidden : INT
+            hidden := 1;
+        END_FUNCTION
+    END_NAMESPACE
+END_NAMESPACE
+"#;
+
+    add_sources(&mut with_db, &[source]);
+    let file = *with_db.get_files().iter().last().unwrap();
+
+    let decl_offset = source.find("NAMESPACE Impl").unwrap() + "NAMESPACE ".len();
+    let node = descendant_at(&with_db, file, decl_offset).unwrap();
+    let refs = node.locations(&with_db).unwrap();
+
+    // A USING's span is its path, not the keyword.
+    let using_offset = source.find("USING Impl").unwrap() + "USING ".len();
+    let starts: Vec<usize> = refs.iter().map(|r| r.span.start_byte).collect();
+    assert!(
+        starts.contains(&using_offset),
+        "the relative USING counts as a reference: {starts:?}"
+    );
+    assert!(
+        starts.contains(&decl_offset),
+        "and so does the declaration: {starts:?}"
+    );
+}

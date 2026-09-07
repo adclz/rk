@@ -22,13 +22,17 @@ impl<'db> SemanticIndexBuilder<'db> {
 
         let scope_id = self.generate_scope_id();
         let path = SpanNamespacePath::from((self.db, parent_path, self.current_scope));
+        let previous_scope = self.current_scope;
+
+        // The directives are written INSIDE the namespace, so they carry its
+        // scope: a `USING Impl` in `NAMESPACE Lib` resolves relative to Lib,
+        // and an IDE feature reading the scope back resolves it the same way.
+        self.current_scope = scope_id;
         let usings = self.parse_usings(&nested.directives);
         let usings = self.parse_or_default(usings);
 
         let mut namespaces = vec![];
         let mut pous = vec![];
-
-        let previous_scope = self.current_scope;
 
         if let Some(elements) = &nested.elements {
             for child in elements.cast(self.ast).children.iter() {

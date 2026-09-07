@@ -901,3 +901,33 @@ fn hover_range_cross_file_has_no_range(mut with_db: RootDatabase) {
         hover.range
     );
 }
+
+/// Hovering a relative namespace fragment names the namespace it resolves
+/// to, with the enclosing path the user did not have to write.
+#[rstest]
+pub fn relative_namespace_fragment_hover(mut with_db: RootDatabase) {
+    let source = r#"
+NAMESPACE Lib
+    NAMESPACE Impl
+        FUNCTION hidden : INT
+            hidden := 1;
+        END_FUNCTION
+    END_NAMESPACE
+    FUNCTION api : INT
+        api := Impl.hidden();
+    END_FUNCTION
+END_NAMESPACE
+"#;
+    let impl_offset = source.find("Impl.hidden").unwrap();
+    let out = collect_hovers(&mut with_db, source, |db, node| {
+        let HirNode::PathExpr(p) = node else {
+            return None;
+        };
+        let span = p.get_span(db);
+        if impl_offset < span.start_byte || impl_offset > span.end_byte {
+            return None;
+        }
+        hover_markup(node.hover(db, impl_offset)?.contents)
+    });
+    assert!(out.contains("NAMESPACE Lib.Impl"), "{out}");
+}

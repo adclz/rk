@@ -22,7 +22,11 @@ use hir::{
         semantic_index::{NodeKey, get_scope, semantic_index},
         using::Using,
     },
-    hir_ty::{head::inheritance::MethodRef, index_graphs::namespace_index, infer::Infer},
+    hir_ty::{
+        head::inheritance::MethodRef,
+        index_graphs::{namespace_index, namespace_path_candidates},
+        infer::Infer,
+    },
     query_string::{query::Query, scope::SymbolSearch},
 };
 use rustc_hash::FxHashSet;
@@ -111,8 +115,8 @@ impl<'db> CompletionHandler<'db> for HirNode<'db> {
                 // For is_last_before with trailing dot, try namespace completion
                 // before delegating to parent (Field delegation loses namespace context)
                 if req.is_last_before
-                    && let Some(ns_path) = try_build_namespace_path(db, p)
-                    && is_namespace_prefix(db, ns_path)
+                    && let Some(written) = try_build_namespace_path(db, p)
+                    && let Some(ns_path) = resolve_namespace_prefix(db, p.get_scope_id(db), written)
                 {
                     let mut ctx = CompletionCtx::new(req.offset, QueryMode::Body);
                     ctx.namespace_completion(ns_path, db);
@@ -126,8 +130,9 @@ impl<'db> CompletionHandler<'db> for HirNode<'db> {
                     PathExprKind::Field(f) => {
                         // Check if the parent path is a namespace before delegating.
                         // e.g. `System.M|` → parent is `System` → show namespace children
-                        if let Some(parent_ns) = try_build_namespace_path(db, &f.path)
-                            && is_namespace_prefix(db, parent_ns)
+                        if let Some(written) = try_build_namespace_path(db, &f.path)
+                            && let Some(parent_ns) =
+                                resolve_namespace_prefix(db, p.get_scope_id(db), written)
                         {
                             let mut ctx = CompletionCtx::new(req.offset, QueryMode::Body);
                             ctx.namespace_completion(parent_ns, db);
@@ -335,9 +340,11 @@ impl<'db> CompletionHandler<'db> for Spec<'db> {
                 if !target.path.target.ident.text(db).is_empty() {
                     fragments.push(target.path.target.ident);
                 }
-                let full_path = NamespacePath::new(db, fragments);
+                let written = NamespacePath::new(db, fragments);
 
-                if is_namespace_prefix(db, full_path) {
+                if let Some(full_path) =
+                    resolve_namespace_prefix(db, self.get_scope_id(db), written)
+                {
                     let mut ctx = CompletionCtx::new(req.offset, QueryMode::Head);
                     ctx.namespace_completion(full_path, db);
                     return Some(ctx.take_items());
@@ -358,8 +365,10 @@ impl<'db> CompletionHandler<'db> for Spec<'db> {
                 }
 
                 if prefix_len > 0 {
-                    let prefix = NamespacePath::new(db, ns_fragments[..prefix_len].to_vec());
-                    if is_namespace_prefix(db, prefix) {
+                    let written = NamespacePath::new(db, ns_fragments[..prefix_len].to_vec());
+                    if let Some(prefix) =
+                        resolve_namespace_prefix(db, self.get_scope_id(db), written)
+                    {
                         let mut ctx = CompletionCtx::new(req.offset, QueryMode::Head);
                         ctx.namespace_completion(prefix, db);
                         return Some(ctx.take_items());
@@ -423,9 +432,9 @@ impl<'db> CompletionHandler<'db> for PathExpr<'db> {
         // Check if path chain forms a namespace (e.g. typing `System.Ma|`)
         // Only for multi-fragment paths - single identifiers like `S` are handled
         // by scope_completion which includes root-level namespace fragments.
-        if let Some(ns_path) = try_build_namespace_path(db, self)
-            && ns_path.fragments(db).len() > 1
-            && is_namespace_prefix(db, ns_path)
+        if let Some(written) = try_build_namespace_path(db, self)
+            && written.fragments(db).len() > 1
+            && let Some(ns_path) = resolve_namespace_prefix(db, self.get_scope_id(db), written)
         {
             ctx.namespace_completion(ns_path, db);
             return Some(ctx.take_items());
@@ -725,19 +734,30 @@ pub(crate) fn try_build_namespace_path<'db>(
     Some(NamespacePath::new(db, fragments))
 }
 
-/// Check if a path matches any namespace (exact) or is a prefix of any namespace.
-/// E.g. "System" matches even if only "System.Math" exists.
-pub(crate) fn is_namespace_prefix(db: &dyn WorkspaceDataBase, path: NamespacePath) -> bool {
-    // Exact match
-    if !namespace_index(db, path).is_empty() {
-        return true;
-    }
-    // Prefix match: check if any namespace starts with this path
-    let mut query = Query::new(path.to_string(db));
-    query.prefix();
-    let results = SymbolSearch::new(|_, _| true)
-        .with_query(query)
-        .only_namespaces()
-        .search(db);
-    results.namespaces().next().is_some()
+/// The namespace a written path names from `scope`, exactly or as a prefix:
+/// `Impl` inside `NAMESPACE Lib` is `Lib.Impl`, and `Sys` at the top is a
+/// prefix of `System.Math`. The candidates are tried in the checker's order,
+/// innermost enclosing namespace first, so the IDE agrees with resolution.
+/// `None` when no namespace answers to any spelling.
+pub(crate) fn resolve_namespace_prefix<'db>(
+    db: &'db dyn WorkspaceDataBase,
+    scope: hir::hir_def::scope::ScopeId<'db>,
+    written: NamespacePath,
+) -> Option<NamespacePath> {
+    namespace_path_candidates(db, scope, written)
+        .into_iter()
+        .find(|&candidate| {
+            if !namespace_index(db, candidate).is_empty() {
+                return true;
+            }
+            let mut query = Query::new(candidate.to_string(db));
+            query.prefix();
+            SymbolSearch::new(|_, _| true)
+                .with_query(query)
+                .only_namespaces()
+                .search(db)
+                .namespaces()
+                .next()
+                .is_some()
+        })
 }

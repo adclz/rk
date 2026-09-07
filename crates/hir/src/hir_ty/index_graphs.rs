@@ -160,19 +160,34 @@ pub fn absolute_namespace_path<'db>(
     scope: crate::hir_def::scope::ScopeId<'db>,
     written: NamespacePath,
 ) -> NamespacePath {
+    namespace_path_candidates(db, scope, written)
+        .into_iter()
+        .find(|candidate| !namespace_index(db, *candidate).is_empty())
+        .unwrap_or(written)
+}
+
+/// Every spelling a written path may mean from `scope`, in resolution order:
+/// under the innermost enclosing namespace first, outward, then as written.
+/// [`absolute_namespace_path`] takes the first one a declaration answers to;
+/// an IDE feature completing a partial path needs the whole list, because a
+/// prefix nobody declares yet still names where the user is typing.
+pub fn namespace_path_candidates<'db>(
+    db: &'db dyn WorkspaceDataBase,
+    scope: crate::hir_def::scope::ScopeId<'db>,
+    written: NamespacePath,
+) -> Vec<NamespacePath> {
     let mut enclosing = crate::hir_ty::resolver::name::enclosing_namespace_path(db, scope)
         .map(|p| p.fragments(db).clone())
         .unwrap_or_default();
+    let mut candidates = Vec::with_capacity(enclosing.len() + 1);
     while !enclosing.is_empty() {
         let mut candidate = enclosing.clone();
         candidate.extend(written.fragments(db).iter().copied());
-        let candidate = NamespacePath::new(db, candidate);
-        if !namespace_index(db, candidate).is_empty() {
-            return candidate;
-        }
+        candidates.push(NamespacePath::new(db, candidate));
         enclosing.pop();
     }
-    written
+    candidates.push(written);
+    candidates
 }
 
 /// Returns the canonical POU for a given name within a namespace path.
