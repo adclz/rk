@@ -100,10 +100,6 @@ END_FUNCTION_BLOCK"#;
      4 |         test1: TOD := LTOD#15:36:55.36;
        |                    ^^^^^^^^^|^^^^^^^^^
        |                             `----------- expected 'TOD', got 'LTOD'
-       |                             |
-       |                             `----------- consider explicitly casting with 'LTOD_TO_TOD(LTOD#15:36:55.36)'
-       |
-       | Help: insert explicit cast 'LTOD_TO_TOD(LTOD#15:36:55.36)'
     ---'
     ");
 }

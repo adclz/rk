@@ -73,7 +73,7 @@ impl<'db> InitInference<'db> {
                 {
                     self.errors.push(
                         TypeError::NotAssignable {
-                            suggest_cast: true,
+                            suggest_cast: false,
                             base_target: target,
                             lhs: err.expected,
                             rhs: err.actual,

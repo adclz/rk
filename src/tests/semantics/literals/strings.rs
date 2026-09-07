@@ -54,7 +54,7 @@ END_FUNCTION_BLOCK"#;
 /// died in MIR ("STRING has no scalar MIR representation"), as a literal
 /// initializer, a literal assignment and a variable assignment alike.
 #[rstest]
-fn invalid_char_to_string_needs_the_conversion(mut with_db: RootDatabase) {
+fn invalid_char_literal_does_not_initialize_a_string(mut with_db: RootDatabase) {
     let source = r#"
 FUNCTION_BLOCK fb1
     VAR
@@ -69,10 +69,6 @@ END_FUNCTION_BLOCK"#;
      4 |         s : STRING := CHAR#'x';
        |                    ^^^^^|^^^^^
        |                         `------- expected 'STRING', got 'CHAR'
-       |                         |
-       |                         `------- consider explicitly casting with 'CHAR_TO_STRING(CHAR#'x')'
-       |
-       | Help: insert explicit cast 'CHAR_TO_STRING(CHAR#'x')'
     ---'
     ");
 }

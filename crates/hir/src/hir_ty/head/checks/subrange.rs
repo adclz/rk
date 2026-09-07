@@ -72,7 +72,7 @@ impl<'db> InitInference<'db> {
         if let Err(err) = infer.coerce_type_with_expr(db, typ, min, &mut self.body_infer_result) {
             self.errors.push(
                 TypeError::NotAssignable {
-                    suggest_cast: true,
+                    suggest_cast: false,
                     base_target: typ,
                     lhs: err.expected,
                     rhs: err.actual,
@@ -86,7 +86,7 @@ impl<'db> InitInference<'db> {
         if let Err(err) = infer.coerce_type_with_expr(db, typ, max, &mut self.body_infer_result) {
             self.errors.push(
                 TypeError::NotAssignable {
-                    suggest_cast: true,
+                    suggest_cast: false,
                     base_target: typ,
                     lhs: err.expected,
                     rhs: err.actual,

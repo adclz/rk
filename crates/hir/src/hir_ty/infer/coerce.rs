@@ -474,6 +474,26 @@ impl<'db> CoerceError<'db> {
         .to_diagnostic(db, call_site.get_scope_id(db).file(db))
     }
 
+    /// As [`into_non_assignable`](Self::into_non_assignable), for an
+    /// initializer. No cast is offered: an initializer takes a constant, so
+    /// a conversion cannot be called there.
+    pub fn into_non_assignable_init(
+        self,
+        db: &'db dyn WorkspaceDataBase,
+        base_target: Type<'db>,
+        call_site: CallSite<'db>,
+    ) -> IdeDiagnostic {
+        TypeError::NotAssignable {
+            base_target,
+            lhs: self.expected,
+            rhs: self.actual,
+            adjustment: self.adjustment,
+            expr: call_site,
+            suggest_cast: false,
+        }
+        .to_diagnostic(db, call_site.get_scope_id(db).file(db))
+    }
+
     pub fn into_non_comparable(
         self,
         db: &'db dyn WorkspaceDataBase,

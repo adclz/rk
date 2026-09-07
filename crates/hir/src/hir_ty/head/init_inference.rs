@@ -395,7 +395,7 @@ impl<'db> InitExprInferenceResult<'db> {
                 infer_ctx.check_expr(db, *value, body_ctx);
 
                 if let Err(err) = infer_ctx.coerce_type_with_expr(db, expected, *value, body_ctx) {
-                    self.errors.push(err.into_non_assignable(
+                    self.errors.push(err.into_non_assignable_init(
                         db,
                         place.current_init_typ,
                         CallSite::from_scoped(db, expr),

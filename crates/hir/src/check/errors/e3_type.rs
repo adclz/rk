@@ -581,12 +581,7 @@ fn explicit_cast_suggestion(
         (expected.normalize(db), actual.normalize(db))
         && lhs.explicit_cast(rhs)
     {
-        // An initializer's site is the whole `:= value`, and the suggestion
-        // wraps the value alone.
-        let site = actual_site.to_string(db);
-        let value = site
-            .strip_prefix(":=")
-            .map_or(site.as_str(), str::trim_start);
+        let value = actual_site.to_string(db);
         diag.with_related(Related::new(
             format!(
                 "consider explicitly casting with '{}_TO_{}({})'",

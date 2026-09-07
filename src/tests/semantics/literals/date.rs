@@ -97,10 +97,6 @@ END_FUNCTION_BLOCK"#;
      4 |         test1: DATE := LDATE#2012-02-29;
        |                     ^^^^^^^^^|^^^^^^^^^
        |                              `----------- expected 'DATE', got 'LDATE'
-       |                              |
-       |                              `----------- consider explicitly casting with 'LDATE_TO_DATE(LDATE#2012-02-29)'
-       |
-       | Help: insert explicit cast 'LDATE_TO_DATE(LDATE#2012-02-29)'
     ---'
     ");
 }
