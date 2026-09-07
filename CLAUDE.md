@@ -258,8 +258,9 @@ Located in `vscode/`:
 
 Server binary resolution: always `<extension>/server/bin/vscode-lsp-server`
 (`.exe` on Windows). There is no debug/release branch in the extension — the
-F5 build task copies the debug binary to that path, and packaging copies the
-release one.
+F5 build task and packaging both copy the release binary to that path: the
+debug build answers a first diagnostic pull on the stdlib in ~27 s where the
+release one takes 0.2 s.
 
 Standard library resolution: the server finds it relative to its own path, so
 a packaged extension ships `server/lib/rk/std/` and a development run picks up

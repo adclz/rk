@@ -12,11 +12,24 @@ use std::path::PathBuf;
 /// an older copy happens to come first in `PATH` — and during development the
 /// binary next to `rk` is the one that was just rebuilt.
 pub fn runtime_binary() -> PathBuf {
-    let exe = if cfg!(windows) {
+    sibling_or_path(if cfg!(windows) {
         "runtime.exe"
     } else {
         "runtime"
-    };
+    })
+}
+
+/// The language server that goes with *this* `rk`, by the same rule. A tool
+/// launches it; nothing in a toolchain builds it.
+pub fn lsp_binary() -> PathBuf {
+    sibling_or_path(if cfg!(windows) {
+        "vscode-lsp-server.exe"
+    } else {
+        "vscode-lsp-server"
+    })
+}
+
+fn sibling_or_path(exe: &str) -> PathBuf {
     if let Ok(current) = std::env::current_exe()
         && let Some(dir) = current.parent()
     {

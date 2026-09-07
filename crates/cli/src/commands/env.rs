@@ -107,6 +107,16 @@ fn describe(workspace: &Path) -> (Vec<Row>, Vec<std::path::PathBuf>) {
         ),
     });
 
+    let lsp = crate::spawn::lsp_binary();
+    rows.push(match lsp.is_file() {
+        true => row("lsp", lsp.display().to_string()),
+        false => noted(
+            "lsp",
+            lsp.display().to_string(),
+            "not beside the executable; from PATH",
+        ),
+    });
+
     rows.push(row("home", display_or(crate::home::rk_home().ok().as_deref())));
 
     // The library last: it is the one with a story, and the probed paths that
@@ -194,7 +204,15 @@ mod tests {
         let keys: Vec<&str> = rows.iter().map(|row| row.key).collect();
         assert_eq!(
             keys,
-            vec!["workspace", "config", "executable", "runtime", "home", "stdlib"]
+            vec![
+                "workspace",
+                "config",
+                "executable",
+                "runtime",
+                "lsp",
+                "home",
+                "stdlib"
+            ]
         );
     }
 }
