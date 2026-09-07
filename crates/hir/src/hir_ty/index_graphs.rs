@@ -62,6 +62,7 @@
 //
 // Confirmed by the incremental test suite (`src/tests/incremental.rs`).
 
+use rustc_hash::FxHashMap;
 use std::sync::Arc;
 
 use auto_lsp::default::db::file::File;
@@ -133,18 +134,30 @@ fn all_files<'db>(db: &'db dyn WorkspaceDataBase) -> impl Iterator<Item = File> 
 // Public lookup functions
 // ---------------------------------------------------------------------------
 
+/// A file's namespace declarations keyed by case-folded path, built with
+/// the file's semantic index. Per file on purpose: the file set is read
+/// outside salsa, so a workspace-wide map would not learn about a file added
+/// after it was built, while this one invalidates with the file it describes
+/// and, like [`file_namespaces`], backdates when the file changed elsewhere.
+#[salsa::tracked(returns(ref))]
+pub fn file_namespace_map<'db>(
+    db: &'db dyn WorkspaceDataBase,
+    file: File,
+) -> Arc<FxHashMap<NamespacePath, Vec<NamespaceDecl<'db>>>> {
+    Arc::clone(&semantic_index(db, file).namespace_map)
+}
+
 /// Returns all namespace declarations matching a given path across all files.
-#[tracing::instrument(skip(db))]
 pub fn namespace_index<'db>(
     db: &'db dyn WorkspaceDataBase,
     path: NamespacePath,
 ) -> Vec<NamespaceDecl<'db>> {
+    // Folded once; every file is then a hash probe.
+    let key = path.caseless(db);
     let mut result = vec![];
     for file in all_files(db) {
-        for ns in file_namespaces(db, file).iter() {
-            if ns.path(db).caseless(db) == path.caseless(db) {
-                result.push(*ns);
-            }
+        if let Some(found) = file_namespace_map(db, file).get(&key) {
+            result.extend(found.iter().copied());
         }
     }
     result
@@ -161,33 +174,31 @@ pub fn absolute_namespace_path<'db>(
     written: NamespacePath,
 ) -> NamespacePath {
     namespace_path_candidates(db, scope, written)
-        .into_iter()
         .find(|candidate| !namespace_index(db, *candidate).is_empty())
         .unwrap_or(written)
 }
 
 /// Every spelling a written path may mean from `scope`, in resolution order:
 /// under the innermost enclosing namespace first, outward, then as written.
-/// [`absolute_namespace_path`] takes the first one a declaration answers to;
-/// an IDE feature completing a partial path needs the whole list, because a
-/// prefix nobody declares yet still names where the user is typing.
+/// Lazy, so [`absolute_namespace_path`] interns nothing past its first hit;
+/// an IDE feature completing a partial path walks the whole sequence, because
+/// a prefix nobody declares yet still names where the user is typing.
 pub fn namespace_path_candidates<'db>(
     db: &'db dyn WorkspaceDataBase,
     scope: crate::hir_def::scope::ScopeId<'db>,
     written: NamespacePath,
-) -> Vec<NamespacePath> {
-    let mut enclosing = crate::hir_ty::resolver::name::enclosing_namespace_path(db, scope)
+) -> impl Iterator<Item = NamespacePath> + 'db {
+    let enclosing = crate::hir_ty::resolver::name::enclosing_namespace_path(db, scope)
         .map(|p| p.fragments(db).clone())
         .unwrap_or_default();
-    let mut candidates = Vec::with_capacity(enclosing.len() + 1);
-    while !enclosing.is_empty() {
-        let mut candidate = enclosing.clone();
-        candidate.extend(written.fragments(db).iter().copied());
-        candidates.push(NamespacePath::new(db, candidate));
-        enclosing.pop();
-    }
-    candidates.push(written);
-    candidates
+    (1..=enclosing.len())
+        .rev()
+        .map(move |depth| {
+            let mut candidate = enclosing[..depth].to_vec();
+            candidate.extend(written.fragments(db).iter().copied());
+            NamespacePath::new(db, candidate)
+        })
+        .chain(std::iter::once(written))
 }
 
 /// Returns the canonical POU for a given name within a namespace path.

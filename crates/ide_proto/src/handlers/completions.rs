@@ -744,20 +744,18 @@ pub(crate) fn resolve_namespace_prefix<'db>(
     scope: hir::hir_def::scope::ScopeId<'db>,
     written: NamespacePath,
 ) -> Option<NamespacePath> {
-    namespace_path_candidates(db, scope, written)
-        .into_iter()
-        .find(|&candidate| {
-            if !namespace_index(db, candidate).is_empty() {
-                return true;
-            }
-            let mut query = Query::new(candidate.to_string(db));
-            query.prefix();
-            SymbolSearch::new(|_, _| true)
-                .with_query(query)
-                .only_namespaces()
-                .search(db)
-                .namespaces()
-                .next()
-                .is_some()
-        })
+    namespace_path_candidates(db, scope, written).find(|&candidate| {
+        if !namespace_index(db, candidate).is_empty() {
+            return true;
+        }
+        let mut query = Query::new(candidate.to_string(db));
+        query.prefix();
+        SymbolSearch::new(|_, _| true)
+            .with_query(query)
+            .only_namespaces()
+            .search(db)
+            .namespaces()
+            .next()
+            .is_some()
+    })
 }

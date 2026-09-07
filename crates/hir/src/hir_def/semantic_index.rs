@@ -7,6 +7,8 @@ use auto_lsp::default::db::tracked::get_ast;
 use db::WorkspaceDataBase;
 use ide_diagnostic::IdeDiagnostic;
 use rustc_hash::FxHashMap;
+
+use crate::hir_def::interned::namespace::NamespacePath;
 use tracing::info_span;
 
 use crate::builder::semantic_index::SemanticIndexBuilder;
@@ -63,6 +65,10 @@ pub struct SemanticIndex<'db> {
 
     /// All namespace declarations in the file (flat, includes nested)
     pub namespaces: Arc<Vec<NamespaceDecl<'db>>>,
+    /// The same declarations keyed by case-folded path, built once with the
+    /// file, so a cross-file lookup is one probe per file rather than a fold
+    /// and a compare per declaration.
+    pub namespace_map: Arc<FxHashMap<NamespacePath, Vec<NamespaceDecl<'db>>>>,
 
     /// All *global* POU declarations in the file
     pub global_pous: Arc<Vec<Pou<'db>>>,
@@ -100,6 +106,7 @@ impl<'db> SemanticIndex<'db> {
             programs: Arc::new(vec![]),
             configs: Arc::new(vec![]),
             namespaces: Arc::new(vec![]),
+            namespace_map: Arc::new(FxHashMap::default()),
             global_pous: Arc::new(vec![]),
             errors: vec![],
         }

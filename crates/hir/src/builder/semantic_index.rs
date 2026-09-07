@@ -378,6 +378,14 @@ impl<'db> SemanticIndexBuilder<'db> {
             .raw
             .sort_unstable_by_key(|node| *node.get_id(self.db));
 
+        let mut namespace_map: rustc_hash::FxHashMap<_, Vec<_>> = Default::default();
+        for ns in &self.namespaces {
+            namespace_map
+                .entry(ns.path(self.db).caseless(self.db))
+                .or_default()
+                .push(*ns);
+        }
+
         SemanticIndex {
             scope: global_scope,
             file: self.file,
@@ -387,6 +395,7 @@ impl<'db> SemanticIndexBuilder<'db> {
             programs: Arc::new(self.programs),
             configs: Arc::new(self.configs),
             namespaces: Arc::new(self.namespaces),
+            namespace_map: Arc::new(namespace_map),
             global_pous: Arc::new(self.global_pous),
             errors: self.errors,
         }
