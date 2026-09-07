@@ -358,3 +358,55 @@ END_FUNCTION_BLOCK
     END_FUNCTION_BLOCK
     ");
 }
+
+/// An instance is not its block. `motor` in `motor()` is inferred as the
+/// block it invokes, and a rename taken from there used to rename `Engine`
+/// itself, every declaration of that type included, while a rename from the
+/// declaration missed the call. Both now rename the variable, and only it.
+#[rstest]
+fn rename_an_instance_not_its_block(mut with_db: RootDatabase) {
+    let source = r#"FUNCTION_BLOCK Engine
+    METHOD start : BOOL
+    END_METHOD
+END_FUNCTION_BLOCK
+
+FUNCTION fn1
+VAR
+    motor : Engine;
+    other : Engine;
+END_VAR
+    motor();
+    motor.start();
+    other();
+END_FUNCTION
+"#;
+    add_sources(&mut with_db, &[source]);
+    let file = *with_db.get_files().iter().last().unwrap();
+
+    let expected = r"
+    FUNCTION_BLOCK Engine
+        METHOD start : BOOL
+        END_METHOD
+    END_FUNCTION_BLOCK
+
+    FUNCTION fn1
+    VAR
+        pump : Engine;
+        other : Engine;
+    END_VAR
+        pump();
+        pump.start();
+        other();
+    END_FUNCTION
+    ";
+    for needle in ["motor : Engine", "motor();", "motor.start"] {
+        let offset = source.find(needle).unwrap();
+        let node = descendant_at(&with_db, file, offset).unwrap();
+        let edit = node.rename(&with_db, "pump").unwrap();
+        assert_eq!(
+            apply_rename(&with_db, &edit, &[source]).trim(),
+            expected.replace("\n    ", "\n").trim(),
+            "renamed from `{needle}`"
+        );
+    }
+}

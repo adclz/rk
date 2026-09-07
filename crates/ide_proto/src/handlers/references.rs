@@ -5,9 +5,11 @@ use db::WorkspaceDataBase;
 use hir::{
     HasName, HirNodeInfo,
     hir_def::{
-        hir_node::HirNode, interned::namespace::NamespacePath, semantic_index::semantic_index,
+        expressions::expression::PathExpr, hir_node::HirNode, interned::namespace::NamespacePath,
+        semantic_index::semantic_index,
     },
     hir_ty::{
+        body::infer_body,
         index_graphs::{absolute_namespace_path, namespace_index},
         infer::Infer,
         ty::{CallableType, Type},
@@ -111,6 +113,17 @@ fn normalize_reference_type<'db>(ty: Type<'db>) -> Option<Type<'db>> {
     })
 }
 
+/// What a path refers to. A bare name that denotes a variable is that
+/// variable wherever it stands: in callee position (`motor()`) the path is
+/// inferred as the block it invokes, and taking that for the reference made
+/// a rename of the instance rename the block, everywhere.
+fn path_reference_target<'db>(db: &'db dyn WorkspaceDataBase, p: PathExpr<'db>) -> Type<'db> {
+    if let Some(var) = infer_body(db, p.scope_id(db)).variable_for_path_expr(p) {
+        return Type::Variable((var, None));
+    }
+    p.infer(db)
+}
+
 /// Extract a normalized reference target type from a HirNode at cursor position.
 /// Accepts all node types since `descendant_at` returns the deepest node.
 fn resolve_cursor_target<'db>(
@@ -125,7 +138,7 @@ fn resolve_cursor_target<'db>(
         HirNode::StructElement(st) => Type::StructElement(*st),
         // References
         HirNode::Spec(spec) => spec.infer(db),
-        HirNode::PathExpr(p) => p.infer(db),
+        HirNode::PathExpr(p) => path_reference_target(db, *p),
         HirNode::VariableAccess(v) => v.infer(db),
         HirNode::Expr(e) => e.infer(db),
         HirNode::Param(p) => p.infer(db),
@@ -151,7 +164,7 @@ fn resolve_walk_target<'db>(
         HirNode::StructElement(st) => Type::StructElement(*st),
         // Leaf-level reference nodes only
         HirNode::Spec(spec) => spec.infer(db),
-        HirNode::PathExpr(p) => p.infer(db),
+        HirNode::PathExpr(p) => path_reference_target(db, *p),
         HirNode::Param(p) => p.infer(db),
         // Skip Expr, Invocation, InitExpr, VariableAccess — they wrap inner nodes
         // and would produce duplicate matches (PathExpr already covers variable accesses)
