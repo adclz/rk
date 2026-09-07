@@ -97,3 +97,52 @@ END_FUNCTION_BLOCK
     // fn1 should *not* have an additional namespace prefix
     assert!(!format!("{completions:?}").contains("USING ns;\n"));
 }
+
+/// A `{test}` FUNCTION is what the runner calls. Completing it inside
+/// production code would suggest calling it by hand, so it is offered only
+/// from another test; the plain function beside it is offered to both.
+#[rstest]
+pub fn a_test_is_offered_only_to_another_test(mut with_db: RootDatabase) {
+    let source = r#"NAMESPACE ns
+	{test}
+	FUNCTION test_it
+	END_FUNCTION
+
+	FUNCTION helper
+	END_FUNCTION
+END_NAMESPACE
+
+FUNCTION production
+END_FUNCTION
+
+{test}
+FUNCTION test_other
+END_FUNCTION
+"#;
+
+    add_sources(&mut with_db, &[source]);
+    let file = *with_db.get_files().iter().last().unwrap();
+
+    let production = find_pou_with_name(&with_db, file, "production").unwrap();
+    let mut ctx = CompletionCtx::new(0, QueryMode::Body);
+    ctx.scope_completion(production.get_scope_id(&with_db), "", &with_db);
+    let offered = format!("{:?}", ctx.take_items());
+    assert!(
+        offered.contains("helper"),
+        "the plain function is offered: {offered}"
+    );
+    assert!(
+        !offered.contains("test_it") && !offered.contains("test_other"),
+        "no test is offered to production code: {offered}"
+    );
+
+    let test = find_pou_with_name(&with_db, file, "test_other").unwrap();
+    let mut ctx = CompletionCtx::new(0, QueryMode::Body);
+    ctx.scope_completion(test.get_scope_id(&with_db), "", &with_db);
+    let offered = format!("{:?}", ctx.take_items());
+    assert!(
+        offered.contains("test_it"),
+        "a test is offered to another test: {offered}"
+    );
+    assert!(offered.contains("helper"), "{offered}");
+}

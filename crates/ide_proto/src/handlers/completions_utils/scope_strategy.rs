@@ -7,7 +7,7 @@ use auto_lsp::lsp_types::{
 };
 use db::WorkspaceDataBase;
 use hir::{
-    HasName, HirNodeInfo,
+    HasName, HasPragmas, HirNodeInfo,
     hir_def::{
         interned::namespace::NamespacePath,
         pous::{
@@ -127,18 +127,22 @@ impl<'db> ScopeCompletionCtx<'db> {
         // If Body, Functions and DataTypes are allowed
         // DataTypes can be used as constants (TYPE_NAME.field)
         // Other POUs (FBs, Classes) must be declared in var sections
-        let filter = match self.mode {
-            QueryMode::Head => {
-                |pou: &Pou<'db>, db: &'db dyn WorkspaceDataBase| !matches!(pou, Pou::Function(_))
-            }
-            QueryMode::Body => |pou: &Pou<'db>, db: &'db dyn WorkspaceDataBase| {
-                match pou {
-                    Pou::Function(_) => true,
-                    // DataTypes can be used as constants (TYPE_NAME.field)
-                    // and enum variants should be suggested
-                    Pou::DataType(_) => true,
-                    _ => false,
-                }
+        let mode = self.mode;
+        let in_test = matches!(
+            get_scope(db, self.scope).kind,
+            ScopeKind::Pou(Pou::Function(f)) if f.is_test(db)
+        );
+        let filter = move |pou: &Pou<'db>, db: &'db dyn WorkspaceDataBase| match mode {
+            QueryMode::Head => !matches!(pou, Pou::Function(_)),
+            QueryMode::Body => match pou {
+                // A test is what the runner calls: offered to another test,
+                // never to production code, where completing it would
+                // suggest calling it by hand.
+                Pou::Function(f) => in_test || !f.is_test(db),
+                // DataTypes can be used as constants (TYPE_NAME.field)
+                // and enum variants should be suggested
+                Pou::DataType(_) => true,
+                _ => false,
             },
         };
 
