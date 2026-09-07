@@ -733,3 +733,52 @@ fn help_at(db: &mut RootDatabase, marked: &str) -> Option<lsp_types::SignatureHe
     let file = *db.get_files().iter().last().unwrap();
     find_signature_help(db, file, offset)
 }
+
+/// The hint follows the argument being written. It used to be derived from
+/// the argument nodes, which do not exist yet for what is half typed, so it
+/// jumped ahead on `f(a |)` and stayed behind on `f(a := 1, |)`.
+#[rstest]
+#[case::empty("f(|)", 0)]
+#[case::naming_the_first("f(a|)", 0)]
+#[case::after_its_name("f(a |)", 0)]
+#[case::mid_assignment("f(a :=|)", 0)]
+#[case::its_value("f(a := 1|)", 0)]
+#[case::on_the_separator("f(a := 1,|)", 1)]
+#[case::after_the_separator("f(a := 1, |)", 1)]
+#[case::naming_the_second("f(a := 1, b|)", 1)]
+#[case::its_value_too("f(a := 1, b := TRUE|)", 1)]
+#[case::positional("f(1, |)", 1)]
+#[case::nested_call_is_not_a_separator("f(a := MAX(1, 2), |)", 1)]
+#[case::a_comma_in_a_string_is_not_one("f(a := 1, b := 'x, y'|)", 1)]
+fn the_active_parameter_follows_the_cursor(
+    mut with_db: RootDatabase,
+    #[case] call: &str,
+    #[case] active_parameter: u32,
+) {
+    let marked = format!(
+        r#"FUNCTION MAX : INT
+VAR_INPUT
+    x : INT;
+    y : INT;
+END_VAR
+END_FUNCTION
+
+FUNCTION f : INT
+VAR_INPUT
+    a : INT;
+    b : BOOL;
+END_VAR
+END_FUNCTION
+
+PROGRAM p
+VAR
+    r : INT;
+END_VAR
+    r := {call};
+END_PROGRAM
+"#
+    );
+    let help = help_at(&mut with_db, &marked).expect("signature help");
+
+    assert_eq!(help.active_parameter, Some(active_parameter));
+}

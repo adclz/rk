@@ -427,26 +427,41 @@ fn resolve_callable<'db>(
     }
 }
 
-/// Determine which parameter is active based on cursor offset.
-/// Counts how many ParamAssign spans end before the cursor.
+/// Which parameter the cursor is writing: the separators it sits behind.
+///
+/// Counted in the source rather than over the argument nodes, because an
+/// argument only half typed is not the node it will become. `f(a |)` parses
+/// `a` as a whole argument, so counting finished nodes jumped to the second
+/// parameter while the user was still naming the first.
 fn determine_active_param<'db>(
     db: &'db dyn WorkspaceDataBase,
     func_call: &FuncCall<'db>,
     offset: usize,
 ) -> u32 {
-    let params = func_call.params(db);
-    if params.is_empty() {
+    let path = func_call.path(db);
+    let document = path.get_scope_id(db).file(db).document(db);
+    // From the callee's name to the cursor: what the user has written into
+    // the argument list so far, and nothing beyond it.
+    let Some(window) = document.as_str().get(path.get_span(db).end_byte..offset) else {
         return 0;
-    }
+    };
+    let Some(open) = window.find('(') else {
+        return 0;
+    };
+    let written = &window[open + 1..];
 
-    // Find which param the cursor is in or after
-    let mut active = 0u32;
-    for (i, param) in params.iter().enumerate() {
-        let span = param.get_span(db);
-        if offset >= span.start_byte {
-            active = i as u32;
+    let mut depth = 0i32;
+    let mut in_string = false;
+    let mut commas = 0u32;
+    for c in written.chars() {
+        match c {
+            '\'' => in_string = !in_string,
+            _ if in_string => {}
+            '(' | '[' => depth += 1,
+            ')' | ']' => depth -= 1,
+            ',' if depth == 0 => commas += 1,
+            _ => {}
         }
     }
-
-    active
+    commas
 }
