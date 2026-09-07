@@ -1,7 +1,7 @@
 use auto_lsp::lsp_types::{CodeLens, Command};
 use db::WorkspaceDataBase;
 use hir::hir_ty::ty::Type;
-use hir::{HasName, HirNodeInfo, hir_def::hir_node::HirNode, hir_def::pous::pou::Pou};
+use hir::{HasName, HasPragmas, HirNodeInfo, hir_def::hir_node::HirNode, hir_def::pous::pou::Pou};
 use serde_json::to_value;
 
 use crate::handlers::{CodeLensHandler, implementation::find_all_implementations};
@@ -10,10 +10,15 @@ impl<'db> CodeLensHandler<'db> for HirNode<'db> {
     fn code_lens(&self, db: &'db dyn WorkspaceDataBase) -> Option<CodeLens> {
         match self {
             HirNode::PouDecl(pou) => pou.code_lens(db),
-            HirNode::Program(prog) if hir::hir_def::pous::pragma::is_test(db, prog.pragmas(db)) => {
+            // The lens sits ON the `{test}` pragma, so the editor draws it
+            // directly above the mark it runs: a declaration's own span opens
+            // at its FIRST pragma, and an `{allow ...}` above `{test}` used to
+            // carry the lens onto that instead.
+            HirNode::Program(prog) => {
+                let marker = prog.test_pragma(db)?;
                 let qualified = Type::Program(*prog).qualified_path(db);
                 Some(test_code_lens(
-                    hir::denormalize(db, prog.get_scope_id(db).file(db), &prog.get_span(db))
+                    hir::denormalize(db, prog.get_scope_id(db).file(db), &marker.get_span(db))
                         .unwrap_or_default(),
                     prog.get_scope_id(db).file(db).url(db).as_str(),
                     &qualified,
@@ -64,11 +69,12 @@ impl<'db> CodeLensHandler<'db> for Pou<'db> {
                     })
                 }
             }
-            Pou::Function(f) if hir::hir_def::pous::pragma::is_test(db, f.pragmas(db)) => {
+            Pou::Function(f) => {
+                let marker = f.test_pragma(db)?;
                 let qualified = Type::new_pou(db, *self).qualified_path(db);
                 Some(test_code_lens(
-                    hir::denormalize(db, self.get_scope_id(db).file(db), &self.get_span(db))
-                        .unwrap(),
+                    hir::denormalize(db, self.get_scope_id(db).file(db), &marker.get_span(db))
+                        .unwrap_or_default(),
                     self.get_scope_id(db).file(db).url(db).as_str(),
                     &qualified,
                 ))
