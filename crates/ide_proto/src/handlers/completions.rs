@@ -38,7 +38,7 @@ use crate::{
         completions_utils::{
             CompletionCtx, QueryMode,
             pou_context::{HeadLocation, HeadResult, VarSection},
-            static_snippets,
+            pragma, static_snippets,
         },
     },
     walk::completion_descendant_at,
@@ -62,6 +62,13 @@ pub fn complete(
         return vec![];
     }
 
+    // A `{` opens a pragma, and the editor auto-closes it. Nothing else can
+    // stand between those braces, so this is the whole answer.
+    let source = &file.document(db).texter.text;
+    if let Some(braces) = pragma::braces_at(source, offset) {
+        return pragma_items(db, file, offset, braces);
+    }
+
     let (target, node_key, is_last_before) = match completion_descendant_at(db, file, offset) {
         Some(result) => result,
         None => {
@@ -81,10 +88,9 @@ pub fn complete(
                 return vec![];
             }
 
-            // No target node — show general completions (namespaces, POU snippets,
-            // and the pragmas that annotate the declaration below).
-            let mut items = static_snippets::pou_pragmas();
-            items.extend([
+            // No target node — show general completions (namespaces, POU
+            // snippets, etc.)
+            return vec![
                 static_snippets::namespace(),
                 static_snippets::using(),
                 static_snippets::function(),
@@ -94,8 +100,7 @@ pub fn complete(
                 static_snippets::interface(),
                 static_snippets::type_(),
                 static_snippets::configuration(),
-            ]);
-            return items;
+            ];
         }
     };
 
@@ -108,6 +113,38 @@ pub fn complete(
     };
 
     target.completion(db, &req).unwrap_or_default()
+}
+
+/// A pragma stands where its subject stands: the declaration pragmas where a
+/// declaration is written, the statement ones where a statement is.
+fn pragma_items(
+    db: &dyn WorkspaceDataBase,
+    file: File,
+    offset: usize,
+    braces: pragma::Braces,
+) -> Vec<CompletionItem> {
+    let Some((node, _, _)) = completion_descendant_at(db, file, offset) else {
+        return pragma::pou_pragmas(braces);
+    };
+    match node {
+        HirNode::Namespace(_) => pragma::pou_pragmas(braces),
+        // An INTERFACE holds prototypes, so no statement stands in it. Its
+        // location reads as a body only because it has none of its own.
+        HirNode::PouDecl(Pou::Interface(_)) => vec![],
+        HirNode::PouDecl(pou) => {
+            let mut ctx = CompletionCtx::new(offset, QueryMode::Body);
+            let head = ctx.located_pou_completion(pou, db);
+            // A POU head writes neither: its variables take a type, and its
+            // own pragmas sit above its keyword, which is the file level.
+            if head.head_location.is_in_body() && !head.is_inside_var_section() {
+                pragma::stmt_pragmas(braces)
+            } else {
+                vec![]
+            }
+        }
+        // Anything the parser resolved inside a body: a statement stands here.
+        _ => pragma::stmt_pragmas(braces),
+    }
 }
 
 impl<'db> CompletionHandler<'db> for HirNode<'db> {
@@ -219,8 +256,7 @@ impl<'db> CompletionHandler<'db> for NamespaceDecl<'db> {
             return None;
         }
 
-        let mut items = static_snippets::pou_pragmas();
-        items.extend([
+        Some(vec![
             static_snippets::namespace(),
             static_snippets::using(),
             static_snippets::function(),
@@ -228,8 +264,7 @@ impl<'db> CompletionHandler<'db> for NamespaceDecl<'db> {
             static_snippets::class(),
             static_snippets::interface(),
             static_snippets::type_(),
-        ]);
-        Some(items)
+        ])
     }
 }
 
@@ -287,19 +322,10 @@ impl<'db> CompletionHandler<'db> for Pou<'db> {
         // reads as a body only because it has neither variables nor one of
         // its own, which used to put IF and FOR where they cannot go.
         if matches!(self, Pou::Interface(_)) {
-            ctx.items.extend(static_snippets::member_pragmas());
             return Some(ctx.take_items());
         }
 
-        // A METHOD can follow here, and a pragma annotates it.
-        if !head_result.head_location.is_in_body()
-            && matches!(self, Pou::Class(_) | Pou::FunctionBlock(_))
-        {
-            ctx.items.extend(static_snippets::member_pragmas());
-        }
-
         if head_result.head_location.is_in_body() {
-            ctx.items.extend(static_snippets::stmt_pragmas());
             ctx.scope_completion(self.get_scope_id(db), &req.query, db);
             ctx.items.extend(static_snippets::all_stmts());
 
@@ -351,7 +377,6 @@ impl<'db> CompletionHandler<'db> for MethodRef<'db> {
         }
 
         if head_result.head_location.is_in_body() {
-            ctx.items.extend(static_snippets::stmt_pragmas());
             ctx.scope_completion(self.get_scope_id(db), &req.query, db);
             ctx.items.extend(static_snippets::all_stmts());
 
@@ -402,7 +427,6 @@ impl<'db> CompletionHandler<'db> for ProgramDecl<'db> {
         }
 
         if head_result.head_location.is_in_body() {
-            ctx.items.extend(static_snippets::stmt_pragmas());
             ctx.scope_completion(self.scope_id(db), &req.query, db);
             ctx.items.extend(static_snippets::all_stmts());
         }

@@ -152,7 +152,13 @@ pub fn boot() -> Result<(), Box<dyn Error + Send + Sync>> {
                 folding_range_provider: Some(FoldingRangeProviderCapability::Simple(true)),
                 completion_provider: Some(CompletionOptions {
                     resolve_provider: None,
-                    trigger_characters: Some(vec![".".to_owned(), "#".to_owned(), "(".to_owned()]),
+                    trigger_characters: Some(vec![
+                        ".".to_owned(),
+                        "#".to_owned(),
+                        "(".to_owned(),
+                        // Opens a pragma, whose name is all that can follow.
+                        "{".to_owned(),
+                    ]),
                     all_commit_characters: None,
                     completion_item: None,
                     work_done_progress_options: WorkDoneProgressOptions {

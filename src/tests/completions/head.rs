@@ -615,12 +615,12 @@ END_FUNCTION_BLOCK
     );
 }
 
-/// A pragma annotates the declaration below it or stands where a statement
-/// stands, and each position takes only the pragmas that are legal there.
+/// A `{` opens a pragma, and each position takes only the ones legal there.
+/// The cursor sits between braces because the editor auto-closes the first.
 #[rstest]
 #[case::file_level(
     r#"
-|
+{|}
 FUNCTION fn : INT
 END_FUNCTION
 "#,
@@ -629,30 +629,30 @@ END_FUNCTION
 #[case::in_a_namespace(
     r#"
 NAMESPACE ns
-|
+{|}
 FUNCTION fn : INT
 END_FUNCTION
 END_NAMESPACE
 "#,
     &["{test}", "{extern}", "{once}", "{warn}", "{info}", "{allow}"]
 )]
-#[case::above_a_method(
+#[case::in_a_pou_head(
     r#"
 FUNCTION_BLOCK fb
-|
+{|}
 METHOD m
 END_METHOD
 END_FUNCTION_BLOCK
 "#,
-    &["{once}", "{warn}", "{info}", "{allow}"]
+    &[]
 )]
 #[case::in_an_interface(
     r#"
 INTERFACE i
-|
+{|}
 END_INTERFACE
 "#,
-    &["{once}", "{warn}", "{info}", "{allow}"]
+    &[]
 )]
 #[case::in_a_body(
     r#"
@@ -660,7 +660,7 @@ FUNCTION_BLOCK fb
 VAR
     x : INT;
 END_VAR
-    |
+    {|}
 END_FUNCTION_BLOCK
 "#,
     &["{wasm}", "{allow}"]
@@ -672,7 +672,7 @@ METHOD m
 VAR
     x : INT;
 END_VAR
-    |
+    {|}
 END_METHOD
 END_FUNCTION_BLOCK
 "#,
@@ -681,7 +681,7 @@ END_FUNCTION_BLOCK
 #[case::in_a_function_head(
     r#"
 FUNCTION fn : INT
-|
+{|}
 VAR
     x : INT;
 END_VAR
@@ -693,21 +693,52 @@ END_FUNCTION
     r#"
 FUNCTION_BLOCK fb
 VAR
-    |
+    {|}
 END_VAR
 END_FUNCTION_BLOCK
 "#,
     &[]
 )]
 pub fn pragma_items(mut with_db: RootDatabase, #[case] marked: &str, #[case] expected: &[&str]) {
-    let labels = complete_at(&mut with_db, marked);
-    let pragmas: Vec<&str> = labels
-        .iter()
-        .filter(|l| l.starts_with('{'))
-        .map(String::as_str)
-        .collect();
+    assert_eq!(complete_at(&mut with_db, marked), expected);
+}
 
-    assert_eq!(pragmas, expected);
+/// Without a `{` a pragma is not what is being written, so none is offered.
+#[rstest]
+pub fn no_pragmas_without_a_brace(mut with_db: RootDatabase) {
+    let marked = r#"
+FUNCTION_BLOCK fb
+VAR
+    x : INT;
+END_VAR
+    |
+END_FUNCTION_BLOCK
+"#;
+    let labels = complete_at(&mut with_db, marked);
+
+    assert!(!labels.is_empty());
+    assert!(!labels.iter().any(|l| l.starts_with('{')), "{labels:?}");
+}
+
+/// The editor auto-closes `{`, so the closing brace is written only when the
+/// source has none: completing it twice would leave `{test}}`.
+#[rstest]
+#[case::auto_closed("{|}\nFUNCTION fn : INT\nEND_FUNCTION\n", "test")]
+#[case::unclosed("{|\nFUNCTION fn : INT\nEND_FUNCTION\n", "test}")]
+pub fn a_pragma_closes_itself_only_once(
+    mut with_db: RootDatabase,
+    #[case] marked: &str,
+    #[case] expected: &str,
+) {
+    let offset = marked.find('|').expect("a cursor marker");
+    let source = marked.replace('|', "");
+    add_sources(&mut with_db, &[&source]);
+    let file = *with_db.get_files().iter().last().unwrap();
+    let items = ide_proto::handlers::completions::complete(&with_db, file, offset, None);
+    let test = items.iter().find(|i| i.label == "{test}").expect("{test}");
+
+    assert_eq!(test.insert_text.as_deref(), Some(expected));
+    assert_eq!(test.filter_text.as_deref(), Some("test"));
 }
 
 /// An INTERFACE holds method prototypes, so its statement snippets were

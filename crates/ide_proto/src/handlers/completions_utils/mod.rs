@@ -4,6 +4,7 @@ pub mod completion_item_builder;
 pub mod field_strategy;
 pub mod pou_context;
 pub mod pou_strategy;
+pub mod pragma;
 pub mod scope_strategy;
 pub mod static_snippets;
 
