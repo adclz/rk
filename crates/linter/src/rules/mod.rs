@@ -248,7 +248,12 @@ pub fn lint_file(
     }
 }
 
-/// Recursively collect scopes and usings from namespace declarations and their POUs.
+/// Collect scopes and usings from ONE namespace's own POUs.
+///
+/// Not recursive: `SemanticIndex::namespaces` is flat and already holds every
+/// nested namespace, so descending here as well linted a POU once per
+/// ancestor — every lint inside `NAMESPACE Std.Convert / NAMESPACE Test`
+/// was reported twice.
 #[allow(clippy::too_many_arguments)]
 fn collect_namespace_scopes<'db>(
     db: &'db dyn WorkspaceDataBase,
@@ -273,18 +278,6 @@ fn collect_namespace_scopes<'db>(
                 lint_scope(db, config, method_scope, body_scopes, diagnostics);
             }
         }
-    }
-
-    for nested in ns.namespaces(db) {
-        collect_namespace_scopes(
-            db,
-            config,
-            *nested,
-            all_scopes,
-            body_scopes,
-            all_usings,
-            diagnostics,
-        );
     }
 }
 

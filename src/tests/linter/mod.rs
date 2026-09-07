@@ -28,6 +28,7 @@ mod loop_var_modified;
 mod method_shadows_member;
 mod missing_input_param;
 mod missing_return;
+mod namespace_nesting;
 mod negated_comparison;
 mod negated_condition;
 mod once_violation;
