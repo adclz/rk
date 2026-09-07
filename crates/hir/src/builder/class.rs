@@ -278,9 +278,10 @@ impl<'db> SemanticIndexBuilder<'db> {
                     Visibility::INTERNAL
                 }
             },
-            // A method that writes no specifier is PUBLIC — see the tables in
-            // `hir_ty::resolver::visibility`, which this departs from.
-            None => Visibility::PUBLIC,
+            // Nothing written stays empty, which the visibility checks read as
+            // public. Recording a default here instead would leave no way to
+            // tell an unwritten specifier from an explicit PUBLIC.
+            None => Visibility::EMPTY,
         };
 
         let pragmas = self.parse_pou_pragmas(&method.pragmas);

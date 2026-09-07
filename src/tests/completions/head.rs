@@ -319,3 +319,61 @@ fn struct_and_array_snippets_exist() {
     assert_eq!(array_item.label, "ARRAY");
     assert!(array_item.insert_text.unwrap().contains("OF"));
 }
+
+/// An access specifier is written between the POU keyword and the name, where
+/// a half-typed one parses as the name itself.
+#[rstest]
+#[case::function(
+    r#"
+FUNCTION PRI|
+END_FUNCTION
+"#,
+    &["PUBLIC", "PROTECTED", "PRIVATE", "INTERNAL"]
+)]
+#[case::method(
+    r#"
+FUNCTION_BLOCK fb
+METHOD PUB|
+END_METHOD
+END_FUNCTION_BLOCK
+"#,
+    &["PUBLIC", "PROTECTED", "PRIVATE", "INTERNAL"]
+)]
+#[case::namespace(
+    r#"
+NAMESPACE INT|
+END_NAMESPACE
+"#,
+    &["INTERNAL"]
+)]
+pub fn header_visibility_items(
+    mut with_db: RootDatabase,
+    #[case] marked: &str,
+    #[case] expected: &[&str],
+) {
+    assert_eq!(complete_at(&mut with_db, marked), expected);
+}
+
+/// A specifier already written leaves the position to the name.
+#[rstest]
+pub fn header_visibility_written_once(mut with_db: RootDatabase) {
+    let marked = r#"
+FUNCTION_BLOCK fb
+METHOD PRIVATE m|
+END_METHOD
+END_FUNCTION_BLOCK
+"#;
+    assert!(complete_at(&mut with_db, marked).is_empty());
+}
+
+/// Completes at the `|` marker, which is stripped from the source.
+fn complete_at(db: &mut RootDatabase, marked: &str) -> Vec<String> {
+    let offset = marked.find('|').expect("a cursor marker");
+    let source = marked.replace('|', "");
+    add_sources(db, &[&source]);
+    let file = *db.get_files().iter().last().unwrap();
+    ide_proto::handlers::completions::complete(db, file, offset, None)
+        .into_iter()
+        .map(|item| item.label)
+        .collect()
+}

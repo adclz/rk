@@ -198,8 +198,12 @@ impl<'db> CompletionHandler<'db> for NamespaceDecl<'db> {
         db: &'db dyn WorkspaceDataBase,
         req: &CompletionRequest,
     ) -> Option<Vec<CompletionItem>> {
-        // only trigger completion if we're not typing the namespace name
+        // `NAMESPACE INT|` parses INT as the name; INTERNAL is the only
+        // specifier a namespace takes.
         if self.name_span(db).end_byte >= req.offset {
+            if !self.internal(db) {
+                return Some(vec![static_snippets::internal()]);
+            }
             return None;
         }
         // Don't trigger on dot — it's the user typing a dotted namespace name (e.g. System.|)
@@ -236,8 +240,15 @@ impl<'db> CompletionHandler<'db> for Pou<'db> {
             return None;
         }
 
-        // Don't trigger completions while typing the POU name
+        // A half-typed access specifier parses as the name (`FUNCTION PRI|`),
+        // so the two are indistinguishable here. Offer the specifiers for as
+        // long as the header writes none.
         if self.get_name_span(db).end_byte >= req.offset {
+            if let Pou::Function(f) = self
+                && f.visibility(db).is_empty()
+            {
+                return Some(static_snippets::visibility_names());
+            }
             return None;
         }
 
@@ -273,8 +284,11 @@ impl<'db> CompletionHandler<'db> for MethodRef<'db> {
             return Some(vec![]);
         }
 
-        // Don't trigger completions while typing the method name
+        // Same as a FUNCTION: `METHOD PUB|` parses PUB as the name.
         if self.get_name_span(db).end_byte >= req.offset {
+            if self.visibility(db).is_empty() {
+                return Some(static_snippets::visibility_names());
+            }
             return None;
         }
 

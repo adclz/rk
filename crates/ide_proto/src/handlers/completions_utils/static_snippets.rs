@@ -298,6 +298,32 @@ pub fn array() -> CompletionItem {
     }
 }
 
+/// The access specifier a FUNCTION or a METHOD takes between its keyword and
+/// its name. A half-typed one parses as the name, so these are offered for as
+/// long as no specifier is written yet.
+pub fn visibility_names() -> Vec<CompletionItem> {
+    ["PUBLIC", "PROTECTED", "PRIVATE", "INTERNAL"]
+        .into_iter()
+        .map(keyword)
+        .collect()
+}
+
+#[inline]
+pub fn internal() -> CompletionItem {
+    keyword("INTERNAL")
+}
+
+#[inline]
+fn keyword(label: &str) -> CompletionItem {
+    CompletionItem {
+        label: label.into(),
+        kind: Some(lsp_types::CompletionItemKind::KEYWORD),
+        insert_text_format: Some(lsp_types::InsertTextFormat::SNIPPET),
+        insert_text: Some(label.into()),
+        ..Default::default()
+    }
+}
+
 #[inline]
 pub fn all_stmts() -> Vec<CompletionItem> {
     vec![if_(), for_(), while_(), repeat()]
