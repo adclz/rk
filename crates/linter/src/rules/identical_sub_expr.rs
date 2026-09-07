@@ -2,8 +2,11 @@ use auto_lsp::lsp_types::DiagnosticSeverity;
 use db::WorkspaceDataBase;
 use hir::{
     HirNodeInfo,
-    hir_def::expressions::expression::{BooleanOperatorKind, Expr, ExprKind, PrimaryExpr},
-    hir_ty::{body::BodyInferenceResult, ty::Type},
+    hir_def::expressions::expression::{
+        BeginPathExpr, BooleanOperatorKind, Expr, ExprKind, PrimaryExpr, VariableAccess,
+        VariableAccessKind,
+    },
+    hir_ty::{body::BodyInferenceResult, expr_store::PathExprWalkStep},
 };
 use ide_diagnostic::{ErrorCode, IdeDiagnostic, diag};
 
@@ -70,15 +73,7 @@ fn same_expr<'db>(
         (
             ExprKind::PrimaryExpr(PrimaryExpr::VariableAccess(la)),
             ExprKind::PrimaryExpr(PrimaryExpr::VariableAccess(ra)),
-        ) => {
-            match (
-                body.type_of_variable_access_with_adjustments(db, *la),
-                body.type_of_variable_access_with_adjustments(db, *ra),
-            ) {
-                (Type::Variable((l_var, _)), Type::Variable((r_var, _))) => l_var == r_var,
-                _ => false,
-            }
-        }
+        ) => same_access(db, body, *la, *ra),
         (
             ExprKind::PrimaryExpr(PrimaryExpr::ParenthesizedExpr { expr: le }),
             ExprKind::PrimaryExpr(PrimaryExpr::ParenthesizedExpr { expr: re }),
@@ -101,4 +96,71 @@ fn same_expr<'db>(
         ) => lo == ro && same_expr(db, body, le, re),
         _ => false,
     }
+}
+
+/// Whether two accesses name the same place.
+///
+/// Every step of the path has to agree, not only where it ends: `a.Q` and
+/// `b.Q` end at ONE declaration of `Q`, the one their shared block declares,
+/// so comparing the destination alone reads two instances as one. The bit
+/// selector counts for the same reason — `w.0` and `w.1` are one declaration
+/// and two places.
+fn same_access<'db>(
+    db: &'db dyn WorkspaceDataBase,
+    body: &BodyInferenceResult<'db>,
+    left: VariableAccess<'db>,
+    right: VariableAccess<'db>,
+) -> bool {
+    if left.multibits(db) != right.multibits(db) {
+        return false;
+    }
+    match (left.kind(db), right.kind(db)) {
+        (VariableAccessKind::Direct(l), VariableAccessKind::Direct(r)) => l == r,
+        (VariableAccessKind::Symbolic(l), VariableAccessKind::Symbolic(r)) => {
+            same_path(db, body, l, r)
+        }
+        _ => false,
+    }
+}
+
+/// Step by step, by what each step resolved to. An INDEX step is never taken
+/// as the same place: the subscripts decide it, and `cells[i]` and `cells[j]`
+/// would otherwise read alike. Missing one warning is the safe direction for
+/// a lint.
+fn same_path<'db>(
+    db: &'db dyn WorkspaceDataBase,
+    body: &BodyInferenceResult<'db>,
+    left: BeginPathExpr<'db>,
+    right: BeginPathExpr<'db>,
+) -> bool {
+    // `THIS`/`SUPER` and a call are not places to compare.
+    if left.invocation(db).is_some() || right.invocation(db).is_some() {
+        return false;
+    }
+    let (Some(left), Some(right)) = (left.expr(db), right.expr(db)) else {
+        return false;
+    };
+    let (steps, others) = (left.flatten(db), right.flatten(db));
+    if steps.len() != others.len() {
+        return false;
+    }
+    steps.iter().zip(others.iter()).all(|(step, other)| {
+        match (step, other) {
+            (
+                PathExprWalkStep::Field { ident: l, .. },
+                PathExprWalkStep::Field { ident: r, .. },
+            ) => {
+                // Interned, so this is an integer comparison; the resolved
+                // type then separates two declarations of one name.
+                l.ident == r.ident
+                    && body.type_of_path_expr.get(&step.get_expr(db))
+                        == body.type_of_path_expr.get(&other.get_expr(db))
+            }
+            (
+                PathExprWalkStep::Deref { count: l, .. },
+                PathExprWalkStep::Deref { count: r, .. },
+            ) => l == r,
+            _ => false,
+        }
+    })
 }

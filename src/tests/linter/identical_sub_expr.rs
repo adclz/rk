@@ -134,3 +134,96 @@ END_FUNCTION
     ---'
     ");
 }
+
+/// Two instances of one block share the declaration of the field they expose,
+/// so `a.Q AND b.Q` used to read as one place named twice. The rule that
+/// catches `x AND x` must compare the whole path, not where it ends.
+#[rstest]
+fn different_instances_of_the_same_field_are_not_identical(mut with_db: RootDatabase) {
+    let source = r#"
+FUNCTION_BLOCK Edge
+VAR_OUTPUT
+    Q : BOOL;
+END_VAR
+END_FUNCTION_BLOCK
+
+FUNCTION_BLOCK Probe
+VAR
+    a_T : Edge;
+    b_T : Edge;
+    ok : BOOL;
+END_VAR
+    ok := a_T.Q AND b_T.Q;
+END_FUNCTION_BLOCK
+"#;
+    assert_snapshot!(test_single_lint(&mut with_db, &[source], "identical-sub-expr"), @r"");
+}
+
+/// The same field of the SAME instance still is.
+#[rstest]
+fn one_instance_twice_is_identical(mut with_db: RootDatabase) {
+    let source = r#"
+FUNCTION_BLOCK Edge
+VAR_OUTPUT
+    Q : BOOL;
+END_VAR
+END_FUNCTION_BLOCK
+
+FUNCTION_BLOCK Probe
+VAR
+    a_T : Edge;
+    ok : BOOL;
+END_VAR
+    ok := a_T.Q AND a_T.Q;
+END_FUNCTION_BLOCK
+"#;
+    assert_snapshot!(test_single_lint(&mut with_db, &[source], "identical-sub-expr"), @r"
+    [L0311] Warning: identical subexpressions
+        ,-[ file:///test0.st:13:11 ]
+        |
+     13 |     ok := a_T.Q AND a_T.Q;
+        |           ^^^^^^^|^^^^^^^
+        |                  `--------- identical expressions on both sides of 'AND', result is always the same as either operand
+        |
+        | Note: lint rule: identical-sub-expr
+    ----'
+    ");
+}
+
+/// One word, two bits: one declaration and two places.
+#[rstest]
+fn different_bits_of_one_word_are_not_identical(mut with_db: RootDatabase) {
+    let source = r#"
+FUNCTION test : BOOL
+VAR
+    w : WORD;
+END_VAR
+    test := w.0 AND w.1;
+END_FUNCTION
+"#;
+    assert_snapshot!(test_single_lint(&mut with_db, &[source], "identical-sub-expr"), @r"");
+}
+
+/// The same bit twice still is.
+#[rstest]
+fn one_bit_twice_is_identical(mut with_db: RootDatabase) {
+    let source = r#"
+FUNCTION test : BOOL
+VAR
+    w : WORD;
+END_VAR
+    test := w.0 AND w.0;
+END_FUNCTION
+"#;
+    assert_snapshot!(test_single_lint(&mut with_db, &[source], "identical-sub-expr"), @r"
+    [L0311] Warning: identical subexpressions
+       ,-[ file:///test0.st:6:13 ]
+       |
+     6 |     test := w.0 AND w.0;
+       |             ^^^^^|^^^^^
+       |                  `------- identical expressions on both sides of 'AND', result is always the same as either operand
+       |
+       | Note: lint rule: identical-sub-expr
+    ---'
+    ");
+}
