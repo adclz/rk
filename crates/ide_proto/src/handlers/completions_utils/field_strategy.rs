@@ -1,13 +1,23 @@
 use auto_lsp::lsp_types::CompletionItem;
 use db::WorkspaceDataBase;
-use hir::{HirNodeInfo, hir_ty::ty::Type};
+use hir::{
+    HirNodeInfo, hir_def::scope::ScopeId, hir_ty::resolver::visibility::member_visible_from,
+    hir_ty::ty::Type,
+};
 
 use crate::handlers::completions_utils::{
     CompletionCtx, completion_item_builder::CompletionBuilder,
 };
 
 impl<'db> CompletionCtx {
-    pub fn field_completion(&mut self, ty: Type<'db>, db: &'db dyn WorkspaceDataBase) -> &mut Self {
+    /// The members of `ty` that `asking` may name: a PRIVATE or PROTECTED
+    /// method is offered only where the checker would accept the call.
+    pub fn field_completion(
+        &mut self,
+        ty: Type<'db>,
+        asking: ScopeId<'db>,
+        db: &'db dyn WorkspaceDataBase,
+    ) -> &mut Self {
         let normalized = ty.normalize(db);
         match normalized {
             Type::FunctionBlock(_) | Type::Class(_) | Type::Interface(_) | Type::MethodDecl(_) => {
@@ -30,6 +40,7 @@ impl<'db> CompletionCtx {
                 def_map
                     .declared_methods
                     .iter()
+                    .filter(|(_, m)| member_visible_from(db, asking, *m))
                     .for_each(|(_, m)| self.items.push(builder.build_method(db, m)));
             }
             Type::Struct(st) => st.elements(db).iter().for_each(|el| {

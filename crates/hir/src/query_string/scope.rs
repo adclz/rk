@@ -3,6 +3,7 @@ use std::ops::ControlFlow;
 use db::WorkspaceDataBase;
 use rustc_hash::{FxHashMap, FxHashSet};
 
+use crate::hir_ty::resolver::visibility::{first_closed_internal, pou_visible_from};
 use crate::{
     HasName,
     hir_def::{
@@ -294,6 +295,16 @@ fn search_file_indexes<'db>(
                     return ControlFlow::Continue::<()>(());
                 }
 
+                // Not visible from here: a PRIVATE function outside its
+                // namespace, an INTERNAL namespace's content from outside
+                // it, a test from production code. Offering it would only
+                // lead to the diagnostic that refuses it.
+                if let Some(calling) = scope
+                    && !pou_visible_from(db, calling, pou)
+                {
+                    return ControlFlow::Continue::<()>(());
+                }
+
                 // Skip if we've already added a POU with this name from this namespace
                 let pou_key = (symbol.namespace, symbol.name.clone());
                 if !seen_pous.insert(pou_key) {
@@ -319,6 +330,11 @@ fn search_file_indexes<'db>(
                 }
             }
             SymbolKind::Namespace(ns) if include_namespaces => {
+                if let Some(calling) = scope
+                    && first_closed_internal(db, calling, ns.scope_id(db)).is_some()
+                {
+                    return ControlFlow::Continue::<()>(());
+                }
                 search_result.symbols.push(SearchSymbol::Namespace(ns));
             }
             _ => {}

@@ -40,27 +40,56 @@ use crate::{
     },
 };
 
+/// Whether a member (a method, a class variable) may be named from
+/// `calling_scope`: PUBLIC or unspecified from anywhere, PRIVATE from its
+/// own POU, INTERNAL from its namespace, PROTECTED from a deriving POU. The
+/// question a completion asks before offering the member; [`check_visibility`]
+/// reports the answer once the name is written.
+pub fn member_visible_from<'db>(
+    db: &'db dyn WorkspaceDataBase,
+    calling_scope: ScopeId<'db>,
+    target: &impl HasVisibility<'db>,
+) -> bool {
+    let (calling_scope, target_scope) = declaring_pous(db, calling_scope, target.get_scope_id(db));
+    let visibility = target.get_visibility(db);
+    if visibility.contains(Visibility::PUBLIC) || visibility.is_empty() {
+        return true;
+    }
+    if visibility.contains(Visibility::PRIVATE) {
+        return calling_scope == target_scope;
+    }
+    if visibility.contains(Visibility::INTERNAL) {
+        return matches!(
+            is_same_namespace(db, calling_scope, target_scope),
+            SameNamespaceResult::Same
+        );
+    }
+    !visibility.contains(Visibility::PROTECTED) || is_derived_pou(db, calling_scope, target_scope)
+}
+
+/// Methods use their declaring POU as the scope visibility is judged from.
+fn declaring_pous<'db>(
+    db: &'db dyn WorkspaceDataBase,
+    calling_scope: ScopeId<'db>,
+    target_scope: ScopeId<'db>,
+) -> (ScopeId<'db>, ScopeId<'db>) {
+    let declaring = |scope: ScopeId<'db>| match get_scope(db, scope).kind {
+        ScopeKind::MethodDecl(_) => get_scope(db, scope)
+            .parent
+            .expect("Method should always have a parent scope"),
+        _ => scope,
+    };
+    (declaring(calling_scope), declaring(target_scope))
+}
+
 pub fn check_visibility<'db>(
     db: &'db dyn WorkspaceDataBase,
     call_site: &CallSite<'db>,
     target: impl HasVisibility<'db>,
     errors: &mut Vec<IdeDiagnostic>,
 ) {
-    // Methods use their declaring POU as scope for visibility checks
-    let calling_scope_id = call_site.get_scope_id(db);
-    let calling_scope = match get_scope(db, calling_scope_id).kind {
-        ScopeKind::MethodDecl(m) => get_scope(db, calling_scope_id)
-            .parent
-            .expect("Method should always have a parent scope"),
-        _ => calling_scope_id,
-    };
-    let target_scope_id = target.get_scope_id(db);
-    let target_scope = match get_scope(db, target_scope_id).kind {
-        ScopeKind::MethodDecl(m) => get_scope(db, target_scope_id)
-            .parent
-            .expect("Method should always have a parent scope"),
-        _ => target_scope_id,
-    };
+    let (calling_scope, target_scope) =
+        declaring_pous(db, call_site.get_scope_id(db), target.get_scope_id(db));
     let target_visibility = target.get_visibility(db);
 
     // PUBLIC items are reachable from anywhere, and so is one that names no
@@ -128,10 +157,28 @@ pub fn check_function_visibility<'db>(
     func: crate::hir_def::pous::function::Function<'db>,
     errors: &mut Vec<IdeDiagnostic>,
 ) {
-    if !func.visibility(db).contains(Visibility::PRIVATE) {
+    if function_visible_from(db, call_site.get_scope_id(db), func) {
         return;
     }
-    let calling_scope = call_site.get_scope_id(db);
+    errors.push(
+        VisibilityError::PrivateFunction {
+            call_site: *call_site,
+            target: func.as_call_site(db),
+        }
+        .to_diagnostic(db, call_site.get_scope_id(db).file(db)),
+    );
+}
+
+/// Whether `func` may be named from `calling_scope`: not PRIVATE, or PRIVATE
+/// within its boundary. The rule [`check_function_visibility`] reports.
+pub fn function_visible_from<'db>(
+    db: &'db dyn WorkspaceDataBase,
+    calling_scope: ScopeId<'db>,
+    func: crate::hir_def::pous::function::Function<'db>,
+) -> bool {
+    if !func.visibility(db).contains(Visibility::PRIVATE) {
+        return true;
+    }
     let target_scope = func.get_scope_id(db);
     let target_ns = crate::hir_ty::resolver::name::enclosing_namespace_path(db, target_scope);
     let inside = match (
@@ -149,16 +196,45 @@ pub fn check_function_visibility<'db>(
     let is_library =
         |scope: ScopeId<'db>| crate::check::check_duplicates::is_library_file(db, scope.file(db));
     let cross_origin = is_library(calling_scope) != is_library(target_scope);
-    if inside && !cross_origin {
-        return;
+    inside && !cross_origin
+}
+
+/// Whether nothing on `target_scope`'s namespace chain is an INTERNAL
+/// namespace closed to `calling_scope`, and the `{test}` rule holds: the
+/// question a completion or a suggestion asks before offering a POU, which
+/// the checks here answer with a diagnostic once it is written.
+pub fn pou_visible_from<'db>(
+    db: &'db dyn WorkspaceDataBase,
+    calling_scope: ScopeId<'db>,
+    pou: crate::hir_def::pous::pou::Pou<'db>,
+) -> bool {
+    let target_scope = pou.get_scope_id(db);
+    if get_scope(db, target_scope).is_test(db) && !get_scope(db, calling_scope).is_test(db) {
+        return false;
     }
-    errors.push(
-        VisibilityError::PrivateFunction {
-            call_site: *call_site,
-            target: func.as_call_site(db),
-        }
-        .to_diagnostic(db, calling_scope.file(db)),
-    );
+    if let crate::hir_def::pous::pou::Pou::Function(f) = pou
+        && !function_visible_from(db, calling_scope, f)
+    {
+        return false;
+    }
+    first_closed_internal(db, calling_scope, target_scope).is_none()
+}
+
+/// The first INTERNAL namespace on `target_scope`'s chain that
+/// `calling_scope` may not enter, if any.
+pub fn first_closed_internal<'db>(
+    db: &'db dyn WorkspaceDataBase,
+    calling_scope: ScopeId<'db>,
+    target_scope: ScopeId<'db>,
+) -> Option<NamespaceDecl<'db>> {
+    let sema = semantic_index(db, target_scope.file(db));
+    sema.scope_iterator(db, target_scope)
+        .find_map(|scope_info| match scope_info.kind {
+            ScopeKind::Namespace(ns) if ns.internal(db) => {
+                internal_namespace_violated(db, calling_scope, ns)
+            }
+            _ => None,
+        })
 }
 
 /// E0407: `NAMESPACE INTERNAL N` is reachable only from inside the namespace
@@ -174,24 +250,14 @@ pub fn check_namespace_visibility<'db>(
     errors: &mut Vec<IdeDiagnostic>,
 ) {
     let calling_scope = call_site.get_scope_id(db);
-    let sema = semantic_index(db, target_scope_id.file(db));
-    for scope_info in sema.scope_iterator(db, target_scope_id) {
-        let ScopeKind::Namespace(ns) = scope_info.kind else {
-            continue;
-        };
-        if !ns.internal(db) {
-            continue;
-        }
-        if let Some(violated) = internal_namespace_violated(db, calling_scope, ns) {
-            errors.push(
-                VisibilityError::InternalNamespace {
-                    call_site: *call_site,
-                    namespace: violated,
-                }
-                .to_diagnostic(db, calling_scope.file(db)),
-            );
-            return;
-        }
+    if let Some(violated) = first_closed_internal(db, calling_scope, target_scope_id) {
+        errors.push(
+            VisibilityError::InternalNamespace {
+                call_site: *call_site,
+                namespace: violated,
+            }
+            .to_diagnostic(db, calling_scope.file(db)),
+        );
     }
 }
 

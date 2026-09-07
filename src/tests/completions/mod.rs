@@ -8,3 +8,4 @@ pub mod namespace;
 pub mod program;
 pub mod query_scope_items;
 pub mod using;
+pub mod visibility;

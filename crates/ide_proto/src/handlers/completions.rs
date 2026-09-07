@@ -119,7 +119,7 @@ impl<'db> CompletionHandler<'db> for HirNode<'db> {
                     && let Some(ns_path) = resolve_namespace_prefix(db, p.get_scope_id(db), written)
                 {
                     let mut ctx = CompletionCtx::new(req.offset, QueryMode::Body);
-                    ctx.namespace_completion(ns_path, db);
+                    ctx.namespace_completion(ns_path, p.get_scope_id(db), db);
                     return Some(ctx.take_items());
                 }
 
@@ -135,7 +135,7 @@ impl<'db> CompletionHandler<'db> for HirNode<'db> {
                                 resolve_namespace_prefix(db, p.get_scope_id(db), written)
                         {
                             let mut ctx = CompletionCtx::new(req.offset, QueryMode::Body);
-                            ctx.namespace_completion(parent_ns, db);
+                            ctx.namespace_completion(parent_ns, p.get_scope_id(db), db);
                             return Some(ctx.take_items());
                         }
                         // Not a namespace → regular field delegation
@@ -346,7 +346,7 @@ impl<'db> CompletionHandler<'db> for Spec<'db> {
                     resolve_namespace_prefix(db, self.get_scope_id(db), written)
                 {
                     let mut ctx = CompletionCtx::new(req.offset, QueryMode::Head);
-                    ctx.namespace_completion(full_path, db);
+                    ctx.namespace_completion(full_path, self.get_scope_id(db), db);
                     return Some(ctx.take_items());
                 }
             } else if let Some(namespace) = &target.path.namespace {
@@ -370,7 +370,7 @@ impl<'db> CompletionHandler<'db> for Spec<'db> {
                         resolve_namespace_prefix(db, self.get_scope_id(db), written)
                     {
                         let mut ctx = CompletionCtx::new(req.offset, QueryMode::Head);
-                        ctx.namespace_completion(prefix, db);
+                        ctx.namespace_completion(prefix, self.get_scope_id(db), db);
                         return Some(ctx.take_items());
                     }
                 }
@@ -416,7 +416,7 @@ impl<'db> CompletionHandler<'db> for PathExpr<'db> {
                 }
 
                 if let Some(p) = last_path {
-                    ctx.field_completion(p.infer(db), db);
+                    ctx.field_completion(p.infer(db), p.get_scope_id(db), db);
                     return Some(ctx.take_items());
                 }
             }
@@ -425,7 +425,7 @@ impl<'db> CompletionHandler<'db> for PathExpr<'db> {
         let ty = self.infer(db);
 
         if !ty.is_never() {
-            ctx.field_completion(ty, db);
+            ctx.field_completion(ty, self.get_scope_id(db), db);
             return Some(ctx.take_items());
         }
 
@@ -436,7 +436,7 @@ impl<'db> CompletionHandler<'db> for PathExpr<'db> {
             && written.fragments(db).len() > 1
             && let Some(ns_path) = resolve_namespace_prefix(db, self.get_scope_id(db), written)
         {
-            ctx.namespace_completion(ns_path, db);
+            ctx.namespace_completion(ns_path, self.get_scope_id(db), db);
             return Some(ctx.take_items());
         }
 
@@ -465,7 +465,7 @@ impl<'db> CompletionHandler<'db> for VariableAccess<'db> {
         let ty: hir::hir_ty::ty::Type<'_> = self.infer(db);
 
         if !ty.is_never() {
-            ctx.field_completion(ty, db);
+            ctx.field_completion(ty, self.get_scope_id(db), db);
             return Some(ctx.take_items());
         }
 
@@ -493,7 +493,7 @@ impl<'db> CompletionHandler<'db> for Expr<'db> {
         let ty = self.infer(db);
 
         if !ty.is_never() {
-            ctx.field_completion(ty, db);
+            ctx.field_completion(ty, self.get_scope_id(db), db);
             return Some(ctx.take_items());
         }
 
@@ -522,7 +522,7 @@ impl<'db> CompletionHandler<'db> for Invocation<'db> {
         let ty = self.infer(db);
 
         // Try field completion, fall back to scope if type is unavailable
-        ctx.field_completion(ty, db);
+        ctx.field_completion(ty, self.get_scope_id(db), db);
 
         Some(ctx.take_items())
     }
@@ -540,7 +540,7 @@ impl<'db> CompletionHandler<'db> for InitExpr<'db> {
 
         // Try field completion
         if !ty.is_never() {
-            ctx.field_completion(ty, db);
+            ctx.field_completion(ty, self.get_scope_id(db), db);
         }
 
         ctx.items.extend(static_snippets::elem_type_names_init());

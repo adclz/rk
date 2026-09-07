@@ -7,7 +7,7 @@ use auto_lsp::lsp_types::{
 };
 use db::WorkspaceDataBase;
 use hir::{
-    HasName, HasPragmas, HirNodeInfo,
+    HasName, HirNodeInfo,
     hir_def::{
         interned::namespace::NamespacePath,
         pous::{
@@ -20,6 +20,7 @@ use hir::{
     hir_ty::{
         head::{inheritance::MethodRef, signature::infer_signature},
         index_graphs::namespace_index,
+        resolver::visibility::{first_closed_internal, pou_visible_from},
         ty::Type,
     },
     query_string::{query::Query, scope::SymbolSearch},
@@ -46,18 +47,21 @@ impl CompletionCtx {
 
     /// Complete POUs inside a namespace and sub-namespace fragments.
     /// Used for qualified name completion like `System.Math.` in body context.
-    pub fn namespace_completion(
+    pub fn namespace_completion<'db>(
         &mut self,
         path: NamespacePath,
-        db: &'_ dyn WorkspaceDataBase,
+        scope: ScopeId<'db>,
+        db: &'db dyn WorkspaceDataBase,
     ) -> &mut Self {
         let builder = CompletionBuilder::default().with_mode(self.mode);
         let path_fragments = path.fragments(db);
 
-        // 1. Get all POUs inside this namespace
+        // 1. Get all POUs inside this namespace, those the scope may name.
         for ns_decl in namespace_index(db, path).iter() {
             for pou in ns_decl.pous(db).iter() {
-                builder.build_pou(db, pou, None, &mut self.items);
+                if pou_visible_from(db, scope, *pou) {
+                    builder.build_pou(db, pou, None, &mut self.items);
+                }
             }
         }
 
@@ -71,6 +75,11 @@ impl CompletionCtx {
 
         let mut seen = FxHashSet::default();
         for ns_decl in results.namespaces() {
+            // An INTERNAL namespace closed to the scope is not a fragment
+            // worth completing towards.
+            if first_closed_internal(db, scope, ns_decl.scope_id(db)).is_some() {
+                continue;
+            }
             let ns_fragments = ns_decl.path(db).fragments(db);
             // Show the next fragment after the current path depth
             if let Some(frag) = ns_fragments.get(path_fragments.len()) {
@@ -127,18 +136,13 @@ impl<'db> ScopeCompletionCtx<'db> {
         // If Body, Functions and DataTypes are allowed
         // DataTypes can be used as constants (TYPE_NAME.field)
         // Other POUs (FBs, Classes) must be declared in var sections
+        // Visibility (a PRIVATE function, an INTERNAL namespace, a test
+        // from production code) is the search's own rule, given the scope.
         let mode = self.mode;
-        let in_test = matches!(
-            get_scope(db, self.scope).kind,
-            ScopeKind::Pou(Pou::Function(f)) if f.is_test(db)
-        );
-        let filter = move |pou: &Pou<'db>, db: &'db dyn WorkspaceDataBase| match mode {
+        let filter = move |pou: &Pou<'db>, _db: &'db dyn WorkspaceDataBase| match mode {
             QueryMode::Head => !matches!(pou, Pou::Function(_)),
             QueryMode::Body => match pou {
-                // A test is what the runner calls: offered to another test,
-                // never to production code, where completing it would
-                // suggest calling it by hand.
-                Pou::Function(f) => in_test || !f.is_test(db),
+                Pou::Function(_) => true,
                 // DataTypes can be used as constants (TYPE_NAME.field)
                 // and enum variants should be suggested
                 Pou::DataType(_) => true,
