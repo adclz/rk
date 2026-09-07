@@ -124,6 +124,44 @@ fn find_func_call_signature_help(
     let func_call = find_enclosing_func_call(db, file, offset)?;
     let callable = resolve_callable(db, &func_call)?;
 
+    // An overloaded name has several declarations behind it, and the editor
+    // cycles through them. Which one the call resolved to is already decided:
+    // `callable` is what inference recorded, so this only lists its siblings.
+    let (candidates, active_signature) = match callable {
+        hir::hir_ty::ty::CallableType::Function(f) => {
+            let set = hir::hir_ty::resolver::name::overload_set(db, f);
+            match set.iter().position(|c| *c == f) {
+                Some(active) => (
+                    set.into_iter()
+                        .map(hir::hir_ty::ty::CallableType::Function)
+                        .collect(),
+                    active as u32,
+                ),
+                None => (vec![callable], 0),
+            }
+        }
+        other => (vec![other], 0),
+    };
+
+    let active_parameter = determine_active_param(db, &func_call, offset);
+
+    Some(SignatureHelp {
+        signatures: candidates
+            .into_iter()
+            .map(|c| signature_of(db, c, active_parameter))
+            .collect(),
+        active_signature: Some(active_signature),
+        active_parameter: Some(active_parameter),
+    })
+}
+
+/// One candidate's label, carrying the offsets an editor highlights the
+/// active parameter by.
+fn signature_of<'db>(
+    db: &'db dyn WorkspaceDataBase,
+    callable: hir::hir_ty::ty::CallableType<'db>,
+    active_parameter: u32,
+) -> SignatureInformation {
     let callable_name = callable.get_name_ident(db).text(db).to_string();
     let scope = callable.get_scope_id(db);
     let signature = infer_signature(db, scope);
@@ -162,7 +200,7 @@ fn find_func_call_signature_help(
         .unwrap_or_default();
 
     // Build the signature label with parameter offset tracking
-    let mut label = callable_name.clone();
+    let mut label = callable_name;
     label.push('(');
     let mut param_infos = Vec::with_capacity(params.len());
 
@@ -186,19 +224,12 @@ fn find_func_call_signature_help(
     label.push(')');
     label.push_str(&return_suffix);
 
-    // Determine active parameter
-    let active_param = determine_active_param(db, &func_call, offset);
-
-    Some(SignatureHelp {
-        signatures: vec![SignatureInformation {
-            label,
-            documentation: None,
-            parameters: Some(param_infos),
-            active_parameter: Some(active_param),
-        }],
-        active_signature: Some(0),
-        active_parameter: Some(active_param),
-    })
+    SignatureInformation {
+        label,
+        documentation: None,
+        parameters: Some(param_infos),
+        active_parameter: Some(active_parameter),
+    }
 }
 
 /// Find the innermost FuncCall containing the offset.
@@ -244,7 +275,13 @@ fn find_enclosing_scope<'db>(
     let mut best_size = usize::MAX;
 
     let _ = sema.walk_hir(db, &mut |node: HirNode<'db>| {
-        if let HirNode::PouDecl(_) = &node {
+        // Every node that holds statements of its own. A PROGRAM was missing
+        // entirely, and a METHOD's body was read as its POU's, so a call in
+        // either got no help at all.
+        if matches!(
+            node,
+            HirNode::PouDecl(_) | HirNode::Program(_) | HirNode::MethodRef(_)
+        ) {
             let span = node.get_span(db);
             if span.start_byte <= offset && offset <= span.end_byte {
                 let size = span.end_byte - span.start_byte;

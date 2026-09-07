@@ -1,4 +1,5 @@
 use auto_lsp::default::db::BaseDatabase;
+use auto_lsp::lsp_types;
 use db::RootDatabase;
 use ide_proto::handlers::signature_help::find_signature_help;
 use insta::assert_debug_snapshot;
@@ -635,4 +636,100 @@ END_FUNCTION
         },
     )
     "#);
+}
+
+/// An overloaded name has several declarations behind it. Signature help
+/// lists them all and marks the one the call actually resolved to, so the
+/// editor can cycle through the rest.
+#[rstest]
+#[case::the_int_overload("    r := f(1|);", 0, 0)]
+#[case::the_real_overload("    x := f(1.0, 2.0|);", 1, 1)]
+#[case::still_on_its_first_argument("    x := f(1.0|, 2.0);", 1, 0)]
+#[case::nothing_written_yet("    r := f(|);", 0, 0)]
+fn an_overloaded_name_lists_every_candidate(
+    mut with_db: RootDatabase,
+    #[case] call: &str,
+    #[case] active_signature: u32,
+    #[case] active_parameter: u32,
+) {
+    let marked = format!(
+        r#"FUNCTION f : INT
+VAR_INPUT
+    a : INT;
+END_VAR
+END_FUNCTION
+
+FUNCTION f : REAL
+VAR_INPUT
+    a : REAL;
+    b : REAL;
+END_VAR
+END_FUNCTION
+
+PROGRAM p
+VAR
+    r : INT;
+    x : REAL;
+END_VAR
+{call}
+END_PROGRAM
+"#
+    );
+    let help = help_at(&mut with_db, &marked).expect("signature help");
+    let labels: Vec<&str> = help.signatures.iter().map(|s| s.label.as_str()).collect();
+
+    assert_eq!(
+        labels,
+        ["f(a := INT) : INT", "f(a := REAL, b := REAL) : REAL"]
+    );
+    assert_eq!(help.active_signature, Some(active_signature));
+    assert_eq!(help.active_parameter, Some(active_parameter));
+}
+
+/// A PROGRAM and a METHOD hold statements of their own. Neither was searched,
+/// so a call in either got no help at all.
+#[rstest]
+#[case::in_a_program(
+    r#"FUNCTION g : INT
+VAR_INPUT
+    a : INT;
+END_VAR
+END_FUNCTION
+
+PROGRAM p
+VAR
+    r : INT;
+END_VAR
+    r := g(|);
+END_PROGRAM
+"#
+)]
+#[case::in_a_method(
+    r#"FUNCTION g : INT
+VAR_INPUT
+    a : INT;
+END_VAR
+END_FUNCTION
+
+FUNCTION_BLOCK fb
+METHOD m : INT
+    m := g(|);
+END_METHOD
+END_FUNCTION_BLOCK
+"#
+)]
+fn a_call_gets_help_wherever_statements_stand(mut with_db: RootDatabase, #[case] marked: &str) {
+    let help = help_at(&mut with_db, marked).expect("signature help");
+
+    assert_eq!(help.signatures.len(), 1);
+    assert_eq!(help.signatures[0].label, "g(a := INT) : INT");
+}
+
+/// Asks for help at the `|` marker, which is stripped from the source.
+fn help_at(db: &mut RootDatabase, marked: &str) -> Option<lsp_types::SignatureHelp> {
+    let offset = marked.find('|').expect("a cursor marker");
+    let source = marked.replace('|', "");
+    add_sources(db, &[&source]);
+    let file = *db.get_files().iter().last().unwrap();
+    find_signature_help(db, file, offset)
 }
