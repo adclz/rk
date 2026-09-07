@@ -201,3 +201,60 @@ END_FUNCTION
     let item = builder.build_variable(&with_db, var);
     assert_snapshot!(item.insert_text.unwrap(), @"inst(io := ${1:io}, inp := ${2:inp}, own := ${3:own})");
 }
+
+/// Accepting a call snippet leaves the cursor on the first argument, past the
+/// `(` that would have opened the parameter hints. The item asks the editor to
+/// open them, which is the only thing that can: a letter is neither a trigger
+/// nor a retrigger character.
+#[rstest]
+#[case::a_function_taking_arguments("withargs", true)]
+#[case::a_function_block_instance("inst", true)]
+#[case::a_function_taking_none("noargs", false)]
+#[case::a_type_which_is_not_called("ty", false)]
+#[case::a_plain_variable("plain", false)]
+pub fn a_call_snippet_opens_the_parameter_hints(
+    mut with_db: RootDatabase,
+    #[case] label: &str,
+    #[case] asks_for_hints: bool,
+) {
+    let marked = r#"
+FUNCTION withargs : INT
+VAR_INPUT
+    a : INT;
+END_VAR
+END_FUNCTION
+
+FUNCTION noargs : INT
+END_FUNCTION
+
+TYPE ty : INT; END_TYPE
+
+FUNCTION_BLOCK fb
+VAR_INPUT
+    p : INT;
+END_VAR
+END_FUNCTION_BLOCK
+
+PROGRAM prog
+VAR
+    inst : fb;
+    plain : INT;
+END_VAR
+    |
+END_PROGRAM
+"#;
+    let offset = marked.find('|').expect("a cursor marker");
+    let source = marked.replace('|', "");
+    add_sources(&mut with_db, &[&source]);
+    let file = *with_db.get_files().iter().last().unwrap();
+
+    let item = ide_proto::handlers::completions::complete(&with_db, file, offset, None)
+        .into_iter()
+        .find(|item| item.label == label)
+        .unwrap_or_else(|| panic!("no {label} in scope"));
+
+    assert_eq!(
+        item.command.map(|c| c.command),
+        asks_for_hints.then(|| "editor.action.triggerParameterHints".to_string())
+    );
+}

@@ -2,8 +2,8 @@
 use std::fmt::{Display, format};
 
 use auto_lsp::lsp_types::{
-    self, CompletionItem, CompletionItemKind, CompletionItemLabelDetails, InsertTextFormat,
-    InsertTextMode, Range, TextEdit,
+    self, Command, CompletionItem, CompletionItemKind, CompletionItemLabelDetails,
+    InsertTextFormat, InsertTextMode, Range, TextEdit,
 };
 use db::WorkspaceDataBase;
 use hir::{
@@ -62,15 +62,14 @@ impl<'db> CompletionBuilder {
             .copied()
             .unwrap_or_default();
 
-        let insert_text = match self.mode {
-            QueryMode::Head => variable_name.to_string(),
-            QueryMode::Body => match typ.as_callable(db) {
-                Some(callable) => {
-                    build_call_signature(db, &variable_name, callable.get_scope_id(db))
-                }
-                None => variable_name.to_string(),
-            },
+        let call = match self.mode {
+            QueryMode::Head => None,
+            QueryMode::Body => typ
+                .as_callable(db)
+                .map(|c| build_call_signature(db, &variable_name, c.get_scope_id(db))),
         };
+        let command = trigger_parameter_hints(call.as_deref());
+        let insert_text = call.unwrap_or_else(|| variable_name.to_string());
 
         CompletionItem {
             label: variable_name.to_string(),
@@ -95,6 +94,7 @@ impl<'db> CompletionBuilder {
             }),
             insert_text: Some(insert_text),
             insert_text_format: Some(InsertTextFormat::SNIPPET),
+            command,
             ..Default::default()
         }
     }
@@ -128,6 +128,14 @@ impl<'db> CompletionBuilder {
             Pou::Interface(_) => ("(INTERFACE)", CompletionItemKind::INTERFACE),
         };
 
+        let call = match self.mode {
+            QueryMode::Head => None,
+            // DataTypes are used as constants (TYPE_NAME.field), not called
+            QueryMode::Body if matches!(pou, Pou::DataType(_)) => None,
+            QueryMode::Body => Some(build_call_signature(db, &name, pou.get_scope_id(db))),
+        };
+        let command = trigger_parameter_hints(call.as_deref());
+
         items.push(CompletionItem {
             label: name.clone(),
             detail: Some(detail.into()),
@@ -136,12 +144,8 @@ impl<'db> CompletionBuilder {
                 description: None,
             }),
             kind: Some(kind),
-            insert_text: match self.mode {
-                QueryMode::Head => None,
-                // DataTypes are used as constants (TYPE_NAME.field), not called
-                QueryMode::Body if matches!(pou, Pou::DataType(_)) => None,
-                QueryMode::Body => Some(build_call_signature(db, &name, pou.get_scope_id(db))),
-            },
+            insert_text: call,
+            command,
             insert_text_mode: match self.mode {
                 QueryMode::Head => None,
                 QueryMode::Body if matches!(pou, Pou::DataType(_)) => None,
@@ -325,4 +329,21 @@ pub fn build_call_signature<'db>(
         .collect();
 
     format!("{}({sep}{}{sep})", name, params.join(join_sep))
+}
+
+/// What a call-inserting item asks the editor to do once it has written the
+/// arguments: open the parameter hints over them. Nothing else can open them
+/// there, since only `(` and `,` trigger signature help and the snippet
+/// leaves the cursor on the first argument instead. A client that does not
+/// know the command ignores it.
+fn trigger_parameter_hints(call: Option<&str>) -> Option<Command> {
+    // A call that takes no argument has nothing to hint about.
+    if call?.ends_with("()") {
+        return None;
+    }
+    Some(Command {
+        title: "Parameter hints".into(),
+        command: "editor.action.triggerParameterHints".into(),
+        arguments: None,
+    })
 }

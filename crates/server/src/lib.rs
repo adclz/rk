@@ -177,7 +177,14 @@ pub fn boot() -> Result<(), Box<dyn Error + Send + Sync>> {
                 rename_provider: Some(OneOf::Left(true)),
                 signature_help_provider: Some(SignatureHelpOptions {
                     trigger_characters: Some(vec!["(".to_owned(), ",".to_owned()]),
-                    retrigger_characters: None,
+                    // What keeps the popup alive once it is showing. Without
+                    // these it closed on the first argument separator the user
+                    // wrote, so help was only ever visible on the empty call.
+                    retrigger_characters: Some(vec![
+                        ",".to_owned(),
+                        "=".to_owned(),
+                        " ".to_owned(),
+                    ]),
                     work_done_progress_options: Default::default(),
                 }),
                 workspace_symbol_provider: Some(OneOf::Left(true)),
