@@ -56,6 +56,7 @@ use auto_lsp::lsp_types::request::CallHierarchyIncomingCalls;
 use auto_lsp::lsp_types::request::CallHierarchyOutgoingCalls;
 use auto_lsp::lsp_types::request::CallHierarchyPrepare;
 use auto_lsp::lsp_types::request::DocumentDiagnosticRequest;
+use auto_lsp::lsp_types::request::DocumentHighlightRequest;
 use auto_lsp::lsp_types::request::GotoTypeDefinition;
 use auto_lsp::lsp_types::request::DocumentLinkRequest;
 use auto_lsp::lsp_types::request::DocumentSymbolRequest;
@@ -100,6 +101,7 @@ use crate::capabilties::definition::go_to_definition;
 use crate::capabilties::diagnostics::diagnostics;
 use crate::capabilties::call_hierarchy::{incoming_calls, outgoing_calls, prepare_call_hierarchy};
 use crate::capabilties::diagnostics::workspace_diagnostics;
+use crate::capabilties::document_highlight::highlights;
 use crate::capabilties::document_links::document_links;
 use crate::capabilties::document_symbols::document_symbols;
 use crate::capabilties::folding_ranges::folding_ranges;
@@ -141,6 +143,7 @@ pub fn boot() -> Result<(), Box<dyn Error + Send + Sync>> {
         InitOptions {
             capabilities: ServerCapabilities {
                 document_symbol_provider: Some(OneOf::Left(true)),
+                document_highlight_provider: Some(OneOf::Left(true)),
                 type_definition_provider: Some(TypeDefinitionProviderCapability::Simple(true)),
                 inline_value_provider: Some(OneOf::Left(true)),
                 call_hierarchy_provider: Some(CallHierarchyServerCapability::Simple(true)),
@@ -278,6 +281,7 @@ fn on_requests<Db: WorkspaceDataBase + Clone + RefUnwindSafe>(
         .on::<CallHierarchyOutgoingCalls, _>(ThreadIntent::Worker, outgoing_calls)
         .on::<InlineValues, _>(ThreadIntent::Worker, inline_value)
         .on::<GotoTypeDefinition, _>(ThreadIntent::Worker, go_to_type_definition)
+        .on::<DocumentHighlightRequest, _>(ThreadIntent::LatencySensitive, highlights)
         .on::<GotoDeclaration, _>(ThreadIntent::Worker, go_to_declaration)
         .on::<GotoDefinition, _>(ThreadIntent::Worker, go_to_definition)
         .on::<GotoImplementation, _>(ThreadIntent::Worker, go_to_implementation)

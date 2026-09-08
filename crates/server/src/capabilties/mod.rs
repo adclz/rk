@@ -5,6 +5,7 @@ pub mod completions;
 pub mod declaration;
 pub mod definition;
 pub mod diagnostics;
+pub mod document_highlight;
 pub mod document_links;
 pub mod document_symbols;
 pub mod folding_ranges;
