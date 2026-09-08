@@ -13,6 +13,30 @@ use hir::{
 
 const MAX_RESULTS: usize = 128;
 
+/// How well a name answers the query, best first. Subsequence matching is
+/// what a symbol search wants — `MotorController` and `StepperMotor` both
+/// answer `Motor` — but it also lets `test_expt_matches_operator` in, so the
+/// order has to say which is which. Ranking, not filtering: switching to
+/// [`SearchMode::Similar`] drops both wanted names and answers a three
+/// letter query with nothing.
+fn rank(name: &str, query: &str) -> u8 {
+    let name = name.to_lowercase();
+    let query = query.to_lowercase();
+    if name == query {
+        0
+    } else if name.starts_with(&query) {
+        1
+    } else if name.contains(&query) {
+        2
+    } else {
+        3
+    }
+}
+
+/// Scanned before ranking, so a good match found late still outranks a poor
+/// one found early.
+const MAX_SCANNED: usize = MAX_RESULTS * 8;
+
 pub fn workspace_symbols(db: &dyn WorkspaceDataBase, query_str: &str) -> Vec<WorkspaceSymbol> {
     if query_str.is_empty() {
         return vec![];
@@ -30,7 +54,7 @@ pub fn workspace_symbols(db: &dyn WorkspaceDataBase, query_str: &str) -> Vec<Wor
     let mut results: Vec<WorkspaceSymbol> = Vec::new();
 
     search.search(db, &indices, |symbol: &NamedSymbol<'_>| {
-        if results.len() >= MAX_RESULTS {
+        if results.len() >= MAX_SCANNED {
             return ControlFlow::Break(());
         }
 
@@ -69,5 +93,12 @@ pub fn workspace_symbols(db: &dyn WorkspaceDataBase, query_str: &str) -> Vec<Wor
         ControlFlow::Continue(())
     });
 
+    results.sort_by(|a, b| {
+        rank(&a.name, query_str)
+            .cmp(&rank(&b.name, query_str))
+            .then(a.name.len().cmp(&b.name.len()))
+            .then(a.name.cmp(&b.name))
+    });
+    results.truncate(MAX_RESULTS);
     results
 }

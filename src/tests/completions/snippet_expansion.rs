@@ -40,7 +40,7 @@ fn expand(snippet: &str) -> String {
 /// offered. A syntax error means the item writes something the compiler
 /// cannot read.
 #[rstest]
-fn a_snippet_writes_what_the_compiler_reads(mut with_db: RootDatabase) {
+fn a_snippet_writes_what_the_compiler_reads(with_db: RootDatabase) {
     let at_file_level = |item: String| item;
     let in_a_pou = |item: String| format!("FUNCTION_BLOCK holder\n{item}\nEND_FUNCTION_BLOCK\n");
     let in_a_body = |item: String| format!("FUNCTION holder : INT\n{item}\nEND_FUNCTION\n");

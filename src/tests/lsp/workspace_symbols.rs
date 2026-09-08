@@ -250,3 +250,38 @@ END_INTERFACE
 
     assert_eq!(found, ["Spin Method", "Start Method", "Halt Method"]);
 }
+
+/// Subsequence matching is what a symbol search wants, so `Motor` answers
+/// with `MotorController` and `StepperMotor` too. It also lets
+/// `test_expt_matches_operator` in, so the ORDER has to say which is which.
+#[rstest]
+fn workspace_symbols_are_ranked(mut with_db: RootDatabase) {
+    let source = r#"
+FUNCTION_BLOCK Motor
+END_FUNCTION_BLOCK
+FUNCTION_BLOCK MotorController
+END_FUNCTION_BLOCK
+FUNCTION_BLOCK StepperMotor
+END_FUNCTION_BLOCK
+FUNCTION test_expt_matches_operator : INT
+END_FUNCTION
+"#;
+    add_sources(&mut with_db, &[source]);
+
+    let found: Vec<String> =
+        ide_proto::handlers::workspace_symbols::workspace_symbols(&with_db, "Motor")
+            .into_iter()
+            .map(|symbol| symbol.name)
+            .collect();
+
+    // Exact, then prefix, then containing, then merely a subsequence.
+    assert_eq!(
+        found,
+        [
+            "Motor",
+            "MotorController",
+            "StepperMotor",
+            "test_expt_matches_operator"
+        ]
+    );
+}
