@@ -547,3 +547,37 @@ END_FUNCTION
     ---'
     ");
 }
+
+/// The action's title promises a call; it used to carry an empty edit, so
+/// applying it changed nothing and left the reader to write it out.
+#[rstest]
+fn the_explicit_cast_fix_writes_the_call(mut with_db: RootDatabase) {
+    use auto_lsp::default::db::BaseDatabase;
+
+    let source = r#"
+FUNCTION f : INT
+VAR
+    a : INT;
+    b : REAL;
+END_VAR
+    a := b;
+END_FUNCTION
+"#;
+    crate::tests::utils::add_sources(&mut with_db, &[source]);
+    let file = *with_db.get_files().iter().last().unwrap();
+
+    let written: Vec<String> = hir::check::diagnostics_for_file(&with_db, file)
+        .iter()
+        .flat_map(|d| d.fixes().to_vec())
+        .flat_map(|fix| {
+            let changes = fix.edit.and_then(|edit| edit.changes).unwrap_or_default();
+            changes
+                .into_values()
+                .flatten()
+                .map(|edit| edit.new_text)
+                .collect::<Vec<_>>()
+        })
+        .collect();
+
+    assert_eq!(written, ["REAL_TO_INT(b)"]);
+}

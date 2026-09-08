@@ -593,14 +593,22 @@ fn explicit_cast_suggestion(
             actual_site.get_span(db),
         ));
 
+        // The edit the title promises. It used to carry an empty
+        // `WorkspaceEdit`, so the action appeared, applied nothing, and left
+        // the reader to write the call out themselves.
+        let file = actual_site.get_scope_id(db).file(db);
+        let cast = format!("{}_TO_{}({})", rhs.type_name(), lhs.type_name(), value);
+        let range = crate::denormalize(db, file, &actual_site.get_span(db)).unwrap_or_default();
+
         diag.with_fix(CodeAction {
-            title: format!(
-                "insert explicit cast '{}_TO_{}({})'",
-                rhs.type_name(),
-                lhs.type_name(),
-                value
-            ),
-            edit: Some(WorkspaceEdit::new(HashMap::new())),
+            title: format!("insert explicit cast '{cast}'"),
+            edit: Some(WorkspaceEdit::new(HashMap::from([(
+                file.url(db).clone(),
+                vec![auto_lsp::lsp_types::TextEdit {
+                    range,
+                    new_text: cast,
+                }],
+            )]))),
             is_preferred: Some(true),
             ..Default::default()
         });
