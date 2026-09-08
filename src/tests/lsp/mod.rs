@@ -1,3 +1,4 @@
+pub mod call_hierarchy;
 pub mod code_lens;
 pub mod comment_index;
 pub mod completion_snippets;

@@ -18,6 +18,7 @@ use auto_lsp::lsp_types::CodeLensOptions;
 use auto_lsp::lsp_types::CompletionOptions;
 use auto_lsp::lsp_types::DeclarationCapability;
 use auto_lsp::lsp_types::DiagnosticOptions;
+use auto_lsp::lsp_types::CallHierarchyServerCapability;
 use auto_lsp::lsp_types::DiagnosticServerCapabilities;
 use auto_lsp::lsp_types::DidChangeWatchedFilesClientCapabilities;
 use auto_lsp::lsp_types::DidChangeWatchedFilesRegistrationOptions;
@@ -50,6 +51,9 @@ use auto_lsp::lsp_types::notification::ShowMessage;
 use auto_lsp::lsp_types::request::CodeActionRequest;
 use auto_lsp::lsp_types::request::CodeLensRequest;
 use auto_lsp::lsp_types::request::Completion;
+use auto_lsp::lsp_types::request::CallHierarchyIncomingCalls;
+use auto_lsp::lsp_types::request::CallHierarchyOutgoingCalls;
+use auto_lsp::lsp_types::request::CallHierarchyPrepare;
 use auto_lsp::lsp_types::request::DocumentDiagnosticRequest;
 use auto_lsp::lsp_types::request::DocumentLinkRequest;
 use auto_lsp::lsp_types::request::DocumentSymbolRequest;
@@ -92,6 +96,7 @@ use crate::capabilties::completions::completions;
 use crate::capabilties::declaration::go_to_declaration;
 use crate::capabilties::definition::go_to_definition;
 use crate::capabilties::diagnostics::diagnostics;
+use crate::capabilties::call_hierarchy::{incoming_calls, outgoing_calls, prepare_call_hierarchy};
 use crate::capabilties::diagnostics::workspace_diagnostics;
 use crate::capabilties::document_links::document_links;
 use crate::capabilties::document_symbols::document_symbols;
@@ -118,6 +123,7 @@ pub fn boot() -> Result<(), Box<dyn Error + Send + Sync>> {
         InitOptions {
             capabilities: ServerCapabilities {
                 document_symbol_provider: Some(OneOf::Left(true)),
+                call_hierarchy_provider: Some(CallHierarchyServerCapability::Simple(true)),
                 workspace: WORKSPACE_PROVIDER.clone(),
                 diagnostic_provider: Some(DiagnosticServerCapabilities::Options(
                     DiagnosticOptions {
@@ -247,6 +253,9 @@ fn on_requests<Db: WorkspaceDataBase + Clone + RefUnwindSafe>(
         .on::<FoldingRangeRequest, _>(ThreadIntent::Worker, folding_ranges)
         .on::<InlayHintRequest, _>(ThreadIntent::Worker, inlay_hints)
         .on::<Formatting, _>(ThreadIntent::Worker, formatting)
+        .on::<CallHierarchyPrepare, _>(ThreadIntent::Worker, prepare_call_hierarchy)
+        .on::<CallHierarchyIncomingCalls, _>(ThreadIntent::Worker, incoming_calls)
+        .on::<CallHierarchyOutgoingCalls, _>(ThreadIntent::Worker, outgoing_calls)
         .on::<GotoDeclaration, _>(ThreadIntent::Worker, go_to_declaration)
         .on::<GotoDefinition, _>(ThreadIntent::Worker, go_to_definition)
         .on::<GotoImplementation, _>(ThreadIntent::Worker, go_to_implementation)

@@ -11,6 +11,7 @@ use hir::hir_def::semantic_index::NodeKey;
 
 use crate::handlers::references::ReferenceLocation;
 
+pub mod call_hierarchy;
 pub mod code_lens;
 pub mod completions;
 pub mod completions_utils;

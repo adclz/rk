@@ -5,74 +5,130 @@ description: Set up the language server so an agent can query types, definitions
 
 ## Summary
 
-The language server is a separate binary named `vscode-lsp-server`. The name is historical: it is a plain LSP server speaking JSON-RPC over stdio, it takes no arguments, and nothing in the protocol it serves is tied to VSCode. There is no `rk lsp` subcommand; the `rk` CLI does not host the server.
+The language server is a separate binary, downloaded per platform with the toolchain.
+It speaks JSON-RPC over stdio and takes no arguments.
+There is no `rk lsp` subcommand; the `rk` CLI does not host the server.
+It is launched, never built: `rk env` names the copy that goes with this `rk` on its `lsp` row.
 
 ```sh
-cargo build --bin vscode-lsp-server
-./target/debug/vscode-lsp-server
+rk env --output-format json-lines | jq -r 'select(.key == "lsp") | .value'
 ```
 
-Logs go to stderr, filtered by `RUST_LOG` (default `info` for a debug build, `warn` for a release build). Redirect stderr, it is never part of the protocol stream.
+Logs go to stderr, filtered by `RUST_LOG`; the default is `warn`, so a session is silent unless asked.
+Redirect stderr, it is never part of the protocol stream.
 
-The `initialize` params must carry `workspaceFolders`. At startup the server parses every `.st` file found recursively under them, so all requests answer on files that were never opened. Passing only `rootUri` loads nothing: requests on a file return `null` and cross-file names do not resolve. The standard library resolves the same way as for the CLI: `RK_STDLIB_PATH` from the environment or a `.env` at the workspace root, else beside the server binary. When none is found `Std.*` does not resolve and the server pushes a `window/showMessage` warning naming the paths it tried. A missing `config.toml` is not fatal for the server, it only adds the `E0217` hint diagnostic to each file.
+The `initialize` params must carry `workspaceFolders`.
+At startup the server parses every `.st` file found recursively under them, so all requests answer on files that were never opened.
+Passing only `rootUri` loads nothing: requests on a file return `null` and cross-file names do not resolve.
+The standard library resolves the same way as for the CLI: `RK_STDLIB_PATH` from the environment or a `.env` at the workspace root, else beside the server binary.
+When none is found `Std.*` does not resolve and the server pushes a `window/showMessage` warning naming the paths it tried.
+A missing `config.toml` is not fatal for the server, it only adds the `E0217` hint diagnostic to each file.
 
-For an agent, this is a cheaper substitute for reading files. `textDocument/documentSymbol` gives the outline of a file (POUs with their kind, their variables with their type) for a fraction of the file's tokens. `textDocument/definition` replaces grepping for a declaration, and it crosses into the library: on a `TON` instance it returns a range inside `stdlib/Timers.st`. `textDocument/hover` returns the signature plus the doc comment written above the declaration, which is usually all that was wanted from opening the file. `workspace/symbol` is a fuzzy search over the workspace and the library at once.
+For an agent, this is a cheaper substitute for reading files.
+`textDocument/documentSymbol` gives the outline of a file (POUs with their kind, their variables with their type) for a fraction of the file's tokens.
+`textDocument/definition` replaces grepping for a declaration, and it crosses into the library: on a `TON` instance it returns a range inside `stdlib/Timers.st`.
+`textDocument/hover` returns the signature plus the doc comment written above the declaration, which is usually all that was wanted from opening the file.
+`workspace/symbol` is a fuzzy search over the workspace and the library at once.
 
 Diagnostics are also served, but for a whole-workspace pass `rk check --output-format json-lines` is simpler than a session; use the LSP diagnostics when a session is already open.
 
-Library files are indexed, not addressable. A `textDocument/*` request whose URI points inside the resolved library directory returns `null`; library symbols are only reachable as `definition`/`declaration` targets and through `workspace/symbol`.
+Library files are indexed, not addressable.
+A `textDocument/*` request whose URI points inside the resolved library directory returns `null`; library symbols are only reachable as `definition`/`declaration` targets and through `workspace/symbol`.
 
 ## Usage
 
-`textDocument/documentSymbol` Nested symbols. POUs, programs, top-level namespaces and configurations, each with the declared variables as children; `detail` carries `FUNCTION`, `FUNCTION_BLOCK`, `PROGRAM` on the POU and the resolved type name on a variable.
+`textDocument/documentSymbol` Nested symbols.
+POUs, programs, top-level namespaces and configurations, each with the declared variables as children; `detail` carries `FUNCTION`, `FUNCTION_BLOCK`, `PROGRAM` on the POU and the resolved type name on a variable.
 
-`textDocument/definition` One `Location` spanning the whole declaration of the resolved item, its POU for a type reference or a call.
+`textDocument/definition` One `Location` on the NAME of the resolved item, its POU for a type reference or a call.
+It spans the identifier, not the whole declaration: a range covering the POU made an editor conclude the cursor was already there and show references instead of jumping.
 
-`textDocument/declaration` The declaration behind an expression. On a variable use it lands on the `VAR` line, where `definition` lands on the type.
+`textDocument/declaration` The declaration behind anything that has one: variables and fields, and also POUs, methods, enum variants and namespaces.
+On a variable use it lands on the `VAR` line, where `definition` lands on the type.
 
 `textDocument/references` Declaration and uses, across every workspace file.
 
 `textDocument/hover` Markdown, an `iecst` fence with the signature (`(VAR) total: REAL`, `FUNCTION Add: INT`), the qualified namespace when there is one, and the preceding doc comment below a rule.
 
-`workspace/symbol` Fuzzy, capped at 128 results, searches workspace files and the library index. An empty query returns nothing. `containerName` is the namespace, so a library hit shows as `Std.Timers`.
+`workspace/symbol` Fuzzy, capped at 128 results, searches workspace files and the library index.
+METHODs are included alongside POUs, programs and types.
+Results are RANKED, best first: an exact match, then a prefix, then a case-insensitive one, then a subsequence, and shorter names before longer ones at equal rank.
+Subsequence matching is kept deliberately, as it is what makes `MC` find `MotorController`; ranking is what stops it burying the answer.
+An empty query returns nothing.
+`containerName` is the namespace, so a library hit shows as `Std.Timers`.
 
-`textDocument/diagnostic` and `workspace/diagnostic` Pull diagnostics, one file or the whole workspace. Each item carries the `code` (`E0301`), a `codeDescription.href` to the online explanation, and `relatedInformation`.
+`textDocument/diagnostic` and `workspace/diagnostic` Pull diagnostics, one file or the whole workspace.
+Each item carries the `code` (`E0301`), a `codeDescription.href` to the online explanation, and `relatedInformation`.
+Lints are included on the recommended set without any configuration, the same default `rk check` applies; a `[linter]` section in `config.toml` changes which rules run, it is not what turns them on.
 
-`textDocument/codeAction` Quick fixes of the diagnostics overlapping the range. Syntax fixes carry a real edit (`replace '=' with ':='`). The implicit-cast suggestion (`insert explicit cast 'REAL_TO_INT(r)'`) carries an empty `changes` map, it is a title only, so never apply an action without checking its edit.
+`textDocument/codeAction` Quick fixes of the diagnostics overlapping the range.
+Syntax fixes carry a real edit (`replace '=' with ':='`).
+The implicit-cast suggestion (`insert explicit cast 'REAL_TO_INT(r)'`) carries the edit its title promises, replacing the offending expression with the call.
+It is offered only where a conversion can be called: an initializer, an enum value and a subrange bound have no call site, so no fix is attached there.
 
-`textDocument/formatting` One `TextEdit` replacing the whole file. Same engine as `rk fmt`.
+`textDocument/formatting` One `TextEdit` replacing the whole file.
+Same engine as `rk fmt`.
 
 `textDocument/rename` A `WorkspaceEdit` over every occurrence.
+A symbol declared in the library is refused rather than renamed: the edit could only reach the uses, leaving the declaration behind and the workspace on `E0210`.
 
 `textDocument/foldingRange` One region per POU and per variable section.
 
 `textDocument/inlayHint` End-marker labels (`FUNCTION_BLOCK Motor` on `END_FUNCTION_BLOCK`), parameter names on positional call arguments, and element types in struct initializers.
 
-`textDocument/semanticTokens/full` and `/range` The legend has 9 token types (`namespace`, `function`, `method`, `interface`, `class`, `struct`, `enum`, `enumMember`, `event`) and no modifiers. Only declarations and uses of those are emitted; keywords and literals are not, an editor colours them with its own grammar.
+`textDocument/semanticTokens/full` and `/range` The legend has 13 token types (`namespace`, `function`, `method`, `interface`, `class`, `struct`, `enum`, `enumMember`, `event`, `variable`, `parameter`, `property`, `type`) and no modifiers.
+Every name a body writes carries one, and it is the token for what the name IS rather than what it is OF: a variable of enum type is a `variable`, not an `enum`.
+That covers declarations and uses, call sites (the callee, so an invoked FB instance is a `variable` and the block it runs is not named), named and output arguments (`p := v`, `o => v`), enum variants and struct fields where they are DECLARED, and each segment of a path separately, so `a.b.c` is three tokens and not one.
+Keywords and literals are not emitted, an editor colours them with its own grammar.
+
+`textDocument/prepareCallHierarchy`, `callHierarchy/incomingCalls` and `callHierarchy/outgoingCalls` What calls this, and what this calls.
+Prepare answers on a `FUNCTION`, a `FUNCTION_BLOCK`, a `METHOD` or a `PROGRAM`, at its declaration or at a call naming it; on a call site the hierarchy is the callee's.
+Incoming scans every body in the workspace, outgoing reads one body.
+Both read the call plan inference recorded when it checked the call, so the overload they show is the overload the diagnostics agree with.
+Two calls to one callee are one entry with two `fromRanges`, not two entries.
+Invoking an FB instance counts as a call to the BLOCK, which is what runs.
+A `PROGRAM` answers outgoing calls and never appears as an incoming one: a `TASK` schedules it, no body invokes it.
 
 `textDocument/documentLink` Links from `[Name]` bracket references inside comments to the POU they name.
 
-`textDocument/implementation` Implementers of a `CLASS` or an `INTERFACE`, as `LocationLink`s. Returns `null` on anything else.
+`textDocument/implementation` Implementers of a `CLASS` or an `INTERFACE`, as `LocationLink`s.
+On an interface METHOD it returns the same-named method of every POU implementing that interface, which is the question a reader actually has there.
+Returns `null` on anything else.
 
-`textDocument/codeLens` Two lenses only: an implementation count on a `CLASS`/`INTERFACE`, and a run action on a `{test}` POU. Both are `Command`s addressed to VSCode extension commands (`rk.showImplementations`, `rk.runTest`), useless to another client.
+`textDocument/codeLens` Two lenses only: an implementation count on a `CLASS`/`INTERFACE`, and a run action on a `{test}` POU.
+Both are `Command`s addressed to VSCode extension commands (`rk.showImplementations`, `rk.runTest`), useless to another client.
 
-`textDocument/signatureHelp` The callee's label with input/output/inout parameters and the active one. It resolves inside `FUNCTION`, `FUNCTION_BLOCK` and `METHOD` bodies only; inside a `PROGRAM` body it returns `null`.
+`textDocument/signatureHelp` The callee's label with input/output/inout parameters and the active one.
+It resolves in every body: `FUNCTION`, `FUNCTION_BLOCK`, `METHOD` and `PROGRAM`.
+An overloaded callee returns every overload, with `activeSignature` on the one whose parameters the written arguments fit.
+Trigger characters are `(` and `,`, and the popup is retained on `,` and `)` so it survives the argument being typed.
 
-`textDocument/completion` Trigger characters are `.`, `#` and `(`. Member completion after `.` and type completion in a declaration position work; a bare identifier prefix in a body generally returns nothing. It is shaped for an editor's cursor, not a good agent tool.
+`textDocument/completion` Trigger characters are `.`, `#`, `(`, `{` and `'`.
+Member completion after `.`, type completion in a declaration position, and a bare identifier prefix in a body all work.
+A VAR section offers what a declaration takes there, including the visibility keywords in a POU header and `AT` in the sections that write a location.
+`{` offers the pragmas legal at that place, and `{allow ...}` offers the lint rules it can silence.
+It is still shaped for an editor's cursor rather than for an agent: it answers about one position, where `documentSymbol` and `workspace/symbol` answer about a file or a workspace.
 
 ## Keeping the server in sync
 
-The server answers from its own copy of the files, not from disk. After writing a file, tell it, otherwise every later answer is stale.
+The server answers from its own copy of the files, not from disk.
+After writing a file, tell it, otherwise every later answer is stale.
 
-`workspace/didChangeWatchedFiles` The simplest path when the agent edits files on disk. Types `1` created, `2` changed and `3` deleted are all honoured, whether or not the client declared `didChangeWatchedFiles` dynamic registration.
+`workspace/didChangeWatchedFiles` The simplest path when the agent edits files on disk.
+Types `1` created, `2` changed and `3` deleted are all honoured, whether or not the client declared `didChangeWatchedFiles` dynamic registration.
 
-`textDocument/didOpen` then `textDocument/didChange` For a buffer that is not on disk. A single `contentChanges` entry holding the full new text is accepted. `didOpen` also registers a `.st` file that lives outside the workspace folders; on a library file it is ignored.
+`textDocument/didOpen` then `textDocument/didChange` For a buffer that is not on disk.
+A single `contentChanges` entry holding the full new text is accepted.
+`didOpen` also registers a `.st` file that lives outside the workspace folders; on a library file it is ignored.
 
-The server may send `client/registerCapability` and `workspace/diagnostic/refresh` in the other direction. It does not wait for the answers, a minimal driver can ignore them.
+The server may send `client/registerCapability` and `workspace/diagnostic/refresh` in the other direction.
+It does not wait for the answers, a minimal driver can ignore them.
 
 ## Other clients
 
-Any LSP client works. The registration needs three things: the command (the binary path, no arguments), the file pattern `*.st`, and a root directory containing the workspace, sent as `workspaceFolders`. In Neovim:
+Any LSP client works.
+The registration needs three things: the command (the binary path, no arguments), the file pattern `*.st`, and a root directory containing the workspace, sent as `workspaceFolders`.
+In Neovim:
 
 ```lua
 vim.lsp.start({
@@ -82,6 +138,9 @@ vim.lsp.start({
 })
 ```
 
-Requests that are not registered are refused with JSON-RPC `-32601`, not with an empty answer. That is the case for `textDocument/typeDefinition`, `documentHighlight`, `prepareRename`, `rangeFormatting`, `selectionRange` and call hierarchy, none of which the server implements.
+Requests that are not registered are refused with JSON-RPC `-32601`, not with an empty answer.
+That is the case for `textDocument/typeDefinition`, `documentHighlight`, `prepareRename`, `rangeFormatting`, `selectionRange`, `inlineValue` and type hierarchy, none of which the server implements.
+Call hierarchy IS implemented; type hierarchy is not, because the protocol crate the server is built on predates the 3.17 server capability and has no way to advertise it.
 
-The VSCode extension adds what the protocol does not carry: it copies the built binary to `vscode/server/bin/`, owns the two code lens commands, and consumes a custom `rk/serverStatus` notification for its status bar. Another client sees that notification and can drop it.
+The VSCode extension adds what the protocol does not carry: it copies the built binary to `vscode/server/bin/`, owns the two code lens commands, and consumes a custom `rk/serverStatus` notification for its status bar.
+Another client sees that notification and can drop it.
