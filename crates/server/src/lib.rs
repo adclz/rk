@@ -109,27 +109,12 @@ use crate::capabilties::formatting::formatting;
 use crate::capabilties::hover::hover;
 use crate::capabilties::implementation::go_to_implementation;
 use crate::capabilties::inlay_hints::inlay_hints;
-use crate::capabilties::inline_value::inline_value;
 use crate::capabilties::references::references;
 use crate::capabilties::rename::rename;
 use crate::capabilties::semantic_tokens;
 use crate::capabilties::signature_help::signature_help;
 use crate::capabilties::type_definition::go_to_type_definition;
 use crate::capabilties::workspace_symbols::workspace_symbols;
-
-/// `textDocument/inlineValue`, with the result the SPEC gives it.
-///
-/// `lsp_types::request::InlineValueRequest` declares `Option<InlineValue>`;
-/// the protocol says `InlineValue[] | null`. A client handed a bare object
-/// where it expects an array shows nothing at all, so the request is declared
-/// here rather than taken from the crate.
-enum InlineValues {}
-
-impl auto_lsp::lsp_types::request::Request for InlineValues {
-    type Params = auto_lsp::lsp_types::InlineValueParams;
-    type Result = Option<Vec<auto_lsp::lsp_types::InlineValue>>;
-    const METHOD: &'static str = "textDocument/inlineValue";
-}
 
 pub fn boot() -> Result<(), Box<dyn Error + Send + Sync>> {
     log::info!("Starting IEC LSP");
@@ -145,7 +130,6 @@ pub fn boot() -> Result<(), Box<dyn Error + Send + Sync>> {
                 document_symbol_provider: Some(OneOf::Left(true)),
                 document_highlight_provider: Some(OneOf::Left(true)),
                 type_definition_provider: Some(TypeDefinitionProviderCapability::Simple(true)),
-                inline_value_provider: Some(OneOf::Left(true)),
                 call_hierarchy_provider: Some(CallHierarchyServerCapability::Simple(true)),
                 workspace: WORKSPACE_PROVIDER.clone(),
                 diagnostic_provider: Some(DiagnosticServerCapabilities::Options(
@@ -279,7 +263,6 @@ fn on_requests<Db: WorkspaceDataBase + Clone + RefUnwindSafe>(
         .on::<CallHierarchyPrepare, _>(ThreadIntent::Worker, prepare_call_hierarchy)
         .on::<CallHierarchyIncomingCalls, _>(ThreadIntent::Worker, incoming_calls)
         .on::<CallHierarchyOutgoingCalls, _>(ThreadIntent::Worker, outgoing_calls)
-        .on::<InlineValues, _>(ThreadIntent::Worker, inline_value)
         .on::<GotoTypeDefinition, _>(ThreadIntent::Worker, go_to_type_definition)
         .on::<DocumentHighlightRequest, _>(ThreadIntent::LatencySensitive, highlights)
         .on::<GotoDeclaration, _>(ThreadIntent::Worker, go_to_declaration)

@@ -13,7 +13,6 @@ pub mod formatter_stdlib;
 pub mod hover;
 pub mod implementations;
 pub mod inlay_hints;
-pub mod inline_value;
 pub mod references;
 pub mod rename;
 pub mod semantic_tokens;
