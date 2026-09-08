@@ -87,7 +87,7 @@ END_FUNCTION_BLOCK
     // Definition on "Controller" target -> should go to the POU definition
     let ctrl_offset = source.find("System.Controller;").unwrap() + "System.".len();
     let def_target = ns_spec.definition(&with_db, ctrl_offset).unwrap();
-    assert_snapshot!(format_definition_response(&def_target), @"/test0.st:2:4-3:22");
+    assert_snapshot!(format_definition_response(&def_target), @"/test0.st:2:19-2:29");
 }
 
 #[rstest]
@@ -203,7 +203,7 @@ END_FUNCTION_BLOCK
 
     let def = node.definition(&with_db, body_x_offset).unwrap();
     // Should go to the variable declaration, not the type
-    assert_snapshot!(format_definition_response(&def), @"/test0.st:3:8-3:15");
+    assert_snapshot!(format_definition_response(&def), @"/test0.st:3:8-3:9");
 }
 
 #[rstest]
@@ -232,7 +232,7 @@ END_FUNCTION_BLOCK
 
     let def = node.definition(&with_db, motor_offset).unwrap();
     // Should go to the Engine FUNCTION_BLOCK definition, not the variable declaration
-    assert_snapshot!(format_definition_response(&def), @"/test0.st:1:0-5:18");
+    assert_snapshot!(format_definition_response(&def), @"/test0.st:1:15-1:21");
 }
 
 #[rstest]
@@ -268,7 +268,7 @@ END_CONFIGURATION
     let prog_type_offset = source.rfind("MyProg").unwrap();
     let def = prog.definition(&with_db, prog_type_offset).unwrap();
     // Should point to the PROGRAM MyProg declaration (line 1)
-    assert_snapshot!(format_definition_response(&def), @"/test0.st:1:0-2:11");
+    assert_snapshot!(format_definition_response(&def), @"/test0.st:1:8-1:14");
 }
 
 #[rstest]
@@ -454,5 +454,5 @@ END_FUNCTION_BLOCK
     let node = descendant_at(&with_db, file, offset).expect("a node at p");
     let def = node.definition(&with_db, offset).expect("a definition");
 
-    assert_snapshot!(format_definition_response(&def), @"/test0.st:3:8-3:15");
+    assert_snapshot!(format_definition_response(&def), @"/test0.st:3:8-3:9");
 }

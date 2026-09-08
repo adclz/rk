@@ -85,11 +85,7 @@ impl<'db> DefinitionHandler<'db> for Pou<'db> {
         db: &'db dyn WorkspaceDataBase,
         _offset: usize,
     ) -> Option<GotoDefinitionResponse> {
-        Some(GotoDefinitionResponse::Scalar(Location::new(
-            self.get_scope_id(db).file(db).url(db).to_owned(),
-            hir::denormalize(db, self.get_scope_id(db).file(db), &self.get_span(db))
-                .unwrap_or_default(),
-        )))
+        Some(named_location(db, self))
     }
 }
 
@@ -104,11 +100,7 @@ impl<'db> DefinitionHandler<'db> for VariableDecl<'db> {
         // hint's link on a parameter resolving nowhere.
         let name = self.get_name_span(db);
         if (name.start_byte..=name.end_byte).contains(&offset) {
-            return Some(GotoDefinitionResponse::Scalar(Location::new(
-                self.get_scope_id(db).file(db).url(db).to_owned(),
-                hir::denormalize(db, self.get_scope_id(db).file(db), &self.get_span(db))
-                    .unwrap_or_default(),
-            )));
+            return Some(named_location(db, self));
         }
         self.spec(db).definition(db, offset)
     }
@@ -227,7 +219,7 @@ impl<'db> DefinitionHandler<'db> for Type<'db> {
         db: &'db dyn WorkspaceDataBase,
         _offset: usize,
     ) -> Option<GotoDefinitionResponse> {
-        let loc: &'db dyn HirNodeInfo<'db> = match self {
+        let loc: &'db dyn HasName<'db> = match self {
             Type::CallableType(c) => return c.definition(db, _offset),
             Type::Program(p) => p as _,
             Type::Function(f) => f as _,
@@ -247,11 +239,7 @@ impl<'db> DefinitionHandler<'db> for Type<'db> {
             _ => None?,
         };
 
-        Some(GotoDefinitionResponse::Scalar(Location::new(
-            loc.get_scope_id(db).file(db).url(db).to_owned(),
-            hir::denormalize(db, loc.get_scope_id(db).file(db), &loc.get_span(db))
-                .unwrap_or_default(),
-        )))
+        Some(named_location(db, loc))
     }
 }
 
@@ -264,11 +252,7 @@ impl<'db> DefinitionHandler<'db> for CallableType<'db> {
         match self {
             CallableType::Function(f) => Pou::Function(*f).definition(db, offset),
             CallableType::FunctionBlock(fb) => Pou::FunctionBlock(*fb).definition(db, offset),
-            CallableType::MethodDecl(m) => Some(GotoDefinitionResponse::Scalar(Location::new(
-                m.get_scope_id(db).file(db).url(db).to_owned(),
-                hir::denormalize(db, m.get_scope_id(db).file(db), &m.get_span(db))
-                    .unwrap_or_default(),
-            ))),
+            CallableType::MethodDecl(m) => Some(named_location(db, m)),
         }
     }
 }
@@ -347,4 +331,19 @@ fn namespace_definitions(
     } else {
         Some(GotoDefinitionResponse::Array(decls))
     }
+}
+
+/// A definition points at the NAME, not the whole declaration. An editor
+/// asked to go to a definition it is already standing inside shows the
+/// references instead, which a range covering a whole POU triggered from
+/// anywhere in its body.
+fn named_location<'db>(
+    db: &'db dyn WorkspaceDataBase,
+    node: &'db (impl HasName<'db> + ?Sized),
+) -> GotoDefinitionResponse {
+    let file = node.get_scope_id(db).file(db);
+    GotoDefinitionResponse::Scalar(Location::new(
+        file.url(db).to_owned(),
+        hir::denormalize(db, file, &node.get_name_span(db)).unwrap_or_default(),
+    ))
 }
