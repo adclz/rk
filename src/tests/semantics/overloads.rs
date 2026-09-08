@@ -901,3 +901,69 @@ END_FUNCTION
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @"");
 }
 
+/// With the default gone from the set, the literal takes the type that is
+/// left - the same adoption the inference table performs, so the overload
+/// chosen and the coercion that follows agree.
+#[rstest]
+fn a_bare_literal_adopts_the_only_type_offered(mut with_db: RootDatabase) {
+    let source = r#"
+FUNCTION eq : INT
+VAR_INPUT v : CHAR; END_VAR
+    eq := 1;
+END_FUNCTION
+
+FUNCTION eq : INT
+VAR_INPUT v : BOOL; END_VAR
+    eq := 2;
+END_FUNCTION
+
+FUNCTION caller : INT
+    caller := eq('a');
+END_FUNCTION
+"#;
+
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @"");
+}
+
+/// And a value no candidate can hold is still no match: the literal is
+/// measured against each parameter, not waved through.
+#[rstest]
+fn no_matching_overload_for_an_oversized_bare_literal(mut with_db: RootDatabase) {
+    let source = r#"
+FUNCTION eq : INT
+VAR_INPUT v : CHAR; END_VAR
+    eq := 1;
+END_FUNCTION
+
+FUNCTION eq : INT
+VAR_INPUT v : BOOL; END_VAR
+    eq := 2;
+END_FUNCTION
+
+FUNCTION caller : INT
+    caller := eq('word');
+END_FUNCTION
+"#;
+
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
+    [E0254] Error: no matching overload
+        ,-[ file:///test0.st:13:15 ]
+        |
+      2 | ,---> FUNCTION eq : INT
+        : :
+      5 | |---> END_FUNCTION
+        | |
+        | `-------------------- overload accepting (CHAR)
+        |
+      7 |   ,-> FUNCTION eq : INT
+        :   :
+     10 |   |-> END_FUNCTION
+        |   |
+        |   `------------------ overload accepting (BOOL)
+        |
+     13 |           caller := eq('word');
+        |                     ^|
+        |                      `-- no overload of 'eq' accepts (STRING)
+    ----'
+    ");
+}

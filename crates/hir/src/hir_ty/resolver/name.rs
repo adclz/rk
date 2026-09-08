@@ -507,17 +507,20 @@ fn classify_arg<'db>(db: &'db dyn WorkspaceDataBase, arg: Type<'db>, param: Type
     if arg == param {
         return ArgMatch::Exact;
     }
-    // An untyped literal matches its default type (INT / REAL) exactly, and
-    // widens to any larger compatible type (INT->DINT, INT->REAL, REAL->LREAL).
-    // The direction matters: a float literal must NOT match an integer param
-    // even though INT widens to REAL.
+    // An untyped literal matches its default type (INT / REAL / STRING)
+    // exactly, and ADOPTS any other type its value fits. That second question
+    // is `check_as`, the one the inference table asks once the slot is known,
+    // so the overload picked and the coercion that follows cannot disagree.
+    // The cast table has no say: it grades conversions between types, and a
+    // literal has none yet - `5` is a valid BYTE and `'a'` a valid CHAR, which
+    // no INT->BYTE or STRING->CHAR entry says (nor should).
     if let Type::Infer(it) = arg {
         let default = it.to_spec(db);
         if let Type::Elementary(p) = param {
             if default == p {
                 return ArgMatch::Exact;
             }
-            if p.implicit_cast(default).is_some() {
+            if it.check_as(db, p).is_ok() {
                 return ArgMatch::Widen;
             }
         }
