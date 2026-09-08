@@ -925,9 +925,24 @@ fn body_scope_completion<'db>(
     let scope = get_scope(db, scope_id);
     if is_in_body(scope, &mut ctx, db) {
         ctx.scope_completion(scope_id, query, db);
-        ctx.items.extend(static_snippets::all_stmts());
+        // A statement can only START one. An argument, an operand, a
+        // condition or a loop bound takes a value, and IF or FOR were being
+        // offered in all of them.
+        if !inside_an_expression(db, scope_id.file(db), offset) {
+            ctx.items.extend(static_snippets::all_stmts());
+        }
         ctx.items.extend(static_snippets::elem_type_names_init());
         maybe_add_self_return(db, scope, &mut ctx.items);
     }
     ctx.take_items()
+}
+
+/// Whether a value is what belongs at `offset`. An expression node covers
+/// every such place and none of the places a statement may begin: an
+/// assignment's target and a bare call carry no expression of their own.
+fn inside_an_expression(db: &dyn WorkspaceDataBase, file: File, offset: usize) -> bool {
+    semantic_index(db, file).node_index.iter().any(|node| {
+        let span = node.get_span(db);
+        matches!(node, HirNode::Expr(_)) && span.start_byte <= offset && offset <= span.end_byte
+    })
 }

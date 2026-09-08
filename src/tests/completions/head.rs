@@ -825,3 +825,96 @@ pub fn allow_names_a_lint_rule(
         "{labels:?}"
     );
 }
+
+/// A statement can only START one. Inside an expression — an argument, an
+/// operand, a condition, a loop bound — only a value fits, and IF or FOR were
+/// being offered in all of them.
+#[rstest]
+#[case::the_start_of_a_statement(
+    r#"
+PROGRAM p
+VAR
+    v : INT;
+END_VAR
+    v|
+END_PROGRAM
+"#,
+    true
+)]
+#[case::an_assignment_target(
+    r#"
+PROGRAM p
+VAR
+    v : INT;
+END_VAR
+    v| := 1;
+END_PROGRAM
+"#,
+    true
+)]
+#[case::an_argument(
+    r#"
+FUNCTION g : INT
+VAR_INPUT
+    a : INT;
+END_VAR
+END_FUNCTION
+
+PROGRAM p
+VAR
+    v : INT;
+END_VAR
+    v := g(v|);
+END_PROGRAM
+"#,
+    false
+)]
+#[case::an_operand(
+    r#"
+PROGRAM p
+VAR
+    v : INT;
+END_VAR
+    v := v + v|;
+END_PROGRAM
+"#,
+    false
+)]
+#[case::a_condition(
+    r#"
+PROGRAM p
+VAR
+    v : INT;
+END_VAR
+    IF v| THEN
+    END_IF;
+END_PROGRAM
+"#,
+    false
+)]
+#[case::a_loop_bound(
+    r#"
+PROGRAM p
+VAR
+    i : INT;
+END_VAR
+    FOR i := 1 TO i| DO
+    END_FOR;
+END_PROGRAM
+"#,
+    false
+)]
+pub fn a_statement_is_offered_only_where_one_may_start(
+    mut with_db: RootDatabase,
+    #[case] marked: &str,
+    #[case] may_start: bool,
+) {
+    let labels = complete_at(&mut with_db, marked);
+    let statements = ["IF", "FOR", "WHILE", "REPEAT"];
+
+    assert_eq!(
+        labels.iter().any(|l| statements.contains(&l.as_str())),
+        may_start,
+        "{labels:?}"
+    );
+}
