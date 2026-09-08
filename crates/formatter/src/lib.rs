@@ -40,9 +40,6 @@ static SURROUND_SPACES: &str = r##"
     "FOR" "TO" "BY" "DO"
     "WHILE" "DO"
     "REPEAT" "UNTIL"
-    "RETURN"
-    "EXIT"
-    "CONTINUE"
     "TASK" "CONSTANT" "RETAIN" "NON_RETAIN" "WITH" "ON"
     ; Located variables (`x AT %QW28 : INT`), edge qualifiers
     ; (`BOOL R_EDGE`) and VAR_ACCESS directions (`INT READ_ONLY`) all follow
@@ -57,6 +54,11 @@ static SURROUND_SPACES: &str = r##"
     (c_style_comment)
     (pascal_style_comment)
 ] @prepend_space @append_space
+
+; A whole statement on its own: nothing follows it but the terminator, and a
+; trailing space there would be written before the `;` this file appends and
+; removed once that `;` is a token — the same source formatting two ways.
+["RETURN" "EXIT" "CONTINUE"] @prepend_space
 
 [(identifier) "%"] @prepend_space
 ["(" "[" "." "END_CASE"] @append_antispace
@@ -145,6 +147,11 @@ static NEW_LINES: &str = r##"
     "METHOD"
 ] @prepend_hardline
 ["TYPE" "STRUCT"] @append_hardline
+
+; Every other declaration opens its own line by rule; a type declaration
+; relied on the `;` after it, so two of them sat on one line until the pass
+; that appended the missing one.
+(type_decl) @prepend_hardline
 (namespace_decl . (namespace_h_name) @append_hardline)
 
 [
@@ -434,6 +441,13 @@ static SEMI_COLONS: &str = r#"
     (external_decl)
     (global_var_decl)
 
+    (type_decl)
+    (task_config)
+    (prog_config)
+    (access_decl)
+    (prog_access_decl)
+    (config_inst_init)
+
     (assign)
     (super_body_invocation)
     "RETURN"
@@ -455,11 +469,17 @@ static SEMI_COLONS: &str = r#"
  (#delimiter! ";")
 ))
 
-(using_directive
- "USING" (_)
-	.
+; A USING directive holds its own `;`, so the sibling guard above cannot see
+; it and the guard has to look inside. Matching an arbitrary child instead
+; produced one match per name, and every name but the last had no `;` after
+; it to suppress on, which wrote `USING a, b;;`. An anchor is no help here:
+; anchors skip anonymous nodes, so `;` is invisible to one.
+(
+  (using_directive
     ";"* @do_nothing
-    (#delimiter! ";")) @append_delimiter
+  ) @append_delimiter
+  (#delimiter! ";")
+)
 
 (
     (struct_elem_decl) @append_delimiter
@@ -468,7 +488,6 @@ static SEMI_COLONS: &str = r#"
     (#delimiter! ";")
 )
 
-(case_selection ";" @delete)
 "#;
 
 pub static TOPIARY_LANG: LazyLock<Language> = LazyLock::new(|| Language {
@@ -484,6 +503,7 @@ pub static TOPIARY_LANG: LazyLock<Language> = LazyLock::new(|| Language {
     {LEAF}
     {BLOCKS}
     {NEW_LINES}
+    {SEMI_COLONS}
 "#
         ),
     )
