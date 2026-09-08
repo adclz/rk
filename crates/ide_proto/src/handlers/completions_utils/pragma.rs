@@ -78,16 +78,22 @@ pub fn pou_pragmas(braces: Braces) -> Vec<CompletionItem> {
         item("once", "", braces),
         item("warn", " = '${1:message}'", braces),
         item("info", " = '${1:message}'", braces),
-        item("allow", " '${1:rule}'", braces),
+        allow(braces),
     ]
 }
 
 /// The pragmas that stand where a statement stands.
 pub fn stmt_pragmas(braces: Braces) -> Vec<CompletionItem> {
-    vec![
-        item("wasm", " '${1:i32.add}'", braces),
-        item("allow", " '${1:rule}'", braces),
-    ]
+    vec![item("wasm", " '${1:i32.add}'", braces), allow(braces)]
+}
+
+/// `{allow}` writes its argument as a snippet CHOICE over every rule, so the
+/// editor offers them the moment the pragma lands, the way `AT` offers its
+/// bands. A choice is drawn by the editor from the snippet itself, asking
+/// nothing of the server, which is what makes it unconditional.
+fn allow(braces: Braces) -> CompletionItem {
+    let rules = linter::rules::ALL_RULE_NAMES.join(",");
+    item("allow", &format!(" '${{1|{rules}|}}'"), braces)
 }
 
 /// The opening brace is what triggered the completion, so it is never

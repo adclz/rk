@@ -962,3 +962,36 @@ END_NAMESPACE
         );
     }
 }
+
+/// `{allow}` writes its argument as a choice over every rule, so the editor
+/// offers them on insertion without asking the server, the way `AT` offers
+/// its bands. The completion list covers typing into one already written.
+#[rstest]
+pub fn the_allow_pragma_offers_every_rule(mut with_db: RootDatabase) {
+    let marked = r#"
+{|}
+FUNCTION f : INT
+END_FUNCTION
+"#;
+    let offset = marked.find('|').expect("a cursor marker");
+    let source = marked.replace('|', "");
+    add_sources(&mut with_db, &[&source]);
+    let file = *with_db.get_files().iter().last().unwrap();
+
+    let allow = ide_proto::handlers::completions::complete(&with_db, file, offset, None)
+        .into_iter()
+        .find(|item| item.label == "{allow}")
+        .expect("the allow pragma");
+    let inserted = allow.insert_text.expect("a snippet");
+
+    // A snippet choice: the editor draws it from the text, asking nothing.
+    let choice = inserted
+        .split_once("|")
+        .and_then(|(_, rest)| rest.rsplit_once("|"))
+        .expect("a choice placeholder")
+        .0;
+    assert_eq!(
+        choice.split(',').collect::<Vec<_>>(),
+        linter::rules::ALL_RULE_NAMES
+    );
+}
