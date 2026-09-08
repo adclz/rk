@@ -18,9 +18,8 @@ pub fn code_actions(
     };
 
     let mut all = diagnostics_for_file(db, file).as_ref().clone();
-    if let Some(ref linter_config) = get_config(db).linter {
-        linter::lint_file(db, file, linter_config, &mut all);
-    }
+    let linter_config = get_config(db).linter.clone().unwrap_or_default();
+    linter::lint_file(db, file, &linter_config, &mut all);
 
     let mut results = vec![];
 

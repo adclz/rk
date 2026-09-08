@@ -89,9 +89,8 @@ pub fn diagnostics<Db: WorkspaceDataBase + Clone + RefUnwindSafe>(
     };
 
     let mut all = diagnostics_for_file(db, file).as_ref().clone();
-    if let Some(ref linter_config) = get_config(db).linter {
-        linter::lint_file(db, file, linter_config, &mut all);
-    }
+    let linter_config = get_config(db).linter.clone().unwrap_or_default();
+    linter::lint_file(db, file, &linter_config, &mut all);
 
     let items: Vec<_> = all.iter().map(|d| d.to_lsp_diagnostic(db)).collect();
     let new_id = fingerprint(&items);
@@ -127,7 +126,8 @@ pub fn workspace_diagnostics<Db: WorkspaceDataBase + Clone + RefUnwindSafe>(
     db: &Db,
     params: WorkspaceDiagnosticParams,
 ) -> anyhow::Result<WorkspaceDiagnosticReportResult> {
-    let config = get_config(db).clone();
+    // As above: absent means the recommended rules, not none of them.
+    let linter_config = get_config(db).linter.clone().unwrap_or_default();
 
     // Index previous result IDs by URI for O(1) lookup.
     let mut previous: std::collections::HashMap<Url, String> = params
@@ -150,9 +150,7 @@ pub fn workspace_diagnostics<Db: WorkspaceDataBase + Clone + RefUnwindSafe>(
 
             let items = salsa::Cancelled::catch(|| {
                 let mut all = diagnostics_for_file(db, file).as_ref().clone();
-                if let Some(ref linter_config) = config.linter {
-                    linter::lint_file(db, file, linter_config, &mut all);
-                }
+                linter::lint_file(db, file, &linter_config, &mut all);
                 all.iter()
                     .map(|d| d.to_lsp_diagnostic(db))
                     .collect::<Vec<_>>()
