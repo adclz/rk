@@ -456,3 +456,38 @@ END_FUNCTION_BLOCK
 
     assert_snapshot!(format_definition_response(&def), @"/test0.st:3:8-3:9");
 }
+
+/// Structured Text declares these where it defines them, so asking for a
+/// declaration answers. It used to answer for variables and fields only, and
+/// a PROGRAM's or a METHOD's own name had no definition arm either.
+#[rstest]
+#[case::a_function_block("fb\nMETHOD")]
+#[case::a_method("m : INT")]
+#[case::a_namespace("ns\nFUNCTION_BLOCK")]
+#[case::a_program("prog\nVAR")]
+#[case::a_variable("inst : ")]
+pub fn declaration_answers_for_every_named_thing(mut with_db: RootDatabase, #[case] needle: &str) {
+    let source = r#"
+NAMESPACE ns
+FUNCTION_BLOCK fb
+METHOD m : INT
+END_METHOD
+END_FUNCTION_BLOCK
+END_NAMESPACE
+
+PROGRAM prog
+VAR
+    inst : ns.fb;
+END_VAR
+END_PROGRAM
+"#;
+    add_sources(&mut with_db, &[source]);
+    let file = *with_db.get_files().iter().last().unwrap();
+    let offset = source.find(needle).expect("the name");
+    let node = descendant_at(&with_db, file, offset).expect("a node");
+
+    assert!(
+        ide_proto::handlers::DeclarationHandler::declaration(&node, &with_db).is_some(),
+        "no declaration for {node:?}"
+    );
+}

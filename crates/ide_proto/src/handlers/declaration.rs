@@ -26,6 +26,18 @@ impl<'db> DeclarationHandler<'db> for HirNode<'db> {
             HirNode::VariableAccess(v) => v.declaration(db),
             HirNode::Expr(e) => e.declaration(db),
             HirNode::Param(p) => p.declaration(db),
+            // Structured Text declares these where it defines them, so their
+            // declaration IS their definition. They answered nothing at all
+            // before, which is not the same as the two being distinct.
+            HirNode::PouDecl(_)
+            | HirNode::Program(_)
+            | HirNode::MethodRef(_)
+            | HirNode::Namespace(_)
+            | HirNode::Using(_)
+            | HirNode::Config(_)
+            | HirNode::Resource(_)
+            | HirNode::Task(_)
+            | HirNode::ProgConfig(_) => crate::handlers::DefinitionHandler::definition(self, db, 0),
             _ => None,
         }
     }

@@ -47,6 +47,11 @@ impl<'db> DefinitionHandler<'db> for HirNode<'db> {
             HirNode::VariableAccess(v) => v.definition(db, offset),
             HirNode::Expr(e) => e.definition(db, offset),
             HirNode::Param(p) => p.definition(db, offset),
+            // Both are named where they are written, and neither had an arm
+            // at all: F12 on a PROGRAM's or a METHOD's own name answered
+            // nothing.
+            HirNode::Program(p) => Some(named_location(db, p)),
+            HirNode::MethodRef(m) => Some(named_location(db, m)),
             HirNode::Config(c) => c.definition(db, offset),
             HirNode::Task(t) => t.definition(db, offset),
             HirNode::ProgConfig(p) => p.definition(db, offset),
