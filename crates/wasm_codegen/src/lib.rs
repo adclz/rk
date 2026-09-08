@@ -26,11 +26,9 @@ use self::emit_expr::{SNAPSHOT_CTX, StringSnapshotCtx};
 use self::emit_stmt::emit_stmts_with_return;
 
 /// Capacity of the per-call-site scratch slots that snapshot nested
-/// STRING-returning call results. Matches `mir::types::DEFAULT_STRING_CAPACITY`
-/// - sized to fit any plain-`STRING` producer's output. Producers declared
-///   `STRING[N]` with N > 80 would silently truncate snapshots; the typical
-///   stdlib operates well below that threshold.
-const STRING_SCRATCH_CAPACITY: u32 = 80;
+/// STRING-returning call results: the default, so any plain-`STRING`
+/// producer's output fits.
+const STRING_SCRATCH_CAPACITY: u32 = mir::types::DEFAULT_STRING_CAPACITY;
 const STRING_SCRATCH_SLOT_SIZE: u32 = (4 + STRING_SCRATCH_CAPACITY + 3) & !3;
 
 /// Collect every `Call` callee's Ident → text, for the unresolved-callee
