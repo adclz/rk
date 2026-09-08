@@ -1,13 +1,13 @@
 use std::ops::ControlFlow;
 
 use auto_lsp::default::db::BaseDatabase;
-use auto_lsp::lsp_types::InlayHint;
+use auto_lsp::lsp_types::{InlayHint, InlayHintLabel};
 use db::RootDatabase;
 use hir::hir_def::hir_node::HirNode;
 use hir::hir_def::semantic_index::semantic_index;
 use ide_proto::handlers::InlayHintHandler;
 use ide_proto::walk::WalkHir;
-use insta::assert_debug_snapshot;
+use insta::assert_snapshot;
 use rstest::rstest;
 
 use crate::tests::utils::add_sources;
@@ -37,86 +37,12 @@ END_INTERFACE"#;
         .filter_map(|pou| pou.inlay_hint(&with_db))
         .collect();
 
-    assert_debug_snapshot!(&result, @r#"
-    [
-        InlayHint {
-            position: Position {
-                line: 2,
-                character: 12,
-            },
-            label: String(
-                "FUNCTION fn1",
-            ),
-            kind: Some(
-                Type,
-            ),
-            text_edits: None,
-            tooltip: None,
-            padding_left: Some(
-                true,
-            ),
-            padding_right: None,
-            data: None,
-        },
-        InlayHint {
-            position: Position {
-                line: 5,
-                character: 18,
-            },
-            label: String(
-                "FUNCTION_BLOCK fb1",
-            ),
-            kind: Some(
-                Type,
-            ),
-            text_edits: None,
-            tooltip: None,
-            padding_left: Some(
-                true,
-            ),
-            padding_right: None,
-            data: None,
-        },
-        InlayHint {
-            position: Position {
-                line: 8,
-                character: 9,
-            },
-            label: String(
-                "CLASS class1",
-            ),
-            kind: Some(
-                Type,
-            ),
-            text_edits: None,
-            tooltip: None,
-            padding_left: Some(
-                true,
-            ),
-            padding_right: None,
-            data: None,
-        },
-        InlayHint {
-            position: Position {
-                line: 11,
-                character: 13,
-            },
-            label: String(
-                "INTERFACE in1",
-            ),
-            kind: Some(
-                Type,
-            ),
-            text_edits: None,
-            tooltip: None,
-            padding_left: Some(
-                true,
-            ),
-            padding_right: None,
-            data: None,
-        },
-    ]
-    "#);
+    assert_snapshot!(render(&result), @r"
+    3:12  FUNCTION fn1  -> 2:9
+    6:18  FUNCTION_BLOCK fb1  -> 5:15
+    9:9  CLASS class1  -> 8:6
+    12:13  INTERFACE in1  -> 11:10
+    ");
 }
 
 #[rstest]
@@ -141,67 +67,11 @@ END_NAMESPACE"#;
         .filter_map(|ns| ns.inlay_hint(&with_db))
         .collect();
 
-    assert_debug_snapshot!(&result, @r#"
-    [
-        InlayHint {
-            position: Position {
-                line: 4,
-                character: 17,
-            },
-            label: String(
-                "NAMESPACE ns1.nested",
-            ),
-            kind: Some(
-                Type,
-            ),
-            text_edits: None,
-            tooltip: None,
-            padding_left: Some(
-                true,
-            ),
-            padding_right: None,
-            data: None,
-        },
-        InlayHint {
-            position: Position {
-                line: 6,
-                character: 13,
-            },
-            label: String(
-                "NAMESPACE ns1",
-            ),
-            kind: Some(
-                Type,
-            ),
-            text_edits: None,
-            tooltip: None,
-            padding_left: Some(
-                true,
-            ),
-            padding_right: None,
-            data: None,
-        },
-        InlayHint {
-            position: Position {
-                line: 10,
-                character: 13,
-            },
-            label: String(
-                "NAMESPACE ns2",
-            ),
-            kind: Some(
-                Type,
-            ),
-            text_edits: None,
-            tooltip: None,
-            padding_left: Some(
-                true,
-            ),
-            padding_right: None,
-            data: None,
-        },
-    ]
-    "#);
+    assert_snapshot!(render(&result), @r"
+    5:17  NAMESPACE ns1.nested  -> 3:14
+    7:13  NAMESPACE ns1  -> 2:10
+    11:13  NAMESPACE ns2  -> 9:10
+    ");
 }
 
 #[rstest]
@@ -236,7 +106,7 @@ END_FUNCTION_BLOCK"#;
     });
 
     // Formal parameters should not generate inlay hints
-    assert_debug_snapshot!(&result, @"[]");
+    assert_snapshot!(render(&result), @"");
 }
 
 #[rstest]
@@ -266,52 +136,10 @@ END_FUNCTION_BLOCK"#;
     });
 
     // Non-formal parameters should show their formal name
-    assert_debug_snapshot!(&result, @r#"
-    [
-        InlayHint {
-            position: Position {
-                line: 9,
-                character: 7,
-            },
-            label: String(
-                "param1:",
-            ),
-            kind: Some(
-                Parameter,
-            ),
-            text_edits: None,
-            tooltip: None,
-            padding_left: Some(
-                false,
-            ),
-            padding_right: Some(
-                true,
-            ),
-            data: None,
-        },
-        InlayHint {
-            position: Position {
-                line: 9,
-                character: 10,
-            },
-            label: String(
-                "param2:",
-            ),
-            kind: Some(
-                Parameter,
-            ),
-            text_edits: None,
-            tooltip: None,
-            padding_left: Some(
-                false,
-            ),
-            padding_right: Some(
-                true,
-            ),
-            data: None,
-        },
-    ]
-    "#);
+    assert_snapshot!(render(&result), @r"
+    10:7  param1:  -> 4:8
+    10:10  param2:  -> 5:8
+    ");
 }
 
 #[rstest]
@@ -341,94 +169,12 @@ END_FUNCTION_BLOCK"#;
     });
 
     // Non-variadic shows name, variadic shows position
-    assert_debug_snapshot!(&result, @r#"
-    [
-        InlayHint {
-            position: Position {
-                line: 9,
-                character: 7,
-            },
-            label: String(
-                "param1:",
-            ),
-            kind: Some(
-                Parameter,
-            ),
-            text_edits: None,
-            tooltip: None,
-            padding_left: Some(
-                false,
-            ),
-            padding_right: Some(
-                true,
-            ),
-            data: None,
-        },
-        InlayHint {
-            position: Position {
-                line: 9,
-                character: 10,
-            },
-            label: String(
-                "(1):",
-            ),
-            kind: Some(
-                Parameter,
-            ),
-            text_edits: None,
-            tooltip: None,
-            padding_left: Some(
-                false,
-            ),
-            padding_right: Some(
-                true,
-            ),
-            data: None,
-        },
-        InlayHint {
-            position: Position {
-                line: 9,
-                character: 13,
-            },
-            label: String(
-                "(2):",
-            ),
-            kind: Some(
-                Parameter,
-            ),
-            text_edits: None,
-            tooltip: None,
-            padding_left: Some(
-                false,
-            ),
-            padding_right: Some(
-                true,
-            ),
-            data: None,
-        },
-        InlayHint {
-            position: Position {
-                line: 9,
-                character: 16,
-            },
-            label: String(
-                "(3):",
-            ),
-            kind: Some(
-                Parameter,
-            ),
-            text_edits: None,
-            tooltip: None,
-            padding_left: Some(
-                false,
-            ),
-            padding_right: Some(
-                true,
-            ),
-            data: None,
-        },
-    ]
-    "#);
+    assert_snapshot!(render(&result), @r"
+    10:7  param1:  -> 4:8
+    10:10  (1):
+    10:13  (2):
+    10:16  (3):
+    ");
 }
 
 #[rstest]
@@ -459,50 +205,79 @@ END_FUNCTION"#;
         ControlFlow::Continue(())
     });
 
-    assert_debug_snapshot!(&result, @r#"
-    [
-        InlayHint {
-            position: Position {
-                line: 10,
-                character: 24,
-            },
-            label: String(
-                ": ARRAY [0..2] OF INT",
-            ),
-            kind: Some(
-                Type,
-            ),
-            text_edits: None,
-            tooltip: None,
-            padding_left: Some(
-                false,
-            ),
-            padding_right: Some(
-                false,
-            ),
-            data: None,
-        },
-        InlayHint {
-            position: Position {
-                line: 10,
-                character: 39,
-            },
-            label: String(
-                ": INT",
-            ),
-            kind: Some(
-                Type,
-            ),
-            text_edits: None,
-            tooltip: None,
-            padding_left: Some(
-                false,
-            ),
-            padding_right: Some(
-                false,
-            ),
-            data: None,
-        },
-    ]
-    "#);
+    assert_snapshot!(render(&result), @r"
+    11:24  : ARRAY [0..2] OF INT
+    11:39  : INT
+    ");
+}
+
+/// The `: TYPE` a struct field's hint shows is a link to where that type is
+/// declared. Resolving the field instead would send the reader back to the
+/// line the hint already sits on, and an elementary type is declared nowhere.
+#[rstest]
+pub fn a_type_hint_links_to_its_declaration(mut with_db: RootDatabase) {
+    let source = r#"
+TYPE Inner :
+STRUCT
+    depth : INT;
+END_STRUCT
+END_TYPE
+
+TYPE Engine :
+STRUCT
+    oil : REAL;
+    sub : Inner;
+END_STRUCT
+END_TYPE
+
+PROGRAM prog
+VAR
+    e : Engine := (oil := 1.0, sub := (depth := 2));
+END_VAR
+END_PROGRAM
+"#;
+    add_sources(&mut with_db, &[source]);
+    let sema = semantic_index(&with_db, *with_db.get_files().iter().last().unwrap());
+    let mut result = vec![];
+    let _ = sema.walk_hir(&with_db, &mut |node: HirNode| {
+        if let HirNode::InitExpr(init) = node
+            && let Some(hint) = init.inlay_hint(&with_db)
+        {
+            result.push(hint);
+        }
+        ControlFlow::Continue(())
+    });
+
+    assert_snapshot!(render(&result), @r"
+    17:22  : REAL
+    17:34  : Inner  -> 2:5
+    17:44  : INT
+    ");
+}
+
+/// One line per hint: where it sits, what it reads, and where its link goes.
+/// The debug form of an `InlayHint` is mostly the same file URL repeated,
+/// which buried what a reader is checking.
+fn render(hints: &[InlayHint]) -> String {
+    hints
+        .iter()
+        .map(|hint| {
+            let at = format!("{}:{}", hint.position.line + 1, hint.position.character);
+            match &hint.label {
+                InlayHintLabel::String(text) => format!("{at}  {text}"),
+                InlayHintLabel::LabelParts(parts) => {
+                    let text: String = parts.iter().map(|p| p.value.as_str()).collect();
+                    match parts.iter().find_map(|p| p.location.as_ref()) {
+                        Some(l) => format!(
+                            "{at}  {text}  -> {}:{}",
+                            l.range.start.line + 1,
+                            l.range.start.character
+                        ),
+                        None => format!("{at}  {text}"),
+                    }
+                }
+            }
+        })
+        .collect::<Vec<_>>()
+        .join("\n")
 }

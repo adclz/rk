@@ -433,3 +433,26 @@ END_NAMESPACE
         .expect("Impl in the spec names Lib.Impl");
     assert_snapshot!(format_definition_response(&def), @"/test0.st:3:14-3:18");
 }
+
+/// On its own name a declaration IS the definition. Forwarding to the type
+/// answered nothing for an elementary one, which left the link an inlay hint
+/// puts on a parameter resolving nowhere.
+#[rstest]
+pub fn definition_on_a_declaration_name(mut with_db: RootDatabase) {
+    let source = r#"
+FUNCTION_BLOCK fb
+    VAR_INPUT
+        p : INT;
+    END_VAR
+END_FUNCTION_BLOCK
+"#;
+
+    add_sources(&mut with_db, &[source]);
+    let file = *with_db.get_files().iter().last().unwrap();
+
+    let offset = source.find("p : INT").expect("the declaration");
+    let node = descendant_at(&with_db, file, offset).expect("a node at p");
+    let def = node.definition(&with_db, offset).expect("a definition");
+
+    assert_snapshot!(format_definition_response(&def), @"/test0.st:3:8-3:15");
+}

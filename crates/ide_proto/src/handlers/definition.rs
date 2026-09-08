@@ -99,6 +99,17 @@ impl<'db> DefinitionHandler<'db> for VariableDecl<'db> {
         db: &'db dyn WorkspaceDataBase,
         offset: usize,
     ) -> Option<GotoDefinitionResponse> {
+        // On the name, the declaration IS the definition. Forwarding to the
+        // type answered nothing for `p : INT`, which is what left an inlay
+        // hint's link on a parameter resolving nowhere.
+        let name = self.get_name_span(db);
+        if (name.start_byte..=name.end_byte).contains(&offset) {
+            return Some(GotoDefinitionResponse::Scalar(Location::new(
+                self.get_scope_id(db).file(db).url(db).to_owned(),
+                hir::denormalize(db, self.get_scope_id(db).file(db), &self.get_span(db))
+                    .unwrap_or_default(),
+            )));
+        }
         self.spec(db).definition(db, offset)
     }
 }
