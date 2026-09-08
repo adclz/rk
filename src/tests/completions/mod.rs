@@ -7,5 +7,6 @@ pub mod head;
 pub mod namespace;
 pub mod program;
 pub mod query_scope_items;
+pub mod snippet_expansion;
 pub mod using;
 pub mod visibility;

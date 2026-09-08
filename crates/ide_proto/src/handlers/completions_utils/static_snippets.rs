@@ -83,7 +83,7 @@ pub fn class() -> CompletionItem {
         label: "CLASS".into(),
         kind: Some(lsp_types::CompletionItemKind::CLASS),
         insert_text_format: Some(lsp_types::InsertTextFormat::SNIPPET),
-        insert_text: Some("CLASS ${1:class} \n\nEND_CLASS".into()),
+        insert_text: Some("CLASS ${1:cls} \n\nEND_CLASS".into()),
         ..Default::default()
     }
 }
@@ -105,7 +105,7 @@ pub fn interface() -> CompletionItem {
         label: "INTERFACE".into(),
         kind: Some(lsp_types::CompletionItemKind::INTERFACE),
         insert_text_format: Some(lsp_types::InsertTextFormat::SNIPPET),
-        insert_text: Some("INTERFACE ${1:interface} \n\nEND_INTERFACE".into()),
+        insert_text: Some("INTERFACE ${1:iface} \n\nEND_INTERFACE".into()),
         ..Default::default()
     }
 }
@@ -171,7 +171,7 @@ pub fn method() -> CompletionItem {
         label: "METHOD".into(),
         kind: Some(lsp_types::CompletionItemKind::METHOD),
         insert_text_format: Some(lsp_types::InsertTextFormat::SNIPPET),
-        insert_text: Some("METHOD ${1:method} \n\nEND_METHOD".into()),
+        insert_text: Some("METHOD ${1:meth} \n\nEND_METHOD".into()),
         ..Default::default()
     }
 }
@@ -371,7 +371,7 @@ pub fn for_() -> CompletionItem {
         label: "FOR".into(),
         kind: Some(lsp_types::CompletionItemKind::INTERFACE),
         insert_text_format: Some(lsp_types::InsertTextFormat::SNIPPET),
-        insert_text: Some("FOR ${1:var} := ${2:value} TO ${3:end} DO \n\nEND_FOR".into()),
+        insert_text: Some("FOR ${1:i} := ${2:value} TO ${3:end} DO \n\nEND_FOR".into()),
         ..Default::default()
     }
 }
@@ -382,7 +382,7 @@ pub fn while_() -> CompletionItem {
         label: "WHILE".into(),
         kind: Some(lsp_types::CompletionItemKind::INTERFACE),
         insert_text_format: Some(lsp_types::InsertTextFormat::SNIPPET),
-        insert_text: Some("WHILE ${1:var} >= ${2:value} DO \n\nEND_WHILE".into()),
+        insert_text: Some("WHILE ${1:i} >= ${2:value} DO \n\nEND_WHILE".into()),
         ..Default::default()
     }
 }
@@ -393,7 +393,7 @@ pub fn repeat() -> CompletionItem {
         label: "REPEAT".into(),
         kind: Some(lsp_types::CompletionItemKind::INTERFACE),
         insert_text_format: Some(lsp_types::InsertTextFormat::SNIPPET),
-        insert_text: Some("REPEAT \n\n\tUNTIL ${1:var} >= ${2:value} \n\nEND_REPEAT".into()),
+        insert_text: Some("REPEAT \n\n\tUNTIL ${1:i} >= ${2:value} \n\nEND_REPEAT".into()),
         ..Default::default()
     }
 }
