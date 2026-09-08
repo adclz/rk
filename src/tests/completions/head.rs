@@ -918,3 +918,47 @@ pub fn a_statement_is_offered_only_where_one_may_start(
         "{labels:?}"
     );
 }
+
+/// A blank line between two declarations takes a declaration. The last name
+/// of the preceding body used to answer for it, because a path standing in
+/// for the cursor had no requirement to be anywhere near it.
+#[rstest]
+pub fn a_blank_line_between_declarations_takes_a_declaration(mut with_db: RootDatabase) {
+    let marked = r#"NAMESPACE ns
+	FUNCTION ASSERT_EQ
+		VAR_INPUT
+			value: SINT;
+			target: SINT;
+			message: STRING := '';
+		END_VAR
+
+		IF value <> target THEN
+			__RAISE(CONCAT('assertion failed: ', message));
+		END_IF
+	END_FUNCTION
+
+	|
+
+	FUNCTION ASSERT_EQ
+		VAR_INPUT
+			value: INT;
+			target: INT;
+			message: STRING := '';
+		END_VAR
+
+		IF value <> target THEN
+			__RAISE(CONCAT('assertion failed: ', message));
+		END_IF
+	END_FUNCTION
+END_NAMESPACE
+"#;
+    let labels = complete_at(&mut with_db, marked);
+
+    assert!(labels.iter().any(|l| l == "FUNCTION"), "{labels:?}");
+    for statement in ["IF", "FOR", "WHILE", "REPEAT"] {
+        assert!(
+            !labels.iter().any(|l| l == statement),
+            "{statement} between two declarations: {labels:?}"
+        );
+    }
+}

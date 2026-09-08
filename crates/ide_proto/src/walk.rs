@@ -105,6 +105,8 @@ pub fn completion_descendant_at<'db>(
     let mut last_before_end: usize = 0;
 
     let sema = semantic_index(db, file);
+    let document = file.document(db);
+    let source = document.as_str();
 
     for (idx, node) in sema.node_index.iter_enumerated() {
         let range = node.get_span(db);
@@ -125,9 +127,19 @@ pub fn completion_descendant_at<'db>(
     // Use last_before for PathExpr nodes (e.g. `my_var.inner.|`) and Using nodes
     // (e.g. `USING ns.|` where the dot is past the Using HIR span).
     // For Using, also use last_before when best_match is None (top-level USING).
+    // A path only stands in for the cursor while the cursor is still ON it:
+    // nothing between them but the dot being typed. Without that, the last
+    // name of one POU's body answered for a blank line several declarations
+    // later, which offered statements where a declaration goes.
+    let reaches_the_cursor = |end: usize| {
+        source
+            .get(end..offset)
+            .is_some_and(|gap| gap.chars().all(|c| c == '.' || c == ' ' || c == '\t'))
+    };
+
     match (&best_match, &last_before) {
         (Some((_, best_idx, _)), Some((HirNode::PathExpr(_), last_idx, _)))
-            if last_idx > best_idx =>
+            if last_idx > best_idx && reaches_the_cursor(last_before_end) =>
         {
             last_before
         }
