@@ -64,7 +64,17 @@ impl<'db> Infer<'db> for ParamAssign<'db> {
 
 impl<'db> Infer<'db> for VariableAccess<'db> {
     fn infer(&self, db: &'db dyn WorkspaceDataBase) -> Type<'db> {
-        infer_body(db, self.get_scope_id(db)).get_type_of_variable_access(db, *self)
+        // The head first, like an expression: a name inside a spec — an array
+        // bound, a STRING length — is resolved while the head is inferred and
+        // never appears in a body, so asking the body alone answered nothing.
+        let head = infer_initialization(db, self.get_scope_id(db))
+            .body_infer_result
+            .get_type_of_variable_access(db, *self);
+        if head.is_never() {
+            infer_body(db, self.get_scope_id(db)).get_type_of_variable_access(db, *self)
+        } else {
+            head
+        }
     }
 }
 

@@ -931,3 +931,45 @@ END_NAMESPACE
     });
     assert!(out.contains("NAMESPACE Lib.Impl"), "{out}");
 }
+
+/// A length or a bound written in a spec is an expression like any other,
+/// and hovering it used to say unknown. Nothing recorded a STRING length's
+/// type at all, and a name resolved in a spec was only ever looked for in a
+/// body, where it never appears.
+#[rstest]
+pub fn hover_on_a_spec_bound(mut with_db: RootDatabase) {
+    let source = r#"
+FUNCTION_BLOCK fb
+VAR CONSTANT
+    SIZE : INT := 30;
+END_VAR
+VAR
+    a : STRING[20];
+    b : STRING[SIZE];
+    c : ARRAY[0..9] OF INT;
+    d : ARRAY[0..SIZE] OF INT;
+END_VAR
+END_FUNCTION_BLOCK
+"#;
+    add_sources(&mut with_db, &[source]);
+    let file = *with_db.get_files().iter().last().unwrap();
+
+    let hovered: Vec<String> = ["20]", "SIZE]", "9]", "SIZE] OF"]
+        .iter()
+        .map(|needle| {
+            let offset = source.find(needle).expect("the bound");
+            let node = ide_proto::walk::descendant_at(&with_db, file, offset).expect("a node");
+            let text = ide_proto::handlers::HoverHandler::hover(&node, &with_db, offset)
+                .and_then(|h| hover_markup(h.contents))
+                .expect("hover text");
+            format!("{needle} -> {}", text.replace('\n', " ").trim().to_string())
+        })
+        .collect();
+
+    assert_snapshot!(hovered.join("\n"), @r"
+    20] -> ```iecst {integer} 20 ```
+    SIZE] -> ```iecst (VAR) SIZE: INT ```
+    9] -> ```iecst {integer} 9 ```
+    SIZE] OF -> ```iecst (VAR) SIZE: INT ```
+    ");
+}
