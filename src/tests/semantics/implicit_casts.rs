@@ -581,3 +581,76 @@ END_FUNCTION
 
     assert_eq!(written, ["REAL_TO_INT(b)"]);
 }
+
+/// A bare `'c'` is a STRING by the language's own rule, so the mismatch is
+/// right; it just never said what to write instead, and that is the natural
+/// mistake to make. Unlike a conversion call, a literal is valid in an
+/// initializer, so the hint is not gated the way the cast one is.
+#[rstest]
+#[case::an_initializer(
+    r#"
+FUNCTION f : INT
+VAR
+    c : CHAR := 'c';
+END_VAR
+END_FUNCTION
+"#,
+    Some(":= CHAR#'c'")
+)]
+#[case::an_assignment(
+    r#"
+FUNCTION f : INT
+VAR
+    c : CHAR;
+END_VAR
+    c := 'c';
+END_FUNCTION
+"#,
+    Some("CHAR#'c'")
+)]
+#[case::more_than_one_character(
+    r#"
+FUNCTION f : INT
+VAR
+    c : CHAR := 'ab';
+END_VAR
+END_FUNCTION
+"#,
+    None
+)]
+#[case::a_string_target(
+    r#"
+FUNCTION f : INT
+VAR
+    c : STRING := 'c';
+END_VAR
+END_FUNCTION
+"#,
+    None
+)]
+fn a_char_mismatch_names_the_literal_form(
+    mut with_db: RootDatabase,
+    #[case] source: &str,
+    #[case] written: Option<&str>,
+) {
+    use auto_lsp::default::db::BaseDatabase;
+
+    crate::tests::utils::add_sources(&mut with_db, &[source]);
+    let file = *with_db.get_files().iter().last().unwrap();
+
+    let fixes: Vec<String> = hir::check::diagnostics_for_file(&with_db, file)
+        .iter()
+        .flat_map(|d| d.fixes().to_vec())
+        .flat_map(|fix| {
+            fix.edit
+                .and_then(|edit| edit.changes)
+                .unwrap_or_default()
+                .into_values()
+                .flatten()
+                .map(|edit| edit.new_text)
+                .collect::<Vec<_>>()
+        })
+        .collect();
+
+    assert_eq!(fixes.first().map(String::as_str), written);
+}
