@@ -229,9 +229,6 @@ impl<'db> ToIdeDiagnostic<'db> for TypeError<'db> {
                 if *suggest_cast {
                     explicit_cast_suggestion(db, *target, *value, *expr, &mut diag);
                 }
-                // Not gated on `suggest_cast`: this writes a LITERAL, which an
-                // initializer takes, unlike the conversion call above.
-                char_literal_suggestion(db, *target, *value, *expr, &mut diag);
                 diag
             }
             Self::NotComparable {
@@ -616,64 +613,4 @@ fn explicit_cast_suggestion(
             ..Default::default()
         });
     }
-}
-
-/// `CHAR#'c'`, the form a one-character literal takes. A bare `'c'` is a
-/// STRING by the language's own rule, so the mismatch is right; it just
-/// never said what to write instead, and the mistake is the natural one.
-fn char_literal_suggestion(
-    db: &dyn WorkspaceDataBase,
-    expected: Type,
-    actual: Type,
-    actual_site: CallSite,
-    diag: &mut IdeDiagnostic,
-) {
-    use crate::hir_def::expressions::spec::ElementarySpec;
-
-    if !matches!(
-        (expected.normalize(db), actual.normalize(db)),
-        (
-            Type::Elementary(ElementarySpec::Char),
-            Type::Elementary(ElementarySpec::String)
-        )
-    ) {
-        return;
-    }
-
-    // Only a literal, and only one character: `CHAR#'ab'` is refused too.
-    // An initializer's site carries the `:=` as well, so the quoted part is
-    // found within the text rather than assumed to be all of it.
-    let written = actual_site.to_string(db).to_string();
-    let Some(open) = written.find('\'') else {
-        return;
-    };
-    let Some(inner) = written[open + 1..].strip_suffix('\'') else {
-        return;
-    };
-    if inner.chars().count() != 1 {
-        return;
-    }
-
-    let literal = &written[open..];
-    let qualified = format!("{}CHAR#{literal}", &written[..open]);
-    let file = actual_site.get_scope_id(db).file(db);
-    let range = crate::denormalize(db, file, &actual_site.get_span(db)).unwrap_or_default();
-
-    diag.with_related(Related::new(
-        format!("a CHAR literal is written CHAR#{literal}"),
-        file,
-        actual_site.get_span(db),
-    ));
-    diag.with_fix(CodeAction {
-        title: format!("write it as CHAR#{literal}"),
-        edit: Some(WorkspaceEdit::new(HashMap::from([(
-            file.url(db).clone(),
-            vec![auto_lsp::lsp_types::TextEdit {
-                range,
-                new_text: qualified,
-            }],
-        )]))),
-        is_preferred: Some(true),
-        ..Default::default()
-    });
 }
