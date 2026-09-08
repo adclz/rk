@@ -219,3 +219,34 @@ END_FUNCTION
     ]
     "#);
 }
+
+/// A METHOD is findable by name. The index held POUs and namespaces only,
+/// so searching for one returned every subsequence match except it.
+#[rstest]
+fn a_method_is_a_workspace_symbol(mut with_db: RootDatabase) {
+    let source = r#"
+FUNCTION_BLOCK Motor
+METHOD Spin : INT
+END_METHOD
+END_FUNCTION_BLOCK
+
+CLASS Engine
+METHOD Start : INT
+END_METHOD
+END_CLASS
+
+INTERFACE Drivable
+METHOD Halt : INT
+END_METHOD
+END_INTERFACE
+"#;
+    add_sources(&mut with_db, &[source]);
+
+    let found: Vec<String> = ["Spin", "Start", "Halt"]
+        .iter()
+        .flat_map(|q| ide_proto::handlers::workspace_symbols::workspace_symbols(&with_db, q))
+        .map(|symbol| format!("{} {:?}", symbol.name, symbol.kind))
+        .collect();
+
+    assert_eq!(found, ["Spin Method", "Start Method", "Halt Method"]);
+}

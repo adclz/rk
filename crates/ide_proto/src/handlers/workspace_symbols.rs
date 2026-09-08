@@ -49,6 +49,7 @@ pub fn workspace_symbols(db: &dyn WorkspaceDataBase, query_str: &str) -> Vec<Wor
             },
             query::SymbolKind::StructField(_) => SymbolKind::FIELD,
             query::SymbolKind::Variable(_) => SymbolKind::VARIABLE,
+            query::SymbolKind::Method(_) => SymbolKind::METHOD,
         };
 
         let container_name = symbol.namespace.as_ref().map(|ns| ns.to_string(db));

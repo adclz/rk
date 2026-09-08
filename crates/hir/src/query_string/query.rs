@@ -13,6 +13,7 @@ use crate::hir_def::namespace::NamespaceDecl;
 use crate::hir_def::pous::pou::Pou;
 use crate::hir_def::pous::variable::VariableDecl;
 use crate::hir_def::scope::ScopeId;
+use crate::hir_ty::head::inheritance::MethodRef;
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
 pub enum SearchMode {
@@ -309,6 +310,7 @@ pub enum SymbolKind<'db> {
     Pou(Pou<'db>),
     StructField(StructElement<'db>),
     Variable(VariableDecl<'db>),
+    Method(MethodRef<'db>),
 }
 
 impl<'db> HirNodeInfo<'db> for NamedSymbol<'db> {
@@ -318,6 +320,7 @@ impl<'db> HirNodeInfo<'db> for NamedSymbol<'db> {
             SymbolKind::Pou(p) => p.get_id(db),
             SymbolKind::StructField(ty) => ty.get_id(db),
             SymbolKind::Variable(ty) => ty.get_id(db),
+            SymbolKind::Method(m) => m.get_id(db),
         }
     }
 
@@ -327,6 +330,7 @@ impl<'db> HirNodeInfo<'db> for NamedSymbol<'db> {
             SymbolKind::Pou(p) => p.get_scope_id(db),
             SymbolKind::StructField(ty) => ty.get_scope_id(db),
             SymbolKind::Variable(ty) => ty.get_scope_id(db),
+            SymbolKind::Method(m) => m.get_scope_id(db),
         }
     }
 }
