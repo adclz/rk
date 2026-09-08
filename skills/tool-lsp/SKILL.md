@@ -83,13 +83,6 @@ A symbol declared in the library is refused rather than renamed: the edit could 
 
 `textDocument/inlayHint` End-marker labels (`FUNCTION_BLOCK Motor` on `END_FUNCTION_BLOCK`), parameter names on positional call arguments, and element types in struct initializers.
 
-`textDocument/inlineValue` Where a debugger should show what a variable holds, while a session is stopped.
-The server never sees a runtime value: it answers with the RANGES that name a variable and the name to look up, and the debugger supplies the value for the frame.
-Every answer is an `InlineValueVariableLookup` with `caseSensitiveLookup: false`, because IEC folds case and `Motor` and `motor` are one name.
-Declarations and bare uses are offered, up to and including the stopped line; nothing below it, where a value would be last scan's.
-A FIELD step is deliberately not offered on its own: in `g.out` the lookup is `g`, since a bare `out` is not a name the debugger's scope holds and the path that would reach it is the runtime's shape, not the source's.
-Note that `lsp-types` declares this request's result as a single value where the specification says an array; the server answers with the array.
-
 `textDocument/semanticTokens/full` and `/range` The legend has 13 token types (`namespace`, `function`, `method`, `interface`, `class`, `struct`, `enum`, `enumMember`, `event`, `variable`, `parameter`, `property`, `type`) and no modifiers.
 Every name a body writes carries one, and it is the token for what the name IS rather than what it is OF: a variable of enum type is a `variable`, not an `enum`.
 That covers declarations and uses, call sites (the callee, so an invoked FB instance is a `variable` and the block it runs is not named), named and output arguments (`p := v`, `o => v`), enum variants and struct fields where they are DECLARED, and each segment of a path separately, so `a.b.c` is three tokens and not one.
@@ -154,8 +147,13 @@ vim.lsp.start({
 
 Requests that are not registered are refused with JSON-RPC `-32601`, not with an empty answer.
 That is the case for `prepareRename`, `rangeFormatting`, `onTypeFormatting`, `selectionRange`, `linkedEditingRange`, `workspace/willRenameFiles` and `moniker`, none of which the server implements.
-Type hierarchy is the one gap that is not a choice: the protocol crate the server is built on predates the 3.17 `typeHierarchyProvider` capability and has no way to advertise it, so the request would be refused however it were answered.
-Call hierarchy, type definition, document highlight and inline values are all implemented.
+Call hierarchy, type definition and document highlight are all implemented.
+
+Two gaps are not a choice, and both would need work outside the server.
+Type hierarchy: the protocol crate the server is built on predates the 3.17 `typeHierarchyProvider` capability, so the request would be refused however it were answered.
+Inline values: the request resolves a NAME against the stopped frame's scopes, and only a FUNCTION's or METHOD's scalars are frame locals.
+A PROGRAM's and a FUNCTION_BLOCK's variables are instance state, addressed as `inst.field` from a root the CONFIGURATION names, and a stack frame does not say which instance it is running.
+Answering by name would light up a FUNCTION body and stay blank everywhere else, so the request is left unimplemented until a frame carries its instance path.
 
 The VSCode extension adds what the protocol does not carry: it copies the built binary to `vscode/server/bin/`, owns the two code lens commands, and consumes a custom `rk/serverStatus` notification for its status bar.
 Another client sees that notification and can drop it.
