@@ -145,3 +145,31 @@ fn no_shadowing_when_variable_unused(mut with_db: RootDatabase) {
     "#;
     assert_snapshot!(test_single_lint(&mut with_db, &[source_fb, source_fn], "shadowing-variable"), @"");
 }
+
+/// A variable silently shadowing a POU is surprising enough to report
+/// without being asked, so the rule belongs to the recommended set. The
+/// `#` qualifier makes it sharp: `mode : Mode` turns `Mode#Running` into a
+/// value expression on the variable, which reads as the type.
+#[rstest]
+fn shadowing_is_reported_without_being_asked(mut with_db: RootDatabase) {
+    let source = r#"
+TYPE Mode : (Idle, Running); END_TYPE
+
+FUNCTION_BLOCK fb
+VAR
+    mode : Mode;
+END_VAR
+    mode := Mode#Running;
+END_FUNCTION_BLOCK
+"#;
+    let reported = crate::tests::utils::test_lint_diagnostics_with_config(
+        &mut with_db,
+        &[source],
+        &db::config_file::LinterConfig::default(),
+    );
+
+    assert!(
+        reported.contains("[L0102]"),
+        "the default set is silent about it:\n{reported}"
+    );
+}

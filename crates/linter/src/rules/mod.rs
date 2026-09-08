@@ -88,6 +88,7 @@ pub const RECOMMENDED_RULE_NAMES: &[&str] = &[
     sub_self::NAME,
     constant_loop_bounds::NAME,
     self_shadowing::NAME,
+    shadowing_variable::NAME,
     missing_return::NAME,
     external_mutation::NAME,
     method_shadows_member::NAME,
@@ -512,6 +513,6 @@ mod select_tests {
                 "{name} is not a known rule name"
             );
         }
-        assert_eq!(RECOMMENDED_RULE_NAMES.len(), 21);
+        assert_eq!(RECOMMENDED_RULE_NAMES.len(), 22);
     }
 }

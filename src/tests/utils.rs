@@ -268,7 +268,7 @@ pub fn test_single_lint<'db>(
     test_lint_diagnostics_with_config(db, source, &linter_config)
 }
 
-fn test_lint_diagnostics_with_config<'db>(
+pub(crate) fn test_lint_diagnostics_with_config<'db>(
     db: &'db mut RootDatabase,
     source: &'db [&'db str],
     linter_config: &db::config_file::LinterConfig,
