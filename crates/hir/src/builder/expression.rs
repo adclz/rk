@@ -389,7 +389,7 @@ impl<'db> Parse<'db> for ast::generated::Constant {
                             match value.children.cast(sema.ast) {
                                 ast::generated::DByteCharStr_HexInt_SByteCharStr::SByteCharStr(_)
                                 | ast::generated::DByteCharStr_HexInt_SByteCharStr::DByteCharStr(_)
-                                | ast::generated::DByteCharStr_HexInt_SByteCharStr::HexInt(_) => Elementary::String(value_ident),
+                                | ast::generated::DByteCharStr_HexInt_SByteCharStr::HexInt(_) => Elementary::InferString(value_ident),
                             }
                         }
                     }

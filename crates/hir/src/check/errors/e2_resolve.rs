@@ -714,7 +714,13 @@ impl<'db> ToIdeDiagnostic<'db> for ResolveError<'db> {
                 let names = |types: &[Type<'db>]| {
                     types
                         .iter()
-                        .map(|t| t.type_name(db))
+                        // An untyped literal is named by the type it defaults
+                        // to: a parameter list wants "(STRING)", not the hover
+                        // form "({string} 'text')".
+                        .map(|t| match t {
+                            Type::Infer(it) => Type::Elementary(it.to_spec(db)).type_name(db),
+                            _ => t.type_name(db),
+                        })
                         .collect::<Vec<_>>()
                         .join(", ")
                 };

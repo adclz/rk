@@ -365,7 +365,7 @@ END_FUNCTION
 {err}"
         );
         assert!(
-            err.contains("E0301"),
+            err.contains("E0309"),
             "and carries the library's own diagnostics:
 {err}"
         );

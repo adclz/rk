@@ -98,6 +98,7 @@ impl From<Elementary> for Type<'_> {
             Elementary::Char(_) => Type::Elementary(ElementarySpec::Char),
             Elementary::InferInteger(integer) => Type::Infer(InferType::Integer(integer)),
             Elementary::InferFloat(ident) => Type::Infer(InferType::Float(ident)),
+            Elementary::InferString(ident) => Type::Infer(InferType::String(ident)),
         }
     }
 }
@@ -106,6 +107,7 @@ impl From<Elementary> for Type<'_> {
 pub enum InferType {
     Integer(Integer),
     Float(Ident),
+    String(Ident),
 }
 
 impl<'db> InferType {
@@ -117,6 +119,7 @@ impl<'db> InferType {
         match self {
             InferType::Integer(i) => ElementarySpec::Int,
             InferType::Float(f) => ElementarySpec::Real,
+            InferType::String(s) => ElementarySpec::String,
         }
     }
 }

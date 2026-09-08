@@ -540,13 +540,14 @@ pub enum Elementary {
     // Has to be solved later
     InferInteger(Integer),
     InferFloat(Ident),
+    InferString(Ident),
 }
 
 impl Elementary {
     pub fn has_infer(&self) -> bool {
         matches!(
             self,
-            Elementary::InferInteger(_) | Elementary::InferFloat(_)
+            Elementary::InferInteger(_) | Elementary::InferFloat(_) | Elementary::InferString(_)
         )
     }
 }

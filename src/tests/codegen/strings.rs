@@ -1577,3 +1577,57 @@ END_FUNCTION
     let r: i32 = execute_wasm(&wasm, "run", ());
     assert_eq!(r, 2, "the literal holds every marker as a character, a URL included");
 }
+
+/// A bare literal in a CHAR slot lowers to its CODE POINT, not to string
+/// bytes. The lexeme says string and the resolved type says CHAR, so lowering
+/// reads the type, the way it already does for a bare number in a float slot.
+/// Written both ways in one module, the two spellings must be one value.
+#[rstest]
+fn a_bare_literal_in_a_char_slot_is_a_code_point(mut with_db: db::RootDatabase) {
+    let src = r#"
+FUNCTION run : DINT
+VAR
+    a : CHAR := 'A';
+    typed : CHAR := CHAR#'A';
+    z : CHAR;
+    wide : CHAR := 'é';
+END_VAR
+    z := 'Z';
+    run := 0;
+    IF a = typed THEN run := run + 1; END_IF;
+    IF z = CHAR#'Z' THEN run := run + 10; END_IF;
+    IF wide = CHAR#'é' THEN run := run + 100; END_IF;
+END_FUNCTION
+"#;
+    let wasm = compile_to_wasm(&mut with_db, src);
+    let r: i32 = execute_wasm(&wasm, "run", ());
+    assert_eq!(r, 111, "the bare form and the typed form agree");
+}
+
+/// The same literal text, in the same module, reaching a CHAR parameter and a
+/// STRING parameter: one interns bytes in the pool, the other pushes an i32.
+/// Lowering the pair from the lexeme alone would put string bytes in a scalar
+/// slot.
+#[rstest]
+fn one_literal_text_reaches_both_a_char_and_a_string_param(mut with_db: db::RootDatabase) {
+    let src = r#"
+FUNCTION as_char : DINT
+VAR_INPUT c : CHAR; END_VAR
+    as_char := 0;
+    IF c = CHAR#'A' THEN as_char := 1; END_IF;
+END_FUNCTION
+
+FUNCTION as_string : DINT
+VAR_INPUT s : STRING; END_VAR
+    as_string := 0;
+    IF s = 'A' THEN as_string := 1; END_IF;
+END_FUNCTION
+
+FUNCTION run : DINT
+    run := as_char('A') + as_string('A');
+END_FUNCTION
+"#;
+    let wasm = compile_to_wasm(&mut with_db, src);
+    let r: i32 = execute_wasm(&wasm, "run", ());
+    assert_eq!(r, 2, "each slot decided what its literal became");
+}

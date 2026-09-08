@@ -87,16 +87,12 @@ FUNCTION_BLOCK fb1
 END_FUNCTION_BLOCK"#;
 
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E0302] Error: type mismatch
+    [E0309] Error: invalid literal
        ,-[ file:///test0.st:9:9 ]
-       |
-     4 |         x : INT;
-       |         |
-       |         `-- type is declared by variable 'x' here
        |
      9 |         'hello': y := 10;
        |         ^^^|^^^
-       |            `----- can't compare 'INT' with 'STRING'
+       |            `----- cannot infer '<string>' to 'INT': cannot use string literal as INT
     ---'
     ");
 }
@@ -157,27 +153,19 @@ END_FUNCTION_BLOCK"#;
        |              ^|^
        |               `--- a CASE range bound must be an integer constant
     ---'
-    [E0302] Error: type mismatch
+    [E0309] Error: invalid literal
        ,-[ file:///test0.st:9:9 ]
-       |
-     4 |         x : INT;
-       |         |
-       |         `-- type is declared by variable 'x' here
        |
      9 |         'a'..'z': y := 10;
        |         ^|^
-       |          `--- can't compare 'INT' with 'STRING'
+       |          `--- cannot infer '<string>' to 'INT': cannot use string literal as INT
     ---'
-    [E0302] Error: type mismatch
+    [E0309] Error: invalid literal
        ,-[ file:///test0.st:9:14 ]
-       |
-     4 |         x : INT;
-       |         |
-       |         `-- type is declared by variable 'x' here
        |
      9 |         'a'..'z': y := 10;
        |              ^|^
-       |               `--- can't compare 'INT' with 'STRING'
+       |               `--- cannot infer '<string>' to 'INT': cannot use string literal as INT
     ---'
     ");
 }
@@ -201,7 +189,7 @@ FUNCTION_BLOCK fb1
 END_FUNCTION_BLOCK"#;
 
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E0301] Error: type mismatch
+    [E0309] Error: invalid literal
         ,-[ file:///test0.st:10:17 ]
         |
       5 |         y : INT;
@@ -210,7 +198,7 @@ END_FUNCTION_BLOCK"#;
         |
      10 |         2: y := 'bad';
         |                 ^^|^^
-        |                   `---- expected 'INT', got 'STRING'
+        |                   `---- cannot infer '<string>' to 'INT': cannot use string literal as INT
     ----'
     ");
 }
@@ -315,7 +303,7 @@ FUNCTION_BLOCK fb1
 END_FUNCTION_BLOCK"#;
 
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E0301] Error: type mismatch
+    [E0309] Error: invalid literal
         ,-[ file:///test0.st:11:14 ]
         |
       5 |         y : INT;
@@ -324,7 +312,7 @@ END_FUNCTION_BLOCK"#;
         |
      11 |         y := 'wrong';
         |              ^^^|^^^
-        |                 `----- expected 'INT', got 'STRING'
+        |                 `----- cannot infer '<string>' to 'INT': cannot use string literal as INT
     ----'
     ");
 }

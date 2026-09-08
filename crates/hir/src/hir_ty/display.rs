@@ -171,6 +171,7 @@ impl<'db> Type<'db> {
             Self::Infer(infer) => match infer {
                 InferType::Integer(i) => format!("{{integer}} {}", i.ident(db).text(db)),
                 InferType::Float(f) => format!("{{float}} {}", f.text(db)),
+                InferType::String(s) => format!("{{string}} {}", s.text(db)),
             },
             Self::Void => "void".into(),
             Self::Never => "{unknown}".into(),
@@ -501,6 +502,7 @@ impl<'db> PrimaryExpr<'db> {
                 Elementary::Char(_) => "<char>",
                 Elementary::InferInteger(_) => "<integer>",
                 Elementary::InferFloat(_) => "<float>",
+                Elementary::InferString(_) => "<string>",
             },
             PrimaryExpr::VariableAccess(v) => "<variable access>",
             PrimaryExpr::FuncCall(func_call) => func_call.path(db).to_string(db),

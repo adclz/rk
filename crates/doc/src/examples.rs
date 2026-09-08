@@ -1709,8 +1709,9 @@ END_FUNCTION
 FUNCTION_BLOCK fb1
 VAR
     x : INT;
+    s : STRING;
 END_VAR
-    x := 'hello';
+    x := s;
 END_FUNCTION_BLOCK
 "#],
             lint_rule: None,

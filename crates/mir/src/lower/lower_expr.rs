@@ -821,6 +821,31 @@ impl<'db> ExprLowerCtx<'db> {
                 }
             }
 
+            // A bare string literal is typed by context: a CHAR lowers to its code
+            // point, a STRING to its bytes.
+            Elementary::InferString(ident) => {
+                let bytes = ident.as_single_string(db).map_err(|e| {
+                    LowerTypeError::UnsupportedType(format!("Invalid STRING literal: {e:?}"))
+                })?;
+                match parent_expr.infer(db).normalize(db) {
+                    Type::Elementary(ElementarySpec::Char) => {
+                        let codepoint = hir::hir_ty::infer::literals::char_literal_code_point(
+                            &bytes,
+                        )
+                        .map_err(|n| {
+                            LowerTypeError::UnsupportedType(format!(
+                                "a CHAR literal is one character, this one is {n}"
+                            ))
+                        })?;
+                        Ok(MirExpr::Constant(MirConstant::I32(codepoint as i32)))
+                    }
+                    _ => {
+                        let (id, offset, len) = self.string_pool.borrow_mut().intern(&bytes);
+                        Ok(MirExpr::StringLiteral { id, offset, len })
+                    }
+                }
+            }
+
             // Decode escapes through the HIR helper the checker used, then intern
             // the bytes.
             Elementary::String(ident) => {

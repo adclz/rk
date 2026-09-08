@@ -95,6 +95,9 @@ impl<'db> InferenceTable<'db> {
             Type::SubRange(sub) => sub._type(db).infer(db),
             // we also accept bools ... because 0 and 1 literals can be boolean or numeric
             Type::Elementary(_) if normalized.is_numeric() || normalized.is_boolean() => ty,
+            // a bare string literal is the third untyped form: STRING by
+            // default, CHAR when the slot is one
+            Type::Elementary(ElementarySpec::String | ElementarySpec::Char) => ty,
             _ => return,
         };
         self.current_mode = InferMode::Resolved { ty, expr };
@@ -131,8 +134,10 @@ impl<'db> InferenceTable<'db> {
                 // sets the inferred type based on the concrete type
                 // the concrete type takes priority over infer types
                 InferMode::NoInfer | InferMode::Unresolved | InferMode::ResolvedInfer { .. } => {
-                    // both infer variants are numerics, so we can only resolve against numeric or boolean types
-                    if !value.is_numeric() && !value.is_boolean() {
+                    if !value.is_numeric()
+                        && !value.is_boolean()
+                        && !matches!(elem, ElementarySpec::String | ElementarySpec::Char)
+                    {
                         return;
                     }
                     self.current_mode = InferMode::Resolved {

@@ -866,3 +866,38 @@ fn invalid_three_way_incomparable_names_all(mut with_db: RootDatabase) {
     ----'
     ");
 }
+
+/// The `ASSERT_EQ` shape: one overload per elementary type, called with a
+/// bare literal. The literal's DEFAULT type is the exact match, so `'a'`
+/// picks STRING and `0` picks INT - untyped does not mean ambiguous.
+#[rstest]
+fn a_bare_literal_picks_its_default_overload(mut with_db: RootDatabase) {
+    let source = r#"
+FUNCTION eq : INT
+VAR_INPUT v : CHAR; END_VAR
+    eq := 1;
+END_FUNCTION
+
+FUNCTION eq : INT
+VAR_INPUT v : STRING; END_VAR
+    eq := 2;
+END_FUNCTION
+
+FUNCTION eq : INT
+VAR_INPUT v : SINT; END_VAR
+    eq := 3;
+END_FUNCTION
+
+FUNCTION eq : INT
+VAR_INPUT v : INT; END_VAR
+    eq := 4;
+END_FUNCTION
+
+FUNCTION caller : INT
+    caller := eq('a') + eq('word') + eq(0);
+END_FUNCTION
+"#;
+
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @"");
+}
+

@@ -307,7 +307,9 @@ impl<'db> InitInference<'db> {
         // Both single-quoted and (legacy) double-quoted forms now resolve
         // to STRING; single-byte payload measurement covers both.
         let actual_len = match elem {
-            Elementary::String(s) => s.as_single_string(db).ok().map(|v| v.len()),
+            Elementary::String(s) | Elementary::InferString(s) => {
+                s.as_single_string(db).ok().map(|v| v.len())
+            }
             _ => None,
         };
 

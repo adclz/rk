@@ -29,7 +29,9 @@ impl<'db> Elementary {
             Elementary::LDateTime(ldt) => ldt.as_ldt_ns_i64(db).map(|_| ()),
             Elementary::Time(t) => t.as_time_ms_i32(db).map(|_| ()),
             Elementary::LTime(lt) => lt.as_ltime_ns_i64(db).map(|_| ()),
-            Elementary::String(s) => s.as_single_string(db).map(|_| ()),
+            Elementary::String(s) | Elementary::InferString(s) => {
+                s.as_single_string(db).map(|_| ())
+            }
             Elementary::Char(s) => {
                 let bytes = s.as_single_string(db)?;
                 char_literal_code_point(&bytes)
@@ -47,6 +49,9 @@ impl<'db> InferType {
         db: &'db dyn WorkspaceDataBase,
         typ: ElementarySpec,
     ) -> Result<Type<'db>, InferLiteralError> {
+        if let InferType::String(s) = self {
+            return check_string(db, *s, typ);
+        }
         match typ {
             ElementarySpec::Bool | ElementarySpec::REDGEBool | ElementarySpec::FEDGEBool => {
                 check_bool(db, self)
@@ -70,6 +75,32 @@ impl<'db> InferType {
                 typ.type_name()
             ))),
         }
+    }
+}
+
+/// A bare string literal is a STRING, and a CHAR wherever the slot holding it
+/// is one: `c : CHAR := 'A'` writes the code point, exactly as `CHAR#'A'`
+/// does. One character is the whole rule, so the same helper the typed form
+/// is checked with decides it.
+fn check_string<'db>(
+    db: &'db dyn WorkspaceDataBase,
+    value: Ident,
+    typ: ElementarySpec,
+) -> Result<Type<'db>, InferLiteralError> {
+    match typ {
+        ElementarySpec::String => value
+            .as_single_string(db)
+            .map(|_| Type::Elementary(ElementarySpec::String)),
+        ElementarySpec::Char => {
+            let bytes = value.as_single_string(db)?;
+            char_literal_code_point(&bytes)
+                .map(|_| Type::Elementary(ElementarySpec::Char))
+                .map_err(InferLiteralError::Invalid_CHAR_Length)
+        }
+        _ => Err(InferLiteralError::TypeMismatch(format!(
+            "cannot use string literal as {}",
+            typ.type_name()
+        ))),
     }
 }
 
@@ -206,6 +237,7 @@ fn check_f32<'db>(
             // IEC standard allows integer to float conversion
             Ok(Type::Elementary(ElementarySpec::Real))
         }
+        InferType::String(_) => Err(InferLiteralError::Invalid_REAL_Literal),
     }
 }
 
@@ -225,6 +257,7 @@ fn check_f64<'db>(
             // IEC standard allows integer to float conversion
             Ok(Type::Elementary(ElementarySpec::LReal))
         }
+        InferType::String(_) => Err(InferLiteralError::Invalid_LREAL_Literal),
     }
 }
 

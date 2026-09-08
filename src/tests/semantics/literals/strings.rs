@@ -111,6 +111,107 @@ END_FUNCTION_BLOCK"#;
     ");
 }
 
+/// A bare literal carries no type of its own, exactly like a bare number:
+/// the slot decides. `'A'` is a STRING where a STRING is expected and a CHAR
+/// where a CHAR is, so the typed `CHAR#'A'` becomes the way to SAY it, not the
+/// only way to write it.
+#[rstest]
+fn valid_bare_literal_is_a_char_where_a_char_is_expected(mut with_db: RootDatabase) {
+    let source = r#"
+FUNCTION fn1 : INT
+    VAR
+        a : CHAR := 'A';
+        e : CHAR := 'e';
+        z : CHAR := '$E9';
+        s : STRING := 'A';
+        c : CHAR;
+    END_VAR
+    c := 'Z';
+    s := 'hello';
+    fn1 := 0;
+END_FUNCTION"#;
+
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @"");
+}
+
+/// The length rule is the CHAR literal's, whichever form wrote it.
+#[rstest]
+fn invalid_bare_literal_too_long_for_a_char(mut with_db: RootDatabase) {
+    let source = r#"
+FUNCTION_BLOCK fb1
+    VAR
+        c : CHAR := 'ab';
+    END_VAR
+END_FUNCTION_BLOCK"#;
+
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
+    [E0309] Error: invalid literal
+       ,-[ file:///test0.st:4:21 ]
+       |
+     4 |         c : CHAR := 'ab';
+       |                     ^^|^
+       |                       `--- cannot infer '<string>' to 'CHAR': CHAR literal must be exactly 1 character, got 2
+    ---'
+    ");
+}
+
+/// Being untyped does not make the literal a wildcard: a slot that takes
+/// neither STRING nor CHAR leaves it at its default type and refuses it
+/// there, the way `t : TIME := 5` is refused as an INT.
+#[rstest]
+fn invalid_bare_literal_in_a_numeric_slot(mut with_db: RootDatabase) {
+    let source = r#"
+FUNCTION_BLOCK fb1
+    VAR
+        t : TIME := 'ab';
+    END_VAR
+END_FUNCTION_BLOCK"#;
+
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
+    [E0301] Error: type mismatch
+       ,-[ file:///test0.st:4:18 ]
+       |
+     4 |         t : TIME := 'ab';
+       |                  ^^^|^^^
+       |                     `----- expected 'TIME', got 'STRING'
+    ---'
+    ");
+}
+
+/// A CHAR still does not widen to STRING - that widening is an encoding the
+/// cast machinery has no lane for. The literal being untyped changes what
+/// `'A'` may BECOME, not what a CHAR-typed value converts to.
+#[rstest]
+fn invalid_char_variable_still_does_not_initialize_a_string(mut with_db: RootDatabase) {
+    let source = r#"
+FUNCTION fn1 : INT
+    VAR
+        c : CHAR := 'A';
+        s : STRING;
+    END_VAR
+    s := c;
+    fn1 := 0;
+END_FUNCTION"#;
+
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
+    [E0301] Error: type mismatch
+       ,-[ file:///test0.st:7:10 ]
+       |
+     5 |         s : STRING;
+       |         |
+       |         `-- type is declared by variable 's' here
+       |
+     7 |     s := c;
+       |          |
+       |          `-- expected 'STRING', got 'CHAR'
+       |          |
+       |          `-- consider explicitly casting with 'CHAR_TO_STRING(c)'
+       |
+       | Help: insert explicit cast 'CHAR_TO_STRING(c)'
+    ---'
+    ");
+}
+
 #[rstest]
 fn invalid_string_to_int_mismatch(mut with_db: RootDatabase) {
     let source = r#"
@@ -121,12 +222,12 @@ FUNCTION_BLOCK fb1
 END_FUNCTION_BLOCK"#;
 
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E0301] Error: type mismatch
-       ,-[ file:///test0.st:4:17 ]
+    [E0309] Error: invalid literal
+       ,-[ file:///test0.st:4:20 ]
        |
      4 |         x : INT := 'hello';
-       |                 ^^^^^|^^^^
-       |                      `------ expected 'INT', got 'STRING'
+       |                    ^^^|^^^
+       |                       `----- cannot infer '<string>' to 'INT': cannot use string literal as INT
     ---'
     ");
 }
@@ -141,12 +242,12 @@ FUNCTION_BLOCK fb1
 END_FUNCTION_BLOCK"#;
 
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E0301] Error: type mismatch
-       ,-[ file:///test0.st:4:20 ]
+    [E0309] Error: invalid literal
+       ,-[ file:///test0.st:4:23 ]
        |
      4 |         s : STRING := 42;
-       |                    ^^|^^
-       |                      `---- expected 'STRING', got 'INT'
+       |                       ^|
+       |                        `-- cannot infer '<integer>' to 'STRING': cannot use numeric literal as STRING
     ---'
     ");
 }

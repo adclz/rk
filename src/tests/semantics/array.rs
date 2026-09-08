@@ -202,12 +202,12 @@ fn invalid_non_integer_subscript(mut with_db: RootDatabase) {
        |               ^|^
        |                `--- cannot infer '<float>' to 'DINT': invalid DINT literal
     ---'
-    [E0609] Error: invalid array access
+    [E0309] Error: invalid literal
         ,-[ file:///test0.st:10:15 ]
         |
      10 |             a['x'] := 4;
         |               ^|^
-        |                `--- array index must be an integer, found STRING
+        |                `--- cannot infer '<string>' to 'DINT': cannot use string literal as DINT
     ----'
     ");
 }

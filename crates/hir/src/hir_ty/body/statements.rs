@@ -23,7 +23,7 @@ use crate::{
         body::{Adjust, BodyInferenceResult, CaseLabelValue, NullState},
         infer::{Infer, expr::InferExprCtx},
         resolver::{Resolver, func_call::resolve_func_call},
-        ty::Type,
+        ty::{InferType, Type},
     },
 };
 
@@ -68,12 +68,18 @@ fn check_case_label_constant<'db>(
     // from the variant table; there is nothing to record here.
     match ctx.get_type_of_expr(label).normalize(db) {
         Type::Enum(_) | Type::EnumVariant(..) if allow_non_integer => return,
-        Type::Elementary(ElementarySpec::String) if allow_non_integer => {
+        // The label is evaluated BEFORE it coerces to the selector, so a bare
+        // literal is still untyped here.
+        Type::Elementary(ElementarySpec::String) | Type::Infer(InferType::String(_))
+            if allow_non_integer =>
+        {
             // A string LITERAL is constant; a STRING variable is not. Record
             // the DECODED bytes, so `STRING#'a'` and `'a'` are one label and
             // an escape is compared by what it denotes.
             if let ExprKind::PrimaryExpr(PrimaryExpr::Literal(
-                Elementary::String(ident) | Elementary::Char(ident),
+                Elementary::String(ident)
+                | Elementary::InferString(ident)
+                | Elementary::Char(ident),
             )) = label.expr(db)
                 && let Ok(bytes) = ident.as_single_string(db)
             {
@@ -1036,7 +1042,8 @@ fn check_string_literal_fits<'db>(
         .into();
 
     let ExprKind::PrimaryExpr(PrimaryExpr::Literal(
-        crate::hir_def::expressions::expression::Elementary::String(lit),
+        crate::hir_def::expressions::expression::Elementary::String(lit)
+        | crate::hir_def::expressions::expression::Elementary::InferString(lit),
     )) = target.expr(db)
     else {
         return;

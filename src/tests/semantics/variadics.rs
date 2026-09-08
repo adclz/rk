@@ -287,7 +287,7 @@ FUNCTION fn
 END_FUNCTION
 "#;
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E0301] Error: type mismatch
+    [E0309] Error: invalid literal
         ,-[ file:///test0.st:10:19 ]
         |
       4 |         args: INT...
@@ -296,7 +296,7 @@ END_FUNCTION
         |
      10 |     sum_all(1, 2, 'hello');
         |                   ^^^|^^^
-        |                      `----- expected 'INT', got 'STRING'
+        |                      `----- cannot infer '<string>' to 'INT': cannot use string literal as INT
     ----'
     ");
 }
