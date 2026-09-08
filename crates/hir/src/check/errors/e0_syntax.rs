@@ -65,6 +65,12 @@ pub enum SyntaxError {
         file: File,
         span: Range,
     },
+    AssignInCondition {
+        file: File,
+        span: Range,
+        /// The `:=` and the space around it, which is all the fix replaces.
+        sign: Range,
+    },
     MissingDotInForList {
         file: File,
         span: Range,
@@ -131,6 +137,7 @@ impl ErrorCode for SyntaxError {
             SyntaxError::EmptyRightHandSide(_) => "E0012",
             SyntaxError::MissingDotInAssignment { .. } => "E0013",
             SyntaxError::MissingEqualInAssignment { .. } => "E0014",
+            SyntaxError::AssignInCondition { .. } => "E0040",
             SyntaxError::MissingDotInForList { .. } => "E0015",
             SyntaxError::MissingEqualInForList { .. } => "E0016",
             SyntaxError::FunctionCallInInitExpression(_) => "E0017",
@@ -479,6 +486,31 @@ impl<'db> ToIdeDiagnostic<'db> for SyntaxError {
                                     .range(crate::denormalize(db, file, &range).unwrap_or_default())
                                     .call(),
                             ],
+                        )])))
+                        .call(),
+                );
+
+                diag
+            }
+            Self::AssignInCondition { file, span, sign } => {
+                let mut diag = diag()
+                    .message("':=' assigns, a condition compares with '='".into())
+                    .severity(DiagnosticSeverity::ERROR)
+                    .desc(self)
+                    .range(crate::denormalize(db, file, span).unwrap_or_default())
+                    .call();
+
+                let assign = crate::denormalize(db, file, sign).unwrap_or_default();
+
+                diag.with_fix(
+                    action()
+                        .title("replace ':=' with '='".into())
+                        .kind(auto_lsp::lsp_types::CodeActionKind::QUICKFIX)
+                        .diagnostics(vec![diag.inner()])
+                        .is_preferred(true)
+                        .edit(WorkspaceEdit::new(HashMap::from([(
+                            file.url(db).clone(),
+                            vec![edit().new_text(" = ".to_string()).range(assign).call()],
                         )])))
                         .call(),
                 );

@@ -208,6 +208,27 @@
       "type": "STRING",
       "value": ":"
     },
+    "ERR_assign_in_condition": {
+      "type": "PREC",
+      "value": -1,
+      "content": {
+        "type": "SEQ",
+        "members": [
+          {
+            "type": "SYMBOL",
+            "name": "_expression"
+          },
+          {
+            "type": "STRING",
+            "value": ":="
+          },
+          {
+            "type": "SYMBOL",
+            "name": "_expression"
+          }
+        ]
+      }
+    },
     "ERR_output_assign_in_assignment": {
       "type": "SEQ",
       "members": [
@@ -11031,8 +11052,17 @@
           "type": "FIELD",
           "name": "if_cond",
           "content": {
-            "type": "SYMBOL",
-            "name": "_expression"
+            "type": "CHOICE",
+            "members": [
+              {
+                "type": "SYMBOL",
+                "name": "_expression"
+              },
+              {
+                "type": "SYMBOL",
+                "name": "ERR_assign_in_condition"
+              }
+            ]
           }
         },
         {
@@ -11164,8 +11194,17 @@
           "type": "FIELD",
           "name": "else_if_cond",
           "content": {
-            "type": "SYMBOL",
-            "name": "_expression"
+            "type": "CHOICE",
+            "members": [
+              {
+                "type": "SYMBOL",
+                "name": "_expression"
+              },
+              {
+                "type": "SYMBOL",
+                "name": "ERR_assign_in_condition"
+              }
+            ]
           }
         },
         {
@@ -11634,8 +11673,17 @@
           "type": "FIELD",
           "name": "while_cond",
           "content": {
-            "type": "SYMBOL",
-            "name": "_expression"
+            "type": "CHOICE",
+            "members": [
+              {
+                "type": "SYMBOL",
+                "name": "_expression"
+              },
+              {
+                "type": "SYMBOL",
+                "name": "ERR_assign_in_condition"
+              }
+            ]
           }
         },
         {
@@ -11743,8 +11791,17 @@
           "type": "FIELD",
           "name": "repeat_cond",
           "content": {
-            "type": "SYMBOL",
-            "name": "_expression"
+            "type": "CHOICE",
+            "members": [
+              {
+                "type": "SYMBOL",
+                "name": "_expression"
+              },
+              {
+                "type": "SYMBOL",
+                "name": "ERR_assign_in_condition"
+              }
+            ]
           }
         },
         {

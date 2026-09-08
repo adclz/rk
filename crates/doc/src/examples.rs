@@ -553,6 +553,23 @@ END_CONFIGURATION
             lint_rule: None,
         },
         ErrorExample {
+            code: "E0040",
+            category: "Syntax",
+            title: "Assignment sign ':=' in a condition",
+            description: "A condition compares, so it takes `=`. `:=` assigns, and writing one where the language expects a test is almost always a typo for the other.",
+            sources: &[r#"
+FUNCTION_BLOCK fb1
+VAR
+    x: INT;
+END_VAR
+    IF x := 1 THEN
+        x := 2;
+    END_IF;
+END_FUNCTION_BLOCK
+"#],
+            lint_rule: None,
+        },
+        ErrorExample {
             code: "E0050",
             category: "Syntax",
             title: "Generic syntax error",

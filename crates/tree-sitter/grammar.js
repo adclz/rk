@@ -343,6 +343,10 @@ module.exports = grammar({
     // Missing '=' after ':'
     ERR_missing_equal_in_for_control: ($) => ":",
 
+    // Using ':=' (assignment) where a condition compares with '='
+    ERR_assign_in_condition: ($) =>
+      prec(-1, seq($._expression, ":=", $._expression)),
+
     // Using '=>' (output assign) instead of ':='
     ERR_output_assign_in_assignment: ($) => seq("=>", $._expression),
     ERR_output_assign_in_for_control: ($) => "=>",
@@ -2018,7 +2022,7 @@ module.exports = grammar({
     if_stmt: ($) =>
       seq(
         kw("IF"),
-        field("if_cond", $._expression),
+        field("if_cond", choice($._expression, $.ERR_assign_in_condition)),
         kw("THEN"),
         field("if_body", optional($.stmt_list)),
         field("else_if", repeat($.else_if_stmt)),
@@ -2029,7 +2033,7 @@ module.exports = grammar({
     else_if_stmt: ($) =>
       seq(
         kw("ELSIF"),
-        field("else_if_cond", $._expression),
+        field("else_if_cond", choice($._expression, $.ERR_assign_in_condition)),
         kw("THEN"),
         field("else_if_body", optional($.stmt_list)),
       ),
@@ -2087,7 +2091,7 @@ module.exports = grammar({
     while_stmt: ($) =>
       seq(
         kw("WHILE"),
-        field("while_cond", $._expression),
+        field("while_cond", choice($._expression, $.ERR_assign_in_condition)),
         kw("DO"),
         field("while_body", optional($.stmt_list)),
         kw("END_WHILE"),
@@ -2098,7 +2102,7 @@ module.exports = grammar({
         kw("REPEAT"),
         field("repeat_body", optional($.stmt_list)),
         kw("UNTIL"),
-        field("repeat_cond", $._expression),
+        field("repeat_cond", choice($._expression, $.ERR_assign_in_condition)),
         kw("END_REPEAT"),
       ),
 

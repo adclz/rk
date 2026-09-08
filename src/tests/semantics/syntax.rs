@@ -1104,3 +1104,98 @@ fn comma_subscript_constant_bounds_check_names_its_dimension(mut with_db: RootDa
     ---'
     ");
 }
+
+/// A condition compares, so `:=` in one is an assignment where `=` was meant.
+/// It used to fall out as a generic syntax error plus a type mismatch on the
+/// left operand, where `FOR` has said which sign belongs there all along.
+#[rstest]
+fn invalid_assign_in_a_condition(mut with_db: RootDatabase) {
+    let source = r#"
+FUNCTION f : INT
+VAR
+    x : INT;
+END_VAR
+    IF x := 1 THEN
+        x := 2;
+    END_IF;
+END_FUNCTION
+"#;
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
+    [E0040] Error: syntax
+       ,-[ file:///test0.st:6:8 ]
+       |
+     6 |     IF x := 1 THEN
+       |        ^^^|^^
+       |           `---- ':=' assigns, a condition compares with '='
+       |
+       | Help: replace ':=' with '='
+    ---'
+    ");
+}
+
+/// The same sign in the other two conditions the language has.
+#[rstest]
+fn invalid_assign_in_a_loop_condition(mut with_db: RootDatabase) {
+    let source = r#"
+FUNCTION f : INT
+VAR
+    x : INT;
+END_VAR
+    WHILE x := 1 DO
+        x := 2;
+    END_WHILE;
+
+    REPEAT
+        x := 2;
+    UNTIL x := 1 END_REPEAT;
+END_FUNCTION
+"#;
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
+    [E0040] Error: syntax
+       ,-[ file:///test0.st:6:11 ]
+       |
+     6 |     WHILE x := 1 DO
+       |           ^^^|^^
+       |              `---- ':=' assigns, a condition compares with '='
+       |
+       | Help: replace ':=' with '='
+    ---'
+    [E0040] Error: syntax
+        ,-[ file:///test0.st:12:11 ]
+        |
+     12 |     UNTIL x := 1 END_REPEAT;
+        |           ^^^|^^
+        |              `---- ':=' assigns, a condition compares with '='
+        |
+        | Help: replace ':=' with '='
+    ----'
+    ");
+}
+
+/// An ELSIF is a condition too.
+#[rstest]
+fn invalid_assign_in_an_elsif_condition(mut with_db: RootDatabase) {
+    let source = r#"
+FUNCTION f : INT
+VAR
+    x : INT;
+END_VAR
+    IF x = 1 THEN
+        x := 2;
+    ELSIF x := 2 THEN
+        x := 3;
+    END_IF;
+END_FUNCTION
+"#;
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
+    [E0040] Error: syntax
+       ,-[ file:///test0.st:8:11 ]
+       |
+     8 |     ELSIF x := 2 THEN
+       |           ^^^|^^
+       |              `---- ':=' assigns, a condition compares with '='
+       |
+       | Help: replace ':=' with '='
+    ---'
+    ");
+}

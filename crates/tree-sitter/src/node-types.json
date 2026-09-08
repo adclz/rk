@@ -742,6 +742,21 @@
     }
   },
   {
+    "type": "ERR_assign_in_condition",
+    "named": true,
+    "fields": {},
+    "children": {
+      "multiple": true,
+      "required": true,
+      "types": [
+        {
+          "type": "_expression",
+          "named": true
+        }
+      ]
+    }
+  },
+  {
     "type": "ERR_class_variables_after_method",
     "named": true,
     "fields": {},
@@ -2515,6 +2530,10 @@
         "required": true,
         "types": [
           {
+            "type": "ERR_assign_in_condition",
+            "named": true
+          },
+          {
             "type": "_expression",
             "named": true
           }
@@ -3537,6 +3556,10 @@
         "multiple": false,
         "required": true,
         "types": [
+          {
+            "type": "ERR_assign_in_condition",
+            "named": true
+          },
           {
             "type": "_expression",
             "named": true
@@ -5462,6 +5485,10 @@
         "required": true,
         "types": [
           {
+            "type": "ERR_assign_in_condition",
+            "named": true
+          },
+          {
             "type": "_expression",
             "named": true
           }
@@ -7004,6 +7031,10 @@
         "multiple": false,
         "required": true,
         "types": [
+          {
+            "type": "ERR_assign_in_condition",
+            "named": true
+          },
           {
             "type": "_expression",
             "named": true

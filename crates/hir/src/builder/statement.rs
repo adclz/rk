@@ -65,7 +65,7 @@ impl<'db> Parse<'db> for ast::generated::Stmt {
                 ))
             }
             StmtType::IfStmt(if_stmt) => {
-                let condition = if_stmt.if_cond.cast(sema.ast).parse(sema)?;
+                let condition = parse_condition(sema, if_stmt.if_cond.cast(sema.ast))?;
                 let then = if_stmt
                     .if_body
                     .as_ref()
@@ -83,7 +83,8 @@ impl<'db> Parse<'db> for ast::generated::Stmt {
                     .iter()
                     .map(|else_if_stmt| {
                         let else_if_node = else_if_stmt.cast(sema.ast);
-                        let condition = else_if_node.else_if_cond.cast(sema.ast).parse(sema)?;
+                        let condition =
+                            parse_condition(sema, else_if_node.else_if_cond.cast(sema.ast))?;
                         let then = else_if_node
                             .else_if_body
                             .as_ref()
@@ -275,7 +276,7 @@ impl<'db> Parse<'db> for ast::generated::Stmt {
                     .transpose()?
                     .unwrap_or_else(std::vec::Vec::new);
 
-                let condition = repeat.repeat_cond.cast(sema.ast).parse(sema)?;
+                let condition = parse_condition(sema, repeat.repeat_cond.cast(sema.ast))?;
                 Ok(Stmt::new(
                     sema.db,
                     StmtKind::Repeat { body, condition },
@@ -284,7 +285,7 @@ impl<'db> Parse<'db> for ast::generated::Stmt {
                 ))
             }
             StmtType::WhileStmt(while_stmt) => {
-                let condition = while_stmt.while_cond.cast(sema.ast).parse(sema)?;
+                let condition = parse_condition(sema, while_stmt.while_cond.cast(sema.ast))?;
                 let body = while_stmt
                     .while_body
                     .as_ref()
@@ -456,4 +457,45 @@ impl<'db> Parse<'db> for ast::generated::Assign {
             )),
         }
     }
+}
+
+/// A condition compares, so `:=` written in one is an assignment where `=`
+/// was meant. The grammar keeps both sides, and the left one is the condition
+/// the author was writing, so checking carries on from there rather than
+/// reporting the shape twice.
+fn parse_condition<'db>(
+    sema: &mut SemanticIndexBuilder<'db>,
+    node: &ast::generated::ERRAssignInCondition_Expression,
+) -> anyhow::Result<crate::hir_def::expressions::expression::Expr<'db>, IdeDiagnostic> {
+    let err = match node {
+        ast::generated::ERRAssignInCondition_Expression::Expression(expr) => {
+            return expr.parse(sema);
+        }
+        ast::generated::ERRAssignInCondition_Expression::ERRAssignInCondition(err) => err,
+    };
+
+    // Between the two sides is the `:=` and whatever spaces surround it,
+    // which is all a fix should touch: replacing the whole condition would
+    // take both operands with it.
+    let span = err.get_range().to_owned();
+    let sign = match (err.children.first(), err.children.get(1)) {
+        (Some(left), Some(right)) => {
+            let left = left.cast(sema.ast).get_range().to_owned();
+            let right = right.cast(sema.ast).get_range().to_owned();
+            auto_lsp::tree_sitter::Range {
+                start_byte: left.end_byte,
+                end_byte: right.start_byte,
+                start_point: left.end_point,
+                end_point: right.start_point,
+            }
+        }
+        _ => span,
+    };
+
+    Err(SyntaxError::AssignInCondition {
+        file: sema.file,
+        span,
+        sign,
+    }
+    .to_diagnostic(sema.db, sema.file))
 }
