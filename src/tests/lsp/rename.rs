@@ -410,3 +410,41 @@ END_FUNCTION
         );
     }
 }
+
+/// A library file is not the workspace's to edit. Renaming one of its names
+/// rewrote every use and left the declaration behind, so the next check
+/// reported E0210 on code the reader had not touched.
+#[rstest]
+#[case::a_library_use("LibFn()", None)]
+#[case::a_workspace_use("Mine();", Some(2))]
+#[case::a_workspace_declaration("Mine : INT", Some(2))]
+pub fn a_library_name_is_not_renamed(
+    mut with_db: RootDatabase,
+    #[case] needle: &str,
+    #[case] edits: Option<usize>,
+) {
+    crate::tests::utils::add_library_sources(
+        &mut with_db,
+        &["FUNCTION LibFn : INT\nEND_FUNCTION\n"],
+    );
+    let source = r#"
+FUNCTION Mine : INT
+END_FUNCTION
+
+FUNCTION caller : INT
+    caller := LibFn() + Mine();
+END_FUNCTION
+"#;
+    add_sources(&mut with_db, &[source]);
+    let file = *with_db.get_files().iter().last().unwrap();
+    let offset = source.find(needle).expect("the name");
+    let node = ide_proto::walk::descendant_at(&with_db, file, offset).expect("a node");
+
+    let written = ide_proto::handlers::RenameHandler::rename(&node, &with_db, "Renamed").map(|e| {
+        e.changes
+            .map(|c| c.values().map(|v| v.len()).sum::<usize>())
+            .unwrap_or(0)
+    });
+
+    assert_eq!(written, edits);
+}
