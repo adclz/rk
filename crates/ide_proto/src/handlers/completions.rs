@@ -68,6 +68,10 @@ pub fn complete(
     if let Some(braces) = pragma::braces_at(source, offset) {
         return pragma_items(db, file, offset, braces);
     }
+    // Inside `{allow '...'}` the argument names a lint rule.
+    if pragma::allow_rule_at(source, offset) {
+        return pragma::allow_rules();
+    }
 
     let (target, node_key, is_last_before) = match completion_descendant_at(db, file, offset) {
         Some(result) => result,

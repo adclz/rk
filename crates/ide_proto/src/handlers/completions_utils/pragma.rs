@@ -30,6 +30,45 @@ pub fn braces_at(source: &str, offset: usize) -> Option<Braces> {
     })
 }
 
+/// Whether the cursor sits in the quoted argument of an `{allow}`, which
+/// names a lint rule. The argument is a plain string, so nothing in the tree
+/// tells it apart from any other; what precedes it in the source does.
+pub fn allow_rule_at(source: &str, offset: usize) -> bool {
+    let Some(before) = source.get(..offset) else {
+        return false;
+    };
+    let Some(open) = before.rfind('{') else {
+        return false;
+    };
+    let inside = &before[open + 1..];
+    // A closing brace means that pragma is behind us, not around us.
+    if inside.contains('}') {
+        return false;
+    }
+    let named = inside.trim_start();
+    let Some(rest) = named.strip_prefix("allow") else {
+        return false;
+    };
+    if rest.starts_with(|c: char| c.is_ascii_alphanumeric() || c == '_') {
+        return false;
+    }
+    // Inside the quotes rather than between them: an odd count so far.
+    inside.matches('\'').count() % 2 == 1
+}
+
+/// Every lint rule an `{allow}` can name. Read from the linter so the list
+/// cannot fall behind the rules it offers.
+pub fn allow_rules() -> Vec<CompletionItem> {
+    linter::rules::ALL_RULE_NAMES
+        .iter()
+        .map(|name| CompletionItem {
+            label: (*name).to_string(),
+            kind: Some(lsp_types::CompletionItemKind::ENUM_MEMBER),
+            ..Default::default()
+        })
+        .collect()
+}
+
 /// The pragmas that annotate a declaration, offered where the declarations
 /// themselves are.
 pub fn pou_pragmas(braces: Braces) -> Vec<CompletionItem> {

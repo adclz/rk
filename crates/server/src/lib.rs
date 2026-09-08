@@ -158,6 +158,8 @@ pub fn boot() -> Result<(), Box<dyn Error + Send + Sync>> {
                         "(".to_owned(),
                         // Opens a pragma, whose name is all that can follow.
                         "{".to_owned(),
+                        // Opens an `{allow}` argument, which names a lint rule.
+                        "'".to_owned(),
                     ]),
                     all_commit_characters: None,
                     completion_item: None,

@@ -756,3 +756,72 @@ END_INTERFACE
         assert!(!labels.iter().any(|l| l == stmt), "{stmt} in an INTERFACE");
     }
 }
+
+/// `{allow}` names a lint rule, and the names come from the linter itself so
+/// the list cannot fall behind the rules. The argument is a plain string, so
+/// only its position inside an `{allow}` tells it apart from any other.
+#[rstest]
+#[case::between_the_quotes(
+    r#"
+{allow '|'}
+FUNCTION f : INT
+END_FUNCTION
+"#,
+    true
+)]
+#[case::part_way_through_a_name(
+    r#"
+{allow 'unu|'}
+FUNCTION f : INT
+END_FUNCTION
+"#,
+    true
+)]
+#[case::a_second_rule_in_one_pragma(
+    r#"
+{allow 'dead-code' '|'}
+FUNCTION f : INT
+END_FUNCTION
+"#,
+    true
+)]
+#[case::outside_the_quotes(
+    r#"
+{allow 'dead-code'}
+FUNCTION f : INT
+    |
+END_FUNCTION
+"#,
+    false
+)]
+#[case::another_pragma_taking_a_string(
+    r#"
+FUNCTION f : INT
+    {wasm '|'}
+END_FUNCTION
+"#,
+    false
+)]
+#[case::a_string_that_is_not_a_pragma(
+    r#"
+FUNCTION f : INT
+VAR
+    s : STRING := '|';
+END_VAR
+END_FUNCTION
+"#,
+    false
+)]
+pub fn allow_names_a_lint_rule(
+    mut with_db: RootDatabase,
+    #[case] marked: &str,
+    #[case] names_rules: bool,
+) {
+    let labels = complete_at(&mut with_db, marked);
+
+    assert_eq!(
+        labels == linter::rules::ALL_RULE_NAMES,
+        names_rules,
+        "{labels:?}"
+    );
+}
