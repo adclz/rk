@@ -5,11 +5,17 @@ description: The lint rules `rk` applies, what each L-code means and how to conf
 
 ## Summary
 
-The linter runs on top of the compiler diagnostics and reports style, clarity and suspicious-code findings. It is ON by default: a workspace that never mentions the linter still gets the **recommended** set — the 21 rules that report a probable bug rather than a matter of taste, which are exactly the ones that emit at warning severity. `[linter]` tunes that set; it does not switch the linter on.
+The linter runs on top of the compiler diagnostics and reports style, clarity and suspicious-code findings.
+It is ON by default: a workspace that never mentions the linter still gets the **recommended** set — the 22 rules that report a probable bug rather than a matter of taste.
+`[linter]` tunes that set; it does not switch the linter on.
 
-Only `rk check` runs the linter. `rk compile` and `rk test` skip it entirely, so a lint can never block a build. Lints are also never reported for library or standard-library files, only for the workspace's own sources. No lint carries a quick fix, so no code action is offered for one.
+`rk check` and the language server both run it, on the same set, so an editor and the CLI agree about a workspace.
+`rk compile` and `rk test` skip it entirely, so a lint can never block a build.
+Lints are also never reported for library or standard-library files, only for the workspace's own sources.
+No lint carries a quick fix, so no code action is offered for one.
 
-Lints never change the exit code. `rk check` exits non-zero on errors only; a workspace full of warnings still exits 0.
+Lints never change the exit code.
+`rk check` exits non-zero on errors only; a workspace full of warnings still exits 0.
 
 Each lint diagnostic carries a note naming the rule that produced it, which is the name used to disable it:
 
@@ -20,20 +26,21 @@ rk check
    │ Note: lint rule: empty-case-branch
 ```
 
-The `json-lines` format carries the same string in the `notes` array. The `concise` format drops it, so use `full` or `json-lines` when you need the rule name.
+The `json-lines` format carries the same string in the `notes` array.
+The `concise` format drops it, so use `full` or `json-lines` when you need the rule name.
 
 `rk explain` accepts lint codes as well as error codes: `rk explain L0101` prints the title, category and a description of the rule.
 
 ## Configuration
 
-Two layers. `select` picks the baseline; `[linter.rules]` overrides individual
-rules on top of it, in both directions.
+Two layers.
+`select` picks the baseline; `[linter.rules]` overrides individual rules on top of it, in both directions.
 
 | `select` | rules that run |
 | -------- | -------------- |
-| absent, or no `[linter]` at all | the 21 recommended (warning-severity) rules |
-| `"recommended"` | the same 20, stated explicitly |
-| `"all"` | all 49 |
+| absent, or no `[linter]` at all | the 22 recommended rules |
+| `"recommended"` | the same 22, stated explicitly |
+| `"all"` | all 48 |
 | `"none"` | none, unless `[linter.rules]` names one |
 
 ```toml
@@ -57,24 +64,20 @@ yoda-condition = true    # opt IN one the baseline leaves out
 ```
 
 An unknown value for `select` is a config error naming the three valid ones.
-Unknown rule NAMES in `[linter.rules]` are still accepted silently and do
-nothing — copy the names from the tables below.
+Unknown rule NAMES in `[linter.rules]` are still accepted silently and do nothing — copy the names from the tables below.
 
-To silence one deliberate site instead of a whole rule, `{allow 'rule-name' ...}`:
-above a POU (or METHOD) it covers that whole POU; as a statement it covers the
-NEXT statement, nested bodies included. Several names fit one pragma. An unknown
-name there is NOT silent: `unknown-allow` (L0005) reports it, and it silences
-nothing.
+To silence one deliberate site instead of a whole rule, `{allow 'rule-name' ...}`: above a POU (or METHOD) it covers that whole POU; as a statement it covers the NEXT statement, nested bodies included.
+Several names fit one pragma.
+An unknown name there is NOT silent: `unknown-allow` (L0005) reports it, and it silences nothing.
 
-Severity is what decides the baseline: every warning-severity rule is
-recommended, every info and hint rule is opt-in. The tables below carry the
-severity, so they double as the list of what runs by default.
+Severity almost decides the baseline: every warning-severity rule is recommended, and info and hint rules are opt-in with two exceptions, marked **(recommended)** in the tables below.
+L0001 and L0102 report at info severity and still run by default, because what they flag is a probable bug that is quiet enough not to warrant a warning.
 
 ## Pragmas (L00xx)
 
 | Code | Rule | Severity | Flags |
 | --- | --- | --- | --- |
-| L0001 | `warn-pragma` | info | the message of an `{info = '...'}` pragma, at each call site of the marked POU |
+| L0001 | `warn-pragma` | info **(recommended)** | the message of an `{info = '...'}` pragma, at each call site of the marked POU |
 | L0002 | `warn-pragma` | warning | the message of a `{warn = '...'}` pragma, at each call site of the marked POU |
 | L0003 | `invalid-pragma` | warning | a pragma placed on a POU kind that does not accept it: `{test}` on FUNCTION_BLOCK, METHOD or PROGRAM, `{once}` on PROGRAM |
 | L0004 | `once-violation` | info | a `{once}` POU called more than once in the same body |
@@ -87,7 +90,7 @@ L0001 and L0002 share the rule name `warn-pragma`; disabling it silences both.
 | Code | Rule | Severity | Flags |
 | --- | --- | --- | --- |
 | L0101 | `unused-variable` | info | a VAR, VAR_INPUT or VAR_TEMP declaration never used in the body |
-| L0102 | `shadowing-variable` | info | a variable with the same name as a POU visible in the scope |
+| L0102 | `shadowing-variable` | info **(recommended)** | a variable with the same name as a POU visible in the scope |
 | L0103 | `duplicate-var-section` | info | the same variable section opened twice in one POU |
 | L0104 | `negated-condition` | info | `IF NOT c THEN ... ELSE ...`, which reads better with the branches swapped |
 | L0106 | `unnecessary-else` | info | an ELSE branch whose preceding branches all end with RETURN, EXIT or CONTINUE |
@@ -98,7 +101,8 @@ L0001 and L0002 share the rule name `warn-pragma`; disabling it silences both.
 | L0111 | `negated-comparison` | info | `NOT (x = y)`, which is `x <> y` |
 | L0112 | `duplicate-configuration` | info | two same-named CONFIGURATION blocks in the same file |
 
-`unused-variable` never reports VAR_OUTPUT, VAR_IN_OUT, VAR_GLOBAL, VAR_EXTERNAL, VAR_CONFIG or VAR_ACCESS, since those are read or written from outside the POU. It also skips the VAR_INPUT of a PROGRAM (written by the CONFIGURATION), the whole body of an `{extern}` FUNCTION, and any name starting with an underscore, which is the way to mark a declaration as deliberately unused.
+`unused-variable` never reports VAR_OUTPUT, VAR_IN_OUT, VAR_GLOBAL, VAR_EXTERNAL, VAR_CONFIG or VAR_ACCESS, since those are read or written from outside the POU.
+It also skips the VAR_INPUT of a PROGRAM (written by the CONFIGURATION), the whole body of an `{extern}` FUNCTION, and any name starting with an underscore, which is the way to mark a declaration as deliberately unused.
 
 ## Style and clarity (L02xx)
 
@@ -122,7 +126,8 @@ L0001 and L0002 share the rule name `warn-pragma`; disabling it silences both.
 
 The rule name for L0202 is `unused-return-type`, not `unused-return-value`, even though the message reads "unused return value".
 
-L0204 covers FUNCTION_BLOCK and PROGRAM call sites only. An incomplete FUNCTION or METHOD call is a hard error, E0233, and is not affected by this rule.
+L0204 covers FUNCTION_BLOCK and PROGRAM call sites only.
+An incomplete FUNCTION or METHOD call is a hard error, E0233, and is not affected by this rule.
 
 L0205 collapses every unassigned output of one body into a single diagnostic listing the names, with a related span per declaration.
 
@@ -152,7 +157,8 @@ L0205 collapses every unassigned output of one body into a single diagnostic lis
 
 L0306 keys on the value the compiler computed, not on the text, so `7`, `INT#7` and a CONSTANT holding 7 are one label; enum variants and strings fall back to the written form.
 
-L0304 only looks at a literal TRUE or FALSE. A condition that is constant after folding is not reported.
+L0304 only looks at a literal TRUE or FALSE.
+A condition that is constant after folding is not reported.
 
 ## Globals (L04xx)
 
@@ -164,4 +170,5 @@ The code is accepted and compiles; strict IEC 61131-3 wants the global imported 
 
 ## Codes with no rule
 
-L0105 and L0307 are not assigned. `rk explain` rejects them.
+L0105 and L0307 are not assigned.
+`rk explain` rejects them.

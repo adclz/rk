@@ -1,16 +1,15 @@
 ## Elementary types
 
-`BOOL`, `BYTE`, `WORD`, `DWORD`, `LWORD`,
-`SINT`, `INT`, `DINT`, `LINT`, `USINT`, `UINT`, `UDINT`, `ULINT`,
-`REAL`, `LREAL`,
-`TIME`, `LTIME`, `DATE`, `LDATE`, `TIME_OF_DAY` (`TOD`), `LTIME_OF_DAY` (`LTOD`), `DATE_AND_TIME` (`DT`), `LDATE_AND_TIME` (`LDT`),
-`STRING`, `STRING[n]`, `CHAR`.
+`BOOL`, `BYTE`, `WORD`, `DWORD`, `LWORD`, `SINT`, `INT`, `DINT`, `LINT`, `USINT`, `UINT`, `UDINT`, `ULINT`, `REAL`, `LREAL`, `TIME`, `LTIME`, `DATE`, `LDATE`, `TIME_OF_DAY` (`TOD`), `LTIME_OF_DAY` (`LTOD`), `DATE_AND_TIME` (`DT`), `LDATE_AND_TIME` (`LDT`), `STRING`, `STRING[n]`, `CHAR`.
 
-There is no `WSTRING`. A bare `STRING` has a capacity of 80 bytes.
+There is no `WSTRING`.
+A bare `STRING` has a capacity of 80 bytes.
 
-Widening within the same family is implicit (`INT` → `DINT`, `INT` → `REAL`). Everything else — narrowing, signed/unsigned, integer/bit-string, real → integer — needs an explicit `Std.Convert` call, and E0301 names the one to use: `INT_TO_SINT(i)`, `REAL_TO_INT(r)`, `INT_TO_WORD(i)`.
+Widening within the same family is implicit (`INT` → `DINT`, `INT` → `REAL`).
+Everything else — narrowing, signed/unsigned, integer/bit-string, real → integer — needs an explicit `Std.Convert` call, and E0301 names the one to use: `INT_TO_SINT(i)`, `REAL_TO_INT(r)`, `INT_TO_WORD(i)`.
 
-Real → integer rounds to nearest, ties to even (`REAL_TO_INT(2.5)` is `2`, `REAL_TO_INT(3.5)` is `4`); `TRUNC` drops the fraction instead. A value outside the target's range saturates to the nearest bound and NaN converts to `0`; `Std.Math` has `IS_NAN` and `NOT_OK` (NaN or infinite) to test a value before converting it.
+Real → integer rounds to nearest, ties to even (`REAL_TO_INT(2.5)` is `2`, `REAL_TO_INT(3.5)` is `4`); `TRUNC` drops the fraction instead.
+A value outside the target's range saturates to the nearest bound and NaN converts to `0`; `Std.Math` has `IS_NAN` and `NOT_OK` (NaN or infinite) to test a value before converting it.
 
 ## Literals
 
@@ -30,14 +29,21 @@ d: DATE := D#2024-01-31;    // D# or DATE#
 o: TOD := TOD#12:30:00;
 n: DT := DT#2024-01-31-12:30:00;
 s: STRING := 'hello';       // single quotes
-c: CHAR := CHAR#'A';        // a bare 'A' is a STRING, not a CHAR
+c: CHAR := 'A';             // untyped too, inferred from the target
+h: CHAR := CHAR#'A';        // typed prefix, same value
 ```
 
-Inside a single-quoted string, `$` escapes: `$$`, `$'`, `$L`, `$N`, `$P`, `$R`, `$T`, and `$41` for one hex byte. Double-quoted strings are also accepted and produce a `STRING`.
+Inside a single-quoted string, `$` escapes: `$$`, `$'`, `$L`, `$N`, `$P`, `$R`, `$T`, and `$41` for one hex byte.
+Double-quoted strings are also accepted and produce a `STRING`.
 
-A literal's characters are their UTF-8 bytes, which is how the runtime, the debugger and the network read a `STRING`: `'café'` is 5 bytes, `LEN` counts bytes, and a `STRING[4]` refuses it (E0309). `FIND`, `LEFT`, `RIGHT`, `MID`, `INSERT`, `DELETE` and `REPLACE` count bytes too and can cut through a character; their `CHAR_` twins in `Std.Strings` (`CHAR_COUNT`, `CHAR_AT`, `CHAR_FIND`, `CHAR_LEFT`, `CHAR_RIGHT`, `CHAR_MID`, `CHAR_INSERT`, `CHAR_DELETE`, `CHAR_REPLACE`) count characters, and `CHAR_AT` is the way from a `STRING` to a `CHAR`.
+A literal's characters are their UTF-8 bytes, which is how the runtime, the debugger and the network read a `STRING`: `'café'` is 5 bytes, `LEN` counts bytes, and a `STRING[4]` refuses it (E0309).
+`FIND`, `LEFT`, `RIGHT`, `MID`, `INSERT`, `DELETE` and `REPLACE` count bytes too and can cut through a character; their `CHAR_` twins in `Std.Strings` (`CHAR_COUNT`, `CHAR_AT`, `CHAR_FIND`, `CHAR_LEFT`, `CHAR_RIGHT`, `CHAR_MID`, `CHAR_INSERT`, `CHAR_DELETE`, `CHAR_REPLACE`) count characters, and `CHAR_AT` is the way from a `STRING` to a `CHAR`.
 
-A `CHAR` is one character of any script, stored as its code point in a 32-bit slot: `CHAR#'é'` and `CHAR#'中'` are fine, `CHAR#'ab'` is refused. It does not widen to `STRING` by itself; `CHAR_TO_STRING` writes its UTF-8 bytes, `CHAR_TO_BYTE` keeps its low byte and `BYTE_TO_CHAR` reads one.
+A quoted literal carries no type of its own, exactly like a bare number: it is a `STRING` where a `STRING` is expected and a `CHAR` where a `CHAR` is.
+So `c: CHAR := 'A'` and `s: STRING := 'A'` both hold, and the `CHAR#` prefix says outright what the slot already decides.
+
+A `CHAR` is one character of any script, stored as its code point in a 32-bit slot: `'é'` and `'中'` are fine, `'ab'` is refused (E0309), whichever form wrote it.
+A `CHAR` *value* does not widen to `STRING`; `CHAR_TO_STRING` writes its UTF-8 bytes, `CHAR_TO_BYTE` keeps its low byte and `BYTE_TO_CHAR` reads one.
 
 A string literal longer than the destination's declared capacity is refused at compile time (E0309), not truncated.
 
@@ -58,11 +64,14 @@ Each date/time type is a fixed integer encoding, and the compiler refuses any li
 
 `DT` shares `LDT`'s span (its bounds are that range in whole seconds), so the implicit widening never overflows and there is no 2038 problem; the pair differs by precision, seconds versus nanoseconds.
 
-All of them are zone-naive: no timezone, no DST, no leap seconds. A `DT` literal is mapped to its epoch value as UTC, so any future host clock source must deliver UTC or stored timestamps will be off by the local offset.
+All of them are zone-naive: no timezone, no DST, no leap seconds.
+A `DT` literal is mapped to its epoch value as UTC, so any future host clock source must deliver UTC or stored timestamps will be off by the local offset.
 
 Conversions, `TO_STRING` formatting, timers and the full policy live in `programming-time`.
 
-`REAL_TO_STRING` and `LREAL_TO_STRING` print the shortest text that reads back to the same value, spelled as a REAL literal: `'1.5'`, `'50.1'`, `'100.0'`, `'1.0E20'`, `'2.5E-9'`. A REAL is formatted as the REAL it is, so `50.1` is `'50.1'` and not its f64 widening; an LREAL shows every digit it holds, so `0.1 + 0.2` is `'0.30000000000000004'`. `'NaN'`, `'Inf'` and `'-Inf'` spell the values no literal can.
+`REAL_TO_STRING` and `LREAL_TO_STRING` print the shortest text that reads back to the same value, spelled as a REAL literal: `'1.5'`, `'50.1'`, `'100.0'`, `'1.0E20'`, `'2.5E-9'`.
+A REAL is formatted as the REAL it is, so `50.1` is `'50.1'` and not its f64 widening; an LREAL shows every digit it holds, so `0.1 + 0.2` is `'0.30000000000000004'`.
+`'NaN'`, `'Inf'` and `'-Inf'` spell the values no literal can.
 
 ## Type declarations
 
@@ -90,7 +99,9 @@ TYPE
 END_TYPE
 ```
 
-Enum values are **qualified only**: write `Color#Green`, never a bare `Green`. A bare variant is E0204 "no item found in scope". This holds in initializers, expressions and `CASE` labels alike.
+Enum values are **qualified only**: write `Color#Green`, never a bare `Green`.
+A bare variant is E0204 "no item found in scope".
+This holds in initializers, expressions and `CASE` labels alike.
 
 Initializers:
 
@@ -109,4 +120,5 @@ r^ := 42;
 IF r <> NULL THEN r^ := 0; END_IF;
 ```
 
-Bit and slice access on bit-string types: `w.3` and `w.%X3` are the bit (a `BOOL`), `l.%B7` a byte, `l.%W3` a word, `l.%D1` a double word. The slice takes the slice's type, not the base's.
+Bit and slice access on bit-string types: `w.3` and `w.%X3` are the bit (a `BOOL`), `l.%B7` a byte, `l.%W3` a word, `l.%D1` a double word.
+The slice takes the slice's type, not the base's.
