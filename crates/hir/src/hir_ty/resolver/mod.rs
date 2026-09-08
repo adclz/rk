@@ -91,7 +91,7 @@ impl<'db> Resolver<'db> {
             return false;
         };
 
-        match name::resolve_name(db, access, path_expr.get_scope_id(db)) {
+        let resolved = match name::resolve_name(db, access, path_expr.get_scope_id(db)) {
             name::NameResolution::MethodSelf(method) => {
                 ctx.type_of_path_expr
                     .insert(path_expr, Type::MethodDecl(method.into()));
@@ -167,7 +167,26 @@ impl<'db> Resolver<'db> {
                 );
                 false
             }
+        };
+
+        // The name resolved THROUGH `access.namespace`, so every field step
+        // but the last one named a namespace. Recorded because a namespace is
+        // not a value: it has no type, and a consumer cannot otherwise tell
+        // the `Std` of `Std.Convert.X` from a name that did not resolve.
+        if resolved {
+            let steps = path_expr.flatten(db);
+            let last = steps
+                .iter()
+                .rposition(|step| matches!(step, PathExprWalkStep::Field { .. }));
+            for (index, step) in steps.iter().enumerate() {
+                if let PathExprWalkStep::Field { expr, .. } = step
+                    && Some(index) != last
+                {
+                    ctx.namespace_of_path_expr.insert(*expr);
+                }
+            }
         }
+        resolved
     }
 
     pub fn resolve_variable_access(

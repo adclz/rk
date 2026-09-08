@@ -36,13 +36,15 @@ END_FUNCTION_BLOCK"#;
     add_sources(&mut with_db, &[source]);
 
     let sema = semantic_index(&with_db, *with_db.get_files().iter().last().unwrap());
-    let mut builder = SemanticTokensBuilder::new("".into());
+    let mut sink = ide_proto::handlers::semantic_tokens::TokenSink::default();
 
     let _ = sema.walk_hir(&with_db, &mut |node| {
-        node.semantic_tokens(&with_db, &mut builder);
+        node.semantic_tokens(&with_db, &mut sink);
         std::ops::ControlFlow::Continue(())
     });
 
+    let mut builder = SemanticTokensBuilder::new("".into());
+    sink.drain_into(&mut builder);
     let result = builder.build();
 
     // fb0 and cl0 should be highlighted in variable types
@@ -87,6 +89,8 @@ END_FUNCTION_BLOCK"#;
     fb0 function
     test2 variable
     cl0 class
+    test variable
+    test2 variable
     ");
 }
 
@@ -108,13 +112,15 @@ END_FUNCTION_BLOCK"#;
     add_sources(&mut with_db, &[source]);
 
     let sema = semantic_index(&with_db, *with_db.get_files().iter().last().unwrap());
-    let mut builder = SemanticTokensBuilder::new("".into());
+    let mut sink = ide_proto::handlers::semantic_tokens::TokenSink::default();
 
     let _ = sema.walk_hir(&with_db, &mut |node| {
-        node.semantic_tokens(&with_db, &mut builder);
+        node.semantic_tokens(&with_db, &mut sink);
         std::ops::ControlFlow::Continue(())
     });
 
+    let mut builder = SemanticTokensBuilder::new("".into());
+    sink.drain_into(&mut builder);
     let result = builder.build();
 
     // fb0 and cl0 should be highlighted in variable types
@@ -149,13 +155,15 @@ END_FUNCTION_BLOCK"#;
     add_sources(&mut with_db, &[source]);
 
     let sema = semantic_index(&with_db, *with_db.get_files().iter().last().unwrap());
-    let mut builder = SemanticTokensBuilder::new("".into());
+    let mut sink = ide_proto::handlers::semantic_tokens::TokenSink::default();
 
     let _ = sema.walk_hir(&with_db, &mut |node| {
-        node.semantic_tokens(&with_db, &mut builder);
+        node.semantic_tokens(&with_db, &mut sink);
         std::ops::ControlFlow::Continue(())
     });
 
+    let mut builder = SemanticTokensBuilder::new("".into());
+    sink.drain_into(&mut builder);
     let result = builder.build();
 
     assert_eq!(
@@ -218,6 +226,7 @@ FUNCTION_BLOCK fb1
 END_FUNCTION_BLOCK"#;
 
     assert_snapshot!(rendered(&mut with_db, source), @r"
+    System namespace
     Controller function
     fb1 function
     x variable
@@ -227,7 +236,9 @@ END_FUNCTION_BLOCK"#;
 
 #[rstest]
 pub fn namespace_target_token_in_extends(mut with_db: RootDatabase) {
-    // For `EXTENDS System.Base`, only "Base" should get the token
+    // For `EXTENDS System.Base`, only "Base" carries the CLASS token: the
+    // rendered text IS the source each token covers, so a token over the
+    // whole `System.Base` would read `System.Base class` here.
     let source = r#"
 NAMESPACE System
     CLASS Base
@@ -237,30 +248,12 @@ END_NAMESPACE
 FUNCTION_BLOCK MyFB EXTENDS System.Base
 END_FUNCTION_BLOCK"#;
 
-    add_sources(&mut with_db, &[source]);
-
-    let sema = semantic_index(&with_db, *with_db.get_files().iter().last().unwrap());
-    let mut builder = SemanticTokensBuilder::new("".into());
-
-    let _ = sema.walk_hir(&with_db, &mut |node| {
-        node.semantic_tokens(&with_db, &mut builder);
-        std::ops::ControlFlow::Continue(())
-    });
-
-    let result = builder.build();
-
-    // data[0]: PouDecl Base → CLASS
-    // data[1]: PouDecl MyFB → FUNCTION
-    // data[2]: Spec extends target "Base" → CLASS
-    assert_eq!(
-        result.data[2].token_type,
-        SUPPORTED_TYPES.iter().position(|x| *x == CLASS).unwrap() as u32
-    );
-    assert_eq!(
-        result.data[2].length,
-        "Base".len() as u32,
-        "token should span only the target identifier, not the full namespace path"
-    );
+    assert_snapshot!(rendered(&mut with_db, source), @r"
+    System namespace
+    Base class
+    MyFB function
+    Base class
+    ");
 }
 
 #[rstest]
@@ -276,13 +269,15 @@ END_FUNCTION"#;
     add_sources(&mut with_db, &[source]);
 
     let sema = semantic_index(&with_db, *with_db.get_files().iter().last().unwrap());
-    let mut builder = SemanticTokensBuilder::new("".into());
+    let mut sink = ide_proto::handlers::semantic_tokens::TokenSink::default();
 
     let _ = sema.walk_hir(&with_db, &mut |node| {
-        node.semantic_tokens(&with_db, &mut builder);
+        node.semantic_tokens(&with_db, &mut sink);
         std::ops::ControlFlow::Continue(())
     });
 
+    let mut builder = SemanticTokensBuilder::new("".into());
+    sink.drain_into(&mut builder);
     let result = builder.build();
 
     // data[0]: PouDecl MyFB → FUNCTION
@@ -310,13 +305,15 @@ END_FUNCTION"#;
     add_sources(&mut with_db, &[source]);
 
     let sema = semantic_index(&with_db, *with_db.get_files().iter().last().unwrap());
-    let mut builder = SemanticTokensBuilder::new("".into());
+    let mut sink = ide_proto::handlers::semantic_tokens::TokenSink::default();
 
     let _ = sema.walk_hir(&with_db, &mut |node| {
-        node.semantic_tokens(&with_db, &mut builder);
+        node.semantic_tokens(&with_db, &mut sink);
         std::ops::ControlFlow::Continue(())
     });
 
+    let mut builder = SemanticTokensBuilder::new("".into());
+    sink.drain_into(&mut builder);
     let result = builder.build();
 
     // data[0]: PouDecl MyClass → CLASS
@@ -346,13 +343,15 @@ END_FUNCTION"#;
     add_sources(&mut with_db, &[source]);
 
     let sema = semantic_index(&with_db, *with_db.get_files().iter().last().unwrap());
-    let mut builder = SemanticTokensBuilder::new("".into());
+    let mut sink = ide_proto::handlers::semantic_tokens::TokenSink::default();
 
     let _ = sema.walk_hir(&with_db, &mut |node| {
-        node.semantic_tokens(&with_db, &mut builder);
+        node.semantic_tokens(&with_db, &mut sink);
         std::ops::ControlFlow::Continue(())
     });
 
+    let mut builder = SemanticTokensBuilder::new("".into());
+    sink.drain_into(&mut builder);
     let result = builder.build();
 
     // data[0]: PouDecl Actuator → FUNCTION
@@ -377,13 +376,15 @@ END_FUNCTION"#;
     add_sources(&mut with_db, &[source]);
 
     let sema = semantic_index(&with_db, *with_db.get_files().iter().last().unwrap());
-    let mut builder = SemanticTokensBuilder::new("".into());
+    let mut sink = ide_proto::handlers::semantic_tokens::TokenSink::default();
 
     let _ = sema.walk_hir(&with_db, &mut |node| {
-        node.semantic_tokens(&with_db, &mut builder);
+        node.semantic_tokens(&with_db, &mut sink);
         std::ops::ControlFlow::Continue(())
     });
 
+    let mut builder = SemanticTokensBuilder::new("".into());
+    sink.drain_into(&mut builder);
     let result = builder.build();
 
     // Only data[0]: PouDecl fn1 → FUNCTION; no token for unresolved [NonExistent]
@@ -410,13 +411,15 @@ END_FUNCTION_BLOCK"#;
     add_sources(&mut with_db, &[source]);
 
     let sema = semantic_index(&with_db, *with_db.get_files().iter().last().unwrap());
-    let mut builder = SemanticTokensBuilder::new("".into());
+    let mut sink = ide_proto::handlers::semantic_tokens::TokenSink::default();
 
     let _ = sema.walk_hir(&with_db, &mut |node| {
-        node.semantic_tokens(&with_db, &mut builder);
+        node.semantic_tokens(&with_db, &mut sink);
         std::ops::ControlFlow::Continue(())
     });
 
+    let mut builder = SemanticTokensBuilder::new("".into());
+    sink.drain_into(&mut builder);
     let result = builder.build();
 
     // data[0]: PouDecl Sensor → CLASS
@@ -478,7 +481,10 @@ END_PROGRAM
 "#;
     assert_snapshot!(rendered(&mut with_db, source), @r"
     Mode enum
+    Idle enumMember
+    Running enumMember
     Rec struct
+    a property
     Itf interface
     Halt method
     fb function
@@ -491,11 +497,14 @@ END_PROGRAM
     m variable
     Mode enum
     Running enumMember
-    r.a property
+    r variable
+    a property
     p parameter
     prog function
     inst variable
     fb function
+    inst variable
+    p parameter
     ");
 }
 
@@ -505,11 +514,13 @@ END_PROGRAM
 fn rendered(db: &mut RootDatabase, source: &str) -> String {
     add_sources(db, &[source]);
     let sema = semantic_index(db, *db.get_files().iter().last().unwrap());
-    let mut builder = SemanticTokensBuilder::new(String::new());
+    let mut sink = ide_proto::handlers::semantic_tokens::TokenSink::default();
     let _ = sema.walk_hir(db, &mut |node| {
-        node.semantic_tokens(db, &mut builder);
+        node.semantic_tokens(db, &mut sink);
         std::ops::ControlFlow::<()>::Continue(())
     });
+    let mut builder = SemanticTokensBuilder::new(String::new());
+    sink.drain_into(&mut builder);
 
     let lines: Vec<&str> = source.lines().collect();
     let (mut line, mut col) = (0usize, 0usize);
@@ -537,4 +548,121 @@ fn rendered(db: &mut RootDatabase, source: &str) -> String {
         })
         .collect::<Vec<_>>()
         .join("\n")
+}
+
+/// Every name a body writes carries a token, and it is the token for what the
+/// name IS at that place. Written as one source so a colour that goes missing
+/// shows up as a line that vanished, not as a shifted index.
+///
+/// Before this: a call site had no token at all (a callee is re-typed as its
+/// CALLABLE, which `normalize` peels to the return type), a path was one token
+/// over the whole `a.b.c`, a named argument had none, and neither an enum
+/// variant nor a struct field carried one where it was DECLARED.
+#[rstest]
+fn a_body_colours_every_name_it_writes(mut with_db: RootDatabase) {
+    let source = r#"
+NAMESPACE App
+    TYPE Mode : (Idle, Running); END_TYPE
+    TYPE Point : STRUCT x : INT; END_STRUCT END_TYPE
+    TYPE Small : INT (0..10); END_TYPE
+
+    FUNCTION_BLOCK Base
+    VAR_INPUT cmd : INT; END_VAR
+    VAR_OUTPUT done : INT; END_VAR
+        done := cmd;
+    END_FUNCTION_BLOCK
+
+    CLASS Motor
+    VAR sm : Small; END_VAR
+        METHOD PUBLIC Spin : INT
+        VAR_INPUT rpm : INT; END_VAR
+            Spin := rpm;
+        END_METHOD
+    END_CLASS
+
+    FUNCTION helper : INT
+    VAR_INPUT a : INT; END_VAR
+        helper := a;
+    END_FUNCTION
+
+    FUNCTION user : INT
+    VAR
+        mot : Motor;
+        b : Base;
+        n : INT;
+        pt : Point;
+        md : Mode;
+        ar : ARRAY[1..4] OF INT;
+    END_VAR
+        helper(1);
+        n := helper(a := 2);
+        n := mot.Spin(rpm := 3);
+        b(cmd := 1, done => n);
+        pt.x := 5;
+        ar[2] := 6;
+        md := Mode#Running;
+        n := App.helper(4);
+        user := n;
+    END_FUNCTION
+END_NAMESPACE"#;
+
+    assert_snapshot!(rendered(&mut with_db, source), @r"
+    App namespace
+    Mode enum
+    Idle enumMember
+    Running enumMember
+    Point struct
+    x property
+    Small type
+    Base function
+    cmd parameter
+    done parameter
+    done parameter
+    cmd parameter
+    Motor class
+    sm variable
+    Small type
+    Spin method
+    rpm parameter
+    Spin method
+    rpm parameter
+    helper function
+    a parameter
+    helper function
+    a parameter
+    user function
+    mot variable
+    Motor class
+    b variable
+    Base function
+    n variable
+    pt variable
+    Point struct
+    md variable
+    Mode enum
+    ar variable
+    helper function
+    n variable
+    helper function
+    a parameter
+    n variable
+    mot variable
+    Spin method
+    rpm parameter
+    b variable
+    cmd parameter
+    done parameter
+    n variable
+    pt variable
+    x property
+    ar variable
+    md variable
+    Mode enum
+    Running enumMember
+    n variable
+    App namespace
+    helper function
+    user function
+    n variable
+    ");
 }

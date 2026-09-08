@@ -242,6 +242,12 @@ pub struct BodyInferenceResult<'db> {
     /// the name a second time.
     pub variable_of_path_expr: FxHashMap<PathExpr<'db>, VariableDecl<'db>>,
 
+    /// The path steps that named a NAMESPACE on the way to a fully-qualified
+    /// item. A namespace is not a value, so it has no type to record, and
+    /// without this the `Std` in `Std.Convert.X` is indistinguishable from a
+    /// name that did not resolve at all.
+    pub namespace_of_path_expr: FxHashSet<PathExpr<'db>>,
+
     // Mapping from expressions to their resolved types.
     pub type_of_expr: FxHashMap<Expr<'db>, Type<'db>>,
 
@@ -362,6 +368,7 @@ impl<'db> BodyInferenceResult<'db> {
             case_label_value: FxHashMap::default(),
             type_of_path_expr: FxHashMap::default(),
             variable_of_path_expr: FxHashMap::default(),
+            namespace_of_path_expr: FxHashSet::default(),
             path_expr_adjustments: FxHashMap::default(),
             errors: Vec::new(),
             variables_used: FxHashSet::default(),
@@ -633,6 +640,11 @@ impl<'db> BodyInferenceResult<'db> {
     /// The declaration this path step names, when it names a variable.
     pub fn variable_for_path_expr(&self, expr: PathExpr<'db>) -> Option<VariableDecl<'db>> {
         self.variable_of_path_expr.get(&expr).copied()
+    }
+
+    /// Whether this path step named a namespace rather than a value.
+    pub fn path_expr_is_namespace(&self, expr: PathExpr<'db>) -> bool {
+        self.namespace_of_path_expr.contains(&expr)
     }
 }
 

@@ -9,7 +9,7 @@ use auto_lsp::{
 use db::WorkspaceDataBase;
 use hir::{HirNodeInfo, hir_def::semantic_index::semantic_index};
 use ide_proto::{
-    handlers::SemanticTokensHandler,
+    handlers::{SemanticTokensHandler, semantic_tokens::TokenSink},
     walk::{WalkHir, position_to_offset},
 };
 
@@ -24,16 +24,17 @@ pub fn semantic_tokens_full(
         None => return Ok(None),
     };
 
-    let mut builder = SemanticTokensBuilder::new("".into());
+    let mut sink = TokenSink::default();
     let sema = semantic_index(db, file);
 
     let _ = sema.walk_hir(db, &mut |node| {
-        node.semantic_tokens(db, &mut builder);
+        node.semantic_tokens(db, &mut sink);
         std::ops::ControlFlow::Continue(())
     });
 
-    let result = builder.build();
-    Ok(Some(SemanticTokensResult::Tokens(result)))
+    let mut builder = SemanticTokensBuilder::new("".into());
+    sink.drain_into(&mut builder);
+    Ok(Some(SemanticTokensResult::Tokens(builder.build())))
 }
 
 pub fn semantic_tokens_range(
@@ -52,7 +53,7 @@ pub fn semantic_tokens_range(
     let end_offset = position_to_offset(db, file, params.range.end)
         .ok_or_else(|| anyhow::format_err!("Invalid range end, {:?}", params.range.end))?;
 
-    let mut builder = SemanticTokensBuilder::new("".into());
+    let mut sink = TokenSink::default();
     let sema = semantic_index(db, file);
 
     let _ = sema.walk_hir(db, &mut |node| {
@@ -68,10 +69,11 @@ pub fn semantic_tokens_range(
             return std::ops::ControlFlow::Break(());
         }
 
-        node.semantic_tokens(db, &mut builder);
+        node.semantic_tokens(db, &mut sink);
         std::ops::ControlFlow::Continue(())
     });
 
-    let result = builder.build();
-    Ok(Some(SemanticTokensRangeResult::Tokens(result)))
+    let mut builder = SemanticTokensBuilder::new("".into());
+    sink.drain_into(&mut builder);
+    Ok(Some(SemanticTokensRangeResult::Tokens(builder.build())))
 }

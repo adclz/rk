@@ -22,7 +22,10 @@ define_semantic_token_types![
         // the enum and a block-typed one as the block.
         VARIABLE,
         PARAMETER,
-        PROPERTY
+        PROPERTY,
+        // A TYPE declaration whose body is neither a struct nor an enum
+        // (an alias, a subrange, a sized string) had no colour to take.
+        TYPE
     }
 
     custom {

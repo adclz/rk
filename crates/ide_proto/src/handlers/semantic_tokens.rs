@@ -4,46 +4,76 @@ use hir::{
     HasName, HirNodeInfo,
     hir_def::{
         expressions::{
-            expression::{BeginPathExpr, Expr, ExprKind, PathExpr, PrimaryExpr, VariableAccess},
-            spec::{Spec, SpecKind},
+            expression::{
+                BeginPathExpr, Expr, ExprKind, ParamAssign, ParamAssignKind, PathExpr, PrimaryExpr,
+            },
+            spec::{Spec, SpecKind, StructElement},
         },
         hir_node::HirNode,
+        namespace::NamespaceDecl,
         pous::{pou::Pou, variable::VariableDecl},
         using::Using,
     },
-    hir_ty::{head::inheritance::MethodRef, infer::Infer, ty::Type},
+    hir_ty::{
+        head::inheritance::MethodRef,
+        infer::Infer,
+        ty::{CallableType, Type},
+    },
 };
 
 use crate::{
     CLASS, ENUM, ENUM_MEMBER, FUNCTION, INTERFACE, METHOD, NAMESPACE, PARAMETER, PROPERTY, STRUCT,
-    SUPPORTED_TYPES, VARIABLE,
+    SUPPORTED_TYPES, TYPE, VARIABLE,
     comment_index::comment_index,
     handlers::SemanticTokensHandler,
     handlers::document_links::{byte_range_to_span, find_bracket_refs, resolve_bracket_ref_to_pou},
 };
 
+/// Collects tokens, then emits them in document order.
+///
+/// Two nodes can legitimately name the same span - a qualified enum value is
+/// an `Expr` whose qualifier the walk yields again as a `PathExpr` - and the
+/// walk hands nodes over in AST order, which is not always source order. The
+/// builder encodes each token as a delta from the previous one and underflows
+/// on a step backwards, so ordering is established once, here, instead of
+/// being an obligation on every handler. Overlapping claims on one span
+/// resolve to the first one made.
+#[derive(Default)]
+pub struct TokenSink {
+    tokens: Vec<(auto_lsp::lsp_types::Range, u32)>,
+}
+
+impl TokenSink {
+    pub fn push(&mut self, range: auto_lsp::lsp_types::Range, token_type: u32, _modifiers: u32) {
+        self.tokens.push((range, token_type));
+    }
+
+    pub fn drain_into(mut self, builder: &mut SemanticTokensBuilder) {
+        self.tokens
+            .sort_by_key(|(range, _)| (range.start.line, range.start.character));
+        self.tokens
+            .dedup_by_key(|(range, _)| (range.start.line, range.start.character));
+        for (range, token_type) in self.tokens {
+            builder.push(range, token_type, 0);
+        }
+    }
+}
+
 impl<'db> SemanticTokensHandler<'db> for HirNode<'db> {
-    fn semantic_tokens(
-        &'db self,
-        db: &'db dyn WorkspaceDataBase,
-        builder: &mut SemanticTokensBuilder,
-    ) {
+    fn semantic_tokens(&'db self, db: &'db dyn WorkspaceDataBase, builder: &mut TokenSink) {
         match self {
+            HirNode::Namespace(n) => n.semantic_tokens(db, builder),
             HirNode::PouDecl(p) => p.semantic_tokens(db, builder),
             HirNode::MethodRef(m) => m.semantic_tokens(db, builder),
             HirNode::VariableDecl(v) => v.semantic_tokens(db, builder),
-            HirNode::Program(p) => {
-                let file = p.get_scope_id(db).file(db);
-                if let Some(range) = hir::denormalize(db, file, &p.get_name_span(db))
-                    && range.start.line == range.end.line
-                {
-                    builder.push(range, token(FUNCTION), 0);
-                }
-            }
+            HirNode::StructElement(s) => s.semantic_tokens(db, builder),
+            HirNode::Program(p) => push_name(db, builder, p, FUNCTION),
             HirNode::Spec(v) => v.semantic_tokens(db, builder),
-            // todo: The first path expr will highlight the whole path
-            //HirNode::PathExpr(p) => p.semantic_tokens(db, builder),
-            HirNode::VariableAccess(v) => v.semantic_tokens(db, builder),
+            // A path is coloured one SEGMENT at a time: the walk yields each
+            // step with its own span, so `pt.x` is a variable and a property,
+            // not one property token over the whole text.
+            HirNode::PathExpr(p) => p.semantic_tokens(db, builder),
+            HirNode::Param(p) => p.semantic_tokens(db, builder),
             HirNode::Expr(e) => e.semantic_tokens(db, builder),
             _ => {}
         }
@@ -52,12 +82,13 @@ impl<'db> SemanticTokensHandler<'db> for HirNode<'db> {
 
 /// Emit semantic tokens for resolved `[TypeName]` bracket references in a node's associated comment.
 ///
-/// Only processes comments that appear above the node (not same-line) to maintain
-/// document ordering required by `SemanticTokensBuilder`.
+/// Only comments ABOVE the node are processed: a trailing one names a type
+/// after the declaration it annotates, which is a claim on a span the
+/// declaration already made.
 fn comment_bracket_ref_tokens<'db>(
     node: &'db dyn HirNodeInfo<'db>,
     db: &'db dyn WorkspaceDataBase,
-    builder: &mut SemanticTokensBuilder,
+    builder: &mut TokenSink,
 ) {
     let file = node.get_scope_id(db).file(db);
     let document = file.document(db);
@@ -94,11 +125,7 @@ fn comment_bracket_ref_tokens<'db>(
 }
 
 impl<'db> SemanticTokensHandler<'db> for Pou<'db> {
-    fn semantic_tokens(
-        &'db self,
-        db: &'db dyn WorkspaceDataBase,
-        builder: &mut SemanticTokensBuilder,
-    ) {
+    fn semantic_tokens(&'db self, db: &'db dyn WorkspaceDataBase, builder: &mut TokenSink) {
         comment_bracket_ref_tokens(self, db, builder);
         semantic_tokens_for_type(
             db,
@@ -111,18 +138,9 @@ impl<'db> SemanticTokensHandler<'db> for Pou<'db> {
 }
 
 impl<'db> SemanticTokensHandler<'db> for MethodRef<'db> {
-    fn semantic_tokens(
-        &'db self,
-        db: &'db dyn WorkspaceDataBase,
-        builder: &mut SemanticTokensBuilder,
-    ) {
+    fn semantic_tokens(&'db self, db: &'db dyn WorkspaceDataBase, builder: &mut TokenSink) {
         comment_bracket_ref_tokens(self, db, builder);
-        builder.push(
-            hir::denormalize(db, self.get_scope_id(db).file(db), &self.get_name_span(db))
-                .unwrap_or_default(),
-            SUPPORTED_TYPES.iter().position(|x| *x == METHOD).unwrap() as u32,
-            0,
-        );
+        push_name(db, builder, self, METHOD);
         if let Some(ret) = self.return_type(db) {
             semantic_tokens_for_type(
                 db,
@@ -136,30 +154,63 @@ impl<'db> SemanticTokensHandler<'db> for MethodRef<'db> {
 }
 
 impl<'db> SemanticTokensHandler<'db> for VariableDecl<'db> {
-    fn semantic_tokens(
-        &'db self,
-        db: &'db dyn WorkspaceDataBase,
-        builder: &mut SemanticTokensBuilder,
-    ) {
+    fn semantic_tokens(&'db self, db: &'db dyn WorkspaceDataBase, builder: &mut TokenSink) {
         comment_bracket_ref_tokens(self, db, builder);
 
         // The name being declared. Only its USES were coloured, so a VAR
         // section came back blank.
-        let file = self.get_scope_id(db).file(db);
-        if let Some(range) = hir::denormalize(db, file, &self.get_name_span(db))
-            && range.start.line == range.end.line
-        {
-            builder.push(range, token(variable_kind(db, *self)), 0);
-        }
+        push_name(db, builder, self, variable_kind(db, *self));
+    }
+}
+
+impl<'db> SemanticTokensHandler<'db> for NamespaceDecl<'db> {
+    fn semantic_tokens(&'db self, db: &'db dyn WorkspaceDataBase, builder: &mut TokenSink) {
+        push_span(
+            db,
+            builder,
+            self.get_scope_id(db).file(db),
+            self.name_span(db),
+            NAMESPACE,
+        );
+    }
+}
+
+impl<'db> SemanticTokensHandler<'db> for StructElement<'db> {
+    fn semantic_tokens(&'db self, db: &'db dyn WorkspaceDataBase, builder: &mut TokenSink) {
+        push_name(db, builder, self, PROPERTY);
+    }
+}
+
+impl<'db> SemanticTokensHandler<'db> for ParamAssign<'db> {
+    fn semantic_tokens(&'db self, db: &'db dyn WorkspaceDataBase, builder: &mut TokenSink) {
+        // The NAME half of `p := v` / `o => v`. The value half is walked as
+        // its own node. A positional argument has no name to colour.
+        let param = match self.kind(db) {
+            ParamAssignKind::FormalInput { param, .. }
+            | ParamAssignKind::FormalOutput { param, .. } => param,
+            ParamAssignKind::NonFormal { .. } => return,
+        };
+        push_span(
+            db,
+            builder,
+            self.get_scope_id(db).file(db),
+            param.get_span(db),
+            PARAMETER,
+        );
     }
 }
 
 impl<'db> SemanticTokensHandler<'db> for Spec<'db> {
-    fn semantic_tokens(
-        &'db self,
-        db: &'db dyn WorkspaceDataBase,
-        builder: &mut SemanticTokensBuilder,
-    ) {
+    fn semantic_tokens(&'db self, db: &'db dyn WorkspaceDataBase, builder: &mut TokenSink) {
+        let file = self.get_scope_id(db).file(db);
+        // The variants an enum spec DECLARES. Only their uses were coloured,
+        // so `(Idle, Running)` came back blank.
+        if let SpecKind::Enum(e) = self.kind(db) {
+            for variant in e.variants(db) {
+                push_span(db, builder, file, variant.name.get_span(db), ENUM_MEMBER);
+            }
+            return;
+        }
         semantic_tokens_for_type(
             db,
             self.infer(db),
@@ -171,17 +222,13 @@ impl<'db> SemanticTokensHandler<'db> for Spec<'db> {
                 // one enum and one struct token.
                 _ => return,
             },
-            self.get_scope_id(db).file(db),
+            file,
         );
     }
 }
 
 impl<'db> SemanticTokensHandler<'db> for BeginPathExpr<'db> {
-    fn semantic_tokens(
-        &'db self,
-        db: &'db dyn WorkspaceDataBase,
-        builder: &mut SemanticTokensBuilder,
-    ) {
+    fn semantic_tokens(&'db self, db: &'db dyn WorkspaceDataBase, builder: &mut TokenSink) {
         semantic_tokens_for_type(
             db,
             self.infer(db),
@@ -193,43 +240,30 @@ impl<'db> SemanticTokensHandler<'db> for BeginPathExpr<'db> {
 }
 
 impl<'db> SemanticTokensHandler<'db> for PathExpr<'db> {
-    fn semantic_tokens(
-        &'db self,
-        db: &'db dyn WorkspaceDataBase,
-        builder: &mut SemanticTokensBuilder,
-    ) {
-        semantic_tokens_for_type(
-            db,
-            self.infer(db),
-            builder,
-            self.get_span(db),
-            self.get_scope_id(db).file(db),
-        );
-    }
-}
+    fn semantic_tokens(&'db self, db: &'db dyn WorkspaceDataBase, builder: &mut TokenSink) {
+        let file = self.get_scope_id(db).file(db);
+        let span = self.get_span(db);
+        let results = hir::hir_ty::body::infer_body(db, self.get_scope_id(db));
 
-impl<'db> SemanticTokensHandler<'db> for VariableAccess<'db> {
-    fn semantic_tokens(
-        &'db self,
-        db: &'db dyn WorkspaceDataBase,
-        builder: &mut SemanticTokensBuilder,
-    ) {
-        semantic_tokens_for_type(
-            db,
-            self.infer(db),
-            builder,
-            self.get_span(db),
-            self.get_scope_id(db).file(db),
-        );
+        // A namespace has no type, so ask what the step NAMED before asking
+        // what it is worth.
+        if results.path_expr_is_namespace(*self) {
+            push_span(db, builder, file, span, NAMESPACE);
+            return;
+        }
+        // A CALLEE path is re-typed as the callable it resolved to, so
+        // `motor()` would colour the INSTANCE as the block it invokes. The
+        // declaration each step named is recorded; read that.
+        if let Some(var) = results.variable_for_path_expr(*self) {
+            push_span(db, builder, file, span, variable_kind(db, var));
+            return;
+        }
+        semantic_tokens_for_type(db, self.infer(db), builder, span, file);
     }
 }
 
 impl<'db> SemanticTokensHandler<'db> for Expr<'db> {
-    fn semantic_tokens(
-        &'db self,
-        db: &'db dyn WorkspaceDataBase,
-        builder: &mut SemanticTokensBuilder,
-    ) {
+    fn semantic_tokens(&'db self, db: &'db dyn WorkspaceDataBase, builder: &mut TokenSink) {
         let typ = self.infer(db);
 
         if let ExprKind::PrimaryExpr(PrimaryExpr::EnumValue { name, variant }) = self.expr(db) {
@@ -251,11 +285,7 @@ impl<'db> SemanticTokensHandler<'db> for Expr<'db> {
 }
 
 impl<'db> SemanticTokensHandler<'db> for Using<'db> {
-    fn semantic_tokens(
-        &'db self,
-        db: &'db dyn WorkspaceDataBase,
-        builder: &mut SemanticTokensBuilder,
-    ) {
+    fn semantic_tokens(&'db self, db: &'db dyn WorkspaceDataBase, builder: &mut TokenSink) {
         for (index, _fragment) in self.path(db).fragments(db).iter().enumerate() {
             let span = self
                 .path(db)
@@ -277,7 +307,7 @@ impl<'db> SemanticTokensHandler<'db> for Using<'db> {
 pub(crate) fn semantic_tokens_for_type<'db>(
     db: &'db dyn WorkspaceDataBase,
     typ: Type<'db>,
-    builder: &mut SemanticTokensBuilder,
+    builder: &mut TokenSink,
     span: auto_lsp::tree_sitter::Range,
     file: auto_lsp::default::db::file::File,
 ) {
@@ -295,6 +325,20 @@ pub(crate) fn semantic_tokens_for_type<'db>(
     }
     if let Type::StructElement(_) = typ {
         builder.push(range, token(PROPERTY), 0);
+        return;
+    }
+    // A CALL is typed by what it RETURNS, and `normalize` peels it to that:
+    // every `f()` and `o.m()` came out the colour of an INT, which is no
+    // colour at all. The name at a call site is the callee.
+    if let Type::CallableType(callable) = typ {
+        builder.push(
+            range,
+            token(match callable {
+                CallableType::MethodDecl(_) => METHOD,
+                _ => FUNCTION,
+            }),
+            0,
+        );
         return;
     }
 
@@ -354,8 +398,45 @@ pub(crate) fn semantic_tokens_for_type<'db>(
                 0,
             );
         }
+        // An alias, a subrange or a sized string: named like a type, shaped
+        // like whatever it wraps, so the arms above have nothing to say about
+        // it. Only a DATA TYPE reaches here as a name; an expression whose
+        // type is elementary carries no token at all.
+        _ if matches!(typ, Type::DataType(_)) => builder.push(range, token(TYPE), 0),
         _ => {}
     }
+}
+
+/// Push a token over `span`, unless it spans more than one line: the protocol
+/// has no multi-line token and the builder underflows on one.
+fn push_span<'db>(
+    db: &'db dyn WorkspaceDataBase,
+    builder: &mut TokenSink,
+    file: auto_lsp::default::db::file::File,
+    span: auto_lsp::tree_sitter::Range,
+    ty: auto_lsp::lsp_types::SemanticTokenType,
+) {
+    if let Some(range) = hir::denormalize(db, file, &span)
+        && range.start.line == range.end.line
+    {
+        builder.push(range, token(ty), 0);
+    }
+}
+
+/// [`push_span`] over a node's NAME.
+fn push_name<'db, N: HasName<'db> + ?Sized>(
+    db: &'db dyn WorkspaceDataBase,
+    builder: &mut TokenSink,
+    node: &'db N,
+    ty: auto_lsp::lsp_types::SemanticTokenType,
+) {
+    push_span(
+        db,
+        builder,
+        node.get_scope_id(db).file(db),
+        node.get_name_span(db),
+        ty,
+    );
 }
 
 /// The legend index for a token type.

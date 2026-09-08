@@ -1,8 +1,5 @@
 use auto_lsp::{
-    core::{
-        document_symbols_builder::DocumentSymbolsBuilder,
-        semantic_tokens_builder::SemanticTokensBuilder,
-    },
+    core::document_symbols_builder::DocumentSymbolsBuilder,
     lsp_types::{
         CodeLens, CompletionItem, GotoDefinitionResponse, Hover, InlayHint, Location,
         WorkspaceEdit,
@@ -34,7 +31,7 @@ pub trait SemanticTokensHandler<'db> {
     fn semantic_tokens(
         &'db self,
         db: &'db dyn WorkspaceDataBase,
-        builder: &mut SemanticTokensBuilder,
+        builder: &mut crate::handlers::semantic_tokens::TokenSink,
     );
 }
 
