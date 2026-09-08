@@ -15,7 +15,7 @@ use crate::{
     hir_def::{
         expressions::{
             expression::{Elementary, ExprKind, InitExpr, InitExprKind, PrimaryExpr},
-            spec::SpecKind,
+            spec::Spec,
         },
         pous::variable::VariableDecl,
     },
@@ -253,7 +253,7 @@ impl<'db> InitInference<'db> {
                 );
 
                 // Check string literal length for sized string specs
-                self.check_sized_string_init(db, var.spec(db).kind(db), init_expr);
+                self.check_string_init(db, var.spec(db), init_expr);
             }
         }
 
@@ -273,21 +273,27 @@ impl<'db> InitInference<'db> {
         }
     }
 
-    fn check_sized_string_init(
+    /// A STRING initializer that does not fit its capacity, which the
+    /// assignment check already refuses in a body. Reading only a written
+    /// `STRING[N]` let a literal past the DEFAULT capacity through, and the
+    /// codegen then truncated it with nothing said.
+    fn check_string_init(
         &mut self,
         db: &'db dyn WorkspaceDataBase,
-        spec_kind: &SpecKind<'db>,
+        spec: Spec<'db>,
         init: InitExpr<'db>,
     ) {
-        let max_len_expr = match spec_kind {
-            SpecKind::SizedString(length) => length,
-            _ => return,
-        };
+        if !matches!(
+            spec.infer(db).normalize(db),
+            Type::Elementary(crate::hir_def::expressions::spec::ElementarySpec::String)
+        ) {
+            return;
+        }
 
-        let max_len = match max_len_expr.as_range(db) {
-            Some(len) => len,
-            None => return,
-        };
+        let max_len = u64::from(
+            crate::hir_ty::infer::normalize::declared_string_capacity(db, spec)
+                .unwrap_or(crate::hir_ty::infer::normalize::DEFAULT_STRING_CAPACITY),
+        );
 
         // Only check simple constant expression initializers
         let InitExprKind::ConstantExpr(expr) = init.kind(db) else {

@@ -1,11 +1,7 @@
 use compact_str::CompactString;
 use hir::hir_def::interned::identifier::Ident;
 
-/// Default declared capacity (bytes) for a plain `STRING` without an
-/// explicit `[N]` size. other toolchains uses 80, another toolchain uses 254. We pick 80
-/// matches the most common reference implementation and keeps the
-/// header+buffer total at 88 bytes (cheap to allocate per variable).
-pub const DEFAULT_STRING_CAPACITY: u32 = 80;
+pub use hir::hir_ty::infer::normalize::DEFAULT_STRING_CAPACITY;
 
 /// A fully resolved, concrete type with known size and alignment.
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]

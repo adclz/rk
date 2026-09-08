@@ -178,6 +178,16 @@ pub fn multibits_to_type<'db>(
         .unwrap_or_else(Type::new_bool)
 }
 
+/// Declared capacity, in bytes, of a plain `STRING` written without an
+/// explicit `[N]`. The standard leaves it implementation-defined: other toolchains
+/// uses 80, another toolchain 254. 80 matches the most common reference
+/// implementation and keeps header plus buffer at 88 bytes, cheap to
+/// allocate per variable.
+///
+/// Every layer that has to pick a layout, or refuse a value that will not
+/// fit one, reads it from here.
+pub const DEFAULT_STRING_CAPACITY: u32 = 80;
+
 /// The `N` a spec declares for a STRING, seen through whatever names it.
 ///
 /// [`Type::normalize`] collapses `STRING[N]` and plain `STRING` onto the same

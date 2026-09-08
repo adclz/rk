@@ -1032,8 +1032,8 @@ fn check_string_literal_fits<'db>(
         return;
     }
     let capacity = crate::hir_ty::infer::normalize::declared_string_capacity(db, spec)
-        .map(u64::from)
-        .unwrap_or(80);
+        .unwrap_or(crate::hir_ty::infer::normalize::DEFAULT_STRING_CAPACITY)
+        .into();
 
     let ExprKind::PrimaryExpr(PrimaryExpr::Literal(
         crate::hir_def::expressions::expression::Elementary::String(lit),

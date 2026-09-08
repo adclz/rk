@@ -394,3 +394,42 @@ fn invalid_struct_alias_default_names_an_unknown_field(mut with_db: RootDatabase
     ---'
     ");
 }
+
+/// A STRING initializer has to fit the capacity, whether the source writes
+/// one or takes the default. Reading only a written `STRING[N]` let both the
+/// default and a length naming a constant through, and the codegen then
+/// truncated the value with nothing said.
+#[rstest]
+fn invalid_string_initializer_over_capacity(mut with_db: RootDatabase) {
+    let source = format!(
+        r#"
+TYPE Alias5 : STRING[5]; END_TYPE
+
+FUNCTION_BLOCK fb
+VAR CONSTANT
+    SIZE : INT := 5;
+END_VAR
+VAR
+    written : STRING[5] := 'far too long';
+    named : STRING[SIZE] := 'far too long';
+    alias : Alias5 := 'far too long';
+    plain : STRING := '{}';
+    fits : STRING := 'fine';
+END_VAR
+END_FUNCTION_BLOCK
+"#,
+        "z".repeat(100)
+    );
+    let rendered = test_diagnostics(&mut with_db, &[&source]);
+    let over: Vec<&str> = rendered
+        .lines()
+        .filter_map(|line| line.split("STRING literal ").nth(1))
+        .collect();
+
+    assert_snapshot!(over.join("\n"), @r"
+    exceeds the capacity of 5 bytes, got 12
+    exceeds the capacity of 5 bytes, got 12
+    exceeds the capacity of 5 bytes, got 12
+    exceeds the capacity of 80 bytes, got 100
+    ");
+}
