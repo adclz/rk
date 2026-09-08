@@ -32,6 +32,7 @@ use auto_lsp::lsp_types::PublishDiagnosticsParams;
 use auto_lsp::lsp_types::Registration;
 use auto_lsp::lsp_types::RegistrationParams;
 use auto_lsp::lsp_types::ServerCapabilities;
+use auto_lsp::lsp_types::TypeDefinitionProviderCapability;
 use auto_lsp::lsp_types::SignatureHelpOptions;
 use auto_lsp::lsp_types::Url;
 use auto_lsp::lsp_types::WatchKind;
@@ -55,6 +56,7 @@ use auto_lsp::lsp_types::request::CallHierarchyIncomingCalls;
 use auto_lsp::lsp_types::request::CallHierarchyOutgoingCalls;
 use auto_lsp::lsp_types::request::CallHierarchyPrepare;
 use auto_lsp::lsp_types::request::DocumentDiagnosticRequest;
+use auto_lsp::lsp_types::request::GotoTypeDefinition;
 use auto_lsp::lsp_types::request::DocumentLinkRequest;
 use auto_lsp::lsp_types::request::DocumentSymbolRequest;
 use auto_lsp::lsp_types::request::FoldingRangeRequest;
@@ -110,6 +112,7 @@ use crate::capabilties::references::references;
 use crate::capabilties::rename::rename;
 use crate::capabilties::semantic_tokens;
 use crate::capabilties::signature_help::signature_help;
+use crate::capabilties::type_definition::go_to_type_definition;
 use crate::capabilties::workspace_symbols::workspace_symbols;
 
 /// `textDocument/inlineValue`, with the result the SPEC gives it.
@@ -138,6 +141,7 @@ pub fn boot() -> Result<(), Box<dyn Error + Send + Sync>> {
         InitOptions {
             capabilities: ServerCapabilities {
                 document_symbol_provider: Some(OneOf::Left(true)),
+                type_definition_provider: Some(TypeDefinitionProviderCapability::Simple(true)),
                 inline_value_provider: Some(OneOf::Left(true)),
                 call_hierarchy_provider: Some(CallHierarchyServerCapability::Simple(true)),
                 workspace: WORKSPACE_PROVIDER.clone(),
@@ -273,6 +277,7 @@ fn on_requests<Db: WorkspaceDataBase + Clone + RefUnwindSafe>(
         .on::<CallHierarchyIncomingCalls, _>(ThreadIntent::Worker, incoming_calls)
         .on::<CallHierarchyOutgoingCalls, _>(ThreadIntent::Worker, outgoing_calls)
         .on::<InlineValues, _>(ThreadIntent::Worker, inline_value)
+        .on::<GotoTypeDefinition, _>(ThreadIntent::Worker, go_to_type_definition)
         .on::<GotoDeclaration, _>(ThreadIntent::Worker, go_to_declaration)
         .on::<GotoDefinition, _>(ThreadIntent::Worker, go_to_definition)
         .on::<GotoImplementation, _>(ThreadIntent::Worker, go_to_implementation)
