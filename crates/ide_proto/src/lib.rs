@@ -16,7 +16,13 @@ define_semantic_token_types![
         STRUCT,
         ENUM,
         ENUM_MEMBER,
-        EVENT
+        EVENT,
+        // What a name IS, which the legend could not say: every variable was
+        // reported as whatever its TYPE is, so an enum-typed one coloured as
+        // the enum and a block-typed one as the block.
+        VARIABLE,
+        PARAMETER,
+        PROPERTY
     }
 
     custom {

@@ -8,6 +8,7 @@ use ide_proto::INTERFACE;
 use ide_proto::SUPPORTED_TYPES;
 use ide_proto::handlers::SemanticTokensHandler;
 use ide_proto::walk::WalkHir;
+use insta::assert_snapshot;
 use rstest::rstest;
 
 use crate::tests::utils::add_sources;
@@ -78,39 +79,15 @@ FUNCTION_BLOCK fb1
 
 END_FUNCTION_BLOCK"#;
 
-    add_sources(&mut with_db, &[source]);
-
-    let sema = semantic_index(&with_db, *with_db.get_files().iter().last().unwrap());
-    let mut builder = SemanticTokensBuilder::new("".into());
-
-    let _ = sema.walk_hir(&with_db, &mut |node| {
-        node.semantic_tokens(&with_db, &mut builder);
-        std::ops::ControlFlow::Continue(())
-    });
-
-    let result = builder.build();
-
-    // fb0 and cl0 should be highlighted in variable types (twice each)
-    assert_eq!(
-        result.data[0].token_type,
-        SUPPORTED_TYPES.iter().position(|x| *x == FUNCTION).unwrap() as u32
-    );
-    assert_eq!(
-        result.data[1].token_type,
-        SUPPORTED_TYPES.iter().position(|x| *x == CLASS).unwrap() as u32
-    );
-    assert_eq!(
-        result.data[2].token_type,
-        SUPPORTED_TYPES.iter().position(|x| *x == FUNCTION).unwrap() as u32
-    );
-    assert_eq!(
-        result.data[3].token_type,
-        SUPPORTED_TYPES.iter().position(|x| *x == FUNCTION).unwrap() as u32
-    );
-    assert_eq!(
-        result.data[4].token_type,
-        SUPPORTED_TYPES.iter().position(|x| *x == CLASS).unwrap() as u32
-    );
+    assert_snapshot!(rendered(&mut with_db, source), @r"
+    fb0 function
+    cl0 class
+    fb1 function
+    test variable
+    fb0 function
+    test2 variable
+    cl0 class
+    ");
 }
 
 #[rstest]
@@ -240,30 +217,12 @@ FUNCTION_BLOCK fb1
     END_VAR
 END_FUNCTION_BLOCK"#;
 
-    add_sources(&mut with_db, &[source]);
-
-    let sema = semantic_index(&with_db, *with_db.get_files().iter().last().unwrap());
-    let mut builder = SemanticTokensBuilder::new("".into());
-
-    let _ = sema.walk_hir(&with_db, &mut |node| {
-        node.semantic_tokens(&with_db, &mut builder);
-        std::ops::ControlFlow::Continue(())
-    });
-
-    let result = builder.build();
-
-    // data[0]: PouDecl Controller → FUNCTION
-    // data[1]: PouDecl fb1 → FUNCTION
-    // data[2]: Spec target "Controller" → FUNCTION (only the target, not "System.Controller")
-    assert_eq!(
-        result.data[2].token_type,
-        SUPPORTED_TYPES.iter().position(|x| *x == FUNCTION).unwrap() as u32
-    );
-    assert_eq!(
-        result.data[2].length,
-        "Controller".len() as u32,
-        "token should span only the target identifier, not the full namespace path"
-    );
+    assert_snapshot!(rendered(&mut with_db, source), @r"
+    Controller function
+    fb1 function
+    x variable
+    Controller function
+    ");
 }
 
 #[rstest]
@@ -479,4 +438,103 @@ END_FUNCTION_BLOCK"#;
             .unwrap() as u32,
     );
     assert_eq!(result.data[3].length, "IController".len() as u32);
+}
+
+/// What a name IS, not what it is OF. Every variable used to take its
+/// type's colour, so an enum-typed one read as the enum; declarations,
+/// parameters and fields had no colour at all; and a spec's own span
+/// coloured a whole `STRUCT ... END_STRUCT` as one token.
+#[rstest]
+fn every_name_is_coloured_as_what_it_is(mut with_db: RootDatabase) {
+    let source = r#"
+TYPE Mode : (Idle, Running); END_TYPE
+TYPE Rec : STRUCT a : INT; END_STRUCT END_TYPE
+
+INTERFACE Itf
+METHOD Halt : INT
+END_METHOD
+END_INTERFACE
+
+FUNCTION_BLOCK fb
+VAR_INPUT
+    p : INT;
+END_VAR
+VAR
+    m : Mode;
+    r : Rec;
+END_VAR
+METHOD Spin : INT
+END_METHOD
+    m := Mode#Running;
+    r.a := p;
+END_FUNCTION_BLOCK
+
+PROGRAM prog
+VAR
+    inst : fb;
+END_VAR
+    inst(p := 1);
+END_PROGRAM
+"#;
+    assert_snapshot!(rendered(&mut with_db, source), @r"
+    Mode enum
+    Rec struct
+    Itf interface
+    Halt method
+    fb function
+    p parameter
+    m variable
+    Mode enum
+    r variable
+    Rec struct
+    Spin method
+    m variable
+    Mode enum
+    Running enumMember
+    r.a property
+    p parameter
+    prog function
+    inst variable
+    fb function
+    ");
+}
+
+/// Each token as the text it covers and what it was called, which is what a
+/// reader is checking. Indexing the raw stream broke whenever a token was
+/// added anywhere before the one under test.
+fn rendered(db: &mut RootDatabase, source: &str) -> String {
+    add_sources(db, &[source]);
+    let sema = semantic_index(db, *db.get_files().iter().last().unwrap());
+    let mut builder = SemanticTokensBuilder::new(String::new());
+    let _ = sema.walk_hir(db, &mut |node| {
+        node.semantic_tokens(db, &mut builder);
+        std::ops::ControlFlow::<()>::Continue(())
+    });
+
+    let lines: Vec<&str> = source.lines().collect();
+    let (mut line, mut col) = (0usize, 0usize);
+    builder
+        .build()
+        .data
+        .iter()
+        .map(|token| {
+            line += token.delta_line as usize;
+            col = match token.delta_line {
+                0 => col + token.delta_start as usize,
+                _ => token.delta_start as usize,
+            };
+            let text = lines
+                .get(line)
+                .map(|l| {
+                    let start = col.min(l.len());
+                    &l[start..(col + token.length as usize).min(l.len())]
+                })
+                .unwrap_or("?");
+            format!(
+                "{text} {}",
+                SUPPORTED_TYPES[token.token_type as usize].as_str()
+            )
+        })
+        .collect::<Vec<_>>()
+        .join("\n")
 }

@@ -15,7 +15,8 @@ use hir::{
 };
 
 use crate::{
-    CLASS, ENUM, ENUM_MEMBER, FUNCTION, INTERFACE, METHOD, NAMESPACE, STRUCT, SUPPORTED_TYPES,
+    CLASS, ENUM, ENUM_MEMBER, FUNCTION, INTERFACE, METHOD, NAMESPACE, PARAMETER, PROPERTY, STRUCT,
+    SUPPORTED_TYPES, VARIABLE,
     comment_index::comment_index,
     handlers::SemanticTokensHandler,
     handlers::document_links::{byte_range_to_span, find_bracket_refs, resolve_bracket_ref_to_pou},
@@ -31,6 +32,14 @@ impl<'db> SemanticTokensHandler<'db> for HirNode<'db> {
             HirNode::PouDecl(p) => p.semantic_tokens(db, builder),
             HirNode::MethodRef(m) => m.semantic_tokens(db, builder),
             HirNode::VariableDecl(v) => v.semantic_tokens(db, builder),
+            HirNode::Program(p) => {
+                let file = p.get_scope_id(db).file(db);
+                if let Some(range) = hir::denormalize(db, file, &p.get_name_span(db))
+                    && range.start.line == range.end.line
+                {
+                    builder.push(range, token(FUNCTION), 0);
+                }
+            }
             HirNode::Spec(v) => v.semantic_tokens(db, builder),
             // todo: The first path expr will highlight the whole path
             //HirNode::PathExpr(p) => p.semantic_tokens(db, builder),
@@ -133,6 +142,15 @@ impl<'db> SemanticTokensHandler<'db> for VariableDecl<'db> {
         builder: &mut SemanticTokensBuilder,
     ) {
         comment_bracket_ref_tokens(self, db, builder);
+
+        // The name being declared. Only its USES were coloured, so a VAR
+        // section came back blank.
+        let file = self.get_scope_id(db).file(db);
+        if let Some(range) = hir::denormalize(db, file, &self.get_name_span(db))
+            && range.start.line == range.end.line
+        {
+            builder.push(range, token(variable_kind(db, *self)), 0);
+        }
     }
 }
 
@@ -148,7 +166,10 @@ impl<'db> SemanticTokensHandler<'db> for Spec<'db> {
             builder,
             match self.kind(db) {
                 SpecKind::Target(t) => t.path.target.get_span(db),
-                _ => self.get_span(db),
+                // A token marks a NAME. Taking the spec's own span coloured
+                // `(Idle, Running)` and a whole `STRUCT ... END_STRUCT` as
+                // one enum and one struct token.
+                _ => return,
             },
             self.get_scope_id(db).file(db),
         );
@@ -266,6 +287,17 @@ pub(crate) fn semantic_tokens_for_type<'db>(
     if range.start.line != range.end.line {
         return;
     }
+    // What the name IS comes before what it is OF. A variable used to take
+    // its type's colour, so `m : Mode` read as the enum itself.
+    if let Type::Variable((var, _)) = typ {
+        builder.push(range, token(variable_kind(db, var)), 0);
+        return;
+    }
+    if let Type::StructElement(_) = typ {
+        builder.push(range, token(PROPERTY), 0);
+        return;
+    }
+
     match typ.normalize(db) {
         Type::Class(_) => {
             builder.push(
@@ -323,5 +355,23 @@ pub(crate) fn semantic_tokens_for_type<'db>(
             );
         }
         _ => {}
+    }
+}
+
+/// The legend index for a token type.
+fn token(name: auto_lsp::lsp_types::SemanticTokenType) -> u32 {
+    SUPPORTED_TYPES.iter().position(|x| *x == name).unwrap() as u32
+}
+
+/// A declaration the caller writes at the call site is a parameter; anything
+/// else it owns is a variable.
+fn variable_kind<'db>(
+    db: &'db dyn WorkspaceDataBase,
+    var: VariableDecl<'db>,
+) -> auto_lsp::lsp_types::SemanticTokenType {
+    use hir::hir_def::pous::variable::VariableKind;
+    match var.kind(db) {
+        VariableKind::Input | VariableKind::Output | VariableKind::InOut => PARAMETER,
+        _ => VARIABLE,
     }
 }
