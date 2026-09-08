@@ -521,3 +521,33 @@ END_FUNCTION_BLOCK
     assert_eq!(links.len(), 1);
     assert_eq!(links[0].target_range.start.line, 7);
 }
+
+/// A qualified value names the VARIANT, so it goes to where that variant is
+/// written. Only the type half of `Mode#Running` resolved; the half the
+/// reader clicked answered nothing.
+#[rstest]
+#[case::the_type_half(1, "/test0.st:1:5-1:9")]
+#[case::the_variant_half(6, "/test0.st:1:19-1:26")]
+pub fn definition_on_a_qualified_enum_value(
+    mut with_db: RootDatabase,
+    #[case] into: usize,
+    #[case] expected: &str,
+) {
+    let source = r#"
+TYPE Mode : (Idle, Running); END_TYPE
+
+FUNCTION_BLOCK fb
+VAR
+    m : Mode;
+END_VAR
+    m := Mode#Running;
+END_FUNCTION_BLOCK
+"#;
+    add_sources(&mut with_db, &[source]);
+    let file = *with_db.get_files().iter().last().unwrap();
+    let offset = source.rfind("Mode#Running").expect("the value") + into;
+    let node = descendant_at(&with_db, file, offset).expect("a node");
+    let def = node.definition(&with_db, offset).expect("a definition");
+
+    assert_eq!(format_definition_response(&def), expected);
+}

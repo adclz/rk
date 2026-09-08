@@ -237,6 +237,20 @@ impl<'db> DefinitionHandler<'db> for Type<'db> {
                 SpecKind::Target(_) => return dt.spec(db).infer(db).definition(db, _offset),
                 _ => dt as _,
             },
+            // A qualified value names the VARIANT, so it goes to where that
+            // variant is written. Only the type half of `Mode#Running`
+            // resolved; the half the reader clicked answered nothing.
+            Type::EnumVariant(data_type, variant) => {
+                let SpecKind::Enum(enm) = data_type.spec(db).kind(db) else {
+                    None?
+                };
+                let declared = enm.enum_variants(db).get(&variant.caseless(db)).copied()?;
+                let file = data_type.get_scope_id(db).file(db);
+                return Some(GotoDefinitionResponse::Scalar(Location::new(
+                    file.url(db).to_owned(),
+                    hir::denormalize(db, file, &declared.name.get_span(db)).unwrap_or_default(),
+                )));
+            }
             Type::Variable((var, _multibits)) => match var.spec(db).kind(db) {
                 SpecKind::Target(_) => return var.spec(db).infer(db).definition(db, _offset),
                 _ => var as _,
