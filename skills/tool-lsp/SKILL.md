@@ -46,7 +46,14 @@ It spans the identifier, not the whole declaration: a range covering the POU mad
 `textDocument/declaration` The declaration behind anything that has one: variables and fields, and also POUs, methods, enum variants and namespaces.
 On a variable use it lands on the `VAR` line, where `definition` lands on the type.
 
+`textDocument/typeDefinition` The TYPE of what the cursor is on, where `definition` gives its declaration.
+On `m : Mode` it lands on `Mode`; on a call it lands on the return type's declaration.
+An elementary type is written nowhere, so `INT` answers `null` rather than falling back to the variable.
+
 `textDocument/references` Declaration and uses, across every workspace file.
+
+`textDocument/documentHighlight` The same occurrences narrowed to ONE document, which is what the editor paints as the cursor moves.
+Every hit is `kind: 1` (text): telling a read from a write is inference's answer, and this request is not the place to take a second opinion on it.
 
 `textDocument/hover` Markdown, an `iecst` fence with the signature (`(VAR) total: REAL`, `FUNCTION Add: INT`), the qualified namespace when there is one, and the preceding doc comment below a rule.
 
@@ -75,6 +82,13 @@ A symbol declared in the library is refused rather than renamed: the edit could 
 `textDocument/foldingRange` One region per POU and per variable section.
 
 `textDocument/inlayHint` End-marker labels (`FUNCTION_BLOCK Motor` on `END_FUNCTION_BLOCK`), parameter names on positional call arguments, and element types in struct initializers.
+
+`textDocument/inlineValue` Where a debugger should show what a variable holds, while a session is stopped.
+The server never sees a runtime value: it answers with the RANGES that name a variable and the name to look up, and the debugger supplies the value for the frame.
+Every answer is an `InlineValueVariableLookup` with `caseSensitiveLookup: false`, because IEC folds case and `Motor` and `motor` are one name.
+Declarations and bare uses are offered, up to and including the stopped line; nothing below it, where a value would be last scan's.
+A FIELD step is deliberately not offered on its own: in `g.out` the lookup is `g`, since a bare `out` is not a name the debugger's scope holds and the path that would reach it is the runtime's shape, not the source's.
+Note that `lsp-types` declares this request's result as a single value where the specification says an array; the server answers with the array.
 
 `textDocument/semanticTokens/full` and `/range` The legend has 13 token types (`namespace`, `function`, `method`, `interface`, `class`, `struct`, `enum`, `enumMember`, `event`, `variable`, `parameter`, `property`, `type`) and no modifiers.
 Every name a body writes carries one, and it is the token for what the name IS rather than what it is OF: a variable of enum type is a `variable`, not an `enum`.
@@ -139,8 +153,9 @@ vim.lsp.start({
 ```
 
 Requests that are not registered are refused with JSON-RPC `-32601`, not with an empty answer.
-That is the case for `textDocument/typeDefinition`, `documentHighlight`, `prepareRename`, `rangeFormatting`, `selectionRange`, `inlineValue` and type hierarchy, none of which the server implements.
-Call hierarchy IS implemented; type hierarchy is not, because the protocol crate the server is built on predates the 3.17 server capability and has no way to advertise it.
+That is the case for `prepareRename`, `rangeFormatting`, `onTypeFormatting`, `selectionRange`, `linkedEditingRange`, `workspace/willRenameFiles` and `moniker`, none of which the server implements.
+Type hierarchy is the one gap that is not a choice: the protocol crate the server is built on predates the 3.17 `typeHierarchyProvider` capability and has no way to advertise it, so the request would be refused however it were answered.
+Call hierarchy, type definition, document highlight and inline values are all implemented.
 
 The VSCode extension adds what the protocol does not carry: it copies the built binary to `vscode/server/bin/`, owns the two code lens commands, and consumes a custom `rk/serverStatus` notification for its status bar.
 Another client sees that notification and can drop it.
