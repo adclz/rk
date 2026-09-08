@@ -305,42 +305,6 @@ pub fn overload_discriminant<'db>(
     Some(discriminant)
 }
 
-/// Every FUNCTION the call could name: the declarations `name` resolves to,
-/// in the namespace the callee was found in. This is what [`select_overload`]
-/// picks from, and what signature help lists so an overloaded name shows
-/// every candidate rather than whichever one resolution landed on.
-pub fn overload_set<'db>(
-    db: &'db dyn WorkspaceDataBase,
-    first: Function<'db>,
-) -> Vec<Function<'db>> {
-    let name = first.name(db);
-    let candidates = match function_namespace_path(db, first) {
-        Some(path) => namespace_pou_candidates(db, path, name),
-        None => pou_candidates(db, name),
-    };
-    let mut functions: Vec<Function<'db>> = candidates
-        .into_iter()
-        .filter_map(|p| match p {
-            Pou::Function(f) => Some(f),
-            _ => None,
-        })
-        .collect();
-    // A TRUE duplicate (same params, same return) is E0101 at the
-    // declaration; the call resolves against the surviving first as if the
-    // twin did not exist — one error, not ambiguity noise on every call.
-    let mut seen: Vec<crate::hir_ty::head::signature::FunctionSignature<'db>> = Vec::new();
-    functions.retain(|f| {
-        let key = function_signature(db, *f);
-        if seen.contains(&key) {
-            false
-        } else {
-            seen.push(key);
-            true
-        }
-    });
-    functions
-}
-
 /// Select the FUNCTION overload whose signature matches `arg_types`.
 ///
 /// Ordinary name resolution binds a bare function name to the *first* same-name
@@ -378,7 +342,7 @@ pub fn select_overload<'db>(
         return OverloadPick::One(callable);
     };
 
-    let functions = overload_set(db, first);
+    let functions = crate::hir_ty::head::signature::overload_set(db, first);
     if functions.len() <= 1 {
         // Not an overload set — nothing to pick.
         return OverloadPick::One(callable);

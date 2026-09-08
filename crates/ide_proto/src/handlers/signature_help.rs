@@ -129,7 +129,7 @@ fn find_func_call_signature_help(
     // `callable` is what inference recorded, so this only lists its siblings.
     let (candidates, active_signature) = match callable {
         hir::hir_ty::ty::CallableType::Function(f) => {
-            let set = hir::hir_ty::resolver::name::overload_set(db, f);
+            let set = hir::hir_ty::head::signature::overload_set(db, f);
             match set.iter().position(|c| *c == f) {
                 Some(active) => (
                     set.into_iter()

@@ -13,9 +13,9 @@ use crate::{
         using::Using,
     },
     hir_ty::{
-        index_graphs::external_var_lookup,
+        index_graphs::{external_var_lookup, namespace_pou_candidates, pou_candidates},
         resolver::{
-            name::{NameResolution, resolve_name},
+            name::{NameResolution, enclosing_namespace_path, resolve_name},
             visibility::{check_namespace_visibility, check_test_visibility},
         },
         ty::Type,
@@ -41,6 +41,42 @@ pub struct FunctionSignature<'db> {
     /// The normalized return type, `None` for a void FUNCTION. What a
     /// RETURN-directed overload set (same params) is picked by.
     pub ret: Option<Type<'db>>,
+}
+
+/// Every FUNCTION the call could name: the declarations `name` resolves to,
+/// in the namespace the callee was found in. What overload resolution picks
+/// from, and what signature help lists so an overloaded name shows every
+/// candidate rather than whichever one resolution landed on.
+pub fn overload_set<'db>(
+    db: &'db dyn WorkspaceDataBase,
+    first: Function<'db>,
+) -> Vec<Function<'db>> {
+    let name = first.name(db);
+    let candidates = match enclosing_namespace_path(db, first.scope_id(db)) {
+        Some(path) => namespace_pou_candidates(db, path, name),
+        None => pou_candidates(db, name),
+    };
+    let mut functions: Vec<Function<'db>> = candidates
+        .into_iter()
+        .filter_map(|p| match p {
+            Pou::Function(f) => Some(f),
+            _ => None,
+        })
+        .collect();
+    // A TRUE duplicate (same params, same return) is E0101 at the
+    // declaration; the call resolves against the surviving first as if the
+    // twin did not exist — one error, not ambiguity noise on every call.
+    let mut seen: Vec<FunctionSignature<'db>> = Vec::new();
+    functions.retain(|f| {
+        let key = function_signature(db, *f);
+        if seen.contains(&key) {
+            false
+        } else {
+            seen.push(key);
+            true
+        }
+    });
+    functions
 }
 
 /// The [`FunctionSignature`] of `f`. It reads the already-inferred head types
