@@ -927,3 +927,82 @@ fn a_type_default_reaches_a_program_field(mut with_db: db::RootDatabase) {
     assert_eq!(dbg.read_var(&plc, "Run.o.x"), Some(VarValue::I16(7)));
     assert_eq!(dbg.read_var(&plc, "Run.o.n"), Some(VarValue::I16(50)));
 }
+
+/// Every aggregate is named by its base address, which is what a frame is
+/// CALLED with. The leaves alone could not answer "whose state is this frame
+/// running on": an address that names a whole instance matched no symbol.
+#[rstest]
+fn every_aggregate_is_named_by_its_base_address(mut with_db: db::RootDatabase) {
+    let source = r#"
+        TYPE Point : STRUCT x : INT; y : INT; END_STRUCT END_TYPE
+
+        FUNCTION_BLOCK Gear
+        VAR
+            ratio : DINT;
+            here : Point;
+        END_VAR
+        END_FUNCTION_BLOCK
+
+        PROGRAM Main
+        VAR
+            n : INT;
+            g : Gear;
+            bank : ARRAY[1..2] OF Gear;
+        END_VAR
+            n := n + 1;
+        END_PROGRAM
+
+        CONFIGURATION Cfg
+            RESOURCE Res ON CPU
+                TASK T(INTERVAL := T#10ms, PRIORITY := 1);
+                PROGRAM Run WITH T : Main;
+            END_RESOURCE
+        END_CONFIGURATION
+    "#;
+    let (mir, wasm) = compile_to_mir_and_wasm(&mut with_db, source);
+    let parsed = read_debug_symbols(&wasm);
+    assert_eq!(parsed, mir.debug_symbols);
+
+    let got: Vec<&str> = parsed.containers.iter().map(|c| c.path.as_str()).collect();
+    assert_eq!(
+        got,
+        vec![
+            "Run",
+            "Run.bank[1]",
+            "Run.bank[1].here",
+            "Run.bank[2]",
+            "Run.bank[2].here",
+            "Run.g",
+            "Run.g.here",
+        ],
+        "the instance, each block in the array, and every struct inside them"
+    );
+
+    // A container's address is a real one: the instance's own base is where
+    // its first field lives, and every leaf under a container sits at or
+    // after it.
+    let base = |path: &str| {
+        parsed
+            .containers
+            .iter()
+            .find(|c| c.path == path)
+            .unwrap_or_else(|| panic!("no container {path}"))
+            .address
+    };
+    let leaf = |path: &str| {
+        parsed
+            .symbols
+            .iter()
+            .find(|s| s.path == path)
+            .unwrap_or_else(|| panic!("no symbol {path}"))
+            .address
+    };
+    assert!(base("Run") >= BUILTIN_RESERVED_FLOOR);
+    assert_eq!(
+        base("Run.g"),
+        leaf("Run.g.ratio"),
+        "first field at the base"
+    );
+    assert!(base("Run.g.here") > base("Run.g"));
+    assert_ne!(base("Run.bank[1]"), base("Run.bank[2]"));
+}

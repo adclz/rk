@@ -539,6 +539,7 @@ fn lower_module_from_pous<'db>(
     // path.
     let mut symbols = Vec::new();
     let mut array_syms = Vec::new();
+    let mut containers = Vec::new();
     let mut type_table = crate::debug_symbols::TypeTable::new();
     if let Some(sched) = &module.schedule {
         for task in &sched.tasks {
@@ -551,6 +552,12 @@ fn lower_module_from_pous<'db>(
                         inst.prog_name.text(db)
                     )));
                 };
+                // The instance itself: whose state a stopped frame is running on.
+                containers.push(debug_format::ContainerSym {
+                    path: inst.inst_name.text(db).to_string(),
+                    address: inst.instance_addr,
+                    global: false,
+                });
                 for f in &info.struct_type.fields {
                     let path = crate::debug_symbols::join_path(db, inst.inst_name.text(db), f.name);
                     // Per-field leaf budget, matching `collect_root`'s per-root budget.
@@ -563,6 +570,14 @@ fn lower_module_from_pous<'db>(
                         &mut symbols,
                         &mut array_syms,
                         &mut type_table,
+                    );
+                    crate::debug_symbols::collect_containers(
+                        db,
+                        &path,
+                        inst.instance_addr + f.offset,
+                        &f.ty,
+                        false,
+                        &mut containers,
                     );
                 }
             }
@@ -579,14 +594,24 @@ fn lower_module_from_pous<'db>(
             &mut array_syms,
             &mut type_table,
         );
+        crate::debug_symbols::collect_containers(
+            db,
+            name.text(db),
+            *addr,
+            ty,
+            true,
+            &mut containers,
+        );
     }
     symbols.sort_by(|a, b| a.path.cmp(&b.path));
+    containers.sort_by(|a, b| a.path.cmp(&b.path));
     array_syms.sort_by(|a, b| a.path.cmp(&b.path));
     module.debug_symbols = crate::debug_symbols::DebugSymbols {
         version: crate::debug_symbols::DEBUG_SYMBOLS_VERSION,
         symbols,
         arrays: array_syms,
         types: type_table.into_entries(),
+        containers,
     };
 
     // The per-field retain map from the same final addresses.

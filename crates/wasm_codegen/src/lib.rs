@@ -507,6 +507,9 @@ struct WasmGen<'a> {
     /// Per-function scalar locals `(wasm index, name, elem)`, for the
     /// `debug-locals` section.
     func_locals: FxHashMap<u32, Vec<(u32, String, MirElementary)>>,
+    /// MIR func index → the wasm local holding its instance pointer, for the
+    /// bodies that take one.
+    func_this_slot: FxHashMap<u32, u32>,
     /// Per function: leaf symbols and array descriptors for its memory-resident
     /// locals, whose addresses are static (IEC forbids recursion). Emitted
     /// into `debug-locals` v2.
@@ -612,6 +615,7 @@ impl<'a> WasmGen<'a> {
             test_result_floor,
             func_lines: FxHashMap::default(),
             func_locals: FxHashMap::default(),
+            func_this_slot: FxHashMap::default(),
             func_memory_locals: FxHashMap::default(),
             local_type_table: mir::debug_symbols::TypeTable::new(),
         }
@@ -1114,6 +1118,19 @@ impl<'a> WasmGen<'a> {
         scalar_locals.sort_by_key(|(idx, _, _)| *idx);
         if !scalar_locals.is_empty() {
             self.func_locals.insert(func.index, scalar_locals);
+        }
+
+        // The instance pointer's slot, from the MIR parameter kind.
+        if let Some(index) = func
+            .params
+            .iter()
+            .find(|p| matches!(p.kind, mir::function::MirParamKind::This))
+            .and_then(|p| match local_map.get(&p.name) {
+                Some(LocalInfo::Pointer { index, .. }) => Some(*index),
+                _ => None,
+            })
+        {
+            self.func_this_slot.insert(func.index, index);
         }
 
         // Memory-resident locals, leaf-walked like module symbols with
@@ -1692,13 +1709,14 @@ impl<'a> WasmGen<'a> {
                 data: std::borrow::Cow::Owned(debug_lines.to_msgpack()),
             });
 
-            // `debug-locals`: per-function scalar-local labels (wasm local index →
-            // IEC name/type), keyed by DefinedFuncIndex, so a debugger names the
-            // values `FrameHandle::local(i)` returns.
+            // `debug-locals`: per-function scalar-local labels and the
+            // instance-pointer slot, by DefinedFuncIndex. Every function gets a
+            // table, even one with no locals.
             let all_indices: std::collections::BTreeSet<u32> = self
                 .func_locals
                 .keys()
                 .chain(self.func_memory_locals.keys())
+                .chain(self.func_this_slot.keys())
                 .copied()
                 .collect();
             let mut func_local_tables: Vec<debug_format::FuncLocals> = all_indices
@@ -1730,6 +1748,7 @@ impl<'a> WasmGen<'a> {
                         locals: vars,
                         memory,
                         arrays,
+                        this_slot: self.func_this_slot.get(&mir_idx).copied(),
                     })
                 })
                 .collect();

@@ -16,7 +16,7 @@ pub const DEBUG_SYMBOLS_SECTION: &str = "debug-symbols";
 /// On-wire format version; bump on any breaking change. A new field goes
 /// at the TAIL of its struct: `rmp_serde` encodes positionally, so
 /// `#[serde(default)]` only backfills a field missing from the end.
-pub const DEBUG_SYMBOLS_VERSION: u16 = 6;
+pub const DEBUG_SYMBOLS_VERSION: u16 = 7;
 
 /// The complete debug-symbol table for a module.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -42,6 +42,22 @@ pub struct DebugSymbols {
     /// referenced types appear.
     #[serde(default)]
     pub types: Vec<TypeDesc>,
+    /// Every aggregate's base address, by path (v7): the address a frame is
+    /// called with, which is how a debugger learns whose state a frame runs
+    /// on.
+    #[serde(default)]
+    pub containers: Vec<ContainerSym>,
+}
+
+/// One aggregate's name and base address.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct ContainerSym {
+    /// Dotted path, as [`Symbol::path`] spells it (`P1`, `P1.motor`).
+    pub path: String,
+    /// Base address in linear memory.
+    pub address: u32,
+    /// Whether it lives in the configuration's globals.
+    pub global: bool,
 }
 
 /// Index into a `types` table.
@@ -263,6 +279,7 @@ impl DebugSymbols {
             symbols: Vec::new(),
             arrays: Vec::new(),
             types: Vec::new(),
+            containers: Vec::new(),
         }
     }
 
@@ -390,7 +407,7 @@ pub const DEBUG_LOCALS_SECTION: &str = "debug-locals";
 
 /// On-wire format version for [`DebugLocals`]. v2 adds `memory`/`arrays`
 /// per function; v3 adds the module-level `types` table.
-pub const DEBUG_LOCALS_VERSION: u16 = 3;
+pub const DEBUG_LOCALS_VERSION: u16 = 4;
 
 /// Per-function scalar-local tables: wasm local slot → IEC name and type;
 /// memory-resident variables are reached via [`DebugSymbols`].
@@ -420,6 +437,12 @@ pub struct FuncLocals {
     /// element resolution as [`DebugSymbols::arrays`].
     #[serde(default)]
     pub arrays: Vec<ArraySym>,
+    /// The wasm local holding this frame's instance pointer (v4); `None` for
+    /// a FUNCTION. Not in `locals`, since a `this` is machinery, not a
+    /// declared variable; its value is what [`DebugSymbols::containers`]
+    /// turns back into a name.
+    #[serde(default)]
+    pub this_slot: Option<u32>,
 }
 
 /// One scalar local: its wasm local slot index + IEC name and type.
@@ -634,6 +657,11 @@ mod tests {
                     ],
                 },
             ],
+            containers: vec![ContainerSym {
+                path: "P".into(),
+                address: 64,
+                global: false,
+            }],
         };
         let back = DebugSymbols::from_msgpack(&table.to_msgpack()).unwrap();
         assert_eq!(back, table);

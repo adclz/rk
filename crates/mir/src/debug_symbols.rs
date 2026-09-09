@@ -308,6 +308,55 @@ pub fn collect_frame_root(
     walk_type(db, root, base, ty, false, out, arrays, types, &mut budget, true);
 }
 
+/// Name every aggregate under `root` by its base address: what a frame's
+/// `this` may point at (structs and struct array elements).
+pub fn collect_containers(
+    db: &dyn WorkspaceDataBase,
+    path: &str,
+    addr: u32,
+    ty: &MirType,
+    global: bool,
+    out: &mut Vec<debug_format::ContainerSym>,
+) {
+    // Same order of magnitude as the leaf budget.
+    if out.len() as u32 >= MAX_ROOT_LEAVES {
+        return;
+    }
+    match ty {
+        MirType::Struct(s) => {
+            out.push(debug_format::ContainerSym {
+                path: path.to_string(),
+                address: addr,
+                global,
+            });
+            for f in &s.fields {
+                collect_containers(
+                    db,
+                    &format!("{path}.{}", f.name.text(db)),
+                    addr + f.offset,
+                    &f.ty,
+                    global,
+                    out,
+                );
+            }
+        }
+        // Only an array whose element can be a `this` is descended.
+        MirType::Array(a) if matches!(&*a.element_type, MirType::Struct(_)) => {
+            for k in 0..a.total_elements {
+                collect_containers(
+                    db,
+                    &debug_format::element_path(path, k, &a.dimensions),
+                    addr + k * a.element_size,
+                    &a.element_type,
+                    global,
+                    out,
+                );
+            }
+        }
+        _ => {}
+    }
+}
+
 /// A leaf symbol's dotted path from a root segment and a field name.
 pub fn join_path(db: &dyn WorkspaceDataBase, root: &str, field: Ident) -> String {
     format!("{root}.{}", field.text(db))
