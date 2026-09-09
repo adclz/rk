@@ -147,13 +147,10 @@ vim.lsp.start({
 
 Requests that are not registered are refused with JSON-RPC `-32601`, not with an empty answer.
 That is the case for `prepareRename`, `rangeFormatting`, `onTypeFormatting`, `selectionRange`, `linkedEditingRange`, `workspace/willRenameFiles` and `moniker`, none of which the server implements.
-Call hierarchy, type definition and document highlight are all implemented.
+Call hierarchy, type definition, document highlight and inline values are all implemented.
 
-Two gaps are not a choice, and both would need work outside the server.
-Type hierarchy: the protocol crate the server is built on predates the 3.17 `typeHierarchyProvider` capability, so the request would be refused however it were answered.
-Inline values: the request resolves a NAME against the stopped frame's scopes, and only a FUNCTION's or METHOD's scalars are frame locals.
-A PROGRAM's and a FUNCTION_BLOCK's variables are instance state, addressed as `inst.field` from a root the CONFIGURATION names, and a stack frame does not say which instance it is running.
-Answering by name would light up a FUNCTION body and stay blank everywhere else, so the request is left unimplemented until a frame carries its instance path.
+One gap is not a choice: type hierarchy.
+The protocol crate the server is built on predates the 3.17 `typeHierarchyProvider` capability, so the request would be refused however it were answered.
 
 The VSCode extension adds what the protocol does not carry: it copies the built binary to `vscode/server/bin/`, owns the two code lens commands, and consumes a custom `rk/serverStatus` notification for its status bar.
 Another client sees that notification and can drop it.
