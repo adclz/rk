@@ -23,6 +23,7 @@ pub mod document_symbols;
 pub mod hover;
 pub mod implementation;
 pub mod inlay_hint;
+pub mod inline_value;
 pub mod references;
 pub mod rename;
 pub mod semantic_tokens;
