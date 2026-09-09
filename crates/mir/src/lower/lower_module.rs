@@ -557,6 +557,7 @@ fn lower_module_from_pous<'db>(
                     path: inst.inst_name.text(db).to_string(),
                     address: inst.instance_addr,
                     global: false,
+                    type_name: inst.prog_name.text(db).to_string(),
                 });
                 for f in &info.struct_type.fields {
                     let path = crate::debug_symbols::join_path(db, inst.inst_name.text(db), f.name);

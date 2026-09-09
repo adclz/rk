@@ -24,17 +24,6 @@ pub struct DebugSymbols {
     pub version: u16,
     /// Every debuggable variable, sorted by `path`.
     pub symbols: Vec<Symbol>,
-    /// One descriptor per ARRAY-typed variable (any size), sorted by `path`.
-    ///
-    /// This is the layer every debug format has and ours lacked: DWARF's
-    /// `DW_TAG_array_type`, a toolchain's symbol configuration — the SHAPE is
-    /// described once and elements are computed on demand, instead of being
-    /// enumerated. `symbols` still carries eagerly-expanded leaves for small
-    /// arrays as a convenience for the pushed snapshot; past the leaf budget a
-    /// consumer resolves `a[i]` through the descriptor: bounds-check against
-    /// `dimensions`, row-major flatten, `address + flat * elem_size`. Before
-    /// this existed, an array past the cap contributed NOTHING — invisible to
-    /// the monitor and the debugger, with no marker saying so.
     #[serde(default)]
     pub arrays: Vec<ArraySym>,
     /// The type table (v5): layouts referenced by `TypeId`, what makes an
@@ -58,6 +47,10 @@ pub struct ContainerSym {
     pub address: u32,
     /// Whether it lives in the configuration's globals.
     pub global: bool,
+    /// The POU or struct this is an instance of; an address alone is
+    /// ambiguous when an aggregate's first field is itself an aggregate.
+    #[serde(default)]
+    pub type_name: String,
 }
 
 /// Index into a `types` table.
@@ -661,10 +654,76 @@ mod tests {
                 path: "P".into(),
                 address: 64,
                 global: false,
+                type_name: "Prog".into(),
             }],
         };
         let back = DebugSymbols::from_msgpack(&table.to_msgpack()).unwrap();
         assert_eq!(back, table);
+    }
+
+    /// A v6 module and a v3 locals table must still decode: the encoding is
+    /// positional.
+    #[test]
+    fn a_v6_symbols_and_v3_locals_payload_still_decode() {
+        #[derive(Serialize)]
+        struct DebugSymbolsV6 {
+            version: u16,
+            symbols: Vec<Symbol>,
+            arrays: Vec<ArraySym>,
+            types: Vec<TypeDesc>,
+        }
+        let v6 = DebugSymbolsV6 {
+            version: 6,
+            symbols: vec![Symbol {
+                path: "P1.n".into(),
+                address: 64,
+                size: 4,
+                ty: SymType::DInt,
+                global: false,
+                named_type: None,
+            }],
+            arrays: vec![],
+            types: vec![],
+        };
+        let decoded = DebugSymbols::from_msgpack(&rmp_serde::to_vec(&v6).unwrap())
+            .expect("a v6 payload still decodes");
+        assert_eq!(decoded.version, 6);
+        assert_eq!(decoded.symbols.len(), 1);
+        assert!(
+            decoded.containers.is_empty(),
+            "and simply has no aggregates named"
+        );
+
+        #[derive(Serialize)]
+        struct FuncLocalsV3 {
+            defined_index: u32,
+            locals: Vec<LocalVar>,
+            memory: Vec<Symbol>,
+            arrays: Vec<ArraySym>,
+        }
+        #[derive(Serialize)]
+        struct DebugLocalsV3 {
+            version: u16,
+            functions: Vec<FuncLocalsV3>,
+            types: Vec<TypeDesc>,
+        }
+        let v3 = DebugLocalsV3 {
+            version: 3,
+            functions: vec![FuncLocalsV3 {
+                defined_index: 0,
+                locals: vec![],
+                memory: vec![],
+                arrays: vec![],
+            }],
+            types: vec![],
+        };
+        let decoded = DebugLocals::from_msgpack(&rmp_serde::to_vec(&v3).unwrap())
+            .expect("a v3 locals payload still decodes");
+        assert_eq!(decoded.version, 3);
+        assert_eq!(
+            decoded.functions[0].this_slot, None,
+            "and no frame claims an instance"
+        );
     }
 
     /// A module built by a pre-v5 compiler must still be readable: a `.wasm`

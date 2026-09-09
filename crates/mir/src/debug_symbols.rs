@@ -328,6 +328,7 @@ pub fn collect_containers(
                 path: path.to_string(),
                 address: addr,
                 global,
+                type_name: s.name.text(db).to_string(),
             });
             for f in &s.fields {
                 collect_containers(

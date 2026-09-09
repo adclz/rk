@@ -1006,3 +1006,119 @@ fn every_aggregate_is_named_by_its_base_address(mut with_db: db::RootDatabase) {
     assert!(base("Run.g.here") > base("Run.g"));
     assert_ne!(base("Run.bank[1]"), base("Run.bank[2]"));
 }
+
+/// An aggregate whose FIRST field is itself an aggregate shares its base
+/// address, so an address alone cannot say which of them a frame is running.
+#[rstest]
+fn nested_instances_can_share_a_base_address(mut with_db: db::RootDatabase) {
+    let source = r#"
+        FUNCTION_BLOCK Inner
+        VAR n : DINT; END_VAR
+            n := n + 1;
+        END_FUNCTION_BLOCK
+
+        FUNCTION_BLOCK Outer
+        VAR
+            deep : Inner;
+            k : DINT;
+        END_VAR
+            deep();
+        END_FUNCTION_BLOCK
+
+        PROGRAM Main
+        VAR
+            belt : Outer;
+            parts : DINT;
+        END_VAR
+            belt();
+        END_PROGRAM
+
+        CONFIGURATION Cfg
+            RESOURCE Res ON CPU
+                TASK T(INTERVAL := T#10ms, PRIORITY := 1);
+                PROGRAM P1 WITH T : Main;
+            END_RESOURCE
+        END_CONFIGURATION
+    "#;
+    let (_mir, wasm) = compile_to_mir_and_wasm(&mut with_db, source);
+    let parsed = read_debug_symbols(&wasm);
+    let base = |path: &str| {
+        parsed
+            .containers
+            .iter()
+            .find(|c| c.path == path)
+            .unwrap_or_else(|| panic!("no container {path}"))
+            .address
+    };
+    assert_eq!(
+        (base("P1"), base("P1.belt")),
+        (base("P1"), base("P1.belt.deep")),
+        "three instances, one address: `belt` is Main's first field and \
+         `deep` is Outer's, so the whole chain starts where P1 does"
+    );
+}
+
+/// A container table written before instances carried their type still names
+/// something, and says that it is stale.
+///
+/// Matching on the missing type resolved NOTHING: every frame instanceless,
+/// the variables view back to one undivided program, and no hint why. That is
+/// what a half-rebuilt tree produces — a fresh runtime reading a module an
+/// older compiler wrote — so it must degrade, not vanish.
+#[rstest]
+fn a_container_table_without_types_degrades_and_says_so() {
+    use debug_format::{ContainerSym, DebugSymbols, Symbol, SymType};
+
+    let table = DebugSymbols {
+        version: debug_format::DEBUG_SYMBOLS_VERSION,
+        symbols: vec![Symbol {
+            path: "P1.belt.n".into(),
+            address: 64,
+            size: 4,
+            ty: SymType::DInt,
+            global: false,
+            named_type: None,
+        }],
+        arrays: vec![],
+        types: vec![],
+        // Both at one address, as a first-field-aggregate chain really is,
+        // and neither saying what it is an instance of.
+        containers: vec![
+            ContainerSym {
+                path: "P1".into(),
+                address: 64,
+                global: false,
+                type_name: String::new(),
+            },
+            ContainerSym {
+                path: "P1.belt".into(),
+                address: 64,
+                global: false,
+                type_name: String::new(),
+            },
+        ],
+    };
+    let wasm = wasm_with_debug_symbols(&table.to_msgpack());
+    let info = runtime::debug::DebugInfo::from_wasm(&wasm);
+
+    assert_eq!(
+        info.container_at(64, "Main"),
+        Some("P1"),
+        "the outermost name, which is all such a table can answer"
+    );
+    assert!(
+        info.problems().iter().any(|p| p.contains("without their type")),
+        "and it says the build is stale: {:?}",
+        info.problems()
+    );
+}
+
+/// A module carrying just a `debug-symbols` section, for reading it back.
+fn wasm_with_debug_symbols(payload: &[u8]) -> Vec<u8> {
+    let mut module = wasm_encoder::Module::new();
+    module.section(&wasm_encoder::CustomSection {
+        name: std::borrow::Cow::Borrowed(DEBUG_SYMBOLS_SECTION),
+        data: std::borrow::Cow::Borrowed(payload),
+    });
+    module.finish()
+}
