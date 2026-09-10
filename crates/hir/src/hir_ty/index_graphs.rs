@@ -130,6 +130,17 @@ fn all_files<'db>(db: &'db dyn WorkspaceDataBase) -> impl Iterator<Item = File> 
         .chain(db.get_library_files().iter().map(|e| *e))
 }
 
+/// The workspace's OWN files, without the library's.
+///
+/// A library is code, not a PLC. Its POUs exist to be used and must resolve
+/// from anywhere, but a CONFIGURATION it declares describes the machine its
+/// author was building, not this one. Counted as the workspace's, it spent the
+/// single configuration a workspace may have before the user had written a
+/// line, and E0242 then refused them their own.
+fn workspace_files<'db>(db: &'db dyn WorkspaceDataBase) -> impl Iterator<Item = File> + 'db {
+    db.get_files().iter().map(|e| *e)
+}
+
 // ---------------------------------------------------------------------------
 // Public lookup functions
 // ---------------------------------------------------------------------------
@@ -282,18 +293,23 @@ pub fn program_index<'db>(db: &'db dyn WorkspaceDataBase, name: Ident) -> Option
 /// Every CONFIGURATION the workspace declares — for reporting that it
 /// declares more than one (E0242), not for choosing among them.
 ///
+/// The WORKSPACE's, not the library's: see [`workspace_files`].
+///
 /// A workspace has one configuration; this is how the check sees that it has
 /// two, and where they are. Order is whatever the file maps yield, so it can
 /// answer "how many" and "which ones" and never "which one".
 pub fn declared_configs<'db>(db: &'db dyn WorkspaceDataBase) -> Vec<ConfigDecl<'db>> {
     let mut out = Vec::new();
-    for file in all_files(db) {
+    for file in workspace_files(db) {
         out.extend(file_configs(db, file).iter().copied());
     }
     out
 }
 
-/// Every block of the named CONFIGURATION, across all files.
+/// Every block of the named CONFIGURATION, across the workspace's files.
+///
+/// The library's are not fragments of this workspace's configuration even when
+/// they share its name: see [`workspace_files`].
 ///
 /// Same-named blocks are FRAGMENTS of one configuration — the GVL model: a
 /// file of VAR_GLOBALs here, the resources there. Order is whatever the file
@@ -301,7 +317,7 @@ pub fn declared_configs<'db>(db: &'db dyn WorkspaceDataBase) -> Vec<ConfigDecl<'
 #[tracing::instrument(level = "trace", skip(db), ret)]
 pub fn config_fragments<'db>(db: &'db dyn WorkspaceDataBase, name: Ident) -> Vec<ConfigDecl<'db>> {
     let mut out = Vec::new();
-    for file in all_files(db) {
+    for file in workspace_files(db) {
         out.extend(
             file_configs(db, file)
                 .iter()

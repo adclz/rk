@@ -48,14 +48,16 @@ fn test_location<'db>(db: &'db dyn WorkspaceDataBase, func: Function<'db>) -> (S
     (name, line)
 }
 
-/// Whether a test FUNCTION belongs to the workspace — only those enter the
-/// test manifest. Library files are compiled like everything else, but their
-/// tests are not this workspace's to run; membership in the workspace field
-/// is the same rule the LSP uses to scope its requests.
-fn is_workspace_test<'db>(db: &'db dyn WorkspaceDataBase, func: Function<'db>) -> bool {
-    use hir::HirNodeInfo;
-    let file = func.get_scope_id(db).file(db);
+/// Whether `node` was declared by the workspace rather than the library,
+/// by the rule the LSP uses to scope its requests.
+fn is_workspace<'db>(db: &'db dyn WorkspaceDataBase, node: impl hir::HirNodeInfo<'db>) -> bool {
+    let file = node.get_scope_id(db).file(db);
     db.get_files().contains_key(file.url(db))
+}
+
+/// Only the workspace's tests enter the manifest.
+fn is_workspace_test<'db>(db: &'db dyn WorkspaceDataBase, func: Function<'db>) -> bool {
+    is_workspace(db, func)
 }
 
 /// Pin a codegen error to a POU declaration; the innermost location
@@ -84,7 +86,15 @@ pub fn lower_modules<'db>(
     for index in indices {
         all_pous.extend(index.global_pous.iter().map(|p| (p, None)));
         all_programs.extend(index.programs.iter().map(|p| (p, None)));
-        fragments.extend(index.configs.iter().copied());
+        // The workspace's fragments only: a library's configuration is its
+        // author's PLC.
+        fragments.extend(
+            index
+                .configs
+                .iter()
+                .filter(|c| is_workspace(db, **c))
+                .copied(),
+        );
         // The index's namespace list is flat, so each namespace's POUs are
         // collected exactly once.
         for ns in index.namespaces.iter() {
