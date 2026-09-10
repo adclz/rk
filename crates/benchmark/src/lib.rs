@@ -36,7 +36,7 @@ use hir::{
 // ---------------------------------------------------------------------------
 
 pub const STDLIB_EXPECTED_DIAGNOSTICS: usize = 0;
-pub const STDLIB_EXPECTED_LINTS: usize = 173;
+pub const STDLIB_EXPECTED_LINTS: usize = 177;
 
 // ---------------------------------------------------------------------------
 // Corpora
@@ -389,6 +389,13 @@ mod tests {
             );
             for file in &files {
                 formatter::format(&db, *file).expect("corpus file must format");
+            }
+            // Every edit scenario's needle, checked HERE and not only under the
+            // benchmark runner: `apply` asserts the needle matches exactly
+            // once, so corpus drift silently changes what the incremental
+            // benchmark measures, and nothing but a benchmark run says so.
+            for edit in EDITS {
+                edit.apply(&corpus);
             }
             let scopes: usize = files.iter().map(|f| all_pou_scopes(&db, *f).len()).sum();
             assert!(
