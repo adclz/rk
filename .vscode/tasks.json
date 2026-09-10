@@ -9,8 +9,8 @@
 		},
 		{
 			"type": "shell",
-			"label": "Build LSP Server",
-			"command": "cargo build --release --bin vscode-lsp-server && rm -f ${workspaceFolder}/vscode/server/bin/vscode-lsp-server && cp ${workspaceFolder}/target/release/vscode-lsp-server ${workspaceFolder}/vscode/server/bin/vscode-lsp-server",
+			"label": "Build Rust binaries",
+			"command": "cargo build --release --bin vscode-lsp-server --bin rk && rm -f ${workspaceFolder}/vscode/server/bin/vscode-lsp-server && cp ${workspaceFolder}/target/release/vscode-lsp-server ${workspaceFolder}/vscode/server/bin/vscode-lsp-server",
 			"group": "build",
 			"options": {
 				"cwd": "${workspaceFolder}/vscode/server"
@@ -27,7 +27,7 @@
 		},
 		{
 			"label": "Build All",
-			"dependsOn": ["npm: build native", "Build LSP Server"],
+			"dependsOn": ["npm: build native", "Build Rust binaries"],
 			"dependsOrder": "parallel",
 			"problemMatcher": []
 		}

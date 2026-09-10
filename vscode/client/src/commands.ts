@@ -1,4 +1,5 @@
 import { commands, window, workspace, Disposable, Position, Selection, Uri, Task, TaskScope, TaskRevealKind, TaskPanelKind, ShellExecution, tasks } from "vscode";
+import { rkCommand } from "./rk";
 
 export function registerCommands(
     restartServer: () => Promise<void>,
@@ -45,7 +46,9 @@ export function registerCommands(
                 TaskScope.Workspace,
                 bareName,
                 "rk",
-                new ShellExecution(`rk test "${testName}"`, { cwd: workspaceFolder }),
+                // The same `rk` everything else in the extension uses; a
+                // hardcoded one here would run a different build's tests.
+                new ShellExecution(`"${rkCommand()}" test "${testName}"`, { cwd: workspaceFolder }),
             );
             task.presentationOptions = { reveal: TaskRevealKind.Always, panel: TaskPanelKind.Dedicated };
             await tasks.executeTask(task);
