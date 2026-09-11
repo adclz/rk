@@ -121,12 +121,12 @@ fn type_check_multi_dimensional_array(mut with_db: RootDatabase) {
         "#;
 
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E0306] Error: invalid literal
+    [E0308] Error: invalid literal
        ,-[ file:///test0.st:8:39 ]
        |
      8 |                 Base : Engine := [3(5(10.5))];
        |                                       ^^|^
-       |                                         `--- cannot infer '<float>' to 'BOOL': invalid boolean literal
+       |                                         `--- cannot infer '<float>' to 'BOOL': invalid boolean literal; BOOL is TRUE or FALSE
     ---'
     ");
 }

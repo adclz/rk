@@ -19,7 +19,8 @@ n: DT := DT#2024-01-31-12:30:45;  // DT# or DATE_AND_TIME#; LDT# for LDT
 ```
 
 Durations may be negative (`T#-5s`, the sign goes after the `#`).
-A bad unit, a missing unit, or a malformed date is a compile error (E0306) that names the problem; an out-of-range literal shows the type's exact bounds as literals.
+A bad or missing unit is E0309 and a malformed date E0310; each names the problem and ends with the shape a correct literal has.
+An out-of-range literal is E0306, and shows the type's exact bounds as literals.
 
 ## Encodings and ranges
 

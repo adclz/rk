@@ -247,7 +247,7 @@ fn duplicates_are_detected_in_any_case(mut with_db: RootDatabase) {
         |                       ^|^
         |                        `--- duplicate method 'run'
     ----'
-    [E0309] Error: semantic violation
+    [E0317] Error: semantic violation
         ,-[ file:///test0.st:12:13 ]
         |
      12 |             Run := 1;

@@ -227,13 +227,6 @@ impl<'db> InitInference<'db> {
                     );
                 }
 
-                if !var.is_input(db) {
-                    self.errors.push(
-                        TypeError::VariadicNotInInput { var: *var }
-                            .to_diagnostic(db, self.scope.file(db)),
-                    );
-                }
-
                 if let Some(first) = first_variadic {
                     self.errors.push(
                         CallError::MultipleVariadicVariables {
@@ -265,7 +258,7 @@ impl<'db> InitInference<'db> {
             for var in variables {
                 if var.is_input(db) && !var.variadic(db) {
                     self.errors.push(
-                        TypeError::VariadicMixedWithOtherInputs {
+                        CallError::VariadicMixedWithOtherInputs {
                             variadic_var,
                             other_var: *var,
                         }

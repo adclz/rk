@@ -434,7 +434,7 @@ END_PROGRAM
     "#;
 
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E0309] Error: semantic violation
+    [E0317] Error: semantic violation
         ,-[ file:///test0.st:11:10 ]
         |
      11 |     x := ITF1;
@@ -565,7 +565,7 @@ fn invalid_this_assigned_to_variable(mut with_db: RootDatabase) {
        |                     ^^^|^^
        |                        `---- 'Worker' references itself here
     ---'
-    [E0310] Error: semantic violation
+    [E0318] Error: semantic violation
        ,-[ file:///test0.st:5:17 ]
        |
      5 |                 other := THIS;

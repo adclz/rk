@@ -50,7 +50,7 @@ FUNCTION_BLOCK fb1
 END_FUNCTION_BLOCK"#;
 
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E0309] Error: semantic violation
+    [E0317] Error: semantic violation
        ,-[ file:///test0.st:8:5 ]
        |
      8 |     fb2 := ULINT#5;
@@ -126,7 +126,7 @@ FUNCTION_BLOCK fb1
 END_FUNCTION_BLOCK"#;
 
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E0309] Error: semantic violation
+    [E0317] Error: semantic violation
        ,-[ file:///test0.st:8:5 ]
        |
      8 |     T1 := ULINT#5;
@@ -153,7 +153,7 @@ FUNCTION_BLOCK fb1
 END_FUNCTION_BLOCK"#;
 
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E0310] Error: semantic violation
+    [E0318] Error: semantic violation
         ,-[ file:///test0.st:11:5 ]
         |
      11 |     d_fb2 := ULINT#5;
@@ -362,7 +362,7 @@ PROGRAM A
 END_PROGRAM"#;
 
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E0309] Error: semantic violation
+    [E0317] Error: semantic violation
         ,-[ file:///test0.st:10:10 ]
         |
      10 |     x := Motor;
@@ -398,7 +398,7 @@ PROGRAM A
 END_PROGRAM"#;
 
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E0309] Error: semantic violation
+    [E0317] Error: semantic violation
         ,-[ file:///test0.st:10:10 ]
         |
      10 |     x := ClBase;
@@ -431,7 +431,7 @@ PROGRAM A
 END_PROGRAM"#;
 
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E0309] Error: semantic violation
+    [E0317] Error: semantic violation
        ,-[ file:///test0.st:6:8 ]
        |
      6 |     IF Motor THEN
@@ -463,7 +463,7 @@ PROGRAM A
 END_PROGRAM"#;
 
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E0309] Error: semantic violation
+    [E0317] Error: semantic violation
         ,-[ file:///test0.st:10:14 ]
         |
      10 |     x := 5 + Motor;

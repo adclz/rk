@@ -427,9 +427,9 @@ END_FUNCTION_BLOCK
         .collect();
 
     assert_snapshot!(over.join("\n"), @r"
-    exceeds the capacity of 5 bytes, got 12
-    exceeds the capacity of 5 bytes, got 12
-    exceeds the capacity of 5 bytes, got 12
-    exceeds the capacity of 80 bytes, got 100
+    exceeds the capacity of 5 bytes, got 12; declare it STRING[12], or shorten the literal
+    exceeds the capacity of 5 bytes, got 12; declare it STRING[12], or shorten the literal
+    exceeds the capacity of 5 bytes, got 12; declare it STRING[12], or shorten the literal
+    exceeds the capacity of 80 bytes, got 100; declare it STRING[100], or shorten the literal
     ");
 }

@@ -195,14 +195,14 @@ fn invalid_non_integer_subscript(mut with_db: RootDatabase) {
        |               ^^|^
        |                 `--- array index must be an integer, found BOOL
     ---'
-    [E0306] Error: invalid literal
+    [E0308] Error: invalid literal
        ,-[ file:///test0.st:9:15 ]
        |
      9 |             a[1.5] := 3;
        |               ^|^
-       |                `--- cannot infer '<float>' to 'DINT': invalid DINT literal
+       |                `--- cannot infer '<float>' to 'DINT': invalid DINT literal; DINT takes a whole number, written like 42 or 16#2A
     ---'
-    [E0306] Error: invalid literal
+    [E0308] Error: invalid literal
         ,-[ file:///test0.st:10:15 ]
         |
      10 |             a['x'] := 4;

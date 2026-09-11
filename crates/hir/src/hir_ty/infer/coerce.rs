@@ -323,7 +323,7 @@ impl<'db> Type<'db> {
             // by reference, so this hands over the instance rather than copying
             // it — the way to share one. Assigning an instance is a different
             // question and stays refused, by the check on the assignment TARGET
-            // (E0310), not here.
+            // (E0318), not here.
             (Type::FunctionBlock(expected), Type::FunctionBlock(actual)) if expected == *actual => {
                 Ok(())
             }

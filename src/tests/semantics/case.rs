@@ -87,7 +87,7 @@ FUNCTION_BLOCK fb1
 END_FUNCTION_BLOCK"#;
 
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E0306] Error: invalid literal
+    [E0308] Error: invalid literal
        ,-[ file:///test0.st:9:9 ]
        |
      9 |         'hello': y := 10;
@@ -153,14 +153,14 @@ END_FUNCTION_BLOCK"#;
        |              ^|^
        |               `--- a CASE range bound must be an integer constant
     ---'
-    [E0306] Error: invalid literal
+    [E0308] Error: invalid literal
        ,-[ file:///test0.st:9:9 ]
        |
      9 |         'a'..'z': y := 10;
        |         ^|^
        |          `--- cannot infer '<string>' to 'INT': cannot use string literal as INT
     ---'
-    [E0306] Error: invalid literal
+    [E0308] Error: invalid literal
        ,-[ file:///test0.st:9:14 ]
        |
      9 |         'a'..'z': y := 10;
@@ -189,7 +189,7 @@ FUNCTION_BLOCK fb1
 END_FUNCTION_BLOCK"#;
 
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E0306] Error: invalid literal
+    [E0308] Error: invalid literal
         ,-[ file:///test0.st:10:17 ]
         |
       5 |         y : INT;
@@ -303,7 +303,7 @@ FUNCTION_BLOCK fb1
 END_FUNCTION_BLOCK"#;
 
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E0306] Error: invalid literal
+    [E0308] Error: invalid literal
         ,-[ file:///test0.st:11:14 ]
         |
       5 |         y : INT;

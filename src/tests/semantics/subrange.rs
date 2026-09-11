@@ -35,12 +35,12 @@ fn invalid_start_value(mut with_db: RootDatabase) {
         "#;
 
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E0306] Error: invalid literal
+    [E0307] Error: invalid literal
        ,-[ file:///test0.st:3:26 ]
        |
      3 |             Range: UINT (-10..0);
        |                          ^|^
-       |                           `--- cannot infer '<integer>' to 'UINT': literal can not be negative
+       |                           `--- cannot infer '<integer>' to 'UINT': UINT cannot be negative; UINT is unsigned; use INT, or drop the sign
     ---'
     ");
 }
@@ -54,12 +54,12 @@ fn invalid_end_value(mut with_db: RootDatabase) {
         "#;
 
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E0306] Error: invalid literal
+    [E0307] Error: invalid literal
        ,-[ file:///test0.st:3:29 ]
        |
      3 |             Range: UINT (0..-5);
        |                             ^|
-       |                              `-- cannot infer '<integer>' to 'UINT': literal can not be negative
+       |                              `-- cannot infer '<integer>' to 'UINT': UINT cannot be negative; UINT is unsigned; use INT, or drop the sign
     ---'
     ");
 }
@@ -82,7 +82,7 @@ fn invalid_subrange_value_type(mut with_db: RootDatabase) {
         "#;
 
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E0306] Error: invalid literal
+    [E0307] Error: invalid literal
         ,-[ file:///test0.st:11:22 ]
         |
       3 |             Range: UINT (0..5);
@@ -91,7 +91,7 @@ fn invalid_subrange_value_type(mut with_db: RootDatabase) {
         |
      11 |             test :=  -1 // -1 should not be allowed here (UINT)
         |                      ^|
-        |                       `-- cannot infer '<integer>' to 'UINT': literal can not be negative
+        |                       `-- cannot infer '<integer>' to 'UINT': UINT cannot be negative; UINT is unsigned; use INT, or drop the sign
     ----'
     ");
 }
@@ -171,7 +171,7 @@ VAR u : UINT (0..5); END_VAR
 END_PROGRAM
 "#;
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E0306] Error: invalid literal
+    [E0307] Error: invalid literal
        ,-[ file:///test0.st:4:10 ]
        |
      3 | VAR u : UINT (0..5); END_VAR
@@ -179,7 +179,7 @@ END_PROGRAM
        |     `-- type is declared by variable 'u' here
      4 |     u := -1;
        |          ^|
-       |           `-- cannot infer '<integer>' to 'UINT': literal can not be negative
+       |           `-- cannot infer '<integer>' to 'UINT': UINT cannot be negative; UINT is unsigned; use INT, or drop the sign
     ---'
     ");
 }

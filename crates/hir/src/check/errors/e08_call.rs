@@ -130,6 +130,11 @@ pub enum CallError<'db> {
         var: VariableDecl<'db>,
         call_site: CallSite<'db>,
     },
+    /// Variadic parameter must be the only VAR_INPUT parameter.
+    VariadicMixedWithOtherInputs {
+        variadic_var: VariableDecl<'db>,
+        other_var: VariableDecl<'db>,
+    },
 }
 
 impl<'db> ErrorCode for CallError<'db> {
@@ -150,6 +155,7 @@ impl<'db> ErrorCode for CallError<'db> {
             Self::MultipleVariadicVariables { .. } => "E0812",
             Self::EmptyVariadicCall { .. } => "E0813",
             Self::NonVariadicFoldParameter { .. } => "E0814",
+            Self::VariadicMixedWithOtherInputs { .. } => "E0815",
         }
     }
 
@@ -172,6 +178,7 @@ impl<'db> ErrorCode for CallError<'db> {
             Self::MultipleVariadicVariables { .. } => "invalid variadic declaration",
             Self::EmptyVariadicCall { .. } => "variadic call without arguments",
             Self::NonVariadicFoldParameter { .. } => "type mismatch",
+            Self::VariadicMixedWithOtherInputs { .. } => "invalid variadic declaration",
         }
     }
 }
@@ -183,6 +190,35 @@ impl<'db> ToIdeDiagnostic<'db> for CallError<'db> {
         file: auto_lsp::default::db::file::File,
     ) -> IdeDiagnostic {
         match self {
+            Self::VariadicMixedWithOtherInputs {
+                variadic_var,
+                other_var,
+            } => {
+                let mut diag = diag()
+                    .message(format!(
+                        "variadic parameter '{}' must be the only VAR_INPUT parameter",
+                        variadic_var.name(db).text(db),
+                    ))
+                    .severity(DiagnosticSeverity::ERROR)
+                    .desc(self)
+                    .range(
+                        crate::denormalize(db, file, &other_var.get_span(db)).unwrap_or_default(),
+                    )
+                    .call();
+
+                diag.with_related(Related::new(
+                    format!(
+                        "variadic parameter '{}' declared here",
+                        variadic_var.name(db).text(db)
+                    ),
+                    variadic_var.scope_id(db).file(db),
+                    variadic_var.get_span(db),
+                ));
+                diag.with_note(
+                    "a variadic parameter must be the only parameter in VAR_INPUT".into(),
+                );
+                diag
+            }
             Self::IncorrectNumberOfParameters {
                 overloads,
                 expected,

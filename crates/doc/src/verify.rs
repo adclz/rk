@@ -94,12 +94,6 @@ pub fn codes_in_output(output: &str) -> BTreeSet<String> {
         .collect()
 }
 
-/// A key may carry a suffix to give one code several examples (`E0306_SINT`);
-/// the diagnostic it produces is the base code.
-pub fn base_code(code: &str) -> &str {
-    code.split('_').next().unwrap_or(code)
-}
-
 /// Every disagreement between the examples and the compiler, as lines ready
 /// to print. Empty means the reference may be written.
 pub fn problems(examples: &[ErrorExample], produced: &[(&str, BTreeSet<String>)]) -> Vec<String> {
@@ -115,17 +109,14 @@ pub fn problems(examples: &[ErrorExample], produced: &[(&str, BTreeSet<String>)]
         return problems;
     }
 
-    let documented: BTreeSet<String> = examples
-        .iter()
-        .map(|e| base_code(e.code).to_string())
-        .collect();
+    let documented: BTreeSet<String> = examples.iter().map(|e| e.code.to_string()).collect();
     // Documented with a runnable example. A code that fires at the workspace
     // level is described without one, and stays on the allowlist: `rk explain`
     // used to deny such a code exists.
     let exemplified: BTreeSet<String> = examples
         .iter()
         .filter(|e| !e.sources.is_empty())
-        .map(|e| base_code(e.code).to_string())
+        .map(|e| e.code.to_string())
         .collect();
     let debt: BTreeSet<String> = KNOWN_UNDOCUMENTED.iter().map(|s| s.to_string()).collect();
 
@@ -155,7 +146,7 @@ pub fn problems(examples: &[ErrorExample], produced: &[(&str, BTreeSet<String>)]
     }
 
     for (code, got) in produced {
-        let want = base_code(code);
+        let want = *code;
         if got.contains(want) {
             continue;
         }

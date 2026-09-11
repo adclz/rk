@@ -6,7 +6,6 @@ use crate::hir_def::expressions::expression::AddOperatorKind;
 use crate::hir_def::expressions::expression::Expr;
 use crate::hir_def::expressions::expression::MultOperatorKind;
 use crate::hir_def::expressions::spec::Spec;
-use crate::hir_def::pous::variable::VariableDecl;
 use crate::hir_ty::body::Adjust;
 use crate::hir_ty::body::Adjustment;
 use crate::hir_ty::infer::table::InferSource;
@@ -79,18 +78,9 @@ pub enum TypeError<'db> {
         expr: Spec<'db>,
         ty: Type<'db>,
     },
-    /// Variadic parameter must be the only VAR_INPUT parameter.
-    VariadicMixedWithOtherInputs {
-        variadic_var: VariableDecl<'db>,
-        other_var: VariableDecl<'db>,
-    },
     DirectType {
         typ: Type<'db>,
         expr: CallSite<'db>,
-    },
-    /// Variadic variable declared outside of VAR_INPUT.
-    VariadicNotInInput {
-        var: VariableDecl<'db>,
     },
     AssignCallableType {
         typ: CallableType<'db>,
@@ -103,6 +93,14 @@ pub enum TypeError<'db> {
 pub enum InferLiteralError {
     // Emitted by rust std library cast
     TypeMismatch(String),
+    /// The literal is well-formed but outside what the type holds.
+    OutOfRange {
+        type_name: &'static str,
+    },
+    /// A minus sign on a literal for an unsigned type.
+    NegativeUnsigned {
+        type_name: &'static str,
+    },
 
     Invalid_BOOL_Literal,
     Invalid_UNSIGNED_8_BITS_Literal,
@@ -118,19 +116,6 @@ pub enum InferLiteralError {
     Invalid_REAL_Literal,
     Invalid_LREAL_Literal,
 
-    Invalid_TIME_Literal,
-    Invalid_LTIME_Literal,
-
-    Invalid_DATE_Literal,
-    Invalid_LDATE_Literal,
-
-    Invalid_TOD_Literal,
-    Invalid_LTOD_Literal,
-
-    Invalid_DT_Literal,
-    Invalid_LDT_Literal,
-
-    Invalid_STRING_Literal,
     Invalid_CHAR_Length(usize),
     Invalid_STRING_Length {
         max: u64,
@@ -171,11 +156,7 @@ pub enum InferLiteralError {
 
     Invalid_DT_Format(String),
     Invalid_LDT_Format(String),
-
-    Incomplete_STRING_XX_Escape,
-    Invalid_STRING_Hex_Escape,
 }
-
 
 impl<'db> ErrorCode for TypeError<'db> {
     fn code(&self) -> &'static str {
@@ -185,13 +166,11 @@ impl<'db> ErrorCode for TypeError<'db> {
             Self::NotAddable { .. } => "E0303",
             Self::NotMultiplicable { .. } => "E0304",
             Self::UnsupportedOperator { .. } => "E0305",
-            Self::InferLiteralError { .. } => "E0306",
-            Self::StringLengthNotConstant { .. } => "E0307",
-            Self::FunctionAsType { .. } => "E0308",
-            Self::VariadicMixedWithOtherInputs { .. } => "E0309",
-            Self::DirectType { .. } => "E0309",
-            Self::VariadicNotInInput { .. } => "E0310",
-            Self::AssignCallableType { .. } => "E0310",
+            Self::InferLiteralError { err, .. } => err.code(),
+            Self::StringLengthNotConstant { .. } => "E0315",
+            Self::FunctionAsType { .. } => "E0316",
+            Self::DirectType { .. } => "E0317",
+            Self::AssignCallableType { .. } => "E0318",
         }
     }
 
@@ -205,9 +184,7 @@ impl<'db> ErrorCode for TypeError<'db> {
             Self::InferLiteralError { .. } => "invalid literal",
             Self::StringLengthNotConstant { .. } => "length is not constant",
             Self::FunctionAsType { .. } => "invalid type",
-            Self::VariadicMixedWithOtherInputs { .. } => "invalid variadic declaration",
             Self::DirectType { .. } => "semantic violation",
-            Self::VariadicNotInInput { .. } => "invalid variadic declaration",
             Self::AssignCallableType { .. } => "semantic violation",
         }
     }
@@ -356,13 +333,19 @@ impl<'db> ToIdeDiagnostic<'db> for TypeError<'db> {
                 source,
                 target,
             } => {
+                let target_name = target.type_name(db);
+                let mut message = format!(
+                    "cannot infer '{}' to '{}': {}",
+                    expr.to_string(db),
+                    target_name,
+                    err
+                );
+                if let Some(shape) = err.shape(&target_name) {
+                    message.push_str("; ");
+                    message.push_str(&shape);
+                }
                 let mut diag = diag()
-                    .message(format!(
-                        "cannot infer '{}' to '{}': {}",
-                        expr.to_string(db),
-                        target.type_name(db),
-                        err
-                    ))
+                    .message(message)
                     .severity(DiagnosticSeverity::ERROR)
                     .desc(self)
                     .range(crate::denormalize(db, file, &expr.get_span(db)).unwrap_or_default())
@@ -377,19 +360,6 @@ impl<'db> ToIdeDiagnostic<'db> for TypeError<'db> {
                             call.get_span(db),
                         )),
                     }
-                }
-
-                // For range-overflow errors, attach a note showing the
-                // valid integer-encoding range so the user knows why a
-                // literal was rejected and where the cutoff sits.
-                if let InferLiteralError::DurationOutOfRange {
-                    type_name,
-                    min,
-                    max,
-                    ..
-                } = err
-                {
-                    diag.with_note(format!("valid range for {type_name}: {min} to {max}"));
                 }
 
                 target.with_location(db, &mut diag);
@@ -411,35 +381,6 @@ impl<'db> ToIdeDiagnostic<'db> for TypeError<'db> {
                 .desc(self)
                 .range(crate::denormalize(db, file, &expr.get_span(db)).unwrap_or_default())
                 .call(),
-            Self::VariadicMixedWithOtherInputs {
-                variadic_var,
-                other_var,
-            } => {
-                let mut diag = diag()
-                    .message(format!(
-                        "variadic parameter '{}' must be the only VAR_INPUT parameter",
-                        variadic_var.name(db).text(db),
-                    ))
-                    .severity(DiagnosticSeverity::ERROR)
-                    .desc(self)
-                    .range(
-                        crate::denormalize(db, file, &other_var.get_span(db)).unwrap_or_default(),
-                    )
-                    .call();
-
-                diag.with_related(Related::new(
-                    format!(
-                        "variadic parameter '{}' declared here",
-                        variadic_var.name(db).text(db)
-                    ),
-                    variadic_var.scope_id(db).file(db),
-                    variadic_var.get_span(db),
-                ));
-                diag.with_note(
-                    "a variadic parameter must be the only parameter in VAR_INPUT".into(),
-                );
-                diag
-            }
             Self::DirectType { expr, typ } => diag()
                 .message(format!(
                     "cannot use direct type '{}' here",
@@ -449,20 +390,6 @@ impl<'db> ToIdeDiagnostic<'db> for TypeError<'db> {
                 .desc(self)
                 .range(crate::denormalize(db, file, &expr.get_span(db)).unwrap_or_default())
                 .call(),
-            Self::VariadicNotInInput { var } => {
-                let mut diag = diag()
-                    .message(format!(
-                        "variadic variable '{}' must be declared in VAR_INPUT",
-                        var.name(db).text(db),
-                    ))
-                    .severity(DiagnosticSeverity::ERROR)
-                    .desc(self)
-                    .range(crate::denormalize(db, file, &var.get_span(db)).unwrap_or_default())
-                    .call();
-
-                diag.with_note("variadic parameters are only allowed in VAR_INPUT sections".into());
-                diag
-            }
             Self::AssignCallableType { typ, access } => diag()
                 .message(format!(
                     "'{}' is a callable type and can not be assigned",
@@ -497,10 +424,126 @@ fn adjustment_to_string(
     }
 }
 
+impl InferLiteralError {
+    pub fn code(&self) -> &'static str {
+        use InferLiteralError::*;
+        match self {
+            OutOfRange { .. } | DurationOverflow | DurationOutOfRange { .. } => "E0306",
+            NegativeUnsigned { .. } => "E0307",
+            TypeMismatch(_)
+            | Invalid_BOOL_Literal
+            | Invalid_UNSIGNED_8_BITS_Literal
+            | Invalid_UNSIGNED_16_BITS_Literal
+            | Invalid_UNSIGNED_32_BITS_Literal
+            | Invalid_UNSIGNED_64_BITS_Literal
+            | Invalid_SIGNED_8_BITS_Literal
+            | Invalid_SIGNED_16_BITS_Literal
+            | Invalid_SIGNED_32_BITS_Literal
+            | Invalid_SIGNED_64_BITS_Literal
+            | Invalid_REAL_Literal
+            | Invalid_LREAL_Literal => "E0308",
+            ExpectedNumber | InvalidNumber(_) | Invalid_TIME_Unit(_) | Invalid_TIME_Components => {
+                "E0309"
+            }
+            Invalid_DATE_Format(_) | Invalid_LDATE_Format(_) => "E0310",
+            Invalid_TOD_Format(_) | Invalid_LTOD_Format(_) => "E0311",
+            Invalid_DT_Format(_) | Invalid_LDT_Format(_) => "E0312",
+            Invalid_CHAR_Length(_) => "E0313",
+            Invalid_STRING_Length { .. } => "E0314",
+        }
+    }
+
+    /// What a correct literal looks like, for the end of the message. Short
+    /// on purpose: the shape, not a tutorial.
+    pub fn shape(&self, target: &str) -> Option<String> {
+        use InferLiteralError::*;
+        Some(match self {
+            OutOfRange { type_name } => match int_bounds(type_name) {
+                Some(b) => format!("{type_name} holds {b}"),
+                None => return None,
+            },
+            DurationOutOfRange {
+                type_name,
+                min,
+                max,
+                ..
+            } => {
+                format!("{type_name} holds {min} to {max}")
+            }
+            DurationOverflow => return None,
+            NegativeUnsigned { type_name } => match signed_twin(type_name) {
+                Some(t) => format!("{type_name} is unsigned; use {t}, or drop the sign"),
+                None => format!("{type_name} is unsigned; drop the sign"),
+            },
+            Invalid_BOOL_Literal => "BOOL is TRUE or FALSE".to_string(),
+            Invalid_REAL_Literal | Invalid_LREAL_Literal => {
+                format!("{target} takes a number, written like 3.14 or 1.0E3")
+            }
+            Invalid_UNSIGNED_8_BITS_Literal
+            | Invalid_UNSIGNED_16_BITS_Literal
+            | Invalid_UNSIGNED_32_BITS_Literal
+            | Invalid_UNSIGNED_64_BITS_Literal
+            | Invalid_SIGNED_8_BITS_Literal
+            | Invalid_SIGNED_16_BITS_Literal
+            | Invalid_SIGNED_32_BITS_Literal
+            | Invalid_SIGNED_64_BITS_Literal => {
+                format!("{target} takes a whole number, written like 42 or 16#2A")
+            }
+            TypeMismatch(_) => return None,
+            ExpectedNumber | InvalidNumber(_) | Invalid_TIME_Unit(_) | Invalid_TIME_Components => {
+                let prefix = if target.starts_with('L') { "LT" } else { "T" };
+                format!("{target} is written {prefix}#1d2h3m4s5ms")
+            }
+            Invalid_DATE_Format(_) => "DATE is written D#2025-01-31".to_string(),
+            Invalid_LDATE_Format(_) => "LDATE is written LD#2025-01-31".to_string(),
+            Invalid_TOD_Format(_) => "TOD is written TOD#12:30:00.500".to_string(),
+            Invalid_LTOD_Format(_) => "LTOD is written LTOD#12:30:00.500".to_string(),
+            Invalid_DT_Format(_) => "DT is written DT#2025-01-31-12:30:00".to_string(),
+            Invalid_LDT_Format(_) => "LDT is written LDT#2025-01-31-12:30:00".to_string(),
+            Invalid_CHAR_Length(_) => "CHAR is one character, written 'a'".to_string(),
+            Invalid_STRING_Length { got, .. } => {
+                format!("declare it STRING[{got}], or shorten the literal")
+            }
+        })
+    }
+}
+
+fn int_bounds(type_name: &str) -> Option<&'static str> {
+    Some(match type_name {
+        "SINT" => "-128 to 127",
+        "INT" => "-32768 to 32767",
+        "DINT" => "-2147483648 to 2147483647",
+        "LINT" => "-9223372036854775808 to 9223372036854775807",
+        "USINT" | "BYTE" => "0 to 255",
+        "UINT" | "WORD" => "0 to 65535",
+        "UDINT" | "DWORD" => "0 to 4294967295",
+        "ULINT" | "LWORD" => "0 to 18446744073709551615",
+        "REAL" => "whole numbers from -2147483648 to 2147483647",
+        "LREAL" => "whole numbers from -9223372036854775808 to 9223372036854775807",
+        _ => return None,
+    })
+}
+
+fn signed_twin(type_name: &str) -> Option<&'static str> {
+    Some(match type_name {
+        "USINT" => "SINT",
+        "UINT" => "INT",
+        "UDINT" => "DINT",
+        "ULINT" => "LINT",
+        _ => return None,
+    })
+}
+
 impl std::fmt::Display for InferLiteralError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         let msg = match self {
             InferLiteralError::TypeMismatch(st) => return f.write_str(st),
+            InferLiteralError::OutOfRange { type_name } => {
+                return write!(f, "the value does not fit in {type_name}");
+            }
+            InferLiteralError::NegativeUnsigned { type_name } => {
+                return write!(f, "{type_name} cannot be negative");
+            }
 
             InferLiteralError::Invalid_BOOL_Literal => "invalid boolean literal",
             InferLiteralError::Invalid_UNSIGNED_8_BITS_Literal => "invalid USINT literal",
@@ -516,19 +559,6 @@ impl std::fmt::Display for InferLiteralError {
             InferLiteralError::Invalid_REAL_Literal => "invalid REAL literal",
             InferLiteralError::Invalid_LREAL_Literal => "invalid LREAL literal",
 
-            InferLiteralError::Invalid_TIME_Literal => "invalid TIME literal",
-            InferLiteralError::Invalid_LTIME_Literal => "invalid LTIME literal",
-
-            InferLiteralError::Invalid_DATE_Literal => "invalid DATE literal",
-            InferLiteralError::Invalid_LDATE_Literal => "invalid LDATE literal",
-
-            InferLiteralError::Invalid_TOD_Literal => "invalid TOD literal",
-            InferLiteralError::Invalid_LTOD_Literal => "invalid LTOD literal",
-
-            InferLiteralError::Invalid_DT_Literal => "invalid DT literal",
-            InferLiteralError::Invalid_LDT_Literal => "invalid LDT literal",
-
-            InferLiteralError::Invalid_STRING_Literal => "invalid STRING literal",
             InferLiteralError::Invalid_CHAR_Length(len) => {
                 return write!(f, "CHAR literal must be exactly 1 character, got {len}");
             }
@@ -564,11 +594,6 @@ impl std::fmt::Display for InferLiteralError {
 
             InferLiteralError::Invalid_DT_Format(st) => return f.write_str(st),
             InferLiteralError::Invalid_LDT_Format(st) => return f.write_str(st),
-
-            InferLiteralError::Incomplete_STRING_XX_Escape => {
-                "incomplete STRING XX escape sequence"
-            }
-            InferLiteralError::Invalid_STRING_Hex_Escape => "invalid STRING hex escape sequence",
         };
         f.write_str(msg)
     }

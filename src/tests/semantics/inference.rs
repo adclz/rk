@@ -58,12 +58,12 @@ END_FUNCTION"#;
        |        ^^^^^|^^^^
        |             `------ operator '+' cannot be applied to type 'BOOL'
     ---'
-    [E0306] Error: invalid literal
+    [E0308] Error: invalid literal
        ,-[ file:///test0.st:7:5 ]
        |
      7 |     IF 0.0 + test = 6 THEN
        |        ^|^   ^^|^
-       |         `---------- cannot infer '<float>' to 'BOOL': invalid boolean literal
+       |         `---------- cannot infer '<float>' to 'BOOL': invalid boolean literal; BOOL is TRUE or FALSE
        |                |
        |                `--- 'BOOL' is expected due to this
     ---'

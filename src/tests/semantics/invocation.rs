@@ -216,7 +216,7 @@ FUNCTION_BLOCK fb1
 END_FUNCTION_BLOCK"#;
 
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E0306] Error: invalid literal
+    [E0308] Error: invalid literal
        ,-[ file:///test0.st:7:12 ]
        |
      4 |         VAR_INPUT input1 : BOOL; END_VAR
@@ -225,7 +225,7 @@ END_FUNCTION_BLOCK"#;
        |
      7 |     THIS.decl(0.5);
        |               ^|^
-       |                `--- cannot infer '<float>' to 'BOOL': invalid boolean literal
+       |                `--- cannot infer '<float>' to 'BOOL': invalid boolean literal; BOOL is TRUE or FALSE
     ---'
     ");
 }
@@ -249,7 +249,7 @@ END_CLASS
 "#;
 
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E0306] Error: invalid literal
+    [E0308] Error: invalid literal
         ,-[ file:///test0.st:10:17 ]
         |
       4 |         VAR_INPUT input1 : BOOL; END_VAR
@@ -258,7 +258,7 @@ END_CLASS
         |
      10 |         SUPER.decl(0.5);
         |                    ^|^
-        |                     `--- cannot infer '<float>' to 'BOOL': invalid boolean literal
+        |                     `--- cannot infer '<float>' to 'BOOL': invalid boolean literal; BOOL is TRUE or FALSE
     ----'
     ");
 }
@@ -282,7 +282,7 @@ END_FUNCTION_BLOCK
 "#;
 
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E0306] Error: invalid literal
+    [E0308] Error: invalid literal
         ,-[ file:///test0.st:10:17 ]
         |
       4 |         VAR_INPUT input1 : BOOL; END_VAR
@@ -291,7 +291,7 @@ END_FUNCTION_BLOCK
         |
      10 |         SUPER.decl(0.5);
         |                    ^|^
-        |                     `--- cannot infer '<float>' to 'BOOL': invalid boolean literal
+        |                     `--- cannot infer '<float>' to 'BOOL': invalid boolean literal; BOOL is TRUE or FALSE
     ----'
     ");
 }

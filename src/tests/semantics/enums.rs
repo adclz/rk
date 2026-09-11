@@ -63,12 +63,12 @@ fn type_mismatch_enum_variant_decl(mut with_db: RootDatabase) {
         "#;
 
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E0306] Error: invalid literal
+    [E0307] Error: invalid literal
        ,-[ file:///test0.st:3:33 ]
        |
      3 |             List: UINT (A, B := -5, C);
        |                                 ^|
-       |                                  `-- cannot infer '<integer>' to 'UINT': literal can not be negative
+       |                                  `-- cannot infer '<integer>' to 'UINT': UINT cannot be negative; UINT is unsigned; use INT, or drop the sign
     ---'
     ");
 }

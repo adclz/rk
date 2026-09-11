@@ -162,7 +162,7 @@ FUNCTION_BLOCK fb1
 END_FUNCTION_BLOCK"#;
 
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E0306] Error: invalid literal
+    [E0308] Error: invalid literal
         ,-[ file:///test0.st:11:19 ]
         |
       4 |     param1: LINT;
@@ -171,7 +171,7 @@ END_FUNCTION_BLOCK"#;
         |
      11 |         param1 := 5.5,
         |                   ^|^
-        |                    `--- cannot infer '<float>' to 'LINT': invalid LINT literal
+        |                    `--- cannot infer '<float>' to 'LINT': invalid LINT literal; LINT takes a whole number, written like 42 or 16#2A
     ----'
     [E0301] Error: type mismatch
         ,-[ file:///test0.st:12:19 ]
@@ -395,7 +395,7 @@ FUNCTION_BLOCK fb1
 END_FUNCTION_BLOCK"#;
 
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E0309] Error: semantic violation
+    [E0317] Error: semantic violation
         ,-[ file:///test0.st:13:18 ]
         |
      13 |     fn(param1 => b1);

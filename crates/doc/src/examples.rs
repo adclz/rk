@@ -905,121 +905,8 @@ END_PROGRAM
         ErrorExample {
             code: "E0306",
             category: "Type System",
-            title: "Invalid literal",
-            description: "A literal value cannot be inferred to the target type.",
-            sources: &[r#"
-FUNCTION fn1 : INT
-VAR
-    x : LINT;
-END_VAR
-    x := 5.5;
-END_FUNCTION
-"#],
-            lint_rule: None,
-        },
-        ErrorExample {
-            code: "E0306_BOOL",
-            category: "Type System",
-            title: "Invalid BOOL literal",
-            description: "The literal value is not valid for a BOOL type (must be 0, 1, TRUE, or FALSE).",
-            sources: &[r#"
-FUNCTION_BLOCK fb1
-VAR
-    test: BOOL := 256;
-END_VAR
-END_FUNCTION_BLOCK
-"#],
-            lint_rule: None,
-        },
-        ErrorExample {
-            code: "E0306_BYTE",
-            category: "Type System",
-            title: "Invalid BYTE literal",
-            description: "The literal value exceeds the range of BYTE (0..255).",
-            sources: &[r#"
-FUNCTION_BLOCK fb1
-VAR
-    test: BYTE := 256;
-END_VAR
-END_FUNCTION_BLOCK
-"#],
-            lint_rule: None,
-        },
-        ErrorExample {
-            code: "E0306_CHAR",
-            category: "Type System",
-            title: "Invalid CHAR literal length",
-            description: "A CHAR literal must be exactly 1 character.",
-            sources: &[r#"
-FUNCTION_BLOCK fb1
-VAR
-    c: CHAR := CHAR#'ab';
-END_VAR
-END_FUNCTION_BLOCK
-"#],
-            lint_rule: None,
-        },
-        ErrorExample {
-            code: "E0306_DATE",
-            category: "Type System",
-            title: "Invalid DATE literal",
-            description: "The date literal is not valid.",
-            sources: &[r#"
-FUNCTION_BLOCK fb1
-VAR
-    d: DATE := DATE#2024-13-45;
-END_VAR
-END_FUNCTION_BLOCK
-"#],
-            lint_rule: None,
-        },
-        ErrorExample {
-            code: "E0306_DINT",
-            category: "Type System",
-            title: "Invalid DINT literal",
-            description: "The literal value exceeds the range of DINT (-2147483648..2147483647).",
-            sources: &[r#"
-FUNCTION_BLOCK fb1
-VAR
-    test: DINT := 2147483648;
-END_VAR
-END_FUNCTION_BLOCK
-"#],
-            lint_rule: None,
-        },
-        ErrorExample {
-            code: "E0306_DT",
-            category: "Type System",
-            title: "Invalid DT literal",
-            description: "The date-and-time literal is not valid.",
-            sources: &[r#"
-FUNCTION_BLOCK fb1
-VAR
-    dt: DT := DT#1984-06-25-25:36:55.360;
-END_VAR
-END_FUNCTION_BLOCK
-"#],
-            lint_rule: None,
-        },
-        ErrorExample {
-            code: "E0306_DWORD",
-            category: "Type System",
-            title: "Invalid DWORD literal",
-            description: "The literal value exceeds the range of DWORD (0..4294967295).",
-            sources: &[r#"
-FUNCTION_BLOCK fb1
-VAR
-    test: DWORD := 4294967296;
-END_VAR
-END_FUNCTION_BLOCK
-"#],
-            lint_rule: None,
-        },
-        ErrorExample {
-            code: "E0306_INT",
-            category: "Type System",
-            title: "Invalid INT literal",
-            description: "The literal value exceeds the range of INT (-32768..32767).",
+            title: "Literal out of range",
+            description: "The literal is well-formed but outside what the type can hold. The message ends with the type's bounds.",
             sources: &[r#"
 FUNCTION_BLOCK fb1
 VAR
@@ -1030,164 +917,10 @@ END_FUNCTION_BLOCK
             lint_rule: None,
         },
         ErrorExample {
-            code: "E0306_LDATE",
+            code: "E0307",
             category: "Type System",
-            title: "Invalid LDATE literal",
-            description: "The long date literal is not valid.",
-            sources: &[r#"
-FUNCTION_BLOCK fb1
-VAR
-    d: LDATE := LDATE#2024-13-45;
-END_VAR
-END_FUNCTION_BLOCK
-"#],
-            lint_rule: None,
-        },
-        ErrorExample {
-            code: "E0306_LDT",
-            category: "Type System",
-            title: "Invalid LDT literal",
-            description: "The long date-and-time literal is not valid.",
-            sources: &[r#"
-FUNCTION_BLOCK fb1
-VAR
-    dt: LDT := LDT#1984-06-25-25:36:55.360;
-END_VAR
-END_FUNCTION_BLOCK
-"#],
-            lint_rule: None,
-        },
-        ErrorExample {
-            code: "E0306_LINT",
-            category: "Type System",
-            title: "Invalid LINT literal",
-            description: "The literal value exceeds the range of LINT.",
-            sources: &[r#"
-FUNCTION_BLOCK fb1
-VAR
-    test: LINT := 9999999999999999999;
-END_VAR
-END_FUNCTION_BLOCK
-"#],
-            lint_rule: None,
-        },
-        ErrorExample {
-            code: "E0306_LTOD",
-            category: "Type System",
-            title: "Invalid LTOD literal",
-            description: "The long time-of-day literal is not valid.",
-            sources: &[r#"
-FUNCTION_BLOCK fb1
-VAR
-    t: LTOD := LTOD#25:36:55.36;
-END_VAR
-END_FUNCTION_BLOCK
-"#],
-            lint_rule: None,
-        },
-        ErrorExample {
-            code: "E0306_LWORD",
-            category: "Type System",
-            title: "Invalid LWORD literal",
-            description: "The literal value exceeds the range of LWORD.",
-            sources: &[r#"
-FUNCTION_BLOCK fb1
-VAR
-    test: LWORD := 99999999999999999999;
-END_VAR
-END_FUNCTION_BLOCK
-"#],
-            lint_rule: None,
-        },
-        ErrorExample {
-            code: "E0306_SINT",
-            category: "Type System",
-            title: "Invalid SINT literal",
-            description: "The literal value exceeds the range of SINT (-128..127).",
-            sources: &[r#"
-FUNCTION_BLOCK fb1
-VAR
-    test: SINT := 128;
-END_VAR
-END_FUNCTION_BLOCK
-"#],
-            lint_rule: None,
-        },
-        ErrorExample {
-            code: "E0306_STRING_LEN",
-            category: "Type System",
-            title: "STRING literal exceeds max length",
-            description: "A STRING literal exceeds the declared maximum length.",
-            sources: &[r#"
-FUNCTION_BLOCK fb1
-VAR
-    s: STRING[2] := 'hello';
-END_VAR
-END_FUNCTION_BLOCK
-"#],
-            lint_rule: None,
-        },
-        ErrorExample {
-            code: "E0306_TOD",
-            category: "Type System",
-            title: "Invalid TOD literal",
-            description: "The time-of-day literal is not valid.",
-            sources: &[r#"
-FUNCTION_BLOCK fb1
-VAR
-    t: TOD := TOD#25:36:55.36;
-END_VAR
-END_FUNCTION_BLOCK
-"#],
-            lint_rule: None,
-        },
-        ErrorExample {
-            code: "E0306_UDINT",
-            category: "Type System",
-            title: "Invalid UDINT literal",
-            description: "The literal value exceeds the range of UDINT/DWORD (0..4294967295).",
-            sources: &[r#"
-FUNCTION_BLOCK fb1
-VAR
-    test: UDINT := 4294967296;
-END_VAR
-END_FUNCTION_BLOCK
-"#],
-            lint_rule: None,
-        },
-        ErrorExample {
-            code: "E0306_UDINT_NEG",
-            category: "Type System",
-            title: "Negative UDINT literal",
-            description: "Unsigned integer types cannot hold negative values.",
-            sources: &[r#"
-FUNCTION_BLOCK fb1
-VAR
-    test: UDINT := -1;
-END_VAR
-END_FUNCTION_BLOCK
-"#],
-            lint_rule: None,
-        },
-        ErrorExample {
-            code: "E0306_UINT",
-            category: "Type System",
-            title: "Invalid UINT literal",
-            description: "The literal value exceeds the range of UINT/WORD (0..65535).",
-            sources: &[r#"
-FUNCTION_BLOCK fb1
-VAR
-    test: UINT := 65536;
-END_VAR
-END_FUNCTION_BLOCK
-"#],
-            lint_rule: None,
-        },
-        ErrorExample {
-            code: "E0306_UINT_NEG",
-            category: "Type System",
-            title: "Negative UINT literal",
-            description: "Unsigned integer types cannot hold negative values.",
+            title: "Negative literal for an unsigned type",
+            description: "A minus sign on a literal whose type has no negative values. Use the signed twin of the type, or drop the sign.",
             sources: &[r#"
 FUNCTION_BLOCK fb1
 VAR
@@ -1198,105 +931,105 @@ END_FUNCTION_BLOCK
             lint_rule: None,
         },
         ErrorExample {
-            code: "E0306_ULINT",
+            code: "E0308",
             category: "Type System",
-            title: "Invalid ULINT literal",
-            description: "The literal value exceeds the range of ULINT/LWORD.",
+            title: "Literal of the wrong kind",
+            description: "The literal is not the kind of value the type takes: a fraction where a whole number is expected, or a number where `TRUE` or `FALSE` is.",
             sources: &[r#"
 FUNCTION_BLOCK fb1
 VAR
-    test: ULINT := 99999999999999999999;
+    x: INT := 5.5;
 END_VAR
 END_FUNCTION_BLOCK
 "#],
             lint_rule: None,
         },
         ErrorExample {
-            code: "E0306_ULINT_NEG",
+            code: "E0309",
             category: "Type System",
-            title: "Negative ULINT literal",
-            description: "Unsigned integer types cannot hold negative values.",
+            title: "Malformed duration",
+            description: "A `TIME` or `LTIME` literal the compiler cannot read: a unit it does not know, a missing unit, or components out of order. A duration is written `T#1d2h3m4s5ms`.",
             sources: &[r#"
 FUNCTION_BLOCK fb1
 VAR
-    test: ULINT := -1;
+    t: TIME := T#5x;
 END_VAR
 END_FUNCTION_BLOCK
 "#],
             lint_rule: None,
         },
         ErrorExample {
-            code: "E0306_USINT",
+            code: "E0310",
             category: "Type System",
-            title: "Invalid USINT literal",
-            description: "The literal value exceeds the range of USINT/BYTE (0..255).",
+            title: "Malformed date",
+            description: "A `DATE` or `LDATE` literal with a month or day that does not exist, or the wrong shape. A date is written `D#2025-01-31`.",
             sources: &[r#"
 FUNCTION_BLOCK fb1
 VAR
-    test: USINT := 256;
+    d: DATE := DATE#2024-13-45;
 END_VAR
 END_FUNCTION_BLOCK
 "#],
             lint_rule: None,
         },
         ErrorExample {
-            code: "E0306_USINT_NEG",
+            code: "E0311",
             category: "Type System",
-            title: "Negative USINT literal",
-            description: "Unsigned integer types cannot hold negative values.",
+            title: "Malformed time of day",
+            description: "A `TOD` or `LTOD` literal with an hour, minute or second that does not exist, or the wrong shape. A time of day is written `TOD#12:30:00.500`.",
             sources: &[r#"
 FUNCTION_BLOCK fb1
 VAR
-    test: USINT := -1;
+    t: TOD := TOD#25:36:55.36;
 END_VAR
 END_FUNCTION_BLOCK
 "#],
             lint_rule: None,
         },
         ErrorExample {
-            code: "E0306_WCHAR",
+            code: "E0312",
             category: "Type System",
-            title: "Invalid CHAR literal length (double-quoted form)",
-            description: "A CHAR literal must be exactly 1 character. The double-quoted form (historically WCHAR) resolves to CHAR and obeys the same rule.",
+            title: "Malformed date and time",
+            description: "A `DT` or `LDT` literal with a component that does not exist, or the wrong shape. A date and time is written `DT#2025-01-31-12:30:00`.",
             sources: &[r#"
 FUNCTION_BLOCK fb1
 VAR
-    c: CHAR := CHAR#"ab";
+    dt: DT := DT#1984-06-25-25:36:55.360;
 END_VAR
 END_FUNCTION_BLOCK
 "#],
             lint_rule: None,
         },
         ErrorExample {
-            code: "E0306_WORD",
+            code: "E0313",
             category: "Type System",
-            title: "Invalid WORD literal",
-            description: "The literal value exceeds the range of WORD (0..65535).",
+            title: "CHAR literal is not one character",
+            description: "A `CHAR` holds exactly one character. The literal has none, or more than one.",
             sources: &[r#"
 FUNCTION_BLOCK fb1
 VAR
-    test: WORD := 65536;
+    c: CHAR := CHAR#'ab';
 END_VAR
 END_FUNCTION_BLOCK
 "#],
             lint_rule: None,
         },
         ErrorExample {
-            code: "E0306_WSTRING_LEN",
+            code: "E0314",
             category: "Type System",
-            title: "Double-quoted (legacy WSTRING) literal exceeds max length",
-            description: "WSTRING no longer exists: STRING is a single UTF-8 type, and the legacy double-quoted literal form now resolves to STRING. A double-quoted literal is therefore measured against the declared maximum length of the sized STRING it initializes, exactly as a single-quoted one is. The length compared is the literal's UTF-8 byte count.",
+            title: "STRING literal exceeds its capacity",
+            description: "The literal is longer than the `STRING[n]` it is assigned to. Widen the declaration, or shorten the literal; nothing is truncated silently.",
             sources: &[r#"
 FUNCTION_BLOCK fb1
 VAR
-    s: STRING[2] := "hello";
+    s: STRING[2] := 'hello';
 END_VAR
 END_FUNCTION_BLOCK
 "#],
             lint_rule: None,
         },
         ErrorExample {
-            code: "E0307",
+            code: "E0315",
             category: "Type System",
             title: "STRING length is not constant",
             description: "A `STRING[n]` length is part of the TYPE — it decides how many bytes the variable occupies — so it must be known at compile time. It may name a CONSTANT, exactly as an array bound may; what it may not do is depend on something only the runtime knows. Defaulting to 80 instead would size the storage wrongly and say nothing about it.",
@@ -1312,7 +1045,7 @@ END_FUNCTION
             lint_rule: None,
         },
         ErrorExample {
-            code: "E0308",
+            code: "E0316",
             category: "Type System",
             title: "Function used as type",
             description: "A FUNCTION cannot be used as a variable type or data type.",
@@ -1330,7 +1063,7 @@ END_FUNCTION_BLOCK
             lint_rule: None,
         },
         ErrorExample {
-            code: "E0309",
+            code: "E0317",
             category: "Type System",
             title: "Direct type usage",
             description: "A type name cannot be used directly as a value. Types are not first-class values.",
@@ -1351,7 +1084,7 @@ END_FUNCTION_BLOCK
             lint_rule: None,
         },
         ErrorExample {
-            code: "E0310",
+            code: "E0318",
             category: "Type System",
             title: "Assignment to a function block instance",
             description: "A variable whose declared type is callable — a FUNCTION_BLOCK instance, or a name that resolves to a FUNCTION — cannot be the target of an assignment. Instances are called, not copied; pass one as a VAR_IN_OUT parameter, or assign its individual members.",
@@ -1951,6 +1684,21 @@ FUNCTION sum_all : INT
         args: INT
     END_VAR
     sum_all := ...args+
+END_FUNCTION
+"#],
+            lint_rule: None,
+        },
+        ErrorExample {
+            code: "E0815",
+            category: "Calls",
+            title: "Variadic parameter beside other inputs",
+            description: "A variadic parameter takes every argument of the call, so it must be the only `VAR_INPUT` parameter.",
+            sources: &[r#"
+FUNCTION fn1 : INT
+VAR_INPUT
+    x: INT;
+    args: INT...
+END_VAR
 END_FUNCTION
 "#],
             lint_rule: None,

@@ -125,7 +125,7 @@ fn check_u8<'db>(
         InferType::Integer(n) => n
             .as_u8(db)
             .map(|_| Type::Elementary(ElementarySpec::USInt))
-            .map_err(|err| InferLiteralError::TypeMismatch(err.to_string())),
+            .map_err(|err| unsigned_error(err, "USINT")),
         _ => Err(InferLiteralError::Invalid_UNSIGNED_8_BITS_Literal),
     }
 }
@@ -138,7 +138,7 @@ fn check_u16<'db>(
         InferType::Integer(n) => n
             .as_u16(db)
             .map(|_| Type::Elementary(ElementarySpec::UInt))
-            .map_err(|err| InferLiteralError::TypeMismatch(err.to_string())),
+            .map_err(|err| unsigned_error(err, "UINT")),
         _ => Err(InferLiteralError::Invalid_UNSIGNED_16_BITS_Literal),
     }
 }
@@ -151,7 +151,7 @@ fn check_u32<'db>(
         InferType::Integer(n) => n
             .as_u32(db)
             .map(|_| Type::Elementary(ElementarySpec::UDInt))
-            .map_err(|err| InferLiteralError::TypeMismatch(err.to_string())),
+            .map_err(|err| unsigned_error(err, "UDINT")),
         _ => Err(InferLiteralError::Invalid_UNSIGNED_32_BITS_Literal),
     }
 }
@@ -164,7 +164,7 @@ fn check_u64<'db>(
         InferType::Integer(n) => n
             .as_u64(db)
             .map(|_| Type::Elementary(ElementarySpec::ULInt))
-            .map_err(|err| InferLiteralError::TypeMismatch(err.to_string())),
+            .map_err(|err| unsigned_error(err, "ULINT")),
         _ => Err(InferLiteralError::Invalid_UNSIGNED_64_BITS_Literal),
     }
 }
@@ -177,7 +177,7 @@ fn check_i8<'db>(
         InferType::Integer(n) => n
             .as_i8(db)
             .map(|_| Type::Elementary(ElementarySpec::SInt))
-            .map_err(|err| InferLiteralError::TypeMismatch(err.to_string())),
+            .map_err(|err| signed_error(err, "SINT")),
         _ => Err(InferLiteralError::Invalid_SIGNED_8_BITS_Literal),
     }
 }
@@ -190,7 +190,7 @@ fn check_i16<'db>(
         InferType::Integer(n) => n
             .as_i16(db)
             .map(|_| Type::Elementary(ElementarySpec::Int))
-            .map_err(|err| InferLiteralError::TypeMismatch(err.to_string())),
+            .map_err(|err| signed_error(err, "INT")),
         _ => Err(InferLiteralError::Invalid_SIGNED_16_BITS_Literal),
     }
 }
@@ -203,7 +203,7 @@ fn check_i32<'db>(
         InferType::Integer(n) => n
             .as_i32(db)
             .map(|_| Type::Elementary(ElementarySpec::DInt))
-            .map_err(|err| InferLiteralError::TypeMismatch(err.to_string())),
+            .map_err(|err| signed_error(err, "DINT")),
         _ => Err(InferLiteralError::Invalid_SIGNED_32_BITS_Literal),
     }
 }
@@ -216,7 +216,7 @@ fn check_i64<'db>(
         InferType::Integer(n) => n
             .as_i64(db)
             .map(|_| Type::Elementary(ElementarySpec::LInt))
-            .map_err(|err| InferLiteralError::TypeMismatch(err.to_string())),
+            .map_err(|err| signed_error(err, "LINT")),
         _ => Err(InferLiteralError::Invalid_SIGNED_64_BITS_Literal),
     }
 }
@@ -233,7 +233,7 @@ fn check_f32<'db>(
         InferType::Integer(integer) => {
             let int_val = integer
                 .as_i32(db)
-                .map_err(|err| InferLiteralError::TypeMismatch(err.to_string()))?;
+                .map_err(|err| signed_error(err, "REAL"))?;
             // IEC standard allows integer to float conversion
             Ok(Type::Elementary(ElementarySpec::Real))
         }
@@ -253,7 +253,7 @@ fn check_f64<'db>(
         InferType::Integer(integer) => {
             let int_val = integer
                 .as_i64(db)
-                .map_err(|err| InferLiteralError::TypeMismatch(err.to_string()))?;
+                .map_err(|err| signed_error(err, "LREAL"))?;
             // IEC standard allows integer to float conversion
             Ok(Type::Elementary(ElementarySpec::LReal))
         }
@@ -740,6 +740,23 @@ impl std::fmt::Display for UnsignedIntError {
     }
 }
 
+/// A signed parse failure, by kind: the range is what the user must fix, and
+/// the error's text says "target type" without naming it.
+fn signed_error(err: ParseIntError, type_name: &'static str) -> InferLiteralError {
+    use std::num::IntErrorKind::*;
+    match err.kind() {
+        PosOverflow | NegOverflow => InferLiteralError::OutOfRange { type_name },
+        _ => InferLiteralError::TypeMismatch(err.to_string()),
+    }
+}
+
+fn unsigned_error(err: UnsignedIntError, type_name: &'static str) -> InferLiteralError {
+    match err {
+        UnsignedIntError::NegativeSign => InferLiteralError::NegativeUnsigned { type_name },
+        UnsignedIntError::ParseIntError(err) => signed_error(err, type_name),
+    }
+}
+
 fn check_sign(s: &str) -> Result<&str, UnsignedIntError> {
     if s.starts_with('-') {
         Err(UnsignedIntError::NegativeSign)
@@ -916,9 +933,10 @@ pub fn parse_single_byte_string(s: &str) -> Result<Vec<u8>, InferLiteralError> {
 
     while let Some(c) = chars.next() {
         if c == '$' {
+            // The string token admits only complete escapes, so `$` is never last.
             let e = chars
                 .next()
-                .ok_or(InferLiteralError::Incomplete_STRING_XX_Escape)?;
+                .unwrap_or_else(|| unreachable!("`$` ends a string token"));
             let named = match e {
                 '$' => Some(b'$'),
                 '\'' => Some(b'\''),
@@ -936,10 +954,10 @@ pub fn parse_single_byte_string(s: &str) -> Result<Vec<u8>, InferLiteralError> {
             // Otherwise the two characters are a hex byte.
             let h2 = chars
                 .next()
-                .ok_or(InferLiteralError::Incomplete_STRING_XX_Escape)?;
+                .unwrap_or_else(|| unreachable!("`$X` is never a string token"));
             let hex = format!("{e}{h2}");
             let byte = u8::from_str_radix(&hex, 16)
-                .map_err(|_| InferLiteralError::Invalid_STRING_Hex_Escape)?;
+                .unwrap_or_else(|_| unreachable!("the string token admits only `$XX` hex escapes"));
             result.push(byte);
         } else {
             let mut buf = [0u8; 4];

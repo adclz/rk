@@ -758,7 +758,7 @@ END_CONFIGURATION
         |
         | Note: set the value in the program's own VAR declaration instead
     ----'
-    [E0306] Error: invalid literal
+    [E0308] Error: invalid literal
         ,-[ file:///test0.st:15:26 ]
         |
      15 |         inst1.x : INT := 'hello';
@@ -1017,7 +1017,7 @@ fn config_global_bad_initializer_is_a_type_error(mut with_db: db::RootDatabase) 
         END_CONFIGURATION
     "#;
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E0306] Error: invalid literal
+    [E0308] Error: invalid literal
        ,-[ file:///test0.st:4:30 ]
        |
      4 |                 bad : INT := 'oops';

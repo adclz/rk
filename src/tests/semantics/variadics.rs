@@ -287,7 +287,7 @@ FUNCTION fn
 END_FUNCTION
 "#;
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E0306] Error: invalid literal
+    [E0308] Error: invalid literal
         ,-[ file:///test0.st:10:19 ]
         |
       4 |         args: INT...
@@ -346,7 +346,7 @@ FUNCTION fn1 : INT
 END_FUNCTION
 "#;
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E0309] Error: invalid variadic declaration
+    [E0815] Error: invalid variadic declaration
        ,-[ file:///test0.st:4:9 ]
        |
      4 |         x: INT;

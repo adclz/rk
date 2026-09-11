@@ -91,12 +91,12 @@ fn invalid_array_value(mut with_db: RootDatabase) {
         "#;
 
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E0306] Error: invalid literal
+    [E0308] Error: invalid literal
        ,-[ file:///test0.st:8:37 ]
        |
      8 |                 Base : Engine := [3(10.5)];
        |                                     ^^|^
-       |                                       `--- cannot infer '<float>' to 'INT': invalid INT literal
+       |                                       `--- cannot infer '<float>' to 'INT': invalid INT literal; INT takes a whole number, written like 42 or 16#2A
     ---'
     ");
 }
@@ -121,12 +121,12 @@ fn invalid_value_in_array_of_struct(mut with_db: RootDatabase) {
         "#;
 
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E0306] Error: invalid literal
+    [E0308] Error: invalid literal
         ,-[ file:///test0.st:12:64 ]
         |
      12 |                 Base : EngineArray := [(Power := 10, Torque := 10.0)];
         |                                                                ^^|^
-        |                                                                  `--- cannot infer '<float>' to 'INT': invalid INT literal
+        |                                                                  `--- cannot infer '<float>' to 'INT': invalid INT literal; INT takes a whole number, written like 42 or 16#2A
     ----'
     ");
 }
@@ -150,12 +150,12 @@ fn invalid_value_in_struct_with_array(mut with_db: RootDatabase) {
         "#;
 
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E0306] Error: invalid literal
+    [E0308] Error: invalid literal
         ,-[ file:///test0.st:11:49 ]
         |
      11 |                 Base : Engine := (Power := [10, 5.3], Torque := 10);
         |                                                 ^|^
-        |                                                  `--- cannot infer '<float>' to 'INT': invalid INT literal
+        |                                                  `--- cannot infer '<float>' to 'INT': invalid INT literal; INT takes a whole number, written like 42 or 16#2A
     ----'
     ");
 }

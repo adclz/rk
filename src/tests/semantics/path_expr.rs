@@ -267,7 +267,7 @@ END_FUNCTION
         "#;
 
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E0306] Error: invalid literal
+    [E0308] Error: invalid literal
        ,-[ file:///test0.st:7:13 ]
        |
      4 |        test: ARRAY[0..2] OF BOOL;
@@ -276,7 +276,7 @@ END_FUNCTION
        |
      7 |     test[0] := 0.5;
        |                ^|^
-       |                 `--- cannot infer '<float>' to 'BOOL': invalid boolean literal
+       |                 `--- cannot infer '<float>' to 'BOOL': invalid boolean literal; BOOL is TRUE or FALSE
     ---'
     ");
     let file = *with_db.get_files().iter().last().unwrap();
@@ -354,7 +354,7 @@ END_FUNCTION
         "#;
 
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E0306] Error: invalid literal
+    [E0308] Error: invalid literal
         ,-[ file:///test0.st:14:16 ]
         |
       4 |         power : INT;
@@ -363,7 +363,7 @@ END_FUNCTION
         |
      14 |     test.power := 0.2;
         |                   ^|^
-        |                    `--- cannot infer '<float>' to 'INT': invalid INT literal
+        |                    `--- cannot infer '<float>' to 'INT': invalid INT literal; INT takes a whole number, written like 42 or 16#2A
     ----'
     ");
 }

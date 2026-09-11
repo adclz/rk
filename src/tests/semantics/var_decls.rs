@@ -20,7 +20,7 @@ FUNCTION_BLOCK fb1
 END_FUNCTION_BLOCK"#;
 
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E0308] Error: invalid type
+    [E0316] Error: invalid type
        ,-[ file:///test0.st:8:15 ]
        |
      8 |         test: fn;
