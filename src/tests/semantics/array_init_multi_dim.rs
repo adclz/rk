@@ -40,7 +40,7 @@ fn array_initializer_out_of_bounds(mut with_db: RootDatabase) {
         "#;
 
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E0605] Error: invalid array access
+    [E0507] Error: invalid array access
        ,-[ file:///test0.st:8:35 ]
        |
      8 |                 Base : Engine := [5(10)];
@@ -67,7 +67,7 @@ fn array_initializer_out_of_bounds_with_single_values(mut with_db: RootDatabase)
         "#;
 
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E0605] Error: invalid array access
+    [E0507] Error: invalid array access
        ,-[ file:///test0.st:9:45 ]
        |
      9 |                 Base : Engine := [3(10), 5, 6, 4];
@@ -94,7 +94,7 @@ fn multi_dimensional_array_initializer_out_of_bounds(mut with_db: RootDatabase) 
         "#;
 
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E0605] Error: invalid array access
+    [E0507] Error: invalid array access
        ,-[ file:///test0.st:8:35 ]
        |
      8 |                 Base : Engine := [3(10(10))];
@@ -121,7 +121,7 @@ fn type_check_multi_dimensional_array(mut with_db: RootDatabase) {
         "#;
 
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E0309] Error: invalid literal
+    [E0306] Error: invalid literal
        ,-[ file:///test0.st:8:39 ]
        |
      8 |                 Base : Engine := [3(5(10.5))];
@@ -205,7 +205,7 @@ fn multi_dimensional_first_dim_overflow(mut with_db: RootDatabase) {
         "#;
 
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E0605] Error: invalid array access
+    [E0507] Error: invalid array access
        ,-[ file:///test0.st:8:35 ]
        |
      8 |                 Base : Engine := [5(7(1))];
@@ -232,7 +232,7 @@ fn multi_dimensional_both_dims_overflow(mut with_db: RootDatabase) {
         "#;
 
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E0605] Error: invalid array access
+    [E0507] Error: invalid array access
        ,-[ file:///test0.st:8:35 ]
        |
      8 |                 Base : Engine := [5(10(1))];
@@ -259,7 +259,7 @@ fn three_dimensional_array(mut with_db: RootDatabase) {
         "#;
 
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E0605] Error: invalid array access
+    [E0507] Error: invalid array access
        ,-[ file:///test0.st:8:33 ]
        |
      8 |                 Data : Cube := [2(3(5(1)))];
@@ -310,7 +310,7 @@ fn array_in_struct_overflow(mut with_db: RootDatabase) {
         "#;
 
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E0605] Error: invalid array access
+    [E0507] Error: invalid array access
         ,-[ file:///test0.st:11:45 ]
         |
      11 |                 Base : Engine := (Power := [5(10)], Torque := 100);
@@ -340,7 +340,7 @@ fn array_of_struct_overflow(mut with_db: RootDatabase) {
         "#;
 
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E0605] Error: invalid array access
+    [E0507] Error: invalid array access
         ,-[ file:///test0.st:11:70 ]
         |
      11 |                 Base : EngineArray := [(Power := 10), (Power := 20), (Power := 30)];
@@ -370,7 +370,7 @@ fn nested_array_in_struct_in_array(mut with_db: RootDatabase) {
         "#;
 
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E0605] Error: invalid array access
+    [E0507] Error: invalid array access
         ,-[ file:///test0.st:11:52 ]
         |
      11 |                 Base : EngineArray := [(Values := [5(1)])];
@@ -397,7 +397,7 @@ fn single_element_array_overflow(mut with_db: RootDatabase) {
         "#;
 
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E0605] Error: invalid array access
+    [E0507] Error: invalid array access
        ,-[ file:///test0.st:8:38 ]
        |
      8 |                 Data : Single := [1, 2];
@@ -463,7 +463,7 @@ fn multi_dim_bracket_init_overflow(mut with_db: RootDatabase) {
         "#;
 
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E0605] Error: invalid array access
+    [E0507] Error: invalid array access
        ,-[ file:///test0.st:8:31 ]
        |
      8 |                 Data : Matrix := [[1, 2, 3], [4, 5, 6], [7, 8, 9]];
@@ -507,7 +507,7 @@ fn non_zero_based_array_overflow(mut with_db: RootDatabase) {
         "#;
 
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E0605] Error: invalid array access
+    [E0507] Error: invalid array access
        ,-[ file:///test0.st:8:42 ]
        |
      8 |                 Data : OneBasedArray := [4(10)];
@@ -527,7 +527,7 @@ fn non_zero_based_array_overflow(mut with_db: RootDatabase) {
 
 /// A flat list fills a multi-dimensional array row-major — `ARRAY[1..2,1..3]`
 /// takes six values, and does not require a bracket per row. The count is
-/// against the whole array, so a seventh value is E0605; the fill ORDER is
+/// against the whole array, so a seventh value is E0507; the fill ORDER is
 /// pinned by execution in `codegen::initializers`.
 #[rstest]
 fn flat_list_fills_a_multidim_array(mut with_db: RootDatabase) {
@@ -551,7 +551,7 @@ fn flat_list_past_the_last_cell_is_too_many(mut with_db: RootDatabase) {
         END_FUNCTION
         "#;
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E0605] Error: invalid array access
+    [E0507] Error: invalid array access
        ,-[ file:///test0.st:4:53 ]
        |
      4 |             VAR Data : Matrix := [1, 2, 3, 4, 5, 6, 7]; END_VAR
@@ -590,7 +590,7 @@ fn partial_rows_accepted(mut with_db: RootDatabase) {
 }
 
 /// CORRECT (fixed): `[2([1, 2, 3])]` is 2 copies of the bracketed row `[1,2,3]` —
-/// valid for a 2x3. Previously it spuriously errored E0213 (and was sibling-
+/// valid for a 2x3. Previously it spuriously errored (and was sibling-
 /// dependent) because bracket detection didn't see through the repetition; the
 /// multi-dim branch now descends a dimension for `n([..])` too.
 #[rstest]
@@ -607,7 +607,7 @@ fn sized_index_of_bracket_row_accepted(mut with_db: RootDatabase) {
 /// Whether a child is a row is decided from ALL its siblings (`any` bracket
 /// among them), so a repetition beside a plain row is the shape that would
 /// expose that decision misfiring: `2([1,2,3])` is two rows, `[4,5,6]` one
-/// more, nine cells into a 3x3 with no E0213 and no E0605.
+/// more, nine cells into a 3x3 with no error at all.
 #[rstest]
 fn a_repetition_beside_a_bracket_row(mut with_db: RootDatabase) {
     let source = r#"

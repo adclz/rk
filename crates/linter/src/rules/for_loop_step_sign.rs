@@ -5,12 +5,12 @@ use ide_diagnostic::{ErrorCode, IdeDiagnostic, diag};
 
 pub const NAME: &str = "for-loop-step-sign";
 
-/// L0302: FOR loop step direction mismatches bounds.
+/// L0110: FOR loop step direction mismatches bounds.
 struct ForLoopStepSign;
 
 impl ErrorCode for ForLoopStepSign {
     fn code(&self) -> &'static str {
-        "L0302"
+        "L0110"
     }
 
     fn description(&self) -> &'static str {

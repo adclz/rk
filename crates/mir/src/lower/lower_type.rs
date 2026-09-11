@@ -239,8 +239,7 @@ fn lower_array_type<'db>(
     let mut total_elements = 1u32;
 
     // The dimensions inference folded; a bound that does not fold is
-    // E0601/E0602 at the declaration, so `None` cannot arrive from checked
-    // code.
+    // E0501/E0502.
     for (start, end) in hir::hir_ty::infer::const_eval::array_dimensions(db, array_type) {
         let (Some(start), Some(end)) = (start, end) else {
             return Err(LowerTypeError::UnsupportedType(
@@ -283,8 +282,7 @@ pub fn enum_variant_values<'db>(
     db: &'db dyn WorkspaceDataBase,
     enum_type: hir::hir_def::expressions::spec::Enum<'db>,
 ) -> Result<Vec<(hir::hir_def::expressions::spec::EnumVariant<'db>, i64)>, LowerTypeError> {
-    // The ordinals inference evaluated; a declared value that does not fold
-    // is E0704 at the declaration, so `None` cannot arrive from checked code.
+    // The ordinals inference evaluated; one that does not fold is E0604.
     hir::hir_ty::infer::const_eval::enum_ordinals(db, enum_type)
         .into_iter()
         .map(|(variant, value)| {
@@ -347,7 +345,7 @@ fn lower_subrange_type<'db>(
         }
     };
 
-    // The bounds inference folded; a bound that does not fold is E0803 at
+    // The bounds inference folded; a bound that does not fold is E0703 at
     // the declaration.
     let (Some(lower), Some(upper)) = hir::hir_ty::infer::const_eval::subrange_bounds(db, subrange)
     else {

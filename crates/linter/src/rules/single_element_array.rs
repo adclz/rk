@@ -5,12 +5,12 @@ use ide_diagnostic::{ErrorCode, IdeDiagnostic, diag};
 
 pub const NAME: &str = "single-element-array";
 
-/// L0110: array dimension with equal lower and upper bounds has only one element.
+/// L0212: array dimension with equal lower and upper bounds has only one element.
 struct SingleElementArray;
 
 impl ErrorCode for SingleElementArray {
     fn code(&self) -> &'static str {
-        "L0110"
+        "L0212"
     }
 
     fn description(&self) -> &'static str {

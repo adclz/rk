@@ -10,12 +10,12 @@ use rustc_hash::FxHashSet;
 
 pub const NAME: &str = "unused-import";
 
-/// L0201: USING directive is never used.
+/// L0301: USING directive is never used.
 struct UnusedImport;
 
 impl ErrorCode for UnusedImport {
     fn code(&self) -> &'static str {
-        "L0201"
+        "L0301"
     }
 
     fn description(&self) -> &'static str {

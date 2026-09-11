@@ -8,12 +8,12 @@ use ide_diagnostic::{ErrorCode, IdeDiagnostic, diag};
 
 pub const NAME: &str = "empty-type";
 
-/// L0214: a STRUCT or ENUM type declaration has no members.
+/// L0309: a STRUCT or ENUM type declaration has no members.
 struct EmptyType;
 
 impl ErrorCode for EmptyType {
     fn code(&self) -> &'static str {
-        "L0214"
+        "L0309"
     }
 
     fn description(&self) -> &'static str {

@@ -394,7 +394,7 @@ VAR_INPUT b : BOOL; r : REAL; END_VAR
     f := b + r;
 END_FUNCTION"#;
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E0318] Error: type mismatch
+    [E0305] Error: type mismatch
        ,-[ file:///test0.st:4:10 ]
        |
      3 | VAR_INPUT b : BOOL; r : REAL; END_VAR
@@ -503,7 +503,7 @@ VAR_INPUT b : BOOL; r : REAL; END_VAR
 END_FUNCTION
 "#;
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E0318] Error: type mismatch
+    [E0305] Error: type mismatch
        ,-[ file:///test0.st:4:12 ]
        |
      3 | VAR_INPUT b : BOOL; r : REAL; END_VAR

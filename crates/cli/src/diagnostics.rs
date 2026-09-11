@@ -331,7 +331,7 @@ fn severity_str(severity: Option<DiagnosticSeverity>) -> &'static str {
     }
 }
 
-/// The diagnostic code (`E0301`, `L0204`) as text, if any.
+/// The diagnostic code (`E0301`, `L0303`) as text, if any.
 fn code_str(code: Option<&auto_lsp::lsp_types::NumberOrString>) -> Option<String> {
     match code {
         Some(auto_lsp::lsp_types::NumberOrString::String(s)) => Some(s.clone()),
@@ -505,11 +505,8 @@ mod tests {
         );
     }
 
-    /// A bare directory of `.st` files — NO config.toml — is checkable:
-    /// `init_db(require_config = false)` loads it, and analysis still runs
-    /// fully (real errors reported, plus the E0217 outside-a-project hint;
-    /// the HIR used to return ONLY the hint). Artifact-producing commands
-    /// keep requiring a config (`require_config = true` → None).
+    /// A bare directory of `.st` files, no config.toml, is checkable;
+    /// artifact-producing commands keep requiring a config.
     #[test]
     fn no_config_workspace_is_checkable_with_full_analysis() {
         let ws = tempfile::tempdir().expect("tempdir");
@@ -533,11 +530,11 @@ mod tests {
             counts.errors, 1,
             "the real E0301 is still found: {counts:?}"
         );
-        assert!(counts.hints >= 1, "the E0217 hint rides along: {counts:?}");
+        assert!(counts.hints >= 1, "the E1401 hint rides along: {counts:?}");
         let out = String::from_utf8(out).unwrap();
         assert!(out.contains("E0301"), "type error reported: {out}");
         assert!(
-            out.contains("E0217"),
+            out.contains("E1401"),
             "outside-a-project hint reported: {out}"
         );
     }

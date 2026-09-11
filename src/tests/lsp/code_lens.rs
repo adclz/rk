@@ -42,7 +42,7 @@ END_PROGRAM
     add_sources(&mut with_db, &[source]);
     let lenses = collect_code_lenses(&with_db);
 
-    assert_eq!(lenses.len(), 1, "a PROGRAM is never a test (E0252), so only the FUNCTION gets a lens");
+    assert_eq!(lenses.len(), 1, "a PROGRAM is never a test (E1503), so only the FUNCTION gets a lens");
 
     let names: Vec<_> = lenses
         .iter()

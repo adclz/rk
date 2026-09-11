@@ -2,13 +2,13 @@ use db::WorkspaceDataBase;
 
 use crate::{
     CallSite, Visibility,
-    check::errors::{ToIdeDiagnostic, e4_visibility::VisibilityError},
+    check::errors::{ToIdeDiagnostic, e10_visibility::VisibilityError},
     hir_def::{pous::pou::Pou, scope::ScopeKind, semantic_index::get_scope},
     hir_ty::head::init_inference::InitInference,
 };
 
 impl<'db> InitInference<'db> {
-    /// E0406: a FUNCTION header may carry PRIVATE (or PUBLIC, the default
+    /// E1006: a FUNCTION header may carry PRIVATE (or PUBLIC, the default
     /// made explicit); PROTECTED and INTERNAL mean nothing there.
     pub(crate) fn check_function_specifier(&mut self, db: &'db dyn WorkspaceDataBase) {
         let ScopeKind::Pou(Pou::Function(func)) = get_scope(db, self.scope).kind else {

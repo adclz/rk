@@ -20,7 +20,7 @@ FUNCTION_BLOCK fb1
 END_FUNCTION_BLOCK"#;
 
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E0215] Error: invalid type
+    [E0308] Error: invalid type
        ,-[ file:///test0.st:8:15 ]
        |
      8 |         test: fn;
@@ -44,7 +44,7 @@ FUNCTION_BLOCK fb1
 END_FUNCTION_BLOCK"#;
 
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E0050] Error: syntax
+    [E0001] Error: syntax
        ,-[ file:///test0.st:3:16 ]
        |
      3 |     VAR_IN_OUT RETAIN
@@ -80,7 +80,7 @@ END_PROGRAM"#;
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"");
 }
 
-// E0235: RETAIN/NON_RETAIN require instance storage — meaningless on a
+// E0208: RETAIN/NON_RETAIN require instance storage — meaningless on a
 // stateless FUNCTION. The grammar accepts the qualifier on VAR_INPUT /
 // VAR_OUTPUT sections (it is legal there for FBs/programs), so this is a
 // semantic check.
@@ -98,7 +98,7 @@ FUNCTION fn : INT
 END_FUNCTION"#;
 
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E0235] Error: invalid retentive qualifier
+    [E0208] Error: invalid retentive qualifier
        ,-[ file:///test0.st:4:9 ]
        |
      4 |         a: INT;
@@ -107,7 +107,7 @@ END_FUNCTION"#;
        |
        | Note: retentive behavior requires instance storage; only FUNCTION_BLOCK, CLASS, and PROGRAM variables (and VAR_GLOBAL) can be RETAIN/NON_RETAIN
     ---'
-    [E0235] Error: invalid retentive qualifier
+    [E0208] Error: invalid retentive qualifier
        ,-[ file:///test0.st:7:9 ]
        |
      7 |         b: INT;
@@ -119,7 +119,7 @@ END_FUNCTION"#;
     ");
 }
 
-// E0235 in a METHOD — methods are stateless like functions.
+// E0208 in a METHOD — methods are stateless like functions.
 #[rstest]
 fn invalid_method_retain_qualifier(mut with_db: RootDatabase) {
     let source = r#"
@@ -133,7 +133,7 @@ FUNCTION_BLOCK fb1
 END_FUNCTION_BLOCK"#;
 
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E0235] Error: invalid retentive qualifier
+    [E0208] Error: invalid retentive qualifier
        ,-[ file:///test0.st:5:13 ]
        |
      5 |             x: INT;
@@ -147,7 +147,7 @@ END_FUNCTION_BLOCK"#;
 
 // A `VAR RETAIN` SECTION in a FUNCTION is rejected by the GRAMMAR itself —
 // `retain_var_decls` is not among the stateless POUs' section rules, so this
-// is a syntax error rather than E0235 (context-independent restrictions live
+// is a syntax error rather than E0208 (context-independent restrictions live
 // in the grammar; the qualifier-on-VAR_INPUT/VAR_OUTPUT case above is the
 // context-dependent one).
 #[rstest]
@@ -161,7 +161,7 @@ FUNCTION fn : INT
 END_FUNCTION"#;
 
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E0050] Error: syntax
+    [E0001] Error: syntax
        ,-[ file:///test0.st:3:9 ]
        |
      3 |     VAR RETAIN
@@ -187,7 +187,7 @@ END_CLASS"#;
 /// A variable named like the enclosing callable IS its return value, in any
 /// case — declaring it is declaring the return value a second time.
 ///
-/// This was only a WARNING (L0315) before, and the body then bound to the
+/// This was only a WARNING (L0115) before, and the body then bound to the
 /// local at the local's type while the signature promised the return type's:
 /// `FUNCTION Wide : INT` with `Wide : LINT` emitted invalid wasm at exit 0.
 /// A procedural METHOD has no return value, so its name stays free.
@@ -202,7 +202,7 @@ fn variable_named_like_its_callable_is_the_return_value(mut with_db: RootDatabas
         END_FUNCTION
     "#;
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E0117] Error: duplicate definitions
+    [E0107] Error: duplicate definitions
        ,-[ file:///test0.st:4:13 ]
        |
      4 |             fn1 : LINT;

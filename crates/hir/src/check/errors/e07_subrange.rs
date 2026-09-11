@@ -1,18 +1,42 @@
-use auto_lsp::{lsp_types::DiagnosticSeverity, tree_sitter};
+use crate::HirNodeInfo;
+use crate::check::errors::ToIdeDiagnostic;
+use crate::hir_def::expressions::expression::Expr;
+use crate::hir_def::expressions::spec::Spec;
+use crate::hir_ty::ty::Type;
+use auto_lsp::lsp_types::DiagnosticSeverity;
+use auto_lsp::tree_sitter;
 use db::WorkspaceDataBase;
-use ide_diagnostic::{ErrorCode, IdeDiagnostic, diag};
+use ide_diagnostic::ErrorCode;
+use ide_diagnostic::IdeDiagnostic;
+use ide_diagnostic::diag;
 
-use crate::{
-    HirNodeInfo,
-    check::errors::ToIdeDiagnostic,
-    hir_def::expressions::{expression::Expr, spec::Spec},
-    hir_ty::ty::Type,
-};
+/// A type with its subrange spelled out, so a mismatch between two
+/// similarly-named subranges says WHICH constraint differs:
+/// `Small (0..10)` against `Smaller (0..20)`.
+pub(crate) fn with_bounds<'db>(db: &'db dyn WorkspaceDataBase, ty: Type<'db>) -> String {
+    let name = ty.type_name(db);
+    match ty.as_subrange(db) {
+        Some(sub) => {
+            let (lower, upper) = crate::hir_ty::infer::const_eval::subrange_bounds(db, sub);
+            match (lower, upper) {
+                // An anonymous `INT (0..10)` already names its bounds.
+                (Some(l), Some(u)) if !name.ends_with(&format!("({l}..{u})")) => {
+                    format!("{name} ({l}..{u})")
+                }
+                _ => name.to_string(),
+            }
+        }
+        None => name.to_string(),
+    }
+}
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, salsa::Update)]
 pub enum SubRangeError<'db> {
     // Subrange
-    InvalidSubrangeType { spec: Spec<'db>, typ: Type<'db> },
+    InvalidSubrangeType {
+        spec: Spec<'db>,
+        typ: Type<'db>,
+    },
     /// A constant assigned to a subrange variable lies outside its bounds.
     ValueOutOfRange {
         expr: Expr<'db>,
@@ -21,7 +45,9 @@ pub enum SubRangeError<'db> {
         upper: i64,
     },
     /// A subrange bound must evaluate to a constant at compile time.
-    BoundNotConstant { value: Expr<'db> },
+    BoundNotConstant {
+        value: Expr<'db>,
+    },
     /// A by-reference binding (VAR_IN_OUT, or an `=>` output destination)
     /// whose two ends disagree about the subrange. The callee writes through
     /// its OWN declared type, so a disagreement is a door around the range
@@ -36,10 +62,10 @@ pub enum SubRangeError<'db> {
 impl<'db> ErrorCode for SubRangeError<'db> {
     fn code(&self) -> &'static str {
         match self {
-            Self::InvalidSubrangeType { .. } => "E0801",
-            Self::ValueOutOfRange { .. } => "E0802",
-            Self::BoundNotConstant { .. } => "E0803",
-            Self::ByRefSubrangeMismatch { .. } => "E0804",
+            Self::InvalidSubrangeType { .. } => "E0701",
+            Self::ValueOutOfRange { .. } => "E0702",
+            Self::BoundNotConstant { .. } => "E0703",
+            Self::ByRefSubrangeMismatch { .. } => "E0704",
         }
     }
 
@@ -72,10 +98,29 @@ impl<'db> ToIdeDiagnostic<'db> for SubRangeError<'db> {
 
                 diag
             }
+            SubRangeError::ValueOutOfRange {
+                expr,
+                value,
+                lower,
+                upper,
+            } => {
+                let mut diag = diag()
+                    .message(format!(
+                        "value {value} is outside the subrange {lower}..{upper}"
+                    ))
+                    .severity(DiagnosticSeverity::ERROR)
+                    .desc(self)
+                    .range(crate::denormalize(db, file, &expr.get_span(db)).unwrap_or_default())
+                    .call();
+
+                diag.with_note(format!(
+                    "the declared range only admits values from {lower} to {upper}"
+                ));
+
+                diag
+            }
             SubRangeError::BoundNotConstant { value } => diag()
-                .message(
-                    "a subrange bound must evaluate to a constant at compile time".to_string(),
-                )
+                .message("a subrange bound must evaluate to a constant at compile time".to_string())
                 .severity(DiagnosticSeverity::ERROR)
                 .desc(self)
                 .range(crate::denormalize(db, file, &value.get_span(db)).unwrap_or_default())
@@ -90,45 +135,6 @@ impl<'db> ToIdeDiagnostic<'db> for SubRangeError<'db> {
                 .desc(self)
                 .range(crate::denormalize(db, file, span).unwrap_or_default())
                 .call(),
-            SubRangeError::ValueOutOfRange {
-                expr,
-                value,
-                lower,
-                upper,
-            } => {
-                let mut diag = diag()
-                    .message(format!("value {value} is outside the subrange {lower}..{upper}"))
-                    .severity(DiagnosticSeverity::ERROR)
-                    .desc(self)
-                    .range(crate::denormalize(db, file, &expr.get_span(db)).unwrap_or_default())
-                    .call();
-
-                diag.with_note(format!(
-                    "the declared range only admits values from {lower} to {upper}"
-                ));
-
-                diag
-            }
         }
-    }
-}
-
-/// A type with its subrange spelled out, so a mismatch between two
-/// similarly-named subranges says WHICH constraint differs:
-/// `Small (0..10)` against `Smaller (0..20)`.
-pub(crate) fn with_bounds<'db>(db: &'db dyn WorkspaceDataBase, ty: Type<'db>) -> String {
-    let name = ty.type_name(db);
-    match ty.as_subrange(db) {
-        Some(sub) => {
-            let (lower, upper) = crate::hir_ty::infer::const_eval::subrange_bounds(db, sub);
-            match (lower, upper) {
-                // An anonymous `INT (0..10)` already names its bounds.
-                (Some(l), Some(u)) if !name.ends_with(&format!("({l}..{u})")) => {
-                    format!("{name} ({l}..{u})")
-                }
-                _ => name.to_string(),
-            }
-        }
-        None => name.to_string(),
     }
 }

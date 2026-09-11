@@ -17,7 +17,7 @@ END_VAR
 END_FUNCTION
 "#;
     assert_snapshot!(test_single_lint(&mut with_db, &[source], "constant-loop-bounds"), @r"
-    [L0314] Warning: constant FOR loop bounds
+    [L0111] Warning: constant FOR loop bounds
        ,-[ file:///test0.st:6:14 ]
        |
      6 |     FOR i := 5 TO 5 DO
@@ -57,7 +57,7 @@ END_VAR
 END_FUNCTION
 "#;
     assert_snapshot!(test_single_lint(&mut with_db, &[source], "constant-loop-bounds"), @r"
-    [L0314] Warning: constant FOR loop bounds
+    [L0111] Warning: constant FOR loop bounds
        ,-[ file:///test0.st:6:14 ]
        |
      6 |     FOR i := 0 TO 0 DO
@@ -83,7 +83,7 @@ END_VAR
 END_FUNCTION
 "#;
     assert_snapshot!(test_single_lint(&mut with_db, &[source], "constant-loop-bounds"), @r"
-    [L0314] Warning: constant FOR loop bounds
+    [L0111] Warning: constant FOR loop bounds
        ,-[ file:///test0.st:7:14 ]
        |
      7 |     FOR i := n TO n DO

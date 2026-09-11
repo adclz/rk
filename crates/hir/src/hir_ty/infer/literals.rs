@@ -1,7 +1,7 @@
 use db::WorkspaceDataBase;
 
 use crate::{
-    check::errors::e3_type::InferLiteralError,
+    check::errors::e03_type::InferLiteralError,
     hir_def::{
         expressions::{
             expression::{Elementary, Integer, IntegerKind},
@@ -420,7 +420,7 @@ impl Ident {
     // compared against it is silently off by the local offset.
     //
     // The narrow (i32) forms can overflow on extreme inputs. When they do,
-    // we surface `DurationOverflow` so the user gets a typed E0309 with a
+    // we surface `DurationOverflow` so the user gets a typed E0306 with a
     // hint to use the L-prefixed variant.
 
     /// TIME literal as `i32` milliseconds. Errors with
@@ -447,18 +447,28 @@ impl Ident {
     /// DATE literal as `i32` days since 1970-01-01.
     #[salsa::tracked]
     pub fn as_date_days_i32(self, db: &dyn WorkspaceDataBase) -> Result<i32, InferLiteralError> {
-        let date = self
-            .as_date(db)
-            .map_err(|e| InferLiteralError::Invalid_DATE_Format(calendar_format_error(self.text(db), e, '-', "D#1984-06-25")))?;
+        let date = self.as_date(db).map_err(|e| {
+            InferLiteralError::Invalid_DATE_Format(calendar_format_error(
+                self.text(db),
+                e,
+                '-',
+                "D#1984-06-25",
+            ))
+        })?;
         Ok(date.to_julian_day() - UNIX_EPOCH_JULIAN_DAY)
     }
 
     /// LDATE literal as `i64` days since 1970-01-01.
     #[salsa::tracked]
     pub fn as_ldate_days_i64(self, db: &dyn WorkspaceDataBase) -> Result<i64, InferLiteralError> {
-        let date = self
-            .as_long_date(db)
-            .map_err(|e| InferLiteralError::Invalid_LDATE_Format(calendar_format_error(self.text(db), e, '-', "LD#1984-06-25")))?;
+        let date = self.as_long_date(db).map_err(|e| {
+            InferLiteralError::Invalid_LDATE_Format(calendar_format_error(
+                self.text(db),
+                e,
+                '-',
+                "LD#1984-06-25",
+            ))
+        })?;
         Ok((date.to_julian_day() - UNIX_EPOCH_JULIAN_DAY) as i64)
     }
 
@@ -467,9 +477,14 @@ impl Ident {
     /// inside `i32`, so no range check is needed.
     #[salsa::tracked]
     pub fn as_tod_ms_i32(self, db: &dyn WorkspaceDataBase) -> Result<i32, InferLiteralError> {
-        let t = self
-            .as_tod(db)
-            .map_err(|e| InferLiteralError::Invalid_TOD_Format(calendar_format_error(self.text(db), e, ':', "TOD#15:36:55.123")))?;
+        let t = self.as_tod(db).map_err(|e| {
+            InferLiteralError::Invalid_TOD_Format(calendar_format_error(
+                self.text(db),
+                e,
+                ':',
+                "TOD#15:36:55.123",
+            ))
+        })?;
         let (h, m, s, ns) = t.as_hms_nano();
         let ms = (h as i64 * 3600 + m as i64 * 60 + s as i64) * 1000 + (ns as i64 / 1_000_000);
         Ok(ms as i32)
@@ -478,9 +493,14 @@ impl Ident {
     /// LTOD literal as `i64` nanoseconds since midnight. Always fits.
     #[salsa::tracked]
     pub fn as_ltod_ns_i64(self, db: &dyn WorkspaceDataBase) -> Result<i64, InferLiteralError> {
-        let t = self
-            .as_long_tod(db)
-            .map_err(|e| InferLiteralError::Invalid_LTOD_Format(calendar_format_error(self.text(db), e, ':', "LTOD#15:36:55.123456789")))?;
+        let t = self.as_long_tod(db).map_err(|e| {
+            InferLiteralError::Invalid_LTOD_Format(calendar_format_error(
+                self.text(db),
+                e,
+                ':',
+                "LTOD#15:36:55.123456789",
+            ))
+        })?;
         let (h, m, s, ns) = t.as_hms_nano();
         Ok((h as i64 * 3600 + m as i64 * 60 + s as i64) * 1_000_000_000 + ns as i64)
     }
@@ -490,9 +510,14 @@ impl Ident {
     /// can never overflow. Errors with `DurationOutOfRange` outside it.
     #[salsa::tracked]
     pub fn as_dt_secs_i64(self, db: &dyn WorkspaceDataBase) -> Result<i64, InferLiteralError> {
-        let dt = self
-            .as_date_time(db)
-            .map_err(|e| InferLiteralError::Invalid_DT_Format(calendar_format_error(self.text(db), e, '-', "DT#1984-06-25-15:36:55")))?;
+        let dt = self.as_date_time(db).map_err(|e| {
+            InferLiteralError::Invalid_DT_Format(calendar_format_error(
+                self.text(db),
+                e,
+                '-',
+                "DT#1984-06-25-15:36:55",
+            ))
+        })?;
         let ts = dt.assume_utc().unix_timestamp();
         if ts > DT_MAX_SECS {
             return Err(InferLiteralError::DurationOutOfRange {
@@ -516,9 +541,14 @@ impl Ident {
     /// LDT literal as `i64` nanoseconds since the Unix epoch.
     #[salsa::tracked]
     pub fn as_ldt_ns_i64(self, db: &dyn WorkspaceDataBase) -> Result<i64, InferLiteralError> {
-        let dt = self
-            .as_long_date_time(db)
-            .map_err(|e| InferLiteralError::Invalid_LDT_Format(calendar_format_error(self.text(db), e, '-', "LDT#1984-06-25-15:36:55.123456789")))?;
+        let dt = self.as_long_date_time(db).map_err(|e| {
+            InferLiteralError::Invalid_LDT_Format(calendar_format_error(
+                self.text(db),
+                e,
+                '-',
+                "LDT#1984-06-25-15:36:55.123456789",
+            ))
+        })?;
         check_i64_range(
             dt.assume_utc().unix_timestamp_nanos(),
             "LDT",
@@ -957,9 +987,7 @@ fn calendar_format_error(
     separator: char,
     example: &'static str,
 ) -> String {
-    let value = self_text
-        .split_once('#')
-        .map_or(self_text, |(_, v)| v);
+    let value = self_text.split_once('#').map_or(self_text, |(_, v)| v);
     if value.contains(separator) {
         err.to_string()
     } else {

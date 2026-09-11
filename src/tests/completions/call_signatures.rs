@@ -155,7 +155,7 @@ END_FUNCTION
 }
 
 // The snippet offers the flattened EXTENDS view — the resolver requires the
-// inherited VAR_IN_OUT (E0233), so the inserted call must include it.
+// inherited VAR_IN_OUT (E0802), so the inserted call must include it.
 #[rstest]
 pub fn call_signature_for_derived_fb_includes_inherited_params(mut with_db: RootDatabase) {
     let source = r#"

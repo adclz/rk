@@ -2,7 +2,7 @@ use db::WorkspaceDataBase;
 
 use crate::{
     CallSite,
-    check::errors::{ToIdeDiagnostic, e5_inheritance::InheritanceError},
+    check::errors::{ToIdeDiagnostic, e11_oop::OopError},
     hir_def::{
         expressions::invocation::{Invocation, InvocationKind},
         pous::pou::Pou,
@@ -28,7 +28,7 @@ pub fn resolve_invocation<'db>(
             // appear in the function block BODY, not in a method. `THIS` and
             // `SUPER.<method>` ARE valid in methods, so reject only `SuperBody`.
             // Only for FB methods — in a CLASS method `SUPER()` is invalid for a
-            // different reason (a class has no body, E0501), which the recursion
+            // different reason (a class has no body, E1108), which the recursion
             // below produces.
             if invocation.kind(db) == InvocationKind::SuperBody
                 && matches!(
@@ -37,7 +37,7 @@ pub fn resolve_invocation<'db>(
                 )
             {
                 ctx.errors.push(
-                    InheritanceError::SuperBodyInMethod {
+                    OopError::SuperBodyInMethod {
                         call_site: CallSite::new(scope, invocation.keyword_id(db)),
                     }
                     .to_diagnostic(db, ctx.scope.file(db)),
@@ -65,14 +65,14 @@ pub fn resolve_invocation<'db>(
                 InvocationKind::SuperBody => match pou {
                     Pou::FunctionBlock(fb) => {
                         // `SUPER()` executes the BASE FB's body, so the FB must
-                        // EXTEND one (mirror the `SUPER.<method>` check, E0513).
+                        // EXTEND one (mirror the `SUPER.<method>` check, E1107).
                         if fb.extends(db).is_some() {
                             ctx.type_of_invocation
                                 .insert(invocation, Type::new_pou(db, pou));
                             return Some(pou);
                         } else {
                             ctx.errors.push(
-                                InheritanceError::SuperButNoExtends {
+                                OopError::SuperButNoExtends {
                                     pou,
                                     call_site: CallSite::new(scope, invocation.keyword_id(db)),
                                 }
@@ -82,7 +82,7 @@ pub fn resolve_invocation<'db>(
                     }
                     _ => {
                         ctx.errors.push(
-                            InheritanceError::SuperBodyOnIncompatiblePou {
+                            OopError::SuperBodyOnIncompatiblePou {
                                 call_site: CallSite::new(scope, invocation.keyword_id(db)),
                             }
                             .to_diagnostic(db, ctx.scope.file(db)),
@@ -97,7 +97,7 @@ pub fn resolve_invocation<'db>(
                             return Some(pou);
                         } else {
                             ctx.errors.push(
-                                InheritanceError::SuperButNoExtends {
+                                OopError::SuperButNoExtends {
                                     pou,
                                     call_site: CallSite::new(scope, invocation.keyword_id(db)),
                                 }
@@ -112,7 +112,7 @@ pub fn resolve_invocation<'db>(
                             return Some(pou);
                         } else {
                             ctx.errors.push(
-                                InheritanceError::SuperButNoExtends {
+                                OopError::SuperButNoExtends {
                                     pou,
                                     call_site: CallSite::new(scope, invocation.keyword_id(db)),
                                 }
@@ -122,7 +122,7 @@ pub fn resolve_invocation<'db>(
                     }
                     _ => {
                         ctx.errors.push(
-                            InheritanceError::SuperOnIncompatiblePou {
+                            OopError::SuperOnIncompatiblePou {
                                 call_site: CallSite::new(scope, invocation.keyword_id(db)),
                             }
                             .to_diagnostic(db, ctx.scope.file(db)),
@@ -137,7 +137,7 @@ pub fn resolve_invocation<'db>(
                     }
                     _ => {
                         ctx.errors.push(
-                            InheritanceError::ThisOnIncompatiblePou {
+                            OopError::ThisOnIncompatiblePou {
                                 call_site: CallSite::new(scope, invocation.keyword_id(db)),
                             }
                             .to_diagnostic(db, ctx.scope.file(db)),
@@ -149,7 +149,7 @@ pub fn resolve_invocation<'db>(
         _ => match invocation.kind(db) {
             InvocationKind::Super => {
                 ctx.errors.push(
-                    InheritanceError::SuperOnIncompatiblePou {
+                    OopError::SuperOnIncompatiblePou {
                         call_site: CallSite::new(scope, invocation.keyword_id(db)),
                     }
                     .to_diagnostic(db, ctx.scope.file(db)),
@@ -157,7 +157,7 @@ pub fn resolve_invocation<'db>(
             }
             InvocationKind::SuperBody => {
                 ctx.errors.push(
-                    InheritanceError::SuperBodyOnIncompatiblePou {
+                    OopError::SuperBodyOnIncompatiblePou {
                         call_site: CallSite::new(scope, invocation.keyword_id(db)),
                     }
                     .to_diagnostic(db, ctx.scope.file(db)),
@@ -165,7 +165,7 @@ pub fn resolve_invocation<'db>(
             }
             InvocationKind::This => {
                 ctx.errors.push(
-                    InheritanceError::ThisOnIncompatiblePou {
+                    OopError::ThisOnIncompatiblePou {
                         call_site: CallSite::new(scope, invocation.keyword_id(db)),
                     }
                     .to_diagnostic(db, ctx.scope.file(db)),

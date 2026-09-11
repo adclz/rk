@@ -1,7 +1,8 @@
 use auto_lsp::anyhow::{self};
 use auto_lsp::core::ast::AstNode;
 
-use crate::check::errors::e0_syntax::SyntaxError;
+use crate::check::errors::e04_init::InitError;
+use crate::check::errors::e05_array::ArrayError;
 use crate::hir_def::expressions::spec::Array;
 use crate::hir_def::interned::identifier::SpanIdent;
 use crate::hir_def::interned::namespace::SpanNamespaceAccess;
@@ -13,9 +14,7 @@ use crate::{
     check::errors::ToIdeDiagnostic,
     hir_def::{
         expressions::{
-            expression::{
-                InitExpr, InitExprKind, Integer, IntegerKind, MultibitsPart,
-            },
+            expression::{InitExpr, InitExprKind, Integer, IntegerKind, MultibitsPart},
             spec::{ElementarySpec, Enum, EnumVariant, Spec, SpecKind, Struct, SubRange},
         },
         interned::identifier::Ident,
@@ -423,7 +422,7 @@ impl<'db> Parse<'db> for ast::generated::InitElem {
                 let kind = InitExprKind::ConstantExpr(expr.children.cast(sema.ast).parse(sema)?);
                 Ok(sema.new_init_expr(kind, self.into(), sema.current_scope))
             }
-            InitElem::ERRFuncCallInInit(err) => Err(SyntaxError::FunctionCallInInitExpression(
+            InitElem::ERRFuncCallInInit(err) => Err(InitError::FunctionCallInInitExpression(
                 err.get_range().to_owned(),
             )
             .to_diagnostic(sema.db, sema.file)),
@@ -531,7 +530,7 @@ impl<'db> ParseSpec<'db> for ast::generated::ArrayConformand {
         sema: &mut SemanticIndexBuilder<'db>,
     ) -> anyhow::Result<Spec<'db>, IdeDiagnostic> {
         Err(
-            SyntaxError::ArrayConformandNotSupported(self.get_range().to_owned())
+            ArrayError::ArrayConformandNotSupported(self.get_range().to_owned())
                 .to_diagnostic(sema.db, sema.file),
         )
     }

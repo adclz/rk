@@ -2,15 +2,18 @@ use db::WorkspaceDataBase;
 use rustc_hash::FxHashMap;
 
 use crate::HasPragmas;
-use crate::check::errors::e2_resolve::ExternForbiddenKind;
+use crate::check::errors::e08_call::CallError;
+use crate::check::errors::e14_config::ConfigError;
+use crate::check::errors::e15_pragma::ExternForbiddenKind;
+use crate::check::errors::e15_pragma::PragmaError;
 use crate::hir_def::{pous::pou::Pou, scope::ScopeKind, semantic_index::get_scope};
 use crate::{
     HasName, HirNodeInfo,
     check::errors::{
         ToIdeDiagnostic,
-        e1_duplicates::DuplicateError,
-        e2_resolve::ResolveError,
-        e3_type::{InferLiteralError, TypeError},
+        e01_duplicates::DuplicateError,
+        e02_resolve::ResolveError,
+        e03_type::{InferLiteralError, TypeError},
     },
     hir_def::{
         expressions::{
@@ -30,7 +33,7 @@ impl<'db> InitInference<'db> {
         };
 
         // RETAIN/NON_RETAIN require instance storage: meaningless on a
-        // stateless POU (FUNCTION/METHOD), in ANY of its sections (E0235).
+        // stateless POU (FUNCTION/METHOD), in ANY of its sections (E0208).
         let scope_kind = get_scope(db, self.scope).kind;
         let stateless_pou = match scope_kind {
             ScopeKind::Pou(Pou::Function(_)) => Some("FUNCTION"),
@@ -44,7 +47,7 @@ impl<'db> InitInference<'db> {
         // and an extern FUNCTION's interface is copies in, scalar results
         // out, with the import standing in for the body — so VAR_IN_OUT,
         // aggregate outputs and statements are each refused where they are
-        // declared. (E0243/E0244.)
+        // declared. (E1502/E1501.)
         let extern_fn = match scope_kind {
             ScopeKind::Pou(Pou::Function(f)) => f.extern_pragma(db).map(|(span, _)| (f, span)),
             ScopeKind::Pou(Pou::FunctionBlock(fb)) => {
@@ -70,7 +73,7 @@ impl<'db> InitInference<'db> {
             && let Some(first) = f.statements(db).first()
         {
             self.errors.push(
-                ResolveError::ExternWithBody {
+                PragmaError::ExternWithBody {
                     site: first.as_call_site(db),
                 }
                 .to_diagnostic(db, self.scope.file(db)),
@@ -85,7 +88,7 @@ impl<'db> InitInference<'db> {
             && !extern_scalar(db, ret.infer(db))
         {
             self.errors.push(
-                ResolveError::ExternNonScalarReturn { func: f, ret: *ret }
+                PragmaError::ExternNonScalarReturn { func: f, ret: *ret }
                     .to_diagnostic(db, self.scope.file(db)),
             );
         }
@@ -126,9 +129,9 @@ impl<'db> InitInference<'db> {
             }
             // A VAR_EXTERNAL aliases its VAR_GLOBAL's storage by NAME, so
             // the two declarations must agree about the TYPE, any type
-            // (E0246). Cycle-safe here where a named global type resolves
+            // (E0207). Cycle-safe here where a named global type resolves
             // freely; inside signature inference the same resolution
-            // re-enters `infer_signature`. Absence is E0220, the signature's.
+            // re-enters `infer_signature`. Absence is E0206, the signature's.
             if var.kind(db) == crate::hir_def::pous::variable::VariableKind::External
                 && let Some(global) =
                     crate::hir_ty::index_graphs::external_var_lookup(db, var.get_name_ident(db))
@@ -158,7 +161,7 @@ impl<'db> InitInference<'db> {
             // carries what a mapping would bind.
             if let Some(dv) = var.location(db) {
                 self.errors.push(
-                    ResolveError::DirectVariableUnsupported {
+                    ConfigError::DirectVariableUnsupported {
                         site: var.as_call_site(db),
                         address: compact_str::CompactString::from(dv.to_address(db)),
                     }
@@ -176,7 +179,7 @@ impl<'db> InitInference<'db> {
                 };
                 if let Some(kind) = forbidden {
                     self.errors.push(
-                        ResolveError::ExternForbiddenSection { var: *var, kind }
+                        PragmaError::ExternForbiddenSection { var: *var, kind }
                             .to_diagnostic(db, self.scope.file(db)),
                     );
                 }
@@ -216,7 +219,7 @@ impl<'db> InitInference<'db> {
             if var.variadic(db) {
                 if !var_type.normalize(db).can_be_variadic(db) {
                     self.errors.push(
-                        ResolveError::NonVariadicTypeForVariable {
+                        CallError::NonVariadicTypeForVariable {
                             var: *var,
                             typ: var_type,
                         }
@@ -226,14 +229,14 @@ impl<'db> InitInference<'db> {
 
                 if !var.is_input(db) {
                     self.errors.push(
-                        ResolveError::VariadicNotInInput { var: *var }
+                        TypeError::VariadicNotInInput { var: *var }
                             .to_diagnostic(db, self.scope.file(db)),
                     );
                 }
 
                 if let Some(first) = first_variadic {
                     self.errors.push(
-                        ResolveError::MultipleVariadicVariables {
+                        CallError::MultipleVariadicVariables {
                             first,
                             second: *var,
                         }
@@ -262,7 +265,7 @@ impl<'db> InitInference<'db> {
             for var in variables {
                 if var.is_input(db) && !var.variadic(db) {
                     self.errors.push(
-                        ResolveError::VariadicMixedWithOtherInputs {
+                        TypeError::VariadicMixedWithOtherInputs {
                             variadic_var,
                             other_var: *var,
                         }
@@ -336,9 +339,9 @@ impl<'db> InitInference<'db> {
 }
 
 impl<'db> InitInference<'db> {
-    /// Push E0244 when `pragma` is present: `{extern}` on a POU kind that
+    /// Push E1501 when `pragma` is present: `{extern}` on a POU kind that
     /// cannot be an import.
-    /// `{test}` is FUNCTION-only, like `{extern}` (E0252): the runner calls
+    /// `{test}` is FUNCTION-only, like `{extern}` (E1503): the runner calls
     /// a `()` entry, which no other POU kind has.
     fn refuse_test_on(
         &mut self,
@@ -348,7 +351,7 @@ impl<'db> InitInference<'db> {
     ) {
         if let Some(anchor) = pragma {
             self.errors.push(
-                ResolveError::TestOutsideFunction {
+                PragmaError::TestOutsideFunction {
                     anchor: *anchor,
                     pou_kind,
                 }
@@ -368,7 +371,7 @@ impl<'db> InitInference<'db> {
     ) {
         if let Some((anchor, _)) = pragma {
             self.errors.push(
-                ResolveError::ExternOutsideFunction {
+                PragmaError::ExternOutsideFunction {
                     anchor: *anchor,
                     pou_kind,
                 }

@@ -14,7 +14,7 @@ END_VAR
 END_FUNCTION_BLOCK
 "#;
     assert_snapshot!(test_single_lint(&mut with_db, &[source], "self-shadowing"), @r"
-    [L0315] Warning: variable shadows its own POU
+    [L0115] Warning: variable shadows its own POU
        ,-[ file:///test0.st:4:5 ]
        |
      2 | FUNCTION_BLOCK MyFB
@@ -43,14 +43,14 @@ FUNCTION_BLOCK MyFB
 END_FUNCTION_BLOCK
 "#;
     assert_snapshot!(test_single_lint(&mut with_db, &[source], "self-shadowing"), @r"
-    [E0117] Error: duplicate definitions
+    [E0107] Error: duplicate definitions
        ,-[ file:///test0.st:5:9 ]
        |
      5 |         doWork : INT;
        |         ^^^|^^
        |            `---- variable 'doWork' is the METHOD's return value
     ---'
-    [L0315] Warning: variable shadows its own POU
+    [L0115] Warning: variable shadows its own POU
        ,-[ file:///test0.st:5:9 ]
        |
      3 |     METHOD doWork : INT
@@ -98,7 +98,7 @@ END_VAR
 END_PROGRAM
 "#;
     assert_snapshot!(test_single_lint(&mut with_db, &[source], "self-shadowing"), @r"
-    [L0315] Warning: variable shadows its own POU
+    [L0115] Warning: variable shadows its own POU
        ,-[ file:///test0.st:4:5 ]
        |
      2 | PROGRAM Main

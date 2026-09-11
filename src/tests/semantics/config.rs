@@ -80,7 +80,7 @@ CONFIGURATION MyCfg
 END_CONFIGURATION
 "#;
     assert_snapshot!(test_diagnostics(&mut with_db, &[source1, source2]), @r"
-    [E0116] Error: duplicate definitions
+    [E0115] Error: duplicate definitions
        ,-[ file:///test0.st:3:14 ]
        |
      3 |     RESOURCE Res ON CPU
@@ -93,7 +93,7 @@ END_CONFIGURATION
        |              ^|^
        |               `--- resource 'Res' is already defined here
     ---'
-    [E0116] Error: duplicate definitions
+    [E0115] Error: duplicate definitions
        ,-[ file:///test1.st:3:14 ]
        |
      3 |     RESOURCE Res ON CPU
@@ -128,7 +128,7 @@ CONFIGURATION MyCfg
 END_CONFIGURATION
 "#;
     assert_snapshot!(test_diagnostics(&mut with_db, &[source1, source2]), @r"
-    [E0102] Error: duplicate definitions
+    [E0101] Error: duplicate definitions
        ,-[ file:///test0.st:4:9 ]
        |
      4 |         shared : INT;
@@ -141,7 +141,7 @@ END_CONFIGURATION
        |         ^^^|^^
        |            `---- variable 'shared' is already defined here
     ---'
-    [E0102] Error: duplicate definitions
+    [E0101] Error: duplicate definitions
        ,-[ file:///test1.st:4:9 ]
        |
      4 |         shared : DINT;
@@ -222,7 +222,7 @@ END_CONFIGURATION
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @"");
 }
 
-/// PROGRAM entry referencing a type that has not been declared should report E0218.
+/// PROGRAM entry referencing a type that has not been declared should report E0203.
 #[rstest]
 fn invalid_config_unknown_prog_type(mut with_db: RootDatabase) {
     let source = r#"
@@ -234,7 +234,7 @@ CONFIGURATION MyCfg
 END_CONFIGURATION
 "#;
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E0210] Error: no namespace item found
+    [E0203] Error: no namespace item found
        ,-[ file:///test0.st:5:33 ]
        |
      5 |         PROGRAM inst1 WITH t1 : UnknownProg;
@@ -244,7 +244,7 @@ END_CONFIGURATION
     ");
 }
 
-/// PROGRAM WITH referencing a task that has not been declared should report E0219.
+/// PROGRAM WITH referencing a task that has not been declared should report E1411.
 #[rstest]
 fn invalid_config_unknown_task_ref(mut with_db: RootDatabase) {
     let source = r#"
@@ -258,7 +258,7 @@ CONFIGURATION MyCfg
 END_CONFIGURATION
 "#;
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E0219] Error: configuration error
+    [E1411] Error: configuration error
        ,-[ file:///test0.st:7:28 ]
        |
      7 |         PROGRAM inst1 WITH unknownTask : MyProg;
@@ -286,7 +286,7 @@ END_CONFIGURATION
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @"");
 }
 
-/// A VAR_GLOBAL variable referencing an unknown type should report E0210.
+/// A VAR_GLOBAL variable referencing an unknown type should report E0203.
 #[rstest]
 fn invalid_config_global_var_unknown_type(mut with_db: RootDatabase) {
     let source = r#"
@@ -300,7 +300,7 @@ CONFIGURATION MyCfg
 END_CONFIGURATION
 "#;
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E0210] Error: no namespace item found
+    [E0203] Error: no namespace item found
        ,-[ file:///test0.st:4:13 ]
        |
      4 |         x : UnknownType;
@@ -335,7 +335,7 @@ END_CONFIGURATION
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @"");
 }
 
-/// PROGRAM inside a RESOURCE block with an unknown task reference should report E0219.
+/// PROGRAM inside a RESOURCE block with an unknown task reference should report E1411.
 #[rstest]
 fn invalid_resource_unknown_task_ref(mut with_db: RootDatabase) {
     let source = r#"
@@ -350,7 +350,7 @@ CONFIGURATION MyCfg
 END_CONFIGURATION
 "#;
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E0219] Error: configuration error
+    [E1411] Error: configuration error
        ,-[ file:///test0.st:8:28 ]
        |
      8 |         PROGRAM inst1 WITH noSuchTask : MyProg;
@@ -378,7 +378,7 @@ END_PROGRAM
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @"");
 }
 
-/// A VAR_ACCESS declaration with an unknown spec type should report E0210.
+/// A VAR_ACCESS declaration with an unknown spec type should report E0203.
 #[rstest]
 fn invalid_prog_access_unknown_type(mut with_db: RootDatabase) {
     let source = r#"
@@ -392,7 +392,7 @@ PROGRAM MyProg
 END_PROGRAM
 "#;
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E0210] Error: no namespace item found
+    [E0203] Error: no namespace item found
        ,-[ file:///test0.st:7:20 ]
        |
      7 |         ABLE : x : UnknownType READ_ONLY;
@@ -402,7 +402,7 @@ END_PROGRAM
     ");
 }
 
-/// A VAR_ACCESS declaration referencing a nonexistent variable should report E0204.
+/// A VAR_ACCESS declaration referencing a nonexistent variable should report E0201.
 #[rstest]
 fn invalid_prog_access_unknown_var(mut with_db: RootDatabase) {
     let source = r#"
@@ -416,7 +416,7 @@ PROGRAM MyProg
 END_PROGRAM
 "#;
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r#"
-    [E0204] Error: no item found in scope
+    [E0201] Error: no item found in scope
        ,-[ file:///test0.st:7:16 ]
        |
      7 |         ABLE : nonexistent : INT READ_ONLY;
@@ -426,7 +426,7 @@ END_PROGRAM
     "#);
 }
 
-/// A VAR_ACCESS declared type differs from the actual variable type should report E0221.
+/// A VAR_ACCESS declared type differs from the actual variable type should report E1415.
 #[rstest]
 fn invalid_prog_access_type_mismatch(mut with_db: RootDatabase) {
     let source = r#"
@@ -440,7 +440,7 @@ PROGRAM MyProg
 END_PROGRAM
 "#;
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E0221] Error: access declaration type mismatch
+    [E1415] Error: access declaration type mismatch
        ,-[ file:///test0.st:7:20 ]
        |
      4 |         x : INT;
@@ -478,7 +478,7 @@ CONFIGURATION MyCfg
 END_CONFIGURATION
 "#;
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E0240] Error: unsupported configuration element
+    [E1416] Error: unsupported configuration element
         ,-[ file:///test0.st:15:15 ]
         |
      15 |         inst1.x : INT := 42;
@@ -492,8 +492,8 @@ END_CONFIGURATION
 
 /// A location-only entry is the standard's own form (`STATION_2.P4.FB1.C2 AT
 /// %QB25: BYTE;`), in our corpus. It was refused with a SYNTAX code before the
-/// E0240 that says VAR_CONFIG is not applied: a misleading error on valid
-/// syntax. Now only E0240, as for any other entry.
+/// E1416 that says VAR_CONFIG is not applied: a misleading error on valid
+/// syntax. Now only E1416, as for any other entry.
 #[rstest]
 fn config_inst_init_location_only_is_unsupported_not_a_syntax_error(mut with_db: RootDatabase) {
     let source = r#"
@@ -515,7 +515,7 @@ CONFIGURATION MyCfg
 END_CONFIGURATION
 "#;
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E0240] Error: unsupported configuration element
+    [E1416] Error: unsupported configuration element
         ,-[ file:///test0.st:15:15 ]
         |
      15 |         inst1.x AT %QB25 : BYTE;
@@ -551,7 +551,7 @@ CONFIGURATION MyCfg
 END_CONFIGURATION
 "#;
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E0240] Error: unsupported configuration element
+    [E1416] Error: unsupported configuration element
         ,-[ file:///test0.st:15:19 ]
         |
      15 |         Res.inst1.x : INT := 42;
@@ -586,7 +586,7 @@ CONFIGURATION MyCfg
 END_CONFIGURATION
 "#;
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E0240] Error: unsupported configuration element
+    [E1416] Error: unsupported configuration element
         ,-[ file:///test0.st:15:20 ]
         |
      15 |         Nope.inst1.x : INT := 42;
@@ -595,7 +595,7 @@ END_CONFIGURATION
         |
         | Note: set the value in the program's own VAR declaration instead
     ----'
-    [E0222] Error: configuration error
+    [E1413] Error: configuration error
         ,-[ file:///test0.st:15:9 ]
         |
      15 |         Nope.inst1.x : INT := 42;
@@ -633,7 +633,7 @@ CONFIGURATION MyCfg
 END_CONFIGURATION
 "#;
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E0240] Error: unsupported configuration element
+    [E1416] Error: unsupported configuration element
         ,-[ file:///test0.st:21:19 ]
         |
      21 |         inst1.fb1.param : BOOL := TRUE;
@@ -645,7 +645,7 @@ END_CONFIGURATION
     ");
 }
 
-/// VAR_CONFIG with an unknown program instance should report E0222.
+/// VAR_CONFIG with an unknown program instance should report E1413.
 #[rstest]
 fn invalid_config_inst_init_unknown_instance(mut with_db: RootDatabase) {
     let source = r#"
@@ -667,7 +667,7 @@ CONFIGURATION MyCfg
 END_CONFIGURATION
 "#;
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E0240] Error: unsupported configuration element
+    [E1416] Error: unsupported configuration element
         ,-[ file:///test0.st:15:20 ]
         |
      15 |         noSuchInst.x : INT := 42;
@@ -676,7 +676,7 @@ END_CONFIGURATION
         |
         | Note: set the value in the program's own VAR declaration instead
     ----'
-    [E0222] Error: configuration error
+    [E1413] Error: configuration error
         ,-[ file:///test0.st:15:9 ]
         |
      15 |         noSuchInst.x : INT := 42;
@@ -686,7 +686,7 @@ END_CONFIGURATION
     ");
 }
 
-/// VAR_CONFIG referencing a nonexistent field on a program should report E0223.
+/// VAR_CONFIG referencing a nonexistent field on a program should report E1414.
 #[rstest]
 fn invalid_config_inst_init_unknown_field(mut with_db: RootDatabase) {
     let source = r#"
@@ -708,7 +708,7 @@ CONFIGURATION MyCfg
 END_CONFIGURATION
 "#;
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E0240] Error: unsupported configuration element
+    [E1416] Error: unsupported configuration element
         ,-[ file:///test0.st:15:15 ]
         |
      15 |         inst1.nonexistent : INT := 42;
@@ -717,7 +717,7 @@ END_CONFIGURATION
         |
         | Note: set the value in the program's own VAR declaration instead
     ----'
-    [E0223] Error: configuration error
+    [E1414] Error: configuration error
         ,-[ file:///test0.st:15:15 ]
         |
      15 |         inst1.nonexistent : INT := 42;
@@ -749,7 +749,7 @@ CONFIGURATION MyCfg
 END_CONFIGURATION
 "#;
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E0240] Error: unsupported configuration element
+    [E1416] Error: unsupported configuration element
         ,-[ file:///test0.st:15:15 ]
         |
      15 |         inst1.x : INT := 'hello';
@@ -758,7 +758,7 @@ END_CONFIGURATION
         |
         | Note: set the value in the program's own VAR declaration instead
     ----'
-    [E0309] Error: invalid literal
+    [E0306] Error: invalid literal
         ,-[ file:///test0.st:15:26 ]
         |
      15 |         inst1.x : INT := 'hello';
@@ -768,7 +768,7 @@ END_CONFIGURATION
     ");
 }
 
-/// VAR_CONFIG trying to walk through a non-composite type should report E0223.
+/// VAR_CONFIG trying to walk through a non-composite type should report E1414.
 #[rstest]
 fn invalid_config_inst_init_not_walkable(mut with_db: RootDatabase) {
     let source = r#"
@@ -790,7 +790,7 @@ CONFIGURATION MyCfg
 END_CONFIGURATION
 "#;
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E0240] Error: unsupported configuration element
+    [E1416] Error: unsupported configuration element
         ,-[ file:///test0.st:15:17 ]
         |
      15 |         inst1.x.deeper : INT := 42;
@@ -799,7 +799,7 @@ END_CONFIGURATION
         |
         | Note: set the value in the program's own VAR declaration instead
     ----'
-    [E0223] Error: configuration error
+    [E1414] Error: configuration error
         ,-[ file:///test0.st:15:17 ]
         |
      15 |         inst1.x.deeper : INT := 42;
@@ -837,7 +837,7 @@ CONFIGURATION MyCfg
 END_CONFIGURATION
 "#;
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E0240] Error: unsupported configuration element
+    [E1416] Error: unsupported configuration element
         ,-[ file:///test0.st:21:19 ]
         |
      21 |         inst1.fb1.value : REAL := 3.14;
@@ -995,7 +995,7 @@ FUNCTION_BLOCK fb1
 END_FUNCTION_BLOCK
 "#;
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E0210] Error: no namespace item found
+    [E0203] Error: no namespace item found
        ,-[ file:///test0.st:7:13 ]
        |
      7 |         x : MyProg;
@@ -1017,7 +1017,7 @@ fn config_global_bad_initializer_is_a_type_error(mut with_db: db::RootDatabase) 
         END_CONFIGURATION
     "#;
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E0309] Error: invalid literal
+    [E0306] Error: invalid literal
        ,-[ file:///test0.st:4:30 ]
        |
      4 |                 bad : INT := 'oops';
@@ -1038,7 +1038,7 @@ fn duplicate_config_globals_are_reported(mut with_db: db::RootDatabase) {
         END_CONFIGURATION
     "#;
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E0102] Error: duplicate definitions
+    [E0101] Error: duplicate definitions
        ,-[ file:///test0.st:5:17 ]
        |
      4 |                 g : INT;
@@ -1070,7 +1070,7 @@ fn event_driven_task_is_rejected(mut with_db: db::RootDatabase) {
         END_CONFIGURATION
     "#;
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E0239] Error: task cannot be scheduled
+    [E1410] Error: task cannot be scheduled
        ,-[ file:///test0.st:5:22 ]
        |
      5 |                 TASK T(SINGLE := go, PRIORITY := 1);
@@ -1094,7 +1094,7 @@ fn zero_interval_task_is_rejected(mut with_db: db::RootDatabase) {
         END_CONFIGURATION
     "#;
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E0239] Error: task cannot be scheduled
+    [E1410] Error: task cannot be scheduled
        ,-[ file:///test0.st:5:22 ]
        |
      5 |                 TASK T(INTERVAL := T#0ms, PRIORITY := 1);
@@ -1117,7 +1117,7 @@ fn non_literal_interval_is_rejected(mut with_db: db::RootDatabase) {
         END_CONFIGURATION
     "#;
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E0239] Error: task cannot be scheduled
+    [E1410] Error: task cannot be scheduled
        ,-[ file:///test0.st:5:22 ]
        |
      5 |                 TASK T(INTERVAL := someName, PRIORITY := 1);
@@ -1162,7 +1162,7 @@ fn mutable_global_interval_is_rejected(mut with_db: db::RootDatabase) {
         END_CONFIGURATION
     "#;
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E0239] Error: task cannot be scheduled
+    [E1410] Error: task cannot be scheduled
        ,-[ file:///test0.st:6:22 ]
        |
      6 |                 TASK T(INTERVAL := period, PRIORITY := 1);
@@ -1186,7 +1186,7 @@ fn program_instance_without_a_task_is_rejected(mut with_db: db::RootDatabase) {
         END_CONFIGURATION
     "#;
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E0238] Error: program instance never runs
+    [E1412] Error: program instance never runs
        ,-[ file:///test0.st:6:25 ]
        |
      6 |                 PROGRAM P1 : P;
@@ -1211,7 +1211,7 @@ fn trigger_less_task_is_rejected(mut with_db: db::RootDatabase) {
         END_CONFIGURATION
     "#;
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E0239] Error: task cannot be scheduled
+    [E1410] Error: task cannot be scheduled
        ,-[ file:///test0.st:5:22 ]
        |
      5 |                 TASK T(PRIORITY := 1);
@@ -1298,7 +1298,7 @@ fn program_connection_elements_are_reported(mut with_db: RootDatabase) {
         END_CONFIGURATION
     "#;
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E0240] Error: unsupported configuration element
+    [E1416] Error: unsupported configuration element
         ,-[ file:///test0.st:12:40 ]
         |
      12 |                 PROGRAM PA WITH T : A (inp := src, outp => snk, ghost := nosuch);
@@ -1307,7 +1307,7 @@ fn program_connection_elements_are_reported(mut with_db: RootDatabase) {
         |
         | Note: assign it in the program body instead
     ----'
-    [E0240] Error: unsupported configuration element
+    [E1416] Error: unsupported configuration element
         ,-[ file:///test0.st:12:52 ]
         |
      12 |                 PROGRAM PA WITH T : A (inp := src, outp => snk, ghost := nosuch);
@@ -1316,7 +1316,7 @@ fn program_connection_elements_are_reported(mut with_db: RootDatabase) {
         |
         | Note: assign it in the program body instead
     ----'
-    [E0240] Error: unsupported configuration element
+    [E1416] Error: unsupported configuration element
         ,-[ file:///test0.st:12:65 ]
         |
      12 |                 PROGRAM PA WITH T : A (inp := src, outp => snk, ghost := nosuch);
@@ -1344,7 +1344,7 @@ fn unusable_task_priority_is_rejected(mut with_db: RootDatabase) {
         END_CONFIGURATION
     "#;
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E0241] Error: configuration error
+    [E1406] Error: configuration error
        ,-[ file:///test0.st:6:22 ]
        |
      6 |                 TASK T(INTERVAL := T#10ms, PRIORITY := 99999999999);
@@ -1357,7 +1357,7 @@ fn unusable_task_priority_is_rejected(mut with_db: RootDatabase) {
 }
 
 /// Tasks and programs belong to a RESOURCE. Written straight into the
-/// CONFIGURATION they used to fail as stray tokens — one E0050 quoting the
+/// CONFIGURATION they used to fail as stray tokens — one E0001 quoting the
 /// whole tokenized configuration — which said nothing about what to do.
 #[rstest]
 fn task_or_program_outside_a_resource_is_rejected(mut with_db: RootDatabase) {
@@ -1370,7 +1370,7 @@ fn task_or_program_outside_a_resource_is_rejected(mut with_db: RootDatabase) {
         END_CONFIGURATION
     "#;
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E0039] Error: syntax
+    [E1404] Error: syntax
        ,-[ file:///test0.st:5:13 ]
        |
      5 |             TASK T(INTERVAL := T#10ms, PRIORITY := 1);
@@ -1379,7 +1379,7 @@ fn task_or_program_outside_a_resource_is_rejected(mut with_db: RootDatabase) {
        |
        | Note: wrap them in a RESOURCE <name> ON <cpu> ... END_RESOURCE block
     ---'
-    [E0039] Error: syntax
+    [E1404] Error: syntax
        ,-[ file:///test0.st:6:13 ]
        |
      6 |             PROGRAM A WITH T : P;
@@ -1418,7 +1418,7 @@ fn var_global_in_a_resource_is_rejected(mut with_db: RootDatabase) {
         END_CONFIGURATION
     "#;
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E0030] Error: syntax
+    [E0021] Error: syntax
        ,-[ file:///test0.st:6:17 ]
        |
      6 |                 VAR_GLOBAL g : INT := 10; END_VAR
@@ -1427,7 +1427,7 @@ fn var_global_in_a_resource_is_rejected(mut with_db: RootDatabase) {
        |
        | Note: VAR_GLOBAL can only be used inside CONFIGURATION
     ---'
-    [E0030] Error: syntax
+    [E0021] Error: syntax
         ,-[ file:///test0.st:11:17 ]
         |
      11 |                 VAR_GLOBAL g : INT := 99; END_VAR
@@ -1436,14 +1436,14 @@ fn var_global_in_a_resource_is_rejected(mut with_db: RootDatabase) {
         |
         | Note: VAR_GLOBAL can only be used inside CONFIGURATION
     ----'
-    [E0220] Error: external variable not found
+    [E0206] Error: external variable not found
        ,-[ file:///test0.st:2:32 ]
        |
      2 |         PROGRAM P VAR_EXTERNAL g : INT; END_VAR VAR n : INT; END_VAR n := g; END_PROGRAM
        |                                ^^^|^^^
        |                                   `----- external variable 'g' not found in any accessible VAR_GLOBAL
     ---'
-    [E0247] Error: configuration error
+    [E1403] Error: configuration error
        ,-[ file:///test0.st:5:22 ]
        |
      5 |             RESOURCE R1 ON CPU
@@ -1477,7 +1477,7 @@ fn more_than_one_configuration_is_rejected(mut with_db: RootDatabase) {
         END_CONFIGURATION
     "#;
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E0242] Error: configuration error
+    [E1402] Error: configuration error
         ,-[ file:///test0.st:4:23 ]
         |
       4 |         CONFIGURATION First
@@ -1488,7 +1488,7 @@ fn more_than_one_configuration_is_rejected(mut with_db: RootDatabase) {
         |                       ^^^|^^
         |                          `---- 'Second' is declared here
     ----'
-    [E0242] Error: configuration error
+    [E1402] Error: configuration error
         ,-[ file:///test0.st:11:23 ]
         |
       4 |         CONFIGURATION First
@@ -1706,7 +1706,7 @@ END_CONFIGURATION
     ");
 }
 
-/// PRIORITY is optional in the grammar (its absence is E0035). The schedule
+/// PRIORITY is optional in the grammar (its absence is E1405). The schedule
 /// still describes what runs, with no priority rather than a guessed one.
 #[rstest]
 fn resolved_schedule_tolerates_a_missing_priority(mut with_db: RootDatabase) {
@@ -1771,7 +1771,7 @@ VAR_GLOBAL sensor AT %IX0.0 : BOOL; END_VAR
 END_CONFIGURATION
 "#;
     assert_snapshot!(crate::tests::utils::test_diagnostics(&mut with_db, &[source]), @r"
-    [E0245] Error: direct variable access is not supported
+    [E1417] Error: direct variable access is not supported
        ,-[ file:///test0.st:9:12 ]
        |
      9 | VAR_GLOBAL sensor AT %IX0.0 : BOOL; END_VAR
@@ -1783,7 +1783,7 @@ END_CONFIGURATION
     ");
 }
 
-// E0247: a deployment drives one RESOURCE, so a second one is refused where
+// E1403: a deployment drives one RESOURCE, so a second one is refused where
 // it can be fixed instead of at deploy, where the same rule used to surface
 // after a compile that exited 0.
 
@@ -1804,7 +1804,7 @@ CONFIGURATION Cfg
 END_CONFIGURATION
 "#;
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E0247] Error: configuration error
+    [E1403] Error: configuration error
        ,-[ file:///test0.st:5:14 ]
        |
      5 |     RESOURCE Core0 ON CPU
@@ -1835,14 +1835,14 @@ CONFIGURATION Cfg
 END_CONFIGURATION
 "#;
     assert_snapshot!(test_diagnostics(&mut with_db, &[source1, source2]), @r"
-    [E0247] Error: configuration error
+    [E1403] Error: configuration error
        ,-[ file:///test0.st:5:14 ]
        |
      5 |     RESOURCE Core0 ON CPU
        |              ^^|^^
        |                `---- a deployment drives one RESOURCE; this configuration declares 2 (Core0, Core1); deploy one RESOURCE per runtime
     ---'
-    [E0247] Error: configuration error
+    [E1403] Error: configuration error
        ,-[ file:///test1.st:3:14 ]
        |
      3 |     RESOURCE Core1 ON CPU

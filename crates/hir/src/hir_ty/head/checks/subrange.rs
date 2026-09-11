@@ -2,7 +2,7 @@ use db::WorkspaceDataBase;
 
 use crate::{
     CallSite,
-    check::errors::{ToIdeDiagnostic, e3_type::TypeError, e8_subrange::SubRangeError},
+    check::errors::{ToIdeDiagnostic, e03_type::TypeError, e07_subrange::SubRangeError},
     hir_def::expressions::spec::{ElementarySpec, SubRange},
     hir_ty::{
         head::init_inference::InitInference,

@@ -459,7 +459,7 @@ fn per_dimension_bounds_not_flat_bounds(mut with_db: db::RootDatabase) {
 }
 
 /// An array dimensioned by a CONSTANT compiles and runs — the OSCAT idiom.
-/// `ARRAY[0..K]` was refused at the declaration (E0602) when the bound was
+/// `ARRAY[0..K]` was refused at the declaration (E0502) when the bound was
 /// anything but a bare literal.
 #[rstest]
 fn constant_bounded_array_runs(mut with_db: db::RootDatabase) {

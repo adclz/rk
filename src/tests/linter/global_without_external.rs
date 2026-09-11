@@ -23,7 +23,7 @@ END_VAR
 END_CONFIGURATION
 "#;
     assert_snapshot!(test_single_lint(&mut with_db, &[source], "global-without-external"), @r"
-    [L0410] Warning: global accessed without VAR_EXTERNAL
+    [L0118] Warning: global accessed without VAR_EXTERNAL
         ,-[ file:///test0.st:6:14 ]
         |
       6 |     local := g_counter;

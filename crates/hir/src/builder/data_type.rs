@@ -55,12 +55,7 @@ impl<'db> SemanticIndexBuilder<'db> {
         ));
 
         self.register_node(data_type.into(), HirNode::PouDecl(result));
-        self.register_scope(
-            ScopeKind::Pou(result),
-            vec![],
-            scope_id,
-            previous_scope,
-);
+        self.register_scope(ScopeKind::Pou(result), vec![], scope_id, previous_scope);
 
         Ok(result)
     }

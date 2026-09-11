@@ -3,11 +3,9 @@ use ide_diagnostic::IdeDiagnostic;
 
 use crate::{
     builder::{
-        Parse, ParseVarSection,
-        semantic_index::SemanticIndexBuilder,
-        variables::ParseProgDecl,
+        Parse, ParseVarSection, semantic_index::SemanticIndexBuilder, variables::ParseProgDecl,
     },
-    check::errors::{ToIdeDiagnostic, e0_syntax::SyntaxError},
+    check::errors::{ToIdeDiagnostic, e00_syntax::SyntaxError},
     hir_def::{
         hir_node::HirNode,
         interned::identifier::Ident,
@@ -59,12 +57,7 @@ impl<'db> SemanticIndexBuilder<'db> {
         );
 
         self.register_node(program.into(), HirNode::Program(result));
-        self.register_scope(
-            ScopeKind::Program(result),
-            vec![],
-            scope_id,
-            previous_scope,
-);
+        self.register_scope(ScopeKind::Program(result), vec![], scope_id, previous_scope);
 
         Ok(result)
     }

@@ -15,12 +15,12 @@ use rustc_hash::FxHashMap;
 
 pub const NAME: &str = "duplicate-case";
 
-/// L0306: duplicate CASE selector value.
+/// L0109: duplicate CASE selector value.
 struct DuplicateCase;
 
 impl ErrorCode for DuplicateCase {
     fn code(&self) -> &'static str {
-        "L0306"
+        "L0109"
     }
 
     fn description(&self) -> &'static str {

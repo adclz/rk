@@ -14,7 +14,7 @@ struct BoolComparison;
 
 impl ErrorCode for BoolComparison {
     fn code(&self) -> &'static str {
-        "L0107"
+        "L0209"
     }
 
     fn description(&self) -> &'static str {

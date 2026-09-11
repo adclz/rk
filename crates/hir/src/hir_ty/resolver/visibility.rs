@@ -32,7 +32,7 @@ use ide_diagnostic::IdeDiagnostic;
 
 use crate::{
     CallSite, HasVisibility, HirNodeInfo, Visibility,
-    check::errors::{ToIdeDiagnostic, e4_visibility::VisibilityError},
+    check::errors::{ToIdeDiagnostic, e10_visibility::VisibilityError},
     hir_def::{
         namespace::NamespaceDecl,
         scope::{ScopeId, ScopeKind},
@@ -145,7 +145,7 @@ pub fn check_visibility<'db>(
     }
 }
 
-/// E0405: a `FUNCTION PRIVATE` is reachable from its own namespace — nested
+/// E1005: a `FUNCTION PRIVATE` is reachable from its own namespace — nested
 /// namespaces included — on its own side of the library line. Namespaces
 /// reopen from any file, so the namespace alone is a convention; the origin
 /// half is what keeps a library's helpers out of workspace code that
@@ -237,7 +237,7 @@ pub fn first_closed_internal<'db>(
         })
 }
 
-/// E0407: `NAMESPACE INTERNAL N` is reachable only from inside the namespace
+/// E1004: `NAMESPACE INTERNAL N` is reachable only from inside the namespace
 /// that encloses it — nested namespaces included — on its own side of the
 /// library line (the same boundary as `FUNCTION PRIVATE`). Checked on the
 /// TARGET's namespace chain, so a qualified, relative, or USING-imported

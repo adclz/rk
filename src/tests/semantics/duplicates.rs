@@ -20,7 +20,7 @@ FUNCTION_BLOCK fb1
 END_FUNCTION_BLOCK"#;
 
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E0102] Error: duplicate definitions
+    [E0101] Error: duplicate definitions
        ,-[ file:///test0.st:5:9 ]
        |
      4 |         test: INT;
@@ -44,7 +44,7 @@ FUNCTION_BLOCK fb1
 END_FUNCTION_BLOCK"#;
 
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E0102] Error: duplicate definitions
+    [E0101] Error: duplicate definitions
        ,-[ file:///test0.st:4:15 ]
        |
      4 |         test, test: INT;
@@ -67,7 +67,7 @@ TYPE
 END_TYPE"#;
 
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E0103] Error: duplicate definitions
+    [E0104] Error: duplicate definitions
        ,-[ file:///test0.st:5:9 ]
        |
      4 |         test: INT;
@@ -93,7 +93,7 @@ END_FUNCTION_BLOCK
 "#;
 
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E0101] Error: duplicate definitions
+    [E0102] Error: duplicate definitions
        ,-[ file:///test0.st:6:16 ]
        |
      2 | FUNCTION_BLOCK fb1
@@ -143,7 +143,7 @@ END_FUNCTION
 "#;
 
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E0101] Error: duplicate definitions
+    [E0102] Error: duplicate definitions
        ,-[ file:///test0.st:7:10 ]
        |
      2 | FUNCTION foo : INT
@@ -166,7 +166,7 @@ END_TYPE
 "#;
 
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E0104] Error: duplicate definitions
+    [E0105] Error: duplicate definitions
        ,-[ file:///test0.st:3:11 ]
        |
      3 |     E1 : (A, B, A);
@@ -193,7 +193,7 @@ END_NAMESPACE
 "#;
 
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E0101] Error: duplicate definitions
+    [E0102] Error: duplicate definitions
        ,-[ file:///test0.st:7:20 ]
        |
      3 |     FUNCTION_BLOCK fb1
@@ -278,7 +278,7 @@ END_INTERFACE
 "#;
 
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E0106] Error: duplicate definitions
+    [E0109] Error: duplicate definitions
        ,-[ file:///test0.st:4:12 ]
        |
      3 |     METHOD m1 END_METHOD
@@ -301,7 +301,7 @@ END_CLASS
 "#;
 
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E0105] Error: duplicate definitions
+    [E0108] Error: duplicate definitions
        ,-[ file:///test0.st:4:12 ]
        |
      3 |     METHOD m1 END_METHOD
@@ -324,7 +324,7 @@ END_FUNCTION_BLOCK
 "#;
 
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E0105] Error: duplicate definitions
+    [E0108] Error: duplicate definitions
        ,-[ file:///test0.st:4:12 ]
        |
      3 |     METHOD m1 END_METHOD
@@ -354,7 +354,7 @@ END_CLASS
 "#;
 
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E0107] Error: duplicate definitions
+    [E0110] Error: duplicate definitions
        ,-[ file:///test0.st:3:12 ]
        |
      3 |     METHOD m1 END_METHOD
@@ -389,7 +389,7 @@ fn duplicate_init_expr(mut with_db: RootDatabase) {
 "#;
 
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E0110] Error: duplicate definitions
+    [E0106] Error: duplicate definitions
         ,-[ file:///test0.st:11:49 ]
         |
      11 |                 Base : Engine := (power := 100, power := 100);
@@ -415,7 +415,7 @@ fn duplicate_usings(mut with_db: RootDatabase) {
 "#;
 
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E0109] Error: duplicate definitions
+    [E0111] Error: duplicate definitions
        ,-[ file:///test0.st:7:19 ]
        |
      6 |             USING ns1;
@@ -439,7 +439,7 @@ fn duplicate_prorams(mut with_db: RootDatabase) {
 "#;
 
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E0111] Error: duplicate definitions
+    [E0112] Error: duplicate definitions
        ,-[ file:///test0.st:5:17 ]
        |
      2 |         PROGRAM prog1
@@ -456,7 +456,7 @@ fn duplicate_prorams(mut with_db: RootDatabase) {
 /// Same-named CONFIGURATION blocks are FRAGMENTS of one configuration and
 /// merge — the GVL model, so VAR_GLOBALs can be split across files. No
 /// duplicate error; what may not collide across fragments is policed
-/// individually (E0102 globals, E0116 resources).
+/// individually (E0101 globals, E0115 resources).
 #[rstest]
 fn same_named_configuration_fragments_merge(mut with_db: RootDatabase) {
     let source = r#"
@@ -513,7 +513,7 @@ CONFIGURATION MyCfg
 END_CONFIGURATION
 "#;
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E0115] Error: duplicate definitions
+    [E0113] Error: duplicate definitions
        ,-[ file:///test0.st:9:17 ]
        |
      8 |         PROGRAM inst1 WITH t1 : MyProg;
@@ -544,7 +544,7 @@ CONFIGURATION MyCfg
 END_CONFIGURATION
 "#;
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E0116] Error: duplicate definitions
+    [E0115] Error: duplicate definitions
         ,-[ file:///test0.st:10:14 ]
         |
       6 |     RESOURCE res1 ON CPU_TYPE
@@ -597,7 +597,7 @@ CONFIGURATION MyCfg
 END_CONFIGURATION
 "#;
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E0115] Error: duplicate definitions
+    [E0113] Error: duplicate definitions
        ,-[ file:///test0.st:9:17 ]
        |
      8 |         PROGRAM inst1 WITH t1 : MyProg;

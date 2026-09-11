@@ -14,7 +14,7 @@ fn invalid_enum_type(mut with_db: RootDatabase) {
         "#;
 
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E0701] Error: invalid enum type
+    [E0601] Error: invalid enum type
        ,-[ file:///test0.st:3:19 ]
        |
      3 |             List: BOOL (A, B, C);
@@ -44,7 +44,7 @@ fn access_enum_variant_on_non_enum_type(mut with_db: RootDatabase) {
         "#;
 
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E0702] Error: invalid enum access
+    [E0602] Error: invalid enum access
         ,-[ file:///test0.st:12:21 ]
         |
      12 |             test := typ#A
@@ -63,7 +63,7 @@ fn type_mismatch_enum_variant_decl(mut with_db: RootDatabase) {
         "#;
 
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E0309] Error: invalid literal
+    [E0306] Error: invalid literal
        ,-[ file:///test0.st:3:33 ]
        |
      3 |             List: UINT (A, B := -5, C);
@@ -91,7 +91,7 @@ fn unknown_enum_variant(mut with_db: RootDatabase) {
         "#;
 
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E0703] Error: invalid enum access
+    [E0603] Error: invalid enum access
         ,-[ file:///test0.st:11:26 ]
         |
      11 |             test := List#D; // D is not a valid enum variant
@@ -191,7 +191,7 @@ fn invalid_enum_value_not_constant(mut with_db: RootDatabase) {
         TYPE Mode : (Idle := fn1(), Run) END_TYPE
     "#;
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E0704] Error: invalid enum value
+    [E0604] Error: invalid enum value
        ,-[ file:///test0.st:5:30 ]
        |
      5 |         TYPE Mode : (Idle := fn1(), Run) END_TYPE
@@ -204,7 +204,7 @@ fn invalid_enum_value_not_constant(mut with_db: RootDatabase) {
 /// A TYPE's enum default is written qualified, like every enum value, and
 /// the type may name itself: nothing typed a begin path in a TYPE-scoped
 /// initializer before, so `Color#Green` here, and even `Shade : Color :=
-/// Color#Green` in a second type, was E0702 on '{unknown}'.
+/// Color#Green` in a second type, was E0602 on '{unknown}'.
 #[rstest]
 fn valid_enum_type_default_is_qualified(mut with_db: RootDatabase) {
     let source = r#"
@@ -226,7 +226,7 @@ fn invalid_enum_type_default_bare_variant(mut with_db: RootDatabase) {
         END_TYPE
     "#;
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E0320] Error: initial value is not constant
+    [E0401] Error: initial value is not constant
        ,-[ file:///test0.st:3:43 ]
        |
      3 |             Color : (Red, Green, Blue) := Green;

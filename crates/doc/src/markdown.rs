@@ -57,7 +57,7 @@ pub fn split_frontmatter(text: &str) -> (Frontmatter, &str) {
 /// named by file and line.
 #[derive(Debug, Clone)]
 pub struct Fence {
-    /// The info string after the backticks, e.g. `iecst expect=E0101`.
+    /// The info string after the backticks, e.g. `iecst expect=E0102`.
     pub info: String,
     pub code: String,
     /// 1-based line of the opening fence.
@@ -101,10 +101,35 @@ pub fn render(body: &str, highlighter: &StHighlighter) -> Rendered {
             Event::End(TagEnd::CodeBlock) => {
                 let (info, line, code) = in_fence.take().unwrap();
                 let lang = info.split_whitespace().next().unwrap_or("");
-                let inner = if lang == "iecst" {
-                    highlighter.html(code.trim_end_matches('\n'))
-                } else {
-                    escape(code.trim_end_matches('\n'))
+                let inner = match lang {
+                    "iecst" => {
+                        let code = code.trim_end_matches('\n');
+                        // A fragment is highlighted in the same POU the fence
+                        // gate checks it in, so the two never disagree.
+                        match info
+                            .split_whitespace()
+                            .find(|w| matches!(*w, "fragment" | "decl"))
+                        {
+                            Some("fragment") => {
+                                let (before, after) = crate::highlight::FRAGMENT_WRAP;
+                                highlighter.html_in(before, code, after)
+                            }
+                            Some("decl") => {
+                                let (before, after) = crate::highlight::DECL_WRAP;
+                                highlighter.html_in(before, code, after)
+                            }
+                            _ => highlighter.html(code),
+                        }
+                    }
+                    "toml" => crate::highlight::toml_html(code.trim_end_matches('\n')),
+                    "sh" | "bash" | "shell" => {
+                        crate::highlight::shell_html(code.trim_end_matches('\n'))
+                    }
+                    "console" | "text" => {
+                        crate::highlight::console_html(code.trim_end_matches('\n'))
+                    }
+                    "lua" => crate::highlight::script_html(code.trim_end_matches('\n')),
+                    _ => escape(code.trim_end_matches('\n')),
                 };
                 let class = if lang.is_empty() {
                     String::new()
@@ -129,6 +154,13 @@ pub fn render(body: &str, highlighter: &StHighlighter) -> Rendered {
             Event::End(TagEnd::Heading(pulldown_cmark::HeadingLevel::H1)) if in_h1 => {
                 in_h1 = false;
                 title = Some(std::mem::take(&mut h1_text));
+            }
+            Event::Code(text) => {
+                events.push(Event::Html(CowStr::from(format!(
+                    "<code>{}</code>",
+                    highlighter.inline(text)
+                ))));
+                continue;
             }
             _ => {}
         }

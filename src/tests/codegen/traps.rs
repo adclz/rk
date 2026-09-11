@@ -1,5 +1,5 @@
 //! Runtime checks that fault the scan instead of computing a wrong answer:
-//! the subrange range check (`rk.range_check_*`, the runtime half of E0802)
+//! the subrange range check (`rk.range_check_*`, the runtime half of E0702)
 //! and the VM's own division traps. The array bounds check has its own tests
 //! in `arrays.rs`.
 
@@ -25,7 +25,7 @@ fn expect_fault(with_db: &mut db::RootDatabase, source: &str, why: &str) -> Stri
 
 /// An out-of-range value entering a subrange variable is DENIED at runtime:
 /// the store raises an IEC exception and the scan faults, instead of storing
-/// a value the type forbids. E0802 catches the constants; this catches what
+/// a value the type forbids. E0702 catches the constants; this catches what
 /// only the running program knows.
 #[rstest]
 fn an_out_of_range_subrange_assignment_faults(mut with_db: db::RootDatabase) {
@@ -361,7 +361,7 @@ fn a_for_init_outside_the_subrange_faults(mut with_db: db::RootDatabase) {
             i : Small;
             from : INT;
         END_VAR
-            from := 99;   (* through a variable: a literal here is E0802 *)
+            from := 99;   (* through a variable: a literal here is E0702 *)
             FOR i := from TO 0 DO
                 run := run + 1;
             END_FOR;
@@ -485,7 +485,7 @@ fn integer_modulo_by_zero_faults(mut with_db: db::RootDatabase) {
 /// A null dereference FAULTS instead of accessing address 0.
 ///
 /// Unchecked, this was not a fault at all: a read answered 0 and a write
-/// silently succeeded. E1003 is the compile-time counterpart, and it does not
+/// silently succeeded. E0902 is the compile-time counterpart, and it does not
 /// track a reference arriving as a parameter — which is how a null reaches a
 /// callee in the first place.
 #[rstest]

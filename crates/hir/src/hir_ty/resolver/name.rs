@@ -127,11 +127,8 @@ pub(crate) fn resolve_namespace_access<'db>(
         // No ambiguity is possible here — the user specified which namespace.
         Some(path) => {
             // Relative to where it was written, then absolute.
-            let path = crate::hir_ty::index_graphs::absolute_namespace_path(
-                db,
-                target.scope_id,
-                **path,
-            );
+            let path =
+                crate::hir_ty::index_graphs::absolute_namespace_path(db, target.scope_id, **path);
             for ns in namespace_index(db, path).iter() {
                 if let PouResolution::Found(pou, using) =
                     pou_names_res(db, target.ident, ns.scope_id(db))
@@ -203,11 +200,8 @@ pub fn find_in_parent_pous<'db>(
         // Collect ALL USING matches at this scope level
         let mut matches: Vec<(Pou<'db>, NamespacePath, Using<'db>)> = vec![];
         for using in &scope.usings {
-            let ns_path: NamespacePath = crate::hir_ty::index_graphs::absolute_namespace_path(
-                db,
-                scope.id,
-                *using.path(db),
-            );
+            let ns_path: NamespacePath =
+                crate::hir_ty::index_graphs::absolute_namespace_path(db, scope.id, *using.path(db));
             for ns in namespace_index(db, ns_path).iter() {
                 if let Some(pou) = ns
                     .scope_id(db)
@@ -231,8 +225,8 @@ pub fn find_in_parent_pous<'db>(
                 // an overload set, not an ambiguity — files reopening a
                 // namespace (a library's included) overload each other, and
                 // the call site picks by signature (`select_overload`).
-                // Identical signatures are E0101 duplicates, equally-viable
-                // calls E0237. Matches from DIFFERENT paths, or involving
+                // Identical signatures are E0102 duplicates, equally-viable
+                // calls E0809. Matches from DIFFERENT paths, or involving
                 // non-overloadable POUs, stay genuinely ambiguous.
                 let first_path = matches[0].1;
                 if matches.iter().all(|(p, path, _)| {
@@ -335,7 +329,7 @@ pub fn select_overload<'db>(
     // The type the call's VALUE lands in, when the consuming site knows it —
     // an assignment's target, an initializer's declared type. What a
     // RETURN-directed overload set (same params, different returns) is
-    // picked by; `None` leaves such a set ambiguous (E0237).
+    // picked by; `None` leaves such a set ambiguous (E0809).
     expected: Option<Type<'db>>,
 ) -> OverloadPick<'db> {
     let CallableType::Function(first) = callable else {
@@ -430,7 +424,7 @@ pub fn select_overload<'db>(
 /// pad, nothing breaks the tie (two one-default candidates stay ambiguous,
 /// like the zero-argument set). What arity cannot settle, the RETURN type
 /// does, when the consuming site expects exactly one candidate's return.
-/// What neither settles is E0237, never a silent pick.
+/// What neither settles is E0809, never a silent pick.
 fn pick_by_arity_then_return<'db>(
     db: &'db dyn WorkspaceDataBase,
     tie: Vec<Function<'db>>,

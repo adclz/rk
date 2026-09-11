@@ -1,10 +1,14 @@
+use crate::CallSite;
+use crate::HasName;
+use crate::HirNodeInfo;
+use crate::check::errors::ToIdeDiagnostic;
+use crate::hir_def::pous::pou::Pou;
 use auto_lsp::lsp_types::DiagnosticSeverity;
 use db::WorkspaceDataBase;
-use ide_diagnostic::{ErrorCode, IdeDiagnostic, Related, diag};
-
-use crate::{
-    CallSite, HasName, HirNodeInfo, check::errors::ToIdeDiagnostic, hir_def::pous::pou::Pou,
-};
+use ide_diagnostic::ErrorCode;
+use ide_diagnostic::IdeDiagnostic;
+use ide_diagnostic::Related;
+use ide_diagnostic::diag;
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, salsa::Update)]
 pub enum RecursionError<'db> {
@@ -19,16 +23,19 @@ pub enum RecursionError<'db> {
     },
 }
 
-impl ErrorCode for RecursionError<'_> {
+impl<'db> ErrorCode for RecursionError<'db> {
     fn code(&self) -> &'static str {
         match self {
-            Self::DirectRecursion { .. } => "E0901",
-            Self::MutualRecursion { .. } => "E0902",
+            Self::DirectRecursion { .. } => "E1301",
+            Self::MutualRecursion { .. } => "E1302",
         }
     }
 
     fn description(&self) -> &'static str {
-        "recursion detected"
+        match self {
+            Self::DirectRecursion { .. } => "recursion detected",
+            Self::MutualRecursion { .. } => "recursion detected",
+        }
     }
 }
 

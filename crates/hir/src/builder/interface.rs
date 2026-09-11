@@ -1,7 +1,8 @@
 use crate::builder::semantic_index::SemanticIndexBuilder;
 use crate::builder::{ParseSpec, ParseVarSection};
 use crate::check::errors::ToIdeDiagnostic;
-use crate::check::errors::e0_syntax::SyntaxError;
+use crate::check::errors::e00_syntax::SyntaxError;
+use crate::check::errors::e11_oop::OopError;
 use crate::hir_def::hir_node::HirNode;
 use crate::hir_def::interned::identifier::Ident;
 use crate::hir_def::pous::interface::{Interface, MethodPrototype};
@@ -61,12 +62,7 @@ impl<'db> SemanticIndexBuilder<'db> {
         ));
 
         self.register_node(interface.into(), HirNode::PouDecl(result));
-        self.register_scope(
-            ScopeKind::Pou(result),
-            usings,
-            scope_id,
-            previous_scope,
-);
+        self.register_scope(ScopeKind::Pou(result), usings, scope_id, previous_scope);
 
         Ok(result)
     }
@@ -88,7 +84,7 @@ impl<'db> SemanticIndexBuilder<'db> {
 
         if let Some(err) = &method.children {
             self.errors.push(
-                SyntaxError::AccessSpecNotAllowedInMethodPrototype(
+                OopError::AccessSpecNotAllowedInMethodPrototype(
                     err.cast(self.ast).get_range().to_owned(),
                 )
                 .to_diagnostic(self.db, self.file),
@@ -165,7 +161,7 @@ impl<'db> SemanticIndexBuilder<'db> {
             vec![],
             scope_id,
             previous_scope,
-);
+        );
 
         Ok(result)
     }

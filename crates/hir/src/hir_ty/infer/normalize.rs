@@ -1,11 +1,15 @@
 use db::WorkspaceDataBase;
 
 use crate::{
-    HirNodeInfo, hir_def::{
+    HirNodeInfo,
+    hir_def::{
         expressions::{expression::MultibitsPart, spec::ElementarySpec},
         pous::variable::DirectVariable,
-    }, hir_ty::{
-        head::signature::infer_signature, infer::Infer, ty::{CallableType, Type},
+    },
+    hir_ty::{
+        head::signature::infer_signature,
+        infer::Infer,
+        ty::{CallableType, Type},
     },
 };
 
@@ -50,26 +54,25 @@ impl<'db> Type<'db> {
 
     fn normalize_keep_subrange(&self, db: &'db dyn WorkspaceDataBase) -> Type<'db> {
         match self {
-            Type::DataType(dt) => {
-                infer_signature(db, dt.get_scope_id(db)).type_of_specs[&dt.spec(db)].normalize_keep_subrange(db)
-            }
+            Type::DataType(dt) => infer_signature(db, dt.get_scope_id(db)).type_of_specs
+                [&dt.spec(db)]
+                .normalize_keep_subrange(db),
             Type::Variable((var, multibits)) => {
                 if let Some(multibits) = multibits {
                     return multibits_to_type(db, *multibits);
                 }
-                infer_signature(db, var.get_scope_id(db)).type_of_specs[&var.spec(db)].normalize_keep_subrange(db)
+                infer_signature(db, var.get_scope_id(db)).type_of_specs[&var.spec(db)]
+                    .normalize_keep_subrange(db)
             }
             Type::CallableType(typ) => match typ {
                 CallableType::Function(f) => match f.return_type(db) {
-                    Some(ret_ty) => {
-                        infer_signature(db, f.get_scope_id(db)).type_of_specs[ret_ty].normalize_keep_subrange(db)
-                    }
+                    Some(ret_ty) => infer_signature(db, f.get_scope_id(db)).type_of_specs[ret_ty]
+                        .normalize_keep_subrange(db),
                     _ => Type::Void,
                 },
                 CallableType::MethodDecl(m) => match m.return_type(db) {
-                    Some(ret_ty) => {
-                        infer_signature(db, m.get_scope_id(db)).type_of_specs[ret_ty].normalize_keep_subrange(db)
-                    }
+                    Some(ret_ty) => infer_signature(db, m.get_scope_id(db)).type_of_specs[ret_ty]
+                        .normalize_keep_subrange(db),
                     _ => Type::Void,
                 },
                 _ => *self,

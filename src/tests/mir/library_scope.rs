@@ -3,7 +3,7 @@
 //! A library is code, not a PLC. Its POUs are there to be used, but the
 //! CONFIGURATION it declares describes the machine its own author was
 //! building. Counted as this workspace's, it spent the one configuration a
-//! workspace may have (E0242) before the user wrote a line, and its programs
+//! workspace may have (E1402) before the user wrote a line, and its programs
 //! were allocated memory and SCHEDULED into their scan.
 
 use auto_lsp::default::db::BaseDatabase;

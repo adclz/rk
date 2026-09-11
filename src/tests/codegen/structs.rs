@@ -144,7 +144,7 @@ fn sized_string_struct_field_does_not_overrun_its_slot(mut with_db: db::RootData
         END_VAR
             r.g := 111;
             (* From a variable: an over-long LITERAL is refused at the
-               assignment (E0309); truncating is what a variable does. *)
+               assignment (E0306); truncating is what a variable does. *)
             src := 'ABCDEFGHIJKLMNOP';
             r.f := src;
             run := r.g;
@@ -177,7 +177,7 @@ fn sized_string_struct_field_truncates_to_its_capacity(mut with_db: db::RootData
             src : STRING[16];
         END_VAR
             (* From a variable: an over-long LITERAL is refused at the
-               assignment (E0309); truncating is what a variable does. *)
+               assignment (E0306); truncating is what a variable does. *)
             src := 'ABCDEFGHIJKLMNOP';
             r.f := src;
             IF r.f = 'ABCD' THEN run := 1; ELSE run := 0; END_IF;
@@ -205,7 +205,7 @@ fn sized_string_fb_member_does_not_overrun_its_slot(mut with_db: db::RootDatabas
             src : STRING[16];
         END_VAR
             (* From a variable: an over-long LITERAL is refused at the
-               assignment (E0309); truncating is what a variable does. *)
+               assignment (E0306); truncating is what a variable does. *)
             src := 'ABCDEFGHIJKLMNOP';
             h.s := src;
             run := h.guard;

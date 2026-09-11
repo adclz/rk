@@ -10,7 +10,7 @@ use std::{hash::Hash, ops::Deref};
 
 use crate::{
     builder::semantic_index::SemanticIndexBuilder,
-    check::errors::{ToIdeDiagnostic, e0_syntax::SyntaxError},
+    check::errors::{ToIdeDiagnostic, e00_syntax::SyntaxError},
     hir_def::scope::ScopeId,
     {AstId, HirNodeInfo},
 };

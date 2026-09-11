@@ -42,7 +42,7 @@ pub fn check<'db>(
 
     for pragma in pragmas {
         let (invalid, reason) = match pragma {
-            // Position legality for {test} is a compiler ERROR (E0252), like
+            // Position legality for {test} is a compiler ERROR (E1503), like
             // {extern}'s: a test on a POU the runner cannot call must not
             // merely warn.
             Pragma::Test(_) => (false, ""),
@@ -51,7 +51,7 @@ pub fn check<'db>(
                 _ => (false, ""),
             },
             Pragma::Warn(_, _) => (false, ""),
-            // Position legality for {extern} is a compiler ERROR (E0244),
+            // Position legality for {extern} is a compiler ERROR (E1501),
             // not lint advice — a misplaced import must not merely warn.
             Pragma::Extern(_, _) => (false, ""),
             // {allow} is valid on every POU kind; its NAMES are what gets

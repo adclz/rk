@@ -101,7 +101,7 @@ FUNCTION_BLOCK fb1
 END_FUNCTION_BLOCK"#;
 
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E0309] Error: invalid literal
+    [E0306] Error: invalid literal
        ,-[ file:///test0.st:4:21 ]
        |
      4 |         c : CHAR := CHAR#'ab';
@@ -145,7 +145,7 @@ FUNCTION_BLOCK fb1
 END_FUNCTION_BLOCK"#;
 
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E0309] Error: invalid literal
+    [E0306] Error: invalid literal
        ,-[ file:///test0.st:4:21 ]
        |
      4 |         c : CHAR := 'ab';
@@ -222,7 +222,7 @@ FUNCTION_BLOCK fb1
 END_FUNCTION_BLOCK"#;
 
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E0309] Error: invalid literal
+    [E0306] Error: invalid literal
        ,-[ file:///test0.st:4:20 ]
        |
      4 |         x : INT := 'hello';
@@ -242,7 +242,7 @@ FUNCTION_BLOCK fb1
 END_FUNCTION_BLOCK"#;
 
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E0309] Error: invalid literal
+    [E0306] Error: invalid literal
        ,-[ file:///test0.st:4:23 ]
        |
      4 |         s : STRING := 42;
@@ -304,7 +304,7 @@ FUNCTION_BLOCK fb1
 END_FUNCTION_BLOCK"#;
 
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E0309] Error: invalid literal
+    [E0306] Error: invalid literal
        ,-[ file:///test0.st:4:26 ]
        |
      4 |         s : STRING[2] := 'hello';
@@ -355,7 +355,7 @@ fn sized_string_length_may_name_a_constant(mut with_db: RootDatabase) {
         END_FUNCTION
     "#;
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E0309] Error: invalid literal
+    [E0306] Error: invalid literal
        ,-[ file:///test0.st:5:18 ]
        |
      5 |             s := 'toolong';
@@ -379,7 +379,7 @@ fn sized_string_length_must_fold(mut with_db: RootDatabase) {
         END_FUNCTION
     "#;
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E0319] Error: length is not constant
+    [E0307] Error: length is not constant
        ,-[ file:///test0.st:4:24 ]
        |
      4 |         VAR s : STRING[n]; END_VAR
@@ -409,14 +409,14 @@ fn assigned_literal_must_fit_the_destination(mut with_db: RootDatabase) {
         END_FUNCTION
     "#;
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E0309] Error: invalid literal
+    [E0306] Error: invalid literal
        ,-[ file:///test0.st:7:22 ]
        |
      7 |             sized := 'far too long for five';
        |                      ^^^^^^^^^^^|^^^^^^^^^^^
        |                                 `------------- cannot infer '<string>' to 'STRING': STRING literal exceeds the capacity of 5 bytes, got 21
     ---'
-    [E0309] Error: invalid literal
+    [E0306] Error: invalid literal
        ,-[ file:///test0.st:8:22 ]
        |
      8 |             plain := 'this literal is well beyond eighty characters long, which is the silent default capacity a plain STRING declaration gets when nothing is said';
@@ -439,7 +439,7 @@ fn assigned_literal_must_fit_the_destination(mut with_db: RootDatabase) {
 /// would reject code whose value fits at runtime, and checking it at runtime
 /// would cost a length compare on every string assignment. What must not
 /// happen is the third thing — a length the compiler COULD have known going
-/// unchecked, which is what the assignment door was doing before E0309
+/// unchecked, which is what the assignment door was doing before E0306
 /// reached it.
 #[rstest]
 fn a_variable_source_is_not_length_checked(mut with_db: RootDatabase) {
@@ -488,7 +488,7 @@ fn assigned_literal_must_fit_an_array_element(mut with_db: RootDatabase) {
         END_FUNCTION
     "#;
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E0309] Error: invalid literal
+    [E0306] Error: invalid literal
        ,-[ file:///test0.st:6:21 ]
        |
      6 |             a[1] := 'ABCDEFGHIJKLMNOP';
@@ -516,14 +516,14 @@ fn assigned_literal_must_fit_a_nested_array_element(mut with_db: RootDatabase) {
         END_FUNCTION
     "#;
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E0309] Error: invalid literal
+    [E0306] Error: invalid literal
        ,-[ file:///test0.st:9:21 ]
        |
      9 |             a[1] := 'ABCDEFGHIJKLMNOP';
        |                     ^^^^^^^^^|^^^^^^^^
        |                              `---------- cannot infer '<string>' to 'STRING': STRING literal exceeds the capacity of 4 bytes, got 16
     ---'
-    [E0309] Error: invalid literal
+    [E0306] Error: invalid literal
         ,-[ file:///test0.st:10:24 ]
         |
      10 |             b[1, 1] := 'ABCDEFGHIJKLMNOP';
@@ -581,7 +581,7 @@ fn invalid_string_literal_capacity_counts_bytes(mut with_db: RootDatabase) {
         END_FUNCTION
     "#;
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E0309] Error: invalid literal
+    [E0306] Error: invalid literal
        ,-[ file:///test0.st:4:30 ]
        |
      4 |             t : STRING[4] := 'café';

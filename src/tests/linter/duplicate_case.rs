@@ -17,7 +17,7 @@ VAR x : INT; END_VAR
 END_FUNCTION
 "#;
     assert_snapshot!(test_single_lint(&mut with_db, &[source], "duplicate-case"), @r"
-    [L0306] Warning: duplicate CASE selector
+    [L0109] Warning: duplicate CASE selector
        ,-[ file:///test0.st:7:9 ]
        |
      5 |         1: test := 10;
@@ -46,7 +46,7 @@ VAR x : INT; END_VAR
 END_FUNCTION
 "#;
     assert_snapshot!(test_single_lint(&mut with_db, &[source], "duplicate-case"), @r"
-    [L0306] Warning: duplicate CASE selector
+    [L0109] Warning: duplicate CASE selector
        ,-[ file:///test0.st:7:9 ]
        |
      5 |         0: test := 10;
@@ -75,7 +75,7 @@ VAR x : INT; END_VAR
 END_FUNCTION
 "#;
     assert_snapshot!(test_single_lint(&mut with_db, &[source], "duplicate-case"), @r"
-    [L0306] Warning: duplicate CASE selector
+    [L0109] Warning: duplicate CASE selector
        ,-[ file:///test0.st:6:9 ]
        |
      5 |         5: test := 10;
@@ -87,7 +87,7 @@ END_FUNCTION
        |
        | Note: lint rule: duplicate-case
     ---'
-    [L0306] Warning: duplicate CASE selector
+    [L0109] Warning: duplicate CASE selector
        ,-[ file:///test0.st:7:9 ]
        |
      6 |         5: test := 20;
@@ -114,7 +114,7 @@ VAR x : INT; END_VAR
 END_FUNCTION
 "#;
     assert_snapshot!(test_single_lint(&mut with_db, &[source], "duplicate-case"), @r"
-    [L0306] Warning: duplicate CASE selector
+    [L0109] Warning: duplicate CASE selector
        ,-[ file:///test0.st:6:9 ]
        |
      5 |         INT#1: test := 10;
@@ -145,7 +145,7 @@ VAR x : Range; END_VAR
 END_FUNCTION
 "#;
     assert_snapshot!(test_single_lint(&mut with_db, &[source], "duplicate-case"), @r"
-    [L0306] Warning: duplicate CASE selector
+    [L0109] Warning: duplicate CASE selector
         ,-[ file:///test0.st:10:9 ]
         |
       9 |         0..2: test := 10;
@@ -174,7 +174,7 @@ VAR x : STATE; END_VAR
 END_FUNCTION
 "#;
     assert_snapshot!(test_single_lint(&mut with_db, &[source], "duplicate-case"), @r"
-    [L0306] Warning: duplicate CASE selector
+    [L0109] Warning: duplicate CASE selector
        ,-[ file:///test0.st:8:9 ]
        |
      6 |         STATE#A: test := 10;
@@ -202,7 +202,7 @@ VAR x : INT; END_VAR
 END_FUNCTION
 "#;
     assert_snapshot!(test_single_lint(&mut with_db, &[source], "duplicate-case"), @r"
-    [L0306] Warning: duplicate CASE selector
+    [L0109] Warning: duplicate CASE selector
        ,-[ file:///test0.st:6:9 ]
        |
      5 |         1..5: test := 10;
@@ -229,7 +229,7 @@ VAR x : INT; END_VAR
 END_FUNCTION
 "#;
     assert_snapshot!(test_single_lint(&mut with_db, &[source], "duplicate-case"), @r"
-    [L0306] Warning: duplicate CASE selector
+    [L0109] Warning: duplicate CASE selector
        ,-[ file:///test0.st:6:9 ]
        |
      5 |         1..10: test := 10;
@@ -256,7 +256,7 @@ VAR x : INT; END_VAR
 END_FUNCTION
 "#;
     assert_snapshot!(test_single_lint(&mut with_db, &[source], "duplicate-case"), @r"
-    [L0306] Warning: duplicate CASE selector
+    [L0109] Warning: duplicate CASE selector
        ,-[ file:///test0.st:6:9 ]
        |
      5 |         5: test := 10;
@@ -304,7 +304,7 @@ VAR s : STRING; y : INT; END_VAR
 END_FUNCTION
 "#;
     assert_snapshot!(test_single_lint(&mut with_db, &[source], "duplicate-case"), @r"
-    [L0306] Warning: duplicate CASE selector
+    [L0109] Warning: duplicate CASE selector
        ,-[ file:///test0.st:6:9 ]
        |
      5 |         'A': y := 1;

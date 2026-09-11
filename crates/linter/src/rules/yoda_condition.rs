@@ -8,12 +8,12 @@ use ide_diagnostic::{ErrorCode, IdeDiagnostic, Related, diag};
 
 pub const NAME: &str = "yoda-condition";
 
-/// L0209: literal on the left side of a comparison.
+/// L0313: literal on the left side of a comparison.
 struct YodaCondition;
 
 impl ErrorCode for YodaCondition {
     fn code(&self) -> &'static str {
-        "L0209"
+        "L0313"
     }
 
     fn description(&self) -> &'static str {

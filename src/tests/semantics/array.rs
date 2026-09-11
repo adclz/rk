@@ -17,7 +17,7 @@ fn unknown_type(mut with_db: RootDatabase) {
         "#;
 
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E0210] Error: no namespace item found
+    [E0203] Error: no namespace item found
        ,-[ file:///test0.st:4:25 ]
        |
      4 |                 input : something;
@@ -50,7 +50,7 @@ fn non_constant_array_bound_is_rejected(mut with_db: RootDatabase) {
         "#;
 
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E0601] Error: invalid array bounds
+    [E0501] Error: invalid array bounds
        ,-[ file:///test0.st:3:34 ]
        |
      3 |         VAR x : INT; arr : ARRAY[x..10] OF INT; END_VAR
@@ -63,7 +63,7 @@ fn non_constant_array_bound_is_rejected(mut with_db: RootDatabase) {
 #[rstest]
 fn upper_bound_below_lower_bound_is_rejected(mut with_db: RootDatabase) {
     // `0..-10` now FOLDS (both are valid constants); what is wrong is the
-    // ordering, so it is reported as an inferior upper bound (E0603) rather
+    // ordering, so it is reported as an inferior upper bound (E0503) rather
     // than an unevaluatable value.
     let source = r#"
         TYPE
@@ -72,7 +72,7 @@ fn upper_bound_below_lower_bound_is_rejected(mut with_db: RootDatabase) {
         "#;
 
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E0603] Error: invalid array bounds
+    [E0503] Error: invalid array bounds
        ,-[ file:///test0.st:3:28 ]
        |
      3 |             List: ARRAY[0..-10] OF INT;
@@ -91,7 +91,7 @@ fn inferior_upper_bound_in_array(mut with_db: RootDatabase) {
         "#;
 
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E0603] Error: invalid array bounds
+    [E0503] Error: invalid array bounds
        ,-[ file:///test0.st:3:29 ]
        |
      3 |             List: ARRAY[10..1] OF INT;
@@ -125,7 +125,7 @@ fn array_conformand_not_supported(mut with_db: RootDatabase) {
         "#;
 
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E0036] Error: syntax
+    [E0509] Error: syntax
        ,-[ file:///test0.st:4:14 ]
        |
      4 |             A: ARRAY [*] OF INT;
@@ -181,28 +181,28 @@ fn invalid_non_integer_subscript(mut with_db: RootDatabase) {
         "#;
 
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E0609] Error: invalid array access
+    [E0504] Error: invalid array access
        ,-[ file:///test0.st:7:15 ]
        |
      7 |             a[r] := 1;
        |               |
        |               `-- array index must be an integer, found REAL
     ---'
-    [E0609] Error: invalid array access
+    [E0504] Error: invalid array access
        ,-[ file:///test0.st:8:15 ]
        |
      8 |             a[TRUE] := 2;
        |               ^^|^
        |                 `--- array index must be an integer, found BOOL
     ---'
-    [E0309] Error: invalid literal
+    [E0306] Error: invalid literal
        ,-[ file:///test0.st:9:15 ]
        |
      9 |             a[1.5] := 3;
        |               ^|^
        |                `--- cannot infer '<float>' to 'DINT': invalid DINT literal
     ---'
-    [E0309] Error: invalid literal
+    [E0306] Error: invalid literal
         ,-[ file:///test0.st:10:15 ]
         |
      10 |             a['x'] := 4;
@@ -227,7 +227,7 @@ fn invalid_unresolved_name_in_subscript(mut with_db: RootDatabase) {
         "#;
 
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r#"
-    [E0204] Error: no item found in scope
+    [E0201] Error: no item found in scope
        ,-[ file:///test0.st:6:15 ]
        |
      6 |             a[zz + 1] := 1;
@@ -262,7 +262,7 @@ fn valid_compound_subscripts_on_call_paths(mut with_db: RootDatabase) {
 }
 
 /// A CONSTANT subscript outside the declared bounds is provable at compile
-/// time — rejected here (E0608) instead of deferred to the runtime bounds
+/// time — rejected here (E0506) instead of deferred to the runtime bounds
 /// check. Per dimension, negative bounds respected, both subscript
 /// spellings; boundary values stay silent.
 #[rstest]
@@ -283,28 +283,28 @@ fn invalid_constant_subscript_out_of_bounds(mut with_db: RootDatabase) {
         "#;
 
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E0608] Error: invalid array access
+    [E0506] Error: invalid array access
        ,-[ file:///test0.st:8:15 ]
        |
      8 |             a[5] := 1;
        |               |
        |               `-- index 5 is out of bounds (the dimension is declared 0..2)
     ---'
-    [E0608] Error: invalid array access
+    [E0506] Error: invalid array access
        ,-[ file:///test0.st:9:15 ]
        |
      9 |             a[-1] := 2;
        |               ^|
        |                `-- index -1 is out of bounds (the dimension is declared 0..2)
     ---'
-    [E0608] Error: invalid array access
+    [E0506] Error: invalid array access
         ,-[ file:///test0.st:10:15 ]
         |
      10 |             n[-3] := 3;
         |               ^|
         |                `-- index -3 is out of bounds (the dimension is declared -2..2)
     ----'
-    [E0608] Error: invalid array access
+    [E0506] Error: invalid array access
         ,-[ file:///test0.st:11:18 ]
         |
      11 |             m[1][9] := 4;
@@ -313,7 +313,7 @@ fn invalid_constant_subscript_out_of_bounds(mut with_db: RootDatabase) {
         |
         | Note: this error occurred in array dimension 2
     ----'
-    [E0608] Error: invalid array access
+    [E0506] Error: invalid array access
         ,-[ file:///test0.st:12:15 ]
         |
      12 |             m[9][1] := 5;
@@ -373,7 +373,7 @@ fn invalid_array_bound_not_constant(mut with_db: RootDatabase) {
         END_FUNCTION
     "#;
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E0602] Error: invalid array bounds
+    [E0502] Error: invalid array bounds
        ,-[ file:///test0.st:3:35 ]
        |
      3 |         VAR n : INT; a : ARRAY[0..n] OF INT; END_VAR
@@ -394,7 +394,7 @@ fn invalid_too_many_elements_with_constant_bound(mut with_db: RootDatabase) {
         END_FUNCTION
     "#;
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E0605] Error: invalid array access
+    [E0507] Error: invalid array access
        ,-[ file:///test0.st:4:49 ]
        |
      4 |         VAR a : ARRAY[0..K] OF INT := [1, 2, 3, 4]; END_VAR
@@ -416,7 +416,7 @@ fn invalid_constant_subscript_out_of_constant_bound(mut with_db: RootDatabase) {
         END_FUNCTION
     "#;
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E0608] Error: invalid array access
+    [E0506] Error: invalid array access
        ,-[ file:///test0.st:5:22 ]
        |
      5 |             fn1 := a[K + 1];

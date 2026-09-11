@@ -255,7 +255,7 @@ FUNCTION_BLOCK fb1
 END_FUNCTION_BLOCK"#;
 
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E0309] Error: invalid literal
+    [E0306] Error: invalid literal
         ,-[ file:///test0.st:11:14 ]
         |
       4 |         x : INT;

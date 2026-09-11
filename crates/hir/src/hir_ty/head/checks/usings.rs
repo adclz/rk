@@ -5,7 +5,7 @@ use rustc_hash::{FxBuildHasher, FxHashMap};
 
 use crate::{
     CallSite,
-    check::errors::{ToIdeDiagnostic, e1_duplicates::DuplicateError, e2_resolve::ResolveError},
+    check::errors::{ToIdeDiagnostic, e01_duplicates::DuplicateError, e02_resolve::ResolveError},
     hir_def::semantic_index::get_scope,
     hir_ty::{head::init_inference::InitInference, index_graphs::namespace_index},
 };
@@ -65,7 +65,7 @@ impl<'db> InitInference<'db> {
                         )
                 {
                     self.errors.push(
-                        crate::check::errors::e4_visibility::VisibilityError::InternalNamespace {
+                        crate::check::errors::e10_visibility::VisibilityError::InternalNamespace {
                             call_site: CallSite::from_scoped(db, using),
                             namespace: violated,
                         }

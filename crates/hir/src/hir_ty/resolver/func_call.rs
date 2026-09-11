@@ -2,9 +2,10 @@ use db::WorkspaceDataBase;
 use ide_diagnostic::IdeDiagnostic;
 use rustc_hash::{FxHashMap, FxHashSet};
 
-use crate::check::errors::e1_duplicates::DuplicateError;
-use crate::check::errors::e3_type::TypeError;
-use crate::check::errors::e10_control_flow::ControlFlowError;
+use crate::check::errors::e01_duplicates::DuplicateError;
+use crate::check::errors::e03_type::TypeError;
+use crate::check::errors::e04_init::InitError;
+use crate::check::errors::e08_call::CallError;
 use crate::hir_def::expressions::expression::{Expr, ExprKind, ParamAssign, PrimaryExpr};
 use crate::hir_def::interned::identifier::CaselessIdent;
 use crate::hir_def::pous::variable::VariableDecl;
@@ -13,7 +14,7 @@ use crate::hir_ty::head::inheritance::instance_members;
 use crate::hir_ty::resolver::name::{OverloadPick, select_overload};
 use crate::{
     CallSite, HirNodeInfo,
-    check::errors::{ToIdeDiagnostic, e2_resolve::ResolveError},
+    check::errors::ToIdeDiagnostic,
     hir_def::expressions::expression::{FuncCall, ParamAssignKind},
     hir_def::pous::pou::Pou,
     hir_ty::{
@@ -64,7 +65,7 @@ pub fn resolve_func_call<'db>(
     // FUNCTION_BLOCKs can only be called if they are variables
     if !access_typ.is_variable() && target_typ.is_fb() {
         ctx.errors.push(
-            ControlFlowError::CallNonCallableType {
+            CallError::CallNonCallableType {
                 typ: target_typ,
                 func_call,
             }
@@ -77,7 +78,7 @@ pub fn resolve_func_call<'db>(
         Some(callable) => callable,
         None => {
             ctx.errors.push(
-                ControlFlowError::CallNonCallableType {
+                CallError::CallNonCallableType {
                     typ: target_typ,
                     func_call,
                 }
@@ -101,7 +102,7 @@ pub fn resolve_func_call<'db>(
                 None => return,
             };
             ctx.errors.push(
-                ResolveError::AmbiguousOverload {
+                CallError::AmbiguousOverload {
                     func_call,
                     name,
                     candidates,
@@ -120,7 +121,7 @@ pub fn resolve_func_call<'db>(
                 None => return,
             };
             ctx.errors.push(
-                ResolveError::NoMatchingOverload {
+                CallError::NoMatchingOverload {
                     func_call,
                     name,
                     arg_types: arg_types.clone(),
@@ -157,21 +158,21 @@ pub fn resolve_func_call<'db>(
 
     if !has_variadic && len > formals.len() {
         ctx.errors.push(
-            ResolveError::IncorrectNumberOfParameters {
+            CallError::IncorrectNumberOfParameters {
                 overloads: match callable {
                     CallableType::Function(f) => {
                         use crate::hir_ty::index_graphs::{
                             namespace_pou_candidates, pou_candidates,
                         };
                         let name = f.name(db);
-                        let candidates = match
-                            crate::hir_ty::resolver::name::enclosing_namespace_path(
+                        let candidates =
+                            match crate::hir_ty::resolver::name::enclosing_namespace_path(
                                 db,
                                 f.scope_id(db),
                             ) {
-                            Some(path) => namespace_pou_candidates(db, path, name),
-                            None => pou_candidates(db, name),
-                        };
+                                Some(path) => namespace_pou_candidates(db, path, name),
+                                None => pou_candidates(db, name),
+                            };
                         candidates
                             .iter()
                             .filter(|p| matches!(p, crate::hir_def::pous::pou::Pou::Function(_)))
@@ -189,7 +190,13 @@ pub fn resolve_func_call<'db>(
     }
 
     // Resolve parameter matching
-    let matches = resolve_params(db, func_call.params(db), callable, &formals, &mut ctx.errors);
+    let matches = resolve_params(
+        db,
+        func_call.params(db),
+        callable,
+        &formals,
+        &mut ctx.errors,
+    );
 
     // Apply coercion and body-level checks on matched parameters
     for m in &matches {
@@ -259,7 +266,7 @@ pub fn resolve_func_call<'db>(
             // has no value, so this is refused here rather than reaching MIR
             // with an arity it cannot lower.
             ctx.errors.push(
-                ResolveError::EmptyVariadicCall {
+                CallError::EmptyVariadicCall {
                     func: callable,
                     var: *var,
                     func_call,
@@ -291,7 +298,7 @@ pub fn resolve_func_call<'db>(
 
     if !missing.is_empty() {
         ctx.errors.push(
-            ResolveError::MissingRequiredParameter {
+            CallError::MissingRequiredParameter {
                 func: callable,
                 vars: missing,
                 func_call,
@@ -367,13 +374,11 @@ fn is_param_required<'db>(
     match callable {
         // An omitted FB input keeps its instance storage.
         CallableType::FunctionBlock(_) => false,
-        CallableType::Function(_) | CallableType::MethodDecl(_) => {
-            input_default(db, var).is_none()
-        }
+        CallableType::Function(_) | CallableType::MethodDecl(_) => input_default(db, var).is_none(),
     }
 }
 
-/// E0234: a VAR_IN_OUT argument must be an l-value (a variable, field, or
+/// E0806: a VAR_IN_OUT argument must be an l-value (a variable, field, or
 /// array-element access) — it binds the callee to the caller's storage by
 /// reference, so a literal, arithmetic expression, or call result has no
 /// address to bind. Constants are caught separately (AssignToConstant).
@@ -406,7 +411,7 @@ fn check_in_out_lvalue<'db>(
             ))
     {
         ctx.errors.push(
-            ResolveError::InOutParameterRequiresLValue {
+            CallError::InOutParameterRequiresLValue {
                 func: callable,
                 var,
                 expr: value,
@@ -453,7 +458,7 @@ fn check_by_ref_invariance<'db>(
     );
 }
 
-/// E0804: the two ends of a by-reference binding must agree about the
+/// E0704: the two ends of a by-reference binding must agree about the
 /// subrange. A VAR_IN_OUT aliases the caller's storage for reads AND writes,
 /// so any disagreement lets one side escape the other's bounds: an INT param
 /// scribbling 99 into the caller's `INT (0..10)` goes around the range check
@@ -486,7 +491,7 @@ fn check_by_ref_subrange<'db>(
     };
     if !agree {
         ctx.errors.push(
-            crate::check::errors::e8_subrange::SubRangeError::ByRefSubrangeMismatch {
+            crate::check::errors::e07_subrange::SubRangeError::ByRefSubrangeMismatch {
                 span,
                 param: param_ty,
                 arg: value_ty,
@@ -510,7 +515,7 @@ fn apply_param_coercion<'db>(
 
             if (var.is_in_out(db) || var.is_output(db)) && ctx.is_constant_type(db, value) {
                 ctx.errors.push(
-                    ControlFlowError::AssignToConstant {
+                    InitError::AssignToConstant {
                         access: CallSite::from_scoped(db, &value),
                     }
                     .to_diagnostic(db, ctx.scope.file(db)),
@@ -532,7 +537,7 @@ fn apply_param_coercion<'db>(
 
             if var.is_output(db) {
                 ctx.errors.push(
-                    ResolveError::OutputParameterUsedAsInput {
+                    CallError::OutputParameterUsedAsInput {
                         func: callable,
                         var,
                         expr: value,
@@ -548,7 +553,7 @@ fn apply_param_coercion<'db>(
 
             if (var.is_in_out(db) || var.is_output(db)) && ctx.is_constant_type(db, value) {
                 ctx.errors.push(
-                    ControlFlowError::AssignToConstant {
+                    InitError::AssignToConstant {
                         access: CallSite::from_scoped(db, &value),
                     }
                     .to_diagnostic(db, ctx.scope.file(db)),
@@ -575,11 +580,11 @@ fn apply_param_coercion<'db>(
             param: param_ident,
             ..
         } => {
-            // E0236: `v => x` on a VAR_IN_OUT would leave the reference
+            // E0807: `v => x` on a VAR_IN_OUT would leave the reference
             // unbound — inouts are bound by reference at call entry with `:=`.
             if var.is_in_out(db) {
                 ctx.errors.push(
-                    ResolveError::InOutParameterBoundWithArrow {
+                    CallError::InOutParameterBoundWithArrow {
                         func: callable,
                         var,
                         param: param_ident,
@@ -600,7 +605,7 @@ fn apply_param_coercion<'db>(
 
             if (var.is_in_out(db) || var.is_output(db)) && ctx.is_constant_access(db, variable) {
                 ctx.errors.push(
-                    ControlFlowError::AssignToConstant { access: call_site }
+                    InitError::AssignToConstant { access: call_site }
                         .to_diagnostic(db, ctx.scope.file(db)),
                 );
             }
@@ -679,7 +684,7 @@ pub enum ParamMatch<'db> {
 /// For an FB this is the flattened `EXTENDS` view — [`instance_members`]
 /// filtered to Input/Output/InOut, base parameters first — because a call
 /// site binds inherited parameters too. Reading only the scope's own
-/// `def_map` left them unknown here: naming one was E0208, and omitting an
+/// `def_map` left them unknown here: naming one was E0803, and omitting an
 /// inherited VAR_IN_OUT went unreported. Transient on purpose: the chain
 /// walk is already memoized in `instance_members`, so this is a re-keying,
 /// not a query.
@@ -760,7 +765,7 @@ pub fn resolve_params<'db>(
                     }
                 } else {
                     // Past the last parameter: the arg count already exceeds
-                    // the callable's, which the caller reported as E0205 —
+                    // the callable's, which the caller reported as E0801 —
                     // a per-argument error here would restate it.
                     results.push(ParamMatch::Error);
                     formal_idx += 1;
@@ -784,7 +789,7 @@ pub fn resolve_params<'db>(
                     results.push(ParamMatch::Matched(*parameter, *var));
                 } else {
                     errors.push(
-                        ResolveError::UnknownInputParameter {
+                        CallError::UnknownInputParameter {
                             func: callable,
                             param,
                         }
@@ -811,7 +816,7 @@ pub fn resolve_params<'db>(
                     results.push(ParamMatch::Matched(*parameter, *var));
                 } else {
                     errors.push(
-                        ResolveError::UnknownOutputParameter {
+                        CallError::UnknownOutputParameter {
                             func: callable,
                             param,
                         }

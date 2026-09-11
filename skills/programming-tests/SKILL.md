@@ -7,9 +7,8 @@ description: Write unit tests in Structured Text — the {test} pragma, Std.Unit
 
 ## Summary
 
-A test is a `FUNCTION` marked `{test}`. It takes no arguments and returns
-nothing useful; it asserts, and an assertion that fails raises, which is what
-marks the test failed.
+A test is a `FUNCTION` marked `{test}`.
+It takes no arguments and returns nothing useful; it asserts, and an assertion that fails raises, which is what marks the test failed.
 
 ```iecst
 USING Std.Unit;
@@ -22,15 +21,11 @@ FUNCTION test_addition_wraps_at_16_bits
 END_FUNCTION
 ```
 
-`{test}` is valid ONLY on a `FUNCTION`, like `{extern}`: on a
-`FUNCTION_BLOCK`, a `PROGRAM` or a `METHOD` it is `E0252`. A test is a `()`
-entry the runner calls, and no other POU kind has one; a POU that exists
-only for tests is not a test — hide it with `FUNCTION PRIVATE` instead.
+`{test}` is valid ONLY on a `FUNCTION`, like `{extern}`: on a `FUNCTION_BLOCK`, a `PROGRAM` or a `METHOD` it is `E1503`.
+A test is a `()` entry the runner calls, and no other POU kind has one; a POU that exists only for tests is not a test — hide it with `FUNCTION PRIVATE` instead.
 
-A test may declare a return type and inputs; nothing supplies them, so do
-not. Two `{test}` functions may not share a name (E0101) — but a name is
-qualified by its namespaces, so `Deep.Nest.test_x` and a top-level `test_x`
-coexist, and that path is what `rk test <name>` matches.
+A test may declare a return type and inputs; nothing supplies them, so do not.
+Two `{test}` functions may not share a name (E0102) — but a name is qualified by its namespaces, so `Deep.Nest.test_x` and a top-level `test_x` coexist, and that path is what `rk test <name>` matches.
 
 ## Assertions
 
@@ -40,16 +35,11 @@ From `Std.Unit`, so `USING Std.Unit;` is required:
 - `ASSERT_EQ(value := …, target := …, message := '…')` — fails when they differ.
 - `ASSERT_NEQ(…)` — the inverse.
 
-`ASSERT_EQ`/`ASSERT_NEQ` are overload sets covering every elementary type,
-STRING and CHAR included; the two arguments must land on ONE overload, so
-compare like with like (an `INT` against a `DINT` is fine — it widens — but
-prefer typed literals: `INT#1`, not `1`). A call no overload accepts is
-E0254, which lists what each overload takes.
+`ASSERT_EQ`/`ASSERT_NEQ` are overload sets covering every elementary type, STRING and CHAR included; the two arguments must land on ONE overload, so compare like with like (an `INT` against a `DINT` is fine — it widens — but prefer typed literals: `INT#1`, not `1`).
+A call no overload accepts is E0810, which lists what each overload takes.
 
-`message` defaults to empty, and the failure report names the file and line,
-so a message is only worth writing when the line alone will not say WHICH
-assertion of several failed. Write what the code should have done, not
-"failed":
+`message` defaults to empty, and the failure report names the file and line, so a message is only worth writing when the line alone will not say WHICH assertion of several failed.
+Write what the code should have done, not "failed":
 
 ```iecst fragment
 ASSERT_EQ(value := c.CV, target := INT#1, message := 'one rising edge counted once');
@@ -57,9 +47,8 @@ ASSERT_EQ(value := c.CV, target := INT#1, message := 'one rising edge counted on
 
 ## Testing a stateful FUNCTION_BLOCK
 
-An FB keeps state between calls, so a test drives it the way a scan would —
-call it repeatedly and assert between calls. This is how edge behaviour,
-latching and instance independence get pinned:
+An FB keeps state between calls, so a test drives it the way a scan would — call it repeatedly and assert between calls.
+This is how edge behaviour, latching and instance independence get pinned:
 
 ```iecst
 USING Std.Unit;
@@ -87,15 +76,12 @@ FUNCTION test_edge_counting
 END_FUNCTION
 ```
 
-Each test gets fresh instances — a `VAR c : Counter;` starts at its
-initializers every run — so tests do not leak state into each other, and two
-instances in one test are independent.
+Each test gets fresh instances — a `VAR c : Counter;` starts at its initializers every run — so tests do not leak state into each other, and two instances in one test are independent.
 
 ## Waiting for something asynchronous
 
-Nothing blocks: a driver-backed block (Modbus, MQTT) completes across
-*calls*, not inside one. Spin it on a deadline rather than a fixed count, so
-a slow machine does not fail the test and a broken driver does not hang it:
+Nothing blocks: a driver-backed block (Modbus, MQTT) completes across *calls*, not inside one.
+Spin it on a deadline rather than a fixed count, so a slow machine does not fail the test and a broken driver does not hang it:
 
 ```iecst
 USING Std.Timers;
@@ -113,13 +99,11 @@ FUNCTION PRIVATE drive_until_done
 END_FUNCTION
 ```
 
-`rk test --timeout` is the backstop for a spin that never settles; the
-in-test deadline is what turns a hang into a readable assertion failure.
+`rk test --timeout` is the backstop for a spin that never settles; the in-test deadline is what turns a hang into a readable assertion failure.
 
 ## Organising
 
-Put tests in a nested `Test` namespace beside the code they cover — the
-standard library's own convention:
+Put tests in a nested `Test` namespace beside the code they cover — the standard library's own convention:
 
 ```iecst sketch
 NAMESPACE Std.Mqtt
@@ -135,16 +119,11 @@ NAMESPACE Std.Mqtt
 END_NAMESPACE
 ```
 
-That keeps test names out of a consumer's unqualified scope and stops them
-colliding with library names, while `rk test` still finds them.
+That keeps test names out of a consumer's unqualified scope and stops them colliding with library names, while `rk test` still finds them.
 
 ## What tests cannot do
 
-There is no setup/teardown hook, no fixture and no parameterised test: a
-test is one FUNCTION that builds what it needs. Shared setup is an ordinary
-`PRIVATE` helper function the tests call — like `drive_until_done` above —
-which the compiler keeps inside its namespace (E0405), so a helper never
-leaks into the library's API.
+There is no setup/teardown hook, no fixture and no parameterised test: a test is one FUNCTION that builds what it needs.
+Shared setup is an ordinary `PRIVATE` helper function the tests call — like `drive_until_done` above — which the compiler keeps inside its namespace (E1005), so a helper never leaks into the library's API.
 
-A test cannot assert that something FAILS to compile; that is the compiler's
-own test suite, not `rk test`.
+A test cannot assert that something FAILS to compile; that is the compiler's own test suite, not `rk test`.

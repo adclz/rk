@@ -5,12 +5,12 @@ use ide_diagnostic::{ErrorCode, IdeDiagnostic, diag};
 
 pub const NAME: &str = "constant-loop-bounds";
 
-/// L0314: FOR loop start equals end, always exactly one iteration.
+/// L0111: FOR loop start equals end, always exactly one iteration.
 struct ConstantLoopBounds;
 
 impl ErrorCode for ConstantLoopBounds {
     fn code(&self) -> &'static str {
-        "L0314"
+        "L0111"
     }
 
     fn description(&self) -> &'static str {

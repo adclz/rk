@@ -21,7 +21,7 @@ END_VAR
 END_FUNCTION_BLOCK
 "#;
     assert_snapshot!(test_single_lint(&mut with_db, &[source], "method-shadows-member"), @r"
-    [L0318] Warning: method variable shadows an owner member
+    [L0116] Warning: method variable shadows an owner member
        ,-[ file:///test0.st:8:9 ]
        |
      4 |     c : INT;
@@ -53,7 +53,7 @@ END_VAR
 END_FUNCTION_BLOCK
 "#;
     assert_snapshot!(test_single_lint(&mut with_db, &[source], "method-shadows-member"), @r"
-    [L0318] Warning: method variable shadows an owner member
+    [L0116] Warning: method variable shadows an owner member
        ,-[ file:///test0.st:8:9 ]
        |
      4 |     speed : INT;
@@ -85,7 +85,7 @@ END_VAR
 END_CLASS
 "#;
     assert_snapshot!(test_single_lint(&mut with_db, &[source], "method-shadows-member"), @r"
-    [L0318] Warning: method variable shadows an owner member
+    [L0116] Warning: method variable shadows an owner member
        ,-[ file:///test0.st:8:9 ]
        |
      4 |     id : INT;

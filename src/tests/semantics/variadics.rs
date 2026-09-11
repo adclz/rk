@@ -22,7 +22,7 @@ FUNCTION sum_all : INT
 END_FUNCTION
 "#;
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E0224] Error: invalid type
+    [E0811] Error: invalid type
         ,-[ file:///test0.st:10:9 ]
         |
      10 |         args: MyStruct...
@@ -60,7 +60,7 @@ FUNCTION sum_all : INT
 END_FUNCTION
 "#;
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E0317] Error: type mismatch
+    [E0814] Error: type mismatch
        ,-[ file:///test0.st:6:16 ]
        |
      6 |     sum_all := ...args+
@@ -85,7 +85,7 @@ FUNCTION sum_all : BOOL
 END_FUNCTION
 "#;
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E0318] Error: type mismatch
+    [E0305] Error: type mismatch
        ,-[ file:///test0.st:7:16 ]
        |
      4 |         args: BOOL...
@@ -162,7 +162,7 @@ FUNCTION fn1 : INT
 END_FUNCTION
 "#;
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E0227] Error: invalid variadic declaration
+    [E0812] Error: invalid variadic declaration
        ,-[ file:///test0.st:5:9 ]
        |
      4 |         a: INT...
@@ -287,7 +287,7 @@ FUNCTION fn
 END_FUNCTION
 "#;
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E0309] Error: invalid literal
+    [E0306] Error: invalid literal
         ,-[ file:///test0.st:10:19 ]
         |
       4 |         args: INT...
@@ -346,7 +346,7 @@ FUNCTION fn1 : INT
 END_FUNCTION
 "#;
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E0228] Error: invalid variadic declaration
+    [E0309] Error: invalid variadic declaration
        ,-[ file:///test0.st:4:9 ]
        |
      4 |         x: INT;
@@ -379,7 +379,7 @@ FUNCTION fn1 : INT
 END_FUNCTION
 "#;
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E0230] Error: variadic call without arguments
+    [E0813] Error: variadic call without arguments
         ,-[ file:///test0.st:10:12 ]
         |
       4 |         args: INT...
@@ -432,7 +432,7 @@ END_VAR
 END_FUNCTION
 "#;
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E0230] Error: variadic call without arguments
+    [E0813] Error: variadic call without arguments
         ,-[ file:///test0.st:15:12 ]
         |
       5 |         args: INT...

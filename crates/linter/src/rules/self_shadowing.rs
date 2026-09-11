@@ -14,12 +14,12 @@ use ide_diagnostic::{ErrorCode, IdeDiagnostic, Related, diag};
 
 pub const NAME: &str = "self-shadowing";
 
-/// L0315: a variable has the same name as the POU or method it is declared in.
+/// L0115: a variable has the same name as the POU or method it is declared in.
 struct SelfShadowing;
 
 impl ErrorCode for SelfShadowing {
     fn code(&self) -> &'static str {
-        "L0315"
+        "L0115"
     }
 
     fn description(&self) -> &'static str {

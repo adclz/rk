@@ -43,7 +43,7 @@
 //!
 //! Two footnotes on the matrix. The `=IP` column mutates a `VAR_INPUT`,
 //! which IEC forbids inside the POU — RULED (2026-08-28): legal, warned by
-//! L0303 `input-assignment`, the other toolchains stance. The semantics that make the
+//! L0113 `input-assignment`, the other toolchains stance. The semantics that make the
 //! deviation safe are pinned executed below: a FUNCTION input write mutates
 //! the callee's copy (a STRING one REBINDS the view, never writing through),
 //! and an FB input write lands in instance storage. If the language ever
@@ -597,7 +597,7 @@ END_FUNCTION
 }
 
 // =============================================================================
-// The =IP ruling, executed: legal but warned (L0303), and safe BECAUSE of these
+// The =IP ruling, executed: legal but warned (L0113), and safe BECAUSE of these
 // =============================================================================
 
 /// Writing a VAR_INPUT STRING rebinds the callee's (ptr, len) view — it never
@@ -996,7 +996,7 @@ END_FUNCTION
 /// The capacity rule, both sides of it, in one place.
 ///
 /// A length is enforced where it CAN be: a literal is measured at check
-/// (E0309, `semantics::literals::strings`), because the compiler knows both
+/// (E0306, `semantics::literals::strings`), because the compiler knows both
 /// the capacity and the length. A variable is not — `s5 := s100` says nothing,
 /// because the length is only known while running — so the store truncates to
 /// the destination's capacity instead.
@@ -1270,7 +1270,7 @@ fn sized_string_field_clamps_to_capacity(mut with_db: db::RootDatabase) {
         VAR RETAIN s : STRING[3]; END_VAR
         VAR src : STRING[8]; END_VAR
             src := 'hello';
-            s := src;   (* from a variable: an over-long literal is E0309 *)
+            s := src;   (* from a variable: an over-long literal is E0306 *)
         END_PROGRAM
 
         CONFIGURATION Cfg
@@ -1295,7 +1295,7 @@ fn sized_string_global_clamps_to_capacity(mut with_db: db::RootDatabase) {
         VAR RETAIN seen : STRING[10]; END_VAR
         VAR src : STRING[8]; END_VAR
             src := 'abcdef';
-            g := src;   (* from a variable: an over-long literal is E0309 *)
+            g := src;   (* from a variable: an over-long literal is E0306 *)
             seen := g;
         END_PROGRAM
 
@@ -1366,7 +1366,7 @@ fn array_of_sized_strings_truncates_at_the_declared_capacity(mut with_db: db::Ro
             src : STRING[16];
         END_VAR
             src := 'ABCDEFGHIJKLMNOP';
-            a[0] := src;   (* from a variable: an over-long literal is E0309 *)
+            a[0] := src;   (* from a variable: an over-long literal is E0306 *)
             IF a[0] = 'ABCD' THEN run := 1; ELSE run := 0; END_IF;
         END_FUNCTION
     "#;
@@ -1390,7 +1390,7 @@ fn aliased_sized_string_truncates_at_the_declared_capacity(mut with_db: db::Root
             src : STRING[16];
         END_VAR
             src := 'ABCDEFGHIJKLMNOP';
-            s := src;   (* from a variable: an over-long literal is E0309 *)
+            s := src;   (* from a variable: an over-long literal is E0306 *)
             IF s = 'ABCD' THEN run := 1; ELSE run := 0; END_IF;
         END_FUNCTION
     "#;
@@ -1438,7 +1438,7 @@ fn a_sized_string_keeps_its_length_in_every_container(
         {decl}
         VAR src : STRING[16]; END_VAR
             (* From a VARIABLE: an over-long LITERAL is refused at the
-               assignment (E0309), and truncating is what a variable does. *)
+               assignment (E0306), and truncating is what a variable does. *)
             src := 'ABCDEFGHIJKLMNOP';
             {target} := src;
             IF {target} = 'ABCD' THEN run := 1; ELSE run := 0; END_IF;

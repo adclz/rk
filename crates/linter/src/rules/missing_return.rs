@@ -14,12 +14,12 @@ use ide_diagnostic::{ErrorCode, IdeDiagnostic, diag};
 
 pub const NAME: &str = "missing-return";
 
-/// L0316: function or method with a return type never assigns the return value.
+/// L0114: function or method with a return type never assigns the return value.
 struct MissingReturn;
 
 impl ErrorCode for MissingReturn {
     fn code(&self) -> &'static str {
-        "L0316"
+        "L0114"
     }
 
     fn description(&self) -> &'static str {
@@ -87,7 +87,7 @@ pub fn check_result<'db>(
                 return;
             }
             // An extern FUNCTION's return value IS the import's result; its
-            // body is empty by contract (E0243 refuses statements), so
+            // body is empty by contract (E1502 refuses statements), so
             // "never assigns" is the normal state, not an omission.
             {
                 use hir::HasPragmas;

@@ -1,11 +1,17 @@
 use db::WorkspaceDataBase;
 
+use crate::check::errors::e08_call::CallError;
 use crate::{
-    CallSite, HirNodeInfo, check::errors::{ToIdeDiagnostic, e3_type::TypeError, e7_enum::EnumError}, hir_def::{
+    CallSite, HirNodeInfo,
+    check::errors::{ToIdeDiagnostic, e03_type::TypeError, e06_enum::EnumError},
+    hir_def::{
         expressions::expression::{
-            Expr, ExprKind, FoldOperatorKind, MultOperatorKind, PrimaryExpr, RefValue, UnaryOperatorKind, VariableAccess,
-        }, pous::variable::VariableDecl,
-    }, hir_ty::{
+            Expr, ExprKind, FoldOperatorKind, MultOperatorKind, PrimaryExpr, RefValue,
+            UnaryOperatorKind, VariableAccess,
+        },
+        pous::variable::VariableDecl,
+    },
+    hir_ty::{
         body::{Adjustment, BodyInferenceResult},
         infer::{Infer, coerce::CoerceResult, table::InferenceTable},
         resolver::{Resolver, func_call::resolve_func_call},
@@ -240,11 +246,11 @@ impl<'db> InferExprCtx<'db> {
                 let ty = match def_map.local_variables.get(&param.caseless(db)) {
                     Some(var) => {
                         // A fold is the ONLY way to consume a pack, so without
-                        // this every variadic parameter reads as unused (L0101).
+                        // this every variadic parameter reads as unused (L0201).
                         inference_results.variables_used.insert(*var);
                         if !var.variadic(db) {
                             inference_results.errors.push(
-                                TypeError::NonVariadicFoldParameter {
+                                CallError::NonVariadicFoldParameter {
                                     call_site: curr_expr.as_call_site(db),
                                     var: *var,
                                 }

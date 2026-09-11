@@ -1,7 +1,7 @@
 use db::WorkspaceDataBase;
 
 use crate::{
-    check::errors::{ToIdeDiagnostic, e6_array::ArrayError},
+    check::errors::{ToIdeDiagnostic, e05_array::ArrayError},
     hir_def::expressions::spec::Array,
     hir_ty::{head::init_inference::InitInference, infer::expr::InferExprCtx, resolver::Resolver},
 };

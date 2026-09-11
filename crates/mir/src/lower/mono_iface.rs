@@ -363,12 +363,12 @@ fn process_call<'db>(
 }
 
 /// A param is an interface param iff it is a `VAR_INPUT` / `VAR_IN_OUT` param and
-/// its (direct) type is an interface. Nested interfaces are rejected by E0516, so
+/// its (direct) type is an interface. Nested interfaces are rejected by E1123, so
 /// a direct `Type::Interface` is the only case here. Both kinds monomorphize
 /// identically: an interface value is a *reference*, so `VAR_INPUT` passes the
 /// address (a copy of the reference) and `VAR_IN_OUT` passes the reference — the
 /// callee receives a pointer to the concrete instance either way, and we have
-/// banned rebinding (E0517), which is the only behavioural difference between
+/// banned rebinding (E1124), which is the only behavioural difference between
 /// them. (Matches other toolchains: the `INTERFACE` keyword forces address-passing for
 /// both.)
 pub(crate) fn is_interface_param<'db>(
@@ -385,14 +385,9 @@ fn is_iface_param<'db>(
     move |var: &VariableDecl<'db>| is_interface_param(db, var)
 }
 
-/// Resolve an argument's type to the concrete implementer it binds, honoring the
-/// active substitution. The raw type of a bare variable access is
-/// `Type::Variable((decl, _))` (before `normalize` peels it); if `decl` is an
-/// interface param bound by `subs` — i.e. a *forwarded* interface param in a
-/// specialized body — its concrete implementer is fixed there. Names are unique
-/// within a scope and interface locals are forbidden (E0514), so matching the
-/// substitution by the variable's name is unambiguous. Otherwise fall back to the
-/// static concrete type (a concrete FB/Class arg, or `THIS` handled by the caller).
+/// An argument's concrete implementer under the active substitution: a
+/// forwarded interface param is fixed by `subs` (matched by name, unique
+/// in a scope); otherwise the static concrete type.
 fn resolve_concrete<'db>(
     db: &'db dyn WorkspaceDataBase,
     ty: Type<'db>,

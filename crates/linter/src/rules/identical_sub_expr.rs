@@ -16,7 +16,7 @@ struct IdenticalSubExpr;
 
 impl ErrorCode for IdenticalSubExpr {
     fn code(&self) -> &'static str {
-        "L0311"
+        "L0108"
     }
 
     fn description(&self) -> &'static str {

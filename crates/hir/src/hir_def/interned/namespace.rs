@@ -179,7 +179,13 @@ impl NamespacePath {
         if fragments.iter().all(|f| f.caseless(db).as_ident() == *f) {
             return self;
         }
-        NamespacePath::new(db, fragments.iter().map(|f| f.caseless(db).as_ident()).collect::<Vec<_>>())
+        NamespacePath::new(
+            db,
+            fragments
+                .iter()
+                .map(|f| f.caseless(db).as_ident())
+                .collect::<Vec<_>>(),
+        )
     }
 }
 

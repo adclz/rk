@@ -495,7 +495,7 @@ END_FUNCTION
        |               ^^^|^^
        |                  `---- expected 'PInt', got 'REF_TO REAL'
     ---'
-    [E0251] Error: reference outlives its storage
+    [E0903] Error: reference outlives its storage
        ,-[ file:///test0.st:6:15 ]
        |
      5 | VAR r : REAL; END_VAR
@@ -526,7 +526,7 @@ VAR local : INT := 1; END_VAR
 END_FUNCTION
 "#;
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E0251] Error: reference outlives its storage
+    [E0903] Error: reference outlives its storage
        ,-[ file:///test0.st:6:15 ]
        |
      5 | VAR local : INT := 1; END_VAR
@@ -554,7 +554,7 @@ FUNCTION_BLOCK holder
 END_FUNCTION_BLOCK
 "#;
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E0251] Error: reference outlives its storage
+    [E0903] Error: reference outlives its storage
        ,-[ file:///test0.st:7:17 ]
        |
      6 |     VAR local : INT; END_VAR

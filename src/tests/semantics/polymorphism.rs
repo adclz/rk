@@ -8,7 +8,7 @@ use crate::tests::utils::with_db;
 // Design 1 (params-only): interface types are allowed ONLY as VAR_INPUT /
 // VAR_IN_OUT parameters, where they are monomorphized to a concrete type.
 // Everywhere else — stored VAR, FB members, VAR_OUTPUT, VAR_GLOBAL, VAR_TEMP —
-// is rejected with E0514, so no interface value can outlive a call or be
+// is rejected with E1121, so no interface value can outlive a call or be
 // dispatched dynamically.
 //
 // The old suite tested interface *polymorphism* through STORED interface
@@ -16,9 +16,9 @@ use crate::tests::utils::with_db;
 // Design 1 those are rejected; the working-dispatch and assignment-compat cases
 // return in Phase B, rewritten around interface PARAMETERS once param calls are
 // monomorphized. Interface RETURN types and nested `ARRAY OF ITF1` are not yet
-// covered by E0514 (known follow-ups).
+// covered by E1121 (known follow-ups).
 
-// --- E0514: interface types rejected outside VAR_INPUT / VAR_IN_OUT ---
+// --- E1121: interface types rejected outside VAR_INPUT / VAR_IN_OUT ---
 
 #[rstest]
 fn interface_stored_var_rejected(mut with_db: RootDatabase) {
@@ -34,7 +34,7 @@ PROGRAM A
 END_PROGRAM
     "#;
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E0514] Error: interface type not allowed here
+    [E1121] Error: interface type not allowed here
        ,-[ file:///test0.st:8:9 ]
        |
      2 | INTERFACE ITF1
@@ -64,7 +64,7 @@ FUNCTION_BLOCK Holder
 END_FUNCTION_BLOCK
     "#;
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E0514] Error: interface type not allowed here
+    [E1121] Error: interface type not allowed here
        ,-[ file:///test0.st:8:9 ]
        |
      2 | INTERFACE ITF1
@@ -94,7 +94,7 @@ FUNCTION_BLOCK Producer
 END_FUNCTION_BLOCK
     "#;
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E0514] Error: interface type not allowed here
+    [E1121] Error: interface type not allowed here
        ,-[ file:///test0.st:8:9 ]
        |
      2 | INTERFACE ITF1
@@ -125,7 +125,7 @@ FUNCTION Use : INT
 END_FUNCTION
     "#;
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E0514] Error: interface type not allowed here
+    [E1121] Error: interface type not allowed here
        ,-[ file:///test0.st:8:9 ]
        |
      2 | INTERFACE ITF1
@@ -157,7 +157,7 @@ PROGRAM A
 END_PROGRAM
     "#;
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E0516] Error: interface type not allowed here
+    [E1123] Error: interface type not allowed here
        ,-[ file:///test0.st:8:14 ]
        |
      2 | INTERFACE ITF1
@@ -186,7 +186,7 @@ FUNCTION Make : ITF1
 END_FUNCTION
     "#;
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E0515] Error: interface type not allowed here
+    [E1122] Error: interface type not allowed here
        ,-[ file:///test0.st:6:17 ]
        |
      2 | INTERFACE ITF1
@@ -202,7 +202,7 @@ END_FUNCTION
     ");
 }
 
-// --- allowed: interface as VAR_INPUT / VAR_IN_OUT parameter (no E0514) ---
+// --- allowed: interface as VAR_INPUT / VAR_IN_OUT parameter (no E1121) ---
 
 #[rstest]
 fn interface_named_struct_field_rejected(mut with_db: RootDatabase) {
@@ -220,7 +220,7 @@ TYPE Holder :
 END_TYPE
     "#;
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E0516] Error: interface type not allowed here
+    [E1123] Error: interface type not allowed here
        ,-[ file:///test0.st:8:14 ]
        |
      2 | INTERFACE ITF1
@@ -251,7 +251,7 @@ PROGRAM A
 END_PROGRAM
     "#;
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E0516] Error: interface type not allowed here
+    [E1123] Error: interface type not allowed here
        ,-[ file:///test0.st:8:24 ]
        |
      2 | INTERFACE ITF1
@@ -284,7 +284,7 @@ FUNCTION Use : INT
 END_FUNCTION
     "#;
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E0516] Error: interface type not allowed here
+    [E1123] Error: interface type not allowed here
        ,-[ file:///test0.st:8:14 ]
        |
      2 | INTERFACE ITF1
@@ -337,7 +337,7 @@ FUNCTION_BLOCK Runner
 END_FUNCTION_BLOCK
     "#;
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E0514] Error: interface type not allowed here
+    [E1121] Error: interface type not allowed here
        ,-[ file:///test0.st:8:9 ]
        |
      8 |         dev: ITF1;
@@ -361,7 +361,7 @@ FUNCTION_BLOCK Runner
 END_FUNCTION_BLOCK
     "#;
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E0514] Error: interface type not allowed here
+    [E1121] Error: interface type not allowed here
        ,-[ file:///test0.st:8:9 ]
        |
      8 |         dev: ITF1;
@@ -385,7 +385,7 @@ PROGRAM P
 END_PROGRAM
     "#;
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E0514] Error: interface type not allowed here
+    [E1121] Error: interface type not allowed here
        ,-[ file:///test0.st:8:9 ]
        |
      8 |         dev: ITF1;
@@ -434,7 +434,7 @@ END_PROGRAM
     "#;
 
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E0228] Error: semantic violation
+    [E0309] Error: semantic violation
         ,-[ file:///test0.st:11:10 ]
         |
      11 |     x := ITF1;
@@ -459,7 +459,7 @@ END_PROGRAM
 fn interface_param_reassignment_rejected(mut with_db: RootDatabase) {
     // An interface VAR_IN_OUT param is a fixed binding to the caller's concrete
     // type; reassigning it would break monomorphization (the body is specialized
-    // to one concrete type) → E0517.
+    // to one concrete type) → E1124.
     let source = r#"
 INTERFACE ITF1
     METHOD DoWork END_METHOD
@@ -472,7 +472,7 @@ FUNCTION Use : INT
 END_FUNCTION
     "#;
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E0517] Error: interface parameter is not assignable
+    [E1124] Error: interface parameter is not assignable
        ,-[ file:///test0.st:8:5 ]
        |
      7 |     VAR_IN_OUT a : ITF1; b : ITF1; END_VAR
@@ -555,7 +555,7 @@ fn invalid_this_assigned_to_variable(mut with_db: RootDatabase) {
         END_FUNCTION_BLOCK
     "#;
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E0901] Error: recursion detected
+    [E1301] Error: recursion detected
        ,-[ file:///test0.st:2:24 ]
        |
      2 |         FUNCTION_BLOCK Worker
@@ -565,7 +565,7 @@ fn invalid_this_assigned_to_variable(mut with_db: RootDatabase) {
        |                     ^^^|^^
        |                        `---- 'Worker' references itself here
     ---'
-    [E0226] Error: semantic violation
+    [E0310] Error: semantic violation
        ,-[ file:///test0.st:5:17 ]
        |
      5 |                 other := THIS;

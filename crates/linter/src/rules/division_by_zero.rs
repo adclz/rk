@@ -20,7 +20,7 @@ struct DivisionByZero;
 
 impl ErrorCode for DivisionByZero {
     fn code(&self) -> &'static str {
-        "L0305"
+        "L0102"
     }
 
     fn description(&self) -> &'static str {

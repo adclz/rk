@@ -3,17 +3,17 @@ use auto_lsp::core::ast::AstNode;
 
 use ide_diagnostic::IdeDiagnostic;
 
+use crate::check::errors::e14_config::ConfigError;
 use crate::{
     builder::{
         Parse, ParseSpec, ParseVarSection, expression::ParseDirectVariable,
         semantic_index::SemanticIndexBuilder,
     },
-    check::errors::{ToIdeDiagnostic, e0_syntax::SyntaxError},
+    check::errors::{ToIdeDiagnostic, e00_syntax::SyntaxError},
     hir_def::{
         config::{
-            AccessDecl, AccessDirection, AccessPath, ConfigDecl, ConfigInstInit,
-            DataSink, DataSource, FbTask, ProgCnxn, ProgConfElement, ProgConfig, ResourceDecl,
-            TaskConfig,
+            AccessDecl, AccessDirection, AccessPath, ConfigDecl, ConfigInstInit, DataSink,
+            DataSource, FbTask, ProgCnxn, ProgConfElement, ProgConfig, ResourceDecl, TaskConfig,
         },
         hir_node::HirNode,
         interned::identifier::{Ident, SpanIdent},
@@ -80,7 +80,7 @@ impl<'db> SemanticIndexBuilder<'db> {
                 // A TASK or PROGRAM written straight into the CONFIGURATION.
                 ConfigEntry::ERRTaskOrProgramOutsideResource(err) => {
                     self.errors.push(
-                        SyntaxError::TaskOrProgramOutsideResource(err.get_range().to_owned())
+                        ConfigError::TaskOrProgramOutsideResource(err.get_range().to_owned())
                             .to_diagnostic(self.db, self.file),
                     );
                 }
@@ -126,7 +126,7 @@ impl<'db> SemanticIndexBuilder<'db> {
             vec![],
             scope_id,
             previous_scope,
-);
+        );
 
         Ok(config_decl)
     }
@@ -191,13 +191,13 @@ impl<'db> SemanticIndexBuilder<'db> {
         for err in init.children.iter() {
             match err.cast(self.ast) {
                 ast::generated::ERRIntervalAfterPriority_ERRSingleAfterInterval_ERRSingleAfterPriorty::ERRSingleAfterInterval(e) => {
-                    self.errors.push(SyntaxError::SingleAfterInterval(e.get_range().to_owned()).to_diagnostic(self.db, self.file));
+                    self.errors.push(ConfigError::SingleAfterInterval(e.get_range().to_owned()).to_diagnostic(self.db, self.file));
                 }
                 ast::generated::ERRIntervalAfterPriority_ERRSingleAfterInterval_ERRSingleAfterPriorty::ERRSingleAfterPriorty(e) => {
-                    self.errors.push(SyntaxError::SingleAfterPriority(e.get_range().to_owned()).to_diagnostic(self.db, self.file));
+                    self.errors.push(ConfigError::SingleAfterPriority(e.get_range().to_owned()).to_diagnostic(self.db, self.file));
                 }
                 ast::generated::ERRIntervalAfterPriority_ERRSingleAfterInterval_ERRSingleAfterPriorty::ERRIntervalAfterPriority(e) => {
-                    self.errors.push(SyntaxError::IntervalAfterPriority(e.get_range().to_owned()).to_diagnostic(self.db, self.file));
+                    self.errors.push(ConfigError::IntervalAfterPriority(e.get_range().to_owned()).to_diagnostic(self.db, self.file));
                 }
             }
         }
@@ -222,7 +222,7 @@ impl<'db> SemanticIndexBuilder<'db> {
 
         if priority.is_none() {
             self.errors.push(
-                SyntaxError::MissingPriority(tc.get_range().to_owned())
+                ConfigError::MissingPriority(tc.get_range().to_owned())
                     .to_diagnostic(self.db, self.file),
             );
         }
@@ -336,9 +336,9 @@ impl<'db> SemanticIndexBuilder<'db> {
         // The grammar's `prog_cnxn` rule requires a path expression
         // plus exactly one of (source, sink). Partial/recovered parses
         // can still leave us short, so surface that as a syntax error
-        // (E0019) rather than panic.
+        // (E0002) rather than panic.
         let missing = |what: &str| {
-            crate::check::errors::e0_syntax::SyntaxError::MissingNode {
+            crate::check::errors::e00_syntax::SyntaxError::MissingNode {
                 file: self.file,
                 span: cnxn.get_range().to_owned(),
                 err: format!("prog_cnxn missing {what}"),
@@ -470,12 +470,12 @@ impl<'db> SemanticIndexBuilder<'db> {
 
         // Grammar normally guarantees an init expression on a config
         // inst declaration; partial/recovered parses may still leave
-        // us short, so surface that as a syntax error (E0019).
+        // us short, so surface that as a syntax error (E0002).
         // A location-only entry was refused here with a syntax code, before
-        // the E0240 that says VAR_CONFIG is not applied; only an entry with
+        // the E1416 that says VAR_CONFIG is not applied; only an entry with
         // neither a location nor a value is malformed.
         if located_at.is_none() && init_expr.is_none() {
-            return Err(crate::check::errors::e0_syntax::SyntaxError::MissingNode {
+            return Err(crate::check::errors::e00_syntax::SyntaxError::MissingNode {
                 file: self.file,
                 span: inst.get_range().to_owned(),
                 err: "a VAR_CONFIG entry needs a location (AT) or an initial value".into(),

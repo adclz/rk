@@ -1478,20 +1478,14 @@ fn lower_init_leaves<'db>(
         let place = match target.offset_by(offset) {
             InitTarget::Static { base } => {
                 if !is_const_value(&value) {
-                    // E0320 refuses every non-constant static leaf and the
-                    // fold above turns CONSTANT references into constants, so
-                    // nothing legitimate reaches this arm any more. Reaching
-                    // it means check and lowering disagree — the silent
-                    // `continue` it replaces DROPPED the initializer, a slot
-                    // reading zero from source the check called clean.
-                    // (REF defaults are the known exception: an address is
-                    // not a constant, and their static half predates all of
-                    // this — skip them without a word until that arc.)
+                    // E0401 refuses every non-constant static leaf, so reaching this arm
+                    // means check and lowering disagree. REF defaults are the known
+                    // exception, skipped for now.
                     if matches!(leaf_ty, crate::types::MirType::Pointer(_)) {
                         continue;
                     }
                     return Err(LowerTypeError::UnsupportedType(format!(
-                        "a static initializer leaf survived E0320 without \
+                        "a static initializer leaf survived E0401 without \
                          being constant: {value:?}"
                     )));
                 }

@@ -293,7 +293,7 @@ pub fn build_call_signature<'db>(
     scope: ScopeId<'db>,
 ) -> String {
     // For an FB scope, snippet the flattened EXTENDS view — the resolver
-    // requires an inherited VAR_IN_OUT (E0233), so the snippet must offer it.
+    // requires an inherited VAR_IN_OUT (E0802), so the snippet must offer it.
     let variables: Vec<VariableDecl<'db>> = match get_scope(db, scope).kind {
         ScopeKind::Pou(pou @ Pou::FunctionBlock(_)) => instance_members(db, pou)
             .iter()

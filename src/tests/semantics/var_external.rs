@@ -1,5 +1,5 @@
 //! VAR_EXTERNAL: a declaration that aliases a CONFIGURATION's VAR_GLOBAL by
-//! name. Existence is E0220; the type agreement the alias demands is E0246.
+//! name. Existence is E0206; the type agreement the alias demands is E0207.
 
 use db::RootDatabase;
 use insta::assert_snapshot;
@@ -30,7 +30,7 @@ END_CONFIGURATION
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @"");
 }
 
-/// VAR_EXTERNAL referencing a name absent from the config's VAR_GLOBAL should report E0220.
+/// VAR_EXTERNAL referencing a name absent from the config's VAR_GLOBAL should report E0206.
 #[rstest]
 fn invalid_var_external_not_in_config(mut with_db: RootDatabase) {
     let source = r#"
@@ -51,7 +51,7 @@ CONFIGURATION MyCfg
 END_CONFIGURATION
 "#;
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E0220] Error: external variable not found
+    [E0206] Error: external variable not found
        ,-[ file:///test0.st:4:9 ]
        |
      4 |         missing : INT;
@@ -61,7 +61,7 @@ END_CONFIGURATION
     ");
 }
 
-/// VAR_EXTERNAL in a program that is not instantiated by any config should report E0220.
+/// VAR_EXTERNAL in a program that is not instantiated by any config should report E0206.
 #[rstest]
 fn invalid_var_external_no_config(mut with_db: RootDatabase) {
     let source = r#"
@@ -72,7 +72,7 @@ PROGRAM StandaloneProgram
 END_PROGRAM
 "#;
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E0220] Error: external variable not found
+    [E0206] Error: external variable not found
        ,-[ file:///test0.st:4:9 ]
        |
      4 |         orphan : INT;
@@ -102,7 +102,7 @@ CONFIGURATION MyCfg
 END_CONFIGURATION
 "#;
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E0246] Error: external variable type mismatch
+    [E0207] Error: external variable type mismatch
        ,-[ file:///test0.st:4:9 ]
        |
      4 |         g : REAL;
@@ -134,7 +134,7 @@ CONFIGURATION MyCfg
 END_CONFIGURATION
 "#;
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E0246] Error: external variable type mismatch
+    [E0207] Error: external variable type mismatch
        ,-[ file:///test0.st:6:9 ]
        |
      6 |         g : INT;
@@ -219,7 +219,7 @@ CONFIGURATION MyCfg
 END_CONFIGURATION
 "#;
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E0246] Error: external variable type mismatch
+    [E0207] Error: external variable type mismatch
        ,-[ file:///test0.st:4:9 ]
        |
      4 |         arr : ARRAY[0..3] OF INT;

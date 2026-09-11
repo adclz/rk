@@ -14,7 +14,7 @@ END_VAR
 END_FUNCTION
 "#;
     assert_snapshot!(test_single_lint(&mut with_db, &[source], "single-element-array"), @r"
-    [L0110] Info: single-element array
+    [L0212] Info: single-element array
        ,-[ file:///test0.st:4:17 ]
        |
      4 |     arr : ARRAY[5..5] OF INT;
@@ -36,7 +36,7 @@ END_VAR
 END_FUNCTION
 "#;
     assert_snapshot!(test_single_lint(&mut with_db, &[source], "single-element-array"), @r"
-    [L0110] Info: single-element array
+    [L0212] Info: single-element array
        ,-[ file:///test0.st:4:17 ]
        |
      4 |     arr : ARRAY[0..0] OF INT;
@@ -70,7 +70,7 @@ END_VAR
 END_FUNCTION
 "#;
     assert_snapshot!(test_single_lint(&mut with_db, &[source], "single-element-array"), @r"
-    [L0110] Info: single-element array
+    [L0212] Info: single-element array
        ,-[ file:///test0.st:4:23 ]
        |
      4 |     arr : ARRAY[0..5, 3..3] OF INT;

@@ -18,7 +18,7 @@ fn missing_override(mut with_db: RootDatabase) {
         END_CLASS"#;
 
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E0505] Error: override violation
+    [E1112] Error: override violation
        ,-[ file:///test0.st:8:20 ]
        |
      3 |             METHOD Tick : INT END_METHOD
@@ -47,7 +47,7 @@ fn override_final_method(mut with_db: RootDatabase) {
         END_CLASS"#;
 
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E0504] Error: override violation
+    [E1114] Error: override violation
        ,-[ file:///test0.st:8:29 ]
        |
      3 |             METHOD FINAL Tick : INT END_METHOD
@@ -75,7 +75,7 @@ fn missing_abstract_method(mut with_db: RootDatabase) {
         END_CLASS"#;
 
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E0506] Error: inheritance violation
+    [E1116] Error: inheritance violation
        ,-[ file:///test0.st:6:15 ]
        |
      3 |             METHOD ABSTRACT Tick : INT END_METHOD
@@ -99,7 +99,7 @@ fn empty_override(mut with_db: RootDatabase) {
         END_CLASS"#;
 
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E0507] Error: inheritance violation
+    [E1113] Error: inheritance violation
        ,-[ file:///test0.st:3:29 ]
        |
      3 |             METHOD OVERRIDE Tick : INT END_METHOD
@@ -114,7 +114,7 @@ fn empty_override(mut with_db: RootDatabase) {
 #[rstest]
 fn abstract_class_without_abstract_methods_is_valid(mut with_db: RootDatabase) {
     // Not an IEC rule: ABSTRACT only forbids instantiation, so a concrete-only
-    // ABSTRACT class is the ordinary extend-only base type. E0508 refused it
+    // ABSTRACT class is the ordinary extend-only base type. A code refused it
     // and was retired.
     let source = r#"
         CLASS ABSTRACT Base
@@ -137,7 +137,7 @@ fn interface_methods_not_implemented(mut with_db: RootDatabase) {
         "#;
 
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E0509] Error: inheritance violation
+    [E1119] Error: inheritance violation
        ,-[ file:///test0.st:6:15 ]
        |
      3 |             METHOD DAYTIME END_METHOD
@@ -170,7 +170,7 @@ fn method_signature_count_mismatch_in_implementer(mut with_db: RootDatabase) {
         "#;
 
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E0512] Error: method parameter count mismatch
+    [E1125] Error: method parameter count mismatch
         ,-[ file:///test0.st:11:29 ]
         |
       3 |             METHOD DAYTIME
@@ -202,7 +202,7 @@ fn method_signature_count_mismatch_in_base(mut with_db: RootDatabase) {
         "#;
 
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E0512] Error: method parameter count mismatch
+    [E1125] Error: method parameter count mismatch
        ,-[ file:///test0.st:8:29 ]
        |
      3 |             METHOD DAYTIME
@@ -239,7 +239,7 @@ fn method_signature_type_mismatch(mut with_db: RootDatabase) {
         "#;
 
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E0523] Error: method parameter type mismatch
+    [E1126] Error: method parameter type mismatch
         ,-[ file:///test0.st:15:29 ]
         |
       6 |                     value2: INT;
@@ -263,7 +263,7 @@ fn super_without_extends_clause_on_fb(mut with_db: RootDatabase) {
         END_FUNCTION_BLOCK"#;
 
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E0513] Error: invalid use of SUPER or THIS
+    [E1107] Error: invalid use of SUPER or THIS
        ,-[ file:///test0.st:3:13 ]
        |
      3 |             SUPER.something
@@ -283,7 +283,7 @@ fn super_without_extends_clause_on_class(mut with_db: RootDatabase) {
         END_CLASS"#;
 
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E0513] Error: invalid use of SUPER or THIS
+    [E1107] Error: invalid use of SUPER or THIS
        ,-[ file:///test0.st:4:17 ]
        |
      4 |                 SUPER.something
@@ -366,7 +366,7 @@ fn concrete_method_still_requires_override(mut with_db: RootDatabase) {
 
     // Overriding a concrete method STILL requires OVERRIDE
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E0505] Error: override violation
+    [E1112] Error: override violation
        ,-[ file:///test0.st:7:20 ]
        |
      3 |             METHOD Tick : INT END_METHOD
@@ -408,7 +408,7 @@ fn interface_param_method_call_is_valid(mut with_db: RootDatabase) {
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"");
 }
 
-// The RETURN half of E0512: comparing only parameters let a prototype's
+// The RETURN half of E1125: comparing only parameters let a prototype's
 // return diverge from its implementation — invalid wasm for a lane change
 // (INT vs REAL), silently wrong values for a same-lane one (INT vs DINT).
 
@@ -427,7 +427,7 @@ FUNCTION_BLOCK fb IMPLEMENTS Ifc
 END_FUNCTION_BLOCK
 "#;
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E0524] Error: method return type mismatch
+    [E1127] Error: method return type mismatch
        ,-[ file:///test0.st:8:16 ]
        |
      3 |     METHOD M : INT
@@ -460,7 +460,7 @@ FUNCTION_BLOCK fb IMPLEMENTS Ifc
 END_FUNCTION_BLOCK
 "#;
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E0524] Error: method return type mismatch
+    [E1127] Error: method return type mismatch
        ,-[ file:///test0.st:8:16 ]
        |
      3 |     METHOD M : INT
@@ -493,7 +493,7 @@ FUNCTION_BLOCK derived EXTENDS base
 END_FUNCTION_BLOCK
 "#;
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E0524] Error: method return type mismatch
+    [E1127] Error: method return type mismatch
        ,-[ file:///test0.st:9:25 ]
        |
      3 |     METHOD M : INT
@@ -541,7 +541,7 @@ CLASS B EXTENDS A
 END_CLASS
 "#;
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E0521] Error: inheritance violation
+    [E1115] Error: inheritance violation
        ,-[ file:///test0.st:7:9 ]
        |
      3 |     VAR x : INT; END_VAR
@@ -560,7 +560,7 @@ END_CLASS
 #[rstest]
 fn inherited_parameters_bind_at_call_sites(mut with_db: RootDatabase) {
     // The call-site parameter list is the flattened EXTENDS view: naming an
-    // inherited input or in_out is legal (this was E0205 + E0208).
+    // inherited input or in_out is legal (this was E0801 + E0803).
     let source = r#"
 FUNCTION_BLOCK BaseIO
     VAR_IN_OUT io : INT; END_VAR
@@ -599,7 +599,7 @@ PROGRAM P
 END_PROGRAM
 "#;
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E0233] Error: missing required parameter
+    [E0802] Error: missing required parameter
         ,-[ file:///test0.st:12:5 ]
         |
       3 |     VAR_IN_OUT io : INT; END_VAR
@@ -648,7 +648,7 @@ CLASS C
 END_CLASS
 "#;
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E0510] Error: inheritance violation
+    [E1117] Error: inheritance violation
        ,-[ file:///test0.st:2:7 ]
        |
      2 | CLASS C
@@ -671,7 +671,7 @@ FUNCTION_BLOCK F
 END_FUNCTION_BLOCK
 "#;
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E0510] Error: inheritance violation
+    [E1117] Error: inheritance violation
        ,-[ file:///test0.st:2:16 ]
        |
      2 | FUNCTION_BLOCK F
@@ -698,7 +698,7 @@ VAR b : B; END_VAR
 END_PROGRAM
 "#;
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E0511] Error: inheritance violation
+    [E1118] Error: inheritance violation
        ,-[ file:///test0.st:7:9 ]
        |
      2 | CLASS ABSTRACT B
@@ -717,7 +717,7 @@ END_PROGRAM
 #[rstest]
 fn an_abstract_derived_pou_may_leave_methods_unimplemented(mut with_db: RootDatabase) {
     // Passing the obligation down is what an abstract intermediate is FOR;
-    // E0506 used to refuse it, which made abstract hierarchies unusable.
+    // E1116 used to refuse it, which made abstract hierarchies unusable.
     let source = r#"
 CLASS ABSTRACT B
     METHOD ABSTRACT m : INT END_METHOD
@@ -767,7 +767,7 @@ END_PROGRAM
 
 #[rstest]
 fn extending_a_final_class_is_refused(mut with_db: RootDatabase) {
-    // The method-level FINAL rule was enforced (E0504) while the type-level
+    // The method-level FINAL rule was enforced (E1114) while the type-level
     // one was not, so FINAL on a CLASS header meant nothing.
     let source = r#"
 CLASS FINAL B
@@ -778,7 +778,7 @@ CLASS D EXTENDS B
 END_CLASS
 "#;
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E0522] Error: inheritance violation
+    [E1104] Error: inheritance violation
        ,-[ file:///test0.st:6:17 ]
        |
      2 | CLASS FINAL B
@@ -804,7 +804,7 @@ FUNCTION_BLOCK D EXTENDS B
 END_FUNCTION_BLOCK
 "#;
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E0522] Error: inheritance violation
+    [E1104] Error: inheritance violation
        ,-[ file:///test0.st:5:26 ]
        |
      2 | FUNCTION_BLOCK FINAL B
@@ -874,7 +874,7 @@ CLASS C IMPLEMENTS I
 END_CLASS
 "#;
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E0526] Error: method parameter section mismatch
+    [E1129] Error: method parameter section mismatch
         ,-[ file:///test0.st:10:20 ]
         |
       4 |         VAR_INPUT a : INT; END_VAR
@@ -905,7 +905,7 @@ CLASS C IMPLEMENTS I
 END_CLASS
 "#;
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E0525] Error: method parameter name mismatch
+    [E1128] Error: method parameter name mismatch
         ,-[ file:///test0.st:10:19 ]
         |
       4 |         VAR_INPUT a : INT; END_VAR
@@ -937,7 +937,7 @@ CLASS D EXTENDS B
 END_CLASS
 "#;
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E0526] Error: method parameter section mismatch
+    [E1129] Error: method parameter section mismatch
         ,-[ file:///test0.st:11:20 ]
         |
       4 |         VAR_INPUT a : INT; END_VAR
@@ -970,7 +970,7 @@ CLASS C IMPLEMENTS I
 END_CLASS
 "#;
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E0525] Error: method parameter name mismatch
+    [E1128] Error: method parameter name mismatch
         ,-[ file:///test0.st:10:19 ]
         |
       4 |         VAR_INPUT a : INT; b : REAL; END_VAR
@@ -981,7 +981,7 @@ END_CLASS
         |                   |
         |                   `-- parameter 'b' of method 'M' is named 'a' in the base method
     ----'
-    [E0525] Error: method parameter name mismatch
+    [E1128] Error: method parameter name mismatch
         ,-[ file:///test0.st:10:29 ]
         |
       4 |         VAR_INPUT a : INT; b : REAL; END_VAR

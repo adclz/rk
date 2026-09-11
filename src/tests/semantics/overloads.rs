@@ -2,7 +2,7 @@
 //! signature (ordered parameter types, see `function_signature`) matches the
 //! call's argument types. Overloads that are exact-on-every-arg win; when an
 //! argument fits several by widening and none is exact, the call is ambiguous
-//! (E0237) rather than guessed. Identical signatures are rejected as duplicates
+//! (E0809) rather than guessed. Identical signatures are rejected as duplicates
 //! (see `duplicates.rs`).
 
 use db::RootDatabase;
@@ -105,7 +105,7 @@ END_FUNCTION
 }
 
 // When an argument fits several overloads and none is an exact match, the
-// compiler refuses to guess and reports E0237. `pick(1)` — the untyped literal
+// compiler refuses to guess and reports E0809. `pick(1)` — the untyped literal
 // widens to both DINT and LINT.
 #[rstest]
 fn ambiguous_overload_is_rejected(mut with_db: RootDatabase) {
@@ -126,7 +126,7 @@ END_FUNCTION
 "#;
 
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E0237] Error: ambiguous overloaded call
+    [E0809] Error: ambiguous overloaded call
         ,-[ file:///test0.st:13:13 ]
         |
       2 | ,---> FUNCTION pick : INT
@@ -170,7 +170,7 @@ END_FUNCTION
 "#;
 
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E0205] Error: function call parameter mismatch
+    [E0801] Error: function call parameter mismatch
         ,-[ file:///test0.st:14:13 ]
         |
      14 |     test := foo(x, x, x);   // no 3-arg overload
@@ -180,7 +180,7 @@ END_FUNCTION
     ");
 }
 
-/// An argument TYPE no overload accepts is E0254, naming what was passed and
+/// An argument TYPE no overload accepts is E0810, naming what was passed and
 /// what each overload takes. The first overload used to stand in and report
 /// its own parameter mismatch: "expected 'CHAR', got 'DATE'" for a date
 /// assertion, a type nobody wrote.
@@ -203,7 +203,7 @@ END_FUNCTION
 "#;
 
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E0254] Error: no matching overload
+    [E0810] Error: no matching overload
         ,-[ file:///test0.st:13:15 ]
         |
       2 |   ,-> FUNCTION take : INT
@@ -226,7 +226,7 @@ END_FUNCTION
 }
 
 /// A set where only some overloads take the argument count: the types are
-/// what failed, so it is E0254 listing every overload, not the arity error.
+/// what failed, so it is E0810 listing every overload, not the arity error.
 #[rstest]
 fn no_matching_type_in_a_mixed_arity_set(mut with_db: RootDatabase) {
     let source = r#"
@@ -246,7 +246,7 @@ END_FUNCTION
 "#;
 
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E0254] Error: no matching overload
+    [E0810] Error: no matching overload
         ,-[ file:///test0.st:13:15 ]
         |
       2 |   ,-> FUNCTION take : INT
@@ -371,7 +371,7 @@ VAR i : INT; r : REAL; END_VAR
 END_FUNCTION
 "#;
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E0237] Error: ambiguous overloaded call
+    [E0809] Error: ambiguous overloaded call
         ,-[ file:///test0.st:14:15 ]
         |
       2 | ,---> FUNCTION mix : INT
@@ -414,7 +414,7 @@ VAR s : SINT; END_VAR
 END_FUNCTION
 "#;
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E0237] Error: ambiguous overloaded call
+    [E0809] Error: ambiguous overloaded call
         ,-[ file:///test0.st:14:15 ]
         |
       2 |   ,-> FUNCTION up : DINT
@@ -438,7 +438,7 @@ END_FUNCTION
 
 // -- RETURN-directed overloads: same params, different returns ---------------
 
-// The pair is legal (E0101 compares params AND return), and the consuming
+// The pair is legal (E0102 compares params AND return), and the consuming
 // site's type picks: each assignment resolves its own overload.
 #[rstest]
 fn valid_return_overloads_pick_by_target(mut with_db: RootDatabase) {
@@ -509,7 +509,7 @@ fn invalid_return_overload_without_context(mut with_db: RootDatabase) {
         END_FUNCTION
     "#;
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E0237] Error: ambiguous overloaded call
+    [E0809] Error: ambiguous overloaded call
         ,-[ file:///test0.st:10:18 ]
         |
       2 |   ,->         FUNCTION G : TIME
@@ -549,7 +549,7 @@ fn invalid_zero_arg_defaulted_overloads_ambiguous(mut with_db: RootDatabase) {
         END_FUNCTION
     "#;
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E0237] Error: ambiguous overloaded call
+    [E0809] Error: ambiguous overloaded call
         ,-[ file:///test0.st:11:20 ]
         |
       2 |   ,->         FUNCTION H : INT
@@ -587,7 +587,7 @@ fn invalid_return_overload_in_while_condition(mut with_db: RootDatabase) {
         END_FUNCTION
     "#;
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E0237] Error: ambiguous overloaded call
+    [E0809] Error: ambiguous overloaded call
         ,-[ file:///test0.st:10:19 ]
         |
       2 |   ,->         FUNCTION G : TIME
@@ -623,7 +623,7 @@ fn invalid_return_overload_as_statement(mut with_db: RootDatabase) {
         END_FUNCTION
     "#;
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E0237] Error: ambiguous overloaded call
+    [E0809] Error: ambiguous overloaded call
        ,-[ file:///test0.st:9:13 ]
        |
      2 |   ,->         FUNCTION G : TIME
@@ -668,7 +668,7 @@ fn invalid_return_overload_as_overloaded_argument(mut with_db: RootDatabase) {
         END_FUNCTION
     "#;
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E0237] Error: ambiguous overloaded call
+    [E0809] Error: ambiguous overloaded call
         ,-[ file:///test0.st:17:27 ]
         |
       2 |   ,->         FUNCTION G : TIME
@@ -728,7 +728,7 @@ fn invalid_equal_default_padding_stays_ambiguous(mut with_db: RootDatabase) {
         END_FUNCTION
     "#;
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E0237] Error: ambiguous overloaded call
+    [E0809] Error: ambiguous overloaded call
         ,-[ file:///test0.st:11:20 ]
         |
       2 |   ,->         FUNCTION add : INT
@@ -750,7 +750,7 @@ fn invalid_equal_default_padding_stays_ambiguous(mut with_db: RootDatabase) {
 }
 
 // A literal with NO exact candidate: `5` is INT by default, so REAL and
-// LREAL are both promotions and neither dominates — E0237, the same answer
+// LREAL are both promotions and neither dominates — E0809, the same answer
 // a variable gets. A literal's default type is a compiler notion; this pins
 // that it does not grow special promotion rules of its own.
 #[rstest]
@@ -769,7 +769,7 @@ fn invalid_literal_with_only_promoted_candidates(mut with_db: RootDatabase) {
         END_FUNCTION
     "#;
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E0237] Error: ambiguous overloaded call
+    [E0809] Error: ambiguous overloaded call
         ,-[ file:///test0.st:11:20 ]
         |
       2 |   ,->         FUNCTION conv : INT
@@ -841,7 +841,7 @@ fn invalid_three_way_incomparable_names_all(mut with_db: RootDatabase) {
         END_FUNCTION
     "#;
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E0237] Error: ambiguous overloaded call
+    [E0809] Error: ambiguous overloaded call
         ,-[ file:///test0.st:16:20 ]
         |
       2 | ,----->         FUNCTION mix : INT
@@ -946,7 +946,7 @@ END_FUNCTION
 "#;
 
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E0254] Error: no matching overload
+    [E0810] Error: no matching overload
         ,-[ file:///test0.st:13:15 ]
         |
       2 | ,---> FUNCTION eq : INT

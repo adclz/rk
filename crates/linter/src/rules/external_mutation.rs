@@ -9,13 +9,13 @@ use ide_diagnostic::{ErrorCode, IdeDiagnostic, diag};
 
 pub const NAME: &str = "external-mutation";
 
-/// L0317: a variable of a function block or class instance is modified from outside.
+/// L0117: a variable of a function block or class instance is modified from outside.
 /// Instances should own their own data.
 struct ExternalMutation;
 
 impl ErrorCode for ExternalMutation {
     fn code(&self) -> &'static str {
-        "L0317"
+        "L0117"
     }
 
     fn description(&self) -> &'static str {

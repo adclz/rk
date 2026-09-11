@@ -473,7 +473,7 @@ mod tests {
         //
         // The failure is injected rather than provoked through a workspace:
         // every construct that used to pass `rk check` and die in lowering has
-        // since been given its HIR refusal (the last was `%IX0.0`, now E0245),
+        // since been given its HIR refusal (the last was `%IX0.0`, now E1417),
         // and a test that needs a live bug to exist dies with the next fix.
         let ws = tempfile::tempdir().expect("tempdir");
         std::fs::write(

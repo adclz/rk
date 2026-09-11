@@ -4,7 +4,7 @@ use rstest::rstest;
 
 use crate::tests::utils::{test_diagnostics, with_db};
 
-// E0320: a once-per-type initializer (TYPE default, FB/CLASS member default,
+// E0401: a once-per-type initializer (TYPE default, FB/CLASS member default,
 // static PROGRAM field or config global) must be constant. CONSTANT
 // references fold; anything site-dependent is refused. FUNCTION and METHOD
 // locals are exempt — they re-initialize per call and are not type members.
@@ -29,7 +29,7 @@ PROGRAM Dummy
 END_PROGRAM
 "#;
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E0320] Error: initial value is not constant
+    [E0401] Error: initial value is not constant
        ,-[ file:///test0.st:5:17 ]
        |
      5 |     b : DINT := a;
@@ -62,7 +62,7 @@ PROGRAM Dummy
 END_PROGRAM
 "#;
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E0320] Error: initial value is not constant
+    [E0401] Error: initial value is not constant
        ,-[ file:///test0.st:3:21 ]
        |
      3 |     VAR m : DINT := some_global; END_VAR
@@ -96,7 +96,7 @@ PROGRAM Dummy
 END_PROGRAM
 "#;
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E0320] Error: initial value is not constant
+    [E0401] Error: initial value is not constant
        ,-[ file:///test0.st:2:22 ]
        |
      2 | TYPE AliasK : INT := K; END_TYPE
@@ -154,7 +154,7 @@ PROGRAM Dummy
 END_PROGRAM
 "#;
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E0320] Error: initial value is not constant
+    [E0401] Error: initial value is not constant
        ,-[ file:///test0.st:4:18 ]
        |
      4 |     k1 : DINT := k2;
@@ -163,7 +163,7 @@ END_PROGRAM
        |
        | Note: 'k2' is CONSTANT, but its own value does not fold (a reference cycle, or a non-constant initializer)
     ---'
-    [E0320] Error: initial value is not constant
+    [E0401] Error: initial value is not constant
        ,-[ file:///test0.st:5:18 ]
        |
      5 |     k2 : DINT := k1;
@@ -218,7 +218,7 @@ PROGRAM Dummy
 END_PROGRAM
 "#;
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E0320] Error: initial value is not constant
+    [E0401] Error: initial value is not constant
        ,-[ file:///test0.st:4:24 ]
        |
      4 | VAR_GLOBAL g : DINT := k; END_VAR
@@ -381,7 +381,7 @@ fn invalid_struct_alias_default_names_an_unknown_field(mut with_db: RootDatabase
         END_TYPE
     "#;
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E0211] Error: no such field
+    [E0202] Error: no such field
        ,-[ file:///test0.st:7:32 ]
        |
      7 |             Origin : Point := (z := 7);

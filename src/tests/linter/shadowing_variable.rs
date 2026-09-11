@@ -20,7 +20,7 @@ fn variable_shadows_function_block(mut with_db: RootDatabase) {
         END_FUNCTION
     "#;
     assert_snapshot!(test_single_lint(&mut with_db, &[source_fb, source_fn], "shadowing-variable"), @r"
-    [L0102] Info: name shadowing
+    [L0202] Info: name shadowing
        ,-[ file:///test1.st:4:13 ]
        |
      4 |             PrintLog : BOOL;
@@ -55,7 +55,7 @@ fn variable_shadows_function(mut with_db: RootDatabase) {
         END_FUNCTION
     "#;
     assert_snapshot!(test_single_lint(&mut with_db, &[source_fn1, source_fn2], "shadowing-variable"), @r"
-    [L0102] Info: name shadowing
+    [L0202] Info: name shadowing
        ,-[ file:///test1.st:4:13 ]
        |
      4 |             helper : INT;
@@ -91,7 +91,7 @@ fn variable_shadows_data_type(mut with_db: RootDatabase) {
         END_FUNCTION
     "#;
     assert_snapshot!(test_single_lint(&mut with_db, &[source_type, source_fn], "shadowing-variable"), @r"
-    [L0102] Info: name shadowing
+    [L0202] Info: name shadowing
        ,-[ file:///test1.st:4:13 ]
        |
      4 |             MyType : INT;
@@ -130,7 +130,7 @@ fn no_shadowing_when_names_differ(mut with_db: RootDatabase) {
 #[rstest]
 fn no_shadowing_when_variable_unused(mut with_db: RootDatabase) {
     // Variable declared with same name as POU but never used in body.
-    // Shadowing is usage-based, so only L0101 (unused) is emitted.
+    // Shadowing is usage-based, so only L0201 (unused) is emitted.
     let source_fb = r#"
         FUNCTION_BLOCK PrintLog
         END_FUNCTION_BLOCK
@@ -169,7 +169,7 @@ END_FUNCTION_BLOCK
     );
 
     assert!(
-        reported.contains("[L0102]"),
+        reported.contains("[L0202]"),
         "the default set is silent about it:\n{reported}"
     );
 }

@@ -3,7 +3,7 @@ use auto_lsp::core::ast::AstNode;
 
 use super::semantic_index::SemanticIndexBuilder;
 use crate::check::errors::ToIdeDiagnostic;
-use crate::check::errors::e0_syntax::SyntaxError;
+use crate::check::errors::e00_syntax::SyntaxError;
 use crate::hir_def::hir_node::HirNode;
 use crate::hir_def::interned::identifier::SpanIdent;
 use crate::hir_def::interned::namespace::SpanNamespacePath;
@@ -98,7 +98,7 @@ impl<'db> SemanticIndexBuilder<'db> {
             usings,
             scope_id,
             previous_scope,
-);
+        );
 
         // Then insert it into the map with its ID
         self.namespaces.push(result);

@@ -30,7 +30,7 @@ END_FUNCTION_BLOCK
 "#;
     // Only the UNGUARDED call reports.
     assert_snapshot!(test_single_lint(&mut with_db, &[source], "missing-input-param"), @r"
-    [L0204] Hint: missing input parameter
+    [L0303] Hint: missing input parameter
         ,-[ file:///test0.st:16:5 ]
         |
       4 |         a : INT;
@@ -66,7 +66,7 @@ END_FUNCTION_BLOCK
 "#;
     // Only the POU WITHOUT the pragma reports.
     assert_snapshot!(test_single_lint(&mut with_db, &[source], "input-assignment"), @r"
-    [L0303] Warning: assignment to input variable
+    [L0113] Warning: assignment to input variable
         ,-[ file:///test0.st:14:5 ]
         |
      12 |         y : INT;
@@ -121,7 +121,7 @@ END_FUNCTION_BLOCK
     // The write AFTER the allowed statement, inside the same block, must still
     // report — an off-by-one in the region's end span passes every other test.
     assert_snapshot!(test_single_lint(&mut with_db, &[source], "input-assignment"), @r"
-    [L0303] Warning: assignment to input variable
+    [L0113] Warning: assignment to input variable
         ,-[ file:///test0.st:11:9 ]
         |
       4 |         x : INT;
@@ -149,7 +149,7 @@ FUNCTION_BLOCK other
 END_FUNCTION_BLOCK
 "#;
     assert_snapshot!(test_single_lint(&mut with_db, &[source], "input-assignment"), @r"
-    [L0303] Warning: assignment to input variable
+    [L0113] Warning: assignment to input variable
        ,-[ file:///test0.st:7:5 ]
        |
      4 |         x : INT;
@@ -221,7 +221,7 @@ END_FUNCTION_BLOCK
 "#;
     // The misspelled name must not silence the rule it resembles.
     assert_snapshot!(test_single_lint(&mut with_db, &[source], "input-assignment"), @r"
-    [L0303] Warning: assignment to input variable
+    [L0113] Warning: assignment to input variable
        ,-[ file:///test0.st:7:5 ]
        |
      4 |         x : INT;
@@ -250,7 +250,7 @@ END_FUNCTION_BLOCK
 "#;
     // The pragma has no next statement: the write BEFORE it still reports.
     assert_snapshot!(test_single_lint(&mut with_db, &[source], "input-assignment"), @r"
-    [L0303] Warning: assignment to input variable
+    [L0113] Warning: assignment to input variable
        ,-[ file:///test0.st:6:5 ]
        |
      4 |         x : INT;

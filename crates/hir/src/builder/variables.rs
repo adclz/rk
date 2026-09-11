@@ -15,7 +15,7 @@ use crate::builder::expression::ParseDirectVariable;
 use crate::builder::semantic_index::SemanticIndexBuilder;
 use crate::builder::{Parse, ParseSpec, ParseSpecInit, ParseVarSection, SpecInitResult};
 use crate::check::errors::ToIdeDiagnostic;
-use crate::check::errors::e0_syntax::SyntaxError;
+use crate::check::errors::e00_syntax::SyntaxError;
 use crate::hir_def::config::AccessDirection;
 use crate::hir_def::expressions::spec::{ElementarySpec, Spec, SpecKind};
 use crate::hir_def::interned::identifier::Ident;
@@ -598,7 +598,7 @@ impl<'db> ParseVarSection<'db> for ast::generated::ExternalVarDecls {
 /// dropped, so the binding survives into HIR. IEC allows the name to be
 /// omitted for a direct-access-only declaration; there is nothing to call it
 /// then, so the address stands in as the name. Either way it is refused
-/// (E0245) until an I/O band exists.
+/// (E1417) until an I/O band exists.
 fn push_located_var<'db>(
     sema: &mut SemanticIndexBuilder<'db>,
     section: &mut Vec<VariableDecl<'db>>,

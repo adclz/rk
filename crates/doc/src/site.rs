@@ -29,27 +29,39 @@ pub const CSS: &str = r#"
 :root {
   --paper: #fbfbf9; --ink: #111; --muted: #6f6f6a; --rule: #e6e5df; --panel: #f3f2ed;
   --link: #0050bd; --code: #1a1a1a;
-  --hl-keyword: #7a3e9d; --hl-type: #005f87; --hl-string: #8a4b08; --hl-number: #1c6b3a;
-  --hl-comment: #7a7a72; --hl-attr: #5c5c8a; --hl-fn: #0050bd;
-  --red: #b3261e; --yellow: #8a6d00; --blue: #0050bd; --bright-blue: #0050bd; --green: #1c6b3a;
+  --hl-keyword: #0000ff; --hl-control: #af00db; --hl-type: #267f99; --hl-string: #a31515;
+  --hl-number: #098658; --hl-comment: #008000; --hl-attr: #0451a5; --hl-fn: #795e26;
+  --hl-var: #001080;
+  --bracket-1: #0431fa; --bracket-2: #319331; --bracket-3: #7b3814;
+  --hl-enum: #0070c1;
+  --red: #e51400; --yellow: #bf8803; --blue: #1a85ff; --bright-blue: #0050bd; --green: #1c6b3a;
+  --pass: #007100; --fail: #a1260d;
   --serif: 'IBM Plex Serif', Georgia, 'Times New Roman', serif;
-  --mono: 'IBM Plex Mono', 'SF Mono', Consolas, monospace;
+  --mono: 'JetBrains Mono', 'IBM Plex Mono', 'SF Mono', Consolas, monospace;
 }
 @media (prefers-color-scheme: dark) {
   :root:not([data-theme="light"]) {
     --paper: #131312; --ink: #e8e6df; --muted: #979489; --rule: #2b2a27; --panel: #1c1b19;
     --link: #8ab4f8; --code: #e8e6df;
-    --hl-keyword: #c792ea; --hl-type: #82aaff; --hl-string: #e2b070; --hl-number: #a6d189;
-    --hl-comment: #7f7d75; --hl-attr: #b0aee0; --hl-fn: #8ab4f8;
-    --red: #f28b82; --yellow: #e8c077; --blue: #8ab4f8; --bright-blue: #8ab4f8; --green: #a6d189;
+    --hl-keyword: #569cd6; --hl-control: #c586c0; --hl-type: #4ec9b0; --hl-string: #ce9178;
+    --hl-number: #b5cea8; --hl-comment: #6a9955; --hl-attr: #9cdcfe; --hl-fn: #dcdcaa;
+    --hl-var: #9cdcfe;
+    --bracket-1: #ffd700; --bracket-2: #da70d6; --bracket-3: #179fff;
+    --hl-enum: #4fc1ff;
+    --red: #f14c4c; --yellow: #cca700; --blue: #3794ff; --bright-blue: #8ab4f8; --green: #a6d189;
+    --pass: #73c991; --fail: #f14c4c;
   }
 }
 :root[data-theme="dark"] {
   --paper: #131312; --ink: #e8e6df; --muted: #979489; --rule: #2b2a27; --panel: #1c1b19;
   --link: #8ab4f8; --code: #e8e6df;
-  --hl-keyword: #c792ea; --hl-type: #82aaff; --hl-string: #e2b070; --hl-number: #a6d189;
-  --hl-comment: #7f7d75; --hl-attr: #b0aee0; --hl-fn: #8ab4f8;
-  --red: #f28b82; --yellow: #e8c077; --blue: #8ab4f8; --bright-blue: #8ab4f8; --green: #a6d189;
+    --hl-keyword: #569cd6; --hl-control: #c586c0; --hl-type: #4ec9b0; --hl-string: #ce9178;
+  --hl-number: #b5cea8; --hl-comment: #6a9955; --hl-attr: #9cdcfe; --hl-fn: #dcdcaa;
+  --hl-var: #9cdcfe;
+  --bracket-1: #ffd700; --bracket-2: #da70d6; --bracket-3: #179fff;
+  --hl-enum: #4fc1ff;
+  --red: #f14c4c; --yellow: #cca700; --blue: #3794ff; --bright-blue: #8ab4f8; --green: #a6d189;
+  --pass: #73c991; --fail: #f14c4c;
 }
 * { box-sizing: border-box; }
 html { -webkit-text-size-adjust: 100%; }
@@ -74,7 +86,9 @@ li p { margin: 0; }
 code { font-family: var(--mono); font-size: 0.85em; color: var(--code); background: var(--panel); padding: 0.05em 0.35em; border-radius: 3px; }
 pre { font-family: var(--mono); font-size: 0.82rem; line-height: 1.55; background: var(--panel); border: 1px solid var(--rule); padding: 0.9rem 1rem; overflow-x: auto; margin: 0.75rem 0 1.25rem; tab-size: 4; }
 pre code { background: none; padding: 0; color: inherit; font-size: inherit; }
-blockquote { margin: 0 0 1rem; padding-left: 1rem; border-left: 2px solid var(--rule); color: var(--muted); }
+blockquote { margin: 1.25rem 0; padding: 0.75rem 1rem; border-left: 3px solid var(--link); background: var(--panel); color: var(--ink); font-size: 0.95rem; }
+blockquote p { margin: 0; }
+blockquote p + p { margin-top: 0.5rem; }
 table { border-collapse: collapse; width: 100%; font-size: 0.92rem; margin: 0.75rem 0 1.25rem; }
 th { text-align: left; font-family: var(--mono); font-size: 0.72rem; letter-spacing: 0.06em; text-transform: uppercase; color: var(--muted); font-weight: 500; border-bottom: 1px solid var(--ink); padding: 0.4rem 0.75rem 0.4rem 0; }
 td { border-bottom: 1px solid var(--rule); padding: 0.45rem 0.75rem 0.45rem 0; vertical-align: top; }
@@ -88,6 +102,8 @@ hr { border: 0; border-top: 1px solid var(--rule); margin: 2.5rem 0; }
 .skills li a:hover { text-decoration: underline; }
 .skills li span { color: var(--muted); font-size: 0.95rem; }
 @media (max-width: 600px) { .skills li { grid-template-columns: 1fr; } }
+h2.group { display: flex; align-items: center; gap: 0.55rem; }
+h2.group svg { flex: none; width: 1.05em; height: 1.05em; color: var(--muted); }
 .entry { margin: 2.5rem 0; }
 .entry h2 { border: 0; padding: 0; margin: 0 0 0.25rem; font-family: var(--mono); font-size: 1rem; font-weight: 600; }
 .entry h2 a { color: var(--ink); text-decoration: none; }
@@ -96,18 +112,53 @@ hr { border: 0; border-top: 1px solid var(--rule); margin: 2.5rem 0; }
 .output { font-family: var(--mono); font-size: 0.78rem; }
 footer { margin-top: 4rem; padding-top: 1rem; border-top: 1px solid var(--rule); font-family: var(--mono); font-size: 0.75rem; color: var(--muted); display: flex; flex-wrap: wrap; gap: 0.5rem 1.5rem; }
 footer a { color: var(--muted); }
-.hl-keyword, .hl-keyword-storage, .hl-keyword-control, .hl-keyword-operator { color: var(--hl-keyword); }
+/* What the VS Code extension shows for a .st file, scope for scope: an
+   elementary type is `support.type.primitives` (teal), a storage word and a
+   language constant are one blue, control flow is magenta, and operators and
+   separators keep the plain foreground. */
+.hl-keyword, .hl-keyword-storage, .hl-keyword-operator,
+.hl-constant-builtin, .hl-variable-builtin { color: var(--hl-keyword); }
+.hl-keyword-control { color: var(--hl-control); }
 .hl-type, .hl-type-builtin, .hl-namespace { color: var(--hl-type); }
 .hl-string { color: var(--hl-string); }
-.hl-number, .hl-constant-builtin, .hl-variable-builtin { color: var(--hl-number); }
-.hl-comment { color: var(--hl-comment); font-style: italic; }
+.hl-number { color: var(--hl-number); }
+.hl-comment { color: var(--hl-comment); }
 .hl-attribute { color: var(--hl-attr); }
 .hl-function, .hl-function-method, .hl-function-call { color: var(--hl-fn); }
+.hl-variable { color: var(--hl-var); }
+.hl-bracket-1 { color: var(--bracket-1); }
+.hl-bracket-2 { color: var(--bracket-2); }
+.hl-bracket-3 { color: var(--bracket-3); }
+.hl-constant { color: var(--hl-enum); }
+
+.hl-pass { color: var(--pass); }
+.hl-fail { color: var(--fail); }
+
+/* What sets it apart: full-width rows, diagram beside the claim, alternating */
+.why { margin: 2.5rem 0 3rem; }
+.feat { display: grid; grid-template-columns: 1fr 1fr; gap: 3rem; align-items: center; margin: 0 0 5.5rem; }
+.feat:last-of-type { margin-bottom: 3rem; }
+.feat:nth-of-type(even) .feat-art { order: 2; }
+@media (max-width: 720px) { .feat { grid-template-columns: 1fr; gap: 1.5rem; margin-bottom: 4rem; } .feat:nth-of-type(even) .feat-art { order: 0; } }
+.feat svg { width: 100%; height: auto; display: block; color: var(--muted); }
+.feat svg text { font-family: var(--mono); }
+.feat h3 { font-family: var(--serif); font-weight: 500; font-size: 1.55rem; line-height: 1.2; color: var(--ink); margin: 0 0 0.7rem; letter-spacing: -0.01em; text-transform: none; text-wrap: balance; }
+.feat p { margin: 0; font-size: 1.05rem; line-height: 1.6; color: var(--muted); }
+.feat p .lead-in { color: var(--ink); font-weight: 500; }
+.feat p .quote { font-size: 1.2em; color: var(--ink); }
+.why-foot { font-size: 0.9rem; color: var(--muted); margin: 0 0 2.5rem; }
 
 /* The reference: sidebar, search, inline markers */
 main.wide { max-width: 1180px; }
 .ref { display: grid; grid-template-columns: 240px minmax(0, 1fr); gap: 3rem; align-items: start; }
-@media (max-width: 860px) { .ref { grid-template-columns: 1fr; } .ref nav.side { position: static; max-height: none; } }
+/* On a phone a 242-code tree is not navigation, the search is: the tree is
+   dropped so the diagnostics start at the top, and the field stays in reach. */
+@media (max-width: 860px) {
+  .ref { grid-template-columns: 1fr; gap: 1rem; }
+  .ref nav.side { position: sticky; top: 0; z-index: 6; max-height: none; overflow: visible; background: var(--paper); padding: 0.6rem 0 0.4rem; }
+  .ref nav.side details { display: none; }
+  .ref nav.side input { margin-bottom: 0; }
+}
 nav.side { position: sticky; top: 1rem; max-height: calc(100vh - 2rem); overflow-y: auto; font-family: var(--mono); font-size: 0.78rem; scrollbar-width: thin; }
 nav.side input { width: 100%; font: inherit; padding: 0.4rem 0.55rem; border: 1px solid var(--rule); border-radius: 4px; background: var(--paper); color: var(--ink); margin-bottom: 0.9rem; }
 nav.side input:focus-visible { outline: 2px solid var(--link); outline-offset: 1px; }
@@ -128,7 +179,7 @@ mark.diag.warning { text-decoration-color: var(--yellow); }
 mark.diag.info { text-decoration-color: var(--blue); }
 /* Placed by the script from the mark's rectangle, fixed to the viewport, so
    the example's scroll box neither clips it nor scrolls to fit it. */
-.diag-popup { display: none; position: fixed; z-index: 10; min-width: 22rem; max-width: min(40rem, calc(100vw - 2rem)); white-space: pre-wrap; font-family: var(--mono); font-size: 0.78rem; line-height: 1.45; color: var(--ink); background: var(--paper); border: 1px solid var(--rule); border-radius: 4px; padding: 0.6rem 0.75rem; box-shadow: 0 6px 24px rgba(0,0,0,0.18); text-decoration: none; }
+.diag-popup { display: none; position: fixed; z-index: 10; min-width: min(22rem, calc(100vw - 2rem)); max-width: min(40rem, calc(100vw - 2rem)); white-space: pre-wrap; font-family: var(--mono); font-size: 0.78rem; line-height: 1.45; color: var(--ink); background: var(--paper); border: 1px solid var(--rule); border-radius: 4px; padding: 0.6rem 0.75rem; box-shadow: 0 6px 24px rgba(0,0,0,0.18); text-decoration: none; }
 .diag-popup.open { display: block; }
 .diag-popup .source { color: var(--muted); }
 .diag-popup .code { color: var(--link); }
@@ -179,7 +230,9 @@ const seen = new IntersectionObserver(items => {
     a.classList.add('active');
     active = a;
     if (!search.value) { for (const g of groups) g.open = g.contains(a); }
-    a.scrollIntoView({ block: 'nearest' });
+    // Only when the sidebar is on screen and scrolls itself; where it is
+    // dropped (a phone) this would drag the page back up to the index.
+    if (a.offsetParent) a.scrollIntoView({ block: 'nearest' });
   }
 }, { rootMargin: '-10% 0px -70% 0px' });
 entries.forEach(e => seen.observe(e));
@@ -193,7 +246,10 @@ for (const m of document.querySelectorAll('mark.diag')) {
     pop.classList.add('open');
     const w = pop.offsetWidth, h = pop.offsetHeight;
     pop.style.left = Math.max(8, Math.min(r.left, innerWidth - w - 8)) + 'px';
-    pop.style.top = (r.bottom + h + 8 <= innerHeight ? r.bottom + 4 : r.top - h - 4) + 'px';
+    // Below the mark when it fits, above it otherwise, and never off a short
+    // screen: a tall popup on a phone used to land past the top edge.
+    const top = r.bottom + h + 8 <= innerHeight ? r.bottom + 4 : r.top - h - 4;
+    pop.style.top = Math.max(8, Math.min(top, innerHeight - h - 8)) + 'px';
   });
   m.addEventListener('mouseleave', () => pop.classList.remove('open'));
 }
@@ -236,7 +292,7 @@ pub fn shell_with(page: &Page, base_url: &str, script: &str) -> String {
   <link rel="canonical" href="{canonical}">{alternate}
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Serif:ital,wght@0,400;0,500;1,400&display=swap">
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600&family=IBM+Plex+Serif:ital,wght@0,400;0,500;1,400&display=swap">
   <style>{css}</style>
 </head>
 <body>
@@ -245,11 +301,10 @@ pub fn shell_with(page: &Page, base_url: &str, script: &str) -> String {
   <a class="brand" href="/">{site}</a>
   <a href="/skills/">skills</a>
   <a href="/diagnostics/">diagnostics</a>
-  <a href="/llms.txt">llms.txt</a>
-  <a href="/mcp">mcp</a>
+  <a href="/linter/">linter</a>
+  <a href="/formatter/">formatter</a>
 </nav>
-<p class="eyebrow">{eyebrow}</p>
-{body}
+{eyebrow}{body}
 <footer>
   {md_link}
   <a href="/diagnostics.json">diagnostics.json</a>
@@ -263,7 +318,11 @@ pub fn shell_with(page: &Page, base_url: &str, script: &str) -> String {
         description = escape(page.description),
         css = CSS,
         site = SITE_NAME,
-        eyebrow = escape(page.eyebrow),
+        eyebrow = if page.eyebrow.is_empty() {
+            String::new()
+        } else {
+            format!("<p class=\"eyebrow\">{}</p>\n", escape(page.eyebrow))
+        },
         body = page.body,
     )
 }
@@ -502,10 +561,41 @@ pub fn api_catalog(base: &str) -> String {
     )
 }
 
+/// `/.well-known/ai-catalog.json` (Agentic Resource Discovery): the
+/// capabilities an agent can reach here, each with the questions it answers.
+pub fn ard_manifest(base: &str) -> String {
+    let host = host_of(base);
+    format!(
+        r#"{{
+  "specVersion": "1.0",
+  "host": {{ "displayName": "rk", "identifier": "did:web:{host}" }},
+  "entries": [
+    {{
+      "identifier": "urn:air:{host}:server:docs",
+      "displayName": "rk documentation",
+      "type": "application/mcp-server-card+json",
+      "url": "{base}/.well-known/mcp/server-card.json",
+      "representativeQueries": [
+        "what does diagnostic E0301 mean",
+        "which rk diagnostics are about duplicates",
+        "show the skill for writing Structured Text tests",
+        "how do I bind a PROGRAM to a task in rk"
+      ]
+    }}
+  ]
+}}
+"#
+    )
+}
+
+fn host_of(base: &str) -> &str {
+    let host = base.split("://").nth(1).unwrap_or(base);
+    host.split([':', '/']).next().unwrap_or(host)
+}
+
 /// `rk.example` becomes `example.rk`, the namespace an MCP card carries.
 fn reverse_dns(base: &str) -> String {
-    let host = base.split("://").nth(1).unwrap_or(base);
-    let host = host.split([':', '/']).next().unwrap_or(host);
+    let host = host_of(base);
     let mut parts: Vec<&str> = host.split('.').collect();
     parts.reverse();
     format!("{}/docs", parts.join("."))
@@ -513,4 +603,185 @@ fn reverse_dns(base: &str) -> String {
 
 fn json_escape(s: &str) -> String {
     s.replace('\\', "\\\\").replace('"', "\\\"")
+}
+
+/// What sets the toolchain apart: four rows, each led by the capability as a
+/// sentence, with a diagram of the mechanism beside it.
+pub fn why_html() -> String {
+    format!(
+        r##"<div class="why">
+
+<svg width="0" height="0" aria-hidden="true" focusable="false" style="position:absolute">
+<symbol id="wasm-mark" viewBox="97.43 0 107.62 107.62">
+  <path fill="#654ff0" transform="translate(-0.21)" d="M163.76,0c0,.19,0,.38,0,.58a12.34,12.34,0,0,1-24.68,0c0-.2,0-.39,0-.58H97.64V107.62H205.26V0ZM149,96.1l-5.24-25.93h-.09L138,96.1h-7.22L122.6,58h7.13l4.88,25.93h.09L140.58,58h6.67l5.28,26.25h.09L158.19,58h7L156.1,96.1Zm39.26,0-2.43-8.48H173l-1.87,8.48H164L173.22,58h11.25l11.21,38.1Z"/>
+  <polygon fill="#654ff0" transform="translate(-0.21)" points="177.3 67.39 174.19 81.37 183.87 81.37 180.3 67.39 177.3 67.39"/>
+</symbol>
+</svg>
+
+<div class="feat">
+<div class="feat-art">
+<svg viewBox="0 0 240 82" role="img" aria-label="Source files with lines added and removed, as in a review">
+  <g fill="none" stroke="currentColor" stroke-width="1.5">
+    <path d="M14 8h34l10 10v50H14z"/><path d="M48 8v10h10"/>
+    <path d="M86 8h34l10 10v50H86z"/><path d="M120 8v10h10"/>
+    <path d="M158 8h34l10 10v50h-44z"/><path d="M192 8v10h10"/>
+  </g>
+  <g stroke="currentColor" stroke-width="1.5" opacity="0.4">
+    <path d="M22 32h28M22 40h20M22 56h16"/>
+    <path d="M94 32h28M94 48h25M94 56h16"/>
+    <path d="M166 32h28M166 40h20M166 48h25"/>
+  </g>
+  <path d="M22 48h25" stroke="var(--green)" stroke-width="1.5"/>
+  <path d="M94 40h20" stroke="var(--red)" stroke-width="1.5"/>
+  <g fill="currentColor" font-size="9" text-anchor="middle" opacity="0.8">
+    <text x="41" y="76">.st</text><text x="113" y="76">.st</text><text x="185" y="76">.st</text>
+  </g>
+</svg>
+</div>
+<div>
+<h3>Everything is code.</h3>
+<p><span class="lead-in">From PLC logic to library configuration.</span>
+<br>Namespaces organise your workspace, without restrictions.
+<br><span class="quote">&#8220;If you need something, write the code for it!&#8221;</span></p>
+</div>
+</div>
+
+<div class="feat">
+<div class="feat-art">
+<svg viewBox="0 0 240 102" role="img" aria-label="The compiler refusing an unknown struct field and listing the fields with similar names">
+  <text x="6" y="14" font-size="7.6" fill="currentColor" xml:space="preserve" textLength="145.92" lengthAdjust="spacing">Base : Engine := (power := 100, </text>
+  <text x="151.92" y="14" font-size="7.6" fill="currentColor" textLength="18.24" lengthAdjust="spacing">fuel</text>
+  <text x="170.16" y="14" font-size="7.6" fill="currentColor" xml:space="preserve" textLength="45.6" lengthAdjust="spacing"> := 10.0);</text>
+  <path d="M151.9 19q2.3-3.3 4.6 0t4.6 0t4.6 0t4.6 0" fill="none" stroke="var(--red)" stroke-width="1.5"/>
+  <path d="M156 22v5h-8" fill="none" stroke="var(--red)" stroke-width="1.1" opacity="0.6"/>
+  <text x="6" y="34" font-size="7.6" fill="var(--red)">'Engine' has no field named 'fuel'</text>
+  <text x="6" y="50" font-size="7.6" fill="currentColor" opacity="0.75">Note: 'Engine' has fields with similar name:</text>
+  <g font-size="7.6" fill="var(--green)">
+    <text x="34" y="62">- fuel1</text>
+    <text x="34" y="73">- fuel2</text>
+    <text x="34" y="84">- fuel3</text>
+    <text x="34" y="95">- fuel4</text>
+  </g>
+</svg>
+</div>
+<div>
+<h3>Catch mistakes at your desk, not on site.</h3>
+<p><span class="lead-in">A strict compiler, on purpose.</span>
+<br>Hundreds of diagnostics, each explained, each with an example.
+<br>Plus a linter you can tune.</p>
+</div>
+</div>
+
+<div class="feat">
+<div class="feat-art">
+<svg viewBox="0 0 240 76" role="img" aria-label="A new WebAssembly module swapping into a controller that keeps scanning">
+  <rect x="8" y="26" width="34" height="26" rx="3" fill="none" stroke="currentColor" stroke-width="1.5" opacity="0.35"/>
+  <use href="#wasm-mark" x="16" y="30" width="18" height="18" opacity="0.3"/>
+  <rect x="54" y="26" width="34" height="26" rx="3" fill="none" stroke="var(--green)" stroke-width="1.6"/>
+  <use href="#wasm-mark" x="62" y="30" width="18" height="18"/>
+  <path d="M94 39h24" fill="none" stroke="var(--green)" stroke-width="1.6" stroke-dasharray="4 3"/>
+  <path d="M116 35l6 4-6 4z" fill="var(--green)"/>
+  <rect x="128" y="14" width="104" height="50" rx="4" fill="none" stroke="currentColor" stroke-width="1.5"/>
+  <path d="M136 40q7-13 14 0t14 0t14 0t14 0t14 0" fill="none" stroke="var(--green)" stroke-width="1.6"/>
+  <text x="180" y="59" font-size="7.5" fill="currentColor" text-anchor="middle" opacity="0.75">still scanning</text>
+  <text x="180" y="9" font-size="8" fill="currentColor" text-anchor="middle">controller</text>
+</svg>
+</div>
+<div>
+<h3>Deploy as fast as you edit.</h3>
+<p><span class="lead-in">A workspace compiles in half a second.</span>
+<br>WebAssembly instantiation does the swap.
+<br>The machine never stops scanning.</p>
+</div>
+</div>
+
+</div>
+"##
+    )
+}
+
+/// The formatter page. Everything here was checked by running `rk fmt`:
+/// it indents with TABS, and it never reflows to a line width.
+pub fn formatter_html(hl: &crate::highlight::StHighlighter) -> String {
+    // Statements, declarations and whole var sections each need the POU they
+    // were written for, or the snippet's first token is lost to error recovery.
+    let (body_open, body_close) = crate::highlight::FRAGMENT_WRAP;
+    let (pou_open, pou_close) = ("FUNCTION_BLOCK __Fmt\n", "\nEND_FUNCTION_BLOCK\n");
+    let (decl_open, decl_close) = crate::highlight::DECL_WRAP;
+    let indent = hl.html_in(
+        body_open,
+        "IF condition THEN\n\tx := 1;\n\tIF nested THEN\n\t\ty := 2;\n\tEND_IF;\nEND_IF;",
+        body_close,
+    );
+    let decls = hl.html_in(
+        pou_open,
+        "// as written\nVAR a : INT; b : INT; c : INT; END_VAR\n\n// as formatted\nVAR\n\ta: INT;\n\tb: INT;\n\tc: INT;\nEND_VAR",
+        pou_close,
+    );
+    let spacing = hl.html_in(
+        body_open,
+        "// as written\nm_iCurrentValue:= m_iCurrentValue+1;\nx :=a>b AND c<>d;\nok := Color # Red;\nv := arr [ 0 ];\n\n// as formatted\nm_iCurrentValue := m_iCurrentValue + 1;\nx := a > b AND c <> d;\nok := Color#Red;\nv := arr[0];",
+        body_close,
+    );
+    let lists = hl.html_in(
+        body_open,
+        "// written on one line, so it stays on one line\nn := Sum(a := 1, b := 2, c := 3);\n\n// written with a break after the first argument…\nn := Sum(a := 1,\n\tb := 2, c := 3);\n\n// …so all of them get their own line\nn := Sum(\n\ta := 1,\n\tb := 2,\n\tc := 3\n);",
+        body_close,
+    );
+    let inits = hl.html_in(
+        decl_open,
+        "p: Pt := (x := 1, y := 2);\nq: Pt := (\n\tx := 1,\n\ty := 2\n);",
+        decl_close,
+    );
+    let cmds = crate::highlight::shell_html(
+        "rk fmt              # rewrite every .st file in the workspace\naa fmt --check      # report what would change; exit 1 if anything would",
+    );
+    let comments = hl.html_in(
+        pou_open,
+        "VAR_INPUT\n\t(** this stays on top **)\n\tIN: BOOL; (* and this stays here *)\nEND_VAR\n\ts := '  spacing   inside   a   string  ';",
+        pou_close,
+    );
+    format!(
+        r##"<h1>Formatter</h1>
+<p class="lede">One way to write it, so a diff shows what changed rather than who typed it.</p>
+
+<pre><code class="language-sh">{cmds}</code></pre>
+
+<p>In an editor it is the language server's <em>Format Document</em>, so the same rules apply whether a person or a script asks.</p>
+
+<h2>What it guarantees</h2>
+<p>The formatter works on the parsed syntax tree, not on the text, so it cannot produce a file that no longer parses. It needs the file to parse going in, and refuses the whole file if it does not; semantic errors like a type mismatch or an unresolved name do not stop it. Its own suite formats twice and requires the second pass to change nothing, and continuous integration reformats two corpora on every change, the standard library and the grammar's own test fixtures, checking that no program's meaning moved.</p>
+
+<h2>What it does not do</h2>
+<p>It has no line-width target and never reflows your expressions. A 300-character condition stays on one line if that is how you wrote it, and a call you split across lines stays split. What it normalises is spacing, indentation and the placement of declarations, which is the part people argue about in review.</p>
+
+<h2>Indentation</h2>
+<p>One tab per level, and every block indents: variable sections, bodies, methods, namespaces, classes and <code>TYPE</code> blocks.</p>
+<pre><code class="language-iecst">{indent}</code></pre>
+
+<h2>Declarations</h2>
+<p>One declaration per line, so a name is never hidden behind a semicolon halfway across the line, and the type is separated by a single space after the colon.</p>
+<pre><code class="language-iecst">{decls}</code></pre>
+
+<h2>Spacing</h2>
+<p>Binary operators, assignments and comparisons get one space either side; the accessors get none.</p>
+<pre><code class="language-iecst">{spacing}</code></pre>
+
+<h2>Lists: you choose the shape</h2>
+<p>A parameter list or an initialiser is written on one line or spread over several, and <strong>a line break anywhere inside it is the instruction</strong>. Keep it on one line and the formatter leaves it there; put a newline in it and every element gets its own line, with the closing bracket back at the statement's indent. Nothing depends on how long the line is, so the shape is yours to decide and the formatter only makes it consistent.</p>
+<pre><code class="language-iecst">{lists}</code></pre>
+<p>Initialisers follow the same rule, so a small struct stays inline and a large one opens up.</p>
+<pre><code class="language-iecst">{inits}</code></pre>
+
+<h2>Semicolons</h2>
+<p>The parser accepts a missing <code>;</code> at the end of a declaration or a statement, so a file that omits one still checks and still compiles. The formatter writes it in: every declaration, statement and directive comes back terminated, and one already there is left alone. A <code>USING</code> naming several namespaces takes one terminator at the end, not one per name.</p>
+
+<h2>What it never touches</h2>
+<p>Comments and string literals are left exactly as written. A comment keeps its place, above the thing it describes or at the end of its line, and the spacing inside a string is yours.</p>
+<pre><code class="language-iecst">{comments}</code></pre>
+
+<h2>Blank lines</h2>
+<p>A blank line between declarations, POUs or variable sections is a paragraph break, so it is kept. Several in a row collapse to one, which is the only part of your vertical spacing the formatter has an opinion about.</p>
+"##
+    )
 }

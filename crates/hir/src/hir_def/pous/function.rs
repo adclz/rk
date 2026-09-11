@@ -1,8 +1,7 @@
 use db::WorkspaceDataBase;
 
 use crate::{
-    Visibility,
-    AstId, HasName, HasPragmas, HirNodeInfo,
+    AstId, HasName, HasPragmas, HirNodeInfo, Visibility,
     hir_def::{
         expressions::{spec::Spec, statement::Stmt},
         interned::identifier::Ident,

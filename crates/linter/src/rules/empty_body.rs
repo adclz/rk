@@ -13,12 +13,12 @@ use ide_diagnostic::{ErrorCode, IdeDiagnostic, diag};
 
 pub const NAME: &str = "empty-body";
 
-/// L0206: function or method has an empty body.
+/// L0305: function or method has an empty body.
 struct EmptyBody;
 
 impl ErrorCode for EmptyBody {
     fn code(&self) -> &'static str {
-        "L0206"
+        "L0305"
     }
 
     fn description(&self) -> &'static str {
@@ -36,7 +36,7 @@ pub fn check<'db>(
     let (statements, name, kind_str, span) = match &scope_data.kind {
         ScopeKind::Pou(Pou::Function(f)) => {
             // An extern FUNCTION's body is empty BY DEFINITION — the WASM
-            // import runs in its place (E0243 refuses statements outright).
+            // import runs in its place (E1502 refuses statements outright).
             {
                 if f.extern_pragma(db).is_some() {
                     return;

@@ -41,7 +41,7 @@ VAR_IN_OUT buf : INT; END_VAR
 END_FUNCTION"#;
 
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E0243] Error: not representable on an extern FUNCTION
+    [E1502] Error: not representable on an extern FUNCTION
        ,-[ file:///test0.st:4:12 ]
        |
      4 | VAR_IN_OUT buf : INT; END_VAR
@@ -65,7 +65,7 @@ VAR_OUTPUT p : Pt; s : STRING; END_VAR
 END_FUNCTION"#;
 
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E0243] Error: not representable on an extern FUNCTION
+    [E1502] Error: not representable on an extern FUNCTION
        ,-[ file:///test0.st:6:12 ]
        |
      6 | VAR_OUTPUT p : Pt; s : STRING; END_VAR
@@ -74,7 +74,7 @@ END_FUNCTION"#;
        |
        | Note: return scalars, or split the aggregate into scalar outputs
     ---'
-    [E0243] Error: not representable on an extern FUNCTION
+    [E1502] Error: not representable on an extern FUNCTION
        ,-[ file:///test0.st:6:20 ]
        |
      6 | VAR_OUTPUT p : Pt; s : STRING; END_VAR
@@ -97,7 +97,7 @@ VAR_INPUT x : INT; END_VAR
 END_FUNCTION"#;
 
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E0243] Error: not representable on an extern FUNCTION
+    [E1502] Error: not representable on an extern FUNCTION
        ,-[ file:///test0.st:5:5 ]
        |
      5 |     test := x;
@@ -120,7 +120,7 @@ VAR_INPUT n : INT; END_VAR
 END_FUNCTION_BLOCK"#;
 
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E0244] Error: extern pragma outside a FUNCTION
+    [E1501] Error: extern pragma outside a FUNCTION
        ,-[ file:///test0.st:2:1 ]
        |
      2 | {extern 'host' 'nope'}
@@ -165,7 +165,7 @@ VAR x : INT; END_VAR
 END_FUNCTION"#;
 
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E0404] Error: access control violation
+    [E1007] Error: access control violation
        ,-[ file:///test0.st:9:10 ]
        |
      9 |     x := test_helper();
@@ -190,7 +190,7 @@ VAR x : INT; END_VAR
 END_FUNCTION"#;
 
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E0404] Error: access control violation
+    [E1007] Error: access control violation
        ,-[ file:///test0.st:8:10 ]
        |
      8 |     x := test_only();
@@ -202,7 +202,7 @@ END_FUNCTION"#;
     ");
 }
 
-// E0248/E0249: a {wasm} pragma is validated where it is written. An unknown
+// E1505/E1504: a {wasm} pragma is validated where it is written. An unknown
 // name used to fall through to `unreachable` (or, on the conversion shape,
 // to a silent identity), and a pragma outside a FUNCTION was silently
 // dropped — all at exit 0.
@@ -216,7 +216,7 @@ fn invalid_unknown_wasm_instruction(mut with_db: RootDatabase) {
         END_FUNCTION
     "#;
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E0248] Error: invalid wasm pragma
+    [E1505] Error: invalid wasm pragma
        ,-[ file:///test0.st:4:19 ]
        |
      4 |             {wasm 'not.a.real.instruction' (params a b) (result BOGUS)}
@@ -235,7 +235,7 @@ fn invalid_unknown_wasm_instruction_with_type_basis(mut with_db: RootDatabase) {
         END_FUNCTION
     "#;
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E0248] Error: invalid wasm pragma
+    [E1505] Error: invalid wasm pragma
        ,-[ file:///test0.st:4:21 ]
        |
      4 |             {wasm a 'zorble' (params a) (result BOGUS)}
@@ -245,7 +245,7 @@ fn invalid_unknown_wasm_instruction_with_type_basis(mut with_db: RootDatabase) {
     ");
 }
 
-// E0253: a pragma's operands are the names it gives, resolved against the
+// E1506: a pragma's operands are the names it gives, resolved against the
 // FUNCTION. An unknown one used to be ignored while the FUNCTION's own
 // parameter list was lowered instead.
 
@@ -258,7 +258,7 @@ fn invalid_wasm_operand_not_declared(mut with_db: RootDatabase) {
         END_FUNCTION
     "#;
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E0253] Error: invalid wasm pragma
+    [E1506] Error: invalid wasm pragma
        ,-[ file:///test0.st:4:38 ]
        |
      4 |             {wasm 'f32.sqrt' (params b) (result Root)}
@@ -277,7 +277,7 @@ fn invalid_wasm_result_on_a_function_without_a_return(mut with_db: RootDatabase)
         END_FUNCTION
     "#;
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E0253] Error: invalid wasm pragma
+    [E1506] Error: invalid wasm pragma
        ,-[ file:///test0.st:4:49 ]
        |
      4 |             {wasm 'f32.sqrt' (params a) (result Root)}
@@ -300,7 +300,7 @@ fn valid_wasm_pragmas_write_locals_in_any_case(mut with_db: RootDatabase) {
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @"");
 }
 
-// E0255: a pragma's operands must fit its instruction, lane for lane. The
+// E1507: a pragma's operands must fit its instruction, lane for lane. The
 // module validator used to be the first to say so, at load, from a compile
 // that exited 0.
 
@@ -313,7 +313,7 @@ fn invalid_wasm_operand_in_the_wrong_lane(mut with_db: RootDatabase) {
         END_FUNCTION
     "#;
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E0255] Error: invalid wasm pragma
+    [E1507] Error: invalid wasm pragma
        ,-[ file:///test0.st:4:19 ]
        |
      4 |             {wasm 'f32.nearest' (params IN) (result NEAREST)}
@@ -332,7 +332,7 @@ fn invalid_wasm_operand_count(mut with_db: RootDatabase) {
         END_FUNCTION
     "#;
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E0255] Error: invalid wasm pragma
+    [E1507] Error: invalid wasm pragma
        ,-[ file:///test0.st:4:19 ]
        |
      4 |             {wasm 'f32.sqrt' (params a b) (result ROOT)}
@@ -354,7 +354,7 @@ fn invalid_wasm_result_in_the_wrong_lane(mut with_db: RootDatabase) {
         END_FUNCTION
     "#;
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E0255] Error: invalid wasm pragma
+    [E1507] Error: invalid wasm pragma
        ,-[ file:///test0.st:4:19 ]
        |
      4 |             {wasm 'i32.trunc_sat_f32_s' (params IN) (result TRUNCATE)}
@@ -378,7 +378,7 @@ fn invalid_wasm_string_operand_on_a_numeric_instruction(mut with_db: RootDatabas
         END_FUNCTION
     "#;
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E0255] Error: invalid wasm pragma
+    [E1507] Error: invalid wasm pragma
        ,-[ file:///test0.st:9:19 ]
        |
      9 |             {wasm 'f32.sqrt' (params s) (result ROOT)}
@@ -398,7 +398,7 @@ fn invalid_wasm_type_basis_without_a_form(mut with_db: RootDatabase) {
         END_FUNCTION
     "#;
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E0248] Error: invalid wasm pragma
+    [E1505] Error: invalid wasm pragma
        ,-[ file:///test0.st:4:22 ]
        |
      4 |             {wasm IN 'shl' (params IN N) (result SHIFT)}
@@ -451,7 +451,7 @@ fn invalid_wasm_pragma_outside_function(mut with_db: RootDatabase) {
         END_FUNCTION_BLOCK
     "#;
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E0249] Error: invalid wasm pragma
+    [E1504] Error: invalid wasm pragma
        ,-[ file:///test0.st:5:19 ]
        |
      5 |             {wasm 'i32.shl' (params a a) (result o)}
@@ -507,7 +507,7 @@ VAR_INPUT who : INT; END_VAR
 END_FUNCTION"#;
 
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E0243] Error: not representable on an extern FUNCTION
+    [E1502] Error: not representable on an extern FUNCTION
        ,-[ file:///test0.st:3:18 ]
        |
      3 | FUNCTION Greet : STRING
@@ -555,21 +555,21 @@ FUNCTION t : INT
 END_FUNCTION
 "#;
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E0252] Error: test pragma outside a FUNCTION
+    [E1503] Error: test pragma outside a FUNCTION
        ,-[ file:///test0.st:2:1 ]
        |
      2 | {test}
        | ^^^|^^
        |    `---- a {test} pragma cannot be placed on a FUNCTION_BLOCK
     ---'
-    [E0252] Error: test pragma outside a FUNCTION
+    [E1503] Error: test pragma outside a FUNCTION
         ,-[ file:///test0.st:11:5 ]
         |
      11 |     {test}
         |     ^^^|^^
         |        `---- a {test} pragma cannot be placed on a METHOD
     ----'
-    [E0252] Error: test pragma outside a FUNCTION
+    [E1503] Error: test pragma outside a FUNCTION
        ,-[ file:///test0.st:6:1 ]
        |
      6 | {test}

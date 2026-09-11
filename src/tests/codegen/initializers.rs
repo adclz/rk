@@ -818,13 +818,13 @@ fn retain_array_restores_the_whole_band(mut with_db: db::RootDatabase) {
 // Once-per-type initializers (user-ruled): TYPE defaults, FB/CLASS member
 // defaults and static-host initializers must be constant. CONSTANT
 // references FOLD (`:= k` becomes its value); anything site-dependent
-// (`:= SomeGlobal`) is REFUSED with E0320 — the per-host divergence is
+// (`:= SomeGlobal`) is REFUSED with E0401 — the per-host divergence is
 // inexpressible rather than fixed. Plain FUNCTION locals keep
 // runtime-evaluated inits; they are not type members. These used to be the
 // known_bug_* pins asserting silent zeros.
 // ---------------------------------------------------------------------------
 
-/// `:= a` (a non-CONSTANT global) is refused: E0320 lives in the semantics
+/// `:= a` (a non-CONSTANT global) is refused: E0401 lives in the semantics
 /// suite (`semantics::initializers`); here only the positive halves remain.
 #[rstest]
 fn global_init_from_constant_folds(mut with_db: db::RootDatabase) {
@@ -972,7 +972,7 @@ fn type_default_with_const_arithmetic_applies(mut with_db: db::RootDatabase) {
     assert_eq!(v, 5);
 }
 
-/// A TYPE default referencing a config CONSTANT is REFUSED (E0320): a TYPE
+/// A TYPE default referencing a config CONSTANT is REFUSED (E0401): a TYPE
 /// has no view into a CONFIGURATION's scope, so the reference cannot fold
 /// once-per-type. (It used to read silent zeros at both hosts.) The refusal
 /// itself is pinned in `semantics::initializers`; this pins that the

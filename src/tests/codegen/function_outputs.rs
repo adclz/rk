@@ -1,5 +1,5 @@
 //! FUNCTION `VAR_OUTPUT` at call sites: bound (`o => x`, a live pointer to the
-//! caller's l-value) and DISCARDED (omitted at the call — legal per E0233's
+//! caller's l-value) and DISCARDED (omitted at the call — legal per E0802's
 //! rules; the callee's pointer param is satisfied by a synthesized scratch
 //! local in the caller, see `build_call_args`).
 

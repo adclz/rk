@@ -141,7 +141,7 @@ mod tests {
 #[cfg(test)]
 mod parity {
     /// Every grafted builtin must be a name `rk check` accepts — otherwise a
-    /// working pragma draws E0248.
+    /// working pragma draws E1505.
     #[test]
     fn every_builtin_name_is_known_to_the_check() {
         for name in wasm_builtins_generated::BUILTIN_NAMES.keys() {

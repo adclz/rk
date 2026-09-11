@@ -44,6 +44,39 @@ fn json_escape(s: &str) -> String {
         .replace('\t', "\\t")
 }
 
+/// The reference's sections in reading order. A code's first two digits name
+/// its section, so a new code is filed by its number and nothing else.
+const SECTIONS: &[(&str, &str)] = &[
+    ("E00", "Syntax"),
+    ("E01", "Duplicates"),
+    ("E02", "Resolution"),
+    ("E03", "Type System"),
+    ("E04", "Initializers"),
+    ("E05", "Arrays"),
+    ("E06", "Enums"),
+    ("E07", "Subranges"),
+    ("E08", "Calls"),
+    ("E09", "References"),
+    ("E10", "Visibility"),
+    ("E11", "OOP"),
+    ("E12", "Control Flow"),
+    ("E13", "Recursion"),
+    ("E14", "Configuration"),
+    ("E15", "Pragmas"),
+    ("L00", "Lint pragmas"),
+    ("L01", "Linter Warning"),
+    ("L02", "Linter Info"),
+    ("L03", "Linter Hint"),
+];
+
+fn section_of(code: &str) -> &'static str {
+    SECTIONS
+        .iter()
+        .find(|(prefix, _)| code.starts_with(prefix))
+        .map(|(_, name)| *name)
+        .unwrap_or_else(|| panic!("{code} is outside every section range"))
+}
+
 fn slug(category: &str) -> String {
     category.to_lowercase().replace(' ', "-")
 }
@@ -65,6 +98,16 @@ fn main() {
 
     // ── Diagnostics: every example must produce the code it documents ──
     let examples = examples::all_examples();
+    for ex in &examples {
+        assert_eq!(
+            ex.category,
+            section_of(ex.code),
+            "{}: the code's range says `{}`, the example says `{}`",
+            ex.code,
+            section_of(ex.code),
+            ex.category
+        );
+    }
     let mut entries: Vec<DiagEntry> = Vec::new();
     let mut produced: Vec<(&str, std::collections::BTreeSet<String>)> = Vec::new();
     eprintln!("Diagnostics");
@@ -145,16 +188,17 @@ fn main() {
     let mut sitemap: Vec<String> = Vec::new();
     let mut twins: Vec<(String, String)> = Vec::new();
 
-    // Categories in first-seen order, entries sorted by code within each:
-    // the order the pages use, and the order the committed JSON keeps.
+    // Sections in reading order (SECTIONS), entries sorted by code within
+    // each: the order the pages use, and the order the committed JSON keeps.
     let mut by_category: BTreeMap<&str, Vec<&DiagEntry>> = BTreeMap::new();
-    let mut order: Vec<&str> = Vec::new();
     for e in &entries {
-        if !by_category.contains_key(e.category) {
-            order.push(e.category);
-        }
         by_category.entry(e.category).or_default().push(e);
     }
+    let order: Vec<&str> = SECTIONS
+        .iter()
+        .map(|(_, name)| *name)
+        .filter(|name| by_category.contains_key(name))
+        .collect();
     for list in by_category.values_mut() {
         list.sort_by_key(|e| e.code);
     }
@@ -272,7 +316,7 @@ fn main() {
         }
         side.push_str("</nav>\n");
         let page = format!(
-            "<h1>Diagnostics</h1>\n<p class=\"lede\">Every code the compiler and the linter can report, each with the example that produces it and the compiler's own output. Hover a marked range for the message. The generator runs every example before publishing, so this page never disagrees with the binary.</p>\n<p>The same data as <a href=\"/diagnostics.json\">JSON</a>, which <code>rk explain &lt;code&gt;</code> embeds.</p>\n<div class=\"ref\">\n{side}<div>\n{body}</div>\n</div>\n<a id=\"top\" href=\"#\">top</a>\n"
+            "<h1>Diagnostics</h1>\n<p class=\"lede\">Every code the compiler and the linter can report, each with the example that produces it and the compiler's own output. Hover a marked range for the message. The generator runs every example before publishing, so this page never disagrees with the binary.</p>\n<p><br>The same data as <a href=\"/diagnostics.json\">JSON</a>, which <code>rk explain &lt;code&gt;</code> embeds.</p>\n<div class=\"ref\">\n{side}<div>\n{body}</div>\n</div>\n<a id=\"top\" href=\"#\">top</a>\n"
         );
         write(&out_dir, "diagnostics/index.md", &index_md);
         write(
@@ -294,6 +338,162 @@ fn main() {
         );
         sitemap.push("/diagnostics/".into());
         twins.push(("/diagnostics/".into(), "/diagnostics/index.md".into()));
+    }
+
+    // The linter page. The rule table is DERIVED: names come from each
+    // example's `lint_rule`, severities from what the compiler actually
+    // printed, and the default column from the linter's own recommended
+    // set — so it cannot drift from the binary the way a hand-kept table does.
+    {
+        let severity_of = |e: &DiagEntry| -> &'static str {
+            let marker = format!("[{}] ", e.code);
+            e.report_text
+                .find(&marker)
+                .map(|i| &e.report_text[i + marker.len()..])
+                .and_then(|rest| rest.split(':').next())
+                .map(|word| match word.trim() {
+                    "Warning" => "warning",
+                    "Info" => "info",
+                    "Hint" => "hint",
+                    other if other.eq_ignore_ascii_case("error") => "error",
+                    _ => "info",
+                })
+                .unwrap_or("info")
+        };
+        let rule_of = |code: &str| -> Option<&'static str> {
+            examples
+                .iter()
+                .find(|ex| ex.code == code)
+                .and_then(|ex| ex.lint_rule)
+        };
+        let groups: [(&str, &str, &str); 5] = [
+            (
+                "L00",
+                "Pragmas",
+                "Misuse of a <code>{…}</code> pragma, and the notices <code>{info}</code> and <code>{warn}</code> raise on purpose.",
+            ),
+            (
+                "L01",
+                "Declarations",
+                "Declarations that are unused, shadowed or redundant.",
+            ),
+            (
+                "L02",
+                "Style",
+                "Matters of taste. Off unless you ask for them.",
+            ),
+            ("L03", "Suspicious code", "Probably a bug. On by default."),
+            (
+                "L04",
+                "Globals",
+                "Reaching a CONFIGURATION global without declaring it. On by default.",
+            ),
+        ];
+        let mut body = String::from(
+            "<h1>Linter</h1>\n<p class=\"lede\">Rules that read the same tree the compiler does, so a lint knows what a name means rather than how it is spelled.</p>\n",
+        );
+        body.push_str("<p>Lints appear in <code>rk check</code> and in your editor. They never run during <code>rk compile</code> or <code>rk test</code>, and they never change an exit code, so a lint cannot block a build or fail a pipeline on its own.</p>\n");
+        body.push_str("<h2>Configuration</h2>\n<p>The linter is on by default with the <em>recommended</em> set: the rules that report a probable bug rather than a preference. A workspace that never mentions the linter still gets them. <code>[linter]</code> tunes that set, it does not switch the linter on.</p>\n");
+        body.push_str("<div class=\"tablewrap\"><table><thead><tr><th><code>select</code></th><th>Rules that run</th></tr></thead><tbody>\n<tr><td>absent</td><td>the recommended set</td></tr>\n<tr><td><code>\"recommended\"</code></td><td>the same, said out loud</td></tr>\n<tr><td><code>\"all\"</code></td><td>every rule below</td></tr>\n<tr><td><code>\"none\"</code></td><td>none, unless <code>[linter.rules]</code> names one</td></tr>\n</tbody></table></div>\n");
+        body.push_str(&format!(
+            "<pre><code class=\"language-toml\">{}</code></pre>\n",
+            crate::highlight::toml_html(
+                "[linter]\nselect = \"all\"           # the default is \"recommended\"\n\n[linter.rules]\nyoda-condition = false   # opt out of one that select turned on"
+            )
+        ));
+        body.push_str("<p><code>[linter.rules]</code> overrides <code>select</code> both ways, so a style rule can be adopted one at a time rather than all at once. An unknown <code>select</code> value is a configuration error naming the three that exist; an unknown rule <em>name</em> is accepted and does nothing.</p>\n");
+        body.push_str("<h2>Silencing one place</h2>\n<p><code>{allow 'rule-name'}</code> silences a rule exactly where the code is deliberate, instead of turning it off everywhere. Above a POU it covers that POU; as a statement it covers the next statement and everything nested in it. One pragma takes several names. A name that does not exist is reported as <code>L0005</code> and silences nothing, because a typo must not silence the typo.</p>\n");
+        body.push_str(&format!(
+            "<pre><code class=\"language-iecst\">{}</code></pre>\n",
+            highlighter.html(
+                "{allow 'input-assignment'}\nFUNCTION_BLOCK Rebinder\n\t…\nEND_FUNCTION_BLOCK\n\n\t{allow 'missing-input-param'}\n\tmb(REQ := TRUE, MODE := USINT#1);"
+            )
+        ));
+
+        let mut md = String::from(
+            "# Linter\n\nRules that read the same tree the compiler does. Lints appear in `rk check` and in your editor; they never run during `rk compile` or `rk test`, and they never change an exit code.\n\nThe linter is on by default with the recommended set. `[linter] select` takes `\"recommended\"` (the default), `\"all\"` or `\"none\"`, and `[linter.rules]` overrides it either way. `{allow 'rule-name'}` silences one place.\n\n",
+        );
+
+        for (prefix, title, blurb) in groups {
+            let mut rows: Vec<&DiagEntry> = entries
+                .iter()
+                .filter(|e| e.code.starts_with(prefix))
+                .collect();
+            rows.sort_by_key(|e| e.code);
+            if rows.is_empty() {
+                continue;
+            }
+            body.push_str(&format!("<h2>{title}</h2>\n<p>{blurb}</p>\n"));
+            body.push_str("<div class=\"tablewrap\"><table><thead><tr><th>Code</th><th>Rule</th><th>Severity</th><th>Default</th><th>What it catches</th></tr></thead><tbody>\n");
+            md.push_str(&format!("## {title}\n\n| Code | Rule | Severity | Default | What it catches |\n| --- | --- | --- | --- | --- |\n"));
+            for e in rows {
+                let rule = rule_of(e.code).unwrap_or("");
+                let on = linter::RECOMMENDED_RULE_NAMES.contains(&rule);
+                let sev = severity_of(e);
+                body.push_str(&format!(
+                    "<tr><td class=\"k\"><a href=\"/diagnostics/#{code}\">{code}</a></td><td class=\"k\">{rule}</td><td>{sev}</td><td>{on}</td><td>{what}</td></tr>\n",
+                    code = e.code,
+                    rule = escape(rule),
+                    sev = sev,
+                    on = if on { "on" } else { "—" },
+                    what = escape(e.description),
+                ));
+                md.push_str(&format!(
+                    "| {} | `{}` | {} | {} | {} |\n",
+                    e.code,
+                    rule,
+                    sev,
+                    if on { "on" } else { "—" },
+                    e.description.replace('|', "\\|")
+                ));
+            }
+            body.push_str("</tbody></table></div>\n");
+            md.push('\n');
+        }
+        write(&out_dir, "linter/index.md", &md);
+        write(
+            &out_dir,
+            "linter/index.html",
+            &site::shell(
+                &Page {
+                    title: "Linter",
+                    description: "The lint rules rk applies, what each one catches, and how to configure or silence it.",
+                    path: "/linter/",
+                    md: Some("/linter/index.md"),
+                    eyebrow: "tools",
+                    body: &body,
+                    wide: false,
+                },
+                &base_url,
+            ),
+        );
+        sitemap.push("/linter/".into());
+        twins.push(("/linter/".into(), "/linter/index.md".into()));
+    }
+
+    // The formatter page.
+    {
+        let body = site::formatter_html(&highlighter);
+        let md = "# Formatter\n\n`rk fmt` rewrites every .st file; `rk fmt --check` reports what would change and exits 1 if anything would. In an editor it is the language server's Format Document.\n\nIt works on the parsed syntax tree, not the text, so it cannot produce a file that no longer parses, and it refuses a file that does not parse going in. Its suite formats twice and requires the second pass to change nothing; CI reformats the standard library and the grammar's fixtures on every change and checks that meaning never moved.\n\nIt has no line-width target and never reflows expressions: a long condition stays on one line if that is how you wrote it. For parameter lists and initialisers a line break inside the list is the instruction, so a list written on one line stays inline and a list containing a newline is expanded one element per line, with the closing bracket at the statement's indent. The parser tolerates a missing semicolon and the formatter writes it in, so every declaration, statement and directive comes back terminated, and a `USING` naming several namespaces takes one terminator at the end rather than one per name. What it normalises is indentation (one tab per level, every block), declarations (one per line, one space after the colon), spacing (one space around binary operators and assignment, none around `.`, `#` or `[]`), and it keeps comments where you put them. Comments and the insides of string literals are never touched. A blank line between declarations is kept as a paragraph break; several in a row collapse to one.\n";
+        write(&out_dir, "formatter/index.md", md);
+        write(
+            &out_dir,
+            "formatter/index.html",
+            &site::shell(
+                &Page {
+                    title: "Formatter",
+                    description: "How rk fmt formats Structured Text, and what it deliberately leaves alone.",
+                    path: "/formatter/",
+                    md: Some("/formatter/index.md"),
+                    eyebrow: "tools",
+                    body: &body,
+                    wide: false,
+                },
+                &base_url,
+            ),
+        );
+        sitemap.push("/formatter/".into());
+        twins.push(("/formatter/".into(), "/formatter/index.md".into()));
     }
 
     // Skills: raw files copied byte-identical, a rendered page beside each.
@@ -435,31 +635,60 @@ fn main() {
 
     // The front page.
     {
-        let install = format!("npx skills add {base_url}/skills.tar.gz --all");
+        // No package for them yet: the archive is the distribution, and it
+        // holds one directory per skill, so it unpacks straight into a skills
+        // directory with nothing to rename.
+        let install = format!(
+            "mkdir -p .claude/skills\ncurl -fsSL {base_url}/skills.tar.gz | tar xz -C .claude/skills"
+        );
         let body = format!(
-            r#"<h1 class="small-caps">Structured Text, checked by a compiler, written for agents.</h1>
-<p class="lede"><strong>rk</strong> compiles IEC 61131-3 Structured Text to WebAssembly. One binary checks, tests, formats and compiles a workspace, and deploys the result to a controller. The documentation is a set of <a href="https://agentskills.io">Agent Skills</a>: an agent loads the one its task needs, and the compiler has run every example on this site before it was published.</p>
+            r#"<h1 class="small-caps">PLC programming in the era of agentic engineering.</h1>
+<p class="lede"><strong>rk</strong> takes a PLC program from any editor to a running controller: check, test, compile, deploy, debug, in one binary.</p>
+{why}
 <h2>Install the skills</h2>
-<pre><code>{install}</code></pre>
-<p>Works with any agent that reads the Agent Skills format. One skill: <code>npx skills add {base_url}/skills/programming-st/SKILL.md</code>. Every skill is also a plain file at <code>/skills/&lt;name&gt;/SKILL.md</code>. New here? <a href="/skills/getting-started/">getting-started</a> is the first one to read.</p>
+<pre><code class="language-sh">{install_hl}</code></pre>
+<p>Unpack it wherever your agent keeps its skills; any agent that reads the Agent Skills format can use them. Every skill is also a plain file at <code>/skills/&lt;name&gt;/SKILL.md</code>, if you want one on its own. New here? <a href="/skills/getting-started/">getting-started</a> is the first one to read.</p>
 {list}
 <h2>Diagnostics</h2>
-<p>{codes} codes, one page per <a href="/diagnostics/">category</a>, each entry with the example that produces it and the compiler's own output. The same data as <a href="/diagnostics.json">JSON</a>, which <code>rk explain</code> embeds.</p>
-<h2>For agents</h2>
-<ul>
-<li>Every page has a Markdown twin. Send <code>Accept: text/markdown</code> to any URL, follow the <code>rel="alternate"</code> link, or append <code>.md</code>. The response carries <code>x-markdown-tokens</code>.</li>
-<li><a href="/llms.txt">/llms.txt</a> indexes everything; <a href="/llms-full.txt">/llms-full.txt</a> is every skill in one file, with its token count in the header.</li>
-<li><a href="/mcp">/mcp</a> is a read-only MCP server: <code>explain_diagnostic</code>, <code>search_diagnostics</code>, <code>list_skills</code>, <code>read_skill</code>. No authentication.</li>
-<li><a href="/robots.txt">robots.txt</a> allows every agent and states <code>Content-Signal: search=yes, ai-input=yes, ai-train=yes</code>.</li>
-<li>Discovery files under <a href="/.well-known/api-catalog">/.well-known/</a>: the API catalog (RFC 9727), the <a href="/.well-known/mcp/server-card.json">MCP server card</a>, and the <a href="/.well-known/agent-skills/index.json">agent-skills index</a> with a digest per skill.</li>
-<li>Nothing here needs JavaScript to read.</li>
-</ul>
+<p>{codes} codes, one page per <a href="/diagnostics/">category</a>, each entry with the example that produces it and the compiler's own output. <br>The same data as <a href="/diagnostics.json">JSON</a>, which <code>rk explain</code> embeds.</p>
+<h2>For agents too</h2>
+<p>Every page here is also Markdown, and this documentation is also a set of tools an agent can call.</p>
 "#,
             list = skill_list_html(&skills),
+            install_hl = crate::highlight::shell_html(&install),
+            why = site::why_html(),
             codes = entries.len()
         );
+        // Flush-left: a continuation line that kept its indentation would make
+        // the whole section an indented code block in Markdown.
         let mut md = format!(
-            "# rk\n\naa compiles IEC 61131-3 Structured Text to WebAssembly. The documentation is a set of Agent Skills whose examples the compiler verifies before publishing.\n\nInstall: `{install}`\n\n## Skills\n\n"
+            r#"# rk
+
+rk takes a PLC program from your editor to a running controller: check, test, compile, deploy, debug, in one binary with nothing to license on top. It compiles IEC 61131-3 Structured Text to WebAssembly. The documentation is a set of Agent Skills whose examples the compiler verifies before publishing.
+
+## Why rk
+
+**Plain text, all the way down.** Every artifact is a file you can read, diff and review: no wizards, no generated XML, no binary project. Even the standard library is ordinary Structured Text, and you can replace it.
+
+**The compiler answers.** Every error names what it found and, where it can, what you probably meant. All {codes} of them ship with an example this site re-runs through the compiler before publishing.
+
+**Onto the machine.** Edit, compile, and swap into a machine that never stopped scanning. What lands is sandboxed WebAssembly with its memory fixed at compile time and every scan bounded.
+
+**In your editor.** A full language server, and a formatter that works on the syntax tree rather than the text, so it cannot produce something that no longer parses.
+
+## Install the skills
+
+```sh
+{install}
+```
+
+Unpack it wherever your agent keeps its skills.
+Every skill is also a plain file at `/skills/<name>/SKILL.md`, if you want one on its own.
+
+## Skills
+
+"#,
+            codes = entries.len()
         );
         for s in &skills {
             md.push_str(&format!(
@@ -481,7 +710,7 @@ fn main() {
                     description: "A compiler and toolchain for IEC 61131-3 Structured Text, documented as Agent Skills the compiler verifies.",
                     path: "/",
                     md: Some("/index.md"),
-                    eyebrow: "structured text · webassembly",
+                    eyebrow: "",
                     body: &body,
                     wide: false,
                 },
@@ -519,8 +748,13 @@ fn main() {
         ".well-known/api-catalog",
         &site::api_catalog(&base_url),
     );
+    write(
+        &out_dir,
+        ".well-known/ai-catalog.json",
+        &site::ard_manifest(&base_url),
+    );
 
-    // The archive `npx skills add <url>` installs from.
+    // The archive the front page unpacks: one directory per skill, no wrapper.
     {
         let file = fs::File::create(out_dir.join("skills.tar.gz")).unwrap();
         let enc = flate2::write::GzEncoder::new(file, flate2::Compression::default());
@@ -567,6 +801,27 @@ fn popup_html(d: &DiagSpan) -> String {
     h
 }
 
+/// A line mark for each group, in the same weight as the page's other
+/// drawings: a flag to start, a prompt for the commands, `</>` for the
+/// language, sliders for the tools.
+fn group_icon(group: &str) -> String {
+    let inner = match group {
+        "getting" => r#"<path d="M6 20V4"/><path d="M6 5h11l-2.2 3.5L17 12H6z"/>"#,
+        "cli" => {
+            r#"<rect x="2.5" y="4.5" width="19" height="15" rx="2.5"/><path d="M6.5 9.5l3 2.5-3 2.5"/><path d="M12.5 15.5h5"/>"#
+        }
+        "programming" => {
+            r#"<path d="M8.5 8L4.5 12l4 4"/><path d="M15.5 8l4 4-4 4"/><path d="M13.4 5.5l-2.8 13"/>"#
+        }
+        _ => {
+            r#"<path d="M4 8h9.5M18.5 8H20M4 16h3.5M12.5 16H20"/><circle cx="16" cy="8" r="2.3"/><circle cx="10" cy="16" r="2.3"/>"#
+        }
+    };
+    format!(
+        r#"<svg viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">{inner}</svg>"#
+    )
+}
+
 fn skill_list_html(skills: &[skills::Skill]) -> String {
     let mut body = String::new();
     for (group, heading, blurb) in [
@@ -584,7 +839,8 @@ fn skill_list_html(skills: &[skills::Skill]) -> String {
         ("tool", "Tools", "The linter and the language server."),
     ] {
         body.push_str(&format!(
-            "<h2>{heading}</h2>\n<p>{blurb}</p>\n<ul class=\"skills\">\n"
+            "<h2 class=\"group\">{icon}{heading}</h2>\n<p>{blurb}</p>\n<ul class=\"skills\">\n",
+            icon = group_icon(group)
         ));
         for s in skills.iter().filter(|s| s.group() == group) {
             body.push_str(&format!(

@@ -21,16 +21,17 @@ const API_CATALOG_LINK = '</.well-known/api-catalog>; rel="api-catalog"';
 /** The Markdown twin of an HTML page, by the site's naming convention. */
 function markdownTwin(pathname: string): string | null {
   const p = pathname.endsWith("/") || /\.[a-z]+$/.test(pathname) ? pathname : pathname + "/";
-  if (p === "/") return "/index.md";
-  if (p === "/skills/") return "/skills/index.md";
-  if (p === "/diagnostics/") return "/diagnostics/index.md";
+  if (!p.endsWith("/")) return null;
+  // The shapes the generator emits, most specific first.
   let m = p.match(/^\/skills\/([^/]+)\/references\/([^/]+)\/$/);
   if (m) return `/skills/${m[1]}/references/${m[2]}.md`;
   m = p.match(/^\/skills\/([^/]+)\/$/);
   if (m) return `/skills/${m[1]}/SKILL.md`;
   m = p.match(/^\/diagnostics\/([^/]+)\/$/);
   if (m) return `/diagnostics/${m[1]}.md`;
-  return null;
+  // Every other page is a directory with an index.md beside its index.html,
+  // so a page added to the generator gets its twin without editing this.
+  return `${p}index.md`;
 }
 
 /** About four characters per token; a budget hint, never a promise. */
@@ -84,7 +85,7 @@ function createServer(env: Env, origin: string): McpServer {
     "explain_diagnostic",
     {
       description:
-        "What an rk diagnostic code means: its title, explanation, and an example that produces it. Codes look like E0301 or L0207.",
+        "What an rk diagnostic code means: its title, explanation, and an example that produces it. Codes look like E0301 or L0307.",
       inputSchema: { code: z.string().describe("A diagnostic code such as E0301") },
     },
     async ({ code }) => {
@@ -92,7 +93,7 @@ function createServer(env: Env, origin: string): McpServer {
       const wanted = code.trim().toUpperCase();
       const d = all.find((x) => x.code === wanted);
       if (!d) {
-        return text(`No diagnostic ${wanted}. Codes are E0001..E1xxx and L0xxx; use search_diagnostics to find one by words.`);
+        return text(`No diagnostic ${wanted}. Codes are E1101..E1xxx and L0xxx; use search_diagnostics to find one by words.`);
       }
       const example = d.sources.map((s) => "```iecst\n" + s + "\n```").join("\n\n");
       return text(`${d.code} ${d.title} (${d.category})\n\n${d.description}\n\nExample that produces it:\n\n${example}`);

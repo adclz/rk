@@ -479,7 +479,7 @@ fn for_bound_call_runs_once(mut with_db: db::RootDatabase) {
 
 /// A CONSTANT variable as the step: the folded value drives the DIRECTION.
 /// Lowered as a Load its sign was invisible, so `BY K` with `K = -1` read as
-/// ascending and ran zero times. (A plain variable step is E1007 now.)
+/// ascending and ran zero times. (A plain variable step is E1204 now.)
 #[rstest]
 fn for_descending_by_constant_variable(mut with_db: db::RootDatabase) {
     let source = r#"

@@ -14,7 +14,7 @@ fn invalid_subrange_type(mut with_db: RootDatabase) {
         "#;
 
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E0801] Error: invalid subrange type
+    [E0701] Error: invalid subrange type
        ,-[ file:///test0.st:3:20 ]
        |
      3 |             Range: BOOL (0..5);
@@ -35,7 +35,7 @@ fn invalid_start_value(mut with_db: RootDatabase) {
         "#;
 
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E0309] Error: invalid literal
+    [E0306] Error: invalid literal
        ,-[ file:///test0.st:3:26 ]
        |
      3 |             Range: UINT (-10..0);
@@ -54,7 +54,7 @@ fn invalid_end_value(mut with_db: RootDatabase) {
         "#;
 
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E0309] Error: invalid literal
+    [E0306] Error: invalid literal
        ,-[ file:///test0.st:3:29 ]
        |
      3 |             Range: UINT (0..-5);
@@ -82,7 +82,7 @@ fn invalid_subrange_value_type(mut with_db: RootDatabase) {
         "#;
 
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E0309] Error: invalid literal
+    [E0306] Error: invalid literal
         ,-[ file:///test0.st:11:22 ]
         |
       3 |             Range: UINT (0..5);
@@ -127,7 +127,7 @@ VAR p : INT (0..100); END_VAR
 END_PROGRAM
 "#;
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E0802] Error: value outside subrange
+    [E0702] Error: value outside subrange
        ,-[ file:///test0.st:4:10 ]
        |
      4 |     p := 101;
@@ -148,7 +148,7 @@ VAR p : INT (0..100); END_VAR
 END_PROGRAM
 "#;
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E0802] Error: value outside subrange
+    [E0702] Error: value outside subrange
        ,-[ file:///test0.st:4:10 ]
        |
      4 |     p := -1;
@@ -171,7 +171,7 @@ VAR u : UINT (0..5); END_VAR
 END_PROGRAM
 "#;
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E0309] Error: invalid literal
+    [E0306] Error: invalid literal
        ,-[ file:///test0.st:4:10 ]
        |
      3 | VAR u : UINT (0..5); END_VAR
@@ -212,7 +212,7 @@ VAR p : INT (0..100) := 200; END_VAR
 END_PROGRAM
 "#;
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E0802] Error: value outside subrange
+    [E0702] Error: value outside subrange
        ,-[ file:///test0.st:3:25 ]
        |
      3 | VAR p : INT (0..100) := 200; END_VAR
@@ -239,7 +239,7 @@ VAR r : INT; END_VAR
 END_PROGRAM
 "#;
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E0802] Error: value outside subrange
+    [E0702] Error: value outside subrange
        ,-[ file:///test0.st:9:20 ]
        |
      9 |     r := take(p := 200);
@@ -282,7 +282,7 @@ VAR a : ARRAY[0..3] OF INT (0..100); END_VAR
 END_PROGRAM
 "#;
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E0802] Error: value outside subrange
+    [E0702] Error: value outside subrange
        ,-[ file:///test0.st:5:13 ]
        |
      5 |     a[1] := 200;
@@ -334,7 +334,7 @@ fn invalid_subrange_bound_not_constant(mut with_db: RootDatabase) {
         END_FUNCTION
     "#;
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E0803] Error: invalid subrange bound
+    [E0703] Error: invalid subrange bound
        ,-[ file:///test0.st:3:34 ]
        |
      3 |         VAR n : INT; x : INT (0..n); END_VAR
@@ -344,7 +344,7 @@ fn invalid_subrange_bound_not_constant(mut with_db: RootDatabase) {
     ");
 }
 
-// E0802 reads the FOLDED bounds, so a CONSTANT-bounded subrange still
+// E0702 reads the FOLDED bounds, so a CONSTANT-bounded subrange still
 // rejects an out-of-range initializer.
 #[rstest]
 fn invalid_value_outside_constant_bounds(mut with_db: RootDatabase) {
@@ -355,7 +355,7 @@ fn invalid_value_outside_constant_bounds(mut with_db: RootDatabase) {
         END_FUNCTION
     "#;
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E0802] Error: value outside subrange
+    [E0702] Error: value outside subrange
        ,-[ file:///test0.st:4:31 ]
        |
      4 |         VAR x : INT (0..K) := 9; END_VAR
@@ -367,7 +367,7 @@ fn invalid_value_outside_constant_bounds(mut with_db: RootDatabase) {
     ");
 }
 
-// E0804: the two ends of a by-reference binding must agree about the
+// E0704: the two ends of a by-reference binding must agree about the
 // subrange, or the callee's writes go around the range check entirely.
 
 #[rstest]
@@ -384,7 +384,7 @@ fn invalid_subrange_bound_to_plain_inout(mut with_db: RootDatabase) {
         END_FUNCTION
     "#;
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E0804] Error: subrange mismatch across a reference
+    [E0704] Error: subrange mismatch across a reference
        ,-[ file:///test0.st:9:27 ]
        |
      9 |             scribble(x := s);
@@ -408,7 +408,7 @@ fn invalid_plain_bound_to_subrange_inout(mut with_db: RootDatabase) {
         END_FUNCTION
     "#;
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E0804] Error: subrange mismatch across a reference
+    [E0704] Error: subrange mismatch across a reference
        ,-[ file:///test0.st:9:27 ]
        |
      9 |             scribble(x := n);
@@ -432,7 +432,7 @@ fn invalid_plain_output_into_subrange(mut with_db: RootDatabase) {
         END_FUNCTION
     "#;
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E0804] Error: subrange mismatch across a reference
+    [E0704] Error: subrange mismatch across a reference
        ,-[ file:///test0.st:9:25 ]
        |
      9 |             emitfn(o => s);
@@ -485,7 +485,7 @@ fn invalid_mismatched_subrange_inout(mut with_db: RootDatabase) {
         END_FUNCTION
     "#;
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E0804] Error: subrange mismatch across a reference
+    [E0704] Error: subrange mismatch across a reference
         ,-[ file:///test0.st:10:27 ]
         |
      10 |             scribble(x := s);
@@ -513,7 +513,7 @@ fn invalid_subrange_field_bound_to_plain_inout(mut with_db: RootDatabase) {
         END_FUNCTION
     "#;
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E0804] Error: subrange mismatch across a reference
+    [E0704] Error: subrange mismatch across a reference
         ,-[ file:///test0.st:10:27 ]
         |
      10 |             scribble(x := r.f);
@@ -537,7 +537,7 @@ fn invalid_subrange_element_bound_to_plain_inout(mut with_db: RootDatabase) {
         END_FUNCTION
     "#;
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E0804] Error: subrange mismatch across a reference
+    [E0704] Error: subrange mismatch across a reference
        ,-[ file:///test0.st:9:27 ]
        |
      9 |             scribble(x := a[1]);
@@ -566,7 +566,7 @@ fn valid_nested_subrange_matching_inout(mut with_db: RootDatabase) {
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"");
 }
 
-// E0804 through REF(): a reference is a by-reference binding like a
+// E0704 through REF(): a reference is a by-reference binding like a
 // VAR_IN_OUT, so its pointee and the referenced variable must agree about the
 // subrange. Before, `REF_TO INT := REF(s)` with `s : INT (0..10)` checked
 // clean and `p^ := 500` went around the range check entirely.
@@ -595,42 +595,42 @@ FUNCTION f : INT
 END_FUNCTION
 "#;
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E0804] Error: subrange mismatch across a reference
+    [E0704] Error: subrange mismatch across a reference
         ,-[ file:///test0.st:12:27 ]
         |
      12 |         p : REF_TO INT := REF(s);
         |                           ^^^|^^
         |                              `---- 'INT (0..10)' binds by reference to 'INT': the subrange must match exactly
     ----'
-    [E0804] Error: subrange mismatch across a reference
+    [E0704] Error: subrange mismatch across a reference
         ,-[ file:///test0.st:15:10 ]
         |
      15 |     p := REF(s);
         |          ^^^|^^
         |             `---- 'INT (0..10)' binds by reference to 'INT': the subrange must match exactly
     ----'
-    [E0804] Error: subrange mismatch across a reference
+    [E0704] Error: subrange mismatch across a reference
         ,-[ file:///test0.st:16:17 ]
         |
      16 |     f := g(p := REF(s)) + g(REF(n));
         |                 ^^^|^^
         |                    `---- 'INT (0..10)' binds by reference to 'INT': the subrange must match exactly
     ----'
-    [E0804] Error: subrange mismatch across a reference
+    [E0704] Error: subrange mismatch across a reference
         ,-[ file:///test0.st:16:29 ]
         |
      16 |     f := g(p := REF(s)) + g(REF(n));
         |                             ^^^|^^
         |                                `---- 'Small (0..10)' binds by reference to 'INT': the subrange must match exactly
     ----'
-    [E0804] Error: subrange mismatch across a reference
+    [E0704] Error: subrange mismatch across a reference
         ,-[ file:///test0.st:18:10 ]
         |
      18 |     p := q;
         |          |
         |          `-- 'Small (0..10)' binds by reference to 'INT': the subrange must match exactly
     ----'
-    [E0804] Error: subrange mismatch across a reference
+    [E0704] Error: subrange mismatch across a reference
         ,-[ file:///test0.st:19:10 ]
         |
      19 |     q := REF(x);
@@ -643,7 +643,7 @@ END_FUNCTION
 #[rstest]
 fn a_reference_with_equal_bounds_or_a_differing_base_is_not_e0804(mut with_db: RootDatabase) {
     // Equal bounds agree whatever the spelling; a differing BASE is E0301's
-    // complaint alone, never stacked with E0804.
+    // complaint alone, never stacked with E0704.
     let source = r#"
 TYPE Small : INT (0..10); END_TYPE
 
@@ -685,7 +685,7 @@ fn invalid_subrange_type_default_out_of_bounds(mut with_db: RootDatabase) {
         END_TYPE
     "#;
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E0802] Error: value outside subrange
+    [E0702] Error: value outside subrange
        ,-[ file:///test0.st:3:35 ]
        |
      3 |             Pct : INT (0..100) := 200;

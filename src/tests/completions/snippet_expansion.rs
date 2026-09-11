@@ -103,7 +103,7 @@ fn a_snippet_writes_what_the_compiler_reads(with_db: RootDatabase) {
         let rendered = test_diagnostics(&mut db, &[&source]);
         let syntax: Vec<&str> = rendered
             .lines()
-            .filter(|line| line.starts_with("[E00") || line.starts_with("[E0050"))
+            .filter(|line| line.starts_with("[E00") || line.starts_with("[E0001"))
             .collect();
 
         assert!(

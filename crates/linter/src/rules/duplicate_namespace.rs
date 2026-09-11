@@ -7,12 +7,12 @@ use rustc_hash::FxHashMap;
 
 pub const NAME: &str = "duplicate-namespace";
 
-/// L0109: duplicate namespace declarations in the same file could be merged.
+/// L0204: duplicate namespace declarations in the same file could be merged.
 struct DuplicateNamespace;
 
 impl ErrorCode for DuplicateNamespace {
     fn code(&self) -> &'static str {
-        "L0109"
+        "L0204"
     }
 
     fn description(&self) -> &'static str {

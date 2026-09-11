@@ -4,7 +4,7 @@ use crate::builder::Parse;
 use crate::builder::expression::ParseVariableAccess;
 use crate::builder::semantic_index::SemanticIndexBuilder;
 use crate::check::errors::ToIdeDiagnostic;
-use crate::check::errors::e0_syntax::SyntaxError;
+use crate::check::errors::e00_syntax::SyntaxError;
 use crate::hir_def::expressions::expression::{FuncCall, ParamAssignKind};
 use crate::hir_def::expressions::statement::{CaseKind, Stmt, StmtKind};
 use crate::hir_def::interned::identifier::SpanIdent;

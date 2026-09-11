@@ -24,7 +24,7 @@ END_CONFIGURATION
     assert_snapshot!(
         test_single_lint(&mut with_db, &[source], "duplicate-configuration"),
         @r"
-    [L0112] Info: duplicate configuration in same file
+    [L0205] Info: duplicate configuration in same file
        ,-[ file:///test0.st:8:15 ]
        |
      2 | CONFIGURATION Plant
@@ -91,7 +91,7 @@ END_CONFIGURATION
     assert_snapshot!(
         test_single_lint(&mut with_db, &[source], "duplicate-configuration"),
         @r"
-    [L0112] Info: duplicate configuration in same file
+    [L0205] Info: duplicate configuration in same file
         ,-[ file:///test0.st:10:15 ]
         |
       4 | CONFIGURATION Plant

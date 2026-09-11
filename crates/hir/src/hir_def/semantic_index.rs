@@ -94,7 +94,7 @@ impl<'db> SemanticIndex<'db> {
             vec![],
             global_scope,
             None,
-);
+        );
         scopes.insert(global_scope.scope(db), Arc::new(scope));
 
         SemanticIndex {

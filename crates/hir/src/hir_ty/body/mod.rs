@@ -87,7 +87,10 @@ fn init_method_member_shadows<'db>(
     };
     for mvar in method.variables(db) {
         let name = mvar.get_name_ident(db);
-        if let Some(member) = members.iter().find(|m| m.get_name_ident(db).caseless(db) == name.caseless(db)) {
+        if let Some(member) = members
+            .iter()
+            .find(|m| m.get_name_ident(db).caseless(db) == name.caseless(db))
+        {
             result.method_shadowed_members.insert(*mvar, *member);
         }
     }
@@ -205,7 +208,6 @@ impl<'db> NullState<'db> {
 /// 2. There should be no [`Type::Infer`] types in the mappings. All types should be fully resolved,
 ///    those that can't be resolved will be represented as [`Type::Never`].
 
-
 #[derive(Debug, PartialEq, Eq, salsa::Update)]
 pub struct BodyInferenceResult<'db> {
     // Scope where this InferenceResult was emitted
@@ -263,7 +265,7 @@ pub struct BodyInferenceResult<'db> {
 
     /// The folded value of each FOR step expression the check accepted. The
     /// step's SIGN picks the loop's exit comparison at compile time, so a
-    /// step that does not fold is refused (E1007) — silently treating it as
+    /// step that does not fold is refused (E1204) — silently treating it as
     /// ascending ran a `BY n` loop with `n = -1` zero times.
     pub for_step_value: FxHashMap<Expr<'db>, i64>,
 
@@ -347,7 +349,7 @@ pub struct BodyInferenceResult<'db> {
 
     // The first `SUPER()` (base-body call) statement seen in a function block
     // body. Per IEC 6.6.7.2.9 rule 2, `SUPER()` shall occur once — a second
-    // occurrence is reported (E0519), pointing back to this first one.
+    // occurrence is reported (E1110), pointing back to this first one.
     pub first_super_body: Option<Stmt<'db>>,
 }
 
@@ -386,7 +388,7 @@ impl<'db> BodyInferenceResult<'db> {
         }
     }
 
-    /// E0804 for a reference bound from `REF(x)` or from another reference:
+    /// E0704 for a reference bound from `REF(x)` or from another reference:
     /// the pointee and the referenced variable must agree about the
     /// subrange, exactly as a VAR_IN_OUT must with its argument. `REF_TO
     /// INT := REF(s)` with `s : INT (0..10)` let `p^ := 500` go around the
@@ -396,7 +398,7 @@ impl<'db> BodyInferenceResult<'db> {
         db: &'db dyn WorkspaceDataBase,
         target: Type<'db>,
         value: Expr<'db>,
-    ) -> Option<crate::check::errors::e8_subrange::SubRangeError<'db>> {
+    ) -> Option<crate::check::errors::e07_subrange::SubRangeError<'db>> {
         use crate::HirNodeInfo;
         use crate::hir_def::expressions::expression::{ExprKind, PrimaryExpr, RefValue};
         let Type::RefTo(spec) = target.normalize(db) else {
@@ -427,13 +429,13 @@ impl<'db> BodyInferenceResult<'db> {
             (Some(p), Some(a)) => p == a,
             _ => false,
         };
-        (!agree).then(|| {
-            crate::check::errors::e8_subrange::SubRangeError::ByRefSubrangeMismatch {
+        (!agree).then(
+            || crate::check::errors::e07_subrange::SubRangeError::ByRefSubrangeMismatch {
                 span: value.get_span(db),
                 param: pointee,
                 arg: referenced,
-            }
-        })
+            },
+        )
     }
 
     pub(super) fn get_type_of_expr(&self, expr: Expr<'db>) -> Type<'db> {

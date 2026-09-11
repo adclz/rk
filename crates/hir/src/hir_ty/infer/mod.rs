@@ -15,8 +15,8 @@ use crate::{
 };
 
 pub mod cast;
-pub mod const_eval;
 pub mod coerce;
+pub mod const_eval;
 pub mod expr;
 pub mod literals;
 pub mod normalize;

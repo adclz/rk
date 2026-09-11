@@ -11,12 +11,12 @@ use rustc_hash::FxHashMap;
 
 pub const NAME: &str = "duplicate-var-section";
 
-/// L0103: duplicate variable section in the same POU.
+/// L0203: duplicate variable section in the same POU.
 struct DuplicateVarSection;
 
 impl ErrorCode for DuplicateVarSection {
     fn code(&self) -> &'static str {
-        "L0103"
+        "L0203"
     }
 
     fn description(&self) -> &'static str {

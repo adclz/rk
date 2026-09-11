@@ -47,7 +47,7 @@ FUNCTION fn1
 END_FUNCTION"#;
 
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E0318] Error: type mismatch
+    [E0305] Error: type mismatch
        ,-[ file:///test0.st:7:5 ]
        |
      4 |        test: BOOL;
@@ -58,7 +58,7 @@ END_FUNCTION"#;
        |        ^^^^^|^^^^
        |             `------ operator '+' cannot be applied to type 'BOOL'
     ---'
-    [E0309] Error: invalid literal
+    [E0306] Error: invalid literal
        ,-[ file:///test0.st:7:5 ]
        |
      7 |     IF 0.0 + test = 6 THEN

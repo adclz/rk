@@ -95,16 +95,10 @@ pub extern "C" fn rk_null_check(ptr: i32) -> i32 {
     ptr
 }
 
-/// Range check for a RUNTIME value entering a subrange-typed slot: raises an
-/// IEC exception when `value` leaves `[lower, upper]`, else returns it
-/// unchanged. The compile-time counterpart is E0802, which catches the
-/// constants; lowering wraps what E0802 cannot see.
-///
-/// Four variants, by lane and signedness, because the COMPARISON must match
-/// the base type: a UDINT bound like 4_000_000_000 is a negative i32 bit
-/// pattern, and only an unsigned compare reads it correctly. Sub-width bases
-/// ride the i32 lane under the representation invariant (signed
-/// sign-extended, unsigned zero-extended), so the same two comparisons hold.
+/// Range check for a runtime value entering a subrange slot: raises when
+/// `value` leaves `[lower, upper]`; the compile-time half is E0702. Four
+/// variants by lane and signedness, since a UDINT bound like
+/// 4_000_000_000 is a negative i32 bit pattern.
 #[unsafe(no_mangle)]
 pub extern "C" fn rk_range_check_i32(value: i32, lower: i32, upper: i32) -> i32 {
     if value < lower || value > upper {

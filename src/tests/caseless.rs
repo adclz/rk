@@ -217,7 +217,7 @@ fn duplicates_are_detected_in_any_case(mut with_db: RootDatabase) {
         END_FUNCTION_BLOCK
     "#;
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E0103] Error: duplicate definitions
+    [E0104] Error: duplicate definitions
        ,-[ file:///test0.st:5:17 ]
        |
      4 |                 fld : INT;
@@ -227,7 +227,7 @@ fn duplicates_are_detected_in_any_case(mut with_db: RootDatabase) {
        |                 ^|^
        |                  `--- duplicate field 'FLD'
     ---'
-    [E0104] Error: duplicate definitions
+    [E0105] Error: duplicate definitions
        ,-[ file:///test0.st:7:18 ]
        |
      7 |             E : (Red, RED);
@@ -236,7 +236,7 @@ fn duplicates_are_detected_in_any_case(mut with_db: RootDatabase) {
        |                        |
        |                        `--- enum variant 'RED' is already defined here
     ---'
-    [E0105] Error: duplicate definitions
+    [E0108] Error: duplicate definitions
         ,-[ file:///test0.st:14:23 ]
         |
      11 |         METHOD PUBLIC Run : INT
@@ -247,7 +247,7 @@ fn duplicates_are_detected_in_any_case(mut with_db: RootDatabase) {
         |                       ^|^
         |                        `--- duplicate method 'run'
     ----'
-    [E0228] Error: semantic violation
+    [E0309] Error: semantic violation
         ,-[ file:///test0.st:12:13 ]
         |
      12 |             Run := 1;
@@ -274,7 +274,7 @@ fn using_duplicates_fold(mut with_db: RootDatabase) {
         END_FUNCTION
     "#;
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E0109] Error: duplicate definitions
+    [E0111] Error: duplicate definitions
         ,-[ file:///test0.st:10:19 ]
         |
       9 |             USING Tools;
@@ -299,7 +299,7 @@ fn folded_variable_collides_with_the_return_value(mut with_db: RootDatabase) {
         END_FUNCTION
     "#;
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E0117] Error: duplicate definitions
+    [E0107] Error: duplicate definitions
        ,-[ file:///test0.st:4:13 ]
        |
      4 |             wide : LINT;

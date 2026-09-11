@@ -29,7 +29,7 @@ use crate::examples::ErrorExample;
 pub const KNOWN_UNDOCUMENTED: &[&str] = &[
     // Workspace-level: fires when the workspace has no config file, so no
     // SOURCE example can trigger it in the doc harness.
-    "E0217",
+    "E1401",
 ];
 
 /// The crates whose sources define diagnostic codes.
@@ -94,7 +94,7 @@ pub fn codes_in_output(output: &str) -> BTreeSet<String> {
         .collect()
 }
 
-/// A key may carry a suffix to give one code several examples (`E0309_SINT`);
+/// A key may carry a suffix to give one code several examples (`E0306_SINT`);
 /// the diagnostic it produces is the base code.
 pub fn base_code(code: &str) -> &str {
     code.split('_').next().unwrap_or(code)

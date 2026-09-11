@@ -698,7 +698,7 @@ module.exports = grammar({
     l_date_and_time_type_name: ($) => ciChoice("LDATE_AND_TIME", "LDT"),
 
     // Was /[0-9dhmsDHMS_.:-]+/ — the dhms subset meant `DT#garbage` could not
-    // lex at all and shredded into an identifier (a bogus E0204). Any letter
+    // lex at all and shredded into an identifier (a bogus E0201). Any letter
     // is a value now; the HIR answers with its date-format diagnostic.
     date_and_daytime: ($) => /[0-9a-zA-Z_]+([.:-][0-9][0-9a-zA-Z_]*)*/,
 

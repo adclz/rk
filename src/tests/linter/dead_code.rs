@@ -17,7 +17,7 @@ fn statement_after_return(mut with_db: RootDatabase) {
         END_FUNCTION
     "#;
     assert_snapshot!(test_single_lint(&mut with_db, &[source], "dead-code"), @r"
-    [L0301] Warning: unreachable code
+    [L0101] Warning: unreachable code
        ,-[ file:///test0.st:8:13 ]
        |
      8 |             x := 2;
@@ -59,7 +59,7 @@ fn statement_after_exit_in_loop(mut with_db: RootDatabase) {
         END_FUNCTION
     "#;
     assert_snapshot!(test_single_lint(&mut with_db, &[source], "dead-code"), @r"
-    [L0301] Warning: unreachable code
+    [L0101] Warning: unreachable code
        ,-[ file:///test0.st:9:17 ]
        |
      9 |                 test := 0;
@@ -85,7 +85,7 @@ fn statement_after_continue_in_loop(mut with_db: RootDatabase) {
         END_FUNCTION
     "#;
     assert_snapshot!(test_single_lint(&mut with_db, &[source], "dead-code"), @r"
-    [L0301] Warning: unreachable code
+    [L0101] Warning: unreachable code
        ,-[ file:///test0.st:8:17 ]
        |
      8 |                 test := i;
@@ -129,7 +129,7 @@ fn multiple_statements_after_return(mut with_db: RootDatabase) {
         END_FUNCTION
     "#;
     assert_snapshot!(test_single_lint(&mut with_db, &[source], "dead-code"), @r"
-    [L0301] Warning: unreachable code
+    [L0101] Warning: unreachable code
        ,-[ file:///test0.st:9:13 ]
        |
      9 |             x := 2;
@@ -138,7 +138,7 @@ fn multiple_statements_after_return(mut with_db: RootDatabase) {
        |
        | Note: lint rule: dead-code
     ---'
-    [L0301] Warning: unreachable code
+    [L0101] Warning: unreachable code
         ,-[ file:///test0.st:10:13 ]
         |
      10 |             y := 3;

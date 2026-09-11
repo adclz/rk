@@ -114,7 +114,7 @@ fn bit_offset_past_the_end_is_rejected(mut with_db: db::RootDatabase) {
         END_FUNCTION
     "#;
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E0229] Error: multibit access out of range
+    [E0808] Error: multibit access out of range
        ,-[ file:///test0.st:6:18 ]
        |
      4 |             b : BYTE;
@@ -141,7 +141,7 @@ fn byte_offset_past_the_end_is_rejected(mut with_db: db::RootDatabase) {
         END_FUNCTION
     "#;
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E0229] Error: multibit access out of range
+    [E0808] Error: multibit access out of range
        ,-[ file:///test0.st:6:18 ]
        |
      4 |             d : DWORD;
@@ -167,7 +167,7 @@ fn slice_wider_than_base_is_rejected(mut with_db: db::RootDatabase) {
         END_FUNCTION
     "#;
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E0229] Error: multibit access out of range
+    [E0808] Error: multibit access out of range
        ,-[ file:///test0.st:6:18 ]
        |
      4 |             w : WORD;
@@ -269,7 +269,7 @@ fn unknown_slice_size_is_refused(mut with_db: db::RootDatabase) {
         END_FUNCTION
     "#;
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E0250] Error: unknown multibit access size
+    [E1418] Error: unknown multibit access size
        ,-[ file:///test0.st:7:18 ]
        |
      7 |             y := w.%Z1;
@@ -304,14 +304,14 @@ fn offset_is_bounded_by_the_element_it_slices(mut with_db: db::RootDatabase) {
         END_FUNCTION
     "#;
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E0229] Error: multibit access out of range
+    [E0808] Error: multibit access out of range
         ,-[ file:///test0.st:12:18 ]
         |
      12 |             f := arr[k].9;
         |                  ^|^
         |                   `--- offset 9 is out of range for type 'BYTE' (valid range: 0..7)
     ----'
-    [E0229] Error: multibit access out of range
+    [E0808] Error: multibit access out of range
         ,-[ file:///test0.st:13:20 ]
         |
      13 |             f := s.fld.16;
@@ -336,7 +336,7 @@ fn sized_slice_wider_than_the_element(mut with_db: db::RootDatabase) {
         END_FUNCTION
     "#;
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E0229] Error: multibit access out of range
+    [E0808] Error: multibit access out of range
        ,-[ file:///test0.st:8:18 ]
        |
      8 |             w := arr[k].%W1;
@@ -362,7 +362,7 @@ fn a_variable_offset_is_not_a_slice(mut with_db: db::RootDatabase) {
         END_FUNCTION
     "#;
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E0211] Error: no such field
+    [E0202] Error: no such field
        ,-[ file:///test0.st:7:20 ]
        |
      4 |             b : BYTE;

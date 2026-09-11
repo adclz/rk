@@ -15,7 +15,7 @@ END_VAR
 END_FUNCTION
 "#;
     assert_snapshot!(test_single_lint(&mut with_db, &[source], "division-by-zero"), @r"
-    [L0305] Warning: division by zero
+    [L0102] Warning: division by zero
        ,-[ file:///test0.st:6:15 ]
        |
      6 |     x := 10 / 0;
@@ -38,7 +38,7 @@ END_VAR
 END_FUNCTION
 "#;
     assert_snapshot!(test_single_lint(&mut with_db, &[source], "division-by-zero"), @r"
-    [L0305] Warning: division by zero
+    [L0102] Warning: division by zero
        ,-[ file:///test0.st:6:17 ]
        |
      6 |     x := 10 MOD 0;
@@ -88,7 +88,7 @@ END_VAR
 END_FUNCTION
 "#;
     assert_snapshot!(test_single_lint(&mut with_db, &[source], "division-by-zero"), @r"
-    [L0305] Warning: division by zero
+    [L0102] Warning: division by zero
        ,-[ file:///test0.st:6:15 ]
        |
      6 |     x := 10 / (0);
@@ -111,7 +111,7 @@ END_VAR
 END_FUNCTION
 "#;
     assert_snapshot!(test_single_lint(&mut with_db, &[source], "division-by-zero"), @r"
-    [L0305] Warning: division by zero
+    [L0102] Warning: division by zero
        ,-[ file:///test0.st:6:17 ]
        |
      6 |     x := 10.0 / 0.0;
@@ -160,7 +160,7 @@ END_VAR
 END_FUNCTION
 "#;
     assert_snapshot!(test_single_lint(&mut with_db, &[source], "division-by-zero"), @r"
-    [L0305] Warning: division by zero
+    [L0102] Warning: division by zero
         ,-[ file:///test0.st:19:14 ]
         |
      19 |     a := 1 / SINT#0;
@@ -169,7 +169,7 @@ END_FUNCTION
         |
         | Note: lint rule: division-by-zero
     ----'
-    [L0305] Warning: division by zero
+    [L0102] Warning: division by zero
         ,-[ file:///test0.st:20:14 ]
         |
      20 |     b := 1 / INT#0;
@@ -178,7 +178,7 @@ END_FUNCTION
         |
         | Note: lint rule: division-by-zero
     ----'
-    [L0305] Warning: division by zero
+    [L0102] Warning: division by zero
         ,-[ file:///test0.st:21:14 ]
         |
      21 |     c := 1 / DINT#0;
@@ -187,7 +187,7 @@ END_FUNCTION
         |
         | Note: lint rule: division-by-zero
     ----'
-    [L0305] Warning: division by zero
+    [L0102] Warning: division by zero
         ,-[ file:///test0.st:22:14 ]
         |
      22 |     d := 1 / LINT#0;
@@ -196,7 +196,7 @@ END_FUNCTION
         |
         | Note: lint rule: division-by-zero
     ----'
-    [L0305] Warning: division by zero
+    [L0102] Warning: division by zero
         ,-[ file:///test0.st:23:14 ]
         |
      23 |     e := 1 / USINT#0;
@@ -205,7 +205,7 @@ END_FUNCTION
         |
         | Note: lint rule: division-by-zero
     ----'
-    [L0305] Warning: division by zero
+    [L0102] Warning: division by zero
         ,-[ file:///test0.st:24:14 ]
         |
      24 |     f := 1 / UINT#0;
@@ -214,7 +214,7 @@ END_FUNCTION
         |
         | Note: lint rule: division-by-zero
     ----'
-    [L0305] Warning: division by zero
+    [L0102] Warning: division by zero
         ,-[ file:///test0.st:25:14 ]
         |
      25 |     g := 1 / UDINT#0;
@@ -223,7 +223,7 @@ END_FUNCTION
         |
         | Note: lint rule: division-by-zero
     ----'
-    [L0305] Warning: division by zero
+    [L0102] Warning: division by zero
         ,-[ file:///test0.st:26:14 ]
         |
      26 |     h := 1 / ULINT#0;
@@ -232,7 +232,7 @@ END_FUNCTION
         |
         | Note: lint rule: division-by-zero
     ----'
-    [L0305] Warning: division by zero
+    [L0102] Warning: division by zero
         ,-[ file:///test0.st:27:14 ]
         |
      27 |     i := 1 / BYTE#0;
@@ -241,7 +241,7 @@ END_FUNCTION
         |
         | Note: lint rule: division-by-zero
     ----'
-    [L0305] Warning: division by zero
+    [L0102] Warning: division by zero
         ,-[ file:///test0.st:28:14 ]
         |
      28 |     j := 1 / WORD#0;
@@ -250,7 +250,7 @@ END_FUNCTION
         |
         | Note: lint rule: division-by-zero
     ----'
-    [L0305] Warning: division by zero
+    [L0102] Warning: division by zero
         ,-[ file:///test0.st:29:14 ]
         |
      29 |     k := 1 / DWORD#0;
@@ -259,7 +259,7 @@ END_FUNCTION
         |
         | Note: lint rule: division-by-zero
     ----'
-    [L0305] Warning: division by zero
+    [L0102] Warning: division by zero
         ,-[ file:///test0.st:30:14 ]
         |
      30 |     l := 1 / LWORD#0;
@@ -268,7 +268,7 @@ END_FUNCTION
         |
         | Note: lint rule: division-by-zero
     ----'
-    [L0305] Warning: division by zero
+    [L0102] Warning: division by zero
         ,-[ file:///test0.st:31:16 ]
         |
      31 |     m := 1.0 / REAL#0.0;
@@ -277,7 +277,7 @@ END_FUNCTION
         |
         | Note: lint rule: division-by-zero
     ----'
-    [L0305] Warning: division by zero
+    [L0102] Warning: division by zero
         ,-[ file:///test0.st:32:16 ]
         |
      32 |     n := 1.0 / LREAL#0.0;
@@ -304,7 +304,7 @@ END_VAR
 END_FUNCTION
 "#;
     assert_snapshot!(test_single_lint(&mut with_db, &[source], "division-by-zero"), @r"
-    [L0305] Warning: division by zero
+    [L0102] Warning: division by zero
        ,-[ file:///test0.st:8:14 ]
        |
      8 |     a := 1 / 16#0;
@@ -313,7 +313,7 @@ END_FUNCTION
        |
        | Note: lint rule: division-by-zero
     ---'
-    [L0305] Warning: division by zero
+    [L0102] Warning: division by zero
        ,-[ file:///test0.st:9:14 ]
        |
      9 |     b := 1 / 2#0;
@@ -322,7 +322,7 @@ END_FUNCTION
        |
        | Note: lint rule: division-by-zero
     ---'
-    [L0305] Warning: division by zero
+    [L0102] Warning: division by zero
         ,-[ file:///test0.st:10:14 ]
         |
      10 |     c := 1 / 8#0;

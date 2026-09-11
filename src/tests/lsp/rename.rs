@@ -413,7 +413,7 @@ END_FUNCTION
 
 /// A library file is not the workspace's to edit. Renaming one of its names
 /// rewrote every use and left the declaration behind, so the next check
-/// reported E0210 on code the reader had not touched.
+/// reported E0203 on code the reader had not touched.
 #[rstest]
 #[case::a_library_use("LibFn()", None)]
 #[case::a_workspace_use("Mine();", Some(2))]

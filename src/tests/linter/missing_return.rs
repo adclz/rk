@@ -15,7 +15,7 @@ END_VAR
 END_FUNCTION
 "#;
     assert_snapshot!(test_single_lint(&mut with_db, &[source], "missing-return"), @r"
-    [L0316] Warning: missing return assignment
+    [L0114] Warning: missing return assignment
        ,-[ file:///test0.st:2:10 ]
        |
      2 | FUNCTION foo : INT
@@ -65,7 +65,7 @@ FUNCTION_BLOCK MyFB
 END_FUNCTION_BLOCK
 "#;
     assert_snapshot!(test_single_lint(&mut with_db, &[source], "missing-return"), @r"
-    [L0316] Warning: missing return assignment
+    [L0114] Warning: missing return assignment
        ,-[ file:///test0.st:3:12 ]
        |
      3 |     METHOD compute : INT
@@ -102,14 +102,14 @@ END_VAR
 END_FUNCTION
 "#;
     assert_snapshot!(test_single_lint(&mut with_db, &[source], "missing-return"), @r"
-    [E0117] Error: duplicate definitions
+    [E0107] Error: duplicate definitions
        ,-[ file:///test0.st:4:5 ]
        |
      4 |     MyFn : INT;
        |     ^^|^
        |       `--- variable 'MyFn' is the FUNCTION's return value
     ---'
-    [L0316] Warning: missing return assignment
+    [L0114] Warning: missing return assignment
        ,-[ file:///test0.st:2:10 ]
        |
      2 | FUNCTION MyFn : INT
@@ -122,7 +122,7 @@ END_FUNCTION
 }
 
 /// An `{extern}` FUNCTION never assigns its return value in the body — the
-/// import's result IS the return, and E0243 refuses a body anyway. The rule
+/// import's result IS the return, and E1502 refuses a body anyway. The rule
 /// exempts it like `empty-body` and `unused-variable` already do.
 #[rstest]
 fn extern_function_is_exempt(mut with_db: RootDatabase) {
@@ -169,7 +169,7 @@ fn a_pragma_into_a_local_does_not_assign_the_return(mut with_db: RootDatabase) {
         END_FUNCTION
     "#;
     assert_snapshot!(test_single_lint(&mut with_db, &[source], "missing-return"), @r"
-    [L0316] Warning: missing return assignment
+    [L0114] Warning: missing return assignment
        ,-[ file:///test0.st:2:18 ]
        |
      2 |         FUNCTION ROOT : REAL

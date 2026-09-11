@@ -2,13 +2,12 @@ use db::WorkspaceDataBase;
 use ide_diagnostic::IdeDiagnostic;
 use rustc_hash::FxHashMap;
 
+use crate::check::errors::e14_config::ConfigError;
+use crate::check::errors::e14_config::UnschedulableReason;
+use crate::check::errors::e14_config::UnsupportedConfigKind;
 use crate::{
     HirNodeInfo,
-    check::errors::{
-        ToIdeDiagnostic,
-        e1_duplicates::DuplicateError,
-        e2_resolve::{ResolveError, UnschedulableReason, UnsupportedConfigKind},
-    },
+    check::errors::{ToIdeDiagnostic, e01_duplicates::DuplicateError},
     hir_def::{
         config::{ConfigDecl, ProgConfig, ResourceDecl, TaskConfig},
         expressions::spec::SpecKind,
@@ -85,8 +84,8 @@ pub struct ConfigInferenceResult<'db> {
     /// What actually runs — see [`ResolvedSchedule`].
     pub schedule: ResolvedSchedule<'db>,
 
-    /// Resolved PRIORITY per TASK. Absent when PRIORITY was omitted (E0035) or
-    /// unusable (E0241) — either way consumers get a number or nothing
+    /// Resolved PRIORITY per TASK. Absent when PRIORITY was omitted (E1405) or
+    /// unusable (E1406) — either way consumers get a number or nothing
     pub task_priority: FxHashMap<TaskConfig<'db>, u32>,
 
     /// Scan period in nanoseconds for each TASK that can actually be scheduled.
@@ -124,16 +123,16 @@ pub fn infer_config_result<'db>(
 /// Validates a single CONFIGURATION declaration:
 ///
 /// **Phase 1 — Duplicate detection** (scoped per config / per resource):
-/// - Duplicate RESOURCE names within the config (E0116)
+/// - Duplicate RESOURCE names within the config (E0115)
 /// - Duplicate TASK names at config level / within each resource (E0114)
-/// - Duplicate PROGRAM instance names at config level / within each resource (E0115)
+/// - Duplicate PROGRAM instance names at config level / within each resource (E0113)
 ///
 /// **Phase 2 — Reference validation**:
-/// - Every `PROGRAM ... : <ProgType>` must reference a known PROGRAM declaration (E0218)
-/// - Every `PROGRAM ... WITH <task>` must reference a TASK declared in the same scope (E0219)
+/// - Every `PROGRAM ... : <ProgType>` must reference a known PROGRAM declaration (E0203)
+/// - Every `PROGRAM ... WITH <task>` must reference a TASK declared in the same scope (E1411)
 ///
 /// **Phase 3 — VAR_CONFIG validation**:
-/// - Each `VAR_CONFIG` path is resolved against program instances (E0222, E0223)
+/// - Each `VAR_CONFIG` path is resolved against program instances (E1413, E1414)
 /// - Init expressions are type-checked against the resolved variable type
 fn infer_config<'db>(
     db: &'db dyn WorkspaceDataBase,
@@ -256,7 +255,7 @@ fn validate_prog_config<'db>(
     result: &mut ConfigInferenceResult<'db>,
 ) {
     // Program type resolution is now handled by infer_config_resources in signature inference.
-    // Unknown program types are reported as E0210 (NoNamespaceItemFound) by infer_spec.
+    // Unknown program types are reported as E0203 (NoNamespaceItemFound) by infer_spec.
 
     // Resolve the WITH <task> reference if present.
     match p.task(db) {
@@ -266,7 +265,7 @@ fn validate_prog_config<'db>(
             }
             None => {
                 result.errors.push(
-                    ResolveError::UnknownTaskRef { task: task_ref }
+                    ConfigError::UnknownTaskRef { task: task_ref }
                         .to_diagnostic(db, p.get_scope_id(db).file(db)),
                 );
             }
@@ -275,7 +274,7 @@ fn validate_prog_config<'db>(
         // silence, so the program compiled and simply never ran.
         None => {
             result.errors.push(
-                ResolveError::ProgramWithoutTask {
+                ConfigError::ProgramWithoutTask {
                     instance: p.name(db),
                 }
                 .to_diagnostic(db, p.get_scope_id(db).file(db)),
@@ -304,12 +303,10 @@ fn report_unsupported_conf_elements<'db>(
             | ProgConfElement::Connection(ProgCnxn::Sink { path, .. }) => {
                 (*path, UnsupportedConfigKind::ProgramConnection)
             }
-            ProgConfElement::FbTask(fb) => {
-                (fb.path, UnsupportedConfigKind::FbTaskAssociation)
-            }
+            ProgConfElement::FbTask(fb) => (fb.path, UnsupportedConfigKind::FbTaskAssociation),
         };
         result.errors.push(
-            ResolveError::UnsupportedConfigElement { expr, kind }
+            ConfigError::UnsupportedConfigElement { expr, kind }
                 .to_diagnostic(db, p.get_scope_id(db).file(db)),
         );
     }
@@ -335,7 +332,7 @@ fn report_unschedulable_bound_tasks<'db>(
         };
         reported.push(task);
         result.errors.push(
-            ResolveError::UnschedulableTask {
+            ConfigError::UnschedulableTask {
                 task: task.name(db),
                 reason,
             }
@@ -374,7 +371,11 @@ fn build_resolved_schedule<'db>(
             let Some(task) = result.task_of_prog.get(p).copied() else {
                 continue; // no resolvable WITH <task> — already diagnosed
             };
-            let Some(program) = result.prog_instance.get(&p.name(db).ident.caseless(db)).copied() else {
+            let Some(program) = result
+                .prog_instance
+                .get(&p.name(db).ident.caseless(db))
+                .copied()
+            else {
                 continue; // program type did not resolve — already diagnosed
             };
             // A task that cannot run contributes nothing to run.
@@ -432,7 +433,7 @@ fn resolve_task_intervals<'db>(
                     result.task_priority.insert(*task, p);
                 }
                 Err(_) => result.errors.push(
-                    ResolveError::InvalidPriority {
+                    ConfigError::InvalidPriority {
                         task: task.name(db),
                         value: text,
                     }
@@ -490,7 +491,6 @@ fn interval_nanos<'db>(
     }
 }
 
-
 /// A TIME/LTIME literal expression in nanoseconds.
 fn time_literal_nanos<'db>(
     db: &'db dyn WorkspaceDataBase,
@@ -531,7 +531,7 @@ fn validate_config_inst_inits<'db>(
         // construct that does nothing is more misleading than a plain
         // rejection, so say so.
         errors.push(
-            ResolveError::UnsupportedConfigElement {
+            ConfigError::UnsupportedConfigElement {
                 expr: decl.path,
                 kind: UnsupportedConfigKind::InstanceInit,
             }
@@ -557,7 +557,9 @@ fn validate_config_inst_inits<'db>(
                 .any(|r| r.name(db).ident.caseless(db) == name)
         };
         let instance_at = match &steps[0] {
-            PathExprWalkStep::Field { ident, .. } if names_a_resource(ident) && steps.len() > 1 => 1,
+            PathExprWalkStep::Field { ident, .. } if names_a_resource(ident) && steps.len() > 1 => {
+                1
+            }
             _ => 0,
         };
         let first_ident = match &steps[instance_at] {
@@ -569,7 +571,7 @@ fn validate_config_inst_inits<'db>(
             Some(prog) => *prog,
             None => {
                 errors.push(
-                    ResolveError::ConfigInstInitUnknownInstance {
+                    ConfigError::ConfigInstInitUnknownInstance {
                         instance_name: first_ident,
                     }
                     .to_diagnostic(db, config.get_scope_id(db).file(db)),
@@ -595,7 +597,7 @@ fn validate_config_inst_inits<'db>(
                 Some(scope) => scope,
                 None => {
                     errors.push(
-                        ResolveError::ConfigInstInitFieldNotFound {
+                        ConfigError::ConfigInstInitFieldNotFound {
                             field: field_ident,
                             parent_type: current_type,
                         }
@@ -607,13 +609,16 @@ fn validate_config_inst_inits<'db>(
             };
 
             let def_map = scope.def_map(db);
-            match def_map.global_variables.get(&field_ident.ident.caseless(db)) {
+            match def_map
+                .global_variables
+                .get(&field_ident.ident.caseless(db))
+            {
                 Some(var) => {
                     current_type = var.spec(db).infer(db);
                 }
                 None => {
                     errors.push(
-                        ResolveError::ConfigInstInitFieldNotFound {
+                        ConfigError::ConfigInstInitFieldNotFound {
                             field: field_ident,
                             parent_type: current_type,
                         }

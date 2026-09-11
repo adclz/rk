@@ -4,11 +4,11 @@ use rustc_hash::FxHashMap;
 
 use crate::{
     CallSite,
-    check::errors::{ToIdeDiagnostic, e1_duplicates::DuplicateError, e6_array::ArrayError},
+    check::errors::{ToIdeDiagnostic, e01_duplicates::DuplicateError, e05_array::ArrayError},
     hir_def::{
         expressions::expression::{Expr, InitExpr, InitExprKind},
-        pous::pou::Pou,
         interned::identifier::{CaselessIdent, Ident},
+        pous::pou::Pou,
         scope::{ScopeId, ScopeKind},
         semantic_index::get_scope,
     },
@@ -92,7 +92,7 @@ impl<'db> InitInference<'db> {
                 for leaf in leaves {
                     if !crate::hir_ty::infer::const_eval::init_leaf_is_constant(db, leaf.value) {
                         self.errors.push(
-                            crate::check::errors::e3_type::TypeError::InitNotConstant {
+                            crate::check::errors::e04_init::InitError::InitNotConstant {
                                 value: leaf.value,
                             }
                             .to_diagnostic(db, self.scope.file(db)),
@@ -233,7 +233,7 @@ impl<'db> InitExprInferenceResult<'db> {
                         // Multi-dimensional bracket init: an inner bracket opens the next
                         // dimension. Detect brackets even when wrapped in a repetition
                         // (`n([..])`) — otherwise `[2([1,2,3])]` would type-check its inner
-                        // bracket against the scalar element type and spuriously emit E0213
+                        // bracket against the scalar element type and spuriously emit E0508
                         // (and the result would depend on whether a bracket sibling exists).
                         let has_inner_brackets = values.iter().any(step_contains_bracket);
 
@@ -377,7 +377,8 @@ impl<'db> InitExprInferenceResult<'db> {
                 let saved_root = ctx.array_root;
                 let saved_positions = ctx.positions.clone();
                 let saved_overflow = ctx.overflow_reported.clone();
-                let own_array = matches!(field_type.normalize(db), Type::Array(_)).then_some(field_type);
+                let own_array =
+                    matches!(field_type.normalize(db), Type::Array(_)).then_some(field_type);
                 ctx.reset_for_new_array(own_array);
 
                 self.resolve_step(db, field_type, place, body_ctx, ctx, value);
@@ -429,7 +430,7 @@ impl<'db> InitExprInferenceResult<'db> {
     /// the flat form has six cells to fill, not the first dimension's two.
     ///
     /// Bounds are folded against the LIVE result (this runs inside init
-    /// inference), through the same evaluator as the E0601/E0602 check.
+    /// inference), through the same evaluator as the E0501/E0502 check.
     /// `as_range` bailed on a CONSTANT bound — and on a NEGATIVE literal one,
     /// so `ARRAY[-2..2]` never had its initializer length checked at all.
     fn cells_from(

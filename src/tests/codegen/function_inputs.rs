@@ -54,7 +54,7 @@ fn fn_array_input(mut with_db: db::RootDatabase) {
     assert_eq!(result, 10, "array input by value: 1+2+3+4");
 }
 
-/// Value semantics: the callee writes to its input (L0303 lint, legal) — the
+/// Value semantics: the callee writes to its input (L0113 lint, legal) — the
 /// mutation lands in the call-entry snapshot, never in the caller's struct.
 #[rstest]
 fn fn_struct_input_callee_write_invisible(mut with_db: db::RootDatabase) {
@@ -75,7 +75,7 @@ fn fn_struct_input_callee_write_invisible(mut with_db: db::RootDatabase) {
             test := s.x + s.y;
         END_FUNCTION
     "#;
-    // Unchecked compile: writing to a VAR_INPUT raises the L0303 lint.
+    // Unchecked compile: writing to a VAR_INPUT raises the L0113 lint.
     let wasm = compile_to_wasm(&mut with_db, source);
     let result: i32 = super::execute_wasm(&wasm, "test", ());
     assert_eq!(

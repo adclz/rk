@@ -12,17 +12,17 @@ use ide_diagnostic::{ErrorCode, IdeDiagnostic, Related, diag};
 
 pub const NAME: &str = "missing-input-param";
 
-/// L0204: a FUNCTION_BLOCK or PROGRAM call does not pass every declared
+/// L0303: a FUNCTION_BLOCK or PROGRAM call does not pass every declared
 /// VAR_INPUT. Per other toolchains this is *not* a hard error — the FB/PROGRAM
 /// instance retains the previous value (or compiler-initialised default).
 /// We surface it as a lint so the user is notified that not all inputs
-/// were wired. FUNCTION/METHOD callsites are covered by `E0233` instead,
+/// were wired. FUNCTION/METHOD callsites are covered by `E0802` instead,
 /// so this lint deliberately skips them to avoid overlap.
 struct MissingInputParam;
 
 impl ErrorCode for MissingInputParam {
     fn code(&self) -> &'static str {
-        "L0204"
+        "L0303"
     }
 
     fn description(&self) -> &'static str {
@@ -46,7 +46,7 @@ pub fn check_func_call<'db>(
         },
     };
 
-    // FUNCTION and METHOD calls are covered by the hard-error E0233 path.
+    // FUNCTION and METHOD calls are covered by the hard-error E0802 path.
     // Linting them would duplicate that diagnostic.
     if !matches!(callable, CallableType::FunctionBlock(_)) {
         return;

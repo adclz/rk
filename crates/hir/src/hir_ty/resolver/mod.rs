@@ -6,9 +6,10 @@ pub mod name;
 pub mod visibility;
 pub mod walk;
 
+use crate::check::errors::e14_config::ConfigError;
 use crate::{
     CallSite, HasName, HirNodeInfo,
-    check::errors::{ToIdeDiagnostic, e2_resolve::ResolveError, e6_array::ArrayError},
+    check::errors::{ToIdeDiagnostic, e02_resolve::ResolveError, e05_array::ArrayError},
     hir_def::{
         expressions::{
             expression::{
@@ -208,7 +209,7 @@ impl<'db> Resolver<'db> {
                 ctx.type_of_direct_variable
                     .insert(dv, Type::DirectVariable((dv, var_access.multibits(db))));
                 ctx.errors.push(
-                    ResolveError::DirectVariableUnsupported {
+                    ConfigError::DirectVariableUnsupported {
                         site: CallSite::from_scoped(db, &var_access),
                         // The access text, which includes any partial
                         // selection (`%IX0.0` = address `%IX0` + bit `.0`).
@@ -241,7 +242,7 @@ impl<'db> Resolver<'db> {
                 // No value to walk from: a TYPE's or a CONFIGURATION's own
                 // initializer. A name here is a POU, the type of an enum
                 // value (`TYPE Color : (Red, Green) := Color#Green`), which
-                // nothing typed before, so every such default was E0702 on
+                // nothing typed before, so every such default was E0602 on
                 // '{unknown}'. A local name is left to the once-per-type
                 // rule, which refuses it as not constant.
                 if path_expr.invocation(db).is_none()
@@ -320,7 +321,10 @@ impl<'db> Resolver<'db> {
                 .type_of_path_expr
                 .get(&index_expr.path)
                 .map(|t| t.normalize(db));
-            let base_dim = match (ctx.adjustments_of_path_expr(index_expr.path), &indexed_array) {
+            let base_dim = match (
+                ctx.adjustments_of_path_expr(index_expr.path),
+                &indexed_array,
+            ) {
                 (Some(adjs), Some(arr_ty)) => {
                     use crate::hir_ty::body::AdjustmentInfo;
                     adjs.array_dimensions(arr_ty)
@@ -364,11 +368,11 @@ impl<'db> Resolver<'db> {
                 // resolved, so a named CONSTANT folds too; the walk-side
                 // check ran first and could fold only literals.
                 if let Some(Type::Array(arr)) = indexed_array
-                    && let Some(val) =
-                        crate::hir_ty::infer::const_eval::const_int(db, *sub, ctx)
+                    && let Some(val) = crate::hir_ty::infer::const_eval::const_int(db, *sub, ctx)
                     && let Some((lo, hi)) = {
                         let dims = crate::hir_ty::infer::const_eval::array_dimensions(db, arr);
-                        dims.get(base_dim + i).and_then(|(l, u)| Some(((*l)?, (*u)?)))
+                        dims.get(base_dim + i)
+                            .and_then(|(l, u)| Some(((*l)?, (*u)?)))
                     }
                     && (val < lo || val > hi)
                 {

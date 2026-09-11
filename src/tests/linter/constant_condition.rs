@@ -14,7 +14,7 @@ FUNCTION test : INT
 END_FUNCTION
 "#;
     assert_snapshot!(test_single_lint(&mut with_db, &[source], "constant-condition"), @r"
-    [L0304] Warning: constant condition
+    [L0103] Warning: constant condition
        ,-[ file:///test0.st:3:8 ]
        |
      3 |     IF TRUE THEN
@@ -36,7 +36,7 @@ FUNCTION test : INT
 END_FUNCTION
 "#;
     assert_snapshot!(test_single_lint(&mut with_db, &[source], "constant-condition"), @r"
-    [L0304] Warning: constant condition
+    [L0103] Warning: constant condition
        ,-[ file:///test0.st:3:8 ]
        |
      3 |     IF FALSE THEN
@@ -58,7 +58,7 @@ FUNCTION test : INT
 END_FUNCTION
 "#;
     assert_snapshot!(test_single_lint(&mut with_db, &[source], "constant-condition"), @r"
-    [L0304] Warning: constant condition
+    [L0103] Warning: constant condition
        ,-[ file:///test0.st:3:11 ]
        |
      3 |     WHILE TRUE DO
@@ -81,7 +81,7 @@ FUNCTION test : INT
 END_FUNCTION
 "#;
     assert_snapshot!(test_single_lint(&mut with_db, &[source], "constant-condition"), @r"
-    [L0304] Warning: constant condition
+    [L0103] Warning: constant condition
        ,-[ file:///test0.st:5:11 ]
        |
      5 |     UNTIL FALSE
@@ -138,7 +138,7 @@ END_VAR
 END_FUNCTION
 "#;
     assert_snapshot!(test_single_lint(&mut with_db, &[source], "constant-condition"), @r"
-    [L0304] Warning: constant condition
+    [L0103] Warning: constant condition
        ,-[ file:///test0.st:8:11 ]
        |
      8 |     ELSIF TRUE THEN
@@ -160,7 +160,7 @@ FUNCTION test : INT
 END_FUNCTION
 "#;
     assert_snapshot!(test_single_lint(&mut with_db, &[source], "constant-condition"), @r"
-    [L0304] Warning: constant condition
+    [L0103] Warning: constant condition
        ,-[ file:///test0.st:3:8 ]
        |
      3 |     IF (TRUE) THEN
@@ -185,7 +185,7 @@ FUNCTION test : INT
 END_FUNCTION
 "#;
     assert_snapshot!(test_single_lint(&mut with_db, &[source], "constant-condition"), @r"
-    [L0304] Warning: constant condition
+    [L0103] Warning: constant condition
        ,-[ file:///test0.st:3:8 ]
        |
      3 |     IF BOOL#TRUE THEN
@@ -194,7 +194,7 @@ END_FUNCTION
        |
        | Note: lint rule: constant-condition
     ---'
-    [L0304] Warning: constant condition
+    [L0103] Warning: constant condition
        ,-[ file:///test0.st:6:8 ]
        |
      6 |     IF BOOL#FALSE THEN

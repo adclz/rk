@@ -1,38 +1,29 @@
-use std::collections::HashMap;
-
-use auto_lsp::lsp_types::{CodeAction, DiagnosticSeverity, WorkspaceEdit};
+use crate::CallSite;
+use crate::HasName;
+use crate::HirNodeInfo;
+use crate::check::errors::ToIdeDiagnostic;
+use crate::hir_def::expressions::expression::AddOperatorKind;
+use crate::hir_def::expressions::expression::Expr;
+use crate::hir_def::expressions::expression::MultOperatorKind;
+use crate::hir_def::expressions::spec::Spec;
+use crate::hir_def::pous::variable::VariableDecl;
+use crate::hir_ty::body::Adjust;
+use crate::hir_ty::body::Adjustment;
+use crate::hir_ty::infer::table::InferSource;
+use crate::hir_ty::ty::CallableType;
+use crate::hir_ty::ty::Type;
+use auto_lsp::lsp_types::CodeAction;
+use auto_lsp::lsp_types::DiagnosticSeverity;
+use auto_lsp::lsp_types::WorkspaceEdit;
 use db::WorkspaceDataBase;
-use ide_diagnostic::{ErrorCode, IdeDiagnostic, Related, diag};
-
-use crate::hir_def::expressions::expression::{ExprKind, PrimaryExpr};
-use crate::hir_def::{pous::pou::Pou, scope::ScopeKind, semantic_index::get_scope};
-use crate::hir_ty::infer::const_eval;
-use crate::{
-    CallSite, HasName, HirNodeInfo,
-    check::errors::ToIdeDiagnostic,
-    hir_def::{
-        expressions::expression::{AddOperatorKind, Expr, MultOperatorKind},
-        pous::variable::VariableDecl,
-    },
-    hir_ty::{
-        body::{Adjust, Adjustment},
-        infer::table::InferSource,
-        ty::Type,
-    },
-};
+use ide_diagnostic::ErrorCode;
+use ide_diagnostic::IdeDiagnostic;
+use ide_diagnostic::Related;
+use ide_diagnostic::diag;
+use std::collections::HashMap;
 
 #[derive(Clone, Debug, PartialEq, Eq, Hash, salsa::Update)]
 pub enum TypeError<'db> {
-    /// A `STRING[n]` whose length the compiler cannot work out. The length is
-    /// part of the TYPE — it decides how many bytes the variable occupies — so
-    /// one only the runtime knows leaves the layout unknowable, and silently
-    /// taking the default 80 would size the storage wrongly with nothing said.
-    StringLengthNotConstant { length: Expr<'db> },
-    /// A once-per-type initializer (a TYPE default, an FB/CLASS member
-    /// default, a static PROGRAM field or config global) referenced something
-    /// with no compile-time value. Before this code the leaf was silently
-    /// DROPPED: the slot read zero from source the check called clean.
-    InitNotConstant { value: Expr<'db> },
     NotAssignable {
         base_target: Type<'db>,
         lhs: Type<'db>,
@@ -50,14 +41,6 @@ pub enum TypeError<'db> {
         adjustment: Option<Adjustment<'db>>,
         expr: CallSite<'db>,
     },
-    NotMultiplicable {
-        base_target: Type<'db>,
-        operator: MultOperatorKind,
-        lhs: Type<'db>,
-        rhs: Type<'db>,
-        adjustment: Option<Adjustment<'db>>,
-        expr: CallSite<'db>,
-    },
     NotAddable {
         base_target: Type<'db>,
         operator: AddOperatorKind,
@@ -66,22 +49,133 @@ pub enum TypeError<'db> {
         adjustment: Option<Adjustment<'db>>,
         expr: CallSite<'db>,
     },
-    InferLiteralError {
-        expr: Expr<'db>,
-        source: Option<InferSource<'db>>,
-        target: Type<'db>,
-        err: InferLiteralError,
-    },
-    NonVariadicFoldParameter {
-        var: VariableDecl<'db>,
-        call_site: CallSite<'db>,
+    NotMultiplicable {
+        base_target: Type<'db>,
+        operator: MultOperatorKind,
+        lhs: Type<'db>,
+        rhs: Type<'db>,
+        adjustment: Option<Adjustment<'db>>,
+        expr: CallSite<'db>,
     },
     UnsupportedOperator {
         typ: Type<'db>,
         operator: &'static str,
         call_site: CallSite<'db>,
     },
+    InferLiteralError {
+        expr: Expr<'db>,
+        source: Option<InferSource<'db>>,
+        target: Type<'db>,
+        err: InferLiteralError,
+    },
+    /// A `STRING[n]` whose length the compiler cannot work out. The length is
+    /// part of the TYPE — it decides how many bytes the variable occupies — so
+    /// one only the runtime knows leaves the layout unknowable, and silently
+    /// taking the default 80 would size the storage wrongly with nothing said.
+    StringLengthNotConstant {
+        length: Expr<'db>,
+    },
+    FunctionAsType {
+        expr: Spec<'db>,
+        ty: Type<'db>,
+    },
+    /// Variadic parameter must be the only VAR_INPUT parameter.
+    VariadicMixedWithOtherInputs {
+        variadic_var: VariableDecl<'db>,
+        other_var: VariableDecl<'db>,
+    },
+    DirectType {
+        typ: Type<'db>,
+        expr: CallSite<'db>,
+    },
+    /// Variadic variable declared outside of VAR_INPUT.
+    VariadicNotInInput {
+        var: VariableDecl<'db>,
+    },
+    AssignCallableType {
+        typ: CallableType<'db>,
+        access: CallSite<'db>,
+    },
 }
+
+#[allow(non_camel_case_types)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub enum InferLiteralError {
+    // Emitted by rust std library cast
+    TypeMismatch(String),
+
+    Invalid_BOOL_Literal,
+    Invalid_UNSIGNED_8_BITS_Literal,
+    Invalid_UNSIGNED_16_BITS_Literal,
+    Invalid_UNSIGNED_32_BITS_Literal,
+    Invalid_UNSIGNED_64_BITS_Literal,
+
+    Invalid_SIGNED_8_BITS_Literal,
+    Invalid_SIGNED_16_BITS_Literal,
+    Invalid_SIGNED_32_BITS_Literal,
+    Invalid_SIGNED_64_BITS_Literal,
+
+    Invalid_REAL_Literal,
+    Invalid_LREAL_Literal,
+
+    Invalid_TIME_Literal,
+    Invalid_LTIME_Literal,
+
+    Invalid_DATE_Literal,
+    Invalid_LDATE_Literal,
+
+    Invalid_TOD_Literal,
+    Invalid_LTOD_Literal,
+
+    Invalid_DT_Literal,
+    Invalid_LDT_Literal,
+
+    Invalid_STRING_Literal,
+    Invalid_CHAR_Length(usize),
+    Invalid_STRING_Length {
+        max: u64,
+        got: usize,
+    },
+
+    // Inner
+    ExpectedNumber,
+    InvalidNumber(String),
+    /// Internal overflow when accumulating duration components in
+    /// `i64` nanoseconds - only reachable for absurd input like
+    /// `T#9999999d`.
+    DurationOverflow,
+    /// Literal's integer encoding is outside the type's representable
+    /// range. Bounds are pre-formatted IEC literals (e.g.
+    /// `T#-24d20h31m23s648ms`, `DT#1901-12-13-20:45:52`) hard-coded per
+    /// type so the diagnostic note can show them verbatim.
+    DurationOutOfRange {
+        /// Source-level type name (e.g. "TIME", "DT").
+        type_name: &'static str,
+        /// Minimum value as an IEC literal string.
+        min: &'static str,
+        /// Maximum value as an IEC literal string.
+        max: &'static str,
+        /// True when the value exceeds `max` (overflow); false when
+        /// below `min` (underflow).
+        above_max: bool,
+    },
+
+    Invalid_TIME_Unit(String),
+    Invalid_TIME_Components,
+
+    Invalid_TOD_Format(String),
+    Invalid_LTOD_Format(String),
+
+    Invalid_DATE_Format(String),
+    Invalid_LDATE_Format(String),
+
+    Invalid_DT_Format(String),
+    Invalid_LDT_Format(String),
+
+    Incomplete_STRING_XX_Escape,
+    Invalid_STRING_Hex_Escape,
+}
+
 
 impl<'db> ErrorCode for TypeError<'db> {
     fn code(&self) -> &'static str {
@@ -90,20 +184,31 @@ impl<'db> ErrorCode for TypeError<'db> {
             Self::NotComparable { .. } => "E0302",
             Self::NotAddable { .. } => "E0303",
             Self::NotMultiplicable { .. } => "E0304",
-            Self::InferLiteralError { .. } => "E0309",
-            Self::NonVariadicFoldParameter { .. } => "E0317",
-            Self::UnsupportedOperator { .. } => "E0318",
-            Self::StringLengthNotConstant { .. } => "E0319",
-            Self::InitNotConstant { .. } => "E0320",
+            Self::UnsupportedOperator { .. } => "E0305",
+            Self::InferLiteralError { .. } => "E0306",
+            Self::StringLengthNotConstant { .. } => "E0307",
+            Self::FunctionAsType { .. } => "E0308",
+            Self::VariadicMixedWithOtherInputs { .. } => "E0309",
+            Self::DirectType { .. } => "E0309",
+            Self::VariadicNotInInput { .. } => "E0310",
+            Self::AssignCallableType { .. } => "E0310",
         }
     }
 
     fn description(&self) -> &'static str {
         match self {
+            Self::NotAssignable { .. } => "type mismatch",
+            Self::NotComparable { .. } => "type mismatch",
+            Self::NotAddable { .. } => "type mismatch",
+            Self::NotMultiplicable { .. } => "type mismatch",
+            Self::UnsupportedOperator { .. } => "type mismatch",
             Self::InferLiteralError { .. } => "invalid literal",
             Self::StringLengthNotConstant { .. } => "length is not constant",
-            Self::InitNotConstant { .. } => "initial value is not constant",
-            _ => "type mismatch",
+            Self::FunctionAsType { .. } => "invalid type",
+            Self::VariadicMixedWithOtherInputs { .. } => "invalid variadic declaration",
+            Self::DirectType { .. } => "semantic violation",
+            Self::VariadicNotInInput { .. } => "invalid variadic declaration",
+            Self::AssignCallableType { .. } => "semantic violation",
         }
     }
 }
@@ -115,89 +220,6 @@ impl<'db> ToIdeDiagnostic<'db> for TypeError<'db> {
         file: auto_lsp::default::db::file::File,
     ) -> IdeDiagnostic {
         match self {
-            Self::StringLengthNotConstant { length } => diag()
-                .message("a STRING length must be known at compile time".to_string())
-                .severity(DiagnosticSeverity::ERROR)
-                .desc(self)
-                .range(crate::denormalize(db, file, &length.get_span(db)).unwrap_or_default())
-                .call(),
-            Self::InitNotConstant { value } => {
-                let mut d = diag()
-                    .message(
-                        "this initial value must be a constant: it is fixed before the program runs"
-                            .to_string(),
-                    )
-                    .severity(DiagnosticSeverity::ERROR)
-                    .desc(self)
-                    .range(crate::denormalize(db, file, &value.get_span(db)).unwrap_or_default())
-                    .call();
-                // Say WHY when the refused thing is a bare name — especially
-                // when it IS a constant, just not one this scope can fold.
-
-                if let ExprKind::PrimaryExpr(PrimaryExpr::VariableAccess(va)) = value.expr(db) {
-                    use crate::Qualifier;
-                    match const_eval::spec_name_binding(db, *va) {
-                        Some(decl) if decl.qualifier(db).contains(Qualifier::CONSTANT) => {
-                            // Three reasons a CONSTANT still refuses, told apart
-                            // so the advice is not a catch-all.
-                            if decl.init(db).is_none() {
-                                d.with_note(format!(
-                                    "'{}' is CONSTANT but declares no initial value, \
-                                     so there is nothing to fold",
-                                    decl.name(db).text(db)
-                                ));
-                            } else {
-                                d.with_note(format!(
-                                    "'{}' is CONSTANT, but its own value does not fold \
-                                     (a reference cycle, or a non-constant initializer)",
-                                    decl.name(db).text(db)
-                                ));
-                            }
-                        }
-                        Some(decl) => {
-                            d.with_note(format!(
-                                "'{}' is an ordinary variable; declare it CONSTANT \
-                                 if its value never changes",
-                                decl.name(db).text(db)
-                            ));
-                        }
-                        None => {
-                            if let Some(ident) = const_eval::bare_access_name(db, *va)
-                                && let Some(global) =
-                                    crate::hir_ty::index_graphs::external_var_lookup(db, ident)
-                            {
-                                if !global.qualifier(db).contains(Qualifier::CONSTANT) {
-                                    d.with_note(format!(
-                                        "'{}' is an ordinary variable; declare it CONSTANT \
-                                         if its value never changes",
-                                        ident.text(db)
-                                    ));
-                                    return d;
-                                }
-                                let in_type = matches!(
-                                    get_scope(db, value.get_scope_id(db)).kind,
-                                    ScopeKind::Pou(Pou::DataType(_))
-                                );
-                                if in_type {
-                                    d.with_note(format!(
-                                        "'{}' IS a CONSTANT, but a TYPE declaration cannot \
-                                         see it: a TYPE default folds only literals, \
-                                         arithmetic, and constants in its own scope",
-                                        ident.text(db)
-                                    ));
-                                } else {
-                                    d.with_note(format!(
-                                        "'{}' IS a CONSTANT: declare it in this POU as \
-                                         `VAR_EXTERNAL CONSTANT` and the reference folds",
-                                        ident.text(db)
-                                    ));
-                                }
-                            }
-                        }
-                    }
-                }
-                d
-            }
             Self::NotAssignable {
                 base_target,
                 lhs: target,
@@ -307,22 +329,6 @@ impl<'db> ToIdeDiagnostic<'db> for TypeError<'db> {
                 explicit_cast_suggestion(db, *lhs, *rhs, *expr, &mut diag);
                 diag
             }
-            Self::NonVariadicFoldParameter { var, call_site } => {
-                let mut diag = diag()
-                    .message(format!(
-                        "variable '{}' is not variadic",
-                        var.get_name_ident(db).text(db)
-                    ))
-                    .severity(DiagnosticSeverity::ERROR)
-                    .desc(self)
-                    .range(
-                        crate::denormalize(db, file, &call_site.get_span(db)).unwrap_or_default(),
-                    )
-                    .call();
-
-                diag.with_note("... can only be used on VAR_INPUT variables that are declared variadic with the same operator (e.g: INT...)".into());
-                diag
-            }
             Self::UnsupportedOperator {
                 typ,
                 operator,
@@ -390,6 +396,82 @@ impl<'db> ToIdeDiagnostic<'db> for TypeError<'db> {
 
                 diag
             }
+            Self::StringLengthNotConstant { length } => diag()
+                .message("a STRING length must be known at compile time".to_string())
+                .severity(DiagnosticSeverity::ERROR)
+                .desc(self)
+                .range(crate::denormalize(db, file, &length.get_span(db)).unwrap_or_default())
+                .call(),
+            Self::FunctionAsType { expr, ty } => diag()
+                .message(format!(
+                    "'{}' is a function and cannot be used as a variable or data type",
+                    ty.type_name(db)
+                ))
+                .severity(DiagnosticSeverity::ERROR)
+                .desc(self)
+                .range(crate::denormalize(db, file, &expr.get_span(db)).unwrap_or_default())
+                .call(),
+            Self::VariadicMixedWithOtherInputs {
+                variadic_var,
+                other_var,
+            } => {
+                let mut diag = diag()
+                    .message(format!(
+                        "variadic parameter '{}' must be the only VAR_INPUT parameter",
+                        variadic_var.name(db).text(db),
+                    ))
+                    .severity(DiagnosticSeverity::ERROR)
+                    .desc(self)
+                    .range(
+                        crate::denormalize(db, file, &other_var.get_span(db)).unwrap_or_default(),
+                    )
+                    .call();
+
+                diag.with_related(Related::new(
+                    format!(
+                        "variadic parameter '{}' declared here",
+                        variadic_var.name(db).text(db)
+                    ),
+                    variadic_var.scope_id(db).file(db),
+                    variadic_var.get_span(db),
+                ));
+                diag.with_note(
+                    "a variadic parameter must be the only parameter in VAR_INPUT".into(),
+                );
+                diag
+            }
+            Self::DirectType { expr, typ } => diag()
+                .message(format!(
+                    "cannot use direct type '{}' here",
+                    typ.type_name(db)
+                ))
+                .severity(DiagnosticSeverity::ERROR)
+                .desc(self)
+                .range(crate::denormalize(db, file, &expr.get_span(db)).unwrap_or_default())
+                .call(),
+            Self::VariadicNotInInput { var } => {
+                let mut diag = diag()
+                    .message(format!(
+                        "variadic variable '{}' must be declared in VAR_INPUT",
+                        var.name(db).text(db),
+                    ))
+                    .severity(DiagnosticSeverity::ERROR)
+                    .desc(self)
+                    .range(crate::denormalize(db, file, &var.get_span(db)).unwrap_or_default())
+                    .call();
+
+                diag.with_note("variadic parameters are only allowed in VAR_INPUT sections".into());
+                diag
+            }
+            Self::AssignCallableType { typ, access } => diag()
+                .message(format!(
+                    "'{}' is a callable type and can not be assigned",
+                    typ.get_name_ident(db).text(db)
+                ))
+                .severity(DiagnosticSeverity::ERROR)
+                .desc(self)
+                .range(crate::denormalize(db, file, &access.get_span(db)).unwrap_or_default())
+                .call(),
         }
     }
 }
@@ -413,84 +495,6 @@ fn adjustment_to_string(
         },
         None => value.type_name(db),
     }
-}
-
-#[allow(non_camel_case_types)]
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
-pub enum InferLiteralError {
-    // Emitted by rust std library cast
-    TypeMismatch(String),
-
-    Invalid_BOOL_Literal,
-    Invalid_UNSIGNED_8_BITS_Literal,
-    Invalid_UNSIGNED_16_BITS_Literal,
-    Invalid_UNSIGNED_32_BITS_Literal,
-    Invalid_UNSIGNED_64_BITS_Literal,
-
-    Invalid_SIGNED_8_BITS_Literal,
-    Invalid_SIGNED_16_BITS_Literal,
-    Invalid_SIGNED_32_BITS_Literal,
-    Invalid_SIGNED_64_BITS_Literal,
-
-    Invalid_REAL_Literal,
-    Invalid_LREAL_Literal,
-
-    Invalid_TIME_Literal,
-    Invalid_LTIME_Literal,
-
-    Invalid_DATE_Literal,
-    Invalid_LDATE_Literal,
-
-    Invalid_TOD_Literal,
-    Invalid_LTOD_Literal,
-
-    Invalid_DT_Literal,
-    Invalid_LDT_Literal,
-
-    Invalid_STRING_Literal,
-    Invalid_CHAR_Length(usize),
-    Invalid_STRING_Length {
-        max: u64,
-        got: usize,
-    },
-
-    // Inner
-    ExpectedNumber,
-    InvalidNumber(String),
-    /// Internal overflow when accumulating duration components in
-    /// `i64` nanoseconds - only reachable for absurd input like
-    /// `T#9999999d`.
-    DurationOverflow,
-    /// Literal's integer encoding is outside the type's representable
-    /// range. Bounds are pre-formatted IEC literals (e.g.
-    /// `T#-24d20h31m23s648ms`, `DT#1901-12-13-20:45:52`) hard-coded per
-    /// type so the diagnostic note can show them verbatim.
-    DurationOutOfRange {
-        /// Source-level type name (e.g. "TIME", "DT").
-        type_name: &'static str,
-        /// Minimum value as an IEC literal string.
-        min: &'static str,
-        /// Maximum value as an IEC literal string.
-        max: &'static str,
-        /// True when the value exceeds `max` (overflow); false when
-        /// below `min` (underflow).
-        above_max: bool,
-    },
-
-    Invalid_TIME_Unit(String),
-    Invalid_TIME_Components,
-
-    Invalid_TOD_Format(String),
-    Invalid_LTOD_Format(String),
-
-    Invalid_DATE_Format(String),
-    Invalid_LDATE_Format(String),
-
-    Invalid_DT_Format(String),
-    Invalid_LDT_Format(String),
-
-    Incomplete_STRING_XX_Escape,
-    Invalid_STRING_Hex_Escape,
 }
 
 impl std::fmt::Display for InferLiteralError {

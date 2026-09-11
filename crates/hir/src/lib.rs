@@ -185,10 +185,7 @@ pub trait HasPragmas<'db>: HirNodeInfo<'db> {
     fn extern_pragma(
         &self,
         db: &'db dyn WorkspaceDataBase,
-    ) -> Option<(
-        &'db SpanIdent<'db>,
-        &'db ExternPragma,
-    )> {
+    ) -> Option<(&'db SpanIdent<'db>, &'db ExternPragma)> {
         self.get_pragmas(db).iter().find_map(|p| match p {
             Pragma::Extern(s, e) => Some((s, e)),
             _ => None,

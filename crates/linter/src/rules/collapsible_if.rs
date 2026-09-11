@@ -11,12 +11,12 @@ use ide_diagnostic::{ErrorCode, IdeDiagnostic, Related, diag};
 
 pub const NAME: &str = "collapsible-if";
 
-/// L0210: nested IF without ELSE can be collapsed into `IF a AND b THEN`.
+/// L0312: nested IF without ELSE can be collapsed into `IF a AND b THEN`.
 struct CollapsibleIf;
 
 impl ErrorCode for CollapsibleIf {
     fn code(&self) -> &'static str {
-        "L0210"
+        "L0312"
     }
 
     fn description(&self) -> &'static str {

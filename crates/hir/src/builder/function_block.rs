@@ -1,15 +1,16 @@
+use crate::Modifier;
 use crate::builder::Parse;
 use crate::builder::semantic_index::SemanticIndexBuilder;
 use crate::builder::{ParseSpec, ParseVarSection};
 use crate::check::errors::ToIdeDiagnostic;
-use crate::check::errors::e0_syntax::SyntaxError;
+use crate::check::errors::e00_syntax::SyntaxError;
+use crate::check::errors::e11_oop::OopError;
 use crate::hir_def::hir_node::HirNode;
 use crate::hir_def::interned::identifier::Ident;
 use crate::hir_def::pous::function_block::FunctionBlock;
 use crate::hir_def::pous::pou::Pou;
 use crate::hir_def::pous::variable::VariableDecl;
 use crate::hir_def::scope::ScopeKind;
-use crate::Modifier;
 use ast::generated::{FbDecl, FbVariables};
 use auto_lsp::anyhow;
 use auto_lsp::core::ast::AstNode;
@@ -50,21 +51,21 @@ impl<'db> SemanticIndexBuilder<'db> {
             type Error = ast::generated::ERRExtendsMultipleTimes_ERRFbVariablesAfterMethod_ERRImplementsBeforeExtends_ERRImplementsMultipleTimes;
             match f.cast(self.ast) {
                 Error::ERRExtendsMultipleTimes(err) => {
-                    self.errors.push(SyntaxError::MultipleExtends {
+                    self.errors.push(OopError::MultipleExtends {
                         location: err.get_range().to_owned(),
                         first_extend_span: func.extends.as_ref().unwrap().cast(self.ast).get_range().to_owned(),
                         file: self.file,
                     }.to_diagnostic(self.db, self.file));
                 },
                 Error::ERRImplementsBeforeExtends(err) => {
-                    self.errors.push(SyntaxError::ImplementsBeforeExtends {
+                    self.errors.push(OopError::ImplementsBeforeExtends {
                         implements_span: err.get_range().to_owned(),
                         extends_span: func.extends.as_ref().unwrap().cast(self.ast).get_range().to_owned(),
                         file: self.file,
                     }.to_diagnostic(self.db, self.file));
                 },
                 Error::ERRImplementsMultipleTimes(err) => {
-                    self.errors.push(SyntaxError::MultipleImplements {
+                    self.errors.push(OopError::MultipleImplements {
                         location: err.get_range().to_owned(),
                         first_implements_span: func.implements.as_ref().unwrap().cast(self.ast).get_range().to_owned(),
                         file: self.file,
@@ -128,12 +129,7 @@ impl<'db> SemanticIndexBuilder<'db> {
         ));
 
         self.register_node(func.into(), HirNode::PouDecl(result));
-        self.register_scope(
-            ScopeKind::Pou(result),
-            usings,
-            scope_id,
-            previous_scope,
-);
+        self.register_scope(ScopeKind::Pou(result), usings, scope_id, previous_scope);
 
         Ok(result)
     }

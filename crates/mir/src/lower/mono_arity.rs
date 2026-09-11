@@ -132,7 +132,7 @@ fn process_body<'db>(
             }
             match binding {
                 ParamBinding::Values(vs) => Some(vs.len()),
-                // An empty pack is E0230; nothing to specialize.
+                // An empty pack is E0813; nothing to specialize.
                 _ => None,
             }
         }) else {

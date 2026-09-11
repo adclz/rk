@@ -39,7 +39,7 @@ fn diagnostic_identities(rendered: &str) -> String {
         .filter_map(|l| {
             let t = l.trim();
             if t.starts_with('[') && t.contains(']') {
-                // `[E0204] Error: no item found in scope`
+                // `[E0201] Error: no item found in scope`
                 return Some(t.to_string());
             }
             // "`------ no item \"STATION_1\" found in scope" — the annotation

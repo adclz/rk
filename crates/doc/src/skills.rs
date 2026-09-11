@@ -5,7 +5,7 @@
 //! The fence info string says how a block is checked:
 //!
 //! - `iecst`: a whole file; must check with no error.
-//! - `iecst expect=E0101,E0402`: a whole file that must report exactly those
+//! - `iecst expect=E0102,E1003`: a whole file that must report exactly those
 //!   errors and no other.
 //! - `iecst continues`: appended to the previous whole-file fence of the same
 //!   document. The chain is checked as one file where it ends, so a fence may
@@ -233,11 +233,12 @@ fn load_stdlib() -> Vec<(Url, String)> {
 }
 
 fn wrap(mode: &Mode, code: &str) -> String {
-    match mode {
-        Mode::Fragment => format!("FUNCTION __Fragment : INT\n{code}\nEND_FUNCTION\n"),
-        Mode::Decl => format!("FUNCTION_BLOCK __Decl\nVAR\n{code}\nEND_VAR\nEND_FUNCTION_BLOCK\n"),
-        _ => code.to_string(),
-    }
+    let (before, after) = match mode {
+        Mode::Fragment => crate::highlight::FRAGMENT_WRAP,
+        Mode::Decl => crate::highlight::DECL_WRAP,
+        _ => return code.to_string(),
+    };
+    format!("{before}{code}{after}")
 }
 
 /// Compare what the compiler reported with what the fence promised.

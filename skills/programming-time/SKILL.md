@@ -5,7 +5,8 @@ description: Date and time in Structured Text — TIME/DATE/DT/TOD literals, the
 
 ## Summary
 
-Everything time-related in one place: the eight date/time types, their integer encodings and ranges, the conversion and formatting functions in `Std.Convert`, and the timers in `Std.Timers`. The syntax basics are also in `programming-st`; this skill is the depth.
+Everything time-related in one place: the eight date/time types, their integer encodings and ranges, the conversion and formatting functions in `Std.Convert`, and the timers in `Std.Timers`.
+The syntax basics are also in `programming-st`; this skill is the depth.
 
 ## Literals
 
@@ -17,11 +18,13 @@ o: TOD := TOD#12:30:45.123; // TOD# or TIME_OF_DAY#; LTOD# for LTOD
 n: DT := DT#2024-01-31-12:30:45;  // DT# or DATE_AND_TIME#; LDT# for LDT
 ```
 
-Durations may be negative (`T#-5s`, the sign goes after the `#`). A bad unit, a missing unit, or a malformed date is a compile error (E0309) that names the problem; an out-of-range literal shows the type's exact bounds as literals.
+Durations may be negative (`T#-5s`, the sign goes after the `#`).
+A bad unit, a missing unit, or a malformed date is a compile error (E0306) that names the problem; an out-of-range literal shows the type's exact bounds as literals.
 
 ## Encodings and ranges
 
-Each type is a fixed signed integer encoding. The compiler refuses any literal outside the range.
+Each type is a fixed signed integer encoding.
+The compiler refuses any literal outside the range.
 
 | Type | Encoding | Range |
 | --- | --- | --- |
@@ -34,13 +37,19 @@ Each type is a fixed signed integer encoding. The compiler refuses any literal o
 | `DT` | i64 seconds since 1970-01-01 | 1677-09-21 to 2262-04-11 (LDT's span) |
 | `LDT` | i64 ns since 1970-01-01 | 1677-09-21 to 2262-04-11 |
 
-`DT` and `LDT` share one span on purpose: DT's bounds are LDT's range in whole seconds, so the implicit `DT` → `LDT` widening can never overflow. The pair differs by precision, not width: seconds versus nanoseconds. There is no 2038 problem.
+`DT` and `LDT` share one span on purpose: DT's bounds are LDT's range in whole seconds, so the implicit `DT` → `LDT` widening can never overflow.
+The pair differs by precision, not width: seconds versus nanoseconds.
+There is no 2038 problem.
 
-All of them are zone-naive: no timezone, no DST, no leap seconds. A literal maps to its epoch value as UTC, so any future host clock source must deliver UTC or stored timestamps are off by the local offset.
+All of them are zone-naive: no timezone, no DST, no leap seconds.
+A literal maps to its epoch value as UTC, so any future host clock source must deliver UTC or stored timestamps are off by the local offset.
 
 Comparisons are signed, matching the encodings: `T#-5s < T#0s`, and a pre-epoch `D#1969-12-31` orders before `D#1970-01-01`.
 
-Arithmetic exists for same-type durations only: `TIME + TIME`, `TIME - TIME` (and the `LTIME` pair). Everything mixed is refused (E0318): no `DATE - DATE`, no `TOD + TIME`, no `TIME * INT`. The workaround is the numeric conversions below: convert, compute in the encoding, convert back. Duration arithmetic wraps at the lane like every other integer: the maximum `TIME` plus `T#1ms` is the minimum `TIME`.
+Arithmetic exists for same-type durations only: `TIME + TIME`, `TIME - TIME` (and the `LTIME` pair).
+Everything mixed is refused (E0305): no `DATE - DATE`, no `TOD + TIME`, no `TIME * INT`.
+The workaround is the numeric conversions below: convert, compute in the encoding, convert back.
+Duration arithmetic wraps at the lane like every other integer: the maximum `TIME` plus `T#1ms` is the minimum `TIME`.
 
 ## Conversions (`Std.Convert`)
 
@@ -48,7 +57,8 @@ Widening to the L-variant is implicit (`TIME` → `LTIME`, `TOD` → `LTOD`, `DA
 
 Narrowing and decomposition are explicit: `LTIME_TO_TIME`, `LTOD_TO_TOD`, `LDATE_TO_DATE`, `LDT_TO_DT`, and from a timestamp `DT_TO_DATE`, `DT_TO_TOD`, `DT_TO_LDATE`, `DT_TO_LTOD`, `LDT_TO_DATE`, `LDT_TO_DT`, `LDT_TO_LDATE`, `LDT_TO_TOD`, `LDT_TO_LTOD`.
 
-The decompositions floor, so they are exact everywhere including pre-epoch timestamps: `DT_TO_DATE(DT#1969-12-31-23:59:59)` is `D#1969-12-31` and the TOD half is always in-domain. The one deliberate truncation is `LTIME_TO_TIME`, a duration narrowing (magnitude semantics).
+The decompositions floor, so they are exact everywhere including pre-epoch timestamps: `DT_TO_DATE(DT#1969-12-31-23:59:59)` is `D#1969-12-31` and the TOD half is always in-domain.
+The one deliberate truncation is `LTIME_TO_TIME`, a duration narrowing (magnitude semantics).
 
 Every type converts to its encoding number and back, zero cost:
 
@@ -65,7 +75,8 @@ This is the sanctioned way to do date/time arithmetic today: `DINT_TO_TOD(TOD_TO
 
 ## TO_STRING (`Std.Convert`)
 
-Every date/time type formats to its IEC literal form, so the output parses back as a literal of the same type and value. The spelling is canonical, not necessarily what was written: `TIME_TO_STRING(T#90s)` is `'T#1m30s'`.
+Every date/time type formats to its IEC literal form, so the output parses back as a literal of the same type and value.
+The spelling is canonical, not necessarily what was written: `TIME_TO_STRING(T#90s)` is `'T#1m30s'`.
 
 ```iecst fragment
 TIME_TO_STRING(IN := T#1s500ms)                  // 'T#1s500ms'; zero is 'T#0s'
@@ -82,7 +93,9 @@ A negative TOD can no longer arise from a decomposition (they floor); should one
 
 ## Timers (`Std.Timers`)
 
-`TP_TIME`, `TON_TIME`, `TOF_TIME` and their `_LTIME` variants — pulse, on-delay, off-delay. All share the interface `VAR_INPUT IN: BOOL; PT: TIME;` / `VAR_OUTPUT Q: BOOL; ET: TIME;` (or LTIME). They read the host's monotonic clock through a WASI import, so they measure real elapsed time, not scan counts.
+`TP_TIME`, `TON_TIME`, `TOF_TIME` and their `_LTIME` variants — pulse, on-delay, off-delay.
+All share the interface `VAR_INPUT IN: BOOL; PT: TIME;` / `VAR_OUTPUT Q: BOOL; ET: TIME;` (or LTIME).
+They read the host's monotonic clock through a WASI import, so they measure real elapsed time, not scan counts.
 
 ```iecst fragment
 VAR debounce: Std.Timers.TON_TIME; END_VAR
@@ -90,11 +103,12 @@ debounce(IN := raw_input, PT := T#50ms);
 IF debounce.Q THEN (* input stable for 50ms *) END_IF
 ```
 
-`PLC_TIME: TIME` and `PLC_LTIME: LTIME` return the monotonic clock directly - time since an arbitrary start, good for measuring intervals, not wall-clock time. There is no wall-clock source yet: nothing produces a current `DT`.
+`PLC_TIME: TIME` and `PLC_LTIME: LTIME` return the monotonic clock directly - time since an arbitrary start, good for measuring intervals, not wall-clock time.
+There is no wall-clock source yet: nothing produces a current `DT`.
 
 ## Gotchas
 
-- No mixed arithmetic (E0318) - go through the numeric conversions.
+- No mixed arithmetic (E0305) - go through the numeric conversions.
 - No `NOW()`: `DT`/`LDT` values only come from literals, conversions, or host-written memory.
 - `T#2y` is not a duration - years and months are not IEC duration units.
 - Timers need scans to update: `Q` changes on the call, not asynchronously.

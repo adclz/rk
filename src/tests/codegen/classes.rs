@@ -255,7 +255,7 @@ fn derived_class_fields_do_not_alias_base_fields(mut with_db: db::RootDatabase) 
 /// A method declared two or more levels up the `EXTENDS` chain must be
 /// inherited. `inherited_methods` used to collect only from the DIRECT bases'
 /// own declarations, so a grandparent's method was invisible and the call
-/// failed to resolve (E0211 "no such field") — the field query recursed the
+/// failed to resolve (E0202 "no such field") — the field query recursed the
 /// whole chain while the method query did not.
 #[rstest]
 fn method_inherited_from_a_grandparent(mut with_db: db::RootDatabase) {

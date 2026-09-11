@@ -1,16 +1,7 @@
-//! Partial (bit / byte / word) access — `b.1`, `w.%X3`, `d.%B2`, `l.%W1`.
-//!
-//! IEC 61131-3 §6.5.5 lets a variable be addressed one slice at a time. HIR
-//! owns the *meaning* of such an access: [`multibits_slice`] decodes the
-//! `%X/%B/%W/%D/%L` size character into a bit offset and a result type, and
-//! body inference range-checks the offset against the base type's width
-//! (`E0229`). This module only turns HIR's answer into shift/mask arithmetic
-//! — it never re-decides what an access denotes.
-//!
-//! A read is `(base >> shift) & mask`; a write is the matching
-//! read-modify-write, `base := (base & !(mask << shift)) | ((v & mask) << shift)`.
-//! Both are computed at the *base* value's wasm width, so a slice of an
-//! `LWORD` shifts in i64 and only narrows to i32 once the slice is isolated.
+//! Partial (bit / byte / word) access: `b.1`, `w.%X3`, `d.%B2`, `l.%W1`.
+//! HIR owns the meaning ([`multibits_slice`], E0808); this module turns its
+//! answer into shift/mask arithmetic at the base value's wasm width. A read
+//! is `(base >> shift) & mask`; a write is the matching read-modify-write.
 
 use hir::{
     hir_def::expressions::expression::{Expr, VariableAccess},
@@ -119,9 +110,7 @@ impl<'db> ExprLowerCtx<'db> {
             },
         };
 
-        // HIR reports an out-of-range offset (E0229) but lowering can still be
-        // asked to run on a rejected body; refuse rather than emit a shift
-        // that silently wraps modulo the wasm operand width.
+        // Lowering can run on a rejected body (E0808): refuse rather than wrap.
         if slice.shift + slice.width > base.rk_bits() as usize {
             return Err(LowerTypeError::UnsupportedType(format!(
                 "partial access reaches bit {} of a {}-bit value",

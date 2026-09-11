@@ -12,7 +12,7 @@ NAMESPACE
 END_NAMESPACE"#;
 
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E0019] Error: syntax
+    [E0002] Error: syntax
        ,-[ file:///test0.st:2:10 ]
        |
      2 | NAMESPACE
@@ -33,7 +33,7 @@ fn missing_end_keyword(mut with_db: RootDatabase) {
     "#;
 
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E0019] Error: syntax
+    [E0002] Error: syntax
        ,-[ file:///test0.st:2:26 ]
        |
      2 |     FUNCTION myFunc : INT
@@ -52,7 +52,7 @@ NAMESPACE test ;
 END_NAMESPACE"#;
 
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E0050] Error: syntax
+    [E0001] Error: syntax
        ,-[ file:///test0.st:2:16 ]
        |
      2 | NAMESPACE test ;
@@ -73,7 +73,7 @@ FUNCTION_BLOCK fn IMPLEMENTS a EXTENDS b
 END_FUNCTION_BLOCK"#;
 
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E0003] Error: syntax
+    [E1103] Error: syntax
        ,-[ file:///test0.st:5:19 ]
        |
      5 | FUNCTION_BLOCK fn IMPLEMENTS a EXTENDS b
@@ -99,7 +99,7 @@ FUNCTION_BLOCK fn IMPLEMENTS a IMPLEMENTS b
 END_FUNCTION_BLOCK"#;
 
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E0002] Error: syntax
+    [E1102] Error: syntax
        ,-[ file:///test0.st:8:32 ]
        |
      8 | FUNCTION_BLOCK fn IMPLEMENTS a IMPLEMENTS b
@@ -125,7 +125,7 @@ FUNCTION_BLOCK fn EXTENDS a EXTENDS b
 END_FUNCTION_BLOCK"#;
 
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E0001] Error: syntax
+    [E1101] Error: syntax
        ,-[ file:///test0.st:8:29 ]
        |
      8 | FUNCTION_BLOCK fn EXTENDS a EXTENDS b
@@ -148,7 +148,7 @@ FUNCTION_BLOCK fn
 END_FUNCTION_BLOCK"#;
 
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E0006] Error: syntax
+    [E0003] Error: syntax
        ,-[ file:///test0.st:4:9 ]
        |
      4 |         empty
@@ -166,7 +166,7 @@ FUNCTION_BLOCK fn
 END_FUNCTION_BLOCK"#;
 
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E0011] Error: syntax
+    [E0013] Error: syntax
        ,-[ file:///test0.st:3:5 ]
        |
      3 |     fn() := 0;
@@ -184,7 +184,7 @@ FUNCTION_BLOCK fn
 END_FUNCTION_BLOCK"#;
 
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E0009] Error: syntax
+    [E0015] Error: syntax
        ,-[ file:///test0.st:3:8 ]
        |
      3 |     fn.THIS.p := 5
@@ -202,7 +202,7 @@ FUNCTION_BLOCK fn
 END_FUNCTION_BLOCK"#;
 
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E0010] Error: syntax
+    [E0016] Error: syntax
        ,-[ file:///test0.st:3:8 ]
        |
      3 |     fn.SUPER.p := 5
@@ -220,7 +220,7 @@ FUNCTION_BLOCK fn
 END_FUNCTION_BLOCK"#;
 
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E0012] Error: syntax
+    [E0005] Error: syntax
        ,-[ file:///test0.st:3:7 ]
        |
      3 |     a :=
@@ -241,7 +241,7 @@ FUNCTION_BLOCK fn
 END_FUNCTION_BLOCK"#;
 
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E0017] Error: syntax
+    [E0402] Error: syntax
        ,-[ file:///test0.st:4:36 ]
        |
      4 |     ml : ARRAY [0..2] OF INT := [1(call(IN := 5, OUT => OUT))]
@@ -259,7 +259,7 @@ FUNCTION_BLOCK fn
 END_FUNCTION_BLOCK"#;
 
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E0013] Error: syntax
+    [E0006] Error: syntax
        ,-[ file:///test0.st:3:7 ]
        |
      3 |     a = 0;
@@ -279,7 +279,7 @@ FUNCTION_BLOCK fn
 END_FUNCTION_BLOCK"#;
 
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E0014] Error: syntax
+    [E0007] Error: syntax
        ,-[ file:///test0.st:3:7 ]
        |
      3 |     a : 0;
@@ -300,7 +300,7 @@ FUNCTION fn
 END_FUNCTION"#;
 
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E0015] Error: syntax
+    [E0009] Error: syntax
        ,-[ file:///test0.st:4:8 ]
        |
      4 |     FOR i = 0 TO 10 END_FOR
@@ -321,7 +321,7 @@ FUNCTION fn
 END_FUNCTION"#;
 
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E0016] Error: syntax
+    [E0010] Error: syntax
        ,-[ file:///test0.st:4:8 ]
        |
      4 |     FOR i : 0 TO 10 END_FOR
@@ -351,7 +351,7 @@ CLASS base
 END_CLASS"#;
 
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E0004] Error: syntax
+    [E0027] Error: syntax
         ,-[ file:///test0.st:6:5 ]
         |
       4 |         METHOD PROTECTED myProtectedMethod END_METHOD
@@ -385,7 +385,7 @@ FUNCTION_BLOCK fb1
 END_FUNCTION_BLOCK"#;
 
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E0005] Error: syntax
+    [E0026] Error: syntax
         ,-[ file:///test0.st:6:5 ]
         |
       4 |         METHOD PROTECTED myProtectedMethod END_METHOD
@@ -409,7 +409,7 @@ FUNCTION_BLOCK fn
 END_FUNCTION_BLOCK"#;
 
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E0020] Error: syntax
+    [E0008] Error: syntax
        ,-[ file:///test0.st:3:7 ]
        |
      3 |     a => 0;
@@ -430,7 +430,7 @@ FUNCTION fn
 END_FUNCTION"#;
 
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E0021] Error: syntax
+    [E0011] Error: syntax
        ,-[ file:///test0.st:4:9 ]
        |
      4 |   FOR i => 0 TO 10 END_FOR
@@ -452,7 +452,7 @@ END_NAMESPACE
 "#;
 
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E0022] Error: syntax
+    [E0024] Error: syntax
        ,-[ file:///test0.st:3:5 ]
        |
      3 | ,->     PROGRAM myProgram
@@ -473,7 +473,7 @@ END_NAMESPACE
 "#;
 
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E0023] Error: syntax
+    [E0025] Error: syntax
        ,-[ file:///test0.st:3:5 ]
        |
      3 | ,->     CONFIGURATION myConfig
@@ -516,7 +516,7 @@ END_CLASS
 "#;
 
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E0024] Error: syntax
+    [E0018] Error: syntax
        ,-[ file:///test0.st:3:3 ]
        |
      3 | ,->   VAR_IN_OUT
@@ -527,7 +527,7 @@ END_CLASS
        |
        |     Note: VAR_IN_OUT can only be used inside FUNCTION, FUNCTION_BLOCK
     ---'
-    [E0025] Error: syntax
+    [E0019] Error: syntax
        ,-[ file:///test0.st:7:3 ]
        |
      7 | ,->   VAR_TEMP
@@ -538,7 +538,7 @@ END_CLASS
        |
        |     Note: VAR_TEMP can only be used inside FUNCTION, FUNCTION_BLOCK
     ---'
-    [E0026] Error: syntax
+    [E0022] Error: syntax
         ,-[ file:///test0.st:11:3 ]
         |
      11 | ,->   VAR_ACCESS
@@ -549,7 +549,7 @@ END_CLASS
         |
         |     Note: VAR_ACCESS can only be used inside PROGRAM
     ----'
-    [E0027] Error: syntax
+    [E0023] Error: syntax
         ,-[ file:///test0.st:15:3 ]
         |
      15 | ,->   VAR_CONFIG
@@ -560,7 +560,7 @@ END_CLASS
         |
         |     Note: VAR_CONFIG can only be used inside CONFIGURATION
     ----'
-    [E0030] Error: syntax
+    [E0021] Error: syntax
         ,-[ file:///test0.st:24:3 ]
         |
      24 | ,->   VAR_GLOBAL
@@ -594,7 +594,7 @@ END_FUNCTION_BLOCK
 "#;
 
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E0026] Error: syntax
+    [E0022] Error: syntax
        ,-[ file:///test0.st:3:3 ]
        |
      3 | ,->   VAR_ACCESS
@@ -605,7 +605,7 @@ END_FUNCTION_BLOCK
        |
        |     Note: VAR_ACCESS can only be used inside PROGRAM
     ---'
-    [E0027] Error: syntax
+    [E0023] Error: syntax
        ,-[ file:///test0.st:7:3 ]
        |
      7 | ,->   VAR_CONFIG
@@ -616,7 +616,7 @@ END_FUNCTION_BLOCK
        |
        |     Note: VAR_CONFIG can only be used inside CONFIGURATION
     ---'
-    [E0030] Error: syntax
+    [E0021] Error: syntax
         ,-[ file:///test0.st:12:3 ]
         |
      12 | ,->   VAR_GLOBAL
@@ -650,7 +650,7 @@ END_FUNCTION
 "#;
 
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E0026] Error: syntax
+    [E0022] Error: syntax
        ,-[ file:///test0.st:3:3 ]
        |
      3 | ,->   VAR_ACCESS
@@ -661,7 +661,7 @@ END_FUNCTION
        |
        |     Note: VAR_ACCESS can only be used inside PROGRAM
     ---'
-    [E0027] Error: syntax
+    [E0023] Error: syntax
        ,-[ file:///test0.st:7:3 ]
        |
      7 | ,->   VAR_CONFIG
@@ -672,7 +672,7 @@ END_FUNCTION
        |
        |     Note: VAR_CONFIG can only be used inside CONFIGURATION
     ---'
-    [E0030] Error: syntax
+    [E0021] Error: syntax
         ,-[ file:///test0.st:12:3 ]
         |
      12 | ,->   VAR_GLOBAL
@@ -720,7 +720,7 @@ END_INTERFACE
 "#;
 
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E0026] Error: syntax
+    [E0022] Error: syntax
        ,-[ file:///test0.st:4:5 ]
        |
      4 | ,->     VAR_ACCESS
@@ -731,7 +731,7 @@ END_INTERFACE
        |
        |     Note: VAR_ACCESS can only be used inside PROGRAM
     ---'
-    [E0027] Error: syntax
+    [E0023] Error: syntax
         ,-[ file:///test0.st:8:5 ]
         |
       8 | ,->     VAR_CONFIG
@@ -742,7 +742,7 @@ END_INTERFACE
         |
         |     Note: VAR_CONFIG can only be used inside CONFIGURATION
     ----'
-    [E0029] Error: syntax
+    [E0020] Error: syntax
         ,-[ file:///test0.st:13:5 ]
         |
      13 | ,->     VAR_EXTERNAL
@@ -753,7 +753,7 @@ END_INTERFACE
         |
         |     Note: VAR_EXTERNAL can only be used inside PROGRAM, FUNCTION_BLOCK, FUNCTION
     ----'
-    [E0030] Error: syntax
+    [E0021] Error: syntax
         ,-[ file:///test0.st:17:5 ]
         |
      17 | ,->     VAR_GLOBAL
@@ -764,7 +764,7 @@ END_INTERFACE
         |
         |     Note: VAR_GLOBAL can only be used inside CONFIGURATION
     ----'
-    [E0025] Error: syntax
+    [E0019] Error: syntax
         ,-[ file:///test0.st:21:5 ]
         |
      21 | ,->     VAR_TEMP
@@ -806,7 +806,7 @@ END_CONFIGURATION
 "#;
 
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E0031] Error: syntax
+    [E0017] Error: syntax
        ,-[ file:///test0.st:3:3 ]
        |
      3 | ,->   VAR
@@ -817,7 +817,7 @@ END_CONFIGURATION
        |
        |     Note: VAR can only be used inside FUNCTION, FUNCTION_BLOCK, PROGRAM
     ---'
-    [E0024] Error: syntax
+    [E0018] Error: syntax
        ,-[ file:///test0.st:7:3 ]
        |
      7 | ,->   VAR_IN_OUT
@@ -828,7 +828,7 @@ END_CONFIGURATION
        |
        |     Note: VAR_IN_OUT can only be used inside FUNCTION, FUNCTION_BLOCK
     ---'
-    [E0025] Error: syntax
+    [E0019] Error: syntax
         ,-[ file:///test0.st:11:3 ]
         |
      11 | ,->   VAR_TEMP
@@ -839,7 +839,7 @@ END_CONFIGURATION
         |
         |     Note: VAR_TEMP can only be used inside FUNCTION, FUNCTION_BLOCK
     ----'
-    [E0029] Error: syntax
+    [E0020] Error: syntax
         ,-[ file:///test0.st:20:3 ]
         |
      20 | ,->   VAR_EXTERNAL
@@ -888,7 +888,7 @@ END_CLASS
 "#;
 
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E0026] Error: syntax
+    [E0022] Error: syntax
        ,-[ file:///test0.st:5:5 ]
        |
      5 | ,->     VAR_ACCESS
@@ -899,7 +899,7 @@ END_CLASS
        |
        |     Note: VAR_ACCESS can only be used inside PROGRAM
     ---'
-    [E0027] Error: syntax
+    [E0023] Error: syntax
         ,-[ file:///test0.st:9:5 ]
         |
       9 | ,->     VAR_CONFIG
@@ -910,7 +910,7 @@ END_CLASS
         |
         |     Note: VAR_CONFIG can only be used inside CONFIGURATION
     ----'
-    [E0030] Error: syntax
+    [E0021] Error: syntax
         ,-[ file:///test0.st:18:5 ]
         |
      18 | ,->     VAR_GLOBAL
@@ -934,7 +934,7 @@ CONFIGURATION MyCfg
 END_CONFIGURATION"#;
 
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E0032] Error: syntax
+    [E1408] Error: syntax
        ,-[ file:///test0.st:4:32 ]
        |
      4 |         TASK t1(INTERVAL := 1, SINGLE := 1, PRIORITY := 1);
@@ -954,7 +954,7 @@ CONFIGURATION MyCfg
 END_CONFIGURATION"#;
 
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E0033] Error: syntax
+    [E1407] Error: syntax
        ,-[ file:///test0.st:4:30 ]
        |
      4 |         TASK t1(PRIORITY := 1, INTERVAL := 1);
@@ -974,7 +974,7 @@ CONFIGURATION MyCfg
 END_CONFIGURATION"#;
 
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E0034] Error: syntax
+    [E1409] Error: syntax
        ,-[ file:///test0.st:4:30 ]
        |
      4 |         TASK t1(PRIORITY := 1, SINGLE := 1);
@@ -994,7 +994,7 @@ CONFIGURATION MyCfg
 END_CONFIGURATION"#;
 
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E0035] Error: syntax
+    [E1405] Error: syntax
        ,-[ file:///test0.st:4:9 ]
        |
      4 |         TASK t1()
@@ -1016,7 +1016,7 @@ END_INTERFACE
 "#;
 
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E0037] Error: syntax
+    [E1120] Error: syntax
        ,-[ file:///test0.st:3:12 ]
        |
      3 |     METHOD PUBLIC start
@@ -1025,7 +1025,7 @@ END_INTERFACE
        |
        | Note: interface methods are implicitly PUBLIC
     ---'
-    [E0037] Error: syntax
+    [E1120] Error: syntax
        ,-[ file:///test0.st:5:12 ]
        |
      5 |     METHOD PRIVATE stop : BOOL
@@ -1048,7 +1048,7 @@ END_FUNCTION_BLOCK
 "#;
 
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r#"
-    [E0038] Error: syntax
+    [E0028] Error: syntax
        ,-[ file:///test0.st:4:5 ]
        |
      4 | ,->     METHOD m1
@@ -1056,7 +1056,7 @@ END_FUNCTION_BLOCK
        | |
        | `-------------------- method declarations are not allowed inside a body
     ---'
-    [E0204] Error: no item found in scope
+    [E0201] Error: no item found in scope
        ,-[ file:///test0.st:3:5 ]
        |
      3 |     x := 1;
@@ -1070,7 +1070,7 @@ END_FUNCTION_BLOCK
 fn comma_index_access_is_the_standard_form(mut with_db: RootDatabase) {
     // `m[i, j]` is the standard's multi-dimensional access; each index
     // consumes one dimension, exactly like the chained `m[i][j]`. Both are
-    // accepted and lower identically. (E0018, which rejected the comma form,
+    // accepted and lower identically. (the code that rejected the comma form
     // is retired.)
     let source = r#"
         TYPE Matrix : ARRAY[0..1, 0..2] OF INT; END_TYPE
@@ -1093,7 +1093,7 @@ fn comma_subscript_constant_bounds_check_names_its_dimension(mut with_db: RootDa
         END_FUNCTION
         "#;
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E0608] Error: invalid array access
+    [E0506] Error: invalid array access
        ,-[ file:///test0.st:4:26 ]
        |
      4 |             test := m[1, 9];
@@ -1121,7 +1121,7 @@ END_VAR
 END_FUNCTION
 "#;
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E0040] Error: syntax
+    [E0012] Error: syntax
        ,-[ file:///test0.st:6:8 ]
        |
      6 |     IF x := 1 THEN
@@ -1151,7 +1151,7 @@ END_VAR
 END_FUNCTION
 "#;
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E0040] Error: syntax
+    [E0012] Error: syntax
        ,-[ file:///test0.st:6:11 ]
        |
      6 |     WHILE x := 1 DO
@@ -1160,7 +1160,7 @@ END_FUNCTION
        |
        | Help: replace ':=' with '='
     ---'
-    [E0040] Error: syntax
+    [E0012] Error: syntax
         ,-[ file:///test0.st:12:11 ]
         |
      12 |     UNTIL x := 1 END_REPEAT;
@@ -1188,7 +1188,7 @@ END_VAR
 END_FUNCTION
 "#;
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E0040] Error: syntax
+    [E0012] Error: syntax
        ,-[ file:///test0.st:8:11 ]
        |
      8 |     ELSIF x := 2 THEN

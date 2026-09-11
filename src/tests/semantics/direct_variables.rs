@@ -19,7 +19,7 @@ FUNCTION_BLOCK fb1
 END_FUNCTION_BLOCK"#;
 
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E0245] Error: direct variable access is not supported
+    [E1417] Error: direct variable access is not supported
        ,-[ file:///test0.st:7:13 ]
        |
      7 |     test := %IX0.0
@@ -56,7 +56,7 @@ FUNCTION_BLOCK fb1
 END_FUNCTION_BLOCK"#;
 
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E0245] Error: direct variable access is not supported
+    [E1417] Error: direct variable access is not supported
        ,-[ file:///test0.st:7:13 ]
        |
      7 |     test := %IB0.0
@@ -93,7 +93,7 @@ FUNCTION_BLOCK fb1
 END_FUNCTION_BLOCK"#;
 
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E0245] Error: direct variable access is not supported
+    [E1417] Error: direct variable access is not supported
        ,-[ file:///test0.st:7:13 ]
        |
      7 |     test := %IW0
@@ -130,7 +130,7 @@ FUNCTION_BLOCK fb1
 END_FUNCTION_BLOCK"#;
 
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E0245] Error: direct variable access is not supported
+    [E1417] Error: direct variable access is not supported
        ,-[ file:///test0.st:7:13 ]
        |
      7 |     test := %ID0
@@ -171,7 +171,7 @@ FUNCTION_BLOCK fb1
 END_FUNCTION_BLOCK"#;
 
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E0245] Error: direct variable access is not supported
+    [E1417] Error: direct variable access is not supported
        ,-[ file:///test0.st:7:13 ]
        |
      7 |     test := %IL0
@@ -390,7 +390,7 @@ FUNCTION_BLOCK fb1
 END_FUNCTION_BLOCK"#;
 
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E0229] Error: multibit access out of range
+    [E0808] Error: multibit access out of range
         ,-[ file:///test0.st:12:11 ]
         |
       4 |         cnt: BYTE;
@@ -419,7 +419,7 @@ FUNCTION_BLOCK fb1
 END_FUNCTION_BLOCK"#;
 
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E0229] Error: multibit access out of range
+    [E0808] Error: multibit access out of range
        ,-[ file:///test0.st:9:10 ]
        |
      4 |         w: WORD;
@@ -448,7 +448,7 @@ FUNCTION_BLOCK fb1
 END_FUNCTION_BLOCK"#;
 
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E0229] Error: multibit access out of range
+    [E0808] Error: multibit access out of range
        ,-[ file:///test0.st:9:10 ]
        |
      4 |         w: WORD;
@@ -513,7 +513,7 @@ FUNCTION_BLOCK fb1
 END_FUNCTION_BLOCK"#;
 
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E0245] Error: direct variable access is not supported
+    [E1417] Error: direct variable access is not supported
        ,-[ file:///test0.st:7:13 ]
        |
      7 |     test := %IX0.0;
@@ -534,7 +534,7 @@ FUNCTION_BLOCK fb1
 END_FUNCTION_BLOCK"#;
 
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E0245] Error: direct variable access is not supported
+    [E1417] Error: direct variable access is not supported
        ,-[ file:///test0.st:3:5 ]
        |
      3 |     %QX0.1 := TRUE;

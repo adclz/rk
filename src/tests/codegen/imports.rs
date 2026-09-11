@@ -175,7 +175,7 @@ fn extern_array_input_uses_slot_stride(mut with_db: db::RootDatabase) {
     // An aggregate VAR_INPUT arrives as a POINTER to the call-entry snapshot,
     // and ARRAY[0..3] OF BYTE is FOUR 4-byte slots (stride 4), not four
     // packed bytes: a host reads one i32 per element. (VAR_IN_OUT does not
-    // exist on externs at all — E0243 — so a copy in is the only direction.)
+    // exist on externs at all — E1502 — so a copy in is the only direction.)
     let source = r#"
 {extern 'host' 'pick'}
 FUNCTION pick : BYTE
@@ -209,7 +209,7 @@ END_FUNCTION
 fn extern_string_input_signature_is_ptr_and_len(mut with_db: db::RootDatabase) {
     // A STRING VAR_INPUT flattens to TWO i32 params on the import — the
     // host-side contract a foreign implementer needs to know. (STRING can
-    // only ever flow IN: VAR_IN_OUT and STRING outputs are E0243.)
+    // only ever flow IN: VAR_IN_OUT and STRING outputs are E1502.)
     let source = r#"
 {extern 'host' 'recv'}
 FUNCTION recv : INT

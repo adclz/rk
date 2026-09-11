@@ -2,7 +2,7 @@ use crate::Visibility;
 use crate::builder::semantic_index::SemanticIndexBuilder;
 use crate::builder::{Parse, ParseSpec, ParseVarSection};
 use crate::check::errors::ToIdeDiagnostic;
-use crate::check::errors::e0_syntax::SyntaxError;
+use crate::check::errors::e00_syntax::SyntaxError;
 use crate::hir_def::hir_node::HirNode;
 use crate::hir_def::interned::identifier::Ident;
 use crate::hir_def::pous::function::Function;
@@ -51,7 +51,7 @@ impl<'db> SemanticIndexBuilder<'db> {
         let pragmas = self.parse_pou_pragmas(&func.pragmas);
 
         // The specifier is recorded as written; which ones a FUNCTION may
-        // carry is a head check (E0406), and a call checks PRIVATE (E0405).
+        // carry is a head check (E1006), and a call checks PRIVATE (E1005).
         let visibility = match &func.spec {
             Some(spec) => match spec.cast(self.ast).children.cast(self.ast) {
                 ast::generated::Internal_Private_Protected_Public::Private(_) => {
@@ -84,12 +84,7 @@ impl<'db> SemanticIndexBuilder<'db> {
         ));
 
         self.register_node(func.into(), HirNode::PouDecl(result));
-        self.register_scope(
-            ScopeKind::Pou(result),
-            usings,
-            scope_id,
-            previous_scope,
-);
+        self.register_scope(ScopeKind::Pou(result), usings, scope_id, previous_scope);
 
         Ok(result)
     }

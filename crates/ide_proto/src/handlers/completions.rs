@@ -713,7 +713,7 @@ impl<'db> CompletionHandler<'db> for ConfigDecl<'db> {
         }
 
         // A CONFIGURATION holds globals and RESOURCEs; tasks and program
-        // instances go inside a RESOURCE (E0039), so offering them here would
+        // instances go inside a RESOURCE (E1404), so offering them here would
         // insert code the compiler rejects.
         Some(vec![
             static_snippets::var_global(),
@@ -735,7 +735,7 @@ impl<'db> CompletionHandler<'db> for ResourceDecl<'db> {
         }
 
         // A RESOURCE groups tasks and the programs bound to them. It holds no
-        // variables — VAR_GLOBAL belongs to the CONFIGURATION (E0030).
+        // variables — VAR_GLOBAL belongs to the CONFIGURATION (E0021).
         Some(vec![
             static_snippets::task_config(),
             static_snippets::prog_config(),

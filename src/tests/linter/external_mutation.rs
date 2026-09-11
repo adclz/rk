@@ -21,7 +21,7 @@ END_VAR
 END_FUNCTION
 "#;
     assert_snapshot!(test_single_lint(&mut with_db, &[source], "external-mutation"), @r"
-    [L0317] Warning: external instance mutation
+    [L0117] Warning: external instance mutation
         ,-[ file:///test0.st:12:5 ]
         |
      12 |     fb.x := 42;
@@ -50,7 +50,7 @@ END_VAR
 END_FUNCTION
 "#;
     assert_snapshot!(test_single_lint(&mut with_db, &[source], "external-mutation"), @r"
-    [L0317] Warning: external instance mutation
+    [L0117] Warning: external instance mutation
         ,-[ file:///test0.st:12:5 ]
         |
      12 |     obj.x := 42;

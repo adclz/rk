@@ -54,7 +54,7 @@ NAMESPACE Lib
 END_NAMESPACE
 "#;
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r#"
-    [E0204] Error: no item found in scope
+    [E0201] Error: no item found in scope
        ,-[ file:///test0.st:4:16 ]
        |
      4 |         api := Nope.hidden();

@@ -29,7 +29,7 @@ fn fuzzy_struct_fields(mut with_db: RootDatabase) {
         "#;
 
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E0211] Error: no such field
+    [E0202] Error: no such field
         ,-[ file:///test0.st:15:49 ]
         |
      15 |                 Base : Engine := (power := 100, fuel := 10.0);
@@ -61,7 +61,7 @@ fn fuzzy_pou_local_variables(mut with_db: RootDatabase) {
         "#;
 
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r#"
-    [E0204] Error: no item found in scope
+    [E0201] Error: no item found in scope
        ,-[ file:///test0.st:9:13 ]
        |
      9 |             engine := ULINT#5;
@@ -95,7 +95,7 @@ END_FUNCTION_BLOCK
         "#;
 
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r#"
-    [E0204] Error: no item found in scope
+    [E0201] Error: no item found in scope
         ,-[ file:///test0.st:14:2 ]
         |
      14 |     fn();
@@ -132,7 +132,7 @@ END_FUNCTION_BLOCK
         "#;
 
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r#"
-    [E0101] Error: duplicate definitions
+    [E0102] Error: duplicate definitions
        ,-[ file:///test0.st:7:11 ]
        |
      3 |     FUNCTION fn
@@ -143,7 +143,7 @@ END_FUNCTION_BLOCK
        |              ^|
        |               `-- duplicate POU 'fn'
     ---'
-    [E0204] Error: no item found in scope
+    [E0201] Error: no item found in scope
         ,-[ file:///test0.st:14:2 ]
         |
      14 |     fn();
@@ -171,7 +171,7 @@ END_FUNCTION
     "#;
 
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r#"
-    [E0204] Error: no item found in scope
+    [E0201] Error: no item found in scope
        ,-[ file:///test0.st:8:5 ]
        |
      8 |     f();
@@ -205,7 +205,7 @@ END_FUNCTION_BLOCK
 "#;
 
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r#"
-    [E0204] Error: no item found in scope
+    [E0201] Error: no item found in scope
         ,-[ file:///test0.st:12:5 ]
         |
      12 |     fa();
@@ -234,7 +234,7 @@ END_FUNCTION_BLOCK
         "#;
 
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E0210] Error: no namespace item found
+    [E0203] Error: no namespace item found
        ,-[ file:///test0.st:8:17 ]
        |
      8 |         engine: Engine;
@@ -263,7 +263,7 @@ END_FUNCTION_BLOCK
         "#;
 
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E0210] Error: no namespace item found
+    [E0203] Error: no namespace item found
        ,-[ file:///test0.st:8:11 ]
        |
      8 |        engine: System;
@@ -301,7 +301,7 @@ fn fuzzy_struct_path_expr(mut with_db: RootDatabase) {
         "#;
 
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E0211] Error: no such field
+    [E0202] Error: no such field
         ,-[ file:///test0.st:15:15 ]
         |
       3 | ,->             STRUCT
@@ -341,7 +341,7 @@ fn fuzzy_fb_fields(mut with_db: RootDatabase) {
         "#;
 
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E0211] Error: no such field
+    [E0202] Error: no such field
         ,-[ file:///test0.st:16:15 ]
         |
       2 |         FUNCTION_BLOCK Motor
@@ -378,7 +378,7 @@ fn fuzzy_class_fields(mut with_db: RootDatabase) {
         "#;
 
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E0211] Error: no such field
+    [E0202] Error: no such field
         ,-[ file:///test0.st:15:15 ]
         |
       2 |         CLASS Pump
@@ -412,7 +412,7 @@ END_FUNCTION_BLOCK
         "#;
 
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E0208] Error: function call parameter mismatch
+    [E0803] Error: function call parameter mismatch
         ,-[ file:///test0.st:11:5 ]
         |
      11 |     fn(param := 0);
@@ -423,7 +423,7 @@ END_FUNCTION_BLOCK
         |       - param1
         |       - param2
     ----'
-    [E0233] Error: missing required parameter
+    [E0802] Error: missing required parameter
         ,-[ file:///test0.st:11:2 ]
         |
       4 |        param1: INT;
@@ -462,7 +462,7 @@ END_FUNCTION_BLOCK
         "#;
 
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E0209] Error: function call parameter mismatch
+    [E0804] Error: function call parameter mismatch
         ,-[ file:///test0.st:14:5 ]
         |
      14 |     fn(param => param_out);

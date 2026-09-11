@@ -73,7 +73,7 @@ mod tests {
     /// code (no source example) included.
     #[test]
     fn a_code_described_without_an_example_still_explains() {
-        assert!(run_explain("E0217", OutputFormat::Full).is_ok());
+        assert!(run_explain("E1401", OutputFormat::Full).is_ok());
     }
 
     #[test]
@@ -89,7 +89,7 @@ mod tests {
     fn reference_parses_and_knows_the_classics() {
         let entries: Vec<Entry> = serde_json::from_str(REFERENCE).expect("valid json");
         assert!(entries.len() > 200, "reference looks truncated");
-        for code in ["E0301", "E0101", "E0225"] {
+        for code in ["E0301", "E0102", "E0205"] {
             let e = entries.iter().find(|e| e.code == code);
             let e = e.unwrap_or_else(|| panic!("{code} missing"));
             assert!(!e.description.is_empty(), "{code} has no explanation");

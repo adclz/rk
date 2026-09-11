@@ -4,9 +4,7 @@ use rustc_hash::FxHashMap;
 
 use crate::{
     HasName, HirNodeInfo, Modifier,
-    check::errors::{
-        ToIdeDiagnostic, e1_duplicates::DuplicateError, e5_inheritance::InheritanceError,
-    },
+    check::errors::{ToIdeDiagnostic, e01_duplicates::DuplicateError, e11_oop::OopError},
     hir_def::{
         pous::{pou::Pou, variable::VariableDecl},
         scope::ScopeKind,
@@ -33,7 +31,7 @@ impl<'db> InitInference<'db> {
         let inherited_methods = inherited_methods(db, implementer);
 
         // FINAL closes a type to extension. The method-level rule was
-        // enforced (E0504) while this one was not, so FINAL on a CLASS or
+        // enforced (E1114) while this one was not, so FINAL on a CLASS or
         // FUNCTION_BLOCK header meant nothing at all.
         if let Some(extends) = match implementer {
             Pou::FunctionBlock(fb) => fb.extends(db),
@@ -43,7 +41,7 @@ impl<'db> InitInference<'db> {
             && base.modifier(db).contains(Modifier::FINAL)
         {
             self.errors.push(
-                InheritanceError::ExtendsFinalPou {
+                OopError::ExtendsFinalPou {
                     derived: implementer,
                     base,
                     extends: crate::CallSite::from_scoped(db, extends),
@@ -61,7 +59,7 @@ impl<'db> InitInference<'db> {
             for method in declared_methods.values() {
                 if method.modifier(db).contains(Modifier::ABSTRACT) {
                     self.errors.push(
-                        InheritanceError::AbstractMethodInConcretePou {
+                        OopError::AbstractMethodInConcretePou {
                             pou: implementer,
                             method: *method,
                         }
@@ -94,7 +92,7 @@ impl<'db> InitInference<'db> {
                     // Override of a final method
                     (Modifier::FINAL, Modifier::OVERRIDE) => {
                         self.errors.push(
-                            InheritanceError::OverrideFinalMethod {
+                            OopError::OverrideFinalMethod {
                                 base_method: inherited_method,
                                 derived_method: *declared_method,
                             }
@@ -111,7 +109,7 @@ impl<'db> InitInference<'db> {
                             && inherited_method.modifier(db) != Modifier::ABSTRACT =>
                     {
                         self.errors.push(
-                            InheritanceError::MissingOverride {
+                            OopError::MissingOverride {
                                 base_method: inherited_method,
                                 derived_method: *declared_method,
                             }
@@ -127,7 +125,7 @@ impl<'db> InitInference<'db> {
                 // for concrete POUs (classes, function blocks), not interfaces
                 if inherited_method.is_prototype() && !matches!(implementer, Pou::Interface(_)) {
                     self.errors.push(
-                        InheritanceError::UnimplementedInterfaceMethod {
+                        OopError::UnimplementedInterfaceMethod {
                             implementer,
                             method: inherited_method,
                             declared_by,
@@ -144,7 +142,7 @@ impl<'db> InitInference<'db> {
                     && !implementer.modifier(db).contains(Modifier::ABSTRACT)
                 {
                     self.errors.push(
-                        InheritanceError::MissingAbstractMethod {
+                        OopError::MissingAbstractMethod {
                             implementer,
                             base_method: inherited_method,
                         }
@@ -159,7 +157,7 @@ impl<'db> InitInference<'db> {
             if inherited_methods.methods.contains_key(base_name) {
             } else if base_method.modifier(db) == Modifier::OVERRIDE {
                 self.errors.push(
-                    InheritanceError::EmptyOverride {
+                    OopError::EmptyOverride {
                         base_method: *base_method,
                     }
                     .to_diagnostic(db, self.scope.file(db)),
@@ -198,7 +196,7 @@ impl<'db> InitInference<'db> {
                         continue;
                     }
                     self.errors.push(
-                        InheritanceError::InheritedMemberShadowed {
+                        OopError::InheritedMemberShadowed {
                             derived: *v,
                             base: *base_decl,
                         }
@@ -262,7 +260,7 @@ fn check_signature<'db>(
     let sig2 = m2.variables(db);
     if sig1.len() != sig2.len() {
         errors.push(
-            InheritanceError::SignatureParametersCountMismatch {
+            OopError::SignatureParametersCountMismatch {
                 m1,
                 expected: sig1.len(),
                 m2,
@@ -280,7 +278,7 @@ fn check_signature<'db>(
     let ret2 = m2.return_type(db).map(|s| s.infer(db).normalize(db));
     if ret1 != ret2 {
         errors.push(
-            InheritanceError::SignatureReturnMismatch {
+            OopError::SignatureReturnMismatch {
                 expected: ret1,
                 got: ret2,
                 method: m2,
@@ -302,7 +300,7 @@ fn check_signature<'db>(
         // being compared against the wrong counterpart, so stop there.
         if var1.get_name_ident(db).caseless(db) != var2.get_name_ident(db).caseless(db) {
             errors.push(
-                InheritanceError::SignatureNameMismatch {
+                OopError::SignatureNameMismatch {
                     method: m2,
                     base_param: *var1,
                     param: *var2,
@@ -313,7 +311,7 @@ fn check_signature<'db>(
         }
         if var1.kind(db) != var2.kind(db) {
             errors.push(
-                InheritanceError::SignatureSectionMismatch {
+                OopError::SignatureSectionMismatch {
                     method: m2,
                     base_param: *var1,
                     param: *var2,
@@ -324,7 +322,7 @@ fn check_signature<'db>(
         }
         if !var1_typ.normalize(db).eq(&var2_typ.normalize(db)) {
             errors.push(
-                InheritanceError::SignatureTypeMismatch {
+                OopError::SignatureTypeMismatch {
                     expected: var1_typ,
                     got: var2_typ,
                     method: m2,

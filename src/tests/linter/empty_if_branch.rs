@@ -16,7 +16,7 @@ END_VAR
 END_FUNCTION
 "#;
     assert_snapshot!(test_single_lint(&mut with_db, &[source], "empty-if-branch"), @r"
-    [L0211] Hint: empty IF branch
+    [L0306] Hint: empty IF branch
        ,-[ file:///test0.st:6:8 ]
        |
      6 |     IF x THEN
@@ -42,7 +42,7 @@ END_VAR
 END_FUNCTION
 "#;
     assert_snapshot!(test_single_lint(&mut with_db, &[source], "empty-if-branch"), @r"
-    [L0211] Hint: empty IF branch
+    [L0306] Hint: empty IF branch
        ,-[ file:///test0.st:8:11 ]
        |
      8 |     ELSIF x = 2 THEN

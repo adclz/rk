@@ -12,12 +12,12 @@ use ide_diagnostic::{ErrorCode, IdeDiagnostic, Related, diag};
 
 pub const NAME: &str = "loop-var-modified";
 
-/// L0308: FOR loop control variable is modified inside the loop body.
+/// L0112: FOR loop control variable is modified inside the loop body.
 struct LoopVarModified;
 
 impl ErrorCode for LoopVarModified {
     fn code(&self) -> &'static str {
-        "L0308"
+        "L0112"
     }
 
     fn description(&self) -> &'static str {

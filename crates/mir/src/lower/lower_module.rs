@@ -79,9 +79,8 @@ pub fn lower_modules<'db>(
     let mut all_pous: Vec<(&Pou<'db>, Option<String>)> = Vec::new();
     let mut all_programs: Vec<(&hir::hir_def::program::ProgramDecl<'db>, Option<String>)> =
         Vec::new();
-    // A workspace declares one CONFIGURATION (E0242 rejects more), so every
-    // block found is a FRAGMENT of that one — globals in one file, resources in
-    // another. They are lowered together, in the caller's file order.
+    // A workspace declares one CONFIGURATION (E1402), so every block is a
+    // fragment of it, lowered together in file order.
     let mut fragments: Vec<hir::hir_def::config::ConfigDecl<'db>> = Vec::new();
     for index in indices {
         all_pous.extend(index.global_pous.iter().map(|p| (p, None)));
@@ -448,10 +447,7 @@ fn lower_module_from_pous<'db>(
                 program.name(db).text(db)
             )));
         };
-        // Two PROGRAMs with one name reaching lowering would LAST-WIN in this
-        // map, binding every task configured with the name to whichever body
-        // lowered later. E0101 refuses duplicates at check; lowering refuses
-        // them too rather than trusting that it ran.
+        // E0102 refuses duplicate PROGRAMs at check; lowering refuses them too.
         if program_infos
             .insert(
                 program.name(db),
@@ -723,13 +719,9 @@ fn lower_module_from_pous<'db>(
     Ok(module)
 }
 
-/// Lower an `{extern}` FUNCTION to a MirExternFunction.
-///
-/// The import's signature IS the declaration: `VAR_INPUT` are the params
-/// (copies; aggregates as a pointer to the call-entry snapshot), scalar
-/// `VAR_OUTPUT` are the results in declaration order, and the return type,
-/// when declared, is the LAST result. `VAR_IN_OUT` and aggregate outputs are
-/// refused by HIR (E0243) before lowering runs.
+/// Lower an `{extern}` FUNCTION: `VAR_INPUT` are the params, scalar
+/// `VAR_OUTPUT` the results in declaration order, the return type last
+/// (E1502 refused the rest).
 fn lower_extern_function<'db>(
     db: &'db dyn WorkspaceDataBase,
     func: Function<'db>,
@@ -928,10 +920,7 @@ fn build_global_table<'db>(
     memory_layout: &mut MirMemoryLayout,
 ) -> Result<GlobalTable<'db>, LowerTypeError> {
     let mut table = GlobalTable::default();
-    // One table across every fragment: a global declared in the fragment that
-    // holds only VAR_GLOBALs is the same global the resources use. A name
-    // declared by two fragments is E0102, so allocating per fragment here
-    // cannot collide.
+    // One table across every fragment; a name declared twice is E0101.
     for config in config {
         // Application scope: a RESOURCE declares no variables of its own.
         for v in config.variables(db) {

@@ -1,11 +1,10 @@
 use db::WorkspaceDataBase;
 
+use crate::check::errors::e04_init::InitError;
+use crate::check::errors::e15_pragma::PragmaError;
 use crate::{
     CallSite, HirNodeInfo,
-    check::errors::{
-        ToIdeDiagnostic, e5_inheritance::InheritanceError,
-        e10_control_flow::ControlFlowError,
-    },
+    check::errors::{ToIdeDiagnostic, e11_oop::OopError, e12_control_flow::ControlFlowError},
     hir_def::{
         expressions::{
             expression::{
@@ -41,7 +40,7 @@ pub struct StmtsResolverCtx<'db> {
 /// Try to extract a constant integer value from a literal expression.
 /// Handles plain literals and unary minus on literals.
 /// Evaluate a CASE label, recording its value and refusing it if it has none
-/// (E1006).
+/// (E1205).
 ///
 /// IEC: `Case_List_Elem : Subrange | Constant_Expr`, where a constant
 /// expression is any expression that evaluates to a constant AT COMPILE TIME.
@@ -105,7 +104,6 @@ fn check_case_label_constant<'db>(
     }
 }
 
-
 /// What a condition proves about references, per outcome.
 ///
 /// Each entry says "in this branch, that reference IS / IS NOT null".
@@ -132,7 +130,7 @@ impl<'db> NullGuards<'db> {
 ///
 /// Without this the analysis was assignment-only, so the one idiomatic way to
 /// write a safe dereference — `IF p <> NULL THEN p^` — was refused, and no
-/// pragma could silence it because E1003 is a compiler error.
+/// pragma could silence it because E0902 is a compiler error.
 fn null_guards<'db>(
     db: &'db dyn WorkspaceDataBase,
     condition: Expr<'db>,
@@ -264,8 +262,8 @@ impl<'db> StmtsResolverCtx<'db> {
                 StmtKind::EmptyPathExpression(expr) => {
                     resolver.resolve_begin_path_expr(db, *expr, None, ctx);
                     // Rule 2 (IEC 6.6.7.2.9): SUPER() shall occur once in the FB
-                    // body. Track the first; a second occurrence is E0519,
-                    // pointing back to the first. (SUPER() in a method is E0518,
+                    // body. Track the first; a second occurrence is E1110,
+                    // pointing back to the first. (SUPER() in a method is E1109,
                     // handled in resolve_invocation, so restrict to FB bodies.)
                     if expr.invocation(db).map(|i| i.kind(db))
                         == Some(crate::hir_def::expressions::invocation::InvocationKind::SuperBody)
@@ -277,7 +275,7 @@ impl<'db> StmtsResolverCtx<'db> {
                         // Rule 2: SUPER() shall not be in a loop.
                         if nested_scope == NestedScope::Loop {
                             ctx.errors.push(
-                                InheritanceError::SuperBodyInLoop {
+                                OopError::SuperBodyInLoop {
                                     call_site: stmt.as_call_site(db),
                                 }
                                 .to_diagnostic(db, ctx.scope.file(db)),
@@ -285,7 +283,7 @@ impl<'db> StmtsResolverCtx<'db> {
                         }
                         match ctx.first_super_body {
                             Some(first) => ctx.errors.push(
-                                InheritanceError::SuperBodyMultiple {
+                                OopError::SuperBodyMultiple {
                                     call_site: stmt.as_call_site(db),
                                     first: first.as_call_site(db),
                                 }
@@ -303,7 +301,7 @@ impl<'db> StmtsResolverCtx<'db> {
 
                     if ctx.is_constant_access(db, *var) {
                         ctx.errors.push(
-                            ControlFlowError::AssignToConstant {
+                            InitError::AssignToConstant {
                                 access: CallSite::from_scoped(db, var),
                             }
                             .to_diagnostic(db, ctx.scope.file(db)),
@@ -315,7 +313,7 @@ impl<'db> StmtsResolverCtx<'db> {
 
                     // Design 1: an interface parameter is a fixed binding to the
                     // concrete type the caller supplied; reassigning it would
-                    // break monomorphization (see E0517).
+                    // break monomorphization (see E1124).
                     if let Type::Variable((var_decl, _)) = base_typ
                         && matches!(
                             var_decl.spec(db).infer(db).normalize(db),
@@ -323,7 +321,7 @@ impl<'db> StmtsResolverCtx<'db> {
                         )
                     {
                         ctx.errors.push(
-                            InheritanceError::InterfaceParamNotAssignable {
+                            OopError::InterfaceParamNotAssignable {
                                 var: var_decl,
                                 access: *var,
                             }
@@ -377,7 +375,7 @@ impl<'db> StmtsResolverCtx<'db> {
                         )
                     {
                         ctx.errors.push(
-                            crate::check::errors::e2_resolve::ResolveError::ReturnsReferenceToLocal {
+                            crate::check::errors::e09_reference::ReferenceError::ReturnsReferenceToLocal {
                                 var: referenced,
                                 site: CallSite::from_scoped(db, target),
                             }
@@ -571,7 +569,7 @@ impl<'db> StmtsResolverCtx<'db> {
                     // `rk check` said one thing and `rk compile` another.
                     if !for_control_is_bare_identifier(db, *control_variable) {
                         ctx.errors.push(
-                            crate::check::errors::e10_control_flow::ControlFlowError::ForControlNotAVariable {
+                            crate::check::errors::e12_control_flow::ControlFlowError::ForControlNotAVariable {
                                 access: CallSite::from_scoped(db, control_variable),
                             }
                             .to_diagnostic(db, ctx.scope.file(db)),
@@ -631,7 +629,7 @@ impl<'db> StmtsResolverCtx<'db> {
                         // value, since BY 0 never advances the counter.
                         match crate::hir_ty::infer::const_eval::const_int(db, *step, ctx) {
                             Some(0) => ctx.errors.push(
-                                crate::check::errors::e10_control_flow::ControlFlowError::ForStepInvalid {
+                                crate::check::errors::e12_control_flow::ControlFlowError::ForStepInvalid {
                                     step: CallSite::from_scoped(db, step),
                                     zero: true,
                                     decl: None,
@@ -666,7 +664,7 @@ impl<'db> StmtsResolverCtx<'db> {
                                     _ => None,
                                 };
                                 ctx.errors.push(
-                                    crate::check::errors::e10_control_flow::ControlFlowError::ForStepInvalid {
+                                    crate::check::errors::e12_control_flow::ControlFlowError::ForStepInvalid {
                                         step: CallSite::from_scoped(db, step),
                                         zero: false,
                                         decl,
@@ -846,7 +844,7 @@ impl<'db> StmtsResolverCtx<'db> {
                     let mut instruction_known = false;
                     if function.is_none() {
                         ctx.errors.push(
-                            crate::check::errors::e2_resolve::ResolveError::WasmPragmaOutsideFunction {
+                            crate::check::errors::e15_pragma::PragmaError::WasmPragmaOutsideFunction {
                                 span: wasm_decl.instruction_span,
                             }
                             .to_diagnostic(db, ctx.scope.file(db)),
@@ -863,7 +861,7 @@ impl<'db> StmtsResolverCtx<'db> {
                         };
                         if !instruction_known {
                             ctx.errors.push(
-                                crate::check::errors::e2_resolve::ResolveError::UnknownWasmInstruction {
+                                crate::check::errors::e15_pragma::PragmaError::UnknownWasmInstruction {
                                     name: wasm_decl.instruction.clone(),
                                     span: wasm_decl.instruction_span,
                                 }
@@ -900,7 +898,7 @@ impl<'db> StmtsResolverCtx<'db> {
                         }
                         all_known = false;
                         ctx.errors.push(
-                            crate::check::errors::e2_resolve::ResolveError::UnknownWasmOperand {
+                            crate::check::errors::e15_pragma::PragmaError::UnknownWasmOperand {
                                 name: ident.ident.text(db).clone(),
                                 span: ident.get_span(db),
                             }
@@ -936,19 +934,18 @@ impl<'db> StmtsResolverCtx<'db> {
                             result,
                         )
                     {
-                        use crate::check::errors::e2_resolve::ResolveError;
                         let error = match refusal {
                             wasm::Refusal::Mismatch {
                                 instruction,
                                 expected,
                                 actual,
-                            } => ResolveError::WasmSignatureMismatch {
+                            } => PragmaError::WasmSignatureMismatch {
                                 instruction,
                                 expected,
                                 actual,
                                 span: wasm_decl.instruction_span,
                             },
-                            wasm::Refusal::Unknown(name) => ResolveError::UnknownWasmInstruction {
+                            wasm::Refusal::Unknown(name) => PragmaError::UnknownWasmInstruction {
                                 name,
                                 span: wasm_decl.instruction_span,
                             },
@@ -1011,8 +1008,8 @@ fn check_string_literal_fits<'db>(
     target: Expr<'db>,
     ctx: &mut BodyInferenceResult<'db>,
 ) {
+    use crate::check::errors::e03_type::InferLiteralError;
     use crate::hir_def::expressions::expression::{ExprKind, PrimaryExpr};
-    use crate::check::errors::e3_type::InferLiteralError;
 
     let mut spec = match base_typ {
         Type::Variable((var, None)) => var.spec(db),
@@ -1057,12 +1054,10 @@ fn check_string_literal_fits<'db>(
             got: bytes.len(),
         };
         ctx.errors.push(
-            crate::check::errors::e3_type::TypeError::InferLiteralError {
+            crate::check::errors::e03_type::TypeError::InferLiteralError {
                 expr: target,
                 source: None,
-                target: Type::Elementary(
-                    crate::hir_def::expressions::spec::ElementarySpec::String,
-                ),
+                target: Type::Elementary(crate::hir_def::expressions::spec::ElementarySpec::String),
                 err,
             }
             .to_diagnostic(db, ctx.scope.file(db)),

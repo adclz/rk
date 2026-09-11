@@ -267,7 +267,7 @@ END_FUNCTION
         "#;
 
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E0309] Error: invalid literal
+    [E0306] Error: invalid literal
        ,-[ file:///test0.st:7:13 ]
        |
      4 |        test: ARRAY[0..2] OF BOOL;
@@ -314,7 +314,7 @@ END_FUNCTION
         "#;
 
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E0211] Error: no such field
+    [E0202] Error: no such field
         ,-[ file:///test0.st:14:7 ]
         |
       3 | ,->     STRUCT
@@ -354,7 +354,7 @@ END_FUNCTION
         "#;
 
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E0309] Error: invalid literal
+    [E0306] Error: invalid literal
         ,-[ file:///test0.st:14:16 ]
         |
       4 |         power : INT;
@@ -389,7 +389,7 @@ END_FUNCTION
         "#;
 
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E0213] Error: invalid operation
+    [E0508] Error: invalid operation
         ,-[ file:///test0.st:14:2 ]
         |
      14 |     test[0] := 0.2;
@@ -413,7 +413,7 @@ END_FUNCTION
         "#;
 
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E0211] Error: no such field
+    [E0202] Error: no such field
        ,-[ file:///test0.st:7:7 ]
        |
      4 |        test: ARRAY[0..1] OF INT;
@@ -440,7 +440,7 @@ FUNCTION fn0
 END_FUNCTION
 "#;
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E0210] Error: no namespace item found
+    [E0203] Error: no namespace item found
        ,-[ file:///test0.st:4:15 ]
        |
      4 |         test: unknown;
@@ -503,7 +503,7 @@ FUNCTION fn0
 END_FUNCTION
 "#;
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E1004] Error: semantic violation
+    [E0404] Error: semantic violation
        ,-[ file:///test0.st:9:5 ]
        |
      9 |     MY_STRUCT.field1 := 42;
@@ -562,7 +562,7 @@ END_VAR
 END_FUNCTION
 "#;
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E1004] Error: semantic violation
+    [E0404] Error: semantic violation
         ,-[ file:///test0.st:19:21 ]
         |
      19 |     consumer(val := MY_CONSTANTS.MAX_VAL);
@@ -597,7 +597,7 @@ END_VAR
 END_FUNCTION
 "#;
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E1004] Error: semantic violation
+    [E0404] Error: semantic violation
         ,-[ file:///test0.st:19:14 ]
         |
      19 |     consumer(MY_CONSTANTS.MAX_VAL);
@@ -620,7 +620,7 @@ END_VAR
 END_FUNCTION
 "#;
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r#"
-    [E0204] Error: no item found in scope
+    [E0201] Error: no item found in scope
        ,-[ file:///test0.st:6:10 ]
        |
      6 |     x := UNKNOWN_TYPE.field1;
@@ -727,7 +727,7 @@ END_VAR
 END_FUNCTION
 "#;
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E0102] Error: duplicate definitions
+    [E0101] Error: duplicate definitions
         ,-[ file:///test0.st:10:5 ]
         |
       4 |     X : REAL;
@@ -800,7 +800,7 @@ fn invalid_this_path_bad_final_field(mut with_db: RootDatabase) {
         "#;
 
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E0211] Error: no such field
+    [E0202] Error: no such field
        ,-[ file:///test0.st:8:20 ]
        |
      2 |         TYPE Pt : STRUCT x : DINT; END_STRUCT; END_TYPE

@@ -78,7 +78,7 @@ fn invalid_access_private_method(mut with_db: RootDatabase) {
     "#;
 
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E0401] Error: access control violation
+    [E1001] Error: access control violation
        ,-[ file:///test0.st:8:19 ]
        |
      8 |             SUPER.myPrivateMethod();
@@ -111,7 +111,7 @@ END_NAMESPACE
     "#;
 
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E0402] Error: access control violation
+    [E1003] Error: access control violation
         ,-[ file:///test0.st:13:19 ]
         |
      13 |             SUPER.myInternalMethod();
@@ -142,7 +142,7 @@ END_NAMESPACE
     "#;
 
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E0402] Error: access control violation
+    [E1003] Error: access control violation
        ,-[ file:///test0.st:6:15 ]
        |
      6 |         SUPER.myInternalMethod();
@@ -171,7 +171,7 @@ END_NAMESPACE
     "#;
 
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E0402] Error: access control violation
+    [E1003] Error: access control violation
        ,-[ file:///test0.st:9:19 ]
        |
      9 |             SUPER.myInternalMethod();
@@ -221,7 +221,7 @@ END_FUNCTION_BLOCK
     "#;
 
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E0403] Error: access control violation
+    [E1002] Error: access control violation
         ,-[ file:///test0.st:11:9 ]
         |
      11 |     obj.myProtectedMethod();
@@ -306,7 +306,7 @@ fn invalid_call_private_function_from_another_namespace(mut with_db: RootDatabas
     END_FUNCTION
     "#;
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E0405] Error: access control violation
+    [E1005] Error: access control violation
         ,-[ file:///test0.st:10:20 ]
         |
       3 | ,->         FUNCTION PRIVATE helper : INT
@@ -319,7 +319,7 @@ fn invalid_call_private_function_from_another_namespace(mut with_db: RootDatabas
         |                        ^^^^^|^^^^
         |                             `------ can not call PRIVATE function 'Lib.helper'
     ----'
-    [E0405] Error: access control violation
+    [E1005] Error: access control violation
         ,-[ file:///test0.st:16:23 ]
         |
       3 | ,->         FUNCTION PRIVATE helper : INT
@@ -357,7 +357,7 @@ fn invalid_call_library_private_function_by_reopening_its_namespace(mut with_db:
     let rendered =
         crate::tests::utils::test_diagnostics_with_library(&mut with_db, &[lib], &[workspace]);
     assert_snapshot!(rendered, @r"
-    [E0405] Error: access control violation
+    [E1005] Error: access control violation
        ,-[ file:///test0.st:4:22 ]
        |
      4 |             sneak := helper();
@@ -386,14 +386,14 @@ fn invalid_protected_or_internal_on_a_function(mut with_db: RootDatabase) {
     END_FUNCTION
     "#;
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E0406] Error: access control violation
+    [E1006] Error: access control violation
        ,-[ file:///test0.st:2:14 ]
        |
      2 |     FUNCTION PROTECTED f : INT
        |              ^^^^|^^^^
        |                  `------ 'PROTECTED' does not apply to a FUNCTION: only PRIVATE does
     ---'
-    [E0406] Error: access control violation
+    [E1006] Error: access control violation
        ,-[ file:///test0.st:5:14 ]
        |
      5 |     FUNCTION INTERNAL g : INT
@@ -471,7 +471,7 @@ fn invalid_access_internal_namespace_from_outside(mut with_db: RootDatabase) {
     END_NAMESPACE
     "#;
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E0407] Error: access control violation
+    [E1004] Error: access control violation
         ,-[ file:///test0.st:17:37 ]
         |
      10 |             NAMESPACE INTERNAL Deep
@@ -482,7 +482,7 @@ fn invalid_access_internal_namespace_from_outside(mut with_db: RootDatabase) {
         |                                     |
         |                                     `-- can not access 'Lib.Mid.Deep' from INTERNAL namespace
     ----'
-    [E0407] Error: access control violation
+    [E1004] Error: access control violation
         ,-[ file:///test0.st:23:21 ]
         |
       3 |         NAMESPACE INTERNAL Impl
@@ -493,7 +493,7 @@ fn invalid_access_internal_namespace_from_outside(mut with_db: RootDatabase) {
         |                     ^^^^^|^^^^
         |                          `------ can not access 'Lib.Impl' from INTERNAL namespace
     ----'
-    [E0407] Error: access control violation
+    [E1004] Error: access control violation
         ,-[ file:///test0.st:24:29 ]
         |
       3 |         NAMESPACE INTERNAL Impl
@@ -525,7 +525,7 @@ fn invalid_using_of_an_internal_namespace(mut with_db: RootDatabase) {
     END_FUNCTION
     "#;
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E0407] Error: access control violation
+    [E1004] Error: access control violation
         ,-[ file:///test0.st:10:11 ]
         |
       3 |         NAMESPACE INTERNAL Impl
@@ -558,7 +558,7 @@ fn invalid_access_library_internal_namespace_from_workspace(mut with_db: RootDat
     let rendered =
         crate::tests::utils::test_diagnostics_with_library(&mut with_db, &[lib], &[workspace]);
     assert_snapshot!(rendered, @r"
-    [E0407] Error: access control violation
+    [E1004] Error: access control violation
        ,-[ file:///test0.st:3:24 ]
        |
      3 |         use := LibPriv.hidden();

@@ -114,7 +114,10 @@ impl<'db> ScopeId<'db> {
         }
     }
 
-    fn declared_methods(&self, db: &'db dyn WorkspaceDataBase) -> FxHashMap<CaselessIdent, MethodRef<'db>> {
+    fn declared_methods(
+        &self,
+        db: &'db dyn WorkspaceDataBase,
+    ) -> FxHashMap<CaselessIdent, MethodRef<'db>> {
         match get_scope(db, *self).kind {
             ScopeKind::Global
             | ScopeKind::Namespace(_)

@@ -18,7 +18,7 @@ fn a_label_survives_a_non_ascii_character_before_it(mut with_db: db::RootDatabas
         END_FUNCTION
     "#;
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E0229] Error: multibit access out of range
+    [E0808] Error: multibit access out of range
        ,-[ file:///test0.st:7:18 ]
        |
      5 |             b : BYTE;

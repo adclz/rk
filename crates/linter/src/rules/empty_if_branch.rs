@@ -8,12 +8,12 @@ use ide_diagnostic::{ErrorCode, IdeDiagnostic, diag};
 
 pub const NAME: &str = "empty-if-branch";
 
-/// L0211: IF, ELSIF, or ELSE branch with no statements.
+/// L0306: IF, ELSIF, or ELSE branch with no statements.
 struct EmptyIfBranch;
 
 impl ErrorCode for EmptyIfBranch {
     fn code(&self) -> &'static str {
-        "L0211"
+        "L0306"
     }
 
     fn description(&self) -> &'static str {

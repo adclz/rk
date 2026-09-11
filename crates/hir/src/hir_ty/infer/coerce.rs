@@ -1,9 +1,10 @@
 use db::WorkspaceDataBase;
 use ide_diagnostic::IdeDiagnostic;
 
+use crate::check::errors::e04_init::InitError;
 use crate::{
     CallSite, HirNodeInfo,
-    check::errors::{ToIdeDiagnostic, e3_type::TypeError, e10_control_flow::ControlFlowError},
+    check::errors::{ToIdeDiagnostic, e03_type::TypeError},
     hir_def::{
         expressions::expression::{AddOperatorKind, MultOperatorKind},
         pous::pou::Pou,
@@ -42,7 +43,7 @@ impl<'db> Type<'db> {
         &self,
         db: &'db dyn WorkspaceDataBase,
         rhs: crate::hir_def::expressions::expression::Expr<'db>,
-    ) -> Option<crate::check::errors::e8_subrange::SubRangeError<'db>> {
+    ) -> Option<crate::check::errors::e07_subrange::SubRangeError<'db>> {
         let sub = self.as_subrange(db)?;
         // The DECLARED bounds fold through the spec evaluator — literal-only
         // folding silently skipped this check for a CONSTANT-bounded
@@ -53,7 +54,7 @@ impl<'db> Type<'db> {
         };
         let value = rhs.as_const_int(db)?;
         (value < lower || value > upper).then_some(
-            crate::check::errors::e8_subrange::SubRangeError::ValueOutOfRange {
+            crate::check::errors::e07_subrange::SubRangeError::ValueOutOfRange {
                 expr: rhs,
                 value,
                 lower,
@@ -161,16 +162,14 @@ impl<'db> Type<'db> {
             // TYPE it was written through: normalize peels that down to the
             // enum spec, so an alias's variant still matches its base enum,
             // while a foreign enum's variant is a mismatch, not a pass.
-            (Type::Enum(e1), Type::EnumVariant(dt, _)) => {
-                match Type::DataType(*dt).normalize(db) {
-                    Type::Enum(e2) if e1.eq(&e2) => Ok(()),
-                    _ => Err(CoerceError {
-                        expected: *self,
-                        actual: to,
-                        adjustment: None,
-                    }),
-                }
-            }
+            (Type::Enum(e1), Type::EnumVariant(dt, _)) => match Type::DataType(*dt).normalize(db) {
+                Type::Enum(e2) if e1.eq(&e2) => Ok(()),
+                _ => Err(CoerceError {
+                    expected: *self,
+                    actual: to,
+                    adjustment: None,
+                }),
+            },
             (Type::Enum(e1), Type::Enum(e2)) => {
                 if e1.eq(e2) {
                     Ok(())
@@ -324,10 +323,8 @@ impl<'db> Type<'db> {
             // by reference, so this hands over the instance rather than copying
             // it — the way to share one. Assigning an instance is a different
             // question and stays refused, by the check on the assignment TARGET
-            // (E0226), not here.
-            (Type::FunctionBlock(expected), Type::FunctionBlock(actual))
-                if expected == *actual =>
-            {
+            // (E0310), not here.
+            (Type::FunctionBlock(expected), Type::FunctionBlock(actual)) if expected == *actual => {
                 Ok(())
             }
             (Type::Class(expected), Type::Class(actual)) if expected == *actual => Ok(()),
@@ -401,7 +398,7 @@ impl<'db> Type<'db> {
         }
 
         ctx.errors.push(
-            ControlFlowError::DirectType {
+            TypeError::DirectType {
                 expr: call_site,
                 typ: *self,
             }
@@ -432,7 +429,7 @@ impl<'db> Type<'db> {
                 // a variable of callable type cannot be assigned to
                 if let Some(callable_typ) = variable.spec(db).infer(db).as_callable(db) {
                     ctx.errors.push(
-                        ControlFlowError::AssignCallableType {
+                        TypeError::AssignCallableType {
                             typ: callable_typ,
                             access: call_site,
                         }
@@ -443,7 +440,7 @@ impl<'db> Type<'db> {
                 // a CONSTANT variable cannot be assigned to
                 if variable.qualifier(db).contains(crate::Qualifier::CONSTANT) {
                     ctx.errors.push(
-                        ControlFlowError::AssignToConstant { access: call_site }
+                        InitError::AssignToConstant { access: call_site }
                             .to_diagnostic(db, ctx.scope.file(db)),
                     );
                     assignable = false;

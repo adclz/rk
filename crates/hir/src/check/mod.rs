@@ -11,16 +11,16 @@ use crate::{
     check::{
         check_duplicates::{
             check_config_fragment_collisions, check_duplicate_pous, check_duplicate_programs,
-            check_single_resource,
-            check_single_configuration,
+            check_single_configuration, check_single_resource,
         },
         check_recursion::TypeDependencyGraph,
-        errors::{ToIdeDiagnostic, e0_syntax::SyntaxError, e2_resolve::ResolveError},
+        errors::{ToIdeDiagnostic, e00_syntax::SyntaxError},
     },
     hir_def::semantic_index::semantic_index,
     hir_ty::{config::infer_config_result, head::init_inference::infer_initialization},
 };
 
+use crate::check::errors::e14_config::ConfigError;
 use crate::{
     HirNodeInfo,
     check::check_duplicates::check_duplicate_namespaces,
@@ -30,8 +30,8 @@ use crate::{
 
 pub mod check_duplicates;
 pub mod check_recursion;
-pub mod wasm_instructions;
 pub mod errors;
+pub mod wasm_instructions;
 
 #[salsa::tracked(returns(ref))]
 pub fn diagnostics_for_file(db: &dyn WorkspaceDataBase, file: File) -> Arc<Vec<IdeDiagnostic>> {
@@ -44,7 +44,7 @@ pub fn diagnostics_for_file(db: &dyn WorkspaceDataBase, file: File) -> Arc<Vec<I
     if let Some(config) = Workspace::try_get(db)
         && config.config_file(db).is_none()
     {
-        all_diagnostics.push(ResolveError::NoConfigFileFound { file }.to_diagnostic(db, file));
+        all_diagnostics.push(ConfigError::NoConfigFileFound { file }.to_diagnostic(db, file));
     }
 
     let lexer_errors: Vec<IdeDiagnostic> = get_ast::accumulated::<ParseErrorAccumulator>(db, file)

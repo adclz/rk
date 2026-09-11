@@ -56,7 +56,6 @@ pub struct ResourceDecl<'db> {
     #[tracked]
     pub resource_type_name: Ident,
 
-
     #[tracked]
     #[returns(ref)]
     pub tasks: Vec<TaskConfig<'db>>,
@@ -95,7 +94,7 @@ pub struct TaskConfig<'db> {
     pub interval: Option<DataSource<'db>>,
 
     /// Priority value — stored as an `Ident` holding the integer text (e.g. `"5"`).
-    /// `None` when PRIORITY is missing from the TASK init (E0035 is emitted).
+    /// `None` when PRIORITY is missing from the TASK init (E1405 is emitted).
     #[tracked]
     pub priority: Option<Ident>,
 

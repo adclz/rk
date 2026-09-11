@@ -1032,7 +1032,7 @@ impl<'a> WasmGen<'a> {
                 mir_type_to_val_type(ty).unwrap_or_else(|| {
                     panic!(
                         "internal compiler error: extern result of `{}` is not scalar \
-                         (E0243 admits scalars only): {ty:?}",
+                         (E1502 admits scalars only): {ty:?}",
                         ext_fn.name.text(self.db)
                     )
                 })

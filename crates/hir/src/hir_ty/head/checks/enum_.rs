@@ -4,7 +4,7 @@ use rustc_hash::FxHashMap;
 use crate::{
     CallSite,
     check::errors::{
-        ToIdeDiagnostic, e1_duplicates::DuplicateError, e3_type::TypeError, e7_enum::EnumError,
+        ToIdeDiagnostic, e01_duplicates::DuplicateError, e03_type::TypeError, e06_enum::EnumError,
     },
     hir_def::expressions::spec::{ElementarySpec, Enum},
     hir_ty::{
@@ -17,7 +17,6 @@ use crate::{
 
 impl<'db> InitInference<'db> {
     pub(crate) fn check_enum(&mut self, db: &'db dyn WorkspaceDataBase, enm: Enum<'db>) {
-
         if let Some(spec) = enm.typ(db) {
             let typ = spec.infer(db);
 
@@ -95,7 +94,7 @@ impl<'db> InitInference<'db> {
                 && let Some(value) = variant.value
             {
                 self.body_infer_result.errors.push(
-                    crate::check::errors::e7_enum::EnumError::EnumValueNotConstant { value }
+                    crate::check::errors::e06_enum::EnumError::EnumValueNotConstant { value }
                         .to_diagnostic(db, self.body_infer_result.scope.file(db)),
                 );
             }

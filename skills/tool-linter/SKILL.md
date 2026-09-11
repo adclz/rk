@@ -21,7 +21,7 @@ Each lint diagnostic carries a note naming the rule that produced it, which is t
 
 ```sh
 rk check
-[L0207] Hint: empty CASE branch
+[L0307] Hint: empty CASE branch
    ...
    │ Note: lint rule: empty-case-branch
 ```
@@ -29,7 +29,7 @@ rk check
 The `json-lines` format carries the same string in the `notes` array.
 The `concise` format drops it, so use `full` or `json-lines` when you need the rule name.
 
-`rk explain` accepts lint codes as well as error codes: `rk explain L0101` prints the title, category and a description of the rule.
+`rk explain` accepts lint codes as well as error codes: `rk explain L0201` prints the title, category and a description of the rule.
 
 ## Configuration
 
@@ -71,7 +71,7 @@ Several names fit one pragma.
 An unknown name there is NOT silent: `unknown-allow` (L0005) reports it, and it silences nothing.
 
 Severity almost decides the baseline: every warning-severity rule is recommended, and info and hint rules are opt-in with two exceptions, marked **(recommended)** in the tables below.
-L0001 and L0102 report at info severity and still run by default, because what they flag is a probable bug that is quiet enough not to warrant a warning.
+L0001 and L0202 report at info severity and still run by default, because what they flag is a probable bug that is quiet enough not to warrant a warning.
 
 ## Pragmas (L00xx)
 
@@ -89,17 +89,17 @@ L0001 and L0002 share the rule name `warn-pragma`; disabling it silences both.
 
 | Code | Rule | Severity | Flags |
 | --- | --- | --- | --- |
-| L0101 | `unused-variable` | info | a VAR, VAR_INPUT or VAR_TEMP declaration never used in the body |
-| L0102 | `shadowing-variable` | info **(recommended)** | a variable with the same name as a POU visible in the scope |
-| L0103 | `duplicate-var-section` | info | the same variable section opened twice in one POU |
-| L0104 | `negated-condition` | info | `IF NOT c THEN ... ELSE ...`, which reads better with the branches swapped |
-| L0106 | `unnecessary-else` | info | an ELSE branch whose preceding branches all end with RETURN, EXIT or CONTINUE |
-| L0107 | `bool-comparison` | info | `x = TRUE`, `x <> FALSE` and the other comparisons against a boolean literal |
-| L0108 | `redundant-not` | info | double negation `NOT NOT x` |
-| L0109 | `duplicate-namespace` | info | the same NAMESPACE reopened in the same file |
-| L0110 | `single-element-array` | info | an array dimension whose lower and upper bounds are equal |
-| L0111 | `negated-comparison` | info | `NOT (x = y)`, which is `x <> y` |
-| L0112 | `duplicate-configuration` | info | two same-named CONFIGURATION blocks in the same file |
+| L0201 | `unused-variable` | info | a VAR, VAR_INPUT or VAR_TEMP declaration never used in the body |
+| L0202 | `shadowing-variable` | info **(recommended)** | a variable with the same name as a POU visible in the scope |
+| L0203 | `duplicate-var-section` | info | the same variable section opened twice in one POU |
+| L0204 | `duplicate-namespace` | info | the same NAMESPACE reopened in the same file |
+| L0205 | `duplicate-configuration` | info | two same-named CONFIGURATION blocks in the same file |
+| L0207 | `negated-condition` | info | `IF NOT c THEN ... ELSE ...`, which reads better with the branches swapped |
+| L0208 | `negated-comparison` | info | `NOT (x = y)`, which is `x <> y` |
+| L0209 | `bool-comparison` | info | `x = TRUE`, `x <> FALSE` and the other comparisons against a boolean literal |
+| L0210 | `redundant-not` | info | double negation `NOT NOT x` |
+| L0211 | `unnecessary-else` | info | an ELSE branch whose preceding branches all end with RETURN, EXIT or CONTINUE |
+| L0212 | `single-element-array` | info | an array dimension whose lower and upper bounds are equal |
 
 `unused-variable` never reports VAR_OUTPUT, VAR_IN_OUT, VAR_GLOBAL, VAR_EXTERNAL, VAR_CONFIG or VAR_ACCESS, since those are read or written from outside the POU.
 It also skips the VAR_INPUT of a PROGRAM (written by the CONFIGURATION), the whole body of an `{extern}` FUNCTION, and any name starting with an underscore, which is the way to mark a declaration as deliberately unused.
@@ -108,28 +108,28 @@ It also skips the VAR_INPUT of a PROGRAM (written by the CONFIGURATION), the who
 
 | Code | Rule | Severity | Flags |
 | --- | --- | --- | --- |
-| L0201 | `unused-import` | hint | a USING directive that nothing in the file resolves through |
-| L0202 | `unused-return-type` | hint | a call whose return value is discarded |
-| L0203 | `case-without-else` | hint | a CASE statement with no ELSE branch |
-| L0204 | `missing-input-param` | hint | a FUNCTION_BLOCK or PROGRAM call that does not pass every declared VAR_INPUT |
-| L0205 | `uninitialized-output` | info | VAR_OUTPUT declarations with no initializer that the body never assigns |
-| L0206 | `empty-body` | hint | a FUNCTION, FUNCTION_BLOCK, METHOD or PROGRAM with no statements |
-| L0207 | `empty-case-branch` | hint | a CASE branch with no statements |
-| L0208 | `unnecessary-parens` | hint | parentheses around a bare literal, variable or enum value |
-| L0209 | `yoda-condition` | hint | a literal on the left-hand side of a comparison |
-| L0210 | `collapsible-if` | hint | a nested IF with no ELSE, which collapses into `IF a AND b THEN` |
-| L0211 | `empty-if-branch` | hint | an IF, ELSIF or ELSE branch with no statements |
-| L0212 | `effectless-statement` | hint | a bare expression used as a statement, such as `x;` |
-| L0213 | `empty-loop-body` | hint | a FOR, WHILE or REPEAT loop with no statements |
-| L0214 | `empty-type` | hint | a STRUCT with no fields or an ENUM with no variants |
-| L0215 | `default-for-step` | hint | an explicit `BY 1`, which is already the default |
+| L0206 | `uninitialized-output` | info | VAR_OUTPUT declarations with no initializer that the body never assigns |
+| L0213 | `default-for-step` | hint | an explicit `BY 1`, which is already the default |
+| L0301 | `unused-import` | hint | a USING directive that nothing in the file resolves through |
+| L0302 | `unused-return-type` | hint | a call whose return value is discarded |
+| L0303 | `missing-input-param` | hint | a FUNCTION_BLOCK or PROGRAM call that does not pass every declared VAR_INPUT |
+| L0304 | `case-without-else` | hint | a CASE statement with no ELSE branch |
+| L0305 | `empty-body` | hint | a FUNCTION, FUNCTION_BLOCK, METHOD or PROGRAM with no statements |
+| L0306 | `empty-if-branch` | hint | an IF, ELSIF or ELSE branch with no statements |
+| L0307 | `empty-case-branch` | hint | a CASE branch with no statements |
+| L0308 | `empty-loop-body` | hint | a FOR, WHILE or REPEAT loop with no statements |
+| L0309 | `empty-type` | hint | a STRUCT with no fields or an ENUM with no variants |
+| L0310 | `effectless-statement` | hint | a bare expression used as a statement, such as `x;` |
+| L0311 | `unnecessary-parens` | hint | parentheses around a bare literal, variable or enum value |
+| L0312 | `collapsible-if` | hint | a nested IF with no ELSE, which collapses into `IF a AND b THEN` |
+| L0313 | `yoda-condition` | hint | a literal on the left-hand side of a comparison |
 
-The rule name for L0202 is `unused-return-type`, not `unused-return-value`, even though the message reads "unused return value".
+The rule name for L0302 is `unused-return-type`, not `unused-return-value`, even though the message reads "unused return value".
 
-L0204 covers FUNCTION_BLOCK and PROGRAM call sites only.
-An incomplete FUNCTION or METHOD call is a hard error, E0233, and is not affected by this rule.
+L0303 covers FUNCTION_BLOCK and PROGRAM call sites only.
+An incomplete FUNCTION or METHOD call is a hard error, E0802, and is not affected by this rule.
 
-L0205 collapses every unassigned output of one body into a single diagnostic listing the names, with a related span per declaration.
+L0206 collapses every unassigned output of one body into a single diagnostic listing the names, with a related span per declaration.
 
 `empty-body` never reports an `{extern}` FUNCTION, whose body is empty by definition.
 
@@ -137,38 +137,34 @@ L0205 collapses every unassigned output of one body into a single diagnostic lis
 
 | Code | Rule | Severity | Flags |
 | --- | --- | --- | --- |
-| L0301 | `dead-code` | warning | a statement following RETURN, `__RAISE`, EXIT or CONTINUE in the same block |
-| L0302 | `for-loop-step-sign` | warning | a FOR step whose direction contradicts the bounds, such as `FOR i := 10 TO 1 BY 1` |
-| L0303 | `input-assignment` | warning | an assignment to a VAR_INPUT |
-| L0304 | `constant-condition` | warning | an IF, ELSIF, WHILE or UNTIL condition written as the literal TRUE or FALSE |
-| L0305 | `division-by-zero` | warning | a literal `0` on the right-hand side of `/` or `MOD` |
-| L0306 | `duplicate-case` | warning | a CASE selector or range already covered by an earlier branch, including overlapping ranges |
-| L0308 | `loop-var-modified` | warning | an assignment to a FOR control variable inside the loop body |
-| L0309 | `self-assignment` | warning | `x := x` |
-| L0310 | `self-comparison` | warning | `x = x`, `x <> x`, `x > x` and the rest, whose result is constant; not on a REAL or LREAL, where `x <> x` is the NaN test |
-| L0311 | `identical-sub-expr` | warning | `a AND a`, `a OR a`, `a XOR a` |
-| L0312 | `identity-operation` | warning | `* 1`, `1 *`, `/ 1`, `+ 0`, `0 +`, `- 0` |
-| L0313 | `sub-self` | warning | `x - x` on an integer, always 0; on a float it is the finiteness test and is not reported |
-| L0314 | `constant-loop-bounds` | warning | a FOR loop whose start and end are the same value, so the body runs exactly once |
-| L0315 | `self-shadowing` | warning | a variable with the same name as the POU or method it is declared in |
-| L0316 | `missing-return` | warning | a FUNCTION or METHOD with a return type that never assigns the return value; a `{wasm}` statement whose `(result)` is the FUNCTION counts |
-| L0317 | `external-mutation` | warning | writing a field of a function block or class instance from outside it, `inst.x := 42` |
-| L0318 | `method-shadows-member` | warning | a method local or parameter with the same name as a member of its FUNCTION_BLOCK or CLASS |
+| L0101 | `dead-code` | warning | a statement following RETURN, `__RAISE`, EXIT or CONTINUE in the same block |
+| L0102 | `division-by-zero` | warning | a literal `0` on the right-hand side of `/` or `MOD` |
+| L0103 | `constant-condition` | warning | an IF, ELSIF, WHILE or UNTIL condition written as the literal TRUE or FALSE |
+| L0104 | `self-assignment` | warning | `x := x` |
+| L0105 | `self-comparison` | warning | `x = x`, `x <> x`, `x > x` and the rest, whose result is constant; not on a REAL or LREAL, where `x <> x` is the NaN test |
+| L0106 | `sub-self` | warning | `x - x` on an integer, always 0; on a float it is the finiteness test and is not reported |
+| L0107 | `identity-operation` | warning | `* 1`, `1 *`, `/ 1`, `+ 0`, `0 +`, `- 0` |
+| L0108 | `identical-sub-expr` | warning | `a AND a`, `a OR a`, `a XOR a` |
+| L0109 | `duplicate-case` | warning | a CASE selector or range already covered by an earlier branch, including overlapping ranges |
+| L0110 | `for-loop-step-sign` | warning | a FOR step whose direction contradicts the bounds, such as `FOR i := 10 TO 1 BY 1` |
+| L0111 | `constant-loop-bounds` | warning | a FOR loop whose start and end are the same value, so the body runs exactly once |
+| L0112 | `loop-var-modified` | warning | an assignment to a FOR control variable inside the loop body |
+| L0113 | `input-assignment` | warning | an assignment to a VAR_INPUT |
+| L0114 | `missing-return` | warning | a FUNCTION or METHOD with a return type that never assigns the return value; a `{wasm}` statement whose `(result)` is the FUNCTION counts |
+| L0115 | `self-shadowing` | warning | a variable with the same name as the POU or method it is declared in |
+| L0116 | `method-shadows-member` | warning | a method local or parameter with the same name as a member of its FUNCTION_BLOCK or CLASS |
+| L0117 | `external-mutation` | warning | writing a field of a function block or class instance from outside it, `inst.x := 42` |
 
-L0306 keys on the value the compiler computed, not on the text, so `7`, `INT#7` and a CONSTANT holding 7 are one label; enum variants and strings fall back to the written form.
+L0109 keys on the value the compiler computed, not on the text, so `7`, `INT#7` and a CONSTANT holding 7 are one label; enum variants and strings fall back to the written form.
 
-L0304 only looks at a literal TRUE or FALSE.
+L0103 only looks at a literal TRUE or FALSE.
 A condition that is constant after folding is not reported.
 
 ## Globals (L04xx)
 
 | Code | Rule | Severity | Flags |
 | --- | --- | --- | --- |
-| L0410 | `global-without-external` | warning | reading or writing a CONFIGURATION VAR_GLOBAL by bare name, with no matching VAR_EXTERNAL in the POU |
+| L0118 | `global-without-external` | warning | reading or writing a CONFIGURATION VAR_GLOBAL by bare name, with no matching VAR_EXTERNAL in the POU |
 
 The code is accepted and compiles; strict IEC 61131-3 wants the global imported through VAR_EXTERNAL first.
 
-## Codes with no rule
-
-L0105 and L0307 are not assigned.
-`rk explain` rejects them.

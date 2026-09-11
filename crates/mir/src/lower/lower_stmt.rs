@@ -320,11 +320,8 @@ fn lower_stmt<'db>(
                 None => start_mir,
             };
             let end_mir = ctx.lower_expr(*end)?;
-            // The step is the VALUE inference folded and recorded (E1007
-            // refused anything that does not fold), emitted as a constant at
-            // the counter's width — its sign is what picks the exit
-            // comparison. Lowering the expression instead left a CONSTANT
-            // variable as a Load, whose sign codegen could not see.
+            // The step is the folded value inference recorded (E1204), emitted as a
+            // constant at the counter's width: its sign picks the exit comparison.
             let step_mir = match step {
                 Some(s) => {
                     let v = hir::hir_ty::body::infer_body(ctx.db, s.scope_id(ctx.db))
@@ -412,10 +409,8 @@ fn lower_stmt<'db>(
         StmtKind::AllowPragma(_) => Ok(None),
 
         StmtKind::EmptyPathExpression(begin_path) => {
-            // `SUPER()` — call the immediate base FB's cyclic body on the current
-            // `this`. It parses as a bare begin-path statement (the `()` belongs to
-            // the `SuperBody` invocation, not a param list), so it lands here, not
-            // in `FuncCall`. HIR (`resolve_invocation`) validated it (E0501/E0513).
+            // `SUPER()` parses as a bare begin-path statement, so it lands here; HIR
+            // validated it (E1108/E1107).
             if begin_path.invocation(ctx.db).map(|i| i.kind(ctx.db))
                 == Some(hir::hir_def::expressions::invocation::InvocationKind::SuperBody)
             {

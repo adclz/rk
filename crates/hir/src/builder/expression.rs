@@ -4,7 +4,7 @@ use auto_lsp::core::ast::AstNode;
 use crate::builder::Parse;
 use crate::builder::semantic_index::SemanticIndexBuilder;
 use crate::check::errors::ToIdeDiagnostic;
-use crate::check::errors::e0_syntax::SyntaxError;
+use crate::check::errors::e00_syntax::SyntaxError;
 use crate::hir_def::expressions::expression::{
     BeginPathExpr, DerefExpr, FieldExpr, FuncCall, IndexExpr, Integer, IntegerKind,
     ParamAssignKind, PathExpr, VariableAccessKind,

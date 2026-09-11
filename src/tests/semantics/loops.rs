@@ -104,7 +104,7 @@ END_FUNCTION_BLOCK"#;
        |
        | Help: insert explicit cast 'BOOL_TO_INT(O)'
     ---'
-    [E1007] Error: control flow violation
+    [E1204] Error: control flow violation
        ,-[ file:///test0.st:8:25 ]
        |
      5 |         O: BOOL;
@@ -199,13 +199,13 @@ fn a_path_cannot_be_a_for_control_variable(
     );
     let rendered = test_diagnostics(&mut with_db, &[&source]);
     assert!(
-        rendered.contains("E1005"),
-        "`FOR {control}` must be rejected with E1005, got:\n{rendered}"
+        rendered.contains("E1203"),
+        "`FOR {control}` must be rejected with E1203, got:\n{rendered}"
     );
 }
 
 /// A bit access as a control is stopped by the GRAMMAR — the FOR rule never
-/// admits it — which is even earlier than E1005. Pinned so a grammar change
+/// admits it — which is even earlier than E1203. Pinned so a grammar change
 /// that starts accepting it does not silently fall through to codegen.
 #[rstest]
 fn a_bit_access_control_variable_is_a_syntax_error(mut with_db: RootDatabase) {
@@ -255,7 +255,7 @@ fn invalid_for_step_not_constant(mut with_db: RootDatabase) {
         END_FUNCTION
     "#;
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E1007] Error: control flow violation
+    [E1204] Error: control flow violation
        ,-[ file:///test0.st:5:32 ]
        |
      3 |         VAR i : INT; n : INT; END_VAR
@@ -279,7 +279,7 @@ fn invalid_for_step_zero(mut with_db: RootDatabase) {
         END_FUNCTION
     "#;
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E1007] Error: control flow violation
+    [E1204] Error: control flow violation
        ,-[ file:///test0.st:4:32 ]
        |
      4 |             FOR i := 1 TO 3 BY 0 DO
@@ -314,7 +314,7 @@ fn invalid_for_step_indexed_gets_no_advice(mut with_db: RootDatabase) {
         END_FUNCTION
     "#;
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E1007] Error: control flow violation
+    [E1204] Error: control flow violation
        ,-[ file:///test0.st:4:32 ]
        |
      4 |             FOR i := 5 TO 1 BY arr[j] DO
@@ -335,7 +335,7 @@ fn invalid_for_step_folds_to_zero(mut with_db: RootDatabase) {
         END_FUNCTION
     "#;
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E1007] Error: control flow violation
+    [E1204] Error: control flow violation
        ,-[ file:///test0.st:4:32 ]
        |
      4 |             FOR i := 1 TO 3 BY 2 - 2 DO
@@ -356,7 +356,7 @@ fn invalid_for_step_constant_folds_to_zero(mut with_db: RootDatabase) {
         END_FUNCTION
     "#;
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E1007] Error: control flow violation
+    [E1204] Error: control flow violation
        ,-[ file:///test0.st:5:32 ]
        |
      5 |             FOR i := 1 TO 3 BY K DO
@@ -414,7 +414,7 @@ fn invalid_for_step_nonconstant_operand(mut with_db: RootDatabase) {
         END_FUNCTION
     "#;
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E1007] Error: control flow violation
+    [E1204] Error: control flow violation
        ,-[ file:///test0.st:4:32 ]
        |
      4 |             FOR i := 1 TO 5 BY n + 1 DO

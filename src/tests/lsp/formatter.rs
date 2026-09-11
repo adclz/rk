@@ -1664,7 +1664,7 @@ END_FUNCTION_BLOCK
 
 /// The gate every caller shares. Topiary refused ERROR nodes but formatted a
 /// file whose only defect was a MISSING node, which is what `check` reports
-/// as E0019; both are refused now, and the message says where.
+/// as E0002; both are refused now, and the message says where.
 #[rstest]
 #[case::missing_node(
     "FUNCTION f : INT\nVAR acc : INT; END_VAR\n    f := acc + INT#some_call(1, 2, 3);\nEND_FUNCTION\n",

@@ -1045,9 +1045,8 @@ fn emit_wasm_instruction(func: &mut wasm_encoder::Function, name: &str) {
             func.instruction(&Instruction::F64Nearest);
         }
         other => {
-            // E0248 refuses unknown names at check; reaching one here means
-            // the check and the emitter disagree, and a loud death beats a
-            // valid module carrying code the program never asked for.
+            // E1505 refuses unknown names at check; reaching one here means the
+            // check and the emitter disagree.
             panic!("unknown wasm instruction `{other}` survived the check");
         }
     }
@@ -1204,16 +1203,15 @@ fn collect_for_scratch(stmts: &[MirStmt], out: &mut Vec<ForScratchReq>) {
     }
 }
 
-/// An `EXIT`/`CONTINUE` reached the emitter with no enclosing loop on the
-/// stack. HIR rejects both outside iteration statements (E1001/E1002), so
-/// MIR cannot legitimately carry one here.
+/// An `EXIT`/`CONTINUE` with no enclosing loop: HIR rejects both
+/// (E1202/E1201).
 fn missing_loop_targets(what: &str) -> &'static LoopTargets {
     let caller = crate::emit_expr::CURRENT_EMIT_FN
         .with(|c| c.borrow().clone())
         .unwrap_or_else(|| "<unknown>".to_string());
     panic!(
         "internal compiler error: while emitting `{caller}`, a {what} has no \
-         enclosing loop on the emitter's stack - HIR's E1001/E1002 checks \
+         enclosing loop on the emitter's stack - HIR's E1202/E1201 checks \
          should have rejected it"
     )
 }

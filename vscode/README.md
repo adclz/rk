@@ -105,7 +105,7 @@ END_FUNCTION_BLOCK
 ```
 
 ```
-[E1007] Warning: possibly null dereference
+[E1204] Warning: possibly null dereference
     |
   9 |     ptr := NULL;
     |     ^^^^^|^^^^^
@@ -129,7 +129,7 @@ END_CLASS
 ```
 
 ```
-[E0504] Error: inheritance violation
+[E1114] Error: inheritance violation
    |
  2 |     METHOD ABSTRACT Tick : INT END_METHOD
    |                    ^^|^
@@ -159,7 +159,7 @@ END_FUNCTION_BLOCK
 ```
 
 ```
-[E0902] Error: recursion detected
+[E1302] Error: recursion detected
     |
   1 |     FUNCTION_BLOCK fb1
     |                    ^|^

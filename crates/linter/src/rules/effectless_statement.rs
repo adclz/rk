@@ -5,12 +5,12 @@ use ide_diagnostic::{ErrorCode, IdeDiagnostic, diag};
 
 pub const NAME: &str = "effectless-statement";
 
-/// L0212: statement has no effect.
+/// L0310: statement has no effect.
 struct EffectlessStatement;
 
 impl ErrorCode for EffectlessStatement {
     fn code(&self) -> &'static str {
-        "L0212"
+        "L0310"
     }
 
     fn description(&self) -> &'static str {

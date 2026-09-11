@@ -10,12 +10,12 @@ use ide_diagnostic::{ErrorCode, IdeDiagnostic, Related, diag};
 
 pub const NAME: &str = "negated-comparison";
 
-/// L0111: `NOT (x = y)` can be simplified to `x <> y`.
+/// L0208: `NOT (x = y)` can be simplified to `x <> y`.
 struct NegatedComparison;
 
 impl ErrorCode for NegatedComparison {
     fn code(&self) -> &'static str {
-        "L0111"
+        "L0208"
     }
 
     fn description(&self) -> &'static str {

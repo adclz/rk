@@ -2,9 +2,11 @@ use db::WorkspaceDataBase;
 use ide_diagnostic::IdeDiagnostic;
 use rustc_hash::{FxHashMap, FxHashSet};
 
+use crate::check::errors::e03_type::TypeError;
+use crate::check::errors::e14_config::ConfigError;
 use crate::{
     CallSite, HasName, HirNodeInfo,
-    check::errors::{ToIdeDiagnostic, e2_resolve::ResolveError, e5_inheritance::InheritanceError},
+    check::errors::{ToIdeDiagnostic, e02_resolve::ResolveError, e11_oop::OopError},
     hir_def::{
         expressions::spec::{Spec, SpecKind},
         pous::{function::Function, interface::Interface, pou::Pou, variable::VariableKind},
@@ -29,7 +31,7 @@ pub fn infer_signature<'db>(db: &'db dyn WorkspaceDataBase, scope: ScopeId<'db>)
 }
 
 /// The signature of a FUNCTION — what identifies a declaration among
-/// same-named ones. Equal signatures are a duplicate (E0101); a difference
+/// same-named ones. Equal signatures are a duplicate (E0102); a difference
 /// anywhere, params or return, makes a legal overload.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct FunctionSignature<'db> {
@@ -63,7 +65,7 @@ pub fn overload_set<'db>(
             _ => None,
         })
         .collect();
-    // A TRUE duplicate (same params, same return) is E0101 at the
+    // A TRUE duplicate (same params, same return) is E0102 at the
     // declaration; the call resolves against the surviving first as if the
     // twin did not exist — one error, not ambiguity noise on every call.
     let mut seen: Vec<FunctionSignature<'db>> = Vec::new();
@@ -195,7 +197,7 @@ impl<'db> Signature<'db> {
             // the concrete type callee→caller, which can't be monomorphized.
             if let Some(interface) = spec_interface(db, *ret_type) {
                 self.errors.push(
-                    InheritanceError::InterfaceNotAllowedInReturn {
+                    OopError::InterfaceNotAllowedInReturn {
                         interface,
                         spec: *ret_type,
                     }
@@ -256,7 +258,7 @@ impl<'db> Signature<'db> {
                 && fb.modifier(db).contains(crate::Modifier::ABSTRACT)
             {
                 self.errors.push(
-                    InheritanceError::InstantiatedAbstractPou {
+                    OopError::InstantiatedAbstractPou {
                         var: *var,
                         pou: Pou::FunctionBlock(fb),
                     }
@@ -267,7 +269,7 @@ impl<'db> Signature<'db> {
                 && cl.modifier(db).contains(crate::Modifier::ABSTRACT)
             {
                 self.errors.push(
-                    InheritanceError::InstantiatedAbstractPou {
+                    OopError::InstantiatedAbstractPou {
                         var: *var,
                         pou: Pou::Class(cl),
                     }
@@ -277,14 +279,14 @@ impl<'db> Signature<'db> {
 
             // Design 1 (params-only): a DIRECT interface is allowed only as a
             // VAR_INPUT / VAR_IN_OUT parameter (it monomorphizes to a concrete
-            // type); elsewhere it is E0514. A NESTED interface (array element,
+            // type); elsewhere it is E1121. A NESTED interface (array element,
             // ref target — e.g. `ARRAY OF ITF1`, `REF_TO ITF1`) has no valid
-            // placement at all, not even as a param, so it is E0516.
+            // placement at all, not even as a param, so it is E1123.
             if let Some(interface) = spec_interface(db, var.spec(db)) {
                 if matches!(Type::resolve_spec(db, var.spec(db)), Type::Interface(_)) {
                     if !matches!(var.kind(db), VariableKind::Input | VariableKind::InOut) {
                         self.errors.push(
-                            InheritanceError::InterfaceOnlyAllowedAsParam {
+                            OopError::InterfaceOnlyAllowedAsParam {
                                 var: *var,
                                 interface,
                             }
@@ -301,7 +303,7 @@ impl<'db> Signature<'db> {
                         _ => None,
                     } {
                         self.errors.push(
-                            InheritanceError::InterfaceParamOnStatefulPou {
+                            OopError::InterfaceParamOnStatefulPou {
                                 var: *var,
                                 interface,
                                 pou_kind,
@@ -311,7 +313,7 @@ impl<'db> Signature<'db> {
                     }
                 } else {
                     self.errors.push(
-                        InheritanceError::InterfaceNotAllowedNested {
+                        OopError::InterfaceNotAllowedNested {
                             interface,
                             spec: var.spec(db),
                         }
@@ -372,7 +374,7 @@ impl<'db> Signature<'db> {
                     if declared_ty != Type::Never && var_ty != Type::Never && declared_ty != var_ty
                     {
                         self.errors.push(
-                            ResolveError::AccessDeclTypeMismatch {
+                            ConfigError::AccessDeclTypeMismatch {
                                 var_origin: *var,
                                 spec: decl.spec,
                                 expected: declared_ty,
@@ -445,7 +447,7 @@ impl<'db> Signature<'db> {
                     // reject it (incl. nested, e.g. a field of `ARRAY OF ITF1`).
                     if let Some(interface) = spec_interface(db, field.spec(db)) {
                         self.errors.push(
-                            InheritanceError::InterfaceNotAllowedNested {
+                            OopError::InterfaceNotAllowedNested {
                                 interface,
                                 spec: field.spec(db),
                             }
@@ -488,7 +490,7 @@ impl<'db> Signature<'db> {
             }
             Type::Function(_) => {
                 self.errors.push(
-                    ResolveError::FunctionAsType {
+                    TypeError::FunctionAsType {
                         expr: spec,
                         ty: typ,
                     }
@@ -500,5 +502,4 @@ impl<'db> Signature<'db> {
         self.type_of_specs.insert(spec, typ);
         typ
     }
-
 }

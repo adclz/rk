@@ -8,12 +8,12 @@ use ide_diagnostic::{ErrorCode, IdeDiagnostic, diag};
 
 pub const NAME: &str = "empty-loop-body";
 
-/// L0213: FOR, WHILE, or REPEAT loop with no statements in the body.
+/// L0308: FOR, WHILE, or REPEAT loop with no statements in the body.
 struct EmptyLoopBody;
 
 impl ErrorCode for EmptyLoopBody {
     fn code(&self) -> &'static str {
-        "L0213"
+        "L0308"
     }
 
     fn description(&self) -> &'static str {

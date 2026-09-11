@@ -263,7 +263,7 @@ pub(crate) fn bare_access_name<'db>(
 
 /// Each variant of an enum with its ordinal: the declared value where one is
 /// written, the previous ordinal plus one where not. `None` marks a declared
-/// value that does not fold — the declaration check refuses it (E0704), so a
+/// value that does not fold — the declaration check refuses it (E0604), so a
 /// consumer reading ordinals afterwards may treat `None` as unreachable.
 pub fn enum_ordinals<'db>(
     db: &'db dyn WorkspaceDataBase,
@@ -299,7 +299,7 @@ fn enum_ordinals_by<'db>(
 }
 
 /// A subrange's bounds, folded. `None` marks a bound that does not fold —
-/// refused at the declaration (E0803), so a consumer reading bounds
+/// refused at the declaration (E0703), so a consumer reading bounds
 /// afterwards may treat it as unreachable.
 pub fn subrange_bounds<'db>(
     db: &'db dyn WorkspaceDataBase,
@@ -313,7 +313,7 @@ pub fn subrange_bounds<'db>(
 
 /// An array's dimensions, folded — `(lower, upper)` per dimension. `None`
 /// marks a bound that does not fold, refused at the declaration
-/// (E0601/E0602).
+/// (E0501/E0502).
 pub fn array_dimensions<'db>(
     db: &'db dyn WorkspaceDataBase,
     array: crate::hir_def::expressions::spec::Array<'db>,

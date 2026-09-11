@@ -22,7 +22,7 @@ At startup the server parses every `.st` file found recursively under them, so a
 Passing only `rootUri` loads nothing: requests on a file return `null` and cross-file names do not resolve.
 The standard library resolves the same way as for the CLI: `RK_STDLIB_PATH` from the environment or a `.env` at the workspace root, else beside the server binary.
 When none is found `Std.*` does not resolve and the server pushes a `window/showMessage` warning naming the paths it tried.
-A missing `config.toml` is not fatal for the server, it only adds the `E0217` hint diagnostic to each file.
+A missing `config.toml` is not fatal for the server, it only adds the `E1401` hint diagnostic to each file.
 
 For an agent, this is a cheaper substitute for reading files.
 `textDocument/documentSymbol` gives the outline of a file (POUs with their kind, their variables with their type) for a fraction of the file's tokens.
@@ -77,7 +77,7 @@ It is offered only where a conversion can be called: an initializer, an enum val
 Same engine as `rk fmt`.
 
 `textDocument/rename` A `WorkspaceEdit` over every occurrence.
-A symbol declared in the library is refused rather than renamed: the edit could only reach the uses, leaving the declaration behind and the workspace on `E0210`.
+A symbol declared in the library is refused rather than renamed: the edit could only reach the uses, leaving the declaration behind and the workspace on `E0203`.
 
 `textDocument/foldingRange` One region per POU and per variable section.
 

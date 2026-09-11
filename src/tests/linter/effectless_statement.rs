@@ -16,7 +16,7 @@ fn bare_variable_reference(mut with_db: RootDatabase) {
         END_FUNCTION
     "#;
     assert_snapshot!(test_single_lint(&mut with_db, &[source], "effectless-statement"), @r"
-    [L0212] Hint: effectless statement
+    [L0310] Hint: effectless statement
        ,-[ file:///test0.st:6:13 ]
        |
      6 |             x;
@@ -40,7 +40,7 @@ fn bare_literal(mut with_db: RootDatabase) {
         END_FUNCTION
     "#;
     assert_snapshot!(test_single_lint(&mut with_db, &[source], "effectless-statement"), @r"
-    [E0050] Error: syntax
+    [E0001] Error: syntax
        ,-[ file:///test0.st:6:13 ]
        |
      6 |             42;
@@ -99,7 +99,7 @@ fn effectless_in_program(mut with_db: RootDatabase) {
         END_PROGRAM
     "#;
     assert_snapshot!(test_single_lint(&mut with_db, &[source], "effectless-statement"), @r"
-    [L0212] Hint: effectless statement
+    [L0310] Hint: effectless statement
        ,-[ file:///test0.st:6:13 ]
        |
      6 |             x;
@@ -122,7 +122,7 @@ fn effectless_in_function_block(mut with_db: RootDatabase) {
         END_FUNCTION_BLOCK
     "#;
     assert_snapshot!(test_single_lint(&mut with_db, &[source], "effectless-statement"), @r"
-    [L0212] Hint: effectless statement
+    [L0310] Hint: effectless statement
        ,-[ file:///test0.st:6:13 ]
        |
      6 |             x;

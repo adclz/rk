@@ -1,7 +1,8 @@
 use crate::builder::semantic_index::SemanticIndexBuilder;
 use crate::builder::{Parse, ParseSpec, ParseVarSection};
 use crate::check::errors::ToIdeDiagnostic;
-use crate::check::errors::e0_syntax::SyntaxError;
+use crate::check::errors::e00_syntax::SyntaxError;
+use crate::check::errors::e11_oop::OopError;
 use crate::hir_def::hir_node::HirNode;
 use crate::hir_def::interned::identifier::Ident;
 use crate::hir_def::pous::class::{Class, MethodDecl};
@@ -101,21 +102,21 @@ impl<'db> SemanticIndexBuilder<'db> {
             type Error = ast::generated::ERRClassVariablesAfterMethod_ERRExtendsMultipleTimes_ERRImplementsBeforeExtends_ERRImplementsMultipleTimes;
             match f.cast(self.ast) {
                 Error::ERRExtendsMultipleTimes(err) => {
-                    self.errors.push(SyntaxError::MultipleExtends {
+                    self.errors.push(OopError::MultipleExtends {
                         location: err.get_range().to_owned(),
                         first_extend_span: class.extends.as_ref().unwrap().cast(self.ast).get_range().to_owned(),
                         file: self.file,
                     }.to_diagnostic(self.db, self.file));
                 },
                 Error::ERRImplementsBeforeExtends(err) => {
-                    self.errors.push(SyntaxError::ImplementsBeforeExtends {
+                    self.errors.push(OopError::ImplementsBeforeExtends {
                         implements_span: err.get_range().to_owned(),
                         extends_span: class.extends.as_ref().unwrap().cast(self.ast).get_range().to_owned(),
                         file: self.file,
                     }.to_diagnostic(self.db, self.file));
                 },
                 Error::ERRImplementsMultipleTimes(err) => {
-                    self.errors.push(SyntaxError::MultipleImplements {
+                    self.errors.push(OopError::MultipleImplements {
                         location: err.get_range().to_owned(),
                         first_implements_span: class.implements.as_ref().unwrap().cast(self.ast).get_range().to_owned(),
                         file: self.file,
@@ -150,12 +151,7 @@ impl<'db> SemanticIndexBuilder<'db> {
         ));
 
         self.register_node(class.into(), HirNode::PouDecl(result));
-        self.register_scope(
-            ScopeKind::Pou(result),
-            usings,
-            scope_id,
-            previous_scope,
-);
+        self.register_scope(ScopeKind::Pou(result), usings, scope_id, previous_scope);
 
         Ok(result)
     }
@@ -310,7 +306,7 @@ impl<'db> SemanticIndexBuilder<'db> {
             vec![],
             scope_id,
             parent_scope,
-);
+        );
 
         Some(result)
     }

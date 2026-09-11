@@ -1,6 +1,6 @@
 //! VAR_IN_OUT semantics at FB call sites: by-reference binding (a pointer
 //! field in the instance struct, stored once per call, auto-dereferenced in the
-//! body), aliasing, aggregates, nesting/passthrough, STRING, and the E0234
+//! body), aliasing, aggregates, nesting/passthrough, STRING, and the E0806
 //! l-value requirement.
 
 use crate::tests::codegen::{compile_to_mir_and_wasm, compile_to_wasm, with_db};
@@ -234,7 +234,7 @@ fn fb_inout_string(mut with_db: db::RootDatabase) {
     assert_eq!(read_retain_string(&plc), "hi-fb-inout");
 }
 
-/// E0234: a VAR_IN_OUT argument must be an l-value. A literal or expression
+/// E0806: a VAR_IN_OUT argument must be an l-value. A literal or expression
 /// has no address to bind — previously this compiled silently and the callee
 /// dereferenced a garbage address.
 #[rstest]
@@ -259,19 +259,19 @@ fn fb_inout_non_lvalue_rejected(mut with_db: db::RootDatabase) {
     "#;
     let file = super::add_source(&mut with_db, source);
     let diags = hir::check::diagnostics_for_file(&with_db, file);
-    let e0234_count = diags
+    let e0806_count = diags
         .iter()
         .filter(|d| {
             matches!(
                 &d.diagnostic.code,
-                Some(auto_lsp::lsp_types::NumberOrString::String(s)) if s == "E0234"
+                Some(auto_lsp::lsp_types::NumberOrString::String(s)) if s == "E0806"
             )
         })
         .count();
     assert_eq!(
-        e0234_count, 2,
+        e0806_count, 2,
         "both the FB literal and the FUNCTION expression inout args must be \
-         rejected with E0234, got: {diags:?}"
+         rejected with E0806, got: {diags:?}"
     );
     assert_eq!(diags.len(), 2, "no other diagnostics expected: {diags:?}");
 }
@@ -352,7 +352,7 @@ fn fn_inout_array(mut with_db: db::RootDatabase) {
     assert_eq!(result, 14, "array inout on a FUNCTION: 6 + 8");
 }
 
-/// E0236: binding a VAR_IN_OUT with `=>` is rejected — under by-ref it would
+/// E0807: binding a VAR_IN_OUT with `=>` is rejected — under by-ref it would
 /// leave the pointer field unbound (the body would deref address 0).
 #[rstest]
 fn fb_inout_arrow_binding_rejected(mut with_db: db::RootDatabase) {
@@ -370,16 +370,16 @@ fn fb_inout_arrow_binding_rejected(mut with_db: db::RootDatabase) {
     "#;
     let file = super::add_source(&mut with_db, source);
     let diags = hir::check::diagnostics_for_file(&with_db, file);
-    let e0236 = diags
+    let e0807 = diags
         .iter()
         .filter(|d| {
             matches!(
                 &d.diagnostic.code,
-                Some(auto_lsp::lsp_types::NumberOrString::String(s)) if s == "E0236"
+                Some(auto_lsp::lsp_types::NumberOrString::String(s)) if s == "E0807"
             )
         })
         .count();
-    assert_eq!(e0236, 1, "inout bound via => must be rejected: {diags:?}");
+    assert_eq!(e0807, 1, "inout bound via => must be rejected: {diags:?}");
 }
 
 /// A METHOD accessing the FB's VAR_IN_OUT member — both as bare `v`

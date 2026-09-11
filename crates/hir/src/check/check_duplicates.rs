@@ -1,9 +1,10 @@
 use db::WorkspaceDataBase;
 use ide_diagnostic::IdeDiagnostic;
 
+use crate::check::errors::e14_config::ConfigError;
 use crate::{
     HasName, HirNodeInfo,
-    check::errors::{ToIdeDiagnostic, e1_duplicates::DuplicateError, e2_resolve::ResolveError},
+    check::errors::{ToIdeDiagnostic, e01_duplicates::DuplicateError},
     hir_def::{config::ConfigDecl, namespace::NamespaceDecl, pous::pou::Pou, program::ProgramDecl},
     hir_ty::{
         head::signature::function_signature,
@@ -18,7 +19,7 @@ use crate::{
 /// return (see [`function_signature`]). Equal signatures are a duplicate; any
 /// difference is a legal overload (a same-params/different-return set is
 /// RETURN-directed: the consuming site's expected type picks, and a site with
-/// no expected type is E0237, not a pick). Every other combination — two
+/// no expected type is E0809, not a pick). Every other combination — two
 /// same-named FBs/classes/interfaces/data-types, or a FUNCTION colliding with
 /// a non-FUNCTION — is always a duplicate, since only FUNCTIONs participate
 /// in overloading.
@@ -116,7 +117,7 @@ pub fn check_duplicate_programs<'db>(
     };
 }
 
-/// A workspace declares one CONFIGURATION (E0242 otherwise).
+/// A workspace declares one CONFIGURATION (E1402 otherwise).
 ///
 /// Not an arbitrary limit: a POU is a type, usable by any configuration, so
 /// with two of them "which globals are in scope in this POU" has no answer —
@@ -151,7 +152,7 @@ pub fn check_single_configuration<'db>(
         // The file maps have no order, so sort for a stable list.
         others.sort_by_key(|c| c.get_name_ident(db).text(db).to_string());
         errors.push(
-            ResolveError::MultipleConfigurations { config, others }
+            ConfigError::MultipleConfigurations { config, others }
                 .to_diagnostic(db, config.get_scope_id(db).file(db)),
         );
     }
@@ -170,7 +171,7 @@ pub fn check_single_configuration<'db>(
 /// Counts DISTINCT resource names across the configuration's FRAGMENTS —
 /// same-named blocks merge, so the resources may be split across files.
 /// Reported at every fragment that declares a resource, symmetrically, like
-/// E0242: the file maps have no order, so there is no first to privilege.
+/// E1402: the file maps have no order, so there is no first to privilege.
 pub fn check_single_resource<'db>(
     db: &'db dyn WorkspaceDataBase,
     config: ConfigDecl<'db>,
@@ -198,7 +199,7 @@ pub fn check_single_resource<'db>(
     };
     let span = first.name(db).get_span(db);
     errors.push(
-        ResolveError::MultipleResources {
+        ConfigError::MultipleResources {
             config,
             names,
             span,
@@ -213,12 +214,12 @@ pub fn check_single_resource<'db>(
 /// so a name declared by two fragments is one PLC declaring it twice:
 ///
 /// * a VAR_GLOBAL in two fragments — two memory slots for one name, and
-///   resolution would pick one nondeterministically (E0102, as within a block);
+///   resolution would pick one nondeterministically (E0101, as within a block);
 /// * a RESOURCE in two fragments — the name a deployment binds to, claimed
-///   twice (E0116, as within a block).
+///   twice (E0115, as within a block).
 ///
 /// Reported at THIS fragment's declaration with the sibling's as related —
-/// symmetric, like E0242: every declaring fragment gets the error, because the
+/// symmetric, like E1402: every declaring fragment gets the error, because the
 /// file maps have no order and there is no "first" to privilege. The sibling
 /// shown is the deterministically smallest (file URL, then span), so the
 /// message reads the same on every run.

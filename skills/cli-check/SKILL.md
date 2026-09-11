@@ -3,18 +3,21 @@ name: cli-check
 description: Check a workspace for diagnostics with `rk check` without producing a binary. Use when asked whether code compiles, to see all errors and warnings, or before committing .st changes.
 ---
 
+> **Output format.** Every `rk` command takes `--output-format full|concise|json-lines`.
+> - `full` is the human report
+> - `concise` one line per diagnostic (`FILE:LINE:COL: severity[CODE]: message`)
+> - `json-lines` one JSON object per line
+> The exit code is the same either way.
+
 ## Summary
 
-Running `check` triggers the static analyzer to check the current workspace, note that this does not mean it is compiling anything.
+Runs the static analyzer over the workspace.
+Nothing is compiled and nothing is written.
 
-`check` will return a list of all compilation errors if any, and all the informations / warning / hints from the linter.
+Reports every compilation error, plus the linter's warnings, hints and info.
 
 ## Usage
 
-`-w, --watch` Continuously watch the workspace on any file change and rerun.
+`-w, --watch` Re-run on every file change.
 
-`--workspace <WORKSPACE>` Sets the workspace path to check, by default .
-
-`--output-format <OUTPUT_FORMAT>` Possible values are full, concise, json-lines.
-
-full is readbale for humans, concise will show one line per diagnostic, json-lines will output the diagnostics in JSON format.
+`--workspace <WORKSPACE>` Workspace path, `.` by default.

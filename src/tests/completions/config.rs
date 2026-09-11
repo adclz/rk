@@ -42,7 +42,7 @@ END_CONFIGURATION
         "missing VAR_ACCESS: {labels:?}"
     );
 
-    // Tasks and program instances live in a RESOURCE (E0039), so offering
+    // Tasks and program instances live in a RESOURCE (E1404), so offering
     // them here would insert code the compiler rejects.
     assert!(!labels.contains(&"TASK"), "config should not offer TASK");
     assert!(
@@ -101,7 +101,7 @@ END_CONFIGURATION
         !labels.contains(&"RESOURCE"),
         "resource should not offer RESOURCE"
     );
-    // A RESOURCE holds no variables: VAR_GLOBAL is CONFIGURATION-level (E0030).
+    // A RESOURCE holds no variables: VAR_GLOBAL is CONFIGURATION-level (E0021).
     assert!(
         !labels.contains(&"VAR_GLOBAL"),
         "resource should not offer VAR_GLOBAL"

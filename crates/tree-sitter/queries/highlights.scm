@@ -17,6 +17,9 @@
 ] @keyword
 (read_only) @keyword
 (read_write) @keyword
+(private) @keyword
+(public) @keyword
+(protected) @keyword
 
 [
   "VAR" "END_VAR" "VAR_INPUT" "VAR_OUTPUT" "VAR_IN_OUT" "VAR_TEMP"
@@ -30,7 +33,8 @@
   "WHILE" "END_WHILE" "EXIT" "RETURN" "CONTINUE" "__RAISE"
 ] @keyword.control
 
-[ "AND" "OR" "XOR" "NOT" "MOD" ] @keyword.operator
+[ "AND" "OR" "XOR" "NOT" ] @keyword.control
+[ "MOD" ] @operator
 [ "THIS" "SUPER" ] @variable.builtin
 [ "TRUE" "FALSE" ] @constant.builtin
 (null) @constant.builtin
@@ -54,10 +58,38 @@
 (c_style_comment) @comment
 (pascal_style_comment) @comment
 (pragma) @attribute
+; The pragmas an author actually writes never appear as `pragma`. Above a POU
+; they arrive wrapped in `pou_pragma`; on a statement they arrive bare, so each
+; kind is captured itself rather than through the wrapper.
+(allow_pragma) @attribute
+(extern_pragma) @attribute
+(once_pragma) @attribute
+(test_pragma) @attribute
+(warn_pragma) @attribute
+(wasm_pragma) @attribute
+; …and inside one, each part is what it is: the rule or module names are
+; strings, the parameters name variables, the result names a type.
+(pragma_string) @string
+(warn_pragma_level) @keyword
+(extern_param_list var: (identifier) @variable)
+(extern_result var: (identifier) @variable)
+(wasm_pragma type_ref: (identifier) @type)
+
+; `Color#Red`: the type reads as a type, the variant and the `#` as a member.
+(enum_value) @constant
+(enum_value enum_path: (_) @type)
+(enum_value_spec value: (identifier) @constant)
 
 (int_literal) @number
+(unsigned_int) @number
 (real_literal) @number
 (numeric_literal) @number
+; A literal with a type prefix (`INT#5`, `T#1s`) is `variable.other.constant`
+; in the editor, the same as an enum value; a bare `5` is a number.
+(int_literal kind: (_)) @constant
+(real_literal type: (_)) @constant
+(time_literal) @constant
+(date_literal) @constant
 (time_literal) @number
 (date_literal) @number
 (bool_literal) @constant.builtin
@@ -72,7 +104,16 @@
 (prog_decl name: (identifier) @function)
 (type_decl name: (identifier) @type)
 (namespace_decl name: (namespace_h_name) @namespace)
+(config_decl name: (identifier) @type)
+(resource_decl name: (identifier) @type)
+(task_config name: (identifier) @function)
+(fb_task task: (identifier) @function.call)
+(prog_config name: (identifier) @function)
+(prog_config task: (identifier) @function.call)
+(prog_config access: (namespace_access) @type)
 (func_call function: (_) @function.call)
+(param_assign_input param: (identifier) @variable)
+(param_assign_output param: (identifier) @variable)
 
 [ ":=" "=>" "=" "<>" "<" "<=" ">" ">=" "+" "-" "*" "/" "**" "&" ] @operator
 (deref_sign) @operator

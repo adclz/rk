@@ -5,7 +5,7 @@ use rstest::rstest;
 use crate::tests::utils::{test_diagnostics, test_diagnostics_with_library, with_db};
 
 // Workspace vs library, and file scope vs USING — the two rulings:
-// * a workspace declaration in the SAME namespace as a library's is E0101,
+// * a workspace declaration in the SAME namespace as a library's is E0102,
 //   reported on the WORKSPACE side (the library is never the one flagged);
 // * a file-scope declaration SHADOWS a USING import (local wins, silently),
 //   while the qualified path still reaches the import.
@@ -31,7 +31,7 @@ NAMESPACE Std.Timers
 END_NAMESPACE
 "#;
     assert_snapshot!(test_diagnostics_with_library(&mut with_db, &[LIB], &[source]), @r"
-    [E0101] Error: duplicate definitions
+    [E0102] Error: duplicate definitions
        ,-[ file:///test0.st:3:20 ]
        |
      3 |     FUNCTION_BLOCK TON

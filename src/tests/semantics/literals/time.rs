@@ -196,7 +196,7 @@ END_FUNCTION_BLOCK"#;
 //
 // TIME literals decode to `i32` milliseconds (range ≈ ±24.8 days);
 // LTIME to `i64` nanoseconds (≈ ±292 years). Out-of-range literals
-// surface as E0309 with the supported bounds shown as IEC literals.
+// surface as E0306 with the supported bounds shown as IEC literals.
 
 use crate::tests::semantics::literals::parse_literal;
 
@@ -222,7 +222,7 @@ FUNCTION_BLOCK fb1
     END_VAR
 END_FUNCTION_BLOCK"#;
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E0309] Error: invalid literal
+    [E0306] Error: invalid literal
        ,-[ file:///test0.st:4:21 ]
        |
      4 |         x : TIME := T#100d;
@@ -243,7 +243,7 @@ FUNCTION_BLOCK fb1
     END_VAR
 END_FUNCTION_BLOCK"#;
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E0309] Error: invalid literal
+    [E0306] Error: invalid literal
        ,-[ file:///test0.st:4:21 ]
        |
      4 |         x : TIME := T#-100d;
@@ -277,7 +277,7 @@ FUNCTION_BLOCK fb1
     END_VAR
 END_FUNCTION_BLOCK"#;
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E0309] Error: invalid literal
+    [E0306] Error: invalid literal
        ,-[ file:///test0.st:4:22 ]
        |
      4 |         x : LTIME := LT#9999999d;
@@ -298,7 +298,7 @@ FUNCTION_BLOCK fb1
     END_VAR
 END_FUNCTION_BLOCK"#;
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E0309] Error: invalid literal
+    [E0306] Error: invalid literal
        ,-[ file:///test0.st:4:22 ]
        |
      4 |         x : LTIME := LT#-9999999d;
@@ -311,7 +311,7 @@ END_FUNCTION_BLOCK"#;
 }
 
 // A bad unit used to shred into an identifier at the CST (`y` reported as
-// E0204 "no item found in scope" plus a syntax error). The value now lexes
+// E0201 "no item found in scope" plus a syntax error). The value now lexes
 // liberally and the HIR names the unit.
 #[rstest]
 fn invalid_duration_unit_diagnostic(mut with_db: RootDatabase) {
@@ -322,7 +322,7 @@ FUNCTION_BLOCK fb1
     END_VAR
 END_FUNCTION_BLOCK"#;
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E0309] Error: invalid literal
+    [E0306] Error: invalid literal
        ,-[ file:///test0.st:4:21 ]
        |
      4 |         x : TIME := T#2y;
@@ -341,7 +341,7 @@ FUNCTION_BLOCK fb1
     END_VAR
 END_FUNCTION_BLOCK"#;
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E0309] Error: invalid literal
+    [E0306] Error: invalid literal
        ,-[ file:///test0.st:4:22 ]
        |
      4 |         x : LTIME := LT#292y;
@@ -362,7 +362,7 @@ FUNCTION_BLOCK fb1
     END_VAR
 END_FUNCTION_BLOCK"#;
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E0309] Error: invalid literal
+    [E0306] Error: invalid literal
        ,-[ file:///test0.st:4:21 ]
        |
      4 |         x : TIME := T#5;
@@ -381,7 +381,7 @@ FUNCTION_BLOCK fb1
     END_VAR
 END_FUNCTION_BLOCK"#;
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E0309] Error: invalid literal
+    [E0306] Error: invalid literal
        ,-[ file:///test0.st:4:21 ]
        |
      4 |         x : TIME := T#1h30;

@@ -24,9 +24,9 @@ fn tasks_carry_the_resource_that_declares_them(mut with_db: db::RootDatabase) {
             END_RESOURCE
         END_CONFIGURATION
     "#;
-    // A second RESOURCE is refused (E0247) — this asserts what MIR keeps of a
+    // A second RESOURCE is refused (E1403) — this asserts what MIR keeps of a
     // configuration the compiler will not let a user deploy.
-    let (mir, _wasm) = compile_to_mir_and_wasm_expecting(&mut with_db, source, &["E0247"]);
+    let (mir, _wasm) = compile_to_mir_and_wasm_expecting(&mut with_db, source, &["E1403"]);
     let sched = mir.schedule.as_ref().expect("a schedule");
     let pairs: Vec<(String, String)> = sched
         .tasks
@@ -342,10 +342,10 @@ fn a_compiled_two_resource_module_is_refused_at_load(mut with_db: db::RootDataba
         END_CONFIGURATION
     "#;
 
-    // The compiler refuses this configuration too (E0247), so the load-time
+    // The compiler refuses this configuration too (E1403), so the load-time
     // refusal below is the second line: it holds for a module that reached the
     // runtime some other way.
-    let (_mir, wasm) = compile_to_mir_and_wasm_expecting(&mut with_db, source, &["E0247"]);
+    let (_mir, wasm) = compile_to_mir_and_wasm_expecting(&mut with_db, source, &["E1403"]);
     let Err(err) = Plc::load(&wasm, Config::default()) else {
         panic!("a two-resource module must not load");
     };

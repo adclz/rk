@@ -128,7 +128,7 @@ The HIR is the core data layer, organized into:
   - `resolver/` — Path resolution, function call resolution, visibility checks
 
 - **`check/`** — Diagnostic collection:
-  - `errors/` — Error types categorized by code ranges (E00xx–E10xx)
+  - `errors/` — Error types; the code's first two digits name its section (E00xx–E15xx, L00xx–L03xx)
   - `check_duplicates.rs`, `check_recursion.rs`
 
 - **`query_string/`** — Symbol search for IDE features (exact/fuzzy/prefix)
@@ -157,17 +157,26 @@ Type checking proceeds in three memoized salsa queries:
 
 | Range | Category                 |
 | ----- | ------------------------ |
-| E00xx | Syntax errors            |
-| E01xx | Duplicate definitions    |
-| E02xx | Scope/resolution errors  |
-| E03xx | Type system errors       |
-| E04xx | Visibility/access errors |
-| E05xx | Inheritance/OOP errors   |
-| E06xx | Array errors             |
-| E07xx | Enum errors              |
-| E08xx | Subrange errors          |
-| E09xx | Recursion errors         |
-| E10xx | Control flow errors      |
+| E00xx | Syntax                   |
+| E01xx | Duplicates               |
+| E02xx | Resolution               |
+| E03xx | Type System              |
+| E04xx | Initializers             |
+| E05xx | Arrays                   |
+| E06xx | Enums                    |
+| E07xx | Subranges                |
+| E08xx | Calls                    |
+| E09xx | References               |
+| E10xx | Visibility               |
+| E11xx | OOP                      |
+| E12xx | Control Flow             |
+| E13xx | Recursion                |
+| E14xx | Configuration            |
+| E15xx | Pragmas                  |
+| L00xx | Lint pragmas             |
+| L01xx | Linter Warning           |
+| L02xx | Linter Info              |
+| L03xx | Linter Hint              |
 
 ### AST Crate — Auto-Generated
 

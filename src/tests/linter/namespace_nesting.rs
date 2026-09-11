@@ -26,7 +26,7 @@ NAMESPACE Outer
 END_NAMESPACE
 "#;
     assert_snapshot!(test_single_lint(&mut with_db, &[source], "self-assignment"), @r"
-    [L0309] Warning: self-assignment
+    [L0104] Warning: self-assignment
        ,-[ file:///test0.st:8:13 ]
        |
      8 |             n := n;
@@ -57,5 +57,5 @@ NAMESPACE A
 END_NAMESPACE
 "#;
     let out = test_single_lint(&mut with_db, &[source], "self-assignment");
-    assert_eq!(out.matches("[L0309]").count(), 1, "reported once:\n{out}");
+    assert_eq!(out.matches("[L0104]").count(), 1, "reported once:\n{out}");
 }

@@ -15,7 +15,7 @@ END_VAR
 END_FUNCTION
 "#;
     assert_snapshot!(test_single_lint(&mut with_db, &[source], "bool-comparison"), @r"
-    [L0107] Info: comparison with boolean literal
+    [L0209] Info: comparison with boolean literal
        ,-[ file:///test0.st:6:13 ]
        |
      6 |     test := x = TRUE;
@@ -38,7 +38,7 @@ END_VAR
 END_FUNCTION
 "#;
     assert_snapshot!(test_single_lint(&mut with_db, &[source], "bool-comparison"), @r"
-    [L0107] Info: comparison with boolean literal
+    [L0209] Info: comparison with boolean literal
        ,-[ file:///test0.st:6:13 ]
        |
      6 |     test := x = FALSE;
@@ -61,7 +61,7 @@ END_VAR
 END_FUNCTION
 "#;
     assert_snapshot!(test_single_lint(&mut with_db, &[source], "bool-comparison"), @r"
-    [L0107] Info: comparison with boolean literal
+    [L0209] Info: comparison with boolean literal
        ,-[ file:///test0.st:6:13 ]
        |
      6 |     test := x <> TRUE;
@@ -84,7 +84,7 @@ END_VAR
 END_FUNCTION
 "#;
     assert_snapshot!(test_single_lint(&mut with_db, &[source], "bool-comparison"), @r"
-    [L0107] Info: comparison with boolean literal
+    [L0209] Info: comparison with boolean literal
        ,-[ file:///test0.st:6:13 ]
        |
      6 |     test := x <> FALSE;
@@ -109,7 +109,7 @@ END_VAR
 END_FUNCTION
 "#;
     assert_snapshot!(test_single_lint(&mut with_db, &[source], "bool-comparison"), @r"
-    [L0107] Info: comparison with boolean literal
+    [L0209] Info: comparison with boolean literal
        ,-[ file:///test0.st:6:8 ]
        |
      6 |     IF flag = TRUE THEN

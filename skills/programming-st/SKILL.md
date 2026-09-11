@@ -9,9 +9,10 @@ description: Write IEC 61131-3 Structured Text for the `rk` compiler — POUs, V
 
 This is the syntax `rk` actually accepts, verified against the compiler and not against the IEC standard.
 Keywords and identifiers are case-insensitive: `end_if` and `END_IF` are the same token, and `speed` and `Speed` are the same name.
-A trailing `;` on a statement or a declaration is optional;
-The canonical style is tabs, `name: TYPE` with no space before the colon, and variable sections indented inside their POU.
-A workspace is a directory holding a `config.toml` and any number of `.st` files found recursively. `Std.*` resolves out of the box: the library is found beside the `rk` binary, or in the checkout's `stdlib/` when running from a build. `RK_STDLIB_PATH` overrides that (environment, or a `.env` at the workspace root); `rk env stdlib` prints the one in use, empty if there is none.
+A trailing `;` on a statement or a declaration is optional; The canonical style is tabs, `name: TYPE` with no space before the colon, and variable sections indented inside their POU.
+A workspace is a directory holding a `config.toml` and any number of `.st` files found recursively.
+`Std.*` resolves out of the box: the library is found beside the `rk` binary, or in the checkout's `stdlib/` when running from a build.
+`RK_STDLIB_PATH` overrides that (environment, or a `.env` at the workspace root); `rk env stdlib` prints the one in use, empty if there is none.
 
 ## POU kinds
 
@@ -82,26 +83,32 @@ TYPE                         // one TYPE block holds many declarations
 END_TYPE
 ```
 
-`FUNCTION` may declare a return type or not. `RETURN` takes no argument — `RETURN 1;` is a syntax error.
-Access specifiers `PUBLIC` / `PRIVATE` / `PROTECTED` / `INTERNAL` go after the POU keyword (`FUNCTION PRIVATE Helper: INT`), after `METHOD`, and after `VAR`. Default is `PUBLIC`. See `programming-oop` for how they are enforced.
-Order inside `FUNCTION_BLOCK` and `CLASS` is fixed: variable sections, then methods, then the body. A `METHOD` written after a statement is E0038.
+`FUNCTION` may declare a return type or not.
+`RETURN` takes no argument — `RETURN 1;` is a syntax error.
+Access specifiers `PUBLIC` / `PRIVATE` / `PROTECTED` / `INTERNAL` go after the POU keyword (`FUNCTION PRIVATE Helper: INT`), after `METHOD`, and after `VAR`.
+Default is `PUBLIC`.
+See `programming-oop` for how they are enforced.
+Order inside `FUNCTION_BLOCK` and `CLASS` is fixed: variable sections, then methods, then the body.
+A `METHOD` written after a statement is E0028.
 
 ## Variable sections
 
-Every section is a `VAR…`/`END_VAR` pair. `VAR_INPUT`, `VAR_OUTPUT` and `VAR` take an optional qualifier on the same line: `VAR CONSTANT`, `VAR RETAIN`, `VAR NON_RETAIN`, `VAR_INPUT RETAIN`, `VAR_GLOBAL CONSTANT`.
+Every section is a `VAR…`/`END_VAR` pair.
+`VAR_INPUT`, `VAR_OUTPUT` and `VAR` take an optional qualifier on the same line: `VAR CONSTANT`, `VAR RETAIN`, `VAR NON_RETAIN`, `VAR_INPUT RETAIN`, `VAR_GLOBAL CONSTANT`.
 
 | Section | FUNCTION | METHOD | FUNCTION_BLOCK | PROGRAM | CLASS | CONFIGURATION |
 | --- | --- | --- | --- | --- | --- | --- |
 | `VAR` (+ `CONSTANT`) | yes | yes | yes | yes | yes | no |
 | `VAR_INPUT` | yes | yes | yes | yes | no | no |
 | `VAR_OUTPUT` | yes | yes | yes | yes | no | no |
-| `VAR_IN_OUT` | yes | yes | yes | yes | no (E0024) | no |
-| `VAR_TEMP` | yes | yes | yes | yes | no (E0025) | no |
+| `VAR_IN_OUT` | yes | yes | yes | yes | no (E0018) | no |
+| `VAR_TEMP` | yes | yes | yes | yes | no (E0019) | no |
 | `VAR_EXTERNAL` | yes | yes | yes | yes | yes | no |
 | `VAR RETAIN` / `NON_RETAIN` | no | no | yes | yes | yes | no |
 | `VAR_GLOBAL` | no | no | no | no | no | yes |
 
-`VAR_GLOBAL` only exists inside a `CONFIGURATION`; anywhere else it is a syntax error. A POU reaches a global by declaring the same name in `VAR_EXTERNAL`; if no `CONFIGURATION` declares it, that is E0220.
+`VAR_GLOBAL` only exists inside a `CONFIGURATION`; anywhere else it is a syntax error.
+A POU reaches a global by declaring the same name in `VAR_EXTERNAL`; if no `CONFIGURATION` declares it, that is E0206.
 
 `VAR_IN_OUT` passes by reference in both `FUNCTION` and `FUNCTION_BLOCK` — the callee writes through to the caller's variable.
 
@@ -119,14 +126,13 @@ CONFIGURATION Plant
 END_CONFIGURATION
 ```
 
-A workspace may declare exactly one `CONFIGURATION` (E0242). See `programming-config`.
+A workspace may declare exactly one `CONFIGURATION` (E1402).
+See `programming-config`.
 
 ## Overloading
 
-Several `FUNCTION`s may share a name. The compiler picks one by the
-ARGUMENTS; this is what replaced the removed `ANY_*` type classes, and it is
-how the standard library declares `MAX`, `MIN`, `SEL`, `MUX` and the
-conversion families.
+Several `FUNCTION`s may share a name.
+The compiler picks one by the ARGUMENTS; this is what replaced the removed `ANY_*` type classes, and it is how the standard library declares `MAX`, `MIN`, `SEL`, `MUX` and the conversion families.
 
 ```iecst
 FUNCTION Scale : INT
@@ -147,14 +153,13 @@ FUNCTION Use : INT
 END_FUNCTION
 ```
 
-Only `FUNCTION` overloads. Two `FUNCTION_BLOCK`s with one name are a
-duplicate (E0101).
+Only `FUNCTION` overloads.
+Two `FUNCTION_BLOCK`s with one name are a duplicate (E0102).
 
-Overloads may differ by parameter type, by parameter COUNT, or by RETURN
-type. Two that differ in nothing are a duplicate (E0101).
+Overloads may differ by parameter type, by parameter COUNT, or by RETURN type.
+Two that differ in nothing are a duplicate (E0102).
 
-A set that differs only in its return type is resolved by the CONSUMING site
-— the type the call is being assigned to picks the overload:
+A set that differs only in its return type is resolved by the CONSUMING site — the type the call is being assigned to picks the overload:
 
 ```iecst
 FUNCTION f : INT
@@ -174,13 +179,12 @@ FUNCTION Use : INT
 END_FUNCTION
 ```
 
-A site with no expected type cannot pick, and is E0237 rather than a guess.
+A site with no expected type cannot pick, and is E0809 rather than a guess.
 
-An argument that matches no overload exactly is widened, so a lone `DINT`
-overload accepts an `INT` argument. If widening reaches more than one
-candidate the call is ambiguous (E0237) and the compiler refuses to guess:
+An argument that matches no overload exactly is widened, so a lone `DINT` overload accepts an `INT` argument.
+If widening reaches more than one candidate the call is ambiguous (E0809) and the compiler refuses to guess:
 
-```iecst expect=E0237
+```iecst expect=E0809
 FUNCTION h : DINT
 	VAR_INPUT a : DINT; END_VAR
 	h := 1;
@@ -192,31 +196,23 @@ END_FUNCTION
 
 FUNCTION Use : INT
 	VAR d : DINT; END_VAR
-	d := h(a := 5);            // E0237: 5 widens to DINT and to LINT alike
+	d := h(a := 5);            // E0809: 5 widens to DINT and to LINT alike
 	d := h(a := DINT#5);       // fine: an exact match beats every widening
 	Use := 0;
 END_FUNCTION
 ```
 
-A typed literal is the cheapest fix. When an exact match exists it always
-wins, so `INT#5` and `DINT#5` each select their own overload even where both
-are declared.
+A typed literal is the cheapest fix.
+When an exact match exists it always wins, so `INT#5` and `DINT#5` each select their own overload even where both are declared.
 
-Two overloads must differ in something the CALL can see. Differing only by a
-parameter NAME, or only by a `VAR_OUTPUT`, is a duplicate (E0101) — the
-overload set is keyed on the input types, the input count and the return.
+Two overloads must differ in something the CALL can see.
+Differing only by a parameter NAME, or only by a `VAR_OUTPUT`, is a duplicate (E0102) — the overload set is keyed on the input types, the input count and the return.
 
-A default value does not blur an arity overload: given a 1-parameter and a
-2-parameter version, `f(a := 1)` takes the 1-parameter one and
-`f(a := 1, b := 2)` the other, even when the longer one could have defaulted
-its second input.
+A default value does not blur an arity overload: given a 1-parameter and a 2-parameter version, `f(a := 1)` takes the 1-parameter one and `f(a := 1, b := 2)` the other, even when the longer one could have defaulted its second input.
 
-**An overload set does not span namespaces.** Two same-named FUNCTIONs in
-different namespaces are not an overload set — they are an ambiguity (E0225)
-the moment both are imported, even when only one of them could possibly match
-the arguments:
+**An overload set does not span namespaces.** Two same-named FUNCTIONs in different namespaces are not an overload set — they are an ambiguity (E0205) the moment both are imported, even when only one of them could possibly match the arguments:
 
-```iecst expect=E0225
+```iecst expect=E0205
 NAMESPACE A
 	FUNCTION f : INT
 		VAR_INPUT a : INT; END_VAR
@@ -233,30 +229,31 @@ END_NAMESPACE
 FUNCTION Use : INT
 	USING A;
 	USING B;
-	Use := f(a := INT#1);        // E0225, though only A.f takes an INT
+	Use := f(a := INT#1);        // E0205, though only A.f takes an INT
 	Use := A.f(a := INT#1);      // qualify instead
 END_FUNCTION
 ```
 
 Keep an overload set inside one namespace.
 
-A workspace file that reopens a library namespace and redeclares one of its
-overloads silently WINS — see the `programming-namespaces` skill; the same
-silence applies here.
+A workspace file that reopens a library namespace and redeclares one of its overloads silently WINS — see the `programming-namespaces` skill; the same silence applies here.
 
 ## Not implemented
 
-SFC (`INITIAL_STEP` / `STEP` / `TRANSITION` / `ACTION`), ladder and FBD bodies parse but are discarded — the POU ends up with an empty body. Write ST bodies.
+SFC (`INITIAL_STEP` / `STEP` / `TRANSITION` / `ACTION`), ladder and FBD bodies parse but are discarded — the POU ends up with an empty body.
+Write ST bodies.
 
-Direct variables (`%IX0.0`, `%QW4`, `AT %IX0.0`) are refused with E0245: the address is understood but nothing maps it to real I/O yet.
+Direct variables (`%IX0.0`, `%QW4`, `AT %IX0.0`) are refused with E1417: the address is understood but nothing maps it to real I/O yet.
 
-A `CHAR` does not widen to `STRING` implicitly, although IEC lists that conversion: `s := c` is E0301, which names `CHAR_TO_STRING(c)`. The widening is an encoding, and the compiler asks for the call.
+A `CHAR` does not widen to `STRING` implicitly, although IEC lists that conversion: `s := c` is E0301, which names `CHAR_TO_STRING(c)`.
+The widening is an encoding, and the compiler asks for the call.
 
 ## Gotchas
 
-Names are case-insensitive: `VAR i, I: INT;` is a duplicate (E0102), and a variable `p` shadows a type named `P`.
+Names are case-insensitive: `VAR i, I: INT;` is a duplicate (E0101), and a variable `p` shadows a type named `P`.
 
-These short words are reserved and cannot be identifiers: `AT`, `BY`, `DO`, `TO`, `OF`, `REF`, `REF_TO`, `VAR`, `TYPE`, `CASE` — plus every other keyword. A variable named `by` or `at` fails with E0050, which reads as a confusing "unexpected token" on the *next* line.
+These short words are reserved and cannot be identifiers: `AT`, `BY`, `DO`, `TO`, `OF`, `REF`, `REF_TO`, `VAR`, `TYPE`, `CASE` — plus every other keyword.
+A variable named `by` or `at` fails with E0001, which reads as a confusing "unexpected token" on the *next* line.
 
 `RETURN` never carries a value; assign to the function's own name instead.
 
@@ -264,13 +261,18 @@ Enum variants are always `Type#Variant`.
 
 Bit tests need parentheses around the mask.
 
-Sub-word types occupy 4 bytes of storage each (`BOOL`, `SINT`, `BYTE`, `CHAR`, `INT`, `WORD` are all 4-byte slots), but arithmetic and shifts still wrap at the declared IEC width (8 or 16 bits). Storage size and value width are not the same number.
+Sub-word types occupy 4 bytes of storage each (`BOOL`, `SINT`, `BYTE`, `CHAR`, `INT`, `WORD` are all 4-byte slots), but arithmetic and shifts still wrap at the declared IEC width (8 or 16 bits).
+Storage size and value width are not the same number.
 
-`REAL_TO_INT(3.7)` is 4: real-to-integer rounds to nearest, ties to even, and saturates at the target's bounds. `TRUNC` is the one that drops the fraction.
+`REAL_TO_INT(3.7)` is 4: real-to-integer rounds to nearest, ties to even, and saturates at the target's bounds.
+`TRUNC` is the one that drops the fraction.
 
 Date and time comparisons are signed, matching the encodings: `T#-5s < T#0s`, and a pre-epoch `D#1969-12-31` orders before `D#1970-01-01`.
 
-`Std.Math` has no `ADD`/`SUB`/`MUL`/`DIV`/`MOD` — those are operators. It has `ABS`, `SQRT`, `LN`, `LOG`, `EXP`, `EXPT`, the trig functions, and `IS_NAN`/`NOT_OK` to test a REAL before converting it. `Std.Strings` has `LEN`/`FIND`/`LEFT`/`RIGHT`/`MID`/`INSERT`/`DELETE`/`REPLACE`/`CONCAT` counting bytes and their `CHAR_` twins counting characters (plus `CHAR_AT`, `IS_UTF8`). `Std.Convert` holds the `X_TO_Y` casts and `TRUNC`, `Std.Selection` has `SEL`/`MIN`/`MAX`/`LIMIT`/`MUX`, `Std.Bits` has `SHL`/`SHR`/`ROL`/`ROR`, `Std.Timers` has `TP_TIME`/`TON_TIME`/`TOF_TIME` (and `_LTIME` variants), `Std.Counters` `CTU`/`CTD`/`CTUD`, `Std.Edge` `R_TRIG`/`F_TRIG`, `Std.Bistable` `SR`/`RS`/`SEMA`, `Std.Memory` `MOVE`, `Std.Unit` `ASSERT`/`ASSERT_EQ`/`ASSERT_NEQ`.
+`Std.Math` has no `ADD`/`SUB`/`MUL`/`DIV`/`MOD` — those are operators.
+It has `ABS`, `SQRT`, `LN`, `LOG`, `EXP`, `EXPT`, the trig functions, and `IS_NAN`/`NOT_OK` to test a REAL before converting it.
+`Std.Strings` has `LEN`/`FIND`/`LEFT`/`RIGHT`/`MID`/`INSERT`/`DELETE`/`REPLACE`/`CONCAT` counting bytes and their `CHAR_` twins counting characters (plus `CHAR_AT`, `IS_UTF8`).
+`Std.Convert` holds the `X_TO_Y` casts and `TRUNC`, `Std.Selection` has `SEL`/`MIN`/`MAX`/`LIMIT`/`MUX`, `Std.Bits` has `SHL`/`SHR`/`ROL`/`ROR`, `Std.Timers` has `TP_TIME`/`TON_TIME`/`TOF_TIME` (and `_LTIME` variants), `Std.Counters` `CTU`/`CTD`/`CTUD`, `Std.Edge` `R_TRIG`/`F_TRIG`, `Std.Bistable` `SR`/`RS`/`SEMA`, `Std.Memory` `MOVE`, `Std.Unit` `ASSERT`/`ASSERT_EQ`/`ASSERT_NEQ`.
 
 ## Reference files
 

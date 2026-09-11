@@ -280,7 +280,9 @@ fn search_file_indexes<'db>(
             SymbolKind::Pou(pou) if include_pous => {
                 // Skip if already defined locally in this scope
                 if let Some(local) = local
-                    && local.pous.contains_key(&pou.get_name_ident(db).caseless(db))
+                    && local
+                        .pous
+                        .contains_key(&pou.get_name_ident(db).caseless(db))
                 {
                     return ControlFlow::Continue::<()>(());
                 }

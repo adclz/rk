@@ -136,7 +136,7 @@ fn all_files<'db>(db: &'db dyn WorkspaceDataBase) -> impl Iterator<Item = File> 
 /// from anywhere, but a CONFIGURATION it declares describes the machine its
 /// author was building, not this one. Counted as the workspace's, it spent the
 /// single configuration a workspace may have before the user had written a
-/// line, and E0242 then refused them their own.
+/// line, and E1402 then refused them their own.
 fn workspace_files<'db>(db: &'db dyn WorkspaceDataBase) -> impl Iterator<Item = File> + 'db {
     db.get_files().iter().map(|e| *e)
 }
@@ -220,7 +220,12 @@ pub fn namespace_pou_index<'db>(
     name: Ident,
 ) -> Option<Pou<'db>> {
     for ns in namespace_index(db, path) {
-        if let Some(pou) = ns.scope_id(db).def_map(db).local_pous.get(&name.caseless(db)) {
+        if let Some(pou) = ns
+            .scope_id(db)
+            .def_map(db)
+            .local_pous
+            .get(&name.caseless(db))
+        {
             return Some(*pou);
         }
     }
@@ -291,7 +296,7 @@ pub fn program_index<'db>(db: &'db dyn WorkspaceDataBase, name: Ident) -> Option
 }
 
 /// Every CONFIGURATION the workspace declares — for reporting that it
-/// declares more than one (E0242), not for choosing among them.
+/// declares more than one (E1402), not for choosing among them.
 ///
 /// The WORKSPACE's, not the library's: see [`workspace_files`].
 ///
@@ -383,7 +388,6 @@ pub fn discover_all_tests<'db>(db: &'db dyn WorkspaceDataBase) -> Vec<TestItem<'
             }
         }
 
-
         // Namespaced test functions. The namespace list is FLAT (nested
         // included), so each namespace contributes its own tests exactly
         // once; recursing into children here discovered every nested test
@@ -416,7 +420,7 @@ pub fn find_test<'db>(
     let parts: Vec<&str> = qualified_name.split('.').collect();
 
     if parts.len() == 1 {
-        // Global scope: a test is a FUNCTION (E0252 refuses the pragma
+        // Global scope: a test is a FUNCTION (E1503 refuses the pragma
         // anywhere else).
         let name = Ident::from_slice(db, parts[0]);
         if let Some(Pou::Function(f)) = pou_index(db, name)

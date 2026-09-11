@@ -3,7 +3,7 @@ use rustc_hash::FxHashMap;
 
 use crate::{
     HasName,
-    check::errors::{ToIdeDiagnostic, e1_duplicates::DuplicateError},
+    check::errors::{ToIdeDiagnostic, e01_duplicates::DuplicateError},
     hir_def::expressions::spec::Struct,
     hir_ty::{head::init_inference::InitInference, infer::Infer},
 };

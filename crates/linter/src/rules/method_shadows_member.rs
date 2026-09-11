@@ -5,7 +5,7 @@ use ide_diagnostic::{ErrorCode, IdeDiagnostic, Related, diag};
 
 pub const NAME: &str = "method-shadows-member";
 
-/// L0318: a method's local/parameter has the same name as a member of the FB or
+/// L0116: a method's local/parameter has the same name as a member of the FB or
 /// class it belongs to. This is legal — the method variable shadows the member,
 /// and bare-name access inside the method resolves to the local (per IEC
 /// and HIR name resolution) — but it is easy to misread, so warn. The shadow set
@@ -14,7 +14,7 @@ struct MethodShadowsMember;
 
 impl ErrorCode for MethodShadowsMember {
     fn code(&self) -> &'static str {
-        "L0318"
+        "L0116"
     }
 
     fn description(&self) -> &'static str {

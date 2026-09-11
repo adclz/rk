@@ -15,7 +15,7 @@ END_VAR
 END_FUNCTION
 "#;
     assert_snapshot!(test_single_lint(&mut with_db, &[source], "self-comparison"), @r"
-    [L0310] Warning: self-comparison
+    [L0105] Warning: self-comparison
        ,-[ file:///test0.st:6:13 ]
        |
      6 |     test := x = x;
@@ -38,7 +38,7 @@ END_VAR
 END_FUNCTION
 "#;
     assert_snapshot!(test_single_lint(&mut with_db, &[source], "self-comparison"), @r"
-    [L0310] Warning: self-comparison
+    [L0105] Warning: self-comparison
        ,-[ file:///test0.st:6:13 ]
        |
      6 |     test := x <> x;
@@ -61,7 +61,7 @@ END_VAR
 END_FUNCTION
 "#;
     assert_snapshot!(test_single_lint(&mut with_db, &[source], "self-comparison"), @r"
-    [L0310] Warning: self-comparison
+    [L0105] Warning: self-comparison
        ,-[ file:///test0.st:6:13 ]
        |
      6 |     test := x > x;
@@ -84,7 +84,7 @@ END_VAR
 END_FUNCTION
 "#;
     assert_snapshot!(test_single_lint(&mut with_db, &[source], "self-comparison"), @r"
-    [L0310] Warning: self-comparison
+    [L0105] Warning: self-comparison
        ,-[ file:///test0.st:6:13 ]
        |
      6 |     test := x <= x;
@@ -109,7 +109,7 @@ END_VAR
 END_FUNCTION
 "#;
     assert_snapshot!(test_single_lint(&mut with_db, &[source], "self-comparison"), @r"
-    [L0310] Warning: self-comparison
+    [L0105] Warning: self-comparison
        ,-[ file:///test0.st:6:8 ]
        |
      6 |     IF x = x THEN
@@ -164,7 +164,7 @@ fn a_float_against_itself_is_a_nan_test(mut with_db: RootDatabase) {
         END_FUNCTION
     "#;
     assert_snapshot!(test_single_lint(&mut with_db, &[source], "self-comparison"), @r"
-    [L0310] Warning: self-comparison
+    [L0105] Warning: self-comparison
        ,-[ file:///test0.st:8:18 ]
        |
      8 |             f := n <> n;

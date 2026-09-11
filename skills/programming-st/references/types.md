@@ -36,20 +36,20 @@ h: CHAR := CHAR#'A';        // typed prefix, same value
 Inside a single-quoted string, `$` escapes: `$$`, `$'`, `$L`, `$N`, `$P`, `$R`, `$T`, and `$41` for one hex byte.
 Double-quoted strings are also accepted and produce a `STRING`.
 
-A literal's characters are their UTF-8 bytes, which is how the runtime, the debugger and the network read a `STRING`: `'café'` is 5 bytes, `LEN` counts bytes, and a `STRING[4]` refuses it (E0309).
+A literal's characters are their UTF-8 bytes, which is how the runtime, the debugger and the network read a `STRING`: `'café'` is 5 bytes, `LEN` counts bytes, and a `STRING[4]` refuses it (E0306).
 `FIND`, `LEFT`, `RIGHT`, `MID`, `INSERT`, `DELETE` and `REPLACE` count bytes too and can cut through a character; their `CHAR_` twins in `Std.Strings` (`CHAR_COUNT`, `CHAR_AT`, `CHAR_FIND`, `CHAR_LEFT`, `CHAR_RIGHT`, `CHAR_MID`, `CHAR_INSERT`, `CHAR_DELETE`, `CHAR_REPLACE`) count characters, and `CHAR_AT` is the way from a `STRING` to a `CHAR`.
 
 A quoted literal carries no type of its own, exactly like a bare number: it is a `STRING` where a `STRING` is expected and a `CHAR` where a `CHAR` is.
 So `c: CHAR := 'A'` and `s: STRING := 'A'` both hold, and the `CHAR#` prefix says outright what the slot already decides.
 
-A `CHAR` is one character of any script, stored as its code point in a 32-bit slot: `'é'` and `'中'` are fine, `'ab'` is refused (E0309), whichever form wrote it.
+A `CHAR` is one character of any script, stored as its code point in a 32-bit slot: `'é'` and `'中'` are fine, `'ab'` is refused (E0306), whichever form wrote it.
 A `CHAR` *value* does not widen to `STRING`; `CHAR_TO_STRING` writes its UTF-8 bytes, `CHAR_TO_BYTE` keeps its low byte and `BYTE_TO_CHAR` reads one.
 
-A string literal longer than the destination's declared capacity is refused at compile time (E0309), not truncated.
+A string literal longer than the destination's declared capacity is refused at compile time (E0306), not truncated.
 
 ## Date and time encodings
 
-Each date/time type is a fixed integer encoding, and the compiler refuses any literal outside its range (E0309, with the bounds shown as literals).
+Each date/time type is a fixed integer encoding, and the compiler refuses any literal outside its range (E0306, with the bounds shown as literals).
 
 | Type | Encoding | Range |
 | --- | --- | --- |
@@ -100,7 +100,7 @@ END_TYPE
 ```
 
 Enum values are **qualified only**: write `Color#Green`, never a bare `Green`.
-A bare variant is E0204 "no item found in scope".
+A bare variant is E0201 "no item found in scope".
 This holds in initializers, expressions and `CASE` labels alike.
 
 Initializers:

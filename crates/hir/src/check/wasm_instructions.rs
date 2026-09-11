@@ -475,7 +475,7 @@ impl Signature {
 }
 
 /// The signature of a known instruction, `None` for a name the emitter does
-/// not have (E0248's business) and for the `nop`/`cast` placeholders, whose
+/// not have (E1505's business) and for the `nop`/`cast` placeholders, whose
 /// shape the types decide.
 pub fn signature(name: &str) -> Option<Signature> {
     if let Some((_, params, results)) = BUILTINS.iter().find(|(n, _, _)| *n == name) {
@@ -570,7 +570,7 @@ fn lanes_text(lanes: &[Lane]) -> String {
 /// Check a pragma's operands against its instruction: `basis` is the type
 /// of the `{wasm IN 'op'}` basis variable when there is one, `params` the
 /// typed operands in order, `result` the typed destination. `None` when
-/// they fit, or when the written name is unknown, which E0248 reports on
+/// they fit, or when the written name is unknown, which E1505 reports on
 /// its own.
 pub fn check_signature<'db>(
     db: &'db dyn WorkspaceDataBase,
@@ -687,7 +687,7 @@ pub fn check_signature<'db>(
     }
     let Some(sig) = signature(&name) else {
         // A basis resolved to a form the emitter has no instruction for
-        // (`shl` on a BOOL); without a basis the written name is E0248's
+        // (`shl` on a BOOL); without a basis the written name is E1505's
         // already.
         return basis.is_some().then(|| Refusal::Unknown(name.clone()));
     };

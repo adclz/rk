@@ -11,7 +11,7 @@ impl<'db> RenameHandler<'db> for HirNode<'db> {
         // A library file is not the workspace's to edit, and what matters is
         // where the name is DECLARED, not where this use of it sits. Renaming
         // rewrote every use and left the declaration behind, so the next
-        // check reported E0210 on code the reader had not touched.
+        // check reported E0203 on code the reader had not touched.
         if declared_in_a_library(self, db) {
             return None;
         }

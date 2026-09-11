@@ -2,17 +2,22 @@ use auto_lsp::default::db::file::File;
 use db::WorkspaceDataBase;
 use ide_diagnostic::IdeDiagnostic;
 
-pub mod e0_syntax;
-pub mod e10_control_flow;
-pub mod e1_duplicates;
-pub mod e2_resolve;
-pub mod e3_type;
-pub mod e4_visibility;
-pub mod e5_inheritance;
-pub mod e6_array;
-pub mod e7_enum;
-pub mod e8_subrange;
-pub mod e9_recursion;
+pub mod e00_syntax;
+pub mod e01_duplicates;
+pub mod e02_resolve;
+pub mod e03_type;
+pub mod e04_init;
+pub mod e05_array;
+pub mod e06_enum;
+pub mod e07_subrange;
+pub mod e08_call;
+pub mod e09_reference;
+pub mod e10_visibility;
+pub mod e11_oop;
+pub mod e12_control_flow;
+pub mod e13_recursion;
+pub mod e14_config;
+pub mod e15_pragma;
 
 pub trait ToIdeDiagnostic<'db> {
     /// Builds the IDE diagnostic. `file` is the file the diagnostic's primary range belongs to;
@@ -22,16 +27,20 @@ pub trait ToIdeDiagnostic<'db> {
 }
 
 /*
-E00xx = Syntax errors
-E01xx = Duplicate definitions
-E02xx = Scope/resolution/semantic (includes assignment & call violations)
-E03xx = Type system
-E04xx = Visibility/access
-E05xx = Inheritance/methods (oop)
-E06xx = Arrays
-E07xx = Enums
-E08xx = Subranges
-E09xx = Recursion
-E10xx = Control flow (loop control, null safety)
-E11xx = Hardware errors (direct variables, IO issues)
+E00xx = Syntax
+E01xx = Duplicates
+E02xx = Resolution
+E03xx = Type System
+E04xx = Initializers
+E05xx = Arrays
+E06xx = Enums
+E07xx = Subranges
+E08xx = Calls
+E09xx = References
+E10xx = Visibility
+E11xx = OOP
+E12xx = Control Flow
+E13xx = Recursion
+E14xx = Configuration
+E15xx = Pragmas
 */

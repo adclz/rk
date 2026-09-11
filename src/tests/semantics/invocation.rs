@@ -17,7 +17,7 @@ FUNCTION_BLOCK fb1
 END_FUNCTION_BLOCK"#;
 
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E0211] Error: no such field
+    [E0202] Error: no such field
        ,-[ file:///test0.st:6:7 ]
        |
      2 | FUNCTION_BLOCK fb1
@@ -59,7 +59,7 @@ FUNCTION_BLOCK fb1 EXTENDS base
 
 END_FUNCTION_BLOCK"#;
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E0211] Error: no such field
+    [E0202] Error: no such field
        ,-[ file:///test0.st:8:11 ]
        |
      6 | FUNCTION_BLOCK fb1 EXTENDS base
@@ -82,7 +82,7 @@ CLASS fb1
     END_METHOD
 END_CLASS"#;
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E0501] Error: invalid use of SUPER or THIS
+    [E1108] Error: invalid use of SUPER or THIS
        ,-[ file:///test0.st:4:9 ]
        |
      4 |         SUPER()
@@ -100,7 +100,7 @@ FUNCTION fn1
 END_FUNCTION
     "#;
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E0501] Error: invalid use of SUPER or THIS
+    [E1108] Error: invalid use of SUPER or THIS
        ,-[ file:///test0.st:3:5 ]
        |
      3 |     SUPER()
@@ -118,7 +118,7 @@ FUNCTION fn1
 END_FUNCTION
     "#;
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E0502] Error: invalid use of SUPER or THIS
+    [E1106] Error: invalid use of SUPER or THIS
        ,-[ file:///test0.st:3:5 ]
        |
      3 |     SUPER.something()
@@ -136,7 +136,7 @@ FUNCTION fn1
 END_FUNCTION
     "#;
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E0503] Error: invalid use of SUPER or THIS
+    [E1105] Error: invalid use of SUPER or THIS
        ,-[ file:///test0.st:3:5 ]
        |
      3 |     THIS.something()
@@ -154,7 +154,7 @@ PROGRAM prgrm
 END_PROGRAM
     "#;
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E0503] Error: invalid use of SUPER or THIS
+    [E1105] Error: invalid use of SUPER or THIS
        ,-[ file:///test0.st:3:5 ]
        |
      3 |     THIS.something()
@@ -172,7 +172,7 @@ PROGRAM prgrm
 END_PROGRAM
     "#;
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E0502] Error: invalid use of SUPER or THIS
+    [E1106] Error: invalid use of SUPER or THIS
        ,-[ file:///test0.st:3:5 ]
        |
      3 |     SUPER.something()
@@ -190,7 +190,7 @@ PROGRAM prgrm
 END_PROGRAM
     "#;
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E0501] Error: invalid use of SUPER or THIS
+    [E1108] Error: invalid use of SUPER or THIS
        ,-[ file:///test0.st:3:5 ]
        |
      3 |     SUPER()
@@ -216,7 +216,7 @@ FUNCTION_BLOCK fb1
 END_FUNCTION_BLOCK"#;
 
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E0309] Error: invalid literal
+    [E0306] Error: invalid literal
        ,-[ file:///test0.st:7:12 ]
        |
      4 |         VAR_INPUT input1 : BOOL; END_VAR
@@ -249,7 +249,7 @@ END_CLASS
 "#;
 
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E0309] Error: invalid literal
+    [E0306] Error: invalid literal
         ,-[ file:///test0.st:10:17 ]
         |
       4 |         VAR_INPUT input1 : BOOL; END_VAR
@@ -282,7 +282,7 @@ END_FUNCTION_BLOCK
 "#;
 
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E0309] Error: invalid literal
+    [E0306] Error: invalid literal
         ,-[ file:///test0.st:10:17 ]
         |
       4 |         VAR_INPUT input1 : BOOL; END_VAR
@@ -298,7 +298,7 @@ END_FUNCTION_BLOCK
 
 #[rstest]
 fn super_body_no_extends(mut with_db: RootDatabase) {
-    // SUPER() (base-body call) in an FB with no EXTENDS -> E0513: there is no
+    // SUPER() (base-body call) in an FB with no EXTENDS -> E1107: there is no
     // base function block whose body could be executed.
     let source = r#"
 FUNCTION_BLOCK fb1
@@ -306,7 +306,7 @@ FUNCTION_BLOCK fb1
 END_FUNCTION_BLOCK
     "#;
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E0513] Error: invalid use of SUPER or THIS
+    [E1107] Error: invalid use of SUPER or THIS
        ,-[ file:///test0.st:3:5 ]
        |
      3 |     SUPER()
@@ -319,7 +319,7 @@ END_FUNCTION_BLOCK
 #[rstest]
 fn super_body_in_method(mut with_db: RootDatabase) {
     // Rule 5: SUPER() (base-body call) in a METHOD is forbidden, even when the FB
-    // extends a base (so E0513 does not apply) -> E0518.
+    // extends a base (so E1107 does not apply) -> E1109.
     let source = r#"
 FUNCTION_BLOCK base
 END_FUNCTION_BLOCK
@@ -330,7 +330,7 @@ FUNCTION_BLOCK derived EXTENDS base
 END_FUNCTION_BLOCK
     "#;
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E0518] Error: invalid use of SUPER or THIS
+    [E1109] Error: invalid use of SUPER or THIS
        ,-[ file:///test0.st:6:9 ]
        |
      6 |         SUPER()
@@ -344,7 +344,7 @@ END_FUNCTION_BLOCK
 
 #[rstest]
 fn super_body_multiple(mut with_db: RootDatabase) {
-    // Rule 2: SUPER() shall occur once. A second SUPER() -> E0519, with related
+    // Rule 2: SUPER() shall occur once. A second SUPER() -> E1110, with related
     // info pointing at the first.
     let source = r#"
 FUNCTION_BLOCK base
@@ -355,7 +355,7 @@ FUNCTION_BLOCK derived EXTENDS base
 END_FUNCTION_BLOCK
     "#;
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E0519] Error: invalid use of SUPER or THIS
+    [E1110] Error: invalid use of SUPER or THIS
        ,-[ file:///test0.st:6:5 ]
        |
      5 |     SUPER();
@@ -370,7 +370,7 @@ END_FUNCTION_BLOCK
 
 #[rstest]
 fn super_body_in_loop(mut with_db: RootDatabase) {
-    // Rule 2: SUPER() shall not be in a loop -> E0520.
+    // Rule 2: SUPER() shall not be in a loop -> E1111.
     let source = r#"
 FUNCTION_BLOCK base
 END_FUNCTION_BLOCK
@@ -382,7 +382,7 @@ FUNCTION_BLOCK derived EXTENDS base
 END_FUNCTION_BLOCK
     "#;
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E0520] Error: invalid use of SUPER or THIS
+    [E1111] Error: invalid use of SUPER or THIS
        ,-[ file:///test0.st:7:9 ]
        |
      7 |         SUPER();
@@ -413,7 +413,7 @@ END_FUNCTION_BLOCK
 
 #[rstest]
 fn inherited_member_shadowed(mut with_db: RootDatabase) {
-    // Rule 3: variable names in base and derived FBs shall be unique -> E0521.
+    // Rule 3: variable names in base and derived FBs shall be unique -> E1115.
     let source = r#"
 FUNCTION_BLOCK base
 VAR c : INT; END_VAR
@@ -423,7 +423,7 @@ VAR c : INT; END_VAR
 END_FUNCTION_BLOCK
     "#;
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E0521] Error: inheritance violation
+    [E1115] Error: inheritance violation
        ,-[ file:///test0.st:6:5 ]
        |
      3 | VAR c : INT; END_VAR

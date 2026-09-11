@@ -56,7 +56,7 @@ impl<'db> InitInference<'db> {
 
         if crate::hir_ty::infer::const_eval::spec_bound(db, length).is_none() {
             self.errors.push(
-                crate::check::errors::e3_type::TypeError::StringLengthNotConstant { length }
+                crate::check::errors::e03_type::TypeError::StringLengthNotConstant { length }
                     .to_diagnostic(db, self.scope.file(db)),
             );
         }

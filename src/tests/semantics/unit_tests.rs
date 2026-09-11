@@ -28,7 +28,7 @@ END_PROGRAM
         .iter()
         .map(|t| t.qualified_name().to_string())
         .collect();
-    assert_eq!(names.len(), 1, "a PROGRAM is never a test (E0252)");
+    assert_eq!(names.len(), 1, "a PROGRAM is never a test (E1503)");
     assert!(names.contains(&"test_one".to_string()));
     assert!(!names.contains(&"test_two".to_string()));
 }

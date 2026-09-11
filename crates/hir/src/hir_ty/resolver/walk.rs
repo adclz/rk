@@ -2,11 +2,14 @@ use std::cmp::Ordering;
 
 use db::WorkspaceDataBase;
 
+use crate::check::errors::e04_init::InitError;
+use crate::check::errors::e05_array::ArrayError;
+use crate::check::errors::e08_call::CallError;
+use crate::check::errors::e09_reference::ReferenceError;
+use crate::check::errors::e14_config::ConfigError;
 use crate::{
     HirNodeInfo,
-    check::errors::{
-        ToIdeDiagnostic, e2_resolve::ResolveError, e10_control_flow::ControlFlowError,
-    },
+    check::errors::{ToIdeDiagnostic, e02_resolve::ResolveError},
     hir_def::{
         expressions::{
             expression::{BeginPathExpr, InitExpr, MultibitsPart, PathExpr, PathExprKind},
@@ -87,7 +90,7 @@ pub(crate) fn check_multibits_bounds<'db>(
             && crate::hir_ty::infer::normalize::access_size(c).is_none()
         {
             ctx.errors.push(
-                ResolveError::UnknownMultibitsAccess {
+                ConfigError::UnknownMultibitsAccess {
                     expr,
                     access: access.text(db).clone(),
                 }
@@ -103,7 +106,7 @@ pub(crate) fn check_multibits_bounds<'db>(
     if (offset_val + 1) * access_bits > base_bits {
         let max_offset = (access_bits <= base_bits).then(|| base_bits / access_bits - 1);
         ctx.errors.push(
-            ResolveError::MultibitsOutOfRange {
+            CallError::MultibitsOutOfRange {
                 expr,
                 var,
                 offset: offset_val,
@@ -476,7 +479,7 @@ impl<'db> Type<'db> {
                 let state = ctx.ref_null_state.get(&var).copied();
                 if let Some(state @ (NullState::Null(..) | NullState::Uninitialized(..))) = state {
                     ctx.errors.push(
-                        ControlFlowError::DerefPossiblyNull { var, expr, state }
+                        ReferenceError::DerefPossiblyNull { var, expr, state }
                             .to_diagnostic(db, ctx.scope.file(db)),
                     );
                 }
@@ -500,7 +503,7 @@ impl<'db> Type<'db> {
                 Err(non_ref) => {
                     if report_errors {
                         ctx.errors.push(
-                            ResolveError::DerefNonRefType { expr, ty: non_ref }
+                            ReferenceError::DerefNonRefType { expr, ty: non_ref }
                                 .to_diagnostic(db, ctx.scope.file(db)),
                         );
                     }
@@ -521,7 +524,7 @@ impl<'db> Type<'db> {
         let Type::Array(arr) = self else {
             if report_errors {
                 ctx.errors.push(
-                    ResolveError::IndexNonArrayTypePathExpr {
+                    ArrayError::IndexNonArrayTypePathExpr {
                         expr,
                         ty: place.current_typ,
                     }
@@ -551,7 +554,7 @@ impl<'db> Type<'db> {
                 Ordering::Greater => {
                     if report_errors {
                         ctx.errors.push(
-                            ResolveError::IndexNonArrayTypePathExpr {
+                            ArrayError::IndexNonArrayTypePathExpr {
                                 expr,
                                 ty: place.current_typ,
                             }
@@ -602,7 +605,7 @@ impl<'db> Type<'db> {
                     ctx.type_of_init_expr.insert(*expr, place.current_init_typ);
                 } else {
                     ctx.errors.push(
-                        ResolveError::IndexNonArrayTypeInitExpr {
+                        ArrayError::IndexNonArrayTypeInitExpr {
                             expr: *expr,
                             ty: place.current_init_typ,
                         }
@@ -621,7 +624,7 @@ impl<'db> Type<'db> {
                 }
                 _ => {
                     ctx.errors.push(
-                        ResolveError::NoFieldOnElementaryType {
+                        InitError::NoFieldOnElementaryType {
                             expr: *expr,
                             ty: *self,
                         }

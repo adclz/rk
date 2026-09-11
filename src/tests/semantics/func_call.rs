@@ -18,7 +18,7 @@ FUNCTION_BLOCK fb1
 END_FUNCTION_BLOCK"#;
 
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E0229] Error: semantic violation
+    [E0808] Error: semantic violation
        ,-[ file:///test0.st:7:5 ]
        |
      7 |     test();
@@ -40,7 +40,7 @@ END_FUNCTION_BLOCK
 "#;
 
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E0229] Error: semantic violation
+    [E0808] Error: semantic violation
        ,-[ file:///test0.st:3:5 ]
        |
      3 |     fb2();
@@ -89,14 +89,14 @@ FUNCTION_BLOCK fb1
 END_FUNCTION_BLOCK"#;
 
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E0208] Error: function call parameter mismatch
+    [E0803] Error: function call parameter mismatch
         ,-[ file:///test0.st:10:9 ]
         |
      10 |         unknown := TRUE
         |         ^^^|^^^
         |            `----- unknown input parameter 'unknown'
     ----'
-    [E0233] Error: missing required parameter
+    [E0802] Error: missing required parameter
        ,-[ file:///test0.st:9:5 ]
        |
      4 |         u: BOOL;
@@ -126,14 +126,14 @@ FUNCTION_BLOCK fb1
 END_FUNCTION_BLOCK"#;
 
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E0205] Error: function call parameter mismatch
+    [E0801] Error: function call parameter mismatch
        ,-[ file:///test0.st:6:5 ]
        |
      6 |     fn(
        |     ^|
        |      `-- 'fn' expects 0 parameters, but got 1
     ---'
-    [E0209] Error: function call parameter mismatch
+    [E0804] Error: function call parameter mismatch
        ,-[ file:///test0.st:7:9 ]
        |
      7 |         unknown => TRUE
@@ -162,7 +162,7 @@ FUNCTION_BLOCK fb1
 END_FUNCTION_BLOCK"#;
 
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E0309] Error: invalid literal
+    [E0306] Error: invalid literal
         ,-[ file:///test0.st:11:19 ]
         |
       4 |     param1: LINT;
@@ -291,7 +291,7 @@ FUNCTION_BLOCK fb1
 END_FUNCTION_BLOCK"#;
 
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E0205] Error: function call parameter mismatch
+    [E0801] Error: function call parameter mismatch
         ,-[ file:///test0.st:11:2 ]
         |
      11 |     fn(0, 1.5, 5);
@@ -318,7 +318,7 @@ FUNCTION_BLOCK fb1
 END_FUNCTION_BLOCK"#;
 
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E0108] Error: duplicate definitions
+    [E0103] Error: duplicate definitions
         ,-[ file:///test0.st:11:21 ]
         |
      11 |     fn(param1 := 0, param1 := 1);
@@ -327,7 +327,7 @@ END_FUNCTION_BLOCK"#;
         |                          |
         |                          `------- duplicate parameter 'param1' found
     ----'
-    [E0233] Error: missing required parameter
+    [E0802] Error: missing required parameter
         ,-[ file:///test0.st:11:5 ]
         |
       5 |         param2: INT;
@@ -364,7 +364,7 @@ FUNCTION_BLOCK fb1
 END_FUNCTION_BLOCK"#;
 
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E0108] Error: duplicate definitions
+    [E0103] Error: duplicate definitions
         ,-[ file:///test0.st:15:22 ]
         |
      15 |     fn(param1 => a1, param1 => a2);
@@ -395,7 +395,7 @@ FUNCTION_BLOCK fb1
 END_FUNCTION_BLOCK"#;
 
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E0228] Error: semantic violation
+    [E0309] Error: semantic violation
         ,-[ file:///test0.st:13:18 ]
         |
      13 |     fn(param1 => b1);
@@ -442,7 +442,7 @@ FUNCTION_BLOCK fb1
 END_FUNCTION_BLOCK"#;
 
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E0233] Error: missing required parameter
+    [E0802] Error: missing required parameter
         ,-[ file:///test0.st:11:5 ]
         |
       4 |         a: INT;
@@ -477,7 +477,7 @@ FUNCTION_BLOCK fb1
 END_FUNCTION_BLOCK"#;
 
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E0233] Error: missing required parameter
+    [E0802] Error: missing required parameter
         ,-[ file:///test0.st:11:5 ]
         |
       5 |         b: REAL;
@@ -532,7 +532,7 @@ FUNCTION_BLOCK fb1
 END_FUNCTION_BLOCK"#;
 
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E0233] Error: missing required parameter
+    [E0802] Error: missing required parameter
         ,-[ file:///test0.st:12:10 ]
         |
       4 |         a: INT;
@@ -573,7 +573,7 @@ FUNCTION_BLOCK fb1
 END_FUNCTION_BLOCK"#;
 
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E0233] Error: missing required parameter
+    [E0802] Error: missing required parameter
         ,-[ file:///test0.st:18:10 ]
         |
      11 |         p: point := (x := 1, y := 2);
@@ -627,7 +627,7 @@ FUNCTION_BLOCK fb1
 END_FUNCTION_BLOCK"#;
 
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E0233] Error: missing required parameter
+    [E0802] Error: missing required parameter
         ,-[ file:///test0.st:10:5 ]
         |
       4 |         a: INT;
@@ -660,7 +660,7 @@ FUNCTION_BLOCK fb1
 END_FUNCTION_BLOCK"#;
 
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E0233] Error: missing required parameter
+    [E0802] Error: missing required parameter
         ,-[ file:///test0.st:12:5 ]
         |
       4 |         target: INT;
@@ -692,7 +692,7 @@ FUNCTION_BLOCK fb1
 END_FUNCTION_BLOCK"#;
 
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E0233] Error: missing required parameter
+    [E0802] Error: missing required parameter
         ,-[ file:///test0.st:10:5 ]
         |
       5 |             a: INT;
@@ -708,7 +708,7 @@ END_FUNCTION_BLOCK"#;
     ");
 }
 
-// E0234: a VAR_IN_OUT argument must be an l-value — it binds the callee to the
+// E0806: a VAR_IN_OUT argument must be an l-value — it binds the callee to the
 // caller's storage by reference, so a literal has no address to bind.
 #[rstest]
 fn invalid_function_var_in_out_literal(mut with_db: RootDatabase) {
@@ -725,7 +725,7 @@ FUNCTION_BLOCK fb1
 END_FUNCTION_BLOCK"#;
 
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E0234] Error: VAR_IN_OUT argument must be a variable
+    [E0806] Error: VAR_IN_OUT argument must be a variable
         ,-[ file:///test0.st:10:13 ]
         |
       4 |         a: INT;
@@ -741,7 +741,7 @@ END_FUNCTION_BLOCK"#;
     ");
 }
 
-// E0234 also fires for arithmetic expressions and call results.
+// E0806 also fires for arithmetic expressions and call results.
 #[rstest]
 fn invalid_function_var_in_out_expression(mut with_db: RootDatabase) {
     let source = r#"
@@ -760,7 +760,7 @@ FUNCTION_BLOCK fb1
 END_FUNCTION_BLOCK"#;
 
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E0234] Error: VAR_IN_OUT argument must be a variable
+    [E0806] Error: VAR_IN_OUT argument must be a variable
         ,-[ file:///test0.st:13:8 ]
         |
       4 |         a: INT;
@@ -776,7 +776,7 @@ END_FUNCTION_BLOCK"#;
     ");
 }
 
-// E0234 on a FUNCTION_BLOCK inout argument.
+// E0806 on a FUNCTION_BLOCK inout argument.
 #[rstest]
 fn invalid_fb_var_in_out_literal(mut with_db: RootDatabase) {
     let source = r#"
@@ -794,7 +794,7 @@ FUNCTION_BLOCK fb1
 END_FUNCTION_BLOCK"#;
 
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E0234] Error: VAR_IN_OUT argument must be a variable
+    [E0806] Error: VAR_IN_OUT argument must be a variable
         ,-[ file:///test0.st:12:17 ]
         |
       4 |         target: INT;
@@ -838,7 +838,7 @@ END_FUNCTION_BLOCK"#;
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"");
 }
 
-// E0236: a VAR_IN_OUT parameter cannot be bound with output syntax — `=>`
+// E0807: a VAR_IN_OUT parameter cannot be bound with output syntax — `=>`
 // would leave the by-reference binding unbound.
 #[rstest]
 fn invalid_var_in_out_arrow_binding(mut with_db: RootDatabase) {
@@ -867,7 +867,7 @@ FUNCTION_BLOCK fb1
 END_FUNCTION_BLOCK"#;
 
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E0236] Error: VAR_IN_OUT parameter bound with output syntax
+    [E0807] Error: VAR_IN_OUT parameter bound with output syntax
         ,-[ file:///test0.st:21:8 ]
         |
       4 |         io: INT;
@@ -880,7 +880,7 @@ END_FUNCTION_BLOCK"#;
         |
         | Note: VAR_IN_OUT is bound by reference at call entry: use io := <variable>
     ----'
-    [E0236] Error: VAR_IN_OUT parameter bound with output syntax
+    [E0807] Error: VAR_IN_OUT parameter bound with output syntax
         ,-[ file:///test0.st:22:7 ]
         |
      11 |         target: INT;
@@ -921,7 +921,7 @@ VAR b : BYTE; f : FBSet; END_VAR
 END_FUNCTION"#;
 
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E0234] Error: VAR_IN_OUT argument must be a variable
+    [E0806] Error: VAR_IN_OUT argument must be a variable
         ,-[ file:///test0.st:14:17 ]
         |
       3 | VAR_IN_OUT io : BOOL; END_VAR
@@ -934,7 +934,7 @@ END_FUNCTION"#;
         |
         | Note: VAR_IN_OUT binds the callee to the caller's storage by reference; a literal, expression, or call result has no address to bind
     ----'
-    [E0234] Error: VAR_IN_OUT argument must be a variable
+    [E0806] Error: VAR_IN_OUT argument must be a variable
         ,-[ file:///test0.st:15:13 ]
         |
       8 | VAR_IN_OUT io : BOOL; END_VAR

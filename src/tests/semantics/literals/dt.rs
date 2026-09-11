@@ -125,7 +125,7 @@ END_FUNCTION_BLOCK"#;
 // `DT` (i64 seconds) is bounded to LDT's span, ≈ 1677-09-21 to 2262-04-11,
 // so the implicit DT → LDT widening can never overflow (the containment
 // assertion in hir's literals.rs). Out-of-range literals on either type
-// surface as E0309 with the supported bounds shown as IEC literals.
+// surface as E0306 with the supported bounds shown as IEC literals.
 
 use crate::tests::semantics::literals::parse_literal;
 
@@ -150,7 +150,7 @@ FUNCTION_BLOCK fb1
     END_VAR
 END_FUNCTION_BLOCK"#;
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E0309] Error: invalid literal
+    [E0306] Error: invalid literal
        ,-[ file:///test0.st:4:30 ]
        |
      4 |         x : DATE_AND_TIME := DT#1500-01-01-00:00:00;
@@ -171,7 +171,7 @@ FUNCTION_BLOCK fb1
     END_VAR
 END_FUNCTION_BLOCK"#;
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E0309] Error: invalid literal
+    [E0306] Error: invalid literal
        ,-[ file:///test0.st:4:30 ]
        |
      4 |         x : DATE_AND_TIME := DT#2500-01-01-00:00:00;
@@ -219,7 +219,7 @@ FUNCTION_BLOCK fb1
     END_VAR
 END_FUNCTION_BLOCK"#;
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E0309] Error: invalid literal
+    [E0306] Error: invalid literal
        ,-[ file:///test0.st:4:31 ]
        |
      4 |         x : LDATE_AND_TIME := LDT#3000-01-01-00:00:00;
@@ -240,7 +240,7 @@ FUNCTION_BLOCK fb1
     END_VAR
 END_FUNCTION_BLOCK"#;
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E0309] Error: invalid literal
+    [E0306] Error: invalid literal
        ,-[ file:///test0.st:4:31 ]
        |
      4 |         x : LDATE_AND_TIME := LDT#1500-01-01-00:00:00;
@@ -261,7 +261,7 @@ FUNCTION_BLOCK fb1
     END_VAR
 END_FUNCTION_BLOCK"#;
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E0309] Error: invalid literal
+    [E0306] Error: invalid literal
        ,-[ file:///test0.st:4:30 ]
        |
      4 |         x : DATE_AND_TIME := DT#garbage;

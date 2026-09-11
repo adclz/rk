@@ -53,7 +53,6 @@ pub struct ProgramDecl<'db> {
 
     #[tracked]
     #[returns(ref)]
-
     #[tracked]
     #[no_eq]
     #[returns(ref)]

@@ -516,7 +516,7 @@ pub static TOPIARY_LANG: LazyLock<Language> = LazyLock::new(|| Language {
 /// The one gate for every caller. Topiary's own refusal trips on ERROR nodes
 /// but not on MISSING ones (a token the parser inserted to recover), and it
 /// formatted such a file: one indent level cascaded over every POU after the
-/// gap, on a save that check had already rejected with E0019. `has_error`
+/// gap, on a save that check had already rejected with E0002. `has_error`
 /// covers both kinds.
 pub fn format_source(source: &str) -> anyhow::Result<String> {
     let mut parser = auto_lsp::tree_sitter::Parser::new();

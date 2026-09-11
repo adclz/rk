@@ -13,10 +13,10 @@ Note the `=`.
 
 `{extern 'module' 'name'}` declares the `FUNCTION` as a WASM import — see below.
 
-`{wasm [type_ref] 'instruction' (params a b) (result r)}` is a statement: it emits one WASM instruction on the operands it names and stores the value in `r`, a parameter, a local or the FUNCTION's return (E0253 otherwise).
+`{wasm [type_ref] 'instruction' (params a b) (result r)}` is a statement: it emits one WASM instruction on the operands it names and stores the value in `r`, a parameter, a local or the FUNCTION's return (E1506 otherwise).
 A body may hold several, in order, with ordinary statements between them.
 `type_ref` names a variable whose type picks the instruction's numeric prefix.
-An instruction the compiler does not emit is E0248; a pragma outside a FUNCTION is E0249; operands that do not fit the instruction's signature, lane for lane, are E0255, checked before anything reaches the module validator.
+An instruction the compiler does not emit is E1505; a pragma outside a FUNCTION is E1504; operands that do not fit the instruction's signature, lane for lane, are E1507, checked before anything reaches the module validator.
 
 ```iecst
 USING Std.Unit;
@@ -82,8 +82,8 @@ END_FUNCTION
 
 What may cross: scalar `VAR_INPUT` by value, a `STRING` input as a `(ptr, len)` pair, a struct or array input as a pointer to a call-entry copy, scalar `VAR_OUTPUT` as results, and a scalar return type as the last result.
 
-What is refused with E0243: `VAR_IN_OUT` ("an extern takes copies, not references"), any aggregate or `STRING` `VAR_OUTPUT` ("only scalar outputs cross an import"), and any statement in the body ("an extern FUNCTION has no statements").
-Putting `{extern}` on anything other than a `FUNCTION` is E0244.
+What is refused with E1502: `VAR_IN_OUT` ("an extern takes copies, not references"), any aggregate or `STRING` `VAR_OUTPUT` ("only scalar outputs cross an import"), and any statement in the body ("an extern FUNCTION has no statements").
+Putting `{extern}` on anything other than a `FUNCTION` is E1501.
 
 A `STRING` **return type** is refused the same way: "the return type of 'f' can only be a scalar".
 

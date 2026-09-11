@@ -8,12 +8,12 @@ use ide_diagnostic::{ErrorCode, IdeDiagnostic, diag};
 
 pub const NAME: &str = "default-for-step";
 
-/// L0215: FOR loop step of 1 is the default and can be omitted.
+/// L0213: FOR loop step of 1 is the default and can be omitted.
 struct DefaultForStep;
 
 impl ErrorCode for DefaultForStep {
     fn code(&self) -> &'static str {
-        "L0215"
+        "L0213"
     }
 
     fn description(&self) -> &'static str {

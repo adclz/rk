@@ -272,21 +272,11 @@ impl<'db> ExprLowerCtx<'db> {
         }
     }
 
-    /// Lower `...pack<op>` inside an arity specialization.
-    ///
-    /// The pack has already expanded to N ordinary parameters, so the fold is
-    /// an unrolled chain over them. Which chain depends on the operator, and
-    /// HIR has already decided that by typing the expression: a comparison fold
-    /// is BOOL, everything else is the element type.
-    ///
-    /// * arithmetic / bitwise — a left fold: `((p0 op p1) op p2) …`
-    /// * comparison — the conjunction of adjacent pairs:
-    ///   `(p0 op p1) AND (p1 op p2) …`, so `...args=` means "all equal".
-    ///   Left-folding these would compare a BOOL against the next element.
-    ///
-    /// A single argument folds to itself (and to TRUE for a comparison, which
-    /// has no pair to test). An empty pack never reaches here — E0230 refuses
-    /// it at the call site, which is what makes this total.
+    /// Lower `...pack<op>` inside an arity specialization: the pack is N
+    /// ordinary parameters, so the fold is an unrolled chain. Arithmetic and
+    /// bitwise operators left-fold; a comparison is the conjunction of adjacent
+    /// pairs, so `...args=` means "all equal". A single argument folds to
+    /// itself (TRUE for a comparison); E0813 refuses an empty pack.
     fn lower_fold_expr(
         &self,
         param: hir::hir_def::interned::identifier::Ident,
@@ -1154,12 +1144,8 @@ impl<'db> ExprLowerCtx<'db> {
         }
     }
 
-    /// Lower `SUPER()` — a call to the immediate base FB's cyclic body on the
-    /// current `this`. FBs are single-inheritance (`EXTENDS` at most one base),
-    /// so there is exactly one target: `Base$__body__(this)`. HIR already
-    /// validated the invocation (E0501/E0513); we resolve the base from the
-    /// current FB's `EXTENDS` and pass the current instance pointer
-    /// (`AddrOf(ThisField{0})` = `LocalGet(0)`).
+    /// Lower `SUPER()`: the immediate base FB's body on the current `this`.
+    /// HIR validated the invocation (E1108/E1107).
     pub fn lower_super_body_call(
         &self,
         // The base is the POU's own EXTENDS; the receiver is the current
@@ -1428,14 +1414,9 @@ impl<'db> ExprLowerCtx<'db> {
         })
     }
 
-    /// Wrap `value` in the subrange range-check builtin when `ty` declares
-    /// one. The compile-time half is E0802, which rejects the constants it
-    /// can see; this is the runtime half, so `s := v` faults with a message
-    /// instead of storing a value the type forbids.
-    ///
-    /// A non-subrange type passes through untouched, so every store site can
-    /// call this unconditionally. A bound that did not fold (refused at the
-    /// declaration, E0803) skips the check under the Never contract.
+    /// Wrap `value` in the subrange range check when `ty` declares one: the
+    /// runtime half of E0702. A non-subrange type passes through, so every
+    /// store site calls this unconditionally.
     pub(crate) fn checked_range(&self, value: MirExpr, ty: Type<'db>) -> MirExpr {
         let Some(sub) = ty.as_subrange(self.db) else {
             return value;
@@ -1838,17 +1819,10 @@ impl<'db> ExprLowerCtx<'db> {
         }))
     }
 
-    /// Build a direct call's argument list in the callee's parameter
-    /// declaration order — the order codegen binds them (`emit_call` is purely
-    /// positional), which is also the order `lower_func` builds the callee's
-    /// signature in.
-    ///
-    /// Call-site params are matched to declarations through HIR's
-    /// `variable_of_param` — the authoritative matching (formal args in any
-    /// order, positional args skipping named ones) — instead of re-deriving it
-    /// here. An omitted FUNCTION/METHOD input falls back to its declared
-    /// constant default; E0233 guarantees one exists when the code
-    /// type-checks.
+    /// A direct call's arguments in the callee's declaration order, the order
+    /// codegen binds them. Params are matched through HIR's `variable_of_param`;
+    /// an omitted FUNCTION/METHOD input takes its declared default (E0802
+    /// guarantees one).
     fn build_call_args(
         &self,
         func_call: hir::hir_def::expressions::expression::FuncCall<'db>,
@@ -1859,10 +1833,9 @@ impl<'db> ExprLowerCtx<'db> {
     ) -> Result<(), LowerTypeError> {
         use hir::hir_def::pous::variable::VariableKind;
 
-        // An extern callee returns its scalar VAR_OUTPUTs on the STACK (in
-        // declaration order, before the return value): outputs push no args
-        // at all and instead record where each result pops to. E0243 refuses
-        // everything an import cannot carry before lowering runs.
+        // An extern callee returns its scalar VAR_OUTPUTs on the stack: outputs
+        // push no args and record where each result pops to (E1502 refused the
+        // rest).
         let is_extern = matches!(
             callable,
             hir::hir_ty::ty::CallableType::Function(f)
@@ -1885,7 +1858,7 @@ impl<'db> ExprLowerCtx<'db> {
 
         // Wrap a lowered value as ByRef when the target param is
         // `VAR_IN_OUT` / `VAR_OUTPUT`. Only a Load has an address to take;
-        // E0234 refuses everything else upstream, partial accesses included.
+        // E0806 refuses everything else upstream, partial accesses included.
         // The old fallback passed the VALUE where the callee expects a
         // POINTER — the callee then dereferenced a bit as an address and
         // wrote to memory near 0, from code `rk check` called clean.
@@ -2190,12 +2163,8 @@ impl<'db> ExprLowerCtx<'db> {
                         // before the body — the body reads/writes through it, so
                         // there is no value copy-in and (unlike a C-emitting compiler) no copy-out.
                         if field.by_ref {
-                            // Must be an l-value (`Load(place, _)`) to take its
-                            // address — E0234 rejects everything else upstream,
-                            // including partial accesses (`b.%X1`), which lower to
-                            // a shifted read. Anything else here used to be
-                            // silently SKIPPED: the pointer field kept its stale
-                            // value and the body wrote through it.
+                            // Must be an l-value to take its address; E0806 rejects everything
+                            // else upstream.
                             match self.lower_expr(value)? {
                                 MirExpr::Load(place, _) => {
                                     input_writes.push((
@@ -2401,15 +2370,9 @@ impl<'db> ExprLowerCtx<'db> {
         expr.infer(self.db).normalize(self.db)
     }
 
-    /// One CASE label's value, as HIR evaluated it.
-    ///
-    /// HIR checks a label by EVALUATING it (`case_label_value`), so the answer
-    /// already exists and E1006 has refused anything without one. Lowering the
-    /// label and inspecting whether a constant fell out re-derived that with a
-    /// narrower evaluator, and disagreed: `K:` for a CONSTANT `K` checked clean
-    /// and aborted here. An enum label is the exception — its value is its
-    /// variant's ordinal, which `lower_expr` reads from the same table the
-    /// enum's type does.
+    /// One CASE label's value, as HIR evaluated it (`case_label_value`; E1205
+    /// refused labels without one). An enum label's value is its variant's
+    /// ordinal.
     fn case_label_constant(
         &self,
         label: hir::hir_def::expressions::expression::Expr<'db>,

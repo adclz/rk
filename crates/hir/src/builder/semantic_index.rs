@@ -369,7 +369,7 @@ impl<'db> SemanticIndexBuilder<'db> {
             usings,
             self.current_scope,
             None,
-);
+        );
 
         self.scope_keys
             .insert(global_scope.scope(self.db), Arc::new(scope));
