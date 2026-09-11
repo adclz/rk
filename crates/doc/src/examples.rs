@@ -416,6 +416,9 @@ END_CLASS
             description: "A METHOD declaration cannot appear inside the body (statement list) of a POU. Methods must be declared at the top level of a FUNCTION_BLOCK or CLASS.",
             sources: &[r#"
 FUNCTION_BLOCK fb1
+VAR
+    x: INT;
+END_VAR
     x := 1;
     METHOD m1
     END_METHOD
@@ -461,15 +464,18 @@ END_FUNCTION
             title: "Duplicate parameter",
             description: "A function call passes the same parameter twice.",
             sources: &[r#"
-FUNCTION fn1
-    VAR_INPUT
-        param1: INT;
-        param2: INT;
-    END_VAR
-END_FUNCTION
+FUNCTION_BLOCK Motor
+VAR_INPUT
+    param1: INT;
+    param2: INT;
+END_VAR
+END_FUNCTION_BLOCK
 
 FUNCTION_BLOCK fb1
-    fn1(param1 := 0, param1 := 1);
+VAR
+    m: Motor;
+END_VAR
+    m(param1 := 0, param1 := 1);
 END_FUNCTION_BLOCK
 "#],
             lint_rule: None,
@@ -624,7 +630,7 @@ END_PROGRAM
 
 CONFIGURATION config1
     RESOURCE res1 ON CPU
-        TASK task1(PRIORITY := 1);
+        TASK task1(INTERVAL := T#10ms, PRIORITY := 1);
         PROGRAM inst1 WITH task1 : prog1;
         PROGRAM inst1 WITH task1 : prog1;
     END_RESOURCE
@@ -771,8 +777,10 @@ END_VAR
 END_PROGRAM
 
 CONFIGURATION config1
-    TASK task1(PRIORITY := 1);
-    PROGRAM inst1 WITH task1 : prog1;
+    RESOURCE res1 ON CPU
+        TASK task1(INTERVAL := T#10ms, PRIORITY := 1);
+        PROGRAM inst1 WITH task1 : prog1;
+    END_RESOURCE
 END_CONFIGURATION
 "#],
             lint_rule: None,
@@ -890,14 +898,11 @@ END_FUNCTION_BLOCK
             title: "Unsupported operator for type",
             description: "The operator cannot be applied to this type.",
             sources: &[r#"
-FUNCTION_BLOCK Motor
-END_FUNCTION_BLOCK
-
 PROGRAM A
     VAR
-        x: INT;
+        b: BOOL;
     END_VAR
-    x := 5 + Motor;
+    b := b + b;
 END_PROGRAM
 "#],
             lint_rule: None,
@@ -1468,14 +1473,17 @@ END_FUNCTION
             title: "Unknown input parameter",
             description: "A named input parameter does not exist on the called function.",
             sources: &[r#"
-FUNCTION fn1
-     VAR_INPUT
-        u: BOOL;
-     END_VAR
-END_FUNCTION
+FUNCTION_BLOCK Motor
+VAR_INPUT
+    u: BOOL;
+END_VAR
+END_FUNCTION_BLOCK
 
 FUNCTION_BLOCK fb1
-    fn1(unknown := TRUE);
+VAR
+    m: Motor;
+END_VAR
+    m(unknown := TRUE);
 END_FUNCTION_BLOCK
 "#],
             lint_rule: None,
@@ -1487,10 +1495,16 @@ END_FUNCTION_BLOCK
             description: "A named output parameter does not exist on the called function.",
             sources: &[r#"
 FUNCTION fn1
+VAR_OUTPUT
+    o: BOOL;
+END_VAR
 END_FUNCTION
 
 FUNCTION_BLOCK fb1
-    fn1(unknown => TRUE);
+VAR
+    b: BOOL;
+END_VAR
+    fn1(unknown => b);
 END_FUNCTION_BLOCK
 "#],
             lint_rule: None,
@@ -2683,8 +2697,10 @@ PROGRAM MyProg
 END_PROGRAM
 
 CONFIGURATION MyCfg
-    TASK t1(PRIORITY := 1);
-    PROGRAM inst1 WITH t1 : MyProg;
+    RESOURCE res1 ON CPU
+        TASK t1(INTERVAL := T#10ms, PRIORITY := 1);
+        PROGRAM inst1 WITH t1 : MyProg;
+    END_RESOURCE
 
     VAR_CONFIG
         noSuchInst.x : INT := 42;
@@ -2707,7 +2723,7 @@ END_PROGRAM
 
 CONFIGURATION MyCfg
     RESOURCE res1 ON CPU
-        TASK t1(PRIORITY := 1);
+        TASK t1(INTERVAL := T#10ms, PRIORITY := 1);
         PROGRAM inst1 WITH t1 : MyProg;
     END_RESOURCE
 
@@ -2734,8 +2750,10 @@ END_VAR
 END_PROGRAM
 
 CONFIGURATION config1
-    TASK task1(PRIORITY := 1);
-    PROGRAM inst1 WITH task1 : prog1;
+    RESOURCE res1 ON CPU
+        TASK task1(INTERVAL := T#10ms, PRIORITY := 1);
+        PROGRAM inst1 WITH task1 : prog1;
+    END_RESOURCE
 END_CONFIGURATION
 "#],
             lint_rule: None,

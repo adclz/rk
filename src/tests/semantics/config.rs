@@ -586,15 +586,6 @@ CONFIGURATION MyCfg
 END_CONFIGURATION
 "#;
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E1416] Error: unsupported configuration element
-        ,-[ file:///test0.st:15:20 ]
-        |
-     15 |         Nope.inst1.x : INT := 42;
-        |                    |
-        |                    `-- VAR_CONFIG is checked but not applied yet, so this value never reaches the instance
-        |
-        | Note: set the value in the program's own VAR declaration instead
-    ----'
     [E1413] Error: configuration error
         ,-[ file:///test0.st:15:9 ]
         |
@@ -667,15 +658,6 @@ CONFIGURATION MyCfg
 END_CONFIGURATION
 "#;
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E1416] Error: unsupported configuration element
-        ,-[ file:///test0.st:15:20 ]
-        |
-     15 |         noSuchInst.x : INT := 42;
-        |                    |
-        |                    `-- VAR_CONFIG is checked but not applied yet, so this value never reaches the instance
-        |
-        | Note: set the value in the program's own VAR declaration instead
-    ----'
     [E1413] Error: configuration error
         ,-[ file:///test0.st:15:9 ]
         |
@@ -708,15 +690,6 @@ CONFIGURATION MyCfg
 END_CONFIGURATION
 "#;
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E1416] Error: unsupported configuration element
-        ,-[ file:///test0.st:15:15 ]
-        |
-     15 |         inst1.nonexistent : INT := 42;
-        |               ^^^^^|^^^^^
-        |                    `------- VAR_CONFIG is checked but not applied yet, so this value never reaches the instance
-        |
-        | Note: set the value in the program's own VAR declaration instead
-    ----'
     [E1414] Error: configuration error
         ,-[ file:///test0.st:15:15 ]
         |
@@ -790,15 +763,6 @@ CONFIGURATION MyCfg
 END_CONFIGURATION
 "#;
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E1416] Error: unsupported configuration element
-        ,-[ file:///test0.st:15:17 ]
-        |
-     15 |         inst1.x.deeper : INT := 42;
-        |                 ^^^|^^
-        |                    `---- VAR_CONFIG is checked but not applied yet, so this value never reaches the instance
-        |
-        | Note: set the value in the program's own VAR declaration instead
-    ----'
     [E1414] Error: configuration error
         ,-[ file:///test0.st:15:17 ]
         |

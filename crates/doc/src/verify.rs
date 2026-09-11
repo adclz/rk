@@ -148,6 +148,19 @@ pub fn problems(examples: &[ErrorExample], produced: &[(&str, BTreeSet<String>)]
     for (code, got) in produced {
         let want = *code;
         if got.contains(want) {
+            // The reader must see the documented code alone: a companion error
+            // fires first, reads as the point of the example, and buries it.
+            let others: Vec<&str> = got
+                .iter()
+                .map(String::as_str)
+                .filter(|c| *c != want)
+                .collect();
+            if !others.is_empty() {
+                problems.push(format!(
+                    "{code}: its example also produces {} — rewrite the source so only {want} fires",
+                    others.join(", ")
+                ));
+            }
             continue;
         }
         if got.is_empty() {

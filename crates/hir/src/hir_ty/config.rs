@@ -530,14 +530,6 @@ fn validate_config_inst_inits<'db>(
         // whatever its own declaration gave it. Working diagnostics on a
         // construct that does nothing is more misleading than a plain
         // rejection, so say so.
-        errors.push(
-            ConfigError::UnsupportedConfigElement {
-                expr: decl.path,
-                kind: UnsupportedConfigKind::InstanceInit,
-            }
-            .to_diagnostic(db, config.get_scope_id(db).file(db)),
-        );
-
         let steps = decl.path.flatten(db);
 
         if steps.is_empty() {
@@ -628,6 +620,18 @@ fn validate_config_inst_inits<'db>(
                     break;
                 }
             }
+        }
+
+        // An entry that did not resolve has its own error above; "checked but
+        // not applied" is only true of one that did.
+        if resolved {
+            errors.push(
+                ConfigError::UnsupportedConfigElement {
+                    expr: decl.path,
+                    kind: UnsupportedConfigKind::InstanceInit,
+                }
+                .to_diagnostic(db, config.get_scope_id(db).file(db)),
+            );
         }
 
         // Step C: validate init expression against the resolved type.
