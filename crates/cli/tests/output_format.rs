@@ -48,22 +48,4 @@ fn status_commands_speak_json_lines() {
     let rows = records(&out.stdout);
     assert_eq!(rows[0]["type"], "explain");
     assert_eq!(rows[0]["code"], "E0301");
-
-    // A path command, and a table command with nothing to list.
-    let out = rk(&["path"], ws.path());
-    let rows = records(&out.stdout);
-    assert_eq!(rows[0]["type"], "path", "{rows:?}");
-    let out = rk(&["cert", "list"], ws.path());
-    records(&out.stdout);
-    records(&out.stderr);
-
-    // A failing wire command: the error is a record too, and the exit says so.
-    let out = rk(&["start", "--id", "no-such-runtime-ever"], ws.path());
-    assert!(!out.status.success());
-    let errors = records(&out.stderr);
-    assert!(
-        errors.iter().any(|r| r["type"] == "message" && r["level"] == "error"),
-        "the failure is a record: {errors:?}"
-    );
-    records(&out.stdout);
 }

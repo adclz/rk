@@ -16,9 +16,18 @@ use crate::error::CliResult;
 
 pub fn run_env(workspace: &Path, keys: &[String], format: OutputFormat) -> CliResult<()> {
     let (rows, probed) = describe(workspace);
+    print(&rows, probed, keys, format)
+}
 
+/// Print the table, or the named keys alone, in `format`.
+pub fn print(
+    rows: &[Row],
+    probed: Vec<std::path::PathBuf>,
+    keys: &[String],
+    format: OutputFormat,
+) -> CliResult<()> {
     if keys.is_empty() && format == OutputFormat::JsonLines {
-        for row in &rows {
+        for row in rows {
             println!("{}", env_record(row));
         }
         for path in probed {
@@ -44,7 +53,7 @@ pub fn run_env(workspace: &Path, keys: &[String], format: OutputFormat) -> CliRe
         return Ok(());
     }
 
-    for row in &rows {
+    for row in rows {
         let value = match (row.value.is_empty(), &row.note) {
             (true, Some(note)) => format!("none ({note})"),
             (true, None) => "none".to_string(),
@@ -61,13 +70,13 @@ pub fn run_env(workspace: &Path, keys: &[String], format: OutputFormat) -> CliRe
 
 /// One line of the table: a machine-usable `value` (empty when there is none)
 /// and the `note` that explains it to a human.
-struct Row {
-    key: &'static str,
-    value: String,
-    note: Option<String>,
+pub struct Row {
+    pub key: &'static str,
+    pub value: String,
+    pub note: Option<String>,
 }
 
-fn row(key: &'static str, value: String) -> Row {
+pub fn row(key: &'static str, value: String) -> Row {
     Row {
         key,
         value,
@@ -75,7 +84,7 @@ fn row(key: &'static str, value: String) -> Row {
     }
 }
 
-fn noted(key: &'static str, value: String, note: impl Into<String>) -> Row {
+pub fn noted(key: &'static str, value: String, note: impl Into<String>) -> Row {
     Row {
         key,
         value,
@@ -85,7 +94,7 @@ fn noted(key: &'static str, value: String, note: impl Into<String>) -> Row {
 
 /// The rows, and the paths to list when no library was found; separated
 /// from printing so the resolution can be asserted.
-fn describe(workspace: &Path) -> (Vec<Row>, Vec<std::path::PathBuf>) {
+pub fn describe(workspace: &Path) -> (Vec<Row>, Vec<std::path::PathBuf>) {
     let mut rows = vec![
         row("workspace", display_or(workspace.canonicalize().ok().as_deref())),
         row(
@@ -94,18 +103,6 @@ fn describe(workspace: &Path) -> (Vec<Row>, Vec<std::path::PathBuf>) {
         ),
         row("executable", display_or(std::env::current_exe().ok().as_deref())),
     ];
-
-    let runtime = crate::spawn::runtime_binary();
-    rows.push(match runtime.is_file() {
-        true => row("runtime", runtime.display().to_string()),
-        // Not an error here: only a command that needs to RUN something can
-        // say whether this matters.
-        false => noted(
-            "runtime",
-            runtime.display().to_string(),
-            "not beside the executable; from PATH",
-        ),
-    });
 
     let lsp = crate::spawn::lsp_binary();
     rows.push(match lsp.is_file() {
@@ -117,10 +114,8 @@ fn describe(workspace: &Path) -> (Vec<Row>, Vec<std::path::PathBuf>) {
         ),
     });
 
-    rows.push(row("home", display_or(crate::home::rk_home().ok().as_deref())));
-
-    // The library last: it is the one with a story, and the probed paths that
-    // follow it would otherwise split the table in two.
+    // The library last, so the probed paths that follow it do not split the
+    // table.
     let mut probed = Vec::new();
     rows.push(match resolve_library_path(Some(workspace)) {
         LibraryPathResolution::Found { dir, origin } => {
@@ -204,15 +199,7 @@ mod tests {
         let keys: Vec<&str> = rows.iter().map(|row| row.key).collect();
         assert_eq!(
             keys,
-            vec![
-                "workspace",
-                "config",
-                "executable",
-                "runtime",
-                "lsp",
-                "home",
-                "stdlib"
-            ]
+            vec!["workspace", "config", "executable", "lsp", "stdlib"]
         );
     }
 }

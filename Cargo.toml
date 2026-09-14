@@ -130,5 +130,3 @@ wasmtime = "45.0.1"
 rand = "0.8"
 wasm-encoder = { workspace = true }
 anyhow = "1"
-
-# store with the bundled public-CA list before adding ours and has no switch,

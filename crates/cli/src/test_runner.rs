@@ -1,25 +1,19 @@
 //! Reporting for `rk test`.
 //!
-//! Execution belongs to the runtime, and it happens in a *separate process*:
-//! `rk test` builds a module and hands it to `runtime --test`, which runs it
-//! and dies. The results come back as newline-delimited JSON
-//! ([`wire::report`]), and what is left here is presentation — three output
-//! shapes, one of which (`json-lines`) other programs parse.
+//! Execution is [`crate::test_host`]'s: a module's `{test}` functions run on
+//! a wasmtime host inside this process, and what is here is presentation —
+//! three output shapes, one of which (`json-lines`) other programs parse. The
+//! records are the ones a test run reports across a process boundary
+//! ([`debug_format::test_report`]), so a tool that runs the same module
+//! elsewhere renders its results through the same functions.
 //!
-//! Spawning rather than linking is the whole point. A test must run against the
-//! module a plant would run, under the same loader; if the compiler ran it
-//! in-process, "the runtime" would be a library the compiler happened to
-//! contain, and the two could drift without anything noticing. Now the same
-//! binary that runs a controller runs the tests.
-//!
-//! It also means the results arrive as they happen: a suite is streamed, so a
-//! failure appears when it occurs rather than when the run ends.
+//! Results are rendered as they happen: a suite is streamed, so a failure
+//! appears when it occurs rather than when the run ends.
 
-use std::io::BufRead;
 use std::path::Path;
 use std::time::Duration;
 
-use wire::report::{ReportLine, Status, Summary, TestRecord};
+use debug_format::test_report::{ReportLine, Status, Summary, TestRecord};
 use yansi::Paint;
 
 use crate::cli::OutputFormat;
@@ -48,69 +42,70 @@ fn fmt_duration(d: Duration) -> String {
 pub fn run_tests(
     wasm_path: &Path,
     filter: Option<&str>,
-    timeout: Option<std::time::Duration>,
+    timeout: Option<Duration>,
     format: OutputFormat,
 ) -> usize {
-    let binary = crate::spawn::runtime_binary();
-    let mut command = std::process::Command::new(&binary);
-    command.arg("--test").arg(wasm_path);
-    if let Some(filter) = filter {
-        command.arg("--filter").arg(filter);
-    }
-    // The hang is in the CHILD, so the deadline has to travel with the work:
-    // a timeout enforced here could only stop reading, not stop the test.
-    if let Some(timeout) = timeout {
-        command
-            .arg("--watchdog")
-            .arg(timeout.as_millis().to_string());
-    }
-    command.stdout(std::process::Stdio::piped());
-
-    let mut child = match command.spawn() {
-        Ok(child) => child,
+    let wasm = match std::fs::read(wasm_path) {
+        Ok(bytes) => bytes,
         Err(e) => {
-            // The runtime is a separate binary now, so its absence is a real
-            // failure mode a user can hit — name it and say where we looked.
-            ui::error(crate::spawn::missing_hint(&binary, &e));
+            ui::error(format!("reading {}: {e}", wasm_path.display()));
             return 1;
         }
     };
+    announce(wasm_path, format);
 
-    let Some(stdout) = child.stdout.take() else {
-        ui::error("the runtime produced no output");
-        return 1;
-    };
+    let total_start = std::time::Instant::now();
+    let mut failures = Vec::new();
+    let mut passed = 0;
+    let run = crate::test_host::run_each(&wasm, filter, timeout, |record| {
+        if record.status == Status::Fail {
+            failures.push(record.clone());
+        } else {
+            passed += 1;
+        }
+        report_one(record, format);
+    });
+    let total_elapsed = total_start.elapsed();
 
+    match run {
+        Ok(_) => summarize(
+            Summary {
+                total: passed + failures.len(),
+                passed,
+                failed: failures.len(),
+            },
+            &failures,
+            total_elapsed,
+            format,
+        ),
+        Err(e) => {
+            ui::error(format!("the test run did not finish: {e:#}"));
+            1
+        }
+    }
+}
+
+/// Say what is about to run, in the human format only.
+pub fn announce(wasm_path: &Path, format: OutputFormat) {
     if format == OutputFormat::Full {
         println!("{}  {}", "    Running".dim(), wasm_path.display());
     }
+}
 
-    // Render each line as it arrives: the runtime flushes per test, so a long
-    // suite reports progress instead of going quiet.
-    let total_start = std::time::Instant::now();
-    let (summary, failures) = read_report(std::io::BufReader::new(stdout), format);
-    let total_elapsed = total_start.elapsed();
-
-    let status = child.wait();
-    let Some(summary) = summary else {
-        // No summary means the run did not finish: a crash, a kill, a module
-        // the runtime refused. Do not report that as zero failures.
-        let detail = match status {
-            Ok(s) if !s.success() => format!(" (runtime exited with {s})"),
-            Ok(_) => String::new(),
-            Err(e) => format!(" ({e})"),
-        };
-        ui::error(format!("the test run did not finish{detail}"));
-        return 1;
-    };
-
+/// The recap once every test has been reported. Returns the failure count;
+/// a run with no tests counts as one failure, not as a green build.
+pub fn summarize(
+    summary: Summary,
+    failures: &[TestRecord],
+    total_elapsed: Duration,
+    format: OutputFormat,
+) -> usize {
     if summary.total == 0 {
         if format == OutputFormat::JsonLines {
             print_json(&ReportLine::Summary(summary));
         } else {
             println!("No test functions found");
         }
-        // Still non-zero: an empty test run is a failure, not a green build.
         return 1;
     }
 
@@ -120,7 +115,7 @@ pub fn run_tests(
             println!("{}", rule.dim());
             if !failures.is_empty() {
                 println!("     {}:", "Failures".bold().red());
-                for f in &failures {
+                for f in failures {
                     println!(
                         "        {} {}{}: {}",
                         "FAIL".red(),
@@ -164,50 +159,14 @@ pub fn run_tests(
 }
 
 /// Print one NDJSON record to stdout.
-fn print_json<T: serde::Serialize>(record: &T) {
+pub fn print_json<T: serde::Serialize>(record: &T) {
     if let Ok(json) = serde_json::to_string(record) {
         println!("{json}");
     }
 }
 
-/// Consume the runtime's report stream, rendering each test as it arrives.
-///
-/// Returns the summary — `None` when the stream ended without one, which means
-/// the run did not finish and must NOT be reported as zero failures — and the
-/// failing records, for the recap block.
-fn read_report(
-    reader: impl BufRead,
-    format: OutputFormat,
-) -> (Option<Summary>, Vec<TestRecord>) {
-    let mut summary = None;
-    let mut failures = Vec::new();
-    for line in reader.lines() {
-        let Ok(line) = line else { break };
-        if line.trim().is_empty() {
-            continue;
-        }
-        match serde_json::from_str::<ReportLine>(&line) {
-            Ok(ReportLine::Test(record)) => {
-                if record.status == Status::Fail {
-                    failures.push(record.clone());
-                }
-                report_one(&record, format);
-            }
-            Ok(ReportLine::Summary(s)) => summary = Some(s),
-            // Anything else on stdout is the runtime talking out of turn.
-            // Pass it through rather than swallowing it — it is likely the
-            // explanation for a run that is about to look inexplicable.
-            Err(_) => {
-                if format != OutputFormat::JsonLines {
-                    ui::detail(format!("    {line}"));
-                }
-            }
-        }
-    }
-    (summary, failures)
-}
-
-fn report_one(r: &TestRecord, format: OutputFormat) {
+/// Render one finished test.
+pub fn report_one(r: &TestRecord, format: OutputFormat) {
     let name = &r.name;
     match format {
         OutputFormat::Full => {
@@ -219,7 +178,11 @@ fn report_one(r: &TestRecord, format: OutputFormat) {
             println!(
                 "        {} {} {}",
                 tag,
-                format!("[{:>7}]", fmt_duration(Duration::from_micros(r.duration_us))).dim(),
+                format!(
+                    "[{:>7}]",
+                    fmt_duration(Duration::from_micros(r.duration_us))
+                )
+                .dim(),
                 name,
             );
         }
@@ -232,73 +195,7 @@ fn report_one(r: &TestRecord, format: OutputFormat) {
                 reason.replace('\n', " ")
             ),
         },
-        // Already the wire's own shape: forward it unchanged, so what a program
-        // parses here is exactly what the runtime said.
+        // The report's own shape, forwarded unchanged.
         OutputFormat::JsonLines => print_json(&ReportLine::Test(r.clone())),
     }
 }
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    /// A run that dies partway leaves tests but no summary. That absence is
-    /// the signal the caller turns into "the run did not finish" — so it must
-    /// come back as `None`, never as a summary inferred from the lines seen.
-    #[test]
-    fn a_truncated_stream_has_no_summary() {
-        let stream = concat!(
-            r#"{"type":"test","name":"t_one","status":"pass","duration_us":5}"#,
-            "\n",
-            r#"{"type":"test","name":"t_two","status":"fail","reason":"boom","duration_us":7}"#,
-            "\n",
-            // killed here: no summary line
-        );
-        let (summary, failures) = read_report(stream.as_bytes(), OutputFormat::Concise);
-        assert_eq!(summary, None, "no summary may be invented for a dead run");
-        assert_eq!(failures.len(), 1);
-        assert_eq!(failures[0].name, "t_two");
-    }
-
-    /// The happy path: tests stream, the summary arrives last, and only the
-    /// failing records are kept for the recap.
-    #[test]
-    fn a_complete_stream_yields_its_summary_and_failures() {
-        let stream = concat!(
-            r#"{"type":"test","name":"t_one","status":"pass","duration_us":5}"#,
-            "\n",
-            r#"{"type":"test","name":"t_two","status":"fail","reason":"boom","duration_us":7}"#,
-            "\n",
-            r#"{"type":"summary","total":2,"passed":1,"failed":1}"#,
-            "\n",
-        );
-        let (summary, failures) = read_report(stream.as_bytes(), OutputFormat::Concise);
-        assert_eq!(
-            summary,
-            Some(Summary {
-                total: 2,
-                passed: 1,
-                failed: 1
-            })
-        );
-        assert_eq!(failures.len(), 1);
-    }
-
-    /// A line that is not a report record — a stray print, a panic message —
-    /// must not end the stream: everything after it still counts.
-    #[test]
-    fn a_stray_line_does_not_end_the_stream() {
-        let stream = concat!(
-            "something wrote to stdout\n",
-            r#"{"type":"test","name":"t_one","status":"pass","duration_us":5}"#,
-            "\n",
-            r#"{"type":"summary","total":1,"passed":1,"failed":0}"#,
-            "\n",
-        );
-        let (summary, failures) = read_report(stream.as_bytes(), OutputFormat::Concise);
-        assert_eq!(summary.map(|s| s.total), Some(1));
-        assert!(failures.is_empty());
-    }
-}
-
-

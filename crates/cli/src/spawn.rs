@@ -1,26 +1,14 @@
-//! Locating the deployable runtime binary.
+//! Locating the binaries that go with *this* `rk`.
 //!
-//! The CLI never runs a PLC in-process: `rk test` and the runtime both spawn
-//! the runtime, the same binary a plant runs. This module is how they find it.
+//! Beside the current executable first, and only then `PATH`. A toolchain must
+//! not run one version's program under another version's binary just because
+//! an older copy happens to come first in `PATH` — and during development the
+//! binary next to `rk` is the one that was just rebuilt.
 
 use std::path::PathBuf;
 
-/// The the runtime that goes with *this* `rk`.
-///
-/// Beside the current executable first, and only then `PATH`. A toolchain must
-/// not run one version's program under another version's runtime just because
-/// an older copy happens to come first in `PATH` — and during development the
-/// binary next to `rk` is the one that was just rebuilt.
-pub fn runtime_binary() -> PathBuf {
-    sibling_or_path(if cfg!(windows) {
-        "runtime.exe"
-    } else {
-        "runtime"
-    })
-}
-
-/// The language server that goes with *this* `rk`, by the same rule. A tool
-/// launches it; nothing in a toolchain builds it.
+/// The language server that goes with *this* `rk`. A tool launches it;
+/// nothing in a toolchain builds it.
 pub fn lsp_binary() -> PathBuf {
     sibling_or_path(if cfg!(windows) {
         "vscode-lsp-server.exe"
@@ -29,7 +17,9 @@ pub fn lsp_binary() -> PathBuf {
     })
 }
 
-fn sibling_or_path(exe: &str) -> PathBuf {
+/// `exe` beside the current executable when it is there, else bare, for
+/// `PATH` to resolve.
+pub fn sibling_or_path(exe: &str) -> PathBuf {
     if let Ok(current) = std::env::current_exe()
         && let Some(dir) = current.parent()
     {
@@ -39,15 +29,4 @@ fn sibling_or_path(exe: &str) -> PathBuf {
         }
     }
     PathBuf::from(exe)
-}
-
-/// The hint that goes with "could not start it": the runtime is a separate
-/// binary now, so its absence is a failure mode a user can actually hit.
-pub fn missing_hint(binary: &std::path::Path, e: &std::io::Error) -> String {
-    format!(
-        "could not start `{}`: {e}\n       \
-         The runtime is a separate binary. Build it with \
-         `cargo build --bin runtime`.",
-        binary.display()
-    )
 }

@@ -10,6 +10,7 @@ use serde::{Deserialize, Serialize};
 
 pub mod info;
 pub mod test_manifest;
+pub mod test_report;
 
 pub use info::{DebugInfo, SourcePos, StackFrame, TypeMismatch, VarLoc, VarValue, decode, encode};
 

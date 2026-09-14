@@ -21,14 +21,8 @@ pub fn run_test(
     let core_bytes = crate::compiler::optimize_wasm(core_bytes, opt_level, verbose);
     let _ = &mir_module;
 
-    // The artifact on disk is what the runtime is handed — and what a failing
-    // run is reproducible from: `runtime --test <that path>` repeats it
-    // exactly, with no compiler in the picture.
-    // `-O` makes this neither profile — an optimized build that still carries
-    // debug sections — so it keeps its own path rather than overwriting the
-    // debug artifact with something that is not one. That mongrel is a known
-    // defect in its own right (its line table no longer describes its code);
-    // giving it a separate file names it rather than hiding it.
+    // The artifact on disk is what ran. `-O` is neither profile (optimized,
+    // but carrying debug sections), so it keeps its own path.
     let wasm_path = match opt_level {
         None => crate::compiler::debug_core_path(workspace),
         Some(level) => workspace
