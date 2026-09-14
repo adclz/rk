@@ -125,17 +125,10 @@ wasmparser = { workspace = true }
 static_assertions = { workspace = true }
 rk = { path = "crates/cli" }
 tempfile = "3"
-wat = "1"
-anyhow = "1"
-# purpose: it drags in axum/hyper/clap, which have no business in a PLC.
 debug_format = { workspace = true }
-serde = { workspace = true }
 wasmtime = "45.0.1"
 rand = "0.8"
-pollster = "0.4"
-futures = "0.3"
 wasm-encoder = { workspace = true }
-rmp-serde = "1.3"
-tokio = { version = "1", features = ["rt-multi-thread", "macros", "time", "sync"] }
+anyhow = "1"
 
 # store with the bundled public-CA list before adding ours and has no switch,
