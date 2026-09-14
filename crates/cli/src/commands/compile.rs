@@ -53,7 +53,7 @@ fn compile_once(
 
     if !opts.release {
         // The default: the debug artifact, all sections intact, unoptimized —
-        // what the debugger steps. Optimizing it would
+        // what `rk test` runs and a debugger steps. Optimizing it would
         // re-encode the code and orphan the line table, so it never is.
         let default_output = debug_core_path(workspace);
         let output = opts.output.unwrap_or(&default_output);

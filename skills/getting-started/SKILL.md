@@ -1,7 +1,7 @@
 ---
 name: getting-started
 description: Install rk and run the loop once — a workspace, a first program,
-  check, test, compile, run. Use when rk is not set up yet, when starting a new
+  check, test, compile. Use when rk is not set up yet, when starting a new
   project, or when unsure which skill to load next.
 ---
 
@@ -91,7 +91,7 @@ rk test            # every test
 rk test add        # the ones whose name contains "add"
 ```
 
-Format, compile, run:
+Format and compile:
 
 ```sh
 rk fmt             # rewrites the .st files in place; --check only reports
@@ -101,6 +101,12 @@ rk compile --release   # optimized, no stepping tables, under rk_build/release/
 
 A `PROGRAM` only runs when a `CONFIGURATION` binds it to a task; without one the compiler says so.
 The `programming-config` skill shows the three lines that do it.
+
+## The module
+
+`rk compile` writes one core WebAssembly module.
+It imports its linear memory as `env.memory`, exports `__init` and one body per program, and carries its task schedule, retained-state map and debug symbols as custom sections.
+Any WebAssembly host can instantiate it; the ABI is documented in the repository's README.
 
 ## Where next
 

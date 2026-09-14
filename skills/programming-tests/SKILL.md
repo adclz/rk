@@ -80,21 +80,20 @@ Each test gets fresh instances — a `VAR c : Counter;` starts at its initialize
 
 ## Waiting for something asynchronous
 
-Nothing blocks: a driver-backed block (Modbus, MQTT) completes across *calls*, not inside one.
+Nothing blocks: a block backed by a host driver completes across *calls*, not inside one.
 Spin it on a deadline rather than a fixed count, so a slow machine does not fail the test and a broken driver does not hang it:
 
-```iecst
+```iecst sketch
 USING Std.Timers;
-USING Std.Modbus;
 
 FUNCTION PRIVATE drive_until_done
 	VAR_IN_OUT
-		mb : MB_CLIENT;
+		drv : Driver;      // a block that stays BUSY until its host answers
 	END_VAR
 	VAR start : TIME; END_VAR
 	start := PLC_TIME();
-	WHILE mb.BUSY AND ((PLC_TIME() - start) < T#3s) DO
-		mb(REQ := TRUE);
+	WHILE drv.BUSY AND ((PLC_TIME() - start) < T#3s) DO
+		drv(REQ := TRUE);
 	END_WHILE;
 END_FUNCTION
 ```
@@ -106,15 +105,15 @@ END_FUNCTION
 Put tests in a nested `Test` namespace beside the code they cover — the standard library's own convention:
 
 ```iecst sketch
-NAMESPACE Std.Mqtt
-	FUNCTION_BLOCK MQTT_CONNECT … END_FUNCTION_BLOCK
+NAMESPACE Std.Counters
+	FUNCTION_BLOCK CTU … END_FUNCTION_BLOCK
 
 	NAMESPACE Test
 		USING Std.Unit;
-		USING Std.Mqtt;
+		USING Std.Counters;
 
 		{test}
-		FUNCTION test_connects … END_FUNCTION
+		FUNCTION test_counts_up … END_FUNCTION
 	END_NAMESPACE
 END_NAMESPACE
 ```

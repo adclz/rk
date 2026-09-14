@@ -1,18 +1,16 @@
 # CLI
 
-Scans a workspace for `.st` files and reports diagnostics.
+The `rk` binary: the compiler's command line.
 
-## Usage
+- `rk check` reports diagnostics for a workspace.
+- `rk compile` produces the WebAssembly module.
+- `rk test` runs the workspace's `{test}` functions on an in-process wasmtime host.
+- `rk fmt` formats the `.st` files.
+- `rk explain E0301` describes a diagnostic.
+- `rk env` shows the paths it resolved, and where each came from.
 
 ```bash
-cargo run --package cli [PATH] [--verbose]
+cargo run --bin rk -- check --workspace <path>
 ```
 
-The `sandbox/` folder can be used for testing and development.
-
-## Limitations
-
-Currently supports diagnostics only. No formatting, auto-fix, or other tooling yet.
-
-
-
+The library exposes the same commands as `rk::run`, so a tool that wraps this compiler with commands of its own runs the shared ones the same way.

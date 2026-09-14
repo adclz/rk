@@ -149,10 +149,9 @@ Written at global scope it restricts nothing.
 `FUNCTION_BLOCK` and `CLASS` headers take none either; keep a whole one out of reach by not exporting it from a namespace anyone imports.
 
 ```iecst sketch
-NAMESPACE Std.Mqtt
-	{extern 'acme:mq@1' 'state'}
-	FUNCTION PRIVATE MQ_STATE : DINT      // the shim behind a public FB
-		VAR_INPUT session : DINT; END_VAR
+NAMESPACE Std.Clock
+	{extern 'host:clock@1' 'now'}
+	FUNCTION PRIVATE HOST_NOW : LINT      // the shim behind a public FB
 	END_FUNCTION
 END_NAMESPACE
 ```
@@ -216,22 +215,22 @@ A LOCAL declaration still wins over a name reached through `USING`, silently and
 
 ## Idioms
 
-The standard library is the worked example: one namespace per protocol or domain (`Std.Modbus`, `Std.Mqtt`, `Std.Strings`), its own `USING` lines at the top, and a nested `Test` namespace holding the `{test}` functions:
+The standard library is the worked example: one namespace per domain (`Std.Timers`, `Std.Strings`, `Std.Math`), its own `USING` lines at the top, and a nested `Test` namespace holding the `{test}` functions:
 
 ```iecst sketch
-NAMESPACE Std.Mqtt
+NAMESPACE Std.Timers
 	USING Std.Convert;
 
-	FUNCTION_BLOCK MQTT_CONNECT
+	FUNCTION_BLOCK TON
 		…
 	END_FUNCTION_BLOCK
 
 	NAMESPACE Test
 		USING Std.Unit;
-		USING Std.Mqtt;
+		USING Std.Timers;
 
 		{test}
-		FUNCTION test_connects
+		FUNCTION test_elapses
 			…
 		END_FUNCTION
 	END_NAMESPACE

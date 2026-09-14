@@ -43,7 +43,7 @@ fn render_codegen_error(
 
 /// Check diagnostics and lower HIR → MIR → core WASM. On success returns the
 /// core wasm + MIR; on failure returns the rendered diagnostics (also echoed to
-/// stderr) so callers like the debugger can forward them over the debugger transport.
+/// stderr) so a caller that serves another transport can forward them.
 pub fn build_core(
     db: &RootDatabase,
     workspace: &std::path::Path,
@@ -53,7 +53,7 @@ pub fn build_core(
 }
 
 /// [`build_core`] with an explicit diagnostics format — `rk compile` passes the
-/// user's `--output-format`; the other callers (debug/sim/test) keep `full`.
+/// user's `--output-format`; the other callers keep `full`.
 pub fn build_core_with_format(
     db: &RootDatabase,
     workspace: &std::path::Path,
@@ -72,15 +72,14 @@ pub fn build_core_profile(
     format: crate::cli::OutputFormat,
     profile: wasm_codegen::Profile,
 ) -> Result<(Vec<u8>, mir::MirModule), String> {
-    // Report into a buffer so the text can be both echoed to stderr (CLI
-    // commands) and returned to the caller (the debugger forwards it over the debugger
-    // transport — stdout there is the transport, and stderr isn't shown in VSCode).
+    // Report into a buffer, so the text can be echoed to stderr and returned
+    // to the caller.
     let per_file = collect_diagnostics(db, false);
     let reporter = DiagnosticReporter::new(db, workspace).with_format(format);
     let mut rendered: Vec<u8> = Vec::new();
     let total_errors = reporter.report_files(&per_file, &mut rendered).errors;
 
-    // Echo to stderr for CLI usage; the debugger reads the returned string instead.
+    // Echo to stderr for CLI usage; a tool reads the returned string instead.
     let _ = std::io::stderr().write_all(&rendered);
 
     if total_errors > 0 {
@@ -193,20 +192,9 @@ pub fn build_core_quiet(
     Ok((wasm_module.finish(), mir_module))
 }
 
-/// Where a build of `workspace` lands, by PROFILE — the only axis there is.
-///
-/// There are two artifacts, not five. the debugger, the runtime and `rk test`
-/// all compile the same debug-profile core and differ only in which flag
-/// the runtime is then launched with, so they used to write three private
-/// copies of identical bytes under three names (`core.wasm`, `output.wasm`,
-/// `serving.wasm`) in directories named after commands rather than profiles —
-/// which left `rk_build/runtime/output.wasm` unable to say what profile it
-/// even was.
-///
-/// Every command WRITES this fresh before handing the path to a runtime;
-/// nothing reads it back expecting someone else to have filled it in. That
-/// distinction is the whole lesson of the stale-artifact bug: writing your own
-/// input is safe, trusting a file someone else may have written in June is not.
+/// Where a build of `workspace` lands, by profile, the only axis there
+/// is. Every command writes this fresh before handing the path on;
+/// nothing reads it back expecting someone else to have filled it in.
 pub fn artifact_path(
     workspace: &std::path::Path,
     profile: wasm_codegen::Profile,
@@ -218,8 +206,7 @@ pub fn artifact_path(
     workspace.join("rk_build").join(dir).join("core.wasm")
 }
 
-/// The debug artifact — what every command that hands a program to a runtime
-/// builds and passes along.
+/// The debug artifact — what `rk test` runs and a debugger steps.
 pub fn debug_core_path(workspace: &std::path::Path) -> std::path::PathBuf {
     artifact_path(workspace, wasm_codegen::Profile::Debug)
 }

@@ -101,7 +101,7 @@ Both give the callee access to the caller's storage.
 `VAR_IN_OUT` is the one to reach for: the compiler passes the address, the callee writes the name with no `^`, and it cannot be null.
 Use `REF_TO` when the reference itself is DATA — stored in an instance, reseated between scans, compared to `NULL`, or handed to an `{extern}` host function as a buffer address.
 
-A `REF_TO` crossing an `{extern}` is a plain machine address, which is how `Std.Modbus`'s `DATA_PTR` and `Std.Mqtt`'s destinations work.
+A `REF_TO` crossing an `{extern}` is a plain machine address, which is how a driver library hands a buffer to its host functions.
 Nothing carries a LENGTH with it, so a capacity always travels as its own argument.
 
 ## The possibly-null analysis (E0902)

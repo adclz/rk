@@ -643,7 +643,7 @@ fn main() {
         );
         let body = format!(
             r#"<h1 class="small-caps">PLC programming in the era of agentic engineering.</h1>
-<p class="lede"><strong>rk</strong> takes a PLC program from any editor to a running controller: check, test, compile, deploy, debug, in one binary.</p>
+<p class="lede"><strong>rk</strong> compiles IEC 61131-3 Structured Text to WebAssembly: check, test, compile, in one binary, from any editor.</p>
 {why}
 <h2>Install the skills</h2>
 <pre><code class="language-sh">{install_hl}</code></pre>
@@ -664,7 +664,7 @@ fn main() {
         let mut md = format!(
             r#"# rk
 
-rk takes a PLC program from your editor to a running controller: check, test, compile, deploy, debug, in one binary with nothing to license on top. It compiles IEC 61131-3 Structured Text to WebAssembly. The documentation is a set of Agent Skills whose examples the compiler verifies before publishing.
+rk compiles IEC 61131-3 Structured Text to WebAssembly: check, test, compile, in one binary, from any editor. The documentation is a set of Agent Skills whose examples the compiler verifies before publishing.
 
 ## Why rk
 
@@ -672,7 +672,7 @@ rk takes a PLC program from your editor to a running controller: check, test, co
 
 **The compiler answers.** Every error names what it found and, where it can, what you probably meant. All {codes} of them ship with an example this site re-runs through the compiler before publishing.
 
-**Onto the machine.** Edit, compile, and swap into a machine that never stopped scanning. What lands is sandboxed WebAssembly with its memory fixed at compile time and every scan bounded.
+**One module for any host.** What comes out is a sandboxed WebAssembly module with its memory fixed at compile time and a documented ABI; its tests, task schedule and debug symbols travel with it as custom sections.
 
 **In your editor.** A full language server, and a formatter that works on the syntax tree rather than the text, so it cannot produce something that no longer parses.
 

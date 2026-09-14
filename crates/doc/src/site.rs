@@ -338,7 +338,7 @@ pub struct DiagCategory {
 pub fn llms_txt(base: &str, skills: &[Skill], categories: &[DiagCategory]) -> String {
     let mut s = String::new();
     s.push_str("# rk\n\n");
-    s.push_str("> rk is an agent-first platform for industrial automation: a compiler from IEC 61131-3 Structured Text to WebAssembly, a runtime, deployment to controllers, a debugger, Modbus and MQTT, all driven from one CLI. The documentation is a set of Agent Skills whose examples the compiler verifies before publishing.\n\n");
+    s.push_str("> rk is an agent-first compiler from IEC 61131-3 Structured Text to WebAssembly: check, test, compile, in one CLI. The documentation is a set of Agent Skills whose examples the compiler verifies before publishing.\n\n");
     s.push_str("Every HTML page on this site has a Markdown twin at the URL linked here, and answers `Accept: text/markdown` with it.\n\n");
     for (group, heading) in [
         ("getting", "Start here"),
@@ -674,24 +674,54 @@ pub fn why_html() -> String {
 
 <div class="feat">
 <div class="feat-art">
-<svg viewBox="0 0 240 76" role="img" aria-label="A new WebAssembly module swapping into a controller that keeps scanning">
-  <rect x="8" y="26" width="34" height="26" rx="3" fill="none" stroke="currentColor" stroke-width="1.5" opacity="0.35"/>
-  <use href="#wasm-mark" x="16" y="30" width="18" height="18" opacity="0.3"/>
-  <rect x="54" y="26" width="34" height="26" rx="3" fill="none" stroke="var(--green)" stroke-width="1.6"/>
-  <use href="#wasm-mark" x="62" y="30" width="18" height="18"/>
-  <path d="M94 39h24" fill="none" stroke="var(--green)" stroke-width="1.6" stroke-dasharray="4 3"/>
-  <path d="M116 35l6 4-6 4z" fill="var(--green)"/>
-  <rect x="128" y="14" width="104" height="50" rx="4" fill="none" stroke="currentColor" stroke-width="1.5"/>
-  <path d="M136 40q7-13 14 0t14 0t14 0t14 0t14 0" fill="none" stroke="var(--green)" stroke-width="1.6"/>
-  <text x="180" y="59" font-size="7.5" fill="currentColor" text-anchor="middle" opacity="0.75">still scanning</text>
-  <text x="180" y="9" font-size="8" fill="currentColor" text-anchor="middle">controller</text>
+<svg viewBox="0 0 240 76" role="img" aria-label="A compiled module running its test functions, each on a fresh instance">
+  <rect x="8" y="24" width="52" height="30" rx="3" fill="none" stroke="currentColor" stroke-width="1.5"/>
+  <use href="#wasm-mark" x="25" y="30" width="18" height="18"/>
+  <path d="M66 39h22" fill="none" stroke="currentColor" stroke-width="1.5" stroke-dasharray="4 3" opacity="0.6"/>
+  <path d="M86 35l6 4-6 4z" fill="currentColor" opacity="0.6"/>
+  <g font-family="var(--mono)" font-size="8.5">
+    <text x="100" y="24" fill="var(--green)">PASS</text><text x="128" y="24" fill="currentColor" opacity="0.8">test_abs_negates</text>
+    <text x="100" y="42" fill="var(--green)">PASS</text><text x="128" y="42" fill="currentColor" opacity="0.8">test_ton_elapses</text>
+    <text x="100" y="60" fill="var(--red)">FAIL</text><text x="128" y="60" fill="currentColor" opacity="0.8">test_limit_wraps</text>
+  </g>
 </svg>
 </div>
 <div>
-<h3>Deploy as fast as you edit.</h3>
-<p><span class="lead-in">A workspace compiles in half a second.</span>
-<br>WebAssembly instantiation does the swap.
-<br>The machine never stops scanning.</p>
+<h3>Tests are part of the language.</h3>
+<p><span class="lead-in">A <code>{{test}}</code> function is a test.</span>
+<br>Each one runs on a fresh instance, on a wasmtime host inside the compiler.
+<br>The standard library tests itself the same way.</p>
+</div>
+</div>
+
+<div class="feat">
+<div class="feat-art">
+<svg viewBox="0 0 240 76" role="img" aria-label="One compiled module instantiated by three different hosts">
+  <rect x="8" y="24" width="52" height="30" rx="3" fill="none" stroke="currentColor" stroke-width="1.5"/>
+  <use href="#wasm-mark" x="25" y="30" width="18" height="18"/>
+  <g fill="none" stroke="var(--link)" stroke-width="1.5">
+    <path d="M66 39h30v-22h34"/>
+    <path d="M66 39h64"/>
+    <path d="M66 39h30v22h34"/>
+  </g>
+  <g fill="var(--link)"><path d="M128 13l6 4-6 4z"/><path d="M128 35l6 4-6 4z"/><path d="M128 57l6 4-6 4z"/></g>
+  <g fill="none" stroke="currentColor" stroke-width="1.5">
+    <rect x="140" y="6" width="92" height="20" rx="3"/>
+    <rect x="140" y="28" width="92" height="20" rx="3"/>
+    <rect x="140" y="50" width="92" height="20" rx="3"/>
+  </g>
+  <g font-size="7.5" fill="currentColor" text-anchor="middle" opacity="0.8">
+    <text x="186" y="19">a controller</text>
+    <text x="186" y="41">a test run</text>
+    <text x="186" y="63">a browser</text>
+  </g>
+</svg>
+</div>
+<div>
+<h3>One module, any host.</h3>
+<p><span class="lead-in">Sandboxed WebAssembly with a documented ABI.</span>
+<br>Memory fixed at compile time, every scan bounded.
+<br>Tasks, retained state and symbols travel with it as custom sections.</p>
 </div>
 </div>
 

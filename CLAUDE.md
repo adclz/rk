@@ -43,8 +43,8 @@ npm run build
 # Build the Rust LSP server binary for VSCode
 cargo build --bin vscode-lsp-server
 
-# Run the CLI diagnostic checker
-cargo run --bin iec -- <workspace_path>
+# Check a workspace from the CLI
+cargo run --bin rk -- check --workspace <workspace_path>
 
 # Optimized builds (`rk compile -O <level>`) need a wasm-opt from Binaryen 119+
 # on PATH; CI pins 131. The bundled `wasm-opt` CRATE is stuck at Binaryen 116
@@ -76,8 +76,8 @@ vscode/server (binary) — thin wrapper, logging setup
             │       └── formatter (Topiary-based code formatter)
             └── ide_diagnostic (rich diagnostic data model)
 
-cli (binary) — standalone diagnostic checker
-    ├── hir, ast, db, ide_diagnostic
+cli (binary `rk`) — check, compile, test, fmt, explain, env
+    ├── hir, ast, db, ide_diagnostic, linter, formatter, mir, wasm_codegen, debug_format
 ```
 
 ### Crate Purposes
@@ -93,7 +93,12 @@ cli (binary) — standalone diagnostic checker
 | `server`                  | `crates/server`         | LSP server wiring: connects `auto-lsp` framework to IEC-specific handlers.                                              |
 | `formatter`               | `crates/formatter`      | Code formatter using Topiary (tree-sitter-based, declarative query rules).                                              |
 | `memory_usage`            | `crates/memory_usage`   | Utility for heap memory measurement.                                                                                    |
-| `cli`                     | `crates/cli`            | Standalone CLI linter/checker binary for .st files.                                                                     |
+| `cli`                     | `crates/cli`            | The `rk` binary: check, compile, test (on an in-process wasmtime host), fmt, explain, env.                              |
+| `mir`                     | `crates/mir`            | Mid-level IR between HIR and WASM codegen: layouts, lowering, the task schedule and retain map.                          |
+| `wasm_codegen`            | `crates/wasm_codegen`   | Emits the core WASM module from MIR, with the builtin bundle and the debug/test custom sections.                        |
+| `debug_format`            | `crates/debug_format`   | The custom-section formats (debug symbols, lines, schedule, retain map, test manifest) and their decoder.               |
+| `linter`                  | `crates/linter`         | Lint rules (L-codes) over HIR.                                                                                          |
+| `benchmark`               | `crates/benchmark`      | Divan benchmarks over the stdlib corpus, with diagnostic baselines.                                                     |
 | `doc`                     | `crates/doc`            | Site generator: renders `skills/` and the diagnostics reference, verifying every example against the compiler.         |
 | `fuzz`                    | `crates/fuzz`           | Fuzz testing targets for the compiler and formatter.                                                                    |
 | `vscode-lsp-server`       | `vscode/server`         | VSCode extension LSP server binary (thin wrapper over `server` crate).                                                  |
@@ -211,7 +216,7 @@ All integration tests live in `src/tests/`:
 - `semantics/` — Type checking, diagnostics, error reporting (~30 test modules)
 - `lsp/` — LSP features: hover, document symbols, formatter, semantic tokens, inlay hints, implementations
 - `completions/` — Completion items: body, head, call signatures, fly imports, field, using, query scope
-- `codegen/` — WASM codegen + runtime execution tests (compile IEC → MIR → wasm, run under wasmtime/`runtime::Plc`): value passing, inout, retain, enums, strings, debug/monitoring, scheduling. Helpers (`compile_to_wasm[_checked]`, `compile_to_mir_and_wasm`, `execute_wasm`) live in `codegen/mod.rs`
+- `codegen/` — WASM codegen + execution tests (compile IEC → MIR → wasm, run on the wasmtime harness): value passing, inout, retain bands, enums, strings, debug symbols, scheduling. Helpers (`compile_to_wasm`, `compile_to_mir_and_wasm`, `execute_wasm`, `TestPlc`, `run_tests`) live in `codegen/harness.rs`
 - `mir/` — MIR structure/lowering assertions (exports, extern pragmas)
 
 Crates keep only in-crate `#[cfg(test)]` unit tests for crate-private machinery (e.g. `wasm_codegen`'s `graft.rs`/`builtins.rs`, `mir/src/memory.rs`).
@@ -309,4 +314,3 @@ the checkout's `stdlib/`. `rk env` prints the resolved path and its origin.
 - Tree-sitter grammar changes require running `tree-sitter generate` before rebuilding
 - Insta snapshots use ASCII charset and no color for deterministic output across environments
 - The `auto-lsp` dependency is pinned to a specific git revision — update both `auto-lsp` and `auto-lsp-codegen` together
-- `crates/webpki-roots` is a deliberate EMPTY stand-in patched over the registry crate (`[patch.crates-io]` in the root Cargo.toml): the wire trusts the workspace CA alone, never a public one. Do not "fix" it by restoring the bundled list; the wasm-opt download verifies through the platform's store instead

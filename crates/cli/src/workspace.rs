@@ -27,8 +27,8 @@ pub fn require_workspace_dir(path: &std::path::Path) -> crate::error::CliResult<
 /// Load and parse a workspace into a fresh [`RootDatabase`]. Returns `None` (and
 /// reports why on stderr) if the config is invalid, the workspace holds no
 /// `.st` files, or — with `require_config` — it has no `config.toml`. All
-/// output goes to **stderr**: the debugger calls this while stdout is the debugger
-/// transport.
+/// output goes to **stderr**, so a caller whose stdout is a transport can use
+/// it.
 ///
 /// Without a config the whole stack falls back to defaults: default settings
 /// and NO linter (lints need a `[linter]` section); the library still comes

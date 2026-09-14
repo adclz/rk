@@ -1,7 +1,7 @@
 //! Benchmark helpers for the IEC 61131-3 compiler.
 //!
 //! The fixture is a real corpus tracked in this repository: `stdlib/` (the
-//! standard library — 11 files, ~6.5k lines, checks clean and compiles to
+//! standard library — 11 files, ~9k lines, checks clean and compiles to
 //! WASM). Every benchmark asserts its diagnostic count against the baselines
 //! below, so a benchmark can never silently drift into measuring an empty or
 //! error-flooded analysis. `cargo test -p rk-benchmark` verifies the
@@ -36,7 +36,7 @@ use hir::{
 // ---------------------------------------------------------------------------
 
 pub const STDLIB_EXPECTED_DIAGNOSTICS: usize = 0;
-pub const STDLIB_EXPECTED_LINTS: usize = 177;
+pub const STDLIB_EXPECTED_LINTS: usize = 91;
 
 // ---------------------------------------------------------------------------
 // Corpora

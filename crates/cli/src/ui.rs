@@ -1,10 +1,7 @@
-//! Centralized terminal output for the CLI.
-//!
-//! The single place the CLI reaches for color and picks a stream, so the rest of
-//! the code never touches `yansi` directly. Convention: problems
-//! ([`error`]/[`warn`]/[`failure`]) go to **stderr**; results and progress
-//! ([`success`]/[`detail`]) go to **stdout** — except the debugger, whose stdout is
-//! the debugger transport, so it uses [`success_err`] to keep human output on stderr.
+//! Terminal output for the CLI: the single place that reaches for color
+//! and picks a stream. Problems ([`error`]/[`warn`]/[`failure`]) go to
+//! stderr; results ([`success`]/[`detail`]) to stdout, or to stderr via
+//! [`success_err`] when stdout is a transport.
 
 use std::fmt::Display;
 use std::sync::OnceLock;
@@ -83,7 +80,7 @@ pub fn success(label: &str, msg: impl Display) {
     println!("{} {msg}", label.bold().bright_green());
 }
 
-/// [`success`] on stderr — for the debugger, whose stdout is the debugger transport.
+/// [`success`] on stderr — for a command whose stdout is a transport.
 pub fn success_err(label: &str, msg: impl Display) {
     if machine() {
         return eprintln!("{}", record("success", Some(label), &msg.to_string()));

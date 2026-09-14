@@ -188,7 +188,7 @@ A module with no CONFIGURATION carries no such section at all.
 
 At run time the tick index is the wall clock's, not a count of the scans that ran: a wakeup that comes late runs one scan and the ticks it slept through are dropped, never replayed on stale inputs, so a late tick shifts no task's phase.
 
-The dropped ticks are counted since the last start and `rk list` shows them as `running, 12 ticks lost`.
+A host counts the dropped ticks since the last start and can report them.
 
 ## config.toml — the project file
 
