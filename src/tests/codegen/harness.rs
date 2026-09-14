@@ -9,6 +9,7 @@ use anyhow::{Context, Result, bail};
 use auto_lsp::default::db::file::File;
 use db::RootDatabase;
 use debug_format::test_manifest::{TEST_MANIFEST_SECTION, TestEntry, TestManifest};
+use debug_format::{DebugInfo, StackFrame, VarValue};
 use hir::{check::diagnostics_for_file, hir_def::semantic_index::semantic_index};
 use wasmtime::{ExternType, Instance, Linker, Memory, MemoryType, Module, Store, TypedFunc};
 
@@ -543,6 +544,46 @@ impl TestPlc {
     pub fn memory_data(&self) -> &[u8] {
         self.memory.data(&self.store)
     }
+
+    /// A variable's current value by qualified path, through the module's
+    /// debug symbols; `None` if no such symbol.
+    pub fn read_var(&self, info: &DebugInfo, path: &str) -> Option<VarValue> {
+        let loc = info.resolve(path)?;
+        let bytes = self.read_bytes(loc.address, loc.size as usize).ok()?;
+        Some(debug_format::decode(loc.ty, &bytes))
+    }
+
+    /// The current value of every symbol, in symbol order.
+    pub fn read_all<'a>(&self, info: &'a DebugInfo) -> Vec<(&'a str, VarValue)> {
+        info.read_all_with(|address, size| self.read_bytes(address, size as usize).ok())
+    }
+
+    /// Write a value by qualified path: the debugger's "force".
+    pub fn write_var(&mut self, info: &DebugInfo, path: &str, value: VarValue) -> Result<()> {
+        let loc = info
+            .resolve(path)
+            .with_context(|| format!("unknown variable `{path}`"))?;
+        let bytes = debug_format::encode(loc.ty, value)?;
+        self.write_bytes(loc.address, &bytes)
+    }
+}
+
+/// Resolve a trap's backtrace into source-level frames, innermost first.
+/// `n_func_imports` turns a module-level function index into the defined
+/// index the debug tables use; frames in imported functions are skipped.
+pub fn resolve_backtrace(
+    info: &DebugInfo,
+    backtrace: &wasmtime::WasmBacktrace,
+    n_func_imports: u32,
+) -> Vec<StackFrame> {
+    backtrace
+        .frames()
+        .iter()
+        .filter_map(|f| {
+            let defined = f.func_index().checked_sub(n_func_imports)?;
+            Some(info.resolve_frame(defined, f.module_offset().map(|o| o as u32)))
+        })
+        .collect()
 }
 
 fn global_i32(store: &mut Store<()>, instance: &Instance, name: &str) -> Result<i32> {

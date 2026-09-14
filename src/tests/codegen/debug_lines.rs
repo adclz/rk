@@ -6,7 +6,7 @@
 use crate::tests::codegen::{add_source, compile_to_mir_and_wasm, with_db};
 use hir::hir_def::semantic_index::semantic_index;
 use rstest::*;
-use runtime::debug::DebugInfo;
+use debug_format::DebugInfo;
 
 fn read_debug_lines(wasm: &[u8]) -> debug_format::DebugLines {
     for payload in wasmparser::Parser::new(0).parse_all(wasm) {

@@ -6,8 +6,9 @@
 use crate::tests::codegen::{compile_to_mir_and_wasm, with_db};
 use mir::debug_symbols::{DEBUG_SYMBOLS_SECTION, DEBUG_SYMBOLS_VERSION, DebugSymbols, SymType};
 use rstest::*;
-use runtime::debug::{DebugInfo, VarValue};
-use runtime::{Config, Plc};
+use debug_format::{DebugInfo, VarValue};
+
+use crate::tests::codegen::TestPlc;
 
 /// Builtin shadow-stack + data live below this; no IEC variable may sit lower.
 const BUILTIN_RESERVED_FLOOR: u32 = 16_384;
@@ -155,37 +156,37 @@ fn runtime_reads_and_writes_vars_by_name(mut with_db: db::RootDatabase) {
         END_CONFIGURATION
     "#;
     let (_mir, wasm) = compile_to_mir_and_wasm(&mut with_db, source);
-    let mut plc = Plc::load(&wasm, Config::default()).expect("load PLC");
+    let mut plc = TestPlc::load(&wasm).expect("load PLC");
     let dbg = DebugInfo::from_wasm(&wasm);
 
     // The debug view exposes the same variables the section carries.
     let names: Vec<&str> = dbg.list_symbols().iter().map(|s| s.path.as_str()).collect();
     assert_eq!(names, vec!["Run.flag", "Run.speed", "g_count"]);
     assert!(
-        dbg.read_var(&plc, "Run.nope").is_none(),
+        plc.read_var(&dbg, "Run.nope").is_none(),
         "unknown path => None"
     );
 
     // After three scans, `speed := speed + 1` has run three times.
     plc.run(3).expect("scans");
-    assert_eq!(dbg.read_var(&plc, "Run.speed"), Some(VarValue::I16(3)));
-    assert_eq!(dbg.read_var(&plc, "Run.flag"), Some(VarValue::Bool(false)));
+    assert_eq!(plc.read_var(&dbg, "Run.speed"), Some(VarValue::I16(3)));
+    assert_eq!(plc.read_var(&dbg, "Run.flag"), Some(VarValue::Bool(false)));
 
     // Force `speed` to 100; the next scan increments it to 101.
-    dbg.write_var(&mut plc, "Run.speed", VarValue::I16(100))
+    plc.write_var(&dbg, "Run.speed", VarValue::I16(100))
         .expect("force speed");
-    assert_eq!(dbg.read_var(&plc, "Run.speed"), Some(VarValue::I16(100)));
+    assert_eq!(plc.read_var(&dbg, "Run.speed"), Some(VarValue::I16(100)));
     plc.run(1).expect("scan");
-    assert_eq!(dbg.read_var(&plc, "Run.speed"), Some(VarValue::I16(101)));
+    assert_eq!(plc.read_var(&dbg, "Run.speed"), Some(VarValue::I16(101)));
 
     // A config global is read/written by name the same way.
-    dbg.write_var(&mut plc, "g_count", VarValue::I32(42))
+    plc.write_var(&dbg, "g_count", VarValue::I32(42))
         .expect("force global");
-    assert_eq!(dbg.read_var(&plc, "g_count"), Some(VarValue::I32(42)));
+    assert_eq!(plc.read_var(&dbg, "g_count"), Some(VarValue::I32(42)));
 
     // Writing a value whose type doesn't match the symbol is rejected.
     assert!(
-        dbg.write_var(&mut plc, "Run.speed", VarValue::Bool(true))
+        plc.write_var(&dbg, "Run.speed", VarValue::Bool(true))
             .is_err()
     );
 }
@@ -295,34 +296,34 @@ fn runtime_reads_writes_string_by_name(mut with_db: db::RootDatabase) {
         END_CONFIGURATION
     "#;
     let (_mir, wasm) = compile_to_mir_and_wasm(&mut with_db, source);
-    let mut plc = Plc::load(&wasm, Config::default()).expect("load PLC");
+    let mut plc = TestPlc::load(&wasm).expect("load PLC");
     let dbg = DebugInfo::from_wasm(&wasm);
 
     // Zero-initialised buffer ⇒ empty string.
     assert_eq!(
-        dbg.read_var(&plc, "Run.label"),
+        plc.read_var(&dbg, "Run.label"),
         Some(VarValue::String(String::new()))
     );
 
     // Force a value and read it back.
-    dbg.write_var(&mut plc, "Run.label", VarValue::String("hi".into()))
+    plc.write_var(&dbg, "Run.label", VarValue::String("hi".into()))
         .expect("force string");
     assert_eq!(
-        dbg.read_var(&plc, "Run.label"),
+        plc.read_var(&dbg, "Run.label"),
         Some(VarValue::String("hi".into()))
     );
 
     // Capacity-bounded (STRING[8]): a longer write truncates to 8 bytes.
-    dbg.write_var(&mut plc, "Run.label", VarValue::String("0123456789".into()))
+    plc.write_var(&dbg, "Run.label", VarValue::String("0123456789".into()))
         .expect("force long string");
     assert_eq!(
-        dbg.read_var(&plc, "Run.label"),
+        plc.read_var(&dbg, "Run.label"),
         Some(VarValue::String("01234567".into()))
     );
 
     // A type mismatch is still rejected.
     assert!(
-        dbg.write_var(&mut plc, "Run.label", VarValue::I16(1))
+        plc.write_var(&dbg, "Run.label", VarValue::I16(1))
             .is_err()
     );
 }
@@ -351,12 +352,12 @@ fn read_all_snapshots_all_variables(mut with_db: db::RootDatabase) {
         END_CONFIGURATION
     "#;
     let (_mir, wasm) = compile_to_mir_and_wasm(&mut with_db, source);
-    let mut plc = Plc::load(&wasm, Config::default()).expect("load PLC");
+    let mut plc = TestPlc::load(&wasm).expect("load PLC");
     let dbg = DebugInfo::from_wasm(&wasm);
 
     plc.run(2).expect("scans");
 
-    let snap: std::collections::HashMap<&str, VarValue> = dbg.read_all(&plc).into_iter().collect();
+    let snap: std::collections::HashMap<&str, VarValue> = plc.read_all(&dbg).into_iter().collect();
     assert_eq!(snap.len(), dbg.list_symbols().len(), "one value per symbol");
     assert_eq!(snap["Run.speed"], VarValue::I16(2));
     assert_eq!(snap["Run.flag"], VarValue::Bool(false));
@@ -414,21 +415,21 @@ fn a_large_array_is_described_and_addressable_not_invisible(mut with_db: db::Roo
 
     // Any element resolves ON DEMAND through the descriptor: readable and
     // forceable, like adding `big[4321]` to a watch list.
-    let mut plc = Plc::load(&wasm, Config::default()).expect("load");
+    let mut plc = TestPlc::load(&wasm).expect("load");
     plc.run(1).expect("scan");
     let info = DebugInfo::from_wasm(&wasm);
     assert_eq!(
-        info.read_var(&plc, "P1.big[4321]"),
+        plc.read_var(&info, "P1.big[4321]"),
         Some(VarValue::I32(8642)),
         "an element far past the leaf budget reads through the descriptor"
     );
-    info.write_var(&mut plc, "P1.big[4321]", VarValue::I32(-7))
+    plc.write_var(&info, "P1.big[4321]", VarValue::I32(-7))
         .expect("forcing an un-enumerated element");
-    assert_eq!(info.read_var(&plc, "P1.big[4321]"), Some(VarValue::I32(-7)));
+    assert_eq!(plc.read_var(&info, "P1.big[4321]"), Some(VarValue::I32(-7)));
 
     // Out of bounds is refused, not computed into a neighbour.
-    assert_eq!(info.read_var(&plc, "P1.big[5000]"), None);
-    assert_eq!(info.read_var(&plc, "P1.big[-1]"), None);
+    assert_eq!(plc.read_var(&info, "P1.big[5000]"), None);
+    assert_eq!(plc.read_var(&info, "P1.big[-1]"), None);
 }
 
 /// An array of aggregates contributes no leaves either — 1000 ten-field
@@ -497,14 +498,14 @@ fn multi_dimensional_paths_resolve_in_both_spellings(mut with_db: db::RootDataba
         END_CONFIGURATION
     "#;
     let (_mir, wasm) = compile_to_mir_and_wasm(&mut with_db, source);
-    let mut plc = Plc::load(&wasm, Config::default()).expect("load");
+    let mut plc = TestPlc::load(&wasm).expect("load");
     plc.run(1).expect("scan");
     let info = DebugInfo::from_wasm(&wasm);
     // 1600 elements > budget, so [7][9] is not an eager leaf — it resolves
     // through the descriptor with per-dimension lower bounds honoured.
-    assert_eq!(info.read_var(&plc, "P1.m[7][9]"), Some(VarValue::I16(79)));
-    assert_eq!(info.read_var(&plc, "P1.m[7,9]"), Some(VarValue::I16(79)));
-    assert_eq!(info.read_var(&plc, "P1.m[0][9]"), None, "below the lower bound");
+    assert_eq!(plc.read_var(&info, "P1.m[7][9]"), Some(VarValue::I16(79)));
+    assert_eq!(plc.read_var(&info, "P1.m[7,9]"), Some(VarValue::I16(79)));
+    assert_eq!(plc.read_var(&info, "P1.m[0][9]"), None, "below the lower bound");
 }
 
 /// A frame's MEMORY-resident locals — aggregates, strings — must appear in
@@ -691,41 +692,41 @@ fn aggregate_elements_resolve_through_the_type_table(mut with_db: db::RootDataba
 
     // 2000 elements × 6 leaves each ≫ budget: element 1500 was never
     // enumerated. It reads and forces through the table.
-    let mut plc = Plc::load(&wasm, Config::default()).expect("load");
+    let mut plc = TestPlc::load(&wasm).expect("load");
     plc.run(1).expect("scan");
     let info = DebugInfo::from_wasm(&wasm);
     assert!(
         info.symbol("P1.pts[1500].y").is_none(),
         "the probe element must be past the leaf budget for this test to prove anything"
     );
-    assert_eq!(info.read_var(&plc, "P1.pts[1500].y"), Some(VarValue::I32(15000)));
+    assert_eq!(plc.read_var(&info, "P1.pts[1500].y"), Some(VarValue::I32(15000)));
     assert_eq!(
-        info.read_var(&plc, "P1.pts[1500].history[2]"),
+        plc.read_var(&info, "P1.pts[1500].history[2]"),
         Some(VarValue::I32(101500)),
         "a nested array INSIDE an un-enumerated element resolves too"
     );
-    info.write_var(&mut plc, "P1.pts[1500].x", VarValue::I32(-3))
+    plc.write_var(&info, "P1.pts[1500].x", VarValue::I32(-3))
         .expect("forcing a member of an un-enumerated element");
-    assert_eq!(info.read_var(&plc, "P1.pts[1500].x"), Some(VarValue::I32(-3)));
+    assert_eq!(plc.read_var(&info, "P1.pts[1500].x"), Some(VarValue::I32(-3)));
 
     // In-budget elements still read through the eager leaf table and agree.
-    assert_eq!(info.read_var(&plc, "P1.pts[0].y"), Some(VarValue::I32(0)));
+    assert_eq!(plc.read_var(&info, "P1.pts[0].y"), Some(VarValue::I32(0)));
 
     // Refusals, not misreads:
-    assert_eq!(info.read_var(&plc, "P1.pts[2000].x"), None, "element OOB");
-    assert_eq!(info.read_var(&plc, "P1.pts[3].nope"), None, "unknown field");
+    assert_eq!(plc.read_var(&info, "P1.pts[2000].x"), None, "element OOB");
+    assert_eq!(plc.read_var(&info, "P1.pts[3].nope"), None, "unknown field");
     assert_eq!(
-        info.read_var(&plc, "P1.pts[1500]"),
+        plc.read_var(&info, "P1.pts[1500]"),
         None,
         "a whole struct is not a scalar value"
     );
     assert_eq!(
-        info.read_var(&plc, "P1.pts[3].history[4]"),
+        plc.read_var(&info, "P1.pts[3].history[4]"),
         None,
         "nested subscript OOB"
     );
     assert_eq!(
-        info.read_var(&plc, "P1.pts[3].x[0]"),
+        plc.read_var(&info, "P1.pts[3].x[0]"),
         None,
         "an accessor past a scalar leaf"
     );
@@ -853,10 +854,10 @@ fn runtime_reads_a_non_ascii_literal_as_written(mut with_db: db::RootDatabase) {
         END_CONFIGURATION
     "#;
     let (_mir, wasm) = compile_to_mir_and_wasm(&mut with_db, source);
-    let plc = Plc::load(&wasm, Config::default()).expect("load PLC");
+    let plc = TestPlc::load(&wasm).expect("load PLC");
     let dbg = DebugInfo::from_wasm(&wasm);
     assert_eq!(
-        dbg.read_var(&plc, "Run.label"),
+        plc.read_var(&dbg, "Run.label"),
         Some(VarValue::String("café".into()))
     );
 }
@@ -881,12 +882,12 @@ fn runtime_reads_a_char_as_its_code_point(mut with_db: db::RootDatabase) {
         END_CONFIGURATION
     "#;
     let (_mir, wasm) = compile_to_mir_and_wasm(&mut with_db, source);
-    let mut plc = Plc::load(&wasm, Config::default()).expect("load PLC");
+    let mut plc = TestPlc::load(&wasm).expect("load PLC");
     let dbg = DebugInfo::from_wasm(&wasm);
-    assert_eq!(dbg.read_var(&plc, "Run.c"), Some(VarValue::U32(0x4E2D)));
-    dbg.write_var(&mut plc, "Run.c", VarValue::U32(u32::from('é')))
+    assert_eq!(plc.read_var(&dbg, "Run.c"), Some(VarValue::U32(0x4E2D)));
+    plc.write_var(&dbg, "Run.c", VarValue::U32(u32::from('é')))
         .expect("force a char");
-    assert_eq!(dbg.read_var(&plc, "Run.c"), Some(VarValue::U32(0xE9)));
+    assert_eq!(plc.read_var(&dbg, "Run.c"), Some(VarValue::U32(0xE9)));
 }
 
 /// An aliased type's default reaches a memory-resident host, the static
@@ -921,11 +922,11 @@ fn a_type_default_reaches_a_program_field(mut with_db: db::RootDatabase) {
         END_CONFIGURATION
     "#;
     let (_mir, wasm) = compile_to_mir_and_wasm(&mut with_db, source);
-    let plc = Plc::load(&wasm, Config::default()).expect("load PLC");
+    let plc = TestPlc::load(&wasm).expect("load PLC");
     let dbg = DebugInfo::from_wasm(&wasm);
-    assert_eq!(dbg.read_var(&plc, "Run.c"), Some(VarValue::I16(50)));
-    assert_eq!(dbg.read_var(&plc, "Run.o.x"), Some(VarValue::I16(7)));
-    assert_eq!(dbg.read_var(&plc, "Run.o.n"), Some(VarValue::I16(50)));
+    assert_eq!(plc.read_var(&dbg, "Run.c"), Some(VarValue::I16(50)));
+    assert_eq!(plc.read_var(&dbg, "Run.o.x"), Some(VarValue::I16(7)));
+    assert_eq!(plc.read_var(&dbg, "Run.o.n"), Some(VarValue::I16(50)));
 }
 
 /// Every aggregate is named by its base address, which is what a frame is
@@ -1099,7 +1100,7 @@ fn a_container_table_without_types_degrades_and_says_so() {
         ],
     };
     let wasm = wasm_with_debug_symbols(&table.to_msgpack());
-    let info = runtime::debug::DebugInfo::from_wasm(&wasm);
+    let info = DebugInfo::from_wasm(&wasm);
 
     assert_eq!(
         info.container_at(64, "Main"),

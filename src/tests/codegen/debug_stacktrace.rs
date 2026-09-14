@@ -5,7 +5,7 @@
 
 use crate::tests::codegen::{compile_to_mir_and_wasm, with_db};
 use rstest::*;
-use runtime::debug::DebugInfo;
+use debug_format::DebugInfo;
 
 /// 0-based source line of the first occurrence of `needle`.
 fn row_of(src: &str, needle: &str) -> u32 {
@@ -62,7 +62,7 @@ fn trap_yields_source_level_stack_trace(mut with_db: db::RootDatabase) {
         .expect("trap carries a WasmBacktrace");
 
     // Convert the raw backtrace to our source-level stack trace in one call.
-    let frames = dbg.resolve_backtrace(bt, n_imports);
+    let frames = crate::tests::codegen::resolve_backtrace(&dbg, bt, n_imports);
     eprintln!("source-level stack trace: {frames:#?}");
 
     // Both IEC functions are named, innermost first, each at its source line.

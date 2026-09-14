@@ -8,8 +8,12 @@
 
 use serde::{Deserialize, Serialize};
 
-/// Custom wasm section carrying the MessagePack-encoded [`DebugSymbols`].
+pub mod info;
 pub mod test_manifest;
+
+pub use info::{DebugInfo, SourcePos, StackFrame, TypeMismatch, VarLoc, VarValue, decode, encode};
+
+/// Custom wasm section carrying the MessagePack-encoded [`DebugSymbols`].
 
 pub const DEBUG_SYMBOLS_SECTION: &str = "debug-symbols";
 

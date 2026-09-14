@@ -4,7 +4,7 @@
 
 use crate::tests::codegen::{compile_to_mir_and_wasm, with_db};
 use rstest::*;
-use runtime::debug::DebugInfo;
+use debug_format::DebugInfo;
 
 /// Extract and decode the `debug-functions` custom section from a core module.
 fn read_debug_functions(wasm: &[u8]) -> debug_format::DebugFunctions {

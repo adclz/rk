@@ -514,7 +514,7 @@ fn a_monitoring_path_is_not_case_sensitive(mut with_db: db::RootDatabase) {
         END_CONFIGURATION
     "#;
     let (_mir, wasm) = compile_to_mir_and_wasm(&mut with_db, source);
-    let info = runtime::debug::DebugInfo::from_wasm(&wasm);
+    let info = debug_format::DebugInfo::from_wasm(&wasm);
 
     for spelling in ["P1.MyVar", "p1.myvar", "P1.MYVAR", "p1.MyVar"] {
         assert!(

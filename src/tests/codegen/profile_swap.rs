@@ -261,8 +261,8 @@ fn release_omits_the_stepping_tier_and_nothing_else(mut with_db: RootDatabase) {
 
     // The seam the runtime detects the artifact by: has_lines is the
     // steppability answer Meta serves and the debug profile refuses on.
-    let debug_info = runtime::debug::DebugInfo::from_wasm(&debug);
-    let release_info = runtime::debug::DebugInfo::from_wasm(&release);
+    let debug_info = debug_format::DebugInfo::from_wasm(&debug);
+    let release_info = debug_format::DebugInfo::from_wasm(&release);
     assert!(debug_info.has_lines(), "the debug artifact is steppable");
     assert!(
         !release_info.has_lines(),
