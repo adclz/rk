@@ -7,7 +7,7 @@
 The architecture follows **CST → AST → HIR → Type Checking → IDE features**, similar to rust-analyzer.
 
 - **Language**: Rust (edition 2024, toolchain pinned by rust-toolchain.toml)
-- **License**: AGPL-3.0-only
+- **License**: AGPL-3.0-only by default; LICENSING.md lists the Apache-2.0 directories (builtin bundle, stdlib, `debug_format`, tree-sitter grammar), the MIT ones (`index`, `macros`) and LICENSE-EXCEPTION for generated modules
 - **Author**: Clauzel Adrien
 
 ## Build & Test Commands

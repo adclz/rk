@@ -3,7 +3,7 @@
   "version": "0.1.0",
   "description": "Structured Text grammar for tree-sitter",
   "repository": "https://github.com/adclz/rk",
-  "license": "AGPL-3.0-only",
+  "license": "Apache-2.0",
   "author": {
     "name": "CLAUZEL Adrien",
     "email": "clauzeladrien@mail.com"

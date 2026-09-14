@@ -15,7 +15,7 @@ classifiers = [
 ]
 authors = [{ name = "CLAUZEL Adrien", email = "clauzeladrien@mail.com" }]
 requires-python = ">=3.10"
-license.text = "AGPL-3.0-only"
+license.text = "Apache-2.0"
 readme = "README.md"
 
 [project.urls]

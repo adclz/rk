@@ -7,7 +7,7 @@ keywords = ["incremental", "parsing", "tree-sitter", "structured-text"]
 categories = ["parser-implementations", "parsing", "text-editors"]
 repository = "https://github.com/adclz/rk"
 authors = { workspace = true }
-license = { workspace = true }
+license = "Apache-2.0"
 edition = { workspace = true }
 autoexamples = false
 

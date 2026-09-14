@@ -1,32 +1,51 @@
-Structured Text compiler and language server that emits WebAssembly.
+Rk is a Structured Text toolchain that emits WebAssembly, focused on strictness and portability.
 
-See the diagnostics for error codes, or download the skills to instruct your agent.
+The emitted WebAssembly can be executed by any WASM runtime, although some imports of the std lib require a WASI P1 compliant runtime.
 
-# Quick tour of  where it diverges from other implementations, unordered
+See the diagnostics for error codes.
+
+*Some technical decisions diverge from standard implementations of ST, the summary below shows some the most significative ones*
+
+- [Semicolons](#semicolons)
+- [Case sensitivity](#case-sensitivity)
+- [Namespaces](#namespaces)
+- [Overloading](#overloading)
+- [Monomorphized OOP](#monomorphized-oop)
+- [References](#references)
+- [Tests](#tests)
+- [Pragmas](#pragmas)
+- [StdLib](#stdlib)
+- [Bundled Traps](#bundled-traps)
+- [Strings](#strings)
+- [Math operations](#math-operations)
+- [WASM ABI](#wasm-abi)
+- [Debug Symbols](#debug-symbols)
+- [Profiles](#profiles)
+- [License](#license)
 
 ## Semicolons
 
-`;` is mandatory nowhere.
+The compiler accepts missing semiclons `;`.
 The formatter writes the missing ones in.
 
 ## Case sensitivity
 
 Keywords and identifiers are case-insensitive: `myFn` and `MyFn` are one name.
 
-## Namespaces everywhere.
+## Namespaces
 **A file IS NOT a single POU**.
 A file can contain as many POUs as you want, as long as you give them a different name, and folders do not affect name resolution.
 
 > There is no limitation in how you want to organize your workspace, so feel free to split your code the way you like.
 
-```pascal
+```
 FUNCTION MyFn END_FUNCTION
 FUNCTION MyFn END_FUNCTION // Not Ok
 ```
 
 can be fixed by putting the second in a `NAMESPACE`
 
-```pascal
+```
 FUNCTION MyFn END_FUNCTION // Global
 
 NAMESPACE MyNamespace
@@ -38,14 +57,14 @@ While the first MyFn stays **global** across the workspace, the second one is no
 
 To access it:
 
-```pascal
+```
 USING MyNamespace // <-- Import the namespace and MyFn
 ```
 
 `USING` directives can be used inside Namespaces or POUs
 
 
-```pascal
+```
 USING Namespace <-- Ok
 
 NAMESPACE MyNs
@@ -137,7 +156,7 @@ MyFn(1.0) <-- Will pick the second overload
 > **Return type** affects the signature of overloads.
 
 
-## OOP, but with monomorphization
+## Monomorphized OOP
 
 All Object Oriented Programming concepts are implemented (`CLASS`, `METHOD` ...).
 
@@ -156,7 +175,7 @@ So:
 - An `ARRAY` OF `INTERFACE` is not allowed.
 
 
-## Nullability checker
+## References
 
 `REF_TO`, `REF()`, `^` and `NULL` as in the standard.
 
@@ -216,13 +235,19 @@ Only these exist; anything else in braces is a syntax error, so `{attribute '…
 - `{extern 'module' 'name'}` declares a `FUNCTION` as a WASM import; the declaration is the signature.
 - `{wasm 'instruction' (params a b) (result r)}` is a statement that emits one WASM instruction on the named operands.
 
-## The StdLib is standalone
+## StdLib
 
 Ordinary Structured Text in `stdlib/`, one namespace per file: `Std.Math`, `Std.Strings`, `Std.Timers`, `Std.Counters`, `Std.Unit`, ... and the rest.
 
 The compiler knows nothing about it beyond where the files are.
 
 So that means you can replace any part of the stdlib, extend it, or read it to see how a `TON` is written.
+
+## Bundled Traps
+
+## Strings
+
+## Math operations
 
 ## WASM ABI
 
@@ -252,3 +277,12 @@ A host import declared with `{extern}` is the same convention in reverse:
 - scalar `VAR_OUTPUT` the results, the return type last; 
 
 it takes copies, so `VAR_IN_OUT`, aggregate outputs and a `STRING` return are refused.
+
+## Debug Symbols
+
+## Profiles
+
+## License
+
+rk is distributed under [AGPL-3.0-only](LICENSE).
+For the Apache-2.0 exceptions, and the permission that makes every generated module yours, see [LICENSING.md](LICENSING.md).

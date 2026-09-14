@@ -1,0 +1,42 @@
+Compiler Output Exception to the GNU Affero General Public License
+
+Version 1, 14 September 2026
+Copyright (c) 2026 Clauzel Adrien
+
+This exception is an additional permission under section 7 of the GNU Affero
+General Public License, version 3 ("AGPL"), for the compiler in this
+repository.
+
+1. Scope
+
+A "Generated Module" is a WebAssembly module that this compiler produces from
+Structured Text you supply, including every custom section the compiler
+writes into it: debug symbols, line tables, frame-local tables, the task
+schedule, the retained-state map and the test manifest.
+
+2. Permission
+
+You may produce Generated Modules with this compiler and run, copy, modify,
+distribute, sell or otherwise convey them under terms of your own choosing.
+Doing so does not make a Generated Module a work covered by the AGPL, and
+imposes no obligation under the AGPL on you or on anyone who receives it,
+even though a Generated Module contains code copied from the compiler's
+builtin bundle (crates/wasm_builtins) and from its standard library
+(stdlib/).
+
+Those two components are, in addition, licensed under the Apache License,
+Version 2.0 (see LICENSING.md), so that nothing a Generated Module carries is
+under copyleft.
+
+3. Limits
+
+This exception applies only to Generated Modules. The compiler itself, the
+language server, the formatter, the linter, the site generator and every
+other part of this repository remain under the AGPL. Distributing a modified
+compiler, or offering it as a network service, is governed by the AGPL alone.
+
+4. Compatibility
+
+This exception may be removed from a copy of the compiler only by the
+copyright holder. Anyone conveying the compiler under the AGPL must keep this
+exception with it.
