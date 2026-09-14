@@ -31,11 +31,10 @@ impl<'db> Type<'db> {
     /// cannot hold.
     ///
     /// Assignability for a subrange is not decided by its base type alone: the
-    /// declared bounds narrow it further, and other toolchains reports `i := 5000` on
-    /// `INT (-4095..4095)` at compile time. Bounds are statically known, so a
-    /// constant can be settled here; a non-constant would need a runtime guard,
-    /// which IEC leaves optional (other toolchains exposes it separately as
-    /// `CheckRangeSigned`/`CheckRangeUnsigned`).
+    /// declared bounds narrow it further, so `i := 5000` on
+    /// `INT (-4095..4095)` is refused at compile time. Bounds are statically
+    /// known, so a constant can be settled here; a non-constant would need a
+    /// runtime guard, which IEC leaves optional.
     ///
     /// Returns the error rather than reporting it, like [`Self::coerce_with_type`] —
     /// the caller decides whether to surface it.

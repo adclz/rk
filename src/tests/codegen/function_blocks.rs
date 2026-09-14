@@ -1642,8 +1642,8 @@ fn test_fb_inputs_evaluate_in_declaration_order(mut with_db: db::RootDatabase) {
 
 /// Writing a VAR_INPUT inside the FB body is legal (warned by L0113) and the
 /// write lands in INSTANCE storage: a later call that omits the input keeps
-/// the written value instead of resetting it. The other toolchains semantics the
-/// ruling rests on — a supplied input overwrites, an omitted one persists.
+/// the written value instead of resetting it. The semantics the ruling rests
+/// on: a supplied input overwrites, an omitted one persists.
 #[rstest]
 fn written_input_persists_when_the_next_call_omits_it(mut with_db: db::RootDatabase) {
     let source = r#"

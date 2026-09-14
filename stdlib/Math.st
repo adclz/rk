@@ -389,7 +389,7 @@ NAMESPACE Std.Math
 	off a fieldbus or an analog channel; it propagates through arithmetic and
 	converts to 0. Test for it explicitly where it matters.
 	- **IS_NAN**: not a number.
-	- **NOT_OK**: not a number or infinite (the S7 name).
+	- **NOT_OK**: not a number or infinite.
 	```iecst
 	IF NOT_OK(measured) THEN
 	    alarm := TRUE;
@@ -906,8 +906,7 @@ NAMESPACE Std.Math
 			END_VAR
 			// Counter increments stay in the type's domain. NOTE: an upper
 			// bound at the type MAX (e.g. TO 255) wraps before the exit
-			// check and never terminates — same documented footgun as
-			// other toolchains; keep bounds below the type maximum.
+			// check and never terminates; keep bounds below the type maximum.
 			FOR i := 250 TO 254 DO
 				n := n + 1;
 			END_FOR;
@@ -1054,9 +1053,8 @@ NAMESPACE Std.Math
 			ASSERT_EQ(ABS(LINT#-5000000000), LINT#5000000000, 'ABS LINT on the i64 lane');
 		END_FUNCTION
 
-		// --- sub-width integer arithmetic wraps at the IEC type width
-		// (type-faithful semantics; a C-emitting compiler's C native types
-		// behave the same). Values must never escape the type's domain ---
+		// --- sub-width integer arithmetic wraps at the IEC type width.
+		// Values must never escape the type's domain ---
 
 		{test}
 		FUNCTION test_subwidth_arithmetic_wraps

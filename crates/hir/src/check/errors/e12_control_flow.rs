@@ -21,7 +21,7 @@ pub enum ControlFlowError<'db> {
     },
     /// A FOR control variable that is not a bare identifier. IEC 61131-3's
     /// grammar says `control_variable ::= identifier`, so `r.i`, `a[k]` and
-    /// `p^` cannot be counters — and other toolchains rejects them too. (A bare name
+    /// `p^` cannot be counters. (A bare name
     /// that RESOLVES to an FB/PROGRAM member is fine; the restriction is on
     /// the syntax, not on where the variable lives.)
     ForControlNotAVariable {

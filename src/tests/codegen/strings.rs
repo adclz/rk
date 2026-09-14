@@ -43,7 +43,7 @@
 //!
 //! Two footnotes on the matrix. The `=IP` column mutates a `VAR_INPUT`,
 //! which IEC forbids inside the POU — RULED (2026-08-28): legal, warned by
-//! L0113 `input-assignment`, the other toolchains stance. The semantics that make the
+//! L0113 `input-assignment`. The semantics that make the
 //! deviation safe are pinned executed below: a FUNCTION input write mutates
 //! the callee's copy (a STRING one REBINDS the view, never writing through),
 //! and an FB input write lands in instance storage. If the language ever

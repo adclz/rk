@@ -349,7 +349,7 @@ fn test_for_lint_descending_beyond_i32(mut with_db: db::RootDatabase) {
 /// Sub-width control variable: the counter increment normalizes like any
 /// other arithmetic, so the counter never escapes its type's domain. (An
 /// upper bound at the type MAX wraps before the exit check and never
-/// terminates — other toolchains-documented behavior — so bounds here stay below it.)
+/// terminates, so bounds here stay below it.)
 #[rstest]
 fn test_for_subwidth_counter_stays_in_domain(mut with_db: db::RootDatabase) {
     let source = r#"
@@ -370,7 +370,7 @@ fn test_for_subwidth_counter_stays_in_domain(mut with_db: db::RootDatabase) {
     assert_eq!(r, 255, "5 iterations and the counter exits in-domain at 255");
 }
 
-/// A FOR counter that is a PROGRAM member — ordinary other toolchains code. The counter
+/// A FOR counter that is a PROGRAM member — ordinary code. The counter
 /// lives in the instance struct, not a wasm local, so the loop must read and
 /// write it through its place. MIR used to reject the shape outright ("FOR
 /// control variable must be a simple local") after `rk check` had passed it,

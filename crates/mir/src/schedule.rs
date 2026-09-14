@@ -149,24 +149,12 @@ pub fn lower_schedule<'db>(
                     info.struct_type.align,
                     MirAllocKind::InstanceData,
                 );
-                // If the program has ANY RETAIN state, persist its whole
-                // instance. The body addresses fields via `this + offset`, so
-                // individual fields can't be relocated into the band out from
-                // under it — we relocate the whole instance instead (its base
-                // becomes a band address). The cost: a retain program's
-                // non-RETAIN fields are persisted too — a simplification vs.
-                // strict per-field RETAIN (a C-emitting compiler copies each retained field
-                // in/out).
-                //
-                // A config-level qualifier (`PROGRAM RETAIN p WITH t : Type` /
-                // `PROGRAM NON_RETAIN ...`, IEC program configuration)
-                // overrides the declaration-driven decision entirely: RETAIN
-                // persists the instance even without retained fields,
-                // NON_RETAIN suppresses persistence even with them. Otherwise a
-                // field is retained if it is RETAIN-qualified itself OR its
-                // type (an FB/class instance, possibly nested) declares
-                // `VAR RETAIN` state internally — other toolchains semantics:
-                // FB-internal RETAIN persists for every instance.
+                // A program with any RETAIN state persists its whole instance: the body
+                // addresses fields via `this + offset`, so the instance is relocated
+                // whole. A config-level qualifier (`PROGRAM RETAIN p WITH t : Type`)
+                // overrides the declaration-driven decision; otherwise a field is
+                // retained when it is `RETAIN` itself or its FB type declares
+                // `VAR RETAIN` state.
                 let has_retain = match p.retain {
                     Some(config_qualifier) => config_qualifier,
                     None => info

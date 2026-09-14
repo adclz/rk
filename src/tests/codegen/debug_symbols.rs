@@ -364,8 +364,8 @@ fn read_all_snapshots_all_variables(mut with_db: db::RootDatabase) {
 }
 
 /// A large array must stay OBSERVABLE — the idiom every debug format uses:
-/// describe the shape once, compute elements on demand (DWARF's array_type,
-/// a toolchain's symbol configuration). The old table only knew eagerly-expanded
+/// describe the shape once, compute elements on demand (DWARF's array_type
+/// does the same). The old table only knew eagerly-expanded
 /// leaves, so an array past the cap contributed NOTHING: invisible to the
 /// monitor and the debugger, with no marker saying so, and unforceable.
 #[rstest]

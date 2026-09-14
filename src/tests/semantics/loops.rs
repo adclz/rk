@@ -171,8 +171,8 @@ END_FUNCTION_BLOCK"#;
 }
 
 /// IEC's grammar says `control_variable ::= identifier` — a struct field, an
-/// array element, a dereference or a bit access cannot be a FOR counter, and
-/// other toolchains rejects them too. These used to pass `rk check` and then die in
+/// array element, a dereference or a bit access cannot be a FOR counter.
+/// These used to pass `rk check` and then die in
 /// `rk compile` with an unlocated "unsupported" error: check said one thing
 /// and compile another.
 #[rstest]
@@ -226,8 +226,8 @@ fn a_bit_access_control_variable_is_a_syntax_error(mut with_db: RootDatabase) {
 }
 
 /// ...but a bare identifier is fine WHEREVER it lives — an FB or PROGRAM
-/// member is ordinary other toolchains practice. The restriction is on the syntax, not
-/// on the variable's home.
+/// member is ordinary practice. The restriction is on the syntax, not on the
+/// variable's home.
 #[rstest]
 fn an_fb_member_can_be_a_for_control_variable(mut with_db: RootDatabase) {
     let source = r#"

@@ -393,7 +393,7 @@ fn radix_repeat_count_rejected(mut with_db: RootDatabase) {
     ");
 }
 
-/// LIMITATION: a named-constant count `[FOO(0)]` (a other toolchains idiom) is not
+/// LIMITATION: a named-constant count `[FOO(0)]` is not
 /// accepted — the count must be a literal, so it mis-parses as a function call in
 /// init (E0402). A clearer diagnostic would help.
 /// TODO: we might accept this in a next version

@@ -17,8 +17,8 @@ pub const NAME: &str = "uninitialized-output";
 /// L0206: one or more VAR_OUTPUT variables are never assigned in the body.
 ///
 /// All uninitialized outputs for a given POU body are collapsed into a single
-/// diagnostic so the user gets one summary instead of N pointers. Per other toolchains
-/// VAR_OUTPUT semantics, leaving an output unassigned is permitted for
+/// diagnostic so the user gets one summary instead of N pointers. Leaving an
+/// output unassigned is permitted for
 /// FUNCTION_BLOCK / PROGRAM (compiler zero-inits the instance field) but
 /// surfacing it as an INFO-level lint helps catch unintended omissions.
 struct UninitializedOutput;

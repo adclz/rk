@@ -97,8 +97,8 @@ fn invalid_subrange_value_type(mut with_db: RootDatabase) {
 }
 
 /// A subrange may be declared INLINE in a VAR block, not only through a TYPE
-/// alias — other toolchains documents exactly this form. `var_decl`/`var_decl_init` did
-/// not accept a subrange spec, so it was a syntax error.
+/// alias. `var_decl`/`var_decl_init` did not accept a subrange spec, so it was
+/// a syntax error.
 #[rstest]
 fn inline_subrange_declaration(mut with_db: RootDatabase) {
     let source = r#"
@@ -115,9 +115,9 @@ fn inline_subrange_declaration(mut with_db: RootDatabase) {
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @"");
 }
 
-/// A constant outside the declared bounds is a COMPILE-time error (other toolchains
-/// reports `i := 5000` on `INT (-4095..4095)`). Bounds are statically known, so
-/// nothing waits for runtime.
+/// A constant outside the declared bounds is a COMPILE-time error: `i := 5000`
+/// on `INT (-4095..4095)` is refused. Bounds are statically known, so nothing
+/// waits for runtime.
 #[rstest]
 fn constant_above_subrange_is_rejected(mut with_db: RootDatabase) {
     let source = r#"

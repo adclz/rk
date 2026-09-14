@@ -7,7 +7,7 @@ use crate::tests::codegen::{compile_to_wasm, with_db};
 use rstest::*;
 
 /// Bound output `o => x`: the callee writes through a live pointer to `x`.
-/// Under the other toolchains by-reference model the callee's `o` IS the caller's `x`,
+/// Under the by-reference model the callee's `o` IS the caller's `x`,
 /// so a read-before-write observes the caller's current value (41 -> 42).
 #[rstest]
 fn bound_output_live_pointer(mut with_db: db::RootDatabase) {

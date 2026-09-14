@@ -561,7 +561,7 @@ impl<'db> StmtsResolverCtx<'db> {
 
                     // IEC's grammar: `control_variable ::= identifier`. A
                     // path (`r.i`), an index (`a[k]`), a deref or a bit access
-                    // is not a counter — other toolchains rejects them too. A bare name
+                    // is not a counter. A bare name
                     // resolving to an FB/PROGRAM member is fine: the rule is
                     // about the syntax, not where the variable lives. Without
                     // this check the shapes sailed through to MIR, which

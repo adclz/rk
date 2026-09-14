@@ -733,7 +733,7 @@ END_FUNCTION
 }
 
 
-/// Sub-width arithmetic wraps at the IEC type width (type-faithful): results
+/// Sub-width arithmetic wraps at the IEC type width: results
 /// are re-normalized into the 8/16-bit domain after each op instead of
 /// escaping into the i32 lane. `USINT 255 + 1` used to evaluate to 256 — a
 /// value the type cannot hold — and the escape persisted through stores and

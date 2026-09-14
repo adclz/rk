@@ -182,10 +182,9 @@ pub fn multibits_to_type<'db>(
 }
 
 /// Declared capacity, in bytes, of a plain `STRING` written without an
-/// explicit `[N]`. The standard leaves it implementation-defined: other toolchains
-/// uses 80, another toolchain 254. 80 matches the most common reference
-/// implementation and keeps header plus buffer at 84 bytes, cheap to
-/// allocate per variable.
+/// explicit `[N]`. The standard leaves it implementation-defined; 80 is
+/// the most common choice and keeps header plus buffer at 84 bytes, cheap
+/// to allocate per variable.
 ///
 /// Every layer that has to pick a layout, or refuse a value that will not
 /// fit one, reads it from here.

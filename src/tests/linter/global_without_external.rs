@@ -4,7 +4,7 @@ use rstest::rstest;
 
 use crate::tests::utils::{test_single_lint, with_db};
 
-/// Reading a config VAR_GLOBAL directly by name (type-faithful), without a
+/// Reading a config VAR_GLOBAL directly by name, without a
 /// VAR_EXTERNAL declaration, resolves but warns.
 #[rstest]
 fn direct_global_access_warns(mut with_db: RootDatabase) {

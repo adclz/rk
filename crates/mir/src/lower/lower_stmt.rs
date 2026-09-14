@@ -280,11 +280,8 @@ fn lower_stmt<'db>(
             step,
             body,
         } => {
-            // Any PLACE can be a counter: a FUNCTION local, a PROGRAM/FB
-            // member (other toolchains accepts both). HIR has already rejected the
-            // shapes IEC's grammar forbids — `control_variable ::= identifier`
-            // — so a Field/Index/Deref place cannot reach here from valid
-            // source; the codegen addresses whatever arrives.
+            // Any place can be a counter: a FUNCTION local or a PROGRAM/FB member
+            // (HIR rejected the shapes IEC forbids).
             let control_place = ctx.lower_variable_access(*control_variable)?;
 
             // Determine the control variable type

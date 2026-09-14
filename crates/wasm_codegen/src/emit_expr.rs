@@ -898,12 +898,8 @@ fn emit_binop(func: &mut wasm_encoder::Function, op: MirBinOp, ty: MirElementary
         }
     }
 
-    // Sub-width arithmetic wraps at the IEC type width (type-faithful
-    // type-faithful semantics): `USINT 255 + 1` = 0, `INT 32767 + 1` =
-    // -32768, `SINT -128 / -1` = -128. Without this the i32-lane result
-    // escapes the type's domain, persists through stores, and corrupts
-    // downstream compares. Comparisons yield BOOL and And/Or/Xor are
-    // domain-closed, so only the arithmetic ops need it.
+    // Sub-width arithmetic wraps at the IEC type width (`USINT 255 + 1` = 0);
+    // comparisons and the logical ops are domain-closed.
     if matches!(
         op,
         MirBinOp::Add | MirBinOp::Sub | MirBinOp::Mul | MirBinOp::Div | MirBinOp::Mod

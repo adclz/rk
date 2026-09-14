@@ -13,7 +13,7 @@ use ide_diagnostic::{ErrorCode, IdeDiagnostic, Related, diag};
 pub const NAME: &str = "missing-input-param";
 
 /// L0303: a FUNCTION_BLOCK or PROGRAM call does not pass every declared
-/// VAR_INPUT. Per other toolchains this is *not* a hard error — the FB/PROGRAM
+/// VAR_INPUT. This is *not* a hard error — the FB/PROGRAM
 /// instance retains the previous value (or compiler-initialised default).
 /// We surface it as a lint so the user is notified that not all inputs
 /// were wired. FUNCTION/METHOD callsites are covered by `E0802` instead,

@@ -87,7 +87,7 @@ fn fn_struct_input_callee_write_invisible(mut with_db: db::RootDatabase) {
 /// Snapshot semantics under aliasing: the SAME struct is bound to a VAR_INPUT
 /// and a VAR_IN_OUT. The body mutates through the inout reference first, then
 /// reads the input — which must still show the call-entry values (the copy
-/// was taken before the call, exactly like a C-emitting compiler/FB copy-in).
+/// was taken before the call, like an FB's copy-in).
 #[rstest]
 fn fn_struct_input_snapshot_aliasing(mut with_db: db::RootDatabase) {
     let source = r#"

@@ -2158,10 +2158,8 @@ impl<'db> ExprLowerCtx<'db> {
                                 var_name.text(self.db)
                             )));
                         };
-                        // VAR_IN_OUT is by-reference: the instance field is
-                        // a pointer. Store the address of the caller's l-value ONCE
-                        // before the body — the body reads/writes through it, so
-                        // there is no value copy-in and (unlike a C-emitting compiler) no copy-out.
+                        // VAR_IN_OUT is by reference: store the address of the caller's l-value
+                        // once before the body.
                         if field.by_ref {
                             // Must be an l-value to take its address; E0806 rejects everything
                             // else upstream.
