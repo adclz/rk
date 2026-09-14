@@ -44,7 +44,7 @@ END_FUNCTION
     let core_bytes = wasm_codegen::generate_wasm(&with_db, &mir_module).finish();
 
     // The manifest is embedded in the module as a custom section — no sidecar.
-    let results = runtime::test::run(&core_bytes, None).expect("run tests");
+    let results = crate::tests::codegen::run_tests(&core_bytes, None).expect("run tests");
     assert_eq!(results.len(), 2);
     assert!(
         results.iter().all(|r| r.passed()),
@@ -75,7 +75,7 @@ END_FUNCTION
         mir::lower::lower_module::lower_module(&with_db, sem_idx).expect("MIR lowering failed");
     let core_bytes = wasm_codegen::generate_wasm(&with_db, &mir_module).finish();
 
-    let results = runtime::test::run(&core_bytes, None).expect("run tests");
+    let results = crate::tests::codegen::run_tests(&core_bytes, None).expect("run tests");
     let failures = results.iter().filter(|r| !r.passed()).count();
     assert_eq!(
         failures, 1,
@@ -106,10 +106,10 @@ END_FUNCTION
         mir::lower::lower_module::lower_module(&with_db, sem_idx).expect("MIR lowering failed");
     let core_bytes = wasm_codegen::generate_wasm(&with_db, &mir_module).finish();
 
-    let results = runtime::test::run(&core_bytes, None).expect("run tests");
+    let results = crate::tests::codegen::run_tests(&core_bytes, None).expect("run tests");
     assert_eq!(results.len(), 1);
     match &results[0].outcome {
-        runtime::test::Outcome::Fail(msg) => assert!(
+        crate::tests::codegen::Outcome::Fail(msg) => assert!(
             msg.contains("expected-failure-from-test-fixture"),
             "the raised message is reported verbatim, got: {msg}"
         ),
@@ -156,24 +156,24 @@ END_FUNCTION
         mir::lower::lower_module::lower_module(&with_db, sem_idx).expect("MIR lowering failed");
     let core = wasm_codegen::generate_wasm(&with_db, &mir_module).finish();
 
-    let found = runtime::test::discover(&core);
+    let found = crate::tests::codegen::discover_tests(&core);
     assert_eq!(found.len(), 2, "both tests are in the core module's manifest");
 
-    let results = runtime::test::run(&core, None).expect("run tests");
+    let results = crate::tests::codegen::run_tests(&core, None).expect("run tests");
     assert_eq!(results.len(), 2);
 
     let passed = results
         .iter()
         .find(|r| r.entry.path.contains("test_that_passes"))
         .expect("the passing test ran");
-    assert_eq!(passed.outcome, runtime::test::Outcome::Pass);
+    assert_eq!(passed.outcome, crate::tests::codegen::Outcome::Pass);
 
     let failed = results
         .iter()
         .find(|r| r.entry.path.contains("test_that_fails"))
         .expect("the failing test ran");
     match &failed.outcome {
-        runtime::test::Outcome::Fail(msg) => {
+        crate::tests::codegen::Outcome::Fail(msg) => {
             assert!(
                 msg.contains("deliberate failure"),
                 "the program's own message survives: {msg}"
@@ -183,7 +183,7 @@ END_FUNCTION
     }
 
     // A filter selects a subset by path.
-    let only = runtime::test::run(&core, Some("passes")).expect("filtered run");
+    let only = crate::tests::codegen::run_tests(&core, Some("passes")).expect("filtered run");
     assert_eq!(only.len(), 1);
 }
 

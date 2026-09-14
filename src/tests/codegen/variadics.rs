@@ -177,9 +177,9 @@ fn variadic_called_from_a_program(mut with_db: db::RootDatabase) {
             END_RESOURCE
         END_CONFIGURATION
     "#;
-    use runtime::{Config, Plc};
+    use crate::tests::codegen::TestPlc;
     let (_mir, wasm) = crate::tests::codegen::compile_to_mir_and_wasm(&mut with_db, source);
-    let mut plc = Plc::load(&wasm, Config::default()).expect("load");
+    let mut plc = TestPlc::load(&wasm).expect("load");
     plc.run(1).expect("scan");
     let r = plc.read_retain();
     assert_eq!(i32::from_le_bytes(r[0..4].try_into().unwrap()), 15);

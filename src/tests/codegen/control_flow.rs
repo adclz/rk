@@ -397,7 +397,7 @@ fn for_counter_living_in_a_program_member(mut with_db: db::RootDatabase) {
         END_CONFIGURATION
     "#;
     let (_mir, wasm) = crate::tests::codegen::compile_to_mir_and_wasm(&mut with_db, source);
-    let mut plc = runtime::Plc::load(&wasm, runtime::Config::default()).expect("load");
+    let mut plc = crate::tests::codegen::TestPlc::load(&wasm).expect("load");
     plc.run(1).expect("scan");
     let total = i32::from_le_bytes(plc.read_retain()[..4].try_into().unwrap());
     assert_eq!(total, 1506, "sum 15, counter left at 6 after the loop");

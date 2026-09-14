@@ -63,7 +63,7 @@
 //! an FB call writing a STRING input never armed the `rk.str_assign` graft.
 
 use rstest::rstest;
-use runtime::{Config, Plc};
+use crate::tests::codegen::TestPlc;
 
 use super::{add_source, compile_to_mir_and_wasm, compile_to_wasm, execute_wasm, with_db};
 
@@ -1034,7 +1034,7 @@ END_FUNCTION
 // =========================================================================
 
 /// Decode the string at the start of the retain band: `[len:i32]` + bytes.
-fn read_retain_string(plc: &Plc) -> String {
+fn read_retain_string(plc: &TestPlc) -> String {
     let r = plc.read_retain();
     let len = i32::from_le_bytes(r[0..4].try_into().unwrap()) as usize;
     String::from_utf8_lossy(&r[4..4 + len]).to_string()
@@ -1058,7 +1058,7 @@ fn string_field_assign_literal(mut with_db: db::RootDatabase) {
     "#;
     let (_mir, wasm) = compile_to_mir_and_wasm(&mut with_db, source);
 
-    let mut plc = Plc::load(&wasm, Config::default()).expect("load");
+    let mut plc = TestPlc::load(&wasm).expect("load");
     plc.run(1).expect("scan");
     assert_eq!(read_retain_string(&plc), "hello");
 }
@@ -1083,7 +1083,7 @@ fn string_field_to_field_copy(mut with_db: db::RootDatabase) {
     "#;
     let (_mir, wasm) = compile_to_mir_and_wasm(&mut with_db, source);
 
-    let mut plc = Plc::load(&wasm, Config::default()).expect("load");
+    let mut plc = TestPlc::load(&wasm).expect("load");
     plc.run(1).expect("scan");
     assert_eq!(read_retain_string(&plc), "world");
 }
@@ -1107,7 +1107,7 @@ fn string_field_initializer(mut with_db: db::RootDatabase) {
     "#;
     let (_mir, wasm) = compile_to_mir_and_wasm(&mut with_db, source);
 
-    let plc = Plc::load(&wasm, Config::default()).expect("load");
+    let plc = TestPlc::load(&wasm).expect("load");
     assert_eq!(
         read_retain_string(&plc),
         "init!",
@@ -1134,7 +1134,7 @@ fn string_global_initializer(mut with_db: db::RootDatabase) {
     "#;
     let (_mir, wasm) = compile_to_mir_and_wasm(&mut with_db, source);
 
-    let mut plc = Plc::load(&wasm, Config::default()).expect("load");
+    let mut plc = TestPlc::load(&wasm).expect("load");
     plc.run(1).expect("scan");
     assert_eq!(read_retain_string(&plc), "globinit");
 }
@@ -1159,7 +1159,7 @@ fn struct_with_string_initializer(mut with_db: db::RootDatabase) {
     "#;
     let (_mir, wasm) = compile_to_mir_and_wasm(&mut with_db, source);
 
-    let plc = Plc::load(&wasm, Config::default()).expect("load");
+    let plc = TestPlc::load(&wasm).expect("load");
     let r = plc.read_retain();
     // p.name (STRING) at offset 0; p.age (INT) right after the string slot,
     // whose size is the 4-byte length header plus the default capacity.
@@ -1195,7 +1195,7 @@ fn string_call_result_into_field(mut with_db: db::RootDatabase) {
     "#;
     let (_mir, wasm) = compile_to_mir_and_wasm(&mut with_db, source);
 
-    let mut plc = Plc::load(&wasm, Config::default()).expect("load");
+    let mut plc = TestPlc::load(&wasm).expect("load");
     plc.run(1).expect("scan");
     assert_eq!(read_retain_string(&plc), "hi there");
 }
@@ -1225,7 +1225,7 @@ fn string_field_as_argument(mut with_db: db::RootDatabase) {
     "#;
     let (_mir, wasm) = compile_to_mir_and_wasm(&mut with_db, source);
 
-    let mut plc = Plc::load(&wasm, Config::default()).expect("load");
+    let mut plc = TestPlc::load(&wasm).expect("load");
     plc.run(1).expect("scan");
     assert_eq!(read_retain_string(&plc), "fieldarg");
 }
@@ -1255,7 +1255,7 @@ fn string_field_as_var_in_out(mut with_db: db::RootDatabase) {
     "#;
     let (_mir, wasm) = compile_to_mir_and_wasm(&mut with_db, source);
 
-    let mut plc = Plc::load(&wasm, Config::default()).expect("load");
+    let mut plc = TestPlc::load(&wasm).expect("load");
     plc.run(1).expect("scan");
     assert_eq!(read_retain_string(&plc), "hi-inout");
 }
@@ -1282,7 +1282,7 @@ fn sized_string_field_clamps_to_capacity(mut with_db: db::RootDatabase) {
     "#;
     let (_mir, wasm) = compile_to_mir_and_wasm(&mut with_db, source);
 
-    let mut plc = Plc::load(&wasm, Config::default()).expect("load");
+    let mut plc = TestPlc::load(&wasm).expect("load");
     plc.run(1).expect("scan");
     assert_eq!(read_retain_string(&plc), "hel", "STRING[3] clamps 'hello'");
 }
@@ -1309,7 +1309,7 @@ fn sized_string_global_clamps_to_capacity(mut with_db: db::RootDatabase) {
     "#;
     let (_mir, wasm) = compile_to_mir_and_wasm(&mut with_db, source);
 
-    let mut plc = Plc::load(&wasm, Config::default()).expect("load");
+    let mut plc = TestPlc::load(&wasm).expect("load");
     plc.run(1).expect("scan");
     assert_eq!(
         read_retain_string(&plc),
@@ -1342,7 +1342,7 @@ fn string_global_shared(mut with_db: db::RootDatabase) {
     "#;
     let (_mir, wasm) = compile_to_mir_and_wasm(&mut with_db, source);
 
-    let mut plc = Plc::load(&wasm, Config::default()).expect("load");
+    let mut plc = TestPlc::load(&wasm).expect("load");
     plc.run(2).expect("scans"); // Setter writes g, Mirror copies it into seen
     assert_eq!(read_retain_string(&plc), "shared");
 }
@@ -1472,7 +1472,7 @@ fn string_escapes_decode_to_denoted_bytes(mut with_db: db::RootDatabase) {
         END_CONFIGURATION
     "#;
     let (_mir, wasm) = compile_to_mir_and_wasm(&mut with_db, source);
-    let mut plc = Plc::load(&wasm, Config::default()).expect("load");
+    let mut plc = TestPlc::load(&wasm).expect("load");
     plc.run(1).expect("scan");
     assert_eq!(read_retain_string(&plc), "A$\n\t'");
 }

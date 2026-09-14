@@ -257,7 +257,7 @@ fn typed_enum_storage_follows_the_declared_base(mut with_db: db::RootDatabase) {
     // hardcoded-DInt world packed both as 4-byte fields into 8.
     assert_eq!(mir.retain_size, 16, "storage widths must follow the bases");
 
-    let mut plc = runtime::Plc::load(&wasm, runtime::Config::default()).expect("load");
+    let mut plc = crate::tests::codegen::TestPlc::load(&wasm).expect("load");
     plc.run(1).expect("scan");
     let band = plc.read_retain();
     assert_eq!(band[0] as i8, 1, "Small#Hi is one SINT byte");

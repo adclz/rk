@@ -956,7 +956,7 @@ fn an_uncaught_raise_names_its_fault(mut with_db: db::RootDatabase) {
         END_CONFIGURATION
     "#;
     let (_mir, wasm) = crate::tests::codegen::compile_to_mir_and_wasm(&mut with_db, source);
-    let mut plc = runtime::Plc::load(&wasm, runtime::Config::default()).expect("load");
+    let mut plc = crate::tests::codegen::TestPlc::load(&wasm).expect("load");
     plc.scan().expect("first scan is fine");
     let err = plc.scan().expect_err("second scan raises");
     let msg = format!("{err:#}");

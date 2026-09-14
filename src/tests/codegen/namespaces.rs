@@ -49,7 +49,7 @@ fn a_nested_test_is_discovered_once(mut with_db: db::RootDatabase) {
         END_NAMESPACE
     "#;
     let wasm = compile_to_wasm(&mut with_db, source);
-    let tests = runtime::test::discover(&wasm);
+    let tests = crate::tests::codegen::discover_tests(&wasm);
     let hits: Vec<_> = tests
         .iter()
         .filter(|t| t.path.contains("test_nested"))

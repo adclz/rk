@@ -210,7 +210,7 @@ fn bound_array_output(mut with_db: db::RootDatabase) {
 /// capacity-bounded write lands in the caller's buffer.
 #[rstest]
 fn bound_string_output(mut with_db: db::RootDatabase) {
-    use runtime::{Config, Plc};
+    use crate::tests::codegen::TestPlc;
 
     let source = r#"
         FUNCTION name_it : INT
@@ -233,7 +233,7 @@ fn bound_string_output(mut with_db: db::RootDatabase) {
     "#;
     let (_mir, wasm) = crate::tests::codegen::compile_to_mir_and_wasm(&mut with_db, source);
 
-    let mut plc = Plc::load(&wasm, Config::default()).expect("load");
+    let mut plc = TestPlc::load(&wasm).expect("load");
     plc.run(1).expect("scan");
     let r = plc.read_retain();
     let len = i32::from_le_bytes(r[0..4].try_into().unwrap()) as usize;
@@ -362,7 +362,7 @@ fn discarded_scratch_is_per_call_site(mut with_db: db::RootDatabase) {
 /// A 10-byte value lands as its first 4 bytes, len clamped to match.
 #[rstest]
 fn bound_string_output_truncates_to_capacity(mut with_db: db::RootDatabase) {
-    use runtime::{Config, Plc};
+    use crate::tests::codegen::TestPlc;
     let source = r#"
         FUNCTION name_it : INT
         VAR_OUTPUT label : STRING; END_VAR
@@ -381,7 +381,7 @@ fn bound_string_output_truncates_to_capacity(mut with_db: db::RootDatabase) {
         END_CONFIGURATION
     "#;
     let (_mir, wasm) = crate::tests::codegen::compile_to_mir_and_wasm(&mut with_db, source);
-    let mut plc = Plc::load(&wasm, Config::default()).expect("load");
+    let mut plc = TestPlc::load(&wasm).expect("load");
     plc.run(1).expect("scan");
     let r = plc.read_retain();
     let len = i32::from_le_bytes(r[0..4].try_into().unwrap()) as usize;

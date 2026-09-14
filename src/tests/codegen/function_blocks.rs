@@ -1095,7 +1095,7 @@ fn fb_struct_output_binding(mut with_db: db::RootDatabase) {
 /// field is copied back into the caller's variable after it.
 #[rstest]
 fn fb_string_input_output(mut with_db: db::RootDatabase) {
-    use runtime::{Config, Plc};
+    use crate::tests::codegen::TestPlc;
 
     let source = r#"
         FUNCTION_BLOCK EchoFb
@@ -1120,7 +1120,7 @@ fn fb_string_input_output(mut with_db: db::RootDatabase) {
     "#;
     let (_mir, wasm) = crate::tests::codegen::compile_to_mir_and_wasm(&mut with_db, source);
 
-    let mut plc = Plc::load(&wasm, Config::default()).expect("load");
+    let mut plc = TestPlc::load(&wasm).expect("load");
     plc.run(1).expect("scan");
     let r = plc.read_retain();
     let len = i32::from_le_bytes(r[0..4].try_into().unwrap()) as usize;

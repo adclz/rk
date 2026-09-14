@@ -357,7 +357,7 @@ fn an_out_of_bounds_write_faults_instead_of_corrupting(mut with_db: db::RootData
         END_CONFIGURATION
     "#;
     let (_mir, wasm) = crate::tests::codegen::compile_to_mir_and_wasm(&mut with_db, source);
-    let mut plc = runtime::Plc::load(&wasm, runtime::Config::default()).expect("load");
+    let mut plc = crate::tests::codegen::TestPlc::load(&wasm).expect("load");
     plc.run(2).expect("in-bounds scans run fine");
     let err = plc.scan().expect_err("the third scan goes out of bounds");
     // The check raises through `$rk_exception` with the message as its
@@ -521,7 +521,7 @@ fn extern_constant_bound_folds_and_is_enforced(mut with_db: db::RootDatabase) {
         END_CONFIGURATION
     "#;
     let (_mir, wasm) = crate::tests::codegen::compile_to_mir_and_wasm(&mut with_db, source);
-    let mut plc = runtime::Plc::load(&wasm, runtime::Config::default()).expect("load");
+    let mut plc = crate::tests::codegen::TestPlc::load(&wasm).expect("load");
     plc.run(1).expect("a[0..K] are all writable");
     let err = plc.scan().expect_err("a[K + 1] is past the folded bound");
     assert!(

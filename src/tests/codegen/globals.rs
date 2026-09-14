@@ -3,7 +3,7 @@
 
 use crate::tests::codegen::{compile_to_mir_and_wasm, with_db};
 use rstest::*;
-use runtime::{Config, Plc};
+use crate::tests::codegen::TestPlc;
 
 /// Two programs share a config `VAR_GLOBAL`. `Inc` increments it (via
 /// `VAR_EXTERNAL`); `Mirror` copies it into a retained `seen` (direct access,
@@ -37,7 +37,7 @@ fn programs_share_a_global(mut with_db: db::RootDatabase) {
     // Only Mirror's `seen` is retained (one INT), so the band reads it.
     assert_eq!(mir.retain_size, 4);
 
-    let mut plc = Plc::load(&wasm, Config::default()).expect("load");
+    let mut plc = TestPlc::load(&wasm).expect("load");
     plc.run(3).expect("scans");
 
     // Each scan: Inc does g := g+1, then Mirror does seen := g. After 3 scans
@@ -66,7 +66,7 @@ fn host_reads_and_writes_global(mut with_db: db::RootDatabase) {
         END_CONFIGURATION
     "#;
     let (_mir, wasm) = compile_to_mir_and_wasm(&mut with_db, source);
-    let mut plc = Plc::load(&wasm, Config::default()).expect("load");
+    let mut plc = TestPlc::load(&wasm).expect("load");
 
     // __init set g = 100; the host sees it in the globals region.
     assert_eq!(plc.globals_region().size, 4, "one DINT global");
@@ -112,7 +112,7 @@ fn retain_global_overlaps_both_regions(mut with_db: db::RootDatabase) {
         END_CONFIGURATION
     "#;
     let (_mir, wasm) = compile_to_mir_and_wasm(&mut with_db, source);
-    let plc = Plc::load(&wasm, Config::default()).expect("load");
+    let plc = TestPlc::load(&wasm).expect("load");
 
     let gr = plc.globals_region();
     let rr = plc.retain_region();

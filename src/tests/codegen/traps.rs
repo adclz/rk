@@ -49,7 +49,7 @@ fn an_out_of_range_subrange_assignment_faults(mut with_db: db::RootDatabase) {
         END_CONFIGURATION
     "#;
     let (_mir, wasm) = crate::tests::codegen::compile_to_mir_and_wasm(&mut with_db, source);
-    let mut plc = runtime::Plc::load(&wasm, runtime::Config::default()).expect("load");
+    let mut plc = crate::tests::codegen::TestPlc::load(&wasm).expect("load");
     plc.run(1).expect("6 is in range");
     let err = plc.scan().expect_err("12 leaves INT (0..10)");
     assert!(

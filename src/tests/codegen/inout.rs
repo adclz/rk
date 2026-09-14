@@ -5,10 +5,10 @@
 
 use crate::tests::codegen::{compile_to_mir_and_wasm, compile_to_wasm, with_db};
 use rstest::*;
-use runtime::{Config, Plc};
+use crate::tests::codegen::TestPlc;
 
 /// Decode the string at the start of the retain band: `[len:i32]` + bytes.
-fn read_retain_string(plc: &Plc) -> String {
+fn read_retain_string(plc: &TestPlc) -> String {
     let r = plc.read_retain();
     let len = i32::from_le_bytes(r[0..4].try_into().unwrap()) as usize;
     String::from_utf8_lossy(&r[4..4 + len]).to_string()
@@ -229,7 +229,7 @@ fn fb_inout_string(mut with_db: db::RootDatabase) {
     "#;
     let (_mir, wasm) = compile_to_mir_and_wasm(&mut with_db, source);
 
-    let mut plc = Plc::load(&wasm, Config::default()).expect("load");
+    let mut plc = TestPlc::load(&wasm).expect("load");
     plc.run(1).expect("scan");
     assert_eq!(read_retain_string(&plc), "hi-fb-inout");
 }

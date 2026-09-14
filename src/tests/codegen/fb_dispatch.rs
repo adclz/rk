@@ -209,7 +209,7 @@ fn call_on_a_global_instance(mut with_db: db::RootDatabase) {
     "#
     );
     let (_mir, wasm) = crate::tests::codegen::compile_to_mir_and_wasm(&mut with_db, &source);
-    let mut plc = runtime::Plc::load(&wasm, runtime::Config::default()).expect("load");
+    let mut plc = crate::tests::codegen::TestPlc::load(&wasm).expect("load");
     plc.run(3).expect("scans");
     let seen = i32::from_le_bytes(plc.read_retain()[..4].try_into().unwrap());
     assert_eq!(seen, 3, "the global instance ticked once per scan");

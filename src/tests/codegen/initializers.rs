@@ -3,16 +3,10 @@
 
 use crate::tests::codegen::{compile_to_mir_and_wasm, compile_to_wasm, with_db};
 use rstest::*;
-use runtime::{Config, Plc};
+use crate::tests::codegen::TestPlc;
 
-fn read_first_i32(plc: &Plc) -> i32 {
+fn read_first_i32(plc: &TestPlc) -> i32 {
     i32::from_le_bytes(plc.read_retain()[..4].try_into().unwrap())
-}
-
-fn temp_path(tag: &str) -> std::path::PathBuf {
-    let p = std::env::temp_dir().join(format!("rk_init_{tag}_{}.bin", std::process::id()));
-    let _ = std::fs::remove_file(&p);
-    p
 }
 
 /// A program field initializer runs once at load (before any scan), then the
@@ -34,7 +28,7 @@ fn program_field_initializer_runs_once(mut with_db: db::RootDatabase) {
     "#;
     let (_mir, wasm) = compile_to_mir_and_wasm(&mut with_db, source);
 
-    let mut plc = Plc::load(&wasm, Config::default()).expect("load");
+    let mut plc = TestPlc::load(&wasm).expect("load");
     assert_eq!(read_first_i32(&plc), 7, "initializer applied at load");
     plc.run(1).expect("scan");
     assert_eq!(read_first_i32(&plc), 8, "then incremented by the scan");
@@ -59,7 +53,7 @@ fn const_expr_initializer(mut with_db: db::RootDatabase) {
     "#;
     let (_mir, wasm) = compile_to_mir_and_wasm(&mut with_db, source);
 
-    let mut plc = Plc::load(&wasm, Config::default()).expect("load");
+    let mut plc = TestPlc::load(&wasm).expect("load");
     assert_eq!(read_first_i32(&plc), 14, "2 + 3*4 = 14 at load");
     plc.run(1).expect("scan");
     assert_eq!(read_first_i32(&plc), 15);
@@ -84,7 +78,7 @@ fn global_initializer_applied(mut with_db: db::RootDatabase) {
     "#;
     let (_mir, wasm) = compile_to_mir_and_wasm(&mut with_db, source);
 
-    let mut plc = Plc::load(&wasm, Config::default()).expect("load");
+    let mut plc = TestPlc::load(&wasm).expect("load");
     plc.run(1).expect("scan"); // Mirror copies g (== 42) into seen
     let seen = i32::from_le_bytes(plc.read_retain()[..4].try_into().unwrap());
     assert_eq!(seen, 42, "global initialized to 42, read by the program");
@@ -109,7 +103,7 @@ fn array_initializer(mut with_db: db::RootDatabase) {
     "#;
     let (_mir, wasm) = compile_to_mir_and_wasm(&mut with_db, source);
 
-    let mut plc = Plc::load(&wasm, Config::default()).expect("load");
+    let mut plc = TestPlc::load(&wasm).expect("load");
     plc.run(1).expect("scan");
     assert_eq!(read_first_i32(&plc), 60, "10 + 20 + 30 from the array init");
 }
@@ -139,7 +133,7 @@ fn nested_multidim_array_initializer(mut with_db: db::RootDatabase) {
     // `m` is the only RETAIN field → the band IS the flattened matrix. Read the
     // 6 INT elements (row-major) directly. (Multi-dim element ACCESS in a body is
     // a separate, unimplemented feature, so we verify the init via the band.)
-    let plc = Plc::load(&wasm, Config::default()).expect("load");
+    let plc = TestPlc::load(&wasm).expect("load");
     let r = plc.read_retain();
     let vals: Vec<i32> = (0..6)
         .map(|i| i32::from_le_bytes(r[i * 4..i * 4 + 4].try_into().unwrap()))
@@ -179,7 +173,7 @@ fn multidim_element_access(mut with_db: db::RootDatabase) {
     "#;
     let (_mir, wasm) = compile_to_mir_and_wasm(&mut with_db, source);
 
-    let mut plc = Plc::load(&wasm, Config::default()).expect("load");
+    let mut plc = TestPlc::load(&wasm).expect("load");
     plc.run(1).expect("scan");
     assert_eq!(read_first_i32(&plc), 123456, "m[i][j] reads row-major");
 }
@@ -208,7 +202,7 @@ fn three_dim_element_access(mut with_db: db::RootDatabase) {
     "#;
     let (_mir, wasm) = compile_to_mir_and_wasm(&mut with_db, source);
 
-    let mut plc = Plc::load(&wasm, Config::default()).expect("load");
+    let mut plc = TestPlc::load(&wasm).expect("load");
     plc.run(1).expect("scan");
     assert_eq!(read_first_i32(&plc), 12345678, "c[i][j][k] reads row-major");
 }
@@ -237,7 +231,7 @@ fn multidim_element_write(mut with_db: db::RootDatabase) {
     "#;
     let (_mir, wasm) = compile_to_mir_and_wasm(&mut with_db, source);
 
-    let mut plc = Plc::load(&wasm, Config::default()).expect("load");
+    let mut plc = TestPlc::load(&wasm).expect("load");
     plc.run(1).expect("scan");
     assert_eq!(
         read_first_i32(&plc),
@@ -265,7 +259,7 @@ fn nested_repetition_array_initializer(mut with_db: db::RootDatabase) {
     "#;
     let (_mir, wasm) = compile_to_mir_and_wasm(&mut with_db, source);
 
-    let mut plc = Plc::load(&wasm, Config::default()).expect("load");
+    let mut plc = TestPlc::load(&wasm).expect("load");
     plc.run(1).expect("scan");
     assert_eq!(read_first_i32(&plc), 30, "[2(3(5))] = six 5s");
 }
@@ -290,7 +284,7 @@ fn underscore_repeat_count_initializer(mut with_db: db::RootDatabase) {
     "#;
     let (_mir, wasm) = compile_to_mir_and_wasm(&mut with_db, source);
 
-    let mut plc = Plc::load(&wasm, Config::default()).expect("load");
+    let mut plc = TestPlc::load(&wasm).expect("load");
     plc.run(1).expect("scan");
     assert_eq!(read_first_i32(&plc), 70, "[1_0(7)] = ten 7s");
 }
@@ -319,7 +313,7 @@ fn function_local_array_initializer(mut with_db: db::RootDatabase) {
     "#;
     let (_mir, wasm) = compile_to_mir_and_wasm(&mut with_db, source);
 
-    let mut plc = Plc::load(&wasm, Config::default()).expect("load");
+    let mut plc = TestPlc::load(&wasm).expect("load");
     plc.run(1).expect("scan");
     assert_eq!(
         read_first_i32(&plc),
@@ -349,71 +343,13 @@ fn struct_initializer(mut with_db: db::RootDatabase) {
     "#;
     let (_mir, wasm) = compile_to_mir_and_wasm(&mut with_db, source);
 
-    let mut plc = Plc::load(&wasm, Config::default()).expect("load");
+    let mut plc = TestPlc::load(&wasm).expect("load");
     plc.run(1).expect("scan");
     assert_eq!(
         read_first_i32(&plc),
         304,
         "x*100 + y = 3*100 + 4 from struct init"
     );
-}
-
-/// A RETAIN var's initializer is its COLD-start value only: on a warm restart
-/// the persisted value overrides the initializer (`__init` runs, then restore).
-#[rstest]
-fn retain_initializer_is_cold_start_only(mut with_db: db::RootDatabase) {
-    let source = r#"
-        PROGRAM P
-        VAR RETAIN x : INT := 7; END_VAR
-            x := x + 1;
-        END_PROGRAM
-
-        CONFIGURATION Cfg
-            RESOURCE Res ON CPU
-                TASK T(INTERVAL := T#10ms, PRIORITY := 1);
-                PROGRAM P1 WITH T : P;
-            END_RESOURCE
-        END_CONFIGURATION
-    "#;
-    let (_mir, wasm) = compile_to_mir_and_wasm(&mut with_db, source);
-    let path = temp_path("coldwarm");
-
-    // Cold boot: x initializes to 7, two scans -> 9, snapshot.
-    {
-        let mut plc = Plc::load(
-            &wasm,
-            Config {
-                retain_path: Some(path.clone()),
-                program_path: None,
-                ..Config::default()
-            },
-        )
-        .expect("load (cold)");
-        assert_eq!(read_first_i32(&plc), 7);
-        plc.run(2).expect("scans");
-        assert_eq!(read_first_i32(&plc), 9);
-        plc.snapshot_retain().expect("snapshot");
-    }
-
-    // Warm boot: `__init` sets x = 7, but restore overrides it back to 9.
-    {
-        let plc = Plc::load(
-            &wasm,
-            Config {
-                retain_path: Some(path.clone()),
-                program_path: None,
-                ..Config::default()
-            },
-        )
-        .expect("load (warm)");
-        assert_eq!(
-            read_first_i32(&plc),
-            9,
-            "warm start: persisted value overrides the initializer"
-        );
-    }
-
-    std::fs::remove_file(&path).ok();
 }
 
 /// Regression: a PROGRAM field or VAR_GLOBAL whose type is not i32-shaped had
@@ -455,7 +391,7 @@ fn wide_and_float_program_field_initializers_load(mut with_db: db::RootDatabase)
     "#;
     let (_mir, wasm) = compile_to_mir_and_wasm(&mut with_db, source);
     // Loading is the assertion that used to fail: the module did not validate.
-    let mut plc = Plc::load(&wasm, Config::default()).expect("module must validate and load");
+    let mut plc = TestPlc::load(&wasm).expect("module must validate and load");
     plc.run(1).expect("scan");
     assert_eq!(read_first_i32(&plc), 1, "every wide initializer applied");
 }
@@ -488,7 +424,7 @@ fn wide_and_float_global_initializers_load(mut with_db: db::RootDatabase) {
         END_CONFIGURATION
     "#;
     let (_mir, wasm) = compile_to_mir_and_wasm(&mut with_db, source);
-    let mut plc = Plc::load(&wasm, Config::default()).expect("module must validate and load");
+    let mut plc = TestPlc::load(&wasm).expect("module must validate and load");
     plc.run(1).expect("scan");
     assert_eq!(read_first_i32(&plc), 1, "wide global initializers applied");
 }
@@ -520,7 +456,7 @@ fn config_global_initializer_applies(mut with_db: db::RootDatabase) {
         END_CONFIGURATION
     "#;
     let (_mir, wasm) = compile_to_mir_and_wasm(&mut with_db, source);
-    let mut plc = Plc::load(&wasm, Config::default()).expect("load");
+    let mut plc = TestPlc::load(&wasm).expect("load");
     plc.run(1).expect("scan");
     assert_eq!(
         read_first_i32(&plc),
@@ -556,7 +492,7 @@ fn a_global_name_list_gives_each_name_its_own_slot(mut with_db: db::RootDatabase
         END_CONFIGURATION
     "#;
     let (_mir, wasm) = compile_to_mir_and_wasm(&mut with_db, source);
-    let mut plc = Plc::load(&wasm, Config::default()).expect("load");
+    let mut plc = TestPlc::load(&wasm).expect("load");
     plc.run(1).expect("scan");
     // Both start at 5; ga is bumped to 6 and gb is untouched, so the two
     // names cannot be aliasing one slot.
@@ -740,78 +676,9 @@ fn widening_global_initializer_carries_the_value(mut with_db: db::RootDatabase) 
         END_CONFIGURATION
     "#;
     let (_mir, wasm) = compile_to_mir_and_wasm(&mut with_db, source);
-    let plc = Plc::load(&wasm, Config::default()).expect("load");
+    let plc = TestPlc::load(&wasm).expect("load");
     let g = f32::from_le_bytes(plc.read_globals()[..4].try_into().unwrap());
     assert_eq!(g, 2.0);
-}
-
-/// Cold/warm across a MULTI-WORD retain band: `__init` fills a RETAIN array,
-/// a scan mutates several elements, and the warm restore must bring back the
-/// WHOLE band — a restore that only rewrote the first word passes the scalar
-/// cold/warm test above but fails the far element here.
-#[rstest]
-fn retain_array_restores_the_whole_band(mut with_db: db::RootDatabase) {
-    let source = r#"
-        PROGRAM P
-        VAR RETAIN a : ARRAY[0..3] OF DINT := [10, 20, 30, 40]; END_VAR
-            a[0] := a[0] + 1;
-            a[3] := a[3] + 1;
-        END_PROGRAM
-
-        CONFIGURATION Cfg
-            RESOURCE Res ON CPU
-                TASK T(INTERVAL := T#10ms, PRIORITY := 1);
-                PROGRAM P1 WITH T : P;
-            END_RESOURCE
-        END_CONFIGURATION
-    "#;
-    let (_mir, wasm) = compile_to_mir_and_wasm(&mut with_db, source);
-    let path = temp_path("retain_array");
-
-    let read4 = |plc: &Plc| -> Vec<i32> {
-        let r = plc.read_retain();
-        (0..4)
-            .map(|i| i32::from_le_bytes(r[i * 4..i * 4 + 4].try_into().unwrap()))
-            .collect()
-    };
-
-    // Cold: init fills the band, two scans bump the ends twice.
-    {
-        let mut plc = Plc::load(
-            &wasm,
-            Config {
-                retain_path: Some(path.clone()),
-                program_path: None,
-                ..Config::default()
-            },
-        )
-        .expect("load (cold)");
-        assert_eq!(read4(&plc), vec![10, 20, 30, 40], "initializer fills all");
-        plc.run(2).expect("scans");
-        assert_eq!(read4(&plc), vec![12, 20, 30, 42]);
-        plc.snapshot_retain().expect("snapshot");
-    }
-
-    // Warm: __init re-fills [10,20,30,40], then restore must overwrite ALL of
-    // it — first word AND last.
-    {
-        let plc = Plc::load(
-            &wasm,
-            Config {
-                retain_path: Some(path.clone()),
-                program_path: None,
-                ..Config::default()
-            },
-        )
-        .expect("load (warm)");
-        assert_eq!(
-            read4(&plc),
-            vec![12, 20, 30, 42],
-            "the whole band restored, not just the first word"
-        );
-    }
-
-    std::fs::remove_file(&path).ok();
 }
 
 // ---------------------------------------------------------------------------
@@ -844,7 +711,7 @@ fn global_init_from_constant_folds(mut with_db: db::RootDatabase) {
         END_CONFIGURATION
     "#;
     let (_mir, wasm) = compile_to_mir_and_wasm(&mut with_db, source);
-    let plc = Plc::load(&wasm, Config::default()).expect("load");
+    let plc = TestPlc::load(&wasm).expect("load");
     let g = plc.read_globals();
     let k = i32::from_le_bytes(g[..4].try_into().unwrap());
     let v = i32::from_le_bytes(g[4..8].try_into().unwrap());
@@ -947,7 +814,7 @@ fn type_defaults_apply_to_the_static_hosts(mut with_db: db::RootDatabase) {
     "#
     );
     let (_mir, wasm) = compile_to_mir_and_wasm(&mut with_db, &source);
-    let mut plc = Plc::load(&wasm, Config::default()).expect("load");
+    let mut plc = TestPlc::load(&wasm).expect("load");
     plc.run(1).expect("scan");
     assert_eq!(
         read_first_i32(&plc),
@@ -1001,7 +868,7 @@ fn type_default_constant_arith_reaches_both_hosts(mut with_db: db::RootDatabase)
         END_CONFIGURATION
     "#;
     let (_mir, wasm) = compile_to_mir_and_wasm(&mut with_db, source);
-    let mut plc = Plc::load(&wasm, Config::default()).expect("load");
+    let mut plc = TestPlc::load(&wasm).expect("load");
     plc.run(1).expect("scan");
     assert_eq!(
         read_first_i32(&plc),

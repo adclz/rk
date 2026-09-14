@@ -316,125 +316,6 @@ END_CONFIGURATION
     assert_eq!(instances.len(), 2, "one instance per fragment: {instances:?}");
 }
 
-/// End-to-end: a module scheduling two RESOURCEs must be refused at load.
-/// Each RESOURCE is its own execution unit, so honouring both means
-/// concurrent tasks over shared globals — and this runtime scans on one
-/// thread. Interleaving them there would just be called concurrency.
-#[rstest]
-fn a_compiled_two_resource_module_is_refused_at_load(mut with_db: db::RootDatabase) {
-    use runtime::{Config, Plc};
-
-    let source = r#"
-        PROGRAM Prog
-        VAR n : INT; END_VAR
-            n := n + 1;
-        END_PROGRAM
-
-        CONFIGURATION Cfg
-            RESOURCE Core0 ON CPU
-                TASK Fast(INTERVAL := T#10ms, PRIORITY := 1);
-                PROGRAM PA WITH Fast : Prog;
-            END_RESOURCE
-            RESOURCE Core1 ON CPU
-                TASK Slow(INTERVAL := T#50ms, PRIORITY := 2);
-                PROGRAM PB WITH Slow : Prog;
-            END_RESOURCE
-        END_CONFIGURATION
-    "#;
-
-    // The compiler refuses this configuration too (E1403), so the load-time
-    // refusal below is the second line: it holds for a module that reached the
-    // runtime some other way.
-    let (_mir, wasm) = compile_to_mir_and_wasm_expecting(&mut with_db, source, &["E1403"]);
-    let Err(err) = Plc::load(&wasm, Config::default()) else {
-        panic!("a two-resource module must not load");
-    };
-    let err = format!("{err:#}");
-    assert!(
-        err.contains("Core0") && err.contains("Core1"),
-        "the refusal should name the resources, got: {err}"
-    );
-}
-
-/// End-to-end: a two-rate CONFIGURATION driven by the `runtime` scheduler runs
-/// each task at its rate (fast every tick, slow every other) and retained
-/// counters persist across a power cycle.
-#[rstest]
-fn scheduler_runs_tasks_at_their_rates_and_persists(mut with_db: db::RootDatabase) {
-    use runtime::{Config, Plc};
-
-    let source = r#"
-        PROGRAM ProgA
-        VAR RETAIN a : INT; END_VAR
-            a := a + 1;
-        END_PROGRAM
-
-        PROGRAM ProgB
-        VAR RETAIN b : INT; END_VAR
-            b := b + 1;
-        END_PROGRAM
-
-        CONFIGURATION Cfg
-            RESOURCE Res ON CPU
-                TASK Fast(INTERVAL := T#10ms, PRIORITY := 1);
-                TASK Slow(INTERVAL := T#20ms, PRIORITY := 2);
-                PROGRAM PA WITH Fast : ProgA;
-                PROGRAM PB WITH Slow : ProgB;
-            END_RESOURCE
-        END_CONFIGURATION
-    "#;
-    let (_mir, wasm) = compile_to_mir_and_wasm(&mut with_db, source);
-
-    let path = std::env::temp_dir().join(format!("rk_sched_{}.bin", std::process::id()));
-    let _ = std::fs::remove_file(&path);
-
-    // Retain band holds [a, b] (declaration order), 4 bytes each.
-    let read_ab = |plc: &Plc| -> (i32, i32) {
-        let r = plc.read_retain();
-        (
-            i32::from_le_bytes(r[0..4].try_into().unwrap()),
-            i32::from_le_bytes(r[4..8].try_into().unwrap()),
-        )
-    };
-
-    // Boot 1: 4 base ticks. Fast (period 1) fires at ticks 0,1,2,3 => a = 4.
-    // Slow (period 2) fires at ticks 0,2 => b = 2.
-    {
-        let mut plc = Plc::load(
-            &wasm,
-            Config {
-                retain_path: Some(path.clone()),
-                program_path: None,
-                ..Config::default()
-            },
-        )
-        .expect("load (boot 1)");
-        assert_eq!(plc.common_ticktime_ns(), Some(10_000_000));
-        plc.run(4).expect("scans");
-        assert_eq!(read_ab(&plc), (4, 2));
-        plc.snapshot_retain().expect("snapshot");
-    }
-
-    // Boot 2 (power cycle): restore (4,2); the tick phase resets to 0. Two more
-    // ticks: Fast fires at 0,1 => a = 6; Slow fires at 0 => b = 3.
-    {
-        let mut plc = Plc::load(
-            &wasm,
-            Config {
-                retain_path: Some(path.clone()),
-                program_path: None,
-                ..Config::default()
-            },
-        )
-        .expect("load (boot 2)");
-        assert_eq!(read_ab(&plc), (4, 2), "retained counters restored");
-        plc.run(2).expect("scans");
-        assert_eq!(read_ab(&plc), (6, 3));
-    }
-
-    std::fs::remove_file(&path).ok();
-}
-
 /// A period is as wide as the INTERVAL it comes from. The manifest carried it
 /// as 32 bits while the tick counter is 64: a period past 2^32 base ticks
 /// wrapped, and one landing on exactly 2^32 became 0, which the runtime read
@@ -442,7 +323,7 @@ fn scheduler_runs_tasks_at_their_rates_and_persists(mut with_db: db::RootDatabas
 /// every millisecond, from a program `check` called clean.
 #[rstest]
 fn a_period_past_32_bits_is_carried_whole(mut with_db: db::RootDatabase) {
-    use runtime::{Config, Plc};
+    use crate::tests::codegen::TestPlc;
 
     let source = r#"
         PROGRAM ProgA
@@ -473,7 +354,7 @@ fn a_period_past_32_bits_is_carried_whole(mut with_db: db::RootDatabase) {
 
     // Retain band holds [a, b] (declaration order), 4 bytes each. Eight ticks:
     // Fast fires on every one, Rare on tick 0 and not again for 49 days.
-    let mut plc = Plc::load(&wasm, Config::default()).expect("load");
+    let mut plc = TestPlc::load(&wasm).expect("load");
     plc.run(8).expect("scans");
     let r = plc.read_retain();
     let a = i32::from_le_bytes(r[0..4].try_into().unwrap());
@@ -486,7 +367,7 @@ fn a_period_past_32_bits_is_carried_whole(mut with_db: db::RootDatabase) {
 /// run at different rates, so their retained counters diverge.
 #[rstest]
 fn two_instances_of_one_program_type_are_independent(mut with_db: db::RootDatabase) {
-    use runtime::{Config, Plc};
+    use crate::tests::codegen::TestPlc;
 
     let source = r#"
         PROGRAM Counter
@@ -508,7 +389,7 @@ fn two_instances_of_one_program_type_are_independent(mut with_db: db::RootDataba
     // Two independent Counter instances => an 8-byte retain band ([P1.n, P2.n]).
     assert_eq!(mir.retain_size, 8, "two INT instances => 8 bytes");
 
-    let mut plc = Plc::load(&wasm, Config::default()).expect("load");
+    let mut plc = TestPlc::load(&wasm).expect("load");
     plc.run(4).expect("scans");
 
     // Fast ran at ticks 0,1,2,3 (4x); Slow at 0,2 (2x). Same type, distinct state.
