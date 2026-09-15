@@ -1,0 +1,126 @@
+{
+  "name": "rk-st",
+  "displayName": "IEC 61131-3 Structured Text",
+  "description": "Language support for IEC 61131-3 Structured Text",
+  "author": "Adrien Clauzel",
+  "license": "MIT",
+  "version": "1.0.0",
+  "publisher": "adclz",
+  "categories": [
+    "Programming Languages",
+    "Linters",
+    "Formatters"
+  ],
+  "keywords": [
+    "iec",
+    "iec61131",
+    "structured-text",
+    "plc",
+    "st"
+  ],
+  "engines": {
+    "vscode": "^1.88.0"
+  },
+  "main": "./client/dist/desktop/extension",
+  "activationEvents": [
+    "workspaceContains:config.toml",
+    "workspaceContains:*/config.toml"
+  ],
+  "contributes": {
+    "configuration": {
+      "title": "IEC 61131-3",
+      "properties": {
+        "rk.path": {
+          "type": "string",
+          "default": "rk",
+          "description": "Path to the `rk` CLI (the build task and the standard-library lookup). Unset, an extension host run from the source checkout uses that checkout's `target/release/rk`; everywhere else, `rk` on PATH."
+        }
+      }
+    },
+    "languages": [
+      {
+        "id": "st",
+        "aliases": [
+          "structured_text",
+          "St",
+          "st",
+          "iecst"
+        ],
+        "extensions": [
+          ".st"
+        ],
+        "configuration": "./language-configuration.json"
+      }
+    ],
+    "grammars": [
+      {
+        "scopeName": "source.st",
+        "language": "st",
+        "path": "./syntaxes/st.tmLanguage.json"
+      },
+      {
+        "scopeName": "markdown.iecst.codeblock",
+        "path": "./syntaxes/md.codeblock.json",
+        "injectTo": [
+          "text.html.markdown"
+        ],
+        "embeddedLanguages": {
+          "meta.embedded.block.iecstmd": "st"
+        }
+      }
+    ],
+    "commands": [
+      {
+        "command": "rk.showImplementations",
+        "title": "Show Implementations"
+      },
+      {
+        "command": "rk.restartServer",
+        "title": "IEC: Restart Server"
+      },
+      {
+        "command": "rk.stopServer",
+        "title": "IEC: Stop Server"
+      },
+      {
+        "command": "rk.showStatusMenu",
+        "title": "IEC: Server Status"
+      },
+      {
+        "command": "rk.runTest",
+        "title": "IEC: Run Test"
+      }
+    ],
+    "taskDefinitions": [
+      {
+        "type": "rk",
+        "required": [
+          "workspace"
+        ],
+        "properties": {
+          "workspace": {
+            "type": "string",
+            "description": "Workspace folder to compile"
+          }
+        }
+      }
+    ]
+  },
+  "dependencies": {},
+  "devDependencies": {
+    "@typescript-eslint/eslint-plugin": "^7.14.0",
+    "@typescript-eslint/parser": "^7.14.0",
+    "@types/node": "^20",
+    "eslint": "^8.57.0",
+    "typescript": "^5.6.2",
+    "esbuild": "^0.21.3",
+    "serve": "^14.2.3"
+  },
+  "scripts": {
+    "postinstall": "cd client && npm install && cd ..",
+    "vscode:prepublish": "npm run compile",
+    "build": "cd client && node bin/esbuild.js && cd ..",
+    "compile": "cd client && node bin/esbuild.js && cd ..",
+    "lint": "cd client && npm run lint && cd .."
+  }
+}
