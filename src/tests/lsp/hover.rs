@@ -962,7 +962,7 @@ END_FUNCTION_BLOCK
             let text = ide_proto::handlers::HoverHandler::hover(&node, &with_db, offset)
                 .and_then(|h| hover_markup(h.contents))
                 .expect("hover text");
-            format!("{needle} -> {}", text.replace('\n', " ").trim().to_string())
+            format!("{needle} -> {}", text.replace('\n', " ").trim())
         })
         .collect();
 

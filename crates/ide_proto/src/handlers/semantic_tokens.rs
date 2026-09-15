@@ -409,8 +409,8 @@ pub(crate) fn semantic_tokens_for_type<'db>(
 
 /// Push a token over `span`, unless it spans more than one line: the protocol
 /// has no multi-line token and the builder underflows on one.
-fn push_span<'db>(
-    db: &'db dyn WorkspaceDataBase,
+fn push_span(
+    db: &dyn WorkspaceDataBase,
     builder: &mut TokenSink,
     file: auto_lsp::default::db::file::File,
     span: auto_lsp::tree_sitter::Range,

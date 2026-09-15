@@ -11,7 +11,6 @@ pub mod test_report;
 pub use info::{DebugInfo, SourcePos, StackFrame, TypeMismatch, VarLoc, VarValue, decode, encode};
 
 /// Custom wasm section carrying the MessagePack-encoded [`DebugSymbols`].
-
 pub const DEBUG_SYMBOLS_SECTION: &str = "debug-symbols";
 
 /// On-wire format version; bump on any breaking change. A new field goes
