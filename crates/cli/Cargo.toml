@@ -1,0 +1,51 @@
+[package]
+name = "rk"
+version = "0.1.0"
+authors = { workspace = true }
+license = { workspace = true }
+edition = { workspace = true }
+publish = false
+
+[[bin]]
+name = "rk"
+path = "src/bin/main.rs"
+
+[dependencies]
+db = { workspace = true }
+hir = { workspace = true }
+linter = { workspace = true }
+ast = { workspace = true }
+wasm_codegen = { workspace = true }
+mir = { workspace = true }
+debug_format = { workspace = true }
+clap = { workspace = true, features = ["derive"] }
+notify = { workspace = true }
+auto-lsp = { workspace = true }
+ariadne = { workspace = true }
+yansi = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+toml = { workspace = true }
+rayon = { workspace = true }
+ide_diagnostic = { workspace = true }
+formatter = { workspace = true }
+topiary-core = { workspace = true }
+wasmparser = { workspace = true }
+# Restoring SIGPIPE, so a closed pipe ends the process instead of panicking it.
+libc = "0.2"
+# `rk test` runs a module's `{test}` functions on a wasmtime host in-process.
+wasmtime = "45.0.1"
+anyhow = "1"
+# `--timeout` and the watcher's hold times.
+time = { workspace = true, features = ["local-offset"] }
+# wasm optimizer: an external binary, downloaded and verified (see src/wasm_opt.rs)
+dirs = { workspace = true }
+ureq = { version = "3", features = ["platform-verifier"] }
+flate2 = "1"
+tar = "0.4"
+sha2 = "0.10"
+# private scratch dir for the wasm-opt round trip (see optimize_wasm)
+tempfile = "3"
+
+[dev-dependencies]
+tempfile = "3"
