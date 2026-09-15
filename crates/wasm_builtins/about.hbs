@@ -1,0 +1,19 @@
+Third-party notices for generated modules
+
+Every module this compiler produces contains the builtin bundle
+(crates/wasm_builtins), compiled from the crates listed below. The Compiler
+Output Exception speaks only for code this repository's author owns; these
+are the terms under which the third-party code inside a generated module is
+available. Keep this file with any module you distribute.
+
+Generated from crates/wasm_builtins by `cargo about generate`. Do not edit.
+
+{{#each licenses}}
+===============================================================================
+{{name}} ({{id}})
+Used by:{{#each used_by}} {{crate.name}}{{/each}}
+===============================================================================
+
+{{{text}}}
+
+{{/each}}

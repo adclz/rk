@@ -285,4 +285,4 @@ it takes copies, so `VAR_IN_OUT`, aggregate outputs and a `STRING` return are re
 ## License
 
 rk is distributed under [AGPL-3.0-only](LICENSE).
-For the Apache-2.0 exceptions, and the permission that makes every generated module yours, see [LICENSING.md](LICENSING.md).
+For the Apache-2.0 exceptions, the permission that makes every generated module yours, and commercial licensing, see [LICENSING.md](LICENSING.md).
