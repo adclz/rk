@@ -7,3 +7,4 @@
 !syntaxes/**
 !client/dist/**
 !server/bin/**
+!LICENSE

@@ -7,7 +7,8 @@ The default license for this project is [AGPL-3.0-only](LICENSE).
 ## Generated modules
 
 [LICENSE-EXCEPTION](LICENSE-EXCEPTION) is an additional permission under AGPL section 7.
-A WebAssembly module the compiler produces from your code, with every custom section it carries, is yours under terms of your choosing; the AGPL does not reach it.
+Anything the compiler produces from your code, whatever language it was written in and with every custom section it carries, is yours under terms of your choosing; the AGPL imposes no obligation on you or on anyone who receives it.
+The builtin bundle and the standard library are also available under Apache-2.0, but for the copy of them inside a generated module the exception governs and Apache-2.0 is only offered in the alternative.
 
 ## Apache-2.0
 
@@ -19,9 +20,10 @@ crates/tree-sitter/
 crates/wasm_builtins/
 crates/wasm_builtins_generated/
 stdlib/
+vscode/syntaxes/
 ```
 
-The builtin bundle and the standard library are copied into every generated module, `debug_format` is what any host reads the module's sections with, and the grammar is what any editor parses the language with.
+The builtin bundle and the standard library are copied into every generated module, `debug_format` is what any host reads the module's sections with, and the two grammars, tree-sitter and TextMate, are what any editor parses the language with.
 
 ## MIT
 

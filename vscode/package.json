@@ -3,7 +3,7 @@
   "displayName": "IEC 61131-3 Structured Text",
   "description": "Language support for IEC 61131-3 Structured Text",
   "author": "Adrien Clauzel",
-  "license": "MIT",
+  "license": "AGPL-3.0-only",
   "version": "1.0.0",
   "publisher": "adclz",
   "categories": [
