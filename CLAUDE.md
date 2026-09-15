@@ -34,6 +34,12 @@ cargo insta review
 # gate loads the stdlib once per example.
 cargo run --release -p doc -- site/dist
 
+# Regenerate THIRD-PARTY-NOTICES, the licenses of the crates compiled into
+# every generated module (run from crates/wasm_builtins/; needs
+# `cargo install cargo-about --locked --features cli`). CI diffs the result
+# against the committed file.
+cargo about generate about.hbs -o ../../THIRD-PARTY-NOTICES
+
 # Build the tree-sitter grammar (run from crates/tree-sitter/)
 tree-sitter generate
 
@@ -282,11 +288,17 @@ the checkout's `stdlib/`. `rk env` prints the resolved path and its origin.
 
 ## CI Workflows
 
-| Workflow      | Trigger                                            | What it does                                              |
-| ------------- | -------------------------------------------------- | --------------------------------------------------------- |
-| `rust`        | Push/PR (ignoring .md/.js/.ts)                     | `cargo nextest run --workspace`                           |
-| `tree-sitter` | Push/PR touching grammar files                     | `tree-sitter test` + `tree-sitter fuzz`                   |
-| `fuzzing`     | Daily cron + PR touching fuzz/hir/db/ast/formatter | Builds and runs compiler+formatter fuzzers for 30min each |
+All on GitHub Actions, under `.github/workflows/`. Every Rust job installs the
+toolchain pinned by `rust-toolchain.toml` through the composite action in
+`.github/actions/rust-toolchain` and caches with `Swatinem/rust-cache`.
+
+| Workflow      | Trigger                                              | What it does                                                                                                                                                                                                                                                                       |
+| ------------- | ---------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `ci`          | Push to main, PR, manual                             | `test`: `cargo nextest run --workspace --profile ci` on Linux, macOS and Windows. `clippy`: `-Dwarnings`. `stdlib`: the stdlib's own suite, plain and `-O z` on Binaryen 131. `notices`: `THIRD-PARTY-NOTICES` matches a fresh `cargo about` run. `site`: examples vs compiler, `diagnostics.json` freshness, Worker bundle |
+| `tree-sitter` | Push/PR touching `crates/tree-sitter/**`             | `tree-sitter test` + `tree-sitter fuzz`                                                                                                                                                                                                                                            |
+| `fuzzing`     | Daily at 02:00 UTC, manual                           | Builds and runs the compiler and formatter fuzzers for 30 min each; crashes are uploaded as artifacts and fail the run                                                                                                                                                             |
+| `codspeed`    | Push to main, PR                                     | Benchmarks under CodSpeed                                                                                                                                                                                                                                                          |
+| `site`        | Push to main touching skills, crates, stdlib or site | Builds the website and deploys the Cloudflare Worker                                                                                                                                                                                                                               |
 
 ## Key Dependencies
 

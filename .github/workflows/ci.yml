@@ -105,6 +105,27 @@ jobs:
         working-directory: stdlib
         run: ../target/release/rk test -O z
 
+  # The licenses of the crates compiled into every generated module. The
+  # committed THIRD-PARTY-NOTICES must match a fresh generation, and
+  # `cargo about` refuses any license outside about.toml's accepted list, so
+  # a new dependency cannot enter every user's module under terms nobody
+  # accepted.
+  notices:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/rust-toolchain
+      - name: Install cargo-about
+        uses: taiki-e/install-action@cargo-about
+      - name: The committed third-party notices must be current
+        working-directory: crates/wasm_builtins
+        run: |
+          cargo about generate about.hbs -o ../../THIRD-PARTY-NOTICES
+          if ! git diff --exit-code -- ../../THIRD-PARTY-NOTICES; then
+            echo "::error::THIRD-PARTY-NOTICES is out of date: run \`cargo about generate about.hbs -o ../../THIRD-PARTY-NOTICES\` in crates/wasm_builtins and commit the result"
+            exit 1
+          fi
+
   # Deploying is site.yml's job, on main. Here the generator only has to
   # agree with the compiler and the Worker only has to type-check and bundle.
   site:

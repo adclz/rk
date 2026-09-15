@@ -1,0 +1,24 @@
+# cargo-about configuration for the builtin bundle: the crates whose compiled
+# code lands in every generated module. `cargo about generate` refuses to run
+# when a dependency's license is outside this list, so a new dependency cannot
+# enter every user's module under terms nobody accepted.
+#
+# BSL-1.0 is listed and Apache-2.0 is not, so that `ryu` (Apache-2.0 OR
+# BSL-1.0) is taken under Boost, whose notice requirement does not extend to
+# object code.
+accepted = ["MIT", "BSL-1.0"]
+targets = ["wasm32-unknown-unknown"]
+ignore-build-dependencies = true
+ignore-dev-dependencies = true
+
+# The bundle itself is this repository's, under the Compiler Output Exception;
+# it is not a third party.
+private = { ignore = true }
+
+# libm's LICENSE.txt is the MIT license plus the notices of the musl and Sun
+# code it carries. The classifier cannot score such a file, so it is named
+# here; the checksum makes a changed file fail the generation rather than
+# slip through.
+[libm.clarify]
+license = "MIT"
+files = [{ path = "LICENSE.txt", license = "MIT", checksum = "3823dda7cf046602f4b4e77ec8e227863dc4736037cc85bb33d9f19febe16bb7" }]
