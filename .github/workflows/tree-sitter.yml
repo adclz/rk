@@ -1,0 +1,37 @@
+name: tree-sitter
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "crates/tree-sitter/**"
+      - ".github/workflows/tree-sitter.yml"
+  pull_request:
+    paths:
+      - "crates/tree-sitter/**"
+      - ".github/workflows/tree-sitter.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    name: Test parser
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/rust-toolchain
+      # Version floor from crates/tree-sitter/package.json ("^0.25.4"): the
+      # CLI must match the generated parser's ABI. Built once, then cached.
+      - name: Install the tree-sitter CLI
+        uses: taiki-e/cache-cargo-install-action@v2
+        with:
+          tool: tree-sitter-cli@0.25.4
+      - name: Test parser
+        working-directory: crates/tree-sitter
+        run: tree-sitter test
+      # Needs libFuzzer, which the runner's clang provides.
+      - name: Fuzz parser
+        working-directory: crates/tree-sitter
+        run: tree-sitter fuzz
