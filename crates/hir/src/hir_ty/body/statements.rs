@@ -200,10 +200,10 @@ fn null_guards<'db>(
                 _ => NullGuards::default(),
             }
         }
-        ExprKind::UnaryOperator { expr, operator } => match operator {
-            UnaryOperatorKind::Not => null_guards(db, *expr, ctx).swapped(),
-            _ => NullGuards::default(),
-        },
+        ExprKind::UnaryOperator {
+            expr,
+            operator: UnaryOperatorKind::Not,
+        } => null_guards(db, *expr, ctx).swapped(),
         ExprKind::PrimaryExpr(PrimaryExpr::ParenthesizedExpr { expr }) => {
             null_guards(db, *expr, ctx)
         }

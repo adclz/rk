@@ -208,7 +208,11 @@ END_NAMESPACE
         let missing = ws.path().join("definitely").join("not").join("here");
         let err = text(require_workspace_dir(&missing));
         assert!(err.contains("does not exist"), "{err}");
-        assert!(err.contains("not/here"), "names the path: {err}");
+        // The message prints the path with the platform's separators.
+        assert!(
+            err.contains(&missing.display().to_string()),
+            "names the path: {err}"
+        );
 
         let file = ws.path().join("main.st");
         std::fs::write(&file, "").unwrap();

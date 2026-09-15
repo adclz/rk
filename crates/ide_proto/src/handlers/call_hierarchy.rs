@@ -87,7 +87,7 @@ impl<'db> CallTarget<'db> {
         (self.scope(db).file(db), whole, name)
     }
 
-    fn to_item(&self, db: &'db dyn WorkspaceDataBase) -> CallHierarchyItem {
+    fn to_item(self, db: &'db dyn WorkspaceDataBase) -> CallHierarchyItem {
         let (file, whole, name_span) = self.spans(db);
         CallHierarchyItem {
             name: self.name(db),

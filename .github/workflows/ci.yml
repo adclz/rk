@@ -1,0 +1,139 @@
+# The compiler's CI: the workspace suite on the three hosts a user installs
+# on, clippy with warnings denied, the standard library's own test suite
+# (plain and optimized), and the site's examples against the compiler.
+#
+# Every job runs on every push and pull request. The caches make an unchanged
+# tree mostly download time, and a path filter that skips the wrong job costs
+# more than the minutes it saves.
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  # One job, three hosts. The toolchain pin is identical everywhere; only the
+  # host differs.
+  test:
+    name: test (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+    steps:
+      # No .gitattributes pins line endings, and the Windows runner's git
+      # converts to CRLF by default. The .st fixtures and inline snapshots
+      # are byte-exact, so that checkout would fail every one of them.
+      - name: Keep line endings as committed
+        if: runner.os == 'Windows'
+        run: git config --global core.autocrlf false
+      - uses: actions/checkout@v4
+      - name: Free disk space
+        if: runner.os == 'Linux'
+        run: |
+          sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc /opt/hostedtoolcache/CodeQL
+          sudo docker image prune --all --force
+          df -h
+      - uses: ./.github/actions/rust-toolchain
+      - uses: Swatinem/rust-cache@v2
+      - name: Install nextest
+        uses: taiki-e/install-action@nextest
+      - name: Test workspace
+        run: cargo nextest run --workspace --profile ci
+
+  clippy:
+    runs-on: ubuntu-latest
+    env:
+      # CI fails on every warning, clippy lints included.
+      RUSTFLAGS: -Dwarnings
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/rust-toolchain
+      - uses: Swatinem/rust-cache@v2
+      - name: Run Clippy
+        run: cargo clippy --all-targets --all-features
+
+  stdlib:
+    runs-on: ubuntu-latest
+    env:
+      # The workspace under test IS the stdlib: empty = load no stdlib.
+      RK_STDLIB_PATH: ""
+    steps:
+      - uses: actions/checkout@v4
+      - name: Free disk space
+        run: |
+          sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc /opt/hostedtoolcache/CodeQL
+          sudo docker image prune --all --force
+          df -h
+      - uses: ./.github/actions/rust-toolchain
+      - uses: Swatinem/rust-cache@v2
+      - name: Build the rk CLI
+        run: cargo build -p rk --release
+      # The bundled `wasm-opt` crate is pinned to Binaryen 116, which predates
+      # `try_table` — the instruction emitted for RAISE and the stdlib's
+      # assertions — so it cannot read any realistic module and `-O` degrades
+      # to an unoptimized build. Without this step the optimized run below
+      # would silently be a second unoptimized run.
+      - name: Install Binaryen (for wasm-opt)
+        run: |
+          curl -sSfL -o "$RUNNER_TEMP/binaryen.tar.gz" \
+            https://github.com/WebAssembly/binaryen/releases/download/version_131/binaryen-version_131-x86_64-linux.tar.gz
+          tar xzf "$RUNNER_TEMP/binaryen.tar.gz" -C "$RUNNER_TEMP"
+          echo "$RUNNER_TEMP/binaryen-version_131/bin" >> "$GITHUB_PATH"
+      - name: Check wasm-opt is the one we expect
+        run: wasm-opt --version
+      - name: Compile and run the stdlib test suite
+        working-directory: stdlib
+        run: ../target/release/rk test
+      # Same suite against an OPTIMIZED build. `-O4` is excluded deliberately:
+      # Binaryen's Flatten pass still aborts on `try_table` as of 131, an
+      # upstream limitation, not a stale pin.
+      - name: Run the stdlib test suite against an optimized build
+        working-directory: stdlib
+        run: ../target/release/rk test -O z
+
+  # Deploying is site.yml's job, on main. Here the generator only has to
+  # agree with the compiler and the Worker only has to type-check and bundle.
+  site:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/rust-toolchain
+      - uses: Swatinem/rust-cache@v2
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      # Fails when a diagnostics example disagrees with the compiler, or a
+      # skill's example no longer holds, naming every one at fault. Writes
+      # nothing in that case, so the committed reference is never replaced
+      # by a bad one. Release: the skills gate loads the standard library
+      # once per example, which is minutes in a debug build.
+      - name: The site's examples must agree with the compiler
+        run: cargo run --release -p doc -- site/dist --base-url "${SITE_URL:-http://localhost:8788}"
+        env:
+          SITE_URL: ${{ vars.SITE_URL }}
+      # `rk explain` embeds crates/doc/diagnostics.json in the binary. If
+      # regenerating changed it, the committed copy was stale and every
+      # `rk explain` was serving it.
+      - name: The committed reference must be up to date
+        run: |
+          if ! git diff --exit-code -- crates/doc/diagnostics.json; then
+            echo "::error::crates/doc/diagnostics.json is out of date — run \`cargo run --release -p doc -- site/dist\` and commit the result"
+            exit 1
+          fi
+      - name: The Worker must type-check and bundle
+        working-directory: site
+        run: npm install && npm run check

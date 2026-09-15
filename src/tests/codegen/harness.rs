@@ -421,7 +421,7 @@ impl TestPlc {
             Driver::Scheduled(tasks) => Due::Tasks(
                 tasks
                     .iter()
-                    .filter(|t| tick % t.period_ticks == 0)
+                    .filter(|t| tick.is_multiple_of(t.period_ticks))
                     .cloned()
                     .collect(),
             ),

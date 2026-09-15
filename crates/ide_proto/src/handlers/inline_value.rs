@@ -22,8 +22,8 @@ fn within(outer: &Range, inner: &Range) -> bool {
     inner.start.line >= outer.start.line && inner.start.line <= outer.end.line
 }
 
-pub fn inline_values<'db>(
-    db: &'db dyn WorkspaceDataBase,
+pub fn inline_values(
+    db: &dyn WorkspaceDataBase,
     file: auto_lsp::default::db::file::File,
     params: &InlineValueParams,
 ) -> Vec<InlineValue> {

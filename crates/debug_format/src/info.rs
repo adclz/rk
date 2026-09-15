@@ -455,10 +455,10 @@ impl DebugInfo {
 
     /// Snapshot every monitorable variable, in symbol order, reading each
     /// slot through `read(address, size)`; an unreadable slot is skipped.
-    pub fn read_all_with<'a>(
-        &'a self,
+    pub fn read_all_with(
+        &self,
         mut read: impl FnMut(u32, u32) -> Option<Vec<u8>>,
-    ) -> Vec<(&'a str, VarValue)> {
+    ) -> Vec<(&str, VarValue)> {
         self.symbols
             .iter()
             .filter_map(|s| {

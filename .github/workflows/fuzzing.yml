@@ -1,0 +1,63 @@
+# Nightly fuzzing of the compiler and the formatter. A crash fails the run
+# and ships as an artifact; GitHub's notification is the alert.
+name: fuzzing
+
+on:
+  schedule:
+    # Daily at 2 AM UTC.
+    - cron: "0 2 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  fuzz:
+    name: Fuzz the compiler and the formatter
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    env:
+      CARGO_TERM_COLOR: always
+    steps:
+      - uses: actions/checkout@v4
+      # corpus_gen builds workspace crates (edition 2024) on the pinned
+      # toolchain; the fuzzers themselves need nightly for libFuzzer.
+      - uses: ./.github/actions/rust-toolchain
+      - name: Install Rust nightly
+        run: rustup toolchain install nightly --profile minimal
+      - uses: Swatinem/rust-cache@v2
+      - name: Generate corpus from tree-sitter tests
+        run: |
+          cargo run --release --manifest-path crates/fuzz/Cargo.toml --bin corpus_gen -- \
+            crates/tree-sitter/test/corpus \
+            crates/fuzz/corpus || true
+      - name: Build fuzzers
+        run: |
+          cargo +nightly build --release --manifest-path crates/fuzz/Cargo.toml --bin fuzz_compiler
+          cargo +nightly build --release --manifest-path crates/fuzz/Cargo.toml --bin fuzz_formatter
+      - name: Run compiler fuzzer (30 minutes)
+        run: timeout 1800 ./target/release/fuzz_compiler crates/fuzz/corpus -max_total_time=1800 || true
+      - name: Run formatter fuzzer (30 minutes)
+        run: timeout 1800 ./target/release/fuzz_formatter crates/fuzz/corpus -max_total_time=1800 || true
+      - name: Collect crash artifacts
+        if: always()
+        run: |
+          mkdir -p crash_artifacts
+          find . -maxdepth 1 \( -name "crash-*" -o -name "oom-*" -o -name "leak-*" -o -name "slow-*" \) \
+            -exec cp {} crash_artifacts/ \; 2>/dev/null || true
+          ls -la crash_artifacts/
+      - name: Upload crash artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: fuzz-crashes
+          path: crash_artifacts/
+          if-no-files-found: ignore
+          retention-days: 30
+      - name: Fail if the fuzzers found crashes
+        if: always()
+        run: |
+          if [ -n "$(ls -A crash_artifacts 2>/dev/null)" ]; then
+            echo "::error::fuzzers found $(ls -1 crash_artifacts | wc -l) crash(es)"
+            exit 1
+          fi

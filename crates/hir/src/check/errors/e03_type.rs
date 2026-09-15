@@ -458,10 +458,10 @@ impl InferLiteralError {
     pub fn shape(&self, target: &str) -> Option<String> {
         use InferLiteralError::*;
         Some(match self {
-            OutOfRange { type_name } => match int_bounds(type_name) {
-                Some(b) => format!("{type_name} holds {b}"),
-                None => return None,
-            },
+            OutOfRange { type_name } => {
+                let b = int_bounds(type_name)?;
+                format!("{type_name} holds {b}")
+            }
             DurationOutOfRange {
                 type_name,
                 min,
