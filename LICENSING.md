@@ -23,12 +23,6 @@ stdlib/
 
 The builtin bundle and the standard library are copied into every generated module, `debug_format` is what any host reads the module's sections with, and the grammar is what any editor parses the language with.
 
-The following directories and their subdirectories are licensed under their original upstream licenses:
-
-```
-oscat/
-```
-
 ## MIT
 
 The following directories are licensed under the MIT License, being derived from MIT-licensed work:

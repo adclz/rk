@@ -1,14 +1,8 @@
-//! Reporting for `rk test`.
-//!
-//! Execution is [`crate::test_host`]'s: a module's `{test}` functions run on
-//! a wasmtime host inside this process, and what is here is presentation —
-//! three output shapes, one of which (`json-lines`) other programs parse. The
-//! records are the ones a test run reports across a process boundary
-//! ([`debug_format::test_report`]), so a tool that runs the same module
-//! elsewhere renders its results through the same functions.
-//!
-//! Results are rendered as they happen: a suite is streamed, so a failure
-//! appears when it occurs rather than when the run ends.
+//! Reporting for `rk test`: execution is [`crate::test_host`]'s, this is
+//! presentation, in three output shapes. The records are
+//! [`debug_format::test_report`]'s, so a tool that runs the module
+//! elsewhere renders through the same functions. Results stream as they
+//! happen.
 
 use std::path::Path;
 use std::time::Duration;

@@ -635,13 +635,9 @@ fn lower_module_from_pous<'db>(
         bands.retain_size,
     )?;
 
-    // Phase 4.6: record what runs. The schedule travels as data in the
-    // `rk.schedule` section rather than as synthesized `__task_<i>` entry
-    // functions, so a task keeps its name, its priority and the RESOURCE that
-    // declares it — none of which survive being compiled into a call list.
-    //
-    // Built here, AFTER the retain relocation, so the instance addresses it
-    // records are the final ones.
+    // Phase 4.6: the schedule travels as data in the `rk.schedule` section,
+    // so a task keeps its name, priority and RESOURCE. Built after the
+    // retain relocation.
     module.schedule_manifest = module.schedule.as_ref().map(|s| s.to_manifest(db));
 
     // Rewrite `Local(name)` -> `Global` for every global a body referenced,

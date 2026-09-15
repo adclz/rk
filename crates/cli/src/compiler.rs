@@ -224,21 +224,9 @@ const WASM_FEATURES: &[&str] = &[
     "nontrapping-float-to-int",
 ];
 
-/// Run the optimizer over `wasm_bytes`, or return them unchanged.
-///
-/// The optimizer is an external binary — see [`crate::wasm_opt`] for how it is
-/// found. A failure at any point keeps the unoptimized module, which is correct
-/// but larger; it is never a reason to fail the build.
-/// Optimize for a RELEASE artifact: wasm-opt is mandatory and its failure is
-/// the build's failure.
-///
-/// The lenient [`optimize_wasm`] exists for `rk test -O`, where a missing
-/// optimizer degrades to a correct-but-unoptimized run with a warning. A
-/// release artifact is different: silently shipping the unoptimized build
-/// while calling it a release would make "release" a hope rather than a
-/// property. The check trusts the OUTPUT, not the exit status — Binaryen has
-/// aborted with status 0 before, so the only thing believed is a wasm module
-/// on disk.
+/// Optimize for a RELEASE artifact: wasm-opt is mandatory and its failure
+/// is the build's failure (the lenient [`optimize_wasm`] serves
+/// `rk test -O`). The check trusts the output, not the exit status.
 pub fn optimize_wasm_release(
     wasm_bytes: Vec<u8>,
     opt_level: &str,
@@ -290,12 +278,8 @@ pub fn optimize_wasm(wasm_bytes: Vec<u8>, opt_level: Option<&str>, verbose: bool
     }
     let original_size = wasm_bytes.len();
 
-    // wasm-opt works on files, so the module makes a round trip through disk.
-    // The scratch directory must be PRIVATE to this invocation: it used to be
-    // two fixed names in the shared temp dir, so two `rk compile` runs on one
-    // machine read and deleted each other's files — artifacts came back holding
-    // the other workspace's program, or truncated, and the truncated ones were
-    // still reported as a successful compile.
+    // wasm-opt works on files, so the module round-trips through a scratch
+    // directory private to this invocation.
     let scratch = match tempfile::Builder::new().prefix("rk-wasm-opt-").tempdir() {
         Ok(dir) => dir,
         Err(e) => {
@@ -371,17 +355,9 @@ pub fn optimize_wasm(wasm_bytes: Vec<u8>, opt_level: Option<&str>, verbose: bool
     optimized
 }
 
-/// wasm-opt strips custom sections, so re-attach the ones a module cannot run
-/// without.
-///
-/// Two are LOAD-BEARING, and neither is debug information despite sharing a
-/// crate with it:
-///
-/// * `retain-map` — per-field RETAIN persistence. Losing it degrades the
-///   runtime to legacy whole-band snapshots, the wrong IEC cold-start
-///   semantics for non-retained state.
-/// * `rk.schedule` — what runs, and when. Losing it leaves a module with
-///   code and no statement of what to execute, so it cannot be scanned.
+/// wasm-opt strips custom sections, so re-attach the load-bearing ones:
+/// `retain-map` (per-field RETAIN persistence) and `rk.schedule` (what
+/// runs).
 fn preserve_load_bearing_sections(original: &[u8], optimized: Vec<u8>) -> Vec<u8> {
     let mut out = optimized;
     for section in [
@@ -454,14 +430,8 @@ mod tests {
     /// as an INTERNAL COMPILER ERROR, without a fabricated error count.
     #[test]
     fn a_lowering_failure_presents_as_an_ice_not_a_user_diagnostic() {
-        // The contract: diagnostic-clean source must never fail to lower, so
-        // anything reaching `render_codegen_error` is a COMPILER bug and must
-        // say so — never a user-code diagnostic with an invented error count.
-        //
-        // The failure is injected rather than provoked through a workspace:
-        // every construct that used to pass `rk check` and die in lowering has
-        // since been given its HIR refusal (the last was `%IX0.0`, now E1417),
-        // and a test that needs a live bug to exist dies with the next fix.
+        // The failure is injected: every construct that used to pass `rk check`
+        // and die in lowering has since been given its HIR refusal.
         let ws = tempfile::tempdir().expect("tempdir");
         std::fs::write(
             ws.path().join("config.toml"),
@@ -556,14 +526,9 @@ mod tests {
         }
     }
 
-    /// A module's load-bearing sections must survive release optimization.
-    ///
-    /// This exercises `preserve_load_bearing_sections` DIRECTLY rather than
-    /// going through `optimize_wasm`: wasm-opt is an external binary, and when
-    /// it is absent — as on any machine that has not installed Binaryen —
-    /// optimization returns its input untouched, so a round-trip test passes
-    /// without the re-attachment ever running. It was vacuous that way for
-    /// `retain-map` before `rk.schedule` joined it.
+    /// The load-bearing sections must survive release optimization.
+    /// Exercised through `preserve_load_bearing_sections` directly: without
+    /// Binaryen installed, `optimize_wasm` returns its input untouched.
     #[test]
     fn load_bearing_sections_are_reattached_after_stripping() {
         for section in [

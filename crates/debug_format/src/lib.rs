@@ -1,10 +1,6 @@
-//! The on-wire debug-info format shared by the compiler (which produces it) and
-//! the runtime / debugger (which consume it). Pure serde data — no compiler
-//! internals — so the lean runtime reads it without depending on `mir`/`hir`.
-//!
-//! Carried in the compiled core module as MessagePack-encoded custom sections
-//! (see [`DEBUG_SYMBOLS_SECTION`]). This is the symbol-table half of debug info
-//! — variables → addresses, keyed by name — not a source map.
+//! The on-wire debug-info format shared by the compiler, which produces it,
+//! and the tools that consume it: pure serde data, carried in the core
+//! module as MessagePack-encoded custom sections.
 
 use serde::{Deserialize, Serialize};
 

@@ -73,7 +73,6 @@ nav.top a:hover { text-decoration: underline; }
 nav.top .brand { font-weight: 600; margin-right: auto; }
 .eyebrow { font-family: var(--mono); font-size: 0.72rem; letter-spacing: 0.08em; text-transform: uppercase; color: var(--muted); margin: 0 0 0.75rem; }
 h1 { font-family: var(--serif); font-weight: 400; font-size: 2.3rem; line-height: 1.15; margin: 0 0 1rem; text-wrap: balance; }
-h1.small-caps { font-variant: small-caps; letter-spacing: 0.01em; }
 h2 { font-family: var(--serif); font-weight: 500; font-size: 1.35rem; margin: 2.75rem 0 0.75rem; border-bottom: 1px solid var(--rule); padding-bottom: 0.35rem; text-wrap: balance; }
 h3 { font-family: var(--mono); font-weight: 600; font-size: 0.9rem; margin: 1.75rem 0 0.5rem; }
 p { margin: 0 0 1rem; }
@@ -135,18 +134,6 @@ footer a { color: var(--muted); }
 .hl-fail { color: var(--fail); }
 
 /* What sets it apart: full-width rows, diagram beside the claim, alternating */
-.why { margin: 2.5rem 0 3rem; }
-.feat { display: grid; grid-template-columns: 1fr 1fr; gap: 3rem; align-items: center; margin: 0 0 5.5rem; }
-.feat:last-of-type { margin-bottom: 3rem; }
-.feat:nth-of-type(even) .feat-art { order: 2; }
-@media (max-width: 720px) { .feat { grid-template-columns: 1fr; gap: 1.5rem; margin-bottom: 4rem; } .feat:nth-of-type(even) .feat-art { order: 0; } }
-.feat svg { width: 100%; height: auto; display: block; color: var(--muted); }
-.feat svg text { font-family: var(--mono); }
-.feat h3 { font-family: var(--serif); font-weight: 500; font-size: 1.55rem; line-height: 1.2; color: var(--ink); margin: 0 0 0.7rem; letter-spacing: -0.01em; text-transform: none; text-wrap: balance; }
-.feat p { margin: 0; font-size: 1.05rem; line-height: 1.6; color: var(--muted); }
-.feat p .lead-in { color: var(--ink); font-weight: 500; }
-.feat p .quote { font-size: 1.2em; color: var(--ink); }
-.why-foot { font-size: 0.9rem; color: var(--muted); margin: 0 0 2.5rem; }
 
 /* The reference: sidebar, search, inline markers */
 main.wide { max-width: 1180px; }
@@ -607,129 +594,6 @@ fn json_escape(s: &str) -> String {
 
 /// What sets the toolchain apart: four rows, each led by the capability as a
 /// sentence, with a diagram of the mechanism beside it.
-pub fn why_html() -> String {
-    format!(
-        r##"<div class="why">
-
-<svg width="0" height="0" aria-hidden="true" focusable="false" style="position:absolute">
-<symbol id="wasm-mark" viewBox="97.43 0 107.62 107.62">
-  <path fill="#654ff0" transform="translate(-0.21)" d="M163.76,0c0,.19,0,.38,0,.58a12.34,12.34,0,0,1-24.68,0c0-.2,0-.39,0-.58H97.64V107.62H205.26V0ZM149,96.1l-5.24-25.93h-.09L138,96.1h-7.22L122.6,58h7.13l4.88,25.93h.09L140.58,58h6.67l5.28,26.25h.09L158.19,58h7L156.1,96.1Zm39.26,0-2.43-8.48H173l-1.87,8.48H164L173.22,58h11.25l11.21,38.1Z"/>
-  <polygon fill="#654ff0" transform="translate(-0.21)" points="177.3 67.39 174.19 81.37 183.87 81.37 180.3 67.39 177.3 67.39"/>
-</symbol>
-</svg>
-
-<div class="feat">
-<div class="feat-art">
-<svg viewBox="0 0 240 82" role="img" aria-label="Source files with lines added and removed, as in a review">
-  <g fill="none" stroke="currentColor" stroke-width="1.5">
-    <path d="M14 8h34l10 10v50H14z"/><path d="M48 8v10h10"/>
-    <path d="M86 8h34l10 10v50H86z"/><path d="M120 8v10h10"/>
-    <path d="M158 8h34l10 10v50h-44z"/><path d="M192 8v10h10"/>
-  </g>
-  <g stroke="currentColor" stroke-width="1.5" opacity="0.4">
-    <path d="M22 32h28M22 40h20M22 56h16"/>
-    <path d="M94 32h28M94 48h25M94 56h16"/>
-    <path d="M166 32h28M166 40h20M166 48h25"/>
-  </g>
-  <path d="M22 48h25" stroke="var(--green)" stroke-width="1.5"/>
-  <path d="M94 40h20" stroke="var(--red)" stroke-width="1.5"/>
-  <g fill="currentColor" font-size="9" text-anchor="middle" opacity="0.8">
-    <text x="41" y="76">.st</text><text x="113" y="76">.st</text><text x="185" y="76">.st</text>
-  </g>
-</svg>
-</div>
-<div>
-<h3>Everything is code.</h3>
-<p><span class="lead-in">From PLC logic to library configuration.</span>
-<br>Namespaces organise your workspace, without restrictions.
-<br><span class="quote">&#8220;If you need something, write the code for it!&#8221;</span></p>
-</div>
-</div>
-
-<div class="feat">
-<div class="feat-art">
-<svg viewBox="0 0 240 102" role="img" aria-label="The compiler refusing an unknown struct field and listing the fields with similar names">
-  <text x="6" y="14" font-size="7.6" fill="currentColor" xml:space="preserve" textLength="145.92" lengthAdjust="spacing">Base : Engine := (power := 100, </text>
-  <text x="151.92" y="14" font-size="7.6" fill="currentColor" textLength="18.24" lengthAdjust="spacing">fuel</text>
-  <text x="170.16" y="14" font-size="7.6" fill="currentColor" xml:space="preserve" textLength="45.6" lengthAdjust="spacing"> := 10.0);</text>
-  <path d="M151.9 19q2.3-3.3 4.6 0t4.6 0t4.6 0t4.6 0" fill="none" stroke="var(--red)" stroke-width="1.5"/>
-  <path d="M156 22v5h-8" fill="none" stroke="var(--red)" stroke-width="1.1" opacity="0.6"/>
-  <text x="6" y="34" font-size="7.6" fill="var(--red)">'Engine' has no field named 'fuel'</text>
-  <text x="6" y="50" font-size="7.6" fill="currentColor" opacity="0.75">Note: 'Engine' has fields with similar name:</text>
-  <g font-size="7.6" fill="var(--green)">
-    <text x="34" y="62">- fuel1</text>
-    <text x="34" y="73">- fuel2</text>
-    <text x="34" y="84">- fuel3</text>
-    <text x="34" y="95">- fuel4</text>
-  </g>
-</svg>
-</div>
-<div>
-<h3>Catch mistakes at your desk, not on site.</h3>
-<p><span class="lead-in">A strict compiler, on purpose.</span>
-<br>Hundreds of diagnostics, each explained, each with an example.
-<br>Plus a linter you can tune.</p>
-</div>
-</div>
-
-<div class="feat">
-<div class="feat-art">
-<svg viewBox="0 0 240 76" role="img" aria-label="A compiled module running its test functions, each on a fresh instance">
-  <rect x="8" y="24" width="52" height="30" rx="3" fill="none" stroke="currentColor" stroke-width="1.5"/>
-  <use href="#wasm-mark" x="25" y="30" width="18" height="18"/>
-  <path d="M66 39h22" fill="none" stroke="currentColor" stroke-width="1.5" stroke-dasharray="4 3" opacity="0.6"/>
-  <path d="M86 35l6 4-6 4z" fill="currentColor" opacity="0.6"/>
-  <g font-family="var(--mono)" font-size="8.5">
-    <text x="100" y="24" fill="var(--green)">PASS</text><text x="128" y="24" fill="currentColor" opacity="0.8">test_abs_negates</text>
-    <text x="100" y="42" fill="var(--green)">PASS</text><text x="128" y="42" fill="currentColor" opacity="0.8">test_ton_elapses</text>
-    <text x="100" y="60" fill="var(--red)">FAIL</text><text x="128" y="60" fill="currentColor" opacity="0.8">test_limit_wraps</text>
-  </g>
-</svg>
-</div>
-<div>
-<h3>Tests are part of the language.</h3>
-<p><span class="lead-in">A <code>{{test}}</code> function is a test.</span>
-<br>Each one runs on a fresh instance, on a wasmtime host inside the compiler.
-<br>The standard library tests itself the same way.</p>
-</div>
-</div>
-
-<div class="feat">
-<div class="feat-art">
-<svg viewBox="0 0 240 76" role="img" aria-label="One compiled module instantiated by three different hosts">
-  <rect x="8" y="24" width="52" height="30" rx="3" fill="none" stroke="currentColor" stroke-width="1.5"/>
-  <use href="#wasm-mark" x="25" y="30" width="18" height="18"/>
-  <g fill="none" stroke="var(--link)" stroke-width="1.5">
-    <path d="M66 39h30v-22h34"/>
-    <path d="M66 39h64"/>
-    <path d="M66 39h30v22h34"/>
-  </g>
-  <g fill="var(--link)"><path d="M128 13l6 4-6 4z"/><path d="M128 35l6 4-6 4z"/><path d="M128 57l6 4-6 4z"/></g>
-  <g fill="none" stroke="currentColor" stroke-width="1.5">
-    <rect x="140" y="6" width="92" height="20" rx="3"/>
-    <rect x="140" y="28" width="92" height="20" rx="3"/>
-    <rect x="140" y="50" width="92" height="20" rx="3"/>
-  </g>
-  <g font-size="7.5" fill="currentColor" text-anchor="middle" opacity="0.8">
-    <text x="186" y="19">a controller</text>
-    <text x="186" y="41">a test run</text>
-    <text x="186" y="63">a browser</text>
-  </g>
-</svg>
-</div>
-<div>
-<h3>One module, any host.</h3>
-<p><span class="lead-in">Sandboxed WebAssembly with a documented ABI.</span>
-<br>Memory fixed at compile time, every scan bounded.
-<br>Tasks, retained state and symbols travel with it as custom sections.</p>
-</div>
-</div>
-
-</div>
-"##
-    )
-}
-
 /// The formatter page. Everything here was checked by running `rk fmt`:
 /// it indents with TABS, and it never reflows to a line width.
 pub fn formatter_html(hl: &crate::highlight::StHighlighter) -> String {

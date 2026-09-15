@@ -1,33 +1,15 @@
 //! Where the standard library lives, found the way a compiler finds its
-//! sysroot: relative to the executable that is asking.
-//!
-//! Installing the library is packaging's job — unpacking an archive, or a CI
-//! job assembling one. Finding it is the compiler's. The two must not be
-//! confused: a compiler that writes a library into `$HOME` on first use is an
-//! installer wearing a compiler's name, and it fails on read-only roots, in
-//! containers, and for a second user on the same machine.
-//!
-//! Two layouts satisfy the probe:
-//!
-//! ```text
-//! <prefix>/bin/rk                    <repo>/target/debug/rk
-//! <prefix>/lib/rk/std/config.toml    <repo>/stdlib/config.toml
-//! ```
-//!
-//! The development tree is one of them rather than a `cfg!(debug_assertions)`
-//! branch, so the checkout satisfies the shipped layout and the tests
-//! exercise the code path that ships.
-//!
-//! This module only ANSWERS. Nothing here reads the environment or decides
-//! precedence; [`crate::loader::resolve_library_path`] owns that order and
-//! consults the probe last.
+//! sysroot: relative to the executable. Installing it is packaging's job;
+//! finding it is the compiler's. Two layouts satisfy the probe:
+//! `<prefix>/bin/rk` with `<prefix>/lib/rk/std/config.toml`, and
+//! `<repo>/target/debug/rk` with `<repo>/stdlib/config.toml`. This module
+//! only answers; [`crate::loader::resolve_library_path`] owns precedence.
 
 use std::path::{Path, PathBuf};
 use std::sync::OnceLock;
 
-/// What declares a directory usable by `rk` — a library or a workspace, the
-/// same file either way. Already required of the standard library, which is a
-/// project like any other (`stdlib/config.toml`).
+/// What declares a directory usable by `rk`: a library or a workspace, the
+/// same file either way.
 pub const CONFIG_FILE: &str = "config.toml";
 
 /// The installed layout, relative to a directory on the search path.
@@ -36,20 +18,10 @@ const SYSROOT_SUFFIX: &[&str] = &["lib", "rk", "std"];
 /// The development layout: the library beside the checkout it belongs to.
 const DEV_SUFFIX: &[&str] = &["stdlib"];
 
-/// How far above the executable's own directory to look.
-///
-/// Three ancestors is the least that reaches every layout in use:
-///
-/// | executable                            | ancestor |
-/// |---------------------------------------|----------|
-/// | `<prefix>/bin/rk`                     | 1        |
-/// | `target/debug/rk`                     | 2        |
-/// | `target/<triple>/release/rk`          | 3        |
-/// | `target/debug/deps/<test binary>`     | 3        |
-/// | `vscode/server/bin/vscode-lsp-server` | 3        |
-///
-/// It is also a stopping rule: an unbounded walk reaches `$HOME` and `/`,
-/// where a stray project would silently become everyone's standard library.
+/// How far above the executable's directory to look: three ancestors
+/// reaches every layout in use (`<prefix>/bin/rk` 1, `target/debug/rk` 2,
+/// `target/<triple>/release/rk`, test binaries and the extension's server
+/// 3). Also the stopping rule: an unbounded walk reaches `$HOME` and `/`.
 const MAX_ANCESTORS: usize = 3;
 
 /// Where a library directory came from, for `rk env` and for the message that
@@ -123,12 +95,9 @@ pub fn probed_paths(exe: &Path) -> Vec<PathBuf> {
         .collect()
 }
 
-/// The directories to search, nearest first.
-///
-/// Both the executable's own path and its canonical one are walked: a
-/// packager may symlink `bin/rk` from elsewhere, and the library sits beside
-/// the real file, not beside the link. Go removed its `GOROOT_FINAL` knob and
-/// told packagers to symlink for exactly this reason.
+/// The directories to search, nearest first, along both the executable's
+/// own path and its canonical one: a packager may symlink `bin/rk`, and
+/// the library sits beside the real file.
 fn search_roots(exe: &Path) -> Vec<PathBuf> {
     let mut roots = Vec::new();
     let canonical = exe.canonicalize().ok();
@@ -146,16 +115,10 @@ fn search_roots(exe: &Path) -> Vec<PathBuf> {
     roots
 }
 
-/// Whether a directory declares itself usable, by holding a [`CONFIG_FILE`].
-///
-/// The probe searches directories nobody pointed at, so it cannot take the
-/// first path that merely exists: an empty `lib/rk/std` left behind by a
-/// half-finished copy would become a standard library with nothing in it.
-/// Requiring the declaration a library already carries keeps the walk from
-/// inventing a second notion of what a library is.
-///
-/// A path named through `RK_STDLIB_PATH` skips this: that one is an explicit
-/// choice and is taken as given.
+/// Whether a directory declares itself usable, by holding a
+/// [`CONFIG_FILE`]: the probe searches directories nobody pointed at, so
+/// an empty directory must not become a library. A path named through
+/// `RK_STDLIB_PATH` skips this.
 fn is_library(dir: &Path) -> bool {
     dir.join(CONFIG_FILE).is_file()
 }

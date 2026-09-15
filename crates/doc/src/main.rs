@@ -642,9 +642,8 @@ fn main() {
             "mkdir -p .claude/skills\ncurl -fsSL {base_url}/skills.tar.gz | tar xz -C .claude/skills"
         );
         let body = format!(
-            r#"<h1 class="small-caps">PLC programming in the era of agentic engineering.</h1>
+            r#"<h1>rk</h1>
 <p class="lede"><strong>rk</strong> compiles IEC 61131-3 Structured Text to WebAssembly: check, test, compile, in one binary, from any editor.</p>
-{why}
 <h2>Install the skills</h2>
 <pre><code class="language-sh">{install_hl}</code></pre>
 <p>Unpack it wherever your agent keeps its skills; any agent that reads the Agent Skills format can use them. Every skill is also a plain file at <code>/skills/&lt;name&gt;/SKILL.md</code>, if you want one on its own. New here? <a href="/skills/getting-started/">getting-started</a> is the first one to read.</p>
@@ -656,7 +655,6 @@ fn main() {
 "#,
             list = skill_list_html(&skills),
             install_hl = crate::highlight::shell_html(&install),
-            why = site::why_html(),
             codes = entries.len()
         );
         // Flush-left: a continuation line that kept its indentation would make
@@ -665,16 +663,6 @@ fn main() {
             r#"# rk
 
 rk compiles IEC 61131-3 Structured Text to WebAssembly: check, test, compile, in one binary, from any editor. The documentation is a set of Agent Skills whose examples the compiler verifies before publishing.
-
-## Why rk
-
-**Plain text, all the way down.** Every artifact is a file you can read, diff and review: no wizards, no generated XML, no binary project. Even the standard library is ordinary Structured Text, and you can replace it.
-
-**The compiler answers.** Every error names what it found and, where it can, what you probably meant. All {codes} of them ship with an example this site re-runs through the compiler before publishing.
-
-**One module for any host.** What comes out is a sandboxed WebAssembly module with its memory fixed at compile time and a documented ABI; its tests, task schedule and debug symbols travel with it as custom sections.
-
-**In your editor.** A full language server, and a formatter that works on the syntax tree rather than the text, so it cannot produce something that no longer parses.
 
 ## Install the skills
 
@@ -687,8 +675,7 @@ Every skill is also a plain file at `/skills/<name>/SKILL.md`, if you want one o
 
 ## Skills
 
-"#,
-            codes = entries.len()
+"#
         );
         for s in &skills {
             md.push_str(&format!(

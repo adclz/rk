@@ -245,11 +245,8 @@ fn count_nested_string_calls_stmt(stmt: &MirStmt) -> u32 {
     }
 }
 
-/// Whether any function assigns to a buffer-backed STRING *field* or *global*.
-/// These lower to `rk.str_assign` just like STRING-local assignments, so the
-/// helper must be grafted even when the module has no STRING locals (otherwise
-/// `emit_string_assign` hits an ungrafted index). STRING locals are detected
-/// separately by the `any_string_local` scan.
+/// Whether any function assigns to a buffer-backed STRING field or global;
+/// those need `rk.str_assign` grafted even without STRING locals.
 fn module_assigns_static_string(module: &MirModule) -> bool {
     module
         .functions
@@ -264,11 +261,8 @@ fn stmts_assign_static_string(stmts: &[MirStmt]) -> bool {
 fn stmt_assigns_static_string(stmt: &MirStmt) -> bool {
     match stmt {
         MirStmt::Assign { target, .. } => place_is_static_string(target),
-        // An FB call's STRING input writes and output reads both route through
-        // `rk.str_assign` (emit_fb_call), so they arm the graft like any other
-        // static-string assignment. Without this, a caller writing a literal
-        // into a STRING input — with no other string activity in the module —
-        // compiled to the `.expect` in emit_stmt instead of a module.
+        // An FB call's STRING inputs and outputs route through `rk.str_assign`
+        // too.
         MirStmt::FbCall {
             input_writes,
             output_reads,
@@ -309,9 +303,8 @@ fn stmt_assigns_static_string(stmt: &MirStmt) -> bool {
     }
 }
 
-/// A STRING param, possibly by reference: `VAR_IN_OUT`/`VAR_OUTPUT` strings lower
-/// to `Pointer(String)`. These can be assignment targets routed through
-/// `rk.str_assign`, so they must arm the graft trigger.
+/// A STRING param, possibly by reference (`Pointer(String)`): an
+/// assignment target through `rk.str_assign`.
 fn param_is_stringish(ty: &MirType) -> bool {
     match ty {
         MirType::String { .. } => true,
@@ -453,15 +446,8 @@ pub(crate) enum LocalInfo {
     /// writing the length to `*addr` and bytes to `addr + 4`; `cap_index`
     /// clamps writes.
     StringInOutParam { addr_index: u32, cap_index: u32 },
-    /// String in memory. Layout starting at `address`:
-    ///   `addr + 0..4`           - `len` (i32), current byte length, ≤ `capacity`
-    ///   `addr + 4..4+capacity`  - embedded buffer
-    /// There is no stored pointer — the buffer pointer is implicit (`addr + 4`).
-    /// `capacity` comes from the declared `STRING[N]` (or `DEFAULT_STRING_CAPACITY`
-    /// for plain `STRING`). Assignment is a bounded `memcpy` into the buffer via
-    /// `rk.str_assign`. Reads/writes are addressed the same way as any string
-    /// place (local, field, global) — see `emit_str_place_value` /
-    /// `emit_string_assign`.
+    /// String in memory at `address`: `len` (i32) then `capacity` bytes of
+    /// buffer at `addr + 4`; assignment is a bounded copy via `rk.str_assign`.
     StringMemory { address: u32, capacity: u32 },
 }
 
@@ -486,18 +472,14 @@ struct WasmGen<'a> {
     /// Next free address for STRING snapshot scratch slots, past the MIR
     /// static layout.
     string_scratch_floor: Cell<u32>,
-    /// Tag index of the module-level `$rk_exception` tag. `Some` exactly
-    /// when at least one function contains a `MirStmt::Raise`. The tag
-    /// signature is `(i32, i32) -> ()` — the two params carry the
-    /// raised STRING's `(ptr, len)` payload.
+    /// Tag index of `$rk_exception` (`(i32, i32) -> ()`, the raised STRING's
+    /// `(ptr, len)`), `Some` when any function contains `Raise`.
     rk_exception_tag_idx: Option<u32>,
     /// Type index of `(i32, i32) -> ()`, for the `TagSection`.
     rk_exception_tag_type_idx: Option<u32>,
-    /// Type index of `() -> (i32, i32)` — the block signature for the
-    /// `$on_catch` block wrapping each `{test}` function's body. The
-    /// `catch $rk_exception` clause delivers the tag's params as the
-    /// block's result, so a `{test}` function's catch handler sees
-    /// `(ptr, len)` on the stack.
+    /// Type index of `() -> (i32, i32)`, the `$on_catch` block signature of a
+    /// `{test}` function: `catch $rk_exception` delivers `(ptr, len)` as its
+    /// result.
     test_catch_block_type_idx: Option<u32>,
     /// Bump allocator for `{test}` functions' 12-byte result areas, past the
     /// STRING-scratch region.
@@ -692,13 +674,8 @@ impl<'a> WasmGen<'a> {
             self.emit_import(ext_fn);
         }
 
-        // 5. Register the module-level `$rk_exception` tag *before*
-        //    grafting. The synth `__iec_raise` helper (emitted inside
-        //    `graft_builtins` when needed) must reference the tag's
-        //    index, so the tag has to exist first. Also covers `__RAISE`
-        //    in user code and `{test}` function wrapping.
-        //    Signature: `(i32, i32) -> ()` carries the raised STRING's
-        //    `(ptr, len)`. Tag index starts at 0 (only one tag per module).
+        // 5. Register the `$rk_exception` tag before grafting: the synth
+        //    helper references it. Signature `(i32, i32) -> ()`, tag index 0.
         if module_uses_raise(self.module)
             || module_test_count(self.module) > 0
             || needs_iec_raise_synth
@@ -730,12 +707,8 @@ impl<'a> WasmGen<'a> {
             self.builtin_indices = plan.name_to_wasm_idx;
         }
 
-        // 7. If any `{test}` function exists, register the block-type
-        //    used by their `$on_catch` blocks: `() -> (i32, i32)`. The
-        //    `catch $rk_exception` clause hands the tag's (ptr, len)
-        //    to this block as its result, so the catch handler sees
-        //    them on the stack and can write them into the test's
-        //    `result<unit, string>` area.
+        // 7. With any `{test}` function, register the `$on_catch` block type
+        //    `() -> (i32, i32)`.
         if module_test_count(self.module) > 0 {
             let test_catch_ty = self.next_type_idx;
             self.type_section.ty().function(
@@ -950,12 +923,8 @@ impl<'a> WasmGen<'a> {
             walk(db, &func.body, &mut found);
         }
 
-        // Force-include `rk.str_assign` whenever any function has a STRING
-        // local - every `string_var := <expr>` assignment lowers to a call
-        // into this helper. The pre-pass needs to know in advance so the
-        // helper is grafted alongside math intrinsics. Also force-include
-        // when *any* function nests STRING-returning calls, since the
-        // codegen-driven snapshot dance dispatches through the same helper.
+        // `rk.str_assign` is grafted whenever a function has a STRING local or
+        // nests STRING-returning calls.
         let any_string_local = self.module.functions.iter().any(|f| {
             f.locals
                 .iter()
@@ -1000,10 +969,8 @@ impl<'a> WasmGen<'a> {
         seen.len() as u32
     }
 
-    /// True when the graft of `names` would pull in any function that
-    /// calls the `__iec_raise` import — implying we need to emit a
-    /// codegen-synthesized helper that throws `$rk_exception` and reserve
-    /// the corresponding function-index slot.
+    /// Whether the graft of `names` reaches the `__iec_raise` import, which
+    /// needs a synthesized helper and its index slot.
     fn preflight_needs_iec_raise(&self, names: &[String]) -> bool {
         if names.is_empty() {
             return false;
@@ -1307,33 +1274,11 @@ impl<'a> WasmGen<'a> {
         self.code_section.function(&wasm_func);
     }
 
-    /// Emit a `{test}` function. The core-wasm signature is `() -> i32`:
-    /// the returned i32 is the address of a 12-byte canonical-ABI
-    /// `result<unit, string>` area. The function body is wrapped in a
-    /// `try_table (catch $rk_exception)` so that a `__RAISE` from any
-    /// nested call lands in the catch handler and is encoded as the Err
-    /// variant. Normal completion leaves the result area's discriminant
-    /// at its zero-initialized value (Ok).
-    ///
-    /// Layout emitted (pseudo-WAT):
-    /// ```text
-    ///   block $on_catch (result i32 i32)
-    ///     try_table (catch $rk_exception 0)
-    ///       <body>
-    ///     end
-    ///     ;; success path
-    ///     i32.const <result_area>
-    ///     return
-    ///   end
-    ///   ;; catch path: (msg_ptr, msg_len) on stack
-    ///   local.set $len_tmp
-    ///   local.set $ptr_tmp
-    ///   i32.const <result_area>; i32.const 1; i32.store8       ;; Err discriminant
-    ///   i32.const <result_area + 4>; local.get $ptr_tmp; i32.store
-    ///   i32.const <result_area + 8>; local.get $len_tmp; i32.store
-    ///   i32.const <result_area>
-    /// ;; falls through to function end with the area's address as the i32 result
-    /// ```
+    /// Emit a `{test}` function: `() -> i32`, returning the address of a
+    /// 12-byte canonical-ABI `result<unit, string>` area. The body is wrapped
+    /// in `try_table (catch $rk_exception)`: a `__RAISE` lands in the catch
+    /// handler, which writes the Err discriminant and the `(ptr, len)`
+    /// payload; normal completion leaves the zeroed Ok.
     fn emit_test_function(&mut self, func: &MirFunction) {
         // The diagnostic marker, as in `emit_function`.
         crate::emit_expr::CURRENT_EMIT_FN
@@ -1790,10 +1735,8 @@ impl<'a> WasmGen<'a> {
             });
         }
 
-        // The `{test}` functions this module carries. LOAD-BEARING for `rk
-        // test`: the runner reads it back to know what to call and what to
-        // name each result. Emitted here rather than by a wrapper, so the core
-        // module a test runs against is the one a plant runs.
+        // The `{test}` manifest, load-bearing for `rk test`: emitted in the core
+        // module, so the module a test runs against is the one a plant runs.
         if !self.module.test_manifest.tests.is_empty() {
             module.section(&wasm_encoder::CustomSection {
                 name: std::borrow::Cow::Borrowed(debug_format::test_manifest::TEST_MANIFEST_SECTION),

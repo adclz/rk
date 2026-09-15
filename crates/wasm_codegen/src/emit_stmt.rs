@@ -74,10 +74,8 @@ struct Ctx<'a> {
     /// Builtin instruction name (`f32.sin`) → wasm index of its grafted
     /// implementation.
     builtin_indices: &'a FxHashMap<String, u32>,
-    /// Index of the module-level `$rk_exception` tag, populated when
-    /// any function in the module contains `MirStmt::Raise`. `None`
-    /// otherwise — in which case `MirStmt::Raise` must never reach
-    /// codegen.
+    /// Index of the module-level `$rk_exception` tag, `Some` when any
+    /// function contains `Raise`.
     rk_exception_tag_idx: Option<u32>,
     /// `(within-body offset, source location)` at each `DebugTrap`, for the
     /// `debug-lines` table.
@@ -736,15 +734,9 @@ fn emit_stmt(func: &mut wasm_encoder::Function, stmt: &MirStmt, ctx: &Ctx) {
                 return;
             }
 
-            // IEC-width shifts/rotates (`rk.shl8`, `rk.rotl16`, …): raw
-            // wasm shift ops work at the i32/i64 lane width, so sub-width
-            // types need result masking, sub-width rotates need the
-            // shl|shr composition (an 8-bit rotate is NOT a masked
-            // i32.rotl — the wrapped bit lands at bit 31, not bit 7), and
-            // wasm masks the shift count mod lane width, so shift-by-type-
-            // width must be guarded to 0 explicitly. Needs the param
-            // *locals* (IN, N referenced more than once) — same pattern as
-            // the abs block above.
+            // IEC-width shifts and rotates (`rk.shl8`, `rk.rotl16`): sub-width
+            // results are masked, sub-width rotates are composed from shifts, and
+            // a count of the type width yields 0. Needs the param locals.
             if let Some(op) = instruction.strip_prefix("rk.") {
                 let get_local = |name: &_| match ctx.locals.get(name) {
                     Some(LocalInfo::Scalar { index, .. }) => *index,
@@ -791,14 +783,8 @@ fn emit_stmt(func: &mut wasm_encoder::Function, stmt: &MirStmt, ctx: &Ctx) {
         }
 
         MirStmt::Raise { message } => {
-            // Evaluate the STRING message expression — STRING values leave
-            // `(ptr, len)` on the stack — then throw the module-level
-            // `$rk_exception` tag, which has signature `(i32, i32) -> ()`.
-            //
-            // No in-language catch: the exception propagates to the host
-            // embedder, which surfaces it as a fault. The `rk_exception_tag_idx`
-            // is guaranteed `Some` here by the WasmGen pre-pass that runs
-            // before any function emission.
+            // Push the STRING message as `(ptr, len)`, then throw `$rk_exception`
+            // (`(i32, i32) -> ()`); the tag index is `Some` by the pre-pass.
             emit_expr(func, message, ctx.locals, ctx.fn_indices);
             let tag_idx = ctx
                 .rk_exception_tag_idx
@@ -1413,11 +1399,9 @@ fn emit_fb_field_read(
     }
 }
 
-/// Unified STRING assignment into a buffer-backed target (local buffer, instance
-/// field, global, array element, or `VAR_IN_OUT`). The dest header address is
-/// computed uniformly via `emit_addr_of`; `rk.str_assign(dest_addr, dest_cap,
-/// src_ptr, src_len)` does a capacity-bounded `memcpy` into the inline buffer
-/// and updates the length prefix.
+/// STRING assignment into a buffer-backed target:
+/// `rk.str_assign(dest_addr, dest_cap, src_ptr, src_len)`, a
+/// capacity-bounded copy that updates the length prefix.
 fn emit_string_assign(
     func: &mut wasm_encoder::Function,
     target: &mir::expr::MirPlace,
@@ -1441,10 +1425,8 @@ fn emit_assignment(
     value: &MirExpr,
     ctx: &Ctx,
 ) {
-    // Unified string write: any buffer-backed STRING target copies through
-    // rk.str_assign, regardless of where it lives. A borrowed VAR_INPUT view
-    // target (not buffer-backed) rebinds its (ptr, len) locals — handled in the
-    // Local match below.
+    // Any buffer-backed STRING target copies through `rk.str_assign`; a
+    // borrowed VAR_INPUT view rebinds its (ptr, len) locals below.
     if is_buffer_string(target, ctx.locals) {
         emit_string_assign(func, target, value, ctx);
         return;
@@ -1703,18 +1685,10 @@ fn emit_typed_mem_store(func: &mut wasm_encoder::Function, ty: &mir::types::MirT
     }
 }
 
-/// The type a store through `place` must use.
-///
-/// Every variant that knows its own type answers with it. `Global` is one of
-/// them and used to be missing: it fell through to the `Int` default, so a
-/// `REAL` global or PROGRAM field emitted `i32.store` under an `f32` value and
-/// the whole module failed wasm validation - reported against `__init`, with
-/// nothing pointing back at the initializer. `rk compile` still exited 0.
-///
-/// `Local` is the only variant with no type of its own; a scalar local is
-/// handled by the `LocalInfo` arms above and never reaches here, so the
-/// remaining case is an address-taken aggregate, for which the width is
-/// carried by the value rather than the place.
+/// The type a store through `place` must use. `Local` has no type of its
+/// own: a scalar local is handled by the `LocalInfo` arms, so the
+/// remaining case is an address-taken aggregate, whose width the value
+/// carries.
 fn place_type(place: &mir::expr::MirPlace) -> mir::types::MirType {
     match place {
         mir::expr::MirPlace::Field { field_type, .. } => field_type.clone(),

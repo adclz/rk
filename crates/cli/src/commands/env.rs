@@ -1,11 +1,5 @@
-//! `rk env` — the paths this toolchain resolved, and where each came from.
-//!
-//! Every toolchain that finds its library relative to itself exposes the
-//! answer (`rustc --print sysroot`, `zig env`, `go env GOROOT`), for one
-//! reason: resolution that succeeds silently is impossible to debug when it
-//! succeeds WRONGLY. A user with two installs, or a copy whose library was
-//! only half written, sees a working command and a wrong answer. Without this
-//! the only way to ask is to read the source and redo the walk by hand.
+//! `rk env`: the paths this toolchain resolved and where each came from,
+//! the way `rustc --print sysroot` or `go env GOROOT` do.
 
 use std::path::Path;
 

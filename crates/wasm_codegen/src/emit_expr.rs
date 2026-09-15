@@ -48,9 +48,8 @@ thread_local! {
     pub(crate) static CURRENT_EMIT_FN: RefCell<Option<String>> =
         const { RefCell::new(None) };
 
-    /// Index of the `rk.null_check` builtin for the module being emitted,
-    /// or `None` when nothing dereferences. Set by `WasmGen` once the graft
-    /// indices are known; read at every checked `Deref`.
+    /// Index of `rk.null_check` for the module, `None` when nothing
+    /// dereferences.
     pub(crate) static NULL_CHECK_IDX: RefCell<Option<u32>> =
         const { RefCell::new(None) };
 }
@@ -62,11 +61,8 @@ fn emit_null_check(func: &mut wasm_encoder::Function) {
     }
 }
 
-/// Emit the snapshot dance for a STRING-returning call result currently on
-/// the stack as `(ptr, len)`. Replaces the top two stack values with
-/// `(scratch+4, len)` where `scratch` is a freshly-allocated per-call-site
-/// slot, and the source bytes have been memcpy'd into it via
-/// `rk_str_assign`.
+/// Snapshot the STRING result `(ptr, len)` on the stack into a fresh
+/// per-call-site slot via `rk_str_assign`, leaving `(scratch+4, len)`.
 fn emit_string_snapshot(func: &mut wasm_encoder::Function) {
     SNAPSHOT_CTX.with(|cell| {
         let mut borrow = cell.borrow_mut();
@@ -88,9 +84,8 @@ fn emit_string_snapshot(func: &mut wasm_encoder::Function) {
         func.instruction(&Instruction::LocalGet(ptr_tmp));
         func.instruction(&Instruction::LocalGet(len_tmp));
         func.instruction(&Instruction::Call(str_assign));
-        // Push (scratch+4, len_tmp) - `rk_str_assign` clamps to slot_cap so
-        // len_tmp may overstate the actually-written length, but slot_cap
-        // matches the producer's max output for the targeted call sites.
+        // `rk_str_assign` clamps to the slot capacity, which matches the
+        // producers' maximum output.
         func.instruction(&Instruction::I32Const(slot_addr as i32 + 4));
         func.instruction(&Instruction::LocalGet(len_tmp));
     });
@@ -181,10 +176,7 @@ fn emit_constant(func: &mut wasm_encoder::Function, c: &MirConstant) {
     }
 }
 
-/// Whether `place` holds a STRING — selects string-operand codegen (a `(ptr,
-/// len)` pair / `rk.str_assign`) over a scalar load/store. True for every place
-/// kind a string can live at: locals (the three string `LocalInfo`s), instance
-/// fields, globals, array elements, and derefs.
+/// Whether `place` holds a STRING, at any place kind a string can live.
 pub(crate) fn place_is_string(place: &MirPlace, locals: &FxHashMap<Ident, LocalInfo>) -> bool {
     match place {
         MirPlace::Local(id) => matches!(
@@ -231,10 +223,8 @@ pub(crate) fn emit_str_place_value(
     func.instruction(&Instruction::I32Load(mem_arg(0, 2)));
 }
 
-/// A buffer-backed string is one that owns an inline `[len]+buffer` at an
-/// address — i.e. any string place EXCEPT a borrowed `VAR_INPUT` view, whose
-/// assignment rebinds its `(ptr, len)` locals rather than copying into a buffer.
-/// These are the targets that route through `rk.str_assign`.
+/// A string that owns an inline `[len]+buffer`: any string place except a
+/// borrowed `VAR_INPUT` view. These route through `rk.str_assign`.
 pub(crate) fn is_buffer_string(place: &MirPlace, locals: &FxHashMap<Ident, LocalInfo>) -> bool {
     if let MirPlace::Local(id) = place
         && matches!(locals.get(id), Some(LocalInfo::StringParam { .. }))
@@ -262,9 +252,8 @@ pub(crate) fn emit_str_value(
     }
 }
 
-/// Push the capacity (`rk.str_assign`'s `dest_cap` clamp) of a string place:
-/// a compile-time constant from its `STRING[N]` type for owned storage, or the
-/// caller-supplied `cap` local for a `VAR_IN_OUT` param.
+/// Push the capacity of a string place: a constant for owned storage, the
+/// `cap` local for a `VAR_IN_OUT`.
 pub(crate) fn emit_string_capacity(
     func: &mut wasm_encoder::Function,
     place: &MirPlace,

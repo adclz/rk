@@ -1,9 +1,6 @@
-//! Diagnostic collection + rendering for the CLI.
-//!
-//! [`collect_diagnostics`] runs the per-file checks in parallel; a
-//! [`DiagnosticReporter`] renders them with ariadne and tallies the counts.
-//! Shared by `rk check` and the `build_core` codegen path (which previously
-//! carried near-identical copies of this pipeline).
+//! Diagnostic collection and rendering for the CLI: [`collect_diagnostics`]
+//! runs the per-file checks in parallel; a [`DiagnosticReporter`] renders
+//! them and tallies the counts.
 
 use std::io::Write;
 use std::path::{Path, PathBuf};
@@ -16,9 +13,8 @@ use rayon::iter::{IntoParallelIterator, ParallelIterator};
 
 use crate::reports::sources;
 
-/// Collect diagnostics for every workspace file, in parallel. With `with_linter`
-/// the configured linter passes run too (used by `rk check`; codegen skips them —
-/// a style lint shouldn't block a build).
+/// Collect diagnostics for every workspace file, in parallel; `with_linter`
+/// runs the configured passes too (`rk check`, not codegen).
 pub fn collect_diagnostics(
     db: &RootDatabase,
     with_linter: bool,
@@ -224,9 +220,8 @@ impl<'db> DiagnosticReporter<'db> {
                         .expect("failed to write report");
 
                     let output = String::from_utf8_lossy(&buffer);
-                    // Render to the caller's sink — stderr for CLI commands, or an
-                    // in-memory buffer for `build_core` (which forwards the text over the
-                    // debugger transport, since stdout is the debugger transport there).
+                    // Render to the caller's sink: stderr for CLI commands, or an
+                    // in-memory buffer for a tool whose stdout is a transport.
                     let _ = write!(out, "{}", output.replace(url_str, &rel_path));
                 }
                 OutputFormat::Concise => self.render_concise(&rel_path, diagnostic, out),
@@ -462,10 +457,8 @@ mod tests {
         );
     }
 
-    /// The trap this guards: a workspace whose only findings are lints
-    /// (info/hint) must count ZERO errors — `rk check` bases its exit code on
-    /// `has_errors()`, so advice alone no longer exits 1. The advice still
-    /// renders (here in concise, as `info[...]`/`hint[...]` lines).
+    /// A workspace whose only findings are lints must count zero errors;
+    /// `rk check` bases its exit code on `has_errors()`.
     #[test]
     fn advice_only_workspace_has_no_errors() {
         let ws = tempfile::tempdir().expect("tempdir");

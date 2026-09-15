@@ -21,12 +21,9 @@ pub enum MirStmt {
         body_func: Ident,
         /// Function index (resolved during module lowering).
         body_func_index: u32,
-        /// Input field writes: (field_offset, value, field_type). The field
-        /// type drives the store shape: Elementary/Enum/Subrange are typed
-        /// scalar stores; Pointer (a by-ref VAR_IN_OUT) stores the address
-        /// carried by the value (an `AddrOf`); String copies via
-        /// `rk.str_assign` (value pushes `(ptr, len)`); Struct/Array bulk-copy
-        /// via `memory.copy` (value is an `AddrOf` of the source aggregate).
+        /// Input field writes `(offset, value, field type)`; the type drives the
+        /// store shape: scalar store, pointer store for a by-ref VAR_IN_OUT,
+        /// `rk.str_assign` for STRING, `memory.copy` for aggregates.
         input_writes: Vec<(u32, MirExpr, MirType)>,
         /// Output reads `(offset, target place, field type, target lane)`, the
         /// same shapes copying field → target; `target_lane` is `Some` when the
@@ -103,10 +100,9 @@ pub enum MirStmt {
     /// the `debug-lines` table.
     DebugTrap { location: MirSourceLocation },
 
-    /// Throws a wasm-level exception carrying a STRING payload. Lowers
-    /// to push `(ptr, len)` from the message expression onto the stack,
-    /// then `throw $rk_exception`. The host catches it at the wasm
-    /// boundary; there is no in-language catch (no `__TRY`).
+    /// Throw a wasm exception carrying a STRING payload
+    /// (`throw $rk_exception`); the host catches it, there is no
+    /// in-language catch.
     Raise { message: MirExpr },
 }
 

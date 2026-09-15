@@ -181,9 +181,8 @@ version = "1"
         assert!(config.output().is_none());
     }
 
-    /// Library acquisition moved out of the project config entirely — it is
-    /// selected by `RK_STDLIB_PATH` alone. Both former keys are rejected so a
-    /// stale config fails loudly instead of silently meaning something else.
+    /// Library acquisition is selected by `RK_STDLIB_PATH` alone; both former
+    /// keys are rejected so a stale config fails loudly.
     #[test]
     fn removed_stdlib_keys_are_rejected() {
         for key in ["disable_stdlib = true", "stdlib_path = \"/x\""] {

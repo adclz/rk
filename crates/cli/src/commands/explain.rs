@@ -1,9 +1,6 @@
-//! `rk explain <code>` — a short explanation of a diagnostic code.
-//!
-//! Meant for agents: the code, its title, and the explanation text, nothing
-//! more — humans have the documentation site. The text comes from the same
-//! committed reference the site serves (`crates/doc/diagnostics.json`,
-//! generated from `crates/doc/src/examples.rs`), embedded at build time.
+//! `rk explain <code>`: the code, its title and its explanation, for
+//! agents. The text is the committed reference the site serves
+//! (`crates/doc/diagnostics.json`), embedded at build time.
 
 use serde::Deserialize;
 

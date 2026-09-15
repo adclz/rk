@@ -27,9 +27,8 @@ pub enum LibraryPathResolution {
     /// Nothing named a library and the probe found none; the probed paths
     /// travel with the answer.
     NotFound { probed: Vec<PathBuf> },
-    /// The explicit, silent "no library". Either asked for — `RK_STDLIB_PATH`
-    /// set to the empty string — or because the workspace IS the library, and
-    /// loading it beside itself would duplicate every declaration.
+    /// The explicit, silent "no library": `RK_STDLIB_PATH` set to the empty
+    /// string, or the workspace IS the library.
     Disabled,
     /// A directory that exists, and where it came from.
     Found {
@@ -41,12 +40,9 @@ pub enum LibraryPathResolution {
     Invalid(String),
 }
 
-/// Resolves the library directory.
-///
-/// In order: `RK_STDLIB_PATH` in the environment, the same variable in a
-/// `.env` at the workspace root, then the probe beside the executable. A
-/// named path wins outright — including when it names nothing, which is the
-/// veto that keeps the probe from overriding a deliberate choice.
+/// Resolves the library directory: `RK_STDLIB_PATH` in the environment,
+/// then in the workspace's `.env`, then the probe beside the executable. A
+/// named path wins outright, even when it names nothing.
 pub fn resolve_library_path(workspace: Option<&Path>) -> LibraryPathResolution {
     let named = std::env::var(STDLIB_PATH_ENV)
         .ok()
@@ -90,10 +86,8 @@ fn is_the_workspace(library: &Path, workspace: Option<&Path>) -> bool {
     }
 }
 
-/// Reads `RK_STDLIB_PATH` from `<workspace>/.env`, if present.
-///
-/// Deliberately minimal: `KEY=VALUE` lines, `#` comments, optional single or
-/// double quotes around the value. Only this one variable is looked up.
+/// Reads `RK_STDLIB_PATH` from `<workspace>/.env`: `KEY=VALUE` lines, `#`
+/// comments, optional quotes.
 fn read_dotenv_var(workspace: &Path) -> Option<String> {
     let text = std::fs::read_to_string(workspace.join(".env")).ok()?;
     for line in text.lines() {

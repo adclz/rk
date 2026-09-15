@@ -438,15 +438,8 @@ mod execute_tests {
         );
     }
 
-    /// Graft `rk.div_i32_checked` — a Rust builtin that does a plain
-    /// `a / b`. Rust's compiler emits a pre-check + `panic!()` for
-    /// divide-by-zero and `INT_MIN / -1`; the bundle's panic handler
-    /// re-throws that panic as `$rk_exception`. End-to-end test of
-    /// the "Rust panic → IEC exception" path: build.rs picked up the
-    /// `__iec_raise` import, graft synthesized a helper, Rust's panic
-    /// constant string landed in the bundle's `.rodata`-style data
-    /// segment, and wasm exception delivery hands the (ptr, len) back
-    /// to a `catch` clause that surfaces the bytes verbatim.
+    /// Graft `rk.div_i32_checked`: Rust's divide-by-zero panic re-throws as
+    /// `$rk_exception`, end to end, with the panic message as payload.
     #[test]
     fn checked_div_raises_division_by_zero() {
         let mut types = TypeSection::new();
@@ -478,11 +471,8 @@ mod execute_tests {
         );
         let div_idx = plan.name_to_wasm_idx["rk.div_i32_checked"];
 
-        // Wrapper: `(numerator, divisor) -> (thrown_flag, msg_ptr, msg_len)`.
-        // Catches `$rk_exception` via try_table; on the success path
-        // discards the integer division result and returns `(0, 0, 0)`,
-        // on the catch path returns `(1, ptr, len)` where `(ptr, len)`
-        // is the exception payload.
+        // Wrapper: `(numerator, divisor) -> (thrown_flag, msg_ptr, msg_len)`,
+        // catching `$rk_exception` via try_table.
         types.ty().function(
             [wasm_encoder::ValType::I32, wasm_encoder::ValType::I32],
             [
@@ -615,16 +605,9 @@ mod execute_tests {
         assert_eq!(msg, "attempt to divide with overflow");
     }
 
-    /// Graft `rk.raise_str` (the trampoline that calls the `__iec_raise`
-    /// import from `wasm_builtins`) into a tiny output module and verify
-    /// that calling it throws the codegen-registered `$rk_exception`
-    /// tag. This exercises the full pipeline:
-    ///   1. build.rs parsed the import out of wasm_builtins.wasm
-    ///   2. transitive_closure reached an import call site
-    ///   3. graft_builtins synthesized an `__iec_raise` helper
-    ///   4. rewrite_body redirected the Call from the import idx to the
-    ///      synth helper idx
-    ///   5. running the wrapper throws and wasmtime surfaces it
+    /// Graft `rk.raise_str` into a tiny module and verify that calling it
+    /// throws the registered `$rk_exception` tag: the import was parsed, the
+    /// closure reached it, a helper was synthesized and the call redirected.
     #[test]
     fn rk_raise_str_throws_iec_exception() {
         let mut types = TypeSection::new();
@@ -634,9 +617,7 @@ mod execute_tests {
         let mut data = DataSection::new();
         let mut next_type = 0u32;
 
-        // Pre-register the `$rk_exception` tag's type. Graft expects the
-        // tag idx to be known. Tag itself goes into a TagSection emitted
-        // below.
+        // The `$rk_exception` tag's type, registered before the graft.
         types.ty().function(
             [wasm_encoder::ValType::I32, wasm_encoder::ValType::I32],
             std::iter::empty::<wasm_encoder::ValType>(),
@@ -658,10 +639,8 @@ mod execute_tests {
         );
         let target_idx = plan.name_to_wasm_idx["rk.raise_str"];
 
-        // Wrapper: calls rk_raise_str with a fixed (ptr, len). The bytes
-        // pointed at don't matter for the throw path — wasmtime just
-        // surfaces an "uncaught exception" trap. We only check that the
-        // call traps and that the resulting wasm validates.
+        // Wrapper calling rk_raise_str with a fixed (ptr, len); only the trap
+        // and validation are checked.
         types.ty().function(
             std::iter::empty::<wasm_encoder::ValType>(),
             std::iter::empty::<wasm_encoder::ValType>(),

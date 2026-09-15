@@ -52,9 +52,8 @@ fn compile_once(
     let _ = &mir_module;
 
     if !opts.release {
-        // The default: the debug artifact, all sections intact, unoptimized —
-        // what `rk test` runs and a debugger steps. Optimizing it would
-        // re-encode the code and orphan the line table, so it never is.
+        // The default: the debug artifact, all sections intact, never optimized
+        // (that would orphan the line table).
         let default_output = debug_core_path(workspace);
         let output = opts.output.unwrap_or(&default_output);
         return write_output(output, &core_bytes, "compiled debug core:");

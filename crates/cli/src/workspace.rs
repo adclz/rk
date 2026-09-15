@@ -24,17 +24,11 @@ pub fn require_workspace_dir(path: &std::path::Path) -> crate::error::CliResult<
     Ok(())
 }
 
-/// Load and parse a workspace into a fresh [`RootDatabase`]. Returns `None` (and
-/// reports why on stderr) if the config is invalid, the workspace holds no
-/// `.st` files, or — with `require_config` — it has no `config.toml`. All
-/// output goes to **stderr**, so a caller whose stdout is a transport can use
-/// it.
-///
-/// Without a config the whole stack falls back to defaults: default settings
-/// and NO linter (lints need a `[linter]` section); the library still comes
-/// from `RK_STDLIB_PATH` alone. `rk check` passes `require_config = false` so
-/// a bare directory of `.st` files is checkable; commands that produce
-/// artifacts keep requiring a project.
+/// Load and parse a workspace into a fresh [`RootDatabase`]; `None` (with
+/// the reason on stderr) when the config is invalid, no `.st` files exist,
+/// or, with `require_config`, there is no `config.toml`. Without a config,
+/// defaults apply and no linter runs; the library still comes from
+/// `RK_STDLIB_PATH`.
 pub fn init_db(
     workspace: &std::path::Path,
     verbose: bool,
@@ -321,10 +315,8 @@ END_NAMESPACE
         assert!(!counts.has_errors(), "library names must resolve:\n{out}");
     }
 
-    /// A broken library refuses to BUILD, visibly. The editor surface hides
-    /// library diagnostics on purpose; the compiler must not, or the library's
-    /// errors surface as an invalid wasm module with no message naming them.
-    /// `rk check` stays workspace-only either way.
+    /// A broken library refuses to build, visibly; `rk check` stays
+    /// workspace-only.
     #[test]
     fn library_errors_gate_compilation() {
         let lib = tempfile::tempdir().expect("lib tempdir");

@@ -155,16 +155,9 @@ impl<'db> ExprLowerCtx<'db> {
         lower_type(self.db, ty.normalize(self.db))
     }
 
-    /// The type a path step actually addresses, looking through `REF_TO`.
-    ///
-    /// HIR records a `^` as an ADJUSTMENT, so `infer` on `q^` still answers
-    /// the REFERENCE, and `lower_type` deliberately answers `Pointer(Void)`
-    /// for it — resolving a pointee there would not terminate on a type that
-    /// holds a reference to itself. So the pointee is resolved HERE, where the
-    /// use site knows it wants the layout of what the reference addresses.
-    /// Without it every aggregate access through a dereference — `q^.x`,
-    /// `r^[1]`, `f^.o` — hit "unsupported type" from code `rk check` called
-    /// clean, which is what made REF_TO scalar-only in practice.
+    /// The type a path step addresses, looking through `REF_TO`. HIR records
+    /// `^` as an adjustment and `lower_type` answers `Pointer(Void)` for the
+    /// reference, so the pointee is resolved here, where its layout is wanted.
     fn lower_pointee(&self, ty: Type<'db>) -> Result<MirType, LowerTypeError> {
         let mut ty = ty.normalize(self.db);
         while let Type::RefTo(spec) = ty {
@@ -710,10 +703,7 @@ impl<'db> ExprLowerCtx<'db> {
                 Ok(MirExpr::Constant(MirConstant::I64(val as i64)))
             }
 
-            // Floats — through the same HIR accessors the checker validated
-            // with. A raw `text.parse()` here rejected `1_000.5`: IEC allows
-            // underscores, HIR strips them, and the divergence was an ICE on
-            // code `rk check` called clean.
+            // Through the HIR accessors the checker validated with (`1_000.5` is legal).
             Elementary::Real(ident) => {
                 let val = ident.as_f32(db).map_err(|e| {
                     LowerTypeError::UnsupportedType(format!("Real parse error: {}", e))
@@ -727,14 +717,8 @@ impl<'db> ExprLowerCtx<'db> {
                 Ok(MirExpr::Constant(MirConstant::F64(val)))
             }
 
-            // Infer types - resolve using parent expression type. The LEXEME
-            // says integer; the resolved TYPE says what the value is. They
-            // disagree exactly when an integer literal sits in float context
-            // (`3.0 + 2`, `x ** 2`): inference makes the 2 a REAL, and every
-            // consumer — including the no-cast-needed check in
-            // `lower_expr_with_cast` — believes it. Emitting from the lexeme
-            // produced an i32 a float op then consumed: invalid wasm from a
-            // program `rk check` called clean.
+            // The lexeme says integer; the resolved type says what the value is
+            // (`3.0 + 2` makes the 2 a REAL). Emit from the type.
             Elementary::InferInteger(int) => {
                 let ty = parent_expr.infer(db);
                 let resolved = match ty.normalize(db) {
@@ -1364,19 +1348,11 @@ impl<'db> ExprLowerCtx<'db> {
         ))
     }
 
-    /// Wrap a runtime array subscript in `rk.idx_check`, which raises
-    /// "array index out of bounds" through the `$rk_exception` machinery when
-    /// the subscript leaves `[lower, lower + size)` - the scan faults with a
-    /// message instead of the access computing a NEIGHBOUR'S address, which is
-    /// what an unchecked `a[4]` on an `ARRAY[0..2]` used to do, silently, for
-    /// as long as the program ran.
-    ///
-    /// A compile-time in-bounds constant stays bare: the check would be dead
-    /// weight, and a literal subscript on a function-block receiver must stay
-    /// foldable (`static_fb_base` folds constant indices for dispatch). A
-    /// constant OUT of bounds is wrapped like a runtime value - HIR rejects
-    /// those it can see, so reaching one here means it slipped through, and
-    /// raising beats corrupting.
+    /// Wrap a runtime subscript in `rk.idx_check`, which raises "array index
+    /// out of bounds" when it leaves `[lower, lower + size)`. A constant in
+    /// bounds stays bare (a literal subscript on a function-block receiver
+    /// must stay foldable); a constant out of bounds is wrapped like a
+    /// runtime value.
     fn checked_index(&self, index: MirExpr, lower_bound: i64, dim_size: u32) -> MirExpr {
         if let MirExpr::Constant(MirConstant::I32(k)) = &index {
             let u = (*k as i64).wrapping_sub(lower_bound);
@@ -1856,12 +1832,8 @@ impl<'db> ExprLowerCtx<'db> {
                 | hir::hir_ty::ty::CallableType::MethodDecl(_)
         );
 
-        // Wrap a lowered value as ByRef when the target param is
-        // `VAR_IN_OUT` / `VAR_OUTPUT`. Only a Load has an address to take;
-        // E0806 refuses everything else upstream, partial accesses included.
-        // The old fallback passed the VALUE where the callee expects a
-        // POINTER — the callee then dereferenced a bit as an address and
-        // wrote to memory near 0, from code `rk check` called clean.
+        // A `VAR_IN_OUT` / `VAR_OUTPUT` arg passes by reference; only a Load has
+        // an address (E0806 refuses the rest).
         let to_byref = |mir: MirExpr| -> Result<MirCallArg, LowerTypeError> {
             match mir {
                 MirExpr::Load(place, _) => Ok(MirCallArg {
@@ -1935,14 +1907,8 @@ impl<'db> ExprLowerCtx<'db> {
                                 continue;
                             }
                         }
-                        // A by-value scalar is cast to the PARAM's lane. HIR
-                        // accepts an implicitly-widening argument
-                        // (`Double(n)` with `n : INT` into `IN : LREAL`), so
-                        // without the cast the callee's f64 param received an
-                        // i32 — invalid wasm from a program `rk check` called
-                        // clean. Non-scalar params (STRING, aggregates,
-                        // unresolved ANY_*) have no scalar lane to cast to and
-                        // keep the raw value.
+                        // A by-value scalar is cast to the param's lane (HIR accepts an
+                        // implicitly widening argument); non-scalar params keep the raw value.
                         let value =
                             match self.coercion_lane(value, || var.spec(self.db).infer(self.db)) {
                                 Ok(param_elem) => match self.expr_to_mir_elementary(value) {

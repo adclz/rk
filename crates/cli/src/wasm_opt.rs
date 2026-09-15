@@ -1,24 +1,9 @@
-//! Locating `wasm-opt`, Binaryen's optimizer.
-//!
-//! There is no usable Rust binding. The `wasm-opt` crate wraps Binaryen **116**
-//! and was last released in March 2024; upstream Binaryen is at 131. That gap
-//! matters concretely rather than cosmetically: `try_table` — the instruction
-//! this compiler emits for `RAISE` and for the stdlib's assertions — did not
-//! exist in 116, so that binding cannot even READ a module from any realistic
-//! workspace. Linking it also meant compiling 178 C++ files on every clean
-//! build to produce something that could not do the job.
-//!
-//! So the optimizer is an external binary, the way `wasm-pack` and the rest of
-//! the wasm toolchain treat it:
-//!
-//! 1. a `wasm-opt` already on PATH — whatever the user or CI installed wins;
-//! 2. otherwise a pinned prebuilt release, downloaded once into a cache
-//!    directory and checksum-verified;
-//! 3. otherwise nothing, and `-O` degrades to an unoptimized (still correct)
-//!    build with a warning.
-//!
-//! Step 2 can be refused: set `RK_NO_DOWNLOAD=1` for an air-gapped or
-//! reproducible environment and the search stops at step 1.
+//! Locating `wasm-opt`, Binaryen's optimizer. The `wasm-opt` crate wraps
+//! Binaryen 116, which predates `try_table` and cannot read a realistic
+//! module, so the optimizer is an external binary: one already on PATH
+//! wins; otherwise a pinned release is downloaded once into a cache
+//! directory and checksum-verified; otherwise `-O` degrades to an
+//! unoptimized build with a warning. `RK_NO_DOWNLOAD=1` stops at PATH.
 
 use std::path::{Path, PathBuf};
 

@@ -901,16 +901,10 @@ fn lower_program_inner<'db>(
     Ok((func, prog_type))
 }
 
-/// The wasm-level parameter a declared variable becomes, or `None` when it is
-/// not part of the calling convention (a plain local, temp, ...).
-///
-/// The ONE encoding of the convention — free functions, FB methods and class
-/// methods all build their signatures from it. Input passes by value,
-/// `VAR_IN_OUT`/`VAR_OUTPUT` by pointer, and a specialized interface param
-/// becomes a pointer to the concrete implementer's instance. Three copies of
-/// this match had drifted: the method ones dropped `VAR_OUTPUT` into the
-/// local arm while the call site passed a pointer for it — one value too many
-/// on the wasm stack, from code `rk check` called clean.
+/// The wasm-level parameter a declared variable becomes, or `None` when it
+/// is not part of the calling convention. The one encoding of the
+/// convention: input by value, `VAR_IN_OUT`/`VAR_OUTPUT` by pointer, a
+/// specialized interface param as a pointer to the concrete instance.
 fn param_for_var<'db>(
     db: &'db dyn WorkspaceDataBase,
     var: &hir::hir_def::pous::variable::VariableDecl<'db>,
@@ -1456,14 +1450,9 @@ fn lower_init_leaves<'db>(
         } else {
             ctx.lower_expr(leaf.value)?
         };
-        // The DECLARED type wins. HIR accepts an implicitly-widening
-        // initializer (`r : REAL := 1 + 1`), so without this cast the value
-        // keeps the expression's lane: invalid wasm for a local or a global,
-        // and for a memory-resident field an i32 stored into a REAL slot —
-        // integer BITS read back as 2.8e-45, from code `rk check` called
-        // clean. `is_const_value` sees through Cast, so static targets keep
-        // their initializers. (The folded-int arm above already wears its
-        // cast; wrapping again would be harmless but noisy.)
+        // The declared type wins: HIR accepts an implicitly widening
+        // initializer, so the value is cast to the declared lane.
+        // `is_const_value` sees through Cast.
         if !matches!(value, crate::expr::MirExpr::Cast { .. })
             && let crate::types::MirType::Elementary(to) = &leaf_ty
             && let Ok(from) = ctx.expr_to_mir_elementary(leaf.value)
@@ -1703,11 +1692,8 @@ fn walk_init_path(
     Some((offset, cur.clone()))
 }
 
-/// A value that can be baked into `__init`: a scalar literal, a string literal,
-/// or arithmetic over literals (computed once at startup). Excludes variable
-/// loads (init-order hazards) and calls. A `StringLiteral` is allowed because
-/// its assignment routes through `rk.str_assign`, a bounded copy into the
-/// destination's inline buffer.
+/// A value that can be baked into `__init`: a literal, a string literal,
+/// or arithmetic over literals. No variable loads or calls.
 fn is_const_value(e: &crate::expr::MirExpr) -> bool {
     use crate::expr::MirExpr;
     match e {

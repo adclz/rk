@@ -1,13 +1,8 @@
-//! The resolved scheduling model for a module's CONFIGURATION: which TASKs
-//! exist, how often each fires, and which PROGRAM *instances* each runs. Built
-//! by walking HIR's `ResolvedSchedule` — the resources, their runnable tasks in
-//! dispatch order, and the instances bound to each — and carried to the runtime
-//! as the `rk.schedule` manifest.
-//!
-//! A PROGRAM is compiled like a FUNCTION_BLOCK (struct + `this`-body), so each
-//! program configuration `PROGRAM inst WITH task : Type` allocates its own
-//! instance of the program's struct and runs `Type$__body__(&inst)`. Only
-//! cyclic (INTERVAL) tasks are scheduled; SINGLE/event tasks are deferred.
+//! The resolved scheduling model of a module's CONFIGURATION: which TASKs
+//! exist, how often each fires, which PROGRAM instances each runs; built
+//! from HIR's `ResolvedSchedule` and carried as the `rk.schedule` manifest.
+//! Each program configuration allocates its own instance and runs
+//! `Type$__body__(&inst)`. Only cyclic (INTERVAL) tasks are scheduled.
 
 use db::WorkspaceDataBase;
 use hir::{

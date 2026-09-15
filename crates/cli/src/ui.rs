@@ -32,9 +32,8 @@ pub fn format() -> OutputFormat {
     FORMAT.get().copied().unwrap_or(OutputFormat::Full)
 }
 
-/// One message as a `json-lines` record, on the stream the prose would take.
-/// The diagnostics honoured the format and every status line around them
-/// dropped it, so a tool reading `rk` under `json-lines` met prose anyway.
+/// One message as a `json-lines` record, on the stream the prose would
+/// take.
 fn record(level: &str, label: Option<&str>, msg: &str) -> String {
     let mut value = serde_json::json!({ "type": "message", "level": level, "text": msg });
     if let Some(label) = label {

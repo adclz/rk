@@ -1,9 +1,5 @@
-//! Locating the binaries that go with *this* `rk`.
-//!
-//! Beside the current executable first, and only then `PATH`. A toolchain must
-//! not run one version's program under another version's binary just because
-//! an older copy happens to come first in `PATH` — and during development the
-//! binary next to `rk` is the one that was just rebuilt.
+//! Locating the binaries that go with *this* `rk`: beside the current
+//! executable first, then `PATH`.
 
 use std::path::PathBuf;
 

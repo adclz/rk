@@ -64,9 +64,8 @@ pub struct MirModule {
     /// Resolved task schedule of the module's CONFIGURATION; `None` without one.
     pub schedule: Option<schedule::MirSchedule>,
 
-    /// The schedule as the module carries it: the `rk.schedule` custom
-    /// section. Built from [`MirModule::schedule`] once instance addresses are
-    /// final, and the only statement of what the runtime should run.
+    /// The schedule as the module carries it (the `rk.schedule` section),
+    /// built once instance addresses are final.
     pub schedule_manifest: Option<debug_format::ScheduleManifest>,
 
     /// Debug-symbol table: every debuggable variable at its absolute address,

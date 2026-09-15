@@ -13,9 +13,8 @@ pub struct Workspace {
     #[returns(as_ref)]
     pub workspace_folder: Option<PathBuf>,
 
-    /// Directory of the loaded library, if any — named through
-    /// `RK_STDLIB_PATH`, else found beside the executable
-    /// (see `loader::resolve_library_path`).
+    /// Directory of the loaded library, if any: named through
+    /// `RK_STDLIB_PATH`, else found beside the executable.
     #[returns(as_ref)]
     pub library_path: Option<PathBuf>,
 
@@ -127,10 +126,8 @@ fn resolve_all(
         }));
     }
 
-    // 4. Resolve the library: named through RK_STDLIB_PATH, else found
-    // beside the executable. Not finding one is never fatal: the user can
-    // still write code, and uses of library names simply fail to resolve like
-    // any other unknown name.
+    // 4. Resolve the library. Not finding one is never fatal: uses of
+    // library names fail to resolve like any other unknown name.
     use crate::loader::LibraryPathResolution;
     let library_path = match crate::loader::resolve_library_path(workspace_folder.as_deref()) {
         LibraryPathResolution::Found { dir, .. } => Some(dir),

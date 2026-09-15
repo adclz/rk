@@ -43,12 +43,9 @@ pub fn discover(wasm: &[u8]) -> Vec<TestEntry> {
     Vec::new()
 }
 
-/// Run the module's tests, optionally filtered by a substring of their path,
-/// calling `on_result` as each one finishes so a long suite reports progress.
-///
-/// `budget` bounds each test; `None` takes [`DEFAULT_BUDGET`]. A test that
-/// waits out a timer's preset legitimately needs longer, which is what
-/// `rk test --timeout` sets.
+/// Run the module's tests, optionally filtered by a substring of their
+/// path, calling `on_result` as each finishes. `budget` bounds each test
+/// (`None` = [`DEFAULT_BUDGET`]).
 pub fn run_each(
     wasm: &[u8],
     filter: Option<&str>,

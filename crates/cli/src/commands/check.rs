@@ -22,11 +22,8 @@ pub fn run_check(
     }
 }
 
-/// Run diagnostics once. `Err(Failed)` — exit 1 — only when ERRORS were found:
-/// warnings, infos and hints are advice, not failures (matching `rk compile`,
-/// which never blocks on them). The summary still surfaces every bucket, so an
-/// advice-only workspace prints its counts and exits 0 — previously it exited 1
-/// while claiming "0 error(s), 0 warning(s)", which sent agents chasing nothing.
+/// Run diagnostics once. `Err(Failed)` (exit 1) only when errors were
+/// found: warnings, infos and hints are advice.
 fn check_once(workspace: &std::path::Path, verbose: bool, format: OutputFormat) -> CliResult<()> {
     // A bare directory of .st files is checkable without a config.toml.
     // Stderr stays a pure diagnostics stream.
