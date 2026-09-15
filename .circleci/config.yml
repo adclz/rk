@@ -1,0 +1,570 @@
+# CircleCI conversion of .github/workflows (ci-rust, ci-clippy, ci-stdlib,
+# ci-tree-sitter, ci-diagnostics, fuzz). codspeed.yml and site.yml stay on GitHub Actions —
+# CodSpeed's instrumented runner does not exist for CircleCI.
+#
+# The docker image's preinstalled Rust is IRRELEVANT: every job runs
+# `rustup toolchain install`, which reads rust-toolchain.toml and installs the
+# pinned 1.97.1 with its components and targets — the same toolchain
+# developers use locally.
+#
+# Path filtering: the GitHub workflows gated on changed paths; CircleCI needs
+# the `path-filtering` orb + dynamic config for that. Deliberately NOT done in
+# this first conversion — every job runs on every push. Caches make the
+# no-change cost mostly download time; revisit with the orb if it hurts.
+#
+# The fuzz workflow does not run on pushes. It is driven by a SCHEDULED
+# PIPELINE (Project Settings → Triggers → add a 2 AM UTC schedule) that sets
+# the `run-fuzz` pipeline parameter to true.
+version: 2.1
+
+parameters:
+  run-fuzz:
+    type: boolean
+    default: false
+
+# ---------------------------------------------------------------------------
+# Reusable pieces
+# ---------------------------------------------------------------------------
+executors:
+  rust:
+    docker:
+      # Tag only decides what is preinstalled; rustup replaces it (see header).
+      - image: cimg/rust:1.82
+    resource_class: large
+    environment:
+      CARGO_TERM_COLOR: always
+
+  # The site job needs node for wrangler beside the Rust generator.
+  rust-node:
+    docker:
+      - image: cimg/rust:1.82-node
+    resource_class: large
+    environment:
+      CARGO_TERM_COLOR: always
+
+  # Same idea as `rust`: the image's Xcode/Rust are irrelevant, rustup installs
+  # the pin. macOS is unix, so the local unix-socket rendezvous works here and
+  # the suite is expected to pass.
+  #
+  # The image tag and the resource class must both be ones CircleCI currently
+  # offers. Neither is checked by `circleci config validate` — they are matched
+  # when the job is SCHEDULED, so a retired value does not fail, it queues for
+  # a host that never arrives.
+  macos:
+    macos:
+      xcode: "16.4.0"
+    resource_class: m4pro.medium
+    environment:
+      CARGO_TERM_COLOR: always
+
+  # `shell` is set on the executor so every step runs under bash, and the
+  # portable commands below need no Windows variant.
+  windows:
+    machine:
+      image: windows-server-2022-gui:current
+    resource_class: windows.medium
+    shell: bash.exe
+    environment:
+      CARGO_TERM_COLOR: always
+
+commands:
+  install-pinned-toolchain:
+    steps:
+      - run:
+          name: Install the toolchain pinned by rust-toolchain.toml
+          command: |
+            # Bare `rustup toolchain install` needs rustup >= 1.28 and the
+            # image's is older: parse the pin and install explicitly, with the
+            # toml's target and components.
+            TC=$(sed -n 's/^channel *= *"\(.*\)"/\1/p' rust-toolchain.toml)
+            rustup toolchain install "$TC" \
+              --target wasm32-unknown-unknown \
+              --component clippy --component rustfmt
+  # rustup is preinstalled on the Linux image but not guaranteed elsewhere.
+  #
+  # Getting cargo on PATH is only half of it: `$BASH_ENV` is sourced per step
+  # on Linux and macOS but NOT by CircleCI's Windows `bash.exe`, so every step
+  # that runs cargo prepends the toolchain itself. Without that, the Windows
+  # image's Chocolatey Rust (a GNU-host build, at
+  # C:\ProgramData\chocolatey\lib\rust\tools\bin) wins the lookup and the
+  # pinned MSVC toolchain installed here is never used.
+  # rustup is preinstalled on the Linux image but not guaranteed elsewhere.
+  #
+  # Split hard by platform. Linux and macOS run the path that is green and
+  # nothing in the Windows branch can reach them: chasing Windows through a
+  # shared path is how CARGO_HOME/RUSTUP_HOME ended up overridden on images
+  # that preset them, handing rustup an empty home and breaking two working
+  # platforms to fix a third.
+  install-pinned-toolchain-portable:
+    steps:
+      - run:
+          name: Install rustup and the toolchain pinned by rust-toolchain.toml
+          command: |
+            case "$(uname -s)" in
+              MINGW*|MSYS*|CYGWIN*) WINDOWS=1 ;;
+              *)                    WINDOWS= ;;
+            esac
+            TC=$(sed -n 's/^channel *= *"\(.*\)"/\1/p' rust-toolchain.toml)
+
+            if [ -z "$WINDOWS" ]; then
+              # ---- Linux and macOS ------------------------------------------
+              if ! command -v rustup >/dev/null; then
+                curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs \
+                  | sh -s -- -y --default-toolchain none --profile minimal
+              fi
+              if [ -f "$HOME/.cargo/env" ]; then
+                echo 'source "$HOME/.cargo/env"' >> "$BASH_ENV"
+              else
+                echo 'export PATH="$HOME/.cargo/bin:$PATH"' >> "$BASH_ENV"
+              fi
+              export PATH="$HOME/.cargo/bin:$PATH"
+              rustup toolchain install "$TC" \
+                --target wasm32-unknown-unknown \
+                --component clippy --component rustfmt
+              rustup default "$TC"
+              cargo -vV
+              exit 0
+            fi
+
+            # ---- Windows only ------------------------------------------------
+            # The image has a Chocolatey cargo/rustc built for the GNU host,
+            # whose linker wants MinGW binutils it does not have
+            # (`error calling dlltool 'dlltool.exe'`), and MSVC build tools it
+            # does. So the MSVC TOOLCHAIN is named explicitly. rustup's own
+            # host is irrelevant: a gnu-host rustup manages an msvc toolchain.
+            TC_HOST=-x86_64-pc-windows-msvc
+            # Two forms, deliberately. The `C:/...` form is what rustup-init.exe
+            # needs, being a native binary. It must NEVER go in PATH: bash
+            # splits on the colon, so `C:/Users/.../bin` becomes the entries
+            # `C` and `/Users/.../bin` and the toolchain is invisible even
+            # though it installed correctly.
+            export CARGO_HOME="$(cygpath -m "$HOME/.cargo")"
+            export RUSTUP_HOME="$(cygpath -m "$HOME/.rustup")"
+            CARGO_BIN_DIR="$HOME/.cargo/bin"
+            # There is no rustup on this image at all (only cargo and rustc),
+            # so test for ours rather than for any on PATH. No --default-host:
+            # sh.rustup.rs passes its own and a second one aborts the install.
+            if [ ! -x "$CARGO_HOME/bin/rustup" ] && [ ! -x "$CARGO_HOME/bin/rustup.exe" ]; then
+              curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs \
+                | sh -s -- -y --no-modify-path --default-toolchain none --profile minimal
+            fi
+            export PATH="$CARGO_BIN_DIR:$PATH"
+            # Checked, because `curl | sh` reports the PIPE's status: an
+            # aborted installer once left this step green and surfaced three
+            # commands later as `command not found`.
+            command -v rustup >/dev/null || {
+              echo "rustup did not install into $CARGO_HOME"
+              ls -la "$CARGO_BIN_DIR" 2>/dev/null || echo "  (no such directory)"
+              exit 1
+            }
+            # The installer set the default host to windows-gnu, so the bare
+            # "1.97.1" in rust-toolchain.toml resolves to a GNU toolchain that
+            # is never installed. Every rustc shim call then tries to install
+            # it DURING the build, and those concurrent downloads are what fail
+            # to rename ("component download failed for rust-src"). Point the
+            # default host at MSVC so the toolchain file names what we install.
+            rustup set default-host x86_64-pc-windows-msvc
+            # Forced too: a settings.toml already exists on this image, and
+            # rustup keeps it rather than applying the installer's --profile.
+            # A `complete` profile is what drags in rust-src, the component
+            # whose download fails.
+            rustup set profile minimal
+            rustup toolchain install "$TC$TC_HOST" \
+              --profile minimal \
+              --target wasm32-unknown-unknown \
+              --component clippy --component rustfmt
+            rustup default "$TC$TC_HOST"
+            # Proof the toolchain file resolves to the installed toolchain
+            # rather than triggering an install mid-build.
+            rustup show active-toolchain
+            # `rustup toolchain install` fills RUSTUP_HOME/toolchains; the
+            # shims in CARGO_HOME/bin are written by rustup-init. Ask rustup
+            # for the real binary rather than assuming a shim exists.
+            # Recorded in the NATIVE form, because $CARGO is read by nextest,
+            # which is a Windows binary. bash cannot run that form reliably, so
+            # each use converts with `cygpath -u` at the point of execution.
+            echo "$TC$TC_HOST" > "$HOME/.aa-toolchain"
+            rustup which --toolchain "$TC$TC_HOST" cargo > "$HOME/.aa-cargo-path"
+            "$(cygpath -u "$(cat "$HOME/.aa-cargo-path")")" -vV
+
+  install-nextest:
+    steps:
+      - run:
+          name: Install nextest
+          command: |
+            DEST="${CARGO_HOME:-$HOME/.cargo}/bin"
+            case "$(uname -s)" in
+              Linux*)  P=linux ;;
+              Darwin*) P=mac ;;
+              MINGW*|MSYS*|CYGWIN*)
+                P=windows-tar
+                # tar.exe is the native bsdtar: it cannot chdir into a missing
+                # directory and does not read MSYS `/c/...` paths.
+                DEST="$(cygpath -m "$HOME/.cargo")/bin"
+                ;;
+              *) echo "unknown host $(uname -s)"; exit 1 ;;
+            esac
+            mkdir -p "$DEST"
+            # To a file, not a pipe: a tar that exits early kills the pipe and
+            # surfaces as a curl write error, hiding which half failed.
+            curl -LsSf "https://get.nexte.st/latest/$P" -o nextest.tar.gz
+            tar zxf nextest.tar.gz -C "$DEST"
+            rm -f nextest.tar.gz
+
+  # Keys run most specific first; the last is a bare prefix so a changed
+  # lockfile still restores something to build on top of.
+  #
+  # Every key here must name files that exist right after checkout. A checksum
+  # over a missing file is NOT a cache miss: the template fails and takes the
+  # step with it, before any key in the list is tried. That is why this was
+  # broken on every job, Rust or not - Cargo.lock was gitignored, so it did not
+  # exist at restore time, while save ran after cargo had written one.
+  restore-cargo-cache:
+    parameters:
+      key:
+        type: string
+    steps:
+      - restore_cache:
+          keys:
+            - cargo-<< parameters.key >>-{{ arch }}-v1-{{ checksum "Cargo.lock" }}-{{ checksum "rust-toolchain.toml" }}
+            - cargo-<< parameters.key >>-{{ arch }}-v1-{{ checksum "Cargo.lock" }}-
+            - cargo-<< parameters.key >>-{{ arch }}-v1-
+  save-cargo-cache:
+    parameters:
+      key:
+        type: string
+    steps:
+      - save_cache:
+          # A cache is immutable once written, so this key carries everything
+          # that invalidates the artifacts under it: the dependency set and the
+          # compiler that built them. A toolchain bump used to leave stale
+          # objects under an unchanged key with no way to replace them.
+          key: cargo-<< parameters.key >>-{{ arch }}-v1-{{ checksum "Cargo.lock" }}-{{ checksum "rust-toolchain.toml" }}
+          paths:
+            - ~/.cargo/registry
+            - ~/.cargo/git
+            - ~/.cargo/bin
+            - target
+
+jobs:
+  # --- ci-rust.yml -----------------------------------------------------------
+  #
+  # One job, three hosts, selected by the matrix in `workflows` below. The
+  # toolchain pin is identical everywhere; only the host differs.
+  #
+  test:
+    parameters:
+      os:
+        type: executor
+    executor: << parameters.os >>
+    steps:
+      - checkout
+      - install-pinned-toolchain-portable
+      - install-nextest
+      - restore-cargo-cache:
+          key: test
+      - run:
+          name: Test workspace
+          command: |
+            case "$(uname -s)" in
+              MINGW*|MSYS*|CYGWIN*)
+                # Only here is the indirection needed: $BASH_ENV does not reach
+                # this step on Windows, PATH order loses to the image's
+                # Chocolatey Rust, and $CARGO is what stops nextest
+                # re-resolving cargo for itself.
+                # POSIX form: a `C:/...` entry would split on its colon.
+                export PATH="$HOME/.cargo/bin:$PATH"
+                export CARGO_HOME="$(cygpath -m "$HOME/.cargo")"
+                export RUSTUP_HOME="$(cygpath -m "$HOME/.rustup")"
+                # Names the toolchain outright, which makes rustup skip
+                # rust-toolchain.toml entirely. Otherwise every one of the
+                # dozens of parallel rustc shims re-reads that file mid-build
+                # and races the others provisioning components into one
+                # downloads/ directory, which is the "could not rename
+                # rust-src" failure. Nothing is fetched during a build now.
+                export RUSTUP_TOOLCHAIN="$(cat "$HOME/.aa-toolchain")"
+                CARGO_WIN="$(cat "$HOME/.aa-cargo-path")"
+                export CARGO="$CARGO_WIN"
+                "$(cygpath -u "$CARGO_WIN")" nextest run --workspace --profile ci
+                ;;
+              *)
+                # As it was when Linux and macOS were green.
+                export PATH="$HOME/.cargo/bin:$PATH"
+                cargo nextest run --workspace --profile ci
+                ;;
+            esac
+      - save-cargo-cache:
+          key: test
+
+  # --- ci-clippy.yml ---------------------------------------------------------
+  clippy:
+    executor: rust
+    environment:
+      RUSTFLAGS: -Dwarnings
+    steps:
+      - checkout
+      - install-pinned-toolchain
+      - restore-cargo-cache:
+          key: clippy
+      - run:
+          name: Run Clippy
+          command: cargo clippy --all-targets --all-features
+      - save-cargo-cache:
+          key: clippy
+
+  # --- ci-stdlib.yml ---------------------------------------------------------
+  stdlib:
+    executor: rust
+    environment:
+      # The workspace under test IS the stdlib - Empty = load no stdlib.
+      AA_STDLIB_PATH: ""
+    steps:
+      - checkout
+      - install-pinned-toolchain
+      - restore-cargo-cache:
+          key: stdlib
+      - run:
+          name: Build the aa CLI
+          command: cargo build -p aa --release
+      # The bundled `wasm-opt` crate is pinned to Binaryen 116, which predates
+      # `try_table` — the instruction emitted for RAISE and the stdlib's
+      # assertions — so it cannot read any realistic module and `-O` degrades
+      # to an unoptimized build. Without this step the optimized run below
+      # would silently be a second unoptimized run.
+      - run:
+          name: Install Binaryen (for wasm-opt)
+          command: |
+            curl -sSfL -o /tmp/binaryen.tar.gz \
+              https://github.com/WebAssembly/binaryen/releases/download/version_131/binaryen-version_131-x86_64-linux.tar.gz
+            tar xzf /tmp/binaryen.tar.gz -C /tmp
+            echo 'export PATH=/tmp/binaryen-version_131/bin:$PATH' >> "$BASH_ENV"
+      - run:
+          name: Check wasm-opt is the one we expect
+          command: wasm-opt --version
+      - run:
+          name: Compile and run the stdlib test suite
+          command: cd stdlib && ../target/release/aa test
+      # Same suite against an OPTIMIZED build. `-O4` is excluded deliberately —
+      # Binaryen's Flatten pass still aborts on `try_table` as of 131, an
+      # upstream limitation, not a stale pin.
+      - run:
+          name: Run the stdlib test suite against an optimized build
+          command: cd stdlib && ../target/release/aa test -O z
+      - save-cargo-cache:
+          key: stdlib
+
+  # --- packaging -------------------------------------------------------------
+  #
+  # Builds what a user installs and proves it before it ships: the binaries
+  # with the standard library beside them, in the layout `aa` resolves from
+  # its own path. One job per platform, because the layout is what the
+  # per-OS installers lay down and each has to be shown to work.
+  #
+  # This is the successor to a test that used to live in `crates/db`, back
+  # when the stdlib was embedded in the binary and could be checked from
+  # inside it. Only an assembled tree can answer the question now.
+  package:
+    parameters:
+      os:
+        type: executor
+    executor: << parameters.os >>
+    steps:
+      - checkout
+      - install-pinned-toolchain-portable
+      - restore-cargo-cache:
+          key: package
+      - run:
+          name: Build the release binaries
+          command: |
+            case "$(uname -s)" in
+              MINGW*|MSYS*|CYGWIN*)
+                # See the `test` job: on Windows $BASH_ENV does not reach this
+                # step and the image's Chocolatey Rust wins PATH order.
+                export PATH="$HOME/.cargo/bin:$PATH"
+                export CARGO_HOME="$(cygpath -m "$HOME/.cargo")"
+                export RUSTUP_HOME="$(cygpath -m "$HOME/.rustup")"
+                export RUSTUP_TOOLCHAIN="$(cat "$HOME/.aa-toolchain")"
+                CARGO_WIN="$(cat "$HOME/.aa-cargo-path")"
+                "$(cygpath -u "$CARGO_WIN")" build --release -p aa
+                ;;
+              *)
+                export PATH="$HOME/.cargo/bin:$PATH"
+                cargo build --release -p aa
+                ;;
+            esac
+      - run:
+          name: The installed layout finds its own standard library
+          command: ./ci/package.sh target/release "$PWD/dist"
+      - store_artifacts:
+          path: dist
+      - save-cargo-cache:
+          key: package
+
+  # --- ci-tree-sitter.yml ----------------------------------------------------
+  tree-sitter:
+    executor: rust
+    steps:
+      - checkout
+      - install-pinned-toolchain
+      - restore-cargo-cache:
+          key: tree-sitter
+      # Version floor from crates/tree-sitter/package.json ("^0.25.4") — the
+      # CLI must match the generated parser's ABI.
+      - run:
+          name: Install tree-sitter CLI
+          command: |
+            tree-sitter --version 2>/dev/null | grep -q "0\.25\." \
+              || cargo install tree-sitter-cli@0.25.4 --locked
+      - run:
+          name: Install clang (tree-sitter fuzz needs libFuzzer)
+          command: sudo apt-get update && sudo apt-get install -y clang
+      - run:
+          name: Test parser
+          working_directory: crates/tree-sitter
+          command: tree-sitter test
+      - run:
+          name: Fuzz parser
+          working_directory: crates/tree-sitter
+          command: tree-sitter fuzz
+      - save-cargo-cache:
+          key: tree-sitter
+
+  # --- ci-diagnostics.yml ----------------------------------------------------
+  site:
+    executor: rust-node
+    steps:
+      - checkout
+      - install-pinned-toolchain
+      - restore-cargo-cache:
+          key: site
+      # Fails when a diagnostics example disagrees with the compiler, or a
+      # skill's example no longer holds, naming every one at fault. Writes
+      # nothing in that case, so the committed reference is never replaced
+      # by a bad one. Release: the skills gate loads the standard library
+      # once per example, which is minutes in a debug build.
+      - run:
+          name: The site's examples must agree with the compiler
+          command: cargo run --release -p doc -- site/dist --base-url "${SITE_URL:-https://aa.example}"
+      # `aa explain` embeds crates/doc/diagnostics.json in the binary. If
+      # regenerating changed it, the committed copy was stale and every
+      # `aa explain` was serving it.
+      - run:
+          name: The committed reference must be up to date
+          command: |
+            if ! git diff --exit-code -- crates/doc/diagnostics.json; then
+              echo "crates/doc/diagnostics.json is out of date — run \`cargo run --release -p doc -- site/dist\` and commit the result"
+              exit 1
+            fi
+      # Deploying is GitHub's job (.github/workflows/site.yml, on main);
+      # here the Worker only has to type-check and bundle.
+      - run:
+          name: The Worker must type-check and bundle
+          working_directory: site
+          command: npm ci && npm run check
+      - save-cargo-cache:
+          key: site
+
+  # --- fuzz.yml --------------------------------------------------------------
+  fuzz:
+    executor: rust
+    steps:
+      - checkout
+      # corpus_gen builds workspace crates (edition 2024, rust >= 1.85): the
+      # image's compiler is too old, the pinned one is not.
+      - install-pinned-toolchain
+      - run:
+          name: Install Rust nightly
+          command: rustup toolchain install nightly
+      - restore-cargo-cache:
+          key: fuzz
+      - run:
+          name: Generate corpus from tree-sitter tests
+          command: |
+            cargo run --release --manifest-path crates/fuzz/Cargo.toml --bin corpus_gen -- \
+              crates/tree-sitter/test/corpus \
+              crates/fuzz/corpus || true
+      - run:
+          name: Build fuzzers
+          command: |
+            cargo +nightly build --release --manifest-path crates/fuzz/Cargo.toml --bin fuzz_compiler
+            cargo +nightly build --release --manifest-path crates/fuzz/Cargo.toml --bin fuzz_formatter
+      - run:
+          name: Run compiler fuzzer (30 minutes)
+          no_output_timeout: 45m
+          command: |
+            timeout 1800 ./target/release/fuzz_compiler crates/fuzz/corpus -max_total_time=1800 || true
+      - run:
+          name: Run formatter fuzzer (30 minutes)
+          no_output_timeout: 45m
+          command: |
+            timeout 1800 ./target/release/fuzz_formatter crates/fuzz/corpus -max_total_time=1800 || true
+      - run:
+          name: Collect crash artifacts
+          when: always
+          command: |
+            mkdir -p crash_artifacts
+            find . -maxdepth 1 \( -name "crash-*" -o -name "oom-*" -o -name "leak-*" -o -name "slow-*" \) \
+              -exec cp {} crash_artifacts/ \; 2>/dev/null || true
+            ls -la crash_artifacts/ || true
+      - store_artifacts:
+          path: crash_artifacts
+          destination: fuzz-crashes
+      # A crash fails the job — CircleCI's notification (email/Slack) is the
+      # alert. The GitHub-issue creation the old workflow did needs a GH token;
+      # if wanted later: `gh issue create` guarded on $GITHUB_TOKEN.
+      - run:
+          name: Fail if the fuzzers found crashes
+          when: always
+          command: |
+            if [ -n "$(ls -A crash_artifacts 2>/dev/null)" ]; then
+              echo "fuzzers found $(ls -1 crash_artifacts | wc -l) crash(es)"
+              exit 1
+            fi
+      - save-cargo-cache:
+          key: fuzz
+
+  # --- fmt-corpus -------------------------------------------------------------
+  # The formatter once turned valid programs into non-compiling ones while
+  # reporting success, and the unit suite had PINNED the corrupted output as
+  # its accepted snapshot. Snapshots cannot catch that class on their own —
+  # they assert whatever the formatter emits today — so this job asserts the
+  # property instead: format a corpus, and require its diagnostics to be
+  # unchanged. See ci/fmt-corpus.sh for what it covers and why.
+  fmt-corpus:
+    executor: rust
+    steps:
+      - checkout
+      - install-pinned-toolchain
+      - restore-cargo-cache:
+          key: fmt-corpus
+      - run:
+          name: Build the aa CLI
+          command: cargo build -p aa --release
+      - run:
+          name: Formatting must not change what a program means
+          command: ./ci/fmt-corpus.sh ./target/release/aa
+      - save-cargo-cache:
+          key: fmt-corpus
+
+workflows:
+  ci:
+    when:
+      not: << pipeline.parameters.run-fuzz >>
+    jobs:
+      - test:
+          matrix:
+            parameters:
+              os: [rust, macos, windows]
+      - clippy
+      - stdlib
+      - package:
+          matrix:
+            parameters:
+              os: [rust, macos, windows]
+      - fmt-corpus
+      - tree-sitter
+      - site
+  fuzzing:
+    when: << pipeline.parameters.run-fuzz >>
+    jobs:
+      - fuzz
