@@ -166,4 +166,4 @@ jobs:
           cache-dependency-path: site/package-lock.json
       - name: The Worker must type-check and bundle
         working-directory: site
-        run: npm ci && npm run check
+        run: npm ci --ignore-scripts && npm run check
