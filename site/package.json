@@ -3,7 +3,7 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "build": "cargo run --release -p doc -- site/dist",
+    "build": "cargo run --release -p doc && zola build",
     "dev": "wrangler dev",
     "check": "tsc --noEmit && wrangler deploy --dry-run",
     "deploy": "wrangler deploy"

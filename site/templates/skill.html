@@ -1,0 +1,18 @@
+{#- One skill: its name, its description as the lede, the file an agent
+    installs, the rendered SKILL.md, then the references it loads on demand. -#}
+{% extends "base.html" %}
+{% block content %}
+<h1>{{ section.title }}</h1>
+<p class="lede">{{ section.description }}</p>
+<p><a class="pill" href="/skills/{{ section.title }}/SKILL.md">SKILL.md</a> <a class="pill" href="/skills.tar.gz">install</a></p>
+{{ section.content | safe }}
+{%- if section.extra.references %}
+<h2>References</h2>
+<p>Loaded on demand by the skill.</p>
+<ul>
+{%- for r in section.extra.references %}
+<li><a href="{{ r.url }}">{{ r.title }}</a></li>
+{%- endfor %}
+</ul>
+{%- endif %}
+{% endblock content %}

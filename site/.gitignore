@@ -1,3 +1,7 @@
 dist/
 node_modules/
 .wrangler/
+# Written by `cargo run -p doc` from skills/, crates/doc/examples/ and pages/.
+content/
+data/
+static/

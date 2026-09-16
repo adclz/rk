@@ -1,0 +1,8 @@
+{% extends "base.html" %}
+{% block content %}
+<h1>{{ section.title }}</h1>
+{%- if section.extra.lede %}
+<p class="lede">{{ section.extra.lede | markdown(inline=true) | safe }}</p>
+{%- endif %}
+{{ section.content | safe }}
+{% endblock content %}

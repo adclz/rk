@@ -1,0 +1,44 @@
+{#- The page or section being rendered; the 404 has neither and falls
+    back to the site's own title and description. -#}
+{%- if page is defined %}{% set p = page %}{% elif section is defined %}{% set p = section %}{% else %}{% set p = config %}{% endif -%}
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{{ p.extra.head_title | default(value=p.title) }}</title>
+  <meta name="description" content="{% if p.description %}{{ p.description }}{% else %}{{ config.description }}{% endif %}">
+  <link rel="canonical" href="{{ p.permalink | default(value=config.base_url) }}">
+  {%- if p.extra.md %}
+  <link rel="alternate" type="text/markdown" href="{{ p.extra.md }}">
+  {%- endif %}
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600&family=IBM+Plex+Serif:ital,wght@0,400;0,500;1,400&display=swap">
+  <style>{{ load_data(path="assets/site.css", format="plain") | safe }}</style>
+</head>
+<body>
+<main{% if p.extra.wide %} class="wide"{% endif %}>
+<nav class="top">
+  <a class="brand" href="/">{{ config.title }}</a>
+  <a href="/skills/">skills</a>
+  <a href="/diagnostics/">diagnostics</a>
+  <a href="/linter/">linter</a>
+  <a href="/formatter/">formatter</a>
+</nav>
+{%- if p.extra.eyebrow %}
+<p class="eyebrow">{{ p.extra.eyebrow }}</p>
+{%- endif %}
+{% block content %}{% endblock content %}
+<footer>
+  {% if p.extra.md %}<a href="{{ p.extra.md }}">Markdown</a>{% endif %}
+  <a href="/diagnostics.json">diagnostics.json</a>
+  <a href="/skills.tar.gz">skills.tar.gz</a>
+</footer>
+{%- set script = p.extra.script | default(value="") %}
+{%- if script == "reference" %}
+<script>{{ load_data(path="assets/reference.js", format="plain") | safe }}</script>
+{%- endif %}
+</main>
+</body>
+</html>

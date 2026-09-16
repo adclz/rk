@@ -28,11 +28,13 @@ cargo test --package rk-tests --lib -- tests::semantics::array::valid_array --ex
 # Review insta snapshots after test changes
 cargo insta review
 
-# Build the website (skills + diagnostics reference) into site/dist; also
-# refreshes crates/doc/diagnostics.json, which `rk explain` embeds. Refuses
-# to write when an example disagrees with the compiler. Release: the skills
-# gate loads the stdlib once per example.
-cargo run --release -p doc -- site/dist
+# Build the website. The generator verifies every example against the
+# compiler and writes site/content, site/data and site/static (gitignored);
+# Zola renders them into site/dist. Also refreshes crates/doc/diagnostics.json,
+# which `rk explain` embeds. Refuses to write when an example disagrees with
+# the compiler. Release: the skills gate loads the stdlib once per example.
+cargo run --release -p doc && (cd site && zola build)
+# Preview with the Worker, as deployed: `cd site && npx wrangler dev`.
 
 # Regenerate THIRD-PARTY-NOTICES, the licenses of the crates compiled into
 # every generated module (run from crates/wasm_builtins/; needs
@@ -105,7 +107,7 @@ cli (binary `rk`) — check, compile, test, fmt, explain, env
 | `debug_format`            | `crates/debug_format`   | The custom-section formats (debug symbols, lines, schedule, retain map, test manifest) and their decoder.               |
 | `linter`                  | `crates/linter`         | Lint rules (L-codes) over HIR.                                                                                          |
 | `benchmark`               | `crates/benchmark`      | Divan benchmarks over the stdlib corpus, with diagnostic baselines.                                                     |
-| `doc`                     | `crates/doc`            | Site generator: renders `skills/` and the diagnostics reference, verifying every example against the compiler.         |
+| `doc`                     | `crates/doc`            | Site generator's front half: verifies `skills/`, `crates/doc/examples/` and `site/pages/` against the compiler, pre-renders their code, and writes what Zola (`site/`) renders. |
 | `fuzz`                    | `crates/fuzz`           | Fuzz testing targets for the compiler and formatter.                                                                    |
 | `vscode-lsp-server`       | `vscode/server`         | VSCode extension LSP server binary (thin wrapper over `server` crate).                                                  |
 
