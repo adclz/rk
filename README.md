@@ -245,9 +245,84 @@ So that means you can replace any part of the stdlib, extend it, or read it to s
 
 ## Bundled Traps
 
+Everything the compiler checks raises **one** exception, and it carries a message.
+
+A module declares a single exception tag, `(i32, i32)`: the pointer and length of a STRING in the memory you provided. It is never exported, so a host reads it from the pending-exception slot.
+
+`__RAISE(message)` is the only throw. There is no `TRY`, no `CATCH`, no `ON ERROR` — a raise always leaves the module.
+
+> The one catcher an emitted module contains is the wrapper around a `{test}` function, which is why a failing assertion is reported rather than fatal.
+
+Three checks are inserted for you:
+
+| Inserted at | Message |
+|---|---|
+| every array subscript, per dimension | `array index out of bounds` |
+| every subrange store | `value out of subrange bounds` |
+| every `^` you wrote | `dereference of a null reference` |
+
+What the compiler can prove is refused at compile time instead, and costs nothing at runtime.
+
+__And three checks that do not exist.__
+
+- **Integer overflow is never checked.** `DINT#2147483647 + 1` is `-2147483648`, silently, at every width.
+- **Division by zero is not ours.** It is the VM's own trap: no message, and a `{test}` cannot catch it.
+- **STRING capacity is not checked.** It truncates. See [Strings](#strings).
+
+`REAL#1.0 / 0.0` is `+inf` and the scan continues. Nothing faults on NaN or infinity.
+
+A Rust panic inside a grafted builtin arrives as the same exception, with the panic text as the message. None of this depends on the profile.
+
 ## Strings
 
+One string type, **UTF-8**. There is no `WSTRING` and no `WCHAR`.
+
+A slot is a 4-byte length followed by its capacity in bytes, so a plain `STRING` occupies 84.
+
+```pascal
+s1: STRING;      // 80 bytes of buffer
+s2: STRING[5];   // 5 BYTES, not characters — 'café' needs exactly this
+```
+
+`LEN` is bytes and O(1). Every operation exists twice: `LEFT`, `MID`, `FIND` count bytes, `CHAR_LEFT`, `CHAR_MID`, `CHAR_FIND` count characters. On ASCII they agree, and the byte family is faster.
+
+- A **literal** too long for its destination is a compile error.
+- A **variable** too long truncates silently, and truncating bytes can split a character. `IS_UTF8` exists for exactly that.
+
+No indexing — `s[1]` is `E0508`, use `CHAR_AT`. No `+` — use `CONCAT`.
+
+Comparison is byte-lexicographic, so `'Z' < 'a'`, and a `STRING` is a legal `CASE` label.
+
+`CHAR` is a code point in 4 bytes. It does **not** widen to `STRING`; `CHAR_TO_STRING` does that.
+
+> At a call boundary a `STRING` input or return is a borrowed `(ptr, len)`, never a copy. A `VAR_IN_OUT` or `VAR_OUTPUT` is instead `(addr, capacity)`, so the callee's writes clamp.
+
 ## Math operations
+
+Every maths function is in the module. **It imports nothing but `env.memory`.**
+
+`+ - * / MOD` are single wasm instructions, and so are `SQRT` and `ABS`. The eleven that have no instruction — `SIN COS TAN ASIN ACOS ATAN ATAN2 EXP LN LOG` and `**` — are grafted in from libm when you call them, in `REAL` and `LREAL` form. Nothing is imported, so nothing has to be wired up by the host.
+
+Arithmetic is wasm arithmetic:
+
+- 8- and 16-bit widths wrap by explicit masking; 32- and 64-bit wrap silently.
+- `NaN` and `±inf` are ordinary values. `SQRT(-1)` is NaN, `LN(0)` is `-inf`, nothing faults.
+- Float to integer **saturates**, so NaN converts to `0`.
+- `IS_NAN` is ordinary ST: `IN <> IN`.
+
+`**` needs a float base and returns the base's type; `EXPT` is the same code path.
+
+There is no `ANY_INT` or `ANY_REAL` in the type system. Each generic is an overload set written out in ST, which is why `Std.Math` is readable and replaceable.
+
+Implicit casts follow the standard's table, which is stricter than most toolchains:
+
+```pascal
+r := i;    // INT to REAL, Ok
+r := d;    // DINT to REAL, E0301 — the standard's table omits it
+i := r;    // never implicit; the error names the cast for you
+```
+
+> A bare literal expression computes at the literal's default type, then widens. `x : LREAL := 0.1 + 0.0` is REAL arithmetic. Write `LREAL#0.1 + 0.0`.
 
 ## WASM ABI
 
@@ -280,7 +355,49 @@ it takes copies, so `VAR_IN_OUT`, aggregate outputs and a `STRING` return are re
 
 ## Debug Symbols
 
+A module carries its own symbol table, so a host reads variables **by name** rather than by address.
+
+| Section | Present in | Carries |
+|---|---|---|
+| `debug-symbols` | every build | every elementary leaf: path, address, size, type |
+| `debug-functions` | debug only | wasm function index → POU name |
+| `debug-lines` | debug only | code offset → file, line, column |
+| `debug-locals` | debug only | wasm local slot → variable name and type |
+| `rk.schedule` | every build | tasks, periods, priorities, instance addresses |
+| `retain-map` | every build | the byte ranges a power cycle must preserve |
+| `test-manifest` | when there are tests | the exports `rk test` calls |
+
+All MessagePack.
+
+The last three are **not** debug information. Drop `retain-map` and every `RETAIN` variable silently becomes transient.
+
+Paths resolve through arrays and struct fields without enumerating them, so `pts[7423].history[2].y` is one lookup, and writes go back the same way.
+
+`debug-lines` is absent from a release build, and that absence *is* the steppability answer: watchable, not steppable.
+
+> **rk ships no debugger.** It emits the tables and `debug_format` decodes them. The scan loop, the monitoring session and the debug adapter belong to a runtime.
+
 ## Profiles
+
+Two, and they differ **only in which sections ride along**. The code is the same.
+
+| | `rk compile` | `rk compile --release` |
+|---|---|---|
+| stepping tables | yes | no |
+| symbols, retain map, schedule | yes | yes |
+| wasm-opt | never | always |
+
+A release build is watchable but not steppable, and the missing line table is how a runtime knows which artifact it was handed.
+
+**Memory layout is identical between the two.** That is what lets you stop a release build, rebuild the same source as debug, and carry live state across. It is asserted, not assumed.
+
+`-O` takes `0`-`3`, `s` or `z`, and defaults to `2`. `-O4` is refused: Binaryen's Flatten pass still aborts on the `try_table` that every raise emits.
+
+wasm-opt is an external binary — whatever is on `PATH`, else a checksum-verified Binaryen downloaded once into your cache. `RK_NO_DOWNLOAD=1` opts out.
+
+> `rk test -O` warns and runs a correct unoptimized build if the optimizer fails. `rk compile --release` refuses outright. A release build never silently degrades.
+
+Most of what a release saves is dropped tables, not optimized code.
 
 ## License
 
