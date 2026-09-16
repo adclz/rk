@@ -1,0 +1,23 @@
+# Pinned commit SHAs do not update themselves, and a pin nobody bumps is a
+# security fix nobody gets. Dependabot rewrites the SHA and the tag comment
+# together, so the pins stay current without anyone reading a changelog.
+version: 2
+updates:
+  # The actions that run in CI, one of which holds the Cloudflare deploy
+  # token — the reason the SHAs are pinned in the first place.
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+    commit-message:
+      prefix: ci
+
+  # The Worker's toolchain. `npm ci --ignore-scripts` keeps a compromised
+  # package from running at install time, but wrangler itself still runs
+  # with the token in its environment, so it is worth keeping current.
+  - package-ecosystem: npm
+    directory: /site
+    schedule:
+      interval: weekly
+    commit-message:
+      prefix: site
