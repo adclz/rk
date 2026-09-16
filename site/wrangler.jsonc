@@ -1,6 +1,7 @@
 {
   "$schema": "node_modules/wrangler/config-schema.json",
-  "name": "rk-site",
+  // Decides the hostname: <name>.<your account subdomain>.workers.dev.
+  "name": "rk",
   "main": "src/worker.ts",
   "compatibility_date": "2026-05-01",
   "compatibility_flags": ["nodejs_compat"],
