@@ -502,21 +502,6 @@ fn main() {
         tar.into_inner().unwrap().finish().unwrap();
     }
 
-    // The front page's install line, highlighted for the page and plain for
-    // the twins and llms.txt.
-    let install = format!(
-        "mkdir -p .claude/skills\ncurl -fsSL {base_url}/skills.tar.gz | tar xz -C .claude/skills"
-    );
-    write(
-        &data,
-        "site.json",
-        &serde_json::to_string(&json!({
-            "install_html": highlight::shell_html(&install),
-            "install_text": install,
-        }))
-        .unwrap(),
-    );
-
     // The hand-written pages: content as pre-rendered, twins as written,
     // with the shortcodes expanded to their Markdown form.
     for p in &pages {
@@ -531,7 +516,6 @@ fn main() {
             if !statics.join(&twin).exists() {
                 let body = p
                     .source
-                    .replace("{{ install() }}", &format!("```sh\n{install}\n```"))
                     .replace("{{ skills() }}", skills_md.trim_end())
                     .replace("{{ diagnostics_count() }}", &entries.len().to_string())
                     .replace("{{ linter_table() }}", linter_md.trim_end());
