@@ -35,6 +35,11 @@ cargo insta review
 # the compiler. Release: the skills gate loads the stdlib once per example.
 cargo run --release -p doc && (cd site && zola build)
 # Preview with the Worker, as deployed: `cd site && npx wrangler dev`.
+#
+# Zola must be 0.22.x, which CI pins. 0.23 removed shortcodes outright in
+# favour of Tera 2 components, so `site/templates/shortcodes/` and the four
+# `{{ name() }}` calls in `site/pages/` would all have to be rewritten before
+# the site can move past 0.22.
 
 # Regenerate THIRD-PARTY-NOTICES, the licenses of the crates compiled into
 # every generated module (run from crates/wasm_builtins/; needs
