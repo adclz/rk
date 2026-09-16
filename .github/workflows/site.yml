@@ -32,13 +32,12 @@ jobs:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
       - uses: ./.github/actions/rust-toolchain
       - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2
-      # Pinned to 0.22.x: Zola 0.23 removed shortcodes entirely in favour of
-      # Tera 2 components, so the alias that tracks the latest release would
-      # fail on every page that calls one.
+      # Pinned, not tracking latest: a Zola release has already broken this
+      # site once, when 0.23 removed shortcodes.
       - name: Install Zola
         uses: taiki-e/install-action@26e9283f268b880168bdbd2c545dfcd60ec2c6ab # v2
         with:
-          tool: zola@0.22.1
+          tool: zola@0.23.6
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
           node-version: 22

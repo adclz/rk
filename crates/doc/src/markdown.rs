@@ -161,7 +161,9 @@ fn fence_html(info: &str, code: &str, highlighter: &StHighlighter) -> String {
     let lang = info.split_whitespace().next().unwrap_or("");
     let code = code.trim_end_matches('\n');
     let inner = match lang {
-        "iecst" => {
+        // `pascal` is what the README marks Structured Text as, because that is
+        // what GitHub highlights it as; here it is the same grammar.
+        "iecst" | "pascal" => {
             // A fragment is highlighted in the same POU the fence gate
             // checks it in, so the two never disagree.
             match info

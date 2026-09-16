@@ -139,13 +139,12 @@ jobs:
       # nothing in that case, so the committed reference is never replaced
       # by a bad one. Release: the skills gate loads the standard library
       # once per example, which is minutes in a debug build.
-      # Pinned to 0.22.x: Zola 0.23 removed shortcodes entirely in favour of
-      # Tera 2 components, so the alias that tracks the latest release would
-      # fail on every page that calls one.
+      # Pinned, not tracking latest: a Zola release has already broken this
+      # site once, when 0.23 removed shortcodes.
       - name: Install Zola
         uses: taiki-e/install-action@26e9283f268b880168bdbd2c545dfcd60ec2c6ab # v2
         with:
-          tool: zola@0.22.1
+          tool: zola@0.23.6
       - name: The site's examples must agree with the compiler
         run: cargo run --release -p doc -- --base-url "${SITE_URL:-http://localhost:8787}"
         env:

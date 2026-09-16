@@ -297,6 +297,7 @@ fn main() {
     // the default column from the linter's own recommended set, so it cannot
     // drift from the binary the way a hand-kept table does.
     let linter_md;
+    let mut linter_html = String::new();
     {
         let severity_of = |e: &DiagEntry| -> &'static str {
             let marker = format!("[{}] ", e.ex.code);
@@ -336,7 +337,6 @@ fn main() {
                 "Reaching a CONFIGURATION global without declaring it. On by default.",
             ),
         ];
-        let mut out = Vec::new();
         let mut md = String::new();
         for (prefix, title, blurb) in groups {
             let mut rows: Vec<&DiagEntry> = entries
@@ -350,7 +350,7 @@ fn main() {
             md.push_str(&format!(
                 "## {title}\n\n| Code | Rule | Severity | Default | What it catches |\n| --- | --- | --- | --- | --- |\n"
             ));
-            let mut items = Vec::new();
+            let mut html_rows: Vec<String> = Vec::new();
             for e in rows {
                 let rule = e.ex.lint_rule.as_deref().unwrap_or("");
                 let on = linter::RECOMMENDED_RULE_NAMES.contains(&rule);
@@ -363,18 +363,20 @@ fn main() {
                     if on { "on" } else { "—" },
                     e.ex.description.replace('|', "\\|")
                 ));
-                items.push(json!({
-                    "code": e.ex.code, "rule": rule, "severity": sev, "on": on, "what": e.ex.description,
-                }));
+                html_rows.push(format!(
+                    "<tr><td class=\"k\"><a href=\"/diagnostics/#{code}\">{code}</a></td><td class=\"k\">{rule}</td><td>{sev}</td><td>{on}</td><td>{what}</td></tr>\n",
+                    code = e.ex.code,
+                    rule = escape(rule),
+                    on = if on { "on" } else { "—" },
+                    what = escape(&e.ex.description),
+                ));
             }
             md.push('\n');
-            out.push(json!({ "title": title, "blurb": blurb, "rows": items }));
+            linter_html.push_str(&format!(
+                "<h2>{title}</h2>\n<p>{blurb}</p>\n<div class=\"tablewrap\"><table><thead><tr><th>Code</th><th>Rule</th><th>Severity</th><th>Default</th><th>What it catches</th></tr></thead><tbody>\n{rows}</tbody></table></div>\n",
+                rows = html_rows.concat()
+            ));
         }
-        write(
-            &data,
-            "linter.json",
-            &serde_json::to_string(&json!({ "groups": out })).unwrap(),
-        );
         linter_md = md;
     }
 
@@ -382,6 +384,7 @@ fn main() {
     // files as twins, the JSON the Worker's tools read, the list the pages
     // show, and the archive the front page unpacks.
     let mut skills_md = String::new();
+    let mut skills_html = String::new();
     {
         let mut skills_json: Vec<String> = Vec::new();
         for skill in &skills {
@@ -457,38 +460,38 @@ fn main() {
             &format!("[\n{}\n]\n", skills_json.join(",\n")),
         );
 
-        let groups: Vec<serde_json::Value> = GROUPS
-            .iter()
-            .map(|(key, heading, blurb)| {
-                let members: Vec<&skills::Skill> = skills.iter().filter(|s| s.group() == *key).collect();
-                skills_md.push_str(&format!("## {heading}\n\n"));
-                for s in &members {
-                    skills_md.push_str(&format!(
-                        "- [{}]({}/skills/{}/SKILL.md): {}\n",
-                        s.name,
-                        base_url,
-                        s.name,
+        for (key, heading, blurb) in GROUPS {
+            let members: Vec<&skills::Skill> =
+                skills.iter().filter(|s| s.group() == key).collect();
+            skills_md.push_str(&format!("## {heading}\n\n"));
+            for s in &members {
+                skills_md.push_str(&format!(
+                    "- [{}]({}/skills/{}/SKILL.md): {}\n",
+                    s.name,
+                    base_url,
+                    s.name,
+                    one_line(&s.description)
+                ));
+            }
+            skills_md.push('\n');
+            skills_html.push_str(&format!(
+                "<h2 class=\"group\">{icon}{heading}</h2>\n<p>{blurb}</p>\n<ul class=\"skills\">\n",
+                icon = group_icon(key)
+            ));
+            for s in &members {
+                skills_html.push_str(&format!(
+                    "<li><a href=\"/skills/{n}/\">{n}</a><span>{d}</span></li>\n",
+                    n = escape(&s.name),
+                    d = escape(
                         one_line(&s.description)
-                    ));
-                }
-                skills_md.push('\n');
-                json!({
-                    "key": key,
-                    "heading": heading,
-                    "blurb": blurb,
-                    "icon": group_icon(key),
-                    "skills": members.iter().map(|s| json!({
-                        "name": s.name,
-                        "short": one_line(&s.description).split(". Use when").next().unwrap_or("").to_string(),
-                    })).collect::<Vec<_>>(),
-                })
-            })
-            .collect();
-        write(
-            &data,
-            "skills.json",
-            &serde_json::to_string(&json!({ "groups": groups })).unwrap(),
-        );
+                            .split(". Use when")
+                            .next()
+                            .unwrap_or("")
+                    )
+                ));
+            }
+            skills_html.push_str("</ul>\n");
+        }
 
         // The archive: one directory per skill, no wrapper, so it unpacks
         // straight into a skills directory with nothing to rename.
@@ -502,23 +505,31 @@ fn main() {
         tar.into_inner().unwrap().finish().unwrap();
     }
 
-    // The hand-written pages: content as pre-rendered, twins as written,
-    // with the shortcodes expanded to their Markdown form.
+    // The hand-written pages. The placeholders are expanded HERE, to HTML for
+    // the page and to Markdown for its twin, rather than by a Zola shortcode:
+    // Zola 0.23 removed shortcodes, and nothing about a generated site needs
+    // them when the generator can substitute directly.
+    let count = entries.len().to_string();
+    let expand = |text: &str, skills: &str, linter: &str| -> String {
+        text.replace("{{ skills() }}", skills)
+            .replace("{{ diagnostics_count() }}", &count)
+            .replace("{{ linter_table() }}", linter)
+    };
     for p in &pages {
         let rel = p.rel.to_string_lossy().replace('\\', "/");
         write(
             &content,
             &rel,
-            &format!("+++\n{}\n+++\n{}", p.frontmatter, p.body),
+            &format!(
+                "+++\n{}\n+++\n{}",
+                p.frontmatter,
+                expand(&p.body, skills_html.trim_end(), linter_html.trim_end())
+            ),
         );
         if let Some(md) = &p.md {
             let twin = p.twin_rel();
             if !statics.join(&twin).exists() {
-                let body = p
-                    .source
-                    .replace("{{ skills() }}", skills_md.trim_end())
-                    .replace("{{ diagnostics_count() }}", &entries.len().to_string())
-                    .replace("{{ linter_table() }}", linter_md.trim_end());
+                let body = expand(&p.source, skills_md.trim_end(), linter_md.trim_end());
                 let lede = if p.lede.is_empty() {
                     String::new()
                 } else {
@@ -536,6 +547,28 @@ fn main() {
             };
             twins.push((html_path, md.clone()));
         }
+    }
+
+    // The front page IS the repository's README, so the project says one thing
+    // in both places and neither can drift. Its fences are illustrative — a
+    // few deliberately show code that does not compile — so they are
+    // highlighted but never handed to the fence gate.
+    {
+        let readme = link_to_repo(&fs::read_to_string(repo.join("README.md")).unwrap());
+        let (lede, rest) = readme.split_once("\n\n").expect("the README opens with a paragraph");
+        let pre = markdown::preprocess(rest.trim_start_matches('\n'), &highlighter);
+        write(
+            &content,
+            "_index.md",
+            &format!(
+                "+++\ntitle = \"rk\"\ndescription = {desc}\n\n[extra]\nlede = {lede}\nmd = \"/index.md\"\n+++\n{body}",
+                desc = toml_str(&one_line(lede)),
+                lede = toml_str(&one_line(lede)),
+                body = pre.body,
+            ),
+        );
+        write(&statics, "index.md", &readme);
+        twins.push(("/".into(), "/index.md".into()));
     }
 
     // Agent-facing files.
@@ -574,6 +607,28 @@ fn main() {
         twins.len(),
         site_dir.display()
     );
+}
+
+/// A link target that is a path in the repository resolves on GitHub but not
+/// on the website. Point those at the repository; leave absolute, rooted and
+/// fragment links alone.
+fn link_to_repo(text: &str) -> String {
+    const BLOB: &str = "https://github.com/adclz/rk/blob/main/";
+    let mut out = String::with_capacity(text.len());
+    let mut rest = text;
+    while let Some(i) = rest.find("](") {
+        out.push_str(&rest[..i + 2]);
+        rest = &rest[i + 2..];
+        let end = rest.find(')').unwrap_or(rest.len());
+        let target = &rest[..end];
+        if !(target.starts_with("http") || target.starts_with('/') || target.starts_with('#')) {
+            out.push_str(BLOB);
+        }
+        out.push_str(target);
+        rest = &rest[end..];
+    }
+    out.push_str(rest);
+    out
 }
 
 /// What the reference shows on hover: the message, the code and its

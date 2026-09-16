@@ -36,10 +36,13 @@ cargo insta review
 cargo run --release -p doc && (cd site && zola build)
 # Preview with the Worker, as deployed: `cd site && npx wrangler dev`.
 #
-# Zola must be 0.22.x, which CI pins. 0.23 removed shortcodes outright in
-# favour of Tera 2 components, so `site/templates/shortcodes/` and the four
-# `{{ name() }}` calls in `site/pages/` would all have to be rewritten before
-# the site can move past 0.22.
+# CI pins Zola 0.23.6. The site uses no Zola shortcodes — the generator
+# substitutes the derived HTML itself — so a Zola upgrade only has to keep
+# the templates in `site/templates/` working.
+#
+# The front page IS README.md: the generator reads it, highlights its fences
+# and points its repo-relative links at GitHub. Its examples are shown, never
+# compiled, because several deliberately do not.
 
 # Regenerate THIRD-PARTY-NOTICES, the licenses of the crates compiled into
 # every generated module (run from crates/wasm_builtins/; needs
