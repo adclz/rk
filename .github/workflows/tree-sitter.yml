@@ -20,12 +20,12 @@ jobs:
     name: Test parser
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
       - uses: ./.github/actions/rust-toolchain
       # Version floor from crates/tree-sitter/package.json ("^0.25.4"): the
       # CLI must match the generated parser's ABI. Built once, then cached.
       - name: Install the tree-sitter CLI
-        uses: taiki-e/cache-cargo-install-action@v2
+        uses: taiki-e/cache-cargo-install-action@7447f04c51f2ba27ca35e7f1e28fab848c5b3ba7 # v2
         with:
           tool: tree-sitter-cli@0.25.4
       - name: Test parser
