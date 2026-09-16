@@ -134,16 +134,20 @@ jobs:
       - uses: actions/checkout@v4
       - uses: ./.github/actions/rust-toolchain
       - uses: Swatinem/rust-cache@v2
-      - uses: actions/setup-node@v4
-        with:
-          node-version: 22
       # Fails when a diagnostics example disagrees with the compiler, or a
       # skill's example no longer holds, naming every one at fault. Writes
       # nothing in that case, so the committed reference is never replaced
       # by a bad one. Release: the skills gate loads the standard library
       # once per example, which is minutes in a debug build.
+      - name: Install Zola
+        uses: taiki-e/install-action@zola
       - name: The site's examples must agree with the compiler
-        run: cargo run --release -p doc -- site/dist --base-url "${SITE_URL:-http://localhost:8788}"
+        run: cargo run --release -p doc -- --base-url "${SITE_URL:-http://localhost:8787}"
+        env:
+          SITE_URL: ${{ vars.SITE_URL }}
+      - name: Zola must render every page
+        working-directory: site
+        run: zola build --base-url "${SITE_URL:-http://localhost:8787}"
         env:
           SITE_URL: ${{ vars.SITE_URL }}
       # `rk explain` embeds crates/doc/diagnostics.json in the binary. If
@@ -152,9 +156,14 @@ jobs:
       - name: The committed reference must be up to date
         run: |
           if ! git diff --exit-code -- crates/doc/diagnostics.json; then
-            echo "::error::crates/doc/diagnostics.json is out of date — run \`cargo run --release -p doc -- site/dist\` and commit the result"
+            echo "::error::crates/doc/diagnostics.json is out of date — run \`cargo run --release -p doc\` and commit the result"
             exit 1
           fi
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: site/package-lock.json
       - name: The Worker must type-check and bundle
         working-directory: site
-        run: npm install && npm run check
+        run: npm ci && npm run check

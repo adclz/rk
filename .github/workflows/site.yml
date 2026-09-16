@@ -1,5 +1,6 @@
-# The website: skills rendered by the generator, served by a Cloudflare
-# Worker. Deploys from GitHub on every push to main.
+# The website: the generator verifies the sources against the compiler and
+# writes what Zola renders; a Cloudflare Worker serves the result. Deploys
+# from GitHub on every push to main.
 #
 # Secrets: CLOUDFLARE_API_TOKEN (Workers Scripts: Edit), CLOUDFLARE_ACCOUNT_ID.
 # Variable: SITE_URL, the public origin, which the generator bakes into
@@ -29,10 +30,10 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - name: Setup rust toolchain and cache
-        uses: moonrepo/setup-rust@v0
-        with:
-          cache-target: release
+      - uses: ./.github/actions/rust-toolchain
+      - uses: Swatinem/rust-cache@v2
+      - name: Install Zola
+        uses: taiki-e/install-action@zola
       - uses: actions/setup-node@v4
         with:
           node-version: 22
@@ -40,8 +41,11 @@ jobs:
           cache-dependency-path: site/package-lock.json
       # Refuses to write when a diagnostics example or a skill's example
       # disagrees with the compiler, so a broken page never reaches the site.
+      - name: Verify the sources and write what Zola renders
+        run: cargo run --release -p doc -- --base-url "${{ vars.SITE_URL }}"
       - name: Build the site
-        run: cargo run --release -p doc -- site/dist --base-url "${{ vars.SITE_URL }}"
+        working-directory: site
+        run: zola build --base-url "${{ vars.SITE_URL }}"
       - name: Type-check and bundle the Worker
         working-directory: site
         run: npm ci && npm run check
