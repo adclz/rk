@@ -302,6 +302,36 @@ toolchain pinned by `rust-toolchain.toml` through the composite action in
 | `codspeed`    | Push to main, PR                                     | Benchmarks under CodSpeed                                                                                                                                                                                                                                                          |
 | `site`        | Push to main touching skills, crates, stdlib or site | Builds the website and deploys the Cloudflare Worker                                                                                                                                                                                                                               |
 
+### What keeps a pull request away from the deploy
+
+`site.yml` is the only workflow that names a secret, and it runs on push to
+`main` and manual dispatch only — never on `pull_request`, and nothing anywhere
+uses `pull_request_target`. GitHub withholds repository secrets from any run
+started by a forked pull request, so the workflows that do run on pull requests
+have nothing to leak. A pull request also cannot run its own edited copy of
+`site.yml`: workflow changes only take effect once merged.
+
+Two habits keep that true. Every third-party action is pinned to a full commit
+SHA, because a tag is mutable by its owner and one of these actions runs in the
+job that holds the Cloudflare token; `.github/dependabot.yml` bumps those pins
+weekly so they do not rot. And `npm ci --ignore-scripts` means a package's
+install script never executes in that job, nor on a pull request, where the
+lockfile is whatever the contributor wrote.
+
+Four things live in the GitHub UI and no file here can enforce them:
+
+| Setting | Wanted |
+| --- | --- |
+| Actions → Fork pull request workflows from outside collaborators | Require approval for all outside collaborators |
+| Actions → Workflow permissions | Read repository contents permission |
+| Rules → the `main` ruleset | Block force pushes and deletions, require a pull request, require the `ci` checks |
+| The `CLOUDFLARE_API_TOKEN` secret | Scoped to Workers Scripts: Edit, on this account only |
+
+`SITE_URL` is a repository variable, not a secret, and is baked into the
+sitemap, the canonical tags, `llms.txt` and the MCP server card. Nothing
+validates it: a wrong value builds a clean site that points everywhere at an
+address that does not exist.
+
 ## Key Dependencies
 
 | Dependency     | Purpose                                                                                      |
