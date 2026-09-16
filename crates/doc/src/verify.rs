@@ -20,8 +20,8 @@ use std::path::{Path, PathBuf};
 
 use crate::examples::ErrorExample;
 
-/// Codes that exist in the compiler but have no runnable example: they are
-/// described in `all_examples()` with no sources. This list may only SHRINK:
+/// Codes that exist in the compiler but have no runnable example: their file
+/// in `crates/doc/examples/` carries no fence. This list may only SHRINK:
 /// give a code an example, remove it from here. A new code must ship with its
 /// example — adding to this list defeats the guard, and the gap it papers
 /// over becomes the 35-ghost / 27-missing drift the April 2026 docs
@@ -130,8 +130,8 @@ pub fn problems(examples: &[ErrorExample], produced: &[(&str, BTreeSet<String>)]
         .filter(|c| !debt.contains(*c))
     {
         problems.push(format!(
-            "{missing}: defined by the compiler with no example — add one to `all_examples()` \
-             (do NOT grow KNOWN_UNDOCUMENTED)"
+            "{missing}: defined by the compiler with no example — write \
+             `crates/doc/examples/{missing}.md` (do NOT grow KNOWN_UNDOCUMENTED)"
         ));
     }
     for paid in debt.intersection(&exemplified) {
