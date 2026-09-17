@@ -39,6 +39,23 @@ struct DiagEntry<'a> {
     spans: Vec<DiagSpan>,
 }
 
+/// What the hand-written pages substitute into their placeholders. A full
+/// run derives these from the compiler; `--pages-only` reuses the last run's,
+/// so editing prose does not mean recompiling 225 examples.
+#[derive(serde::Serialize, serde::Deserialize, Default)]
+struct Substitutions {
+    skills_html: String,
+    skills_md: String,
+    linter_html: String,
+    linter_md: String,
+    count: String,
+}
+
+/// Beside the site, gitignored: a dev-loop cache, never an input to a deploy.
+fn cache_path(site_dir: &Path) -> PathBuf {
+    site_dir.join(".substitutions.json")
+}
+
 fn slug(category: &str) -> String {
     category.to_lowercase().replace(' ', "-")
 }
@@ -76,13 +93,60 @@ fn main() {
     let mut args = std::env::args().skip(1);
     let mut site_dir = repo.join("site");
     let mut base_url = std::env::var("SITE_URL").unwrap_or_else(|_| "http://localhost:8787".into());
+    let mut pages_only = false;
     while let Some(arg) = args.next() {
         match arg.as_str() {
             "--base-url" => base_url = args.next().expect("--base-url needs a value"),
+            "--pages-only" => pages_only = true,
             other => site_dir = PathBuf::from(other),
         }
     }
     let base_url = base_url.trim_end_matches('/').to_string();
+
+    let highlighter = StHighlighter::new();
+    let content = site_dir.join("content");
+    let statics = site_dir.join("static");
+
+    // `--pages-only`: the authoring loop. Re-renders the hand-written pages
+    // and the front page against the last full run's derived values, so
+    // editing prose does not mean recompiling every example. Their fences are
+    // still checked — that guarantee is the point of the whole generator —
+    // but the 225 diagnostics and the skills are left alone.
+    if pages_only {
+        let subs: Substitutions = match fs::read_to_string(cache_path(&site_dir)) {
+            Ok(text) => serde_json::from_str(&text).expect("the cache is this generator's own"),
+            Err(_) => {
+                eprintln!(
+                    "--pages-only needs a full run first: `cargo run --release -p doc`.\nIt reuses that run's skills list and linter table."
+                );
+                std::process::exit(1);
+            }
+        };
+        let pages = pages::discover(&site_dir.join("pages"), &highlighter);
+        let docs: Vec<skills::Doc> = pages
+            .iter()
+            .map(|p| skills::Doc {
+                shown: format!("site/pages/{}", p.rel.display()),
+                fences: &p.fences,
+            })
+            .collect();
+        let problems = skills::verify(&docs);
+        if !problems.is_empty() {
+            eprintln!(
+                "\n{} example(s) in the pages do not hold; nothing was written.\n",
+                problems.len()
+            );
+            for p in &problems {
+                eprintln!("  {p}");
+            }
+            std::process::exit(1);
+        }
+        let n = write_pages(&pages, &subs, &content, &statics, &repo, &highlighter).len();
+        eprintln!(
+            "\nDone: {n} page(s) re-rendered. The rest of the site is from the last full run."
+        );
+        return;
+    }
 
     // ── Diagnostics: every example must produce the code it documents ──
     let examples = examples::load(&crate_dir.join("examples"));
@@ -132,7 +196,6 @@ fn main() {
     }
 
     // ── Skills and pages: every fence must hold ────────────────────────
-    let highlighter = StHighlighter::new();
     let skills = skills::discover(&repo.join("skills"), &highlighter);
     let pages = pages::discover(&site_dir.join("pages"), &highlighter);
     let mut docs = skills::skill_docs(&skills, &repo);
@@ -159,9 +222,7 @@ fn main() {
     }
 
     // ── Everything agreed: write ──────────────────────────────────────
-    let content = site_dir.join("content");
     let data = site_dir.join("data");
-    let statics = site_dir.join("static");
     for dir in [&content, &data, &statics] {
         if dir.exists() {
             fs::remove_dir_all(dir).unwrap();
@@ -224,9 +285,8 @@ fn main() {
     // and the index twin.
     {
         let mut cats = Vec::new();
-        let mut index_md = String::from(
-            "# Diagnostics\n\nEvery code the compiler and the linter can report, each with a compiler-verified example.\n\n",
-        );
+        let mut index_md =
+            String::from("# Diagnostics\n\nEvery code the compiler and the linter can report");
         for c in &categories {
             let mut md = format!("# Diagnostics: {}\n\n", c.name);
             let mut items = Vec::new();
@@ -461,8 +521,7 @@ fn main() {
         );
 
         for (key, heading, blurb) in GROUPS {
-            let members: Vec<&skills::Skill> =
-                skills.iter().filter(|s| s.group() == key).collect();
+            let members: Vec<&skills::Skill> = skills.iter().filter(|s| s.group() == key).collect();
             skills_md.push_str(&format!("## {heading}\n\n"));
             for s in &members {
                 skills_md.push_str(&format!(
@@ -505,71 +564,24 @@ fn main() {
         tar.into_inner().unwrap().finish().unwrap();
     }
 
-    // The hand-written pages. The placeholders are expanded HERE, to HTML for
-    // the page and to Markdown for its twin, rather than by a Zola shortcode:
-    // Zola 0.23 removed shortcodes, and nothing about a generated site needs
-    // them when the generator can substitute directly.
-    let count = entries.len().to_string();
-    let expand = |text: &str, skills: &str, linter: &str| -> String {
-        text.replace("{{ skills() }}", skills)
-            .replace("{{ diagnostics_count() }}", &count)
-            .replace("{{ linter_table() }}", linter)
+    let subs = Substitutions {
+        skills_html: skills_html.clone(),
+        skills_md: skills_md.clone(),
+        linter_html: linter_html.clone(),
+        linter_md: linter_md.clone(),
+        count: entries.len().to_string(),
     };
-    for p in &pages {
-        let rel = p.rel.to_string_lossy().replace('\\', "/");
-        write(
-            &content,
-            &rel,
-            &format!(
-                "+++\n{}\n+++\n{}",
-                p.frontmatter,
-                expand(&p.body, skills_html.trim_end(), linter_html.trim_end())
-            ),
-        );
-        if let Some(md) = &p.md {
-            let twin = p.twin_rel();
-            if !statics.join(&twin).exists() {
-                let body = expand(&p.source, skills_md.trim_end(), linter_md.trim_end());
-                let lede = if p.lede.is_empty() {
-                    String::new()
-                } else {
-                    format!("{}\n\n", p.lede)
-                };
-                write(
-                    &statics,
-                    &twin.to_string_lossy(),
-                    &format!("# {}\n\n{lede}{}", p.title, body.trim_start()),
-                );
-            }
-            let html_path = {
-                let t = twin.to_string_lossy().replace('\\', "/");
-                format!("/{}", t.trim_end_matches("index.md"))
-            };
-            twins.push((html_path, md.clone()));
-        }
-    }
+    // So `--pages-only` can re-render prose without recompiling anything.
+    fs::write(cache_path(&site_dir), serde_json::to_string(&subs).unwrap()).unwrap();
 
-    // The front page IS the repository's README, so the project says one thing
-    // in both places and neither can drift. Its fences are illustrative — a
-    // few deliberately show code that does not compile — so they are
-    // highlighted but never handed to the fence gate.
-    {
-        let readme = link_to_repo(&fs::read_to_string(repo.join("README.md")).unwrap());
-        let (lede, rest) = readme.split_once("\n\n").expect("the README opens with a paragraph");
-        let pre = markdown::preprocess(rest.trim_start_matches('\n'), &highlighter);
-        write(
-            &content,
-            "_index.md",
-            &format!(
-                "+++\ntitle = \"rk\"\ndescription = {desc}\n\n[extra]\nlede = {lede}\nmd = \"/index.md\"\n+++\n{body}",
-                desc = toml_str(&one_line(lede)),
-                lede = toml_str(&one_line(lede)),
-                body = pre.body,
-            ),
-        );
-        write(&statics, "index.md", &readme);
-        twins.push(("/".into(), "/index.md".into()));
-    }
+    twins.extend(write_pages(
+        &pages,
+        &subs,
+        &content,
+        &statics,
+        &repo,
+        &highlighter,
+    ));
 
     // Agent-facing files.
     write(
@@ -607,6 +619,87 @@ fn main() {
         twins.len(),
         site_dir.display()
     );
+}
+
+/// Write every hand-written page and the README front page, expanding the
+/// placeholders to HTML for the page and to Markdown for its twin. Returns
+/// the (page, twin) pairs for `_headers`.
+fn write_pages(
+    pages: &[pages::Page],
+    subs: &Substitutions,
+    content: &Path,
+    statics: &Path,
+    repo: &Path,
+    highlighter: &StHighlighter,
+) -> Vec<(String, String)> {
+    let mut twins = Vec::new();
+    let expand = |text: &str, skills: &str, linter: &str| -> String {
+        text.replace("{{ skills() }}", skills)
+            .replace("{{ diagnostics_count() }}", &subs.count)
+            .replace("{{ linter_table() }}", linter)
+    };
+    for p in pages {
+        let rel = p.rel.to_string_lossy().replace('\\', "/");
+        write(
+            content,
+            &rel,
+            &format!(
+                "+++\n{}\n+++\n{}",
+                p.frontmatter,
+                expand(
+                    &p.body,
+                    subs.skills_html.trim_end(),
+                    subs.linter_html.trim_end()
+                )
+            ),
+        );
+        if let Some(md) = &p.md {
+            let twin = p.twin_rel();
+            let body = expand(
+                &p.source,
+                subs.skills_md.trim_end(),
+                subs.linter_md.trim_end(),
+            );
+            let lede = if p.lede.is_empty() {
+                String::new()
+            } else {
+                format!("{}\n\n", p.lede)
+            };
+            write(
+                statics,
+                &twin.to_string_lossy(),
+                &format!("# {}\n\n{lede}{}", p.title, body.trim_start()),
+            );
+            let html_path = {
+                let t = twin.to_string_lossy().replace('\\', "/");
+                format!("/{}", t.trim_end_matches("index.md"))
+            };
+            twins.push((html_path, md.clone()));
+        }
+    }
+
+    // The front page IS the repository's README, so the project says one thing
+    // in both places and neither can drift. Its fences are illustrative — a
+    // few deliberately show code that does not compile — so they are
+    // highlighted but never handed to the fence gate.
+    let readme = link_to_repo(&fs::read_to_string(repo.join("README.md")).unwrap());
+    let (lede, rest) = readme
+        .split_once("\n\n")
+        .expect("the README opens with a paragraph");
+    let pre = markdown::preprocess(rest.trim_start_matches('\n'), highlighter);
+    write(
+        content,
+        "_index.md",
+        &format!(
+            "+++\ntitle = \"rk\"\ndescription = {desc}\n\n[extra]\nlede = {lede}\nmd = \"/index.md\"\n+++\n{body}",
+            desc = toml_str(&one_line(lede)),
+            lede = toml_str(&one_line(lede)),
+            body = pre.body,
+        ),
+    );
+    write(statics, "index.md", &readme);
+    twins.push(("/".into(), "/index.md".into()));
+    twins
 }
 
 /// A link target that is a path in the repository resolves on GitHub but not

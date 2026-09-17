@@ -1085,6 +1085,7 @@ dependencies = [
  "ide_diagnostic",
  "linter",
  "pulldown-cmark",
+ "serde",
  "serde_json",
  "sha2",
  "tar",

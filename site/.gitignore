@@ -5,3 +5,4 @@ node_modules/
 content/
 data/
 static/
+.substitutions.json

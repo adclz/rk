@@ -36,6 +36,13 @@ cargo insta review
 cargo run --release -p doc && (cd site && zola build)
 # Preview with the Worker, as deployed: `cd site && npx wrangler dev`.
 #
+# Authoring loop for site/pages/*.md and README.md. Zola watches content/,
+# not pages/, so a page edit shows nothing until the generator runs again.
+# --pages-only re-renders only the pages, against the last full run's derived
+# values: about 1s instead of 14s. Their fences are still checked. It refuses
+# until a full run has produced site/.substitutions.json, and CI never uses it.
+cargo run --release -p doc -- --pages-only
+#
 # CI pins Zola 0.23.6. The site uses no Zola shortcodes — the generator
 # substitutes the derived HTML itself — so a Zola upgrade only has to keep
 # the templates in `site/templates/` working.
