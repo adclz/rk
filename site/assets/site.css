@@ -7,6 +7,7 @@
   --bracket-1: #0431fa; --bracket-2: #319331; --bracket-3: #7b3814;
   --hl-enum: #0070c1;
   --red: #e51400; --yellow: #bf8803; --blue: #1a85ff; --bright-blue: #0050bd; --green: #1c6b3a;
+  --purple: #8250df;
   --pass: #007100; --fail: #a1260d;
   --serif: 'IBM Plex Serif', Georgia, 'Times New Roman', serif;
   --mono: 'JetBrains Mono', 'IBM Plex Mono', 'SF Mono', Consolas, monospace;
@@ -21,6 +22,7 @@
     --bracket-1: #ffd700; --bracket-2: #da70d6; --bracket-3: #179fff;
     --hl-enum: #4fc1ff;
     --red: #f14c4c; --yellow: #cca700; --blue: #3794ff; --bright-blue: #8ab4f8; --green: #a6d189;
+    --purple: #a371f7;
     --pass: #73c991; --fail: #f14c4c;
   }
 }
@@ -33,6 +35,7 @@
   --bracket-1: #ffd700; --bracket-2: #da70d6; --bracket-3: #179fff;
   --hl-enum: #4fc1ff;
   --red: #f14c4c; --yellow: #cca700; --blue: #3794ff; --bright-blue: #8ab4f8; --green: #a6d189;
+  --purple: #a371f7;
   --pass: #73c991; --fail: #f14c4c;
 }
 * { box-sizing: border-box; }
@@ -60,6 +63,17 @@ pre code { background: none; padding: 0; color: inherit; font-size: inherit; }
 blockquote { margin: 1.25rem 0; padding: 0.75rem 1rem; border-left: 3px solid var(--link); background: var(--panel); color: var(--ink); font-size: 0.95rem; }
 blockquote p { margin: 0; }
 blockquote p + p { margin-top: 0.5rem; }
+/* GitHub's alerts, `> [!NOTE]` through `> [!CAUTION]`, as the generator
+   rewrites them: a quote with a title line in the kind's colour. */
+.alert { --alert: var(--link); margin: 1.25rem 0; padding: 0.7rem 1rem 0.8rem; border-left: 3px solid var(--alert); background: var(--panel); font-size: 0.95rem; }
+.alert > * { margin: 0; }
+.alert > * + * { margin-top: 0.5rem; }
+.alert-title { display: flex; align-items: center; gap: 0.45rem; font-family: var(--mono); font-size: 0.72rem; font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase; color: var(--alert); }
+.alert-title svg { flex: none; width: 1.25em; height: 1.25em; }
+.alert-tip { --alert: var(--green); }
+.alert-important { --alert: var(--purple); }
+.alert-warning { --alert: var(--yellow); }
+.alert-caution { --alert: var(--red); }
 table { border-collapse: collapse; width: 100%; font-size: 0.92rem; margin: 0.75rem 0 1.25rem; }
 th { text-align: left; font-family: var(--mono); font-size: 0.72rem; letter-spacing: 0.06em; text-transform: uppercase; color: var(--muted); font-weight: 500; border-bottom: 1px solid var(--ink); padding: 0.4rem 0.75rem 0.4rem 0; }
 td { border-bottom: 1px solid var(--rule); padding: 0.45rem 0.75rem 0.45rem 0; vertical-align: top; }

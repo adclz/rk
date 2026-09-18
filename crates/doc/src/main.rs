@@ -683,23 +683,52 @@ fn write_pages(
     // few deliberately show code that does not compile — so they are
     // highlighted but never handed to the fence gate.
     let readme = link_to_repo(&fs::read_to_string(repo.join("README.md")).unwrap());
-    let (lede, rest) = readme
-        .split_once("\n\n")
-        .expect("the README opens with a paragraph");
-    let pre = markdown::preprocess(rest.trim_start_matches('\n'), highlighter);
+    // The template prints the title and the lede above the body, so both come
+    // out of it: `preprocess` lifts the H1, and the tagline is cut here.
+    let tagline = readme_tagline(&readme);
+    let body_src = readme.replacen(tagline, "", 1);
+    let pre = markdown::preprocess(&body_src, highlighter);
+    let title = pre.title.as_deref().unwrap_or("rk");
+    let lede = one_line(&strip_tags(tagline));
     write(
         content,
         "_index.md",
         &format!(
-            "+++\ntitle = \"rk\"\ndescription = {desc}\n\n[extra]\nlede = {lede}\nmd = \"/index.md\"\n+++\n{body}",
-            desc = toml_str(&one_line(lede)),
-            lede = toml_str(&one_line(lede)),
+            "+++\ntitle = {title}\ndescription = {lede}\n\n[extra]\nlede = {lede}\nmd = \"/index.md\"\n+++\n{body}",
+            title = toml_str(title),
+            lede = toml_str(&lede),
             body = pre.body,
         ),
     );
     write(statics, "index.md", &readme);
     twins.push(("/".into(), "/index.md".into()));
     twins
+}
+
+/// The README's tagline, which becomes the page's lede: the first block that
+/// is neither the H1, the epigraph under it nor a list.
+fn readme_tagline(readme: &str) -> &str {
+    readme
+        .split("\n\n")
+        .map(str::trim)
+        .find(|b| !(b.is_empty() || b.starts_with(['#', '>', '-', '*'])))
+        .unwrap_or_default()
+}
+
+/// The text of a block, without its tags: the README centers the tagline in a
+/// `<div>` for GitHub, and none of that belongs in a `description`.
+fn strip_tags(block: &str) -> String {
+    let mut out = String::with_capacity(block.len());
+    let mut depth = 0usize;
+    for c in block.chars() {
+        match c {
+            '<' => depth += 1,
+            '>' => depth = depth.saturating_sub(1),
+            _ if depth == 0 => out.push(c),
+            _ => {}
+        }
+    }
+    out
 }
 
 /// A link target that is a path in the repository resolves on GitHub but not
@@ -766,7 +795,5 @@ fn group_icon(group: &str) -> String {
             r#"<path d="M4 8h9.5M18.5 8H20M4 16h3.5M12.5 16H20"/><circle cx="16" cy="8" r="2.3"/><circle cx="10" cy="16" r="2.3"/>"#
         }
     };
-    format!(
-        r#"<svg viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">{inner}</svg>"#
-    )
+    site::icon(inner)
 }

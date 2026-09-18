@@ -97,6 +97,14 @@ pub fn one_line(s: &str) -> String {
     s.split_whitespace().collect::<Vec<_>>().join(" ")
 }
 
+/// A line drawing in the one weight every icon on the site uses: a 24-unit
+/// box, stroked in the text's colour, round caps.
+pub fn icon(inner: &str) -> String {
+    format!(
+        r#"<svg viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">{inner}</svg>"#
+    )
+}
+
 /// Strip ANSI escape sequences from a compiler report, for the Markdown twin.
 pub fn strip_ansi(s: &str) -> String {
     let mut out = String::with_capacity(s.len());
