@@ -1,51 +1,102 @@
-Rk is a Structured Text toolchain that emits WebAssembly, focused on strictness and portability.
+# Rk 'Rukbat'
 
-The emitted WebAssembly can be executed by any WASM runtime, although some imports of the std lib require a WASI P1 compliant runtime.
+> Or __Alpha Sagittarii__  💫
 
-See the diagnostics for error codes.
+<div align="center" style="font-weight: bold"><strong>Rk</strong> is an IEC-61131-3 Structured Text toolchain that compiles to WebAssembly, focused on strictness and portability.</div>
+<br>
 
-*Some technical decisions diverge from standard implementations of ST, the summary below shows some the most significative ones*
+ - See [diagnostics](https://rk.clauzeladrien2170.workers.dev/diagnostics) for error codes.
 
-- [Semicolons](#semicolons)
-- [Case sensitivity](#case-sensitivity)
-- [Namespaces](#namespaces)
-- [Overloading](#overloading)
-- [Monomorphized OOP](#monomorphized-oop)
-- [References](#references)
-- [Tests](#tests)
-- [Pragmas](#pragmas)
+ - See [official documentation](https://rk.clauzeladrien2170.workers.dev) to learn about _**formatter**_ and _**linter**_.
+
+
+## Why WebAssembly ?
+
+- **Portable.** One unique binary that never changes.
+
+- **Sandboxed.** A module reaches the memory you handed it and the imports you declared, nothing else. A fault comes back as an error on your call, not a crash in your process.
+
+- **Agnostic host** in any language, on any [platform](https://withbighair.com/webassembly/2025/05/11/Runtime-choices.html) with a WASM runtime. 
+
+## What are the advantages of this compiler ?
+
+- **One core module, over memory dedicated once** No allocator, no GC, nothing calls `memory.grow`, so the footprint is settled at compile time.
+
+- **The core logic only.** No scan loop, no scheduler, no debugger. Tasks, retained ranges, symbols and tests ride as custom sections after the code.
+
+- **No dependency on ABI glue.** The code does not depend on the WASI Component model, read the [WASM ABI](#wasm-abi) to see how data can be exchanged.
+
+- **Bundled traps** Array, subrange bounds, and dereference checks are generated inside the binary. _Other checks such as division by zero are usualy handled by WASM runtimes themselves._
+
+- **Lightweight** Rk does not depend on any compiler backend except wasm-encoder. The CLI, however, provides [binaryen](https://github.com/webassembly/binaryen) as an optional tool you can use to use to optimize binaries, see [Profiles](#profiles).
+
+<hr>
+
+> Several strong technical decisions diverge from standard implementations of ST, the summary below shows some the most significative ones
+
+<!-- no toc -->
+- Syntax
+  - [Semicolons](#semicolons)
+  - [Case sensitivity](#case-sensitivity)
+- Programming additions
+  - [Namespaces](#namespaces)
+  - [Overloading](#overloading)
+  - [Monomorphized OOP](#monomorphized-oop)
+  - [References](#references)
+- Extras
+  - [Tests](#tests)
+  - [Pragmas](#pragmas)
+- Internal behavior
+  - [Bundled Traps](#bundled-traps)
+  - [Strings](#strings)
+  - [Math operations](#math-operations)
 - [StdLib](#stdlib)
-- [Bundled Traps](#bundled-traps)
-- [Strings](#strings)
-- [Math operations](#math-operations)
 - [WASM ABI](#wasm-abi)
 - [Debug Symbols](#debug-symbols)
 - [Profiles](#profiles)
 - [License](#license)
 
-## Semicolons
+### Semicolons
 
-The compiler accepts missing semiclons `;`.
+First, semicolons `;` are not mandatory.
+
+The following program can compile without any problem:
+```st
+FUNCTION MyFn
+    VAR
+        test: INT
+        test2: INT
+    END_VAR
+
+    IF test > test2 THEN
+
+    END_IF
+END_FUNCTION
+
+```
+
 The formatter writes the missing ones in.
 
-## Case sensitivity
+### Case sensitivity
 
 Keywords and identifiers are case-insensitive: `myFn` and `MyFn` are one name.
 
-## Namespaces
+### Namespaces
 **A file IS NOT a single POU**.
+
 A file can contain as many POUs as you want, as long as you give them a different name, and folders do not affect name resolution.
 
 > There is no limitation in how you want to organize your workspace, so feel free to split your code the way you like.
 
-```
+
+```st
 FUNCTION MyFn END_FUNCTION
 FUNCTION MyFn END_FUNCTION // Not Ok
 ```
 
 can be fixed by putting the second in a `NAMESPACE`
 
-```
+```st
 FUNCTION MyFn END_FUNCTION // Global
 
 NAMESPACE MyNamespace
@@ -64,7 +115,7 @@ USING MyNamespace // <-- Import the namespace and MyFn
 `USING` directives can be used inside Namespaces or POUs
 
 
-```
+```st
 USING Namespace <-- Ok
 
 NAMESPACE MyNs
@@ -81,7 +132,7 @@ __The compiler will kindly tell you if an imported POU has the same name as a lo
 
 OR
 
-```pascal
+```st
 FUNCTION MyFn
     MyNamespace.MyFn // <-- Qualify the full path
 END_FUNCTION
@@ -89,14 +140,14 @@ END_FUNCTION
 
 Globals are shared everywhere, and Namespaces are partial, so they can be defined across multiple files, and will be merged automatically.
 
-```pascal
+```st
 // file1.st
 NAMESPACE MyNs
     FUNCTION MyFn END_FUNCTION
 END_NAMESPACE
 ```
 
-```pascal
+```st
 // file2.st
 NAMESPACE MyNs
     FUNCTION MyFn END_FUNCTION // <-- will trigger a duplicate error, because MyNs.MyFn already exists in file1.st
@@ -105,7 +156,7 @@ END_NAMESPACE
 
 There is no limitation for namespace nesting.
 
-```pascal
+```st
 NAMESPACE MyNs
 
     NAMESPACE MyNs2
@@ -121,7 +172,7 @@ NAMESPACE MyNs
 END_NAMESPACE
 ```
 
-## Overloading
+### Overloading
 
 The IEC standard defines generics for **ANY_INT**, **ANY_MAGNITUDE** etc ...
 Those are normally reserved for the standard library, but it turns out that using overloads can mimic this system by writing each possible variant.
@@ -131,7 +182,7 @@ This comes with the advantage that the compiler does not need extra plumbing for
 __Overloading can only be used on **FUNCTION**__
 
 
-```pascal
+```st
 FUNCTION MyFn
     VAR_INPUT
         Input: INT;
@@ -147,7 +198,7 @@ END_FUNCTION
 
 And then on usage:
 
-```pascal
+```st
 MyFn(0) <-- Will pick the first overload
 MyFn(1.0) <-- Will pick the second overload
 ```
@@ -156,7 +207,7 @@ MyFn(1.0) <-- Will pick the second overload
 > **Return type** affects the signature of overloads.
 
 
-## Monomorphized OOP
+### Monomorphized OOP
 
 All Object Oriented Programming concepts are implemented (`CLASS`, `METHOD` ...).
 
@@ -175,13 +226,13 @@ So:
 - An `ARRAY` OF `INTERFACE` is not allowed.
 
 
-## References
+### References
 
 `REF_TO`, `REF()`, `^` and `NULL` as in the standard.
 
 A reference that may be `NULL` cannot be dereferenced: the compiler refuses `ptr^` unless it can prove `ptr` is set.
 
-```pascal
+```st
 FUNCTION fn1 : INT
     VAR
         x: INT := 1;
@@ -211,7 +262,7 @@ A test is a `FUNCTION` marked `{test}`, asserting with `Std.Unit`.
 
 `rk test` compiles the workspace and runs them; `rk test add` runs those whose name contains `add`.
 
-```pascal
+```st
 USING Std.Unit;
 
 {test}
@@ -249,7 +300,8 @@ Everything the compiler checks raises **one** exception, and it carries a messag
 
 A module declares a single exception tag, `(i32, i32)`: the pointer and length of a STRING in the memory you provided. It is never exported, so a host reads it from the pending-exception slot.
 
-`__RAISE(message)` is the only throw. There is no `TRY`, no `CATCH`, no `ON ERROR` — a raise always leaves the module.
+> [! NOTE]
+> `__RAISE` triggers a WASM [throw](https://developer.mozilla.org/en-US/docs/WebAssembly/Reference/Exception_handling/throw) and can be contained in a [try_table](https://developer.mozilla.org/en-US/docs/WebAssembly/Reference/Exception_handling/try_table), we do not implement yet `__TRY`, or `__CATCH` but it's on the roadmap.
 
 > The one catcher an emitted module contains is the wrapper around a `{test}` function, which is why a failing assertion is reported rather than fatal.
 
@@ -277,11 +329,14 @@ A Rust panic inside a grafted builtin arrives as the same exception, with the pa
 
 One string type, **UTF-8**. There is no `WSTRING` and no `WCHAR`.
 
+> [! NOTE]
+> The Std lib ships **WSTRING** as an alias of **STRING**.
+
 A slot is a 4-byte length followed by its capacity in bytes, so a plain `STRING` occupies 84.
 
-```pascal
+```st
 s1: STRING;      // 80 bytes of buffer
-s2: STRING[5];   // 5 BYTES, not characters — 'café' needs exactly this
+s2: STRING[5];   // 5 BYTES, not characters - 'café' needs exactly this
 ```
 
 `LEN` is bytes and O(1). Every operation exists twice: `LEFT`, `MID`, `FIND` count bytes, `CHAR_LEFT`, `CHAR_MID`, `CHAR_FIND` count characters. On ASCII they agree, and the byte family is faster.
@@ -289,7 +344,7 @@ s2: STRING[5];   // 5 BYTES, not characters — 'café' needs exactly this
 - A **literal** too long for its destination is a compile error.
 - A **variable** too long truncates silently, and truncating bytes can split a character. `IS_UTF8` exists for exactly that.
 
-No indexing — `s[1]` is `E0508`, use `CHAR_AT`. No `+` — use `CONCAT`.
+No indexing - `s[1]` is `E0508`, use `CHAR_AT`. No `+` - use `CONCAT`.
 
 Comparison is byte-lexicographic, so `'Z' < 'a'`, and a `STRING` is a legal `CASE` label.
 
@@ -297,11 +352,11 @@ Comparison is byte-lexicographic, so `'Z' < 'a'`, and a `STRING` is a legal `CAS
 
 > At a call boundary a `STRING` input or return is a borrowed `(ptr, len)`, never a copy. A `VAR_IN_OUT` or `VAR_OUTPUT` is instead `(addr, capacity)`, so the callee's writes clamp.
 
-## Math operations
+### Math operations
 
 Every maths function is in the module. **It imports nothing but `env.memory`.**
 
-`+ - * / MOD` are single wasm instructions, and so are `SQRT` and `ABS`. The eleven that have no instruction — `SIN COS TAN ASIN ACOS ATAN ATAN2 EXP LN LOG` and `**` — are grafted in from libm when you call them, in `REAL` and `LREAL` form. Nothing is imported, so nothing has to be wired up by the host.
+`+ - * / MOD` are single wasm instructions, and so are `SQRT` and `ABS`. The eleven that have no instruction - `SIN COS TAN ASIN ACOS ATAN ATAN2 EXP LN LOG` and `**` - are grafted in from libm when you call them, in `REAL` and `LREAL` form. Nothing is imported, so nothing has to be wired up by the host.
 
 Arithmetic is wasm arithmetic:
 
@@ -316,15 +371,15 @@ There is no `ANY_INT` or `ANY_REAL` in the type system. Each generic is an overl
 
 Implicit casts follow the standard's table, which is stricter than most toolchains:
 
-```pascal
+```st
 r := i;    // INT to REAL, Ok
-r := d;    // DINT to REAL, E0301 — the standard's table omits it
+r := d;    // DINT to REAL, E0301 - the standard's table omits it
 i := r;    // never implicit; the error names the cast for you
 ```
 
 > A bare literal expression computes at the literal's default type, then widens. `x : LREAL := 0.1 + 0.0` is REAL arithmetic. Write `LREAL#0.1 + 0.0`.
 
-## WASM ABI
+### WASM ABI
 
 A workspace compiles to one core module.
 It imports its linear memory as `env.memory`, exports `__init` to set cold-start values, one body per POU, and the retained and global bands as `retain_base`/`retain_size` and `globals_base`/`globals_size`.
@@ -344,8 +399,41 @@ Calling an export:
 
 - `__init` first, `() -> ()`.
 - A `PROGRAM` body takes its instance address: `(i32) -> ()`.
-- A `FUNCTION` takes `VAR_INPUT` in declaration order, scalars by value, then one pointer per `VAR_IN_OUT` and `VAR_OUTPUT`; the return type is the result, a `STRING` result is `(ptr, len)`, an aggregate result is a pointer to the callee's slot to copy out of.
+- A `FUNCTION` takes every parameter in the order it is declared — `VAR_INPUT` scalars by value, one pointer per `VAR_IN_OUT` and `VAR_OUTPUT`; the return type is the result, a `STRING` result is `(ptr, len)`, an aggregate result is a pointer to the callee's slot to copy out of.
 - Everything lives in the memory you provided; the first 16 KiB are reserved.
+
+So this function:
+
+```st
+FUNCTION Scale : REAL
+	VAR_INPUT
+		raw: INT;
+		gain: REAL;
+	END_VAR
+	VAR_IN_OUT
+		total: REAL;
+	END_VAR
+	VAR_OUTPUT
+		clamped: BOOL;
+	END_VAR
+		total := total + raw * gain;
+		clamped := total > REAL#100.0;
+		Scale := total;
+END_FUNCTION
+```
+
+exports this:
+
+```wat
+(func (export "Scale")
+	(param i32)   ;; raw      INT, by value
+	(param f32)   ;; gain     REAL, by value
+	(param i32)   ;; total    VAR_IN_OUT, address
+	(param i32)   ;; clamped  VAR_OUTPUT, address
+	(result f32)) ;; Scale    REAL
+```
+
+Write `total` and read `clamped` back at the addresses you passed. Declaring `VAR_OUTPUT` before `VAR_INPUT` moves it up the parameter list.
 
 A host import declared with `{extern}` is the same convention in reverse: 
 - `VAR_INPUT` are the parameters, 
@@ -353,7 +441,7 @@ A host import declared with `{extern}` is the same convention in reverse:
 
 it takes copies, so `VAR_IN_OUT`, aggregate outputs and a `STRING` return are refused.
 
-## Debug Symbols
+### Debug Symbols
 
 A module carries its own symbol table, so a host reads variables **by name** rather than by address.
 
@@ -377,7 +465,7 @@ Paths resolve through arrays and struct fields without enumerating them, so `pts
 
 > **rk ships no debugger.** It emits the tables and `debug_format` decodes them. The scan loop, the monitoring session and the debug adapter belong to a runtime.
 
-## Profiles
+### Profiles
 
 Two, and they differ **only in which sections ride along**. The code is the same.
 
@@ -393,13 +481,13 @@ A release build is watchable but not steppable, and the missing line table is ho
 
 `-O` takes `0`-`3`, `s` or `z`, and defaults to `2`. `-O4` is refused: Binaryen's Flatten pass still aborts on the `try_table` that every raise emits.
 
-wasm-opt is an external binary — whatever is on `PATH`, else a checksum-verified Binaryen downloaded once into your cache. `RK_NO_DOWNLOAD=1` opts out.
+wasm-opt is an external binary - whatever is on `PATH`, else a checksum-verified Binaryen downloaded once into your cache. `RK_NO_DOWNLOAD=1` opts out.
 
 > `rk test -O` warns and runs a correct unoptimized build if the optimizer fails. `rk compile --release` refuses outright. A release build never silently degrades.
 
 Most of what a release saves is dropped tables, not optimized code.
 
-## License
+### License
 
 rk is distributed under [AGPL-3.0-only](LICENSE).
 For the Apache-2.0 exceptions, the permission that makes every generated module yours, and commercial licensing, see [LICENSING.md](LICENSING.md).
