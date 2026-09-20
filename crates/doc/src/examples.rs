@@ -89,7 +89,9 @@ pub fn load(dir: &Path) -> Vec<ErrorExample> {
         .collect()
 }
 
-/// The prose before the first fence, as one line, and every `iecst` fence.
+/// The prose before the first fence, and every `iecst` fence. A description is
+/// collapsed within each paragraph, so a source line break is free, and its
+/// blank lines survive as the paragraphs the page and `rk explain` print.
 fn split_body(body: &str) -> (String, Vec<String>) {
     let mut description = String::new();
     let mut sources = Vec::new();
@@ -120,7 +122,12 @@ fn split_body(body: &str) -> (String, Vec<String>) {
         }
     }
     assert!(fence.is_none(), "unterminated fence");
-    let description = description.split_whitespace().collect::<Vec<_>>().join(" ");
+    let description = description
+        .split("\n\n")
+        .map(|para| para.split_whitespace().collect::<Vec<_>>().join(" "))
+        .filter(|para| !para.is_empty())
+        .collect::<Vec<_>>()
+        .join("\n\n");
     let sources = sources
         .into_iter()
         .map(|s| s.trim_matches('\n').to_string())

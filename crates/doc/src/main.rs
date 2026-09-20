@@ -11,6 +11,7 @@
 //! Also refreshes the committed `crates/doc/diagnostics.json`, which
 //! `rk explain` embeds at build time.
 
+mod casts;
 mod examples;
 mod highlight;
 mod markdown;
@@ -112,6 +113,16 @@ fn main() {
     // editing prose does not mean recompiling every example. Their fences are
     // still checked — that guarantee is the point of the whole generator —
     // but the 225 diagnostics and the skills are left alone.
+    // The README's cast tables come from the compiler, not from anyone's
+    // memory of the standard, and are refreshed before the page is built
+    // from it. CI diffs the committed copy, as it does diagnostics.json.
+    let convert = fs::read_to_string(repo.join("stdlib/Convert.st")).unwrap();
+    for file in ["README.md", "skills/programming-st/references/types.md"] {
+        if casts::refresh_readme(&repo.join(file), &convert) {
+            eprintln!("{file}: cast tables refreshed");
+        }
+    }
+
     if pages_only {
         let subs: Substitutions = match fs::read_to_string(cache_path(&site_dir)) {
             Ok(text) => serde_json::from_str(&text).expect("the cache is this generator's own"),
@@ -329,6 +340,12 @@ fn main() {
                     "code": e.ex.code,
                     "title": e.ex.title,
                     "description": e.ex.description,
+                    "description_html": e
+                        .ex
+                        .description
+                        .split("\n\n")
+                        .map(|para| format!("<p class=\"description\">{}</p>", escape(para)))
+                        .collect::<String>(),
                     "text": text,
                     "sources_html": sources_html,
                     "report_html": e.report_html,
@@ -421,14 +438,14 @@ fn main() {
                     rule,
                     sev,
                     if on { "on" } else { "—" },
-                    e.ex.description.replace('|', "\\|")
+                    one_line(&e.ex.description).replace('|', "\\|")
                 ));
                 html_rows.push(format!(
                     "<tr><td class=\"k\"><a href=\"/diagnostics/#{code}\">{code}</a></td><td class=\"k\">{rule}</td><td>{sev}</td><td>{on}</td><td>{what}</td></tr>\n",
                     code = e.ex.code,
                     rule = escape(rule),
                     on = if on { "on" } else { "—" },
-                    what = escape(&e.ex.description),
+                    what = escape(&one_line(&e.ex.description)),
                 ));
             }
             md.push('\n');
@@ -470,7 +487,7 @@ fn main() {
                     &content,
                     &format!("{dir}/references/{stem}.md"),
                     &format!(
-                        "+++\ntitle = {title}\ndescription = {desc}\ntemplate = \"page.html\"\n\n[extra]\nhead_title = {head}\nno_h1 = {no_h1}\nmd = {md}\neyebrow = \"reference\"\nbreadcrumb = {crumb}\n+++\n{body}",
+                        "+++\ntitle = {title}\ndescription = {desc}\ntemplate = \"page.html\"\n\n[extra]\nhead_title = {head}\nno_h1 = {no_h1}\nmd = {md}\nbreadcrumb = {crumb}\n+++\n{body}",
                         title = toml_str(&r.title),
                         no_h1 = !r.has_h1,
                         head = toml_str(&format!("{} · {}", skill.name, r.title)),
@@ -492,11 +509,10 @@ fn main() {
                 &content,
                 &format!("{dir}/_index.md"),
                 &format!(
-                    "+++\ntitle = {title}\ndescription = {desc}\ntemplate = \"skill.html\"\nsort_by = \"none\"\n\n[extra]\nmd = {md}\neyebrow = {eyebrow}\nreferences = [{refs}]\n+++\n{body}",
+                    "+++\ntitle = {title}\ndescription = {desc}\ntemplate = \"skill.html\"\nsort_by = \"none\"\n\n[extra]\nmd = {md}\nreferences = [{refs}]\n+++\n{body}",
                     title = toml_str(&skill.name),
                     desc = toml_str(&one_line(&skill.description)),
                     md = toml_str(&md_path),
-                    eyebrow = toml_str(&format!("skill · {}", skill.group())),
                     refs = refs.join(", "),
                     body = skill.body,
                 ),
@@ -686,16 +702,27 @@ fn write_pages(
     // The template prints the title and the lede above the body, so both come
     // out of it: `preprocess` lifts the H1, and the tagline is cut here.
     let tagline = readme_tagline(&readme);
-    let body_src = readme.replacen(tagline, "", 1);
+    // The epigraph sits between the two in the README, so it is lifted as
+    // well: left in the body it would land under the lede, out of order.
+    let epigraph = readme_epigraph(&readme, tagline);
+    let body_src = readme.replacen(tagline, "", 1).replacen(epigraph, "", 1);
     let pre = markdown::preprocess(&body_src, highlighter);
     let title = pre.title.as_deref().unwrap_or("rk");
     let lede = one_line(&strip_tags(tagline));
+    let epigraph = one_line(
+        &epigraph
+            .lines()
+            .map(|l| l.trim_start().trim_start_matches('>').trim())
+            .collect::<Vec<_>>()
+            .join(" "),
+    );
     write(
         content,
         "_index.md",
         &format!(
-            "+++\ntitle = {title}\ndescription = {lede}\n\n[extra]\nlede = {lede}\nmd = \"/index.md\"\n+++\n{body}",
+            "+++\ntitle = {title}\ndescription = {lede}\n\n[extra]\nepigraph = {epigraph}\nlede = {lede}\nmd = \"/index.md\"\n+++\n{body}",
             title = toml_str(title),
+            epigraph = toml_str(&epigraph),
             lede = toml_str(&lede),
             body = pre.body,
         ),
@@ -712,6 +739,15 @@ fn readme_tagline(readme: &str) -> &str {
         .split("\n\n")
         .map(str::trim)
         .find(|b| !(b.is_empty() || b.starts_with(['#', '>', '-', '*'])))
+        .unwrap_or_default()
+}
+
+/// The quote between the H1 and the tagline, if the README opens with one.
+fn readme_epigraph<'a>(readme: &'a str, tagline: &str) -> &'a str {
+    let head = &readme[..readme.find(tagline).unwrap_or(0)];
+    head.split("\n\n")
+        .map(str::trim)
+        .find(|b| b.starts_with('>'))
         .unwrap_or_default()
 }
 

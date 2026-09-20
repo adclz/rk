@@ -25,7 +25,7 @@
 {%- for e in c.entries %}
 <section class="entry" id="{{ e.code }}" data-cat="{{ c.slug }}" data-text="{{ e.text }}">
 <h2><a href="#{{ e.code }}">{{ e.code }}</a> {{ e.title }}</h2>
-<p class="description">{{ e.description }}</p>
+{{ e.description_html | safe }}
 {%- for s in e.sources_html %}
 <div class="codewrap"><pre><code class="language-iecst">{{ s | safe }}
 </code></pre></div>
@@ -37,5 +37,4 @@
 {%- endfor %}
 </div>
 </div>
-<a id="top" href="#">top</a>
 {% endblock content %}
