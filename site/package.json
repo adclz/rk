@@ -3,7 +3,9 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "build": "cargo run --release -p doc && zola build",
+    "sync": "zola build --force -o .zola-out && rsync -a --delete .zola-out/ dist/",
+    "build": "cargo run --release -p doc && npm run sync",
+    "pages": "cargo run --release -p doc -- --pages-only && npm run sync",
     "dev": "wrangler dev",
     "check": "tsc --noEmit && wrangler deploy --dry-run",
     "deploy": "wrangler deploy"

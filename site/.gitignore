@@ -1,4 +1,5 @@
 dist/
+.zola-out/
 node_modules/
 .wrangler/
 # Written by `cargo run -p doc` from skills/, crates/doc/examples/ and pages/.

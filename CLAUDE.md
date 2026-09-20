@@ -33,15 +33,26 @@ cargo insta review
 # Zola renders them into site/dist. Also refreshes crates/doc/diagnostics.json,
 # which `rk explain` embeds. Refuses to write when an example disagrees with
 # the compiler. Release: the skills gate loads the stdlib once per example.
-cargo run --release -p doc && (cd site && zola build)
-# Preview with the Worker, as deployed: `cd site && npx wrangler dev`.
+cd site && npm run build
+# Preview with the Worker, as deployed: `cd site && npm run dev`.
+#
+# Use the npm scripts, not `zola build`, whenever a `wrangler dev` is up.
+# Zola DELETES its output directory on every build; wrangler binds ./dist once
+# and its assets die with that directory, answering 500 until it is restarted.
+# `npm run sync` builds into site/.zola-out and rsyncs into dist, so dist keeps
+# the inode wrangler holds and a reload just works. CI calls `zola build`
+# straight, where nothing is watching.
 #
 # Authoring loop for site/pages/*.md and README.md. Zola watches content/,
 # not pages/, so a page edit shows nothing until the generator runs again.
 # --pages-only re-renders only the pages, against the last full run's derived
 # values: about 1s instead of 14s. Their fences are still checked. It refuses
 # until a full run has produced site/.substitutions.json, and CI never uses it.
-cargo run --release -p doc -- --pages-only
+cd site && npm run pages
+#
+# A dead `wrangler dev` leaves its workerd child holding the port, so a new one
+# silently moves to 8788 and the old address keeps serving 500s:
+#   pkill -f 'bin/workerd'
 #
 # CI pins Zola 0.23.6. The site uses no Zola shortcodes — the generator
 # substitutes the derived HTML itself — so a Zola upgrade only has to keep
@@ -50,6 +61,12 @@ cargo run --release -p doc -- --pages-only
 # The front page IS README.md: the generator reads it, highlights its fences
 # and points its repo-relative links at GitHub. Its examples are shown, never
 # compiled, because several deliberately do not.
+#
+# The README's cast tables, between `<!-- casts:begin -->` and `:end`, are
+# WRITTEN by the generator from `ElementarySpec::implicit_cast` and the
+# `X_TO_Y` functions in stdlib/Convert.st; edit those, not the table. It also
+# checks that every cast E0301 could suggest (`explicit_cast`) is a function
+# that exists. CI diffs README.md after a run, like diagnostics.json.
 
 # Regenerate THIRD-PARTY-NOTICES, the licenses of the crates compiled into
 # every generated module (run from crates/wasm_builtins/; needs
@@ -76,9 +93,16 @@ cargo run --bin rk -- check --workspace <workspace_path>
 # realistic module and `-O` degrades to an unoptimized (still correct) build
 # with a warning.
 #
-# Use -O2/-O3/-Os/-Oz. `-O4` aborts on every Binaryen up to and including 131
-# ("unexpected expr type" in the Flatten pass, which does not handle
-# try_table) — an upstream limitation, not a stale version.
+# `-O4` alone aborts on every Binaryen up to and including 131 ("unexpected
+# expr type" in the Flatten pass, which does not handle try_table) — an
+# upstream limitation, not a stale version. rk therefore runs it as
+# `-O4 --skip-pass=flatten`, silently; the README carries the warning.
+# Tracked as WebAssembly/binaryen#8372, where the maintainer has no near-term
+# plan for it. Flatten does handle the LEGACY `try`, which is why "Binaryen
+# supports exceptions" and "-O4 crashes" are both true. With the pass skipped
+# what is left of -O4 is close to -O3 (192,121 bytes against 192,115 on the
+# stdlib module). Trying Flatten first would never pay: the stdlib's 341 test
+# wrappers put a `try_table` in every module rk emits.
 
 # Fuzz testing
 cargo +nightly build --release --manifest-path crates/fuzz/Cargo.toml --bin fuzz_compiler
