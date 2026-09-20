@@ -76,19 +76,19 @@
       },
       {
         "command": "rk.restartServer",
-        "title": "IEC: Restart Server"
+        "title": "rk: Restart Server"
       },
       {
         "command": "rk.stopServer",
-        "title": "IEC: Stop Server"
+        "title": "rk: Stop Server"
       },
       {
         "command": "rk.showStatusMenu",
-        "title": "IEC: Server Status"
+        "title": "rk: Server Status"
       },
       {
         "command": "rk.runTest",
-        "title": "IEC: Run Test"
+        "title": "rk: Run Test"
       }
     ],
     "taskDefinitions": [
