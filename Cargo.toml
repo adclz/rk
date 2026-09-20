@@ -102,6 +102,16 @@ publish = false
 [profile.release]
 opt-level = 3
 
+# The binary that ships: `cargo build --profile dist -p rk`. 28 MiB against
+# the 45 of `release`, for a five-minute link. Kept out of `release` on
+# purpose: the site generator and the stdlib job rebuild with `--release`
+# all day, and fat LTO over wasmtime is not a price to pay each time.
+[profile.dist]
+inherits = "release"
+lto = "fat"
+codegen-units = 1
+strip = true
+
 [dependencies]
 auto-lsp = { workspace = true }
 ast = { workspace = true }
