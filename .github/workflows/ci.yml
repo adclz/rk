@@ -154,13 +154,13 @@ jobs:
         run: zola build --base-url "${SITE_URL:-http://localhost:8787}"
         env:
           SITE_URL: ${{ vars.SITE_URL }}
-      # `rk explain` embeds crates/doc/diagnostics.json in the binary. If
-      # regenerating changed it, the committed copy was stale and every
-      # `rk explain` was serving it.
+      # `rk explain` embeds crates/doc/diagnostics.json in the binary, and
+      # the README's cast tables are written from the compiler's own rules.
+      # If regenerating changed either, the committed copy was stale.
       - name: The committed reference must be up to date
         run: |
-          if ! git diff --exit-code -- crates/doc/diagnostics.json; then
-            echo "::error::crates/doc/diagnostics.json is out of date — run \`cargo run --release -p doc\` and commit the result"
+          if ! git diff --exit-code -- crates/doc/diagnostics.json README.md skills/programming-st/references/types.md; then
+            echo "::error::crates/doc/diagnostics.json or README.md is out of date — run \`cargo run --release -p doc\` and commit the result"
             exit 1
           fi
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
