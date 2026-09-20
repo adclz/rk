@@ -120,9 +120,7 @@ END_NAMESPACE
 
 That keeps test names out of a consumer's unqualified scope and stops them colliding with library names, while `rk test` still finds them.
 
-## What tests cannot do
+## Shared setup
 
-There is no setup/teardown hook, no fixture and no parameterised test: a test is one FUNCTION that builds what it needs.
+A test is one FUNCTION that builds what it needs.
 Shared setup is an ordinary `PRIVATE` helper function the tests call — like `drive_until_done` above — which the compiler keeps inside its namespace (E1005), so a helper never leaks into the library's API.
-
-A test cannot assert that something FAILS to compile; that is the compiler's own test suite, not `rk test`.

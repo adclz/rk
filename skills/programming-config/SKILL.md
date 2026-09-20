@@ -14,7 +14,6 @@ Without a `CONFIGURATION` instantiating it the compiled module carries no schedu
 A workspace has exactly one CONFIGURATION.
 
 Blocks with the same name in different files are fragments of that one configuration and merge, which is what lets a library ship its `VAR_GLOBAL`s in their own file.
-Only cyclic `INTERVAL` tasks run; `SINGLE` (event-driven) is refused.
 
 Do not confuse this with `config.toml`, which is the project file (name, version, optimization, lints) and has nothing to do with the PLC logic.
 It is described at the end.
@@ -131,10 +130,6 @@ Omitting it is E1405; a value that does not parse is E1406.
 
 What is refused:
 
-`SINGLE := <event>` Event-driven tasks are not implemented.
-E1410.
-Only cyclic INTERVAL tasks run.
-
 `TASK T(PRIORITY := 1)` A task with neither SINGLE nor INTERVAL triggers nothing.
 E1410.
 
@@ -157,24 +152,6 @@ E1410 is only raised for a task a PROGRAM is actually bound to.
 Declaring a task ahead of using it, including an unschedulable one, is clean — what must never be silent is a program that cannot run.
 
 Duplicate names inside a resource: E0114 for a task, E0113 for a program instance, E0115 for a resource.
-
-## Parsed but inert
-
-These are accepted by the grammar and then do nothing.
-Each of the first three reports E1416 so the silence is not mistaken for wiring.
-
-`PROGRAM PA WITH T : A (inp := src, outp => snk)` Program connection lists are never resolved and emit no copy.
-Assign in the program body instead.
-
-`PROGRAM PA WITH T : A (fb WITH other_task)` Associating a nested function block with its own task.
-Run it from the enclosing program's task.
-
-`VAR_CONFIG PA.x : INT := 42; END_VAR` Resolved and type-checked against the instance's field, then discarded; the field keeps its declared value.
-Set it in the program's own `VAR` section.
-The resource-qualified path (`Res.PA.x`) and a location-only entry (`Res.PA.y AT %QB25 : BYTE;`) are accepted the same way.
-
-`VAR_ACCESS acc : g : INT READ_WRITE; END_VAR` at configuration level parses and is stored, but nothing reads it and no diagnostic is emitted.
-Do not rely on it.
 
 ## How the schedule reaches the runtime
 
@@ -216,10 +193,10 @@ global-without-external = true
 `[project]` Required, with both `name` and `version` as strings.
 A missing `[project]` section is an error.
 
-`[settings] opt_level` WASM optimization level for release builds: `"0"`, `"1"`, `"2"`, `"3"`, `"s"`, `"z"`.
+`[settings] opt_level` WASM optimization level for release builds: `"0"`, `"1"`, `"2"`, `"3"`, `"4"`, `"s"`, `"z"`.
 
 Defaults to `"2"`, and a `--opt-level` flag on `rk compile` wins over it.
-Release builds require `wasm-opt` on PATH and fail without it; the debug artifact is never optimized, so this key does not touch it.
+Release builds use the `wasm-opt` on PATH, else a checksum-verified Binaryen downloaded once (see `cli-compile`); the debug artifact is never optimized, so this key does not touch it.
 
 `[settings.output] directory` Accepted by the schema and currently ignored — artifacts always land in `rk_build/debug/core.wasm` or `rk_build/release/core.wasm`.
 

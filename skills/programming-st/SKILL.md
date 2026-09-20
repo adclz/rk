@@ -238,17 +238,10 @@ Keep an overload set inside one namespace.
 
 A workspace file that reopens a library namespace and redeclares one of its overloads silently WINS — see the `programming-namespaces` skill; the same silence applies here.
 
-## Not implemented
-
-SFC (`INITIAL_STEP` / `STEP` / `TRANSITION` / `ACTION`), ladder and FBD bodies parse but are discarded — the POU ends up with an empty body.
-Write ST bodies.
-
-Direct variables (`%IX0.0`, `%QW4`, `AT %IX0.0`) are refused with E1417: the address is understood but nothing maps it to real I/O yet.
+## Gotchas
 
 A `CHAR` does not widen to `STRING` implicitly, although IEC lists that conversion: `s := c` is E0301, which names `CHAR_TO_STRING(c)`.
 The widening is an encoding, and the compiler asks for the call.
-
-## Gotchas
 
 Names are case-insensitive: `VAR i, I: INT;` is a duplicate (E0101), and a variable `p` shadows a type named `P`.
 
@@ -281,3 +274,4 @@ Read the one that covers the question; each is self-contained.
 - `references/types.md` — elementary types, literals, date/time encodings, `TYPE` declarations (STRUCT, ENUM, ARRAY, subrange, REF_TO)
 - `references/syntax.md` — expressions and precedence, every statement form, call syntax, and a namespace sketch (the `programming-namespaces` skill covers scoping, `USING` and visibility in full)
 - `references/pragmas.md` — `{test}`, `{extern}`, `{wasm}` and the extern contract
+- `references/runtime.md` — the checks the compiler inserts and their messages, how a `STRING` is stored and compared, and what the arithmetic does

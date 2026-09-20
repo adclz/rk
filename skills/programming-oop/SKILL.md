@@ -11,10 +11,6 @@ RK implements the OOP part of IEC 61131-3: `CLASS`, `INTERFACE`, `METHOD`, `EXTE
 A `CLASS` is a `FUNCTION_BLOCK` without a body: it holds state and methods, but it is never invoked, so `c();` on a class instance is `E0808` "not a callable type".
 Everything else runs through methods.
 
-There is no `PROPERTY`.
-There are no getters or setters, no `GET` / `SET` blocks.
-Writing `PROPERTY` produces `E0003` and `E0101` / `E0001` / `E0002` errors, depending on the shape of the block; expose a `VAR` or write a method instead.
-
 Interfaces exist but are not dynamically dispatched.
 An interface type is legal only as a `VAR_INPUT` or `VAR_IN_OUT` parameter of a `FUNCTION` or a `METHOD`, where the compiler monomorphizes the call to the concrete type the caller passed.
 Storing one (`VAR`, an FB member, `VAR_OUTPUT`, `VAR_TEMP`, a global, a return type, an array element, a struct field) is refused with `E1121` / `E1122` / `E1123`.

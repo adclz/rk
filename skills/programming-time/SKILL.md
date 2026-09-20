@@ -105,11 +105,9 @@ IF debounce.Q THEN (* input stable for 50ms *) END_IF
 ```
 
 `PLC_TIME: TIME` and `PLC_LTIME: LTIME` return the monotonic clock directly - time since an arbitrary start, good for measuring intervals, not wall-clock time.
-There is no wall-clock source yet: nothing produces a current `DT`.
 
 ## Gotchas
 
 - No mixed arithmetic (E0305) - go through the numeric conversions.
-- No `NOW()`: `DT`/`LDT` values only come from literals, conversions, or host-written memory.
 - `T#2y` is not a duration - years and months are not IEC duration units.
 - Timers need scans to update: `Q` changes on the call, not asynchronously.

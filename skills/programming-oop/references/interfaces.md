@@ -49,6 +49,8 @@ END_PROGRAM
 ```
 
 Passing a type that does not implement the interface is `E0301`, and calling a method the interface does not declare is `E0202`.
+The POU has to declare `IMPLEMENTS` itself: one that only inherits the interface from its base is `E0301` too.
+A class type is never a substitution point: a parameter typed `Base` takes a `Base`, and a `Derived` is `E0301`, `ABSTRACT` or not. The interface is the only one.
 The parameter itself is a fixed binding: reassigning it is `E1124`.
 `THIS` may be passed as an interface argument from a POU that implements it.
 

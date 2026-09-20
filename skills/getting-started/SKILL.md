@@ -108,7 +108,20 @@ The `programming-config` skill shows the three lines that do it.
 It imports its linear memory as `env.memory`, exports `__init` and one body per program, and carries its task schedule, retained-state map and debug symbols as custom sections.
 Any WebAssembly host can instantiate it; the ABI is documented in the repository's README.
 
+## Environment
+
+| Variable | Used by | Effect |
+| --- | --- | --- |
+| `RK_STDLIB_PATH` | CLI, language server | Where the standard library is. |
+| `RK_NO_DOWNLOAD` | CLI | When set, Binaryen is never downloaded. |
+| `NO_COLOR` | CLI | When set, the output is not colored. |
+
+`RK_STDLIB_PATH` can also be written in a `.env` file at the workspace root.
+The process environment wins when both are set, and it is the only variable read from that file.
+
 ## Where next
+
+- `cli-compile` for the profiles, the optimizer and the module's ABI.
 
 - `programming-st` for the language as `rk` compiles it.
 - `programming-tests` before writing more than one test.
