@@ -1,115 +1,168 @@
-//! Builds the site: the skills as documentation, the diagnostics reference,
-//! and the files agents look for. Refuses to write anything when an example
+//! Verifies the site's sources against the compiler, then writes what Zola
+//! renders: `site/content/` (every page, its fences and inline code
+//! pre-rendered through the grammar), `site/data/` (what the templates and
+//! shortcodes read) and `site/static/` (the Markdown twin of every page and
+//! the files agents look for). Refuses to write anything when an example
 //! disagrees with the compiler.
 //!
-//!     cargo run --release -p doc -- site/dist [--base-url https://…]
+//!     cargo run --release -p doc -- [--base-url https://…] [site-dir]
+//!     cd site && zola build
 //!
 //! Also refreshes the committed `crates/doc/diagnostics.json`, which
 //! `rk explain` embeds at build time.
 
+mod casts;
 mod examples;
 mod highlight;
 mod markdown;
+mod pages;
 mod render;
 mod site;
 mod skills;
 mod verify;
 
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 use std::fs;
 use std::path::{Path, PathBuf};
 
 use db::RootDatabase;
+use serde_json::json;
 
+use crate::examples::{ErrorExample, SECTIONS};
 use crate::highlight::{Mark, StHighlighter, escape, mark_html};
 use crate::render::DiagSpan;
-use crate::site::{DiagCategory, Page, one_line, strip_ansi, write};
+use crate::site::{DiagCategory, json_escape, one_line, strip_ansi, write};
 
-struct DiagEntry {
-    code: &'static str,
-    category: &'static str,
-    title: &'static str,
-    description: &'static str,
-    sources: &'static [&'static str],
+struct DiagEntry<'a> {
+    ex: &'a ErrorExample,
     report_html: String,
     report_text: String,
     spans: Vec<DiagSpan>,
 }
 
-fn json_escape(s: &str) -> String {
-    s.replace('\\', "\\\\")
-        .replace('"', "\\\"")
-        .replace('\n', "\\n")
-        .replace('\r', "\\r")
-        .replace('\t', "\\t")
+/// What the hand-written pages substitute into their placeholders. A full
+/// run derives these from the compiler; `--pages-only` reuses the last run's,
+/// so editing prose does not mean recompiling 225 examples.
+#[derive(serde::Serialize, serde::Deserialize, Default)]
+struct Substitutions {
+    skills_html: String,
+    skills_md: String,
+    linter_html: String,
+    linter_md: String,
+    count: String,
 }
 
-/// The reference's sections in reading order. A code's first two digits name
-/// its section, so a new code is filed by its number and nothing else.
-const SECTIONS: &[(&str, &str)] = &[
-    ("E00", "Syntax"),
-    ("E01", "Duplicates"),
-    ("E02", "Resolution"),
-    ("E03", "Type System"),
-    ("E04", "Initializers"),
-    ("E05", "Arrays"),
-    ("E06", "Enums"),
-    ("E07", "Subranges"),
-    ("E08", "Calls"),
-    ("E09", "References"),
-    ("E10", "Visibility"),
-    ("E11", "OOP"),
-    ("E12", "Control Flow"),
-    ("E13", "Recursion"),
-    ("E14", "Configuration"),
-    ("E15", "Pragmas"),
-    ("L00", "Lint pragmas"),
-    ("L01", "Linter Warning"),
-    ("L02", "Linter Info"),
-    ("L03", "Linter Hint"),
-];
-
-fn section_of(code: &str) -> &'static str {
-    SECTIONS
-        .iter()
-        .find(|(prefix, _)| code.starts_with(prefix))
-        .map(|(_, name)| *name)
-        .unwrap_or_else(|| panic!("{code} is outside every section range"))
+/// Beside the site, gitignored: a dev-loop cache, never an input to a deploy.
+fn cache_path(site_dir: &Path) -> PathBuf {
+    site_dir.join(".substitutions.json")
 }
 
 fn slug(category: &str) -> String {
     category.to_lowercase().replace(' ', "-")
 }
 
+/// A TOML string, for the frontmatter the generator writes.
+fn toml_str(s: &str) -> String {
+    format!(
+        "\"{}\"",
+        s.replace('\\', "\\\\")
+            .replace('"', "\\\"")
+            .replace('\n', "\\n")
+    )
+}
+
+/// The skill groups the pages list, in reading order.
+const GROUPS: [(&str, &str, &str); 4] = [
+    (
+        "getting",
+        "Start here",
+        "Install <code>rk</code>, make a workspace, run the loop once.",
+    ),
+    ("cli", "Toolchain", "One skill per <code>rk</code> command."),
+    (
+        "programming",
+        "Language",
+        "Structured Text as <code>rk</code> compiles it, and the standard library.",
+    ),
+    ("tool", "Tools", "The linter and the language server."),
+];
+
 fn main() {
     let crate_dir = Path::new(env!("CARGO_MANIFEST_DIR"));
     let repo = crate_dir.join("../..").canonicalize().unwrap();
 
     let mut args = std::env::args().skip(1);
-    let mut out_dir = repo.join("site/dist");
-    let mut base_url = std::env::var("SITE_URL").unwrap_or_else(|_| "http://localhost:8788".into());
+    let mut site_dir = repo.join("site");
+    let mut base_url = std::env::var("SITE_URL").unwrap_or_else(|_| "http://localhost:8787".into());
+    let mut pages_only = false;
     while let Some(arg) = args.next() {
         match arg.as_str() {
             "--base-url" => base_url = args.next().expect("--base-url needs a value"),
-            other => out_dir = PathBuf::from(other),
+            "--pages-only" => pages_only = true,
+            other => site_dir = PathBuf::from(other),
         }
     }
     let base_url = base_url.trim_end_matches('/').to_string();
 
-    // ── Diagnostics: every example must produce the code it documents ──
-    let examples = examples::all_examples();
-    for ex in &examples {
-        assert_eq!(
-            ex.category,
-            section_of(ex.code),
-            "{}: the code's range says `{}`, the example says `{}`",
-            ex.code,
-            section_of(ex.code),
-            ex.category
-        );
+    let highlighter = StHighlighter::new();
+    let content = site_dir.join("content");
+    let statics = site_dir.join("static");
+
+    // `--pages-only`: the authoring loop. Re-renders the hand-written pages
+    // and the front page against the last full run's derived values, so
+    // editing prose does not mean recompiling every example. Their fences are
+    // still checked — that guarantee is the point of the whole generator —
+    // but the 225 diagnostics and the skills are left alone.
+    // The README's cast tables come from the compiler, not from anyone's
+    // memory of the standard, and are refreshed before the page is built
+    // from it. CI diffs the committed copy, as it does diagnostics.json.
+    let convert = fs::read_to_string(repo.join("stdlib/Convert.st")).unwrap();
+    for file in ["README.md", "skills/programming-st/references/types.md"] {
+        if casts::refresh_readme(&repo.join(file), &convert) {
+            eprintln!("{file}: cast tables refreshed");
+        }
     }
+
+    if pages_only {
+        let subs: Substitutions = match fs::read_to_string(cache_path(&site_dir)) {
+            Ok(text) => serde_json::from_str(&text).expect("the cache is this generator's own"),
+            Err(_) => {
+                eprintln!(
+                    "--pages-only needs a full run first: `cargo run --release -p doc`.\nIt reuses that run's skills list and linter table."
+                );
+                std::process::exit(1);
+            }
+        };
+        let pages = pages::discover(&site_dir.join("pages"), &highlighter);
+        let docs: Vec<skills::Doc> = pages
+            .iter()
+            .map(|p| skills::Doc {
+                shown: format!("site/pages/{}", p.rel.display()),
+                fences: &p.fences,
+            })
+            .collect();
+        let problems = skills::verify(&docs);
+        if !problems.is_empty() {
+            eprintln!(
+                "\n{} example(s) in the pages do not hold; nothing was written.\n",
+                problems.len()
+            );
+            for p in &problems {
+                eprintln!("  {p}");
+            }
+            std::process::exit(1);
+        }
+        let n = write_pages(&pages, &subs, &content, &statics, &repo, &highlighter).len();
+        eprintln!(
+            "\nDone: {n} page(s) re-rendered. The rest of the site is from the last full run."
+        );
+        return;
+    }
+
+    // ── Diagnostics: every example must produce the code it documents ──
+    let examples = examples::load(&crate_dir.join("examples"));
     let mut entries: Vec<DiagEntry> = Vec::new();
-    let mut produced: Vec<(&str, std::collections::BTreeSet<String>)> = Vec::new();
+    let mut produced: Vec<(&str, BTreeSet<String>)> = Vec::new();
     eprintln!("Diagnostics");
     for ex in &examples {
         eprint!("  {}...", ex.code);
@@ -118,11 +171,7 @@ fn main() {
         if ex.sources.is_empty() {
             let text = "No source example: this diagnostic is about the workspace, not a file.";
             entries.push(DiagEntry {
-                code: ex.code,
-                category: ex.category,
-                title: ex.title,
-                description: ex.description,
-                sources: ex.sources,
+                ex,
                 report_html: format!("<p>{text}</p>"),
                 report_text: text.to_string(),
                 spans: Vec::new(),
@@ -131,14 +180,11 @@ fn main() {
             continue;
         }
         let mut db = RootDatabase::default();
-        let (ansi, spans) = render::compile_and_render(&mut db, ex.sources, ex.lint_rule);
-        produced.push((ex.code, verify::codes_in_output(&ansi)));
+        let sources: Vec<&str> = ex.sources.iter().map(String::as_str).collect();
+        let (ansi, spans) = render::compile_and_render(&mut db, &sources, ex.lint_rule.as_deref());
+        produced.push((&ex.code, verify::codes_in_output(&ansi)));
         entries.push(DiagEntry {
-            code: ex.code,
-            category: ex.category,
-            title: ex.title,
-            description: ex.description,
-            sources: ex.sources,
+            ex,
             report_html: render::ansi_to_html_fragment(&ansi),
             report_text: strip_ansi(&ansi),
             spans,
@@ -160,48 +206,54 @@ fn main() {
         std::process::exit(1);
     }
 
-    // ── Skills: every fence must hold ─────────────────────────────────
-    let highlighter = StHighlighter::new();
+    // ── Skills and pages: every fence must hold ────────────────────────
     let skills = skills::discover(&repo.join("skills"), &highlighter);
-    eprintln!("Skills");
-    let problems = skills::verify(&skills);
+    let pages = pages::discover(&site_dir.join("pages"), &highlighter);
+    let mut docs = skills::skill_docs(&skills, &repo);
+    for p in &pages {
+        docs.push(skills::Doc {
+            shown: format!("site/pages/{}", p.rel.display()),
+            fences: &p.fences,
+        });
+    }
+    eprintln!("Skills and pages");
+    let problems = skills::verify(&docs);
     if !problems.is_empty() {
         eprintln!(
-            "\n{} example(s) in the skills do not hold; nothing was written.\n",
+            "\n{} example(s) in the skills or pages do not hold; nothing was written.\n",
             problems.len()
         );
         for p in &problems {
             eprintln!("  {p}");
         }
         eprintln!(
-            "\nSee crates/doc/src/skills.rs for the fence markers (fragment, decl, continues, syntax, expect=)."
+            "\nSee crates/doc/src/skills.rs for the fence markers (fragment, decl, continues, syntax, sketch, expect=)."
         );
         std::process::exit(1);
     }
 
     // ── Everything agreed: write ──────────────────────────────────────
-    if out_dir.exists() {
-        fs::remove_dir_all(&out_dir).unwrap();
+    let data = site_dir.join("data");
+    for dir in [&content, &data, &statics] {
+        if dir.exists() {
+            fs::remove_dir_all(dir).unwrap();
+        }
+        fs::create_dir_all(dir).unwrap();
     }
-    fs::create_dir_all(&out_dir).unwrap();
-
-    let mut sitemap: Vec<String> = Vec::new();
+    // (HTML path, Markdown twin) of every page, for `_headers`.
     let mut twins: Vec<(String, String)> = Vec::new();
 
     // Sections in reading order (SECTIONS), entries sorted by code within
     // each: the order the pages use, and the order the committed JSON keeps.
     let mut by_category: BTreeMap<&str, Vec<&DiagEntry>> = BTreeMap::new();
     for e in &entries {
-        by_category.entry(e.category).or_default().push(e);
+        by_category.entry(e.ex.category).or_default().push(e);
     }
     let order: Vec<&str> = SECTIONS
         .iter()
         .map(|(_, name)| *name)
         .filter(|name| by_category.contains_key(name))
         .collect();
-    for list in by_category.values_mut() {
-        list.sort_by_key(|e| e.code);
-    }
     let categories: Vec<DiagCategory> = order
         .iter()
         .map(|c| DiagCategory {
@@ -211,68 +263,53 @@ fn main() {
         })
         .collect();
 
-    // diagnostics.json: committed beside the generator and served by the site.
-    let json = {
+    // diagnostics.json: committed beside the generator and served by the
+    // site. Hand-written JSON, in a fixed key order, so the committed file
+    // only changes when the reference does.
+    {
         let items: Vec<String> = order
             .iter()
             .flat_map(|c| by_category[c].iter().copied())
             .map(|e| {
                 let sources: Vec<String> = e
+                    .ex
                     .sources
                     .iter()
-                    .map(|s| format!("\"{}\"", json_escape(s.trim_matches('\n'))))
+                    .map(|s| format!("\"{}\"", json_escape(s)))
                     .collect();
                 format!(
                     r#"  {{"code":"{}","category":"{}","title":"{}","description":"{}","sources":[{}]}}"#,
-                    json_escape(e.code),
-                    json_escape(e.category),
-                    json_escape(e.title),
-                    json_escape(e.description),
+                    json_escape(&e.ex.code),
+                    json_escape(e.ex.category),
+                    json_escape(&e.ex.title),
+                    json_escape(&e.ex.description),
                     sources.join(",")
                 )
             })
             .collect();
-        format!("[\n{}\n]\n", items.join(",\n"))
-    };
-    fs::write(crate_dir.join("diagnostics.json"), &json).unwrap();
-    write(&out_dir, "diagnostics.json", &json);
+        let json = format!("[\n{}\n]\n", items.join(",\n"));
+        fs::write(crate_dir.join("diagnostics.json"), &json).unwrap();
+        write(&statics, "diagnostics.json", &json);
+    }
 
-    // The reference: one page for humans, with a sidebar, a search box and
-    // the compiler's own markers on every example; a Markdown twin per
-    // category and per code for agents.
+    // The reference's data, one Markdown twin per category and per code,
+    // and the index twin.
     {
-        let mut side = String::from(
-            "<nav class=\"side\" aria-label=\"Diagnostics\">\n<input id=\"search\" type=\"search\" placeholder=\"E0301, duplicate, … (/)\" autocomplete=\"off\">\n",
-        );
-        let mut body = String::new();
-        let mut index_md = String::from(
-            "# Diagnostics\n\nEvery code the compiler and the linter can report, each with a compiler-verified example.\n\n",
-        );
+        let mut cats = Vec::new();
+        let mut index_md =
+            String::from("# Diagnostics\n\nEvery code the compiler and the linter can report");
         for c in &categories {
-            side.push_str(&format!(
-                "<details open data-cat=\"{s}\"><summary>{n}</summary>\n",
-                s = c.slug,
-                n = escape(&c.name)
-            ));
-            body.push_str(&format!(
-                "<h1 class=\"category-heading\" id=\"cat-{s}\" data-cat=\"{s}\">{n}</h1>\n",
-                s = c.slug,
-                n = escape(&c.name)
-            ));
             let mut md = format!("# Diagnostics: {}\n\n", c.name);
+            let mut items = Vec::new();
             for e in &by_category[c.name.as_str()] {
-                side.push_str(&format!(
-                    "<a href=\"#{code}\" data-code=\"{code}\">{code}</a>\n",
-                    code = e.code
-                ));
-                let text = format!("{} {} {}", e.code, e.title, e.description).to_lowercase();
-                body.push_str(&format!(
-                    "<section class=\"entry\" id=\"{code}\" data-cat=\"{cat}\" data-text=\"{text}\">\n<h2><a href=\"#{code}\">{code}</a> {title}</h2>\n<p class=\"description\">{desc}</p>\n",
-                    code = e.code, cat = c.slug, text = escape(&text), title = escape(e.title), desc = escape(e.description)
-                ));
-                let mut entry_md = format!("## {} {}\n\n{}\n\n", e.code, e.title, e.description);
-                for (i, s) in e.sources.iter().enumerate() {
-                    let s = s.trim_matches('\n');
+                let text =
+                    format!("{} {} {}", e.ex.code, e.ex.title, e.ex.description).to_lowercase();
+                let mut sources_html = Vec::new();
+                let mut entry_md = format!(
+                    "## {} {}\n\n{}\n\n",
+                    e.ex.code, e.ex.title, e.ex.description
+                );
+                for (i, s) in e.ex.sources.iter().enumerate() {
                     let marks: Vec<Mark> = e
                         .spans
                         .iter()
@@ -285,68 +322,62 @@ fn main() {
                             popup: popup_html(d),
                         })
                         .collect();
-                    body.push_str(&format!(
-                        "<div class=\"codewrap\"><pre><code class=\"language-iecst\">{}\n</code></pre></div>\n",
-                        mark_html(&highlighter.html(s), &marks)
-                    ));
+                    sources_html.push(mark_html(&highlighter.html(s), &marks));
                     entry_md.push_str(&format!("```iecst\n{s}\n```\n\n"));
                 }
-                body.push_str(&format!(
-                    "<h3>Compiler output</h3>\n<pre class=\"output\">{}</pre>\n</section>\n",
-                    e.report_html
-                ));
                 entry_md.push_str(&format!(
                     "Compiler output:\n\n```\n{}```\n\n",
                     e.report_text
                 ));
                 let (_, rest) = entry_md.split_once("\n\n").unwrap();
                 write(
-                    &out_dir,
-                    &format!("diagnostics/{}.md", e.code),
-                    &format!("# {} {}\n\n{}", e.code, e.title, rest),
+                    &statics,
+                    &format!("diagnostics/{}.md", e.ex.code),
+                    &format!("# {} {}\n\n{}", e.ex.code, e.ex.title, rest),
                 );
                 md.push_str(&entry_md);
+                items.push(json!({
+                    "code": e.ex.code,
+                    "title": e.ex.title,
+                    "description": e.ex.description,
+                    "description_html": e
+                        .ex
+                        .description
+                        .split("\n\n")
+                        .map(|para| format!("<p class=\"description\">{}</p>", escape(para)))
+                        .collect::<String>(),
+                    "text": text,
+                    "sources_html": sources_html,
+                    "report_html": e.report_html,
+                }));
             }
-            side.push_str("</details>\n");
-            write(&out_dir, &format!("diagnostics/{}.md", c.slug), &md);
+            write(&statics, &format!("diagnostics/{}.md", c.slug), &md);
             index_md.push_str(&format!(
                 "- [{}]({}/diagnostics/{}.md): {} codes\n",
                 c.name, base_url, c.slug, c.count
             ));
+            cats.push(
+                json!({ "name": c.name, "slug": c.slug, "count": c.count, "entries": items }),
+            );
         }
-        side.push_str("</nav>\n");
-        let page = format!(
-            "<h1>Diagnostics</h1>\n<p class=\"lede\">Every code the compiler and the linter can report, each with the example that produces it and the compiler's own output. Hover a marked range for the message. The generator runs every example before publishing, so this page never disagrees with the binary.</p>\n<p><br>The same data as <a href=\"/diagnostics.json\">JSON</a>, which <code>rk explain &lt;code&gt;</code> embeds.</p>\n<div class=\"ref\">\n{side}<div>\n{body}</div>\n</div>\n<a id=\"top\" href=\"#\">top</a>\n"
-        );
-        write(&out_dir, "diagnostics/index.md", &index_md);
+        write(&statics, "diagnostics/index.md", &index_md);
         write(
-            &out_dir,
-            "diagnostics/index.html",
-            &site::shell_with(
-                &Page {
-                    title: "Diagnostics",
-                    description: "Every diagnostic code rk reports, with compiler-verified examples.",
-                    path: "/diagnostics/",
-                    md: Some("/diagnostics/index.md"),
-                    eyebrow: "reference",
-                    body: &page,
-                    wide: true,
-                },
-                &base_url,
-                site::REFERENCE_JS,
-            ),
+            &data,
+            "diagnostics.json",
+            &serde_json::to_string(&json!({ "count": entries.len(), "categories": cats })).unwrap(),
         );
-        sitemap.push("/diagnostics/".into());
         twins.push(("/diagnostics/".into(), "/diagnostics/index.md".into()));
     }
 
-    // The linter page. The rule table is DERIVED: names come from each
-    // example's `lint_rule`, severities from what the compiler actually
-    // printed, and the default column from the linter's own recommended
-    // set — so it cannot drift from the binary the way a hand-kept table does.
+    // The linter's rule table. DERIVED: names come from each example's
+    // `lint_rule`, severities from what the compiler actually printed, and
+    // the default column from the linter's own recommended set, so it cannot
+    // drift from the binary the way a hand-kept table does.
+    let linter_md;
+    let mut linter_html = String::new();
     {
         let severity_of = |e: &DiagEntry| -> &'static str {
-            let marker = format!("[{}] ", e.code);
+            let marker = format!("[{}] ", e.ex.code);
             e.report_text
                 .find(&marker)
                 .map(|i| &e.report_text[i + marker.len()..])
@@ -359,12 +390,6 @@ fn main() {
                     _ => "info",
                 })
                 .unwrap_or("info")
-        };
-        let rule_of = |code: &str| -> Option<&'static str> {
-            examples
-                .iter()
-                .find(|ex| ex.code == code)
-                .and_then(|ex| ex.lint_rule)
         };
         let groups: [(&str, &str, &str); 5] = [
             (
@@ -389,361 +414,163 @@ fn main() {
                 "Reaching a CONFIGURATION global without declaring it. On by default.",
             ),
         ];
-        let mut body = String::from(
-            "<h1>Linter</h1>\n<p class=\"lede\">Rules that read the same tree the compiler does, so a lint knows what a name means rather than how it is spelled.</p>\n",
-        );
-        body.push_str("<p>Lints appear in <code>rk check</code> and in your editor. They never run during <code>rk compile</code> or <code>rk test</code>, and they never change an exit code, so a lint cannot block a build or fail a pipeline on its own.</p>\n");
-        body.push_str("<h2>Configuration</h2>\n<p>The linter is on by default with the <em>recommended</em> set: the rules that report a probable bug rather than a preference. A workspace that never mentions the linter still gets them. <code>[linter]</code> tunes that set, it does not switch the linter on.</p>\n");
-        body.push_str("<div class=\"tablewrap\"><table><thead><tr><th><code>select</code></th><th>Rules that run</th></tr></thead><tbody>\n<tr><td>absent</td><td>the recommended set</td></tr>\n<tr><td><code>\"recommended\"</code></td><td>the same, said out loud</td></tr>\n<tr><td><code>\"all\"</code></td><td>every rule below</td></tr>\n<tr><td><code>\"none\"</code></td><td>none, unless <code>[linter.rules]</code> names one</td></tr>\n</tbody></table></div>\n");
-        body.push_str(&format!(
-            "<pre><code class=\"language-toml\">{}</code></pre>\n",
-            crate::highlight::toml_html(
-                "[linter]\nselect = \"all\"           # the default is \"recommended\"\n\n[linter.rules]\nyoda-condition = false   # opt out of one that select turned on"
-            )
-        ));
-        body.push_str("<p><code>[linter.rules]</code> overrides <code>select</code> both ways, so a style rule can be adopted one at a time rather than all at once. An unknown <code>select</code> value is a configuration error naming the three that exist; an unknown rule <em>name</em> is accepted and does nothing.</p>\n");
-        body.push_str("<h2>Silencing one place</h2>\n<p><code>{allow 'rule-name'}</code> silences a rule exactly where the code is deliberate, instead of turning it off everywhere. Above a POU it covers that POU; as a statement it covers the next statement and everything nested in it. One pragma takes several names. A name that does not exist is reported as <code>L0005</code> and silences nothing, because a typo must not silence the typo.</p>\n");
-        body.push_str(&format!(
-            "<pre><code class=\"language-iecst\">{}</code></pre>\n",
-            highlighter.html(
-                "{allow 'input-assignment'}\nFUNCTION_BLOCK Rebinder\n\t…\nEND_FUNCTION_BLOCK\n\n\t{allow 'missing-input-param'}\n\tmb(REQ := TRUE, MODE := USINT#1);"
-            )
-        ));
-
-        let mut md = String::from(
-            "# Linter\n\nRules that read the same tree the compiler does. Lints appear in `rk check` and in your editor; they never run during `rk compile` or `rk test`, and they never change an exit code.\n\nThe linter is on by default with the recommended set. `[linter] select` takes `\"recommended\"` (the default), `\"all\"` or `\"none\"`, and `[linter.rules]` overrides it either way. `{allow 'rule-name'}` silences one place.\n\n",
-        );
-
+        let mut md = String::new();
         for (prefix, title, blurb) in groups {
             let mut rows: Vec<&DiagEntry> = entries
                 .iter()
-                .filter(|e| e.code.starts_with(prefix))
+                .filter(|e| e.ex.code.starts_with(prefix))
                 .collect();
-            rows.sort_by_key(|e| e.code);
+            rows.sort_by_key(|e| &e.ex.code);
             if rows.is_empty() {
                 continue;
             }
-            body.push_str(&format!("<h2>{title}</h2>\n<p>{blurb}</p>\n"));
-            body.push_str("<div class=\"tablewrap\"><table><thead><tr><th>Code</th><th>Rule</th><th>Severity</th><th>Default</th><th>What it catches</th></tr></thead><tbody>\n");
-            md.push_str(&format!("## {title}\n\n| Code | Rule | Severity | Default | What it catches |\n| --- | --- | --- | --- | --- |\n"));
+            md.push_str(&format!(
+                "## {title}\n\n| Code | Rule | Severity | Default | What it catches |\n| --- | --- | --- | --- | --- |\n"
+            ));
+            let mut html_rows: Vec<String> = Vec::new();
             for e in rows {
-                let rule = rule_of(e.code).unwrap_or("");
+                let rule = e.ex.lint_rule.as_deref().unwrap_or("");
                 let on = linter::RECOMMENDED_RULE_NAMES.contains(&rule);
                 let sev = severity_of(e);
-                body.push_str(&format!(
-                    "<tr><td class=\"k\"><a href=\"/diagnostics/#{code}\">{code}</a></td><td class=\"k\">{rule}</td><td>{sev}</td><td>{on}</td><td>{what}</td></tr>\n",
-                    code = e.code,
-                    rule = escape(rule),
-                    sev = sev,
-                    on = if on { "on" } else { "—" },
-                    what = escape(e.description),
-                ));
                 md.push_str(&format!(
                     "| {} | `{}` | {} | {} | {} |\n",
-                    e.code,
+                    e.ex.code,
                     rule,
                     sev,
                     if on { "on" } else { "—" },
-                    e.description.replace('|', "\\|")
+                    one_line(&e.ex.description).replace('|', "\\|")
+                ));
+                html_rows.push(format!(
+                    "<tr><td class=\"k\"><a href=\"/diagnostics/#{code}\">{code}</a></td><td class=\"k\">{rule}</td><td>{sev}</td><td>{on}</td><td>{what}</td></tr>\n",
+                    code = e.ex.code,
+                    rule = escape(rule),
+                    on = if on { "on" } else { "—" },
+                    what = escape(&one_line(&e.ex.description)),
                 ));
             }
-            body.push_str("</tbody></table></div>\n");
             md.push('\n');
+            linter_html.push_str(&format!(
+                "<h2>{title}</h2>\n<p>{blurb}</p>\n<div class=\"tablewrap\"><table><thead><tr><th>Code</th><th>Rule</th><th>Severity</th><th>Default</th><th>What it catches</th></tr></thead><tbody>\n{rows}</tbody></table></div>\n",
+                rows = html_rows.concat()
+            ));
         }
-        write(&out_dir, "linter/index.md", &md);
-        write(
-            &out_dir,
-            "linter/index.html",
-            &site::shell(
-                &Page {
-                    title: "Linter",
-                    description: "The lint rules rk applies, what each one catches, and how to configure or silence it.",
-                    path: "/linter/",
-                    md: Some("/linter/index.md"),
-                    eyebrow: "tools",
-                    body: &body,
-                    wide: false,
-                },
-                &base_url,
-            ),
-        );
-        sitemap.push("/linter/".into());
-        twins.push(("/linter/".into(), "/linter/index.md".into()));
+        linter_md = md;
     }
 
-    // The formatter page.
+    // Skills: a section per skill with its references as pages, the raw
+    // files as twins, the JSON the Worker's tools read, the list the pages
+    // show, and the archive the front page unpacks.
+    let mut skills_md = String::new();
+    let mut skills_html = String::new();
     {
-        let body = site::formatter_html(&highlighter);
-        let md = "# Formatter\n\n`rk fmt` rewrites every .st file; `rk fmt --check` reports what would change and exits 1 if anything would. In an editor it is the language server's Format Document.\n\nIt works on the parsed syntax tree, not the text, so it cannot produce a file that no longer parses, and it refuses a file that does not parse going in. Its suite formats twice and requires the second pass to change nothing; CI reformats the standard library and the grammar's fixtures on every change and checks that meaning never moved.\n\nIt has no line-width target and never reflows expressions: a long condition stays on one line if that is how you wrote it. For parameter lists and initialisers a line break inside the list is the instruction, so a list written on one line stays inline and a list containing a newline is expanded one element per line, with the closing bracket at the statement's indent. The parser tolerates a missing semicolon and the formatter writes it in, so every declaration, statement and directive comes back terminated, and a `USING` naming several namespaces takes one terminator at the end rather than one per name. What it normalises is indentation (one tab per level, every block), declarations (one per line, one space after the colon), spacing (one space around binary operators and assignment, none around `.`, `#` or `[]`), and it keeps comments where you put them. Comments and the insides of string literals are never touched. A blank line between declarations is kept as a paragraph break; several in a row collapse to one.\n";
-        write(&out_dir, "formatter/index.md", md);
-        write(
-            &out_dir,
-            "formatter/index.html",
-            &site::shell(
-                &Page {
-                    title: "Formatter",
-                    description: "How rk fmt formats Structured Text, and what it deliberately leaves alone.",
-                    path: "/formatter/",
-                    md: Some("/formatter/index.md"),
-                    eyebrow: "tools",
-                    body: &body,
-                    wide: false,
-                },
-                &base_url,
-            ),
-        );
-        sitemap.push("/formatter/".into());
-        twins.push(("/formatter/".into(), "/formatter/index.md".into()));
-    }
-
-    // Skills: raw files copied byte-identical, a rendered page beside each.
-    let mut skills_json: Vec<String> = Vec::new();
-    for skill in &skills {
-        let dir = format!("skills/{}", skill.name);
-        write(&out_dir, &format!("{dir}/SKILL.md"), &skill.text);
-        let mut files = vec!["SKILL.md".to_string()];
-        let mut body = format!(
-            "<h1>{}</h1>\n<p class=\"lede\">{}</p>\n<p><a class=\"pill\" href=\"/skills/{n}/SKILL.md\">SKILL.md</a> <a class=\"pill\" href=\"/skills.tar.gz\">install</a></p>\n",
-            escape(&skill.name),
-            escape(&one_line(&skill.description)),
-            n = skill.name
-        );
-        body.push_str(&skill.html);
-        if !skill.references.is_empty() {
-            body.push_str("<h2>References</h2>\n<p>Loaded on demand by the skill.</p>\n<ul>\n");
+        let mut skills_json: Vec<String> = Vec::new();
+        for skill in &skills {
+            let dir = format!("skills/{}", skill.name);
+            write(&statics, &format!("{dir}/SKILL.md"), &skill.text);
+            let mut files = vec!["SKILL.md".to_string()];
+            let mut refs = Vec::new();
             for r in &skill.references {
+                write(&statics, &format!("{dir}/{}", r.rel), &r.text);
+                files.push(r.rel.clone());
                 let stem = r
                     .rel
                     .trim_start_matches("references/")
                     .trim_end_matches(".md");
-                body.push_str(&format!(
-                    "<li><a href=\"/skills/{n}/references/{stem}/\">{}</a></li>\n",
-                    escape(&r.title),
-                    n = skill.name
+                let html_path = format!("/skills/{}/references/{stem}/", skill.name);
+                let md_path = format!("/skills/{}/{}", skill.name, r.rel);
+                refs.push(format!(
+                    "{{ title = {}, url = {} }}",
+                    toml_str(&r.title),
+                    toml_str(&html_path)
                 ));
+                write(
+                    &content,
+                    &format!("{dir}/references/{stem}.md"),
+                    &format!(
+                        "+++\ntitle = {title}\ndescription = {desc}\ntemplate = \"page.html\"\n\n[extra]\nhead_title = {head}\nno_h1 = {no_h1}\nmd = {md}\nbreadcrumb = {crumb}\n+++\n{body}",
+                        title = toml_str(&r.title),
+                        no_h1 = !r.has_h1,
+                        head = toml_str(&format!("{} · {}", skill.name, r.title)),
+                        desc =
+                            toml_str(&format!("Reference material for the {} skill.", skill.name)),
+                        md = toml_str(&md_path),
+                        crumb = toml_str(&format!(
+                            "<a href=\"/skills/{n}/\">{n}</a> / references",
+                            n = escape(&skill.name)
+                        )),
+                        body = r.body,
+                    ),
+                );
+                twins.push((html_path, md_path));
             }
-            body.push_str("</ul>\n");
-        }
-        let html_path = format!("/skills/{}/", skill.name);
-        let md_path = format!("/skills/{}/SKILL.md", skill.name);
-        write(
-            &out_dir,
-            &format!("{dir}/index.html"),
-            &site::shell(
-                &Page {
-                    title: &skill.name,
-                    description: &one_line(&skill.description),
-                    path: &html_path,
-                    md: Some(&md_path),
-                    eyebrow: &format!("skill · {}", skill.group()),
-                    body: &body,
-                    wide: false,
-                },
-                &base_url,
-            ),
-        );
-        sitemap.push(html_path.clone());
-        twins.push((html_path, md_path));
-
-        for r in &skill.references {
-            write(&out_dir, &format!("{dir}/{}", r.rel), &r.text);
-            files.push(r.rel.clone());
-            let stem = r
-                .rel
-                .trim_start_matches("references/")
-                .trim_end_matches(".md");
-            let html_path = format!("/skills/{}/references/{stem}/", skill.name);
-            let md_path = format!("/skills/{}/{}", skill.name, r.rel);
-            let body = format!(
-                "<p><a href=\"/skills/{n}/\">{n}</a> / references</p>\n{}",
-                r.html,
-                n = skill.name
-            );
+            let html_path = format!("/skills/{}/", skill.name);
+            let md_path = format!("/skills/{}/SKILL.md", skill.name);
             write(
-                &out_dir,
-                &format!("{dir}/references/{stem}/index.html"),
-                &site::shell(
-                    &Page {
-                        title: &format!("{} · {}", skill.name, r.title),
-                        description: &format!("Reference material for the {} skill.", skill.name),
-                        path: &html_path,
-                        md: Some(&md_path),
-                        eyebrow: "reference",
-                        body: &body,
-                        wide: false,
-                    },
-                    &base_url,
+                &content,
+                &format!("{dir}/_index.md"),
+                &format!(
+                    "+++\ntitle = {title}\ndescription = {desc}\ntemplate = \"skill.html\"\nsort_by = \"none\"\n\n[extra]\nmd = {md}\nreferences = [{refs}]\n+++\n{body}",
+                    title = toml_str(&skill.name),
+                    desc = toml_str(&one_line(&skill.description)),
+                    md = toml_str(&md_path),
+                    refs = refs.join(", "),
+                    body = skill.body,
                 ),
             );
-            sitemap.push(html_path.clone());
             twins.push((html_path, md_path));
-        }
-        skills_json.push(format!(
-            r#"  {{"name":"{}","group":"{}","description":"{}","files":[{}]}}"#,
-            json_escape(&skill.name),
-            json_escape(skill.group()),
-            json_escape(&one_line(&skill.description)),
-            files
-                .iter()
-                .map(|f| format!("\"{}\"", json_escape(f)))
-                .collect::<Vec<_>>()
-                .join(",")
-        ));
-    }
-    write(
-        &out_dir,
-        "skills.json",
-        &format!("[\n{}\n]\n", skills_json.join(",\n")),
-    );
-
-    // Skills index.
-    {
-        let mut body = String::from(
-            "<h1>Skills</h1>\n<p class=\"lede\">Each skill is a folder an agent loads when a task matches its description. Together they are the language and toolchain documentation.</p>\n",
-        );
-        body.push_str(&skill_list_html(&skills));
-        let mut md = String::from("# Skills\n\n");
-        for s in &skills {
-            md.push_str(&format!(
-                "- [{}]({}/skills/{}/SKILL.md): {}\n",
-                s.name,
-                base_url,
-                s.name,
-                one_line(&s.description)
+            skills_json.push(format!(
+                r#"  {{"name":"{}","group":"{}","description":"{}","files":[{}]}}"#,
+                json_escape(&skill.name),
+                json_escape(skill.group()),
+                json_escape(&one_line(&skill.description)),
+                files
+                    .iter()
+                    .map(|f| format!("\"{}\"", json_escape(f)))
+                    .collect::<Vec<_>>()
+                    .join(",")
             ));
         }
-        write(&out_dir, "skills/index.md", &md);
         write(
-            &out_dir,
-            "skills/index.html",
-            &site::shell(
-                &Page {
-                    title: "Skills",
-                    description: "The rk documentation as Agent Skills.",
-                    path: "/skills/",
-                    md: Some("/skills/index.md"),
-                    eyebrow: "documentation",
-                    body: &body,
-                    wide: false,
-                },
-                &base_url,
-            ),
+            &statics,
+            "skills.json",
+            &format!("[\n{}\n]\n", skills_json.join(",\n")),
         );
-        sitemap.push("/skills/".into());
-        twins.push(("/skills/".into(), "/skills/index.md".into()));
-    }
 
-    // The front page.
-    {
-        // No package for them yet: the archive is the distribution, and it
-        // holds one directory per skill, so it unpacks straight into a skills
-        // directory with nothing to rename.
-        let install = format!(
-            "mkdir -p .claude/skills\ncurl -fsSL {base_url}/skills.tar.gz | tar xz -C .claude/skills"
-        );
-        let body = format!(
-            r#"<h1>rk</h1>
-<p class="lede"><strong>rk</strong> compiles IEC 61131-3 Structured Text to WebAssembly: check, test, compile, in one binary, from any editor.</p>
-<h2>Install the skills</h2>
-<pre><code class="language-sh">{install_hl}</code></pre>
-<p>Unpack it wherever your agent keeps its skills; any agent that reads the Agent Skills format can use them. Every skill is also a plain file at <code>/skills/&lt;name&gt;/SKILL.md</code>, if you want one on its own. New here? <a href="/skills/getting-started/">getting-started</a> is the first one to read.</p>
-{list}
-<h2>Diagnostics</h2>
-<p>{codes} codes, one page per <a href="/diagnostics/">category</a>, each entry with the example that produces it and the compiler's own output. <br>The same data as <a href="/diagnostics.json">JSON</a>, which <code>rk explain</code> embeds.</p>
-<h2>For agents too</h2>
-<p>Every page here is also Markdown, and this documentation is also a set of tools an agent can call.</p>
-"#,
-            list = skill_list_html(&skills),
-            install_hl = crate::highlight::shell_html(&install),
-            codes = entries.len()
-        );
-        // Flush-left: a continuation line that kept its indentation would make
-        // the whole section an indented code block in Markdown.
-        let mut md = format!(
-            r#"# rk
-
-rk compiles IEC 61131-3 Structured Text to WebAssembly: check, test, compile, in one binary, from any editor. The documentation is a set of Agent Skills whose examples the compiler verifies before publishing.
-
-## Install the skills
-
-```sh
-{install}
-```
-
-Unpack it wherever your agent keeps its skills.
-Every skill is also a plain file at `/skills/<name>/SKILL.md`, if you want one on its own.
-
-## Skills
-
-"#
-        );
-        for s in &skills {
-            md.push_str(&format!(
-                "- [{}]({}/skills/{}/SKILL.md): {}\n",
-                s.name,
-                base_url,
-                s.name,
-                one_line(&s.description)
+        for (key, heading, blurb) in GROUPS {
+            let members: Vec<&skills::Skill> = skills.iter().filter(|s| s.group() == key).collect();
+            skills_md.push_str(&format!("## {heading}\n\n"));
+            for s in &members {
+                skills_md.push_str(&format!(
+                    "- [{}]({}/skills/{}/SKILL.md): {}\n",
+                    s.name,
+                    base_url,
+                    s.name,
+                    one_line(&s.description)
+                ));
+            }
+            skills_md.push('\n');
+            skills_html.push_str(&format!(
+                "<h2 class=\"group\">{icon}{heading}</h2>\n<p>{blurb}</p>\n<ul class=\"skills\">\n",
+                icon = group_icon(key)
             ));
+            for s in &members {
+                skills_html.push_str(&format!(
+                    "<li><a href=\"/skills/{n}/\">{n}</a><span>{d}</span></li>\n",
+                    n = escape(&s.name),
+                    d = escape(
+                        one_line(&s.description)
+                            .split(". Use when")
+                            .next()
+                            .unwrap_or("")
+                    )
+                ));
+            }
+            skills_html.push_str("</ul>\n");
         }
-        md.push_str(&format!("\n## Diagnostics\n\n[{} codes]({base_url}/diagnostics/index.md), also as [JSON]({base_url}/diagnostics.json).\n\n## For agents\n\n- Every page answers `Accept: text/markdown`.\n- [/llms.txt]({base_url}/llms.txt), [/llms-full.txt]({base_url}/llms-full.txt)\n- [/mcp]({base_url}/mcp): read-only MCP server\n", entries.len()));
-        write(&out_dir, "index.md", &md);
-        write(
-            &out_dir,
-            "index.html",
-            &site::shell(
-                &Page {
-                    title: "rk",
-                    description: "A compiler and toolchain for IEC 61131-3 Structured Text, documented as Agent Skills the compiler verifies.",
-                    path: "/",
-                    md: Some("/index.md"),
-                    eyebrow: "",
-                    body: &body,
-                    wide: false,
-                },
-                &base_url,
-            ),
-        );
-        sitemap.insert(0, "/".into());
-        twins.push(("/".into(), "/index.md".into()));
-    }
 
-    // Agent-facing files.
-    write(
-        &out_dir,
-        "llms.txt",
-        &site::llms_txt(&base_url, &skills, &categories),
-    );
-    write(&out_dir, "llms-full.txt", &site::llms_full_txt(&skills));
-    write(&out_dir, "robots.txt", &site::robots_txt(&base_url));
-    write(
-        &out_dir,
-        "sitemap.xml",
-        &site::sitemap_xml(&base_url, &sitemap),
-    );
-    write(&out_dir, "_headers", &site::headers_file(&twins));
-    write(
-        &out_dir,
-        ".well-known/agent-skills/index.json",
-        &site::agent_skills_index(&skills),
-    );
-    let card = site::mcp_server_card(&base_url);
-    write(&out_dir, ".well-known/mcp/server-card.json", &card);
-    write(&out_dir, ".well-known/mcp.json", &card);
-    write(
-        &out_dir,
-        ".well-known/api-catalog",
-        &site::api_catalog(&base_url),
-    );
-    write(
-        &out_dir,
-        ".well-known/ai-catalog.json",
-        &site::ard_manifest(&base_url),
-    );
-
-    // The archive the front page unpacks: one directory per skill, no wrapper.
-    {
-        let file = fs::File::create(out_dir.join("skills.tar.gz")).unwrap();
+        // The archive: one directory per skill, no wrapper, so it unpacks
+        // straight into a skills directory with nothing to rename.
+        let file = fs::File::create(statics.join("skills.tar.gz")).unwrap();
         let enc = flate2::write::GzEncoder::new(file, flate2::Compression::default());
         let mut tar = tar::Builder::new(enc);
         tar.follow_symlinks(false);
@@ -753,16 +580,216 @@ Every skill is also a plain file at `/skills/<name>/SKILL.md`, if you want one o
         tar.into_inner().unwrap().finish().unwrap();
     }
 
+    let subs = Substitutions {
+        skills_html: skills_html.clone(),
+        skills_md: skills_md.clone(),
+        linter_html: linter_html.clone(),
+        linter_md: linter_md.clone(),
+        count: entries.len().to_string(),
+    };
+    // So `--pages-only` can re-render prose without recompiling anything.
+    fs::write(cache_path(&site_dir), serde_json::to_string(&subs).unwrap()).unwrap();
+
+    twins.extend(write_pages(
+        &pages,
+        &subs,
+        &content,
+        &statics,
+        &repo,
+        &highlighter,
+    ));
+
+    // Agent-facing files.
+    write(
+        &statics,
+        "llms.txt",
+        &site::llms_txt(&base_url, &skills, &categories),
+    );
+    write(&statics, "llms-full.txt", &site::llms_full_txt(&skills));
+    twins.sort();
+    twins.dedup();
+    write(&statics, "_headers", &site::headers_file(&twins));
+    write(
+        &statics,
+        ".well-known/agent-skills/index.json",
+        &site::agent_skills_index(&skills),
+    );
+    let card = site::mcp_server_card(&base_url);
+    write(&statics, ".well-known/mcp/server-card.json", &card);
+    write(&statics, ".well-known/mcp.json", &card);
+    write(
+        &statics,
+        ".well-known/api-catalog",
+        &site::api_catalog(&base_url),
+    );
+    write(
+        &statics,
+        ".well-known/ai-catalog.json",
+        &site::ard_manifest(&base_url),
+    );
+
     eprintln!(
-        "\nDone: {} diagnostics, {} skills, {} pages → {}",
+        "\nDone: {} diagnostics, {} skills, {} pages → {} (now `zola build` in site/)",
         entries.len(),
         skills.len(),
-        sitemap.len(),
-        out_dir.display()
+        twins.len(),
+        site_dir.display()
     );
 }
 
-/// What the old reference showed on hover: the message, the code and its
+/// Write every hand-written page and the README front page, expanding the
+/// placeholders to HTML for the page and to Markdown for its twin. Returns
+/// the (page, twin) pairs for `_headers`.
+fn write_pages(
+    pages: &[pages::Page],
+    subs: &Substitutions,
+    content: &Path,
+    statics: &Path,
+    repo: &Path,
+    highlighter: &StHighlighter,
+) -> Vec<(String, String)> {
+    let mut twins = Vec::new();
+    let expand = |text: &str, skills: &str, linter: &str| -> String {
+        text.replace("{{ skills() }}", skills)
+            .replace("{{ diagnostics_count() }}", &subs.count)
+            .replace("{{ linter_table() }}", linter)
+    };
+    for p in pages {
+        let rel = p.rel.to_string_lossy().replace('\\', "/");
+        write(
+            content,
+            &rel,
+            &format!(
+                "+++\n{}\n+++\n{}",
+                p.frontmatter,
+                expand(
+                    &p.body,
+                    subs.skills_html.trim_end(),
+                    subs.linter_html.trim_end()
+                )
+            ),
+        );
+        if let Some(md) = &p.md {
+            let twin = p.twin_rel();
+            let body = expand(
+                &p.source,
+                subs.skills_md.trim_end(),
+                subs.linter_md.trim_end(),
+            );
+            let lede = if p.lede.is_empty() {
+                String::new()
+            } else {
+                format!("{}\n\n", p.lede)
+            };
+            write(
+                statics,
+                &twin.to_string_lossy(),
+                &format!("# {}\n\n{lede}{}", p.title, body.trim_start()),
+            );
+            let html_path = {
+                let t = twin.to_string_lossy().replace('\\', "/");
+                format!("/{}", t.trim_end_matches("index.md"))
+            };
+            twins.push((html_path, md.clone()));
+        }
+    }
+
+    // The front page IS the repository's README, so the project says one thing
+    // in both places and neither can drift. Its fences are illustrative — a
+    // few deliberately show code that does not compile — so they are
+    // highlighted but never handed to the fence gate.
+    let readme = link_to_repo(&fs::read_to_string(repo.join("README.md")).unwrap());
+    // The template prints the title and the lede above the body, so both come
+    // out of it: `preprocess` lifts the H1, and the tagline is cut here.
+    let tagline = readme_tagline(&readme);
+    // The epigraph sits between the two in the README, so it is lifted as
+    // well: left in the body it would land under the lede, out of order.
+    let epigraph = readme_epigraph(&readme, tagline);
+    let body_src = readme.replacen(tagline, "", 1).replacen(epigraph, "", 1);
+    let pre = markdown::preprocess(&body_src, highlighter);
+    let title = pre.title.as_deref().unwrap_or("rk");
+    let lede = one_line(&strip_tags(tagline));
+    let epigraph = one_line(
+        &epigraph
+            .lines()
+            .map(|l| l.trim_start().trim_start_matches('>').trim())
+            .collect::<Vec<_>>()
+            .join(" "),
+    );
+    write(
+        content,
+        "_index.md",
+        &format!(
+            "+++\ntitle = {title}\ndescription = {lede}\n\n[extra]\nepigraph = {epigraph}\nlede = {lede}\nmd = \"/index.md\"\n+++\n{body}",
+            title = toml_str(title),
+            epigraph = toml_str(&epigraph),
+            lede = toml_str(&lede),
+            body = pre.body,
+        ),
+    );
+    write(statics, "index.md", &readme);
+    twins.push(("/".into(), "/index.md".into()));
+    twins
+}
+
+/// The README's tagline, which becomes the page's lede: the first block that
+/// is neither the H1, the epigraph under it nor a list.
+fn readme_tagline(readme: &str) -> &str {
+    readme
+        .split("\n\n")
+        .map(str::trim)
+        .find(|b| !(b.is_empty() || b.starts_with(['#', '>', '-', '*'])))
+        .unwrap_or_default()
+}
+
+/// The quote between the H1 and the tagline, if the README opens with one.
+fn readme_epigraph<'a>(readme: &'a str, tagline: &str) -> &'a str {
+    let head = &readme[..readme.find(tagline).unwrap_or(0)];
+    head.split("\n\n")
+        .map(str::trim)
+        .find(|b| b.starts_with('>'))
+        .unwrap_or_default()
+}
+
+/// The text of a block, without its tags: the README centers the tagline in a
+/// `<div>` for GitHub, and none of that belongs in a `description`.
+fn strip_tags(block: &str) -> String {
+    let mut out = String::with_capacity(block.len());
+    let mut depth = 0usize;
+    for c in block.chars() {
+        match c {
+            '<' => depth += 1,
+            '>' => depth = depth.saturating_sub(1),
+            _ if depth == 0 => out.push(c),
+            _ => {}
+        }
+    }
+    out
+}
+
+/// A link target that is a path in the repository resolves on GitHub but not
+/// on the website. Point those at the repository; leave absolute, rooted and
+/// fragment links alone.
+fn link_to_repo(text: &str) -> String {
+    const BLOB: &str = "https://github.com/adclz/rk/blob/main/";
+    let mut out = String::with_capacity(text.len());
+    let mut rest = text;
+    while let Some(i) = rest.find("](") {
+        out.push_str(&rest[..i + 2]);
+        rest = &rest[i + 2..];
+        let end = rest.find(')').unwrap_or(rest.len());
+        let target = &rest[..end];
+        if !(target.starts_with("http") || target.starts_with('/') || target.starts_with('#')) {
+            out.push_str(BLOB);
+        }
+        out.push_str(target);
+        rest = &rest[end..];
+    }
+    out.push_str(rest);
+    out
+}
+
+/// What the reference shows on hover: the message, the code and its
 /// category, then notes, related locations and fixes.
 fn popup_html(d: &DiagSpan) -> String {
     let mut h = escape(&d.message);
@@ -804,44 +831,5 @@ fn group_icon(group: &str) -> String {
             r#"<path d="M4 8h9.5M18.5 8H20M4 16h3.5M12.5 16H20"/><circle cx="16" cy="8" r="2.3"/><circle cx="10" cy="16" r="2.3"/>"#
         }
     };
-    format!(
-        r#"<svg viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">{inner}</svg>"#
-    )
-}
-
-fn skill_list_html(skills: &[skills::Skill]) -> String {
-    let mut body = String::new();
-    for (group, heading, blurb) in [
-        (
-            "getting",
-            "Start here",
-            "Install <code>rk</code>, make a workspace, run the loop once.",
-        ),
-        ("cli", "Toolchain", "One skill per <code>rk</code> command."),
-        (
-            "programming",
-            "Language",
-            "Structured Text as <code>rk</code> compiles it, and the standard library.",
-        ),
-        ("tool", "Tools", "The linter and the language server."),
-    ] {
-        body.push_str(&format!(
-            "<h2 class=\"group\">{icon}{heading}</h2>\n<p>{blurb}</p>\n<ul class=\"skills\">\n",
-            icon = group_icon(group)
-        ));
-        for s in skills.iter().filter(|s| s.group() == group) {
-            body.push_str(&format!(
-                "<li><a href=\"/skills/{n}/\">{n}</a><span>{d}</span></li>\n",
-                n = escape(&s.name),
-                d = escape(
-                    one_line(&s.description)
-                        .split(". Use when")
-                        .next()
-                        .unwrap_or("")
-                )
-            ));
-        }
-        body.push_str("</ul>\n");
-    }
-    body
+    site::icon(inner)
 }

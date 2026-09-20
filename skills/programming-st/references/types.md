@@ -5,8 +5,80 @@
 There is no `WSTRING`.
 A bare `STRING` has a capacity of 80 bytes.
 
-Widening within the same family is implicit (`INT` → `DINT`, `INT` → `REAL`).
-Everything else — narrowing, signed/unsigned, integer/bit-string, real → integer — needs an explicit `Std.Convert` call, and E0301 names the one to use: `INT_TO_SINT(i)`, `REAL_TO_INT(r)`, `INT_TO_WORD(i)`.
+Widening is implicit exactly where the standard's table allows it, which is not "within a family": `INT` → `REAL` is implicit and `DINT` → `REAL` is not, and an unsigned type widens to a larger signed one (`USINT` → `INT`).
+The two tables below are written by the site generator from the compiler's own rules.
+
+<!-- casts:begin -->
+
+<details>
+<summary><strong>Implicit</strong>, what an assignment or a call widens on its own.</summary>
+
+| from | to |
+|---|---|
+| `BOOL` | `BYTE`, `WORD`, `DWORD`, `LWORD` |
+| `BYTE` | `WORD`, `DWORD`, `LWORD` |
+| `WORD` | `DWORD`, `LWORD` |
+| `DWORD` | `LWORD` |
+| `LWORD` | — |
+| `SINT` | `INT`, `DINT`, `LINT`, `REAL`, `LREAL` |
+| `INT` | `DINT`, `LINT`, `REAL`, `LREAL` |
+| `DINT` | `LINT`, `LREAL` |
+| `LINT` | — |
+| `USINT` | `INT`, `DINT`, `LINT`, `UINT`, `UDINT`, `ULINT`, `REAL`, `LREAL` |
+| `UINT` | `DINT`, `LINT`, `UDINT`, `ULINT`, `REAL`, `LREAL` |
+| `UDINT` | `LINT`, `ULINT`, `LREAL` |
+| `ULINT` | — |
+| `REAL` | `LREAL` |
+| `LREAL` | — |
+| `CHAR` | — |
+| `STRING` | — |
+| `TIME` | `LTIME` |
+| `LTIME` | — |
+| `DATE` | `LDATE` |
+| `LDATE` | — |
+| `TOD` | `LTOD` |
+| `LTOD` | — |
+| `DT` | `LDT` |
+| `LDT` | — |
+
+</details>
+
+<details>
+<summary><strong>Explicit</strong>, the <code>Std.Convert</code> functions, each named <code>FROM_TO_TO</code>.</summary>
+
+| from | to |
+|---|---|
+| `BOOL` | `SINT`, `INT`, `DINT`, `LINT`, `USINT`, `UINT`, `UDINT`, `ULINT`, `STRING` |
+| `BYTE` | `SINT`, `INT`, `DINT`, `LINT`, `USINT`, `UINT`, `UDINT`, `ULINT`, `CHAR`, `STRING` |
+| `WORD` | `BYTE`, `SINT`, `INT`, `DINT`, `LINT`, `USINT`, `UINT`, `UDINT`, `ULINT`, `STRING` |
+| `DWORD` | `BYTE`, `WORD`, `SINT`, `INT`, `DINT`, `LINT`, `USINT`, `UINT`, `UDINT`, `ULINT`, `REAL`, `STRING` |
+| `LWORD` | `BYTE`, `WORD`, `DWORD`, `SINT`, `INT`, `DINT`, `LINT`, `USINT`, `UINT`, `UDINT`, `ULINT`, `LREAL`, `STRING` |
+| `SINT` | `BYTE`, `WORD`, `DWORD`, `LWORD`, `USINT`, `UINT`, `UDINT`, `ULINT`, `STRING` |
+| `INT` | `BYTE`, `WORD`, `DWORD`, `LWORD`, `SINT`, `USINT`, `UINT`, `UDINT`, `ULINT`, `STRING` |
+| `DINT` | `BYTE`, `WORD`, `DWORD`, `LWORD`, `SINT`, `INT`, `USINT`, `UINT`, `UDINT`, `ULINT`, `REAL`, `STRING`, `TIME`, `DATE`, `TOD` |
+| `LINT` | `BYTE`, `WORD`, `DWORD`, `LWORD`, `SINT`, `INT`, `DINT`, `USINT`, `UINT`, `UDINT`, `ULINT`, `REAL`, `LREAL`, `STRING`, `LTIME`, `LDATE`, `LTOD`, `DT`, `LDT` |
+| `USINT` | `BYTE`, `WORD`, `DWORD`, `LWORD`, `SINT`, `STRING` |
+| `UINT` | `BYTE`, `WORD`, `DWORD`, `LWORD`, `SINT`, `INT`, `USINT`, `STRING` |
+| `UDINT` | `BYTE`, `WORD`, `DWORD`, `LWORD`, `SINT`, `INT`, `DINT`, `USINT`, `UINT`, `REAL`, `STRING` |
+| `ULINT` | `BYTE`, `WORD`, `DWORD`, `LWORD`, `SINT`, `INT`, `DINT`, `LINT`, `USINT`, `UINT`, `UDINT`, `REAL`, `LREAL`, `STRING` |
+| `REAL` | `DWORD`, `SINT`, `INT`, `DINT`, `LINT`, `USINT`, `UINT`, `UDINT`, `ULINT`, `STRING` |
+| `LREAL` | `LWORD`, `SINT`, `INT`, `DINT`, `LINT`, `USINT`, `UINT`, `UDINT`, `ULINT`, `REAL`, `STRING` |
+| `CHAR` | `BYTE`, `STRING` |
+| `STRING` | — |
+| `TIME` | `DINT`, `STRING`, `LTIME` |
+| `LTIME` | `LINT`, `STRING`, `TIME` |
+| `DATE` | `DINT`, `STRING`, `LDATE` |
+| `LDATE` | `LINT`, `STRING`, `DATE` |
+| `TOD` | `DINT`, `STRING`, `LTOD` |
+| `LTOD` | `LINT`, `STRING`, `TOD` |
+| `DT` | `LINT`, `STRING`, `DATE`, `LDATE`, `TOD`, `LTOD`, `LDT` |
+| `LDT` | `LINT`, `STRING`, `DATE`, `LDATE`, `TOD`, `LTOD`, `DT` |
+
+</details>
+
+<!-- casts:end -->
+
+Everything else — narrowing, signed to unsigned, integer/bit-string, real → integer — needs an explicit `Std.Convert` call, and E0301 names the one to use: `INT_TO_SINT(i)`, `REAL_TO_INT(r)`, `INT_TO_WORD(i)`.
 
 Real → integer rounds to nearest, ties to even (`REAL_TO_INT(2.5)` is `2`, `REAL_TO_INT(3.5)` is `4`); `TRUNC` drops the fraction instead.
 A value outside the target's range saturates to the nearest bound and NaN converts to `0`; `Std.Math` has `IS_NAN` and `NOT_OK` (NaN or infinite) to test a value before converting it.
@@ -86,10 +158,6 @@ TYPE
 	Point: STRUCT
 		x: INT;
 		y: INT;
-	END_STRUCT;
-	Overlaid: STRUCT OVERLAP              // parsed, but fields do NOT share storage yet
-		raw: DWORD;
-		f: REAL;
 	END_STRUCT;
 	Vec: ARRAY[0..9] OF INT;
 	Grid: ARRAY[1..3, 1..4] OF REAL;      // multi-dimensional

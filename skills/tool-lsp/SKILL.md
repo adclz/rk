@@ -145,12 +145,5 @@ vim.lsp.start({
 })
 ```
 
-Requests that are not registered are refused with JSON-RPC `-32601`, not with an empty answer.
-That is the case for `prepareRename`, `rangeFormatting`, `onTypeFormatting`, `selectionRange`, `linkedEditingRange`, `workspace/willRenameFiles` and `moniker`, none of which the server implements.
-Call hierarchy, type definition, document highlight and inline values are all implemented.
-
-One gap is not a choice: type hierarchy.
-The protocol crate the server is built on predates the 3.17 `typeHierarchyProvider` capability, so the request would be refused however it were answered.
-
 The VSCode extension adds what the protocol does not carry: it copies the built binary to `vscode/server/bin/`, owns the two code lens commands, and consumes a custom `rk/serverStatus` notification for its status bar.
 Another client sees that notification and can drop it.

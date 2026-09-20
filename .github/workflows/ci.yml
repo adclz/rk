@@ -40,7 +40,7 @@ jobs:
       - name: Keep line endings as committed
         if: runner.os == 'Windows'
         run: git config --global core.autocrlf false
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
       - name: Free disk space
         if: runner.os == 'Linux'
         run: |
@@ -48,9 +48,9 @@ jobs:
           sudo docker image prune --all --force
           df -h
       - uses: ./.github/actions/rust-toolchain
-      - uses: Swatinem/rust-cache@v2
+      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2
       - name: Install nextest
-        uses: taiki-e/install-action@nextest
+        uses: taiki-e/install-action@2ab4414e29d1e7bb31565858e4b05de5d3713b61 # nextest
       - name: Test workspace
         run: cargo nextest run --workspace --profile ci
 
@@ -60,9 +60,9 @@ jobs:
       # CI fails on every warning, clippy lints included.
       RUSTFLAGS: -Dwarnings
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
       - uses: ./.github/actions/rust-toolchain
-      - uses: Swatinem/rust-cache@v2
+      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2
       - name: Run Clippy
         run: cargo clippy --all-targets --all-features
 
@@ -72,14 +72,14 @@ jobs:
       # The workspace under test IS the stdlib: empty = load no stdlib.
       RK_STDLIB_PATH: ""
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
       - name: Free disk space
         run: |
           sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc /opt/hostedtoolcache/CodeQL
           sudo docker image prune --all --force
           df -h
       - uses: ./.github/actions/rust-toolchain
-      - uses: Swatinem/rust-cache@v2
+      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2
       - name: Build the rk CLI
         run: cargo build -p rk --release
       # The bundled `wasm-opt` crate is pinned to Binaryen 116, which predates
@@ -113,10 +113,10 @@ jobs:
   notices:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
       - uses: ./.github/actions/rust-toolchain
       - name: Install cargo-about
-        uses: taiki-e/install-action@cargo-about
+        uses: taiki-e/install-action@7674631dd98798c55bdfe7ee6f128b9c0518ee49 # cargo-about
       - name: The committed third-party notices must be current
         working-directory: crates/wasm_builtins
         run: |
@@ -131,30 +131,43 @@ jobs:
   site:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
       - uses: ./.github/actions/rust-toolchain
-      - uses: Swatinem/rust-cache@v2
-      - uses: actions/setup-node@v4
-        with:
-          node-version: 22
+      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2
       # Fails when a diagnostics example disagrees with the compiler, or a
       # skill's example no longer holds, naming every one at fault. Writes
       # nothing in that case, so the committed reference is never replaced
       # by a bad one. Release: the skills gate loads the standard library
       # once per example, which is minutes in a debug build.
+      # Pinned, not tracking latest: a Zola release has already broken this
+      # site once, when 0.23 removed shortcodes.
+      - name: Install Zola
+        uses: taiki-e/install-action@26e9283f268b880168bdbd2c545dfcd60ec2c6ab # v2
+        with:
+          tool: zola@0.23.6
       - name: The site's examples must agree with the compiler
-        run: cargo run --release -p doc -- site/dist --base-url "${SITE_URL:-http://localhost:8788}"
+        run: cargo run --release -p doc -- --base-url "${SITE_URL:-http://localhost:8787}"
         env:
           SITE_URL: ${{ vars.SITE_URL }}
-      # `rk explain` embeds crates/doc/diagnostics.json in the binary. If
-      # regenerating changed it, the committed copy was stale and every
-      # `rk explain` was serving it.
+      - name: Zola must render every page
+        working-directory: site
+        run: zola build --base-url "${SITE_URL:-http://localhost:8787}"
+        env:
+          SITE_URL: ${{ vars.SITE_URL }}
+      # `rk explain` embeds crates/doc/diagnostics.json in the binary, and
+      # the README's cast tables are written from the compiler's own rules.
+      # If regenerating changed either, the committed copy was stale.
       - name: The committed reference must be up to date
         run: |
-          if ! git diff --exit-code -- crates/doc/diagnostics.json; then
-            echo "::error::crates/doc/diagnostics.json is out of date — run \`cargo run --release -p doc -- site/dist\` and commit the result"
+          if ! git diff --exit-code -- crates/doc/diagnostics.json README.md skills/programming-st/references/types.md; then
+            echo "::error::crates/doc/diagnostics.json or README.md is out of date — run \`cargo run --release -p doc\` and commit the result"
             exit 1
           fi
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: site/package-lock.json
       - name: The Worker must type-check and bundle
         working-directory: site
-        run: npm install && npm run check
+        run: npm ci --ignore-scripts && npm run check

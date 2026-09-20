@@ -35,8 +35,11 @@ pub struct RefFile {
     /// Path relative to the skill directory, e.g. `references/errors.md`.
     pub rel: String,
     pub text: String,
-    pub html: String,
+    /// The body pre-rendered for Zola, its H1 removed.
+    pub body: String,
+    /// The H1's text when the file has one, else the file's stem.
     pub title: String,
+    pub has_h1: bool,
     pub fences: Vec<Fence>,
 }
 
@@ -46,7 +49,8 @@ pub struct Skill {
     pub dir: PathBuf,
     /// The full `SKILL.md`, frontmatter included: what an agent installs.
     pub text: String,
-    pub html: String,
+    /// The body pre-rendered for Zola.
+    pub body: String,
     pub fences: Vec<Fence>,
     pub references: Vec<RefFile>,
 }
@@ -76,7 +80,7 @@ pub fn discover(root: &Path, highlighter: &StHighlighter) -> Vec<Skill> {
                 name, dir_name,
                 "a skill's name must match its directory (Agent Skills spec)"
             );
-            let rendered = markdown::render(body, highlighter);
+            let rendered = markdown::preprocess(body, highlighter);
             let fm_lines = text[..text.len() - body.len()].matches('\n').count();
             let fences = shift(rendered.fences, fm_lines);
 
@@ -92,14 +96,15 @@ pub fn discover(root: &Path, highlighter: &StHighlighter) -> Vec<Skill> {
                 for path in files {
                     let text = std::fs::read_to_string(&path).unwrap();
                     let (_, body) = markdown::split_frontmatter(&text);
-                    let rendered = markdown::render(body, highlighter);
+                    let rendered = markdown::preprocess(body, highlighter);
                     let fm_lines = text[..text.len() - body.len()].matches('\n').count();
                     let stem = path.file_stem().unwrap().to_string_lossy().to_string();
                     references.push(RefFile {
                         rel: format!("references/{}", path.file_name().unwrap().to_string_lossy()),
+                        has_h1: rendered.title.is_some(),
                         title: rendered.title.clone().unwrap_or(stem),
                         fences: shift(rendered.fences, fm_lines),
-                        html: rendered.html,
+                        body: rendered.body,
                         text,
                     });
                 }
@@ -112,7 +117,7 @@ pub fn discover(root: &Path, highlighter: &StHighlighter) -> Vec<Skill> {
                     .to_string(),
                 name,
                 dir,
-                html: rendered.html,
+                body: rendered.body,
                 fences,
                 references,
                 text,
@@ -285,23 +290,42 @@ fn report(
     }
 }
 
-/// Check every fence of every skill. Returns one line per problem, naming
-/// the file and line; empty means the site may be published.
-pub fn verify(skills: &[Skill]) -> Vec<String> {
+/// One document's fences, with the path a problem names.
+pub struct Doc<'a> {
+    pub shown: String,
+    pub fences: &'a [Fence],
+}
+
+/// Every skill's `SKILL.md` and references, named relative to `repo`.
+pub fn skill_docs<'a>(skills: &'a [Skill], repo: &Path) -> Vec<Doc<'a>> {
+    let mut docs = Vec::new();
+    for skill in skills {
+        let shown = |p: PathBuf| p.strip_prefix(repo).unwrap_or(&p).display().to_string();
+        docs.push(Doc {
+            shown: shown(skill.dir.join("SKILL.md")),
+            fences: &skill.fences,
+        });
+        for r in &skill.references {
+            docs.push(Doc {
+                shown: shown(skill.dir.join(&r.rel)),
+                fences: &r.fences,
+            });
+        }
+    }
+    docs
+}
+
+/// Check every fence of every document. Returns one line per problem,
+/// naming the file and line; empty means the site may be published.
+pub fn verify(docs: &[Doc]) -> Vec<String> {
     let stdlib = load_stdlib();
     let mut problems = Vec::new();
     let mut checked = 0usize;
     let mut sketches = 0usize;
 
-    for skill in skills {
-        let mut docs: Vec<(PathBuf, &[Fence])> = vec![(skill.dir.join("SKILL.md"), &skill.fences)];
-        for r in &skill.references {
-            docs.push((skill.dir.join(&r.rel), &r.fences));
-        }
-        for (path, fences) in docs {
-            let shown = path
-                .strip_prefix(skill.dir.parent().unwrap().parent().unwrap())
-                .unwrap_or(&path);
+    {
+        for Doc { shown, fences } in docs {
+            let fences = *fences;
             // A `continues` chain accumulates here and is checked where it
             // ends: at the next non-chained fence, or the end of the document.
             let mut previous = String::new();
@@ -318,7 +342,7 @@ pub fn verify(skills: &[Skill]) -> Vec<String> {
             };
 
             for fence in fences {
-                let at = format!("{}:{}", shown.display(), fence.line);
+                let at = format!("{shown}:{}", fence.line);
                 let directive = match parse_info(&fence.info) {
                     Ok(d) => d,
                     Err(e) => {

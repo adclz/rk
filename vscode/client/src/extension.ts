@@ -73,7 +73,7 @@ export async function activate(context: ExtensionContext) {
     ...stdlibEnv(),
   };
 
-  outputChannel = window.createOutputChannel("IEC LSP Server", "log");
+  outputChannel = window.createOutputChannel("rk Language Server", "log");
   const run: Executable = {
     command: serverModule.fsPath,
     options: { env },
@@ -431,7 +431,7 @@ async function stopServer() {
     }
   } catch (error) {
     updateStatusBar({ status: "error", message: "Server failed to stop" });
-    window.showErrorMessage(`Failed to stop IEC server: ${error}`);
+    window.showErrorMessage(`Failed to stop the rk server: ${error}`);
   }
 }
 
@@ -446,7 +446,7 @@ async function restartServer() {
     }
   } catch (error) {
     updateStatusBar({ status: "error", message: "Server failed to restart" });
-    window.showErrorMessage(`Failed to restart IEC server: ${error}`);
+    window.showErrorMessage(`Failed to restart the rk server: ${error}`);
   }
 }
 

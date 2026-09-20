@@ -620,13 +620,13 @@ pub fn console_html(src: &str) -> String {
         }
         let mut rest = line;
         while !rest.is_empty() {
-            if let Some(bracket) = rest.find('[') {
-                if let Some(close) = rest[bracket..].find(']') {
-                    out.push_str(&words(&rest[..bracket]));
-                    out.push_str(&span("hl-number", &rest[bracket..bracket + close + 1]));
-                    rest = &rest[bracket + close + 1..];
-                    continue;
-                }
+            if let Some(bracket) = rest.find('[')
+                && let Some(close) = rest[bracket..].find(']')
+            {
+                out.push_str(&words(&rest[..bracket]));
+                out.push_str(&span("hl-number", &rest[bracket..bracket + close + 1]));
+                rest = &rest[bracket + close + 1..];
+                continue;
             }
             out.push_str(&words(rest));
             break;

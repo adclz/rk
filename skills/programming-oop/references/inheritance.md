@@ -48,7 +48,6 @@ END_CLASS
 
 `ABSTRACT` means "incomplete, extend me", and the compiler holds both ends of that.
 A `CLASS` or `FUNCTION_BLOCK` declaring an `ABSTRACT` method must itself be `ABSTRACT` (`E1117`), and an `ABSTRACT` type cannot be instantiated (`E1118`) — declare a variable of a derived type.
-A `REF_TO` an abstract type is fine: a reference names some derived instance rather than being one.
 
 A CONCRETE derived POU must implement every inherited `ABSTRACT` method (`E1116`); an `ABSTRACT` derived one may pass the obligation further down, which is what an abstract intermediate is for.
 An `ABSTRACT` type with no abstract method at all is legal: that is the ordinary extend-only base type.
@@ -67,9 +66,11 @@ A derived function block's call site binds the base's parameters too: `d(io := x
 `THIS` is the current instance.
 It is valid in the body and in the methods of a `CLASS` or a `FUNCTION_BLOCK`, written `THIS.member` or `THIS^.member`.
 In a `FUNCTION` it is `E1105`.
+`THIS.Method()` dispatches virtually: on a derived instance the override runs.
 
 `SUPER.name` reaches the base's METHODS, not its variables: IEC tables 9b/10b make `SUPER` a method reference, so `SUPER.someVar` is `E0202` and an inherited variable is reached unqualified instead.
 It requires an `EXTENDS` clause on the current POU (`E1107`) and a class or function block context (`E1106`).
+The call is static: `SUPER.m()` names the base's method even when the instance overrides it, and even from a further inheritor.
 
 `SUPER()` is the distinct form that runs the base function block's *body*.
 It may appear once, in the function block body only.

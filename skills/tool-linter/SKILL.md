@@ -55,7 +55,7 @@ select = "all"           # default is "recommended"
 yoda-condition = false   # opt OUT of one `select` turned on
 ```
 
-To run the style rules on top of the default instead of taking all 49:
+To run the style rules on top of the default instead of taking all 48:
 
 ```toml
 [linter]

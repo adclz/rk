@@ -28,11 +28,45 @@ cargo test --package rk-tests --lib -- tests::semantics::array::valid_array --ex
 # Review insta snapshots after test changes
 cargo insta review
 
-# Build the website (skills + diagnostics reference) into site/dist; also
-# refreshes crates/doc/diagnostics.json, which `rk explain` embeds. Refuses
-# to write when an example disagrees with the compiler. Release: the skills
-# gate loads the stdlib once per example.
-cargo run --release -p doc -- site/dist
+# Build the website. The generator verifies every example against the
+# compiler and writes site/content, site/data and site/static (gitignored);
+# Zola renders them into site/dist. Also refreshes crates/doc/diagnostics.json,
+# which `rk explain` embeds. Refuses to write when an example disagrees with
+# the compiler. Release: the skills gate loads the stdlib once per example.
+cd site && npm run build
+# Preview with the Worker, as deployed: `cd site && npm run dev`.
+#
+# Use the npm scripts, not `zola build`, whenever a `wrangler dev` is up.
+# Zola DELETES its output directory on every build; wrangler binds ./dist once
+# and its assets die with that directory, answering 500 until it is restarted.
+# `npm run sync` builds into site/.zola-out and rsyncs into dist, so dist keeps
+# the inode wrangler holds and a reload just works. CI calls `zola build`
+# straight, where nothing is watching.
+#
+# Authoring loop for site/pages/*.md and README.md. Zola watches content/,
+# not pages/, so a page edit shows nothing until the generator runs again.
+# --pages-only re-renders only the pages, against the last full run's derived
+# values: about 1s instead of 14s. Their fences are still checked. It refuses
+# until a full run has produced site/.substitutions.json, and CI never uses it.
+cd site && npm run pages
+#
+# A dead `wrangler dev` leaves its workerd child holding the port, so a new one
+# silently moves to 8788 and the old address keeps serving 500s:
+#   pkill -f 'bin/workerd'
+#
+# CI pins Zola 0.23.6. The site uses no Zola shortcodes — the generator
+# substitutes the derived HTML itself — so a Zola upgrade only has to keep
+# the templates in `site/templates/` working.
+#
+# The front page IS README.md: the generator reads it, highlights its fences
+# and points its repo-relative links at GitHub. Its examples are shown, never
+# compiled, because several deliberately do not.
+#
+# The README's cast tables, between `<!-- casts:begin -->` and `:end`, are
+# WRITTEN by the generator from `ElementarySpec::implicit_cast` and the
+# `X_TO_Y` functions in stdlib/Convert.st; edit those, not the table. It also
+# checks that every cast E0301 could suggest (`explicit_cast`) is a function
+# that exists. CI diffs README.md after a run, like diagnostics.json.
 
 # Regenerate THIRD-PARTY-NOTICES, the licenses of the crates compiled into
 # every generated module (run from crates/wasm_builtins/; needs
@@ -59,9 +93,16 @@ cargo run --bin rk -- check --workspace <workspace_path>
 # realistic module and `-O` degrades to an unoptimized (still correct) build
 # with a warning.
 #
-# Use -O2/-O3/-Os/-Oz. `-O4` aborts on every Binaryen up to and including 131
-# ("unexpected expr type" in the Flatten pass, which does not handle
-# try_table) — an upstream limitation, not a stale version.
+# `-O4` alone aborts on every Binaryen up to and including 131 ("unexpected
+# expr type" in the Flatten pass, which does not handle try_table) — an
+# upstream limitation, not a stale version. rk therefore runs it as
+# `-O4 --skip-pass=flatten`, silently; the README carries the warning.
+# Tracked as WebAssembly/binaryen#8372, where the maintainer has no near-term
+# plan for it. Flatten does handle the LEGACY `try`, which is why "Binaryen
+# supports exceptions" and "-O4 crashes" are both true. With the pass skipped
+# what is left of -O4 is close to -O3 (192,121 bytes against 192,115 on the
+# stdlib module). Trying Flatten first would never pay: the stdlib's 341 test
+# wrappers put a `try_table` in every module rk emits.
 
 # Fuzz testing
 cargo +nightly build --release --manifest-path crates/fuzz/Cargo.toml --bin fuzz_compiler
@@ -105,7 +146,7 @@ cli (binary `rk`) — check, compile, test, fmt, explain, env
 | `debug_format`            | `crates/debug_format`   | The custom-section formats (debug symbols, lines, schedule, retain map, test manifest) and their decoder.               |
 | `linter`                  | `crates/linter`         | Lint rules (L-codes) over HIR.                                                                                          |
 | `benchmark`               | `crates/benchmark`      | Divan benchmarks over the stdlib corpus, with diagnostic baselines.                                                     |
-| `doc`                     | `crates/doc`            | Site generator: renders `skills/` and the diagnostics reference, verifying every example against the compiler.         |
+| `doc`                     | `crates/doc`            | Site generator's front half: verifies `skills/`, `crates/doc/examples/` and `site/pages/` against the compiler, pre-renders their code, and writes what Zola (`site/`) renders. |
 | `fuzz`                    | `crates/fuzz`           | Fuzz testing targets for the compiler and formatter.                                                                    |
 | `vscode-lsp-server`       | `vscode/server`         | VSCode extension LSP server binary (thin wrapper over `server` crate).                                                  |
 
@@ -299,6 +340,36 @@ toolchain pinned by `rust-toolchain.toml` through the composite action in
 | `fuzzing`     | Daily at 02:00 UTC, manual                           | Builds and runs the compiler and formatter fuzzers for 30 min each; crashes are uploaded as artifacts and fail the run                                                                                                                                                             |
 | `codspeed`    | Push to main, PR                                     | Benchmarks under CodSpeed                                                                                                                                                                                                                                                          |
 | `site`        | Push to main touching skills, crates, stdlib or site | Builds the website and deploys the Cloudflare Worker                                                                                                                                                                                                                               |
+
+### What keeps a pull request away from the deploy
+
+`site.yml` is the only workflow that names a secret, and it runs on push to
+`main` and manual dispatch only — never on `pull_request`, and nothing anywhere
+uses `pull_request_target`. GitHub withholds repository secrets from any run
+started by a forked pull request, so the workflows that do run on pull requests
+have nothing to leak. A pull request also cannot run its own edited copy of
+`site.yml`: workflow changes only take effect once merged.
+
+Two habits keep that true. Every third-party action is pinned to a full commit
+SHA, because a tag is mutable by its owner and one of these actions runs in the
+job that holds the Cloudflare token; `.github/dependabot.yml` bumps those pins
+weekly so they do not rot. And `npm ci --ignore-scripts` means a package's
+install script never executes in that job, nor on a pull request, where the
+lockfile is whatever the contributor wrote.
+
+Four things live in the GitHub UI and no file here can enforce them:
+
+| Setting | Wanted |
+| --- | --- |
+| Actions → Fork pull request workflows from outside collaborators | Require approval for all outside collaborators |
+| Actions → Workflow permissions | Read repository contents permission |
+| Rules → the `main` ruleset | Block force pushes and deletions, require a pull request, require the `ci` checks |
+| The `CLOUDFLARE_API_TOKEN` secret | Scoped to Workers Scripts: Edit, on this account only |
+
+`SITE_URL` is a repository variable, not a secret, and is baked into the
+sitemap, the canonical tags, `llms.txt` and the MCP server card. Nothing
+validates it: a wrong value builds a clean site that points everywhere at an
+address that does not exist.
 
 ## Key Dependencies
 

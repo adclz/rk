@@ -19,13 +19,13 @@ jobs:
     env:
       CARGO_TERM_COLOR: always
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
       # corpus_gen builds workspace crates (edition 2024) on the pinned
       # toolchain; the fuzzers themselves need nightly for libFuzzer.
       - uses: ./.github/actions/rust-toolchain
       - name: Install Rust nightly
         run: rustup toolchain install nightly --profile minimal
-      - uses: Swatinem/rust-cache@v2
+      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2
       - name: Generate corpus from tree-sitter tests
         run: |
           cargo run --release --manifest-path crates/fuzz/Cargo.toml --bin corpus_gen -- \
@@ -48,7 +48,7 @@ jobs:
           ls -la crash_artifacts/
       - name: Upload crash artifacts
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: fuzz-crashes
           path: crash_artifacts/

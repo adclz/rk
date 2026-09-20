@@ -1,5 +1,6 @@
-# The website: skills rendered by the generator, served by a Cloudflare
-# Worker. Deploys from GitHub on every push to main.
+# The website: the generator verifies the sources against the compiler and
+# writes what Zola renders; a Cloudflare Worker serves the result. Deploys
+# from GitHub on every push to main.
 #
 # Secrets: CLOUDFLARE_API_TOKEN (Workers Scripts: Edit), CLOUDFLARE_ACCOUNT_ID.
 # Variable: SITE_URL, the public origin, which the generator bakes into
@@ -28,23 +29,30 @@ jobs:
   deploy:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - name: Setup rust toolchain and cache
-        uses: moonrepo/setup-rust@v0
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: ./.github/actions/rust-toolchain
+      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2
+      # Pinned, not tracking latest: a Zola release has already broken this
+      # site once, when 0.23 removed shortcodes.
+      - name: Install Zola
+        uses: taiki-e/install-action@26e9283f268b880168bdbd2c545dfcd60ec2c6ab # v2
         with:
-          cache-target: release
-      - uses: actions/setup-node@v4
+          tool: zola@0.23.6
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
           node-version: 22
           cache: npm
           cache-dependency-path: site/package-lock.json
       # Refuses to write when a diagnostics example or a skill's example
       # disagrees with the compiler, so a broken page never reaches the site.
+      - name: Verify the sources and write what Zola renders
+        run: cargo run --release -p doc -- --base-url "${{ vars.SITE_URL }}"
       - name: Build the site
-        run: cargo run --release -p doc -- site/dist --base-url "${{ vars.SITE_URL }}"
+        working-directory: site
+        run: zola build --base-url "${{ vars.SITE_URL }}"
       - name: Type-check and bundle the Worker
         working-directory: site
-        run: npm ci && npm run check
+        run: npm ci --ignore-scripts && npm run check
       - name: Deploy
         working-directory: site
         run: npx wrangler deploy

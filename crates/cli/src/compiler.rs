@@ -232,11 +232,9 @@ pub fn optimize_wasm_release(
     opt_level: &str,
     verbose: bool,
 ) -> Result<Vec<u8>, String> {
-    if !matches!(opt_level, "0" | "1" | "2" | "3" | "s" | "z") {
-        // -O4 is refused: Binaryen's Flatten pass aborts on `try_table` up to
-        // and including 131.
+    if !matches!(opt_level, "0" | "1" | "2" | "3" | "4" | "s" | "z") {
         return Err(format!(
-            "invalid release optimization level '{opt_level}' (valid: 0-3, s, z)"
+            "invalid release optimization level '{opt_level}' (valid: 0-4, s, z)"
         ));
     }
     let original = wasm_bytes.clone();
@@ -274,7 +272,8 @@ pub fn optimize_wasm(wasm_bytes: Vec<u8>, opt_level: Option<&str>, verbose: bool
     };
 
     if verbose {
-        ui::detail(format!("    Optimizing wasm-opt -O{level}"));
+        let skipped = if level == "4" { " --skip-pass=flatten" } else { "" };
+        ui::detail(format!("    Optimizing wasm-opt -O{level}{skipped}"));
     }
     let original_size = wasm_bytes.len();
 
@@ -298,15 +297,20 @@ pub fn optimize_wasm(wasm_bytes: Vec<u8>, opt_level: Option<&str>, verbose: bool
     for feature in WASM_FEATURES {
         cmd.arg(format!("--enable-{feature}"));
     }
-    cmd.arg(format!("-O{level}"))
-        .arg(&infile)
-        .arg("-o")
-        .arg(&outfile);
+    cmd.arg(format!("-O{level}"));
+    // -O4 is the level that runs Binaryen's Flatten pass, and Flatten does not
+    // support `try_table`, the instruction that catches a raise: it aborts
+    // (WebAssembly/binaryen#8372, no fix planned). Every module carries one,
+    // the stdlib's test wrappers being compiled into all of them, so -O4
+    // always runs with that pass skipped. The README is where this is said.
+    if level == "4" {
+        cmd.arg("--skip-pass=flatten");
+    }
+    cmd.arg(&infile).arg("-o").arg(&outfile);
     match cmd.output() {
         Ok(out) if out.status.success() => {}
         Ok(out) => {
-            // Binaryen's Flatten pass does not handle `try_table`, so `-O4`
-            // aborts; report what it said.
+            // Report what the optimizer said.
             let stderr = String::from_utf8_lossy(&out.stderr);
             ui::warn(format!(
                 "could not optimize: `wasm-opt -O{level}` failed: {}. The build is correct \

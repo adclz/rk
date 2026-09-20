@@ -1,0 +1,40 @@
+{#- The reference: a sidebar with a search box, one section per code with
+    the compiler's own markers on the example and its output. The data is
+    data/diagnostics.json, written by the generator after every example
+    passed. -#}
+{% extends "base.html" %}
+{% block content %}
+{%- set data = load_data(path="data/diagnostics.json") %}
+<h1>{{ section.title }}</h1>
+<p class="lede">{{ section.extra.lede | markdown(inline=true) | safe }}</p>
+<p><br>The same data as <a href="/diagnostics.json">JSON</a>, which <code>rk explain &lt;code&gt;</code> embeds.</p>
+<div class="ref">
+<nav class="side" aria-label="Diagnostics">
+<input id="search" type="search" placeholder="E0301, duplicate, … (/)" autocomplete="off">
+{%- for c in data.categories %}
+<details open data-cat="{{ c.slug }}"><summary>{{ c.name }}</summary>
+{%- for e in c.entries %}
+<a href="#{{ e.code }}" data-code="{{ e.code }}">{{ e.code }}</a>
+{%- endfor %}
+</details>
+{%- endfor %}
+</nav>
+<div>
+{%- for c in data.categories %}
+<h1 class="category-heading" id="cat-{{ c.slug }}" data-cat="{{ c.slug }}">{{ c.name }}</h1>
+{%- for e in c.entries %}
+<section class="entry" id="{{ e.code }}" data-cat="{{ c.slug }}" data-text="{{ e.text }}">
+<h2><a href="#{{ e.code }}">{{ e.code }}</a> {{ e.title }}</h2>
+{{ e.description_html | safe }}
+{%- for s in e.sources_html %}
+<div class="codewrap"><pre><code class="language-iecst">{{ s | safe }}
+</code></pre></div>
+{%- endfor %}
+<h3>Compiler output</h3>
+<pre class="output">{{ e.report_html | safe }}</pre>
+</section>
+{%- endfor %}
+{%- endfor %}
+</div>
+</div>
+{% endblock content %}

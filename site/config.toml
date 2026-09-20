@@ -1,0 +1,16 @@
+# The site: Zola renders Markdown that `cargo run -p doc` has verified and
+# pre-rendered. Run the generator first; it writes content/, data/ and
+# static/, all gitignored. `zola build --base-url <origin>` for a deploy.
+base_url = "http://localhost:8787"
+title = "rk"
+description = "A compiler and toolchain for IEC 61131-3 Structured Text, documented as Agent Skills the compiler verifies."
+output_dir = "dist"
+compile_sass = false
+build_search_index = false
+generate_feeds = false
+
+[markdown]
+# Every fence is already HTML from the generator, through the grammar's own
+# highlighter, so Zola's own highlighting stays off (its default).
+render_emoji = false
+smart_punctuation = false
