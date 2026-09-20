@@ -25,7 +25,7 @@ jobs:
       # Version floor from crates/tree-sitter/package.json ("^0.25.4"): the
       # CLI must match the generated parser's ABI. Built once, then cached.
       - name: Install the tree-sitter CLI
-        uses: taiki-e/cache-cargo-install-action@7447f04c51f2ba27ca35e7f1e28fab848c5b3ba7 # v2
+        uses: taiki-e/cache-cargo-install-action@9ee83daaa7b96a6fab930949ecf1122bba04a389 # v3.0.8
         with:
           tool: tree-sitter-cli@0.25.4
       - name: Test parser
