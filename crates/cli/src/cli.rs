@@ -18,15 +18,7 @@ pub enum OutputFormat {
 }
 
 #[derive(Parser, Debug)]
-#[command(
-    author,
-    version,
-    about = "IEC 61131-3 Structured Text compiler",
-    after_help = "\
-`rk check` reports diagnostics, `rk compile` produces a WebAssembly module,
-`rk test` runs the workspace's {test} functions, `rk fmt` formats it.
-`rk explain E0301` describes a diagnostic; `rk env` shows what was resolved."
-)]
+#[command(author, version, about = "IEC 61131-3 Structured Text compiler")]
 pub struct Args {
     /// The subcommand to run. With none, `rk` prints this help.
     #[command(subcommand)]
@@ -65,7 +57,7 @@ pub enum Command {
     /// Compile the workspace to WebAssembly
     #[command(display_order = 2)]
     Compile {
-        /// Output file path (default: <workspace>/rk_build/<profile>/output.wasm)
+        /// Output file path (default: <workspace>/rk_build/<profile>/core.wasm)
         #[arg(short, long)]
         output: Option<PathBuf>,
 
@@ -75,7 +67,7 @@ pub enum Command {
         #[arg(long)]
         release: bool,
 
-        /// Release optimization level: 0-3, s (size), z (aggressive size)
+        /// Release optimization level: 0-4, s (size), z (aggressive size)
         #[arg(long, short = 'O', requires = "release")]
         opt_level: Option<String>,
 
