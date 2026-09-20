@@ -59,6 +59,4 @@ for (const m of document.querySelectorAll('mark.diag')) {
 }
 addEventListener('scroll', () => { for (const p of document.querySelectorAll('.diag-popup.open')) p.classList.remove('open'); }, { passive: true });
 
-const topButton = document.getElementById('top');
-addEventListener('scroll', () => topButton.classList.toggle('visible', scrollY > 400), { passive: true });
 })();

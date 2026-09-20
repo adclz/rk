@@ -6,9 +6,11 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>{{ p.extra.head_title | default(value=p.title) }}</title>
+  {#- `default(value=p.title)` escapes its argument and then the output again,
+      so an apostrophe reaches the tab as a literal `&#x27;`. -#}
+  <title>{% if p.extra.head_title %}{{ p.extra.head_title }}{% else %}{{ p.title }}{% endif %}</title>
   <meta name="description" content="{% if p.description %}{{ p.description }}{% else %}{{ config.description }}{% endif %}">
-  <link rel="canonical" href="{{ p.permalink | default(value=config.base_url) }}">
+  <link rel="canonical" href="{% if p.permalink %}{{ p.permalink }}{% else %}{{ config.base_url }}{% endif %}">
   {%- if p.extra.md %}
   <link rel="alternate" type="text/markdown" href="{{ p.extra.md }}">
   {%- endif %}
@@ -18,23 +20,66 @@
   <style>{{ load_data(path="assets/site.css", format="plain") | safe }}</style>
 </head>
 <body>
-<main{% if p.extra.wide %} class="wide"{% endif %}>
+{#- Zola derives `toc` from the headings, so the sidebar needs no source of
+    its own. The reference pages carry their own sidebar and opt out via
+    `wide`; the 404 has no page at all, hence the defaults. -#}
+{%- set toc = p.toc | default(value=[]) %}
+{%- set wide = p.extra.wide | default(value=false) %}
+{%- set show_toc = toc | length > 1 and not wide %}
+{#- The header is its own frame, the same on every page. Inside `<main>` it
+    took the width of whatever layout the page had, and the brand moved with
+    it from one page to the next. -#}
+<header class="site">
 <nav class="top">
   <a class="brand" href="/">{{ config.title }}</a>
   <a href="/skills/">skills</a>
   <a href="/diagnostics/">diagnostics</a>
   <a href="/linter/">linter</a>
   <a href="/formatter/">formatter</a>
+  <a href="/lsp/">lsp</a>
+  <a class="repo" href="https://github.com/adclz/rk" aria-label="rk on GitHub" title="rk on GitHub"><svg viewBox="0 0 24 24" aria-hidden="true" fill="currentColor"><path d="M12 .5C5.65.5.5 5.65.5 12c0 5.08 3.29 9.39 7.86 10.91.58.1.79-.25.79-.56v-2.17c-3.2.7-3.87-1.36-3.87-1.36-.52-1.33-1.28-1.68-1.28-1.68-1.04-.71.08-.7.08-.7 1.15.08 1.76 1.19 1.76 1.19 1.03 1.76 2.69 1.25 3.35.96.1-.75.4-1.25.73-1.54-2.55-.29-5.24-1.28-5.24-5.69 0-1.26.45-2.29 1.18-3.09-.12-.29-.51-1.46.11-3.04 0 0 .97-.31 3.16 1.18a10.9 10.9 0 0 1 5.76 0c2.19-1.49 3.15-1.18 3.15-1.18.63 1.58.24 2.75.12 3.04.74.8 1.18 1.83 1.18 3.09 0 4.42-2.69 5.39-5.26 5.68.41.36.78 1.06.78 2.14v3.17c0 .31.21.67.8.56A11.5 11.5 0 0 0 23.5 12C23.5 5.65 18.35.5 12 .5z"/></svg></a>
 </nav>
-{%- if p.extra.eyebrow %}
-<p class="eyebrow">{{ p.extra.eyebrow }}</p>
+</header>
+{#- Every page but the reference shares one layout: the text column in the
+    middle, a margin either side, and the sidebar in the right one when the
+    page has headings to list. -#}
+<main class="{% if wide %}wide{% else %}hastoc{% endif %}">
+{%- if not wide %}
+<div class="withtoc">
+{%- if show_toc %}
+<nav class="toc" aria-label="On this page">
+{#- A checkbox, so the narrow layout can fold the list away without script.
+    The wide one hides the control and shows the list unconditionally. -#}
+<input type="checkbox" id="toc-open" class="toc-open">
+<label class="toc-title" for="toc-open">On this page</label>
+<ul>
+{%- for h in toc %}
+  <li><a href="#{{ h.id }}">{{ h.title }}</a>
+  {%- if h.children %}
+  <ul>{% for c in h.children %}<li><a href="#{{ c.id }}">{{ c.title }}</a></li>{% endfor %}</ul>
+  {%- endif %}
+  </li>
+{%- endfor %}
+</ul>
+</nav>
+{%- endif %}
+<div class="prose">
 {%- endif %}
 {% block content %}{% endblock content %}
+{%- if not wide %}
+</div>
+</div>
+{%- endif %}
+<a class="totop" href="#" aria-label="Back to top"><svg viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M6 14.5l6-6 6 6"/></svg></a>
 <footer>
   {% if p.extra.md %}<a href="{{ p.extra.md }}">Markdown</a>{% endif %}
   <a href="/diagnostics.json">diagnostics.json</a>
   <a href="/skills.tar.gz">skills.tar.gz</a>
 </footer>
+<script>{{ load_data(path="assets/top.js", format="plain") | safe }}</script>
+{%- if show_toc %}
+<script>{{ load_data(path="assets/toc.js", format="plain") | safe }}</script>
+{%- endif %}
 {%- set script = p.extra.script | default(value="") %}
 {%- if script == "reference" %}
 <script>{{ load_data(path="assets/reference.js", format="plain") | safe }}</script>
