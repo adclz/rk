@@ -1,6 +1,5 @@
 use std::ops::ControlFlow;
 
-use auto_lsp::default::db::BaseDatabase;
 use auto_lsp::lsp_types::{InlayHint, InlayHintLabel};
 use db::RootDatabase;
 use hir::hir_def::hir_node::HirNode;
@@ -10,7 +9,7 @@ use ide_proto::walk::WalkHir;
 use insta::assert_snapshot;
 use rstest::rstest;
 
-use crate::tests::utils::add_sources;
+use crate::tests::utils::add_source;
 use crate::tests::utils::with_db;
 
 #[rstest]
@@ -28,9 +27,9 @@ END_CLASS
 INTERFACE in1
 END_INTERFACE"#;
 
-    add_sources(&mut with_db, &[source]);
+    let file = add_source(&mut with_db, source);
 
-    let sema = semantic_index(&with_db, *with_db.get_files().iter().last().unwrap());
+    let sema = semantic_index(&with_db, file);
     let result: Vec<InlayHint> = sema
         .global_pous
         .iter()
@@ -59,8 +58,8 @@ NAMESPACE ns2
 
 END_NAMESPACE"#;
 
-    add_sources(&mut with_db, &[source]);
-    let sema = semantic_index(&with_db, *with_db.get_files().iter().last().unwrap());
+    let file = add_source(&mut with_db, source);
+    let sema = semantic_index(&with_db, file);
     let result: Vec<InlayHint> = sema
         .namespaces
         .iter()
@@ -93,8 +92,8 @@ FUNCTION_BLOCK fb1
     );
 END_FUNCTION_BLOCK"#;
 
-    add_sources(&mut with_db, &[source]);
-    let sema = semantic_index(&with_db, *with_db.get_files().iter().last().unwrap());
+    let file = add_source(&mut with_db, source);
+    let sema = semantic_index(&with_db, file);
     let mut result = vec![];
     let _ = sema.walk_hir(&with_db, &mut |n| {
         if let HirNode::Param(stmt) = n
@@ -123,8 +122,8 @@ FUNCTION_BLOCK fb1
     fn(0, 0);
 END_FUNCTION_BLOCK"#;
 
-    add_sources(&mut with_db, &[source]);
-    let sema = semantic_index(&with_db, *with_db.get_files().iter().last().unwrap());
+    let file = add_source(&mut with_db, source);
+    let sema = semantic_index(&with_db, file);
     let mut result = vec![];
     let _ = sema.walk_hir(&with_db, &mut |n| {
         if let HirNode::Param(stmt) = n
@@ -156,8 +155,8 @@ FUNCTION_BLOCK fb1
     fn(1, 2, 3, 4);
 END_FUNCTION_BLOCK"#;
 
-    add_sources(&mut with_db, &[source]);
-    let sema = semantic_index(&with_db, *with_db.get_files().iter().last().unwrap());
+    let file = add_source(&mut with_db, source);
+    let sema = semantic_index(&with_db, file);
     let mut result = vec![];
     let _ = sema.walk_hir(&with_db, &mut |n| {
         if let HirNode::Param(stmt) = n
@@ -193,8 +192,8 @@ FUNCTION fn1
 	END_VAR
 END_FUNCTION"#;
 
-    add_sources(&mut with_db, &[source]);
-    let sema = semantic_index(&with_db, *with_db.get_files().iter().last().unwrap());
+    let file = add_source(&mut with_db, source);
+    let sema = semantic_index(&with_db, file);
     let mut result = vec![];
     let _ = sema.walk_hir(&with_db, &mut |n| {
         if let HirNode::InitExpr(curr) = n &&
@@ -236,8 +235,8 @@ VAR
 END_VAR
 END_PROGRAM
 "#;
-    add_sources(&mut with_db, &[source]);
-    let sema = semantic_index(&with_db, *with_db.get_files().iter().last().unwrap());
+    let file = add_source(&mut with_db, source);
+    let sema = semantic_index(&with_db, file);
     let mut result = vec![];
     let _ = sema.walk_hir(&with_db, &mut |node: HirNode| {
         if let HirNode::InitExpr(init) = node

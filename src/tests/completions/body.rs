@@ -6,7 +6,7 @@ use ide_proto::handlers::{CompletionHandler, CompletionRequest};
 use ide_proto::walk::completion_descendant_at;
 use rstest::rstest;
 
-use crate::tests::utils::{add_sources, find_pou_with_name, with_db};
+use crate::tests::utils::{add_source, add_sources, find_pou_with_name, with_db};
 
 /// Test completion BEFORE any path expressions (generic scope)
 /// This tests the fallback case where we have no PathExpr at offset
@@ -23,13 +23,8 @@ FUNCTION test_fn
 END_FUNCTION
 "#;
 
-    add_sources(&mut with_db, &[source]);
-    let pou = find_pou_with_name(
-        &with_db,
-        *with_db.get_files().iter().last().unwrap(),
-        "test_fn",
-    )
-    .unwrap();
+    let file = add_source(&mut with_db, source);
+    let pou = find_pou_with_name(&with_db, file, "test_fn").unwrap();
 
     // Test completion at line with assignment (before the path expression starts)
     let offset = source.find("END_VAR").unwrap() + 7; // Position after END_VAR, before any statement
@@ -57,13 +52,8 @@ FUNCTION test_fn
 END_FUNCTION
 "#;
 
-    add_sources(&mut with_db, &[source]);
-    let pou = find_pou_with_name(
-        &with_db,
-        *with_db.get_files().iter().last().unwrap(),
-        "test_fn",
-    )
-    .unwrap();
+    let file = add_source(&mut with_db, source);
+    let pou = find_pou_with_name(&with_db, file, "test_fn").unwrap();
 
     // Test completion INSIDE the variable name itself (within PathExpr/VariableAccess)
     let offset = source.find("my_var := 10").unwrap() + 1; // Position inside "my_var"
@@ -91,13 +81,8 @@ FUNCTION test_fn
 END_FUNCTION
 "#;
 
-    add_sources(&mut with_db, &[source]);
-    let pou = find_pou_with_name(
-        &with_db,
-        *with_db.get_files().iter().last().unwrap(),
-        "test_fn",
-    )
-    .unwrap();
+    let file = add_source(&mut with_db, source);
+    let pou = find_pou_with_name(&with_db, file, "test_fn").unwrap();
 
     // Test completion after the variable (at the space after "my_var")
     let offset = source.find("my_var :=").unwrap() + 6; // Position just after "my_var"
@@ -122,13 +107,8 @@ FUNCTION_BLOCK my_fb
 END_FUNCTION_BLOCK
 "#;
 
-    add_sources(&mut with_db, &[source]);
-    let pou = find_pou_with_name(
-        &with_db,
-        *with_db.get_files().iter().last().unwrap(),
-        "my_fb",
-    )
-    .unwrap();
+    let file = add_source(&mut with_db, source);
+    let pou = find_pou_with_name(&with_db, file, "my_fb").unwrap();
 
     // Get completions in function block (which is the scope)
     let offset = source.find("END_FUNCTION_BLOCK").unwrap();
@@ -159,13 +139,8 @@ FUNCTION main
 END_FUNCTION
 "#;
 
-    add_sources(&mut with_db, &[source]);
-    let pou = find_pou_with_name(
-        &with_db,
-        *with_db.get_files().iter().last().unwrap(),
-        "main",
-    )
-    .unwrap();
+    let file = add_source(&mut with_db, source);
+    let pou = find_pou_with_name(&with_db, file, "main").unwrap();
 
     let offset = source.find("fn_in_ns()").unwrap();
     let mut ctx = CompletionCtx::new(offset, QueryMode::Body);
@@ -201,13 +176,8 @@ FUNCTION complex_fn
 END_FUNCTION
 "#;
 
-    add_sources(&mut with_db, &[source]);
-    let pou = find_pou_with_name(
-        &with_db,
-        *with_db.get_files().iter().last().unwrap(),
-        "complex_fn",
-    )
-    .unwrap();
+    let file = add_source(&mut with_db, source);
+    let pou = find_pou_with_name(&with_db, file, "complex_fn").unwrap();
 
     let offset = source.find("temp := input_x").unwrap();
     let mut ctx = CompletionCtx::new(offset, QueryMode::Body);
@@ -233,8 +203,7 @@ END_VAR
 END_FUNCTION
 "#;
 
-    add_sources(&mut with_db, &[source]);
-    let file = *with_db.get_files().iter().last().unwrap();
+    let file = add_source(&mut with_db, source);
 
     // Cursor inside the function body (blank line before END_FUNCTION)
     let offset = source.find("END_FUNCTION").unwrap() - 1;
@@ -270,8 +239,7 @@ END_VAR
 END_FUNCTION
 "#;
 
-    add_sources(&mut with_db, &[source]);
-    let file = *with_db.get_files().iter().last().unwrap();
+    let file = add_source(&mut with_db, source);
 
     let offset = source.find("END_FUNCTION").unwrap() - 1;
 
@@ -307,8 +275,7 @@ END_METHOD
 END_FUNCTION_BLOCK
 "#;
 
-    add_sources(&mut with_db, &[source]);
-    let file = *with_db.get_files().iter().last().unwrap();
+    let file = add_source(&mut with_db, source);
 
     // Cursor inside the method body
     let offset = source.find("END_METHOD").unwrap() - 1;
@@ -345,8 +312,7 @@ END_METHOD
 END_FUNCTION_BLOCK
 "#;
 
-    add_sources(&mut with_db, &[source]);
-    let file = *with_db.get_files().iter().last().unwrap();
+    let file = add_source(&mut with_db, source);
 
     let offset = source.find("END_METHOD").unwrap() - 1;
 
@@ -377,8 +343,7 @@ FUNCTION my_func : INT
 END_FUNCTION
 "#;
 
-    add_sources(&mut with_db, &[source]);
-    let file = *with_db.get_files().iter().last().unwrap();
+    let file = add_source(&mut with_db, source);
 
     let offset = source.find("my;").unwrap();
 
@@ -414,8 +379,7 @@ END_VAR
 END_FUNCTION
 "#;
 
-    add_sources(&mut with_db, &[source]);
-    let file = *with_db.get_files().iter().last().unwrap();
+    let file = add_source(&mut with_db, source);
 
     // Cursor on "my" — an unresolved identifier that hits the PathExpr fallback path
     let offset = source.find("my;").unwrap();
@@ -452,8 +416,7 @@ END_METHOD
 END_FUNCTION_BLOCK
 "#;
 
-    add_sources(&mut with_db, &[source]);
-    let file = *with_db.get_files().iter().last().unwrap();
+    let file = add_source(&mut with_db, source);
 
     // Cursor on "my" — unresolved identifier in method body
     let offset = source.find("my;").unwrap();

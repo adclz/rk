@@ -1,7 +1,7 @@
 //! The lifetime of a POU's own locals: a FUNCTION or METHOD starts every call
 //! with fresh storage, an instance keeps its state between invocations.
 
-use crate::tests::codegen::{compile_to_wasm, with_db};
+use crate::tests::codegen::with_db;
 use rstest::*;
 
 /// A FUNCTION's aggregate `VAR` is fresh on every call.
@@ -36,8 +36,7 @@ fn a_functions_aggregate_local_is_fresh_on_every_call(
         END_FUNCTION
     "#
     );
-    let wasm = compile_to_wasm(&mut with_db, &source);
-    let r: i32 = super::execute_wasm(&wasm, "run", ());
+    let r: i32 = super::run(&mut with_db, &source, "run", ());
     assert_eq!(r, 111, "each call must start from zero; 123 means the local was static");
 }
 
@@ -60,8 +59,7 @@ fn a_methods_aggregate_local_is_fresh_on_every_call(mut with_db: db::RootDatabas
             run := a * 100 + b * 10 + c;
         END_FUNCTION
     "#;
-    let wasm = compile_to_wasm(&mut with_db, source);
-    let r: i32 = super::execute_wasm(&wasm, "run", ());
+    let r: i32 = super::run(&mut with_db, source, "run", ());
     assert_eq!(r, 111, "a method local is per call, not per instance");
 }
 
@@ -82,7 +80,6 @@ fn an_instance_member_still_persists_between_invocations(mut with_db: db::RootDa
             run := acc.a[0];
         END_FUNCTION
     "#;
-    let wasm = compile_to_wasm(&mut with_db, source);
-    let r: i32 = super::execute_wasm(&wasm, "run", ());
+    let r: i32 = super::run(&mut with_db, source, "run", ());
     assert_eq!(r, 3, "instance state accumulates within the call that owns the instance");
 }

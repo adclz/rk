@@ -1,4 +1,3 @@
-use auto_lsp::default::db::BaseDatabase;
 use db::RootDatabase;
 use hir::HirNodeInfo;
 use ide_proto::handlers::completions_utils::QueryMode;
@@ -8,7 +7,7 @@ use ide_proto::handlers::completions_utils::completion_item_builder::{
 use insta::assert_snapshot;
 use rstest::rstest;
 
-use crate::tests::utils::{add_sources, find_pou_with_name, with_db};
+use crate::tests::utils::{add_source, find_pou_with_name, with_db};
 
 // only INPUT, OUTPUT and IN_OUT variables should be included in the call signature, not VAR or VAR_TEMP
 #[rstest]
@@ -32,9 +31,8 @@ FUNCTION fn
 END_FUNCTION
 "#;
 
-    add_sources(&mut with_db, &[source]);
-    let pou =
-        find_pou_with_name(&with_db, *with_db.get_files().iter().last().unwrap(), "fn").unwrap();
+    let file = add_source(&mut with_db, source);
+    let pou = find_pou_with_name(&with_db, file, "fn").unwrap();
 
     let sig = build_call_signature(&with_db, &"fn".to_owned(), pou.get_scope_id(&with_db));
     assert_snapshot!(sig, @r"
@@ -66,9 +64,8 @@ FUNCTION fn
 END_FUNCTION
 "#;
 
-    add_sources(&mut with_db, &[source]);
-    let pou =
-        find_pou_with_name(&with_db, *with_db.get_files().iter().last().unwrap(), "fn").unwrap();
+    let file = add_source(&mut with_db, source);
+    let pou = find_pou_with_name(&with_db, file, "fn").unwrap();
 
     let sig = build_call_signature(&with_db, &"fn".to_owned(), pou.get_scope_id(&with_db));
     assert_snapshot!(sig, @"fn()");
@@ -95,13 +92,8 @@ FUNCTION caller
 END_FUNCTION
 "#;
 
-    add_sources(&mut with_db, &[source]);
-    let pou = find_pou_with_name(
-        &with_db,
-        *with_db.get_files().iter().last().unwrap(),
-        "caller",
-    )
-    .unwrap();
+    let file = add_source(&mut with_db, source);
+    let pou = find_pou_with_name(&with_db, file, "caller").unwrap();
 
     let builder = CompletionBuilder::default().with_mode(QueryMode::Body);
     let var = pou
@@ -133,13 +125,8 @@ FUNCTION caller
 END_FUNCTION
 "#;
 
-    add_sources(&mut with_db, &[source]);
-    let pou = find_pou_with_name(
-        &with_db,
-        *with_db.get_files().iter().last().unwrap(),
-        "caller",
-    )
-    .unwrap();
+    let file = add_source(&mut with_db, source);
+    let pou = find_pou_with_name(&with_db, file, "caller").unwrap();
 
     let builder = CompletionBuilder::default().with_mode(QueryMode::Body);
     let var = pou
@@ -181,13 +168,8 @@ FUNCTION caller
 END_FUNCTION
 "#;
 
-    add_sources(&mut with_db, &[source]);
-    let pou = find_pou_with_name(
-        &with_db,
-        *with_db.get_files().iter().last().unwrap(),
-        "caller",
-    )
-    .unwrap();
+    let file = add_source(&mut with_db, source);
+    let pou = find_pou_with_name(&with_db, file, "caller").unwrap();
 
     let builder = CompletionBuilder::default().with_mode(QueryMode::Body);
     let var = pou

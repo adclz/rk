@@ -1,4 +1,3 @@
-use auto_lsp::default::db::BaseDatabase;
 use db::RootDatabase;
 use hir::{HasName, hir_def::semantic_index::semantic_index};
 use ide_proto::handlers::completions_utils::{CompletionCtx, QueryMode};
@@ -6,7 +5,7 @@ use ide_proto::handlers::{CompletionHandler, CompletionRequest};
 use ide_proto::walk::completion_descendant_at;
 use rstest::rstest;
 
-use crate::tests::utils::{add_sources, with_db};
+use crate::tests::utils::{add_source, with_db};
 
 /// Test body completion inside an empty PROGRAM body (variables + statement keywords)
 #[rstest]
@@ -21,8 +20,7 @@ PROGRAM MyProg
 END_PROGRAM
 "#;
 
-    add_sources(&mut with_db, &[source]);
-    let file = *with_db.get_files().iter().last().unwrap();
+    let file = add_source(&mut with_db, source);
 
     // Position in the empty body area — hits the ProgramDecl itself
     let offset = source.find("END_PROGRAM").unwrap() - 1;
@@ -62,8 +60,7 @@ PROGRAM MyProg
 END_PROGRAM
 "#;
 
-    add_sources(&mut with_db, &[source]);
-    let file = *with_db.get_files().iter().last().unwrap();
+    let file = add_source(&mut with_db, source);
 
     // Position inside the empty program (before END_PROGRAM)
     let offset = source.find("END_PROGRAM").unwrap() - 1;
@@ -124,8 +121,7 @@ PROGRAM MyProg
 END_PROGRAM
 "#;
 
-    add_sources(&mut with_db, &[source]);
-    let file = *with_db.get_files().iter().last().unwrap();
+    let file = add_source(&mut with_db, source);
     let sema = semantic_index(&with_db, file);
 
     let prog = sema

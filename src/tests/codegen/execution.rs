@@ -16,9 +16,7 @@ fn test_execute_simple_arithmetic(mut with_db: db::RootDatabase) {
         END_FUNCTION
     "#;
 
-    let wasm_bytes = compile_to_wasm(&mut with_db, source);
-
-    let result = super::execute_wasm::<(i32, i32), i32>(&wasm_bytes, "add", (5, 3));
+    let result = super::run::<(i32, i32), i32>(&mut with_db, source, "add", (5, 3));
     assert_eq!(result, 8, "5 + 3 should equal 8");
 }
 
@@ -46,8 +44,7 @@ fn test_execute_mixed_width_scalar_locals(mut with_db: db::RootDatabase) {
         END_FUNCTION
     "#;
 
-    let wasm_bytes = compile_to_wasm(&mut with_db, source);
-    let result: i64 = super::execute_wasm(&wasm_bytes, "test", ());
+    let result: i64 = super::run(&mut with_db, source, "test", ());
     assert_eq!(result, 43, "1 + (2 + 40) = 43 across i32 and i64 locals");
 }
 
@@ -72,8 +69,7 @@ fn test_execute_integer_literal_in_float_context(mut with_db: db::RootDatabase) 
         END_FUNCTION
     "#;
 
-    let wasm_bytes = compile_to_wasm(&mut with_db, source);
-    let result: f32 = super::execute_wasm(&wasm_bytes, "test", ());
+    let result: f32 = super::run(&mut with_db, source, "test", ());
     assert_eq!(result, 5.0, "((3.0+2) + 3.0*2 - 1) / 2 = 5.0");
 }
 
@@ -101,8 +97,7 @@ fn test_execute_for_with_subrange_control_variable(mut with_db: db::RootDatabase
         END_FUNCTION
     "#;
 
-    let wasm_bytes = compile_to_wasm(&mut with_db, source);
-    let result: i32 = super::execute_wasm(&wasm_bytes, "test", ());
+    let result: i32 = super::run(&mut with_db, source, "test", ());
     assert_eq!(result, 10, "1+2+3+4 over a subrange loop variable");
 }
 
@@ -122,9 +117,7 @@ fn test_execute_factorial(mut with_db: db::RootDatabase) {
         END_FUNCTION
     "#;
 
-    let wasm_bytes = compile_to_wasm(&mut with_db, source);
-
-    let result = super::execute_wasm::<i32, i32>(&wasm_bytes, "factorial", 5);
+    let result = super::run::<i32, i32>(&mut with_db, source, "factorial", 5);
     assert_eq!(result, 120, "5! should equal 120");
 }
 
@@ -153,9 +146,7 @@ fn test_execute_chained_calls(mut with_db: db::RootDatabase) {
         END_FUNCTION
     "#;
 
-    let wasm_bytes = compile_to_wasm(&mut with_db, source);
-
-    let result = super::execute_wasm::<i32, i32>(&wasm_bytes, "process", 5);
+    let result = super::run::<i32, i32>(&mut with_db, source, "process", 5);
     assert_eq!(result, 12, "double(add_one(5)) = double(6) = 12");
 }
 
@@ -174,9 +165,7 @@ fn test_execute_implicit_cast_int_to_real(mut with_db: db::RootDatabase) {
         END_FUNCTION
     "#;
 
-    let wasm_bytes = compile_to_wasm(&mut with_db, source);
-
-    let result = super::execute_wasm::<i32, f32>(&wasm_bytes, "int_to_real", 42);
+    let result = super::run::<i32, f32>(&mut with_db, source, "int_to_real", 42);
     assert_eq!(result, 42.0, "INT 42 should cast to REAL 42.0");
 }
 
@@ -197,9 +186,7 @@ fn test_execute_implicit_cast_in_arithmetic(mut with_db: db::RootDatabase) {
         END_FUNCTION
     "#;
 
-    let wasm_bytes = compile_to_wasm(&mut with_db, source);
-
-    let result = super::execute_wasm::<i32, f32>(&wasm_bytes, "mixed_arithmetic", 4);
+    let result = super::run::<i32, f32>(&mut with_db, source, "mixed_arithmetic", 4);
     assert_eq!(result, 10.0, "2.5 * 4 should equal 10.0");
 }
 
@@ -219,8 +206,7 @@ fn test_default_int_param(mut with_db: db::RootDatabase) {
         END_FUNCTION
     "#;
 
-    let wasm_bytes = compile_to_wasm(&mut with_db, source);
-    let result = super::execute_wasm::<(), i32>(&wasm_bytes, "test_default", ());
+    let result = super::run::<(), i32>(&mut with_db, source, "test_default", ());
     assert_eq!(result, 15, "5 + default(10) = 15");
 }
 
@@ -240,8 +226,7 @@ fn test_default_param_override(mut with_db: db::RootDatabase) {
         END_FUNCTION
     "#;
 
-    let wasm_bytes = compile_to_wasm(&mut with_db, source);
-    let result = super::execute_wasm::<(), i32>(&wasm_bytes, "test_override", ());
+    let result = super::run::<(), i32>(&mut with_db, source, "test_override", ());
     assert_eq!(result, 25, "5 + 20 = 25");
 }
 
@@ -262,8 +247,7 @@ fn test_named_args_out_of_order(mut with_db: db::RootDatabase) {
             test := sub2(b := 3, a := 10);
         END_FUNCTION
     "#;
-    let wasm = super::compile_to_wasm(&mut with_db, source);
-    let result: i32 = super::execute_wasm(&wasm, "test", ());
+    let result: i32 = super::run(&mut with_db, source, "test", ());
     assert_eq!(result, 7, "a(10) - b(3) = 7");
 }
 
@@ -284,8 +268,7 @@ fn test_default_param_before_named(mut with_db: db::RootDatabase) {
             test := sub_default(b := 4);
         END_FUNCTION
     "#;
-    let wasm = super::compile_to_wasm(&mut with_db, source);
-    let result: i32 = super::execute_wasm(&wasm, "test", ());
+    let result: i32 = super::run(&mut with_db, source, "test", ());
     assert_eq!(result, 6, "default(10) - 4 = 6");
 }
 
@@ -309,8 +292,7 @@ fn test_method_omitted_default_param(mut with_db: db::RootDatabase) {
             test := fb.add2(a := 5);
         END_FUNCTION
     "#;
-    let wasm = super::compile_to_wasm(&mut with_db, source);
-    let result: i32 = super::execute_wasm(&wasm, "test", ());
+    let result: i32 = super::run(&mut with_db, source, "test", ());
     assert_eq!(result, 15, "5 + default(10) = 15");
 }
 
@@ -336,8 +318,7 @@ fn test_fb_mixed_named_then_positional(mut with_db: db::RootDatabase) {
             test := inst.o;
         END_FUNCTION
     "#;
-    let wasm = super::compile_to_wasm(&mut with_db, source);
-    let result: i32 = super::execute_wasm(&wasm, "test", ());
+    let result: i32 = super::run(&mut with_db, source, "test", ());
     assert_eq!(result, 7, "a(10) - b(3) = 7");
 }
 
@@ -361,8 +342,7 @@ VAR fb : MyFB; END_VAR
 END_FUNCTION
     "#;
 
-    let wasm_bytes = compile_to_wasm(&mut with_db, source);
-    let result = super::execute_wasm::<(), i32>(&wasm_bytes, "test", ());
+    let result = super::run::<(), i32>(&mut with_db, source, "test", ());
     assert_eq!(result, 1, "fb.y should be TRUE (1) after fb(x := TRUE)");
 }
 
@@ -391,8 +371,7 @@ VAR fb : TestFB; END_VAR
 END_FUNCTION
     "#;
 
-    let wasm_bytes = compile_to_wasm(&mut with_db, source);
-    let result = super::execute_wasm::<(), i32>(&wasm_bytes, "test", ());
+    let result = super::run::<(), i32>(&mut with_db, source, "test", ());
     assert_eq!(
         result, 1,
         "Q should be TRUE: NOT FALSE AND NOT FALSE = TRUE"
@@ -433,8 +412,7 @@ VAR counter : CTU; END_VAR
 END_FUNCTION
     "#;
 
-    let wasm_bytes = compile_to_wasm(&mut with_db, source);
-    let result = super::execute_wasm::<(), i32>(&wasm_bytes, "test", ());
+    let result = super::run::<(), i32>(&mut with_db, source, "test", ());
     assert_eq!(result, 1, "CV should be 1 after first rising edge");
 }
 
@@ -469,8 +447,7 @@ VAR counter : CTU; END_VAR
 END_FUNCTION
     "#;
 
-    let wasm_bytes = compile_to_wasm(&mut with_db, source);
-    let result = super::execute_wasm::<(), i32>(&wasm_bytes, "test", ());
+    let result = super::run::<(), i32>(&mut with_db, source, "test", ());
     assert_eq!(
         result, 1,
         "CV should be 1 after first rising edge (nested R_TRIG)"
@@ -544,8 +521,7 @@ VAR counter : CTU; END_VAR
 END_FUNCTION
     "#;
 
-    let wasm_bytes = compile_to_wasm(&mut with_db, source);
-    let result = super::execute_wasm::<(), i32>(&wasm_bytes, "test", ());
+    let result = super::run::<(), i32>(&mut with_db, source, "test", ());
     assert_eq!(result, 2, "CV should be 2 after two rising edges");
 }
 
@@ -738,8 +714,7 @@ fn mixed_type_comparisons_use_the_inferred_join(mut with_db: db::RootDatabase) {
             test := score;
         END_FUNCTION
     "#;
-    let wasm = compile_to_wasm(&mut with_db, source);
-    let result: i32 = super::execute_wasm(&wasm, "test", ());
+    let result: i32 = super::run(&mut with_db, source, "test", ());
     assert_eq!(result, 1111, "every mixed-width comparison holds");
 }
 
@@ -765,8 +740,7 @@ fn subrange_behaves_as_its_base_type(mut with_db: db::RootDatabase) {
             test := scale(p := aliased) + inline_sr;   (* 40 + 35 *)
         END_FUNCTION
     "#;
-    let wasm = compile_to_wasm(&mut with_db, source);
-    let result: i32 = super::execute_wasm(&wasm, "test", ());
+    let result: i32 = super::run(&mut with_db, source, "test", ());
     assert_eq!(result, 75, "subrange arithmetic runs on the base type");
 }
 
@@ -781,8 +755,7 @@ fn subrange_with_negative_bounds(mut with_db: db::RootDatabase) {
             test := i;
         END_FUNCTION
     "#;
-    let wasm = compile_to_wasm(&mut with_db, source);
-    let result: i32 = super::execute_wasm(&wasm, "test", ());
+    let result: i32 = super::run(&mut with_db, source, "test", ());
     assert_eq!(result, -3995);
 }
 
@@ -886,8 +859,7 @@ fn float_literals_with_underscores_execute(mut with_db: db::RootDatabase) {
             test := ok;
         END_FUNCTION
     "#;
-    let wasm = compile_to_wasm(&mut with_db, source);
-    let result: i32 = super::execute_wasm(&wasm, "test", ());
+    let result: i32 = super::run(&mut with_db, source, "test", ());
     assert_eq!(result, 111, "all three literal forms parse to the same values");
 }
 
@@ -908,8 +880,7 @@ fn test_operands_evaluate_left_to_right(mut with_db: db::RootDatabase) {
             test := bump(c := n) * 10 + bump(c := n);
         END_FUNCTION
     "#;
-    let wasm = compile_to_wasm(&mut with_db, source);
-    let result: i32 = super::execute_wasm(&wasm, "test", ());
+    let result: i32 = super::run(&mut with_db, source, "test", ());
     assert_eq!(result, 12, "left operand first: 1*10 + 2");
 }
 
@@ -934,8 +905,7 @@ fn test_args_evaluate_in_declaration_order(mut with_db: db::RootDatabase) {
             test := f(b := bump(c := n), a := bump(c := n));
         END_FUNCTION
     "#;
-    let wasm = compile_to_wasm(&mut with_db, source);
-    let r: i32 = super::execute_wasm(&wasm, "test", ());
+    let r: i32 = super::run(&mut with_db, source, "test", ());
     assert_eq!(r, 12, "a evaluated first: declaration order, not written order");
 }
 
@@ -954,8 +924,7 @@ fn test_execute_unsigned_literal_above_the_signed_max(mut with_db: db::RootDatab
             run := n;
         END_FUNCTION
     "#;
-    let wasm = compile_to_wasm(&mut with_db, source);
-    let r: i32 = super::execute_wasm(&wasm, "run", ());
+    let r: i32 = super::run(&mut with_db, source, "run", ());
     assert_eq!(
         r as u32, 4294967295,
         "UDINT max round-trips through the i32 lane"
@@ -972,8 +941,7 @@ fn test_execute_unsigned_64bit_literal_above_the_signed_max(mut with_db: db::Roo
             run := n;
         END_FUNCTION
     "#;
-    let wasm = compile_to_wasm(&mut with_db, source);
-    let r: i64 = super::execute_wasm(&wasm, "run", ());
+    let r: i64 = super::run(&mut with_db, source, "run", ());
     assert_eq!(
         r as u64, 18446744073709551615,
         "ULINT max round-trips through the i64 lane"

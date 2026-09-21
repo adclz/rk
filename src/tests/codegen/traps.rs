@@ -79,8 +79,7 @@ fn boundary_values_do_not_fault(mut with_db: db::RootDatabase) {
             run := run * 100 + s;
         END_FUNCTION
     "#;
-    let wasm = compile_to_wasm(&mut with_db, source);
-    let result: i32 = super::execute_wasm(&wasm, "run", ());
+    let result: i32 = super::run(&mut with_db, source, "run", ());
     assert_eq!(result, -490, "-5 and 10 are both legal on INT (-5..10)");
 }
 
@@ -270,8 +269,7 @@ fn an_unsigned_subrange_accepts_above_i32_max(mut with_db: db::RootDatabase) {
             run := 1;
         END_FUNCTION
     "#;
-    let wasm = compile_to_wasm(&mut with_db, source);
-    let result: i32 = super::execute_wasm(&wasm, "run", ());
+    let result: i32 = super::run(&mut with_db, source, "run", ());
     assert_eq!(result, 1, "3.9e9 is inside UDINT (0..4e9)");
 }
 
@@ -417,8 +415,7 @@ fn a_for_range_may_overshoot_when_the_values_do_not(mut with_db: db::RootDatabas
             END_FOR;
         END_FUNCTION
     "#;
-    let wasm = compile_to_wasm(&mut with_db, source);
-    let result: i32 = super::execute_wasm(&wasm, "run", ());
+    let result: i32 = super::run(&mut with_db, source, "run", ());
     assert_eq!(result, 7, "iterates 0 and 7 run; 14 is never observed");
 }
 
@@ -438,8 +435,7 @@ fn a_for_over_the_whole_subrange_is_clean(mut with_db: db::RootDatabase) {
             END_FOR;
         END_FUNCTION
     "#;
-    let wasm = compile_to_wasm(&mut with_db, source);
-    let result: i32 = super::execute_wasm(&wasm, "run", ());
+    let result: i32 = super::run(&mut with_db, source, "run", ());
     assert_eq!(result, 55, "0..=10 sums to 55 without a fault");
 }
 
@@ -574,7 +570,6 @@ fn a_valid_dereference_does_not_fault(mut with_db: db::RootDatabase) {
             run := peek(p := q);
         END_FUNCTION
     "#;
-    let wasm = compile_to_wasm(&mut with_db, source);
-    let result: i32 = crate::tests::codegen::execute_wasm(&wasm, "run", ());
+    let result: i32 = crate::tests::codegen::run(&mut with_db, source, "run", ());
     assert_eq!(result, 7);
 }

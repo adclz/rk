@@ -259,6 +259,17 @@ fn pending_exception(store: &mut wasmtime::Store<()>, memory: wasmtime::Memory) 
     )
 }
 
+/// Compile `source` and call one of its functions: what most tests here do,
+/// in one step. A test that looks at the module as well compiles it itself
+/// with [`compile_to_wasm`] and calls [`execute_wasm`].
+pub fn run<P, R>(db: &mut RootDatabase, source: &str, func_name: &str, params: P) -> R
+where
+    P: wasmtime::WasmParams,
+    R: wasmtime::WasmResults,
+{
+    execute_wasm(&compile_to_wasm(db, source), func_name, params)
+}
+
 pub fn execute_wasm<P, R>(wasm_bytes: &[u8], func_name: &str, params: P) -> R
 where
     P: wasmtime::WasmParams,

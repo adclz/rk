@@ -1,12 +1,11 @@
 use auto_lsp::core::document_symbols_builder::DocumentSymbolsBuilder;
-use auto_lsp::default::db::BaseDatabase;
 use db::RootDatabase;
 use hir::hir_def::semantic_index::semantic_index;
 use ide_proto::handlers::DocumentSymbolsHandler;
 use insta::assert_debug_snapshot;
 use rstest::rstest;
 
-use crate::tests::utils::add_sources;
+use crate::tests::utils::add_source;
 use crate::tests::utils::with_db;
 
 #[rstest]
@@ -27,10 +26,10 @@ END_CLASS
 INTERFACE in1
 END_INTERFACE"#;
 
-    add_sources(&mut with_db, &[source]);
+    let file = add_source(&mut with_db, source);
     let mut builder = DocumentSymbolsBuilder::default();
 
-    let sema = semantic_index(&with_db, *with_db.get_files().iter().last().unwrap());
+    let sema = semantic_index(&with_db, file);
     sema.global_pous
         .iter()
         .for_each(|pou| pou.document_symbols(&with_db, &mut builder));
@@ -188,10 +187,10 @@ FUNCTION_BLOCK fb1
         END_VAR
 END_FUNCTION_BLOCK"#;
 
-    add_sources(&mut with_db, &[source]);
+    let file = add_source(&mut with_db, source);
     let mut builder = DocumentSymbolsBuilder::default();
 
-    let sema = semantic_index(&with_db, *with_db.get_files().iter().last().unwrap());
+    let sema = semantic_index(&with_db, file);
     sema.global_pous
         .iter()
         .for_each(|pou| pou.document_symbols(&with_db, &mut builder));
@@ -348,10 +347,10 @@ CLASS CCounter
 	END_METHOD
 END_CLASS"#;
 
-    add_sources(&mut with_db, &[source]);
+    let file = add_source(&mut with_db, source);
     let mut builder = DocumentSymbolsBuilder::default();
 
-    let sema = semantic_index(&with_db, *with_db.get_files().iter().last().unwrap());
+    let sema = semantic_index(&with_db, file);
     sema.global_pous
         .iter()
         .for_each(|pou| pou.document_symbols(&with_db, &mut builder));
@@ -469,10 +468,10 @@ INTERFACE ROOM
     METHOD NIGHTTIME END_METHOD // in night-time
 END_INTERFACE"#;
 
-    add_sources(&mut with_db, &[source]);
+    let file = add_source(&mut with_db, source);
     let mut builder = DocumentSymbolsBuilder::default();
 
-    let sema = semantic_index(&with_db, *with_db.get_files().iter().last().unwrap());
+    let sema = semantic_index(&with_db, file);
     sema.global_pous
         .iter()
         .for_each(|pou| pou.document_symbols(&with_db, &mut builder));
@@ -593,10 +592,10 @@ TYPE
     ARRAY_5 : ARRAY[1..5] OF INT;
 END_TYPE"#;
 
-    add_sources(&mut with_db, &[source]);
+    let file = add_source(&mut with_db, source);
     let mut builder = DocumentSymbolsBuilder::default();
 
-    let sema = semantic_index(&with_db, *with_db.get_files().iter().last().unwrap());
+    let sema = semantic_index(&with_db, file);
     sema.global_pous
         .iter()
         .for_each(|pou| pou.document_symbols(&with_db, &mut builder));
@@ -776,10 +775,10 @@ PROGRAM prgrm
 
 END_PROGRAM"#;
 
-    add_sources(&mut with_db, &[source]);
+    let file = add_source(&mut with_db, source);
     let mut builder = DocumentSymbolsBuilder::default();
 
-    let sema = semantic_index(&with_db, *with_db.get_files().iter().last().unwrap());
+    let sema = semantic_index(&with_db, file);
     sema.programs
         .iter()
         .for_each(|pou| pou.document_symbols(&with_db, &mut builder));

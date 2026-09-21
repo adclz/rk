@@ -19,7 +19,7 @@ use crate::tests::utils::find_namespace_with_name;
 use crate::tests::utils::pou_name_res_from_scope;
 use crate::tests::utils::test_diagnostics;
 use crate::tests::utils::with_db;
-use crate::tests::utils::{add_sources, find_pou_with_name};
+use crate::tests::utils::{add_source, add_sources, find_pou_with_name};
 use db::{RootDatabase, WorkspaceDataBase};
 use std::ops::ControlFlow;
 
@@ -251,9 +251,9 @@ NAMESPACE ns1
     END_NAMESPACE
 END_NAMESPACE"#;
 
-    add_sources(&mut with_db, &[source1]);
+    let file = add_source(&mut with_db, source1);
 
-    let sema = semantic_index(&with_db, *with_db.get_files().iter().last().unwrap());
+    let sema = semantic_index(&with_db, file);
 
     // brings ns2 into scope
     assert_snapshot!(collect_usings(&with_db, sema), @"USING ns1.ns2:  fb3")

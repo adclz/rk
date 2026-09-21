@@ -30,8 +30,7 @@ fn a_nested_namespace_fb_exports_once_and_runs(mut with_db: db::RootDatabase) {
             END_NAMESPACE
         END_NAMESPACE
     "#;
-    let wasm = compile_to_wasm(&mut with_db, source);
-    let result: i32 = super::execute_wasm(&wasm, "Outer.Inner.run", ());
+    let result: i32 = super::run(&mut with_db, source, "Outer.Inner.run", ());
     assert_eq!(result, 42, "the nested FB lowers once and executes");
 }
 
@@ -90,8 +89,7 @@ fn a_file_scope_declaration_shadows_a_using_import(mut with_db: db::RootDatabase
             f := a.Q * 10 + b.Q;
         END_FUNCTION
     "#;
-    let wasm = compile_to_wasm(&mut with_db, source);
-    let v: i32 = crate::tests::codegen::execute_wasm(&wasm, "f", ());
+    let v: i32 = crate::tests::codegen::run(&mut with_db, source, "f", ());
     assert_eq!(
         v, 21,
         "unqualified = file scope (2), qualified = import (1)"
@@ -131,7 +129,6 @@ fn a_relative_namespace_path_binds_to_the_nearest_match(mut with_db: db::RootDat
             test := Lib.api() * 100 + Lib.Deep.Er.api2() + top();
         END_FUNCTION
     "#;
-    let wasm = compile_to_wasm(&mut with_db, source);
-    let result: i32 = super::execute_wasm(&wasm, "test", ());
+    let result: i32 = super::run(&mut with_db, source, "test", ());
     assert_eq!(result, 112, "1 (Lib.Impl) * 100 + 10 (still Lib.Impl two levels down) + 2 (top-level Impl)");
 }

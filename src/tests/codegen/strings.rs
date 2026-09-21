@@ -65,7 +65,7 @@
 use rstest::rstest;
 use crate::tests::codegen::TestPlc;
 
-use super::{add_source, compile_to_mir_and_wasm, compile_to_wasm, execute_wasm, with_db};
+use super::{add_source, compile_to_mir_and_wasm, run, with_db};
 
 // =========================================================================
 // The matrix: compile + validate
@@ -622,8 +622,7 @@ VAR a : STRING; b : STRING; END_VAR
 END_FUNCTION
 "#,
     );
-    let wasm = compile_to_wasm(&mut with_db, &source);
-    let r: i32 = execute_wasm(&wasm, "check", ());
+    let r: i32 = run(&mut with_db, &source, "check", ());
     assert_eq!(r, 1, "the callee sees 'XX'; the caller's 'orig' is untouched");
 }
 
@@ -654,8 +653,7 @@ VAR i : INT; ok : INT; s : STRING; END_VAR
 END_FUNCTION
 "#,
     );
-    let wasm = compile_to_wasm(&mut with_db, &source);
-    let r: i32 = execute_wasm(&wasm, "check", ());
+    let r: i32 = run(&mut with_db, &source, "check", ());
     assert_eq!(r, 2, "'orig' survives being handed to a callee that writes its input");
 }
 
@@ -692,8 +690,7 @@ VAR f : Acc; ok : INT := 0; END_VAR
 END_FUNCTION
 "#,
     );
-    let wasm = compile_to_wasm(&mut with_db, &source);
-    let r: i32 = execute_wasm(&wasm, "check", ());
+    let r: i32 = run(&mut with_db, &source, "check", ());
     assert_eq!(r, 11, "the omitted input keeps the body's own previous write");
 }
 
@@ -720,8 +717,7 @@ VAR s : STRING; END_VAR
 END_FUNCTION
 "#,
     );
-    let wasm = compile_to_wasm(&mut with_db, &source);
-    let r: i32 = execute_wasm(&wasm, "check", ());
+    let r: i32 = run(&mut with_db, &source, "check", ());
     assert_eq!(r, 1, "the first producer's result survives the second");
 }
 
@@ -739,8 +735,7 @@ VAR a : STRING; b : STRING; END_VAR
 END_FUNCTION
 "#,
     );
-    let wasm = compile_to_wasm(&mut with_db, &source);
-    let r: i32 = execute_wasm(&wasm, "check", ());
+    let r: i32 = run(&mut with_db, &source, "check", ());
     assert_eq!(r, 1, "'left' concatenated around the nested result");
 }
 
@@ -763,8 +758,7 @@ VAR s : STRING; END_VAR
 END_FUNCTION
 "#,
     );
-    let wasm = compile_to_wasm(&mut with_db, &source);
-    let r: i32 = execute_wasm(&wasm, "check", ());
+    let r: i32 = run(&mut with_db, &source, "check", ());
     assert_eq!(r, 1, "the param survives feeding the inner call");
 }
 
@@ -921,8 +915,7 @@ fn string_equality_executes(mut with_db: db::RootDatabase) {
             check := n;
         END_FUNCTION
     "#;
-    let wasm = super::compile_to_wasm(&mut with_db, source);
-    let r: i32 = super::execute_wasm(&wasm, "check", ());
+    let r: i32 = super::run(&mut with_db, source, "check", ());
     assert_eq!(r, 1111, "all four equality forms hold");
 }
 
@@ -940,8 +933,7 @@ fn string_ordering_executes(mut with_db: db::RootDatabase) {
             check := n;
         END_FUNCTION
     "#;
-    let wasm = super::compile_to_wasm(&mut with_db, source);
-    let r: i32 = super::execute_wasm(&wasm, "check", ());
+    let r: i32 = super::run(&mut with_db, source, "check", ());
     assert_eq!(r, 111111, "IEC lexicographic ordering with length tiebreak");
 }
 
@@ -962,8 +954,7 @@ fn string_comparison_of_producer_results_executes(mut with_db: db::RootDatabase)
             check := n;
         END_FUNCTION
     "#;
-    let wasm = super::compile_to_wasm(&mut with_db, source);
-    let r: i32 = super::execute_wasm(&wasm, "check", ());
+    let r: i32 = super::run(&mut with_db, source, "check", ());
     assert_eq!(r, 11, "producer-vs-producer comparison uses snapshotted operands");
 }
 
@@ -980,8 +971,7 @@ VAR s : STRING[5]; END_VAR
 END_FUNCTION
 "#,
     );
-    let wasm = compile_to_wasm(&mut with_db, &source);
-    let result: i32 = execute_wasm(&wasm, "get", ());
+    let result: i32 = run(&mut with_db, &source, "get", ());
     assert_eq!(result, 5);
 }
 
@@ -1012,8 +1002,7 @@ END_VAR
 END_FUNCTION
 "#,
     );
-    let wasm = compile_to_wasm(&mut with_db, &source);
-    let result: i32 = execute_wasm(&wasm, "get", ());
+    let result: i32 = run(&mut with_db, &source, "get", ());
     assert_eq!(
         result, 5,
         "the assignment kept the destination's capacity, and said nothing at check"
@@ -1362,8 +1351,7 @@ fn array_of_sized_strings_truncates_at_the_declared_capacity(mut with_db: db::Ro
             IF a[0] = 'ABCD' THEN run := 1; ELSE run := 0; END_IF;
         END_FUNCTION
     "#;
-    let wasm = super::compile_to_wasm(&mut with_db, source);
-    let result: i32 = super::execute_wasm(&wasm, "run", ());
+    let result: i32 = super::run(&mut with_db, source, "run", ());
     assert_eq!(result, 1, "an element of ARRAY OF STRING[4] holds 4 characters");
 }
 
@@ -1386,8 +1374,7 @@ fn aliased_sized_string_truncates_at_the_declared_capacity(mut with_db: db::Root
             IF s = 'ABCD' THEN run := 1; ELSE run := 0; END_IF;
         END_FUNCTION
     "#;
-    let wasm = super::compile_to_wasm(&mut with_db, source);
-    let result: i32 = super::execute_wasm(&wasm, "run", ());
+    let result: i32 = super::run(&mut with_db, source, "run", ());
     assert_eq!(result, 1, "an aliased STRING[4] holds 4 characters");
 }
 
@@ -1437,8 +1424,7 @@ fn a_sized_string_keeps_its_length_in_every_container(
         END_FUNCTION
     "#
     );
-    let wasm = super::compile_to_wasm(&mut with_db, &source);
-    let result: i32 = super::execute_wasm(&wasm, "run", ());
+    let result: i32 = super::run(&mut with_db, &source, "run", ());
     assert_eq!(result, 1, "`{target}` must hold exactly its declared 4 characters");
 }
 
@@ -1490,8 +1476,7 @@ fn fb_string_input_written_at_the_call(mut with_db: db::RootDatabase) {
             test := ok;
         END_FUNCTION
     "#;
-    let wasm = compile_to_wasm(&mut with_db, source);
-    let result: i32 = super::execute_wasm(&wasm, "test", ());
+    let result: i32 = super::run(&mut with_db, source, "test", ());
     assert_eq!(result, 1, "the literal written at the call reaches the field");
 }
 
@@ -1516,8 +1501,7 @@ fn fb_string_default_on_first_field(mut with_db: db::RootDatabase) {
             test := ok;
         END_FUNCTION
     "#;
-    let wasm = compile_to_wasm(&mut with_db, source);
-    let result: i32 = super::execute_wasm(&wasm, "test", ());
+    let result: i32 = super::run(&mut with_db, source, "test", ());
     assert_eq!(result, 1, "the default survives in the instance AND the pool");
 }
 
@@ -1541,8 +1525,7 @@ fn fb_string_default_and_override_coexist(mut with_db: db::RootDatabase) {
             test := ok;
         END_FUNCTION
     "#;
-    let wasm = compile_to_wasm(&mut with_db, source);
-    let result: i32 = super::execute_wasm(&wasm, "test", ());
+    let result: i32 = super::run(&mut with_db, source, "test", ());
     assert_eq!(result, 1, "default and override are independent instances");
 }
 
@@ -1565,8 +1548,7 @@ VAR s : STRING; END_VAR
     END_IF;
 END_FUNCTION
 "#;
-    let wasm = compile_to_wasm(&mut with_db, src);
-    let r: i32 = execute_wasm(&wasm, "run", ());
+    let r: i32 = run(&mut with_db, src, "run", ());
     assert_eq!(r, 2, "the literal holds every marker as a character, a URL included");
 }
 
@@ -1591,8 +1573,7 @@ END_VAR
     IF wide = CHAR#'é' THEN run := run + 100; END_IF;
 END_FUNCTION
 "#;
-    let wasm = compile_to_wasm(&mut with_db, src);
-    let r: i32 = execute_wasm(&wasm, "run", ());
+    let r: i32 = run(&mut with_db, src, "run", ());
     assert_eq!(r, 111, "the bare form and the typed form agree");
 }
 
@@ -1619,7 +1600,6 @@ FUNCTION run : DINT
     run := as_char('A') + as_string('A');
 END_FUNCTION
 "#;
-    let wasm = compile_to_wasm(&mut with_db, src);
-    let r: i32 = execute_wasm(&wasm, "run", ());
+    let r: i32 = run(&mut with_db, src, "run", ());
     assert_eq!(r, 2, "each slot decided what its literal became");
 }

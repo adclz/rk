@@ -137,6 +137,5 @@ rk = { path = "crates/cli" }
 tempfile = "3"
 debug_format = { workspace = true }
 wasmtime = "45.0.1"
-rand = "0.8"
 wasm-encoder = { workspace = true }
 anyhow = "1"

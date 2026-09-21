@@ -1,16 +1,14 @@
-use auto_lsp::default::db::BaseDatabase;
 use auto_lsp::lsp_types::GotoDefinitionResponse;
 use db::RootDatabase;
 use ide_proto::{handlers::type_definition::type_definition, walk::descendant_at};
 use insta::assert_snapshot;
 use rstest::rstest;
 
-use crate::tests::utils::{add_sources, with_db};
+use crate::tests::utils::{add_source, with_db};
 
 /// Where `textDocument/typeDefinition` lands, as the source text it selects.
 fn target(db: &mut RootDatabase, source: &str, needle: &str) -> String {
-    add_sources(db, &[source]);
-    let file = *db.get_files().iter().last().unwrap();
+    let file = add_source(db, source);
     let offset = source
         .find(needle)
         .unwrap_or_else(|| panic!("{needle:?} not in the source"));

@@ -1,6 +1,6 @@
 //! Struct execution tests - testing struct field access and manipulation.
 
-use crate::tests::codegen::{compile_to_wasm, with_db};
+use crate::tests::codegen::with_db;
 use rstest::*;
 
 #[rstest]
@@ -23,9 +23,7 @@ fn test_struct_field_access(mut with_db: db::RootDatabase) {
         END_FUNCTION
     "#;
 
-    let wasm_bytes = compile_to_wasm(&mut with_db, source);
-
-    let result = super::execute_wasm::<(), i32>(&wasm_bytes, "get_x", ());
+    let result = super::run::<(), i32>(&mut with_db, source, "get_x", ());
     assert_eq!(result, 10, "Should read p.x value");
 }
 
@@ -49,9 +47,7 @@ fn test_struct_computation(mut with_db: db::RootDatabase) {
         END_FUNCTION
     "#;
 
-    let wasm_bytes = compile_to_wasm(&mut with_db, source);
-
-    let result = super::execute_wasm::<(), i32>(&wasm_bytes, "area", ());
+    let result = super::run::<(), i32>(&mut with_db, source, "area", ());
     assert_eq!(result, 15, "5 * 3 = 15");
 }
 
@@ -85,9 +81,7 @@ fn test_nested_struct(mut with_db: db::RootDatabase) {
         END_FUNCTION
     "#;
 
-    let wasm_bytes = compile_to_wasm(&mut with_db, source);
-
-    let result = super::execute_wasm::<(), i32>(&wasm_bytes, "test_nested", ());
+    let result = super::run::<(), i32>(&mut with_db, source, "test_nested", ());
     assert_eq!(result, 11, "10 + 1 = 11");
 }
 
@@ -123,8 +117,7 @@ fn sized_string_struct_field_does_not_overrun_its_slot(mut with_db: db::RootData
             run := r.g;
         END_FUNCTION
     "#;
-    let wasm = compile_to_wasm(&mut with_db, source);
-    let result: i32 = super::execute_wasm(&wasm, "run", ());
+    let result: i32 = super::run(&mut with_db, source, "run", ());
     assert_eq!(result, 111, "the sibling field must not be clobbered");
 }
 
@@ -156,8 +149,7 @@ fn sized_string_struct_field_truncates_to_its_capacity(mut with_db: db::RootData
             IF r.f = 'ABCD' THEN run := 1; ELSE run := 0; END_IF;
         END_FUNCTION
     "#;
-    let wasm = compile_to_wasm(&mut with_db, source);
-    let result: i32 = super::execute_wasm(&wasm, "run", ());
+    let result: i32 = super::run(&mut with_db, source, "run", ());
     assert_eq!(result, 1, "STRING[4] holds exactly its first 4 characters");
 }
 
@@ -184,7 +176,6 @@ fn sized_string_fb_member_does_not_overrun_its_slot(mut with_db: db::RootDatabas
             run := h.guard;
         END_FUNCTION
     "#;
-    let wasm = compile_to_wasm(&mut with_db, source);
-    let result: i32 = super::execute_wasm(&wasm, "run", ());
+    let result: i32 = super::run(&mut with_db, source, "run", ());
     assert_eq!(result, 222, "the FB's next member must not be clobbered");
 }

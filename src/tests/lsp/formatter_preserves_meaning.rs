@@ -17,8 +17,7 @@
 //! Every construct below is a real IEC form; the first four are the ones that
 //! were actually being destroyed.
 
-use crate::tests::utils::{add_sources, test_diagnostics, with_db};
-use auto_lsp::default::db::BaseDatabase;
+use crate::tests::utils::{add_source, test_diagnostics, with_db};
 use db::RootDatabase;
 use rstest::rstest;
 
@@ -66,8 +65,7 @@ fn diagnostics_across_formatting(source: &str) -> (String, String) {
     };
     let formatted = {
         let mut db = RootDatabase::default();
-        add_sources(&mut db, &[source]);
-        let file = *db.get_files().iter().next().expect("one file");
+        let file = add_source(&mut db, source);
         fmt(file.document(&db))
     };
     let after = {
@@ -84,8 +82,7 @@ pub(crate) fn assert_meaning_preserved(label: &str, source: &str) {
     let (before, after) = diagnostics_across_formatting(source);
     if before != after {
         let mut db = RootDatabase::default();
-        add_sources(&mut db, &[source]);
-        let file = *db.get_files().iter().next().expect("one file");
+        let file = add_source(&mut db, source);
         panic!(
             "formatting changed the meaning of `{label}`.\n\
              \n--- diagnostics BEFORE ---\n{before}\

@@ -90,11 +90,11 @@ pub fn diagnostic_line(diag: &IdeDiagnostic) -> String {
     format!("  [{}] {}", diagnostic_code(diag), diag.diagnostic.message)
 }
 
-/// Single-source variant of [`add_sources`]: registers one file under a
-/// RANDOM url (so repeated calls in one db never collide) and returns the
-/// `File` for direct queries like `diagnostics_for_file`.
+/// Register one source and return its `File`, under the next free url:
+/// `file:///test0.st`, then `test1.st`, and so on. The url is what a snapshot
+/// prints, so it follows the order of the calls and nothing else.
 pub fn add_source(db: &mut RootDatabase, source: &str) -> File {
-    let url = Url::parse(&format!("file:///test{}.st", rand::random::<u32>())).unwrap();
+    let url = Url::parse(&format!("file:///test{}.st", db.get_files().len())).unwrap();
 
     let file = File::from_string()
         .db(db)
@@ -108,27 +108,17 @@ pub fn add_source(db: &mut RootDatabase, source: &str) -> File {
     file
 }
 
-/// Register `marked` without its `|`, which says where a request is made:
-/// the file it became, and the byte offset the marker stood at.
+/// [`add_source`] for a source with a `|` in it, which says where a request
+/// is made: the file, and the byte offset the marker stood at.
 pub fn add_marked_source(db: &mut RootDatabase, marked: &str) -> (File, usize) {
     let offset = marked.find('|').expect("a cursor marker");
-    add_sources(db, &[&marked.replace('|', "")]);
-    (*db.get_files().iter().last().unwrap(), offset)
+    (add_source(db, &marked.replace('|', "")), offset)
 }
 
+/// [`add_source`] for each, in order.
 pub fn add_sources(db: &mut RootDatabase, sources: &[&str]) {
-    for (i, source) in sources.iter().enumerate() {
-        let url = Url::parse(&format!("file:///test{i}.st")).unwrap();
-
-        let file = File::from_string()
-            .db(db)
-            .parsers(&ast::RK_PARSER)
-            .url(&url)
-            .source(source.to_string())
-            .call()
-            .unwrap();
-
-        db.add_file(file).unwrap();
+    for source in sources {
+        add_source(db, source);
     }
 }
 

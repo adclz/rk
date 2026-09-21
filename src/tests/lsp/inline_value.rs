@@ -1,4 +1,3 @@
-use auto_lsp::default::db::BaseDatabase;
 use auto_lsp::lsp_types::{
     InlineValue, InlineValueContext, InlineValueParams, Position, Range, TextDocumentIdentifier,
     WorkDoneProgressParams,
@@ -8,12 +7,11 @@ use ide_proto::handlers::inline_value::inline_values;
 use insta::assert_snapshot;
 use rstest::rstest;
 
-use crate::tests::utils::{add_sources, with_db};
+use crate::tests::utils::{add_source, with_db};
 
 /// The lookups the server offers for the whole file, stopped at `stopped_line`.
 fn shown(db: &mut RootDatabase, source: &str, stopped_line: u32) -> String {
-    add_sources(db, &[source]);
-    let file = *db.get_files().iter().last().unwrap();
+    let file = add_source(db, source);
     let whole = Range::new(Position::new(0, 0), Position::new(9999, 0));
     let params = InlineValueParams {
         work_done_progress_params: WorkDoneProgressParams::default(),

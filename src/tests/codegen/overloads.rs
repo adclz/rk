@@ -24,8 +24,7 @@ fn overloaded_functions_execute_independently(mut with_db: db::RootDatabase) {
         END_FUNCTION
     "#;
 
-    let wasm = compile_to_wasm(&mut with_db, source);
-    let result: i32 = super::execute_wasm(&wasm, "test", ());
+    let result: i32 = super::run(&mut with_db, source, "test", ());
     assert_eq!(result, 18, "add/1(10) = 11, add/2(3, 4) = 7");
 }
 
@@ -49,8 +48,7 @@ fn overloaded_real_functions(mut with_db: db::RootDatabase) {
         END_FUNCTION
     "#;
 
-    let wasm = compile_to_wasm(&mut with_db, source);
-    let result: f32 = super::execute_wasm(&wasm, "test", ());
+    let result: f32 = super::run(&mut with_db, source, "test", ());
     assert_eq!(result, 8.0, "avg/1(3.0) = 3.0, avg/2(2.0, 8.0) = 5.0");
 }
 
@@ -76,8 +74,7 @@ fn same_arity_typed_overloads(mut with_db: db::RootDatabase) {
         END_FUNCTION
     "#;
 
-    let wasm = compile_to_wasm(&mut with_db, source);
-    let result: i32 = super::execute_wasm(&wasm, "test", ());
+    let result: i32 = super::run(&mut with_db, source, "test", ());
     assert_eq!(result, 109, "conv(INT 5) = 10, conv(REAL 1.0) = 99");
 }
 
@@ -105,8 +102,7 @@ fn indexed_argument_dispatches_to_the_right_overload(mut with_db: db::RootDataba
             test := tag(ints[0]) * 10 + tag(dints[-1]);
         END_FUNCTION
     "#;
-    let wasm = compile_to_wasm(&mut with_db, source);
-    let result: i32 = super::execute_wasm(&wasm, "test", ());
+    let result: i32 = super::run(&mut with_db, source, "test", ());
     assert_eq!(result, 12, "INT element -> overload 1, DINT element -> overload 2");
 }
 
@@ -157,8 +153,7 @@ fn untyped_literal_prefers_exact_int(mut with_db: db::RootDatabase) {
             test := conv(5);
         END_FUNCTION
     "#;
-    let wasm = compile_to_wasm(&mut with_db, source);
-    let r: i32 = super::execute_wasm(&wasm, "test", ());
+    let r: i32 = super::run(&mut with_db, source, "test", ());
     assert_eq!(r, 10, "5 is INT by exact match, not REAL by promotion");
 }
 
@@ -178,8 +173,7 @@ fn full_arity_beats_defaulted_at_runtime(mut with_db: db::RootDatabase) {
             test := add(10);
         END_FUNCTION
     "#;
-    let wasm = compile_to_wasm(&mut with_db, source);
-    let r: i32 = super::execute_wasm(&wasm, "test", ());
+    let r: i32 = super::run(&mut with_db, source, "test", ());
     assert_eq!(r, 11, "add/1 wins over add/2 padded with its default");
 }
 
@@ -200,8 +194,7 @@ fn return_overload_in_initializer_runs(mut with_db: db::RootDatabase) {
             test := d;
         END_FUNCTION
     "#;
-    let wasm = compile_to_wasm(&mut with_db, source);
-    let r: i32 = super::execute_wasm(&wasm, "test", ());
+    let r: i32 = super::run(&mut with_db, source, "test", ());
     assert_eq!(r, 4200, "the initializer called the DINT overload");
 }
 
@@ -219,8 +212,7 @@ fn return_overload_in_return_slot_runs(mut with_db: db::RootDatabase) {
             test := G();
         END_FUNCTION
     "#;
-    let wasm = compile_to_wasm(&mut with_db, source);
-    let r: i32 = super::execute_wasm(&wasm, "test", ());
+    let r: i32 = super::run(&mut with_db, source, "test", ());
     assert_eq!(r, 4200, "the return slot picked and ran the DINT overload");
 }
 
@@ -243,7 +235,6 @@ fn overloaded_call_in_initializer_runs(mut with_db: db::RootDatabase) {
             test := x;
         END_FUNCTION
     "#;
-    let wasm = compile_to_wasm(&mut with_db, source);
-    let r: i32 = super::execute_wasm(&wasm, "test", ());
+    let r: i32 = super::run(&mut with_db, source, "test", ());
     assert_eq!(r, 3, "the initializer called the resolved 2-arg overload");
 }

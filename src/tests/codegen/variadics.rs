@@ -5,7 +5,7 @@
 //! pass a `test_diagnostics` snapshot and never lower. These run the wasm, so
 //! they are what pins the VALUES a fold computes.
 
-use crate::tests::codegen::{compile_to_wasm, with_db};
+use crate::tests::codegen::with_db;
 use rstest::*;
 
 /// The same variadic function called at three arities: three specializations,
@@ -22,8 +22,7 @@ fn fold_add_at_several_arities(mut with_db: db::RootDatabase) {
             test := sum_all(1, 2, 3) * 100 + sum_all(10, 20) + sum_all(7);
         END_FUNCTION
     "#;
-    let wasm = compile_to_wasm(&mut with_db, source);
-    let result: i32 = super::execute_wasm(&wasm, "test", ());
+    let result: i32 = super::run(&mut with_db, source, "test", ());
     // 6 * 100 + 30 + 7
     assert_eq!(
         result, 637,
@@ -44,8 +43,7 @@ fn fold_of_one_argument_is_that_argument(mut with_db: db::RootDatabase) {
             test := prod(9);
         END_FUNCTION
     "#;
-    let wasm = compile_to_wasm(&mut with_db, source);
-    let result: i32 = super::execute_wasm(&wasm, "test", ());
+    let result: i32 = super::run(&mut with_db, source, "test", ());
     assert_eq!(result, 9);
 }
 
@@ -61,8 +59,7 @@ fn fold_multiply(mut with_db: db::RootDatabase) {
             test := prod(2, 3, 4);
         END_FUNCTION
     "#;
-    let wasm = compile_to_wasm(&mut with_db, source);
-    let result: i32 = super::execute_wasm(&wasm, "test", ());
+    let result: i32 = super::run(&mut with_db, source, "test", ());
     assert_eq!(result, 24);
 }
 
@@ -81,8 +78,7 @@ fn fold_bitwise_or(mut with_db: db::RootDatabase) {
             test := r;
         END_FUNCTION
     "#;
-    let wasm = compile_to_wasm(&mut with_db, source);
-    let result: i32 = super::execute_wasm(&wasm, "test", ());
+    let result: i32 = super::run(&mut with_db, source, "test", ());
     assert_eq!(result, 1, "1 OR 2 OR 8 = 0xB");
 }
 
@@ -104,8 +100,7 @@ fn fold_comparison_is_pairwise(mut with_db: db::RootDatabase) {
             test := r;
         END_FUNCTION
     "#;
-    let wasm = compile_to_wasm(&mut with_db, source);
-    let result: i32 = super::execute_wasm(&wasm, "test", ());
+    let result: i32 = super::run(&mut with_db, source, "test", ());
     assert_eq!(
         result, 1,
         "all-equal holds for (5,5,5) and fails for (5,5,6)"
@@ -129,8 +124,7 @@ fn fold_ordering_checks_every_pair(mut with_db: db::RootDatabase) {
             test := r;
         END_FUNCTION
     "#;
-    let wasm = compile_to_wasm(&mut with_db, source);
-    let result: i32 = super::execute_wasm(&wasm, "test", ());
+    let result: i32 = super::run(&mut with_db, source, "test", ());
     assert_eq!(result, 1, "(1,3,2) is not ascending — the 3 < 2 pair fails");
 }
 
@@ -149,8 +143,7 @@ fn fold_over_reals(mut with_db: db::RootDatabase) {
             test := r;
         END_FUNCTION
     "#;
-    let wasm = compile_to_wasm(&mut with_db, source);
-    let result: i32 = super::execute_wasm(&wasm, "test", ());
+    let result: i32 = super::run(&mut with_db, source, "test", ());
     assert_eq!(result, 1);
 }
 
@@ -208,8 +201,7 @@ fn comparison_fold_of_one_argument_is_vacuously_true(mut with_db: db::RootDataba
             test := r;
         END_FUNCTION
     "#;
-    let wasm = compile_to_wasm(&mut with_db, source);
-    let result: i32 = super::execute_wasm(&wasm, "test", ());
+    let result: i32 = super::run(&mut with_db, source, "test", ());
     assert_eq!(result, 11, "a single element is trivially all-equal and ordered");
 }
 
@@ -232,7 +224,6 @@ fn positional_arguments_reach_the_pack_whatever_the_order(mut with_db: db::RootD
                   + sum_all(accumulator := acc, 1, 2, 3);
         END_FUNCTION
     "#;
-    let wasm = compile_to_wasm(&mut with_db, source);
-    let result: i32 = super::execute_wasm(&wasm, "test", ());
+    let result: i32 = super::run(&mut with_db, source, "test", ());
     assert_eq!(result, 606, "both spellings fold (1,2,3) = 6");
 }

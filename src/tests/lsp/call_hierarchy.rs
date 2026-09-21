@@ -1,16 +1,14 @@
-use auto_lsp::default::db::BaseDatabase;
 use db::RootDatabase;
 use ide_proto::{handlers::call_hierarchy, walk::descendant_at};
 use insta::assert_snapshot;
 use rstest::rstest;
 
-use crate::tests::utils::{add_sources, with_db};
+use crate::tests::utils::{add_source, with_db};
 
 /// The hierarchy at the first occurrence of `needle`, rendered as
 /// `<name> <kind>` lines with one indented line per call site.
 fn hierarchy(db: &mut RootDatabase, source: &str, needle: &str, incoming: bool) -> String {
-    add_sources(db, &[source]);
-    let file = *db.get_files().iter().last().unwrap();
+    let file = add_source(db, source);
     let offset = source
         .find(needle)
         .unwrap_or_else(|| panic!("{needle:?} not in the source"));

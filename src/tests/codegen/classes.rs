@@ -3,7 +3,7 @@
 //! emits only `Class#method` (no `Class$__body__`) and cannot be invoked like an
 //! FB instance.
 
-use crate::tests::codegen::{compile_to_wasm, with_db};
+use crate::tests::codegen::with_db;
 use rstest::*;
 
 /// A CLASS instantiated as a local, with a method call that mutates its state.
@@ -27,8 +27,7 @@ fn test_st_class_method_call(mut with_db: db::RootDatabase) {
             test := a.Inc();
         END_FUNCTION
     "#;
-    let wasm = compile_to_wasm(&mut with_db, source);
-    let result: i32 = super::execute_wasm(&wasm, "test", ());
+    let result: i32 = super::run(&mut with_db, source, "test", ());
     assert_eq!(
         result, 3,
         "class method call mutates the instance across calls"
@@ -58,8 +57,7 @@ fn test_st_class_inherited_method(mut with_db: db::RootDatabase) {
             test := a.inc();
         END_FUNCTION
     "#;
-    let wasm = compile_to_wasm(&mut with_db, source);
-    let result: i32 = super::execute_wasm(&wasm, "test", ());
+    let result: i32 = super::run(&mut with_db, source, "test", ());
     assert_eq!(
         result, 3,
         "inherited class method runs on the derived instance"
@@ -87,8 +85,7 @@ fn test_st_array_of_class_instances(mut with_db: db::RootDatabase) {
             test := arr[0].Inc() + arr[1].Inc();
         END_FUNCTION
     "#;
-    let wasm = compile_to_wasm(&mut with_db, source);
-    let result: i32 = super::execute_wasm(&wasm, "test", ());
+    let result: i32 = super::run(&mut with_db, source, "test", ());
     assert_eq!(
         result, 5,
         "array-of-class elements keep independent state (3 + 2)"
@@ -123,8 +120,7 @@ fn test_st_class_interface_param(mut with_db: db::RootDatabase) {
             test := drive(dev := w);
         END_FUNCTION
     "#;
-    let wasm = compile_to_wasm(&mut with_db, source);
-    let result: i32 = super::execute_wasm(&wasm, "test", ());
+    let result: i32 = super::run(&mut with_db, source, "test", ());
     assert_eq!(
         result, 2,
         "class interface implementer specializes to drive$Worker -> Worker#Run"
@@ -156,8 +152,7 @@ fn test_st_class_interface_two_impls(mut with_db: db::RootDatabase) {
             test := pick(dev := a) + 100 * pick(dev := b);
         END_FUNCTION
     "#;
-    let wasm = compile_to_wasm(&mut with_db, source);
-    let result: i32 = super::execute_wasm(&wasm, "test", ());
+    let result: i32 = super::run(&mut with_db, source, "test", ());
     assert_eq!(
         result, 1001,
         "pick$One -> 1, pick$Ten -> 10, distinct class specializations"
@@ -205,8 +200,7 @@ fn derived_fb_fields_do_not_alias_base_fields(mut with_db: db::RootDatabase) {
             test := x.GetB() * 100 + x.GetD();
         END_FUNCTION
     "#;
-    let wasm = compile_to_wasm(&mut with_db, source);
-    let result: i32 = super::execute_wasm(&wasm, "test", ());
+    let result: i32 = super::run(&mut with_db, source, "test", ());
     assert_eq!(
         result, 1122,
         "base b stays 11 and derived d is 22 (aliasing would give 2222)"
@@ -247,8 +241,7 @@ fn derived_class_fields_do_not_alias_base_fields(mut with_db: db::RootDatabase) 
             test := x.GetCB() * 100 + x.GetCD();
         END_FUNCTION
     "#;
-    let wasm = compile_to_wasm(&mut with_db, source);
-    let result: i32 = super::execute_wasm(&wasm, "test", ());
+    let result: i32 = super::run(&mut with_db, source, "test", ());
     assert_eq!(result, 1122, "class base field survives a derived write");
 }
 
@@ -282,8 +275,7 @@ fn method_inherited_from_a_grandparent(mut with_db: db::RootDatabase) {
             test := x.FromL1();   (* state persists: 5 then 10 *)
         END_FUNCTION
     "#;
-    let wasm = compile_to_wasm(&mut with_db, source);
-    let result: i32 = super::execute_wasm(&wasm, "test", ());
+    let result: i32 = super::run(&mut with_db, source, "test", ());
     assert_eq!(result, 10, "grandparent method runs against the derived instance");
 }
 
@@ -323,8 +315,7 @@ fn a_bare_sibling_method_call_receives_this(mut with_db: db::RootDatabase) {
             test := test + d.UsesInherited();
         END_FUNCTION
     "#;
-    let wasm = compile_to_wasm(&mut with_db, source);
-    let result: i32 = super::execute_wasm(&wasm, "test", ());
+    let result: i32 = super::run(&mut with_db, source, "test", ());
     assert_eq!(result, 12, "9 from the sibling pair, 3 from the inherited bare call");
 }
 
@@ -363,8 +354,7 @@ fn nearest_override_wins_along_the_chain(mut with_db: db::RootDatabase) {
             test := x.Pick();
         END_FUNCTION
     "#;
-    let wasm = compile_to_wasm(&mut with_db, source);
-    let result: i32 = super::execute_wasm(&wasm, "test", ());
+    let result: i32 = super::run(&mut with_db, source, "test", ());
     assert_eq!(result, 2004, "the override advances v (10,20) and w (2,4): 20*100+4");
 }
 
@@ -393,8 +383,7 @@ fn super_reaches_the_overridden_method(mut with_db: db::RootDatabase) {
             test := x.Pick();
         END_FUNCTION
     "#;
-    let wasm = compile_to_wasm(&mut with_db, source);
-    let result: i32 = super::execute_wasm(&wasm, "test", ());
+    let result: i32 = super::run(&mut with_db, source, "test", ());
     assert_eq!(result, 105, "SUPER runs S1's body (v -> 1), the override adds 5");
 }
 
@@ -437,8 +426,7 @@ fn interface_satisfied_by_an_inherited_method(mut with_db: db::RootDatabase) {
             test := drive(dev := d);   (* state persists: 3 then 6 *)
         END_FUNCTION
     "#;
-    let wasm = compile_to_wasm(&mut with_db, source);
-    let result: i32 = super::execute_wasm(&wasm, "test", ());
+    let result: i32 = super::run(&mut with_db, source, "test", ());
     assert_eq!(result, 6, "the inherited method implements the interface");
 }
 
@@ -468,8 +456,7 @@ fn test_st_class_method_with_interface_param(mut with_db: db::RootDatabase) {
             test := c.Get(dev := a) + 100 * c.Get(dev := b);
         END_FUNCTION
     "#;
-    let wasm = compile_to_wasm(&mut with_db, source);
-    let result: i32 = super::execute_wasm(&wasm, "test", ());
+    let result: i32 = super::run(&mut with_db, source, "test", ());
     assert_eq!(result, 1001, "Owner#Get$One -> 1, Owner#Get$Ten -> 10");
 }
 
@@ -518,8 +505,7 @@ fn a_self_method_call_output_binding_lands(mut with_db: db::RootDatabase) {
             run := f.Caller() * 100 + f.ThisCaller();
         END_FUNCTION
     "#;
-    let wasm = compile_to_wasm(&mut with_db, source);
-    let result: i32 = super::execute_wasm(&wasm, "run", ());
+    let result: i32 = super::run(&mut with_db, source, "run", ());
     assert_eq!(result, 102, "bare and THIS. forms both land the output: 1*100 + 2");
 }
 
@@ -561,8 +547,7 @@ fn interface_prototype_base_method_and_override_coexist(mut with_db: db::RootDat
             test := drive(dev := d);   (* override state: 7 then 14 *)
         END_FUNCTION
     "#;
-    let wasm = crate::tests::codegen::compile_to_wasm(&mut with_db, source);
-    let result: i32 = super::execute_wasm(&wasm, "test", ());
+    let result: i32 = super::run(&mut with_db, source, "test", ());
     assert_eq!(result, 14, "the override implements the interface, not the base");
 }
 
@@ -594,8 +579,7 @@ fn a_bare_inherited_call_output_binding_lands(mut with_db: db::RootDatabase) {
             run := d.Grab() * 100 + d.Grab();
         END_FUNCTION
     "#;
-    let wasm = compile_to_wasm(&mut with_db, source);
-    let result: i32 = super::execute_wasm(&wasm, "run", ());
+    let result: i32 = super::run(&mut with_db, source, "run", ());
     assert_eq!(result, 102, "the inherited bare call lands 1 then 2 through &v");
 }
 
@@ -622,7 +606,6 @@ fn test_inherited_parameters_bind_and_flow(mut with_db: db::RootDatabase) {
             test := x;
         END_FUNCTION
     "#;
-    let wasm = super::compile_to_wasm(&mut with_db, source);
-    let result: i32 = super::execute_wasm(&wasm, "test", ());
+    let result: i32 = super::run(&mut with_db, source, "test", ());
     assert_eq!(result, 17, "5 + 10 + 2 through the inherited in_out");
 }

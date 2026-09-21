@@ -7,7 +7,7 @@
 //! route (`collect_const_inits`, applied at load) and were never affected,
 //! which is why `tests::codegen::initializers` missed this entirely.
 
-use crate::tests::codegen::{compile_to_wasm, execute_wasm, with_db};
+use crate::tests::codegen::{run, with_db};
 use rstest::*;
 
 /// The bug in its simplest form: read a member back without ever writing it.
@@ -27,8 +27,7 @@ fn fb_member_initializer_applies_to_a_function_local_instance(mut with_db: db::R
             run := f.bits;
         END_FUNCTION
     "#;
-    let wasm = compile_to_wasm(&mut with_db, source);
-    let result: i32 = execute_wasm(&wasm, "run", ());
+    let result: i32 = run(&mut with_db, source, "run", ());
     assert_eq!(result, 0b0000_1010);
 }
 
@@ -56,8 +55,7 @@ fn fb_initializes_every_member(mut with_db: db::RootDatabase) {
             END_IF;
         END_FUNCTION
     "#;
-    let wasm = compile_to_wasm(&mut with_db, source);
-    let result: i64 = execute_wasm(&wasm, "run", ());
+    let result: i64 = run(&mut with_db, source, "run", ());
     assert_eq!(result, 5000000001, "every member holds its initializer");
 }
 
@@ -85,8 +83,7 @@ fn fb_body_observes_its_own_initializers(mut with_db: db::RootDatabase) {
             run := c.out;
         END_FUNCTION
     "#;
-    let wasm = compile_to_wasm(&mut with_db, source);
-    let result: i32 = execute_wasm(&wasm, "run", ());
+    let result: i32 = run(&mut with_db, source, "run", ());
     assert_eq!(result, 11, "body ran against 10, not 0");
 }
 
@@ -115,8 +112,7 @@ fn inherited_members_are_initialized(mut with_db: db::RootDatabase) {
             run := d.base_val * 100 + d.derived_val;
         END_FUNCTION
     "#;
-    let wasm = compile_to_wasm(&mut with_db, source);
-    let result: i32 = execute_wasm(&wasm, "run", ());
+    let result: i32 = run(&mut with_db, source, "run", ());
     assert_eq!(
         result, 409,
         "base 4, derived 9 — neither aliased nor zeroed"
@@ -148,8 +144,7 @@ fn nested_instance_members_are_initialized(mut with_db: db::RootDatabase) {
             run := o.inner.v * 10 + o.own;
         END_FUNCTION
     "#;
-    let wasm = compile_to_wasm(&mut with_db, source);
-    let result: i32 = execute_wasm(&wasm, "run", ());
+    let result: i32 = run(&mut with_db, source, "run", ());
     assert_eq!(result, 428, "inner 42 and outer 8");
 }
 
@@ -174,8 +169,7 @@ fn class_member_initializers_apply(mut with_db: db::RootDatabase) {
             run := c.sum();
         END_FUNCTION
     "#;
-    let wasm = compile_to_wasm(&mut with_db, source);
-    let result: i32 = execute_wasm(&wasm, "run", ());
+    let result: i32 = run(&mut with_db, source, "run", ());
     assert_eq!(result, 8);
 }
 
@@ -199,8 +193,7 @@ fn uninitialized_members_stay_zero(mut with_db: db::RootDatabase) {
             run := m.a * 10000 + m.b * 100 + m.c;
         END_FUNCTION
     "#;
-    let wasm = compile_to_wasm(&mut with_db, source);
-    let result: i32 = execute_wasm(&wasm, "run", ());
+    let result: i32 = run(&mut with_db, source, "run", ());
     assert_eq!(result, 7700, "only b is initialized");
 }
 
@@ -233,8 +226,7 @@ fn fb_local_instance_inside_a_function_block(mut with_db: db::RootDatabase) {
             run := h.out;
         END_FUNCTION
     "#;
-    let wasm = compile_to_wasm(&mut with_db, source);
-    let result: i32 = execute_wasm(&wasm, "run", ());
+    let result: i32 = run(&mut with_db, source, "run", ());
     assert_eq!(result, 21);
 }
 
@@ -257,8 +249,7 @@ fn array_member_initializer_applies(mut with_db: db::RootDatabase) {
             run := t.lead * 1000 + t.vals[0] + t.vals[1] + t.vals[2];
         END_FUNCTION
     "#;
-    let wasm = compile_to_wasm(&mut with_db, source);
-    let result: i32 = execute_wasm(&wasm, "run", ());
+    let result: i32 = run(&mut with_db, source, "run", ());
     assert_eq!(result, 1060, "lead 1, elements 10+20+30");
 }
 
@@ -326,8 +317,7 @@ fn two_members_of_the_same_instance_type_are_both_initialized(mut with_db: db::R
             run := o.a.v * 10 + o.b.v;
         END_FUNCTION
     "#;
-    let wasm = compile_to_wasm(&mut with_db, source);
-    let result: i32 = execute_wasm(&wasm, "run", ());
+    let result: i32 = run(&mut with_db, source, "run", ());
     assert_eq!(result, 66, "both Inner members initialized, not just the first");
 }
 
@@ -363,8 +353,7 @@ fn three_level_nesting_is_initialized(mut with_db: db::RootDatabase) {
             run := l1.pad * 100 + l1.l2.pad * 10 + l1.l2.l3.v;
         END_FUNCTION
     "#;
-    let wasm = compile_to_wasm(&mut with_db, source);
-    let result: i32 = execute_wasm(&wasm, "run", ());
+    let result: i32 = run(&mut with_db, source, "run", ());
     assert_eq!(result, 123, "each level lands at its own offset");
 }
 
@@ -388,8 +377,7 @@ fn array_of_instances_initializes_every_element(mut with_db: db::RootDatabase) {
             run := cells[0].v * 100 + cells[1].v * 10 + cells[2].v;
         END_FUNCTION
     "#;
-    let wasm = compile_to_wasm(&mut with_db, source);
-    let result: i32 = execute_wasm(&wasm, "run", ());
+    let result: i32 = run(&mut with_db, source, "run", ());
     assert_eq!(result, 555, "all three elements start at 5");
 }
 
@@ -418,8 +406,7 @@ fn array_member_of_an_instance_initializes_every_element(mut with_db: db::RootDa
             run := b.lead * 1000 + b.cells[0].v * 100 + b.cells[1].v * 10 + b.cells[2].v;
         END_FUNCTION
     "#;
-    let wasm = compile_to_wasm(&mut with_db, source);
-    let result: i32 = execute_wasm(&wasm, "run", ());
+    let result: i32 = run(&mut with_db, source, "run", ());
     assert_eq!(result, 9555, "lead 9, and every cell 5");
 }
 
@@ -440,8 +427,7 @@ fn array_of_instances_with_non_zero_lower_bound(mut with_db: db::RootDatabase) {
             run := cells[1].v * 100 + cells[2].v * 10 + cells[3].v;
         END_FUNCTION
     "#;
-    let wasm = compile_to_wasm(&mut with_db, source);
-    let result: i32 = execute_wasm(&wasm, "run", ());
+    let result: i32 = run(&mut with_db, source, "run", ());
     assert_eq!(result, 777);
 }
 
@@ -465,7 +451,6 @@ fn initialized_array_elements_then_a_call(mut with_db: db::RootDatabase) {
             run := cells[0].v * 100 + cells[1].v * 10 + cells[2].v;
         END_FUNCTION
     "#;
-    let wasm = compile_to_wasm(&mut with_db, source);
-    let result: i32 = execute_wasm(&wasm, "run", ());
+    let result: i32 = run(&mut with_db, source, "run", ());
     assert_eq!(result, 565, "element 1 went 5 -> 6; the others stayed 5");
 }

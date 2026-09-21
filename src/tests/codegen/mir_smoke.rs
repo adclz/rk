@@ -105,7 +105,6 @@ fn subrange_constant_bound_runs(mut with_db: db::RootDatabase) {
             test := x;
         END_FUNCTION
     "#;
-    let wasm = crate::tests::codegen::compile_to_wasm(&mut with_db, source);
-    let r: i32 = super::execute_wasm(&wasm, "test", ());
+    let r: i32 = super::run(&mut with_db, source, "test", ());
     assert_eq!(r, 3, "the CONSTANT-bounded subrange lowered and executed");
 }

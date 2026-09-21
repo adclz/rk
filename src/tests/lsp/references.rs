@@ -5,7 +5,7 @@ use ide_proto::{handlers::ReferencesHandler, walk::descendant_at};
 use insta::assert_snapshot;
 use rstest::rstest;
 
-use crate::tests::utils::{add_sources, render_references, with_db};
+use crate::tests::utils::{add_source, add_sources, render_references, with_db};
 
 #[rstest]
 fn pou_references(mut with_db: RootDatabase) {
@@ -19,8 +19,7 @@ END_VAR
 END_FUNCTION
 "#;
 
-    add_sources(&mut with_db, &[source]);
-    let file = *with_db.get_files().iter().last().unwrap();
+    let file = add_source(&mut with_db, source);
 
     let offset = source.find("MyFB").unwrap();
     let node = descendant_at(&with_db, file, offset).unwrap();
@@ -52,8 +51,7 @@ END_VAR
 END_FUNCTION
 "#;
 
-    add_sources(&mut with_db, &[source]);
-    let file = *with_db.get_files().iter().last().unwrap();
+    let file = add_source(&mut with_db, source);
 
     let offset = source.find("x : INT").unwrap();
     let node = descendant_at(&with_db, file, offset).unwrap();
@@ -90,8 +88,7 @@ END_VAR
 END_FUNCTION
 "#;
 
-    add_sources(&mut with_db, &[source]);
-    let file = *with_db.get_files().iter().last().unwrap();
+    let file = add_source(&mut with_db, source);
 
     let offset = source.find("x := 1").unwrap();
     let node = descendant_at(&with_db, file, offset).unwrap();
@@ -186,8 +183,7 @@ END_VAR
 END_FUNCTION
 "#;
 
-    add_sources(&mut with_db, &[source]);
-    let file = *with_db.get_files().iter().last().unwrap();
+    let file = add_source(&mut with_db, source);
 
     let offset = source.find("x : INT").unwrap();
     let node = descendant_at(&with_db, file, offset).unwrap();
@@ -308,8 +304,7 @@ FUNCTION_BLOCK fb
 END_FUNCTION_BLOCK
 "#;
 
-    add_sources(&mut with_db, &[source]);
-    let file = *with_db.get_files().iter().last().unwrap();
+    let file = add_source(&mut with_db, source);
 
     let offset = source.find("fuel: BOOL").unwrap();
     let node = descendant_at(&with_db, file, offset).unwrap();
@@ -360,8 +355,7 @@ FUNCTION_BLOCK fb
 END_FUNCTION_BLOCK
 "#;
 
-    add_sources(&mut with_db, &[source]);
-    let file = *with_db.get_files().iter().last().unwrap();
+    let file = add_source(&mut with_db, source);
 
     let offset = source.find("fuel: BOOL").unwrap();
     let node = descendant_at(&with_db, file, offset).unwrap();
@@ -466,8 +460,7 @@ NAMESPACE Lib
 END_NAMESPACE
 "#;
 
-    add_sources(&mut with_db, &[source]);
-    let file = *with_db.get_files().iter().last().unwrap();
+    let file = add_source(&mut with_db, source);
 
     let decl_offset = source.find("NAMESPACE Impl").unwrap() + "NAMESPACE ".len();
     let node = descendant_at(&with_db, file, decl_offset).unwrap();
