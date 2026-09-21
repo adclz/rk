@@ -5,6 +5,7 @@ mod env;
 mod file_order;
 mod fmt;
 mod report;
+mod unit_assertions;
 mod watcher;
 mod workspace;
 
