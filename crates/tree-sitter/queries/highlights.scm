@@ -62,6 +62,7 @@
 ; they arrive wrapped in `pou_pragma`; on a statement they arrive bare, so each
 ; kind is captured itself rather than through the wrapper.
 (allow_pragma) @attribute
+(export_pragma) @attribute
 (extern_pragma) @attribute
 (once_pragma) @attribute
 (test_pragma) @attribute

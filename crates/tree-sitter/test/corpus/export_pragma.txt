@@ -1,0 +1,58 @@
+================================================================================
+Export pragma on function
+================================================================================
+
+{export}
+FUNCTION Scale : INT
+END_FUNCTION
+
+--------------------------------------------------------------------------------
+
+(source_file
+  (func_decl
+    pragmas: (pou_pragma
+      (export_pragma))
+    name: (identifier)
+    return_type: (numeric_type_name
+      (int_type_name
+        (sign_int_type_name
+          (int_name))))))
+
+================================================================================
+Export pragma next to another pragma
+================================================================================
+
+{once}
+{export}
+FUNCTION Setup : INT
+END_FUNCTION
+
+--------------------------------------------------------------------------------
+
+(source_file
+  (func_decl
+    pragmas: (pou_pragma
+      (once_pragma))
+    pragmas: (pou_pragma
+      (export_pragma))
+    name: (identifier)
+    return_type: (numeric_type_name
+      (int_type_name
+        (sign_int_type_name
+          (int_name))))))
+
+================================================================================
+Export pragma on function block parses, the compiler refuses it
+================================================================================
+
+{export}
+FUNCTION_BLOCK Motor
+END_FUNCTION_BLOCK
+
+--------------------------------------------------------------------------------
+
+(source_file
+  (fb_decl
+    pragmas: (pou_pragma
+      (export_pragma))
+    name: (identifier)))

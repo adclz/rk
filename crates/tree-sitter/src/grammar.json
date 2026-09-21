@@ -993,6 +993,30 @@
         }
       }
     },
+    "export_pragma": {
+      "type": "PREC",
+      "value": 1,
+      "content": {
+        "type": "TOKEN",
+        "content": {
+          "type": "SEQ",
+          "members": [
+            {
+              "type": "STRING",
+              "value": "{"
+            },
+            {
+              "type": "STRING",
+              "value": "export"
+            },
+            {
+              "type": "STRING",
+              "value": "}"
+            }
+          ]
+        }
+      }
+    },
     "pou_pragma": {
       "type": "CHOICE",
       "members": [
@@ -1003,6 +1027,10 @@
         {
           "type": "SYMBOL",
           "name": "once_pragma"
+        },
+        {
+          "type": "SYMBOL",
+          "name": "export_pragma"
         },
         {
           "type": "SYMBOL",
