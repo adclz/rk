@@ -62,8 +62,8 @@ pub enum Command {
         output: Option<PathBuf>,
 
         /// Release profile: optimized (wasm-opt, mandatory), stepping tables
-        /// omitted. Monitoring, retained state and tests still work; only
-        /// source-level stepping needs the debug build.
+        /// and tests omitted. Monitoring and retained state still work;
+        /// source-level stepping and `rk test` use the debug build.
         #[arg(long)]
         release: bool,
 
