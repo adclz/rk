@@ -359,8 +359,8 @@ pub static EDITS: &[Edit] = &[
     Edit {
         name: "comment_edit",
         file: "stdlib/Edge.st",
-        needle: "# Standard Edge Detection Function Blocks",
-        replacement: "# Standard Edge Detection Function Blocks (edited)",
+        needle: "Edge detectors.",
+        replacement: "Edge detectors. (edited)",
     },
 ];
 

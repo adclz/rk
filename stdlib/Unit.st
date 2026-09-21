@@ -1,16 +1,20 @@
 /*
-# Unit Testing Utilities
+Assertions for `{test}` functions.
 
-Helper functions for writing test assertions in Structured Text.
+A failed assertion raises, and `rk test` reports the test as failed with
+its message.
 */
 NAMESPACE Std.Unit
 	USING Std.Strings;
 
-	/*
-    ## ASSERT - Boolean assertion
+	/* Raises `message` when `value` is `FALSE`.
 
-    Raises with `message` when `value` is FALSE.
-    */
+	   # Examples
+
+	   ```iecst
+	   ASSERT(level < 100, 'the tank overflowed');
+	   ```
+	*/
 	FUNCTION ASSERT
 		VAR_INPUT
 			value: BOOL;
@@ -22,11 +26,17 @@ NAMESPACE Std.Unit
 		END_IF
 	END_FUNCTION
 
-	/*
-    ## ASSERT_EQ - Equality assertion
+	/* Raises `message` when `value` and `target` differ.
 
-    One overload per elementary type. Raises when `value <> target`.
-    */
+	   There is one overload per elementary type. Both must have the same type,
+	   so write a typed literal where the compiler cannot tell: `INT#5`.
+
+	   # Examples
+
+	   ```iecst
+	   ASSERT_EQ(ABS(-5), 5, 'ABS of a negative');
+	   ```
+	*/
 	FUNCTION ASSERT_EQ
 		VAR_INPUT
 			value: BOOL;
@@ -255,11 +265,10 @@ NAMESPACE Std.Unit
 		END_IF
 	END_FUNCTION
 
-	/*
-    ## ASSERT_NEQ - Inequality assertion
+	/* Raises `message` when `value` and `target` are equal.
 
-    One overload per elementary type. Raises when `value = target`.
-    */
+	   There is one overload per elementary type.
+	*/
 	FUNCTION ASSERT_NEQ
 		VAR_INPUT
 			value: BOOL;
@@ -488,9 +497,7 @@ NAMESPACE Std.Unit
 		END_IF
 	END_FUNCTION
 
-	/* ## Date and time: the six calendar types, DATE, LDATE, TIME_OF_DAY,
-	   LTIME_OF_DAY, DATE_AND_TIME and LDATE_AND_TIME. Their comparisons are
-	   signed, matching the encodings, so the assertions are the plain ones. */
+	// The six calendar types
 
 	FUNCTION ASSERT_EQ
 		VAR_INPUT

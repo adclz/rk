@@ -1,25 +1,27 @@
 /*
-# Standard Arithmetic Functions
+Arithmetic functions.
 
-IEC 61131-3 **Table 29** - Arithmetic operations on numeric and magnitude types.
+Each function has one overload per type it applies to, and returns the type
+it was given. Angles are in radians.
 
-Each function is provided as a set of overloads, one per concrete type
-in the applicable numeric family.
+A `REAL` or `LREAL` result follows IEEE 754: outside a function's domain it
+is NaN, and at a pole it is infinite. Neither stops the scan. Test for them
+with [Std.Math.IS_NAN] and [Std.Math.NOT_OK] where it matters.
 */
 NAMESPACE Std.Math
 
-	/*
-    ## ABS - Absolute Value
+	/* Returns the absolute value of `IN`.
 
-    Returns the absolute value of the input.
+	   The most negative value of a signed integer type has no positive
+	   counterpart, and is returned as it is: `ABS(SINT#-128)` is -128.
 
-    - **Overloads**: `SINT`, `INT`, `DINT`, `LINT`, `REAL`, `LREAL`
+	   # Examples
 
-    ```iecst
-    result := ABS(-5);    // 5
-    result := ABS(3.14);  // 3.14
-    ```
-    */
+	   ```iecst
+	   n := ABS(-5);    // 5
+	   r := ABS(-2.5);  // 2.5
+	   ```
+	*/
 	FUNCTION ABS: SINT
 		VAR_INPUT
 			IN: SINT
@@ -62,18 +64,17 @@ NAMESPACE Std.Math
 		{wasm IN 'abs' (params IN) (result ABS)}
 	END_FUNCTION
 
-	/*
-    ## SQRT - Square Root
+	/* Returns the square root of `IN`.
 
-    Returns the square root of the input.
+	   Returns NaN when `IN` is negative.
 
-    - **Overloads**: `REAL`, `LREAL`
+	   # Examples
 
-    ```iecst
-    result := SQRT(9.0);   // 3.0
-    result := SQRT(2.0);   // 1.414...
-    ```
-    */
+	   ```iecst
+	   r := SQRT(9.0);  // 3.0
+	   r := SQRT(2.0);  // 1.4142135
+	   ```
+	*/
 	FUNCTION SQRT: REAL
 		VAR_INPUT
 			IN: REAL
@@ -88,18 +89,17 @@ NAMESPACE Std.Math
 		{wasm IN 'sqrt' (params IN) (result SQRT)}
 	END_FUNCTION
 
-	/*
-    ## LN - Natural Logarithm
+	/* Returns the natural logarithm of `IN`.
 
-    Returns the natural logarithm (base e) of the input.
+	   Returns NaN when `IN` is negative, and negative infinity when it is 0.
 
-    - **Overloads**: `REAL`, `LREAL`
+	   # Examples
 
-    ```iecst
-    result := LN(2.718);  // ~1.0
-    result := LN(1.0);    // 0.0
-    ```
-    */
+	   ```iecst
+	   r := LN(1.0);  // 0.0
+	   r := LN(2.0);  // 0.6931472
+	   ```
+	*/
 	FUNCTION LN: REAL
 		VAR_INPUT
 			IN: REAL
@@ -114,18 +114,17 @@ NAMESPACE Std.Math
 		{wasm IN 'ln' (params IN) (result LN)}
 	END_FUNCTION
 
-	/*
-    ## LOG - Common Logarithm
+	/* Returns the base 10 logarithm of `IN`.
 
-    Returns the common logarithm (base 10) of the input.
+	   Returns NaN when `IN` is negative, and negative infinity when it is 0.
 
-    - **Overloads**: `REAL`, `LREAL`
+	   # Examples
 
-    ```iecst
-    result := LOG(100.0);  // 2.0
-    result := LOG(1000.0); // 3.0
-    ```
-    */
+	   ```iecst
+	   r := LOG(100.0);   // 2.0
+	   r := LOG(1000.0);  // 3.0
+	   ```
+	*/
 	FUNCTION LOG: REAL
 		VAR_INPUT
 			IN: REAL
@@ -140,18 +139,15 @@ NAMESPACE Std.Math
 		{wasm IN 'log' (params IN) (result LOG)}
 	END_FUNCTION
 
-	/*
-    ## EXP - Natural Exponential
+	/* Returns e raised to the power of `IN`.
 
-    Returns e raised to the power of the input.
+	   # Examples
 
-    - **Overloads**: `REAL`, `LREAL`
-
-    ```iecst
-    result := EXP(1.0);  // 2.718...
-    result := EXP(0.0);  // 1.0
-    ```
-    */
+	   ```iecst
+	   r := EXP(0.0);  // 1.0
+	   r := EXP(1.0);  // 2.7182817
+	   ```
+	*/
 	FUNCTION EXP: REAL
 		VAR_INPUT
 			IN: REAL
@@ -166,18 +162,15 @@ NAMESPACE Std.Math
 		{wasm IN 'exp' (params IN) (result EXP)}
 	END_FUNCTION
 
-	/*
-    ## SIN - Sine
+	/* Returns the sine of `IN`, an angle in radians.
 
-    Returns the sine of the input (in radians).
+	   # Examples
 
-    - **Overloads**: `REAL`, `LREAL`
-
-    ```iecst
-    result := SIN(0.0);       // 0.0
-    result := SIN(1.5708);    // ~1.0
-    ```
-    */
+	   ```iecst
+	   r := SIN(0.0);  // 0.0
+	   r := SIN(0.5);  // 0.4794255
+	   ```
+	*/
 	FUNCTION SIN: REAL
 		VAR_INPUT
 			IN: REAL
@@ -192,18 +185,15 @@ NAMESPACE Std.Math
 		{wasm IN 'sin' (params IN) (result SIN)}
 	END_FUNCTION
 
-	/*
-    ## COS - Cosine
+	/* Returns the cosine of `IN`, an angle in radians.
 
-    Returns the cosine of the input (in radians).
+	   # Examples
 
-    - **Overloads**: `REAL`, `LREAL`
-
-    ```iecst
-    result := COS(0.0);       // 1.0
-    result := COS(3.1416);    // ~-1.0
-    ```
-    */
+	   ```iecst
+	   r := COS(0.0);  // 1.0
+	   r := COS(1.0);  // 0.5403023
+	   ```
+	*/
 	FUNCTION COS: REAL
 		VAR_INPUT
 			IN: REAL
@@ -218,18 +208,15 @@ NAMESPACE Std.Math
 		{wasm IN 'cos' (params IN) (result COS)}
 	END_FUNCTION
 
-	/*
-    ## TAN - Tangent
+	/* Returns the tangent of `IN`, an angle in radians.
 
-    Returns the tangent of the input (in radians).
+	   # Examples
 
-    - **Overloads**: `REAL`, `LREAL`
-
-    ```iecst
-    result := TAN(0.0);       // 0.0
-    result := TAN(0.7854);    // ~1.0
-    ```
-    */
+	   ```iecst
+	   r := TAN(0.0);  // 0.0
+	   r := TAN(1.0);  // 1.5574077
+	   ```
+	*/
 	FUNCTION TAN: REAL
 		VAR_INPUT
 			IN: REAL
@@ -244,18 +231,17 @@ NAMESPACE Std.Math
 		{wasm IN 'tan' (params IN) (result TAN)}
 	END_FUNCTION
 
-	/*
-    ## ASIN - Arc Sine
+	/* Returns the arc sine of `IN`, in radians.
 
-    Returns the arc sine of the input (result in radians).
+	   Returns NaN when `IN` is outside -1.0 to 1.0.
 
-    - **Overloads**: `REAL`, `LREAL`
+	   # Examples
 
-    ```iecst
-    result := ASIN(0.0);   // 0.0
-    result := ASIN(1.0);   // 1.5708 (~pi/2)
-    ```
-    */
+	   ```iecst
+	   r := ASIN(0.0);  // 0.0
+	   r := ASIN(1.0);  // 1.5707964
+	   ```
+	*/
 	FUNCTION ASIN: REAL
 		VAR_INPUT
 			IN: REAL
@@ -270,18 +256,17 @@ NAMESPACE Std.Math
 		{wasm IN 'asin' (params IN) (result ASIN)}
 	END_FUNCTION
 
-	/*
-    ## ACOS - Arc Cosine
+	/* Returns the arc cosine of `IN`, in radians.
 
-    Returns the arc cosine of the input (result in radians).
+	   Returns NaN when `IN` is outside -1.0 to 1.0.
 
-    - **Overloads**: `REAL`, `LREAL`
+	   # Examples
 
-    ```iecst
-    result := ACOS(1.0);   // 0.0
-    result := ACOS(0.0);   // 1.5708 (~pi/2)
-    ```
-    */
+	   ```iecst
+	   r := ACOS(1.0);  // 0.0
+	   r := ACOS(0.0);  // 1.5707964
+	   ```
+	*/
 	FUNCTION ACOS: REAL
 		VAR_INPUT
 			IN: REAL
@@ -296,18 +281,15 @@ NAMESPACE Std.Math
 		{wasm IN 'acos' (params IN) (result ACOS)}
 	END_FUNCTION
 
-	/*
-    ## ATAN - Arc Tangent
+	/* Returns the arc tangent of `IN`, in radians.
 
-    Returns the arc tangent of the input (result in radians).
+	   # Examples
 
-    - **Overloads**: `REAL`, `LREAL`
-
-    ```iecst
-    result := ATAN(0.0);   // 0.0
-    result := ATAN(1.0);   // 0.7854 (~pi/4)
-    ```
-    */
+	   ```iecst
+	   r := ATAN(0.0);  // 0.0
+	   r := ATAN(1.0);  // 0.7853982
+	   ```
+	*/
 	FUNCTION ATAN: REAL
 		VAR_INPUT
 			IN: REAL
@@ -322,19 +304,19 @@ NAMESPACE Std.Math
 		{wasm IN 'atan' (params IN) (result ATAN)}
 	END_FUNCTION
 
-	/*
-    ## ATAN2 - Two-Argument Arc Tangent
+	/* Returns the angle of the point (`IN2`, `IN`), in radians.
 
-    Returns the arc tangent of `IN / IN2`, using the signs of both
-    arguments to determine the quadrant of the result (in radians).
+	   This is the arc tangent of `IN / IN2`, with the signs of both used to pick
+	   the quadrant. `IN` is the y coordinate and `IN2` the x.
 
-    - **Overloads**: `REAL`, `LREAL`
+	   # Examples
 
-    ```iecst
-    result := ATAN2(1.0, IN2 := 1.0);   // 0.7854 (~pi/4)
-    result := ATAN2(-1.0, IN2 := -1.0);  // -2.356 (~-3pi/4)
-    ```
-    */
+	   ```iecst
+	   r := ATAN2(1.0, 1.0);    // 0.7853982
+	   r := ATAN2(1.0, -1.0);   // 2.3561945
+	   r := ATAN2(-1.0, 1.0);   // -0.7853982
+	   ```
+	*/
 	FUNCTION ATAN2: REAL
 		VAR_INPUT
 			IN: REAL
@@ -351,21 +333,18 @@ NAMESPACE Std.Math
 		{wasm IN 'atan2' (params IN IN2) (result ATAN2)}
 	END_FUNCTION
 
-	/*
-    ## EXPT - Exponentiation
+	/* Returns `IN` raised to the power of `IN2`.
 
-    Raises `IN` to the power of `IN2` — the function form of the `**`
-    operator; both lower to the same implementation. Per IEC 61131-3,
-    `IN` is ANY_REAL, `IN2` is ANY_NUM (an integer exponent widens
-    implicitly), and the result has `IN`'s type.
+	   This is the `**` operator as a function. `IN2` may be an integer, and the
+	   result has the type of `IN`.
 
-    - **Overloads**: `REAL`, `LREAL`
+	   # Examples
 
-    ```iecst
-    result := EXPT(2.0, 3.0);   // 8.0
-    result := EXPT(9.0, 0.5);   // 3.0 (a fractional exponent is a root)
-    ```
-    */
+	   ```iecst
+	   r := EXPT(2.0, 3.0);  // 8.0
+	   r := EXPT(9.0, 0.5);  // 3.0
+	   ```
+	*/
 	FUNCTION EXPT: REAL
 		VAR_INPUT
 			IN: REAL
@@ -382,19 +361,13 @@ NAMESPACE Std.Math
 		{wasm IN 'pow' (params IN IN2) (result EXPT)}
 	END_FUNCTION
 
-	/*
-	## IS_NAN, NOT_OK - Invalid floating-point values
-	A REAL or LREAL that is not a number, or not finite. NaN comes from 0.0/0.0,
-	from the square root of a negative, and above all from a bit pattern read
-	off a fieldbus or an analog channel; it propagates through arithmetic and
-	converts to 0. Test for it explicitly where it matters.
-	- **IS_NAN**: not a number.
-	- **NOT_OK**: not a number or infinite.
-	```iecst
-	IF NOT_OK(measured) THEN
-	    alarm := TRUE;
-	END_IF;
-	```
+	/* Returns `TRUE` if `IN` is not a number.
+
+	   NaN comes from `0.0 / 0.0`, from the square root of a negative, and above
+	   all from a bit pattern read off a fieldbus or an analog channel. It spreads
+	   through arithmetic and converts to 0, so test for it where it matters.
+
+	   See [Std.Math.NOT_OK] to refuse an infinite value as well.
 	*/
 	FUNCTION IS_NAN: BOOL
 		VAR_INPUT
@@ -410,6 +383,16 @@ NAMESPACE Std.Math
 		IS_NAN := IN <> IN;
 	END_FUNCTION
 
+	/* Returns `TRUE` if `IN` is not a number, or is infinite.
+
+	   # Examples
+
+	   ```iecst
+	   IF NOT_OK(measured) THEN
+	       alarm := TRUE;
+	   END_IF;
+	   ```
+	*/
 	FUNCTION NOT_OK: BOOL
 		VAR_INPUT
 			IN: REAL;
@@ -865,7 +848,7 @@ NAMESPACE Std.Math
 				n: INT := 0;
 				i: INT;
 			END_VAR
-			// A constant negative BY flips the exit comparison — this loop
+			// A constant negative BY flips the exit comparison: this loop
 			// used to exit before its first iteration.
 			FOR i := 10 TO 1 BY -1 DO
 				n := n + 1;
@@ -1028,7 +1011,7 @@ NAMESPACE Std.Math
 			ASSERT(ABS(SQRT(LREAL#2.0) - LREAL#1.414213562373095) < LREAL#0.000000001, 'SQRT LREAL');
 		END_FUNCTION
 
-		// --- ATAN2: the one two-argument function — swapped y/x is only
+		// --- ATAN2: the one two-argument function. Swapped y/x is only
 		// detectable with an asymmetric quadrant pair ---
 
 		{test}
@@ -1092,7 +1075,7 @@ NAMESPACE Std.Math
 
 		{test}
 		FUNCTION test_float_domain_edges_pin_current
-			(* pins current behavior: IEEE semantics — NaN for out-of-domain,
+			(* pins current behavior: IEEE semantics, NaN for out-of-domain,
 			   infinities at the poles. NaN is the only value with x <> x. *)
 			ASSERT(SQRT(-1.0) <> SQRT(-1.0), 'SQRT(-1) is NaN');
 			ASSERT(LN(-1.0) <> LN(-1.0), 'LN(-1) is NaN');

@@ -1,59 +1,52 @@
 /*
-# Standard Timer Function Blocks
+Timers.
 
-All timers share a common interface:
-- `IN`: BOOL trigger input
-- `PT`: preset duration
-- `Q`: BOOL output
-- `ET`: elapsed time
+Each takes `IN` and a duration `PT`, and gives `Q` and the elapsed time
+`ET`, which stops at `PT`. They read the clock when they are called, so a
+timer is as precise as the scan that calls it.
 
-The standard names (`TP`, `TON`, `TOF`) work in `TIME`; the `_LTIME`
-variants carry the same behavior at `LTIME` precision.
+`TP`, `TON` and `TOF` measure in `TIME`. The `_LTIME` blocks are the same
+timers in `LTIME`.
 */
 NAMESPACE Std.Timers
 	USING Std.Convert;
 
-	/*
-    ## WASI monotonic clock
+	/* Returns the host's monotonic clock, which never goes back.
 
-    Provides a monotonic clock for accurate timer implementations.
-
-    A monotonic clock is a clock that guarantees non-decreasing time values, unaffected by system clock adjustments.
-
-    [See WASI documentation](https://github.com/WebAssembly/WASI/blob/main/proposals/clocks/README.md)
-    */
+	   This is the `now` of the WASI
+	   [monotonic clock](https://github.com/WebAssembly/WASI/blob/main/proposals/clocks/README.md),
+	   and the one import a module that uses a timer has.
+	*/
 	{extern 'wasi:clocks/monotonic-clock@0.2.6' 'now'}
 	FUNCTION PRIVATE MONOTONIC_LTIME: LTIME
 	END_FUNCTION
 
+	/* Returns the monotonic clock as a `TIME`. Only the difference between two readings means something. */
 	FUNCTION PLC_TIME: TIME
 		PLC_TIME := LTIME_TO_TIME(MONOTONIC_LTIME());
 	END_FUNCTION
 
+	/* Returns the monotonic clock as an `LTIME`. Only the difference between two readings means something. */
 	FUNCTION PLC_LTIME: LTIME
 		PLC_LTIME := MONOTONIC_LTIME();
 	END_FUNCTION
 
-	/*
-    ## TP_TIME - Pulse Timer
+	/* A pulse of a fixed length.
 
-    Generates a pulse of duration `PT` on a rising edge of `IN`.
+	   A rising edge of `IN` sets `Q` for `PT`, whatever `IN` does meanwhile. A new
+	   pulse starts on the next rising edge after this one has ended.
 
-    - Rising edge on `IN` starts the timer and sets `Q` to TRUE
-    - `Q` remains TRUE for exactly `PT` duration, regardless of `IN`
-    - `ET` tracks elapsed time, capped at `PT`
+	   # Examples
 
-    ```iecst
-    VAR
-        pulse: TP_TIME;
-    END_VAR
+	   ```iecst
+	   VAR
+	       pulse: TP_TIME;
+	   END_VAR
 
-    pulse(trigger, PT := T#5s);
-    IF pulse.Q THEN
-        // pulse is active
-    END_IF;
-    ```
-    */
+	   pulse(IN := trigger, PT := T#5s);
+	   valve := pulse.Q;  // open for five seconds
+	   ```
+	*/
 	FUNCTION_BLOCK TP_TIME
 		VAR_INPUT
 			IN: BOOL;
@@ -92,11 +85,7 @@ NAMESPACE Std.Timers
 
 	TYPE TP: TP_TIME END_TYPE
 
-	/*
-    ## TP_LTIME - Pulse Timer (LTIME)
-
-    [TP_TIME](#tp_time) at `LTIME` precision.
-    */
+	/* [Std.Timers.TP_TIME] in `LTIME`. */
 	FUNCTION_BLOCK TP_LTIME
 		VAR_INPUT
 			IN: BOOL;
@@ -133,27 +122,24 @@ NAMESPACE Std.Timers
 		PREV_IN := IN;
 	END_FUNCTION_BLOCK
 
-	/*
-    ## TON_TIME - On-Delay Timer
+	/* Delays turning on.
 
-    Delays the rising edge of `IN` by `PT`.
+	   `Q` becomes `TRUE` once `IN` has been `TRUE` for `PT`, and `FALSE` as soon
+	   as `IN` is. An `IN` that drops before `PT` starts the delay over.
 
-    - Rising edge on `IN` starts the timer
-    - `Q` becomes TRUE after `PT` has elapsed, while `IN` is still TRUE
-    - `Q` resets immediately when `IN` goes FALSE
-    - `ET` tracks elapsed time, capped at `PT`
+	   # Examples
 
-    ```iecst
-    VAR
-        delay: TON_TIME;
-    END_VAR
+	   ```iecst
+	   VAR
+	       delay: TON_TIME;
+	   END_VAR
 
-    delay(start_signal, PT := T#3s);
-    IF delay.Q THEN
-        // 3 seconds have passed since start_signal went TRUE
-    END_IF;
-    ```
-    */
+	   delay(IN := start_signal, PT := T#3s);
+	   IF delay.Q THEN
+	       // start_signal has held for three seconds
+	   END_IF;
+	   ```
+	*/
 	FUNCTION_BLOCK TON_TIME
 		VAR_INPUT
 			IN: BOOL;
@@ -194,11 +180,7 @@ NAMESPACE Std.Timers
 
 	TYPE TON: TON_TIME END_TYPE
 
-	/*
-    ## TON_LTIME - On-Delay Timer (LTIME)
-
-    [TON_TIME](#ton_time) at `LTIME` precision.
-    */
+	/* [Std.Timers.TON_TIME] in `LTIME`. */
 	FUNCTION_BLOCK TON_LTIME
 		VAR_INPUT
 			IN: BOOL;
@@ -237,25 +219,22 @@ NAMESPACE Std.Timers
 		PREV_IN := IN;
 	END_FUNCTION_BLOCK
 
-	/*
-    ## TOF_TIME - Off-Delay Timer
+	/* Delays turning off.
 
-    Delays the falling edge of `IN` by `PT`.
+	   `Q` is `TRUE` while `IN` is, and stays `TRUE` for `PT` after `IN` drops. An
+	   `IN` that comes back before `PT` starts the delay over.
 
-    - Falling edge on `IN` starts the timer, `Q` remains TRUE
-    - `Q` becomes FALSE after `PT` has elapsed
-    - `Q` resets immediately when `IN` goes TRUE again
-    - `ET` tracks elapsed time, capped at `PT`
+	   # Examples
 
-    ```iecst
-    VAR
-        off_delay: TOF_TIME;
-    END_VAR
+	   ```iecst
+	   VAR
+	       off_delay: TOF_TIME;
+	   END_VAR
 
-    off_delay(motor_running, PT := T#10s);
-    cooling_fan := off_delay.Q; // fan runs 10s after motor stops
-    ```
-    */
+	   off_delay(IN := motor_running, PT := T#10s);
+	   cooling_fan := off_delay.Q;  // runs ten seconds after the motor stops
+	   ```
+	*/
 	FUNCTION_BLOCK TOF_TIME
 		VAR_INPUT
 			IN: BOOL;
@@ -294,11 +273,7 @@ NAMESPACE Std.Timers
 
 	TYPE TOF: TOF_TIME END_TYPE
 
-	/*
-    ## TOF_LTIME - Off-Delay Timer (LTIME)
-
-    [TOF_TIME](#tof_time) at `LTIME` precision.
-    */
+	/* [Std.Timers.TOF_TIME] in `LTIME`. */
 	FUNCTION_BLOCK TOF_LTIME
 		VAR_INPUT
 			IN: BOOL;

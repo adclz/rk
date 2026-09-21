@@ -1,27 +1,20 @@
 /*
-# Standard Selection Functions
+Selection functions.
 
-IEC 61131-3 **Table 28** - Selection and comparison operations.
-
-Binary selection (`SEL`) and bounding (`LIMIT`).
+Each has one overload per type it applies to, and returns the type it was
+given.
 */
 NAMESPACE Std.Selection
 
-	/*
-    ## SEL - Binary Selection
+	/* Returns `IN0` when `G` is `FALSE`, and `IN1` when it is `TRUE`.
 
-    Selects one of two inputs based on a boolean selector.
+	   # Examples
 
-    - `G` = **FALSE** returns `IN0`
-    - `G` = **TRUE** returns `IN1`
-
-    Provided as one overload per value type.
-
-    ```iecst
-    result := SEL(G := TRUE, IN0 := 0, IN1 := 42); // 42
-    result := SEL(G := FALSE, IN0 := 0, IN1 := 42); // 0
-    ```
-    */
+	   ```iecst
+	   n := SEL(TRUE, 10, 42);   // 42
+	   n := SEL(FALSE, 10, 42);  // 10
+	   ```
+	*/
 	FUNCTION SEL: BOOL
 		VAR_INPUT
 			G: BOOL;
@@ -260,23 +253,18 @@ NAMESPACE Std.Selection
 		END_IF;
 	END_FUNCTION
 
-	/*
-    ## LIMIT - Bounding
+	/* Returns `IN` kept within `MN` and `MX`.
 
-    Clamps `IN` to the range [`MN`, `MX`].
+	   `MX` wins when `MN` is greater than `MX`.
 
-    - Returns `MN` if `IN < MN`
-    - Returns `MX` if `IN > MX`
-    - Returns `IN` otherwise
+	   # Examples
 
-    Provided as one overload per comparable numeric type.
-
-    ```iecst
-    result := LIMIT(MN := 0, 15, MX := 10);  // 10
-    result := LIMIT(MN := 0, -5, MX := 10);   // 0
-    result := LIMIT(MN := 0, 5, MX := 10);    // 5
-    ```
-    */
+	   ```iecst
+	   n := LIMIT(0, 15, 10);  // 10
+	   n := LIMIT(0, -5, 10);  // 0
+	   n := LIMIT(0, 5, 10);   // 5
+	   ```
+	*/
 	FUNCTION LIMIT: SINT
 		VAR_INPUT
 			MN: SINT;
@@ -284,7 +272,7 @@ NAMESPACE Std.Selection
 			MX: SINT;
 		END_VAR
 
-		(* IEC 61131-3 Table 32.5: OUT := MIN(MAX(IN, MN), MX) — MX wins when MN > MX. *)
+		(* IEC 61131-3 Table 32.5: OUT := MIN(MAX(IN, MN), MX), so MX wins when MN > MX. *)
 		LIMIT := IN;
 		IF LIMIT < MN THEN
 			LIMIT := MN;
@@ -301,7 +289,7 @@ NAMESPACE Std.Selection
 			MX: INT;
 		END_VAR
 
-		(* IEC 61131-3 Table 32.5: OUT := MIN(MAX(IN, MN), MX) — MX wins when MN > MX. *)
+		(* IEC 61131-3 Table 32.5: OUT := MIN(MAX(IN, MN), MX), so MX wins when MN > MX. *)
 		LIMIT := IN;
 		IF LIMIT < MN THEN
 			LIMIT := MN;
@@ -318,7 +306,7 @@ NAMESPACE Std.Selection
 			MX: DINT;
 		END_VAR
 
-		(* IEC 61131-3 Table 32.5: OUT := MIN(MAX(IN, MN), MX) — MX wins when MN > MX. *)
+		(* IEC 61131-3 Table 32.5: OUT := MIN(MAX(IN, MN), MX), so MX wins when MN > MX. *)
 		LIMIT := IN;
 		IF LIMIT < MN THEN
 			LIMIT := MN;
@@ -335,7 +323,7 @@ NAMESPACE Std.Selection
 			MX: LINT;
 		END_VAR
 
-		(* IEC 61131-3 Table 32.5: OUT := MIN(MAX(IN, MN), MX) — MX wins when MN > MX. *)
+		(* IEC 61131-3 Table 32.5: OUT := MIN(MAX(IN, MN), MX), so MX wins when MN > MX. *)
 		LIMIT := IN;
 		IF LIMIT < MN THEN
 			LIMIT := MN;
@@ -352,7 +340,7 @@ NAMESPACE Std.Selection
 			MX: USINT;
 		END_VAR
 
-		(* IEC 61131-3 Table 32.5: OUT := MIN(MAX(IN, MN), MX) — MX wins when MN > MX. *)
+		(* IEC 61131-3 Table 32.5: OUT := MIN(MAX(IN, MN), MX), so MX wins when MN > MX. *)
 		LIMIT := IN;
 		IF LIMIT < MN THEN
 			LIMIT := MN;
@@ -369,7 +357,7 @@ NAMESPACE Std.Selection
 			MX: UINT;
 		END_VAR
 
-		(* IEC 61131-3 Table 32.5: OUT := MIN(MAX(IN, MN), MX) — MX wins when MN > MX. *)
+		(* IEC 61131-3 Table 32.5: OUT := MIN(MAX(IN, MN), MX), so MX wins when MN > MX. *)
 		LIMIT := IN;
 		IF LIMIT < MN THEN
 			LIMIT := MN;
@@ -386,7 +374,7 @@ NAMESPACE Std.Selection
 			MX: UDINT;
 		END_VAR
 
-		(* IEC 61131-3 Table 32.5: OUT := MIN(MAX(IN, MN), MX) — MX wins when MN > MX. *)
+		(* IEC 61131-3 Table 32.5: OUT := MIN(MAX(IN, MN), MX), so MX wins when MN > MX. *)
 		LIMIT := IN;
 		IF LIMIT < MN THEN
 			LIMIT := MN;
@@ -403,7 +391,7 @@ NAMESPACE Std.Selection
 			MX: ULINT;
 		END_VAR
 
-		(* IEC 61131-3 Table 32.5: OUT := MIN(MAX(IN, MN), MX) — MX wins when MN > MX. *)
+		(* IEC 61131-3 Table 32.5: OUT := MIN(MAX(IN, MN), MX), so MX wins when MN > MX. *)
 		LIMIT := IN;
 		IF LIMIT < MN THEN
 			LIMIT := MN;
@@ -420,7 +408,7 @@ NAMESPACE Std.Selection
 			MX: REAL;
 		END_VAR
 
-		(* IEC 61131-3 Table 32.5: OUT := MIN(MAX(IN, MN), MX) — MX wins when MN > MX. *)
+		(* IEC 61131-3 Table 32.5: OUT := MIN(MAX(IN, MN), MX), so MX wins when MN > MX. *)
 		LIMIT := IN;
 		IF LIMIT < MN THEN
 			LIMIT := MN;
@@ -437,7 +425,7 @@ NAMESPACE Std.Selection
 			MX: LREAL;
 		END_VAR
 
-		(* IEC 61131-3 Table 32.5: OUT := MIN(MAX(IN, MN), MX) — MX wins when MN > MX. *)
+		(* IEC 61131-3 Table 32.5: OUT := MIN(MAX(IN, MN), MX), so MX wins when MN > MX. *)
 		LIMIT := IN;
 		IF LIMIT < MN THEN
 			LIMIT := MN;
@@ -454,7 +442,7 @@ NAMESPACE Std.Selection
 			MX: TIME;
 		END_VAR
 
-		(* IEC 61131-3 Table 32.5: OUT := MIN(MAX(IN, MN), MX) — MX wins when MN > MX. *)
+		(* IEC 61131-3 Table 32.5: OUT := MIN(MAX(IN, MN), MX), so MX wins when MN > MX. *)
 		LIMIT := IN;
 		IF LIMIT < MN THEN
 			LIMIT := MN;
@@ -471,7 +459,7 @@ NAMESPACE Std.Selection
 			MX: LTIME;
 		END_VAR
 
-		(* IEC 61131-3 Table 32.5: OUT := MIN(MAX(IN, MN), MX) — MX wins when MN > MX. *)
+		(* IEC 61131-3 Table 32.5: OUT := MIN(MAX(IN, MN), MX), so MX wins when MN > MX. *)
 		LIMIT := IN;
 		IF LIMIT < MN THEN
 			LIMIT := MN;
@@ -482,18 +470,17 @@ NAMESPACE Std.Selection
 	END_FUNCTION
 
 
-	/*
-    ## MIN / MAX - Extremum of two values
+	/* Returns the smaller of `IN1` and `IN2`.
 
-    The smaller (`MIN`) or larger (`MAX`) of two inputs. One overload per
-    comparable type; nest calls for more than two values:
-    `MIN(a, MIN(b, c))`.
+	   Nest the calls for more than two values.
 
-    ```iecst
-    slowest := MAX(t_pump, t_valve);
-    clamped := MIN(demand, capacity);
-    ```
-    */
+	   # Examples
+
+	   ```iecst
+	   n := MIN(3, 5);          // 3
+	   n := MIN(7, MIN(9, 4));  // 4
+	   ```
+	*/
 	FUNCTION MIN: SINT
 		VAR_INPUT
 			IN1: SINT;
@@ -650,6 +637,17 @@ NAMESPACE Std.Selection
 		END_IF;
 	END_FUNCTION
 
+	/* Returns the larger of `IN1` and `IN2`.
+
+	   Nest the calls for more than two values.
+
+	   # Examples
+
+	   ```iecst
+	   n := MAX(3, 5);          // 5
+	   n := MAX(7, MAX(9, 4));  // 9
+	   ```
+	*/
 	FUNCTION MAX: SINT
 		VAR_INPUT
 			IN1: SINT;
@@ -806,17 +804,19 @@ NAMESPACE Std.Selection
 		END_IF;
 	END_FUNCTION
 
-	/*
-    ## MUX - Multiplexer
+	/* Returns the input that `K` selects, counting from 0.
 
-    Selects input `K` among the supplied inputs (`K` counts from 0).
-    Overloads take 2, 3 or 4 inputs; `K` outside the range is CLAMPED to
-    the first or last input.
+	   There are overloads for two, three and four inputs. A `K` below 0 selects
+	   the first, and a `K` past the last selects the last.
 
-    ```iecst
-    speed := MUX(mode, slow, medium, fast); // mode: 0, 1 or 2
-    ```
-    */
+	   # Examples
+
+	   ```iecst
+	   n := MUX(1, 10, 20, 30);   // 20
+	   n := MUX(-1, 10, 20, 30);  // 10
+	   n := MUX(9, 10, 20, 30);   // 30
+	   ```
+	*/
 	FUNCTION MUX: BOOL
 		VAR_INPUT
 			K: INT;
@@ -1283,7 +1283,7 @@ NAMESPACE Std.Selection
 
 		// --- nonzero-MN clamps: a LIMIT body that never assigns its result
 		// would return the zero-initialized local and still pass every
-		// clamp-low test above — pin clamps whose expected value is NOT 0 ---
+		// clamp-low test above. Pin clamps whose expected value is NOT 0 ---
 
 		{test}
 		FUNCTION test_limit_nonzero_mn_clamp
@@ -1292,7 +1292,7 @@ NAMESPACE Std.Selection
 			ASSERT_EQ(LIMIT(INT#-30, INT#0, INT#-10), INT#-10, 'negative bounds clamp high');
 		END_FUNCTION
 
-		// IEC 61131-3 Table 32.5: OUT := MIN(MAX(IN, MN), MX) — with the
+		// IEC 61131-3 Table 32.5: OUT := MIN(MAX(IN, MN), MX). With the
 		// degenerate MN > MX, applying MX last means MX wins.
 		{test}
 		FUNCTION test_limit_mn_greater_than_mx
