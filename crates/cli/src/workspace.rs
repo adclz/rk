@@ -1,6 +1,5 @@
 use auto_lsp::lsp_types::{PositionEncodingKind, Url};
 use db::RootDatabase;
-use db::loader::load_workspace;
 use db::workspace::Workspace;
 
 use crate::diagnostics::DiagnosticReporter;
@@ -50,16 +49,14 @@ pub fn init_db(
     }
 
     let mut db = RootDatabase::default();
-    let workspace_uri = std::fs::canonicalize(workspace)
-        .ok()
-        .and_then(|p| Url::from_file_path(p).ok());
-
     let mut config_errors = vec![];
     let mut config_notices = vec![];
 
-    Workspace::init_or_update(
+    // Configuration, then the library, then this workspace's files: the one
+    // order, shared with the language server.
+    let results = db::loader::open_workspace(
         &mut db,
-        workspace_uri,
+        Some(workspace),
         PositionEncodingKind::UTF8,
         &mut config_errors,
         &mut config_notices,
@@ -75,10 +72,6 @@ pub fn init_db(
             ui::error(notice);
         }
     }
-
-    // Libraries always go through the loader — `resolve_library_path`
-    // (RK_STDLIB_PATH) already decided whether there is anything to load.
-    db::loader::load_libraries(&mut db);
 
     // Report config errors against the config file's own source.
     if let Some(config_file) = Workspace::try_get(&db).and_then(|w| w.config_file(&db)) {
@@ -97,9 +90,6 @@ pub fn init_db(
             return None;
         }
     }
-
-    // Load .st files
-    let results = load_workspace(&mut db, workspace);
 
     if results.is_empty() {
         ui::error("no .st files found in workspace");

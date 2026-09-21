@@ -6,6 +6,7 @@ use super::{
     unset_stdlib as unset_env,
 };
 
+use auto_lsp::default::db::BaseDatabase;
 use db::WorkspaceDataBase;
 
 /// A library namespace used by the tests below.
@@ -168,6 +169,39 @@ fn variable_selects_the_library_directory() {
     let (db, counts, out) = check(&root);
     assert_eq!(db.get_library_files().len(), 1, "library loaded");
     assert!(!counts.has_errors(), "library names must resolve:\n{out}");
+}
+
+/// A workspace that CONTAINS its library loads each of the library's files
+/// once, not twice.
+///
+/// The scan walks subdirectories, so the library's own files are among the
+/// ones it finds. Loaded again as the workspace's, every POU in the library
+/// collided with itself and the whole library read as duplicated (E0102).
+/// The rk checkout is such a workspace: opening it in an editor reported all
+/// 801 of its POUs as duplicates of themselves.
+#[test]
+fn a_workspace_containing_its_library_does_not_load_it_twice() {
+    let (_ws, root) = write_workspace(&[(
+        "main.st",
+        "NAMESPACE App\nUSING Std.S;\nFUNCTION main : INT\n    main := pick(1);\nEND_FUNCTION\nEND_NAMESPACE\n",
+    )]);
+    // The library lives inside the workspace, where the scan will find it.
+    let lib_root = root.join("vendor");
+    std::fs::create_dir(&lib_root).unwrap();
+    std::fs::write(lib_root.join("s.st"), LIB_NS).unwrap();
+    // Naming it outright is what the editor extension does, and it takes a
+    // different branch than the probe the CLI falls back to.
+    set_env(lib_root.as_os_str());
+
+    let (db, counts, out) = check(&root);
+    assert_eq!(db.get_library_files().len(), 1, "the library loaded");
+    assert_eq!(
+        db.get_files().len(),
+        1,
+        "only `main.st` is the workspace's: {:?}",
+        db.get_files().iter().map(|f| f.url(&db).to_string()).collect::<Vec<_>>()
+    );
+    assert!(!counts.has_errors(), "nothing is a duplicate of itself:\n{out}");
 }
 
 /// A broken library refuses to build, visibly; `rk check` stays

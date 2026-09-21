@@ -228,17 +228,15 @@ pub fn boot() -> Result<(), Box<dyn Error + Send + Sync>> {
         db,
     )?;
 
-    refresh_configuration(&mut session, params.root_uri.clone())?;
-    db::loader::load_libraries(&mut session.db);
-
-    // Load workspace files
-    if let Some(folders) = params.workspace_folders {
-        for folder in folders {
-            if let Ok(path) = folder.uri.to_file_path() {
-                db::loader::load_workspace(&mut session.db, &path);
-            }
-        }
-    }
+    // The folder the editor opened, which the configuration and the files
+    // both come from. `root_uri` is what a client always sends; the first
+    // workspace folder is the same place when it sends those instead.
+    let workspace = params
+        .root_uri
+        .clone()
+        .or_else(|| params.workspace_folders.as_ref()?.first().map(|f| f.uri.clone()))
+        .and_then(|uri| uri.to_file_path().ok());
+    refresh_configuration(&mut session, workspace.as_deref())?;
 
     // Register file watchers after workspace initialization
     setup_file_watcher_if_necessary(&mut session, &params.capabilities);
@@ -325,10 +323,9 @@ fn on_notifications(
                 .is_some_and(|url| p.changes.iter().any(|e| e.uri == url));
 
             if config_changed {
-                let workspace_uri = Workspace::try_get(&s.db)
-                    .and_then(|c| c.workspace_folder(&s.db).cloned())
-                    .and_then(|path| Url::from_file_path(path).ok());
-                refresh_configuration(s, workspace_uri)?;
+                let workspace = Workspace::try_get(&s.db)
+                    .and_then(|c| c.workspace_folder(&s.db).cloned());
+                refresh_configuration(s, workspace.as_deref())?;
             } else {
                 changed_watched_files(s, p, |url| {
                     let path = url.to_file_path().ok()?;
@@ -363,13 +360,13 @@ fn on_notifications(
 /// file location (e.g. no library configured) are reported via `window/showMessage`.
 fn refresh_configuration(
     session: &mut Session<RootDatabase>,
-    workspace_uri: Option<Url>,
+    workspace: Option<&std::path::Path>,
 ) -> anyhow::Result<()> {
     let mut file_errors = vec![];
     let mut notices: Vec<ConfigurationNotice> = vec![];
-    Workspace::init_or_update(
+    db::loader::open_workspace(
         &mut session.db,
-        workspace_uri,
+        workspace,
         session.encoding.clone(),
         &mut file_errors,
         &mut notices,
