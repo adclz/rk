@@ -110,8 +110,12 @@ static SURROUND_SPACES: &str = r##"
 (allow_pragma rule: (pragma_string) @append_space)
 (allow_pragma "}" @prepend_antispace)
 
-; Test pragma: on its own line before the POU keyword
+; Test, export and once pragmas: each on its own line before the POU
+; keyword. Two may stand above one FUNCTION, and without this they glue
+; onto each other.
 (test_pragma) @leaf @append_hardline
+(export_pragma) @leaf @append_hardline
+(once_pragma) @leaf @append_hardline
 "##;
 
 static NEW_LINES: &str = r##"
@@ -407,6 +411,8 @@ static ALLOW_BLANK_LINE: &str = r#"
     (line_comment) (c_style_comment) (pascal_style_comment)
     (namespace_elements)
     (test_pragma)
+    (export_pragma)
+    (once_pragma)
     (allow_pragma)
 ] @allow_blank_line_before
 
