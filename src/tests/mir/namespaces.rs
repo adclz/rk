@@ -44,9 +44,9 @@ VAR i : INT; d : DINT; END_VAR
 END_FUNCTION
 "#;
     assert_snapshot!(mir_exports(&mut with_db, &[source]), @r"
-    export NsA.foo(Int) -> Int
-    export NsB.foo(DInt) -> DInt
-    export test()
+    func NsA.foo(Int) -> Int
+    func NsB.foo(DInt) -> DInt
+    func test()
     ");
 }
 
@@ -81,9 +81,9 @@ END_VAR
 END_FUNCTION
 "#;
     assert_snapshot!(mir_exports(&mut with_db, &[source]), @r"
-    export NsA.Counter$__body__(*struct(NsA.Counter))
-    export NsB.Counter$__body__(*struct(NsB.Counter))
-    export test()
+    func NsA.Counter$__body__(*struct(NsA.Counter))
+    func NsB.Counter$__body__(*struct(NsB.Counter))
+    func test()
     ");
 }
 
@@ -120,11 +120,11 @@ END_VAR
 END_FUNCTION
 "#;
     assert_snapshot!(mir_exports(&mut with_db, &[source]), @r"
-    export NsA.Counter#reset(*struct(NsA.Counter))
-    export NsA.Counter$__body__(*struct(NsA.Counter))
-    export NsB.Counter#reset(*struct(NsB.Counter))
-    export NsB.Counter$__body__(*struct(NsB.Counter))
-    export test()
+    func NsA.Counter#reset(*struct(NsA.Counter))
+    func NsA.Counter$__body__(*struct(NsA.Counter))
+    func NsB.Counter#reset(*struct(NsB.Counter))
+    func NsB.Counter$__body__(*struct(NsB.Counter))
+    func test()
     ");
 }
 
@@ -165,9 +165,9 @@ END_VAR
 END_FUNCTION
 "#;
     assert_snapshot!(mir_exports(&mut with_db, &[source]), @r"
-    export NsA.MyClass#inc(*struct(NsA.MyClass))
-    export NsB.MyClass#inc(*struct(NsB.MyClass))
-    export test()
+    func NsA.MyClass#inc(*struct(NsA.MyClass))
+    func NsB.MyClass#inc(*struct(NsB.MyClass))
+    func test()
     ");
 }
 

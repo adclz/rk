@@ -74,6 +74,7 @@ pub fn allow_rules() -> Vec<CompletionItem> {
 pub fn pou_pragmas(braces: Braces) -> Vec<CompletionItem> {
     vec![
         item("test", "", braces),
+        item("export", "", braces),
         item("extern", " '${1:module}' '${2:name}'", braces),
         item("once", "", braces),
         item("warn", " = '${1:message}'", braces),

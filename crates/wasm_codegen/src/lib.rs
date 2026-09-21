@@ -1018,7 +1018,11 @@ impl<'a> WasmGen<'a> {
             wasm_encoder::EntityType::Function(type_idx),
         );
 
-        // Re-export the import so it can be called by name from tests
+        // Re-exported when the MIR asks, which only the test harness does, to
+        // call an import by name. See `MirExternFunction::linkage`.
+        if ext_fn.linkage != MirLinkage::Export {
+            return;
+        }
         let export_name = ext_fn.name.text(self.db).to_string();
         let wasm_idx = self
             .index_remap
@@ -1052,7 +1056,8 @@ impl<'a> WasmGen<'a> {
         // Register function
         self.fn_section.function(type_idx);
 
-        // Export every public function.
+        // Exported when the MIR says so: an `{export}` FUNCTION, a PROGRAM
+        // body, `__init`.
         if func.linkage == MirLinkage::Export {
             let export_name = func
                 .export_name
@@ -1293,8 +1298,11 @@ impl<'a> WasmGen<'a> {
         self.next_type_idx += 1;
         self.fn_section.function(type_idx);
 
-        // Exported under the test's name.
-        if func.linkage == MirLinkage::Export {
+        // Exported under the test's name, in a debug build. A release is what
+        // a plant runs: unexported there, the tests and their wrappers are
+        // unreachable and the optimizer removes them. They are still lowered,
+        // so the memory layout stays the same in both profiles.
+        if func.linkage == MirLinkage::Export && self.profile != Profile::Release {
             let export_name = func
                 .export_name
                 .as_ref()
@@ -1735,9 +1743,10 @@ impl<'a> WasmGen<'a> {
             });
         }
 
-        // The `{test}` manifest, load-bearing for `rk test`: emitted in the core
-        // module, so the module a test runs against is the one a plant runs.
-        if !self.module.test_manifest.tests.is_empty() {
+        // The `{test}` manifest, load-bearing for `rk test`, which builds the
+        // debug profile and optimizes that. A release lists no test because
+        // it exports none.
+        if self.profile != Profile::Release && !self.module.test_manifest.tests.is_empty() {
             module.section(&wasm_encoder::CustomSection {
                 name: std::borrow::Cow::Borrowed(debug_format::test_manifest::TEST_MANIFEST_SECTION),
                 data: std::borrow::Cow::Owned(self.module.test_manifest.to_msgpack()),

@@ -101,8 +101,9 @@ cargo run --bin rk -- check --workspace <workspace_path>
 # plan for it. Flatten does handle the LEGACY `try`, which is why "Binaryen
 # supports exceptions" and "-O4 crashes" are both true. With the pass skipped
 # what is left of -O4 is close to -O3 (192,121 bytes against 192,115 on the
-# stdlib module). Trying Flatten first would never pay: the stdlib's 341 test
-# wrappers put a `try_table` in every module rk emits.
+# stdlib module). Trying Flatten first is not done: a debug-profile module
+# (what `rk test -O` optimizes) always has the test wrappers' `try_table`, and
+# a release one has it as soon as the program can raise.
 
 # Fuzz testing
 cargo +nightly build --release --manifest-path crates/fuzz/Cargo.toml --bin fuzz_compiler
@@ -204,6 +205,7 @@ Type checking proceeds in three memoized salsa queries:
 - **`ordermap::OrderMap`** when insertion order matters (e.g., variable declarations for parameter ordering).
 - **Scope-stable IDs**: `SemanticIndexBuilder` uses a monotonic counter (not raw AST IDs) for `ScopeId` values, enabling fine-grained incrementality.
 - **Head vs body separation**: Changing a function body doesn't re-infer its signature.
+- **Exports are opt-in**: a module exports `__init`, the PROGRAM bodies, the FUNCTIONs marked `{export}` and, in the debug profile only, the workspace's `{test}` functions. Everything else is `MirLinkage::Internal`, FB bodies and methods included, because an export is a root Binaryen cannot remove. A library's `{test}` functions are not lowered. The codegen tests call FUNCTIONs by name, so `codegen/harness.rs` re-exports everything (`export_everything`) on a clone of the MIR.
 
 ### Error Code Categories
 

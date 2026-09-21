@@ -6,7 +6,7 @@ use super::utils::mir_exports;
 use crate::tests::utils::with_db;
 
 #[rstest]
-fn fb_body_exported(mut with_db: RootDatabase) {
+fn fb_body_is_not_exported(mut with_db: RootDatabase) {
     let source = r#"
 FUNCTION_BLOCK SR
 VAR_INPUT S1, R : BOOL; END_VAR
@@ -14,7 +14,7 @@ VAR_OUTPUT Q1 : BOOL; END_VAR
     Q1 := S1 OR ((NOT R) AND Q1);
 END_FUNCTION_BLOCK
     "#;
-    assert_snapshot!(mir_exports(&mut with_db, &[source]), @"export SR$__body__(*struct(SR))");
+    assert_snapshot!(mir_exports(&mut with_db, &[source]), @"func SR$__body__(*struct(SR))");
 }
 
 #[rstest]
@@ -34,8 +34,8 @@ END_METHOD
 END_FUNCTION_BLOCK
     "#;
     assert_snapshot!(mir_exports(&mut with_db, &[source]), @r"
-    export Counter#GetCount(*struct(Counter)) -> Int
-    export Counter$__body__(*struct(Counter))
+    func Counter#GetCount(*struct(Counter)) -> Int
+    func Counter$__body__(*struct(Counter))
     ");
 }
 
@@ -50,7 +50,7 @@ NAMESPACE Std.Bistable
     END_FUNCTION_BLOCK
 END_NAMESPACE
     "#;
-    assert_snapshot!(mir_exports(&mut with_db, &[source]), @"export Std.Bistable.RS$__body__(*struct(Std.Bistable.RS))");
+    assert_snapshot!(mir_exports(&mut with_db, &[source]), @"func Std.Bistable.RS$__body__(*struct(Std.Bistable.RS))");
 }
 
 #[rstest]
@@ -70,8 +70,8 @@ VAR latch : SR; END_VAR
 END_FUNCTION
     "#;
     assert_snapshot!(mir_exports(&mut with_db, &[source]), @r"
-    export SR$__body__(*struct(SR))
-    export test() -> Bool
+    func SR$__body__(*struct(SR))
+    func test() -> Bool
     ");
 }
 
@@ -92,8 +92,8 @@ VAR c1 : Counter; c2 : Counter; END_VAR
 END_FUNCTION
     "#;
     assert_snapshot!(mir_exports(&mut with_db, &[source]), @r"
-    export Counter$__body__(*struct(Counter))
-    export test()
+    func Counter$__body__(*struct(Counter))
+    func test()
     ");
 }
 
@@ -115,8 +115,8 @@ VAR_OUTPUT result : INT; END_VAR
 END_FUNCTION_BLOCK
     "#;
     assert_snapshot!(mir_exports(&mut with_db, &[source]), @r"
-    export Inner$__body__(*struct(Inner))
-    export Outer$__body__(*struct(Outer))
+    func Inner$__body__(*struct(Inner))
+    func Outer$__body__(*struct(Outer))
     ");
 }
 
@@ -135,7 +135,7 @@ VAR x : INT; END_VAR
 END_FUNCTION
     "#;
     assert_snapshot!(mir_exports(&mut with_db, &[source]), @r"
-    export MOVE(Int, *Int)
-    export test()
+    func MOVE(Int, *Int)
+    func test()
     ");
 }

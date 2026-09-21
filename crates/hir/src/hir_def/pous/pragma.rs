@@ -7,6 +7,10 @@ use crate::hir_def::interned::identifier::SpanIdent;
 pub enum Pragma<'db> {
     Test(SpanIdent<'db>),
     Once(SpanIdent<'db>),
+    /// `{export}` above a FUNCTION: it is a WASM export, under its name.
+    /// Nothing else a workspace declares is, so an optimizer may drop what
+    /// nothing calls.
+    Export(SpanIdent<'db>),
     Warn(SpanIdent<'db>, WarnPragma),
     Extern(SpanIdent<'db>, ExternPragma),
     Allow(SpanIdent<'db>, AllowPragma),
@@ -18,6 +22,7 @@ impl<'db> Pragma<'db> {
         match self {
             Pragma::Test(s) => s,
             Pragma::Once(s) => s,
+            Pragma::Export(s) => s,
             Pragma::Warn(s, _) => s,
             Pragma::Extern(s, _) => s,
             Pragma::Allow(s, _) => s,
@@ -28,6 +33,7 @@ impl<'db> Pragma<'db> {
         match self {
             Pragma::Test(_) => "{test}",
             Pragma::Once(_) => "{once}",
+            Pragma::Export(_) => "{export}",
             Pragma::Warn(_, _) => "{warn}",
             Pragma::Extern(_, _) => "{extern}",
             Pragma::Allow(_, _) => "{allow}",
@@ -69,6 +75,10 @@ pub fn is_test(_db: &dyn WorkspaceDataBase, pragmas: &[Pragma<'_>]) -> bool {
 
 pub fn is_once(_db: &dyn WorkspaceDataBase, pragmas: &[Pragma<'_>]) -> bool {
     pragmas.iter().any(|p| matches!(p, Pragma::Once(_)))
+}
+
+pub fn is_export(_db: &dyn WorkspaceDataBase, pragmas: &[Pragma<'_>]) -> bool {
+    pragmas.iter().any(|p| matches!(p, Pragma::Export(_)))
 }
 
 pub fn warn_pragma<'a>(pragmas: &'a [Pragma<'_>]) -> Option<&'a WarnPragma> {

@@ -11,6 +11,8 @@ Not valid on other POU kinds.
 `{warn = 'message'}` and `{info = 'message'}` attach a diagnostic to every call site of the POU.
 Note the `=`.
 
+`{export}` marks a `FUNCTION` as a WASM export, under its name — see below.
+
 `{extern 'module' 'name'}` declares the `FUNCTION` as a WASM import — see below.
 
 `{wasm [type_ref] 'instruction' (params a b) (result r)}` is a statement: it emits one WASM instruction on the operands it names and stores the value in `r`, a parameter, a local or the FUNCTION's return (E1506 otherwise).
@@ -55,6 +57,30 @@ END_FUNCTION
 `{warn}` and `{info}` report with no configuration at all: `warn-pragma` is one of the recommended rules, and the linter does not need a `[linter]` section to be on.
 `{once}` is the exception, because `once-violation` is opt-in: it reports only under `select = "all"` or an explicit `[linter.rules]` entry.
 See `tool-linter`.
+
+## The export contract
+
+`{export}` sits **above** the `FUNCTION`, like `{test}`, and takes no argument.
+The FUNCTION is exported under its name, qualified by its namespace (`Plant.Reset`), and the declaration is the signature: the `cli-compile` skill's ABI reference gives what each parameter becomes.
+
+Nothing else a workspace declares is exported, apart from `__init`, the PROGRAM bodies the schedule names and, in a debug build, the `{test}` functions.
+An export is a root for the optimizer, so a release build drops every FUNCTION that is neither exported nor called, the standard library's included.
+
+```iecst
+{export}
+FUNCTION Scale: REAL
+	VAR_INPUT
+		raw: INT;
+		gain: REAL;
+	END_VAR
+	Scale := raw * gain;
+END_FUNCTION
+```
+
+Putting `{export}` on anything other than a `FUNCTION` is E1508: a PROGRAM is exported already, and a FUNCTION_BLOCK or a METHOD needs an instance the host does not have.
+
+What is refused with E1509, because there is no single function to export: an `{extern}` FUNCTION (an import has no body), a `{test}` FUNCTION (exported for the runner already), a FUNCTION that takes an interface (compiled once per implementation), a variadic FUNCTION (compiled once per arity) and an overloaded FUNCTION (the name belongs to several).
+Export a plain FUNCTION that calls it instead.
 
 ## The extern contract
 

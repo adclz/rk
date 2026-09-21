@@ -327,13 +327,18 @@ fn lower_function_inner<'db>(
     }
     let body = body;
 
-    // Determine linkage from the SAME authority phase 1 used: the pragma.
+    // Exported when the declaration says so, with `{export}`. A `{test}` is
+    // too, for the runner to call; codegen leaves it out of a release build.
+    // Everything else is internal: an export is a root, and with every POU
+    // exported an optimizer could remove nothing.
     let linkage = {
         use hir::HasPragmas;
         if func.extern_pragma(db).is_some() {
             MirLinkage::Internal // extern functions are imports, handled separately
-        } else {
+        } else if func.is_export(db) || func.is_test(db) {
             MirLinkage::Export
+        } else {
+            MirLinkage::Internal
         }
     };
 
@@ -534,7 +539,8 @@ fn lower_function_block_inner<'db>(
             return_type,
             locals,
             body,
-            linkage: MirLinkage::Export,
+            // A method needs an instance the host does not have.
+            linkage: MirLinkage::Internal,
             is_test: false,
             export_name: None,
         });
@@ -616,7 +622,8 @@ fn lower_function_block_inner<'db>(
         return_type: None,
         locals: body_locals,
         body: body_stmts,
-        linkage: MirLinkage::Export,
+        // Called by whoever holds an instance, never by the host.
+        linkage: MirLinkage::Internal,
         is_test: false,
         export_name: None,
     });
@@ -801,7 +808,8 @@ fn lower_class_inner<'db>(
             return_type,
             locals,
             body,
-            linkage: MirLinkage::Export,
+            // A method needs an instance the host does not have.
+            linkage: MirLinkage::Internal,
             is_test: false,
             export_name: None,
         });
@@ -894,6 +902,7 @@ fn lower_program_inner<'db>(
         return_type: None,
         locals,
         body,
+        // The schedule names this export, and the host calls it every scan.
         linkage: MirLinkage::Export,
         is_test: false,
         export_name: None,

@@ -624,7 +624,7 @@ END_FUNCTION_BLOCK
 FUNCTION fn : INT
 END_FUNCTION
 "#,
-    &["{test}", "{extern}", "{once}", "{warn}", "{info}", "{allow}"]
+    &["{test}", "{export}", "{extern}", "{once}", "{warn}", "{info}", "{allow}"]
 )]
 #[case::in_a_namespace(
     r#"
@@ -634,7 +634,7 @@ FUNCTION fn : INT
 END_FUNCTION
 END_NAMESPACE
 "#,
-    &["{test}", "{extern}", "{once}", "{warn}", "{info}", "{allow}"]
+    &["{test}", "{export}", "{extern}", "{once}", "{warn}", "{info}", "{allow}"]
 )]
 #[case::in_a_pou_head(
     r#"

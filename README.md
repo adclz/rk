@@ -674,6 +674,8 @@ so `{attribute '…'}` from other toolchains cannot be copied in.
 - `{allow 'rule' 'rule'}` silences lint rules: above a POU for the whole POU, as a statement for the next statement.
 
 
+- `{export}` marks a `FUNCTION` a host can call, see [WASM ABI](#wasm-abi).
+
 - `{extern 'module' 'name'}` declares a `FUNCTION` as a WASM import; the declaration is the signature.
 
 
@@ -838,7 +840,9 @@ So that means you can replace any part of the stdlib, extend it, or read it to s
 
 A workspace compiles to one core module.
 
-It imports its linear memory as `env.memory`, exports `__init` to set cold-start values, one body per POU.
+It imports its linear memory as `env.memory`, exports `__init` to set cold-start values, one body per `PROGRAM`, and every `FUNCTION` marked `{export}`.
+
+Nothing else is exported, the stdlib included: a release build only keeps what you call.
 
 Retained and global bands as `retain_base`/`retain_size` and `globals_base`/`globals_size`.
 
@@ -860,7 +864,7 @@ Calling an export:
  
 - A `PROGRAM` body takes its instance address and does not have a return type: `(i32) -> ()`.
 
-- A `FUNCTION` takes every parameter in the order it is declared: 
+- A `FUNCTION` marked `{export}` takes every parameter in the order it is declared: 
   - `VAR_INPUT` scalars by value.
   - One pointer per `VAR_IN_OUT` and `VAR_OUTPUT`.
   
@@ -871,7 +875,7 @@ Calling an export:
 So this function:
 
 ```st
-{extern}
+{export}
 FUNCTION Scale : REAL
 	VAR_INPUT
 		raw: INT;
@@ -921,7 +925,7 @@ All these tables are stored as custom sections, encoded with [MessagePack](https
 | `debug-locals` | debug only | wasm local slot → variable name and type |
 | `rk.schedule` | every build | tasks, periods, priorities, instance addresses |
 | `retain-map` | every build | the byte ranges a power cycle must preserve |
-| `test-manifest` | when there are tests | the exports `rk test` calls |
+| `test-manifest` | debug only, when there are tests | the exports `rk test` calls |
 
 > [!WARNING]
 > The last three are **not** debug information.
@@ -944,6 +948,7 @@ There are two profiles: **debug** and **release**.
 | | `rk compile` | `rk compile --release` |
 |---|---|---|
 | stepping tables | yes | no |
+| tests | yes | no |
 | symbols, retain map, schedule | yes | yes |
 | optimized by wasm-opt | never | always |
 
@@ -972,8 +977,7 @@ That is what lets you stop a release build, rebuild the same source as debug, an
 
 Variables can still be read and written by name in a release build, because `debug-symbols` points to the memory and not to the code.
 
-> [!NOTE]
-> Most of what a release build saves comes from the dropped tables, not from the optimized code.
+> [!NOTE]Binaryen removes every function you never call.
 
 ### Optimization levels
 

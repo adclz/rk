@@ -23,8 +23,8 @@ END_FUNCTION
     // exports as a no-op; previously the codegen dropped empty-body
     // POUs entirely, which left call sites resolving to func idx 0.
     assert_snapshot!(mir_exports(&mut with_db, &[source]), @r"
-    export greet(String { capacity: 80 })
-    export test()
+    func greet(String { capacity: 80 })
+    func test()
     ");
 }
 
@@ -44,8 +44,8 @@ FUNCTION test : INT
 END_FUNCTION
     "#;
     assert_snapshot!(mir_exports(&mut with_db, &[source]), @r"
-    export add_default(Int, Int) -> Int
-    export test() -> Int
+    func add_default(Int, Int) -> Int
+    func test() -> Int
     ");
 }
 
@@ -65,7 +65,7 @@ FUNCTION test : INT
 END_FUNCTION
     "#;
     assert_snapshot!(mir_exports(&mut with_db, &[source]), @r"
-    export add_default(Int, Int) -> Int
-    export test() -> Int
+    func add_default(Int, Int) -> Int
+    func test() -> Int
     ");
 }

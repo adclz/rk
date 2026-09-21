@@ -2671,6 +2671,11 @@
     }
   },
   {
+    "type": "export_pragma",
+    "named": true,
+    "fields": {}
+  },
+  {
     "type": "extern_param_list",
     "named": true,
     "fields": {
@@ -4953,6 +4958,10 @@
       "types": [
         {
           "type": "allow_pragma",
+          "named": true
+        },
+        {
+          "type": "export_pragma",
           "named": true
         },
         {

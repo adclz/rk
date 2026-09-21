@@ -40,6 +40,7 @@ There are two profiles, debug and release.
 | | `rk compile` | `rk compile --release` |
 | --- | --- | --- |
 | stepping tables | yes | no |
+| tests | yes | no |
 | symbols, retain map, schedule | yes | yes |
 | optimized by wasm-opt | never | always |
 
@@ -51,7 +52,10 @@ The memory layout is identical between the two profiles.
 That is what lets a host stop a release build, rebuild the same source as debug, and carry the live state across.
 Variables can still be read and written by name in a release build, because `debug-symbols` points to the memory and not to the code.
 
-Most of what a release build saves comes from the dropped tables, not from the optimized code.
+About half of what a release build saves comes from the dropped tables.
+The other half is the stdlib: only PROGRAMs and `{export}` FUNCTIONs are exported, so Binaryen removes every function nothing calls.
+A release build carries no test either: the `{test}` functions are compiled, so the layout does not move, but they are not exported and the `test-manifest` section is left out.
+`rk test` always builds the debug module, and `rk test -O` optimizes that one.
 
 ## wasm-opt
 

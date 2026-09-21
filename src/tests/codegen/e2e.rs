@@ -203,6 +203,7 @@ FUNCTION capture_msg
 VAR_INPUT msg : STRING; END_VAR
 END_FUNCTION
 
+{export}
 FUNCTION send : INT
     capture_msg(msg := 'hello from ST');
     send := 1;
@@ -251,6 +252,7 @@ END_FUNCTION
 #[rstest]
 fn a_returned_string_reaches_the_host_intact(mut with_db: db::RootDatabase) {
     let source = r#"
+{export}
 FUNCTION greet : STRING
     greet := 'returned from ST';
 END_FUNCTION
