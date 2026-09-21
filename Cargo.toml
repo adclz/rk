@@ -135,6 +135,8 @@ wasmparser = { workspace = true }
 static_assertions = { workspace = true }
 rk = { path = "crates/cli" }
 tempfile = "3"
+clap = { workspace = true }
+serde_json = { workspace = true }
 debug_format = { workspace = true }
 wasmtime = "45.0.1"
 wasm-encoder = { workspace = true }
