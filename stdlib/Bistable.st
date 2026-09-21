@@ -99,7 +99,6 @@ NAMESPACE Std.Bistable
 
 	NAMESPACE Test
 		USING Std.Unit
-		USING Std.Bits
 
 		{test}
 		FUNCTION test_sr_set

@@ -668,7 +668,6 @@ NAMESPACE Std.Counters
 
 	NAMESPACE Test
 		USING Std.Unit;
-		USING Std.Edge;
 		USING Std.Counters;
 
 		// -- CTU (Count Up) ----------------------------------------
