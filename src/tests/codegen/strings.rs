@@ -879,6 +879,7 @@ fn regression_string_param_not_clobbered_by_return_write(mut with_db: db::RootDa
     // `len_of(s)` call will receive the corrupted length.
     let src = full_source(
         r#"
+{export}
 FUNCTION probe : UDINT
 VAR_INPUT s : STRING; END_VAR
     probe := 999;

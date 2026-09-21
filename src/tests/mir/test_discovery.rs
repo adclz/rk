@@ -15,7 +15,7 @@ NAMESPACE Std.Math
     END_FUNCTION
 END_NAMESPACE
     "#;
-    assert_snapshot!(mir_exports(&mut with_db, &[source]), @"export Std.Math.ADD(Int, Int) -> Int");
+    assert_snapshot!(mir_exports(&mut with_db, &[source]), @"func Std.Math.ADD(Int, Int) -> Int");
 }
 
 #[rstest]
@@ -48,7 +48,7 @@ NAMESPACE A
     END_NAMESPACE
 END_NAMESPACE
     "#;
-    assert_snapshot!(mir_exports(&mut with_db, &[source]), @"export A.B.C.deep_fn(Int) -> Int");
+    assert_snapshot!(mir_exports(&mut with_db, &[source]), @"func A.B.C.deep_fn(Int) -> Int");
 }
 
 #[rstest]
@@ -59,7 +59,7 @@ VAR_INPUT x : INT; END_VAR
     global_fn := x;
 END_FUNCTION
     "#;
-    assert_snapshot!(mir_exports(&mut with_db, &[source]), @"export global_fn(Int) -> Int");
+    assert_snapshot!(mir_exports(&mut with_db, &[source]), @"func global_fn(Int) -> Int");
 }
 
 #[rstest]
@@ -87,9 +87,9 @@ NAMESPACE Std.Math
 END_NAMESPACE
     "#;
     assert_snapshot!(mir_exports(&mut with_db, &[source]), @r"
-    export Std.Math.ABS(Int) -> Int
     export Std.Math.Test.test_abs_negative()
     export Std.Math.Test.test_abs_positive()
+    func Std.Math.ABS(Int) -> Int
     ");
 }
 
@@ -115,8 +115,8 @@ NAMESPACE Std.Math.Test
 END_NAMESPACE
     "#;
     assert_snapshot!(mir_exports(&mut with_db, &[source1, source2]), @r"
-    export Std.Math.ADD(Int, Int) -> Int
     export Std.Math.Test.test_add()
+    func Std.Math.ADD(Int, Int) -> Int
     ");
 }
 

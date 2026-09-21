@@ -13,7 +13,7 @@ VAR_INPUT IN : REAL; END_VAR
     {wasm 'i32.trunc_f32_s' (params IN) (result REAL_TO_INT)}
 END_FUNCTION
     "#;
-    assert_snapshot!(mir_exports(&mut with_db, &[source]), @"export REAL_TO_INT(Real) -> Int");
+    assert_snapshot!(mir_exports(&mut with_db, &[source]), @"func REAL_TO_INT(Real) -> Int");
 }
 
 #[rstest]
@@ -25,7 +25,7 @@ VAR_INPUT IN : INT; END_VAR
     {wasm 'f32.convert_i32_s' (params IN) (result INT_TO_REAL)}
 END_FUNCTION
     "#;
-    assert_snapshot!(mir_exports(&mut with_db, &[source]), @"export INT_TO_REAL(Int) -> Real");
+    assert_snapshot!(mir_exports(&mut with_db, &[source]), @"func INT_TO_REAL(Int) -> Real");
 }
 
 #[rstest]
@@ -36,7 +36,7 @@ FUNCTION nop
     {wasm 'nop'}
 END_FUNCTION
     "#;
-    assert_snapshot!(mir_exports(&mut with_db, &[source]), @"export nop()");
+    assert_snapshot!(mir_exports(&mut with_db, &[source]), @"func nop()");
 }
 
 #[rstest]
@@ -72,10 +72,10 @@ VAR i : INT; r : REAL; lr : LREAL; li : LINT; END_VAR
 END_FUNCTION
     "#;
     assert_snapshot!(mir_exports(&mut with_db, &[source]), @r"
-    export INT_TO_LREAL(Int) -> LReal
-    export INT_TO_REAL(Int) -> Real
-    export LINT_TO_INT(LInt) -> Int
-    export REAL_TO_INT(Real) -> Int
-    export test()
+    func INT_TO_LREAL(Int) -> LReal
+    func INT_TO_REAL(Int) -> Real
+    func LINT_TO_INT(LInt) -> Int
+    func REAL_TO_INT(Real) -> Int
+    func test()
     ");
 }

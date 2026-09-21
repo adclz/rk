@@ -1455,6 +1455,61 @@ END_FUNCTION
     ");
 }
 
+/// `{export}` and `{once}` each take their own line, like `{test}`, and two
+/// above one FUNCTION do not glue onto each other.
+#[rstest]
+pub fn export_pragma_formatting(mut with_db: RootDatabase) {
+    let source = r#"
+{once}   {export}
+FUNCTION   Setup : INT
+    Setup := 1;
+END_FUNCTION
+
+NAMESPACE Plant
+    // Called by the host on a recipe change.
+{export}   FUNCTION Reset : INT
+Reset := 0;
+END_FUNCTION
+
+{once}
+{export}
+FUNCTION Other : INT
+Other := 0;
+END_FUNCTION
+END_NAMESPACE
+"#;
+
+    add_sources(&mut with_db, &[source]);
+    let document = with_db
+        .get_files()
+        .iter()
+        .last()
+        .unwrap()
+        .document(&with_db);
+
+    assert_snapshot!(fmt(document), @r"
+    {once}
+    {export}
+    FUNCTION Setup: INT
+    	Setup := 1;
+    END_FUNCTION
+
+    NAMESPACE Plant
+    	// Called by the host on a recipe change.
+    	{export}
+    	FUNCTION Reset: INT
+    		Reset := 0;
+    	END_FUNCTION
+
+    	{once}
+    	{export}
+    	FUNCTION Other: INT
+    		Other := 0;
+    	END_FUNCTION
+    END_NAMESPACE
+    ");
+}
+
 #[rstest]
 pub fn test_pragma_on_program(mut with_db: RootDatabase) {
     let source = r#"

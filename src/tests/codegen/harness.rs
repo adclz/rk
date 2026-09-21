@@ -73,8 +73,26 @@ fn compile_to_mir_and_wasm_impl(
     check_diagnostics(db, file, expectation);
     let mir_module =
         mir::lower::lower_module::lower_module(db, sem_idx).expect("MIR lowering failed");
-    let wasm = wasm_codegen::generate_wasm(db, &mir_module).finish();
+    let wasm = wasm_codegen::generate_wasm(db, &export_everything(&mir_module)).finish();
     (mir_module, wasm)
+}
+
+/// The module with every function exported, imports included, which is what
+/// the compiler did before `{export}`. The tests here call a FUNCTION, an FB
+/// body or an import by name to look at what it computes, and a host may not:
+/// a real module exports only what says so. An export is a root for an
+/// optimizer and nothing else, so the code under test is the same.
+///
+/// The MIR a test gets back is the untouched one.
+pub fn export_everything(module: &mir::MirModule) -> mir::MirModule {
+    let mut module = module.clone();
+    for func in &mut module.functions {
+        func.linkage = mir::function::MirLinkage::Export;
+    }
+    for ext in &mut module.extern_functions {
+        ext.linkage = mir::function::MirLinkage::Export;
+    }
+    module
 }
 
 #[derive(Clone, Copy)]
@@ -139,7 +157,7 @@ fn compile_to_wasm_impl(db: &mut RootDatabase, source: &str, expectation: Expect
     let mir_module =
         mir::lower::lower_module::lower_module(db, sem_idx).expect("MIR lowering failed");
 
-    let wasm_module = wasm_codegen::generate_wasm(db, &mir_module);
+    let wasm_module = wasm_codegen::generate_wasm(db, &export_everything(&mir_module));
     wasm_module.finish()
 }
 

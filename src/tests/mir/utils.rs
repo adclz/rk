@@ -14,7 +14,8 @@ fn fmt_ty(t: &mir::types::MirType, db: &dyn WorkspaceDataBase) -> String {
     }
 }
 
-/// Lower IEC source to MIR and format all exports (imports + functions) as a string.
+/// Lower IEC source to MIR and format every import and function as a string:
+/// `export` for what the module exports, `func` for what stays internal.
 pub fn mir_exports(db: &mut RootDatabase, sources: &[&str]) -> String {
     use auto_lsp::default::db::BaseDatabase;
     add_sources(db, sources);
@@ -48,9 +49,10 @@ pub fn mir_exports(db: &mut RootDatabase, sources: &[&str]) -> String {
 
     // Functions
     for func in &module.functions {
-        if func.linkage != MirLinkage::Export {
-            continue;
-        }
+        let linkage = match func.linkage {
+            MirLinkage::Export => "export",
+            MirLinkage::Internal => "func",
+        };
         let export_name = func
             .export_name
             .as_ref()
@@ -63,7 +65,7 @@ pub fn mir_exports(db: &mut RootDatabase, sources: &[&str]) -> String {
             .map(|t| format!(" -> {}", fmt_ty(t, db)))
             .unwrap_or_default();
         lines.push(format!(
-            "export {}({}){}",
+            "{linkage} {}({}){}",
             export_name,
             params.join(", "),
             ret
