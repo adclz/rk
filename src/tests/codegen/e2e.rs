@@ -5,6 +5,22 @@ use rstest::rstest;
 
 use super::with_db;
 
+/// Why a test failed, when the test itself reported it: a failed `ASSERT` or
+/// a `__RAISE` comes back through the result area with the program's message.
+/// A trap is a failure too, but one the test never got to report, and the
+/// runner says so; a test here that expects a message does not accept one.
+fn reported_failure(record: &debug_format::test_report::TestRecord) -> &str {
+    let reason = record
+        .reason
+        .as_deref()
+        .unwrap_or_else(|| panic!("expected a reported failure, got a pass: {record:?}"));
+    assert!(
+        !reason.starts_with("trapped"),
+        "expected a reported failure, got a trap: {reason}"
+    );
+    reason
+}
+
 #[rstest]
 fn test_e2e_runtime(mut with_db: db::RootDatabase) {
     let source = r#"
@@ -93,13 +109,11 @@ END_FUNCTION
 
     let results = crate::tests::codegen::run_tests(&core_bytes, None).expect("run tests");
     assert_eq!(results.len(), 1);
-    match &results[0].outcome {
-        crate::tests::codegen::Outcome::Fail(msg) => assert!(
-            msg.contains("expected-failure-from-test-fixture"),
-            "the raised message is reported verbatim, got: {msg}"
-        ),
-        other => panic!("expected a reported failure, got {other:?}"),
-    }
+    let reason = reported_failure(&results[0]);
+    assert!(
+        reason.contains("expected-failure-from-test-fixture"),
+        "the raised message is reported verbatim, got: {reason}"
+    );
 }
 
 
@@ -144,23 +158,19 @@ END_FUNCTION
 
     let passed = results
         .iter()
-        .find(|r| r.entry.path.contains("test_that_passes"))
+        .find(|r| r.name.contains("test_that_passes"))
         .expect("the passing test ran");
-    assert_eq!(passed.outcome, crate::tests::codegen::Outcome::Pass);
+    assert!(passed.passed(), "{passed:?}");
 
     let failed = results
         .iter()
-        .find(|r| r.entry.path.contains("test_that_fails"))
+        .find(|r| r.name.contains("test_that_fails"))
         .expect("the failing test ran");
-    match &failed.outcome {
-        crate::tests::codegen::Outcome::Fail(msg) => {
-            assert!(
-                msg.contains("deliberate failure"),
-                "the program's own message survives: {msg}"
-            );
-        }
-        other => panic!("expected a reported failure, got {other:?}"),
-    }
+    let reason = reported_failure(failed);
+    assert!(
+        reason.contains("deliberate failure"),
+        "the program's own message survives: {reason}"
+    );
 
     // A filter selects a subset by path.
     let only = crate::tests::codegen::run_tests(&core, Some("passes")).expect("filtered run");

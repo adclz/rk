@@ -8,7 +8,6 @@
 use anyhow::{Context, Result, bail};
 use auto_lsp::default::db::file::File;
 use db::RootDatabase;
-use debug_format::test_manifest::{TEST_MANIFEST_SECTION, TestEntry, TestManifest};
 use debug_format::{DebugInfo, StackFrame, VarValue};
 use hir::{check::diagnostics_for_file, hir_def::semantic_index::semantic_index};
 use wasmtime::{ExternType, Instance, Linker, Memory, MemoryType, Module, Store, TypedFunc};
@@ -238,18 +237,26 @@ pub fn fault_message(
     memory: wasmtime::Memory,
     err: wasmtime::Error,
 ) -> String {
-    let Some(exn) = store.take_pending_exception() else {
-        return format!("{err:?}");
-    };
+    pending_exception(store, memory).unwrap_or_else(|| format!("{err:?}"))
+}
+
+/// The message of the `$rk_exception` the last call left pending, if it left
+/// one: its payload is the `(ptr, len)` of a STRING in linear memory.
+fn pending_exception(store: &mut wasmtime::Store<()>, memory: wasmtime::Memory) -> Option<String> {
+    let exn = store.take_pending_exception()?;
     let (Ok(wasmtime::Val::I32(ptr)), Ok(wasmtime::Val::I32(len))) =
         (exn.field(&mut *store, 0), exn.field(&mut *store, 1))
     else {
-        return format!("{err:?}");
+        return None;
     };
-    let data = memory.data(&*store);
-    data.get(ptr as u32 as usize..(ptr as u32 as usize).saturating_add(len as u32 as usize))
-        .map(|b| String::from_utf8_lossy(b).into_owned())
-        .unwrap_or_else(|| "<exception payload out of bounds>".to_string())
+    let start = ptr as u32 as usize;
+    Some(
+        memory
+            .data(&*store)
+            .get(start..start.saturating_add(len as u32 as usize))
+            .map(|b| String::from_utf8_lossy(b).into_owned())
+            .unwrap_or_else(|| "<exception payload out of bounds>".to_string()),
+    )
 }
 
 pub fn execute_wasm<P, R>(wasm_bytes: &[u8], func_name: &str, params: P) -> R
@@ -338,7 +345,6 @@ struct ScheduledTask {
 pub struct TestPlc {
     store: Store<()>,
     memory: Memory,
-    instance: Instance,
     driver: Driver,
     retain: Region,
     globals: Region,
@@ -385,8 +391,9 @@ impl TestPlc {
             .ctx("instantiating the module")?;
 
         if let Ok(init) = instance.get_typed_func::<(), ()>(&mut store, "__init") {
-            init.call(&mut store, ())
-                .map_err(|e| anyhow::anyhow!("running __init: {}", trap_words(&e)))?;
+            init.call(&mut store, ()).map_err(|e| {
+                anyhow::anyhow!("running __init: {}", rk::test_host::trap_words(&e))
+            })?;
         }
 
         let retain = Region {
@@ -414,7 +421,6 @@ impl TestPlc {
         Ok(Self {
             store,
             memory,
-            instance,
             driver,
             retain,
             globals,
@@ -480,35 +486,12 @@ impl TestPlc {
         Ok(())
     }
 
-    /// Call a `{test}` export, returning the address of its 12-byte result.
-    fn call_test(&mut self, export: &str) -> Result<i32> {
-        let f = self
-            .instance
-            .get_typed_func::<(), i32>(&mut self.store, export)
-            .ctx(format!(
-                "test export `{export}` must be a () -> i32 function"
-            ))?;
-        f.call(&mut self.store, ())
-            .map_err(|e| self.fault(e, &format!("test `{export}`")))
-    }
-
     /// What a failed call says: the `$rk_exception` payload when one is
     /// pending, else the trap's own words, under the unit that faulted.
     fn fault(&mut self, err: wasmtime::Error, unit: &str) -> anyhow::Error {
-        let words = match self.store.take_pending_exception() {
-            Some(exn) => match (exn.field(&mut self.store, 0), exn.field(&mut self.store, 1)) {
-                (Ok(wasmtime::Val::I32(ptr)), Ok(wasmtime::Val::I32(len))) => {
-                    let data = self.memory.data(&self.store);
-                    let start = ptr as u32 as usize;
-                    let msg = data
-                        .get(start..start.saturating_add(len as u32 as usize))
-                        .map(|b| String::from_utf8_lossy(b).into_owned())
-                        .unwrap_or_else(|| "<exception payload out of bounds>".to_string());
-                    format!("uncaught IEC exception: {msg}")
-                }
-                _ => trap_words(&err),
-            },
-            None => trap_words(&err),
+        let words = match pending_exception(&mut self.store, self.memory) {
+            Some(msg) => format!("uncaught IEC exception: {msg}"),
+            None => rk::test_host::trap_words(&err),
         };
         anyhow::anyhow!("{unit}: {words}")
     }
@@ -700,90 +683,15 @@ pub fn expect_section<'a>(wasm: &'a [u8], name: &str) -> &'a [u8] {
         .unwrap_or_else(|| panic!("module is missing the `{name}` custom section"))
 }
 
-/// A trap in plain words: the trap itself when there is one, otherwise the
-/// outermost message, never wasmtime's backtrace preamble.
-fn trap_words(err: &wasmtime::Error) -> String {
-    if let Some(trap) = err.downcast_ref::<wasmtime::Trap>() {
-        let words = trap.to_string();
-        return words
-            .strip_prefix("wasm trap: ")
-            .map(str::to_string)
-            .unwrap_or(words);
-    }
-    let first = err.to_string();
-    if !first.starts_with("error while executing") {
-        return first;
-    }
-    err.root_cause().to_string()
-}
+/// The `{test}` functions a module carries, as `rk test` finds them.
+pub use rk::test_host::discover as discover_tests;
 
-/// What happened to one `{test}` function.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub enum Outcome {
-    Pass,
-    /// A failed `ASSERT` or an explicit `RAISE`: the message the program gave.
-    Fail(String),
-    /// The test trapped, with the reason.
-    Trap(String),
-}
-
-/// One `{test}` function and how it went.
-#[derive(Debug, Clone)]
-pub struct TestResult {
-    pub entry: TestEntry,
-    pub outcome: Outcome,
-}
-
-impl TestResult {
-    pub fn passed(&self) -> bool {
-        self.outcome == Outcome::Pass
-    }
-}
-
-/// The `{test}` functions a module carries, from its `test-manifest` section.
-pub fn discover_tests(wasm: &[u8]) -> Vec<TestEntry> {
-    custom_section(wasm, TEST_MANIFEST_SECTION)
-        .and_then(|data| TestManifest::from_msgpack(data).ok())
-        .map(|m| m.tests)
-        .unwrap_or_default()
-}
-
-/// Run the module's `{test}` functions, each on a fresh instance so no test
-/// inherits another's state. `filter` selects by a substring of the path.
-pub fn run_tests(wasm: &[u8], filter: Option<&str>) -> Result<Vec<TestResult>> {
-    let mut results = Vec::new();
-    for entry in discover_tests(wasm) {
-        if filter.is_some_and(|f| !entry.path.contains(f)) {
-            continue;
-        }
-        let mut plc = TestPlc::load(wasm)
-            .with_context(|| format!("loading the module to run `{}`", entry.path))?;
-        let outcome = match plc.call_test(&entry.export) {
-            Ok(addr) => decode_test_result(&plc, addr),
-            Err(e) => Outcome::Trap(format!("{e:#}")),
-        };
-        results.push(TestResult { entry, outcome });
-    }
-    Ok(results)
-}
-
-/// Decode the 12-byte `result<_, string>` a test returns: discriminant, then
-/// for the error case a pointer and length into linear memory.
-fn decode_test_result(plc: &TestPlc, addr: i32) -> Outcome {
-    let Ok(head) = plc.read_bytes(addr as u32, 12) else {
-        return Outcome::Fail("test result area is outside linear memory".to_string());
-    };
-    let disc = i32::from_le_bytes(head[0..4].try_into().unwrap());
-    if disc == 0 {
-        return Outcome::Pass;
-    }
-    let ptr = u32::from_le_bytes(head[4..8].try_into().unwrap());
-    let len = u32::from_le_bytes(head[8..12].try_into().unwrap()) as usize;
-    if len == 0 {
-        return Outcome::Fail("assertion failed".to_string());
-    }
-    match plc.read_bytes(ptr, len) {
-        Ok(bytes) => Outcome::Fail(String::from_utf8_lossy(&bytes).into_owned()),
-        Err(_) => Outcome::Fail("test failure message is outside linear memory".to_string()),
-    }
+/// Run the module's `{test}` functions on the host `rk test` runs them on, so
+/// what passes here is what passes for a user. `filter` selects by a
+/// substring of the path.
+pub fn run_tests(
+    wasm: &[u8],
+    filter: Option<&str>,
+) -> Result<Vec<debug_format::test_report::TestRecord>> {
+    rk::test_host::run_each(wasm, filter, None, |_| {})
 }

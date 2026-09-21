@@ -228,7 +228,7 @@ fn explain(
 
 /// A trap in plain words: the trap itself when there is one, otherwise the
 /// outermost message, never wasmtime's backtrace preamble.
-fn trap_words(err: &wasmtime::Error) -> String {
+pub fn trap_words(err: &wasmtime::Error) -> String {
     if let Some(trap) = err.downcast_ref::<wasmtime::Trap>() {
         let words = trap.to_string();
         return words
