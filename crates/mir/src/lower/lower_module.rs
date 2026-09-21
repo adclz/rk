@@ -55,7 +55,8 @@ fn is_workspace<'db>(db: &'db dyn WorkspaceDataBase, node: impl hir::HirNodeInfo
     db.get_files().contains_key(file.url(db))
 }
 
-/// Only the workspace's tests enter the manifest.
+/// Only the workspace's tests are compiled: `rk test` runs those, and a
+/// library's are its own business.
 fn is_workspace_test<'db>(db: &'db dyn WorkspaceDataBase, func: Function<'db>) -> bool {
     is_workspace(db, func)
 }
@@ -218,6 +219,14 @@ fn lower_module_from_pous<'db>(
                     }
                 }
 
+                // A library's tests are left out. Nothing calls a test but
+                // the runner (E1007 refuses the reference), so nothing
+                // misses them.
+                let is_test = hir::hir_def::pous::pragma::is_test(db, func.pragmas(db));
+                if is_test && !is_workspace_test(db, *func) {
+                    continue;
+                }
+
                 // Phase B: a function with an interface param has no generic form; one
                 // copy per concrete instantiation (`drive$Worker`).
                 let has_iface_param = func
@@ -285,9 +294,7 @@ fn lower_module_from_pous<'db>(
                 next_fn_idx += 1;
 
                 // Collect test entry if marked with {test}
-                if hir::hir_def::pous::pragma::is_test(db, func.pragmas(db))
-                    && is_workspace_test(db, *func)
-                {
+                if is_test {
                     let export_name = mir_func
                         .export_name
                         .as_ref()
@@ -757,6 +764,7 @@ fn lower_extern_function<'db>(
         params,
         out_results,
         return_type,
+        linkage: crate::function::MirLinkage::Internal,
     })
 }
 

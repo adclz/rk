@@ -56,6 +56,8 @@ pub struct MirExternFunction {
     /// are these followed by `return_type` last.
     pub out_results: Vec<(Ident, MirType)>,
     pub return_type: Option<MirType>,
+    /// Whether the import is re-exported under its name.
+    pub linkage: MirLinkage,
 }
 
 impl MirExternFunction {
