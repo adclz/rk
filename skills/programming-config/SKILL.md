@@ -9,7 +9,7 @@ description: Declare how a program actually runs — CONFIGURATION, RESOURCE, TA
 
 A `PROGRAM` on its own is only a type; it is compiled like a function block and nothing runs it.
 
-Without a `CONFIGURATION` instantiating it the compiled module carries no schedule at all and the runtime falls back to calling a single exported entry.
+Without a `CONFIGURATION` instantiating it the compiled module carries no schedule at all and the runtime falls back to calling a single exported entry: a FUNCTION marked `{export}` that takes nothing and returns nothing.
 
 A workspace has exactly one CONFIGURATION.
 

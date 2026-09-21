@@ -11,7 +11,7 @@ They are stored as custom sections after the code, encoded with MessagePack; the
 | `debug-locals` | debug only | wasm local slot → variable name and type |
 | `rk.schedule` | every build | tasks, periods, priorities, instance addresses |
 | `retain-map` | every build | the byte ranges a power cycle must preserve |
-| `test-manifest` | when there are tests | the exports `rk test` calls |
+| `test-manifest` | debug only, when there are tests | the exports `rk test` calls |
 
 The last three are not debug information.
 If `retain-map` is dropped, every `RETAIN` variable silently becomes transient.

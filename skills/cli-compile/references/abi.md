@@ -4,7 +4,11 @@ A workspace compiles to one core WebAssembly module.
 It does not depend on the WASI Component model.
 
 It imports its linear memory as `env.memory`, and nothing else unless the program uses the timers or declares an `{extern}` FUNCTION.
-It exports `__init`, which sets the cold-start values, and one body per POU.
+That holds for a release build. A debug build is not optimized, so it always imports the clock the stdlib timers read, `wasi:clocks/monotonic-clock@0.2.6` `now`.
+It exports `__init`, which sets the cold-start values, one body per PROGRAM, and every FUNCTION marked `{export}`, under its qualified name.
+A debug build also exports the workspace's `{test}` functions, for `rk test`.
+Nothing else is exported: not a plain FUNCTION, not a FUNCTION_BLOCK body or a METHOD, not an `{extern}` import, and nothing of the stdlib.
+A library's `{test}` functions are not compiled at all.
 The retained and global bands are exported as `retain_base` / `retain_size` and `globals_base` / `globals_size`.
 
 Nothing allocates and nothing calls `memory.grow`, so the footprint is settled at compile time.
