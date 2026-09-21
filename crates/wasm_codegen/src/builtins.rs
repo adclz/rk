@@ -105,35 +105,42 @@ mod tests {
         assert_eq!(*order.last().unwrap(), root);
     }
 
+    /// What calling a maths function costs a module, in bytes of grafted libm.
+    ///
+    /// A release build of a small program is a few kilobytes, so one `SIN` is
+    /// most of it. The budgets leave about a quarter of headroom over what the
+    /// closures weigh today (the largest is 4,956 bytes, all ten together are
+    /// 9,516): a libm upgrade fits, a closure that doubles does not, and the
+    /// failure prints every size.
     #[test]
-    #[ignore = "informational - run with --nocapture to see footprint"]
-    fn print_closure_sizes() {
+    fn a_grafted_function_stays_within_its_size_budget() {
+        const ONE: usize = 6 * 1024;
+        const ALL: usize = 12 * 1024;
         let names = [
             "f32.sin", "f32.cos", "f32.tan", "f32.exp", "f32.ln", "f64.sin", "f64.cos", "f64.tan",
             "f64.exp", "f64.ln",
         ];
-        for name in names {
-            let root = lookup(name).unwrap();
-            let order = transitive_closure(root);
-            let bytes: usize = order
-                .iter()
-                .map(|&i| BUILTIN_FUNCS[i as usize].body.len())
-                .sum();
-            eprintln!("{name}: {} fns, {} body bytes", order.len(), bytes);
-        }
+        let weight = |closure: &mut dyn Iterator<Item = u32>| -> usize {
+            closure.map(|i| BUILTIN_FUNCS[i as usize].body.len()).sum()
+        };
+
+        let sizes: Vec<(&str, usize)> = names
+            .iter()
+            .map(|name| {
+                let order = transitive_closure(lookup(name).unwrap());
+                (*name, weight(&mut order.iter().copied()))
+            })
+            .collect();
         let combined: rustc_hash::FxHashSet<u32> = names
             .iter()
-            .flat_map(|n| transitive_closure(lookup(n).unwrap()))
+            .flat_map(|name| transitive_closure(lookup(name).unwrap()))
             .collect();
-        let combined_bytes: usize = combined
-            .iter()
-            .map(|&i| BUILTIN_FUNCS[i as usize].body.len())
-            .sum();
-        eprintln!(
-            "all 10 combined: {} unique fns, {} body bytes",
-            combined.len(),
-            combined_bytes
-        );
+        let all = weight(&mut combined.iter().copied());
+
+        for (name, bytes) in &sizes {
+            assert!(*bytes <= ONE, "{name} grafts {bytes} bytes, over {ONE}: {sizes:?}");
+        }
+        assert!(all <= ALL, "the ten together graft {all} bytes, over {ALL}: {sizes:?}");
     }
 }
 
