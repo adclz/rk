@@ -474,7 +474,7 @@
         },
         {
           "name": "comment.block.st",
-          "begin": "\\{(?!extern|test|case|wasm|warn|info|once|allow|#if|#elif|#endif)",
+          "begin": "\\{(?!extern|export|test|case|wasm|warn|info|once|allow|#if|#elif|#endif)",
           "beginCaptures": {
             "0": {
               "name": "punctuation.brace.begin.st"
