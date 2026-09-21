@@ -179,6 +179,22 @@ pub trait HasPragmas<'db>: HirNodeInfo<'db> {
         self.once_pragma(db).is_some()
     }
 
+    /// `{export}` - this FUNCTION is a WASM export. Only legal on a FUNCTION
+    /// (checked in `check_variables`); the check and MIR read the SAME fact.
+    fn export_pragma(
+        &self,
+        db: &'db dyn WorkspaceDataBase,
+    ) -> Option<&'db hir_def::interned::identifier::SpanIdent<'db>> {
+        self.get_pragmas(db).iter().find_map(|p| match p {
+            hir_def::pous::pragma::Pragma::Export(s) => Some(s),
+            _ => None,
+        })
+    }
+
+    fn is_export(&self, db: &'db dyn WorkspaceDataBase) -> bool {
+        self.export_pragma(db).is_some()
+    }
+
     /// `{extern 'module' 'name'}` - this POU is a WASM import. Only legal on
     /// a FUNCTION (checked in `check_variables`); the accessor exists on the
     /// trait so both the check and MIR read the SAME fact.

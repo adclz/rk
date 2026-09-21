@@ -579,3 +579,190 @@ END_FUNCTION
     ");
 }
 
+/// `{export}` makes a FUNCTION a WASM export, and nothing else does.
+#[rstest]
+fn valid_export_pragma(mut with_db: RootDatabase) {
+    let source = r#"
+{export}
+FUNCTION Scale : REAL
+VAR_INPUT raw : INT; gain : REAL; END_VAR
+VAR_IN_OUT total : REAL; END_VAR
+VAR_OUTPUT clamped : BOOL; END_VAR
+    Scale := raw * gain;
+END_FUNCTION
+
+{once}
+{export}
+FUNCTION Setup : INT
+    Setup := 1;
+END_FUNCTION
+
+NAMESPACE Plant
+    {export}
+    FUNCTION Reset : INT
+        Reset := 0;
+    END_FUNCTION
+END_NAMESPACE
+"#;
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @"");
+}
+
+/// A host can only call a FUNCTION. A PROGRAM is exported for the schedule
+/// already, and an FB or a METHOD needs an instance the host does not have.
+#[rstest]
+fn invalid_export_pragma_outside_a_function(mut with_db: RootDatabase) {
+    let source = r#"
+{export}
+FUNCTION_BLOCK fb
+END_FUNCTION_BLOCK
+
+{export}
+PROGRAM prog
+END_PROGRAM
+
+FUNCTION_BLOCK holder
+    {export}
+    METHOD m : INT
+        m := 1;
+    END_METHOD
+END_FUNCTION_BLOCK
+"#;
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
+    [E1508] Error: export pragma outside a FUNCTION
+       ,-[ file:///test0.st:2:1 ]
+       |
+     2 | {export}
+       | ^^^^|^^^
+       |     `----- an {export} pragma cannot be placed on a FUNCTION_BLOCK
+       |
+       | Note: {export} pragmas can only be used with FUNCTION
+    ---'
+    [E1508] Error: export pragma outside a FUNCTION
+        ,-[ file:///test0.st:11:5 ]
+        |
+     11 |     {export}
+        |     ^^^^|^^^
+        |         `----- an {export} pragma cannot be placed on a METHOD
+        |
+        | Note: {export} pragmas can only be used with FUNCTION
+    ----'
+    [E1508] Error: export pragma outside a FUNCTION
+       ,-[ file:///test0.st:6:1 ]
+       |
+     6 | {export}
+       | ^^^^|^^^
+       |     `----- an {export} pragma cannot be placed on a PROGRAM
+       |
+       | Note: {export} pragmas can only be used with FUNCTION
+    ---'
+    ");
+}
+
+/// An import has no body to export, and a test is exported for the runner
+/// under the same name, in a debug build only.
+#[rstest]
+fn invalid_export_on_an_extern_or_a_test(mut with_db: RootDatabase) {
+    let source = r#"
+{export}
+{extern 'host' 'now'}
+FUNCTION HostNow : LINT
+END_FUNCTION
+
+{test}
+{export}
+FUNCTION checks_something
+END_FUNCTION
+"#;
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
+    [E1509] Error: this FUNCTION cannot be exported
+       ,-[ file:///test0.st:2:1 ]
+       |
+     2 | {export}
+       | ^^^^|^^^
+       |     `----- 'HostNow' cannot be exported: it is an {extern} FUNCTION
+       |
+       | Note: an {extern} FUNCTION is an import, it has no body to export
+    ---'
+    [E1509] Error: this FUNCTION cannot be exported
+       ,-[ file:///test0.st:8:1 ]
+       |
+     8 | {export}
+       | ^^^^|^^^
+       |     `----- 'checks_something' cannot be exported: it is a {test} FUNCTION
+       |
+       | Note: a {test} FUNCTION is already exported for `rk test`, and left out of a release build
+    ---'
+    ");
+}
+
+/// One declaration the lowering turns into several functions has no single
+/// export to give: `drive$Worker`, `sum_all$3`.
+#[rstest]
+fn invalid_export_on_a_function_lowered_more_than_once(mut with_db: RootDatabase) {
+    let source = r#"
+INTERFACE IWork
+    METHOD Run : INT END_METHOD
+END_INTERFACE
+
+{export}
+FUNCTION drive : INT
+VAR_IN_OUT dev : IWork; END_VAR
+    drive := dev.Run();
+END_FUNCTION
+
+{export}
+FUNCTION sum_all : INT
+VAR_INPUT args : INT...; END_VAR
+    sum_all := ...args+;
+END_FUNCTION
+"#;
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
+    [E1509] Error: this FUNCTION cannot be exported
+       ,-[ file:///test0.st:6:1 ]
+       |
+     6 | {export}
+       | ^^^^|^^^
+       |     `----- 'drive' cannot be exported: it takes an interface
+       |
+       | Note: it is compiled once per implementation it is called with, so there is no single function to export
+    ---'
+    [E1509] Error: this FUNCTION cannot be exported
+        ,-[ file:///test0.st:12:1 ]
+        |
+     12 | {export}
+        | ^^^^|^^^
+        |     `----- 'sum_all' cannot be exported: it is variadic
+        |
+        | Note: it is compiled once per number of arguments it is called with, so there is no single function to export
+    ----'
+    ");
+}
+
+/// An overloaded FUNCTION's symbol carries its signature (`Twice$Int`), and a
+/// host finds an export by its name. Only the marked overload is refused.
+#[rstest]
+fn invalid_export_on_an_overloaded_function(mut with_db: RootDatabase) {
+    let source = r#"
+{export}
+FUNCTION Twice : INT
+VAR_INPUT a : INT; END_VAR
+    Twice := a * 2;
+END_FUNCTION
+
+FUNCTION Twice : REAL
+VAR_INPUT a : REAL; END_VAR
+    Twice := a * 2.0;
+END_FUNCTION
+"#;
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
+    [E1509] Error: this FUNCTION cannot be exported
+       ,-[ file:///test0.st:2:1 ]
+       |
+     2 | {export}
+       | ^^^^|^^^
+       |     `----- 'Twice' cannot be exported: it is overloaded
+       |
+       | Note: an export is found by its name, and this name belongs to several FUNCTIONs
+    ---'
+    ");
+}

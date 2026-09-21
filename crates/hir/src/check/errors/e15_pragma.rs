@@ -50,6 +50,54 @@ impl ExternForbiddenKind {
     }
 }
 
+/// Why an `{export}` FUNCTION has no export to give. One code (E1509), one
+/// message shape each.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, salsa::Update)]
+pub enum ExportForbiddenKind {
+    /// An `{extern}` FUNCTION is an import: there is no body to export.
+    Extern,
+    /// A `{test}` FUNCTION is exported for the runner, and only in a debug
+    /// build. A second export under the same name is an invalid module.
+    Test,
+    /// One copy per implementation it is called with (`drive$Worker`).
+    InterfaceParam,
+    /// One copy per arity it is called with (`sum_all$3`).
+    Variadic,
+    /// The symbol carries the signature (`SHL$Byte`), and a host finds an
+    /// export by its name.
+    Overloaded,
+}
+
+impl ExportForbiddenKind {
+    fn message(self) -> &'static str {
+        match self {
+            Self::Extern => "is an {extern} FUNCTION",
+            Self::Test => "is a {test} FUNCTION",
+            Self::InterfaceParam => "takes an interface",
+            Self::Variadic => "is variadic",
+            Self::Overloaded => "is overloaded",
+        }
+    }
+
+    fn note(self) -> &'static str {
+        match self {
+            Self::Extern => "an {extern} FUNCTION is an import, it has no body to export",
+            Self::Test => {
+                "a {test} FUNCTION is already exported for `rk test`, and left out of a release build"
+            }
+            Self::InterfaceParam => {
+                "it is compiled once per implementation it is called with, so there is no single function to export"
+            }
+            Self::Variadic => {
+                "it is compiled once per number of arguments it is called with, so there is no single function to export"
+            }
+            Self::Overloaded => {
+                "an export is found by its name, and this name belongs to several FUNCTIONs"
+            }
+        }
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Hash, salsa::Update)]
 pub enum PragmaError<'db> {
     /// `{extern}` on something other than a FUNCTION.
@@ -77,6 +125,19 @@ pub enum PragmaError<'db> {
     TestOutsideFunction {
         anchor: SpanIdent<'db>,
         pou_kind: &'static str,
+    },
+    /// `{export}` on something other than a FUNCTION. A PROGRAM is already
+    /// exported for the schedule; an FB, a CLASS or a METHOD needs an
+    /// instance the host does not have.
+    ExportOutsideFunction {
+        anchor: SpanIdent<'db>,
+        pou_kind: &'static str,
+    },
+    /// `{export}` on a FUNCTION that has no single export to give.
+    ExportForbidden {
+        anchor: SpanIdent<'db>,
+        func: Function<'db>,
+        kind: ExportForbiddenKind,
     },
     /// A `{wasm}` pragma outside a FUNCTION body. Only FUNCTION bodies are
     /// scanned for one; anywhere else the statement was silently dropped and
@@ -120,6 +181,8 @@ impl<'db> ErrorCode for PragmaError<'db> {
             Self::UnknownWasmInstruction { .. } => "E1505",
             Self::UnknownWasmOperand { .. } => "E1506",
             Self::WasmSignatureMismatch { .. } => "E1507",
+            Self::ExportOutsideFunction { .. } => "E1508",
+            Self::ExportForbidden { .. } => "E1509",
         }
     }
 
@@ -134,6 +197,8 @@ impl<'db> ErrorCode for PragmaError<'db> {
             Self::UnknownWasmInstruction { .. } => "invalid wasm pragma",
             Self::UnknownWasmOperand { .. } => "invalid wasm pragma",
             Self::WasmSignatureMismatch { .. } => "invalid wasm pragma",
+            Self::ExportOutsideFunction { .. } => "export pragma outside a FUNCTION",
+            Self::ExportForbidden { .. } => "this FUNCTION cannot be exported",
         }
     }
 }
@@ -201,6 +266,30 @@ impl<'db> ToIdeDiagnostic<'db> for PragmaError<'db> {
                 .desc(self)
                 .range(crate::denormalize(db, file, &anchor.get_span(db)).unwrap_or_default())
                 .call(),
+            Self::ExportOutsideFunction { anchor, pou_kind } => {
+                let mut diag = diag()
+                    .message(format!("an {{export}} pragma cannot be placed on a {pou_kind}"))
+                    .severity(DiagnosticSeverity::ERROR)
+                    .desc(self)
+                    .range(crate::denormalize(db, file, &anchor.get_span(db)).unwrap_or_default())
+                    .call();
+                diag.with_note("{export} pragmas can only be used with FUNCTION".to_string());
+                diag
+            }
+            Self::ExportForbidden { anchor, func, kind } => {
+                let mut diag = diag()
+                    .message(format!(
+                        "'{}' cannot be exported: it {}",
+                        func.get_name_ident(db).text(db),
+                        kind.message(),
+                    ))
+                    .severity(DiagnosticSeverity::ERROR)
+                    .desc(self)
+                    .range(crate::denormalize(db, file, &anchor.get_span(db)).unwrap_or_default())
+                    .call();
+                diag.with_note(kind.note().to_string());
+                diag
+            }
             Self::WasmPragmaOutsideFunction { span } => diag()
                 .message(
                     "a {wasm} body is only available on a FUNCTION; here the pragma would be silently dropped"

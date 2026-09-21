@@ -4,6 +4,7 @@ use rustc_hash::FxHashMap;
 use crate::HasPragmas;
 use crate::check::errors::e08_call::CallError;
 use crate::check::errors::e14_config::ConfigError;
+use crate::check::errors::e15_pragma::ExportForbiddenKind;
 use crate::check::errors::e15_pragma::ExternForbiddenKind;
 use crate::check::errors::e15_pragma::PragmaError;
 use crate::hir_def::{pous::pou::Pou, scope::ScopeKind, semantic_index::get_scope};
@@ -69,6 +70,16 @@ impl<'db> InitInference<'db> {
             }
             _ => None,
         };
+        // `{export}` legality, enforced where `{extern}`'s is. (E1508/E1509.)
+        match scope_kind {
+            ScopeKind::Pou(Pou::Function(f)) => self.check_export(db, f),
+            ScopeKind::Pou(Pou::FunctionBlock(fb)) => {
+                self.refuse_export_on(db, fb.export_pragma(db), "FUNCTION_BLOCK");
+            }
+            ScopeKind::Program(p) => self.refuse_export_on(db, p.export_pragma(db), "PROGRAM"),
+            ScopeKind::MethodDecl(m) => self.refuse_export_on(db, m.export_pragma(db), "METHOD"),
+            _ => {}
+        }
         if let Some((f, _span)) = extern_fn
             && let Some(first) = f.statements(db).first()
         {
@@ -351,6 +362,66 @@ impl<'db> InitInference<'db> {
                 .to_diagnostic(db, self.scope.file(db)),
             );
         }
+    }
+
+    /// Push E1508 when `pragma` is present: `{export}` on a POU kind the
+    /// host could not call. A PROGRAM is exported for the schedule already;
+    /// the others need an instance.
+    fn refuse_export_on(
+        &mut self,
+        db: &'db dyn WorkspaceDataBase,
+        pragma: Option<&'db crate::hir_def::interned::identifier::SpanIdent<'db>>,
+        pou_kind: &'static str,
+    ) {
+        if let Some(anchor) = pragma {
+            self.errors.push(
+                PragmaError::ExportOutsideFunction {
+                    anchor: *anchor,
+                    pou_kind,
+                }
+                .to_diagnostic(db, self.scope.file(db)),
+            );
+        }
+    }
+
+    /// Push E1509 when an `{export}` FUNCTION has no single export to give:
+    /// it is an import, a test, or one declaration the lowering turns into
+    /// several functions. The first reason that applies is the one reported.
+    fn check_export(
+        &mut self,
+        db: &'db dyn WorkspaceDataBase,
+        func: crate::hir_def::pous::function::Function<'db>,
+    ) {
+        let Some(anchor) = func.export_pragma(db) else {
+            return;
+        };
+        let kind = if func.extern_pragma(db).is_some() {
+            ExportForbiddenKind::Extern
+        } else if func.is_test(db) {
+            ExportForbiddenKind::Test
+        } else if func.variables(db).iter().any(|v| {
+            matches!(
+                v.kind(db),
+                crate::hir_def::pous::variable::VariableKind::Input
+                    | crate::hir_def::pous::variable::VariableKind::InOut
+            ) && matches!(v.spec(db).infer(db).normalize(db), Type::Interface(_))
+        }) {
+            ExportForbiddenKind::InterfaceParam
+        } else if func.variables(db).iter().any(|v| v.variadic(db)) {
+            ExportForbiddenKind::Variadic
+        } else if crate::hir_ty::resolver::name::overload_discriminant(db, func).is_some() {
+            ExportForbiddenKind::Overloaded
+        } else {
+            return;
+        };
+        self.errors.push(
+            PragmaError::ExportForbidden {
+                anchor: *anchor,
+                func,
+                kind,
+            }
+            .to_diagnostic(db, self.scope.file(db)),
+        );
     }
 
     fn refuse_extern_on(
