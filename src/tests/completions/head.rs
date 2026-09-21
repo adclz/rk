@@ -444,10 +444,7 @@ END_FUNCTION_BLOCK
 
 /// Completes at the `|` marker, which is stripped from the source.
 fn complete_at(db: &mut RootDatabase, marked: &str) -> Vec<String> {
-    let offset = marked.find('|').expect("a cursor marker");
-    let source = marked.replace('|', "");
-    add_sources(db, &[&source]);
-    let file = *db.get_files().iter().last().unwrap();
+    let (file, offset) = crate::tests::utils::add_marked_source(db, marked);
     ide_proto::handlers::completions::complete(db, file, offset, None)
         .into_iter()
         .map(|item| item.label)
@@ -730,10 +727,7 @@ pub fn a_pragma_closes_itself_only_once(
     #[case] marked: &str,
     #[case] expected: &str,
 ) {
-    let offset = marked.find('|').expect("a cursor marker");
-    let source = marked.replace('|', "");
-    add_sources(&mut with_db, &[&source]);
-    let file = *with_db.get_files().iter().last().unwrap();
+    let (file, offset) = crate::tests::utils::add_marked_source(&mut with_db, marked);
     let items = ide_proto::handlers::completions::complete(&with_db, file, offset, None);
     let test = items.iter().find(|i| i.label == "{test}").expect("{test}");
 
@@ -973,10 +967,7 @@ pub fn the_allow_pragma_offers_every_rule(mut with_db: RootDatabase) {
 FUNCTION f : INT
 END_FUNCTION
 "#;
-    let offset = marked.find('|').expect("a cursor marker");
-    let source = marked.replace('|', "");
-    add_sources(&mut with_db, &[&source]);
-    let file = *with_db.get_files().iter().last().unwrap();
+    let (file, offset) = crate::tests::utils::add_marked_source(&mut with_db, marked);
 
     let allow = ide_proto::handlers::completions::complete(&with_db, file, offset, None)
         .into_iter()

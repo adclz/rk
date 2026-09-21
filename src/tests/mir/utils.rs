@@ -1,8 +1,7 @@
 use db::{RootDatabase, WorkspaceDataBase};
-use hir::hir_def::semantic_index::semantic_index;
 use mir::function::MirLinkage;
 
-use crate::tests::utils::{add_sources, assert_workspace_is_clean};
+use crate::tests::utils::{add_sources, assert_workspace_is_clean, lower_workspace};
 
 fn fmt_ty(t: &mir::types::MirType, db: &dyn WorkspaceDataBase) -> String {
     match t {
@@ -17,16 +16,11 @@ fn fmt_ty(t: &mir::types::MirType, db: &dyn WorkspaceDataBase) -> String {
 /// Lower IEC source to MIR and format every import and function as a string:
 /// `export` for what the module exports, `func` for what stays internal.
 pub fn mir_exports(db: &mut RootDatabase, sources: &[&str]) -> String {
-    use auto_lsp::default::db::BaseDatabase;
     add_sources(db, sources);
 
     assert_workspace_is_clean(db);
 
-    let files: Vec<_> = db.get_files().iter().map(|e| *e.value()).collect();
-    let sem_indices: Vec<_> = files.iter().map(|file| semantic_index(db, *file)).collect();
-
-    let module = mir::lower::lower_module::lower_modules(db, &sem_indices)
-        .unwrap_or_else(|e| panic!("MIR lowering failed: {}", e));
+    let module = lower_workspace(db);
 
     let mut lines = Vec::new();
 
@@ -78,16 +72,11 @@ pub fn mir_exports(db: &mut RootDatabase, sources: &[&str]) -> String {
 
 /// Lower IEC source to MIR and format the test manifest as a string.
 pub fn mir_test_manifest(db: &mut RootDatabase, sources: &[&str]) -> String {
-    use auto_lsp::default::db::BaseDatabase;
     add_sources(db, sources);
 
     assert_workspace_is_clean(db);
 
-    let files: Vec<_> = db.get_files().iter().map(|e| *e.value()).collect();
-    let sem_indices: Vec<_> = files.iter().map(|file| semantic_index(db, *file)).collect();
-
-    let module = mir::lower::lower_module::lower_modules(db, &sem_indices)
-        .unwrap_or_else(|e| panic!("MIR lowering failed: {}", e));
+    let module = lower_workspace(db);
 
     format!("{}", module.test_manifest)
 }

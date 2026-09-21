@@ -13,7 +13,7 @@ use debug_format::{DebugInfo, StackFrame, VarValue};
 use hir::{check::diagnostics_for_file, hir_def::semantic_index::semantic_index};
 use wasmtime::{ExternType, Instance, Linker, Memory, MemoryType, Module, Store, TypedFunc};
 
-use crate::tests::utils::add_source;
+use crate::tests::utils::{add_source, diagnostic_code, diagnostic_line};
 
 /// `wasmtime::Error` is not a `std::error::Error`, so anyhow's `.context()`
 /// does not apply to it; this folds the wasmtime chain into a message.
@@ -40,7 +40,14 @@ impl<T> WasmtimeCtx<T> for std::result::Result<T, wasmtime::Error> {
 /// Note: WASM validation is not performed here - use wasmtime's Module::new()
 /// or wasmparser::validate() on the returned bytes to validate.
 pub fn compile_to_wasm(db: &mut RootDatabase, source: &str) -> Vec<u8> {
-    compile_to_wasm_impl(db, source, Expectation::Clean)
+    compile_to_mir_and_wasm(db, source).1
+}
+
+/// As [`compile_to_wasm`], with the exports `rk compile` gives the module and
+/// no other: for the tests where a host finds what it calls by itself, which
+/// is what they are about.
+pub fn compile_to_wasm_as_built(db: &mut RootDatabase, source: &str) -> Vec<u8> {
+    compile(db, source, Expectation::Clean, Exports::AsBuilt).1
 }
 
 /// Lower IEC source to MIR and WASM in a single pass, returning both. Use this
@@ -48,7 +55,7 @@ pub fn compile_to_wasm(db: &mut RootDatabase, source: &str) -> Vec<u8> {
 /// a variable's storage) and run the emitted module against it. Lowering only
 /// once avoids registering the same source twice (which would duplicate POUs).
 pub fn compile_to_mir_and_wasm(db: &mut RootDatabase, source: &str) -> (mir::MirModule, Vec<u8>) {
-    compile_to_mir_and_wasm_impl(db, source, Expectation::Clean)
+    compile(db, source, Expectation::Clean, Exports::Everything)
 }
 
 /// [`compile_to_mir_and_wasm`] for a source the compiler rejects: `codes` must
@@ -60,20 +67,34 @@ pub fn compile_to_mir_and_wasm_expecting(
     source: &str,
     codes: &[&str],
 ) -> (mir::MirModule, Vec<u8>) {
-    compile_to_mir_and_wasm_impl(db, source, Expectation::Exactly(codes))
+    compile(db, source, Expectation::Exactly(codes), Exports::Everything)
 }
 
-fn compile_to_mir_and_wasm_impl(
+/// What the module a test gets back exports.
+#[derive(Clone, Copy)]
+enum Exports {
+    /// Every function, see [`export_everything`].
+    Everything,
+    /// What the compiler decided, as `rk compile` would emit it.
+    AsBuilt,
+}
+
+fn compile(
     db: &mut RootDatabase,
     source: &str,
     expectation: Expectation,
+    exports: Exports,
 ) -> (mir::MirModule, Vec<u8>) {
     let file = add_source(db, source);
     let sem_idx = semantic_index(db, file);
     check_diagnostics(db, file, expectation);
     let mir_module =
         mir::lower::lower_module::lower_module(db, sem_idx).expect("MIR lowering failed");
-    let wasm = wasm_codegen::generate_wasm(db, &export_everything(&mir_module)).finish();
+    let wasm = match exports {
+        Exports::Everything => wasm_codegen::generate_wasm(db, &export_everything(&mir_module)),
+        Exports::AsBuilt => wasm_codegen::generate_wasm(db, &mir_module),
+    }
+    .finish();
     (mir_module, wasm)
 }
 
@@ -106,11 +127,7 @@ enum Expectation<'a> {
 fn diagnostic_codes(db: &RootDatabase, file: File) -> Vec<String> {
     diagnostics_for_file(db, file)
         .iter()
-        .map(|diag| match &diag.diagnostic.code {
-            Some(auto_lsp::lsp_types::NumberOrString::String(code)) => code.clone(),
-            Some(auto_lsp::lsp_types::NumberOrString::Number(code)) => code.to_string(),
-            None => "?".to_string(),
-        })
+        .map(diagnostic_code)
         .collect()
 }
 
@@ -135,8 +152,9 @@ fn check_diagnostics(db: &RootDatabase, file: File, expectation: Expectation) {
             format!("Source was expected to report {expected:?}, but reports:\n")
         }
     };
-    for (diag, code) in diagnostics.iter().zip(&found).take(10) {
-        message.push_str(&format!("  [{code}] {}\n", diag.diagnostic.message));
+    for diag in diagnostics.iter().take(10) {
+        message.push_str(&diagnostic_line(diag));
+        message.push('\n');
     }
     if diagnostics.len() > 10 {
         message.push_str(&format!(
@@ -145,20 +163,6 @@ fn check_diagnostics(db: &RootDatabase, file: File, expectation: Expectation) {
         ));
     }
     panic!("{}", message);
-}
-
-fn compile_to_wasm_impl(db: &mut RootDatabase, source: &str, expectation: Expectation) -> Vec<u8> {
-    let file = add_source(db, source);
-    let sem_idx = semantic_index(db, file);
-
-    check_diagnostics(db, file, expectation);
-
-    // MIR pipeline: HIR → MIR → WASM
-    let mir_module =
-        mir::lower::lower_module::lower_module(db, sem_idx).expect("MIR lowering failed");
-
-    let wasm_module = wasm_codegen::generate_wasm(db, &export_everything(&mir_module));
-    wasm_module.finish()
 }
 
 /// Helper to validate WASM bytes using wasmtime.
@@ -477,7 +481,7 @@ impl TestPlc {
     }
 
     /// Call a `{test}` export, returning the address of its 12-byte result.
-    pub fn call_test(&mut self, export: &str) -> Result<i32> {
+    fn call_test(&mut self, export: &str) -> Result<i32> {
         let f = self
             .instance
             .get_typed_func::<(), i32>(&mut self.store, export)
@@ -688,6 +692,12 @@ pub fn custom_section<'a>(wasm: &'a [u8], name: &str) -> Option<&'a [u8]> {
             Ok(wasmparser::Payload::CustomSection(c)) if c.name() == name => Some(c.data()),
             _ => None,
         })
+}
+
+/// [`custom_section`] for a section the module must have.
+pub fn expect_section<'a>(wasm: &'a [u8], name: &str) -> &'a [u8] {
+    custom_section(wasm, name)
+        .unwrap_or_else(|| panic!("module is missing the `{name}` custom section"))
 }
 
 /// A trap in plain words: the trap itself when there is one, otherwise the

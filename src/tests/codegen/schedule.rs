@@ -127,16 +127,8 @@ fn config_emits_the_schedule_manifest(mut with_db: db::RootDatabase) {
 
     let (mir, wasm) = compile_to_mir_and_wasm(&mut with_db, source);
 
-    let mut manifest = None;
-    for payload in wasmparser::Parser::new(0).parse_all(&wasm) {
-        if let Ok(wasmparser::Payload::CustomSection(reader)) = payload
-            && reader.name() == debug_format::SCHEDULE_SECTION
-        {
-            manifest =
-                Some(debug_format::ScheduleManifest::from_msgpack(reader.data()).expect("decodes"));
-        }
-    }
-    let manifest = manifest.expect("module carries an `rk.schedule` section");
+    let section = super::expect_section(&wasm, debug_format::SCHEDULE_SECTION);
+    let manifest = debug_format::ScheduleManifest::from_msgpack(section).expect("decodes");
 
     assert_eq!(manifest.version, debug_format::SCHEDULE_VERSION);
     assert_eq!(manifest.common_ticktime_ns, 10_000_000, "GCD(10ms, 20ms)");
@@ -204,9 +196,6 @@ fn config_emits_the_schedule_manifest(mut with_db: db::RootDatabase) {
 /// diagnostic.
 #[rstest]
 fn fragments_in_separate_files_lower_together(mut with_db: db::RootDatabase) {
-    use auto_lsp::default::db::BaseDatabase;
-    use hir::hir_def::semantic_index::semantic_index;
-
     let globals = r#"
 CONFIGURATION Plant
     VAR_GLOBAL
@@ -230,9 +219,7 @@ CONFIGURATION Plant
 END_CONFIGURATION
 "#;
     crate::tests::utils::add_sources(&mut with_db, &[globals, machine]);
-    let files: Vec<_> = with_db.get_files().iter().map(|e| *e.value()).collect();
-    let indices: Vec<_> = files.iter().map(|f| semantic_index(&with_db, *f)).collect();
-    let module = mir::lower::lower_module::lower_modules(&with_db, &indices).expect("lowers");
+    let module = crate::tests::utils::lower_workspace(&with_db);
 
     // The globals fragment contributed its variable...
     assert!(
@@ -255,9 +242,6 @@ END_CONFIGURATION
 /// spans the whole configuration, not whichever fragment was lowered first.
 #[rstest]
 fn both_fragments_contribute_to_one_schedule(mut with_db: db::RootDatabase) {
-    use auto_lsp::default::db::BaseDatabase;
-    use hir::hir_def::semantic_index::semantic_index;
-
     let fast = r#"
 PROGRAM ProgA VAR a : INT; END_VAR a := a + 1; END_PROGRAM
 
@@ -279,9 +263,7 @@ CONFIGURATION Plant
 END_CONFIGURATION
 "#;
     crate::tests::utils::add_sources(&mut with_db, &[fast, slow]);
-    let files: Vec<_> = with_db.get_files().iter().map(|e| *e.value()).collect();
-    let indices: Vec<_> = files.iter().map(|f| semantic_index(&with_db, *f)).collect();
-    let module = mir::lower::lower_module::lower_modules(&with_db, &indices).expect("lowers");
+    let module = crate::tests::utils::lower_workspace(&with_db);
 
     let schedule = module.schedule.as_ref().expect("a schedule");
     assert_eq!(

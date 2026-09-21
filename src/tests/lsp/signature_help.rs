@@ -727,10 +727,7 @@ fn a_call_gets_help_wherever_statements_stand(mut with_db: RootDatabase, #[case]
 
 /// Asks for help at the `|` marker, which is stripped from the source.
 fn help_at(db: &mut RootDatabase, marked: &str) -> Option<lsp_types::SignatureHelp> {
-    let offset = marked.find('|').expect("a cursor marker");
-    let source = marked.replace('|', "");
-    add_sources(db, &[&source]);
-    let file = *db.get_files().iter().last().unwrap();
+    let (file, offset) = crate::tests::utils::add_marked_source(db, marked);
     find_signature_help(db, file, offset)
 }
 

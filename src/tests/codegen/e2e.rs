@@ -36,12 +36,7 @@ FUNCTION test_add
 END_FUNCTION
     "#;
 
-    let file = super::add_source(&mut with_db, source);
-    crate::tests::utils::assert_workspace_is_clean(&with_db);
-    let sem_idx = hir::hir_def::semantic_index::semantic_index(&with_db, file);
-    let mir_module =
-        mir::lower::lower_module::lower_module(&with_db, sem_idx).expect("MIR lowering failed");
-    let core_bytes = wasm_codegen::generate_wasm(&with_db, &mir_module).finish();
+    let core_bytes = super::compile_to_wasm_as_built(&mut with_db, source);
 
     // The manifest is embedded in the module as a custom section — no sidecar.
     let results = crate::tests::codegen::run_tests(&core_bytes, None).expect("run tests");
@@ -68,12 +63,7 @@ FUNCTION test_passes
 END_FUNCTION
     "#;
 
-    let file = super::add_source(&mut with_db, source);
-    crate::tests::utils::assert_workspace_is_clean(&with_db);
-    let sem_idx = hir::hir_def::semantic_index::semantic_index(&with_db, file);
-    let mir_module =
-        mir::lower::lower_module::lower_module(&with_db, sem_idx).expect("MIR lowering failed");
-    let core_bytes = wasm_codegen::generate_wasm(&with_db, &mir_module).finish();
+    let core_bytes = super::compile_to_wasm_as_built(&mut with_db, source);
 
     let results = crate::tests::codegen::run_tests(&core_bytes, None).expect("run tests");
     let failures = results.iter().filter(|r| !r.passed()).count();
@@ -99,12 +89,7 @@ FUNCTION test_fails_with_message
 END_FUNCTION
     "#;
 
-    let file = super::add_source(&mut with_db, source);
-    crate::tests::utils::assert_workspace_is_clean(&with_db);
-    let sem_idx = hir::hir_def::semantic_index::semantic_index(&with_db, file);
-    let mir_module =
-        mir::lower::lower_module::lower_module(&with_db, sem_idx).expect("MIR lowering failed");
-    let core_bytes = wasm_codegen::generate_wasm(&with_db, &mir_module).finish();
+    let core_bytes = super::compile_to_wasm_as_built(&mut with_db, source);
 
     let results = crate::tests::codegen::run_tests(&core_bytes, None).expect("run tests");
     assert_eq!(results.len(), 1);
@@ -149,12 +134,7 @@ FUNCTION test_that_fails
 END_FUNCTION
     "#;
 
-    let file = super::add_source(&mut with_db, source);
-    crate::tests::utils::assert_workspace_is_clean(&with_db);
-    let sem_idx = hir::hir_def::semantic_index::semantic_index(&with_db, file);
-    let mir_module =
-        mir::lower::lower_module::lower_module(&with_db, sem_idx).expect("MIR lowering failed");
-    let core = wasm_codegen::generate_wasm(&with_db, &mir_module).finish();
+    let core = super::compile_to_wasm_as_built(&mut with_db, source);
 
     let found = crate::tests::codegen::discover_tests(&core);
     assert_eq!(found.len(), 2, "both tests are in the core module's manifest");
@@ -210,12 +190,7 @@ FUNCTION send : INT
 END_FUNCTION
     "#;
 
-    let file = super::add_source(&mut with_db, source);
-    crate::tests::utils::assert_workspace_is_clean(&with_db);
-    let sem_idx = hir::hir_def::semantic_index::semantic_index(&with_db, file);
-    let mir_module =
-        mir::lower::lower_module::lower_module(&with_db, sem_idx).expect("MIR lowering failed");
-    let wasm = wasm_codegen::generate_wasm(&with_db, &mir_module).finish();
+    let wasm = super::compile_to_wasm_as_built(&mut with_db, source);
 
     let captured: Arc<Mutex<Option<String>>> = Arc::new(Mutex::new(None));
     let sink = Arc::clone(&captured);
@@ -258,12 +233,7 @@ FUNCTION greet : STRING
 END_FUNCTION
     "#;
 
-    let file = super::add_source(&mut with_db, source);
-    crate::tests::utils::assert_workspace_is_clean(&with_db);
-    let sem_idx = hir::hir_def::semantic_index::semantic_index(&with_db, file);
-    let mir_module =
-        mir::lower::lower_module::lower_module(&with_db, sem_idx).expect("MIR lowering failed");
-    let wasm = wasm_codegen::generate_wasm(&with_db, &mir_module).finish();
+    let wasm = super::compile_to_wasm_as_built(&mut with_db, source);
 
     let engine = super::test_engine();
     let module = wasmtime::Module::new(&engine, &wasm).expect("valid module");

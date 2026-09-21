@@ -51,14 +51,7 @@ pub fn assert_workspace_is_clean(db: &RootDatabase) {
     use auto_lsp::default::db::BaseDatabase;
     let mut reported = Vec::new();
     for file in db.get_files().iter().map(|f| *f) {
-        for diag in hir::check::diagnostics_for_file(db, file).iter() {
-            let code = match &diag.diagnostic.code {
-                Some(auto_lsp::lsp_types::NumberOrString::String(code)) => code.clone(),
-                Some(auto_lsp::lsp_types::NumberOrString::Number(code)) => code.to_string(),
-                None => "?".to_string(),
-            };
-            reported.push(format!("  [{code}] {}", diag.diagnostic.message));
-        }
+        reported.extend(diagnostics_for_file(db, file).iter().map(diagnostic_line));
     }
     assert!(
         reported.is_empty(),
@@ -66,6 +59,35 @@ pub fn assert_workspace_is_clean(db: &RootDatabase) {
         reported.len(),
         reported.join("\n")
     );
+}
+
+/// Lower everything the db holds into one module, as the CLI hands it over:
+/// the workspace's files in the order they were added, then the library's.
+///
+/// It does not ask whether the compiler accepts them; a test that must not
+/// lower a rejected source says so with [`assert_workspace_is_clean`] first.
+pub fn lower_workspace(db: &RootDatabase) -> mir::MirModule {
+    let indices: Vec<_> = workspace_files(db)
+        .into_iter()
+        .chain(library_files(db))
+        .map(|file| semantic_index(db, file))
+        .collect();
+    mir::lower::lower_module::lower_modules(db, &indices)
+        .unwrap_or_else(|e| panic!("MIR lowering failed: {e}"))
+}
+
+/// A diagnostic's code as written in a report: `E0301`, or `?` without one.
+pub fn diagnostic_code(diag: &IdeDiagnostic) -> String {
+    match &diag.diagnostic.code {
+        Some(auto_lsp::lsp_types::NumberOrString::String(code)) => code.clone(),
+        Some(auto_lsp::lsp_types::NumberOrString::Number(code)) => code.to_string(),
+        None => "?".to_string(),
+    }
+}
+
+/// One diagnostic as a line of a panic message: `  [E0301] type mismatch`.
+pub fn diagnostic_line(diag: &IdeDiagnostic) -> String {
+    format!("  [{}] {}", diagnostic_code(diag), diag.diagnostic.message)
 }
 
 /// Single-source variant of [`add_sources`]: registers one file under a
@@ -84,6 +106,14 @@ pub fn add_source(db: &mut RootDatabase, source: &str) -> File {
 
     db.add_file(file).unwrap();
     file
+}
+
+/// Register `marked` without its `|`, which says where a request is made:
+/// the file it became, and the byte offset the marker stood at.
+pub fn add_marked_source(db: &mut RootDatabase, marked: &str) -> (File, usize) {
+    let offset = marked.find('|').expect("a cursor marker");
+    add_sources(db, &[&marked.replace('|', "")]);
+    (*db.get_files().iter().last().unwrap(), offset)
 }
 
 pub fn add_sources(db: &mut RootDatabase, sources: &[&str]) {
@@ -145,109 +175,25 @@ pub fn test_diagnostics_with_library<'db>(
 }
 
 pub fn test_diagnostics<'db>(db: &'db mut RootDatabase, source: &'db [&'db str]) -> String {
-    add_sources(db, source);
-    let mut cache = vec![];
-    let mut library_files = db
-        .get_library_files()
-        .iter()
-        .map(|e| *e.value())
-        .collect::<Vec<_>>();
-    library_files.sort_by_key(|file| file.url(db).to_string());
-
-    // we need to sort the files by their URL
-    let mut files = db.get_files().iter().map(|file| *file).collect::<Vec<_>>();
-    files.sort_by_key(|file| {
-        let url_str = file.url(db).as_str();
-        // Extract number from "file:///testN.st" format
-        url_str
-            .strip_prefix("file:///test")
-            .and_then(|s| s.strip_suffix(".st"))
-            .and_then(|s| s.parse::<u32>().ok())
-            .unwrap_or(0)
-    });
-
-    let file_sources = files
-        .iter()
-        .chain(library_files.iter())
-        .map(|file| (file.url(db).as_str(), file.document(db).as_str()))
-        .collect::<Vec<_>>();
-
-    for file in files {
-        diagnostics_for_file(db, file).iter().for_each(|d| {
-            d.create_report(
-                db,
-                file.url(db),
-                file.document(db).as_str(),
-                Some(no_color_and_ascii()),
-                false,
-            )
-            .write(sources(file_sources.clone()), &mut cache)
-            .unwrap();
-        });
-    }
-
-    // Strip trailing whitespace from each line for clean inline snapshots
-    String::from_utf8(cache)
-        .unwrap()
-        .lines()
-        .map(|l| l.trim_end())
-        .collect::<Vec<_>>()
-        .join("\n")
+    test_snapshot(db, source, |db, file| {
+        diagnostics_for_file(db, file).as_ref().clone()
+    })
 }
 
+/// [`test_diagnostics`] over whatever `diag_fn` reports for each file, for the
+/// tests that render something other than the compiler's own diagnostics.
 pub fn test_snapshot<'db>(
     db: &'db mut RootDatabase,
     source: &'db [&'db str],
     diag_fn: impl Fn(&'db dyn WorkspaceDataBase, File) -> Vec<IdeDiagnostic>,
 ) -> String {
     add_sources(db, source);
-    let mut cache = vec![];
-    let mut library_files = db
-        .get_library_files()
-        .iter()
-        .map(|e| *e.value())
-        .collect::<Vec<_>>();
-    library_files.sort_by_key(|file| file.url(db).to_string());
-
-    // we need to sort the files by their URL
-    let mut files = db.get_files().iter().map(|file| *file).collect::<Vec<_>>();
-    files.sort_by_key(|file| {
-        let url_str = file.url(db).as_str();
-        // Extract number from "file:///testN.st" format
-        url_str
-            .strip_prefix("file:///test")
-            .and_then(|s| s.strip_suffix(".st"))
-            .and_then(|s| s.parse::<u32>().ok())
-            .unwrap_or(0)
-    });
-
-    let file_sources = files
-        .iter()
-        .chain(library_files.iter())
-        .map(|file| (file.url(db).as_str(), file.document(db).as_str()))
-        .collect::<Vec<_>>();
-
-    for file in files {
-        diag_fn(db, file).iter().for_each(|d| {
-            d.create_report(
-                db,
-                file.url(db),
-                file.document(db).as_str(),
-                Some(no_color_and_ascii()),
-                false,
-            )
-            .write(sources(file_sources.clone()), &mut cache)
-            .unwrap();
-        });
+    let db: &'db RootDatabase = db;
+    let mut out = vec![];
+    for file in workspace_files(db) {
+        write_reports(db, file, &diag_fn(db, file), &mut out);
     }
-
-    // Strip trailing whitespace from each line for clean inline snapshots
-    String::from_utf8(cache)
-        .unwrap()
-        .lines()
-        .map(|l| l.trim_end())
-        .collect::<Vec<_>>()
-        .join("\n")
+    trimmed(out)
 }
 
 /// Run only a single lint rule, ignoring all others.
@@ -273,49 +219,66 @@ pub(crate) fn test_lint_diagnostics_with_config<'db>(
     source: &'db [&'db str],
     linter_config: &db::config_file::LinterConfig,
 ) -> String {
-    add_sources(db, source);
-    let mut cache = vec![];
-    let mut library_files = db
-        .get_library_files()
-        .iter()
-        .map(|e| *e.value())
-        .collect::<Vec<_>>();
-    library_files.sort_by_key(|file| file.url(db).to_string());
+    test_snapshot(db, source, |db, file| {
+        let mut all = diagnostics_for_file(db, file).as_ref().clone();
+        linter::lint_file(db, file, linter_config, &mut all);
+        all
+    })
+}
 
+/// The workspace's files in the order [`add_sources`] registered them
+/// (`test0.st`, `test1.st`, ...), which is the order their reports render in.
+fn workspace_files(db: &RootDatabase) -> Vec<File> {
     let mut files = db.get_files().iter().map(|file| *file).collect::<Vec<_>>();
     files.sort_by_key(|file| {
-        let url_str = file.url(db).as_str();
-        url_str
+        // Extract number from "file:///testN.st" format
+        file.url(db)
+            .as_str()
             .strip_prefix("file:///test")
             .and_then(|s| s.strip_suffix(".st"))
             .and_then(|s| s.parse::<u32>().ok())
             .unwrap_or(0)
     });
+    files
+}
 
-    let file_sources = files
+/// The library's files, by url: a stable order, whatever the map's is.
+fn library_files(db: &RootDatabase) -> Vec<File> {
+    let mut files = db
+        .get_library_files()
         .iter()
-        .chain(library_files.iter())
+        .map(|e| *e.value())
+        .collect::<Vec<_>>();
+    files.sort_by_key(|file| file.url(db).to_string());
+    files
+}
+
+/// Write the reports of `diags`, all reported on `file`. A related span may
+/// point into any other file, so every source goes along: the workspace's,
+/// then the library's.
+fn write_reports(db: &RootDatabase, file: File, diags: &[IdeDiagnostic], out: &mut Vec<u8>) {
+    let file_sources = workspace_files(db)
+        .into_iter()
+        .chain(library_files(db))
         .map(|file| (file.url(db).as_str(), file.document(db).as_str()))
         .collect::<Vec<_>>();
 
-    for file in files {
-        let mut all = diagnostics_for_file(db, file).as_ref().clone();
-        linter::lint_file(db, file, linter_config, &mut all);
-        all.iter().for_each(|d| {
-            d.create_report(
-                db,
-                file.url(db),
-                file.document(db).as_str(),
-                Some(no_color_and_ascii()),
-                false,
-            )
-            .write(sources(file_sources.clone()), &mut cache)
-            .unwrap();
-        });
+    for d in diags {
+        d.create_report(
+            db,
+            file.url(db),
+            file.document(db).as_str(),
+            Some(no_color_and_ascii()),
+            false,
+        )
+        .write(sources(file_sources.clone()), &mut *out)
+        .unwrap();
     }
+}
 
-    // Strip trailing whitespace from each line for clean inline snapshots
-    String::from_utf8(cache)
+/// Strip trailing whitespace from each line for clean inline snapshots.
+fn trimmed(out: Vec<u8>) -> String {
+    String::from_utf8(out)
         .unwrap()
         .lines()
         .map(|l| l.trim_end())
@@ -428,35 +391,13 @@ pub fn pou_name_res_from_scope<'db>(
 
 /// Renders diagnostics for a file (when sources are already added).
 pub fn render_snapshot(db: &RootDatabase, file: File, diags: Vec<IdeDiagnostic>) -> String {
-    let all_files: Vec<File> = db.get_files().iter().map(|f| *f).collect();
-    let file_sources: Vec<_> = all_files
-        .iter()
-        .map(|f| (f.url(db).as_str(), f.document(db).as_str()))
-        .collect();
-
-    let mut cache = vec![];
-    for d in &diags {
-        d.create_report(
-            db,
-            file.url(db),
-            file.document(db).as_str(),
-            Some(no_color_and_ascii()),
-            false,
-        )
-        .write(sources(file_sources.clone()), &mut cache)
-        .unwrap();
-    }
-
-    String::from_utf8(cache)
-        .unwrap()
-        .lines()
-        .map(|l| l.trim_end())
-        .collect::<Vec<_>>()
-        .join("\n")
+    let mut out = vec![];
+    write_reports(db, file, &diags, &mut out);
+    trimmed(out)
 }
 
 /// Returns a descriptive label for a HirNode variant.
-pub fn hir_node_label(node: &HirNode) -> String {
+fn hir_node_label(node: &HirNode) -> String {
     match node {
         HirNode::Namespace(_) => "Namespace".into(),
         HirNode::Using(_) => "Using".into(),
@@ -496,7 +437,7 @@ pub fn hir_node_label(node: &HirNode) -> String {
 
 /// Returns the appropriate span for a HirNode in diagnostic snapshots.
 /// Uses name span for declarations (compact), full span for expressions.
-pub fn hir_node_span<'db>(db: &'db dyn WorkspaceDataBase, node: &HirNode<'db>) -> Range {
+fn hir_node_span<'db>(db: &'db dyn WorkspaceDataBase, node: &HirNode<'db>) -> Range {
     match node {
         HirNode::PouDecl(pou) => pou.get_name_span(db),
         HirNode::Program(p) => p.get_name_span(db),

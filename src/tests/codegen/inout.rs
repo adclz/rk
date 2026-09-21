@@ -261,12 +261,7 @@ fn fb_inout_non_lvalue_rejected(mut with_db: db::RootDatabase) {
     let diags = hir::check::diagnostics_for_file(&with_db, file);
     let e0806_count = diags
         .iter()
-        .filter(|d| {
-            matches!(
-                &d.diagnostic.code,
-                Some(auto_lsp::lsp_types::NumberOrString::String(s)) if s == "E0806"
-            )
-        })
+        .filter(|d| crate::tests::utils::diagnostic_code(d) == "E0806")
         .count();
     assert_eq!(
         e0806_count, 2,
@@ -372,12 +367,7 @@ fn fb_inout_arrow_binding_rejected(mut with_db: db::RootDatabase) {
     let diags = hir::check::diagnostics_for_file(&with_db, file);
     let e0807 = diags
         .iter()
-        .filter(|d| {
-            matches!(
-                &d.diagnostic.code,
-                Some(auto_lsp::lsp_types::NumberOrString::String(s)) if s == "E0807"
-            )
-        })
+        .filter(|d| crate::tests::utils::diagnostic_code(d) == "E0807")
         .count();
     assert_eq!(e0807, 1, "inout bound via => must be rejected: {diags:?}");
 }

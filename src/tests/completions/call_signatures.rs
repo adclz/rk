@@ -243,10 +243,7 @@ END_VAR
     |
 END_PROGRAM
 "#;
-    let offset = marked.find('|').expect("a cursor marker");
-    let source = marked.replace('|', "");
-    add_sources(&mut with_db, &[&source]);
-    let file = *with_db.get_files().iter().last().unwrap();
+    let (file, offset) = crate::tests::utils::add_marked_source(&mut with_db, marked);
 
     let item = ide_proto::handlers::completions::complete(&with_db, file, offset, None)
         .into_iter()

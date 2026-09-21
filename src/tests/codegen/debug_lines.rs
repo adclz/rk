@@ -9,15 +9,8 @@ use rstest::*;
 use debug_format::DebugInfo;
 
 fn read_debug_lines(wasm: &[u8]) -> debug_format::DebugLines {
-    for payload in wasmparser::Parser::new(0).parse_all(wasm) {
-        if let Ok(wasmparser::Payload::CustomSection(reader)) = payload
-            && reader.name() == debug_format::DEBUG_LINES_SECTION
-        {
-            return debug_format::DebugLines::from_msgpack(reader.data())
-                .expect("valid debug-lines section");
-        }
-    }
-    panic!("module is missing the `debug-lines` custom section");
+    let section = super::expect_section(wasm, debug_format::DEBUG_LINES_SECTION);
+    debug_format::DebugLines::from_msgpack(section).expect("valid debug-lines section")
 }
 
 /// The start offset (in the binary) of defined function `idx`'s code body.
