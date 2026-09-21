@@ -18,18 +18,7 @@ fn test_execute_simple_arithmetic(mut with_db: db::RootDatabase) {
 
     let wasm_bytes = compile_to_wasm(&mut with_db, source);
 
-    let engine = crate::tests::codegen::test_engine();
-    let module = Module::new(&engine, &wasm_bytes).expect("Failed to create module");
-    let mut store = Store::new(&engine, ());
-    let instance = super::instantiate_with_memory(&mut store, &module);
-
-    let add_func = instance
-        .get_typed_func::<(i32, i32), i32>(&mut store, "add")
-        .expect("Failed to get function");
-
-    let result = add_func
-        .call(&mut store, (5, 3))
-        .expect("Failed to call function");
+    let result = super::execute_wasm::<(i32, i32), i32>(&wasm_bytes, "add", (5, 3));
     assert_eq!(result, 8, "5 + 3 should equal 8");
 }
 
@@ -135,18 +124,7 @@ fn test_execute_factorial(mut with_db: db::RootDatabase) {
 
     let wasm_bytes = compile_to_wasm(&mut with_db, source);
 
-    let engine = crate::tests::codegen::test_engine();
-    let module = Module::new(&engine, &wasm_bytes).expect("Failed to create module");
-    let mut store = Store::new(&engine, ());
-    let instance = super::instantiate_with_memory(&mut store, &module);
-
-    let factorial_func = instance
-        .get_typed_func::<i32, i32>(&mut store, "factorial")
-        .expect("Failed to get function");
-
-    let result = factorial_func
-        .call(&mut store, 5)
-        .expect("Failed to call function");
+    let result = super::execute_wasm::<i32, i32>(&wasm_bytes, "factorial", 5);
     assert_eq!(result, 120, "5! should equal 120");
 }
 
@@ -177,18 +155,7 @@ fn test_execute_chained_calls(mut with_db: db::RootDatabase) {
 
     let wasm_bytes = compile_to_wasm(&mut with_db, source);
 
-    let engine = crate::tests::codegen::test_engine();
-    let module = Module::new(&engine, &wasm_bytes).expect("Failed to create module");
-    let mut store = Store::new(&engine, ());
-    let instance = super::instantiate_with_memory(&mut store, &module);
-
-    let process_func = instance
-        .get_typed_func::<i32, i32>(&mut store, "process")
-        .expect("Failed to get function");
-
-    let result = process_func
-        .call(&mut store, 5)
-        .expect("Failed to call function");
+    let result = super::execute_wasm::<i32, i32>(&wasm_bytes, "process", 5);
     assert_eq!(result, 12, "double(add_one(5)) = double(6) = 12");
 }
 
@@ -209,16 +176,7 @@ fn test_execute_implicit_cast_int_to_real(mut with_db: db::RootDatabase) {
 
     let wasm_bytes = compile_to_wasm(&mut with_db, source);
 
-    let engine = crate::tests::codegen::test_engine();
-    let module = Module::new(&engine, &wasm_bytes).expect("Failed to create module");
-    let mut store = Store::new(&engine, ());
-    let instance = super::instantiate_with_memory(&mut store, &module);
-
-    let func = instance
-        .get_typed_func::<i32, f32>(&mut store, "int_to_real")
-        .expect("Failed to get function");
-
-    let result = func.call(&mut store, 42).expect("Failed to call function");
+    let result = super::execute_wasm::<i32, f32>(&wasm_bytes, "int_to_real", 42);
     assert_eq!(result, 42.0, "INT 42 should cast to REAL 42.0");
 }
 
@@ -241,16 +199,7 @@ fn test_execute_implicit_cast_in_arithmetic(mut with_db: db::RootDatabase) {
 
     let wasm_bytes = compile_to_wasm(&mut with_db, source);
 
-    let engine = crate::tests::codegen::test_engine();
-    let module = Module::new(&engine, &wasm_bytes).expect("Failed to create module");
-    let mut store = Store::new(&engine, ());
-    let instance = super::instantiate_with_memory(&mut store, &module);
-
-    let func = instance
-        .get_typed_func::<i32, f32>(&mut store, "mixed_arithmetic")
-        .expect("Failed to get function");
-
-    let result = func.call(&mut store, 4).expect("Failed to call function");
+    let result = super::execute_wasm::<i32, f32>(&wasm_bytes, "mixed_arithmetic", 4);
     assert_eq!(result, 10.0, "2.5 * 4 should equal 10.0");
 }
 
@@ -271,14 +220,7 @@ fn test_default_int_param(mut with_db: db::RootDatabase) {
     "#;
 
     let wasm_bytes = compile_to_wasm(&mut with_db, source);
-    let engine = crate::tests::codegen::test_engine();
-    let module = wasmtime::Module::new(&engine, &wasm_bytes).unwrap();
-    let mut store = wasmtime::Store::new(&engine, ());
-    let instance = super::instantiate_with_memory(&mut store, &module);
-    let func = instance
-        .get_typed_func::<(), i32>(&mut store, "test_default")
-        .unwrap();
-    let result = func.call(&mut store, ()).unwrap();
+    let result = super::execute_wasm::<(), i32>(&wasm_bytes, "test_default", ());
     assert_eq!(result, 15, "5 + default(10) = 15");
 }
 
@@ -299,14 +241,7 @@ fn test_default_param_override(mut with_db: db::RootDatabase) {
     "#;
 
     let wasm_bytes = compile_to_wasm(&mut with_db, source);
-    let engine = crate::tests::codegen::test_engine();
-    let module = wasmtime::Module::new(&engine, &wasm_bytes).unwrap();
-    let mut store = wasmtime::Store::new(&engine, ());
-    let instance = super::instantiate_with_memory(&mut store, &module);
-    let func = instance
-        .get_typed_func::<(), i32>(&mut store, "test_override")
-        .unwrap();
-    let result = func.call(&mut store, ()).unwrap();
+    let result = super::execute_wasm::<(), i32>(&wasm_bytes, "test_override", ());
     assert_eq!(result, 25, "5 + 20 = 25");
 }
 
@@ -427,14 +362,7 @@ END_FUNCTION
     "#;
 
     let wasm_bytes = compile_to_wasm(&mut with_db, source);
-    let engine = crate::tests::codegen::test_engine();
-    let module = Module::new(&engine, &wasm_bytes).unwrap();
-    let mut store = Store::new(&engine, ());
-    let instance = super::instantiate_with_memory(&mut store, &module);
-    let func = instance
-        .get_typed_func::<(), i32>(&mut store, "test")
-        .unwrap();
-    let result = func.call(&mut store, ()).unwrap();
+    let result = super::execute_wasm::<(), i32>(&wasm_bytes, "test", ());
     assert_eq!(result, 1, "fb.y should be TRUE (1) after fb(x := TRUE)");
 }
 
@@ -464,14 +392,7 @@ END_FUNCTION
     "#;
 
     let wasm_bytes = compile_to_wasm(&mut with_db, source);
-    let engine = crate::tests::codegen::test_engine();
-    let module = Module::new(&engine, &wasm_bytes).unwrap();
-    let mut store = Store::new(&engine, ());
-    let instance = super::instantiate_with_memory(&mut store, &module);
-    let func = instance
-        .get_typed_func::<(), i32>(&mut store, "test")
-        .unwrap();
-    let result = func.call(&mut store, ()).unwrap();
+    let result = super::execute_wasm::<(), i32>(&wasm_bytes, "test", ());
     assert_eq!(
         result, 1,
         "Q should be TRUE: NOT FALSE AND NOT FALSE = TRUE"
@@ -513,14 +434,7 @@ END_FUNCTION
     "#;
 
     let wasm_bytes = compile_to_wasm(&mut with_db, source);
-    let engine = crate::tests::codegen::test_engine();
-    let module = Module::new(&engine, &wasm_bytes).unwrap();
-    let mut store = Store::new(&engine, ());
-    let instance = super::instantiate_with_memory(&mut store, &module);
-    let func = instance
-        .get_typed_func::<(), i32>(&mut store, "test")
-        .unwrap();
-    let result = func.call(&mut store, ()).unwrap();
+    let result = super::execute_wasm::<(), i32>(&wasm_bytes, "test", ());
     assert_eq!(result, 1, "CV should be 1 after first rising edge");
 }
 
@@ -556,14 +470,7 @@ END_FUNCTION
     "#;
 
     let wasm_bytes = compile_to_wasm(&mut with_db, source);
-    let engine = crate::tests::codegen::test_engine();
-    let module = Module::new(&engine, &wasm_bytes).unwrap();
-    let mut store = Store::new(&engine, ());
-    let instance = super::instantiate_with_memory(&mut store, &module);
-    let func = instance
-        .get_typed_func::<(), i32>(&mut store, "test")
-        .unwrap();
-    let result = func.call(&mut store, ()).unwrap();
+    let result = super::execute_wasm::<(), i32>(&wasm_bytes, "test", ());
     assert_eq!(
         result, 1,
         "CV should be 1 after first rising edge (nested R_TRIG)"
@@ -638,14 +545,7 @@ END_FUNCTION
     "#;
 
     let wasm_bytes = compile_to_wasm(&mut with_db, source);
-    let engine = crate::tests::codegen::test_engine();
-    let module = Module::new(&engine, &wasm_bytes).unwrap();
-    let mut store = Store::new(&engine, ());
-    let instance = super::instantiate_with_memory(&mut store, &module);
-    let func = instance
-        .get_typed_func::<(), i32>(&mut store, "test")
-        .unwrap();
-    let result = func.call(&mut store, ()).unwrap();
+    let result = super::execute_wasm::<(), i32>(&wasm_bytes, "test", ());
     assert_eq!(result, 2, "CV should be 2 after two rising edges");
 }
 

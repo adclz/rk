@@ -872,8 +872,6 @@ END_FUNCTION
 /// instead of 4 because `probe := 999` aliases the STRING param's len.
 #[rstest]
 fn regression_string_param_not_clobbered_by_return_write(mut with_db: db::RootDatabase) {
-    use wasmtime::{Module, Store};
-
     // Write to `probe` (the return slot) BEFORE reading `s` again.
     // If `probe` aliases the wasm slot holding `s.len`, the second
     // `len_of(s)` call will receive the corrupted length.
@@ -892,16 +890,9 @@ END_FUNCTION
     let mir_module = mir::lower::lower_module::lower_module(&with_db, sem_idx).unwrap();
     let bytes = wasm_codegen::generate_wasm(&with_db, &mir_module).finish();
 
-    let engine = crate::tests::codegen::test_engine();
-    let module = Module::new(&engine, &bytes).expect("wasm should validate");
-    let mut store = Store::new(&engine, ());
-    let instance = super::instantiate_with_memory(&mut store, &module);
-    let probe = instance
-        .get_typed_func::<(i32, i32), i32>(&mut store, "probe")
-        .unwrap();
     // Pass a "STRING" with ptr=0, len=4. Whatever bytes live at 0..4
     // don't matter; len_of just returns the second arg.
-    let result = probe.call(&mut store, (0, 4)).unwrap();
+    let result = super::execute_wasm::<(i32, i32), i32>(&bytes, "probe", (0, 4));
     assert_eq!(
         result, 4,
         "len_of(s) should return s.len=4 but got {} \

@@ -19,16 +19,7 @@ fn test_array_write_and_read(mut with_db: db::RootDatabase) {
 
     let wasm_bytes = compile_to_wasm(&mut with_db, source);
 
-    let engine = crate::tests::codegen::test_engine();
-    let module = wasmtime::Module::new(&engine, &wasm_bytes).unwrap();
-    let mut store = wasmtime::Store::new(&engine, ());
-    let instance = super::instantiate_with_memory(&mut store, &module);
-
-    let test_array = instance
-        .get_typed_func::<(), i32>(&mut store, "test_array")
-        .expect("Failed to get function");
-
-    let result = test_array.call(&mut store, ()).unwrap();
+    let result = super::execute_wasm::<(), i32>(&wasm_bytes, "test_array", ());
     assert_eq!(result, 20, "Should read value 20 from arr[1]");
 }
 
@@ -58,16 +49,7 @@ fn test_array_sum(mut with_db: db::RootDatabase) {
 
     let wasm_bytes = compile_to_wasm(&mut with_db, source);
 
-    let engine = crate::tests::codegen::test_engine();
-    let module = wasmtime::Module::new(&engine, &wasm_bytes).unwrap();
-    let mut store = wasmtime::Store::new(&engine, ());
-    let instance = super::instantiate_with_memory(&mut store, &module);
-
-    let sum_array = instance
-        .get_typed_func::<(), i32>(&mut store, "sum_array")
-        .expect("Failed to get function");
-
-    let result = sum_array.call(&mut store, ()).unwrap();
+    let result = super::execute_wasm::<(), i32>(&wasm_bytes, "sum_array", ());
     assert_eq!(result, 15, "Sum of 1+2+3+4+5 should be 15");
 }
 
@@ -89,16 +71,7 @@ fn test_2d_array_access(mut with_db: db::RootDatabase) {
 
     let wasm_bytes = compile_to_wasm(&mut with_db, source);
 
-    let engine = crate::tests::codegen::test_engine();
-    let module = wasmtime::Module::new(&engine, &wasm_bytes).unwrap();
-    let mut store = wasmtime::Store::new(&engine, ());
-    let instance = super::instantiate_with_memory(&mut store, &module);
-
-    let test_2d = instance
-        .get_typed_func::<(), i32>(&mut store, "test_2d")
-        .expect("Failed to get function");
-
-    let result = test_2d.call(&mut store, ()).unwrap();
+    let result = super::execute_wasm::<(), i32>(&wasm_bytes, "test_2d", ());
     assert_eq!(result, 4, "matrix[1,1] should be 4");
 }
 
@@ -119,16 +92,7 @@ fn test_array_with_non_zero_base(mut with_db: db::RootDatabase) {
 
     let wasm_bytes = compile_to_wasm(&mut with_db, source);
 
-    let engine = crate::tests::codegen::test_engine();
-    let module = wasmtime::Module::new(&engine, &wasm_bytes).unwrap();
-    let mut store = wasmtime::Store::new(&engine, ());
-    let instance = super::instantiate_with_memory(&mut store, &module);
-
-    let test_offset = instance
-        .get_typed_func::<(), i32>(&mut store, "test_offset")
-        .expect("Failed to get function");
-
-    let result = test_offset.call(&mut store, ()).unwrap();
+    let result = super::execute_wasm::<(), i32>(&wasm_bytes, "test_offset", ());
     assert_eq!(result, 200, "arr[11] should be 200");
 }
 
@@ -147,14 +111,7 @@ fn test_array_of_real(mut with_db: db::RootDatabase) {
     "#;
 
     let wasm_bytes = compile_to_wasm(&mut with_db, source);
-    let engine = crate::tests::codegen::test_engine();
-    let module = wasmtime::Module::new(&engine, &wasm_bytes).unwrap();
-    let mut store = wasmtime::Store::new(&engine, ());
-    let instance = super::instantiate_with_memory(&mut store, &module);
-    let func = instance
-        .get_typed_func::<(), f32>(&mut store, "test_real_arr")
-        .unwrap();
-    let result = func.call(&mut store, ()).unwrap();
+    let result = super::execute_wasm::<(), f32>(&wasm_bytes, "test_real_arr", ());
     assert!(
         (result - 7.5).abs() < 0.001,
         "Sum should be 7.5, got {}",
@@ -185,14 +142,7 @@ fn test_array_of_struct(mut with_db: db::RootDatabase) {
     "#;
 
     let wasm_bytes = compile_to_wasm(&mut with_db, source);
-    let engine = crate::tests::codegen::test_engine();
-    let module = wasmtime::Module::new(&engine, &wasm_bytes).unwrap();
-    let mut store = wasmtime::Store::new(&engine, ());
-    let instance = super::instantiate_with_memory(&mut store, &module);
-    let func = instance
-        .get_typed_func::<(), i32>(&mut store, "test_struct_arr")
-        .unwrap();
-    let result = func.call(&mut store, ()).unwrap();
+    let result = super::execute_wasm::<(), i32>(&wasm_bytes, "test_struct_arr", ());
     assert_eq!(result, 50, "pts[0].x + pts[1].y = 10 + 40 = 50");
 }
 
@@ -218,14 +168,7 @@ fn test_array_passed_to_function(mut with_db: db::RootDatabase) {
     "#;
 
     let wasm_bytes = compile_to_wasm(&mut with_db, source);
-    let engine = crate::tests::codegen::test_engine();
-    let module = wasmtime::Module::new(&engine, &wasm_bytes).unwrap();
-    let mut store = wasmtime::Store::new(&engine, ());
-    let instance = super::instantiate_with_memory(&mut store, &module);
-    let func = instance
-        .get_typed_func::<(), i32>(&mut store, "test_arr_call")
-        .unwrap();
-    let result = func.call(&mut store, ()).unwrap();
+    let result = super::execute_wasm::<(), i32>(&wasm_bytes, "test_arr_call", ());
     assert_eq!(result, 300, "arr[0] + arr[1] = 100 + 200 = 300");
 }
 
@@ -250,14 +193,7 @@ fn test_array_in_for_loop_with_computation(mut with_db: db::RootDatabase) {
     "#;
 
     let wasm_bytes = compile_to_wasm(&mut with_db, source);
-    let engine = crate::tests::codegen::test_engine();
-    let module = wasmtime::Module::new(&engine, &wasm_bytes).unwrap();
-    let mut store = wasmtime::Store::new(&engine, ());
-    let instance = super::instantiate_with_memory(&mut store, &module);
-    let func = instance
-        .get_typed_func::<(), i32>(&mut store, "test_arr_compute")
-        .unwrap();
-    let result = func.call(&mut store, ()).unwrap();
+    let result = super::execute_wasm::<(), i32>(&wasm_bytes, "test_arr_compute", ());
     // Sum of squares 0..9 = 0+1+4+9+16+25+36+49+64+81 = 285
     assert_eq!(result, 285, "Sum of squares 0..9 should be 285");
 }

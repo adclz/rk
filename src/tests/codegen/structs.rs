@@ -25,16 +25,7 @@ fn test_struct_field_access(mut with_db: db::RootDatabase) {
 
     let wasm_bytes = compile_to_wasm(&mut with_db, source);
 
-    let engine = crate::tests::codegen::test_engine();
-    let module = wasmtime::Module::new(&engine, &wasm_bytes).unwrap();
-    let mut store = wasmtime::Store::new(&engine, ());
-    let instance = super::instantiate_with_memory(&mut store, &module);
-
-    let get_x = instance
-        .get_typed_func::<(), i32>(&mut store, "get_x")
-        .expect("Failed to get function");
-
-    let result = get_x.call(&mut store, ()).unwrap();
+    let result = super::execute_wasm::<(), i32>(&wasm_bytes, "get_x", ());
     assert_eq!(result, 10, "Should read p.x value");
 }
 
@@ -60,16 +51,7 @@ fn test_struct_computation(mut with_db: db::RootDatabase) {
 
     let wasm_bytes = compile_to_wasm(&mut with_db, source);
 
-    let engine = crate::tests::codegen::test_engine();
-    let module = wasmtime::Module::new(&engine, &wasm_bytes).unwrap();
-    let mut store = wasmtime::Store::new(&engine, ());
-    let instance = super::instantiate_with_memory(&mut store, &module);
-
-    let area = instance
-        .get_typed_func::<(), i32>(&mut store, "area")
-        .expect("Failed to get function");
-
-    let result = area.call(&mut store, ()).unwrap();
+    let result = super::execute_wasm::<(), i32>(&wasm_bytes, "area", ());
     assert_eq!(result, 15, "5 * 3 = 15");
 }
 
@@ -105,16 +87,7 @@ fn test_nested_struct(mut with_db: db::RootDatabase) {
 
     let wasm_bytes = compile_to_wasm(&mut with_db, source);
 
-    let engine = crate::tests::codegen::test_engine();
-    let module = wasmtime::Module::new(&engine, &wasm_bytes).unwrap();
-    let mut store = wasmtime::Store::new(&engine, ());
-    let instance = super::instantiate_with_memory(&mut store, &module);
-
-    let test_nested = instance
-        .get_typed_func::<(), i32>(&mut store, "test_nested")
-        .expect("Failed to get function");
-
-    let result = test_nested.call(&mut store, ()).unwrap();
+    let result = super::execute_wasm::<(), i32>(&wasm_bytes, "test_nested", ());
     assert_eq!(result, 11, "10 + 1 = 11");
 }
 

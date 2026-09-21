@@ -18,18 +18,8 @@ fn test_null_ref(mut with_db: db::RootDatabase) {
     let wasm_bytes = compile_to_wasm(&mut with_db, source);
     validate_wasm(&wasm_bytes).expect("WASM validation failed");
 
-    let engine = crate::tests::codegen::test_engine();
-    let module = wasmtime::Module::new(&engine, &wasm_bytes).unwrap();
-    let mut store = wasmtime::Store::new(&engine, ());
-
-    let instance = super::instantiate_with_memory(&mut store, &module);
-
     // Call function
-    let func = instance
-        .get_typed_func::<(), i32>(&mut store, "test_null")
-        .unwrap();
-
-    let result = func.call(&mut store, ()).unwrap();
+    let result = super::execute_wasm::<(), i32>(&wasm_bytes, "test_null", ());
     assert_eq!(result, 0, "NULL should be represented as 0");
 }
 
@@ -140,17 +130,7 @@ fn test_ref_to_local_read(mut with_db: db::RootDatabase) {
     let wasm_bytes = compile_to_wasm(&mut with_db, source);
     validate_wasm(&wasm_bytes).expect("WASM validation failed");
 
-    let engine = crate::tests::codegen::test_engine();
-    let module = wasmtime::Module::new(&engine, &wasm_bytes).unwrap();
-    let mut store = wasmtime::Store::new(&engine, ());
-
-    let instance = super::instantiate_with_memory(&mut store, &module);
-
-    let func = instance
-        .get_typed_func::<(), i32>(&mut store, "test_ref")
-        .unwrap();
-
-    let result = func.call(&mut store, ()).unwrap();
+    let result = super::execute_wasm::<(), i32>(&wasm_bytes, "test_ref", ());
     assert_eq!(result, 42, "Should read value through pointer");
 }
 
@@ -171,17 +151,7 @@ fn test_ref_to_local_write(mut with_db: db::RootDatabase) {
     let wasm_bytes = compile_to_wasm(&mut with_db, source);
     validate_wasm(&wasm_bytes).expect("WASM validation failed");
 
-    let engine = crate::tests::codegen::test_engine();
-    let module = wasmtime::Module::new(&engine, &wasm_bytes).unwrap();
-    let mut store = wasmtime::Store::new(&engine, ());
-
-    let instance = super::instantiate_with_memory(&mut store, &module);
-
-    let func = instance
-        .get_typed_func::<(), i32>(&mut store, "test_ref_assign")
-        .unwrap();
-
-    let result = func.call(&mut store, ()).unwrap();
+    let result = super::execute_wasm::<(), i32>(&wasm_bytes, "test_ref_assign", ());
     assert_eq!(result, 99, "Should modify x through pointer");
 }
 
@@ -204,17 +174,7 @@ fn test_multiple_deref(mut with_db: db::RootDatabase) {
     let wasm_bytes = compile_to_wasm(&mut with_db, source);
     validate_wasm(&wasm_bytes).expect("WASM validation failed");
 
-    let engine = crate::tests::codegen::test_engine();
-    let module = wasmtime::Module::new(&engine, &wasm_bytes).unwrap();
-    let mut store = wasmtime::Store::new(&engine, ());
-
-    let instance = super::instantiate_with_memory(&mut store, &module);
-
-    let func = instance
-        .get_typed_func::<(), i32>(&mut store, "test_double_deref")
-        .unwrap();
-
-    let result = func.call(&mut store, ()).unwrap();
+    let result = super::execute_wasm::<(), i32>(&wasm_bytes, "test_double_deref", ());
     assert_eq!(result, 5, "Should dereference twice to get original value");
 }
 
