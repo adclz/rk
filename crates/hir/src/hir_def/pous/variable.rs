@@ -203,6 +203,19 @@ impl<'db> DirectVariable<'db> {
         out
     }
 
+    /// The size character: the letter after the area, or `X` when it is left
+    /// out — `%I1` is a bit, Table 16 row 4b. `None` for anything longer
+    /// than an area and a size, which names no width.
+    pub fn size_letter(self, db: &'db dyn WorkspaceDataBase) -> Option<char> {
+        let mut letters = self.adress(db).text(db).chars();
+        letters.next()?;
+        match (letters.next(), letters.next()) {
+            (None, _) => Some('X'),
+            (Some(size), None) => Some(size),
+            (Some(_), Some(_)) => None,
+        }
+    }
+
     pub fn area(self, db: &'db dyn WorkspaceDataBase) -> Option<LocationArea> {
         match self
             .adress(db)
@@ -290,10 +303,7 @@ impl LocatedAddress {
             return None;
         }
         let (_, bits) = dv
-            .adress(db)
-            .text(db)
-            .chars()
-            .nth(1)
+            .size_letter(db)
             .and_then(crate::hir_ty::infer::normalize::access_size)?;
         Some(Self {
             area: dv.area(db)?,

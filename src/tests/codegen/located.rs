@@ -982,3 +982,60 @@ fn a_part_written_into_a_signed_owner_keeps_its_sign(mut with_db: db::RootDataba
     let flags = i32::from_le_bytes(plc.read_located("%QW1").expect("read")[..4].try_into().unwrap());
     assert_eq!(flags & 0b11, 0b11, "x is -7 and still negative");
 }
+
+/// An output's initial value is written by `__init`, so the output is in
+/// that state before the first scan — the startup value a host sees first.
+#[rstest]
+fn an_output_starts_at_its_initial_value(mut with_db: db::RootDatabase) {
+    let source = r#"
+        PROGRAM P
+        VAR_EXTERNAL lamps : WORD; END_VAR
+            lamps := lamps OR 16#0001;
+        END_PROGRAM
+
+        CONFIGURATION Cfg
+        VAR_GLOBAL lamps AT %QW0 : WORD := 16#00F0; END_VAR
+            RESOURCE Res ON CPU
+                TASK T(INTERVAL := T#10ms, PRIORITY := 1);
+                PROGRAM P1 WITH T : P;
+            END_RESOURCE
+        END_CONFIGURATION
+    "#;
+    let (_mir, wasm) = compile_to_mir_and_wasm(&mut with_db, source);
+    let mut plc = TestPlc::load(&wasm).expect("load");
+    let read = |plc: &TestPlc| {
+        i32::from_le_bytes(plc.read_located("%QW0").expect("read")[..4].try_into().unwrap())
+    };
+    assert_eq!(read(&plc), 0x00F0, "`__init` wrote the startup value");
+    plc.run(1).expect("scan");
+    assert_eq!(read(&plc), 0x00F1);
+}
+
+/// A bit may leave out its size character (Table 16 row 4b), and is then the
+/// same address with `X`: `%Q0.3` is bit 3 of a `%QW0` beside it, and `%I1`
+/// is `%IX1`, a cell of its own.
+#[rstest]
+fn an_address_without_a_width_letter_is_a_bit(mut with_db: db::RootDatabase) {
+    let source = r#"
+        PROGRAM P
+        VAR_EXTERNAL lamps : WORD; END_VAR
+            %Q0.3 := TRUE;
+            %Q0.0 := %I1;
+        END_PROGRAM
+
+        CONFIGURATION Cfg
+        VAR_GLOBAL lamps AT %QW0 : WORD; END_VAR
+            RESOURCE Res ON CPU
+                TASK T(INTERVAL := T#10ms, PRIORITY := 1);
+                PROGRAM P1 WITH T : P;
+            END_RESOURCE
+        END_CONFIGURATION
+    "#;
+    let (mir, wasm) = compile_to_mir_and_wasm(&mut with_db, source);
+    assert_eq!(mir.output_size, 4, "`%Q0.3` and `%Q0.0` are `lamps`'s bits");
+    let mut plc = TestPlc::load(&wasm).expect("load");
+    plc.write_located("%I1", &1i32.to_le_bytes()).expect("input bit");
+    plc.run(1).expect("scan");
+    let lamps = i32::from_le_bytes(plc.read_located("%QW0").expect("read")[..4].try_into().unwrap());
+    assert_eq!(lamps, 0b1001);
+}

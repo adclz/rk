@@ -218,17 +218,37 @@ impl<'db> InitInference<'db> {
                         // Only checked where the declared type HAS a width:
                         // an enum, a subrange or an aggregate answers `Null`,
                         // and reporting those would be a guess.
+                        // `__init` would write it, and the host's copy-in
+                        // before the first scan overwrites it unread.
+                        if var.init(db).is_some()
+                            && dv.area(db)
+                                == Some(crate::hir_def::pous::variable::LocationArea::Input)
+                        {
+                            self.errors.push(
+                                ConfigError::WriteToInputLocation {
+                                    site: var.as_call_site(db),
+                                    address: address.clone(),
+                                    via: crate::check::errors::e14_config::InputWriteRoute::Initializer,
+                                }
+                                .to_diagnostic(db, self.scope.file(db)),
+                            );
+                        }
+                        // One value as wide as the address: an elementary
+                        // type of that width, reached through any alias. An
+                        // enum, a subrange, an aggregate or a STRING has no
+                        // such width and is refused rather than guessed at.
                         let declared = Type::resolve_spec(db, var.spec(db));
+                        let declared_bits = if declared.as_subrange(db).is_some() {
+                            None
+                        } else {
+                            located_width(declared.normalize(db))
+                        };
                         let mut width_mismatch = false;
-                        if let Some((_, address_bits)) = dv
-                            .adress(db)
-                            .text(db)
-                            .chars()
-                            .nth(1)
-                            .and_then(crate::hir_ty::infer::normalize::access_size)
-                            && let crate::hir_ty::ty::Size::Size(declared_bits) =
-                                declared.get_size()
-                            && declared_bits != address_bits
+                        if !declared.is_never()
+                            && let Some((_, address_bits)) = dv
+                                .size_letter(db)
+                                .and_then(crate::hir_ty::infer::normalize::access_size)
+                            && declared_bits != Some(address_bits)
                         {
                             width_mismatch = true;
                             self.errors.push(
@@ -270,7 +290,15 @@ impl<'db> InitInference<'db> {
                             if var.qualifier(db).contains(crate::Qualifier::RETAIN) {
                                 refuse(WiderAddressUse::Retain);
                             }
-                            if !width_mismatch && !holds_bits(declared, located.width) {
+                            // On an input E1419 below says it.
+                            if var.init(db).is_some()
+                                && located.area
+                                    != crate::hir_def::pous::variable::LocationArea::Input
+                            {
+                                refuse(WiderAddressUse::Initializer);
+                            }
+                            if !width_mismatch && !holds_bits(declared.normalize(db), located.width)
+                            {
                                 refuse(WiderAddressUse::Type {
                                     declared: compact_str::CompactString::from(
                                         declared.type_name(db),
@@ -603,6 +631,19 @@ fn same_storage_type<'db>(db: &'db dyn WorkspaceDataBase, a: Type<'db>, b: Type<
                 )
         }
         (x, y) => x == y,
+    }
+}
+
+/// The width a located variable of type `ty` fills: every elementary type
+/// but STRING has one. `Type::get_size` leaves CHAR out, and it is 8 bits.
+fn located_width(ty: Type<'_>) -> Option<usize> {
+    match ty {
+        Type::Elementary(crate::hir_def::expressions::spec::ElementarySpec::Char) => Some(8),
+        Type::Elementary(_) => match ty.get_size() {
+            crate::hir_ty::ty::Size::Size(bits) => Some(bits),
+            crate::hir_ty::ty::Size::Null => None,
+        },
+        _ => None,
     }
 }
 

@@ -504,17 +504,38 @@ END_FUNCTION_BLOCK"#;
     ");
 }
 
-/// An address that names no band keeps E1417, and `%I1` is one: Table 16
-/// row 4b (the size letter omitted, meaning BOOL) is not implemented.
+/// The size character may be left out, and then the address is a bit
+/// (Table 16 row 4b): `%I1` is `%IX1`, and `%Q0.3` is `%QX0.3` — bit 3 of a
+/// `%QW0` beside it.
 #[rstest]
-fn invalid_bare_address_without_a_width_letter(mut with_db: RootDatabase) {
+fn valid_address_without_a_width_letter_is_a_bit(mut with_db: RootDatabase) {
     let source = r#"
 FUNCTION_BLOCK fb1
     VAR
         test: BOOL;
+        w: WORD;
     END_VAR
 
     test := %I1;
+    %Q0.3 := test;
+    w := %QW0;
+
+END_FUNCTION_BLOCK"#;
+
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @"");
+}
+
+/// An address that names no band keeps E1417: here the width letter is none
+/// of `X`, `B`, `W`, `D` or `L`.
+#[rstest]
+fn invalid_bare_address_with_an_unknown_width_letter(mut with_db: RootDatabase) {
+    let source = r#"
+FUNCTION_BLOCK fb1
+    VAR
+        test: WORD;
+    END_VAR
+
+    test := %IZ0;
 
 END_FUNCTION_BLOCK"#;
 
@@ -522,11 +543,11 @@ END_FUNCTION_BLOCK"#;
     [E1417] Error: address cannot be located
        ,-[ file:///test0.st:7:13 ]
        |
-     7 |     test := %I1;
-       |             ^|^
-       |              `--- '%I1' does not name an area and a width
+     7 |     test := %IZ0;
+       |             ^^|^
+       |               `--- '%IZ0' does not name an area and a width
        |
-       | Note: an address names its area with I, Q or M and its width with X, B, W, D or L, as in '%IX0.0'; omitting the size character is not implemented
+       | Note: an address names its area with I, Q or M and its width with X, B, W, D or L, as in '%IX0.0'; a bit may leave the width out, as in '%I0.0'
     ---'
     ");
 }
@@ -966,25 +987,28 @@ VAR_GLOBAL wide AT %IX0.0 : INT; END_VAR
 END_CONFIGURATION
 "#;
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E1422] Error: location width mismatch
+    [E1422] Error: location type mismatch
        ,-[ file:///test0.st:9:12 ]
        |
      9 | VAR_GLOBAL wide AT %IX0.0 : INT; END_VAR
        |            ^^^^^^^^^^|^^^^^^^^^
        |                      `----------- '%IX0.0' is 1 bit, but 'wide' is declared 'INT', which is 16
        |
-       | Note: the size character says how wide the channel a host binds is, so it has to be the width of the value the program reads there
+       | Note: a located variable holds one value as wide as its address; declare it as an elementary type of 1 bit, such as BOOL
     ---'
     ");
 }
 
 /// Every size character has more than one type of its width, and each is
-/// accepted: the rule is about bits, not about the name.
+/// accepted: the rule is about bits, not about the name. CHAR is 8 bits, and
+/// an alias is the type it names.
 #[rstest]
 fn valid_widths_that_agree_with_the_address(mut with_db: RootDatabase) {
     let source = r#"
+TYPE Speed : INT; END_TYPE
+
 PROGRAM P
-VAR_EXTERNAL bit : BOOL; sb : SINT; octet : BYTE; n : INT; r : REAL; el : TIME; big : LREAL; END_VAR
+VAR_EXTERNAL bit : BOOL; sb : SINT; octet : BYTE; n : INT; r : REAL; el : TIME; big : LREAL; ch : CHAR; speed : Speed; END_VAR
 VAR t : BOOL; END_VAR
     t := bit;
 END_PROGRAM
@@ -998,6 +1022,8 @@ VAR_GLOBAL
     r   AT %ID2   : REAL;
     el  AT %ID3   : TIME;
     big AT %IL4   : LREAL;
+    ch  AT %IB20  : CHAR;
+    speed AT %IW20 : Speed;
 END_VAR
     RESOURCE R ON CPU
         TASK T(INTERVAL := T#10ms, PRIORITY := 1);
@@ -1008,30 +1034,84 @@ END_CONFIGURATION
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @"");
 }
 
-/// The width check reads `Type::get_size`, which answers for elementary
-/// types only. An ARRAY, a STRUCT, an enum or a subrange has no width there,
-/// and a guess would be worse than the silence: this pins that they pass, so
-/// whoever gives those types a width sees this test change.
+/// A located variable holds one value as wide as its address, so it is an
+/// elementary type of that width — as matiec requires, and as every vendor
+/// accepts. An enum, a subrange, an aggregate and a STRING have no single
+/// width and are refused rather than guessed at.
 #[rstest]
-fn a_type_without_a_width_is_not_checked_against_the_address(mut with_db: RootDatabase) {
+fn invalid_located_variable_without_an_elementary_type(mut with_db: RootDatabase) {
     let source = r#"
-TYPE Colour : (Red, Green); END_TYPE
+TYPE
+    Colour : (Red, Green);
+    Pct : INT (0..100);
+    Pair : STRUCT a : BYTE; b : BYTE; END_STRUCT;
+END_TYPE
 
 PROGRAM P
-VAR_EXTERNAL c : Colour; END_VAR
-VAR t : Colour; END_VAR
-    t := c;
+VAR_EXTERNAL c : Colour; p : Pct; s : Pair; bits : ARRAY[0..7] OF BOOL; name : STRING; END_VAR
 END_PROGRAM
 
 CONFIGURATION Cfg
-VAR_GLOBAL c AT %IX0.0 : Colour; END_VAR
+VAR_GLOBAL
+    c    AT %IB0 : Colour;
+    p    AT %IW1 : Pct;
+    s    AT %IW2 : Pair;
+    bits AT %IB6 : ARRAY[0..7] OF BOOL;
+    name AT %ID2 : STRING;
+END_VAR
     RESOURCE R ON CPU
         TASK T(INTERVAL := T#10ms, PRIORITY := 1);
         PROGRAM P1 WITH T : P;
     END_RESOURCE
 END_CONFIGURATION
 "#;
-    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @"");
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
+    [E1422] Error: location type mismatch
+        ,-[ file:///test0.st:14:5 ]
+        |
+     14 |     c    AT %IB0 : Colour;
+        |     ^^^^^^^^^^|^^^^^^^^^^
+        |               `------------ '%IB0' is 8 bits, but 'c' is declared 'Colour', which is not an elementary type of any width
+        |
+        | Note: a located variable holds one value as wide as its address; declare it as an elementary type of 8 bits, such as BYTE, SINT or USINT
+    ----'
+    [E1422] Error: location type mismatch
+        ,-[ file:///test0.st:15:5 ]
+        |
+     15 |     p    AT %IW1 : Pct;
+        |     ^^^^^^^^^|^^^^^^^^
+        |              `---------- '%IW1' is 16 bits, but 'p' is declared 'Pct', which is not an elementary type of any width
+        |
+        | Note: a located variable holds one value as wide as its address; declare it as an elementary type of 16 bits, such as WORD, INT or UINT
+    ----'
+    [E1422] Error: location type mismatch
+        ,-[ file:///test0.st:16:5 ]
+        |
+     16 |     s    AT %IW2 : Pair;
+        |     ^^^^^^^^^|^^^^^^^^^
+        |              `----------- '%IW2' is 16 bits, but 's' is declared 'Pair', which is not an elementary type of any width
+        |
+        | Note: a located variable holds one value as wide as its address; declare it as an elementary type of 16 bits, such as WORD, INT or UINT
+    ----'
+    [E1422] Error: location type mismatch
+        ,-[ file:///test0.st:17:5 ]
+        |
+     17 |     bits AT %IB6 : ARRAY[0..7] OF BOOL;
+        |     ^^^^^^^^^^^^^^^^^|^^^^^^^^^^^^^^^^
+        |                      `------------------ '%IB6' is 8 bits, but 'bits' is declared 'ARRAY [0..7] OF BOOL', which is not an elementary type of any width
+        |
+        | Note: a located variable holds one value as wide as its address; declare it as an elementary type of 8 bits, such as BYTE, SINT or USINT
+    ----'
+    [E1422] Error: location type mismatch
+        ,-[ file:///test0.st:18:5 ]
+        |
+     18 |     name AT %ID2 : STRING;
+        |     ^^^^^^^^^^|^^^^^^^^^^
+        |               `------------ '%ID2' is 32 bits, but 'name' is declared 'STRING', which is not an elementary type of any width
+        |
+        | Note: a located variable holds one value as wide as its address; declare it as an elementary type of 32 bits, such as DWORD, DINT or REAL
+    ----'
+    ");
 }
 
 // ---------------------------------------------------------------------------
@@ -1242,4 +1322,95 @@ END_CONFIGURATION
         | Note: RETAIN belongs on the variable located at '%MW0', whose storage this is
     ----'
     ");
+}
+
+/// `__init` would write an input's initial value, and the host's copy-in
+/// before the first scan overwrites it before anything reads it.
+#[rstest]
+fn invalid_initial_value_on_an_input(mut with_db: RootDatabase) {
+    let source = r#"
+PROGRAM P
+VAR_EXTERNAL sensor : BOOL; END_VAR
+VAR t : BOOL; END_VAR
+    t := sensor;
+END_PROGRAM
+
+CONFIGURATION Cfg
+VAR_GLOBAL sensor AT %IX0.0 : BOOL := TRUE; END_VAR
+    RESOURCE R ON CPU
+        TASK T(INTERVAL := T#10ms, PRIORITY := 1);
+        PROGRAM P1 WITH T : P;
+    END_RESOURCE
+END_CONFIGURATION
+"#;
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
+    [E1419] Error: write to an input location
+       ,-[ file:///test0.st:9:12 ]
+       |
+     9 | VAR_GLOBAL sensor AT %IX0.0 : BOOL := TRUE; END_VAR
+       |            ^^^^^^^^^^^^^^^|^^^^^^^^^^^^^^^
+       |                           `----------------- '%IX0.0' is an input, so an initial value is overwritten before anything reads it
+       |
+       | Note: the host writes the input image before every scan, the first one included
+    ---'
+    ");
+}
+
+/// A part has no cell of its own for `__init` to write; its initial value
+/// was silently dropped. The bit belongs in the owner's initial value.
+#[rstest]
+fn invalid_initial_value_on_a_part(mut with_db: RootDatabase) {
+    let source = r#"
+PROGRAM P
+VAR_EXTERNAL lamps : WORD; END_VAR
+    lamps := lamps;
+END_PROGRAM
+
+CONFIGURATION Cfg
+VAR_GLOBAL
+    lamps AT %QW0   : WORD := 16#00F0;
+    lamp  AT %QX0.3 : BOOL := TRUE;
+END_VAR
+    RESOURCE R ON CPU
+        TASK T(INTERVAL := T#10ms, PRIORITY := 1);
+        PROGRAM P1 WITH T : P;
+    END_RESOURCE
+END_CONFIGURATION
+"#;
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
+    [E1423] Error: part of a wider address
+        ,-[ file:///test0.st:10:5 ]
+        |
+     10 |     lamp  AT %QX0.3 : BOOL := TRUE;
+        |     ^^^^^^^^^^^^^^^|^^^^^^^^^^^^^^
+        |                    `---------------- '%QX0.3' is part of '%QW0' and cannot have an initial value of its own
+        |
+        | Note: give the variable located at '%QW0' an initial value with this part set in it
+    ----'
+    ");
+}
+
+/// An output's initial value is the state it starts in, and a marker's is
+/// its starting value: both are the program's to set.
+#[rstest]
+fn valid_initial_values_on_outputs_and_markers(mut with_db: RootDatabase) {
+    let source = r#"
+PROGRAM P
+VAR_EXTERNAL lamps : WORD; count : INT; END_VAR
+    count := count + 1;
+    lamps := lamps;
+END_PROGRAM
+
+CONFIGURATION Cfg
+VAR_GLOBAL
+    lamps AT %QW0 : WORD := 16#00F0;
+    count AT %MW0 : INT := 10;
+END_VAR
+    RESOURCE R ON CPU
+        TASK T(INTERVAL := T#10ms, PRIORITY := 1);
+        PROGRAM P1 WITH T : P;
+    END_RESOURCE
+END_CONFIGURATION
+"#;
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @"");
 }

@@ -146,18 +146,22 @@ pub enum ConfigError<'db> {
         /// The address AS WRITTEN, by the second declaration.
         address: compact_str::CompactString,
     },
-    /// The size letter and the declared type disagree about how wide the
-    /// cell is. `AT %IX0.0 : INT` names one bit and declares sixteen; the
-    /// host binds a channel of the width the address says and the program
-    /// reads a value of the width the type says.
+    /// A located variable holds one value of the width its size letter
+    /// names, so it is declared as an elementary type of that width.
+    /// `AT %IX0.0 : INT` names one bit and declares sixteen; `AT %IW0 :
+    /// Colour` or `: ARRAY[..] OF ..` declares no single width at all — the
+    /// host binds a channel of the width the address says, and the program
+    /// would read something else.
     LocationWidthMismatch {
         var: VariableDecl<'db>,
         /// The address AS WRITTEN.
         address: compact_str::CompactString,
         /// What the size letter names, in bits.
         address_bits: usize,
-        /// What the declared type is, in bits.
-        declared_bits: usize,
+        /// The declared type's width in bits, or `None` when it is not an
+        /// elementary type with one: an aggregate, an enum, a subrange, a
+        /// STRING.
+        declared_bits: Option<usize>,
         declared: Type<'db>,
     },
     /// An address used in a way only storage of its own allows, when it is
@@ -187,6 +191,9 @@ pub enum WiderAddressUse {
     ForCounter,
     /// Declared RETAIN: persistence belongs to storage, and this has none.
     Retain,
+    /// Given an initial value: `__init` writes storage, and this has none,
+    /// so the value was silently dropped.
+    Initializer,
     /// Declared with a type that does not hold its bits as they are: a part
     /// reads back as a bit string, so a signed, real or time type would
     /// silently read a different value.
@@ -208,6 +215,7 @@ impl WiderAddressUse {
             }
             Self::ForCounter => format!("{is} and cannot count a FOR loop"),
             Self::Retain => format!("{is} and cannot be RETAIN on its own"),
+            Self::Initializer => format!("{is} and cannot have an initial value of its own"),
             Self::Type { declared, .. } => {
                 format!("{is} and reads as its bits, which '{declared}' does not hold as they are")
             }
@@ -227,6 +235,9 @@ impl WiderAddressUse {
                     "RETAIN belongs on the variable located at '{owner}', whose storage this is"
                 )
             }
+            Self::Initializer => format!(
+                "give the variable located at '{owner}' an initial value with this part set in it"
+            ),
             Self::Type { bits, .. } => match bits {
                 1 => "declare it BOOL".to_string(),
                 8 => "declare it BYTE or USINT".to_string(),
@@ -273,7 +284,7 @@ impl UnlocatableAddress {
                 "the binding for a partly specified address comes from VAR_CONFIG, which is checked but not applied yet (E1416); write the address in full to allocate it now"
             }
             Self::Malformed => {
-                "an address names its area with I, Q or M and its width with X, B, W, D or L, as in '%IX0.0'; omitting the size character is not implemented"
+                "an address names its area with I, Q or M and its width with X, B, W, D or L, as in '%IX0.0'; a bit may leave the width out, as in '%I0.0'"
             }
         }
     }
@@ -288,6 +299,9 @@ impl UnlocatableAddress {
 pub enum InputWriteRoute {
     Assignment,
     Reference,
+    /// An initial value: `__init` writes it, and the host's copy-in before
+    /// the first scan overwrites it before anything reads it.
+    Initializer,
 }
 
 /// Which parsed-but-inert CONFIGURATION construct was found.
@@ -426,7 +440,7 @@ impl<'db> ErrorCode for ConfigError<'db> {
             Self::WriteToInputLocation { .. } => "write to an input location",
             Self::RetainOnIoLocation { .. } => "RETAIN on an I/O location",
             Self::DuplicateLocation { .. } => "duplicate location",
-            Self::LocationWidthMismatch { .. } => "location width mismatch",
+            Self::LocationWidthMismatch { .. } => "location type mismatch",
             Self::PartOfWiderAddress { .. } => "part of a wider address",
         }
     }
@@ -676,6 +690,9 @@ impl<'db> ToIdeDiagnostic<'db> for ConfigError<'db> {
                     InputWriteRoute::Reference => format!(
                         "'{address}' is an input, so a writable reference to it cannot be taken"
                     ),
+                    InputWriteRoute::Initializer => format!(
+                        "'{address}' is an input, so an initial value is overwritten before anything reads it"
+                    ),
                 };
                 let mut diag = diag()
                     .message(message)
@@ -690,6 +707,9 @@ impl<'db> ToIdeDiagnostic<'db> for ConfigError<'db> {
                         }
                         InputWriteRoute::Reference => {
                             "a REF_TO is a writable pointer and nothing tracks what is stored through it, so the reference is refused where it is taken"
+                        }
+                        InputWriteRoute::Initializer => {
+                            "the host writes the input image before every scan, the first one included"
                         }
                     }
                     .to_string(),
@@ -750,13 +770,23 @@ impl<'db> ToIdeDiagnostic<'db> for ConfigError<'db> {
                 declared_bits,
                 declared,
             } => {
-                let mut diag = diag()
-                    .message(format!(
-                        "'{address}' is {address_bits} bit{}, but '{}' is declared '{}', which is {declared_bits}",
-                        if *address_bits == 1 { "" } else { "s" },
-                        var.get_name_ident(db).text(db),
+                let bits = format!(
+                    "{address_bits} bit{}",
+                    if *address_bits == 1 { "" } else { "s" }
+                );
+                let name = var.get_name_ident(db).text(db);
+                let message = match declared_bits {
+                    Some(declared_bits) => format!(
+                        "'{address}' is {bits}, but '{name}' is declared '{}', which is {declared_bits}",
                         declared.type_name(db)
-                    ))
+                    ),
+                    None => format!(
+                        "'{address}' is {bits}, but '{name}' is declared '{}', which is not an elementary type of any width",
+                        declared.type_name(db)
+                    ),
+                };
+                let mut diag = diag()
+                    .message(message)
                     .severity(DiagnosticSeverity::ERROR)
                     .desc(self)
                     .range(
@@ -764,9 +794,16 @@ impl<'db> ToIdeDiagnostic<'db> for ConfigError<'db> {
                             .unwrap_or_default(),
                     )
                     .call();
-                diag.with_note(
-                    "the size character says how wide the channel a host binds is, so it has to be the width of the value the program reads there".to_string(),
-                );
+                diag.with_note(format!(
+                    "a located variable holds one value as wide as its address; declare it as an elementary type of {bits}, such as {}",
+                    match address_bits {
+                        1 => "BOOL",
+                        8 => "BYTE, SINT or USINT",
+                        16 => "WORD, INT or UINT",
+                        32 => "DWORD, DINT or REAL",
+                        _ => "LWORD, LINT or LREAL",
+                    }
+                ));
                 diag
             }
             Self::PartOfWiderAddress {

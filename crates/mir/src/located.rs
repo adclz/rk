@@ -52,8 +52,8 @@ impl AddressShape {
 }
 
 /// The shape of an address AS WRITTEN (`%MW1.7.9`), or `None` when it names
-/// no band the compiler has: an unknown area letter (`%Z0`), an unknown or
-/// missing width letter (`%I1`), no level at all (`%IX`), or the incomplete
+/// no band the compiler has: an unknown area letter (`%Z0`), an unknown width
+/// letter (`%IZ0`), no level at all (`%IX`), or the incomplete
 /// `%I*`, whose binding would come from VAR_CONFIG. `rk check` refuses each
 /// of those with E1417 before lowering ever runs; this only has to agree
 /// with it and never invent a band.
@@ -70,13 +70,14 @@ pub fn address_shape(text: &str) -> Option<AddressShape> {
         'M' => LocationArea::Marker,
         _ => return None,
     };
-    let width_rank = match chars.next()?.to_ascii_uppercase() {
-        'X' => 0,
-        'B' => 1,
-        'W' => 2,
-        'D' => 3,
-        'L' => 4,
-        _ => return None,
+    // The width letter, or none for a bit (`%I1`, Table 16 row 4b).
+    let width_rank = match chars.next().map(|c| c.to_ascii_uppercase()) {
+        None | Some('X') => 0,
+        Some('B') => 1,
+        Some('W') => 2,
+        Some('D') => 3,
+        Some('L') => 4,
+        Some(_) => return None,
     };
     // Exactly the area letter and the width letter; `%IXQ0` is neither.
     if chars.next().is_some() {
@@ -115,6 +116,9 @@ mod tests {
         assert_eq!(address_shape("%IX0.0").unwrap().offsets, vec![0, 0]);
         assert_eq!(address_shape("%qb7").unwrap().area, LocationArea::Output);
         assert_eq!(address_shape("%IW1_000").unwrap().offsets, vec![1000]);
+        // The width left out is a bit: Table 16 row 4b.
+        assert_eq!(address_shape("%I1").unwrap().bits(), 1);
+        assert_eq!(address_shape("%Q0.3").unwrap().offsets, vec![0, 3]);
     }
 
     /// Every shape `rk check` refuses (E1417) decodes to nothing here, so
@@ -122,7 +126,6 @@ mod tests {
     #[test]
     fn an_address_with_no_band_decodes_to_nothing() {
         for text in [
-            "%I1",     // no width letter: Table 16 row 4b, not implemented
             "%Z0",     // no such area
             "%IZ0",    // no such width
             "%I*",     // incomplete; VAR_CONFIG would supply the binding
