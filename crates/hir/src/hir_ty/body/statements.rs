@@ -584,6 +584,14 @@ impl<'db> StmtsResolverCtx<'db> {
                         CallSite::from_scoped(db, control_variable),
                         ctx,
                     );
+                    if let Some(err) = crate::hir_ty::index_graphs::refuse_part_of_wider(
+                        db,
+                        CallSite::from_scoped(db, control_variable),
+                        control_typ,
+                        crate::check::errors::e14_config::WiderAddressUse::ForCounter,
+                    ) {
+                        ctx.errors.push(err.to_diagnostic(db, ctx.scope.file(db)));
+                    }
 
                     self.infer_and_check_expr(db, &mut infer, *start, ctx);
                     self.infer_and_check_expr(db, &mut infer, *end, ctx);

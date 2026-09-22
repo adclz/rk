@@ -135,6 +135,107 @@ pub enum ConfigError<'db> {
         /// The address AS WRITTEN.
         address: compact_str::CompactString,
     },
+    /// Two declarations bound to the same address. Each gets a cell of its
+    /// own, so the program has two variables where the plant has one channel:
+    /// a host binding by address finds the same address twice and has to
+    /// write both, and a write through one is invisible through the other.
+    DuplicateLocation {
+        var: VariableDecl<'db>,
+        /// The declaration that claimed the address first.
+        first: VariableDecl<'db>,
+        /// The address AS WRITTEN, by the second declaration.
+        address: compact_str::CompactString,
+    },
+    /// The size letter and the declared type disagree about how wide the
+    /// cell is. `AT %IX0.0 : INT` names one bit and declares sixteen; the
+    /// host binds a channel of the width the address says and the program
+    /// reads a value of the width the type says.
+    LocationWidthMismatch {
+        var: VariableDecl<'db>,
+        /// The address AS WRITTEN.
+        address: compact_str::CompactString,
+        /// What the size letter names, in bits.
+        address_bits: usize,
+        /// What the declared type is, in bits.
+        declared_bits: usize,
+        declared: Type<'db>,
+    },
+    /// An address used in a way only storage of its own allows, when it is
+    /// part of a wider address the workspace mentions — `%QX0.3` beside a
+    /// `%QW0` is that word's bit 3, with no address of its own to hand out.
+    PartOfWiderAddress {
+        site: CallSite<'db>,
+        /// The address, upper-cased.
+        address: compact_str::CompactString,
+        /// The address it is part of.
+        owner: compact_str::CompactString,
+        usage: WiderAddressUse,
+    },
+}
+
+/// What a part of a wider address was used for that it cannot be.
+#[derive(Clone, Debug, PartialEq, Eq, Hash, salsa::Update)]
+pub enum WiderAddressUse {
+    /// Passed to a VAR_IN_OUT, which takes an address.
+    InOut,
+    /// Given to `REF()`, which takes an address.
+    Reference,
+    /// Bound to a FUNCTION's output, which is written through an address.
+    /// An FB's output is copied after the call, so that one is allowed.
+    FunctionOutput,
+    /// Used as a FOR counter, which needs storage of its own.
+    ForCounter,
+    /// Declared RETAIN: persistence belongs to storage, and this has none.
+    Retain,
+    /// Declared with a type that does not hold its bits as they are: a part
+    /// reads back as a bit string, so a signed, real or time type would
+    /// silently read a different value.
+    Type {
+        declared: compact_str::CompactString,
+        /// The address's width, which names the types that would hold it.
+        bits: u8,
+    },
+}
+
+impl WiderAddressUse {
+    fn message(&self, address: &str, owner: &str) -> String {
+        let is = format!("'{address}' is part of '{owner}'");
+        match self {
+            Self::InOut => format!("{is} and has no address of its own to pass to a VAR_IN_OUT"),
+            Self::Reference => format!("{is} and has no address of its own to take a reference to"),
+            Self::FunctionOutput => {
+                format!("{is} and has no address a function could write its output through")
+            }
+            Self::ForCounter => format!("{is} and cannot count a FOR loop"),
+            Self::Retain => format!("{is} and cannot be RETAIN on its own"),
+            Self::Type { declared, .. } => {
+                format!("{is} and reads as its bits, which '{declared}' does not hold as they are")
+            }
+        }
+    }
+
+    fn note(&self, address: &str, owner: &str) -> String {
+        match self {
+            Self::InOut => "copy it into a variable, pass that, and assign it back".to_string(),
+            Self::Reference => format!("take the reference of '{owner}' as a whole"),
+            Self::FunctionOutput => {
+                format!("bind the output to a variable and assign '{address}' from it")
+            }
+            Self::ForCounter => format!("count in a variable and assign '{address}' from it"),
+            Self::Retain => {
+                format!(
+                    "RETAIN belongs on the variable located at '{owner}', whose storage this is"
+                )
+            }
+            Self::Type { bits, .. } => match bits {
+                1 => "declare it BOOL".to_string(),
+                8 => "declare it BYTE or USINT".to_string(),
+                16 => "declare it WORD or UINT".to_string(),
+                32 => "declare it DWORD or UDINT".to_string(),
+                _ => "declare it LWORD or ULINT".to_string(),
+            },
+        }
+    }
 }
 
 /// Why a TASK cannot be scheduled. Only cyclic tasks with a literal, non-zero
@@ -273,7 +374,6 @@ impl UnschedulableReason {
     }
 }
 
-
 impl<'db> ErrorCode for ConfigError<'db> {
     fn code(&self) -> &'static str {
         match self {
@@ -297,6 +397,9 @@ impl<'db> ErrorCode for ConfigError<'db> {
             Self::UnknownMultibitsAccess { .. } => "E1418",
             Self::WriteToInputLocation { .. } => "E1419",
             Self::RetainOnIoLocation { .. } => "E1420",
+            Self::DuplicateLocation { .. } => "E1421",
+            Self::LocationWidthMismatch { .. } => "E1422",
+            Self::PartOfWiderAddress { .. } => "E1423",
         }
     }
 
@@ -322,6 +425,9 @@ impl<'db> ErrorCode for ConfigError<'db> {
             Self::UnknownMultibitsAccess { .. } => "unknown multibit access size",
             Self::WriteToInputLocation { .. } => "write to an input location",
             Self::RetainOnIoLocation { .. } => "RETAIN on an I/O location",
+            Self::DuplicateLocation { .. } => "duplicate location",
+            Self::LocationWidthMismatch { .. } => "location width mismatch",
+            Self::PartOfWiderAddress { .. } => "part of a wider address",
         }
     }
 }
@@ -607,6 +713,75 @@ impl<'db> ToIdeDiagnostic<'db> for ConfigError<'db> {
                     "the retain band is restored at startup, so a retained I/O image would run the first scan on the values of the last power cycle; only '%M' may persist"
                         .to_string(),
                 );
+                diag
+            }
+            Self::DuplicateLocation {
+                var,
+                first,
+                address,
+            } => {
+                let mut diag = diag()
+                    .message(format!(
+                        "'{}' is located at '{address}', which '{}' already claims",
+                        var.get_name_ident(db).text(db),
+                        first.get_name_ident(db).text(db)
+                    ))
+                    .severity(DiagnosticSeverity::ERROR)
+                    .desc(self)
+                    .range(
+                        crate::denormalize(db, file, &var.as_call_site(db).get_span(db))
+                            .unwrap_or_default(),
+                    )
+                    .call();
+                diag.with_related(Related::new(
+                    format!("'{}' is located here", first.get_name_ident(db).text(db)),
+                    first.get_scope_id(db).file(db),
+                    first.as_call_site(db).get_span(db),
+                ));
+                diag.with_note(
+                    "an address is one channel, and each declaration is given storage of its own, so the two would never see each other's value; name the one variable from wherever it is needed".to_string(),
+                );
+                diag
+            }
+            Self::LocationWidthMismatch {
+                var,
+                address,
+                address_bits,
+                declared_bits,
+                declared,
+            } => {
+                let mut diag = diag()
+                    .message(format!(
+                        "'{address}' is {address_bits} bit{}, but '{}' is declared '{}', which is {declared_bits}",
+                        if *address_bits == 1 { "" } else { "s" },
+                        var.get_name_ident(db).text(db),
+                        declared.type_name(db)
+                    ))
+                    .severity(DiagnosticSeverity::ERROR)
+                    .desc(self)
+                    .range(
+                        crate::denormalize(db, file, &var.as_call_site(db).get_span(db))
+                            .unwrap_or_default(),
+                    )
+                    .call();
+                diag.with_note(
+                    "the size character says how wide the channel a host binds is, so it has to be the width of the value the program reads there".to_string(),
+                );
+                diag
+            }
+            Self::PartOfWiderAddress {
+                site,
+                address,
+                owner,
+                usage,
+            } => {
+                let mut diag = diag()
+                    .message(usage.message(address, owner))
+                    .severity(DiagnosticSeverity::ERROR)
+                    .desc(self)
+                    .range(crate::denormalize(db, file, &site.get_span(db)).unwrap_or_default())
+                    .call();
+                diag.with_note(usage.note(address, owner));
                 diag
             }
         }

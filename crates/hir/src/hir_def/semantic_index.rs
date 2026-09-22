@@ -16,6 +16,7 @@ use crate::hir_def::config::ConfigDecl;
 use crate::hir_def::hir_node::HirNode;
 use crate::hir_def::namespace::NamespaceDecl;
 use crate::hir_def::pous::pou::Pou;
+use crate::hir_def::pous::variable::LocatedAddress;
 use crate::hir_def::program::ProgramDecl;
 use crate::hir_def::scope::{Scope, ScopeId};
 use index::{IndexVec, newtype_index};
@@ -73,6 +74,13 @@ pub struct SemanticIndex<'db> {
     /// All *global* POU declarations in the file
     pub global_pous: Arc<Vec<Pou<'db>>>,
 
+    /// Every I/O address the file mentions — a located VAR_GLOBAL's, or one
+    /// written bare in a body — each once, sorted. What the workspace compares.
+    pub located: Arc<Vec<LocatedAddress>>,
+    /// The first mention of each of those, in the order they were built: the
+    /// node a diagnostic about the address points at.
+    pub located_at: Arc<Vec<(LocatedAddress, HirNode<'db>)>>,
+
     /// A list of errors encountered during semantic analysis
     pub(crate) errors: Vec<IdeDiagnostic>,
 }
@@ -108,6 +116,8 @@ impl<'db> SemanticIndex<'db> {
             namespaces: Arc::new(vec![]),
             namespace_map: Arc::new(FxHashMap::default()),
             global_pous: Arc::new(vec![]),
+            located: Arc::new(vec![]),
+            located_at: Arc::new(vec![]),
             errors: vec![],
         }
     }

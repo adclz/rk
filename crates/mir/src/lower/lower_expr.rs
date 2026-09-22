@@ -58,6 +58,11 @@ pub struct ExprLowerCtx<'db> {
     /// `VAR_OUTPUT`, `$argcopy$N` for an aggregate `VAR_INPUT` snapshot. Drained
     /// into the function's locals by the lowering caller (see `build_call_args`).
     pub call_scratch: std::rc::Rc<std::cell::RefCell<CallScratch>>,
+    /// Statements that must run right after the one being lowered: the store
+    /// of an FB output into the owner of a view it was bound to. Drained by
+    /// the statement loop after each statement, so a nested body keeps its
+    /// own in place.
+    pub after_stmt: std::cell::RefCell<Vec<crate::stmt::MirStmt>>,
     /// The POU this body is emitted for, which for an inherited method is the
     /// inheritor: `THIS.m()` inside it must reach the inheritor's `m`.
     pub this_pou: Option<hir::hir_def::pous::pou::Pou<'db>>,
@@ -129,6 +134,7 @@ impl<'db> ExprLowerCtx<'db> {
             iface_call_rewrites: None,
             variadic_expansion: None,
             call_scratch: Default::default(),
+            after_stmt: Default::default(),
             this_pou: None,
         }
     }
@@ -146,6 +152,7 @@ impl<'db> ExprLowerCtx<'db> {
             iface_call_rewrites: None,
             variadic_expansion: None,
             call_scratch: Default::default(),
+            after_stmt: Default::default(),
             this_pou: None,
         }
     }
@@ -575,6 +582,12 @@ impl<'db> ExprLowerCtx<'db> {
             PrimaryExpr::Literal(elem) => self.lower_literal(elem, parent_expr),
 
             PrimaryExpr::VariableAccess(var_access) => {
+                // `%IX0.3` beside a `%IW0` is bits of that word's cell.
+                if let Some((owner, sliced)) =
+                    self.view_slice(*var_access, parent_expr.infer(self.db))?
+                {
+                    return Ok(super::multibit::slice_read(owner, sliced));
+                }
                 let place = self.lower_variable_access(*var_access)?;
                 // `b.1` reads a slice of `b`, not `b` itself.
                 if var_access.multibits(self.db).is_some() {
@@ -1750,6 +1763,13 @@ impl<'db> ExprLowerCtx<'db> {
                         });
                     }
                     ParamAssignKind::FormalOutput { variable, .. } => {
+                    if self.view_slice(variable, variable.infer(self.db))?.is_some() {
+                        return Err(LowerTypeError::UnsupportedType(
+                            "a function cannot write its output into part of a wider address; \
+                             `rk check` refuses it (E1423)"
+                                .to_string(),
+                        ));
+                    }
                         let place = self.lower_variable_access(variable)?;
                         args.push(MirCallArg {
                             value: MirExpr::AddrOf(place),
@@ -1949,6 +1969,13 @@ impl<'db> ExprLowerCtx<'db> {
                     }
                 }
                 hir::hir_ty::body::ParamBinding::Output(variable) => {
+                    if self.view_slice(*variable, variable.infer(self.db))?.is_some() {
+                        return Err(LowerTypeError::UnsupportedType(
+                            "a function cannot write its output into part of a wider address; \
+                             `rk check` refuses it (E1423)"
+                                .to_string(),
+                        ));
+                    }
                     let place = self.lower_variable_access(*variable)?;
                     let ty = crate::lower::lower_func::lower_var_type(self.db, *var)?;
                     // A WIDER scalar destination converts after the call: the
@@ -2217,7 +2244,32 @@ impl<'db> ExprLowerCtx<'db> {
                             var_name.text(self.db)
                         )));
                     };
-                    let place = self.lower_variable_access(*variable)?;
+                    // A view has no storage of its own: the output lands in a
+                    // scratch, and the statement after the call rewrites the
+                    // owner with those bits (`Q => %QX0.3` beside a `%QW0`).
+                    let place = match self.view_slice(*variable, variable.infer(self.db))? {
+                        Some((owner, sliced)) => {
+                            let scratch = hir::hir_def::interned::identifier::Ident::new(
+                                self.db,
+                                compact_str::CompactString::from(format!(
+                                    "$viewout${}",
+                                    self.call_scratch.borrow().memory.len()
+                                )),
+                            );
+                            let elem = MirType::Elementary(sliced.elem);
+                            self.call_scratch
+                                .borrow_mut()
+                                .memory
+                                .push((scratch, elem.clone()));
+                            let bits = MirExpr::Load(MirPlace::Local(scratch), elem);
+                            self.after_stmt.borrow_mut().push(crate::stmt::MirStmt::Assign {
+                                target: owner.clone(),
+                                value: super::multibit::slice_write(owner, sliced, bits),
+                            });
+                            MirPlace::Local(scratch)
+                        }
+                        None => self.lower_variable_access(*variable)?,
+                    };
                     // A wider scalar destination converts in the copy.
                     let field_lane = match &field.ty {
                         MirType::Elementary(e) => Some(*e),

@@ -564,7 +564,7 @@ fn lower_module_from_pous<'db>(
     module.output_size = bands.output_size;
     module.marker_base = bands.marker_base;
     module.marker_size = bands.marker_size;
-    module.located_map = build_located_map(db, &bands.located, &global_table);
+    module.located_map = build_located_map(db, &bands.located, &global_table, config);
 
     // The debug-symbol table, now that every address is final; sorted by
     // path.
@@ -958,6 +958,15 @@ fn add_global<'db>(
     memory_layout: &mut MirMemoryLayout,
     table: &mut GlobalTable<'db>,
 ) -> Result<(), LowerTypeError> {
+    // Located inside a wider address the workspace mentions, a global is no
+    // cell of its own: it is that address's bits, and every access to it is
+    // lowered as a slice of the owner (`view_slice`).
+    if let Some(dv) = v.location(db)
+        && let Some(address) = hir::hir_def::pous::variable::LocatedAddress::of(db, dv)
+        && hir::hir_ty::index_graphs::located_view(db, &address).is_some()
+    {
+        return Ok(());
+    }
     let ty = super::lower_type::lower_spec(db, v.spec(db))?;
     let size = ty.size_bytes();
     let align = ty.alignment();
@@ -1019,35 +1028,98 @@ fn build_located_map<'db>(
     db: &'db dyn WorkspaceDataBase,
     located: &[crate::memory::LocatedEntry],
     globals: &GlobalTable<'db>,
+    config: &[hir::hir_def::config::ConfigDecl<'db>],
 ) -> debug_format::LocatedMap {
-    use hir::hir_def::pous::variable::LocationArea;
-    debug_format::LocatedMap::new(
-        located
-            .iter()
-            .map(|e| debug_format::LocatedVar {
-                address: e.address_text.clone(),
-                name: e.name.text(db).to_string(),
-                area: match e.area {
-                    LocationArea::Input => debug_format::LocatedArea::Input,
-                    LocationArea::Output => debug_format::LocatedArea::Output,
-                    LocationArea::Marker => debug_format::LocatedArea::Marker,
-                },
-                path: e.offsets.clone(),
-                width: match e.width_rank {
-                    0 => 1,
-                    1 => 8,
-                    2 => 16,
-                    3 => 32,
-                    _ => 64,
-                },
-                addr: e.address,
-                size: e.size,
-                ty: globals
-                    .get(&e.name)
-                    .and_then(|(_, ty)| crate::debug_symbols::scalar_sym_ty(ty)),
-            })
-            .collect(),
-    )
+    use hir::hir_def::pous::variable::{LocatedAddress, LocationArea};
+    let area = |a: LocationArea| match a {
+        LocationArea::Input => debug_format::LocatedArea::Input,
+        LocationArea::Output => debug_format::LocatedArea::Output,
+        LocationArea::Marker => debug_format::LocatedArea::Marker,
+    };
+    let mut entries: Vec<debug_format::LocatedVar> = located
+        .iter()
+        .map(|e| debug_format::LocatedVar {
+            address: e.address_text.clone(),
+            name: e.name.text(db).to_string(),
+            area: area(e.area),
+            path: e.offsets.clone(),
+            width: match e.width_rank {
+                0 => 1,
+                1 => 8,
+                2 => 16,
+                3 => 32,
+                _ => 64,
+            },
+            addr: e.address,
+            size: e.size,
+            ty: globals
+                .get(&e.name)
+                .and_then(|(_, ty)| crate::debug_symbols::scalar_sym_ty(ty)),
+            part_of: None,
+        })
+        .collect();
+
+    // The parts: addresses stored inside a wider one, with no cell of their
+    // own. Each is listed at its owner's cell with the bits it is, so a host
+    // finds every address the program names, part or not, the same way.
+    let mut parts: Vec<debug_format::LocatedVar> = Vec::new();
+    for (_, addresses) in hir::hir_ty::index_graphs::located_by_file(db) {
+        for address in addresses {
+            if parts.iter().any(|p| p.address == address.text.as_str()) {
+                continue;
+            }
+            let Some(view) = hir::hir_ty::index_graphs::located_view(db, address) else {
+                continue;
+            };
+            let Some(owner) = entries
+                .iter()
+                .find(|cell| cell.address.eq_ignore_ascii_case(&view.owner.text))
+            else {
+                continue;
+            };
+            // Under the name it was declared with, if it was; the address
+            // stands in for a bare one, as it does for a bare cell.
+            let declared = config
+                .iter()
+                .flat_map(|c| c.variables(db).iter())
+                .find(|v| {
+                    v.location(db)
+                        .and_then(|dv| LocatedAddress::of(db, dv))
+                        .as_ref()
+                        == Some(address)
+                });
+            let (name, ty) = match declared {
+                Some(v) => (
+                    v.name(db).text(db).to_string(),
+                    super::lower_type::lower_spec(db, v.spec(db))
+                        .ok()
+                        .and_then(|ty| crate::debug_symbols::scalar_sym_ty(&ty)),
+                ),
+                None => (
+                    address.text.to_string(),
+                    Some(crate::debug_symbols::sym_type_of(
+                        crate::located::width_elementary(address.width),
+                    )),
+                ),
+            };
+            parts.push(debug_format::LocatedVar {
+                address: address.text.to_string(),
+                name,
+                area: area(address.area),
+                path: address.levels.clone(),
+                width: u16::from(address.width),
+                addr: owner.addr,
+                size: owner.size,
+                ty,
+                part_of: Some(debug_format::LocatedPart {
+                    owner: owner.address.clone(),
+                    shift: view.shift as u16,
+                }),
+            });
+        }
+    }
+    entries.append(&mut parts);
+    debug_format::LocatedMap::new(entries)
 }
 
 /// Fill in the address and type of each global a body referenced by

@@ -122,6 +122,9 @@ impl<'db> InitInference<'db> {
         };
 
         let mut seen = FxHashMap::default();
+        // Address AS WRITTEN, upper-cased, to the declaration that claimed it.
+        let mut located: FxHashMap<compact_str::CompactString, VariableDecl<'db>> =
+            FxHashMap::default();
         let mut first_variadic: Option<VariableDecl<'db>> = None;
 
         for var in variables {
@@ -190,7 +193,93 @@ impl<'db> InitInference<'db> {
                                 .to_diagnostic(db, self.scope.file(db)),
                         );
                     }
-                    Some(_) => {}
+                    Some(_) => {
+                        // An address is one channel. Two declarations bound
+                        // to it each get storage of their own, so a write
+                        // through one is invisible through the other and a
+                        // host binding by address finds it twice.
+                        match located.get(&address.to_ascii_uppercase()) {
+                            Some(first) => self.errors.push(
+                                ConfigError::DuplicateLocation {
+                                    var: *var,
+                                    first: *first,
+                                    address: address.clone(),
+                                }
+                                .to_diagnostic(db, self.scope.file(db)),
+                            ),
+                            None => {
+                                located.insert(address.to_ascii_uppercase(), *var);
+                            }
+                        }
+                        // The size character says how wide the channel is,
+                        // and the declared type says how wide the value the
+                        // program reads there is. They have to agree.
+                        //
+                        // Only checked where the declared type HAS a width:
+                        // an enum, a subrange or an aggregate answers `Null`,
+                        // and reporting those would be a guess.
+                        let declared = Type::resolve_spec(db, var.spec(db));
+                        let mut width_mismatch = false;
+                        if let Some((_, address_bits)) = dv
+                            .adress(db)
+                            .text(db)
+                            .chars()
+                            .nth(1)
+                            .and_then(crate::hir_ty::infer::normalize::access_size)
+                            && let crate::hir_ty::ty::Size::Size(declared_bits) =
+                                declared.get_size()
+                            && declared_bits != address_bits
+                        {
+                            width_mismatch = true;
+                            self.errors.push(
+                                ConfigError::LocationWidthMismatch {
+                                    var: *var,
+                                    address,
+                                    address_bits,
+                                    declared_bits,
+                                    declared,
+                                }
+                                .to_diagnostic(db, self.scope.file(db)),
+                            );
+                        }
+                        // Located inside a wider address the workspace
+                        // mentions, the variable is that address's bits and
+                        // has no storage of its own (E1423): persistence is
+                        // the owner's to declare, and it reads back as a bit
+                        // string, which a signed, real or time type would
+                        // silently reinterpret. Past a width mismatch there is
+                        // nothing more to say about the type.
+                        if let Some(located) =
+                            crate::hir_def::pous::variable::LocatedAddress::of(db, dv)
+                            && let Some(view) =
+                                crate::hir_ty::index_graphs::located_view(db, &located)
+                        {
+                            use crate::check::errors::e14_config::WiderAddressUse;
+                            let mut refuse = |usage| {
+                                self.errors.push(
+                                    ConfigError::PartOfWiderAddress {
+                                        site: var.as_call_site(db),
+                                        address: located.text.clone(),
+                                        owner: view.owner.text.clone(),
+                                        usage,
+                                    }
+                                    .to_diagnostic(db, self.scope.file(db)),
+                                )
+                            };
+                            // Only `%M` gets here RETAIN: E1420 took `%I`/`%Q`.
+                            if var.qualifier(db).contains(crate::Qualifier::RETAIN) {
+                                refuse(WiderAddressUse::Retain);
+                            }
+                            if !width_mismatch && !holds_bits(declared, located.width) {
+                                refuse(WiderAddressUse::Type {
+                                    declared: compact_str::CompactString::from(
+                                        declared.type_name(db),
+                                    ),
+                                    bits: located.width,
+                                });
+                            }
+                        }
+                    }
                     None => {
                         use crate::check::errors::e14_config::UnlocatableAddress;
                         // A well-formed address in a POU is the POU's fault;
@@ -515,4 +604,19 @@ fn same_storage_type<'db>(db: &'db dyn WorkspaceDataBase, a: Type<'db>, b: Type<
         }
         (x, y) => x == y,
     }
+}
+
+/// Whether a part of a wider address declared `ty` reads back as its value:
+/// a part is read as `bits` bits of its owner, which only a bit string or an
+/// unsigned integer of that width holds as they are.
+fn holds_bits(ty: Type<'_>, bits: u8) -> bool {
+    use crate::hir_def::expressions::spec::ElementarySpec as E;
+    matches!(
+        (bits, ty),
+        (1, Type::Elementary(E::Bool))
+            | (8, Type::Elementary(E::Byte | E::USInt))
+            | (16, Type::Elementary(E::Word | E::UInt))
+            | (32, Type::Elementary(E::DWord | E::UDInt))
+            | (64, Type::Elementary(E::LWord | E::ULInt))
+    )
 }

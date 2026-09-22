@@ -21,16 +21,22 @@ pub struct AddressShape {
     pub offsets: Vec<u32>,
 }
 
+/// The bit-string type a width in bits names: what a bare address, or the
+/// slice a view is, reads as.
+pub fn width_elementary(bits: u8) -> MirElementary {
+    match bits {
+        1 => MirElementary::Bool,
+        8 => MirElementary::Byte,
+        16 => MirElementary::Word,
+        32 => MirElementary::DWord,
+        _ => MirElementary::LWord,
+    }
+}
+
 impl AddressShape {
     /// The width letter's own type, which is what a bare address reads as.
     pub fn elementary(&self) -> MirElementary {
-        match self.width_rank {
-            0 => MirElementary::Bool,
-            1 => MirElementary::Byte,
-            2 => MirElementary::Word,
-            3 => MirElementary::DWord,
-            _ => MirElementary::LWord,
-        }
+        width_elementary(self.bits() as u8)
     }
 
     /// What the width letter names, in bits.

@@ -591,7 +591,7 @@ impl TestPlc {
     /// Write one located cell by its address, as a bound host does.
     #[allow(dead_code)]
     pub fn write_located(&mut self, address: &str, bytes: &[u8]) -> Result<()> {
-        let entry = self.located(address)?;
+        let entry = self.located(address)?.clone();
         if bytes.len() > entry.size as usize {
             bail!(
                 "{address} holds {} bytes, not {}",
@@ -599,15 +599,35 @@ impl TestPlc {
                 bytes.len()
             );
         }
-        let addr = entry.addr;
-        self.write_bytes(addr, bytes)
+        let Some(part) = &entry.part_of else {
+            return self.write_bytes(entry.addr, bytes);
+        };
+        // A part: replace its bits in the owner's cell, as a host must.
+        let mut value = [0u8; 8];
+        value[..bytes.len()].copy_from_slice(bytes);
+        let mask = low_mask(entry.width) << part.shift;
+        let cell = self.read_cell(entry.addr, entry.size)?;
+        let cell = (cell & !mask) | ((u64::from_le_bytes(value) << part.shift) & mask);
+        self.write_bytes(entry.addr, &cell.to_le_bytes()[..entry.size as usize])
     }
 
-    /// Read one located cell by its address.
+    /// Read one located cell by its address; for a part, just its bits,
+    /// shifted down.
     #[allow(dead_code)]
     pub fn read_located(&self, address: &str) -> Result<Vec<u8>> {
         let entry = self.located(address)?;
-        self.read_bytes(entry.addr, entry.size as usize)
+        let Some(part) = &entry.part_of else {
+            return self.read_bytes(entry.addr, entry.size as usize);
+        };
+        let bits = (self.read_cell(entry.addr, entry.size)? >> part.shift) & low_mask(entry.width);
+        Ok(bits.to_le_bytes()[..entry.size as usize].to_vec())
+    }
+
+    /// A cell's value, little-endian, zero-extended.
+    fn read_cell(&self, addr: u32, size: u32) -> Result<u64> {
+        let mut value = [0u8; 8];
+        value[..size as usize].copy_from_slice(&self.read_bytes(addr, size as usize)?);
+        Ok(u64::from_le_bytes(value))
     }
 
     /// Write the process image into the input band, as a host does before a
@@ -718,6 +738,11 @@ fn global_i32(store: &mut Store<()>, instance: &Instance, name: &str) -> Result<
         .get(&mut *store)
         .i32()
         .with_context(|| format!("global `{name}` must be i32"))
+}
+
+/// All-ones for the low `width` bits.
+fn low_mask(width: u16) -> u64 {
+    if width >= 64 { u64::MAX } else { (1u64 << width) - 1 }
 }
 
 fn global_i32_opt(store: &mut Store<()>, instance: &Instance, name: &str) -> Option<i32> {

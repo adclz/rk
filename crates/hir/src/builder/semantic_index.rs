@@ -39,6 +39,8 @@ pub struct SemanticIndexBuilder<'db> {
     pub(crate) configs: Vec<ConfigDecl<'db>>,
     pub(crate) namespaces: Vec<NamespaceDecl<'db>>,
     pub(crate) global_pous: Vec<Pou<'db>>,
+    /// Every mention of an I/O address, as the nodes are built.
+    pub(crate) located: Vec<(crate::hir_def::pous::variable::LocatedAddress, HirNode<'db>)>,
 
     /// Counter for generating stable scope IDs.
     ///
@@ -70,6 +72,7 @@ impl<'db> SemanticIndexBuilder<'db> {
             configs: vec![],
             namespaces: vec![],
             global_pous: vec![],
+            located: vec![],
             scope_ctr: 0,
             current_scope: ScopeId::global(db, file),
             errors: vec![],
@@ -151,6 +154,13 @@ impl<'db> SemanticIndexBuilder<'db> {
             self.db, name, name_id, kind, qualifier, variadic, spec, init, location, id, scope_id,
         );
         self.register_node(id, HirNode::VariableDecl(var));
+        // Only a VAR_GLOBAL's location is storage; a POU's own is E1417.
+        if var.kind(self.db) == crate::hir_def::pous::variable::VariableKind::Global
+            && let Some(address) = location
+                .and_then(|dv| crate::hir_def::pous::variable::LocatedAddress::of(self.db, dv))
+        {
+            self.located.push((address, HirNode::VariableDecl(var)));
+        }
         var
     }
 
@@ -190,6 +200,15 @@ impl<'db> SemanticIndexBuilder<'db> {
             self.db, kind, multibits, id, scope_id,
         );
         self.register_node(id, HirNode::VariableAccess(access));
+        // A bare address in a body. A STRUCT element's relative one (`%X3.0`)
+        // arrives here too, and names no band, so `of` leaves it out.
+        if let crate::hir_def::expressions::expression::VariableAccessKind::Direct(dv) =
+            access.kind(self.db)
+            && let Some(address) = crate::hir_def::pous::variable::LocatedAddress::of(self.db, dv)
+        {
+            self.located
+                .push((address, HirNode::VariableAccess(access)));
+        }
         access
     }
 
@@ -386,6 +405,22 @@ impl<'db> SemanticIndexBuilder<'db> {
                 .push(*ns);
         }
 
+        // The first mention of each address, and the distinct addresses
+        // themselves — the second without nodes, so it compares equal across
+        // an edit that did not change which addresses the file mentions.
+        let mut located_at: Vec<(crate::hir_def::pous::variable::LocatedAddress, HirNode<'db>)> =
+            Vec::new();
+        for (address, node) in self.located {
+            if !located_at.iter().any(|(seen, _)| *seen == address) {
+                located_at.push((address, node));
+            }
+        }
+        let mut located: Vec<_> = located_at
+            .iter()
+            .map(|(address, _)| address.clone())
+            .collect();
+        located.sort();
+
         SemanticIndex {
             scope: global_scope,
             file: self.file,
@@ -397,6 +432,8 @@ impl<'db> SemanticIndexBuilder<'db> {
             namespaces: Arc::new(self.namespaces),
             namespace_map: Arc::new(namespace_map),
             global_pous: Arc::new(self.global_pous),
+            located: Arc::new(located),
+            located_at: Arc::new(located_at),
             errors: self.errors,
         }
     }

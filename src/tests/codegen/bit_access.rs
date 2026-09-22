@@ -444,3 +444,32 @@ fn sized_slices_of_an_lword_are_exact(
     let result: i32 = execute_wasm(&wasm, "get", ());
     assert_eq!(result, expected, "{access} on 16#1122334455667788");
 }
+
+/// A partial write into a SIGNED variable keeps its sign. rk holds a 16-bit
+/// INT sign-extended in its 32-bit lane, and the read-modify-write rebuilds
+/// only its low 16 bits: without putting it back in its domain, -8 with bit
+/// 0 set read back as 65529, and every comparison with zero after it lied.
+#[rstest]
+#[case::int("INT", "-8", "-7")]
+#[case::sint("SINT", "-8", "-7")]
+fn a_partial_write_keeps_a_signed_value_signed(
+    mut with_db: db::RootDatabase,
+    #[case] ty: &str,
+    #[case] start: &str,
+    #[case] expected: &str,
+) {
+    let source = format!(
+        r#"
+        FUNCTION get : BOOL
+        VAR
+            x : {ty} := {start};
+        END_VAR
+            x.0 := TRUE;
+            get := x = {expected} AND x < 0;
+        END_FUNCTION
+    "#
+    );
+    let wasm = compile_to_wasm(&mut with_db, &source);
+    let result: i32 = execute_wasm(&wasm, "get", ());
+    assert_eq!(result, 1, "{ty} {start} with bit 0 set is {expected}");
+}

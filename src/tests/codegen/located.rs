@@ -655,3 +655,330 @@ fn a_padded_retain_band_holds_no_transient(mut with_db: db::RootDatabase) {
     );
     assert!(mir.globals_base > marks.addr + 4);
 }
+
+/// A bare address and a VAR_GLOBAL declared `AT` it are ONE cell: lowering
+/// points the bare name at the declared storage instead of giving it a cell of
+/// its own. So a value the host binds to the address is seen under both
+/// spellings, and a write through the bare form lands in the declared
+/// variable — which is what E1421's rule, one channel one cell, requires of
+/// every pair of mentions and not only of two declarations.
+///
+/// Observed through the located cells alone: the program copies the bare
+/// input into a named output and the named input into a bare output.
+#[rstest]
+fn a_bare_address_and_its_declaration_are_one_cell(mut with_db: db::RootDatabase) {
+    let source = r#"
+        PROGRAM P
+        VAR_EXTERNAL sensor : WORD; valve : WORD; echo : WORD; END_VAR
+            valve := %IW0;
+            %QW2 := sensor;
+        END_PROGRAM
+
+        CONFIGURATION Cfg
+        VAR_GLOBAL
+            sensor AT %IW0 : WORD;
+            valve  AT %QW0 : WORD;
+            echo   AT %QW2 : WORD;
+        END_VAR
+            RESOURCE Res ON CPU
+                TASK T(INTERVAL := T#10ms, PRIORITY := 1);
+                PROGRAM P1 WITH T : P;
+            END_RESOURCE
+        END_CONFIGURATION
+    "#;
+    let (mir, wasm) = compile_to_mir_and_wasm(&mut with_db, source);
+
+    // Three declared cells and no fourth or fifth for the bare mentions.
+    assert_eq!(mir.input_size, 4, "one input cell, not one per spelling");
+    assert_eq!(mir.output_size, 8, "two output cells");
+    let mut plc = TestPlc::load(&wasm).expect("load");
+    let names: Vec<(&str, &str)> = plc
+        .located_map()
+        .entries
+        .iter()
+        .map(|e| (e.address.as_str(), e.name.as_str()))
+        .collect();
+    assert_eq!(
+        names,
+        [("%IW0", "sensor"), ("%QW0", "valve"), ("%QW2", "echo")],
+        "each address once, under the name it was declared with"
+    );
+
+    plc.write_located("%IW0", &0x1234i32.to_le_bytes())
+        .expect("bind the input channel");
+    plc.run(1).expect("scan");
+    let read = |address: &str| {
+        i32::from_le_bytes(plc.read_located(address).expect("read")[..4].try_into().unwrap())
+    };
+    assert_eq!(
+        read("%QW0"),
+        0x1234,
+        "the bare `%IW0` read what the host wrote to `sensor`"
+    );
+    assert_eq!(
+        read("%QW2"),
+        0x1234,
+        "the bare write to `%QW2` landed in `echo`"
+    );
+}
+
+// ---------------------------------------------------------------------------
+// Views. An address inside a wider one the workspace mentions is that
+// address's bits, as in any PLC with a process image: each size counts in its
+// own units (`%IW1` is bytes 2 and 3) and the image is little-endian, so
+// `%IX0.3` is bit 3 of `%IW0` and `%IB1` is its high byte.
+// ---------------------------------------------------------------------------
+
+/// The porting idiom: read a bit and a byte of an input word, set bits and a
+/// byte of an output word. One cell per word, however many of its parts the
+/// program names — bare or declared.
+#[rstest]
+fn a_narrower_address_is_bits_of_the_wider_one(mut with_db: db::RootDatabase) {
+    let source = r#"
+        PROGRAM P
+        VAR_EXTERNAL ready : BOOL; END_VAR
+            %QX0.0 := %IX0.3;
+            %QX0.1 := ready;
+            %QB1 := %IB1;
+        END_PROGRAM
+
+        CONFIGURATION Cfg
+        VAR_GLOBAL
+            status AT %IW0   : WORD;
+            ready  AT %IX1.7 : BOOL;
+            lamps  AT %QW0   : WORD;
+        END_VAR
+            RESOURCE Res ON CPU
+                TASK T(INTERVAL := T#10ms, PRIORITY := 1);
+                PROGRAM P1 WITH T : P;
+            END_RESOURCE
+        END_CONFIGURATION
+    "#;
+    let (mir, wasm) = compile_to_mir_and_wasm(&mut with_db, source);
+    assert_eq!(mir.input_size, 4, "`%IX0.3`, `%IB1` and `ready` are `status`'s bits");
+    assert_eq!(mir.output_size, 4, "`%QX0.0`, `%QX0.1` and `%QB1` are `lamps`'s bits");
+
+    let mut plc = TestPlc::load(&wasm).expect("load");
+    // Bit 3 set, and the high byte 0x8A, whose top bit is `%IX1.7`.
+    plc.write_located("%IW0", &0x8A08i32.to_le_bytes())
+        .expect("write the input word");
+    plc.run(1).expect("scan");
+    let lamps = i32::from_le_bytes(plc.read_located("%QW0").expect("read")[..4].try_into().unwrap());
+    assert_eq!(
+        lamps, 0x8A03,
+        "bit 0 from `%IX0.3`, bit 1 from `ready`, the high byte copied"
+    );
+}
+
+/// A store into a view is a read-modify-write of the owner: only its bits
+/// change, and the rest of the word keeps what it held.
+#[rstest]
+fn a_write_into_a_view_keeps_the_other_bits(mut with_db: db::RootDatabase) {
+    let source = r#"
+        PROGRAM P
+        VAR_EXTERNAL lamps : WORD; END_VAR
+            lamps := 16#FFFF;
+            %QX0.3 := FALSE;
+            %QB1 := 16#12;
+        END_PROGRAM
+
+        CONFIGURATION Cfg
+        VAR_GLOBAL lamps AT %QW0 : WORD; END_VAR
+            RESOURCE Res ON CPU
+                TASK T(INTERVAL := T#10ms, PRIORITY := 1);
+                PROGRAM P1 WITH T : P;
+            END_RESOURCE
+        END_CONFIGURATION
+    "#;
+    let (_mir, wasm) = compile_to_mir_and_wasm(&mut with_db, source);
+    let mut plc = TestPlc::load(&wasm).expect("load");
+    plc.run(1).expect("scan");
+    let lamps = i32::from_le_bytes(plc.read_located("%QW0").expect("read")[..4].try_into().unwrap());
+    assert_eq!(lamps, 0x12F7, "bit 3 cleared, high byte replaced, the rest kept");
+}
+
+/// The owner is the WIDEST container mentioned, so a whole nest shares one
+/// cell: here `%ID0` owns `%IW1`, `%IB2` and `%IX3.7` alike, and each reads
+/// its own bits of it. `%IW1` is bytes 2 and 3 — each size counts in its own
+/// units.
+#[rstest]
+fn a_nest_is_one_cell_owned_by_its_widest_address(mut with_db: db::RootDatabase) {
+    let source = r#"
+        PROGRAM P
+        VAR_EXTERNAL whole : DWORD; END_VAR
+            %QW0 := %IW1;
+            %QB2 := %IB2;
+            %QX3.0 := %IX3.7;
+        END_PROGRAM
+
+        CONFIGURATION Cfg
+        VAR_GLOBAL whole AT %ID0 : DWORD; out AT %QD0 : DWORD; END_VAR
+            RESOURCE Res ON CPU
+                TASK T(INTERVAL := T#10ms, PRIORITY := 1);
+                PROGRAM P1 WITH T : P;
+            END_RESOURCE
+        END_CONFIGURATION
+    "#;
+    let (mir, wasm) = compile_to_mir_and_wasm(&mut with_db, source);
+    assert_eq!(mir.input_size, 4, "one DWORD cell for the whole nest");
+    let mut plc = TestPlc::load(&wasm).expect("load");
+    plc.write_located("%ID0", &(0x9A34_5678u32 as i32).to_le_bytes())
+        .expect("write the input dword");
+    plc.run(1).expect("scan");
+    let out = u32::from_le_bytes(plc.read_located("%QD0").expect("read")[..4].try_into().unwrap());
+    assert_eq!(out & 0xFFFF, 0x9A34, "`%IW1` is the high word");
+    assert_eq!((out >> 16) & 0xFF, 0x34, "`%IB2` is byte 2");
+    assert_eq!((out >> 24) & 1, 1, "`%IX3.7` is the top bit");
+}
+
+/// Two addresses of the same size never overlap, and an address with no byte
+/// reading — three levels — stays a cell of its own even beside its parent.
+#[rstest]
+fn siblings_and_deep_addresses_keep_their_own_cells(mut with_db: db::RootDatabase) {
+    let source = r#"
+        PROGRAM P
+        VAR RETAIN a : WORD; b : WORD; c : WORD; d : WORD; END_VAR
+            a := %IW0;
+            b := %IW1;
+            c := %MW1.7;
+            d := %MW1.7.9;
+        END_PROGRAM
+
+        CONFIGURATION Cfg
+            RESOURCE Res ON CPU
+                TASK T(INTERVAL := T#10ms, PRIORITY := 1);
+                PROGRAM P1 WITH T : P;
+            END_RESOURCE
+        END_CONFIGURATION
+    "#;
+    let (mir, _wasm) = compile_to_mir_and_wasm(&mut with_db, source);
+    assert_eq!(mir.input_size, 8, "`%IW0` and `%IW1` are bytes 0-1 and 2-3");
+    assert_eq!(mir.marker_size, 8, "`%MW1.7.9` has no byte reading");
+}
+
+/// The idiom the whole change is for: an FB output bound straight to a bit of
+/// an output word (`ton(..., Q => %QX0.3)`). The output lands in a scratch
+/// and the statement after the call rewrites the word with that bit — inside
+/// the body the call is in, so an IF's branch keeps its own.
+#[rstest]
+fn an_fb_output_bound_to_a_view_sets_its_bit(mut with_db: db::RootDatabase) {
+    let source = r#"
+        FUNCTION_BLOCK Pass
+        VAR_INPUT i : BOOL; END_VAR
+        VAR_OUTPUT q : BOOL; END_VAR
+            q := i;
+        END_FUNCTION_BLOCK
+
+        PROGRAM P
+        VAR_EXTERNAL lamps : WORD; END_VAR
+        VAR f : Pass; g : Pass; END_VAR
+            lamps := 16#00F0;
+            f(i := %IX0.0, q => %QX0.3);
+            IF %IX0.1 THEN
+                g(i := TRUE, q => %QX1.0);
+            END_IF;
+        END_PROGRAM
+
+        CONFIGURATION Cfg
+        VAR_GLOBAL status AT %IW0 : WORD; lamps AT %QW0 : WORD; END_VAR
+            RESOURCE Res ON CPU
+                TASK T(INTERVAL := T#10ms, PRIORITY := 1);
+                PROGRAM P1 WITH T : P;
+            END_RESOURCE
+        END_CONFIGURATION
+    "#;
+    let (mir, wasm) = compile_to_mir_and_wasm(&mut with_db, source);
+    assert_eq!(mir.output_size, 4, "`%QX0.3` and `%QX1.0` are `lamps`'s bits");
+    let read = |plc: &TestPlc| {
+        i32::from_le_bytes(plc.read_located("%QW0").expect("read")[..4].try_into().unwrap())
+    };
+
+    let mut plc = TestPlc::load(&wasm).expect("load");
+    plc.write_located("%IW0", &0b01i32.to_le_bytes()).expect("input");
+    plc.run(1).expect("scan");
+    assert_eq!(read(&plc), 0x00F8, "bit 3 set, the preset bits kept");
+
+    plc.write_located("%IW0", &0b10i32.to_le_bytes()).expect("input");
+    plc.run(1).expect("scan");
+    assert_eq!(read(&plc), 0x01F0, "bit 3 cleared, and the IF's call set bit 8");
+}
+
+/// The located map lists every part at its owner's cell, with the bits it
+/// is, so a host binds `%IX1.7` as surely as `%IW0` — here through the
+/// harness, which reads and writes parts the way the map tells a host to.
+#[rstest]
+fn the_map_lists_a_part_at_its_owners_cell(mut with_db: db::RootDatabase) {
+    let source = r#"
+        PROGRAM P
+        VAR_EXTERNAL ready : BOOL; END_VAR
+            %QX0.0 := ready;
+            %QB1 := %IB1;
+        END_PROGRAM
+
+        CONFIGURATION Cfg
+        VAR_GLOBAL
+            status AT %IW0   : WORD;
+            ready  AT %IX1.7 : BOOL;
+            lamps  AT %QW0   : WORD;
+        END_VAR
+            RESOURCE Res ON CPU
+                TASK T(INTERVAL := T#10ms, PRIORITY := 1);
+                PROGRAM P1 WITH T : P;
+            END_RESOURCE
+        END_CONFIGURATION
+    "#;
+    let (_mir, wasm) = compile_to_mir_and_wasm(&mut with_db, source);
+    let mut plc = TestPlc::load(&wasm).expect("load");
+
+    let status = plc.located("%IW0").expect("status").clone();
+    assert!(status.part_of.is_none(), "the owner is a cell");
+    let ready = plc.located("%IX1.7").expect("ready").clone();
+    assert_eq!(ready.name, "ready", "a declared part keeps its name");
+    let part = ready.part_of.as_ref().expect("a part");
+    assert_eq!((part.owner.as_str(), part.shift), ("%IW0", 15));
+    assert_eq!(ready.addr, status.addr, "it lives in the owner's cell");
+    let byte = plc.located("%IB1").expect("a bare part");
+    assert_eq!(byte.part_of.as_ref().map(|p| p.shift), Some(8));
+
+    // Bound as a host would: by the part's own address.
+    plc.write_located("%IX1.7", &1i32.to_le_bytes()).expect("set the bit");
+    plc.write_located("%IB1", &0x80i32.to_le_bytes()).expect("the byte, same bit");
+    plc.run(1).expect("scan");
+    let low = |plc: &TestPlc, a: &str| {
+        i32::from_le_bytes(plc.read_located(a).expect("read")[..4].try_into().unwrap())
+    };
+    assert_eq!(low(&plc, "%IW0"), 0x8000, "the byte's top bit is `ready`");
+    assert_eq!(low(&plc, "%QX0.0"), 1, "`ready` reached the output bit");
+    assert_eq!(low(&plc, "%QB1"), 0x80, "and the byte its output byte");
+}
+
+/// A part written into an owner declared with a SIGNED type keeps the
+/// owner's sign: rk holds a 16-bit INT sign-extended in its 32-bit lane, and
+/// the read-modify-write rebuilds only its low 16 bits. -8 with bit 0 set is
+/// -7, not 65529. (The flags go to `%QX2.x`: `%QW1` is bytes 2 and 3, and
+/// `%QX1.0` would be byte 1 — the high byte of `x` itself.)
+#[rstest]
+fn a_part_written_into_a_signed_owner_keeps_its_sign(mut with_db: db::RootDatabase) {
+    let source = r#"
+        PROGRAM P
+        VAR_EXTERNAL x : INT; END_VAR
+            x := -8;
+            %QX0.0 := TRUE;
+            %QX2.0 := x = -7;
+            %QX2.1 := x < 0;
+        END_PROGRAM
+
+        CONFIGURATION Cfg
+        VAR_GLOBAL x AT %QW0 : INT; flags AT %QW1 : WORD; END_VAR
+            RESOURCE Res ON CPU
+                TASK T(INTERVAL := T#10ms, PRIORITY := 1);
+                PROGRAM P1 WITH T : P;
+            END_RESOURCE
+        END_CONFIGURATION
+    "#;
+    let (_mir, wasm) = compile_to_mir_and_wasm(&mut with_db, source);
+    let mut plc = TestPlc::load(&wasm).expect("load");
+    plc.run(1).expect("scan");
+    let flags = i32::from_le_bytes(plc.read_located("%QW1").expect("read")[..4].try_into().unwrap());
+    assert_eq!(flags & 0b11, 0b11, "x is -7 and still negative");
+}

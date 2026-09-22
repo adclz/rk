@@ -453,7 +453,9 @@ END_FUNCTION_BLOCK"#;
 
 /// An address written bare declares nothing, but it is still storage:
 /// lowering gives each distinct one a cell in its area's band, so reading it
-/// is as ordinary as reading a variable.
+/// is as ordinary as reading a variable. A VAR_GLOBAL declared `AT` the same
+/// address already has a cell, and the bare mention is that one — see
+/// `a_bare_address_and_its_declaration_are_one_cell`.
 #[rstest]
 fn valid_bare_address_in_a_body(mut with_db: RootDatabase) {
     let source = r#"
@@ -902,4 +904,342 @@ VAR_GLOBAL valve AT %QW0 : INT; bits AT %QW2 : WORD; END_VAR
 END_CONFIGURATION
 "#;
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @"");
+}
+
+/// An address is one channel, so two declarations cannot claim it. Each is
+/// given storage of its own, which would leave the program with two variables
+/// the plant cannot tell apart — and a host binding by address would find it
+/// twice.
+#[rstest]
+fn invalid_two_declarations_at_one_address(mut with_db: RootDatabase) {
+    let source = r#"
+PROGRAM P
+VAR_EXTERNAL a : INT; b : INT; END_VAR
+VAR t : INT; END_VAR
+    t := a + b;
+END_PROGRAM
+
+CONFIGURATION Cfg
+VAR_GLOBAL
+    a AT %IW0 : INT;
+    b AT %IW0 : INT;
+END_VAR
+    RESOURCE R ON CPU
+        TASK T(INTERVAL := T#10ms, PRIORITY := 1);
+        PROGRAM P1 WITH T : P;
+    END_RESOURCE
+END_CONFIGURATION
+"#;
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
+    [E1421] Error: duplicate location
+        ,-[ file:///test0.st:11:5 ]
+        |
+     10 |     a AT %IW0 : INT;
+        |     ^^^^^^^|^^^^^^^
+        |            `--------- 'a' is located here
+     11 |     b AT %IW0 : INT;
+        |     ^^^^^^^|^^^^^^^
+        |            `--------- 'b' is located at '%IW0', which 'a' already claims
+        |
+        | Note: an address is one channel, and each declaration is given storage of its own, so the two would never see each other's value; name the one variable from wherever it is needed
+    ----'
+    ");
+}
+
+/// The size character says how wide the channel is; the declared type says
+/// how wide the value read there is. They have to agree.
+#[rstest]
+fn invalid_width_against_the_declared_type(mut with_db: RootDatabase) {
+    let source = r#"
+PROGRAM P
+VAR_EXTERNAL wide : INT; END_VAR
+VAR t : INT; END_VAR
+    t := wide;
+END_PROGRAM
+
+CONFIGURATION Cfg
+VAR_GLOBAL wide AT %IX0.0 : INT; END_VAR
+    RESOURCE R ON CPU
+        TASK T(INTERVAL := T#10ms, PRIORITY := 1);
+        PROGRAM P1 WITH T : P;
+    END_RESOURCE
+END_CONFIGURATION
+"#;
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
+    [E1422] Error: location width mismatch
+       ,-[ file:///test0.st:9:12 ]
+       |
+     9 | VAR_GLOBAL wide AT %IX0.0 : INT; END_VAR
+       |            ^^^^^^^^^^|^^^^^^^^^
+       |                      `----------- '%IX0.0' is 1 bit, but 'wide' is declared 'INT', which is 16
+       |
+       | Note: the size character says how wide the channel a host binds is, so it has to be the width of the value the program reads there
+    ---'
+    ");
+}
+
+/// Every size character has more than one type of its width, and each is
+/// accepted: the rule is about bits, not about the name.
+#[rstest]
+fn valid_widths_that_agree_with_the_address(mut with_db: RootDatabase) {
+    let source = r#"
+PROGRAM P
+VAR_EXTERNAL bit : BOOL; sb : SINT; octet : BYTE; n : INT; r : REAL; el : TIME; big : LREAL; END_VAR
+VAR t : BOOL; END_VAR
+    t := bit;
+END_PROGRAM
+
+CONFIGURATION Cfg
+VAR_GLOBAL
+    bit AT %IX0.0 : BOOL;
+    sb  AT %IB0   : SINT;
+    octet AT %IB1 : BYTE;
+    n   AT %IW1   : INT;
+    r   AT %ID2   : REAL;
+    el  AT %ID3   : TIME;
+    big AT %IL4   : LREAL;
+END_VAR
+    RESOURCE R ON CPU
+        TASK T(INTERVAL := T#10ms, PRIORITY := 1);
+        PROGRAM P1 WITH T : P;
+    END_RESOURCE
+END_CONFIGURATION
+"#;
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @"");
+}
+
+/// The width check reads `Type::get_size`, which answers for elementary
+/// types only. An ARRAY, a STRUCT, an enum or a subrange has no width there,
+/// and a guess would be worse than the silence: this pins that they pass, so
+/// whoever gives those types a width sees this test change.
+#[rstest]
+fn a_type_without_a_width_is_not_checked_against_the_address(mut with_db: RootDatabase) {
+    let source = r#"
+TYPE Colour : (Red, Green); END_TYPE
+
+PROGRAM P
+VAR_EXTERNAL c : Colour; END_VAR
+VAR t : Colour; END_VAR
+    t := c;
+END_PROGRAM
+
+CONFIGURATION Cfg
+VAR_GLOBAL c AT %IX0.0 : Colour; END_VAR
+    RESOURCE R ON CPU
+        TASK T(INTERVAL := T#10ms, PRIORITY := 1);
+        PROGRAM P1 WITH T : P;
+    END_RESOURCE
+END_CONFIGURATION
+"#;
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @"");
+}
+
+// ---------------------------------------------------------------------------
+// Parts of a wider address (E1423). `%QX0.3` beside a `%QW0` is that word's
+// bit 3: it is stored in the word's cell and has no address of its own, so
+// the uses that need one are refused. Reading it and assigning it are fine.
+// ---------------------------------------------------------------------------
+
+/// Reading a part, assigning it, and binding an FB's output to it are all
+/// ordinary: an FB output is copied after the call, so it can land in a part.
+#[rstest]
+fn valid_uses_of_a_part_of_a_wider_address(mut with_db: RootDatabase) {
+    let source = r#"
+FUNCTION_BLOCK Pass
+VAR_INPUT i : BOOL; END_VAR
+VAR_OUTPUT q : BOOL; END_VAR
+    q := i;
+END_FUNCTION_BLOCK
+
+PROGRAM P
+VAR_EXTERNAL ready : BOOL; END_VAR
+VAR f : Pass; x : BOOL; END_VAR
+    x := %IX0.3;
+    %QX0.3 := ready;
+    f(i := x, q => %QX0.4);
+END_PROGRAM
+
+CONFIGURATION Cfg
+VAR_GLOBAL
+    status AT %IW0 : WORD;
+    ready  AT %IX1.7 : BOOL;
+    lamps  AT %QW0 : WORD;
+END_VAR
+    RESOURCE R ON CPU
+        TASK T(INTERVAL := T#10ms, PRIORITY := 1);
+        PROGRAM P1 WITH T : P;
+    END_RESOURCE
+END_CONFIGURATION
+"#;
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @"");
+}
+
+/// A VAR_IN_OUT takes an address, and three bits of a word have none.
+#[rstest]
+fn invalid_part_of_a_wider_address_passed_to_an_in_out(mut with_db: RootDatabase) {
+    let source = r#"
+FUNCTION_BLOCK Flip
+VAR_IN_OUT v : BOOL; END_VAR
+    v := NOT v;
+END_FUNCTION_BLOCK
+
+PROGRAM P
+VAR f : Flip; w : WORD; END_VAR
+    w := %QW0;
+    f(v := %QX0.3);
+END_PROGRAM
+"#;
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
+    [E1423] Error: part of a wider address
+        ,-[ file:///test0.st:10:12 ]
+        |
+     10 |     f(v := %QX0.3);
+        |            ^^^|^^
+        |               `---- '%QX0.3' is part of '%QW0' and has no address of its own to pass to a VAR_IN_OUT
+        |
+        | Note: copy it into a variable, pass that, and assign it back
+    ----'
+    ");
+}
+
+/// `REF()` takes an address too, for a declared part as for a bare one.
+#[rstest]
+fn invalid_reference_to_a_part_of_a_wider_address(mut with_db: RootDatabase) {
+    let source = r#"
+PROGRAM P
+VAR_EXTERNAL named : BOOL; END_VAR
+VAR p : REF_TO BOOL; w : WORD; END_VAR
+    w := %QW0;
+    p := REF(named);
+END_PROGRAM
+
+CONFIGURATION Cfg
+VAR_GLOBAL named AT %QX0.5 : BOOL; END_VAR
+    RESOURCE R ON CPU
+        TASK T(INTERVAL := T#10ms, PRIORITY := 1);
+        PROGRAM P1 WITH T : P;
+    END_RESOURCE
+END_CONFIGURATION
+"#;
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
+    [E1423] Error: part of a wider address
+       ,-[ file:///test0.st:6:14 ]
+       |
+     6 |     p := REF(named);
+       |              ^^|^^
+       |                `---- '%QX0.5' is part of '%QW0' and has no address of its own to take a reference to
+       |
+       | Note: take the reference of '%QW0' as a whole
+    ---'
+    ");
+}
+
+/// A FUNCTION writes its output through an address; an FB copies it after
+/// the call, which is why only the function is refused.
+#[rstest]
+fn invalid_function_output_into_a_part_of_a_wider_address(mut with_db: RootDatabase) {
+    let source = r#"
+FUNCTION Out : BOOL
+VAR_OUTPUT o : BOOL; END_VAR
+    o := TRUE;
+    Out := TRUE;
+END_FUNCTION
+
+PROGRAM P
+VAR x : BOOL; w : WORD; END_VAR
+    w := %QW0;
+    x := Out(o => %QX0.4);
+END_PROGRAM
+"#;
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
+    [E1423] Error: part of a wider address
+        ,-[ file:///test0.st:11:19 ]
+        |
+     11 |     x := Out(o => %QX0.4);
+        |                   ^^^|^^
+        |                      `---- '%QX0.4' is part of '%QW0' and has no address a function could write its output through
+        |
+        | Note: bind the output to a variable and assign '%QX0.4' from it
+    ----'
+    ");
+}
+
+/// A FOR counter needs storage of its own.
+#[rstest]
+fn invalid_for_counter_in_a_part_of_a_wider_address(mut with_db: RootDatabase) {
+    let source = r#"
+PROGRAM P
+VAR_EXTERNAL cnt : USINT; whole : WORD; END_VAR
+VAR x : BOOL; END_VAR
+    FOR cnt := 1 TO 3 DO x := TRUE; END_FOR;
+    whole := whole + 1;
+END_PROGRAM
+
+CONFIGURATION Cfg
+VAR_GLOBAL whole AT %MW0 : WORD; cnt AT %MB1 : USINT; END_VAR
+    RESOURCE R ON CPU
+        TASK T(INTERVAL := T#10ms, PRIORITY := 1);
+        PROGRAM P1 WITH T : P;
+    END_RESOURCE
+END_CONFIGURATION
+"#;
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
+    [E1423] Error: part of a wider address
+       ,-[ file:///test0.st:5:9 ]
+       |
+     5 |     FOR cnt := 1 TO 3 DO x := TRUE; END_FOR;
+       |         ^|^
+       |          `--- '%MB1' is part of '%MW0' and cannot count a FOR loop
+       |
+       | Note: count in a variable and assign '%MB1' from it
+    ---'
+    ");
+}
+
+/// A declared part persists only as its owner does, and reads back as a bit
+/// string, which a signed type would reinterpret. Both are refused; an
+/// unsigned type of its width is not.
+#[rstest]
+fn invalid_retain_or_signed_type_on_a_declared_part(mut with_db: RootDatabase) {
+    let source = r#"
+PROGRAM P
+VAR_EXTERNAL whole : WORD; lo : USINT; hi : SINT; END_VAR
+    whole := whole + 1;
+END_PROGRAM
+
+CONFIGURATION Cfg
+VAR_GLOBAL
+    whole AT %MW0 : WORD;
+    lo    AT %MB0 : USINT;
+    hi    AT %MB1 : SINT;
+END_VAR
+VAR_GLOBAL RETAIN
+    keep AT %MX0.2 : BOOL;
+END_VAR
+    RESOURCE R ON CPU
+        TASK T(INTERVAL := T#10ms, PRIORITY := 1);
+        PROGRAM P1 WITH T : P;
+    END_RESOURCE
+END_CONFIGURATION
+"#;
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
+    [E1423] Error: part of a wider address
+        ,-[ file:///test0.st:11:5 ]
+        |
+     11 |     hi    AT %MB1 : SINT;
+        |     ^^^^^^^^^^|^^^^^^^^^
+        |               `----------- '%MB1' is part of '%MW0' and reads as its bits, which 'SINT' does not hold as they are
+        |
+        | Note: declare it BYTE or USINT
+    ----'
+    [E1423] Error: part of a wider address
+        ,-[ file:///test0.st:14:5 ]
+        |
+     14 |     keep AT %MX0.2 : BOOL;
+        |     ^^^^^^^^^^|^^^^^^^^^^
+        |               `------------ '%MX0.2' is part of '%MW0' and cannot be RETAIN on its own
+        |
+        | Note: RETAIN belongs on the variable located at '%MW0', whose storage this is
+    ----'
+    ");
 }

@@ -555,6 +555,16 @@ fn apply_param_coercion<'db>(
             if var.is_in_out(db) || var.is_output(db) {
                 refuse_input_location_target(db, value, ctx);
             }
+            if var.is_in_out(db)
+                && let Some(err) = crate::hir_ty::index_graphs::refuse_part_of_wider(
+                    db,
+                    CallSite::from_scoped(db, &value),
+                    ctx.get_type_of_expr(value),
+                    crate::check::errors::e14_config::WiderAddressUse::InOut,
+                )
+            {
+                ctx.errors.push(err.to_diagnostic(db, ctx.scope.file(db)));
+            }
 
             check_in_out_lvalue(db, callable, var, value, ctx);
             if let Some(err) = ctx.ref_subrange_mismatch(db, Type::new_var(db, var), value) {
@@ -595,6 +605,16 @@ fn apply_param_coercion<'db>(
             }
             if var.is_in_out(db) || var.is_output(db) {
                 refuse_input_location_target(db, value, ctx);
+            }
+            if var.is_in_out(db)
+                && let Some(err) = crate::hir_ty::index_graphs::refuse_part_of_wider(
+                    db,
+                    CallSite::from_scoped(db, &value),
+                    ctx.get_type_of_expr(value),
+                    crate::check::errors::e14_config::WiderAddressUse::InOut,
+                )
+            {
+                ctx.errors.push(err.to_diagnostic(db, ctx.scope.file(db)));
             }
 
             check_in_out_lvalue(db, callable, var, value, ctx);
@@ -645,6 +665,20 @@ fn apply_param_coercion<'db>(
                     InitError::AssignToConstant { access: call_site }
                         .to_diagnostic(db, ctx.scope.file(db)),
                 );
+            }
+
+            // An FB's output is copied after the call, so it can land in part
+            // of a wider address; a function or a method writes its output
+            // through an address, which a part does not have.
+            if !matches!(callable, CallableType::FunctionBlock(_))
+                && let Some(err) = crate::hir_ty::index_graphs::refuse_part_of_wider(
+                    db,
+                    call_site,
+                    rhs_typ,
+                    crate::check::errors::e14_config::WiderAddressUse::FunctionOutput,
+                )
+            {
+                ctx.errors.push(err.to_diagnostic(db, ctx.scope.file(db)));
             }
 
             // `o => d` writes the output INTO d, so d is the target. Checked

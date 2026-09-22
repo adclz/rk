@@ -176,12 +176,20 @@ fn lower_stmt<'db>(
                 None => ctx.checked_range(value, var.infer(ctx.db)),
             };
             // `b.1 := x` names a slice of `b`; the store has to put back the
-            // whole of `b` with only those bits replaced.
-            let value = if var.multibits(ctx.db).is_some() {
-                ctx.lower_multibit_write(place.clone(), *var, var.infer(ctx.db), value)?
-            } else {
-                value
-            };
+            // whole of `b` with only those bits replaced. A view is the same
+            // store into its owner: `%QX0.3 := x` beside a `%QW0` rewrites the
+            // word with bit 3 replaced.
+            let (place, value) =
+                if let Some((owner, sliced)) = ctx.view_slice(*var, var.infer(ctx.db))? {
+                    let value = crate::lower::multibit::slice_write(owner.clone(), sliced, value);
+                    (owner, value)
+                } else if var.multibits(ctx.db).is_some() {
+                    let value =
+                        ctx.lower_multibit_write(place.clone(), *var, var.infer(ctx.db), value)?;
+                    (place, value)
+                } else {
+                    (place, value)
+                };
             Ok(Some(MirStmt::Assign {
                 target: place,
                 value,
@@ -282,6 +290,15 @@ fn lower_stmt<'db>(
         } => {
             // Any place can be a counter: a FUNCTION local or a PROGRAM/FB member
             // (HIR rejected the shapes IEC forbids).
+            if ctx
+                .view_slice(*control_variable, control_variable.infer(ctx.db))?
+                .is_some()
+            {
+                return Err(LowerTypeError::UnsupportedType(
+                    "a FOR counter cannot be part of a wider address; `rk check` refuses it (E1423)"
+                        .to_string(),
+                ));
+            }
             let control_place = ctx.lower_variable_access(*control_variable)?;
 
             // Determine the control variable type
@@ -433,6 +450,7 @@ fn lower_stmts_inner<'db>(
             });
             result.push(mir_stmt);
         }
+        result.append(&mut ctx.after_stmt.borrow_mut());
     }
     Ok(result)
 }

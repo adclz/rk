@@ -622,7 +622,7 @@ impl RetainMap {
 pub const LOCATED_MAP_SECTION: &str = "located-map";
 
 /// On-wire format version for [`LocatedMap`].
-pub const LOCATED_MAP_VERSION: u16 = 1;
+pub const LOCATED_MAP_VERSION: u16 = 2;
 
 /// The area an address names. Each is one contiguous band, exported as
 /// `input_base`/`input_size` and its two siblings.
@@ -679,16 +679,33 @@ pub struct LocatedVar {
     /// What the size letter names, in bits: 1 (`X`), 8 (`B`), 16 (`W`),
     /// 32 (`D`), 64 (`L`).
     pub width: u16,
-    /// Absolute address in linear memory, inside this entry's band.
+    /// Absolute address in linear memory, inside this entry's band: where
+    /// the cell is, the owner's for a part.
     pub addr: u32,
-    /// Bytes the variable occupies there. This is its DECLARED type's size,
-    /// not `width / 8`: `sensor AT %IX0.0 : BOOL` names one bit and occupies
-    /// four bytes, because every cell is storage of its own.
+    /// Bytes the cell occupies there. This is its DECLARED type's size, not
+    /// `width / 8`: `sensor AT %IX0.0 : BOOL` names one bit and occupies four
+    /// bytes. For a part it is the owner's cell.
     pub size: u32,
     /// The declared type, when it is a scalar the host can decode on its own;
     /// `None` for an aggregate, which the debug symbols describe field by
-    /// field instead.
+    /// field instead. For a part, the type its own bits read as.
     pub ty: Option<SymType>,
+    /// Set when the address is part of a wider one the module also names:
+    /// `%IX0.3` beside a `%IW0` is bit 3 of that word's cell, not a cell of
+    /// its own. A host reads it as `(cell >> shift) & mask(width)` and writes
+    /// it by replacing those bits.
+    pub part_of: Option<LocatedPart>,
+}
+
+/// Where a part sits in the address that owns its storage.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct LocatedPart {
+    /// The owner's address, as its own entry lists it.
+    pub owner: String,
+    /// The part's low bit in the owner's value. Each size counts in its own
+    /// units and the image is little-endian, so `%IB1` is bits 8 to 15 of
+    /// `%IW0` and `%IX1.2` is bit 10.
+    pub shift: u16,
 }
 
 impl LocatedMap {
@@ -720,6 +737,13 @@ impl LocatedMap {
             eat(e.name.as_bytes());
             eat(&[0]);
             eat(&e.size.to_le_bytes());
+            // An address that becomes part of a wider one is read another
+            // way, so a binding made against the old layout is stale.
+            if let Some(part) = &e.part_of {
+                eat(part.owner.as_bytes());
+                eat(&[0]);
+                eat(&part.shift.to_le_bytes());
+            }
         }
         h
     }
@@ -758,6 +782,7 @@ mod tests {
             addr,
             size: 4,
             ty: Some(SymType::Bool),
+            part_of: None,
         };
         let map = LocatedMap::new(vec![
             var("%QX0.0", "lamp", LocatedArea::Output, 128),

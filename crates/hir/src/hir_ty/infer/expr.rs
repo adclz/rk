@@ -403,6 +403,16 @@ impl<'db> InferExprCtx<'db> {
                             .to_diagnostic(db, inference_result.scope.file(db)),
                         );
                     }
+                    if let Some(err) = crate::hir_ty::index_graphs::refuse_part_of_wider(
+                        db,
+                        CallSite::from_scoped(db, adress),
+                        typ,
+                        crate::check::errors::e14_config::WiderAddressUse::Reference,
+                    ) {
+                        inference_result
+                            .errors
+                            .push(err.to_diagnostic(db, inference_result.scope.file(db)));
+                    }
 
                     if let Some(path) = adress.expr(db) {
                         inference_result

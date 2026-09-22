@@ -202,7 +202,7 @@ impl<'db> DirectVariable<'db> {
         }
         out
     }
-    
+
     pub fn area(self, db: &'db dyn WorkspaceDataBase) -> Option<LocationArea> {
         match self
             .adress(db)
@@ -221,7 +221,7 @@ impl<'db> DirectVariable<'db> {
 
 /// The three areas a located variable can sit in. Each is one contiguous
 /// band in linear memory, so a host copies a whole direction at once.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, salsa::Update)]
 pub enum LocationArea {
     /// `%I` — written by the host before the scan, never by the program.
     Input,
@@ -238,6 +238,79 @@ impl LocationArea {
             Self::Output => "%Q",
             Self::Marker => "%M",
         }
+    }
+}
+
+/// One I/O address, reduced to what identifies its channel: the area, the
+/// width its size character names, and its levels. Only built for an address
+/// that names a band, so everything here has storage.
+///
+/// The text is upper-cased, which is also how two mentions of one address
+/// are recognised as one: lowering names the cell of a bare address the same
+/// way.
+#[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord, salsa::Update)]
+pub struct LocatedAddress {
+    pub area: LocationArea,
+    /// What the size character names, in bits: 1, 8, 16, 32 or 64.
+    pub width: u8,
+    /// The numeric levels, in order; `u32::MAX` for one too large to fit.
+    pub levels: Vec<u32>,
+    /// The address as written, upper-cased.
+    pub text: compact_str::CompactString,
+}
+
+impl LocatedAddress {
+    /// The bits of its area the address covers, read as a byte-addressed
+    /// image: each size counts in its own units, so `%IWn` is bytes 2n and
+    /// 2n+1 and `%IDn` bytes 4n to 4n+3, and `%IXn.b` is bit b of byte n.
+    /// That is CODESYS's numbering, where every narrower address lies inside
+    /// exactly one wider one and two of the same size never overlap.
+    ///
+    /// `None` for an address with no such reading — one level for a bit, two
+    /// for anything wider, three or more, or a bit past 7 — which is a cell
+    /// of its own.
+    pub fn image_bits(&self) -> Option<std::ops::Range<u64>> {
+        match (self.width, self.levels.as_slice()) {
+            (1, &[byte, bit]) if bit < 8 => {
+                let at = u64::from(byte) * 8 + u64::from(bit);
+                Some(at..at + 1)
+            }
+            (1, _) => None,
+            (width, &[n]) => {
+                let at = u64::from(n) * u64::from(width);
+                Some(at..at + u64::from(width))
+            }
+            _ => None,
+        }
+    }
+
+    /// The address `dv` names, or `None` when it names no band (E1417).
+    pub fn of<'db>(db: &'db dyn WorkspaceDataBase, dv: DirectVariable<'db>) -> Option<Self> {
+        if !crate::hir_ty::infer::normalize::names_a_band(db, dv) {
+            return None;
+        }
+        let (_, bits) = dv
+            .adress(db)
+            .text(db)
+            .chars()
+            .nth(1)
+            .and_then(crate::hir_ty::infer::normalize::access_size)?;
+        Some(Self {
+            area: dv.area(db)?,
+            width: bits as u8,
+            levels: dv
+                .offset(db)
+                .iter()
+                .map(|part| {
+                    part.ident(db)
+                        .text(db)
+                        .replace('_', "")
+                        .parse::<u32>()
+                        .unwrap_or(u32::MAX)
+                })
+                .collect(),
+            text: compact_str::CompactString::from(dv.to_address(db).to_ascii_uppercase()),
+        })
     }
 }
 

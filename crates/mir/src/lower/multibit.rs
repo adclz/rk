@@ -4,8 +4,13 @@
 //! is `(base >> shift) & mask`; a write is the matching read-modify-write.
 
 use hir::{
-    hir_def::expressions::expression::{Expr, VariableAccess},
+    hir_def::{
+        expressions::expression::{Expr, VariableAccess, VariableAccessKind},
+        interned::identifier::Ident,
+        pous::variable::LocatedAddress,
+    },
     hir_ty::{
+        index_graphs::{effective_location, located_declaration, located_view},
         infer::{Infer, normalize::multibits_slice},
         ty::Type,
     },
@@ -13,18 +18,20 @@ use hir::{
 
 use crate::{
     expr::{MirBinOp, MirConstant, MirExpr, MirPlace},
+    located::width_elementary,
     lower::{lower_expr::ExprLowerCtx, lower_type::LowerTypeError},
     types::{MirElementary, MirType},
 };
 
 /// The base value a partial access slices, and the slice itself.
-struct Sliced {
+#[derive(Debug, Clone, Copy)]
+pub(crate) struct Sliced {
     /// Type of the whole variable being sliced (`BYTE` in `b.1`).
-    base: MirElementary,
+    pub base: MirElementary,
     /// Bit position of the slice's low bit.
-    shift: u32,
+    pub shift: u32,
     /// Type the slice reads back as (`BOOL` in `b.1`).
-    elem: MirElementary,
+    pub elem: MirElementary,
 }
 
 /// The elementary type a lowered place holds, when the place records it:
@@ -126,6 +133,69 @@ impl<'db> ExprLowerCtx<'db> {
         })
     }
 
+    /// When `var_access` is a VIEW — an address stored inside a wider one the
+    /// workspace mentions — the owner's place and the slice of it the access
+    /// reads or writes. `hir_ty` is the access's type before normalizing,
+    /// which for a variable still names the declaration.
+    ///
+    /// The owner is named by its address, and lowering gives that name the
+    /// owner's cell: the declared one when a VAR_GLOBAL is located there, a
+    /// cell of its own otherwise. A view never gets one, so a nest of
+    /// addresses is one cell however many of them the program mentions.
+    pub(crate) fn view_slice(
+        &self,
+        var_access: VariableAccess<'db>,
+        hir_ty: Type<'db>,
+    ) -> Result<Option<(MirPlace, Sliced)>, LowerTypeError> {
+        let address = match var_access.kind(self.db) {
+            VariableAccessKind::Direct(dv) => LocatedAddress::of(self.db, dv),
+            VariableAccessKind::Symbolic(_) => match hir_ty {
+                Type::Variable((var, _)) => {
+                    effective_location(self.db, var).and_then(|dv| LocatedAddress::of(self.db, dv))
+                }
+                _ => None,
+            },
+        };
+        let Some(address) = address else {
+            return Ok(None);
+        };
+        let Some(view) = located_view(self.db, &address) else {
+            return Ok(None);
+        };
+        // The type the owner's cell holds: what it was declared as, or the
+        // width's own bit string for a bare one. A part is rebuilt in it, so a
+        // signed owner keeps its sign (`slice_write`).
+        let base = located_declaration(self.db, &view.owner)
+            .and_then(|v| {
+                self.type_to_mir_elementary_pub(v.spec(self.db).infer(self.db))
+                    .ok()
+            })
+            .unwrap_or_else(|| width_elementary(view.owner.width));
+        let owner = MirPlace::Global {
+            name: Some(Ident::new(
+                self.db,
+                compact_str::CompactString::from(view.owner.text.as_str()),
+            )),
+            address: 0,
+            ty: MirType::Elementary(base),
+        };
+        let mut sliced = Sliced {
+            base,
+            shift: view.shift,
+            elem: width_elementary(address.width),
+        };
+        // A partial access of a view is a narrower slice of the same owner.
+        if var_access.multibits(self.db).is_some() {
+            let inner = self.resolve_slice(&owner, var_access, hir_ty)?;
+            sliced = Sliced {
+                base,
+                shift: view.shift + inner.shift,
+                elem: inner.elem,
+            };
+        }
+        Ok(Some((owner, sliced)))
+    }
+
     /// Lower a read of a partial access to `(base >> shift) & mask`.
     pub(crate) fn lower_multibit_read(
         &self,
@@ -133,36 +203,8 @@ impl<'db> ExprLowerCtx<'db> {
         var_access: VariableAccess<'db>,
         parent_expr: Expr<'db>,
     ) -> Result<MirExpr, LowerTypeError> {
-        let Sliced { base, shift, elem } =
-            self.resolve_slice(&place, var_access, parent_expr.infer(self.db))?;
-
-        let mut value = MirExpr::Load(place, MirType::Elementary(base));
-        if shift > 0 {
-            value = binop(MirBinOp::Shr, value, const_of(base, shift as i64), base);
-        }
-        // Narrow before masking so the mask constant matches the operand width.
-        if base.is_64bit() && !elem.is_64bit() {
-            value = MirExpr::Cast {
-                expr: Box::new(value),
-                from: base,
-                to: MirElementary::DWord,
-            };
-        }
-        let width = elem.rk_bits();
-        let operand = if elem.is_64bit() {
-            elem
-        } else {
-            MirElementary::DWord
-        };
-        if width < operand.rk_bits() {
-            value = binop(
-                MirBinOp::And,
-                value,
-                const_of(operand, low_mask(width)),
-                operand,
-            );
-        }
-        Ok(value)
+        let sliced = self.resolve_slice(&place, var_access, parent_expr.infer(self.db))?;
+        Ok(slice_read(place, sliced))
     }
 
     /// Lower `place.<slice> := value` as a read-modify-write of the whole
@@ -175,35 +217,85 @@ impl<'db> ExprLowerCtx<'db> {
         hir_ty: Type<'db>,
         value: MirExpr,
     ) -> Result<MirExpr, LowerTypeError> {
-        let Sliced { base, shift, elem } = self.resolve_slice(&place, var_access, hir_ty)?;
+        let sliced = self.resolve_slice(&place, var_access, hir_ty)?;
+        Ok(slice_write(place, sliced, value))
+    }
+}
 
-        // Widen the incoming slice value to the base's wasm width so the mask
-        // and shift below operate on one operand type.
-        let value = if base.is_64bit() && !elem.is_64bit() {
-            MirExpr::Cast {
-                expr: Box::new(value),
-                from: elem,
-                to: base,
-            }
-        } else {
-            value
+/// `(base >> shift) & mask`, read from `place`.
+pub(crate) fn slice_read(place: MirPlace, sliced: Sliced) -> MirExpr {
+    let Sliced { base, shift, elem } = sliced;
+    let mut value = MirExpr::Load(place, MirType::Elementary(base));
+    if shift > 0 {
+        value = binop(MirBinOp::Shr, value, const_of(base, shift as i64), base);
+    }
+    // Narrow before masking so the mask constant matches the operand width.
+    if base.is_64bit() && !elem.is_64bit() {
+        value = MirExpr::Cast {
+            expr: Box::new(value),
+            from: base,
+            to: MirElementary::DWord,
         };
-
-        let slice_mask = low_mask(elem.rk_bits());
-        let base_mask = low_mask(base.rk_bits());
-        // Confined to the base's width, so a sub-width base keeps a clean lane.
-        let keep_mask = base_mask & !(slice_mask << shift);
-
-        let mut incoming = binop(MirBinOp::And, value, const_of(base, slice_mask), base);
-        if shift > 0 {
-            incoming = binop(MirBinOp::Shl, incoming, const_of(base, shift as i64), base);
-        }
-        let kept = binop(
+    }
+    let width = elem.rk_bits();
+    let operand = if elem.is_64bit() {
+        elem
+    } else {
+        MirElementary::DWord
+    };
+    if width < operand.rk_bits() {
+        value = binop(
             MirBinOp::And,
-            MirExpr::Load(place, MirType::Elementary(base)),
-            const_of(base, keep_mask),
-            base,
+            value,
+            const_of(operand, low_mask(width)),
+            operand,
         );
-        Ok(binop(MirBinOp::Or, kept, incoming, base))
+    }
+    value
+}
+
+/// The whole of `place` with the slice replaced by `value`:
+/// `(base & !(mask << shift)) | ((value & mask) << shift)`.
+pub(crate) fn slice_write(place: MirPlace, sliced: Sliced, value: MirExpr) -> MirExpr {
+    let Sliced { base, shift, elem } = sliced;
+    // Widen the incoming slice value to the base's wasm width so the mask
+    // and shift below operate on one operand type.
+    let value = if base.is_64bit() && !elem.is_64bit() {
+        MirExpr::Cast {
+            expr: Box::new(value),
+            from: elem,
+            to: base,
+        }
+    } else {
+        value
+    };
+
+    let slice_mask = low_mask(elem.rk_bits());
+    let base_mask = low_mask(base.rk_bits());
+    // Confined to the base's width, so a sub-width base keeps a clean lane.
+    let keep_mask = base_mask & !(slice_mask << shift);
+
+    let mut incoming = binop(MirBinOp::And, value, const_of(base, slice_mask), base);
+    if shift > 0 {
+        incoming = binop(MirBinOp::Shl, incoming, const_of(base, shift as i64), base);
+    }
+    let kept = binop(
+        MirBinOp::And,
+        MirExpr::Load(place, MirType::Elementary(base)),
+        const_of(base, keep_mask),
+        base,
+    );
+    let rebuilt = binop(MirBinOp::Or, kept, incoming, base);
+    // Rebuilt inside the base's own width, the value is zero-extended above
+    // it, while a signed 8- or 16-bit value is held sign-extended in its lane.
+    // The cast puts it back in its domain: -8 with bit 0 set is -7, not 65529.
+    if base.is_signed() && base.rk_bits() < 32 {
+        MirExpr::Cast {
+            expr: Box::new(rebuilt),
+            from: MirElementary::DWord,
+            to: base,
+        }
+    } else {
+        rebuilt
     }
 }

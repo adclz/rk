@@ -74,7 +74,11 @@ use crate::{
         config::ConfigDecl,
         interned::{identifier::Ident, namespace::NamespacePath},
         namespace::NamespaceDecl,
-        pous::{function::Function, pou::Pou, variable::VariableDecl},
+        pous::{
+            function::Function,
+            pou::Pou,
+            variable::{LocatedAddress, VariableDecl},
+        },
         program::ProgramDecl,
         semantic_index::semantic_index,
     },
@@ -116,6 +120,129 @@ pub fn file_programs<'db>(
 #[salsa::tracked(returns(ref))]
 pub fn file_configs<'db>(db: &'db dyn WorkspaceDataBase, file: File) -> Arc<Vec<ConfigDecl<'db>>> {
     Arc::clone(&semantic_index(db, file).configs)
+}
+
+/// Extracts the I/O addresses a file mentions — a located VAR_GLOBAL's, or
+/// one written bare in a body — each once, sorted.
+///
+/// Changes only when the file gains or loses an address, so a lint comparing
+/// every file's addresses backdates on all the other edits.
+#[salsa::tracked(returns(ref))]
+pub fn file_located_addresses(db: &dyn WorkspaceDataBase, file: File) -> Arc<Vec<LocatedAddress>> {
+    Arc::clone(&semantic_index(db, file).located)
+}
+
+/// The I/O addresses of each of the workspace's own files, sorted, file by
+/// file: nothing is collected or copied, each list is its file's
+/// [`file_located_addresses`]. A library's do not count, since a library
+/// describes no machine.
+pub fn located_by_file<'db>(
+    db: &'db dyn WorkspaceDataBase,
+) -> impl Iterator<Item = (File, &'db [LocatedAddress])> + 'db {
+    workspace_files(db).map(move |file| (file, file_located_addresses(db, file).as_slice()))
+}
+
+/// An address stored inside a wider one: the bits of `owner` it is.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct LocatedView {
+    /// The widest address the workspace mentions that contains this one.
+    pub owner: LocatedAddress,
+    /// Where this address's low bit sits in the owner's value. The image is
+    /// little-endian, so byte 1 of `%IW0` is its high byte and `%IX0.3` is
+    /// bit 3 of it.
+    pub shift: u32,
+}
+
+/// The address an access of type `ty` names and the wider address it is part
+/// of, when it is one: a bare address, or a variable located at one, through
+/// a VAR_EXTERNAL too. What the uses that need an address of their own ask
+/// before refusing it (E1423).
+pub fn view_of_type<'db>(
+    db: &'db dyn WorkspaceDataBase,
+    ty: crate::hir_ty::ty::Type<'db>,
+) -> Option<(LocatedAddress, LocatedView)> {
+    let dv = match ty {
+        crate::hir_ty::ty::Type::Variable((var, _)) => effective_location(db, var)?,
+        crate::hir_ty::ty::Type::DirectVariable((dv, _)) => dv,
+        _ => return None,
+    };
+    let address = LocatedAddress::of(db, dv)?;
+    let view = located_view(db, &address)?;
+    Some((address, view))
+}
+
+/// E1423 for `usage` when `ty` is part of a wider address — except on an
+/// input, where every one of these uses is already a write E1419 refuses.
+pub fn refuse_part_of_wider<'db>(
+    db: &'db dyn WorkspaceDataBase,
+    site: crate::CallSite<'db>,
+    ty: crate::hir_ty::ty::Type<'db>,
+    usage: crate::check::errors::e14_config::WiderAddressUse,
+) -> Option<crate::check::errors::e14_config::ConfigError<'db>> {
+    let (address, view) = view_of_type(db, ty)?;
+    if address.area == crate::hir_def::pous::variable::LocationArea::Input {
+        return None;
+    }
+    Some(
+        crate::check::errors::e14_config::ConfigError::PartOfWiderAddress {
+            site,
+            address: address.text,
+            owner: view.owner.text,
+            usage,
+        },
+    )
+}
+
+/// The VAR_GLOBAL located at `address`, when one is declared there: what
+/// decides the type its cell holds, and so how a part of it is rebuilt.
+pub fn located_declaration<'db>(
+    db: &'db dyn WorkspaceDataBase,
+    address: &LocatedAddress,
+) -> Option<VariableDecl<'db>> {
+    workspace_files(db).find_map(|file| {
+        file_configs(db, file).iter().find_map(|config| {
+            config.variables(db).iter().copied().find(|v| {
+                v.location(db)
+                    .and_then(|dv| LocatedAddress::of(db, dv))
+                    .as_ref()
+                    == Some(address)
+            })
+        })
+    })
+}
+
+/// Whether `address` is stored inside a wider address, and where.
+///
+/// An address the workspace mentions a wider container of is not a cell of
+/// its own: it is that container's bits, as it would be in any PLC with a
+/// process image — `%IX0.3` is bit 3 of `%IW0` when both are used. The owner
+/// is the WIDEST container mentioned, so a whole nest shares one cell.
+/// `None` when nothing mentioned contains it, or it has no byte reading.
+pub fn located_view(db: &dyn WorkspaceDataBase, address: &LocatedAddress) -> Option<LocatedView> {
+    let bits = address.image_bits()?;
+    let mut owner: Option<(&LocatedAddress, std::ops::Range<u64>)> = None;
+    for (_, addresses) in located_by_file(db) {
+        for other in addresses {
+            if other.area != address.area || other == address {
+                continue;
+            }
+            let Some(range) = other.image_bits() else {
+                continue;
+            };
+            let contains = range.start <= bits.start && bits.end <= range.end;
+            let wider = range.end - range.start > bits.end - bits.start;
+            let widest = owner
+                .as_ref()
+                .is_none_or(|(_, best)| range.end - range.start > best.end - best.start);
+            if contains && wider && widest {
+                owner = Some((other, range));
+            }
+        }
+    }
+    owner.map(|(owner, range)| LocatedView {
+        owner: owner.clone(),
+        shift: (bits.start - range.start) as u32,
+    })
 }
 
 // ---------------------------------------------------------------------------
