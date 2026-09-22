@@ -10,7 +10,7 @@ use ide_proto::{
 };
 use rstest::rstest;
 
-use crate::tests::utils::{add_sources, find_pou_with_name, with_db};
+use crate::tests::utils::{add_source, add_sources, find_pou_with_name, with_db};
 
 #[rstest]
 pub fn namespace_pou_completion(mut with_db: RootDatabase) {
@@ -184,9 +184,8 @@ END_VAR
 END_FUNCTION
 "#;
 
-    add_sources(&mut with_db, &[source]);
-    let pou =
-        find_pou_with_name(&with_db, *with_db.get_files().iter().last().unwrap(), "fn1").unwrap();
+    let file = add_source(&mut with_db, source);
+    let pou = find_pou_with_name(&with_db, file, "fn1").unwrap();
 
     let offset = source.find("x : INT").unwrap() + 1;
     let mut ctx = CompletionCtx::new(offset, QueryMode::Head);
@@ -224,9 +223,8 @@ END_VAR
 END_FUNCTION
 "#;
 
-    add_sources(&mut with_db, &[source]);
-    let pou =
-        find_pou_with_name(&with_db, *with_db.get_files().iter().last().unwrap(), "fn1").unwrap();
+    let file = add_source(&mut with_db, source);
+    let pou = find_pou_with_name(&with_db, file, "fn1").unwrap();
 
     let offset = source.find("x : INT").unwrap() + 1;
     let mut ctx = CompletionCtx::new(offset, QueryMode::Head);
@@ -263,9 +261,8 @@ END_VAR
 END_FUNCTION
 "#;
 
-    add_sources(&mut with_db, &[source]);
-    let pou =
-        find_pou_with_name(&with_db, *with_db.get_files().iter().last().unwrap(), "fn1").unwrap();
+    let file = add_source(&mut with_db, source);
+    let pou = find_pou_with_name(&with_db, file, "fn1").unwrap();
 
     let offset = source.find("x : REAL;\nEND_VAR").unwrap() + "x : REAL;\nEND_VAR\n".len();
     let mut ctx = CompletionCtx::new(offset, QueryMode::Body);

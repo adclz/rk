@@ -5,7 +5,7 @@
 
 use rstest::rstest;
 
-use super::{compile_to_wasm, with_db};
+use super::with_db;
 
 #[rstest]
 fn power_of_real_literals(mut with_db: db::RootDatabase) {
@@ -14,8 +14,7 @@ fn power_of_real_literals(mut with_db: db::RootDatabase) {
             test := 2.0 ** 3.0;
         END_FUNCTION
     "#;
-    let wasm_bytes = compile_to_wasm(&mut with_db, source);
-    let result: f32 = super::execute_wasm(&wasm_bytes, "test", ());
+    let result: f32 = super::run(&mut with_db, source, "test", ());
     assert_eq!(result, 8.0);
 }
 
@@ -31,8 +30,7 @@ fn power_with_integer_exponent(mut with_db: db::RootDatabase) {
             test := x ** n;
         END_FUNCTION
     "#;
-    let wasm_bytes = compile_to_wasm(&mut with_db, source);
-    let result: f32 = super::execute_wasm(&wasm_bytes, "test", ());
+    let result: f32 = super::run(&mut with_db, source, "test", ());
     assert_eq!(result, 9.0);
 }
 
@@ -49,8 +47,7 @@ fn power_with_literal_exponent(mut with_db: db::RootDatabase) {
             test := x ** 2;
         END_FUNCTION
     "#;
-    let wasm_bytes = compile_to_wasm(&mut with_db, source);
-    let result: f32 = super::execute_wasm(&wasm_bytes, "test", ());
+    let result: f32 = super::run(&mut with_db, source, "test", ());
     assert_eq!(result, 9.0);
 }
 
@@ -66,8 +63,7 @@ fn power_with_fractional_exponent(mut with_db: db::RootDatabase) {
             test := x ** 0.5;
         END_FUNCTION
     "#;
-    let wasm_bytes = compile_to_wasm(&mut with_db, source);
-    let result: f32 = super::execute_wasm(&wasm_bytes, "test", ());
+    let result: f32 = super::run(&mut with_db, source, "test", ());
     assert_eq!(result, 3.0);
 }
 
@@ -81,7 +77,6 @@ fn power_of_lreal(mut with_db: db::RootDatabase) {
             test := b ** 10.0;
         END_FUNCTION
     "#;
-    let wasm_bytes = compile_to_wasm(&mut with_db, source);
-    let result: f64 = super::execute_wasm(&wasm_bytes, "test", ());
+    let result: f64 = super::run(&mut with_db, source, "test", ());
     assert_eq!(result, 1024.0);
 }

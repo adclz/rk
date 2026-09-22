@@ -1,6 +1,5 @@
 use std::ops::ControlFlow;
 
-use auto_lsp::default::db::BaseDatabase;
 use db::RootDatabase;
 use hir::HirNodeInfo;
 use hir::hir_def::semantic_index::semantic_index;
@@ -9,7 +8,7 @@ use insta::assert_debug_snapshot;
 use insta::assert_snapshot;
 use rstest::rstest;
 
-use crate::tests::utils::add_sources;
+use crate::tests::utils::add_source;
 use crate::tests::utils::test_snapshot;
 use crate::tests::utils::walk_hir_diagnostics;
 use crate::tests::utils::with_db;
@@ -267,8 +266,8 @@ FUNCTION_BLOCK fb1
     END_WHILE;
 END_FUNCTION_BLOCK"#;
 
-    add_sources(&mut with_db, &[source]);
-    let sema = semantic_index(&with_db, *with_db.get_files().iter().last().unwrap());
+    let file = add_source(&mut with_db, source);
+    let sema = semantic_index(&with_db, file);
 
     let mut nodes = vec![];
 
@@ -329,8 +328,8 @@ FUNCTION_BLOCK fb1
 	fn(0, 1.5, 5);
 END_FUNCTION_BLOCK"#;
 
-    add_sources(&mut with_db, &[source]);
-    let sema = semantic_index(&with_db, *with_db.get_files().iter().last().unwrap());
+    let file = add_source(&mut with_db, source);
+    let sema = semantic_index(&with_db, file);
 
     let mut nodes = vec![];
 

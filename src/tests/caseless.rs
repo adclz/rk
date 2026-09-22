@@ -28,10 +28,8 @@
 
 use crate::tests::codegen::{compile_to_mir_and_wasm, compile_to_wasm, execute_wasm};
 use crate::tests::lsp::formatter::fmt;
-use crate::tests::utils::add_sources;
-use auto_lsp::default::db::BaseDatabase;
 use crate::tests::lsp::formatter_preserves_meaning::assert_meaning_preserved;
-use crate::tests::utils::{test_diagnostics, with_db};
+use crate::tests::utils::{add_source, test_diagnostics, with_db};
 use db::RootDatabase;
 use insta::assert_snapshot;
 use rstest::*;
@@ -745,8 +743,7 @@ END_FUNCTION
 
     let format = |source: &str| {
         let mut db = RootDatabase::default();
-        add_sources(&mut db, &[source]);
-        let file = *db.get_files().iter().next().expect("one file");
+        let file = add_source(&mut db, source);
         fmt(file.document(&db))
     };
 

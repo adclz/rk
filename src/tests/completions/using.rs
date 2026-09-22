@@ -6,7 +6,7 @@ use ide_proto::handlers::{CompletionHandler, CompletionRequest};
 use ide_proto::walk::completion_descendant_at;
 use rstest::rstest;
 
-use crate::tests::utils::{add_sources, with_db};
+use crate::tests::utils::{add_source, add_sources, with_db};
 
 #[rstest]
 pub fn deduplicate_multiple_candidates(mut with_db: RootDatabase) {
@@ -23,8 +23,8 @@ NAMESPACE System
 END_NAMESPACE
 "#;
 
-    add_sources(&mut with_db, &[source]);
-    let sema = semantic_index(&with_db, *with_db.get_files().iter().last().unwrap());
+    let file = add_source(&mut with_db, source);
+    let sema = semantic_index(&with_db, file);
     let using = sema.scope.usings(&with_db).first().unwrap();
 
     let req = CompletionRequest {
@@ -55,8 +55,8 @@ NAMESPACE System.subsystem2
 END_NAMESPACE
 "#;
 
-    add_sources(&mut with_db, &[source]);
-    let sema = semantic_index(&with_db, *with_db.get_files().iter().last().unwrap());
+    let file = add_source(&mut with_db, source);
+    let sema = semantic_index(&with_db, file);
     let using = sema.scope.usings(&with_db).first().unwrap();
 
     let completions = using
@@ -92,8 +92,8 @@ NAMESPACE System.subsystem2
 END_NAMESPACE
 "#;
 
-    add_sources(&mut with_db, &[source]);
-    let sema = semantic_index(&with_db, *with_db.get_files().iter().last().unwrap());
+    let file = add_source(&mut with_db, source);
+    let sema = semantic_index(&with_db, file);
     let using = sema.scope.usings(&with_db).first().unwrap();
 
     let req = CompletionRequest {
@@ -130,8 +130,8 @@ NAMESPACE System.subsystem2
 END_NAMESPACE
 "#;
 
-    add_sources(&mut with_db, &[source]);
-    let sema = semantic_index(&with_db, *with_db.get_files().iter().last().unwrap());
+    let file = add_source(&mut with_db, source);
+    let sema = semantic_index(&with_db, file);
     let using = sema.scope.usings(&with_db).first().unwrap();
 
     let completions = using
@@ -166,8 +166,7 @@ NAMESPACE ns.sub2
 END_NAMESPACE
 "#;
 
-    add_sources(&mut with_db, &[source]);
-    let file = *with_db.get_files().iter().last().unwrap();
+    let file = add_source(&mut with_db, source);
 
     // Cursor right after the dot in "USING ns."
     let offset = source.find("USING ns.").unwrap() + "USING ns.".len();
@@ -199,8 +198,7 @@ USING ns.
 END_FUNCTION
 "#;
 
-    add_sources(&mut with_db, &[source]);
-    let file = *with_db.get_files().iter().last().unwrap();
+    let file = add_source(&mut with_db, source);
 
     let offset = source.find("USING ns.").unwrap() + "USING ns.".len();
     let completions = complete(&with_db, file, offset, Some(".".into()));

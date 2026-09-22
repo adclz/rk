@@ -215,3 +215,102 @@ END_FUNCTION
     ---'
     ");
 }
+
+/// A `USING` written directly under `NAMESPACE`, where the namespace's own
+/// POUs share it.
+///
+/// Only the POUs' own usings were collected, so one written at the namespace
+/// level was never a candidate and could never be reported, however unused.
+#[rstest]
+fn unused_using_directive_in_a_namespace(mut with_db: RootDatabase) {
+    let sources = &[
+        r#"
+NAMESPACE Tools
+    FUNCTION_BLOCK Logger
+    END_FUNCTION_BLOCK
+END_NAMESPACE
+"#,
+        r#"
+NAMESPACE App
+    USING Tools;
+
+    FUNCTION test : INT
+        test := 0;
+    END_FUNCTION
+END_NAMESPACE
+"#,
+    ];
+    assert_snapshot!(test_single_lint(&mut with_db, sources, "unused-import"), @r"
+    [L0301] Hint: unused import
+       ,-[ file:///test1.st:3:11 ]
+       |
+     3 |     USING Tools;
+       |           ^^|^^
+       |             `---- unused import 'Tools'
+       |
+       | Note: lint rule: unused-import
+    ---'
+    ");
+}
+
+/// The namespace's `USING` is what lets its POUs name `helper`, so it is
+/// used, whichever POU does the naming.
+#[rstest]
+fn used_using_directive_in_a_namespace(mut with_db: RootDatabase) {
+    let sources = &[
+        r#"
+NAMESPACE Tools
+    FUNCTION helper : INT
+        helper := 0;
+    END_FUNCTION
+END_NAMESPACE
+"#,
+        r#"
+NAMESPACE App
+    USING Tools;
+
+    FUNCTION test : INT
+        test := helper();
+    END_FUNCTION
+END_NAMESPACE
+"#,
+    ];
+    assert_snapshot!(test_single_lint(&mut with_db, sources, "unused-import"), @"");
+}
+
+/// A namespace holding nested ones is visited once, so its unused `USING` is
+/// reported once. `SemanticIndex::namespaces` is flat and already holds every
+/// nested namespace; collecting from both would report each one twice.
+#[rstest]
+fn an_unused_namespace_using_is_reported_once(mut with_db: RootDatabase) {
+    let sources = &[
+        r#"
+NAMESPACE Tools
+    FUNCTION_BLOCK Logger
+    END_FUNCTION_BLOCK
+END_NAMESPACE
+"#,
+        r#"
+NAMESPACE Outer
+    USING Tools;
+
+    NAMESPACE Inner
+        FUNCTION test : INT
+            test := 0;
+        END_FUNCTION
+    END_NAMESPACE
+END_NAMESPACE
+"#,
+    ];
+    assert_snapshot!(test_single_lint(&mut with_db, sources, "unused-import"), @r"
+    [L0301] Hint: unused import
+       ,-[ file:///test1.st:3:11 ]
+       |
+     3 |     USING Tools;
+       |           ^^|^^
+       |             `---- unused import 'Tools'
+       |
+       | Note: lint rule: unused-import
+    ---'
+    ");
+}

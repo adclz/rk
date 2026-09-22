@@ -265,6 +265,8 @@ fn collect_namespace_scopes<'db>(
     all_usings: &mut Vec<Using<'db>>,
     diagnostics: &mut Vec<IdeDiagnostic>,
 ) {
+    all_usings.extend_from_slice(ns.get_scope_id(db).usings(db));
+
     for pou in ns.pous(db) {
         let scope = pou.get_scope_id(db);
         all_usings.extend_from_slice(scope.usings(db));

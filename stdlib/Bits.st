@@ -1,29 +1,26 @@
 /*
-# Standard Bit Shift Functions
+Bit shift and rotate functions.
 
-IEC 61131-3 **Table 30** - Bit shift and rotate operations.
-
-Each function takes a bit-type input `IN` and an integer shift count `N`.
-The result type matches the input type.
-
-Each operation is provided as one overload per bit type
-(BYTE, WORD, DWORD, LWORD).
+Each takes a `BYTE`, `WORD`, `DWORD` or `LWORD` and a count `N`, and returns
+the type it was given. The width is that of the type: a `BYTE` is shifted
+and rotated within its 8 bits.
 */
 NAMESPACE Std.Bits
 
-	/*
-    ## SHL - Shift Left
+	/* Returns `IN` shifted left by `N` bits, filling with zeros.
 
-    Shifts `IN` left by `N` bit positions, filling with zeros.
+	   Bits shifted past the top of the type are lost. An `N` of the type's width
+	   or more gives 0.
 
-    - **IN**: `BYTE`, `WORD`, `DWORD`, `LWORD`
-    - **N**: `INT` (shift count)
+	   # Examples
 
-    ```iecst
-    result := SHL(16#0F, 4); // 16#F0
-    result := SHL(16#01, 8); // 16#0100
-    ```
-    */
+	   ```iecst
+	   b := SHL(BYTE#16#0F, 4);    // BYTE#16#F0
+	   b := SHL(BYTE#16#FF, 4);    // BYTE#16#F0
+	   w := SHL(WORD#16#0001, 8);  // WORD#16#0100
+	   b := SHL(BYTE#16#01, 8);    // BYTE#16#00
+	   ```
+	*/
 	FUNCTION SHL: BYTE
 		VAR_INPUT
 			IN: BYTE;
@@ -56,18 +53,17 @@ NAMESPACE Std.Bits
 		{wasm IN 'shl' (params IN N) (result SHL)}
 	END_FUNCTION
 
-	/*
-    ## SHR - Shift Right
+	/* Returns `IN` shifted right by `N` bits, filling with zeros.
 
-    Shifts `IN` right by `N` bit positions, filling with zeros.
+	   An `N` of the type's width or more gives 0.
 
-    - **IN**: `BYTE`, `WORD`, `DWORD`, `LWORD`
-    - **N**: `INT` (shift count)
+	   # Examples
 
-    ```iecst
-    result := SHR(16#F0, 4); // 16#0F
-    ```
-    */
+	   ```iecst
+	   b := SHR(BYTE#16#F0, 4);         // BYTE#16#0F
+	   d := SHR(DWORD#16#80000000, 31);  // DWORD#1
+	   ```
+	*/
 	FUNCTION SHR: BYTE
 		VAR_INPUT
 			IN: BYTE;
@@ -100,19 +96,18 @@ NAMESPACE Std.Bits
 		{wasm IN 'shr_u' (params IN N) (result SHR)}
 	END_FUNCTION
 
-	/*
-    ## ROL - Rotate Left
+	/* Returns `IN` rotated left by `N` bits.
 
-    Rotates `IN` left by `N` bit positions.
-    Bits shifted out on the left re-enter on the right.
+	   Bits that leave at the top come back at the bottom. `N` wraps at the type's
+	   width, so rotating a `BYTE` by 8 returns it unchanged.
 
-    - **IN**: `BYTE`, `WORD`, `DWORD`, `LWORD`
-    - **N**: `INT` (rotate count)
+	   # Examples
 
-    ```iecst
-    result := ROL(16#81, 1); // 16#03 (BYTE)
-    ```
-    */
+	   ```iecst
+	   b := ROL(BYTE#16#81, 1);  // BYTE#16#03
+	   b := ROL(BYTE#16#81, 8);  // BYTE#16#81
+	   ```
+	*/
 	FUNCTION ROL: BYTE
 		VAR_INPUT
 			IN: BYTE;
@@ -145,19 +140,18 @@ NAMESPACE Std.Bits
 		{wasm IN 'rotl' (params IN N) (result ROL)}
 	END_FUNCTION
 
-	/*
-    ## ROR - Rotate Right
+	/* Returns `IN` rotated right by `N` bits.
 
-    Rotates `IN` right by `N` bit positions.
-    Bits shifted out on the right re-enter on the left.
+	   Bits that leave at the bottom come back at the top. `N` wraps at the type's
+	   width.
 
-    - **IN**: `BYTE`, `WORD`, `DWORD`, `LWORD`
-    - **N**: `INT` (rotate count)
+	   # Examples
 
-    ```iecst
-    result := ROR(16#81, 1); // 16#C0 (BYTE)
-    ```
-    */
+	   ```iecst
+	   b := ROR(BYTE#16#01, 1);  // BYTE#16#80
+	   w := ROR(WORD#16#0001, 1);  // WORD#16#8000
+	   ```
+	*/
 	FUNCTION ROR: BYTE
 		VAR_INPUT
 			IN: BYTE;

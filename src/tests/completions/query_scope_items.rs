@@ -1,4 +1,3 @@
-use auto_lsp::default::db::BaseDatabase;
 use db::RootDatabase;
 use hir::HirNodeInfo;
 use ide_proto::{
@@ -10,7 +9,7 @@ use ide_proto::{
 };
 use rstest::rstest;
 
-use crate::tests::utils::{add_sources, find_pou_with_name, with_db};
+use crate::tests::utils::{add_source, find_pou_with_name, with_db};
 
 #[rstest]
 pub fn body_query_scope_variables(mut with_db: RootDatabase) {
@@ -35,9 +34,8 @@ pub fn body_query_scope_variables(mut with_db: RootDatabase) {
     END_FUNCTION
 "#;
 
-    add_sources(&mut with_db, &[source]);
-    let pou =
-        find_pou_with_name(&with_db, *with_db.get_files().iter().last().unwrap(), "fn").unwrap();
+    let file = add_source(&mut with_db, source);
+    let pou = find_pou_with_name(&with_db, file, "fn").unwrap();
 
     let mut ctx = CompletionCtx::new(283, QueryMode::Body);
     ctx.scope_completion(pou.get_scope_id(&with_db), "", &with_db);
@@ -73,9 +71,8 @@ pub fn body_query_pous_in_scope(mut with_db: RootDatabase) {
     END_FUNCTION
 "#;
 
-    add_sources(&mut with_db, &[source]);
-    let pou =
-        find_pou_with_name(&with_db, *with_db.get_files().iter().last().unwrap(), "fn2").unwrap();
+    let file = add_source(&mut with_db, source);
+    let pou = find_pou_with_name(&with_db, file, "fn2").unwrap();
 
     let mut ctx = CompletionCtx::new(169, QueryMode::Body);
     ctx.scope_completion(pou.get_scope_id(&with_db), "", &with_db);
@@ -106,9 +103,8 @@ pub fn data_type_completion_no_parentheses(mut with_db: RootDatabase) {
     END_FUNCTION
 "#;
 
-    add_sources(&mut with_db, &[source]);
-    let pou =
-        find_pou_with_name(&with_db, *with_db.get_files().iter().last().unwrap(), "fn1").unwrap();
+    let file = add_source(&mut with_db, source);
+    let pou = find_pou_with_name(&with_db, file, "fn1").unwrap();
 
     let mut ctx = CompletionCtx::new(120, QueryMode::Body);
     ctx.scope_completion(pou.get_scope_id(&with_db), "", &with_db);
@@ -149,9 +145,8 @@ pub fn deduplicate_scope_and_local_vars(mut with_db: RootDatabase) {
     END_FUNCTION_BLOCK
 "#;
 
-    add_sources(&mut with_db, &[source]);
-    let pou =
-        find_pou_with_name(&with_db, *with_db.get_files().iter().last().unwrap(), "fn2").unwrap();
+    let file = add_source(&mut with_db, source);
+    let pou = find_pou_with_name(&with_db, file, "fn2").unwrap();
 
     let mut ctx = CompletionCtx::new(102, QueryMode::Body);
     ctx.scope_completion(pou.get_scope_id(&with_db), "", &with_db);
@@ -182,8 +177,8 @@ FUNCTION_BLOCK fn1
 END_FUNCTION_BLOCK
 "#;
 
-    add_sources(&mut with_db, &[source]);
-    let expr = descendant_at(&with_db, *with_db.get_files().iter().last().unwrap(), 128).unwrap();
+    let file = add_source(&mut with_db, source);
+    let expr = descendant_at(&with_db, file, 128).unwrap();
     let req = CompletionRequest {
         offset: 128,
         trigger_character: None,

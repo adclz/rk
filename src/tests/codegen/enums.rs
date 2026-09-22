@@ -4,7 +4,7 @@
 //! (Regression: `EnumValue` lowering was a stub emitting 0 for EVERY variant,
 //! and `Type::EnumVariant` had no elementary mapping.)
 
-use crate::tests::codegen::{compile_to_wasm, with_db};
+use crate::tests::codegen::with_db;
 use rstest::*;
 
 /// Enum VAR_INPUT written at the FB call site, compared against a literal in
@@ -32,8 +32,7 @@ fn fb_enum_input_and_state(mut with_db: db::RootDatabase) {
             test := p.hit;
         END_FUNCTION
     "#;
-    let wasm = compile_to_wasm(&mut with_db, source);
-    let result: i32 = super::execute_wasm(&wasm, "test", ());
+    let result: i32 = super::run(&mut with_db, source, "test", ());
     assert_eq!(result, 2, "two Green hits");
 }
 
@@ -56,8 +55,7 @@ fn case_over_enum_variants(mut with_db: db::RootDatabase) {
             test := pick(c := Color#Blue) * 100 + pick(c := Color#Green);
         END_FUNCTION
     "#;
-    let wasm = compile_to_wasm(&mut with_db, source);
-    let result: i32 = super::execute_wasm(&wasm, "test", ());
+    let result: i32 = super::run(&mut with_db, source, "test", ());
     assert_eq!(result, 3020, "Blue -> 30, Green -> 20");
 }
 
@@ -83,8 +81,7 @@ fn function_local_enum(mut with_db: db::RootDatabase) {
             END_IF;
         END_FUNCTION
     "#;
-    let wasm = compile_to_wasm(&mut with_db, source);
-    let result: i32 = super::execute_wasm(&wasm, "test", ());
+    let result: i32 = super::run(&mut with_db, source, "test", ());
     assert_eq!(result, 111, "init honored, reassign + =/<> comparisons");
 }
 
@@ -113,8 +110,7 @@ fn enum_function_return(mut with_db: db::RootDatabase) {
             END_IF;
         END_FUNCTION
     "#;
-    let wasm = compile_to_wasm(&mut with_db, source);
-    let result: i32 = super::execute_wasm(&wasm, "test", ());
+    let result: i32 = super::run(&mut with_db, source, "test", ());
     assert_eq!(result, 1, "Idle -> Run round-trips through the return");
 }
 
@@ -137,8 +133,7 @@ fn array_of_enums(mut with_db: db::RootDatabase) {
             test := hits;
         END_FUNCTION
     "#;
-    let wasm = compile_to_wasm(&mut with_db, source);
-    let result: i32 = super::execute_wasm(&wasm, "test", ());
+    let result: i32 = super::run(&mut with_db, source, "test", ());
     assert_eq!(result, 2, "two Blue elements");
 }
 
@@ -160,8 +155,7 @@ fn enum_struct_field(mut with_db: db::RootDatabase) {
             END_IF;
         END_FUNCTION
     "#;
-    let wasm = compile_to_wasm(&mut with_db, source);
-    let result: i32 = super::execute_wasm(&wasm, "test", ());
+    let result: i32 = super::run(&mut with_db, source, "test", ());
     assert_eq!(result, 7, "enum struct field round-trips");
 }
 
@@ -191,8 +185,7 @@ fn explicit_enum_values_are_honored(mut with_db: db::RootDatabase) {
             test := code(m := Mode#Run) * 100 + code(m := Mode#Halt);
         END_FUNCTION
     "#;
-    let wasm = compile_to_wasm(&mut with_db, source);
-    let result: i32 = super::execute_wasm(&wasm, "test", ());
+    let result: i32 = super::run(&mut with_db, source, "test", ());
     assert_eq!(
         result, 203,
         "CASE must match on the declared values (Run -> 2, Halt -> 3), not positions"
@@ -221,8 +214,7 @@ fn enum_values_continue_after_an_explicit_one(mut with_db: db::RootDatabase) {
             test := code(s := Step#B) * 10 + code(s := Step#C);
         END_FUNCTION
     "#;
-    let wasm = compile_to_wasm(&mut with_db, source);
-    let result: i32 = super::execute_wasm(&wasm, "test", ());
+    let result: i32 = super::run(&mut with_db, source, "test", ());
     assert_eq!(result, 23, "B and C continue from A's explicit 5 (6 and 7)");
 }
 
@@ -292,8 +284,7 @@ fn wide_enum_compares_and_matches_at_its_lane(mut with_db: db::RootDatabase) {
             test := ok + pick(w := Wide#Big) * 10 + pick(w := w);
         END_FUNCTION
     "#;
-    let wasm = compile_to_wasm(&mut with_db, source);
-    let result: i32 = super::execute_wasm(&wasm, "test", ());
+    let result: i32 = super::run(&mut with_db, source, "test", ());
     assert_eq!(result, 112, "equality 100 + Big 10 + Bigger 2");
 }
 
@@ -312,7 +303,6 @@ fn enum_value_folding_expression_runs(mut with_db: db::RootDatabase) {
             END_IF;
         END_FUNCTION
     "#;
-    let wasm = compile_to_wasm(&mut with_db, source);
-    let r: i32 = super::execute_wasm(&wasm, "test", ());
+    let r: i32 = super::run(&mut with_db, source, "test", ());
     assert_eq!(r, 3, "Run's ordinal follows the folded 2");
 }

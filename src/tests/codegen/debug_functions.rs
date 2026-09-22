@@ -8,15 +8,8 @@ use debug_format::DebugInfo;
 
 /// Extract and decode the `debug-functions` custom section from a core module.
 fn read_debug_functions(wasm: &[u8]) -> debug_format::DebugFunctions {
-    for payload in wasmparser::Parser::new(0).parse_all(wasm) {
-        if let Ok(wasmparser::Payload::CustomSection(reader)) = payload
-            && reader.name() == debug_format::DEBUG_FUNCTIONS_SECTION
-        {
-            return debug_format::DebugFunctions::from_msgpack(reader.data())
-                .expect("valid debug-functions section");
-        }
-    }
-    panic!("module is missing the `debug-functions` custom section");
+    let section = super::expect_section(wasm, debug_format::DEBUG_FUNCTIONS_SECTION);
+    debug_format::DebugFunctions::from_msgpack(section).expect("valid debug-functions section")
 }
 
 /// Each defined function is named by its `DefinedFuncIndex`, and `DebugInfo`

@@ -1,6 +1,5 @@
-use crate::tests::utils::{add_sources, with_db};
+use crate::tests::utils::{add_source, with_db};
 use auto_lsp::core::document::Document;
-use auto_lsp::default::db::BaseDatabase;
 use db::RootDatabase;
 use formatter::TOPIARY_LANG;
 use insta::assert_snapshot;
@@ -44,13 +43,7 @@ VAR_EXTERNAL CONSTANT B: REAL; END_VAR
 END_FUNCTION_BLOCK
 "#;
 
-    add_sources(&mut with_db, &[source]);
-    let document = with_db
-        .get_files()
-        .iter()
-        .last()
-        .unwrap()
-        .document(&with_db);
+    let document = add_source(&mut with_db, source).document(&with_db);
 
     assert_snapshot!(fmt(document), @r"
     FUNCTION_BLOCK myFB
@@ -122,13 +115,7 @@ pub fn class_definition(mut with_db: RootDatabase) {
         END_CLASS
 "#;
 
-    add_sources(&mut with_db, &[source]);
-    let document = with_db
-        .get_files()
-        .iter()
-        .last()
-        .unwrap()
-        .document(&with_db);
+    let document = add_source(&mut with_db, source).document(&with_db);
 
     assert_snapshot!(fmt(document), @r"
     CLASS CCounter
@@ -190,13 +177,7 @@ END_METHOD
 END_CLASS
 "#;
 
-    add_sources(&mut with_db, &[source]);
-    let document = with_db
-        .get_files()
-        .iter()
-        .last()
-        .unwrap()
-        .document(&with_db);
+    let document = add_source(&mut with_db, source).document(&with_db);
 
     assert_snapshot!(fmt(document), @r"
     CLASS COUNTER
@@ -249,13 +230,7 @@ QW100:= INT_TO_BCD(DISPLAY)
 END_FUNCTION
 "#;
 
-    add_sources(&mut with_db, &[source]);
-    let document = with_db
-        .get_files()
-        .iter()
-        .last()
-        .unwrap()
-        .document(&with_db);
+    let document = add_source(&mut with_db, source).document(&with_db);
 
     assert_snapshot!(fmt(document), @r"
     FUNCTION fn
@@ -286,13 +261,7 @@ END_WHILE
 END_FUNCTION
 "#;
 
-    add_sources(&mut with_db, &[source]);
-    let document = with_db
-        .get_files()
-        .iter()
-        .last()
-        .unwrap()
-        .document(&with_db);
+    let document = add_source(&mut with_db, source).document(&with_db);
 
     assert_snapshot!(fmt(document), @r"
     FUNCTION fn
@@ -318,13 +287,7 @@ END_FOR;
 END_FUNCTION
 "#;
 
-    add_sources(&mut with_db, &[source]);
-    let document = with_db
-        .get_files()
-        .iter()
-        .last()
-        .unwrap()
-        .document(&with_db);
+    let document = add_source(&mut with_db, source).document(&with_db);
 
     assert_snapshot!(fmt(document), @r"
     FUNCTION fn
@@ -351,13 +314,7 @@ END_REPEAT;
 END_FUNCTION
 "#;
 
-    add_sources(&mut with_db, &[source]);
-    let document = with_db
-        .get_files()
-        .iter()
-        .last()
-        .unwrap()
-        .document(&with_db);
+    let document = add_source(&mut with_db, source).document(&with_db);
 
     assert_snapshot!(fmt(document), @r"
     FUNCTION fn
@@ -380,13 +337,7 @@ FUNCTION fn // comment should stay here
 END_FUNCTION
 "#;
 
-    add_sources(&mut with_db, &[source]);
-    let document = with_db
-        .get_files()
-        .iter()
-        .last()
-        .unwrap()
-        .document(&with_db);
+    let document = add_source(&mut with_db, source).document(&with_db);
 
     assert_snapshot!(fmt(document), @r"
     FUNCTION fn // comment should stay here
@@ -406,13 +357,7 @@ FUNCTION fn
 END_FUNCTION
 "#;
 
-    add_sources(&mut with_db, &[source]);
-    let document = with_db
-        .get_files()
-        .iter()
-        .last()
-        .unwrap()
-        .document(&with_db);
+    let document = add_source(&mut with_db, source).document(&with_db);
 
     assert_snapshot!(fmt(document), @r"
     FUNCTION fn
@@ -432,13 +377,7 @@ FUNCTION fn
 END_FUNCTION
 "#;
 
-    add_sources(&mut with_db, &[source]);
-    let document = with_db
-        .get_files()
-        .iter()
-        .last()
-        .unwrap()
-        .document(&with_db);
+    let document = add_source(&mut with_db, source).document(&with_db);
 
     assert_snapshot!(fmt(document), @r"
     FUNCTION fn
@@ -461,13 +400,7 @@ FUNCTION_BLOCK fb1
 END_FUNCTION_BLOCK
 "#;
 
-    add_sources(&mut with_db, &[source]);
-    let document = with_db
-        .get_files()
-        .iter()
-        .last()
-        .unwrap()
-        .document(&with_db);
+    let document = add_source(&mut with_db, source).document(&with_db);
 
     assert_snapshot!(fmt(document), @r"
     FUNCTION_BLOCK fb1
@@ -489,13 +422,7 @@ FUNCTION_BLOCK fb1
 END_FUNCTION_BLOCK
 "#;
 
-    add_sources(&mut with_db, &[source]);
-    let document = with_db
-        .get_files()
-        .iter()
-        .last()
-        .unwrap()
-        .document(&with_db);
+    let document = add_source(&mut with_db, source).document(&with_db);
 
     assert_snapshot!(fmt(document), @r"
     FUNCTION_BLOCK fb1
@@ -521,13 +448,7 @@ pub fn init_expr_single_line(mut with_db: RootDatabase) {
 	VAR Base: Engine := (power := 100, oil := 10.0); END_VAR END_FUNCTION
 "#;
 
-    add_sources(&mut with_db, &[source]);
-    let document = with_db
-        .get_files()
-        .iter()
-        .last()
-        .unwrap()
-        .document(&with_db);
+    let document = add_source(&mut with_db, source).document(&with_db);
 
     assert_snapshot!(fmt(document), @r"
     TYPE
@@ -562,13 +483,7 @@ pub fn init_expr_multi_line(mut with_db: RootDatabase) {
         END_FUNCTION
 "#;
 
-    add_sources(&mut with_db, &[source]);
-    let document = with_db
-        .get_files()
-        .iter()
-        .last()
-        .unwrap()
-        .document(&with_db);
+    let document = add_source(&mut with_db, source).document(&with_db);
 
     assert_snapshot!(fmt(document), @r"
     TYPE
@@ -600,13 +515,7 @@ END_STRUCT
         END_TYPE
 "#;
 
-    add_sources(&mut with_db, &[source]);
-    let document = with_db
-        .get_files()
-        .iter()
-        .last()
-        .unwrap()
-        .document(&with_db);
+    let document = add_source(&mut with_db, source).document(&with_db);
 
     assert_snapshot!(fmt(document), @r"
     TYPE
@@ -629,13 +538,7 @@ END_STRUCT
         END_TYPE
 "#;
 
-    add_sources(&mut with_db, &[source]);
-    let document = with_db
-        .get_files()
-        .iter()
-        .last()
-        .unwrap()
-        .document(&with_db);
+    let document = add_source(&mut with_db, source).document(&with_db);
 
     assert_snapshot!(fmt(document), @r"
     TYPE
@@ -665,13 +568,7 @@ FUNCTION_BLOCK fb1 EXTENDS base METHOD decl
 END_FUNCTION_BLOCK
 "#;
 
-    add_sources(&mut with_db, &[source]);
-    let document = with_db
-        .get_files()
-        .iter()
-        .last()
-        .unwrap()
-        .document(&with_db);
+    let document = add_source(&mut with_db, source).document(&with_db);
 
     assert_snapshot!(fmt(document), @r"
     CLASS base
@@ -710,13 +607,7 @@ END_NAMESPACE
 
 "#;
 
-    add_sources(&mut with_db, &[source]);
-    let document = with_db
-        .get_files()
-        .iter()
-        .last()
-        .unwrap()
-        .document(&with_db);
+    let document = add_source(&mut with_db, source).document(&with_db);
 
     assert_snapshot!(fmt(document), @r"
     NAMESPACE ns1
@@ -745,13 +636,7 @@ FUNCTION dffd: BOOL
 END_FUNCTION
 "#;
 
-    add_sources(&mut with_db, &[source]);
-    let document = with_db
-        .get_files()
-        .iter()
-        .last()
-        .unwrap()
-        .document(&with_db);
+    let document = add_source(&mut with_db, source).document(&with_db);
 
     assert_snapshot!(fmt(document), @r"
     FUNCTION dffd: BOOL
@@ -788,13 +673,7 @@ S1.SC1:= myRefInt^; // assigns the value of A1[11] to S1.SC1
 END_FUNCTION_BLOCK
 "#;
 
-    add_sources(&mut with_db, &[source]);
-    let document = with_db
-        .get_files()
-        .iter()
-        .last()
-        .unwrap()
-        .document(&with_db);
+    let document = add_source(&mut with_db, source).document(&with_db);
 
     assert_snapshot!(fmt(document), @r"
     TYPE
@@ -839,13 +718,7 @@ A := COUNTER.UP(
 END_FUNCTION_BLOCK
 "#;
 
-    add_sources(&mut with_db, &[source]);
-    let document = with_db
-        .get_files()
-        .iter()
-        .last()
-        .unwrap()
-        .document(&with_db);
+    let document = add_source(&mut with_db, source).document(&with_db);
 
     assert_snapshot!(fmt(document), @r"
     FUNCTION_BLOCK fb1
@@ -873,13 +746,7 @@ PROGRAM myPrg
 END_PROGRAM
 "#;
 
-    add_sources(&mut with_db, &[source]);
-    let document = with_db
-        .get_files()
-        .iter()
-        .last()
-        .unwrap()
-        .document(&with_db);
+    let document = add_source(&mut with_db, source).document(&with_db);
 
     assert_snapshot!(fmt(document), @r"
     PROGRAM myPrg
@@ -905,13 +772,7 @@ END_FUNCTION
 END_NAMESPACE
 "#;
 
-    add_sources(&mut with_db, &[source]);
-    let document = with_db
-        .get_files()
-        .iter()
-        .last()
-        .unwrap()
-        .document(&with_db);
+    let document = add_source(&mut with_db, source).document(&with_db);
 
     assert_snapshot!(fmt(document), @r"
     NAMESPACE ns
@@ -935,13 +796,7 @@ FUNCTION fn2 : INT
 END_FUNCTION
 "#;
 
-    add_sources(&mut with_db, &[source]);
-    let document = with_db
-        .get_files()
-        .iter()
-        .last()
-        .unwrap()
-        .document(&with_db);
+    let document = add_source(&mut with_db, source).document(&with_db);
 
     assert_snapshot!(fmt(document), @r"
     FUNCTION fn1: INT
@@ -962,13 +817,7 @@ FUNCTION fn2 : ANY_NUM
 END_FUNCTION
 "#;
 
-    add_sources(&mut with_db, &[source]);
-    let document = with_db
-        .get_files()
-        .iter()
-        .last()
-        .unwrap()
-        .document(&with_db);
+    let document = add_source(&mut with_db, source).document(&with_db);
 
     assert_snapshot!(fmt(document), @r"
     FUNCTION fn2: ANY_NUM
@@ -999,13 +848,7 @@ CONFIGURATION MyCfg
 END_CONFIGURATION
 "#;
 
-    add_sources(&mut with_db, &[source]);
-    let document = with_db
-        .get_files()
-        .iter()
-        .last()
-        .unwrap()
-        .document(&with_db);
+    let document = add_source(&mut with_db, source).document(&with_db);
 
     assert_snapshot!(fmt(document), @r"
     CONFIGURATION MyCfg
@@ -1036,13 +879,7 @@ FUNCTION_BLOCK fn1
 END_FUNCTION_BLOCK
 "#;
 
-    add_sources(&mut with_db, &[source]);
-    let document = with_db
-        .get_files()
-        .iter()
-        .last()
-        .unwrap()
-        .document(&with_db);
+    let document = add_source(&mut with_db, source).document(&with_db);
 
     assert_snapshot!(fmt(document), @r"
     FUNCTION_BLOCK fn1
@@ -1061,13 +898,7 @@ FUNCTION fn1
 END_FUNCTION
 "#;
 
-    add_sources(&mut with_db, &[source]);
-    let document = with_db
-        .get_files()
-        .iter()
-        .last()
-        .unwrap()
-        .document(&with_db);
+    let document = add_source(&mut with_db, source).document(&with_db);
 
     assert_snapshot!(fmt(document), @r"
     FUNCTION fn1
@@ -1084,13 +915,7 @@ FUNCTION fn1
 END_FUNCTION
 "#;
 
-    add_sources(&mut with_db, &[source]);
-    let document = with_db
-        .get_files()
-        .iter()
-        .last()
-        .unwrap()
-        .document(&with_db);
+    let document = add_source(&mut with_db, source).document(&with_db);
 
     assert_snapshot!(fmt(document), @r#"
     FUNCTION fn1
@@ -1108,13 +933,7 @@ FUNCTION fn1
 END_FUNCTION
 "#;
 
-    add_sources(&mut with_db, &[source]);
-    let document = with_db
-        .get_files()
-        .iter()
-        .last()
-        .unwrap()
-        .document(&with_db);
+    let document = add_source(&mut with_db, source).document(&with_db);
 
     assert_snapshot!(fmt(document), @r#"
     FUNCTION fn1
@@ -1132,13 +951,7 @@ FUNCTION fn1
 END_FUNCTION
 "#;
 
-    add_sources(&mut with_db, &[source]);
-    let document = with_db
-        .get_files()
-        .iter()
-        .last()
-        .unwrap()
-        .document(&with_db);
+    let document = add_source(&mut with_db, source).document(&with_db);
 
     assert_snapshot!(fmt(document), @r"
     FUNCTION fn1
@@ -1168,13 +981,7 @@ FUNCTION fn1
 END_FUNCTION
 "#;
 
-    add_sources(&mut with_db, &[source]);
-    let document = with_db
-        .get_files()
-        .iter()
-        .last()
-        .unwrap()
-        .document(&with_db);
+    let document = add_source(&mut with_db, source).document(&with_db);
 
     assert_snapshot!(fmt(document), @r"
     FUNCTION fn1
@@ -1212,13 +1019,7 @@ FUNCTION fn1
 END_FUNCTION
 "#;
 
-    add_sources(&mut with_db, &[source]);
-    let document = with_db
-        .get_files()
-        .iter()
-        .last()
-        .unwrap()
-        .document(&with_db);
+    let document = add_source(&mut with_db, source).document(&with_db);
 
     assert_snapshot!(fmt(document), @r"
     FUNCTION fn1
@@ -1253,13 +1054,7 @@ FUNCTION fn1
 END_FUNCTION
 "#;
 
-    add_sources(&mut with_db, &[source]);
-    let document = with_db
-        .get_files()
-        .iter()
-        .last()
-        .unwrap()
-        .document(&with_db);
+    let document = add_source(&mut with_db, source).document(&with_db);
 
     assert_snapshot!(fmt(document), @r"
     FUNCTION fn1
@@ -1294,13 +1089,7 @@ FUNCTION fn1 : REAL
 END_FUNCTION
 "#;
 
-    add_sources(&mut with_db, &[source]);
-    let document = with_db
-        .get_files()
-        .iter()
-        .last()
-        .unwrap()
-        .document(&with_db);
+    let document = add_source(&mut with_db, source).document(&with_db);
 
     assert_snapshot!(fmt(document), @r"
     FUNCTION fn1: REAL
@@ -1359,13 +1148,7 @@ FUNCTION_BLOCK fb1
 END_FUNCTION_BLOCK
 "#;
 
-    add_sources(&mut with_db, &[source]);
-    let document = with_db
-        .get_files()
-        .iter()
-        .last()
-        .unwrap()
-        .document(&with_db);
+    let document = add_source(&mut with_db, source).document(&with_db);
 
     assert_snapshot!(fmt(document), @r"
     FUNCTION_BLOCK fb1
@@ -1414,13 +1197,7 @@ VAR_INPUT IN : INT; END_VAR
 END_FUNCTION
 "#;
 
-    add_sources(&mut with_db, &[source]);
-    let document = with_db
-        .get_files()
-        .iter()
-        .last()
-        .unwrap()
-        .document(&with_db);
+    let document = add_source(&mut with_db, source).document(&with_db);
 
     assert_snapshot!(fmt(document), @r"
     {extern 'math' 'abs'}
@@ -1440,13 +1217,7 @@ FUNCTION my_test : INT
 END_FUNCTION
 "#;
 
-    add_sources(&mut with_db, &[source]);
-    let document = with_db
-        .get_files()
-        .iter()
-        .last()
-        .unwrap()
-        .document(&with_db);
+    let document = add_source(&mut with_db, source).document(&with_db);
 
     assert_snapshot!(fmt(document), @r"
     {test}
@@ -1479,13 +1250,7 @@ END_FUNCTION
 END_NAMESPACE
 "#;
 
-    add_sources(&mut with_db, &[source]);
-    let document = with_db
-        .get_files()
-        .iter()
-        .last()
-        .unwrap()
-        .document(&with_db);
+    let document = add_source(&mut with_db, source).document(&with_db);
 
     assert_snapshot!(fmt(document), @r"
     {once}
@@ -1519,13 +1284,7 @@ PROGRAM my_test
 END_PROGRAM
 "#;
 
-    add_sources(&mut with_db, &[source]);
-    let document = with_db
-        .get_files()
-        .iter()
-        .last()
-        .unwrap()
-        .document(&with_db);
+    let document = add_source(&mut with_db, source).document(&with_db);
 
     assert_snapshot!(fmt(document), @r"
     {test}
@@ -1549,13 +1308,7 @@ NAMESPACE Foo
 END_NAMESPACE
 "#;
 
-    add_sources(&mut with_db, &[source]);
-    let document = with_db
-        .get_files()
-        .iter()
-        .last()
-        .unwrap()
-        .document(&with_db);
+    let document = add_source(&mut with_db, source).document(&with_db);
 
     assert_snapshot!(fmt(document), @r"
     NAMESPACE Foo
@@ -1585,13 +1338,7 @@ FUNCTION REVERSE: BYTE
 END_FUNCTION
 "#;
 
-    add_sources(&mut with_db, &[source]);
-    let document = with_db
-        .get_files()
-        .iter()
-        .last()
-        .unwrap()
-        .document(&with_db);
+    let document = add_source(&mut with_db, source).document(&with_db);
 
     assert_snapshot!(fmt(document), @r"
     FUNCTION REVERSE: BYTE
@@ -1619,13 +1366,7 @@ TYPE Status : INT (Running := 1, Stopped := 2, Error := 3)
 END_TYPE
 "#;
 
-    add_sources(&mut with_db, &[source]);
-    let document = with_db
-        .get_files()
-        .iter()
-        .last()
-        .unwrap()
-        .document(&with_db);
+    let document = add_source(&mut with_db, source).document(&with_db);
 
     assert_snapshot!(fmt(document), @r"
     TYPE
@@ -1653,13 +1394,7 @@ END_VAR
 END_FUNCTION
 "#;
 
-    add_sources(&mut with_db, &[source]);
-    let document = with_db
-        .get_files()
-        .iter()
-        .last()
-        .unwrap()
-        .document(&with_db);
+    let document = add_source(&mut with_db, source).document(&with_db);
 
     assert_snapshot!(fmt(document), @r"
     TYPE
@@ -1693,13 +1428,7 @@ x := x;
 END_FUNCTION_BLOCK
 "#;
 
-    add_sources(&mut with_db, &[source]);
-    let document = with_db
-        .get_files()
-        .iter()
-        .last()
-        .unwrap()
-        .document(&with_db);
+    let document = add_source(&mut with_db, source).document(&with_db);
 
     assert_snapshot!(fmt(document), @r"
     {allow 'input-assignment' 'self-assignment'}

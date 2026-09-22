@@ -24,8 +24,7 @@ fn bound_output_live_pointer(mut with_db: db::RootDatabase) {
             test := x;
         END_FUNCTION
     "#;
-    let wasm = compile_to_wasm(&mut with_db, source);
-    let result: i32 = super::execute_wasm(&wasm, "test", ());
+    let result: i32 = super::run(&mut with_db, source, "test", ());
     assert_eq!(result, 42, "output aliases the caller's x: 41 + 1");
 }
 
@@ -47,8 +46,7 @@ fn discarded_output(mut with_db: db::RootDatabase) {
             test := fn(a := 5);
         END_FUNCTION
     "#;
-    let wasm = compile_to_wasm(&mut with_db, source);
-    let result: i32 = super::execute_wasm(&wasm, "test", ());
+    let result: i32 = super::run(&mut with_db, source, "test", ());
     assert_eq!(result, 6, "discarded output: call still works, returns a+1");
 }
 
@@ -71,8 +69,7 @@ fn partially_discarded_outputs(mut with_db: db::RootDatabase) {
             test := t;
         END_FUNCTION
     "#;
-    let wasm = compile_to_wasm(&mut with_db, source);
-    let result: i32 = super::execute_wasm(&wasm, "test", ());
+    let result: i32 = super::run(&mut with_db, source, "test", ());
     assert_eq!(result, 15, "dbl discarded, tri bound: 5*3");
 }
 
@@ -92,8 +89,7 @@ fn discarded_outputs_two_calls(mut with_db: db::RootDatabase) {
             test := fn(a := 1) + fn(a := 10);
         END_FUNCTION
     "#;
-    let wasm = compile_to_wasm(&mut with_db, source);
-    let result: i32 = super::execute_wasm(&wasm, "test", ());
+    let result: i32 = super::run(&mut with_db, source, "test", ());
     assert_eq!(result, 13, "2 + 11");
 }
 
@@ -120,8 +116,7 @@ fn discarded_output_from_fb_body(mut with_db: db::RootDatabase) {
             test := c.res;
         END_FUNCTION
     "#;
-    let wasm = compile_to_wasm(&mut with_db, source);
-    let result: i32 = super::execute_wasm(&wasm, "test", ());
+    let result: i32 = super::run(&mut with_db, source, "test", ());
     assert_eq!(result, 21, "discarded output inside an FB body: 20+1");
 }
 
@@ -142,8 +137,7 @@ fn discarded_string_output(mut with_db: db::RootDatabase) {
             test := tag(a := 21);
         END_FUNCTION
     "#;
-    let wasm = compile_to_wasm(&mut with_db, source);
-    let result: i32 = super::execute_wasm(&wasm, "test", ());
+    let result: i32 = super::run(&mut with_db, source, "test", ());
     assert_eq!(
         result, 42,
         "discarded STRING output: call works, returns 42"
@@ -171,8 +165,7 @@ fn bound_struct_output(mut with_db: db::RootDatabase) {
             test := got.x + got.y;
         END_FUNCTION
     "#;
-    let wasm = compile_to_wasm(&mut with_db, source);
-    let result: i32 = super::execute_wasm(&wasm, "test", ());
+    let result: i32 = super::run(&mut with_db, source, "test", ());
     assert_eq!(
         result, 15,
         "struct output written through the pointer: 5 + 10"
@@ -198,8 +191,7 @@ fn bound_array_output(mut with_db: db::RootDatabase) {
             test := a[0] + a[1];
         END_FUNCTION
     "#;
-    let wasm = compile_to_wasm(&mut with_db, source);
-    let result: i32 = super::execute_wasm(&wasm, "test", ());
+    let result: i32 = super::run(&mut with_db, source, "test", ());
     assert_eq!(
         result, 33,
         "array output written through the pointer: 3 + 30"
@@ -259,8 +251,7 @@ fn discarded_struct_output(mut with_db: db::RootDatabase) {
             test := mk(seed := 9);
         END_FUNCTION
     "#;
-    let wasm = compile_to_wasm(&mut with_db, source);
-    let result: i32 = super::execute_wasm(&wasm, "test", ());
+    let result: i32 = super::run(&mut with_db, source, "test", ());
     assert_eq!(
         result, 10,
         "discarded struct output: call works, returns 10"
@@ -283,8 +274,7 @@ fn discarded_array_output(mut with_db: db::RootDatabase) {
             test := fill(seed := 4);
         END_FUNCTION
     "#;
-    let wasm = compile_to_wasm(&mut with_db, source);
-    let result: i32 = super::execute_wasm(&wasm, "test", ());
+    let result: i32 = super::run(&mut with_db, source, "test", ());
     assert_eq!(result, 8, "discarded array output: call works, returns 8");
 }
 
@@ -309,8 +299,7 @@ fn bound_method_output(mut with_db: db::RootDatabase) {
             test := q * 100 + r;
         END_FUNCTION
     "#;
-    let wasm = compile_to_wasm(&mut with_db, source);
-    let result: i32 = super::execute_wasm(&wasm, "test", ());
+    let result: i32 = super::run(&mut with_db, source, "test", ());
     assert_eq!(result, 1003, "return 10, rem 3, both through the call");
 }
 
@@ -331,8 +320,7 @@ fn discarded_method_output(mut with_db: db::RootDatabase) {
             test := w.Split();
         END_FUNCTION
     "#;
-    let wasm = compile_to_wasm(&mut with_db, source);
-    let result: i32 = super::execute_wasm(&wasm, "test", ());
+    let result: i32 = super::run(&mut with_db, source, "test", ());
     assert_eq!(result, 10, "the discarded output landed in a scratch");
 }
 
@@ -352,8 +340,7 @@ fn discarded_scratch_is_per_call_site(mut with_db: db::RootDatabase) {
             test := g() * 10 + g();
         END_FUNCTION
     "#;
-    let wasm = compile_to_wasm(&mut with_db, source);
-    let result: i32 = super::execute_wasm(&wasm, "test", ());
+    let result: i32 = super::run(&mut with_db, source, "test", ());
     assert_eq!(result, 11, "two sites, two scratches, both initially zero");
 }
 
@@ -406,8 +393,7 @@ fn discarded_output_nested_call(mut with_db: db::RootDatabase) {
             test := g(a := g(a := 5));
         END_FUNCTION
     "#;
-    let wasm = compile_to_wasm(&mut with_db, source);
-    let result: i32 = super::execute_wasm(&wasm, "test", ());
+    let result: i32 = super::run(&mut with_db, source, "test", ());
     assert_eq!(result, 5, "each nested call kept its own scratch");
 }
 
@@ -473,8 +459,7 @@ fn bound_output_converts_into_memory_places_and_from_methods(mut with_db: db::Ro
             test := arr[1] * 100.0 + s.l * 10.0 + l;
         END_FUNCTION
     "#;
-    let wasm = compile_to_wasm(&mut with_db, source);
-    let result: f64 = super::execute_wasm(&wasm, "test", ());
+    let result: f64 = super::run(&mut with_db, source, "test", ());
     assert_eq!(result, 276.5, "250 + 25 + 1.5");
 }
 

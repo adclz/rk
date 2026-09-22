@@ -269,8 +269,7 @@ fn test_for_descending(mut with_db: db::RootDatabase) {
             count_down := n;
         END_FUNCTION
     "#;
-    let wasm = compile_to_wasm(&mut with_db, source);
-    let r: i32 = super::execute_wasm(&wasm, "count_down", ());
+    let r: i32 = super::run(&mut with_db, source, "count_down", ());
     assert_eq!(r, 10, "descending FOR runs all 10 iterations");
 }
 
@@ -287,8 +286,7 @@ fn test_for_descending_by_two(mut with_db: db::RootDatabase) {
             count_down2 := n;
         END_FUNCTION
     "#;
-    let wasm = compile_to_wasm(&mut with_db, source);
-    let r: i32 = super::execute_wasm(&wasm, "count_down2", ());
+    let r: i32 = super::run(&mut with_db, source, "count_down2", ());
     assert_eq!(r, 5, "10,8,6,4,2 then 0 < 1 exits");
 }
 
@@ -305,8 +303,7 @@ fn test_for_empty_ascending_range(mut with_db: db::RootDatabase) {
             no_iters := n;
         END_FUNCTION
     "#;
-    let wasm = compile_to_wasm(&mut with_db, source);
-    let r: i32 = super::execute_wasm(&wasm, "no_iters", ());
+    let r: i32 = super::run(&mut with_db, source, "no_iters", ());
     assert_eq!(r, 0, "start > end with positive step never enters the body");
 }
 
@@ -324,8 +321,7 @@ fn test_for_lint_control_var(mut with_db: db::RootDatabase) {
             lint_sum := n;
         END_FUNCTION
     "#;
-    let wasm = compile_to_wasm(&mut with_db, source);
-    let r: i64 = super::execute_wasm(&wasm, "lint_sum", ());
+    let r: i64 = super::run(&mut with_db, source, "lint_sum", ());
     assert_eq!(r, 6, "i64 FOR loop sums 1+2+3");
 }
 
@@ -341,8 +337,7 @@ fn test_for_lint_descending_beyond_i32(mut with_db: db::RootDatabase) {
             lint_down := n;
         END_FUNCTION
     "#;
-    let wasm = compile_to_wasm(&mut with_db, source);
-    let r: i64 = super::execute_wasm(&wasm, "lint_down", ());
+    let r: i64 = super::run(&mut with_db, source, "lint_down", ());
     assert_eq!(r, 3, "descending i64 FOR with bounds beyond i32 range");
 }
 
@@ -365,8 +360,7 @@ fn test_for_subwidth_counter_stays_in_domain(mut with_db: db::RootDatabase) {
             END_IF;
         END_FUNCTION
     "#;
-    let wasm = compile_to_wasm(&mut with_db, source);
-    let r: i32 = super::execute_wasm(&wasm, "usint_counter", ());
+    let r: i32 = super::run(&mut with_db, source, "usint_counter", ());
     assert_eq!(r, 255, "5 iterations and the counter exits in-domain at 255");
 }
 
@@ -423,8 +417,7 @@ fn the_body_observes_the_member_counter_each_iteration(mut with_db: db::RootData
             run := a.digits;
         END_FUNCTION
     "#;
-    let wasm = compile_to_wasm(&mut with_db, source);
-    let result: i32 = super::execute_wasm(&wasm, "run", ());
+    let result: i32 = super::run(&mut with_db, source, "run", ());
     assert_eq!(result, 123, "each iteration read the live counter: 1, 2, 3");
 }
 
@@ -446,8 +439,7 @@ fn for_bound_is_fixed_at_entry(mut with_db: db::RootDatabase) {
             run := count;
         END_FUNCTION
     "#;
-    let wasm = compile_to_wasm(&mut with_db, source);
-    let r: i32 = super::execute_wasm(&wasm, "run", ());
+    let r: i32 = super::run(&mut with_db, source, "run", ());
     assert_eq!(r, 3, "the bound is fixed at entry (IEC); re-evaluation would give 10");
 }
 
@@ -472,8 +464,7 @@ fn for_bound_call_runs_once(mut with_db: db::RootDatabase) {
             run := c.calls * 100 + total;
         END_FUNCTION
     "#;
-    let wasm = compile_to_wasm(&mut with_db, source);
-    let r: i32 = super::execute_wasm(&wasm, "run", ());
+    let r: i32 = super::run(&mut with_db, source, "run", ());
     assert_eq!(r, 104, "bound() called once at entry, 4 iterations");
 }
 
@@ -493,8 +484,7 @@ fn for_descending_by_constant_variable(mut with_db: db::RootDatabase) {
             run := count;
         END_FUNCTION
     "#;
-    let wasm = compile_to_wasm(&mut with_db, source);
-    let r: i32 = super::execute_wasm(&wasm, "run", ());
+    let r: i32 = super::run(&mut with_db, source, "run", ());
     assert_eq!(r, 5, "K's folded sign makes the loop descend");
 }
 
@@ -513,8 +503,7 @@ fn for_lint_bound_snapshot_keeps_its_width(mut with_db: db::RootDatabase) {
             run := count;
         END_FUNCTION
     "#;
-    let wasm = compile_to_wasm(&mut with_db, source);
-    let r: i64 = super::execute_wasm(&wasm, "run", ());
+    let r: i64 = super::run(&mut with_db, source, "run", ());
     assert_eq!(r, 3, "an i64 bound beyond i32 range survives the snapshot");
 }
 
@@ -547,8 +536,7 @@ fn nested_for_bounds_do_not_clobber_each_other(mut with_db: db::RootDatabase) {
             run := count;
         END_FUNCTION
     "#;
-    let wasm = compile_to_wasm(&mut with_db, source);
-    let r: i32 = super::execute_wasm(&wasm, "run", ());
+    let r: i32 = super::run(&mut with_db, source, "run", ());
     assert_eq!(r, 202, "outer fixed at 3; inner re-snapshots at each entry: 2 + 100 + 100");
 }
 
@@ -567,8 +555,7 @@ fn exit_under_if_leaves_the_while_loop(mut with_db: db::RootDatabase) {
             run := i * 100 + count;
         END_FUNCTION
     "#;
-    let wasm = compile_to_wasm(&mut with_db, source);
-    let r: i32 = super::execute_wasm(&wasm, "run", ());
+    let r: i32 = super::run(&mut with_db, source, "run", ());
     assert_eq!(r, 302, "exits at i = 3 with two iterations counted");
 }
 
@@ -585,8 +572,7 @@ fn continue_under_if_skips_to_the_next_while_iteration(mut with_db: db::RootData
             run := count;
         END_FUNCTION
     "#;
-    let wasm = compile_to_wasm(&mut with_db, source);
-    let r: i32 = super::execute_wasm(&wasm, "run", ());
+    let r: i32 = super::run(&mut with_db, source, "run", ());
     assert_eq!(r, 4, "iteration i = 2 skips the count");
 }
 
@@ -602,8 +588,7 @@ fn continue_under_if_still_increments_the_for_counter(mut with_db: db::RootDatab
             run := count;
         END_FUNCTION
     "#;
-    let wasm = compile_to_wasm(&mut with_db, source);
-    let r: i32 = super::execute_wasm(&wasm, "run", ());
+    let r: i32 = super::run(&mut with_db, source, "run", ());
     assert_eq!(r, 4, "CONTINUE still increments the counter and re-checks the bound");
 }
 
@@ -623,8 +608,7 @@ fn continue_in_repeat_reaches_the_until_check(mut with_db: db::RootDatabase) {
             run := sum;
         END_FUNCTION
     "#;
-    let wasm = compile_to_wasm(&mut with_db, source);
-    let r: i32 = super::execute_wasm(&wasm, "run", ());
+    let r: i32 = super::run(&mut with_db, source, "run", ());
     assert_eq!(r, 5, "iteration 1 skips the sum: 2 + 3");
 }
 
@@ -643,8 +627,7 @@ fn exit_leaves_only_the_inner_loop(mut with_db: db::RootDatabase) {
             run := count;
         END_FUNCTION
     "#;
-    let wasm = compile_to_wasm(&mut with_db, source);
-    let r: i32 = super::execute_wasm(&wasm, "run", ());
+    let r: i32 = super::run(&mut with_db, source, "run", ());
     assert_eq!(r, 3, "each outer iteration counts once before the inner EXIT");
 }
 
@@ -678,8 +661,7 @@ fn exit_survives_elsif_and_case_nesting(mut with_db: db::RootDatabase) {
             run := i * 1000 + a * 100 + b;
         END_FUNCTION
     "#;
-    let wasm = compile_to_wasm(&mut with_db, source);
-    let r: i32 = super::execute_wasm(&wasm, "run", ());
+    let r: i32 = super::run(&mut with_db, source, "run", ());
     assert_eq!(r, 4303, "first loop exits at i = 4 with a = 3; second at b = 3");
 }
 
@@ -701,8 +683,7 @@ fn repeat_runs_at_least_once_and_exit_leaves_it(mut with_db: db::RootDatabase) {
             run := count * 100 + n;
         END_FUNCTION
     "#;
-    let wasm = compile_to_wasm(&mut with_db, source);
-    let r: i32 = super::execute_wasm(&wasm, "run", ());
+    let r: i32 = super::run(&mut with_db, source, "run", ());
     assert_eq!(r, 102, "one mandatory iteration; EXIT at n = 2");
 }
 
@@ -722,8 +703,7 @@ fn continue_targets_the_inner_loop(mut with_db: db::RootDatabase) {
             run := i * 100 + count;
         END_FUNCTION
     "#;
-    let wasm = compile_to_wasm(&mut with_db, source);
-    let r: i32 = super::execute_wasm(&wasm, "run", ());
+    let r: i32 = super::run(&mut with_db, source, "run", ());
     assert_eq!(r, 409, "3 outer x 3 counted inner; the counter ends past the bound at 4");
 }
 
@@ -769,8 +749,7 @@ fn case_integer_labels_of_every_constant_form(mut with_db: db::RootDatabase) {
         PROGRAM Dummy
         END_PROGRAM
     "#;
-    let wasm = compile_to_wasm(&mut with_db, source);
-    let result: i32 = super::execute_wasm(&wasm, "run", ());
+    let result: i32 = super::run(&mut with_db, source, "run", ());
     assert_eq!(
         result, 1500,
         "literal, subrange, CONSTANT, constant arithmetic and typed literal each match"
@@ -798,8 +777,7 @@ fn case_enum_labels_select_by_declared_value(mut with_db: db::RootDatabase) {
             run := pick(m := Mode#Stop) + pick(m := Mode#Run) + pick(m := Mode#Halt);
         END_FUNCTION
     "#;
-    let wasm = compile_to_wasm(&mut with_db, source);
-    let result: i32 = super::execute_wasm(&wasm, "run", ());
+    let result: i32 = super::run(&mut with_db, source, "run", ());
     assert_eq!(result, 321, "Stop=5, Run=6, Halt=9 each reach their own arm");
 }
 
@@ -827,8 +805,7 @@ fn case_string_labels_compare_by_content(mut with_db: db::RootDatabase) {
                  + classify(s := '');
         END_FUNCTION
     "#;
-    let wasm = compile_to_wasm(&mut with_db, source);
-    let result: i32 = super::execute_wasm(&wasm, "run", ());
+    let result: i32 = super::run(&mut with_db, source, "run", ());
     assert_eq!(
         result, 8321,
         "each string matches its own arm; a non-match and the empty string fall through"
@@ -856,8 +833,7 @@ fn case_multiple_labels_per_arm(mut with_db: db::RootDatabase) {
                  + pick(x := 12) * 100 + pick(x := 13) * 10 + pick(x := 0);
         END_FUNCTION
     "#;
-    let wasm = compile_to_wasm(&mut with_db, source);
-    let result: i32 = super::execute_wasm(&wasm, "run", ());
+    let result: i32 = super::run(&mut with_db, source, "run", ());
     assert_eq!(result, 7977700, "1,3 and 10..12 share an arm; 2 is its own; 13 and 0 fall through");
 }
 
@@ -876,8 +852,7 @@ fn for_control_var_after_completion(mut with_db: db::RootDatabase) {
             test := i * 10 + j;
         END_FUNCTION
     "#;
-    let wasm = compile_to_wasm(&mut with_db, source);
-    let r: i32 = super::execute_wasm(&wasm, "test", ());
+    let r: i32 = super::run(&mut with_db, source, "test", ());
     assert_eq!(r, 40, "i = 4 (past 3), j = 0 (past 1)");
 }
 
@@ -900,8 +875,7 @@ fn for_to_type_max_terminates(mut with_db: db::RootDatabase) {
             test := c;
         END_FUNCTION
     "#;
-    let wasm = compile_to_wasm(&mut with_db, source);
-    let r: i32 = super::execute_wasm(&wasm, "test", ());
+    let r: i32 = super::run(&mut with_db, source, "test", ());
     assert_eq!(r, 108, "8 iterations, counter left AT the bound");
 }
 
@@ -918,8 +892,7 @@ fn for_full_unsigned_range_terminates(mut with_db: db::RootDatabase) {
             test := c;
         END_FUNCTION
     "#;
-    let wasm = compile_to_wasm(&mut with_db, source);
-    let r: i32 = super::execute_wasm(&wasm, "test", ());
+    let r: i32 = super::run(&mut with_db, source, "test", ());
     assert_eq!(r, 256, "every USINT value visited once");
 }
 
@@ -942,8 +915,7 @@ fn for_step_overshooting_type_max_terminates(mut with_db: db::RootDatabase) {
             test := c;
         END_FUNCTION
     "#;
-    let wasm = compile_to_wasm(&mut with_db, source);
-    let r: i32 = super::execute_wasm(&wasm, "test", ());
+    let r: i32 = super::run(&mut with_db, source, "test", ());
     assert_eq!(r, 102, "120 and 124 visited; the counter stays at 124");
 }
 
@@ -963,8 +935,7 @@ fn for_to_type_min_terminates(mut with_db: db::RootDatabase) {
             test := c;
         END_FUNCTION
     "#;
-    let wasm = compile_to_wasm(&mut with_db, source);
-    let r: i32 = super::execute_wasm(&wasm, "test", ());
+    let r: i32 = super::run(&mut with_db, source, "test", ());
     assert_eq!(r, 109, "9 iterations, counter left AT the bound");
 }
 
@@ -981,8 +952,7 @@ fn for_to_lint_max_terminates(mut with_db: db::RootDatabase) {
             test := c;
         END_FUNCTION
     "#;
-    let wasm = compile_to_wasm(&mut with_db, source);
-    let r: i32 = super::execute_wasm(&wasm, "test", ());
+    let r: i32 = super::run(&mut with_db, source, "test", ());
     assert_eq!(r, 3, "the last three LINT values");
 }
 
@@ -1000,7 +970,6 @@ fn for_step_folding_expression_runs(mut with_db: db::RootDatabase) {
             test := c;
         END_FUNCTION
     "#;
-    let wasm = compile_to_wasm(&mut with_db, source);
-    let r: i32 = super::execute_wasm(&wasm, "test", ());
+    let r: i32 = super::run(&mut with_db, source, "test", ());
     assert_eq!(r, 3, "1, 3, 5");
 }

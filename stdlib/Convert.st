@@ -1,20 +1,33 @@
 /*
-# Standard Type Conversion Functions
+Type conversions, named `<SOURCE>_TO_<TARGET>`.
 
-IEC 61131-3 **Table 22** - Explicit type conversion (narrowing casts).
+These are the conversions the compiler does not make on its own, because
+each can lose something: range, precision or sign. None of them can fail.
 
-These functions handle conversions that are **not** covered by implicit casting,
-typically narrowing conversions where precision or range may be lost.
+An integer converted to a narrower one keeps its low bits, so
+`DINT_TO_INT(70000)` is 4464. Between a signed and an unsigned type of the
+same width the bits stay as they are, so `INT_TO_UINT(-1)` is 65535.
 
-Each function follows the naming convention `<SOURCE>_TO_<TARGET>`.
-Most are one {wasm} instruction. The float-to-integer ones are two, round
-to nearest and then convert with saturation, as described at their section.
+A `REAL` or `LREAL` converted to an integer is rounded to the nearest one,
+halfway cases to the even neighbour: 2.5 gives 2 and 3.5 gives 4. A value
+outside the target's range becomes its nearest bound, and NaN becomes 0.
+[Std.Convert.TRUNC] rounds toward zero instead.
+
+A date or time converted to a number is its encoding: `TIME` and
+`TIME_OF_DAY` in milliseconds, `DATE` and `LDATE` in days since 1970-01-01,
+`DATE_AND_TIME` in seconds since then, and `LTIME`, `LTIME_OF_DAY` and
+`LDATE_AND_TIME` in nanoseconds.
 */
 NAMESPACE Std.Convert
 	USING Std.Strings
 
-	/* ## LREAL (f64) Conversions */
+	// LREAL
 
+	/* Returns the `REAL` nearest to `IN`.
+
+	   A value too large for a `REAL` becomes infinite, and digits past the
+	   seventh are lost.
+	*/
 	{info = 'narrowing conversion, possible loss of value'}
 	FUNCTION LREAL_TO_REAL: REAL
 		VAR_INPUT
@@ -23,17 +36,7 @@ NAMESPACE Std.Convert
 		{wasm 'f32.demote_f64' (params IN) (result LREAL_TO_REAL)}
 	END_FUNCTION
 
-	/*
-	## Rounding and saturation
-	A float becomes an integer the way IEC 61131-3 says: rounded to the nearest
-	integer, halfway cases to the even neighbour (2.5 gives 2, 3.5 gives 4).
-	A value past the target's range saturates to its nearest bound; NaN becomes
-	0. `TRUNC` alone truncates toward zero. Nothing here can stop the scan:
-	the raw wasm truncation trapped on NaN and past 2^31, and its narrowing
-	wrapped 40000.0 to -25536. Two instructions each: `nearest` picks the
-	integer, `trunc_sat` moves it into the integer lane; the sub-width targets
-	clamp between the two, since wasm only saturates at 32 and 64 bits.
-	*/
+	/* Returns `IN` rounded to the nearest `LINT`, or its nearest bound. NaN gives 0. */
 	{info = 'narrowing conversion, possible loss of value'}
 	FUNCTION LREAL_TO_LINT: LINT
 		VAR_INPUT
@@ -46,6 +49,7 @@ NAMESPACE Std.Convert
 		{wasm 'i64.trunc_sat_f64_s' (params r) (result LREAL_TO_LINT)}
 	END_FUNCTION
 
+	/* Returns `IN` rounded to the nearest `DINT`, or its nearest bound. NaN gives 0. */
 	{info = 'narrowing conversion, possible loss of value'}
 	FUNCTION LREAL_TO_DINT: DINT
 		VAR_INPUT
@@ -58,6 +62,7 @@ NAMESPACE Std.Convert
 		{wasm 'i32.trunc_sat_f64_s' (params r) (result LREAL_TO_DINT)}
 	END_FUNCTION
 
+	/* Returns `IN` rounded to the nearest `INT`, or its nearest bound. NaN gives 0. */
 	{info = 'narrowing conversion, possible loss of value'}
 	FUNCTION LREAL_TO_INT: INT
 		VAR_INPUT
@@ -76,6 +81,7 @@ NAMESPACE Std.Convert
 		END_IF;
 	END_FUNCTION
 
+	/* Returns `IN` rounded to the nearest `SINT`, or its nearest bound. NaN gives 0. */
 	{info = 'narrowing conversion, possible loss of value'}
 	FUNCTION LREAL_TO_SINT: SINT
 		VAR_INPUT
@@ -94,6 +100,7 @@ NAMESPACE Std.Convert
 		END_IF;
 	END_FUNCTION
 
+	/* Returns `IN` rounded to the nearest `ULINT`, or its nearest bound. NaN gives 0. */
 	{info = 'narrowing conversion, possible loss of value'}
 	FUNCTION LREAL_TO_ULINT: ULINT
 		VAR_INPUT
@@ -106,6 +113,7 @@ NAMESPACE Std.Convert
 		{wasm 'i64.trunc_sat_f64_u' (params r) (result LREAL_TO_ULINT)}
 	END_FUNCTION
 
+	/* Returns `IN` rounded to the nearest `UDINT`, or its nearest bound. NaN gives 0. */
 	{info = 'narrowing conversion, possible loss of value'}
 	FUNCTION LREAL_TO_UDINT: UDINT
 		VAR_INPUT
@@ -118,6 +126,7 @@ NAMESPACE Std.Convert
 		{wasm 'i32.trunc_sat_f64_u' (params r) (result LREAL_TO_UDINT)}
 	END_FUNCTION
 
+	/* Returns `IN` rounded to the nearest `UINT`, or its nearest bound. NaN gives 0. */
 	{info = 'narrowing conversion, possible loss of value'}
 	FUNCTION LREAL_TO_UINT: UINT
 		VAR_INPUT
@@ -134,6 +143,7 @@ NAMESPACE Std.Convert
 		END_IF;
 	END_FUNCTION
 
+	/* Returns `IN` rounded to the nearest `USINT`, or its nearest bound. NaN gives 0. */
 	{info = 'narrowing conversion, possible loss of value'}
 	FUNCTION LREAL_TO_USINT: USINT
 		VAR_INPUT
@@ -150,6 +160,7 @@ NAMESPACE Std.Convert
 		END_IF;
 	END_FUNCTION
 
+	/* Returns the 64 bits of `IN`, as IEEE 754 stores them. */
 	{info = 'narrowing conversion, possible loss of value'}
 	FUNCTION LREAL_TO_LWORD: LWORD
 		VAR_INPUT
@@ -158,8 +169,9 @@ NAMESPACE Std.Convert
 		{wasm 'i64.reinterpret_f64' (params IN) (result LREAL_TO_LWORD)}
 	END_FUNCTION
 
-	/* ## REAL (f32) Conversions */
+	// REAL
 
+	/* Returns `IN` rounded to the nearest `LINT`, or its nearest bound. NaN gives 0. */
 	{info = 'narrowing conversion, possible loss of value'}
 	FUNCTION REAL_TO_LINT: LINT
 		VAR_INPUT
@@ -172,6 +184,7 @@ NAMESPACE Std.Convert
 		{wasm 'i64.trunc_sat_f32_s' (params r) (result REAL_TO_LINT)}
 	END_FUNCTION
 
+	/* Returns `IN` rounded to the nearest `DINT`, or its nearest bound. NaN gives 0. */
 	{info = 'narrowing conversion, possible loss of value'}
 	FUNCTION REAL_TO_DINT: DINT
 		VAR_INPUT
@@ -184,6 +197,7 @@ NAMESPACE Std.Convert
 		{wasm 'i32.trunc_sat_f32_s' (params r) (result REAL_TO_DINT)}
 	END_FUNCTION
 
+	/* Returns `IN` rounded to the nearest `INT`, or its nearest bound. NaN gives 0. */
 	{info = 'narrowing conversion, possible loss of value'}
 	FUNCTION REAL_TO_INT: INT
 		VAR_INPUT
@@ -202,6 +216,7 @@ NAMESPACE Std.Convert
 		END_IF;
 	END_FUNCTION
 
+	/* Returns `IN` rounded to the nearest `SINT`, or its nearest bound. NaN gives 0. */
 	{info = 'narrowing conversion, possible loss of value'}
 	FUNCTION REAL_TO_SINT: SINT
 		VAR_INPUT
@@ -220,6 +235,7 @@ NAMESPACE Std.Convert
 		END_IF;
 	END_FUNCTION
 
+	/* Returns `IN` rounded to the nearest `ULINT`, or its nearest bound. NaN gives 0. */
 	{info = 'narrowing conversion, possible loss of value'}
 	FUNCTION REAL_TO_ULINT: ULINT
 		VAR_INPUT
@@ -232,6 +248,7 @@ NAMESPACE Std.Convert
 		{wasm 'i64.trunc_sat_f32_u' (params r) (result REAL_TO_ULINT)}
 	END_FUNCTION
 
+	/* Returns `IN` rounded to the nearest `UDINT`, or its nearest bound. NaN gives 0. */
 	{info = 'narrowing conversion, possible loss of value'}
 	FUNCTION REAL_TO_UDINT: UDINT
 		VAR_INPUT
@@ -244,6 +261,7 @@ NAMESPACE Std.Convert
 		{wasm 'i32.trunc_sat_f32_u' (params r) (result REAL_TO_UDINT)}
 	END_FUNCTION
 
+	/* Returns `IN` rounded to the nearest `UINT`, or its nearest bound. NaN gives 0. */
 	{info = 'narrowing conversion, possible loss of value'}
 	FUNCTION REAL_TO_UINT: UINT
 		VAR_INPUT
@@ -260,6 +278,7 @@ NAMESPACE Std.Convert
 		END_IF;
 	END_FUNCTION
 
+	/* Returns `IN` rounded to the nearest `USINT`, or its nearest bound. NaN gives 0. */
 	{info = 'narrowing conversion, possible loss of value'}
 	FUNCTION REAL_TO_USINT: USINT
 		VAR_INPUT
@@ -276,6 +295,7 @@ NAMESPACE Std.Convert
 		END_IF;
 	END_FUNCTION
 
+	/* Returns the 32 bits of `IN`, as IEEE 754 stores them. */
 	{info = 'narrowing conversion, possible loss of value'}
 	FUNCTION REAL_TO_DWORD: DWORD
 		VAR_INPUT
@@ -284,7 +304,7 @@ NAMESPACE Std.Convert
 		{wasm 'i32.reinterpret_f32' (params IN) (result REAL_TO_DWORD)}
 	END_FUNCTION
 
-	/* ## LINT (i64 signed) Conversions */
+	// LINT
 
 	FUNCTION LINT_TO_LREAL: LREAL
 		VAR_INPUT
@@ -387,7 +407,7 @@ NAMESPACE Std.Convert
 		{wasm 'i32.wrap_i64' (params IN) (result LINT_TO_BYTE)}
 	END_FUNCTION
 
-	/* ## DINT (i32 signed) Conversions */
+	// DINT
 
 	FUNCTION DINT_TO_REAL: REAL
 		VAR_INPUT
@@ -473,7 +493,7 @@ NAMESPACE Std.Convert
 		{wasm 'nop' (params IN) (result DINT_TO_BYTE)}
 	END_FUNCTION
 
-	/* ## INT (i32 signed, 16-bit semantic) - all i32 in WASM */
+	// INT
 
 	{info = 'narrowing conversion, possible loss of value'}
 	FUNCTION INT_TO_SINT: SINT
@@ -541,7 +561,7 @@ NAMESPACE Std.Convert
 		{wasm 'nop' (params IN) (result INT_TO_BYTE)}
 	END_FUNCTION
 
-	/* ## SINT (i32, 8-bit semantic) */
+	// SINT
 
 	FUNCTION SINT_TO_ULINT: ULINT
 		VAR_INPUT
@@ -599,7 +619,7 @@ NAMESPACE Std.Convert
 		{wasm 'nop' (params IN) (result SINT_TO_BYTE)}
 	END_FUNCTION
 
-	/* ## ULINT (i64 unsigned) */
+	// ULINT
 
 	FUNCTION ULINT_TO_LREAL: LREAL
 		VAR_INPUT
@@ -702,7 +722,7 @@ NAMESPACE Std.Convert
 		{wasm 'i32.wrap_i64' (params IN) (result ULINT_TO_BYTE)}
 	END_FUNCTION
 
-	/* ## UDINT (i32 unsigned) */
+	// UDINT
 
 	FUNCTION UDINT_TO_REAL: REAL
 		VAR_INPUT
@@ -780,7 +800,7 @@ NAMESPACE Std.Convert
 		{wasm 'nop' (params IN) (result UDINT_TO_BYTE)}
 	END_FUNCTION
 
-	/* ## UINT / USINT - all i32 in WASM, identity casts */
+	// UINT and USINT
 
 	FUNCTION UINT_TO_INT: INT
 		VAR_INPUT
@@ -869,8 +889,9 @@ NAMESPACE Std.Convert
 		{wasm 'nop' (params IN) (result USINT_TO_BYTE)}
 	END_FUNCTION
 
-	/* ## LWORD (i64 bit) Conversions */
+	// LWORD
 
+	/* Returns the `LREAL` whose IEEE 754 bits are `IN`. */
 	FUNCTION LWORD_TO_LREAL: LREAL
 		VAR_INPUT
 			IN: LWORD;
@@ -964,8 +985,9 @@ NAMESPACE Std.Convert
 		{wasm 'i32.wrap_i64' (params IN) (result LWORD_TO_BYTE)}
 	END_FUNCTION
 
-	/* ## DWORD (i32 bit) Conversions */
+	// DWORD
 
+	/* Returns the `REAL` whose IEEE 754 bits are `IN`. */
 	FUNCTION DWORD_TO_REAL: REAL
 		VAR_INPUT
 			IN: DWORD;
@@ -1049,7 +1071,7 @@ NAMESPACE Std.Convert
 		{wasm 'nop' (params IN) (result DWORD_TO_BYTE)}
 	END_FUNCTION
 
-	/* ## WORD / BYTE - all i32 identity */
+	// WORD and BYTE
 
 	FUNCTION WORD_TO_LINT: LINT
 		VAR_INPUT
@@ -1173,7 +1195,7 @@ NAMESPACE Std.Convert
 		{wasm 'nop' (params IN) (result BYTE_TO_USINT)}
 	END_FUNCTION
 
-	/* ## BOOL Conversions - BOOL is i32 (0 or 1) */
+	// BOOL: FALSE is 0 and TRUE is 1
 
 	FUNCTION BOOL_TO_LINT: LINT
 		VAR_INPUT
@@ -1231,7 +1253,7 @@ NAMESPACE Std.Convert
 		{wasm 'nop' (params IN) (result BOOL_TO_USINT)}
 	END_FUNCTION
 
-	/* ## Duration narrowings (LTIME / LDATE / LTOD / LDT → 32-bit) */
+	// LTIME, LDATE, LTOD and LDT to their 32-bit types
 
 	{info = 'narrowing conversion, possible loss of value'}
 	FUNCTION LTIME_TO_TIME: TIME
@@ -1266,78 +1288,97 @@ NAMESPACE Std.Convert
 		{wasm 'cast' (params IN) (result LDT_TO_DT)}
 	END_FUNCTION
 
-	/* ## Date / time-of-day decompositions
+	// DT and LDT to their date and their time of day
 
-	   `DT` and `LDT` carry both a date and a time-of-day component. With
-	   the integer encoding (`DT` = i32 secs since 1970, `LDT` = i64 ns
-	   since 1970), each extraction is a single division or modulo: the
-	   codegen lowers these casts directly, no host import required.
-	*/
-
+	/* Returns the date of `IN`. */
 	FUNCTION DT_TO_DATE: DATE
 		VAR_INPUT IN: DATE_AND_TIME; END_VAR
 		{wasm 'cast' (params IN) (result DT_TO_DATE)}
 	END_FUNCTION
 
+	/* Returns the date of `IN`. */
 	FUNCTION DT_TO_LDATE: LDATE
 		VAR_INPUT IN: DATE_AND_TIME; END_VAR
 		{wasm 'cast' (params IN) (result DT_TO_LDATE)}
 	END_FUNCTION
 
+	/* Returns the time of day of `IN`. */
 	FUNCTION DT_TO_TOD: TIME_OF_DAY
 		VAR_INPUT IN: DATE_AND_TIME; END_VAR
 		{wasm 'cast' (params IN) (result DT_TO_TOD)}
 	END_FUNCTION
 
+	/* Returns the time of day of `IN`. */
 	FUNCTION DT_TO_LTOD: LTIME_OF_DAY
 		VAR_INPUT IN: DATE_AND_TIME; END_VAR
 		{wasm 'cast' (params IN) (result DT_TO_LTOD)}
 	END_FUNCTION
 
+	/* Returns the date of `IN`. */
 	FUNCTION LDT_TO_DATE: DATE
 		VAR_INPUT IN: LDATE_AND_TIME; END_VAR
 		{wasm 'cast' (params IN) (result LDT_TO_DATE)}
 	END_FUNCTION
 
+	/* Returns the date of `IN`. */
 	FUNCTION LDT_TO_LDATE: LDATE
 		VAR_INPUT IN: LDATE_AND_TIME; END_VAR
 		{wasm 'cast' (params IN) (result LDT_TO_LDATE)}
 	END_FUNCTION
 
+	/* Returns the time of day of `IN`, to the millisecond. */
 	FUNCTION LDT_TO_TOD: TIME_OF_DAY
 		VAR_INPUT IN: LDATE_AND_TIME; END_VAR
 		{wasm 'cast' (params IN) (result LDT_TO_TOD)}
 	END_FUNCTION
 
+	/* Returns the time of day of `IN`. */
 	FUNCTION LDT_TO_LTOD: LTIME_OF_DAY
 		VAR_INPUT IN: LDATE_AND_TIME; END_VAR
 		{wasm 'cast' (params IN) (result LDT_TO_LTOD)}
 	END_FUNCTION
 
-	/* ## CHAR conversions
-	   A CHAR is one character, its code point in an i32. BYTE_TO_CHAR reads
-	   a byte as the Latin-1 character it is; CHAR_TO_BYTE keeps the low byte,
-	   which is the whole character for the Latin-1 range and a truncation
-	   past it. */
+	// CHAR
 
+	/* Returns the Latin-1 character whose code is `IN`. */
 	FUNCTION BYTE_TO_CHAR: CHAR
 		VAR_INPUT IN: BYTE; END_VAR
 		{wasm 'nop' (params IN) (result BYTE_TO_CHAR)}
 	END_FUNCTION
 
+	/* Returns the low byte of the code point of `IN`.
+
+	   That is the whole character in the Latin-1 range, and a truncation past it.
+
+	   # Examples
+
+	   ```iecst
+	   b := CHAR_TO_BYTE(CHAR#'é');  // BYTE#16#E9
+	   b := CHAR_TO_BYTE(CHAR#'中');  // BYTE#16#2D, the low byte of U+4E2D
+	   ```
+	*/
 	{info = 'narrowing conversion, possible loss of value'}
 	FUNCTION CHAR_TO_BYTE: BYTE
 		VAR_INPUT IN: CHAR; END_VAR
 		{wasm 'cast' (params IN) (result CHAR_TO_BYTE)}
 	END_FUNCTION
 
-	/* ## CHAR_TO_STRING — encode a CHAR (UTF-32 code point) as a STRING.
+	/* Returns `IN` as a one-character `STRING`.
 
-	   The only path from a CHAR scalar to a STRING-shaped value. CHAR is
-	   stored as an i32 code point at the WASM ABI; this writes the UTF-8
-	   encoding (1-4 bytes) into the function's STRING return slot.
+	   A `CHAR` is a code point and a `STRING` is UTF-8, so the result is one
+	   to four bytes long. This is how a `CHAR` reaches a function that takes
+	   a `STRING`, such as `CONCAT` or `FIND`.
 
-	   Invalid code points (surrogates, > U+10FFFF) yield an empty string. */
+	   Returns an empty string when `IN` is not a valid code point: a
+	   surrogate, or a value above U+10FFFF.
+
+	   # Examples
+
+	   ```iecst
+	   s := CHAR_TO_STRING(CHAR#'A');  // 'A'
+	   s := CHAR_TO_STRING(CHAR#'é');  // 'é', two bytes
+	   ```
+	*/
 	FUNCTION CHAR_TO_STRING: STRING
 		VAR_INPUT
 			IN: CHAR;
@@ -1345,105 +1386,138 @@ NAMESPACE Std.Convert
 		{wasm 'rk.str_from_char' (params IN) (result CHAR_TO_STRING)}
 	END_FUNCTION
 
-	/* ## Scalar → STRING conversions
+	// To STRING
 
-	   Each function formats its input as decimal text (or `"TRUE"`/`"FALSE"`
-	   for BOOL) into a fresh STRING return slot. Truncation is silent if
-	   the result exceeds the default STRING capacity.
-
-	   REAL_TO_STRING and LREAL_TO_STRING print the shortest text that reads
-	   back to the same value, spelled as a REAL literal: '1.5', '50.1',
-	   '100.0', '1.0E20', '2.5E-9'. A REAL is formatted as the REAL it is, so
-	   50.1 is '50.1' and not its f64 widening '50.099998'; an LREAL shows
-	   every digit its value has, so 0.1 + 0.2 is '0.30000000000000004'.
-	   'NaN', 'Inf' and '-Inf' spell the values no literal can. */
-
+	/* Returns `'TRUE'` or `'FALSE'`. */
 	FUNCTION BOOL_TO_STRING: STRING
 		VAR_INPUT IN: BOOL; END_VAR
 		{wasm 'rk.str_from_bool' (params IN) (result BOOL_TO_STRING)}
 	END_FUNCTION
 
+	/* Returns `IN` as decimal text. */
 	FUNCTION SINT_TO_STRING: STRING
 		VAR_INPUT IN: SINT; END_VAR
 		{wasm 'rk.str_from_i32' (params IN) (result SINT_TO_STRING)}
 	END_FUNCTION
 
+	/* Returns `IN` as decimal text. */
 	FUNCTION INT_TO_STRING: STRING
 		VAR_INPUT IN: INT; END_VAR
 		{wasm 'rk.str_from_i32' (params IN) (result INT_TO_STRING)}
 	END_FUNCTION
 
+	/* Returns `IN` as decimal text. */
 	FUNCTION DINT_TO_STRING: STRING
 		VAR_INPUT IN: DINT; END_VAR
 		{wasm 'rk.str_from_i32' (params IN) (result DINT_TO_STRING)}
 	END_FUNCTION
 
+	/* Returns `IN` as decimal text. */
 	FUNCTION LINT_TO_STRING: STRING
 		VAR_INPUT IN: LINT; END_VAR
 		{wasm 'rk.str_from_i64' (params IN) (result LINT_TO_STRING)}
 	END_FUNCTION
 
+	/* Returns `IN` as decimal text. */
 	FUNCTION USINT_TO_STRING: STRING
 		VAR_INPUT IN: USINT; END_VAR
 		{wasm 'rk.str_from_u32' (params IN) (result USINT_TO_STRING)}
 	END_FUNCTION
 
+	/* Returns `IN` as decimal text. */
 	FUNCTION UINT_TO_STRING: STRING
 		VAR_INPUT IN: UINT; END_VAR
 		{wasm 'rk.str_from_u32' (params IN) (result UINT_TO_STRING)}
 	END_FUNCTION
 
+	/* Returns `IN` as decimal text. */
 	FUNCTION UDINT_TO_STRING: STRING
 		VAR_INPUT IN: UDINT; END_VAR
 		{wasm 'rk.str_from_u32' (params IN) (result UDINT_TO_STRING)}
 	END_FUNCTION
 
+	/* Returns `IN` as decimal text. */
 	FUNCTION ULINT_TO_STRING: STRING
 		VAR_INPUT IN: ULINT; END_VAR
 		{wasm 'rk.str_from_u64' (params IN) (result ULINT_TO_STRING)}
 	END_FUNCTION
 
+	/* Returns `IN` as decimal text. */
 	FUNCTION BYTE_TO_STRING: STRING
 		VAR_INPUT IN: BYTE; END_VAR
 		{wasm 'rk.str_from_u32' (params IN) (result BYTE_TO_STRING)}
 	END_FUNCTION
 
+	/* Returns `IN` as decimal text. */
 	FUNCTION WORD_TO_STRING: STRING
 		VAR_INPUT IN: WORD; END_VAR
 		{wasm 'rk.str_from_u32' (params IN) (result WORD_TO_STRING)}
 	END_FUNCTION
 
+	/* Returns `IN` as decimal text. */
 	FUNCTION DWORD_TO_STRING: STRING
 		VAR_INPUT IN: DWORD; END_VAR
 		{wasm 'rk.str_from_u32' (params IN) (result DWORD_TO_STRING)}
 	END_FUNCTION
 
+	/* Returns `IN` as decimal text. */
 	FUNCTION LWORD_TO_STRING: STRING
 		VAR_INPUT IN: LWORD; END_VAR
 		{wasm 'rk.str_from_u64' (params IN) (result LWORD_TO_STRING)}
 	END_FUNCTION
 
+	/* Returns the shortest text that reads back as `IN`, written as a literal.
+
+	   A `REAL` is printed as the `REAL` it is, so 50.1 gives `'50.1'` and not the
+	   digits of its `LREAL` widening. Values no literal can spell give `'NaN'`,
+	   `'Inf'` and `'-Inf'`.
+
+	   # Examples
+
+	   ```iecst
+	   s := REAL_TO_STRING(1.5);     // '1.5'
+	   s := REAL_TO_STRING(100.0);   // '100.0'
+	   s := REAL_TO_STRING(1.0E20);  // '1.0E20'
+	   ```
+	*/
 	FUNCTION REAL_TO_STRING: STRING
 		VAR_INPUT IN: REAL; END_VAR
 		{wasm 'rk.str_from_f32' (params IN) (result REAL_TO_STRING)}
 	END_FUNCTION
 
+	/* Returns the shortest text that reads back as `IN`, written as a literal.
+
+	   Every digit the value has is printed, so `0.1 + 0.2` gives
+	   `'0.30000000000000004'`. Values no literal can spell give `'NaN'`, `'Inf'`
+	   and `'-Inf'`.
+
+	   # Examples
+
+	   ```iecst
+	   s := LREAL_TO_STRING(2.5);      // '2.5'
+	   s := LREAL_TO_STRING(1.0E-5);   // '0.00001'
+	   s := LREAL_TO_STRING(-2.5E-9);  // '-2.5E-9'
+	   ```
+	*/
 	FUNCTION LREAL_TO_STRING: STRING
 		VAR_INPUT IN: LREAL; END_VAR
 		{wasm 'rk.str_from_f64' (params IN) (result LREAL_TO_STRING)}
 	END_FUNCTION
 
-	/* ## Tests */
 
 
-	/*
-    ## TRUNC - Truncation toward zero
+	/* Returns the integer part of `IN`, rounding toward zero.
 
-    The integer part of a real value, discarding the fraction:
-    `TRUNC(3.7)` is 3 and `TRUNC(-3.7)` is -3. A `REAL` truncates to
-    `DINT`, an `LREAL` to `LINT` - the same conversions `REAL_TO_DINT`
-    and `LREAL_TO_LINT` perform.
-    */
+	   A `REAL` gives a `DINT` and an `LREAL` gives a `LINT`. A value outside the
+	   range becomes its nearest bound, and NaN becomes 0.
+
+	   # Examples
+
+	   ```iecst
+	   n := TRUNC(3.7);   // 3
+	   n := TRUNC(-3.7);  // -3
+	   ```
+	*/
 	FUNCTION TRUNC: DINT
 		VAR_INPUT
 			IN: REAL;
@@ -1461,124 +1535,133 @@ NAMESPACE Std.Convert
 	END_FUNCTION
 
 
-	/* ## Date/time widenings, as named functions (the implicit casts' twins) */
+	// TIME, TOD, DATE and DT to their 64-bit types
 
+	/* Returns `IN` as an `LTIME`. Nothing is lost. */
 	FUNCTION TIME_TO_LTIME: LTIME
 		VAR_INPUT IN: TIME; END_VAR
 		{wasm 'cast' (params IN) (result TIME_TO_LTIME)}
 	END_FUNCTION
 
+	/* Returns `IN` as an `LTIME_OF_DAY`. Nothing is lost. */
 	FUNCTION TOD_TO_LTOD: LTIME_OF_DAY
 		VAR_INPUT IN: TIME_OF_DAY; END_VAR
 		{wasm 'cast' (params IN) (result TOD_TO_LTOD)}
 	END_FUNCTION
 
+	/* Returns `IN` as an `LDATE`. Nothing is lost. */
 	FUNCTION DATE_TO_LDATE: LDATE
 		VAR_INPUT IN: DATE; END_VAR
 		{wasm 'cast' (params IN) (result DATE_TO_LDATE)}
 	END_FUNCTION
 
+	/* Returns `IN` as an `LDATE_AND_TIME`. Nothing is lost. */
 	FUNCTION DT_TO_LDT: LDATE_AND_TIME
 		VAR_INPUT IN: DATE_AND_TIME; END_VAR
 		{wasm 'cast' (params IN) (result DT_TO_LDT)}
 	END_FUNCTION
 
-	/* ## Date/time to number and back.
+	// Dates and times as numbers
 
-	Each exposes the documented encoding as a plain number: TIME/TOD in ms,
-	DATE in days since 1970-01-01, DT in seconds since 1970-01-01, and the
-	L-variants in ns (LDATE in days). Same-lane reinterpretations, zero cost.
-	Until the date/time arithmetic functions exist, this is the sanctioned
-	workaround: convert, compute in the encoding, convert back. */
-
+	/* Returns `IN` in milliseconds. */
 	FUNCTION TIME_TO_DINT: DINT
 		VAR_INPUT IN: TIME; END_VAR
 		{wasm 'cast' (params IN) (result TIME_TO_DINT)}
 	END_FUNCTION
 
+	/* Returns the `TIME` that is `IN` milliseconds. */
 	FUNCTION DINT_TO_TIME: TIME
 		VAR_INPUT IN: DINT; END_VAR
 		{wasm 'cast' (params IN) (result DINT_TO_TIME)}
 	END_FUNCTION
 
+	/* Returns `IN` in nanoseconds. */
 	FUNCTION LTIME_TO_LINT: LINT
 		VAR_INPUT IN: LTIME; END_VAR
 		{wasm 'cast' (params IN) (result LTIME_TO_LINT)}
 	END_FUNCTION
 
+	/* Returns the `LTIME` that is `IN` nanoseconds. */
 	FUNCTION LINT_TO_LTIME: LTIME
 		VAR_INPUT IN: LINT; END_VAR
 		{wasm 'cast' (params IN) (result LINT_TO_LTIME)}
 	END_FUNCTION
 
+	/* Returns `IN` in days since 1970-01-01. */
 	FUNCTION DATE_TO_DINT: DINT
 		VAR_INPUT IN: DATE; END_VAR
 		{wasm 'cast' (params IN) (result DATE_TO_DINT)}
 	END_FUNCTION
 
+	/* Returns the `DATE` that is `IN` days since 1970-01-01. */
 	FUNCTION DINT_TO_DATE: DATE
 		VAR_INPUT IN: DINT; END_VAR
 		{wasm 'cast' (params IN) (result DINT_TO_DATE)}
 	END_FUNCTION
 
+	/* Returns `IN` in days since 1970-01-01. */
 	FUNCTION LDATE_TO_LINT: LINT
 		VAR_INPUT IN: LDATE; END_VAR
 		{wasm 'cast' (params IN) (result LDATE_TO_LINT)}
 	END_FUNCTION
 
+	/* Returns the `LDATE` that is `IN` days since 1970-01-01. */
 	FUNCTION LINT_TO_LDATE: LDATE
 		VAR_INPUT IN: LINT; END_VAR
 		{wasm 'cast' (params IN) (result LINT_TO_LDATE)}
 	END_FUNCTION
 
+	/* Returns `IN` in milliseconds since midnight. */
 	FUNCTION TOD_TO_DINT: DINT
 		VAR_INPUT IN: TIME_OF_DAY; END_VAR
 		{wasm 'cast' (params IN) (result TOD_TO_DINT)}
 	END_FUNCTION
 
+	/* Returns the `TIME_OF_DAY` that is `IN` milliseconds since midnight. */
 	FUNCTION DINT_TO_TOD: TIME_OF_DAY
 		VAR_INPUT IN: DINT; END_VAR
 		{wasm 'cast' (params IN) (result DINT_TO_TOD)}
 	END_FUNCTION
 
+	/* Returns `IN` in nanoseconds since midnight. */
 	FUNCTION LTOD_TO_LINT: LINT
 		VAR_INPUT IN: LTIME_OF_DAY; END_VAR
 		{wasm 'cast' (params IN) (result LTOD_TO_LINT)}
 	END_FUNCTION
 
+	/* Returns the `LTIME_OF_DAY` that is `IN` nanoseconds since midnight. */
 	FUNCTION LINT_TO_LTOD: LTIME_OF_DAY
 		VAR_INPUT IN: LINT; END_VAR
 		{wasm 'cast' (params IN) (result LINT_TO_LTOD)}
 	END_FUNCTION
 
+	/* Returns `IN` in seconds since 1970-01-01. */
 	FUNCTION DT_TO_LINT: LINT
 		VAR_INPUT IN: DATE_AND_TIME; END_VAR
 		{wasm 'cast' (params IN) (result DT_TO_LINT)}
 	END_FUNCTION
 
+	/* Returns the `DATE_AND_TIME` that is `IN` seconds since 1970-01-01. */
 	FUNCTION LINT_TO_DT: DATE_AND_TIME
 		VAR_INPUT IN: LINT; END_VAR
 		{wasm 'cast' (params IN) (result LINT_TO_DT)}
 	END_FUNCTION
 
+	/* Returns `IN` in nanoseconds since 1970-01-01. */
 	FUNCTION LDT_TO_LINT: LINT
 		VAR_INPUT IN: LDATE_AND_TIME; END_VAR
 		{wasm 'cast' (params IN) (result LDT_TO_LINT)}
 	END_FUNCTION
 
+	/* Returns the `LDATE_AND_TIME` that is `IN` nanoseconds since 1970-01-01. */
 	FUNCTION LINT_TO_LDT: LDATE_AND_TIME
 		VAR_INPUT IN: LINT; END_VAR
 		{wasm 'cast' (params IN) (result LINT_TO_LDT)}
 	END_FUNCTION
 
-	/* ## Date/time to STRING, in IEC literal form.
+	// Dates and times to STRING
 
-	Every result parses back as a literal of the same type and value, so the
-	canonical spelling may differ from how the value was written (T#90s prints
-	as 'T#1m30s'). A negative TOD only arises from a pre-epoch decomposition
-	(a domain escape, see the compiler's emit_datetime_cast); it prints with a
-	leading '-', which no TOD literal accepts, so the escape stays visible. */
-
+	/* Returns `n` as decimal text, padded with zeros on the left to `width` digits. */
 	FUNCTION PRIVATE PAD_MIN: STRING
 		VAR_INPUT n: LINT; width: UDINT; END_VAR
 		VAR s: STRING; END_VAR
@@ -1589,9 +1672,9 @@ NAMESPACE Std.Convert
 		PAD_MIN := s;
 	END_FUNCTION
 
-	/* days since 1970-01-01 to 'YYYY-MM-DD' (proleptic Gregorian, era-based
-	civil algorithm; the explicit era adjustment makes truncating division
-	behave as floor, so pre-epoch days are exact) */
+	/* Returns `days` since 1970-01-01 as `'YYYY-MM-DD'`, in the proleptic Gregorian
+	   calendar. Days before 1970 are exact.
+	*/
 	FUNCTION PRIVATE CIVIL_YMD: STRING
 		VAR_INPUT days: LINT; END_VAR
 		VAR z, era, doe, yoe, y, doy, mp, dd, mm: LINT; s: STRING; END_VAR
@@ -1626,7 +1709,7 @@ NAMESPACE Std.Convert
 		CIVIL_YMD := CONCAT(A := s, B := PAD_MIN(n := dd, width := UDINT#2));
 	END_FUNCTION
 
-	/* 'HH:MM:SS' from seconds-of-day */
+	/* Returns `sod` seconds since midnight as `'HH:MM:SS'`. */
 	FUNCTION PRIVATE HMS: STRING
 		VAR_INPUT sod: LINT; END_VAR
 		VAR s: STRING; END_VAR
@@ -1637,6 +1720,18 @@ NAMESPACE Std.Convert
 		HMS := CONCAT(A := s, B := PAD_MIN(n := sod MOD LINT#60, width := UDINT#2));
 	END_FUNCTION
 
+	/* Returns `IN` as the literal that reads back to it.
+
+	   The spelling is the canonical one, not the one the value was written with.
+
+	   # Examples
+
+	   ```iecst
+	   s := TIME_TO_STRING(T#1s500ms);  // 'T#1s500ms'
+	   s := TIME_TO_STRING(T#90s);      // 'T#1m30s'
+	   s := TIME_TO_STRING(T#-5s);      // 'T#-5s'
+	   ```
+	*/
 	FUNCTION TIME_TO_STRING: STRING
 		VAR_INPUT IN: TIME; END_VAR
 		VAR t, d, h, m, sec, ms: LINT; s: STRING; any: BOOL; END_VAR
@@ -1680,6 +1775,15 @@ NAMESPACE Std.Convert
 		TIME_TO_STRING := s;
 	END_FUNCTION
 
+	/* Returns `IN` as the literal that reads back to it.
+
+	   # Examples
+
+	   ```iecst
+	   s := LTIME_TO_STRING(LT#500us);  // 'LT#500us'
+	   s := LTIME_TO_STRING(LT#-42ns);  // 'LT#-42ns'
+	   ```
+	*/
 	FUNCTION LTIME_TO_STRING: STRING
 		VAR_INPUT IN: LTIME; END_VAR
 		VAR t, d, h, m, sec, ms, us, ns: LINT; s: STRING; any: BOOL; END_VAR
@@ -1740,16 +1844,36 @@ NAMESPACE Std.Convert
 		LTIME_TO_STRING := s;
 	END_FUNCTION
 
+	/* Returns `IN` as the literal that reads back to it.
+
+	   # Examples
+
+	   ```iecst
+	   s := DATE_TO_STRING(D#2024-02-29);  // 'D#2024-02-29'
+	   ```
+	*/
 	FUNCTION DATE_TO_STRING: STRING
 		VAR_INPUT IN: DATE; END_VAR
 		DATE_TO_STRING := CONCAT(A := 'D#', B := CIVIL_YMD(days := DATE_TO_DINT(IN := IN)));
 	END_FUNCTION
 
+	/* Returns `IN` as the literal that reads back to it, like [Std.Convert.DATE_TO_STRING]. */
 	FUNCTION LDATE_TO_STRING: STRING
 		VAR_INPUT IN: LDATE; END_VAR
 		LDATE_TO_STRING := CONCAT(A := 'LD#', B := CIVIL_YMD(days := LDATE_TO_LINT(IN := IN)));
 	END_FUNCTION
 
+	/* Returns `IN` as the literal that reads back to it.
+
+	   The fraction is printed only when there is one.
+
+	   # Examples
+
+	   ```iecst
+	   s := TOD_TO_STRING(TOD#12:30:45.123);  // 'TOD#12:30:45.123'
+	   s := TOD_TO_STRING(TOD#23:59:59);      // 'TOD#23:59:59'
+	   ```
+	*/
 	FUNCTION TOD_TO_STRING: STRING
 		VAR_INPUT IN: TIME_OF_DAY; END_VAR
 		VAR t, ms: LINT; s: STRING; END_VAR
@@ -1767,6 +1891,7 @@ NAMESPACE Std.Convert
 		TOD_TO_STRING := s;
 	END_FUNCTION
 
+	/* Returns `IN` as the literal that reads back to it, like [Std.Convert.TOD_TO_STRING]. */
 	FUNCTION LTOD_TO_STRING: STRING
 		VAR_INPUT IN: LTIME_OF_DAY; END_VAR
 		VAR t, ns: LINT; s: STRING; END_VAR
@@ -1784,6 +1909,14 @@ NAMESPACE Std.Convert
 		LTOD_TO_STRING := s;
 	END_FUNCTION
 
+	/* Returns `IN` as the literal that reads back to it.
+
+	   # Examples
+
+	   ```iecst
+	   s := DT_TO_STRING(DT#2026-08-28-12:30:45);  // 'DT#2026-08-28-12:30:45'
+	   ```
+	*/
 	FUNCTION DT_TO_STRING: STRING
 		VAR_INPUT IN: DATE_AND_TIME; END_VAR
 		VAR t, days, sod: LINT; s: STRING; END_VAR
@@ -1800,6 +1933,7 @@ NAMESPACE Std.Convert
 		DT_TO_STRING := CONCAT(A := s, B := HMS(sod := sod));
 	END_FUNCTION
 
+	/* Returns `IN` as the literal that reads back to it, with all nine digits of its fraction. */
 	FUNCTION LDT_TO_STRING: STRING
 		VAR_INPUT IN: LDATE_AND_TIME; END_VAR
 		VAR t, days, nsod, ns: LINT; s: STRING; END_VAR
@@ -2228,7 +2362,7 @@ NAMESPACE Std.Convert
 			ASSERT(LREAL_TO_STRING(1.0 / z) = 'Inf' AND LREAL_TO_STRING(-1.0 / z) = '-Inf');
 		END_FUNCTION
 
-		// Composition with string ops — convert and concatenate.
+		// Composition with string ops: convert and concatenate.
 		{test}
 		FUNCTION test_int_to_string_in_concat
 			VAR s: STRING; END_VAR

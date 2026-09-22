@@ -1,10 +1,9 @@
-use auto_lsp::default::db::BaseDatabase;
 use db::RootDatabase;
 use ide_proto::handlers::{CompletionHandler, CompletionRequest};
 use ide_proto::walk::completion_descendant_at;
 use rstest::rstest;
 
-use crate::tests::utils::{add_sources, with_db};
+use crate::tests::utils::{add_source, with_db};
 
 /// Test completion inside an empty CONFIGURATION body
 #[rstest]
@@ -15,8 +14,7 @@ CONFIGURATION MyConfig
 END_CONFIGURATION
 "#;
 
-    add_sources(&mut with_db, &[source]);
-    let file = *with_db.get_files().iter().last().unwrap();
+    let file = add_source(&mut with_db, source);
 
     let offset = source.find("END_CONFIGURATION").unwrap() - 1;
     let (node, node_key, is_last_before) =
@@ -73,8 +71,7 @@ CONFIGURATION MyConfig
 END_CONFIGURATION
 "#;
 
-    add_sources(&mut with_db, &[source]);
-    let file = *with_db.get_files().iter().last().unwrap();
+    let file = add_source(&mut with_db, source);
 
     let offset = source.find("END_RESOURCE").unwrap() - 1;
     let (node, node_key, is_last_before) =
@@ -125,8 +122,7 @@ CONFIGURATION MyConfig
 END_CONFIGURATION
 "#;
 
-    add_sources(&mut with_db, &[source]);
-    let file = *with_db.get_files().iter().last().unwrap();
+    let file = add_source(&mut with_db, source);
 
     // Position after END_VAR, still inside CONFIGURATION
     let offset = source.find("\nEND_CONFIGURATION").unwrap() - 1;
@@ -162,8 +158,7 @@ CONFIGURATION MyConfig
 END_CONFIGURATION
 "#;
 
-    add_sources(&mut with_db, &[source]);
-    let file = *with_db.get_files().iter().last().unwrap();
+    let file = add_source(&mut with_db, source);
 
     let offset = source.find("t1(").unwrap() + "t1(".len();
     let (node, node_key, is_last_before) =
@@ -194,8 +189,7 @@ CONFIGURATION MyConfig
 END_CONFIGURATION
 "#;
 
-    add_sources(&mut with_db, &[source]);
-    let file = *with_db.get_files().iter().last().unwrap();
+    let file = add_source(&mut with_db, source);
 
     let offset = source.find(')').unwrap();
     let (node, node_key, is_last_before) =
@@ -229,8 +223,7 @@ CONFIGURATION MyConfig
 END_CONFIGURATION
 "#;
 
-    add_sources(&mut with_db, &[source]);
-    let file = *with_db.get_files().iter().last().unwrap();
+    let file = add_source(&mut with_db, source);
 
     let offset = source.find(')').unwrap();
     let (node, node_key, is_last_before) =

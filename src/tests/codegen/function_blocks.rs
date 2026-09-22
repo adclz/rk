@@ -82,8 +82,7 @@ fn test_st_method_call_isolates_instances(mut with_db: db::RootDatabase) {
             test := a.inc() + b.inc();    (* 3 + 2 = 5 *)
         END_FUNCTION
     "#;
-    let wasm = compile_to_wasm(&mut with_db, source);
-    let result: i32 = super::execute_wasm(&wasm, "test", ());
+    let result: i32 = super::run(&mut with_db, source, "test", ());
     assert_eq!(
         result, 5,
         "isolated instances: a reaches 3, b reaches 2 (a shared `this` would give 9)"
@@ -113,8 +112,7 @@ fn test_st_method_bare_member_access(mut with_db: db::RootDatabase) {
             test := a.inc() + b.inc();    (* 3 + 2 = 5 *)
         END_FUNCTION
     "#;
-    let wasm = compile_to_wasm(&mut with_db, source);
-    let result: i32 = super::execute_wasm(&wasm, "test", ());
+    let result: i32 = super::run(&mut with_db, source, "test", ());
     assert_eq!(
         result, 5,
         "bare member access resolves to the instance field"
@@ -145,8 +143,7 @@ fn test_st_method_local_shadows_member(mut with_db: db::RootDatabase) {
             test := a.shadowed();
         END_FUNCTION
     "#;
-    let wasm = compile_to_wasm(&mut with_db, source);
-    let result: i32 = super::execute_wasm(&wasm, "test", ());
+    let result: i32 = super::run(&mut with_db, source, "test", ());
     assert_eq!(
         result, 5,
         "the shadowing method-local wins; the member (99) is a separate slot"
@@ -180,8 +177,7 @@ fn test_st_inherited_method_call(mut with_db: db::RootDatabase) {
             test_inh := a.inc();          (* 3 — inherited Base#inc on a Derived *)
         END_FUNCTION
     "#;
-    let wasm = compile_to_wasm(&mut with_db, source);
-    let result: i32 = super::execute_wasm(&wasm, "test_inh", ());
+    let result: i32 = super::run(&mut with_db, source, "test_inh", ());
     assert_eq!(result, 3, "inherited method runs on the derived instance");
 }
 
@@ -207,8 +203,7 @@ fn test_st_array_of_fb_instances(mut with_db: db::RootDatabase) {
             test := arr[0].Inc() + arr[1].Inc();
         END_FUNCTION
     "#;
-    let wasm = compile_to_wasm(&mut with_db, source);
-    let result: i32 = super::execute_wasm(&wasm, "test", ());
+    let result: i32 = super::run(&mut with_db, source, "test", ());
     assert_eq!(
         result, 5,
         "array-of-FB elements keep independent state (3 + 2)"
@@ -240,8 +235,7 @@ fn test_st_this_method_call(mut with_db: db::RootDatabase) {
             test_this := a.IncTwice();     (* Inc->1, Inc->2 on the same instance *)
         END_FUNCTION
     "#;
-    let wasm = compile_to_wasm(&mut with_db, source);
-    let result: i32 = super::execute_wasm(&wasm, "test_this", ());
+    let result: i32 = super::run(&mut with_db, source, "test_this", ());
     assert_eq!(result, 2, "THIS.Inc() twice on the same instance yields 2");
 }
 
@@ -274,8 +268,7 @@ fn test_st_super_method_call(mut with_db: db::RootDatabase) {
             test_super := a.Tick();        (* c:1->2 -> 102 *)
         END_FUNCTION
     "#;
-    let wasm = compile_to_wasm(&mut with_db, source);
-    let result: i32 = super::execute_wasm(&wasm, "test_super", ());
+    let result: i32 = super::run(&mut with_db, source, "test_super", ());
     assert_eq!(
         result, 102,
         "SUPER.Tick() dispatches to Base#Tick on the same instance"
@@ -317,8 +310,7 @@ fn test_st_interface_param_monomorphized(mut with_db: db::RootDatabase) {
             test := drive(dev := w) + drive(dev := h);   (* 10 + 20 = 30 *)
         END_FUNCTION
     "#;
-    let wasm = compile_to_wasm(&mut with_db, source);
-    let result: i32 = super::execute_wasm(&wasm, "test", ());
+    let result: i32 = super::run(&mut with_db, source, "test", ());
     assert_eq!(
         result, 30,
         "Worker#Run (10) + Heater#Run (20) via monomorphized interface params"
@@ -356,8 +348,7 @@ fn test_st_interface_param_statement_context(mut with_db: db::RootDatabase) {
             test := w.Get();
         END_FUNCTION
     "#;
-    let wasm = compile_to_wasm(&mut with_db, source);
-    let result: i32 = super::execute_wasm(&wasm, "test", ());
+    let result: i32 = super::run(&mut with_db, source, "test", ());
     assert_eq!(result, 2, "two bare-statement bump() calls mutate w.c to 2");
 }
 
@@ -388,8 +379,7 @@ fn test_st_interface_arg_this(mut with_db: db::RootDatabase) {
             test := d.CallVia();
         END_FUNCTION
     "#;
-    let wasm = compile_to_wasm(&mut with_db, source);
-    let result: i32 = super::execute_wasm(&wasm, "test", ());
+    let result: i32 = super::run(&mut with_db, source, "test", ());
     assert_eq!(
         result, 7,
         "invoke(s := THIS) dispatches to Dog#Speak on the self instance"
@@ -421,8 +411,7 @@ fn test_st_interface_method_with_arg(mut with_db: db::RootDatabase) {
             test := apply(dev := p);
         END_FUNCTION
     "#;
-    let wasm = compile_to_wasm(&mut with_db, source);
-    let result: i32 = super::execute_wasm(&wasm, "test", ());
+    let result: i32 = super::run(&mut with_db, source, "test", ());
     assert_eq!(result, 42, "dev.Add(x := 41) → Plus#Add(this, 41) → 42");
 }
 
@@ -454,8 +443,7 @@ fn test_st_interface_method_mutates_instance(mut with_db: db::RootDatabase) {
             test := bump(dev := w) + bump(dev := w) + w.Get();
         END_FUNCTION
     "#;
-    let wasm = compile_to_wasm(&mut with_db, source);
-    let result: i32 = super::execute_wasm(&wasm, "test", ());
+    let result: i32 = super::run(&mut with_db, source, "test", ());
     assert_eq!(
         result, 2,
         "two dev.Inc() through the interface mutate w.c to 2"
@@ -501,8 +489,7 @@ fn test_st_interface_param_transitive(mut with_db: db::RootDatabase) {
             test := outer(dev := w) + outer(dev := w) + w.Get();
         END_FUNCTION
     "#;
-    let wasm = compile_to_wasm(&mut with_db, source);
-    let result: i32 = super::execute_wasm(&wasm, "test", ());
+    let result: i32 = super::run(&mut with_db, source, "test", ());
     assert_eq!(
         result, 2,
         "two forwards reach Counter#Inc through outer$C -> inner$C"
@@ -557,8 +544,7 @@ fn test_st_interface_param_transitive_two_impls(mut with_db: db::RootDatabase) {
             test2 := a.Get() + b.Get();
         END_FUNCTION
     "#;
-    let wasm = compile_to_wasm(&mut with_db, source);
-    let result: i32 = super::execute_wasm(&wasm, "test2", ());
+    let result: i32 = super::run(&mut with_db, source, "test2", ());
     assert_eq!(
         result, 11,
         "distinct transitive chains: Inc1 (+1) and Inc10 (+10)"
@@ -608,8 +594,7 @@ fn test_st_interface_param_transitive_three_levels(mut with_db: db::RootDatabase
             test3 := w.Get();
         END_FUNCTION
     "#;
-    let wasm = compile_to_wasm(&mut with_db, source);
-    let result: i32 = super::execute_wasm(&wasm, "test3", ());
+    let result: i32 = super::run(&mut with_db, source, "test3", ());
     assert_eq!(
         result, 3,
         "concrete binding propagates through a 3-level forward chain"
@@ -656,8 +641,7 @@ fn test_st_interface_param_specialization_body_calls(mut with_db: db::RootDataba
             test_body := w.Get();
         END_FUNCTION
     "#;
-    let wasm = compile_to_wasm(&mut with_db, source);
-    let result: i32 = super::execute_wasm(&wasm, "test_body", ());
+    let result: i32 = super::run(&mut with_db, source, "test_body", ());
     assert_eq!(
         result, 1,
         "both the forwarded and concrete-local calls resolve to helper$Counter"
@@ -695,8 +679,7 @@ fn test_st_interface_param_same_name_swapped_forward(mut with_db: db::RootDataba
             entry := mid(p := x, q := y);
         END_FUNCTION
     "#;
-    let wasm = compile_to_wasm(&mut with_db, source);
-    let r: i32 = super::execute_wasm(&wasm, "entry", ());
+    let r: i32 = super::run(&mut with_db, source, "entry", ());
     assert_eq!(
         r, 110,
         "arg-name keying binds leaf p->Ten, q->One (swap preserved)"
@@ -739,8 +722,7 @@ fn test_st_interface_param_per_instance_rewrites(mut with_db: db::RootDatabase) 
             entry := a1 + 10000 * a2;
         END_FUNCTION
     "#;
-    let wasm = compile_to_wasm(&mut with_db, source);
-    let r: i32 = super::execute_wasm(&wasm, "entry", ());
+    let r: i32 = super::run(&mut with_db, source, "entry", ());
     assert_eq!(
         r, 1101001,
         "the one inner FuncCall routes to two different leaf specs"
@@ -779,8 +761,7 @@ fn test_st_interface_param_self_recursive_forward(mut with_db: db::RootDatabase)
             test := w.Get();
         END_FUNCTION
     "#;
-    let wasm = compile_to_wasm(&mut with_db, source);
-    let r: i32 = super::execute_wasm(&wasm, "test", ());
+    let r: i32 = super::run(&mut with_db, source, "test", ());
     assert_eq!(
         r, 3,
         "self-recursive forward terminates and routes to f$Counter"
@@ -818,8 +799,7 @@ fn test_st_interface_param_this_forwarded_transitively(mut with_db: db::RootData
             test := d.Run();
         END_FUNCTION
     "#;
-    let wasm = compile_to_wasm(&mut with_db, source);
-    let r: i32 = super::execute_wasm(&wasm, "test", ());
+    let r: i32 = super::run(&mut with_db, source, "test", ());
     assert_eq!(
         r, 7,
         "THIS bound in the seed (self_pou=Dog) drives outer$Dog -> inner$Dog"
@@ -855,8 +835,7 @@ fn test_st_interface_var_input_param(mut with_db: db::RootDatabase) {
             test := use_input(dev := w) + w.Get();
         END_FUNCTION
     "#;
-    let wasm = compile_to_wasm(&mut with_db, source);
-    let r: i32 = super::execute_wasm(&wasm, "test", ());
+    let r: i32 = super::run(&mut with_db, source, "test", ());
     assert_eq!(
         r, 4,
         "VAR_INPUT interface is a reference: mutation persists to w"
@@ -888,8 +867,7 @@ fn test_st_interface_var_input_two_impls(mut with_db: db::RootDatabase) {
             test := pick(dev := a) + 100 * pick(dev := b);
         END_FUNCTION
     "#;
-    let wasm = compile_to_wasm(&mut with_db, source);
-    let r: i32 = super::execute_wasm(&wasm, "test", ());
+    let r: i32 = super::run(&mut with_db, source, "test", ());
     assert_eq!(
         r, 1001,
         "pick$One -> 1, pick$Ten -> 10, distinct specializations"
@@ -929,8 +907,7 @@ fn test_st_interface_var_input_forwarded_to_inout(mut with_db: db::RootDatabase)
             test := w.Get();
         END_FUNCTION
     "#;
-    let wasm = compile_to_wasm(&mut with_db, source);
-    let r: i32 = super::execute_wasm(&wasm, "test", ());
+    let r: i32 = super::run(&mut with_db, source, "test", ());
     assert_eq!(
         r, 2,
         "VAR_INPUT forwarded to VAR_IN_OUT: mutation persists through mid$C -> leaf$C"
@@ -1033,8 +1010,7 @@ fn fb_array_input(mut with_db: db::RootDatabase) {
             test := inst.sum;
         END_FUNCTION
     "#;
-    let wasm = super::compile_to_wasm(&mut with_db, source);
-    let result: i32 = super::execute_wasm(&wasm, "test", ());
+    let result: i32 = super::run(&mut with_db, source, "test", ());
     assert_eq!(result, 17, "array input copied into the instance: 3+4+10");
 }
 
@@ -1060,8 +1036,7 @@ fn fb_struct_input(mut with_db: db::RootDatabase) {
             test := inst.total;
         END_FUNCTION
     "#;
-    let wasm = super::compile_to_wasm(&mut with_db, source);
-    let result: i32 = super::execute_wasm(&wasm, "test", ());
+    let result: i32 = super::run(&mut with_db, source, "test", ());
     assert_eq!(result, 7, "struct input copied into the instance: 3+4");
 }
 
@@ -1085,8 +1060,7 @@ fn fb_struct_output_binding(mut with_db: db::RootDatabase) {
             test := got.x + got.y;
         END_FUNCTION
     "#;
-    let wasm = super::compile_to_wasm(&mut with_db, source);
-    let result: i32 = super::execute_wasm(&wasm, "test", ());
+    let result: i32 = super::run(&mut with_db, source, "test", ());
     assert_eq!(result, 15, "struct output copied back: 5 + 10");
 }
 
@@ -1158,8 +1132,7 @@ fn var_temp_is_fresh_on_every_invocation(mut with_db: db::RootDatabase) {
             entry := fb.seen;
         END_FUNCTION
     "#;
-    let wasm = compile_to_wasm(&mut with_db, source);
-    let r: i32 = super::execute_wasm(&wasm, "entry", ());
+    let r: i32 = super::run(&mut with_db, source, "entry", ());
     assert_eq!(r, 0, "aggregate VAR_TEMP must be zeroed at each invocation");
 }
 
@@ -1182,8 +1155,7 @@ fn scalar_var_temp_is_fresh_on_every_invocation(mut with_db: db::RootDatabase) {
             entry := fb.seen;
         END_FUNCTION
     "#;
-    let wasm = compile_to_wasm(&mut with_db, source);
-    let r: i32 = super::execute_wasm(&wasm, "entry", ());
+    let r: i32 = super::run(&mut with_db, source, "entry", ());
     assert_eq!(r, 0, "scalar VAR_TEMP must not carry over between calls");
 }
 
@@ -1207,8 +1179,7 @@ fn fb_var_state_still_persists_across_calls(mut with_db: db::RootDatabase) {
             entry := fb.cv;
         END_FUNCTION
     "#;
-    let wasm = compile_to_wasm(&mut with_db, source);
-    let r: i32 = super::execute_wasm(&wasm, "entry", ());
+    let r: i32 = super::run(&mut with_db, source, "entry", ());
     assert_eq!(r, 3, "FB VAR is instance state and must survive invocations");
 }
 
@@ -1243,8 +1214,7 @@ fn this_paths_ending_in_elements_run(mut with_db: db::RootDatabase) {
             test := h.out;
         END_FUNCTION
     "#;
-    let wasm = compile_to_wasm(&mut with_db, source);
-    let result: i32 = super::execute_wasm(&wasm, "test", ());
+    let result: i32 = super::run(&mut with_db, source, "test", ());
     assert_eq!(result, 987, "7 + 80 + 900 through THIS element paths");
 }
 
@@ -1273,8 +1243,7 @@ fn test_st_method_with_interface_param(mut with_db: db::RootDatabase) {
             test := c.Use(dev := w);
         END_FUNCTION
     "#;
-    let wasm = compile_to_wasm(&mut with_db, source);
-    let result: i32 = super::execute_wasm(&wasm, "test", ());
+    let result: i32 = super::run(&mut with_db, source, "test", ());
     assert_eq!(result, 7, "Caller#Use$Impl dispatches dev.V() to Impl#V");
 }
 
@@ -1304,8 +1273,7 @@ fn test_st_method_interface_two_impls(mut with_db: db::RootDatabase) {
             test := c.Get(dev := a) + 100 * c.Get(dev := b);
         END_FUNCTION
     "#;
-    let wasm = compile_to_wasm(&mut with_db, source);
-    let result: i32 = super::execute_wasm(&wasm, "test", ());
+    let result: i32 = super::run(&mut with_db, source, "test", ());
     assert_eq!(result, 1001, "Caller#Get$One -> 1, Caller#Get$Ten -> 10");
 }
 
@@ -1337,8 +1305,7 @@ fn test_st_method_interface_inout_mutates(mut with_db: db::RootDatabase) {
             test := h.Bump(dev := w) + w.Get();
         END_FUNCTION
     "#;
-    let wasm = compile_to_wasm(&mut with_db, source);
-    let result: i32 = super::execute_wasm(&wasm, "test", ());
+    let result: i32 = super::run(&mut with_db, source, "test", ());
     assert_eq!(result, 4, "shared instance: c 0->1->2; 2 + 2 = 4");
 }
 
@@ -1376,8 +1343,7 @@ fn test_st_method_interface_forwards_to_function(mut with_db: db::RootDatabase) 
             test := w.Get();
         END_FUNCTION
     "#;
-    let wasm = compile_to_wasm(&mut with_db, source);
-    let result: i32 = super::execute_wasm(&wasm, "test", ());
+    let result: i32 = super::run(&mut with_db, source, "test", ());
     assert_eq!(result, 2, "Caller#Go$C -> leaf$C chain mutates the shared instance");
 }
 
@@ -1417,8 +1383,7 @@ fn test_st_function_interface_forwards_to_method(mut with_db: db::RootDatabase) 
             test := w.Get();
         END_FUNCTION
     "#;
-    let wasm = compile_to_wasm(&mut with_db, source);
-    let result: i32 = super::execute_wasm(&wasm, "test", ());
+    let result: i32 = super::run(&mut with_db, source, "test", ());
     assert_eq!(result, 2, "mid$C -> Holder#Bump$C chain mutates the shared instance");
 }
 
@@ -1455,8 +1420,7 @@ fn test_fb_passes_this_to_interface_param(mut with_db: db::RootDatabase) {
             test := w.Go() * 10 + w.Go();
         END_FUNCTION
     "#;
-    let wasm = compile_to_wasm(&mut with_db, source);
-    let result: i32 = super::execute_wasm(&wasm, "test", ());
+    let result: i32 = super::run(&mut with_db, source, "test", ());
     assert_eq!(result, 12, "THIS reaches drive$Worker -> Worker#Run on the same instance");
 }
 
@@ -1486,8 +1450,7 @@ fn test_fb_instance_passed_by_reference(mut with_db: db::RootDatabase) {
             test := w.n;
         END_FUNCTION
     "#;
-    let wasm = compile_to_wasm(&mut with_db, source);
-    let result: i32 = super::execute_wasm(&wasm, "test", ());
+    let result: i32 = super::run(&mut with_db, source, "test", ());
     assert_eq!(result, 2, "both calls mutated the CALLER's instance, so no copy was made");
 }
 
@@ -1516,8 +1479,7 @@ fn test_fb_instances_stay_distinct_through_a_param(mut with_db: db::RootDatabase
             test := a.n * 10 + b.n;
         END_FUNCTION
     "#;
-    let wasm = compile_to_wasm(&mut with_db, source);
-    let result: i32 = super::execute_wasm(&wasm, "test", ());
+    let result: i32 = super::run(&mut with_db, source, "test", ());
     assert_eq!(result, 21, "a advanced twice, b once");
 }
 
@@ -1556,8 +1518,7 @@ fn test_specialized_methods_share_the_owner_instance(mut with_db: db::RootDataba
             test := h.calls * 100 + x.c * 10 + y.d;
         END_FUNCTION
     "#;
-    let wasm = compile_to_wasm(&mut with_db, source);
-    let result: i32 = super::execute_wasm(&wasm, "test", ());
+    let result: i32 = super::run(&mut with_db, source, "test", ());
     assert_eq!(
         result, 212,
         "both specializations advanced the SAME Holder (calls=2), each reaching its own implementer"
@@ -1579,8 +1540,7 @@ fn test_output_binding_widens_with_sign(mut with_db: db::RootDatabase) {
             test := d;
         END_FUNCTION
     "#;
-    let wasm = compile_to_wasm(&mut with_db, source);
-    let result: i32 = super::execute_wasm(&wasm, "test", ());
+    let result: i32 = super::run(&mut with_db, source, "test", ());
     assert_eq!(result, -7, "the INT output sign-extends into the DINT destination");
 }
 
@@ -1635,8 +1595,7 @@ fn test_fb_inputs_evaluate_in_declaration_order(mut with_db: db::RootDatabase) {
             test := r;
         END_FUNCTION
     "#;
-    let wasm = compile_to_wasm(&mut with_db, source);
-    let result: i32 = super::execute_wasm(&wasm, "test", ());
+    let result: i32 = super::run(&mut with_db, source, "test", ());
     assert_eq!(result, 12, "a's expression ran first: a = 1, b = 2");
 }
 
@@ -1663,7 +1622,6 @@ fn written_input_persists_when_the_next_call_omits_it(mut with_db: db::RootDatab
             test := ok;
         END_FUNCTION
     "#;
-    let wasm = compile_to_wasm(&mut with_db, source);
-    let result: i32 = super::execute_wasm(&wasm, "test", ());
+    let result: i32 = super::run(&mut with_db, source, "test", ());
     assert_eq!(result, 11, "supplied input overwrites; omitted input persists");
 }

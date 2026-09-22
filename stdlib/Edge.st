@@ -1,28 +1,28 @@
 /*
-# Standard Edge Detection Function Blocks
+Edge detectors.
 
-IEC 61131-3 **Table 35** - Rising and falling edge detectors.
-
-Both blocks latch the previous `CLK` value to detect transitions.
+Both remember the `CLK` of the previous call and compare it with this one.
 */
 NAMESPACE Std.Edge
 
-	/*
-    ## R_TRIG - Rising Edge Detector
+	/* Detects a rising edge.
 
-    Output `Q` is **TRUE** for one cycle when `CLK` transitions from FALSE to TRUE.
+	   `Q` is `TRUE` for the one call where `CLK` went from `FALSE` to `TRUE`.
+	   The first call counts as one when `CLK` is already `TRUE`.
 
-    ```iecst
-    VAR
-        trigger: R_TRIG;
-    END_VAR
-    
-    trigger(CLK := my_input);
-    IF trigger.Q THEN
-        // rising edge detected
-    END_IF;
-    ```
-    */
+	   # Examples
+
+	   ```iecst
+	   VAR
+	       trigger: R_TRIG;
+	   END_VAR
+
+	   trigger(CLK := my_input);
+	   IF trigger.Q THEN
+	       // my_input has just turned on
+	   END_IF;
+	   ```
+	*/
 	FUNCTION_BLOCK R_TRIG
 		VAR_INPUT
 			CLK: BOOL;
@@ -37,22 +37,24 @@ NAMESPACE Std.Edge
 		M := CLK;
 	END_FUNCTION_BLOCK
 
-	/*
-    ## F_TRIG - Falling Edge Detector
+	/* Detects a falling edge.
 
-    Output `Q` is **TRUE** for one cycle when `CLK` transitions from TRUE to FALSE.
+	   `Q` is `TRUE` for the one call where `CLK` went from `TRUE` to `FALSE`.
+	   The first call counts as one when `CLK` is `FALSE`.
 
-    ```iecst
-    VAR
-        trigger: F_TRIG;
-    END_VAR
-    
-    trigger(CLK := my_input);
-    IF trigger.Q THEN
-        // falling edge detected
-    END_IF;
-    ```
-    */
+	   # Examples
+
+	   ```iecst
+	   VAR
+	       trigger: F_TRIG;
+	   END_VAR
+
+	   trigger(CLK := my_input);
+	   IF trigger.Q THEN
+	       // my_input has just turned off
+	   END_IF;
+	   ```
+	*/
 	FUNCTION_BLOCK F_TRIG
 		VAR_INPUT
 			CLK: BOOL;

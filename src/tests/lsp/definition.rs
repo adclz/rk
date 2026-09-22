@@ -1,6 +1,5 @@
 use std::ops::ControlFlow;
 
-use auto_lsp::default::db::BaseDatabase;
 use auto_lsp::lsp_types::GotoDefinitionResponse;
 use db::RootDatabase;
 use hir::HirNodeInfo;
@@ -11,7 +10,7 @@ use ide_proto::walk::{WalkHir, descendant_at};
 use insta::assert_snapshot;
 use rstest::rstest;
 
-use crate::tests::utils::add_sources;
+use crate::tests::utils::add_source;
 use crate::tests::utils::with_db;
 
 fn format_definition_response(resp: &GotoDefinitionResponse) -> String {
@@ -59,8 +58,8 @@ FUNCTION_BLOCK fb1
 END_FUNCTION_BLOCK
 "#;
 
-    add_sources(&mut with_db, &[source]);
-    let sema = semantic_index(&with_db, *with_db.get_files().iter().last().unwrap());
+    let file = add_source(&mut with_db, source);
+    let sema = semantic_index(&with_db, file);
 
     let mut specs = vec![];
     let _ = sema.walk_hir(&with_db, &mut |node| {
@@ -109,8 +108,8 @@ END_VAR
 END_FUNCTION
 "#;
 
-    add_sources(&mut with_db, &[source]);
-    let sema = semantic_index(&with_db, *with_db.get_files().iter().last().unwrap());
+    let file = add_source(&mut with_db, source);
+    let sema = semantic_index(&with_db, file);
 
     // Find the PathExpr nodes
     let mut path_exprs = vec![];
@@ -154,8 +153,7 @@ END_VAR
 END_FUNCTION
 "#;
 
-    add_sources(&mut with_db, &[source]);
-    let file = *with_db.get_files().iter().last().unwrap();
+    let file = add_source(&mut with_db, source);
 
     // Use descendant_at (like the server does) to find the node at "System" offset
     let system_offset = source.find("System.Sin").unwrap();
@@ -194,8 +192,7 @@ FUNCTION_BLOCK fb1
 END_FUNCTION_BLOCK
 "#;
 
-    add_sources(&mut with_db, &[source]);
-    let file = *with_db.get_files().iter().last().unwrap();
+    let file = add_source(&mut with_db, source);
 
     // Find the node at "x" in the body (x := 5)
     let body_x_offset = source.rfind("x").unwrap();
@@ -223,8 +220,7 @@ FUNCTION_BLOCK fb1
 END_FUNCTION_BLOCK
 "#;
 
-    add_sources(&mut with_db, &[source]);
-    let file = *with_db.get_files().iter().last().unwrap();
+    let file = add_source(&mut with_db, source);
 
     // Find the node at "motor" in the body (motor.power := 5)
     let motor_offset = source.rfind("motor").unwrap();
@@ -249,8 +245,8 @@ CONFIGURATION MyCfg
 END_CONFIGURATION
 "#;
 
-    add_sources(&mut with_db, &[source]);
-    let sema = semantic_index(&with_db, *with_db.get_files().iter().last().unwrap());
+    let file = add_source(&mut with_db, source);
+    let sema = semantic_index(&with_db, file);
 
     // Find the ProgConfig node
     let mut prog_configs = vec![];
@@ -285,8 +281,8 @@ CONFIGURATION MyCfg
 END_CONFIGURATION
 "#;
 
-    add_sources(&mut with_db, &[source]);
-    let sema = semantic_index(&with_db, *with_db.get_files().iter().last().unwrap());
+    let file = add_source(&mut with_db, source);
+    let sema = semantic_index(&with_db, file);
 
     // Find the ProgConfig node
     let mut prog_configs = vec![];
@@ -318,8 +314,8 @@ CONFIGURATION MyCfg
 END_CONFIGURATION
 "#;
 
-    add_sources(&mut with_db, &[source]);
-    let sema = semantic_index(&with_db, *with_db.get_files().iter().last().unwrap());
+    let file = add_source(&mut with_db, source);
+    let sema = semantic_index(&with_db, file);
 
     // Find the Task node
     let mut tasks = vec![];
@@ -359,8 +355,8 @@ NAMESPACE Lib
 END_NAMESPACE
 "#;
 
-    add_sources(&mut with_db, &[source]);
-    let sema = semantic_index(&with_db, *with_db.get_files().iter().last().unwrap());
+    let file = add_source(&mut with_db, source);
+    let sema = semantic_index(&with_db, file);
 
     let mut path_exprs = vec![];
     let _ = sema.walk_hir(&with_db, &mut |node| {
@@ -401,8 +397,8 @@ NAMESPACE Lib
 END_NAMESPACE
 "#;
 
-    add_sources(&mut with_db, &[source]);
-    let sema = semantic_index(&with_db, *with_db.get_files().iter().last().unwrap());
+    let file = add_source(&mut with_db, source);
+    let sema = semantic_index(&with_db, file);
 
     let spec_offset = source.find("Impl.T").unwrap();
     let mut using = None;
@@ -447,8 +443,7 @@ FUNCTION_BLOCK fb
 END_FUNCTION_BLOCK
 "#;
 
-    add_sources(&mut with_db, &[source]);
-    let file = *with_db.get_files().iter().last().unwrap();
+    let file = add_source(&mut with_db, source);
 
     let offset = source.find("p : INT").expect("the declaration");
     let node = descendant_at(&with_db, file, offset).expect("a node at p");
@@ -481,8 +476,7 @@ VAR
 END_VAR
 END_PROGRAM
 "#;
-    add_sources(&mut with_db, &[source]);
-    let file = *with_db.get_files().iter().last().unwrap();
+    let file = add_source(&mut with_db, source);
     let offset = source.find(needle).expect("the name");
     let node = descendant_at(&with_db, file, offset).expect("a node");
 
@@ -507,8 +501,7 @@ METHOD Halt : INT
 END_METHOD
 END_FUNCTION_BLOCK
 "#;
-    add_sources(&mut with_db, &[source]);
-    let file = *with_db.get_files().iter().last().unwrap();
+    let file = add_source(&mut with_db, source);
     let offset = source.find("Halt : INT").expect("the prototype");
     let node = descendant_at(&with_db, file, offset).expect("a node");
 
@@ -543,8 +536,7 @@ END_VAR
     m := Mode#Running;
 END_FUNCTION_BLOCK
 "#;
-    add_sources(&mut with_db, &[source]);
-    let file = *with_db.get_files().iter().last().unwrap();
+    let file = add_source(&mut with_db, source);
     let offset = source.rfind("Mode#Running").expect("the value") + into;
     let node = descendant_at(&with_db, file, offset).expect("a node");
     let def = node.definition(&with_db, offset).expect("a definition");
