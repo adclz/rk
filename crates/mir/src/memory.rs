@@ -208,9 +208,11 @@ impl MirMemoryLayout {
                 retain_globals: Vec::new(),
             };
         }
-        // `[ %I | %Q | %M transient | %M retained | non-retain globals |
-        //    retain globals | retain program-instances ]`, contiguous at the
-        // arena top.
+        // `[ %I | %Q | %M transient | %M retained | retain program-instances |
+        //    retain globals | non-retain globals ]`, contiguous at the arena
+        // top. Everything retained is in the middle, so the retain band holds
+        // nothing transient but the holes inside a retained instance — which
+        // are per-field by design, and which the retain MAP names.
         //
         // A retained `%M` cell has to be in TWO bands at once: its own, which
         // a host copies whole, and the retain band, which a power cycle
@@ -284,15 +286,22 @@ impl MirMemoryLayout {
             *slot = (base, cursor - base);
         }
 
+        // Retain program-instances continue the retain band. They come
+        // BEFORE the globals so the band can close on the retained globals:
+        // with the non-retain ones in between, the band would enclose a whole
+        // transient variable, and a host that restored the band rather than
+        // the map's ranges would bring it back from the last power cycle
+        // instead of its initializer.
+        for r in &retain_fields {
+            let addr = align_to(cursor, r.align);
+            retain_base.get_or_insert(addr);
+            remap.insert(r.address, addr);
+            cursor = addr + r.size;
+        }
+        // The globals band opens on the retained globals, which are also
+        // where the retain band ends: the two overlap on exactly them.
         let globals_base = align_to(cursor, band_align);
         cursor = globals_base;
-        for g in &nonretain_globals {
-            let addr = align_to(cursor, g.align);
-            remap.insert(g.address, addr);
-            cursor = addr + g.size;
-        }
-        // Retain globals continue the retain band (overlapping the globals
-        // band), or begin it when no `%M` cell is retained.
         for g in &retain_globals {
             let addr = align_to(cursor, g.align);
             retain_base.get_or_insert(addr);
@@ -305,21 +314,20 @@ impl MirMemoryLayout {
             });
             cursor = addr + g.size;
         }
-        let globals_end = cursor; // globals band = non-retain + retain globals
-        // Retain program-instances continue (and end) the retain band.
-        for r in &retain_fields {
-            let addr = align_to(cursor, r.align);
-            retain_base.get_or_insert(addr);
-            remap.insert(r.address, addr);
-            cursor = addr + r.size;
+        let retain_end = cursor;
+        for g in &nonretain_globals {
+            let addr = align_to(cursor, g.align);
+            remap.insert(g.address, addr);
+            cursor = addr + g.size;
         }
+        let globals_end = cursor; // globals band = retain + non-retain globals
         self.offset = cursor;
-        let retain_base = retain_base.unwrap_or(cursor);
+        let retain_base = retain_base.unwrap_or(retain_end);
         MemoryBands {
             globals_base,
             globals_size: globals_end - globals_base,
             retain_base,
-            retain_size: cursor - retain_base,
+            retain_size: retain_end - retain_base,
             input_base: area_bands[0].0,
             input_size: area_bands[0].1,
             output_base: area_bands[1].0,

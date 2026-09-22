@@ -126,6 +126,13 @@ fn each_area_is_one_contiguous_band(mut with_db: db::RootDatabase) {
 /// Two addresses in the same area are laid out by the ADDRESS, not by the
 /// order the CONFIGURATION happens to declare them: an unrelated edit must
 /// not shift every address in the debug symbols.
+///
+/// The full rule inside an area is `(retained, address)` — a retained `%M`
+/// cell is placed last so the retain band can begin there (see
+/// `a_retained_marker_is_in_the_marker_and_retain_bands`), so toggling
+/// RETAIN on a marker does reorder that band. Nothing depends on the
+/// placement: the located map's hash covers the addresses, not where they
+/// landed.
 #[rstest]
 fn a_band_is_ordered_by_address_not_by_declaration(mut with_db: db::RootDatabase) {
     let source = r#"
@@ -401,12 +408,13 @@ fn a_retained_marker_is_in_the_marker_and_retain_bands(mut with_db: db::RootData
     assert_eq!(scratch.addr, mir.marker_base);
     assert_eq!(count.addr, mir.marker_base + 4);
 
-    // And the retain band starts exactly there.
+    // And the retain band starts exactly there, and holds that cell alone:
+    // `scratch` is in the marker band ahead of it and `g` is a global past
+    // where the band ends, so neither is inside.
     assert_eq!(mir.retain_base, count.addr);
-    assert!(mir.retain_size >= 4);
+    assert_eq!(mir.retain_size, 4);
 
-    // The map names the retained cell, and only it: `scratch` and `g` are in
-    // the band but transient, which is what the map is for.
+    // The map names the retained cell, and only it.
     let names: Vec<&str> = mir
         .retain_map
         .ranges
@@ -436,7 +444,7 @@ fn a_retained_marker_survives_a_power_cycle(mut with_db: db::RootDatabase) {
             END_RESOURCE
         END_CONFIGURATION
     "#;
-    let (_mir, wasm) = compile_to_mir_and_wasm(&mut with_db, source);
+    let (mir, wasm) = compile_to_mir_and_wasm(&mut with_db, source);
     let read = |plc: &TestPlc| {
         i32::from_le_bytes(
             plc.read_located("%MW0").expect("read")[..4]
@@ -448,18 +456,27 @@ fn a_retained_marker_survives_a_power_cycle(mut with_db: db::RootDatabase) {
     let mut plc = TestPlc::load(&wasm).expect("load");
     plc.run(3).expect("scans");
     assert_eq!(read(&plc), 3);
-    let saved = plc.read_retain();
+
+    // Snapshot the way the runtime does: the MAP's ranges, in order, not the
+    // band. The band is what a legacy module without a `retain-map` section
+    // falls back to.
+    let saved: Vec<Vec<u8>> = mir
+        .retain_map
+        .ranges
+        .iter()
+        .map(|r| plc.read_bytes(r.addr, r.size as usize).expect("snapshot"))
+        .collect();
 
     // Cold start: `__init` put the declared value back.
     let mut cold = TestPlc::load(&wasm).expect("reload");
     cold.run(1).expect("scan");
     assert_eq!(read(&cold), 1, "nothing restored, so it counts from zero");
 
-    // Warm start: the host writes the retain band back after `__init`, the
-    // way the runtime replays the mapped ranges.
+    // Warm start: each range is replayed at its own address after `__init`.
     let mut warm = TestPlc::load(&wasm).expect("reload");
-    let base = warm.retain_region().base;
-    warm.write_bytes(base, &saved).expect("restore");
+    for (range, bytes) in mir.retain_map.ranges.iter().zip(&saved) {
+        warm.write_bytes(range.addr, bytes).expect("restore");
+    }
     warm.run(1).expect("scan");
     assert_eq!(read(&warm), 4, "it picked up where the last power cycle left");
 }
@@ -488,9 +505,13 @@ fn a_transient_marker_leaves_the_retain_band_alone(mut with_db: db::RootDatabase
     let flag = plc.located("%MW0").expect("flag");
 
     assert_eq!(mir.marker_size, 4);
+    assert_eq!(
+        mir.retain_base, mir.globals_base,
+        "with nothing retained in %M, the band opens on the retained globals,          which are what the globals band opens on too"
+    );
     assert!(
         mir.retain_base > flag.addr,
-        "the retain band begins past the marker band"
+        "and that is past the marker band"
     );
     assert_eq!(
         mir.retain_map
@@ -501,4 +522,136 @@ fn a_transient_marker_leaves_the_retain_band_alone(mut with_db: db::RootDatabase
         ["kept"],
         "a transient marker is in no retain range"
     );
+}
+
+/// A retained marker and a retained global together: the two retained groups
+/// MEET, with nothing transient between them. The retained markers end `%M`
+/// and the retained globals open the globals band, so the retain band closes
+/// on them and holds exactly what persists.
+///
+/// The order matters because a host is free to restore the band rather than
+/// the map's ranges. With a transient global inside it, such a host would
+/// bring `loose` back from the last power cycle instead of its initializer.
+#[rstest]
+fn a_retained_marker_and_a_retained_global_share_one_band(mut with_db: db::RootDatabase) {
+    let source = r#"
+        PROGRAM P
+        VAR_EXTERNAL marks : INT; loose : INT; kept : INT; END_VAR
+            marks := marks + 1;
+            kept := marks + loose;
+        END_PROGRAM
+
+        CONFIGURATION Cfg
+        VAR_GLOBAL loose : INT; END_VAR
+        VAR_GLOBAL RETAIN
+            marks AT %MW0 : INT;
+            kept : INT;
+        END_VAR
+            RESOURCE Res ON CPU
+                TASK T(INTERVAL := T#10ms, PRIORITY := 1);
+                PROGRAM P1 WITH T : P;
+            END_RESOURCE
+        END_CONFIGURATION
+    "#;
+    let (mir, wasm) = compile_to_mir_and_wasm(&mut with_db, source);
+    let plc = TestPlc::load(&wasm).expect("load");
+    let marks = plc.located("%MW0").expect("marks");
+
+    // The band opens on the retained marker, and the retained globals start
+    // exactly where the retained markers end.
+    assert_eq!(mir.retain_base, marks.addr);
+    assert_eq!(mir.globals_base, marks.addr + 4);
+
+    // The band closes where the retained globals end, and the transient one
+    // starts there — so no transient VARIABLE is inside it. Stated as the two
+    // boundaries rather than as a byte count, because the band may also hold
+    // alignment padding: see `a_padded_retain_band_holds_no_transient`.
+    let retain_end = mir.retain_base + mir.retain_size;
+    assert_eq!(
+        retain_end,
+        mir.globals_base + 4,
+        "the band closes on the end of the retained global"
+    );
+    assert_eq!(mir.globals_size, 8, "the retained global, then the loose one");
+    assert!(
+        mir.globals_base + mir.globals_size > retain_end,
+        "`loose` lies past the band"
+    );
+
+    let mut names: Vec<&str> = mir
+        .retain_map
+        .ranges
+        .iter()
+        .map(|r| r.path.as_str())
+        .collect();
+    names.sort();
+    assert_eq!(names, ["kept", "marks"]);
+    assert!(
+        mir.retain_map
+            .ranges
+            .iter()
+            .all(|r| r.addr >= mir.retain_base && r.addr + r.size <= retain_end),
+        "every retained range lies inside the band"
+    );
+}
+
+/// The band may hold alignment padding, and that is the reason its size is
+/// not the sum of the retained ranges.
+///
+/// `globals_base` aligns to the largest alignment the bands contain, so a
+/// retained LREAL global behind a retained INT marker leaves four bytes
+/// between them. Those bytes are inside the retain band and belong to no
+/// variable at all — which is the distinction that matters: a host may
+/// restore the whole band without bringing anything transient back, because
+/// what is unaccounted for is padding, never a variable.
+#[rstest]
+fn a_padded_retain_band_holds_no_transient(mut with_db: db::RootDatabase) {
+    let source = r#"
+        PROGRAM P
+        VAR_EXTERNAL marks : INT; kept : LREAL; END_VAR
+            marks := marks + 1;
+            kept := kept + 1.0;
+        END_PROGRAM
+
+        CONFIGURATION Cfg
+        VAR_GLOBAL RETAIN
+            marks AT %MW0 : INT;
+            kept : LREAL;
+        END_VAR
+            RESOURCE Res ON CPU
+                TASK T(INTERVAL := T#10ms, PRIORITY := 1);
+                PROGRAM P1 WITH T : P;
+            END_RESOURCE
+        END_CONFIGURATION
+    "#;
+    let (mir, wasm) = compile_to_mir_and_wasm(&mut with_db, source);
+    let plc = TestPlc::load(&wasm).expect("load");
+    let marks = plc.located("%MW0").expect("marks");
+
+    // The band still opens and closes on retained cells.
+    assert_eq!(mir.retain_base, marks.addr);
+    let retain_end = mir.retain_base + mir.retain_size;
+    assert_eq!(retain_end, mir.globals_base + 8, "the LREAL ends the band");
+
+    // But it is LONGER than what it holds, by exactly the gap the LREAL's
+    // alignment opened after the marker.
+    let mapped: u32 = mir.retain_map.ranges.iter().map(|r| r.size).sum();
+    assert_eq!(mapped, 12, "an INT and an LREAL");
+    let padding = mir.retain_size - mapped;
+    assert_eq!(
+        padding,
+        mir.globals_base - (marks.addr + 4),
+        "the shortfall is the alignment gap and nothing else"
+    );
+    assert!(padding > 0, "this layout is the one that has a gap");
+
+    // Every range is still inside, and the gap belongs to no variable: the
+    // globals band starts past it, at the retained global.
+    assert!(
+        mir.retain_map
+            .ranges
+            .iter()
+            .all(|r| r.addr >= mir.retain_base && r.addr + r.size <= retain_end)
+    );
+    assert!(mir.globals_base > marks.addr + 4);
 }
