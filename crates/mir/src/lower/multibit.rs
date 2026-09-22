@@ -134,19 +134,19 @@ impl<'db> ExprLowerCtx<'db> {
     }
 
     /// When `var_access` is a VIEW — an address stored inside a wider one the
-    /// workspace mentions — the owner's place and the slice of it the access
-    /// reads or writes. `hir_ty` is the access's type before normalizing,
-    /// which for a variable still names the declaration.
+    /// workspace mentions — where in the owner's cell it is. `hir_ty` is the
+    /// access's type before normalizing, which for a variable still names the
+    /// declaration.
     ///
     /// The owner is named by its address, and lowering gives that name the
     /// owner's cell: the declared one when a VAR_GLOBAL is located there, a
     /// cell of its own otherwise. A view never gets one, so a nest of
     /// addresses is one cell however many of them the program mentions.
-    pub(crate) fn view_slice(
+    pub(crate) fn view(
         &self,
         var_access: VariableAccess<'db>,
         hir_ty: Type<'db>,
-    ) -> Result<Option<(MirPlace, Sliced)>, LowerTypeError> {
+    ) -> Result<Option<View>, LowerTypeError> {
         let address = match var_access.kind(self.db) {
             VariableAccessKind::Direct(dv) => LocatedAddress::of(self.db, dv),
             VariableAccessKind::Symbolic(_) => match hir_ty {
@@ -162,28 +162,66 @@ impl<'db> ExprLowerCtx<'db> {
         let Some(view) = located_view(self.db, &address) else {
             return Ok(None);
         };
-        // The type the owner's cell holds: what it was declared as, or the
-        // width's own bit string for a bare one. A part is rebuilt in it, so a
-        // signed owner keeps its sign (`slice_write`).
-        let base = located_declaration(self.db, &view.owner)
-            .and_then(|v| {
-                self.type_to_mir_elementary_pub(v.spec(self.db).infer(self.db))
-                    .ok()
-            })
-            .unwrap_or_else(|| width_elementary(view.owner.width));
-        let owner = MirPlace::Global {
-            name: Some(Ident::new(
-                self.db,
-                compact_str::CompactString::from(view.owner.text.as_str()),
-            )),
+        let owner_name = Ident::new(
+            self.db,
+            compact_str::CompactString::from(view.owner.text.as_str()),
+        );
+        let cell = MirPlace::Global {
+            name: Some(owner_name),
             address: 0,
-            ty: MirType::Elementary(base),
+            ty: MirType::Elementary(width_elementary(view.owner.width)),
+        };
+        // What the view reads as: its declared type, or the width's own bit
+        // string for a bare address.
+        let ty = match hir_ty {
+            Type::Variable((var, _)) => {
+                self.type_to_mir_elementary_pub(var.spec(self.db).infer(self.db))?
+            }
+            _ => width_elementary(address.width),
+        };
+
+        // Four bytes of an eight-byte cell, which memory holds little-endian
+        // like the image: the view is those bytes, read and written as its own
+        // type. Only a 32-bit part is reached this way, because rk keeps every
+        // narrower scalar in a four-byte slot.
+        if address.width == 32 && var_access.multibits(self.db).is_none() {
+            return Ok(Some(View::Bytes(MirPlace::Field {
+                base: Box::new(cell),
+                field_name: owner_name,
+                field_offset: view.shift / 8,
+                field_type: MirType::Elementary(ty),
+            })));
+        }
+
+        // The cell is sliced as an integer of its width. That is its declared
+        // type when it is one, so a signed owner is rebuilt signed
+        // (`slice_write`); otherwise the bit string, which a REAL or a TIME
+        // is in memory, reached as a field at offset 0 so the loads and
+        // stores are integer ones.
+        let declared = located_declaration(self.db, &view.owner).and_then(|v| {
+            self.type_to_mir_elementary_pub(v.spec(self.db).infer(self.db))
+                .ok()
+        });
+        let (owner, base) = match declared {
+            Some(e) if e.is_integer() => (cell, e),
+            None => (cell, width_elementary(view.owner.width)),
+            Some(_) => {
+                let bits = width_elementary(view.owner.width);
+                let place = MirPlace::Field {
+                    base: Box::new(cell),
+                    field_name: owner_name,
+                    field_offset: 0,
+                    field_type: MirType::Elementary(bits),
+                };
+                (place, bits)
+            }
         };
         let mut sliced = Sliced {
             base,
             shift: view.shift,
             elem: width_elementary(address.width),
         };
+        let mut ty = ty;
         // A partial access of a view is a narrower slice of the same owner.
         if var_access.multibits(self.db).is_some() {
             let inner = self.resolve_slice(&owner, var_access, hir_ty)?;
@@ -192,8 +230,9 @@ impl<'db> ExprLowerCtx<'db> {
                 shift: view.shift + inner.shift,
                 elem: inner.elem,
             };
+            ty = inner.elem;
         }
-        Ok(Some((owner, sliced)))
+        Ok(Some(View::Slice { owner, sliced, ty }))
     }
 
     /// Lower a read of a partial access to `(base >> shift) & mask`.
@@ -219,6 +258,66 @@ impl<'db> ExprLowerCtx<'db> {
     ) -> Result<MirExpr, LowerTypeError> {
         let sliced = self.resolve_slice(&place, var_access, hir_ty)?;
         Ok(slice_write(place, sliced, value))
+    }
+}
+
+/// Where a view is in its owner's cell (`ExprLowerCtx::view`).
+#[derive(Debug, Clone)]
+pub(crate) enum View {
+    /// Whole bytes of the cell, with an address of their own.
+    Bytes(MirPlace),
+    /// Bits of the cell, read as `ty`: the slice's own type, or one of the
+    /// same width and lane (a SINT part is read as a BYTE, then
+    /// sign-extended).
+    Slice {
+        owner: MirPlace,
+        sliced: Sliced,
+        ty: MirElementary,
+    },
+}
+
+impl View {
+    /// The type the view reads and is written as.
+    pub(crate) fn ty(&self) -> MirElementary {
+        match self {
+            View::Bytes(MirPlace::Field {
+                field_type: MirType::Elementary(e),
+                ..
+            }) => *e,
+            View::Bytes(_) => unreachable!("a view's bytes are a field of its owner's cell"),
+            View::Slice { ty, .. } => *ty,
+        }
+    }
+
+    pub(crate) fn read(self) -> MirExpr {
+        let ty = self.ty();
+        match self {
+            View::Bytes(place) => MirExpr::Load(place, MirType::Elementary(ty)),
+            View::Slice { owner, sliced, ty } => {
+                let bits = slice_read(owner, sliced);
+                if ty == sliced.elem {
+                    bits
+                } else {
+                    MirExpr::Cast {
+                        expr: Box::new(bits),
+                        from: sliced.elem,
+                        to: ty,
+                    }
+                }
+            }
+        }
+    }
+
+    /// The store that puts `value` in the view: into its bytes, or into the
+    /// whole owner with the slice replaced.
+    pub(crate) fn write(self, value: MirExpr) -> (MirPlace, MirExpr) {
+        match self {
+            View::Bytes(place) => (place, value),
+            View::Slice { owner, sliced, .. } => {
+                let value = slice_write(owner.clone(), sliced, value);
+                (owner, value)
+            }
+        }
     }
 }
 

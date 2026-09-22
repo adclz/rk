@@ -211,13 +211,6 @@ impl<'db> InitInference<'db> {
                                 located.insert(address.to_ascii_uppercase(), *var);
                             }
                         }
-                        // The size character says how wide the channel is,
-                        // and the declared type says how wide the value the
-                        // program reads there is. They have to agree.
-                        //
-                        // Only checked where the declared type HAS a width:
-                        // an enum, a subrange or an aggregate answers `Null`,
-                        // and reporting those would be a guess.
                         // `__init` would write it, and the host's copy-in
                         // before the first scan overwrites it unread.
                         if var.init(db).is_some()
@@ -243,14 +236,12 @@ impl<'db> InitInference<'db> {
                         } else {
                             located_width(declared.normalize(db))
                         };
-                        let mut width_mismatch = false;
                         if !declared.is_never()
                             && let Some((_, address_bits)) = dv
                                 .size_letter(db)
                                 .and_then(crate::hir_ty::infer::normalize::access_size)
                             && declared_bits != Some(address_bits)
                         {
-                            width_mismatch = true;
                             self.errors.push(
                                 ConfigError::LocationWidthMismatch {
                                     var: *var,
@@ -264,11 +255,8 @@ impl<'db> InitInference<'db> {
                         }
                         // Located inside a wider address the workspace
                         // mentions, the variable is that address's bits and
-                        // has no storage of its own (E1423): persistence is
-                        // the owner's to declare, and it reads back as a bit
-                        // string, which a signed, real or time type would
-                        // silently reinterpret. Past a width mismatch there is
-                        // nothing more to say about the type.
+                        // has no storage of its own (E1423), so persistence
+                        // and a startup value are the owner's to declare.
                         if let Some(located) =
                             crate::hir_def::pous::variable::LocatedAddress::of(db, dv)
                             && let Some(view) =
@@ -296,15 +284,6 @@ impl<'db> InitInference<'db> {
                                     != crate::hir_def::pous::variable::LocationArea::Input
                             {
                                 refuse(WiderAddressUse::Initializer);
-                            }
-                            if !width_mismatch && !holds_bits(declared.normalize(db), located.width)
-                            {
-                                refuse(WiderAddressUse::Type {
-                                    declared: compact_str::CompactString::from(
-                                        declared.type_name(db),
-                                    ),
-                                    bits: located.width,
-                                });
                             }
                         }
                     }
@@ -647,17 +626,3 @@ fn located_width(ty: Type<'_>) -> Option<usize> {
     }
 }
 
-/// Whether a part of a wider address declared `ty` reads back as its value:
-/// a part is read as `bits` bits of its owner, which only a bit string or an
-/// unsigned integer of that width holds as they are.
-fn holds_bits(ty: Type<'_>, bits: u8) -> bool {
-    use crate::hir_def::expressions::spec::ElementarySpec as E;
-    matches!(
-        (bits, ty),
-        (1, Type::Elementary(E::Bool))
-            | (8, Type::Elementary(E::Byte | E::USInt))
-            | (16, Type::Elementary(E::Word | E::UInt))
-            | (32, Type::Elementary(E::DWord | E::UDInt))
-            | (64, Type::Elementary(E::LWord | E::ULInt))
-    )
-}

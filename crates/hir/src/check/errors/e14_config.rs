@@ -178,7 +178,7 @@ pub enum ConfigError<'db> {
 }
 
 /// What a part of a wider address was used for that it cannot be.
-#[derive(Clone, Debug, PartialEq, Eq, Hash, salsa::Update)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, salsa::Update)]
 pub enum WiderAddressUse {
     /// Passed to a VAR_IN_OUT, which takes an address.
     InOut,
@@ -194,14 +194,6 @@ pub enum WiderAddressUse {
     /// Given an initial value: `__init` writes storage, and this has none,
     /// so the value was silently dropped.
     Initializer,
-    /// Declared with a type that does not hold its bits as they are: a part
-    /// reads back as a bit string, so a signed, real or time type would
-    /// silently read a different value.
-    Type {
-        declared: compact_str::CompactString,
-        /// The address's width, which names the types that would hold it.
-        bits: u8,
-    },
 }
 
 impl WiderAddressUse {
@@ -216,9 +208,6 @@ impl WiderAddressUse {
             Self::ForCounter => format!("{is} and cannot count a FOR loop"),
             Self::Retain => format!("{is} and cannot be RETAIN on its own"),
             Self::Initializer => format!("{is} and cannot have an initial value of its own"),
-            Self::Type { declared, .. } => {
-                format!("{is} and reads as its bits, which '{declared}' does not hold as they are")
-            }
         }
     }
 
@@ -238,20 +227,10 @@ impl WiderAddressUse {
             Self::Initializer => format!(
                 "give the variable located at '{owner}' an initial value with this part set in it"
             ),
-            Self::Type { bits, .. } => match bits {
-                1 => "declare it BOOL".to_string(),
-                8 => "declare it BYTE or USINT".to_string(),
-                16 => "declare it WORD or UINT".to_string(),
-                32 => "declare it DWORD or UDINT".to_string(),
-                _ => "declare it LWORD or ULINT".to_string(),
-            },
         }
     }
 }
 
-/// Why a TASK cannot be scheduled. Only cyclic tasks with a literal, non-zero
-/// INTERVAL are; each other shape gets its own message rather than a shared
-/// "unsupported", because the fix differs in every case.
 /// Why an address has no storage to be given. Each has its own fix, so each
 /// says its own: one message covering all three said only that the address
 /// was unsupported, which was true of none of them once the bands landed.
@@ -344,6 +323,9 @@ impl UnsupportedConfigKind {
     }
 }
 
+/// Why a TASK cannot be scheduled. Only cyclic tasks with a literal, non-zero
+/// INTERVAL are; each other shape gets its own message rather than a shared
+/// "unsupported", because the fix differs in every case.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, salsa::Update)]
 pub enum UnschedulableReason {
     /// `SINGLE := <event>` — event-driven tasks are not implemented.

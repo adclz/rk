@@ -960,7 +960,7 @@ fn add_global<'db>(
 ) -> Result<(), LowerTypeError> {
     // Located inside a wider address the workspace mentions, a global is no
     // cell of its own: it is that address's bits, and every access to it is
-    // lowered as a slice of the owner (`view_slice`).
+    // lowered as bits of the owner (`ExprLowerCtx::view`).
     if let Some(dv) = v.location(db)
         && let Some(address) = hir::hir_def::pous::variable::LocatedAddress::of(db, dv)
         && hir::hir_ty::index_graphs::located_view(db, &address).is_some()

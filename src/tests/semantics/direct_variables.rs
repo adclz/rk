@@ -1034,6 +1034,69 @@ END_CONFIGURATION
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @"");
 }
 
+/// A DT is 64 bits, seconds since the epoch, so it takes an `L` address.
+#[rstest]
+fn invalid_date_and_time_at_a_double_word(mut with_db: RootDatabase) {
+    let source = r#"
+PROGRAM P
+VAR_EXTERNAL stamp : DT; ok : DT; END_VAR
+    ok := stamp;
+END_PROGRAM
+
+CONFIGURATION Cfg
+VAR_GLOBAL
+    stamp AT %ID0 : DT;
+    ok    AT %QL0 : DT;
+END_VAR
+    RESOURCE R ON CPU
+        TASK T(INTERVAL := T#10ms, PRIORITY := 1);
+        PROGRAM P1 WITH T : P;
+    END_RESOURCE
+END_CONFIGURATION
+"#;
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
+    [E1422] Error: location type mismatch
+       ,-[ file:///test0.st:9:5 ]
+       |
+     9 |     stamp AT %ID0 : DT;
+       |     ^^^^^^^^^|^^^^^^^^
+       |              `---------- '%ID0' is 32 bits, but 'stamp' is declared 'DT', which is 64
+       |
+       | Note: a located variable holds one value as wide as its address; declare it as an elementary type of 32 bits, such as DWORD, DINT or REAL
+    ---'
+    ");
+}
+
+/// A part is declared with any type of its width, as a whole address is: a
+/// signed byte in a word, a REAL or a TIME in a long word, a CHAR in a word.
+#[rstest]
+fn valid_parts_of_any_type_of_their_width(mut with_db: RootDatabase) {
+    let source = r#"
+PROGRAM P
+VAR_EXTERNAL hi : SINT; gain : REAL; since : TIME; ch : CHAR; END_VAR
+VAR t : REAL; END_VAR
+    t := gain;
+END_PROGRAM
+
+CONFIGURATION Cfg
+VAR_GLOBAL
+    status AT %IW0 : WORD;
+    hi     AT %IB1 : SINT;
+    frame  AT %IL1 : LWORD;
+    gain   AT %ID2 : REAL;
+    since  AT %ID3 : TIME;
+    text   AT %IW8 : WORD;
+    ch     AT %IB16 : CHAR;
+END_VAR
+    RESOURCE R ON CPU
+        TASK T(INTERVAL := T#10ms, PRIORITY := 1);
+        PROGRAM P1 WITH T : P;
+    END_RESOURCE
+END_CONFIGURATION
+"#;
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @"");
+}
+
 /// A located variable holds one value as wide as its address, so it is an
 /// elementary type of that width — as matiec requires, and as every vendor
 /// accepts. An enum, a subrange, an aggregate and a STRING have no single
@@ -1276,11 +1339,10 @@ END_CONFIGURATION
     ");
 }
 
-/// A declared part persists only as its owner does, and reads back as a bit
-/// string, which a signed type would reinterpret. Both are refused; an
-/// unsigned type of its width is not.
+/// A declared part persists only as its owner does, so RETAIN on it is
+/// refused. Its type is any of its width, signed or not.
 #[rstest]
-fn invalid_retain_or_signed_type_on_a_declared_part(mut with_db: RootDatabase) {
+fn invalid_retain_on_a_declared_part(mut with_db: RootDatabase) {
     let source = r#"
 PROGRAM P
 VAR_EXTERNAL whole : WORD; lo : USINT; hi : SINT; END_VAR
@@ -1303,15 +1365,6 @@ END_VAR
 END_CONFIGURATION
 "#;
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E1423] Error: part of a wider address
-        ,-[ file:///test0.st:11:5 ]
-        |
-     11 |     hi    AT %MB1 : SINT;
-        |     ^^^^^^^^^^|^^^^^^^^^
-        |               `----------- '%MB1' is part of '%MW0' and reads as its bits, which 'SINT' does not hold as they are
-        |
-        | Note: declare it BYTE or USINT
-    ----'
     [E1423] Error: part of a wider address
         ,-[ file:///test0.st:14:5 ]
         |

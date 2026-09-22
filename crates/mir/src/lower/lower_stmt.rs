@@ -179,17 +179,15 @@ fn lower_stmt<'db>(
             // whole of `b` with only those bits replaced. A view is the same
             // store into its owner: `%QX0.3 := x` beside a `%QW0` rewrites the
             // word with bit 3 replaced.
-            let (place, value) =
-                if let Some((owner, sliced)) = ctx.view_slice(*var, var.infer(ctx.db))? {
-                    let value = crate::lower::multibit::slice_write(owner.clone(), sliced, value);
-                    (owner, value)
-                } else if var.multibits(ctx.db).is_some() {
-                    let value =
-                        ctx.lower_multibit_write(place.clone(), *var, var.infer(ctx.db), value)?;
-                    (place, value)
-                } else {
-                    (place, value)
-                };
+            let (place, value) = if let Some(view) = ctx.view(*var, var.infer(ctx.db))? {
+                view.write(value)
+            } else if var.multibits(ctx.db).is_some() {
+                let value =
+                    ctx.lower_multibit_write(place.clone(), *var, var.infer(ctx.db), value)?;
+                (place, value)
+            } else {
+                (place, value)
+            };
             Ok(Some(MirStmt::Assign {
                 target: place,
                 value,
@@ -291,7 +289,7 @@ fn lower_stmt<'db>(
             // Any place can be a counter: a FUNCTION local or a PROGRAM/FB member
             // (HIR rejected the shapes IEC forbids).
             if ctx
-                .view_slice(*control_variable, control_variable.infer(ctx.db))?
+                .view(*control_variable, control_variable.infer(ctx.db))?
                 .is_some()
             {
                 return Err(LowerTypeError::UnsupportedType(

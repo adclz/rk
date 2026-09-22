@@ -1018,6 +1018,130 @@ fn a_host_setting_the_sign_bit_of_a_signed_owner_makes_it_negative(
     assert_eq!(flags & 0b11, 0b11, "16#8000 in an INT is -32768");
 }
 
+/// A part may be declared with any type of its width. A signed one reads
+/// its bits sign-extended, and a write stores its low bits into the owner:
+/// 16#80 in the high byte of `%IW0` is -128 in `hi`, and -2 in the high word
+/// of `%MD0` is 16#FFFE there.
+#[rstest]
+fn a_signed_part_reads_and_writes_signed(mut with_db: db::RootDatabase) {
+    let source = r#"
+        PROGRAM P
+        VAR_EXTERNAL lo : SINT; hi : SINT; m : INT; END_VAR
+            %QX0.0 := lo = -1;
+            %QX0.1 := hi = -128;
+            %QX0.2 := hi < lo;
+            m := -2;
+            %QX0.3 := m = -2;
+        END_PROGRAM
+
+        CONFIGURATION Cfg
+        VAR_GLOBAL
+            status AT %IW0 : WORD;
+            lo     AT %IB0 : SINT;
+            hi     AT %IB1 : SINT;
+            frame  AT %MD0 : DWORD;
+            m      AT %MW1 : INT;
+            flags  AT %QW0 : WORD;
+        END_VAR
+            RESOURCE Res ON CPU
+                TASK T(INTERVAL := T#10ms, PRIORITY := 1);
+                PROGRAM P1 WITH T : P;
+            END_RESOURCE
+        END_CONFIGURATION
+    "#;
+    let (_mir, wasm) = compile_to_mir_and_wasm(&mut with_db, source);
+    let mut plc = TestPlc::load(&wasm).expect("load");
+    plc.write_located("%IW0", &0x80FFi32.to_le_bytes())
+        .expect("write the input word");
+    plc.run(1).expect("scan");
+    let read = |plc: &TestPlc, a: &str| {
+        u32::from_le_bytes(plc.read_located(a).expect("read")[..4].try_into().unwrap())
+    };
+    assert_eq!(read(&plc, "%QW0") & 0b1111, 0b1111, "-1 and -128, and m read back -2");
+    assert_eq!(read(&plc, "%MD0"), 0xFFFE_0000, "m's bits are the high word");
+}
+
+/// A 32-bit part of a 64-bit address is four whole bytes of its cell, so a
+/// REAL there reads and writes its bits unconverted, as do a DINT and a bare
+/// `%ID1`.
+#[rstest]
+fn a_real_part_is_its_bits(mut with_db: db::RootDatabase) {
+    let source = r#"
+        PROGRAM P
+        VAR_EXTERNAL count : DINT; gain : REAL; out : REAL; lo : DINT; hi : REAL; END_VAR
+            out := gain * 2.0;
+            lo := count - 1;
+            hi := 1.5;
+            %QD5 := %ID1;
+        END_PROGRAM
+
+        CONFIGURATION Cfg
+        VAR_GLOBAL
+            frame AT %IL0 : LWORD;
+            count AT %ID0 : DINT;
+            gain  AT %ID1 : REAL;
+            out   AT %QD4 : REAL;
+            reply AT %QL0 : LWORD;
+            lo    AT %QD0 : DINT;
+            hi    AT %QD1 : REAL;
+        END_VAR
+            RESOURCE Res ON CPU
+                TASK T(INTERVAL := T#10ms, PRIORITY := 1);
+                PROGRAM P1 WITH T : P;
+            END_RESOURCE
+        END_CONFIGURATION
+    "#;
+    let (_mir, wasm) = compile_to_mir_and_wasm(&mut with_db, source);
+    let mut plc = TestPlc::load(&wasm).expect("load");
+    let frame = (u64::from(2.5f32.to_bits()) << 32) | u64::from(-4i32 as u32);
+    plc.write_located("%IL0", &frame.to_le_bytes())
+        .expect("write the input frame");
+    plc.run(1).expect("scan");
+    let word = |plc: &TestPlc, a: &str| {
+        u32::from_le_bytes(plc.read_located(a).expect("read")[..4].try_into().unwrap())
+    };
+    assert_eq!(f32::from_bits(word(&plc, "%QD4")), 5.0, "gain was 2.5");
+    assert_eq!(word(&plc, "%QD5"), 2.5f32.to_bits(), "the bare part, copied raw");
+    let reply = u64::from_le_bytes(plc.read_located("%QL0").expect("read")[..8].try_into().unwrap());
+    assert_eq!(
+        reply,
+        (u64::from(1.5f32.to_bits()) << 32) | u64::from(-5i32 as u32),
+        "lo in the low half, hi's bits in the high one"
+    );
+}
+
+/// An owner declared REAL is sliced as the bit string it is in memory:
+/// `%QX3.7` is the sign bit of the REAL at `%QD0`.
+#[rstest]
+fn a_bit_of_a_real_owner_is_a_bit_of_its_encoding(mut with_db: db::RootDatabase) {
+    let source = r#"
+        PROGRAM P
+        VAR_EXTERNAL r : REAL; END_VAR
+            r := 1.5;
+            %QX3.7 := TRUE;
+            %QX4.0 := r = -1.5;
+            %QX4.1 := %QX3.6;
+        END_PROGRAM
+
+        CONFIGURATION Cfg
+        VAR_GLOBAL r AT %QD0 : REAL; END_VAR
+            RESOURCE Res ON CPU
+                TASK T(INTERVAL := T#10ms, PRIORITY := 1);
+                PROGRAM P1 WITH T : P;
+            END_RESOURCE
+        END_CONFIGURATION
+    "#;
+    let (_mir, wasm) = compile_to_mir_and_wasm(&mut with_db, source);
+    let mut plc = TestPlc::load(&wasm).expect("load");
+    plc.run(1).expect("scan");
+    let word = |plc: &TestPlc, a: &str| {
+        u32::from_le_bytes(plc.read_located(a).expect("read")[..4].try_into().unwrap())
+    };
+    assert_eq!(f32::from_bits(word(&plc, "%QD0")), -1.5);
+    assert_eq!(word(&plc, "%QX4.0"), 1, "the program reads -1.5 back");
+    assert_eq!(word(&plc, "%QX4.1"), 0, "bit 30 of 1.5 is clear");
+}
+
 /// An output's initial value is written by `__init`, so the output is in
 /// that state before the first scan — the startup value a host sees first.
 #[rstest]
