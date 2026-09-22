@@ -202,6 +202,24 @@ pub enum ConfigError<'db> {
         /// The size character AS WRITTEN.
         access: compact_str::CompactString,
     },
+    /// A write to a variable declared `AT` an input address. The host owns
+    /// the input band: it copies the process image in before the scan, so a
+    /// store the program makes is overwritten before anyone can read it.
+    /// Silently accepting it produced a program whose assignments vanished.
+    WriteToInputLocation {
+        site: CallSite<'db>,
+        /// The address AS WRITTEN, from the declaration's `AT` clause.
+        address: compact_str::CompactString,
+    },
+    /// `RETAIN` on a variable located in `%I` or `%Q`. The retain band is
+    /// restored at startup; restoring an input image means the first scan
+    /// runs on the values of the last power cycle, before the field bus has
+    /// refreshed them. `%M` is the area that may legitimately persist.
+    RetainOnIoLocation {
+        var: VariableDecl<'db>,
+        /// The address AS WRITTEN.
+        address: compact_str::CompactString,
+    },
 }
 
 impl<'db> ErrorCode for ConfigError<'db> {
@@ -225,6 +243,8 @@ impl<'db> ErrorCode for ConfigError<'db> {
             Self::UnsupportedConfigElement { .. } => "E1416",
             Self::DirectVariableUnsupported { .. } => "E1417",
             Self::UnknownMultibitsAccess { .. } => "E1418",
+            Self::WriteToInputLocation { .. } => "E1419",
+            Self::RetainOnIoLocation { .. } => "E1420",
         }
     }
 
@@ -248,6 +268,8 @@ impl<'db> ErrorCode for ConfigError<'db> {
             Self::UnsupportedConfigElement { .. } => "unsupported configuration element",
             Self::DirectVariableUnsupported { .. } => "direct variable access is not supported",
             Self::UnknownMultibitsAccess { .. } => "unknown multibit access size",
+            Self::WriteToInputLocation { .. } => "write to an input location",
+            Self::RetainOnIoLocation { .. } => "RETAIN on an I/O location",
         }
     }
 }
@@ -495,6 +517,40 @@ impl<'db> ToIdeDiagnostic<'db> for ConfigError<'db> {
                 .desc(self)
                 .range(crate::denormalize(db, file, &expr.get_span(db)).unwrap_or_default())
                 .call(),
+            Self::WriteToInputLocation { site, address } => {
+                let mut diag = diag()
+                    .message(format!(
+                        "'{address}' is an input: it is written by the host, not by the program"
+                    ))
+                    .severity(DiagnosticSeverity::ERROR)
+                    .desc(self)
+                    .range(crate::denormalize(db, file, &site.get_span(db)).unwrap_or_default())
+                    .call();
+                diag.with_note(
+                    "the host copies the input image in before each scan, so this write is overwritten before anything can read it"
+                        .to_string(),
+                );
+                diag
+            }
+            Self::RetainOnIoLocation { var, address } => {
+                let mut diag = diag()
+                    .message(format!(
+                        "'{}' is located at '{address}' and cannot be RETAIN",
+                        var.get_name_ident(db).text(db)
+                    ))
+                    .severity(DiagnosticSeverity::ERROR)
+                    .desc(self)
+                    .range(
+                        crate::denormalize(db, file, &var.as_call_site(db).get_span(db))
+                            .unwrap_or_default(),
+                    )
+                    .call();
+                diag.with_note(
+                    "the retain band is restored at startup, so a retained I/O image would run the first scan on the values of the last power cycle; only '%M' may persist"
+                        .to_string(),
+                );
+                diag
+            }
         }
     }
 }

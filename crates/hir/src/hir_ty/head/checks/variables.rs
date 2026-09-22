@@ -163,21 +163,49 @@ impl<'db> InitInference<'db> {
                     );
                 }
             }
-            // A declared location gets the SAME answer as a direct access:
-            // the hardware is not implemented, so binding a variable to an
-            // address cannot be honoured. Silently dropping the `AT` clause
-            // handed the user an ordinary variable that never sees its input.
-            //
-            // TODO: lift this when an I/O band lands — `var.location` already
-            // carries what a mapping would bind.
+            // A VAR_GLOBAL with an `AT` clause is storage in one of the
+            // three I/O bands. Anywhere else a location still has nowhere to
+            // live: a POU's variables are instance fields, and an instance is
+            // laid out as a unit, so one of its fields cannot also sit in a
+            // band the host copies whole. Same answer for an address with no
+            // area letter (`%Z0`), no width letter (`%I0`) or none at all
+            // (`%I*`, which needs the binding VAR_CONFIG supplies) — nothing
+            // maps them, so they keep the E1417 they have always had.
             if let Some(dv) = var.location(db) {
-                self.errors.push(
-                    ConfigError::DirectVariableUnsupported {
-                        site: var.as_call_site(db),
-                        address: compact_str::CompactString::from(dv.to_address(db)),
+                let address = compact_str::CompactString::from(dv.to_address(db));
+                let banded = dv.area(db).filter(|_| {
+                    var.kind(db) == crate::hir_def::pous::variable::VariableKind::Global
+                        && !dv.partly(db)
+                        && dv
+                            .adress(db)
+                            .text(db)
+                            .chars()
+                            .nth(1)
+                            .and_then(crate::hir_ty::infer::normalize::access_size)
+                            .is_some()
+                });
+                match banded {
+                    // `%I` is copied in before every scan and `%Q` read back
+                    // after it, so neither can ALSO be restored from the
+                    // retain band at startup. `%M` is the area that may.
+                    Some(area)
+                        if area != crate::hir_def::pous::variable::LocationArea::Marker
+                            && var.qualifier(db).contains(crate::Qualifier::RETAIN) =>
+                    {
+                        self.errors.push(
+                            ConfigError::RetainOnIoLocation { var: *var, address }
+                                .to_diagnostic(db, self.scope.file(db)),
+                        );
                     }
-                    .to_diagnostic(db, self.scope.file(db)),
-                );
+                    Some(_) => {}
+                    None => self.errors.push(
+                        ConfigError::DirectVariableUnsupported {
+                            site: var.as_call_site(db),
+                            address,
+                        }
+                        .to_diagnostic(db, self.scope.file(db)),
+                    ),
+                }
             }
             if extern_fn.is_some() {
                 use crate::hir_def::pous::variable::VariableKind;

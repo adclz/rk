@@ -353,6 +353,26 @@ pub fn external_var_lookup<'db>(
     None
 }
 
+/// The address a declaration is bound to, following a VAR_EXTERNAL to the
+/// VAR_GLOBAL it aliases.
+///
+/// The alias carries no `AT` clause of its own — IEC puts the location on the
+/// global — but it names the same storage, so a rule about the location holds
+/// through it. Checking `location` alone let every write to an input escape
+/// by going through the VAR_EXTERNAL a PROGRAM declares anyway.
+pub fn effective_location<'db>(
+    db: &'db dyn WorkspaceDataBase,
+    var: VariableDecl<'db>,
+) -> Option<crate::hir_def::pous::variable::DirectVariable<'db>> {
+    if let Some(dv) = var.location(db) {
+        return Some(dv);
+    }
+    if var.kind(db) != crate::hir_def::pous::variable::VariableKind::External {
+        return None;
+    }
+    external_var_lookup(db, var.get_name_ident(db))?.location(db)
+}
+
 // ---------------------------------------------------------------------------
 // Test discovery
 // ---------------------------------------------------------------------------

@@ -202,6 +202,43 @@ impl<'db> DirectVariable<'db> {
         }
         out
     }
+    
+    pub fn area(self, db: &'db dyn WorkspaceDataBase) -> Option<LocationArea> {
+        match self
+            .adress(db)
+            .text(db)
+            .chars()
+            .next()?
+            .to_ascii_uppercase()
+        {
+            'I' => Some(LocationArea::Input),
+            'Q' => Some(LocationArea::Output),
+            'M' => Some(LocationArea::Marker),
+            _ => None,
+        }
+    }
+}
+
+/// The three areas a located variable can sit in. Each is one contiguous
+/// band in linear memory, so a host copies a whole direction at once.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub enum LocationArea {
+    /// `%I` — written by the host before the scan, never by the program.
+    Input,
+    /// `%Q` — written by the program, read by the host after the scan.
+    Output,
+    /// `%M` — the marker area, owned by the program; may be RETAIN.
+    Marker,
+}
+
+impl LocationArea {
+    pub fn prefix(self) -> &'static str {
+        match self {
+            Self::Input => "%I",
+            Self::Output => "%Q",
+            Self::Marker => "%M",
+        }
+    }
 }
 
 #[salsa::tracked(debug)]
