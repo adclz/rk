@@ -5476,6 +5476,66 @@
     }
   },
   {
+    "type": "relative_direct_variable",
+    "named": true,
+    "fields": {
+      "adress": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "adress_identifier",
+            "named": true
+          }
+        ]
+      },
+      "offset": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "partly",
+            "named": true
+          },
+          {
+            "type": "relative_offset",
+            "named": true
+          }
+        ]
+      }
+    }
+  },
+  {
+    "type": "relative_located_at",
+    "named": true,
+    "fields": {},
+    "children": {
+      "multiple": false,
+      "required": true,
+      "types": [
+        {
+          "type": "relative_direct_variable",
+          "named": true
+        }
+      ]
+    }
+  },
+  {
+    "type": "relative_offset",
+    "named": true,
+    "fields": {},
+    "children": {
+      "multiple": true,
+      "required": true,
+      "types": [
+        {
+          "type": "unsigned_int",
+          "named": true
+        }
+      ]
+    }
+  },
+  {
     "type": "repeat_stmt",
     "named": true,
     "fields": {
@@ -6039,7 +6099,7 @@
         "required": true,
         "types": [
           {
-            "type": "located_at",
+            "type": "relative_located_at",
             "named": true
           }
         ]

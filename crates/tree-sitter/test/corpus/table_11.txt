@@ -448,10 +448,10 @@ END_TYPE
         (struct_elem_decl
           (identifier)
           (struct_elem_decl_attributes
-            (located_at
-              (direct_variable
+            (relative_located_at
+              (relative_direct_variable
                 (adress_identifier)
-                (offset
+                (relative_offset
                   (unsigned_int)))))
           (simple_type_spec
             (numeric_type_name
@@ -461,10 +461,10 @@ END_TYPE
         (struct_elem_decl
           (identifier)
           (struct_elem_decl_attributes
-            (located_at
-              (direct_variable
+            (relative_located_at
+              (relative_direct_variable
                 (adress_identifier)
-                (offset
+                (relative_offset
                   (unsigned_int)))))
           (simple_type_spec
             (numeric_type_name
@@ -481,10 +481,10 @@ END_TYPE
         (struct_elem_decl
           (identifier)
           (struct_elem_decl_attributes
-            (located_at
-              (direct_variable
+            (relative_located_at
+              (relative_direct_variable
                 (adress_identifier)
-                (offset
+                (relative_offset
                   (unsigned_int))))
             (multibit_part_access
               (multibit
@@ -495,10 +495,10 @@ END_TYPE
         (struct_elem_decl
           (identifier)
           (struct_elem_decl_attributes
-            (located_at
-              (direct_variable
+            (relative_located_at
+              (relative_direct_variable
                 (adress_identifier)
-                (offset
+                (relative_offset
                   (unsigned_int)))))
           (simple_type_spec
             (bit_str_type_name
@@ -530,10 +530,10 @@ END_TYPE
         (struct_elem_decl
           (identifier)
           (struct_elem_decl_attributes
-            (located_at
-              (direct_variable
+            (relative_located_at
+              (relative_direct_variable
                 (adress_identifier)
-                (offset
+                (relative_offset
                   (unsigned_int)))))
           (simple_type_spec
             (numeric_type_name
@@ -543,10 +543,10 @@ END_TYPE
         (struct_elem_decl
           (identifier)
           (struct_elem_decl_attributes
-            (located_at
-              (direct_variable
+            (relative_located_at
+              (relative_direct_variable
                 (adress_identifier)
-                (offset
+                (relative_offset
                   (unsigned_int)))))
           (simple_type_spec
             (numeric_type_name
@@ -556,10 +556,10 @@ END_TYPE
         (struct_elem_decl
           (identifier)
           (struct_elem_decl_attributes
-            (located_at
-              (direct_variable
+            (relative_located_at
+              (relative_direct_variable
                 (adress_identifier)
-                (offset
+                (relative_offset
                   (unsigned_int))))
             (multibit_part_access
               (multibit
@@ -570,10 +570,10 @@ END_TYPE
         (struct_elem_decl
           (identifier)
           (struct_elem_decl_attributes
-            (located_at
-              (direct_variable
+            (relative_located_at
+              (relative_direct_variable
                 (adress_identifier)
-                (offset
+                (relative_offset
                   (unsigned_int)))))
           (simple_type_spec
             (bit_str_type_name
@@ -582,10 +582,10 @@ END_TYPE
         (struct_elem_decl
           (identifier)
           (struct_elem_decl_attributes
-            (located_at
-              (direct_variable
+            (relative_located_at
+              (relative_direct_variable
                 (adress_identifier)
-                (offset
+                (relative_offset
                   (unsigned_int)))))
           (simple_type_spec
             (numeric_type_name
@@ -594,10 +594,10 @@ END_TYPE
         (struct_elem_decl
           (identifier)
           (struct_elem_decl_attributes
-            (located_at
-              (direct_variable
+            (relative_located_at
+              (relative_direct_variable
                 (adress_identifier)
-                (offset
+                (relative_offset
                   (unsigned_int)))))
           (simple_type_spec
             (bit_str_type_name
@@ -626,8 +626,8 @@ END_TYPE
         (struct_elem_decl
           (identifier)
           (struct_elem_decl_attributes
-            (located_at
-              (direct_variable
+            (relative_located_at
+              (relative_direct_variable
                 (adress_identifier)
                 (partly))))
           (simple_type_spec
@@ -636,8 +636,8 @@ END_TYPE
         (struct_elem_decl
           (identifier)
           (struct_elem_decl_attributes
-            (located_at
-              (direct_variable
+            (relative_located_at
+              (relative_direct_variable
                 (adress_identifier)
                 (partly))))
           (simple_type_spec

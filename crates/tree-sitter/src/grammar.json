@@ -3495,7 +3495,7 @@
           "name": "located",
           "content": {
             "type": "SYMBOL",
-            "name": "located_at"
+            "name": "relative_located_at"
           }
         },
         {
@@ -3515,6 +3515,99 @@
           ]
         }
       ]
+    },
+    "relative_located_at": {
+      "type": "SEQ",
+      "members": [
+        {
+          "type": "ALIAS",
+          "content": {
+            "type": "TOKEN",
+            "content": {
+              "type": "PREC",
+              "value": 0,
+              "content": {
+                "type": "PATTERN",
+                "value": "[aA][tT]"
+              }
+            }
+          },
+          "named": false,
+          "value": "AT"
+        },
+        {
+          "type": "SYMBOL",
+          "name": "relative_direct_variable"
+        }
+      ]
+    },
+    "relative_direct_variable": {
+      "type": "SEQ",
+      "members": [
+        {
+          "type": "STRING",
+          "value": "%"
+        },
+        {
+          "type": "FIELD",
+          "name": "adress",
+          "content": {
+            "type": "SYMBOL",
+            "name": "adress_identifier"
+          }
+        },
+        {
+          "type": "FIELD",
+          "name": "offset",
+          "content": {
+            "type": "CHOICE",
+            "members": [
+              {
+                "type": "ALIAS",
+                "content": {
+                  "type": "STRING",
+                  "value": "*"
+                },
+                "named": true,
+                "value": "partly"
+              },
+              {
+                "type": "SYMBOL",
+                "name": "relative_offset"
+              }
+            ]
+          }
+        }
+      ]
+    },
+    "relative_offset": {
+      "type": "PREC_LEFT",
+      "value": 0,
+      "content": {
+        "type": "SEQ",
+        "members": [
+          {
+            "type": "SYMBOL",
+            "name": "unsigned_int"
+          },
+          {
+            "type": "REPEAT",
+            "content": {
+              "type": "SEQ",
+              "members": [
+                {
+                  "type": "STRING",
+                  "value": "."
+                },
+                {
+                  "type": "SYMBOL",
+                  "name": "unsigned_int"
+                }
+              ]
+            }
+          }
+        ]
+      }
     },
     "direct_variable": {
       "type": "SEQ",
@@ -3556,7 +3649,7 @@
       ]
     },
     "offset": {
-      "type": "PREC_LEFT",
+      "type": "PREC_RIGHT",
       "value": 0,
       "content": {
         "type": "SEQ",

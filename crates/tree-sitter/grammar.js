@@ -912,11 +912,27 @@ module.exports = grammar({
         )($),
       ),
 
+    // Table 11 relative addressing, which is NOT Table 16's. Inside a STRUCT
+    // the located byte and a bit of it are written `%X3.0`, so the trailing
+    // part is a bit and the element rule keeps its own address for it.
     struct_elem_decl_attributes: ($) =>
       seq(
-        field("located", $.located_at),
+        field("located", $.relative_located_at),
         optional(field("multibits", $.multibit_part_access)),
       ),
+
+    relative_located_at: ($) => seq(kw("AT"), $.relative_direct_variable),
+
+    relative_direct_variable: ($) =>
+      seq(
+        "%",
+        field("adress", $.adress_identifier),
+        field("offset", choice(alias("*", $.partly), $.relative_offset)),
+      ),
+
+    // Stops at the first level so `multibit_part_access` can take the bit;
+    // see `offset` for why a Table 16 address does the opposite.
+    relative_offset: ($) => prec.left(dotSep1($.unsigned_int)),
 
     // Table 16 - Directly represented variables
 
@@ -928,7 +944,7 @@ module.exports = grammar({
         field("offset", choice(alias("*", $.partly), $.offset)),
       ),
 
-    offset: ($) => prec.left(dotSep1($.unsigned_int)),
+    offset: ($) => prec.right(dotSep1($.unsigned_int)),
 
     // Table 12 - Reference operations
 

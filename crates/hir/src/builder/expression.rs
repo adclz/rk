@@ -601,6 +601,37 @@ impl<'db> ParseVariableAccess<'db> for ast::generated::DirectVariable {
     }
 }
 
+/// A STRUCT element's RELATIVE address (Table 11), which the grammar parses
+/// with its own rule: there a trailing `.0` is the bit of the located byte
+/// (`flag1 AT %X3.0`), where a Table 16 address would read it as another
+/// level. The HIR shape is the same `DirectVariable`, so only the node it is
+/// read from differs.
+impl<'db> ParseVariableAccess<'db> for ast::generated::RelativeDirectVariable {
+    fn to_access(
+        &self,
+        sema: &mut SemanticIndexBuilder<'db>,
+    ) -> anyhow::Result<VariableAccess<'db>, IdeDiagnostic> {
+        let adress = Ident::from_node(sema.db, sema.file, self.adress.cast(sema.ast))?;
+        let (offset, partly) = match self.offset.cast(sema.ast) {
+            ast::generated::Partly_RelativeOffset::RelativeOffset(offset) => {
+                let mut offsets = vec![];
+                for part in offset.children.iter() {
+                    let integer = Integer::new(
+                        sema.db,
+                        Ident::from_node(sema.db, sema.file, part.cast(sema.ast))?,
+                        IntegerKind::Signed,
+                    );
+                    offsets.push(integer);
+                }
+                (offsets, false)
+            }
+            ast::generated::Partly_RelativeOffset::Partly(_) => (vec![], true),
+        };
+        let kind = VariableAccessKind::Direct(DirectVariable::new(sema.db, adress, partly, offset));
+        Ok(sema.new_variable_access(kind, None, self.into(), sema.current_scope))
+    }
+}
+
 impl<'db> Parse<'db> for ast::generated::BeginPathExpression {
     type Output = BeginPathExpr<'db>;
 
