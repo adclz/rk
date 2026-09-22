@@ -100,6 +100,30 @@ pub struct VarLoc {
     pub ty: SymType,
     /// Whether this is a configuration `VAR_GLOBAL` (vs program-local state).
     pub global: bool,
+    /// Set for a part of a wider value: the `size` bytes at `address` are
+    /// that value's, and this says which of their bits are this one's.
+    /// [`decode`](Self::decode) and [`encode`](Self::encode) account for it.
+    pub bits: Option<crate::SymBits>,
+}
+
+impl VarLoc {
+    /// The value, from the `size` bytes read at `address`.
+    pub fn decode(&self, bytes: &[u8]) -> VarValue {
+        match self.bits {
+            Some(bits) => decode(self.ty, &bits.extract(bytes)),
+            None => decode(self.ty, bytes),
+        }
+    }
+
+    /// The bytes to write at `address` to set the value. `current` is what
+    /// is there now: a part is written by replacing its bits in it.
+    pub fn encode(&self, current: &[u8], value: VarValue) -> Result<Vec<u8>, TypeMismatch> {
+        let bytes = encode(self.ty, value)?;
+        Ok(match self.bits {
+            Some(bits) => bits.replace(current, &bytes),
+            None => bytes,
+        })
+    }
 }
 
 /// Parsed debug information for a compiled module; empty when the binary
@@ -351,12 +375,22 @@ impl DebugInfo {
     /// Resolve a dotted path to where its value lives, once, behind a
     /// monitoring handle; `None` for a path that names nothing readable.
     pub fn resolve(&self, path: &str) -> Option<VarLoc> {
+        if let Some(sym) = self.symbol(path) {
+            return Some(VarLoc {
+                address: sym.address,
+                size: sym.size,
+                ty: sym.ty,
+                global: sym.global,
+                bits: sym.bits,
+            });
+        }
         let (address, size, ty, global) = self.locate(path)?;
         Some(VarLoc {
             address,
             size,
             ty,
             global,
+            bits: None,
         })
     }
 
@@ -426,7 +460,10 @@ impl DebugInfo {
     /// Decode `bytes` for `sym`, naming the variant when the symbol is an
     /// enumeration.
     pub fn decode_symbol(&self, sym: &Symbol, bytes: &[u8]) -> VarValue {
-        let raw = decode(sym.ty, bytes);
+        let raw = match sym.bits {
+            Some(bits) => decode(sym.ty, &bits.extract(bytes)),
+            None => decode(sym.ty, bytes),
+        };
         let Some(id) = sym.named_type else {
             return raw;
         };
@@ -485,13 +522,29 @@ impl DebugInfo {
 
     /// Resolve a variable by path and encode `value` into its bytes (the
     /// debug-session "force"); `None` if the path is unknown or the type
-    /// does not match.
+    /// does not match, and for a part of a wider value, whose bytes are not
+    /// its own: [`encode_var_over`](Self::encode_var_over) writes that.
     pub fn encode_var(&self, path: &str, value: VarValue) -> Option<(u32, Vec<u8>)> {
+        self.encode_var_over(path, value, |_, _| None)
+    }
+
+    /// As [`encode_var`](Self::encode_var), reading through
+    /// `read(address, size)` the bytes a part is written into.
+    pub fn encode_var_over(
+        &self,
+        path: &str,
+        value: VarValue,
+        read: impl FnOnce(u32, u32) -> Option<Vec<u8>>,
+    ) -> Option<(u32, Vec<u8>)> {
         // Resolved as a read is, through the type descriptors, so array
         // elements can be written too.
-        let (address, _, ty, _) = self.locate(path)?;
-        let bytes = encode(ty, value).ok()?;
-        Some((address, bytes))
+        let loc = self.resolve(path)?;
+        let current = match loc.bits {
+            Some(_) => read(loc.address, loc.size)?,
+            None => Vec::new(),
+        };
+        let bytes = loc.encode(&current, value).ok()?;
+        Some((loc.address, bytes))
     }
 }
 

@@ -16,7 +16,7 @@ pub const DEBUG_SYMBOLS_SECTION: &str = "debug-symbols";
 /// On-wire format version; bump on any breaking change. A new field goes
 /// at the TAIL of its struct: `rmp_serde` encodes positionally, so
 /// `#[serde(default)]` only backfills a field missing from the end.
-pub const DEBUG_SYMBOLS_VERSION: u16 = 7;
+pub const DEBUG_SYMBOLS_VERSION: u16 = 8;
 
 /// The complete debug-symbol table for a module.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -169,9 +169,56 @@ pub struct Symbol {
     /// field — lets a debugger group variables into Globals vs Locals.
     pub global: bool,
     /// The declared type when it has a name the value cannot carry (an
-    /// enumeration). Last on purpose.
+    /// enumeration).
     #[serde(default)]
     pub named_type: Option<TypeId>,
+    /// Set when the value is bits of the one at `address` rather than bytes
+    /// of its own (v8): a part of a wider located address. Last on purpose,
+    /// and left out when unset, so every other symbol encodes as in v7.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub bits: Option<SymBits>,
+}
+
+/// Where a value that is part of a wider one sits in it: `width` bits from
+/// bit `shift` of the little-endian value at the symbol's `address`, which is
+/// `size` bytes. `%IX1.2` beside a `%IW0` is bit 10 of that word's cell. It
+/// is read by shifting and masking, and written by replacing those bits.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub struct SymBits {
+    pub shift: u16,
+    pub width: u16,
+}
+
+impl SymBits {
+    fn mask(self) -> u64 {
+        if self.width >= 64 {
+            u64::MAX
+        } else {
+            (1 << self.width) - 1
+        }
+    }
+
+    /// The part, taken out of `whole`'s bytes: a value's own bytes,
+    /// zero-extended, which [`decode`](crate::decode) reads as any other.
+    pub fn extract(self, whole: &[u8]) -> [u8; 8] {
+        ((widen(whole) >> self.shift) & self.mask()).to_le_bytes()
+    }
+
+    /// `whole` with the part's bits replaced by the low bits of `part`, a
+    /// value's own bytes; the rest of `whole` is kept.
+    pub fn replace(self, whole: &[u8], part: &[u8]) -> Vec<u8> {
+        let mask = self.mask() << self.shift;
+        let value = (widen(whole) & !mask) | ((widen(part) << self.shift) & mask);
+        value.to_le_bytes()[..whole.len().min(8)].to_vec()
+    }
+}
+
+/// Up to eight little-endian bytes as one value.
+fn widen(bytes: &[u8]) -> u64 {
+    let mut buf = [0u8; 8];
+    let n = bytes.len().min(8);
+    buf[..n].copy_from_slice(&bytes[..n]);
+    u64::from_le_bytes(buf)
 }
 
 /// Elementary type tag. Mirrors the compiler's elementary types but stands on
@@ -806,6 +853,54 @@ mod tests {
         assert_ne!(map.layout_hash, LocatedMap::new(grown).layout_hash);
     }
 
+    /// A symbol without bits encodes exactly as a v7 one did; a part's
+    /// round-trips, and reads and writes only its own bits.
+    #[test]
+    fn a_part_symbol_round_trips_and_others_encode_as_before() {
+        #[derive(Serialize)]
+        struct SymbolV7 {
+            path: String,
+            address: u32,
+            size: u32,
+            ty: SymType,
+            global: bool,
+            named_type: Option<TypeId>,
+        }
+        let plain = Symbol {
+            path: "status".into(),
+            address: 64,
+            size: 4,
+            ty: SymType::Word,
+            global: true,
+            named_type: None,
+            bits: None,
+        };
+        let v7 = SymbolV7 {
+            path: "status".into(),
+            address: 64,
+            size: 4,
+            ty: SymType::Word,
+            global: true,
+            named_type: None,
+        };
+        assert_eq!(rmp_serde::to_vec(&plain).unwrap(), rmp_serde::to_vec(&v7).unwrap());
+
+        let bits = SymBits { shift: 8, width: 8 };
+        let part = Symbol {
+            path: "level".into(),
+            ty: SymType::SInt,
+            bits: Some(bits),
+            ..plain
+        };
+        let back: Symbol = rmp_serde::from_slice(&rmp_serde::to_vec(&part).unwrap()).unwrap();
+        assert_eq!(back, part);
+
+        let cell = 0x0000_8001u32.to_le_bytes();
+        assert_eq!(decode(SymType::SInt, &bits.extract(&cell)), VarValue::I8(-128));
+        let forced = bits.replace(&cell, &encode(SymType::SInt, VarValue::I8(5)).unwrap());
+        assert_eq!(forced, 0x0000_0501u32.to_le_bytes(), "the low byte kept");
+    }
+
     /// The v5 additions round-trip.
     #[test]
     fn symbols_with_types_round_trip() {
@@ -872,6 +967,7 @@ mod tests {
                 ty: SymType::DInt,
                 global: false,
                 named_type: None,
+                bits: None,
             }],
             arrays: vec![],
             types: vec![],

@@ -1079,6 +1079,7 @@ fn a_container_table_without_types_degrades_and_says_so() {
             ty: SymType::DInt,
             global: false,
             named_type: None,
+            bits: None,
         }],
         arrays: vec![],
         types: vec![],

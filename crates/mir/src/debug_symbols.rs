@@ -159,6 +159,7 @@ pub fn walk_type(
                 ty: sym_type_of(*e),
                 global,
                 named_type: None,
+                bits: None,
             });
             *budget = budget.saturating_sub(1);
         }
@@ -172,6 +173,7 @@ pub fn walk_type(
                 ty: sym_type_of(e.storage),
                 global,
                 named_type: Some(types.intern_enum(db, e)),
+                bits: None,
             });
             *budget = budget.saturating_sub(1);
         }
@@ -184,6 +186,7 @@ pub fn walk_type(
                 ty: sym_type_of(s.base),
                 global,
                 named_type: None,
+                bits: None,
             });
             *budget = budget.saturating_sub(1);
         }
@@ -256,6 +259,7 @@ pub fn walk_type(
                 },
                 global,
                 named_type: None,
+                bits: None,
             });
             *budget = budget.saturating_sub(1);
         }

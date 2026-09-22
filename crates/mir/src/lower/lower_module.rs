@@ -635,6 +635,25 @@ fn lower_module_from_pous<'db>(
             &mut containers,
         );
     }
+    // A part of a wider address has no cell to walk: it is the bits of its
+    // owner's, as the located map lists it.
+    for part in &module.located_map.entries {
+        let (Some(of), Some(ty)) = (&part.part_of, part.ty) else {
+            continue;
+        };
+        symbols.push(debug_format::Symbol {
+            path: part.name.clone(),
+            address: part.addr,
+            size: part.size,
+            ty,
+            global: true,
+            named_type: None,
+            bits: Some(debug_format::SymBits {
+                shift: of.shift,
+                width: part.width,
+            }),
+        });
+    }
     symbols.sort_by(|a, b| a.path.cmp(&b.path));
     containers.sort_by(|a, b| a.path.cmp(&b.path));
     array_syms.sort_by(|a, b| a.path.cmp(&b.path));

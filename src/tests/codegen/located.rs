@@ -1188,6 +1188,60 @@ fn a_function_output_bound_to_a_part_lands_as_the_call_returns(mut with_db: db::
     );
 }
 
+/// A declared part has a debug symbol under its own name: the owner's cell
+/// and the bits it is. A debugger reads it and forces it through them, and
+/// forcing it leaves the rest of the cell alone.
+#[rstest]
+fn a_debugger_reads_and_forces_a_part_by_its_name(mut with_db: db::RootDatabase) {
+    use debug_format::{DebugInfo, VarValue};
+    let source = r#"
+        PROGRAM P
+        VAR_EXTERNAL level : SINT; ready : BOOL; END_VAR
+            ready := level < 0;
+        END_PROGRAM
+
+        CONFIGURATION Cfg
+        VAR_GLOBAL
+            status AT %QW0   : WORD;
+            level  AT %QB1   : SINT;
+            ready  AT %QX0.2 : BOOL;
+        END_VAR
+            RESOURCE Res ON CPU
+                TASK T(INTERVAL := T#10ms, PRIORITY := 1);
+                PROGRAM P1 WITH T : P;
+            END_RESOURCE
+        END_CONFIGURATION
+    "#;
+    let (_mir, wasm) = compile_to_mir_and_wasm(&mut with_db, source);
+    let info = DebugInfo::from_wasm(&wasm);
+    let mut plc = TestPlc::load(&wasm).expect("load");
+    plc.write_located("%QW0", &0x8001i32.to_le_bytes())
+        .expect("preset the word");
+
+    let read = |plc: &TestPlc, path: &str| {
+        let loc = info.resolve(path).expect(path);
+        loc.decode(&plc.read_bytes(loc.address, loc.size as usize).unwrap())
+    };
+    assert_eq!(read(&plc, "level"), VarValue::I8(-128), "the high byte, signed");
+    assert_eq!(read(&plc, "ready"), VarValue::Bool(false));
+
+    let (address, bytes) = info
+        .encode_var_over("ready", VarValue::Bool(true), |a, n| {
+            plc.read_bytes(a, n as usize).ok()
+        })
+        .expect("force ready");
+    plc.write_bytes(address, &bytes).expect("write");
+    assert_eq!(read(&plc, "status"), VarValue::U16(0x8005), "bit 2 set, the rest kept");
+    assert_eq!(
+        info.encode_var("ready", VarValue::Bool(true)),
+        None,
+        "a part is not forced without the bytes it is written into"
+    );
+
+    plc.run(1).expect("scan");
+    assert_eq!(read(&plc, "ready"), VarValue::Bool(true), "the program saw -128");
+}
+
 /// An output's initial value is written by `__init`, so the output is in
 /// that state before the first scan — the startup value a host sees first.
 #[rstest]
