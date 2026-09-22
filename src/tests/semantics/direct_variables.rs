@@ -1181,7 +1181,8 @@ END_CONFIGURATION
 // Parts of a wider address (E1423). `%QX0.3` beside a `%QW0` is that word's
 // bit 3: it is stored in the word's cell and has no address of its own, so
 // the uses that need one are refused. Reading it, assigning it and binding
-// an output to it are fine.
+// an output to it are fine. A part of a byte or more is whole bytes of the
+// cell, which do have an address.
 // ---------------------------------------------------------------------------
 
 /// Reading a part, assigning it, and binding an FB's or a function's output
@@ -1217,6 +1218,42 @@ VAR_GLOBAL
     ready  AT %IX1.7 : BOOL;
     lamps  AT %QW0 : WORD;
 END_VAR
+    RESOURCE R ON CPU
+        TASK T(INTERVAL := T#10ms, PRIORITY := 1);
+        PROGRAM P1 WITH T : P;
+    END_RESOURCE
+END_CONFIGURATION
+"#;
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @"");
+}
+
+/// A part of a byte or more is whole bytes of its owner's cell, so it can be
+/// passed to a VAR_IN_OUT or referenced like any variable.
+#[rstest]
+fn valid_references_to_a_part_of_a_byte_or_more(mut with_db: RootDatabase) {
+    let source = r#"
+FUNCTION_BLOCK Bump
+VAR_IN_OUT b : BYTE; END_VAR
+    b := b + 1;
+END_FUNCTION_BLOCK
+
+FUNCTION Flip : BOOL
+VAR_IN_OUT w : WORD; END_VAR
+    w := w XOR 16#FFFF;
+    Flip := TRUE;
+END_FUNCTION
+
+PROGRAM P
+VAR_EXTERNAL level : SINT; END_VAR
+VAR g : Bump; ok : BOOL; r : REF_TO SINT; END_VAR
+    %QD0 := 0;
+    g(b := %QB1);
+    ok := Flip(w := %QW1);
+    r := REF(level);
+END_PROGRAM
+
+CONFIGURATION Cfg
+VAR_GLOBAL level AT %QB0 : SINT; END_VAR
     RESOURCE R ON CPU
         TASK T(INTERVAL := T#10ms, PRIORITY := 1);
         PROGRAM P1 WITH T : P;

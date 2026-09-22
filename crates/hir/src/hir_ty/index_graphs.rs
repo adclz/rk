@@ -183,6 +183,12 @@ pub fn refuse_part_of_wider<'db>(
     if address.area == crate::hir_def::pous::variable::LocationArea::Input {
         return None;
     }
+    // A part of a byte or more is whole bytes of its owner's cell, which
+    // have an address to pass or to reference; only a bit has none.
+    use crate::check::errors::e14_config::WiderAddressUse;
+    if matches!(usage, WiderAddressUse::InOut | WiderAddressUse::Reference) && address.width >= 8 {
+        return None;
+    }
     Some(
         crate::check::errors::e14_config::ConfigError::PartOfWiderAddress {
             site,

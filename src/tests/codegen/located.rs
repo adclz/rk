@@ -1268,6 +1268,58 @@ fn a_bare_address_is_the_bits_of_its_cell(mut with_db: db::RootDatabase) {
     assert_eq!(word, 2.5f32.to_bits(), "the REAL's bits");
 }
 
+/// A part of a byte or more is whole bytes of its owner's cell, passed to a
+/// VAR_IN_OUT and referenced by their address. Each write lands in its own
+/// bytes only: `%QD1`, the next cell in the band, keeps what it held.
+#[rstest]
+fn a_part_of_a_byte_or_more_is_passed_and_referenced_by_address(
+    mut with_db: db::RootDatabase,
+) {
+    let source = r#"
+        FUNCTION_BLOCK Bump
+        VAR_IN_OUT b : BYTE; END_VAR
+            b := b + 1;
+        END_FUNCTION_BLOCK
+
+        FUNCTION Flip : BOOL
+        VAR_IN_OUT w : WORD; END_VAR
+            w := w XOR 16#FFFF;
+            Flip := TRUE;
+        END_FUNCTION
+
+        PROGRAM P
+        VAR_EXTERNAL level : SINT; next : DWORD; END_VAR
+        VAR g : Bump; ok : BOOL; r : REF_TO SINT; END_VAR
+            %QD0 := 16#11223344;
+            next := 16#AABBCCDD;
+            g(b := %QB1);
+            ok := Flip(w := %QW1);
+            r := REF(level);
+            r^ := -1;
+        END_PROGRAM
+
+        CONFIGURATION Cfg
+        VAR_GLOBAL level AT %QB0 : SINT; next AT %QD1 : DWORD; END_VAR
+            RESOURCE Res ON CPU
+                TASK T(INTERVAL := T#10ms, PRIORITY := 1);
+                PROGRAM P1 WITH T : P;
+            END_RESOURCE
+        END_CONFIGURATION
+    "#;
+    let (_mir, wasm) = compile_to_mir_and_wasm(&mut with_db, source);
+    let mut plc = TestPlc::load(&wasm).expect("load");
+    plc.run(1).expect("scan");
+    let word = |plc: &TestPlc, a: &str| {
+        u32::from_le_bytes(plc.read_located(a).expect("read")[..4].try_into().unwrap())
+    };
+    assert_eq!(
+        word(&plc, "%QD0"),
+        0xEEDD_34FF,
+        "the high word flipped, byte 1 bumped, byte 0 set through the reference"
+    );
+    assert_eq!(word(&plc, "%QD1"), 0xAABB_CCDD, "the next cell untouched");
+}
+
 /// An output's initial value is written by `__init`, so the output is in
 /// that state before the first scan — the startup value a host sees first.
 #[rstest]

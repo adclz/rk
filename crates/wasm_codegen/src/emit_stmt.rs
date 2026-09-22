@@ -1657,17 +1657,20 @@ fn emit_typed_mem_store(func: &mut wasm_encoder::Function, ty: &mir::types::MirT
                 memory_index: 0,
             }));
         }
-        mir::types::MirType::Elementary(e) if e.size_bytes() == 1 => {
+        // An 8- or 16-bit value writes only its own bytes, as it is read
+        // (`emit_typed_mem_load`): a pointer to a byte inside a wider
+        // located address must not spill into the bytes after it.
+        mir::types::MirType::Elementary(e) if e.rk_bits() == 8 => {
             func.instruction(&Instruction::I32Store8(MemArg {
                 offset: 0,
                 align: 0,
                 memory_index: 0,
             }));
         }
-        mir::types::MirType::Elementary(e) if e.size_bytes() == 2 => {
+        mir::types::MirType::Elementary(e) if e.rk_bits() == 16 => {
             func.instruction(&Instruction::I32Store16(MemArg {
                 offset: 0,
-                align: align_log2.min(1),
+                align: 1,
                 memory_index: 0,
             }));
         }

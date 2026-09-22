@@ -149,13 +149,39 @@ impl<'db> ExprLowerCtx<'db> {
     ) -> Result<Option<View>, LowerTypeError> {
         let address = match var_access.kind(self.db) {
             VariableAccessKind::Direct(dv) => LocatedAddress::of(self.db, dv),
-            VariableAccessKind::Symbolic(_) => match hir_ty {
-                Type::Variable((var, _)) => {
-                    effective_location(self.db, var).and_then(|dv| LocatedAddress::of(self.db, dv))
-                }
-                _ => None,
-            },
+            VariableAccessKind::Symbolic(_) => self.declared_address(hir_ty),
         };
+        let partial = var_access.multibits(self.db).map(|_| var_access);
+        self.view_at(address, hir_ty, partial)
+    }
+
+    /// The view a declared variable of type `hir_ty` is, taken whole: what
+    /// `REF(x)` points at when `x` is part of a wider address.
+    pub(crate) fn view_of_variable(
+        &self,
+        hir_ty: Type<'db>,
+    ) -> Result<Option<View>, LowerTypeError> {
+        self.view_at(self.declared_address(hir_ty), hir_ty, None)
+    }
+
+    /// The address a variable of type `hir_ty` is located at, if any.
+    fn declared_address(&self, hir_ty: Type<'db>) -> Option<LocatedAddress> {
+        match hir_ty {
+            Type::Variable((var, _)) => {
+                effective_location(self.db, var).and_then(|dv| LocatedAddress::of(self.db, dv))
+            }
+            _ => None,
+        }
+    }
+
+    /// `view`'s answer for `address`; `partial` is the access when it goes
+    /// on to a partial access of the view (`x.%X3`).
+    fn view_at(
+        &self,
+        address: Option<LocatedAddress>,
+        hir_ty: Type<'db>,
+        partial: Option<VariableAccess<'db>>,
+    ) -> Result<Option<View>, LowerTypeError> {
         let Some(address) = address else {
             return Ok(None);
         };
@@ -180,11 +206,12 @@ impl<'db> ExprLowerCtx<'db> {
             _ => width_elementary(address.width),
         };
 
-        // Four bytes of an eight-byte cell, which memory holds little-endian
-        // like the image: the view is those bytes, read and written as its own
-        // type. Only a 32-bit part is reached this way, because rk keeps every
-        // narrower scalar in a four-byte slot.
-        if address.width == 32 && var_access.multibits(self.db).is_none() {
+        // Whole bytes of the cell, which memory holds little-endian like the
+        // image: the view is those bytes, read and written as its own type,
+        // and they have an address a reference or a VAR_IN_OUT can take. A
+        // value narrower than 32 bits reads and writes only its own bytes, so
+        // the byte at offset 1 of a word's slot is that word's high byte.
+        if address.width >= 8 && partial.is_none() {
             return Ok(Some(View::Bytes(MirPlace::Field {
                 base: Box::new(cell),
                 field_name: owner_name,
@@ -219,20 +246,18 @@ impl<'db> ExprLowerCtx<'db> {
         let mut sliced = Sliced {
             base,
             shift: view.shift,
-            elem: width_elementary(address.width),
+            elem: ty,
         };
-        let mut ty = ty;
         // A partial access of a view is a narrower slice of the same owner.
-        if var_access.multibits(self.db).is_some() {
-            let inner = self.resolve_slice(&owner, var_access, hir_ty)?;
+        if let Some(access) = partial {
+            let inner = self.resolve_slice(&owner, access, hir_ty)?;
             sliced = Sliced {
                 base,
                 shift: view.shift + inner.shift,
                 elem: inner.elem,
             };
-            ty = inner.elem;
         }
-        Ok(Some(View::Slice { owner, sliced, ty }))
+        Ok(Some(View::Slice { owner, sliced }))
     }
 
     /// Lower a read of a partial access to `(base >> shift) & mask`.
@@ -266,14 +291,8 @@ impl<'db> ExprLowerCtx<'db> {
 pub(crate) enum View {
     /// Whole bytes of the cell, with an address of their own.
     Bytes(MirPlace),
-    /// Bits of the cell, read as `ty`: the slice's own type, or one of the
-    /// same width and lane (a SINT part is read as a BYTE, then
-    /// sign-extended).
-    Slice {
-        owner: MirPlace,
-        sliced: Sliced,
-        ty: MirElementary,
-    },
+    /// Bits of the cell: a bit, or a partial access of a view.
+    Slice { owner: MirPlace, sliced: Sliced },
 }
 
 impl View {
@@ -285,7 +304,7 @@ impl View {
                 ..
             }) => *e,
             View::Bytes(_) => unreachable!("a view's bytes are a field of its owner's cell"),
-            View::Slice { ty, .. } => *ty,
+            View::Slice { sliced, .. } => sliced.elem,
         }
     }
 
@@ -293,18 +312,7 @@ impl View {
         let ty = self.ty();
         match self {
             View::Bytes(place) => MirExpr::Load(place, MirType::Elementary(ty)),
-            View::Slice { owner, sliced, ty } => {
-                let bits = slice_read(owner, sliced);
-                if ty == sliced.elem {
-                    bits
-                } else {
-                    MirExpr::Cast {
-                        expr: Box::new(bits),
-                        from: sliced.elem,
-                        to: ty,
-                    }
-                }
-            }
+            View::Slice { owner, sliced } => slice_read(owner, sliced),
         }
     }
 

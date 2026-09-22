@@ -649,6 +649,14 @@ impl<'db> ExprLowerCtx<'db> {
             PrimaryExpr::RefValue { value } => match value {
                 RefValue::Null => Ok(MirExpr::Constant(MirConstant::Null)),
                 RefValue::Address(path) => {
+                    // A part of a wider address has no cell of its own: the
+                    // reference is to its bytes in its owner's (a bit has
+                    // none, E1423).
+                    let ty = hir::hir_ty::body::infer_body(self.db, path.scope_id(self.db))
+                        .type_of_begin_expr_with_adjustments(self.db, *path);
+                    if let Some(super::multibit::View::Bytes(place)) = self.view_of_variable(ty)? {
+                        return Ok(MirExpr::AddrOf(place));
+                    }
                     let place = self.lower_begin_path_to_place(*path)?;
                     Ok(MirExpr::AddrOf(place))
                 }
@@ -1049,6 +1057,15 @@ impl<'db> ExprLowerCtx<'db> {
         infer_body(self.db, path.scope_id(self.db)).variable_for_path_expr(root_expr)
     }
 
+    /// What a dereference `r^` reads and writes. HIR types the `^` step as
+    /// the reference itself and records the pointee as its adjustment; the
+    /// reference's own type made every store through it a four-byte one, and
+    /// every load of a 64-bit or real pointee an i32.
+    fn pointee_of(&self, deref: hir::hir_def::expressions::expression::PathExpr<'db>) -> Type<'db> {
+        hir::hir_ty::body::infer_body(self.db, deref.scope_id(self.db))
+            .type_of_path_expr_with_adjustments(deref)
+    }
+
     /// Lower a BeginPathExpr to a MirPlace, handling nested field/index/deref chains.
     fn lower_begin_path_to_place(
         &self,
@@ -1158,7 +1175,7 @@ impl<'db> ExprLowerCtx<'db> {
             PathExprKind::Deref(deref_expr) => {
                 let inner = self.lower_this_path(deref_expr.path)?;
                 let pointee_type = self
-                    .lower_type_resolved(path_expr.infer(self.db))
+                    .lower_type_resolved(self.pointee_of(path_expr))
                     .unwrap_or(MirType::Void);
                 Ok(MirPlace::Deref {
                     base: Box::new(inner),
@@ -1276,9 +1293,8 @@ impl<'db> ExprLowerCtx<'db> {
 
             PathExprKind::Deref(deref_expr) => {
                 let inner = self.lower_path_expr_chain(base, deref_expr.path)?;
-                let pointee_hir_type = path_expr.infer(self.db);
                 let pointee_type = self
-                    .lower_type_resolved(pointee_hir_type)
+                    .lower_type_resolved(self.pointee_of(path_expr))
                     .unwrap_or(MirType::Void);
                 Ok(MirPlace::Deref {
                     base: Box::new(inner),
