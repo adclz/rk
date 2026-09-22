@@ -985,11 +985,23 @@ pub(crate) fn emit_typed_mem_load(func: &mut wasm_encoder::Function, ty: &MirTyp
         MirType::Elementary(e) if e.is_64bit() => {
             func.instruction(&Instruction::I64Load(mem_arg(0, align_log2)));
         }
-        MirType::Elementary(e) if e.size_bytes() == 1 => {
-            func.instruction(&Instruction::I32Load8U(mem_arg(0, 0)));
+        // An 8- or 16-bit value has a four-byte slot, and only its own bytes
+        // are read: whatever the rest holds, the value is the same. A host
+        // or a debugger writing a part of a located INT replaces bits, and
+        // leaves the sign extension above them stale.
+        MirType::Elementary(e) if e.rk_bits() == 8 => {
+            func.instruction(&if e.is_signed() {
+                Instruction::I32Load8S(mem_arg(0, 0))
+            } else {
+                Instruction::I32Load8U(mem_arg(0, 0))
+            });
         }
-        MirType::Elementary(e) if e.size_bytes() == 2 => {
-            func.instruction(&Instruction::I32Load16U(mem_arg(0, align_log2.min(1))));
+        MirType::Elementary(e) if e.rk_bits() == 16 => {
+            func.instruction(&if e.is_signed() {
+                Instruction::I32Load16S(mem_arg(0, 1))
+            } else {
+                Instruction::I32Load16U(mem_arg(0, 1))
+            });
         }
         _ => {
             func.instruction(&Instruction::I32Load(mem_arg(0, align_log2.min(2))));

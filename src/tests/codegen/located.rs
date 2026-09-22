@@ -983,6 +983,41 @@ fn a_part_written_into_a_signed_owner_keeps_its_sign(mut with_db: db::RootDataba
     assert_eq!(flags & 0b11, 0b11, "x is -7 and still negative");
 }
 
+/// A host writes a part by replacing its bits in the owner's cell, with no
+/// notion of the owner's type. Setting the top bit of an INT that way makes
+/// it negative: only the owner's own two bytes are its value, whatever the
+/// rest of its four-byte slot holds.
+#[rstest]
+fn a_host_setting_the_sign_bit_of_a_signed_owner_makes_it_negative(
+    mut with_db: db::RootDatabase,
+) {
+    let source = r#"
+        PROGRAM P
+        VAR_EXTERNAL level : INT; END_VAR
+            %QX0.0 := level < 0;
+            %QX0.1 := level = -32768;
+        END_PROGRAM
+
+        CONFIGURATION Cfg
+        VAR_GLOBAL level AT %IW0 : INT; flags AT %QW0 : WORD; END_VAR
+            RESOURCE Res ON CPU
+                TASK T(INTERVAL := T#10ms, PRIORITY := 1);
+                PROGRAM P1 WITH T : P;
+            END_RESOURCE
+        END_CONFIGURATION
+    "#;
+    let (_mir, wasm) = compile_to_mir_and_wasm(&mut with_db, source);
+    let mut plc = TestPlc::load(&wasm).expect("load");
+    // `%IX1.7` is not in the program: the map lists only what it names, so
+    // the host sets bit 15 through the owner, the way a part is written.
+    let cell = i32::from_le_bytes(plc.read_located("%IW0").expect("read")[..4].try_into().unwrap());
+    plc.write_located("%IW0", &(cell | 0x8000).to_le_bytes())
+        .expect("set the top bit");
+    plc.run(1).expect("scan");
+    let flags = i32::from_le_bytes(plc.read_located("%QW0").expect("read")[..4].try_into().unwrap());
+    assert_eq!(flags & 0b11, 0b11, "16#8000 in an INT is -32768");
+}
+
 /// An output's initial value is written by `__init`, so the output is in
 /// that state before the first scan — the startup value a host sees first.
 #[rstest]

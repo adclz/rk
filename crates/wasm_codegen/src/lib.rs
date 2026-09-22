@@ -2002,8 +2002,12 @@ pub(crate) fn build_local_map(
                     );
                 }
                 ty => {
+                    // An enum and a subrange load and store at their lane,
+                    // as `emit_typed_mem_load` has them.
                     let elem = match ty {
                         MirType::Elementary(e) => Some(*e),
+                        MirType::Enum(e) => Some(e.storage),
+                        MirType::Subrange(s) => Some(s.base),
                         _ => None,
                     };
                     map.insert(local.name, LocalInfo::Memory { address, elem });
