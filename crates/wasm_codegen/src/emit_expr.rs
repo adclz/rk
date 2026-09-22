@@ -570,38 +570,6 @@ fn emit_call(
 
     func.instruction(&Instruction::Call(idx));
 
-    // A `=>` destination wider than the output received it in a memory
-    // scratch; convert into place now. The return value stays underneath.
-    for bind in &call.output_bindings {
-        let from_ty = mir::types::MirType::Elementary(bind.from);
-        let to_ty = mir::types::MirType::Elementary(bind.to);
-        let cast = crate::mir_cast::emit_cast_instructions(bind.from, bind.to);
-        let scratch = mir::expr::MirPlace::Local(bind.scratch);
-        match &bind.target {
-            mir::expr::MirPlace::Local(name)
-                if matches!(locals.get(name), Some(LocalInfo::Scalar { .. })) =>
-            {
-                emit_addr_of(func, &scratch, locals, fn_indices);
-                crate::emit_stmt::emit_typed_mem_load_pub(func, &from_ty);
-                for instr in &cast {
-                    func.instruction(instr);
-                }
-                let Some(LocalInfo::Scalar { index, .. }) = locals.get(name) else {
-                    unreachable!()
-                };
-                func.instruction(&Instruction::LocalSet(*index));
-            }
-            target => {
-                emit_addr_of(func, target, locals, fn_indices);
-                emit_addr_of(func, &scratch, locals, fn_indices);
-                crate::emit_stmt::emit_typed_mem_load_pub(func, &from_ty);
-                for instr in &cast {
-                    func.instruction(instr);
-                }
-                crate::emit_stmt::emit_typed_mem_store_pub(func, &to_ty);
-            }
-        }
-    }
     // Extern results pop in reverse wire order: the return value first (into
     // its scratch), then each output into its scratch, then the stores; the
     // return value ends on top.
@@ -653,6 +621,29 @@ fn emit_call(
         }
         if let Some(ret) = &call.extern_ret_scratch {
             func.instruction(&Instruction::LocalGet(local_idx(ret)));
+        }
+    }
+    // Outputs received in a scratch go to their destination now, the return
+    // value underneath.
+    for bind in &call.output_bindings {
+        match &bind.target {
+            mir::expr::MirPlace::Local(name)
+                if matches!(locals.get(name), Some(LocalInfo::Scalar { .. })) =>
+            {
+                emit_expr(func, &bind.value, locals, fn_indices);
+                let Some(LocalInfo::Scalar { index, .. }) = locals.get(name) else {
+                    unreachable!()
+                };
+                func.instruction(&Instruction::LocalSet(*index));
+            }
+            target => {
+                emit_addr_of(func, target, locals, fn_indices);
+                emit_expr(func, &bind.value, locals, fn_indices);
+                crate::emit_stmt::emit_typed_mem_store_pub(
+                    func,
+                    &mir::types::MirType::Elementary(bind.ty),
+                );
+            }
         }
     }
 }

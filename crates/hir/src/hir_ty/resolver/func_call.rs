@@ -667,20 +667,6 @@ fn apply_param_coercion<'db>(
                 );
             }
 
-            // An FB's output is copied after the call, so it can land in part
-            // of a wider address; a function or a method writes its output
-            // through an address, which a part does not have.
-            if !matches!(callable, CallableType::FunctionBlock(_))
-                && let Some(err) = crate::hir_ty::index_graphs::refuse_part_of_wider(
-                    db,
-                    call_site,
-                    rhs_typ,
-                    crate::check::errors::e14_config::WiderAddressUse::FunctionOutput,
-                )
-            {
-                ctx.errors.push(err.to_diagnostic(db, ctx.scope.file(db)));
-            }
-
             // `o => d` writes the output INTO d, so d is the target. Checked
             // the other way, every widening binding was refused and every
             // narrowing one accepted. Reported around the OUTPUT though: the

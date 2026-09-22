@@ -1289,6 +1289,7 @@ fn rewrite_globals_expr(
             }
             for bind in &mut call.output_bindings {
                 rewrite_globals_place(&mut bind.target, globals, missing);
+                rewrite_globals_expr(&mut bind.value, globals, missing);
             }
             for bind in &mut call.extern_results {
                 if let Some(dest) = &mut bind.dest {
@@ -1320,6 +1321,7 @@ fn rewrite_globals_stmt(
             }
             for binding in &mut call.output_bindings {
                 rewrite_globals_place(&mut binding.target, globals, missing);
+                rewrite_globals_expr(&mut binding.value, globals, missing);
             }
         }
         MirStmt::FbCall {

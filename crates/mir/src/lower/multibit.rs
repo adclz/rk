@@ -308,6 +308,14 @@ impl View {
         }
     }
 
+    /// The lane `write`'s store is made at: the view's own, or its owner's.
+    pub(crate) fn store_lane(&self) -> MirElementary {
+        match self {
+            View::Bytes(_) => self.ty(),
+            View::Slice { sliced, .. } => sliced.base,
+        }
+    }
+
     /// The store that puts `value` in the view: into its bytes, or into the
     /// whole owner with the slice replaced.
     pub(crate) fn write(self, value: MirExpr) -> (MirPlace, MirExpr) {

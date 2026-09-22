@@ -184,9 +184,6 @@ pub enum WiderAddressUse {
     InOut,
     /// Given to `REF()`, which takes an address.
     Reference,
-    /// Bound to a FUNCTION's output, which is written through an address.
-    /// An FB's output is copied after the call, so that one is allowed.
-    FunctionOutput,
     /// Used as a FOR counter, which needs storage of its own.
     ForCounter,
     /// Declared RETAIN: persistence belongs to storage, and this has none.
@@ -202,9 +199,6 @@ impl WiderAddressUse {
         match self {
             Self::InOut => format!("{is} and has no address of its own to pass to a VAR_IN_OUT"),
             Self::Reference => format!("{is} and has no address of its own to take a reference to"),
-            Self::FunctionOutput => {
-                format!("{is} and has no address a function could write its output through")
-            }
             Self::ForCounter => format!("{is} and cannot count a FOR loop"),
             Self::Retain => format!("{is} and cannot be RETAIN on its own"),
             Self::Initializer => format!("{is} and cannot have an initial value of its own"),
@@ -215,9 +209,6 @@ impl WiderAddressUse {
         match self {
             Self::InOut => "copy it into a variable, pass that, and assign it back".to_string(),
             Self::Reference => format!("take the reference of '{owner}' as a whole"),
-            Self::FunctionOutput => {
-                format!("bind the output to a variable and assign '{address}' from it")
-            }
             Self::ForCounter => format!("count in a variable and assign '{address}' from it"),
             Self::Retain => {
                 format!(

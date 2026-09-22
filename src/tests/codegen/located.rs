@@ -1142,6 +1142,52 @@ fn a_bit_of_a_real_owner_is_a_bit_of_its_encoding(mut with_db: db::RootDatabase)
     assert_eq!(word(&plc, "%QX4.1"), 0, "bit 30 of 1.5 is clear");
 }
 
+/// A function's outputs can land in parts too. Bits are received in a
+/// scratch and put into the owner as the call returns, inside the expression
+/// it is in, so the IF's condition reads `%QX0.0` already set; a widening
+/// output converts on the way, and a 32-bit part is written in place.
+#[rstest]
+fn a_function_output_bound_to_a_part_lands_as_the_call_returns(mut with_db: db::RootDatabase) {
+    let source = r#"
+        FUNCTION Split : BOOL
+        VAR_INPUT x : REAL; END_VAR
+        VAR_OUTPUT neg : BOOL; half : REAL; small : SINT; END_VAR
+            neg := x < 0.0;
+            half := x / 2.0;
+            small := -3;
+            Split := TRUE;
+        END_FUNCTION
+
+        PROGRAM P
+        VAR_EXTERNAL hi : REAL; m : INT; END_VAR
+            IF Split(x := -5.0, neg => %QX0.0, half => hi, small => m) AND %QX0.0 THEN
+                %QX1.7 := TRUE;
+            END_IF;
+        END_PROGRAM
+
+        CONFIGURATION Cfg
+        VAR_GLOBAL
+            reply AT %QL0 : LWORD;
+            m     AT %QW1 : INT;
+            hi    AT %QD1 : REAL;
+        END_VAR
+            RESOURCE Res ON CPU
+                TASK T(INTERVAL := T#10ms, PRIORITY := 1);
+                PROGRAM P1 WITH T : P;
+            END_RESOURCE
+        END_CONFIGURATION
+    "#;
+    let (_mir, wasm) = compile_to_mir_and_wasm(&mut with_db, source);
+    let mut plc = TestPlc::load(&wasm).expect("load");
+    plc.run(1).expect("scan");
+    let reply = u64::from_le_bytes(plc.read_located("%QL0").expect("read")[..8].try_into().unwrap());
+    assert_eq!(
+        reply,
+        (u64::from((-2.5f32).to_bits()) << 32) | (0xFFFD << 16) | 0x8001,
+        "neg in bit 0, the IF's bit 15, -3 widened into bytes 2-3, -2.5 in the high half"
+    );
+}
+
 /// An output's initial value is written by `__init`, so the output is in
 /// that state before the first scan — the startup value a host sees first.
 #[rstest]

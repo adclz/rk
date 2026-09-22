@@ -1612,11 +1612,7 @@ fn emit_mem_store(func: &mut wasm_encoder::Function, size: u32, align: u32) {
     }
 }
 
-/// Public wrapper for `emit_call`'s extern-result stores.
-pub(crate) fn emit_typed_mem_load_pub(func: &mut wasm_encoder::Function, ty: &mir::types::MirType) {
-    emit_typed_mem_load(func, ty);
-}
-
+/// Public wrapper for `emit_call`'s extern-result and output-binding stores.
 pub(crate) fn emit_typed_mem_store_pub(
     func: &mut wasm_encoder::Function,
     ty: &mir::types::MirType,

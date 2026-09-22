@@ -96,18 +96,20 @@ pub struct ExternResultBind {
     pub target_lane: Option<MirElementary>,
 }
 
-/// A post-call copy of a callee `VAR_OUTPUT` received in a scratch because
-/// the `=>` destination is wider than the output: the caller converts.
+/// A store the call makes once the callee has returned, from the scratch a
+/// `VAR_OUTPUT` was received in, because its `=>` destination could not take
+/// it directly: it is wider than the output, and the caller converts, or it
+/// is part of a wider address, and the caller rebuilds that address's cell
+/// with the output's bits. Made after an extern's results are stored, so it
+/// can read theirs.
 #[derive(Debug, Clone)]
 pub struct MirOutputBinding {
-    /// The scalar scratch local the callee wrote (passed by address).
-    pub scratch: Ident,
-    /// The `o => dest` place.
+    /// Where the store goes.
     pub target: MirPlace,
-    /// The output's lane (what the scratch holds).
-    pub from: MirElementary,
-    /// The destination's lane (what the store takes).
-    pub to: MirElementary,
+    /// What is stored; it reads the scratch.
+    pub value: MirExpr,
+    /// The lane of the store.
+    pub ty: MirElementary,
 }
 
 #[derive(Debug, Clone)]

@@ -1180,11 +1180,13 @@ END_CONFIGURATION
 // ---------------------------------------------------------------------------
 // Parts of a wider address (E1423). `%QX0.3` beside a `%QW0` is that word's
 // bit 3: it is stored in the word's cell and has no address of its own, so
-// the uses that need one are refused. Reading it and assigning it are fine.
+// the uses that need one are refused. Reading it, assigning it and binding
+// an output to it are fine.
 // ---------------------------------------------------------------------------
 
-/// Reading a part, assigning it, and binding an FB's output to it are all
-/// ordinary: an FB output is copied after the call, so it can land in a part.
+/// Reading a part, assigning it, and binding an FB's or a function's output
+/// to it are all ordinary: the output is put into the part once the call
+/// returns.
 #[rstest]
 fn valid_uses_of_a_part_of_a_wider_address(mut with_db: RootDatabase) {
     let source = r#"
@@ -1194,12 +1196,19 @@ VAR_OUTPUT q : BOOL; END_VAR
     q := i;
 END_FUNCTION_BLOCK
 
+FUNCTION Out : BOOL
+VAR_OUTPUT o : BOOL; END_VAR
+    o := TRUE;
+    Out := TRUE;
+END_FUNCTION
+
 PROGRAM P
 VAR_EXTERNAL ready : BOOL; END_VAR
 VAR f : Pass; x : BOOL; END_VAR
     x := %IX0.3;
     %QX0.3 := ready;
     f(i := x, q => %QX0.4);
+    x := Out(o => %QX0.5);
 END_PROGRAM
 
 CONFIGURATION Cfg
@@ -1274,36 +1283,6 @@ END_CONFIGURATION
        |
        | Note: take the reference of '%QW0' as a whole
     ---'
-    ");
-}
-
-/// A FUNCTION writes its output through an address; an FB copies it after
-/// the call, which is why only the function is refused.
-#[rstest]
-fn invalid_function_output_into_a_part_of_a_wider_address(mut with_db: RootDatabase) {
-    let source = r#"
-FUNCTION Out : BOOL
-VAR_OUTPUT o : BOOL; END_VAR
-    o := TRUE;
-    Out := TRUE;
-END_FUNCTION
-
-PROGRAM P
-VAR x : BOOL; w : WORD; END_VAR
-    w := %QW0;
-    x := Out(o => %QX0.4);
-END_PROGRAM
-"#;
-    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E1423] Error: part of a wider address
-        ,-[ file:///test0.st:11:19 ]
-        |
-     11 |     x := Out(o => %QX0.4);
-        |                   ^^^|^^
-        |                      `---- '%QX0.4' is part of '%QW0' and has no address a function could write its output through
-        |
-        | Note: bind the output to a variable and assign '%QX0.4' from it
-    ----'
     ");
 }
 

@@ -1761,13 +1761,13 @@ impl<'db> ExprLowerCtx<'db> {
                         });
                     }
                     ParamAssignKind::FormalOutput { variable, .. } => {
-                    if self.view(variable, variable.infer(self.db))?.is_some() {
-                        return Err(LowerTypeError::UnsupportedType(
-                            "a function cannot write its output into part of a wider address; \
-                             `rk check` refuses it (E1423)"
-                                .to_string(),
-                        ));
-                    }
+                        if self.view(variable, variable.infer(self.db))?.is_some() {
+                            return Err(LowerTypeError::UnsupportedType(
+                                "a call with no signature cannot write its output into part \
+                                 of a wider address"
+                                    .to_string(),
+                            ));
+                        }
                         let place = self.lower_variable_access(variable)?;
                         args.push(MirCallArg {
                             value: MirExpr::AddrOf(place),
@@ -1967,14 +1967,6 @@ impl<'db> ExprLowerCtx<'db> {
                     }
                 }
                 hir::hir_ty::body::ParamBinding::Output(variable) => {
-                    if self.view(*variable, variable.infer(self.db))?.is_some() {
-                        return Err(LowerTypeError::UnsupportedType(
-                            "a function cannot write its output into part of a wider address; \
-                             `rk check` refuses it (E1423)"
-                                .to_string(),
-                        ));
-                    }
-                    let place = self.lower_variable_access(*variable)?;
                     let ty = crate::lower::lower_func::lower_var_type(self.db, *var)?;
                     // A WIDER scalar destination converts after the call: the
                     // callee writes its own lane wherever it is pointed.
@@ -1993,6 +1985,60 @@ impl<'db> ExprLowerCtx<'db> {
                             _ => None,
                         }
                     });
+                    let place = match self.view(*variable, variable.infer(self.db))? {
+                        // Whole bytes of a wider address's cell have an
+                        // address the callee writes through.
+                        Some(super::multibit::View::Bytes(place)) => place,
+                        // Bits of it do not: the output is received in a
+                        // scratch, and the owner is rebuilt with it once the
+                        // call returns, inside the expression the call is.
+                        Some(view) => {
+                            let scratch = if is_extern {
+                                let scratch = self.extern_result_scratch(ty.clone());
+                                extern_results.push(crate::expr::ExternResultBind {
+                                    scratch,
+                                    dest: None,
+                                    ty: ty.clone(),
+                                    target_lane: None,
+                                });
+                                scratch
+                            } else {
+                                let scratch = hir::hir_def::interned::identifier::Ident::new(
+                                    self.db,
+                                    compact_str::CompactString::from(format!(
+                                        "$outcopy${}",
+                                        self.call_scratch.borrow().memory.len()
+                                    )),
+                                );
+                                self.call_scratch
+                                    .borrow_mut()
+                                    .memory
+                                    .push((scratch, ty.clone()));
+                                args.push(MirCallArg {
+                                    value: MirExpr::AddrOf(MirPlace::Local(scratch)),
+                                    kind: MirArgKind::ByRef,
+                                });
+                                scratch
+                            };
+                            let mut value = MirExpr::Load(MirPlace::Local(scratch), ty);
+                            if let (Some(from), Some(to)) = (out_lane, target_lane) {
+                                value = MirExpr::Cast {
+                                    expr: Box::new(value),
+                                    from,
+                                    to,
+                                };
+                            }
+                            let lane = view.store_lane();
+                            let (target, value) = view.write(value);
+                            output_bindings.push(crate::expr::MirOutputBinding {
+                                target,
+                                value,
+                                ty: lane,
+                            });
+                            continue;
+                        }
+                        None => self.lower_variable_access(*variable)?,
+                    };
                     if is_extern {
                         // The result pops off the stack into a scratch,
                         // then stores to the bound place — no pointer arg.
@@ -2012,16 +2058,22 @@ impl<'db> ExprLowerCtx<'db> {
                                 self.call_scratch.borrow().memory.len()
                             )),
                         );
-                        self.call_scratch.borrow_mut().memory.push((scratch, ty));
+                        self.call_scratch
+                            .borrow_mut()
+                            .memory
+                            .push((scratch, ty.clone()));
                         args.push(MirCallArg {
                             value: MirExpr::AddrOf(MirPlace::Local(scratch)),
                             kind: MirArgKind::ByRef,
                         });
                         output_bindings.push(crate::expr::MirOutputBinding {
-                            scratch,
                             target: place,
-                            from,
-                            to,
+                            value: MirExpr::Cast {
+                                expr: Box::new(MirExpr::Load(MirPlace::Local(scratch), ty)),
+                                from,
+                                to,
+                            },
+                            ty: to,
                         });
                     } else {
                         args.push(MirCallArg {
