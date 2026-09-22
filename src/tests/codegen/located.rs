@@ -186,7 +186,172 @@ fn no_located_variable_exports_no_band(mut with_db: db::RootDatabase) {
         assert!(!exports(&wasm, name), "{name} must not be exported");
     }
 
-    // And a band that was never exported reads back as empty.
+    // And a band that was never exported reads back as empty, with no map
+    // beside it.
     let plc = TestPlc::load(&wasm).expect("load");
     assert_eq!(plc.input_region().size, 0);
+    assert!(plc.located_map().entries.is_empty());
+    assert!(
+        !exports(&wasm, debug_format::LOCATED_MAP_SECTION),
+        "no located-map section either"
+    );
+}
+
+// ---------------------------------------------------------------------------
+// The `located-map` section: which address is which cell. The band exports
+// say where the three areas are; this says what lives inside them.
+// ---------------------------------------------------------------------------
+
+/// Every located variable appears once, with the address as written, the
+/// name the program calls it, its area, its decoded levels, the width its
+/// size letter names, and a linear-memory address inside its own band.
+#[rstest]
+fn the_map_names_every_address(mut with_db: db::RootDatabase) {
+    let source = r#"
+        PROGRAM P
+        VAR_EXTERNAL start : BOOL; lamp : BOOL; deep : WORD; END_VAR
+            lamp := start;
+            deep := deep + 1;
+        END_PROGRAM
+
+        CONFIGURATION Cfg
+        VAR_GLOBAL
+            start AT %IX0.0   : BOOL;
+            lamp  AT %QX0.0   : BOOL;
+            deep  AT %MW1.7.9 : WORD;
+        END_VAR
+            RESOURCE Res ON CPU
+                TASK T(INTERVAL := T#10ms, PRIORITY := 1);
+                PROGRAM P1 WITH T : P;
+            END_RESOURCE
+        END_CONFIGURATION
+    "#;
+    let (mir, wasm) = compile_to_mir_and_wasm(&mut with_db, source);
+    let plc = TestPlc::load(&wasm).expect("load");
+    let map = plc.located_map();
+
+    assert_eq!(map.version, debug_format::LOCATED_MAP_VERSION);
+    assert_eq!(map.entries.len(), 3);
+
+    let start = plc.located("%IX0.0").expect("start");
+    assert_eq!(start.name, "start");
+    assert_eq!(start.area, debug_format::LocatedArea::Input);
+    assert_eq!(start.path, vec![0, 0]);
+    assert_eq!(start.width, 1, "X names one bit");
+    assert_eq!(start.size, 4, "and the BOOL that holds it takes four bytes");
+    assert_eq!(start.ty, Some(debug_format::SymType::Bool));
+    assert_eq!(start.addr, mir.input_base);
+
+    let deep = plc.located("%MW1.7.9").expect("deep");
+    assert_eq!(deep.path, vec![1, 7, 9], "three levels, decoded in order");
+    assert_eq!(deep.width, 16);
+    assert_eq!(deep.area, debug_format::LocatedArea::Marker);
+    assert_eq!(deep.ty, Some(debug_format::SymType::Word));
+    assert_eq!(deep.addr, mir.marker_base);
+
+    let lamp = plc.located("%QX0.0").expect("lamp");
+    assert_eq!(lamp.area, debug_format::LocatedArea::Output);
+    assert_eq!(lamp.addr, mir.output_base);
+
+    // Every entry lands inside the band its area names.
+    for (entry, base, size) in [
+        (start, mir.input_base, mir.input_size),
+        (lamp, mir.output_base, mir.output_size),
+        (deep, mir.marker_base, mir.marker_size),
+    ] {
+        assert!(
+            entry.addr >= base && entry.addr + entry.size <= base + size,
+            "{} is outside its band",
+            entry.address
+        );
+    }
+}
+
+/// A host binds a channel to an ADDRESS and never computes a band offset of
+/// its own: the map hands it the linear-memory address, and the program sees
+/// the value under the variable's name.
+#[rstest]
+fn a_host_binds_by_address(mut with_db: db::RootDatabase) {
+    let source = r#"
+        PROGRAM P
+        VAR_EXTERNAL dial : INT; echo : INT; END_VAR
+            echo := dial * 2;
+        END_PROGRAM
+
+        CONFIGURATION Cfg
+        VAR_GLOBAL
+            dial AT %IW4 : INT;
+            echo AT %QW0 : INT;
+        END_VAR
+            RESOURCE Res ON CPU
+                TASK T(INTERVAL := T#10ms, PRIORITY := 1);
+                PROGRAM P1 WITH T : P;
+            END_RESOURCE
+        END_CONFIGURATION
+    "#;
+    let (_mir, wasm) = compile_to_mir_and_wasm(&mut with_db, source);
+    let mut plc = TestPlc::load(&wasm).expect("load");
+
+    plc.write_located("%IW4", &21i32.to_le_bytes())
+        .expect("bind and write the input channel");
+    plc.run(1).expect("scan");
+    assert_eq!(
+        i32::from_le_bytes(plc.read_located("%QW0").expect("read")[..4].try_into().unwrap()),
+        42
+    );
+
+    // An address the module does not declare is a failed binding, named.
+    let err = plc.located("%IW6").expect_err("not declared");
+    assert!(err.to_string().contains("%IW4"), "the error lists what is");
+}
+
+/// The layout hash covers the addresses a host bound, not where they landed:
+/// adding an unrelated global re-bases every band and must not invalidate a
+/// binding, while adding an address must.
+#[rstest]
+fn the_layout_hash_ignores_rebasing(#[allow(unused)] with_db: db::RootDatabase) {
+    let program = |extra_global: &str, extra_addr: &str| {
+        format!(
+            r#"
+        PROGRAM P
+        VAR_EXTERNAL dial : INT; END_VAR
+        VAR RETAIN seen : INT; END_VAR
+            seen := dial;
+        END_PROGRAM
+
+        CONFIGURATION Cfg
+        VAR_GLOBAL
+            dial AT %IW4 : INT;
+            {extra_global}
+            {extra_addr}
+        END_VAR
+            RESOURCE Res ON CPU
+                TASK T(INTERVAL := T#10ms, PRIORITY := 1);
+                PROGRAM P1 WITH T : P;
+            END_RESOURCE
+        END_CONFIGURATION
+    "#
+        )
+    };
+    // One database per variant: each is a whole workspace of its own.
+    let compile = |extra_global: &str, extra_addr: &str| {
+        let mut db = db::RootDatabase::default();
+        compile_to_mir_and_wasm(&mut db, &program(extra_global, extra_addr)).0
+    };
+    let bare = compile("", "");
+    let padded = compile("pad : LREAL;", "");
+    let grown = compile("", "knob AT %IW8 : INT;");
+
+    assert_ne!(
+        bare.input_base, padded.input_base,
+        "the unrelated global re-based the bands"
+    );
+    assert_eq!(
+        bare.located_map.layout_hash, padded.located_map.layout_hash,
+        "but the set of addresses did not change"
+    );
+    assert_ne!(
+        bare.located_map.layout_hash, grown.located_map.layout_hash,
+        "a new address is a new layout"
+    );
 }

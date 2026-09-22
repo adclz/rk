@@ -513,6 +513,7 @@ fn lower_module_from_pous<'db>(
         schedule_manifest: None,
         debug_symbols: crate::debug_symbols::DebugSymbols::new(),
         retain_map: debug_format::RetainMap::new(Vec::new()),
+        located_map: debug_format::LocatedMap::new(Vec::new()),
         source_files: Vec::new(),
     };
 
@@ -559,6 +560,7 @@ fn lower_module_from_pous<'db>(
     module.output_size = bands.output_size;
     module.marker_base = bands.marker_base;
     module.marker_size = bands.marker_size;
+    module.located_map = build_located_map(db, &bands.located, &global_table);
 
     // The debug-symbol table, now that every address is final; sorted by
     // path.
@@ -1006,17 +1008,64 @@ fn located_entry<'db>(
         address_text: dv.to_address(db),
         area,
         width_rank,
-        // A part that is not a plain decimal sorts last; the address text
-        // then breaks the tie, so the order stays total either way.
+        // `unsigned_int` admits digit separators (`%IW1_000`), so they come
+        // out before parsing. A level too large to fit saturates: it only
+        // orders the entry last, and the address TEXT stays the key a host
+        // binds to.
         offsets: dv
             .offset(db)
             .iter()
-            .map(|part| part.ident(db).text(db).parse::<u32>().unwrap_or(u32::MAX))
+            .map(|part| {
+                part.ident(db)
+                    .text(db)
+                    .replace('_', "")
+                    .parse::<u32>()
+                    .unwrap_or(u32::MAX)
+            })
             .collect(),
         address,
         size,
         align,
     })
+}
+
+/// The located map the module carries: every located variable at its FINAL
+/// address, paired with the address a host binds a channel to. The band
+/// exports say where the three areas are; this says which cell is which
+/// inside them.
+fn build_located_map<'db>(
+    db: &'db dyn WorkspaceDataBase,
+    located: &[crate::memory::LocatedEntry],
+    globals: &GlobalTable<'db>,
+) -> debug_format::LocatedMap {
+    use hir::hir_def::pous::variable::LocationArea;
+    debug_format::LocatedMap::new(
+        located
+            .iter()
+            .map(|e| debug_format::LocatedVar {
+                address: e.address_text.clone(),
+                name: e.name.text(db).to_string(),
+                area: match e.area {
+                    LocationArea::Input => debug_format::LocatedArea::Input,
+                    LocationArea::Output => debug_format::LocatedArea::Output,
+                    LocationArea::Marker => debug_format::LocatedArea::Marker,
+                },
+                path: e.offsets.clone(),
+                width: match e.width_rank {
+                    0 => 1,
+                    1 => 8,
+                    2 => 16,
+                    3 => 32,
+                    _ => 64,
+                },
+                addr: e.address,
+                size: e.size,
+                ty: globals
+                    .get(&e.name)
+                    .and_then(|(_, ty)| crate::debug_symbols::scalar_sym_ty(ty)),
+            })
+            .collect(),
+    )
 }
 
 /// Fill in the address and type of each global a body referenced by

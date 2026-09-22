@@ -343,6 +343,9 @@ pub struct TestPlc {
     input: Region,
     output: Region,
     marker: Region,
+    /// Which address is which cell, from the `located-map` section. Empty
+    /// when the module declares no located variable.
+    located: debug_format::LocatedMap,
     tick: u64,
 }
 
@@ -405,6 +408,7 @@ impl TestPlc {
         let input = band("input_base", "input_size");
         let output = band("output_base", "output_size");
         let marker = band("marker_base", "marker_size");
+        let located = located_map(wasm)?;
 
         let driver = match schedule_manifest(wasm)? {
             Some(manifest) => Driver::Scheduled(resolve_tasks(&mut store, &instance, &manifest)?),
@@ -429,6 +433,7 @@ impl TestPlc {
             input,
             output,
             marker,
+            located,
             tick: 0,
         })
     }
@@ -554,6 +559,55 @@ impl TestPlc {
     #[allow(dead_code)]
     pub fn read_outputs(&self) -> Vec<u8> {
         self.read_region(self.output)
+    }
+
+    /// The module's located map: every address it declares.
+    #[allow(dead_code)]
+    pub fn located_map(&self) -> &debug_format::LocatedMap {
+        &self.located
+    }
+
+    /// The map entry for one address AS WRITTEN (`%IW4`), which is how a host
+    /// binds a channel: by the address, never by a band offset it computed.
+    #[allow(dead_code)]
+    pub fn located(&self, address: &str) -> Result<&debug_format::LocatedVar> {
+        self.located
+            .entries
+            .iter()
+            .find(|e| e.address == address)
+            .with_context(|| {
+                format!(
+                    "no located variable at {address}; the module declares [{}]",
+                    self.located
+                        .entries
+                        .iter()
+                        .map(|e| e.address.as_str())
+                        .collect::<Vec<_>>()
+                        .join(", ")
+                )
+            })
+    }
+
+    /// Write one located cell by its address, as a bound host does.
+    #[allow(dead_code)]
+    pub fn write_located(&mut self, address: &str, bytes: &[u8]) -> Result<()> {
+        let entry = self.located(address)?;
+        if bytes.len() > entry.size as usize {
+            bail!(
+                "{address} holds {} bytes, not {}",
+                entry.size,
+                bytes.len()
+            );
+        }
+        let addr = entry.addr;
+        self.write_bytes(addr, bytes)
+    }
+
+    /// Read one located cell by its address.
+    #[allow(dead_code)]
+    pub fn read_located(&self, address: &str) -> Result<Vec<u8>> {
+        let entry = self.located(address)?;
+        self.read_bytes(entry.addr, entry.size as usize)
     }
 
     /// Write the process image into the input band, as a host does before a
@@ -688,6 +742,23 @@ fn sole_function_export(module: &Module) -> Result<String> {
 }
 
 /// The `rk.schedule` section, decoded, when the module carries one.
+/// The `located-map` section, or an empty map when the module carries none.
+fn located_map(wasm: &[u8]) -> Result<debug_format::LocatedMap> {
+    let Some(data) = custom_section(wasm, debug_format::LOCATED_MAP_SECTION) else {
+        return Ok(debug_format::LocatedMap::new(Vec::new()));
+    };
+    let map = debug_format::LocatedMap::from_msgpack(data)
+        .context("decoding the `located-map` section")?;
+    if map.version != debug_format::LOCATED_MAP_VERSION {
+        bail!(
+            "`located-map` is version {}, this harness reads {}",
+            map.version,
+            debug_format::LOCATED_MAP_VERSION
+        );
+    }
+    Ok(map)
+}
+
 fn schedule_manifest(wasm: &[u8]) -> Result<Option<debug_format::ScheduleManifest>> {
     let Some(data) = custom_section(wasm, debug_format::SCHEDULE_SECTION) else {
         return Ok(None);

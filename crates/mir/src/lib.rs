@@ -87,6 +87,11 @@ pub struct MirModule {
     /// (see `retain_map`), emitted as the `retain-map` section.
     pub retain_map: debug_format::RetainMap,
 
+    /// Which located (`AT %…`) variable sits where inside the three bands,
+    /// emitted as the `located-map` section. Empty when the workspace
+    /// declares none, and the section is then not emitted at all.
+    pub located_map: debug_format::LocatedMap,
+
     /// Source file URLs, indexed by `MirSourceLocation::file_id` and emitted
     /// as `DebugLines::files`.
     pub source_files: Vec<String>,

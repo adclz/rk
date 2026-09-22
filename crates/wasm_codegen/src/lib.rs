@@ -1774,6 +1774,16 @@ impl<'a> WasmGen<'a> {
             });
         }
 
+        // Which located variable is which cell. Load-bearing: without it the
+        // band exports give a host three ranges and no way to bind a channel
+        // to one variable inside them.
+        if !self.module.located_map.entries.is_empty() {
+            module.section(&wasm_encoder::CustomSection {
+                name: std::borrow::Cow::Borrowed(debug_format::LOCATED_MAP_SECTION),
+                data: std::borrow::Cow::Owned(self.module.located_map.to_msgpack()),
+            });
+        }
+
         // The schedule, load-bearing too: policy as data, so a task keeps its
         // name, priority and RESOURCE.
         if let Some(manifest) = &self.module.schedule_manifest {

@@ -611,9 +611,175 @@ impl RetainMap {
     }
 }
 
+// ---------------------------------------------------------------------------
+// Located map — which address is which cell
+// ---------------------------------------------------------------------------
+
+/// Custom wasm section carrying the [`LocatedMap`]. Load-bearing: the band
+/// exports say where the three areas are, and this says which variable sits
+/// where inside them. Without it a host can copy an image in and out but
+/// cannot bind a single channel.
+pub const LOCATED_MAP_SECTION: &str = "located-map";
+
+/// On-wire format version for [`LocatedMap`].
+pub const LOCATED_MAP_VERSION: u16 = 1;
+
+/// The area an address names. Each is one contiguous band, exported as
+/// `input_base`/`input_size` and its two siblings.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
+pub enum LocatedArea {
+    /// `%I` — the host writes it before a scan; the program only reads it.
+    Input,
+    /// `%Q` — the program writes it; the host reads it after a scan.
+    Output,
+    /// `%M` — the marker area, which the program owns outright.
+    Marker,
+}
+
+impl LocatedArea {
+    /// The prefix as written.
+    pub fn prefix(self) -> &'static str {
+        match self {
+            Self::Input => "%I",
+            Self::Output => "%Q",
+            Self::Marker => "%M",
+        }
+    }
+}
+
+/// Every located (`AT %…`) variable of a module, with the address it is bound
+/// to and where that lands in linear memory.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct LocatedMap {
+    pub version: u16,
+    /// Layout identity: FNV-1a over the sorted `(address, name, size)`
+    /// sequence, excluding linear-memory addresses so a band may re-base
+    /// between builds without invalidating a host's bindings. A host compares
+    /// it to know the set of addresses it bound is still this module's.
+    pub layout_hash: u64,
+    /// The located variables, sorted by `address` (deterministic; file
+    /// payload order).
+    pub entries: Vec<LocatedVar>,
+}
+
+/// One located variable.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct LocatedVar {
+    /// The address as written: `%IX0.0`, `%MW1.7.9`. This is the key a host
+    /// binds a channel to; rk gives its numeric levels no meaning of their
+    /// own, so two addresses name the same cell only if they are equal.
+    pub address: String,
+    /// The name the program calls it, which is what the debug symbols list
+    /// it under.
+    pub name: String,
+    pub area: LocatedArea,
+    /// The numeric levels of the address, in order — `%MW1.7.9` is
+    /// `[1, 7, 9]`. Carried decoded so a host need not parse `address`.
+    pub path: Vec<u32>,
+    /// What the size letter names, in bits: 1 (`X`), 8 (`B`), 16 (`W`),
+    /// 32 (`D`), 64 (`L`).
+    pub width: u16,
+    /// Absolute address in linear memory, inside this entry's band.
+    pub addr: u32,
+    /// Bytes the variable occupies there. This is its DECLARED type's size,
+    /// not `width / 8`: `sensor AT %IX0.0 : BOOL` names one bit and occupies
+    /// four bytes, because every cell is storage of its own.
+    pub size: u32,
+    /// The declared type, when it is a scalar the host can decode on its own;
+    /// `None` for an aggregate, which the debug symbols describe field by
+    /// field instead.
+    pub ty: Option<SymType>,
+}
+
+impl LocatedMap {
+    /// Build from entries: sorts by address and stamps the layout hash.
+    pub fn new(mut entries: Vec<LocatedVar>) -> Self {
+        entries.sort_by(|a, b| a.address.cmp(&b.address));
+        let layout_hash = Self::hash_layout(&entries);
+        LocatedMap {
+            version: LOCATED_MAP_VERSION,
+            layout_hash,
+            entries,
+        }
+    }
+
+    /// FNV-1a over the sorted `(address, name, size)` sequence.
+    fn hash_layout(entries: &[LocatedVar]) -> u64 {
+        const FNV_OFFSET: u64 = 0xcbf29ce484222325;
+        const FNV_PRIME: u64 = 0x100000001b3;
+        let mut h = FNV_OFFSET;
+        let mut eat = |bytes: &[u8]| {
+            for &b in bytes {
+                h ^= b as u64;
+                h = h.wrapping_mul(FNV_PRIME);
+            }
+        };
+        for e in entries {
+            eat(e.address.as_bytes());
+            eat(&[0]); // separator
+            eat(e.name.as_bytes());
+            eat(&[0]);
+            eat(&e.size.to_le_bytes());
+        }
+        h
+    }
+
+    /// The entries of one area, in address order.
+    pub fn area(&self, area: LocatedArea) -> impl Iterator<Item = &LocatedVar> {
+        self.entries.iter().filter(move |e| e.area == area)
+    }
+
+    /// Serialize to MessagePack bytes.
+    pub fn to_msgpack(&self) -> Vec<u8> {
+        rmp_serde::to_vec(self).expect("LocatedMap serialization should not fail")
+    }
+
+    /// Deserialize from MessagePack bytes.
+    pub fn from_msgpack(bytes: &[u8]) -> Result<Self, rmp_serde::decode::Error> {
+        rmp_serde::from_slice(bytes)
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// The located map round-trips, and its hash covers the addresses rather
+    /// than where they landed: re-basing a band must not invalidate a host's
+    /// bindings, adding an address must.
+    #[test]
+    fn located_map_round_trips_and_hashes_its_addresses() {
+        let var = |address: &str, name: &str, area, addr| LocatedVar {
+            address: address.into(),
+            name: name.into(),
+            area,
+            path: vec![0, 0],
+            width: 1,
+            addr,
+            size: 4,
+            ty: Some(SymType::Bool),
+        };
+        let map = LocatedMap::new(vec![
+            var("%QX0.0", "lamp", LocatedArea::Output, 128),
+            var("%IX0.0", "start", LocatedArea::Input, 64),
+        ]);
+        assert_eq!(
+            map.entries.iter().map(|e| &e.address).collect::<Vec<_>>(),
+            ["%IX0.0", "%QX0.0"],
+            "sorted by address, whatever order they arrived in"
+        );
+        assert_eq!(LocatedMap::from_msgpack(&map.to_msgpack()).unwrap(), map);
+
+        let rebased = LocatedMap::new(vec![
+            var("%IX0.0", "start", LocatedArea::Input, 4096),
+            var("%QX0.0", "lamp", LocatedArea::Output, 8192),
+        ]);
+        assert_eq!(map.layout_hash, rebased.layout_hash);
+
+        let mut grown = map.entries.clone();
+        grown.push(var("%IX0.1", "stop", LocatedArea::Input, 68));
+        assert_ne!(map.layout_hash, LocatedMap::new(grown).layout_hash);
+    }
 
     /// The v5 additions round-trip.
     #[test]
