@@ -355,3 +355,150 @@ fn the_layout_hash_ignores_rebasing(#[allow(unused)] with_db: db::RootDatabase) 
         "a new address is a new layout"
     );
 }
+
+// ---------------------------------------------------------------------------
+// RETAIN on `%M`. A retained marker has to be in two bands at once: its own,
+// which a host copies whole, and the retain band, which a power cycle
+// preserves. `%I` and `%Q` cannot be retained at all (E1420).
+// ---------------------------------------------------------------------------
+
+/// The retained cells end the `%M` band so the retain band can begin there,
+/// and the retain map names them. Before this, a `RETAIN` on a located
+/// variable was accepted at check and then dropped: the band was empty and
+/// the value silently went transient.
+#[rstest]
+fn a_retained_marker_is_in_the_marker_and_retain_bands(mut with_db: db::RootDatabase) {
+    let source = r#"
+        PROGRAM P
+        VAR_EXTERNAL count : INT; scratch : INT; g : INT; END_VAR
+            count := count + 1;
+            scratch := g;
+        END_PROGRAM
+
+        CONFIGURATION Cfg
+        VAR_GLOBAL
+            scratch AT %MW4 : INT;
+            g : INT;
+        END_VAR
+        VAR_GLOBAL RETAIN
+            count AT %MW0 : INT;
+        END_VAR
+            RESOURCE Res ON CPU
+                TASK T(INTERVAL := T#10ms, PRIORITY := 1);
+                PROGRAM P1 WITH T : P;
+            END_RESOURCE
+        END_CONFIGURATION
+    "#;
+    let (mir, wasm) = compile_to_mir_and_wasm(&mut with_db, source);
+    let plc = TestPlc::load(&wasm).expect("load");
+
+    let count = plc.located("%MW0").expect("count");
+    let scratch = plc.located("%MW4").expect("scratch");
+    assert_eq!(mir.marker_size, 8, "both markers are in the marker band");
+
+    // The transient cell comes first even though its address number is
+    // higher: the retained one has to END the area.
+    assert_eq!(scratch.addr, mir.marker_base);
+    assert_eq!(count.addr, mir.marker_base + 4);
+
+    // And the retain band starts exactly there.
+    assert_eq!(mir.retain_base, count.addr);
+    assert!(mir.retain_size >= 4);
+
+    // The map names the retained cell, and only it: `scratch` and `g` are in
+    // the band but transient, which is what the map is for.
+    let names: Vec<&str> = mir
+        .retain_map
+        .ranges
+        .iter()
+        .map(|r| r.path.as_str())
+        .collect();
+    assert_eq!(names, ["count"]);
+    let range = &mir.retain_map.ranges[0];
+    assert_eq!((range.addr, range.size), (count.addr, 4));
+}
+
+/// End to end: the value survives a power cycle when the host restores the
+/// mapped range, exactly as it does for any other RETAIN global.
+#[rstest]
+fn a_retained_marker_survives_a_power_cycle(mut with_db: db::RootDatabase) {
+    let source = r#"
+        PROGRAM P
+        VAR_EXTERNAL count : INT; END_VAR
+            count := count + 1;
+        END_PROGRAM
+
+        CONFIGURATION Cfg
+        VAR_GLOBAL RETAIN count AT %MW0 : INT; END_VAR
+            RESOURCE Res ON CPU
+                TASK T(INTERVAL := T#10ms, PRIORITY := 1);
+                PROGRAM P1 WITH T : P;
+            END_RESOURCE
+        END_CONFIGURATION
+    "#;
+    let (_mir, wasm) = compile_to_mir_and_wasm(&mut with_db, source);
+    let read = |plc: &TestPlc| {
+        i32::from_le_bytes(
+            plc.read_located("%MW0").expect("read")[..4]
+                .try_into()
+                .unwrap(),
+        )
+    };
+
+    let mut plc = TestPlc::load(&wasm).expect("load");
+    plc.run(3).expect("scans");
+    assert_eq!(read(&plc), 3);
+    let saved = plc.read_retain();
+
+    // Cold start: `__init` put the declared value back.
+    let mut cold = TestPlc::load(&wasm).expect("reload");
+    cold.run(1).expect("scan");
+    assert_eq!(read(&cold), 1, "nothing restored, so it counts from zero");
+
+    // Warm start: the host writes the retain band back after `__init`, the
+    // way the runtime replays the mapped ranges.
+    let mut warm = TestPlc::load(&wasm).expect("reload");
+    let base = warm.retain_region().base;
+    warm.write_bytes(base, &saved).expect("restore");
+    warm.run(1).expect("scan");
+    assert_eq!(read(&warm), 4, "it picked up where the last power cycle left");
+}
+
+/// With nothing retained in `%M`, the retain band starts where it always
+/// did — at the retained globals — and the marker band is untouched.
+#[rstest]
+fn a_transient_marker_leaves_the_retain_band_alone(mut with_db: db::RootDatabase) {
+    let source = r#"
+        PROGRAM P
+        VAR_EXTERNAL flag : INT; kept : INT; END_VAR
+            kept := flag;
+        END_PROGRAM
+
+        CONFIGURATION Cfg
+        VAR_GLOBAL flag AT %MW0 : INT; END_VAR
+        VAR_GLOBAL RETAIN kept : INT; END_VAR
+            RESOURCE Res ON CPU
+                TASK T(INTERVAL := T#10ms, PRIORITY := 1);
+                PROGRAM P1 WITH T : P;
+            END_RESOURCE
+        END_CONFIGURATION
+    "#;
+    let (mir, wasm) = compile_to_mir_and_wasm(&mut with_db, source);
+    let plc = TestPlc::load(&wasm).expect("load");
+    let flag = plc.located("%MW0").expect("flag");
+
+    assert_eq!(mir.marker_size, 4);
+    assert!(
+        mir.retain_base > flag.addr,
+        "the retain band begins past the marker band"
+    );
+    assert_eq!(
+        mir.retain_map
+            .ranges
+            .iter()
+            .map(|r| r.path.as_str())
+            .collect::<Vec<_>>(),
+        ["kept"],
+        "a transient marker is in no retain range"
+    );
+}

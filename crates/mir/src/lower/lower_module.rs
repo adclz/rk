@@ -1008,6 +1008,9 @@ fn located_entry<'db>(
         address_text: dv.to_address(db),
         area,
         width_rank,
+        // Only `%M` reaches here with it set: E1420 refuses RETAIN on an
+        // input or output image.
+        retain: v.qualifier(db).contains(hir::Qualifier::RETAIN),
         // `unsigned_int` admits digit separators (`%IW1_000`), so they come
         // out before parsing. A level too large to fit saturates: it only
         // orders the entry last, and the address TEXT stays the key a host

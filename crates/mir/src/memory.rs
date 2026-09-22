@@ -70,6 +70,10 @@ pub struct LocatedEntry {
     pub area: LocationArea,
     /// Rank of the address's width letter: `X` < `B` < `W` < `D` < `L`.
     pub width_rank: u8,
+    /// Declared `RETAIN`. Only `%M` can be: an input image restored at
+    /// startup would run the first scan on the last power cycle's values,
+    /// and `%I`/`%Q` are refused at check (E1420).
+    pub retain: bool,
     /// The numeric parts of the address, in order.
     pub offsets: Vec<u32>,
     /// Linear-memory address; pre-band-relocation as allocated, final once
@@ -204,8 +208,18 @@ impl MirMemoryLayout {
                 retain_globals: Vec::new(),
             };
         }
-        // `[ %I | %Q | %M | non-retain globals | retain globals |
-        //    retain program-instances ]`, contiguous at the arena top.
+        // `[ %I | %Q | %M transient | %M retained | non-retain globals |
+        //    retain globals | retain program-instances ]`, contiguous at the
+        // arena top.
+        //
+        // A retained `%M` cell has to be in TWO bands at once: its own, which
+        // a host copies whole, and the retain band, which a power cycle
+        // preserves. It can only be in both if the retain band starts inside
+        // `%M`, so the retained cells sit at the end of that area and
+        // `retain_base` lands on the first of them. The band then also spans
+        // the non-retain globals, which is what the retain MAP is for: it
+        // names the ranges that actually persist, and everything else in the
+        // band stays transient.
         let (retain_globals, nonretain_globals): (Vec<_>, Vec<_>) =
             globals.into_iter().partition(|g| g.retain);
         // The bands' base takes the largest alignment they contain.
@@ -220,13 +234,20 @@ impl MirMemoryLayout {
         let mut cursor = align_to(self.offset, band_align);
         let mut remap = FxHashMap::default();
 
+        // The retain band may begin inside `%M`, so both are in hand before
+        // the located walk rather than after it.
+        let mut retain_base: Option<u32> = None;
+        let mut relocated_retain_globals = Vec::new();
+
         // The located bands come first, one per area. Sorted by the ADDRESS,
         // never by allocation order, so which addresses exist is the only
-        // thing the layout depends on.
+        // thing the layout depends on — with the retained cells of an area
+        // last, so they can end it and the retain band can start there.
         let mut located = located;
         located.sort_by(|a, b| {
-            (a.area, a.width_rank, &a.offsets, &a.address_text).cmp(&(
+            (a.area, a.retain, a.width_rank, &a.offsets, &a.address_text).cmp(&(
                 b.area,
+                b.retain,
                 b.width_rank,
                 &b.offsets,
                 &b.address_text,
@@ -244,6 +265,15 @@ impl MirMemoryLayout {
                 let addr = align_to(cursor, entry.align);
                 base.get_or_insert(addr);
                 remap.insert(entry.address, addr);
+                if entry.retain {
+                    retain_base.get_or_insert(addr);
+                    relocated_retain_globals.push(RetainEntry {
+                        name: entry.name,
+                        address: addr,
+                        size: entry.size,
+                        align: entry.align,
+                    });
+                }
                 relocated_located.push(LocatedEntry {
                     address: addr,
                     ..entry.clone()
@@ -261,9 +291,8 @@ impl MirMemoryLayout {
             remap.insert(g.address, addr);
             cursor = addr + g.size;
         }
-        // Retain globals begin the retain band (overlapping the globals band).
-        let mut retain_base: Option<u32> = None;
-        let mut relocated_retain_globals = Vec::new();
+        // Retain globals continue the retain band (overlapping the globals
+        // band), or begin it when no `%M` cell is retained.
         for g in &retain_globals {
             let addr = align_to(cursor, g.align);
             retain_base.get_or_insert(addr);
