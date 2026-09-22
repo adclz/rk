@@ -264,8 +264,8 @@ pub fn walk_type(
     }
 }
 
-/// The decode type of one scalar array element; `None` for aggregates.
-fn scalar_sym_ty(ty: &MirType) -> Option<SymType> {
+/// The decode type of one scalar value; `None` for aggregates.
+pub(crate) fn scalar_sym_ty(ty: &MirType) -> Option<SymType> {
     match ty {
         MirType::Elementary(e) => Some(sym_type_of(*e)),
         MirType::Enum(e) => Some(sym_type_of(e.storage)),
