@@ -1242,6 +1242,32 @@ fn a_debugger_reads_and_forces_a_part_by_its_name(mut with_db: db::RootDatabase)
     assert_eq!(read(&plc, "ready"), VarValue::Bool(true), "the program saw -128");
 }
 
+/// A bare address is its width's bit string, whatever the cell was
+/// declared as: `%ID0` beside a REAL there is its bits.
+#[rstest]
+fn a_bare_address_is_the_bits_of_its_cell(mut with_db: db::RootDatabase) {
+    let source = r#"
+        PROGRAM P
+            %QD0 := %ID0;
+        END_PROGRAM
+
+        CONFIGURATION Cfg
+        VAR_GLOBAL gain AT %ID0 : REAL; END_VAR
+            RESOURCE Res ON CPU
+                TASK T(INTERVAL := T#10ms, PRIORITY := 1);
+                PROGRAM P1 WITH T : P;
+            END_RESOURCE
+        END_CONFIGURATION
+    "#;
+    let (_mir, wasm) = compile_to_mir_and_wasm(&mut with_db, source);
+    let mut plc = TestPlc::load(&wasm).expect("load");
+    plc.write_located("%ID0", &2.5f32.to_bits().to_le_bytes())
+        .expect("the REAL");
+    plc.run(1).expect("scan");
+    let word = u32::from_le_bytes(plc.read_located("%QD0").expect("read")[..4].try_into().unwrap());
+    assert_eq!(word, 2.5f32.to_bits(), "the REAL's bits");
+}
+
 /// An output's initial value is written by `__init`, so the output is in
 /// that state before the first scan — the startup value a host sees first.
 #[rstest]

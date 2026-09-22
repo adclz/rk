@@ -928,13 +928,24 @@ impl<'db> ExprLowerCtx<'db> {
                         "'{address}' names no I/O band; `rk check` refuses it (E1417)"
                     ))
                 })?;
-                Ok(MirPlace::Global {
-                    name: Some(hir::hir_def::interned::identifier::Ident::new(
-                        self.db,
-                        compact_str::CompactString::from(address),
-                    )),
-                    address: 0,
-                    ty: MirType::Elementary(shape.elementary()),
+                // The address's own type is its width's bit string, which is
+                // not the cell's when a VAR_GLOBAL declared it otherwise: a
+                // bare `%ID0` is the bits of a REAL there, so the cell is
+                // reached as a field of that type at offset 0.
+                let name = hir::hir_def::interned::identifier::Ident::new(
+                    self.db,
+                    compact_str::CompactString::from(address),
+                );
+                let ty = MirType::Elementary(shape.elementary());
+                Ok(MirPlace::Field {
+                    base: Box::new(MirPlace::Global {
+                        name: Some(name),
+                        address: 0,
+                        ty: ty.clone(),
+                    }),
+                    field_name: name,
+                    field_offset: 0,
+                    field_type: ty,
                 })
             }
         }
