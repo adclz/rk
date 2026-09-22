@@ -61,6 +61,17 @@ pub struct MirModule {
     pub globals_base: u32,
     pub globals_size: u32,
 
+    /// The three located (`AT %…`) bands: `%I` written by the host before a
+    /// scan, `%Q` read back after it, `%M` the program's own marker area.
+    /// Each is contiguous, so a host copies one range per direction; all
+    /// three are zero-sized when the workspace declares no located variable.
+    pub input_base: u32,
+    pub input_size: u32,
+    pub output_base: u32,
+    pub output_size: u32,
+    pub marker_base: u32,
+    pub marker_size: u32,
+
     /// Resolved task schedule of the module's CONFIGURATION; `None` without one.
     pub schedule: Option<schedule::MirSchedule>,
 

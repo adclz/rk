@@ -503,6 +503,12 @@ fn lower_module_from_pous<'db>(
         retain_size: 0,
         globals_base: 0,
         globals_size: 0,
+        input_base: 0,
+        input_size: 0,
+        output_base: 0,
+        output_size: 0,
+        marker_base: 0,
+        marker_size: 0,
         schedule,
         schedule_manifest: None,
         debug_symbols: crate::debug_symbols::DebugSymbols::new(),
@@ -547,6 +553,12 @@ fn lower_module_from_pous<'db>(
     module.retain_size = bands.retain_size;
     module.globals_base = bands.globals_base;
     module.globals_size = bands.globals_size;
+    module.input_base = bands.input_base;
+    module.input_size = bands.input_size;
+    module.output_base = bands.output_base;
+    module.output_size = bands.output_size;
+    module.marker_base = bands.marker_base;
+    module.marker_size = bands.marker_size;
 
     // The debug-symbol table, now that every address is final; sorted by
     // path.
@@ -916,8 +928,8 @@ type GlobalTable<'db> =
     FxHashMap<hir::hir_def::interned::identifier::Ident, (u32, crate::types::MirType)>;
 
 /// Allocate a slot for every configuration VAR_GLOBAL and build the
-/// symbol table; RETAIN globals go in the band. Located (`AT %…`)
-/// globals are plain storage for now.
+/// symbol table; RETAIN globals go in the band, located (`AT %…`) ones in
+/// the I/O band their area names.
 fn build_global_table<'db>(
     db: &'db dyn WorkspaceDataBase,
     config: &[hir::hir_def::config::ConfigDecl<'db>],
@@ -949,12 +961,62 @@ fn add_global<'db>(
         align,
         crate::memory::MirAllocKind::Variable,
     );
-    // RETAIN globals are flagged so the globals band overlaps the retain
-    // band on them.
-    let retain = v.qualifier(db).contains(hir::Qualifier::RETAIN);
-    memory_layout.record_global(v.name(db), addr, size, align, retain);
+    // A located global lives in its area's band instead of the globals band:
+    // the host copies a whole direction at once, and a variable that is not
+    // in that range would not travel with it.
+    match located_entry(db, v, addr, size, align) {
+        Some(entry) => memory_layout.record_located(entry),
+        None => {
+            // RETAIN globals are flagged so the globals band overlaps the
+            // retain band on them.
+            let retain = v.qualifier(db).contains(hir::Qualifier::RETAIN);
+            memory_layout.record_global(v.name(db), addr, size, align, retain);
+        }
+    }
     table.insert(v.name(db), (addr, ty));
     Ok(())
+}
+
+/// The band entry for a located VAR_GLOBAL, or `None` when the address names
+/// no band — an unknown area letter, a missing or unknown width letter, or
+/// the incomplete `%I*`, each of which `rk check` refuses (E1417) before
+/// lowering ever runs. MIR only has to not invent a band for them.
+fn located_entry<'db>(
+    db: &'db dyn WorkspaceDataBase,
+    v: &hir::hir_def::pous::variable::VariableDecl<'db>,
+    address: u32,
+    size: u32,
+    align: u32,
+) -> Option<crate::memory::LocatedEntry> {
+    let dv = v.location(db)?;
+    if dv.partly(db) {
+        return None;
+    }
+    let area = dv.area(db)?;
+    let width_rank = match dv.adress(db).text(db).chars().nth(1)?.to_ascii_uppercase() {
+        'X' => 0,
+        'B' => 1,
+        'W' => 2,
+        'D' => 3,
+        'L' => 4,
+        _ => return None,
+    };
+    Some(crate::memory::LocatedEntry {
+        name: v.name(db),
+        address_text: dv.to_address(db),
+        area,
+        width_rank,
+        // A part that is not a plain decimal sorts last; the address text
+        // then breaks the tie, so the order stays total either way.
+        offsets: dv
+            .offset(db)
+            .iter()
+            .map(|part| part.ident(db).text(db).parse::<u32>().unwrap_or(u32::MAX))
+            .collect(),
+        address,
+        size,
+        align,
+    })
 }
 
 /// Fill in the address and type of each global a body referenced by

@@ -1714,9 +1714,9 @@ END_CONFIGURATION
 }
 
 /// A located global is reachable by its own name — the `AT` clause is not
-/// part of it — and the location itself gets the SAME answer as a direct
-/// access: refused, because the hardware is not implemented. It used to
-/// compile silently into an ordinary variable that never sees its input.
+/// part of it — and the address binds it to the input band, so the whole
+/// declaration checks clean. The location itself is exercised in
+/// `semantics::direct_variables`.
 #[rstest]
 fn a_located_global_is_named_by_its_identifier(mut with_db: RootDatabase) {
     let source = r#"
@@ -1734,17 +1734,7 @@ VAR_GLOBAL sensor AT %IX0.0 : BOOL; END_VAR
     END_RESOURCE
 END_CONFIGURATION
 "#;
-    assert_snapshot!(crate::tests::utils::test_diagnostics(&mut with_db, &[source]), @r"
-    [E1417] Error: direct variable access is not supported
-       ,-[ file:///test0.st:9:12 ]
-       |
-     9 | VAR_GLOBAL sensor AT %IX0.0 : BOOL; END_VAR
-       |            ^^^^^^^^^^^|^^^^^^^^^^^
-       |                       `------------- '%IX0.0' cannot be read or written: there is no I/O mapping
-       |
-       | Note: the address is understood and X/B/W/D/L names the width, but nothing connects it to a process image yet
-    ---'
-    ");
+    assert_snapshot!(crate::tests::utils::test_diagnostics(&mut with_db, &[source]), @"");
 }
 
 // E1403: a deployment drives one RESOURCE, so a second one is refused where

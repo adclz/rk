@@ -27,6 +27,7 @@ mod imports;
 mod initializers;
 mod inout;
 mod locals;
+mod located;
 mod instance_initializers;
 mod mir_smoke;
 mod namespaces;

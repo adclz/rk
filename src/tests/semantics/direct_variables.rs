@@ -545,3 +545,235 @@ END_FUNCTION_BLOCK"#;
     ---'
     ");
 }
+
+// ---------------------------------------------------------------------------
+// Located (`AT %…`) declarations. A VAR_GLOBAL bound to an address is storage
+// in one of the three I/O bands; everywhere else a location still has nowhere
+// to live and keeps E1417.
+// ---------------------------------------------------------------------------
+
+/// A VAR_GLOBAL in each of the three areas is accepted: the address names a
+/// band, and the declaration names the variable a host binds a channel to.
+#[rstest]
+fn valid_located_globals_in_each_area(mut with_db: RootDatabase) {
+    let source = r#"
+PROGRAM P
+VAR_EXTERNAL sensor : BOOL; valve : BOOL; flag : INT; END_VAR
+    valve := sensor;
+    flag := flag + 1;
+END_PROGRAM
+
+CONFIGURATION Cfg
+VAR_GLOBAL
+    sensor AT %IX0.0 : BOOL;
+    valve AT %QX0.1 : BOOL;
+    flag AT %MW2 : INT;
+END_VAR
+    RESOURCE R ON CPU
+        TASK T(INTERVAL := T#10ms, PRIORITY := 1);
+        PROGRAM P1 WITH T : P;
+    END_RESOURCE
+END_CONFIGURATION
+"#;
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @"");
+}
+
+/// The host owns `%I`: it copies the process image in before every scan, so a
+/// write the program makes is gone before anything can read it. Accepting it
+/// silently produced a program whose assignments simply vanished.
+#[rstest]
+fn invalid_write_to_an_input_location(mut with_db: RootDatabase) {
+    let source = r#"
+PROGRAM P
+VAR_EXTERNAL sensor : BOOL; END_VAR
+    sensor := TRUE;
+END_PROGRAM
+
+CONFIGURATION Cfg
+VAR_GLOBAL sensor AT %IX0.0 : BOOL; END_VAR
+    RESOURCE R ON CPU
+        TASK T(INTERVAL := T#10ms, PRIORITY := 1);
+        PROGRAM P1 WITH T : P;
+    END_RESOURCE
+END_CONFIGURATION
+"#;
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
+    [E1419] Error: write to an input location
+       ,-[ file:///test0.st:4:5 ]
+       |
+     4 |     sensor := TRUE;
+       |     ^^^|^^
+       |        `---- '%IX0.0' is an input: it is written by the host, not by the program
+       |
+       | Note: the host copies the input image in before each scan, so this write is overwritten before anything can read it
+    ---'
+    ");
+}
+
+/// A VAR_IN_OUT binding hands the callee a writable alias, so an input passed
+/// to one is written just as surely as one on the left of a `:=`.
+#[rstest]
+fn invalid_input_bound_to_an_in_out(mut with_db: RootDatabase) {
+    let source = r#"
+FUNCTION_BLOCK Bump
+VAR_IN_OUT v : INT; END_VAR
+    v := v + 1;
+END_FUNCTION_BLOCK
+
+PROGRAM P
+VAR_EXTERNAL sensor : INT; END_VAR
+VAR b : Bump; END_VAR
+    b(v := sensor);
+END_PROGRAM
+
+CONFIGURATION Cfg
+VAR_GLOBAL sensor AT %IW0 : INT; END_VAR
+    RESOURCE R ON CPU
+        TASK T(INTERVAL := T#10ms, PRIORITY := 1);
+        PROGRAM P1 WITH T : P;
+    END_RESOURCE
+END_CONFIGURATION
+"#;
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
+    [E1419] Error: write to an input location
+        ,-[ file:///test0.st:10:12 ]
+        |
+     10 |     b(v := sensor);
+        |            ^^^|^^
+        |               `---- '%IW0' is an input: it is written by the host, not by the program
+        |
+        | Note: the host copies the input image in before each scan, so this write is overwritten before anything can read it
+    ----'
+    ");
+}
+
+/// Reading an input is the whole point of one, so it stays clean.
+#[rstest]
+fn valid_read_of_an_input_location(mut with_db: RootDatabase) {
+    let source = r#"
+PROGRAM P
+VAR_EXTERNAL sensor : BOOL; END_VAR
+VAR seen : BOOL; END_VAR
+    seen := sensor;
+END_PROGRAM
+
+CONFIGURATION Cfg
+VAR_GLOBAL sensor AT %IX0.0 : BOOL; END_VAR
+    RESOURCE R ON CPU
+        TASK T(INTERVAL := T#10ms, PRIORITY := 1);
+        PROGRAM P1 WITH T : P;
+    END_RESOURCE
+END_CONFIGURATION
+"#;
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @"");
+}
+
+/// The retain band is restored at startup, so a retained input image would
+/// run the first scan on the values of the last power cycle — before the
+/// field bus has refreshed them.
+#[rstest]
+fn invalid_retain_on_an_input_location(mut with_db: RootDatabase) {
+    let source = r#"
+PROGRAM P
+VAR_EXTERNAL sensor : BOOL; END_VAR
+VAR seen : BOOL; END_VAR
+    seen := sensor;
+END_PROGRAM
+
+CONFIGURATION Cfg
+VAR_GLOBAL RETAIN sensor AT %IX0.0 : BOOL; END_VAR
+    RESOURCE R ON CPU
+        TASK T(INTERVAL := T#10ms, PRIORITY := 1);
+        PROGRAM P1 WITH T : P;
+    END_RESOURCE
+END_CONFIGURATION
+"#;
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
+    [E1420] Error: RETAIN on an I/O location
+       ,-[ file:///test0.st:9:19 ]
+       |
+     9 | VAR_GLOBAL RETAIN sensor AT %IX0.0 : BOOL; END_VAR
+       |                   ^^^^^^^^^^^|^^^^^^^^^^^
+       |                              `------------- 'sensor' is located at '%IX0.0' and cannot be RETAIN
+       |
+       | Note: the retain band is restored at startup, so a retained I/O image would run the first scan on the values of the last power cycle; only '%M' may persist
+    ---'
+    ");
+}
+
+/// `%M` is the area that may legitimately persist: it is the program's own,
+/// and no copy-in overwrites it.
+#[rstest]
+fn valid_retain_on_a_marker_location(mut with_db: RootDatabase) {
+    let source = r#"
+PROGRAM P
+VAR_EXTERNAL count : INT; END_VAR
+    count := count + 1;
+END_PROGRAM
+
+CONFIGURATION Cfg
+VAR_GLOBAL RETAIN count AT %MW0 : INT; END_VAR
+    RESOURCE R ON CPU
+        TASK T(INTERVAL := T#10ms, PRIORITY := 1);
+        PROGRAM P1 WITH T : P;
+    END_RESOURCE
+END_CONFIGURATION
+"#;
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @"");
+}
+
+/// A POU's variables are instance fields, and an instance is laid out as a
+/// unit — so one of its fields cannot also sit in a band the host copies
+/// whole. A location there keeps the refusal it has always had.
+#[rstest]
+fn unsupported_located_variable_in_a_pou(mut with_db: RootDatabase) {
+    let source = r#"
+PROGRAM pgm
+VAR
+    VALVE_POS AT %QW28 : INT;
+END_VAR
+END_PROGRAM"#;
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
+    [E1417] Error: direct variable access is not supported
+       ,-[ file:///test0.st:4:5 ]
+       |
+     4 |     VALVE_POS AT %QW28 : INT;
+       |     ^^^^^^^^^^^^|^^^^^^^^^^^
+       |                 `------------- '%QW28' cannot be read or written: there is no I/O mapping
+       |
+       | Note: the address is understood and X/B/W/D/L names the width, but nothing connects it to a process image yet
+    ---'
+    ");
+}
+
+/// `%I*` names no address at all — the binding comes from VAR_CONFIG, which
+/// is not applied yet — so there is nothing to allocate.
+#[rstest]
+fn unsupported_incomplete_location(mut with_db: RootDatabase) {
+    let source = r#"
+PROGRAM P
+VAR_EXTERNAL sensor : BOOL; END_VAR
+VAR seen : BOOL; END_VAR
+    seen := sensor;
+END_PROGRAM
+
+CONFIGURATION Cfg
+VAR_GLOBAL sensor AT %I* : BOOL; END_VAR
+    RESOURCE R ON CPU
+        TASK T(INTERVAL := T#10ms, PRIORITY := 1);
+        PROGRAM P1 WITH T : P;
+    END_RESOURCE
+END_CONFIGURATION
+"#;
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
+    [E1417] Error: direct variable access is not supported
+       ,-[ file:///test0.st:9:12 ]
+       |
+     9 | VAR_GLOBAL sensor AT %I* : BOOL; END_VAR
+       |            ^^^^^^^^^^|^^^^^^^^^
+       |                      `----------- '%I*' cannot be read or written: there is no I/O mapping
+       |
+       | Note: the address is understood and X/B/W/D/L names the width, but nothing connects it to a process image yet
+    ---'
+    ");
+}

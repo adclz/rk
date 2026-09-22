@@ -338,6 +338,11 @@ pub struct TestPlc {
     driver: Driver,
     retain: Region,
     globals: Region,
+    /// The located bands, one per area. A module that declares nothing in an
+    /// area does not export it, and the band reads back zero-sized.
+    input: Region,
+    output: Region,
+    marker: Region,
     tick: u64,
 }
 
@@ -393,6 +398,13 @@ impl TestPlc {
             base: global_i32_opt(&mut store, &instance, "globals_base").unwrap_or(0) as u32,
             size: global_i32_opt(&mut store, &instance, "globals_size").unwrap_or(0) as u32,
         };
+        let mut band = |base: &str, size: &str| Region {
+            base: global_i32_opt(&mut store, &instance, base).unwrap_or(0) as u32,
+            size: global_i32_opt(&mut store, &instance, size).unwrap_or(0) as u32,
+        };
+        let input = band("input_base", "input_size");
+        let output = band("output_base", "output_size");
+        let marker = band("marker_base", "marker_size");
 
         let driver = match schedule_manifest(wasm)? {
             Some(manifest) => Driver::Scheduled(resolve_tasks(&mut store, &instance, &manifest)?),
@@ -414,6 +426,9 @@ impl TestPlc {
             driver,
             retain,
             globals,
+            input,
+            output,
+            marker,
             tick: 0,
         })
     }
@@ -515,6 +530,44 @@ impl TestPlc {
 
     pub fn globals_region(&self) -> Region {
         self.globals
+    }
+
+    /// The `%I` band the host writes before a scan.
+    #[allow(dead_code)]
+    pub fn input_region(&self) -> Region {
+        self.input
+    }
+
+    /// The `%Q` band the host reads after a scan.
+    #[allow(dead_code)]
+    pub fn output_region(&self) -> Region {
+        self.output
+    }
+
+    /// The `%M` band, which the program owns.
+    #[allow(dead_code)]
+    pub fn marker_region(&self) -> Region {
+        self.marker
+    }
+
+    /// Copy the output band out of linear memory, as a host does after a scan.
+    #[allow(dead_code)]
+    pub fn read_outputs(&self) -> Vec<u8> {
+        self.read_region(self.output)
+    }
+
+    /// Write the process image into the input band, as a host does before a
+    /// scan.
+    #[allow(dead_code)]
+    pub fn write_inputs(&mut self, offset: usize, bytes: &[u8]) -> Result<()> {
+        if offset + bytes.len() > self.input.size as usize {
+            bail!(
+                "write of {} bytes at offset {offset} leaves the input band ({} bytes)",
+                bytes.len(),
+                self.input.size
+            );
+        }
+        self.write_bytes(self.input.base + offset as u32, bytes)
     }
 
     /// Copy the retained band out of linear memory.
