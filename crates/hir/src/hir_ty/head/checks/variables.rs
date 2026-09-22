@@ -175,14 +175,7 @@ impl<'db> InitInference<'db> {
                 let address = compact_str::CompactString::from(dv.to_address(db));
                 let banded = dv.area(db).filter(|_| {
                     var.kind(db) == crate::hir_def::pous::variable::VariableKind::Global
-                        && !dv.partly(db)
-                        && dv
-                            .adress(db)
-                            .text(db)
-                            .chars()
-                            .nth(1)
-                            .and_then(crate::hir_ty::infer::normalize::access_size)
-                            .is_some()
+                        && crate::hir_ty::infer::normalize::names_a_band(db, dv)
                 });
                 match banded {
                     // `%I` is copied in before every scan and `%Q` read back
@@ -198,13 +191,26 @@ impl<'db> InitInference<'db> {
                         );
                     }
                     Some(_) => {}
-                    None => self.errors.push(
-                        ConfigError::DirectVariableUnsupported {
-                            site: var.as_call_site(db),
-                            address,
-                        }
-                        .to_diagnostic(db, self.scope.file(db)),
-                    ),
+                    None => {
+                        use crate::check::errors::e14_config::UnlocatableAddress;
+                        // A well-formed address in a POU is the POU's fault;
+                        // anything else is the address's.
+                        let why = if dv.partly(db) {
+                            UnlocatableAddress::Incomplete
+                        } else if crate::hir_ty::infer::normalize::names_a_band(db, dv) {
+                            UnlocatableAddress::InPou
+                        } else {
+                            UnlocatableAddress::Malformed
+                        };
+                        self.errors.push(
+                            ConfigError::DirectVariableUnsupported {
+                                site: var.as_call_site(db),
+                                address,
+                                why,
+                            }
+                            .to_diagnostic(db, self.scope.file(db)),
+                        )
+                    }
                 }
             }
             if extern_fn.is_some() {

@@ -2,7 +2,7 @@ use db::WorkspaceDataBase;
 use ide_diagnostic::IdeDiagnostic;
 
 use crate::check::errors::e04_init::InitError;
-use crate::check::errors::e14_config::ConfigError;
+use crate::check::errors::e14_config::{ConfigError, InputWriteRoute};
 use crate::{
     CallSite, HirNodeInfo,
     check::errors::{ToIdeDiagnostic, e03_type::TypeError},
@@ -456,12 +456,30 @@ impl<'db> Type<'db> {
                         ConfigError::WriteToInputLocation {
                             site: call_site,
                             address: compact_str::CompactString::from(dv.to_address(db)),
+                            via: InputWriteRoute::Assignment,
                         }
                         .to_diagnostic(db, ctx.scope.file(db)),
                     );
                     assignable = false;
                 }
                 assignable
+            }
+            // A bare address is storage too, and `%I` is the host's: the
+            // copy-in before the next scan overwrites whatever a program
+            // stored there (E1419).
+            Type::DirectVariable((dv, _)) => {
+                if dv.area(db) != Some(LocationArea::Input) {
+                    return true;
+                }
+                ctx.errors.push(
+                    ConfigError::WriteToInputLocation {
+                        site: call_site,
+                        address: compact_str::CompactString::from(dv.to_address(db)),
+                        via: InputWriteRoute::Assignment,
+                    }
+                    .to_diagnostic(db, ctx.scope.file(db)),
+                );
+                false
             }
             Type::StructElement(_) => true,
             _ => self.check_not_direct_type(db, call_site, ctx),

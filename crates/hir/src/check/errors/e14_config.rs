@@ -21,9 +21,174 @@ use ide_diagnostic::IdeDiagnostic;
 use ide_diagnostic::Related;
 use ide_diagnostic::diag;
 
+#[derive(Debug, Clone, PartialEq, Eq, Hash, salsa::Update)]
+pub enum ConfigError<'db> {
+    NoConfigFileFound {
+        file: File,
+    },
+    /// The workspace declares more than one CONFIGURATION. One workspace
+    /// builds one PLC, and a POU is a type usable in any of them, so a second
+    /// configuration makes "which globals are in scope here" unanswerable.
+    MultipleConfigurations {
+        config: ConfigDecl<'db>,
+        /// Every OTHER configuration, so they can be reached from here.
+        others: Vec<ConfigDecl<'db>>,
+    },
+    /// The configuration declares more than one RESOURCE. A resource is its
+    /// own execution unit and a runtime drives one, so a second resource
+    /// compiled into the module was refused at DEPLOY, from a compile that
+    /// exited 0; refusing here is the same rule, said where it can be fixed.
+    /// TEMPORARY: lifts when multi-resource deployment lands (one runtime
+    /// instance per RESOURCE).
+    MultipleResources {
+        config: ConfigDecl<'db>,
+        /// Every resource name across the configuration's fragments, sorted.
+        names: Vec<compact_str::CompactString>,
+        span: tree_sitter::Range,
+    },
+    /// A TASK or PROGRAM declared directly in a CONFIGURATION.
+    TaskOrProgramOutsideResource(Range),
+    MissingPriority(Range),
+    /// A TASK's PRIORITY is not a number this compiler can represent. Held as
+    /// source text until here, so an unusable value would otherwise reach the
+    /// scheduler as "no priority" and quietly sort last.
+    InvalidPriority {
+        task: SpanIdent<'db>,
+        value: Ident,
+    },
+    IntervalAfterPriority(Range),
+    SingleAfterInterval(Range),
+    SingleAfterPriority(Range),
+    /// A TASK the scheduler cannot honour. `reason` says which rule it broke,
+    /// so the four causes do not collapse into one message.
+    UnschedulableTask {
+        task: SpanIdent<'db>,
+        reason: UnschedulableReason,
+    },
+    /// The task name referenced in a `WITH <task>` clause does not exist in the config.
+    UnknownTaskRef {
+        task: SpanIdent<'db>,
+    },
+    /// A PROGRAM instance carries no `WITH <task>`, so nothing would ever run it.
+    ProgramWithoutTask {
+        instance: SpanIdent<'db>,
+    },
+    /// A VAR_CONFIG path's first segment doesn't match any program instance in the configuration.
+    ConfigInstInitUnknownInstance {
+        instance_name: SpanIdent<'db>,
+    },
+    /// A VAR_CONFIG path references a field that doesn't exist on the resolved type.
+    ConfigInstInitFieldNotFound {
+        field: SpanIdent<'db>,
+        parent_type: Type<'db>,
+    },
+    /// A VAR_ACCESS declaration's type does not match the referenced variable's actual type.
+    AccessDeclTypeMismatch {
+        var_origin: VariableDecl<'db>,
+        spec: Spec<'db>,
+        expected: Type<'db>,
+        actual: Type<'db>,
+    },
+    /// A configuration construct that is parsed but does nothing. Reported so a
+    /// user is not left believing state they wrote is being applied — the
+    /// silent version is worse than a rejection, because the compiler accepts
+    /// the input and then ignores it.
+    UnsupportedConfigElement {
+        expr: PathExpr<'db>,
+        kind: UnsupportedConfigKind,
+    },
+    /// A direct variable used anywhere: read or written in a body, or named
+    /// by a declaration's `AT` clause. The address is TYPED — `X/B/W/D/L`
+    /// names the width — but nothing maps it to an I/O image
+    DirectVariableUnsupported {
+        site: CallSite<'db>,
+        /// The address AS WRITTEN
+        address: compact_str::CompactString,
+        why: UnlocatableAddress,
+    },
+    /// A partial access whose size character names no slice: `w.%Z1`. The
+    /// grammar cannot catch it, because `adress_identifier` is shared with
+    /// direct variables and so admits any letters. Refusing it here is what
+    /// keeps it out of lowering, which has no reading for it and used to fail
+    /// with an internal compiler error on a program `check` had accepted.
+    UnknownMultibitsAccess {
+        expr: PathExpr<'db>,
+        /// The size character AS WRITTEN.
+        access: compact_str::CompactString,
+    },
+    /// A write to a variable declared `AT` an input address. The host owns
+    /// the input band: it copies the process image in before the scan, so a
+    /// store the program makes is overwritten before anyone can read it.
+    /// Silently accepting it produced a program whose assignments vanished.
+    WriteToInputLocation {
+        site: CallSite<'db>,
+        /// The address AS WRITTEN.
+        address: compact_str::CompactString,
+        via: InputWriteRoute,
+    },
+    /// `RETAIN` on a variable located in `%I` or `%Q`. The retain band is
+    /// restored at startup; restoring an input image means the first scan
+    /// runs on the values of the last power cycle, before the field bus has
+    /// refreshed them. `%M` is the area that may legitimately persist.
+    RetainOnIoLocation {
+        var: VariableDecl<'db>,
+        /// The address AS WRITTEN.
+        address: compact_str::CompactString,
+    },
+}
+
 /// Why a TASK cannot be scheduled. Only cyclic tasks with a literal, non-zero
 /// INTERVAL are; each other shape gets its own message rather than a shared
 /// "unsupported", because the fix differs in every case.
+/// Why an address has no storage to be given. Each has its own fix, so each
+/// says its own: one message covering all three said only that the address
+/// was unsupported, which was true of none of them once the bands landed.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, salsa::Update)]
+pub enum UnlocatableAddress {
+    /// An `AT` clause on a POU's own variable.
+    InPou,
+    /// `%I*`: the address is deliberately incomplete.
+    Incomplete,
+    /// No area letter, or no width letter — `%I1` is Table 16 row 4b, where
+    /// the size character is omitted and means BOOL.
+    Malformed,
+}
+
+impl UnlocatableAddress {
+    fn message(self, address: &str) -> String {
+        match self {
+            Self::InPou => format!("'{address}' cannot locate a variable of a POU"),
+            Self::Incomplete => format!("'{address}' is not a complete address"),
+            Self::Malformed => format!("'{address}' does not name an area and a width"),
+        }
+    }
+
+    fn note(self) -> &'static str {
+        match self {
+            Self::InPou => {
+                "a POU's variables are fields of its instance, which is laid out as one unit, so a field cannot also sit in a band the host copies whole; declare it as a VAR_GLOBAL of the CONFIGURATION and name it from the POU"
+            }
+            Self::Incomplete => {
+                "the binding for a partly specified address comes from VAR_CONFIG, which is checked but not applied yet (E1416); write the address in full to allocate it now"
+            }
+            Self::Malformed => {
+                "an address names its area with I, Q or M and its width with X, B, W, D or L, as in '%IX0.0'; omitting the size character is not implemented"
+            }
+        }
+    }
+}
+
+/// How a program reached an input it may not write. Assignment covers every
+/// route that ends in a store — `:=`, a FOR control variable, an output
+/// binding (`o => sensor`), a partial write (`sensor.3 := TRUE`) and a
+/// VAR_IN_OUT or VAR_OUTPUT argument. A reference is the one route that does
+/// not store yet: it hands out the capability to.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, salsa::Update)]
+pub enum InputWriteRoute {
+    Assignment,
+    Reference,
+}
+
 /// Which parsed-but-inert CONFIGURATION construct was found.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, salsa::Update)]
 pub enum UnsupportedConfigKind {
@@ -108,119 +273,6 @@ impl UnschedulableReason {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Hash, salsa::Update)]
-pub enum ConfigError<'db> {
-    NoConfigFileFound {
-        file: File,
-    },
-    /// The workspace declares more than one CONFIGURATION. One workspace
-    /// builds one PLC, and a POU is a type usable in any of them, so a second
-    /// configuration makes "which globals are in scope here" unanswerable.
-    MultipleConfigurations {
-        config: ConfigDecl<'db>,
-        /// Every OTHER configuration, so they can be reached from here.
-        others: Vec<ConfigDecl<'db>>,
-    },
-    /// The configuration declares more than one RESOURCE. A resource is its
-    /// own execution unit and a runtime drives one, so a second resource
-    /// compiled into the module was refused at DEPLOY, from a compile that
-    /// exited 0; refusing here is the same rule, said where it can be fixed.
-    /// TEMPORARY: lifts when multi-resource deployment lands (one runtime
-    /// instance per RESOURCE).
-    MultipleResources {
-        config: ConfigDecl<'db>,
-        /// Every resource name across the configuration's fragments, sorted.
-        names: Vec<compact_str::CompactString>,
-        span: tree_sitter::Range,
-    },
-    /// A TASK or PROGRAM declared directly in a CONFIGURATION.
-    TaskOrProgramOutsideResource(Range),
-    MissingPriority(Range),
-    /// A TASK's PRIORITY is not a number this compiler can represent. Held as
-    /// source text until here, so an unusable value would otherwise reach the
-    /// scheduler as "no priority" and quietly sort last.
-    InvalidPriority {
-        task: SpanIdent<'db>,
-        value: Ident,
-    },
-    IntervalAfterPriority(Range),
-    SingleAfterInterval(Range),
-    SingleAfterPriority(Range),
-    /// A TASK the scheduler cannot honour. `reason` says which rule it broke,
-    /// so the four causes do not collapse into one message.
-    UnschedulableTask {
-        task: SpanIdent<'db>,
-        reason: UnschedulableReason,
-    },
-    /// The task name referenced in a `WITH <task>` clause does not exist in the config.
-    UnknownTaskRef {
-        task: SpanIdent<'db>,
-    },
-    /// A PROGRAM instance carries no `WITH <task>`, so nothing would ever run it.
-    ProgramWithoutTask {
-        instance: SpanIdent<'db>,
-    },
-    /// A VAR_CONFIG path's first segment doesn't match any program instance in the configuration.
-    ConfigInstInitUnknownInstance {
-        instance_name: SpanIdent<'db>,
-    },
-    /// A VAR_CONFIG path references a field that doesn't exist on the resolved type.
-    ConfigInstInitFieldNotFound {
-        field: SpanIdent<'db>,
-        parent_type: Type<'db>,
-    },
-    /// A VAR_ACCESS declaration's type does not match the referenced variable's actual type.
-    AccessDeclTypeMismatch {
-        var_origin: VariableDecl<'db>,
-        spec: Spec<'db>,
-        expected: Type<'db>,
-        actual: Type<'db>,
-    },
-    /// A configuration construct that is parsed but does nothing. Reported so a
-    /// user is not left believing state they wrote is being applied — the
-    /// silent version is worse than a rejection, because the compiler accepts
-    /// the input and then ignores it.
-    UnsupportedConfigElement {
-        expr: PathExpr<'db>,
-        kind: UnsupportedConfigKind,
-    },
-    /// A direct variable used anywhere: read or written in a body, or named
-    /// by a declaration's `AT` clause. The address is TYPED — `X/B/W/D/L`
-    /// names the width — but nothing maps it to an I/O image
-    DirectVariableUnsupported {
-        site: CallSite<'db>,
-        /// The address AS WRITTEN
-        address: compact_str::CompactString,
-    },
-    /// A partial access whose size character names no slice: `w.%Z1`. The
-    /// grammar cannot catch it, because `adress_identifier` is shared with
-    /// direct variables and so admits any letters. Refusing it here is what
-    /// keeps it out of lowering, which has no reading for it and used to fail
-    /// with an internal compiler error on a program `check` had accepted.
-    UnknownMultibitsAccess {
-        expr: PathExpr<'db>,
-        /// The size character AS WRITTEN.
-        access: compact_str::CompactString,
-    },
-    /// A write to a variable declared `AT` an input address. The host owns
-    /// the input band: it copies the process image in before the scan, so a
-    /// store the program makes is overwritten before anyone can read it.
-    /// Silently accepting it produced a program whose assignments vanished.
-    WriteToInputLocation {
-        site: CallSite<'db>,
-        /// The address AS WRITTEN, from the declaration's `AT` clause.
-        address: compact_str::CompactString,
-    },
-    /// `RETAIN` on a variable located in `%I` or `%Q`. The retain band is
-    /// restored at startup; restoring an input image means the first scan
-    /// runs on the values of the last power cycle, before the field bus has
-    /// refreshed them. `%M` is the area that may legitimately persist.
-    RetainOnIoLocation {
-        var: VariableDecl<'db>,
-        /// The address AS WRITTEN.
-        address: compact_str::CompactString,
-    },
-}
 
 impl<'db> ErrorCode for ConfigError<'db> {
     fn code(&self) -> &'static str {
@@ -266,7 +318,7 @@ impl<'db> ErrorCode for ConfigError<'db> {
             Self::ConfigInstInitFieldNotFound { .. } => "configuration error",
             Self::AccessDeclTypeMismatch { .. } => "access declaration type mismatch",
             Self::UnsupportedConfigElement { .. } => "unsupported configuration element",
-            Self::DirectVariableUnsupported { .. } => "direct variable access is not supported",
+            Self::DirectVariableUnsupported { .. } => "address cannot be located",
             Self::UnknownMultibitsAccess { .. } => "unknown multibit access size",
             Self::WriteToInputLocation { .. } => "write to an input location",
             Self::RetainOnIoLocation { .. } => "RETAIN on an I/O location",
@@ -492,21 +544,14 @@ impl<'db> ToIdeDiagnostic<'db> for ConfigError<'db> {
                 diag.with_note(kind.note().to_string());
                 diag
             }
-            Self::DirectVariableUnsupported { site, address } => {
+            Self::DirectVariableUnsupported { site, address, why } => {
                 let mut diag = diag()
-                    .message(format!(
-                        "'{}' cannot be read or written: there is no I/O mapping",
-                        address
-                    ))
+                    .message(why.message(address))
                     .severity(DiagnosticSeverity::ERROR)
                     .desc(self)
                     .range(crate::denormalize(db, file, &site.get_span(db)).unwrap_or_default())
                     .call();
-                diag.with_note(
-                    "the address is understood and X/B/W/D/L names the width, but nothing \
-                     connects it to a process image yet"
-                        .to_string(),
-                );
+                diag.with_note(why.note().to_string());
                 diag
             }
             Self::UnknownMultibitsAccess { expr, access } => diag()
@@ -517,18 +562,31 @@ impl<'db> ToIdeDiagnostic<'db> for ConfigError<'db> {
                 .desc(self)
                 .range(crate::denormalize(db, file, &expr.get_span(db)).unwrap_or_default())
                 .call(),
-            Self::WriteToInputLocation { site, address } => {
-                let mut diag = diag()
-                    .message(format!(
+            Self::WriteToInputLocation { site, address, via } => {
+                let message = match via {
+                    InputWriteRoute::Assignment => format!(
                         "'{address}' is an input: it is written by the host, not by the program"
-                    ))
+                    ),
+                    InputWriteRoute::Reference => format!(
+                        "'{address}' is an input, so a writable reference to it cannot be taken"
+                    ),
+                };
+                let mut diag = diag()
+                    .message(message)
                     .severity(DiagnosticSeverity::ERROR)
                     .desc(self)
                     .range(crate::denormalize(db, file, &site.get_span(db)).unwrap_or_default())
                     .call();
                 diag.with_note(
-                    "the host copies the input image in before each scan, so this write is overwritten before anything can read it"
-                        .to_string(),
+                    match via {
+                        InputWriteRoute::Assignment => {
+                            "the host copies the input image in before each scan, so this write is overwritten before anything can read it"
+                        }
+                        InputWriteRoute::Reference => {
+                            "a REF_TO is a writable pointer and nothing tracks what is stored through it, so the reference is refused where it is taken"
+                        }
+                    }
+                    .to_string(),
                 );
                 diag
             }

@@ -143,6 +143,24 @@ pub fn access_size(c: char) -> Option<(ElementarySpec, usize)> {
     }
 }
 
+/// Whether an address names one of the three bands: an area letter (`I`, `Q`
+/// or `M`), a width letter, and a complete offset. Everything else — `%Z0`,
+/// `%I1` (Table 16 row 4b, not implemented), `%I*`, whose binding would come
+/// from VAR_CONFIG — has no storage to be given, and is refused with E1417.
+///
+/// MIR decodes the same address from its text (`crate::located` in the `mir`
+/// crate) and must agree: this is the check that keeps lowering from being
+/// handed something it has no band for.
+pub fn names_a_band(db: &dyn WorkspaceDataBase, dv: DirectVariable) -> bool {
+    if dv.partly(db) {
+        return false;
+    }
+    let letters = dv.adress(db).text(db);
+    letters.chars().count() == 2
+        && dv.area(db).is_some()
+        && letters.chars().nth(1).and_then(access_size).is_some()
+}
+
 /// Decode a `MultibitsPart` into the slice it names, or `None` when the
 /// offset is not a plain decimal integer or the size character is unknown.
 ///

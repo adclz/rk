@@ -483,6 +483,10 @@ fn lower_module_from_pous<'db>(
     // these as `Local(name)`; a post-pass below rewrites them to `Global`.
     let mut global_table = build_global_table(db, config, &mut memory_layout)?;
 
+    // Bare addresses the bodies named get their cells before the bands are
+    // carved, so they are laid out with the declared ones.
+    synthesize_bare_addresses(db, &mut functions, &mut memory_layout, &mut global_table)?;
+
     // Build the CONFIGURATION's schedule: allocate one instance per program
     // configuration (recording its RETAIN fields) and resolve task periods.
     let schedule = crate::schedule::lower_schedule(db, config, &mut memory_layout, &program_infos)?;
@@ -990,42 +994,17 @@ fn located_entry<'db>(
     size: u32,
     align: u32,
 ) -> Option<crate::memory::LocatedEntry> {
-    let dv = v.location(db)?;
-    if dv.partly(db) {
-        return None;
-    }
-    let area = dv.area(db)?;
-    let width_rank = match dv.adress(db).text(db).chars().nth(1)?.to_ascii_uppercase() {
-        'X' => 0,
-        'B' => 1,
-        'W' => 2,
-        'D' => 3,
-        'L' => 4,
-        _ => return None,
-    };
+    let address_text = v.location(db)?.to_address(db);
+    let shape = crate::located::address_shape(&address_text)?;
     Some(crate::memory::LocatedEntry {
         name: v.name(db),
-        address_text: dv.to_address(db),
-        area,
-        width_rank,
+        address_text,
+        area: shape.area,
+        width_rank: shape.width_rank,
         // Only `%M` reaches here with it set: E1420 refuses RETAIN on an
         // input or output image.
         retain: v.qualifier(db).contains(hir::Qualifier::RETAIN),
-        // `unsigned_int` admits digit separators (`%IW1_000`), so they come
-        // out before parsing. A level too large to fit saturates: it only
-        // orders the entry last, and the address TEXT stays the key a host
-        // binds to.
-        offsets: dv
-            .offset(db)
-            .iter()
-            .map(|part| {
-                part.ident(db)
-                    .text(db)
-                    .replace('_', "")
-                    .parse::<u32>()
-                    .unwrap_or(u32::MAX)
-            })
-            .collect(),
+        offsets: shape.offsets,
         address,
         size,
         align,
@@ -1083,7 +1062,7 @@ fn resolve_global_places<'db>(
         rewrite_globals_stmt(stmt, globals, &mut missing);
     }
     match missing.first() {
-        Some(name) => Err(LowerTypeError::UnsupportedType(format!(
+        Some((name, _)) => Err(LowerTypeError::UnsupportedType(format!(
             "no storage was allocated for global '{}'",
             name.text(db)
         ))),
@@ -1091,10 +1070,96 @@ fn resolve_global_places<'db>(
     }
 }
 
+/// Give every address a body wrote BARE (`%IW4`) a cell of its own.
+///
+/// Such an address declares nothing, so there is no VariableDecl to allocate
+/// against — lowering emits it as a global named by the address itself, and
+/// this is where that name gets storage. Two mentions of the same address, in
+/// any two bodies, are one cell; a VAR_GLOBAL declared `AT` the same address
+/// is that same cell too, rather than a second one the host would have to
+/// bind twice.
+///
+/// It runs before the bands are carved, and it reuses the global rewriter to
+/// find the names rather than walking the bodies a second way: a name the
+/// table does not hold comes back as missing, and an address is the only kind
+/// of missing name that is not an error — an identifier cannot start with
+/// `%`.
+fn synthesize_bare_addresses<'db>(
+    db: &'db dyn WorkspaceDataBase,
+    functions: &mut [crate::function::MirFunction],
+    memory_layout: &mut MirMemoryLayout,
+    table: &mut GlobalTable<'db>,
+) -> Result<(), LowerTypeError> {
+    // Keyed by the address text so the allocation order is the addresses'
+    // own and not the order the bodies happen to mention them in.
+    let mut wanted: std::collections::BTreeMap<
+        String,
+        (
+            hir::hir_def::interned::identifier::Ident,
+            crate::types::MirType,
+        ),
+    > = std::collections::BTreeMap::new();
+    for func in functions.iter_mut() {
+        let mut missing = Vec::new();
+        for stmt in &mut func.body {
+            rewrite_globals_stmt(stmt, table, &mut missing);
+        }
+        for (name, ty) in missing {
+            let text = name.text(db);
+            if text.starts_with('%') {
+                wanted.entry(text.to_string()).or_insert((name, ty));
+            }
+            // Anything else is a global that really is missing; the pass that
+            // runs once the layout is final reports it.
+        }
+    }
+
+    for (text, (name, ty)) in wanted {
+        let Some(shape) = crate::located::address_shape(&text) else {
+            return Err(LowerTypeError::UnsupportedType(format!(
+                "'{text}' names no I/O band; `rk check` refuses it (E1417)"
+            )));
+        };
+        // A declaration already bound this address, so the bare mention is
+        // the same storage under a second name.
+        if let Some(declared) = memory_layout
+            .located_allocations
+            .iter()
+            .find(|e| e.address_text.eq_ignore_ascii_case(&text))
+            && let Some((address, declared_ty)) = table.get(&declared.name).cloned()
+        {
+            table.insert(name, (address, declared_ty));
+            continue;
+        }
+        let size = ty.size_bytes();
+        let align = ty.alignment();
+        let address =
+            memory_layout.allocate(name, size, align, crate::memory::MirAllocKind::Variable);
+        memory_layout.record_located(crate::memory::LocatedEntry {
+            name,
+            address_text: text.clone(),
+            area: shape.area,
+            width_rank: shape.width_rank,
+            // A bare address has no declaration, so nothing can have asked
+            // for it to persist.
+            retain: false,
+            offsets: shape.offsets,
+            address,
+            size,
+            align,
+        });
+        table.insert(name, (address, ty));
+    }
+    Ok(())
+}
+
 fn rewrite_globals_place(
     place: &mut crate::expr::MirPlace,
     globals: &GlobalTable<'_>,
-    missing: &mut Vec<hir::hir_def::interned::identifier::Ident>,
+    missing: &mut Vec<(
+        hir::hir_def::interned::identifier::Ident,
+        crate::types::MirType,
+    )>,
 ) {
     use crate::expr::MirPlace;
     match place {
@@ -1107,7 +1172,7 @@ fn rewrite_globals_place(
                 *address = *addr;
                 *ty = global_ty.clone();
             }
-            None => missing.push(*name),
+            None => missing.push((*name, ty.clone())),
         },
         MirPlace::Local(_) => {}
         MirPlace::Field { base, .. } | MirPlace::Deref { base, .. } => {
@@ -1124,7 +1189,10 @@ fn rewrite_globals_place(
 fn rewrite_globals_expr(
     expr: &mut crate::expr::MirExpr,
     globals: &GlobalTable<'_>,
-    missing: &mut Vec<hir::hir_def::interned::identifier::Ident>,
+    missing: &mut Vec<(
+        hir::hir_def::interned::identifier::Ident,
+        crate::types::MirType,
+    )>,
 ) {
     use crate::expr::MirExpr;
     match expr {
@@ -1163,7 +1231,10 @@ fn rewrite_globals_expr(
 fn rewrite_globals_stmt(
     stmt: &mut crate::stmt::MirStmt,
     globals: &GlobalTable<'_>,
-    missing: &mut Vec<hir::hir_def::interned::identifier::Ident>,
+    missing: &mut Vec<(
+        hir::hir_def::interned::identifier::Ident,
+        crate::types::MirType,
+    )>,
 ) {
     use crate::stmt::MirStmt;
     match stmt {
@@ -1251,7 +1322,10 @@ fn rewrite_globals_stmt(
 fn rewrite_globals_body(
     body: &mut [crate::stmt::MirStmt],
     globals: &GlobalTable<'_>,
-    missing: &mut Vec<hir::hir_def::interned::identifier::Ident>,
+    missing: &mut Vec<(
+        hir::hir_def::interned::identifier::Ident,
+        crate::types::MirType,
+    )>,
 ) {
     for stmt in body {
         rewrite_globals_stmt(stmt, globals, missing);

@@ -904,9 +904,28 @@ impl<'db> ExprLowerCtx<'db> {
     ) -> Result<MirPlace, LowerTypeError> {
         match var_access.kind(self.db) {
             VariableAccessKind::Symbolic(begin_path) => self.lower_begin_path_to_place(begin_path),
-            VariableAccessKind::Direct(_) => Err(LowerTypeError::UnsupportedType(
-                "Direct variable access not yet supported".to_string(),
-            )),
+            // An address written bare declares nothing, so there is no
+            // VariableDecl to allocate against. It lowers to a global named
+            // by the address itself, and `lower_module` gives every such name
+            // one cell in its area's band — which is what makes two mentions
+            // of `%IW0`, in any two bodies, the same storage. The name is
+            // upper-cased so `%iw0` is not a second cell.
+            VariableAccessKind::Direct(dv) => {
+                let address = dv.to_address(self.db).to_ascii_uppercase();
+                let shape = crate::located::address_shape(&address).ok_or_else(|| {
+                    LowerTypeError::UnsupportedType(format!(
+                        "'{address}' names no I/O band; `rk check` refuses it (E1417)"
+                    ))
+                })?;
+                Ok(MirPlace::Global {
+                    name: Some(hir::hir_def::interned::identifier::Ident::new(
+                        self.db,
+                        compact_str::CompactString::from(address),
+                    )),
+                    address: 0,
+                    ty: MirType::Elementary(shape.elementary()),
+                })
+            }
         }
     }
 

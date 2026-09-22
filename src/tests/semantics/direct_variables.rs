@@ -19,15 +19,6 @@ FUNCTION_BLOCK fb1
 END_FUNCTION_BLOCK"#;
 
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E1417] Error: direct variable access is not supported
-       ,-[ file:///test0.st:7:13 ]
-       |
-     7 |     test := %IX0.0
-       |             ^^^|^^
-       |                `---- '%IX0.0' cannot be read or written: there is no I/O mapping
-       |
-       | Note: the address is understood and X/B/W/D/L names the width, but nothing connects it to a process image yet
-    ---'
     [E0301] Error: type mismatch
        ,-[ file:///test0.st:7:13 ]
        |
@@ -56,15 +47,6 @@ FUNCTION_BLOCK fb1
 END_FUNCTION_BLOCK"#;
 
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E1417] Error: direct variable access is not supported
-       ,-[ file:///test0.st:7:13 ]
-       |
-     7 |     test := %IB0.0
-       |             ^^^|^^
-       |                `---- '%IB0.0' cannot be read or written: there is no I/O mapping
-       |
-       | Note: the address is understood and X/B/W/D/L names the width, but nothing connects it to a process image yet
-    ---'
     [E0301] Error: type mismatch
        ,-[ file:///test0.st:7:13 ]
        |
@@ -74,7 +56,7 @@ END_FUNCTION_BLOCK"#;
        |
      7 |     test := %IB0.0
        |             ^^^|^^
-       |                `---- expected 'REAL', got 'BOOL'
+       |                `---- expected 'REAL', got 'BYTE'
     ---'
     ");
 }
@@ -93,15 +75,6 @@ FUNCTION_BLOCK fb1
 END_FUNCTION_BLOCK"#;
 
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E1417] Error: direct variable access is not supported
-       ,-[ file:///test0.st:7:13 ]
-       |
-     7 |     test := %IW0
-       |             ^^|^
-       |               `--- '%IW0' cannot be read or written: there is no I/O mapping
-       |
-       | Note: the address is understood and X/B/W/D/L names the width, but nothing connects it to a process image yet
-    ---'
     [E0301] Error: type mismatch
        ,-[ file:///test0.st:7:13 ]
        |
@@ -130,15 +103,6 @@ FUNCTION_BLOCK fb1
 END_FUNCTION_BLOCK"#;
 
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E1417] Error: direct variable access is not supported
-       ,-[ file:///test0.st:7:13 ]
-       |
-     7 |     test := %ID0
-       |             ^^|^
-       |               `--- '%ID0' cannot be read or written: there is no I/O mapping
-       |
-       | Note: the address is understood and X/B/W/D/L names the width, but nothing connects it to a process image yet
-    ---'
     [E0301] Error: type mismatch
        ,-[ file:///test0.st:7:13 ]
        |
@@ -171,15 +135,6 @@ FUNCTION_BLOCK fb1
 END_FUNCTION_BLOCK"#;
 
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E1417] Error: direct variable access is not supported
-       ,-[ file:///test0.st:7:13 ]
-       |
-     7 |     test := %IL0
-       |             ^^|^
-       |               `--- '%IL0' cannot be read or written: there is no I/O mapping
-       |
-       | Note: the address is understood and X/B/W/D/L names the width, but nothing connects it to a process image yet
-    ---'
     [E0301] Error: type mismatch
        ,-[ file:///test0.st:7:13 ]
        |
@@ -496,12 +451,11 @@ END_FUNCTION_BLOCK"#;
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @"");
 }
 
-/// A direct variable is TYPED (the width letter decides it) but nothing maps
-/// it to a process image, so it cannot be lowered. It is refused at check —
-/// this used to pass `rk check` with zero errors and then kill `rk compile`
-/// with an internal compiler error telling the user to file an issue.
+/// An address written bare declares nothing, but it is still storage:
+/// lowering gives each distinct one a cell in its area's band, so reading it
+/// is as ordinary as reading a variable.
 #[rstest]
-fn unsupported_in_a_body(mut with_db: RootDatabase) {
+fn valid_bare_address_in_a_body(mut with_db: RootDatabase) {
     let source = r#"
 FUNCTION_BLOCK fb1
     VAR
@@ -512,38 +466,88 @@ FUNCTION_BLOCK fb1
 
 END_FUNCTION_BLOCK"#;
 
-    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E1417] Error: direct variable access is not supported
-       ,-[ file:///test0.st:7:13 ]
-       |
-     7 |     test := %IX0.0;
-       |             ^^^|^^
-       |                `---- '%IX0.0' cannot be read or written: there is no I/O mapping
-       |
-       | Note: the address is understood and X/B/W/D/L names the width, but nothing connects it to a process image yet
-    ---'
-    ");
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @"");
 }
 
-/// Writing one is refused the same way as reading one.
+/// Writing an output is what an output is for.
 #[rstest]
-fn unsupported_as_an_assignment_target(mut with_db: RootDatabase) {
+fn valid_write_to_a_bare_output(mut with_db: RootDatabase) {
     let source = r#"
 FUNCTION_BLOCK fb1
     %QX0.1 := TRUE;
 END_FUNCTION_BLOCK"#;
 
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @"");
+}
+
+/// Writing a bare input is refused for the same reason a named one is: the
+/// copy-in before the next scan overwrites it (E1419).
+#[rstest]
+fn invalid_write_to_a_bare_input(mut with_db: RootDatabase) {
+    let source = r#"
+FUNCTION_BLOCK fb1
+    %IX0.1 := TRUE;
+END_FUNCTION_BLOCK"#;
+
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E1417] Error: direct variable access is not supported
+    [E1419] Error: write to an input location
        ,-[ file:///test0.st:3:5 ]
        |
-     3 |     %QX0.1 := TRUE;
+     3 |     %IX0.1 := TRUE;
        |     ^^^|^^
-       |        `---- '%QX0.1' cannot be read or written: there is no I/O mapping
+       |        `---- '%IX0.1' is an input: it is written by the host, not by the program
        |
-       | Note: the address is understood and X/B/W/D/L names the width, but nothing connects it to a process image yet
+       | Note: the host copies the input image in before each scan, so this write is overwritten before anything can read it
     ---'
     ");
+}
+
+/// An address that names no band keeps E1417, and `%I1` is one: Table 16
+/// row 4b (the size letter omitted, meaning BOOL) is not implemented.
+#[rstest]
+fn invalid_bare_address_without_a_width_letter(mut with_db: RootDatabase) {
+    let source = r#"
+FUNCTION_BLOCK fb1
+    VAR
+        test: BOOL;
+    END_VAR
+
+    test := %I1;
+
+END_FUNCTION_BLOCK"#;
+
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
+    [E1417] Error: address cannot be located
+       ,-[ file:///test0.st:7:13 ]
+       |
+     7 |     test := %I1;
+       |             ^|^
+       |              `--- '%I1' does not name an area and a width
+       |
+       | Note: an address names its area with I, Q or M and its width with X, B, W, D or L, as in '%IX0.0'; omitting the size character is not implemented
+    ---'
+    ");
+}
+
+/// Three levels are three levels (Table 16 row 10): the width comes from the
+/// size letter, never from the last level. Every level after the first used
+/// to be taken as a partial access, so `%ID0.1.2` did not parse at all and
+/// `%IB0.0` read back as the BOOL a bare `.0` selects.
+#[rstest]
+fn valid_hierarchical_address_keeps_its_width(mut with_db: RootDatabase) {
+    let source = r#"
+FUNCTION_BLOCK fb1
+    VAR
+        b: BYTE;
+        d: DWORD;
+    END_VAR
+
+    b := %IB0.0;
+    d := %ID0.1.2;
+
+END_FUNCTION_BLOCK"#;
+
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @"");
 }
 
 // ---------------------------------------------------------------------------
@@ -734,14 +738,14 @@ VAR
 END_VAR
 END_PROGRAM"#;
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E1417] Error: direct variable access is not supported
+    [E1417] Error: address cannot be located
        ,-[ file:///test0.st:4:5 ]
        |
      4 |     VALVE_POS AT %QW28 : INT;
        |     ^^^^^^^^^^^^|^^^^^^^^^^^
-       |                 `------------- '%QW28' cannot be read or written: there is no I/O mapping
+       |                 `------------- '%QW28' cannot locate a variable of a POU
        |
-       | Note: the address is understood and X/B/W/D/L names the width, but nothing connects it to a process image yet
+       | Note: a POU's variables are fields of its instance, which is laid out as one unit, so a field cannot also sit in a band the host copies whole; declare it as a VAR_GLOBAL of the CONFIGURATION and name it from the POU
     ---'
     ");
 }
@@ -766,14 +770,136 @@ VAR_GLOBAL sensor AT %I* : BOOL; END_VAR
 END_CONFIGURATION
 "#;
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E1417] Error: direct variable access is not supported
+    [E1417] Error: address cannot be located
        ,-[ file:///test0.st:9:12 ]
        |
      9 | VAR_GLOBAL sensor AT %I* : BOOL; END_VAR
        |            ^^^^^^^^^^|^^^^^^^^^
-       |                      `----------- '%I*' cannot be read or written: there is no I/O mapping
+       |                      `----------- '%I*' is not a complete address
        |
-       | Note: the address is understood and X/B/W/D/L names the width, but nothing connects it to a process image yet
+       | Note: the binding for a partly specified address comes from VAR_CONFIG, which is checked but not applied yet (E1416); write the address in full to allocate it now
     ---'
     ");
+}
+
+/// Assignment is not the only way to write. Every by-reference route into an
+/// input is refused the same way: an output binding, a FOR control variable
+/// and a partial write all end in a store the copy-in would overwrite.
+#[rstest]
+fn invalid_write_routes_into_an_input(mut with_db: RootDatabase) {
+    let source = r#"
+FUNCTION_BLOCK Src
+VAR_OUTPUT o : INT; END_VAR
+    o := 1;
+END_FUNCTION_BLOCK
+
+PROGRAM P
+VAR_EXTERNAL sensor : INT; bits : WORD; END_VAR
+VAR s : Src; i : INT; END_VAR
+    s(o => sensor);
+    FOR sensor := 1 TO 10 DO i := i + 1; END_FOR;
+    bits.3 := TRUE;
+END_PROGRAM
+
+CONFIGURATION Cfg
+VAR_GLOBAL sensor AT %IW0 : INT; bits AT %IW2 : WORD; END_VAR
+    RESOURCE R ON CPU
+        TASK T(INTERVAL := T#10ms, PRIORITY := 1);
+        PROGRAM P1 WITH T : P;
+    END_RESOURCE
+END_CONFIGURATION
+"#;
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
+    [E1419] Error: write to an input location
+        ,-[ file:///test0.st:10:12 ]
+        |
+     10 |     s(o => sensor);
+        |            ^^^|^^
+        |               `---- '%IW0' is an input: it is written by the host, not by the program
+        |
+        | Note: the host copies the input image in before each scan, so this write is overwritten before anything can read it
+    ----'
+    [E1419] Error: write to an input location
+        ,-[ file:///test0.st:11:9 ]
+        |
+     11 |     FOR sensor := 1 TO 10 DO i := i + 1; END_FOR;
+        |         ^^^|^^
+        |            `---- '%IW0' is an input: it is written by the host, not by the program
+        |
+        | Note: the host copies the input image in before each scan, so this write is overwritten before anything can read it
+    ----'
+    [E1419] Error: write to an input location
+        ,-[ file:///test0.st:12:5 ]
+        |
+     12 |     bits.3 := TRUE;
+        |     ^^^|^^
+        |        `---- '%IW2' is an input: it is written by the host, not by the program
+        |
+        | Note: the host copies the input image in before each scan, so this write is overwritten before anything can read it
+    ----'
+    ");
+}
+
+/// `REF()` is the route that does not store yet — it hands out the capability
+/// to. Nothing tracks what a pointer is stored through, so the reference is
+/// refused where it is taken rather than where it is used.
+#[rstest]
+fn invalid_reference_to_an_input(mut with_db: RootDatabase) {
+    let source = r#"
+PROGRAM P
+VAR_EXTERNAL sensor : INT; END_VAR
+VAR p : REF_TO INT; END_VAR
+    p := REF(sensor);
+    p^ := 99;
+END_PROGRAM
+
+CONFIGURATION Cfg
+VAR_GLOBAL sensor AT %IW0 : INT; END_VAR
+    RESOURCE R ON CPU
+        TASK T(INTERVAL := T#10ms, PRIORITY := 1);
+        PROGRAM P1 WITH T : P;
+    END_RESOURCE
+END_CONFIGURATION
+"#;
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
+    [E1419] Error: write to an input location
+       ,-[ file:///test0.st:5:14 ]
+       |
+     5 |     p := REF(sensor);
+       |              ^^^|^^
+       |                 `---- '%IW0' is an input, so a writable reference to it cannot be taken
+       |
+       | Note: a REF_TO is a writable pointer and nothing tracks what is stored through it, so the reference is refused where it is taken
+    ---'
+    ");
+}
+
+/// An output may be written through every one of those routes: the rule is
+/// about `%I`, not about located variables in general.
+#[rstest]
+fn valid_write_routes_into_an_output(mut with_db: RootDatabase) {
+    let source = r#"
+FUNCTION_BLOCK Src
+VAR_OUTPUT o : INT; END_VAR
+    o := 1;
+END_FUNCTION_BLOCK
+
+PROGRAM P
+VAR_EXTERNAL valve : INT; bits : WORD; END_VAR
+VAR s : Src; p : REF_TO INT; END_VAR
+    s(o => valve);
+    bits.3 := TRUE;
+    p := REF(valve);
+    p^ := 99;
+END_PROGRAM
+
+CONFIGURATION Cfg
+VAR_GLOBAL valve AT %QW0 : INT; bits AT %QW2 : WORD; END_VAR
+    RESOURCE R ON CPU
+        TASK T(INTERVAL := T#10ms, PRIORITY := 1);
+        PROGRAM P1 WITH T : P;
+    END_RESOURCE
+END_CONFIGURATION
+"#;
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @"");
 }

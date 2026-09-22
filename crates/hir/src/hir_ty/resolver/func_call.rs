@@ -397,10 +397,13 @@ fn refuse_input_location_target<'db>(
     value: Expr<'db>,
     ctx: &mut BodyInferenceResult<'db>,
 ) {
-    let Type::Variable((var, _)) = ctx.get_type_of_expr(value) else {
-        return;
+    let dv = match ctx.get_type_of_expr(value) {
+        Type::Variable((var, _)) => crate::hir_ty::index_graphs::effective_location(db, var),
+        // A bare address binds the same way a named one does.
+        Type::DirectVariable((dv, _)) => Some(dv),
+        _ => None,
     };
-    let Some(dv) = crate::hir_ty::index_graphs::effective_location(db, var) else {
+    let Some(dv) = dv else {
         return;
     };
     if dv.area(db) != Some(crate::hir_def::pous::variable::LocationArea::Input) {
@@ -410,6 +413,7 @@ fn refuse_input_location_target<'db>(
         crate::check::errors::e14_config::ConfigError::WriteToInputLocation {
             site: CallSite::from_scoped(db, &value),
             address: compact_str::CompactString::from(dv.to_address(db)),
+            via: crate::check::errors::e14_config::InputWriteRoute::Assignment,
         }
         .to_diagnostic(db, ctx.scope.file(db)),
     );

@@ -386,6 +386,24 @@ impl<'db> InferExprCtx<'db> {
 
                     let typ = inference_result.type_of_begin_expr_with_adjustments(db, *adress);
 
+                    // A REF_TO is a writable pointer and nothing tracks what
+                    // is stored through it, so an input is refused where the
+                    // reference is taken rather than where it is used
+                    // (E1419).
+                    if let Type::Variable((var, _)) = typ
+                        && let Some(dv) = crate::hir_ty::index_graphs::effective_location(db, var)
+                        && dv.area(db) == Some(crate::hir_def::pous::variable::LocationArea::Input)
+                    {
+                        inference_result.errors.push(
+                            crate::check::errors::e14_config::ConfigError::WriteToInputLocation {
+                                site: CallSite::from_scoped(db, adress),
+                                address: compact_str::CompactString::from(dv.to_address(db)),
+                                via: crate::check::errors::e14_config::InputWriteRoute::Reference,
+                            }
+                            .to_diagnostic(db, inference_result.scope.file(db)),
+                        );
+                    }
+
                     if let Some(path) = adress.expr(db) {
                         inference_result
                             .path_expr_adjustments
