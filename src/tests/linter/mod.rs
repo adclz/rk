@@ -23,6 +23,7 @@ mod global_without_external;
 mod identical_sub_expr;
 mod identity_operation;
 mod input_assignment;
+mod instance_in_function;
 mod invalid_pragma;
 mod loop_var_modified;
 mod method_shadows_member;

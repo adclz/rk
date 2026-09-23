@@ -41,6 +41,7 @@ pub mod global_without_external;
 pub mod identical_sub_expr;
 pub mod identity_operation;
 pub mod input_assignment;
+pub mod instance_in_function;
 pub mod invalid_pragma;
 pub mod loop_var_modified;
 pub mod method_shadows_member;
@@ -93,6 +94,7 @@ pub const RECOMMENDED_RULE_NAMES: &[&str] = &[
     external_mutation::NAME,
     method_shadows_member::NAME,
     global_without_external::NAME,
+    instance_in_function::NAME,
 ];
 
 /// Whether `name` runs under `config`: an explicit entry in `[linter.rules]`
@@ -135,6 +137,7 @@ pub const ALL_RULE_NAMES: &[&str] = &[
     identical_sub_expr::NAME,
     identity_operation::NAME,
     input_assignment::NAME,
+    instance_in_function::NAME,
     invalid_pragma::NAME,
     loop_var_modified::NAME,
     method_shadows_member::NAME,
@@ -372,6 +375,11 @@ fn lint_scope<'db>(
             self_shadowing::check(db, scope, d)
         });
     }
+    if is_enabled(config, instance_in_function::NAME) {
+        run_lint(instance_in_function::NAME, diagnostics, |d| {
+            instance_in_function::check(db, scope, d)
+        });
+    }
     if is_enabled(config, single_element_array::NAME) {
         let variables: &[hir::hir_def::pous::variable::VariableDecl] =
             match get_scope(db, scope).kind {
@@ -513,6 +521,6 @@ mod select_tests {
                 "{name} is not a known rule name"
             );
         }
-        assert_eq!(RECOMMENDED_RULE_NAMES.len(), 22);
+        assert_eq!(RECOMMENDED_RULE_NAMES.len(), 23);
     }
 }
