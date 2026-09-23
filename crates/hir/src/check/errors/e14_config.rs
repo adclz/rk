@@ -380,10 +380,23 @@ pub enum WiderAddressUse {
     /// Used as a FOR counter, which needs storage of its own.
     ForCounter,
     /// Declared RETAIN: persistence belongs to storage, and this has none.
-    Retain,
+    Retain(OwnerDeclaration),
     /// Given an initial value: `__init` writes storage, and this has none,
     /// so the value was silently dropped.
-    Initializer,
+    Initializer(OwnerDeclaration),
+}
+
+/// What names the address a part belongs to, which decides where its
+/// RETAIN or initial value can go instead.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, salsa::Update)]
+pub enum OwnerDeclaration {
+    /// A VAR_GLOBAL or a PROGRAM's VAR is located at it.
+    Declared,
+    /// Only a VAR_CONFIG entry, which gives it to a variable declared
+    /// `AT %I*`, `%Q*` or `%M*`.
+    Configured,
+    /// Only a body, bare.
+    Bare,
 }
 
 impl WiderAddressUse {
@@ -393,8 +406,8 @@ impl WiderAddressUse {
             Self::InOut => format!("{is} and has no address of its own to pass to a VAR_IN_OUT"),
             Self::Reference => format!("{is} and has no address of its own to take a reference to"),
             Self::ForCounter => format!("{is} and cannot count a FOR loop"),
-            Self::Retain => format!("{is} and cannot be RETAIN on its own"),
-            Self::Initializer => format!("{is} and cannot have an initial value of its own"),
+            Self::Retain(_) => format!("{is} and cannot be RETAIN on its own"),
+            Self::Initializer(_) => format!("{is} and cannot have an initial value of its own"),
         }
     }
 
@@ -403,13 +416,25 @@ impl WiderAddressUse {
             Self::InOut => "copy it into a variable, pass that, and assign it back".to_string(),
             Self::Reference => format!("take the reference of '{owner}' as a whole"),
             Self::ForCounter => format!("count in a variable and assign '{address}' from it"),
-            Self::Retain => {
+            Self::Retain(OwnerDeclaration::Declared) => {
                 format!(
                     "RETAIN belongs on the variable located at '{owner}', whose storage this is"
                 )
             }
-            Self::Initializer => format!(
+            Self::Retain(OwnerDeclaration::Configured) => format!(
+                "'{owner}' is the channel VAR_CONFIG gives a variable declared AT %M*, which cannot be RETAIN; to persist this part, declare a VAR_GLOBAL located at '{owner}', RETAIN"
+            ),
+            Self::Retain(OwnerDeclaration::Bare) => format!(
+                "no variable is located at '{owner}', a body names it bare; to persist this part, declare a VAR_GLOBAL located at '{owner}', RETAIN"
+            ),
+            Self::Initializer(OwnerDeclaration::Declared) => format!(
                 "give the variable located at '{owner}' an initial value with this part set in it"
+            ),
+            Self::Initializer(OwnerDeclaration::Configured) => format!(
+                "'{owner}' is the channel VAR_CONFIG gives a variable, which takes no initial value; declare a VAR_GLOBAL located at '{owner}' with this part set in its initial value"
+            ),
+            Self::Initializer(OwnerDeclaration::Bare) => format!(
+                "no variable is located at '{owner}', a body names it bare; declare a VAR_GLOBAL located at '{owner}' with this part set in its initial value"
             ),
         }
     }
@@ -447,7 +472,7 @@ impl UnlocatableAddress {
     fn note(self) -> &'static str {
         match self {
             Self::InPou => {
-                "a function's, function block's or class's variables belong to each call or instance, so one address cannot be theirs; declare it in a PROGRAM, or as a VAR_GLOBAL of the CONFIGURATION, and name it from here"
+                "a function's, function block's or class's variables belong to each call or instance, so one address cannot be theirs; in a function block or class, declare it AT %I*, %Q* or %M* and give each instance its address in VAR_CONFIG, and elsewhere declare it in a PROGRAM, or as a VAR_GLOBAL of the CONFIGURATION, and name it from here"
             }
             Self::Incomplete => {
                 "VAR_CONFIG completes a partial address for a variable of a PROGRAM, FUNCTION_BLOCK or CLASS, instance by instance; anywhere else, write the address in full"

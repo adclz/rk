@@ -775,7 +775,7 @@ END_FUNCTION"#;
        |     ^^^^^^^^^|^^^^^^^^
        |              `---------- '%QW28' cannot locate a variable of this POU
        |
-       | Note: a function's, function block's or class's variables belong to each call or instance, so one address cannot be theirs; declare it in a PROGRAM, or as a VAR_GLOBAL of the CONFIGURATION, and name it from here
+       | Note: a function's, function block's or class's variables belong to each call or instance, so one address cannot be theirs; in a function block or class, declare it AT %I*, %Q* or %M* and give each instance its address in VAR_CONFIG, and elsewhere declare it in a PROGRAM, or as a VAR_GLOBAL of the CONFIGURATION, and name it from here
     ---'
     [E1417] Error: address cannot be located
         ,-[ file:///test0.st:10:5 ]
@@ -784,7 +784,7 @@ END_FUNCTION"#;
         |     ^^^^^^^^^^|^^^^^^^^^
         |               `----------- '%IX0.0' cannot locate a variable of this POU
         |
-        | Note: a function's, function block's or class's variables belong to each call or instance, so one address cannot be theirs; declare it in a PROGRAM, or as a VAR_GLOBAL of the CONFIGURATION, and name it from here
+        | Note: a function's, function block's or class's variables belong to each call or instance, so one address cannot be theirs; in a function block or class, declare it AT %I*, %Q* or %M* and give each instance its address in VAR_CONFIG, and elsewhere declare it in a PROGRAM, or as a VAR_GLOBAL of the CONFIGURATION, and name it from here
     ----'
     ");
 }
@@ -1358,8 +1358,8 @@ END_CONFIGURATION
     ");
 }
 
-/// `%I*` names no address at all — the binding comes from VAR_CONFIG, which
-/// is not applied yet — so there is nothing to allocate.
+/// A VAR_GLOBAL has no instances for VAR_CONFIG to locate, so `%I*` there
+/// names no address at all and there is nothing to allocate.
 #[rstest]
 fn unsupported_incomplete_location(mut with_db: RootDatabase) {
     let source = r#"
@@ -2052,6 +2052,121 @@ END_CONFIGURATION
         |                    `---------------- '%QX0.3' is part of '%QW0' and cannot have an initial value of its own
         |
         | Note: give the variable located at '%QW0' an initial value with this part set in it
+    ----'
+    ");
+}
+
+/// A part whose owner no variable is located at, only a VAR_CONFIG entry or
+/// a bare mention, is refused the same way (E1423), and the note says where
+/// the RETAIN or the value can go: a variable VAR_CONFIG locates takes
+/// neither.
+#[rstest]
+fn invalid_part_of_an_address_only_configured_or_bare(mut with_db: RootDatabase) {
+    let source = r#"
+FUNCTION_BLOCK Drive
+VAR w AT %Q* : WORD; mw AT %M* : WORD; END_VAR
+END_FUNCTION_BLOCK
+
+PROGRAM P
+VAR d : Drive; END_VAR
+    %QW4 := 1;
+END_PROGRAM
+
+CONFIGURATION Cfg
+VAR_GLOBAL
+    g AT %QB0 : BYTE := 16#12;
+    h AT %QB8 : BYTE := 16#34;
+END_VAR
+VAR_GLOBAL RETAIN flag AT %MX0.1 : BOOL; END_VAR
+VAR_CONFIG
+    Res.P1.d.w  AT %QW0 : WORD;
+    Res.P1.d.mw AT %MW0 : WORD;
+END_VAR
+    RESOURCE Res ON CPU
+        TASK T(INTERVAL := T#10ms, PRIORITY := 1);
+        PROGRAM P1 WITH T : P;
+    END_RESOURCE
+END_CONFIGURATION
+"#;
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
+    [E1423] Error: part of a wider address
+        ,-[ file:///test0.st:13:5 ]
+        |
+     13 |     g AT %QB0 : BYTE := 16#12;
+        |     ^^^^^^^^^^^^|^^^^^^^^^^^^
+        |                 `-------------- '%QB0' is part of '%QW0' and cannot have an initial value of its own
+        |
+        | Note: '%QW0' is the channel VAR_CONFIG gives a variable, which takes no initial value; declare a VAR_GLOBAL located at '%QW0' with this part set in its initial value
+    ----'
+    [E1423] Error: part of a wider address
+        ,-[ file:///test0.st:14:5 ]
+        |
+     14 |     h AT %QB8 : BYTE := 16#34;
+        |     ^^^^^^^^^^^^|^^^^^^^^^^^^
+        |                 `-------------- '%QB8' is part of '%QW4' and cannot have an initial value of its own
+        |
+        | Note: no variable is located at '%QW4', a body names it bare; declare a VAR_GLOBAL located at '%QW4' with this part set in its initial value
+    ----'
+    [E1423] Error: part of a wider address
+        ,-[ file:///test0.st:16:19 ]
+        |
+     16 | VAR_GLOBAL RETAIN flag AT %MX0.1 : BOOL; END_VAR
+        |                   ^^^^^^^^^^|^^^^^^^^^^
+        |                             `------------ '%MX0.1' is part of '%MW0' and cannot be RETAIN on its own
+        |
+        | Note: '%MW0' is the channel VAR_CONFIG gives a variable declared AT %M*, which cannot be RETAIN; to persist this part, declare a VAR_GLOBAL located at '%MW0', RETAIN
+    ----'
+    ");
+}
+
+/// A PROGRAM no RESOURCE runs still claims the addresses its VARs are
+/// located at: its declarations are the channels, whatever instances exist.
+#[rstest]
+fn invalid_address_claimed_by_a_program_nothing_runs(mut with_db: RootDatabase) {
+    let source = r#"
+PROGRAM Main
+VAR n : INT; END_VAR
+    n := n + 1;
+END_PROGRAM
+
+PROGRAM Spare
+VAR lamp AT %QW0 : WORD; END_VAR
+END_PROGRAM
+
+CONFIGURATION Cfg
+VAR_GLOBAL panel AT %QW0 : WORD; END_VAR
+    RESOURCE Res ON CPU
+        TASK T(INTERVAL := T#10ms, PRIORITY := 1);
+        PROGRAM P1 WITH T : Main;
+    END_RESOURCE
+END_CONFIGURATION
+"#;
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
+    [E1421] Error: duplicate location
+        ,-[ file:///test0.st:8:5 ]
+        |
+      8 | VAR lamp AT %QW0 : WORD; END_VAR
+        |     ^^^^^^^^^|^^^^^^^^^
+        |              `----------- 'lamp' is located at '%QW0', which 'panel' also claims
+        |
+     12 | VAR_GLOBAL panel AT %QW0 : WORD; END_VAR
+        |            ^^^^^^^^^^|^^^^^^^^^
+        |                      `----------- 'panel' is located here
+        |
+        | Note: an address is one channel, and each declaration is given storage of its own, so the two would never see each other's value; name the one variable from wherever it is needed
+    ----'
+    [E1421] Error: duplicate location
+        ,-[ file:///test0.st:12:12 ]
+        |
+      8 | VAR lamp AT %QW0 : WORD; END_VAR
+        |     ^^^^^^^^^|^^^^^^^^^
+        |              `----------- 'lamp' is located here
+        |
+     12 | VAR_GLOBAL panel AT %QW0 : WORD; END_VAR
+        |            ^^^^^^^^^^|^^^^^^^^^
+        |                      `----------- 'panel' is located at '%QW0', which 'lamp' also claims
+        |
+        | Note: an address is one channel, and each declaration is given storage of its own, so the two would never see each other's value; name the one variable from wherever it is needed
     ----'
     ");
 }

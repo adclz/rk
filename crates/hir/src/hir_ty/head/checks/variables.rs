@@ -428,7 +428,24 @@ impl<'db> InitInference<'db> {
                             && let Some(view) =
                                 crate::hir_ty::index_graphs::located_view(db, &located)
                         {
-                            use crate::check::errors::e14_config::WiderAddressUse;
+                            use crate::check::errors::e14_config::{
+                                OwnerDeclaration, WiderAddressUse,
+                            };
+                            // Where the RETAIN or the value can go instead.
+                            let owner = if crate::hir_ty::index_graphs::located_declaration(
+                                db,
+                                &view.owner,
+                            )
+                            .is_some()
+                            {
+                                OwnerDeclaration::Declared
+                            } else if crate::hir_ty::index_graphs::config_located(db)
+                                .any(|a| *a == view.owner)
+                            {
+                                OwnerDeclaration::Configured
+                            } else {
+                                OwnerDeclaration::Bare
+                            };
                             let mut refuse = |usage| {
                                 self.errors.push(
                                     ConfigError::PartOfWiderAddress {
@@ -442,14 +459,14 @@ impl<'db> InitInference<'db> {
                             };
                             // Only `%M` gets here RETAIN: E1420 took `%I`/`%Q`.
                             if var.qualifier(db).contains(crate::Qualifier::RETAIN) {
-                                refuse(WiderAddressUse::Retain);
+                                refuse(WiderAddressUse::Retain(owner));
                             }
                             // On an input E1419 below says it.
                             if var.init(db).is_some()
                                 && located.area
                                     != crate::hir_def::pous::variable::LocationArea::Input
                             {
-                                refuse(WiderAddressUse::Initializer);
+                                refuse(WiderAddressUse::Initializer(owner));
                             }
                         }
                     }
