@@ -201,10 +201,9 @@ pub enum ConfigError<'db> {
         /// The member declared with the partial address: `x`, or `fb.x`.
         member: compact_str::CompactString,
     },
-    /// A value given to a variable declared `AT %I*`, `%Q*` or `%M*`, or a
-    /// copy of an instance holding one. The variable points at the channel
-    /// VAR_CONFIG gives its instance: an initializer would write over the
-    /// pointer, and a copy would make it point at the source's channel.
+    /// A value given to a variable declared `AT %I*`, `%Q*` or `%M*`. The
+    /// variable points at the channel VAR_CONFIG gives its instance, and an
+    /// initializer would write over the pointer.
     PartlyLocatedOverwritten {
         site: CallSite<'db>,
         /// The member declared with the partial address: `x`, or `fb.x`.
@@ -219,8 +218,6 @@ pub enum ConfigError<'db> {
 pub enum PartlyOverwrite {
     /// Named in an instance's initializer: `d : Drive := (out := 30)`.
     Initializer,
-    /// Its instance assigned whole: `b := a`, for a CLASS `b` is.
-    Copy { ty: compact_str::CompactString },
 }
 
 /// Why a VAR_CONFIG entry cannot be taken as written.
@@ -1163,12 +1160,6 @@ impl<'db> ToIdeDiagnostic<'db> for ConfigError<'db> {
                             "'{member}' is declared AT {address}, so it points at the channel VAR_CONFIG gives it and has no value of its own to initialize"
                         ),
                         "a variable VAR_CONFIG locates starts at its type's default, or at the value its channel's own declaration gives it",
-                    ),
-                    PartlyOverwrite::Copy { ty } => (
-                        format!(
-                            "'{ty}' holds '{member}', declared AT {address}, so an assigned instance would point at the channels of the one it copies"
-                        ),
-                        "each instance points at the channels VAR_CONFIG gives it; assign the variables that hold values one by one",
                     ),
                 };
                 let mut diag = diag()

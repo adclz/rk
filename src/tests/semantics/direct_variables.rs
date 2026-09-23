@@ -1189,8 +1189,8 @@ END_CONFIGURATION
 
 /// A variable declared `AT %I*` points at its instance's channel, so what
 /// would write over that pointer is refused: an instance's initializer
-/// naming it and an assignment copying a CLASS that holds it (E1427), and a
-/// VAR_INPUT each call copies its argument over (E1425). A STRUCT's field is
+/// naming it (E1427), and a VAR_INPUT each call copies its argument over
+/// (E1425). A CLASS is not assigned at all (E0318). A STRUCT's field is
 /// not something a VAR_CONFIG path names (E1425), and a RETAIN instance
 /// cannot retain the marker such a variable points at (E1420).
 #[rstest]
@@ -1290,14 +1290,12 @@ END_CONFIGURATION
         |
         | Note: a variable VAR_CONFIG locates starts at its type's default, or at the value its channel's own declaration gives it
     ----'
-    [E1427] Error: located variable overwritten
+    [E0318] Error: semantic violation
         ,-[ file:///test0.st:24:5 ]
         |
      24 |     b := a;
         |     |
-        |     `-- 'Sensor' holds 'raw', declared AT %Q*, so an assigned instance would point at the channels of the one it copies
-        |
-        | Note: each instance points at the channels VAR_CONFIG gives it; assign the variables that hold values one by one
+        |     `-- 'Sensor' is a CLASS and can not be assigned
     ----'
     ");
 }
