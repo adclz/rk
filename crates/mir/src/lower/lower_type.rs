@@ -438,6 +438,10 @@ pub fn lower_program_type<'db>(
         if var.kind(db) == hir::hir_def::pous::variable::VariableKind::Temp {
             continue;
         }
+        // A located VAR is its channel's cell, shared by every instance.
+        if var.is_program_located(db) {
+            continue;
+        }
         let mir_type = lower_spec(db, var.spec(db))?;
         let field_align = mir_type.alignment();
         let field_size = mir_type.size_bytes();

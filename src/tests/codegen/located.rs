@@ -1384,6 +1384,12 @@ fn a_programs_located_variable_is_one_cell_for_every_instance(mut with_db: db::R
     plc.run(1).expect("scan");
     assert_eq!(word(&plc, "%MW0"), 12, "both instances counted the one cell");
     assert_eq!(word(&plc, "%QW2"), 0xAA);
+    // The cell is `P.count`; the instances have no field for it, which a
+    // debugger would otherwise show frozen at its initial value.
+    let info = debug_format::DebugInfo::from_wasm(&wasm);
+    let count = plc.located("%MW0").expect("count").addr;
+    assert_eq!(info.resolve("P.count").map(|l| l.address), Some(count));
+    assert_eq!(info.resolve("P1.count"), None, "no dead field in the instance");
 }
 
 /// A PROGRAM's located VAR can be a part of a wider address, as a
