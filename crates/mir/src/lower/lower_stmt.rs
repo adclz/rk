@@ -296,17 +296,18 @@ fn lower_stmt<'db>(
             body,
         } => {
             // Any place can be a counter: a FUNCTION local or a PROGRAM/FB member
-            // (HIR rejected the shapes IEC forbids).
-            if ctx
-                .view(*control_variable, control_variable.infer(ctx.db))?
-                .is_some()
-            {
-                return Err(LowerTypeError::UnsupportedType(
-                    "a FOR counter cannot be part of a wider address; `rk check` refuses it (E1423)"
-                        .to_string(),
-                ));
-            }
-            let control_place = ctx.lower_variable_access(*control_variable)?;
+            // (HIR rejected the shapes IEC forbids), or whole bytes of a wider
+            // address's cell. A bit of one has no place to count in.
+            let control_place = match ctx.view(*control_variable, control_variable.infer(ctx.db))? {
+                Some(super::multibit::View::Bytes(place)) => place,
+                Some(super::multibit::View::Slice { .. }) => {
+                    return Err(LowerTypeError::UnsupportedType(
+                            "a FOR counter cannot be a bit of a wider address; `rk check` refuses it (E1423)"
+                                .to_string(),
+                        ));
+                }
+                None => ctx.lower_variable_access(*control_variable)?,
+            };
 
             // Determine the control variable type
             let control_type = control_variable.infer(ctx.db);

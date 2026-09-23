@@ -1660,6 +1660,50 @@ fn a_located_member_has_a_symbol_at_its_channel(mut with_db: db::RootDatabase) {
     assert_eq!(plc.located("%MW0").expect("the channel").ty, Some(SymType::Int));
 }
 
+/// A part of a byte or more counts a FOR loop in its owner's bytes, and
+/// leaves the owner's other bytes as they were. So does a global of its own:
+/// the loop used to count at address 0 for any counter that is a global,
+/// while its body read the real one.
+#[rstest]
+fn a_for_loop_counts_in_a_part_of_a_byte_or_more(mut with_db: db::RootDatabase) {
+    let source = r#"
+        PROGRAM P
+        VAR_EXTERNAL cnt : USINT; sum : INT; i : INT; twice : INT; END_VAR
+            sum := 0;
+            FOR cnt := 1 TO 3 DO
+                sum := sum + cnt;
+            END_FOR;
+            twice := 0;
+            FOR i := 1 TO 4 DO
+                twice := twice + i;
+            END_FOR;
+        END_PROGRAM
+
+        CONFIGURATION Cfg
+        VAR_GLOBAL
+            whole AT %MW0 : WORD := 16#005A;
+            cnt   AT %MB1 : USINT;
+            sum   AT %MW2 : INT;
+            twice AT %MW4 : INT;
+            i : INT;
+        END_VAR
+            RESOURCE Res ON CPU
+                TASK T(INTERVAL := T#10ms, PRIORITY := 1);
+                PROGRAM P1 WITH T : P;
+            END_RESOURCE
+        END_CONFIGURATION
+    "#;
+    let (_mir, wasm) = compile_to_mir_and_wasm(&mut with_db, source);
+    let mut plc = TestPlc::load(&wasm).expect("load");
+    plc.run(1).expect("scan");
+    let bytes = |plc: &TestPlc, a: &str| plc.read_located(a).expect("read");
+    assert_eq!(i16::from_le_bytes(bytes(&plc, "%MW2")[..2].try_into().unwrap()), 6, "1 + 2 + 3");
+    let whole = bytes(&plc, "%MW0");
+    assert_eq!(whole[0], 0x5A, "the low byte is not the counter's");
+    assert_eq!(whole[1], bytes(&plc, "%MB1")[0], "the counter is the high byte");
+    assert_eq!(i16::from_le_bytes(bytes(&plc, "%MW4")[..2].try_into().unwrap()), 10, "1 + 2 + 3 + 4, counted in a global");
+}
+
 /// A PROGRAM's variable may be located per instance too, and at a byte of a
 /// wider address: `lamp` is the low byte of the word the program also names.
 #[rstest]

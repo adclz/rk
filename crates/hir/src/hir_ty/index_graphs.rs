@@ -209,9 +209,14 @@ pub fn refuse_part_of_wider<'db>(
         return None;
     }
     // A part of a byte or more is whole bytes of its owner's cell, which
-    // have an address to pass or to reference; only a bit has none.
+    // have an address to pass, to reference or to count in; only a bit has
+    // none.
     use crate::check::errors::e14_config::WiderAddressUse;
-    if matches!(usage, WiderAddressUse::InOut | WiderAddressUse::Reference) && address.width >= 8 {
+    if matches!(
+        usage,
+        WiderAddressUse::InOut | WiderAddressUse::Reference | WiderAddressUse::ForCounter
+    ) && address.width >= 8
+    {
         return None;
     }
     Some(

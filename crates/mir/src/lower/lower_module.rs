@@ -1569,12 +1569,15 @@ fn rewrite_globals_stmt(
             }
         }
         MirStmt::For {
+            control,
             start,
             end,
             step,
             body,
             ..
         } => {
+            // The counter may be a global too, or bytes of a located cell.
+            rewrite_globals_place(control, globals, missing);
             rewrite_globals_expr(start, globals, missing);
             rewrite_globals_expr(end, globals, missing);
             rewrite_globals_expr(step, globals, missing);
