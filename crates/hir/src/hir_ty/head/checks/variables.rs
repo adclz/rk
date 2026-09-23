@@ -43,7 +43,7 @@ impl<'db> InitInference<'db> {
             get_scope(db, var.get_scope_id(db)).kind,
             ScopeKind::Program(_) | ScopeKind::Pou(Pou::FunctionBlock(_) | Pou::Class(_))
         );
-        if !dv.partly(db) || !var.is_var(db) || !in_instance {
+        if !dv.is_area_only(db) || !var.is_var(db) || !in_instance {
             return false;
         }
         if var.qualifier(db).contains(crate::Qualifier::RETAIN) {
@@ -392,7 +392,9 @@ impl<'db> InitInference<'db> {
                         use crate::check::errors::e14_config::UnlocatableAddress;
                         // A well-formed address in a POU is the POU's fault;
                         // anything else is the address's.
-                        let why = if dv.partly(db) {
+                        let why = if dv.partly(db) && !dv.is_area_only(db) {
+                            UnlocatableAddress::NotAreaOnly
+                        } else if dv.partly(db) {
                             UnlocatableAddress::Incomplete
                         } else if crate::hir_ty::infer::normalize::names_a_band(db, dv) {
                             UnlocatableAddress::InPou

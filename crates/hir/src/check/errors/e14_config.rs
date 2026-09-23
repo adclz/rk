@@ -395,6 +395,9 @@ pub enum UnlocatableAddress {
     /// No area letter, or no width letter — `%I1` is Table 16 row 4b, where
     /// the size character is omitted and means BOOL.
     Malformed,
+    /// `%IW*`, `%Z*`: a partial address names an area, I, Q or M, and
+    /// nothing else.
+    NotAreaOnly,
 }
 
 impl UnlocatableAddress {
@@ -403,6 +406,9 @@ impl UnlocatableAddress {
             Self::InPou => format!("'{address}' cannot locate a variable of this POU"),
             Self::Incomplete => format!("'{address}' is not a complete address"),
             Self::Malformed => format!("'{address}' does not name an area and a width"),
+            Self::NotAreaOnly => {
+                format!("'{address}' is not a partial address: write '%I*', '%Q*' or '%M*'")
+            }
         }
     }
 
@@ -416,6 +422,9 @@ impl UnlocatableAddress {
             }
             Self::Malformed => {
                 "an address names its area with I, Q or M and its width with X, B, W, D or L, as in '%IX0.0'; a bit may leave the width out, as in '%I0.0'"
+            }
+            Self::NotAreaOnly => {
+                "the variable's type gives the width, and VAR_CONFIG gives the rest of the address"
             }
         }
     }

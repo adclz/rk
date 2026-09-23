@@ -885,7 +885,7 @@ fn check_config_location<'db>(
 ) -> Result<LocatedAddress, crate::check::errors::e14_config::ConfigLocationRefusal> {
     use crate::check::errors::e14_config::ConfigLocationRefusal as Refusal;
     let declared_at = match var.location(db) {
-        Some(declared) if declared.partly(db) => declared,
+        Some(declared) if var.is_partly_located(db) => declared,
         _ => return Err(Refusal::NotPartlyLocated),
     };
     let Some(address) = LocatedAddress::of(db, dv) else {

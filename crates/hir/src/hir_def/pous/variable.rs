@@ -143,7 +143,7 @@ impl<'db> VariableDecl<'db> {
     /// Declared `AT %I*`, `%Q*` or `%M*`: its address is left to the
     /// configuration, which gives each instance its own in VAR_CONFIG.
     pub fn is_partly_located(&self, db: &'db dyn WorkspaceDataBase) -> bool {
-        self.location(db).is_some_and(|dv| dv.partly(db))
+        self.location(db).is_some_and(|dv| dv.is_area_only(db))
     }
 
     pub fn is_access(&self, db: &'db dyn WorkspaceDataBase) -> bool {
@@ -235,6 +235,12 @@ impl<'db> DirectVariable<'db> {
             (Some(size), None) => Some(size),
             (Some(_), Some(_)) => None,
         }
+    }
+
+    /// `%I*`, `%Q*` or `%M*`: an area and nothing else, the partial address
+    /// VAR_CONFIG completes. `%IW*` and `%Z*` are partial, but not these.
+    pub fn is_area_only(self, db: &'db dyn WorkspaceDataBase) -> bool {
+        self.partly(db) && self.area(db).is_some() && self.adress(db).text(db).chars().count() == 1
     }
 
     pub fn area(self, db: &'db dyn WorkspaceDataBase) -> Option<LocationArea> {

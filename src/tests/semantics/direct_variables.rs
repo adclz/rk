@@ -1187,6 +1187,62 @@ END_CONFIGURATION
     ");
 }
 
+/// A partial address names its area and nothing else: `%Z*` has no area and
+/// `%IW*` a width, which the variable's type gives (E1417). Neither is left
+/// to VAR_CONFIG, so an entry for one is refused (E1424) and none is needed.
+#[rstest]
+fn invalid_partial_address_naming_more_than_an_area(mut with_db: RootDatabase) {
+    let source = r#"
+FUNCTION_BLOCK Drive
+VAR z AT %Z* : INT; END_VAR
+VAR w AT %IW* : INT; END_VAR
+END_FUNCTION_BLOCK
+
+PROGRAM P
+VAR d : Drive; END_VAR
+END_PROGRAM
+
+CONFIGURATION Cfg
+VAR_CONFIG
+    Res.P1.d.w AT %IW0 : INT;
+END_VAR
+    RESOURCE Res ON CPU
+        TASK T(INTERVAL := T#10ms, PRIORITY := 1);
+        PROGRAM P1 WITH T : P;
+    END_RESOURCE
+END_CONFIGURATION
+"#;
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
+    [E1417] Error: address cannot be located
+       ,-[ file:///test0.st:3:5 ]
+       |
+     3 | VAR z AT %Z* : INT; END_VAR
+       |     ^^^^^^^|^^^^^^
+       |            `-------- '%Z*' is not a partial address: write '%I*', '%Q*' or '%M*'
+       |
+       | Note: the variable's type gives the width, and VAR_CONFIG gives the rest of the address
+    ---'
+    [E1417] Error: address cannot be located
+       ,-[ file:///test0.st:4:5 ]
+       |
+     4 | VAR w AT %IW* : INT; END_VAR
+       |     ^^^^^^^|^^^^^^^
+       |            `--------- '%IW*' is not a partial address: write '%I*', '%Q*' or '%M*'
+       |
+       | Note: the variable's type gives the width, and VAR_CONFIG gives the rest of the address
+    ---'
+    [E1424] Error: location refused
+        ,-[ file:///test0.st:13:14 ]
+        |
+     13 |     Res.P1.d.w AT %IW0 : INT;
+        |              |
+        |              `-- 'w' is not declared AT %I*, %Q* or %M*, so its address is not VAR_CONFIG's to give
+        |
+        | Note: declare it AT %I*, %Q* or %M* in its POU to leave its address to the configuration
+    ----'
+    ");
+}
+
 /// `%I*` names no address at all — the binding comes from VAR_CONFIG, which
 /// is not applied yet — so there is nothing to allocate.
 #[rstest]
