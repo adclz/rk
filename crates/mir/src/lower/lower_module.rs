@@ -494,9 +494,9 @@ fn lower_module_from_pous<'db>(
                 .iter()
         })
         .collect();
-    let config_cells: Vec<String> = config_locations
+    let config_cells: Vec<hir::hir_def::pous::variable::LocatedAddress> = config_locations
         .iter()
-        .map(|loc| config_cell(db, &loc.address).0.text.to_string())
+        .map(|loc| config_cell(db, &loc.address).0)
         .collect();
     synthesize_bare_addresses(
         db,
@@ -1176,17 +1176,14 @@ fn located_entry<'db>(
     size: u32,
     align: u32,
 ) -> Option<crate::memory::LocatedEntry> {
-    let address_text = v.location(db)?.to_address(db);
-    let shape = crate::located::address_shape(&address_text)?;
+    let dv = v.location(db)?;
     Some(crate::memory::LocatedEntry {
         name,
-        address_text,
-        area: shape.area,
-        width_rank: shape.width_rank,
+        address_text: dv.to_address(db),
+        located: hir::hir_def::pous::variable::LocatedAddress::of(db, dv)?,
         // Only `%M` reaches here with it set: E1420 refuses RETAIN on an
         // input or output image.
         retain: v.qualifier(db).contains(hir::Qualifier::RETAIN),
-        offsets: shape.offsets,
         address,
         size,
         align,
@@ -1211,10 +1208,10 @@ fn build_located_map<'db>(
     };
     // An address no declaration names but VAR_CONFIG gives a variable is
     // typed as that variable is declared, not by its width.
-    let configured_type = |address: &str| {
+    let configured_type = |address: &hir::hir_def::pous::variable::LocatedAddress| {
         config_locations
             .iter()
-            .find(|loc| loc.address.text.eq_ignore_ascii_case(address))
+            .find(|loc| loc.address == *address)
             .and_then(|loc| loc.members.last())
             .and_then(|var| super::lower_type::lower_spec(db, var.spec(db)).ok())
             .and_then(|ty| crate::debug_symbols::scalar_sym_ty(&ty))
@@ -1224,22 +1221,14 @@ fn build_located_map<'db>(
         .map(|e| debug_format::LocatedVar {
             address: e.address_text.clone(),
             name: e.name.text(db).to_string(),
-            area: area(e.area),
-            path: e.offsets.clone(),
-            width: match e.width_rank {
-                0 => 1,
-                1 => 8,
-                2 => 16,
-                3 => 32,
-                _ => 64,
-            },
+            area: area(e.located.area),
+            path: e.located.levels.clone(),
+            width: u16::from(e.located.width),
             addr: e.address,
             size: e.size,
-            ty: e
-                .name
-                .text(db)
-                .starts_with('%')
-                .then(|| configured_type(&e.address_text))
+            ty: hir::hir_ty::index_graphs::located_declaration(db, &e.located)
+                .is_none()
+                .then(|| configured_type(&e.located))
                 .flatten()
                 .or_else(|| {
                     globals
@@ -1282,7 +1271,7 @@ fn build_located_map<'db>(
                 ),
                 None => (
                     address.text.to_string(),
-                    configured_type(&address.text).or(Some(crate::debug_symbols::sym_type_of(
+                    configured_type(address).or(Some(crate::debug_symbols::sym_type_of(
                         crate::located::width_elementary(address.width),
                     ))),
                 ),
@@ -1338,16 +1327,24 @@ fn resolve_global_places<'db>(
 ///
 /// It runs before the bands are carved, and it reuses the global rewriter to
 /// find the names rather than walking the bodies a second way: a name the
-/// table does not hold comes back as missing, and an address is the only kind
-/// of missing name that is not an error — an identifier cannot start with
-/// `%`.
+/// table does not hold comes back as missing, and one of the addresses the
+/// workspace's files mention is the only kind of missing name that is not an
+/// error. Each is taken as HIR decoded it, never read again from its text.
 fn synthesize_bare_addresses<'db>(
     db: &'db dyn WorkspaceDataBase,
     functions: &mut [crate::function::MirFunction],
-    config_cells: &[String],
+    config_cells: &[hir::hir_def::pous::variable::LocatedAddress],
     memory_layout: &mut MirMemoryLayout,
     table: &mut GlobalTable<'db>,
 ) -> Result<(), LowerTypeError> {
+    use hir::hir_def::pous::variable::LocatedAddress;
+    // Every address the workspace's files mention, by the text a bare one is
+    // lowered under.
+    let mentioned: FxHashMap<&str, &LocatedAddress> =
+        hir::hir_ty::index_graphs::located_by_file(db)
+            .flat_map(|m| m.keys())
+            .map(|a| (a.text.as_str(), a))
+            .collect();
     // Keyed by the address text so the allocation order is the addresses'
     // own and not the order the bodies happen to mention them in.
     let mut wanted: std::collections::BTreeMap<
@@ -1355,6 +1352,7 @@ fn synthesize_bare_addresses<'db>(
         (
             hir::hir_def::interned::identifier::Ident,
             crate::types::MirType,
+            LocatedAddress,
         ),
     > = std::collections::BTreeMap::new();
     for func in functions.iter_mut() {
@@ -1363,42 +1361,34 @@ fn synthesize_bare_addresses<'db>(
             rewrite_globals_stmt(stmt, table, &mut missing);
         }
         for (name, ty) in missing {
-            let text = name.text(db);
-            if text.starts_with('%') {
-                wanted.entry(text.to_string()).or_insert((name, ty));
+            if let Some(address) = mentioned.get(name.text(db).as_str()) {
+                wanted
+                    .entry(address.text.to_string())
+                    .or_insert((name, ty, (*address).clone()));
             }
             // Anything else is a global that really is missing; the pass that
             // runs once the layout is final reports it.
         }
     }
-    for text in config_cells {
-        let name = hir::hir_def::interned::identifier::Ident::new(
-            db,
-            compact_str::CompactString::from(text.as_str()),
-        );
+    for address in config_cells {
+        let name = hir::hir_def::interned::identifier::Ident::new(db, address.text.clone());
         if table.contains_key(&name) {
             continue;
         }
-        let Some(shape) = crate::located::address_shape(text) else {
-            continue;
-        };
-        wanted
-            .entry(text.clone())
-            .or_insert((name, MirType::Elementary(shape.elementary())));
+        wanted.entry(address.text.to_string()).or_insert((
+            name,
+            MirType::Elementary(crate::located::width_elementary(address.width)),
+            address.clone(),
+        ));
     }
 
-    for (text, (name, ty)) in wanted {
-        let Some(shape) = crate::located::address_shape(&text) else {
-            return Err(LowerTypeError::UnsupportedType(format!(
-                "'{text}' names no I/O band; `rk check` refuses it (E1417)"
-            )));
-        };
+    for (text, (name, ty, located)) in wanted {
         // A declaration already bound this address, so the bare mention is
         // the same storage under a second name.
         if let Some(declared) = memory_layout
             .located_allocations
             .iter()
-            .find(|e| e.address_text.eq_ignore_ascii_case(&text))
+            .find(|e| e.located == located)
             && let Some((address, declared_ty)) = table.get(&declared.name).cloned()
         {
             table.insert(name, (address, declared_ty));
@@ -1410,13 +1400,11 @@ fn synthesize_bare_addresses<'db>(
             memory_layout.allocate(name, size, align, crate::memory::MirAllocKind::Variable);
         memory_layout.record_located(crate::memory::LocatedEntry {
             name,
-            address_text: text.clone(),
-            area: shape.area,
-            width_rank: shape.width_rank,
+            address_text: text,
+            located,
             // A bare address has no declaration, so nothing can have asked
             // for it to persist.
             retain: false,
-            offsets: shape.offsets,
             address,
             size,
             align,

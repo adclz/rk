@@ -927,24 +927,23 @@ impl<'db> ExprLowerCtx<'db> {
             // VariableDecl to allocate against. It lowers to a global named
             // by the address itself, and `lower_module` gives every such name
             // one cell in its area's band — which is what makes two mentions
-            // of `%IW0`, in any two bodies, the same storage. The name is
-            // upper-cased so `%iw0` is not a second cell.
+            // of `%IW0`, in any two bodies, the same storage. The name is the
+            // text HIR decoded it to, upper-cased, so `%iw0` is not a second
+            // cell.
             VariableAccessKind::Direct(dv) => {
-                let address = dv.to_address(self.db).to_ascii_uppercase();
-                let shape = crate::located::address_shape(&address).ok_or_else(|| {
-                    LowerTypeError::UnsupportedType(format!(
-                        "'{address}' names no I/O band; `rk check` refuses it (E1417)"
-                    ))
-                })?;
+                let address = hir::hir_def::pous::variable::LocatedAddress::of(self.db, dv)
+                    .ok_or_else(|| {
+                        LowerTypeError::UnsupportedType(format!(
+                            "'{}' names no I/O band; `rk check` refuses it (E1417)",
+                            dv.to_address(self.db)
+                        ))
+                    })?;
                 // The address's own type is its width's bit string, which is
                 // not the cell's when a VAR_GLOBAL declared it otherwise: a
                 // bare `%ID0` is the bits of a REAL there, so the cell is
                 // reached as a field of that type at offset 0.
-                let name = hir::hir_def::interned::identifier::Ident::new(
-                    self.db,
-                    compact_str::CompactString::from(address),
-                );
-                let ty = MirType::Elementary(shape.elementary());
+                let name = hir::hir_def::interned::identifier::Ident::new(self.db, address.text);
+                let ty = MirType::Elementary(crate::located::width_elementary(address.width));
                 Ok(MirPlace::Field {
                     base: Box::new(MirPlace::Global {
                         name: Some(name),

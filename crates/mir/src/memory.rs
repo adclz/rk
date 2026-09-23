@@ -67,15 +67,13 @@ pub struct LocatedEntry {
     pub name: Ident,
     /// The address as written (`%IX0.1`): the key a host binds a channel to.
     pub address_text: String,
-    pub area: LocationArea,
-    /// Rank of the address's width letter: `X` < `B` < `W` < `D` < `L`.
-    pub width_rank: u8,
+    /// The address as HIR decoded it. Its area is the band, and its width
+    /// and levels place the cell inside it.
+    pub located: hir::hir_def::pous::variable::LocatedAddress,
     /// Declared `RETAIN`. Only `%M` can be: an input image restored at
     /// startup would run the first scan on the last power cycle's values,
     /// and `%I`/`%Q` are refused at check (E1420).
     pub retain: bool,
-    /// The numeric parts of the address, in order.
-    pub offsets: Vec<u32>,
     /// Linear-memory address; pre-band-relocation as allocated, final once
     /// [`MirMemoryLayout::finalize_bands`] has returned it.
     pub address: u32,
@@ -247,13 +245,20 @@ impl MirMemoryLayout {
         // last, so they can end it and the retain band can start there.
         let mut located = located;
         located.sort_by(|a, b| {
-            (a.area, a.retain, a.width_rank, &a.offsets, &a.address_text).cmp(&(
-                b.area,
-                b.retain,
-                b.width_rank,
-                &b.offsets,
-                &b.address_text,
-            ))
+            (
+                a.located.area,
+                a.retain,
+                a.located.width,
+                &a.located.levels,
+                &a.address_text,
+            )
+                .cmp(&(
+                    b.located.area,
+                    b.retain,
+                    b.located.width,
+                    &b.located.levels,
+                    &b.address_text,
+                ))
         });
         let mut relocated_located = Vec::with_capacity(located.len());
         let mut area_bands = [(cursor, 0u32); 3];
@@ -263,7 +268,7 @@ impl MirMemoryLayout {
             LocationArea::Marker,
         ]) {
             let mut base: Option<u32> = None;
-            for entry in located.iter().filter(|e| e.area == area) {
+            for entry in located.iter().filter(|e| e.located.area == area) {
                 let addr = align_to(cursor, entry.align);
                 base.get_or_insert(addr);
                 remap.insert(entry.address, addr);
