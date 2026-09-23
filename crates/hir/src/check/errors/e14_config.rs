@@ -341,6 +341,17 @@ pub enum PartlyUnlocated<'db> {
         /// `%I*`, `%Q*` or `%M*`.
         address: compact_str::CompactString,
     },
+    /// A FUNCTION's or METHOD's result, made for each call.
+    Returned {
+        ret: crate::hir_def::expressions::spec::Spec<'db>,
+        /// `FUNCTION` or `METHOD`.
+        callable: &'static str,
+        /// The returned type, as written.
+        ty: compact_str::CompactString,
+        /// The member declared with the partial address: `x`, or `fb.x`.
+        member: compact_str::CompactString,
+        address: compact_str::CompactString,
+    },
     /// Instances held where no VAR_CONFIG path reaches them.
     Unreachable {
         var: VariableDecl<'db>,
@@ -1086,6 +1097,26 @@ impl<'db> ToIdeDiagnostic<'db> for ConfigError<'db> {
                 diag.with_note(
                     "each instance is given its address in the CONFIGURATION's VAR_CONFIG, as in 'Res.P1.fb.x AT %IX0.0 : BOOL;'".to_string(),
                 );
+                diag
+            }
+            Self::PartlyLocatedUnlocated(PartlyUnlocated::Returned {
+                ret,
+                callable,
+                ty,
+                member,
+                address,
+            }) => {
+                let mut diag = diag()
+                    .message(format!(
+                        "the {callable} returns a '{ty}', which holds '{member}', declared AT {address}, in a result made for each call, which VAR_CONFIG cannot name"
+                    ))
+                    .severity(DiagnosticSeverity::ERROR)
+                    .desc(self)
+                    .range(crate::denormalize(db, file, &ret.get_span(db)).unwrap_or_default())
+                    .call();
+                diag.with_note(format!(
+                    "a VAR_CONFIG path names a PROGRAM instance and the instances it holds by name; hold the instance there and pass it to the {callable} as a VAR_IN_OUT"
+                ));
                 diag
             }
             Self::PartlyLocatedUnlocated(PartlyUnlocated::Unreachable {

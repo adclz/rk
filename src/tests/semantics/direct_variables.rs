@@ -1300,6 +1300,50 @@ END_CONFIGURATION
     ");
 }
 
+/// Nor is the result of a call: what a FUNCTION or METHOD returns is made
+/// afresh by each call, and a variable declared `AT %I*` in it, directly or
+/// through a STRUCT, has a pointer nothing binds (E1425). `make.level := 7`
+/// wrote to address 0.
+#[rstest]
+fn invalid_partly_located_member_in_a_returned_instance(mut with_db: RootDatabase) {
+    let source = r#"
+CLASS Box
+VAR PUBLIC level AT %M* : INT; END_VAR
+END_CLASS
+
+TYPE Crate : STRUCT b : Box; END_STRUCT END_TYPE
+
+FUNCTION make : Box
+    make.level := 7;
+END_FUNCTION
+
+FUNCTION_BLOCK Holder
+METHOD PUBLIC Get : Crate
+END_METHOD
+END_FUNCTION_BLOCK
+"#;
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
+    [E1425] Error: variable not located
+       ,-[ file:///test0.st:8:17 ]
+       |
+     8 | FUNCTION make : Box
+       |                 ^|^
+       |                  `--- the FUNCTION returns a 'Box', which holds 'level', declared AT %M*, in a result made for each call, which VAR_CONFIG cannot name
+       |
+       | Note: a VAR_CONFIG path names a PROGRAM instance and the instances it holds by name; hold the instance there and pass it to the FUNCTION as a VAR_IN_OUT
+    ---'
+    [E1425] Error: variable not located
+        ,-[ file:///test0.st:13:21 ]
+        |
+     13 | METHOD PUBLIC Get : Crate
+        |                     ^^|^^
+        |                       `---- the METHOD returns a 'Crate', which holds 'b.level', declared AT %M*, in a result made for each call, which VAR_CONFIG cannot name
+        |
+        | Note: a VAR_CONFIG path names a PROGRAM instance and the instances it holds by name; hold the instance there and pass it to the METHOD as a VAR_IN_OUT
+    ----'
+    ");
+}
+
 /// A partial address names its area and nothing else: `%Z*` has no area and
 /// `%IW*` a width, which the variable's type gives (E1417). Neither is left
 /// to VAR_CONFIG, so an entry for one is refused (E1424) and none is needed.

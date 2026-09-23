@@ -195,16 +195,25 @@ fn lower_stmt<'db>(
         }
 
         StmtKind::FuncCall(func_call) => {
-            // Check if this is a FB invocation (callee is a variable of FB type)
+            // Check if this is a FB invocation (callee is a variable of FB type).
+            // A FUNCTION or METHOD normalizes to its result, which may be a
+            // FUNCTION_BLOCK: the callee is still the FUNCTION or METHOD.
             let path = func_call.path(ctx.db);
-            let callee_type = path.infer(ctx.db).normalize(ctx.db);
-
-            let fb = match callee_type {
-                hir::hir_ty::ty::Type::FunctionBlock(fb)
+            let callee = path.infer(ctx.db);
+            let fb = match callee {
+                hir::hir_ty::ty::Type::Function(_)
+                | hir::hir_ty::ty::Type::MethodDecl(_)
                 | hir::hir_ty::ty::Type::CallableType(
-                    hir::hir_ty::ty::CallableType::FunctionBlock(fb),
-                ) => Some(fb),
-                _ => None,
+                    hir::hir_ty::ty::CallableType::Function(_)
+                    | hir::hir_ty::ty::CallableType::MethodDecl(_),
+                ) => None,
+                _ => match callee.normalize(ctx.db) {
+                    hir::hir_ty::ty::Type::FunctionBlock(fb)
+                    | hir::hir_ty::ty::Type::CallableType(
+                        hir::hir_ty::ty::CallableType::FunctionBlock(fb),
+                    ) => Some(fb),
+                    _ => None,
+                },
             };
             if let Some(fb) = fb {
                 ctx.lower_fb_invocation(*func_call, fb)

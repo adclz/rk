@@ -72,6 +72,7 @@ impl<'db> InitInference<'db> {
         self.check_usings(db);
         self.check_methods(db);
         self.check_function_specifier(db);
+        self.check_return_type(db);
 
         // Once-per-type initializers must be constant (user-ruled): a TYPE
         // default, an FB/CLASS member default, and anything static — a
