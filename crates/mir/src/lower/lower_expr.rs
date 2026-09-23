@@ -1158,15 +1158,7 @@ impl<'db> ExprLowerCtx<'db> {
                 let field_name = match &field_expr.var {
                     VarAccess::Simple(span_ident) => span_ident.ident,
                 };
-                let base_type = field_expr.path.infer(self.db);
-                let (field_offset, field_type) = self.field_slot(base_type, field_name)?;
-
-                Ok(MirPlace::Field {
-                    base: Box::new(inner),
-                    field_name,
-                    field_offset,
-                    field_type,
-                })
+                self.member_place(inner, field_expr.path.infer(self.db), field_name)
             }
             PathExprKind::Index(index_expr) => {
                 let inner = self.lower_this_path(index_expr.path)?;
@@ -1273,17 +1265,8 @@ impl<'db> ExprLowerCtx<'db> {
                 let field_name = match &field_expr.var {
                     VarAccess::Simple(span_ident) => span_ident.ident,
                 };
-
                 // Offset and type come from the base type's layout in one lookup.
-                let base_hir_type = field_expr.path.infer(self.db);
-                let (field_offset, field_type) = self.field_slot(base_hir_type, field_name)?;
-
-                Ok(MirPlace::Field {
-                    base: Box::new(inner),
-                    field_name,
-                    field_offset,
-                    field_type,
-                })
+                self.member_place(inner, field_expr.path.infer(self.db), field_name)
             }
 
             PathExprKind::Index(index_expr) => {
@@ -1307,14 +1290,35 @@ impl<'db> ExprLowerCtx<'db> {
         }
     }
 
-    /// The byte offset and type of `field_name` within `base_type`, from one
-    /// layout lookup. The type must come from the layout: `Type::normalize`
+    /// The member `field_name` of `base`, reached through a path (`fb.x`,
+    /// `THIS.a.b`). A member held as a pointer to its storage, a VAR_IN_OUT's
+    /// argument or the channel VAR_CONFIG located an `AT %I*` at, is
+    /// dereferenced here as it is when the instance names it itself: reached
+    /// from outside, it was read, written and referenced as the pointer.
+    fn member_place(
+        &self,
+        base: MirPlace,
+        base_type: Type<'db>,
+        field_name: hir::hir_def::interned::identifier::Ident,
+    ) -> Result<MirPlace, LowerTypeError> {
+        let field = self.layout_field(base_type, field_name)?;
+        let place = MirPlace::Field {
+            base: Box::new(base),
+            field_name,
+            field_offset: field.offset,
+            field_type: field.ty.clone(),
+        };
+        Ok(Self::wrap_inout_deref(&field, place))
+    }
+
+    /// The layout's field `field_name` of `base_type`, offset, type and all,
+    /// from one lookup. The type must come from the layout: `Type::normalize`
     /// collapses `STRING[n]`, and the layout kept the capacity.
-    fn field_slot(
+    fn layout_field(
         &self,
         base_type: Type<'db>,
         field_name: hir::hir_def::interned::identifier::Ident,
-    ) -> Result<(u32, MirType), LowerTypeError> {
+    ) -> Result<crate::types::MirStructField, LowerTypeError> {
         let base_mir = self.lower_pointee(base_type).ok();
         // If the resolved type is an array, the field access is on the element type
         let effective_mir = match base_mir {
@@ -1326,7 +1330,7 @@ impl<'db> ExprLowerCtx<'db> {
         if let Some(MirType::Struct(s)) = &effective_mir {
             for field in &s.fields {
                 if field.name.caseless(self.db) == field_name.caseless(self.db) {
-                    return Ok((field.offset, field.ty.clone()));
+                    return Ok(field.clone());
                 }
             }
         }

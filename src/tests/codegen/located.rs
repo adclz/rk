@@ -1513,6 +1513,73 @@ fn a_program_variable_is_located_per_instance_at_a_part(mut with_db: db::RootDat
     assert_eq!(panel, 0x1742);
 }
 
+/// A member located by VAR_CONFIG reached through a path is its channel, as
+/// it is when its instance names it: written, passed to a VAR_IN_OUT,
+/// referenced and read from outside (`f.o`), and through a member of the
+/// instance's own body and methods (`b.out`, `THIS^.b2.out`).
+#[rstest]
+fn a_located_member_reached_through_a_path_is_its_channel(mut with_db: db::RootDatabase) {
+    let source = r#"
+        FUNCTION_BLOCK Fb
+        VAR PUBLIC o AT %Q* : INT; END_VAR
+        END_FUNCTION_BLOCK
+
+        CLASS Box
+        VAR PUBLIC out AT %Q* : INT; END_VAR
+        END_CLASS
+
+        FUNCTION_BLOCK Holder
+        VAR b : Box; b2 : Box; END_VAR
+        METHOD PUBLIC Set
+        VAR_INPUT v : INT; END_VAR
+            THIS^.b2.out := v;
+        END_METHOD
+            b.out := 22;
+        END_FUNCTION_BLOCK
+
+        FUNCTION Bump : BOOL
+        VAR_IN_OUT v : INT; END_VAR
+            v := v + 1;
+            Bump := TRUE;
+        END_FUNCTION
+
+        PROGRAM P
+        VAR_EXTERNAL echo : INT; END_VAR
+        VAR f : Fb; h : Holder; r : REF_TO INT; ok : BOOL; END_VAR
+            f.o := 77;
+            ok := Bump(v := f.o);
+            r := REF(f.o);
+            r^ := r^ + 1;
+            echo := f.o;
+            h();
+            h.Set(v := 33);
+        END_PROGRAM
+
+        CONFIGURATION Cfg
+        VAR_GLOBAL echo AT %QW4 : INT; END_VAR
+        VAR_CONFIG
+            Res.P1.f.o AT %QW1 : INT;
+            Res.P1.h.b.out AT %QW2 : INT;
+            Res.P1.h.b2.out AT %QW3 : INT;
+        END_VAR
+            RESOURCE Res ON CPU
+                TASK T(INTERVAL := T#10ms, PRIORITY := 1);
+                PROGRAM P1 WITH T : P;
+            END_RESOURCE
+        END_CONFIGURATION
+    "#;
+    let (_mir, wasm) = compile_to_mir_and_wasm(&mut with_db, source);
+    let mut plc = TestPlc::load(&wasm).expect("load");
+    plc.run(1).expect("scan");
+    let word = |plc: &TestPlc, a: &str| {
+        i32::from_le_bytes(plc.read_located(a).expect("read")[..4].try_into().unwrap())
+    };
+    assert_eq!(word(&plc, "%QW1"), 79, "written, bumped through a VAR_IN_OUT and a REF");
+    assert_eq!(word(&plc, "%QW4"), 79, "and read back from outside");
+    assert_eq!(word(&plc, "%QW2"), 22, "the holder's body wrote its member's channel");
+    assert_eq!(word(&plc, "%QW3"), 33, "and so did its method, through THIS^");
+}
+
 /// An output's initial value is written by `__init`, so the output is in
 /// that state before the first scan — the startup value a host sees first.
 #[rstest]
