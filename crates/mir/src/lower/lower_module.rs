@@ -486,14 +486,18 @@ fn lower_module_from_pous<'db>(
     // Bare addresses the bodies named get their cells before the bands are
     // carved, so they are laid out with the declared ones, and so do the ones
     // only VAR_CONFIG names: what a located instance variable points at.
-    let config_cells: Vec<String> = config
+    let config_addresses: Vec<hir::hir_def::pous::variable::LocatedAddress> = config
         .iter()
         .flat_map(|c| {
             hir::hir_ty::config::infer_config_result(db, *c)
                 .locations
                 .iter()
         })
-        .map(|loc| config_cell(db, &loc.address).0.text.to_string())
+        .map(|loc| loc.address.clone())
+        .collect();
+    let config_cells: Vec<String> = config_addresses
+        .iter()
+        .map(|address| config_cell(db, address).0.text.to_string())
         .collect();
     synthesize_bare_addresses(
         db,
@@ -580,7 +584,7 @@ fn lower_module_from_pous<'db>(
     module.output_size = bands.output_size;
     module.marker_base = bands.marker_base;
     module.marker_size = bands.marker_size;
-    module.located_map = build_located_map(db, &bands.located, &global_table);
+    module.located_map = build_located_map(db, &bands.located, &global_table, &config_addresses);
 
     // The debug-symbol table, now that every address is final; sorted by
     // path.
@@ -1160,6 +1164,7 @@ fn build_located_map<'db>(
     db: &'db dyn WorkspaceDataBase,
     located: &[crate::memory::LocatedEntry],
     globals: &GlobalTable<'db>,
+    config_addresses: &[hir::hir_def::pous::variable::LocatedAddress],
 ) -> debug_format::LocatedMap {
     use hir::hir_def::pous::variable::LocationArea;
     let area = |a: LocationArea| match a {
@@ -1192,10 +1197,12 @@ fn build_located_map<'db>(
 
     // The parts: addresses stored inside a wider one, with no cell of their
     // own. Each is listed at its owner's cell with the bits it is, so a host
-    // finds every address the program names, part or not, the same way.
+    // finds every address the program names, part or not, the same way; an
+    // address VAR_CONFIG gives an instance variable included.
     let mut parts: Vec<debug_format::LocatedVar> = Vec::new();
-    for located in hir::hir_ty::index_graphs::located_by_file(db) {
-        for address in located.keys() {
+    {
+        let mentioned = hir::hir_ty::index_graphs::located_by_file(db).flat_map(|m| m.keys());
+        for address in mentioned.chain(config_addresses) {
             if parts.iter().any(|p| p.address == address.text.as_str()) {
                 continue;
             }

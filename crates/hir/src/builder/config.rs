@@ -452,6 +452,7 @@ impl<'db> SemanticIndexBuilder<'db> {
 
         let mut located_at = None;
         let mut init_expr = None;
+        let mut spec = None;
 
         for child in &inst.children {
             match child.cast(self.ast) {
@@ -463,6 +464,7 @@ impl<'db> SemanticIndexBuilder<'db> {
                     let r = lvsi.to_spec_init(self);
                     if let Some(result) = self.try_parse(r) {
                         init_expr = result.init;
+                        spec = Some(result.spec);
                     }
                 }
             }
@@ -484,18 +486,10 @@ impl<'db> SemanticIndexBuilder<'db> {
             .to_diagnostic(self.db, self.file));
         }
 
-        // A location VAR_CONFIG gives is a mention of its address: a cell for
-        // it, or the wider one it is part of, is what the variable points at.
-        if let Some(address) = located_at
-            .and_then(|dv| crate::hir_def::pous::variable::LocatedAddress::of(self.db, dv))
-        {
-            self.located
-                .push((address, crate::hir_def::hir_node::HirNode::PathExpr(path)));
-        }
-
         Ok(crate::hir_def::config::ConfigInstInit {
             path,
             located_at,
+            spec,
             init: init_expr,
         })
     }

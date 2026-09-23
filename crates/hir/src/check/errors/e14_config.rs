@@ -188,6 +188,24 @@ pub enum ConfigError<'db> {
     /// A variable declared `AT %I*`, `%Q*` or `%M*` that VAR_CONFIG does not
     /// locate, or cannot.
     PartlyLocatedUnlocated(PartlyUnlocated<'db>),
+    /// A VAR_CONFIG entry that resolves but cannot be taken as written.
+    ConfigEntryRefused {
+        expr: PathExpr<'db>,
+        why: ConfigEntryRefusal,
+    },
+}
+
+/// Why a VAR_CONFIG entry cannot be taken as written.
+#[derive(Clone, Debug, PartialEq, Eq, Hash, salsa::Update)]
+pub enum ConfigEntryRefusal {
+    /// `Res.P1.arr[0]`, `Res.P1.p^.x`: a path names instances and variables.
+    PathStep,
+    /// The type the entry repeats is not the variable's.
+    TypeMismatch {
+        var: compact_str::CompactString,
+        written: compact_str::CompactString,
+        declared: compact_str::CompactString,
+    },
 }
 
 /// Why a VAR_CONFIG entry cannot give the variable it names this address.
@@ -210,6 +228,8 @@ pub enum ConfigLocationRefusal {
     /// A bit inside a wider address the workspace names, which has no address
     /// of its own for the variable to point at.
     BitOfWider { owner: compact_str::CompactString },
+    /// Another entry locates the same instance's variable.
+    LocatedTwice { other: compact_str::CompactString },
 }
 
 impl ConfigLocationRefusal {
@@ -253,6 +273,9 @@ impl ConfigLocationRefusal {
             Self::BitOfWider { owner } => format!(
                 "'{address}' is a bit of '{owner}', and a bit has no address to locate '{var}' at"
             ),
+            Self::LocatedTwice { other } => {
+                format!("'{var}' is located at '{address}' here and at '{other}' by another entry")
+            }
         }
     }
 
@@ -272,6 +295,9 @@ impl ConfigLocationRefusal {
             }
             Self::BitOfWider { .. } => {
                 "the variable points at its channel, so give it a byte or wider, or a bit nothing wider around it is named"
+            }
+            Self::LocatedTwice { .. } => {
+                "an instance's variable has one address; keep one of the entries"
             }
         }
     }
@@ -423,6 +449,9 @@ pub enum UnsupportedConfigKind {
     /// instance's field, then thrown away, so the field keeps its declared
     /// value. The validation makes this one especially misleading.
     InstanceInit,
+    /// The same, on a variable declared `AT %I*`, which the grammar gives no
+    /// initial value of its own to fall back on.
+    InstanceInitLocated,
 }
 
 impl UnsupportedConfigKind {
@@ -434,8 +463,8 @@ impl UnsupportedConfigKind {
             Self::FbTaskAssociation => {
                 "associating a function block with its own task is not supported yet"
             }
-            Self::InstanceInit => {
-                "VAR_CONFIG is checked but not applied yet, so this value never reaches the instance"
+            Self::InstanceInit | Self::InstanceInitLocated => {
+                "a VAR_CONFIG value is checked but not applied yet, so it never reaches the instance"
             }
         }
     }
@@ -444,7 +473,10 @@ impl UnsupportedConfigKind {
         match self {
             Self::ProgramConnection => "assign it in the program body instead",
             Self::FbTaskAssociation => "run the function block from its enclosing program's task",
-            Self::InstanceInit => "set the value in the program's own VAR declaration instead",
+            Self::InstanceInit => "set the value in the variable's own declaration instead",
+            Self::InstanceInitLocated => {
+                "a variable VAR_CONFIG locates starts at its type's default, or at the value its channel's own declaration gives it"
+            }
         }
     }
 }
@@ -524,6 +556,7 @@ impl<'db> ErrorCode for ConfigError<'db> {
             Self::PartOfWiderAddress { .. } => "E1423",
             Self::ConfigLocationRefused { .. } => "E1424",
             Self::PartlyLocatedUnlocated(_) => "E1425",
+            Self::ConfigEntryRefused { .. } => "E1426",
         }
     }
 
@@ -554,6 +587,7 @@ impl<'db> ErrorCode for ConfigError<'db> {
             Self::PartOfWiderAddress { .. } => "part of a wider address",
             Self::ConfigLocationRefused { .. } => "location refused",
             Self::PartlyLocatedUnlocated(_) => "variable not located",
+            Self::ConfigEntryRefused { .. } => "configuration entry refused",
         }
     }
 }
@@ -947,6 +981,26 @@ impl<'db> ToIdeDiagnostic<'db> for ConfigError<'db> {
                     .range(crate::denormalize(db, file, &expr.get_span(db)).unwrap_or_default())
                     .call();
                 diag.with_note(why.note().to_string());
+                diag
+            }
+            Self::ConfigEntryRefused { expr, why } => {
+                let (message, note) = match why {
+                    ConfigEntryRefusal::PathStep => (
+                        "a VAR_CONFIG path names instances and variables, not an element or what a reference points at".to_string(),
+                        "name the variable itself; an element of an array or a referenced value cannot be configured",
+                    ),
+                    ConfigEntryRefusal::TypeMismatch { var, written, declared } => (
+                        format!("the entry says '{written}', but '{var}' is declared '{declared}'"),
+                        "the entry repeats the variable's type; write the declared one",
+                    ),
+                };
+                let mut diag = diag()
+                    .message(message)
+                    .severity(DiagnosticSeverity::ERROR)
+                    .desc(self)
+                    .range(crate::denormalize(db, file, &expr.get_span(db)).unwrap_or_default())
+                    .call();
+                diag.with_note(note.to_string());
                 diag
             }
             Self::PartlyLocatedUnlocated(PartlyUnlocated::Missing {

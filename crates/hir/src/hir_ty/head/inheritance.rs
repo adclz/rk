@@ -433,7 +433,9 @@ fn collect_instance_initializers<'db>(
 /// for each instance (E1425).
 ///
 /// An array of such instances is not followed: no VAR_CONFIG path reaches an
-/// element, and E1425 refuses the array where it is declared.
+/// element, and E1425 refuses the array where it is declared. Nor is a
+/// VAR_IN_OUT, which points at an instance located where it is declared, or
+/// a VAR_INPUT, a copy of one, refused where it is declared.
 #[salsa::tracked(returns(ref))]
 pub fn partly_located_members<'db>(
     db: &'db dyn WorkspaceDataBase,
@@ -463,7 +465,9 @@ pub fn collect_partly_located<'db>(
         prefix.push(var);
         if var.is_partly_located(db) {
             out.push(prefix.clone());
-        } else if let Some(inner) = pou_of_type(db, var.spec(db).infer(db).normalize(db))
+        } else if !var.is_in_out(db)
+            && !var.is_input(db)
+            && let Some(inner) = pou_of_type(db, var.spec(db).infer(db).normalize(db))
             && !visited.contains(&inner)
         {
             // `visited` is the current path, as for the initializers: a type

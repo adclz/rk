@@ -986,41 +986,137 @@ END_CONFIGURATION
         |
         | Note: VAR_CONFIG gives the complete address, such as '%IX0.0' or '%QW4'
     ----'
-    [E1425] Error: variable not located
-        ,-[ file:///test0.st:25:17 ]
+    ");
+}
+
+/// A VAR_CONFIG path reaches an inherited member as it does a member of the
+/// instance's own type, and an entry may sit in another block of the same
+/// configuration. A VAR_IN_OUT points at an instance located where it is
+/// declared, so nothing locates what it holds: not in `h`, not in a
+/// VAR_GLOBAL.
+#[rstest]
+fn valid_config_locations_of_inherited_members_across_fragments(mut with_db: RootDatabase) {
+    let machine = r#"
+FUNCTION_BLOCK Base
+VAR run AT %Q* : BOOL; END_VAR
+END_FUNCTION_BLOCK
+
+FUNCTION_BLOCK Drive EXTENDS Base
+END_FUNCTION_BLOCK
+
+FUNCTION_BLOCK Holder
+VAR_IN_OUT io : Drive; END_VAR
+END_FUNCTION_BLOCK
+
+PROGRAM P
+VAR d : Drive; h : Holder; END_VAR
+END_PROGRAM
+
+CONFIGURATION Cfg
+VAR_GLOBAL spare : Holder; END_VAR
+    RESOURCE Res ON CPU
+        TASK T(INTERVAL := T#10ms, PRIORITY := 1);
+        PROGRAM P1 WITH T : P;
+    END_RESOURCE
+END_CONFIGURATION
+"#;
+    let wiring = r#"
+CONFIGURATION Cfg
+VAR_CONFIG
+    Res.P1.d.run AT %QX0.0 : BOOL;
+END_VAR
+END_CONFIGURATION
+"#;
+    assert_snapshot!(test_diagnostics(&mut with_db, &[machine, wiring]), @r"");
+}
+
+/// An entry is wrong about its variable when it names what a path cannot
+/// (an element, a dereference) or writes another type than the variable's
+/// (E1426), and two entries cannot both locate one variable (E1424, at each).
+/// An entry that does not resolve or is refused gives no address: `flag`,
+/// which would be a bit of `%QW1`, stays a cell of its own.
+#[rstest]
+fn invalid_config_entries(mut with_db: RootDatabase) {
+    let source = r#"
+FUNCTION_BLOCK Drive
+VAR
+    run   AT %Q* : BOOL;
+    level AT %I* : INT;
+END_VAR
+END_FUNCTION_BLOCK
+
+PROGRAM P
+VAR d : Drive; r : REF_TO Drive; END_VAR
+END_PROGRAM
+
+CONFIGURATION Cfg
+VAR_GLOBAL flag AT %QX2.3 : BOOL := TRUE; END_VAR
+VAR_CONFIG
+    Res.P1.d.run   AT %QX0.0 : BOOL;
+    Res.P1.d.run   AT %QX0.1 : BOOL;
+    Res.P1.d.level AT %IW2   : UINT;
+    Res.P1.r^.run  AT %QX1.0 : BOOL;
+    Res.P1.d.lvl   AT %QW1   : INT;
+    Res.P1.d.run   : BOOL := TRUE;
+END_VAR
+    RESOURCE Res ON CPU
+        TASK T(INTERVAL := T#10ms, PRIORITY := 1);
+        PROGRAM P1 WITH T : P;
+    END_RESOURCE
+END_CONFIGURATION
+"#;
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
+    [E1426] Error: configuration entry refused
+        ,-[ file:///test0.st:18:14 ]
         |
-     25 |         PROGRAM P1 WITH T : P;
-        |                 ^|
-        |                  `-- 'P1.d.run' is declared AT %Q*, and no VAR_CONFIG entry locates it
+     18 |     Res.P1.d.level AT %IW2   : UINT;
+        |              ^^|^^
+        |                `---- the entry says 'UINT', but 'level' is declared 'INT'
         |
-        | Note: each instance is given its address in the CONFIGURATION's VAR_CONFIG, as in 'Res.P1.fb.x AT %IX0.0 : BOOL;'
+        | Note: the entry repeats the variable's type; write the declared one
     ----'
-    [E1425] Error: variable not located
-        ,-[ file:///test0.st:25:17 ]
+    [E1426] Error: configuration entry refused
+        ,-[ file:///test0.st:19:15 ]
         |
-     25 |         PROGRAM P1 WITH T : P;
-        |                 ^|
-        |                  `-- 'P1.d.level' is declared AT %I*, and no VAR_CONFIG entry locates it
+     19 |     Res.P1.r^.run  AT %QX1.0 : BOOL;
+        |               ^|^
+        |                `--- a VAR_CONFIG path names instances and variables, not an element or what a reference points at
         |
-        | Note: each instance is given its address in the CONFIGURATION's VAR_CONFIG, as in 'Res.P1.fb.x AT %IX0.0 : BOOL;'
+        | Note: name the variable itself; an element of an array or a referenced value cannot be configured
     ----'
-    [E1425] Error: variable not located
-        ,-[ file:///test0.st:26:17 ]
+    [E1414] Error: configuration error
+        ,-[ file:///test0.st:20:14 ]
         |
-     26 |         PROGRAM P2 WITH T : P;
-        |                 ^|
-        |                  `-- 'P2.d.run' is declared AT %Q*, and no VAR_CONFIG entry locates it
-        |
-        | Note: each instance is given its address in the CONFIGURATION's VAR_CONFIG, as in 'Res.P1.fb.x AT %IX0.0 : BOOL;'
+     20 |     Res.P1.d.lvl   AT %QW1   : INT;
+        |              ^|^
+        |               `--- 'Drive' has no field named 'lvl'
     ----'
-    [E1425] Error: variable not located
-        ,-[ file:///test0.st:26:17 ]
+    [E1424] Error: location refused
+        ,-[ file:///test0.st:16:14 ]
         |
-     26 |         PROGRAM P2 WITH T : P;
-        |                 ^|
-        |                  `-- 'P2.d.level' is declared AT %I*, and no VAR_CONFIG entry locates it
+     16 |     Res.P1.d.run   AT %QX0.0 : BOOL;
+        |              ^|^
+        |               `--- 'run' is located at '%QX0.0' here and at '%QX0.1' by another entry
         |
-        | Note: each instance is given its address in the CONFIGURATION's VAR_CONFIG, as in 'Res.P1.fb.x AT %IX0.0 : BOOL;'
+        | Note: an instance's variable has one address; keep one of the entries
+    ----'
+    [E1424] Error: location refused
+        ,-[ file:///test0.st:17:14 ]
+        |
+     17 |     Res.P1.d.run   AT %QX0.1 : BOOL;
+        |              ^|^
+        |               `--- 'run' is located at '%QX0.1' here and at '%QX0.0' by another entry
+        |
+        | Note: an instance's variable has one address; keep one of the entries
+    ----'
+    [E1416] Error: unsupported configuration element
+        ,-[ file:///test0.st:21:14 ]
+        |
+     21 |     Res.P1.d.run   : BOOL := TRUE;
+        |              ^|^
+        |               `--- a VAR_CONFIG value is checked but not applied yet, so it never reaches the instance
+        |
+        | Note: a variable VAR_CONFIG locates starts at its type's default, or at the value its channel's own declaration gives it
     ----'
     ");
 }

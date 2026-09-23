@@ -146,6 +146,27 @@ pub fn located_by_file<'db>(
     workspace_files(db).map(move |file| &**file_located(db, file))
 }
 
+/// The addresses VAR_CONFIG gives instance variables: each entry of the
+/// workspace's configurations that resolves and passes the checks that look
+/// at nothing but the entry. Each is a mention of its address, as a
+/// declaration's is. A refused one is not, so one mistake does not also make
+/// another address a part of it.
+pub fn config_located<'db>(
+    db: &'db dyn WorkspaceDataBase,
+) -> impl Iterator<Item = &'db LocatedAddress> + 'db {
+    workspace_files(db)
+        .flat_map(move |file| file_configs(db, file).iter())
+        .flat_map(move |config| {
+            crate::hir_ty::config::resolve_config_entries(db, *config)
+                .entries
+                .iter()
+        })
+        .filter_map(|entry| match &entry.location {
+            Some((_, crate::hir_ty::config::EntryLocation::Given(address))) => Some(address),
+            _ => None,
+        })
+}
+
 /// An address stored inside a wider one: the bits of `owner` it is.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct LocatedView {
@@ -240,8 +261,9 @@ pub fn located_declarations_at<'db>(
 pub fn located_view(db: &dyn WorkspaceDataBase, address: &LocatedAddress) -> Option<LocatedView> {
     let bits = address.image_bits()?;
     let mut owner: Option<(&LocatedAddress, std::ops::Range<u64>)> = None;
-    for located in located_by_file(db) {
-        for other in located.keys() {
+    {
+        let mentioned = located_by_file(db).flat_map(|m| m.keys());
+        for other in mentioned.chain(config_located(db)) {
             if other.area != address.area || other == address {
                 continue;
             }

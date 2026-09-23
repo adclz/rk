@@ -1483,6 +1483,44 @@ fn a_function_block_variable_is_located_per_instance(mut with_db: db::RootDataba
     assert_eq!(word(&plc, "%MW1"), 5);
 }
 
+/// An inherited member is located like the instance's own, and by an entry
+/// in another block of the configuration.
+#[rstest]
+fn an_inherited_member_is_located_from_another_block(mut with_db: db::RootDatabase) {
+    let source = r#"
+        FUNCTION_BLOCK Base
+        VAR out AT %Q* : INT; END_VAR
+        END_FUNCTION_BLOCK
+
+        FUNCTION_BLOCK Drive EXTENDS Base
+            out := out + 7;
+        END_FUNCTION_BLOCK
+
+        PROGRAM P
+        VAR d : Drive; END_VAR
+            d();
+        END_PROGRAM
+
+        CONFIGURATION Cfg
+            RESOURCE Res ON CPU
+                TASK T(INTERVAL := T#10ms, PRIORITY := 1);
+                PROGRAM P1 WITH T : P;
+            END_RESOURCE
+        END_CONFIGURATION
+
+        CONFIGURATION Cfg
+        VAR_CONFIG
+            Res.P1.d.out AT %QW1 : INT;
+        END_VAR
+        END_CONFIGURATION
+    "#;
+    let (_mir, wasm) = compile_to_mir_and_wasm(&mut with_db, source);
+    let mut plc = TestPlc::load(&wasm).expect("load");
+    plc.run(2).expect("scan");
+    let out = i16::from_le_bytes(plc.read_located("%QW1").expect("read")[..2].try_into().unwrap());
+    assert_eq!(out, 14, "`out` is the channel, two scans of `out + 7`");
+}
+
 /// A PROGRAM's variable may be located per instance too, and at a byte of a
 /// wider address: `lamp` is the low byte of the word the program also names.
 #[rstest]

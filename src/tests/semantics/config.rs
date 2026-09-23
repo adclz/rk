@@ -483,9 +483,9 @@ END_CONFIGURATION
         |
      15 |         inst1.x : INT := 42;
         |               |
-        |               `-- VAR_CONFIG is checked but not applied yet, so this value never reaches the instance
+        |               `-- a VAR_CONFIG value is checked but not applied yet, so it never reaches the instance
         |
-        | Note: set the value in the program's own VAR declaration instead
+        | Note: set the value in the variable's own declaration instead
     ----'
     ");
 }
@@ -582,9 +582,9 @@ END_CONFIGURATION
         |
      15 |         Res.inst1.x : INT := 42;
         |                   |
-        |                   `-- VAR_CONFIG is checked but not applied yet, so this value never reaches the instance
+        |                   `-- a VAR_CONFIG value is checked but not applied yet, so it never reaches the instance
         |
-        | Note: set the value in the program's own VAR declaration instead
+        | Note: set the value in the variable's own declaration instead
     ----'
     ");
 }
@@ -655,9 +655,9 @@ END_CONFIGURATION
         |
      21 |         inst1.fb1.param : BOOL := TRUE;
         |                   ^^|^^
-        |                     `---- VAR_CONFIG is checked but not applied yet, so this value never reaches the instance
+        |                     `---- a VAR_CONFIG value is checked but not applied yet, so it never reaches the instance
         |
-        | Note: set the value in the program's own VAR declaration instead
+        | Note: set the value in the variable's own declaration instead
     ----'
     ");
 }
@@ -753,9 +753,9 @@ END_CONFIGURATION
         |
      15 |         inst1.x : INT := 'hello';
         |               |
-        |               `-- VAR_CONFIG is checked but not applied yet, so this value never reaches the instance
+        |               `-- a VAR_CONFIG value is checked but not applied yet, so it never reaches the instance
         |
-        | Note: set the value in the program's own VAR declaration instead
+        | Note: set the value in the variable's own declaration instead
     ----'
     [E0308] Error: invalid literal
         ,-[ file:///test0.st:15:26 ]
@@ -832,9 +832,9 @@ END_CONFIGURATION
         |
      21 |         inst1.fb1.value : REAL := 3.14;
         |                   ^^|^^
-        |                     `---- VAR_CONFIG is checked but not applied yet, so this value never reaches the instance
+        |                     `---- a VAR_CONFIG value is checked but not applied yet, so it never reaches the instance
         |
-        | Note: set the value in the program's own VAR declaration instead
+        | Note: set the value in the variable's own declaration instead
     ----'
     ");
 }

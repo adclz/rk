@@ -692,7 +692,11 @@ fn extern_scalar<'db>(db: &'db dyn WorkspaceDataBase, ty: Type<'db>) -> bool {
 /// the declarations are spelled inline: two `ARRAY[0..2] OF INT` specs are
 /// distinct nodes but the same type. Subranges compare by base and bounds;
 /// named types (structs, enums, FBs) by the declaration they resolve to.
-fn same_storage_type<'db>(db: &'db dyn WorkspaceDataBase, a: Type<'db>, b: Type<'db>) -> bool {
+pub(crate) fn same_storage_type<'db>(
+    db: &'db dyn WorkspaceDataBase,
+    a: Type<'db>,
+    b: Type<'db>,
+) -> bool {
     let bounds = |t: Type<'db>| {
         t.as_subrange(db)
             .map(|s| crate::hir_ty::infer::const_eval::subrange_bounds(db, s))

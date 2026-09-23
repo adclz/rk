@@ -228,6 +228,9 @@ pub struct ConfigInstInit<'db> {
     /// Optional AT address (located variable).
     pub located_at: Option<DirectVariable<'db>>,
 
+    /// The type the entry writes, which repeats the variable's own.
+    pub spec: Option<crate::hir_def::expressions::spec::Spec<'db>>,
+
     /// Absent for a location-only entry (`AT %QB25 : BYTE;`), the standard's
     /// own form; an entry has a location, a value, or both.
     pub init: Option<InitExpr<'db>>,

@@ -7,7 +7,7 @@ use crate::check::errors::e14_config::ConfigError;
 use crate::check::errors::e14_config::UnschedulableReason;
 use crate::check::errors::e14_config::UnsupportedConfigKind;
 use crate::{
-    HirNodeInfo,
+    HasName, HirNodeInfo,
     check::errors::{ToIdeDiagnostic, e01_duplicates::DuplicateError},
     hir_def::{
         config::{ConfigDecl, ProgConfig, ResourceDecl, TaskConfig},
@@ -201,13 +201,7 @@ fn infer_config<'db>(
     report_unschedulable_bound_tasks(db, result);
 
     // Phase 3: validate VAR_CONFIG entries.
-    validate_config_inst_inits(
-        db,
-        config,
-        &result.prog_instance,
-        &mut result.locations,
-        &mut result.errors,
-    );
+    check_config_entries(db, config, &mut result.locations, &mut result.errors);
 
     // Phase 4: every instance's variable declared `AT %I*` is located.
     check_partly_located_coverage(db, config, result);
@@ -537,46 +531,89 @@ fn time_literal_nanos<'db>(
     u64::try_from(dur.whole_nanoseconds()).ok()
 }
 
-/// Validates VAR_CONFIG entries: resolves each path against program instances
-/// and type-checks the init expression against the resolved variable type.
-fn validate_config_inst_inits<'db>(
+/// Where a VAR_CONFIG location entry stands after the checks that do not
+/// look at the workspace's other addresses.
+#[derive(Debug, Clone, PartialEq, Eq, salsa::Update)]
+pub enum EntryLocation {
+    /// A complete address in the variable's area, as wide as its type.
+    Given(LocatedAddress),
+    Refused(crate::check::errors::e14_config::ConfigLocationRefusal),
+}
+
+/// A VAR_CONFIG entry whose path resolves.
+#[derive(Debug, Clone, PartialEq, Eq, salsa::Update)]
+pub struct ConfigEntry<'db> {
+    pub path: crate::hir_def::expressions::expression::PathExpr<'db>,
+    /// The PROGRAM instance the path starts at.
+    pub instance: Ident,
+    /// The members walked from the instance, the named variable last; empty
+    /// for an entry naming the instance itself.
+    pub members: Vec<VariableDecl<'db>>,
+    /// The `AT` it gives, with how it stands.
+    pub location: Option<(
+        crate::hir_def::pous::variable::DirectVariable<'db>,
+        EntryLocation,
+    )>,
+    pub init: Option<crate::hir_def::expressions::expression::InitExpr<'db>>,
+}
+
+/// A fragment's VAR_CONFIG entries that resolve, and what is wrong with the
+/// others and with what they write (E1413, E1414, E1426).
+#[derive(Debug, PartialEq, Eq, salsa::Update)]
+pub struct ConfigEntries<'db> {
+    pub entries: Vec<ConfigEntry<'db>>,
+    pub errors: Vec<IdeDiagnostic>,
+}
+
+/// Each VAR_CONFIG entry of `config`, resolved against the instances every
+/// fragment of its configuration declares, with the location checks that
+/// look at nothing but the entry and its variable.
+///
+/// A query of its own, apart from [`infer_config_result`], so that what
+/// needs every fragment's entries (coverage, duplicates) and what needs every
+/// entry's address (the views) read it without a cycle. Nothing here infers
+/// an expression, which could reach the views.
+#[salsa::tracked(returns(ref))]
+pub fn resolve_config_entries<'db>(
     db: &'db dyn WorkspaceDataBase,
     config: ConfigDecl<'db>,
-    instances: &FxHashMap<CaselessIdent, ProgramDecl<'db>>,
-    locations: &mut Vec<ConfigLocation<'db>>,
-    errors: &mut Vec<IdeDiagnostic>,
-) {
-    let config_inits = config.config_init(db);
-    if config_inits.is_empty() {
-        return;
+) -> ConfigEntries<'db> {
+    use crate::check::errors::e14_config::ConfigEntryRefusal;
+    let mut out = ConfigEntries {
+        entries: Vec::new(),
+        errors: Vec::new(),
+    };
+    let decls = config.config_init(db);
+    if decls.is_empty() {
+        return out;
     }
+    let file = config.get_scope_id(db).file(db);
+    // Instances and resources of every fragment: a VAR_CONFIG may name an
+    // instance another block of the same configuration declares.
+    let fragments = crate::hir_ty::index_graphs::config_fragments(db, config.get_name_ident(db));
+    let mut instances = FxHashMap::default();
+    for fragment in &fragments {
+        for r in fragment.resources(db).iter() {
+            for p in r.programs(db).iter() {
+                resolve_prog_instance(db, p, &mut instances);
+            }
+        }
+    }
+    let names_a_resource = |ident: &SpanIdent<'db>| {
+        let name = ident.ident.caseless(db);
+        fragments
+            .iter()
+            .flat_map(|f| f.resources(db).iter())
+            .any(|r| r.name(db).ident.caseless(db) == name)
+    };
 
-    // Walk each VAR_CONFIG path and validate init expressions.
-    for decl in config_inits {
-        // The validation below is real and useful — it catches an unknown
-        // instance, an unknown field, a type mismatch — but the value is then
-        // discarded: nothing writes it into the instance, so the field keeps
-        // whatever its own declaration gave it. Working diagnostics on a
-        // construct that does nothing is more misleading than a plain
-        // rejection, so say so.
+    for decl in config.config_init(db) {
         let steps = decl.path.flatten(db);
-
         if steps.is_empty() {
             continue;
         }
-
-        // First step: look up program instance.
         // The standard writes the path RESOURCE.PROGRAM.VARIABLE; a leading
-        // segment naming one of this configuration's resources is skipped.
-        // Only the two-segment form resolved, and the standard's own form
-        // was answered with "no program instance".
-        let names_a_resource = |ident: &SpanIdent<'db>| {
-            let name = ident.ident.caseless(db);
-            config
-                .resources(db)
-                .iter()
-                .any(|r| r.name(db).ident.caseless(db) == name)
-        };
+        // segment naming one of the configuration's resources is skipped.
         let instance_at = match &steps[0] {
             PathExprWalkStep::Field { ident, .. } if names_a_resource(ident) && steps.len() > 1 => {
                 1
@@ -585,127 +622,262 @@ fn validate_config_inst_inits<'db>(
         };
         let first_ident = match &steps[instance_at] {
             PathExprWalkStep::Field { ident, .. } => *ident,
-            _ => continue,
-        };
-
-        let prog = match instances.get(&first_ident.ident.caseless(db)) {
-            Some(prog) => *prog,
-            None => {
-                errors.push(
-                    ConfigError::ConfigInstInitUnknownInstance {
-                        instance_name: first_ident,
+            _ => {
+                out.errors.push(
+                    ConfigError::ConfigEntryRefused {
+                        expr: decl.path,
+                        why: ConfigEntryRefusal::PathStep,
                     }
-                    .to_diagnostic(db, config.get_scope_id(db).file(db)),
+                    .to_diagnostic(db, file),
                 );
                 continue;
             }
         };
+        let Some(prog) = instances.get(&first_ident.ident.caseless(db)).copied() else {
+            out.errors.push(
+                ConfigError::ConfigInstInitUnknownInstance {
+                    instance_name: first_ident,
+                }
+                .to_diagnostic(db, file),
+            );
+            continue;
+        };
 
-        // Walk remaining steps through the type hierarchy.
+        // Each step names a member of the instance reached so far, inherited
+        // ones included: `instance_members` is what an instance holds.
         let mut current_type = Type::Program(prog);
         let mut members: Vec<VariableDecl<'db>> = Vec::new();
-
         let mut resolved = true;
         for step in &steps[instance_at + 1..] {
-            let field_ident = match step {
-                PathExprWalkStep::Field { ident, .. } => *ident,
-                _ => {
-                    resolved = false;
-                    break;
-                }
-            };
-
-            let scope = match type_to_scope(db, &current_type) {
-                Some(scope) => scope,
-                None => {
-                    errors.push(
-                        ConfigError::ConfigInstInitFieldNotFound {
-                            field: field_ident,
-                            parent_type: current_type,
-                        }
-                        .to_diagnostic(db, config.get_scope_id(db).file(db)),
-                    );
-                    resolved = false;
-                    break;
-                }
-            };
-
-            let def_map = scope.def_map(db);
-            match def_map
-                .global_variables
-                .get(&field_ident.ident.caseless(db))
-            {
-                Some(var) => {
-                    current_type = var.spec(db).infer(db);
-                    members.push(*var);
-                }
-                None => {
-                    errors.push(
-                        ConfigError::ConfigInstInitFieldNotFound {
-                            field: field_ident,
-                            parent_type: current_type,
-                        }
-                        .to_diagnostic(db, config.get_scope_id(db).file(db)),
-                    );
-                    resolved = false;
-                    break;
-                }
-            }
-        }
-
-        // A location is applied: `__init` points the instance's variable at
-        // it, once it is one the variable can have (E1424).
-        if resolved
-            && let Some(dv) = decl.located_at
-            && let Some(var) = members.last().copied()
-        {
-            match check_config_location(db, var, dv) {
-                Ok(address) => locations.push(ConfigLocation {
-                    instance: first_ident.ident,
-                    members: members.clone(),
-                    address,
-                }),
-                Err(why) => errors.push(
-                    ConfigError::ConfigLocationRefused {
+            let PathExprWalkStep::Field { ident, .. } = step else {
+                out.errors.push(
+                    ConfigError::ConfigEntryRefused {
                         expr: decl.path,
-                        var: var.name(db).text(db).clone(),
-                        address: compact_str::CompactString::from(dv.to_address(db)),
-                        why,
+                        why: ConfigEntryRefusal::PathStep,
                     }
-                    .to_diagnostic(db, config.get_scope_id(db).file(db)),
-                ),
+                    .to_diagnostic(db, file),
+                );
+                resolved = false;
+                break;
+            };
+            match instance_member(db, current_type, ident.ident) {
+                Some(var) => {
+                    current_type = var.spec(db).infer(db).normalize(db);
+                    members.push(var);
+                }
+                None => {
+                    out.errors.push(
+                        ConfigError::ConfigInstInitFieldNotFound {
+                            field: *ident,
+                            parent_type: current_type,
+                        }
+                        .to_diagnostic(db, file),
+                    );
+                    resolved = false;
+                    break;
+                }
+            }
+        }
+        if !resolved {
+            continue;
+        }
+
+        // The entry repeats the variable's type; one that says another is
+        // wrong about the variable, whatever else it gives it.
+        if let (Some(var), Some(written)) = (members.last(), decl.spec) {
+            let written = Type::resolve_spec(db, written);
+            let declared = Type::resolve_spec(db, var.spec(db));
+            if !written.is_never()
+                && !declared.is_never()
+                && !crate::hir_ty::head::checks::variables::same_storage_type(db, written, declared)
+            {
+                out.errors.push(
+                    ConfigError::ConfigEntryRefused {
+                        expr: decl.path,
+                        why: ConfigEntryRefusal::TypeMismatch {
+                            var: var.name(db).text(db).clone(),
+                            written: compact_str::CompactString::from(written.type_name(db)),
+                            declared: compact_str::CompactString::from(declared.type_name(db)),
+                        },
+                    }
+                    .to_diagnostic(db, file),
+                );
             }
         }
 
-        // An entry that did not resolve has its own error above; "checked but
-        // not applied" is only true of the value of one that did.
-        if resolved && decl.init.is_some() {
-            errors.push(
-                ConfigError::UnsupportedConfigElement {
-                    expr: decl.path,
-                    kind: UnsupportedConfigKind::InstanceInit,
-                }
-                .to_diagnostic(db, config.get_scope_id(db).file(db)),
-            );
-        }
+        let location = match (decl.located_at, members.last()) {
+            (Some(dv), Some(var)) => Some((
+                dv,
+                match check_config_location(db, *var, dv) {
+                    Ok(address) => EntryLocation::Given(address),
+                    Err(why) => EntryLocation::Refused(why),
+                },
+            )),
+            _ => None,
+        };
+        out.entries.push(ConfigEntry {
+            path: decl.path,
+            instance: first_ident.ident,
+            members,
+            location,
+            init: decl.init,
+        });
+    }
+    out
+}
 
-        // Step C: validate init expression against the resolved type.
-        if resolved
-            && steps.len() > instance_at + 1
-            && let Some(init) = decl.init
-        {
-            let mut init_result = InitExprInferenceResult::new(config.scope_id(db));
-            let mut body_ctx = BodyInferenceResult::new(config.scope_id(db));
-            init_result.resolve_init_expr(db, init, &mut body_ctx, current_type);
-            errors.extend(init_result.errors);
-            errors.extend(body_ctx.errors);
+/// The member `name` an instance of `ty` holds: a PROGRAM's instance state,
+/// or an FB's or CLASS's [`instance_members`], inherited ones included.
+///
+/// [`instance_members`]: crate::hir_ty::head::inheritance::instance_members
+fn instance_member<'db>(
+    db: &'db dyn WorkspaceDataBase,
+    ty: Type<'db>,
+    name: Ident,
+) -> Option<VariableDecl<'db>> {
+    let fold = name.caseless(db);
+    match ty {
+        Type::Program(p) => p
+            .variables(db)
+            .iter()
+            .copied()
+            .filter(|v| !v.is_temp(db) && !v.is_external(db))
+            .find(|v| v.name(db).caseless(db) == fold),
+        _ => {
+            let pou = crate::hir_ty::head::inheritance::pou_of_type(db, ty)?;
+            crate::hir_ty::head::inheritance::instance_members(db, pou)
+                .iter()
+                .map(|m| m.var)
+                .find(|v| v.name(db).caseless(db) == fold)
         }
     }
 }
 
-/// Whether `dv` is an address VAR_CONFIG can give `var`: `var` is declared
-/// `AT %I*`, `%Q*` or `%M*`, and `dv` is a complete address in that area, as
-/// wide as `var`'s type, that a pointer can reach.
+/// Every entry of every fragment of `config`'s configuration.
+fn configuration_entries<'db>(
+    db: &'db dyn WorkspaceDataBase,
+    config: ConfigDecl<'db>,
+) -> Vec<&'db ConfigEntry<'db>> {
+    crate::hir_ty::index_graphs::config_fragments(db, config.get_name_ident(db))
+        .into_iter()
+        .flat_map(|f| resolve_config_entries(db, f).entries.iter())
+        .collect()
+}
+
+/// Reports `config`'s VAR_CONFIG entries and keeps the locations `__init`
+/// applies: an entry's own errors, then, for a location, the checks that
+/// look at the other addresses (a bit of a wider one) and the other entries
+/// (the same variable located twice), and, for a value, E1416 and the value's
+/// type.
+fn check_config_entries<'db>(
+    db: &'db dyn WorkspaceDataBase,
+    config: ConfigDecl<'db>,
+    locations: &mut Vec<ConfigLocation<'db>>,
+    errors: &mut Vec<IdeDiagnostic>,
+) {
+    use crate::check::errors::e14_config::ConfigLocationRefusal as Refusal;
+    let resolved = resolve_config_entries(db, config);
+    errors.extend(resolved.errors.iter().cloned());
+    if resolved.entries.is_empty() {
+        return;
+    }
+    let file = config.get_scope_id(db).file(db);
+    let all = configuration_entries(db, config);
+    for entry in &resolved.entries {
+        if let (Some((dv, located)), Some(var)) = (&entry.location, entry.members.last()) {
+            let refusal = match located {
+                EntryLocation::Refused(why) => Some(why.clone()),
+                EntryLocation::Given(address) => {
+                    // Located twice: every entry is reported, pointing at the
+                    // smallest of the others, since fragments have no order.
+                    let other = all
+                        .iter()
+                        .filter(|o| {
+                            o.path != entry.path
+                                && o.location.is_some()
+                                && o.instance.caseless(db) == entry.instance.caseless(db)
+                                && o.members == entry.members
+                        })
+                        .min_by_key(|o| {
+                            (
+                                o.path.get_scope_id(db).file(db).url(db).to_string(),
+                                o.path.get_span(db).start_byte,
+                            )
+                        });
+                    if let Some(other) = other {
+                        Some(Refusal::LocatedTwice {
+                            other: other
+                                .location
+                                .as_ref()
+                                .map(|(dv, _)| compact_str::CompactString::from(dv.to_address(db)))
+                                .unwrap_or_default(),
+                        })
+                    } else if address.width < 8
+                        && let Some(view) = crate::hir_ty::index_graphs::located_view(db, address)
+                    {
+                        // A bit of a wider address is bits of that address's
+                        // cell: nothing a pointer can hold.
+                        Some(Refusal::BitOfWider {
+                            owner: view.owner.text,
+                        })
+                    } else {
+                        None
+                    }
+                }
+            };
+            match (refusal, located) {
+                (Some(why), _) => errors.push(
+                    ConfigError::ConfigLocationRefused {
+                        expr: entry.path,
+                        var: var.name(db).text(db).clone(),
+                        address: compact_str::CompactString::from(dv.to_address(db)),
+                        why,
+                    }
+                    .to_diagnostic(db, file),
+                ),
+                (None, EntryLocation::Given(address)) => locations.push(ConfigLocation {
+                    instance: entry.instance,
+                    members: entry.members.clone(),
+                    address: address.clone(),
+                }),
+                (None, EntryLocation::Refused(_)) => {}
+            }
+        }
+
+        // A value is checked but not applied yet.
+        if let Some(init) = entry.init {
+            let kind = if entry
+                .members
+                .last()
+                .is_some_and(|v| v.is_partly_located(db))
+            {
+                UnsupportedConfigKind::InstanceInitLocated
+            } else {
+                UnsupportedConfigKind::InstanceInit
+            };
+            errors.push(
+                ConfigError::UnsupportedConfigElement {
+                    expr: entry.path,
+                    kind,
+                }
+                .to_diagnostic(db, file),
+            );
+            if let Some(var) = entry.members.last() {
+                let mut init_result = InitExprInferenceResult::new(config.scope_id(db));
+                let mut body_ctx = BodyInferenceResult::new(config.scope_id(db));
+                init_result.resolve_init_expr(db, init, &mut body_ctx, var.spec(db).infer(db));
+                errors.extend(init_result.errors);
+                errors.extend(body_ctx.errors);
+            }
+        }
+    }
+}
+
+/// Whether `dv` is an address VAR_CONFIG can give `var`, as far as the entry
+/// and the variable alone decide: `var` is declared `AT %I*`, `%Q*` or
+/// `%M*`, and `dv` is a complete address in that area, as wide as `var`'s
+/// type. Whether a pointer can reach it (a bit of a wider address) needs the
+/// other addresses, and [`check_config_entries`] asks.
 fn check_config_location<'db>(
     db: &'db dyn WorkspaceDataBase,
     var: VariableDecl<'db>,
@@ -739,27 +911,21 @@ fn check_config_location<'db>(
             declared: compact_str::CompactString::from(declared.type_name(db)),
         });
     }
-    // A bit of a wider address is bits of that address's cell: nothing a
-    // pointer can hold.
-    if address.width < 8
-        && let Some(view) = crate::hir_ty::index_graphs::located_view(db, &address)
-    {
-        return Err(Refusal::BitOfWider {
-            owner: view.owner.text,
-        });
-    }
     Ok(address)
 }
 
 /// Every instance's variable declared `AT %I*`, `%Q*` or `%M*` has a location
 /// in VAR_CONFIG (E1425): the standard makes a missing one an error, and a
-/// pointer nothing was bound to would read and write address 0.
+/// pointer nothing was bound to would read and write address 0. Any entry of
+/// the configuration that names the variable counts, refused or not: a
+/// refused one has its own error.
 fn check_partly_located_coverage<'db>(
     db: &'db dyn WorkspaceDataBase,
     config: ConfigDecl<'db>,
     result: &mut ConfigInferenceResult<'db>,
 ) {
     use crate::check::errors::e14_config::PartlyUnlocated;
+    let all = configuration_entries(db, config);
     for resource in config.resources(db).iter() {
         for p in resource.programs(db).iter() {
             let instance = p.name(db);
@@ -782,8 +948,10 @@ fn check_partly_located_coverage<'db>(
                 &mut Vec::new(),
             );
             for path in paths {
-                let located = result.locations.iter().any(|l| {
-                    l.instance.caseless(db) == instance.ident.caseless(db) && l.members == path
+                let located = all.iter().any(|e| {
+                    e.location.is_some()
+                        && e.instance.caseless(db) == instance.ident.caseless(db)
+                        && e.members == path
                 });
                 if located {
                     continue;
@@ -808,18 +976,5 @@ fn check_partly_located_coverage<'db>(
                 );
             }
         }
-    }
-}
-
-/// Extracts the scope from a composite type (Program, FunctionBlock, Class).
-fn type_to_scope<'db>(
-    db: &'db dyn WorkspaceDataBase,
-    ty: &Type<'db>,
-) -> Option<crate::hir_def::scope::ScopeId<'db>> {
-    match ty {
-        Type::Program(p) => Some(p.scope_id(db)),
-        Type::FunctionBlock(fb) => Some(fb.scope_id(db)),
-        Type::Class(c) => Some(c.scope_id(db)),
-        _ => None,
     }
 }
