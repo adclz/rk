@@ -140,6 +140,12 @@ impl<'db> VariableDecl<'db> {
             )
     }
 
+    /// Declared `AT %I*`, `%Q*` or `%M*`: its address is left to the
+    /// configuration, which gives each instance its own in VAR_CONFIG.
+    pub fn is_partly_located(&self, db: &'db dyn WorkspaceDataBase) -> bool {
+        self.location(db).is_some_and(|dv| dv.partly(db))
+    }
+
     pub fn is_access(&self, db: &'db dyn WorkspaceDataBase) -> bool {
         matches!(self.kind(db), VariableKind::Access)
     }

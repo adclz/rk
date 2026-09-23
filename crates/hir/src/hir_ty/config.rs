@@ -1,3 +1,4 @@
+use crate::hir_def::pous::variable::{LocatedAddress, VariableDecl};
 use db::WorkspaceDataBase;
 use ide_diagnostic::IdeDiagnostic;
 use rustc_hash::FxHashMap;
@@ -60,6 +61,19 @@ pub struct ResolvedTask<'db> {
     pub programs: Vec<ResolvedProgram<'db>>,
 }
 
+/// A VAR_CONFIG entry that locates a variable declared `AT %I*`, `%Q*` or
+/// `%M*`: which instance's variable, and at what address.
+#[derive(Debug, Clone, PartialEq, Eq, salsa::Update)]
+pub struct ConfigLocation<'db> {
+    /// The PROGRAM instance the path starts at.
+    pub instance: Ident,
+    /// The members walked from the instance, the located one last: `[fb, x]`
+    /// for `Res.P1.fb.x`.
+    pub members: Vec<VariableDecl<'db>>,
+    /// The address it is given, complete.
+    pub address: LocatedAddress,
+}
+
 #[derive(Debug, PartialEq, Eq, salsa::Update)]
 pub struct ResolvedProgram<'db> {
     pub decl: ProgConfig<'db>,
@@ -98,6 +112,10 @@ pub struct ConfigInferenceResult<'db> {
     /// PROGRAM actually depends on become diagnostics.
     pub unschedulable: FxHashMap<TaskConfig<'db>, UnschedulableReason>,
 
+    /// The VAR_CONFIG entries that locate a variable, each checked (E1424):
+    /// what `__init` binds each instance's variable to.
+    pub locations: Vec<ConfigLocation<'db>>,
+
     pub errors: Vec<IdeDiagnostic>,
 }
 
@@ -114,6 +132,7 @@ pub fn infer_config_result<'db>(
         unschedulable: FxHashMap::default(),
         task_of_prog: FxHashMap::default(),
         prog_instance: FxHashMap::default(),
+        locations: Vec::new(),
         errors: Vec::new(),
     };
     infer_config(db, config, &mut result);
@@ -182,7 +201,16 @@ fn infer_config<'db>(
     report_unschedulable_bound_tasks(db, result);
 
     // Phase 3: validate VAR_CONFIG entries.
-    validate_config_inst_inits(db, config, &result.prog_instance, &mut result.errors);
+    validate_config_inst_inits(
+        db,
+        config,
+        &result.prog_instance,
+        &mut result.locations,
+        &mut result.errors,
+    );
+
+    // Phase 4: every instance's variable declared `AT %I*` is located.
+    check_partly_located_coverage(db, config, result);
 }
 
 /// Checks for duplicate task and program instance names within a RESOURCE block.
@@ -515,6 +543,7 @@ fn validate_config_inst_inits<'db>(
     db: &'db dyn WorkspaceDataBase,
     config: ConfigDecl<'db>,
     instances: &FxHashMap<CaselessIdent, ProgramDecl<'db>>,
+    locations: &mut Vec<ConfigLocation<'db>>,
     errors: &mut Vec<IdeDiagnostic>,
 ) {
     let config_inits = config.config_init(db);
@@ -574,6 +603,7 @@ fn validate_config_inst_inits<'db>(
 
         // Walk remaining steps through the type hierarchy.
         let mut current_type = Type::Program(prog);
+        let mut members: Vec<VariableDecl<'db>> = Vec::new();
 
         let mut resolved = true;
         for step in &steps[instance_at + 1..] {
@@ -607,6 +637,7 @@ fn validate_config_inst_inits<'db>(
             {
                 Some(var) => {
                     current_type = var.spec(db).infer(db);
+                    members.push(*var);
                 }
                 None => {
                     errors.push(
@@ -622,9 +653,33 @@ fn validate_config_inst_inits<'db>(
             }
         }
 
+        // A location is applied: `__init` points the instance's variable at
+        // it, once it is one the variable can have (E1424).
+        if resolved
+            && let Some(dv) = decl.located_at
+            && let Some(var) = members.last().copied()
+        {
+            match check_config_location(db, var, dv) {
+                Ok(address) => locations.push(ConfigLocation {
+                    instance: first_ident.ident,
+                    members: members.clone(),
+                    address,
+                }),
+                Err(why) => errors.push(
+                    ConfigError::ConfigLocationRefused {
+                        expr: decl.path,
+                        var: var.name(db).text(db).clone(),
+                        address: compact_str::CompactString::from(dv.to_address(db)),
+                        why,
+                    }
+                    .to_diagnostic(db, config.get_scope_id(db).file(db)),
+                ),
+            }
+        }
+
         // An entry that did not resolve has its own error above; "checked but
-        // not applied" is only true of one that did.
-        if resolved {
+        // not applied" is only true of the value of one that did.
+        if resolved && decl.init.is_some() {
             errors.push(
                 ConfigError::UnsupportedConfigElement {
                     expr: decl.path,
@@ -644,6 +699,114 @@ fn validate_config_inst_inits<'db>(
             init_result.resolve_init_expr(db, init, &mut body_ctx, current_type);
             errors.extend(init_result.errors);
             errors.extend(body_ctx.errors);
+        }
+    }
+}
+
+/// Whether `dv` is an address VAR_CONFIG can give `var`: `var` is declared
+/// `AT %I*`, `%Q*` or `%M*`, and `dv` is a complete address in that area, as
+/// wide as `var`'s type, that a pointer can reach.
+fn check_config_location<'db>(
+    db: &'db dyn WorkspaceDataBase,
+    var: VariableDecl<'db>,
+    dv: crate::hir_def::pous::variable::DirectVariable<'db>,
+) -> Result<LocatedAddress, crate::check::errors::e14_config::ConfigLocationRefusal> {
+    use crate::check::errors::e14_config::ConfigLocationRefusal as Refusal;
+    let declared_at = match var.location(db) {
+        Some(declared) if declared.partly(db) => declared,
+        _ => return Err(Refusal::NotPartlyLocated),
+    };
+    let Some(address) = LocatedAddress::of(db, dv) else {
+        return Err(Refusal::Unlocatable {
+            incomplete: dv.partly(db),
+        });
+    };
+    if declared_at.area(db) != Some(address.area) {
+        return Err(Refusal::AreaMismatch {
+            declared: compact_str::CompactString::from(declared_at.to_address(db)),
+        });
+    }
+    let declared = Type::resolve_spec(db, var.spec(db));
+    let declared_bits = if declared.as_subrange(db).is_some() {
+        None
+    } else {
+        crate::hir_ty::head::checks::variables::located_width(declared.normalize(db))
+    };
+    if !declared.is_never() && declared_bits != Some(usize::from(address.width)) {
+        return Err(Refusal::Width {
+            address_bits: usize::from(address.width),
+            declared_bits,
+            declared: compact_str::CompactString::from(declared.type_name(db)),
+        });
+    }
+    // A bit of a wider address is bits of that address's cell: nothing a
+    // pointer can hold.
+    if address.width < 8
+        && let Some(view) = crate::hir_ty::index_graphs::located_view(db, &address)
+    {
+        return Err(Refusal::BitOfWider {
+            owner: view.owner.text,
+        });
+    }
+    Ok(address)
+}
+
+/// Every instance's variable declared `AT %I*`, `%Q*` or `%M*` has a location
+/// in VAR_CONFIG (E1425): the standard makes a missing one an error, and a
+/// pointer nothing was bound to would read and write address 0.
+fn check_partly_located_coverage<'db>(
+    db: &'db dyn WorkspaceDataBase,
+    config: ConfigDecl<'db>,
+    result: &mut ConfigInferenceResult<'db>,
+) {
+    use crate::check::errors::e14_config::PartlyUnlocated;
+    for resource in config.resources(db).iter() {
+        for p in resource.programs(db).iter() {
+            let instance = p.name(db);
+            let Some(program) = result.prog_instance.get(&instance.ident.caseless(db)) else {
+                continue;
+            };
+            let mut paths = Vec::new();
+            // Instance state only, as `instance_members` has it for a
+            // function block: a VAR_TEMP is made per call (E1425 says so where
+            // it is declared) and a VAR_EXTERNAL is a global's.
+            crate::hir_ty::head::inheritance::collect_partly_located(
+                db,
+                &mut program
+                    .variables(db)
+                    .iter()
+                    .copied()
+                    .filter(|v| !v.is_temp(db) && !v.is_external(db)),
+                &mut Vec::new(),
+                &mut paths,
+                &mut Vec::new(),
+            );
+            for path in paths {
+                let located = result.locations.iter().any(|l| {
+                    l.instance.caseless(db) == instance.ident.caseless(db) && l.members == path
+                });
+                if located {
+                    continue;
+                }
+                let mut text = instance.ident.text(db).to_string();
+                for member in &path {
+                    text.push('.');
+                    text.push_str(member.name(db).text(db));
+                }
+                let address = path
+                    .last()
+                    .and_then(|v| v.location(db))
+                    .map(|dv| dv.to_address(db))
+                    .unwrap_or_default();
+                result.errors.push(
+                    ConfigError::PartlyLocatedUnlocated(PartlyUnlocated::Missing {
+                        instance,
+                        path: compact_str::CompactString::from(text),
+                        address: compact_str::CompactString::from(address),
+                    })
+                    .to_diagnostic(db, config.get_scope_id(db).file(db)),
+                );
+            }
         }
     }
 }

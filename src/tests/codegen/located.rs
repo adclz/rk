@@ -1423,6 +1423,96 @@ fn a_programs_located_variable_can_be_a_part(mut with_db: db::RootDatabase) {
     assert_eq!(lamps, 0x5A00, "`lamp` is the high byte of `lamps`");
 }
 
+// ---------------------------------------------------------------------------
+// `AT %I*`: a FUNCTION_BLOCK's or a PROGRAM's variable whose address VAR_CONFIG
+// gives, instance by instance. The variable holds a pointer to its channel,
+// which `__init` sets.
+// ---------------------------------------------------------------------------
+
+/// Two instances of one function block, each located in VAR_CONFIG: each
+/// reads its own input, sets its own output bit, and counts in its own
+/// marker, which starts at its type's default.
+#[rstest]
+fn a_function_block_variable_is_located_per_instance(mut with_db: db::RootDatabase) {
+    let source = r#"
+        TYPE Tally : INT := 5; END_TYPE
+
+        FUNCTION_BLOCK Motor
+        VAR
+            run   AT %Q* : BOOL;
+            level AT %I* : INT;
+            seen  AT %M* : Tally;
+        END_VAR
+            run := level > 0;
+            seen := seen + level;
+        END_FUNCTION_BLOCK
+
+        PROGRAM P
+        VAR a : Motor; b : Motor; END_VAR
+            a();
+            b();
+        END_PROGRAM
+
+        CONFIGURATION Cfg
+        VAR_CONFIG
+            Res.P1.a.run   AT %QX0.0 : BOOL;
+            Res.P1.a.level AT %IW0   : INT;
+            Res.P1.a.seen  AT %MW0   : INT;
+            Res.P1.b.run   AT %QX0.1 : BOOL;
+            Res.P1.b.level AT %IW1   : INT;
+            Res.P1.b.seen  AT %MW1   : INT;
+        END_VAR
+            RESOURCE Res ON CPU
+                TASK T(INTERVAL := T#10ms, PRIORITY := 1);
+                PROGRAM P1 WITH T : P;
+            END_RESOURCE
+        END_CONFIGURATION
+    "#;
+    let (_mir, wasm) = compile_to_mir_and_wasm(&mut with_db, source);
+    let mut plc = TestPlc::load(&wasm).expect("load");
+    let word = |plc: &TestPlc, a: &str| {
+        i32::from_le_bytes(plc.read_located(a).expect("read")[..4].try_into().unwrap())
+    };
+    assert_eq!(word(&plc, "%MW0"), 5, "`__init` wrote `Tally`'s default to a's marker");
+    assert_eq!(word(&plc, "%MW1"), 5, "and to b's");
+    plc.write_located("%IW0", &3i32.to_le_bytes()).expect("a's level");
+    plc.run(1).expect("scan");
+    assert_eq!(word(&plc, "%QX0.0"), 1, "a saw its level");
+    assert_eq!(word(&plc, "%QX0.1"), 0, "b saw its own, still 0");
+    assert_eq!(word(&plc, "%MW0"), 8);
+    assert_eq!(word(&plc, "%MW1"), 5);
+}
+
+/// A PROGRAM's variable may be located per instance too, and at a byte of a
+/// wider address: `lamp` is the low byte of the word the program also names.
+#[rstest]
+fn a_program_variable_is_located_per_instance_at_a_part(mut with_db: db::RootDatabase) {
+    let source = r#"
+        PROGRAM Q
+        VAR lamp AT %Q* : BYTE; END_VAR
+            lamp := 16#42;
+            %QB5 := 16#17;
+        END_PROGRAM
+
+        CONFIGURATION Cfg
+        VAR_GLOBAL panel AT %QW2 : WORD; END_VAR
+        VAR_CONFIG
+            Res.Q1.lamp AT %QB4 : BYTE;
+        END_VAR
+            RESOURCE Res ON CPU
+                TASK T(INTERVAL := T#10ms, PRIORITY := 1);
+                PROGRAM Q1 WITH T : Q;
+            END_RESOURCE
+        END_CONFIGURATION
+    "#;
+    let (mir, wasm) = compile_to_mir_and_wasm(&mut with_db, source);
+    assert_eq!(mir.output_size, 4, "`%QB4` and `%QB5` are `panel`'s bytes");
+    let mut plc = TestPlc::load(&wasm).expect("load");
+    plc.run(1).expect("scan");
+    let panel = i32::from_le_bytes(plc.read_located("%QW2").expect("read")[..4].try_into().unwrap());
+    assert_eq!(panel, 0x1742);
+}
+
 /// An output's initial value is written by `__init`, so the output is in
 /// that state before the first scan — the startup value a host sees first.
 #[rstest]

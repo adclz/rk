@@ -905,6 +905,192 @@ END_CONFIGURATION
     ");
 }
 
+/// A VAR_CONFIG entry locates a variable declared `AT %I*`, `%Q*` or `%M*`
+/// with a complete address in that area, as wide as its type, that a pointer
+/// can reach (E1424). A refused entry locates nothing, so the variable is
+/// also reported as never located (E1425).
+#[rstest]
+fn invalid_config_locations(mut with_db: RootDatabase) {
+    let source = r#"
+FUNCTION_BLOCK Drive
+VAR
+    run   AT %Q* : BOOL;
+    level AT %I* : INT;
+END_VAR
+VAR plain : INT; END_VAR
+END_FUNCTION_BLOCK
+
+PROGRAM P
+VAR d : Drive; END_VAR
+END_PROGRAM
+
+CONFIGURATION Cfg
+VAR_GLOBAL panel AT %QW0 : WORD; END_VAR
+VAR_CONFIG
+    Res.P1.d.plain AT %MW4   : INT;
+    Res.P1.d.level AT %QW2   : INT;
+    Res.P1.d.run   AT %QX0.3 : BOOL;
+    Res.P2.d.run   AT %QW4   : BOOL;
+    Res.P2.d.level AT %I*    : INT;
+END_VAR
+    RESOURCE Res ON CPU
+        TASK T(INTERVAL := T#10ms, PRIORITY := 1);
+        PROGRAM P1 WITH T : P;
+        PROGRAM P2 WITH T : P;
+    END_RESOURCE
+END_CONFIGURATION
+"#;
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
+    [E1424] Error: location refused
+        ,-[ file:///test0.st:17:14 ]
+        |
+     17 |     Res.P1.d.plain AT %MW4   : INT;
+        |              ^^|^^
+        |                `---- 'plain' is not declared AT %I*, %Q* or %M*, so its address is not VAR_CONFIG's to give
+        |
+        | Note: declare it AT %I*, %Q* or %M* in its POU to leave its address to the configuration
+    ----'
+    [E1424] Error: location refused
+        ,-[ file:///test0.st:18:14 ]
+        |
+     18 |     Res.P1.d.level AT %QW2   : INT;
+        |              ^^|^^
+        |                `---- 'level' is declared AT %I*, and '%QW2' is not in that area
+        |
+        | Note: the area is the declaration's: give an input an address in %I, an output one in %Q, a marker one in %M
+    ----'
+    [E1424] Error: location refused
+        ,-[ file:///test0.st:19:14 ]
+        |
+     19 |     Res.P1.d.run   AT %QX0.3 : BOOL;
+        |              ^|^
+        |               `--- '%QX0.3' is a bit of '%QW0', and a bit has no address to locate 'run' at
+        |
+        | Note: the variable points at its channel, so give it a byte or wider, or a bit nothing wider around it is named
+    ----'
+    [E1424] Error: location refused
+        ,-[ file:///test0.st:20:14 ]
+        |
+     20 |     Res.P2.d.run   AT %QW4   : BOOL;
+        |              ^|^
+        |               `--- '%QW4' is 16 bits, but 'run' is declared 'BOOL', which is 1
+        |
+        | Note: the variable holds one value as wide as its address; give it an address of its type's width
+    ----'
+    [E1424] Error: location refused
+        ,-[ file:///test0.st:21:14 ]
+        |
+     21 |     Res.P2.d.level AT %I*    : INT;
+        |              ^^|^^
+        |                `---- '%I*' is not a complete address
+        |
+        | Note: VAR_CONFIG gives the complete address, such as '%IX0.0' or '%QW4'
+    ----'
+    [E1425] Error: variable not located
+        ,-[ file:///test0.st:25:17 ]
+        |
+     25 |         PROGRAM P1 WITH T : P;
+        |                 ^|
+        |                  `-- 'P1.d.run' is declared AT %Q*, and no VAR_CONFIG entry locates it
+        |
+        | Note: each instance is given its address in the CONFIGURATION's VAR_CONFIG, as in 'Res.P1.fb.x AT %IX0.0 : BOOL;'
+    ----'
+    [E1425] Error: variable not located
+        ,-[ file:///test0.st:25:17 ]
+        |
+     25 |         PROGRAM P1 WITH T : P;
+        |                 ^|
+        |                  `-- 'P1.d.level' is declared AT %I*, and no VAR_CONFIG entry locates it
+        |
+        | Note: each instance is given its address in the CONFIGURATION's VAR_CONFIG, as in 'Res.P1.fb.x AT %IX0.0 : BOOL;'
+    ----'
+    [E1425] Error: variable not located
+        ,-[ file:///test0.st:26:17 ]
+        |
+     26 |         PROGRAM P2 WITH T : P;
+        |                 ^|
+        |                  `-- 'P2.d.run' is declared AT %Q*, and no VAR_CONFIG entry locates it
+        |
+        | Note: each instance is given its address in the CONFIGURATION's VAR_CONFIG, as in 'Res.P1.fb.x AT %IX0.0 : BOOL;'
+    ----'
+    [E1425] Error: variable not located
+        ,-[ file:///test0.st:26:17 ]
+        |
+     26 |         PROGRAM P2 WITH T : P;
+        |                 ^|
+        |                  `-- 'P2.d.level' is declared AT %I*, and no VAR_CONFIG entry locates it
+        |
+        | Note: each instance is given its address in the CONFIGURATION's VAR_CONFIG, as in 'Res.P1.fb.x AT %IX0.0 : BOOL;'
+    ----'
+    ");
+}
+
+/// An instance whose type holds a variable declared `AT %I*` has to be one a
+/// VAR_CONFIG path names: a PROGRAM instance, or an instance it holds by
+/// name. An array's element, a VAR_GLOBAL and an instance made for each call
+/// are not (E1425). RETAIN is refused on the variable itself (E1420): it
+/// points at its channel and has no storage of its own.
+#[rstest]
+fn invalid_partly_located_variables_out_of_reach(mut with_db: RootDatabase) {
+    let source = r#"
+FUNCTION_BLOCK Drive
+VAR run AT %Q* : BOOL; END_VAR
+VAR RETAIN kept AT %M* : INT; END_VAR
+END_FUNCTION_BLOCK
+
+PROGRAM P
+VAR drives : ARRAY[0..1] OF Drive; END_VAR
+VAR_TEMP scratch : Drive; END_VAR
+END_PROGRAM
+
+CONFIGURATION Cfg
+VAR_GLOBAL spare : Drive; END_VAR
+    RESOURCE Res ON CPU
+        TASK T(INTERVAL := T#10ms, PRIORITY := 1);
+        PROGRAM P1 WITH T : P;
+    END_RESOURCE
+END_CONFIGURATION
+"#;
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
+    [E1420] Error: RETAIN on an I/O location
+       ,-[ file:///test0.st:4:12 ]
+       |
+     4 | VAR RETAIN kept AT %M* : INT; END_VAR
+       |            ^^^^^^^^|^^^^^^^^
+       |                    `---------- 'kept' is located at '%M*' and cannot be RETAIN
+       |
+       | Note: a variable VAR_CONFIG locates points at its channel and has no storage of its own to retain; to persist a marker, declare it located in full, RETAIN, in a PROGRAM or as a VAR_GLOBAL
+    ---'
+    [E1425] Error: variable not located
+       ,-[ file:///test0.st:8:5 ]
+       |
+     8 | VAR drives : ARRAY[0..1] OF Drive; END_VAR
+       |     ^^^^^^^^^^^^^^|^^^^^^^^^^^^^^
+       |                   `---------------- 'drives' holds 'run', declared AT %Q*, in the elements of an array, which VAR_CONFIG cannot name
+       |
+       | Note: a VAR_CONFIG path names a PROGRAM instance and the instances it holds by name; hold this one there
+    ---'
+    [E1425] Error: variable not located
+       ,-[ file:///test0.st:9:10 ]
+       |
+     9 | VAR_TEMP scratch : Drive; END_VAR
+       |          ^^^^^^^|^^^^^^^
+       |                 `--------- 'scratch' holds 'run', declared AT %Q*, in an instance made for each call, which VAR_CONFIG cannot name
+       |
+       | Note: a VAR_CONFIG path names a PROGRAM instance and the instances it holds by name; hold this one there
+    ---'
+    [E1425] Error: variable not located
+        ,-[ file:///test0.st:13:12 ]
+        |
+     13 | VAR_GLOBAL spare : Drive; END_VAR
+        |            ^^^^^^|^^^^^^
+        |                  `-------- 'spare' holds 'run', declared AT %Q*, in a VAR_GLOBAL, which VAR_CONFIG cannot name
+        |
+        | Note: a VAR_CONFIG path names a PROGRAM instance and the instances it holds by name; hold this one there
+    ----'
+    ");
+}
+
 /// `%I*` names no address at all — the binding comes from VAR_CONFIG, which
 /// is not applied yet — so there is nothing to allocate.
 #[rstest]
@@ -932,7 +1118,7 @@ END_CONFIGURATION
        |            ^^^^^^^^^^|^^^^^^^^^
        |                      `----------- '%I*' is not a complete address
        |
-       | Note: the binding for a partly specified address comes from VAR_CONFIG, which is checked but not applied yet (E1416); write the address in full to allocate it now
+       | Note: VAR_CONFIG completes a partial address for a variable of a PROGRAM, FUNCTION_BLOCK or CLASS, instance by instance; anywhere else, write the address in full
     ---'
     ");
 }

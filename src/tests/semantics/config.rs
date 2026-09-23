@@ -491,11 +491,12 @@ END_CONFIGURATION
 }
 
 /// A location-only entry is the standard's own form (`STATION_2.P4.FB1.C2 AT
-/// %QB25: BYTE;`), in our corpus. It was refused with a SYNTAX code before the
-/// E1416 that says VAR_CONFIG is not applied: a misleading error on valid
-/// syntax. Now only E1416, as for any other entry.
+/// %QB25: BYTE;`), in our corpus, and it locates a variable declared `AT %Q*`
+/// (see `config_inst_init_location_locates_a_partly_located_variable`). One
+/// whose variable has no partial address is refused as such (E1424), not
+/// with a syntax code.
 #[rstest]
-fn config_inst_init_location_only_is_unsupported_not_a_syntax_error(mut with_db: RootDatabase) {
+fn config_inst_init_location_of_an_unlocated_variable_is_refused(mut with_db: RootDatabase) {
     let source = r#"
 PROGRAM MyProg
     VAR
@@ -515,16 +516,41 @@ CONFIGURATION MyCfg
 END_CONFIGURATION
 "#;
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E1416] Error: unsupported configuration element
+    [E1424] Error: location refused
         ,-[ file:///test0.st:15:15 ]
         |
      15 |         inst1.x AT %QB25 : BYTE;
         |               |
-        |               `-- VAR_CONFIG is checked but not applied yet, so this value never reaches the instance
+        |               `-- 'x' is not declared AT %I*, %Q* or %M*, so its address is not VAR_CONFIG's to give
         |
-        | Note: set the value in the program's own VAR declaration instead
+        | Note: declare it AT %I*, %Q* or %M* in its POU to leave its address to the configuration
     ----'
     ");
+}
+
+/// The same entry, on a variable whose declaration leaves its address to the
+/// configuration: nothing to report.
+#[rstest]
+fn config_inst_init_location_locates_a_partly_located_variable(mut with_db: RootDatabase) {
+    let source = r#"
+PROGRAM MyProg
+    VAR
+        x AT %Q* : BYTE;
+    END_VAR
+END_PROGRAM
+
+CONFIGURATION MyCfg
+    RESOURCE Res ON CPU
+        TASK t1(INTERVAL := T#10ms, PRIORITY := 1);
+        PROGRAM inst1 WITH t1 : MyProg;
+    END_RESOURCE
+
+    VAR_CONFIG
+        inst1.x AT %QB25 : BYTE;
+    END_VAR
+END_CONFIGURATION
+"#;
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @"");
 }
 
 /// The standard writes the path RESOURCE.PROGRAM.VARIABLE (Table 62,

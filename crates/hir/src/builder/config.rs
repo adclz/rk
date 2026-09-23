@@ -484,6 +484,15 @@ impl<'db> SemanticIndexBuilder<'db> {
             .to_diagnostic(self.db, self.file));
         }
 
+        // A location VAR_CONFIG gives is a mention of its address: a cell for
+        // it, or the wider one it is part of, is what the variable points at.
+        if let Some(address) = located_at
+            .and_then(|dv| crate::hir_def::pous::variable::LocatedAddress::of(self.db, dv))
+        {
+            self.located
+                .push((address, crate::hir_def::hir_node::HirNode::PathExpr(path)));
+        }
+
         Ok(crate::hir_def::config::ConfigInstInit {
             path,
             located_at,

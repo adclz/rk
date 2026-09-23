@@ -387,8 +387,11 @@ fn lower_instance_struct<'db>(
         let var = member.var;
         let mir_type = lower_spec(db, var.spec(db))?;
         // A VAR_IN_OUT field holds the address of the caller's l-value: a
-        // pointer the body auto-derefs and the call site writes once.
-        let is_inout = var.kind(db) == hir::hir_def::pous::variable::VariableKind::InOut;
+        // pointer the body auto-derefs and the call site writes once. A field
+        // declared `AT %I*` holds the address of its channel, which `__init`
+        // writes from VAR_CONFIG.
+        let is_inout = var.kind(db) == hir::hir_def::pous::variable::VariableKind::InOut
+            || var.is_partly_located(db);
         let mir_type = if is_inout {
             MirType::Pointer(Box::new(mir_type))
         } else {
@@ -443,6 +446,14 @@ pub fn lower_program_type<'db>(
             continue;
         }
         let mir_type = lower_spec(db, var.spec(db))?;
+        // One declared `AT %I*` holds the address of its channel, which
+        // `__init` writes from VAR_CONFIG.
+        let partly = var.is_partly_located(db);
+        let mir_type = if partly {
+            MirType::Pointer(Box::new(mir_type))
+        } else {
+            mir_type
+        };
         let field_align = mir_type.alignment();
         let field_size = mir_type.size_bytes();
 
@@ -454,7 +465,7 @@ pub fn lower_program_type<'db>(
             offset,
             // PROGRAM instances are driven by the scheduler, never through an
             // `FbCall`, so PROGRAM VAR_IN_OUT stays value-based.
-            by_ref: false,
+            by_ref: partly,
         });
         offset += field_size;
     }

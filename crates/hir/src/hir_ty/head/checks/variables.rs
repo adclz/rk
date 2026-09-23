@@ -27,6 +27,97 @@ use crate::{
 };
 
 impl<'db> InitInference<'db> {
+    /// A variable declared `AT %I*`, `%Q*` or `%M*` in a PROGRAM, a
+    /// FUNCTION_BLOCK or a CLASS: VAR_CONFIG gives each instance its address
+    /// (E1424, E1425), so only what the declaration alone decides is checked
+    /// here, RETAIN (E1420); the grammar gives it no initial value. Returns
+    /// whether `var` was one; anywhere else a partial address has nothing to
+    /// complete it, and it stays E1417.
+    fn check_partly_located(
+        &mut self,
+        db: &'db dyn WorkspaceDataBase,
+        var: &VariableDecl<'db>,
+        dv: crate::hir_def::pous::variable::DirectVariable<'db>,
+    ) -> bool {
+        let in_instance = matches!(
+            get_scope(db, var.get_scope_id(db)).kind,
+            ScopeKind::Program(_) | ScopeKind::Pou(Pou::FunctionBlock(_) | Pou::Class(_))
+        );
+        if !dv.partly(db) || !var.is_var(db) || !in_instance {
+            return false;
+        }
+        if var.qualifier(db).contains(crate::Qualifier::RETAIN) {
+            self.errors.push(
+                ConfigError::RetainOnIoLocation {
+                    var: *var,
+                    address: compact_str::CompactString::from(dv.to_address(db)),
+                }
+                .to_diagnostic(db, self.scope.file(db)),
+            );
+        }
+        true
+    }
+
+    /// E1425: an instance whose type holds a variable declared `AT %I*`,
+    /// held where no VAR_CONFIG path can name it: an array's element, a
+    /// VAR_GLOBAL, or an instance made for each call.
+    fn check_unreachable_partly(
+        &mut self,
+        db: &'db dyn WorkspaceDataBase,
+        var: &VariableDecl<'db>,
+    ) {
+        use crate::check::errors::e14_config::{PartlyUnlocated, UnreachablePlace};
+        if var.is_external(db) || var.is_in_out(db) {
+            return;
+        }
+        let mut ty = var.spec(db).infer(db).normalize(db);
+        let mut in_array = false;
+        while let Type::Array(array) = ty {
+            in_array = true;
+            ty = array.of_type(db).infer(db).normalize(db);
+        }
+        let Some(pou) = crate::hir_ty::head::inheritance::pou_of_type(db, ty) else {
+            return;
+        };
+        let Some(path) = crate::hir_ty::head::inheritance::partly_located_members(db, pou).first()
+        else {
+            return;
+        };
+        let per_call = var.is_temp(db)
+            || matches!(
+                get_scope(db, var.get_scope_id(db)).kind,
+                ScopeKind::Pou(Pou::Function(_)) | ScopeKind::MethodDecl(_)
+            );
+        let place = if in_array {
+            UnreachablePlace::Array
+        } else if var.is_global(db) {
+            UnreachablePlace::Global
+        } else if per_call {
+            UnreachablePlace::PerCall
+        } else {
+            return;
+        };
+        let member = path
+            .iter()
+            .map(|m| m.name(db).text(db).to_string())
+            .collect::<Vec<_>>()
+            .join(".");
+        let address = path
+            .last()
+            .and_then(|m| m.location(db))
+            .map(|dv| dv.to_address(db))
+            .unwrap_or_default();
+        self.errors.push(
+            ConfigError::PartlyLocatedUnlocated(PartlyUnlocated::Unreachable {
+                var: *var,
+                member: compact_str::CompactString::from(member),
+                address: compact_str::CompactString::from(address),
+                place,
+            })
+            .to_diagnostic(db, self.scope.file(db)),
+        );
+    }
+
     pub(crate) fn check_variables(&mut self, db: &'db dyn WorkspaceDataBase) {
         let variables = match self.scope.variables(db) {
             Some(vars) => vars,
@@ -125,6 +216,7 @@ impl<'db> InitInference<'db> {
         let mut first_variadic: Option<VariableDecl<'db>> = None;
 
         for var in variables {
+            self.check_unreachable_partly(db, var);
             if let Some(pou_kind) = stateless_pou
                 && var
                     .qualifier(db)
@@ -169,7 +261,9 @@ impl<'db> InitInference<'db> {
             // theirs. Same answer for an address with no area letter (`%Z0`),
             // no width letter (`%I0`) or none at all (`%I*`, which needs the
             // binding VAR_CONFIG supplies): nothing maps them (E1417).
-            if let Some(dv) = var.location(db) {
+            if let Some(dv) = var.location(db)
+                && !self.check_partly_located(db, var, dv)
+            {
                 let address = compact_str::CompactString::from(dv.to_address(db));
                 let banded = dv.area(db).filter(|_| {
                     (var.kind(db) == crate::hir_def::pous::variable::VariableKind::Global
@@ -622,7 +716,7 @@ fn same_storage_type<'db>(db: &'db dyn WorkspaceDataBase, a: Type<'db>, b: Type<
 
 /// The width a located variable of type `ty` fills: every elementary type
 /// but STRING has one. `Type::get_size` leaves CHAR out, and it is 8 bits.
-fn located_width(ty: Type<'_>) -> Option<usize> {
+pub(crate) fn located_width(ty: Type<'_>) -> Option<usize> {
     match ty {
         Type::Elementary(crate::hir_def::expressions::spec::ElementarySpec::Char) => Some(8),
         Type::Elementary(_) => match ty.get_size() {

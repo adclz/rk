@@ -378,6 +378,11 @@ fn collect_instance_initializers<'db>(
     visited.push(pou);
 
     for member in instance_members(db, pou) {
+        // A member located by VAR_CONFIG is a pointer to its channel; its
+        // initial value goes to the channel, once the pointer is bound.
+        if member.var.is_partly_located(db) {
+            continue;
+        }
         prefix.push(InstanceInitStep::Field(member.var.name(db)));
 
         // The member TYPE's own defaults come first either way: an explicit
@@ -420,6 +425,61 @@ fn collect_instance_initializers<'db>(
     }
 
     visited.pop();
+}
+
+/// Every member declared `AT %I*`, `%Q*` or `%M*` an instance of `pou`
+/// holds, as the chain of members that reaches it: `[x]` for its own, `[fb,
+/// x]` for one inside an instance it holds. VAR_CONFIG locates each of them,
+/// for each instance (E1425).
+///
+/// An array of such instances is not followed: no VAR_CONFIG path reaches an
+/// element, and E1425 refuses the array where it is declared.
+#[salsa::tracked(returns(ref))]
+pub fn partly_located_members<'db>(
+    db: &'db dyn WorkspaceDataBase,
+    pou: Pou<'db>,
+) -> Vec<Vec<VariableDecl<'db>>> {
+    let mut out = Vec::new();
+    collect_partly_located(
+        db,
+        &mut instance_members(db, pou).iter().map(|m| m.var),
+        &mut Vec::new(),
+        &mut out,
+        &mut vec![pou],
+    );
+    out
+}
+
+/// [`partly_located_members`] from a list of members: a PROGRAM's variables
+/// start it as a POU's members do.
+pub fn collect_partly_located<'db>(
+    db: &'db dyn WorkspaceDataBase,
+    members: &mut dyn Iterator<Item = VariableDecl<'db>>,
+    prefix: &mut Vec<VariableDecl<'db>>,
+    out: &mut Vec<Vec<VariableDecl<'db>>>,
+    visited: &mut Vec<Pou<'db>>,
+) {
+    for var in members {
+        prefix.push(var);
+        if var.is_partly_located(db) {
+            out.push(prefix.clone());
+        } else if let Some(inner) = pou_of_type(db, var.spec(db).infer(db).normalize(db))
+            && !visited.contains(&inner)
+        {
+            // `visited` is the current path, as for the initializers: a type
+            // reached through itself is a cycle, refused elsewhere.
+            visited.push(inner);
+            collect_partly_located(
+                db,
+                &mut instance_members(db, inner).iter().map(|m| m.var),
+                prefix,
+                out,
+                visited,
+            );
+            visited.pop();
+        }
+        prefix.pop();
+    }
 }
 
 /// The FB or CLASS `ty` is an instance of, if it is one.

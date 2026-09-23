@@ -822,7 +822,13 @@ impl<'db> ParseVarSection<'db> for ast::generated::LocPartlyVarDecl {
             let Some(result) = sema.try_parse(r) else {
                 continue;
             };
-            section.push(sema.new_variable(
+            // `%I*`: the area, and no address yet. Built with `new_variable`,
+            // the location was dropped and the variable was an ordinary one.
+            let r = Ident::from_node(sema.db, sema.file, child.cast(sema.ast).IQM.cast(sema.ast));
+            let location = sema
+                .try_parse(r)
+                .map(|area| DirectVariable::new(sema.db, area, true, vec![]));
+            section.push(sema.new_variable_at(
                 var_name,
                 child.cast(sema.ast).variable_name.cast(sema.ast).into(),
                 VariableKind::Var,
@@ -830,6 +836,7 @@ impl<'db> ParseVarSection<'db> for ast::generated::LocPartlyVarDecl {
                 false,
                 result.spec,
                 result.init,
+                location,
                 child.cast(sema.ast).into(),
                 sema.current_scope,
             ));

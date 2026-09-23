@@ -176,6 +176,140 @@ pub enum ConfigError<'db> {
         owner: compact_str::CompactString,
         usage: WiderAddressUse,
     },
+    /// A VAR_CONFIG entry's `AT`, which cannot locate the variable it names.
+    ConfigLocationRefused {
+        expr: PathExpr<'db>,
+        /// The variable the path names.
+        var: compact_str::CompactString,
+        /// The address as written in the entry.
+        address: compact_str::CompactString,
+        why: ConfigLocationRefusal,
+    },
+    /// A variable declared `AT %I*`, `%Q*` or `%M*` that VAR_CONFIG does not
+    /// locate, or cannot.
+    PartlyLocatedUnlocated(PartlyUnlocated<'db>),
+}
+
+/// Why a VAR_CONFIG entry cannot give the variable it names this address.
+#[derive(Clone, Debug, PartialEq, Eq, Hash, salsa::Update)]
+pub enum ConfigLocationRefusal {
+    /// The variable's declaration has an address of its own, or none.
+    NotPartlyLocated,
+    /// Declared `AT %I*` and given a `%Q` address, for instance.
+    AreaMismatch {
+        declared: compact_str::CompactString,
+    },
+    /// `%I*` again, or no area or width letter.
+    Unlocatable { incomplete: bool },
+    /// The address is not as wide as the variable's type.
+    Width {
+        address_bits: usize,
+        declared_bits: Option<usize>,
+        declared: compact_str::CompactString,
+    },
+    /// A bit inside a wider address the workspace names, which has no address
+    /// of its own for the variable to point at.
+    BitOfWider { owner: compact_str::CompactString },
+}
+
+impl ConfigLocationRefusal {
+    fn message(&self, var: &str, address: &str) -> String {
+        match self {
+            Self::NotPartlyLocated => format!(
+                "'{var}' is not declared AT %I*, %Q* or %M*, so its address is not VAR_CONFIG's to give"
+            ),
+            Self::AreaMismatch { declared } => {
+                format!("'{var}' is declared AT {declared}, and '{address}' is not in that area")
+            }
+            Self::Unlocatable { incomplete: true } => {
+                format!("'{address}' is not a complete address")
+            }
+            Self::Unlocatable { incomplete: false } => {
+                format!("'{address}' does not name an area and a width")
+            }
+            Self::Width {
+                address_bits,
+                declared_bits,
+                declared,
+            } => {
+                let bits = |n: usize| {
+                    if n == 1 {
+                        "1 bit".to_string()
+                    } else {
+                        format!("{n} bits")
+                    }
+                };
+                match declared_bits {
+                    Some(n) => format!(
+                        "'{address}' is {}, but '{var}' is declared '{declared}', which is {n}",
+                        bits(*address_bits)
+                    ),
+                    None => format!(
+                        "'{address}' is {}, but '{var}' is declared '{declared}', which has no width of its own",
+                        bits(*address_bits)
+                    ),
+                }
+            }
+            Self::BitOfWider { owner } => format!(
+                "'{address}' is a bit of '{owner}', and a bit has no address to locate '{var}' at"
+            ),
+        }
+    }
+
+    fn note(&self) -> &'static str {
+        match self {
+            Self::NotPartlyLocated => {
+                "declare it AT %I*, %Q* or %M* in its POU to leave its address to the configuration"
+            }
+            Self::AreaMismatch { .. } => {
+                "the area is the declaration's: give an input an address in %I, an output one in %Q, a marker one in %M"
+            }
+            Self::Unlocatable { .. } => {
+                "VAR_CONFIG gives the complete address, such as '%IX0.0' or '%QW4'"
+            }
+            Self::Width { .. } => {
+                "the variable holds one value as wide as its address; give it an address of its type's width"
+            }
+            Self::BitOfWider { .. } => {
+                "the variable points at its channel, so give it a byte or wider, or a bit nothing wider around it is named"
+            }
+        }
+    }
+}
+
+/// A variable declared `AT %I*`, `%Q*` or `%M*` that is left without an
+/// address.
+#[derive(Clone, Debug, PartialEq, Eq, Hash, salsa::Update)]
+pub enum PartlyUnlocated<'db> {
+    /// An instance whose variable no VAR_CONFIG entry locates.
+    Missing {
+        /// The PROGRAM instance, where the CONFIGURATION declares it.
+        instance: SpanIdent<'db>,
+        /// The path from the instance: `P1.fb.x`.
+        path: compact_str::CompactString,
+        /// `%I*`, `%Q*` or `%M*`.
+        address: compact_str::CompactString,
+    },
+    /// Instances held where no VAR_CONFIG path reaches them.
+    Unreachable {
+        var: VariableDecl<'db>,
+        /// The member declared with the partial address: `x`, or `fb.x`.
+        member: compact_str::CompactString,
+        address: compact_str::CompactString,
+        place: UnreachablePlace,
+    },
+}
+
+/// Where an instance is held that VAR_CONFIG cannot name.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, salsa::Update)]
+pub enum UnreachablePlace {
+    /// An element of an array: a VAR_CONFIG path names instances, not
+    /// elements.
+    Array,
+    /// A VAR_GLOBAL: a VAR_CONFIG path starts at a PROGRAM instance.
+    Global,
+    /// A FUNCTION's, a METHOD's, or a VAR_TEMP: a new instance per call.
+    PerCall,
 }
 
 /// What a part of a wider address was used for that it cannot be.
@@ -252,7 +386,7 @@ impl UnlocatableAddress {
                 "a function's, function block's or class's variables belong to each call or instance, so one address cannot be theirs; declare it in a PROGRAM, or as a VAR_GLOBAL of the CONFIGURATION, and name it from here"
             }
             Self::Incomplete => {
-                "the binding for a partly specified address comes from VAR_CONFIG, which is checked but not applied yet (E1416); write the address in full to allocate it now"
+                "VAR_CONFIG completes a partial address for a variable of a PROGRAM, FUNCTION_BLOCK or CLASS, instance by instance; anywhere else, write the address in full"
             }
             Self::Malformed => {
                 "an address names its area with I, Q or M and its width with X, B, W, D or L, as in '%IX0.0'; a bit may leave the width out, as in '%I0.0'"
@@ -388,6 +522,8 @@ impl<'db> ErrorCode for ConfigError<'db> {
             Self::DuplicateLocation { .. } => "E1421",
             Self::LocationWidthMismatch { .. } => "E1422",
             Self::PartOfWiderAddress { .. } => "E1423",
+            Self::ConfigLocationRefused { .. } => "E1424",
+            Self::PartlyLocatedUnlocated(_) => "E1425",
         }
     }
 
@@ -416,6 +552,8 @@ impl<'db> ErrorCode for ConfigError<'db> {
             Self::DuplicateLocation { .. } => "duplicate location",
             Self::LocationWidthMismatch { .. } => "location type mismatch",
             Self::PartOfWiderAddress { .. } => "part of a wider address",
+            Self::ConfigLocationRefused { .. } => "location refused",
+            Self::PartlyLocatedUnlocated(_) => "variable not located",
         }
     }
 }
@@ -703,10 +841,11 @@ impl<'db> ToIdeDiagnostic<'db> for ConfigError<'db> {
                             .unwrap_or_default(),
                     )
                     .call();
-                diag.with_note(
-                    "the retain band is restored at startup, so a retained I/O image would run the first scan on the values of the last power cycle; only '%M' may persist"
-                        .to_string(),
-                );
+                diag.with_note(if address.ends_with('*') {
+                    "a variable VAR_CONFIG locates points at its channel and has no storage of its own to retain; to persist a marker, declare it located in full, RETAIN, in a PROGRAM or as a VAR_GLOBAL".to_string()
+                } else {
+                    "the retain band is restored at startup, so a retained I/O image would run the first scan on the values of the last power cycle; only '%M' may persist".to_string()
+                });
                 diag
             }
             Self::DuplicateLocation {
@@ -793,6 +932,74 @@ impl<'db> ToIdeDiagnostic<'db> for ConfigError<'db> {
                     .range(crate::denormalize(db, file, &site.get_span(db)).unwrap_or_default())
                     .call();
                 diag.with_note(usage.note(address, owner));
+                diag
+            }
+            Self::ConfigLocationRefused {
+                expr,
+                var,
+                address,
+                why,
+            } => {
+                let mut diag = diag()
+                    .message(why.message(var, address))
+                    .severity(DiagnosticSeverity::ERROR)
+                    .desc(self)
+                    .range(crate::denormalize(db, file, &expr.get_span(db)).unwrap_or_default())
+                    .call();
+                diag.with_note(why.note().to_string());
+                diag
+            }
+            Self::PartlyLocatedUnlocated(PartlyUnlocated::Missing {
+                instance,
+                path,
+                address,
+            }) => {
+                let mut diag = diag()
+                    .message(format!(
+                        "'{path}' is declared AT {address}, and no VAR_CONFIG entry locates it"
+                    ))
+                    .severity(DiagnosticSeverity::ERROR)
+                    .desc(self)
+                    .range(crate::denormalize(db, file, &instance.get_span(db)).unwrap_or_default())
+                    .call();
+                diag.with_note(
+                    "each instance is given its address in the CONFIGURATION's VAR_CONFIG, as in 'Res.P1.fb.x AT %IX0.0 : BOOL;'".to_string(),
+                );
+                diag
+            }
+            Self::PartlyLocatedUnlocated(PartlyUnlocated::Unreachable {
+                var,
+                member,
+                address,
+                place,
+            }) => {
+                let whose = format!(
+                    "'{}' holds '{member}', declared AT {address}",
+                    var.get_name_ident(db).text(db)
+                );
+                let message = match place {
+                    UnreachablePlace::Array => format!(
+                        "{whose}, in the elements of an array, which VAR_CONFIG cannot name"
+                    ),
+                    UnreachablePlace::Global => {
+                        format!("{whose}, in a VAR_GLOBAL, which VAR_CONFIG cannot name")
+                    }
+                    UnreachablePlace::PerCall => format!(
+                        "{whose}, in an instance made for each call, which VAR_CONFIG cannot name"
+                    ),
+                };
+                let mut diag = diag()
+                    .message(message)
+                    .severity(DiagnosticSeverity::ERROR)
+                    .desc(self)
+                    .range(
+                        crate::denormalize(db, file, &var.as_call_site(db).get_span(db))
+                            .unwrap_or_default(),
+                    )
+                    .call();
+                diag.with_note(
+                    "a VAR_CONFIG path names a PROGRAM instance and the instances it holds by name; hold this one there".to_string(),
+                );
                 diag
             }
         }
