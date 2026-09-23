@@ -659,6 +659,22 @@ impl<'db> Type<'db> {
             FieldLookup::Variable(var) => {
                 place.current_init_typ = Type::new_var(db, var);
                 ctx.type_of_init_expr.insert(expr, place.current_init_typ);
+                // It points at the channel VAR_CONFIG gives its instance; a
+                // value here would be written over the pointer (E1427).
+                if var.is_partly_located(db) {
+                    ctx.errors.push(
+                        ConfigError::PartlyLocatedOverwritten {
+                            site: crate::CallSite::from_scoped(db, &expr),
+                            member: var.name(db).text(db).clone(),
+                            address: var
+                                .location(db)
+                                .map(|dv| compact_str::CompactString::from(dv.to_address(db)))
+                                .unwrap_or_default(),
+                            how: crate::check::errors::e14_config::PartlyOverwrite::Initializer,
+                        }
+                        .to_diagnostic(db, ctx.scope.file(db)),
+                    );
+                }
             }
             FieldLookup::Method(_) | FieldLookup::NotFound => {
                 ctx.errors.push(

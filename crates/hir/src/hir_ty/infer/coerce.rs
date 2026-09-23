@@ -438,6 +438,38 @@ impl<'db> Type<'db> {
                     );
                     assignable = false;
                 }
+                // A CLASS may be assigned, but one holding a variable
+                // declared `AT %I*` would copy where that variable points
+                // along with its values (E1427).
+                if let Type::Class(class) = variable.spec(db).infer(db).normalize(db)
+                    && let Some(path) = crate::hir_ty::head::inheritance::partly_located_members(
+                        db,
+                        Pou::Class(class),
+                    )
+                    .first()
+                {
+                    ctx.errors.push(
+                        ConfigError::PartlyLocatedOverwritten {
+                            site: call_site,
+                            member: compact_str::CompactString::from(
+                                path.iter()
+                                    .map(|m| m.name(db).text(db).to_string())
+                                    .collect::<Vec<_>>()
+                                    .join("."),
+                            ),
+                            address: path
+                                .last()
+                                .and_then(|m| m.location(db))
+                                .map(|dv| compact_str::CompactString::from(dv.to_address(db)))
+                                .unwrap_or_default(),
+                            how: crate::check::errors::e14_config::PartlyOverwrite::Copy {
+                                ty: class.name(db).text(db).clone(),
+                            },
+                        }
+                        .to_diagnostic(db, ctx.scope.file(db)),
+                    );
+                    assignable = false;
+                }
                 // a CONSTANT variable cannot be assigned to
                 if variable.qualifier(db).contains(crate::Qualifier::CONSTANT) {
                     ctx.errors.push(

@@ -452,6 +452,49 @@ pub fn partly_located_members<'db>(
     out
 }
 
+/// A member declared `AT %I*`, `%Q*` or `%M*` held by an instance in a
+/// field of `ty`, a STRUCT or an array of one, as the names that reach it
+/// (the fields, then [`partly_located_members`]'s path) and the member
+/// itself. A VAR_CONFIG path names instances, not fields, so no entry
+/// reaches it (E1425).
+pub fn partly_located_in_struct<'db>(
+    db: &'db dyn WorkspaceDataBase,
+    ty: crate::hir_ty::ty::Type<'db>,
+    visited: &mut Vec<crate::hir_def::expressions::spec::Struct<'db>>,
+) -> Option<(Vec<Ident>, VariableDecl<'db>)> {
+    use crate::hir_ty::ty::Type;
+    let element_of = |mut ty: Type<'db>| {
+        while let Type::Array(array) = ty {
+            ty = array.of_type(db).infer(db).normalize(db);
+        }
+        ty
+    };
+    let Type::Struct(strukt) = element_of(ty) else {
+        return None;
+    };
+    if visited.contains(&strukt) {
+        return None;
+    }
+    visited.push(strukt);
+    let mut found = None;
+    for element in &strukt.elements(db) {
+        let field = element_of(element.spec(db).infer(db).normalize(db));
+        let inner = match pou_of_type(db, field) {
+            Some(pou) => partly_located_members(db, pou)
+                .first()
+                .and_then(|path| Some((path.iter().map(|v| v.name(db)).collect(), *path.last()?))),
+            None => partly_located_in_struct(db, field, visited),
+        };
+        if let Some((mut names, var)) = inner {
+            names.insert(0, element.name(db));
+            found = Some((names, var));
+            break;
+        }
+    }
+    visited.pop();
+    found
+}
+
 /// [`partly_located_members`] from a list of members: a PROGRAM's variables
 /// start it as a POU's members do.
 pub fn collect_partly_located<'db>(

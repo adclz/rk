@@ -1187,6 +1187,121 @@ END_CONFIGURATION
     ");
 }
 
+/// A variable declared `AT %I*` points at its instance's channel, so what
+/// would write over that pointer is refused: an instance's initializer
+/// naming it and an assignment copying a CLASS that holds it (E1427), and a
+/// VAR_INPUT each call copies its argument over (E1425). A STRUCT's field is
+/// not something a VAR_CONFIG path names (E1425), and a RETAIN instance
+/// cannot retain the marker such a variable points at (E1420).
+#[rstest]
+fn invalid_partly_located_members_overwritten_or_unreachable(mut with_db: RootDatabase) {
+    let source = r#"
+CLASS Sensor
+VAR raw AT %Q* : INT; END_VAR
+END_CLASS
+
+FUNCTION_BLOCK Motor
+VAR cnt AT %M* : INT; END_VAR
+END_FUNCTION_BLOCK
+
+FUNCTION_BLOCK Outer
+VAR inner : Motor := (cnt := 50); END_VAR
+END_FUNCTION_BLOCK
+
+TYPE Pair : STRUCT c : Sensor; n : INT; END_STRUCT END_TYPE
+
+FUNCTION_BLOCK User
+VAR_INPUT d : Motor; END_VAR
+END_FUNCTION_BLOCK
+
+PROGRAM P
+VAR s : Pair; pairs : ARRAY[0..1] OF Pair; END_VAR
+VAR RETAIN m : Motor; END_VAR
+VAR a : Sensor; b : Sensor; u : User; o : Outer; k : Motor := (cnt := 3); END_VAR
+    b := a;
+END_PROGRAM
+
+CONFIGURATION Cfg
+VAR_CONFIG
+    Res.P1.m.cnt       AT %MW0 : INT;
+    Res.P1.a.raw       AT %QW0 : INT;
+    Res.P1.b.raw       AT %QW1 : INT;
+    Res.P1.k.cnt       AT %MW1 : INT;
+    Res.P1.o.inner.cnt AT %MW2 : INT;
+END_VAR
+    RESOURCE Res ON CPU
+        TASK T(INTERVAL := T#10ms, PRIORITY := 1);
+        PROGRAM P1 WITH T : P;
+    END_RESOURCE
+END_CONFIGURATION
+"#;
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
+    [E1427] Error: located variable overwritten
+        ,-[ file:///test0.st:11:23 ]
+        |
+     11 | VAR inner : Motor := (cnt := 50); END_VAR
+        |                       ^^^^|^^^^
+        |                           `------ 'cnt' is declared AT %M*, so it points at the channel VAR_CONFIG gives it and has no value of its own to initialize
+        |
+        | Note: a variable VAR_CONFIG locates starts at its type's default, or at the value its channel's own declaration gives it
+    ----'
+    [E1425] Error: variable not located
+        ,-[ file:///test0.st:17:11 ]
+        |
+     17 | VAR_INPUT d : Motor; END_VAR
+        |           ^^^^|^^^^
+        |               `------ 'd' holds 'cnt', declared AT %M*, in a VAR_INPUT, which each call overwrites with a copy of its argument
+        |
+        | Note: pass the instance as a VAR_IN_OUT: the call then uses it where it is held, and located
+    ----'
+    [E1425] Error: variable not located
+        ,-[ file:///test0.st:21:5 ]
+        |
+     21 | VAR s : Pair; pairs : ARRAY[0..1] OF Pair; END_VAR
+        |     ^^^^|^^^
+        |         `----- 's' holds 'c.raw', declared AT %Q*, in a field of a STRUCT, which VAR_CONFIG cannot name
+        |
+        | Note: a VAR_CONFIG path names a PROGRAM instance and the instances it holds by name; hold this one there
+    ----'
+    [E1425] Error: variable not located
+        ,-[ file:///test0.st:21:15 ]
+        |
+     21 | VAR s : Pair; pairs : ARRAY[0..1] OF Pair; END_VAR
+        |               ^^^^^^^^^^^^^|^^^^^^^^^^^^^
+        |                            `--------------- 'pairs' holds 'c.raw', declared AT %Q*, in a field of a STRUCT, which VAR_CONFIG cannot name
+        |
+        | Note: a VAR_CONFIG path names a PROGRAM instance and the instances it holds by name; hold this one there
+    ----'
+    [E1420] Error: RETAIN on an I/O location
+        ,-[ file:///test0.st:22:12 ]
+        |
+     22 | VAR RETAIN m : Motor; END_VAR
+        |            ^^^^|^^^^
+        |                `------ 'm' is RETAIN and holds 'cnt', declared AT %M*, which cannot be retained
+        |
+        | Note: a variable VAR_CONFIG locates points at its marker and has no storage of its own to retain; to persist a marker, declare it located in full, RETAIN, in a PROGRAM or as a VAR_GLOBAL
+    ----'
+    [E1427] Error: located variable overwritten
+        ,-[ file:///test0.st:23:64 ]
+        |
+     23 | VAR a : Sensor; b : Sensor; u : User; o : Outer; k : Motor := (cnt := 3); END_VAR
+        |                                                                ^^^^|^^^
+        |                                                                    `----- 'cnt' is declared AT %M*, so it points at the channel VAR_CONFIG gives it and has no value of its own to initialize
+        |
+        | Note: a variable VAR_CONFIG locates starts at its type's default, or at the value its channel's own declaration gives it
+    ----'
+    [E1427] Error: located variable overwritten
+        ,-[ file:///test0.st:24:5 ]
+        |
+     24 |     b := a;
+        |     |
+        |     `-- 'Sensor' holds 'raw', declared AT %Q*, so an assigned instance would point at the channels of the one it copies
+        |
+        | Note: each instance points at the channels VAR_CONFIG gives it; assign the variables that hold values one by one
+    ----'
+    ");
+}
+
 /// A partial address names its area and nothing else: `%Z*` has no area and
 /// `%IW*` a width, which the variable's type gives (E1417). Neither is left
 /// to VAR_CONFIG, so an entry for one is refused (E1424) and none is needed.

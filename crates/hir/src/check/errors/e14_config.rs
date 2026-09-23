@@ -193,6 +193,34 @@ pub enum ConfigError<'db> {
         expr: PathExpr<'db>,
         why: ConfigEntryRefusal,
     },
+    /// `RETAIN` on an instance that holds a variable declared `AT %M*`. The
+    /// variable points at its marker and has no storage of its own, so
+    /// retaining the instance would silently leave its count behind.
+    RetainHoldsPartlyLocated {
+        var: VariableDecl<'db>,
+        /// The member declared with the partial address: `x`, or `fb.x`.
+        member: compact_str::CompactString,
+    },
+    /// A value given to a variable declared `AT %I*`, `%Q*` or `%M*`, or a
+    /// copy of an instance holding one. The variable points at the channel
+    /// VAR_CONFIG gives its instance: an initializer would write over the
+    /// pointer, and a copy would make it point at the source's channel.
+    PartlyLocatedOverwritten {
+        site: CallSite<'db>,
+        /// The member declared with the partial address: `x`, or `fb.x`.
+        member: compact_str::CompactString,
+        address: compact_str::CompactString,
+        how: PartlyOverwrite,
+    },
+}
+
+/// How a variable declared `AT %I*`, `%Q*` or `%M*` would be overwritten.
+#[derive(Clone, Debug, PartialEq, Eq, Hash, salsa::Update)]
+pub enum PartlyOverwrite {
+    /// Named in an instance's initializer: `d : Drive := (out := 30)`.
+    Initializer,
+    /// Its instance assigned whole: `b := a`, for a CLASS `b` is.
+    Copy { ty: compact_str::CompactString },
 }
 
 /// Why a VAR_CONFIG entry cannot be taken as written.
@@ -336,6 +364,10 @@ pub enum UnreachablePlace {
     Global,
     /// A FUNCTION's, a METHOD's, or a VAR_TEMP: a new instance per call.
     PerCall,
+    /// A field of a STRUCT: a VAR_CONFIG path names instances, not fields.
+    Struct,
+    /// A VAR_INPUT: each call copies its argument over it, pointers included.
+    Input,
 }
 
 /// What a part of a wider address was used for that it cannot be.
@@ -566,6 +598,8 @@ impl<'db> ErrorCode for ConfigError<'db> {
             Self::ConfigLocationRefused { .. } => "E1424",
             Self::PartlyLocatedUnlocated(_) => "E1425",
             Self::ConfigEntryRefused { .. } => "E1426",
+            Self::RetainHoldsPartlyLocated { .. } => "E1420",
+            Self::PartlyLocatedOverwritten { .. } => "E1427",
         }
     }
 
@@ -597,6 +631,8 @@ impl<'db> ErrorCode for ConfigError<'db> {
             Self::ConfigLocationRefused { .. } => "location refused",
             Self::PartlyLocatedUnlocated(_) => "variable not located",
             Self::ConfigEntryRefused { .. } => "configuration entry refused",
+            Self::RetainHoldsPartlyLocated { .. } => "RETAIN on an I/O location",
+            Self::PartlyLocatedOverwritten { .. } => "located variable overwritten",
         }
     }
 }
@@ -1050,6 +1086,12 @@ impl<'db> ToIdeDiagnostic<'db> for ConfigError<'db> {
                     UnreachablePlace::PerCall => format!(
                         "{whose}, in an instance made for each call, which VAR_CONFIG cannot name"
                     ),
+                    UnreachablePlace::Struct => {
+                        format!("{whose}, in a field of a STRUCT, which VAR_CONFIG cannot name")
+                    }
+                    UnreachablePlace::Input => format!(
+                        "{whose}, in a VAR_INPUT, which each call overwrites with a copy of its argument"
+                    ),
                 };
                 let mut diag = diag()
                     .message(message)
@@ -1060,9 +1102,57 @@ impl<'db> ToIdeDiagnostic<'db> for ConfigError<'db> {
                             .unwrap_or_default(),
                     )
                     .call();
+                diag.with_note(match place {
+                    UnreachablePlace::Input => "pass the instance as a VAR_IN_OUT: the call then uses it where it is held, and located".to_string(),
+                    _ => "a VAR_CONFIG path names a PROGRAM instance and the instances it holds by name; hold this one there".to_string(),
+                });
+                diag
+            }
+            Self::RetainHoldsPartlyLocated { var, member } => {
+                let mut diag = diag()
+                    .message(format!(
+                        "'{}' is RETAIN and holds '{member}', declared AT %M*, which cannot be retained",
+                        var.get_name_ident(db).text(db)
+                    ))
+                    .severity(DiagnosticSeverity::ERROR)
+                    .desc(self)
+                    .range(
+                        crate::denormalize(db, file, &var.as_call_site(db).get_span(db))
+                            .unwrap_or_default(),
+                    )
+                    .call();
                 diag.with_note(
-                    "a VAR_CONFIG path names a PROGRAM instance and the instances it holds by name; hold this one there".to_string(),
+                    "a variable VAR_CONFIG locates points at its marker and has no storage of its own to retain; to persist a marker, declare it located in full, RETAIN, in a PROGRAM or as a VAR_GLOBAL".to_string(),
                 );
+                diag
+            }
+            Self::PartlyLocatedOverwritten {
+                site,
+                member,
+                address,
+                how,
+            } => {
+                let (message, note) = match how {
+                    PartlyOverwrite::Initializer => (
+                        format!(
+                            "'{member}' is declared AT {address}, so it points at the channel VAR_CONFIG gives it and has no value of its own to initialize"
+                        ),
+                        "a variable VAR_CONFIG locates starts at its type's default, or at the value its channel's own declaration gives it",
+                    ),
+                    PartlyOverwrite::Copy { ty } => (
+                        format!(
+                            "'{ty}' holds '{member}', declared AT {address}, so an assigned instance would point at the channels of the one it copies"
+                        ),
+                        "each instance points at the channels VAR_CONFIG gives it; assign the variables that hold values one by one",
+                    ),
+                };
+                let mut diag = diag()
+                    .message(message)
+                    .severity(DiagnosticSeverity::ERROR)
+                    .desc(self)
+                    .range(crate::denormalize(db, file, &site.get_span(db)).unwrap_or_default())
+                    .call();
+                diag.with_note(note.to_string());
                 diag
             }
         }

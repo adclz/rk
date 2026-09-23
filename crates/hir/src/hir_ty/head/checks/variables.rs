@@ -59,16 +59,17 @@ impl<'db> InitInference<'db> {
     }
 
     /// E1425: an instance whose type holds a variable declared `AT %I*`,
-    /// held where no VAR_CONFIG path can name it: an array's element, a
-    /// VAR_GLOBAL, or an instance made for each call.
+    /// held where no VAR_CONFIG path can name it, or where a call copies over
+    /// it: an array's element, a STRUCT's field, a VAR_GLOBAL, an instance
+    /// made for each call, a VAR_INPUT. Returns whether it reported.
     fn check_unreachable_partly(
         &mut self,
         db: &'db dyn WorkspaceDataBase,
         var: &VariableDecl<'db>,
-    ) {
+    ) -> bool {
         use crate::check::errors::e14_config::{PartlyUnlocated, UnreachablePlace};
         if var.is_external(db) || var.is_in_out(db) {
-            return;
+            return false;
         }
         let mut ty = var.spec(db).infer(db).normalize(db);
         let mut in_array = false;
@@ -76,46 +77,108 @@ impl<'db> InitInference<'db> {
             in_array = true;
             ty = array.of_type(db).infer(db).normalize(db);
         }
-        let Some(pou) = crate::hir_ty::head::inheritance::pou_of_type(db, ty) else {
-            return;
-        };
-        let Some(path) = crate::hir_ty::head::inheritance::partly_located_members(db, pou).first()
-        else {
-            return;
+        let (names, member, in_struct) = match crate::hir_ty::head::inheritance::pou_of_type(db, ty)
+        {
+            Some(pou) => {
+                let paths = crate::hir_ty::head::inheritance::partly_located_members(db, pou);
+                let Some(path) = paths.first() else {
+                    return false;
+                };
+                let Some(member) = path.last() else {
+                    return false;
+                };
+                (
+                    path.iter().map(|m| m.name(db)).collect::<Vec<_>>(),
+                    *member,
+                    false,
+                )
+            }
+            None => match crate::hir_ty::head::inheritance::partly_located_in_struct(
+                db,
+                ty,
+                &mut Vec::new(),
+            ) {
+                Some((names, member)) => (names, member, true),
+                None => return false,
+            },
         };
         let per_call = var.is_temp(db)
             || matches!(
                 get_scope(db, var.get_scope_id(db)).kind,
                 ScopeKind::Pou(Pou::Function(_)) | ScopeKind::MethodDecl(_)
             );
-        let place = if in_array {
+        let place = if in_struct {
+            UnreachablePlace::Struct
+        } else if in_array {
             UnreachablePlace::Array
         } else if var.is_global(db) {
             UnreachablePlace::Global
         } else if per_call {
             UnreachablePlace::PerCall
+        } else if var.is_input(db) {
+            UnreachablePlace::Input
         } else {
-            return;
+            return false;
         };
-        let member = path
+        let member_path = names
             .iter()
-            .map(|m| m.name(db).text(db).to_string())
+            .map(|n| n.text(db).to_string())
             .collect::<Vec<_>>()
             .join(".");
-        let address = path
-            .last()
-            .and_then(|m| m.location(db))
+        let address = member
+            .location(db)
             .map(|dv| dv.to_address(db))
             .unwrap_or_default();
         self.errors.push(
             ConfigError::PartlyLocatedUnlocated(PartlyUnlocated::Unreachable {
                 var: *var,
-                member: compact_str::CompactString::from(member),
+                member: compact_str::CompactString::from(member_path),
                 address: compact_str::CompactString::from(address),
                 place,
             })
             .to_diagnostic(db, self.scope.file(db)),
         );
+        true
+    }
+
+    /// E1420: a RETAIN instance holding a variable declared `AT %M*`, which
+    /// points at its marker and would silently not be retained with the rest.
+    /// An `%I*` or `%Q*` member is not refused: neither area persists anyway.
+    fn check_retain_holds_marker(
+        &mut self,
+        db: &'db dyn WorkspaceDataBase,
+        var: &VariableDecl<'db>,
+    ) {
+        if !var.qualifier(db).contains(crate::Qualifier::RETAIN) {
+            return;
+        }
+        let Some(pou) =
+            crate::hir_ty::head::inheritance::pou_of_type(db, var.spec(db).infer(db).normalize(db))
+        else {
+            return;
+        };
+        let marker = crate::hir_ty::head::inheritance::partly_located_members(db, pou)
+            .iter()
+            .find(|path| {
+                path.last()
+                    .and_then(|m| m.location(db))
+                    .and_then(|dv| dv.area(db))
+                    == Some(crate::hir_def::pous::variable::LocationArea::Marker)
+            });
+        if let Some(path) = marker {
+            let member = path
+                .iter()
+                .map(|m| m.name(db).text(db).to_string())
+                .collect::<Vec<_>>()
+                .join(".");
+            self.errors.push(
+                ConfigError::RetainHoldsPartlyLocated {
+                    var: *var,
+                    member: compact_str::CompactString::from(member),
+                }
+                .to_diagnostic(db, self.scope.file(db)),
+            );
+        }
     }
 
     pub(crate) fn check_variables(&mut self, db: &'db dyn WorkspaceDataBase) {
@@ -216,7 +279,9 @@ impl<'db> InitInference<'db> {
         let mut first_variadic: Option<VariableDecl<'db>> = None;
 
         for var in variables {
-            self.check_unreachable_partly(db, var);
+            if !self.check_unreachable_partly(db, var) {
+                self.check_retain_holds_marker(db, var);
+            }
             if let Some(pou_kind) = stateless_pou
                 && var
                     .qualifier(db)
