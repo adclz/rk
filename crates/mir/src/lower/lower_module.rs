@@ -486,18 +486,17 @@ fn lower_module_from_pous<'db>(
     // Bare addresses the bodies named get their cells before the bands are
     // carved, so they are laid out with the declared ones, and so do the ones
     // only VAR_CONFIG names: what a located instance variable points at.
-    let config_addresses: Vec<hir::hir_def::pous::variable::LocatedAddress> = config
+    let config_locations: Vec<&hir::hir_ty::config::ConfigLocation<'db>> = config
         .iter()
         .flat_map(|c| {
             hir::hir_ty::config::infer_config_result(db, *c)
                 .locations
                 .iter()
         })
-        .map(|loc| loc.address.clone())
         .collect();
-    let config_cells: Vec<String> = config_addresses
+    let config_cells: Vec<String> = config_locations
         .iter()
-        .map(|address| config_cell(db, address).0.text.to_string())
+        .map(|loc| config_cell(db, &loc.address).0.text.to_string())
         .collect();
     synthesize_bare_addresses(
         db,
@@ -584,7 +583,7 @@ fn lower_module_from_pous<'db>(
     module.output_size = bands.output_size;
     module.marker_base = bands.marker_base;
     module.marker_size = bands.marker_size;
-    module.located_map = build_located_map(db, &bands.located, &global_table, &config_addresses);
+    module.located_map = build_located_map(db, &bands.located, &global_table, &config_locations);
 
     // The debug-symbol table, now that every address is final; sorted by
     // path.
@@ -633,6 +632,44 @@ fn lower_module_from_pous<'db>(
                     );
                 }
             }
+        }
+    }
+    // A variable VAR_CONFIG locates is a pointer in its instance, which the
+    // walk above does not follow. Its symbol is the channel it points at,
+    // under the instance's path and typed as declared.
+    if let Some(sched) = &module.schedule {
+        for loc in &config_locations {
+            let Some(inst) = sched
+                .tasks
+                .iter()
+                .flat_map(|t| t.programs.iter())
+                .find(|p| p.inst_name.caseless(db) == loc.instance.caseless(db))
+            else {
+                continue;
+            };
+            let Some(var) = loc.members.last() else {
+                continue;
+            };
+            let (owner, offset) = config_cell(db, &loc.address);
+            let key = hir::hir_def::interned::identifier::Ident::new(db, owner.text.clone());
+            let Some((cell, _)) = global_table.get(&key) else {
+                continue;
+            };
+            let mut path = inst.inst_name.text(db).to_string();
+            for member in &loc.members {
+                path.push('.');
+                path.push_str(member.name(db).text(db));
+            }
+            crate::debug_symbols::collect_root(
+                db,
+                &path,
+                cell + offset,
+                &super::lower_type::lower_spec(db, var.spec(db))?,
+                false,
+                &mut symbols,
+                &mut array_syms,
+                &mut type_table,
+            );
         }
     }
     for (name, (addr, ty)) in &global_table {
@@ -1164,13 +1201,23 @@ fn build_located_map<'db>(
     db: &'db dyn WorkspaceDataBase,
     located: &[crate::memory::LocatedEntry],
     globals: &GlobalTable<'db>,
-    config_addresses: &[hir::hir_def::pous::variable::LocatedAddress],
+    config_locations: &[&hir::hir_ty::config::ConfigLocation<'db>],
 ) -> debug_format::LocatedMap {
     use hir::hir_def::pous::variable::LocationArea;
     let area = |a: LocationArea| match a {
         LocationArea::Input => debug_format::LocatedArea::Input,
         LocationArea::Output => debug_format::LocatedArea::Output,
         LocationArea::Marker => debug_format::LocatedArea::Marker,
+    };
+    // An address no declaration names but VAR_CONFIG gives a variable is
+    // typed as that variable is declared, not by its width.
+    let configured_type = |address: &str| {
+        config_locations
+            .iter()
+            .find(|loc| loc.address.text.eq_ignore_ascii_case(address))
+            .and_then(|loc| loc.members.last())
+            .and_then(|var| super::lower_type::lower_spec(db, var.spec(db)).ok())
+            .and_then(|ty| crate::debug_symbols::scalar_sym_ty(&ty))
     };
     let mut entries: Vec<debug_format::LocatedVar> = located
         .iter()
@@ -1188,9 +1235,17 @@ fn build_located_map<'db>(
             },
             addr: e.address,
             size: e.size,
-            ty: globals
-                .get(&e.name)
-                .and_then(|(_, ty)| crate::debug_symbols::scalar_sym_ty(ty)),
+            ty: e
+                .name
+                .text(db)
+                .starts_with('%')
+                .then(|| configured_type(&e.address_text))
+                .flatten()
+                .or_else(|| {
+                    globals
+                        .get(&e.name)
+                        .and_then(|(_, ty)| crate::debug_symbols::scalar_sym_ty(ty))
+                }),
             part_of: None,
         })
         .collect();
@@ -1202,7 +1257,7 @@ fn build_located_map<'db>(
     let mut parts: Vec<debug_format::LocatedVar> = Vec::new();
     {
         let mentioned = hir::hir_ty::index_graphs::located_by_file(db).flat_map(|m| m.keys());
-        for address in mentioned.chain(config_addresses) {
+        for address in mentioned.chain(config_locations.iter().map(|loc| &loc.address)) {
             if parts.iter().any(|p| p.address == address.text.as_str()) {
                 continue;
             }
@@ -1227,9 +1282,9 @@ fn build_located_map<'db>(
                 ),
                 None => (
                     address.text.to_string(),
-                    Some(crate::debug_symbols::sym_type_of(
+                    configured_type(&address.text).or(Some(crate::debug_symbols::sym_type_of(
                         crate::located::width_elementary(address.width),
-                    )),
+                    ))),
                 ),
             };
             parts.push(debug_format::LocatedVar {

@@ -1570,6 +1570,46 @@ fn a_declared_initial_value_wins_over_a_located_variables_default(mut with_db: d
     assert_eq!(read("%MW1") & 0xFFFF, 5, "nothing declares `c`'s channel");
 }
 
+/// A debugger finds a located variable under its instance's path, at its
+/// channel and typed as declared, and the located map types a channel only
+/// VAR_CONFIG names the same way.
+#[rstest]
+fn a_located_member_has_a_symbol_at_its_channel(mut with_db: db::RootDatabase) {
+    use debug_format::{DebugInfo, SymType, VarValue};
+    let source = r#"
+        FUNCTION_BLOCK Motor
+        VAR cnt AT %M* : INT; END_VAR
+            cnt := cnt - 1;
+        END_FUNCTION_BLOCK
+
+        PROGRAM P
+        VAR d : Motor; END_VAR
+            d();
+        END_PROGRAM
+
+        CONFIGURATION Cfg
+        VAR_CONFIG
+            Res.P1.d.cnt AT %MW0 : INT;
+        END_VAR
+            RESOURCE Res ON CPU
+                TASK T(INTERVAL := T#10ms, PRIORITY := 1);
+                PROGRAM P1 WITH T : P;
+            END_RESOURCE
+        END_CONFIGURATION
+    "#;
+    let (_mir, wasm) = compile_to_mir_and_wasm(&mut with_db, source);
+    let info = DebugInfo::from_wasm(&wasm);
+    let mut plc = TestPlc::load(&wasm).expect("load");
+    plc.run(1).expect("scan");
+    let loc = info.resolve("P1.d.cnt").expect("P1.d.cnt");
+    assert_eq!(loc.address, plc.located("%MW0").expect("the channel").addr);
+    assert_eq!(
+        loc.decode(&plc.read_bytes(loc.address, loc.size as usize).unwrap()),
+        VarValue::I16(-1)
+    );
+    assert_eq!(plc.located("%MW0").expect("the channel").ty, Some(SymType::Int));
+}
+
 /// A PROGRAM's variable may be located per instance too, and at a byte of a
 /// wider address: `lamp` is the low byte of the word the program also names.
 #[rstest]
