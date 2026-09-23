@@ -659,15 +659,26 @@ impl<'db> Type<'db> {
             FieldLookup::Variable(var) => {
                 place.current_init_typ = Type::new_var(db, var);
                 ctx.type_of_init_expr.insert(expr, place.current_init_typ);
-                // Each call binds it to its argument; a value here would be
-                // written over the pointer the binding lives in (E0405).
-                if var.is_in_out(db) {
+                // A member with no value of its own for an instance to give
+                // it (E0405): a VAR_IN_OUT would have the value written over
+                // its pointer, a VAR_TEMP or a VAR_EXTERNAL would drop it, and
+                // a CONSTANT's reads would not see it.
+                use crate::check::errors::e04_init::UninitializableMember;
+                let uninitializable = if var.is_in_out(db) {
+                    Some(UninitializableMember::InOut)
+                } else if var.is_temp(db) {
+                    Some(UninitializableMember::Temp)
+                } else if var.is_external(db) {
+                    Some(UninitializableMember::External)
+                } else if var.qualifier(db).contains(crate::Qualifier::CONSTANT) {
+                    Some(UninitializableMember::Constant)
+                } else {
+                    None
+                };
+                if let Some(kind) = uninitializable {
                     ctx.errors.push(
-                        InitError::InOutInInitializer {
-                            expr,
-                            var: var.name(db).text(db).clone(),
-                        }
-                        .to_diagnostic(db, ctx.scope.file(db)),
+                        InitError::UninitializableMember { expr, var, kind }
+                            .to_diagnostic(db, ctx.scope.file(db)),
                     );
                 }
                 // It points at the channel VAR_CONFIG gives its instance; a

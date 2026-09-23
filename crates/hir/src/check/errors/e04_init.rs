@@ -15,6 +15,7 @@ use auto_lsp::tree_sitter::Range;
 use db::WorkspaceDataBase;
 use ide_diagnostic::ErrorCode;
 use ide_diagnostic::IdeDiagnostic;
+use ide_diagnostic::Related;
 use ide_diagnostic::diag;
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, salsa::Update)]
@@ -34,14 +35,28 @@ pub enum InitError<'db> {
     AssignToConstant {
         access: CallSite<'db>,
     },
-    /// An instance's initializer names a VAR_IN_OUT, which each call binds
-    /// to its argument. The value was written into the pointer the binding
-    /// lives in, and `__init` failed to validate.
-    InOutInInitializer {
+    /// An instance's initializer names a member that has no value of its own
+    /// for it to give.
+    UninitializableMember {
         expr: InitExpr<'db>,
-        /// The VAR_IN_OUT, as declared.
-        var: compact_str::CompactString,
+        /// The member, pointed at where it is declared.
+        var: crate::hir_def::pous::variable::VariableDecl<'db>,
+        kind: UninitializableMember,
     },
+}
+
+/// A member an instance's initializer names but cannot set.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, salsa::Update)]
+pub enum UninitializableMember {
+    /// Each call binds it to its argument. The value was written into the
+    /// pointer the binding lives in, and `__init` failed to validate.
+    InOut,
+    /// Each call makes it afresh. The value was silently dropped.
+    Temp,
+    /// It names a VAR_GLOBAL. The value was silently dropped.
+    External,
+    /// Its reads fold to its declared value, while `__init` wrote this one.
+    Constant,
 }
 
 impl<'db> ErrorCode for InitError<'db> {
@@ -51,7 +66,7 @@ impl<'db> ErrorCode for InitError<'db> {
             Self::FunctionCallInInitExpression(_) => "E0402",
             Self::NoFieldOnElementaryType { .. } => "E0403",
             Self::AssignToConstant { .. } => "E0404",
-            Self::InOutInInitializer { .. } => "E0405",
+            Self::UninitializableMember { .. } => "E0405",
         }
     }
 
@@ -61,7 +76,7 @@ impl<'db> ErrorCode for InitError<'db> {
             Self::FunctionCallInInitExpression(_) => "syntax",
             Self::NoFieldOnElementaryType { .. } => "invalid operation",
             Self::AssignToConstant { .. } => "semantic violation",
-            Self::InOutInInitializer { .. } => "VAR_IN_OUT given an initial value",
+            Self::UninitializableMember { .. } => "member cannot be initialized",
         }
     }
 }
@@ -171,18 +186,43 @@ impl<'db> ToIdeDiagnostic<'db> for InitError<'db> {
                 .desc(self)
                 .range(crate::denormalize(db, file, &access.get_span(db)).unwrap_or_default())
                 .call(),
-            Self::InOutInInitializer { expr, var } => {
+            Self::UninitializableMember { expr, var, kind } => {
+                use crate::HasName;
+                let name = var.get_name_ident(db).text(db);
+                let (what, note) = match kind {
+                    UninitializableMember::InOut => (
+                        "a VAR_IN_OUT, which each call binds to its argument",
+                        format!("pass the variable in the call instead, as '{name} := x'"),
+                    ),
+                    UninitializableMember::Temp => (
+                        "a VAR_TEMP, which each call makes afresh",
+                        "give the value in its declaration, which applies at every call"
+                            .to_string(),
+                    ),
+                    UninitializableMember::External => (
+                        "a VAR_EXTERNAL, which names a VAR_GLOBAL",
+                        "give the value in the VAR_GLOBAL's declaration".to_string(),
+                    ),
+                    UninitializableMember::Constant => (
+                        "CONSTANT, whose value is its declaration's",
+                        "declare it without CONSTANT to let each instance start at its own value"
+                            .to_string(),
+                    ),
+                };
                 let mut d = diag()
                     .message(format!(
-                        "'{var}' is a VAR_IN_OUT, which each call binds to its argument, so an initializer cannot give it a value"
+                        "'{name}' is {what}, so an initializer cannot give it a value"
                     ))
                     .severity(DiagnosticSeverity::ERROR)
                     .desc(self)
                     .range(crate::denormalize(db, file, &expr.get_span(db)).unwrap_or_default())
                     .call();
-                d.with_note(format!(
-                    "pass the variable in the call instead, as '{var} := x'"
+                d.with_related(Related::new(
+                    format!("'{name}' is declared here"),
+                    var.get_scope_id(db).file(db),
+                    var.get_name_span(db),
                 ));
+                d.with_note(note);
                 d
             }
         }
