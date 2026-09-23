@@ -34,6 +34,15 @@ pub fn semantic_index<'db>(db: &'db dyn WorkspaceDataBase, file: File) -> Semant
         Some(source) => source,
         None => return SemanticIndex::empty(db, file, ast.nodes.clone()),
     };
+    // A node the generated AST had no place for leaves ids pointing at the
+    // wrong nodes, and the first cast panicked. The file is analyzed as
+    // empty; its E0001 says why.
+    if get_ast::accumulated::<auto_lsp::core::errors::ParseErrorAccumulator>(db, file)
+        .iter()
+        .any(|e| matches!(e.0, auto_lsp::core::errors::ParseError::AstError { .. }))
+    {
+        return SemanticIndex::empty(db, file, ast.nodes.clone());
+    }
 
     SemanticIndexBuilder::new(db, file, get_ast(db, file), source).build()
 }

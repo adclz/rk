@@ -203,7 +203,17 @@ impl SyntaxError {
                     SyntaxError::SyntaxError { span: *range, err }
                 }
             },
-            _ => unreachable!("Only lexer errors should be present here"),
+            // The tree parsed, but the typed AST generated from the grammar
+            // has no place for a node in it: the grammar and the generated
+            // code disagree, which is the compiler's fault, not the source's.
+            // It was an `unreachable!`, so `REF_TO TIME` crashed `rk check`
+            // (auto-lsp-codegen flattened nested supertypes one level only).
+            ParseError::AstError { span, error } => SyntaxError::SyntaxError {
+                span: *span,
+                err: format!(
+                    "the parser has no place for this construct ({error}); this is a compiler bug"
+                ),
+            },
         }
     }
 }
