@@ -122,24 +122,28 @@ pub fn file_configs<'db>(db: &'db dyn WorkspaceDataBase, file: File) -> Arc<Vec<
     Arc::clone(&semantic_index(db, file).configs)
 }
 
-/// Extracts the I/O addresses a file mentions — a located VAR_GLOBAL's, or
-/// one written bare in a body — each once, sorted.
+/// The I/O addresses a file mentions, sorted, each with the declarations
+/// located at it: a CONFIGURATION's VAR_GLOBALs and a PROGRAM's VARs.
 ///
-/// Changes only when the file gains or loses an address, so a lint comparing
-/// every file's addresses backdates on all the other edits.
+/// A declaration compares by identity, so an edit to one (its type, its
+/// initial value) leaves the map equal: it changes only when the file gains
+/// or loses an address, or a declaration of one.
 #[salsa::tracked(returns(ref))]
-pub fn file_located_addresses(db: &dyn WorkspaceDataBase, file: File) -> Arc<Vec<LocatedAddress>> {
+pub fn file_located<'db>(
+    db: &'db dyn WorkspaceDataBase,
+    file: File,
+) -> Arc<std::collections::BTreeMap<LocatedAddress, Vec<VariableDecl<'db>>>> {
     Arc::clone(&semantic_index(db, file).located)
 }
 
-/// The I/O addresses of each of the workspace's own files, sorted, file by
-/// file: nothing is collected or copied, each list is its file's
-/// [`file_located_addresses`]. A library's do not count, since a library
-/// describes no machine.
+/// Each of the workspace's own files' [`file_located`], borrowed: nothing is
+/// collected or copied. A library's do not count, since a library describes
+/// no machine.
 pub fn located_by_file<'db>(
     db: &'db dyn WorkspaceDataBase,
-) -> impl Iterator<Item = (File, &'db [LocatedAddress])> + 'db {
-    workspace_files(db).map(move |file| (file, file_located_addresses(db, file).as_slice()))
+) -> impl Iterator<Item = &'db std::collections::BTreeMap<LocatedAddress, Vec<VariableDecl<'db>>>> + 'db
+{
+    workspace_files(db).map(move |file| &**file_located(db, file))
 }
 
 /// An address stored inside a wider one: the bits of `owner` it is.
@@ -199,22 +203,31 @@ pub fn refuse_part_of_wider<'db>(
     )
 }
 
-/// The VAR_GLOBAL located at `address`, when one is declared there: what
-/// decides the type its cell holds, and so how a part of it is rebuilt.
+/// The declaration located at `address`, when one is: a VAR_GLOBAL or a
+/// PROGRAM's VAR. What decides the type its cell holds, and so how a part of
+/// it is rebuilt. One probe per file.
 pub fn located_declaration<'db>(
     db: &'db dyn WorkspaceDataBase,
     address: &LocatedAddress,
 ) -> Option<VariableDecl<'db>> {
-    workspace_files(db).find_map(|file| {
-        file_configs(db, file).iter().find_map(|config| {
-            config.variables(db).iter().copied().find(|v| {
-                v.location(db)
-                    .and_then(|dv| LocatedAddress::of(db, dv))
-                    .as_ref()
-                    == Some(address)
-            })
+    workspace_files(db).find_map(|file| file_located(db, file).get(address)?.first().copied())
+}
+
+/// Every declaration located at `address` across the workspace: more than
+/// one is E1421. One probe per file.
+pub fn located_declarations_at<'db>(
+    db: &'db dyn WorkspaceDataBase,
+    address: &LocatedAddress,
+) -> Vec<VariableDecl<'db>> {
+    workspace_files(db)
+        .flat_map(|file| {
+            file_located(db, file)
+                .get(address)
+                .into_iter()
+                .flatten()
+                .copied()
         })
-    })
+        .collect()
 }
 
 /// Whether `address` is stored inside a wider address, and where.
@@ -227,8 +240,8 @@ pub fn located_declaration<'db>(
 pub fn located_view(db: &dyn WorkspaceDataBase, address: &LocatedAddress) -> Option<LocatedView> {
     let bits = address.image_bits()?;
     let mut owner: Option<(&LocatedAddress, std::ops::Range<u64>)> = None;
-    for (_, addresses) in located_by_file(db) {
-        for other in addresses {
+    for located in located_by_file(db) {
+        for other in located.keys() {
             if other.area != address.area || other == address {
                 continue;
             }

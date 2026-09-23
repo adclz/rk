@@ -141,9 +141,10 @@ pub enum ConfigError<'db> {
     /// write both, and a write through one is invisible through the other.
     DuplicateLocation {
         var: VariableDecl<'db>,
-        /// The declaration that claimed the address first.
-        first: VariableDecl<'db>,
-        /// The address AS WRITTEN, by the second declaration.
+        /// Another declaration at the address: each of them is reported,
+        /// since the files they are in have no order.
+        other: VariableDecl<'db>,
+        /// The address AS WRITTEN, by `var`.
         address: compact_str::CompactString,
     },
     /// A located variable holds one value of the width its size letter
@@ -227,7 +228,7 @@ impl WiderAddressUse {
 /// was unsupported, which was true of none of them once the bands landed.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, salsa::Update)]
 pub enum UnlocatableAddress {
-    /// An `AT` clause on a POU's own variable.
+    /// An `AT` clause on a variable of a POU other than a PROGRAM.
     InPou,
     /// `%I*`: the address is deliberately incomplete.
     Incomplete,
@@ -239,7 +240,7 @@ pub enum UnlocatableAddress {
 impl UnlocatableAddress {
     fn message(self, address: &str) -> String {
         match self {
-            Self::InPou => format!("'{address}' cannot locate a variable of a POU"),
+            Self::InPou => format!("'{address}' cannot locate a variable of this POU"),
             Self::Incomplete => format!("'{address}' is not a complete address"),
             Self::Malformed => format!("'{address}' does not name an area and a width"),
         }
@@ -248,7 +249,7 @@ impl UnlocatableAddress {
     fn note(self) -> &'static str {
         match self {
             Self::InPou => {
-                "a POU's variables are fields of its instance, which is laid out as one unit, so a field cannot also sit in a band the host copies whole; declare it as a VAR_GLOBAL of the CONFIGURATION and name it from the POU"
+                "a function's, function block's or class's variables belong to each call or instance, so one address cannot be theirs; declare it in a PROGRAM, or as a VAR_GLOBAL of the CONFIGURATION, and name it from here"
             }
             Self::Incomplete => {
                 "the binding for a partly specified address comes from VAR_CONFIG, which is checked but not applied yet (E1416); write the address in full to allocate it now"
@@ -710,14 +711,14 @@ impl<'db> ToIdeDiagnostic<'db> for ConfigError<'db> {
             }
             Self::DuplicateLocation {
                 var,
-                first,
+                other,
                 address,
             } => {
                 let mut diag = diag()
                     .message(format!(
-                        "'{}' is located at '{address}', which '{}' already claims",
+                        "'{}' is located at '{address}', which '{}' also claims",
                         var.get_name_ident(db).text(db),
-                        first.get_name_ident(db).text(db)
+                        other.get_name_ident(db).text(db)
                     ))
                     .severity(DiagnosticSeverity::ERROR)
                     .desc(self)
@@ -727,9 +728,9 @@ impl<'db> ToIdeDiagnostic<'db> for ConfigError<'db> {
                     )
                     .call();
                 diag.with_related(Related::new(
-                    format!("'{}' is located here", first.get_name_ident(db).text(db)),
-                    first.get_scope_id(db).file(db),
-                    first.as_call_site(db).get_span(db),
+                    format!("'{}' is located here", other.get_name_ident(db).text(db)),
+                    other.get_scope_id(db).file(db),
+                    other.as_call_site(db).get_span(db),
                 ));
                 diag.with_note(
                     "an address is one channel, and each declaration is given storage of its own, so the two would never see each other's value; name the one variable from wherever it is needed".to_string(),

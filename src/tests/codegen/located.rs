@@ -1320,6 +1320,103 @@ fn a_part_of_a_byte_or_more_is_passed_and_referenced_by_address(
     assert_eq!(word(&plc, "%QD1"), 0xAABB_CCDD, "the next cell untouched");
 }
 
+// ---------------------------------------------------------------------------
+// A PROGRAM's located VAR. It is the channel, not a field of the instance, so
+// every instance of the program shares its one cell, known as `P.x`.
+// ---------------------------------------------------------------------------
+
+/// Two instances of one program read and write the same cells: `count` is
+/// counted twice a scan, and a bare `%QW2` in another program is `P.echo`.
+/// The initial value is written once by `__init`, and the retained marker is
+/// in the retain map under the program's name.
+#[rstest]
+fn a_programs_located_variable_is_one_cell_for_every_instance(mut with_db: db::RootDatabase) {
+    let source = r#"
+        PROGRAM P
+        VAR
+            start AT %IX0.0 : BOOL;
+            echo  AT %QW2   : WORD;
+            count AT %MW0   : INT := 10;
+        END_VAR
+        VAR RETAIN kept AT %MW1 : INT; END_VAR
+            count := count + 1;
+            IF start THEN echo := 16#00AA; END_IF;
+            kept := count;
+        END_PROGRAM
+
+        PROGRAM Q
+        VAR RETAIN seen : WORD; END_VAR
+            seen := %QW2;
+        END_PROGRAM
+
+        CONFIGURATION Cfg
+            RESOURCE Res ON CPU
+                TASK T(INTERVAL := T#10ms, PRIORITY := 1);
+                PROGRAM P1 WITH T : P;
+                PROGRAM P2 WITH T : P;
+                PROGRAM Q1 WITH T : Q;
+            END_RESOURCE
+        END_CONFIGURATION
+    "#;
+    let (mir, wasm) = compile_to_mir_and_wasm(&mut with_db, source);
+    assert_eq!(mir.output_size, 4, "one cell for `echo`, not one per instance");
+    let mut plc = TestPlc::load(&wasm).expect("load");
+    let names: Vec<(&str, &str)> = plc
+        .located_map()
+        .entries
+        .iter()
+        .map(|e| (e.address.as_str(), e.name.as_str()))
+        .collect();
+    assert_eq!(
+        names,
+        [("%IX0.0", "P.start"), ("%MW0", "P.count"), ("%MW1", "P.kept"), ("%QW2", "P.echo")]
+    );
+    assert!(
+        mir.retain_map.ranges.iter().any(|r| r.path == "P.kept"),
+        "the retained marker persists under the program's name"
+    );
+
+    let word = |plc: &TestPlc, a: &str| {
+        i32::from_le_bytes(plc.read_located(a).expect("read")[..4].try_into().unwrap())
+    };
+    assert_eq!(word(&plc, "%MW0"), 10, "`__init` wrote the initial value once");
+    plc.write_located("%IX0.0", &1i32.to_le_bytes()).expect("start");
+    plc.run(1).expect("scan");
+    assert_eq!(word(&plc, "%MW0"), 12, "both instances counted the one cell");
+    assert_eq!(word(&plc, "%QW2"), 0xAA);
+}
+
+/// A PROGRAM's located VAR can be a part of a wider address, as a
+/// VAR_GLOBAL's can: `ready` is bit 15 of the word the configuration
+/// declares.
+#[rstest]
+fn a_programs_located_variable_can_be_a_part(mut with_db: db::RootDatabase) {
+    let source = r#"
+        PROGRAM P
+        VAR ready AT %IX1.7 : BOOL; lamp AT %QB1 : BYTE; END_VAR
+            IF ready THEN lamp := 16#5A; END_IF;
+        END_PROGRAM
+
+        CONFIGURATION Cfg
+        VAR_GLOBAL status AT %IW0 : WORD; lamps AT %QW0 : WORD; END_VAR
+            RESOURCE Res ON CPU
+                TASK T(INTERVAL := T#10ms, PRIORITY := 1);
+                PROGRAM P1 WITH T : P;
+            END_RESOURCE
+        END_CONFIGURATION
+    "#;
+    let (mir, wasm) = compile_to_mir_and_wasm(&mut with_db, source);
+    assert_eq!((mir.input_size, mir.output_size), (4, 4), "the words' cells only");
+    let mut plc = TestPlc::load(&wasm).expect("load");
+    let ready = plc.located("%IX1.7").expect("ready").clone();
+    assert_eq!(ready.name, "P.ready");
+    assert_eq!(ready.part_of.as_ref().map(|p| p.shift), Some(15));
+    plc.write_located("%IW0", &0x8000i32.to_le_bytes()).expect("input");
+    plc.run(1).expect("scan");
+    let lamps = i32::from_le_bytes(plc.read_located("%QW0").expect("read")[..4].try_into().unwrap());
+    assert_eq!(lamps, 0x5A00, "`lamp` is the high byte of `lamps`");
+}
+
 /// An output's initial value is written by `__init`, so the output is in
 /// that state before the first scan — the startup value a host sees first.
 #[rstest]

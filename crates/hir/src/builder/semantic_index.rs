@@ -154,14 +154,26 @@ impl<'db> SemanticIndexBuilder<'db> {
             self.db, name, name_id, kind, qualifier, variadic, spec, init, location, id, scope_id,
         );
         self.register_node(id, HirNode::VariableDecl(var));
-        // Only a VAR_GLOBAL's location is storage; a POU's own is E1417.
-        if var.kind(self.db) == crate::hir_def::pous::variable::VariableKind::Global
-            && let Some(address) = location
-                .and_then(|dv| crate::hir_def::pous::variable::LocatedAddress::of(self.db, dv))
+        // A VAR_GLOBAL's location is storage; a PROGRAM's is recorded once
+        // its scope is known (`parse_program`), and any other POU's is E1417.
+        if var.kind(self.db) == crate::hir_def::pous::variable::VariableKind::Global {
+            self.record_located_decl(var);
+        }
+        var
+    }
+
+    /// Record a declaration that locates a variable in a band, as a mention
+    /// of its address.
+    pub(crate) fn record_located_decl(
+        &mut self,
+        var: crate::hir_def::pous::variable::VariableDecl<'db>,
+    ) {
+        if let Some(address) = var
+            .location(self.db)
+            .and_then(|dv| crate::hir_def::pous::variable::LocatedAddress::of(self.db, dv))
         {
             self.located.push((address, HirNode::VariableDecl(var)));
         }
-        var
     }
 
     /// Create an Expr, register it in the node index, and return it.
@@ -405,21 +417,15 @@ impl<'db> SemanticIndexBuilder<'db> {
                 .push(*ns);
         }
 
-        // The first mention of each address, and the distinct addresses
-        // themselves — the second without nodes, so it compares equal across
-        // an edit that did not change which addresses the file mentions.
-        let mut located_at: Vec<(crate::hir_def::pous::variable::LocatedAddress, HirNode<'db>)> =
-            Vec::new();
+        // Each address the file mentions, with the declarations located at
+        // it; one written only bare has none.
+        let mut located: std::collections::BTreeMap<_, Vec<_>> = Default::default();
         for (address, node) in self.located {
-            if !located_at.iter().any(|(seen, _)| *seen == address) {
-                located_at.push((address, node));
+            let declarations = located.entry(address).or_default();
+            if let HirNode::VariableDecl(var) = node {
+                declarations.push(var);
             }
         }
-        let mut located: Vec<_> = located_at
-            .iter()
-            .map(|(address, _)| address.clone())
-            .collect();
-        located.sort();
 
         SemanticIndex {
             scope: global_scope,
@@ -433,7 +439,6 @@ impl<'db> SemanticIndexBuilder<'db> {
             namespace_map: Arc::new(namespace_map),
             global_pous: Arc::new(self.global_pous),
             located: Arc::new(located),
-            located_at: Arc::new(located_at),
             errors: self.errors,
         }
     }

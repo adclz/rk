@@ -122,9 +122,6 @@ impl<'db> InitInference<'db> {
         };
 
         let mut seen = FxHashMap::default();
-        // Address AS WRITTEN, upper-cased, to the declaration that claimed it.
-        let mut located: FxHashMap<compact_str::CompactString, VariableDecl<'db>> =
-            FxHashMap::default();
         let mut first_variadic: Option<VariableDecl<'db>> = None;
 
         for var in variables {
@@ -166,19 +163,18 @@ impl<'db> InitInference<'db> {
                     );
                 }
             }
-            // A VAR_GLOBAL with an `AT` clause is storage in one of the
-            // three I/O bands. Anywhere else a location still has nowhere to
-            // live: a POU's variables are instance fields, and an instance is
-            // laid out as a unit, so one of its fields cannot also sit in a
-            // band the host copies whole. Same answer for an address with no
-            // area letter (`%Z0`), no width letter (`%I0`) or none at all
-            // (`%I*`, which needs the binding VAR_CONFIG supplies) — nothing
-            // maps them, so they keep the E1417 they have always had.
+            // A VAR_GLOBAL or a PROGRAM's VAR with an `AT` clause is storage
+            // in one of the three I/O bands. Any other POU's variables are
+            // fields of each of its instances, so a single address cannot be
+            // theirs. Same answer for an address with no area letter (`%Z0`),
+            // no width letter (`%I0`) or none at all (`%I*`, which needs the
+            // binding VAR_CONFIG supplies): nothing maps them (E1417).
             if let Some(dv) = var.location(db) {
                 let address = compact_str::CompactString::from(dv.to_address(db));
                 let banded = dv.area(db).filter(|_| {
-                    var.kind(db) == crate::hir_def::pous::variable::VariableKind::Global
-                        && crate::hir_ty::infer::normalize::names_a_band(db, dv)
+                    (var.kind(db) == crate::hir_def::pous::variable::VariableKind::Global
+                        && crate::hir_ty::infer::normalize::names_a_band(db, dv))
+                        || var.is_program_located(db)
                 });
                 match banded {
                     // `%I` is copied in before every scan and `%Q` read back
@@ -197,19 +193,30 @@ impl<'db> InitInference<'db> {
                         // An address is one channel. Two declarations bound
                         // to it each get storage of their own, so a write
                         // through one is invisible through the other and a
-                        // host binding by address finds it twice.
-                        match located.get(&address.to_ascii_uppercase()) {
-                            Some(first) => self.errors.push(
+                        // host binding by address finds it twice. They may be
+                        // a VAR_GLOBAL and a PROGRAM's VAR, in two files, which
+                        // have no order: each is reported, like E1402, and
+                        // points at the smallest of the others.
+                        let other = crate::hir_def::pous::variable::LocatedAddress::of(db, dv)
+                            .map(|a| crate::hir_ty::index_graphs::located_declarations_at(db, &a))
+                            .unwrap_or_default()
+                            .into_iter()
+                            .filter(|other| other != var)
+                            .min_by_key(|other| {
+                                (
+                                    other.get_scope_id(db).file(db).url(db).to_string(),
+                                    other.get_name_span(db).start_byte,
+                                )
+                            });
+                        if let Some(other) = other {
+                            self.errors.push(
                                 ConfigError::DuplicateLocation {
                                     var: *var,
-                                    first: *first,
+                                    other,
                                     address: address.clone(),
                                 }
                                 .to_diagnostic(db, self.scope.file(db)),
-                            ),
-                            None => {
-                                located.insert(address.to_ascii_uppercase(), *var);
-                            }
+                            );
                         }
                         // `__init` would write it, and the host's copy-in
                         // before the first scan overwrites it unread.

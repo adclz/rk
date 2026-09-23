@@ -979,7 +979,7 @@ impl<'db> ExprLowerCtx<'db> {
                 // The address is filled in once the layout is final.
                 StorageClass::Global => {
                     return MirPlace::Global {
-                        name: Some(declared),
+                        name: Some(crate::lower::lower_module::global_key(self.db, decl)),
                         address: 0,
                         ty: MirType::Void,
                     };

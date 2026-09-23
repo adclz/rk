@@ -108,8 +108,9 @@ impl<'db> VariableDecl<'db> {
     /// [`instance_members`]: crate::hir_ty::head::inheritance::instance_members
     pub fn storage_class(&self, db: &'db dyn WorkspaceDataBase) -> StorageClass {
         // VAR_EXTERNAL holds no storage of its own; it names a configuration
-        // VAR_GLOBAL, which is where the value actually lives.
-        if self.is_external(db) || self.is_global(db) {
+        // VAR_GLOBAL, which is where the value actually lives. A PROGRAM's
+        // located VAR is its channel's cell, like a located VAR_GLOBAL.
+        if self.is_external(db) || self.is_global(db) || self.is_program_located(db) {
             return StorageClass::Global;
         }
         // VAR_TEMP is scratch for one call, not instance state, even when the
@@ -123,6 +124,20 @@ impl<'db> VariableDecl<'db> {
             }
             _ => StorageClass::Local,
         }
+    }
+
+    /// A PROGRAM's `VAR` located at a complete address (`x AT %IX0.0`). It is
+    /// the channel, not a field of the instance: every instance of the
+    /// program reads and writes the one cell.
+    pub fn is_program_located(&self, db: &'db dyn WorkspaceDataBase) -> bool {
+        self.is_var(db)
+            && self
+                .location(db)
+                .is_some_and(|dv| crate::hir_ty::infer::normalize::names_a_band(db, dv))
+            && matches!(
+                get_scope(db, self.get_scope_id(db)).kind,
+                ScopeKind::Program(_)
+            )
     }
 
     pub fn is_access(&self, db: &'db dyn WorkspaceDataBase) -> bool {

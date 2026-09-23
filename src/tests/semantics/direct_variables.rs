@@ -749,27 +749,159 @@ END_CONFIGURATION
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @"");
 }
 
-/// A POU's variables are instance fields, and an instance is laid out as a
-/// unit — so one of its fields cannot also sit in a band the host copies
-/// whole. A location there keeps the refusal it has always had.
+/// A function's, a function block's or a class's variables belong to each
+/// call or instance, so one address cannot be theirs (E1417). A PROGRAM's
+/// can: see `valid_located_variables_in_a_program`.
 #[rstest]
-fn unsupported_located_variable_in_a_pou(mut with_db: RootDatabase) {
+fn invalid_located_variable_outside_a_program(mut with_db: RootDatabase) {
     let source = r#"
-PROGRAM pgm
+FUNCTION_BLOCK Valve
 VAR
-    VALVE_POS AT %QW28 : INT;
+    POS AT %QW28 : INT;
 END_VAR
-END_PROGRAM"#;
+END_FUNCTION_BLOCK
+
+FUNCTION Probe : BOOL
+VAR
+    raw AT %IX0.0 : BOOL;
+END_VAR
+    Probe := raw;
+END_FUNCTION"#;
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
     [E1417] Error: address cannot be located
        ,-[ file:///test0.st:4:5 ]
        |
-     4 |     VALVE_POS AT %QW28 : INT;
-       |     ^^^^^^^^^^^^|^^^^^^^^^^^
-       |                 `------------- '%QW28' cannot locate a variable of a POU
+     4 |     POS AT %QW28 : INT;
+       |     ^^^^^^^^^|^^^^^^^^
+       |              `---------- '%QW28' cannot locate a variable of this POU
        |
-       | Note: a POU's variables are fields of its instance, which is laid out as one unit, so a field cannot also sit in a band the host copies whole; declare it as a VAR_GLOBAL of the CONFIGURATION and name it from the POU
+       | Note: a function's, function block's or class's variables belong to each call or instance, so one address cannot be theirs; declare it in a PROGRAM, or as a VAR_GLOBAL of the CONFIGURATION, and name it from here
     ---'
+    [E1417] Error: address cannot be located
+        ,-[ file:///test0.st:10:5 ]
+        |
+     10 |     raw AT %IX0.0 : BOOL;
+        |     ^^^^^^^^^^|^^^^^^^^^
+        |               `----------- '%IX0.0' cannot locate a variable of this POU
+        |
+        | Note: a function's, function block's or class's variables belong to each call or instance, so one address cannot be theirs; declare it in a PROGRAM, or as a VAR_GLOBAL of the CONFIGURATION, and name it from here
+    ----'
+    ");
+}
+
+/// A PROGRAM's VAR may be located (Table 16, `Loc_Var_Decls`), named or
+/// not, RETAIN in `%M`, and as a part of a wider address: it is the channel,
+/// shared by every instance of the program.
+#[rstest]
+fn valid_located_variables_in_a_program(mut with_db: RootDatabase) {
+    let source = r#"
+PROGRAM P
+VAR
+    start AT %IX0.0 : BOOL;
+    level AT %IW1   : INT;
+    lamp  AT %QX0.0 : BOOL;
+    AT %QB4 : BYTE;
+END_VAR
+VAR RETAIN
+    count AT %MW0 : INT;
+END_VAR
+    lamp := start AND level > 0;
+    count := count + 1;
+    %QB4 := 16#0F;
+END_PROGRAM
+
+CONFIGURATION Cfg
+VAR_GLOBAL image AT %ID0 : DWORD; END_VAR
+    RESOURCE R ON CPU
+        TASK T(INTERVAL := T#10ms, PRIORITY := 1);
+        PROGRAM P1 WITH T : P;
+        PROGRAM P2 WITH T : P;
+    END_RESOURCE
+END_CONFIGURATION
+"#;
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @"");
+}
+
+/// A PROGRAM's located VAR is held to the rules a located VAR_GLOBAL is: no
+/// RETAIN on I/O (E1420), no initial value on an input (E1419), a type as
+/// wide as its address (E1422), and one declaration per address across the
+/// whole workspace, a VAR_GLOBAL included (E1421).
+#[rstest]
+fn invalid_located_variables_in_a_program(mut with_db: RootDatabase) {
+    let source = r#"
+PROGRAM P
+VAR RETAIN
+    kept AT %IW0 : WORD;
+END_VAR
+VAR
+    preset AT %IB8 : BYTE := 3;
+    wide   AT %QX1.0 : INT;
+    twin   AT %QW4 : WORD;
+END_VAR
+END_PROGRAM
+
+CONFIGURATION Cfg
+VAR_GLOBAL valve AT %QW4 : WORD; END_VAR
+    RESOURCE R ON CPU
+        TASK T(INTERVAL := T#10ms, PRIORITY := 1);
+        PROGRAM P1 WITH T : P;
+    END_RESOURCE
+END_CONFIGURATION
+"#;
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
+    [E1420] Error: RETAIN on an I/O location
+       ,-[ file:///test0.st:4:5 ]
+       |
+     4 |     kept AT %IW0 : WORD;
+       |     ^^^^^^^^^|^^^^^^^^^
+       |              `----------- 'kept' is located at '%IW0' and cannot be RETAIN
+       |
+       | Note: the retain band is restored at startup, so a retained I/O image would run the first scan on the values of the last power cycle; only '%M' may persist
+    ---'
+    [E1419] Error: write to an input location
+       ,-[ file:///test0.st:7:5 ]
+       |
+     7 |     preset AT %IB8 : BYTE := 3;
+       |     ^^^^^^^^^^^^^|^^^^^^^^^^^^
+       |                  `-------------- '%IB8' is an input, so an initial value is overwritten before anything reads it
+       |
+       | Note: the host writes the input image before every scan, the first one included
+    ---'
+    [E1422] Error: location type mismatch
+       ,-[ file:///test0.st:8:5 ]
+       |
+     8 |     wide   AT %QX1.0 : INT;
+       |     ^^^^^^^^^^^|^^^^^^^^^^
+       |                `------------ '%QX1.0' is 1 bit, but 'wide' is declared 'INT', which is 16
+       |
+       | Note: a located variable holds one value as wide as its address; declare it as an elementary type of 1 bit, such as BOOL
+    ---'
+    [E1421] Error: duplicate location
+        ,-[ file:///test0.st:9:5 ]
+        |
+      9 |     twin   AT %QW4 : WORD;
+        |     ^^^^^^^^^^|^^^^^^^^^^
+        |               `------------ 'twin' is located at '%QW4', which 'valve' also claims
+        |
+     14 | VAR_GLOBAL valve AT %QW4 : WORD; END_VAR
+        |            ^^^^^^^^^^|^^^^^^^^^
+        |                      `----------- 'valve' is located here
+        |
+        | Note: an address is one channel, and each declaration is given storage of its own, so the two would never see each other's value; name the one variable from wherever it is needed
+    ----'
+    [E1421] Error: duplicate location
+        ,-[ file:///test0.st:14:12 ]
+        |
+      9 |     twin   AT %QW4 : WORD;
+        |     ^^^^^^^^^^|^^^^^^^^^^
+        |               `------------ 'twin' is located here
+        |
+     14 | VAR_GLOBAL valve AT %QW4 : WORD; END_VAR
+        |            ^^^^^^^^^^|^^^^^^^^^
+        |                      `----------- 'valve' is located at '%QW4', which 'twin' also claims
+        |
+        | Note: an address is one channel, and each declaration is given storage of its own, so the two would never see each other's value; name the one variable from wherever it is needed
+    ----'
     ");
 }
 
@@ -953,6 +1085,18 @@ END_CONFIGURATION
 "#;
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
     [E1421] Error: duplicate location
+        ,-[ file:///test0.st:10:5 ]
+        |
+     10 |     a AT %IW0 : INT;
+        |     ^^^^^^^|^^^^^^^
+        |            `--------- 'a' is located at '%IW0', which 'b' also claims
+     11 |     b AT %IW0 : INT;
+        |     ^^^^^^^|^^^^^^^
+        |            `--------- 'b' is located here
+        |
+        | Note: an address is one channel, and each declaration is given storage of its own, so the two would never see each other's value; name the one variable from wherever it is needed
+    ----'
+    [E1421] Error: duplicate location
         ,-[ file:///test0.st:11:5 ]
         |
      10 |     a AT %IW0 : INT;
@@ -960,7 +1104,7 @@ END_CONFIGURATION
         |            `--------- 'a' is located here
      11 |     b AT %IW0 : INT;
         |     ^^^^^^^|^^^^^^^
-        |            `--------- 'b' is located at '%IW0', which 'a' already claims
+        |            `--------- 'b' is located at '%IW0', which 'a' also claims
         |
         | Note: an address is one channel, and each declaration is given storage of its own, so the two would never see each other's value; name the one variable from wherever it is needed
     ----'
