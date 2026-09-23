@@ -659,6 +659,17 @@ impl<'db> Type<'db> {
             FieldLookup::Variable(var) => {
                 place.current_init_typ = Type::new_var(db, var);
                 ctx.type_of_init_expr.insert(expr, place.current_init_typ);
+                // Each call binds it to its argument; a value here would be
+                // written over the pointer the binding lives in (E0405).
+                if var.is_in_out(db) {
+                    ctx.errors.push(
+                        InitError::InOutInInitializer {
+                            expr,
+                            var: var.name(db).text(db).clone(),
+                        }
+                        .to_diagnostic(db, ctx.scope.file(db)),
+                    );
+                }
                 // It points at the channel VAR_CONFIG gives its instance; a
                 // value here would be written over the pointer (E1427).
                 if var.is_partly_located(db) {

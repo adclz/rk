@@ -34,6 +34,14 @@ pub enum InitError<'db> {
     AssignToConstant {
         access: CallSite<'db>,
     },
+    /// An instance's initializer names a VAR_IN_OUT, which each call binds
+    /// to its argument. The value was written into the pointer the binding
+    /// lives in, and `__init` failed to validate.
+    InOutInInitializer {
+        expr: InitExpr<'db>,
+        /// The VAR_IN_OUT, as declared.
+        var: compact_str::CompactString,
+    },
 }
 
 impl<'db> ErrorCode for InitError<'db> {
@@ -43,6 +51,7 @@ impl<'db> ErrorCode for InitError<'db> {
             Self::FunctionCallInInitExpression(_) => "E0402",
             Self::NoFieldOnElementaryType { .. } => "E0403",
             Self::AssignToConstant { .. } => "E0404",
+            Self::InOutInInitializer { .. } => "E0405",
         }
     }
 
@@ -52,6 +61,7 @@ impl<'db> ErrorCode for InitError<'db> {
             Self::FunctionCallInInitExpression(_) => "syntax",
             Self::NoFieldOnElementaryType { .. } => "invalid operation",
             Self::AssignToConstant { .. } => "semantic violation",
+            Self::InOutInInitializer { .. } => "VAR_IN_OUT given an initial value",
         }
     }
 }
@@ -161,6 +171,20 @@ impl<'db> ToIdeDiagnostic<'db> for InitError<'db> {
                 .desc(self)
                 .range(crate::denormalize(db, file, &access.get_span(db)).unwrap_or_default())
                 .call(),
+            Self::InOutInInitializer { expr, var } => {
+                let mut d = diag()
+                    .message(format!(
+                        "'{var}' is a VAR_IN_OUT, which each call binds to its argument, so an initializer cannot give it a value"
+                    ))
+                    .severity(DiagnosticSeverity::ERROR)
+                    .desc(self)
+                    .range(crate::denormalize(db, file, &expr.get_span(db)).unwrap_or_default())
+                    .call();
+                d.with_note(format!(
+                    "pass the variable in the call instead, as '{var} := x'"
+                ));
+                d
+            }
         }
     }
 }
