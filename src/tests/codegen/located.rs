@@ -363,6 +363,56 @@ fn the_layout_hash_ignores_rebasing(#[allow(unused)] with_db: db::RootDatabase) 
     );
 }
 
+/// A wider address beside one a host bound is a new layout: the bound
+/// address becomes part of it, stored in its cell and read by shifting, so a
+/// binding made against the old map is stale.
+#[rstest]
+fn a_new_owner_moves_the_layout_hash(#[allow(unused)] with_db: db::RootDatabase) {
+    let program = |extra: &str| {
+        format!(
+            r#"
+        PROGRAM P
+        VAR_EXTERNAL dial : INT; END_VAR
+        VAR seen : INT; image : DWORD; END_VAR
+            seen := dial;
+            {extra}
+        END_PROGRAM
+
+        CONFIGURATION Cfg
+        VAR_GLOBAL dial AT %IW0 : INT; END_VAR
+            RESOURCE Res ON CPU
+                TASK T(INTERVAL := T#10ms, PRIORITY := 1);
+                PROGRAM P1 WITH T : P;
+            END_RESOURCE
+        END_CONFIGURATION
+    "#
+        )
+    };
+    let compile = |extra: &str| {
+        let mut db = db::RootDatabase::default();
+        compile_to_mir_and_wasm(&mut db, &program(extra)).0
+    };
+    let alone = compile("");
+    let owned = compile("image := %ID0;");
+    let dial = |module: &mir::MirModule| {
+        module
+            .located_map
+            .entries
+            .iter()
+            .find(|e| e.address == "%IW0")
+            .cloned()
+            .expect("%IW0")
+    };
+
+    assert!(dial(&alone).part_of.is_none(), "a cell of its own");
+    let part = dial(&owned).part_of.expect("now a part");
+    assert_eq!((part.owner.as_str(), part.shift), ("%ID0", 0));
+    assert_ne!(
+        alone.located_map.layout_hash, owned.located_map.layout_hash,
+        "a host bound to the old map is told it is stale"
+    );
+}
+
 // ---------------------------------------------------------------------------
 // RETAIN on `%M`. A retained marker has to be in two bands at once: its own,
 // which a host copies whole, and the retain band, which a power cycle

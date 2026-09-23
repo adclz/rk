@@ -853,6 +853,35 @@ mod tests {
         assert_ne!(map.layout_hash, LocatedMap::new(grown).layout_hash);
     }
 
+    /// An address that becomes part of a wider one is read another way, so
+    /// the same entry with an owner, or another shift in it, is another
+    /// layout.
+    #[test]
+    fn an_owner_is_part_of_the_layout() {
+        let word = |part_of| LocatedVar {
+            address: "%IW0".into(),
+            name: "dial".into(),
+            area: LocatedArea::Input,
+            path: vec![0],
+            width: 16,
+            addr: 64,
+            size: 4,
+            ty: Some(SymType::Int),
+            part_of,
+        };
+        let owned = |shift| {
+            Some(LocatedPart {
+                owner: "%ID0".into(),
+                shift,
+            })
+        };
+        let alone = LocatedMap::new(vec![word(None)]).layout_hash;
+        let low = LocatedMap::new(vec![word(owned(0))]).layout_hash;
+        let high = LocatedMap::new(vec![word(owned(16))]).layout_hash;
+        assert_ne!(alone, low, "an owner");
+        assert_ne!(low, high, "another place in it");
+    }
+
     /// A symbol without bits encodes exactly as a v7 one did; a part's
     /// round-trips, and reads and writes only its own bits.
     #[test]
