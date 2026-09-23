@@ -80,23 +80,31 @@
     "named": true,
     "subtypes": [
       {
-        "type": "any_date_type_name",
-        "named": true
-      },
-      {
-        "type": "any_dt_type_name",
-        "named": true
-      },
-      {
-        "type": "any_time_type_name",
-        "named": true
-      },
-      {
-        "type": "any_tod_type_name",
-        "named": true
-      },
-      {
         "type": "bit_str_type_name",
+        "named": true
+      },
+      {
+        "type": "date_type_name",
+        "named": true
+      },
+      {
+        "type": "dt_type_name",
+        "named": true
+      },
+      {
+        "type": "l_date_type_name",
+        "named": true
+      },
+      {
+        "type": "l_dt_type_name",
+        "named": true
+      },
+      {
+        "type": "l_time_type_name",
+        "named": true
+      },
+      {
+        "type": "ltod_type_name",
         "named": true
       },
       {
@@ -105,6 +113,14 @@
       },
       {
         "type": "string_type_name",
+        "named": true
+      },
+      {
+        "type": "time_type_name",
+        "named": true
+      },
+      {
+        "type": "tod_type_name",
         "named": true
       }
     ]
@@ -566,62 +582,6 @@
       {
         "type": "-",
         "named": false
-      }
-    ]
-  },
-  {
-    "type": "any_date_type_name",
-    "named": true,
-    "subtypes": [
-      {
-        "type": "date_type_name",
-        "named": true
-      },
-      {
-        "type": "l_date_type_name",
-        "named": true
-      }
-    ]
-  },
-  {
-    "type": "any_dt_type_name",
-    "named": true,
-    "subtypes": [
-      {
-        "type": "dt_type_name",
-        "named": true
-      },
-      {
-        "type": "l_dt_type_name",
-        "named": true
-      }
-    ]
-  },
-  {
-    "type": "any_time_type_name",
-    "named": true,
-    "subtypes": [
-      {
-        "type": "l_time_type_name",
-        "named": true
-      },
-      {
-        "type": "time_type_name",
-        "named": true
-      }
-    ]
-  },
-  {
-    "type": "any_tod_type_name",
-    "named": true,
-    "subtypes": [
-      {
-        "type": "ltod_type_name",
-        "named": true
-      },
-      {
-        "type": "tod_type_name",
-        "named": true
       }
     ]
   },

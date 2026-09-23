@@ -240,12 +240,6 @@ module.exports = grammar({
     $.ord,
 
     $._stmt,
-
-    // literals
-    $.any_time_type_name,
-    $.any_date_type_name,
-    $.any_tod_type_name,
-    $.any_dt_type_name,
   ],
 
   conflicts: ($) => [
@@ -690,14 +684,23 @@ module.exports = grammar({
     data_type_access: ($) =>
       choice($.namespace_access, $._elem_type_name),
 
+    // The date and time names are listed one by one rather than through
+    // `any_time_type_name` and its siblings. auto-lsp-codegen flattens nested
+    // supertypes one level only, so the union `REF_TO` takes (an array spec or
+    // a `data_type_access`) missed the third level and `REF_TO TIME` failed
+    // to build. The grouping can come back once it flattens recursively.
     _elem_type_name: ($) =>
       choice(
         $.numeric_type_name,
         $.bit_str_type_name,
-        $.any_date_type_name,
-        $.any_time_type_name,
-        $.any_tod_type_name,
-        $.any_dt_type_name,
+        $.date_type_name,
+        $.l_date_type_name,
+        $.time_type_name,
+        $.l_time_type_name,
+        $.tod_type_name,
+        $.ltod_type_name,
+        $.dt_type_name,
+        $.l_dt_type_name,
         $.string_type_name,
       ),
 
@@ -733,22 +736,14 @@ module.exports = grammar({
       seq(kw("STRING"), optional(seq("[", field("length", $.constant_expr), "]"))),
     char_name: ($) => kw("CHAR"),
 
-    any_time_type_name: ($) => choice($.time_type_name, $.l_time_type_name),
-
     time_type_name: ($) => ciChoice("TIME"),
     l_time_type_name: ($) => ciChoice("LTIME"),
-
-    any_date_type_name: ($) => choice($.date_type_name, $.l_date_type_name),
 
     date_type_name: ($) => ciChoice("DATE"),
     l_date_type_name: ($) => ciChoice("LDATE"),
 
-    any_tod_type_name: ($) => choice($.tod_type_name, $.ltod_type_name),
-
     tod_type_name: ($) => ciChoice("TIME_OF_DAY", "TOD"),
     ltod_type_name: ($) => ciChoice("LTIME_OF_DAY", "LTOD"),
-
-    any_dt_type_name: ($) => choice($.dt_type_name, $.l_dt_type_name),
 
     dt_type_name: ($) => ciChoice("DATE_AND_TIME", "DT"),
     l_dt_type_name: ($) => ciChoice("LDATE_AND_TIME", "LDT"),

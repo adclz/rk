@@ -2005,19 +2005,35 @@
         },
         {
           "type": "SYMBOL",
-          "name": "any_date_type_name"
+          "name": "date_type_name"
         },
         {
           "type": "SYMBOL",
-          "name": "any_time_type_name"
+          "name": "l_date_type_name"
         },
         {
           "type": "SYMBOL",
-          "name": "any_tod_type_name"
+          "name": "time_type_name"
         },
         {
           "type": "SYMBOL",
-          "name": "any_dt_type_name"
+          "name": "l_time_type_name"
+        },
+        {
+          "type": "SYMBOL",
+          "name": "tod_type_name"
+        },
+        {
+          "type": "SYMBOL",
+          "name": "ltod_type_name"
+        },
+        {
+          "type": "SYMBOL",
+          "name": "dt_type_name"
+        },
+        {
+          "type": "SYMBOL",
+          "name": "l_dt_type_name"
         },
         {
           "type": "SYMBOL",
@@ -2355,19 +2371,6 @@
       "named": false,
       "value": "CHAR"
     },
-    "any_time_type_name": {
-      "type": "CHOICE",
-      "members": [
-        {
-          "type": "SYMBOL",
-          "name": "time_type_name"
-        },
-        {
-          "type": "SYMBOL",
-          "name": "l_time_type_name"
-        }
-      ]
-    },
     "time_type_name": {
       "type": "PATTERN",
       "value": "[tT][iI][mM][eE]"
@@ -2375,19 +2378,6 @@
     "l_time_type_name": {
       "type": "PATTERN",
       "value": "[lL][tT][iI][mM][eE]"
-    },
-    "any_date_type_name": {
-      "type": "CHOICE",
-      "members": [
-        {
-          "type": "SYMBOL",
-          "name": "date_type_name"
-        },
-        {
-          "type": "SYMBOL",
-          "name": "l_date_type_name"
-        }
-      ]
     },
     "date_type_name": {
       "type": "PATTERN",
@@ -2397,19 +2387,6 @@
       "type": "PATTERN",
       "value": "[lL][dD][aA][tT][eE]"
     },
-    "any_tod_type_name": {
-      "type": "CHOICE",
-      "members": [
-        {
-          "type": "SYMBOL",
-          "name": "tod_type_name"
-        },
-        {
-          "type": "SYMBOL",
-          "name": "ltod_type_name"
-        }
-      ]
-    },
     "tod_type_name": {
       "type": "PATTERN",
       "value": "[tT][iI][mM][eE]_[oO][fF]_[dD][aA][yY]|[tT][oO][dD]"
@@ -2417,19 +2394,6 @@
     "ltod_type_name": {
       "type": "PATTERN",
       "value": "[lL][tT][iI][mM][eE]_[oO][fF]_[dD][aA][yY]|[lL][tT][oO][dD]"
-    },
-    "any_dt_type_name": {
-      "type": "CHOICE",
-      "members": [
-        {
-          "type": "SYMBOL",
-          "name": "dt_type_name"
-        },
-        {
-          "type": "SYMBOL",
-          "name": "l_dt_type_name"
-        }
-      ]
     },
     "dt_type_name": {
       "type": "PATTERN",
@@ -12463,11 +12427,7 @@
     "mult",
     "eq",
     "ord",
-    "_stmt",
-    "any_time_type_name",
-    "any_date_type_name",
-    "any_tod_type_name",
-    "any_dt_type_name"
+    "_stmt"
   ],
   "reserved": {
     "global": [

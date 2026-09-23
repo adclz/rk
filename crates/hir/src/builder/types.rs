@@ -134,54 +134,46 @@ impl<'db> ParseSpec<'db> for ast::generated::ElemTypeName {
                     }
                 }
             }
-            AstSpec::AnyDateTypeName(date_type_name) => match date_type_name {
-                ast::generated::AnyDateTypeName::DateTypeName(_) => sema.new_spec(
-                    SpecKind::Simple(ElementarySpec::Date),
-                    self.into(),
-                    sema.current_scope,
-                ),
-                ast::generated::AnyDateTypeName::LDateTypeName(_) => sema.new_spec(
-                    SpecKind::Simple(ElementarySpec::LDate),
-                    self.into(),
-                    sema.current_scope,
-                ),
-            },
-            AstSpec::AnyTimeTypeName(time_type_name) => match time_type_name {
-                ast::generated::AnyTimeTypeName::TimeTypeName(_) => sema.new_spec(
-                    SpecKind::Simple(ElementarySpec::Time),
-                    self.into(),
-                    sema.current_scope,
-                ),
-                ast::generated::AnyTimeTypeName::LTimeTypeName(_) => sema.new_spec(
-                    SpecKind::Simple(ElementarySpec::LTime),
-                    self.into(),
-                    sema.current_scope,
-                ),
-            },
-            AstSpec::AnyTodTypeName(tod_type_name) => match tod_type_name {
-                ast::generated::AnyTodTypeName::TodTypeName(_) => sema.new_spec(
-                    SpecKind::Simple(ElementarySpec::Tod),
-                    self.into(),
-                    sema.current_scope,
-                ),
-                ast::generated::AnyTodTypeName::LtodTypeName(_) => sema.new_spec(
-                    SpecKind::Simple(ElementarySpec::LTod),
-                    self.into(),
-                    sema.current_scope,
-                ),
-            },
-            AstSpec::AnyDtTypeName(dt_type_name) => match dt_type_name {
-                ast::generated::AnyDtTypeName::DtTypeName(_) => sema.new_spec(
-                    SpecKind::Simple(ElementarySpec::DateAndTime),
-                    self.into(),
-                    sema.current_scope,
-                ),
-                ast::generated::AnyDtTypeName::LDtTypeName(_) => sema.new_spec(
-                    SpecKind::Simple(ElementarySpec::LDateTime),
-                    self.into(),
-                    sema.current_scope,
-                ),
-            },
+            AstSpec::DateTypeName(_) => sema.new_spec(
+                SpecKind::Simple(ElementarySpec::Date),
+                self.into(),
+                sema.current_scope,
+            ),
+            AstSpec::LDateTypeName(_) => sema.new_spec(
+                SpecKind::Simple(ElementarySpec::LDate),
+                self.into(),
+                sema.current_scope,
+            ),
+            AstSpec::TimeTypeName(_) => sema.new_spec(
+                SpecKind::Simple(ElementarySpec::Time),
+                self.into(),
+                sema.current_scope,
+            ),
+            AstSpec::LTimeTypeName(_) => sema.new_spec(
+                SpecKind::Simple(ElementarySpec::LTime),
+                self.into(),
+                sema.current_scope,
+            ),
+            AstSpec::TodTypeName(_) => sema.new_spec(
+                SpecKind::Simple(ElementarySpec::Tod),
+                self.into(),
+                sema.current_scope,
+            ),
+            AstSpec::LtodTypeName(_) => sema.new_spec(
+                SpecKind::Simple(ElementarySpec::LTod),
+                self.into(),
+                sema.current_scope,
+            ),
+            AstSpec::DtTypeName(_) => sema.new_spec(
+                SpecKind::Simple(ElementarySpec::DateAndTime),
+                self.into(),
+                sema.current_scope,
+            ),
+            AstSpec::LDtTypeName(_) => sema.new_spec(
+                SpecKind::Simple(ElementarySpec::LDateTime),
+                self.into(),
+                sema.current_scope,
+            ),
             AstSpec::StringTypeName(string_type_name) => {
                 match string_type_name.children.cast(sema.ast) {
                     ast::generated::CharName_StringName::StringName(string_name) => {
