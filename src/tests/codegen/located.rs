@@ -1521,6 +1521,55 @@ fn an_inherited_member_is_located_from_another_block(mut with_db: db::RootDataba
     assert_eq!(out, 14, "`out` is the channel, two scans of `out + 7`");
 }
 
+/// A channel a declaration also names starts at the declaration's value:
+/// the located variable's type default goes only to a channel nothing else
+/// declares. `b` is a byte of `w`'s cell, and `c`'s channel is its own.
+#[rstest]
+fn a_declared_initial_value_wins_over_a_located_variables_default(mut with_db: db::RootDatabase) {
+    let source = r#"
+        TYPE Tally : INT := 5; END_TYPE
+        TYPE B8 : BYTE := 16#FF; END_TYPE
+
+        FUNCTION_BLOCK Drive
+        VAR
+            m AT %M* : Tally;
+            b AT %Q* : B8;
+            c AT %M* : Tally;
+        END_VAR
+        END_FUNCTION_BLOCK
+
+        PROGRAM P
+        VAR d : Drive; END_VAR
+            d();
+        END_PROGRAM
+
+        CONFIGURATION Cfg
+        VAR_GLOBAL
+            g AT %MW0 : INT := 7;
+            w AT %QD0 : DWORD := 16#11223344;
+        END_VAR
+        VAR_CONFIG
+            Res.P1.d.m AT %MW0 : Tally;
+            Res.P1.d.b AT %QB2 : B8;
+            Res.P1.d.c AT %MW1 : Tally;
+        END_VAR
+            RESOURCE Res ON CPU
+                TASK T(INTERVAL := T#10ms, PRIORITY := 1);
+                PROGRAM P1 WITH T : P;
+            END_RESOURCE
+        END_CONFIGURATION
+    "#;
+    let (_mir, wasm) = compile_to_mir_and_wasm(&mut with_db, source);
+    let plc = TestPlc::load(&wasm).expect("load");
+    let read = |a: &str| {
+        let bytes = plc.read_located(a).expect("read");
+        u32::from_le_bytes(bytes[..4].try_into().unwrap())
+    };
+    assert_eq!(read("%MW0") & 0xFFFF, 7, "`g` declares 7");
+    assert_eq!(read("%QD0"), 0x1122_3344, "`w` declares its bytes, `b`'s included");
+    assert_eq!(read("%MW1") & 0xFFFF, 5, "nothing declares `c`'s channel");
+}
+
 /// A PROGRAM's variable may be located per instance too, and at a byte of a
 /// wider address: `lamp` is the low byte of the word the program also names.
 #[rstest]

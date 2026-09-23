@@ -1676,7 +1676,9 @@ fn collect_const_inits<'db>(
     // Each variable VAR_CONFIG locates: its instance's pointer slot is given
     // the address of its channel, and its type's default, if it has one
     // (`TYPE Speed : INT := 5`), goes to the channel. The grammar gives the
-    // variable no initial value of its own.
+    // variable no initial value of its own. A declaration at the channel, or
+    // at the cell the channel is part of, already gave the cell its initial
+    // value, and that one stands.
     for c in config {
         for loc in &hir::hir_ty::config::infer_config_result(db, *c).locations {
             let Some(slot) = config_slot(db, loc, schedule, program_infos) else {
@@ -1695,7 +1697,11 @@ fn collect_const_inits<'db>(
                 offset: slot,
                 value: crate::expr::MirConstant::I32(channel as i32),
             });
-            if let Some(var) = loc.members.last() {
+            let declared = hir::hir_ty::index_graphs::located_declaration(db, &loc.address)
+                .or_else(|| hir::hir_ty::index_graphs::located_declaration(db, &owner));
+            if let Some(var) = loc.members.last()
+                && declared.is_none()
+            {
                 let ty = super::lower_type::lower_spec(db, var.spec(db))?;
                 super::lower_func::lower_type_default_inits(
                     db,
