@@ -144,6 +144,48 @@ pub fn test_diagnostics_with_library<'db>(
     test_diagnostics(db, source)
 }
 
+/// The library files' diagnostics, rendered as `rk check` prints their
+/// errors: the editor hides a library's diagnostics, the build does not.
+/// `libs` load as library files, `source` as the workspace.
+pub fn test_library_diagnostics<'db>(
+    db: &'db mut RootDatabase,
+    libs: &[&str],
+    source: &'db [&'db str],
+) -> String {
+    add_library_sources(db, libs);
+    add_sources(db, source);
+    let mut library_files = db
+        .get_library_files()
+        .iter()
+        .map(|e| *e.value())
+        .collect::<Vec<_>>();
+    library_files.sort_by_key(|file| file.url(db).to_string());
+    let file_sources = library_files
+        .iter()
+        .map(|file| (file.url(db).as_str(), file.document(db).as_str()))
+        .collect::<Vec<_>>();
+    let mut cache = vec![];
+    for file in &library_files {
+        diagnostics_for_file(db, *file).iter().for_each(|d| {
+            d.create_report(
+                db,
+                file.url(db),
+                file.document(db).as_str(),
+                Some(no_color_and_ascii()),
+                false,
+            )
+            .write(sources(file_sources.clone()), &mut cache)
+            .unwrap();
+        });
+    }
+    String::from_utf8(cache)
+        .unwrap()
+        .lines()
+        .map(|l| l.trim_end())
+        .collect::<Vec<_>>()
+        .join("\n")
+}
+
 pub fn test_diagnostics<'db>(db: &'db mut RootDatabase, source: &'db [&'db str]) -> String {
     add_sources(db, source);
     let mut cache = vec![];

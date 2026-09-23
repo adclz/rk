@@ -1400,6 +1400,51 @@ END_CONFIGURATION
     ");
 }
 
+/// A library is code for any machine, so it names no address: neither bare
+/// in a body nor in an `AT` (E1417). Its addresses were not the workspace's,
+/// so a library's `%QD0` got a cell of its own beside a workspace `%QW0`
+/// and the two never saw each other's bits. A partial address leaves the
+/// address to the workspace's VAR_CONFIG, so a library FB may declare one.
+#[rstest]
+fn invalid_address_named_in_a_library(mut with_db: RootDatabase) {
+    let library = r#"
+FUNCTION touch : BOOL
+    %QD0 := 16#11223344;
+    touch := TRUE;
+END_FUNCTION
+
+PROGRAM Blink
+VAR lamp AT %QW2 : WORD; END_VAR
+END_PROGRAM
+
+FUNCTION_BLOCK Valve
+VAR out AT %Q* : WORD; END_VAR
+END_FUNCTION_BLOCK
+"#;
+    let workspace = r#"
+PROGRAM P
+VAR ok : BOOL; END_VAR
+    ok := touch();
+END_PROGRAM
+"#;
+    assert_snapshot!(crate::tests::utils::test_library_diagnostics(&mut with_db, &[library], &[workspace]), @r"
+    [E1417] Error: address cannot be located
+       ,-[ file:///lib0.st:3:5 ]
+       |
+     3 |     %QD0 := 16#11223344;
+       |     ^^|^
+       |       `--- '%QD0' cannot be named in a library
+    ---'
+    [E1417] Error: address cannot be located
+       ,-[ file:///lib0.st:8:5 ]
+       |
+     8 | VAR lamp AT %QW2 : WORD; END_VAR
+       |     ^^^^^^^^^|^^^^^^^^^
+       |              `----------- '%QW2' cannot be named in a library
+    ---'
+    ");
+}
+
 /// A VAR_GLOBAL has no instances for VAR_CONFIG to locate, so `%I*` there
 /// names no address at all and there is nothing to allocate.
 #[rstest]

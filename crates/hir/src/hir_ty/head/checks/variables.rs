@@ -330,10 +330,14 @@ impl<'db> InitInference<'db> {
                 && !self.check_partly_located(db, var, dv)
             {
                 let address = compact_str::CompactString::from(dv.to_address(db));
+                // A library names no address: it is code for any machine.
+                let in_library =
+                    crate::check::check_duplicates::is_library_file(db, self.scope.file(db));
                 let banded = dv.area(db).filter(|_| {
-                    (var.kind(db) == crate::hir_def::pous::variable::VariableKind::Global
-                        && crate::hir_ty::infer::normalize::names_a_band(db, dv))
-                        || var.is_program_located(db)
+                    !in_library
+                        && ((var.kind(db) == crate::hir_def::pous::variable::VariableKind::Global
+                            && crate::hir_ty::infer::normalize::names_a_band(db, dv))
+                            || var.is_program_located(db))
                 });
                 match banded {
                     // `%I` is copied in before every scan and `%Q` read back
@@ -474,7 +478,9 @@ impl<'db> InitInference<'db> {
                         use crate::check::errors::e14_config::UnlocatableAddress;
                         // A well-formed address in a POU is the POU's fault;
                         // anything else is the address's.
-                        let why = if dv.partly(db) && !dv.is_area_only(db) {
+                        let why = if in_library && !dv.partly(db) {
+                            UnlocatableAddress::InLibrary
+                        } else if dv.partly(db) && !dv.is_area_only(db) {
                             UnlocatableAddress::NotAreaOnly
                         } else if dv.partly(db) {
                             UnlocatableAddress::Incomplete

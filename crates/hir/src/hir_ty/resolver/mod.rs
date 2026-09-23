@@ -209,17 +209,26 @@ impl<'db> Resolver<'db> {
                 // is refused, and it is refused HERE because MIR's refusal
                 // reaches the user as an internal compiler error, from code
                 // `rk check` called clean.
-                if !crate::hir_ty::infer::normalize::names_a_band(db, dv) {
-                    use crate::check::errors::e14_config::UnlocatableAddress;
+                // A library names no address at all: it is code for any
+                // machine, and its addresses were not the workspace's.
+                use crate::check::errors::e14_config::UnlocatableAddress;
+                let why = if !crate::hir_ty::infer::normalize::names_a_band(db, dv) {
+                    Some(if dv.partly(db) {
+                        UnlocatableAddress::Incomplete
+                    } else {
+                        UnlocatableAddress::Malformed
+                    })
+                } else if crate::check::check_duplicates::is_library_file(db, ctx.scope.file(db)) {
+                    Some(UnlocatableAddress::InLibrary)
+                } else {
+                    None
+                };
+                if let Some(why) = why {
                     ctx.errors.push(
                         ConfigError::DirectVariableUnsupported {
                             site: CallSite::from_scoped(db, &var_access),
                             address: CallSite::from_scoped(db, &var_access).to_string(db),
-                            why: if dv.partly(db) {
-                                UnlocatableAddress::Incomplete
-                            } else {
-                                UnlocatableAddress::Malformed
-                            },
+                            why,
                         }
                         .to_diagnostic(db, ctx.scope.file(db)),
                     );

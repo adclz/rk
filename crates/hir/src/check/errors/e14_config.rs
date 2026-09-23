@@ -463,6 +463,10 @@ pub enum UnlocatableAddress {
     /// `%IW*`, `%Z*`: a partial address names an area, I, Q or M, and
     /// nothing else.
     NotAreaOnly,
+    /// An address in a library file. A library is code for any machine, and
+    /// its addresses were not the workspace's: a library's `%QD0` got a cell
+    /// of its own beside a workspace `%QW0`.
+    InLibrary,
 }
 
 impl UnlocatableAddress {
@@ -474,11 +478,14 @@ impl UnlocatableAddress {
             Self::NotAreaOnly => {
                 format!("'{address}' is not a partial address: write '%I*', '%Q*' or '%M*'")
             }
+            Self::InLibrary => format!("'{address}' cannot be named in a library"),
         }
     }
 
-    fn note(self) -> &'static str {
-        match self {
+    /// None for a library's address: whoever sees it uses the library and
+    /// cannot rewrite it.
+    fn note(self) -> Option<&'static str> {
+        Some(match self {
             Self::InPou => {
                 "a function's, function block's or class's variables belong to each call or instance, so one address cannot be theirs; in a function block or class, declare it AT %I*, %Q* or %M* and give each instance its address in VAR_CONFIG, and elsewhere declare it in a PROGRAM, or as a VAR_GLOBAL of the CONFIGURATION, and name it from here"
             }
@@ -491,7 +498,8 @@ impl UnlocatableAddress {
             Self::NotAreaOnly => {
                 "the variable's type gives the width, and VAR_CONFIG gives the rest of the address"
             }
-        }
+            Self::InLibrary => return None,
+        })
     }
 }
 
@@ -895,7 +903,9 @@ impl<'db> ToIdeDiagnostic<'db> for ConfigError<'db> {
                     .desc(self)
                     .range(crate::denormalize(db, file, &site.get_span(db)).unwrap_or_default())
                     .call();
-                diag.with_note(why.note().to_string());
+                if let Some(note) = why.note() {
+                    diag.with_note(note.to_string());
+                }
                 diag
             }
             Self::UnknownMultibitsAccess { expr, access } => diag()
