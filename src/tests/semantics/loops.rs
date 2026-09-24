@@ -423,3 +423,74 @@ fn invalid_for_step_nonconstant_operand(mut with_db: RootDatabase) {
     ---'
     ");
 }
+
+/// A FOR loop counts in an integer, SINT to ULINT or a subrange or alias of
+/// one (IEC 61131-3, ANY_INT). Anything else was accepted: a BOOL counter
+/// looped `FALSE TO TRUE`, a REAL one stepped a float, a BYTE one counted a bit
+/// string (E1206).
+#[rstest]
+#[case::bool_("b : BOOL;", "FALSE", "TRUE", Some("BOOL"))]
+#[case::real("r : REAL;", "0.0", "3.0", Some("REAL"))]
+#[case::time("t : TIME;", "T#0s", "T#3s", Some("TIME"))]
+#[case::byte("w : BYTE;", "0", "3", Some("BYTE"))]
+#[case::enum_("c : Colour;", "Colour#Red", "Colour#Blue", Some("Colour"))]
+#[case::sint("i : SINT;", "0", "3", None)]
+#[case::ulint("i : ULINT;", "0", "3", None)]
+#[case::subrange("i : INT (0..10);", "0", "3", None)]
+#[case::alias("i : Count;", "0", "3", None)]
+fn a_for_loop_counts_in_an_integer(
+    mut with_db: RootDatabase,
+    #[case] decl: &str,
+    #[case] from: &str,
+    #[case] to: &str,
+    #[case] refused: Option<&str>,
+) {
+    let counter = decl.split(' ').next().unwrap();
+    let source = format!(
+        r#"
+        TYPE Colour : (Red, Green, Blue); Count : DINT; END_TYPE
+        FUNCTION f : INT
+        VAR {decl} n : INT; END_VAR
+            FOR {counter} := {from} TO {to} DO
+                n := n + 1;
+            END_FOR;
+            f := n;
+        END_FUNCTION
+    "#
+    );
+    let rendered = test_diagnostics(&mut with_db, &[&source]);
+    match refused {
+        Some(ty) => assert!(
+            rendered.contains("[E1206]")
+                && rendered.contains(&format!("'{counter}' is '{ty}'"))
+                && rendered.matches("[E").count() == 1,
+            "`{decl}` must be E1206 alone, got:\n{rendered}"
+        ),
+        None => assert!(rendered.is_empty(), "`{decl}` counts, got:\n{rendered}"),
+    }
+}
+
+/// How E1206 reads.
+#[rstest]
+fn a_for_loop_counts_in_an_integer_rendering(mut with_db: RootDatabase) {
+    let source = r#"
+        FUNCTION f : INT
+        VAR b : BOOL; n : INT; END_VAR
+            FOR b := FALSE TO TRUE DO
+                n := n + 1;
+            END_FOR;
+            f := n;
+        END_FUNCTION
+    "#;
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
+    [E1206] Error: FOR counter is not an integer
+       ,-[ file:///test0.st:4:17 ]
+       |
+     4 |             FOR b := FALSE TO TRUE DO
+       |                 |
+       |                 `-- 'b' is 'BOOL', and a FOR loop counts in an integer
+       |
+       | Note: declare the counter as SINT, INT, DINT or LINT, or an unsigned one
+    ---'
+    ");
+}

@@ -27,6 +27,13 @@ pub enum ControlFlowError<'db> {
     ForControlNotAVariable {
         access: CallSite<'db>,
     },
+    /// A FOR control variable that is not an integer: IEC 61131-3 counts in
+    /// ANY_INT. A BOOL, a REAL, a TIME or a bit string was accepted and
+    /// looped over values a counter does not have.
+    ForControlNotInteger {
+        access: CallSite<'db>,
+        ty: crate::hir_ty::ty::Type<'db>,
+    },
     /// A FOR step whose value the compiler cannot fix at compile time, or a
     /// zero one. The sign decides the loop's exit comparison, so both are
     /// loops whose direction is unknowable.
@@ -54,6 +61,7 @@ impl<'db> ErrorCode for ControlFlowError<'db> {
             Self::ExitOutsideLoop { .. } => "E1201",
             Self::ContinueOutsideLoop { .. } => "E1202",
             Self::ForControlNotAVariable { .. } => "E1203",
+            Self::ForControlNotInteger { .. } => "E1206",
             Self::ForStepInvalid { .. } => "E1204",
             Self::CaseLabelNotConstant { .. } => "E1205",
         }
@@ -64,6 +72,7 @@ impl<'db> ErrorCode for ControlFlowError<'db> {
             Self::ExitOutsideLoop { .. } => "control flow violation",
             Self::ContinueOutsideLoop { .. } => "control flow violation",
             Self::ForControlNotAVariable { .. } => "control flow violation",
+            Self::ForControlNotInteger { .. } => "FOR counter is not an integer",
             Self::ForStepInvalid { .. } => "control flow violation",
             Self::CaseLabelNotConstant { .. } => "control flow violation",
         }
@@ -98,6 +107,23 @@ impl<'db> ToIdeDiagnostic<'db> for ControlFlowError<'db> {
                     .call();
                 diag.with_note(
                     "count in a plain variable and assign it where it is needed inside the loop"
+                        .to_string(),
+                );
+                diag
+            }
+            Self::ForControlNotInteger { access, ty } => {
+                let mut diag = diag()
+                    .message(format!(
+                        "'{}' is '{}', and a FOR loop counts in an integer",
+                        access.to_string(db),
+                        ty.type_name(db)
+                    ))
+                    .severity(DiagnosticSeverity::ERROR)
+                    .desc(self)
+                    .range(crate::denormalize(db, file, &access.get_span(db)).unwrap_or_default())
+                    .call();
+                diag.with_note(
+                    "declare the counter as SINT, INT, DINT or LINT, or an unsigned one"
                         .to_string(),
                 );
                 diag

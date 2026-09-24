@@ -385,8 +385,6 @@ pub enum WiderAddressUse {
     InOut,
     /// Given to `REF()`, which takes an address.
     Reference,
-    /// Used as a FOR counter, which needs storage of its own.
-    ForCounter,
     /// Declared RETAIN: persistence belongs to storage, and this has none.
     Retain(OwnerDeclaration),
     /// Given an initial value: `__init` writes storage, and this has none,
@@ -413,7 +411,6 @@ impl WiderAddressUse {
         match self {
             Self::InOut => format!("{is} and has no address of its own to pass to a VAR_IN_OUT"),
             Self::Reference => format!("{is} and has no address of its own to take a reference to"),
-            Self::ForCounter => format!("{is} and cannot count a FOR loop"),
             Self::Retain(_) => format!("{is} and cannot be RETAIN on its own"),
             Self::Initializer(_) => format!("{is} and cannot have an initial value of its own"),
         }
@@ -423,7 +420,6 @@ impl WiderAddressUse {
         match self {
             Self::InOut => "copy it into a variable, pass that, and assign it back".to_string(),
             Self::Reference => format!("take the reference of '{owner}' as a whole"),
-            Self::ForCounter => format!("count in a variable and assign '{address}' from it"),
             Self::Retain(OwnerDeclaration::Declared) => {
                 format!(
                     "RETAIN belongs on the variable located at '{owner}', whose storage this is"

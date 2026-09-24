@@ -302,7 +302,7 @@ fn lower_stmt<'db>(
                 Some(super::multibit::View::Bytes(place)) => place,
                 Some(super::multibit::View::Slice { .. }) => {
                     return Err(LowerTypeError::UnsupportedType(
-                            "a FOR counter cannot be a bit of a wider address; `rk check` refuses it (E1423)"
+                            "a FOR counter cannot be a bit of a wider address; `rk check` refuses a BOOL counter (E1206)"
                                 .to_string(),
                         ));
                 }

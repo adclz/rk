@@ -2007,38 +2007,28 @@ END_CONFIGURATION
     ");
 }
 
-/// A FOR counter is stored at every step, and a bit has no address of its
-/// own to store it at. A part of a byte or more has one, and counts.
+/// A part of a byte or more counts a FOR loop: it is whole bytes of its
+/// owner's cell, with an address to count in. A bit could not, but a bit is
+/// a BOOL, which is not a counter at all (E1206).
 #[rstest]
-fn invalid_for_counter_in_a_bit_of_a_wider_address(mut with_db: RootDatabase) {
+fn valid_for_counter_in_a_part_of_a_byte_or_more(mut with_db: RootDatabase) {
     let source = r#"
 PROGRAM P
-VAR_EXTERNAL flag : BOOL; cnt : USINT; whole : WORD; END_VAR
+VAR_EXTERNAL cnt : USINT; whole : WORD; END_VAR
 VAR x : INT; END_VAR
-    FOR flag := FALSE TO TRUE DO x := x + 1; END_FOR;
     FOR cnt := 1 TO 3 DO x := x + 1; END_FOR;
     whole := whole + 1;
 END_PROGRAM
 
 CONFIGURATION Cfg
-VAR_GLOBAL whole AT %MW0 : WORD; cnt AT %MB1 : USINT; flag AT %MX0.2 : BOOL; END_VAR
+VAR_GLOBAL whole AT %MW0 : WORD; cnt AT %MB1 : USINT; END_VAR
     RESOURCE R ON CPU
         TASK T(INTERVAL := T#10ms, PRIORITY := 1);
         PROGRAM P1 WITH T : P;
     END_RESOURCE
 END_CONFIGURATION
 "#;
-    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E1423] Error: part of a wider address
-       ,-[ file:///test0.st:5:9 ]
-       |
-     5 |     FOR flag := FALSE TO TRUE DO x := x + 1; END_FOR;
-       |         ^^|^
-       |           `--- '%MX0.2' is part of '%MW0' and cannot count a FOR loop
-       |
-       | Note: count in a variable and assign '%MX0.2' from it
-    ---'
-    ");
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @"");
 }
 
 /// A declared part persists only as its owner does, so RETAIN on it is
