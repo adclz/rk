@@ -7,7 +7,7 @@ use db::WorkspaceDataBase;
 use hir::{
     CallSite, HasName, HirNodeInfo,
     hir_def::{
-        config::{ConfigDecl, ResourceDecl, TaskConfig},
+        config::{ConfigDecl, ProgConfig, ResourceDecl, TaskConfig},
         expressions::{
             expression::{Expr, InitExpr, PathExpr, PathExprKind, VariableAccess},
             invocation::Invocation,
@@ -159,6 +159,11 @@ impl<'db> CompletionHandler<'db> for HirNode<'db> {
     ) -> Option<Vec<CompletionItem>> {
         match self {
             HirNode::InitExpr(i) => i.completion(db, &req.with_query(i.to_string(db).to_owned())),
+            // A path in a program configuration's list, such as the source
+            // being written after `x1 :=`, is completed by the list.
+            HirNode::PathExpr(p) if let Some(prog) = prog_config_at(db, *p, req.offset) => {
+                prog.completion(db, req)
+            }
             HirNode::PathExpr(p) => {
                 // For is_last_before with trailing dot, try namespace completion
                 // before delegating to parent (Field delegation loses namespace context).
@@ -230,6 +235,7 @@ impl<'db> CompletionHandler<'db> for HirNode<'db> {
             HirNode::Config(c) => c.completion(db, req),
             HirNode::Resource(r) => r.completion(db, req),
             HirNode::Task(t) => t.completion(db, req),
+            HirNode::ProgConfig(p) => p.completion(db, req),
             HirNode::Invocation(i) => i.completion(db, req),
             HirNode::MethodRef(m) => m.completion(db, req),
             HirNode::VariableAccess(v) => v.completion(
@@ -765,6 +771,148 @@ impl<'db> CompletionHandler<'db> for TaskConfig<'db> {
         }
 
         Some(items)
+    }
+}
+
+/// The program configuration whose list holds `path`, a path of the
+/// configuration's scope, at `offset`.
+fn prog_config_at<'db>(
+    db: &'db dyn WorkspaceDataBase,
+    path: PathExpr<'db>,
+    offset: usize,
+) -> Option<ProgConfig<'db>> {
+    let ScopeKind::Config(config) = get_scope(db, path.get_scope_id(db)).kind else {
+        return None;
+    };
+    config
+        .resources(db)
+        .iter()
+        .flat_map(|r| r.programs(db).iter())
+        .find(|p| {
+            let span = p.get_span(db);
+            span.start_byte <= offset && offset <= span.end_byte
+        })
+        .copied()
+}
+
+impl<'db> CompletionHandler<'db> for ProgConfig<'db> {
+    /// Inside the element list, what the element being written can name: the
+    /// program's inputs, outputs and function blocks, a VAR_GLOBAL of the
+    /// element's type after `:=` or `=>`, or a task of the resource after
+    /// `WITH`.
+    fn completion(
+        &'db self,
+        db: &'db dyn WorkspaceDataBase,
+        req: &CompletionRequest,
+    ) -> Option<Vec<CompletionItem>> {
+        use auto_lsp::lsp_types::CompletionItemKind;
+        use hir::hir_def::config::{ProgCnxn, ProgConfElement};
+        use hir::hir_ty::ty::Type;
+
+        let source = self.get_scope_id(db).file(db).document(db).as_str();
+        let after = self.prog_type(db).get_span(db).end_byte;
+        let open = after + source.get(after..self.get_span(db).end_byte)?.find('(')?;
+        if req.offset <= open {
+            return None;
+        }
+        let ScopeKind::Config(config) = get_scope(db, self.scope_id(db)).kind else {
+            return None;
+        };
+        let Type::Program(program) = self.prog_type(db).infer(db) else {
+            return None;
+        };
+
+        // What the element under the cursor has written so far.
+        let before = source.get(open + 1..req.offset)?;
+        let written = before.rsplit(',').next().unwrap_or(before);
+        let start = req.offset - written.len();
+        let builder =
+            crate::handlers::completions_utils::completion_item_builder::CompletionBuilder::default()
+                .with_mode(QueryMode::Head);
+
+        if written
+            .split_whitespace()
+            .any(|word| word.eq_ignore_ascii_case("WITH"))
+        {
+            let resource = config
+                .resources(db)
+                .iter()
+                .find(|r| r.programs(db).contains(self))?;
+            return Some(
+                resource
+                    .tasks(db)
+                    .iter()
+                    .map(|task| CompletionItem {
+                        label: task.name(db).ident.text(db).to_string(),
+                        kind: Some(CompletionItemKind::EVENT),
+                        detail: Some("TASK".to_string()),
+                        ..Default::default()
+                    })
+                    .collect(),
+            );
+        }
+
+        if written.contains(":=") || written.contains("=>") {
+            // The variable this element names, to offer the globals of its
+            // type.
+            let named = self
+                .conf_elements(db)
+                .iter()
+                .filter_map(|element| match element {
+                    ProgConfElement::Connection(
+                        ProgCnxn::Source { path, .. } | ProgCnxn::Sink { path, .. },
+                    ) => Some(*path),
+                    ProgConfElement::FbTask(_) => None,
+                })
+                .find(|path| (start..=req.offset).contains(&path.get_span(db).start_byte))
+                .and_then(|path| {
+                    hir::hir_ty::config::prog_elements(db, config)
+                        .names
+                        .get(&path)
+                        .copied()
+                });
+            let fragments =
+                hir::hir_ty::index_graphs::config_fragments(db, config.get_name_ident(db));
+            return Some(
+                fragments
+                    .iter()
+                    .flat_map(|fragment| fragment.variables(db).iter())
+                    .filter(|global| global.kind(db) == VariableKind::Global)
+                    .filter(|global| {
+                        named.is_none_or(|var| {
+                            hir::hir_ty::config::global_connects(db, var, **global)
+                        })
+                    })
+                    .map(|global| builder.build_variable(db, global))
+                    .collect(),
+            );
+        }
+
+        // An element's name, with what follows it.
+        Some(
+            program
+                .variables(db)
+                .iter()
+                .filter_map(|var| {
+                    let follows = match var.kind(db) {
+                        VariableKind::Input => " := ",
+                        VariableKind::Output => " => ",
+                        VariableKind::Var
+                            if matches!(
+                                var.spec(db).infer(db).normalize(db),
+                                Type::FunctionBlock(_)
+                            ) =>
+                        {
+                            " WITH "
+                        }
+                        _ => return None,
+                    };
+                    let mut item = builder.build_variable(db, var);
+                    item.insert_text = Some(format!("{}{follows}", var.name(db).text(db)));
+                    Some(item)
+                })
+                .collect(),
+        )
     }
 }
 

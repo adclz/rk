@@ -247,3 +247,56 @@ END_CONFIGURATION
     let labels: Vec<&str> = completions.iter().map(|c| c.label.as_str()).collect();
     assert!(labels.is_empty(), "should have no completions: {labels:?}");
 }
+
+/// Inside a program configuration's list: the program's inputs, outputs and
+/// function blocks where an element is named, a VAR_GLOBAL of the element's
+/// type after `:=` or `=>`, and a task of the resource after `WITH`.
+#[rstest]
+#[case::an_empty_list("|", &["x1", "x2", "y1", "fb1"], &["n", "w"])]
+#[case::after_an_element("x1 := b, |", &["x2", "y1", "fb1"], &["n", "w"])]
+#[case::a_name_being_typed("x|", &["x1", "x2"], &["w"])]
+#[case::a_source("x2 := |", &["w", "total"], &["b", "x1"])]
+#[case::a_sink("y1 => |", &["w", "total"], &["b", "y1"])]
+#[case::a_task("fb1 WITH |", &["T", "FAST"], &["w", "x1"])]
+pub fn completion_in_a_program_configuration(
+    mut with_db: RootDatabase,
+    #[case] list: &str,
+    #[case] offered: &[&str],
+    #[case] not_offered: &[&str],
+) {
+    let source = format!(
+        r#"
+FUNCTION_BLOCK Counter
+VAR_OUTPUT c : INT; END_VAR
+END_FUNCTION_BLOCK
+
+PROGRAM F
+VAR_INPUT x1 : BOOL; x2 : UINT; END_VAR
+VAR_OUTPUT y1 : UINT; END_VAR
+VAR fb1 : Counter; n : INT; END_VAR
+END_PROGRAM
+
+CONFIGURATION Cfg
+VAR_GLOBAL w : UINT; b : BOOL; total : UINT; END_VAR
+    RESOURCE Res ON CPU
+        TASK T(INTERVAL := T#10ms, PRIORITY := 1);
+        TASK FAST(INTERVAL := T#5ms, PRIORITY := 0);
+        PROGRAM P1 WITH T : F({list});
+    END_RESOURCE
+END_CONFIGURATION
+"#
+    );
+    let offset = source.find('|').unwrap();
+    let source = source.replacen('|', "", 1);
+    add_sources(&mut with_db, &[&source]);
+    let file = *with_db.get_files().iter().last().unwrap();
+
+    let items = ide_proto::handlers::completions::complete(&with_db, file, offset, None);
+    let labels: Vec<&str> = items.iter().map(|c| c.label.as_str()).collect();
+    for label in offered {
+        assert!(labels.contains(label), "missing `{label}`: {labels:?}");
+    }
+    for label in not_offered {
+        assert!(!labels.contains(label), "offered `{label}`: {labels:?}");
+    }
+}

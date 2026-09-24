@@ -193,7 +193,8 @@ pub enum DataSink<'db> {
 pub struct FbTask<'db> {
     pub path: PathExpr<'db>,
 
-    pub task: Ident,
+    /// The task named, with its span for the IDE.
+    pub task: SpanIdent<'db>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, salsa::Update)]

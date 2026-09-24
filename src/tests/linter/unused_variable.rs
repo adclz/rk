@@ -251,3 +251,48 @@ fn variadic_pack_consumed_by_a_fold_is_used(mut with_db: RootDatabase) {
     "#;
     assert_snapshot!(test_single_lint(&mut with_db, &[source], "unused-variable"), @r"");
 }
+
+/// A PROGRAM's variable its configuration names is used: a function block a
+/// task runs, and an instance a VAR_CONFIG path goes through.
+#[rstest]
+fn named_by_the_configuration_not_reported(mut with_db: RootDatabase) {
+    let source = r#"
+        FUNCTION_BLOCK Counter
+        VAR_OUTPUT n : INT; END_VAR
+            n := n + 1;
+        END_FUNCTION_BLOCK
+
+        FUNCTION_BLOCK Drive
+        VAR out AT %Q* : INT; END_VAR
+        END_FUNCTION_BLOCK
+
+        PROGRAM G
+        VAR fb1 : Counter; d : Drive; idle : INT; END_VAR
+        END_PROGRAM
+
+        CONFIGURATION Cfg
+        VAR_CONFIG
+            Res.P1.d.out AT %QW0 : INT;
+        END_VAR
+            RESOURCE Res ON CPU
+                TASK SLOW(INTERVAL := T#20ms, PRIORITY := 2);
+                TASK FAST(INTERVAL := T#10ms, PRIORITY := 1);
+                PROGRAM P1 WITH SLOW : G(fb1 WITH FAST);
+            END_RESOURCE
+        END_CONFIGURATION
+    "#;
+    assert_snapshot!(test_single_lint(&mut with_db, &[source], "unused-variable"), @r"
+    [L0201] Info: unused code
+        ,-[ file:///test0.st:12:39 ]
+        |
+     12 |         VAR fb1 : Counter; d : Drive; idle : INT; END_VAR
+        |                                       ^^|^
+        |                                         `--- unused variable 'idle'
+        |
+        | Note 1: if this is intentional, prefix it with an underscore:
+        |         '_idle'
+        |
+        | Note 2: lint rule: unused-variable
+    ----'
+    ");
+}

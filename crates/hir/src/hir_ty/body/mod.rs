@@ -49,6 +49,11 @@ pub fn infer_body<'db>(
         },
         ScopeKind::MethodDecl(m) => m.stmts(db),
         ScopeKind::Program(program) => program.statements(db),
+        // No statements, but paths that name variables.
+        ScopeKind::Config(config) => {
+            crate::hir_ty::config::record_config_paths(db, config, &mut result);
+            return result;
+        }
         _ => return result,
     };
 

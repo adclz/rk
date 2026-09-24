@@ -973,3 +973,26 @@ END_FUNCTION_BLOCK
     SIZE] OF -> ```iecst (VAR) SIZE: INT ```
     ");
 }
+
+/// A name in a program configuration shows what it names.
+#[rstest]
+#[case::input("x1 := %IX", "(INPUT) x1: BOOL")]
+#[case::source("w, y1", "(GLOBAL) w: UINT")]
+#[case::function_block("fb1 WITH", "Counter")]
+#[case::task("FAST);", "TASK FAST")]
+#[case::var_config_member("out AT %QW0", "out: INT")]
+pub fn hover_in_a_program_configuration(
+    mut with_db: RootDatabase,
+    #[case] at: &str,
+    #[case] shown: &str,
+) {
+    use crate::tests::lsp::{CONNECTED, connected_at};
+    add_sources(&mut with_db, &[CONNECTED]);
+    let file = *with_db.get_files().iter().last().unwrap();
+
+    let offset = connected_at(at, true);
+    let node = ide_proto::walk::descendant_at(&with_db, file, offset).expect("a node");
+    let hover = node.hover(&with_db, offset).expect("a hover");
+    let markup = hover_markup(hover.contents).unwrap();
+    assert!(markup.contains(shown), "{markup}");
+}

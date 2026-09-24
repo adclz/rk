@@ -326,6 +326,10 @@ impl<'db> DefinitionHandler<'db> for ProgConfig<'db> {
                 return None;
             }
         }
+        // On the task a function block runs under: `fb1 WITH FAST`.
+        if let Some(task) = crate::hir_node::element_task_at(db, *self, offset) {
+            return task.definition(db, task.name(db).get_span(db).start_byte);
+        }
 
         self.prog_type(db).infer(db).definition(db, offset)
     }

@@ -551,3 +551,39 @@ END_FUNCTION_BLOCK
 
     assert_eq!(format_definition_response(&def), expected);
 }
+
+/// Each name in a program configuration goes where it is declared: a variable
+/// of the program, a VAR_GLOBAL, the TASK a function block runs under, and a
+/// member a VAR_CONFIG path names. A function block instance goes to its
+/// type, as it does in a body.
+#[rstest]
+#[case::input("x1 := %IX", "x1 : BOOL")]
+#[case::input_fed_by_a_global("x2 := w", "x2 : UINT")]
+#[case::source("w, y1", "w : UINT")]
+#[case::output("y1 => total", "y1 : UINT")]
+#[case::sink("total, fb1", "total : UINT")]
+#[case::function_block("fb1 WITH", "Counter\n")]
+#[case::task("FAST);", "FAST(INTERVAL")]
+#[case::var_config_member("out AT %QW0", "out AT %Q*")]
+pub fn definition_in_a_program_configuration(
+    mut with_db: RootDatabase,
+    #[case] at: &str,
+    #[case] declared: &str,
+) {
+    use crate::tests::lsp::{CONNECTED, connected_at};
+    add_sources(&mut with_db, &[CONNECTED]);
+    let file = *with_db.get_files().iter().last().unwrap();
+
+    let offset = connected_at(at, true);
+    let node = descendant_at(&with_db, file, offset).expect("a node");
+    let def = node.definition(&with_db, offset).expect("a definition");
+
+    let decl = connected_at(declared, false);
+    let line = CONNECTED[..decl].matches('\n').count();
+    let col = decl - CONNECTED[..decl].rfind('\n').map_or(0, |n| n + 1);
+    assert!(
+        format_definition_response(&def).starts_with(&format!("/test0.st:{line}:{col}-")),
+        "{}",
+        format_definition_response(&def)
+    );
+}

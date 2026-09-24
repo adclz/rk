@@ -305,7 +305,7 @@ impl<'db> SemanticIndexBuilder<'db> {
         fb: &ast::generated::FbTask,
     ) -> anyhow::Result<FbTask<'db>, IdeDiagnostic> {
         let path = fb.children.cast(self.ast).parse(self)?;
-        let task = Ident::from_node(self.db, self.file, fb.task.cast(self.ast))?;
+        let task = SpanIdent::from_node(self.db, self, fb.task.cast(self.ast))?;
         Ok(FbTask { path, task })
     }
 

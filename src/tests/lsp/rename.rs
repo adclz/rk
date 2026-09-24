@@ -448,3 +448,32 @@ END_FUNCTION
 
     assert_eq!(written, edits);
 }
+
+/// A rename reaches the names a configuration writes: a program's variable in
+/// its element list, a VAR_GLOBAL a connection names, and a member a
+/// VAR_CONFIG path goes through. Renaming `x1` used to leave `F(x1 := ...)`
+/// behind, where it became E1414.
+#[rstest]
+#[case::from_the_declaration("x1 : BOOL", false, "start", &["VAR_INPUT start : BOOL", "F(start := %IX0.0"])]
+#[case::from_the_element("x1 := %IX", true, "start", &["VAR_INPUT start : BOOL", "F(start := %IX0.0"])]
+#[case::global("w : UINT", false, "speed", &["VAR_GLOBAL speed : UINT", "x2 := speed,"])]
+#[case::var_config_member("out AT %Q*", false, "level", &["VAR level AT %Q*", "Res.P1.d.level AT %QW0"])]
+fn rename_in_a_program_configuration(
+    mut with_db: RootDatabase,
+    #[case] at: &str,
+    #[case] in_config: bool,
+    #[case] new_name: &str,
+    #[case] expected: &[&str],
+) {
+    use crate::tests::lsp::{CONNECTED, connected_at};
+    add_sources(&mut with_db, &[CONNECTED]);
+    let file = *with_db.get_files().iter().last().unwrap();
+
+    let offset = connected_at(at, in_config);
+    let node = descendant_at(&with_db, file, offset).unwrap();
+    let edit = node.rename(&with_db, new_name).expect("an edit");
+    let renamed = apply_rename(&with_db, &edit, &[CONNECTED]);
+    for text in expected {
+        assert!(renamed.contains(text), "missing `{text}`:\n{renamed}");
+    }
+}

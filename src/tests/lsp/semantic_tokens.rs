@@ -666,3 +666,26 @@ END_NAMESPACE"#;
     n variable
     ");
 }
+
+/// A configuration colours the names it writes as what they are: the
+/// program's inputs and outputs, the globals they are connected to, the
+/// function block a task runs, and each member of a VAR_CONFIG path.
+#[rstest]
+fn a_configuration_colours_the_names_it_writes(mut with_db: RootDatabase) {
+    let tokens = rendered(&mut with_db, crate::tests::lsp::CONNECTED);
+    // From the first global on.
+    let config = &tokens[tokens.find("w variable").unwrap()..];
+    assert_snapshot!(config, @r"
+    w variable
+    total variable
+    d variable
+    out variable
+    F function
+    x1 parameter
+    x2 parameter
+    w variable
+    y1 parameter
+    total variable
+    fb1 variable
+    ");
+}

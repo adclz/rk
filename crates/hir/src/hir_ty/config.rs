@@ -119,6 +119,12 @@ pub enum ConnectionEnd<'db> {
 #[derive(Debug, PartialEq, Eq, salsa::Update)]
 pub struct ProgElements<'db> {
     pub per_program: Vec<(ProgConfig<'db>, ResolvedProgElements<'db>)>,
+    /// The variable each name in an element list resolved to: a variable of
+    /// the program, or a VAR_GLOBAL a connection names. Kept for an element
+    /// refused for another reason too, which still names it.
+    pub names: FxHashMap<PathExpr<'db>, VariableDecl<'db>>,
+    /// The task each `fb WITH task` names, by the element's path.
+    pub tasks: FxHashMap<PathExpr<'db>, TaskConfig<'db>>,
     pub errors: Vec<IdeDiagnostic>,
 }
 
@@ -904,6 +910,8 @@ pub fn prog_elements<'db>(
     let file = config.get_scope_id(db).file(db);
     let mut out = ProgElements {
         per_program: Vec::new(),
+        names: FxHashMap::default(),
+        tasks: FxHashMap::default(),
         errors: Vec::new(),
     };
     for r in config.resources(db).iter() {
@@ -930,13 +938,14 @@ pub fn prog_elements<'db>(
                 let Some(var) = program_member(db, program, path, &mut out.errors) else {
                     continue;
                 };
+                out.names.insert(path, var);
                 let name = var.name(db).text(db).clone();
                 let refusal = match element {
                     ProgConfElement::Connection(ProgCnxn::Source { source, .. }) => {
                         if !var.is_input(db) {
                             Some(ProgElementRefusal::NotAnInput { var: name })
                         } else {
-                            match check_source(db, var, source, path) {
+                            match check_source(db, var, source, path, &mut out.names) {
                                 Ok(end) => {
                                     named.push((var, path, false));
                                     resolved.inputs.push((var, end));
@@ -953,7 +962,7 @@ pub fn prog_elements<'db>(
                         if !var.is_output(db) {
                             Some(ProgElementRefusal::NotAnOutput { var: name })
                         } else {
-                            match check_sink(db, var, sink, path) {
+                            match check_sink(db, var, sink, path, &mut out.names) {
                                 Ok(end) => {
                                     resolved.outputs.push((var, end));
                                     None
@@ -969,7 +978,10 @@ pub fn prog_elements<'db>(
                         let task = r
                             .tasks(db)
                             .iter()
-                            .find(|t| t.name(db).ident.caseless(db) == fb.task.caseless(db));
+                            .find(|t| t.name(db).ident.caseless(db) == fb.task.ident.caseless(db));
+                        if let Some(task) = task {
+                            out.tasks.insert(path, *task);
+                        }
                         if !matches!(var.spec(db).infer(db).normalize(db), Type::FunctionBlock(_)) {
                             Some(ProgElementRefusal::NotAFunctionBlock { var: name })
                         } else if let Some(task) = task {
@@ -978,7 +990,7 @@ pub fn prog_elements<'db>(
                             None
                         } else {
                             Some(ProgElementRefusal::UnknownTask {
-                                task: fb.task.text(db).clone(),
+                                task: fb.task.ident.text(db).clone(),
                             })
                         }
                     }
@@ -1021,6 +1033,47 @@ pub fn prog_elements<'db>(
     out
 }
 
+/// What each path a configuration writes names, recorded as a body records
+/// its own: a variable of the program an element names, a VAR_GLOBAL a
+/// connection names, and each member a VAR_CONFIG path goes through. What
+/// the IDE features and the linter read.
+pub(crate) fn record_config_paths<'db>(
+    db: &'db dyn WorkspaceDataBase,
+    config: ConfigDecl<'db>,
+    result: &mut crate::hir_ty::body::BodyInferenceResult<'db>,
+) {
+    let mut named: Vec<(PathExpr<'db>, VariableDecl<'db>)> = prog_elements(db, config)
+        .names
+        .iter()
+        .map(|(path, var)| (*path, *var))
+        .collect();
+    for entry in &resolve_config_entries(db, config).entries {
+        // The members are the path's last steps, one each.
+        let steps: Vec<_> = entry
+            .path
+            .flatten(db)
+            .iter()
+            .filter_map(|step| match step {
+                PathExprWalkStep::Field { expr, .. } => Some(*expr),
+                _ => None,
+            })
+            .collect();
+        named.extend(
+            steps
+                .into_iter()
+                .rev()
+                .zip(entry.members.iter().rev().copied()),
+        );
+    }
+    for (path, var) in named {
+        result
+            .type_of_path_expr
+            .insert(path, Type::Variable((var, None)));
+        result.variable_of_path_expr.insert(path, var);
+        result.variables_used.insert(var);
+    }
+}
+
 /// The variable of `program` an element names, by its name alone.
 fn program_member<'db>(
     db: &'db dyn WorkspaceDataBase,
@@ -1057,16 +1110,20 @@ fn program_member<'db>(
 fn connected_global<'db>(
     db: &'db dyn WorkspaceDataBase,
     global: PathExpr<'db>,
+    names: &mut FxHashMap<PathExpr<'db>, VariableDecl<'db>>,
 ) -> Result<VariableDecl<'db>, crate::check::errors::e14_config::ProgElementRefusal<'db>> {
     use crate::check::errors::e14_config::ProgElementRefusal;
     let [PathExprWalkStep::Field { ident, .. }] = global.flatten(db).as_slice() else {
         return Err(ProgElementRefusal::NotAVariable);
     };
-    crate::hir_ty::index_graphs::external_var_lookup(db, ident.ident).ok_or_else(|| {
-        ProgElementRefusal::NoSuchGlobal {
-            name: ident.ident.text(db).clone(),
-        }
-    })
+    let var =
+        crate::hir_ty::index_graphs::external_var_lookup(db, ident.ident).ok_or_else(|| {
+            ProgElementRefusal::NoSuchGlobal {
+                name: ident.ident.text(db).clone(),
+            }
+        })?;
+    names.insert(global, var);
+    Ok(var)
 }
 
 /// Whether `var` and what it is connected to hold one type: a VAR_GLOBAL of
@@ -1087,9 +1144,7 @@ fn check_connected<'db>(
         ConnectionEnd::Constant(_) => Ok(()),
         ConnectionEnd::Global(global) => {
             let ty = global.spec(db).infer(db);
-            if ty.is_never()
-                || crate::hir_ty::head::checks::variables::same_storage_type(db, declared, ty)
-            {
+            if ty.is_never() || global_connects(db, var, *global) {
                 return Ok(());
             }
             Err(ProgElementRefusal::TypeMismatch {
@@ -1113,6 +1168,20 @@ fn check_connected<'db>(
             })
         }
     }
+}
+
+/// Whether a connection may join `var` and the VAR_GLOBAL `global`: they
+/// hold one type.
+pub fn global_connects<'db>(
+    db: &'db dyn WorkspaceDataBase,
+    var: VariableDecl<'db>,
+    global: VariableDecl<'db>,
+) -> bool {
+    crate::hir_ty::head::checks::variables::same_storage_type(
+        db,
+        var.spec(db).infer(db),
+        global.spec(db).infer(db),
+    )
 }
 
 /// An address a connection names, or why it names none (E1417).
@@ -1143,6 +1212,7 @@ fn check_source<'db>(
     var: VariableDecl<'db>,
     source: &crate::hir_def::config::DataSource<'db>,
     path: PathExpr<'db>,
+    names: &mut FxHashMap<PathExpr<'db>, VariableDecl<'db>>,
 ) -> Result<ConnectionEnd<'db>, IdeDiagnostic> {
     use crate::hir_def::config::DataSource;
     let refused = |why| {
@@ -1152,7 +1222,7 @@ fn check_source<'db>(
     let end = match source {
         DataSource::Constant(expr) => ConnectionEnd::Constant(*expr),
         DataSource::Path(global) => {
-            ConnectionEnd::Global(connected_global(db, *global).map_err(refused)?)
+            ConnectionEnd::Global(connected_global(db, *global, names).map_err(refused)?)
         }
         DataSource::Direct(dv) => ConnectionEnd::Address(connected_address(db, *dv, path)?),
     };
@@ -1166,6 +1236,7 @@ fn check_sink<'db>(
     var: VariableDecl<'db>,
     sink: &crate::hir_def::config::DataSink<'db>,
     path: PathExpr<'db>,
+    names: &mut FxHashMap<PathExpr<'db>, VariableDecl<'db>>,
 ) -> Result<ConnectionEnd<'db>, IdeDiagnostic> {
     use crate::check::errors::e04_init::InitError;
     use crate::check::errors::e14_config::InputWriteRoute;
@@ -1175,7 +1246,7 @@ fn check_sink<'db>(
     let refused = |why| ConfigError::ProgElementRefused { expr: path, why }.to_diagnostic(db, file);
     let (end, address) = match sink {
         DataSink::Path(global) => {
-            let global = connected_global(db, *global).map_err(refused)?;
+            let global = connected_global(db, *global, names).map_err(refused)?;
             if global.qualifier(db).contains(crate::Qualifier::CONSTANT) {
                 return Err(InitError::AssignToConstant {
                     access: crate::CallSite::from_scoped(db, &path),
