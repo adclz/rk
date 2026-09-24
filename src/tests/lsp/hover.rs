@@ -13,8 +13,8 @@ use ide_proto::walk::WalkHir;
 use insta::assert_snapshot;
 use rstest::rstest;
 
-use crate::tests::utils::add_sources;
 use crate::tests::utils::with_db;
+use crate::tests::utils::{add_source, add_sources};
 
 /// Walk the HIR and collect hover text using the provided extraction closure.
 fn collect_hovers(
@@ -22,8 +22,8 @@ fn collect_hovers(
     source: &str,
     extract: impl Fn(&RootDatabase, &HirNode) -> Option<String>,
 ) -> String {
-    add_sources(db, &[source]);
-    let sema = semantic_index(db, *db.get_files().iter().last().unwrap());
+    let file = add_source(db, source);
+    let sema = semantic_index(db, file);
 
     let mut nodes = vec![];
     let _ = sema.walk_hir(db, &mut |node| {
@@ -477,8 +477,8 @@ FUNCTION_BLOCK fb1
 END_FUNCTION_BLOCK
 "#;
 
-    add_sources(&mut with_db, &[source]);
-    let sema = semantic_index(&with_db, *with_db.get_files().iter().last().unwrap());
+    let file = add_source(&mut with_db, source);
+    let sema = semantic_index(&with_db, file);
 
     let mut specs = vec![];
     let _ = sema.walk_hir(&with_db, &mut |node| {
@@ -538,8 +538,8 @@ END_VAR
 END_FUNCTION
 "#;
 
-    add_sources(&mut with_db, &[source]);
-    let sema = semantic_index(&with_db, *with_db.get_files().iter().last().unwrap());
+    let file = add_source(&mut with_db, source);
+    let sema = semantic_index(&with_db, file);
 
     // Find the PathExpr nodes for "System" (the namespace fragment in the body)
     let mut path_exprs = vec![];
@@ -626,8 +626,8 @@ CONFIGURATION MyCfg
 END_CONFIGURATION
 "#;
 
-    add_sources(&mut with_db, &[source]);
-    let sema = semantic_index(&with_db, *with_db.get_files().iter().last().unwrap());
+    let file = add_source(&mut with_db, source);
+    let sema = semantic_index(&with_db, file);
 
     let mut prog_configs = vec![];
     let _ = sema.walk_hir(&with_db, &mut |node| {
@@ -665,8 +665,8 @@ CONFIGURATION MyCfg
 END_CONFIGURATION
 "#;
 
-    add_sources(&mut with_db, &[source]);
-    let sema = semantic_index(&with_db, *with_db.get_files().iter().last().unwrap());
+    let file = add_source(&mut with_db, source);
+    let sema = semantic_index(&with_db, file);
 
     // Find Spec nodes — the prog_type spec should show PROGRAM hover
     let mut specs = vec![];
@@ -865,8 +865,7 @@ fn hover_range_same_file_highlights_declaration(mut with_db: RootDatabase) {
     // point at the declaration site (this is the intentional decl-site highlight).
     let source =
         "FUNCTION helper : INT\nEND_FUNCTION\n\nFUNCTION main : INT\n    helper();\nEND_FUNCTION\n";
-    add_sources(&mut with_db, &[source]);
-    let file = *with_db.get_files().iter().last().unwrap();
+    let file = add_source(&mut with_db, source);
 
     let usage = source.rfind("helper").unwrap();
     let node = ide_proto::walk::descendant_at(&with_db, file, usage).unwrap();
@@ -951,8 +950,7 @@ VAR
 END_VAR
 END_FUNCTION_BLOCK
 "#;
-    add_sources(&mut with_db, &[source]);
-    let file = *with_db.get_files().iter().last().unwrap();
+    let file = add_source(&mut with_db, source);
 
     let hovered: Vec<String> = ["20]", "SIZE]", "9]", "SIZE] OF"]
         .iter()
@@ -987,8 +985,7 @@ pub fn hover_in_a_program_configuration(
     #[case] shown: &str,
 ) {
     use crate::tests::lsp::{CONNECTED, connected_at};
-    add_sources(&mut with_db, &[CONNECTED]);
-    let file = *with_db.get_files().iter().last().unwrap();
+    let file = add_source(&mut with_db, CONNECTED);
 
     let offset = connected_at(at, true);
     let node = ide_proto::walk::descendant_at(&with_db, file, offset).expect("a node");
@@ -1017,8 +1014,7 @@ VAR_GLOBAL CONSTANT period : TIME := T#20ms; END_VAR
     END_RESOURCE
 END_CONFIGURATION
 "#;
-    add_sources(&mut with_db, &[source]);
-    let file = *with_db.get_files().iter().last().unwrap();
+    let file = add_source(&mut with_db, source);
 
     let offset = source.find(at).unwrap();
     let node = ide_proto::walk::descendant_at(&with_db, file, offset).expect("a node");
@@ -1046,8 +1042,7 @@ VAR_GLOBAL total AT %QW0 : UINT; high AT %QB1 : BYTE; END_VAR
     END_RESOURCE
 END_CONFIGURATION
 "#;
-    add_sources(&mut with_db, &[source]);
-    let file = *with_db.get_files().iter().last().unwrap();
+    let file = add_source(&mut with_db, source);
 
     let offset = source.find("%QB1;").unwrap() + 1;
     let node = ide_proto::walk::descendant_at(&with_db, file, offset).expect("a node");
@@ -1098,8 +1093,7 @@ END_VAR
     END_RESOURCE
 END_CONFIGURATION
 "#;
-    add_sources(&mut with_db, &[source]);
-    let file = *with_db.get_files().iter().last().unwrap();
+    let file = add_source(&mut with_db, source);
 
     let config = source.find("CONFIGURATION").unwrap();
     let offset = config + source[config..].find(at).unwrap() + into;

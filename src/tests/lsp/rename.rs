@@ -5,7 +5,7 @@ use ide_proto::{handlers::RenameHandler, walk::descendant_at};
 use insta::assert_snapshot;
 use rstest::rstest;
 
-use crate::tests::utils::{add_sources, with_db};
+use crate::tests::utils::{add_source, add_sources, with_db};
 
 /// Apply a WorkspaceEdit to the original sources and return the modified text.
 /// Sources are concatenated with `---` separators for multi-file snapshots.
@@ -55,8 +55,7 @@ END_VAR
 END_FUNCTION
 "#;
 
-    add_sources(&mut with_db, &[source]);
-    let file = *with_db.get_files().iter().last().unwrap();
+    let file = add_source(&mut with_db, source);
 
     let offset = source.find("MyFB").unwrap();
     let node = descendant_at(&with_db, file, offset).unwrap();
@@ -85,8 +84,7 @@ END_VAR
 END_FUNCTION
 "#;
 
-    add_sources(&mut with_db, &[source]);
-    let file = *with_db.get_files().iter().last().unwrap();
+    let file = add_source(&mut with_db, source);
 
     let offset = source.find("x : INT").unwrap();
     let node = descendant_at(&with_db, file, offset).unwrap();
@@ -114,8 +112,7 @@ END_VAR
 END_FUNCTION
 "#;
 
-    add_sources(&mut with_db, &[source]);
-    let file = *with_db.get_files().iter().last().unwrap();
+    let file = add_source(&mut with_db, source);
 
     let offset = source.find("x := 1").unwrap();
     let node = descendant_at(&with_db, file, offset).unwrap();
@@ -196,8 +193,7 @@ END_VAR
 END_FUNCTION
 "#;
 
-    add_sources(&mut with_db, &[source]);
-    let file = *with_db.get_files().iter().last().unwrap();
+    let file = add_source(&mut with_db, source);
 
     let offset = source.find("x : INT").unwrap();
     let node = descendant_at(&with_db, file, offset).unwrap();
@@ -275,8 +271,7 @@ FUNCTION_BLOCK fb
 END_FUNCTION_BLOCK
 "#;
 
-    add_sources(&mut with_db, &[source]);
-    let file = *with_db.get_files().iter().last().unwrap();
+    let file = add_source(&mut with_db, source);
 
     let offset = source.find("fuel: BOOL").unwrap();
     let node = descendant_at(&with_db, file, offset).unwrap();
@@ -327,8 +322,7 @@ FUNCTION_BLOCK fb
 END_FUNCTION_BLOCK
 "#;
 
-    add_sources(&mut with_db, &[source]);
-    let file = *with_db.get_files().iter().last().unwrap();
+    let file = add_source(&mut with_db, source);
 
     // Rename the `engine` field of Engine — referenced through nested access
     let offset = source.find("engine: SubEngine").unwrap();
@@ -380,8 +374,7 @@ END_VAR
     other();
 END_FUNCTION
 "#;
-    add_sources(&mut with_db, &[source]);
-    let file = *with_db.get_files().iter().last().unwrap();
+    let file = add_source(&mut with_db, source);
 
     let expected = r"
     FUNCTION_BLOCK Engine
@@ -435,8 +428,7 @@ FUNCTION caller : INT
     caller := LibFn() + Mine();
 END_FUNCTION
 "#;
-    add_sources(&mut with_db, &[source]);
-    let file = *with_db.get_files().iter().last().unwrap();
+    let file = add_source(&mut with_db, source);
     let offset = source.find(needle).expect("the name");
     let node = ide_proto::walk::descendant_at(&with_db, file, offset).expect("a node");
 
@@ -466,8 +458,7 @@ fn rename_in_a_program_configuration(
     #[case] expected: &[&str],
 ) {
     use crate::tests::lsp::{CONNECTED, connected_at};
-    add_sources(&mut with_db, &[CONNECTED]);
-    let file = *with_db.get_files().iter().last().unwrap();
+    let file = add_source(&mut with_db, CONNECTED);
 
     let offset = connected_at(at, in_config);
     let node = descendant_at(&with_db, file, offset).unwrap();

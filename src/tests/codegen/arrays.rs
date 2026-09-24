@@ -17,18 +17,7 @@ fn test_array_write_and_read(mut with_db: db::RootDatabase) {
         END_FUNCTION
     "#;
 
-    let wasm_bytes = compile_to_wasm(&mut with_db, source);
-
-    let engine = crate::tests::codegen::test_engine();
-    let module = wasmtime::Module::new(&engine, &wasm_bytes).unwrap();
-    let mut store = wasmtime::Store::new(&engine, ());
-    let instance = super::instantiate_with_memory(&mut store, &module);
-
-    let test_array = instance
-        .get_typed_func::<(), i32>(&mut store, "test_array")
-        .expect("Failed to get function");
-
-    let result = test_array.call(&mut store, ()).unwrap();
+    let result = super::run::<(), i32>(&mut with_db, source, "test_array", ());
     assert_eq!(result, 20, "Should read value 20 from arr[1]");
 }
 
@@ -56,18 +45,7 @@ fn test_array_sum(mut with_db: db::RootDatabase) {
         END_FUNCTION
     "#;
 
-    let wasm_bytes = compile_to_wasm(&mut with_db, source);
-
-    let engine = crate::tests::codegen::test_engine();
-    let module = wasmtime::Module::new(&engine, &wasm_bytes).unwrap();
-    let mut store = wasmtime::Store::new(&engine, ());
-    let instance = super::instantiate_with_memory(&mut store, &module);
-
-    let sum_array = instance
-        .get_typed_func::<(), i32>(&mut store, "sum_array")
-        .expect("Failed to get function");
-
-    let result = sum_array.call(&mut store, ()).unwrap();
+    let result = super::run::<(), i32>(&mut with_db, source, "sum_array", ());
     assert_eq!(result, 15, "Sum of 1+2+3+4+5 should be 15");
 }
 
@@ -87,18 +65,7 @@ fn test_2d_array_access(mut with_db: db::RootDatabase) {
         END_FUNCTION
     "#;
 
-    let wasm_bytes = compile_to_wasm(&mut with_db, source);
-
-    let engine = crate::tests::codegen::test_engine();
-    let module = wasmtime::Module::new(&engine, &wasm_bytes).unwrap();
-    let mut store = wasmtime::Store::new(&engine, ());
-    let instance = super::instantiate_with_memory(&mut store, &module);
-
-    let test_2d = instance
-        .get_typed_func::<(), i32>(&mut store, "test_2d")
-        .expect("Failed to get function");
-
-    let result = test_2d.call(&mut store, ()).unwrap();
+    let result = super::run::<(), i32>(&mut with_db, source, "test_2d", ());
     assert_eq!(result, 4, "matrix[1,1] should be 4");
 }
 
@@ -117,18 +84,7 @@ fn test_array_with_non_zero_base(mut with_db: db::RootDatabase) {
         END_FUNCTION
     "#;
 
-    let wasm_bytes = compile_to_wasm(&mut with_db, source);
-
-    let engine = crate::tests::codegen::test_engine();
-    let module = wasmtime::Module::new(&engine, &wasm_bytes).unwrap();
-    let mut store = wasmtime::Store::new(&engine, ());
-    let instance = super::instantiate_with_memory(&mut store, &module);
-
-    let test_offset = instance
-        .get_typed_func::<(), i32>(&mut store, "test_offset")
-        .expect("Failed to get function");
-
-    let result = test_offset.call(&mut store, ()).unwrap();
+    let result = super::run::<(), i32>(&mut with_db, source, "test_offset", ());
     assert_eq!(result, 200, "arr[11] should be 200");
 }
 
@@ -146,15 +102,7 @@ fn test_array_of_real(mut with_db: db::RootDatabase) {
         END_FUNCTION
     "#;
 
-    let wasm_bytes = compile_to_wasm(&mut with_db, source);
-    let engine = crate::tests::codegen::test_engine();
-    let module = wasmtime::Module::new(&engine, &wasm_bytes).unwrap();
-    let mut store = wasmtime::Store::new(&engine, ());
-    let instance = super::instantiate_with_memory(&mut store, &module);
-    let func = instance
-        .get_typed_func::<(), f32>(&mut store, "test_real_arr")
-        .unwrap();
-    let result = func.call(&mut store, ()).unwrap();
+    let result = super::run::<(), f32>(&mut with_db, source, "test_real_arr", ());
     assert!(
         (result - 7.5).abs() < 0.001,
         "Sum should be 7.5, got {}",
@@ -184,15 +132,7 @@ fn test_array_of_struct(mut with_db: db::RootDatabase) {
         END_FUNCTION
     "#;
 
-    let wasm_bytes = compile_to_wasm(&mut with_db, source);
-    let engine = crate::tests::codegen::test_engine();
-    let module = wasmtime::Module::new(&engine, &wasm_bytes).unwrap();
-    let mut store = wasmtime::Store::new(&engine, ());
-    let instance = super::instantiate_with_memory(&mut store, &module);
-    let func = instance
-        .get_typed_func::<(), i32>(&mut store, "test_struct_arr")
-        .unwrap();
-    let result = func.call(&mut store, ()).unwrap();
+    let result = super::run::<(), i32>(&mut with_db, source, "test_struct_arr", ());
     assert_eq!(result, 50, "pts[0].x + pts[1].y = 10 + 40 = 50");
 }
 
@@ -217,15 +157,7 @@ fn test_array_passed_to_function(mut with_db: db::RootDatabase) {
         END_FUNCTION
     "#;
 
-    let wasm_bytes = compile_to_wasm(&mut with_db, source);
-    let engine = crate::tests::codegen::test_engine();
-    let module = wasmtime::Module::new(&engine, &wasm_bytes).unwrap();
-    let mut store = wasmtime::Store::new(&engine, ());
-    let instance = super::instantiate_with_memory(&mut store, &module);
-    let func = instance
-        .get_typed_func::<(), i32>(&mut store, "test_arr_call")
-        .unwrap();
-    let result = func.call(&mut store, ()).unwrap();
+    let result = super::run::<(), i32>(&mut with_db, source, "test_arr_call", ());
     assert_eq!(result, 300, "arr[0] + arr[1] = 100 + 200 = 300");
 }
 
@@ -249,15 +181,7 @@ fn test_array_in_for_loop_with_computation(mut with_db: db::RootDatabase) {
         END_FUNCTION
     "#;
 
-    let wasm_bytes = compile_to_wasm(&mut with_db, source);
-    let engine = crate::tests::codegen::test_engine();
-    let module = wasmtime::Module::new(&engine, &wasm_bytes).unwrap();
-    let mut store = wasmtime::Store::new(&engine, ());
-    let instance = super::instantiate_with_memory(&mut store, &module);
-    let func = instance
-        .get_typed_func::<(), i32>(&mut store, "test_arr_compute")
-        .unwrap();
-    let result = func.call(&mut store, ()).unwrap();
+    let result = super::run::<(), i32>(&mut with_db, source, "test_arr_compute", ());
     // Sum of squares 0..9 = 0+1+4+9+16+25+36+49+64+81 = 285
     assert_eq!(result, 285, "Sum of squares 0..9 should be 285");
 }
@@ -279,8 +203,7 @@ fn negative_lower_bound_array_addresses_correctly(mut with_db: db::RootDatabase)
             test := arr[-2] + arr[2] + arr[-1] + 100;
         END_FUNCTION
     "#;
-    let wasm = compile_to_wasm(&mut with_db, source);
-    let result: i32 = super::execute_wasm(&wasm, "test", ());
+    let result: i32 = super::run(&mut with_db, source, "test", ());
     assert_eq!(result, 90, "-20 + 20 + (-10) + 100");
 }
 
@@ -297,8 +220,7 @@ fn typed_literal_array_bounds(mut with_db: db::RootDatabase) {
             test := arr[1] + arr[3];
         END_FUNCTION
     "#;
-    let wasm = compile_to_wasm(&mut with_db, source);
-    let result: i32 = super::execute_wasm(&wasm, "test", ());
+    let result: i32 = super::run(&mut with_db, source, "test", ());
     assert_eq!(result, 16, "typed-literal bounds address correctly");
 }
 
@@ -324,8 +246,7 @@ fn array_subscript_containing_a_call(mut with_db: db::RootDatabase) {
             run := a[idx()];
         END_FUNCTION
     "#;
-    let wasm = compile_to_wasm(&mut with_db, source);
-    let result: i32 = super::execute_wasm(&wasm, "run", ());
+    let result: i32 = super::run(&mut with_db, source, "run", ());
     assert_eq!(result, 7, "the subscript's call resolves on both load and store");
 }
 
@@ -419,8 +340,7 @@ fn boundary_subscripts_do_not_fault(mut with_db: db::RootDatabase) {
             run := a[lo] * 100 + a[hi];
         END_FUNCTION
     "#;
-    let wasm = compile_to_wasm(&mut with_db, source);
-    let result: i32 = super::execute_wasm(&wasm, "run", ());
+    let result: i32 = super::run(&mut with_db, source, "run", ());
     assert_eq!(result, 1032, "-2 and 2 are both legal on ARRAY[-2..2]");
 }
 
@@ -476,8 +396,7 @@ fn constant_bounded_array_runs(mut with_db: db::RootDatabase) {
             test := s;
         END_FUNCTION
     "#;
-    let wasm = compile_to_wasm(&mut with_db, source);
-    let r: i32 = super::execute_wasm(&wasm, "test", ());
+    let r: i32 = super::run(&mut with_db, source, "test", ());
     assert_eq!(r, 60, "four elements, 0 + 10 + 20 + 30");
 }
 
@@ -545,8 +464,7 @@ fn comma_and_chained_subscripts_address_the_same_cell(mut with_db: db::RootDatab
             run := m[2][3] * 100 + m[2, 3];
         END_FUNCTION
     "#;
-    let wasm = compile_to_wasm(&mut with_db, source);
-    let result: i32 = super::execute_wasm(&wasm, "run", ());
+    let result: i32 = super::run(&mut with_db, source, "run", ());
     assert_eq!(result, 4242, "one write, both spellings read the same cell");
 }
 
@@ -597,7 +515,6 @@ fn a_chain_after_a_comma_group_consumes_the_next_dimension(mut with_db: db::Root
             run := c[1][1][1] * 10 + c[1, 1, 1];
         END_FUNCTION
     "#;
-    let wasm = compile_to_wasm(&mut with_db, source);
-    let result: i32 = super::execute_wasm(&wasm, "run", ());
+    let result: i32 = super::run(&mut with_db, source, "run", ());
     assert_eq!(result, 77, "all three spellings hit the same corner cell");
 }

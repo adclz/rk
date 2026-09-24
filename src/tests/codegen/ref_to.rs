@@ -18,18 +18,8 @@ fn test_null_ref(mut with_db: db::RootDatabase) {
     let wasm_bytes = compile_to_wasm(&mut with_db, source);
     validate_wasm(&wasm_bytes).expect("WASM validation failed");
 
-    let engine = crate::tests::codegen::test_engine();
-    let module = wasmtime::Module::new(&engine, &wasm_bytes).unwrap();
-    let mut store = wasmtime::Store::new(&engine, ());
-
-    let instance = super::instantiate_with_memory(&mut store, &module);
-
     // Call function
-    let func = instance
-        .get_typed_func::<(), i32>(&mut store, "test_null")
-        .unwrap();
-
-    let result = func.call(&mut store, ()).unwrap();
+    let result = super::execute_wasm::<(), i32>(&wasm_bytes, "test_null", ());
     assert_eq!(result, 0, "NULL should be represented as 0");
 }
 
@@ -140,17 +130,7 @@ fn test_ref_to_local_read(mut with_db: db::RootDatabase) {
     let wasm_bytes = compile_to_wasm(&mut with_db, source);
     validate_wasm(&wasm_bytes).expect("WASM validation failed");
 
-    let engine = crate::tests::codegen::test_engine();
-    let module = wasmtime::Module::new(&engine, &wasm_bytes).unwrap();
-    let mut store = wasmtime::Store::new(&engine, ());
-
-    let instance = super::instantiate_with_memory(&mut store, &module);
-
-    let func = instance
-        .get_typed_func::<(), i32>(&mut store, "test_ref")
-        .unwrap();
-
-    let result = func.call(&mut store, ()).unwrap();
+    let result = super::execute_wasm::<(), i32>(&wasm_bytes, "test_ref", ());
     assert_eq!(result, 42, "Should read value through pointer");
 }
 
@@ -171,17 +151,7 @@ fn test_ref_to_local_write(mut with_db: db::RootDatabase) {
     let wasm_bytes = compile_to_wasm(&mut with_db, source);
     validate_wasm(&wasm_bytes).expect("WASM validation failed");
 
-    let engine = crate::tests::codegen::test_engine();
-    let module = wasmtime::Module::new(&engine, &wasm_bytes).unwrap();
-    let mut store = wasmtime::Store::new(&engine, ());
-
-    let instance = super::instantiate_with_memory(&mut store, &module);
-
-    let func = instance
-        .get_typed_func::<(), i32>(&mut store, "test_ref_assign")
-        .unwrap();
-
-    let result = func.call(&mut store, ()).unwrap();
+    let result = super::execute_wasm::<(), i32>(&wasm_bytes, "test_ref_assign", ());
     assert_eq!(result, 99, "Should modify x through pointer");
 }
 
@@ -204,17 +174,7 @@ fn test_multiple_deref(mut with_db: db::RootDatabase) {
     let wasm_bytes = compile_to_wasm(&mut with_db, source);
     validate_wasm(&wasm_bytes).expect("WASM validation failed");
 
-    let engine = crate::tests::codegen::test_engine();
-    let module = wasmtime::Module::new(&engine, &wasm_bytes).unwrap();
-    let mut store = wasmtime::Store::new(&engine, ());
-
-    let instance = super::instantiate_with_memory(&mut store, &module);
-
-    let func = instance
-        .get_typed_func::<(), i32>(&mut store, "test_double_deref")
-        .unwrap();
-
-    let result = func.call(&mut store, ()).unwrap();
+    let result = super::execute_wasm::<(), i32>(&wasm_bytes, "test_double_deref", ());
     assert_eq!(result, 5, "Should dereference twice to get original value");
 }
 
@@ -293,8 +253,7 @@ fn test_deref_struct_field_round_trips(mut with_db: db::RootDatabase) {
             test := q^.a + s.b;
         END_FUNCTION
     "#;
-    let wasm = super::compile_to_wasm(&mut with_db, source);
-    let result: i32 = super::execute_wasm(&wasm, "test", ());
+    let result: i32 = super::run(&mut with_db, source, "test", ());
     assert_eq!(result, 42, "writes through q^ must land in s's own fields");
 }
 
@@ -317,8 +276,7 @@ fn test_deref_struct_field_addresses_the_right_slot(mut with_db: db::RootDatabas
             test := s.a * 100 + s.b * 10 + s.c;
         END_FUNCTION
     "#;
-    let wasm = super::compile_to_wasm(&mut with_db, source);
-    let result: i32 = super::execute_wasm(&wasm, "test", ());
+    let result: i32 = super::run(&mut with_db, source, "test", ());
     assert_eq!(result, 173, "only b changes: a=1, b=7, c=3");
 }
 
@@ -335,8 +293,7 @@ fn test_deref_array_element_round_trips(mut with_db: db::RootDatabase) {
             test := a[1] + r^[2];
         END_FUNCTION
     "#;
-    let wasm = super::compile_to_wasm(&mut with_db, source);
-    let result: i32 = super::execute_wasm(&wasm, "test", ());
+    let result: i32 = super::run(&mut with_db, source, "test", ());
     assert_eq!(result, 42, "element writes through r^ must land at the right stride");
 }
 
@@ -359,8 +316,7 @@ fn test_deref_fb_output_reads_through_the_reference(mut with_db: db::RootDatabas
             test := f^.total;
         END_FUNCTION
     "#;
-    let wasm = super::compile_to_wasm(&mut with_db, source);
-    let result: i32 = super::execute_wasm(&wasm, "test", ());
+    let result: i32 = super::run(&mut with_db, source, "test", ());
     assert_eq!(result, 42, "f^ addresses c's own instance state");
 }
 
@@ -380,8 +336,7 @@ fn test_deref_self_referential_struct(mut with_db: db::RootDatabase) {
             test := head.value;
         END_FUNCTION
     "#;
-    let wasm = super::compile_to_wasm(&mut with_db, source);
-    let result: i32 = super::execute_wasm(&wasm, "test", ());
+    let result: i32 = super::run(&mut with_db, source, "test", ());
     assert_eq!(result, 42);
 }
 
@@ -415,8 +370,7 @@ fn test_deref_struct_field_through_parameter_reference(mut with_db: db::RootData
             test := got * 100 + s.a;
         END_FUNCTION
     "#;
-    let wasm = super::compile_to_wasm(&mut with_db, source);
-    let result: i32 = super::execute_wasm(&wasm, "test", ());
+    let result: i32 = super::run(&mut with_db, source, "test", ());
     assert_eq!(
         result, 511,
         "callee read b=5 through the parameter, and its write to a reached the CALLER's s (11)"
@@ -446,8 +400,7 @@ fn test_deref_array_element_through_parameter_reference(mut with_db: db::RootDat
             test := a[2] + got;
         END_FUNCTION
     "#;
-    let wasm = super::compile_to_wasm(&mut with_db, source);
-    let result: i32 = super::execute_wasm(&wasm, "test", ());
+    let result: i32 = super::run(&mut with_db, source, "test", ());
     assert_eq!(
         result, 42,
         "the element write reached the CALLER's a[2] (40), and a[0] read back as 2"
@@ -485,8 +438,7 @@ fn test_deref_struct_write_is_visible_to_the_caller(mut with_db: db::RootDatabas
             test := s.a * 10 + s.b;
         END_FUNCTION
     "#;
-    let wasm = super::compile_to_wasm(&mut with_db, source);
-    let result: i32 = super::execute_wasm(&wasm, "test", ());
+    let result: i32 = super::run(&mut with_db, source, "test", ());
     assert_eq!(result, 72, "s.a became 7 in the caller's own storage; s.b untouched");
 }
 
@@ -532,8 +484,7 @@ fn test_method_local_initializers_run(mut with_db: db::RootDatabase) {
             test := h.get();
         END_FUNCTION
     "#;
-    let wasm = super::compile_to_wasm(&mut with_db, source);
-    let result: i32 = super::execute_wasm(&wasm, "test", ());
+    let result: i32 = super::run(&mut with_db, source, "test", ());
     assert_eq!(result, 42);
 }
 
@@ -552,8 +503,7 @@ fn test_class_method_local_initializers_run(mut with_db: db::RootDatabase) {
             test := h.get();
         END_FUNCTION
     "#;
-    let wasm = super::compile_to_wasm(&mut with_db, source);
-    let result: i32 = super::execute_wasm(&wasm, "test", ());
+    let result: i32 = super::run(&mut with_db, source, "test", ());
     assert_eq!(result, 42);
 }
 
@@ -577,8 +527,7 @@ fn test_method_local_initializers_run_every_call(mut with_db: db::RootDatabase) 
             test := first * 100 + second;
         END_FUNCTION
     "#;
-    let wasm = super::compile_to_wasm(&mut with_db, source);
-    let result: i32 = super::execute_wasm(&wasm, "test", ());
+    let result: i32 = super::run(&mut with_db, source, "test", ());
     assert_eq!(result, 1111, "both calls start from 10, so both return 11");
 }
 

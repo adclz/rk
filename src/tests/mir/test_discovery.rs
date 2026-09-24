@@ -172,8 +172,6 @@ END_FUNCTION
 fn manifest_roundtrip_msgpack(mut with_db: RootDatabase) {
     // Verify the manifest can be serialized and deserialized via MessagePack
     use crate::tests::utils::add_sources;
-    use auto_lsp::default::db::BaseDatabase;
-    use hir::hir_def::semantic_index::semantic_index;
 
     let source = r#"
 {test}
@@ -183,9 +181,7 @@ VAR x : INT; END_VAR
 END_FUNCTION
     "#;
     add_sources(&mut with_db, &[source]);
-    let files: Vec<_> = with_db.get_files().iter().map(|e| *e.value()).collect();
-    let sem_indices: Vec<_> = files.iter().map(|f| semantic_index(&with_db, *f)).collect();
-    let module = mir::lower::lower_module::lower_modules(&with_db, &sem_indices).unwrap();
+    let module = crate::tests::utils::lower_workspace(&with_db);
 
     let bytes = module.test_manifest.to_msgpack();
     let decoded = mir::test_manifest::TestManifest::from_msgpack(&bytes).unwrap();

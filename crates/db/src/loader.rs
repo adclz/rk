@@ -10,6 +10,7 @@ use auto_lsp::{
 use rayon::prelude::*;
 
 use crate::RootDatabase;
+use crate::WorkspaceDataBase;
 use crate::sysroot::LibraryOrigin;
 use crate::workspace::Workspace;
 
@@ -167,6 +168,46 @@ fn read_and_parse(path: &Path, parsers: &'static auto_lsp::core::parsers::Parser
 
 // --- Loading ---
 
+/// Opens `workspace` in `db`: the configuration, the library that
+/// configuration resolves to, and then the workspace's own `.st` files.
+/// Returns one result per file found, as [`load_workspace`] does.
+///
+/// The ORDER is the contract, and the reason this is one function instead of
+/// three calls each caller writes out. The configuration decides which
+/// library to read, and the library is read before the workspace so that a
+/// workspace CONTAINING it loads nothing twice. The CLI and the language
+/// server each wrote the sequence by hand, and nothing held them together:
+/// the server is handed `RK_STDLIB_PATH` by the editor extension, which took
+/// a different branch of [`resolve_library_path`] than the CLI's probe, and
+/// opening the rk checkout reported all 801 of its POUs as duplicates of
+/// themselves while `rk check` on the same folder was clean.
+pub fn open_workspace(
+    db: &mut RootDatabase,
+    workspace: Option<&Path>,
+    encoding: auto_lsp::lsp_types::PositionEncodingKind,
+    file_errors: &mut Vec<ide_diagnostic::IdeDiagnostic>,
+    notices: &mut Vec<crate::workspace::ConfigurationNotice>,
+) -> Vec<Result<File, String>> {
+    let workspace_uri = workspace
+        .and_then(|path| std::fs::canonicalize(path).ok())
+        .and_then(|path| Url::from_file_path(path).ok());
+    Workspace::init_or_update(db, workspace_uri, encoding, file_errors, notices);
+    load_libraries(db);
+    match workspace {
+        Some(path) => load_workspace(db, path),
+        None => Vec::new(),
+    }
+}
+
+/// Whether the library already holds this path, compared the way both
+/// loaders build their keys: canonical, then as a URL.
+fn is_library_file(db: &RootDatabase, path: &Path) -> bool {
+    std::fs::canonicalize(path)
+        .ok()
+        .and_then(|path| Url::from_file_path(path).ok())
+        .is_some_and(|url| db.get_library_files().contains_key(&url))
+}
+
 /// Loads a single workspace file into the database (LOW durability).
 pub fn load_file(db: &mut RootDatabase, path: &Path) -> Result<File, Box<dyn std::error::Error>> {
     let content = std::fs::read_to_string(path)?;
@@ -188,7 +229,15 @@ pub fn load_file(db: &mut RootDatabase, path: &Path) -> Result<File, Box<dyn std
 /// Discovers and loads all `.st` files under `path`: I/O and parsing in
 /// parallel, Salsa inputs created sequentially.
 pub fn load_workspace(db: &mut RootDatabase, path: &Path) -> Vec<Result<File, String>> {
-    let paths = find_st_files(path);
+    // A workspace folder that CONTAINS the library holds its files twice:
+    // once as its own, once as the library's. Every POU then collides with
+    // itself and the whole library reads as duplicated (E0102), which is what
+    // opening the rk checkout in an editor used to report. The library is
+    // loaded first, so the ones it claimed are not this workspace's.
+    let paths: Vec<PathBuf> = find_st_files(path)
+        .into_iter()
+        .filter(|path| !is_library_file(db, path))
+        .collect();
     let parsers = &*ast::RK_PARSER;
 
     let parsed: Vec<_> = paths

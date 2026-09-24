@@ -6,13 +6,11 @@
 //! workspace may have (E1402) before the user wrote a line, and its programs
 //! were allocated memory and SCHEDULED into their scan.
 
-use auto_lsp::default::db::BaseDatabase;
-use db::{RootDatabase, WorkspaceDataBase};
-use hir::hir_def::semantic_index::semantic_index;
+use db::RootDatabase;
 use rstest::rstest;
 
 use crate::tests::utils::{
-    add_library_sources, add_sources, test_diagnostics_with_library, with_db,
+    add_library_sources, add_sources, lower_workspace, test_diagnostics_with_library, with_db,
 };
 
 /// A library with a complete PLC of its own: a program, a resource, a task.
@@ -75,18 +73,7 @@ fn a_librarys_programs_are_not_scheduled(mut with_db: RootDatabase) {
 
     // Every file, in the order the CLI hands them over: the workspace's and
     // the library's together.
-    let files: Vec<_> = with_db
-        .get_files()
-        .iter()
-        .map(|e| *e.value())
-        .chain(with_db.get_library_files().iter().map(|e| *e.value()))
-        .collect();
-    let indices: Vec<_> = files
-        .iter()
-        .map(|file| semantic_index(&with_db, *file))
-        .collect();
-    let module =
-        mir::lower::lower_module::lower_modules(&with_db, &indices).expect("the module lowers");
+    let module = lower_workspace(&with_db);
 
     let schedule = module.schedule.as_ref().expect("a schedule");
     let scheduled: Vec<String> = schedule
@@ -203,14 +190,7 @@ END_FUNCTION
 fn lower_with_library(db: &mut RootDatabase, library: &str, workspace: &str) -> mir::MirModule {
     add_library_sources(db, &[library]);
     add_sources(db, &[workspace]);
-    let files: Vec<_> = db
-        .get_files()
-        .iter()
-        .map(|e| *e.value())
-        .chain(db.get_library_files().iter().map(|e| *e.value()))
-        .collect();
-    let indices: Vec<_> = files.iter().map(|file| semantic_index(db, *file)).collect();
-    mir::lower::lower_module::lower_modules(db, &indices).expect("the module lowers")
+    lower_workspace(db)
 }
 
 /// The function exports and the custom sections of a module.

@@ -552,8 +552,6 @@ END_FUNCTION
 /// applying it changed nothing and left the reader to write it out.
 #[rstest]
 fn the_explicit_cast_fix_writes_the_call(mut with_db: RootDatabase) {
-    use auto_lsp::default::db::BaseDatabase;
-
     let source = r#"
 FUNCTION f : INT
 VAR
@@ -563,8 +561,7 @@ END_VAR
     a := b;
 END_FUNCTION
 "#;
-    crate::tests::utils::add_sources(&mut with_db, &[source]);
-    let file = *with_db.get_files().iter().last().unwrap();
+    let file = crate::tests::utils::add_source(&mut with_db, source);
 
     let written: Vec<String> = hir::check::diagnostics_for_file(&with_db, file)
         .iter()

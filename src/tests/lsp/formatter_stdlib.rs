@@ -1,8 +1,7 @@
 use crate::tests::{
     lsp::formatter::fmt,
-    utils::{add_sources, with_db},
+    utils::{add_source, with_db},
 };
-use auto_lsp::default::db::BaseDatabase;
 use db::RootDatabase;
 use insta::assert_snapshot;
 use rstest::rstest;
@@ -47,13 +46,7 @@ FUNCTION_BLOCK CTUD
 END_FUNCTION_BLOCK
 "#;
 
-    add_sources(&mut with_db, &[source]);
-    let document = with_db
-        .get_files()
-        .iter()
-        .last()
-        .unwrap()
-        .document(&with_db);
+    let document = add_source(&mut with_db, source).document(&with_db);
 
     assert_snapshot!(fmt(document), @r"
     FUNCTION_BLOCK CTUD

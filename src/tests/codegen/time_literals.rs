@@ -131,8 +131,7 @@ fn test_execute_dt_extremes_widen_to_exact_ldt(mut with_db: db::RootDatabase) {
             END_IF;
         END_FUNCTION
     "#;
-    let wasm = compile_to_wasm(&mut with_db, source);
-    let result: i32 = super::execute_wasm(&wasm, "dt_widens", ());
+    let result: i32 = super::run(&mut with_db, source, "dt_widens", ());
     assert_eq!(result, 1, "both DT extremes must widen to the exact LDT instant");
 }
 
@@ -230,8 +229,7 @@ fn test_pre_epoch_date_widens_sign_extended(mut with_db: db::RootDatabase) {
             widen_pre := d;
         END_FUNCTION
     "#;
-    let wasm = compile_to_wasm(&mut with_db, source);
-    let result: i64 = super::execute_wasm(&wasm, "widen_pre", ());
+    let result: i64 = super::run(&mut with_db, source, "widen_pre", ());
     assert_eq!(result, -1);
 }
 
@@ -261,8 +259,7 @@ fn test_comparisons_are_signed_per_encoding(mut with_db: db::RootDatabase) {
             probe := r;
         END_FUNCTION
     "#;
-    let wasm = compile_to_wasm(&mut with_db, source);
-    let bits: i32 = super::execute_wasm(&wasm, "probe", ());
+    let bits: i32 = super::run(&mut with_db, source, "probe", ());
     assert_eq!(
         bits, 63,
         "every family must order its pre-epoch/negative value below the epoch/zero (bitmask: DATE=1 LDATE=2 DT=4 LDT=8 TIME=16 LTIME=32)"
@@ -279,8 +276,7 @@ fn test_time_addition_wraps_at_lane(mut with_db: db::RootDatabase) {
             wraps := a + b;
         END_FUNCTION
     "#;
-    let wasm = compile_to_wasm(&mut with_db, source);
-    let result: i32 = super::execute_wasm(&wasm, "wraps", ());
+    let result: i32 = super::run(&mut with_db, source, "wraps", ());
     assert_eq!(result, i32::MIN);
 }
 

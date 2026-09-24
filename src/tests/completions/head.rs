@@ -1,5 +1,4 @@
 use ast::generated::DataTypeDecl;
-use auto_lsp::default::db::BaseDatabase;
 use auto_lsp::default::db::tracked::get_ast;
 use db::RootDatabase;
 use hir::HirNodeInfo;
@@ -8,7 +7,7 @@ use ide_proto::handlers::{CompletionHandler, CompletionRequest};
 use ide_proto::walk::completion_descendant_at;
 use rstest::rstest;
 
-use crate::tests::utils::{add_sources, find_pou_with_name, with_db};
+use crate::tests::utils::{add_source, find_pou_with_name, with_db};
 
 /// Test completion WITHIN a variable type declaration (head scope)
 #[rstest]
@@ -26,13 +25,8 @@ FUNCTION test_fn
 END_FUNCTION
 "#;
 
-    add_sources(&mut with_db, &[source]);
-    let pou = find_pou_with_name(
-        &with_db,
-        *with_db.get_files().iter().last().unwrap(),
-        "test_fn",
-    )
-    .unwrap();
+    let file = add_source(&mut with_db, source);
+    let pou = find_pou_with_name(&with_db, file, "test_fn").unwrap();
 
     let offset = source.find("another_var").unwrap() + 1;
     let mut ctx = CompletionCtx::new(offset, QueryMode::Head);
@@ -51,8 +45,7 @@ END_FUNCTION
 pub fn type_decl_no_pou_completions(mut with_db: RootDatabase) {
     let source = "TYPE MyStruct :\nSTRUCT\n    x : INT;\nEND_STRUCT;\nEND_TYPE\n";
 
-    add_sources(&mut with_db, &[source]);
-    let file = *with_db.get_files().iter().last().unwrap();
+    let file = add_source(&mut with_db, source);
 
     // Cursor inside the TYPE body (before STRUCT keyword)
     let offset = source.find("STRUCT").unwrap() - 1;
@@ -112,8 +105,7 @@ pub fn type_decl_no_pou_completions(mut with_db: RootDatabase) {
 pub fn type_decl_empty_body_no_pou_completions(mut with_db: RootDatabase) {
     let source = "TYPE MyType :\n    t\nEND_TYPE\n";
 
-    add_sources(&mut with_db, &[source]);
-    let file = *with_db.get_files().iter().last().unwrap();
+    let file = add_source(&mut with_db, source);
 
     // Cursor on the `t` character — simulates user typing a type name
     let offset = source.find("    t").unwrap() + 5;
@@ -160,8 +152,7 @@ pub fn type_decl_empty_body_no_pou_completions(mut with_db: RootDatabase) {
 pub fn type_decl_completion_descendant_not_none(mut with_db: RootDatabase) {
     let source = "TYPE MyStruct :\nSTRUCT\n    x : INT;\nEND_STRUCT;\nEND_TYPE\n";
 
-    add_sources(&mut with_db, &[source]);
-    let file = *with_db.get_files().iter().last().unwrap();
+    let file = add_source(&mut with_db, source);
 
     // Check various positions inside the TYPE body
     let positions = [
@@ -187,8 +178,7 @@ pub fn type_decl_bare_shows_no_pou_snippets(mut with_db: RootDatabase) {
     // A TYPE with just an identifier — `t` is parsed as the spec target
     let source = "TYPE MyType :\n    t\nEND_TYPE\n";
 
-    add_sources(&mut with_db, &[source]);
-    let file = *with_db.get_files().iter().last().unwrap();
+    let file = add_source(&mut with_db, source);
 
     // Cursor right on the `t` identifier
     let offset = source.find("\n    t").unwrap() + 5;
@@ -239,8 +229,7 @@ pub fn type_decl_incomplete_no_pou_completions(mut with_db: RootDatabase) {
     // TYPE with colon but no spec yet — user is about to type
     let source = "TYPE MyType :\n\nEND_TYPE\n";
 
-    add_sources(&mut with_db, &[source]);
-    let file = *with_db.get_files().iter().last().unwrap();
+    let file = add_source(&mut with_db, source);
 
     // Cursor on the empty line between `:` and END_TYPE
     let offset = source.find("\n\nEND_TYPE").unwrap() + 1;
@@ -280,8 +269,7 @@ TYPE MyEnum : (
 END_TYPE
 "#;
 
-    add_sources(&mut with_db, &[source]);
-    let file = *with_db.get_files().iter().last().unwrap();
+    let file = add_source(&mut with_db, source);
 
     // Cursor between the enum values
     let offset = source.find("Val1").unwrap();
@@ -444,10 +432,7 @@ END_FUNCTION_BLOCK
 
 /// Completes at the `|` marker, which is stripped from the source.
 fn complete_at(db: &mut RootDatabase, marked: &str) -> Vec<String> {
-    let offset = marked.find('|').expect("a cursor marker");
-    let source = marked.replace('|', "");
-    add_sources(db, &[&source]);
-    let file = *db.get_files().iter().last().unwrap();
+    let (file, offset) = crate::tests::utils::add_marked_source(db, marked);
     ide_proto::handlers::completions::complete(db, file, offset, None)
         .into_iter()
         .map(|item| item.label)
@@ -730,10 +715,7 @@ pub fn a_pragma_closes_itself_only_once(
     #[case] marked: &str,
     #[case] expected: &str,
 ) {
-    let offset = marked.find('|').expect("a cursor marker");
-    let source = marked.replace('|', "");
-    add_sources(&mut with_db, &[&source]);
-    let file = *with_db.get_files().iter().last().unwrap();
+    let (file, offset) = crate::tests::utils::add_marked_source(&mut with_db, marked);
     let items = ide_proto::handlers::completions::complete(&with_db, file, offset, None);
     let test = items.iter().find(|i| i.label == "{test}").expect("{test}");
 
@@ -973,10 +955,7 @@ pub fn the_allow_pragma_offers_every_rule(mut with_db: RootDatabase) {
 FUNCTION f : INT
 END_FUNCTION
 "#;
-    let offset = marked.find('|').expect("a cursor marker");
-    let source = marked.replace('|', "");
-    add_sources(&mut with_db, &[&source]);
-    let file = *with_db.get_files().iter().last().unwrap();
+    let (file, offset) = crate::tests::utils::add_marked_source(&mut with_db, marked);
 
     let allow = ide_proto::handlers::completions::complete(&with_db, file, offset, None)
         .into_iter()

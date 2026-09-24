@@ -1,7 +1,7 @@
 {
     "private": true,
     "name": "server",
-    "displayName": "IEC 61131-3 Language Server",
+    "displayName": "rk language server",
     "version": "0.1.0",
     "author": "Adrien Clauzel",
     "license": "MIT"

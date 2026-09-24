@@ -5,6 +5,22 @@ use rstest::rstest;
 
 use super::with_db;
 
+/// Why a test failed, when the test itself reported it: a failed `ASSERT` or
+/// a `__RAISE` comes back through the result area with the program's message.
+/// A trap is a failure too, but one the test never got to report, and the
+/// runner says so; a test here that expects a message does not accept one.
+fn reported_failure(record: &debug_format::test_report::TestRecord) -> &str {
+    let reason = record
+        .reason
+        .as_deref()
+        .unwrap_or_else(|| panic!("expected a reported failure, got a pass: {record:?}"));
+    assert!(
+        !reason.starts_with("trapped"),
+        "expected a reported failure, got a trap: {reason}"
+    );
+    reason
+}
+
 #[rstest]
 fn test_e2e_runtime(mut with_db: db::RootDatabase) {
     let source = r#"
@@ -36,12 +52,7 @@ FUNCTION test_add
 END_FUNCTION
     "#;
 
-    let file = super::add_source(&mut with_db, source);
-    crate::tests::utils::assert_workspace_is_clean(&with_db);
-    let sem_idx = hir::hir_def::semantic_index::semantic_index(&with_db, file);
-    let mir_module =
-        mir::lower::lower_module::lower_module(&with_db, sem_idx).expect("MIR lowering failed");
-    let core_bytes = wasm_codegen::generate_wasm(&with_db, &mir_module).finish();
+    let core_bytes = super::compile_to_wasm_as_built(&mut with_db, source);
 
     // The manifest is embedded in the module as a custom section — no sidecar.
     let results = crate::tests::codegen::run_tests(&core_bytes, None).expect("run tests");
@@ -68,12 +79,7 @@ FUNCTION test_passes
 END_FUNCTION
     "#;
 
-    let file = super::add_source(&mut with_db, source);
-    crate::tests::utils::assert_workspace_is_clean(&with_db);
-    let sem_idx = hir::hir_def::semantic_index::semantic_index(&with_db, file);
-    let mir_module =
-        mir::lower::lower_module::lower_module(&with_db, sem_idx).expect("MIR lowering failed");
-    let core_bytes = wasm_codegen::generate_wasm(&with_db, &mir_module).finish();
+    let core_bytes = super::compile_to_wasm_as_built(&mut with_db, source);
 
     let results = crate::tests::codegen::run_tests(&core_bytes, None).expect("run tests");
     let failures = results.iter().filter(|r| !r.passed()).count();
@@ -99,22 +105,15 @@ FUNCTION test_fails_with_message
 END_FUNCTION
     "#;
 
-    let file = super::add_source(&mut with_db, source);
-    crate::tests::utils::assert_workspace_is_clean(&with_db);
-    let sem_idx = hir::hir_def::semantic_index::semantic_index(&with_db, file);
-    let mir_module =
-        mir::lower::lower_module::lower_module(&with_db, sem_idx).expect("MIR lowering failed");
-    let core_bytes = wasm_codegen::generate_wasm(&with_db, &mir_module).finish();
+    let core_bytes = super::compile_to_wasm_as_built(&mut with_db, source);
 
     let results = crate::tests::codegen::run_tests(&core_bytes, None).expect("run tests");
     assert_eq!(results.len(), 1);
-    match &results[0].outcome {
-        crate::tests::codegen::Outcome::Fail(msg) => assert!(
-            msg.contains("expected-failure-from-test-fixture"),
-            "the raised message is reported verbatim, got: {msg}"
-        ),
-        other => panic!("expected a reported failure, got {other:?}"),
-    }
+    let reason = reported_failure(&results[0]);
+    assert!(
+        reason.contains("expected-failure-from-test-fixture"),
+        "the raised message is reported verbatim, got: {reason}"
+    );
 }
 
 
@@ -149,12 +148,7 @@ FUNCTION test_that_fails
 END_FUNCTION
     "#;
 
-    let file = super::add_source(&mut with_db, source);
-    crate::tests::utils::assert_workspace_is_clean(&with_db);
-    let sem_idx = hir::hir_def::semantic_index::semantic_index(&with_db, file);
-    let mir_module =
-        mir::lower::lower_module::lower_module(&with_db, sem_idx).expect("MIR lowering failed");
-    let core = wasm_codegen::generate_wasm(&with_db, &mir_module).finish();
+    let core = super::compile_to_wasm_as_built(&mut with_db, source);
 
     let found = crate::tests::codegen::discover_tests(&core);
     assert_eq!(found.len(), 2, "both tests are in the core module's manifest");
@@ -164,23 +158,19 @@ END_FUNCTION
 
     let passed = results
         .iter()
-        .find(|r| r.entry.path.contains("test_that_passes"))
+        .find(|r| r.name.contains("test_that_passes"))
         .expect("the passing test ran");
-    assert_eq!(passed.outcome, crate::tests::codegen::Outcome::Pass);
+    assert!(passed.passed(), "{passed:?}");
 
     let failed = results
         .iter()
-        .find(|r| r.entry.path.contains("test_that_fails"))
+        .find(|r| r.name.contains("test_that_fails"))
         .expect("the failing test ran");
-    match &failed.outcome {
-        crate::tests::codegen::Outcome::Fail(msg) => {
-            assert!(
-                msg.contains("deliberate failure"),
-                "the program's own message survives: {msg}"
-            );
-        }
-        other => panic!("expected a reported failure, got {other:?}"),
-    }
+    let reason = reported_failure(failed);
+    assert!(
+        reason.contains("deliberate failure"),
+        "the program's own message survives: {reason}"
+    );
 
     // A filter selects a subset by path.
     let only = crate::tests::codegen::run_tests(&core, Some("passes")).expect("filtered run");
@@ -210,12 +200,7 @@ FUNCTION send : INT
 END_FUNCTION
     "#;
 
-    let file = super::add_source(&mut with_db, source);
-    crate::tests::utils::assert_workspace_is_clean(&with_db);
-    let sem_idx = hir::hir_def::semantic_index::semantic_index(&with_db, file);
-    let mir_module =
-        mir::lower::lower_module::lower_module(&with_db, sem_idx).expect("MIR lowering failed");
-    let wasm = wasm_codegen::generate_wasm(&with_db, &mir_module).finish();
+    let wasm = super::compile_to_wasm_as_built(&mut with_db, source);
 
     let captured: Arc<Mutex<Option<String>>> = Arc::new(Mutex::new(None));
     let sink = Arc::clone(&captured);
@@ -258,12 +243,7 @@ FUNCTION greet : STRING
 END_FUNCTION
     "#;
 
-    let file = super::add_source(&mut with_db, source);
-    crate::tests::utils::assert_workspace_is_clean(&with_db);
-    let sem_idx = hir::hir_def::semantic_index::semantic_index(&with_db, file);
-    let mir_module =
-        mir::lower::lower_module::lower_module(&with_db, sem_idx).expect("MIR lowering failed");
-    let wasm = wasm_codegen::generate_wasm(&with_db, &mir_module).finish();
+    let wasm = super::compile_to_wasm_as_built(&mut with_db, source);
 
     let engine = super::test_engine();
     let module = wasmtime::Module::new(&engine, &wasm).expect("valid module");

@@ -8,7 +8,7 @@ use hir::hir_ty::ty::Type;
 use insta::assert_snapshot;
 use rstest::rstest;
 
-use crate::tests::utils::{add_sources, test_diagnostics, with_db};
+use crate::tests::utils::{add_source, add_sources, test_diagnostics, with_db};
 
 /// A valid CONFIGURATION with a single bare TASK and PROGRAM.
 #[rstest]
@@ -1124,9 +1124,8 @@ CONFIGURATION MyCfg
     END_RESOURCE
 END_CONFIGURATION
 "#;
-    add_sources(&mut with_db, &[source]);
+    let file = add_source(&mut with_db, source);
 
-    let file = *with_db.get_files().iter().last().unwrap();
     let sema = semantic_index(&with_db, file);
     let config = sema.configs[0];
 
@@ -1159,9 +1158,8 @@ CONFIGURATION MyCfg
     END_RESOURCE
 END_CONFIGURATION
 "#;
-    add_sources(&mut with_db, &[source]);
+    let file = add_source(&mut with_db, source);
 
-    let file = *with_db.get_files().iter().last().unwrap();
     let sema = semantic_index(&with_db, file);
     let config = sema.configs[0];
 
@@ -1191,9 +1189,8 @@ CONFIGURATION MyCfg
     END_RESOURCE
 END_CONFIGURATION
 "#;
-    add_sources(&mut with_db, &[source]);
+    let file = add_source(&mut with_db, source);
 
-    let file = *with_db.get_files().iter().last().unwrap();
     let sema = semantic_index(&with_db, file);
     let config = sema.configs[0];
 
@@ -1222,9 +1219,8 @@ CONFIGURATION MyCfg
     END_RESOURCE
 END_CONFIGURATION
 "#;
-    add_sources(&mut with_db, &[source]);
+    let file = add_source(&mut with_db, source);
 
-    let file = *with_db.get_files().iter().last().unwrap();
     let sema = semantic_index(&with_db, file);
     let config = sema.configs[0];
 

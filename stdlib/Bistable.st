@@ -1,29 +1,27 @@
 /*
-# Standard Bistable Function Blocks
+Latches and a semaphore.
 
-IEC 61131-3 **Table 34** - Set/Reset latches.
-
-`SR` is set-dominant (set wins on simultaneous inputs).
-`RS` is reset-dominant (reset wins on simultaneous inputs).
+[Std.Bistable.SR] and [Std.Bistable.RS] differ only in which input wins
+when both are `TRUE`.
 */
 NAMESPACE Std.Bistable
 
-	/*
-    ## SR - Set-Dominant Bistable
+	/* A latch where set wins.
 
-    - `S1` = **TRUE** sets output `Q1` to TRUE
-    - `R` = **TRUE** resets output `Q1` to FALSE
-    - If both are TRUE, **set wins**
+	   `S1` sets `Q1` and `R` resets it. `Q1` keeps its value when both are
+	   `FALSE`, and is set when both are `TRUE`.
 
-    ```iecst
-    VAR
-        latch: SR;
-    END_VAR
-    
-    latch(start_btn, stop_btn);
-    motor := latch.Q1;
-    ```
-    */
+	   # Examples
+
+	   ```iecst
+	   VAR
+	       latch: SR;
+	   END_VAR
+
+	   latch(start_btn, stop_btn);
+	   motor := latch.Q1;
+	   ```
+	*/
 	FUNCTION_BLOCK SR
 		VAR_INPUT
 			S1, R: BOOL;
@@ -33,22 +31,22 @@ NAMESPACE Std.Bistable
 		END_VAR Q1 := S1 OR ((NOT R) AND Q1);
 	END_FUNCTION_BLOCK
 
-	/*
-    ## RS - Reset-Dominant Bistable
+	/* A latch where reset wins.
 
-    - `S` = **TRUE** sets output `Q1` to TRUE
-    - `R1` = **TRUE** resets output `Q1` to FALSE
-    - If both are TRUE, **reset wins**
+	   `S` sets `Q1` and `R1` resets it. `Q1` keeps its value when both are
+	   `FALSE`, and is reset when both are `TRUE`.
 
-    ```iecst
-    VAR
-        latch: RS;
-    END_VAR
-    
-    latch(start_btn, emergency_stop);
-    motor := latch.Q1;
-    ```
-    */
+	   # Examples
+
+	   ```iecst
+	   VAR
+	       latch: RS;
+	   END_VAR
+
+	   latch(start_btn, emergency_stop);
+	   motor := latch.Q1;
+	   ```
+	*/
 	FUNCTION_BLOCK RS
 		VAR_INPUT
 			S, R1: BOOL;
@@ -59,28 +57,26 @@ NAMESPACE Std.Bistable
 	END_FUNCTION_BLOCK
 
 
-	/*
-    ## SEMA - Semaphore
+	/* A semaphore over a shared resource.
 
-    A claim/release semaphore over a shared resource.
+	   `CLAIM` takes it and `RELEASE` frees it. `BUSY` is `TRUE` when the call
+	   claimed a semaphore that was already taken, so a caller owns the resource
+	   when it claims and `BUSY` is `FALSE`. A claim wins over a release made in
+	   the same call.
 
-    - `CLAIM` = **TRUE** takes the semaphore
-    - `RELEASE` = **TRUE** frees it
-    - `BUSY` reports whether it was already taken when this call CLAIMed,
-      and stays FALSE once released
-    - If both are TRUE, **claim wins**
+	   # Examples
 
-    ```iecst
-    VAR
-        sem: SEMA;
-    END_VAR
+	   ```iecst
+	   VAR
+	       sem: SEMA;
+	   END_VAR
 
-    sem(CLAIM := want_it, RELEASE := done_with_it);
-    IF NOT sem.BUSY THEN
-        // the resource is ours
-    END_IF;
-    ```
-    */
+	   sem(CLAIM := want_it, RELEASE := done_with_it);
+	   IF NOT sem.BUSY THEN
+	       // the resource is ours
+	   END_IF;
+	   ```
+	*/
 	FUNCTION_BLOCK SEMA
 		VAR_INPUT
 			CLAIM, RELEASE: BOOL;
@@ -103,7 +99,6 @@ NAMESPACE Std.Bistable
 
 	NAMESPACE Test
 		USING Std.Unit
-		USING Std.Bits
 
 		{test}
 		FUNCTION test_sr_set

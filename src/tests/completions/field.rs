@@ -1,4 +1,3 @@
-use auto_lsp::default::db::BaseDatabase;
 use db::RootDatabase;
 use ide_proto::{
     handlers::{CompletionHandler, CompletionRequest},
@@ -6,7 +5,7 @@ use ide_proto::{
 };
 use rstest::rstest;
 
-use crate::tests::utils::{add_sources, with_db};
+use crate::tests::utils::{add_source, with_db};
 
 #[rstest]
 pub fn struct_field_completion(mut with_db: RootDatabase) {
@@ -28,10 +27,9 @@ FUNCTION_BLOCK fb
 END_FUNCTION_BLOCK
 "#;
 
-    add_sources(&mut with_db, &[source]);
+    let file = add_source(&mut with_db, source);
     // Resolved the way the server resolves it: the flags decide whether the
     // cursor is ON a name or past it, onto a receiver.
-    let file = *with_db.get_files().iter().last().unwrap();
     // Right after the dot: a receiver, so its members are what is wanted.
     // The offset used to fall INSIDE `my_var`, where the answer is the scope.
     let offset = source.rfind("my_var.").expect("the probe") + "my_var.".len();
@@ -77,11 +75,10 @@ FUNCTION_BLOCK fb
 END_FUNCTION_BLOCK
 "#;
 
-    add_sources(&mut with_db, &[source]);
+    let file = add_source(&mut with_db, source);
     // Offset right after the trailing dot — no node contains this position,
     // so completion_descendant_at falls back to the closest preceding node.
     let offset = source.find("my_var.inner.").unwrap() + "my_var.inner.".len();
-    let file = *with_db.get_files().iter().last().unwrap();
     let (path_expr, node_key, is_last_before) =
         completion_descendant_at(&with_db, file, offset).unwrap();
     let req = CompletionRequest {
@@ -131,10 +128,9 @@ FUNCTION_BLOCK fb
 END_FUNCTION_BLOCK
 "#;
 
-    add_sources(&mut with_db, &[source]);
+    let file = add_source(&mut with_db, source);
     // Resolved the way the server resolves it: the flags decide whether the
     // cursor is ON a name or past it, onto a receiver.
-    let file = *with_db.get_files().iter().last().unwrap();
     // Right after the dot: a receiver, so its members are what is wanted.
     // The offset used to fall INSIDE `my_var`, where the answer is the scope.
     let offset = source.rfind("my_var.").expect("the probe") + "my_var.".len();
@@ -172,8 +168,8 @@ FUNCTION fn1
 END_FUNCTION
 "#;
 
-    add_sources(&mut with_db, &[source]);
-    let expr = descendant_at(&with_db, *with_db.get_files().iter().last().unwrap(), 112).unwrap();
+    let file = add_source(&mut with_db, source);
+    let expr = descendant_at(&with_db, file, 112).unwrap();
     let req = CompletionRequest {
         offset: 112,
         trigger_character: None,
@@ -206,8 +202,8 @@ FUNCTION_BLOCK fb1
 END_FUNCTION_BLOCK
 "#;
 
-    add_sources(&mut with_db, &[source]);
-    let expr = descendant_at(&with_db, *with_db.get_files().iter().last().unwrap(), 108).unwrap();
+    let file = add_source(&mut with_db, source);
+    let expr = descendant_at(&with_db, file, 108).unwrap();
     let req = CompletionRequest {
         offset: 108,
         trigger_character: None,
@@ -237,9 +233,8 @@ FUNCTION_BLOCK fb
 END_FUNCTION_BLOCK
 "#;
 
-    add_sources(&mut with_db, &[source]);
+    let file = add_source(&mut with_db, source);
     let offset = source.find("0.").unwrap() + "0.".len();
-    let file = *with_db.get_files().iter().last().unwrap();
     let result = completion_descendant_at(&with_db, file, offset);
 
     if let Some((node, node_key, is_last_before)) = result {
@@ -339,8 +334,7 @@ END_NAMESPACE
     for (probe, expected) in [("s.", "oil"), ("mot.", "rpm"), ("Std.", "Maths")] {
         let source = format!("{HEAD}{}", body.replace("{probe}", probe));
         let mut db = with_db.clone();
-        add_sources(&mut db, &[&source]);
-        let file = *db.get_files().iter().last().unwrap();
+        let file = add_source(&mut db, &source);
 
         // The cursor sits right after the dot.
         let line = source
@@ -388,8 +382,7 @@ END_VAR
     f
 END_FUNCTION_BLOCK
 "#;
-    add_sources(&mut with_db, &[source]);
-    let file = *with_db.get_files().iter().last().unwrap();
+    let file = add_source(&mut with_db, source);
     let offset = source.find("    f\n").expect("the probe line") + "    f".len();
 
     let (node, node_key, is_last_before) =

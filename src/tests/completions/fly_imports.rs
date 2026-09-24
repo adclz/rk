@@ -1,10 +1,9 @@
-use auto_lsp::default::db::BaseDatabase;
 use db::RootDatabase;
 use hir::HirNodeInfo;
 use ide_proto::handlers::completions_utils::{CompletionCtx, QueryMode};
 use rstest::rstest;
 
-use crate::tests::utils::{add_sources, find_pou_with_name, with_db};
+use crate::tests::utils::{add_source, find_pou_with_name, with_db};
 
 #[rstest]
 pub fn using_for_item_not_in_scope(mut with_db: RootDatabase) {
@@ -19,9 +18,8 @@ FUNCTION fn2
 END_FUNCTION
 "#;
 
-    add_sources(&mut with_db, &[source]);
-    let pou =
-        find_pou_with_name(&with_db, *with_db.get_files().iter().last().unwrap(), "fn2").unwrap();
+    let file = add_source(&mut with_db, source);
+    let pou = find_pou_with_name(&with_db, file, "fn2").unwrap();
 
     let mut ctx = CompletionCtx::new(70, QueryMode::Body);
     ctx.scope_completion(pou.get_scope_id(&with_db), "", &with_db);
@@ -49,9 +47,8 @@ FUNCTION fn2
 END_FUNCTION
 "#;
 
-    add_sources(&mut with_db, &[source]);
-    let pou =
-        find_pou_with_name(&with_db, *with_db.get_files().iter().last().unwrap(), "fn2").unwrap();
+    let file = add_source(&mut with_db, source);
+    let pou = find_pou_with_name(&with_db, file, "fn2").unwrap();
 
     let mut ctx = CompletionCtx::new(80, QueryMode::Body);
     ctx.scope_completion(pou.get_scope_id(&with_db), "", &with_db);
@@ -83,9 +80,8 @@ FUNCTION_BLOCK fb2
 END_FUNCTION_BLOCK
 "#;
 
-    add_sources(&mut with_db, &[source]);
-    let pou =
-        find_pou_with_name(&with_db, *with_db.get_files().iter().last().unwrap(), "fb2").unwrap();
+    let file = add_source(&mut with_db, source);
+    let pou = find_pou_with_name(&with_db, file, "fb2").unwrap();
 
     let mut ctx = CompletionCtx::new(147, QueryMode::Body);
     ctx.scope_completion(pou.get_scope_id(&with_db), "", &with_db);
@@ -120,8 +116,7 @@ FUNCTION test_other
 END_FUNCTION
 "#;
 
-    add_sources(&mut with_db, &[source]);
-    let file = *with_db.get_files().iter().last().unwrap();
+    let file = add_source(&mut with_db, source);
 
     let production = find_pou_with_name(&with_db, file, "production").unwrap();
     let mut ctx = CompletionCtx::new(0, QueryMode::Body);

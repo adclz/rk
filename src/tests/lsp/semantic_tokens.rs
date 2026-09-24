@@ -1,5 +1,4 @@
 use auto_lsp::core::semantic_tokens_builder::SemanticTokensBuilder;
-use auto_lsp::default::db::BaseDatabase;
 use db::RootDatabase;
 use hir::hir_def::semantic_index::semantic_index;
 use ide_proto::CLASS;
@@ -11,7 +10,7 @@ use ide_proto::walk::WalkHir;
 use insta::assert_snapshot;
 use rstest::rstest;
 
-use crate::tests::utils::add_sources;
+use crate::tests::utils::add_source;
 use crate::tests::utils::with_db;
 
 #[rstest]
@@ -33,9 +32,9 @@ FUNCTION_BLOCK fb1
 
 END_FUNCTION_BLOCK"#;
 
-    add_sources(&mut with_db, &[source]);
+    let file = add_source(&mut with_db, source);
 
-    let sema = semantic_index(&with_db, *with_db.get_files().iter().last().unwrap());
+    let sema = semantic_index(&with_db, file);
     let mut sink = ide_proto::handlers::semantic_tokens::TokenSink::default();
 
     let _ = sema.walk_hir(&with_db, &mut |node| {
@@ -109,9 +108,9 @@ FUNCTION_BLOCK fb1 EXTENDS fb1 // highlight fb1
 
 END_FUNCTION_BLOCK"#;
 
-    add_sources(&mut with_db, &[source]);
+    let file = add_source(&mut with_db, source);
 
-    let sema = semantic_index(&with_db, *with_db.get_files().iter().last().unwrap());
+    let sema = semantic_index(&with_db, file);
     let mut sink = ide_proto::handlers::semantic_tokens::TokenSink::default();
 
     let _ = sema.walk_hir(&with_db, &mut |node| {
@@ -152,9 +151,9 @@ FUNCTION_BLOCK fb1 IMPLEMENTS in3, in4, in5 // highlight in3, in4, in5
 
 END_FUNCTION_BLOCK"#;
 
-    add_sources(&mut with_db, &[source]);
+    let file = add_source(&mut with_db, source);
 
-    let sema = semantic_index(&with_db, *with_db.get_files().iter().last().unwrap());
+    let sema = semantic_index(&with_db, file);
     let mut sink = ide_proto::handlers::semantic_tokens::TokenSink::default();
 
     let _ = sema.walk_hir(&with_db, &mut |node| {
@@ -266,9 +265,9 @@ END_FUNCTION_BLOCK
 FUNCTION fn1 : INT
 END_FUNCTION"#;
 
-    add_sources(&mut with_db, &[source]);
+    let file = add_source(&mut with_db, source);
 
-    let sema = semantic_index(&with_db, *with_db.get_files().iter().last().unwrap());
+    let sema = semantic_index(&with_db, file);
     let mut sink = ide_proto::handlers::semantic_tokens::TokenSink::default();
 
     let _ = sema.walk_hir(&with_db, &mut |node| {
@@ -302,9 +301,9 @@ END_CLASS
 FUNCTION fn1 : INT
 END_FUNCTION"#;
 
-    add_sources(&mut with_db, &[source]);
+    let file = add_source(&mut with_db, source);
 
-    let sema = semantic_index(&with_db, *with_db.get_files().iter().last().unwrap());
+    let sema = semantic_index(&with_db, file);
     let mut sink = ide_proto::handlers::semantic_tokens::TokenSink::default();
 
     let _ = sema.walk_hir(&with_db, &mut |node| {
@@ -340,9 +339,9 @@ VAR
 END_VAR
 END_FUNCTION"#;
 
-    add_sources(&mut with_db, &[source]);
+    let file = add_source(&mut with_db, source);
 
-    let sema = semantic_index(&with_db, *with_db.get_files().iter().last().unwrap());
+    let sema = semantic_index(&with_db, file);
     let mut sink = ide_proto::handlers::semantic_tokens::TokenSink::default();
 
     let _ = sema.walk_hir(&with_db, &mut |node| {
@@ -373,9 +372,9 @@ pub fn comment_bracket_ref_unresolved_no_token(mut with_db: RootDatabase) {
 FUNCTION fn1 : INT
 END_FUNCTION"#;
 
-    add_sources(&mut with_db, &[source]);
+    let file = add_source(&mut with_db, source);
 
-    let sema = semantic_index(&with_db, *with_db.get_files().iter().last().unwrap());
+    let sema = semantic_index(&with_db, file);
     let mut sink = ide_proto::handlers::semantic_tokens::TokenSink::default();
 
     let _ = sema.walk_hir(&with_db, &mut |node| {
@@ -408,9 +407,9 @@ END_INTERFACE
 FUNCTION_BLOCK MyFB
 END_FUNCTION_BLOCK"#;
 
-    add_sources(&mut with_db, &[source]);
+    let file = add_source(&mut with_db, source);
 
-    let sema = semantic_index(&with_db, *with_db.get_files().iter().last().unwrap());
+    let sema = semantic_index(&with_db, file);
     let mut sink = ide_proto::handlers::semantic_tokens::TokenSink::default();
 
     let _ = sema.walk_hir(&with_db, &mut |node| {
@@ -512,8 +511,8 @@ END_PROGRAM
 /// reader is checking. Indexing the raw stream broke whenever a token was
 /// added anywhere before the one under test.
 fn rendered(db: &mut RootDatabase, source: &str) -> String {
-    add_sources(db, &[source]);
-    let sema = semantic_index(db, *db.get_files().iter().last().unwrap());
+    let file = add_source(db, source);
+    let sema = semantic_index(db, file);
     let mut sink = ide_proto::handlers::semantic_tokens::TokenSink::default();
     let _ = sema.walk_hir(db, &mut |node| {
         node.semantic_tokens(db, &mut sink);

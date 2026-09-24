@@ -517,8 +517,7 @@ fn repetition_initializer_fills_its_count(mut with_db: db::RootDatabase) {
             run := run * 10000 + a[9];
         END_FUNCTION
     "#;
-    let wasm = compile_to_wasm(&mut with_db, source);
-    let result: i32 = super::execute_wasm(&wasm, "run", ());
+    let result: i32 = super::run(&mut with_db, source, "run", ());
     assert_eq!(
         result,
         -4095 * 10000 + 4095,
@@ -543,8 +542,7 @@ fn repetition_initializer_repeats_a_group(mut with_db: db::RootDatabase) {
             run := run * 10 + a[5];
         END_FUNCTION
     "#;
-    let wasm = compile_to_wasm(&mut with_db, source);
-    let result: i32 = super::execute_wasm(&wasm, "run", ());
+    let result: i32 = super::run(&mut with_db, source, "run", ());
     assert_eq!(result, 123123, "1,2,3,1,2,3 read back positionally");
 }
 
@@ -561,8 +559,7 @@ fn multi_dim_initialization_fills_rightmost_fastest(mut with_db: db::RootDatabas
             run := m[0, 2] * 100 + m[1, 0] * 10 + m[1, 2];
         END_FUNCTION
     "#;
-    let wasm = compile_to_wasm(&mut with_db, source);
-    let result: i32 = super::execute_wasm(&wasm, "run", ());
+    let result: i32 = super::run(&mut with_db, source, "run", ());
     assert_eq!(result, 346, "m[0,2]=3, m[1,0]=4, m[1,2]=6: row-major fill");
 }
 
@@ -618,8 +615,7 @@ fn widening_member_initializers_carry_the_value(mut with_db: db::RootDatabase) {
             use := i.gain + i.bias;
         END_FUNCTION
     "#;
-    let wasm = compile_to_wasm(&mut with_db, source);
-    let v: f32 = crate::tests::codegen::execute_wasm(&wasm, "use", ());
+    let v: f32 = crate::tests::codegen::run(&mut with_db, source, "use", ());
     assert_eq!(v, 7.0, "2.0 + 5.0, not integer bits reinterpreted");
 }
 
@@ -652,8 +648,7 @@ fn literal_member_initializer_on_a_local_instance(mut with_db: db::RootDatabase)
             use := i.r + o.get();
         END_FUNCTION
     "#;
-    let wasm = compile_to_wasm(&mut with_db, source);
-    let v: f32 = crate::tests::codegen::execute_wasm(&wasm, "use", ());
+    let v: f32 = crate::tests::codegen::run(&mut with_db, source, "use", ());
     assert_eq!(v, 3.75, "2.5 + 1.25 through both instance kinds");
 }
 
@@ -753,8 +748,7 @@ fn type_defaults_apply_to_function_locals(mut with_db: db::RootDatabase) {
         END_FUNCTION
     "#
     );
-    let wasm = compile_to_wasm(&mut with_db, &source);
-    let v: i32 = crate::tests::codegen::execute_wasm(&wasm, "run", ());
+    let v: i32 = crate::tests::codegen::run(&mut with_db, &source, "run", ());
     assert_eq!(v, 55343, "alias, chain, struct, nested, array-of-struct");
 }
 
@@ -768,8 +762,7 @@ fn a_partial_declaration_init_overlays_the_type_defaults(mut with_db: db::RootDa
         END_FUNCTION
     "#
     );
-    let wasm = compile_to_wasm(&mut with_db, &source);
-    let v: i32 = crate::tests::codegen::execute_wasm(&wasm, "run", ());
+    let v: i32 = crate::tests::codegen::run(&mut with_db, &source, "run", ());
     assert_eq!(v, 309, "x keeps the TYPE's 3, y takes the declaration's 9");
 }
 
@@ -788,8 +781,7 @@ fn type_defaults_apply_to_fb_members(mut with_db: db::RootDatabase) {
         END_FUNCTION
     "#
     );
-    let wasm = compile_to_wasm(&mut with_db, &source);
-    let v: i32 = crate::tests::codegen::execute_wasm(&wasm, "run", ());
+    let v: i32 = crate::tests::codegen::run(&mut with_db, &source, "run", ());
     assert_eq!(v, 304, "an FB member of a defaulted struct type");
 }
 
@@ -834,8 +826,7 @@ fn type_default_with_const_arithmetic_applies(mut with_db: db::RootDatabase) {
             run := v;
         END_FUNCTION
     "#;
-    let wasm = compile_to_wasm(&mut with_db, source);
-    let v: i32 = crate::tests::codegen::execute_wasm(&wasm, "run", ());
+    let v: i32 = crate::tests::codegen::run(&mut with_db, source, "run", ());
     assert_eq!(v, 5);
 }
 
@@ -927,8 +918,7 @@ fn array_copy_between_same_element_types(mut with_db: db::RootDatabase) {
             f := c[2] * 10 + b[2];
         END_FUNCTION
     "#;
-    let wasm = compile_to_wasm(&mut with_db, source);
-    let result: i32 = crate::tests::codegen::execute_wasm(&wasm, "f", ());
+    let result: i32 = crate::tests::codegen::run(&mut with_db, source, "f", ());
     assert_eq!(result, 33, "both copies hold 3 after the source element was cleared");
 }
 
@@ -979,8 +969,7 @@ fn string_array_elements_compare_as_strings(mut with_db: db::RootDatabase) {
             IF s[0] = s[1] THEN f := f + 100; END_IF;
         END_FUNCTION
     "#;
-    let wasm = compile_to_wasm(&mut with_db, source);
-    let result: i32 = crate::tests::codegen::execute_wasm(&wasm, "f", ());
+    let result: i32 = crate::tests::codegen::run(&mut with_db, source, "f", ());
     assert_eq!(result, 11, "literal match and ordering hold; distinct elements are not equal");
 }
 
@@ -1030,8 +1019,7 @@ VAR c : Pct; END_VAR
     run := c;
 END_FUNCTION
 "#;
-    let wasm = compile_to_wasm(&mut with_db, source);
-    let r: i32 = crate::tests::codegen::execute_wasm(&wasm, "run", ());
+    let r: i32 = crate::tests::codegen::run(&mut with_db, source, "run", ());
     assert_eq!(r, 50);
 }
 
@@ -1060,8 +1048,7 @@ END_VAR
     END_IF;
 END_FUNCTION
 "#;
-    let wasm = compile_to_wasm(&mut with_db, source);
-    let r: i32 = crate::tests::codegen::execute_wasm(&wasm, "run", ());
+    let r: i32 = crate::tests::codegen::run(&mut with_db, source, "run", ());
     assert_eq!(r, 11, "c is Green (1) and s is Blue (10)");
 }
 
@@ -1086,8 +1073,7 @@ END_VAR
     run := c * 100 + d;
 END_FUNCTION
 "#;
-    let wasm = compile_to_wasm(&mut with_db, source);
-    let r: i32 = crate::tests::codegen::execute_wasm(&wasm, "run", ());
+    let r: i32 = crate::tests::codegen::run(&mut with_db, source, "run", ());
     assert_eq!(r, 203, "c is B's 2, d is its own 3");
 }
 
@@ -1111,8 +1097,7 @@ VAR l : Line; END_VAR
     run := l.a.x * 1000 + l.a.y * 100 + l.b.x * 10 + l.b.y;
 END_FUNCTION
 "#;
-    let wasm = compile_to_wasm(&mut with_db, source);
-    let r: i32 = crate::tests::codegen::execute_wasm(&wasm, "run", ());
+    let r: i32 = crate::tests::codegen::run(&mut with_db, source, "run", ());
     assert_eq!(r, 7575, "a = (7, 5) and b = (7, 5)");
 }
 
@@ -1128,7 +1113,6 @@ VAR a : ARRAY[0..2] OF Pct; END_VAR
     run := a[0] + a[1] + a[2];
 END_FUNCTION
 "#;
-    let wasm = compile_to_wasm(&mut with_db, source);
-    let r: i32 = crate::tests::codegen::execute_wasm(&wasm, "run", ());
+    let r: i32 = crate::tests::codegen::run(&mut with_db, source, "run", ());
     assert_eq!(r, 150, "three elements of 50");
 }

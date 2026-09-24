@@ -15,14 +15,8 @@ const BUILTIN_RESERVED_FLOOR: u32 = 16_384;
 
 /// Extract and decode the `debug-symbols` custom section from a core module.
 fn read_debug_symbols(wasm: &[u8]) -> DebugSymbols {
-    for payload in wasmparser::Parser::new(0).parse_all(wasm) {
-        if let Ok(wasmparser::Payload::CustomSection(reader)) = payload
-            && reader.name() == DEBUG_SYMBOLS_SECTION
-        {
-            return DebugSymbols::from_msgpack(reader.data()).expect("valid debug-symbols section");
-        }
-    }
-    panic!("module is missing the `{DEBUG_SYMBOLS_SECTION}` custom section");
+    let section = super::expect_section(wasm, DEBUG_SYMBOLS_SECTION);
+    DebugSymbols::from_msgpack(section).expect("valid debug-symbols section")
 }
 
 /// Elementary program vars (incl. a nested FB field) and a config global are
@@ -552,19 +546,10 @@ fn a_frame_s_aggregate_locals_are_described(mut with_db: db::RootDatabase) {
     "#;
     let (_mir, wasm) = compile_to_mir_and_wasm(&mut with_db, source);
 
-    let read_section = |name: &str| -> Vec<u8> {
-        for payload in wasmparser::Parser::new(0).parse_all(&wasm) {
-            if let Ok(wasmparser::Payload::CustomSection(reader)) = payload
-                && reader.name() == name
-            {
-                return reader.data().to_vec();
-            }
-        }
-        panic!("missing `{name}` section");
-    };
+    let read_section = |name: &str| super::expect_section(&wasm, name);
     let funcs =
-        debug_format::DebugFunctions::from_msgpack(&read_section("debug-functions")).unwrap();
-    let locals = debug_format::DebugLocals::from_msgpack(&read_section("debug-locals")).unwrap();
+        debug_format::DebugFunctions::from_msgpack(read_section("debug-functions")).unwrap();
+    let locals = debug_format::DebugLocals::from_msgpack(read_section("debug-locals")).unwrap();
     let frame = |name: &str| -> &debug_format::FuncLocals {
         let idx = funcs
             .functions
@@ -760,17 +745,8 @@ fn a_frame_s_aggregate_array_elements_carry_their_layout(mut with_db: db::RootDa
         END_CONFIGURATION
     "#;
     let (_mir, wasm) = compile_to_mir_and_wasm(&mut with_db, source);
-    let read_section = |name: &str| -> Vec<u8> {
-        for payload in wasmparser::Parser::new(0).parse_all(&wasm) {
-            if let Ok(wasmparser::Payload::CustomSection(reader)) = payload
-                && reader.name() == name
-            {
-                return reader.data().to_vec();
-            }
-        }
-        panic!("missing `{name}` section");
-    };
-    let locals = debug_format::DebugLocals::from_msgpack(&read_section("debug-locals")).unwrap();
+    let read_section = |name: &str| super::expect_section(&wasm, name);
+    let locals = debug_format::DebugLocals::from_msgpack(read_section("debug-locals")).unwrap();
     let arr = locals
         .functions
         .iter()
@@ -811,16 +787,9 @@ END_CONFIGURATION
 "#
         );
         let (_mir, wasm) = compile_to_mir_and_wasm(db, &src);
-        wasmparser::Parser::new(0)
-            .parse_all(&wasm)
-            .flatten()
-            .find_map(|p| match p {
-                wasmparser::Payload::CustomSection(c) if c.name() == "debug-symbols" => {
-                    Some(c.data().len())
-                }
-                _ => None,
-            })
+        super::custom_section(&wasm, DEBUG_SYMBOLS_SECTION)
             .expect("the debug build carries symbols")
+            .len()
     };
 
     let ten = section_size("a : ARRAY[0..9] OF DINT;");

@@ -5,7 +5,7 @@
 //! never leak across the call boundary. (Regression: aggregates previously
 //! lowered as a bogus 1-slot "value" and the module failed wasm validation.)
 
-use crate::tests::codegen::{compile_to_wasm, with_db};
+use crate::tests::codegen::with_db;
 use rstest::*;
 
 /// The audit probe: a STRUCT passed by value into a FUNCTION.
@@ -26,8 +26,7 @@ fn fn_struct_input(mut with_db: db::RootDatabase) {
             test := take_pt(p := s);
         END_FUNCTION
     "#;
-    let wasm = compile_to_wasm(&mut with_db, source);
-    let result: i32 = super::execute_wasm(&wasm, "test", ());
+    let result: i32 = super::run(&mut with_db, source, "test", ());
     assert_eq!(result, 30, "struct input by value: 10 + 20");
 }
 
@@ -49,8 +48,7 @@ fn fn_array_input(mut with_db: db::RootDatabase) {
             test := sum4(a := arr);
         END_FUNCTION
     "#;
-    let wasm = compile_to_wasm(&mut with_db, source);
-    let result: i32 = super::execute_wasm(&wasm, "test", ());
+    let result: i32 = super::run(&mut with_db, source, "test", ());
     assert_eq!(result, 10, "array input by value: 1+2+3+4");
 }
 
@@ -76,8 +74,7 @@ fn fn_struct_input_callee_write_invisible(mut with_db: db::RootDatabase) {
         END_FUNCTION
     "#;
     // Unchecked compile: writing to a VAR_INPUT raises the L0113 lint.
-    let wasm = compile_to_wasm(&mut with_db, source);
-    let result: i32 = super::execute_wasm(&wasm, "test", ());
+    let result: i32 = super::run(&mut with_db, source, "test", ());
     assert_eq!(
         result, 30,
         "callee wrote its snapshot, caller's s unchanged"
@@ -106,8 +103,7 @@ fn fn_struct_input_snapshot_aliasing(mut with_db: db::RootDatabase) {
             test := probe(snap := s, live := s);
         END_FUNCTION
     "#;
-    let wasm = compile_to_wasm(&mut with_db, source);
-    let result: i32 = super::execute_wasm(&wasm, "test", ());
+    let result: i32 = super::run(&mut with_db, source, "test", ());
     assert_eq!(
         result, 7,
         "input is a call-entry snapshot: sees 7, not the inout's 100"
@@ -138,8 +134,7 @@ fn fn_struct_input_forwarding(mut with_db: db::RootDatabase) {
             test := outer_fwd(p := s);
         END_FUNCTION
     "#;
-    let wasm = compile_to_wasm(&mut with_db, source);
-    let result: i32 = super::execute_wasm(&wasm, "test", ());
+    let result: i32 = super::run(&mut with_db, source, "test", ());
     assert_eq!(result, 9, "forwarded struct input: 4 + 5");
 }
 
@@ -164,8 +159,7 @@ fn fn_mixed_aggregate_scalar_discard(mut with_db: db::RootDatabase) {
             test := mixed(p := s, k := 10);
         END_FUNCTION
     "#;
-    let wasm = compile_to_wasm(&mut with_db, source);
-    let result: i32 = super::execute_wasm(&wasm, "test", ());
+    let result: i32 = super::run(&mut with_db, source, "test", ());
     assert_eq!(result, 31, "3*10 + 1, dbg discarded");
 }
 
@@ -195,7 +189,6 @@ fn fn_struct_input_from_fb_body(mut with_db: db::RootDatabase) {
             test := c.res;
         END_FUNCTION
     "#;
-    let wasm = compile_to_wasm(&mut with_db, source);
-    let result: i32 = super::execute_wasm(&wasm, "test", ());
+    let result: i32 = super::run(&mut with_db, source, "test", ());
     assert_eq!(result, 17, "struct input from an FB body: 8 + 9");
 }

@@ -1,12 +1,37 @@
 /*
-Standard String Functions
+String functions.
+
+A `STRING` holds UTF-8 text, and its length is a number of bytes. The
+functions here come in two families.
+
+`LEN`, `FIND`, `LEFT`, `RIGHT`, `MID`, `INSERT`, `DELETE` and `REPLACE` count
+bytes. They are the fast ones, and on ASCII text a byte is a character. On
+other text a byte position can fall inside a character, and slicing there
+yields a string that is not valid UTF-8.
+
+The `CHAR_` functions count characters and never split one. A character is
+one well-formed UTF-8 sequence. A byte that belongs to none counts as a
+character on its own, its Latin-1 code point, like `CHAR#'$E9'`.
+
+Positions start at 1 in both families. A function that returns a `STRING`
+truncates it without an error when it does not fit where it is stored.
 */
 NAMESPACE Std.Strings
 
-	/* ## LEN — length in bytes
+	/* Returns the length of `IN`, in bytes.
 
-	   Constant-time: STRINGs are stored as `(ptr, len)`, this just returns
-	   the second word. Always succeeds. */
+	   This is not the number of characters: `LEN('café')` is 5, because `é`
+	   takes two bytes. See [Std.Strings.CHAR_COUNT] for that.
+
+	   The length is stored with the string, so this does not scan it.
+
+	   # Examples
+
+	   ```iecst
+	   n := LEN('hello');  // 5
+	   n := LEN('');       // 0
+	   ```
+	*/
 	FUNCTION LEN: UDINT
 		VAR_INPUT
 			IN: STRING;
@@ -14,12 +39,18 @@ NAMESPACE Std.Strings
 		{wasm 'str.byte_len' (params IN) (result LEN)}
 	END_FUNCTION
 
-	/* ## IS_UTF8 — UTF-8 validation
+	/* Returns `TRUE` if `IN` is well-formed UTF-8.
 
-	   Returns TRUE iff the buffer is well-formed UTF-8. Useful when
-	   accepting strings from external sources (host imports, MODBUS, etc.)
-	   before passing them to slicing operations that may otherwise split a
-	   multi-byte sequence. */
+	   Text that comes from outside the program, such as a host import or a
+	   fieldbus frame, may not be. Check it before slicing it by bytes.
+
+	   # Examples
+
+	   ```iecst
+	   ok := IS_UTF8('café');  // TRUE
+	   ok := IS_UTF8('$E9');   // FALSE, a lone Latin-1 byte
+	   ```
+	*/
 	FUNCTION IS_UTF8: BOOL
 		VAR_INPUT
 			IN: STRING;
@@ -27,11 +58,20 @@ NAMESPACE Std.Strings
 		{wasm 'str.is_utf8' (params IN) (result IS_UTF8)}
 	END_FUNCTION
 
-	/* ## FIND — 1-indexed byte position of NEEDLE in HAYSTACK
+	/* Returns the byte position of the first occurrence of `NEEDLE` in
+	   `HAYSTACK`, or 0 if there is none.
 
-	   Returns 0 when not found. An empty NEEDLE returns 1 (consistent
-	   with IEC 61131-3 FIND semantics). To search for a single CHAR,
-	   wrap it with `Std.Convert.CHAR_TO_STRING(c)`. */
+	   Positions start at 1. An empty `NEEDLE` is found at position 1.
+
+	   To look for a single `CHAR`, convert it with [Std.Convert.CHAR_TO_STRING].
+
+	   # Examples
+
+	   ```iecst
+	   p := FIND('hello world', 'world');  // 7
+	   p := FIND('hello world', 'xyz');    // 0
+	   ```
+	*/
 	FUNCTION FIND: UDINT
 		VAR_INPUT
 			HAYSTACK: STRING;
@@ -40,21 +80,16 @@ NAMESPACE Std.Strings
 		{wasm 'str.byte_find' (params HAYSTACK NEEDLE) (result FIND)}
 	END_FUNCTION
 
-	/* ## Producers — return a fresh STRING
+	/* Returns `A` followed by `B`.
 
-	   These functions take their inputs as `VAR_INPUT STRING` (flattened
-	   to `(ptr, len)` at the WASM ABI) and return STRING (flattened to
-	   `(ptr, len)`). Each producer writes into its own static return
-	   slot in linear memory; the codegen snapshots the result into a
-	   per-call-site scratch slot when the value is consumed as a
-	   `ByValue` arg of another call, so nested invocations don't clobber
-	   each other. Truncation is silent on overflow. Slicing operates on
-	   raw bytes — splitting a multi-byte UTF-8 sequence yields invalid
-	   UTF-8.
+	   To append a single `CHAR`, convert it with [Std.Convert.CHAR_TO_STRING].
+
+	   # Examples
+
+	   ```iecst
+	   s := CONCAT('hello ', 'world');  // 'hello world'
+	   ```
 	*/
-
-	/* ## CONCAT — append B after A, truncate to result capacity.
-	   To concatenate a CHAR, wrap it with `Std.Convert.CHAR_TO_STRING(c)`. */
 	FUNCTION CONCAT: STRING
 		VAR_INPUT
 			A: STRING;
@@ -63,7 +98,17 @@ NAMESPACE Std.Strings
 		{wasm 'str.concat' (params A B) (result CONCAT)}
 	END_FUNCTION
 
-	/* ## LEFT — first N bytes of S */
+	/* Returns the first `N` bytes of `S`.
+
+	   Returns all of `S` when `N` is greater than its length.
+
+	   # Examples
+
+	   ```iecst
+	   s := LEFT('hello world', 5);  // 'hello'
+	   s := LEFT('hi', 10);          // 'hi'
+	   ```
+	*/
 	FUNCTION LEFT: STRING
 		VAR_INPUT
 			S: STRING;
@@ -72,7 +117,17 @@ NAMESPACE Std.Strings
 		{wasm 'str.byte_left' (params S N) (result LEFT)}
 	END_FUNCTION
 
-	/* ## RIGHT — last N bytes of S */
+	/* Returns the last `N` bytes of `S`.
+
+	   Returns all of `S` when `N` is greater than its length.
+
+	   # Examples
+
+	   ```iecst
+	   s := RIGHT('hello world', 5);  // 'world'
+	   s := RIGHT('hi', 10);          // 'hi'
+	   ```
+	*/
 	FUNCTION RIGHT: STRING
 		VAR_INPUT
 			S: STRING;
@@ -81,7 +136,19 @@ NAMESPACE Std.Strings
 		{wasm 'str.byte_right' (params S N) (result RIGHT)}
 	END_FUNCTION
 
-	/* ## MID — N bytes starting at 1-indexed byte position P */
+	/* Returns `N` bytes of `S`, starting at byte position `P`.
+
+	   Returns fewer when `S` ends first, and an empty string when `P` is 0 or
+	   past the end.
+
+	   # Examples
+
+	   ```iecst
+	   s := MID('hello world', 5, 7);  // 'world'
+	   s := MID('hello', 10, 3);       // 'llo'
+	   s := MID('hello', 3, 10);       // ''
+	   ```
+	*/
 	FUNCTION MID: STRING
 		VAR_INPUT
 			S: STRING;
@@ -91,8 +158,19 @@ NAMESPACE Std.Strings
 		{wasm 'str.byte_mid' (params S N P) (result MID)}
 	END_FUNCTION
 
-	/* ## INSERT — insert INS into S after byte position P (0 = front).
-	   To insert a single CHAR, wrap it with `Std.Convert.CHAR_TO_STRING(c)`. */
+	/* Returns `S` with `INS` inserted after byte position `P`.
+
+	   A `P` of 0 inserts at the front.
+
+	   To insert a single `CHAR`, convert it with [Std.Convert.CHAR_TO_STRING].
+
+	   # Examples
+
+	   ```iecst
+	   s := INSERT('helloworld', 'XX', 5);  // 'helloXXworld'
+	   s := INSERT('world', 'hello ', 0);   // 'hello world'
+	   ```
+	*/
 	FUNCTION INSERT: STRING
 		VAR_INPUT
 			S: STRING;
@@ -102,7 +180,18 @@ NAMESPACE Std.Strings
 		{wasm 'str.byte_insert' (params S INS P) (result INSERT)}
 	END_FUNCTION
 
-	/* ## DELETE — remove N bytes starting at 1-indexed position P */
+	/* Returns `S` without the `N` bytes that start at byte position `P`.
+
+	   Removes fewer when `S` ends first, and nothing when `P` is past the end.
+
+	   # Examples
+
+	   ```iecst
+	   s := DELETE('hello world', 6, 6);  // 'hello'
+	   s := DELETE('hello', 10, 3);       // 'he'
+	   s := DELETE('hello', 3, 10);       // 'hello'
+	   ```
+	*/
 	FUNCTION DELETE: STRING
 		VAR_INPUT
 			S: STRING;
@@ -112,8 +201,20 @@ NAMESPACE Std.Strings
 		{wasm 'str.byte_delete' (params S N P) (result DELETE)}
 	END_FUNCTION
 
-	/* ## REPLACE — replace N bytes at position P with INS.
-	   To replace with a single CHAR, wrap it with `Std.Convert.CHAR_TO_STRING(c)`. */
+	/* Returns `S` with the `N` bytes that start at byte position `P` replaced
+	   by `INS`.
+
+	   `INS` does not have to be `N` bytes long.
+
+	   To replace with a single `CHAR`, convert it with [Std.Convert.CHAR_TO_STRING].
+
+	   # Examples
+
+	   ```iecst
+	   s := REPLACE('hello world', 'there', 5, 7);  // 'hello there'
+	   s := REPLACE('hello world', '!', 5, 7);      // 'hello !'
+	   ```
+	*/
 	FUNCTION REPLACE: STRING
 		VAR_INPUT
 			S: STRING;
@@ -124,20 +225,15 @@ NAMESPACE Std.Strings
 		{wasm 'str.byte_replace' (params S INS N P) (result REPLACE)}
 	END_FUNCTION
 
-	/* ## Tests */
+	/* Returns the number of characters in `IN`.
 
-	/* ## Character-aware functions
+	   # Examples
 
-	   `LEN`, `FIND`, `LEFT`, `RIGHT`, `MID`, `INSERT`, `DELETE` and `REPLACE`
-	   count bytes, and a byte position can fall inside a multi-byte
-	   character. The `CHAR_` twins count characters: one well-formed UTF-8
-	   sequence is a character, and a stray byte that is not part of one is a
-	   character on its own, worth its Latin-1 code point like `CHAR#'$E9'`.
-	   Positions are 1-based in characters. On ASCII text both families
-	   agree; the byte family is the faster one. */
-
-	/* ## CHAR_COUNT — number of characters in IN. `CHAR_COUNT('café')` is 4
-	   where `LEN('café')` is 5. */
+	   ```iecst
+	   n := CHAR_COUNT('café');    // 4, where LEN returns 5
+	   n := CHAR_COUNT('日本語');  // 3, where LEN returns 9
+	   ```
+	*/
 	FUNCTION CHAR_COUNT: UDINT
 		VAR_INPUT
 			IN: STRING;
@@ -145,8 +241,17 @@ NAMESPACE Std.Strings
 		{wasm 'str.char_count' (params IN) (result CHAR_COUNT)}
 	END_FUNCTION
 
-	/* ## CHAR_AT — the character at 1-indexed position P, as a CHAR.
-	   `CHAR#'$00'` when P is 0 or past the end. */
+	/* Returns the character at position `P` of `IN`.
+
+	   Returns `CHAR#'$00'` when `P` is 0 or past the end.
+
+	   # Examples
+
+	   ```iecst
+	   c := CHAR_AT('café', 4);  // CHAR#'é'
+	   c := CHAR_AT('abc', 4);   // CHAR#'$00'
+	   ```
+	*/
 	FUNCTION CHAR_AT: CHAR
 		VAR_INPUT
 			IN: STRING;
@@ -155,8 +260,18 @@ NAMESPACE Std.Strings
 		{wasm 'str.char_at' (params IN P) (result CHAR_AT)}
 	END_FUNCTION
 
-	/* ## CHAR_FIND — 1-indexed character position of NEEDLE in HAYSTACK.
-	   0 when not found, 1 for an empty NEEDLE, as FIND. */
+	/* Returns the character position of the first occurrence of `NEEDLE` in
+	   `HAYSTACK`, or 0 if there is none.
+
+	   An empty `NEEDLE` is found at position 1, as with [Std.Strings.FIND].
+
+	   # Examples
+
+	   ```iecst
+	   p := CHAR_FIND('日本語', '語');  // 3, where FIND returns 7
+	   p := CHAR_FIND('abc', 'x');      // 0
+	   ```
+	*/
 	FUNCTION CHAR_FIND: UDINT
 		VAR_INPUT
 			HAYSTACK: STRING;
@@ -165,7 +280,17 @@ NAMESPACE Std.Strings
 		{wasm 'str.char_find' (params HAYSTACK NEEDLE) (result CHAR_FIND)}
 	END_FUNCTION
 
-	/* ## CHAR_LEFT — first N characters of S */
+	/* Returns the first `N` characters of `S`.
+
+	   Returns all of `S` when `N` is greater than its character count.
+
+	   # Examples
+
+	   ```iecst
+	   s := CHAR_LEFT('café', 3);   // 'caf'
+	   s := CHAR_LEFT('café', 10);  // 'café'
+	   ```
+	*/
 	FUNCTION CHAR_LEFT: STRING
 		VAR_INPUT
 			S: STRING;
@@ -174,7 +299,17 @@ NAMESPACE Std.Strings
 		{wasm 'str.char_left' (params S N) (result CHAR_LEFT)}
 	END_FUNCTION
 
-	/* ## CHAR_RIGHT — last N characters of S */
+	/* Returns the last `N` characters of `S`.
+
+	   Returns all of `S` when `N` is greater than its character count.
+
+	   # Examples
+
+	   ```iecst
+	   s := CHAR_RIGHT('日本語', 2);  // '本語'
+	   s := CHAR_RIGHT('café', 1);    // 'é'
+	   ```
+	*/
 	FUNCTION CHAR_RIGHT: STRING
 		VAR_INPUT
 			S: STRING;
@@ -183,8 +318,18 @@ NAMESPACE Std.Strings
 		{wasm 'str.char_right' (params S N) (result CHAR_RIGHT)}
 	END_FUNCTION
 
-	/* ## CHAR_MID — N characters starting at 1-indexed character position P.
-	   Empty when P is 0 or past the end. */
+	/* Returns `N` characters of `S`, starting at character position `P`.
+
+	   Returns fewer when `S` ends first, and an empty string when `P` is 0 or
+	   past the end.
+
+	   # Examples
+
+	   ```iecst
+	   s := CHAR_MID('café', 2, 3);    // 'fé'
+	   s := CHAR_MID('日本語', 1, 2);  // '本'
+	   ```
+	*/
 	FUNCTION CHAR_MID: STRING
 		VAR_INPUT
 			S: STRING;
@@ -194,7 +339,18 @@ NAMESPACE Std.Strings
 		{wasm 'str.char_mid' (params S N P) (result CHAR_MID)}
 	END_FUNCTION
 
-	/* ## CHAR_INSERT — insert INS into S after character position P (0 = front) */
+	/* Returns `S` with `INS` inserted after character position `P`.
+
+	   A `P` of 0 inserts at the front, and a `P` past the end appends.
+
+	   # Examples
+
+	   ```iecst
+	   s := CHAR_INSERT('caf', 'é', 3);    // 'café'
+	   s := CHAR_INSERT('abc', 'X', 0);    // 'Xabc'
+	   s := CHAR_INSERT('café', 'X', 99);  // 'caféX'
+	   ```
+	*/
 	FUNCTION CHAR_INSERT: STRING
 		VAR_INPUT
 			S: STRING;
@@ -204,8 +360,18 @@ NAMESPACE Std.Strings
 		{wasm 'str.char_insert' (params S INS P) (result CHAR_INSERT)}
 	END_FUNCTION
 
-	/* ## CHAR_DELETE — remove N characters starting at character position P.
-	   S unchanged when P is 0 or past the end. */
+	/* Returns `S` without the `N` characters that start at character
+	   position `P`.
+
+	   Returns `S` unchanged when `P` is 0 or past the end.
+
+	   # Examples
+
+	   ```iecst
+	   s := CHAR_DELETE('日本語', 1, 2);  // '日語'
+	   s := CHAR_DELETE('café', 1, 5);    // 'café'
+	   ```
+	*/
 	FUNCTION CHAR_DELETE: STRING
 		VAR_INPUT
 			S: STRING;
@@ -215,8 +381,18 @@ NAMESPACE Std.Strings
 		{wasm 'str.char_delete' (params S N P) (result CHAR_DELETE)}
 	END_FUNCTION
 
-	/* ## CHAR_REPLACE — replace N characters at character position P with INS.
-	   S unchanged when P is 0 or past the end. */
+	/* Returns `S` with the `N` characters that start at character position
+	   `P` replaced by `INS`.
+
+	   Returns `S` unchanged when `P` is 0 or past the end.
+
+	   # Examples
+
+	   ```iecst
+	   s := CHAR_REPLACE('café', 'e', 1, 4);    // 'cafe'
+	   s := CHAR_REPLACE('日本語', 'X', 2, 1);  // 'X語'
+	   ```
+	*/
 	FUNCTION CHAR_REPLACE: STRING
 		VAR_INPUT
 			S: STRING;
@@ -381,7 +557,7 @@ NAMESPACE Std.Strings
 
 		{test}
 		FUNCTION test_concat_nested_binary
-			// Independent inner CONCATs feeding an outer CONCAT — each
+			// Independent inner CONCATs feeding an outer CONCAT: each
 			// inner result must survive long enough for the outer to read
 			// it. With per-call-site scratch slots: 'xxyyzzww'.
 			VAR result: STRING; END_VAR
@@ -407,7 +583,7 @@ NAMESPACE Std.Strings
 			ASSERT(FIND(result, 'hello!') = 1);
 		END_FUNCTION
 
-		/* CHAR-as-string usage — explicit conversion via
+		/* CHAR-as-string usage: explicit conversion via
 		   `Std.Convert.CHAR_TO_STRING`. CHAR is an i32 code point at
 		   the WASM ABI; CONCAT/INSERT/REPLACE/FIND all take STRING args,
 		   so users wrap CHAR values explicitly. */
@@ -482,7 +658,7 @@ NAMESPACE Std.Strings
 
 		{test}
 		FUNCTION test_concat_two_char_vars
-			// Two nested CHAR_TO_STRING calls — each must get its own
+			// Two nested CHAR_TO_STRING calls: each must get its own
 			// per-call-site scratch slot, the second mustn't clobber the
 			// first before the outer CONCAT reads them.
 			VAR
@@ -618,7 +794,7 @@ NAMESPACE Std.Strings
 			ASSERT_EQ(s, 'xyyy', 'accumulated content compares whole');
 		END_FUNCTION
 
-		// Both operands are producer calls — each needs its own scratch
+		// Both operands are producer calls: each needs its own scratch
 		// buffer. If they shared the one static return slot, the second call
 		// would clobber the first and every such comparison would degenerate
 		// to comparing a value with itself (silently always equal).

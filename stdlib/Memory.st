@@ -1,15 +1,18 @@
 /*
-# Standard Memory Functions
-
+Memory functions.
 */
 NAMESPACE Std.Memory
 
-	/*
-    ## MOVE - Memory Copy
+	/* Copies `IN` into `OUT`.
 
-    Copies the input value to the output.
-    One overload per elementary type.
-    */
+	   There is one overload per elementary type.
+
+	   # Examples
+
+	   ```iecst
+	   MOVE(42, OUT => x);  // x is 42
+	   ```
+	*/
 	FUNCTION MOVE
 		VAR_INPUT
 			IN: BOOL;

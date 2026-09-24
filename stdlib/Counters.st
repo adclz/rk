@@ -1,36 +1,34 @@
 /*
-# Standard Counter Function Blocks
+Counters.
 
-IEC 61131-3 **Table 36** - Up, down, and up/down counters.
-
-Each counter is provided as a concrete function block per integer type
-(`SINT`, `INT`, `DINT`, `LINT`) for the count value `CV` and preset value `PV`.
-Edge detection is performed internally using `R_TRIG`.
+Each counts the rising edges of its input. There is one block per integer
+type, named after it: `CTU_SINT`, `CTU_INT`, `CTU_DINT`, `CTU_LINT`,
+`CTU_UDINT` and `CTU_ULINT`, and the same for `CTD` and `CTUD`. The plain
+names [Std.Counters.CTU], [Std.Counters.CTD] and [Std.Counters.CTUD] count
+in `INT`.
 */
 NAMESPACE Std.Counters
 	USING Std.Edge
 
-	/*
-    ## CTU - Count Up
+	/* Counts up to `PV`.
 
-    Increments `CV` on each rising edge of `CU`, up to `PV`.
+	   `CV` goes up by one on each rising edge of `CU`, and stops at `PV`. `R` sets
+	   it back to 0 and wins over a count. `Q` is `TRUE` when `CV` has reached
+	   `PV`.
 
-    - `CU`: count input (rising edge triggers)
-    - `R`: reset - sets `CV` to 0
-    - `PV`: preset value
-    - `Q`: **TRUE** when `CV >= PV`
+	   # Examples
 
-    ```iecst
-    VAR
-        counter: CTU_INT;
-    END_VAR
+	   ```iecst
+	   VAR
+	       counter: CTU_INT;
+	   END_VAR
 
-    counter(CU := sensor, reset_btn, PV := 100);
-    IF counter.Q THEN
-        // target count reached
-    END_IF;
-    ```
-    */
+	   counter(CU := sensor, R := reset_btn, PV := 100);
+	   IF counter.Q THEN
+	       // a hundred parts went by
+	   END_IF;
+	   ```
+	*/
 	FUNCTION_BLOCK CTU_SINT
 		VAR_INPUT
 			CU: BOOL;
@@ -126,27 +124,24 @@ NAMESPACE Std.Counters
 		Q := (CV >= PV);
 	END_FUNCTION_BLOCK
 
-	/*
-    ## CTD - Count Down
+	/* Counts down from `PV`.
 
-    Decrements `CV` on each rising edge of `CD`, down to 0.
+	   `LD` loads `CV` with `PV`. `CV` then goes down by one on each rising edge of
+	   `CD`, and stops at 0. `Q` is `TRUE` when `CV` has reached 0.
 
-    - `CD`: count input (rising edge triggers)
-    - `LD`: load - sets `CV` to `PV`
-    - `PV`: preset value
-    - `Q`: **TRUE** when `CV <= 0`
+	   # Examples
 
-    ```iecst
-    VAR
-        counter: CTD_INT;
-    END_VAR
+	   ```iecst
+	   VAR
+	       counter: CTD_INT;
+	   END_VAR
 
-    counter(CD := sensor, LD := load_btn, PV := 50);
-    IF counter.Q THEN
-        // countdown complete
-    END_IF;
-    ```
-    */
+	   counter(CD := sensor, LD := load_btn, PV := 50);
+	   IF counter.Q THEN
+	       // none left
+	   END_IF;
+	   ```
+	*/
 	FUNCTION_BLOCK CTD_SINT
 		VAR_INPUT
 			CD: BOOL;
@@ -242,27 +237,25 @@ NAMESPACE Std.Counters
 		Q := (CV <= 0);
 	END_FUNCTION_BLOCK
 
-	/*
-    ## CTUD - Count Up/Down
+	/* Counts up and down, between 0 and `PV`.
 
-    Counts up on `CU` rising edges, down on `CD` rising edges.
-    Simultaneous edges are ignored to prevent ambiguity.
+	   `CV` goes up on a rising edge of `CU` and down on one of `CD`, and stays
+	   within 0 and `PV`. Two edges in the same call cancel out. `R` sets `CV` to 0
+	   and `LD` loads it with `PV`. `R` wins over `LD`, and both win over a count.
 
-    - `CU` / `CD`: count inputs (rising edge triggers)
-    - `R`: reset - sets `CV` to 0
-    - `LD`: load - sets `CV` to `PV`
-    - `PV`: preset value
-    - `QU`: **TRUE** when `CV >= PV`
-    - `QD`: **TRUE** when `CV <= 0`
+	   `QU` is `TRUE` when `CV` has reached `PV`, and `QD` when it has reached 0.
 
-    ```iecst
-    VAR
-        counter: CTUD_INT;
-    END_VAR
+	   # Examples
 
-    counter(CU := up_btn, CD := down_btn, FALSE, LD := FALSE, PV := 100);
-    ```
-    */
+	   ```iecst
+	   VAR
+	       counter: CTUD_INT;
+	   END_VAR
+
+	   counter(CU := entering, CD := leaving, R := FALSE, LD := FALSE, PV := 100);
+	   full := counter.QU;
+	   ```
+	*/
 	FUNCTION_BLOCK CTUD_SINT
 		VAR_INPUT
 			CU: BOOL;
@@ -415,13 +408,7 @@ NAMESPACE Std.Counters
 	END_FUNCTION_BLOCK
 
 
-	/*
-    ## Standard names and unsigned variants
-
-    The standard's own base names count with an `INT` value: `CTU`, `CTD`
-    and `CTUD` below are the `INT`-typed counters under their plain names.
-    The reference set also carries `UDINT` and `ULINT` variants.
-    */
+	/* [Std.Counters.CTU_INT] under the name the standard gives it. */
 	FUNCTION_BLOCK CTU
 		VAR_INPUT
 			CU: BOOL;
@@ -445,6 +432,7 @@ NAMESPACE Std.Counters
 		Q := (CV >= PV);
 	END_FUNCTION_BLOCK
 
+	/* [Std.Counters.CTD_INT] under the name the standard gives it. */
 	FUNCTION_BLOCK CTD
 		VAR_INPUT
 			CD: BOOL;
@@ -468,6 +456,7 @@ NAMESPACE Std.Counters
 		Q := (CV <= 0);
 	END_FUNCTION_BLOCK
 
+	/* [Std.Counters.CTUD_INT] under the name the standard gives it. */
 	FUNCTION_BLOCK CTUD
 		VAR_INPUT
 			CU: BOOL;
@@ -679,7 +668,6 @@ NAMESPACE Std.Counters
 
 	NAMESPACE Test
 		USING Std.Unit;
-		USING Std.Edge;
 		USING Std.Counters;
 
 		// -- CTU (Count Up) ----------------------------------------

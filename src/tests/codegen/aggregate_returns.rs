@@ -12,7 +12,7 @@
 //! type the root of a multi-step self-reference as the RETURN type: recording
 //! it as the function type left MIR asking a Function for a struct field.
 
-use crate::tests::codegen::{compile_to_wasm, execute_wasm, with_db};
+use crate::tests::codegen::{compile_to_wasm, run, with_db};
 use rstest::*;
 
 /// The canonical shape: build the result component-wise on the function name.
@@ -33,8 +33,7 @@ fn struct_return_built_component_wise(mut with_db: db::RootDatabase) {
             run := p.x * 100 + p.y;
         END_FUNCTION
     "#;
-    let wasm = compile_to_wasm(&mut with_db, source);
-    let result: i32 = execute_wasm(&wasm, "run", ());
+    let result: i32 = run(&mut with_db, source, "run", ());
     assert_eq!(result, 304, "x = 3 and y = 4, in their own fields");
 }
 
@@ -60,8 +59,7 @@ fn struct_return_assigned_whole(mut with_db: db::RootDatabase) {
             run := p.x * 100 + p.y;
         END_FUNCTION
     "#;
-    let wasm = compile_to_wasm(&mut with_db, source);
-    let result: i32 = execute_wasm(&wasm, "run", ());
+    let result: i32 = run(&mut with_db, source, "run", ());
     assert_eq!(result, 304, "the WHOLE struct is copied, not its first field");
 }
 
@@ -87,8 +85,7 @@ fn the_whole_struct_is_copied_not_its_first_word(mut with_db: db::RootDatabase) 
             run := w.a * 10000 + w.b * 100 + w.c;
         END_FUNCTION
     "#;
-    let wasm = compile_to_wasm(&mut with_db, source);
-    let result: i32 = execute_wasm(&wasm, "run", ());
+    let result: i32 = run(&mut with_db, source, "run", ());
     assert_eq!(result, 112233, "all three DINTs arrive");
 }
 
@@ -117,8 +114,7 @@ fn early_return_still_delivers_the_aggregate(mut with_db: db::RootDatabase) {
             run := p.x * 1000 + p.y * 100 + q.x * 10 + q.y;
         END_FUNCTION
     "#;
-    let wasm = compile_to_wasm(&mut with_db, source);
-    let result: i32 = execute_wasm(&wasm, "run", ());
+    let result: i32 = run(&mut with_db, source, "run", ());
     assert_eq!(result, 1278, "early return 1,2; fall-through 7,8");
 }
 
@@ -147,8 +143,7 @@ fn array_return(mut with_db: db::RootDatabase) {
             run := a[0] * 100 + a[1] * 10 + a[2];
         END_FUNCTION
     "#;
-    let wasm = compile_to_wasm(&mut with_db, source);
-    let result: i32 = execute_wasm(&wasm, "run", ());
+    let result: i32 = run(&mut with_db, source, "run", ());
     assert_eq!(result, 567, "elements 5, 6, 7");
 }
 
@@ -172,8 +167,7 @@ fn the_caller_owns_a_copy_not_a_view(mut with_db: db::RootDatabase) {
             run := p.x * 1000 + p.y * 100 + q.x * 10 + q.y;
         END_FUNCTION
     "#;
-    let wasm = compile_to_wasm(&mut with_db, source);
-    let result: i32 = execute_wasm(&wasm, "run", ());
+    let result: i32 = run(&mut with_db, source, "run", ());
     assert_eq!(result, 1289, "p keeps 1,2 after the second call writes the slot");
 }
 
@@ -204,8 +198,7 @@ fn fb_method_returning_a_struct(mut with_db: db::RootDatabase) {
             run := p.x * 100 + p.y;
         END_FUNCTION
     "#;
-    let wasm = compile_to_wasm(&mut with_db, source);
-    let result: i32 = execute_wasm(&wasm, "run", ());
+    let result: i32 = run(&mut with_db, source, "run", ());
     assert_eq!(result, 1020, "x = 10, y = 20, through the method's slot");
 }
 
@@ -234,8 +227,7 @@ fn fb_method_built_component_wise(mut with_db: db::RootDatabase) {
             run := p.x * 100 + p.y;
         END_FUNCTION
     "#;
-    let wasm = compile_to_wasm(&mut with_db, source);
-    let result: i32 = execute_wasm(&wasm, "run", ());
+    let result: i32 = run(&mut with_db, source, "run", ());
     assert_eq!(result, 304, "component-wise through the METHOD's name");
 }
 
@@ -264,8 +256,7 @@ fn class_method_returning_a_struct(mut with_db: db::RootDatabase) {
             run := p.x * 100 + p.y;
         END_FUNCTION
     "#;
-    let wasm = compile_to_wasm(&mut with_db, source);
-    let result: i32 = execute_wasm(&wasm, "run", ());
+    let result: i32 = run(&mut with_db, source, "run", ());
     assert_eq!(result, 709);
 }
 
@@ -297,8 +288,7 @@ fn call_result_passed_directly_to_aggregate_input(mut with_db: db::RootDatabase)
             run := Sum2(p := MakePt(a := 1, b := 2), q := MakePt(a := 10, b := 20));
         END_FUNCTION
     "#;
-    let wasm = compile_to_wasm(&mut with_db, source);
-    let result: i32 = execute_wasm(&wasm, "run", ());
+    let result: i32 = run(&mut with_db, source, "run", ());
     assert_eq!(result, 33, "each arg is its own snapshot of the shared return slot");
 }
 
@@ -328,8 +318,7 @@ fn call_result_passed_to_fb_aggregate_input(mut with_db: db::RootDatabase) {
             run := h.total;
         END_FUNCTION
     "#;
-    let wasm = compile_to_wasm(&mut with_db, source);
-    let result: i32 = execute_wasm(&wasm, "run", ());
+    let result: i32 = run(&mut with_db, source, "run", ());
     assert_eq!(result, 11, "the call result reaches the FB input");
 }
 
@@ -355,8 +344,7 @@ fn array_call_result_passed_directly_to_aggregate_input(mut with_db: db::RootDat
             run := SumArr(a := MakeArr(seed := 4));
         END_FUNCTION
     "#;
-    let wasm = compile_to_wasm(&mut with_db, source);
-    let result: i32 = execute_wasm(&wasm, "run", ());
+    let result: i32 = run(&mut with_db, source, "run", ());
     assert_eq!(result, 15);
 }
 

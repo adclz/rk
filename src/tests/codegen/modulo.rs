@@ -4,7 +4,7 @@
 
 use rstest::rstest;
 
-use super::{compile_to_wasm, with_db};
+use super::with_db;
 
 #[rstest]
 fn modulo_of_ints(mut with_db: db::RootDatabase) {
@@ -17,8 +17,7 @@ fn modulo_of_ints(mut with_db: db::RootDatabase) {
             test := a MOD b;
         END_FUNCTION
     "#;
-    let wasm_bytes = compile_to_wasm(&mut with_db, source);
-    let result: i32 = super::execute_wasm(&wasm_bytes, "test", ());
+    let result: i32 = super::run(&mut with_db, source, "test", ());
     assert_eq!(result, 2);
 }
 
@@ -34,8 +33,7 @@ fn modulo_takes_the_dividends_sign(mut with_db: db::RootDatabase) {
             test := a MOD b;
         END_FUNCTION
     "#;
-    let wasm_bytes = compile_to_wasm(&mut with_db, source);
-    let result: i32 = super::execute_wasm(&wasm_bytes, "test", ());
+    let result: i32 = super::run(&mut with_db, source, "test", ());
     assert_eq!(result, -2);
 }
 
@@ -50,8 +48,7 @@ fn modulo_of_lints(mut with_db: db::RootDatabase) {
             test := a MOD b;
         END_FUNCTION
     "#;
-    let wasm_bytes = compile_to_wasm(&mut with_db, source);
-    let result: i64 = super::execute_wasm(&wasm_bytes, "test", ());
+    let result: i64 = super::run(&mut with_db, source, "test", ());
     assert_eq!(result, 3);
 }
 
@@ -67,7 +64,6 @@ fn modulo_of_unsigned(mut with_db: db::RootDatabase) {
             test := a MOD b;
         END_FUNCTION
     "#;
-    let wasm_bytes = compile_to_wasm(&mut with_db, source);
-    let result: i32 = super::execute_wasm(&wasm_bytes, "test", ());
+    let result: i32 = super::run(&mut with_db, source, "test", ());
     assert_eq!(result, 5);
 }

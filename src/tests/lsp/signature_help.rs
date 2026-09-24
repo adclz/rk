@@ -1,11 +1,10 @@
-use auto_lsp::default::db::BaseDatabase;
 use auto_lsp::lsp_types;
 use db::RootDatabase;
 use ide_proto::handlers::signature_help::find_signature_help;
 use insta::assert_debug_snapshot;
 use rstest::rstest;
 
-use crate::tests::utils::{add_sources, with_db};
+use crate::tests::utils::{add_source, with_db};
 
 #[rstest]
 fn signature_help_function_call(mut with_db: RootDatabase) {
@@ -24,8 +23,7 @@ END_VAR
 END_FUNCTION
 "#;
 
-    add_sources(&mut with_db, &[source]);
-    let file = *with_db.get_files().iter().last().unwrap();
+    let file = add_source(&mut with_db, source);
 
     // Cursor right after `(`
     let offset = source.find("my_func(x)").unwrap() + "my_func(".len();
@@ -94,8 +92,7 @@ END_VAR
 END_FUNCTION
 "#;
 
-    add_sources(&mut with_db, &[source]);
-    let file = *with_db.get_files().iter().last().unwrap();
+    let file = add_source(&mut with_db, source);
 
     // Cursor on second argument `y`
     let offset = source.find("my_func(x, y)").unwrap() + "my_func(x, ".len();
@@ -163,8 +160,7 @@ END_VAR
 END_FUNCTION
 "#;
 
-    add_sources(&mut with_db, &[source]);
-    let file = *with_db.get_files().iter().last().unwrap();
+    let file = add_source(&mut with_db, source);
 
     // Cursor on second formal param
     let offset = source.find("b := TRUE").unwrap();
@@ -232,8 +228,7 @@ END_VAR
 END_FUNCTION
 "#;
 
-    add_sources(&mut with_db, &[source]);
-    let file = *with_db.get_files().iter().last().unwrap();
+    let file = add_source(&mut with_db, source);
 
     let offset = source.find("add(1, 2)").unwrap() + "add(".len();
     let help = find_signature_help(&with_db, file, offset);
@@ -303,8 +298,7 @@ END_VAR
 END_FUNCTION
 "#;
 
-    add_sources(&mut with_db, &[source]);
-    let file = *with_db.get_files().iter().last().unwrap();
+    let file = add_source(&mut with_db, source);
 
     let offset = source.find("a := x").unwrap();
     let help = find_signature_help(&with_db, file, offset);
@@ -377,8 +371,7 @@ END_VAR
 END_FUNCTION
 "#;
 
-    add_sources(&mut with_db, &[source]);
-    let file = *with_db.get_files().iter().last().unwrap();
+    let file = add_source(&mut with_db, source);
 
     let offset = source.find("fb.set_value(42)").unwrap() + "fb.set_value(".len();
     let help = find_signature_help(&with_db, file, offset);
@@ -429,8 +422,7 @@ CONFIGURATION MyCfg
 END_CONFIGURATION
 "#;
 
-    add_sources(&mut with_db, &[source]);
-    let file = *with_db.get_files().iter().last().unwrap();
+    let file = add_source(&mut with_db, source);
 
     // Cursor right after `(`
     let offset = source.find("TASK t1(").unwrap() + "TASK t1(".len();
@@ -496,8 +488,7 @@ CONFIGURATION MyCfg
 END_CONFIGURATION
 "#;
 
-    add_sources(&mut with_db, &[source]);
-    let file = *with_db.get_files().iter().last().unwrap();
+    let file = add_source(&mut with_db, source);
 
     // Cursor on PRIORITY value
     let offset = source.find("PRIORITY := 5").unwrap() + "PRIORITY := ".len();
@@ -517,8 +508,7 @@ CONFIGURATION MyCfg
 END_CONFIGURATION
 "#;
 
-    add_sources(&mut with_db, &[source]);
-    let file = *with_db.get_files().iter().last().unwrap();
+    let file = add_source(&mut with_db, source);
 
     // Cursor on INTERVAL value
     let offset = source.find("INTERVAL := T").unwrap() + "INTERVAL := ".len();
@@ -538,8 +528,7 @@ CONFIGURATION MyCfg
 END_CONFIGURATION
 "#;
 
-    add_sources(&mut with_db, &[source]);
-    let file = *with_db.get_files().iter().last().unwrap();
+    let file = add_source(&mut with_db, source);
 
     // Cursor on task name (before the parenthesis) — no signature help
     let offset = source.find("TASK t1(").unwrap() + "TASK ".len();
@@ -576,8 +565,7 @@ END_VAR
 END_FUNCTION
 "#;
 
-    add_sources(&mut with_db, &[source]);
-    let file = *with_db.get_files().iter().last().unwrap();
+    let file = add_source(&mut with_db, source);
 
     // Cursor in the third argument: active_parameter must index into the
     // flattened list, not past a 1-entry own-only one.
@@ -727,10 +715,7 @@ fn a_call_gets_help_wherever_statements_stand(mut with_db: RootDatabase, #[case]
 
 /// Asks for help at the `|` marker, which is stripped from the source.
 fn help_at(db: &mut RootDatabase, marked: &str) -> Option<lsp_types::SignatureHelp> {
-    let offset = marked.find('|').expect("a cursor marker");
-    let source = marked.replace('|', "");
-    add_sources(db, &[&source]);
-    let file = *db.get_files().iter().last().unwrap();
+    let (file, offset) = crate::tests::utils::add_marked_source(db, marked);
     find_signature_help(db, file, offset)
 }
 
@@ -798,8 +783,7 @@ fn signature_help_in_a_program_configuration(
     #[case] active: u32,
 ) {
     use crate::tests::lsp::{CONNECTED, connected_at};
-    add_sources(&mut with_db, &[CONNECTED]);
-    let file = *with_db.get_files().iter().last().unwrap();
+    let file = add_source(&mut with_db, CONNECTED);
 
     let offset = connected_at(at, true) + into;
     let help = find_signature_help(&with_db, file, offset).expect("signature help");

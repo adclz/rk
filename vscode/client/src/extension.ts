@@ -211,20 +211,20 @@ function updateStatusBar(status: ServerStatus) {
 
   switch (status.status) {
     case "ok":
-      statusBarItem.text = "$(check) IEC 61131-3";
-      statusBarItem.tooltip = "IEC 61131-3 — Server running";
+      statusBarItem.text = "$(check) rk";
+      statusBarItem.tooltip = "rk: server running";
       statusBarItem.backgroundColor = undefined;
       break;
     case "warning":
-      statusBarItem.text = "$(warning) IEC 61131-3";
-      statusBarItem.tooltip = `IEC 61131-3 — ${status.message}`;
+      statusBarItem.text = "$(warning) rk";
+      statusBarItem.tooltip = `rk: ${status.message}`;
       statusBarItem.backgroundColor = new ThemeColor(
         "statusBarItem.warningBackground",
       );
       break;
     case "error":
-      statusBarItem.text = "$(error) IEC 61131-3";
-      statusBarItem.tooltip = `IEC 61131-3 — ${status.message}`;
+      statusBarItem.text = "$(error) rk";
+      statusBarItem.tooltip = `rk: ${status.message}`;
       statusBarItem.backgroundColor = new ThemeColor(
         "statusBarItem.errorBackground",
       );
@@ -245,7 +245,7 @@ async function showStatusMenu() {
 
   statusPanel = window.createWebviewPanel(
     "iecStatus",
-    "IEC 61131-3 — Server Status",
+    "rk: server status",
     { viewColumn: ViewColumn.Active, preserveFocus: true },
     { enableScripts: true },
   );
@@ -383,7 +383,7 @@ function getStatusHtml(): string {
   <div class="header">
     <span class="icon" style="color:${statusColor}">${statusIcon}</span>
     <div>
-      <div class="title">IEC 61131-3 Language Server</div>
+      <div class="title">rk language server</div>
       <div class="status-text">${currentStatus.status === "ok" ? "Server running" : escapeHtml(currentStatus.message)}</div>
     </div>
   </div>
@@ -419,14 +419,14 @@ function escapeHtml(text: string): string {
 }
 
 async function stopServer() {
-  statusBarItem.text = "$(sync~spin) IEC 61131-3";
-  statusBarItem.tooltip = "IEC 61131-3 — Stopping server...";
+  statusBarItem.text = "$(sync~spin) rk";
+  statusBarItem.tooltip = "rk: stopping the server...";
 
   try {
     if (client) {
       await client.stop();
-      statusBarItem.text = "$(circle-slash) IEC 61131-3";
-      statusBarItem.tooltip = "IEC 61131-3 — Server stopped";
+      statusBarItem.text = "$(circle-slash) rk";
+      statusBarItem.tooltip = "rk: server stopped";
       statusBarItem.backgroundColor = undefined;
     }
   } catch (error) {
@@ -437,8 +437,8 @@ async function stopServer() {
 
 async function restartServer() {
   updateStatusBar({ status: "ok", message: "" });
-  statusBarItem.text = "$(sync~spin) IEC 61131-3";
-  statusBarItem.tooltip = "IEC 61131-3 — Restarting server...";
+  statusBarItem.text = "$(sync~spin) rk";
+  statusBarItem.tooltip = "rk: restarting the server...";
 
   try {
     if (client) {
