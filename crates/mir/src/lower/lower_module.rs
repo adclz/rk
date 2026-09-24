@@ -631,6 +631,56 @@ fn lower_module_from_pous<'db>(
                         &mut containers,
                     );
                 }
+                // A PROGRAM's located VAR is one cell every instance shares,
+                // listed under the program's name (`P.count`). A debugger
+                // browsing an instance finds it under the instance's path
+                // too, at that same cell.
+                for var in info
+                    .decl
+                    .variables(db)
+                    .iter()
+                    .filter(|v| v.is_program_located(db))
+                {
+                    let path =
+                        crate::debug_symbols::join_path(db, inst.inst_name.text(db), var.name(db));
+                    let key = global_key(db, *var);
+                    if let Some((addr, ty)) = global_table.get(&key) {
+                        crate::debug_symbols::collect_root(
+                            db,
+                            &path,
+                            *addr,
+                            ty,
+                            false,
+                            &mut symbols,
+                            &mut array_syms,
+                            &mut type_table,
+                        );
+                    } else if let Some(address) = var
+                        .location(db)
+                        .and_then(|dv| hir::hir_def::pous::variable::LocatedAddress::of(db, dv))
+                        && let Some(part) = module
+                            .located_map
+                            .entries
+                            .iter()
+                            .find(|e| e.address == address.text.as_str())
+                        && let (Some(of), Some(ty)) = (&part.part_of, part.ty)
+                    {
+                        // A part of a wider address has no cell of its own:
+                        // it is the bits of its owner's.
+                        symbols.push(debug_format::Symbol {
+                            path,
+                            address: part.addr,
+                            size: part.size,
+                            ty,
+                            global: false,
+                            named_type: None,
+                            bits: Some(debug_format::SymBits {
+                                shift: of.shift,
+                                width: part.width,
+                            }),
+                        });
+                    }
+                }
             }
         }
     }

@@ -137,10 +137,12 @@ pub fn lower_schedule<'db>(
                 };
 
                 // Allocate this instance's state, and register its RETAIN
-                // fields for the host-snapshottable band.
+                // fields for the host-snapshottable band. At least a byte, so
+                // an instance holding nothing (every VAR located) still has
+                // an address of its own for a debugger to tell it by.
                 let base = memory_layout.allocate(
                     p.instance_name,
-                    info.struct_type.size,
+                    info.struct_type.size.max(1),
                     info.struct_type.align,
                     MirAllocKind::InstanceData,
                 );

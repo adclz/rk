@@ -1434,12 +1434,30 @@ fn a_programs_located_variable_is_one_cell_for_every_instance(mut with_db: db::R
     plc.run(1).expect("scan");
     assert_eq!(word(&plc, "%MW0"), 12, "both instances counted the one cell");
     assert_eq!(word(&plc, "%QW2"), 0xAA);
-    // The cell is `P.count`; the instances have no field for it, which a
-    // debugger would otherwise show frozen at its initial value.
+    // The cell is `P.count`, and a debugger browsing an instance finds it
+    // under that instance too: `P1.count` and `P2.count` are the one cell,
+    // not a field of their own that would sit frozen at its initial value.
     let info = debug_format::DebugInfo::from_wasm(&wasm);
     let count = plc.located("%MW0").expect("count").addr;
     assert_eq!(info.resolve("P.count").map(|l| l.address), Some(count));
-    assert_eq!(info.resolve("P1.count"), None, "no dead field in the instance");
+    assert_eq!(info.resolve("P1.count").map(|l| l.address), Some(count));
+    assert_eq!(info.resolve("P2.count").map(|l| l.address), Some(count));
+
+    // Every VAR of `P` is located, so its instances hold nothing; each still
+    // has an address of its own, and a frame names the right one.
+    let schedule = mir.schedule.as_ref().expect("schedule");
+    let at = |name: &str| {
+        schedule
+            .tasks
+            .iter()
+            .flat_map(|t| t.programs.iter())
+            .find(|p| p.inst_name.text(&with_db) == name)
+            .map(|p| p.instance_addr)
+            .expect(name)
+    };
+    assert_ne!(at("P1"), at("P2"), "two instances, two addresses");
+    assert_eq!(info.container_at(at("P1"), "P"), Some("P1"));
+    assert_eq!(info.container_at(at("P2"), "P"), Some("P2"));
 }
 
 /// A PROGRAM's located VAR can be a part of a wider address, as a
@@ -1471,6 +1489,15 @@ fn a_programs_located_variable_can_be_a_part(mut with_db: db::RootDatabase) {
     plc.run(1).expect("scan");
     let lamps = i32::from_le_bytes(plc.read_located("%QW0").expect("read")[..4].try_into().unwrap());
     assert_eq!(lamps, 0x5A00, "`lamp` is the high byte of `lamps`");
+
+    // The instance shows the part under its own name too, as the bits it is.
+    let info = debug_format::DebugInfo::from_wasm(&wasm);
+    let read = |path: &str| {
+        let loc = info.resolve(path).expect(path);
+        loc.decode(&plc.read_bytes(loc.address, loc.size as usize).unwrap())
+    };
+    assert_eq!(read("P1.ready"), debug_format::VarValue::Bool(true));
+    assert_eq!(read("P1.ready"), read("P.ready"));
 }
 
 // ---------------------------------------------------------------------------
