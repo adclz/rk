@@ -109,8 +109,9 @@ pub fn check_condition<'db>(
     diagnostics: &mut Vec<IdeDiagnostic>,
 ) {
     let value_str = match is_boolean_literal(db, condition) {
-        Some(value_str) => value_str,
-        _ => return,
+        Some(true) => "TRUE",
+        Some(false) => "FALSE",
+        None => return,
     };
 
     diagnostics.push(
@@ -131,10 +132,10 @@ pub fn check_condition<'db>(
 }
 
 /// Returns `Some(true)` for TRUE, `Some(false)` for FALSE, `None` for non-boolean-literal.
-fn is_boolean_literal<'db>(db: &'db dyn WorkspaceDataBase, expr: &Expr<'db>) -> Option<String> {
+fn is_boolean_literal<'db>(db: &'db dyn WorkspaceDataBase, expr: &Expr<'db>) -> Option<bool> {
     match expr.expr(db) {
-        ExprKind::PrimaryExpr(PrimaryExpr::Literal(Elementary::Bool(ident))) => {
-            Some(ident.text(db).to_owned().to_uppercase().to_string())
+        ExprKind::PrimaryExpr(PrimaryExpr::Literal(literal @ Elementary::Bool(_))) => {
+            literal.as_bool(db)
         }
         ExprKind::PrimaryExpr(PrimaryExpr::ParenthesizedExpr { expr }) => {
             is_boolean_literal(db, expr)

@@ -673,11 +673,9 @@ impl<'db> ExprLowerCtx<'db> {
     ) -> Result<MirExpr, LowerTypeError> {
         let db = self.db;
         match elem {
-            Elementary::Bool(ident) => {
-                let text = ident.text(db);
-                let val = text.eq_ignore_ascii_case("TRUE") || text.as_str() == "1";
-                Ok(MirExpr::Constant(MirConstant::Bool(val)))
-            }
+            Elementary::Bool(_) => Ok(MirExpr::Constant(MirConstant::Bool(
+                elem.as_bool(db).unwrap_or_default(),
+            ))),
 
             // Signed integers
             Elementary::SInt(int) | Elementary::Int(int) | Elementary::DInt(int) => {

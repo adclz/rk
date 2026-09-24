@@ -44,9 +44,9 @@ pub fn check_node<'db>(
     }
 
     let suggestion = if let Some(val) = is_bool_literal(db, right) {
-        simplification(*operator, &val)
+        simplification(*operator, val)
     } else if let Some(val) = is_bool_literal(db, left) {
-        simplification(*operator, &val)
+        simplification(*operator, val)
     } else {
         return;
     };
@@ -66,17 +66,17 @@ pub fn check_node<'db>(
     );
 }
 
-fn is_bool_literal<'db>(db: &'db dyn WorkspaceDataBase, expr: &Expr<'db>) -> Option<String> {
+fn is_bool_literal<'db>(db: &'db dyn WorkspaceDataBase, expr: &Expr<'db>) -> Option<bool> {
     match expr.expr(db) {
-        ExprKind::PrimaryExpr(PrimaryExpr::Literal(Elementary::Bool(ident))) => {
-            Some(ident.text(db).to_uppercase().to_string())
+        ExprKind::PrimaryExpr(PrimaryExpr::Literal(literal @ Elementary::Bool(_))) => {
+            literal.as_bool(db)
         }
         _ => None,
     }
 }
 
-fn simplification(op: ComparisonOperatorKind, bool_val: &str) -> &'static str {
-    match (op, bool_val == "TRUE") {
+fn simplification(op: ComparisonOperatorKind, bool_val: bool) -> &'static str {
+    match (op, bool_val) {
         (ComparisonOperatorKind::Eq, true) => "the variable itself",
         (ComparisonOperatorKind::Eq, false) => "NOT variable",
         (ComparisonOperatorKind::Ne, true) => "NOT variable",
