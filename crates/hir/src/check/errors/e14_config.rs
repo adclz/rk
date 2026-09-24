@@ -201,23 +201,16 @@ pub enum ConfigError<'db> {
         /// The member declared with the partial address: `x`, or `fb.x`.
         member: compact_str::CompactString,
     },
-    /// A value given to a variable declared `AT %I*`, `%Q*` or `%M*`. The
-    /// variable points at the channel VAR_CONFIG gives its instance, and an
-    /// initializer would write over the pointer.
+    /// A variable declared `AT %I*`, `%Q*` or `%M*` named in an instance's
+    /// initializer, `d : Drive := (out := 30)`. The variable points at the
+    /// channel VAR_CONFIG gives its instance, and the value would be written
+    /// over the pointer.
     PartlyLocatedOverwritten {
         site: CallSite<'db>,
         /// The member declared with the partial address: `x`, or `fb.x`.
         member: compact_str::CompactString,
         address: compact_str::CompactString,
-        how: PartlyOverwrite,
     },
-}
-
-/// How a variable declared `AT %I*`, `%Q*` or `%M*` would be overwritten.
-#[derive(Clone, Debug, PartialEq, Eq, Hash, salsa::Update)]
-pub enum PartlyOverwrite {
-    /// Named in an instance's initializer: `d : Drive := (out := 30)`.
-    Initializer,
 }
 
 /// Why a VAR_CONFIG entry cannot be taken as written.
@@ -1189,23 +1182,18 @@ impl<'db> ToIdeDiagnostic<'db> for ConfigError<'db> {
                 site,
                 member,
                 address,
-                how,
             } => {
-                let (message, note) = match how {
-                    PartlyOverwrite::Initializer => (
-                        format!(
-                            "'{member}' is declared AT {address}, so it points at the channel VAR_CONFIG gives it and has no value of its own to initialize"
-                        ),
-                        "a variable VAR_CONFIG locates starts at its type's default, or at the value its channel's own declaration gives it",
-                    ),
-                };
                 let mut diag = diag()
-                    .message(message)
+                    .message(format!(
+                        "'{member}' is declared AT {address}, so it points at the channel VAR_CONFIG gives it and has no value of its own to initialize"
+                    ))
                     .severity(DiagnosticSeverity::ERROR)
                     .desc(self)
                     .range(crate::denormalize(db, file, &site.get_span(db)).unwrap_or_default())
                     .call();
-                diag.with_note(note.to_string());
+                diag.with_note(
+                    "a variable VAR_CONFIG locates starts at its type's default, or at the value its channel's own declaration gives it".to_string(),
+                );
                 diag
             }
         }

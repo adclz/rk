@@ -692,7 +692,6 @@ impl<'db> Type<'db> {
                                 .location(db)
                                 .map(|dv| compact_str::CompactString::from(dv.to_address(db)))
                                 .unwrap_or_default(),
-                            how: crate::check::errors::e14_config::PartlyOverwrite::Initializer,
                         }
                         .to_diagnostic(db, ctx.scope.file(db)),
                     );
